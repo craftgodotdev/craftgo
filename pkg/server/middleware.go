@@ -11,42 +11,64 @@ import (
 // contentTypeJSON is the Content-Type of the framework's JSON responses.
 const contentTypeJSON = "application/json; charset=utf-8"
 
-// committedResponseWriter records whether WriteHeader or Write has been called.
-type committedResponseWriter struct {
+// trackingWriter records the status of the response written through it. The response is
+// committed once a WriteHeader with a final status, a Write or a Flush has fixed its head.
+type trackingWriter struct {
 	http.ResponseWriter
-	committed bool
+	status int
 }
 
-func (w *committedResponseWriter) WriteHeader(code int) {
-	w.committed = true
+// commit records status unless an earlier call committed the response.
+func (w *trackingWriter) commit(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+}
+
+// WriteHeader commits on a final status; net/http keeps the response open after a 1xx other
+// than 101.
+func (w *trackingWriter) WriteHeader(code int) {
+	if code >= 200 || code == http.StatusSwitchingProtocols {
+		w.commit(code)
+	}
 	w.ResponseWriter.WriteHeader(code)
 }
 
-func (w *committedResponseWriter) Write(p []byte) (int, error) {
-	w.committed = true
+func (w *trackingWriter) Write(p []byte) (int, error) {
+	w.commit(http.StatusOK)
 	return w.ResponseWriter.Write(p)
 }
 
-func (w *committedResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
-
-func (w *committedResponseWriter) Flush() {
+func (w *trackingWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		w.commit(http.StatusOK)
 		f.Flush()
 	}
 }
 
-func (w *committedResponseWriter) Committed() bool { return w.committed }
+func (w *trackingWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *trackingWriter) Committed() bool { return w.status != 0 }
+
+// Status returns the committed status, or 200, what net/http sends for a handler that writes
+// nothing.
+func (w *trackingWriter) Status() int {
+	if w.status == 0 {
+		return http.StatusOK
+	}
+	return w.status
+}
 
 // Recovery answers a panic in next with a 500 text/plain response and logs it, with its
 // stack, to logger. Once the response is committed it only logs; the client keeps what was sent.
 func Recovery(logger log.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			cw := &committedResponseWriter{ResponseWriter: w}
+			tw := &trackingWriter{ResponseWriter: w}
 			defer func() {
 				if rec := recover(); rec != nil {
 					l := logger.WithContext(r.Context())
-					if cw.committed {
+					if tw.Committed() {
 						l.Error("panic recovered after response committed; client receives truncated body",
 							log.Any("panic", rec),
 							log.String("stack", string(debug.Stack())),
@@ -57,10 +79,10 @@ func Recovery(logger log.Logger) Middleware {
 						log.Any("panic", rec),
 						log.String("stack", string(debug.Stack())),
 					)
-					http.Error(cw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					http.Error(tw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				}
 			}()
-			next.ServeHTTP(cw, r)
+			next.ServeHTTP(tw, r)
 		})
 	}
 }
@@ -102,12 +124,12 @@ func AccessLog(logger log.Logger, opts ...AccessLogOption) Middleware {
 				return
 			}
 			start := time.Now()
-			rw := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-			next.ServeHTTP(rw, r)
+			tw := &trackingWriter{ResponseWriter: w}
+			next.ServeHTTP(tw, r)
 			fields := []log.Field{
 				log.String("method", r.Method),
 				log.String("path", r.URL.Path),
-				log.Int("status", rw.status),
+				log.Int("status", tw.Status()),
 				log.Duration("latency", time.Since(start)),
 			}
 			if cfg.fields != nil {
@@ -133,22 +155,3 @@ func Timeout(d time.Duration) Middleware {
 		return http.TimeoutHandler(next, d, "request timeout")
 	}
 }
-
-// statusRecorder records the last status passed to WriteHeader.
-type statusRecorder struct {
-	http.ResponseWriter
-	status int
-}
-
-func (s *statusRecorder) WriteHeader(c int) {
-	s.status = c
-	s.ResponseWriter.WriteHeader(c)
-}
-
-func (s *statusRecorder) Flush() {
-	if f, ok := s.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
-	}
-}
-
-func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }

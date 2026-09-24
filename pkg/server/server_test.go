@@ -68,6 +68,25 @@ func TestServerRecoveryAfterWriteKeepsOriginalStatus(t *testing.T) {
 	}
 }
 
+// A panic after a Flush leaves the flushed stream alone and is logged as committed.
+func TestServerRecoveryAfterFlushKeepsTheStream(t *testing.T) {
+	logs := observeLogs(t)
+	s := newTestServer(t).SetLogger(log.Default())
+	s.HandleFunc("GET /events", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.(http.Flusher).Flush()
+		panic("after flush")
+	})
+	rec := httptest.NewRecorder()
+	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/events", nil))
+	if rec.Code != http.StatusOK || rec.Body.Len() != 0 {
+		t.Errorf("flushed stream rewritten: status %d, body %q", rec.Code, rec.Body.String())
+	}
+	if n := logs.FilterMessageSnippet("after response committed").Len(); n != 1 {
+		t.Errorf("want the panic logged as after-commit once, got %d lines", n)
+	}
+}
+
 // WriteValidationError leaves a committed response untouched.
 func TestWriteValidationErrorSkipsPostCommit(t *testing.T) {
 	s := newTestServer(t)
@@ -221,6 +240,38 @@ func TestAccessLogSkipPaths(t *testing.T) {
 	want := []string{"GET /a 200", "GET /missing 404"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("access log lines = %v, want %v", got, want)
+	}
+}
+
+// AccessLog records the status the client receives: the first final status written, 200 when
+// a Flush or nothing sends the head.
+func TestAccessLogRecordsTheFirstFinalStatus(t *testing.T) {
+	for name, tc := range map[string]struct {
+		handler http.HandlerFunc
+		want    int64
+	}{
+		"superfluous status": {func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusCreated)
+			w.WriteHeader(http.StatusInternalServerError)
+		}, http.StatusCreated},
+		"early hints first": {func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusEarlyHints)
+			w.WriteHeader(http.StatusNoContent)
+		}, http.StatusNoContent},
+		"flush only":      {func(w http.ResponseWriter, _ *http.Request) { w.(http.Flusher).Flush() }, http.StatusOK},
+		"nothing written": {func(http.ResponseWriter, *http.Request) {}, http.StatusOK},
+	} {
+		t.Run(name, func(t *testing.T) {
+			logs := observeLogs(t)
+			AccessLog(log.Default())(tc.handler).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/x", nil))
+			entries := logs.FilterMessage("http access").All()
+			if len(entries) != 1 {
+				t.Fatalf("want 1 access line, got %d", len(entries))
+			}
+			if got := entries[0].ContextMap()["status"]; got != tc.want {
+				t.Errorf("status = %v, want %d", got, tc.want)
+			}
+		})
 	}
 }
 

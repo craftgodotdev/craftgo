@@ -278,12 +278,12 @@ func TestNegotiateEncodingHonorsQZero(t *testing.T) {
 	}
 }
 
-// statusRecorder and compressWriter unwrap to the writer they wrap.
+// trackingWriter and compressWriter unwrap to the writer they wrap.
 func TestResponseWritersUnwrap(t *testing.T) {
 	base := httptest.NewRecorder()
-	var sr http.ResponseWriter = &statusRecorder{ResponseWriter: base}
-	if u, ok := sr.(interface{ Unwrap() http.ResponseWriter }); !ok || u.Unwrap() != base {
-		t.Errorf("statusRecorder.Unwrap must return the wrapped writer")
+	var tw http.ResponseWriter = &trackingWriter{ResponseWriter: base}
+	if u, ok := tw.(interface{ Unwrap() http.ResponseWriter }); !ok || u.Unwrap() != base {
+		t.Errorf("trackingWriter.Unwrap must return the wrapped writer")
 	}
 	var cw http.ResponseWriter = &compressWriter{ResponseWriter: base}
 	if u, ok := cw.(interface{ Unwrap() http.ResponseWriter }); !ok || u.Unwrap() != base {

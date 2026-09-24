@@ -186,7 +186,7 @@ func (l *SnapshotService) Snapshot(w http.ResponseWriter, r *http.Request, req *
 
 The framework pulls in no compression library: you supply `decode`, using the library that filled the cache. `Compress` leaves a response that already carries `Content-Encoding` untouched, so a verbatim body is never re-encoded.
 
-`server.WriteError` and `server.WriteValidationError` are post-commit safe: when a raw handler has already written a status or body and then returns an error, the error is logged with the request's trace context and the wire is left alone rather than splicing an envelope into the body.
+`server.WriteError` and `server.WriteValidationError` are post-commit safe: when a raw handler has already written a status or body, or flushed, and then returns an error, the error is logged with the request's trace context and the wire is left alone rather than splicing an envelope into the body.
 
 ## CORS
 

@@ -7,6 +7,14 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A flushed response counts as committed.** A panic, or an error a raw
+  handler returns, after a `Flush` is logged and leaves the stream alone:
+  `Recovery` no longer appends a 500 body to it and `WriteError` no longer
+  writes a JSON envelope into an event stream. The access log records the
+  first final status written, the one the client receives.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added
