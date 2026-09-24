@@ -12,7 +12,7 @@ import (
 func formatDoc(t *testing.T, src string) []protocol.TextEdit {
 	t.Helper()
 	u := uri.New("file:///nowhere/t.craftgo")
-	srv := &Server{docs: map[uri.URI]*document{u: {text: src}}}
+	srv := &server{docs: map[uri.URI]string{u: src}}
 	params := protocol.DocumentFormattingParams{TextDocument: protocol.TextDocumentIdentifier{URI: protocol.DocumentURI(u)}}
 	req, err := jsonrpc2.NewCall(jsonrpc2.NewNumberID(1), protocol.MethodTextDocumentFormatting, params)
 	if err != nil {

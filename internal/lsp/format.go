@@ -13,7 +13,7 @@ import (
 
 // onFormatting answers `textDocument/formatting` with one whole-document edit,
 // or none when the buffer carries an error or is already formatted.
-func (s *Server) onFormatting(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onFormatting(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DocumentFormattingParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)

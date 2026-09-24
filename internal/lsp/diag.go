@@ -4,7 +4,6 @@ import (
 	"net/url"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
@@ -12,24 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// buildDiagnostics returns the diagnostics of u's own file, or all of them for
-// a URI with no file path.
-func (s *Server) buildDiagnostics(u uri.URI, src string) []protocol.Diagnostic {
-	perFile, _ := s.buildProjectDiagnostics(u, src)
-	target := strings.TrimSpace(uriToPath(string(u)))
-	if target == "" {
-		var out []protocol.Diagnostic
-		for _, v := range perFile {
-			out = append(out, v...)
-		}
-		return out
-	}
-	return perFile[target]
-}
-
 // buildProjectDiagnostics analyses the project of u holding src and returns its
 // deduplicated diagnostics by file path, u always included, and the design root.
-func (s *Server) buildProjectDiagnostics(u uri.URI, src string) (map[string][]protocol.Diagnostic, string) {
+func (s *server) buildProjectDiagnostics(u uri.URI, src string) (map[string][]protocol.Diagnostic, string) {
 	fsPath := uriToPath(string(u))
 	v := s.loadProject(fsPath, src)
 

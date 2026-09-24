@@ -50,7 +50,7 @@ func TestServeExitAfterShutdown(t *testing.T) {
 
 func TestServeExitWithoutShutdown(t *testing.T) {
 	err := serveMessages(t, initializeMsg, exitMsg)
-	if !errors.Is(err, ErrExitWithoutShutdown) {
-		t.Fatalf("Serve() = %v, want %v", err, ErrExitWithoutShutdown)
+	if !errors.Is(err, errExitWithoutShutdown) {
+		t.Fatalf("Serve() = %v, want %v", err, errExitWithoutShutdown)
 	}
 }

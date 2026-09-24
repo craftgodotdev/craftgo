@@ -8,6 +8,7 @@ import (
 
 	"go.lsp.dev/protocol"
 
+	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -51,7 +52,7 @@ func importPathCompletions(currentURI, prefix string) []protocol.CompletionItem 
 	currentDir, _ := filepath.Abs(filepath.Dir(fsPath))
 	seen := map[string]struct{}{}
 	var out []protocol.CompletionItem
-	for _, p := range designFilePaths(root) {
+	for _, p := range designopts.FilesBestEffort(root) {
 		dir := filepath.Dir(p)
 		abs, _ := filepath.Abs(dir)
 		if abs == currentDir {
@@ -128,7 +129,7 @@ func importStringPrefix(view snapshotView, pos protocol.Position) string {
 
 // packageNameCompletions answers `package |` with the packages the other files
 // in the folder declare or, in a folder with none, every package in the project.
-func (s *Server) packageNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
+func (s *server) packageNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
 	fsPath := uriToPath(currentURI)
 	v := s.loadProject(fsPath, currentSrc)
 	dir := filepath.Dir(fsPath)
@@ -173,7 +174,7 @@ func packageItems(names map[string]int, detail string) []protocol.CompletionItem
 
 // packageDeclCompletions offers every declaration of package pkg except its
 // errors, for `pkg.|`.
-func (s *Server) packageDeclCompletions(currentURI, currentSrc, pkg string) []protocol.CompletionItem {
+func (s *server) packageDeclCompletions(currentURI, currentSrc, pkg string) []protocol.CompletionItem {
 	p := s.loadProject(uriToPath(currentURI), currentSrc).proj.Packages[pkg]
 	if p == nil {
 		return nil

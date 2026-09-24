@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"go.lsp.dev/protocol"
-	"go.lsp.dev/uri"
 )
 
 func TestCompletionRawModeFlagsAtMethodSite(t *testing.T) {
@@ -42,7 +41,7 @@ func TestHoverRawModeFlags(t *testing.T) {
 
 func TestDiagnosticsRawModeRedundancySurfacesAsWarning(t *testing.T) {
 	src := "package x\nservice S {\n\t@passthrough\n\t@rawRequest\n\tget A /a {}\n}\n"
-	got := newTestServer().buildDiagnostics(uri.New("file:///t.craftgo"), src)
+	got := bufferDiagnostics(src)
 	var found *protocol.Diagnostic
 	for i := range got {
 		if c, _ := got[i].Code.(string); c == "decorator/redundant" {
@@ -65,7 +64,7 @@ func TestDiagnosticsRawModeRedundancySurfacesAsWarning(t *testing.T) {
 
 func TestDiagnosticsRawModeBlocksAreClean(t *testing.T) {
 	src := "package x\ntype Req { id string @path }\ntype Resp { ok bool }\nservice S {\n\t@rawResponse\n\tget A /a/{id} { request Req  response Resp }\n\t@rawRequest\n\tpost B /b { response Resp }\n\t@passthrough\n\tget C /c/{id} { request Req  response Resp }\n}\n"
-	if got := newTestServer().buildDiagnostics(uri.New("file:///t.craftgo"), src); len(got) != 0 {
+	if got := bufferDiagnostics(src); len(got) != 0 {
 		t.Fatalf("blocks on raw sides must not produce diagnostics, got %+v", got)
 	}
 }

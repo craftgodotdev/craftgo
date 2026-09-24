@@ -14,7 +14,7 @@ import (
 
 // onDefinition answers `textDocument/definition` with the declaration the
 // identifier at the cursor names, among the kinds [lookupKindAt] allows.
-func (s *Server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DefinitionParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
@@ -168,7 +168,7 @@ func qualifiedNameAt(view snapshotView, idx int) string {
 
 // onReferences answers `textDocument/references` with every identifier in the
 // project spelt like the one at the cursor.
-func (s *Server) onReferences(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onReferences(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.ReferenceParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
@@ -188,7 +188,7 @@ func (s *Server) onReferences(ctx context.Context, reply jsonrpc2.Replier, req j
 
 // projectNameMatches returns the location of every identifier spelt name in
 // the buffer's project, or in the buffer alone outside a project.
-func (s *Server) projectNameMatches(view snapshotView, currentURI protocol.DocumentURI, currentSrc, name string, includeDecl bool) []protocol.Location {
+func (s *server) projectNameMatches(view snapshotView, currentURI protocol.DocumentURI, currentSrc, name string, includeDecl bool) []protocol.Location {
 	v := s.loadProject(uriToPath(string(currentURI)), currentSrc)
 	if v.root == "" {
 		return nameMatches(view, currentURI, name, includeDecl)
@@ -221,8 +221,12 @@ func (s *Server) projectNameMatches(view snapshotView, currentURI protocol.Docum
 
 // nameMatches returns the location of every identifier in view spelt name.
 func nameMatches(view snapshotView, u protocol.DocumentURI, name string, includeDecl bool) []protocol.Location {
+	var declPos *lexer.Position
+	if d := findDecl(view.file, name); d != nil {
+		p := d.DeclPos()
+		declPos = &p
+	}
 	var out []protocol.Location
-	declPos := declSitePos(view.file, name)
 	for _, t := range view.tokens {
 		if t.Kind != lexer.Ident || t.Text != name {
 			continue
@@ -235,18 +239,9 @@ func nameMatches(view snapshotView, u protocol.DocumentURI, name string, include
 	return out
 }
 
-func declSitePos(f *ast.File, name string) *lexer.Position {
-	d := findDecl(f, name)
-	if d == nil {
-		return nil
-	}
-	p := d.DeclPos()
-	return &p
-}
-
 // onDocumentHighlight answers `textDocument/documentHighlight` with every
 // identifier in the buffer spelt like the one at the cursor.
-func (s *Server) onDocumentHighlight(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onDocumentHighlight(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DocumentHighlightParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)

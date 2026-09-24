@@ -14,7 +14,7 @@ import (
 
 // decoratorArgItems offers the argument candidates of `@name(...)`, or nil
 // when the slot has no closed set.
-func (s *Server) decoratorArgItems(view snapshotView, pos protocol.Position, currentURI, currentSrc, name string, prev, mid *lexer.Token) []protocol.CompletionItem {
+func (s *server) decoratorArgItems(view snapshotView, pos protocol.Position, currentURI, currentSrc, name string, prev, mid *lexer.Token) []protocol.CompletionItem {
 	if name == "middlewares" {
 		return s.middlewareNameCompletions(currentURI, currentSrc)
 	}
@@ -163,7 +163,7 @@ func decoratorCompletions(view snapshotView, pos protocol.Position, prefix strin
 	}
 	// An `extend service` takes the service decorators that have a method form,
 	// plus @group.
-	extendSite := level == semantic.LvlService && nextDeclDecoratorIsExtend(view, pos)
+	extendSite := level == semantic.LvlService && firstTopLevelDeclKeyword(view, pos) == lexer.KwExtend
 	names := make([]string, 0, len(semantic.Registry))
 	for name := range semantic.Registry {
 		names = append(names, name)

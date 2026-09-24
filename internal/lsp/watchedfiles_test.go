@@ -34,12 +34,12 @@ openapi:
 	mustWrite(t, aPath, "package things\ntype A {}\ntype HasErr { x Nope }\n")
 	mustWrite(t, bPath, "package things\ntype B { a A }\n")
 
-	s := &Server{docs: map[uri.URI]*document{}}
+	s := newTestServer()
 	aURI := uri.File(aPath)
 	bURI := uri.File(bPath)
 	aSrc := readFileT(t, aPath)
-	s.storeDoc(aURI, aSrc, 1)
-	s.storeDoc(bURI, readFileT(t, bPath), 1)
+	s.storeDoc(aURI, aSrc)
+	s.storeDoc(bURI, readFileT(t, bPath))
 
 	// Delete A on disk while it stays open in the editor.
 	if err := os.Remove(aPath); err != nil {
@@ -123,7 +123,7 @@ func TestWatchedFilesRegistration(t *testing.T) {
 // onInitialized sends client/registerCapability.
 func TestOnInitializedRegistersWatcher(t *testing.T) {
 	conn := &recordingConn{}
-	s := &Server{docs: map[uri.URI]*document{}, conn: conn}
+	s := &server{docs: map[uri.URI]string{}, conn: conn}
 	if err := s.onInitialized(context.Background(), func(context.Context, any, error) error { return nil }, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -161,9 +161,9 @@ openapi:
 	mustWrite(t, bPath, "package things\ntype B { id string }\n")
 
 	conn := &recordingConn{}
-	s := &Server{docs: map[uri.URI]*document{}, conn: conn}
-	s.storeDoc(uri.File(aPath), readFileT(t, aPath), 1)
-	s.storeDoc(uri.File(bPath), readFileT(t, bPath), 1)
+	s := &server{docs: map[uri.URI]string{}, conn: conn}
+	s.storeDoc(uri.File(aPath), readFileT(t, aPath))
+	s.storeDoc(uri.File(bPath), readFileT(t, bPath))
 
 	if err := s.onDidChangeWatchedFiles(context.Background(), func(context.Context, any, error) error { return nil }, nil); err != nil {
 		t.Fatal(err)

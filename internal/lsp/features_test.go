@@ -365,7 +365,7 @@ openapi:
 		t.Fatalf("write source: %v", err)
 	}
 	view := parseSnapshot(srcPath, src)
-	srv := &Server{docs: map[uri.URI]*document{}}
+	srv := newTestServer()
 	fileURI := string(uri.File(srcPath))
 	// Cursor right after `@security(`.
 	pos := protocol.Position{Line: 2, Character: 10}
@@ -396,7 +396,7 @@ func TestCompletionSecuritySchemeNoManifest(t *testing.T) {
 		t.Fatalf("write source: %v", err)
 	}
 	view := parseSnapshot(srcPath, src)
-	srv := &Server{docs: map[uri.URI]*document{}}
+	srv := newTestServer()
 	pos := protocol.Position{Line: 2, Character: 10}
 	_ = srv.completionsAt(view, pos, string(uri.File(srcPath)), src)
 }
@@ -881,7 +881,7 @@ func TestCompletionHeaderLines(t *testing.T) {
 		write(buf, clean)
 		head := src[:i]
 		view := parseSnapshot(buf, clean)
-		srv := &Server{docs: map[uri.URI]*document{}}
+		srv := newTestServer()
 		pos := protocol.Position{
 			Line:      uint32(strings.Count(head, "\n")),
 			Character: uint32(len(head) - (strings.LastIndex(head, "\n") + 1)),
@@ -1059,12 +1059,12 @@ func TestFormattingProducesEdit(t *testing.T) {
 		t.Errorf("Range.Start.Line = %d, want 0", r.Start.Line)
 	}
 	uriOf := uri.New("file:///t.craftgo")
-	srv := &Server{docs: map[uri.URI]*document{uriOf: {text: dirty}}}
-	srv.storeDoc(uriOf, dirty, 1)
+	srv := &server{docs: map[uri.URI]string{uriOf: dirty}}
+	srv.storeDoc(uriOf, dirty)
 	if got := srv.snapshot(uriOf); got != dirty {
 		t.Fatalf("snapshot mismatch")
 	}
-	srv.storeDoc(uriOf, clean, 1)
+	srv.storeDoc(uriOf, clean)
 	if got := srv.snapshot(uriOf); got != clean {
 		t.Fatalf("snapshot mismatch (clean)")
 	}
@@ -1352,7 +1352,7 @@ func TestDefinitionExtendServiceEndToEnd(t *testing.T) {
 	}
 
 	extURI := uri.File(extPath)
-	srv := &Server{docs: map[uri.URI]*document{extURI: {text: ext}}}
+	srv := &server{docs: map[uri.URI]string{extURI: ext}}
 	params := protocol.DefinitionParams{
 		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
 			TextDocument: protocol.TextDocumentIdentifier{URI: protocol.DocumentURI(extURI)},
@@ -1449,7 +1449,7 @@ func mustHoverAt(t *testing.T, path, src, needle string) string {
 func mustCompletionsAt(t *testing.T, path, src string, line, ch uint32) []protocol.CompletionItem {
 	t.Helper()
 	view := parseSnapshot(path, src)
-	srv := &Server{docs: map[uri.URI]*document{}}
+	srv := newTestServer()
 	return srv.completionsAt(view, protocol.Position{Line: line, Character: ch}, "file:///"+path, src)
 }
 

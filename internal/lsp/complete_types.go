@@ -17,7 +17,7 @@ import (
 
 // defaultValueCompletions answers `@default(|)` from the field's type: an
 // enum's values, or true and false for a bool or a scalar over one; else nil.
-func (s *Server) defaultValueCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
+func (s *server) defaultValueCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
 	f := fieldAtCursor(view, pos)
 	if f == nil || f.Type == nil || f.Type.Map != nil || f.Type.Array || f.Type.Named == nil || f.Type.Named.Name == nil {
 		return nil
@@ -62,7 +62,7 @@ func boolLiteralCompletions() []protocol.CompletionItem {
 // pathParamCompletions answers `/{|}` with the request fields that can bind a
 // path segment and are not in the template yet; nil without a request clause.
 // The clause is read from tokens: the parser takes an unfinished `{}` for the body.
-func (s *Server) pathParamCompletions(view snapshotView, currentURI, currentSrc string, brace int) []protocol.CompletionItem {
+func (s *server) pathParamCompletions(view snapshotView, currentURI, currentSrc string, brace int) []protocol.CompletionItem {
 	name := requestTypeAfter(view, brace)
 	if name == "" {
 		return nil
@@ -154,7 +154,7 @@ func pathBindableField(v projectView, f *ast.Field) bool {
 
 // serviceNameCompletions offers the primary services of the buffer's package,
 // the names an `extend service` can target.
-func (s *Server) serviceNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
+func (s *server) serviceNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
 	v := s.loadProject(uriToPath(currentURI), currentSrc)
 	pkg := v.proj.Packages[v.currentPackage()]
 	if pkg == nil {
@@ -186,7 +186,7 @@ func declItems(pkg *semantic.Package, kinds semantic.DeclKind, kind protocol.Com
 
 // projectDeclItems offers the declarations of kinds across the project, one per
 // name (the first package by name wins), sorted by label.
-func (s *Server) projectDeclItems(currentURI, currentSrc string, kinds semantic.DeclKind, kind protocol.CompletionItemKind) []protocol.CompletionItem {
+func (s *server) projectDeclItems(currentURI, currentSrc string, kinds semantic.DeclKind, kind protocol.CompletionItemKind) []protocol.CompletionItem {
 	v := s.loadProject(uriToPath(currentURI), currentSrc)
 	seen := map[string]bool{}
 	var out []protocol.CompletionItem
@@ -226,7 +226,7 @@ func kindDetail(kind, pkg string) string {
 
 // securitySchemeCompletions offers the manifest's openapi.securitySchemes, with
 // each scheme's type and its scheme or location as detail; nil when there are none.
-func (s *Server) securitySchemeCompletions(currentURI string) []protocol.CompletionItem {
+func (s *server) securitySchemeCompletions(currentURI string) []protocol.CompletionItem {
 	fsPath := uriToPath(currentURI)
 	if fsPath == "" {
 		return nil
@@ -261,18 +261,18 @@ func (s *Server) securitySchemeCompletions(currentURI string) []protocol.Complet
 }
 
 // middlewareNameCompletions offers every middleware in the project.
-func (s *Server) middlewareNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
+func (s *server) middlewareNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
 	return s.projectDeclItems(currentURI, currentSrc, semantic.MiddlewareDecls, protocol.CompletionItemKindFunction)
 }
 
 // errorNameCompletions offers every error in the project.
-func (s *Server) errorNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
+func (s *server) errorNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
 	return s.projectDeclItems(currentURI, currentSrc, semantic.ErrorDecls, protocol.CompletionItemKindClass)
 }
 
 // typeCompletionsProjectWide offers what a field type can name: the built-ins,
 // `map`, and every type, enum and scalar in the project.
-func (s *Server) typeCompletionsProjectWide(currentURI, currentSrc string) []protocol.CompletionItem {
+func (s *server) typeCompletionsProjectWide(currentURI, currentSrc string) []protocol.CompletionItem {
 	items := primitiveCompletions()
 	items = append(items, keywordCompletions("map")...)
 	items = append(items, s.declCompletions(currentURI, currentSrc, typePositionDecls)...)
@@ -319,13 +319,13 @@ const typePositionDecls = semantic.TypeDecls | semantic.EnumDecls | semantic.Sca
 
 // clauseTypeCompletions offers the `type` declarations, the only kind a
 // `request`, `response` or `payload` clause accepts.
-func (s *Server) clauseTypeCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
+func (s *server) clauseTypeCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
 	return s.declCompletions(currentURI, currentSrc, semantic.TypeDecls)
 }
 
 // declCompletions offers every declaration of kinds in the project - bare in
 // the buffer's package, `pkg.Name` elsewhere - plus each other package as `pkg.`.
-func (s *Server) declCompletions(currentURI, currentSrc string, kinds semantic.DeclKind) []protocol.CompletionItem {
+func (s *server) declCompletions(currentURI, currentSrc string, kinds semantic.DeclKind) []protocol.CompletionItem {
 	v := s.loadProject(uriToPath(currentURI), currentSrc)
 	currentPkg := v.currentPackage()
 	var items []protocol.CompletionItem

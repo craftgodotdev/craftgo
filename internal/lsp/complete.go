@@ -14,7 +14,7 @@ import (
 
 // onCompletion answers `textDocument/completion`; a document that is not open
 // gets an empty list.
-func (s *Server) onCompletion(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onCompletion(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.CompletionParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
@@ -30,7 +30,7 @@ func (s *Server) onCompletion(ctx context.Context, reply jsonrpc2.Replier, req j
 
 // namedSlotCompletions answers the slots holding a name the project, the registry
 // or the design folder knows; the bool reports such a slot, even with no answer.
-func (s *Server) namedSlotCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string, prev, mid *lexer.Token) ([]protocol.CompletionItem, bool) {
+func (s *server) namedSlotCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string, prev, mid *lexer.Token) ([]protocol.CompletionItem, bool) {
 	if isInsideImportString(view, pos) {
 		prefix := importStringPrefix(view, pos)
 		return importPathCompletions(currentURI, prefix), true
@@ -87,7 +87,7 @@ func (s *Server) namedSlotCompletions(view snapshotView, pos protocol.Position, 
 }
 
 // completionsAt returns the candidate items for a cursor in view.
-func (s *Server) completionsAt(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
+func (s *server) completionsAt(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
 	prev, mid := surroundingTokens(view, pos)
 	if items, ok := s.namedSlotCompletions(view, pos, currentURI, currentSrc, prev, mid); ok {
 		return items
@@ -121,7 +121,7 @@ func (s *Server) completionsAt(view snapshotView, pos protocol.Position, current
 	if isFieldTypePosition(view, pos, prev) {
 		return s.typeCompletionsProjectWide(currentURI, currentSrc)
 	}
-	return s.blockCompletions(view, pos, currentURI, currentSrc)
+	return s.blockKeyCompletions(blockAt(view, pos), currentURI, currentSrc)
 }
 
 // completionBlock is the kind of block a cursor sits in.
@@ -171,14 +171,9 @@ var (
 	eventKeywords   = []string{"payload"}
 )
 
-// blockCompletions offers what the enclosing block accepts at pos.
-func (s *Server) blockCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
-	return s.blockKeyCompletions(blockAt(view, pos), currentURI, currentSrc)
-}
-
 // blockKeyCompletions offers what block accepts: the declared types a mixin
 // can name in a type body, nothing in an enum, keywords elsewhere.
-func (s *Server) blockKeyCompletions(block completionBlock, currentURI, currentSrc string) []protocol.CompletionItem {
+func (s *server) blockKeyCompletions(block completionBlock, currentURI, currentSrc string) []protocol.CompletionItem {
 	switch block {
 	case blockType:
 		return s.declCompletions(currentURI, currentSrc, semantic.TypeDecls)
@@ -438,12 +433,6 @@ func nextTopLevelDeclLevel(view snapshotView, pos protocol.Position) semantic.Le
 		return semantic.LvlMiddleware
 	}
 	return 0
-}
-
-// nextDeclDecoratorIsExtend reports whether the declaration after pos is an
-// `extend service`.
-func nextDeclDecoratorIsExtend(view snapshotView, pos protocol.Position) bool {
-	return firstTopLevelDeclKeyword(view, pos) == lexer.KwExtend
 }
 
 // cursorInsideDeclBody reports whether pos is inside prev's braces, counted

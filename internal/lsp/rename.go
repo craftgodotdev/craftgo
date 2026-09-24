@@ -13,7 +13,7 @@ import (
 
 // onPrepareRename answers `textDocument/prepareRename` with the range of an
 // identifier that names a declaration in the buffer, else null.
-func (s *Server) onPrepareRename(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onPrepareRename(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.PrepareRenameParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
@@ -36,7 +36,7 @@ func (s *Server) onPrepareRename(ctx context.Context, reply jsonrpc2.Replier, re
 
 // onRename answers `textDocument/rename`, rewriting every same-spelt identifier
 // in the project when the cursor names a declaration in the buffer.
-func (s *Server) onRename(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onRename(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.RenameParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)

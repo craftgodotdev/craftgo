@@ -13,7 +13,7 @@ import (
 
 // onSignatureHelp answers `textDocument/signatureHelp` inside the argument
 // list of a registered decorator, and with null elsewhere.
-func (s *Server) onSignatureHelp(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onSignatureHelp(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.SignatureHelpParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)

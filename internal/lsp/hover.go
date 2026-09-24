@@ -16,8 +16,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func isErrorCategory(s string) bool { return errcat.IsCategory(s) }
-
 // isVerbToken reports whether t is an HTTP verb keyword.
 func isVerbToken(t lexer.Token) bool {
 	switch t.Kind {
@@ -75,7 +73,7 @@ func memberKeywordHover(view snapshotView, idx int, tok lexer.Token) *protocol.H
 }
 
 // onHover answers `textDocument/hover`, with null where there is nothing to show.
-func (s *Server) onHover(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onHover(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.HoverParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
@@ -125,7 +123,7 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 				Range:    rangePtr(rangeOf(tok)),
 			}
 		}
-		if isErrorCategory(tok.Text) {
+		if errcat.IsCategory(tok.Text) {
 			return errorCategoryHover(tok)
 		}
 		if d := findDecl(view.file, tok.Text); d != nil {
@@ -253,7 +251,7 @@ func typeRefString(t *ast.TypeRef) string {
 
 // hoverWithProject is [hoverForToken] with a project-wide declaration lookup as
 // the fallback, so the project loads only when the buffer has no answer.
-func (s *Server) hoverWithProject(view snapshotView, idx int, tok lexer.Token, currentURI string, currentSrc string) *protocol.Hover {
+func (s *server) hoverWithProject(view snapshotView, idx int, tok lexer.Token, currentURI string, currentSrc string) *protocol.Hover {
 	if h := hoverForToken(view, idx, tok); h != nil {
 		return h
 	}

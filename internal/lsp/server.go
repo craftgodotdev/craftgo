@@ -23,18 +23,18 @@ import (
 // it with `-ldflags -X`, which only writes a var.
 var Version = "1.9.0"
 
-// ErrExitWithoutShutdown reports an `exit` that arrived before `shutdown`;
+// errExitWithoutShutdown reports an `exit` that arrived before `shutdown`;
 // LSP requires a non-zero exit status then.
-var ErrExitWithoutShutdown = errors.New("exit notification without prior shutdown")
+var errExitWithoutShutdown = errors.New("exit notification without prior shutdown")
 
-// Serve speaks LSP over in and out until `exit` or the end of the connection,
-// returning [ErrExitWithoutShutdown] for an `exit` without `shutdown`.
+// Serve speaks LSP over in and out until `exit` or the end of the connection;
+// an `exit` without `shutdown` is an error.
 func Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	stream := jsonrpc2.NewStream(&stdioRWC{in: in, out: out})
 	conn := jsonrpc2.NewConn(stream)
-	srv := &Server{
+	srv := &server{
 		conn: conn,
-		docs: make(map[uri.URI]*document),
+		docs: make(map[uri.URI]string),
 		exit: make(chan struct{}),
 	}
 	conn.Go(ctx, srv.handler)
@@ -43,7 +43,7 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		if srv.shutdownRequested() {
 			return nil
 		}
-		return ErrExitWithoutShutdown
+		return errExitWithoutShutdown
 	case <-conn.Done():
 		if err := conn.Err(); err != nil && !errors.Is(err, io.EOF) {
 			return err
@@ -52,36 +52,30 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	}
 }
 
-// Server is the state of one LSP session; [Serve] builds it.
-type Server struct {
+// server is the state of one LSP session; [Serve] builds it.
+type server struct {
 	conn     jsonrpc2.Conn
-	mu       sync.Mutex // guards docs and shutdown
-	docs     map[uri.URI]*document
+	mu       sync.Mutex         // guards docs and shutdown
+	docs     map[uri.URI]string // the full text of each open file (full sync)
 	exit     chan struct{}
 	exitOnce sync.Once
 	shutdown bool
 }
 
-func (s *Server) signalExit() {
+func (s *server) signalExit() {
 	s.exitOnce.Do(func() { close(s.exit) })
 }
 
-func (s *Server) requestShutdown() {
+func (s *server) requestShutdown() {
 	s.mu.Lock()
 	s.shutdown = true
 	s.mu.Unlock()
 }
 
-func (s *Server) shutdownRequested() bool {
+func (s *server) shutdownRequested() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.shutdown
-}
-
-// document is the full text of an open file; the server uses full sync.
-type document struct {
-	text    string
-	version int32
 }
 
 // stdioRWC joins in and out into the [io.ReadWriteCloser] jsonrpc2 needs.
@@ -97,7 +91,7 @@ func (r *stdioRWC) Close() error                { return nil }
 
 // handler dispatches every inbound message by method; an unknown method
 // gets [jsonrpc2.ErrMethodNotFound].
-func (s *Server) handler(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) handler(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	switch req.Method() {
 	case protocol.MethodInitialize:
 		return s.onInitialize(ctx, reply, req)
@@ -147,7 +141,7 @@ func (s *Server) handler(ctx context.Context, reply jsonrpc2.Replier, req jsonrp
 	}
 }
 
-func (s *Server) onInitialize(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onInitialize(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.InitializeParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
@@ -179,26 +173,23 @@ func (s *Server) onInitialize(ctx context.Context, reply jsonrpc2.Replier, req j
 }
 
 // snapshot returns the open text of u, or "" when u is not open.
-func (s *Server) snapshot(u uri.URI) string {
+func (s *server) snapshot(u uri.URI) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if d, ok := s.docs[u]; ok {
-		return d.text
-	}
-	return ""
+	return s.docs[u]
 }
 
-func (s *Server) onDidOpen(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onDidOpen(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DidOpenTextDocumentParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
 	}
-	s.storeDoc(params.TextDocument.URI, params.TextDocument.Text, params.TextDocument.Version)
+	s.storeDoc(params.TextDocument.URI, params.TextDocument.Text)
 	s.publishDiagnostics(ctx, params.TextDocument.URI, params.TextDocument.Text)
 	return reply(ctx, nil, nil)
 }
 
-func (s *Server) onDidChange(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onDidChange(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DidChangeTextDocumentParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
@@ -208,12 +199,12 @@ func (s *Server) onDidChange(ctx context.Context, reply jsonrpc2.Replier, req js
 	}
 	// Full sync: the last change carries the whole buffer.
 	text := params.ContentChanges[len(params.ContentChanges)-1].Text
-	s.storeDoc(params.TextDocument.URI, text, params.TextDocument.Version)
+	s.storeDoc(params.TextDocument.URI, text)
 	s.publishDiagnostics(ctx, params.TextDocument.URI, text)
 	return reply(ctx, nil, nil)
 }
 
-func (s *Server) onDidSave(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onDidSave(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DidSaveTextDocumentParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
@@ -221,13 +212,9 @@ func (s *Server) onDidSave(ctx context.Context, reply jsonrpc2.Replier, req json
 	// A save without text re-checks the cached buffer.
 	text := params.Text
 	if text == "" {
-		s.mu.Lock()
-		if d, ok := s.docs[params.TextDocument.URI]; ok {
-			text = d.text
-		}
-		s.mu.Unlock()
+		text = s.snapshot(params.TextDocument.URI)
 	} else {
-		s.storeDoc(params.TextDocument.URI, text, 0)
+		s.storeDoc(params.TextDocument.URI, text)
 	}
 	if text != "" {
 		s.publishDiagnostics(ctx, params.TextDocument.URI, text)
@@ -235,7 +222,7 @@ func (s *Server) onDidSave(ctx context.Context, reply jsonrpc2.Replier, req json
 	return reply(ctx, nil, nil)
 }
 
-func (s *Server) onDidClose(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onDidClose(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DidCloseTextDocumentParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
@@ -254,7 +241,7 @@ func (s *Server) onDidClose(ctx context.Context, reply jsonrpc2.Replier, req jso
 // onInitialized asks the client to watch the design files and the manifest; a
 // refusal is ignored. The call runs in a goroutine: the jsonrpc2 read loop is
 // single-threaded, so waiting for the reply in the handler would deadlock.
-func (s *Server) onInitialized(ctx context.Context, reply jsonrpc2.Replier, _ jsonrpc2.Request) error {
+func (s *server) onInitialized(ctx context.Context, reply jsonrpc2.Replier, _ jsonrpc2.Request) error {
 	go func() {
 		// A closed connection cancels the call, so the goroutine never outlives it.
 		callCtx, cancel := context.WithCancel(ctx)
@@ -304,7 +291,7 @@ func watchedFilesRegistration() protocol.RegistrationParams {
 
 // onDidChangeWatchedFiles re-publishes the diagnostics of every open document
 // after a watched file changes on disk.
-func (s *Server) onDidChangeWatchedFiles(ctx context.Context, reply jsonrpc2.Replier, _ jsonrpc2.Request) error {
+func (s *server) onDidChangeWatchedFiles(ctx context.Context, reply jsonrpc2.Replier, _ jsonrpc2.Request) error {
 	// One publishDiagnostics per design root covers every open file under it.
 	seenRoots := map[string]bool{}
 	for u := range s.openDocURIs() {
@@ -324,28 +311,22 @@ func (s *Server) onDidChangeWatchedFiles(ctx context.Context, reply jsonrpc2.Rep
 }
 
 // storeDoc records text as the open content of u.
-func (s *Server) storeDoc(u uri.URI, text string, version int32) {
+func (s *server) storeDoc(u uri.URI, text string) {
 	s.mu.Lock()
-	s.docs[u] = &document{text: text, version: version}
+	s.docs[u] = text
 	s.mu.Unlock()
 }
 
 // publishDiagnostics analyses the project of u holding src and publishes the
 // diagnostics of u and of every other open file under the same design root.
-func (s *Server) publishDiagnostics(ctx context.Context, u uri.URI, src string) {
+func (s *server) publishDiagnostics(ctx context.Context, u uri.URI, src string) {
 	perFile, designRoot := s.buildProjectDiagnostics(u, src)
-	if designRoot == "" {
-		_ = s.conn.Notify(ctx, protocol.MethodTextDocumentPublishDiagnostics, &protocol.PublishDiagnosticsParams{
-			URI:         u,
-			Diagnostics: diagsFor(perFile, uriToPath(string(u))),
-		})
-		return
-	}
-	pushed := map[string]bool{uriToPath(string(u)): true}
+	path := uriToPath(string(u))
 	_ = s.conn.Notify(ctx, protocol.MethodTextDocumentPublishDiagnostics, &protocol.PublishDiagnosticsParams{
 		URI:         u,
-		Diagnostics: diagsFor(perFile, uriToPath(string(u))),
+		Diagnostics: diagsFor(perFile, path),
 	})
+	pushed := map[string]bool{path: true}
 	for openURI := range s.openDocURIs() {
 		op := uriToPath(string(openURI))
 		if op == "" || pushed[op] || !isUnderDesignRoot(op, designRoot) {
@@ -369,7 +350,7 @@ func diagsFor(perFile map[string][]protocol.Diagnostic, key string) []protocol.D
 }
 
 // openDocURIs returns the URIs of the open documents.
-func (s *Server) openDocURIs() map[uri.URI]struct{} {
+func (s *server) openDocURIs() map[uri.URI]struct{} {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make(map[uri.URI]struct{}, len(s.docs))

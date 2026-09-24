@@ -37,7 +37,7 @@ type projectView struct {
 
 // loadProject parses and analyses the project of the buffer at fsPath (empty
 // for an untitled buffer) holding src, with the manifest's options.
-func (s *Server) loadProject(fsPath, src string) projectView {
+func (s *server) loadProject(fsPath, src string) projectView {
 	cfg, root := designProjectOf(fsPath)
 	v := projectView{root: root, current: fsPath}
 
@@ -125,18 +125,12 @@ func designProjectOf(fsPath string) (*config.Config, string) {
 	return cfg, root
 }
 
-// designFilePaths lists the design files under root in walk order, skipping
-// directories it cannot read.
-func designFilePaths(root string) []string {
-	return designopts.FilesBestEffort(root)
-}
-
 // designFiles reads every design file under root, open buffers (src for fsPath)
 // over disk, and appends the open buffers under root the walk did not find.
-func (s *Server) designFiles(root, fsPath, src string) []loadedFile {
+func (s *server) designFiles(root, fsPath, src string) []loadedFile {
 	seen := map[string]bool{}
 	var out []loadedFile
-	for _, p := range designFilePaths(root) {
+	for _, p := range designopts.FilesBestEffort(root) {
 		seen[p] = true
 		out = append(out, loadedFile{path: p, src: s.readFile(p, fsPath, src)})
 	}
@@ -159,7 +153,7 @@ func (s *Server) designFiles(root, fsPath, src string) []loadedFile {
 
 // readFile returns the text of path: currentSrc for currentPath, else the open
 // buffer, else the disk copy ("" when unreadable).
-func (s *Server) readFile(path, currentPath, currentSrc string) string {
+func (s *server) readFile(path, currentPath, currentSrc string) string {
 	if path == currentPath {
 		return currentSrc
 	}

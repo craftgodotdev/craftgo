@@ -6,12 +6,20 @@ import (
 	"strings"
 	"testing"
 
+	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 )
 
-// newTestServer returns a Server with no open documents and no connection.
-func newTestServer() *Server {
-	return &Server{docs: map[uri.URI]*document{}}
+// newTestServer returns a server with no open documents and no connection.
+func newTestServer() *server {
+	return &server{docs: map[uri.URI]string{}}
+}
+
+// bufferDiagnostics returns the diagnostics of src open outside any project.
+func bufferDiagnostics(src string) []protocol.Diagnostic {
+	u := uri.New("file:///t.craftgo")
+	perFile, _ := newTestServer().buildProjectDiagnostics(u, src)
+	return perFile[uriToPath(string(u))]
 }
 
 // Valid source produces no diagnostics.
@@ -23,7 +31,7 @@ type User {
 	name string @length(1, 80)
 }
 `
-	got := newTestServer().buildDiagnostics(uri.New("file:///test.craftgo"), src)
+	got := bufferDiagnostics(src)
 	if len(got) != 0 {
 		t.Fatalf("expected zero diagnostics for clean source, got %d: %+v", len(got), got)
 	}
@@ -37,7 +45,7 @@ func TestBuildDiagnosticsParseError(t *testing.T) {
 type User {
 	id string
 `
-	got := newTestServer().buildDiagnostics(uri.New("file:///test.craftgo"), src)
+	got := bufferDiagnostics(src)
 	if len(got) == 0 {
 		t.Fatal("expected at least one diagnostic for unclosed type body")
 	}
@@ -201,7 +209,7 @@ type User {
 	id string @notARealDecorator
 }
 `
-	got := newTestServer().buildDiagnostics(uri.New("file:///test.craftgo"), src)
+	got := bufferDiagnostics(src)
 	var foundCode string
 	for _, d := range got {
 		c, _ := d.Code.(string)
@@ -225,7 +233,7 @@ type Hook {
 	payload string @format(raw)
 }
 `
-	got := newTestServer().buildDiagnostics(uri.New("file:///test.craftgo"), src)
+	got := bufferDiagnostics(src)
 	if len(got) != 1 {
 		t.Fatalf("expected exactly one diagnostic, got %d: %+v", len(got), got)
 	}

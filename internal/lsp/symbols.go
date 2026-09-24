@@ -9,11 +9,10 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // onDocumentSymbol answers `textDocument/documentSymbol` with the buffer's outline.
-func (s *Server) onDocumentSymbol(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onDocumentSymbol(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DocumentSymbolParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
@@ -33,7 +32,7 @@ func (s *Server) onDocumentSymbol(ctx context.Context, reply jsonrpc2.Replier, r
 
 // onWorkspaceSymbol answers `workspace/symbol` with the project's declarations
 // whose name contains the query, ignoring ASCII case.
-func (s *Server) onWorkspaceSymbol(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+func (s *server) onWorkspaceSymbol(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.WorkspaceSymbolParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
@@ -100,11 +99,11 @@ func containerNameFromFile(f *ast.File) string {
 
 // anyOpenDocument returns the path and text of some open document, or empty
 // strings when none is open.
-func (s *Server) anyOpenDocument() (string, string) {
+func (s *server) anyOpenDocument() (string, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for u, d := range s.docs {
-		return uriToPath(string(u)), d.text
+	for u, text := range s.docs {
+		return uriToPath(string(u)), text
 	}
 	return "", ""
 }
@@ -295,17 +294,13 @@ func methodSymbol(m *ast.Method) protocol.DocumentSymbol {
 	case resp != "":
 		detail += " (→ " + resp + ")"
 	}
+	namePos := m.Pos
+	namePos.Column += len(m.Verb) + 1
 	return protocol.DocumentSymbol{
 		Name:           m.Name,
 		Detail:         detail,
 		Kind:           protocol.SymbolKindMethod,
 		Range:          r,
-		SelectionRange: rangeOfPosLen(positionAfter(m.Pos, len(m.Verb)+1), len(m.Name)),
+		SelectionRange: rangeOfPosLen(namePos, len(m.Name)),
 	}
-}
-
-// positionAfter returns p moved n columns right.
-func positionAfter(p lexer.Position, n int) lexer.Position {
-	p.Column += n
-	return p
 }
