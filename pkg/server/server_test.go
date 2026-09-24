@@ -191,6 +191,17 @@ func TestServerHealthCheckFailure(t *testing.T) {
 	}
 }
 
+// A check that returns an error fails readiness whatever the error's text.
+func TestServerHealthCheckErrorTextIsNeverHealthy(t *testing.T) {
+	s := newTestServer(t)
+	s.RegisterHealthCheck("cache", time.Second, func(context.Context) error { return errors.New("ok") })
+	rec := httptest.NewRecorder()
+	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"not_ready"`) {
+		t.Errorf("status %d, body %s; want 503 not_ready", rec.Code, rec.Body.String())
+	}
+}
+
 func TestServerWithoutDefaultHealth(t *testing.T) {
 	s := New(nil, WithoutDefaultHealth())
 	rec := httptest.NewRecorder()

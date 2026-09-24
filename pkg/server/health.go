@@ -28,6 +28,7 @@ func (s *Server) readinessHandler() http.Handler {
 		var wg sync.WaitGroup
 		var resMu sync.Mutex
 		results := map[string]string{}
+		ok := true
 		for name, hc := range checks {
 			wg.Add(1)
 			go func(name string, hc healthCheck) {
@@ -38,6 +39,7 @@ func (s *Server) readinessHandler() http.Handler {
 				resMu.Lock()
 				if err != nil {
 					results[name] = err.Error()
+					ok = false
 				} else {
 					results[name] = "ok"
 				}
@@ -46,13 +48,6 @@ func (s *Server) readinessHandler() http.Handler {
 		}
 		wg.Wait()
 
-		ok := true
-		for _, v := range results {
-			if v != "ok" {
-				ok = false
-				break
-			}
-		}
 		w.Header().Set("Content-Type", contentTypeJSON)
 		if !ok {
 			w.WriteHeader(http.StatusServiceUnavailable)

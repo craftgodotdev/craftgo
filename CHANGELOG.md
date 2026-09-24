@@ -34,6 +34,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   passed to `Server.SetJSONCodec`, missing a `SetGlobalJSONCodec` swap and
   strict JSON; it now returns what `JSON()` returns.
 
+- **A failing readiness check is never healthy.** A check whose error text
+  was `ok` counted as passing; `/readyz` now answers 503 for any check that
+  returns an error.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added
