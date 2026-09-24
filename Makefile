@@ -3,7 +3,6 @@
 # ---- vars ----------------------------------------------------------------
 BIN_DIR      := bin
 BIN          := $(BIN_DIR)/craftgo
-EXAMPLE_DIR  := example
 EXAMPLE_PROJECTS := example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers example/grpc
 
 GO           ?= go
@@ -176,10 +175,11 @@ example-brokers: ## Run the brokers event example over the in-process transport.
 	cd example/brokers && $(GO) run . -transport memory
 
 .PHONY: gen-diff
-gen-diff: gen-all ## Re-gen examples + e2e and fail if anything changed (drift guard for CI).
-	@if ! git diff --quiet -- $(EXAMPLE_DIR) $(E2E_DIRS); then \
-		echo "codegen drift detected:"; \
-		git --no-pager diff --stat -- $(EXAMPLE_DIR) $(E2E_DIRS); \
+gen-diff: gen-all ## Re-gen examples + e2e and fail on any changed or new file under example/ or tests/e2e (drift guard for CI).
+	@drift=$$(git status --porcelain -- example tests/e2e); \
+	if [ -n "$$drift" ]; then \
+		echo "codegen drift detected - run 'make gen-all' and commit the result:"; \
+		echo "$$drift"; \
 		exit 1; \
 	fi
 
