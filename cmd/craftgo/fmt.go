@@ -41,23 +41,29 @@ func runFmt(args []string) error {
 	if len(files) == 0 {
 		return fmt.Errorf("no .craftgo files found under %q", path)
 	}
-	blocked := blockingDiagnostics(files)
+	blocked, err := blockingDiagnostics(files)
+	if err != nil {
+		return err
+	}
 	var changed []string
 	skipped := 0
 	for _, f := range files {
-		if msgs := blocked[f]; len(msgs) > 0 {
-			skipped++
-			fmt.Fprintf(os.Stderr, "%s: not formatted, fix these first:\n", f)
-			for _, m := range msgs {
-				fmt.Fprintf(os.Stderr, "  %s\n", m)
-			}
-			continue
-		}
 		raw, err := os.ReadFile(f)
 		if err != nil {
 			return err
 		}
-		formatted, _ := format.Format(f, string(raw))
+		formatted, diags := format.Format(f, string(raw))
+		if blockers := blocked[f]; len(blockers) > 0 {
+			diags = blockers
+		}
+		if len(diags) > 0 {
+			skipped++
+			fmt.Fprintf(os.Stderr, "%s: not formatted, fix these first:\n", f)
+			for _, d := range diags {
+				fmt.Fprintf(os.Stderr, "  %s\n", d.Error())
+			}
+			continue
+		}
 		if formatted == string(raw) {
 			continue
 		}
@@ -82,36 +88,45 @@ func runFmt(args []string) error {
 	return nil
 }
 
-// blockingDiagnostics returns, per file, the parser and analyser errors that
-// keep it from being formatted. A file in a project is analysed with the whole
-// project, any other file on its own.
-func blockingDiagnostics(files []string) map[string][]string {
-	out := map[string][]string{}
+// blockingDiagnostics returns, per file as given, the parser and analyser
+// errors that keep it from being formatted. A file in a project is analysed
+// with the whole project, any other file on its own.
+func blockingDiagnostics(files []string) (map[string][]lexer.Diagnostic, error) {
+	given := make(map[string]string, len(files))
+	absPaths := make([]string, len(files))
+	for i, f := range files {
+		abs, err := filepath.Abs(f)
+		if err != nil {
+			return nil, err
+		}
+		given[abs] = f
+		absPaths[i] = abs
+	}
+	out := map[string][]lexer.Diagnostic{}
 	add := func(diags []lexer.Diagnostic, fallback string) {
 		for _, d := range diags {
-			if !d.IsError() {
-				continue
-			}
 			key := d.Pos.Filename
 			if key == "" {
 				key = fallback
 			}
-			out[key] = append(out[key], fmt.Sprintf("%s: %s", d.Pos, d.Msg))
+			if f, ok := given[key]; ok && d.IsError() {
+				out[f] = append(out[f], d)
+			}
 		}
 	}
 	analysed := map[string]bool{}
-	for _, f := range files {
-		cfg, _, designDir, err := config.Find(filepath.Dir(f))
+	for _, abs := range absPaths {
+		cfg, _, designDir, err := config.Find(filepath.Dir(abs))
 		if err != nil {
-			data, readErr := os.ReadFile(f)
+			data, readErr := os.ReadFile(abs)
 			if readErr != nil {
 				continue
 			}
-			p := parser.New(f, string(data))
+			p := parser.New(abs, string(data))
 			file := p.Parse()
-			add(p.Diagnostics(), f)
+			add(p.Diagnostics(), abs)
 			_, diags := semantic.Analyze([]*ast.File{file})
-			add(diags, f)
+			add(diags, abs)
 			continue
 		}
 		if analysed[designDir] {
@@ -123,9 +138,9 @@ func blockingDiagnostics(files []string) map[string][]string {
 			continue
 		}
 		_, _, diags := designopts.Analyze(srcs, designDir, cfg)
-		add(diags, f)
+		add(diags, abs)
 	}
-	return out
+	return out, nil
 }
 
 // collectCraftgoFiles returns every design file under target, or target itself

@@ -60,6 +60,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   and the editor's Format Document keep a file unchanged when its formatted
   text would not parse, or would drop, duplicate or add a comment.
 
+- **`craftgo fmt` checks every file for errors, whatever path names it.**
+  Given a relative path, or no path at all, it formatted a file with a
+  parse or semantic error - reading the fields after an unclosed decorator
+  as its arguments - where an absolute path refused the file. It also
+  reports what the formatter refuses, and exits 1 for either.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
