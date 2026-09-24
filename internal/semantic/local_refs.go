@@ -1,6 +1,8 @@
 package semantic
 
 import (
+	"fmt"
+
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/prims"
@@ -150,13 +152,11 @@ func (a *analyzer) checkLocalNamedRef(n *ast.NamedTypeRef, typeParams, imports m
 	if typeParams != nil && typeParams[name] {
 		return
 	}
-	if a.isLocalType(name) {
+	if a.pkg.Decl(name, TypeRefDecls) != nil {
 		return
 	}
 	if _, ok := a.pkg.Errors[name]; ok {
-		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
-			"%q is an error declaration, not a type - errors are only valid inside `@errors(...)`; declare a separate `type` if you need this shape as a field value",
-			name)
+		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol, "%s", errorAsTypeMsg(name))
 		return
 	}
 	if imports != nil && imports[name] {
@@ -171,17 +171,8 @@ func (a *analyzer) checkLocalNamedRef(n *ast.NamedTypeRef, typeParams, imports m
 		name, a.pkg.Name)
 }
 
-// isLocalType reports whether this package declares name as a type, enum
-// or scalar.
-func (a *analyzer) isLocalType(name string) bool {
-	if _, ok := a.pkg.Types[name]; ok {
-		return true
-	}
-	if _, ok := a.pkg.Enums[name]; ok {
-		return true
-	}
-	if _, ok := a.pkg.Scalars[name]; ok {
-		return true
-	}
-	return false
+// errorAsTypeMsg words the diagnostic for an error declaration named where a
+// type belongs.
+func errorAsTypeMsg(name string) string {
+	return fmt.Sprintf("%q is an error declaration, not a type - errors are only valid inside `@errors(...)`; declare a separate `type` if you need this shape as a field value", name)
 }

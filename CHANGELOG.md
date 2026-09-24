@@ -226,6 +226,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   generated a route that never read `{id}` and an OpenAPI path without the
   parameter. The design is now rejected with `path/param-missing`.
 
+- **A qualified error name is rejected as a field type.** `x shared.Gone`,
+  where `Gone` is an `error` of package `shared`, passed analysis and
+  generated Go that did not compile (`undefined: shared.Gone`); it now gets
+  the diagnostic the bare `x Gone` gets.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

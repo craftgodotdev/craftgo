@@ -261,26 +261,6 @@ func TestLastSegment(t *testing.T) {
 	}
 }
 
-func TestPackageHasSymbol(t *testing.T) {
-	pkg := &Package{
-		Types:   map[string]*ast.TypeDecl{"T": {}},
-		Enums:   map[string]*ast.EnumDecl{"E": {}},
-		Errors:  map[string]*ast.ErrorDecl{"R": {}},
-		Scalars: map[string]*ast.ScalarDecl{"S": {}},
-	}
-	for _, name := range []string{"T", "E", "R", "S"} {
-		if !packageHasSymbol(pkg, name) {
-			t.Errorf("expected %q to be present", name)
-		}
-	}
-	if packageHasSymbol(pkg, "X") {
-		t.Error("X should not be present")
-	}
-	if packageHasSymbol(nil, "T") {
-		t.Error("nil pkg should return false")
-	}
-}
-
 func TestIsEscapingPath(t *testing.T) {
 	cases := map[string]bool{
 		"":           false,

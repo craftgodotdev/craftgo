@@ -113,7 +113,11 @@ func (r *refResolver) checkQualifiedRef(n *ast.NamedTypeRef, currentPkg string) 
 			"package %q is not declared anywhere in the project", pkgName)
 		return
 	}
-	if !packageHasSymbol(target, sym) {
+	if target.Decl(sym, TypeRefDecls) == nil {
+		if _, isErr := target.Errors[sym]; isErr {
+			r.diag(n.Pos, lexer.SeverityError, CodeRefUnknownSymbol, "%s", errorAsTypeMsg(n.Name.String()))
+			return
+		}
 		r.diag(n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
 			"package %q has no symbol %q", pkgName, sym)
 		return
@@ -131,27 +135,6 @@ func (r *refResolver) checkQualifiedRef(n *ast.NamedTypeRef, currentPkg string) 
 				"%s.%s expects %d generic argument(s), got %d", pkgName, sym, want, got)
 		}
 	}
-}
-
-// packageHasSymbol reports whether pkg declares sym as a type, enum, error
-// or scalar.
-func packageHasSymbol(pkg *Package, sym string) bool {
-	if pkg == nil {
-		return false
-	}
-	if _, ok := pkg.Types[sym]; ok {
-		return true
-	}
-	if _, ok := pkg.Enums[sym]; ok {
-		return true
-	}
-	if _, ok := pkg.Errors[sym]; ok {
-		return true
-	}
-	if _, ok := pkg.Scalars[sym]; ok {
-		return true
-	}
-	return false
 }
 
 // folderPkg returns the package name a folder conventionally declares: its

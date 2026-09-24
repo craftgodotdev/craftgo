@@ -460,3 +460,19 @@ type T {
 		t.Errorf("diagnostic must hint at @errors as the correct usage, got %q", d.Msg)
 	}
 }
+
+// A qualified error name in a type position gets the bare name's hint.
+func TestQualifiedErrorNameRejectedAsFieldType(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": `package shared
+error NotFound Gone`,
+		"app/a.craftgo": `package app
+type T { remote shared.Gone }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	d := findCode(diags, CodeRefUnknownSymbol)
+	if d == nil {
+		t.Fatalf("expected %s for an error used as a field type, got %v", CodeRefUnknownSymbol, codes(diags))
+	}
+	expectMessage(t, d, "shared.Gone", "error declaration", "@errors")
+}

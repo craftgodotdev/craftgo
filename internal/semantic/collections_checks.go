@@ -63,8 +63,9 @@ func (a *analyzer) keyMarshalable(key *ast.TypeRef, typeParams []string) bool {
 		}
 	}
 	if isQualifiedTypeRef(key) {
+		// A qualified name that names no type is left to the reference check.
 		pkg, sym := a.resolveNamed(a.pkg.Name, key.Named)
-		if pkg == nil || !packageHasSymbol(pkg, sym) {
+		if pkg == nil || pkg.Decl(sym, TypeRefDecls) == nil {
 			return true
 		}
 	}

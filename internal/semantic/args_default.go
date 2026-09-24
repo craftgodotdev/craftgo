@@ -204,8 +204,8 @@ func (a *analyzer) defaultTypeSupported(t *ast.TypeRef) bool {
 	return a.defaultElemSupported(t)
 }
 
-// defaultElemSupported is defaultTypeSupported for a non-array type; an
-// unresolved qualified name passes, for the reference pass to report.
+// defaultElemSupported is defaultTypeSupported for a non-array type; a
+// qualified name that names no type passes, for the reference check to report.
 func (a *analyzer) defaultElemSupported(t *ast.TypeRef) bool {
 	if t == nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) > 2 {
 		return false
@@ -221,7 +221,7 @@ func (a *analyzer) defaultElemSupported(t *ast.TypeRef) bool {
 	}
 	if isQualifiedTypeRef(t) {
 		pkg, sym := a.resolveNamed(a.pkg.Name, t.Named)
-		return pkg == nil || !packageHasSymbol(pkg, sym)
+		return pkg == nil || pkg.Decl(sym, TypeRefDecls) == nil
 	}
 	return false
 }
