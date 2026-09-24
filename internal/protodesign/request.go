@@ -53,17 +53,17 @@ func buildRequest(files linker.Files, names []string, parameter string) *pluginp
 // the pb directory; a `;name` suffix on `go_package` still names the package.
 func parameter(names []string, opts Options) string {
 	params := []string{"paths=source_relative"}
-	if !opts.PBEnabled() {
+	if !opts.pbEnabled() {
 		return params[0]
 	}
 	for _, name := range names {
-		params = append(params, "M"+name+"="+pbImportPath(opts.Module, opts.PBDir, name))
+		params = append(params, "M"+name+"="+pbImportPath(opts, name))
 	}
 	return strings.Join(params, ",")
 }
 
 // pbImportPath returns the Go import path of a design file's pb package: the
 // module, the pb directory, then the file's directory.
-func pbImportPath(module, pbDir, name string) string {
-	return path.Join(module, Options{PBDir: pbDir}.pbRel(), path.Dir(name))
+func pbImportPath(opts Options, name string) string {
+	return path.Join(opts.Module, opts.pbRel(), path.Dir(name))
 }

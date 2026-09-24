@@ -29,32 +29,30 @@ type Options struct {
 	PluginGoGRPC string
 }
 
-// PBEnabled reports whether the plugins run for this project.
-func (o Options) PBEnabled() bool { return o.PBDir != "" }
+// pbEnabled reports whether the plugins run for this project.
+func (o Options) pbEnabled() bool { return o.PBDir != "" }
 
 // pbRel returns PBDir as a clean slash path, e.g. `internal/pb`.
 func (o Options) pbRel() string { return path.Clean(filepath.ToSlash(o.PBDir)) }
 
-// PBRoot returns the pb directory on disk under projectRoot.
-func (s *Set) PBRoot(projectRoot string) string {
-	return filepath.Join(projectRoot, filepath.FromSlash(s.Options.pbRel()))
+// pbRoot returns the pb directory on disk under projectRoot.
+func (s *Set) pbRoot(projectRoot string) string {
+	return filepath.Join(projectRoot, filepath.FromSlash(s.opts.pbRel()))
 }
 
 // Set is one compiled design: every proto under the design root and the
 // services they declare.
 type Set struct {
-	// Options is what the set was compiled with.
-	Options Options
-	// Root is the design root the names are relative to.
-	Root string
-	// Names lists the design files the plugins generate for, as sorted slash
-	// paths relative to Root.
-	Names []string
-	// Plugin is the protogen view of the whole graph; the design files have
+	// opts is what the set was compiled with.
+	opts Options
+	// names lists the design files the plugins generate for, as sorted slash
+	// paths relative to the design root.
+	names []string
+	// plugin is the protogen view of the whole graph; the design files have
 	// Generate set.
-	Plugin *protogen.Plugin
-	// Request is the plugin request, deps first, as the plugins receive it.
-	Request *pluginpb.CodeGeneratorRequest
+	plugin *protogen.Plugin
+	// request is the plugin request, deps first, as the plugins receive it.
+	request *pluginpb.CodeGeneratorRequest
 	// Services lists every service the design files declare, sorted by full name.
 	Services []*Service
 }
@@ -101,7 +99,8 @@ func (k Kind) String() string {
 
 // Method is one RPC.
 type Method struct {
-	Desc *protogen.Method
+	// FullMethod is the gRPC method name (`/greet.Greeter/SayHello`).
+	FullMethod string
 	// Name is the Go method name (`SayHello`).
 	Name string
 	// File is the RPC's file name without extension: Name in the file case.
@@ -129,15 +128,15 @@ func (s *Set) HasServices() bool { return s != nil && len(s.Services) > 0 }
 // `<name>.pb.go` for each design file and `<name>_grpc.pb.go` for one that
 // declares a service; none when the plugins are disabled.
 func (s *Set) PBFiles(projectRoot string) []string {
-	if s == nil || !s.Options.PBEnabled() {
+	if s == nil || !s.opts.pbEnabled() {
 		return nil
 	}
-	root := s.PBRoot(projectRoot)
+	root := s.pbRoot(projectRoot)
 	var out []string
-	for _, name := range s.Names {
+	for _, name := range s.names {
 		prefix := strings.TrimSuffix(name, ".proto")
 		out = append(out, filepath.Join(root, filepath.FromSlash(prefix+".pb.go")))
-		if f := s.Plugin.FilesByPath[name]; f != nil && len(f.Services) > 0 {
+		if f := s.plugin.FilesByPath[name]; f != nil && len(f.Services) > 0 {
 			out = append(out, filepath.Join(root, filepath.FromSlash(prefix+"_grpc.pb.go")))
 		}
 	}

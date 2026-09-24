@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
-// Discover lists every `.proto` under designRoot as a sorted slash path
+// discover lists every `.proto` under designRoot as a sorted slash path
 // relative to it; a directory it cannot read fails the call.
-func Discover(designRoot string) ([]string, error) {
+func discover(designRoot string) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(designRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

@@ -66,7 +66,7 @@ func method(t *testing.T, svc *Service, name string) *Method {
 }
 
 func TestDiscoverIsSortedAndSlashRelative(t *testing.T) {
-	names, err := Discover("testdata")
+	names, err := discover("testdata")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,8 +149,8 @@ func TestFileCaseNamesDirsAndFiles(t *testing.T) {
 
 func TestRequestIsTopologicalAndMapped(t *testing.T) {
 	set := load(t, "testdata", opts())
-	req := set.Request
-	if !reflect.DeepEqual(req.FileToGenerate, set.Names) {
+	req := set.request
+	if !reflect.DeepEqual(req.FileToGenerate, set.names) {
 		t.Errorf("file_to_generate = %v", req.FileToGenerate)
 	}
 	if req.CompilerVersion != nil {
@@ -180,7 +180,7 @@ func TestRequestIsTopologicalAndMapped(t *testing.T) {
 			t.Errorf("%s must precede %s: %v", dep, user, index)
 		}
 	}
-	if len(req.SourceFileDescriptors) != len(set.Names) {
+	if len(req.SourceFileDescriptors) != len(set.names) {
 		t.Errorf("source_file_descriptors = %d", len(req.SourceFileDescriptors))
 	}
 	if req.ProtoFile[index["greet/greet.proto"]].SourceCodeInfo == nil {
@@ -215,8 +215,8 @@ message R {}
 	o := opts()
 	o.PBDir = ""
 	set := load(t, root, o)
-	if set.Request.GetParameter() != "paths=source_relative" {
-		t.Errorf("parameter = %q", set.Request.GetParameter())
+	if set.request.GetParameter() != "paths=source_relative" {
+		t.Errorf("parameter = %q", set.request.GetParameter())
 	}
 	a := service(t, set, "a.A")
 	if a.PBImport != "github.com/acme/contracts/gen/a" || a.Package != "apb" {

@@ -99,7 +99,7 @@ func buildGRPCMethodData(svc *protodesign.Service, m *protodesign.Method, imps g
 	d := grpcMethodData{
 		Package:       svc.Package,
 		Method:        m.Name,
-		FullMethod:    "/" + svc.FullName + "/" + string(m.Desc.Desc.Name()),
+		FullMethod:    m.FullMethod,
 		ServiceName:   logicTypeName(m.Name),
 		Doc:           m.Doc,
 		Sig:           buildGRPCSignature(m, refs.render(m.In), refs.render(m.Out)),

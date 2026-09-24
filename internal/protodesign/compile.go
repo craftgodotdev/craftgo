@@ -20,7 +20,7 @@ import (
 // Load compiles every proto under designRoot and returns the set, or nil
 // when the design has no proto at all.
 func Load(ctx context.Context, designRoot string, opts Options) (*Set, error) {
-	names, err := Discover(designRoot)
+	names, err := discover(designRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -34,12 +34,12 @@ func Load(ctx context.Context, designRoot string, opts Options) (*Set, error) {
 	req := buildRequest(files, names, parameter(names, opts))
 	plugin, err := protogen.Options{}.New(req)
 	if err != nil {
-		if !opts.PBEnabled() {
+		if !opts.pbEnabled() {
 			return nil, fmt.Errorf("output.pb is \"-\", so every design proto needs `option go_package`: %w", err)
 		}
 		return nil, fmt.Errorf("a proto under proto.includes needs `option go_package` (the design's own protos are placed under output.pb): %w", err)
 	}
-	set := &Set{Options: opts, Root: designRoot, Names: names, Plugin: plugin, Request: req}
+	set := &Set{opts: opts, names: names, plugin: plugin, request: req}
 	for _, f := range plugin.Files {
 		if !f.Generate {
 			continue
@@ -94,13 +94,13 @@ func newService(f *protogen.File, svc *protogen.Service, plugin *protogen.Plugin
 	}
 	for _, m := range svc.Methods {
 		s.Methods = append(s.Methods, &Method{
-			Desc: m,
-			Name: m.GoName,
-			File: idents.FileName(m.GoName, fileCase),
-			Kind: kindOf(m.Desc),
-			In:   typeRef(m.Input, plugin),
-			Out:  typeRef(m.Output, plugin),
-			Doc:  docLines(m.Comments.Leading),
+			FullMethod: "/" + s.FullName + "/" + string(m.Desc.Name()),
+			Name:       m.GoName,
+			File:       idents.FileName(m.GoName, fileCase),
+			Kind:       kindOf(m.Desc),
+			In:         typeRef(m.Input, plugin),
+			Out:        typeRef(m.Output, plugin),
+			Doc:        docLines(m.Comments.Leading),
 		})
 	}
 	return s

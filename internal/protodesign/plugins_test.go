@@ -78,7 +78,7 @@ func TestRunPluginsWritesThePredictedFiles(t *testing.T) {
 	if err := RunPlugins(set, project); err != nil {
 		t.Fatal(err)
 	}
-	pbRoot := set.PBRoot(project)
+	pbRoot := set.pbRoot(project)
 	var written []string
 	_ = filepath.WalkDir(pbRoot, func(path string, d os.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
@@ -144,7 +144,7 @@ func TestResolvePluginNamesBothRoutesWhenUnpinned(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(project, "go.mod"), []byte("module example.com/bare\n\ngo 1.26\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := resolvePlugin(project, Plugin{Name: "protoc-gen-go"})
+	_, err := resolvePlugin(project, pluginCmd{Name: "protoc-gen-go"})
 	if err == nil {
 		t.Fatal("an unpinned tool resolved")
 	}
@@ -153,10 +153,10 @@ func TestResolvePluginNamesBothRoutesWhenUnpinned(t *testing.T) {
 			t.Errorf("error lacks %q:\n%s", want, err)
 		}
 	}
-	if _, err := resolvePlugin(project, Plugin{Name: "protoc-gen-go", Command: "definitely-not-on-path-xyz"}); err == nil || !strings.Contains(err.Error(), "proto.plugins names") {
+	if _, err := resolvePlugin(project, pluginCmd{Name: "protoc-gen-go", Command: "definitely-not-on-path-xyz"}); err == nil || !strings.Contains(err.Error(), "proto.plugins names") {
 		t.Errorf("a missing command must be reported: %v", err)
 	}
-	argv, err := resolvePlugin(project, Plugin{Name: "protoc-gen-go", Command: filepath.Join("bin", "protoc-gen-go")})
+	argv, err := resolvePlugin(project, pluginCmd{Name: "protoc-gen-go", Command: filepath.Join("bin", "protoc-gen-go")})
 	if err != nil || len(argv) != 1 || argv[0] != filepath.Join("bin", "protoc-gen-go") {
 		t.Errorf("a path is run as given: %v %v", argv, err)
 	}

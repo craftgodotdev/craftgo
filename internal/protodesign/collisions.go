@@ -14,8 +14,8 @@ func (s *Set) checkCollisions() error {
 	var errs []string
 	pkgByDir := map[string]string{}
 	fileByDir := map[string]string{}
-	for _, name := range s.Names {
-		f := s.Plugin.FilesByPath[name]
+	for _, name := range s.names {
+		f := s.plugin.FilesByPath[name]
 		if f == nil {
 			continue
 		}
