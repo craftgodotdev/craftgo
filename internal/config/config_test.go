@@ -138,9 +138,9 @@ func TestFindManifestAtRoot(t *testing.T) {
 	}
 }
 
-// TestFindAtEmptyRootUsesDesignParent checks that an empty project root
-// resolves to the design folder's parent, whatever the working directory.
-func TestFindAtEmptyRootUsesDesignParent(t *testing.T) {
+// TestFindAtUsesDesignParent checks that the project root is the design
+// folder's parent, whatever the working directory.
+func TestFindAtUsesDesignParent(t *testing.T) {
 	root := t.TempDir()
 	designDir := filepath.Join(root, "design")
 	if err := os.MkdirAll(designDir, 0o755); err != nil {
@@ -149,7 +149,7 @@ func TestFindAtEmptyRootUsesDesignParent(t *testing.T) {
 	writeFile(t, filepath.Join(designDir, Filename), "")
 	t.Chdir(t.TempDir())
 
-	_, projectRoot, foundDesign, err := FindAt(designDir, "")
+	_, projectRoot, foundDesign, err := FindAt(designDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,30 +160,6 @@ func TestFindAtEmptyRootUsesDesignParent(t *testing.T) {
 	designAbs, _ := filepath.Abs(designDir)
 	if foundDesign != designAbs {
 		t.Errorf("design dir: got %q want %q", foundDesign, designAbs)
-	}
-}
-
-// TestFindAtExplicitRootWins checks that an explicit project root is used as
-// given.
-func TestFindAtExplicitRootWins(t *testing.T) {
-	dir := t.TempDir()
-	designDir := filepath.Join(dir, "contracts", "design")
-	codeRoot := filepath.Join(dir, "services", "api")
-	if err := os.MkdirAll(designDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(codeRoot, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(designDir, Filename), "")
-
-	_, projectRoot, _, err := FindAt(designDir, codeRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	codeAbs, _ := filepath.Abs(codeRoot)
-	if projectRoot != codeAbs {
-		t.Errorf("project root: got %q want %q", projectRoot, codeAbs)
 	}
 }
 

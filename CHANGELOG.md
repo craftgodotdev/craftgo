@@ -83,6 +83,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   backticks. Strings, floats, enum values and import paths now keep their
   source spelling.
 
+- **`craftgo help` gives the `-c` default `gen` uses: the design folder's
+  parent.** It said the working directory whenever `-f` is given, and the
+  CLI reference said the directory holding `go.mod`.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

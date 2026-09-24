@@ -308,9 +308,8 @@ func Find(start string) (*Config, string, string, error) {
 }
 
 // FindAt loads the manifest in designFolder and returns it with the absolute
-// project root and design folder. An empty projectRoot means the design
-// folder's parent.
-func FindAt(designFolder, projectRoot string) (*Config, string, string, error) {
+// project root, the design folder's parent, and design folder.
+func FindAt(designFolder string) (*Config, string, string, error) {
 	absDesign, err := filepath.Abs(designFolder)
 	if err != nil {
 		return nil, "", "", err
@@ -323,16 +322,7 @@ func FindAt(designFolder, projectRoot string) (*Config, string, string, error) {
 	if err != nil {
 		return nil, "", "", err
 	}
-	absRoot := projectRoot
-	if absRoot == "" {
-		absRoot = filepath.Dir(absDesign)
-	} else {
-		absRoot, err = filepath.Abs(absRoot)
-		if err != nil {
-			return nil, "", "", err
-		}
-	}
-	return cfg, absRoot, absDesign, nil
+	return cfg, filepath.Dir(absDesign), absDesign, nil
 }
 
 // probeDesignSubdirs returns the direct subdirectories of dir that hold a

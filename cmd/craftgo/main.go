@@ -75,9 +75,8 @@ Usage:
                                            narrowed run leaves the other
                                            targets' output untouched.
                             -c, --context  project root the output: paths
-                                           resolve against (defaults to cwd
-                                           when -f is given, otherwise to
-                                           the parent of the manifest dir)
+                                           resolve against (default: the
+                                           parent of the design folder)
                           Without -f, walks upward from <path> (or cwd) for
                           craftgo.design.yaml, probing direct subdirs (any
                           name) at each level. The Go module path is read

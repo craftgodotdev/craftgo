@@ -31,7 +31,7 @@ Flags:
 | Flag                      | Effect                                                                                |
 | ------------------------- | ------------------------------------------------------------------------------------- |
 | `-f`, `--folder <path>`   | Path to the folder holding `craftgo.design.yaml`. Skips the walk-up.                  |
-| `-c`, `--context <path>`  | Project root the `output.*` paths resolve against. Defaults to cwd when `-f` is given, otherwise to the parent of the manifest dir. |
+| `-c`, `--context <path>`  | Project root the `output.*` paths resolve against. Defaults to the parent of the design folder. |
 | `--target <name>`         | Generate only the named target (`go`, `docs`); repeatable, default all. A narrowed run leaves the other targets' output untouched. |
 | `-h`, `--help`            | Show help.                                                                            |
 
@@ -88,7 +88,7 @@ CI scripts can rely on these to fail builds.
 `craftgo gen` expects:
 
 - A `craftgo.design.yaml` somewhere (walked up from cwd, or provided via `-f`)
-- A `go.mod` at the project root (so the Go module path can be resolved)
+- A `go.mod` at or above the project root (so the Go module path can be resolved)
 - `.craftgo` files under the design folder
 
-Output paths are configured in `craftgo.design.yaml` and resolved against the project root (the directory containing `go.mod`, unless overridden with `-c`).
+Output paths are configured in `craftgo.design.yaml` and resolved against the project root: the parent of the design folder, unless overridden with `-c`.

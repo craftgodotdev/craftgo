@@ -29,36 +29,50 @@ func (t *targetList) Set(v string) error {
 	return nil
 }
 
-func parseGenArgs(args []string) (manifest, ctxRoot, positional string, targets targetList, err error) {
-	fs := flag.NewFlagSet("gen", flag.ContinueOnError)
-	fs.Var(&targets, "target", "generate only the named target ("+strings.Join(codegen.SelectableTargets(), ", ")+"); repeatable, default all")
-	fs.StringVar(&manifest, "f", "", "design folder holding craftgo.design.yaml (skips walk-up)")
-	fs.StringVar(&manifest, "folder", "", "alias for -f")
-	fs.StringVar(&ctxRoot, "c", "", "project root the output paths resolve against (defaults to the parent of the design folder)")
-	fs.StringVar(&ctxRoot, "context", "", "alias for -c")
-	positional, err = parseArgs(fs, args, ".")
-	if err != nil {
-		return "", "", "", nil, err
-	}
-	return manifest, ctxRoot, positional, targets, nil
+// genArgs are the arguments of `craftgo gen`.
+type genArgs struct {
+	folder  string // -f: the design folder; no walk-up
+	context string // -c: the project root in place of the design folder's parent
+	path    string // where the walk-up starts
+	targets targetList
 }
 
-func findManifest(manifestFolder, contextRoot, target string) (*config.Config, string, string, error) {
-	if manifestFolder != "" {
-		// An empty contextRoot resolves to the design folder's parent, never the
-		// working directory.
-		return config.FindAt(manifestFolder, contextRoot)
+func parseGenArgs(args []string) (genArgs, error) {
+	var a genArgs
+	fs := flag.NewFlagSet("gen", flag.ContinueOnError)
+	fs.Var(&a.targets, "target", "generate only the named target ("+strings.Join(codegen.SelectableTargets(), ", ")+"); repeatable, default all")
+	fs.StringVar(&a.folder, "f", "", "design folder holding craftgo.design.yaml (skips walk-up)")
+	fs.StringVar(&a.folder, "folder", "", "alias for -f")
+	fs.StringVar(&a.context, "c", "", "project root the output paths resolve against (defaults to the parent of the design folder)")
+	fs.StringVar(&a.context, "context", "", "alias for -c")
+	path, err := parseArgs(fs, args, ".")
+	if err != nil {
+		return genArgs{}, err
 	}
-	cfg, projectRoot, designDir, err := config.Find(target)
+	a.path = path
+	return a, nil
+}
+
+// findManifest loads the manifest a names and returns it with the absolute
+// project root and design folder.
+func findManifest(a genArgs) (*config.Config, string, string, error) {
+	var (
+		cfg                    *config.Config
+		projectRoot, designDir string
+		err                    error
+	)
+	if a.folder != "" {
+		cfg, projectRoot, designDir, err = config.FindAt(a.folder)
+	} else {
+		cfg, projectRoot, designDir, err = config.Find(a.path)
+	}
 	if err != nil {
 		return nil, "", "", err
 	}
-	if contextRoot != "" {
-		absRoot, absErr := filepath.Abs(contextRoot)
-		if absErr != nil {
-			return nil, "", "", absErr
+	if a.context != "" {
+		if projectRoot, err = filepath.Abs(a.context); err != nil {
+			return nil, "", "", err
 		}
-		projectRoot = absRoot
 	}
 	return cfg, projectRoot, designDir, nil
 }
@@ -66,11 +80,11 @@ func findManifest(manifestFolder, contextRoot, target string) (*config.Config, s
 // runGen loads the manifest, analyses the design's `.craftgo` and `.proto`
 // files and runs [codegen.Generate].
 func runGen(args []string) error {
-	manifestFolder, contextRoot, target, targets, err := parseGenArgs(args)
+	a, err := parseGenArgs(args)
 	if err != nil {
 		return err
 	}
-	cfg, projectRoot, designDir, err := findManifest(manifestFolder, contextRoot, target)
+	cfg, projectRoot, designDir, err := findManifest(a)
 	if err != nil {
 		return err
 	}
@@ -90,7 +104,7 @@ func runGen(args []string) error {
 		return err
 	}
 	in := codegen.Inputs{Design: proj, Protos: protos}
-	if err := codegen.Generate(in, cfg, projectRoot, targets...); err != nil {
+	if err := codegen.Generate(in, cfg, projectRoot, a.targets...); err != nil {
 		return err
 	}
 	fmt.Printf("craftgo: generated %d package(s)%s under %s\n", len(proj.Packages), grpcSummary(protos), projectRoot)
