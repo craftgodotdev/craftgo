@@ -120,14 +120,15 @@ func (p *Parser) advance() lexer.Token {
 	return t
 }
 
-// expect consumes a token of kind k. On a mismatch it reports the error and
-// returns the current token, unconsumed, with ok=false.
+// expect consumes a token of kind k. On a mismatch it reports the error,
+// consumes nothing and returns ok=false with an empty token at the current
+// position.
 func (p *Parser) expect(k lexer.Kind) (lexer.Token, bool) {
 	if p.peek().Kind == k {
 		return p.advance(), true
 	}
 	p.errorf(p.peek().Pos, "expected %s, got %s", k, p.peek().Kind)
-	return p.peek(), false
+	return lexer.Token{Pos: p.peek().Pos}, false
 }
 
 // errorf records an error diagnostic at pos.

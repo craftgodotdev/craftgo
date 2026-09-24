@@ -91,6 +91,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   decorator argument. `A = 99999999999999999999` parsed silently as
   9223372036854775807.
 
+- **A token where a name belongs is never read as the name.** `type {` or
+  `error {` went on to report `{` as the declaration's name - `unknown error
+  category "{"`, `type name "{" should start with an uppercase letter`; the
+  missing name is now the only error.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

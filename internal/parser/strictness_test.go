@@ -19,6 +19,38 @@ func firstMsg(msgs []string) string {
 	return msgs[0]
 }
 
+// A token in place of a name is reported and never becomes the name: the
+// declaration is left nameless.
+func TestMismatchedTokenIsNoName(t *testing.T) {
+	for _, src := range []string{
+		"error {\n}\n",
+		"type { a string }\n",
+		"enum { A }\n",
+		"service {\n}\n",
+		"middleware (\n",
+		"event { payload T }\n",
+		"scalar Email {\n",
+	} {
+		f, msgs := parseWithErrors(t, "package p\n\n"+src)
+		if len(msgs) == 0 {
+			t.Errorf("%q: no diagnostic", src)
+		}
+		for _, m := range msgs {
+			if strings.Contains(m, `"{"`) || strings.Contains(m, `"("`) {
+				t.Errorf("%q: diagnostic names the token: %s", src, m)
+			}
+		}
+		for _, d := range f.Decls {
+			if name := d.DeclName(); name == "{" || name == "(" {
+				t.Errorf("%q: declaration named %q", src, name)
+			}
+			if sd, ok := d.(*ast.ScalarDecl); ok && sd.Primitive != "" {
+				t.Errorf("%q: scalar primitive %q", src, sd.Primitive)
+			}
+		}
+	}
+}
+
 // TestPathSlashes pins that `//` and a trailing `/` are errors while the root
 // path `/` is valid.
 func TestPathSlashes(t *testing.T) {
