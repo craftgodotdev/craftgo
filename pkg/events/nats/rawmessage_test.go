@@ -8,9 +8,7 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-// A middleware reaching for what events.Message does not carry - the
-// reply subject, the subject a wildcard matched, an unmapped header -
-// gets the message the delivery came from.
+// MsgFrom returns the message a delivery context carries.
 func TestTheMessageIsReachableFromADelivery(t *testing.T) {
 	m := &nats.Msg{Subject: "orders.Placed", Reply: "_INBOX.1", Data: []byte("body"), Header: nats.Header{}}
 	m.Header.Set("x-unmapped", "kept")
@@ -27,9 +25,7 @@ func TestTheMessageIsReachableFromADelivery(t *testing.T) {
 	}
 }
 
-// The barrier is structural: the key type is unexported and distinct per
-// adapter, so a NATS-typed read on a context that is not a NATS delivery
-// cannot find anything.
+// MsgFrom finds nothing on a plain context or another adapter's.
 func TestAMessageReadOnAForeignContextFindsNothing(t *testing.T) {
 	if _, ok := MsgFrom(context.Background()); ok {
 		t.Error("a plain context yielded a message")
@@ -41,8 +37,7 @@ func TestAMessageReadOnAForeignContextFindsNothing(t *testing.T) {
 	}
 }
 
-// MustMsg turns a cross-transport install into a panic, which the bus
-// recovers into a *PanicError naming the subscription.
+// MustMsg panics, naming the cause, on a context with no message.
 func TestMustMsgPanicsOnAForeignDelivery(t *testing.T) {
 	defer func() {
 		r := recover()

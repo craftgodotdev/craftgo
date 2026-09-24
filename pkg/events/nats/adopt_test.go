@@ -20,8 +20,7 @@ import (
 // adoptGroup is the durable every adoption case works on.
 const adoptGroup events.Group = "adopting"
 
-// filtersOf is the subject set a durable carries, from whichever field
-// holds it.
+// filtersOf returns a durable's subjects from whichever field holds them.
 func filtersOf(cfg jetstream.ConsumerConfig) []string {
 	if len(cfg.FilterSubjects) > 0 {
 		out := append([]string(nil), cfg.FilterSubjects...)
@@ -34,8 +33,7 @@ func filtersOf(cfg jetstream.ConsumerConfig) []string {
 	return nil
 }
 
-// filterFor writes subjects the way the server takes them: the single
-// field for one subject, the list for several.
+// filterFor writes one subject to the single field, several to the list.
 func filterFor(cfg *jetstream.ConsumerConfig, subjects []string) {
 	if len(subjects) == 1 {
 		cfg.FilterSubject = subjects[0]
@@ -44,9 +42,7 @@ func filterFor(cfg *jetstream.ConsumerConfig, subjects []string) {
 	cfg.FilterSubjects = subjects
 }
 
-// adoptWith provisions a durable filtering carried, subscribes the
-// planned contracts under that group, and reports what the durable ends
-// up filtering and what the transport answered.
+// adoptWith subscribes planned over a durable filtering carried.
 func adoptWith(t *testing.T, carried, planned []string, opts ...craftnats.JetStreamOption) ([]string, error) {
 	t.Helper()
 	conn := runJetStreamServer(t)
@@ -73,8 +69,7 @@ func adoptWith(t *testing.T, carried, planned []string, opts ...craftnats.JetStr
 	return filtersOf(consumerConfig(t, conn, "ORDERS", string(adoptGroup))), err
 }
 
-// The ordinary redeploy: the durable already filters what this process
-// plans, so it is taken as it is.
+// A durable already filtering the plan is adopted unchanged.
 func TestADurableFilteringThePlanIsAdopted(t *testing.T) {
 	both := []string{"orders.Placed", "orders.Shipped"}
 	got, err := adoptWith(t, both, both)
@@ -86,8 +81,7 @@ func TestADurableFilteringThePlanIsAdopted(t *testing.T) {
 	}
 }
 
-// A consumer this version added is a widening: nothing stops being
-// consumed, so it is written without asking.
+// A plan that adds a subject widens the durable's filter.
 func TestAWiderPlanRepointsTheDurable(t *testing.T) {
 	got, err := adoptWith(t, []string{"orders.Placed"}, []string{"orders.Placed", "orders.Shipped"})
 	if err != nil {
@@ -98,10 +92,7 @@ func TestAWiderPlanRepointsTheDurable(t *testing.T) {
 	}
 }
 
-// THE REFUSAL ADOPT-AND-VERIFY EXISTS FOR. Pointing the durable at the
-// smaller set would stop its other subjects reaching anyone - they are
-// filtered out of the only consumer that was reading them - and nothing
-// downstream could tell.
+// A plan that drops a subject is refused and leaves the durable unchanged.
 func TestANarrowerPlanIsRefused(t *testing.T) {
 	carried := []string{"orders.Placed", "orders.Shipped"}
 	got, err := adoptWith(t, carried, []string{"orders.Placed"})
@@ -118,7 +109,7 @@ func TestANarrowerPlanIsRefused(t *testing.T) {
 	}
 }
 
-// A deliberate removal says so, and then the plan wins.
+// AllowNarrow lets a narrower plan re-point the durable.
 func TestANarrowerPlanIsWrittenWhenTheGroupAllowsIt(t *testing.T) {
 	got, err := adoptWith(t,
 		[]string{"orders.Placed", "orders.Shipped"}, []string{"orders.Placed"},
@@ -131,8 +122,7 @@ func TestANarrowerPlanIsWrittenWhenTheGroupAllowsIt(t *testing.T) {
 	}
 }
 
-// Partly overlapping is not a widening either: the subjects outside the
-// plan are lost the same way.
+// A plan that only partly overlaps the durable's filter is refused.
 func TestAPartlyOverlappingPlanIsRefused(t *testing.T) {
 	_, err := adoptWith(t,
 		[]string{"orders.Placed", "orders.Shipped"}, []string{"orders.Placed", "orders.Paid"})
@@ -144,9 +134,7 @@ func TestAPartlyOverlappingPlanIsRefused(t *testing.T) {
 	}
 }
 
-// A durable with no filter takes every subject on its stream, so a plan
-// is always narrower than one - the empty set is not a subset here, it is
-// the whole thing.
+// A durable with no filter takes every subject, so any plan narrows it.
 func TestADurableWithNoFilterIsRefused(t *testing.T) {
 	_, err := adoptWith(t, nil, []string{"orders.Placed"})
 	if err == nil {
@@ -188,8 +176,6 @@ func (l *logBuffer) logger() craftnats.JetStreamOption {
 	return craftnats.WithJetStreamLogger(slog.New(slog.NewTextHandler(l, &slog.HandlerOptions{Level: slog.LevelInfo})))
 }
 
-// A durable is where a group resumes, so the one boot that creates it is
-// the one an operator has to be able to find afterwards.
 func TestCreatingADurableIsLoggedWithItsConfig(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -212,8 +198,6 @@ func TestCreatingADurableIsLoggedWithItsConfig(t *testing.T) {
 	}
 }
 
-// A durable that already filters the plan is not written to, so nothing
-// is logged about it either.
 func TestAdoptingADurableUnchangedLogsNothing(t *testing.T) {
 	log := &logBuffer{}
 	both := []string{"orders.Placed", "orders.Shipped"}
@@ -239,9 +223,7 @@ func TestRepointingADurableIsLogged(t *testing.T) {
 	}
 }
 
-// A group's own settings are what its durable is created with, and the
-// group beside it keeps the transport-wide ones. Delivery settings belong
-// to the group because the server keeps them there.
+// A group's settings shape its durable alone; other groups keep the defaults.
 func TestAGroupsSettingsApplyToItsDurableAlone(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -299,8 +281,7 @@ func TestAGroupsSettingsApplyToItsDurableAlone(t *testing.T) {
 	}
 }
 
-// MaxInFlight is a count of messages, so a negative one is refused where
-// it is written rather than at the first pull.
+// A negative group MaxInFlight fails construction.
 func TestANegativeGroupMaxInFlightIsRefused(t *testing.T) {
 	_, err := craftnats.NewJetStream(runJetStreamServer(t),
 		craftnats.WithGroupConfig("tuned", craftnats.MaxInFlight(-1)))

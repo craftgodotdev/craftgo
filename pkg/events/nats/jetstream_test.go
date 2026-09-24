@@ -18,8 +18,7 @@ import (
 	craftnats "github.com/craftgodotdev/craftgo/pkg/events/nats"
 )
 
-// runJetStreamServer starts an in-process server WITH JetStream, so the
-// adapter is exercised against a real one without Docker.
+// runJetStreamServer starts an in-process server with JetStream and connects.
 func runJetStreamServer(t *testing.T) *natsclient.Conn {
 	t.Helper()
 	srv, err := natsserver.NewServer(&natsserver.Options{
@@ -43,8 +42,7 @@ func runJetStreamServer(t *testing.T) *natsclient.Conn {
 	return conn
 }
 
-// provision creates a stream covering subjects, which is the operator's
-// job and never craftgo's.
+// provision creates a stream covering subjects, as an operator would.
 func provision(t *testing.T, conn *natsclient.Conn, name string, subjects ...string) {
 	t.Helper()
 	js, err := jetstream.New(conn)
@@ -58,16 +56,7 @@ func provision(t *testing.T, conn *natsclient.Conn, name string, subjects ...str
 	}
 }
 
-// WHY THERE IS NO WithMaxProcessingTime. A bounded heartbeat would only
-// stop resetting a timer, and the server does not redeliver a message
-// whose delivery is still outstanding - so bounding it buys nothing and
-// the option would be an escape that does not escape.
-//
-// Measured rather than reasoned: the handler blocks for ever, the
-// heartbeat stops after 3s, AckWait is 1s. If bounding worked, a second
-// delivery would arrive; it does not. This test is what makes the absence
-// of that option a finding rather than an omission, and it goes red if
-// the client ever changes its mind.
+// An outstanding delivery is not redelivered after its heartbeat stops.
 func TestAHungHandlerIsNotRedeliveredSoThereIsNoEscapeToShip(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -79,9 +68,7 @@ func TestAHungHandlerIsNotRedeliveredSoThereIsNoEscapeToShip(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Built by hand rather than through the adapter, so the heartbeat can
-	// be stopped at a chosen moment - which is exactly what a
-	// WithMaxProcessingTime escape would do.
+	// Built by hand so the heartbeat can be stopped at a chosen moment.
 	cons, err := js.CreateOrUpdateConsumer(ctx, "ORDERS", jetstream.ConsumerConfig{
 		Durable:       "escape-probe",
 		FilterSubject: "orders.Placed",
@@ -143,7 +130,7 @@ func TestAHungHandlerIsNotRedeliveredSoThereIsNoEscapeToShip(t *testing.T) {
 	}
 }
 
-// jsTransport wires a JetStream adapter over a provisioned stream.
+// jsTransport builds a JetStream transport that is closed at cleanup.
 func jsTransport(t *testing.T, conn *natsclient.Conn, opts ...craftnats.JetStreamOption) *craftnats.JetStream {
 	t.Helper()
 	tr, err := craftnats.NewJetStream(conn, opts...)
@@ -154,8 +141,7 @@ func jsTransport(t *testing.T, conn *natsclient.Conn, opts ...craftnats.JetStrea
 	return tr
 }
 
-// A published contract reaches a consumer with its key, dedup id and
-// payload intact - the same wire format the core transport uses.
+// A message reaches its consumer with its key, dedup ID and payload intact.
 func TestJetStreamRoundTrip(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -192,10 +178,6 @@ func TestJetStreamRoundTrip(t *testing.T) {
 	}
 }
 
-// THE CHECK THAT EARNS THE PROBE. A consumer whose filter subject no
-// stream carries is created successfully, validates, consumes
-// successfully - and receives nothing for ever, with no error on any path
-// at any time. Subscribe refuses instead.
 func TestSubscribeRefusesASubjectNoStreamCarries(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -217,8 +199,6 @@ func TestSubscribeRefusesASubjectNoStreamCarries(t *testing.T) {
 	}
 }
 
-// A server without JetStream is named as such, rather than surfacing as
-// "no responders available" from a later call.
 func TestSubscribeRefusesAServerWithoutJetStream(t *testing.T) {
 	conn := runServer(t) // the plain server, no JetStream
 	tr := jsTransport(t, conn, craftnats.WithProbeTimeout(2*time.Second))
@@ -235,15 +215,13 @@ func TestSubscribeRefusesAServerWithoutJetStream(t *testing.T) {
 	if !strings.Contains(err.Error(), "JetStream is not available") {
 		t.Errorf("refusal does not name the cause: %v", err)
 	}
-	// The timeout is the other way a cluster answers, so the message has
-	// to say so or an operator reads a timeout as a network problem.
+	// A clustered server answers only by timing out, so the refusal says so.
 	if !strings.Contains(err.Error(), "does not answer at all") {
 		t.Errorf("refusal does not explain the timeout case: %v", err)
 	}
 }
 
-// Redeliver brings the SAME message back and Reject gives it up - which
-// is the whole reason this adapter exists beside the core one.
+// Redeliver brings the same message back and Reject gives it up.
 func TestJetStreamRedeliversAndRejects(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -297,13 +275,7 @@ func TestJetStreamRedeliversAndRejects(t *testing.T) {
 	}
 }
 
-// A panic inside a bus middleware unwinds past every return the chain
-// would have made, so only the bus's outermost recover catches it and
-// nothing above that is left to decide. This adapter reads an undecided
-// message as an ack, so a middleware that panicked used to have its
-// message acked and dropped - the one failure mode a durable exists to
-// prevent. The proof is the second delivery: the bus asks for a hand-back
-// and the adapter NAKs.
+// A panic in a bus middleware naks the message, so it is delivered again.
 func TestAPanicInAMiddlewareIsNakkedRatherThanAcked(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -374,9 +346,6 @@ func TestAPanicInAMiddlewareIsNakkedRatherThanAcked(t *testing.T) {
 	}
 }
 
-// A middleware that keeps asking for a message nothing can handle is a
-// loop, and the cap is what ends it. Measured without one: the same
-// message passes 200,000 deliveries inside ten seconds.
 func TestMaxDeliveriesTerminatesARedeliveryLoop(t *testing.T) {
 	const cap = 3
 	seen := redeliverForever(t, "capped", craftnats.WithMaxDeliveries(cap))
@@ -390,8 +359,6 @@ func TestMaxDeliveriesTerminatesARedeliveryLoop(t *testing.T) {
 	}
 }
 
-// The cap is a guard a middleware author can forget, so it applies
-// without being asked for. Five, the same as the Kafka adapter's.
 func TestTheDefaultMaxDeliveriesIsFive(t *testing.T) {
 	seen := redeliverForever(t, "default")
 
@@ -402,17 +369,12 @@ func TestTheDefaultMaxDeliveriesIsFive(t *testing.T) {
 	}
 }
 
-// Zero is unbounded, which is what makes the default a decision rather
-// than a ceiling nobody chose. The same loop keeps going well past where
-// the default would have stopped it.
 func TestMaxDeliveriesZeroIsUnbounded(t *testing.T) {
 	seen := redeliverForever(t, "uncapped", craftnats.WithMaxDeliveries(0))
 	seen.waitFor(t, 50, 20*time.Second)
 }
 
-// redeliverForever runs one message through a handler that always fails
-// and a middleware that always asks for it back, and reports every
-// delivery the server made.
+// redeliverForever records each delivery of a message always redelivered.
 func redeliverForever(t *testing.T, group events.Group, opts ...craftnats.JetStreamOption) *attempts {
 	t.Helper()
 	conn := runJetStreamServer(t)
@@ -472,10 +434,6 @@ func (a *attempts) waitFor(t *testing.T, n int, within time.Duration) {
 	}
 }
 
-// THE HEARTBEAT'S VALUE. A handler slower than AckWait is not redelivered
-// behind itself: the message is held open while it runs. Without it this
-// is a duplicate roughly one run in ten, which is the worst kind of bug -
-// invisible and nondeterministic.
 func TestASlowHandlerIsNotRedeliveredBehindItself(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -506,9 +464,7 @@ func TestASlowHandlerIsNotRedeliveredBehindItself(t *testing.T) {
 	}
 }
 
-// The JetStream transport can do what the core one cannot, and says so.
-// The answer is a constant because the bus asks it BEFORE the transport
-// subscribes - the consumer it would ask about does not exist yet.
+// JetStream can settle, redeliver and reject, and nothing else.
 func TestJetStreamCanDisposition(t *testing.T) {
 	tr, err := craftnats.NewJetStream(runJetStreamServer(t))
 	if err != nil {
@@ -527,9 +483,7 @@ func TestJetStreamCanDisposition(t *testing.T) {
 	}
 }
 
-// A middleware reaching for the stream sequence gets the JetStream
-// message - and the CORE transport's accessor does not find it, because a
-// JetStream delivery is not a *nats.Msg.
+// JetStreamMsgFrom finds a JetStream delivery's message and MsgFrom does not.
 func TestTheJetStreamMessageIsReachableAndIsNotACoreMessage(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -582,8 +536,7 @@ func TestTheJetStreamMessageIsReachableAndIsNotACoreMessage(t *testing.T) {
 	}
 }
 
-// A batch reaches the stream, and a message the stream will not take is
-// named by index rather than by a count.
+// Every message of a published batch is delivered.
 func TestJetStreamPublishBatch(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -620,8 +573,6 @@ func TestJetStreamPublishBatch(t *testing.T) {
 	}
 }
 
-// A batch whose subject no stream carries names every message as unsent
-// rather than reporting a count that reads as partial success.
 func TestAJetStreamBatchToNoStreamIsAllUnsent(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -644,11 +595,7 @@ func TestAJetStreamBatchToNoStreamIsAllUnsent(t *testing.T) {
 	}
 }
 
-// When the cap overrides a redelivery the chain asked for, the message is
-// terminated and the chain never hears about it: its dead-letter
-// middleware sees a message on its way back, not one given up, so it
-// writes no record. The transport's error handler is the only layer left
-// that can say the message is gone.
+// The error handler hears when the cap turns a Redeliver into a termination.
 func TestTheDeliveryCapReportsThatItFired(t *testing.T) {
 	const cap = 2
 	conn := runJetStreamServer(t)
@@ -716,7 +663,7 @@ func TestTheDeliveryCapReportsThatItFired(t *testing.T) {
 	}
 }
 
-// storedIn is how many messages a stream actually holds.
+// storedIn returns how many messages a stream holds.
 func storedIn(t *testing.T, conn *natsclient.Conn, name string) uint64 {
 	t.Helper()
 	js, err := jetstream.New(conn)
@@ -736,13 +683,7 @@ func storedIn(t *testing.T, conn *natsclient.Conn, name string) uint64 {
 	return info.State.Msgs
 }
 
-// A context already cancelled sends nothing, and says so as a plain error
-// rather than a partial report.
-//
-// The async publish takes no context, so a batch that got as far as the
-// publish loop would be stored in full and then reported unsent - and a
-// caller retrying what it was told never went out publishes the whole
-// batch a second time.
+// A batch under a cancelled ctx sends nothing and returns a plain error.
 func TestPublishBatchRefusesAnAlreadyCancelledContext(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -769,18 +710,14 @@ func TestPublishBatchRefusesAnAlreadyCancelledContext(t *testing.T) {
 	}
 }
 
-// A cancellation arriving once the batch is on the wire does not cut the
-// wait short: every message is still waited for and reported by its own
-// acknowledgement.
-//
-// The subject mapping cancels while the publish loop runs, so the context
-// is certainly done before the first wait begins.
+// Cancelling ctx once the batch is sent does not cut the ack wait short.
 func TestACancellationAfterThePublishDoesNotAbandonTheAcks(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// The mapping cancels ctx mid-loop, before the first wait begins.
 	tr := jsTransport(t, conn, craftnats.WithJetStreamSubject(func(c string) string {
 		if c == "orders.Last" {
 			cancel()
@@ -801,19 +738,13 @@ func TestACancellationAfterThePublishDoesNotAbandonTheAcks(t *testing.T) {
 	}
 }
 
-// A message the client refuses to publish stops the batch, and the ones
-// already in flight are still waited for rather than claimed as sent.
-//
-// Their acknowledgements are the only evidence they landed. Reporting
-// them sent without it loses exactly the ones that did not, and nothing
-// downstream can tell that happened.
+// A batch stopped by a refused message still waits for the ones in flight.
 func TestPublishBatchDoesNotClaimAnUnwaitedMessageWasSent(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
 
-	// The empty subject is one the client rejects outright, so the batch
-	// stops at index 1 while index 0 is still in flight - to a subject no
-	// stream carries, so it is never stored.
+	// The client rejects the empty subject, stopping the batch at index 1
+	// while index 0, on a subject no stream carries, is in flight.
 	tr := jsTransport(t, conn, craftnats.WithJetStreamSubject(func(c string) string {
 		if c == "orders.Unroutable" {
 			return ""
@@ -843,12 +774,7 @@ func TestPublishBatchDoesNotClaimAnUnwaitedMessageWasSent(t *testing.T) {
 	}
 }
 
-// A batch fails only the messages no stream carries, and the ones around
-// them still land.
-//
-// This is why the report is built from a set of indices: a batch spans
-// contracts, contracts map to different subjects, and a failure in the
-// middle of one is not a tail.
+// Only the message no stream carries is unsent; its neighbours are stored.
 func TestAJetStreamBatchFailsOnlyTheMessagesNoStreamCarries(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -876,14 +802,7 @@ func TestAJetStreamBatchFailsOnlyTheMessagesNoStreamCarries(t *testing.T) {
 	}
 }
 
-// An acknowledgement that never arrives resolves as that message's own
-// error, so a stream that does not answer fails the batch instead of
-// holding the caller for ever. The caller's context is not the bound.
-//
-// The stream is configured not to acknowledge, which stores the message
-// and replies to nobody. The report calls it unsent even though it
-// landed: an outcome the adapter could not learn counts as unsent, and
-// this is what that costs.
+// A missing ack reports its message unsent once the ack timeout passes.
 func TestPublishBatchGivesUpOnAnAcknowledgementThatNeverComes(t *testing.T) {
 	conn := runJetStreamServer(t)
 	js, err := jetstream.New(conn)
@@ -917,8 +836,7 @@ func TestPublishBatchGivesUpOnAnAcknowledgementThatNeverComes(t *testing.T) {
 	}
 }
 
-// quietStream provisions a stream that stores messages and acknowledges
-// none of them, so a publish waits for a verdict that never comes.
+// quietStream provisions a stream that stores messages but acks none.
 func quietStream(t *testing.T, conn *natsclient.Conn, name string, subjects ...string) {
 	t.Helper()
 	js, err := jetstream.New(conn)
@@ -934,13 +852,7 @@ func quietStream(t *testing.T, conn *natsclient.Conn, name string, subjects ...s
 	}
 }
 
-// Close ends a publish that is waiting, rather than leaving it to run out
-// the ack timeout.
-//
-// Without this the only bound is [craftnats.WithPublishAckTimeout], so a
-// shutdown waits out a timeout chosen to be far longer than any healthy
-// ack - the caller is held long after the transport it is publishing
-// through has gone.
+// Close ends a waiting batch with ErrClosed, reporting its messages unsent.
 func TestCloseEndsAPublishThatIsWaiting(t *testing.T) {
 	conn := runJetStreamServer(t)
 	quietStream(t, conn, "QUIET", "orders.>")
@@ -979,12 +891,6 @@ func TestCloseEndsAPublishThatIsWaiting(t *testing.T) {
 	}
 }
 
-// A batch that starts after Close is refused, and reaches the broker not
-// at all.
-//
-// The wait alone would not be enough: every message would be handed over
-// first and then named unsent on the first turn of the loop, which is a
-// batch genuinely sent and entirely reported for retry.
 func TestPublishBatchAfterCloseSendsNothing(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -1007,8 +913,6 @@ func TestPublishBatchAfterCloseSendsNothing(t *testing.T) {
 	}
 }
 
-// A negative ack timeout is refused at construction. The client takes it
-// the way it takes zero - no timer at all - so it would wait for ever.
 func TestANegativePublishAckTimeoutIsRefused(t *testing.T) {
 	conn := runJetStreamServer(t)
 	_, err := craftnats.NewJetStream(conn, craftnats.WithPublishAckTimeout(-time.Second))
@@ -1022,8 +926,6 @@ func TestANegativePublishAckTimeoutIsRefused(t *testing.T) {
 	}
 }
 
-// One number bounds both publish paths: the synchronous publish takes the
-// same deadline as the batch wait when the caller brings none of its own.
 func TestThePublishAckTimeoutBoundsTheSynchronousPublishToo(t *testing.T) {
 	conn := runJetStreamServer(t)
 	quietStream(t, conn, "QUIET", "orders.>")
@@ -1041,14 +943,7 @@ func TestThePublishAckTimeoutBoundsTheSynchronousPublishToo(t *testing.T) {
 	}
 }
 
-// A context that ends while the acknowledgement is in flight does not
-// fail a message the stream stored.
-//
-// The publish is on the wire before any answer can come back, so ending
-// the wait unsends nothing - it only turns a stored message into a
-// reported failure, and the caller reads a plain error as "nothing
-// arrived". Measured against this server, a budget below the ack round
-// trip failed every publish while the stream held every one of them.
+// A ctx that ends during the ack wait does not fail a stored message.
 func TestPublishDoesNotFailAMessageTheStreamStored(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -1065,8 +960,6 @@ func TestPublishDoesNotFailAMessageTheStreamStored(t *testing.T) {
 	}
 }
 
-// A context already cancelled sends nothing. The wait drops the caller's
-// cancellation, so this is what keeps a cancelled publish from going out.
 func TestPublishRefusesAnAlreadyCancelledContext(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -1084,7 +977,6 @@ func TestPublishRefusesAnAlreadyCancelledContext(t *testing.T) {
 	}
 }
 
-// Close ends a single publish that is waiting, the way it ends a batch.
 func TestCloseEndsASinglePublishThatIsWaiting(t *testing.T) {
 	conn := runJetStreamServer(t)
 	quietStream(t, conn, "QUIET", "orders.>")
@@ -1114,8 +1006,6 @@ func TestCloseEndsASinglePublishThatIsWaiting(t *testing.T) {
 	}
 }
 
-// A publish that starts after Close is refused, and reaches the broker
-// not at all.
 func TestPublishAfterCloseSendsNothing(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -1133,11 +1023,7 @@ func TestPublishAfterCloseSendsNothing(t *testing.T) {
 	}
 }
 
-// deletedDurableGroup is the start both tests below share: a transport
-// consuming group "deleted-durable" off ORDERS with handle as its only
-// listener, one message published into it, the failures that group
-// reports, and the test's own handle on the durable to watch the server
-// side through.
+// deletedDurableGroup runs handle in group "deleted-durable" on one message.
 func deletedDurableGroup(t *testing.T, conn *natsclient.Conn, handle func(context.Context, *events.Message) error) (<-chan error, jetstream.Consumer) {
 	t.Helper()
 	provision(t, conn, "ORDERS", "orders.>")
@@ -1177,8 +1063,7 @@ func deletedDurableGroup(t *testing.T, conn *natsclient.Conn, handle func(contex
 	return reported, durable
 }
 
-// deleteConsumer removes a durable underneath a running process, the way
-// an operator or a botched migration would.
+// deleteConsumer deletes a durable from under a running process.
 func deleteConsumer(t *testing.T, conn *natsclient.Conn, stream, name string) {
 	t.Helper()
 	js, err := jetstream.New(conn)
@@ -1192,9 +1077,7 @@ func deleteConsumer(t *testing.T, conn *natsclient.Conn, stream, name string) {
 	}
 }
 
-// awaitConsumerStopped waits for the group's ErrConsumerStopped report,
-// skipping what the client notices its own way first - the missed
-// heartbeat, the Consumer Deleted status.
+// awaitConsumerStopped waits for the group's ErrConsumerStopped report.
 func awaitConsumerStopped(t *testing.T, reported <-chan error, within time.Duration) {
 	t.Helper()
 	deadline := time.After(within)
@@ -1216,15 +1099,7 @@ func awaitConsumerStopped(t *testing.T, reported <-chan error, within time.Durat
 	}
 }
 
-// A durable deleted underneath a running process stops delivery with
-// nothing else to notice, so the report has to be recognisable: an
-// application that wants the group back matches
-// [craftnats.ErrConsumerStopped] and restarts.
-//
-// Here the client's next pull request is already queued on the server
-// when the durable goes, which is the only case the server answers: it
-// releases every waiting request with Consumer Deleted, and the report
-// follows in milliseconds.
+// A durable deleted under a waiting pull is reported as ErrConsumerStopped.
 func TestADeletedDurableWithAPullWaitingIsReportedAtOnce(t *testing.T) {
 	conn := runJetStreamServer(t)
 
@@ -1264,15 +1139,6 @@ func TestADeletedDurableWithAPullWaitingIsReportedAtOnce(t *testing.T) {
 	awaitConsumerStopped(t, reported, 20*time.Second)
 }
 
-// The same deletion with no pull request waiting: the handler is still
-// running, so the batch of one is spent and the server holds nothing to
-// answer. The client is told nothing, and the durable's absence surfaces
-// only when its heartbeats stop - about 30s, twice the heartbeat the
-// client derives from its 30s pull expiry - after which the adapter asks
-// the server whether the durable is still there and stops consuming.
-//
-// Without that question the group re-pulls into the void for ever and
-// reports nothing, which is what this transport used to do.
 func TestADeletedDurableWithNoPullWaitingIsReportedOnTheNextMissedHeartbeat(t *testing.T) {
 	conn := runJetStreamServer(t)
 

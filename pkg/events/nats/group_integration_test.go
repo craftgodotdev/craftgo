@@ -32,8 +32,7 @@ func consumerConfig(t *testing.T, conn *natsclient.Conn, stream, name string) je
 	return c.CachedInfo().Config
 }
 
-// createConsumer provisions a durable by hand, the way an operator or an
-// earlier version of an application would have.
+// createConsumer provisions a durable by hand, as an operator would.
 func createConsumer(t *testing.T, conn *natsclient.Conn, stream string, cfg jetstream.ConsumerConfig) {
 	t.Helper()
 	js, err := jetstream.New(conn)
@@ -244,8 +243,7 @@ func TestAGroupSubscribingOneSubjectTwiceIsRefused(t *testing.T) {
 	}
 }
 
-// redeliveryGap runs one message through a handler that asks for it back
-// once and reports how long the server took to hand it back.
+// redeliveryGap times the server's hand-back of a message redelivered once.
 func redeliveryGap(t *testing.T, group events.Group, opts ...craftnats.JetStreamOption) time.Duration {
 	t.Helper()
 	conn := runJetStreamServer(t)
@@ -303,11 +301,7 @@ func TestAnUndelayedRedeliveryIsImmediate(t *testing.T) {
 	}
 }
 
-// THE PREFETCH TRAP. Messages are handled one at a time, so a buffered
-// message waits for every handler ahead of it with the server's AckWait
-// clock running - and only the message inside the handler is held open.
-// The default buffers nothing, so each message is pulled once the one
-// before it is answered.
+// The default prefetch of one leaves no message buffered while AckWait runs.
 func TestABufferedMessageIsNotRedeliveredBehindASlowSibling(t *testing.T) {
 	const (
 		ackWait = 2 * time.Second
@@ -353,9 +347,7 @@ func TestABufferedMessageIsNotRedeliveredBehindASlowSibling(t *testing.T) {
 	})
 }
 
-// During a rolling deploy two versions of a design share a durable. A
-// subject the older replica has no consumer for is handed back rather
-// than acknowledged away, so the replica that consumes it gets it.
+// A subject with no consumer here is handed back for a replica that has one.
 func TestASubjectNothingHereHandlesIsHandedBack(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
@@ -398,8 +390,7 @@ func TestASubjectNothingHereHandlesIsHandedBack(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	// Every hand-back is reported: the error handler is the only layer
-	// that can see a subject this process consumes nothing for.
+	// Every hand-back is reported to the error handler.
 	if len(reported) == 0 {
 		t.Error("the hand-back was not reported to the error handler")
 	}

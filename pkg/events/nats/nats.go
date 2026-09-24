@@ -1,14 +1,13 @@
-// Package nats adapts craftgo's event runtime to NATS.
+// Package nats adapts craftgo's event runtime to NATS: [Transport] over core
+// NATS and [JetStream] over JetStream streams.
 //
-// A contract maps onto a subject. Contract names are already dot-shaped
-// (`orders.OrderPlaced`), which is the shape NATS subjects want, so the
-// default mapping is one-to-one and a wildcard subscription like
-// `orders.>` keeps working. Pass [WithSubject] when the broker's naming
-// is not yours to choose.
+// A contract maps onto a subject, the contract name unchanged by default.
+// The ordering key and the deduplication ID travel in the [HeaderKey] and
+// [HeaderDedupID] headers. A subscription's group is the queue group on
+// [Transport] and the durable consumer's name on [JetStream].
 //
-// A subscription's group is the queue group, so replicas sharing one
-// group share the work while a different group gets its own copy - the
-// same competing-consumer model the in-process transport implements.
+// [MsgFrom] and [JetStreamMsgFrom] expose the message behind a delivery.
+// Decide through [events.Message]; do not ack the raw message.
 package nats
 
 import (
@@ -21,10 +20,6 @@ import (
 	events "github.com/craftgodotdev/craftgo/pkg/events"
 )
 
-// A Transport is a full transport: it publishes, subscribes, takes a
-// batch in one call, and names itself to the per-message option check.
-// Asserted here so a change to the runtime interfaces fails this package
-// rather than a user's wiring.
 var (
 	_ events.Publisher      = (*Transport)(nil)
 	_ events.Subscriber     = (*Transport)(nil)
@@ -32,19 +27,14 @@ var (
 	_ events.OptionAware    = (*Transport)(nil)
 )
 
-// Adapter is the name [events.WithAdapterOption] addresses this adapter
-// by.
+// Adapter is the name [events.WithAdapterOption] addresses this adapter by.
 const Adapter = "nats"
 
 // AdapterName implements [events.OptionAware].
 func (t *Transport) AdapterName() string { return Adapter }
 
 // KnownOptions implements [events.OptionAware]. This adapter reads no
-// per-message options: a subject carries no per-message settings, and the
-// two values that would be them - the ordering key and the deduplication
-// ID - are [events.WithKey] and [events.WithDedupID], which every
-// transport takes. So an option addressed to `nats` is always a mistake,
-// and saying so is better than dropping it.
+// per-message options, so any option addressed to it fails the publish.
 func (t *Transport) KnownOptions() []string { return nil }
 
 // Transport publishes and subscribes over a NATS connection.
@@ -60,27 +50,21 @@ type Transport struct {
 // Option configures a Transport.
 type Option func(*Transport)
 
-// WithSubject replaces the contract-to-subject mapping. The default is
-// the contract name unchanged.
-//
-// The mapping must be one-to-one. The contract travels in the subject and
-// nowhere else, so two contracts sharing a subject reach each other's
-// subscriptions, each delivery labelled with whichever contract the
-// subscription asked for.
+// WithSubject replaces the contract-to-subject mapping; the default is the
+// contract name unchanged. The mapping must be one-to-one: the contract
+// travels only in the subject.
 func WithSubject(fn func(contract string) string) Option {
 	return func(t *Transport) { t.subject = fn }
 }
 
-// WithErrorHandler installs a callback for a handler that returns an
-// error. NATS core delivers at most once and has no nack, so without a
-// handler a failed message is observed by nothing.
+// WithErrorHandler installs a callback for a handler that returns an error.
+// Core NATS delivers at most once, so it is the only record of the failure.
 func WithErrorHandler(fn func(sub events.Subscription, msg *events.Message, err error)) Option {
 	return func(t *Transport) { t.onError = fn }
 }
 
-// New binds a Transport to an existing connection. The caller owns the
-// connection's lifetime; [Transport.Close] only drains this transport's
-// subscriptions.
+// New binds a Transport to an existing connection, which the caller owns and
+// [Transport.Close] leaves open.
 func New(conn *nats.Conn, opts ...Option) *Transport {
 	t := &Transport{conn: conn, subject: func(c string) string { return c }}
 	for _, o := range opts {
@@ -89,15 +73,13 @@ func New(conn *nats.Conn, opts ...Option) *Transport {
 	return t
 }
 
-// Publish sends one message. NATS core is fire-and-forget: a nil error
-// means the bytes reached the connection's buffer, not that a subscriber
-// received them.
+// Publish sends one message. A nil error means it reached the connection's
+// buffer, not that a subscriber received it.
 func (t *Transport) Publish(_ context.Context, msg *events.Message) error {
 	return t.conn.PublishMsg(t.encode(msg))
 }
 
-// PublishBatch sends the whole batch, then flushes once instead of per
-// message.
+// PublishBatch sends the whole batch, then flushes once.
 func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) error {
 	for i, msg := range msgs {
 		if err := t.conn.PublishMsg(t.encode(msg)); err != nil {
@@ -107,10 +89,8 @@ func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) er
 	return t.flush(ctx)
 }
 
-// flush waits for the server to acknowledge the buffered publishes.
-// FlushWithContext rejects a context with no deadline, and the usual
-// caller context has none, so fall back to the connection's own timeout
-// rather than failing a batch for want of a deadline.
+// flush waits for the server to take the buffered publishes. FlushWithContext
+// refuses a ctx without a deadline; such a ctx uses the connection's timeout.
 func (t *Transport) flush(ctx context.Context) error {
 	if _, ok := ctx.Deadline(); ok {
 		return t.conn.FlushWithContext(ctx)
@@ -118,21 +98,12 @@ func (t *Transport) flush(ctx context.Context) error {
 	return t.conn.Flush()
 }
 
-// encode maps a craftgo message onto a NATS message. The contract rides
-// the subject; the ordering key, a deduplication ID and the codec stamp
-// ride headers, so a consumer can read them without decoding the payload.
-//
-// [HeaderKey] and [HeaderDedupID] are this adapter's, so a metadata entry
-// under either name is skipped: decode reads the ordering key back out of
-// one, and a message published without a key would otherwise arrive
-// carrying the caller's value as one.
 func (t *Transport) encode(msg *events.Message) *nats.Msg {
 	return encodeTo(t.subject(msg.Event), msg)
 }
 
-// encodeTo is the wire format, shared by both transports in this package
-// so a message published through one is byte-identical to the same
-// message published through the other.
+// encodeTo is the wire format both transports share. Metadata never
+// overrides [HeaderKey] or [HeaderDedupID].
 func encodeTo(subject string, msg *events.Message) *nats.Msg {
 	out := &nats.Msg{
 		Subject: subject,
@@ -157,17 +128,13 @@ func encodeTo(subject string, msg *events.Message) *nats.Msg {
 // HeaderKey carries [events.Message.Key] across the wire.
 const HeaderKey = "Craftgo-Key"
 
-// HeaderDedupID carries [events.Message.DedupID]. The name is JetStream's
-// own: a subject backed by a stream with a duplicate window takes one of
-// two publishes sharing this value, and core NATS carries the header to
-// whoever is listening without acting on it.
+// HeaderDedupID carries [events.Message.DedupID] under JetStream's own name,
+// so a stream's duplicate window drops a repeat; core NATS only carries it.
 const HeaderDedupID = "Nats-Msg-Id"
 
-// Subscribe registers every subscription as a queue subscriber under its
-// group. Delivery runs until ctx is cancelled. A queue subscription
-// establishes nothing on the server that a whole batch is needed for, so
-// the batch is a loop; the first failure stops it, and the subscriptions
-// already made stay live.
+// Subscribe registers each subscription as a queue subscriber under its
+// group, delivering until ctx is cancelled. The first failure stops the
+// loop; the subscriptions already made stay live.
 func (t *Transport) Subscribe(ctx context.Context, subs []events.Subscription) error {
 	for _, sub := range subs {
 		if err := t.subscribeOne(ctx, sub); err != nil {
@@ -198,19 +165,14 @@ func (t *Transport) subscribeOne(ctx context.Context, sub events.Subscription) e
 	return nil
 }
 
-// decode rebuilds a craftgo message from a NATS delivery. The contract
-// comes from the subscription rather than the subject, so a custom
-// subject mapping does not have to be reversible.
-//
-// [HeaderKey] is consumed into Key rather than left in Metadata, so a
-// consumer sees the same entries here as on any other transport.
+// decode takes the contract from the subscription, so a subject mapping
+// need not be reversible.
 func decode(contract string, m *nats.Msg) *events.Message {
 	return decodeFrom(contract, m.Header, m.Data)
 }
 
-// decodeFrom is the reverse of [encodeTo], taking the parts rather than a
-// *nats.Msg: a JetStream delivery carries the same headers and body
-// behind a different type.
+// decodeFrom is the reverse of encodeTo. It takes the parts because a
+// JetStream delivery is not a *nats.Msg.
 func decodeFrom(contract string, header nats.Header, data []byte) *events.Message {
 	out := &events.Message{
 		Event:    contract,

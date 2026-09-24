@@ -15,8 +15,7 @@ import (
 	craftnats "github.com/craftgodotdev/craftgo/pkg/events/nats"
 )
 
-// runServer starts an in-process NATS server, so the adapter is exercised
-// against a real broker without Docker or a network.
+// runServer starts an in-process NATS server and connects to it.
 func runServer(t *testing.T) *natsclient.Conn {
 	t.Helper()
 	srv, err := natsserver.NewServer(&natsserver.Options{Host: "127.0.0.1", Port: -1, NoLog: true, NoSigs: true})
@@ -41,8 +40,7 @@ type payload struct {
 	OrderID string `json:"orderId"`
 }
 
-// start registers subs on bus and hands them to the transport, which is
-// the two steps every consumer registration takes.
+// start registers subs on bus and starts it.
 func start(t *testing.T, ctx context.Context, bus *events.Bus, subs ...events.Subscription) {
 	t.Helper()
 	for _, sub := range subs {
@@ -96,8 +94,7 @@ func TestRoundTripOverNATS(t *testing.T) {
 	}
 }
 
-// Two consumer names are two groups: each gets its own copy. Two
-// subscriptions sharing a name are one group and split the work.
+// Each group receives every message; replicas of one group share them.
 func TestConsumerGroupsOverNATS(t *testing.T) {
 	conn := runServer(t)
 	tr := craftnats.New(conn)
@@ -121,9 +118,7 @@ func TestConsumerGroupsOverNATS(t *testing.T) {
 				Event: "orders.OrderPlaced", Consumer: string(group), Group: group, Handle: add(string(group)),
 			})
 	}
-	// A second replica of one group shares its work rather than
-	// duplicating. A replica is a second process, so it is a second bus
-	// over the one connection.
+	// A second replica of one group: a second bus over the same connection.
 	start(t, ctx, events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{})),
 		events.Subscription{
 			Event: "orders.OrderPlaced", Consumer: "SendReceipt", Group: "SendReceipt", Handle: add("SendReceipt"),
@@ -199,9 +194,7 @@ func TestBatchOverNATS(t *testing.T) {
 	}
 }
 
-// A panicking handler must not end the process on a broker either. The
-// recover the Bus installs runs on the goroutine NATS delivers on, so the
-// adapter inherits it without knowing about it.
+// A panicking handler is reported as a PanicError and delivery continues.
 func TestHandlerPanicOverNATS(t *testing.T) {
 	conn := runServer(t)
 	failures := make(chan error, 2)
@@ -259,8 +252,7 @@ func TestHandlerPanicOverNATS(t *testing.T) {
 	}
 }
 
-// A caller's metadata reaches the consumer over a real broker, and the
-// codec stamp travels with it.
+// Caller metadata and the codec stamp reach the consumer.
 func TestCallerMetadataOverNATS(t *testing.T) {
 	conn := runServer(t)
 	tr := craftnats.New(conn, craftnats.WithErrorHandler(
@@ -302,10 +294,7 @@ func TestCallerMetadataOverNATS(t *testing.T) {
 	}
 }
 
-// A middleware reaching for what events.Message does not carry gets the
-// NATS message the delivery came from - proved through the real Subscribe
-// path against a real server, because the wiring is what is under test
-// and a unit test of the accessor would not exercise it.
+// MsgFrom returns the delivered message on the real Subscribe path.
 func TestTheRawMessageIsReachableOverNATS(t *testing.T) {
 	conn := runServer(t)
 	tr := craftnats.New(conn)
@@ -344,8 +333,7 @@ func TestTheRawMessageIsReachableOverNATS(t *testing.T) {
 		t.Fatalf("subscribe: %v", err)
 	}
 
-	// Published raw so the message carries a header this adapter does not
-	// map, which is the reason to reach for the raw message at all.
+	// Published raw so the message carries a header this adapter does not map.
 	raw := natsclient.NewMsg("orders.OrderPlaced")
 	raw.Data = []byte(`{"orderId":"o-1"}`)
 	raw.Header.Set("x-unmapped", "kept")

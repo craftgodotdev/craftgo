@@ -8,15 +8,12 @@ import (
 	events "github.com/craftgodotdev/craftgo/pkg/events"
 )
 
-// A contract is already subject-shaped, so the default mapping is the
-// contract unchanged and a wildcard subscription keeps working.
 func TestDefaultSubjectIsTheContract(t *testing.T) {
 	if got := New(nil).subject("orders.OrderPlaced"); got != "orders.OrderPlaced" {
 		t.Errorf("default subject = %q", got)
 	}
 }
 
-// A broker whose naming is not yours to choose is what WithSubject is for.
 func TestSubjectMappingIsConfigurable(t *testing.T) {
 	tr := New(nil, WithSubject(func(c string) string { return "evt." + c }))
 	if got := tr.subject("orders.OrderPlaced"); got != "evt.orders.OrderPlaced" {
@@ -24,8 +21,7 @@ func TestSubjectMappingIsConfigurable(t *testing.T) {
 	}
 }
 
-// The ordering key and the codec stamp ride headers, so a consumer reads
-// both without decoding the payload.
+// The ordering key and the metadata travel as headers.
 func TestEncodeCarriesKeyAndMetadata(t *testing.T) {
 	tr := New(nil)
 	out := tr.encode(&events.Message{
@@ -45,8 +41,7 @@ func TestEncodeCarriesKeyAndMetadata(t *testing.T) {
 	}
 }
 
-// The contract comes from the subscription, so a custom subject mapping
-// does not have to be reversible.
+// decode takes the contract from the subscription, not the subject.
 func TestDecodeUsesTheSubscriptionContract(t *testing.T) {
 	m := &nats.Msg{Subject: "evt.orders.OrderPlaced", Data: []byte("body"), Header: nats.Header{}}
 	m.Header.Set(HeaderKey, "order-1")
@@ -64,9 +59,7 @@ func TestDecodeUsesTheSubscriptionContract(t *testing.T) {
 	}
 }
 
-// The key header is this adapter's. A metadata entry under that name is
-// skipped, so a message published without a key does not arrive carrying
-// the caller's value as one.
+// A metadata entry named like the key header does not become the key.
 func TestTheKeyHeaderIsNotForgedByMetadata(t *testing.T) {
 	out := New(nil).encode(&events.Message{
 		Event:    "orders.OrderPlaced",
@@ -81,8 +74,6 @@ func TestTheKeyHeaderIsNotForgedByMetadata(t *testing.T) {
 	}
 }
 
-// The key is consumed into Key, so a consumer sees the same metadata
-// entries here as on any other transport.
 func TestTheKeyHeaderIsNotLeftInMetadata(t *testing.T) {
 	m := &nats.Msg{Subject: "orders.OrderPlaced", Data: []byte("body"), Header: nats.Header{}}
 	m.Header.Set(HeaderKey, "order-1")
@@ -100,10 +91,7 @@ func TestTheKeyHeaderIsNotLeftInMetadata(t *testing.T) {
 	}
 }
 
-// The deduplication ID rides Nats-Msg-Id, which is the name a JetStream
-// stream with a duplicate window reads. Core NATS carries it to the
-// consumer without acting on it, and carrying it is what lets a consumer
-// recognise a repeat for itself.
+// The dedup ID travels in Nats-Msg-Id and survives a round trip.
 func TestEncodeCarriesTheDeduplicationID(t *testing.T) {
 	out := New(nil).encode(&events.Message{
 		Event:   "orders.OrderPlaced",
@@ -119,8 +107,6 @@ func TestEncodeCarriesTheDeduplicationID(t *testing.T) {
 	}
 }
 
-// A message published without one carries no header, so a consumer can
-// tell "no identity given" from "this identity".
 func TestNoDeduplicationIDMeansNoHeader(t *testing.T) {
 	out := New(nil).encode(&events.Message{Event: "orders.OrderPlaced", Payload: []byte("body")})
 	if got := out.Header.Get(HeaderDedupID); got != "" {
@@ -128,8 +114,7 @@ func TestNoDeduplicationIDMeansNoHeader(t *testing.T) {
 	}
 }
 
-// The header is this adapter's, so a metadata entry under that name is
-// skipped rather than arriving as the message's deduplication identity.
+// A metadata entry named like the dedup header does not become the dedup ID.
 func TestTheDeduplicationHeaderIsNotForgedByMetadata(t *testing.T) {
 	out := New(nil).encode(&events.Message{
 		Event:    "orders.OrderPlaced",
@@ -144,8 +129,6 @@ func TestTheDeduplicationHeaderIsNotForgedByMetadata(t *testing.T) {
 	}
 }
 
-// It is consumed into DedupID, so a consumer sees the same metadata
-// entries here as on any other transport.
 func TestTheDeduplicationHeaderIsNotLeftInMetadata(t *testing.T) {
 	m := &nats.Msg{Subject: "orders.OrderPlaced", Data: []byte("body"), Header: nats.Header{}}
 	m.Header.Set(HeaderDedupID, "attempt-7")
