@@ -2,6 +2,8 @@ package docs
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -110,7 +112,7 @@ func ValidateSecuritySchemes(cfg *config.Config) []string {
 		return nil
 	}
 	var out []string
-	for _, name := range sortedKeys(cfg.OpenAPI.SecuritySchemes) {
+	for _, name := range slices.Sorted(maps.Keys(cfg.OpenAPI.SecuritySchemes)) {
 		if sc := cfg.OpenAPI.SecuritySchemes[name]; sc.Type == "oauth2" && !sc.Flows.HasFlow() {
 			out = append(out, fmt.Sprintf("securityScheme %q is type oauth2 but declares no flows: add an openapi.securitySchemes.%s.flows entry (implicit / password / clientCredentials / authorizationCode) - an oauth2 scheme without flows is invalid OpenAPI", name, name))
 		}

@@ -1,9 +1,10 @@
 package semantic
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
@@ -26,11 +27,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 		Packages: map[string]*Package{},
 	}
 	groups := groupFilesByPackage(files)
-	names := make([]string, 0, len(groups))
-	for name := range groups {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(groups))
 	analyzers := make(map[string]*analyzer, len(groups))
 	for _, name := range names {
 		a := newAnalyzer(proj, opts)
@@ -71,11 +68,7 @@ func (p *Project) singlePackage() *Package {
 	if pkg := p.Packages[""]; pkg != nil {
 		return pkg
 	}
-	names := make([]string, 0, len(p.Packages))
-	for name := range p.Packages {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(p.Packages))
 	if len(names) > 0 {
 		return p.Packages[names[0]]
 	}

@@ -2,8 +2,10 @@ package golang
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
@@ -43,7 +45,7 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 	imports := newImportSet(r.CrossPkg)
 	typesImport := typesImportRoot(cfg) + "/" + pkg.Name
 	data := eventsData{Package: pkg.Name}
-	for _, name := range sortedKeys(pkg.Events) {
+	for _, name := range slices.Sorted(maps.Keys(pkg.Events)) {
 		ev, ok := r.Proj.LookupEvent(pkg.Name, name)
 		if !ok {
 			continue

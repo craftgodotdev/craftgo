@@ -2,6 +2,8 @@ package docs
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -14,7 +16,7 @@ import (
 
 func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
 	counts := methodNameCounts(pkg)
-	for _, svcName := range sortedServices(pkg) {
+	for _, svcName := range pkg.ServiceNames() {
 		svc := pkg.Services[svcName]
 		for _, m := range svc.Methods {
 			full := route.Resolve("", svc.Primary, m)
@@ -45,14 +47,14 @@ func operationBaseName(svcName string, m *ast.Method, counts map[string]int) str
 func checkOperationIDUniqueness(pkg *semantic.Package) error {
 	counts := methodNameCounts(pkg)
 	owners := map[string][]string{} // operationId -> ["Service.Method", ...]
-	for _, svcName := range sortedServices(pkg) {
+	for _, svcName := range pkg.ServiceNames() {
 		for _, m := range pkg.Services[svcName].Methods {
 			id := operationID(m, operationBaseName(svcName, m, counts))
 			owners[id] = append(owners[id], svcName+"."+m.Name)
 		}
 	}
 	var dups []string
-	for _, id := range sortedKeys(owners) {
+	for _, id := range slices.Sorted(maps.Keys(owners)) {
 		if who := owners[id]; len(who) >= 2 {
 			dups = append(dups, fmt.Sprintf("%q (from %s)", id, strings.Join(who, ", ")))
 		}

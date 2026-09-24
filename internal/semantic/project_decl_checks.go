@@ -2,6 +2,8 @@ package semantic
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -32,12 +34,7 @@ func (r *refResolver) checkProjectMiddlewareUniqueness() {
 // reportCrossPackageDuplicates reports every site of a name declared in more
 // than one package, relating the others, in an order stable across runs.
 func (r *refResolver) reportCrossPackageDuplicates(sites map[string][]declSite, code, msg string) {
-	names := make([]string, 0, len(sites))
-	for name := range sites {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
+	for _, name := range slices.Sorted(maps.Keys(sites)) {
 		occs := sites[name]
 		if len(occs) < 2 {
 			continue

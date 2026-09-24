@@ -5,6 +5,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
@@ -42,7 +43,7 @@ func projectSortedMiddlewareNames(proj *semantic.Project) []string {
 			seen[name] = struct{}{}
 		}
 	}
-	return sortedKeys(seen)
+	return slices.Sorted(maps.Keys(seen))
 }
 
 // writeProjectMiddlewareImpls writes each middleware's scaffold unless its file exists.
@@ -106,8 +107,4 @@ func writeMiddlewareFields(cfg *config.Config, projectRoot string, names []strin
 		return fmt.Errorf("render middlewares.go: %w", err)
 	}
 	return os.WriteFile(dest, formatted, 0o644)
-}
-
-func sortedMiddlewareNames(pkg *semantic.Package) []string {
-	return sortedKeys(pkg.Middlewares)
 }

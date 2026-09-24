@@ -1,6 +1,8 @@
 package semantic
 
 import (
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -87,7 +89,7 @@ func (p *Package) Decls(kinds DeclKind) []ast.Decl {
 		out = appendDecls(out, p.Events)
 	}
 	if kinds&ServiceDecls != 0 {
-		for _, name := range sortedNames(p.Services) {
+		for _, name := range p.ServiceNames() {
 			if sd := p.Services[name].Primary; sd != nil {
 				out = append(out, sd)
 			}
@@ -97,10 +99,21 @@ func (p *Package) Decls(kinds DeclKind) []ast.Decl {
 }
 
 func appendDecls[D ast.Decl](out []ast.Decl, table map[string]D) []ast.Decl {
-	for _, name := range sortedNames(table) {
+	for _, name := range slices.Sorted(maps.Keys(table)) {
 		out = append(out, table[name])
 	}
 	return out
+}
+
+// ServiceNames returns the names of p's services, sorted.
+func (p *Package) ServiceNames() []string {
+	return slices.Sorted(maps.Keys(p.Services))
+}
+
+// PackageNames returns the names of p's named packages, sorted; the package
+// of files without a `package` clause is left out.
+func (p *Project) PackageNames() []string {
+	return slices.DeleteFunc(slices.Sorted(maps.Keys(p.Packages)), func(name string) bool { return name == "" })
 }
 
 // Lookup returns the declaration name refers to among the selected kinds,
@@ -118,7 +131,7 @@ func (p *Project) Lookup(homePkg, name string, kinds DeclKind) ast.Decl {
 			return d
 		}
 	}
-	for _, pkgName := range sortedNames(p.Packages) {
+	for _, pkgName := range slices.Sorted(maps.Keys(p.Packages)) {
 		if pkgName == homePkg {
 			continue
 		}

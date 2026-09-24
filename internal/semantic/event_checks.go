@@ -1,6 +1,8 @@
 package semantic
 
 import (
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -11,7 +13,7 @@ import (
 // checkEvents runs the per-package event rules. Contract uniqueness runs
 // at project level (see [refResolver.checkProjectEvents]).
 func (a *analyzer) checkEvents() {
-	for _, name := range sortedNames(a.pkg.Events) {
+	for _, name := range slices.Sorted(maps.Keys(a.pkg.Events)) {
 		a.checkEvent(a.pkg.Events[name])
 	}
 }

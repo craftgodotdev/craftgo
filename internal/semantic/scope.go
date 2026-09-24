@@ -1,7 +1,8 @@
 package semantic
 
 import (
-	"sort"
+	"maps"
+	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
@@ -21,20 +22,10 @@ func (a *analyzer) errorDeclared(name string) bool {
 	return a.proj.Lookup(a.pkg.Name, name, ErrorDecls) != nil
 }
 
-// sortedNames returns the keys of m in sorted order.
-func sortedNames[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
 // primaryServiceElsewhere returns the package and declaration of a primary
 // `service name` in another package, or ("", nil).
 func (a *analyzer) primaryServiceElsewhere(name string) (string, *ast.ServiceDecl) {
-	for _, pkgName := range sortedNames(a.proj.Packages) {
+	for _, pkgName := range slices.Sorted(maps.Keys(a.proj.Packages)) {
 		pkg := a.proj.Packages[pkgName]
 		if pkg == nil || pkg == a.pkg {
 			continue

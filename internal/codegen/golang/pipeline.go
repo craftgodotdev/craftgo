@@ -12,7 +12,7 @@ import (
 // Generate writes the Go output of proj under projectRoot: the types and pb code, then, unless the
 // project is contracts-only, the application layer. protos is nil when the design has no proto.
 func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) error {
-	names := sortedPackageNames(proj)
+	names := proj.PackageNames()
 	resolvers := make(map[string]*projectResolver, len(names))
 	for _, name := range names {
 		resolvers[name] = buildProjectResolver(proj, cfg, name)

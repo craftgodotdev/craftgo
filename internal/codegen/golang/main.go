@@ -89,7 +89,7 @@ func buildProjectMainData(proj *semantic.Project, protos *protodesign.Set, cfg *
 		if p == nil {
 			continue
 		}
-		for _, name := range sortedMiddlewareNames(p) {
+		for _, name := range slices.Sorted(maps.Keys(p.Middlewares)) {
 			if seen[name] {
 				continue
 			}

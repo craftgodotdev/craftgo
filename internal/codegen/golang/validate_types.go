@@ -1,6 +1,7 @@
 package golang
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -65,13 +66,7 @@ func isTypeParamRef(t *ast.TypeRef, params []string) bool {
 	if t.Named == nil {
 		return false
 	}
-	name := t.Named.Name.String()
-	for _, p := range params {
-		if p == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(params, t.Named.Name.String())
 }
 
 // isComparableElem reports whether Go element type elem can key the dedupe map.

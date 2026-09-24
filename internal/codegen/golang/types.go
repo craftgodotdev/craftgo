@@ -3,8 +3,10 @@ package golang
 import (
 	"fmt"
 	"go/format"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -61,7 +63,7 @@ func buildTypesGo(pkg *semantic.Package, r *projectResolver) string {
 	if scs := renderScalars(pkg); scs != "" {
 		parts = append(parts, scs)
 	}
-	for _, name := range sortedKeys(pkg.Types) {
+	for _, name := range slices.Sorted(maps.Keys(pkg.Types)) {
 		parts = append(parts, renderType(pkg.Types[name], pkg, r))
 	}
 	return strings.Join(parts, "\n")
@@ -73,7 +75,7 @@ func renderScalars(pkg *semantic.Package) string {
 	if len(pkg.Scalars) == 0 {
 		return ""
 	}
-	names := sortedKeys(pkg.Scalars)
+	names := slices.Sorted(maps.Keys(pkg.Scalars))
 	const tmpl = "// %s is a DSL scalar over %s; its declared validators live on its Validate() method and are inherited by every field of this type.\ntype %s %s\n\n"
 	// A raw scalar is an alias: a defined type would drop wire.Raw's codec methods.
 	const rawTmpl = "// %s is a DSL scalar over bytes @format(raw): an alias for the runtime's pass-through type, whose codec methods carry the bytes untouched.\ntype %s = %s\n\n"
@@ -142,7 +144,7 @@ func collectImports(pkg *semantic.Package, r *projectResolver) []string {
 			imports[rawImportPath] = true
 		}
 	}
-	return sortedKeys(imports)
+	return slices.Sorted(maps.Keys(imports))
 }
 
 // collectFieldImports adds the stdlib imports of the builtins t reaches (`file`,

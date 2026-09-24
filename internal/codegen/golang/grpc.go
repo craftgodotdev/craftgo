@@ -207,12 +207,12 @@ func ValidateProtoOutputs(proj *semantic.Project, protos *protodesign.Set, cfg *
 		return nil
 	}
 	owners := map[string]string{}
-	for _, name := range sortedPackageNames(proj) {
+	for _, name := range proj.PackageNames() {
 		pkg := proj.Packages[name]
 		if pkg == nil {
 			continue
 		}
-		for _, svcName := range sortedServices(pkg) {
+		for _, svcName := range pkg.ServiceNames() {
 			for _, group := range distinctGroups(pkg.Services[svcName]) {
 				owners[filepath.ToSlash(outputSegFor(svcName, group, cfg.Output.FileCase))] = svcName
 			}

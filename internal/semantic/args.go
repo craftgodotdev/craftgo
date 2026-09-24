@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -275,7 +276,7 @@ func (a *analyzer) checkEnumOnFirst(d *ast.Decorator, spec Spec, pos []*ast.Deco
 	if !ok {
 		return
 	}
-	if !inSet(val, enum) {
+	if !slices.Contains(enum, val) {
 		a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorArgValue,
 			"@%s arg 1: %q is not a valid value (expected one of: %s)",
 			d.Name, val, joinQuoted(enum))
@@ -380,15 +381,6 @@ func identOrStringValue(e ast.Expr) (string, bool) {
 		return v.Value, true
 	}
 	return "", false
-}
-
-func inSet(s string, xs []string) bool {
-	for _, x := range xs {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 // joinQuoted renders xs as `"a", "b", "c"`, in input order.

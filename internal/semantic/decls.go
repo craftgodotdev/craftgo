@@ -184,7 +184,7 @@ func prependPropagated(propagate, own []*ast.Decorator) []*ast.Decorator {
 // checkExtendOrphans reports every `extend service` block whose service
 // has no primary declaration in this package.
 func (a *analyzer) checkExtendOrphans() {
-	for _, name := range sortedNames(a.pkg.Services) {
+	for _, name := range a.pkg.ServiceNames() {
 		si := a.pkg.Services[name]
 		if si == nil || si.Primary != nil {
 			continue

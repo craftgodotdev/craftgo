@@ -2,8 +2,10 @@ package golang
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -205,7 +207,7 @@ func generateRoutes(pkg *semantic.Package, cfg *config.Config, projectRoot strin
 		return fmt.Errorf("package has no name")
 	}
 	dirs := routeSegments(pkg, cfg)
-	for _, seg := range sortedKeys(dirs) {
+	for _, seg := range slices.Sorted(maps.Keys(dirs)) {
 		if err := generateRoutesForSegment(seg, dirs[seg], pkg, cfg, projectRoot); err != nil {
 			return err
 		}
@@ -224,7 +226,7 @@ type segContribution struct {
 // analyser rejects a segment shared across DSL packages or repeating a method name.
 func routeSegments(pkg *semantic.Package, cfg *config.Config) map[string][]segContribution {
 	out := map[string][]segContribution{}
-	for _, svcName := range sortedServices(pkg) {
+	for _, svcName := range pkg.ServiceNames() {
 		svc := pkg.Services[svcName]
 		for _, g := range distinctGroups(svc) {
 			seg := outputSegFor(svcName, g, cfg.Output.FileCase)
@@ -248,7 +250,7 @@ func generateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 		if pkgName == "" || p == nil {
 			continue
 		}
-		for _, svcName := range sortedServices(p) {
+		for _, svcName := range p.ServiceNames() {
 			for _, g := range distinctGroups(p.Services[svcName]) {
 				entries = append(entries, svcEntry{name: svcName, pkgName: pkgName, group: g, seg: outputSegFor(svcName, g, cfg.Output.FileCase)})
 			}

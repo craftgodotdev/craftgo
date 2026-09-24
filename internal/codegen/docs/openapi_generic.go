@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 
@@ -48,7 +49,7 @@ func newGenericRegistry() *genericRegistry {
 func (r *genericRegistry) register(decl *ast.TypeDecl, args []*ast.TypeRef) string {
 	name := genericComponentName(decl, args)
 	if existing, ok := r.instances[name]; ok {
-		if existing.decl != decl || !typeRefsEqual(existing.args, args) {
+		if existing.decl != decl || !slices.EqualFunc(existing.args, args, (*ast.TypeRef).Equal) {
 			r.dups[name] = true
 		}
 		return name
@@ -56,19 +57,6 @@ func (r *genericRegistry) register(decl *ast.TypeDecl, args []*ast.TypeRef) stri
 	r.instances[name] = &genericInstance{decl: decl, args: args, name: name}
 	r.order = append(r.order, name)
 	return name
-}
-
-// typeRefsEqual reports whether two argument lists are structurally equal.
-func typeRefsEqual(a, b []*ast.TypeRef) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if !a[i].Equal(b[i]) {
-			return false
-		}
-	}
-	return true
 }
 
 // pending returns the unemitted instances, in registration order.

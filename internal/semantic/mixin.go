@@ -2,6 +2,8 @@ package semantic
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -143,12 +145,7 @@ func reportGoNameCollisions(seen map[string]fieldOrigin, emit func(pos lexer.Pos
 		gn := idents.GoFieldName(dsl)
 		groups[gn] = append(groups[gn], ent{dsl: dsl, from: o.from, pos: o.pos})
 	}
-	gnames := make([]string, 0, len(groups))
-	for gn := range groups {
-		gnames = append(gnames, gn)
-	}
-	sort.Strings(gnames)
-	for _, gn := range gnames {
+	for _, gn := range slices.Sorted(maps.Keys(groups)) {
 		ents := groups[gn]
 		if len(ents) < 2 {
 			continue

@@ -2,13 +2,13 @@ package protodesign
 
 import (
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/bufbuild/protocompile/linker"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/pluginpb"
 )
 
@@ -41,20 +41,11 @@ func buildRequest(files linker.Files, names []string, parameter string) *pluginp
 	// Plugins read the generated files' source-retention options from
 	// SourceFileDescriptors.
 	for _, fdp := range req.ProtoFile {
-		if isGenerated(fdp, names) {
+		if slices.Contains(names, fdp.GetName()) {
 			req.SourceFileDescriptors = append(req.SourceFileDescriptors, fdp)
 		}
 	}
 	return req
-}
-
-func isGenerated(fdp *descriptorpb.FileDescriptorProto, names []string) bool {
-	for _, n := range names {
-		if fdp.GetName() == n {
-			return true
-		}
-	}
-	return false
 }
 
 // parameter returns the plugin parameter: `paths=source_relative` and, with the

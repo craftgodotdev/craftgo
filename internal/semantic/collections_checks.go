@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -49,11 +50,8 @@ func (a *analyzer) keyMarshalable(key *ast.TypeRef, typeParams []string) bool {
 	if key == nil || key.Named == nil || key.Named.Name == nil || key.Array || key.Map != nil || key.Optional {
 		return false
 	}
-	name := key.Named.Name.String()
-	for _, tp := range typeParams {
-		if tp == name {
-			return false
-		}
+	if slices.Contains(typeParams, key.Named.Name.String()) {
+		return false
 	}
 	if a.lookupEnum(key.Named) != nil {
 		return true // string- or int-backed enum
@@ -96,13 +94,10 @@ func (a *analyzer) checkUniqueItemsComparable(f *ast.Field, typeParams []string)
 		}
 		elem := peelOneArray(f.Type)
 		if elem != nil && elem.Named != nil && elem.Named.Name != nil && !elem.Array && elem.Map == nil {
-			name := elem.Named.Name.String()
-			for _, tp := range typeParams {
-				if tp == name {
-					a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-						"@uniqueItems is not supported on a type-parameter element (%s): the parametric validator can't build a dedupe map over an `any`-constrained value. Drop @uniqueItems, or use a concrete comparable element type.", name)
-					return
-				}
+			if name := elem.Named.Name.String(); slices.Contains(typeParams, name) {
+				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+					"@uniqueItems is not supported on a type-parameter element (%s): the parametric validator can't build a dedupe map over an `any`-constrained value. Drop @uniqueItems, or use a concrete comparable element type.", name)
+				return
 			}
 		}
 		if !a.typeRefComparable(elem, a.pkg.Name, map[string]bool{}) {

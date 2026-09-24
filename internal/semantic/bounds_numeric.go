@@ -3,6 +3,7 @@ package semantic
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -235,14 +236,7 @@ func (a *analyzer) checkValueConstraintOnTypeParam(f *ast.Field, typeParams []st
 		return
 	}
 	name := f.Type.Named.Name.String()
-	isParam := false
-	for _, tp := range typeParams {
-		if tp == name {
-			isParam = true
-			break
-		}
-	}
-	if !isParam {
+	if !slices.Contains(typeParams, name) {
 		return
 	}
 	for _, d := range f.Decorators {

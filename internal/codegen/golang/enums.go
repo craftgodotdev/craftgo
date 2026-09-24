@@ -2,8 +2,10 @@ package golang
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -52,7 +54,7 @@ type enumValueView struct {
 
 // buildEnumsView returns the enums.tmpl input for pkg, enums in name order.
 func buildEnumsView(pkg *semantic.Package) enumsView {
-	names := sortedKeys(pkg.Enums)
+	names := slices.Sorted(maps.Keys(pkg.Enums))
 	view := enumsView{Package: pkg.Name, Enums: make([]enumView, 0, len(names))}
 	for _, name := range names {
 		view.Enums = append(view.Enums, buildEnumView(pkg.Enums[name]))

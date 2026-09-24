@@ -4,10 +4,12 @@
 package docs
 
 import (
+	"cmp"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -106,8 +108,8 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	doc := &openapi3.T{
 		OpenAPI: "3.1.0",
 		Info: &openapi3.Info{
-			Title:       orDefault(cfg.OpenAPI.Title, pkg.Name),
-			Version:     orDefault(cfg.OpenAPI.Version, "0.1.0"),
+			Title:       cmp.Or(cfg.OpenAPI.Title, pkg.Name),
+			Version:     cmp.Or(cfg.OpenAPI.Version, "0.1.0"),
 			Description: cfg.OpenAPI.Description,
 		},
 		Paths:      &openapi3.Paths{},
@@ -128,27 +130,13 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	emitGenericInstanceComponents(doc, pkg, registry, names)
 	addSecuritySchemes(doc, pkg, cfg)
 	if len(names.dups) > 0 {
-		return doc, fmt.Errorf("duplicate component schema name(s): %s - a user-declared type clashes with a generated name (a per-operation <Method>ReqBody/RespBody or a generic instance like PageOfX); rename the type or the method", strings.Join(dedupSorted(names.dups), ", "))
+		return doc, fmt.Errorf("duplicate component schema name(s): %s - a user-declared type clashes with a generated name (a per-operation <Method>ReqBody/RespBody or a generic instance like PageOfX); rename the type or the method", strings.Join(slices.Compact(slices.Sorted(slices.Values(names.dups))), ", "))
 	}
 	if len(registry.dups) > 0 {
-		clashes := sortedKeys(registry.dups)
+		clashes := slices.Sorted(maps.Keys(registry.dups))
 		return doc, fmt.Errorf("two structurally distinct generic instances map to the same component name(s): %s - e.g. an array argument and a struct of that array's element name collide. Rename the struct (or wrap the array) so each instantiation gets a distinct schema", strings.Join(clashes, ", "))
 	}
 	return doc, nil
-}
-
-// dedupSorted returns the distinct values of in, sorted.
-func dedupSorted(in []string) []string {
-	seen := make(map[string]bool, len(in))
-	out := make([]string, 0, len(in))
-	for _, s := range in {
-		if !seen[s] {
-			seen[s] = true
-			out = append(out, s)
-		}
-	}
-	sort.Strings(out)
-	return out
 }
 
 // emitGenericInstanceComponents emits one component per registered instance
@@ -166,11 +154,4 @@ func emitGenericInstanceComponents(doc *openapi3.T, pkg *semantic.Package, regis
 			registry.markEmitted(inst.name)
 		}
 	}
-}
-
-func orDefault(v, fallback string) string {
-	if v == "" {
-		return fallback
-	}
-	return v
 }

@@ -1,9 +1,10 @@
 package golang
 
 import (
+	"maps"
 	"path"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -120,16 +121,7 @@ func memberGroups(svc *semantic.ServiceInfo, names func(*ast.ServiceDecl) []stri
 
 // distinctGroups returns the @groups the service's methods use, sorted, "" first.
 func distinctGroups(svc *semantic.ServiceInfo) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, g := range methodGroups(svc) {
-		if !seen[g] {
-			seen[g] = true
-			out = append(out, g)
-		}
-	}
-	sort.Strings(out)
-	return out
+	return slices.Compact(slices.Sorted(maps.Values(methodGroups(svc))))
 }
 
 // groupAliasSuffix is the import-alias suffix of a @group ("admin/ops" → "AdminOps", "" → "").

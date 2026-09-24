@@ -1,36 +1,5 @@
 package docs
 
-import (
-	"sort"
-
-	"github.com/craftgodotdev/craftgo/internal/semantic"
-)
-
-// sortedKeys returns the keys of m, sorted.
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-// sortedPackageNames returns the project's non-blank package names, sorted.
-func sortedPackageNames(proj *semantic.Project) []string {
-	out := make([]string, 0, len(proj.Packages))
-	for k := range proj.Packages {
-		if k != "" {
-			out = append(out, k)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-// sortedServices returns the package's service names, sorted.
-func sortedServices(pkg *semantic.Package) []string { return sortedKeys(pkg.Services) }
-
 // dedupeStrings drops repeated entries, keeping first-seen order.
 func dedupeStrings(in []string) []string {
 	if len(in) <= 1 {

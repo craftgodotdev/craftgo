@@ -50,7 +50,7 @@ func generateService(pkg *semantic.Package, cfg *config.Config, projectRoot stri
 	}
 	r = resolverFor(pkg, r)
 	crossPkg := r.CrossPkg
-	for _, svcName := range sortedServices(pkg) {
+	for _, svcName := range pkg.ServiceNames() {
 		svc := pkg.Services[svcName]
 		if err := generateServiceFor(svcName, svc, pkg, cfg, projectRoot, crossPkg); err != nil {
 			return err

@@ -2,8 +2,10 @@ package golang
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
@@ -92,7 +94,7 @@ func errorBodyMembers(ed *ast.ErrorDecl) []ast.TypeMember {
 // buildValidateData renders the Validate() bodies of pkg's types, constrained
 // scalars, enums and error bodies, with the imports and regexes they use.
 func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
-	names := sortedKeys(pkg.Types)
+	names := slices.Sorted(maps.Keys(pkg.Types))
 
 	uses := map[string]bool{}
 	regexes := newRegexRegistry()
@@ -108,7 +110,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 		})
 	}
 
-	for _, name := range sortedKeys(pkg.Scalars) {
+	for _, name := range slices.Sorted(maps.Keys(pkg.Scalars)) {
 		sd := pkg.Scalars[name]
 		if !scalarDeclHasValidators(sd) {
 			continue
@@ -119,7 +121,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 			PtrReceiver: false,
 		})
 	}
-	for _, name := range sortedKeys(pkg.Enums) {
+	for _, name := range slices.Sorted(maps.Keys(pkg.Enums)) {
 		ed := pkg.Enums[name]
 		checks := enumValidateChecks(ed)
 		if len(checks) > 0 {
@@ -132,7 +134,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 		})
 	}
 
-	for _, name := range sortedKeys(pkg.Errors) {
+	for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
 		ed := pkg.Errors[name]
 		body := &ast.TypeDecl{Name: name + "Body", Body: errorBodyMembers(ed)}
 		if len(body.Body) == 0 {
@@ -145,7 +147,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 		})
 	}
 
-	imps := sortedKeys(uses)
+	imps := slices.Sorted(maps.Keys(uses))
 
 	return validateData{
 		Package:            pkg.Name,

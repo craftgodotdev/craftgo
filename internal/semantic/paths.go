@@ -173,7 +173,7 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, rt strin
 		}
 	}
 	for _, name := range reqFields.explicit {
-		if !inSet(name, pathParams) {
+		if !slices.Contains(pathParams, name) {
 			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamOrphan,
 				"method %s.%s: field %q has @path binding but route %s has no {%s} segment",
 				svcName, m.Name, name, rt, name)

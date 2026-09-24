@@ -2,6 +2,8 @@ package docs
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/getkin/kin-openapi/openapi3"
 
@@ -22,7 +24,7 @@ func addSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistr
 // addErrorSchemas emits one schema per error, under its type name
 // (`UserNotFound` → `UserNotFoundErr`).
 func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
-	for _, name := range sortedKeys(pkg.Errors) {
+	for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
 		ed := pkg.Errors[name]
 		typeName := idents.ErrorTypeName(ed.Name)
 		s := &openapi3.Schema{
@@ -83,7 +85,7 @@ func mixinRefName(ref *ast.NamedTypeRef, pkg *semantic.Package, registry *generi
 
 // addTypeSchemas emits one schema per non-generic type.
 func addTypeSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
-	for _, name := range sortedKeys(pkg.Types) {
+	for _, name := range slices.Sorted(maps.Keys(pkg.Types)) {
 		td := pkg.Types[name]
 		if len(td.TypeParams) > 0 {
 			continue
@@ -95,7 +97,7 @@ func addTypeSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericReg
 // addEnumSchemas emits one schema per enum listing its wire values: an
 // `integer` for an int enum, else a `string`.
 func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames) {
-	for _, name := range sortedKeys(pkg.Enums) {
+	for _, name := range slices.Sorted(maps.Keys(pkg.Enums)) {
 		ed := pkg.Enums[name]
 		s := &openapi3.Schema{Type: &openapi3.Types{"string"}}
 		if semantic.EnumKind(ed) == ast.EnumInt {
@@ -114,7 +116,7 @@ func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames) 
 // addScalarSchemas emits one schema per scalar: its primitive with its
 // constraint keywords.
 func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames) {
-	for _, name := range sortedKeys(pkg.Scalars) {
+	for _, name := range slices.Sorted(maps.Keys(pkg.Scalars)) {
 		sc := pkg.Scalars[name]
 		base := primitiveSchema(sc.Primitive)
 		if base == nil {

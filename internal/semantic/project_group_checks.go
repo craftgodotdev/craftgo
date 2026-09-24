@@ -2,6 +2,8 @@ package semantic
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -42,12 +44,7 @@ func (r *refResolver) checkProjectGroupChecks() {
 			}
 		}
 	}
-	segs := make([]string, 0, len(claims))
-	for seg := range claims {
-		segs = append(segs, seg)
-	}
-	sort.Strings(segs)
-	for _, seg := range segs {
+	for _, seg := range slices.Sorted(maps.Keys(claims)) {
 		occs := claims[seg]
 		// occs comes from map iteration; sort it for stable output.
 		sort.Slice(occs, func(i, j int) bool {
@@ -109,17 +106,12 @@ func (r *refResolver) reportGroupMemberCollisions(seg string, occs []segClaim) {
 		member segMember
 	}
 	byName := map[string][]owner{}
-	var order []string
 	for _, o := range occs {
 		for _, m := range o.members {
-			if _, seen := byName[m.name]; !seen {
-				order = append(order, m.name)
-			}
 			byName[m.name] = append(byName[m.name], owner{claim: o, member: m})
 		}
 	}
-	sort.Strings(order)
-	for _, name := range order {
+	for _, name := range slices.Sorted(maps.Keys(byName)) {
 		owners := byName[name]
 		if len(owners) < 2 {
 			continue

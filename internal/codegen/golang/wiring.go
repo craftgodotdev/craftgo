@@ -2,8 +2,10 @@ package golang
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
@@ -54,12 +56,12 @@ func middlewareGuards(proj *semantic.Project, handWired bool) []middlewareGuard 
 		decl, member, ctor string
 	}
 	seen := map[string]applied{}
-	for _, pkgName := range sortedKeys(proj.Packages) {
+	for _, pkgName := range proj.PackageNames() {
 		pkg := proj.Packages[pkgName]
-		if pkg == nil || pkgName == "" {
+		if pkg == nil {
 			continue
 		}
-		for _, svcName := range sortedServices(pkg) {
+		for _, svcName := range pkg.ServiceNames() {
 			svc := pkg.Services[svcName]
 			if svc == nil {
 				continue
@@ -78,7 +80,7 @@ func middlewareGuards(proj *semantic.Project, handWired bool) []middlewareGuard 
 		}
 	}
 	var guards []middlewareGuard
-	for _, n := range sortedKeys(seen) {
+	for _, n := range slices.Sorted(maps.Keys(seen)) {
 		a := seen[n]
 		guards = append(guards, middlewareGuard{
 			Field: "svcCtx." + n,

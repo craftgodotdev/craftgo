@@ -2,7 +2,8 @@ package golang
 
 import (
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
@@ -68,13 +69,8 @@ func (s *importSet) aliasFor(path string) string { return s.byPath[path] }
 
 // sorted returns the accumulated imports in path order.
 func (s *importSet) sorted() []extraImport {
-	paths := make([]string, 0, len(s.byPath))
-	for p := range s.byPath {
-		paths = append(paths, p)
-	}
-	sort.Strings(paths)
-	out := make([]extraImport, 0, len(paths))
-	for _, p := range paths {
+	out := make([]extraImport, 0, len(s.byPath))
+	for _, p := range slices.Sorted(maps.Keys(s.byPath)) {
 		out = append(out, extraImport{Alias: s.byPath[p], Path: p})
 	}
 	return out

@@ -4,9 +4,10 @@ package designopts
 
 import (
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
@@ -33,12 +34,7 @@ func securitySchemeNames(cfg *config.Config) []string {
 	if cfg == nil || len(cfg.OpenAPI.SecuritySchemes) == 0 {
 		return nil
 	}
-	out := make([]string, 0, len(cfg.OpenAPI.SecuritySchemes))
-	for name := range cfg.OpenAPI.SecuritySchemes {
-		out = append(out, name)
-	}
-	sort.Strings(out)
-	return out
+	return slices.Sorted(maps.Keys(cfg.OpenAPI.SecuritySchemes))
 }
 
 func basePath(cfg *config.Config) string {

@@ -353,15 +353,6 @@ func TestIdentOrStringValue(t *testing.T) {
 	}
 }
 
-func TestInSet(t *testing.T) {
-	if !inSet("b", []string{"a", "b", "c"}) {
-		t.Error("hit")
-	}
-	if inSet("z", []string{"a", "b", "c"}) {
-		t.Error("miss")
-	}
-}
-
 func TestJoinQuoted(t *testing.T) {
 	if got := joinQuoted([]string{"a", "b"}); got != `"a", "b"` {
 		t.Errorf("got %q", got)

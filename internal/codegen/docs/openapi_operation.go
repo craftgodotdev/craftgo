@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"maps"
 	"net/http"
 	"strconv"
 	"strings"
@@ -292,9 +293,7 @@ func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *opena
 	}
 	if len(existing.Headers) > 0 || len(errResp.Headers) > 0 {
 		merged.Headers = openapi3.Headers{}
-		for k, v := range existing.Headers {
-			merged.Headers[k] = v
-		}
+		maps.Copy(merged.Headers, existing.Headers)
 		for k, v := range errResp.Headers {
 			if _, ok := merged.Headers[k]; !ok {
 				merged.Headers[k] = v

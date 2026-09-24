@@ -2,9 +2,11 @@ package golang
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -92,7 +94,7 @@ func generateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot st
 		return fmt.Errorf("package has no name")
 	}
 	r = resolverFor(pkg, r)
-	for _, svcName := range sortedServices(pkg) {
+	for _, svcName := range pkg.ServiceNames() {
 		svc := pkg.Services[svcName]
 		if err := generateTransportFor(svcName, svc, pkg, cfg, projectRoot, r); err != nil {
 			return err
@@ -183,7 +185,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		}
 		// Binders cast cross-package scalars (`shared.ID(r.PathValue("id"))`).
 		fieldImports := collectRequestFieldImports(m, pkg, r)
-		for _, alias := range sortedKeys(fieldImports) {
+		for _, alias := range slices.Sorted(maps.Keys(fieldImports)) {
 			addExtra(extraImport{Alias: alias, Path: fieldImports[alias]})
 		}
 		var err error

@@ -1,6 +1,8 @@
 package semantic
 
 import (
+	"slices"
+
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
@@ -71,7 +73,7 @@ func (a *analyzer) walkNamedRefGenerics(n *ast.NamedTypeRef, typeParams []string
 		return
 	}
 	name := n.Name.Parts[0]
-	if inSet(name, typeParams) {
+	if slices.Contains(typeParams, name) {
 		if len(n.Args) > 0 {
 			a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeGenericNonGeneric,
 				"type parameter %q does not take generic arguments", name)

@@ -1,7 +1,9 @@
 package golang
 
 import (
+	"maps"
 	"path/filepath"
+	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/idents"
@@ -14,7 +16,7 @@ import (
 func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string {
 	typesRoot := filepath.Join(projectRoot, cfg.Output.Types)
 	var files []string
-	for _, name := range sortedPackageNames(proj) {
+	for _, name := range proj.PackageNames() {
 		pkg := proj.Packages[name]
 		if pkg == nil {
 			continue
@@ -38,12 +40,12 @@ func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 	}
 	routesRoot := filepath.Join(projectRoot, cfg.Output.Routes)
 	var routes []string
-	for _, name := range sortedPackageNames(proj) {
+	for _, name := range proj.PackageNames() {
 		pkg := proj.Packages[name]
 		if pkg == nil || len(pkg.Services) == 0 {
 			continue
 		}
-		for _, svcName := range sortedServices(pkg) {
+		for _, svcName := range pkg.ServiceNames() {
 			svc := pkg.Services[svcName]
 			groups := methodGroups(svc)
 			for _, m := range svc.Methods {
@@ -51,7 +53,7 @@ func RegeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 				files = append(files, filepath.Join(dir, idents.FileName(m.Name, cfg.Output.FileCase)+".go"))
 			}
 		}
-		for _, seg := range sortedKeys(routeSegments(pkg, cfg)) {
+		for _, seg := range slices.Sorted(maps.Keys(routeSegments(pkg, cfg))) {
 			routes = append(routes, filepath.Join(routesRoot, filepath.FromSlash(seg), "routes.go"))
 		}
 	}
@@ -95,10 +97,5 @@ func OutputDirs(cfg *config.Config, projectRoot string) []string {
 // RegeneratedEventFiles names what [GenerateEventTarget] writes under
 // outDir: one events.go per DSL package that declares an event.
 func RegeneratedEventFiles(proj *semantic.Project, projectRoot, outDir string) []string {
-	root := filepath.Join(projectRoot, outDir)
-	var files []string
-	for path := range expectedEventFiles(proj, root) {
-		files = append(files, path)
-	}
-	return files
+	return slices.Collect(maps.Keys(expectedEventFiles(proj, filepath.Join(projectRoot, outDir))))
 }

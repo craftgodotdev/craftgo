@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -210,7 +211,7 @@ func (a *analyzer) checkSecurityRef(d *ast.Decorator) {
 		return
 	}
 	check := func(name string, pos lexer.Position) {
-		if inSet(name, a.opts.SecuritySchemes) {
+		if slices.Contains(a.opts.SecuritySchemes, name) {
 			return
 		}
 		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorRef,

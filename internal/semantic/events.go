@@ -1,6 +1,8 @@
 package semantic
 
 import (
+	"maps"
+	"slices"
 	"sort"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -42,12 +44,12 @@ func (p *Project) Events() []ResolvedEvent {
 		return nil
 	}
 	var out []ResolvedEvent
-	for _, pkgName := range sortedNames(p.Packages) {
+	for _, pkgName := range slices.Sorted(maps.Keys(p.Packages)) {
 		pkg := p.Packages[pkgName]
 		if pkg == nil {
 			continue
 		}
-		for _, name := range sortedNames(pkg.Events) {
+		for _, name := range slices.Sorted(maps.Keys(pkg.Events)) {
 			out = append(out, p.resolveEvent(pkg, pkg.Events[name]))
 		}
 	}

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"go/format"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -40,7 +42,7 @@ func generateErrors(pkg *semantic.Package, outDir string, r *projectResolver) er
 // buildErrorsGo returns the unformatted source of pkg's errors.go, errors in
 // name order.
 func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
-	names := sortedKeys(pkg.Errors)
+	names := slices.Sorted(maps.Keys(pkg.Errors))
 
 	needsHTTP := false
 	needsStrconv := false
@@ -70,7 +72,7 @@ func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
 		"package " + pkg.Name + "\n",
 	}
 	if len(imports) > 0 {
-		parts = append(parts, renderImports(sortedKeys(imports)))
+		parts = append(parts, renderImports(slices.Sorted(maps.Keys(imports))))
 	}
 	for _, name := range names {
 		parts = append(parts, renderError(pkg, pkg.Errors[name], r))

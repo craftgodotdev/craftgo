@@ -1,6 +1,8 @@
 package docs
 
 import (
+	"maps"
+	"slices"
 	"sort"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -13,7 +15,7 @@ type symbolKey struct{ pkg, name string }
 // projectResolveTable maps each package's declaration names to merged names,
 // `<PascalPkg><Name>` when two packages declare one, and lists the packages.
 func projectResolveTable(proj *semantic.Project) (map[symbolKey]string, []string) {
-	pkgNames := sortedPackageNames(proj)
+	pkgNames := proj.PackageNames()
 	collide := func(name string) bool {
 		count := 0
 		for _, pn := range pkgNames {
@@ -114,20 +116,20 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 		if p == nil {
 			continue
 		}
-		for _, k := range sortedKeys(p.Types) {
+		for _, k := range slices.Sorted(maps.Keys(p.Types)) {
 			td := cloneTypeDecl(p.Types[k], resolve[symbolKey{pkg: pkgName, name: k}], pkgName, rewriteRef)
 			out.Types[td.Name] = td
 		}
-		for _, k := range sortedKeys(p.Enums) {
+		for _, k := range slices.Sorted(maps.Keys(p.Enums)) {
 			ed := *p.Enums[k]
 			ed.Name = resolve[symbolKey{pkg: pkgName, name: k}]
 			out.Enums[ed.Name] = &ed
 		}
-		for _, k := range sortedKeys(p.Errors) {
+		for _, k := range slices.Sorted(maps.Keys(p.Errors)) {
 			ed := cloneErrorDecl(p.Errors[k], resolve[symbolKey{pkg: pkgName, name: k}], pkgName, rewriteRef)
 			out.Errors[ed.Name] = ed
 		}
-		for _, k := range sortedKeys(p.Scalars) {
+		for _, k := range slices.Sorted(maps.Keys(p.Scalars)) {
 			sd := *p.Scalars[k]
 			sd.Name = resolve[symbolKey{pkg: pkgName, name: k}]
 			out.Scalars[sd.Name] = &sd
@@ -139,9 +141,7 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 			}
 			out.Services[name] = cloneServiceInfo(si, pkgName, rewriteRef)
 		}
-		for name, md := range p.Middlewares {
-			out.Middlewares[name] = md
-		}
+		maps.Copy(out.Middlewares, p.Middlewares)
 	}
 	return out
 }
@@ -184,7 +184,7 @@ func allDeclNames(p *semantic.Package) []string {
 	for n := range p.Scalars {
 		add(n)
 	}
-	return sortedKeys(seen)
+	return slices.Sorted(maps.Keys(seen))
 }
 
 // cloneTypeDecl copies td as newName, its body refs renamed by rewrite.
