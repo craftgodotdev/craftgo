@@ -207,10 +207,11 @@ clean: ## Remove build artefacts and coverage files.
 	@find . -type f \( -name '*.test' -o -name '*.out' -o -name '*.prof' -o -name '*.cov' \) -delete
 
 .PHONY: clean-gen
-clean-gen: ## Delete the generated transport, routes, types, events and docs folders of every example and the e2e fixture.
+clean-gen: ## Delete what gen regenerates in every example and the e2e fixture: the generated folders and svccontext/middlewares.go.
 	@for d in $(EXAMPLE_PROJECTS) $(E2E_DIRS); do \
 		echo "→ clean $$d"; \
-		rm -rf "$$d/internal/transport" "$$d/internal/routes" "$$d/internal/types" "$$d/internal/events" "$$d/docs"; \
+		rm -rf "$$d/internal/types" "$$d/internal/transport" "$$d/internal/routes" "$$d/internal/grpc" \
+			"$$d/internal/wiring" "$$d/internal/pb" "$$d/internal/events" "$$d/docs" "$$d/svccontext/middlewares.go"; \
 	done
 
 # ---- release -------------------------------------------------------------
