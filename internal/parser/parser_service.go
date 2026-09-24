@@ -99,7 +99,7 @@ func serviceMemberError(t lexer.Token) string {
 	case t.Kind == lexer.KwEvent:
 		return "`event` is a file-level declaration - move `event ... { payload ... }` out of the service body; a service holds HTTP methods only"
 	case t.Kind == lexer.Ident && t.Text == "consume":
-		return "`consume` is no longer part of the DSL - which events a deployable listens to is Go code, written where its bus is built"
+		return "a service has no `consume` member - which events a deployable listens to is Go code, written where its bus is built"
 	}
 	return "expected an HTTP verb, got " + t.Kind.String()
 }

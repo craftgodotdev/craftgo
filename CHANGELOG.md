@@ -15,6 +15,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   installs looks it up when a panic happens, so `log.SetDefault`, or either
   server's `SetLogger`, reaches both, even after the handler is built.
 
+- **Two parser errors read as facts.** An out-of-range integer reports
+  `integer literal N is outside the signed 64-bit range (max …)`, and
+  `consume` in a service body `a service has no consume member - …`.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

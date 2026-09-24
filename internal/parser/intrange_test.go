@@ -43,7 +43,7 @@ func TestEnumIntOutOfRangeRejected(t *testing.T) {
 	for _, value := range []string{"99999999999999999999", "9223372036854775808", "-9223372036854775809"} {
 		p := New("t.craftgo", "enum E {\n\tA = "+value+"\n}\n")
 		p.Parse()
-		if d := p.Diagnostics(); len(d) != 1 || !strings.Contains(d[0].Msg, "integer literal "+value+" is out of range") {
+		if d := p.Diagnostics(); len(d) != 1 || !strings.Contains(d[0].Msg, "integer literal "+value+" is outside the signed 64-bit range") {
 			t.Errorf("A = %s: diagnostics %v, want one out-of-range error", value, d)
 		}
 	}

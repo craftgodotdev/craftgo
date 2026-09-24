@@ -78,8 +78,8 @@ service S {
 }`)
 	p.Parse()
 	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "`consume` is no longer part of the DSL") {
-		t.Fatalf("want a consume-removed diagnostic, got %v", diags)
+	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "a service has no `consume` member") {
+		t.Fatalf("want the consume diagnostic, got %v", diags)
 	}
 }
 

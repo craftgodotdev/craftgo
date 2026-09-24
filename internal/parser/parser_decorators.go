@@ -195,7 +195,7 @@ func (p *Parser) signedInt(pos lexer.Position, tok lexer.Token, neg bool) int64 
 	}
 	n, err := strconv.ParseInt(text, 10, 64)
 	if err != nil {
-		p.errorf(pos, "integer literal %s is out of range - values beyond the signed 64-bit range (%s) aren't supported yet", text, bound)
+		p.errorf(pos, "integer literal %s is outside the signed 64-bit range (%s)", text, bound)
 	}
 	return n
 }
