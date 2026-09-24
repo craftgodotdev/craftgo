@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -136,7 +137,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 
 	for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
 		ed := pkg.Errors[name]
-		body := &ast.TypeDecl{Name: name + "Body", Body: errorBodyMembers(ed)}
+		body := &ast.TypeDecl{Name: idents.ErrorBodyName(name), Body: errorBodyMembers(ed)}
 		if len(body.Body) == 0 {
 			continue
 		}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
@@ -52,6 +53,7 @@ func sampleConfig() *config.Config {
 			Svccontext: "./svccontext/svccontext.go",
 			Wiring:     "./internal/wiring",
 			OpenAPI:    "./docs/openapi.yaml",
+			FileCase:   idents.FileCaseKebab,
 		},
 		OpenAPI: config.OpenAPI{BasePath: "/v1"},
 	}

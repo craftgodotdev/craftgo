@@ -10,6 +10,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	craftparser "github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -32,7 +33,7 @@ func eventsConfig() *config.Config {
 			Config:     "./config",
 			OpenAPI:    "./docs/openapi.yaml",
 			Main:       "-",
-			FileCase:   config.FileCaseSnake,
+			FileCase:   idents.FileCaseSnake,
 		},
 		OpenAPI: config.OpenAPI{Title: "Events", Version: "1.0.0"},
 		Events: config.Events{

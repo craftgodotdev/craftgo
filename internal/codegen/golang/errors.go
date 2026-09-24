@@ -108,7 +108,7 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver) s
 	headers, cookies, _ := errorResponseBindings(ed, pkg, r)
 	data := errorTemplateData{
 		TypeName:           idents.ErrorTypeName(ed.Name),
-		BodyName:           ed.Name + "Body",
+		BodyName:           idents.ErrorBodyName(ed.Name),
 		ConstName:          "ErrCode" + ed.Name,
 		QuotedCode:         strconv.Quote(screamingSnake(ed.Name)),
 		QuotedMessage:      strconv.Quote(errcat.Message(ed.Category)),

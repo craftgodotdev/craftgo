@@ -79,17 +79,20 @@ func SplitFieldName(s string) []string {
 // KebabCase lowercases the words of [SplitFieldName] and joins them with `-`:
 // `GetUser` → `get-user`. A digit→letter boundary is not a word break:
 // `ListV2Items` → `list-v2items`.
-func KebabCase(s string) string {
-	parts := SplitFieldName(s)
-	for i, p := range parts {
-		parts[i] = strings.ToLower(p)
-	}
-	return strings.Join(parts, "-")
-}
+func KebabCase(s string) string { return FileName(s, FileCaseKebab) }
+
+// Values of `output.fileCase`, the case of generated file and directory names.
+const (
+	FileCaseKebab = "kebab"
+	FileCaseSnake = "snake"
+	FileCaseCamel = "camel"
+	// DefaultFileCase applies when output.fileCase is unset.
+	DefaultFileCase = FileCaseSnake
+)
 
 // FileName renders a DSL identifier as a file or directory name in the given
-// `output.fileCase`: "snake" → `create_user`, "camel" → `createUser`, anything
-// else → `create-user`.
+// `output.fileCase`: "snake" → `create_user`, "camel" → `createUser`, "kebab"
+// → `create-user`; "" is [DefaultFileCase].
 func FileName(name, style string) string {
 	return FileNameWords(style, SplitFieldName(name))
 }
@@ -101,10 +104,13 @@ func FileNameWords(style string, words []string) string {
 	for i, w := range words {
 		lowered[i] = strings.ToLower(w)
 	}
+	if style == "" {
+		style = DefaultFileCase
+	}
 	switch style {
-	case "snake":
+	case FileCaseSnake:
 		return strings.Join(lowered, "_")
-	case "camel":
+	case FileCaseCamel:
 		var b strings.Builder
 		for i, w := range lowered {
 			if i > 0 && w != "" {
@@ -113,7 +119,7 @@ func FileNameWords(style string, words []string) string {
 			b.WriteString(w)
 		}
 		return b.String()
-	default: // "kebab", "" and any unknown case
+	default:
 		return strings.Join(lowered, "-")
 	}
 }
@@ -206,3 +212,7 @@ func ErrorTypeName(name string) string {
 	}
 	return name + "Err"
 }
+
+// ErrorBodyName returns the Go name of the struct an error with fields embeds:
+// the DSL name plus `Body`.
+func ErrorBodyName(name string) string { return name + "Body" }

@@ -96,18 +96,21 @@ func TestFileName(t *testing.T) {
 		{"ping", "ping", "ping", "ping"},
 	}
 	for _, c := range cases {
-		if got := FileName(c.name, "kebab"); got != c.kebab {
+		if got := FileName(c.name, FileCaseKebab); got != c.kebab {
 			t.Errorf("FileName(%q, kebab) = %q, want %q", c.name, got, c.kebab)
 		}
-		if got := FileName(c.name, "snake"); got != c.snake {
+		if got := FileName(c.name, FileCaseSnake); got != c.snake {
 			t.Errorf("FileName(%q, snake) = %q, want %q", c.name, got, c.snake)
 		}
-		if got := FileName(c.name, "camel"); got != c.camel {
+		if got := FileName(c.name, FileCaseCamel); got != c.camel {
 			t.Errorf("FileName(%q, camel) = %q, want %q", c.name, got, c.camel)
 		}
-		// An empty style falls back to kebab.
-		if got := FileName(c.name, ""); got != KebabCase(c.name) {
-			t.Errorf("FileName(%q, \"\") = %q, want KebabCase %q", c.name, got, KebabCase(c.name))
+		// An empty style is the default case.
+		if got := FileName(c.name, ""); got != FileName(c.name, DefaultFileCase) {
+			t.Errorf("FileName(%q, \"\") = %q, want %q", c.name, got, FileName(c.name, DefaultFileCase))
+		}
+		if got := KebabCase(c.name); got != c.kebab {
+			t.Errorf("KebabCase(%q) = %q, want %q", c.name, got, c.kebab)
 		}
 	}
 }
@@ -147,6 +150,22 @@ func TestPascalCase(t *testing.T) {
 	for _, c := range cases {
 		if got := PascalCase(c.in); got != c.want {
 			t.Errorf("PascalCase(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestErrorNames(t *testing.T) {
+	cases := []struct{ dsl, typeName, bodyName string }{
+		{"UserGone", "UserGoneErr", "UserGoneBody"},
+		{"QuotaErr", "QuotaErr", "QuotaErrBody"},
+		{"AuthError", "AuthError", "AuthErrorBody"},
+	}
+	for _, c := range cases {
+		if got := ErrorTypeName(c.dsl); got != c.typeName {
+			t.Errorf("ErrorTypeName(%q) = %q, want %q", c.dsl, got, c.typeName)
+		}
+		if got := ErrorBodyName(c.dsl); got != c.bodyName {
+			t.Errorf("ErrorBodyName(%q) = %q, want %q", c.dsl, got, c.bodyName)
 		}
 	}
 }

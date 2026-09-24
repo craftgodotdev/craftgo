@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/craftgodotdev/craftgo/internal/idents"
 )
 
 // writeFile writes content to path, failing the test on error.
@@ -322,13 +324,13 @@ func TestLoadFileCaseDefaultsToSnake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Output.FileCase != FileCaseSnake {
-		t.Errorf("default fileCase = %q, want %q", cfg.Output.FileCase, FileCaseSnake)
+	if cfg.Output.FileCase != idents.FileCaseSnake {
+		t.Errorf("default fileCase = %q, want %q", cfg.Output.FileCase, idents.FileCaseSnake)
 	}
 }
 
 func TestLoadFileCaseAcceptsKnownAndRejectsUnknown(t *testing.T) {
-	for _, v := range []string{FileCaseKebab, FileCaseSnake, FileCaseCamel} {
+	for _, v := range []string{idents.FileCaseKebab, idents.FileCaseSnake, idents.FileCaseCamel} {
 		dir := t.TempDir()
 		path := filepath.Join(dir, Filename)
 		writeFile(t, path, "output:\n  fileCase: "+v+"\n")

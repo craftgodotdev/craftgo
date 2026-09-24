@@ -16,6 +16,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/craftgodotdev/craftgo/internal/idents"
 )
 
 // Config is the decoded `craftgo.design.yaml`.
@@ -97,15 +99,6 @@ type Plugins struct {
 	Go     string `yaml:"go"`
 	GoGRPC string `yaml:"goGrpc"`
 }
-
-// Values of [Output.FileCase].
-const (
-	FileCaseKebab = "kebab"
-	FileCaseSnake = "snake"
-	FileCaseCamel = "camel"
-	// DefaultFileCase applies when the manifest leaves fileCase unset.
-	DefaultFileCase = FileCaseSnake
-)
 
 // Events lists the languages the event artefacts are generated for; no
 // targets means [DefaultEventTargets].
@@ -435,10 +428,10 @@ func (c *Config) validate() error {
 		}
 	}
 	switch c.Output.FileCase {
-	case "", FileCaseKebab, FileCaseSnake, FileCaseCamel:
+	case "", idents.FileCaseKebab, idents.FileCaseSnake, idents.FileCaseCamel:
 	default:
 		return fmt.Errorf("output.fileCase %q is not supported - use %q, %q, or %q",
-			c.Output.FileCase, FileCaseKebab, FileCaseSnake, FileCaseCamel)
+			c.Output.FileCase, idents.FileCaseKebab, idents.FileCaseSnake, idents.FileCaseCamel)
 	}
 	seen := map[string]bool{}
 	for _, t := range c.Events.Targets {
@@ -511,7 +504,7 @@ func (c *Config) applyDefaults() {
 		c.Output.GRPC = "./internal/grpc"
 	}
 	if c.Output.FileCase == "" {
-		c.Output.FileCase = DefaultFileCase
+		c.Output.FileCase = idents.DefaultFileCase
 	}
 	if len(c.Events.Targets) == 0 {
 		c.Events.Targets = DefaultEventTargets(c.Output.Kind)

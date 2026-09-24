@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 )
 
 // Two services in one @group share its directory without a diagnostic.
@@ -139,12 +139,12 @@ service Alpha { get Ping /alpha/ping { response R } }
 service UserService { get Ping /user/ping { response R } }`,
 	}
 	root, files := projectFixture(t, src)
-	_, diags := AnalyzeProject(files, Options{DesignRoot: root, FileCase: config.FileCaseKebab})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root, FileCase: idents.FileCaseKebab})
 	if findCode(diags, CodeGroupMethodCollision) == nil {
 		t.Fatalf("kebab: both land in user-service, so Ping must collide; got %v", codes(diags))
 	}
 	root, files = projectFixture(t, src)
-	_, diags = AnalyzeProject(files, Options{DesignRoot: root, FileCase: config.FileCaseSnake})
+	_, diags = AnalyzeProject(files, Options{DesignRoot: root, FileCase: idents.FileCaseSnake})
 	if findCode(diags, CodeGroupMethodCollision) != nil {
 		t.Errorf("snake: UserService occupies user_service, so the directories differ")
 	}

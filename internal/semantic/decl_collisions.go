@@ -2,9 +2,9 @@ package semantic
 
 import (
 	"sort"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
@@ -67,14 +67,6 @@ type producedName struct {
 	pos     lexer.Position
 }
 
-// errStructName returns the Go struct name of the error decl name.
-func errStructName(name string) string {
-	if strings.HasSuffix(name, "Err") || strings.HasSuffix(name, "Error") {
-		return name
-	}
-	return name + "Err"
-}
-
 // goNamesProducedBy returns the Go type names d emits into the types
 // package.
 func goNamesProducedBy(d ast.Decl) []producedName {
@@ -98,9 +90,9 @@ func goNamesProducedBy(d ast.Decl) []producedName {
 		if dd.Name == "" {
 			return nil
 		}
-		out := []producedName{{goName: errStructName(dd.Name), dslName: dd.Name, kind: "error", pos: dd.Pos}}
+		out := []producedName{{goName: idents.ErrorTypeName(dd.Name), dslName: dd.Name, kind: "error", pos: dd.Pos}}
 		if len(dd.Body) > 0 {
-			out = append(out, producedName{goName: dd.Name + "Body", dslName: dd.Name, kind: "error", pos: dd.Pos})
+			out = append(out, producedName{goName: idents.ErrorBodyName(dd.Name), dslName: dd.Name, kind: "error", pos: dd.Pos})
 		}
 		return out
 	}

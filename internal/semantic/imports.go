@@ -13,8 +13,7 @@ type refResolver struct {
 	proj     *Project
 	diags    []Diagnostic
 	basePath string // [Options.BasePath]
-	// fileCase is the defaulted output.fileCase, which names an ungrouped
-	// service's directory.
+	// fileCase is output.fileCase, which names an ungrouped service's directory.
 	fileCase string
 }
 

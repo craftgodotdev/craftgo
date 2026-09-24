@@ -45,7 +45,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 		a.runRefPhase(group)
 		diags = append(diags, a.diags...)
 	}
-	r := &refResolver{proj: proj, diags: diags, basePath: opts.BasePath, fileCase: resolvedFileCase(opts.FileCase)}
+	r := &refResolver{proj: proj, diags: diags, basePath: opts.BasePath, fileCase: opts.FileCase}
 	for _, f := range files {
 		r.processFile(f, opts.DesignRoot)
 	}

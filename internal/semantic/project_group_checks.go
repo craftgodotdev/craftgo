@@ -7,7 +7,6 @@ import (
 	"sort"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/route"
 )
@@ -202,12 +201,4 @@ func groupAnchor(block *ast.ServiceDecl) lexer.Position {
 		}
 	}
 	return block.Pos
-}
-
-// resolvedFileCase returns fileCase, or [config.DefaultFileCase] when unset.
-func resolvedFileCase(fileCase string) string {
-	if fileCase == "" {
-		return config.DefaultFileCase
-	}
-	return fileCase
 }
