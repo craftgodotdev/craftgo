@@ -8,8 +8,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// ---------- BindingKind (shared with codegen) ----------
-
 func TestBindingKind(t *testing.T) {
 	mk := func(decs ...string) []*ast.Decorator {
 		out := make([]*ast.Decorator, len(decs))
@@ -39,8 +37,6 @@ func TestBindingKind(t *testing.T) {
 	}
 }
 
-// ---------- RequestFieldBinding (shared with codegen) ----------
-
 func TestRequestFieldBinding(t *testing.T) {
 	field := func(name string, decs ...string) *ast.Field {
 		ds := make([]*ast.Decorator, len(decs))
@@ -59,7 +55,7 @@ func TestRequestFieldBinding(t *testing.T) {
 	}{
 		{field("q", "query"), false, "query", false}, // explicit wins, not auto
 		{field("s", "sensitive"), false, "sensitive", false},
-		{field("b", "body"), true, "body", false}, // explicit @body
+		{field("b", "body"), true, "body", false},
 		{field("up", "form"), true, "form", false},
 		{field("id"), false, "path", true},      // un-decorated, name matches a path segment
 		{field("page"), false, "query", true},   // un-decorated on a body-less verb
@@ -72,8 +68,6 @@ func TestRequestFieldBinding(t *testing.T) {
 		}
 	}
 }
-
-// ---------- WireName (shared with codegen) ----------
 
 func TestWireName(t *testing.T) {
 	mk := func(field, dec, arg string) *ast.Field {
@@ -96,8 +90,6 @@ func TestWireName(t *testing.T) {
 		t.Errorf("nil field: got %q, want empty", got)
 	}
 }
-
-// ---------- Level rendering ----------
 
 func TestLevelName(t *testing.T) {
 	cases := []struct {
@@ -126,7 +118,7 @@ func TestLevelString(t *testing.T) {
 		{0, "(none)"},
 		{LvlField, "field"},
 		{LvlField | LvlScalar, "field, scalar"},
-		// ordering follows levelNames (file < type < field < ...)
+		// rendered in levelNames order, not operand order
 		{LvlMethod | LvlField, "field, method"},
 	}
 	for _, c := range cases {
@@ -135,8 +127,6 @@ func TestLevelString(t *testing.T) {
 		}
 	}
 }
-
-// ---------- Registry sanity ----------
 
 func TestRegistryLookup(t *testing.T) {
 	if _, ok := Lookup("doc"); !ok {
@@ -177,8 +167,6 @@ func TestRegistrySpecLevels(t *testing.T) {
 }
 
 func TestRegistrySpecsHaveDocs(t *testing.T) {
-	// A blank Doc would surface as an empty hover tooltip in the LSP -
-	// guard against accidental omissions when the registry grows.
 	for name, s := range Registry {
 		if s.Name != name {
 			t.Errorf("registry key %q != Spec.Name %q", name, s.Name)
@@ -192,14 +180,10 @@ func TestRegistrySpecsHaveDocs(t *testing.T) {
 	}
 }
 
-// ---------- Placement: unknown decorator ----------
-
 func TestPlacementUnknownDecorator(t *testing.T) {
 	d := expectDiag(t, `type X { name string @nope }`, CodeDecoratorUnknown)
 	expectMessage(t, d, "unknown decorator @nope")
 }
-
-// ---------- Placement: misplaced known decorator ----------
 
 func TestPlacementPrefixOnField(t *testing.T) {
 	d := expectDiag(t, `type X { name string @prefix("/x") }`, CodeDecoratorPlacement)
@@ -241,8 +225,6 @@ func TestPlacementValidatorsOnEnum(t *testing.T) {
 enum E { A B }`, CodeDecoratorPlacement)
 	expectMessage(t, d, "@length is not allowed on enum E")
 }
-
-// ---------- Placement: happy path ----------
 
 func TestPlacementHappyPath(t *testing.T) {
 	mustClean(t, `@version("1.0")
@@ -286,8 +268,6 @@ middleware Auth
 scalar Email string`)
 }
 
-// ---------- Placement: diagnostic shape ----------
-
 func TestPlacementEmitsEndPosition(t *testing.T) {
 	src := `type X { name string @nope }`
 	_, diags := Analyze(parseFiles(t, src))
@@ -295,7 +275,7 @@ func TestPlacementEmitsEndPosition(t *testing.T) {
 	if d == nil {
 		t.Fatalf("expected unknown-decorator diag, got %v", diags)
 	}
-	// `@nope` is 5 columns wide; End must point past the last char.
+	// `@nope` is 5 columns wide.
 	if d.End.Line != d.Pos.Line {
 		t.Errorf("End line %d != Pos line %d", d.End.Line, d.Pos.Line)
 	}
@@ -312,13 +292,8 @@ func TestPlacementListsValidSitesInMessage(t *testing.T) {
 	expectMessage(t, d, "service")
 }
 
-// ---------- Placement: nil-decorator defensive guard ----------
-
+// checkPlacement skips nil decorator entries.
 func TestPlacementNilEntry(t *testing.T) {
-	// Defensive guard: parser doesn't emit nil decorator entries, but
-	// checkPlacement tolerates them so a future regression doesn't
-	// crash the analyser. We feed the slice both shapes (nil + valid)
-	// so the loop body exercises the nil branch and continues.
 	a := newTestAnalyzer(&Package{})
 	a.checkPlacement(LvlField, "field X.y", nil)
 	a.checkPlacement(LvlField, "field X.y", []*ast.Decorator{nil, {Name: "doc"}})
@@ -326,13 +301,6 @@ func TestPlacementNilEntry(t *testing.T) {
 		t.Errorf("nil entries + a valid @doc on field should not diag, got %v", a.diags)
 	}
 }
-
-// ---------- Existing diags now carry Code + Related ----------
-
-// Each test below asserts that an LSP-consumed diagnostic carries
-// the structured Code + Related fields, in addition to its message
-// string. Substring assertions on Msg live in semantic_test.go;
-// these tests are the IDE-side contract.
 
 func TestCodeOnDuplicateDecl(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `type X {}
@@ -387,11 +355,7 @@ func TestCodeOnExtendOrphan(t *testing.T) {
 	expectDiag(t, `extend service S { get Op /x {} }`, CodeServiceExtendOrphan)
 }
 
-// TestExtendServiceDecoratorsPropagate pins that an `extend service`
-// block can carry its own decorators which the merge step prepends to
-// every method's chain inside that block. This lets one logical service
-// split into public and authenticated sub-blocks via
-// decorators-on-extend.
+// Decorators on an `extend service` block apply only to that block's methods.
 func TestExtendServiceDecoratorsPropagate(t *testing.T) {
 	pkg, diags := Analyze(parseFiles(t, `middleware Auth
 service S { get Pub /pub {} }
@@ -416,14 +380,9 @@ extend service S { get Priv /priv {} }`))
 	if pub == nil || priv == nil {
 		t.Fatalf("methods missing: pub=%v priv=%v", pub, priv)
 	}
-	// Public method's decorator chain is empty (no inheritance from
-	// primary, which had no decorators).
 	if len(pub.Decorators) != 0 {
 		t.Errorf("Pub picked up unexpected decorators: %+v", pub.Decorators)
 	}
-	// Private method inherits @middlewares and @tags from the extend
-	// block - the decorator chain matches "as if the user wrote those
-	// decorators above the method directly".
 	var sawMW, sawTags bool
 	for _, d := range priv.Decorators {
 		switch d.Name {
@@ -473,18 +432,13 @@ func TestCodeOnBindingType(t *testing.T) {
 		src   string
 		want  string
 	}{
-		// @path accepts the same wire-bindable shapes as @query (string /
-		// bool / int* / uint* / float*, or a scalar / enum over one) but
-		// never an optional (a route always supplies the segment), an
-		// array, or a map / struct / generic.
+		// @path takes no optional (a route always has the segment), array or map.
 		{"map on @path", `type X { id map<string, int> @path }`, "@path requires"},
 		{"optional on @path", `type X { id string? @path }`, "@path requires"},
 		{"array on @path", `type X { id string[] @path }`, "@path requires"},
-		// Cookie arrays are nonsense (cookies are single-value per name).
+		// A cookie carries one value per name.
 		{"array on @cookie", `type X { ids string[] @cookie }`, "@cookie cannot bind to an array"},
-		// A wire-string source encodes an array as repeated single values
-		// (`?x=1&x=2`); a nested array has no wire form and the 1-D binder
-		// codegen would emit won't compile, so reject at design time.
+		// A wire-string array is repeated values (`?x=1&x=2`); a nested array has no wire form.
 		{"multi-dim array on @query", `type X { grid int[][] @query }`, "@query cannot bind to a multi-dimensional array"},
 		{"multi-dim array on @header", `type X { tags string[][] @header }`, "@header cannot bind to a multi-dimensional array"},
 		{"multi-dim array on @form", `type X { grid int[][] @form }`, "@form cannot bind to a multi-dimensional array"},
@@ -497,7 +451,7 @@ type X { p P @query }`, "@query requires"},
 type X { ps P[] @query }`, "@query requires"},
 		{"generic instance on @query", `type Page<T> { items T[] }
 type X { p Page<string> @query }`, "@query requires"},
-		// `file` only binds to @form; rejected on every other wire.
+		// `file` binds only to @form.
 		{"file on @query", `type X { upload file @query }`, "@query requires"},
 		{"file on @header", `type X { upload file @header }`, "@header requires"},
 	}
@@ -510,23 +464,17 @@ type X { p Page<string> @query }`, "@query requires"},
 }
 
 func TestCodeOnBindingTypeAcceptsPlainString(t *testing.T) {
-	// Sanity: the binding-type check must NOT fire for well-formed
-	// shapes (plain string on @path / @header / @cookie).
 	mustClean(t, `type X { id string @path  auth string @header  sid string @cookie }`)
-	// Numeric / scalar / enum @path is accepted (parsed like @query).
+	// A numeric, scalar or enum @path field parses like @query.
 	mustClean(t, `scalar UserId int @gte(1)
 enum Kind { A B }
 type Y { id int @path  uid UserId @path  k Kind @path }`)
 	mustClean(t, `error NotFound E { token string @header  sess string @cookie }`)
-	// Single-level arrays on @query / @header / @form ARE bindable (the
-	// repeated-param form) - only nested arrays are rejected.
+	// A 1-D array binds to @query, @header and @form as repeated values.
 	mustClean(t, `type Z { tags string[] @query  ids int[] @header  vals string[] @form }`)
 }
 
-// A multi-dimensional array whose element is a CROSS-PACKAGE scalar must
-// still be rejected on a wire-string source - the depth guard is purely
-// structural and runs before the qualified-ref resolution is deferred, so
-// the foreign element type doesn't let it slip through.
+// A multi-dimensional @query array of a cross-package scalar is rejected.
 func TestMultiDimArrayCrossPkgQueryRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/s.craftgo": `package shared
@@ -542,10 +490,7 @@ service S { get List /list { request Req } }`,
 	}
 }
 
-// TestBodyFormOnNonBodyVerbRejected pins that @body / @form request
-// fields are rejected on GET/DELETE (and other non-body verbs). Those
-// handlers decode no request body, so the binder would silently drop the
-// field; the design-time error prevents the data loss.
+// @body and @form request fields are rejected on verbs without a request body.
 func TestBodyFormOnNonBodyVerbRejected(t *testing.T) {
 	expectError(t, `type Req { raw string @body }
 service S { get Fetch /things { request Req } }`, CodeBindingVerb)
@@ -553,8 +498,7 @@ service S { get Fetch /things { request Req } }`, CodeBindingVerb)
 service S { delete Remove /things { request Req } }`, CodeBindingVerb)
 }
 
-// TestBodyFormOnBodyVerbOK confirms the check leaves body-bearing verbs
-// alone: POST decodes @body via JSON, PUT/PATCH accept @form multipart.
+// @body and @form request fields are accepted on body verbs.
 func TestBodyFormOnBodyVerbOK(t *testing.T) {
 	mustClean(t, `type Req { raw string @body }
 service S { post Make /things { request Req } }`)
@@ -562,25 +506,18 @@ service S { post Make /things { request Req } }`)
 service S { put Replace /things { request Req } }`)
 }
 
-// TestNullableAutoQueryRejected pins that a `@nullable` field with no
-// explicit binding is rejected on a body-less verb: it auto-binds to
-// @query (there is no body to decode into), where the pointer the
-// @nullable lowers to can't be assigned a wire string - the same reason
-// the explicit `@nullable @query` pairing is rejected.
+// A @nullable field that auto-binds to @query on a body-less verb is rejected.
 func TestNullableAutoQueryRejected(t *testing.T) {
 	expectError(t, `scalar Cents int @gte(0)
 type Req { c Cents @nullable }
 service S { get C /x { request Req } }`, CodeDecoratorConflict)
-	// On a body verb the field rides @body (a pointer is fine there), so
-	// the same shape is accepted.
+	// On a body verb the field binds to @body and is accepted.
 	mustClean(t, `scalar Cents int @gte(0)
 type Req { c Cents @nullable }
 service S { post C /x { request Req } }`)
 }
 
-// TestDuplicatePathVarRejected pins that a route repeating a path
-// variable name is rejected - net/http's ServeMux panics on a duplicate
-// wildcard at registration.
+// A route that repeats a path variable is rejected; ServeMux panics on a duplicate wildcard.
 func TestDuplicatePathVarRejected(t *testing.T) {
 	expectDiag(t, `type Resp { ok bool }
 type Req { id int @path }
@@ -589,24 +526,19 @@ service S { get Get /items/{id}/x/{id} { request Req  response Resp } }`, CodeDu
 type Req { id int @path  sub int @path }
 service S { get Get /items/{id}/x/{sub} { request Req  response Resp } }`)
 
-	// A method path segment reusing a variable already bound by the service
-	// @prefix produces a duplicate wildcard in the combined route - the
-	// registered pattern is prefix + method path, so ServeMux panics at boot.
+	// A method path that repeats a variable of the service @prefix is rejected.
 	expectDiag(t, `type Resp { items string[] }
 type Req { tenantID string @path }
 @prefix("/tenant/{tenantID}")
 service S { get List /{tenantID}/items { request Req  response Resp } }`, CodeDuplicatePathVar)
-	// A prefix variable plus a DISTINCT method variable (both bound by
-	// fields) is clean.
+	// Distinct prefix and method variables are accepted.
 	mustClean(t, `type Resp { ok bool }
 type Req { tenantID string @path  id string @path }
 @prefix("/tenant/{tenantID}")
 service S { get Get /{id} { request Req  response Resp } }`)
 }
 
-// TestDuplicateWireNameRejected pins that two fields binding to the same
-// wire name on the same source are rejected (a duplicate OpenAPI
-// parameter); the same name on different sources is fine.
+// Two fields binding one wire name on one source are rejected; on two sources they are not.
 func TestDuplicateWireNameRejected(t *testing.T) {
 	expectDiag(t, `type Req { a string @query("x")  b string @query("x") }
 type Resp { ok bool }
@@ -616,12 +548,7 @@ type Resp { ok bool }
 service S { get Do /items { request Req  response Resp } }`)
 }
 
-// TestMixinPromotedBindingChecked pins that the method-level binding
-// checks see a field a request inherits through a mixin - a non-bindable
-// field that auto-binds to @query on a body-less verb, and a @body / @form
-// field on a non-body verb, are both rejected at design time even when
-// promoted via a mixin (previously only the codegen stage caught these,
-// with a position-less error the LSP never surfaced).
+// The method binding checks cover fields a request promotes from a mixin.
 func TestMixinPromotedBindingChecked(t *testing.T) {
 	expectError(t, `type Thing { x int }
 type Meta { data Thing }
@@ -632,16 +559,13 @@ service S { get G /g { request Req } }`, CodeBindingType)
 type Req { Meta }
 service S { get G /g { request Req } }`, CodeBindingVerb)
 
-	// A bindable promoted field (string auto-binds to @query) stays clean.
+	// A promoted string auto-binds to @query.
 	mustClean(t, `type Meta { q string }
 type Req { Meta }
 service S { get G /g { request Req } }`)
 }
 
-// TestBindingTypeWireAccepts pins that every HTTP wire-string source
-// (@query, @header, @cookie, @form) accepts the same primitive /
-// scalar / enum / array set. The runtime codegen then emits the
-// matching parse + cast path. file is @form-only.
+// @query, @header, @cookie and @form accept the same primitive, scalar, enum and array shapes.
 func TestBindingTypeWireAccepts(t *testing.T) {
 	cases := []struct {
 		label string
@@ -675,10 +599,7 @@ type X { a Priority @query  b Priority @header  c Priority @cookie  d Priority @
 }
 
 func TestErrorBodyAllowsCodeAndMessageAsWireFields(t *testing.T) {
-	// `code` / `message` are not reserved DSL names - they coexist
-	// with the framework's unexported `code` / `message` metadata via
-	// Go's case-sensitive identifier rule (DSL `code` → exported
-	// `Code`, distinct from the lowercase framework field).
+	// DSL `code` lowers to `Code`, distinct from the error's unexported `code` field.
 	mustClean(t, `error NotFound E {
     code string? @default("E_404")
     message string? @default("Gone")
@@ -689,8 +610,6 @@ func TestErrorBodyAllowsCodeAndMessageAsWireFields(t *testing.T) {
 }`)
 }
 
-// ---------- @sensitive: standalone is fine ----------
-
 func TestSensitiveAlone(t *testing.T) {
 	mustClean(t, `package design
 type User {
@@ -700,16 +619,12 @@ type User {
 }
 
 func TestSensitiveWithDocAndDeprecatedAllowed(t *testing.T) {
-	// Metadata decorators don't shape wire behaviour so they coexist
-	// fine with @sensitive.
 	mustClean(t, `package design
 type User {
 	id        string
 	internal  string @sensitive @doc("server-only") @deprecated
 }`)
 }
-
-// ---------- @sensitive + validators ----------
 
 func TestSensitiveConflictsLength(t *testing.T) {
 	d := expectError(t, `package design
@@ -735,8 +650,6 @@ type User { age int @sensitive @gte(0) }`, CodeDecoratorConflict)
 	expectMessage(t, d, "@gte cannot be combined with @sensitive")
 }
 
-// ---------- @sensitive + nullability / default ----------
-
 func TestSensitiveConflictsNullable(t *testing.T) {
 	d := expectError(t, `package design
 type User { secret string @sensitive @nullable }`, CodeDecoratorConflict)
@@ -748,8 +661,6 @@ func TestSensitiveConflictsDefault(t *testing.T) {
 type User { tier string @sensitive @default("free") }`, CodeDecoratorConflict)
 	expectMessage(t, d, "@default cannot be combined with @sensitive")
 }
-
-// ---------- @sensitive + binding decorators ----------
 
 func TestSensitiveConflictsBody(t *testing.T) {
 	d := expectError(t, `package design
@@ -787,8 +698,6 @@ type Req { secret string @sensitive @form }`, CodeDecoratorConflict)
 	expectMessage(t, d, "@form cannot be combined with @sensitive")
 }
 
-// ---------- @sensitive on error fields ----------
-
 func TestSensitiveOnErrorFieldAlone(t *testing.T) {
 	mustClean(t, `package design
 error ServiceUnavailable Maintenance {
@@ -805,8 +714,6 @@ error BadRequest Bad {
 	expectMessage(t, d, "@length cannot be combined with @sensitive")
 }
 
-// ---------- @default on enum field ----------
-
 func TestDefaultEnumValueAccepted(t *testing.T) {
 	mustClean(t, `package design
 enum Status { Active  Inactive }
@@ -821,9 +728,7 @@ type User { st Status? @default(Bogus) }`, CodeDecoratorArgValue)
 }
 
 func TestDefaultEnumStringLiteralRejected(t *testing.T) {
-	// Even when the enum value's StrValue happens to match, the
-	// canonical form is the bare identifier so the wire stays
-	// stable when codegen renames the underlying value.
+	// An enum @default names the value, even when a string matches its wire value.
 	d := expectError(t, `package design
 enum Status { Active = "active"  Inactive = "inactive" }
 type User { st Status? @default("active") }`, CodeDecoratorArgValue)
@@ -838,13 +743,9 @@ type User { tr Tier? @default(1) }`, CodeDecoratorArgValue)
 }
 
 func TestDefaultStringFieldUnaffected(t *testing.T) {
-	// Non-enum fields skip the enum check; the regular kind rule
-	// (string accepts any string literal) applies.
 	mustClean(t, `package design
 type User { name string? @default("alice") }`)
 }
-
-// ---------- @default conflicts ----------
 
 func TestDefaultMapFieldConflict(t *testing.T) {
 	d := expectError(t, `package design
@@ -866,22 +767,16 @@ type User { addrs Address[]? @default([]) }`, CodeDecoratorConflict)
 	expectMessage(t, d, "@default is not supported")
 }
 
-// ---------- @default optional + scalar ----------
-
 func TestDefaultOptionalFieldAccepted(t *testing.T) {
 	mustClean(t, `package design
 type User { name string? @default("anon") }`)
 }
 
 func TestDefaultScalarFieldAccepted(t *testing.T) {
-	// Scalar wraps a primitive (string here) so the field counts as
-	// supported by virtue of its underlying primitive.
 	mustClean(t, `package design
 scalar Email string
 type User { addr Email? @default("alice@example.com") }`)
 }
-
-// ---------- @default on array of primitives / enums ----------
 
 func TestDefaultEmptyArrayAccepted(t *testing.T) {
 	mustClean(t, `package design
@@ -918,12 +813,8 @@ type User { name string? @default(["x"]) }`, CodeDecoratorArgType)
 	expectMessage(t, d, "@default")
 }
 
-// ---------- @default + optional combination ----------
-
+// A @default on a non-optional field warns; `craftgo fmt` adds the `?`.
 func TestDefaultWithoutOptionalWarns(t *testing.T) {
-	// `@default(x)` on a non-optional field is conceptually optional (the
-	// default fires when the value is absent), so it warns - `craftgo fmt`
-	// adds the `?`, after which types.go / validate.go / OpenAPI agree.
 	expectWarning(t, `package design
 type ListReq { page int @default(1) }`, CodeDefaultNeedsOptional)
 	// With the `?` already present, nothing warns.
@@ -936,12 +827,8 @@ func TestDefaultOnOptionalFieldClean(t *testing.T) {
 type ListReq { page int? @default(1) }`)
 }
 
-// ---------- extend service decorator placement ----------
-
+// An `extend service` block rejects a service-only decorator such as @prefix.
 func TestExtendServiceRejectsServiceLevelDecorator(t *testing.T) {
-	// `extend service` may carry method-level-applicable decorators
-	// (@middlewares, @security, @tags, @doc) but not service-only ones
-	// like @prefix; those belong on the primary service decl.
 	expectDiag(t, `package design
 service S {}
 
@@ -965,12 +852,7 @@ extend service S {
 }`)
 }
 
-// ---------- bound overlap ----------
-
 func TestLengthOverlapsMinLengthWarning(t *testing.T) {
-	// `@length(min, max)` already encodes both bounds. Pairing it with
-	// `@minLength` or `@maxLength` is harmless but noisy - warn so the
-	// user picks one canonical form per field.
 	expectWarning(t, `package design
 type T { name string @length(1, 80) @minLength(3) }`, CodeDecoratorRedundant)
 }
@@ -990,8 +872,6 @@ func TestMinLengthAloneClean(t *testing.T) {
 type T { name string @minLength(1) @maxLength(80) }`)
 }
 
-// ---------- helpers ----------
-
 func codes(diags []Diagnostic) []string {
 	out := make([]string, 0, len(diags))
 	for _, d := range diags {
@@ -1009,16 +889,13 @@ func findCode(diags []Diagnostic, code string) *Diagnostic {
 	return nil
 }
 
-// The file validators @maxSize / @mimeTypes are pointless on a @sensitive
-// field (it never crosses the wire), so they conflict - like every other
-// validator already listed in sensitiveConflicts.
+// @maxSize and @mimeTypes conflict with @sensitive.
 func TestSensitiveConflictsFileValidators(t *testing.T) {
 	expectError(t, `type Req { secret file @sensitive @maxSize(1000) }`, CodeDecoratorConflict)
 	expectError(t, `type Req { secret file @sensitive @mimeTypes(["image/png"]) }`, CodeDecoratorConflict)
 }
 
-// Repeated @errors (extend-service idiom) must NOT be false-rejected as a
-// duplicate decorator.
+// Repeating @errors on a method is not a duplicate decorator.
 func TestRepeatedErrorsNotDuplicate(t *testing.T) {
 	src := `package p
 type Resp { ok bool }

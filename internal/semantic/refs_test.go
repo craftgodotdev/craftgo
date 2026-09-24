@@ -6,8 +6,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// ---------- @errors ----------
-
 func TestErrorsRefResolved(t *testing.T) {
 	mustClean(t, `error NotFound UserNotFound
 service S {
@@ -33,8 +31,6 @@ service S {
 	expectMessage(t, d, "MysteryError")
 }
 
-// ---------- @middlewares ----------
-
 func TestMiddlewareRefResolved(t *testing.T) {
 	mustClean(t, `middleware Auth
 @middlewares(Auth)
@@ -53,8 +49,6 @@ func TestMiddlewareRefOnMethod(t *testing.T) {
 }`, CodeDecoratorRef)
 }
 
-// ---------- @requiresOneOf / @mutuallyExclusive ----------
-
 func TestRequiresOneOfFieldExists(t *testing.T) {
 	mustClean(t, `@requiresOneOf(email, phone)
 type Contact { email string?  phone string? }`)
@@ -72,43 +66,34 @@ type T { a string? }`, CodeDecoratorRef)
 }
 
 func TestCrossFieldRequiresOptionalField(t *testing.T) {
-	// A plain (non-optional, non-nullable) field has no unambiguous
-	// present/absent state for the cross-field check: OpenAPI uses
-	// key-presence, the runtime uses zero-value emptiness.
+	// A plain field has no present/absent state for the group to test.
 	d := expectDiag(t, `@requiresOneOf(email, phone)
 type Contact { email string?  phone string }`, CodeCrossFieldNotOptional)
 	expectMessage(t, d, "phone")
 }
 
 func TestCrossFieldNullableFieldAccepted(t *testing.T) {
-	// `@nullable` is pointer-backed too, so it has a well-defined presence
-	// and satisfies the cross-field requirement alongside `?`.
+	// A @nullable field is pointer-backed, so it has a presence like `?`.
 	mustClean(t, `@mutuallyExclusive(a, b)
 type T { a string @nullable  b string? }`)
 }
 
 func TestCrossFieldRejectsWireBoundMember(t *testing.T) {
-	// A @query member is excluded from the JSON body, so a body-level group
-	// referencing it would advertise a property the body never carries.
+	// A @query member is not part of the JSON body the group constrains.
 	d := expectDiag(t, `@requiresOneOf(q1, q2)
 type Req { q1 string? @query  q2 string? @query }`, CodeCrossFieldNotOptional)
 	expectMessage(t, d, "q1")
 }
 
 func TestCrossFieldRejectsDefaultMember(t *testing.T) {
-	// A @default member is always present at runtime (pre-filled), so the
-	// group is a no-op the OpenAPI contradicts.
+	// A @default member is always present.
 	d := expectDiag(t, `@requiresOneOf(a, b)
 type Req { a string? @default("x")  b string? }`, CodeCrossFieldNotOptional)
 	expectMessage(t, d, "a")
 }
 
 func TestCrossFieldRejectsNilableNonPointerMember(t *testing.T) {
-	// A slice / map member's runtime presence is emptiness (`len() > 0`), and a
-	// raw `bytes` / `any` member is always treated as present - neither matches
-	// the group's OpenAPI present-and-non-null, which counts an empty `[]` as
-	// present and a null as absent. All four are nilable-but-not-pointer in Go,
-	// so they are rejected.
+	// Slice, map, bytes and any members are nilable but not pointers, so they have no clean presence.
 	d := expectDiag(t, `@requiresOneOf(tags, name)
 type Req { tags string[]?  name string? }`, CodeCrossFieldNotOptional)
 	expectMessage(t, d, "tags")
@@ -127,26 +112,18 @@ type Req { payload any?  name string? }`, CodeCrossFieldNotOptional)
 }
 
 func TestCrossFieldRejectsSensitiveMember(t *testing.T) {
-	// A @sensitive member is server-only (json:"-"), so it can't ride a
-	// body-level cross-field group - the OpenAPI would name a property the
-	// public schema never carries.
+	// A @sensitive member never appears in the JSON body.
 	d := expectDiag(t, `@mutuallyExclusive(secret, b)
 type Req { secret string? @sensitive  b string? }`, CodeCrossFieldNotOptional)
 	expectMessage(t, d, "secret")
 }
 
-// ---------- @security with Options ----------
-
 func TestSecurityRefSkippedWithoutOptions(t *testing.T) {
-	// No SecuritySchemes set on Options → check is skipped.
 	mustClean(t, `@security(unknown)
 service S {}`)
 }
 
-// expectRefWithOptions runs the analyzer with explicit Options and
-// asserts a CodeDecoratorRef diag fires; returns the diagnostic so
-// callers can chain message assertions. Wraps the AnalyzeWith path
-// the security-scheme tests need without rebuilding the boilerplate.
+// expectRefWithOptions analyzes src with opts and returns its CodeDecoratorRef diagnostic.
 func expectRefWithOptions(t *testing.T, src string, opts Options) *Diagnostic {
 	t.Helper()
 	_, diags := AnalyzeWith(parseFiles(t, src), opts)
@@ -157,9 +134,7 @@ func expectRefWithOptions(t *testing.T, src string, opts Options) *Diagnostic {
 	return d
 }
 
-// expectNoRefWithOptions is the negative twin - checks that no
-// CodeDecoratorRef fires under the supplied Options, so positive
-// security/scheme tests stay similarly compact.
+// expectNoRefWithOptions fails if analyzing src with opts reports CodeDecoratorRef.
 func expectNoRefWithOptions(t *testing.T, src string, opts Options) {
 	t.Helper()
 	_, diags := AnalyzeWith(parseFiles(t, src), opts)
@@ -179,11 +154,7 @@ func TestSecurityRefAcceptsKnown(t *testing.T) {
 service S {}`, Options{SecuritySchemes: []string{"bearerAuth", "apiKey"}})
 }
 
-// TestSecurityRefAcceptsIgnoreSecurity covers the public-endpoint
-// pattern: rather than threading a sentinel scheme name through
-// `@security(...)`, the method opts out via `@ignoreSecurity`. The
-// ref-pass should never see `@ignoreSecurity` as a scheme reference,
-// so the SecuritySchemes manifest list is irrelevant for that method.
+// @ignoreSecurity is not checked as a security scheme reference.
 func TestSecurityRefAcceptsIgnoreSecurity(t *testing.T) {
 	expectNoRefWithOptions(t, `service S {
 	@ignoreSecurity
@@ -192,22 +163,18 @@ func TestSecurityRefAcceptsIgnoreSecurity(t *testing.T) {
 }
 
 func TestSecurityRefSkipsNonIdentArg(t *testing.T) {
-	// Args pass already flagged the type - refs pass should silently skip.
+	// The args pass reports the kind; the refs pass skips it.
 	expectNoRefWithOptions(t, `@security(123)
 service S {}`, Options{SecuritySchemes: []string{"bearerAuth"}})
 }
 
 func TestSecurityRefSkipsZeroArgs(t *testing.T) {
-	// `@security` with no args - args pass diags arity. Refs pass silently
-	// skips because there's no name to resolve.
+	// The args pass reports the arity; the refs pass has no name to resolve.
 	expectNoRefWithOptions(t, `@security
 service S {}`, Options{SecuritySchemes: []string{"bearerAuth"}})
 }
 
-// ---------- collect / structure ----------
-
 func TestExtendServiceMiddlewareIsChecked(t *testing.T) {
-	// `extend service` body methods are walked too.
 	expectDiag(t, `service S {}
 extend service S {
 	@middlewares(Bogus)
@@ -216,9 +183,6 @@ extend service S {
 }
 
 func TestExtendServiceDecoratorCheckedWithoutMethods(t *testing.T) {
-	// An extend block's decorators resolve at the block, so an empty block
-	// has its names checked too - there is no method for them to be copied
-	// onto.
 	expectDiag(t, `service S {}
 @middlewares(Bogus)
 extend service S {}`, CodeDecoratorRef)
@@ -228,7 +192,6 @@ extend service S {}`, CodeDecoratorRef)
 }
 
 func TestExtendServiceDecoratorDiagnosedOnce(t *testing.T) {
-	// The block's list resolves once, not once per method it reaches.
 	_, diags := Analyze(parseFiles(t, `service S {}
 @middlewares(Bogus)
 extend service S {
@@ -247,24 +210,19 @@ extend service S {
 }
 
 func TestRefsNilDecoratorTolerated(t *testing.T) {
-	// Defensive guard - parser doesn't emit nil entries today.
 	a := newTestAnalyzer(&Package{
 		Errors:      map[string]*ast.ErrorDecl{},
 		Middlewares: map[string]*ast.MiddlewareDecl{},
 	})
-	// Empty body decorators slice with a nil entry.
 	a.checkFieldGroupRefs("X", []*ast.Decorator{nil}, nil)
 	a.checkServiceLevelRefs([]*ast.Decorator{nil})
-	// Build a synthetic member decorator list with a nil entry.
 	a.checkMemberLevelRefs([]*ast.Decorator{nil}, LvlMethod)
 	if len(a.diags) != 0 {
 		t.Errorf("nil decorator entries should not diag, got %v", a.diags)
 	}
 }
 
-// A cross-field group (@requiresOneOf) may reference a field promoted by a
-// CROSS-PACKAGE mixin - the per-package pass can't expand it, but codegen
-// resolves it via the project resolver, so it must not false-reject.
+// A cross-field group may name a field promoted from a cross-package mixin.
 func TestCrossFieldOverCrossPkgMixinClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/s.craftgo": `package shared
@@ -280,12 +238,7 @@ type Contact { shared.Contactable  note string? }`,
 	}
 }
 
-// A cross-field group naming a member NO field provides must be rejected
-// even when the type embeds a cross-package mixin. The per-package pass
-// can't expand the foreign mixin so it defers; the project pass resolves
-// the full field set and catches the typo. Without the project re-check
-// the typo reaches codegen, which substitutes a literal `false` - a
-// validator that silently never fires.
+// A typo in a cross-field group over a cross-package mixin is rejected.
 func TestCrossFieldTypoOverCrossPkgMixinRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/s.craftgo": `package shared
@@ -301,9 +254,7 @@ type Contact { shared.Contactable  note string? }`,
 	}
 }
 
-// The project re-check resolves NESTED cross-package mixins too: a member
-// promoted two mixin levels deep is a real field (no false-reject), while
-// a typo alongside it is still caught.
+// A typo in a cross-field group over a nested cross-package mixin is rejected.
 func TestCrossFieldTypoOverNestedCrossPkgMixinRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/s.craftgo": `package shared
@@ -320,8 +271,7 @@ type Contact { shared.Outer }`,
 	}
 }
 
-// A deeply-promoted member (two cross-package mixin levels) is a genuine
-// field and must NOT be false-rejected - the control for the typo test.
+// A cross-field group may name a field promoted through two cross-package mixin levels.
 func TestCrossFieldOverNestedCrossPkgMixinClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/s.craftgo": `package shared
@@ -338,12 +288,7 @@ type Contact { shared.Outer }`,
 	}
 }
 
-// The project re-check must re-apply the per-field quality rules to a
-// member promoted from a cross-package mixin - not only check the name
-// exists. A PLAIN (non-optional) promoted member has no clean present/
-// absent state, so a cross-field group referencing it is rejected exactly
-// as a local plain member is. (Per-package can't see the foreign field, so
-// without the re-check the rule was silently skipped.)
+// A cross-field group rejects a non-optional member promoted from a cross-package mixin.
 func TestCrossFieldPlainMemberOverCrossPkgMixinRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"base/b.craftgo": `package base
@@ -359,9 +304,7 @@ type Host { base.BaseMix  alpha string? }`,
 	}
 }
 
-// A @default member promoted from a cross-package mixin is rejected too
-// (a defaulted field is always present, making the group a no-op the
-// OpenAPI contradicts) - the same rule the local case enforces.
+// A cross-field group rejects a @default member promoted from a cross-package mixin.
 func TestCrossFieldDefaultMemberOverCrossPkgMixinRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"base/b.craftgo": `package base
@@ -377,8 +320,7 @@ type Host { base.BaseMix  alpha string? }`,
 	}
 }
 
-// A clean optional member promoted from a cross-package mixin alongside a
-// clean local one must NOT double-report or false-reject - the control.
+// Optional members, one local and one from a cross-package mixin, raise no diagnostic.
 func TestCrossFieldCleanMembersOverCrossPkgMixinClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"base/b.craftgo": `package base
@@ -397,8 +339,7 @@ type Host { base.BaseMix  alpha string? }`,
 	}
 }
 
-// TestObjectFieldTypeRejected: `object` is a broken half-alias (its Go renderer
-// emits an undefined type + dangling $ref); reject it and point at `any`.
+// The field type `object` is rejected.
 func TestObjectFieldTypeRejected(t *testing.T) {
 	expectError(t, `type X { f object }`, CodeRefUnknownSymbol)
 	expectError(t, `type X { f object[] }`, CodeRefUnknownSymbol)

@@ -8,14 +8,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// ---------- pathless-method route engine ----------
-
-// TestResolveMethodPathPathlessUsesIdentsKebab pins the analyzer's
-// pathless-method auto-route to the canonical word-split codegen registers
-// the route with (idents.SplitFieldName). The two engines diverged on
-// digit-boundary names - `ListV2Items` resolved to `/list-v2-items` here but
-// `/list-v2items` in codegen - so the editor showed (and route-collision
-// detection keyed on) a route the server never served.
+// A pathless method routes to its name split by idents (`ListV2Items` → `/list-v2items`).
 func TestResolveMethodPathPathlessUsesIdentsKebab(t *testing.T) {
 	a := &analyzer{}
 	svc := &ast.ServiceDecl{}
@@ -33,8 +26,6 @@ func TestResolveMethodPathPathlessUsesIdentsKebab(t *testing.T) {
 		}
 	}
 }
-
-// ---------- basePath format ----------
 
 func TestBasePathFormatOK(t *testing.T) {
 	cases := []string{"", "/", "/v1", "/api/v1"}
@@ -71,8 +62,6 @@ func TestBasePathFormatRejectsDoubleSlash(t *testing.T) {
 	}
 }
 
-// ---------- Cross-service collision ----------
-
 func TestPathCollisionAcrossServices(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `@prefix("/v1")
 service A { get GetUser /users {} }
@@ -91,7 +80,7 @@ service B { get List /users {} }`))
 }
 
 func TestPathCollisionResolvedViaPrefix(t *testing.T) {
-	// /v1/users (service A's @prefix) vs /v1/users (service B inline) - collision.
+	// A's @prefix and B's inline path both give /v1/users.
 	_, diags := Analyze(parseFiles(t, `@prefix("/v1")
 service A { get A /users {} }
 service B { get B /v1/users {} }`))
@@ -101,7 +90,6 @@ service B { get B /v1/users {} }`))
 }
 
 func TestPathCollisionWithBasePath(t *testing.T) {
-	// basePath stitches both services into the same final path.
 	_, diags := AnalyzeWith(parseFiles(t,
 		`service A { get A /users {} }
 service B { get B /users {} }`),
@@ -119,9 +107,7 @@ func TestPathDifferentVerbNoCollision(t *testing.T) {
 }
 
 func TestPathlessMethodsNoFalseCollision(t *testing.T) {
-	// Two pathless methods of the same verb auto-route to distinct kebab
-	// paths (`/ping`, `/health`), so they must NOT be flagged as a duplicate
-	// route - the collision key uses the resolved route, not the empty path.
+	// Pathless methods route to `/ping` and `/health`, so they do not collide.
 	mustClean(t, `service S {
 	get Ping {}
 	get Health {}
@@ -129,8 +115,6 @@ func TestPathlessMethodsNoFalseCollision(t *testing.T) {
 }
 
 func TestSameServiceRouteCollisionStillFlagged(t *testing.T) {
-	// Two methods with the same explicit path + verb in one service still
-	// collide.
 	_, diags := Analyze(parseFiles(t, `service S {
 	get A /users {}
 	get B /users {}
@@ -141,8 +125,7 @@ func TestSameServiceRouteCollisionStillFlagged(t *testing.T) {
 }
 
 func TestPathSameServiceDuplicateHandledByOtherCheck(t *testing.T) {
-	// Same-service duplicate route is reported by checkServiceMethods,
-	// NOT by path/collision (avoid double-fire).
+	// A same-service duplicate is reported as a duplicate route only.
 	_, diags := Analyze(parseFiles(t, `service S {
 	get A /users {}
 	get B /users {}
@@ -155,12 +138,7 @@ func TestPathSameServiceDuplicateHandledByOtherCheck(t *testing.T) {
 	}
 }
 
-// TestPathParamRenameStillCollides pins that two routes differing
-// ONLY in the path-param name (`{id}` vs `{id1}`) are flagged as a
-// collision (net/http registers both against the same pattern and
-// panics at boot otherwise). Both same-service (caught by
-// checkServiceMethods) and cross-service (caught by path/collision)
-// paths must fire.
+// Routes that differ only in path variable names collide, in one service or across services.
 func TestPathParamRenameStillCollides(t *testing.T) {
 	t.Run("same service", func(t *testing.T) {
 		_, diags := Analyze(parseFiles(t, `type R {}
@@ -181,8 +159,6 @@ service B { get GetY /items/{itemId} { response R } }`))
 		}
 	})
 	t.Run("nested params", func(t *testing.T) {
-		// Multi-segment route with two params - different names in
-		// BOTH slots must still collapse to the same shape.
 		_, diags := Analyze(parseFiles(t, `type R {}
 service A { get GetX /u/{u}/o/{o} { response R } }
 service B { get GetY /u/{userId}/o/{orderId} { response R } }`))
@@ -191,17 +167,13 @@ service B { get GetY /u/{userId}/o/{orderId} { response R } }`))
 		}
 	})
 	t.Run("literal vs param does NOT collide", func(t *testing.T) {
-		// /products/abc and /products/{id} are different routes - net/http
-		// dispatches literals before params - so the shape gate must
-		// NOT false-positive here.
+		// net/http prefers the literal segment, so the two routes coexist.
 		mustClean(t, `type R {}
 type Req { id string }
 service A { get GetX /products/abc { response R } }
 service B { get GetY /products/{id} { request Req  response R } }`)
 	})
 }
-
-// ---------- Path param consistency ----------
 
 func TestPathParamMatchesField(t *testing.T) {
 	mustClean(t, `type Req { id string }
@@ -253,21 +225,15 @@ service S {
 	}
 }
 
+// A path variable is reported missing when the method has no request type.
 func TestPathParamWarnsWithoutRequest(t *testing.T) {
-	// Path declares {id} but no request struct → the path value
-	// has no Go-side binding. The analyser emits a warning so the
-	// author either adds a request struct or accepts the path
-	// param as informational (e.g. for a passthrough handler that
-	// reaches `r.PathValue` directly).
 	expectDiag(t, `service S {
 	get GetUser /users/{id} {}
 }`, CodePathParamMissing)
 }
 
+// A passthrough method reads path values off the raw request and needs no request type.
 func TestPathParamPassthroughSkipsWarn(t *testing.T) {
-	// Passthrough handlers reach `r.PathValue` directly through the
-	// raw http.Request, so the warning would be spurious - suppress
-	// it for the passthrough path.
 	mustClean(t, `service S {
 	@passthrough
 	get Stream /users/{id}/feed {}
@@ -275,7 +241,7 @@ func TestPathParamPassthroughSkipsWarn(t *testing.T) {
 }
 
 func TestPathParamSkippedForUnknownRequestType(t *testing.T) {
-	// Unknown request type - placement check covers; we silently skip.
+	// The unknown type is reported elsewhere; the path check skips it.
 	_, diags := Analyze(parseFiles(t, `service S {
 	get GetUser /users/{id} {
 		request   Mystery
@@ -285,8 +251,6 @@ func TestPathParamSkippedForUnknownRequestType(t *testing.T) {
 		t.Errorf("unknown req type should not produce path/param-missing, got %v", codes(diags))
 	}
 }
-
-// ---------- Health endpoint conflict ----------
 
 func TestHealthConflict(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `service S {
@@ -311,7 +275,6 @@ func TestHealthConflictReadyz(t *testing.T) {
 }
 
 func TestHealthConflictRespectsCustomList(t *testing.T) {
-	// User overrides health paths to a non-conflicting set.
 	files := parseFiles(t, `service S {
 	get Health /healthz {}
 }`)
@@ -327,10 +290,7 @@ func TestHealthConflictNonHealthPath(t *testing.T) {
 }`)
 }
 
-// ---------- Helpers ----------
-
 func TestResolveMethodPathFallbackName(t *testing.T) {
-	// Method with no inline path: fallback is /<kebab(name)>.
 	a := newTestAnalyzer(&Package{})
 	got := a.resolveMethodPath(nil, &ast.Method{Name: "Ping"})
 	if got != "/ping" {
@@ -339,7 +299,7 @@ func TestResolveMethodPathFallbackName(t *testing.T) {
 }
 
 func TestResolveMethodPathIgnoresGroup(t *testing.T) {
-	// @group nests generated files on disk; it must NOT appear in the route.
+	// @group shapes the output folders, not the route.
 	pkg, diags := AnalyzeWith(parseFiles(t, `@prefix("/v1")
 @group("admin")
 service S { get GetUser /users {} }`), Options{})
@@ -364,8 +324,6 @@ func TestResolveMethodPathEmptyParts(t *testing.T) {
 }
 
 func TestPathBindingNameVariants(t *testing.T) {
-	// Bare `@path` → field name; `@path("custom")` → custom; no
-	// decorator → no binding.
 	cases := []struct {
 		f       *ast.Field
 		want    string
@@ -376,7 +334,7 @@ func TestPathBindingNameVariants(t *testing.T) {
 		{&ast.Field{Name: "id", Decorators: []*ast.Decorator{
 			{Name: "path", Args: []*ast.DecoratorArg{{Value: &ast.StringLit{Value: "user-id"}}}},
 		}}, "user-id", true},
-		// Args present but not a string → fallback to field name.
+		// A non-string argument falls back to the field name.
 		{&ast.Field{Name: "id", Decorators: []*ast.Decorator{
 			{Name: "path", Args: []*ast.DecoratorArg{{Value: &ast.IntLit{}}}},
 		}}, "id", true},
@@ -391,27 +349,23 @@ func TestPathBindingNameVariants(t *testing.T) {
 
 func TestRequestPathFieldsNilGuards(t *testing.T) {
 	a := newTestAnalyzer(&Package{Types: map[string]*ast.TypeDecl{}})
-	// nil request
 	if got := a.requestPathFields(&ast.Method{}, nil); got != nil {
 		t.Error("nil request should return nil")
 	}
-	// qualified name unresolvable in this package → nil
 	got := a.requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{
 		Name: &ast.QualifiedIdent{Parts: []string{"shared", "Req"}},
 	}}, nil)
 	if got != nil {
 		t.Error("unresolved qualified ref should return nil")
 	}
-	// Request name is nil → skip
 	got = a.requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{Name: nil}}, nil)
 	if got != nil {
 		t.Error("nil Name should return nil")
 	}
 }
 
+// A path segment binds a field the request promotes from a mixin.
 func TestRequestPathFieldsSkipsMixin(t *testing.T) {
-	// Mixin in request body - request walker skips it (mixin pass owns
-	// validation), exercising the `if !ok { continue }` branch.
 	mustClean(t, `type Base { id string }
 type Req { Base  name string }
 service S {
@@ -421,21 +375,17 @@ service S {
 }`)
 }
 
-// TestResolveMethodPathBasePathMissingSlash exercises the line that
-// repairs a path which doesn't start with `/`. Pairs naturally with
-// the basePath format warning.
+// resolveMethodPath adds the leading slash a basePath lacks.
 func TestResolveMethodPathBasePathMissingSlash(t *testing.T) {
 	a := newTestAnalyzer(&Package{})
 	a.opts.BasePath = "v1"
 	got := a.resolveMethodPath(nil, &ast.Method{Name: "Ping"})
-	// "v1" + "/ping" → "v1//ping" → "v1/ping" → "/v1/ping".
 	if got != "/v1/ping" {
 		t.Errorf("got %q, want %q", got, "/v1/ping")
 	}
 }
 
-// Real cyclic mixins are flagged by the mixin pass, but the request
-// field walk still encounters the cycle and must not loop.
+// The request field walk stops on a mixin cycle and still finds the reachable fields.
 func TestRequestPathFieldsCyclicMixin(t *testing.T) {
 	a := newTestAnalyzer(&Package{
 		Types: map[string]*ast.TypeDecl{
@@ -460,8 +410,7 @@ func TestRequestPathFieldsCyclicMixin(t *testing.T) {
 	}
 }
 
-// A mixin whose package is unknown is skipped (the reference pass reports
-// it); the host's own fields still surface.
+// A mixin from an unknown package is skipped; the host's own fields still count.
 func TestRequestPathFieldsUnknownPackageMixin(t *testing.T) {
 	a := newTestAnalyzer(&Package{
 		Types: map[string]*ast.TypeDecl{
@@ -480,9 +429,7 @@ func TestRequestPathFieldsUnknownPackageMixin(t *testing.T) {
 	}
 }
 
-// TestPathBindingNameSkipsNonPathDecorator covers the `if d.Name !=
-// "path" { continue }` branch when a field has multiple decorators
-// and only the last is @path.
+// pathBindingName finds @path after other decorators.
 func TestPathBindingNameSkipsNonPathDecorator(t *testing.T) {
 	f := &ast.Field{Name: "id", Decorators: []*ast.Decorator{
 		{Name: "doc", Args: []*ast.DecoratorArg{{Value: &ast.StringLit{Value: "x"}}}},
@@ -495,8 +442,6 @@ func TestPathBindingNameSkipsNonPathDecorator(t *testing.T) {
 }
 
 func TestCheckMethodPathParamsNilName(t *testing.T) {
-	// Defensive: m.Request set but m.Request.Name nil - early-return
-	// branch in checkMethodPathParams.
 	a := newTestAnalyzer(&Package{Types: map[string]*ast.TypeDecl{}})
 	a.checkMethodPathParams("S", &ast.Method{
 		Name:    "M",
@@ -515,10 +460,7 @@ func TestPathSetHasNil(t *testing.T) {
 	}
 }
 
-// ---------- helper ----------
-
-// A field named like a path segment but diverted to @query no longer
-// satisfies the path-coverage check - the {id} segment is reported missing.
+// A field named like a path segment but bound to @query leaves the segment unbound.
 func TestWireBoundFieldDoesNotCoverPathSegment(t *testing.T) {
 	src := `package p
 type R { id string @query }

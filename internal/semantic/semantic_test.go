@@ -53,8 +53,6 @@ func mustClean(t *testing.T, sources ...string) *Package {
 	return pkg
 }
 
-// ---------- happy path ----------
-
 func TestAnalyzeBasic(t *testing.T) {
 	pkg := mustClean(t, `package design
 type User { id string  name string }
@@ -86,8 +84,6 @@ service S { get GetUser /u {} }`)
 	}
 }
 
-// ---------- package name ----------
-
 func TestPackageNameMissing(t *testing.T) {
 	pkg := mustClean(t, `type X {}`)
 	if pkg.Name != "" {
@@ -95,13 +91,7 @@ func TestPackageNameMissing(t *testing.T) {
 	}
 }
 
-// ---------- duplicate decls ----------
-
-// TestDuplicateDecl pins the type/enum/scalar/error shared namespace -
-// they all emit into the same Go types package, so a DSL-name match
-// across kinds is a hard collision. Middleware lives in its own Go
-// package (svccontext aliases) and uses a separate seen map; see
-// [TestMiddlewareSeparateNamespace] for the parity expectation.
+// Types, enums, scalars and errors share one namespace.
 func TestDuplicateDecl(t *testing.T) {
 	cases := []string{
 		`type X {}
@@ -118,22 +108,14 @@ scalar X string`,
 	}
 }
 
-// TestMiddlewareSeparateNamespace pins the namespace split: a
-// middleware named the same as a type does NOT clash, because their
-// codegen output lives in different Go packages (types vs svccontext).
-// Middleware-vs-middleware duplicates still error.
+// A middleware may share a type's name, but not another middleware's.
 func TestMiddlewareSeparateNamespace(t *testing.T) {
-	// type Foo + middleware Foo - no collision.
 	mustClean(t, `type Foo {}
 middleware Foo`)
 
-	// middleware Foo + middleware Foo - duplicate within the
-	// middleware namespace.
 	expectMsg(t, "duplicate top-level", `middleware Foo
 middleware Foo`)
 }
-
-// ---------- service merge ----------
 
 func TestServicePrimaryDuplicate(t *testing.T) {
 	expectMsg(t, "duplicate primary service", `service S {}
@@ -144,20 +126,14 @@ func TestServiceExtendWithoutPrimary(t *testing.T) {
 	expectMsg(t, "no primary declaration", `extend service S { get Op /x {} }`)
 }
 
-// TestServiceExtendWithServiceOnlyDecorator pins the validation that
-// a service-only decorator like `@prefix` is rejected when it lands on
-// an `extend service` block - those blocks propagate decorators to
-// methods inside them, so a decorator with no method-level form has
-// nothing meaningful to do.
+// A service-only decorator such as @prefix is rejected on an `extend service` block.
 func TestServiceExtendWithServiceOnlyDecorator(t *testing.T) {
 	expectMsg(t, "not valid on a method", `service S {}
 @prefix("/x")
 extend service S { get Op /x {} }`)
 }
 
-// TestServiceExtendDecoratorPropagatesToMethods is the happy path:
-// a method-level-applicable decorator on the extend block reaches
-// every method inside.
+// A decorator on an `extend service` block reaches every method inside it.
 func TestServiceExtendDecoratorPropagatesToMethods(t *testing.T) {
 	pkg, diags := Analyze(parseFiles(t, `middleware Auth
 service S { get A /a {} }
@@ -203,8 +179,6 @@ func TestDuplicateRoute(t *testing.T) {
 	expectMsg(t, "duplicate route", `service S { get A /x {} get B /x {} }`)
 }
 
-// ---------- field uniqueness ----------
-
 func TestFieldUniquenessType(t *testing.T) {
 	expectMsg(t, "duplicate field", `type X { name string  name int }`)
 }
@@ -213,19 +187,14 @@ func TestFieldUniquenessError(t *testing.T) {
 	expectMsg(t, "duplicate field", `error BadRequest E { code string  code string }`)
 }
 
+// The duplicate-field check skips a type's mixin members.
 func TestFieldUniquenessSkipsMixin(t *testing.T) {
-	// Type with a mixin + field - exercises the `if !ok { continue }` branch.
-	// Profile is declared so the mixin pass resolves it cleanly; the
-	// uniqueness pass under test is the `if !ok { continue }` skip on
-	// the embedded reference, independent of mixin resolution.
 	pkg := mustClean(t, `type Profile { id string }
 type X { Profile  name string }`)
 	if pkg.Types["X"] == nil || len(pkg.Types["X"].Body) != 2 {
 		t.Error()
 	}
 }
-
-// ---------- enum validation ----------
 
 func TestEnumDuplicateName(t *testing.T) {
 	expectMsg(t, "duplicate enum value name", `enum X { A  A }`)
@@ -243,11 +212,7 @@ func TestEnumDuplicateString(t *testing.T) {
 	expectMsg(t, "duplicate string value", `enum X { A = "x"  B = "x" }`)
 }
 
-// TestCheckDecoratorScopeNilEntry exercises the defensive nil-decorator
-// branch of [analyzer.checkDecoratorScope]. The parser doesn't produce
-// nil entries today, so the only way to reach the branch is via a
-// hand-built decorator slice - kept defensive so a future parser
-// regression doesn't crash the analyser.
+// checkDecoratorScope skips nil decorator entries.
 func TestCheckDecoratorScopeNilEntry(t *testing.T) {
 	a := newTestAnalyzer(&Package{})
 	a.checkDecoratorScope("test", []*ast.Decorator{nil, {Name: "doc"}, nil})
@@ -255,8 +220,6 @@ func TestCheckDecoratorScopeNilEntry(t *testing.T) {
 		t.Errorf("expected no diags from nil-only chain, got %v", a.diags)
 	}
 }
-
-// ---------- duplicate decorators ----------
 
 func TestDuplicateDecoratorOnField(t *testing.T) {
 	expectMsg(t, "duplicate decorator", `type X { name string @doc("a") @doc("b") }`)
@@ -268,9 +231,7 @@ func TestDuplicateDecoratorOnType(t *testing.T) {
 type X { name string }`)
 }
 
-// TestDuplicateDecoratorOnMethod uses `@deprecated` (single-value,
-// idempotent) to pin the duplicate check, because `@tags` is part of
-// the repeatable set (multiple @tags decorators concat their values).
+// A non-repeatable decorator given twice on a method is a duplicate.
 func TestDuplicateDecoratorOnMethod(t *testing.T) {
 	expectMsg(t, "duplicate decorator @deprecated on method S.GetUser", `service S {
 		@deprecated
@@ -279,9 +240,7 @@ func TestDuplicateDecoratorOnMethod(t *testing.T) {
 	}`)
 }
 
-// TestRepeatableDecoratorAllowedOnMethod pins that multiple `@tags`
-// decorators on the same method are valid - each contributes its
-// arguments to the aggregate the codegen layer reads.
+// A repeatable decorator such as @tags may appear more than once on a method.
 func TestRepeatableDecoratorAllowedOnMethod(t *testing.T) {
 	expectNoMsg(t, "duplicate decorator @tags", `service S {
 		@tags("a")
@@ -311,7 +270,7 @@ func TestDuplicateDecoratorOnErrorField(t *testing.T) {
 }
 
 func TestDuplicateDecoratorPreservesFirst(t *testing.T) {
-	// First decorator stays in the AST untouched; only the second is reported.
+	// Only the second @doc is reported.
 	expectCodeCount(t, `type X { name string @doc("a") @doc("b") @length(1, 10) }`, CodeDecoratorDuplicate, 1)
 }
 
@@ -320,8 +279,6 @@ func TestDecoratorUnique_NoFalsePositive(t *testing.T) {
 @doc("ok")
 type X { name string @length(1, 10) @pattern("^[a-z]+$") }`)
 }
-
-// ---------- qualified refs ----------
 
 func TestQualifiedRefInField(t *testing.T) {
 	expectMsg(t, "is not declared anywhere in the project", `type X { user shared.User }`)
@@ -340,8 +297,6 @@ func TestUnqualifiedRefAccepted(t *testing.T) {
 type X { items Page }`)
 }
 
-// ---------- combination rules ----------
-
 func TestCombinationMultipleBindings(t *testing.T) {
 	expectMsg(t, "@query conflicts with @path", `type X { id string @path @query }`)
 }
@@ -357,8 +312,6 @@ func TestCombinationPassthroughAccepted(t *testing.T) {
 	}`)
 }
 
-// ---------- PathString ----------
-
 func TestPathString(t *testing.T) {
 	if route.PathString(nil) != "" {
 		t.Error("nil path")
@@ -371,24 +324,19 @@ service S { get A /users/{id}/posts { request R } }`)
 	}
 }
 
-// TestDeclNamedAfterBuiltinRejected: a type/enum/scalar/error named after a
-// built-in spelling shadows the built-in in generated Go and won't compile, so
-// it is rejected. Middleware names live in a separate Go namespace (exempt).
+// A type, enum, scalar or error named after a built-in type is rejected; a middleware is not.
 func TestDeclNamedAfterBuiltinRejected(t *testing.T) {
 	expectError(t, `scalar int string`, CodeDeclBuiltinName)
 	expectError(t, `type string { a int }`, CodeDeclBuiltinName)
 	expectError(t, `enum bool { X Y }`, CodeDeclBuiltinName)
 	expectError(t, `error NotFound any`, CodeDeclBuiltinName)
-	// Middleware lives in a separate Go namespace, so a builtin name is NOT a
-	// collision error (it may still warn about the lowercase name).
 	if _, diags := AnalyzeWith(parseFiles(t, `middleware int`), Options{}); findCode(diags, CodeDeclBuiltinName) != nil {
 		t.Error("middleware named after a builtin should not be a builtin-collision error")
 	}
 	mustClean(t, `scalar Email string  scalar UserID string`)
 }
 
-// newTestAnalyzer returns an analyser over pkg whose project holds pkg
-// alone, for tests that drive a single check directly.
+// newTestAnalyzer returns an analyzer whose project holds pkg alone.
 func newTestAnalyzer(pkg *Package) *analyzer {
 	return &analyzer{pkg: pkg, proj: &Project{Packages: map[string]*Package{pkg.Name: pkg}}}
 }

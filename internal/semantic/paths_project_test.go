@@ -5,12 +5,7 @@ import (
 	"testing"
 )
 
-// A request type can embed a mixin from a SIBLING package whose fields
-// supply the @path binding, matching the codegen binder's cross-package
-// flattening.
-
-// Cross-package mixin supplies the @path field → the {id} segment binds,
-// no false "no matching field" error.
+// A @path field from a cross-package mixin binds the {id} segment.
 func TestProjectPathParamCrossPkgMixinBinds(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/holder.craftgo": `package shared
@@ -28,8 +23,7 @@ service S {
 	}
 }
 
-// The check still fires when the cross-package mixin supplies the wrong
-// field - the segment genuinely has nothing to bind to.
+// A segment that no field of the cross-package mixin binds is reported missing.
 func TestProjectPathParamCrossPkgMixinMissing(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/holder.craftgo": `package shared
@@ -47,8 +41,7 @@ service S {
 	}
 }
 
-// An explicit @path field pulled from a cross-package mixin with no
-// matching route segment is an orphan, reported cross-package.
+// A @path field from a cross-package mixin with no route segment is an orphan.
 func TestProjectPathParamCrossPkgMixinOrphan(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/holder.craftgo": `package shared
@@ -66,9 +59,7 @@ service S {
 	}
 }
 
-// A @path field nested two mixin levels deep through a cross-package
-// mixin (shared.Outer embeds shared.Inner) must still bind {pk}: the
-// flattener qualifies the bare inner `Inner` as `shared.Inner`.
+// A @path field nested two mixin levels deep in another package binds {pk}.
 func TestProjectPathParamNestedCrossPkgMixin(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/holder.craftgo": `package shared
@@ -87,10 +78,7 @@ service S {
 	}
 }
 
-// W3 (#16): a cross-package request (request shared.R) with an auto-path
-// field carrying @nullable is rejected by the project twin - the per-package
-// pass returns early for cross-pkg requests, so without the twin it silently
-// emitted non-compiling Go (a plain string written into a *string slot).
+// A cross-package request whose auto-path field is @nullable is rejected.
 func TestProjectAutoPathFieldCrossPkgNullableRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -106,8 +94,7 @@ service S { get G /u/{id} { request shared.R  response Resp } }`,
 	}
 }
 
-// Control: a clean cross-package auto-path field (no @nullable) must NOT be
-// false-rejected by the project twin.
+// A cross-package request whose auto-path field is not @nullable is accepted.
 func TestProjectAutoPathFieldCrossPkgClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -123,9 +110,7 @@ service S { get G /u/{id} { request shared.R  response Resp } }`,
 	}
 }
 
-// W3-inc2 (#16 sibling): a cross-package request on a body-less verb whose
-// field auto-binds to @query with @nullable is rejected by the project twin
-// (non-compiling without it).
+// A cross-package request on a body-less verb rejects a @nullable auto-@query field.
 func TestProjectBodyBindingVerbCrossPkgNullableRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -141,8 +126,7 @@ service S { get G /g { request shared.R  response Resp } }`,
 	}
 }
 
-// W3-inc2: a bare cross-package scalar request type is rejected by the
-// project twin.
+// A bare cross-package scalar is rejected as a request type.
 func TestProjectBareCrossPkgScalarRequestRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -158,11 +142,7 @@ service S { post Do /do { request shared.Email  response Resp } }`,
 	}
 }
 
-// W5: a cross-package request whose field auto-binds to a path segment but is
-// a STRUCT (no path-string form) silently lost its binding - codegen emitted a
-// handler that left the field zero with no error. The project twin resolves
-// the cross-package type through the IR and rejects it at design time, matching
-// the per-package pass.
+// A cross-package request rejects a struct field that auto-binds to a path segment.
 func TestProjectAutoPathFieldCrossPkgStructRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"base/base.craftgo": `package base
@@ -179,9 +159,7 @@ service S { get G /u/{id} { request base.R  response Resp } }`,
 	}
 }
 
-// Control: a cross-package SCALAR (over a wire primitive) auto-binding to a
-// path segment is bindable and must NOT be false-rejected - the local table
-// can't resolve it, so only the IR-backed twin gets this right.
+// A cross-package scalar over a wire primitive binds to a path segment.
 func TestProjectAutoPathFieldCrossPkgScalarClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"base/base.craftgo": `package base
@@ -198,9 +176,7 @@ service S { get G /u/{id} { request base.R  response Resp } }`,
 	}
 }
 
-// W5 sibling: a cross-package struct auto-binding to @query on a body-less verb
-// was only caught by a position-less codegen error. The project twin now
-// rejects it at design time with a position, matching the per-package pass.
+// A cross-package struct field that auto-binds to @query on a body-less verb is rejected.
 func TestProjectAutoQueryFieldCrossPkgStructRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"base/base.craftgo": `package base
@@ -217,8 +193,7 @@ service S { get G /g { request base.R  response Resp } }`,
 	}
 }
 
-// Control: a cross-package scalar and a 1-D array of primitives both ride a
-// @query string (repeated values), so the twin must NOT false-reject them.
+// A cross-package scalar and a 1-D primitive array both bind to @query.
 func TestProjectAutoQueryFieldCrossPkgBindableClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"base/base.craftgo": `package base
@@ -235,9 +210,7 @@ service S { get G /g { request base.R  response Resp } }`,
 	}
 }
 
-// Cross-package @example now has a project twin (shared with @default): an
-// @example literal whose kind mismatches a foreign scalar's primitive is
-// rejected, where it once slipped through unchecked.
+// An @example whose kind mismatches a cross-package scalar's primitive is rejected.
 func TestProjectCrossPkgExampleKindMismatchRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -254,7 +227,7 @@ service S { post C /c { request R  response Resp } }`,
 	}
 }
 
-// Control: a valid cross-package @example is clean.
+// A valid @example on a cross-package scalar is accepted.
 func TestProjectCrossPkgExampleValidClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -271,10 +244,7 @@ service S { post C /c { request R  response Resp } }`,
 	}
 }
 
-// A cross-package scalar @default exceeding the underlying primitive's
-// capacity must be rejected the SAME as its local twin - the project default
-// validator now shares the per-package literal check (kind + capacity), so it
-// no longer accepts an out-of-range cross-pkg default that codegen can't cast.
+// A @default that overflows a cross-package scalar's primitive is rejected.
 func TestProjectCrossPkgDefaultOverflowRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -291,7 +261,7 @@ service S { post C /c { request R  response Resp } }`,
 	}
 }
 
-// Control: an in-range cross-package scalar default is clean.
+// An in-range @default on a cross-package scalar is accepted.
 func TestProjectCrossPkgDefaultInRangeClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -308,11 +278,7 @@ service S { post C /c { request R  response Resp } }`,
 	}
 }
 
-// A cross-field group member that is a DIRECT field whose TYPE is a
-// cross-package scalar over bytes (`rawData shared.Blob?`) must be rejected
-// like its local twin - the per-package presence check resolves it with
-// proj=nil so the bytes primitive never surfaces; the project pass must run
-// (deferred) even though no cross-package MIXIN was traversed.
+// A cross-field group rejects a direct member typed as a cross-package scalar over bytes.
 func TestProjectCrossFieldDirectCrossPkgScalarBytesRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -330,8 +296,7 @@ service S { post C /c { request Pick  response Resp } }`,
 	}
 }
 
-// Control: the same direct member over a VALUE primitive (`shared.Code` over
-// string) is pointer-backed and clean - must NOT be false-rejected.
+// A cross-field group accepts a direct member typed as a cross-package scalar over string.
 func TestProjectCrossFieldDirectCrossPkgScalarStringClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -349,8 +314,7 @@ service S { post C /c { request Pick  response Resp } }`,
 	}
 }
 
-// A cross-package qualified struct (or other non-wire type) bound with
-// @header on an ERROR body field is rejected like one on a type body.
+// An error field that binds a cross-package struct to @header is rejected.
 func TestProjectErrorFieldCrossPkgStructHeaderRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -367,8 +331,7 @@ service S { @errors(NF) post C /c { request Resp  response Resp } }`,
 	}
 }
 
-// Control: a cross-package SCALAR (over a wire primitive) @header on an error
-// field is valid and must NOT be false-rejected.
+// An error field that binds a cross-package scalar to @header is accepted.
 func TestProjectErrorFieldCrossPkgScalarHeaderClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -385,11 +348,7 @@ service S { @errors(NF) post C /c { request Resp  response Resp } }`,
 	}
 }
 
-// Cross-package twin of the Go-name collision: two mixins from DIFFERENT
-// packages each promote a field that lowers to the same Go identifier
-// (`userId` from m1.A, `user_id` from m2.B → both `UserID`). The project mixin
-// pass must reject it - without this codegen emits an ambiguous selector
-// (`v.UserID`) that won't compile.
+// Mixins from two packages whose fields share a Go name (`userId`, `user_id` → `UserID`) conflict.
 func TestProjectMixinCrossPkgGoNameCollision(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"m1/m1.craftgo": `package m1
@@ -409,11 +368,7 @@ service S { post C /c { request C  response Resp } }`,
 	}
 }
 
-// #6: a cross-field group member promoted from a sibling-package mixin carries
-// a bare named type (`Blob`, not `base.Blob`). When that scalar is over `bytes`
-// its Go type is nilable, so it has no clean present/absent state and the group
-// must reject it. The project flattener requalifies the promoted field to its
-// home package so the resolver can see the scalar at all.
+// A cross-field group rejects a cross-package mixin member whose scalar is over bytes.
 func TestProjectCrossFieldCrossPkgScalarOverBytesRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"base/base.craftgo": `package base
@@ -431,8 +386,7 @@ service S { post C /c { request Req  response Req } }`,
 	}
 }
 
-// Control: the same promotion of a scalar over a VALUE primitive (`string`) is
-// pointer-backed and present/absent-clean, so it must NOT be false-rejected.
+// A cross-field group accepts a promoted cross-package scalar over string.
 func TestProjectCrossFieldCrossPkgScalarOverStringClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"base/base.craftgo": `package base
@@ -450,9 +404,7 @@ service S { post C /c { request Req  response Req } }`,
 	}
 }
 
-// Two methods in DIFFERENT packages resolving to the same VERB + route
-// register the same net/http pattern - the second registration panics at
-// boot, so the project pass rejects it with both sides named.
+// The same verb and route in two packages collide, and the report points at the first.
 func TestProjectPathCollisionCrossPkg(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"alpha/a.craftgo": `package alpha
@@ -474,8 +426,7 @@ service BetaService { get Fetch /items { response BResp } }`,
 	}
 }
 
-// Collisions key on route SHAPE: `{id}` vs `{uid}` is the same net/http
-// pattern, so renaming the variable does not dodge the check.
+// Routes that differ only in a path variable's name (`{id}`, `{uid}`) collide.
 func TestProjectPathCollisionCrossPkgShape(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"alpha/a.craftgo": `package alpha
@@ -493,7 +444,7 @@ service BetaService { get Read /users/{uid} { request BReq  response BResp } }`,
 	}
 }
 
-// Distinct verbs (or distinct paths) on the same route never collide.
+// Routes that differ in verb or path do not collide.
 func TestProjectPathCollisionCleanCases(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"alpha/a.craftgo": `package alpha
@@ -513,8 +464,7 @@ service BetaService {
 	}
 }
 
-// A SAME-package duplicate stays the per-package pass's report - the project
-// pass skips it, so the pair yields exactly one diagnostic, not two.
+// A same-package duplicate route is reported once.
 func TestProjectPathCollisionSamePkgNoDoubleFire(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"alpha/a.craftgo": `package alpha
@@ -537,9 +487,7 @@ service BetaService { get Other /entries { response BResp } }`,
 	}
 }
 
-// Two routes of one verb that overlap with neither more specific are a pair
-// net/http refuses to register; the analyser reports the later declaration
-// once, naming both methods.
+// Same-verb routes that overlap with neither more specific are reported once, naming both.
 func TestProjectPathOverlapReported(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"m/x.craftgo": `package m
@@ -567,8 +515,7 @@ service OrderService {
 	}
 }
 
-// The same routes disambiguated (the filter under a literal sub-path) are
-// registrable side by side, so nothing is reported.
+// The same routes with the filter under a literal sub-path report nothing.
 func TestProjectPathOverlapClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"m/x.craftgo": `package m

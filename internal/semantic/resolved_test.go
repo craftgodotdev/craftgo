@@ -6,9 +6,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// ResolveField resolves a field's layer-agnostic facts - including a
-// CROSS-PACKAGE scalar's nilability, the resolution the per-package checks
-// can't do (the gap behind the cross-pkg-promoted scalar nilability bug).
+// ResolveField reports a field's category, primitive, nilability and home package.
 func TestResolveField(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -64,19 +62,18 @@ type T {
 	}
 	check("s", CatPrimitive, "string", false, "")
 	check("b", CatBytes, "bytes", true, "")
-	// A raw field is a wire.Raw: nilable like the slice it is, and named
-	// by no package - the scalar spelling lowers to the same type.
+	// A raw field is a nilable wire.Raw with no home package, however it is spelt.
 	check("rawdoc", CatRawBytes, "bytes", true, "")
-	check("blob", CatScalar, "bytes", true, "m")    // local scalar over bytes -> nilable
-	check("email", CatScalar, "string", false, "m") // local scalar over value -> not nilable
-	check("c", CatEnum, "string", false, "m")       // enum backing primitive, resolved like a scalar's
+	check("blob", CatScalar, "bytes", true, "m")
+	check("email", CatScalar, "string", false, "m")
+	check("c", CatEnum, "string", false, "m") // enum backing primitive, resolved like a scalar's
 	check("lvl", CatEnum, "int", false, "m")
 	check("inner", CatStruct, "", false, "m")
 	check("arr", CatArray, "", true, "")
 	check("mp", CatMap, "", true, "")
-	check("xblob", CatScalar, "bytes", true, "shared") // CROSS-PKG scalar over bytes -> resolved + nilable
+	check("xblob", CatScalar, "bytes", true, "shared")
 	check("xraw", CatRawBytes, "bytes", true, "")
 	check("xcents", CatScalar, "int", false, "shared")
-	check("xtone", CatEnum, "string", false, "shared") // CROSS-PKG enum: backing read from the declaring package
+	check("xtone", CatEnum, "string", false, "shared") // cross-package enum: backing read from its package
 	check("xtier", CatEnum, "int", false, "shared")
 }

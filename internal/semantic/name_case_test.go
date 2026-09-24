@@ -6,11 +6,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// TestDeclNameCaseWarnsForLowercase pins the warning shape for every
-// top-level decl kind that codegen treats as a Go identifier verbatim.
-// Each lower-case name produces exactly one warning carrying the kind
-// keyword the user typed - so the editor squiggle / CI message points
-// at the spelling fix, not a generic "decl" label.
+// A lower-case declaration name warns, naming the declaration's kind.
 func TestDeclNameCaseWarnsForLowercase(t *testing.T) {
 	cases := []struct {
 		label  string
@@ -38,8 +34,7 @@ service S { get listUsers /u {} }`, `method name "listUsers"`},
 	}
 }
 
-// TestDeclNameCasePascalCasePasses pins the negative case: every decl
-// kind written in canonical PascalCase must NOT raise the warning.
+// PascalCase declaration names do not warn.
 func TestDeclNameCasePascalCasePasses(t *testing.T) {
 	expectClean(t, `package x
 type MyType { id string }
@@ -49,12 +44,7 @@ scalar ID string
 service UserService { get ListUsers /u {} }`)
 }
 
-// TestDeclNameCaseExtendDoesNotDoubleReport confirms that an extend
-// service with a lower-case target name does NOT re-warn on the
-// service identifier (the original decl already carries it). Two
-// warnings expected total: the primary `service userService` and the
-// new `listMore` method added in the extend block. The extend's
-// mention of `userService` must not produce a third.
+// An `extend service` does not warn again about its lower-case service name.
 func TestDeclNameCaseExtendDoesNotDoubleReport(t *testing.T) {
 	expectCodeCount(t, `package x
 service userService {}
@@ -63,11 +53,7 @@ extend service userService {
 }`, CodeDeclNameCase, 2)
 }
 
-// TestDeclNameCaseEmptyNameSkipped asserts the empty-name guard via
-// a direct call to the helper - bypassing parser fixtures that would
-// surface parse errors before the analyser ran. An empty name must
-// simply return without emitting a diagnostic so parse-error
-// recovery does not double-stack with a misleading case warning.
+// warnNameCase skips an empty name.
 func TestDeclNameCaseEmptyNameSkipped(t *testing.T) {
 	a := newTestAnalyzer(&Package{})
 	a.warnNameCase("type", "", lexer.Position{})

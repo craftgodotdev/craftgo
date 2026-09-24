@@ -7,34 +7,13 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// expect_test.go - focused assertion helpers for the analyser tests.
-//
-// The semantic analyser produces diagnostics with stable codes and
-// human-readable messages; tests almost always need one of three
-// shapes:
-//
-//   - "this DSL fragment must analyse cleanly"           → expectClean
-//   - "this DSL fragment must produce diagnostic X"      → expectDiag
-//   - "diagnostic X must mention substring Y in its msg" → expectMessage
-//
-// Helpers below collapse those patterns into single readable lines
-// so the bulk of each test reads as the DSL fixture, not boilerplate
-// around it. The helpers are intentionally test-only (no exported
-// surface) so they don't widen the package's public API.
-
-// expectClean fails the test when the source produces ANY diagnostic.
-// Wrapper over [mustClean] kept for naming symmetry with the other
-// `expect*` helpers - call sites read more uniformly when every
-// assertion starts with `expect…`.
+// expectClean fails the test when src produces any diagnostic.
 func expectClean(t *testing.T, src string) *Package {
 	t.Helper()
 	return mustClean(t, src)
 }
 
-// expectDiag analyses src and returns the FIRST diagnostic carrying
-// the supplied code, failing the test when none is found. Lets the
-// caller chain further assertions on the returned diagnostic - see
-// [expectMessage] / [expectSeverity] for canned follow-ups.
+// expectDiag returns the first diagnostic with code that src produces, failing when there is none.
 func expectDiag(t *testing.T, src, code string) *Diagnostic {
 	t.Helper()
 	_, diags := Analyze(parseFiles(t, src))
@@ -45,10 +24,7 @@ func expectDiag(t *testing.T, src, code string) *Diagnostic {
 	return d
 }
 
-// expectWarning is [expectDiag] plus a severity check. Most "soft"
-// rules - name-case, field collision, enum-value collision - are
-// warnings and the severity is part of the contract; collapsing the
-// two assertions removes a noisy two-liner from every call site.
+// expectWarning is expectDiag that also requires warning severity.
 func expectWarning(t *testing.T, src, code string) *Diagnostic {
 	t.Helper()
 	d := expectDiag(t, src, code)
@@ -58,8 +34,7 @@ func expectWarning(t *testing.T, src, code string) *Diagnostic {
 	return d
 }
 
-// expectError is the severity-asserting partner of [expectWarning].
-// Used for hard rules (decl-collision, ref-unknown-symbol, ...).
+// expectError is expectDiag that also requires error severity.
 func expectError(t *testing.T, src, code string) *Diagnostic {
 	t.Helper()
 	d := expectDiag(t, src, code)
@@ -69,11 +44,7 @@ func expectError(t *testing.T, src, code string) *Diagnostic {
 	return d
 }
 
-// expectMessage asserts the diagnostic's message contains every
-// supplied substring. Variadic so a single call covers multiple
-// expectations - `expectMessage(t, d, "user_id", "UserID", "_2")`
-// reads as "the warning must name both DSL spellings AND the
-// suffixed Go identifier" without three separate `if` blocks.
+// expectMessage fails unless d's message contains every substring.
 func expectMessage(t *testing.T, d *Diagnostic, substrs ...string) {
 	t.Helper()
 	if d == nil {
@@ -86,10 +57,7 @@ func expectMessage(t *testing.T, d *Diagnostic, substrs ...string) {
 	}
 }
 
-// expectCodeCount asserts that exactly `want` diagnostics with the
-// supplied code fire on `src`. Useful for per-duplicate-emit rules
-// where N input duplicates must produce exactly N-1 diagnostics
-// (one per dupe beyond the canonical first).
+// expectCodeCount fails unless src produces exactly want diagnostics with code.
 func expectCodeCount(t *testing.T, src, code string, want int) {
 	t.Helper()
 	_, diags := Analyze(parseFiles(t, src))
@@ -104,10 +72,7 @@ func expectCodeCount(t *testing.T, src, code string, want int) {
 	}
 }
 
-// expectNoCode asserts the code never fires on `src`. Equivalent to
-// `expectClean` when the test only cares about ONE rule remaining
-// silent - projects often want to confirm "no false positive on
-// genuinely distinct names" without forbidding unrelated diagnostics.
+// expectNoCode fails if src produces a diagnostic with code.
 func expectNoCode(t *testing.T, src, code string) {
 	t.Helper()
 	_, diags := Analyze(parseFiles(t, src))
@@ -118,11 +83,7 @@ func expectNoCode(t *testing.T, src, code string) {
 	}
 }
 
-// expectMsg analyses ONE or MORE sources and asserts at least one
-// diagnostic's message contains substr. The multi-source variant lets
-// package-name-conflict and other multi-file tests stay inline.
-// Returns the matched diagnostic so callers can chain further
-// assertions.
+// expectMsg returns the first diagnostic of sources whose message contains substr.
 func expectMsg(t *testing.T, substr string, sources ...string) *Diagnostic {
 	t.Helper()
 	_, diags := Analyze(parseFiles(t, sources...))
@@ -135,10 +96,7 @@ func expectMsg(t *testing.T, substr string, sources ...string) *Diagnostic {
 	return nil
 }
 
-// expectNoMsg is the negative form - assert NO diagnostic mentions
-// substr. Useful for "this rule must NOT fire on a benign shape"
-// guards where the test author knows other diagnostics may still be
-// present.
+// expectNoMsg fails if a diagnostic of sources mentions substr.
 func expectNoMsg(t *testing.T, substr string, sources ...string) {
 	t.Helper()
 	_, diags := Analyze(parseFiles(t, sources...))
@@ -149,9 +107,7 @@ func expectNoMsg(t *testing.T, substr string, sources ...string) {
 	}
 }
 
-// expectNoDiags fails the test when an already-collected diagnostic list
-// is non-empty. The [expectClean] form of the same assertion for callers
-// that ran the analysis themselves to inspect the project.
+// expectNoDiags fails the test when diags is not empty.
 func expectNoDiags(t *testing.T, diags []Diagnostic) {
 	t.Helper()
 	if len(diags) > 0 {

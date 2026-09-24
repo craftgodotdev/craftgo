@@ -12,10 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/parser"
 )
 
-// projectFixture writes the supplied src map to a temp dir under
-// designRoot and returns (designRoot, []*ast.File). Keys are
-// design-relative paths (`api.craftgo`, `shared/user.craftgo`); values
-// are the file contents. Parser diagnostics fail the test.
+// projectFixture writes src (design-relative path → content) under a temp root and parses it.
 func projectFixture(t *testing.T, src map[string]string) (string, []*ast.File) {
 	t.Helper()
 	root := t.TempDir()
@@ -38,8 +35,6 @@ func projectFixture(t *testing.T, src map[string]string) (string, []*ast.File) {
 	return root, files
 }
 
-// ---------- single-package fallback ----------
-
 func TestAnalyzeProjectEmptyRootDelegates(t *testing.T) {
 	files := parseFiles(t, `package design
 type X { id string }`)
@@ -55,9 +50,7 @@ type X { id string }`)
 	}
 }
 
-// TestAnalyzeProjectEmptyRootNoPackageDecl covers the fallback when
-// the single-package analysis returns a package without a `package X`
-// keyword - the project keys it under "" instead of by name.
+// Without a design root, a package with no `package` clause is keyed under "".
 func TestAnalyzeProjectEmptyRootNoPackageDecl(t *testing.T) {
 	files := parseFiles(t, `type X { id string }`)
 	proj, _ := AnalyzeProject(files, Options{})
@@ -65,8 +58,6 @@ func TestAnalyzeProjectEmptyRootNoPackageDecl(t *testing.T) {
 		t.Errorf("expected fallback empty key, got %v", pkgNames(proj))
 	}
 }
-
-// ---------- happy path: cross-package ref ----------
 
 func TestAnalyzeProjectCrossPackageRef(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
@@ -85,12 +76,8 @@ type User { id string }`,
 	}
 }
 
-// ---------- merge: same-package files in different folders ----------
-
+// Files declaring the same package merge into one, whatever their folder.
 func TestAnalyzeProjectFoldermergeStillWorks(t *testing.T) {
-	// All files declare `package design` - they merge into one
-	// package regardless of folder location, matching the existing
-	// `import = pull files from folder into my package` semantics.
 	root, files := projectFixture(t, map[string]string{
 		"services.craftgo": `package design
 type Local { x string }`,
@@ -115,8 +102,6 @@ type Pong { name string }`,
 		t.Error("Pong (from subfolder) missing from merged package")
 	}
 }
-
-// ---------- import errors ----------
 
 func TestAnalyzeProjectImportUnresolved(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
@@ -154,10 +139,8 @@ type X { id string }`,
 	}
 }
 
+// Importing the folder of the file's own package is a no-op that warns.
 func TestAnalyzeProjectImportSelfWarning(t *testing.T) {
-	// `package shared` + import "shared" - the import resolves to a
-	// folder whose files share this package name, so the import is
-	// a no-op. Surfaced as a warning, not an error.
 	root, files := projectFixture(t, map[string]string{
 		"shared/a.craftgo": `package shared
 import "shared"
@@ -175,8 +158,6 @@ type B { id string }`,
 	}
 }
 
-// ---------- ref errors ----------
-
 func TestAnalyzeProjectUnknownPackage(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"api.craftgo": `package design
@@ -184,9 +165,7 @@ type X { user shared.User }`,
 		"shared/user.craftgo": `package shared
 type User { id string }`,
 	})
-	// shared.User in api.craftgo resolves correctly because package
-	// "shared" exists. Use a name that does NOT exist to trigger the
-	// unknown-package path.
+	// shared.User resolves because package shared exists; mystery.Thing does not.
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
 	if findCode(diags, CodeRefUnknownPackage) != nil {
 		t.Fatalf("happy path should resolve, got %v", codes(diags))
@@ -233,8 +212,6 @@ type User { id string }`,
 	}
 }
 
-// ---------- cross-pkg via mixin / generic ----------
-
 func TestAnalyzeProjectCrossPackageMixin(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"api.craftgo": `package design
@@ -269,8 +246,6 @@ type User { id string }`,
 		t.Fatalf("got %v", codes(diags))
 	}
 }
-
-// ---------- helpers ----------
 
 func TestLastSegment(t *testing.T) {
 	cases := map[string]string{
@@ -335,14 +310,12 @@ func TestFolderExists(t *testing.T) {
 	if folderExists(root, "") {
 		t.Error("empty path should report false")
 	}
-	// Folder exists but no .craftgo file inside.
 	if err := os.MkdirAll(filepath.Join(root, "empty"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if folderExists(root, "empty") {
 		t.Error("folder without .craftgo files should report false")
 	}
-	// Folder with a .craftgo file.
 	target := filepath.Join(root, "shared", "user.craftgo")
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		t.Fatal(err)
@@ -354,7 +327,6 @@ func TestFolderExists(t *testing.T) {
 		t.Error("populated folder should report true")
 	}
 
-	// Folder is unreadable: ReadDir fails, function returns false.
 	noPerm := filepath.Join(root, "noperm")
 	if err := os.MkdirAll(noPerm, 0o000); err != nil {
 		t.Fatal(err)
@@ -383,9 +355,7 @@ func TestWalkRefNilGuards(t *testing.T) {
 	}
 }
 
-// TestProcessFileEmptyPathSkipped exercises the `path == ""` skip in
-// resolveImports. Parser doesn't normally emit empty paths but the
-// guard exists for malformed input.
+// An import with an empty path is skipped without a diagnostic.
 func TestProcessFileEmptyPathSkipped(t *testing.T) {
 	r := &refResolver{proj: &Project{Packages: map[string]*Package{}}}
 	f := &ast.File{Imports: []*ast.Import{
@@ -397,14 +367,11 @@ func TestProcessFileEmptyPathSkipped(t *testing.T) {
 	}
 }
 
-// TestWalkDeclRefsCoversErrorAndService drives walkDeclRefs through
-// the ErrorDecl and ServiceDecl branches that AnalyzeProject's
-// happy-path tests don't always reach.
+// walkDeclRefs resolves qualified refs in error bodies and in method requests and responses.
 func TestWalkDeclRefsCoversErrorAndService(t *testing.T) {
 	r := &refResolver{proj: &Project{
 		Packages: map[string]*Package{"design": {Types: map[string]*ast.TypeDecl{"User": {}}}},
 	}}
-	// Error body referencing a multi-part name.
 	r.walkDeclRefs(&ast.ErrorDecl{
 		Body: []ast.TypeMember{
 			&ast.Field{Type: &ast.TypeRef{Named: &ast.NamedTypeRef{
@@ -412,13 +379,11 @@ func TestWalkDeclRefsCoversErrorAndService(t *testing.T) {
 			}}},
 		},
 	}, "")
-	// Service with method req+resp.
 	r.walkDeclRefs(&ast.ServiceDecl{Members: []ast.ServiceMember{
 		&ast.Method{
 			Request:  &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"design", "User"}}},
 			Response: &ast.MethodResponse{Type: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"design", "User"}}}},
 		},
-		// Method with no request/response - both nil branches.
 		&ast.Method{},
 	}}, "")
 	if len(r.diags) != 0 {
@@ -437,8 +402,6 @@ func TestWalkNamedRefMapBranch(t *testing.T) {
 	}
 }
 
-// pkgNames returns the sorted package keys of proj for test
-// diagnostics.
 func pkgNames(p *Project) []string {
 	out := make([]string, 0, len(p.Packages))
 	for k := range p.Packages {
@@ -447,13 +410,7 @@ func pkgNames(p *Project) []string {
 	return out
 }
 
-// ---------- @default on cross-package scalar / enum (project-level) ----------
-
-// TestAnalyzeProjectDefaultCrossPkgScalarOK covers the happy path:
-// `currency shared.CurrencyCode? @default("USD")` where the scalar
-// lives in a different package than the field. The per-package pass
-// defers the check; the project pass resolves the qualified ref and
-// validates the literal kind.
+// A valid @default on a cross-package scalar is accepted.
 func TestAnalyzeProjectDefaultCrossPkgScalarOK(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/scalars.craftgo": `package shared
@@ -468,10 +425,7 @@ type Order { currency shared.CurrencyCode? @default("USD") }`,
 	}
 }
 
-// TestAnalyzeProjectDefaultCrossPkgScalarKindMismatch surfaces the kind
-// check that the per-package pass cannot run (lacks cross-pkg view).
-// `@default(42)` on a string-backed scalar must fire @default's argtype
-// diagnostic at project time.
+// A @default whose kind mismatches a cross-package scalar is rejected.
 func TestAnalyzeProjectDefaultCrossPkgScalarKindMismatch(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/scalars.craftgo": `package shared
@@ -486,9 +440,7 @@ type Order { currency shared.CurrencyCode? @default(42) }`,
 	}
 }
 
-// TestAnalyzeProjectDefaultCrossPkgEnumOK covers @default(EnumValue) on a
-// cross-package enum field - the project pass walks the enum's value
-// set the same way the per-package pass would for local enums.
+// A @default naming a value of a cross-package enum is accepted.
 func TestAnalyzeProjectDefaultCrossPkgEnumOK(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/enums.craftgo": `package shared
@@ -503,8 +455,7 @@ type Customer { tier shared.Tier? @default(Pro) }`,
 	}
 }
 
-// TestAnalyzeProjectDefaultCrossPkgEnumUnknownValue catches the
-// "expected one of X, Y, Z" path for cross-package enums.
+// A @default naming no value of a cross-package enum is rejected.
 func TestAnalyzeProjectDefaultCrossPkgEnumUnknownValue(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/enums.craftgo": `package shared
@@ -519,10 +470,7 @@ type Customer { tier shared.Tier? @default(Ultimate) }`,
 	}
 }
 
-// TestAnalyzeProjectDefaultCrossPkgUnsupportedTarget covers the
-// "you pointed @default at a struct type" case across package
-// boundaries - the cross-pkg ref resolves to a *type*, not a scalar
-// or enum, so @default should still fire decorator/conflict.
+// A @default on a field of a cross-package struct type is rejected.
 func TestAnalyzeProjectDefaultCrossPkgUnsupportedTarget(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/types.craftgo": `package shared
@@ -537,10 +485,7 @@ type Order { bag shared.Bag? @default("nope") }`,
 	}
 }
 
-// TestAnalyzeProjectDefaultCrossPkgArrayElement covers an array field
-// whose ELEMENT type is a qualified scalar: `methods shared.CurrencyCode[]?
-// @default(["USD", "EUR"])` must validate each element against the
-// scalar's underlying primitive kind (string).
+// An array @default whose elements match a cross-package scalar's primitive is accepted.
 func TestAnalyzeProjectDefaultCrossPkgArrayElement(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/scalars.craftgo": `package shared
@@ -555,9 +500,7 @@ type Order { allowed shared.CurrencyCode[]? @default(["USD", "EUR"]) }`,
 	}
 }
 
-// hasCode is a tiny test helper for "did any diagnostic come back with
-// this code?" - keeps assertions readable without depending on order
-// or auxiliary messages.
+// hasCode reports whether any diagnostic carries code.
 func hasCode(diags []Diagnostic, code string) bool {
 	for _, d := range diags {
 		if d.Code == code {
@@ -567,11 +510,7 @@ func hasCode(diags []Diagnostic, code string) bool {
 	return false
 }
 
-// ---------- cross-package mixin ----------
-
-// TestAnalyzeProjectMixinCrossPkgOK covers the happy path: a type in
-// one package embeds a mixin declared in another. The expanded fields
-// land in the host's effective field set and the codegen sees them.
+// A type embeds a mixin declared in another package.
 func TestAnalyzeProjectMixinCrossPkgOK(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/mixins.craftgo": `package shared
@@ -593,9 +532,7 @@ type Order {
 	}
 }
 
-// TestAnalyzeProjectMixinCrossPkgConflict pins the conflict path:
-// a host's direct field collides with a field a cross-pkg mixin
-// would bring in.
+// A host field that collides with a cross-package mixin field conflicts.
 func TestAnalyzeProjectMixinCrossPkgConflict(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/mixins.craftgo": `package shared
@@ -615,10 +552,7 @@ type Order {
 	}
 }
 
-// TestAnalyzeProjectMixinCrossPkgNonType covers the type-vs-other
-// kind check across packages. `shared.Color` is an enum; mixin'ing it
-// must fire the per-pkg-style "is a enum, not a type" diagnostic at
-// project time.
+// Embedding a cross-package enum as a mixin is rejected.
 func TestAnalyzeProjectMixinCrossPkgNonType(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/enums.craftgo": `package shared
@@ -633,10 +567,7 @@ type Order { shared.Color }`,
 	}
 }
 
-// TestAnalyzeProjectMixinCrossPkgCycle covers a cycle that crosses a
-// package boundary: orders.A → shared.B → orders.A. The unified
-// visited map keys by qualified name so the cycle terminates with the
-// usual diagnostic instead of recursing forever.
+// A mixin cycle across packages (orders.A → shared.B → orders.A) is reported.
 func TestAnalyzeProjectMixinCrossPkgCycle(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/mixins.craftgo": `package shared
@@ -652,10 +583,7 @@ type A { shared.B }`,
 	}
 }
 
-// TestAnalyzeProjectMixinCrossPkgUnresolved fires when the qualified
-// prefix resolves to a known package but the symbol isn't declared.
-// The per-package pass cannot tell ("symbol might live elsewhere") so
-// this responsibility falls to the project resolver.
+// A cross-package mixin naming a symbol its package does not declare is reported.
 func TestAnalyzeProjectMixinCrossPkgUnresolved(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/scalars.craftgo": `package shared

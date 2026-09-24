@@ -2,12 +2,7 @@ package semantic
 
 import "testing"
 
-// A `file` field nested below the top level of a request body cannot be bound:
-// the multipart binder reads only the resolved top-level request fields, so the
-// `*multipart.FileHeader` stays nil and the upload is silently lost while gen
-// and `go build` both succeed. Reject the nesting. A top-level `file` (direct
-// or flattened in via a mixin) and a `file` carried in a response (including a
-// type echoed back as its own response) stay valid.
+// A `file` below the request's top level is rejected; top-level, mixin and response files are not.
 func TestNestedRequestFileRejected(t *testing.T) {
 	expectError(t, `package design
 type Wrap { data file @form }
@@ -15,7 +10,7 @@ type UploadReq { wrapper Wrap }
 type Resp { ok bool }
 service S { post Up /up { request UploadReq  response Resp } }`, CodeFilePosition)
 
-	// Reached two levels down.
+	// Two levels down.
 	expectError(t, `package design
 type Leaf { data file }
 type Mid { leaf Leaf }
@@ -30,7 +25,6 @@ service S { post Up /up { request UploadReq  response Resp } }`, CodeFilePositio
 			t.Errorf("%s: unexpected file-position rejection: %s", label, d.Msg)
 		}
 	}
-	// Top-level file binds directly.
 	mustNoFilePosition("top-level", `package design
 type UploadReq { f file @form  name string }
 type Resp { ok bool }
@@ -41,22 +35,20 @@ type Bits { f file @form }
 type UploadReq { Bits  name string }
 type Resp { ok bool }
 service S { post Up /up { request UploadReq  response Resp } }`)
-	// A file echoed back in a response is an established modelling pattern.
+	// A type holding a file may also be the response.
 	mustNoFilePosition("echo", `package design
 type Profile { avatar file @form  name string }
 service S { post Up /up { request Profile  response Profile } }`)
 }
 
-// A 1-D `file[]` binds every repeated multipart part into a
-// []*multipart.FileHeader; a multi-dimensional `file[][]` has no multipart
-// encoding and is rejected at gen time rather than emitting non-compiling Go.
+// A `file[][]` field is rejected; a `file[]` field is accepted.
 func TestMultiDimFileArrayRejected(t *testing.T) {
 	expectError(t, `package design
 type UploadReq { grid file[][]  name string @form }
 type Resp { ok bool }
 service S { post Up /up { request UploadReq  response Resp } }`, CodeFilePosition)
 
-	// 1-D file[] is accepted - auto-form and explicit @form alike.
+	// With and without an explicit @form.
 	for label, src := range map[string]string{
 		"auto": `package design
 type UploadReq { files file[]  name string @form }

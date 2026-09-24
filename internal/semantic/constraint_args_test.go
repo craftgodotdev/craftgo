@@ -6,9 +6,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// TestParseNumericArg pins the single classifier every constraint reader
-// (IntArg, NumericArg, numericArgValue, rawIfBigInt) now derives from, so the
-// int/float distinction and the big-integer threshold are decided once.
+// ParseNumericArg tells ints from floats and flags ints past 2^53 as big.
 func TestParseNumericArg(t *testing.T) {
 	mkInt := func(v int64) *ast.DecoratorArg { return &ast.DecoratorArg{Value: &ast.IntLit{Value: v}} }
 	mkFloat := func(v float64) *ast.DecoratorArg { return &ast.DecoratorArg{Value: &ast.FloatLit{Value: v}} }
@@ -36,7 +34,7 @@ func TestParseNumericArg(t *testing.T) {
 		t.Error("non-numeric arg must be !ok")
 	}
 
-	// The four readers all agree through the classifier.
+	// IntArg and NumericArg read through it.
 	if v, ok := IntArg(mkInt(42)); !ok || v != 42 {
 		t.Errorf("IntArg(42) = %d,%v", v, ok)
 	}

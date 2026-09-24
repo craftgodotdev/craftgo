@@ -7,8 +7,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// ---------- Prims rendering ----------
-
 func TestPrimsString(t *testing.T) {
 	cases := []struct {
 		p    Prims
@@ -52,8 +50,6 @@ func TestPrimFromName(t *testing.T) {
 	}
 }
 
-// ---------- String validators ----------
-
 func TestStringValidatorsOnString(t *testing.T) {
 	mustClean(t, `type X { name string @length(1, 20) @pattern("^[a-z]+$") }`)
 }
@@ -76,8 +72,6 @@ func TestPatternOnBoolRejected(t *testing.T) {
 	}
 }
 
-// ---------- Number validators ----------
-
 func TestNumberValidatorsOnInt(t *testing.T) {
 	mustClean(t, `type X { age int @gte(0) @lte(120) @multipleOf(1) }`)
 }
@@ -92,8 +86,6 @@ func TestNumberValidatorOnStringRejected(t *testing.T) {
 func TestPositiveOnFloat(t *testing.T) {
 	mustClean(t, `type X { ratio float64 @positive }`)
 }
-
-// ---------- Array validators ----------
 
 func TestArrayValidatorsOnArray(t *testing.T) {
 	mustClean(t, `type X { tags string[] @minItems(1) @maxItems(10) @uniqueItems }`)
@@ -111,8 +103,6 @@ func TestArrayValidatorOnMap(t *testing.T) {
 	mustClean(t, `type X { meta map<string, string> @maxItems(50) }`)
 }
 
-// ---------- File validators ----------
-
 func TestFileValidatorsOnFile(t *testing.T) {
 	mustClean(t, `type X { avatar file @maxSize(5MB) @mimeTypes(["image/png"]) }`)
 }
@@ -123,8 +113,6 @@ func TestFileValidatorOnStringRejected(t *testing.T) {
 		t.Fatalf("got %v", codes(diags))
 	}
 }
-
-// ---------- Scalar resolution ----------
 
 func TestStringValidatorOnStringScalar(t *testing.T) {
 	mustClean(t, `scalar Email string @format(email)
@@ -144,8 +132,6 @@ type X { who Age @length(1, 5) }`))
 	}
 }
 
-// ---------- Scalar declarations themselves ----------
-
 func TestScalarTypeMismatch(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `scalar Bad int @length(1, 5)`))
 	d := findCode(diags, CodeDecoratorTypeMismatch)
@@ -158,37 +144,22 @@ func TestScalarTypeMismatch(t *testing.T) {
 }
 
 func TestScalarUnknownPrimitiveRejected(t *testing.T) {
-	// A scalar's primitive slot must hold a built-in identifier.
-	// Typos like `scalar Weird unknownPrim` or self-references like
-	// `scalar Check Check` are flagged at design time: without the
-	// check the generated Go compiles but the inherited validators
-	// vanish.
 	d := expectDiag(t, `scalar Weird unknownPrim`, CodeScalarBadPrimitive)
 	expectMessage(t, d, "Weird", "unknownPrim")
 }
 
 func TestScalarSelfReferenceRejected(t *testing.T) {
-	// `scalar Name Name` declares a scalar that aliases itself -
-	// syntactically a noun in the primitive slot, but semantically
-	// meaningless (infinite recursion if the codegen ever tried to
-	// resolve the underlying primitive).
 	d := expectDiag(t, `scalar Check Check`, CodeScalarBadPrimitive)
 	expectMessage(t, d, "Check")
 }
 
-// ---------- Unresolved type silently skipped ----------
-
+// The type-compat check skips a field whose qualified type does not resolve.
 func TestQualifiedFieldTypeSkipsCompat(t *testing.T) {
-	// The qualified-ref pass already flags shared.User; the type-compat
-	// check should silently skip (nil primitive) so the user only sees
-	// one diagnostic per source location.
 	_, diags := Analyze(parseFiles(t, `type X { user shared.User @length(1, 5) }`))
 	if findCode(diags, CodeDecoratorTypeMismatch) != nil {
 		t.Errorf("type-compat should not stack on unknown qualified ref, got %v", codes(diags))
 	}
 }
-
-// ---------- nil-shape defensive ----------
 
 func TestFieldPrimNil(t *testing.T) {
 	a := newTestAnalyzer(&Package{})
@@ -197,9 +168,7 @@ func TestFieldPrimNil(t *testing.T) {
 	}
 }
 
-// TestTypeCompatNilDecoratorTolerated covers the defensive nil-entry
-// guards in checkBodyTypeCompat / checkScalarTypeCompat. Parser doesn't
-// emit nil entries today, so we hand-build the scopes.
+// The type-compat checks skip nil and unknown decorators on fields and scalars.
 func TestTypeCompatNilDecoratorTolerated(t *testing.T) {
 	a := newTestAnalyzer(&Package{
 		Scalars: map[string]*ast.ScalarDecl{},
@@ -209,15 +178,13 @@ func TestTypeCompatNilDecoratorTolerated(t *testing.T) {
 		Type: &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"string"}}}},
 		Decorators: []*ast.Decorator{
 			nil,
-			// Unknown decorator - placement pass would flag, type-compat skips.
 			{Name: "unknownDecorator"},
-			// Known decorator with AppliesTo == 0 (PrimAny) - no-op.
+			// @doc applies to any primitive.
 			{Name: "doc", Args: []*ast.DecoratorArg{{Value: &ast.StringLit{Value: "x"}}}},
 		},
 	}
 	a.checkBodyTypeCompat("X", []ast.TypeMember{field})
 
-	// Same for the scalar walker.
 	a.checkScalarTypeCompat(&ast.ScalarDecl{
 		Name: "S", Primitive: "string",
 		Decorators: []*ast.Decorator{
@@ -230,26 +197,18 @@ func TestTypeCompatNilDecoratorTolerated(t *testing.T) {
 	}
 }
 
-// `file` is a multipart-upload wire keyword, not a Go type, so a scalar may
-// not wrap it (`scalar X file` would emit non-compiling `type X file`) - reject
-// it like `any`, which is already rejected.
+// A scalar over `file` is rejected.
 func TestScalarOverFileRejected(t *testing.T) {
 	expectError(t, `scalar FileScalar file
 type R { f FileScalar }`, CodeScalarBadPrimitive)
 }
 
-// ---------- `bytes @format(raw)` ----------
-
-// The three shapes of a raw field analyse clean: the value carried as
-// it stands, absent, and explicitly null.
+// Required, optional and @nullable `bytes @format(raw)` fields are accepted.
 func TestRawFormatOnBytes(t *testing.T) {
 	mustClean(t, `type X { payload bytes @format(raw)  meta bytes? @format(raw)  trace bytes @format(raw) @nullable }`)
 }
 
-// `raw` is an argument, not a decorator name, so the AppliesTo table
-// cannot refuse it on its own: `@format` applies to every string-shaped
-// field, and the enum / declared-type / `any` cases resolve to no
-// category at all. Each one names the type it was written on.
+// @format(raw) on anything but bytes is rejected, naming the field's type.
 func TestRawFormatOffBytesRejected(t *testing.T) {
 	cases := []struct {
 		name, src, spelt string
@@ -275,27 +234,20 @@ func TestRawFormatOffBytesRejected(t *testing.T) {
 	}
 }
 
-// A format applies to one value, so an array of them is refused exactly
-// as `string[] @format(email)` is - the decorator has no per-element
-// form to fall back on.
+// @format(raw) on a bytes array is rejected, as `string[] @format(email)` is.
 func TestRawFormatOnBytesArrayRejected(t *testing.T) {
 	d := expectError(t, `type X { blobs bytes[] @format(raw) }`, CodeDecoratorTypeMismatch)
 	expectMessage(t, d, "@format(raw) applies to bytes", "is bytes[]")
-	// The precedent: the same shape one type over.
 	expectError(t, `type X { emails string[] @format(email) }`, CodeDecoratorTypeMismatch)
 }
 
-// A scalar is the design's name for the raw shape, and a field may
-// repeat the scalar's own format the way a string scalar's field may.
+// A raw bytes scalar is accepted, and a field of it may repeat @format(raw).
 func TestRawFormatScalar(t *testing.T) {
 	mustClean(t, `scalar RawDoc bytes @format(raw)
 type X { photos RawDoc?  notes RawDoc @format(raw) }`)
 }
 
-// Nothing else validates a raw value: reading it is the one thing the
-// shape exists not to do. A string-shaped and a number-shaped validator
-// are both refused, so what is rejected is the field's category rather
-// than one validator's argument kind.
+// A raw bytes field or scalar takes no other validator.
 func TestRawBytesTakesNoOtherValidator(t *testing.T) {
 	for _, src := range []string{
 		`type X { payload bytes @format(raw) @minLength(1) }`,
@@ -308,10 +260,7 @@ func TestRawBytesTakesNoOtherValidator(t *testing.T) {
 	}
 }
 
-// A raw member is the one bytes-shaped field a cross-field group may
-// reference: a wire.Raw is nil only when the key was absent, so its
-// presence is the clean `!= nil` the group's OpenAPI means. A plain
-// `bytes?` member, checked by emptiness, is still refused.
+// A cross-field group accepts a raw bytes member (nil only when absent) but not a plain `bytes?`.
 func TestCrossFieldAcceptsARawBytesMember(t *testing.T) {
 	mustClean(t, `@requiresOneOf(left, right)
 type Choice { left bytes? @format(raw)  right string? }`)

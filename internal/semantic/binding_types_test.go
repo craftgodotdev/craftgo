@@ -2,27 +2,19 @@ package semantic
 
 import "testing"
 
-// An auto-promoted @query field (no binding decorator, body-less verb) of a
-// multi-dimensional array type must be rejected just like the explicit
-// `int[][] @query` form - the depth guard lives in the shared
-// isWireBindingType predicate so the auto-@query path catches it too.
+// A multi-dimensional array field that auto-binds to @query is rejected, like an explicit one.
 func TestAutoQueryMultiDimArrayRejected(t *testing.T) {
 	expectError(t, `type Req { grid int[][] }
 service S { get Op /x { request Req } }`, CodeBindingType)
 }
 
-// A 1-D auto-@query array is fine - only nested arrays are rejected.
+// A 1-D array field that auto-binds to @query is accepted.
 func TestAutoQuerySingleDimArrayClean(t *testing.T) {
 	mustClean(t, `type Req { tags string[] }
 service S { get Op /x { request Req } }`)
 }
 
-// A cross-package scalar / enum field carrying `@nullable` that auto-binds to
-// @query on a body-less verb (GET/DELETE) must be rejected - `@nullable` lowers
-// it to a pointer but the wire binder writes a non-pointer value into it
-// (`req.Nul = lib.Email(...)` into a `*lib.Email`), non-compiling. The local
-// equivalent is already rejected; this mirrors it for the qualified form (the
-// check is structural, so it runs before the qualified-ref deferral).
+// A @nullable cross-package scalar field that auto-binds to @query is rejected.
 func TestNullableCrossPkgAutoQueryRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"lib/l.craftgo": `package lib
@@ -40,9 +32,7 @@ service XSvc { get X /x { request XReq  response XResp } }`,
 	}
 }
 
-// A cross-package binding error must be reported EXACTLY ONCE. The project
-// binding pass used to walk every request body a second time (request types
-// are already in pkg.Types), emitting byte-identical duplicate diagnostics.
+// A cross-package binding error is reported once.
 func TestCrossPkgBindingDiagnosticNotDuplicated(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/s.craftgo": `package shared
@@ -64,10 +54,7 @@ service S { post Do /do { request SearchReq } }`,
 	}
 }
 
-// An auto-@path field (name matches a {segment}, no binding decorator) must
-// reject @nullable / optional `?` / @default on any verb - a matched route
-// always supplies the segment and the path binder writes a plain string, so
-// these either non-compile (pointer mismatch) or are meaningless.
+// An auto-@path field rejects @nullable, `?` and @default; the route always has the segment.
 func TestAutoPathFieldDecoratorsRejected(t *testing.T) {
 	expectError(t, `type R { id string @nullable }
 service S { get G /it/{id} { request R } }`, CodeDecoratorConflict)
@@ -77,14 +64,13 @@ service S { post P /it/{id} { request R } }`, CodeDecoratorConflict)
 service S { get G /it/{id} { request R } }`, CodeDecoratorConflict)
 }
 
-// A normal auto-path string field is fine - the control.
+// A plain string auto-@path field is accepted.
 func TestAutoPathPlainStringClean(t *testing.T) {
 	mustClean(t, `type R { id string }
 service S { get G /it/{id} { request R } }`)
 }
 
-// An auto-bound path field with a struct type is rejected; a cross-pkg
-// scalar path field must NOT be false-rejected.
+// An auto-@path field of struct type is rejected.
 func TestAutoPathNonBindableRejected(t *testing.T) {
 	diags := analyzeOneFile(t, "package p\ntype Inner { a string }\ntype R { id Inner }\ntype Resp { ok bool }\nservice S { get G /u/{id} { request R  response Resp } }")
 	if !hasDiagContaining(diags, "@path requires a non-optional") {
@@ -98,9 +84,7 @@ func TestDateTimeIsNotWireBindable(t *testing.T) {
 service S { post Do /do { request SearchReq } }`, CodeBindingType)
 }
 
-// A raw value travels only in a body: a wire-string binder has no parser
-// for one, and a query string is not where an encoded document rides.
-// Every off-body binding is refused, the way `bytes` itself already is.
+// A raw bytes field cannot bind to @query, @header, @path, @cookie or @form.
 func TestRawBytesIsNotWireBindable(t *testing.T) {
 	for _, binding := range []string{"@query", "@header", "@path", "@cookie", "@form"} {
 		expectError(t, `type SearchReq { filter bytes @format(raw) `+binding+` }

@@ -6,10 +6,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// The analyser mirrors the runtime's default health routes instead of
-// importing pkg/server (the analyzer stays runtime-free). This pins the mirror
-// to the exported runtime constants so a change to either side fails here
-// instead of silently letting a user route collide with a live health path.
+// defaultHealthPaths matches pkg/server's default liveness and readiness paths.
 func TestHealthPathsMatchRuntime(t *testing.T) {
 	want := []string{server.DefaultLivenessPath, server.DefaultReadinessPath}
 	if len(defaultHealthPaths) != len(want) {

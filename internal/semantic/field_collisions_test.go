@@ -4,10 +4,7 @@ import (
 	"testing"
 )
 
-// TestFieldCollisionUserIdAndUserId pins the canonical case: two DSL
-// field names normalise to the same Go identifier under
-// [idents.GoFieldName]. The warning carries both DSL spellings AND
-// the suffixed Go name codegen will actually emit.
+// Two field names with one Go name warn, naming both spellings and the suffixed Go name.
 func TestFieldCollisionUserIdAndUserId(t *testing.T) {
 	d := expectWarning(t, `package x
 type User {
@@ -17,10 +14,7 @@ type User {
 	expectMessage(t, d, `"userId"`, `"user_id"`, `"UserID"`, `"UserID_2"`)
 }
 
-// TestFieldCollisionFourWayEmitsThreeWarnings pins the per-duplicate
-// emit rule. When 4 DSL spellings normalise to the same Go name, the
-// first occurrence keeps the canonical Go name and the OTHER three
-// each get a dedicated warning anchored at their own position.
+// Four field names with one Go name give three warnings, one per later field.
 func TestFieldCollisionFourWayEmitsThreeWarnings(t *testing.T) {
 	expectCodeCount(t, `package x
 type T {
@@ -31,9 +25,7 @@ type T {
 }`, CodeFieldNameCollision, 3)
 }
 
-// TestFieldCollisionInsideError pins the same logic on an error
-// body - error fields go through the same Go-struct emission path
-// so the same dedup applies.
+// Error body fields with one Go name warn too.
 func TestFieldCollisionInsideError(t *testing.T) {
 	expectWarning(t, `package x
 error BadRequest Validation {
@@ -42,10 +34,7 @@ error BadRequest Validation {
 }`, CodeFieldNameCollision)
 }
 
-// TestFieldCollisionNoFalsePositive confirms the warning does NOT
-// fire on field sets that are genuinely distinct under
-// [idents.GoFieldName] - `firstName` / `last_name` are unambiguous
-// because the converter title-cases each independently.
+// Field names with distinct Go names do not warn.
 func TestFieldCollisionNoFalsePositive(t *testing.T) {
 	expectClean(t, `package x
 type User {
@@ -55,10 +44,7 @@ type User {
 }`)
 }
 
-// TestFieldCollisionEmptyNameSkipped guards against parser-recovery
-// artefacts: an empty field name (placeholder for "user typed
-// nothing") must not be treated as colliding with another empty-named
-// field. Pure noise reporting otherwise.
+// warnFieldCollisions reports nothing for an empty member list.
 func TestFieldCollisionEmptyNameSkipped(t *testing.T) {
 	a := newTestAnalyzer(&Package{})
 	a.warnFieldCollisions("type Foo", nil)
@@ -69,29 +55,26 @@ func TestFieldCollisionEmptyNameSkipped(t *testing.T) {
 	}
 }
 
-// A field name that normalises to an invalid Go identifier - empty (`_`, `__`)
-// or digit-leading (`_2`) - is rejected rather than silently producing
-// uncompilable / unexported Go.
+// A field name whose Go name is empty or starts with a digit (`_`, `_2`) is rejected.
 func TestInvalidGoFieldNameRejected(t *testing.T) {
 	for _, name := range []string{"_2", "_1_2", "_", "__"} {
 		expectError(t, "type R { "+name+" string  x string }", CodeInvalidGoName)
 	}
 }
 
-// A leading underscore that still leaves a letter (`_foo` → `Foo`) is valid.
+// A leading underscore before a letter (`_foo` → `Foo`) is accepted.
 func TestLeadingUnderscoreFieldClean(t *testing.T) {
 	expectNoCode(t, "type R { _foo string  x string }", CodeInvalidGoName)
 }
 
-// An error body field whose Go name collides with a generated error method
-// (errCode→ErrCode, error→Error, httpStatus→HTTPStatus) is rejected.
+// An error field whose Go name matches an error method (ErrCode, Error, HTTPStatus) is rejected.
 func TestErrorReservedFieldNameRejected(t *testing.T) {
 	for _, name := range []string{"errCode", "error", "httpStatus"} {
 		expectError(t, "error Internal E { "+name+" string @header(\"X-E\")  detail string }", CodeInvalidGoName)
 	}
 }
 
-// Control: a normal error wire field is clean.
+// An ordinary error header field is accepted.
 func TestErrorWireFieldClean(t *testing.T) {
 	expectNoCode(t, `error Internal E { traceId string @header("X-Trace")  detail string }`, CodeInvalidGoName)
 }

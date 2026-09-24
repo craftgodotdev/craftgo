@@ -9,8 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
-// parseFileMap parses src as a slice of named files and returns the AST
-// set ready for [Analyze].
+// parseFileMap parses each file of files, keyed by name.
 func parseFileMap(t *testing.T, files map[string]string) []*ast.File {
 	t.Helper()
 	out := make([]*ast.File, 0, len(files))
@@ -134,9 +133,8 @@ enum Mixed {
 	}
 }
 
+// Single-package analysis accepts imports without resolving them.
 func TestSemanticImportsParsedNotResolved(t *testing.T) {
-	// Imports are accepted at the parse level; single-package Analyze
-	// does not resolve them across packages.
 	files := parseFileMap(t, map[string]string{
 		"a.craftgo": `package design
 import "shared/types"
@@ -173,8 +171,7 @@ service S {
 	}
 }
 
-// TestErrorsTypoRejected pins that an @errors typo is rejected while a
-// valid reference resolves.
+// An @errors typo is rejected; a valid reference resolves.
 func TestErrorsTypoRejected(t *testing.T) {
 	files := parseFileMap(t, map[string]string{
 		"svc.craftgo": `package design

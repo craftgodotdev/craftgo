@@ -38,8 +38,7 @@ func TestEventResolvesContractAndPayload(t *testing.T) {
 	}
 }
 
-// A payload declared in another package resolves to that package, which
-// is what a target needs to import the type from the right place.
+// An event payload declared in another package resolves to that package.
 func TestEventPayloadResolvesAcrossPackages(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -90,9 +89,6 @@ func TestEventRules(t *testing.T) {
 			msg:  "not a struct type",
 		},
 		{
-			// An array payload resolves its element exactly as a scalar
-			// one does, so an array of an enum is refused for the same
-			// reason the enum itself is.
 			name: "array payload of a non-struct",
 			src:  "package p\nenum E1 { A }\nevent E { payload E1[] }",
 			code: CodeEventPayloadKind,
@@ -136,10 +132,7 @@ event E { payload P }`,
 	}
 }
 
-// A contract may carry an array of a declared type: the body on the wire
-// is a JSON array, and everything else about the payload - which package
-// the type lives in, which declaration it is - resolves exactly as a
-// single one does.
+// An event payload may be an array of a declared type.
 func TestEventPayloadMayBeAnArrayOfAType(t *testing.T) {
 	src := `package orders
 type OrderPlacedPayload { orderId string }
@@ -158,8 +151,7 @@ event BatchPlaced { payload OrderPlacedPayload[] }`
 	}
 }
 
-// The element of an array payload resolves across packages too - the
-// array suffix says nothing about where the type lives.
+// The element of an array payload resolves across packages.
 func TestArrayPayloadResolvesAcrossPackages(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -178,18 +170,14 @@ event Batch { payload shared.Envelope[] }`,
 	}
 }
 
-// An event and its payload may share a name: they live in separate
-// namespaces, and naming the contract after the shape it carries is the
-// common case.
+// An event and a type may share a name.
 func TestEventAndTypeShareANamespaceFreely(t *testing.T) {
 	expectClean(t, `package p
 type OrderPlaced { id string }
 event OrderPlaced { payload OrderPlaced }`)
 }
 
-// Two events in different packages may resolve to one contract name only
-// through `@contract`; a listener could not tell them apart on the wire,
-// so it is rejected.
+// Two events in different packages with one @contract name collide.
 func TestContractCollisionAcrossPackages(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"a/a.craftgo": `package a
@@ -207,9 +195,7 @@ event Two { payload Q }`,
 	}
 }
 
-// Decorator placement is registry-driven: a method decorator on an event
-// (or the reverse) is rejected by the same pass that guards every other
-// site.
+// An event decorator on a method, and a method decorator on an event, are misplaced.
 func TestEventDecoratorPlacement(t *testing.T) {
 	d := expectDiag(t, `package p
 type P { id string }
@@ -238,8 +224,7 @@ event lowered { payload P }`, CodeDeclNameCase)
 	}
 }
 
-// An event is a declaration kind the lookup can yield - otherwise
-// completion and go-to-definition cannot reach a contract.
+// Decl lookups return events under EventDecls, never under TypeShapeDecls.
 func TestEventsAreALookupKind(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"upstream/upstream.craftgo": `package upstream
@@ -263,7 +248,6 @@ event Shipped { payload P }`,
 			t.Errorf("Decls(EventDecls) missing %q: %v", want, names)
 		}
 	}
-	// An event is a contract, never a type shape.
 	for _, d := range pkg.Decls(TypeShapeDecls) {
 		if d.DeclName() == "PaymentSettled" {
 			t.Error("an event is offered in a type-shape position")
@@ -274,9 +258,7 @@ event Shipped { payload P }`,
 	}
 }
 
-// The decorators that named a broker group and a consume chain are gone.
-// A design still carrying one is told what replaced it rather than that
-// the name was never a decorator.
+// @consumerGroup and @consumeMiddlewares are rejected with their replacements.
 func TestRemovedEventDecoratorsAreRejectedWithTheirMigration(t *testing.T) {
 	cases := []struct {
 		name string
@@ -308,9 +290,7 @@ event Placed { payload P }`,
 	}
 }
 
-// A design still carrying `@key` is told what replaced it. "Unknown
-// decorator" would be true and useless: the author has to learn that the
-// key moved to the publish call, and the diagnostic is where they look.
+// @key is rejected with its replacement, WithKey on the publish call.
 func TestAKeyDecoratorIsRejectedWithItsMigration(t *testing.T) {
 	d := expectDiag(t, `package p
 type P { id string }
@@ -323,8 +303,7 @@ event E { payload P }`, CodeDecoratorRemoved)
 	}
 }
 
-// A decorator that never existed keeps the message it had: the removed
-// set is not a catch-all for typos.
+// A misspelt decorator is still reported as unknown.
 func TestAnUnrelatedUnknownDecoratorIsStillUnknown(t *testing.T) {
 	d := expectDiag(t, `package p
 type P { id string }

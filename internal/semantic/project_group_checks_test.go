@@ -7,12 +7,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/config"
 )
 
-// ---------- shared output directories (the @group merge) ----------
-
-// TestGroupSharedByTwoServicesClean is the point of the decorator: @group
-// lays out folders, so two services choosing one group share a directory
-// and their methods merge into that directory's single routes.go. Nothing
-// about it is an error.
+// Two services in one @group share its directory without a diagnostic.
 func TestGroupSharedByTwoServicesClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"demo.craftgo": `package demo
@@ -28,10 +23,7 @@ service Beta { get B /b { response R } }`,
 	}
 }
 
-// TestGroupSharedWithUngroupedServiceDirClean covers the same merge reached
-// the other way: a @group naming an ungrouped service's own directory. The
-// group replaces the service-name segment, so both land in `beta` - which
-// is a layout choice, not a mistake.
+// A @group naming an ungrouped service's directory shares it without a diagnostic.
 func TestGroupSharedWithUngroupedServiceDirClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"demo.craftgo": `package demo
@@ -46,8 +38,7 @@ service Beta { get B /b { response R } }`,
 	}
 }
 
-// TestGroupPerBlockGroupingClean pins the documented per-block layout: one
-// service splitting its own methods across version folders.
+// One service may split its blocks across @group folders.
 func TestGroupPerBlockGroupingClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"demo.craftgo": `package demo
@@ -64,12 +55,7 @@ extend service Checkout { get C /c { response R } }`,
 	}
 }
 
-// ---------- what a shared directory cannot absorb ----------
-
-// TestGroupPackageStraddle pins the first hard limit: a directory is one Go
-// package, and generated files take their `package` declaration from the
-// DSL package that declared the service. Two DSL packages feeding one
-// folder would emit `package alpha` and `package beta` side by side.
+// A @group directory fed by two DSL packages is reported at both; a directory is one Go package.
 func TestGroupPackageStraddle(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"a/svc.craftgo": `package alpha
@@ -89,7 +75,6 @@ service Beta { get B /b { response R } }`,
 	if !strings.Contains(d.Msg, `"shared/v1"`) {
 		t.Errorf("message should name the shared directory: %q", d.Msg)
 	}
-	// Both sites fire so the editor underlines each @group.
 	hits := 0
 	for _, dd := range diags {
 		if dd.Code == CodeGroupPackageStraddle {
@@ -101,9 +86,7 @@ service Beta { get B /b { response R } }`,
 	}
 }
 
-// TestGroupMethodCollision pins the second hard limit: handlers and stubs
-// are one file per method, named after it, and so is the handler function -
-// so two services in one folder cannot both declare `Ping`.
+// Two services in one @group directory cannot both declare `Ping`; each method is its own file.
 func TestGroupMethodCollision(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"demo.craftgo": `package demo
@@ -132,9 +115,7 @@ service Beta { get Ping /beta/ping { response R } }`,
 	}
 }
 
-// TestGroupMethodNameReuseAcrossDirectoriesClean guards the negative: the
-// same method name in two services is fine as long as they do not share a
-// directory - that is the ordinary ungrouped layout.
+// One method name in two services in separate directories does not collide.
 func TestGroupMethodNameReuseAcrossDirectoriesClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"demo.craftgo": `package demo
@@ -148,11 +129,7 @@ service Beta { get Ping /beta/ping { response R } }`,
 	}
 }
 
-// TestGroupChecksHonourFileCase pins that the ungrouped side of the
-// comparison uses the project's output.fileCase: `UserService` occupies
-// `user-service` under kebab and `user_service` under snake, so only the
-// matching group spelling shares its directory - and only then can a method
-// name collide there.
+// An ungrouped service's directory name follows output.fileCase.
 func TestGroupChecksHonourFileCase(t *testing.T) {
 	src := map[string]string{
 		"demo.craftgo": `package demo
@@ -173,9 +150,7 @@ service UserService { get Ping /user/ping { response R } }`,
 	}
 }
 
-// TestGroupChecksDefaultToSnakeFileCase pins the default half of that rule:
-// an unset FileCase must resolve the way the manifest resolves it, or the
-// analyser would reason about a directory codegen never writes.
+// An unset FileCase means snake case, the manifest default.
 func TestGroupChecksDefaultToSnakeFileCase(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"demo.craftgo": `package demo
@@ -190,10 +165,7 @@ service UserService { get Ping /user/ping { response R } }`,
 	}
 }
 
-// TestGroupMethodlessBlockClaimsNothing pins that a block declaring no
-// methods contributes nothing. Codegen derives its folder set from the
-// merged method list, so an empty block writes no files and cannot drag a
-// second DSL package into a directory.
+// A block without methods claims no directory, so it cannot straddle packages.
 func TestGroupMethodlessBlockClaimsNothing(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"a/svc.craftgo": `package alpha
