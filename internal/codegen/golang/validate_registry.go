@@ -1,6 +1,3 @@
-// The Go half of the constraint catalogue: the runtime check each
-// constraint decorator compiles to. Which decorators exist and what
-// each restricts is [semantic.Registry]; this file only renders.
 package golang
 
 import (
@@ -11,8 +8,7 @@ import (
 // out when the field type does not fit.
 type goCheck func(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string
 
-// goChecks is keyed by decorator name; every constraint decorator in
-// [semantic.Registry] has a row, asserted by TestGoChecksCoverConstraints.
+// goChecks maps every constraint decorator in [semantic.Registry] to its Go check.
 var goChecks = map[string]goCheck{
 	// string
 	"length": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return lengthCheck(f, a, d, c) },
@@ -24,10 +20,7 @@ var goChecks = map[string]goCheck{
 	},
 	"pattern": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return patternCheck(f, a, d, c) },
 	"format":  func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return formatCheck(f, a, d, c) },
-	// numeric - math-style comparison operators. Strict variants
-	// (@gt, @lt) sit next to inclusive variants (@gte, @lte); no
-	// legacy aliases. `@positive`/`@negative` remain as flag-form
-	// sugar for `@gt(0)` / `@lt(0)`.
+	// numeric
 	"gt": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
 		return numericBoundCheck(f, a, d, ">", "must be greater than", c)
 	},
@@ -60,7 +53,7 @@ var goChecks = map[string]goCheck{
 	"uniqueItems": func(f *ast.Field, a string, _ *ast.Decorator, c emitCtx) string {
 		return uniqueItemsCheck(f, a, c)
 	},
-	// file - runtime only; a multipart part has no schema keyword for these.
+	// file
 	"maxSize": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return maxSizeCheck(f, a, d, c) },
 	"mimeTypes": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
 		return mimeTypesCheck(f, a, d, c)

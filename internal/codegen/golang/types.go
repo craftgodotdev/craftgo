@@ -1,8 +1,3 @@
-// Go struct emission: one `types.go` per DSL package.
-//
-// Output files are formatted with `go/format` before being written so
-// diffs in version control stay minimal and the generated code passes
-// `gofmt`.
 package golang
 
 import (
@@ -21,30 +16,14 @@ import (
 )
 
 const (
-	// rawImportPath and rawGoType are the runtime type a `bytes
-	// @format(raw)` field lowers to: a []byte the codec embeds as it
-	// stands instead of base64-encoding it. It is its own stdlib-only
-	// module, like pkg/events, so a generated contract package naming it
-	// inherits nothing else - not the craftgo toolchain that wrote it.
+	// rawImportPath and rawGoType name the type of a `bytes @format(raw)`
+	// field, whose bytes the codec embeds as they are.
 	rawImportPath = "github.com/craftgodotdev/craftgo/pkg/wire"
 	rawGoType     = "wire.Raw"
 )
 
-// generateTypes emits a `types.go` file under outDir/<pkg.Name>/ containing
-// Go struct definitions for every concrete (non-generic) [ast.TypeDecl] in
-// pkg. Generic declarations (those with [ast.TypeDecl.TypeParams]) are
-// skipped - their concrete instances are emitted at the call site once
-// generic instantiation lands.
-//
-// outDir is the configured `output.types` directory; the package name
-// segment is appended so that types live alongside the rest of the
-// service-scoped artefacts. r supplies the Go imports for cross-package
-// field types and mixin refs; a nil resolver resolves local names only.
-//
-// A package with no type and no scalar - one holding only services, or
-// only consume middleware - writes nothing: the file would carry a
-// package clause and nothing else. The directory is left uncreated, and
-// the sweep takes what an earlier run put there.
+// generateTypes writes outDir/<pkg>/types.go with pkg's scalars and structs,
+// generic ones included; a package with neither writes nothing.
 func generateTypes(pkg *semantic.Package, outDir string, r *projectResolver) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
@@ -65,22 +44,12 @@ func generateTypes(pkg *semantic.Package, outDir string, r *projectResolver) err
 	return os.WriteFile(filepath.Join(pkgDir, "types.go"), formatted, 0o644)
 }
 
-// pkgDeclaresTypes reports whether the package declares anything types.go
-// carries: a struct or a scalar defined type.
+// pkgDeclaresTypes reports whether pkg has a struct or scalar for types.go.
 func pkgDeclaresTypes(pkg *semantic.Package) bool {
 	return len(pkg.Types) > 0 || len(pkg.Scalars) > 0
 }
 
-// buildTypesGo assembles the textual contents of types.go, including the
-// generated-file header, package clause, imports, scalar defined types, and
-// one struct per concrete TypeDecl in deterministic name order. The
-// result is returned pre-formatting; the caller runs `go/format` to
-// normalise whitespace.
-//
-// Scalars emit as Go defined types (`type Email string`, no `=`) so each
-// can carry a `Validate()` method. Fields that use the scalar call
-// `v.Field.Validate()` and generic instances probe via the runtime
-// `interface{ Validate() error }` assertion.
+// buildTypesGo returns the unformatted source of pkg's types.go.
 func buildTypesGo(pkg *semantic.Package, r *projectResolver) string {
 	parts := []string{
 		generatedHeader + "\n",
@@ -98,25 +67,15 @@ func buildTypesGo(pkg *semantic.Package, r *projectResolver) string {
 	return strings.Join(parts, "\n")
 }
 
-// renderScalars emits one `type Name <Primitive>` line per scalar
-// declaration in pkg, in alphabetical order. Returns the empty string
-// when the package has no scalars so the caller can drop the section
-// header.
+// renderScalars declares each scalar as a defined type over its Go primitive,
+// so it can carry a Validate() method.
 func renderScalars(pkg *semantic.Package) string {
 	if len(pkg.Scalars) == 0 {
 		return ""
 	}
 	names := sortedKeys(pkg.Scalars)
-	// Defined type (NOT an alias `=`): a distinct Go type so the scalar
-	// can carry a Validate() method, defined ONCE and reused by every
-	// field of this type and picked up by the generic-instance validator
-	// via its `interface{ Validate() error }` assertion - so `Page<Email>`
-	// enforces Email's @format instead of silently dropping it.
 	const tmpl = "// %s is a DSL scalar over %s; its declared validators live on its Validate() method and are inherited by every field of this type.\ntype %s %s\n\n"
-	// A scalar over `bytes @format(raw)` is the one ALIAS: the raw type
-	// carries the bytes through the codec on its own methods, and a
-	// defined type would leave those behind and silently base64 the value
-	// instead. It declares no validator to hang off a method either.
+	// A raw scalar is an alias: a defined type would drop wire.Raw's codec methods.
 	const rawTmpl = "// %s is a DSL scalar over bytes @format(raw): an alias for the runtime's pass-through type, whose codec methods carry the bytes untouched.\ntype %s = %s\n\n"
 	parts := make([]string, len(names))
 	for i, n := range names {
@@ -130,10 +89,7 @@ func renderScalars(pkg *semantic.Package) string {
 	return strings.Join(parts, "")
 }
 
-// scalarPrimitiveGo maps a DSL primitive name (`string`, `int`,
-// `bytes`, ...) to its Go-side counterpart. Non-listed names pass
-// through verbatim - the parser only accepts a closed primitive set
-// so the fallback is conservative rather than defensive.
+// scalarPrimitiveGo returns the Go type of DSL primitive name; other names pass through.
 func scalarPrimitiveGo(name string) string {
 	if sp, ok := prims.Lookup(name); ok && sp.Go != "" {
 		return sp.Go
@@ -141,9 +97,7 @@ func scalarPrimitiveGo(name string) string {
 	return name
 }
 
-// renderImports returns the `import (...)` block. Each path is quoted
-// via strconv.Quote so non-ASCII characters in stdlib paths (extremely
-// unlikely but harmless) survive correctly.
+// renderImports returns the `import (...)` block for imps.
 func renderImports(imps []string) string {
 	lines := make([]string, len(imps))
 	for i, imp := range imps {
@@ -152,28 +106,15 @@ func renderImports(imps []string) string {
 	return fmt.Sprintf("import (\n%s\n)\n", strings.Join(lines, "\n"))
 }
 
-// collectBodyImports walks every field type in pkg and returns the sorted set
-// of imports the generated structs require. Standard-library imports
-// (`io`, `mime/multipart`, `encoding/json`) come from built-in field
-// types. When crossPkg is non-empty, multi-part DSL refs add the
-// matching Go import paths so a `shared.User` field surfaces
-// `<module>/<typesDir>/shared` in the import block.
-// collectBodyImports adds every Go import a type / error body reaches into -
-// both directly-declared fields AND embedded mixins, whose generic args may
-// name a cross-package type (`Box<mod.Owner>` → embedded `Box[mod.Owner]`).
-// It is the single home for the body import walk so the type emitter and the
-// error emitter can't drift: a mixin-only cross-package ref must be collected
-// for both, or the side that misses it emits `undefined: <pkg>`.
+// collectBodyImports adds to imports every Go import the fields and mixins of a
+// type or error body reach, generic arguments included.
 func collectBodyImports(body []ast.TypeMember, pkg *semantic.Package, r *projectResolver, imports map[string]bool) {
 	crossPkg := r.CrossPkg
 	for _, m := range body {
 		switch v := m.(type) {
 		case *ast.Field:
 			if isRawBytesField(v, pkg, r) {
-				// A raw field lowers to wire.Raw whatever it was spelt as,
-				// so the runtime import is the only one it reaches - the
-				// package of a `shared.RawDoc` scalar it no longer names
-				// would land here unused.
+				// The field renders as wire.Raw, so a scalar it names (`shared.RawDoc`) adds no import.
 				imports[rawImportPath] = true
 				continue
 			}
@@ -182,10 +123,7 @@ func collectBodyImports(body []ast.TypeMember, pkg *semantic.Package, r *project
 		case *ast.Mixin:
 			if v.Ref != nil {
 				ref := &ast.TypeRef{Named: v.Ref}
-				// A mixin's generic arg can be a stdlib-backed builtin
-				// (`Box<file>` → embedded `Box[*multipart.FileHeader]`), so
-				// collect those imports too - mirroring the Field branch, which
-				// owns the `file → mime/multipart` mapping.
+				// A generic argument can be a builtin with an import (`Box<file>`).
 				collectFieldImports(ref, imports)
 				walkCrossPkgImports(ref, crossPkg, imports)
 			}
@@ -207,10 +145,8 @@ func collectImports(pkg *semantic.Package, r *projectResolver) []string {
 	return sortedKeys(imports)
 }
 
-// collectFieldImports recurses into a TypeRef collecting any built-in
-// names that resolve to imported Go types (`file` → mime/multipart).
-// Generic and map types are recursed into so nested usages are caught
-// too.
+// collectFieldImports adds the stdlib imports of the builtins t reaches (`file`,
+// `datetime`), through maps and generic arguments.
 func collectFieldImports(t *ast.TypeRef, set map[string]bool) {
 	if t == nil {
 		return
@@ -233,12 +169,7 @@ func collectFieldImports(t *ast.TypeRef, set map[string]bool) {
 	}
 }
 
-// renderType returns the Go source for one TypeDecl: doc, header
-// (with optional `[T any, ...]` generic params), and body.
-//
-// `@deprecated` on the type prepends a `// Deprecated: ...` line to
-// the doc block - the canonical Go convention so `go vet` and
-// `staticcheck` warn on every reference to the type.
+// renderType returns td's Go struct with its doc and any deprecation notice.
 func renderType(td *ast.TypeDecl, pkg *semantic.Package, r *projectResolver) string {
 	doc := renderDoc(td.Doc, "")
 	doc += renderDeprecatedDoc(td.Decorators, "")
@@ -247,12 +178,8 @@ func renderType(td *ast.TypeDecl, pkg *semantic.Package, r *projectResolver) str
 	return doc + header
 }
 
-// renderDeprecatedDoc returns a `// Deprecated: <reason>` line (with
-// the supplied indent) when the decorator chain has `@deprecated`,
-// otherwise "". The reason defaults to a generic note when the
-// decorator carries no string argument. The leading blank line keeps
-// the deprecation paragraph separated from any preceding doc per the
-// Go convention.
+// renderDeprecatedDoc returns the `Deprecated:` doc paragraph for a @deprecated
+// decorator chain, or "".
 func renderDeprecatedDoc(decs []*ast.Decorator, indent string) string {
 	if !semantic.IsDeprecated(decs) {
 		return ""
@@ -277,15 +204,8 @@ func renderTypeParams(params []string) string {
 	return "[" + strings.Join(parts, ", ") + "]"
 }
 
-// renderTypeBody returns the contents of a struct body - fields and
-// mixin embeds - already indented with one leading tab per line. The
-// caller wraps with the `struct { ... }` braces. When two DSL field
-// names normalise to the same Go identifier (e.g. `user_id` and
-// `userId` both → `UserID`) the dedup pass appends `_2`, `_3`, ...
-// suffixes so the struct compiles. The semantic phase already
-// surfaced a `field/name-collision` warning pointing the user at
-// the duplicate spellings - this is just the silent recovery so
-// the build succeeds.
+// renderTypeBody returns the tab-indented fields and mixin embeds of a struct
+// body; colliding Go names get `_2`, `_3` suffixes.
 func renderTypeBody(members []ast.TypeMember, pkg *semantic.Package, r *projectResolver) string {
 	resolved := resolvedGoFieldNames(members)
 	parts := make([]string, 0, len(members))
@@ -302,10 +222,8 @@ func renderTypeBody(members []ast.TypeMember, pkg *semantic.Package, r *projectR
 	return strings.Join(parts, "")
 }
 
-// resolvedGoFieldNames returns the struct-emit Go identifier for each
-// [ast.Field] in members, in source order. Mixins are skipped (they
-// don't compete for a Go field name). The dedup is keyed off DSL
-// spellings so generated output stays stable across runs.
+// resolvedGoFieldNames returns the deduped Go name of each field in members, in
+// source order.
 func resolvedGoFieldNames(members []ast.TypeMember) []string {
 	var dslNames []string
 	for _, m := range members {
@@ -317,56 +235,24 @@ func resolvedGoFieldNames(members []ast.TypeMember) []string {
 	return resolved
 }
 
-// renderField returns one struct field line (with leading tab). The
-// caller passes the dedup-resolved Go identifier so collision pairs
-// get `_2`, `_3`, ... suffixes; the struct tag is computed by
-// [structTag] from the DSL name verbatim, so the wire shape always
-// reflects what the user typed regardless of any Go-side rename.
-//
-// The Go type comes from [goFieldType] rather than [goTypeRef]
-// directly because `@nullable` on value types (string, int, struct)
-// requires an extra `*T` wrap so the field can hold nil and
-// JSON-encode to `null` without a custom marshaller.
+// renderField returns one tab-indented struct field named goName, with its doc.
 func renderField(f *ast.Field, goName string, pkg *semantic.Package, r *projectResolver) string {
 	return renderDoc(f.Doc, "\t") +
 		renderDeprecatedDoc(f.Decorators, "\t") +
 		fmt.Sprintf("\t%s %s `%s`\n", goName, goFieldType(f, pkg, r), structTag(f))
 }
 
-// goFieldType returns the final Go type expression for a field, taking
-// `?` (optional) and `@nullable` into account. It owns the single
-// pointer-wrap decision for a field so every stage agrees:
-//
-//   - Already-nilable Go types (slice, map, pointer, interface, the
-//     `bytes`/`any`/`file` builtins) - no extra wrap; nil naturally
-//     encodes to JSON `null`.
-//   - A scalar whose underlying primitive is itself nilable (`scalar
-//     Blob bytes` → `[]byte`) - no extra wrap either: the named slice
-//     holds nil directly, exactly like a bare `bytes` field, so an
-//     optional / `@nullable` `Blob` stays `Blob`, not `*Blob`.
-//   - `bytes @format(raw)`, and a scalar over it - `wire.Raw` in every
-//     shape. It is a slice, and nil is the absent value the encoder
-//     writes as `null`; a pointer would collapse an explicit `null`
-//     into that same nil and lose the difference.
-//   - Value types (string, int, struct, scalar-over-value) - wrap in
-//     `*T` so the field can hold nil. Combined with [jsonTag] dropping
-//     `omitempty`, the encoder emits `"f": null` for nil and `"f":
-//     value` otherwise.
+// goFieldType returns f's Go type: wire.Raw for a raw field, and `*T` for an
+// optional or @nullable field whose type does not already hold nil.
 func goFieldType(f *ast.Field, pkg *semantic.Package, r *projectResolver) string {
 	if f == nil || f.Type == nil {
 		return ""
 	}
-	// Render the base without the top-level optional pointer, then make
-	// the wrap decision from the resolved IR so a nilable scalar can opt
-	// out of it.
+	// goFieldPointerWrap decides the `*`, so the `?` is dropped here.
 	clone := *f.Type
 	clone.Optional = false
 	s := goTypeRef(&clone)
 	if isRawBytesField(f, pkg, r) {
-		// `bytes @format(raw)`: the bytes ARE the value, so the field
-		// holds the runtime's pass-through type rather than the []byte a
-		// codec would base64. A scalar over raw bytes is an alias for
-		// that same type, so it lowers here too.
 		s = rawGoType
 	}
 	if goFieldPointerWrap(f, pkg, r) {
@@ -381,12 +267,8 @@ func isRawBytesField(f *ast.Field, pkg *semantic.Package, r *projectResolver) bo
 	return semantic.ResolveField(f, pkg, r.Project()).Category == semantic.CatRawBytes
 }
 
-// goFieldPointerWrap reports whether [goFieldType] prepends `*` to the
-// field's base type: the field is optional (`?`) or `@nullable` and its
-// resolved type does not already hold nil (slice, map, bytes, raw, any,
-// file, or a scalar over one of those). The nilability fact comes from
-// the semantic field IR, so the emitted Go and the design-time checks
-// cannot disagree.
+// goFieldPointerWrap reports whether [goFieldType] prepends `*`: f is optional
+// or @nullable and its resolved type does not already hold nil.
 func goFieldPointerWrap(f *ast.Field, pkg *semantic.Package, r *projectResolver) bool {
 	if f == nil || f.Type == nil {
 		return false
@@ -397,10 +279,8 @@ func goFieldPointerWrap(f *ast.Field, pkg *semantic.Package, r *projectResolver)
 	return !semantic.ResolveField(f, pkg, r.Project()).IsNilable
 }
 
-// goFieldIsPointer reports whether the generated Go type for f is a
-// pointer: a wrapped optional / `@nullable` field, or a `file` field,
-// whose Go type is `*multipart.FileHeader`. Validators nil-check such a
-// field for presence and dereference it before reading the value.
+// goFieldIsPointer reports whether f's Go type is a pointer: a wrapped optional
+// or @nullable field, or a `file` (`*multipart.FileHeader`).
 func goFieldIsPointer(f *ast.Field, pkg *semantic.Package, r *projectResolver) bool {
 	if f == nil || f.Type == nil {
 		return false
@@ -411,30 +291,14 @@ func goFieldIsPointer(f *ast.Field, pkg *semantic.Package, r *projectResolver) b
 	return goFieldPointerWrap(f, pkg, r)
 }
 
-// renderMixin returns one Go-level embedded-type line. Qualified
-// references survive verbatim - Go allows `pkg.Name` as an embedded
-// field, and the consuming file already carries the matching import
-// (added by the type-resolver). Stripping the qualifier produced
-// `undefined: Name` compile errors for every cross-package mixin.
-//
-// Same-package mixins land with a single-segment name (`Pagination`)
-// because the analyzer doesn't synthesize a fake qualifier for local
-// refs.
+// renderMixin returns the embed line for m with its package qualifier and
+// generic arguments.
 func renderMixin(m *ast.Mixin) string {
-	// goNamedType carries the generic arguments, so a `Page<Item>` mixin
-	// embeds the instantiated `Page[Item]` (which Go accepts and promotes
-	// the fields of) rather than the bare, un-instantiable `Page`.
 	return "\t" + goNamedType(m.Ref) + "\n"
 }
 
-// goTypeRef converts an [ast.TypeRef] into the corresponding Go type
-// expression. The optional suffix (`?`) prepends `*` only when the
-// underlying Go type isn't already nilable: slices, maps, channels,
-// interfaces, and pointer-shaped builtins (`file` → `*multipart.FileHeader`)
-// already use `nil` as their zero value, so wrapping them in another
-// pointer would just produce `**T` / `*[]T` for no semantic gain. Value
-// types (`string`, `int`, user structs) still receive `*` so the
-// generated field can distinguish "absent" from the zero value.
+// goTypeRef returns the Go type of t; an optional gets `*` unless the type
+// already holds nil.
 func goTypeRef(t *ast.TypeRef) string {
 	if t == nil {
 		return ""
@@ -447,8 +311,7 @@ func goTypeRef(t *ast.TypeRef) string {
 	}
 	depth := t.ArrayDepth
 	if depth == 0 && t.Array {
-		// Older AST nodes (hand-built or pre-parser-change tests)
-		// might set Array=true without populating ArrayDepth.
+		// A hand-built node may set Array without ArrayDepth.
 		depth = 1
 	}
 	for i := 0; i < depth; i++ {
@@ -460,15 +323,8 @@ func goTypeRef(t *ast.TypeRef) string {
 	return s
 }
 
-// isNilableGoType reports whether the Go type expression `s` can take
-// the value `nil` directly. Used by [goTypeRef] to skip a redundant
-// pointer wrap on optional fields whose base type is already nilable.
-//
-// The check is purely syntactic - it inspects the leading characters of
-// the rendered type, plus a small fixed set of builtin/std-lib names -
-// because the codegen never sees a Go reflect.Type. That's enough to
-// catch every shape the DSL currently produces: arrays, maps, the
-// `file` / `any` / `bytes` builtins, and any user-supplied pointer.
+// isNilableGoType reports whether the Go type spelt s holds nil, judged from
+// the spelling alone.
 func isNilableGoType(s string) bool {
 	if s == "" {
 		return false
@@ -488,10 +344,8 @@ func isNilableGoType(s string) bool {
 	return false
 }
 
-// goNamedType maps a [ast.NamedTypeRef] to its Go form. Built-in DSL
-// names translate to the standard-library equivalents documented in
-// the README; generic instances render with Go 1.18+ generic syntax,
-// e.g. `Page<Book>` becomes `Page[Book]`.
+// goNamedType returns the Go form of n: a builtin's Go type, or the name with
+// its generic arguments.
 func goNamedType(n *ast.NamedTypeRef) string {
 	name := n.Name.String()
 	if sp, ok := prims.Lookup(name); ok && sp.Go != "" {
@@ -507,25 +361,13 @@ func goNamedType(n *ast.NamedTypeRef) string {
 	return name
 }
 
-// goFieldName converts a DSL field name (which is allowed to be
-// lowercase, snake_case, or camelCase) into an exported Go identifier
-// applying the common-initialism rule. The DSL field name is preserved
-// verbatim as the JSON tag - see [jsonTag]. Implementation lives in
-// [internal/idents] so the semantic analyser can detect collisions
-// using the same conversion rule that codegen emits.
+// goFieldName returns the exported Go identifier for a DSL field name.
 func goFieldName(name string) string {
 	return idents.GoFieldName(name)
 }
 
-// structTag renders the full back-tick struct tag for a field: the `json`
-// key (see [jsonTag]) plus, for a non-body binding, a second key naming the
-// wire location the value rides - `path:"id"`, `query:"page"`,
-// `header:"X-Trace-Id"`, `cookie:"session"`. The binding key carries the
-// same wire name the transport binder and the OpenAPI parameter use, so a
-// reader can see where a `json:"-"` field is read from / written to without
-// opening the handler. craftgo binds these fields by generated code, not by
-// tag reflection, and Go ignores tag keys it doesn't recognise, so the
-// binding key is purely documentary.
+// structTag returns f's struct tag: the json key, plus for a path, query,
+// header or cookie field a documentation-only key naming its wire location.
 func structTag(f *ast.Field) string {
 	tag := "json:" + strconv.Quote(jsonTag(f))
 	if kind := nonBodyBindingKind(f); kind != "" {
@@ -534,30 +376,8 @@ func structTag(f *ast.Field) string {
 	return tag
 }
 
-// jsonTag renders the JSON tag for a field. Per the project convention
-// "DSL field name = JSON tag (1:1, no conversion)" the original name is
-// used verbatim.
-//
-// `omitempty` rules - `?` is the dominant flag:
-//   - Optional `T?` (with or without @nullable) → yes (omit when nil).
-//     The `?` suffix means "field may be absent on the wire", so a nil
-//     value MUST round-trip as omitted, not as explicit JSON `null`.
-//     Adding `@nullable` on top of `?` is a redundant-decorator warning
-//     at semantic time but doesn't change the omit policy.
-//   - Plain `T @nullable` → never (always emit; nil surfaces as `null`).
-//     The intent is "must send the key, value may be null".
-//   - Required fields → never.
-//   - Plain field → never.
-//
-// Fields bound to a non-body location (`@path`, `@query`, `@header`,
-// `@cookie`) are excluded from the JSON shape entirely (`json:"-"`)
-// so neither the request decoder nor the response encoder picks them
-// up. `@form` is left in the body tag because the multipart handler
-// binds its own table; the JSON tag is harmless for those types.
-//
-// `@sensitive` likewise renders as `json:"-"` so the field never
-// touches the wire in either direction; the field stays as a Go
-// struct member that server logic can populate / read internally.
+// jsonTag returns f's json tag from [wire.JSONShape]: "-" for a field off the
+// JSON body, `,omitempty` added for an optional `?` field.
 func jsonTag(f *ast.Field) string {
 	name, presence := wire.JSONShape(f)
 	switch presence {
@@ -569,11 +389,5 @@ func jsonTag(f *ast.Field) string {
 	return name
 }
 
-// nonBodyBindingKind returns the wire location an explicit binding decorator
-// places a field in - path / query / header / cookie, the bindings served
-// outside the JSON body - or "" for a body, form, sensitive, or undecorated
-// field. It is the single authority for "this field rides off the JSON
-// body": [jsonTag] reads it to emit `json:"-"`, and [structTag] reads it to
-// name the wire location in the field's own tag key. Values bound here are
-// populated from the URL / headers / cookies, never from the body.
+// nonBodyBindingKind is [wire.NonBodyBindingKind].
 func nonBodyBindingKind(f *ast.Field) string { return wire.NonBodyBindingKind(f) }

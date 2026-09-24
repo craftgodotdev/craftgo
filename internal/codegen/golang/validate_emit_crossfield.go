@@ -1,5 +1,3 @@
-// Cross-field validators: @requiresOneOf / @mutuallyExclusive emission and
-// the field presence / absence expressions they build on.
 package golang
 
 import (
@@ -11,13 +9,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// crossFieldChecks emits the type-level validators @requiresOneOf and
-// @mutuallyExclusive. Each takes an array of field names; the
-// generated code computes each field's "presence" via [presenceExpr]
-// and then asserts the count constraint.
-//
-//	@requiresOneOf(["a", "b"])     → at least one must be present
-//	@mutuallyExclusive(["a", "b"]) → at most one may be present
+// crossFieldChecks renders td's @requiresOneOf (at least one member set) and
+// @mutuallyExclusive (at most one member set) checks.
 func crossFieldChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 	if len(td.Decorators) == 0 {
 		return nil
@@ -40,12 +33,7 @@ func crossFieldChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 	return out
 }
 
-// requiresOneOfCheck emits a De Morgan'd absence-conjunction:
-// "all fields are absent" → reject. The natural negation
-// `!(presentA || presentB)` triggers `staticcheck`'s QF1001
-// (De Morgan), so we invert each presence expression up-front and
-// join with `&&` - the generated source is what `staticcheck` would
-// rewrite to anyway.
+// requiresOneOfCheck fails when every named member is absent.
 func requiresOneOfCheck(td *ast.TypeDecl, names []string, ctx emitCtx) string {
 	parts := absenceParts(td, names, ctx)
 	cond := strings.Join(parts, " && ")
@@ -53,11 +41,8 @@ func requiresOneOfCheck(td *ast.TypeDecl, names []string, ctx emitCtx) string {
 	return ifReturnf(cond, msg, ctx)
 }
 
-// mutuallyExclusiveCheck emits a counter-based block: count how many
-// of the listed fields are present and reject when > 1. The whole
-// thing is wrapped in a bare `{ ... }` block so the `n` counter
-// scopes locally - multiple @mutuallyExclusive declarations on the
-// same struct don't shadow each other.
+// mutuallyExclusiveCheck counts the named members present and fails above one,
+// inside its own block so each check's `n` stays local.
 func mutuallyExclusiveCheck(td *ast.TypeDecl, names []string, ctx emitCtx) string {
 	ctx.uses["fmt"] = true
 	parts := presenceParts(td, names, ctx)
@@ -74,10 +59,8 @@ return fmt.Errorf("%s: mutuallyExclusive %v - at most one may be set")
 }`, strings.Join(counters, "\n"), td.Name, names)
 }
 
-// presenceParts returns one Go boolean expression per name in the
-// list. Unknown names (typoed by the user) become a literal `false`
-// so the generated code compiles even when the decorator references a
-// missing field - the resulting check is a no-op for that slot.
+// presenceParts returns the [presenceExpr] of each named member; a name no field
+// matches renders [unresolvedCrossFieldExpr].
 func presenceParts(td *ast.TypeDecl, names []string, ctx emitCtx) []string {
 	parts := make([]string, 0, len(names))
 	for _, name := range names {
@@ -91,25 +74,14 @@ func presenceParts(td *ast.TypeDecl, names []string, ctx emitCtx) []string {
 	return parts
 }
 
-// unresolvedCrossFieldExpr is emitted when a cross-field group member
-// can't be resolved to a real field. Semantic analysis rejects such
-// references before codegen runs - per-package for local types,
-// project-level ([refResolver.checkProjectFieldGroups]) for types
-// promoting cross-package mixin fields - so reaching here means a
-// semantic↔codegen drift. Emit an undefined identifier rather than a
-// literal `false`: a `false` slot silently produces a no-op validator
-// that hides the drift, whereas this fails `go build` with the
-// offending member named.
+// unresolvedCrossFieldExpr renders an unknown member as an undefined identifier,
+// so the generated code fails to build naming it.
 func unresolvedCrossFieldExpr(name string) string {
 	return "craftgoUnresolvedCrossFieldMember_" + goFieldName(name)
 }
 
-// lookupField finds the Field a TypeDecl contributes by DSL field name,
-// expanding embedded mixins so a cross-field decorator can reference a
-// promoted field (`@requiresOneOf` over a field the type inherits). It also
-// returns the field's dedup-resolved Go identifier so the cross-field access
-// (`v.UserID_2`) matches the struct rather than colliding on the bare name.
-// The Go access resolves through field promotion for a mixin-inherited field.
+// lookupField finds td's field by DSL name, mixin-promoted fields included, and
+// returns it with its deduped Go name.
 func lookupField(td *ast.TypeDecl, name string, ctx emitCtx) (*ast.Field, string) {
 	for _, ff := range flattenFieldsWithNames(td, "", ctx.pkg, ctx.resolver, map[string]bool{}) {
 		if ff.Field.Name == name {
@@ -119,23 +91,8 @@ func lookupField(td *ast.TypeDecl, name string, ctx emitCtx) (*ast.Field, string
 	return nil, ""
 }
 
-// presenceExpr returns the Go expression that's true when the field
-// has a meaningful value (matching's definition):
-//
-//   - optional `T?` OR `@nullable T` (pointer) → `v.X != nil`
-//   - `bytes @format(raw)`  → `v.X != nil`
-//   - slice / map           → `len(v.X) > 0`
-//   - string                → `v.X != ""`
-//   - numeric               → `v.X != 0`
-//   - other                 → fall back to "true" (always present)
-//
-// `@nullable` forces the field to a Go pointer even on plain `T`. The
-// pointer check must come BEFORE the value-shape branches so cross-
-// field rules emit a nil-check rather than `v.X == ""` against a
-// `*string` (which fails to compile). A raw field is a `wire.Raw`
-// slice, and nil is the absent value for it, so it takes the nil check
-// too rather than the emptiness one a slice would get - an explicit
-// `null` arrives as the four bytes `null` and is present.
+// presenceExpr returns the condition that the member holds a value: non-nil for
+// a pointer or raw field (an explicit `null` is present), else non-empty or non-zero.
 func presenceExpr(f *ast.Field, goName string, ctx emitCtx) string {
 	access := "v." + goName
 	if f.Type == nil {
@@ -162,20 +119,13 @@ func presenceExpr(f *ast.Field, goName string, ctx emitCtx) string {
 	return "true"
 }
 
-// absenceParts is the De Morgan inverse of [presenceParts]: each entry
-// is the Go expression that's true when the field is "missing". Used
-// by [requiresOneOfCheck] so the emitted condition reads as
-// `!a && !b && !c` (idiomatic) instead of `!(a || b || c)` (which
-// staticcheck flags as QF1001).
+// absenceParts is [presenceParts] negated member by member, so the condition
+// needs no `!(...)` (staticcheck QF1001).
 func absenceParts(td *ast.TypeDecl, names []string, ctx emitCtx) []string {
 	parts := make([]string, 0, len(names))
 	for _, name := range names {
 		f, goName := lookupField(td, name, ctx)
 		if f == nil {
-			// Unresolved member - semantic analysis rejects this before
-			// codegen, so this is a drift guard, not a user path. Emit a
-			// loud build failure (see [unresolvedCrossFieldExpr]) rather
-			// than a silent literal that no-ops the validator.
 			parts = append(parts, unresolvedCrossFieldExpr(name))
 			continue
 		}
@@ -184,12 +134,7 @@ func absenceParts(td *ast.TypeDecl, names []string, ctx emitCtx) []string {
 	return parts
 }
 
-// absenceExpr is the inverse of [presenceExpr]. Operators are flipped
-// directly (`!=` ↔ `==`, `> 0` → `== 0`, `bool` → `!bool`) so the
-// generated source is the form `staticcheck` recommends and no extra
-// `!(...)` wrapping leaks into the output. The nil-checked shapes -
-// pointer (`T?` or `@nullable T`) and raw - are handled first, matching
-// [presenceExpr], so the emit stays type-safe.
+// absenceExpr returns the negation of [presenceExpr], each operator flipped.
 func absenceExpr(f *ast.Field, goName string, ctx emitCtx) string {
 	access := "v." + goName
 	if f.Type == nil {

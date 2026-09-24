@@ -1,4 +1,3 @@
-// Array / file validators: @minItems/@maxItems/@uniqueItems/@maxSize/@mimeTypes.
 package golang
 
 import (
@@ -10,11 +9,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
+// itemsBoundCheck renders @minItems/@maxItems as a len() bound on an array or map.
 func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label string, ctx emitCtx) string {
-	// Applies to arrays (element count) and maps (entry count) - both
-	// answer to len(). Anything else has no countable size, so the check
-	// is a no-op (the OpenAPI side likewise emits min/maxProperties only
-	// for the map shape).
 	if f.Type == nil || len(d.Args) != 1 || (!f.Type.Array && f.Type.Map == nil) {
 		return ""
 	}
@@ -22,11 +18,7 @@ func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label st
 	if !ok {
 		return ""
 	}
-	// `@minItems(0)` would emit `if len(...) < 0` - a tautology that
-	// the compiler still has to evaluate at runtime. Drop the check
-	// entirely; Go's `len()` is never negative and an absent slice
-	// is already the zero-element case the user is asking us to
-	// allow.
+	// `@minItems(0)` accepts every length.
 	if op == ">=" && n == 0 {
 		return ""
 	}
@@ -37,51 +29,25 @@ func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label st
 	cond := fmt.Sprintf("len(%s) %s %d", access, flip, n)
 	msg := fmt.Sprintf(`"%s: %s %d"`, fieldWireName(f), label, n)
 	check := ifReturnf(cond, msg, ctx)
-	// A nil slice / map at an optional or `@nullable` field is the valid
-	// "absent / null" state the OpenAPI null-union advertises, so skip the
-	// count check rather than reject it (`len(nil)` is 0). The collection
-	// nilability is syntactic, so no scalar resolver is needed.
+	// Nil is the valid absent/null value of an optional or @nullable collection.
 	if fieldNeedsNilGuard(f) {
 		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(check))
 	}
 	return check
 }
 
-// uniqueItemsCheck handles `@uniqueItems` on array fields. The emitted
-// loop scans for duplicates with a map keyed on the element value;
-// that works for any comparable element type - primitives, strings,
-// fixed-size structs.
-//
-// `json.RawMessage` (the Go type for `any`) is a `[]byte` named slice,
-// which is NOT comparable as a map key. We special-case it to use
-// `string(item)` for the key so a `tags any[] @uniqueItems` chain
-// still emits compile-clean dedupe code without pulling extra
-// imports - `string([]byte)` is a built-in conversion.
-//
-// Other slice / map / func element types stay un-checked because the
-// generated code would not compile.
-//
-// A bare block scopes `seen` to this check so multiple @uniqueItems
-// validators on the same struct don't shadow each other; `return` still
-// escapes back to the enclosing Validate() method.
+// uniqueItemsCheck renders @uniqueItems on an array as a dedupe map keyed by
+// element, inside its own block so each check's `seen` stays local.
 func uniqueItemsCheck(f *ast.Field, access string, ctx emitCtx) string {
 	if f.Type == nil || !f.Type.Array {
 		return ""
 	}
 	elem := arrayElemType(f.Type)
 	if !isComparableElem(elem) {
-		// `any` (Go: `interface{}`) IS comparable in the
-		// language sense - but only when its dynamic type is
-		// itself comparable. The runtime `==` over interfaces
-		// panics for slices / maps / funcs. Skip the
-		// auto-emitted dedupe loop for those element types and
-		// let logic deduplicate by-shape if it matters.
 		return ""
 	}
 	ctx.uses["fmt"] = true
-	// The dedupe map keys on the element type; a cross-package element
-	// (`make(map[shared.Name]struct{})`) references that package, so its
-	// import must be registered or the validator won't compile.
+	// The element type keys the map and may name another package.
 	walkCrossPkgImports(f.Type, ctx.resolver.CrossPkg, ctx.uses)
 	return fmt.Sprintf(`{
 seen := make(map[%s]struct{}, len(%s))
@@ -94,12 +60,7 @@ seen[item] = struct{}{}
 }`, elem, access, access, fieldWireName(f))
 }
 
-// ----- file --------------------------------------------------------------
-
-// maxSizeCheck handles `@maxSize(<size>)` on `file` fields. The argument
-// may be a Size literal (`5MB`, `2KB`, `1024B`) or a bare integer count
-// of bytes. Emits a nil-guarded comparison against `*multipart.FileHeader.Size`.
-// On non-file fields the decorator is silently skipped.
+// maxSizeCheck renders @maxSize on a file field as a nil-guarded bound on its Size.
 func maxSizeCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	if !isFileField(f) || len(d.Args) != 1 {
 		return ""
@@ -113,19 +74,13 @@ func maxSizeCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) st
 	return ifReturnf(cond, msg, ctx)
 }
 
-// mimeTypesCheck handles `@mimeTypes(["a/b", "c/d"])` on `file` fields.
-// Emits a switch on the upload's Content-Type header rejecting any value
-// outside the allowlist. The check is nil-guarded so a missing optional
-// upload is allowed by this decorator; drop the `?` suffix on the field
-// type to force presence (required-by-default).
+// mimeTypesCheck renders @mimeTypes on a file field as a switch over the
+// upload's Content-Type; an absent upload passes.
 func mimeTypesCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	if !isFileField(f) || len(d.Args) == 0 {
 		return ""
 	}
-	// Accept BOTH `@mimeTypes(["a","b"])` (array literal) and the
-	// variadic `@mimeTypes("a","b","c")` form.
-	// semantic.StringArrayDecoratorArg handles both shapes, matching the
-	// transport binder.
+	// Both `@mimeTypes(["a", "b"])` and `@mimeTypes("a", "b")`.
 	mimes := semantic.StringArrayDecoratorArg(d)
 	if len(mimes) == 0 {
 		return ""

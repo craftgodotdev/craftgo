@@ -1,4 +1,3 @@
-// String validators: @length, @minLength, @maxLength, @pattern, @format dispatcher.
 package golang
 
 import (
@@ -9,10 +8,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/strfmt"
 )
 
+// lengthCheck renders @length(n) or @length(min, max) on a string or bytes field.
 func lengthCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	// `@length(N)` is the exact-length form (min == max == N); the
-	// two-arg `@length(min, max)` is a range. Both lower to one len()
-	// bounds check.
 	if !isLengthCheckable(f) || len(d.Args) == 0 || len(d.Args) > 2 {
 		return ""
 	}
@@ -31,10 +28,7 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 	val := stringValueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
 	count := lengthCount(f, val, ctx)
-	// Avoid the `if X != nil && l := count(*X); ...` form - Go forbids
-	// `:=` inside an `&&` expression. Inline the count twice instead; the
-	// second call is constant-folded by the compiler when the argument is a
-	// simple deref.
+	// An init statement cannot follow the nil guard, so the guarded form counts twice.
 	var cond string
 	if guard == "" {
 		cond = fmt.Sprintf("l := %s; l < %d || l > %d", count, lo, hi)
@@ -50,9 +44,8 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 	return ifReturnf(cond, msg, ctx)
 }
 
-// minMaxLengthCheck handles `@minLength(n)` and `@maxLength(n)`.
-// Optional string fields are handled the same way as `lengthCheck` -
-// nil-guard plus pointer deref.
+// minMaxLengthCheck renders @minLength or @maxLength (kind "min" or "max") on a
+// string or bytes field.
 func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind string, ctx emitCtx) string {
 	if !isLengthCheckable(f) || len(d.Args) != 1 {
 		return ""
@@ -72,12 +65,8 @@ func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind strin
 	return ifReturnf(cond, msg, ctx)
 }
 
-// lengthCount returns the Go expression for the length a string-family field's
-// `@length` / `@minLength` / `@maxLength` validates: utf8.RuneCountInString for
-// a `string` so the bound counts Unicode characters - matching the OpenAPI
-// `minLength`/`maxLength` keyword and a Postgres `varchar(n)`, both of which
-// count characters, not bytes. A `bytes` field keeps `len()` (raw byte count,
-// the right measure for binary, and not advertised in the OpenAPI schema).
+// lengthCount measures a string in runes, as OpenAPI minLength/maxLength do,
+// and a bytes field in bytes.
 func lengthCount(f *ast.Field, val string, ctx emitCtx) string {
 	if f != nil && f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "bytes" {
 		return "len(" + val + ")"
@@ -86,10 +75,7 @@ func lengthCount(f *ast.Field, val string, ctx emitCtx) string {
 	return "utf8.RuneCountInString(" + val + ")"
 }
 
-// patternCheck handles `@pattern("regex")`. The regex is interned in
-// the file's [regexRegistry] so the `regexp.MustCompile` call happens
-// ONCE at package init - Validate() references the pre-compiled var
-// instead of recompiling per call.
+// patternCheck renders @pattern on a string field against a package-level regex.
 func patternCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	if !isStringOrOptString(f) || len(d.Args) != 1 {
 		return ""
@@ -107,13 +93,8 @@ func patternCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) st
 	return ifReturnf(cond, msg, ctx)
 }
 
-// formatCheck handles `@format(name)` for the [strfmt] catalogue: each
-// spec declares the Go imports its check needs and the check itself - a
-// regular expression interned once per file so `MustCompile` runs once,
-// or a stdlib-backed condition (mail / url / time / ...) emitted verbatim.
-// The argument may be either a quoted string (`@format("email")`) or a
-// bare identifier (`@format(email)`) - both accepted. Unknown names skip
-// silently; projects can extend with `@pattern("...")` for niche cases.
+// formatCheck renders @format on a string field from its [strfmt] entry, a regex
+// or a stdlib condition; an unknown format renders nothing.
 func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	if !isStringOrOptString(f) || len(d.Args) != 1 {
 		return ""
@@ -139,12 +120,7 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 		check = ifReturnf(fmt.Sprintf(sp.Cond, val), msg, ctx)
 	}
 	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
-		// Pointer field (`?` optional OR `@nullable`): nest the check
-		// inside a nil-guard so the deref in `val` and the init-stmt forms
-		// (mail.ParseAddress / time.Parse / ...) only run when a value is
-		// present. Keying on Optional alone would miss `@nullable`-without-
-		// `?`, which is still a `*string` - an unguarded deref panics on
-		// `{"field": null}`.
+		// Nested: a format condition may carry an init statement, which `&&` cannot guard.
 		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(check))
 	}
 	return check

@@ -11,12 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// generateEnums writes enums.go under outDir/<pkg.Name>/ with a Go
-// type alias and const block per enum. No-op when pkg has no enums.
-//
-// The Go base type is `int` for int-valued enums, `string` otherwise.
-// Constants are named `<EnumName><PascalCase(ValueName)>`; bare values
-// use the value name as the string payload.
+// generateEnums writes outDir/<pkg>/enums.go, a defined type and const block per
+// enum; a package without enums writes nothing.
 func generateEnums(pkg *semantic.Package, outDir string) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
@@ -35,8 +31,7 @@ func generateEnums(pkg *semantic.Package, outDir string) error {
 	return os.WriteFile(filepath.Join(pkgDir, "enums.go"), formatted, 0o644)
 }
 
-// enumsView is the template input for enums.tmpl. Decls are sorted
-// alphabetically so output stays diff-stable across runs.
+// enumsView is the template input for enums.tmpl.
 type enumsView struct {
 	Package string
 	Enums   []enumView
@@ -48,19 +43,14 @@ type enumView struct {
 	Values []enumValueView
 }
 
-// enumValueView holds one const row. EnumName is repeated per-value
-// so the template can flat-range without `$.` parent refs.
+// enumValueView is one const of an enum.
 type enumValueView struct {
 	ConstName string
 	EnumName  string
 	Literal   string
 }
 
-// buildEnumsView walks pkg.Enums in sorted order. Const-name
-// collisions (e.g. `created` and `Created` both mapping to
-// `<Enum>Created`) get `_2`, `_3`, ... suffixes via
-// [idents.DedupGoFieldNames]; the semantic phase emits a warning
-// pointing at the duplicate spellings.
+// buildEnumsView returns the enums.tmpl input for pkg, enums in name order.
 func buildEnumsView(pkg *semantic.Package) enumsView {
 	names := sortedKeys(pkg.Enums)
 	view := enumsView{Package: pkg.Name, Enums: make([]enumView, 0, len(names))}
@@ -70,9 +60,8 @@ func buildEnumsView(pkg *semantic.Package) enumsView {
 	return view
 }
 
-// buildEnumView shapes one EnumDecl for the template. Semantic has
-// already enforced that all values share a kind, so the first
-// value's kind decides the Go base type.
+// buildEnumView returns ed's template view; the Go base is int for an int enum,
+// else string.
 func buildEnumView(ed *ast.EnumDecl) enumView {
 	goBase := "string"
 	if semantic.EnumKind(ed) == ast.EnumInt {
@@ -90,8 +79,7 @@ func buildEnumView(ed *ast.EnumDecl) enumView {
 	return enumView{Name: ed.Name, GoBase: goBase, Values: values}
 }
 
-// enumLiteral renders one value's right-hand side. Bare values fall
-// back to the source name as the string payload.
+// enumLiteral renders one value's right-hand side; a bare value is its name as a string.
 func enumLiteral(v *ast.EnumValue) string {
 	switch v.Kind {
 	case ast.EnumInt:
@@ -103,24 +91,17 @@ func enumLiteral(v *ast.EnumValue) string {
 	}
 }
 
-// enumMember is the fully-resolved projection of one enum member, computed
-// ONCE per enum so every stage reads the same answer instead of
-// re-switching on the kind / re-deriving the const name. ConstName applies
-// the case-collision dedup a single time - the const declaration, the
-// validate case-list, and the transport default const must all use it (a
-// case-list built from a non-deduped name produced `case X, X` and failed
-// to compile for a case-colliding enum).
+// enumMember is one enum member as the Go target renders it.
 type enumMember struct {
 	DSLName    string
-	ConstName  string // ed.Name + DedupGoFieldNames(...)[i]
+	ConstName  string // enum name + member name, deduped across the enum (`EActive_2`)
 	Kind       ast.EnumValueKind
 	Wire       any    // typed wire value: int64 | string
 	WireString string // JSON-key / propertyNames form (int -> decimal string)
 	Literal    string // Go const right-hand side
 }
 
-// enumMembers resolves ed's members in source order, deduping the Go const
-// names once. Every const-name and wire-value consumer reads this.
+// enumMembers returns ed's members in source order.
 func enumMembers(ed *ast.EnumDecl) []enumMember {
 	vals := ed.EnumValues()
 	dslNames := make([]string, len(vals))

@@ -1,5 +1,3 @@
-// The flattened field view of a type: mixins expanded and generic
-// arguments substituted, with each field's dedup-resolved Go name.
 package golang
 
 import (
