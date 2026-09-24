@@ -307,15 +307,11 @@ func (a *analyzer) collectMixinFields(
 			}
 			seen[v.Name] = fieldOrigin{pos: v.Pos, from: sourceLabel}
 		case *ast.Mixin:
-			if v.Ref == nil || v.Ref.Name == nil {
+			if v.Ref == nil {
 				continue
 			}
-			parts := v.Ref.Name.Parts
-			switch len(parts) {
-			case 1:
-				a.collectMixinFields(pkgName, parts[0], sourceLabel, mixinPos, seen, visited)
-			case 2:
-				a.collectMixinFields(parts[0], parts[1], sourceLabel, mixinPos, seen, visited)
+			if next, sym := a.proj.resolve(pkgName, v.Ref.Name); next != nil {
+				a.collectMixinFields(next.Name, sym, sourceLabel, mixinPos, seen, visited)
 			}
 		}
 	}

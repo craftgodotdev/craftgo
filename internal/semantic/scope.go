@@ -58,25 +58,13 @@ func (a *analyzer) refDisplay(pkgName, name string) string {
 	return pkgName + "." + name
 }
 
-// resolveNamed returns the package n resolves in (homePkg for a bare name)
-// and the symbol it names; the package is nil when the project has none.
-func (a *analyzer) resolveNamed(homePkg string, n *ast.NamedTypeRef) (*Package, string) {
-	if n == nil || n.Name == nil {
-		return nil, ""
-	}
-	switch parts := n.Name.Parts; len(parts) {
-	case 1:
-		return a.packageNamed(homePkg), parts[0]
-	case 2:
-		return a.packageNamed(parts[0]), parts[1]
-	}
-	return nil, ""
-}
-
 // lookupScalarIn returns the scalar n names, a bare name resolving in
 // homePkg, or nil.
 func (a *analyzer) lookupScalarIn(homePkg string, n *ast.NamedTypeRef) *ast.ScalarDecl {
-	pkg, sym := a.resolveNamed(homePkg, n)
+	if n == nil {
+		return nil
+	}
+	pkg, sym := a.proj.resolve(homePkg, n.Name)
 	if pkg == nil {
 		return nil
 	}
@@ -90,7 +78,10 @@ func (a *analyzer) lookupScalar(n *ast.NamedTypeRef) *ast.ScalarDecl {
 
 // lookupEnumIn is the enum counterpart of [analyzer.lookupScalarIn].
 func (a *analyzer) lookupEnumIn(homePkg string, n *ast.NamedTypeRef) *ast.EnumDecl {
-	pkg, sym := a.resolveNamed(homePkg, n)
+	if n == nil {
+		return nil
+	}
+	pkg, sym := a.proj.resolve(homePkg, n.Name)
 	if pkg == nil {
 		return nil
 	}

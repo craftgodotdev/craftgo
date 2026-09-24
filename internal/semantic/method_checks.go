@@ -20,7 +20,7 @@ func (a *analyzer) checkRequestBodyType(m *ast.Method) {
 	if m == nil || m.Request == nil || m.Request.Name == nil {
 		return
 	}
-	pkg, sym := a.resolveNamed(a.pkg.Name, m.Request)
+	pkg, sym := a.proj.resolve(a.pkg.Name, m.Request.Name)
 	kind := bareRequestKind(pkg, m.Request, sym)
 	if kind == "" {
 		return
@@ -162,22 +162,22 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	if wire.IsBodyVerb(m.Verb) {
 		return // body-bearing verbs decode @body / @form normally
 	}
-	td, fields := a.requestFields(m)
-	if td == nil {
+	view, fields, ok := a.requestFields(m)
+	if !ok {
 		return
 	}
 	verb := strings.ToUpper(m.Verb)
 	reqName := m.Request.Name.String()
 	pathSegs := MethodRoutePathVars(m, a.pkg.Services)
-	for _, pf := range fields {
-		a.bodyBindingVerbRules(reqName, verb, svcName, pathSegs, pf)
+	for _, ff := range fields {
+		a.bodyBindingVerbRules(reqName, verb, svcName, view, pathSegs, ff.Field)
 	}
 }
 
 // bodyBindingVerbRules rejects `@body` and `@form` on a body-less method's
-// field, and `@nullable` or an unbindable type when it auto-binds to @query.
-func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName string, pathSegs map[string]bool, pf promotedField) {
-	f := pf.Field
+// field, and `@nullable` or an unbindable type when it auto-binds to @query;
+// the field's type resolves in package view.
+func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName, view string, pathSegs map[string]bool, f *ast.Field) {
 	if f == nil {
 		return
 	}
@@ -202,7 +202,7 @@ func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName string, pathSegs 
 			reqName, f.Name, verb, svcName)
 		return
 	}
-	if !a.wireBindableIn(pf.Pkg, f.Type) {
+	if !a.wireBindableIn(view, f.Type) {
 		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
 			"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but %s can't ride a query string - switch to a body verb (POST/PUT/PATCH) so it rides @body, give it an explicit binding, or change the type",
 			reqName, f.Name, verb, svcName, describeTypeRef(f.Type))

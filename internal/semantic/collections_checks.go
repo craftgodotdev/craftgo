@@ -64,7 +64,7 @@ func (a *analyzer) keyMarshalable(key *ast.TypeRef, typeParams []string) bool {
 	}
 	if isQualifiedTypeRef(key) {
 		// A qualified name that names no type is left to the reference check.
-		pkg, sym := a.resolveNamed(a.pkg.Name, key.Named)
+		pkg, sym := a.proj.resolve(a.pkg.Name, key.Named.Name)
 		if pkg == nil || pkg.Decl(sym, TypeRefDecls) == nil {
 			return true
 		}
@@ -135,7 +135,7 @@ func (a *analyzer) typeRefComparable(t *ast.TypeRef, homePkg string, seen map[st
 			return true
 		}
 	}
-	pkg, sym := a.resolveNamed(homePkg, t.Named)
+	pkg, sym := a.proj.resolve(homePkg, t.Named.Name)
 	if pkg == nil {
 		return true // unknown package - reported by the reference pass
 	}

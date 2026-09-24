@@ -220,7 +220,7 @@ func (a *analyzer) defaultElemSupported(t *ast.TypeRef) bool {
 		return PrimFromName(sd.Primitive) != 0
 	}
 	if isQualifiedTypeRef(t) {
-		pkg, sym := a.resolveNamed(a.pkg.Name, t.Named)
+		pkg, sym := a.proj.resolve(a.pkg.Name, t.Named.Name)
 		return pkg == nil || pkg.Decl(sym, TypeRefDecls) == nil
 	}
 	return false

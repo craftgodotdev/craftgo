@@ -1,6 +1,10 @@
 package semantic
 
-import "github.com/craftgodotdev/craftgo/internal/ast"
+import (
+	"slices"
+
+	"github.com/craftgodotdev/craftgo/internal/ast"
+)
 
 // SubstMap pairs a generic decl's type parameters with the arguments of one
 // instantiation (`T` → `Item`); params beyond the supplied args stay unmapped.
@@ -75,15 +79,15 @@ func SubstituteTypeRef(t *ast.TypeRef, subst map[string]*ast.TypeRef) *ast.TypeR
 
 // FlattenFields returns td's fields with its mixins expanded in body order,
 // recursively, and their generic arguments substituted. Mixins resolve
-// through r, so a nil r expands none; seen breaks mixin cycles.
-func FlattenFields(td *ast.TypeDecl, pkg *Package, r *Resolver, seen map[string]bool) []*ast.Field {
-	return FlattenFieldsIn(td, "", pkg, r, seen)
+// through r, so a nil r expands none.
+func FlattenFields(td *ast.TypeDecl, pkg *Package, r *Resolver) []*ast.Field {
+	return FlattenFieldsIn(td, "", pkg, r)
 }
 
 // FlattenFieldsIn is [FlattenFields] for a td reached through a qualified
 // ref: prefix is td's package, where its bare mixins resolve.
-func FlattenFieldsIn(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver, seen map[string]bool) []*ast.Field {
-	flat := FlattenWithNames(td, prefix, pkg, r, seen, nil)
+func FlattenFieldsIn(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver) []*ast.Field {
+	flat := FlattenWithNames(td, prefix, pkg, r, nil)
 	out := make([]*ast.Field, len(flat))
 	for i, ff := range flat {
 		out[i] = ff.Field
@@ -91,141 +95,165 @@ func FlattenFieldsIn(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver,
 	return out
 }
 
-// RequalifyFieldType returns f with its type re-qualified into package
-// `prefix` (see [RequalifyTypeRef]), cloning only when a rewrite is needed.
-func RequalifyFieldType(f *ast.Field, prefix string, r *Resolver) *ast.Field {
-	if f == nil || prefix == "" || r == nil || f.Type == nil {
-		return f
-	}
-	nt := RequalifyTypeRef(f.Type, prefix, r)
-	if nt == f.Type {
-		return f
-	}
-	fc := *f
-	fc.Type = nt
-	return &fc
+// FlatField is a field of a type body or one its mixins promote, and the
+// name [LevelNames] gave it in its own struct. Its type is spelled as the
+// flattening's view package spells it, a promoted field's with the mixin's
+// generic arguments substituted; Home is the package that declares it.
+type FlatField struct {
+	Field *ast.Field
+	Name  string
+	Home  string
 }
 
-// RequalifyTypeRef qualifies every bare name in t that package prefix
-// declares as a type, scalar or enum, through map keys, values and generic
-// arguments; other names stay bare. t is cloned only when a name changes.
-func RequalifyTypeRef(t *ast.TypeRef, prefix string, r *Resolver) *ast.TypeRef {
-	if t == nil || prefix == "" || r == nil {
+// FlattenWithNames is [FlattenFieldsIn] that also names each field, running
+// levelNames over each struct level's own body. Field types are spelled as
+// r's current package spells them.
+func FlattenWithNames(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver, levelNames LevelNames) []FlatField {
+	if td == nil {
+		return nil
+	}
+	var proj *Project
+	view := ""
+	if r != nil {
+		proj, view = r.Proj, r.current
+	}
+	home := prefix
+	if home == "" {
+		home = view
+	}
+	fields, _ := proj.flattenFields(view, home, td.Body, td.TypeParams, levelNames)
+	return fields
+}
+
+// flattenFields returns the fields of body, declared in package home with
+// typeParams in scope, and those its mixins promote, recursively in body
+// order, each mixin type once. Every field's type is spelled as package view
+// spells it. incomplete reports a mixin that names no type.
+func (p *Project) flattenFields(view, home string, body []ast.TypeMember, typeParams []string, names LevelNames) (fields []FlatField, incomplete bool) {
+	w := &fieldWalk{proj: p, view: view, names: names, expanded: map[string]bool{}}
+	fields = w.level(home, body, typeParams)
+	return fields, w.incomplete
+}
+
+// fieldWalk is the state of one [Project.flattenFields].
+type fieldWalk struct {
+	proj       *Project
+	view       string
+	names      LevelNames
+	expanded   map[string]bool // canonical `pkg.Name` of each mixin type expanded
+	incomplete bool
+}
+
+// level returns the fields of one struct level declared in package home.
+func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []string) []FlatField {
+	var names []string
+	if w.names != nil {
+		names = w.names(body)
+	}
+	var out []FlatField
+	i := 0
+	for _, m := range body {
+		switch v := m.(type) {
+		case *ast.Field:
+			ff := FlatField{Field: v, Home: home}
+			if i < len(names) {
+				ff.Name = names[i]
+			}
+			if t := w.proj.requalify(v.Type, home, w.view, typeParams); t != v.Type {
+				fc := *v
+				fc.Type = t
+				ff.Field = &fc
+			}
+			out = append(out, ff)
+			i++
+		case *ast.Mixin:
+			out = append(out, w.mixin(home, v, typeParams)...)
+		}
+	}
+	return out
+}
+
+// mixin returns the fields mx, written in package home, promotes: `Page<Item>`
+// promotes `items T[]` as `items Item[]`.
+func (w *fieldWalk) mixin(home string, mx *ast.Mixin, typeParams []string) []FlatField {
+	if mx.Ref == nil {
+		return nil
+	}
+	pkg, sym := w.proj.resolve(home, mx.Ref.Name)
+	if pkg == nil || pkg.Types[sym] == nil {
+		w.incomplete = true
+		return nil
+	}
+	key := pkg.Name + "." + sym
+	if w.expanded[key] {
+		return nil
+	}
+	w.expanded[key] = true
+	td := pkg.Types[sym]
+	fields := w.level(pkg.Name, td.Body, td.TypeParams)
+	if len(mx.Ref.Args) == 0 || len(td.TypeParams) == 0 {
+		return fields
+	}
+	args := make([]*ast.TypeRef, len(mx.Ref.Args))
+	for i, a := range mx.Ref.Args {
+		args[i] = w.proj.requalify(a, home, w.view, typeParams)
+	}
+	subst := SubstMap(td.TypeParams, args)
+	for i := range fields {
+		fc := *fields[i].Field
+		fc.Type = SubstituteTypeRef(fc.Type, subst)
+		fields[i].Field = &fc
+	}
+	return fields
+}
+
+// requalify spells t, written in package home with typeParams in scope, as
+// package view spells it: a bare name home declares becomes `home.Name`,
+// through map keys and values and generic arguments. t is cloned only when
+// a name changes.
+func (p *Project) requalify(t *ast.TypeRef, home, view string, typeParams []string) *ast.TypeRef {
+	if t == nil || home == view || p == nil || p.Packages[home] == nil {
 		return t
 	}
 	if t.Map != nil {
-		nk := RequalifyTypeRef(t.Map.Key, prefix, r)
-		nv := RequalifyTypeRef(t.Map.Value, prefix, r)
-		if nk == t.Map.Key && nv == t.Map.Value {
+		key := p.requalify(t.Map.Key, home, view, typeParams)
+		value := p.requalify(t.Map.Value, home, view, typeParams)
+		if key == t.Map.Key && value == t.Map.Value {
 			return t
 		}
 		clone := *t
 		mc := *t.Map
-		mc.Key, mc.Value = nk, nv
+		mc.Key, mc.Value = key, value
 		clone.Map = &mc
 		return &clone
 	}
 	if t.Named == nil || t.Named.Name == nil {
 		return t
 	}
-	var newArgs []*ast.TypeRef
+	args := make([]*ast.TypeRef, len(t.Named.Args))
 	argsChanged := false
-	if len(t.Named.Args) > 0 {
-		newArgs = make([]*ast.TypeRef, len(t.Named.Args))
-		for i, a := range t.Named.Args {
-			newArgs[i] = RequalifyTypeRef(a, prefix, r)
-			if newArgs[i] != a {
-				argsChanged = true
-			}
+	for i, a := range t.Named.Args {
+		args[i] = p.requalify(a, home, view, typeParams)
+		if args[i] != a {
+			argsChanged = true
 		}
 	}
-	qualify := false
-	if len(t.Named.Name.Parts) == 1 {
-		q := prefix + "." + t.Named.Name.Parts[0]
-		if r.LookupType(q) != nil || r.LookupScalar(q) != nil || r.LookupEnum(q) != nil {
-			qualify = true
-		}
-	}
+	parts := t.Named.Name.Parts
+	qualify := len(parts) == 1 && !slices.Contains(typeParams, parts[0]) &&
+		p.Packages[home].Decl(parts[0], TypeRefDecls) != nil
 	if !qualify && !argsChanged {
 		return t
 	}
 	clone := *t
 	named := *t.Named
 	if argsChanged {
-		named.Args = newArgs
+		named.Args = args
 	}
 	if qualify {
-		nm := *t.Named.Name
-		nm.Parts = []string{prefix, t.Named.Name.Parts[0]}
-		named.Name = &nm
+		name := *t.Named.Name
+		name.Parts = []string{home, parts[0]}
+		named.Name = &name
 	}
 	clone.Named = &named
 	return &clone
-}
-
-// FlatField is a flattened field and the name [LevelNames] gave it in its
-// own struct.
-type FlatField struct {
-	Field *ast.Field
-	Name  string
-}
-
-// nameAt returns the i-th entry of names, or "" past its end.
-func nameAt(names []string, i int) string {
-	if i < len(names) {
-		return names[i]
-	}
-	return ""
-}
-
-// FlattenWithNames is [FlattenFieldsIn] that also names each field, running
-// levelNames over each struct level's own body.
-func FlattenWithNames(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver, seen map[string]bool, levelNames func([]ast.TypeMember) []string) []FlatField {
-	if td == nil {
-		return nil
-	}
-	var names []string
-	if levelNames != nil {
-		names = levelNames(td.Body)
-	}
-	var out []FlatField
-	fieldIdx := 0
-	for _, m := range td.Body {
-		switch v := m.(type) {
-		case *ast.Field:
-			// A field declared in package prefix gets its bare names qualified.
-			out = append(out, FlatField{Field: RequalifyFieldType(v, prefix, r), Name: nameAt(names, fieldIdx)})
-			fieldIdx++
-		case *ast.Mixin:
-			if v == nil || v.Ref == nil || v.Ref.Name == nil {
-				continue
-			}
-			// A bare mixin resolves in td's own package, prefix.
-			parts := v.Ref.Name.Parts
-			key := v.Ref.Name.String()
-			childPrefix := prefix
-			if len(parts) == 2 {
-				childPrefix = parts[0]
-			} else if prefix != "" {
-				key = prefix + "." + key
-			}
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			mt := r.LookupType(key)
-			sub := FlattenWithNames(mt, childPrefix, pkg, r, seen, levelNames)
-			// `Page<Item>` promotes `items T[]` as `items Item[]`.
-			if mt != nil && len(v.Ref.Args) > 0 && len(mt.TypeParams) > 0 {
-				subst := SubstMap(mt.TypeParams, v.Ref.Args)
-				for i := range sub {
-					fc := *sub[i].Field
-					fc.Type = SubstituteTypeRef(sub[i].Field.Type, subst)
-					sub[i].Field = &fc
-				}
-			}
-			out = append(out, sub...)
-		}
-	}
-	return out
 }

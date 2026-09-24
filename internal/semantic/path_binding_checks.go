@@ -13,8 +13,8 @@ func (a *analyzer) checkAutoPathField(m *ast.Method) {
 	if m == nil || m.Path == nil {
 		return
 	}
-	td, fields := a.requestFields(m)
-	if td == nil {
+	view, fields, ok := a.requestFields(m)
+	if !ok {
 		return
 	}
 	pathSegs := MethodRoutePathVars(m, a.pkg.Services)
@@ -22,15 +22,14 @@ func (a *analyzer) checkAutoPathField(m *ast.Method) {
 		return
 	}
 	reqName := m.Request.Name.String()
-	for _, pf := range fields {
-		a.autoPathFieldRule(reqName, pathSegs, pf)
+	for _, ff := range fields {
+		a.autoPathFieldRule(reqName, view, pathSegs, ff.Field)
 	}
 }
 
 // autoPathFieldRule rejects `?`, `@nullable`, `@default` or a non-path type on
-// a field auto-bound to @path; the type resolves in the field's own package.
-func (a *analyzer) autoPathFieldRule(reqName string, pathSegs map[string]bool, pf promotedField) {
-	f := pf.Field
+// a field auto-bound to @path; the field's type resolves in package view.
+func (a *analyzer) autoPathFieldRule(reqName, view string, pathSegs map[string]bool, f *ast.Field) {
 	if f == nil || f.Type == nil {
 		return
 	}
@@ -50,7 +49,7 @@ func (a *analyzer) autoPathFieldRule(reqName string, pathSegs map[string]bool, p
 		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDecoratorConflict,
 			"field %s.%s auto-binds to the path segment {%s}, which is always supplied, so @default can never apply - drop it.",
 			reqName, f.Name, f.Name)
-	case !a.pathBindableIn(pf.Pkg, f.Type):
+	case !a.pathBindableIn(view, f.Type):
 		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
 			"field %s.%s auto-binds to the path segment {%s}, but @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s",
 			reqName, f.Name, f.Name, describeTypeRef(f.Type))

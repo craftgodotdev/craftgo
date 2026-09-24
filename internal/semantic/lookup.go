@@ -118,6 +118,23 @@ func (p *Project) PackageNames() []string {
 	return slices.DeleteFunc(slices.Sorted(maps.Keys(p.Packages)), func(name string) bool { return name == "" })
 }
 
+// resolve returns the package q names a declaration of and that
+// declaration's name: a bare name resolves in home, `pkg.Name` in pkg. The
+// package is nil when the project has none of that name, or q has more
+// qualifiers.
+func (p *Project) resolve(home string, q *ast.QualifiedIdent) (*Package, string) {
+	if p == nil || q == nil {
+		return nil, ""
+	}
+	switch len(q.Parts) {
+	case 1:
+		return p.Packages[home], q.Parts[0]
+	case 2:
+		return p.Packages[q.Parts[0]], q.Parts[1]
+	}
+	return nil, ""
+}
+
 // Lookup returns the declaration name refers to among the selected kinds,
 // or nil: a qualified `pkg.Name` in pkg only, a bare name in homePkg, then
 // in the other packages in name order.

@@ -17,10 +17,10 @@ type wireKey struct {
 // checkDuplicateWireNames rejects two explicitly bound fields of a body, mixins
 // included, with one binding kind and wire name; header names ignore case.
 func (a *analyzer) checkDuplicateWireNames(parent string, members []ast.TypeMember) {
-	fields, _ := a.promotedFields(a.pkg.Name, members)
-	seen := map[wireKey]promotedField{}
-	for _, pf := range fields {
-		f := pf.Field
+	fields, _ := a.proj.flattenFields(a.pkg.Name, a.pkg.Name, members, nil, nil)
+	seen := map[wireKey]FlatField{}
+	for _, ff := range fields {
+		f := ff.Field
 		kind, name, bound := wireBinding(f)
 		if !bound {
 			continue
@@ -28,11 +28,11 @@ func (a *analyzer) checkDuplicateWireNames(parent string, members []ast.TypeMemb
 		key := wireKey{kind, wire.CanonicalWireName(kind, name)}
 		prev, dup := seen[key]
 		if !dup {
-			seen[key] = pf
+			seen[key] = ff
 			continue
 		}
 		msg := "%s.%s: @%s(%q) reuses a wire name already bound on the same source - the OpenAPI would carry a duplicate parameter and the binder would read both fields from one value. Use distinct names."
-		if pf.Pkg != a.pkg.Name || prev.Pkg != a.pkg.Name {
+		if ff.Home != a.pkg.Name || prev.Home != a.pkg.Name {
 			msg = "%s.%s: @%s(%q) reuses a wire name already bound on this request through a cross-package mixin - the OpenAPI would carry a duplicate parameter and the binder would read both fields from one value. Use distinct names."
 		}
 		d := a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDuplicateWireName, msg, parent, f.Name, kind, name)
@@ -46,8 +46,8 @@ func (a *analyzer) checkDuplicateAutoWireNames(m *ast.Method) {
 	if m == nil || m.Request == nil || m.Request.Name == nil {
 		return
 	}
-	td, fields := a.requestFields(m)
-	if td == nil {
+	_, fields, ok := a.requestFields(m)
+	if !ok {
 		return
 	}
 	pathSegs := MethodRoutePathVars(m, a.pkg.Services)
@@ -58,8 +58,8 @@ func (a *analyzer) checkDuplicateAutoWireNames(m *ast.Method) {
 		auto bool
 	}
 	seen := map[wireKey]binding{}
-	for _, pf := range fields {
-		f := pf.Field
+	for _, ff := range fields {
+		f := ff.Field
 		kind, auto := wire.RequestFieldBinding(f, pathSegs, bodyVerb)
 		switch kind {
 		case wire.BindPath, wire.BindQuery, wire.BindHeader, wire.BindCookie, wire.BindForm:

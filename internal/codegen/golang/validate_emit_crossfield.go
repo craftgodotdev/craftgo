@@ -83,7 +83,7 @@ func unresolvedCrossFieldExpr(name string) string {
 // lookupField finds td's field by DSL name, mixin-promoted fields included, and
 // returns it with its deduped Go name.
 func lookupField(td *ast.TypeDecl, name string, ctx emitCtx) (*ast.Field, string) {
-	for _, ff := range flattenFieldsWithNames(td, "", ctx.pkg, ctx.resolver, map[string]bool{}) {
+	for _, ff := range flattenFieldsWithNames(td, "", ctx.pkg, ctx.resolver) {
 		if ff.Field.Name == name {
 			return ff.Field, ff.Name
 		}

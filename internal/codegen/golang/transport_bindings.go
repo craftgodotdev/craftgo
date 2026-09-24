@@ -26,7 +26,7 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package, r *projectRes
 // responseBindingsFor renders the @header and @cookie writers of body td, mixin fields included,
 // reading the values from accessVar (`resp`, or `e` for an error body).
 func responseBindingsFor(td *ast.TypeDecl, prefix, accessVar string, pkg *semantic.Package, r *projectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
-	for _, ff := range flattenFieldsWithNames(td, prefix, pkg, r, map[string]bool{}) {
+	for _, ff := range flattenFieldsWithNames(td, prefix, pkg, r) {
 		f := ff.Field
 		kind, _ := wire.BindingKind(f.Decorators)
 		if kind != wire.BindHeader && kind != wire.BindCookie {

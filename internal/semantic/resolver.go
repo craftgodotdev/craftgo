@@ -8,6 +8,7 @@ import "github.com/craftgodotdev/craftgo/internal/ast"
 type Resolver struct {
 	// Proj is the analysed project the tables were built from.
 	Proj        *Project
+	current     string // the package whose declarations are keyed bare
 	Types       map[string]*ast.TypeDecl
 	Enums       map[string]*ast.EnumDecl
 	Scalars     map[string]*ast.ScalarDecl
@@ -42,6 +43,7 @@ func qualifiedTable[T any](proj *Project, currentPkg string, pick func(*Package)
 func NewResolver(proj *Project, currentPkg string) *Resolver {
 	return &Resolver{
 		Proj:        proj,
+		current:     currentPkg,
 		Types:       qualifiedTable(proj, currentPkg, func(p *Package) map[string]*ast.TypeDecl { return p.Types }),
 		Enums:       qualifiedTable(proj, currentPkg, func(p *Package) map[string]*ast.EnumDecl { return p.Enums }),
 		Scalars:     qualifiedTable(proj, currentPkg, func(p *Package) map[string]*ast.ScalarDecl { return p.Scalars }),

@@ -57,14 +57,21 @@ func (a *analyzer) checkDeclRefs(d ast.Decl) {
 // @mutuallyExclusive lists: listed once, a field of the type (mixin fields
 // included) and fit for a cross-field group.
 func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, body []ast.TypeMember) {
-	var fieldSet map[string]promotedField
+	var byName map[string]*ast.Field
 	var incomplete bool
-	getFields := func() map[string]promotedField {
-		if fieldSet != nil {
-			return fieldSet
+	getFields := func() map[string]*ast.Field {
+		if byName != nil {
+			return byName
 		}
-		fieldSet, incomplete = a.promotedFieldSet(a.pkg.Name, body)
-		return fieldSet
+		var fields []FlatField
+		fields, incomplete = a.proj.flattenFields(a.pkg.Name, a.pkg.Name, body, nil, nil)
+		byName = map[string]*ast.Field{}
+		for _, ff := range fields {
+			if _, dup := byName[ff.Field.Name]; !dup {
+				byName[ff.Field.Name] = ff.Field
+			}
+		}
+		return byName
 	}
 	for _, d := range decs {
 		if d == nil {
@@ -82,7 +89,7 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 				continue
 			}
 			seen[name.Value] = true
-			pf, ok := getFields()[name.Value]
+			f, ok := getFields()[name.Value]
 			if !ok {
 				if incomplete {
 					continue // an unresolved, already reported mixin may promote it
@@ -92,7 +99,7 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 					d.Name, typeName, name.Value)
 				continue
 			}
-			reportCrossFieldMemberIssues(d.Name, typeName, name.Value, ResolveField(pf.Field, a.packageNamed(pf.Pkg), a.proj), func(code, msg string) {
+			reportCrossFieldMemberIssues(d.Name, typeName, name.Value, ResolveField(f, a.pkg, a.proj), func(code, msg string) {
 				a.diag(name.Pos, name.Pos, lexer.SeverityError, code, "%s", msg)
 			})
 		}

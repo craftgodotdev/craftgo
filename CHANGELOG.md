@@ -253,6 +253,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   `ref/package-cycle`. Event payloads do not count: events are generated
   outside the types packages.
 
+- **A generic mixin's field can bind a path variable.** `type GetReq {
+  IdHolder<string> }` with `type IdHolder<T> { id T }` on `get /things/{id}`
+  was rejected with `binding/type ... got T`; a promoted field now takes its
+  mixin's type arguments, also when the mixin sits inside another package's
+  mixin.
+
 - **Fewer duplicate diagnostics.** A generic mixin with the wrong number of
   arguments, or a mixin naming an error or a middleware, got a second
   diagnostic beside `mixin/arity` or `mixin/non-type`, and a malformed

@@ -196,8 +196,8 @@ func (s *pathParamSet) has(name string) bool {
 // requestPathFields collects the segment names m's request fields bind,
 // mixin fields included; nil when the request type does not resolve.
 func (a *analyzer) requestPathFields(m *ast.Method, pathParams []string) *pathParamSet {
-	td, fields := a.requestFields(m)
-	if td == nil {
+	_, fields, ok := a.requestFields(m)
+	if !ok {
 		return nil
 	}
 	paramSet := map[string]bool{}
@@ -206,12 +206,12 @@ func (a *analyzer) requestPathFields(m *ast.Method, pathParams []string) *pathPa
 	}
 	bodyVerb := wire.IsBodyVerb(m.Verb)
 	out := &pathParamSet{all: map[string]bool{}}
-	for _, pf := range fields {
-		b, auto := wire.RequestFieldBinding(pf.Field, paramSet, bodyVerb)
+	for _, ff := range fields {
+		b, auto := wire.RequestFieldBinding(ff.Field, paramSet, bodyVerb)
 		if b != wire.BindPath {
 			continue
 		}
-		name := wire.WireName(pf.Field, wire.BindPath)
+		name := wire.WireName(ff.Field, wire.BindPath)
 		out.all[name] = true
 		if !auto {
 			out.explicit = append(out.explicit, name)

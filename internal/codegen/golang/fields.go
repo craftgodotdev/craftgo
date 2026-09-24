@@ -7,6 +7,6 @@ import (
 
 // flattenFieldsWithNames is [semantic.FlattenWithNames] with the Go field
 // names this package renders each level with.
-func flattenFieldsWithNames(td *ast.TypeDecl, prefix string, pkg *semantic.Package, r *projectResolver, seen map[string]bool) []semantic.FlatField {
-	return semantic.FlattenWithNames(td, prefix, pkg, r.Resolver, seen, resolvedGoFieldNames)
+func flattenFieldsWithNames(td *ast.TypeDecl, prefix string, pkg *semantic.Package, r *projectResolver) []semantic.FlatField {
+	return semantic.FlattenWithNames(td, prefix, pkg, r.Resolver, resolvedGoFieldNames)
 }

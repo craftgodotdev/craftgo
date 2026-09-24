@@ -36,7 +36,7 @@ func ResolveFields(td *ast.TypeDecl, pkg *Package, r *Resolver, levelNames Level
 // ResolveFieldsWithPrefix is [ResolveFields] for a td reached through a
 // qualified ref: prefix is td's package, where its bare mixins resolve.
 func ResolveFieldsWithPrefix(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver, levelNames LevelNames) []ResolvedField {
-	flat := FlattenWithNames(td, prefix, pkg, r, map[string]bool{}, levelNames)
+	flat := FlattenWithNames(td, prefix, pkg, r, levelNames)
 	out := make([]ResolvedField, 0, len(flat))
 	for _, ff := range flat {
 		rf := ResolveField(ff.Field, pkg, r.Project())

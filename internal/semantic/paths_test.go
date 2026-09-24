@@ -449,6 +449,31 @@ service S { get M /u/{id} { request R  response Resp } }`
 	}
 }
 
+// A generic mixin's field binds a path variable as its type argument's type.
+func TestGenericMixinFieldBindsPathVariable(t *testing.T) {
+	mustClean(t, `package app
+type IdHolder<T> { id T }
+type GetReq { IdHolder<string> }
+type Resp { ok bool }
+@prefix("/things")
+service S { get Get /{id} { request GetReq  response Resp } }`)
+}
+
+// A type argument resolves where the mixin is written, not in the mixin's package.
+func TestCrossPackageGenericMixinFieldBindsPathVariable(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": `package shared
+type IdHolder<T> { id T }`,
+		"app/a.craftgo": `package app
+scalar ThingID string
+type GetReq { shared.IdHolder<ThingID> }
+type Resp { ok bool }
+service S { get Get /things/{id} { request GetReq  response Resp } }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	expectNoDiags(t, diags)
+}
+
 // A @sensitive field never rides the wire, so a same-named segment stays unbound.
 func TestSensitiveFieldDoesNotCoverPathSegment(t *testing.T) {
 	d := expectError(t, `package p
