@@ -122,6 +122,7 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 		}
 	}
 	v.Decorators = p.parseDecorators()
+	p.claimTrailing(t.Pos.Line, v.Decorators)
 	return v
 }
 

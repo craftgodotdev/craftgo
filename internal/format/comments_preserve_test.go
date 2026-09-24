@@ -143,6 +143,51 @@ func TestFormatMovesACommentWithItsCode(t *testing.T) {
 	}
 }
 
+// Decorators continued on the lines after a field or an enum value join its
+// line without a blank line after it; a comment among them keeps them on
+// their lines, one level deeper, and stays where it was.
+func TestFormatContinuedDecorators(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{
+			"field chain",
+			"package x\n\ntype T {\n\tx string @minLength(1)\n\t\t@maxLength(5)\n\ty string\n}\n",
+			"package x\n\ntype T {\n\tx string @minLength(1) @maxLength(5)\n\ty string\n}\n",
+		},
+		{
+			"field chain before a blank line",
+			"package x\n\ntype T {\n\tx string @minLength(1)\n\t\t@maxLength(5)\n\n\ty string\n}\n",
+			"package x\n\ntype T {\n\tx string @minLength(1) @maxLength(5)\n\n\ty string\n}\n",
+		},
+		{
+			"comment in a field chain",
+			"package x\n\ntype T {\n\tid   string\n\tname string @minLength(1)\n\t// c\n\t@maxLength(5)\n\ty    string\n}\n",
+			"package x\n\ntype T {\n\tid   string\n\tname string @minLength(1)\n\t\t// c\n\t\t@maxLength(5)\n\ty    string\n}\n",
+		},
+		{
+			"comment above a field's first decorator",
+			"package x\n\ntype T {\n\tx string\n\t\t// c\n\t\t@maxLength(5)\n\ty string\n}\n",
+			"package x\n\ntype T {\n\tx string\n\t\t// c\n\t\t@maxLength(5)\n\ty string\n}\n",
+		},
+		{
+			"trailing comment in a field chain",
+			"package x\n\ntype T {\n\tx string @minLength(1) // c\n\t\t@maxLength(5) // d\n\ty string\n}\n",
+			"package x\n\ntype T {\n\tx string @minLength(1) // c\n\t\t@maxLength(5) // d\n\ty string\n}\n",
+		},
+		{
+			"enum value chain",
+			"package x\n\nenum E {\n\tA = 1 @doc(\"a\")\n\t\t@deprecated\n\tB = 2\n}\n",
+			"package x\n\nenum E {\n\tA = 1 @doc(\"a\") @deprecated\n\tB = 2\n}\n",
+		},
+		{
+			"comment in an enum value chain",
+			"package x\n\nenum E {\n\tA = 1 @doc(\"a\")\n\t// c\n\t@deprecated\n\tB = 2\n}\n",
+			"package x\n\nenum E {\n\tA = 1 @doc(\"a\")\n\t\t// c\n\t\t@deprecated\n\tB = 2\n}\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
+	}
+}
+
 // Format refuses to put two comments on one collapsed line.
 func TestFormatRefusesTwoCommentsOnOneLine(t *testing.T) {
 	src := "package x\n\ntype T {\n\ta string @example({\n\t\tx: 1, // c1\n\t\ty: 2 // c2\n\t})\n}\n"

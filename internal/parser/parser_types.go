@@ -97,7 +97,9 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 func (p *Parser) parseField(doc []string, decs []*ast.Decorator) *ast.Field {
 	name := p.advance()
 	tref := p.parseTypeRef()
-	return &ast.Field{Pos: name.Pos, Doc: doc, Name: name.Text, Type: tref, Decorators: append(decs, p.parseDecorators()...)}
+	trailing := p.parseDecorators()
+	p.claimTrailing(name.Pos.Line, trailing)
+	return &ast.Field{Pos: name.Pos, Doc: doc, Name: name.Text, Type: tref, Decorators: append(decs, trailing...)}
 }
 
 // rejectMixinTrailingDecorators reports and consumes decorators on the mixin's

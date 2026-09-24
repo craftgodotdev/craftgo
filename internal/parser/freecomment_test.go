@@ -264,6 +264,41 @@ service S {
 	}
 }
 
+// The comments among the decorators after a field or an enum value are
+// recorded under the line of the decorator below them, and none is a free
+// comment.
+func TestTrailingChainCommentsRecorded(t *testing.T) {
+	f := mustParse(t, `package p
+
+type T {
+	x string @minLength(1)
+	// field chain
+		@maxLength(5)
+	y string
+		// before the first
+		@minLength(2)
+}
+
+enum E {
+	A = 1 @doc("a")
+	// value chain
+		@deprecated
+	B = 2
+}
+`)
+	want := map[int][]string{
+		6:  {"field chain"},
+		9:  {"before the first"},
+		15: {"value chain"},
+	}
+	if !reflect.DeepEqual(f.ChainComments, want) {
+		t.Errorf("ChainComments = %v, want %v", f.ChainComments, want)
+	}
+	if body, members := f.Decls[0].(*ast.TypeDecl).Body, f.Decls[1].(*ast.EnumDecl).Members; len(body) != 2 || len(members) != 2 {
+		t.Errorf("a chain comment became free: type body %#v, enum members %#v", body, members)
+	}
+}
+
 // In a file without a package, the comment under the decorators it hands to
 // the first declaration belongs to their chain, not to that declaration's doc.
 func TestForwardedChainCommentIsNoDoc(t *testing.T) {

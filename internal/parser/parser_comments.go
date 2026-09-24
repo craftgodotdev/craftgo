@@ -19,12 +19,29 @@ func (p *Parser) claimChain(decs []*ast.Decorator, last int) {
 	if len(decs) == 0 {
 		return
 	}
+	p.claimBetween(decs[0].Pos.Line, append(decoratorLines(decs[1:]), last))
+}
+
+// claimTrailing claims the comments among decs, the decorators after a member
+// whose code starts on line first, and records each block under the line of
+// the decorator below it.
+func (p *Parser) claimTrailing(first int, decs []*ast.Decorator) {
+	p.claimBetween(first, decoratorLines(decs))
+}
+
+// decoratorLines returns the source line of each of decs.
+func decoratorLines(decs []*ast.Decorator) []int {
 	lines := make([]int, 0, len(decs))
-	for _, d := range decs[1:] {
+	for _, d := range decs {
 		lines = append(lines, d.Pos.Line)
 	}
-	lines = append(lines, last)
-	prev := decs[0].Pos.Line
+	return lines
+}
+
+// claimBetween claims the comments below line start and above the last of
+// lines, and records each block under the first of lines below it.
+func (p *Parser) claimBetween(start int, lines []int) {
+	prev := start
 	for _, c := range p.allComments {
 		if c.Kind != lexer.CommentLeading || c.Pos.Line <= prev {
 			continue

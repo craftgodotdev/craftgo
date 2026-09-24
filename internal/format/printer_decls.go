@@ -67,7 +67,7 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 		case *ast.Field:
 			p.blankBetween(prevEnd, memberStartLine(v.Pos.Line, v.Decorators, len(v.Doc)))
 			p.alignedField(v, maxName, maxType, typeStr[v])
-			prevEnd = v.Pos.Line
+			prevEnd = memberEndLine(v.Pos.Line, v.Decorators)
 		case *ast.Mixin:
 			p.blankBetween(prevEnd, v.Pos.Line-len(v.Doc))
 			p.comments(v.Pos.Line, v.Doc)
@@ -100,6 +100,15 @@ func memberStartLine(pos int, decs []*ast.Decorator, docLen int) int {
 	return pos - docLen
 }
 
+// memberEndLine returns the last source line of a member on line pos: its
+// last decorator's line when that is below pos.
+func memberEndLine(pos int, decs []*ast.Decorator) int {
+	if n := len(decs); n > 0 && decs[n-1].Pos.Line > pos {
+		return decs[n-1].Pos.Line
+	}
+	return pos
+}
+
 func fieldHasDefault(f *ast.Field) bool {
 	return f != nil && ast.HasDecorator(f.Decorators, "default")
 }
@@ -112,13 +121,13 @@ func (p *Printer) typeRefString(t *ast.TypeRef) string {
 }
 
 // alignedField prints f's doc, then f on one line padded to the maxName and
-// maxType columns. Decorators above f join its line unless a comment pins
-// them to their own lines.
+// maxType columns. Decorators above or after f join its line unless a comment
+// pins them to their own lines.
 func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
 	start := memberStartLine(f.Pos.Line, f.Decorators, 0)
 	p.comments(start, f.Doc)
 	decs := f.Decorators
-	if lead := leadingChain(decs, f.Pos.Line); p.chainCommented(lead, f.Pos.Line) {
+	if lead := leadingChain(decs, f.Pos.Line); len(lead) > 0 && p.chainCommented(lead[0].Pos.Line, f.Pos.Line) {
 		p.declDecorators(lead, f.Pos.Line)
 		decs, start = decs[len(lead):], f.Pos.Line
 	}
@@ -126,10 +135,7 @@ func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
 	p.write(f.Name)
 	p.write(strings.Repeat(" ", maxName-len(f.Name)+1))
 	p.write(ts)
-	if len(decs) > 0 {
-		p.write(strings.Repeat(" ", maxType-len(ts)+1))
-		p.inlineDecorators(decs)
-	}
+	p.trailingDecorators(decs, f.Pos.Line, strings.Repeat(" ", maxType-len(ts)+1))
 	p.endCode()
 }
 
@@ -166,7 +172,7 @@ func (p *Printer) EnumDecl(d *ast.EnumDecl) {
 		case *ast.EnumValue:
 			p.blankBetween(prevEnd, v.Pos.Line-len(v.Doc))
 			p.EnumValue(v, maxName)
-			prevEnd = v.Pos.Line
+			prevEnd = memberEndLine(v.Pos.Line, v.Decorators)
 		case *ast.FreeComment:
 			p.blankBetween(prevEnd, v.Pos.Line)
 			p.printFreeComment(v)
@@ -191,10 +197,7 @@ func (p *Printer) EnumValue(v *ast.EnumValue, maxName int) {
 		p.write("= ")
 		p.write(v.StrText)
 	}
-	if len(v.Decorators) > 0 {
-		p.write(" ")
-		p.inlineDecorators(v.Decorators)
-	}
+	p.trailingDecorators(v.Decorators, v.Pos.Line, " ")
 	p.endCode()
 }
 
@@ -224,7 +227,7 @@ func (p *Printer) ScalarDecl(d *ast.ScalarDecl) {
 	start := memberStartLine(d.Pos.Line, d.Decorators, 0)
 	p.comments(start, d.Doc)
 	decs := d.Decorators
-	if lead := leadingChain(decs, d.Pos.Line); p.chainCommented(lead, d.Pos.Line) {
+	if lead := leadingChain(decs, d.Pos.Line); len(lead) > 0 && p.chainCommented(lead[0].Pos.Line, d.Pos.Line) {
 		p.declDecorators(lead, d.Pos.Line)
 		decs, start = decs[len(lead):], d.Pos.Line
 	}

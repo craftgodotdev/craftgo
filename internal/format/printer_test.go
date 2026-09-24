@@ -227,7 +227,7 @@ type T {
            @maxLength(5)
 }
 `,
-			want: []string{"\tx string @minLength(1) @maxLength(5) // note\n"},
+			want: []string{"\tx string @minLength(1) // note\n\t\t@maxLength(5)\n"},
 		},
 		{
 			name: "end-of-file comment block",

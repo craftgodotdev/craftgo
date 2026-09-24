@@ -130,6 +130,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   and one between imports moved. Decorators above a field or a scalar keep
   their own lines when a comment sits among them.
 
+- **A decorator continued on the next line stays with its field.**
+  Formatting joins the decorators after a field or an enum value onto its
+  line without adding a blank line below it, and a comment among them keeps
+  them on their own lines, one level deeper. The comment was moved out below
+  the member, and two trailing comments among them made formatting refuse
+  the file.
+
 - **`kafka.WithTLS(nil)` dials over TLS.** franz-go reads a nil config as
   "no TLS", so the brokers were dialed in plaintext and `WithSASLPlain`
   sent the password in clear. A nil config now dials with an empty one,
