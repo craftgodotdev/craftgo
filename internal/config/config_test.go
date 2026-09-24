@@ -7,8 +7,7 @@ import (
 	"testing"
 )
 
-// writeFile is a tiny test helper that writes content to path with default
-// permissions and fails the test on error.
+// writeFile writes content to path, failing the test on error.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -16,10 +15,7 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// TestLoadDefaults pins the empty-manifest behaviour: with no keys set
-// every Output.* path falls back to its framework default. Package is
-// not a manifest field - it is resolved from go.mod at gen time - so an
-// empty manifest is a valid input.
+// TestLoadDefaults checks that an empty manifest loads with the output defaults.
 func TestLoadDefaults(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, Filename)
@@ -65,9 +61,8 @@ func TestLoadFullOverride(t *testing.T) {
 	}
 }
 
-// TestLoadIgnoresStrayPackageKey: a `package:` key in the manifest
-// is ignored (no struct field consumes it) so such manifests load
-// cleanly. The sole source of truth for the module path is go.mod.
+// TestLoadIgnoresStrayPackageKey checks that a `package:` key is ignored and
+// leaves Package empty.
 func TestLoadIgnoresStrayPackageKey(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, Filename)
@@ -96,9 +91,8 @@ func TestLoadMissingFile(t *testing.T) {
 	}
 }
 
-// TestFindManifestInsideDesignFolder is the canonical layout: the manifest
-// lives inside `design/`, and Find walks up from a sibling source dir to
-// locate it.
+// TestFindManifestInsideDesignFolder checks that Find reaches `design/` from a
+// deep sibling directory.
 func TestFindManifestInsideDesignFolder(t *testing.T) {
 	root := t.TempDir()
 	designDir := filepath.Join(root, "design")
@@ -106,8 +100,6 @@ func TestFindManifestInsideDesignFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(designDir, Filename), "")
-	// Walk from a deep sibling - Find should still discover design/ via
-	// the project root.
 	deep := filepath.Join(root, "internal", "logic", "userservice")
 	if err := os.MkdirAll(deep, 0o755); err != nil {
 		t.Fatal(err)
@@ -126,9 +118,8 @@ func TestFindManifestInsideDesignFolder(t *testing.T) {
 	}
 }
 
-// TestFindManifestAtRoot keeps the legacy layout working: manifest at the
-// project root, design folder anywhere by convention. Project root is
-// then the manifest's parent.
+// TestFindManifestAtRoot checks that a manifest in start makes start the
+// design folder and its parent the project root.
 func TestFindManifestAtRoot(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, Filename), "")
@@ -145,9 +136,8 @@ func TestFindManifestAtRoot(t *testing.T) {
 	}
 }
 
-// TestFindAtEmptyRootUsesDesignParent pins the default root: with no
-// project root supplied, FindAt resolves the same one Find walks up to,
-// independent of the working directory.
+// TestFindAtEmptyRootUsesDesignParent checks that an empty project root
+// resolves to the design folder's parent, whatever the working directory.
 func TestFindAtEmptyRootUsesDesignParent(t *testing.T) {
 	root := t.TempDir()
 	designDir := filepath.Join(root, "design")
@@ -171,8 +161,8 @@ func TestFindAtEmptyRootUsesDesignParent(t *testing.T) {
 	}
 }
 
-// TestFindAtExplicitRootWins keeps `-c` authoritative: an explicit root
-// is used as given even when the design folder sits elsewhere.
+// TestFindAtExplicitRootWins checks that an explicit project root is used as
+// given.
 func TestFindAtExplicitRootWins(t *testing.T) {
 	dir := t.TempDir()
 	designDir := filepath.Join(dir, "contracts", "design")
@@ -246,8 +236,8 @@ func TestFindBadManifestInsideDesign(t *testing.T) {
 	}
 }
 
-// TestResolveModulePathAtRoot pins the simple case: go.mod sits at
-// projectRoot itself; the resolved path equals the module line verbatim.
+// TestResolveModulePathAtRoot checks that a go.mod in projectRoot yields its
+// module path unchanged.
 func TestResolveModulePathAtRoot(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "go.mod"), "module github.com/foo/bar\n\ngo 1.24\n")
@@ -260,9 +250,8 @@ func TestResolveModulePathAtRoot(t *testing.T) {
 	}
 }
 
-// TestResolveModulePathMonorepo pins the shared-go.mod case: a single
-// go.mod at the repo root, project root inside a sub-tree. The resolved
-// path appends the relative path so generated imports compile.
+// TestResolveModulePathMonorepo checks that a project below the go.mod gets
+// its relative path appended.
 func TestResolveModulePathMonorepo(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "go.mod"), "module github.com/foo/monorepo\n")
@@ -279,9 +268,7 @@ func TestResolveModulePathMonorepo(t *testing.T) {
 	}
 }
 
-// TestResolveModulePathNoGoMod pins the missing-go.mod error path: the
-// returned message MUST mention `go mod init` so users get a concrete
-// fix to copy-paste.
+// TestResolveModulePathNoGoMod checks that a missing go.mod is an error.
 func TestResolveModulePathNoGoMod(t *testing.T) {
 	root := t.TempDir()
 	deep := filepath.Join(root, "a", "b")
@@ -294,9 +281,8 @@ func TestResolveModulePathNoGoMod(t *testing.T) {
 	}
 }
 
-// TestResolveModulePathClosestGoMod pins the multi-go.mod precedence:
-// a sub-module's go.mod takes precedence over a parent's, matching
-// Go's own resolution rules.
+// TestResolveModulePathClosestGoMod checks that the nearest go.mod wins over a
+// parent's.
 func TestResolveModulePathClosestGoMod(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "go.mod"), "module github.com/foo/parent\n")
@@ -314,8 +300,8 @@ func TestResolveModulePathClosestGoMod(t *testing.T) {
 	}
 }
 
-// TestResolveModulePathQuotedModuleLine pins the rare but legal form
-// `module "github.com/foo/bar"` - go.mod accepts quoted paths.
+// TestResolveModulePathQuotedModuleLine checks that a quoted `module` path is
+// unquoted.
 func TestResolveModulePathQuotedModuleLine(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "go.mod"), "module \"github.com/foo/bar\"\n")
@@ -362,9 +348,8 @@ func TestLoadFileCaseAcceptsKnownAndRejectsUnknown(t *testing.T) {
 	}
 }
 
-// An output path outside the project has no import-path spelling, so it
-// must be rejected while the manifest is read - not left to fail as a
-// malformed import at `go build`.
+// TestOutputPathMustStayInsideProject checks that validate rejects an output
+// path outside the project and accepts one inside.
 func TestOutputPathMustStayInsideProject(t *testing.T) {
 	escapes := []struct{ name, val string }{
 		{"parent", "../shared/types"},
@@ -389,8 +374,8 @@ func TestOutputPathMustStayInsideProject(t *testing.T) {
 	}
 }
 
-// The same rule covers the event targets, which are the paths a
-// contract artifact would actually be published from.
+// TestEventTargetOutMustStayInsideProject checks that validate rejects an
+// event target outside the project.
 func TestEventTargetOutMustStayInsideProject(t *testing.T) {
 	cfg := &Config{Events: Events{Targets: []EventTarget{{Lang: LangGo, Out: "../contracts"}}}}
 	if err := cfg.validate(); err == nil {

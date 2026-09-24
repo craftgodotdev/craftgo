@@ -17,9 +17,8 @@ func writeManifest(t *testing.T, body string) string {
 	return path
 }
 
-// A manifest that says nothing about events gets one Go target, so an
-// existing project keeps working and a new event lands in the
-// conventional place without configuration.
+// TestEventsDefaultToASingleGoTarget checks that a manifest without events
+// gets one Go target in ./internal/events.
 func TestEventsDefaultToASingleGoTarget(t *testing.T) {
 	cfg, err := Load(writeManifest(t, "openapi:\n  title: X\n"))
 	if err != nil {
@@ -34,8 +33,8 @@ func TestEventsDefaultToASingleGoTarget(t *testing.T) {
 	}
 }
 
-// Go is a row in the target list, not a privileged default: a manifest
-// states where it lands, and may leave it out entirely.
+// TestEventTargetsAreConfigured checks that TargetFor returns a configured
+// target and misses an unconfigured language.
 func TestEventTargetsAreConfigured(t *testing.T) {
 	cfg, err := Load(writeManifest(t, `events:
   targets:
@@ -54,9 +53,8 @@ func TestEventTargetsAreConfigured(t *testing.T) {
 	}
 }
 
-// A manifest naming a key craftgo has removed is told what happened: an
-// unknown key is otherwise ignored, so the project would generate
-// something other than what the manifest says.
+// TestRemovedKeysAreRejected checks that each removed key fails Load with an
+// error naming it.
 func TestRemovedKeysAreRejected(t *testing.T) {
 	cases := []struct {
 		name string
@@ -81,8 +79,7 @@ func TestRemovedKeysAreRejected(t *testing.T) {
 	}
 }
 
-// No target reads a `layout:`, so the key is rejected rather than
-// silently ignored.
+// TestTargetLayoutIsRejected checks that a target's `layout:` fails Load.
 func TestTargetLayoutIsRejected(t *testing.T) {
 	_, err := Load(writeManifest(t, `events:
   targets:

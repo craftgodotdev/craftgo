@@ -10,8 +10,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// tree writes files under a fresh root and returns it. Keys are paths
-// relative to the root.
+// tree writes files, keyed by relative path, under a fresh root and returns it.
 func tree(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
@@ -27,8 +26,7 @@ func tree(t *testing.T, files map[string]string) string {
 	return root
 }
 
-// unreadable makes dir unreadable, skipping the test where it cannot -
-// running as root defeats the mode bits.
+// unreadable makes dir unreadable, skipping the test where it cannot (as root).
 func unreadable(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.Chmod(dir, 0o000); err != nil {
@@ -40,7 +38,7 @@ func unreadable(t *testing.T, dir string) {
 	}
 }
 
-// names returns the base names of paths, which is what a test asserts on.
+// names returns the base names of paths.
 func names(paths []string) []string {
 	out := make([]string, 0, len(paths))
 	for _, p := range paths {
@@ -49,12 +47,8 @@ func names(paths []string) []string {
 	return out
 }
 
-// THE REGRESSION. An unreadable directory must not truncate the list: a
-// design file AFTER it in walk order is what the editor loses, and losing
-// it makes the editor report unknown-symbol errors for types that exist.
-//
-// `bbb` sorts between `aaa` and `ccc`, so a walk that stops rather than
-// skips finds a.craftgo and never reaches c.craftgo.
+// TestFilesBestEffortSkipsAnUnreadableDirectoryAndKeepsGoing checks that
+// c.craftgo, walked after the unreadable bbb/, is still found.
 func TestFilesBestEffortSkipsAnUnreadableDirectoryAndKeepsGoing(t *testing.T) {
 	root := tree(t, map[string]string{
 		"aaa/a.craftgo": "package aaa\n",
@@ -70,8 +64,6 @@ func TestFilesBestEffortSkipsAnUnreadableDirectoryAndKeepsGoing(t *testing.T) {
 	}
 }
 
-// The other policy: a tool that generates from a design must refuse a
-// design it could only half read, and must not hand back the half.
 func TestFilesRefusesAnUnreadableDirectoryAndReturnsNoPaths(t *testing.T) {
 	root := tree(t, map[string]string{
 		"aaa/a.craftgo": "package aaa\n",
@@ -89,7 +81,6 @@ func TestFilesRefusesAnUnreadableDirectoryAndReturnsNoPaths(t *testing.T) {
 	}
 }
 
-// Both policies agree on a tree they can read.
 func TestBothPoliciesAgreeOnAReadableTree(t *testing.T) {
 	root := tree(t, map[string]string{
 		"aaa/a.craftgo": "package aaa\n",
@@ -108,8 +99,8 @@ func TestBothPoliciesAgreeOnAReadableTree(t *testing.T) {
 	}
 }
 
-// Load reads through the strict policy, so a half-readable design does
-// not reach the analyser as a whole one.
+// TestLoadRefusesAHalfReadableDesign checks that Load fails like Files on an
+// unreadable directory.
 func TestLoadRefusesAHalfReadableDesign(t *testing.T) {
 	root := tree(t, map[string]string{
 		"aaa/a.craftgo": "package aaa\n",
@@ -122,9 +113,8 @@ func TestLoadRefusesAHalfReadableDesign(t *testing.T) {
 	}
 }
 
-// A nil manifest is a design with no project above it. The options then
-// carry a nil SecuritySchemes, which is what tells the reference check to
-// stay quiet rather than calling every scheme undeclared.
+// TestForWithNoManifestLeavesTheSchemeCheckDisabled checks that a nil manifest
+// yields nil SecuritySchemes and zero manifest options.
 func TestForWithNoManifestLeavesTheSchemeCheckDisabled(t *testing.T) {
 	opts := For("/d", nil)
 	if opts.SecuritySchemes != nil {
@@ -138,16 +128,14 @@ func TestForWithNoManifestLeavesTheSchemeCheckDisabled(t *testing.T) {
 	}
 }
 
-// An empty scheme map is also nil, for the same reason: a manifest that
-// declares none gives no authoritative list to check against.
+// TestForWithNoDeclaredSchemesLeavesTheCheckDisabled checks that an empty
+// scheme map also yields nil SecuritySchemes.
 func TestForWithNoDeclaredSchemesLeavesTheCheckDisabled(t *testing.T) {
 	if got := For("/d", &config.Config{}).SecuritySchemes; got != nil {
 		t.Errorf("SecuritySchemes = %v, want nil", got)
 	}
 }
 
-// The scheme list is rendered into the diagnostic's "known: ..." text, so
-// a map walk would shuffle the message between runs.
 func TestForSortsTheSchemeNames(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.OpenAPI.SecuritySchemes = map[string]config.SecurityScheme{
@@ -161,8 +149,8 @@ func TestForSortsTheSchemeNames(t *testing.T) {
 	}
 }
 
-// The manifest's analysis inputs reach the options - these are the three
-// the editor used to drop.
+// TestForCarriesTheManifestsAnalysisInputs checks that basePath, fileCase and
+// the scheme names reach the options.
 func TestForCarriesTheManifestsAnalysisInputs(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.OpenAPI.BasePath = "/api"
@@ -178,8 +166,6 @@ func TestForCarriesTheManifestsAnalysisInputs(t *testing.T) {
 	}
 }
 
-// A file that declares no package is left alone: which package it belongs
-// to is the analyser's rule, and naming one here would pre-empt it.
 func TestParseLeavesAPackagelessFileAlone(t *testing.T) {
 	parsed, diags := Parse([]Source{
 		{Path: "/d/orders.craftgo", Text: "package orders\ntype O { id string }\n"},
@@ -199,8 +185,6 @@ func TestParseLeavesAPackagelessFileAlone(t *testing.T) {
 	}
 }
 
-// The tokens ride along with the AST so no caller has to parse a second
-// time to get them - the editor reads them on every keystroke.
 func TestParseReturnsTokensBesideTheAST(t *testing.T) {
 	parsed, _ := Parse([]Source{{Path: "/d/a.craftgo", Text: "package a\ntype T { id string }\n"}})
 	if len(parsed) != 1 {
@@ -214,8 +198,8 @@ func TestParseReturnsTokensBesideTheAST(t *testing.T) {
 	}
 }
 
-// Analyze is the whole path: parse, then analyse under the manifest's
-// options, with both sets of diagnostics in that order.
+// TestAnalyzeAppliesTheManifestOptions checks that Analyze honours the
+// manifest's basePath.
 func TestAnalyzeAppliesTheManifestOptions(t *testing.T) {
 	const design = `package svc
 type R {}

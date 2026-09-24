@@ -6,11 +6,8 @@ import (
 	"testing"
 )
 
-// notAPath names the Output fields that select a mode rather than name a
-// directory. Every other string field is generated into and so is imported
-// as `<module>/<path>`, which cannot name a directory outside the module.
-// A new field must be classified here or the test below fails, which is
-// what stops the next path key shipping unguarded.
+// notAPath names the Output string fields that are not paths; the test treats
+// every other string field as one.
 var notAPath = map[string]bool{"Kind": true, "FileCase": true}
 
 func TestEveryOutputPathStaysInsideTheProject(t *testing.T) {
