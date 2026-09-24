@@ -234,7 +234,7 @@ func (p *Printer) EnumValue(v *ast.EnumValue, maxName int) {
 	case ast.EnumString:
 		p.write(strings.Repeat(" ", maxName-len(v.Name)+1))
 		p.write("= ")
-		p.write(strconv.Quote(v.StrValue))
+		p.write(v.StrText)
 	}
 	decoratorCarriesTrailing := false
 	for _, dec := range v.Decorators {

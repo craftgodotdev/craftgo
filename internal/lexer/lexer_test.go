@@ -293,6 +293,53 @@ func TestStringBadUnicodeEscape(t *testing.T) {
 	}
 }
 
+// Unquote decodes the DSL's escapes, keeps a raw literal's content, and names
+// the first escape it rejects.
+func TestUnquote(t *testing.T) {
+	for _, c := range []struct {
+		in, want, err string
+	}{
+		{`""`, "", ""},
+		{`"abc"`, "abc", ""},
+		{`"a\nb\tc\rd"`, "a\nb\tc\rd", ""},
+		{`"a\"b\\c"`, "a\"b\\c", ""},
+		{`"\u{61}\u{7}\u{0}"`, "a\a\x00", ""},
+		{`"\u{1F600}"`, "\U0001F600", ""},
+		{"\"zero\u200bwidth\"", "zero\u200bwidth", ""},
+		{"`^\\d+$`", `^\d+$`, ""},
+		{"`a\nb`", "a\nb", ""},
+		{`"\zbad"`, "", `invalid escape sequence \z`},
+		{`"\é"`, "", `invalid escape sequence \é`},
+		{`"\u nobrace"`, "", "invalid unicode escape"},
+		{`"\u{nobrace"`, "", "invalid unicode escape"},
+		{`"\u{}"`, "", "invalid unicode escape"},
+		{`"\u{ZZ}"`, "", "invalid unicode escape"},
+		{`"\u{1234567}"`, "", "invalid unicode escape"},
+		{`"a\"`, "", "unterminated escape sequence"},
+		{`"`, "", `"\"" is not a string literal`},
+		{`abc`, "", `"abc" is not a string literal`},
+	} {
+		got, err := Unquote(c.in)
+		if c.err != "" {
+			if err == nil || err.Error() != c.err {
+				t.Errorf("Unquote(%q) error = %v, want %q", c.in, err, c.err)
+			}
+			continue
+		}
+		if err != nil || got != c.want {
+			t.Errorf("Unquote(%q) = %q, %v, want %q", c.in, got, err, c.want)
+		}
+	}
+}
+
+// A String token's text is what Unquote accepts, escapes as written.
+func TestStringTextIsTheSource(t *testing.T) {
+	src := `"a\u{7}\"b"`
+	if tok := first(t, src); tok.Kind != String || tok.Text != src {
+		t.Errorf("got %+v", tok)
+	}
+}
+
 func TestRawString(t *testing.T) {
 	if first(t, "`hello`").Kind != RawString {
 		t.Error()

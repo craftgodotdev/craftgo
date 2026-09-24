@@ -27,7 +27,8 @@ func (p *Parser) parseImport() *ast.Import {
 	}
 	str, ok := p.expect(lexer.String)
 	if ok {
-		imp.Path = unquoteString(str.Text)
+		imp.Path = unquote(str)
+		imp.PathText = str.Text
 		imp.TrailingDoc = str.Trailing
 	}
 	return imp
@@ -122,7 +123,8 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 			v.Kind = ast.EnumInt
 		case lexer.String:
 			tok := p.advance()
-			v.StrValue = unquoteString(tok.Text)
+			v.StrValue = unquote(tok)
+			v.StrText = tok.Text
 			v.Kind = ast.EnumString
 		case lexer.Dash:
 			// `Name = -1`: the sign and the integer are one value.

@@ -4,7 +4,9 @@
 package lexer
 
 import (
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -309,104 +311,98 @@ func (l *Lexer) digitFollowsDot() bool {
 	return isDigit(rune(l.src[l.offset+1]))
 }
 
-// lexString lexes a `"..."` literal with the escapes `\n \t \r \" \\` and
-// `\u{HEX}` (1-6 digits). Text keeps the quotes and escapes as written.
+// lexString lexes a `"..."` literal on one line; Text keeps the quotes and
+// escapes as written, and the literal is an Error unless [Unquote] accepts it.
 func (l *Lexer) lexString(pos Position) Token {
-	var sb strings.Builder
-	sb.WriteByte('"')
+	start := l.offset
 	l.advance()
 	for {
 		if l.offset >= len(l.src) {
 			return l.errorf(pos, "unterminated string literal")
 		}
-		r := l.peek()
-		if r == '\n' {
+		switch l.peek() {
+		case '\n':
 			return l.errorf(pos, "newline in string literal")
-		}
-		if r == '"' {
-			sb.WriteByte('"')
+		case '"':
 			l.advance()
-			return Token{Kind: String, Text: sb.String(), Pos: pos}
-		}
-		if r == '\\' {
-			sb.WriteByte('\\')
+			text := l.src[start:l.offset]
+			if _, err := Unquote(text); err != nil {
+				return l.errorf(pos, "%s", err)
+			}
+			return Token{Kind: String, Text: text, Pos: pos}
+		case '\\':
+			// The escaped rune, a quote included, never ends the literal.
 			l.advance()
-			if l.offset >= len(l.src) {
-				return l.errorf(pos, "unterminated escape sequence")
-			}
-			esc := l.peek()
-			switch esc {
-			case 'n', 't', 'r', '"', '\\':
-				sb.WriteRune(esc)
+			if l.offset < len(l.src) && l.peek() != '\n' {
 				l.advance()
-			case 'u':
-				sb.WriteRune(esc)
-				l.advance()
-				if !l.lexUnicodeEscape(&sb) {
-					return l.errorf(pos, "invalid unicode escape")
-				}
-			default:
-				return l.errorf(pos, "invalid escape sequence \\%c", esc)
 			}
-			continue
+		default:
+			l.advance()
 		}
-		sb.WriteRune(r)
-		l.advance()
 	}
 }
 
-// lexUnicodeEscape consumes the `{HEX}` after `\u` and reports whether it holds
-// 1-6 hex digits.
-func (l *Lexer) lexUnicodeEscape(sb *strings.Builder) bool {
-	r := l.peek()
-	if r != '{' {
-		return false
+// simpleEscapes maps the rune after a backslash to the byte it stands for.
+var simpleEscapes = map[byte]byte{'n': '\n', 't': '\t', 'r': '\r', '"': '"', '\\': '\\'}
+
+// Unquote returns the value of a String or RawString token's text: a raw
+// literal's content, or a quoted literal's with its escapes decoded. The
+// escapes are \n \t \r \" \\ and \u{HEX} with 1 to 6 hex digits.
+func Unquote(text string) (string, error) {
+	n := len(text)
+	if n >= 2 && text[0] == '`' && text[n-1] == '`' {
+		return text[1 : n-1], nil
 	}
-	sb.WriteByte('{')
-	l.advance()
-	n := 0
-	for n < 6 {
-		rr := l.peek()
-		if rr == '}' {
-			if n == 0 {
-				return false
-			}
-			sb.WriteByte('}')
-			l.advance()
-			return true
+	if n < 2 || text[0] != '"' || text[n-1] != '"' {
+		return "", fmt.Errorf("%q is not a string literal", text)
+	}
+	var sb strings.Builder
+	s := text[1 : n-1]
+	for {
+		i := strings.IndexByte(s, '\\')
+		if i < 0 {
+			sb.WriteString(s)
+			return sb.String(), nil
 		}
-		if !isHex(rr) {
-			return false
+		sb.WriteString(s[:i])
+		s = s[i+1:]
+		if s == "" {
+			return "", errors.New("unterminated escape sequence")
 		}
-		sb.WriteRune(rr)
-		l.advance()
-		n++
+		if b, ok := simpleEscapes[s[0]]; ok {
+			sb.WriteByte(b)
+			s = s[1:]
+			continue
+		}
+		if s[0] != 'u' {
+			r, _ := utf8.DecodeRuneInString(s)
+			return "", fmt.Errorf("invalid escape sequence \\%c", r)
+		}
+		end := strings.IndexByte(s, '}')
+		if len(s) < 2 || s[1] != '{' || end < 3 || end > 8 {
+			return "", errors.New("invalid unicode escape")
+		}
+		v, err := strconv.ParseUint(s[2:end], 16, 32)
+		if err != nil {
+			return "", errors.New("invalid unicode escape")
+		}
+		sb.WriteRune(rune(v))
+		s = s[end+1:]
 	}
-	rr := l.peek()
-	if rr != '}' {
-		return false
-	}
-	sb.WriteByte('}')
-	l.advance()
-	return true
 }
 
 // lexRawString lexes a backtick literal: no escapes, newlines allowed.
 func (l *Lexer) lexRawString(pos Position) Token {
-	var sb strings.Builder
-	sb.WriteByte('`')
+	start := l.offset
 	l.advance()
 	for {
 		if l.offset >= len(l.src) {
 			return l.errorf(pos, "unterminated raw string literal")
 		}
-		r := l.peek()
-		if r == '`' {
-			sb.WriteByte('`')
+		if l.peek() == '`' {
 			l.advance()
-			return Token{Kind: RawString, Text: sb.String(), Pos: pos}
+			return Token{Kind: RawString, Text: l.src[start:l.offset], Pos: pos}
 		}
-		sb.WriteRune(r)
 		l.advance()
 	}
 }
@@ -515,9 +511,4 @@ func isLetter(r rune) bool {
 // isDigit reports whether r is an ASCII decimal digit.
 func isDigit(r rune) bool {
 	return r >= '0' && r <= '9'
-}
-
-// isHex reports whether r is a hexadecimal digit.
-func isHex(r rune) bool {
-	return isDigit(r) || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
 }

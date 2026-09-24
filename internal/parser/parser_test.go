@@ -781,41 +781,6 @@ func TestUnknownTopLevel(t *testing.T) {
 	}
 }
 
-func TestUnquoteString(t *testing.T) {
-	cases := []struct {
-		in, want string
-	}{
-		{`""`, ""},
-		{`"abc"`, "abc"},
-		{`"a\nb"`, "a\nb"},
-		{`"a\tb"`, "a\tb"},
-		{`"a\rb"`, "a\rb"},
-		{`"a\"b"`, "a\"b"},
-		{`"a\\b"`, "a\\b"},
-		{`"\u{61}"`, "a"},
-		{`"\u{1F600}"`, "\U0001F600"},
-		{`"\zbad"`, "zbad"},           // unknown escape
-		{`"\u nobrace"`, "u nobrace"}, // unicode without brace
-		{`"\u{nobrace"`, "u{nobrace"}, // missing closing brace
-		{`"\u{ZZ}"`, "u{ZZ}"},         // bad hex
-		{`"`, "\""},                   // len < 2 fallback
-	}
-	for _, c := range cases {
-		if got := unquoteString(c.in); got != c.want {
-			t.Errorf("unquoteString(%q) = %q want %q", c.in, got, c.want)
-		}
-	}
-}
-
-func TestUnquoteRaw(t *testing.T) {
-	if got := unquoteRaw("`hello`"); got != "hello" {
-		t.Error()
-	}
-	if got := unquoteRaw("`"); got != "`" {
-		t.Error()
-	}
-}
-
 func TestIsUpperFirst(t *testing.T) {
 	if !isUpperFirst("Profile") {
 		t.Error()

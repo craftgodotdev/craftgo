@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -205,7 +204,7 @@ func (p *Printer) Import(imp *ast.Import) {
 		p.write(imp.Alias)
 		p.write(" ")
 	}
-	p.write(strconv.Quote(imp.Path))
+	p.write(imp.PathText)
 	if imp.TrailingDoc != "" {
 		p.write("  // ")
 		p.write(imp.TrailingDoc)

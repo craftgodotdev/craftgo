@@ -2,7 +2,6 @@ package parser
 
 import (
 	"strconv"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -150,12 +149,9 @@ func (p *Parser) parseArray() ast.Expr {
 func (p *Parser) parseValue() ast.Expr {
 	t := p.peek()
 	switch t.Kind {
-	case lexer.String:
+	case lexer.String, lexer.RawString:
 		p.advance()
-		return &ast.StringLit{Pos: t.Pos, Value: unquoteString(t.Text)}
-	case lexer.RawString:
-		p.advance()
-		return &ast.StringLit{Pos: t.Pos, Value: unquoteRaw(t.Text)}
+		return &ast.StringLit{Pos: t.Pos, Value: unquote(t), Text: t.Text}
 	case lexer.Int:
 		p.advance()
 		n, err := strconv.ParseInt(t.Text, 10, 64)
@@ -166,7 +162,7 @@ func (p *Parser) parseValue() ast.Expr {
 	case lexer.Float:
 		p.advance()
 		f, _ := strconv.ParseFloat(t.Text, 64)
-		return &ast.FloatLit{Pos: t.Pos, Value: f}
+		return &ast.FloatLit{Pos: t.Pos, Value: f, Text: t.Text}
 	case lexer.KwTrue:
 		p.advance()
 		return &ast.BoolLit{Pos: t.Pos, Value: true}
@@ -197,7 +193,7 @@ func (p *Parser) parseValue() ast.Expr {
 		if next.Kind == lexer.Float {
 			p.advance()
 			f, _ := strconv.ParseFloat("-"+next.Text, 64)
-			return &ast.FloatLit{Pos: t.Pos, Value: f}
+			return &ast.FloatLit{Pos: t.Pos, Value: f, Text: "-" + next.Text}
 		}
 		p.errorf(t.Pos, "expected number after '-'")
 		return &ast.IntLit{Pos: t.Pos, Value: 0}
@@ -216,56 +212,9 @@ func (p *Parser) parseValue() ast.Expr {
 	return &ast.NullLit{Pos: t.Pos}
 }
 
-// unquoteString decodes a `"..."` literal; an unknown escape keeps its
-// character and drops the backslash.
-func unquoteString(s string) string {
-	if len(s) < 2 {
-		return s
-	}
-	inner := s[1 : len(s)-1]
-	var sb strings.Builder
-	for i := 0; i < len(inner); i++ {
-		c := inner[i]
-		if c != '\\' || i+1 >= len(inner) {
-			sb.WriteByte(c)
-			continue
-		}
-		i++
-		switch inner[i] {
-		case 'n':
-			sb.WriteByte('\n')
-		case 't':
-			sb.WriteByte('\t')
-		case 'r':
-			sb.WriteByte('\r')
-		case '"':
-			sb.WriteByte('"')
-		case '\\':
-			sb.WriteByte('\\')
-		case 'u':
-			if i+1 < len(inner) && inner[i+1] == '{' {
-				end := strings.Index(inner[i+2:], "}")
-				if end >= 0 {
-					hex := inner[i+2 : i+2+end]
-					if n, err := strconv.ParseInt(hex, 16, 32); err == nil {
-						sb.WriteRune(rune(n))
-						i = i + 2 + end
-						continue
-					}
-				}
-			}
-			sb.WriteByte(inner[i])
-		default:
-			sb.WriteByte(inner[i])
-		}
-	}
-	return sb.String()
-}
-
-// unquoteRaw strips a raw literal's backticks.
-func unquoteRaw(s string) string {
-	if len(s) < 2 {
-		return s
-	}
-	return s[1 : len(s)-1]
+// unquote returns the value of a String or RawString token; the lexer emits
+// one only when [lexer.Unquote] accepts its text.
+func unquote(t lexer.Token) string {
+	v, _ := lexer.Unquote(t.Text)
+	return v
 }

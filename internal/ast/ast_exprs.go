@@ -38,10 +38,12 @@ type Expr interface {
 	ExprPos() Pos
 }
 
-// StringLit is a string literal; Value is unescaped.
+// StringLit is a string literal; Value is unescaped and Text is the literal as
+// written, quotes or backticks included.
 type StringLit struct {
 	Pos   Pos
 	Value string
+	Text  string
 }
 
 func (*StringLit) exprNode()      { astMarker() }
@@ -56,10 +58,11 @@ type IntLit struct {
 func (*IntLit) exprNode()      { astMarker() }
 func (e *IntLit) ExprPos() Pos { return e.Pos }
 
-// FloatLit is a signed float literal.
+// FloatLit is a signed float literal; Text is the literal as written (`-0.5`).
 type FloatLit struct {
 	Pos   Pos
 	Value float64
+	Text  string
 }
 
 func (*FloatLit) exprNode()      { astMarker() }

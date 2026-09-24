@@ -76,6 +76,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   file beside a design folder was checked against that folder's project,
   which does not hold it, so its semantic errors went unseen.
 
+- **Formatting prints every literal as it is written.** A float of 1e6 or
+  more or below 1e-4 (`1234567.5`, `0.00001`) came out in an exponent form
+  the DSL does not read, `\u{7}` as Go's `\a`, a character such as U+200B as
+  a `\u200b` escape, and a raw string such as `` `^\d+$` `` lost its
+  backticks. Strings, floats, enum values and import paths now keep their
+  source spelling.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

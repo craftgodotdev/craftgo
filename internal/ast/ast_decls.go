@@ -107,7 +107,7 @@ const (
 )
 
 // EnumValue is one enum entry; IntValue and StrValue apply only to the
-// matching Kind.
+// matching Kind. StrText is StrValue as written, quotes included.
 type EnumValue struct {
 	Pos        Pos
 	Doc        []string
@@ -115,6 +115,7 @@ type EnumValue struct {
 	Kind       EnumValueKind
 	IntValue   int64
 	StrValue   string
+	StrText    string
 	Decorators []*Decorator
 }
 

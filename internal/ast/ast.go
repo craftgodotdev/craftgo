@@ -43,12 +43,14 @@ type PackageDecl struct {
 	Name string
 }
 
-// Import is `import "path"` or `import alias "path"`. Doc is the comment above
-// it and TrailingDoc the one after the path.
+// Import is `import "path"` or `import alias "path"`. PathText is Path as
+// written, quotes included; Doc is the comment above it and TrailingDoc the one
+// after the path.
 type Import struct {
 	Pos         Pos
 	Alias       string
 	Path        string
+	PathText    string
 	Doc         []string
 	TrailingDoc string
 }

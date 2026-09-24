@@ -89,11 +89,11 @@ func (p *Printer) DecoratorArg(a *ast.DecoratorArg) {
 func (p *Printer) Expr(e ast.Expr) {
 	switch v := e.(type) {
 	case *ast.StringLit:
-		p.write(strconv.Quote(v.Value))
+		p.write(v.Text)
 	case *ast.IntLit:
 		p.write(strconv.FormatInt(v.Value, 10))
 	case *ast.FloatLit:
-		p.write(strconv.FormatFloat(v.Value, 'g', -1, 64))
+		p.write(v.Text)
 	case *ast.BoolLit:
 		if v.Value {
 			p.write("true")
