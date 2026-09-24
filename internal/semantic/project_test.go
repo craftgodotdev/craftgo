@@ -595,3 +595,41 @@ type Order { shared.MissingType }`,
 		t.Fatalf("expected %s for unresolved cross-pkg mixin, got: %v", CodeRefUnknownSymbol, diags)
 	}
 }
+
+// Diagnostics come back ordered by file and offset, identical on every run.
+func TestAnalyzeProjectDiagnosticsSorted(t *testing.T) {
+	files := parseFileMap(t, map[string]string{
+		"b.craftgo": `package app
+type Box<T> { v T }
+type P { a Box }
+type Q { b Box<string, int> }
+type R { c Box<int, int, int> }
+type lower { id string }`,
+		"a.craftgo": `package app
+type S { d Box<string, string> }
+type T2 { e Missing }
+type lowerToo { id string }`,
+	})
+	var want []Diagnostic
+	for run := range 20 {
+		_, diags := AnalyzeProject(files, Options{})
+		for i := 1; i < len(diags); i++ {
+			prev, cur := diags[i-1].Pos, diags[i].Pos
+			if prev.Filename > cur.Filename || prev.Filename == cur.Filename && prev.Offset > cur.Offset {
+				t.Fatalf("run %d: %s (%s) reported before %s (%s)", run, prev, diags[i-1].Code, cur, diags[i].Code)
+			}
+		}
+		if run == 0 {
+			want = diags
+			continue
+		}
+		if len(diags) != len(want) {
+			t.Fatalf("run %d: %d diagnostics, first run had %d", run, len(diags), len(want))
+		}
+		for i := range diags {
+			if diags[i].Pos != want[i].Pos || diags[i].Code != want[i].Code || diags[i].Msg != want[i].Msg {
+				t.Fatalf("run %d: diagnostic %d is %s %s, first run had %s %s", run, i, diags[i].Pos, diags[i].Code, want[i].Pos, want[i].Code)
+			}
+		}
+	}
+}

@@ -217,6 +217,10 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **The editor analyses a file outside every design folder on its own**, as
   `craftgo fmt` checks it: the folder's declarations do not resolve in it.
 
+- **Diagnostics come out in a stable order.** `craftgo gen` and the editor
+  listed a design's problems in an order that changed from run to run; they
+  are now sorted by file and position.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

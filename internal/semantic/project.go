@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"cmp"
 	"maps"
 	"os"
 	"path/filepath"
@@ -54,7 +55,20 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	r.checkProjectPathCollision()
 	r.checkProjectOperationIDUniqueness()
 	r.checkProjectEvents()
+	sortDiagnostics(r.diags)
 	return proj, r.diags
+}
+
+// sortDiagnostics orders diags by file, offset, code and message.
+func sortDiagnostics(diags []Diagnostic) {
+	slices.SortStableFunc(diags, func(a, b Diagnostic) int {
+		return cmp.Or(
+			cmp.Compare(a.Pos.Filename, b.Pos.Filename),
+			cmp.Compare(a.Pos.Offset, b.Pos.Offset),
+			cmp.Compare(a.Code, b.Code),
+			cmp.Compare(a.Msg, b.Msg),
+		)
+	})
 }
 
 // singlePackage returns the only package, else the unnamed one, else the
