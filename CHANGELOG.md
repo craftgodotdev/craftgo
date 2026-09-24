@@ -171,6 +171,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   `nats.ErrClosed`. A late subscribe created its durable and consumed with
   nothing to stop it: neither `Close` nor cancelling its context ended it.
 
+- **The core NATS transport refuses a subscribe after `Close`**, with
+  `nats.ErrClosed`. It registered a queue subscriber that only the end of
+  its context removed.
+
 - **A core NATS subscription on a context that never ends parks no
   goroutine.** Each one left a goroutine waiting for ever on `ctx.Done()`.
 

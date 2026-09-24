@@ -192,6 +192,25 @@ func TestCancellingTheContextStopsDeliveryOverNATS(t *testing.T) {
 	}
 }
 
+// After Close, a subscribe returns ErrClosed and registers nothing.
+func TestSubscribeAfterCloseIsRefusedOverNATS(t *testing.T) {
+	conn := runServer(t)
+	tr := craftnats.New(conn)
+	if err := tr.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	err := tr.Subscribe(context.Background(), []events.Subscription{{
+		Event: "orders.Placed", Consumer: "C", Group: "g",
+		Handle: func(context.Context, *events.Message) error { return nil },
+	}})
+	if !errors.Is(err, craftnats.ErrClosed) {
+		t.Errorf("err = %v, want ErrClosed", err)
+	}
+	if n := conn.NumSubscriptions(); n != 0 {
+		t.Errorf("%d subscription(s) registered after Close", n)
+	}
+}
+
 // A subscription on a context that never ends parks no goroutine waiting for it.
 func TestASubscriptionOnAContextThatNeverEndsParksNoWatcher(t *testing.T) {
 	conn := runServer(t)

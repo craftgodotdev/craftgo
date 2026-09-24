@@ -43,8 +43,9 @@ type Transport struct {
 	subject func(contract string) string
 	onError func(sub events.Subscription, msg *events.Message, err error)
 
-	mu   sync.Mutex
-	subs []*nats.Subscription
+	mu     sync.Mutex
+	closed bool
+	subs   []*nats.Subscription
 }
 
 // Option configures a Transport.
@@ -134,7 +135,8 @@ const HeaderDedupID = "Nats-Msg-Id"
 
 // Subscribe registers each subscription as a queue subscriber under its
 // group, delivering until ctx is cancelled. The first failure stops the
-// loop; the subscriptions already made stay live.
+// loop; the subscriptions already made stay live. After [Transport.Close]
+// it returns [ErrClosed].
 func (t *Transport) Subscribe(ctx context.Context, subs []events.Subscription) error {
 	for _, sub := range subs {
 		if err := t.subscribeOne(ctx, sub); err != nil {
@@ -146,6 +148,11 @@ func (t *Transport) Subscribe(ctx context.Context, subs []events.Subscription) e
 
 func (t *Transport) subscribeOne(ctx context.Context, sub events.Subscription) error {
 	subject := t.subject(sub.Event)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed {
+		return fmt.Errorf("nats: subscribe %s: %w", subject, ErrClosed)
+	}
 	s, err := t.conn.QueueSubscribe(subject, string(sub.Group), func(m *nats.Msg) {
 		msg := decode(sub.Event, m)
 		if err := sub.Handle(withMsg(ctx, m), msg); err != nil && t.onError != nil {
@@ -155,9 +162,7 @@ func (t *Transport) subscribeOne(ctx context.Context, sub events.Subscription) e
 	if err != nil {
 		return fmt.Errorf("nats: subscribe %s: %w", subject, err)
 	}
-	t.mu.Lock()
 	t.subs = append(t.subs, s)
-	t.mu.Unlock()
 	context.AfterFunc(ctx, func() { _ = s.Unsubscribe() })
 	return nil
 }
@@ -187,11 +192,12 @@ func decodeFrom(contract string, header nats.Header, data []byte) *events.Messag
 	return out
 }
 
-// Close unsubscribes everything this transport registered. The
-// connection is left open.
+// Close unsubscribes everything this transport registered; a subscribe
+// after it returns [ErrClosed]. The connection is left open.
 func (t *Transport) Close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	t.closed = true
 	for _, s := range t.subs {
 		_ = s.Unsubscribe()
 	}

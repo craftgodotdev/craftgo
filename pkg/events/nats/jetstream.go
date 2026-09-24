@@ -235,7 +235,8 @@ func NewJetStream(conn *nats.Conn, opts ...JetStreamOption) (*JetStream, error) 
 	return j, nil
 }
 
-// ErrClosed is what a publish or subscribe reports after [JetStream.Close].
+// ErrClosed is what a publish or subscribe reports after [JetStream.Close], and a subscribe
+// after [Transport.Close].
 var ErrClosed = errors.New("transport closed")
 
 // AdapterName implements [events.OptionAware]; both transports are named [Adapter].
