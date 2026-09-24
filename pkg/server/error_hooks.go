@@ -15,13 +15,13 @@ import (
 type ValidationFailedHandler func(w http.ResponseWriter, r *http.Request, err error)
 
 var (
-	validationFailed atomic.Value // ValidationFailedHandler
-	unknownError     atomic.Value // UnknownErrorHandler
+	validationFailed atomic.Pointer[ValidationFailedHandler]
+	unknownError     atomic.Pointer[UnknownErrorHandler]
 )
 
 func init() {
-	validationFailed.Store(ValidationFailedHandler(defaultValidationFailed))
-	unknownError.Store(UnknownErrorHandler(defaultUnknownError))
+	SetDefaultValidationFailed(nil)
+	SetHandleUnknownError(nil)
 }
 
 // defaultValidationFailed answers 400 with err's text, or only logs err once the response
@@ -58,12 +58,12 @@ func SetDefaultValidationFailed(h ValidationFailedHandler) {
 	if h == nil {
 		h = defaultValidationFailed
 	}
-	validationFailed.Store(h)
+	validationFailed.Store(&h)
 }
 
 // WriteValidationError renders err with the [SetDefaultValidationFailed] handler.
 func WriteValidationError(w http.ResponseWriter, r *http.Request, err error) {
-	validationFailed.Load().(ValidationFailedHandler)(w, r, err)
+	(*validationFailed.Load())(w, r, err)
 }
 
 // SetHandleNotFound sets the handler for the requests the mux answers 404; a method mismatch
@@ -108,7 +108,7 @@ func SetHandleUnknownError(h UnknownErrorHandler) {
 	if h == nil {
 		h = defaultUnknownError
 	}
-	unknownError.Store(h)
+	unknownError.Store(&h)
 }
 
 // WriteError renders err: a [StatusError] in its chain, unlogged, as its status, its
@@ -124,7 +124,7 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	var se StatusError
 	if !errors.As(err, &se) {
-		unknownError.Load().(UnknownErrorHandler)(w, r, err)
+		(*unknownError.Load())(w, r, err)
 		return
 	}
 	var hw ResponseHeaderWriter

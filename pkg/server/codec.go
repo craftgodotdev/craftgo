@@ -92,16 +92,16 @@ type codecHolder struct {
 }
 
 // globalJSON holds the current codecHolder.
-var globalJSON atomic.Value
+var globalJSON atomic.Pointer[codecHolder]
 
-func init() { globalJSON.Store(codecHolder{base: defaultCodec{}, active: defaultCodec{}}) }
+func init() { globalJSON.Store(&codecHolder{base: defaultCodec{}, active: defaultCodec{}}) }
 
-func currentCodec() codecHolder { return globalJSON.Load().(codecHolder) }
+func currentCodec() *codecHolder { return globalJSON.Load() }
 
 // installCodec stores base with the strict switch, refusing a strict
 // setting base cannot honour.
 func installCodec(base JSONCodec, strict bool) error {
-	h := codecHolder{base: base, strict: strict, active: base}
+	h := &codecHolder{base: base, strict: strict, active: base}
 	if strict {
 		sd, ok := base.(StrictDecoder)
 		if !ok {

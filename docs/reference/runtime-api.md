@@ -120,7 +120,7 @@ if err := server.SetGlobalJSONCodec(myCodec{}); err != nil { /* strict JSON is o
 server.JSON().Encode(w, payload) // every generated handler reads through this accessor
 ```
 
-`Server.SetJSONCodec(c)` delegates to `SetGlobalJSONCodec`. Both fail, keeping the previous codec, when strict JSON is on and `c` has no `DecodeStrict`; `SetStrictJSON(true)` fails the same way when the installed codec has none, so `config.yaml` can never claim a strictness the server does not enforce. Reads during dispatch are safe via an `atomic.Value` swap.
+`Server.SetJSONCodec(c)` delegates to `SetGlobalJSONCodec`. Both fail, keeping the previous codec, when strict JSON is on and `c` has no `DecodeStrict`; `SetStrictJSON(true)` fails the same way when the installed codec has none, so `config.yaml` can never claim a strictness the server does not enforce. The swap is atomic, so it is safe while requests are served.
 
 A wrapper for another JSON library adds `DecodeStrict` with that library's own unknown-field switch and finishes with `server.TrailingData`, the shared check every codec uses to report leftover data the same way. With sonic:
 

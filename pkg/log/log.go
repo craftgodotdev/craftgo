@@ -125,31 +125,21 @@ func NewConsole() Logger {
 // NewZap returns a Logger writing to z at z's own level.
 func NewZap(z *zap.Logger) Logger { return &zapLogger{z: z} }
 
-// defaultLogger holds the loggerHolder [Default] returns.
-var defaultLogger atomic.Value
+// defaultLogger holds the logger [Default] returns.
+var defaultLogger atomic.Pointer[Logger]
 
 // SetDefault makes l the logger [Default] returns; nil is ignored.
 func SetDefault(l Logger) {
 	if l == nil {
 		return
 	}
-	defaultLogger.Store(loggerHolder{l})
+	defaultLogger.Store(&l)
 }
 
 // Default returns the process-wide logger: a [New] logger until [SetDefault] replaces it.
-func Default() Logger {
-	if v := defaultLogger.Load(); v != nil {
-		return v.(loggerHolder).Logger
-	}
-	return New()
-}
+func Default() Logger { return *defaultLogger.Load() }
 
-// loggerHolder gives atomic.Value one concrete type for every stored Logger.
-type loggerHolder struct{ Logger }
-
-func init() {
-	SetDefault(New())
-}
+func init() { SetDefault(New()) }
 
 // zapLogger is the Logger over a *zap.Logger.
 type zapLogger struct{ z *zap.Logger }
@@ -215,8 +205,8 @@ func (s *zapLogger) WithContext(ctx context.Context) Logger {
 			zap.String("span_id", sc.SpanID().String()),
 		)
 	}
-	if fn := contextFields.Load().(contextFieldsHolder).fn; fn != nil {
-		fields = append(fields, fieldsToZap(fn(ctx))...)
+	if fn := contextFields.Load(); fn != nil {
+		fields = append(fields, fieldsToZap((*fn)(ctx))...)
 	}
 	if len(fields) == 0 {
 		return s
@@ -228,15 +218,18 @@ func (s *zapLogger) WithContext(ctx context.Context) Logger {
 // stored there.
 type ContextFields func(ctx context.Context) []Field
 
-type contextFieldsHolder struct{ fn ContextFields }
-
-var contextFields atomic.Value
-
-func init() { contextFields.Store(contextFieldsHolder{}) }
+// contextFields holds the function [SetContextFields] installed; nil when none is.
+var contextFields atomic.Pointer[ContextFields]
 
 // SetContextFields installs fn; the WithContext of [New], [NewConsole] and [NewZap] loggers
 // adds the fields it returns to every line. nil removes it.
-func SetContextFields(fn ContextFields) { contextFields.Store(contextFieldsHolder{fn: fn}) }
+func SetContextFields(fn ContextFields) {
+	if fn == nil {
+		contextFields.Store(nil)
+		return
+	}
+	contextFields.Store(&fn)
+}
 
 func (s *zapLogger) Enabled(level Level) bool {
 	return s.z.Core().Enabled(toZapLevel(level))

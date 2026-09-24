@@ -21,9 +21,9 @@ import (
 // with an opaque message.
 type UnknownErrorHandler func(ctx context.Context, err error) error
 
-var unknownError atomic.Value
+var unknownError atomic.Pointer[UnknownErrorHandler]
 
-func init() { unknownError.Store(UnknownErrorHandler(defaultUnknownError)) }
+func init() { SetHandleUnknownError(nil) }
 
 func defaultUnknownError(ctx context.Context, err error) error {
 	log.Default().WithContext(ctx).Error("unhandled service error", log.Err(err))
@@ -36,7 +36,7 @@ func SetHandleUnknownError(h UnknownErrorHandler) {
 	if h == nil {
 		h = defaultUnknownError
 	}
-	unknownError.Store(h)
+	unknownError.Store(&h)
 }
 
 // Error maps err to a gRPC status error. A status error passes through; a
@@ -65,7 +65,7 @@ func Error(ctx context.Context, err error) error {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return status.FromContextError(err).Err()
 	}
-	return unknownError.Load().(UnknownErrorHandler)(ctx, err)
+	return (*unknownError.Load())(ctx, err)
 }
 
 // serviceOf returns the service of the call's full method
