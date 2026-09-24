@@ -45,39 +45,50 @@ func CORSStrict(origin string) CORSOptions {
 func corsMiddleware(opts CORSOptions) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			origin := r.Header.Get("Origin")
-			allowed := matchOrigin(origin, opts.AllowedOrigins)
-			if allowed != "" {
-				w.Header().Set("Access-Control-Allow-Origin", allowed)
-				if allowed != "*" {
-					// The value echoes the request's Origin, so caches must key on it.
-					w.Header().Add("Vary", "Origin")
-				}
-				if opts.AllowCredentials {
-					w.Header().Set("Access-Control-Allow-Credentials", "true")
-				}
-				if len(opts.ExposedHeaders) > 0 {
-					w.Header().Set("Access-Control-Expose-Headers", strings.Join(opts.ExposedHeaders, ", "))
-				}
+			allowed := matchOrigin(r.Header.Get("Origin"), opts.AllowedOrigins)
+			if allowed == "" {
+				next.ServeHTTP(w, r)
+				return
 			}
-			if allowed != "" && r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
-				if len(opts.AllowedMethods) > 0 {
-					w.Header().Set("Access-Control-Allow-Methods", strings.Join(opts.AllowedMethods, ", "))
-				}
-				if len(opts.AllowedHeaders) > 0 {
-					w.Header().Set("Access-Control-Allow-Headers", strings.Join(opts.AllowedHeaders, ", "))
-				}
-				if opts.MaxAge > 0 {
-					w.Header().Set("Access-Control-Max-Age", strconv.Itoa(int(opts.MaxAge.Seconds())))
-				}
-				if opts.AllowPrivateNetwork {
-					w.Header().Set("Access-Control-Allow-Private-Network", "true")
-				}
+			setOriginHeaders(w.Header(), opts, allowed)
+			if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
+				setPreflightHeaders(w.Header(), opts)
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+// setOriginHeaders sets the headers every response to an allowed origin carries.
+func setOriginHeaders(h http.Header, opts CORSOptions, allowed string) {
+	h.Set("Access-Control-Allow-Origin", allowed)
+	if allowed != "*" {
+		// The value echoes the request's Origin, so caches must key on it.
+		h.Add("Vary", "Origin")
+	}
+	if opts.AllowCredentials {
+		h.Set("Access-Control-Allow-Credentials", "true")
+	}
+	if len(opts.ExposedHeaders) > 0 {
+		h.Set("Access-Control-Expose-Headers", strings.Join(opts.ExposedHeaders, ", "))
+	}
+}
+
+// setPreflightHeaders sets the headers a preflight answer adds.
+func setPreflightHeaders(h http.Header, opts CORSOptions) {
+	if len(opts.AllowedMethods) > 0 {
+		h.Set("Access-Control-Allow-Methods", strings.Join(opts.AllowedMethods, ", "))
+	}
+	if len(opts.AllowedHeaders) > 0 {
+		h.Set("Access-Control-Allow-Headers", strings.Join(opts.AllowedHeaders, ", "))
+	}
+	if opts.MaxAge > 0 {
+		h.Set("Access-Control-Max-Age", strconv.Itoa(int(opts.MaxAge.Seconds())))
+	}
+	if opts.AllowPrivateNetwork {
+		h.Set("Access-Control-Allow-Private-Network", "true")
 	}
 }
 

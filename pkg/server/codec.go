@@ -10,6 +10,9 @@ import (
 	"sync/atomic"
 )
 
+// contentTypeJSON is the Content-Type of the framework's JSON responses.
+const contentTypeJSON = "application/json; charset=utf-8"
+
 // JSONCodec encodes and decodes the framework's JSON; install one with [SetGlobalJSONCodec].
 type JSONCodec interface {
 	Encode(w io.Writer, v any) error

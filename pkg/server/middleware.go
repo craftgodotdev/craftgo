@@ -8,9 +8,6 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// contentTypeJSON is the Content-Type of the framework's JSON responses.
-const contentTypeJSON = "application/json; charset=utf-8"
-
 // trackingWriter records the status of the response written through it. The response is
 // committed once a WriteHeader with a final status, a Write or a Flush has fixed its head.
 type trackingWriter struct {

@@ -48,34 +48,6 @@ type Middleware func(http.Handler) http.Handler
 // Option configures a Server at construction time.
 type Option func(*Server)
 
-// DefaultLivenessPath and DefaultReadinessPath are the health probe routes unless
-// [WithHealthPaths] sets others.
-const (
-	DefaultLivenessPath  = "/healthz"
-	DefaultReadinessPath = "/readyz"
-)
-
-// HealthPaths is the override pair for [DefaultLivenessPath] and
-// [DefaultReadinessPath].
-type HealthPaths struct {
-	Liveness  string
-	Readiness string
-}
-
-// healthCheck pairs a probe function with its timeout.
-type healthCheck struct {
-	timeout time.Duration
-	fn      func(context.Context) error
-}
-
-// WithHealthPaths overrides the default `/healthz` and `/readyz` routes.
-func WithHealthPaths(p HealthPaths) Option {
-	return func(s *Server) { s.healthPaths = p }
-}
-
-// WithoutDefaultHealth turns the health probes off.
-func WithoutDefaultHealth() Option { return func(s *Server) { s.noHealth = true } }
-
 // New returns a Server with the health probes, a 30s read timeout and a 32 KB header cap,
 // then applies opts. The first argument is ignored.
 func New(_ any, opts ...Option) *Server {
@@ -116,24 +88,7 @@ func (s *Server) RegisterMiddleware(name string, mw Middleware) *Server {
 
 // HandleFunc is [Server.Handle] for a handler function, without middlewares.
 func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) *Server {
-	s.mux.Handle(pattern, s.applyDefaults(h))
-	return s
-}
-
-// applyDefaults wraps h in the default body cap (inner) and handler timeout (outer), each
-// unless h is a [WithLimits] handler that sets its own.
-func (s *Server) applyDefaults(h http.Handler) http.Handler {
-	s.mu.Lock()
-	maxBody, timeout := s.defaultMaxBodySize, s.defaultHandlerTimeout
-	s.mu.Unlock()
-	own, _ := h.(limitedHandler)
-	if maxBody > 0 && !own.bodyLimited {
-		h = maxBodySizeHandler(h, maxBody)
-	}
-	if timeout > 0 && !own.timeoutSet {
-		h = timeoutHandler(h, timeout)
-	}
-	return h
+	return s.Handle(pattern, h)
 }
 
 // Handle registers h under a ServeMux pattern, wrapped in mws with the first outermost. The
@@ -231,18 +186,9 @@ func (s *Server) Logger() Logger { return log.Default() }
 // Codec returns the codec in effect, the one [JSON] returns.
 func (s *Server) Codec() JSONCodec { return JSON() }
 
-// RegisterHealthCheck adds, or replaces, the readiness check name. Each readiness probe runs
-// fn under a context with timeout, and a non-nil error answers 503.
-func (s *Server) RegisterHealthCheck(name string, timeout time.Duration, fn func(context.Context) error) *Server {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.healthChecks[name] = healthCheck{timeout: timeout, fn: fn}
-	return s
-}
-
 // Handler returns what [Server.Start] serves: [Recovery], logging to [log.Default], then the
-// [Server.Use] middlewares in order, then CORS when set, then the mux. The health probes are answered ahead of that
-// chain, wrapped in Recovery only, so no other middleware sees them.
+// [Server.Use] middlewares in order, then CORS when set, then the mux. The health probes are
+// answered ahead of that chain, wrapped in Recovery only, so no other middleware sees them.
 func (s *Server) Handler() http.Handler {
 	s.mu.Lock()
 	chain := NewChain(recovery(log.Default)).Append(s.chain...)
@@ -264,17 +210,13 @@ func (s *Server) Handler() http.Handler {
 	})
 }
 
-// probesLocked returns the probe handlers by path, or nil when health is off; the caller
-// holds s.mu.
-func (s *Server) probesLocked() map[string]http.Handler {
-	if s.noHealth {
-		return nil
-	}
-	guard := recovery(log.Default)
-	return map[string]http.Handler{
-		s.healthPaths.Liveness:  guard(s.livenessHandler()),
-		s.healthPaths.Readiness: guard(s.readinessHandler()),
-	}
+// SetHandleNotFound sets the handler for the requests the mux answers 404; a method mismatch
+// keeps its 405. nil restores the mux's own answer.
+func (s *Server) SetHandleNotFound(h http.Handler) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.notFound = h
+	return s
 }
 
 // muxWithNotFoundLocked returns s.mux, handing the requests it would answer 404 to s.notFound

@@ -4,7 +4,60 @@ import (
 	"context"
 	"net/http"
 	"sync"
+	"time"
+
+	"github.com/craftgodotdev/craftgo/pkg/log"
 )
+
+// DefaultLivenessPath and DefaultReadinessPath are the health probe routes unless
+// [WithHealthPaths] sets others.
+const (
+	DefaultLivenessPath  = "/healthz"
+	DefaultReadinessPath = "/readyz"
+)
+
+// HealthPaths is the override pair for [DefaultLivenessPath] and
+// [DefaultReadinessPath].
+type HealthPaths struct {
+	Liveness  string
+	Readiness string
+}
+
+// healthCheck pairs a probe function with its timeout.
+type healthCheck struct {
+	timeout time.Duration
+	fn      func(context.Context) error
+}
+
+// WithHealthPaths overrides the default `/healthz` and `/readyz` routes.
+func WithHealthPaths(p HealthPaths) Option {
+	return func(s *Server) { s.healthPaths = p }
+}
+
+// WithoutDefaultHealth turns the health probes off.
+func WithoutDefaultHealth() Option { return func(s *Server) { s.noHealth = true } }
+
+// RegisterHealthCheck adds, or replaces, the readiness check name. Each readiness probe runs
+// fn under a context with timeout, and a non-nil error answers 503.
+func (s *Server) RegisterHealthCheck(name string, timeout time.Duration, fn func(context.Context) error) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.healthChecks[name] = healthCheck{timeout: timeout, fn: fn}
+	return s
+}
+
+// probesLocked returns the probe handlers by path, or nil when health is off; the caller
+// holds s.mu.
+func (s *Server) probesLocked() map[string]http.Handler {
+	if s.noHealth {
+		return nil
+	}
+	guard := recovery(log.Default)
+	return map[string]http.Handler{
+		s.healthPaths.Liveness:  guard(s.livenessHandler()),
+		s.healthPaths.Readiness: guard(s.readinessHandler()),
+	}
+}
 
 // livenessHandler always answers 200 {"status":"ok"}.
 func (s *Server) livenessHandler() http.Handler {

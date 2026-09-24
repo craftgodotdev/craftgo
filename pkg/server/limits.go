@@ -37,6 +37,22 @@ type limitedHandler struct {
 	timeoutSet  bool
 }
 
+// applyDefaults wraps h in the default body cap (inner) and handler timeout (outer), each
+// unless h is a [WithLimits] handler that sets its own.
+func (s *Server) applyDefaults(h http.Handler) http.Handler {
+	s.mu.Lock()
+	maxBody, timeout := s.defaultMaxBodySize, s.defaultHandlerTimeout
+	s.mu.Unlock()
+	own, _ := h.(limitedHandler)
+	if maxBody > 0 && !own.bodyLimited {
+		h = maxBodySizeHandler(h, maxBody)
+	}
+	if timeout > 0 && !own.timeoutSet {
+		h = timeoutHandler(h, timeout)
+	}
+	return h
+}
+
 // timeoutHandler runs h on the calling goroutine with a deadline of d on its context.
 func timeoutHandler(h http.Handler, d time.Duration) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

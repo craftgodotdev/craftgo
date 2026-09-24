@@ -66,15 +66,6 @@ func WriteValidationError(w http.ResponseWriter, r *http.Request, err error) {
 	(*validationFailed.Load())(w, r, err)
 }
 
-// SetHandleNotFound sets the handler for the requests the mux answers 404; a method mismatch
-// keeps its 405. nil restores the mux's own answer.
-func (s *Server) SetHandleNotFound(h http.Handler) *Server {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.notFound = h
-	return s
-}
-
 // StatusError is an error that carries its HTTP status. [WriteError] writes its JSON encoding,
 // or, when that fails or is {}, its Error text as "message" and any ErrCode() as "code".
 type StatusError interface {
