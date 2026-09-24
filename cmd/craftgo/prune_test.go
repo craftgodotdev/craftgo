@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// storeDesign is the shape a recut exercises: an HTTP service that also
-// publishes, and two services consuming what it publishes.
+// storeDesign is a package with a type, an event and one HTTP service.
 const storeDesign = `package store
 
 type Order {
@@ -37,8 +36,8 @@ service Catalog {
 }
 `
 
-// auditDesign is a second package, contracts only: no service, so
-// everything it produces lands under `output.types`.
+// auditDesign is a second package with no service, so all its output lands
+// under `output.types`.
 const auditDesign = `package audit
 
 enum Level { Low = 1  High = 2 }
@@ -55,8 +54,8 @@ func exists(t *testing.T, parts ...string) bool {
 	return err == nil
 }
 
-// treeOf reads every generated file under root, keyed by its path
-// relative to root, so two runs can be compared byte for byte.
+// treeOf maps each generated file under root, by relative slash path, to its
+// contents.
 func treeOf(t *testing.T, root string) map[string]string {
 	t.Helper()
 	out := map[string]string{}
@@ -101,8 +100,7 @@ func keysOf(tree map[string]string) []string {
 	return out
 }
 
-// storeProject lays out a project holding its own design and returns its
-// root.
+// storeProject lays out a project whose design is src and returns its root.
 func storeProject(t *testing.T, src string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -119,10 +117,9 @@ func genProject(t *testing.T, dir string) {
 	}
 }
 
-// Renaming a service used to leave its application half on disk: the run
-// wrote the new one, swept nothing, and left a routes file pointing at a
-// transport package it no longer generated - so the project no longer
-// built and `craftgo gen` could not put it right.
+// TestRenamedServiceLeavesNoApplicationHalfBehind checks that renaming a
+// service sweeps its old handlers and routes, keeps its logic stub, and that
+// a further run changes nothing.
 func TestRenamedServiceLeavesNoApplicationHalfBehind(t *testing.T) {
 	dir := storeProject(t, storeDesign)
 	genProject(t, dir)
@@ -141,8 +138,7 @@ func TestRenamedServiceLeavesNoApplicationHalfBehind(t *testing.T) {
 	mustWrite(t, dir, "design/store.craftgo", storeRecut)
 	genProject(t, dir)
 
-	// Every regenerated file of the service that is gone goes, and the
-	// directories the removals empty go with them.
+	// The old service's generated files go, with the directories they empty.
 	if exists(t, dir, "internal", "transport", "orders") {
 		t.Error("the handlers of a renamed service must go - the routes file no longer registers them")
 	}
@@ -150,8 +146,6 @@ func TestRenamedServiceLeavesNoApplicationHalfBehind(t *testing.T) {
 		t.Error("the routes of a renamed service must go")
 	}
 
-	// The logic stub is gen-once - the user's own code - so its directory
-	// is never swept.
 	if !exists(t, dir, "internal", "service", "orders", "list_orders.go") {
 		t.Error("a gen-once logic stub must survive the service that seeded it")
 	}
@@ -173,9 +167,8 @@ func TestRenamedServiceLeavesNoApplicationHalfBehind(t *testing.T) {
 	}
 }
 
-// A whole DSL package can go the same way a service can, and its types
-// folder goes with it: every file in it carries the generated header and
-// nothing the design declares imports them any more.
+// TestRemovedPackageLosesItsTypesFolder checks that removing a DSL package
+// removes its types folder.
 func TestRemovedPackageLosesItsTypesFolder(t *testing.T) {
 	dir := storeProject(t, storeDesign)
 	mustWrite(t, dir, "design/audit.craftgo", auditDesign)
@@ -200,9 +193,8 @@ func TestRemovedPackageLosesItsTypesFolder(t *testing.T) {
 	}
 }
 
-// A design that stops declaring events loses its event library, folder
-// included: nothing else in the tree may import a descriptor the run no
-// longer writes.
+// TestPackageThatStopsPublishingLosesItsEventLibrary checks that a package
+// left with no event loses its event library folder.
 func TestPackageThatStopsPublishingLosesItsEventLibrary(t *testing.T) {
 	dir := storeProject(t, storeDesign)
 	genProject(t, dir)
@@ -228,9 +220,8 @@ service Orders {
 	}
 }
 
-// The sweep goes by the generated header, so a file craftgo did not write
-// survives the run that clears the generated ones around it - and holds
-// its directory open.
+// TestHandWrittenFilesInAnOutputDirectorySurvive checks that the sweep, which
+// goes by the generated header, keeps hand-written files and their directory.
 func TestHandWrittenFilesInAnOutputDirectorySurvive(t *testing.T) {
 	dir := storeProject(t, storeDesign)
 	genProject(t, dir)
@@ -254,10 +245,8 @@ func TestHandWrittenFilesInAnOutputDirectorySurvive(t *testing.T) {
 	}
 }
 
-// A design that drops its last service loses the whole HTTP half - the
-// per-service routes, the umbrella that registers them, the handlers.
-// Leaving the umbrella behind means a generated file calling into
-// packages the run no longer emits, and the project stops building.
+// TestDroppingTheLastServiceClearsTheHTTPHalf checks that dropping the last
+// service removes the routes umbrella, the service routes and the handlers.
 func TestDroppingTheLastServiceClearsTheHTTPHalf(t *testing.T) {
 	dir := storeProject(t, storeDesign)
 	genProject(t, dir)
@@ -276,8 +265,6 @@ event Placed { payload Order }
 `)
 	genProject(t, dir)
 
-	// The output roots stay - a run that leaves one bare still owns it -
-	// but nothing generated is left inside them.
 	for _, path := range []string{"internal/routes/routes.go", "internal/routes/orders", "internal/transport/orders"} {
 		if exists(t, dir, filepath.FromSlash(path)) {
 			t.Errorf("%s must go with the last service", path)

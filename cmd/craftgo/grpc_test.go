@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// greetProto is the gRPC half of a design: every streaming shape once.
+// greetProto is a proto service with one RPC of each streaming shape.
 const greetProto = `syntax = "proto3";
 
 package greet;
@@ -29,15 +29,13 @@ message HelloReply {
 }
 `
 
-// protoOnlyManifest turns the documents off: a design with no route has
-// no OpenAPI document worth serving.
+// protoOnlyManifest turns the OpenAPI document off.
 const protoOnlyManifest = `output:
   openapi: "-"
 `
 
-// grpcProject is a fresh project whose workspace names this repo and its
-// published modules, so the generated code resolves craftgo out of the
-// tree and `go tool` resolves the plugins the root go.mod pins.
+// grpcProject returns a fresh project whose go.work uses this repo and its
+// nested modules, so the generated code and `go tool` resolve from the tree.
 func grpcProject(t *testing.T) string {
 	t.Helper()
 	root := repoRoot(t)
@@ -91,9 +89,8 @@ func mustContain(t *testing.T, dir, rel string, needles ...string) string {
 	return string(body)
 }
 
-// A design of protos alone generates a gRPC service that compiles: the pb
-// code, the server layer, the logic stubs, the wiring and a main.go that
-// boots the gRPC listener alone.
+// TestRunGenProtoOnlyProjectCompiles checks that a proto-only design generates
+// a gRPC-only project that builds and regenerates unchanged.
 func TestRunGenProtoOnlyProjectCompiles(t *testing.T) {
 	dir := grpcProject(t)
 	mustWrite(t, dir, "design/craftgo.design.yaml", protoOnlyManifest)
@@ -131,8 +128,6 @@ func TestRunGenProtoOnlyProjectCompiles(t *testing.T) {
 	mustContain(t, dir, "internal/wiring/grpc.go", "greetpb.RegisterGreeterServer(srv, greetergrpc.NewServer(svcCtx))")
 	goCheck(t, dir)
 
-	// A second run changes nothing: the plugins and the emitters are
-	// deterministic, and the scaffolds are left alone.
 	before := treeOf(t, dir)
 	genGRPC(t, dir)
 	if got := treeOf(t, dir); !sameTree(got, before) {
@@ -140,7 +135,8 @@ func TestRunGenProtoOnlyProjectCompiles(t *testing.T) {
 	}
 }
 
-// Routes and RPCs in one design boot both listeners from one main.go.
+// TestRunGenMixedProjectCompiles checks that a design with routes and RPCs
+// boots both listeners from one main.go and builds.
 func TestRunGenMixedProjectCompiles(t *testing.T) {
 	dir := grpcProject(t)
 	mustWrite(t, dir, "design/craftgo.design.yaml", routesOnlyManifest)
@@ -154,8 +150,8 @@ func TestRunGenMixedProjectCompiles(t *testing.T) {
 	goCheck(t, dir)
 }
 
-// A design folder with neither a .craftgo nor a .proto is nothing to
-// generate from.
+// TestRunGenRejectsAnEmptyDesign checks that gen fails on a design folder with
+// no .craftgo or .proto file.
 func TestRunGenRejectsAnEmptyDesign(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, dir, "go.mod", "module github.com/test/empty\n\ngo 1.24\n")
@@ -166,8 +162,8 @@ func TestRunGenRejectsAnEmptyDesign(t *testing.T) {
 	}
 }
 
-// Renaming a proto service (and its file) sweeps the server package and
-// the pb code of the old name; the logic stubs, being the user's, stay.
+// TestRenamedProtoServiceLeavesNothingBehind checks that renaming a proto
+// service sweeps its old server package and pb code but keeps its logic stubs.
 func TestRenamedProtoServiceLeavesNothingBehind(t *testing.T) {
 	dir := grpcProject(t)
 	mustWrite(t, dir, "design/craftgo.design.yaml", protoOnlyManifest)

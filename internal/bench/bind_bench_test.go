@@ -1,21 +1,3 @@
-// bind_bench_test.go - pure parse benchmarks: codegen vs reflect at
-// two request-shape sizes.
-//
-// Two shape buckets cover how the cost scales with field count:
-//
-//   simpleReq  (2 fields - path + query int, no body):
-//     GET /users/{id}?limit=10
-//
-//   complexReq (9 fields - path + 4 query, header, cookie + JSON body):
-//     POST /orders/{id}/checkout?limit=10&dryRun=true&tags=...&years=...
-//
-// For each size both parsers populate the SAME struct from the SAME
-// pre-extracted [inputSet]; the benchmarks isolate the parse +
-// write-back work, with no http.Request, url.ParseQuery,
-// http.Cookie or header machinery in the hot loop.
-//
-// Run: go test -bench BenchmarkParse -benchmem -count=3 ./internal/bench
-
 package bench
 
 import (
@@ -25,11 +7,7 @@ import (
 	"testing"
 )
 
-// ---------- simple shape ----------
-
-// simpleReq is a minimal GET-by-id-with-limit endpoint: one path
-// segment + one query int. This is the floor of how many fields a
-// real handler ever binds.
+// simpleReq is `GET /users/{id}?limit=10`: a path string and a query int.
 type simpleReq struct {
 	ID    string `path:"id"`
 	Limit int    `query:"limit"`
@@ -42,9 +20,7 @@ func simpleFixture() *inputSet {
 	}
 }
 
-// codegenParseSimple is what the craftgo template would emit for
-// simpleReq if you stripped the http machinery - just two field
-// writes.
+// codegenParseSimple binds simpleReq with direct field writes and strconv.
 func codegenParseSimple(in *inputSet, req *simpleReq) error {
 	req.ID = in.path["id"]
 	if v := in.query["limit"]; len(v) > 0 && v[0] != "" {
@@ -57,10 +33,8 @@ func codegenParseSimple(in *inputSet, req *simpleReq) error {
 	return nil
 }
 
-// ---------- complex shape ----------
-
-// complexReq is the kitchen-sink: every binding source represented,
-// scalar + array + numeric + bool field shapes mixed in.
+// complexReq is `POST /orders/{id}/checkout` with query, header, cookie and
+// JSON body fields, scalars and arrays.
 type complexReq struct {
 	ID             string        `path:"id"`
 	Limit          int           `query:"limit"`
@@ -93,8 +67,8 @@ func complexFixture() *inputSet {
 	}
 }
 
-// codegenParseComplex mirrors what the craftgo handler template
-// emits today, with the http plumbing factored out.
+// codegenParseComplex decodes the body, then binds the other complexReq fields
+// with direct field writes and strconv.
 func codegenParseComplex(in *inputSet, req *complexReq) error {
 	if err := json.Unmarshal(in.body, req); err != nil {
 		return err
@@ -127,11 +101,7 @@ func codegenParseComplex(in *inputSet, req *complexReq) error {
 	return nil
 }
 
-// ---------- shared types ----------
-
-// inputSet is the pre-extracted values both parsers consume. body
-// may be empty; the JSON-decode step is gated on len(body) > 0 so
-// the same parsers work for endpoints with no body too.
+// inputSet holds the request values both parsers read, already extracted.
 type inputSet struct {
 	path   map[string]string
 	query  map[string][]string
@@ -140,10 +110,8 @@ type inputSet struct {
 	body   []byte
 }
 
-// reflectParse is shape-agnostic: walks any struct passed in,
-// dispatching on each field's tag to decide which inputSet bucket
-// to read. This is what every popular Go web framework's BindXxx
-// helper does at runtime.
+// reflectParse binds any struct, reading for each field the inputSet map its
+// tag names; a non-empty body is decoded first.
 func reflectParse(in *inputSet, req any) error {
 	if len(in.body) > 0 {
 		if err := json.Unmarshal(in.body, req); err != nil {
@@ -177,9 +145,7 @@ func reflectParse(in *inputSet, req any) error {
 	return nil
 }
 
-// setReflect writes one or more string values into fv. Slices use
-// MakeSlice + Append; scalars dispatch to setScalar. Empty input
-// is a no-op so absent values leave the field at its zero value.
+// setReflect writes vals into fv, a slice or a scalar; no values leave fv as is.
 func setReflect(fv reflect.Value, vals []string) error {
 	if fv.Kind() == reflect.Slice {
 		if len(vals) == 0 {
@@ -203,9 +169,7 @@ func setReflect(fv reflect.Value, vals []string) error {
 	return setScalar(fv, vals[0])
 }
 
-// setScalar parses s into fv via strconv. Field kinds outside
-// string/bool/int*/uint*/float* are silently skipped - same as
-// the codegen, which rejects them at gen time.
+// setScalar parses s into fv; an empty s or another kind leaves fv as is.
 func setScalar(fv reflect.Value, s string) error {
 	if s == "" {
 		return nil
@@ -241,19 +205,10 @@ func setScalar(fv reflect.Value, s string) error {
 	return nil
 }
 
-// bindSink is the package-level escape hatch every benchmark writes
-// its final struct to. Without it the compiler is free to dead-store-
-// eliminate field writes - `req` would otherwise be observably dead
-// after the loop body. A real handler would dispatch the struct to
-// user logic; bindSink stands in for that.
+// bindSink receives each benchmark's result so the compiler cannot eliminate
+// the binding.
 var bindSink any
 
-// ---------- simple-shape benchmarks ----------
-
-// BenchmarkParseSimpleCodegen pins the codegen cost for the floor
-// case: 2 fields, no body. With this few fields the reflect tax
-// is at its most defensible - the test exists to show whether
-// codegen still wins when the field budget is small.
 func BenchmarkParseSimpleCodegen(b *testing.B) {
 	in := simpleFixture()
 	b.ReportAllocs()
@@ -267,8 +222,6 @@ func BenchmarkParseSimpleCodegen(b *testing.B) {
 	}
 }
 
-// BenchmarkParseSimpleReflect is the reflect twin: same 2 fields,
-// reflect.ValueOf + tag walk + setReflect.
 func BenchmarkParseSimpleReflect(b *testing.B) {
 	in := simpleFixture()
 	b.ReportAllocs()
@@ -282,10 +235,6 @@ func BenchmarkParseSimpleReflect(b *testing.B) {
 	}
 }
 
-// ---------- complex-shape benchmarks ----------
-
-// BenchmarkParseComplexCodegen is the kitchen-sink codegen path: 9
-// fields including arrays and a JSON body.
 func BenchmarkParseComplexCodegen(b *testing.B) {
 	in := complexFixture()
 	b.ReportAllocs()
@@ -299,10 +248,6 @@ func BenchmarkParseComplexCodegen(b *testing.B) {
 	}
 }
 
-// BenchmarkParseComplexReflect is the kitchen-sink reflect twin.
-// Pair its number with BenchmarkParseComplexCodegen for the
-// dominant data point in the report - most real handlers sit
-// closer to this shape than to simpleReq.
 func BenchmarkParseComplexReflect(b *testing.B) {
 	in := complexFixture()
 	b.ReportAllocs()
@@ -316,9 +261,8 @@ func BenchmarkParseComplexReflect(b *testing.B) {
 	}
 }
 
-// BenchmarkParseComplexBodyOnly is the JSON-decode baseline for
-// the complex shape. Both complex parsers pay this cost; subtract
-// it to reason about the per-field non-body work in isolation.
+// BenchmarkParseComplexBodyOnly measures the JSON decode both complex parsers
+// include.
 func BenchmarkParseComplexBodyOnly(b *testing.B) {
 	in := complexFixture()
 	b.ReportAllocs()
@@ -332,12 +276,7 @@ func BenchmarkParseComplexBodyOnly(b *testing.B) {
 	}
 }
 
-// ---------- correctness gates ----------
-
-// TestParseEquivalenceSimple is the simple-shape correctness gate:
-// codegen and reflect must produce identical structs from the same
-// fixture. Without this any benchmark delta is meaningless - fast
-// wrong code is the fastest code.
+// TestParseEquivalenceSimple checks that both parsers bind simpleReq alike.
 func TestParseEquivalenceSimple(t *testing.T) {
 	in := simpleFixture()
 	var a, b simpleReq
@@ -352,7 +291,7 @@ func TestParseEquivalenceSimple(t *testing.T) {
 	}
 }
 
-// TestParseEquivalenceComplex is the complex-shape correctness gate.
+// TestParseEquivalenceComplex checks that both parsers bind complexReq alike.
 func TestParseEquivalenceComplex(t *testing.T) {
 	in := complexFixture()
 	var a, b complexReq

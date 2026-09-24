@@ -1,25 +1,5 @@
-// Command craftgo is the CLI entrypoint that drives the design-first
-// pipeline: locate the project manifest, parse every `.craftgo` source
-// file and compile every `.proto` beside it, run semantic analysis, and
-// dispatch each codegen artefact.
-//
-// Usage:
-//
-//	craftgo init [path]
-//	craftgo gen  [-f <design-folder>] [-c|--context <project-root>] [path]
-//	craftgo fmt  [path] [-l] [-w]
-//
-// `init` scaffolds a fresh design folder at <path> (default `design`).
-// The path argument IS the design folder - the manifest lands flat
-// inside it. An existing manifest is left alone and the command does
-// nothing.
-//
-// `gen` resolves the design folder one of two ways: with `-f` it uses
-// the supplied path directly; without it walks upward from <path> (or
-// cwd) looking for a craftgo.design.yaml, probing direct subdirs of
-// any name at each level. The project root the `output:` paths
-// resolve against is `-c <root>` when given, else cwd in the `-f`
-// flow, else the parent of the manifest folder (legacy compat).
+// Command craftgo scaffolds a design folder (init), generates a Go project and
+// its OpenAPI document from it (gen), and formats its design files (fmt).
 package main
 
 import (
@@ -28,10 +8,8 @@ import (
 	"os"
 )
 
-// version is the CLI's reported version. The source value is the fallback for
-// `go install`; release builds inject the git tag via
-// `-ldflags="-X main.version=<tag>"` (see .goreleaser.yaml), so it must be a
-// var - `-X` cannot write a const.
+// version is the reported version; release builds set it with
+// `-ldflags="-X main.version=<tag>"`, which needs a var, not a const.
 var version = "1.9.0"
 
 func main() {
@@ -61,9 +39,6 @@ func main() {
 	if err == nil {
 		return
 	}
-	// `-h` / `--help` returns this sentinel - flag package already
-	// printed the per-subcommand usage; exit 0 without piling on
-	// our "craftgo: …" prefix.
 	if errors.Is(err, errHelpRequested) {
 		return
 	}
@@ -71,9 +46,7 @@ func main() {
 	os.Exit(1)
 }
 
-// usage prints a short command summary to stdout. Verbose enough to remind
-// returning users of the positional-path convention but not so detailed that
-// it becomes a maintenance burden - full docs live in the README.
+// usage prints the command summary to stdout.
 func usage() {
 	fmt.Println(`craftgo - design-first Go API framework
 

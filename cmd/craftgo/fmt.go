@@ -17,18 +17,9 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// runFmt is the `craftgo fmt [path] [-l] [-w]` entry point. Behaviour mirrors
-// `gofmt`:
-//
-//   - Default mode is `-w`: every .craftgo file under <path> is formatted
-//     in place.
-//   - With `-l`, files that WOULD change are listed and the binary exits
-//     non-zero if any are listed (suitable for CI).
-//   - Combining `-l -w` lists changed files AND writes them.
-//   - Without either flag, formatted output is printed to stdout.
-//
-// Path defaults to "." and is recursed when it is a directory; when it
-// points at a single file, only that file is processed.
+// runFmt formats in place the design files under a path (default ".") or the
+// file it names, failing on files with errors, which stay untouched. `-l` lists
+// the files that differ instead and exits 1 if any do; `-l -w` does both.
 func runFmt(args []string) error {
 	fs := flag.NewFlagSet("fmt", flag.ContinueOnError)
 	list := fs.Bool("l", false, "list files whose formatting differs from craftgo fmt")
@@ -40,7 +31,6 @@ func runFmt(args []string) error {
 	if fs.NArg() > 0 {
 		path = fs.Arg(0)
 	}
-	// Default behaviour when no flags supplied: write back.
 	if !*list && !*write {
 		*write = true
 	}
@@ -87,20 +77,14 @@ func runFmt(args []string) error {
 		return fmt.Errorf("%d file(s) left unformatted because of errors", skipped)
 	}
 	if *list && len(changed) > 0 {
-		// Mirror `gofmt -l`: non-zero exit when any file is mis-formatted,
-		// so CI can `craftgo fmt -l` as a check.
 		os.Exit(1)
 	}
 	return nil
 }
 
-// blockingDiagnostics returns, per file, the errors that keep it from
-// being formatted: parser and analyser errors alike, because a mistake
-// the parser tolerates (a stray word read as a mixin, a decorator on the
-// wrong line) reads as a different construct, and formatting would write
-// that reading back. A file inside a project is analysed with its whole
-// project, so cross-package references resolve; a file outside any
-// project is analysed on its own.
+// blockingDiagnostics returns, per file, the parser and analyser errors that
+// keep it from being formatted. A file in a project is analysed with the whole
+// project, any other file on its own.
 func blockingDiagnostics(files []string) map[string][]string {
 	out := map[string][]string{}
 	add := func(diags []lexer.Diagnostic, fallback string) {
@@ -144,9 +128,8 @@ func blockingDiagnostics(files []string) map[string][]string {
 	return out
 }
 
-// collectCraftgoFiles returns every `*.craftgo` file under target. If target
-// is itself a file, the slice contains just that file (regardless of
-// extension - callers already opted into formatting it).
+// collectCraftgoFiles returns every design file under target, or target itself
+// when it is a file, whatever its extension.
 func collectCraftgoFiles(target string) ([]string, error) {
 	info, err := os.Stat(target)
 	if err != nil {

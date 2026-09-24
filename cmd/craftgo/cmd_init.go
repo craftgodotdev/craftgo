@@ -1,4 +1,3 @@
-// craftgo init subcommand: scaffold a design folder + manifest.
 package main
 
 import (
@@ -8,19 +7,8 @@ import (
 	"path/filepath"
 )
 
-// runInit scaffolds a fresh design folder at args[0]. The path argument IS the
-// design folder - `craftgo init contracts/v1` creates
-// `contracts/v1/craftgo.design.yaml` directly inside that directory, no
-// intermediate `design/` wrapper. With no path the default is `design` (a
-// `design/` subdir of cwd), so `mkdir myapp && cd myapp && craftgo init`
-// produces the conventional layout.
-//
-// The command refuses to overwrite an existing manifest, so re-running on a
-// populated folder is a silent no-op. There is no `-package` flag - the Go
-// module path is read from `go.mod` at gen time, so the only manifest-side
-// configuration is the optional output paths and OpenAPI metadata. init owns
-// only the manifest scaffolding; the runtime artefacts (config/, svccontext/,
-// main.go) are scaffolded by `craftgo gen` under the same gen-once policy.
+// runInit writes a starter craftgo.design.yaml into the design folder args[0]
+// (default `design`), creating the folder, and leaves an existing manifest alone.
 func runInit(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	if perr := fs.Parse(args); perr != nil {
@@ -45,8 +33,6 @@ func runInit(args []string) error {
 		return err
 	}
 
-	// Skip silently when the manifest already exists so re-running
-	// init on a populated folder is a no-op.
 	dest := filepath.Join(designDir, "craftgo.design.yaml")
 	if _, err := os.Stat(dest); err == nil {
 		fmt.Printf("craftgo: %s already exists, nothing to do\n", dest)
@@ -65,14 +51,8 @@ func runInit(args []string) error {
 	return nil
 }
 
-// initManifest renders the starter craftgo.design.yaml. The body has
-// no template variables - every value is either a default that 90%
-// of projects keep or a commented hint at an optional knob. The
-// Go module path is read from go.mod at gen time, so the manifest
-// itself carries no `package:` field.
-//
-// The body lives in `templates/craftgo.design.yaml.tmpl`; edit that
-// file rather than hand-rolling the YAML in Go source.
+// initManifest returns the starter manifest, rendered from
+// templates/craftgo.design.yaml.tmpl.
 func initManifest() string {
 	return renderInitTemplate("craftgo.design.yaml.tmpl", nil)
 }

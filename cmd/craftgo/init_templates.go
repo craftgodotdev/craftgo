@@ -7,18 +7,13 @@ import (
 	"text/template"
 )
 
-// initTemplatesFS holds the starter files emitted by `craftgo init`:
-// the project manifest, and nothing else - the runtime scaffolds are
-// written by `craftgo gen` under its gen-once policy. Keeping the
-// bodies in real `.tmpl` files rather than Go string literals makes
-// them editable without touching Go source.
+// initTemplatesFS holds the templates of the files `craftgo init` writes.
 //
 //go:embed templates/*.tmpl
 var initTemplatesFS embed.FS
 
-// renderInitTemplate parses the named template under templates/ and
-// renders it with data. Errors carry the template name so a typo in
-// the embed path surfaces clearly at startup, not at the call site.
+// renderInitTemplate renders templates/<name> with data, panicking when the
+// template is missing or broken.
 func renderInitTemplate(name string, data any) string {
 	body, err := initTemplatesFS.ReadFile("templates/" + name)
 	if err != nil {

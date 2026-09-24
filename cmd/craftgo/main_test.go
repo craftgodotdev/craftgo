@@ -7,20 +7,14 @@ import (
 	"testing"
 )
 
-// TestRunInitWritesScaffold checks the happy path: the supplied path IS
-// the design folder, the manifest lands flat inside it, and (after the
-// user supplies a go.mod and a minimal DSL) the result drives
-// `craftgo gen` end-to-end. We don't separately re-test the generator;
-// we trust the gen tests cover that surface and only assert that the
-// init output is a valid starting point for it.
+// TestRunInitWritesScaffold checks that init writes the manifest into the given
+// folder, with no `package:` key, and that gen then runs from it.
 func TestRunInitWritesScaffold(t *testing.T) {
 	dir := t.TempDir()
 	designFolder := filepath.Join(dir, "contracts", "v1")
 	if err := runInit([]string{designFolder}); err != nil {
 		t.Fatalf("runInit: %v", err)
 	}
-	// Init writes ONLY the manifest - sample DSL stays the user's
-	// responsibility so they don't have to delete noise on day one.
 	if _, err := os.Stat(filepath.Join(designFolder, "craftgo.design.yaml")); err != nil {
 		t.Errorf("missing manifest: %v", err)
 	}
@@ -32,9 +26,6 @@ func TestRunInitWritesScaffold(t *testing.T) {
 		}
 	}
 
-	// Drop a minimal user-written DSL file + go.mod so the gen
-	// pipeline has the inputs it needs (DSL for codegen, go.mod for
-	// the module path). The project root in this test is `dir`.
 	mustWrite(t, designFolder, "api.craftgo", minimalDesignDSL)
 	mustWrite(t, dir, "go.mod", "module github.com/test/app\n\ngo 1.24\n")
 
@@ -53,10 +44,8 @@ func TestRunInitWritesScaffold(t *testing.T) {
 	}
 }
 
-// TestRunInitIdempotent guarantees that re-running init does not clobber
-// the existing manifest - the user may have edited it (changed the
-// package path, added security schemes, ...) and a second init must
-// preserve those edits.
+// TestRunInitIdempotent checks that a second init leaves an edited manifest
+// alone.
 func TestRunInitIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	if err := runInit([]string{dir}); err != nil {
@@ -76,10 +65,7 @@ func TestRunInitIdempotent(t *testing.T) {
 	}
 }
 
-// minimalDesignDSL is the smallest .craftgo file that exercises every
-// downstream gen step (types + service + route). Tests that need to
-// drive `runGen` after `runInit` drop this in the design folder so
-// they don't depend on init scaffolding sample DSL.
+// minimalDesignDSL is a design with one type and one routed service.
 const minimalDesignDSL = `package api
 
 type Probe { id string }
@@ -91,10 +77,8 @@ service ProbeService {
 }
 `
 
-// TestRunInitDefaultPath asserts that with no positional path argument
-// the command creates a `design/` subdir of cwd - the conventional
-// layout for fresh projects. We chdir into a temp dir so the test
-// doesn't pollute the repository.
+// TestRunInitDefaultPath checks that init with no path writes the manifest
+// into `design/` under the working directory.
 func TestRunInitDefaultPath(t *testing.T) {
 	dir := t.TempDir()
 	prev, _ := os.Getwd()
@@ -110,12 +94,8 @@ func TestRunInitDefaultPath(t *testing.T) {
 	}
 }
 
-// TestRunGenContextOverridesProjectRoot confirms `-c` redirects
-// outputs to the supplied root regardless of where the manifest
-// lives. Common monorepo shape: contracts/ holds design, services/
-// holds the generated code. The single shared go.mod at the repo
-// root is the canonical "monorepo with one module" layout, and
-// ResolveModulePath walks up from -c to find it.
+// TestRunGenContextOverridesProjectRoot checks that -c places the outputs under
+// the given root, away from the design folder.
 func TestRunGenContextOverridesProjectRoot(t *testing.T) {
 	dir := t.TempDir()
 	designFolder := filepath.Join(dir, "contracts", "v1")
@@ -134,19 +114,14 @@ func TestRunGenContextOverridesProjectRoot(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(codeRoot, "internal", "types", "api", "types.go")); err != nil {
 		t.Errorf("expected types under -c root, got: %v", err)
 	}
-	// The shared-go.mod monorepo layout: imports are
-	// <module>/<relPath> = github.com/test/monorepo/services/api/...
 	types, _ := os.ReadFile(filepath.Join(codeRoot, "internal", "types", "api", "types.go"))
 	if !strings.Contains(string(types), "package api") {
 		t.Errorf("generated types.go missing package decl:\n%s", types)
 	}
 }
 
-// TestRunGenWithoutContextIgnoresWorkingDir pins the default root for
-// `-f` with no `-c`: the parent of the design folder, never the
-// directory the command runs from. Standing in an unrelated project and
-// generating a design that lives elsewhere must leave that project
-// untouched.
+// TestRunGenWithoutContextIgnoresWorkingDir checks that -f without -c
+// generates under the design folder's parent, never the working directory.
 func TestRunGenWithoutContextIgnoresWorkingDir(t *testing.T) {
 	dir := t.TempDir()
 	elsewhere := filepath.Join(dir, "elsewhere")
@@ -173,10 +148,8 @@ func TestRunGenWithoutContextIgnoresWorkingDir(t *testing.T) {
 	}
 }
 
-// TestRunGenWalkUpKeepsLegacyProjectRoot pins the legacy positional
-// flow - `craftgo gen <path>` keeps using parent-of-manifest as the
-// project root so existing fixtures (example/, tests/e2e/*) keep
-// working without flag changes.
+// TestRunGenWalkUpKeepsLegacyProjectRoot checks that `craftgo gen <path>` finds
+// <path>/design and generates under the design folder's parent.
 func TestRunGenWalkUpKeepsLegacyProjectRoot(t *testing.T) {
 	dir := t.TempDir()
 	designFolder := filepath.Join(dir, "design")
@@ -185,8 +158,6 @@ func TestRunGenWalkUpKeepsLegacyProjectRoot(t *testing.T) {
 	}
 	mustWrite(t, designFolder, "api.craftgo", minimalDesignDSL)
 	mustWrite(t, dir, "go.mod", "module github.com/test/legacy\n\ngo 1.24\n")
-	// Positional path = dir; walk-up finds dir/design/manifest.
-	// projectRoot stays at dir (parent of manifest), NOT cwd.
 	if err := runGen([]string{dir}); err != nil {
 		t.Fatalf("runGen: %v", err)
 	}
@@ -195,9 +166,8 @@ func TestRunGenWalkUpKeepsLegacyProjectRoot(t *testing.T) {
 	}
 }
 
-// TestRunGenMissingGoMod pins the fail-fast contract: gen MUST refuse
-// to run when no go.mod can be located, with a clear error message
-// pointing the user at `go mod init`.
+// TestRunGenMissingGoMod checks that gen fails without a go.mod and names
+// `go mod init`.
 func TestRunGenMissingGoMod(t *testing.T) {
 	dir := t.TempDir()
 	designFolder := filepath.Join(dir, "design")
@@ -214,50 +184,27 @@ func TestRunGenMissingGoMod(t *testing.T) {
 	}
 }
 
-// TestRunInitRejectsUnknownFlag ensures typos surface immediately rather
-// than silently being treated as a path.
 func TestRunInitRejectsUnknownFlag(t *testing.T) {
 	if err := runInit([]string{"--bogus"}); err == nil {
 		t.Error("expected error for unknown flag")
 	}
 }
 
-// TestRunInitRejectsLegacyPackageFlag pins the removal of `-package`:
-// the module path now lives in go.mod, not the manifest, so the flag
-// no longer exists. Old scripts that still pass it must surface a
-// clear error rather than silently accept it.
+// TestRunInitRejectsLegacyPackageFlag checks that init rejects `-package`.
 func TestRunInitRejectsLegacyPackageFlag(t *testing.T) {
 	if err := runInit([]string{"-package", "github.com/test/app"}); err == nil {
 		t.Error("expected error for removed -package flag")
 	}
 }
 
-// TestRunGenMultiPackage drives the full `craftgo gen` pipeline against
-// a hand-written project that uses a subpackage (`design/shared/`) for
-// shared domain types. It asserts:
-//
-//   - the root package's types.go imports the shared subpackage's Go
-//     module and references types via the qualified `shared.User` form;
-//   - the shared subpackage gets its own types.go in
-//     `internal/types/shared/`;
-//   - the generator does not reject services in the root, even when
-//     fields cross package boundaries.
-//
-// A failure here means the multi-package codegen wiring regressed
-// somewhere between AnalyzeProject, BuildCrossPkg, and the
-// per-package generator entry points.
+// TestRunGenMultiPackage checks that a root package using `shared.User` imports
+// the shared types package, which gets its own types.go.
 func TestRunGenMultiPackage(t *testing.T) {
 	dir := t.TempDir()
 
-	// go.mod at the project root supplies the module path the
-	// generated cross-package imports must reference.
 	mustWrite(t, dir, "go.mod", "module github.com/test/multi\n\ngo 1.24\n")
-	// Manifest at the design root. No `package:` field - the module
-	// path comes from go.mod above.
 	mustWrite(t, dir, "design/craftgo.design.yaml", "")
 
-	// Root-package files: declare service + a request type that
-	// references the sibling package's User.
 	mustWrite(t, dir, "design/api.craftgo", `package design
 import "shared"
 
@@ -274,7 +221,6 @@ service Auth {
 }
 `)
 
-	// Sibling subpackage with its own User type.
 	mustWrite(t, dir, "design/shared/user.craftgo", `package shared
 type User {
     id   string
@@ -309,11 +255,8 @@ type User {
 	}
 }
 
-// TestRunGenSubpackageService verifies multi-package projects can
-// declare services in any package. Each package's services generate
-// their own handlers/routes; the umbrella routes.RegisterAll
-// aggregates services from every package; the merged OpenAPI
-// document carries paths from all of them.
+// TestRunGenSubpackageService checks that services in two packages each get
+// handlers, both reach the umbrella routes and the OpenAPI document.
 func TestRunGenSubpackageService(t *testing.T) {
 	dir := t.TempDir()
 
@@ -341,7 +284,6 @@ service AuthService {
 		t.Fatalf("runGen: %v", err)
 	}
 
-	// Per-service handler dirs exist for both services.
 	for _, rel := range []string{
 		"internal/transport/probe_service/ping.go",
 		"internal/transport/auth_service/login.go",
@@ -353,7 +295,6 @@ service AuthService {
 		}
 	}
 
-	// Umbrella routes.go imports BOTH service-route packages.
 	umbrella, err := os.ReadFile(filepath.Join(dir, "internal/routes/routes.go"))
 	if err != nil {
 		t.Fatalf("read umbrella: %v", err)
@@ -365,7 +306,6 @@ service AuthService {
 		t.Errorf("umbrella missing auth_service import:\n%s", umbrella)
 	}
 
-	// OpenAPI carries paths from BOTH services.
 	spec, err := os.ReadFile(filepath.Join(dir, "docs/openapi.yaml"))
 	if err != nil {
 		t.Fatalf("read openapi: %v", err)
@@ -378,18 +318,9 @@ service AuthService {
 	}
 }
 
-// TestRunGenCrossPackageRequestResponse verifies that a service
-// declaring `request shared.Cred` (cross-package) gets handler and
-// logic files that:
-//
-//   - import the sibling package's Go path;
-//   - reference the type via the package's own alias rather than the
-//     canonical `types` alias of the local package;
-//   - drop the now-unused canonical `types` import when neither side
-//     of the signature is local.
-//
-// Cross-package: services in any package may reference
-// request/response types declared in any other package.
+// TestRunGenCrossPackageRequestResponse checks that a method whose request and
+// response are `shared` types imports them as `shared` and drops the unused
+// local `types` import.
 func TestRunGenCrossPackageRequestResponse(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, dir, "go.mod", "module github.com/test/cross\n\ngo 1.24\n")
@@ -447,10 +378,7 @@ type Token { value string }
 	}
 }
 
-// mustWrite is a tiny helper that writes path with intermediate dirs.
-// Centralised because the multi-package tests build small fixtures and
-// the inline `MkdirAll + WriteFile` boilerplate clutters the assertion
-// logic.
+// mustWrite writes root/rel, creating its directories.
 func mustWrite(t *testing.T, root, rel, content string) {
 	t.Helper()
 	full := filepath.Join(root, rel)
@@ -462,8 +390,8 @@ func mustWrite(t *testing.T, root, rel, content string) {
 	}
 }
 
-// fmt formats only the files without errors; a file the analyser rejects
-// is left untouched and reported, and the command fails so CI notices.
+// TestRunFmtLeavesFilesWithErrorsAlone checks that fmt formats the clean file,
+// leaves the one with an analyser error untouched and fails.
 func TestRunFmtLeavesFilesWithErrorsAlone(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, dir, "design/craftgo.design.yaml", "")
