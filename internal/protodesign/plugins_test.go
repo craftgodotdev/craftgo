@@ -13,9 +13,8 @@ import (
 	"google.golang.org/protobuf/types/pluginpb"
 )
 
-// workspaceProject is a fresh project whose go.work names this repo, so
-// `go tool` resolves the plugins the root go.mod pins - the way a
-// project's own `tool` directives would.
+// workspaceProject returns a fresh project whose go.work uses this repo, so
+// `go tool` finds the plugins the root go.mod pins.
 func workspaceProject(t *testing.T) string {
 	t.Helper()
 	dir, err := filepath.EvalSymlinks(t.TempDir())
@@ -176,8 +175,8 @@ func responseWith(name string) *pluginpb.CodeGeneratorResponse {
 	return &pluginpb.CodeGeneratorResponse{File: []*pluginpb.CodeGeneratorResponse_File{{Name: proto.String(name), Content: proto.String("x")}}}
 }
 
-// The path is the last line `go tool -n` prints: a cold module cache
-// writes `go: downloading` lines first, and they must not become argv[0].
+// TestToolPathIsTheLastLine checks that lines printed before the path, such as
+// `go: downloading`, never become argv[0].
 func TestToolPathIsTheLastLine(t *testing.T) {
 	for in, want := range map[string]string{
 		"/cache/protoc-gen-go\n": "/cache/protoc-gen-go",

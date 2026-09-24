@@ -55,10 +55,8 @@ func Load(ctx context.Context, designRoot string, opts Options) (*Set, error) {
 	return set, nil
 }
 
-// compile runs protocompile over names with designRoot as the first
-// import root. Every error is collected, so a design with three mistakes
-// reports three, and each one carries the file path the way the DSL
-// diagnostics do.
+// compile runs protocompile over names with designRoot as the first import
+// root, reporting every error with its file path.
 func compile(ctx context.Context, designRoot string, names, includes []string) (linker.Files, error) {
 	var errs []string
 	rep := reporter.NewReporter(func(e reporter.ErrorWithPos) error {
@@ -128,9 +126,8 @@ func typeRef(m *protogen.Message, plugin *protogen.Plugin) TypeRef {
 	return ref
 }
 
-// docLines splits a leading comment into the lines the scaffold renders,
-// dropping the blank lines at either end and the one space protoc keeps
-// after `//`.
+// docLines splits a leading comment into lines, dropping blank lines at either
+// end and the space protoc keeps after `//`.
 func docLines(c protogen.Comments) []string {
 	var out []string
 	for _, line := range strings.Split(strings.TrimRight(string(c), "\n"), "\n") {

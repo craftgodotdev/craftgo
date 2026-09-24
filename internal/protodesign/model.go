@@ -1,14 +1,6 @@
-// Package protodesign reads the gRPC half of a design: the `.proto` files
-// under the design folder. It compiles them in-process with protocompile,
-// hands the descriptors to protogen - the same library protoc-gen-go is
-// built on - and reports what the Go generator will emit: one [Service]
-// per proto service, its Go name, its package, and each RPC's Go request
-// and response types. Nothing here derives a Go name by hand; every name
-// the scaffolds spell is protogen's, so they agree with the pb code the
-// plugins write from the same request.
-//
-// The package is manifest-blind, like semantic: [Options] carries the
-// few facts it needs, and the caller builds it from the manifest.
+// Package protodesign compiles the `.proto` files under the design folder
+// in-process, reads each service's and RPC's Go names from protogen, and runs
+// the protobuf plugins that write the pb code.
 package protodesign
 
 import (
@@ -24,18 +16,15 @@ import (
 type Options struct {
 	// Module is the Go import prefix of the project root.
 	Module string
-	// PBDir is the plugin output directory, relative to the project root
-	// (`./internal/pb`). Empty disables the plugins: no M mapping is added
-	// and every design file must carry `option go_package`.
+	// PBDir is the plugin output directory relative to the project root. Empty
+	// disables the plugins, and every design file then needs `option go_package`.
 	PBDir string
-	// Includes lists extra import roots, absolute paths. The design root
-	// is always the first import root.
+	// Includes lists extra absolute import roots, after the design root.
 	Includes []string
-	// FileCase is the manifest's `output.fileCase`; it names the per-service
-	// directory and the per-RPC file the scaffolds are written to.
+	// FileCase is `output.fileCase`, applied to service directory and RPC file names.
 	FileCase string
-	// PluginGo and PluginGoGRPC name the plugin commands the manifest
-	// chose under proto.plugins. Empty runs the tool go.mod pins.
+	// PluginGo and PluginGoGRPC are the proto.plugins commands; empty runs the
+	// tool go.mod pins.
 	PluginGo     string
 	PluginGoGRPC string
 }
@@ -43,11 +32,10 @@ type Options struct {
 // PBEnabled reports whether the plugins run for this project.
 func (o Options) PBEnabled() bool { return o.PBDir != "" }
 
-// pbRel is the pb directory as a clean slash path relative to the
-// project root (`internal/pb`).
+// pbRel returns PBDir as a clean slash path, e.g. `internal/pb`.
 func (o Options) pbRel() string { return path.Clean(filepath.ToSlash(o.PBDir)) }
 
-// PBRoot is the pb directory on disk under projectRoot.
+// PBRoot returns the pb directory on disk under projectRoot.
 func (s *Set) PBRoot(projectRoot string) string {
 	return filepath.Join(projectRoot, filepath.FromSlash(s.Options.pbRel()))
 }
@@ -59,17 +47,15 @@ type Set struct {
 	Options Options
 	// Root is the design root the names are relative to.
 	Root string
-	// Names lists the design files, slash-separated relative to Root, in
-	// sorted order. They are the files the plugins generate for.
+	// Names lists the design files the plugins generate for, as sorted slash
+	// paths relative to Root.
 	Names []string
-	// Plugin is the protogen view of the whole graph; the design files are
-	// the ones with Generate set.
+	// Plugin is the protogen view of the whole graph; the design files have
+	// Generate set.
 	Plugin *protogen.Plugin
-	// Request is the plugin request, deps first. The plugins receive it
-	// verbatim.
+	// Request is the plugin request, deps first, as the plugins receive it.
 	Request *pluginpb.CodeGeneratorRequest
-	// Services lists every service the design files declare, sorted by
-	// proto full name.
+	// Services lists every service the design files declare, sorted by full name.
 	Services []*Service
 }
 
@@ -79,14 +65,12 @@ type Service struct {
 	Name string
 	// FullName is the proto full name (`greet.Greeter`).
 	FullName string
-	// Package is the Go package name of the file declaring the service.
-	// The server layer and the logic scaffolds declare it, the way the
-	// HTTP layers declare the design package.
+	// Package is the Go package name of the file declaring the service, which
+	// the server and logic scaffolds also declare.
 	Package string
 	// PBImport is the Go import path of the generated pb package.
 	PBImport string
-	// Dir is the per-service output directory name, derived from Name by
-	// the manifest's file case.
+	// Dir is the service's output directory name: Name in the file case.
 	Dir string
 	// Methods lists the RPCs in declaration order.
 	Methods []*Method
@@ -102,7 +86,7 @@ const (
 	Bidi
 )
 
-// String names the kind for the generated comments.
+// String returns the kind as the generated comments spell it.
 func (k Kind) String() string {
 	switch k {
 	case ServerStream:
@@ -120,8 +104,7 @@ type Method struct {
 	Desc *protogen.Method
 	// Name is the Go method name (`SayHello`).
 	Name string
-	// File is the per-RPC file name without extension, derived from Name
-	// by the manifest's file case.
+	// File is the RPC's file name without extension: Name in the file case.
 	File string
 	Kind Kind
 	// In and Out are the request and response message types.
@@ -134,24 +117,17 @@ type Method struct {
 type TypeRef struct {
 	Name       string
 	ImportPath string
-	// Package is the Go package name of the file declaring the message,
-	// the alias generated code imports it under when it is not the
-	// service's own pb package.
+	// Package is the Go package name of the file declaring the message, used
+	// as its import alias outside the service's own pb package.
 	Package string
 }
 
-// HasServices reports whether any design file declares a service. A set
-// of message-only files still has pb code to generate, but nothing for
-// the application layers.
+// HasServices reports whether any design file declares a service.
 func (s *Set) HasServices() bool { return s != nil && len(s.Services) > 0 }
 
-// PBFiles names the files the plugins write under projectRoot for this
-// set: `<prefix>.pb.go` for every design file and `<prefix>_grpc.pb.go`
-// for the ones declaring a service, where the prefix is the file name
-// minus `.proto` (protoc-gen-go's `paths=source_relative` rule). It is
-// what the output sweep keeps, so it is predicted here rather than read
-// back. With the plugins disabled nothing is written, and nothing is
-// listed.
+// PBFiles returns the files the plugins write under projectRoot:
+// `<name>.pb.go` for each design file and `<name>_grpc.pb.go` for one that
+// declares a service; none when the plugins are disabled.
 func (s *Set) PBFiles(projectRoot string) []string {
 	if s == nil || !s.Options.PBEnabled() {
 		return nil
