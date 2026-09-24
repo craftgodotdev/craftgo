@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// CORSOptions configures the CORS middleware. Most fields mirror the
-// corresponding HTTP headers; AllowedOrigins entries may use a single
-// leading wildcard (`https://*.example.com`) or the full wildcard `*`.
+// CORSOptions configures [Server.SetCORS]; each field sets the matching Access-Control-*
+// header. An AllowedOrigins entry is an origin, `*`, or a pattern with one `*` such as
+// `https://*.example.com`.
 type CORSOptions struct {
 	AllowedOrigins      []string
 	AllowedMethods      []string
@@ -20,8 +20,8 @@ type CORSOptions struct {
 	AllowPrivateNetwork bool
 }
 
-// CORSPermissive returns a development-mode preset that mirrors browser
-// defaults for non-credentialed APIs. Not suitable for production.
+// CORSPermissive is a development preset: any origin, the common methods, and the
+// Content-Type and Authorization headers, without credentials.
 func CORSPermissive() CORSOptions {
 	return CORSOptions{
 		AllowedOrigins: []string{"*"},
@@ -30,9 +30,8 @@ func CORSPermissive() CORSOptions {
 	}
 }
 
-// CORSStrict returns a production-leaning preset locked to a single origin
-// and a small set of common headers; toggle credentials on at the call
-// site if needed.
+// CORSStrict allows only origin, GET and POST, and the Content-Type and Authorization
+// headers, without credentials.
 func CORSStrict(origin string) CORSOptions {
 	return CORSOptions{
 		AllowedOrigins: []string{origin},
@@ -41,8 +40,8 @@ func CORSStrict(origin string) CORSOptions {
 	}
 }
 
-// corsMiddleware applies opts to every request and short-circuits OPTIONS
-// preflights with the matching Access-Control-* response headers.
+// corsMiddleware adds the CORS headers opts allows and answers a preflight from an allowed
+// origin with 204.
 func corsMiddleware(opts CORSOptions) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -51,11 +50,7 @@ func corsMiddleware(opts CORSOptions) Middleware {
 			if allowed != "" {
 				w.Header().Set("Access-Control-Allow-Origin", allowed)
 				if allowed != "*" {
-					// The Allow-Origin value reflects the request Origin, so
-					// shared caches must key on it - without `Vary: Origin`
-					// a response cached for origin A could be served to
-					// origin B carrying A's Allow-Origin header. A literal
-					// "*" is identical for every origin, so it needs no Vary.
+					// The value echoes the request's Origin, so caches must key on it.
 					w.Header().Add("Vary", "Origin")
 				}
 				if opts.AllowCredentials {
@@ -65,11 +60,6 @@ func corsMiddleware(opts CORSOptions) Middleware {
 					w.Header().Set("Access-Control-Expose-Headers", strings.Join(opts.ExposedHeaders, ", "))
 				}
 			}
-			// Short-circuit only a genuine CORS preflight: an OPTIONS from an
-			// ALLOWED origin carrying Access-Control-Request-Method. A bare
-			// OPTIONS, an OPTIONS from a disallowed origin, or one without the
-			// preflight header falls through to the next handler so real
-			// OPTIONS routes are not shadowed and disallowed origins get no 204.
 			if allowed != "" && r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
 				if len(opts.AllowedMethods) > 0 {
 					w.Header().Set("Access-Control-Allow-Methods", strings.Join(opts.AllowedMethods, ", "))
@@ -91,9 +81,8 @@ func corsMiddleware(opts CORSOptions) Middleware {
 	}
 }
 
-// matchOrigin returns the Allow-Origin value that should be sent to a
-// client whose Origin header is `origin`. Returns "" when no rule matches
-// so the middleware can omit the header entirely.
+// matchOrigin returns the Access-Control-Allow-Origin value for origin, or "" when no rule
+// allows it.
 func matchOrigin(origin string, allowed []string) string {
 	if origin == "" {
 		return ""

@@ -8,17 +8,10 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// contentTypeJSON is the Content-Type the framework's JSON responses (health,
-// error envelopes, served OpenAPI spec) set.
+// contentTypeJSON is the Content-Type of the framework's JSON responses.
 const contentTypeJSON = "application/json; charset=utf-8"
 
-// committedResponseWriter wraps http.ResponseWriter to remember whether
-// the response status / body has already been flushed. Recovery uses it
-// to decide whether a 500 can still be written or whether the response
-// is already half-sent (in which case the recovery message would be
-// silently dropped by net/http and the client would see a corrupted
-// body). The wrapper preserves http.Hijacker / http.Flusher / http.Pusher
-// so downstream middleware that depends on them keeps working.
+// committedResponseWriter records whether WriteHeader or Write has been called.
 type committedResponseWriter struct {
 	http.ResponseWriter
 	committed bool
@@ -36,29 +29,16 @@ func (w *committedResponseWriter) Write(p []byte) (int, error) {
 
 func (w *committedResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
-// Flush forwards to the underlying writer's Flusher when available so streaming
-// handlers keep working through the Recovery wrapper (mirrors statusRecorder).
 func (w *committedResponseWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
 }
 
-// Committed reports whether the response status / body has already
-// been flushed. Generated handlers and the validation-error hook use
-// it (via a type assertion against `interface{ Committed() bool }`)
-// to skip late writes that net/http would silently drop.
 func (w *committedResponseWriter) Committed() bool { return w.committed }
 
-// Recovery converts panics inside downstream handlers into a 500 response
-// while logging a stack trace. Always installed by Server.Start as the
-// outermost middleware. When the panic fires AFTER the handler has
-// already committed to a status (called WriteHeader or Write), the 500
-// cannot be written - net/http silently drops the second WriteHeader and
-// the body bytes would corrupt the in-flight response. In that case the
-// middleware logs the panic loudly and lets the connection terminate; the
-// client sees the truncated original response and the server operator
-// sees the stack trace.
+// Recovery answers a panic in next with a 500 text/plain response and logs it, with its
+// stack, to logger. Once the response is committed it only logs; the client keeps what was sent.
 func Recovery(logger log.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -93,18 +73,13 @@ type accessLogConfig struct {
 	fields func(*http.Request) []log.Field
 }
 
-// AccessLogFields appends the fields fn derives from the request to every
-// `http access` line - the client address, the user agent, the matched
-// route (`r.Pattern`). fn runs after the handler, so it sees the route the
-// mux matched.
+// AccessLogFields adds the fields fn returns to every access line. fn runs after the
+// handler, so r.Pattern holds the matched route.
 func AccessLogFields(fn func(r *http.Request) []log.Field) AccessLogOption {
 	return func(c *accessLogConfig) { c.fields = fn }
 }
 
-// AccessLogSkipPaths keeps requests whose `r.URL.Path` equals one of paths
-// out of the log - a `/metrics` scrape served on the API port, for example.
-// The health probes need no entry here: they never reach the middleware
-// chain (see [Server.Handler]).
+// AccessLogSkipPaths keeps requests whose URL path equals one of paths out of the log.
 func AccessLogSkipPaths(paths ...string) AccessLogOption {
 	return func(c *accessLogConfig) {
 		for _, p := range paths {
@@ -113,14 +88,8 @@ func AccessLogSkipPaths(paths ...string) AccessLogOption {
 	}
 }
 
-// AccessLog logs one line per request after the response has been written:
-// message `http access` with `method`, `path`, `status` and `latency`, plus
-// the `trace_id` / `span_id` the request context carries (see
-// [log.Logger.WithContext]). Wire the telemetry HTTP middleware before
-// AccessLog so those ids are on the context.
-//
-// Every request that reaches the middleware logs; [AccessLogSkipPaths]
-// keeps chosen routes out and [AccessLogFields] adds fields of your own.
+// AccessLog logs "http access" at Info after each request with method, path, status and
+// latency, plus what [log.Logger.WithContext] adds (trace ids need an outer tracing middleware).
 func AccessLog(logger log.Logger, opts ...AccessLogOption) Middleware {
 	cfg := &accessLogConfig{skip: map[string]bool{}}
 	for _, o := range opts {
@@ -149,55 +118,37 @@ func AccessLog(logger log.Logger, opts ...AccessLogOption) Middleware {
 	}
 }
 
-// BodyLimit returns a middleware that caps the request body at maxBytes for
-// every route it wraps. A request whose declared Content-Length already
-// exceeds the cap is rejected with 413 before the handler runs; a
-// chunked/unknown-length body is capped on read via http.MaxBytesReader
-// (surfaced by the downstream handler, typically as 400). It shares its
-// implementation with the per-method @maxBodySize guard ([maxBodySizeHandler])
-// so the global and per-method limits never drift.
+// BodyLimit caps request bodies at maxBytes: a declared Content-Length above it is answered
+// 413 before next runs, and a read past it fails with an [*http.MaxBytesError].
 func BodyLimit(maxBytes int64) Middleware {
 	return func(next http.Handler) http.Handler {
 		return maxBodySizeHandler(next, maxBytes)
 	}
 }
 
-// Timeout enforces an upper bound on handler execution. Streaming methods
-// should not use this - they need write-side per-message idle limits which
-// belong to the streaming codec, not the request lifecycle.
+// Timeout runs next under [http.TimeoutHandler]: past d the client gets 503 "request
+// timeout". The response is buffered, so next can neither flush nor hijack.
 func Timeout(d time.Duration) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.TimeoutHandler(next, d, "request timeout")
 	}
 }
 
-// statusRecorder is a tiny ResponseWriter wrapper that captures the
-// status code so AccessLog can log it. Flush() is forwarded explicitly
-// because Go's interface satisfaction does not promote methods from
-// embedded interfaces beyond the interface itself - without this
-// passthrough, SSE / NDJSON / chunked-encoding handlers downstream
-// would lose access to http.Flusher.
+// statusRecorder records the last status passed to WriteHeader.
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
 }
 
-// WriteHeader records the status code before delegating.
 func (s *statusRecorder) WriteHeader(c int) {
 	s.status = c
 	s.ResponseWriter.WriteHeader(c)
 }
 
-// Flush forwards to the underlying writer's Flusher when available so
-// streaming handlers keep working.
 func (s *statusRecorder) Flush() {
 	if f, ok := s.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
 }
 
-// Unwrap exposes the wrapped writer so http.ResponseController (and net/http's
-// hijack path) can walk past this layer to reach the underlying Hijacker /
-// ReaderFrom - without it a WebSocket upgrade or raw Hijack under AccessLog
-// fails with "feature not supported".
 func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }

@@ -6,9 +6,7 @@ import (
 	"sync"
 )
 
-// livenessHandler responds 200 with `{"status":"ok"}` once the server is
-// ready to accept traffic. Liveness is a simple "process alive" probe,
-// distinct from readiness which runs the registered checks.
+// livenessHandler always answers 200 {"status":"ok"}.
 func (s *Server) livenessHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", contentTypeJSON)
@@ -16,9 +14,8 @@ func (s *Server) livenessHandler() http.Handler {
 	})
 }
 
-// readinessHandler runs every registered check in parallel and returns
-// 200 only when every probe succeeds. Probes that exceed their timeout
-// are recorded as failed.
+// readinessHandler runs the registered checks concurrently, waits for all of them, and
+// answers 503 unless every one returns nil.
 func (s *Server) readinessHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()

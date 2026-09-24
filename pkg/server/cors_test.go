@@ -10,9 +10,7 @@ func corsOK() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 }
 
-// TestCORSVaryOriginOnSpecificOrigin pins the cache-correctness rule:
-// when Allow-Origin echoes the request Origin, the response carries
-// `Vary: Origin` so shared caches key on it.
+// An echoed origin comes with Vary: Origin.
 func TestCORSVaryOriginOnSpecificOrigin(t *testing.T) {
 	h := corsMiddleware(CORSStrict("https://app.example.com"))(corsOK())
 	rec := httptest.NewRecorder()
@@ -27,8 +25,7 @@ func TestCORSVaryOriginOnSpecificOrigin(t *testing.T) {
 	}
 }
 
-// TestCORSWildcardNoVary confirms the wildcard "*" path needs no Vary -
-// the response is identical for every origin.
+// A wildcard Allow-Origin comes without Vary.
 func TestCORSWildcardNoVary(t *testing.T) {
 	h := corsMiddleware(CORSPermissive())(corsOK())
 	rec := httptest.NewRecorder()
@@ -43,8 +40,7 @@ func TestCORSWildcardNoVary(t *testing.T) {
 	}
 }
 
-// A genuine CORS preflight (allowed origin + Access-Control-Request-Method)
-// is short-circuited with 204 and the Allow-Methods header.
+// A preflight from an allowed origin is answered 204 with Allow-Methods.
 func TestCORSGenuinePreflightShortCircuits(t *testing.T) {
 	h := corsMiddleware(CORSStrict("https://app.example.com"))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("a genuine preflight must not reach the handler")
@@ -62,9 +58,7 @@ func TestCORSGenuinePreflightShortCircuits(t *testing.T) {
 	}
 }
 
-// An OPTIONS from an allowed origin WITHOUT Access-Control-Request-Method is a
-// real OPTIONS request, not a preflight; it must reach the handler instead of
-// being swallowed with 204 (which would shadow a real OPTIONS route).
+// An OPTIONS without Access-Control-Request-Method reaches the handler.
 func TestCORSNonPreflightOptionsFallsThrough(t *testing.T) {
 	reached := false
 	h := corsMiddleware(CORSStrict("https://app.example.com"))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -83,8 +77,7 @@ func TestCORSNonPreflightOptionsFallsThrough(t *testing.T) {
 	}
 }
 
-// A preflight from a DISALLOWED origin must not be granted a 204 - it falls
-// through with no Allow-Origin so the browser blocks the real request.
+// A preflight from a disallowed origin reaches the handler without Allow-Origin.
 func TestCORSDisallowedOriginPreflightFallsThrough(t *testing.T) {
 	reached := false
 	h := corsMiddleware(CORSStrict("https://app.example.com"))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

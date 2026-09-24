@@ -15,18 +15,13 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// newTestServer builds a Server, runs handler at "GET /ping", and returns
-// the wired http.Handler. We bypass Start so each test owns its own
-// httptest.NewServer.
+// newTestServer returns a Server with the defaults.
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	return New(nil)
 }
 
-// finalize returns the server's real request handler, exercising the exact
-// chain Start binds to a listener (Recovery -> user chain -> CORS -> mux with
-// notFound). It delegates to [Server.Handler] so tests can't drift from the
-// production chain.
+// finalize returns the handler Start serves.
 func finalize(s *Server) http.Handler {
 	return s.Handler()
 }
@@ -55,12 +50,7 @@ func TestServerRecoveryConvertsPanic(t *testing.T) {
 	}
 }
 
-// TestServerRecoveryAfterWriteKeepsOriginalStatus pins the post-write
-// panic behaviour: once the handler has committed to a status (called
-// WriteHeader or Write), Recovery cannot rewrite to 500 - net/http
-// silently drops a second WriteHeader and would otherwise smear the
-// recovery body across the in-flight response. The middleware must
-// leave the committed status intact and log loudly instead.
+// A panic after the response is committed keeps the committed status and body.
 func TestServerRecoveryAfterWriteKeepsOriginalStatus(t *testing.T) {
 	s := newTestServer(t)
 	s.HandleFunc("GET /half", func(w http.ResponseWriter, _ *http.Request) {
@@ -78,13 +68,7 @@ func TestServerRecoveryAfterWriteKeepsOriginalStatus(t *testing.T) {
 	}
 }
 
-// TestWriteValidationErrorSkipsPostCommit pins the post-commit guard:
-// when the response writer is already committed (some middleware wrote
-// headers before the handler reached req.Validate()),
-// WriteValidationError must NOT smear a 400 into the in-flight body -
-// net/http would drop the WriteHeader and append the error text to
-// whatever was already sent, producing a corrupted response. The hook
-// logs the dropped validation and leaves the wire alone.
+// WriteValidationError leaves a committed response untouched.
 func TestWriteValidationErrorSkipsPostCommit(t *testing.T) {
 	s := newTestServer(t)
 	s.HandleFunc("GET /v", func(w http.ResponseWriter, r *http.Request) {
@@ -105,21 +89,14 @@ func TestWriteValidationErrorSkipsPostCommit(t *testing.T) {
 	}
 }
 
-// errBadField is a stand-in validator error used by the post-commit
-// guard test - any concrete error value works; the wire output is what
-// the test asserts on.
+// errBadField is a stand-in validation error.
 var errBadField = stringError("bad field")
 
 type stringError string
 
 func (e stringError) Error() string { return string(e) }
 
-// TestWithLimitsTimeoutPanicReachesRecovery pins the timeout/panic
-// contract: a panic inside a `@timeout`-wrapped handler propagates to
-// the outer Recovery middleware rather than being swallowed by
-// goroutine isolation (as [http.TimeoutHandler] does). The handler
-// panics immediately - well before the deadline - so the 500 must
-// reach the client and the panic must be logged.
+// A panic under a WithLimits timeout reaches Recovery.
 func TestWithLimitsTimeoutPanicReachesRecovery(t *testing.T) {
 	logger := newTestServer(t).logger
 	core := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
@@ -134,10 +111,7 @@ func TestWithLimitsTimeoutPanicReachesRecovery(t *testing.T) {
 	}
 }
 
-// TestWithLimitsTimeoutContextCancellation verifies that a handler
-// honouring ctx.Done() returns early when the deadline elapses. The
-// handler waits on the context and writes a deterministic body so the
-// assertion can confirm the cancel signal arrived.
+// A WithLimits timeout cancels the request context.
 func TestWithLimitsTimeoutContextCancellation(t *testing.T) {
 	core := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
@@ -151,13 +125,7 @@ func TestWithLimitsTimeoutContextCancellation(t *testing.T) {
 	}
 }
 
-// TestWithLimitsContentLengthPreCheck pins the upfront body-size
-// guard: a client whose
-// Content-Length already exceeds MaxBodySize gets 413 even when the
-// downstream handler never reads r.Body. http.MaxBytesReader alone
-// would only fire on the first read past the cap, so a request
-// rejected by an early validation step (e.g. a content-type guard)
-// would otherwise slip past the body guard.
+// WithLimits answers 413 to an oversized Content-Length the handler never reads.
 func TestWithLimitsContentLengthPreCheck(t *testing.T) {
 	core := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -234,8 +202,7 @@ func TestAccessLogMiddleware(t *testing.T) {
 	}
 }
 
-// Every request that reaches AccessLog is logged with its method, path and
-// status; AccessLogSkipPaths keeps the named routes out.
+// AccessLog logs every request's method, path and status except the skipped paths.
 func TestAccessLogSkipPaths(t *testing.T) {
 	logs := observeLogs(t)
 	s := newTestServer(t).Use(AccessLog(log.Default(), AccessLogSkipPaths("/metrics")))
@@ -257,8 +224,7 @@ func TestAccessLogSkipPaths(t *testing.T) {
 	}
 }
 
-// The health probes are answered before the middleware chain: no `Use`
-// middleware sees them, on the default routes or on custom ones.
+// No Use middleware sees the health probes, on default or custom paths.
 func TestProbesBypassMiddlewareChain(t *testing.T) {
 	for name, opts := range map[string][]Option{
 		"default paths": nil,
@@ -315,7 +281,6 @@ func TestTimeoutMiddleware(t *testing.T) {
 	rec := httptest.NewRecorder()
 	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/slow", nil))
 	if rec.Code != http.StatusServiceUnavailable {
-		// http.TimeoutHandler returns 503 by default
 		t.Errorf("expected 503 from timeout, got %d", rec.Code)
 	}
 }
@@ -429,9 +394,7 @@ func TestCodecRoundTrip(t *testing.T) {
 	}
 }
 
-// markerCodec wraps the default codec but tags every encoded byte
-// stream with a prefix so tests can prove the swap actually reaches
-// generated handlers (or any caller that goes through [JSON]).
+// markerCodec prefixes every encoding with /*MARK*/.
 type markerCodec struct{ defaultCodec }
 
 func (markerCodec) Encode(w io.Writer, v any) error {
@@ -481,14 +444,13 @@ func TestServerStartAndStop(t *testing.T) {
 	_ = s.Stop(ctx)
 }
 
-// s_logger returns a fresh Logger reused by middleware tests.
+// s_logger returns the logger of a new Server.
 func s_logger(t *testing.T) Logger {
 	t.Helper()
 	return newTestServer(t).Logger()
 }
 
-// AccessLogFields appends request-derived fields to the access line, after
-// the handler ran, so the matched route pattern is available.
+// AccessLogFields adds its fields after the handler ran, so the matched route is available.
 func TestAccessLogFields(t *testing.T) {
 	logs := observeLogs(t)
 	s := newTestServer(t).Use(AccessLog(log.Default(), AccessLogFields(func(r *http.Request) []log.Field {

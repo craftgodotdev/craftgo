@@ -16,9 +16,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// fakeStatusError is a stand-in for a craftgo-generated typed error: it carries
-// an HTTP status, so WriteError renders it directly instead of treating it as
-// an unknown error.
+// fakeStatusError is a StatusError with a fixed message and status.
 type fakeStatusError struct {
 	msg    string
 	status int
@@ -27,8 +25,7 @@ type fakeStatusError struct {
 func (e fakeStatusError) Error() string   { return e.msg }
 func (e fakeStatusError) HTTPStatus() int { return e.status }
 
-// observeLogs swaps the package logger for one that records into an observer,
-// restoring the previous default on cleanup. Returns the recorded logs.
+// observeLogs points log.Default at an observer until the test ends.
 func observeLogs(t *testing.T) *observer.ObservedLogs {
 	t.Helper()
 	core, logs := observer.New(zapcore.InfoLevel)
@@ -38,8 +35,7 @@ func observeLogs(t *testing.T) *observer.ObservedLogs {
 	return logs
 }
 
-// reqWithTrace returns a request whose context carries a valid OTel span, so
-// WithContext stamps trace_id / span_id onto any log line.
+// reqWithTrace returns a request whose context carries a valid span.
 func reqWithTrace() *http.Request {
 	sc := trace.NewSpanContext(trace.SpanContextConfig{
 		TraceID:    trace.TraceID{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10},
@@ -50,9 +46,7 @@ func reqWithTrace() *http.Request {
 	return httptest.NewRequest(http.MethodGet, "/x", nil).WithContext(ctx)
 }
 
-// TestWriteError_TypedErrorRendersStatusNoLog pins that a recognised typed
-// error (a StatusError) is rendered with its own HTTP status and is NOT logged
-// - a declared 4xx/5xx is an expected outcome, not an operational failure.
+// A StatusError is written with its own status and not logged.
 func TestWriteError_TypedErrorRendersStatusNoLog(t *testing.T) {
 	logs := observeLogs(t)
 	rec := httptest.NewRecorder()
@@ -69,10 +63,7 @@ func TestWriteError_TypedErrorRendersStatusNoLog(t *testing.T) {
 	}
 }
 
-// TestWriteError_UnknownErrorLogsWithTrace pins the contract: an error that is
-// NOT a typed StatusError (a bare fmt.Errorf) is logged at Error level with the
-// request's trace context (trace_id / span_id) and answered 500 with an OPAQUE
-// body - the raw error text stays in the log and never leaks to the client.
+// An error without a status is logged with the trace ids and answered with an opaque 500.
 func TestWriteError_UnknownErrorLogsWithTrace(t *testing.T) {
 	logs := observeLogs(t)
 	rec := httptest.NewRecorder()
@@ -98,15 +89,13 @@ func TestWriteError_UnknownErrorLogsWithTrace(t *testing.T) {
 	if _, ok := fields["span_id"]; !ok {
 		t.Errorf("log line must carry span_id; fields: %v", fields)
 	}
-	// The full error must reach the LOG (it is kept off the wire).
+	// The log carries the real error.
 	if got, _ := fields["error"].(string); got != context.DeadlineExceeded.Error() {
 		t.Errorf("log line must carry the real error; got error=%q", got)
 	}
 }
 
-// TestSetHandleUnknownError_Swaps pins that the hook replaces the default and
-// receives (w, r, err) - so an app can map domain errors, log differently, or
-// return a uniform envelope. Reverting with nil restores the default.
+// SetHandleUnknownError's handler receives every error without a status, with its request.
 func TestSetHandleUnknownError_Swaps(t *testing.T) {
 	var gotErr error
 	var gotReq *http.Request
@@ -130,7 +119,7 @@ func TestSetHandleUnknownError_Swaps(t *testing.T) {
 		t.Error("custom handler did not receive the request (needed for trace context)")
 	}
 
-	// A typed error still bypasses the unknown hook entirely.
+	// A StatusError never reaches the hook.
 	gotErr = nil
 	rec2 := httptest.NewRecorder()
 	WriteError(rec2, reqWithTrace(), fakeStatusError{msg: "x", status: http.StatusNotFound})
@@ -142,9 +131,7 @@ func TestSetHandleUnknownError_Swaps(t *testing.T) {
 	}
 }
 
-// A typed error wrapped with %w keeps its status, message and code: it is
-// an expected outcome, not an unknown error, so nothing is logged and the
-// client never sees a 500.
+// A StatusError wrapped with %w keeps its status and message and is not logged.
 func TestWriteErrorUnwrapsTypedErrors(t *testing.T) {
 	logs := observeLogs(t)
 	rec := httptest.NewRecorder()

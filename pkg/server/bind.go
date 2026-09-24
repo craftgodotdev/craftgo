@@ -7,14 +7,6 @@ import (
 	"unsafe"
 )
 
-// Wire-parse helpers shared by every generated handler: they turn a raw
-// HTTP string (query / header / cookie / form value) into a typed field,
-// reporting a parse failure through [WriteValidationError]. The codegen
-// emits one call per bound field instead of an inline parse block.
-
-// The constraint sets cover every wire-parseable Go kind plus any named
-// scalar over one of them (the `~` operator). No stdlib constraint spans
-// all sized integers, so they are declared here.
 type wireSigned interface {
 	~int | ~int8 | ~int16 | ~int32 | ~int64
 }
@@ -25,16 +17,13 @@ type wireFloat interface {
 	~float32 | ~float64
 }
 
-// bitSize reports the bit width of T (8 / 16 / 32 / 64) so the parse
-// rejects a value that overflows the declared field type - an `int8`
-// field still rejects 300. A named scalar reports its underlying width.
+// bitSize returns T's width in bits, so a parse rejects a value that overflows T.
 func bitSize[T any]() int {
 	var z T
 	return int(unsafe.Sizeof(z)) * 8
 }
 
-// ParseSigned parses s as a signed integer sized to T and converts to T,
-// covering the builtin int kinds and int-backed scalars.
+// ParseSigned parses s as a base-10 integer of T's width, failing with strconv's error.
 func ParseSigned[T wireSigned](s string) (T, error) {
 	n, err := strconv.ParseInt(s, 10, bitSize[T]())
 	return T(n), err
@@ -58,16 +47,13 @@ func ParseBool[T ~bool](s string) (T, error) {
 	return T(b), err
 }
 
-// writeInvalidValue writes the canonical "field: invalid kind value: …"
-// validation error shared by every Bind* parse failure.
+// writeInvalidValue writes the validation error "<field>: invalid <kind> value: <err>".
 func writeInvalidValue(w http.ResponseWriter, r *http.Request, field, kind string, err error) {
 	WriteValidationError(w, r, fmt.Errorf("%s: invalid %s value: %v", field, kind, err))
 }
 
-// BindValue parses raw into *dst when raw is non-empty. An absent or
-// present-but-empty value (`?x=`) leaves *dst at its zero value. A parse
-// failure writes a validation error and returns false so the handler
-// returns early.
+// BindValue parses a non-empty raw into *dst; an empty raw leaves *dst unchanged. A parse
+// failure writes a validation error with [WriteValidationError] and returns false.
 func BindValue[T any](w http.ResponseWriter, r *http.Request, field, kind, raw string, dst *T, parse func(string) (T, error)) bool {
 	if raw == "" {
 		return true
@@ -81,8 +67,7 @@ func BindValue[T any](w http.ResponseWriter, r *http.Request, field, kind, raw s
 	return true
 }
 
-// BindValuePtr is the optional (`*T`) variant: it points *dst at the
-// parsed value, leaving it nil when raw is empty.
+// BindValuePtr is [BindValue] for an optional field: *dst points at the parsed value.
 func BindValuePtr[T any](w http.ResponseWriter, r *http.Request, field, kind, raw string, dst **T, parse func(string) (T, error)) bool {
 	if raw == "" {
 		return true
@@ -96,12 +81,8 @@ func BindValuePtr[T any](w http.ResponseWriter, r *http.Request, field, kind, ra
 	return true
 }
 
-// RequirePresent writes a 400 and returns false when a required wire
-// parameter's key is absent. `present` is the source-specific presence
-// test the caller computes (url.Values.Has, a non-empty header-values
-// slice, ...); a present-but-empty value (`?q=`) counts as present, since
-// the value may legitimately be the empty string. Mirrors the BindValue
-// contract: the generated handler returns early when this returns false.
+// RequirePresent returns present, first writing the validation error
+// "<field>: missing required <kind> parameter" when it is false.
 func RequirePresent(w http.ResponseWriter, r *http.Request, present bool, field, kind string) bool {
 	if !present {
 		WriteValidationError(w, r, fmt.Errorf("%s: missing required %s parameter", field, kind))
@@ -110,25 +91,18 @@ func RequirePresent(w http.ResponseWriter, r *http.Request, present bool, field,
 	return true
 }
 
-// CookiePresent reports whether the named cookie is on the request.
-// `r.Cookie` returns http.ErrNoCookie when absent, so a nil error means
-// present. Used by the generated handler to drive RequirePresent for a
-// required cookie parameter.
+// CookiePresent reports whether r carries the named cookie.
 func CookiePresent(r *http.Request, name string) bool {
 	_, err := r.Cookie(name)
 	return err == nil
 }
 
-// BindValues parses each element of raw into *dst (repeated `?ids=1&ids=2`
-// or a multi-value header). One bad element fails the whole bind.
+// BindValues replaces *dst with the parsed elements of raw, leaving it unchanged when raw is
+// empty. One bad element writes a validation error and returns false.
 func BindValues[T any](w http.ResponseWriter, r *http.Request, field, kind string, raw []string, dst *[]T, parse func(string) (T, error)) bool {
 	if len(raw) == 0 {
-		// Key absent: leave dst as-is so a prefilled `@default` survives.
 		return true
 	}
-	// Key present: the wire array carries the full value, so REPLACE rather
-	// than append - appending onto a prefilled `@default` would concatenate
-	// the default with the request ([7,8] + [4,5] = [7,8,4,5]).
 	*dst = (*dst)[:0]
 	for _, s := range raw {
 		v, err := parse(s)

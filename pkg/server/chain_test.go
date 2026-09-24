@@ -7,9 +7,7 @@ import (
 	"testing"
 )
 
-// tagMW returns a middleware that appends `:tag` to a shared trace
-// before and after delegating, so test assertions can compare the
-// concatenated trace against the expected outermost-first order.
+// tagMW records its entry and exit in trace as >tag and <tag.
 func tagMW(trace *string, tag string) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,9 +43,7 @@ func TestChainThenSkipsNil(t *testing.T) {
 	}
 }
 
-// TestChainAppendDoesNotMutateReceiver pins the value-semantics
-// contract: a base chain shared between routes must not pick up
-// extras from one route's Append landing on another route's chain.
+// Append leaves the receiver unchanged.
 func TestChainAppendDoesNotMutateReceiver(t *testing.T) {
 	var trace string
 	base := NewChain(tagMW(&trace, "A"))

@@ -181,9 +181,7 @@ func TestWritePrecompressedDoesNotStackVary(t *testing.T) {
 	}
 }
 
-// A pre-gzipped body served through the Compress middleware must reach the
-// client exactly once encoded: the middleware sees Content-Encoding and
-// passes the bytes through untouched.
+// A precompressed body passes through Compress encoded once.
 func TestWritePrecompressedThroughCompressIsNotDoubleEncoded(t *testing.T) {
 	plain := []byte(strings.Repeat(`{"item":"payload"},`, 200))
 	var gz bytes.Buffer
@@ -238,9 +236,7 @@ func TestWritePrecompressedThroughCompressIsNotDoubleEncoded(t *testing.T) {
 	}
 }
 
-// A raw-response handler that already wrote part of a response and then
-// returns an error must not have an error envelope spliced into the body,
-// whatever writers sit between it and the Recovery wrapper.
+// WriteError after a commit only logs, whatever writers wrap the response.
 func TestWriteErrorAfterCommitThroughWrappers(t *testing.T) {
 	for _, tc := range []struct {
 		name         string

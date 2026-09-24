@@ -11,8 +11,7 @@ import (
 	"testing"
 )
 
-// largeBody returns a deterministic payload comfortably above the
-// default 1 KB MinSize so compression always commits.
+// largeBody returns a payload above the default MinSize.
 func largeBody() []byte {
 	return bytes.Repeat([]byte("hello-craftgo-"), 200) // 2800 bytes
 }
@@ -188,8 +187,7 @@ func TestCompressMultipleWritesCrossThreshold(t *testing.T) {
 	chunk := bytes.Repeat([]byte("x"), 600)
 	h := Compress()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		// First two writes stay under 1024; third crosses the
-		// threshold and triggers commitCompressed mid-stream.
+		// The third write crosses MinSize.
 		_, _ = w.Write(chunk)
 		_, _ = w.Write(chunk)
 		_, _ = w.Write(chunk)
@@ -212,9 +210,6 @@ func TestCompressFlushBelowThresholdPassthrough(t *testing.T) {
 	h := Compress()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = w.Write(body)
-		// httptest.ResponseRecorder satisfies Flusher via embedded
-		// methods; calling Flush here forces the compressWriter to
-		// commit before the threshold and stay uncompressed.
 		w.(http.Flusher).Flush()
 	}))
 	rec := httptest.NewRecorder()
@@ -250,7 +245,7 @@ func TestCompressHEADBypasses(t *testing.T) {
 
 func TestCompressGzipPreferredOverDeflate(t *testing.T) {
 	if got := negotiateEncoding("deflate, gzip"); got != "deflate" {
-		// First-listed wins; explicitly pin the rule.
+		// The first listed wins.
 		t.Fatalf("negotiateEncoding(\"deflate, gzip\") = %q, want deflate (first wins)", got)
 	}
 	if got := negotiateEncoding("gzip, deflate"); got != "gzip" {
@@ -264,8 +259,7 @@ func TestCompressGzipPreferredOverDeflate(t *testing.T) {
 	}
 }
 
-// A client that pins q=0 on gzip explicitly refuses it (RFC 7231 §5.3.1) and
-// must receive an uncompressed response.
+// A q=0 coding is refused (RFC 7231 §5.3.1).
 func TestNegotiateEncodingHonorsQZero(t *testing.T) {
 	cases := map[string]string{
 		"gzip;q=0":                  "",
@@ -284,8 +278,7 @@ func TestNegotiateEncodingHonorsQZero(t *testing.T) {
 	}
 }
 
-// statusRecorder and compressWriter must expose Unwrap so http.ResponseController
-// can reach the underlying writer (Hijack/Flush) through the middleware stack.
+// statusRecorder and compressWriter unwrap to the writer they wrap.
 func TestResponseWritersUnwrap(t *testing.T) {
 	base := httptest.NewRecorder()
 	var sr http.ResponseWriter = &statusRecorder{ResponseWriter: base}

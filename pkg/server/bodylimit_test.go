@@ -8,14 +8,11 @@ import (
 	"testing"
 )
 
-// BodyLimit must reject a request whose declared Content-Length already
-// exceeds the cap BEFORE the handler runs (413), not only when the handler
-// happens to read past the cap. A handler that never touches r.Body would
-// otherwise accept an arbitrarily large declared payload.
+// BodyLimit answers 413 to an oversized Content-Length before the handler runs.
 func TestBodyLimitRejectsOversizedContentLength(t *testing.T) {
 	called := false
 	h := BodyLimit(10)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true // deliberately does NOT read r.Body
+		called = true // never reads r.Body
 		w.WriteHeader(http.StatusOK)
 	}))
 	rec := httptest.NewRecorder()

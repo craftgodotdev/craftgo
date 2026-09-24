@@ -7,10 +7,7 @@ import (
 	"time"
 )
 
-// A per-method @timeout overrides the default handler timeout - even a LONGER
-// one. Under a default of 10ms, a route whose own timeout is 1h sees a ~1h
-// context deadline, so the default did not clamp it. Deadlines are inspected on
-// the request context, so the test never actually waits.
+// A WithLimits timeout replaces the default handler timeout, even when longer.
 func TestPerMethodTimeoutOverridesDefault(t *testing.T) {
 	s := New(nil)
 	s.SetDefaultHandlerTimeout(10 * time.Millisecond)
@@ -34,7 +31,7 @@ func TestPerMethodTimeoutOverridesDefault(t *testing.T) {
 	}
 }
 
-// A route WITHOUT its own @timeout inherits the default handler timeout.
+// A route without its own timeout gets the default handler timeout.
 func TestDefaultHandlerTimeoutAppliesToUntimedRoute(t *testing.T) {
 	s := New(nil)
 	s.SetDefaultHandlerTimeout(30 * time.Second)
@@ -57,7 +54,7 @@ func TestDefaultHandlerTimeoutAppliesToUntimedRoute(t *testing.T) {
 	}
 }
 
-// No default and no @timeout imposes no deadline (preserving unbounded handlers).
+// A route has no deadline without a default or its own timeout.
 func TestNoDefaultHandlerTimeoutMeansNoDeadline(t *testing.T) {
 	s := New(nil)
 	var hadDeadline bool

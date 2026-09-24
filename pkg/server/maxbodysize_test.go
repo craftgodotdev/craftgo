@@ -8,8 +8,7 @@ import (
 	"testing"
 )
 
-// SetDefaultMaxBodySize installs a global BodyLimit via Handler(), so an
-// oversized request is rejected even for a handler that never reads the body.
+// The default body cap rejects an oversized body even when the handler never reads it.
 func TestSetDefaultMaxBodySizeEnforced(t *testing.T) {
 	s := New(nil)
 	s.SetDefaultMaxBodySize(10)
@@ -24,13 +23,10 @@ func TestSetDefaultMaxBodySizeEnforced(t *testing.T) {
 	}
 }
 
-// A per-method @maxBodySize takes priority over the default - even a LARGER
-// value. Under a default of 10, a route whose own cap is 1000 accepts a 20-byte
-// body: the default must not clamp a route that declares its own limit.
+// A WithLimits body cap replaces the default cap, even when larger.
 func TestPerMethodMaxBodySizeOverridesDefault(t *testing.T) {
 	s := New(nil)
 	s.SetDefaultMaxBodySize(10)
-	// Emulates a generated route: the handler carries its own @maxBodySize.
 	route := WithLimits(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.Copy(io.Discard, r.Body)
 		w.WriteHeader(http.StatusOK)
@@ -44,8 +40,7 @@ func TestPerMethodMaxBodySizeOverridesDefault(t *testing.T) {
 	}
 }
 
-// The default (0) installs no global cap, so a large body is accepted -
-// preserving the pre-fix behaviour for callers that never set a cap.
+// Without a default cap a large body is accepted.
 func TestDefaultMaxBodySizeUnsetHasNoCap(t *testing.T) {
 	s := New(nil)
 	s.HandleFunc("POST /echo", func(w http.ResponseWriter, r *http.Request) {

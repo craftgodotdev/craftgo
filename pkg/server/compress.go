@@ -12,23 +12,17 @@ import (
 	"sync"
 )
 
-// CompressOptions tunes the response compression middleware.
+// CompressOptions tunes [Compress].
 type CompressOptions struct {
-	// MinSize is the threshold below which responses skip compression.
-	// Bodies smaller than this are released uncompressed because the
-	// CPU cost outweighs the wire-size win. Defaults to 1024.
+	// MinSize is the smallest body, in bytes, that is compressed; 0 means 1024.
 	MinSize int
-	// Level is the gzip / deflate compression level (1..9, or
-	// gzip.DefaultCompression). Defaults to gzip.DefaultCompression.
+	// Level is the gzip or flate level; 0 means gzip.DefaultCompression.
 	Level int
-	// SkipTypes overrides the default list of Content-Type prefixes
-	// that bypass compression (media that's already byte-compressed
-	// by its own format). Pass an empty slice to compress everything.
+	// SkipTypes are Content-Type prefixes never compressed; nil keeps the defaults, empty skips none.
 	SkipTypes []string
 }
 
-// defaultSkipTypes are Content-Type prefixes whose payloads are already
-// compressed by the format itself; recompressing burns CPU for no gain.
+// defaultSkipTypes are the Content-Type prefixes skipped by default: media, archives and fonts.
 var defaultSkipTypes = []string{
 	"image/", "video/", "audio/",
 	"application/zip", "application/gzip", "application/x-gzip",
@@ -37,12 +31,9 @@ var defaultSkipTypes = []string{
 	"font/woff", "font/woff2",
 }
 
-// Compress returns middleware that gzip- or deflate-compresses responses
-// when the client advertises a matching Accept-Encoding. Small bodies
-// (< MinSize) and pre-compressed media types pass through untouched.
-//
-// Vary: Accept-Encoding is added to every response so caches keep the
-// negotiated and unnegotiated copies separate.
+// Compress gzip- or deflate-encodes responses for clients that accept it, except HEAD
+// responses, already-encoded ones, bodies below MinSize and skipped types. Every response
+// gets Vary: Accept-Encoding. Only the first opts value is read.
 func Compress(opts ...CompressOptions) Middleware {
 	o := CompressOptions{}
 	if len(opts) > 0 {
@@ -90,12 +81,8 @@ func Compress(opts ...CompressOptions) Middleware {
 	}
 }
 
-// acceptedCodings yields the content-codings an Accept-Encoding value
-// accepts: lower-cased, in header order, with every token whose quality
-// is pinned to zero skipped - `gzip;q=0` is an explicit refusal of that
-// coding (RFC 7231 §5.3.1). A bare `*` is yielded verbatim and carries
-// no wildcard meaning. One parser feeds both so the middleware and a
-// raw handler cannot disagree about what a client accepts.
+// acceptedCodings yields the lower-cased codings of an Accept-Encoding value in header order,
+// skipping q=0 ones (an explicit refusal, RFC 7231 §5.3.1); `*` has no wildcard meaning.
 func acceptedCodings(accept string) iter.Seq[string] {
 	return func(yield func(string) bool) {
 		if accept == "" {
@@ -118,9 +105,8 @@ func acceptedCodings(accept string) iter.Seq[string] {
 	}
 }
 
-// negotiateEncoding returns "gzip", "deflate", or "" based on what the
-// client advertises. The first supported token with a non-zero quality
-// wins, so a client sending `gzip;q=0` receives an uncompressed response.
+// negotiateEncoding returns the first of "gzip" and "deflate" that accept lists, or "";
+// header order wins over q-values.
 func negotiateEncoding(accept string) string {
 	for coding := range acceptedCodings(accept) {
 		switch coding {
@@ -131,12 +117,8 @@ func negotiateEncoding(accept string) string {
 	return ""
 }
 
-// AcceptsEncoding reports whether the client accepts the content-coding
-// (`"zstd"`, `"gzip"`, `"br"`, ...): the token appears in the request's
-// Accept-Encoding with a non-zero quality. Case-insensitive. Raw-response
-// handlers that hold a body stored already compressed use it to decide
-// whether the bytes can go out verbatim; see WritePrecompressed for the
-// packaged form.
+// AcceptsEncoding reports whether r's Accept-Encoding lists coding ("zstd", "gzip", ...),
+// case-insensitively, with a non-zero quality; `*` does not count.
 func AcceptsEncoding(r *http.Request, coding string) bool {
 	return acceptsCoding(r.Header.Get("Accept-Encoding"), coding)
 }
@@ -155,8 +137,7 @@ func acceptsCoding(accept, coding string) bool {
 	return false
 }
 
-// qualityIsZero reports whether an Accept-Encoding parameter list pins the
-// quality to zero (`q=0`, `q=0.0`, ...) - an explicit "do not use this coding".
+// qualityIsZero reports whether an Accept-Encoding parameter list sets q=0 (or 0.0, ...).
 func qualityIsZero(params string) bool {
 	for seg := range strings.SplitSeq(params, ";") {
 		k, v, ok := strings.Cut(strings.TrimSpace(seg), "=")
@@ -179,10 +160,8 @@ type resettableWriter interface {
 	Reset(io.Writer)
 }
 
-// compressWriter buffers the head of the response so it can decide
-// whether the payload is large enough and of a compressible
-// Content-Type to be worth encoding. Once the decision is made the
-// remaining writes go straight through the chosen sink.
+// compressWriter buffers the response head until it can choose between compressing and
+// passing through.
 type compressWriter struct {
 	http.ResponseWriter
 	encoding    string
@@ -200,9 +179,7 @@ type compressWriter struct {
 	cmp resettableWriter
 }
 
-// WriteHeader records the status code without forwarding; the actual
-// upstream WriteHeader call happens once the compress / passthrough
-// decision is made.
+// WriteHeader records the first status; it is sent once the choice is made.
 func (cw *compressWriter) WriteHeader(code int) {
 	if cw.headerSet {
 		return
@@ -211,25 +188,13 @@ func (cw *compressWriter) WriteHeader(code int) {
 	cw.headerSet = true
 }
 
-// Unwrap exposes the wrapped writer so http.ResponseController (and net/http's
-// hijack path) can reach the underlying Hijacker - a connection Hijack (e.g. a
-// WebSocket upgrade) takes over the raw conn and bypasses compression, which is
-// the correct behaviour. Without Unwrap the upgrade fails with "feature not
-// supported" when Compress is in the chain.
 func (cw *compressWriter) Unwrap() http.ResponseWriter { return cw.ResponseWriter }
 
-// Committed reports whether the handler has already fixed the status:
-// WriteHeader was called, or Write implied it. The writer may still be
-// holding the head of the body below the size threshold - nothing has
-// reached the outer writer yet - but a second WriteHeader is ignored and
-// further writes append to that body, so an error envelope can no
-// longer replace the response. WriteError / WriteValidationError read
-// this through responseCommitted before deciding to write.
+// Committed reports whether the status is fixed, even while the body is still buffered.
 func (cw *compressWriter) Committed() bool { return cw.headerSet }
 
-// Write accumulates bytes until the threshold is crossed, then commits
-// to compressed encoding. Once committed, every subsequent Write goes
-// straight through the encoder.
+// Write buffers until minSize bytes arrive, then compresses; headers that rule compression
+// out send the body straight through.
 func (cw *compressWriter) Write(b []byte) (int, error) {
 	if !cw.headerSet {
 		cw.WriteHeader(http.StatusOK)
@@ -251,10 +216,8 @@ func (cw *compressWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-// Flush forces a decision: bytes still buffered below the threshold
-// flow out uncompressed because compressing under-sized output wastes
-// CPU. After the decision, the underlying flusher is invoked so
-// streaming downstreams keep working.
+// Flush sends a still-buffered body uncompressed, or flushes the encoder, then flushes the
+// wrapped writer.
 func (cw *compressWriter) Flush() {
 	if !cw.decided {
 		cw.commitPassthrough()
@@ -266,9 +229,8 @@ func (cw *compressWriter) Flush() {
 	}
 }
 
-// shouldSkipImmediately checks the headers the upstream handler set
-// before any body bytes - already-encoded responses, declared-small
-// Content-Length, or skip-listed Content-Type all bypass the encoder.
+// shouldSkipImmediately reports whether the headers rule compression out: a Content-Encoding,
+// a Content-Length below minSize or a skipped Content-Type.
 func (cw *compressWriter) shouldSkipImmediately() bool {
 	h := cw.Header()
 	if h.Get("Content-Encoding") != "" {
@@ -330,9 +292,7 @@ func (cw *compressWriter) commitCompressed() {
 	}
 }
 
-// Close finalises the response: flush+return any active encoder to the
-// pool, or release the buffered passthrough bytes when the handler
-// wrote less than the threshold.
+// Close sends a still-buffered body uncompressed, or closes the encoder and returns it to its pool.
 func (cw *compressWriter) Close() {
 	if !cw.decided {
 		if cw.headerSet {

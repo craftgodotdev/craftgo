@@ -6,10 +6,6 @@ import (
 	"testing"
 )
 
-// RequirePresent guards required wire params (notably cookies, which the binder
-// can't tell "absent" from "empty" for otherwise). Absent -> 400 + false;
-// present -> true with nothing written.
-
 func TestRequirePresentAbsentWrites400(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -27,8 +23,7 @@ func TestRequirePresentPresentWritesNothing(t *testing.T) {
 	if !RequirePresent(w, r, true, "sid", "cookie") {
 		t.Fatal("RequirePresent(present=true) = false, want true")
 	}
-	// httptest recorder reports 200 until something writes a status; a present
-	// param must leave the response untouched.
+	// The recorder reports 200 until a status is written.
 	if w.Code != http.StatusOK {
 		t.Errorf("present param wrote status %d, want no write (200 default)", w.Code)
 	}

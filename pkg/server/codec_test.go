@@ -54,8 +54,7 @@ func resetCodec(t *testing.T) {
 	})
 }
 
-// With strict on, JSON() decodes through the codec's DecodeStrict; off,
-// through Decode.
+// With strict on, JSON() decodes through DecodeStrict; off, through Decode.
 func TestStrictJSONRoutesThroughDecodeStrict(t *testing.T) {
 	resetCodec(t)
 	lenient, strict := 0, 0
@@ -75,8 +74,7 @@ func TestStrictJSONRoutesThroughDecodeStrict(t *testing.T) {
 	}
 }
 
-// A codec without DecodeStrict is refused in either order, and the
-// previous state stays.
+// A codec without DecodeStrict is refused in either order, and the previous state stays.
 func TestStrictJSONRefusesACodecWithoutDecodeStrict(t *testing.T) {
 	resetCodec(t)
 	if err := SetGlobalJSONCodec(lenientOnly{}); err != nil {

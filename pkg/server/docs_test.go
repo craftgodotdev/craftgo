@@ -80,7 +80,7 @@ func TestServeDocs_CustomPathsAndJSONSpec(t *testing.T) {
 	if !strings.Contains(body, "<title>My API</title>") {
 		t.Error("docs page should use the custom title")
 	}
-	// default /docs must NOT be registered when a custom path is used
+	// The default /docs is not registered.
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/docs", nil))
 	if rec.Code != http.StatusNotFound {
