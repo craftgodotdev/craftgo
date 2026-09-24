@@ -415,6 +415,54 @@ func TestStreamRecoveryAndAccessLog(t *testing.T) {
 	}
 }
 
+// AccessLogSkipMethods keeps a unary or streaming method out of the log, and AccessLogFields
+// adds its fields to every other line.
+func TestAccessLogOptions(t *testing.T) {
+	for name, skipped := range map[string]string{"skip unary": pingMethod, "skip stream": countMethod} {
+		t.Run(name, func(t *testing.T) {
+			logs := newCapture()
+			srv := New(nil).SetLogger(logs)
+			srv.Use(AccessLog(logs,
+				AccessLogSkipMethods(skipped),
+				AccessLogFields(func(_ context.Context, fullMethod string) []log.Field {
+					return []log.Field{log.String("route", fullMethod)}
+				}),
+			))
+			conn := serve(t, srv, &echo{
+				ping:  pong,
+				count: func(*wrapperspb.StringValue, grpc.ServerStream) error { return nil },
+			})
+			if _, err := ping(conn, "a"); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			stream, err := conn.NewStream(ctx, &grpc.StreamDesc{StreamName: "Count", ServerStreams: true}, countMethod)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := stream.SendMsg(wrapperspb.String("b")); err != nil {
+				t.Fatal(err)
+			}
+			if err := stream.CloseSend(); err != nil {
+				t.Fatal(err)
+			}
+			if err := stream.RecvMsg(new(wrapperspb.StringValue)); !errors.Is(err, io.EOF) {
+				t.Fatalf("stream ended with %v", err)
+			}
+
+			want := pingMethod
+			if skipped == pingMethod {
+				want = countMethod
+			}
+			access := logs.lines("grpc access")
+			if len(access) != 1 || access[0].fields["method"] != want || access[0].fields["route"] != want {
+				t.Errorf("access = %+v, want one line for %s with its route field", access, want)
+			}
+		})
+	}
+}
+
 func TestInfrastructureMethodsBypassTheChain(t *testing.T) {
 	logs := newCapture()
 	srv := New(nil, WithReflection(true)).SetLogger(logs)
