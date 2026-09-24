@@ -3,7 +3,10 @@ package nats_test
 import (
 	"context"
 	"errors"
+	"runtime"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -152,6 +155,72 @@ func TestConsumerGroupsOverNATS(t *testing.T) {
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
+}
+
+// Cancelling a subscription's context unsubscribes it.
+func TestCancellingTheContextStopsDeliveryOverNATS(t *testing.T) {
+	conn := runServer(t)
+	tr := craftnats.New(conn)
+	var delivered atomic.Int64
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := tr.Subscribe(ctx, []events.Subscription{{
+		Event: "orders.Placed", Consumer: "C", Group: "g",
+		Handle: func(context.Context, *events.Message) error {
+			delivered.Add(1)
+			return nil
+		},
+	}}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	cancel()
+	deadline := time.Now().Add(5 * time.Second)
+	for conn.NumSubscriptions() > 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the subscription outlived its context")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if err := conn.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if n := delivered.Load(); n != 0 {
+		t.Errorf("%d deliveries after the context ended, want 0", n)
+	}
+}
+
+// A subscription on a context that never ends parks no goroutine waiting for it.
+func TestASubscriptionOnAContextThatNeverEndsParksNoWatcher(t *testing.T) {
+	conn := runServer(t)
+	tr := craftnats.New(conn)
+	defer func() { _ = tr.Close() }()
+	if err := tr.Subscribe(context.Background(), []events.Subscription{{
+		Event: "orders.Placed", Consumer: "C", Group: "g",
+		Handle: func(context.Context, *events.Message) error { return nil },
+	}}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	for deadline := time.Now().Add(200 * time.Millisecond); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if n := parkedOnANilChannel(); n > 0 {
+			t.Fatalf("%d goroutine(s) wait for a context that never ends", n)
+		}
+	}
+}
+
+// parkedOnANilChannel counts this adapter's goroutines blocked for ever on a nil channel.
+func parkedOnANilChannel() int {
+	buf := make([]byte, 1<<20)
+	buf = buf[:runtime.Stack(buf, true)]
+	n := 0
+	for _, g := range strings.Split(string(buf), "\n\n") {
+		if strings.Contains(g, "[chan receive (nil chan)") && strings.Contains(g, "pkg/events/nats.") {
+			n++
+		}
+	}
+	return n
 }
 
 // A batch reaches the broker in one call and every message arrives.

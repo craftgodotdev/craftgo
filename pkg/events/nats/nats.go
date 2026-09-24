@@ -158,10 +158,7 @@ func (t *Transport) subscribeOne(ctx context.Context, sub events.Subscription) e
 	t.mu.Lock()
 	t.subs = append(t.subs, s)
 	t.mu.Unlock()
-	go func() {
-		<-ctx.Done()
-		_ = s.Unsubscribe()
-	}()
+	context.AfterFunc(ctx, func() { _ = s.Unsubscribe() })
 	return nil
 }
 

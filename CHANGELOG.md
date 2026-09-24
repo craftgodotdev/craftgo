@@ -135,6 +135,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   `nats.ErrClosed`. A late subscribe created its durable and consumed with
   nothing to stop it: neither `Close` nor cancelling its context ended it.
 
+- **A core NATS subscription on a context that never ends parks no
+  goroutine.** Each one left a goroutine waiting for ever on `ctx.Done()`.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
