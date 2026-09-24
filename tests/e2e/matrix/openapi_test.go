@@ -24,8 +24,8 @@ func TestOpenAPI_DocumentShape(t *testing.T) {
 		"openapi: 3.1.0",
 		"AcctUser:",
 		"AcctCreateUserReq:",
-		// GetUser/CreateUser collide with cornercase's UserService, so the
-		// operationId is service-prefixed.
+		// GetUser/CreateUser collide with UserService's, so the operationId
+		// is service-prefixed.
 		"operationId: AccountUserServiceGetUser",
 		"operationId: AccountUserServiceCreateUser",
 	} {
@@ -36,8 +36,7 @@ func TestOpenAPI_DocumentShape(t *testing.T) {
 }
 
 func TestOpenAPI_MultiServiceOperationIDDisambiguation(t *testing.T) {
-	// OrdersService and CatalogService both declare `Ping`; the operationIds
-	// disambiguate by service.
+	// OrdersService and CatalogService both declare Ping.
 	doc := readOpenAPI(t)
 	for _, want := range []string{
 		"operationId: OrdersServicePing",
@@ -59,9 +58,8 @@ func TestOpenAPI_SecuritySchemeEmitted(t *testing.T) {
 	}
 }
 
-// pathBlock returns the YAML block of the path item that carries opID (each
-// raw-modes path declares a single operation, so the path block is the
-// operation block).
+// pathBlock returns the YAML block of the path item holding operation opID;
+// each raw-modes path holds one operation.
 func pathBlock(t *testing.T, doc, opID string) string {
 	t.Helper()
 	for _, block := range strings.Split(doc, "\n  /") {
@@ -73,9 +71,8 @@ func pathBlock(t *testing.T, doc, opID string) string {
 	return ""
 }
 
-// The raw modes: a request / response block on a raw side is the documented
-// contract, emitted exactly like a typed one; no block keeps the untyped
-// fallbacks; a raw response documents 200 unless @status says otherwise.
+// A block on a raw side is documented like a typed one, a raw side without
+// one stays */*, and a raw response documents 200 unless @status sets it.
 func TestOpenAPI_RawModesContracts(t *testing.T) {
 	doc := readOpenAPI(t)
 

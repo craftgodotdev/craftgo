@@ -14,9 +14,8 @@ import (
 	rawmodes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/raw_modes_service"
 )
 
-// rawDo issues one request against ts with an identity-only client (Go's
-// default transport would otherwise add Accept-Encoding: gzip and
-// transparently undo the encoding the tests want to observe).
+// rawDo sends one request with compression disabled, so an encoded body
+// reaches the test as sent.
 func rawDo(t *testing.T, ts *httptest.Server, method, path string, headers map[string]string, body io.Reader) (*http.Response, []byte) {
 	t.Helper()
 	req, err := http.NewRequest(method, ts.URL+path, body)
@@ -47,8 +46,8 @@ func TestRawModes_PassthroughBare(t *testing.T) {
 	}
 }
 
-// A passthrough with request/response blocks stays fully raw at runtime: the
-// stub decodes the contract itself (and may reuse the generated Validate()).
+// A passthrough's request and response blocks are docs only: the stub
+// decodes and validates the request itself.
 func TestRawModes_PassthroughBlocksAreDocsOnly(t *testing.T) {
 	ts := bootAll(t)
 	resp, body := rawDo(t, ts, http.MethodGet, "/api/raw/pt/items/42", nil, nil)
@@ -70,8 +69,8 @@ func TestRawModes_PassthroughSeesTimeoutDeadline(t *testing.T) {
 	}
 }
 
-// The headline case: a body stored already compressed goes out verbatim
-// when the client accepts the coding, and decoded otherwise.
+// A precompressed body goes out as stored to a client that accepts its
+// coding, and decoded to one that does not.
 func TestRawModes_RawResponsePrecompressedNegotiation(t *testing.T) {
 	ts := bootAll(t)
 

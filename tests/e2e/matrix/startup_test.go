@@ -17,9 +17,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// wiredContext is a container with every HTTP middleware the design
-// applies assigned. Register refuses one that is missing any of them, so
-// a test reaching past that check builds its container through here.
+// wiredContext returns a service context with every HTTP middleware the
+// design applies assigned, as wiring.Register requires.
 func wiredContext() *svccontext.ServiceContext {
 	svc := svccontext.NewServiceContext()
 	svc.Audit = middleware.NewAuditMiddleware()
@@ -32,20 +31,13 @@ func wiredContext() *svccontext.ServiceContext {
 	return svc
 }
 
-// capableTransport is an in-process transport that answers yes to every
-// disposition. It is not a broker that can honour one - it is what a
-// transport that CAN looks like to the startup check, which reads the
-// capability once and never asks again.
+// capableTransport is a memory transport that claims every disposition.
 type capableTransport struct{ *memory.Transport }
 
 func (capableTransport) CanDisposition(craftevents.Disposition) bool { return true }
 
-// A delivery guarantee the deployment states is worth nothing if the
-// transport cannot keep it, so registration is refused rather than
-// running a chain whose Redeliver is silently settled. The refusal comes
-// out of the deployable's own Register: that is the only thing standing
-// between it and a binary that boots, serves HTTP, passes readiness and
-// quietly loses every message it meant to retry.
+// consumers.Register fails with ErrDispositionUnsupported when the bus
+// requires a disposition the transport cannot honour.
 func TestARequiredDispositionTheTransportLacksFailsRegistration(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -93,10 +85,7 @@ func TestARequiredDispositionTheTransportLacksFailsRegistration(t *testing.T) {
 	}
 }
 
-// A design with events generates a wiring umbrella that knows nothing
-// about them: the bus, the groups and the subscriptions are the
-// application's, so Register attaches HTTP and hands back a shutdown
-// without a container carrying anything event-shaped.
+// wiring.Register attaches HTTP with no bus and returns a working shutdown.
 func TestWiringRegisterIsHTTPOnly(t *testing.T) {
 	svc := wiredContext()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -114,9 +103,7 @@ func TestWiringRegisterIsHTTPOnly(t *testing.T) {
 	}
 }
 
-// The complement: an HTTP middleware the design applies but nothing wired
-// is skipped by the chain rather than called, so the guarantee would be
-// missing with nothing to notice. Register names the line to add instead.
+// wiring.Register refuses a nil declared middleware and names its constructor.
 func TestWiringRegisterRefusesAnUnwiredHTTPMiddleware(t *testing.T) {
 	svc := wiredContext()
 	svc.Audit = nil

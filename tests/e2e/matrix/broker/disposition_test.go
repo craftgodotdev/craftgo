@@ -14,8 +14,7 @@ import (
 	eventtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
 )
 
-// attempts records what each delivery looked like to a middleware
-// wrapping a registered handler.
+// attempts records the deliveries a middleware saw.
 type attempts struct {
 	mu   sync.Mutex
 	rows []attempt
@@ -44,32 +43,13 @@ func (a *attempts) of(consumer string) []attempt {
 	return out
 }
 
-// A middleware asking for a message back gets it back, and one giving a
-// message up is not asked again - through the GENERATED descriptor, which
-// is the part a transport test cannot reach.
-//
-// The decision is written on the delivery, and between the writing and
-// the broker reading it sit the descriptor's decode-validate-dispatch
-// wrapper and both of the bus's recover frames. A wrapper that handed the
-// handler a different message, or a recover that cleared the decision,
-// would lose the ask with nothing to see it: every message the chain
-// meant to retry would be taken as done.
-//
-// The sequence below is one goroutine's, which soleListenerOf checks
-// against what this deployable registers rather than this comment
-// asserting it.
+// Through the generated descriptor, a message a middleware redelivers comes
+// back and one it rejects does not.
 func TestARedeliveredMessageComesBackAndARejectedOneDoesNot(t *testing.T) {
 	addrs := cluster(t, itemStocked, warehouseClosed, forged, tierPromoted)
 	shareFromEarliest(t, addrs, tierGroup(t))
 
 	seen := &attempts{}
-	// A bus middleware wraps EVERY subscription, and the decision below
-	// is the TierPromoted listener's alone: asking for a message back is
-	// unbounded here, so left unscoped this would arm a redelivery loop on
-	// every other share consumer the moment one of them is sent anything.
-	//
-	// The scope is the contract, which soleListenerOf has just checked
-	// exactly one subscription of this deployable carries.
 	decide := func(sub craftevents.Subscription, next craftevents.Handler) craftevents.Handler {
 		if sub.Event != tierPromoted {
 			return next
@@ -87,8 +67,7 @@ func TestARedeliveredMessageComesBackAndARejectedOneDoesNot(t *testing.T) {
 		}
 	}
 
-	// Published through a transport of its own: the consuming one is in
-	// share mode, and a producer needs nothing from it.
+	// A publish-only transport; the consuming one below is in share mode.
 	_, publisher := boot(t, addrs, false, nil, nil)
 	if err := events.TierPromoted.Publish(context.Background(), publisher,
 		&eventtypes.TierPromoted{Tier: 2, MemberID: "mem-1"}); err != nil {
@@ -108,8 +87,8 @@ func TestARedeliveredMessageComesBackAndARejectedOneDoesNot(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("the middleware saw %d deliveries, want 2", len(rows))
 	}
-	// The broker's own count, this attempt included: the same message
-	// came back rather than a second one arriving.
+	// Deliveries is the broker's count, so 1 then 2 is the same message
+	// coming back.
 	if rows[0].deliveries != 1 || rows[1].deliveries != 2 {
 		t.Errorf("delivery counts = %d then %d, want 1 then 2", rows[0].deliveries, rows[1].deliveries)
 	}

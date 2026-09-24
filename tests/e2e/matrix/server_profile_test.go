@@ -11,8 +11,6 @@ import (
 	designtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/design"
 )
 
-// ---- profile service: nested validation + business errors ----
-
 func TestServer_ProfileCreateAndGet(t *testing.T) {
 	ts, _ := boot(t)
 	st, body := reqJSON(t, ts, http.MethodPost, "/api/v1/profiles", validProfile("alice"))
@@ -98,8 +96,6 @@ func TestServer_ProfileRateLimit429(t *testing.T) {
 		t.Errorf("5th create: status %d body %s", st, body)
 	}
 }
-
-// ---- security: ProfileAuth middleware gates the admin endpoints ----
 
 func authGet(t *testing.T, ts *httptest.Server, path, token string) int {
 	t.Helper()

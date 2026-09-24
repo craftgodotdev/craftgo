@@ -18,8 +18,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 )
 
-// tracer collects one entry per middleware frame. The listeners of a
-// contract run on one goroutine per group, so the trace is shared state.
+// tracer records middleware frames from concurrent deliveries.
 type tracer struct {
 	mu    sync.Mutex
 	marks []string
@@ -51,15 +50,15 @@ func (tr *tracer) tag(name string) craftevents.Middleware {
 	}
 }
 
-// promoteTier publishes the one contract with a single listener, so the
-// trace it produces is one goroutine's and ordering is unambiguous.
+// promoteTier publishes events.TierPromoted, whose single listener keeps
+// the trace on one goroutine.
 func promoteTier(t *testing.T, bus *craftevents.Bus) {
 	t.Helper()
 	promoteMember(t, bus, "m-1")
 }
 
-// promoteMember is promoteTier for a chosen member id. "panic-please" is
-// the one the TrackTier handler panics on.
+// promoteMember is promoteTier for a chosen member; TrackTier panics on
+// "panic-please".
 func promoteMember(t *testing.T, bus *craftevents.Bus, member string) {
 	t.Helper()
 	if err := events.TierPromoted.Publish(context.Background(), bus, &eventtypes.TierPromoted{
@@ -69,9 +68,7 @@ func promoteMember(t *testing.T, bus *craftevents.Bus, member string) {
 	}
 }
 
-// The chain [craftevents.Bus.Use] installs wraps every subscription
-// registered through the bus, outermost first: the first middleware
-// listed is the first frame a message enters.
+// The first middleware of a bus chain is the outermost frame.
 func TestConsumerChainWrapsEverySubscriptionOutermostFirst(t *testing.T) {
 	tr := &tracer{}
 	chain := craftevents.NewChain(tr.tag("A"), tr.tag("B"), tr.tag("C"))
@@ -89,9 +86,7 @@ func TestConsumerChainWrapsEverySubscriptionOutermostFirst(t *testing.T) {
 	}
 }
 
-// The consumer chain and the HTTP chain fold the same way. Two
-// conventions in one framework is a papercut a reader pays for forever,
-// so the orders are traced side by side rather than asserted apart.
+// A consumer chain and an HTTP chain nest the same middleware list alike.
 func TestConsumerChainFoldsLikeTheHTTPChain(t *testing.T) {
 	consumerTrace := &tracer{}
 	_, bus, transport := bootEventsWith(t,
@@ -119,14 +114,7 @@ func TestConsumerChainFoldsLikeTheHTTPChain(t *testing.T) {
 	}
 }
 
-// Every middleware is handed the subscription it wraps, so one chain
-// reads a different contract, consumer and group per subscription. That
-// is why the event side needs no decorator to select a target: what HTTP
-// names in the DSL arrives here as an argument.
-//
-// Consumer is the contract, which is what [craftevents.Event.Subscription]
-// defaults it to; the group is what tells four listeners of one contract
-// apart in a process that runs them all.
+// A bus middleware is handed each subscription's contract, consumer and group.
 func TestMiddlewareSeesEachSubscriptionsIdentity(t *testing.T) {
 	var mu sync.Mutex
 	var seen []string
@@ -140,8 +128,7 @@ func TestMiddlewareSeesEachSubscriptionsIdentity(t *testing.T) {
 	}
 	_, bus, transport := bootEventsWith(t, craftevents.NewChain(record), nil)
 
-	// ItemStocked has four listeners in this deployable, each in a group
-	// of its own.
+	// Four listeners, one group each; Consumer defaults to the contract.
 	if err := events.ItemStocked.Publish(context.Background(), bus, &eventtypes.ItemStocked{
 		InventoryHeader: eventtypes.InventoryHeader{Sku: "sku-1", Occurred: "2026-01-01T00:00:00Z"},
 		Quantity:        3,
@@ -163,8 +150,7 @@ func TestMiddlewareSeesEachSubscriptionsIdentity(t *testing.T) {
 	}
 }
 
-// A bus with no middleware delivers exactly what was registered - every
-// other event test in this fixture boots that way and still passes.
+// A bus with no middleware delivers to the registered handler.
 func TestNoMiddlewareLeavesDeliveryUnchanged(t *testing.T) {
 	svc, bus, transport := bootEventsWith(t, nil, nil)
 	promoteTier(t, bus)
@@ -175,10 +161,8 @@ func TestNoMiddlewareLeavesDeliveryUnchanged(t *testing.T) {
 	}
 }
 
-// A panicking handler reaches the project's own middleware as an error
-// and the delivery goroutine survives - with nothing to add to the chain.
-// The panic fires inside the handler on a goroutine the memory transport
-// spawned, which is the only honest place to observe this.
+// A handler panic reaches the project's middleware and the transport as a
+// *PanicError naming the subscription.
 func TestPanicInLogicReachesTheProjectsMiddleware(t *testing.T) {
 	var mu sync.Mutex
 	var seenByMiddleware, reported error
@@ -214,9 +198,8 @@ func TestPanicInLogicReachesTheProjectsMiddleware(t *testing.T) {
 	}
 }
 
-// A panicking MIDDLEWARE sits above the inner recover, so the project's
-// own middleware below it does not see the panic - but the outer recover
-// still keeps the delivery goroutine alive.
+// A middleware panic escapes the inner recover: the middleware wrapping it
+// sees no error, and the outer recover reports a *PanicError.
 func TestPanicInTheChainIsCaughtButNotObservable(t *testing.T) {
 	var mu sync.Mutex
 	var seenByMiddleware, reported error

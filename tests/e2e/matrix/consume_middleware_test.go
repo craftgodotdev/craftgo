@@ -14,18 +14,13 @@ import (
 	eventtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
 )
 
-// redeliverTransport is a broker that can hand a message back: it
-// re-delivers while the chain asks for it, counting deliveries the way an
-// adapter does through SetDeliveries. Only the subscriptions of the
-// published contract are driven, so a module registered whole produces
-// one delivery sequence.
+// redeliverTransport delivers the published message, up to max times while
+// the chain asks for it back.
 type redeliverTransport struct {
 	msg *craftevents.Message
 	max int
 }
 
-// Publish keeps the encoded message so Subscribe can hand the same one
-// back on each delivery, the way a broker replays what it stored.
 func (t *redeliverTransport) Publish(_ context.Context, m *craftevents.Message) error {
 	t.msg = m
 	return nil
@@ -52,8 +47,8 @@ func (t *redeliverTransport) Subscribe(ctx context.Context, subs []craftevents.S
 	return nil
 }
 
-// settle parks a failure and reports success - what a dead-letter
-// middleware does. It is the shape that makes chain order load-bearing.
+// settle is a dead-letter middleware: it parks a failure that is not being
+// redelivered and reports success.
 func settle(parked *int) craftevents.Middleware {
 	return func(_ craftevents.Subscription, next craftevents.Handler) craftevents.Handler {
 		return func(ctx context.Context, msg *craftevents.Message) error {
@@ -67,8 +62,8 @@ func settle(parked *int) craftevents.Middleware {
 	}
 }
 
-// attempt asks for the message back while its budget holds, returning the
-// error either way - what a retry middleware does.
+// attempt is a retry middleware: it redelivers a failure while Deliveries is
+// under budget, then rejects it, returning the error either way.
 func attempt(budget int, asked *int) craftevents.Middleware {
 	return func(_ craftevents.Subscription, next craftevents.Handler) craftevents.Handler {
 		return func(ctx context.Context, msg *craftevents.Message) error {
@@ -101,8 +96,7 @@ func (c *failingGuarded) InheritedStock(context.Context, *eventtypes.WarehouseCl
 	return nil
 }
 
-// subscribeGuarded registers the guarded module's three lines, the shape
-// one block of a deployable's Register has.
+// subscribeGuarded registers the guarded block of consumers.Register.
 func subscribeGuarded(bus *craftevents.Bus, h guardedLogic) error {
 	return errors.Join(
 		events.ItemStocked.Subscribe(bus, consumers.GuardedGroup, h.GuardedStock),
@@ -111,18 +105,15 @@ func subscribeGuarded(bus *craftevents.Bus, h guardedLogic) error {
 	)
 }
 
-// guardedLogic is what those three lines dispatch to. It is the test's
-// own interface, not a generated one: the design declares no such thing.
+// guardedLogic is the logic subscribeGuarded dispatches to.
 type guardedLogic interface {
 	GuardedStock(context.Context, *eventtypes.ItemStocked) error
 	BareStock(context.Context, *eventtypes.StocktakeStarted) error
 	InheritedStock(context.Context, *eventtypes.WarehouseClosed) error
 }
 
-// bootGuarded registers the guarded module behind chain on a transport
-// that can hand a message back, with one events.ItemStocked already
-// published. The chain goes on the BUS - the application installs it once
-// and every line it registers runs behind it.
+// bootGuarded publishes one events.ItemStocked, then starts the guarded
+// module on a redeliverTransport with chain installed bus-wide.
 func bootGuarded(t *testing.T, chain craftevents.Chain, h guardedLogic) {
 	t.Helper()
 	tr := &redeliverTransport{max: 10}
@@ -142,15 +133,7 @@ func bootGuarded(t *testing.T, chain craftevents.Chain, h guardedLogic) {
 	}
 }
 
-// The chain is the application's, installed on the bus once for every
-// line it registers: Settle is listed first so it is outermost, and
-// Attempt sits nearest the handler. That is the ONLY order in which the
-// retry works - Settle answers nil, so an Attempt above it is handed a
-// success and never reaches its Redeliver call.
-//
-// The assertion counts attempts rather than reading frames on purpose. A
-// reversed chain still ENTERS in the order it was written, so a
-// frame-order assertion passes on the broken one and this does not.
+// With settle outermost, a failure is retried to budget before it is parked.
 func TestARegisteredChainRetriesBeforeItParks(t *testing.T) {
 	var asked, parked int
 	h := &failingGuarded{}
@@ -167,11 +150,7 @@ func TestARegisteredChainRetriesBeforeItParks(t *testing.T) {
 	}
 }
 
-// The counter-case, and the reason the test above counts attempts: hand
-// the same two middlewares over in the other order and the handler runs
-// ONCE with zero retries, while the frame order still reads exactly as
-// written and the message is still parked. Nothing about the shape of the
-// run says it is broken.
+// With attempt outside settle, a failure is parked without a single retry.
 func TestAReversedChainSilentlyStopsRetrying(t *testing.T) {
 	var asked, parked int
 	h := &failingGuarded{}
@@ -185,15 +164,10 @@ func TestAReversedChainSilentlyStopsRetrying(t *testing.T) {
 	}
 }
 
-// A bus with no chain leaves the handler bare: a failure is neither
-// retried nor parked, it just comes back to the transport. The chain is
-// the application's to supply, and supplying none is a choice the design
-// has no say in.
+// A bus with no chain neither retries nor parks a failure.
 func TestNoChainLeavesTheHandlerBare(t *testing.T) {
 	var asked, parked int
 	h := &failingGuarded{}
-	// The middlewares are built so the counters CAN move, and handed to
-	// nothing, so a chain that crept in from anywhere else would show.
 	_, _ = settle(&parked), attempt(3, &asked)
 	bootGuarded(t, nil, h)
 
@@ -205,10 +179,7 @@ func TestNoChainLeavesTheHandlerBare(t *testing.T) {
 	}
 }
 
-// A subscription's own chain runs INSIDE the bus-wide one, so a bus-level
-// concern still sees what one line's chain did. The two are wired at
-// different places - Bus.Use for the deployable's, Subscription.Chain on
-// the value before it is registered - and both reach one delivery.
+// A subscription's own Chain runs inside the bus-wide chain.
 func TestASubscriptionsOwnChainRunsInsideTheBusChain(t *testing.T) {
 	tr := &tracer{}
 	var ran int
@@ -240,8 +211,7 @@ func TestASubscriptionsOwnChainRunsInsideTheBusChain(t *testing.T) {
 	}
 }
 
-// countingGuarded is logic that only counts, so the frame order around it
-// is the whole reading.
+// countingGuarded counts GuardedStock runs and never fails.
 type countingGuarded struct{ ran *int }
 
 func (c *countingGuarded) GuardedStock(context.Context, *eventtypes.ItemStocked) error {

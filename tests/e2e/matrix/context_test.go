@@ -12,16 +12,11 @@ import (
 	eventtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
 )
 
-// deliveryKey marks a value only the transport put on the context, so a
-// handler reading it back proves the context it was called with is the
-// one the delivery carried.
+// deliveryKey is a context key only the test's delivery context carries.
 type deliveryKey struct{}
 
-// handingTransport keeps the batch the bus registered and the message the
-// bus encoded, then hands the one to the other on a context of its own.
-// It stands in for what a broker adapter reaches a handler with - its own
-// record, a header this application did not map, a trace it opened - none
-// of which [craftevents.Message] carries.
+// handingTransport keeps the subscriptions and the message the bus hands it,
+// for a test to deliver by hand.
 type handingTransport struct {
 	subs []craftevents.Subscription
 	msg  *craftevents.Message
@@ -37,8 +32,7 @@ func (h *handingTransport) Publish(_ context.Context, msg *craftevents.Message) 
 	return nil
 }
 
-// contextProbe stands in for the application's logic so the context a
-// handler is called with can be read.
+// contextProbe records the context MirrorStock is called with.
 type contextProbe struct{ got context.Context }
 
 func (p *contextProbe) MirrorStock(ctx context.Context, _ *eventtypes.ItemStocked) error {
@@ -46,17 +40,7 @@ func (p *contextProbe) MirrorStock(ctx context.Context, _ *eventtypes.ItemStocke
 	return nil
 }
 
-// The context a handler is called with is the DELIVERY's, not one the
-// wrapper made up. That is the whole reach a handler has to what
-// [craftevents.Message] does not carry, and a wrapper that passed a fresh
-// context instead would take it away with every handler still compiling
-// and every payload still arriving.
-//
-// The subscription is built by the generated event descriptor, so what
-// this pins is that descriptor's wrapper: decode, validate, dispatch, and
-// the context going through all three untouched. That a Kafka delivery
-// carries its record at all is the adapter's own business and is pinned
-// there, so nothing here needs a broker.
+// The descriptor's wrapper passes the delivery's context to the handler.
 func TestTheDeliveryContextReachesTheHandler(t *testing.T) {
 	tr := &handingTransport{}
 	bus := craftevents.New(craftevents.WithTransport(tr), craftevents.WithCodec(codecjson.Codec{}))

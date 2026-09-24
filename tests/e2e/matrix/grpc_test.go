@@ -26,9 +26,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// bootGRPC serves the generated gRPC layer through the generated wiring
-// on an in-memory listener, with the guards main.go installs, and
-// returns a client for it.
+// bootGRPC serves the generated gRPC wiring over bufconn, behind access-log
+// and timeout interceptors, and returns a client.
 func bootGRPC(t *testing.T) pb.GreeterClient {
 	t.Helper()
 	svc := svccontext.NewServiceContext()
@@ -76,9 +75,8 @@ func TestGRPC_UnaryThroughTheGeneratedLayer(t *testing.T) {
 	}
 }
 
-// A craftgo typed error returned by logic reaches the client as the
-// status code its HTTP status maps to, with the error code as the
-// ErrorInfo reason and the service as the domain.
+// A typed error from logic reaches the client as the gRPC code for its HTTP
+// status, with an ErrorInfo carrying its code and service.
 func TestGRPC_TypedErrorsMapToStatusCodes(t *testing.T) {
 	client := bootGRPC(t)
 	_, err := client.SayHello(callCtx(t), &pb.HelloRequest{Name: "missing"})
@@ -173,8 +171,7 @@ func TestGRPC_BidiStreaming(t *testing.T) {
 	}
 }
 
-// The wiring registers the service under the health service the runtime
-// installs, so probes see it SERVING.
+// The runtime's health service reports the registered Greeter as SERVING.
 func TestGRPC_HealthReportsTheRegisteredService(t *testing.T) {
 	svc := svccontext.NewServiceContext()
 	srv := rpc.New(svc)

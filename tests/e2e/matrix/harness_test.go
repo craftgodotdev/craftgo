@@ -1,3 +1,4 @@
+// Package matrix runs the code craftgo generated for ./design, in process.
 package matrix
 
 import (
@@ -28,8 +29,8 @@ import (
 // authToken is the bearer the ProfileAuth middleware accepts.
 const authToken = "Bearer secret-token"
 
-// boot stands up every server-roundtrip service on one httptest server, with
-// the profile_service middleware wired.
+// boot serves the round-trip services on one httptest server, with
+// ProfileAuth and RequestStamp wired.
 func boot(t *testing.T) (*httptest.Server, *svccontext.ServiceContext) {
 	t.Helper()
 	svc := svccontext.NewServiceContext()
@@ -40,8 +41,7 @@ func boot(t *testing.T) (*httptest.Server, *svccontext.ServiceContext) {
 	catalogroutes.RegisterRoutes(srv, svc)
 	accountroutes.RegisterRoutes(srv, svc)
 	profileroutes.RegisterRoutes(srv, svc)
-	// AdminService and AdminApi each split across @group folders, so every
-	// group hub registers separately (the umbrella RegisterAll does the same).
+	// AdminService and AdminApi have one RegisterRoutes per @group folder.
 	adminroutes.RegisterRoutes(srv, svc)
 	adminlegacyroutes.RegisterRoutes(srv, svc)
 	adminapiv1routes.RegisterRoutes(srv, svc)
@@ -52,8 +52,8 @@ func boot(t *testing.T) (*httptest.Server, *svccontext.ServiceContext) {
 	return ts, svc
 }
 
-// validProfile returns a CreateProfileReq passing every validator; the unique
-// name keeps the duplicate-email check from rejecting parallel profiles.
+// validProfile returns a CreateProfileReq that passes every validator; its
+// email derives from name, so distinct names do not collide.
 func validProfile(name string) designtypes.CreateProfileReq {
 	lat, lng := 10.5, 105.8
 	return designtypes.CreateProfileReq{
@@ -109,8 +109,8 @@ func reqJSON(t *testing.T, ts *httptest.Server, method, path string, body any) (
 	return resp.StatusCode, out
 }
 
-// TestServer_HealthEndpoints boots WITH default health (the inverse of boot's
-// WithoutDefaultHealth) and confirms a registered health check serves.
+// TestServer_HealthEndpoints mounts its own /healthz on Mux(), which the
+// default probes leave free.
 func TestServer_HealthEndpoints(t *testing.T) {
 	svc := svccontext.NewServiceContext()
 	srv := server.New(svc)

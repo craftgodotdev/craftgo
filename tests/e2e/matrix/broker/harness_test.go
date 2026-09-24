@@ -1,10 +1,5 @@
-// Package broker runs the code craftgo generated for ../design against a
-// real broker. It is a package of its own so the matrix's own suite keeps
-// building and running without a broker client: the tests here are the
-// ones that cannot be written any other way, and they are slow because a
-// broker is.
-//
-// The broker is franz-go's in-process kfake - no Docker, no network.
+// Package broker runs the code craftgo generated for ../design against
+// kfake, franz-go's in-process Kafka broker.
 package broker
 
 import (
@@ -32,11 +27,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// The contracts this package addresses by topic, read off the generated
-// descriptors rather than retyped. The default mapping is the contract
-// name unchanged, so a contract with no topic cannot be published - which
-// is how a partial batch failure is produced without a transport written
-// to fail.
+// Each contract travels on a topic of its own name, so one whose topic the
+// cluster lacks fails to publish.
 const (
 	itemStocked     = events.ItemStockedContract
 	warehouseClosed = events.WarehouseClosedContract
@@ -44,13 +36,10 @@ const (
 	forged          = events.ForgedContract
 )
 
-// trackTier is the label the events.TierPromoted listener records its
-// deliveries under, which is the reading the disposition test joins on.
+// trackTier is what the events.TierPromoted listener records under.
 const trackTier = "TrackTier"
 
-// planned is what this deployable registers, read off a bus with no
-// transport: a subscription's identity is decided at registration, before
-// any broker is involved.
+// planned returns the plan of consumers.Register on a bus with no transport.
 func planned(t *testing.T) craftevents.Plan {
 	t.Helper()
 	bus := craftevents.New(craftevents.WithCodec(codecjson.Codec{}))
@@ -60,18 +49,8 @@ func planned(t *testing.T) craftevents.Plan {
 	return bus.Plan()
 }
 
-// soleListenerOf fails unless exactly one registered subscription listens
-// to contract, and returns its group. The disposition test reads a
-// delivery SEQUENCE, which is only unambiguous while one goroutine
-// produces it - so the premise is checked against the registration rather
-// than written down beside it, where a second listener would leave it
-// stale and the test reading interleavings.
-//
-// A stale group name here would configure a group nobody joins - a share
-// group reads from the end of the topic unless its config says otherwise
-// - and the redelivery test would then time out after sixty seconds with
-// a message a genuine transport regression produces word for word.
-// Reading it fails in no time at all, naming itself.
+// soleListenerOf returns the group of the only subscription to contract,
+// failing unless there is exactly one.
 func soleListenerOf(t *testing.T, contract string) craftevents.Group {
 	t.Helper()
 	var groups []craftevents.Group
@@ -100,12 +79,8 @@ func cluster(t *testing.T, topics ...string) []string {
 	c, err := kfake.NewCluster(
 		kfake.NumBrokers(1),
 		kfake.SeedTopics(1, topics...),
-		// A capability floor, not an arbitrary version, and the only
-		// place this package states one. Serving the three share APIs is
-		// not enough: AckRenew is a ShareAcknowledge v2 field, so the
-		// adapter's probe refuses any broker below that while lock
-		// renewal is on. Lowering this turns every share test here into a
-		// startup failure rather than a slower run.
+		// The floor for share groups with lock renewal: the adapter needs
+		// ShareAcknowledge v2 (AckRenew), which is Kafka 4.2.
 		kfake.MaxVersions(kversion.V4_2_0()),
 	)
 	if err != nil {
@@ -115,8 +90,7 @@ func cluster(t *testing.T, topics ...string) []string {
 	return c.ListenAddrs()
 }
 
-// createTopic adds a topic to a running broker, so a test can publish
-// while it is missing and consume once it is there.
+// createTopic creates topic on a running broker.
 func createTopic(t *testing.T, addrs []string, topic string) {
 	t.Helper()
 	cl, err := kgo.NewClient(kgo.SeedBrokers(addrs...))
@@ -140,8 +114,8 @@ func createTopic(t *testing.T, addrs []string, topic string) {
 	}
 }
 
-// shareFromEarliest opts a share group into reading what is already on
-// the topic; one otherwise starts at the end.
+// shareFromEarliest makes group read what the topic already holds; a share
+// group starts at the end by default.
 func shareFromEarliest(t *testing.T, addrs []string, group string) {
 	t.Helper()
 	cl, err := kgo.NewClient(kgo.SeedBrokers(addrs...))
@@ -169,11 +143,8 @@ func shareFromEarliest(t *testing.T, addrs []string, group string) {
 	}
 }
 
-// reported collects what a transport said about a delivery. The report
-// arrives on the transport's own read goroutine, and Close does not join
-// that goroutine - so logging from there races the end of the test, which
-// ends the whole binary in a panic. Rows are held and printed from the
-// test goroutine instead.
+// reported holds transport errors for dump: they arrive on a read goroutine
+// Close does not join, and t.Logf after the test ends panics.
 type reported struct {
 	mu   sync.Mutex
 	rows []string
@@ -194,14 +165,11 @@ func (r *reported) dump(t *testing.T) {
 	}
 }
 
-// boot wires this deployable's subscriptions onto a Kafka transport.
-// subscribe is false for a publish-only test, so nothing listens to a
-// topic that is deliberately missing.
+// boot builds a bus on a Kafka transport; with subscribe it also registers
+// and starts this deployable's consumers.
 func boot(t *testing.T, addrs []string, subscribe bool, tropts []craftkafka.Option, busopts []craftevents.Option) (*svccontext.ServiceContext, *craftevents.Bus) {
 	t.Helper()
-	// Registered first, so it runs last: after the read loops are
-	// cancelled and the transport is closed, with everything they said
-	// already collected.
+	// Registered first, so it runs last, after the transport is closed.
 	said := &reported{}
 	t.Cleanup(func() { said.dump(t) })
 
@@ -209,12 +177,7 @@ func boot(t *testing.T, addrs []string, subscribe bool, tropts []craftkafka.Opti
 		craftkafka.WithErrorHandler(func(_ craftevents.Subscription, _ *craftevents.Message, err error) {
 			said.add(err.Error())
 		}),
-		// A record for a missing topic is retried before the batch
-		// reports. Against a real broker that runs to the delivery
-		// timeout; against kfake it costs about a second, which is worth
-		// not paying on every run. Nothing here asserts the option - the
-		// rule that a caller option reaches the client is the adapter's,
-		// and pkg/events/kafka pins it.
+		// A record for a missing topic fails without retries.
 		craftkafka.WithClientOptions(kgo.UnknownTopicRetries(0)),
 	}, tropts...)
 	tr := craftkafka.New(addrs, tropts...)
@@ -238,8 +201,7 @@ func boot(t *testing.T, addrs []string, subscribe bool, tropts []craftkafka.Opti
 	return svc, bus
 }
 
-// counts renders how many payloads each listener has been handed, so a
-// test joins on a reading it can also print when the reading is wrong.
+// counts returns a reading of each named listener's payload count.
 func counts(svc *svccontext.ServiceContext, names ...string) func() string {
 	return func() string {
 		parts := make([]string, 0, len(names))
@@ -250,13 +212,8 @@ func counts(svc *svccontext.ServiceContext, names ...string) func() string {
 	}
 }
 
-// waitFor blocks until state reads want, so a broker test joins on an
-// outcome rather than sleeping for one.
-//
-// A timeout names the last reading. Without it a redelivery that never
-// came, a consumer group that drifted out of the deployable, and a bus
-// that lost the ask all end the same sixty seconds of silence, and the
-// message is the only thing that could have told them apart.
+// waitFor polls state until it reads want, failing with the last reading
+// once within has passed.
 func waitFor(t *testing.T, within time.Duration, what, want string, state func() string) {
 	t.Helper()
 	deadline := time.Now().Add(within)
@@ -270,9 +227,8 @@ func waitFor(t *testing.T, within time.Duration, what, want string, state func()
 	t.Fatalf("timed out waiting for %s: last saw %s, want %s", what, last, want)
 }
 
-// stillTrue asserts state reads want for the WHOLE window, which is how
-// "and nothing more arrived" is proved. It polls, so a reading that moves
-// and moves back inside the window is caught rather than slept through.
+// stillTrue polls state for the whole window and fails on the first reading
+// other than want.
 func stillTrue(t *testing.T, within time.Duration, complaint, want string, state func() string) {
 	t.Helper()
 	deadline := time.Now().Add(within)
@@ -285,8 +241,7 @@ func stillTrue(t *testing.T, within time.Duration, complaint, want string, state
 	}
 }
 
-// skus renders what a listener was handed, so a test names the entries
-// that reached a broker rather than counting them.
+// skus returns the sorted SKUs of ItemStocked payloads, and %#v of the rest.
 func skus(payloads []any) []string {
 	out := make([]string, 0, len(payloads))
 	for _, p := range payloads {

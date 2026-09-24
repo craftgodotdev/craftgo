@@ -1,14 +1,5 @@
-// Package e2e hosts the cross-fixture orchestrator. Every immediate
-// subdirectory of `tests/e2e/` that contains a go.mod is treated as
-// an independent scenario: the orchestrator runs `craftgo gen`
-// against it and then `go test ./...` inside it. Adding a new
-// scenario is a matter of dropping a self-contained Go module into
-// this directory.
-//
-// The fixtures live under `tests/e2e/` (not `testdata/`) on
-// purpose - they are full Go modules with their own tests, not
-// read-only fixture data. Keeping them next to the orchestrator
-// makes the layout self-explanatory.
+// Package e2e treats each subdirectory of tests/e2e holding a go.mod as a
+// scenario: it runs craftgo gen on the scenario, then go test ./... inside it.
 package e2e
 
 import (
@@ -22,25 +13,21 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/config"
 )
 
-// repoRoot returns the absolute path of the craftgo module root -
-// three levels up from this file (tests/e2e/orchestrator_test.go).
+// repoRoot returns the absolute path of the craftgo module root.
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, here, _, _ := runtime.Caller(0)
 	return filepath.Dir(filepath.Dir(filepath.Dir(here)))
 }
 
-// scenariosDir returns the absolute path of tests/e2e/, the directory
-// holding every isolated fixture module.
+// scenariosDir returns the absolute path of tests/e2e.
 func scenariosDir(t *testing.T) string {
 	t.Helper()
 	_, here, _, _ := runtime.Caller(0)
 	return filepath.Dir(here)
 }
 
-// discoverScenarios returns every immediate child of tests/e2e/ that
-// contains a go.mod. Adding a new fixture is just `mkdir + go mod
-// init` - the orchestrator picks it up on the next run.
+// discoverScenarios returns each child directory of tests/e2e holding a go.mod.
 func discoverScenarios(t *testing.T) []string {
 	t.Helper()
 	root := scenariosDir(t)
@@ -63,9 +50,7 @@ func discoverScenarios(t *testing.T) []string {
 	return out
 }
 
-// discoverManifests returns every manifest folder inside a scenario, in
-// walk order. A scenario may hold more than one - a deployable of its own
-// beside the design's - and each is generated in its own right.
+// discoverManifests returns the folder of every manifest under fixture.
 func discoverManifests(t *testing.T, fixture string) []string {
 	t.Helper()
 	var out []string
@@ -87,10 +72,7 @@ func discoverManifests(t *testing.T, fixture string) []string {
 	return out
 }
 
-// TestE2EFullPipeline runs `craftgo gen` against every manifest in every
-// scenario and then invokes `go test ./...` inside it. Each scenario is
-// an isolated Go module so a regression in one does not mask failures in
-// another.
+// TestE2EFullPipeline regenerates each scenario in place, then runs its tests.
 func TestE2EFullPipeline(t *testing.T) {
 	repo := repoRoot(t)
 	root := scenariosDir(t)
