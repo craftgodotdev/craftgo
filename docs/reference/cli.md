@@ -37,23 +37,24 @@ Flags:
 
 Without `-f`, `craftgo gen` walks upward from `<path>` (or cwd) probing direct subdirs at each level for a `craftgo.design.yaml`. The Go module path comes from `go.mod`, walking up from the project root - run `go mod init <module>` first if `go.mod` does not exist yet.
 
-## `craftgo fmt [path] [-l] [-w]`
+## `craftgo fmt [-l] [-w] [path]`
 
-Canonical-format `.craftgo` files. Default action: write back in place.
+Canonical-format design files (`.craftgo`, `.cg`): every one under a directory, or the one file the path names. Default action: write back in place.
 
 ```bash
-craftgo fmt                # format all .craftgo files under cwd
+craftgo fmt                # format every design file under cwd
 craftgo fmt design         # format files under design/
 craftgo fmt -l             # list files that would change (no write)
 craftgo fmt -w design      # explicit write mode
 ```
 
-Flags:
+Flags go before the path; a flag after it, or a second path, is an error.
 
-| Flag    | Effect                                                       |
-| ------- | ------------------------------------------------------------ |
-| `-l`    | List files that need formatting; do not modify.              |
-| `-w`    | Write the formatted result back (default).                   |
+| Flag           | Effect                                                              |
+| -------------- | ------------------------------------------------------------------- |
+| `-l`           | List files that need formatting; do not modify. Exits 1 if any do.  |
+| `-w`           | Write the formatted result back (default; with `-l`, list and write). |
+| `-h`, `--help` | Show help.                                                          |
 
 Use `-l` in CI to fail when files are not formatted. Use the default in local pre-commit hooks.
 
@@ -77,7 +78,7 @@ Top-level help. Same content as running `craftgo` with no arguments.
 | Code | Meaning                                      |
 | ---- | -------------------------------------------- |
 | 0    | Success                                      |
-| 1    | Any failure: parse or semantic errors, a generation error, or `fmt` left a file with errors unformatted |
+| 1    | Any failure: parse or semantic errors, a generation error, `fmt` left a file with errors unformatted, or `fmt -l` listed a file |
 | 2    | Usage error: no command, or an unknown one   |
 
 CI scripts can rely on these to fail builds.

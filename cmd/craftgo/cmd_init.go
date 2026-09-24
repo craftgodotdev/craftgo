@@ -10,21 +10,10 @@ import (
 // runInit writes a starter craftgo.design.yaml into the design folder args[0]
 // (default `design`), creating the folder, and leaves an existing manifest alone.
 func runInit(args []string) error {
-	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	if perr := fs.Parse(args); perr != nil {
-		return parseFlagError("init", perr)
+	target, err := parseArgs(flag.NewFlagSet("init", flag.ContinueOnError), args, "design")
+	if err != nil {
+		return err
 	}
-	rest := fs.Args()
-	target := "design"
-	switch len(rest) {
-	case 0:
-		// keep default
-	case 1:
-		target = rest[0]
-	default:
-		return fmt.Errorf("init: too many positional arguments (got %d, want at most 1)", len(rest))
-	}
-
 	designDir, err := filepath.Abs(target)
 	if err != nil {
 		return err

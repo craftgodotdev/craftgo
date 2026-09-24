@@ -19,17 +19,15 @@ import (
 
 // runFmt formats in place the design files under a path (default ".") or the
 // file it names, failing on files with errors, which stay untouched. `-l` lists
-// the files that differ instead and exits 1 if any do; `-l -w` does both.
+// the files that differ instead and returns errFilesDiffer if any do; `-l -w`
+// does both.
 func runFmt(args []string) error {
 	fs := flag.NewFlagSet("fmt", flag.ContinueOnError)
 	list := fs.Bool("l", false, "list files whose formatting differs from craftgo fmt")
 	write := fs.Bool("w", false, "write result to source file (default true when no other flags set)")
-	if err := fs.Parse(args); err != nil {
+	path, err := parseArgs(fs, args, ".")
+	if err != nil {
 		return err
-	}
-	path := "."
-	if fs.NArg() > 0 {
-		path = fs.Arg(0)
 	}
 	if !*list && !*write {
 		*write = true
@@ -75,15 +73,13 @@ func runFmt(args []string) error {
 			if err := os.WriteFile(f, []byte(formatted), 0o644); err != nil {
 				return err
 			}
-		} else if !*list {
-			fmt.Print(formatted)
 		}
 	}
 	if skipped > 0 {
 		return fmt.Errorf("%d file(s) left unformatted because of errors", skipped)
 	}
 	if *list && len(changed) > 0 {
-		os.Exit(1)
+		return errFilesDiffer
 	}
 	return nil
 }

@@ -36,17 +36,9 @@ func parseGenArgs(args []string) (manifest, ctxRoot, positional string, targets 
 	fs.StringVar(&manifest, "folder", "", "alias for -f")
 	fs.StringVar(&ctxRoot, "c", "", "project root the output paths resolve against (defaults to the parent of the design folder)")
 	fs.StringVar(&ctxRoot, "context", "", "alias for -c")
-	if perr := fs.Parse(args); perr != nil {
-		return "", "", "", nil, parseFlagError("gen", perr)
-	}
-	rest := fs.Args()
-	switch len(rest) {
-	case 0:
-		positional = "."
-	case 1:
-		positional = rest[0]
-	default:
-		return "", "", "", nil, fmt.Errorf("gen: too many positional arguments (got %d, want at most 1)", len(rest))
+	positional, err = parseArgs(fs, args, ".")
+	if err != nil {
+		return "", "", "", nil, err
 	}
 	return manifest, ctxRoot, positional, targets, nil
 }

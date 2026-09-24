@@ -66,6 +66,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   as its arguments - where an absolute path refused the file. It also
   reports what the formatter refuses, and exits 1 for either.
 
+- **`craftgo fmt` reads its flags like `gen` and `init`.** A flag after the
+  path - `craftgo fmt design -l`, the order the help text showed - was
+  ignored, so the files were rewritten instead of listed; it is now an
+  error, as is a second path. The help text reads `craftgo fmt [-l] [-w]
+  [path]`, and `craftgo fmt -h` exits 0.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

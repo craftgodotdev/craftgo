@@ -63,6 +63,36 @@ func TestRunFmtRefusesErrorsUnderAnyPath(t *testing.T) {
 	}
 }
 
+// fmt reads its flags and path like gen and init: flags first, one path at
+// most, and `-h` asks for help.
+func TestRunFmtArguments(t *testing.T) {
+	unformatted := "package app\n\ntype A {  x   string }\n"
+	for _, c := range []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{"flag after the path", []string{"design", "-l"}, `fmt: flag "-l" follows the path - flags go before it`},
+		{"two paths", []string{"design", "design/app.craftgo"}, "fmt: too many positional arguments (got 2, want at most 1)"},
+		{"unknown flag", []string{"-x"}, "fmt: flag provided but not defined: -x"},
+		{"help", []string{"-h"}, errHelpRequested.Error()},
+		{"list", []string{"-l", "design"}, errFilesDiffer.Error()},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			mustWrite(t, dir, "design/craftgo.design.yaml", "")
+			mustWrite(t, dir, "design/app.craftgo", unformatted)
+			t.Chdir(dir)
+			if err := runFmt(c.args); err == nil || err.Error() != c.wantErr {
+				t.Fatalf("err = %v, want %q", err, c.wantErr)
+			}
+			if got, _ := os.ReadFile(filepath.Join(dir, "design", "app.craftgo")); string(got) != unformatted {
+				t.Errorf("file was rewritten:\n%s", got)
+			}
+		})
+	}
+}
+
 // fmt honours the diagnostics of the formatter itself, here the parse errors of
 // a file beside the design folder that the project's analysis does not cover.
 func TestRunFmtRefusesWhatFormatReports(t *testing.T) {

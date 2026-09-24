@@ -42,7 +42,9 @@ func main() {
 	if errors.Is(err, errHelpRequested) {
 		return
 	}
-	fmt.Fprintln(os.Stderr, "craftgo: "+err.Error())
+	if !errors.Is(err, errFilesDiffer) {
+		fmt.Fprintln(os.Stderr, "craftgo: "+err.Error())
+	}
 	os.Exit(1)
 }
 
@@ -83,11 +85,16 @@ Usage:
                           run "go mod init <module>" first if it does not
                           exist yet.
 
-  craftgo fmt [path] [-l] [-w]
-                          Canonical-format .craftgo files (default: write back)
+  craftgo fmt [-l] [-w] [path]
+                          Canonical-format the design files (.craftgo, .cg)
+                          under <path> (default: cwd), or the file it names.
+                          A file with an error is reported and left untouched.
+                          Flags:
+                            -l   list the files that differ, write nothing,
+                                 and exit 1 if any differ
+                            -w   write the result back (the default; with
+                                 -l, list and write)
 
   craftgo version         Print the CLI version
-  craftgo help            Show this message
-
-For 'fmt', path may be a single file or a directory (recursed for *.craftgo).`)
+  craftgo help            Show this message`)
 }
