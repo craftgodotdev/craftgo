@@ -66,8 +66,8 @@ func WriteValidationError(w http.ResponseWriter, r *http.Request, err error) {
 	validationFailed.Load().(ValidationFailedHandler)(w, r, err)
 }
 
-// SetHandleNotFound sets the handler for requests that match no route; nil restores the
-// mux's own answer.
+// SetHandleNotFound sets the handler for the requests the mux answers 404; a method mismatch
+// keeps its 405. nil restores the mux's own answer.
 func (s *Server) SetHandleNotFound(h http.Handler) *Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()

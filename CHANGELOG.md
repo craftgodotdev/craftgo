@@ -24,6 +24,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@timeout` longer than the default and no `@maxBodySize` was cut to the
   default deadline; its own timeout now applies alone, as documented.
 
+- **A custom not-found handler keeps the 405.** With `SetHandleNotFound`
+  set, a request whose path matches a route under another method got the
+  custom 404 instead of 405 with `Allow`, and an unclean path got it instead
+  of the redirect to the cleaned one; the handler now receives only what the
+  mux answers 404.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added

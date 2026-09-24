@@ -200,6 +200,40 @@ func TestServerWithoutDefaultHealth(t *testing.T) {
 	}
 }
 
+// A custom not-found handler answers what the mux answers 404; a method mismatch keeps its
+// 405 with Allow, and an unclean path its redirect.
+func TestSetHandleNotFoundTakesOnlyThe404s(t *testing.T) {
+	s := newTestServer(t)
+	s.HandleFunc("GET /only-get", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	s.SetHandleNotFound(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"no such route"}`))
+	}))
+	h := finalize(s)
+	for _, tc := range []struct {
+		method, path string
+		status       int
+		header, want string
+	}{
+		{http.MethodGet, "/only-get", http.StatusOK, "", ""},
+		{http.MethodPost, "/only-get", http.StatusMethodNotAllowed, "Allow", "GET"},
+		{http.MethodGet, "/missing", http.StatusNotFound, "", ""},
+		{http.MethodGet, "/a/../missing", http.StatusTemporaryRedirect, "Location", "/missing"},
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+		if rec.Code != tc.status {
+			t.Errorf("%s %s: status %d, want %d", tc.method, tc.path, rec.Code, tc.status)
+		}
+		if tc.header != "" && !strings.Contains(rec.Header().Get(tc.header), tc.want) {
+			t.Errorf("%s %s: %s = %q, want it to hold %q", tc.method, tc.path, tc.header, rec.Header().Get(tc.header), tc.want)
+		}
+		if custom := strings.Contains(rec.Body.String(), "no such route"); custom != (tc.status == http.StatusNotFound) {
+			t.Errorf("%s %s: custom handler answered = %v", tc.method, tc.path, custom)
+		}
+	}
+}
+
 func TestServerWithCustomHealthPaths(t *testing.T) {
 	s := New(nil, WithHealthPaths(HealthPaths{Liveness: "/live", Readiness: "/ready"}))
 	rec := httptest.NewRecorder()

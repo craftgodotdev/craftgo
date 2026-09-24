@@ -41,7 +41,7 @@ Each returns `*Server` for chaining.
 | `SetJSONCodec(c JSONCodec) error` / `Codec() JSONCodec` | Swap the codec used by handlers, the access log, and health endpoints. Delegates to `SetGlobalJSONCodec`; fails, keeping the previous codec, when strict JSON is on and `c` has no `DecodeStrict`. |
 | `SetStrictJSON(strict bool) error` | Reject a JSON body with an unknown field (`400 <field>: unknown field`) or data after the JSON value; `server.strictJSON` in `config.yaml` drives it. Fails, keeping the previous setting, when the installed codec has no `DecodeStrict`. |
 | `SetCORS(opts CORSOptions)` | Install CORS. Calling twice replaces the previous config. |
-| `SetHandleNotFound(h http.Handler)` | Customize 404 responses - receives every request that matches no route. |
+| `SetHandleNotFound(h http.Handler)` | Customize 404 responses - receives every request the mux would answer 404; a method mismatch keeps its 405 with `Allow`. |
 | `SetDefaultReadTimeout(d)` / `SetDefaultWriteTimeout(d)` | Defaults applied to the underlying `*http.Server`. |
 | `SetDefaultMaxBodySize(bytes)` / `SetDefaultMaxHeaderSize(kb)` | Defaults for every method that doesn't declare its own `@maxBodySize`. |
 

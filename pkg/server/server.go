@@ -276,7 +276,7 @@ func (s *Server) probesLocked() map[string]http.Handler {
 	}
 }
 
-// muxWithNotFoundLocked returns s.mux, sending requests that match no route to s.notFound
+// muxWithNotFoundLocked returns s.mux, handing the requests it would answer 404 to s.notFound
 // when set; the caller holds s.mu.
 func (s *Server) muxWithNotFoundLocked() http.Handler {
 	if s.notFound == nil {
@@ -284,12 +284,39 @@ func (s *Server) muxWithNotFoundLocked() http.Handler {
 	}
 	notFound := s.notFound
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, pattern := s.mux.Handler(r); pattern == "" {
+		if h, pattern := s.mux.Handler(r); pattern == "" && answersNotFound(h, r) {
 			notFound.ServeHTTP(w, r)
 			return
 		}
 		s.mux.ServeHTTP(w, r)
 	})
+}
+
+// answersNotFound reports whether h, the mux's answer to a request no route matches, is a
+// 404 rather than a 405 or a redirect to the cleaned path.
+func answersNotFound(h http.Handler, r *http.Request) bool {
+	p := &statusProbe{header: http.Header{}}
+	h.ServeHTTP(p, r)
+	return p.status == http.StatusNotFound
+}
+
+// statusProbe is a ResponseWriter that discards the response and keeps its status.
+type statusProbe struct {
+	header http.Header
+	status int
+}
+
+func (p *statusProbe) Header() http.Header { return p.header }
+
+func (p *statusProbe) WriteHeader(code int) {
+	if p.status == 0 {
+		p.status = code
+	}
+}
+
+func (p *statusProbe) Write(b []byte) (int, error) {
+	p.WriteHeader(http.StatusOK)
+	return len(b), nil
 }
 
 // Start serves [Server.Handler] on addr until [Server.Stop] and returns nil after a graceful
