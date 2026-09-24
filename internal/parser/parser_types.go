@@ -7,10 +7,10 @@ import (
 )
 
 // parseTypeDecl parses `type Name { ... }` or `type Name<T, ...> { ... }`.
-func (p *Parser) parseTypeDecl(decs []*ast.Decorator) *ast.TypeDecl {
+func (p *Parser) parseTypeDecl(decs []*ast.Decorator, doc []string) *ast.TypeDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
-	td := &ast.TypeDecl{Pos: pos, Decorators: decs, Doc: p.takeDoc(), Name: name.Text}
+	td := &ast.TypeDecl{Pos: pos, Decorators: decs, Doc: doc, Name: name.Text}
 	if p.peek().Kind == lexer.LAngle {
 		td.TypeParams = p.parseTypeParams()
 	}
@@ -44,37 +44,25 @@ func (p *Parser) parseTypeParams() []string {
 			seen[t.Text] = true
 			params = append(params, t.Text)
 		}
-		switch p.peek().Kind {
-		case lexer.Comma:
-			p.advance()
-		case lexer.RAngle, lexer.EOF:
-		default:
-			p.errorf(p.peek().Pos, "expected ',' or '>' after type parameter, got %s", p.peek().Kind)
-		}
+		p.listSep(lexer.RAngle, "type parameter")
 	}
 	p.expect(lexer.RAngle)
 	return params
 }
 
 // parseTypeBody parses a type or error body into fields, mixins and free
-// comments, and returns the closing brace token.
+// comments, and returns the closing brace token; without a `{` it parses
+// nothing.
 func (p *Parser) parseTypeBody() ([]ast.TypeMember, lexer.Token) {
 	if !p.peekIs(lexer.LBrace) {
 		return nil, lexer.Token{}
 	}
-	lbrace := p.advance()
 	var members []ast.TypeMember
-	for p.peek().Kind != lexer.RBrace && p.peek().Kind != lexer.EOF {
-		startPos := p.pos
-		m := p.parseTypeMember()
-		if m != nil {
+	lbrace, rbrace := p.braced(func() {
+		if m := p.parseTypeMember(); m != nil {
 			members = append(members, m)
 		}
-		if p.pos == startPos {
-			p.advance()
-		}
-	}
-	rbrace, _ := p.expect(lexer.RBrace)
+	})
 	fcs := p.harvestFreeComments(lbrace.Pos.Line, rbrace.Pos.Line)
 	members = mergeFreeComments(members, fcs, func(fc *ast.FreeComment) ast.TypeMember { return fc })
 	return members, rbrace
@@ -83,37 +71,33 @@ func (p *Parser) parseTypeBody() ([]ast.TypeMember, lexer.Token) {
 // parseTypeMember parses a field or a mixin. A mixin is a name followed by `.`
 // or `<`, or an upper-case name not followed on its line by a primitive or `map`.
 func (p *Parser) parseTypeMember() ast.TypeMember {
-	p.captureDoc()
+	doc := p.docAbove()
 	decs := p.parseDecorators()
 	t := p.peek()
-	// A reserved word never names a type, so here it is a field name.
-	if t.Kind.IsKeyword() {
-		name := p.advance()
-		tref := p.parseTypeRef()
-		fieldDecs := p.parseDecorators()
-		return &ast.Field{Pos: name.Pos, Doc: p.takeDoc(), Name: name.Text, Type: tref, Decorators: append(decs, fieldDecs...)}
-	}
-	if t.Kind != lexer.Ident {
+	switch {
+	case t.Kind.IsKeyword():
+		// A reserved word never names a type, so here it is a field name.
+		return p.parseField(doc, decs)
+	case t.Kind != lexer.Ident:
 		p.errorf(t.Pos, "expected field or mixin, got %s", t.Kind)
 		return nil
 	}
 	next := p.peekAt(1)
-	if next.Kind == lexer.Dot || next.Kind == lexer.LAngle {
-		ref := p.parseNamedTypeRef()
-		p.rejectMixinDecorators(t.Pos, decs)
-		p.rejectMixinTrailingDecorators(t.Pos)
-		return &ast.Mixin{Pos: t.Pos, Doc: p.takeDoc(), Ref: ref}
-	}
-	if isFieldFollower(next, t.Pos.Line) || !isUpperFirst(t.Text) {
-		name := p.advance()
-		tref := p.parseTypeRef()
-		fieldDecs := p.parseDecorators()
-		return &ast.Field{Pos: name.Pos, Doc: p.takeDoc(), Name: name.Text, Type: tref, Decorators: append(decs, fieldDecs...)}
+	if next.Kind != lexer.Dot && next.Kind != lexer.LAngle && (isFieldFollower(next, t.Pos.Line) || !isUpperFirst(t.Text)) {
+		return p.parseField(doc, decs)
 	}
 	ref := p.parseNamedTypeRef()
 	p.rejectMixinDecorators(t.Pos, decs)
 	p.rejectMixinTrailingDecorators(t.Pos)
-	return &ast.Mixin{Pos: t.Pos, Doc: p.takeDoc(), Ref: ref}
+	return &ast.Mixin{Pos: t.Pos, Doc: doc, Ref: ref}
+}
+
+// parseField parses `name Type` and the decorators after it; decs are the
+// ones before it.
+func (p *Parser) parseField(doc []string, decs []*ast.Decorator) *ast.Field {
+	name := p.advance()
+	tref := p.parseTypeRef()
+	return &ast.Field{Pos: name.Pos, Doc: doc, Name: name.Text, Type: tref, Decorators: append(decs, p.parseDecorators()...)}
 }
 
 // rejectMixinTrailingDecorators reports and consumes decorators on the mixin's
@@ -187,13 +171,7 @@ func (p *Parser) parseNamedTypeRef() *ast.NamedTypeRef {
 		for p.peek().Kind != lexer.RAngle && p.peek().Kind != lexer.EOF {
 			start := p.pos
 			nt.Args = append(nt.Args, p.parseTypeRef())
-			switch p.peek().Kind {
-			case lexer.Comma:
-				p.advance()
-			case lexer.RAngle, lexer.EOF:
-			default:
-				p.errorf(p.peek().Pos, "expected ',' or '>' after type argument, got %s", p.peek().Kind)
-			}
+			p.listSep(lexer.RAngle, "type argument")
 			if p.pos == start {
 				// No progress: parseTypeRef already reported this token.
 				break

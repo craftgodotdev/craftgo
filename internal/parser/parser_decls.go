@@ -35,7 +35,7 @@ func (p *Parser) parseImport() *ast.Import {
 // parseTopLevelWith parses one declaration, prefixing its decorators with
 // extra.
 func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
-	p.captureDoc()
+	doc := p.docAbove()
 	decs := append([]*ast.Decorator{}, extra...)
 	decs = append(decs, p.parseDecorators()...)
 	t := p.peek()
@@ -45,26 +45,21 @@ func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 	}
 	switch t.Kind {
 	case lexer.KwType:
-		return p.parseTypeDecl(decs)
+		return p.parseTypeDecl(decs, doc)
 	case lexer.KwEnum:
-		return p.parseEnumDecl(decs)
+		return p.parseEnumDecl(decs, doc)
 	case lexer.KwError:
-		return p.parseErrorDecl(decs)
+		return p.parseErrorDecl(decs, doc)
 	case lexer.KwScalar:
-		return p.parseScalarDecl(decs)
+		return p.parseScalarDecl(decs, doc)
 	case lexer.KwMiddleware:
-		return p.parseMiddlewareDecl(decs)
+		return p.parseMiddlewareDecl(decs, doc)
 	case lexer.KwEvent:
-		return p.parseEventDecl(decs)
+		return p.parseEventDecl(decs, doc)
 	case lexer.KwService:
-		return p.parseServiceDecl(decs, false)
+		return p.parseServiceDecl(decs, doc, false)
 	case lexer.KwExtend:
-		// Keep a nil *ServiceDecl out of the Decl interface.
-		sd := p.parseExtendService(decs)
-		if sd == nil {
-			return nil
-		}
-		return sd
+		return p.parseExtendService(decs, doc)
 	case lexer.EOF:
 		if len(decs) > 0 {
 			p.errorf(decs[0].Pos, "decorators without a declaration to attach to")
@@ -76,22 +71,15 @@ func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 }
 
 // parseEnumDecl parses `enum Name { ... }`, accepting any mix of value kinds.
-func (p *Parser) parseEnumDecl(decs []*ast.Decorator) *ast.EnumDecl {
+func (p *Parser) parseEnumDecl(decs []*ast.Decorator, doc []string) *ast.EnumDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
-	ed := &ast.EnumDecl{Pos: pos, Decorators: decs, Doc: p.takeDoc(), Name: name.Text}
-	lbrace, _ := p.expect(lexer.LBrace)
-	for p.peek().Kind != lexer.RBrace && p.peek().Kind != lexer.EOF {
-		startPos := p.pos
-		v := p.parseEnumValue()
-		if v != nil {
+	ed := &ast.EnumDecl{Pos: pos, Decorators: decs, Doc: doc, Name: name.Text}
+	lbrace, rbrace := p.braced(func() {
+		if v := p.parseEnumValue(); v != nil {
 			ed.Members = append(ed.Members, v)
 		}
-		if p.pos == startPos {
-			p.advance()
-		}
-	}
-	rbrace, _ := p.expect(lexer.RBrace)
+	})
 	if rbrace.Trailing != "" {
 		ed.TrailingDoc = []string{rbrace.Trailing}
 	}
@@ -102,7 +90,7 @@ func (p *Parser) parseEnumDecl(decs []*ast.Decorator) *ast.EnumDecl {
 
 // parseEnumValue parses `Name` or `Name = literal`, then its decorators.
 func (p *Parser) parseEnumValue() *ast.EnumValue {
-	p.captureDoc()
+	doc := p.docAbove()
 	t := p.peek()
 	// A reserved word is a value name here.
 	if t.Kind != lexer.Ident && !t.Kind.IsKeyword() {
@@ -110,7 +98,7 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 		return nil
 	}
 	p.advance()
-	v := &ast.EnumValue{Pos: t.Pos, Doc: p.takeDoc(), Name: t.Text, Kind: ast.EnumBare}
+	v := &ast.EnumValue{Pos: t.Pos, Doc: doc, Name: t.Text, Kind: ast.EnumBare}
 	if p.peek().Kind == lexer.Equal {
 		p.advance()
 		switch p.peek().Kind {
@@ -142,14 +130,14 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 
 // parseErrorDecl parses `error Category Name` with an optional `{ ... }` body;
 // Category must be one of [errcat.Categories].
-func (p *Parser) parseErrorDecl(decs []*ast.Decorator) *ast.ErrorDecl {
+func (p *Parser) parseErrorDecl(decs []*ast.Decorator, doc []string) *ast.ErrorDecl {
 	pos := p.advance().Pos
 	cat, _ := p.expect(lexer.Ident)
 	if cat.Text != "" && !errcat.IsCategory(cat.Text) {
 		p.errorf(cat.Pos, "unknown error category %q", cat.Text)
 	}
 	name, _ := p.expect(lexer.Ident)
-	ed := &ast.ErrorDecl{Pos: pos, Decorators: decs, Doc: p.takeDoc(), Category: cat.Text, Name: name.Text}
+	ed := &ast.ErrorDecl{Pos: pos, Decorators: decs, Doc: doc, Category: cat.Text, Name: name.Text}
 	if p.peek().Kind == lexer.LBrace {
 		ed.HasBody = true
 		body, rbrace := p.parseTypeBody()
@@ -162,11 +150,11 @@ func (p *Parser) parseErrorDecl(decs []*ast.Decorator) *ast.ErrorDecl {
 }
 
 // parseScalarDecl parses `scalar Name primitive` and the decorators after it.
-func (p *Parser) parseScalarDecl(decs []*ast.Decorator) *ast.ScalarDecl {
+func (p *Parser) parseScalarDecl(decs []*ast.Decorator, doc []string) *ast.ScalarDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
 	prim, _ := p.expect(lexer.Ident)
-	sd := &ast.ScalarDecl{Pos: pos, Decorators: decs, Doc: p.takeDoc(), Name: name.Text, Primitive: prim.Text}
+	sd := &ast.ScalarDecl{Pos: pos, Decorators: decs, Doc: doc, Name: name.Text, Primitive: prim.Text}
 	// Only decorators on the primitive's line trail the scalar; one on a later
 	// line starts the next declaration's chain.
 	for p.peek().Kind == lexer.At && p.peek().Pos.Line == prim.Pos.Line {
@@ -177,10 +165,10 @@ func (p *Parser) parseScalarDecl(decs []*ast.Decorator) *ast.ScalarDecl {
 
 // parseMiddlewareDecl parses `middleware Name`; a parameter list after the
 // name is reported and skipped.
-func (p *Parser) parseMiddlewareDecl(decs []*ast.Decorator) *ast.MiddlewareDecl {
+func (p *Parser) parseMiddlewareDecl(decs []*ast.Decorator, doc []string) *ast.MiddlewareDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
-	md := &ast.MiddlewareDecl{Pos: pos, Decorators: decs, Doc: p.takeDoc(), Name: name.Text}
+	md := &ast.MiddlewareDecl{Pos: pos, Decorators: decs, Doc: doc, Name: name.Text}
 	if p.peek().Kind == lexer.LParen {
 		p.errorf(p.peek().Pos, "middleware declaration takes no parameters - configuration lives in the generated impl file, not the DSL")
 		depth := 0

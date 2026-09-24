@@ -44,13 +44,7 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 		d.HasParens = true
 		for p.peek().Kind != lexer.RParen && p.peek().Kind != lexer.EOF {
 			d.Args = append(d.Args, p.parseDecoratorArg())
-			switch p.peek().Kind {
-			case lexer.Comma:
-				p.advance()
-			case lexer.RParen, lexer.EOF:
-			default:
-				p.errorf(p.peek().Pos, "expected ',' or ')' after decorator argument, got %s", p.peek().Kind)
-			}
+			p.listSep(lexer.RParen, "decorator argument")
 		}
 		rparen, _ := p.expect(lexer.RParen)
 		lastTok = rparen
@@ -94,13 +88,7 @@ func (p *Parser) parseObjectLiteral() []*ast.ObjectField {
 		p.expect(lexer.Colon)
 		val := p.parseValueOrArray()
 		fields = append(fields, &ast.ObjectField{Pos: fpos, Name: name, Value: val})
-		switch p.peek().Kind {
-		case lexer.Comma:
-			p.advance()
-		case lexer.RBrace, lexer.EOF:
-		default:
-			p.errorf(p.peek().Pos, "expected ',' or '}' after object field, got %s", p.peek().Kind)
-		}
+		p.listSep(lexer.RBrace, "object field")
 	}
 	p.expect(lexer.RBrace)
 	return fields
@@ -132,13 +120,7 @@ func (p *Parser) parseArray() ast.Expr {
 	arr := &ast.ArrayLit{Pos: pos}
 	for p.peek().Kind != lexer.RBracket && p.peek().Kind != lexer.EOF {
 		arr.Elements = append(arr.Elements, p.parseValueOrArray())
-		switch p.peek().Kind {
-		case lexer.Comma:
-			p.advance()
-		case lexer.RBracket, lexer.EOF:
-		default:
-			p.errorf(p.peek().Pos, "expected ',' or ']' after array element, got %s", p.peek().Kind)
-		}
+		p.listSep(lexer.RBracket, "array element")
 	}
 	p.expect(lexer.RBracket)
 	return arr

@@ -9,22 +9,15 @@ import (
 
 // parseServiceDecl parses `service Name { ... }`; extend marks the body of an
 // `extend service`.
-func (p *Parser) parseServiceDecl(decs []*ast.Decorator, extend bool) *ast.ServiceDecl {
+func (p *Parser) parseServiceDecl(decs []*ast.Decorator, doc []string, extend bool) *ast.ServiceDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
-	sd := &ast.ServiceDecl{Pos: pos, Decorators: decs, Doc: p.takeDoc(), Name: name.Text, Extend: extend}
-	lbrace, _ := p.expect(lexer.LBrace)
-	for p.peek().Kind != lexer.RBrace && p.peek().Kind != lexer.EOF {
-		startPos := p.pos
-		m := p.parseServiceMember()
-		if m != nil {
+	sd := &ast.ServiceDecl{Pos: pos, Decorators: decs, Doc: doc, Name: name.Text, Extend: extend}
+	lbrace, rbrace := p.braced(func() {
+		if m := p.parseServiceMember(); m != nil {
 			sd.Members = append(sd.Members, m)
 		}
-		if p.pos == startPos {
-			p.advance()
-		}
-	}
-	rbrace, _ := p.expect(lexer.RBrace)
+	})
 	if rbrace.Trailing != "" {
 		sd.TrailingDoc = []string{rbrace.Trailing}
 	}
@@ -37,13 +30,13 @@ func (p *Parser) parseServiceDecl(decs []*ast.Decorator, extend bool) *ast.Servi
 
 // parseExtendService parses `extend service Name { ... }`, returning nil when
 // `service` does not follow `extend`.
-func (p *Parser) parseExtendService(decs []*ast.Decorator) *ast.ServiceDecl {
+func (p *Parser) parseExtendService(decs []*ast.Decorator, doc []string) ast.Decl {
 	p.advance()
 	if p.peek().Kind != lexer.KwService {
 		p.errorf(p.peek().Pos, "expected 'service' after 'extend'")
 		return nil
 	}
-	return p.parseServiceDecl(decs, true)
+	return p.parseServiceDecl(decs, doc, true)
 }
 
 // rejectMethodTypeSuffix reports and skips a `[]` or `?` after a request or
@@ -88,7 +81,7 @@ func (p *Parser) parseEventPayloadSuffix(pl *ast.EventPayload) {
 
 // parseServiceMember parses one method with its doc and decorators.
 func (p *Parser) parseServiceMember() ast.ServiceMember {
-	p.captureDoc()
+	doc := p.docAbove()
 	decs := p.parseDecorators()
 	t := p.peek()
 	if !t.Kind.IsVerb() {
@@ -96,7 +89,7 @@ func (p *Parser) parseServiceMember() ast.ServiceMember {
 		return nil
 	}
 	p.claimChainComments(decs, t)
-	return p.parseMethod(decs, t.Text)
+	return p.parseMethod(decs, doc)
 }
 
 // serviceMemberError is the diagnostic for a service member that is not a
@@ -129,19 +122,12 @@ type memberBody struct {
 // parseMemberBody parses a `{ ... }` body. fn parses a clause starting at the
 // given token and reports whether it knew it; others are reported and skipped.
 func (p *Parser) parseMemberBody(fn func(lexer.Token) bool, expected string) memberBody {
-	lbrace, _ := p.expect(lexer.LBrace)
-	for p.peek().Kind != lexer.RBrace && p.peek().Kind != lexer.EOF {
-		startPos := p.pos
+	lbrace, rbrace := p.braced(func() {
 		if !fn(p.peek()) {
 			p.errorf(p.peek().Pos, "expected %s, got %s", expected, p.peek().Kind)
 			p.advance()
-			continue
 		}
-		if p.pos == startPos {
-			p.advance()
-		}
-	}
-	rbrace, _ := p.expect(lexer.RBrace)
+	})
 	b := memberBody{EndPos: rbrace.Pos}
 	if rbrace.Trailing != "" {
 		b.TrailingDoc = []string{rbrace.Trailing}
@@ -151,10 +137,10 @@ func (p *Parser) parseMemberBody(fn func(lexer.Token) bool, expected string) mem
 }
 
 // parseMethod parses `verb Name /path { ... }`, where the path is optional.
-func (p *Parser) parseMethod(decs []*ast.Decorator, verb string) *ast.Method {
-	t := p.advance()
+func (p *Parser) parseMethod(decs []*ast.Decorator, doc []string) *ast.Method {
+	verb := p.advance()
 	name, _ := p.expect(lexer.Ident)
-	m := &ast.Method{Pos: t.Pos, Decorators: decs, Doc: p.takeDoc(), Verb: verb, Name: name.Text}
+	m := &ast.Method{Pos: verb.Pos, Decorators: decs, Doc: doc, Verb: verb.Text, Name: name.Text}
 	if p.peek().Kind == lexer.Slash {
 		m.Path = p.parsePath()
 	}
@@ -186,10 +172,10 @@ func (p *Parser) parseMethod(decs []*ast.Decorator, verb string) *ast.Method {
 }
 
 // parseEventDecl parses `event Name { payload Type }`; Type may carry one `[]`.
-func (p *Parser) parseEventDecl(decs []*ast.Decorator) *ast.EventDecl {
+func (p *Parser) parseEventDecl(decs []*ast.Decorator, doc []string) *ast.EventDecl {
 	t := p.advance()
 	name, _ := p.expect(lexer.Ident)
-	e := &ast.EventDecl{Pos: t.Pos, Decorators: decs, Doc: p.takeDoc(), Name: name.Text}
+	e := &ast.EventDecl{Pos: t.Pos, Decorators: decs, Doc: doc, Name: name.Text}
 	body := p.parseMemberBody(func(tok lexer.Token) bool {
 		if tok.Kind != lexer.KwPayload {
 			return false

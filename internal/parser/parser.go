@@ -16,8 +16,6 @@ type Parser struct {
 	tokens []lexer.Token
 	pos    int
 	diags  []lexer.Diagnostic
-	// pendingDoc is the doc captureDoc read for the node being parsed.
-	pendingDoc []string
 	// allComments is every comment in the file.
 	allComments []*lexer.Comment
 	// claimed holds the lines of comments a node owns, which
@@ -25,20 +23,12 @@ type Parser struct {
 	claimed map[int]bool
 }
 
-// takeDoc returns pendingDoc and clears it.
-func (p *Parser) takeDoc() []string {
-	d := p.pendingDoc
-	p.pendingDoc = nil
-	return d
-}
-
-// captureDoc moves the next token's Doc, if it has one, into pendingDoc and
-// claims its lines.
-func (p *Parser) captureDoc() {
-	if len(p.peek().Doc) > 0 {
-		p.pendingDoc = p.peek().Doc
-		p.claimDoc(p.peek())
-	}
+// docAbove claims the comment lines directly above the current token and
+// returns them.
+func (p *Parser) docAbove() []string {
+	t := p.peek()
+	p.claimDoc(t)
+	return t.Doc
 }
 
 // New lexes src and returns a Parser whose diagnostics start with the lexer's.
@@ -66,8 +56,7 @@ func (p *Parser) Parse() *ast.File {
 	f := &ast.File{}
 	// The comment above a leading decorator is the file's LeadingDoc.
 	if p.peek().Kind == lexer.At {
-		f.LeadingDoc = p.peek().Doc
-		p.claimDoc(p.peek())
+		f.LeadingDoc = p.docAbove()
 	}
 	leading := p.parseDecorators()
 	if p.peek().Kind == lexer.KwPackage {
@@ -78,18 +67,13 @@ func (p *Parser) Parse() *ast.File {
 	for p.peek().Kind == lexer.KwImport {
 		f.Imports = append(f.Imports, p.parseImport())
 	}
-	for p.peek().Kind != lexer.EOF {
-		startPos := p.pos
+	p.each(lexer.EOF, func() {
 		d := p.parseTopLevelWith(leading)
 		leading = nil
 		if d != nil {
 			f.Decls = append(f.Decls, d)
 		}
-		// Skip a token no production consumed.
-		if p.pos == startPos {
-			p.advance()
-		}
-	}
+	})
 	if len(leading) > 0 {
 		p.errorf(leading[0].Pos, "decorators without a declaration to attach to")
 	}
@@ -138,6 +122,39 @@ func (p *Parser) errorf(pos lexer.Position, format string, args ...any) {
 
 // peekIs reports whether the current token has kind k.
 func (p *Parser) peekIs(k lexer.Kind) bool { return p.peek().Kind == k }
+
+// each calls member at every token before closer or EOF, and skips the token
+// when member consumes none.
+func (p *Parser) each(closer lexer.Kind, member func()) {
+	for !p.peekIs(closer) && !p.peekIs(lexer.EOF) {
+		start := p.pos
+		member()
+		if p.pos == start {
+			p.advance()
+		}
+	}
+}
+
+// braced parses `{`, [Parser.each] member up to `}`, and `}`, and returns the
+// two braces; a missing one is reported and comes back empty.
+func (p *Parser) braced(member func()) (lbrace, rbrace lexer.Token) {
+	lbrace, _ = p.expect(lexer.LBrace)
+	p.each(lexer.RBrace, member)
+	rbrace, _ = p.expect(lexer.RBrace)
+	return lbrace, rbrace
+}
+
+// listSep consumes the `,` after a list element. Before closer or EOF it
+// consumes nothing; any other token is reported.
+func (p *Parser) listSep(closer lexer.Kind, element string) {
+	switch p.peek().Kind {
+	case lexer.Comma:
+		p.advance()
+	case closer, lexer.EOF:
+	default:
+		p.errorf(p.peek().Pos, "expected ',' or '%s' after %s, got %s", closer, element, p.peek().Kind)
+	}
+}
 
 // isUpperFirst reports whether s starts with an upper-case letter.
 func isUpperFirst(s string) bool {
