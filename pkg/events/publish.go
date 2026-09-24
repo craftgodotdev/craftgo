@@ -15,7 +15,8 @@ import (
 type Envelope struct {
 	// Event is the contract name.
 	Event string
-	// Key identifies the entity the message is about; empty is keyless. See [WithKey].
+	// Key identifies the entity the message is about; empty keeps a [WithPublishDefaults]
+	// key, else is keyless. See [WithKey].
 	Key string
 	// DedupID lets a transport that deduplicates recognise a repeat; see [WithDedupID].
 	DedupID string

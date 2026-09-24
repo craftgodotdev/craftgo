@@ -179,7 +179,8 @@ func WithCodecFor(event string, c Codec) Option {
 }
 
 // WithPublishDefaults sets options every publish through this bus starts from; repeated
-// calls accumulate. A value the call's options or the [Envelope] set wins.
+// calls accumulate. A value the call's options or the [Envelope] set wins: a per-call
+// WithKey("") clears a default key, an Envelope's empty Key keeps it.
 func WithPublishDefaults(opts ...PublishOption) Option {
 	return func(b *Bus) { b.defaults = append(b.defaults, opts...) }
 }

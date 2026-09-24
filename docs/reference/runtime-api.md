@@ -389,7 +389,7 @@ func (env *Envelope) Apply(opts ...PublishOption)
 
 type Envelope struct {
 	Event          string            // the contract
-	Key            string            // the WithKey value, "" for a keyless message
+	Key            string            // the WithKey value; "" keeps a default key, else is keyless
 	DedupID        string            // the WithDedupID value
 	Payload        any               // the value to encode
 	Metadata       map[string]string // optional side-band values; nil and empty behave alike
@@ -404,7 +404,9 @@ Options apply in order, so the last one setting a given value wins - which is
 what makes a defaults list defaults. `WithPublishDefaults` is that list for a
 whole bus. `JoinOptions` does the same join for a hand-written publisher carrying
 its own - defaults first, the per-call options after, without writing into
-either.
+either. An empty value clears a default only as a per-call option: `WithKey("")`
+on `Publish` clears a default key, while an `Envelope` whose `Key` is empty keeps
+it.
 
 `PublishAll` encodes every envelope up front, then hands the batch to the
 transport in one call when it implements `BatchPublisher` and one message at a
