@@ -10,13 +10,10 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
 )
 
-// directTransport delivers synchronously and hands the handler the very
-// message it was given, so a test can read back what the chain decided
-// about that delivery.
+// directTransport delivers synchronously, handing the handler the published message itself.
 type directTransport struct {
 	subs []events.Subscription
-	// handlerErr is what the last delivery answered with, which a
-	// transport reads alongside the disposition.
+	// handlerErr is what the last delivery returned.
 	handlerErr error
 }
 
@@ -34,8 +31,7 @@ func (d *directTransport) Publish(ctx context.Context, msg *events.Message) erro
 	return nil
 }
 
-// dispositionTransport answers the capability query with a fixed set, the
-// way an adapter built in one mode does.
+// dispositionTransport honours a fixed set of dispositions.
 type dispositionTransport struct {
 	directTransport
 	can map[events.Disposition]bool
@@ -43,16 +39,14 @@ type dispositionTransport struct {
 
 func (d *dispositionTransport) CanDisposition(want events.Disposition) bool { return d.can[want] }
 
-// deliverThrough subscribes h behind chain and delivers one message,
-// returning it once the chain has finished with it.
+// deliverThrough delivers one message to h behind chain and returns it once the chain
+// has finished.
 func deliverThrough(t *testing.T, chain events.Chain, h events.Handler) *events.Message {
 	t.Helper()
 	return deliverOn(t, &directTransport{}, chain, h)
 }
 
-// deliverOn is deliverThrough over a named transport, for a test whose
-// subject is what the transport can do with a delivery rather than what
-// the chain asked for.
+// deliverOn is deliverThrough over tr.
 func deliverOn(t *testing.T, tr interface {
 	events.Publisher
 	events.Subscriber
@@ -70,21 +64,14 @@ func deliverOn(t *testing.T, tr interface {
 	return msg
 }
 
-// canRedeliver is a transport that can hand a message back, the mode
-// every JetStream and share-group adapter runs in.
+// canRedeliver is a transport that honours settle and redeliver.
 func canRedeliver() *dispositionTransport {
 	return &dispositionTransport{can: map[events.Disposition]bool{
 		events.DispositionSettle: true, events.DispositionRedeliver: true,
 	}}
 }
 
-// A panic in a MIDDLEWARE unwinds past every return the chain would have
-// made, so only the bus's outermost recover catches it - and nothing is
-// left above THAT to decide for the message. Left unset it reaches the
-// transport as "take it as done": an adapter acks it, and a bug in a
-// middleware deletes traffic in silence. Where the transport can hand a
-// message back, the escaped panic asks it to, so the delivery fails the
-// way every other failed delivery does.
+// A panic escaping the chain asks for redelivery on a transport that can redeliver.
 func TestAPanicEscapingTheChainAsksForRedelivery(t *testing.T) {
 	blowUp := func(events.Subscription, events.Handler) events.Handler {
 		return func(context.Context, *events.Message) error { panic("middleware blew up") }
@@ -109,10 +96,7 @@ func TestAPanicEscapingTheChainAsksForRedelivery(t *testing.T) {
 	}
 }
 
-// A transport that settles and nothing else has no hand-back to ask for,
-// so the escaped panic leaves the message undecided rather than naming a
-// disposition the transport would silently downgrade. Declare the need
-// with WithDispositionRequired to find out at startup instead.
+// A panic escaping the chain leaves the disposition unset on a settle-only transport.
 func TestAPanicEscapingTheChainLeavesASettleOnlyTransportUnset(t *testing.T) {
 	blowUp := func(events.Subscription, events.Handler) events.Handler {
 		return func(context.Context, *events.Message) error { panic("middleware blew up") }
@@ -124,10 +108,8 @@ func TestAPanicEscapingTheChainLeavesASettleOnlyTransportUnset(t *testing.T) {
 	}
 }
 
-// The two recovers differ on purpose. A panicking HANDLER is caught
-// beneath the chain, which then runs its returns and decides - so this
-// one leaves the message undecided even where a hand-back is available,
-// and a middleware that reads the *PanicError says what happens next.
+// A panicking handler leaves the disposition unset for the chain to decide, even where
+// redelivery is available.
 func TestAPanickingHandlerLeavesTheDecisionToTheChain(t *testing.T) {
 	var seen error
 	watch := func(_ events.Subscription, next events.Handler) events.Handler {
@@ -148,9 +130,8 @@ func TestAPanickingHandlerLeavesTheDecisionToTheChain(t *testing.T) {
 	}
 }
 
-// subscribeWith builds a bus from opts and registers one handler,
-// returning what the registration answered - or, when it passed, what
-// starting the bus did.
+// subscribeWith registers one handler on a bus built from opts and starts it, returning
+// the first error.
 func subscribeWith(tr interface {
 	events.Publisher
 	events.Subscriber
@@ -176,9 +157,7 @@ func TestTheZeroDispositionIsUnset(t *testing.T) {
 	}
 }
 
-// The chain returns innermost first, so the outermost middleware writes
-// last - it can see what everything below asked for and change it.
-// Clearing back to settle is allowed for the same reason.
+// The outermost middleware writes the disposition last, and may change or clear it.
 func TestTheLastWriterWinsAndMayClear(t *testing.T) {
 	inner := func(_ events.Subscription, next events.Handler) events.Handler {
 		return func(ctx context.Context, msg *events.Message) error {
@@ -216,9 +195,7 @@ func TestTheLastWriterWinsAndMayClear(t *testing.T) {
 	}
 }
 
-// A frame that panicked did not finish deciding, so what it asked for is
-// void. Without this a middleware that asked for redelivery and then
-// panicked would be redelivered for ever with nothing left to stop it.
+// A panic voids the disposition asked for beneath it.
 func TestAPanicVoidsTheDispositionAskedForBeneathIt(t *testing.T) {
 	stale := func(_ events.Subscription, next events.Handler) events.Handler {
 		return func(ctx context.Context, msg *events.Message) error {
@@ -233,7 +210,7 @@ func TestAPanicVoidsTheDispositionAskedForBeneathIt(t *testing.T) {
 	}
 }
 
-// Deliveries comes from the transport, which is the only thing that knows.
+// Deliveries returns what SetDeliveries recorded.
 func TestDeliveriesIsWhatTheTransportRecorded(t *testing.T) {
 	var msg events.Message
 	msg.SetDeliveries(3)
@@ -242,8 +219,7 @@ func TestDeliveriesIsWhatTheTransportRecorded(t *testing.T) {
 	}
 }
 
-// A transport that does not implement Dispositioner honours settle and
-// nothing else, so an adapter with one mode needs no code to say so.
+// A transport without Dispositioner honours settle and nothing else.
 func TestATransportWithNoCapabilityHonoursSettleAlone(t *testing.T) {
 	if err := subscribeWith(&directTransport{},
 		events.WithDispositionRequired(events.DispositionSettle)); err != nil {
@@ -258,9 +234,7 @@ func TestATransportWithNoCapabilityHonoursSettleAlone(t *testing.T) {
 	}
 }
 
-// The refusal is at registration, not at the first message: a chain that
-// calls Redeliver on a transport that settles instead loses every message
-// it meant to retry, and nothing reports it.
+// A required disposition the transport lacks fails Register, naming the disposition.
 func TestARequiredDispositionTheTransportLacksFailsAtRegister(t *testing.T) {
 	tr := &dispositionTransport{can: map[events.Disposition]bool{events.DispositionSettle: true}}
 
@@ -276,8 +250,7 @@ func TestARequiredDispositionTheTransportLacksFailsAtRegister(t *testing.T) {
 	}
 }
 
-// Repeated calls accumulate rather than replace, so asking for a second
-// one cannot silently drop the first.
+// Repeated WithDispositionRequired calls accumulate.
 func TestRequiringTwoDispositionsChecksBoth(t *testing.T) {
 	tr := &dispositionTransport{can: map[events.Disposition]bool{
 		events.DispositionSettle: true, events.DispositionRedeliver: true,

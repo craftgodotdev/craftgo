@@ -1,7 +1,4 @@
-// Package logging is craftgo's consumer middleware for logging what a
-// bus delivered. It is a sub-package so that [log/slog] stays out of the
-// exported surface of `pkg/events`, which every generated contract
-// package imports.
+// Package logging provides an [events.Middleware] that logs each delivery with log/slog.
 package logging
 
 import (
@@ -12,37 +9,9 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events"
 )
 
-// AccessLog logs one line per delivery: the contract, the consumer, its
-// group, the key, how long the handler took, and the error when there
-// was one.
-//
-//	craftevents.New(
-//	    craftevents.WithTransport(tr),
-//	    craftevents.WithCodec(codecjson.Codec{}),
-//	    craftevents.WithMiddleware(logging.AccessLog(log.Slog())),
-//	)
-//
-// # One line, one level
-//
-// A failure is logged at the SAME level as a success, with an `error`
-// attribute, not at Error. The transport's own error handler already logs
-// failures at Error, so a second Error line here is the same failure
-// reported twice - two stack traces, and roughly four times the cost on
-// the path that is already the slowest.
-//
-// Do not delete that error handler to make room for this one. It sees
-// failures a middleware cannot: a fetch that did not return, a commit
-// that did not land, a record for a contract this consumer does not
-// handle. Those never enter the chain, and they are exactly what matters
-// once a project points its scaffold at a real broker.
-//
-// # Cost
-//
-// One line per delivery is one line per delivery. A consumer taking
-// thousands a second pays for all of them, and the level gate does not
-// help because the line is built to be gated. Use [AccessLogLevel] to put
-// them below the running level, or [AccessLogSkipContracts] to drop the
-// chatty ones, on a consumer where that matters.
+// AccessLog logs one line per delivery: the contract, consumer, group, key, duration and,
+// on failure, an `error` attribute. Successes and failures share one level, Info by
+// default; a nil logger leaves the chain unchanged.
 func AccessLog(l *slog.Logger, opts ...AccessLogOption) events.Middleware {
 	cfg := accessLogConfig{level: slog.LevelInfo}
 	for _, o := range opts {
@@ -57,10 +26,6 @@ func AccessLog(l *slog.Logger, opts ...AccessLogOption) events.Middleware {
 			start := time.Now()
 			err := next(ctx, msg)
 
-			// The context has to reach the handler, so this is LogAttrs
-			// and not Info: slog's level shortcuts pass a background
-			// context of their own, and a trace id would vanish with the
-			// line still looking right.
 			if !l.Enabled(ctx, cfg.level) {
 				return err
 			}
@@ -78,6 +43,7 @@ func AccessLog(l *slog.Logger, opts ...AccessLogOption) events.Middleware {
 			for _, fn := range cfg.extra {
 				attrs = append(attrs, fn(ctx, msg)...)
 			}
+			// LogAttrs hands the slog handler the delivery's ctx.
 			l.LogAttrs(ctx, cfg.level, "consumed", attrs...)
 			return err
 		}
@@ -99,9 +65,7 @@ func AccessLogLevel(l slog.Level) AccessLogOption {
 	return func(c *accessLogConfig) { c.level = l }
 }
 
-// AccessLogSkipContracts leaves the named contracts unlogged, for the
-// high-volume ones whose lines are noise. A skipped contract is not
-// wrapped at all, so it costs nothing rather than costing a check.
+// AccessLogSkipContracts leaves the named contracts unlogged; they are not wrapped at all.
 func AccessLogSkipContracts(contracts ...string) AccessLogOption {
 	return func(c *accessLogConfig) {
 		if c.skip == nil {
@@ -113,9 +77,8 @@ func AccessLogSkipContracts(contracts ...string) AccessLogOption {
 	}
 }
 
-// AccessLogFields adds attributes derived from each delivery - a tenant
-// off a header, a field off the message. It runs only on a line that
-// passes the level gate.
+// AccessLogFields adds attributes derived from each delivery; fn runs only for a line
+// that passes the level gate.
 func AccessLogFields(fn func(ctx context.Context, msg *events.Message) []slog.Attr) AccessLogOption {
 	return func(c *accessLogConfig) {
 		if fn != nil {

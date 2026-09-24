@@ -5,24 +5,19 @@ import (
 	"fmt"
 )
 
-// Disposition is what has been asked for one delivery.
-//
-// The names are craftgo's own rather than any one broker's: franz-go's
-// share client calls them AckAccept / AckRelease / AckReject, JetStream
-// Ack / Nak / Term, AMQP 1.0 accepted / released / rejected.
+// Disposition is what the chain asked for one delivery. The last of [Message.Settle],
+// [Message.Redeliver] and [Message.Reject] called before the chain returns wins, so the
+// outermost middleware decides last; call them only from the delivery's goroutine.
 type Disposition uint8
 
 const (
-	// DispositionUnset is the zero value: no middleware decided.
+	// DispositionUnset is the zero value: nothing was asked.
 	DispositionUnset Disposition = iota
-	// DispositionSettle takes the delivery as done. Every transport can
-	// do this; most can do nothing else.
+	// DispositionSettle takes the delivery as done; every transport honours it.
 	DispositionSettle
-	// DispositionRedeliver hands the message back for another attempt at
-	// the broker's discretion. The same message returns.
+	// DispositionRedeliver hands the message back for another attempt.
 	DispositionRedeliver
-	// DispositionReject gives the message up as one no attempt will
-	// handle. Where the broker puts it is the broker's business.
+	// DispositionReject gives the message up as one no attempt will handle.
 	DispositionReject
 )
 
@@ -39,76 +34,44 @@ func (d Disposition) String() string {
 }
 
 // Settle asks for this delivery to be taken as done.
-//
-// The last writer wins and clearing is allowed: the chain returns
-// innermost first, so the last to decide is the outermost middleware -
-// the one listed first at the wiring, which can see what everything below
-// asked for. Decide from the handler's goroutine and before the chain
-// returns; a decision written from a goroutine of your own is both a race
-// and a lost write.
 func (m *Message) Settle() { m.disposition = DispositionSettle }
 
-// Redeliver asks for this message to come back. A transport that cannot
-// ([Dispositioner]) settles instead, so declare the need at the bus with
-// [WithDispositionRequired] and find out at startup. How soon it comes
-// back is the transport's; see the adapter's backoff option.
-//
-// Whether another attempt can succeed is the chain's to work out from the
-// error the handler returned. A [*PayloadError] fails the same way every
-// time; anything else the handler classifies itself.
+// Redeliver asks for this message to come back. A transport that cannot honour it settles
+// instead; [WithDispositionRequired] makes [Bus.Register] refuse such a transport.
 func (m *Message) Redeliver() { m.disposition = DispositionRedeliver }
 
-// Reject gives this message up. See [Message.Redeliver] for what a
-// transport that cannot does, and [Message.Settle] for when a decision
-// may be written.
+// Reject gives this message up. A transport that cannot honour it settles instead.
 func (m *Message) Reject() { m.disposition = DispositionReject }
 
-// Disposition returns what has been asked for this delivery, which a
-// transport reads once the chain has returned.
+// Disposition returns what has been asked for this delivery.
 func (m *Message) Disposition() Disposition { return m.disposition }
 
-// Deliveries is how many times the broker has handed this message over,
-// this one included. Zero means the transport does not count.
+// Deliveries is how many times the broker has handed this message over, this one
+// included; zero when the transport does not count.
 func (m *Message) Deliveries() int { return m.deliveries }
 
-// SetDeliveries records the broker's delivery count. A transport adapter
-// calls it while decoding; nothing in a chain can forge one.
+// SetDeliveries records the broker's delivery count; a transport adapter calls it while
+// decoding.
 func (m *Message) SetDeliveries(n int) { m.deliveries = n }
 
-// Dispositioner is the optional upgrade for a transport that can do more
-// with a delivery than take it as done. It is asked per INSTANCE, not per
-// type: one adapter may be built in a mode that can redeliver and in a
-// mode that cannot.
-//
-// A transport that does not implement it honours [DispositionSettle] and
-// nothing else, so an adapter with no such mode needs no code here and
-// has no answer that can go stale.
-//
-// The answer must not change after construction. [Bus.Register] reads it
-// once per subscription, so one that moved would make Redeliver work on
-// one message and not the next with nothing to notice it.
+// Dispositioner is the optional upgrade for a transport that can do more with a delivery
+// than settle it. It is asked per instance, and its answer must not change after
+// construction. A transport without it honours [DispositionSettle] alone.
 type Dispositioner interface {
 	CanDisposition(d Disposition) bool
 }
 
-// ErrDispositionUnsupported is returned by [Bus.Register] when the
-// transport cannot honour a disposition [WithDispositionRequired] named.
+// ErrDispositionUnsupported is returned by [Bus.Register] when the transport cannot
+// honour a disposition [WithDispositionRequired] named.
 var ErrDispositionUnsupported = errors.New("events: transport cannot honour a required disposition")
 
-// WithDispositionRequired refuses to subscribe on a transport that cannot
-// honour d. Repeated calls accumulate.
-//
-// It is the difference between a delivery guarantee the design states and
-// one it hopes for: a chain that calls Redeliver on a transport that
-// settles instead loses every message it meant to retry, silently. The
-// refusal reaches a boot failure through [Bus.Register].
+// WithDispositionRequired makes [Bus.Register] refuse a transport that cannot honour d,
+// with [ErrDispositionUnsupported]. Repeated calls accumulate.
 func WithDispositionRequired(d Disposition) Option {
 	return func(b *Bus) { b.required = append(b.required, d) }
 }
 
-// requireDispositions applies [WithDispositionRequired] to the subscribe
-// half. The capability is read at registration rather than per message,
-// so it is fixed for the life of the subscription.
+// requireDispositions checks [WithDispositionRequired] against the subscribe half.
 func (b *Bus) requireDispositions() error {
 	for _, d := range b.required {
 		if !canDisposition(b.sub, d) {

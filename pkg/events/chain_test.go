@@ -8,9 +8,8 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events"
 )
 
-// tagMW returns a middleware that appends `:tag` to a shared trace
-// before and after delegating, so test assertions can compare the
-// concatenated trace against the expected outermost-first order.
+// tagMW returns a middleware that appends ">tag" to trace before delegating and "<tag"
+// after.
 func tagMW(trace *string, tag string) events.Middleware {
 	return func(_ events.Subscription, next events.Handler) events.Handler {
 		return func(ctx context.Context, msg *events.Message) error {
@@ -39,8 +38,8 @@ func deliver(t *testing.T, sub events.Subscription) error {
 	return sub.Handle(context.Background(), &events.Message{Event: sub.Event})
 }
 
-// A chain folds outermost-first, matching pkg/server.Chain: the first
-// middleware listed is the first frame a message enters.
+// A chain folds outermost-first: the first middleware listed is the first a message
+// enters.
 func TestChainApplyFoldsOutermostFirst(t *testing.T) {
 	var trace string
 	out := events.NewChain(tagMW(&trace, "A"), tagMW(&trace, "B"), tagMW(&trace, "C")).
@@ -55,10 +54,8 @@ func TestChainApplyFoldsOutermostFirst(t *testing.T) {
 	}
 }
 
-// Reversing the fold is the bug the reverse loop in Apply exists to
-// avoid: wrapping forwards makes the last listed middleware outermost,
-// which is the opposite contract. Folding both ways here means the pair
-// fails if Apply ever adopts the forward one.
+// A forward fold makes the last middleware outermost, so it traces differently from
+// Apply.
 func TestForwardFoldWouldReverseTheOrder(t *testing.T) {
 	var forward string
 	sub := tracingSub(&forward, "x.Y", "C1", "g")
@@ -117,8 +114,7 @@ func TestMiddlewareSeesItsOwnSubscription(t *testing.T) {
 	}
 }
 
-// A project that declares no middleware generates a nil Chain, and a nil
-// Chain hands the slice straight back - same backing array, same handlers.
+// A nil Chain returns the caller's slice itself, handlers unchanged.
 func TestNilChainApplyReturnsTheSliceUnchanged(t *testing.T) {
 	var trace string
 	subs := []events.Subscription{tracingSub(&trace, "x.Y", "C1", "g")}
@@ -147,8 +143,7 @@ func TestChainApplySkipsNil(t *testing.T) {
 	}
 }
 
-// Apply leaves the caller's subscriptions undecorated, so the slice the
-// generated Subscriptions returned stays usable.
+// Apply leaves the caller's subscriptions undecorated.
 func TestChainApplyDoesNotMutateItsInput(t *testing.T) {
 	var trace string
 	subs := []events.Subscription{tracingSub(&trace, "x.Y", "C1", "g")}
@@ -161,9 +156,7 @@ func TestChainApplyDoesNotMutateItsInput(t *testing.T) {
 	}
 }
 
-// TestChainAppendDoesNotMutateReceiver pins the value-semantics
-// contract: a base chain shared between deployables must not pick up
-// extras from one binary's Append landing on another's chain.
+// Append leaves its receiver unchanged.
 func TestChainAppendDoesNotMutateReceiver(t *testing.T) {
 	var trace string
 	base := events.NewChain(tagMW(&trace, "A"))

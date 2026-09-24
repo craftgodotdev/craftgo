@@ -5,10 +5,7 @@ import (
 	"sort"
 )
 
-// Plan is what a bus consumes: every registered group, and the consumers
-// under it. It is the shape of a deployable's consumption, which no
-// generated file states any more - the groups are the application's - so
-// a project that wants that stated pins this in a golden file.
+// Plan is what a bus consumes: every registered group and the consumers under it.
 type Plan struct {
 	Groups []PlanGroup `json:"groups"`
 }
@@ -25,9 +22,8 @@ type PlanConsumer struct {
 	Consumer string `json:"consumer"`
 }
 
-// Plan reports what is registered, before or after [Bus.Start]. Groups
-// are ordered by name and consumers within a group by contract then
-// consumer, so two runs of the same wiring produce the same plan.
+// Plan reports what is registered, before or after [Bus.Start], with groups sorted by
+// name and consumers by contract then consumer.
 func (b *Bus) Plan() Plan {
 	b.mu.Lock()
 	subs := make([]Subscription, len(b.subs))
@@ -45,15 +41,14 @@ func (b *Bus) Plan() Plan {
 	return orderedPlan(out)
 }
 
-// MarshalJSON renders the plan in its own order rather than the one it
-// was built in, so a golden file compares a plan and not a map iteration.
+// MarshalJSON renders the plan sorted as [Bus.Plan] orders it, whatever order it was
+// built in; an empty plan renders as {"groups":[]}.
 func (p Plan) MarshalJSON() ([]byte, error) {
 	type plain Plan
 	return json.Marshal(plain(orderedPlan(p)))
 }
 
-// orderedPlan is p sorted, with every slice non-nil so an empty plan
-// renders as `{"groups":[]}` rather than as a null.
+// orderedPlan is p sorted, with every slice non-nil.
 func orderedPlan(p Plan) Plan {
 	out := Plan{Groups: make([]PlanGroup, 0, len(p.Groups))}
 	for _, g := range p.Groups {

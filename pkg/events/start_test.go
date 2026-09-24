@@ -11,8 +11,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
 )
 
-// noop is a handler that does nothing, for the registrations whose
-// handler is not what is under test.
+// noop is a handler that does nothing.
 func noop() events.Handler {
 	return func(context.Context, *events.Message) error { return nil }
 }
@@ -61,8 +60,7 @@ func TestStartOrdersByGroupFirst(t *testing.T) {
 	}
 }
 
-// The handler the transport receives is the wrapped one, so every adapter
-// inherits the recover without knowing about it.
+// The transport receives handlers wrapped in a recover.
 func TestTheTransportIsHandedWrappedHandlers(t *testing.T) {
 	bus, tr := busOver()
 	start(t, context.Background(), bus, events.Subscription{
@@ -76,8 +74,7 @@ func TestTheTransportIsHandedWrappedHandlers(t *testing.T) {
 	}
 }
 
-// A registration that fails its checks never reaches the transport,
-// because it never joins the batch.
+// A registration that fails its checks never reaches the transport.
 func TestAnEntryThatFailsItsChecksNeverReachesTheTransport(t *testing.T) {
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodecFor("a.One", codecjson.Codec{}))
@@ -96,8 +93,7 @@ func TestAnEntryThatFailsItsChecksNeverReachesTheTransport(t *testing.T) {
 	}
 }
 
-// The transport's own refusal - a group it cannot claim, a broker that is
-// not there - is what Start reports.
+// Start returns the transport's own refusal.
 func TestTheTransportsRefusalIsSurfaced(t *testing.T) {
 	bus, tr := busOver()
 	tr.err = errors.New("group already registered")
@@ -145,9 +141,8 @@ func TestRegisterRefusesAContractWithNoCodec(t *testing.T) {
 	}
 }
 
-// Two consumers of one contract under one group would be two members of
-// that group, each skipping the other's work on every transport that
-// divides one. The pair is refused rather than resolved.
+// Register refuses a second subscription to one contract in one group, but not in
+// another group.
 func TestRegisterRefusesTheSameContractTwiceInOneGroup(t *testing.T) {
 	bus, _ := busOver()
 	first := events.Subscription{Event: "a.One", Consumer: "A", Group: "g", Handle: noop()}
@@ -158,29 +153,22 @@ func TestRegisterRefusesTheSameContractTwiceInOneGroup(t *testing.T) {
 	if !errors.Is(err, events.ErrDuplicateSubscription) {
 		t.Fatalf("err = %v, want ErrDuplicateSubscription", err)
 	}
-	// The same contract under a different group is a different consumer of
-	// the same stream, which is the ordinary case.
 	if err := bus.Register(events.Subscription{Event: "a.One", Consumer: "B", Group: "other", Handle: noop()}); err != nil {
 		t.Fatalf("a second group on one contract was refused: %v", err)
 	}
 }
 
-// The contracts the joined registrations below consume. A listener's
-// line goes through the descriptor, so a module states itself through
-// those and never through a Subscription literal.
+// The contracts of the joined-registration tests.
 var (
 	aOne   = events.NewEvent[order]("a.One", nil)
 	bTwo   = events.NewEvent[order]("b.Two", nil)
 	cThree = events.NewEvent[order]("c.Three", nil)
 )
 
-// ignore is logic that does nothing, for the lines whose handler is not
-// what is under test.
+// ignore is a typed handler that does nothing.
 func ignore(context.Context, *order) error { return nil }
 
-// Subscribe is Register with the descriptor's own typing in front of it:
-// a module states its whole consumption as joined lines, and every one
-// of them reaches the transport.
+// Every joined Subscribe line reaches the transport.
 func TestSubscribeRegistersEveryOne(t *testing.T) {
 	bus, tr := busOver()
 	if err := errors.Join(
@@ -197,9 +185,7 @@ func TestSubscribeRegistersEveryOne(t *testing.T) {
 	}
 }
 
-// Joining the lines offers every one of them, so a refusal in the middle
-// hides neither the refusals beside it nor the registrations after it. A
-// deployable wired wrongly in two places hears about both at once.
+// Joined Subscribe lines report every refusal and still register the lines after one.
 func TestJoinedSubscribesReportEveryRefusal(t *testing.T) {
 	bus, _ := busOver()
 	err := errors.Join(
@@ -235,8 +221,7 @@ func TestJoinedSubscribesReportEveryRefusal(t *testing.T) {
 	}
 }
 
-// A refusal names the subscription it refused: the sentinel says what the
-// rule was, and the message says which registration broke it.
+// A *RegisterError names the subscription it refused.
 func TestARegisterErrorNamesTheSubscription(t *testing.T) {
 	bus, _ := busOver()
 	err := bus.Register(events.Subscription{Event: "orders.Placed", Consumer: "SendReceipt", Handle: noop()})
@@ -278,9 +263,7 @@ func TestRegisterAfterStartIsRefused(t *testing.T) {
 	}
 }
 
-// A Start that failed has still started: the transport may have
-// registered part of the batch before refusing the rest, so there is
-// nothing safe to retry or add to.
+// After a failed Start, Start and Register both return ErrStarted.
 func TestAFailedStartStillStartedTheBus(t *testing.T) {
 	bus, tr := busOver()
 	tr.err = errors.New("broker unreachable")
@@ -299,8 +282,7 @@ func TestAFailedStartStillStartedTheBus(t *testing.T) {
 	}
 }
 
-// planned is the bus of the plan tests: three consumers over two groups,
-// registered in an order that is neither the group's nor the contract's.
+// planned registers three consumers over two groups, in neither group nor contract order.
 func planned(t *testing.T) *events.Bus {
 	t.Helper()
 	bus, _ := busOver()
@@ -333,8 +315,7 @@ func TestPlanGroupsTheConsumersInAStableOrder(t *testing.T) {
 	}
 }
 
-// The plan is a golden file's worth of JSON: one shape, one order,
-// whatever order the registrations arrived in.
+// A plan marshals to one JSON shape and order, whatever the registration order.
 func TestPlanMarshalsToAStableShape(t *testing.T) {
 	got, err := json.Marshal(planned(t).Plan())
 	if err != nil {
@@ -350,8 +331,7 @@ func TestPlanMarshalsToAStableShape(t *testing.T) {
 	}
 }
 
-// A plan built by hand, out of order, marshals in the plan's order: the
-// golden file compares a plan and not a map iteration.
+// A hand-built plan out of order marshals sorted too.
 func TestAHandBuiltPlanMarshalsInOrderToo(t *testing.T) {
 	got, err := json.Marshal(events.Plan{Groups: []events.PlanGroup{
 		{Name: "search", Consumers: []events.PlanConsumer{{Event: "a.One", Consumer: "Index"}}},
@@ -371,8 +351,7 @@ func TestAHandBuiltPlanMarshalsInOrderToo(t *testing.T) {
 	}
 }
 
-// An empty plan is an empty list rather than a null, so a golden file of
-// a deployable that consumes nothing is still a plan.
+// An empty plan marshals as an empty list.
 func TestAnEmptyPlanMarshalsAsAnEmptyList(t *testing.T) {
 	bus, _ := busOver()
 	got, err := json.Marshal(bus.Plan())
@@ -384,8 +363,7 @@ func TestAnEmptyPlanMarshalsAsAnEmptyList(t *testing.T) {
 	}
 }
 
-// The plan reads the same before and after the batch goes out, so a test
-// can pin it without starting a broker.
+// The plan is the same before and after Start.
 func TestThePlanIsTheSameBeforeAndAfterStart(t *testing.T) {
 	bus := planned(t)
 	before, err := json.Marshal(bus.Plan())

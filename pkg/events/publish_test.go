@@ -10,8 +10,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
 )
 
-// optionTransport is a transport that names itself to the option check
-// and reads one option of its own - the shape every broker adapter has.
+// optionTransport is an OptionAware transport named "probe" that reads the known options.
 type optionTransport struct {
 	recordingTransport
 	known []string
@@ -33,9 +32,7 @@ func TestAnOptionSetsTheMessageKey(t *testing.T) {
 	}
 }
 
-// Nothing fills a key in on the caller's behalf: a publish without the
-// option is keyless, which is what lets a transport spread those messages
-// instead of piling them onto one partition.
+// A publish without WithKey is keyless.
 func TestAPublishWithoutTheOptionIsKeyless(t *testing.T) {
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -67,8 +64,7 @@ func TestOptionsCarryDedupIDAndHeaders(t *testing.T) {
 	}
 }
 
-// A header under a reserved name stays the runtime's or the adapter's,
-// the same way one set on the envelope directly does.
+// WithHeader under a reserved key is dropped, as on an Envelope.
 func TestAReservedHeaderOptionIsStillDropped(t *testing.T) {
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -87,8 +83,7 @@ func TestAReservedHeaderOptionIsStillDropped(t *testing.T) {
 	}
 }
 
-// Options apply in order, so the last one setting a value wins. That is
-// the whole mechanism behind publisher defaults.
+// Options apply in order, so the last one setting a value wins.
 func TestTheLastOptionSettingAValueWins(t *testing.T) {
 	env := events.Envelope{Event: "orders.OrderPlaced"}
 	env.Apply(events.JoinOptions(
@@ -103,8 +98,7 @@ func TestTheLastOptionSettingAValueWins(t *testing.T) {
 	}
 }
 
-// JoinOptions must not write into either input: a publisher hands the
-// same defaults slice to every call it makes.
+// JoinOptions does not write into the defaults slice, even when it has spare capacity.
 func TestJoinOptionsLeavesTheDefaultsAlone(t *testing.T) {
 	defaults := make([]events.PublishOption, 1, 4)
 	defaults[0] = events.WithKey("default")
@@ -138,8 +132,8 @@ func TestAnAdapterReadsItsOwnOption(t *testing.T) {
 	}
 }
 
-// The rule this whole surface exists for: an option the configured
-// adapter does not read must fail the publish, not vanish.
+// An option the configured adapter does not read fails the publish with an
+// *UnknownOptionError.
 func TestAnUnknownOptionInTheAdaptersOwnNamespaceErrors(t *testing.T) {
 	tr := &optionTransport{known: []string{"priority"}}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -161,8 +155,7 @@ func TestAnUnknownOptionInTheAdaptersOwnNamespaceErrors(t *testing.T) {
 	}
 }
 
-// An adapter that reads nothing still gets the check - an option under
-// its name is then always a mistake.
+// An adapter that reads no options refuses any option under its name.
 func TestAnAdapterWithNoOptionsRefusesAnyOfItsOwn(t *testing.T) {
 	tr := &optionTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -177,8 +170,7 @@ func TestAnAdapterWithNoOptionsRefusesAnyOfItsOwn(t *testing.T) {
 	}
 }
 
-// An option meant for another broker is that broker's business, so the
-// same publishing code runs whichever transport is wired up.
+// An option addressed to another adapter is ignored.
 func TestAnotherAdaptersOptionIsIgnored(t *testing.T) {
 	tr := &optionTransport{known: []string{"priority"}}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -192,9 +184,7 @@ func TestAnotherAdaptersOptionIsIgnored(t *testing.T) {
 	}
 }
 
-// A transport that names no adapter cannot be checked - nothing can tell
-// an option meant for it from one meant for somebody else - so it
-// publishes rather than refusing.
+// A transport that is not OptionAware publishes any adapter option unchecked.
 func TestATransportThatNamesNoAdapterIsNotChecked(t *testing.T) {
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -205,8 +195,7 @@ func TestATransportThatNamesNoAdapterIsNotChecked(t *testing.T) {
 	}
 }
 
-// The check runs while the batch is encoded, which is before anything is
-// sent - the same promise an unencodable payload gets.
+// A bad adapter option fails the batch before anything is sent.
 func TestABadOptionFailsTheBatchBeforeAnythingIsSent(t *testing.T) {
 	tr := &optionTransport{known: []string{"priority"}}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -224,8 +213,7 @@ func TestABadOptionFailsTheBatchBeforeAnythingIsSent(t *testing.T) {
 	}
 }
 
-// A bus-wide default rides every publish, which is how a deployment adds
-// a header nobody writing a publisher should have to remember.
+// A publish default applies to Publish and PublishAll alike.
 func TestAPublishDefaultRidesEveryPublish(t *testing.T) {
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}),
@@ -246,7 +234,7 @@ func TestAPublishDefaultRidesEveryPublish(t *testing.T) {
 	}
 }
 
-// The defaults are defaults: the caller's own value wins, on both paths.
+// The caller's own value beats a publish default, on both paths.
 func TestAPerCallValueBeatsTheDefault(t *testing.T) {
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}),
@@ -279,8 +267,7 @@ func TestAPerCallValueBeatsTheDefault(t *testing.T) {
 	}
 }
 
-// Applying the defaults must not write into the caller's envelope: the
-// same slice is often published more than once.
+// Applying the publish defaults leaves the caller's envelope metadata untouched.
 func TestThePublishDefaultsDoNotTouchTheCallersEnvelope(t *testing.T) {
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}),

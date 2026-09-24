@@ -22,8 +22,8 @@ func busWith(mws ...events.Middleware) (*events.Bus, *recordingTransport) {
 	), tr
 }
 
-// wrapped registers sub on a bus carrying mws and returns the handler the
-// transport was handed - the one a delivery goroutine calls.
+// wrapped registers sub on a bus carrying mws and returns the handler the transport was
+// handed.
 func wrapped(t *testing.T, sub events.Subscription, mws ...events.Middleware) events.Handler {
 	t.Helper()
 	bus, tr := busWith(mws...)
@@ -54,11 +54,8 @@ func TestBusMiddlewareWrapsEverySubscription(t *testing.T) {
 	}
 }
 
-// Use builds the same chain WithMiddleware does, for a deployable that
-// assembles its delivery chain after the bus rather than at the New call.
-// The chain is folded at Start, so a middleware added after the
-// registrations covers them too - every one of them, outside whatever
-// chain a subscription carries itself.
+// Use appends to the bus chain, which wraps subscriptions registered before it, outside
+// their own chains.
 func TestUseWrapsEverySubscriptionOutsideItsOwnChain(t *testing.T) {
 	var trace string
 	bus, tr := busWith(tagMW(&trace, "N"))
@@ -88,9 +85,7 @@ func TestUseWrapsEverySubscriptionOutsideItsOwnChain(t *testing.T) {
 	}
 }
 
-// Use after Start is a wiring mistake and not a runtime condition: the
-// batch is with the transport already wrapped, so a middleware arriving
-// now would cover nothing and say nothing about it.
+// Use after Start panics with a message naming both methods.
 func TestUseAfterStartPanics(t *testing.T) {
 	var trace string
 	bus, _ := busWith()
@@ -109,8 +104,7 @@ func TestUseAfterStartPanics(t *testing.T) {
 	bus.Use(passthrough())
 }
 
-// A subscription's own chain runs INSIDE the bus-wide one, so a bus
-// concern - logging, tracing - still sees what a per-consumer chain did.
+// A subscription's own chain runs inside the bus chain.
 func TestASubscriptionsChainRunsInsideTheBusChain(t *testing.T) {
 	var trace string
 	sub := tracingSub(&trace, "x.Y", "C1", "g")
@@ -125,9 +119,8 @@ func TestASubscriptionsChainRunsInsideTheBusChain(t *testing.T) {
 	}
 }
 
-// The recover is outside both chains and inside neither: a subscription's
-// own chain sees a panicking handler as an error, exactly as the bus
-// chain does, and a panic in either chain still ends as an error.
+// A subscription's own chain sees a panicking handler as a *PanicError, and so does the
+// transport.
 func TestRecoverySurroundsBothChains(t *testing.T) {
 	var seen error
 	observe := func(_ events.Subscription, next events.Handler) events.Handler {
@@ -150,9 +143,7 @@ func TestRecoverySurroundsBothChains(t *testing.T) {
 	}
 }
 
-// WithMiddleware covers a hand-built subscription too: one written
-// against another design's contracts reaches the broker through the same
-// bus, which is the only seam that sees every registration.
+// The bus chain wraps every registered subscription, whoever built it.
 func TestBusMiddlewareCoversEverySubscription(t *testing.T) {
 	var mu sync.Mutex
 	var seen []string
@@ -181,8 +172,7 @@ func TestBusMiddlewareCoversEverySubscription(t *testing.T) {
 	}
 }
 
-// A bus with no middleware is the wrap it has always applied: one recover
-// around the handler, nothing else.
+// A bus with no middleware wraps the handler in a recover and nothing else.
 func TestBusWithoutMiddlewareIsUnchanged(t *testing.T) {
 	var trace string
 	h := wrapped(t, tracingSub(&trace, "x.Y", "C1", "g"))
@@ -200,8 +190,7 @@ func TestBusWithoutMiddlewareIsUnchanged(t *testing.T) {
 	}
 }
 
-// The rule, with no chain entry to remember: a panicking handler reaches
-// the project's own middleware as an error, and the process survives.
+// A panicking handler reaches the bus chain as the same *PanicError the transport sees.
 func TestPanickingHandlerReachesTheProjectsMiddleware(t *testing.T) {
 	var trace string
 	var seen error
@@ -216,7 +205,7 @@ func TestPanickingHandlerReachesTheProjectsMiddleware(t *testing.T) {
 	}
 	err := wrapped(t, panickingSub("boom"), observe)(context.Background(), &events.Message{Event: "x.Y"})
 
-	// The middleware ran either side of the panic rather than unwinding.
+	// The middleware ran on both sides of the panic.
 	if trace != ">M<M" {
 		t.Errorf("trace = %q, want %q - the panic unwound past the middleware", trace, ">M<M")
 	}
@@ -237,8 +226,7 @@ func TestPanickingHandlerReachesTheProjectsMiddleware(t *testing.T) {
 	}
 }
 
-// A panicking MIDDLEWARE cannot end the process either. It sits above the
-// inner recover, so only the outer one can catch it.
+// A panicking middleware is caught by the outer recover, and the handler does not run.
 func TestPanickingMiddlewareDoesNotEndTheProcess(t *testing.T) {
 	blowUp := func(events.Subscription, events.Handler) events.Handler {
 		return func(context.Context, *events.Message) error { panic("middleware blew up") }
@@ -258,9 +246,7 @@ func TestPanickingMiddlewareDoesNotEndTheProcess(t *testing.T) {
 	}
 }
 
-// Recovery on both sides of the chain must still build exactly one
-// PanicError per panic: once the inner one catches, no panic is in flight,
-// so the outer recover returns nil and passes the error through.
+// One panic yields exactly one *PanicError, whichever recover catches it.
 func TestExactlyOnePanicErrorPerPanic(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -279,8 +265,7 @@ func TestExactlyOnePanicErrorPerPanic(t *testing.T) {
 			if !errors.As(err, &panicked) {
 				t.Fatalf("got %v, want a *PanicError", err)
 			}
-			// A second one could only arrive by one recover re-wrapping the
-			// other, which would leave the first as the panic value.
+			// A re-wrapped PanicError would be the outer one's Value.
 			if inner, ok := panicked.Value.(*events.PanicError); ok {
 				t.Errorf("two PanicErrors for one panic; the outer recover wrapped %v", inner)
 			}
@@ -291,23 +276,21 @@ func TestExactlyOnePanicErrorPerPanic(t *testing.T) {
 	}
 }
 
-// passthrough is a middleware that only delegates - enough to put a chain
-// on the bus, and so a second recover around it.
+// passthrough is a middleware that only delegates.
 func passthrough() events.Middleware {
 	return func(_ events.Subscription, next events.Handler) events.Handler {
 		return func(ctx context.Context, msg *events.Message) error { return next(ctx, msg) }
 	}
 }
 
-// panicking is a middleware that panics instead of delegating.
+// panicking is a middleware that panics without calling next.
 func panicking(value any) events.Middleware {
 	return func(events.Subscription, events.Handler) events.Handler {
 		return func(context.Context, *events.Message) error { panic(value) }
 	}
 }
 
-// The whole point of recovery is that the process lives. Delivery runs on
-// a goroutine the transport spawns, so this drives a real one.
+// A real delivery goroutine survives a panicking chain over a panicking handler.
 func TestDeliveryGoroutineSurvivesBothPanics(t *testing.T) {
 	var mu sync.Mutex
 	var reported []error
@@ -336,16 +319,13 @@ func TestDeliveryGoroutineSurvivesBothPanics(t *testing.T) {
 	if !errors.As(reported[0], &panicked) {
 		t.Fatalf("reported %v, want a *PanicError", reported[0])
 	}
-	// The chain panics before reaching the handler, so that is the one
-	// caught - by the outer recover, the only one above it.
+	// The chain panics before the handler runs.
 	if panicked.Value != "from the chain" {
 		t.Errorf("PanicError.Value = %v, want the chain's panic", panicked.Value)
 	}
 }
 
-// A chain folded by Apply is wrapped by the bus from outside, as one
-// opaque handler - so a handler panic unwinds past it unless Recover sits
-// at its innermost end. That is the gap Recover exists for.
+// A chain folded by Apply sees a handler's panic only with Recover at its innermost end.
 func TestRecoverGivesAHandAppliedChainWhatABusChainGetsFree(t *testing.T) {
 	for _, c := range []struct {
 		name     string
