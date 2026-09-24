@@ -62,11 +62,11 @@ A file is formatted only when it has no errors, parse or semantic: a mistake the
 
 ## `craftgo version`
 
-Prints the CLI version.
+Prints the CLI version alone, without a leading `v`. `--version` and `-v` do the same.
 
 ```bash
 craftgo version
-craftgo 0.x.x
+1.9.0
 ```
 
 ## `craftgo help`
