@@ -3,6 +3,7 @@ package nats_test
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1056,6 +1057,84 @@ func TestPublishAfterCloseSendsNothing(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	if n := storedIn(t, conn, "ORDERS"); n != 0 {
 		t.Errorf("stream holds %d messages, want 0", n)
+	}
+}
+
+// Subscribe after Close returns ErrClosed and creates no durable.
+func TestSubscribeAfterCloseIsRefused(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn)
+	if err := tr.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err := tr.Subscribe(ctx, []events.Subscription{{
+		Event: "orders.Placed", Consumer: "C", Group: "late",
+		Handle: func(context.Context, *events.Message) error { return nil },
+	}})
+	if !errors.Is(err, craftnats.ErrClosed) {
+		t.Fatalf("err = %v, want ErrClosed", err)
+	}
+	js, err := jetstream.New(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := js.Consumer(ctx, "ORDERS", "late"); !errors.Is(err, jetstream.ErrConsumerNotFound) {
+		t.Errorf("durable lookup: err = %v, want ErrConsumerNotFound - a refused subscribe created it", err)
+	}
+}
+
+// runOnLog is a slog handler that runs fn at its first record.
+type runOnLog struct {
+	once sync.Once
+	fn   func()
+}
+
+func (h *runOnLog) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *runOnLog) Handle(context.Context, slog.Record) error {
+	h.once.Do(h.fn)
+	return nil
+}
+
+func (h *runOnLog) WithAttrs([]slog.Attr) slog.Handler { return h }
+
+func (h *runOnLog) WithGroup(string) slog.Handler { return h }
+
+// A Close that runs while Subscribe creates the durable leaves nothing consuming.
+func TestACloseDuringSubscribeLeavesNothingConsuming(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	var tr *craftnats.JetStream
+	tr = jsTransport(t, conn, craftnats.WithJetStreamLogger(slog.New(&runOnLog{fn: func() { _ = tr.Close() }})))
+
+	delivered := make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err := tr.Subscribe(ctx, []events.Subscription{{
+		Event: "orders.Placed", Consumer: "C", Group: "racing",
+		Handle: func(context.Context, *events.Message) error {
+			delivered <- struct{}{}
+			return nil
+		},
+	}})
+	if !errors.Is(err, craftnats.ErrClosed) {
+		t.Errorf("err = %v, want ErrClosed", err)
+	}
+	js, err := jetstream.New(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := js.Publish(ctx, "orders.Placed", []byte(`{}`)); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	select {
+	case <-delivered:
+		t.Error("a consumer started during Close is delivering")
+	case <-time.After(time.Second):
 	}
 }
 

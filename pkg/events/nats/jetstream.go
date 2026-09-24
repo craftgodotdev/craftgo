@@ -233,7 +233,7 @@ func NewJetStream(conn *nats.Conn, opts ...JetStreamOption) (*JetStream, error) 
 	return j, nil
 }
 
-// ErrClosed is what a publish reports after [JetStream.Close].
+// ErrClosed is what a publish or subscribe reports after [JetStream.Close].
 var ErrClosed = errors.New("transport closed")
 
 // AdapterName implements [events.OptionAware]; both transports are named [Adapter].
@@ -335,8 +335,12 @@ func (j *JetStream) PublishBatch(ctx context.Context, msgs []*events.Message) er
 
 // Subscribe binds each group to one durable filtering all of the group's
 // subjects, so all of a group's contracts must arrive in one call. Groups
-// started before a refusal stay live.
+// started before a refusal stay live. Once [JetStream.Close] has begun it
+// returns [ErrClosed].
 func (j *JetStream) Subscribe(ctx context.Context, subs []events.Subscription) error {
+	if j.isClosing() {
+		return fmt.Errorf("nats: subscribe: %w", ErrClosed)
+	}
 	if err := j.checkAccount(ctx); err != nil {
 		return err
 	}
@@ -469,6 +473,11 @@ func (j *JetStream) consumeGroup(ctx context.Context, g *groupPlan) error {
 	}
 
 	j.mu.Lock()
+	if j.isClosing() {
+		j.mu.Unlock()
+		cc.Stop()
+		return fmt.Errorf("nats: consume %q on stream %q: %w", g.name, g.stream, ErrClosed)
+	}
 	j.consuming = append(j.consuming, cc)
 	j.groups[g.name] = true
 	j.mu.Unlock()

@@ -131,6 +131,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   opened a fresh producer or consumer that nothing closed; both now return
   an error wrapping the new `kafka.ErrClosed`, like `nats.ErrClosed`.
 
+- **`nats.JetStream` refuses a subscribe once `Close` has begun**, with
+  `nats.ErrClosed`. A late subscribe created its durable and consumed with
+  nothing to stop it: neither `Close` nor cancelling its context ended it.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
