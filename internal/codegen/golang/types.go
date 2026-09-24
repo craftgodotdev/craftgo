@@ -111,7 +111,11 @@ func renderImports(imps []string) string {
 // collectBodyImports adds to imports every Go import the fields and mixins of a
 // type or error body reach, generic arguments included.
 func collectBodyImports(body []ast.TypeMember, pkg *semantic.Package, r *projectResolver, imports map[string]bool) {
-	crossPkg := r.CrossPkg
+	addCrossPkg := r.CrossPkg.importsInto(imports)
+	visit := func(n *ast.NamedTypeRef) {
+		addBuiltinImport(n, imports)
+		addCrossPkg(n)
+	}
 	for _, m := range body {
 		switch v := m.(type) {
 		case *ast.Field:
@@ -120,15 +124,10 @@ func collectBodyImports(body []ast.TypeMember, pkg *semantic.Package, r *project
 				imports[rawImportPath] = true
 				continue
 			}
-			collectFieldImports(v.Type, imports)
-			walkCrossPkgImports(v.Type, crossPkg, imports)
+			v.Type.WalkNamedRefs(visit)
 		case *ast.Mixin:
-			if v.Ref != nil {
-				ref := &ast.TypeRef{Named: v.Ref}
-				// A generic argument can be a builtin with an import (`Box<file>`).
-				collectFieldImports(ref, imports)
-				walkCrossPkgImports(ref, crossPkg, imports)
-			}
+			// A generic argument can be a builtin with an import (`Box<file>`).
+			v.Ref.WalkNamedRefs(visit)
 		}
 	}
 }
@@ -147,27 +146,14 @@ func collectImports(pkg *semantic.Package, r *projectResolver) []string {
 	return slices.Sorted(maps.Keys(imports))
 }
 
-// collectFieldImports adds the stdlib imports of the builtins t reaches (`file`,
-// `datetime`), through maps and generic arguments.
-func collectFieldImports(t *ast.TypeRef, set map[string]bool) {
-	if t == nil {
-		return
-	}
-	if t.Map != nil {
-		collectFieldImports(t.Map.Key, set)
-		collectFieldImports(t.Map.Value, set)
-		return
-	}
-	if t.Named != nil {
-		switch t.Named.Name.String() {
-		case "file":
-			set["mime/multipart"] = true
-		case "datetime":
-			set["time"] = true
-		}
-		for _, a := range t.Named.Args {
-			collectFieldImports(a, set)
-		}
+// addBuiltinImport adds to set the stdlib import of the builtin n names, if it
+// has one (`file`, `datetime`).
+func addBuiltinImport(n *ast.NamedTypeRef, set map[string]bool) {
+	switch n.Name.String() {
+	case "file":
+		set["mime/multipart"] = true
+	case "datetime":
+		set["time"] = true
 	}
 }
 
@@ -228,10 +214,8 @@ func renderTypeBody(members []ast.TypeMember, pkg *semantic.Package, r *projectR
 // source order.
 func resolvedGoFieldNames(members []ast.TypeMember) []string {
 	var dslNames []string
-	for _, m := range members {
-		if f, ok := m.(*ast.Field); ok {
-			dslNames = append(dslNames, f.Name)
-		}
+	for _, f := range ast.Fields(members) {
+		dslNames = append(dslNames, f.Name)
 	}
 	resolved, _ := idents.DedupGoFieldNames(dslNames)
 	return resolved

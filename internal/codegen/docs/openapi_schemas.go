@@ -246,8 +246,8 @@ func crossFieldSchemaFragments(decs []*ast.Decorator, members []ast.TypeMember) 
 // the JSON keys the document carries, which differ under @json.
 func jsonKeys(members []ast.TypeMember) func([]string) []string {
 	byField := map[string]string{}
-	for _, m := range members {
-		if f, ok := m.(*ast.Field); ok && f.Name != "" {
+	for _, f := range ast.Fields(members) {
+		if f.Name != "" {
 			byField[f.Name] = wire.JSONName(f)
 		}
 	}

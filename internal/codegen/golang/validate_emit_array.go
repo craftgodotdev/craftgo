@@ -48,7 +48,7 @@ func uniqueItemsCheck(f *ast.Field, access string, ctx emitCtx) string {
 	}
 	ctx.uses["fmt"] = true
 	// The element type keys the map and may name another package.
-	walkCrossPkgImports(f.Type, ctx.resolver.CrossPkg, ctx.uses)
+	f.Type.WalkNamedRefs(ctx.resolver.CrossPkg.importsInto(ctx.uses))
 	return fmt.Sprintf(`{
 seen := make(map[%s]struct{}, len(%s))
 for _, item := range %s {

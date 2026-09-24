@@ -37,8 +37,8 @@ func (a *analyzer) checkOneDeclFieldCollisions(d ast.Decl) {
 // warnFieldCollisions reports every colliding field of a body but the first.
 func (a *analyzer) warnFieldCollisions(parent string, members []ast.TypeMember) {
 	var fields []*ast.Field
-	for _, m := range members {
-		if f, ok := m.(*ast.Field); ok && f.Name != "" {
+	for _, f := range ast.Fields(members) {
+		if f.Name != "" {
 			fields = append(fields, f)
 		}
 	}
@@ -89,11 +89,7 @@ func isLetterStart(s string) bool {
 func (a *analyzer) checkFieldUniqueness() {
 	check := func(name string, members []ast.TypeMember) {
 		seen := map[string]lexer.Position{}
-		for _, m := range members {
-			f, ok := m.(*ast.Field)
-			if !ok {
-				continue
-			}
+		for _, f := range ast.Fields(members) {
 			// `_` normalises to "" and `_2` to "2", neither a usable Go field name.
 			if gn := idents.GoFieldName(f.Name); gn == "" || !isLetterStart(gn) {
 				a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeInvalidGoName,
@@ -127,11 +123,7 @@ var errorReservedGoNames = map[string]bool{
 // checkErrorReservedFieldNames rejects an error body field whose Go field name
 // collides with a generated error method.
 func (a *analyzer) checkErrorReservedFieldNames(ed *ast.ErrorDecl) {
-	for _, m := range ed.Body {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
-		}
+	for _, f := range ast.Fields(ed.Body) {
 		if gn := idents.GoFieldName(f.Name); errorReservedGoNames[gn] {
 			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeInvalidGoName,
 				"error %s field %q maps to the Go name %q, which collides with the generated error method %s() - the value would be shadowed by the method and produce non-compiling Go. Rename the field.",

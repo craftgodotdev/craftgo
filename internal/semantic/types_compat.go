@@ -23,11 +23,7 @@ func (a *analyzer) checkFieldTypeCompat() {
 // checkBodyTypeCompat checks each field decorator's AppliesTo in a type or
 // error body.
 func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) {
-	for _, m := range members {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
-		}
+	for _, f := range ast.Fields(members) {
 		actual := a.fieldPrimOf(f)
 		for _, d := range f.Decorators {
 			if d == nil {

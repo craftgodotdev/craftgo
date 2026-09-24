@@ -48,11 +48,7 @@ func (a *analyzer) checkDeclPlacement(d ast.Decl) {
 // checkFieldPlacement checks each field's decorators against site:
 // [LvlField] in a type body, [LvlErrorField] in an error body.
 func (a *analyzer) checkFieldPlacement(site Level, parent string, members []ast.TypeMember) {
-	for _, m := range members {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
-		}
+	for _, f := range ast.Fields(members) {
 		a.checkPlacement(site, site.Name()+" "+parent+"."+f.Name, f.Decorators)
 	}
 }

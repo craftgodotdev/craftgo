@@ -186,61 +186,33 @@ func collectGenericInstancesInPackage(pkg *semantic.Package, registry *genericRe
 	if pkg == nil || registry == nil {
 		return
 	}
-	visit := func(t *ast.TypeRef) {
-		walkTypeRefForGenerics(t, pkg, registry)
+	visit := func(n *ast.NamedTypeRef) {
+		if len(n.Args) == 0 {
+			return
+		}
+		if decl, ok := pkg.Types[n.Name.String()]; ok && len(decl.TypeParams) > 0 {
+			registry.register(decl, n.Args)
+		}
 	}
 	for _, td := range pkg.Types {
 		if len(td.TypeParams) > 0 {
 			continue
 		}
-		for _, m := range td.Body {
-			if f, ok := m.(*ast.Field); ok {
-				visit(f.Type)
-			}
+		for _, f := range ast.Fields(td.Body) {
+			f.Type.WalkNamedRefs(visit)
 		}
 	}
 	for _, ed := range pkg.Errors {
-		for _, m := range ed.Body {
-			if f, ok := m.(*ast.Field); ok {
-				visit(f.Type)
-			}
+		for _, f := range ast.Fields(ed.Body) {
+			f.Type.WalkNamedRefs(visit)
 		}
 	}
 	for _, si := range pkg.Services {
 		for _, m := range si.Methods {
-			if m.Request != nil {
-				visit(&ast.TypeRef{Named: m.Request})
-			}
-			if m.Response != nil && m.Response.Type != nil {
-				visit(&ast.TypeRef{Named: m.Response.Type})
+			m.Request.WalkNamedRefs(visit)
+			if m.Response != nil {
+				m.Response.Type.WalkNamedRefs(visit)
 			}
 		}
-	}
-}
-
-// walkTypeRefForGenerics registers every generic instance in t, arguments,
-// array elements and map entries included.
-func walkTypeRefForGenerics(t *ast.TypeRef, pkg *semantic.Package, registry *genericRegistry) {
-	if t == nil {
-		return
-	}
-	if t.Map != nil {
-		walkTypeRefForGenerics(t.Map.Key, pkg, registry)
-		walkTypeRefForGenerics(t.Map.Value, pkg, registry)
-		return
-	}
-	if t.Array {
-		inner := t.ElemTypeRef()
-		walkTypeRefForGenerics(inner, pkg, registry)
-		return
-	}
-	if t.Named == nil || len(t.Named.Args) == 0 {
-		return
-	}
-	for _, a := range t.Named.Args {
-		walkTypeRefForGenerics(a, pkg, registry)
-	}
-	if decl, ok := pkg.Types[t.Named.Name.String()]; ok && len(decl.TypeParams) > 0 {
-		registry.register(decl, t.Named.Args)
 	}
 }

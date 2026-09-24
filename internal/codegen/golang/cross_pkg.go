@@ -130,24 +130,12 @@ func qualifyNamedRef(n *ast.NamedTypeRef, localAlias string, crossPkg crossPkg, 
 	return name + suffix
 }
 
-// walkCrossPkgImports adds to set the import of every package-qualified ref in
-// t, through maps and generic arguments.
-func walkCrossPkgImports(t *ast.TypeRef, crossPkg crossPkg, set map[string]bool) {
-	if t == nil || len(crossPkg) == 0 {
-		return
-	}
-	if t.Map != nil {
-		walkCrossPkgImports(t.Map.Key, crossPkg, set)
-		walkCrossPkgImports(t.Map.Value, crossPkg, set)
-		return
-	}
-	if t.Named == nil {
-		return
-	}
-	if imp := crossPkgImportFor(t.Named, crossPkg); imp != "" {
-		set[imp] = true
-	}
-	for _, a := range t.Named.Args {
-		walkCrossPkgImports(a, crossPkg, set)
+// importsInto returns a named-ref visitor that adds to set the import of each
+// package-qualified ref it is called on.
+func (c crossPkg) importsInto(set map[string]bool) func(*ast.NamedTypeRef) {
+	return func(n *ast.NamedTypeRef) {
+		if imp := crossPkgImportFor(n, c); imp != "" {
+			set[imp] = true
+		}
 	}
 }

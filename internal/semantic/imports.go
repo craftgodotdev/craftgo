@@ -66,63 +66,31 @@ func (r *refResolver) resolveImports(f *ast.File, designRoot string) {
 
 // walkDeclRefs checks every qualified type reference in d.
 func (r *refResolver) walkDeclRefs(d ast.Decl, currentPkg string) {
+	check := func(n *ast.NamedTypeRef) { r.checkQualifiedRef(n, currentPkg) }
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
-		r.walkBodyRefs(dd.Body, currentPkg)
+		walkMemberRefs(dd.Body, check)
 	case *ast.ErrorDecl:
-		r.walkBodyRefs(dd.Body, currentPkg)
+		walkMemberRefs(dd.Body, check)
 	case *ast.EventDecl:
-		if dd.Payload != nil && dd.Payload.Type != nil {
-			r.walkNamedRef(dd.Payload.Type, currentPkg)
+		if dd.Payload != nil {
+			dd.Payload.Type.WalkNamedRefs(check)
 		}
 	case *ast.ServiceDecl:
 		for _, m := range dd.Methods() {
-			if m.Request != nil {
-				r.walkNamedRef(m.Request, currentPkg)
-			}
-			if m.Response != nil && m.Response.Type != nil {
-				r.walkNamedRef(m.Response.Type, currentPkg)
+			m.Request.WalkNamedRefs(check)
+			if m.Response != nil {
+				m.Response.Type.WalkNamedRefs(check)
 			}
 		}
 	}
 }
 
-// walkBodyRefs walks the field types and mixins of a type or error body.
-func (r *refResolver) walkBodyRefs(members []ast.TypeMember, currentPkg string) {
-	for _, m := range members {
-		switch v := m.(type) {
-		case *ast.Field:
-			r.walkTypeRef(v.Type, currentPkg)
-		case *ast.Mixin:
-			r.walkNamedRef(v.Ref, currentPkg)
-		}
-	}
-}
-
-// walkTypeRef walks t, a map's key and value included.
-func (r *refResolver) walkTypeRef(t *ast.TypeRef, currentPkg string) {
-	if t == nil {
+// checkQualifiedRef checks the package, symbol and generic arity of a
+// qualified n. Bare names are checked per package.
+func (r *refResolver) checkQualifiedRef(n *ast.NamedTypeRef, currentPkg string) {
+	if n.Name == nil {
 		return
-	}
-	if t.Map != nil {
-		r.walkTypeRef(t.Map.Key, currentPkg)
-		r.walkTypeRef(t.Map.Value, currentPkg)
-		return
-	}
-	if t.Named != nil {
-		r.walkNamedRef(t.Named, currentPkg)
-	}
-}
-
-// walkNamedRef walks n's generic arguments and, when n is qualified,
-// checks its package, symbol and generic arity. Bare names are checked
-// per package.
-func (r *refResolver) walkNamedRef(n *ast.NamedTypeRef, currentPkg string) {
-	if n == nil || n.Name == nil {
-		return
-	}
-	for _, arg := range n.Args {
-		r.walkTypeRef(arg, currentPkg)
 	}
 	parts := n.Name.Parts
 	if len(parts) < 2 {

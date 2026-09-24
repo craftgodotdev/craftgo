@@ -105,7 +105,7 @@ func buildServiceData(pkgName, svcName string, m *ast.Method, imps importPaths, 
 	}
 	addRefExtras := func(ref *ast.NamedTypeRef) {
 		set := map[string]bool{}
-		walkCrossPkgImports(&ast.TypeRef{Named: ref}, crossPkg, set)
+		ref.WalkNamedRefs(crossPkg.importsInto(set))
 		for path := range set {
 			addExtra(extraImport{Alias: pathAlias[path], Path: path})
 		}

@@ -52,11 +52,7 @@ func (a *analyzer) checkDeclArgs(d ast.Decl) {
 
 // checkFieldArgs checks every field of a type or error body.
 func (a *analyzer) checkFieldArgs(members []ast.TypeMember) {
-	for _, m := range members {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
-		}
+	for _, f := range ast.Fields(members) {
 		a.checkArgsScope(f.Decorators)
 		a.checkFieldDefault(f)
 		a.checkFieldExample(f)

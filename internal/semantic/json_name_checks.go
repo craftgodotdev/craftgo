@@ -25,9 +25,8 @@ func (a *analyzer) checkJSONNames(files []*ast.File) {
 
 func (a *analyzer) checkJSONNamesIn(parent string, members []ast.TypeMember) {
 	seen := map[string]*ast.Field{}
-	for _, m := range members {
-		f, ok := m.(*ast.Field)
-		if !ok || f.Name == "" {
+	for _, f := range ast.Fields(members) {
+		if f.Name == "" {
 			continue
 		}
 		a.checkJSONDecorator(f)

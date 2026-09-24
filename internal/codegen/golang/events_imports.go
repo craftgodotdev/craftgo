@@ -93,7 +93,7 @@ func (s *importSet) payloadRefType(ref *ast.NamedTypeRef, typesImport string) st
 // addRefImports adds every cross-package import ref and its generic arguments reach.
 func (s *importSet) addRefImports(ref *ast.NamedTypeRef) {
 	set := map[string]bool{}
-	walkCrossPkgImports(&ast.TypeRef{Named: ref}, s.crossPkg, set)
+	ref.WalkNamedRefs(s.crossPkg.importsInto(set))
 	pathAlias := map[string]string{}
 	for alias, path := range s.crossPkg {
 		pathAlias[path] = alias

@@ -56,11 +56,7 @@ func fieldEmbedClashes(body []ast.TypeMember) []fieldEmbedClash {
 		embeds[mx.Ref.Name.Parts[len(mx.Ref.Name.Parts)-1]] = true
 	}
 	var out []fieldEmbedClash
-	for _, m := range body {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
-		}
+	for _, f := range ast.Fields(body) {
 		if gn := idents.GoFieldName(f.Name); embeds[gn] {
 			out = append(out, fieldEmbedClash{pos: f.Pos, field: f.Name, goName: gn, mixin: gn})
 		}
@@ -178,13 +174,11 @@ func (a *analyzer) checkOneTypeMixins(host string, body []ast.TypeMember) {
 		return a.diag(pos, pos, lexer.SeverityError, code, format, args...)
 	}
 	// Host fields first, so a mixin's same-named field is the one reported.
-	for _, m := range body {
-		if f, ok := m.(*ast.Field); ok {
-			if _, dup := seen[f.Name]; dup {
-				continue // already reported by checkFieldUniqueness
-			}
-			seen[f.Name] = fieldOrigin{pos: f.Pos, from: host}
+	for _, f := range ast.Fields(body) {
+		if _, dup := seen[f.Name]; dup {
+			continue // already reported by checkFieldUniqueness
 		}
+		seen[f.Name] = fieldOrigin{pos: f.Pos, from: host}
 	}
 	seenMixin := map[string]mixinEmbed{}
 	for _, m := range body {

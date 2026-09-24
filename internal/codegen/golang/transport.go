@@ -175,7 +175,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		}
 		// The request type's generic arguments can reach further packages.
 		argSet := map[string]bool{}
-		walkCrossPkgImports(&ast.TypeRef{Named: m.Request}, crossPkg, argSet)
+		m.Request.WalkNamedRefs(crossPkg.importsInto(argSet))
 		pathAlias := map[string]string{}
 		for a, p := range crossPkg {
 			pathAlias[p] = a

@@ -50,11 +50,7 @@ func (a *analyzer) checkDeclDecorators(d ast.Decl) {
 
 // checkFieldDecorators checks every field of a type or error body.
 func (a *analyzer) checkFieldDecorators(parent string, members []ast.TypeMember) {
-	for _, m := range members {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
-		}
+	for _, f := range ast.Fields(members) {
 		a.checkDecoratorScope("field "+parent+"."+f.Name, f.Decorators)
 	}
 }
@@ -97,11 +93,7 @@ func (a *analyzer) checkDecoratorConflicts(files []*ast.File) {
 }
 
 func (a *analyzer) checkSensitiveConflictsIn(members []ast.TypeMember) {
-	for _, m := range members {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
-		}
+	for _, f := range ast.Fields(members) {
 		if !ast.HasDecorator(f.Decorators, "sensitive") {
 			continue
 		}

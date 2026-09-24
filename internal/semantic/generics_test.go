@@ -3,6 +3,8 @@ package semantic
 import (
 	"strings"
 	"testing"
+
+	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
 func TestGenericInstanceCorrectArity(t *testing.T) {
@@ -220,11 +222,11 @@ type X { byPage map<Page<User, X>, string> }`))
 	}
 }
 
-// walkTypeRefGenerics accepts a nil type ref.
-func TestGenericWalkNilTypeRef(t *testing.T) {
+// checkNamedRefGenerics accepts a ref without a name.
+func TestGenericCheckNamelessRef(t *testing.T) {
 	a := newTestAnalyzer(&Package{})
-	a.walkTypeRefGenerics(nil, nil)
+	a.checkNamedRefGenerics(&ast.NamedTypeRef{}, nil)
 	if len(a.diags) != 0 {
-		t.Errorf("nil ref should not diag, got %v", a.diags)
+		t.Errorf("nameless ref should not diag, got %v", a.diags)
 	}
 }

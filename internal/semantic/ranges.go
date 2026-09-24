@@ -77,11 +77,7 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 // checkBodyRanges runs the decorator value rules and the field rules on each
 // field of a body.
 func (a *analyzer) checkBodyRanges(members []ast.TypeMember, typeParams []string) {
-	for _, m := range members {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
-		}
+	for _, f := range ast.Fields(members) {
 		a.checkDecoratorRanges(f.Decorators)
 		a.checkPairOrdering(f)
 		a.checkNullableRedundant(f)

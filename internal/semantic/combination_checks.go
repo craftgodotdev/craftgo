@@ -33,11 +33,7 @@ func (a *analyzer) checkDeclCombinations(d ast.Decl) {
 
 // checkFieldCombinations checks every field of a type or error body.
 func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMember) {
-	for _, m := range members {
-		f, ok := m.(*ast.Field)
-		if !ok {
-			continue
-		}
+	for _, f := range ast.Fields(members) {
 		a.checkSingleBinding(parent, f)
 		a.checkBindingFieldType(parent, f)
 		a.checkBoundOverlap(parent, f)

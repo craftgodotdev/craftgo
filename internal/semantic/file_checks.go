@@ -12,9 +12,8 @@ func (a *analyzer) checkFilePosition() {
 	hasFile := false
 	record := func(name string, body []ast.TypeMember) {
 		bodies[name] = body
-		for _, m := range body {
-			f, ok := m.(*ast.Field)
-			if !ok || !isFileTypeRef(f.Type) {
+		for _, f := range ast.Fields(body) {
+			if !isFileTypeRef(f.Type) {
 				continue
 			}
 			hasFile = true

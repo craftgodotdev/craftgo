@@ -11,54 +11,29 @@ import (
 // type and error bodies and in method requests and responses, map keys,
 // values and nested arguments included.
 func (a *analyzer) checkGenerics() {
+	check := func(typeParams []string) func(*ast.NamedTypeRef) {
+		return func(n *ast.NamedTypeRef) { a.checkNamedRefGenerics(n, typeParams) }
+	}
 	for _, td := range a.pkg.Types {
-		a.walkBodyGenerics(td.Body, td.TypeParams)
+		walkMemberRefs(td.Body, check(td.TypeParams))
 	}
 	for _, ed := range a.pkg.Errors {
-		a.walkBodyGenerics(ed.Body, nil)
+		walkMemberRefs(ed.Body, check(nil))
 	}
 	for _, si := range a.pkg.Services {
 		for _, m := range si.Methods {
-			a.walkNamedRefGenerics(m.Request, nil)
+			m.Request.WalkNamedRefs(check(nil))
 			if m.Response != nil {
-				a.walkNamedRefGenerics(m.Response.Type, nil)
+				m.Response.Type.WalkNamedRefs(check(nil))
 			}
 		}
 	}
 }
 
-// walkBodyGenerics walks every field type and mixin in members with the
-// enclosing decl's type parameters in scope.
-func (a *analyzer) walkBodyGenerics(members []ast.TypeMember, typeParams []string) {
-	for _, m := range members {
-		switch v := m.(type) {
-		case *ast.Field:
-			a.walkTypeRefGenerics(v.Type, typeParams)
-		case *ast.Mixin:
-			a.walkNamedRefGenerics(v.Ref, typeParams)
-		}
-	}
-}
-
-// walkTypeRefGenerics walks t, a map's key and value included.
-func (a *analyzer) walkTypeRefGenerics(t *ast.TypeRef, typeParams []string) {
-	if t == nil {
-		return
-	}
-	if t.Map != nil {
-		a.walkTypeRefGenerics(t.Map.Key, typeParams)
-		a.walkTypeRefGenerics(t.Map.Value, typeParams)
-		return
-	}
-	if t.Named != nil {
-		a.walkNamedRefGenerics(t.Named, typeParams)
-	}
-}
-
-// walkNamedRefGenerics checks n's generic arguments and its arity; a bare
+// checkNamedRefGenerics checks n's generic arguments and its arity; a bare
 // name in typeParams is a type variable, not a type.
-func (a *analyzer) walkNamedRefGenerics(n *ast.NamedTypeRef, typeParams []string) {
-	if n == nil || n.Name == nil {
+func (a *analyzer) checkNamedRefGenerics(n *ast.NamedTypeRef, typeParams []string) {
+	if n.Name == nil {
 		return
 	}
 	for _, arg := range n.Args {
@@ -66,7 +41,6 @@ func (a *analyzer) walkNamedRefGenerics(n *ast.NamedTypeRef, typeParams []string
 			a.diag(arg.Pos, arg.Pos, lexer.SeverityError, CodeGenericOptionalArg,
 				"a generic type argument cannot be optional (`?`) - the optionality has no well-defined position after substitution, so the Go type and the OpenAPI schema would disagree. Declare the nullability on a field inside the generic (e.g. `type Box<T> { item T? }`) instead.")
 		}
-		a.walkTypeRefGenerics(arg, typeParams)
 	}
 	// The project pass checks the arity of qualified refs.
 	if len(n.Name.Parts) != 1 {

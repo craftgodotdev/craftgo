@@ -52,33 +52,42 @@ func importImplicitAlias(path string) string {
 func (a *analyzer) checkLocalTypeRefs(files []*ast.File) {
 	for _, f := range files {
 		imports := importAliasSet(f.Imports)
+		check := func(typeParams map[string]bool) func(*ast.NamedTypeRef) {
+			return func(n *ast.NamedTypeRef) { a.checkLocalNamedRef(n, typeParams, imports) }
+		}
 		for _, d := range f.Decls {
 			switch v := d.(type) {
 			case *ast.TypeDecl:
-				typeParams := paramSet(v.TypeParams)
-				for _, m := range v.Body {
-					a.checkRefsInMember(m, typeParams, imports)
-				}
+				walkMemberRefs(v.Body, check(paramSet(v.TypeParams)))
 			case *ast.ErrorDecl:
-				for _, m := range v.Body {
-					a.checkRefsInMember(m, nil, imports)
-				}
+				walkMemberRefs(v.Body, check(nil))
 			case *ast.ScalarDecl:
 				// checkScalarTypeCompat checks a scalar's primitive.
 			case *ast.EventDecl:
-				if v.Payload != nil && v.Payload.Type != nil {
-					a.checkLocalNamedRef(v.Payload.Type, nil, imports)
+				if v.Payload != nil {
+					v.Payload.Type.WalkNamedRefs(check(nil))
 				}
 			case *ast.ServiceDecl:
 				for _, m := range v.Methods() {
-					if m.Request != nil {
-						a.checkLocalNamedRef(m.Request, nil, imports)
-					}
-					if m.Response != nil && m.Response.Type != nil {
-						a.checkLocalNamedRef(m.Response.Type, nil, imports)
+					m.Request.WalkNamedRefs(check(nil))
+					if m.Response != nil {
+						m.Response.Type.WalkNamedRefs(check(nil))
 					}
 				}
 			}
+		}
+	}
+}
+
+// walkMemberRefs calls fn on every named type the field types and mixins of
+// members reach, in [ast.TypeRef.WalkNamedRefs] order.
+func walkMemberRefs(members []ast.TypeMember, fn func(*ast.NamedTypeRef)) {
+	for _, m := range members {
+		switch v := m.(type) {
+		case *ast.Field:
+			v.Type.WalkNamedRefs(fn)
+		case *ast.Mixin:
+			v.Ref.WalkNamedRefs(fn)
 		}
 	}
 }
@@ -121,43 +130,11 @@ func paramSet(params []string) map[string]bool {
 	return out
 }
 
-// checkRefsInMember checks a field's type or a mixin's reference.
-func (a *analyzer) checkRefsInMember(m ast.TypeMember, typeParams, imports map[string]bool) {
-	switch v := m.(type) {
-	case *ast.Field:
-		a.checkLocalTypeRef(v.Type, typeParams, imports)
-	case *ast.Mixin:
-		a.checkLocalNamedRef(v.Ref, typeParams, imports)
-	}
-}
-
-// checkLocalTypeRef checks every bare name in t, map keys, values and
-// generic arguments included.
-func (a *analyzer) checkLocalTypeRef(t *ast.TypeRef, typeParams, imports map[string]bool) {
-	if t == nil {
-		return
-	}
-	if t.Map != nil {
-		a.checkLocalTypeRef(t.Map.Key, typeParams, imports)
-		a.checkLocalTypeRef(t.Map.Value, typeParams, imports)
-		return
-	}
-	if t.Named != nil {
-		a.checkLocalNamedRef(t.Named, typeParams, imports)
-	}
-}
-
-// checkLocalNamedRef checks n's arguments and, when n is bare, that it
-// names a built-in, a type parameter in scope, or a type, enum or scalar
-// of this package; an error or an import alias gets its own diagnostic.
+// checkLocalNamedRef checks that a bare n names a built-in, a type parameter
+// in scope, or a type, enum or scalar of this package; an error or an import
+// alias gets its own diagnostic.
 func (a *analyzer) checkLocalNamedRef(n *ast.NamedTypeRef, typeParams, imports map[string]bool) {
-	if n == nil || n.Name == nil {
-		return
-	}
-	for _, arg := range n.Args {
-		a.checkLocalTypeRef(arg, typeParams, imports)
-	}
-	if len(n.Name.Parts) != 1 {
+	if n.Name == nil || len(n.Name.Parts) != 1 {
 		return
 	}
 	name := n.Name.Parts[0]

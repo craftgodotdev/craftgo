@@ -186,10 +186,9 @@ type T {
 	}
 	td := f.Decls[0].(*ast.TypeDecl)
 	var names []string
-	ast.EachField(td.Body, func(fl *ast.Field) bool {
+	for _, fl := range ast.Fields(td.Body) {
 		names = append(names, fl.Name)
-		return true
-	})
+	}
 	want := []string{"event", "consume", "payload"}
 	for i := range want {
 		if i >= len(names) || names[i] != want[i] {

@@ -345,13 +345,11 @@ func TestProcessFileNilTolerated(t *testing.T) {
 	}
 }
 
-func TestWalkRefNilGuards(t *testing.T) {
+func TestCheckQualifiedRefNamelessRef(t *testing.T) {
 	r := &refResolver{proj: &Project{Packages: map[string]*Package{}}}
-	r.walkTypeRef(nil, "")
-	r.walkNamedRef(nil, "")
-	r.walkNamedRef(&ast.NamedTypeRef{}, "")
+	r.checkQualifiedRef(&ast.NamedTypeRef{}, "")
 	if len(r.diags) != 0 {
-		t.Errorf("nil refs should not diag, got %v", r.diags)
+		t.Errorf("nameless ref should not diag, got %v", r.diags)
 	}
 }
 
@@ -391,12 +389,12 @@ func TestWalkDeclRefsCoversErrorAndService(t *testing.T) {
 	}
 }
 
-func TestWalkNamedRefMapBranch(t *testing.T) {
+func TestWalkDeclRefsMapOfUnqualified(t *testing.T) {
 	r := &refResolver{proj: &Project{Packages: map[string]*Package{}}}
-	r.walkTypeRef(&ast.TypeRef{Map: &ast.MapType{
+	r.walkDeclRefs(&ast.TypeDecl{Body: []ast.TypeMember{&ast.Field{Type: &ast.TypeRef{Map: &ast.MapType{
 		Key:   &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"string"}}}},
 		Value: &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"string"}}}},
-	}}, "")
+	}}}}}, "")
 	if len(r.diags) != 0 {
 		t.Errorf("map of unqualified should not diag, got %v", r.diags)
 	}

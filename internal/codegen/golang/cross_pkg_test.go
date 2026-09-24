@@ -109,8 +109,8 @@ func TestBuildCrossPkgEmptyCurrentReturnsAll(t *testing.T) {
 	}
 }
 
-// walkCrossPkgImports collects imports only for qualified refs, in map values and generic args too.
-func TestWalkCrossPkgImports(t *testing.T) {
+// importsInto collects imports only for qualified refs, in map values and generic args too.
+func TestImportsInto(t *testing.T) {
 	cross := crossPkg{"shared": "github.com/x/internal/types/shared"}
 
 	mkRef := func(parts ...string) *ast.TypeRef {
@@ -120,43 +120,43 @@ func TestWalkCrossPkgImports(t *testing.T) {
 	}
 
 	set := map[string]bool{}
-	walkCrossPkgImports(nil, cross, set)
+	(*ast.TypeRef)(nil).WalkNamedRefs(cross.importsInto(set))
 	if len(set) != 0 {
 		t.Errorf("nil should not contribute, got %v", set)
 	}
 
 	set = map[string]bool{}
-	walkCrossPkgImports(mkRef("shared", "User"), nil, set)
+	mkRef("shared", "User").WalkNamedRefs(crossPkg(nil).importsInto(set))
 	if len(set) != 0 {
 		t.Errorf("empty crossPkg should not contribute, got %v", set)
 	}
 
 	set = map[string]bool{}
-	walkCrossPkgImports(mkRef("User"), cross, set)
+	mkRef("User").WalkNamedRefs(cross.importsInto(set))
 	if len(set) != 0 {
 		t.Errorf("unqualified ref should not contribute, got %v", set)
 	}
 
 	set = map[string]bool{}
-	walkCrossPkgImports(mkRef("shared", "User"), cross, set)
+	mkRef("shared", "User").WalkNamedRefs(cross.importsInto(set))
 	if !set[cross["shared"]] {
 		t.Errorf("multi-part ref should add import, got %v", set)
 	}
 
 	set = map[string]bool{}
-	walkCrossPkgImports(&ast.TypeRef{Map: &ast.MapType{
+	(&ast.TypeRef{Map: &ast.MapType{
 		Key:   mkRef("string"),
 		Value: mkRef("shared", "User"),
-	}}, cross, set)
+	}}).WalkNamedRefs(cross.importsInto(set))
 	if !set[cross["shared"]] {
 		t.Errorf("map value should propagate, got %v", set)
 	}
 
 	set = map[string]bool{}
-	walkCrossPkgImports(&ast.TypeRef{Named: &ast.NamedTypeRef{
+	(&ast.TypeRef{Named: &ast.NamedTypeRef{
 		Name: &ast.QualifiedIdent{Parts: []string{"Page"}},
 		Args: []*ast.TypeRef{mkRef("shared", "User")},
-	}}, cross, set)
+	}}).WalkNamedRefs(cross.importsInto(set))
 	if !set[cross["shared"]] {
 		t.Errorf("generic arg should propagate, got %v", set)
 	}
