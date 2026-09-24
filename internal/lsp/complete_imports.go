@@ -133,11 +133,12 @@ func (r *request) packageDeclCompletions(pkg string) []protocol.CompletionItem {
 	}
 	var out []protocol.CompletionItem
 	for _, d := range p.Decls(semantic.AnyDecl &^ semantic.ErrorDecls) {
+		info := infoOf(d)
 		out = append(out, protocol.CompletionItem{
 			Label:         d.DeclName(),
-			Kind:          declSymbolKindToCompletion(d),
-			Detail:        declSummary(d),
-			Documentation: strings.Join(declDoc(d), "\n"),
+			Kind:          info.item,
+			Detail:        info.summary,
+			Documentation: strings.Join(info.doc, "\n"),
 		})
 	}
 	return out

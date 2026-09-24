@@ -37,7 +37,7 @@ func (s *server) onWorkspaceSymbol(_ context.Context, params protocol.WorkspaceS
 			}
 			out = append(out, protocol.SymbolInformation{
 				Name: name,
-				Kind: workspaceSymbolKind(d),
+				Kind: infoOf(d).symbol,
 				Location: protocol.Location{
 					URI:   uri.File(p.path),
 					Range: spanRange(p.src, d.DeclPos(), len(name)),
@@ -47,27 +47,6 @@ func (s *server) onWorkspaceSymbol(_ context.Context, params protocol.WorkspaceS
 		}
 	}
 	return out, nil
-}
-
-// workspaceSymbolKind returns the symbol kind of a declaration.
-func workspaceSymbolKind(d ast.Decl) protocol.SymbolKind {
-	switch d.(type) {
-	case *ast.TypeDecl:
-		return protocol.SymbolKindStruct
-	case *ast.EnumDecl:
-		return protocol.SymbolKindEnum
-	case *ast.ErrorDecl:
-		return protocol.SymbolKindClass
-	case *ast.ScalarDecl:
-		return protocol.SymbolKindClass
-	case *ast.ServiceDecl:
-		return protocol.SymbolKindInterface
-	case *ast.MiddlewareDecl:
-		return protocol.SymbolKindFunction
-	case *ast.EventDecl:
-		return protocol.SymbolKindEvent
-	}
-	return protocol.SymbolKindNull
 }
 
 // containerNameFromFile returns f's package name.
@@ -105,98 +84,51 @@ func documentSymbols(view snapshotView) []protocol.DocumentSymbol {
 	return out
 }
 
+// declSymbol returns the outline entry of d, with a type's fields, an enum's
+// values and a service's methods as children and an event's payload in its
+// detail.
 func declSymbol(src string, d ast.Decl) protocol.DocumentSymbol {
-	pos := d.DeclPos()
-	r := spanRange(src, pos, len(d.DeclName()))
+	info := infoOf(d)
+	r := spanRange(src, d.DeclPos(), len(d.DeclName()))
+	sym := protocol.DocumentSymbol{Name: d.DeclName(), Detail: info.summary, Kind: info.symbol, Range: r, SelectionRange: r}
 	switch v := d.(type) {
 	case *ast.TypeDecl:
-		children := make([]protocol.DocumentSymbol, 0, len(v.Body))
 		for _, m := range v.Body {
-			f, ok := m.(*ast.Field)
-			if !ok || f.Name == "" {
-				continue
+			if f, ok := m.(*ast.Field); ok && f.Name != "" {
+				sym.Children = append(sym.Children, fieldSymbol(src, f))
 			}
-			children = append(children, fieldSymbol(src, f))
-		}
-		return protocol.DocumentSymbol{
-			Name:           v.Name,
-			Detail:         declSummary(d),
-			Kind:           protocol.SymbolKindStruct,
-			Range:          r,
-			SelectionRange: r,
-			Children:       children,
 		}
 	case *ast.EnumDecl:
-		enumVals := v.EnumValues()
-		children := make([]protocol.DocumentSymbol, 0, len(enumVals))
-		for _, ev := range enumVals {
+		for _, ev := range v.EnumValues() {
 			if ev.Name == "" {
 				continue
 			}
 			er := spanRange(src, ev.Pos, len(ev.Name))
-			children = append(children, protocol.DocumentSymbol{
+			sym.Children = append(sym.Children, protocol.DocumentSymbol{
 				Name:           ev.Name,
 				Kind:           protocol.SymbolKindEnumMember,
 				Range:          er,
 				SelectionRange: er,
 			})
 		}
-		return protocol.DocumentSymbol{
-			Name:           v.Name,
-			Detail:         declSummary(d),
-			Kind:           protocol.SymbolKindEnum,
-			Range:          r,
-			SelectionRange: r,
-			Children:       children,
-		}
-	case *ast.ErrorDecl:
-		return protocol.DocumentSymbol{
-			Name:           v.Name,
-			Detail:         declSummary(d),
-			Kind:           protocol.SymbolKindObject,
-			Range:          r,
-			SelectionRange: r,
-		}
-	case *ast.ScalarDecl:
-		return protocol.DocumentSymbol{
-			Name:           v.Name,
-			Detail:         declSummary(d),
-			Kind:           protocol.SymbolKindClass,
-			Range:          r,
-			SelectionRange: r,
-		}
-	case *ast.MiddlewareDecl:
-		return protocol.DocumentSymbol{
-			Name:           v.Name,
-			Detail:         declSummary(d),
-			Kind:           protocol.SymbolKindFunction,
-			Range:          r,
-			SelectionRange: r,
-		}
 	case *ast.EventDecl:
-		return eventSymbol(src, v)
+		sym.Range = spanRange(src, v.Pos, len("event")+1+len(v.Name))
+		sym.SelectionRange = sym.Range
+		if v.Payload != nil && v.Payload.Type != nil && v.Payload.Type.Name != nil {
+			payload := v.Payload.Type.Name.String()
+			if v.Payload.Array {
+				payload += "[]"
+			}
+			sym.Detail += " (" + payload + ")"
+		}
 	case *ast.ServiceDecl:
-		children := make([]protocol.DocumentSymbol, 0, len(v.Members))
 		for _, member := range v.Members {
 			if m, ok := member.(*ast.Method); ok && m.Name != "" {
-				children = append(children, methodSymbol(src, m))
+				sym.Children = append(sym.Children, methodSymbol(src, m))
 			}
 		}
-		return protocol.DocumentSymbol{
-			Name:           v.Name,
-			Detail:         declSummary(d),
-			Kind:           protocol.SymbolKindInterface,
-			Range:          r,
-			SelectionRange: r,
-			Children:       children,
-		}
 	}
-	return protocol.DocumentSymbol{
-		Name:           d.DeclName(),
-		Kind:           protocol.SymbolKindClass,
-		Range:          r,
-		SelectionRange: r,
-	}
+	return sym
 }
 
 func fieldSymbol(src string, f *ast.Field) protocol.DocumentSymbol {
@@ -204,26 +136,6 @@ func fieldSymbol(src string, f *ast.Field) protocol.DocumentSymbol {
 	return protocol.DocumentSymbol{
 		Name:           f.Name,
 		Kind:           protocol.SymbolKindField,
-		Range:          r,
-		SelectionRange: r,
-	}
-}
-
-// eventSymbol returns the outline entry `event Name (Payload)`.
-func eventSymbol(src string, e *ast.EventDecl) protocol.DocumentSymbol {
-	r := spanRange(src, e.Pos, len("event")+1+len(e.Name))
-	detail := "event " + e.Name
-	if e.Payload != nil && e.Payload.Type != nil && e.Payload.Type.Name != nil {
-		payload := e.Payload.Type.Name.String()
-		if e.Payload.Array {
-			payload += "[]"
-		}
-		detail += " (" + payload + ")"
-	}
-	return protocol.DocumentSymbol{
-		Name:           e.Name,
-		Detail:         detail,
-		Kind:           protocol.SymbolKindEvent,
 		Range:          r,
 		SelectionRange: r,
 	}

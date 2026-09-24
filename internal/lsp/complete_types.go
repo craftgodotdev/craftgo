@@ -175,7 +175,7 @@ func declItems(pkg *semantic.Package, kinds semantic.DeclKind, kind protocol.Com
 			Label:         name,
 			Kind:          kind,
 			Detail:        kindDetail(declKind(d), pkg.Name),
-			Documentation: strings.Join(declDoc(d), "\n"),
+			Documentation: strings.Join(infoOf(d).doc, "\n"),
 			InsertText:    name,
 		})
 	}
@@ -326,17 +326,17 @@ func (r *request) declCompletions(kinds semantic.DeclKind) []protocol.Completion
 	for _, pkgName := range slices.Sorted(maps.Keys(v.proj.Packages)) {
 		pkg := v.proj.Packages[pkgName]
 		for _, d := range pkg.Decls(kinds) {
-			label := d.DeclName()
-			detail := declSummary(d)
+			info := infoOf(d)
+			label, detail := d.DeclName(), info.summary
 			if pkg.Name != "" && pkg.Name != currentPkg {
 				label = pkg.Name + "." + d.DeclName()
 				detail = pkg.Name + " - " + detail
 			}
 			items = append(items, protocol.CompletionItem{
 				Label:         label,
-				Kind:          declSymbolKindToCompletion(d),
+				Kind:          info.item,
 				Detail:        detail,
-				Documentation: strings.Join(declDoc(d), "\n"),
+				Documentation: strings.Join(info.doc, "\n"),
 				InsertText:    label,
 			})
 		}
@@ -353,24 +353,4 @@ func (r *request) declCompletions(kinds semantic.DeclKind) []protocol.Completion
 		})
 	}
 	return items
-}
-
-func declSymbolKindToCompletion(d ast.Decl) protocol.CompletionItemKind {
-	switch d.(type) {
-	case *ast.TypeDecl:
-		return protocol.CompletionItemKindStruct
-	case *ast.EnumDecl:
-		return protocol.CompletionItemKindEnum
-	case *ast.ErrorDecl:
-		return protocol.CompletionItemKindStruct
-	case *ast.ScalarDecl:
-		return protocol.CompletionItemKindUnit
-	case *ast.MiddlewareDecl:
-		return protocol.CompletionItemKindFunction
-	case *ast.EventDecl:
-		return protocol.CompletionItemKindEvent
-	case *ast.ServiceDecl:
-		return protocol.CompletionItemKindInterface
-	}
-	return protocol.CompletionItemKindClass
 }

@@ -150,7 +150,7 @@ func findFieldAtPos(f *ast.File, pos lexer.Position) (*ast.Field, string) {
 		}
 		for _, m := range body {
 			if fd, ok := m.(*ast.Field); ok && fd.Pos == pos {
-				return fd, declName(d)
+				return fd, d.DeclName()
 			}
 		}
 	}
@@ -316,10 +316,9 @@ func argsRuleSummary(r semantic.ArgsRule) string {
 
 // userTypeHover renders d's declaration line and doc.
 func userTypeHover(d ast.Decl, r protocol.Range) *protocol.Hover {
-	header := declSummary(d)
-	doc := strings.Join(declDoc(d), "\n")
-	body := "```craftgo\n" + header + "\n```"
-	if doc != "" {
+	info := infoOf(d)
+	body := "```craftgo\n" + info.summary + "\n```"
+	if doc := strings.Join(info.doc, "\n"); doc != "" {
 		body += "\n\n" + doc
 	}
 	return &protocol.Hover{

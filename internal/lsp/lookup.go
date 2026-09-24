@@ -155,17 +155,6 @@ func declBody(d ast.Decl) ([]ast.TypeMember, bool) {
 	return nil, false
 }
 
-// declName returns the name of a type or error declaration, else "".
-func declName(d ast.Decl) string {
-	switch v := d.(type) {
-	case *ast.TypeDecl:
-		return v.Name
-	case *ast.ErrorDecl:
-		return v.Name
-	}
-	return ""
-}
-
 // noDeclBetween reports whether f declares nothing on the lines strictly
 // between from and to.
 func noDeclBetween(f *ast.File, from, to int) bool {

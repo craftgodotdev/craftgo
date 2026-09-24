@@ -1,6 +1,10 @@
 package lsp
 
 import (
+	"strings"
+
+	"go.lsp.dev/protocol"
+
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -77,59 +81,41 @@ func primOfTypeRef(t *ast.TypeRef, decs []*ast.Decorator, file *ast.File) semant
 	return 0
 }
 
-// declSummary renders d's declaration line, e.g. `type Page<T>` or
-// `error NotFound Missing`.
-func declSummary(d ast.Decl) string {
-	switch v := d.(type) {
-	case *ast.TypeDecl:
-		s := "type " + v.Name
-		if len(v.TypeParams) > 0 {
-			s += "<"
-			for i, tp := range v.TypeParams {
-				if i > 0 {
-					s += ", "
-				}
-				s += tp
-			}
-			s += ">"
-		}
-		return s
-	case *ast.EnumDecl:
-		return "enum " + v.Name
-	case *ast.ErrorDecl:
-		return "error " + v.Category + " " + v.Name
-	case *ast.ScalarDecl:
-		return "scalar " + v.Name + " " + v.Primitive
-	case *ast.MiddlewareDecl:
-		return "middleware " + v.Name
-	case *ast.EventDecl:
-		return "event " + v.Name
-	case *ast.ServiceDecl:
-		if v.Extend {
-			return "extend service " + v.Name
-		}
-		return "service " + v.Name
-	}
-	return ""
+// declInfo is how the editor shows a declaration: its declaration line (e.g.
+// `type Page<T>`, `error NotFound Missing`), its doc, its symbol kind in the
+// outline and the workspace symbols, and its completion item kind.
+type declInfo struct {
+	summary string
+	doc     []string
+	symbol  protocol.SymbolKind
+	item    protocol.CompletionItemKind
 }
 
-// declDoc returns d's doc-comment lines.
-func declDoc(d ast.Decl) []string {
+// infoOf returns how the editor shows d.
+func infoOf(d ast.Decl) declInfo {
 	switch v := d.(type) {
 	case *ast.TypeDecl:
-		return v.Doc
+		summary := "type " + v.Name
+		if len(v.TypeParams) > 0 {
+			summary += "<" + strings.Join(v.TypeParams, ", ") + ">"
+		}
+		return declInfo{summary, v.Doc, protocol.SymbolKindStruct, protocol.CompletionItemKindStruct}
 	case *ast.EnumDecl:
-		return v.Doc
+		return declInfo{"enum " + v.Name, v.Doc, protocol.SymbolKindEnum, protocol.CompletionItemKindEnum}
 	case *ast.ErrorDecl:
-		return v.Doc
-	case *ast.ServiceDecl:
-		return v.Doc
+		return declInfo{"error " + v.Category + " " + v.Name, v.Doc, protocol.SymbolKindClass, protocol.CompletionItemKindClass}
 	case *ast.ScalarDecl:
-		return v.Doc
+		return declInfo{"scalar " + v.Name + " " + v.Primitive, v.Doc, protocol.SymbolKindClass, protocol.CompletionItemKindUnit}
 	case *ast.MiddlewareDecl:
-		return v.Doc
+		return declInfo{"middleware " + v.Name, v.Doc, protocol.SymbolKindFunction, protocol.CompletionItemKindFunction}
 	case *ast.EventDecl:
-		return v.Doc
+		return declInfo{"event " + v.Name, v.Doc, protocol.SymbolKindEvent, protocol.CompletionItemKindEvent}
+	case *ast.ServiceDecl:
+		summary := "service " + v.Name
+		if v.Extend {
+			summary = "extend " + summary
+		}
+		return declInfo{summary, v.Doc, protocol.SymbolKindInterface, protocol.CompletionItemKindInterface}
 	}
-	return nil
+	return declInfo{}
 }

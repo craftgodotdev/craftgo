@@ -1040,6 +1040,42 @@ func TestDocumentSymbolsOutline(t *testing.T) {
 	}
 }
 
+// A declaration of every kind has one symbol kind, in the outline and in the
+// workspace symbols alike.
+func TestSymbolKindsAgreeAcrossViews(t *testing.T) {
+	src := "package x\ntype T { a string }\nenum E { A }\nerror NotFound Err\nscalar S string\n" +
+		"middleware M\nservice Svc { get G /g {} }\nevent Ev { payload T }\n"
+	u := uri.New("file:///t.craftgo")
+	s := &server{docs: map[uri.URI]string{u: src}}
+	res, _ := callHandler(t, s, protocol.MethodTextDocumentDocumentSymbol, protocol.DocumentSymbolParams{
+		TextDocument: protocol.TextDocumentIdentifier{URI: u},
+	})
+	outline := map[string]protocol.SymbolKind{}
+	for _, sym := range res.([]protocol.DocumentSymbol) {
+		outline[sym.Name] = sym.Kind
+	}
+	if len(outline) != len(ast.AllDeclKinds()) {
+		t.Fatalf("outline = %v, want one symbol per declaration kind", outline)
+	}
+	res, _ = callHandler(t, s, protocol.MethodWorkspaceSymbol, protocol.WorkspaceSymbolParams{})
+	for _, sym := range res.([]protocol.SymbolInformation) {
+		if outline[sym.Name] != sym.Kind {
+			t.Errorf("%s: outline kind %v, workspace kind %v", sym.Name, outline[sym.Name], sym.Kind)
+		}
+	}
+}
+
+// infoOf gives every declaration kind a declaration line naming it, a symbol
+// kind and a completion item kind.
+func TestInfoOfCoversEveryDeclKind(t *testing.T) {
+	for _, d := range ast.AllDeclKinds() {
+		info := infoOf(d)
+		if !strings.Contains(info.summary, " "+d.DeclName()) || info.symbol == 0 || info.item == 0 {
+			t.Errorf("%T: %+v", d, info)
+		}
+	}
+}
+
 // Formatting a clean buffer replaces the whole document with its canonical
 // text.
 func TestFormattingProducesEdit(t *testing.T) {
