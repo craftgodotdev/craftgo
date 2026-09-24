@@ -30,40 +30,6 @@ func TestBuildCrossPkgResolves(t *testing.T) {
 	}
 }
 
-// The resolver's type table keys local types bare and other packages' types qualified.
-func TestBuildTypeTableKeysQualifiedAcrossPackages(t *testing.T) {
-	proj := &semantic.Project{
-		Packages: map[string]*semantic.Package{
-			"design": {
-				Name:  "design",
-				Types: map[string]*ast.TypeDecl{"Product": {Name: "Product"}},
-			},
-			"shared": {
-				Name: "shared",
-				Types: map[string]*ast.TypeDecl{
-					"Page": {Name: "Page", TypeParams: []string{"T"}},
-				},
-			},
-		},
-	}
-	tbl := semantic.NewResolver(proj, "design").Types
-	if _, ok := tbl["Product"]; !ok {
-		t.Errorf("local type should be keyed bare: %v", tbl)
-	}
-	if _, ok := tbl["shared.Page"]; !ok {
-		t.Errorf("cross-pkg generic must appear under qualified form: %v", tbl)
-	}
-	if _, ok := tbl["Page"]; ok {
-		t.Errorf("cross-pkg type must NOT leak under bare name (would shadow local lookups): %v", tbl)
-	}
-}
-
-func TestBuildTypeTableNilProjectReturnsNil(t *testing.T) {
-	if semantic.NewResolver(nil, "any").Types != nil {
-		t.Error("nil project should return nil")
-	}
-}
-
 func TestBuildCrossPkgReturnsNilOnNilInputs(t *testing.T) {
 	if buildCrossPkg(nil, &config.Config{}, "") != nil {
 		t.Error("nil project should return nil")

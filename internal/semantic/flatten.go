@@ -115,7 +115,7 @@ func FlattenWithNames(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver
 	var proj *Project
 	view := ""
 	if r != nil {
-		proj, view = r.Proj, r.current
+		proj, view = r.proj, r.current
 	}
 	home := prefix
 	if home == "" {

@@ -150,7 +150,7 @@ type User { Profile<X>  name string }`, CodeMixinArity)
 
 // collectMixinFields collects a field once when one top-level mixin reaches it by two paths.
 func TestMixinDiamondSameTopLevel(t *testing.T) {
-	a := newTestAnalyzer(&Package{
+	pkg := &Package{
 		Types: map[string]*ast.TypeDecl{
 			"Base": {
 				Name: "Base",
@@ -166,10 +166,11 @@ func TestMixinDiamondSameTopLevel(t *testing.T) {
 				},
 			},
 		},
-	})
+	}
+	a := newTestAnalyzer(pkg)
 	// Walk Combined as the top-level mixin of an outer host.
 	seen := map[string]fieldOrigin{}
-	a.collectMixinFields("", "Combined", "Combined", lexer.Position{Line: 1},
+	a.collectMixinFields(pkg, "Combined", "Combined", lexer.Position{Line: 1},
 		seen, map[string]bool{".Outer": true})
 	if len(a.diags) != 0 {
 		t.Errorf("same-source diamond should not diag, got %v", a.diags)
@@ -203,10 +204,9 @@ func TestMixinNilRefTolerated(t *testing.T) {
 
 // collectMixinFields skips an unknown mixin without a diagnostic.
 func TestMixinCollectMissingTarget(t *testing.T) {
-	a := newTestAnalyzer(&Package{
-		Types: map[string]*ast.TypeDecl{},
-	})
-	a.collectMixinFields("", "Missing", "Missing", lexer.Position{Line: 1},
+	pkg := &Package{Types: map[string]*ast.TypeDecl{}}
+	a := newTestAnalyzer(pkg)
+	a.collectMixinFields(pkg, "Missing", "Missing", lexer.Position{Line: 1},
 		map[string]fieldOrigin{}, map[string]bool{})
 	if len(a.diags) != 0 {
 		t.Errorf("missing nested mixin should not diag here, got %v", a.diags)

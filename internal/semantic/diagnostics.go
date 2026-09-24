@@ -159,7 +159,7 @@ const (
 	CodeScalarBadPrimitive = "scalar/bad-primitive"
 	// CodeEventPayloadMissing fires when an event has no `payload` clause.
 	CodeEventPayloadMissing = "event/payload-missing"
-	// CodeEventPayloadKind fires when an event's payload names anything but a `type` declaration.
+	// CodeEventPayloadKind fires when an event's payload names a built-in, an enum or a scalar.
 	CodeEventPayloadKind = "event/payload-kind"
 	// CodeEventContractCollision fires when two events resolve to one contract name.
 	CodeEventContractCollision = "event/contract-collision"

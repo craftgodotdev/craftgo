@@ -63,7 +63,7 @@ func walkTypeRefs(d ast.Decl, visit func(n *ast.NamedTypeRef, typeParams []strin
 // or scalar, and its arguments fit what it names. What a mixin embeds and
 // its arity are checked by [analyzer.processMixin].
 func (a *analyzer) checkTypeRef(n *ast.NamedTypeRef, typeParams []string, imports map[string]bool, mixin bool) {
-	if n.Name == nil {
+	if n.Name == nil || len(n.Name.Parts) == 0 {
 		return
 	}
 	for _, arg := range n.Args {
@@ -72,82 +72,62 @@ func (a *analyzer) checkTypeRef(n *ast.NamedTypeRef, typeParams []string, import
 				"a generic type argument cannot be optional (`?`) - the optionality has no well-defined position after substitution, so the Go type and the OpenAPI schema would disagree. Declare the nullability on a field inside the generic (e.g. `type Box<T> { item T? }`) instead.")
 		}
 	}
+	parts := n.Name.Parts
+	switch {
+	case len(parts) > 2:
+		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeQualifiedRef,
+			"qualified reference %q has too many segments (max 1 package prefix)", n.Name.String())
+		return
+	case len(parts) == 2 && parts[0] == a.pkg.Name && a.pkg.Name != "":
+		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeQualifiedRef,
+			"redundant self-qualification %q - a type in its own package is referenced by its bare name; write %q",
+			n.Name.String(), parts[1])
+		return
+	case len(parts) == 1 && parts[0] == "object":
+		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
+			"`object` is not a usable field type - use `any` for an arbitrary JSON value, or `map<string, V>` / a declared `type` for a structured object")
+		return
+	case len(parts) == 1 && prims.Is(parts[0]):
+		if !mixin {
+			a.checkArity(n, nil)
+		}
+		return
+	case len(parts) == 1 && slices.Contains(typeParams, parts[0]):
+		if len(n.Args) > 0 {
+			a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeGenericNonGeneric,
+				"type parameter %q does not take generic arguments", parts[0])
+		}
+		return
+	}
+	pkg, sym := a.proj.resolve(a.pkg.Name, n.Name)
+	if pkg == nil {
+		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownPackage,
+			"package %q is not declared anywhere in the project", parts[0])
+		return
+	}
 	kinds := TypeRefDecls
 	if mixin {
 		kinds = mixinNamedKinds
 	}
-	var target ast.Decl
-	switch parts := n.Name.Parts; len(parts) {
-	case 1:
-		name := parts[0]
-		switch {
-		case name == "object":
-			a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
-				"`object` is not a usable field type - use `any` for an arbitrary JSON value, or `map<string, V>` / a declared `type` for a structured object")
-			return
-		case prims.Is(name):
-		case slices.Contains(typeParams, name):
-			if len(n.Args) > 0 {
-				a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeGenericNonGeneric,
-					"type parameter %q does not take generic arguments", name)
-			}
-			return
-		default:
-			if target = a.pkg.Decl(name, kinds); target == nil {
-				a.reportBareNonType(n, name, imports)
-				return
-			}
+	target := pkg.Decl(sym, kinds)
+	switch {
+	case target != nil:
+		if !mixin {
+			a.checkArity(n, target)
 		}
-	case 2:
-		pkgName, sym := parts[0], parts[1]
-		if pkgName == a.pkg.Name && pkgName != "" {
-			a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeQualifiedRef,
-				"redundant self-qualification %q - a type in its own package is referenced by its bare name; write %q",
-				n.Name.String(), sym)
-			return
-		}
-		pkg := a.packageNamed(pkgName)
-		if pkg == nil {
-			a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownPackage,
-				"package %q is not declared anywhere in the project", pkgName)
-			return
-		}
-		if target = pkg.Decl(sym, kinds); target == nil {
-			if _, isErr := pkg.Errors[sym]; isErr {
-				a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol, "%s", errorAsTypeMsg(n.Name.String()))
-				return
-			}
-			a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
-				"package %q has no symbol %q", pkgName, sym)
-			return
-		}
-	default:
-		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeQualifiedRef,
-			"qualified reference %q has too many segments (max 1 package prefix)", n.Name.String())
-		return
-	}
-	if !mixin {
-		a.checkArity(n, target)
-	}
-}
-
-// reportBareNonType reports a bare name that names no type, enum or scalar
-// of this package: an error, an import alias or an unknown name.
-func (a *analyzer) reportBareNonType(n *ast.NamedTypeRef, name string, imports map[string]bool) {
-	if _, ok := a.pkg.Errors[name]; ok {
-		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol, "%s", errorAsTypeMsg(name))
-		return
-	}
-	if imports[name] {
+	case pkg.Errors[sym] != nil:
+		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol, "%s", errorAsTypeMsg(n.Name.String()))
+	case len(parts) == 2:
+		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
+			"package %q has no symbol %q", parts[0], sym)
+	case imports[sym]:
 		// The parser also leaves a bare alias for a half-typed `alias.`.
 		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
-			"%q is an imported package, not a type - qualify it as %q.<TypeName>",
-			name, name)
-		return
+			"%q is an imported package, not a type - qualify it as %q.<TypeName>", sym, sym)
+	default:
+		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
+			"unknown type %q (no built-in primitive, no declaration in package %q)", sym, a.pkg.Name)
 	}
-	a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
-		"unknown type %q (no built-in primitive, no declaration in package %q)",
-		name, a.pkg.Name)
 }
 
 // errorAsTypeMsg words the diagnostic for an error declaration named where a

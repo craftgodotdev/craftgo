@@ -325,3 +325,20 @@ type Item { id string }
 	expectError(t, decls+`event Listed { payload Item<string> }`, CodeGenericNonGeneric)
 	expectError(t, decls+`event Listed { payload Page<Item?> }`, CodeGenericOptionalArg)
 }
+
+// A payload naming an error gets the reference diagnostic alone, bare or
+// qualified.
+func TestEventPayloadErrorReportedOnce(t *testing.T) {
+	diags := analyzeOneFile(t, "package p\nerror NotFound Gone\nevent E { payload Gone }")
+	if got := codes(diags); !slices.Equal(got, []string{CodeRefUnknownSymbol}) {
+		t.Errorf("bare: want one %s, got %v", CodeRefUnknownSymbol, diags)
+	}
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": "package shared\nerror NotFound Gone",
+		"app/a.craftgo":    "package app\nevent E { payload shared.Gone }",
+	})
+	_, diags = AnalyzeProject(files, Options{DesignRoot: root})
+	if got := codes(diags); !slices.Equal(got, []string{CodeRefUnknownSymbol}) {
+		t.Errorf("qualified: want one %s, got %v", CodeRefUnknownSymbol, diags)
+	}
+}

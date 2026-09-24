@@ -214,11 +214,11 @@ func (a *analyzer) processMixin(host string, mx *ast.Mixin, seen map[string]fiel
 	if mx.Ref == nil || mx.Ref.Name == nil {
 		return
 	}
-	pkgName, name, ok := a.refHome(mx.Ref.Name)
-	if !ok {
+	pkg, name := a.proj.resolve(a.pkg.Name, mx.Ref.Name)
+	if pkg == nil {
 		return
 	}
-	td := a.resolveMixinTarget(mx, pkgName, name)
+	td := a.resolveMixinTarget(mx, pkg, name)
 	if td == nil {
 		return
 	}
@@ -230,20 +230,16 @@ func (a *analyzer) processMixin(host string, mx *ast.Mixin, seen map[string]fiel
 	}
 	// Seeding the host makes a self-mixin a cycle.
 	visited := map[string]bool{a.pkg.Name + "." + host: true}
-	a.collectMixinFields(pkgName, name, mx.Ref.Name.String(), mx.Pos, seen, visited)
+	a.collectMixinFields(pkg, name, mx.Ref.Name.String(), mx.Pos, seen, visited)
 }
 
 // mixinNamedKinds are the kinds a mixin's name is resolved among: a type,
 // or a declaration [analyzer.resolveMixinTarget] rejects as no type.
 const mixinNamedKinds = TypeDecls | EnumDecls | ErrorDecls | ScalarDecls | MiddlewareDecls
 
-// resolveMixinTarget returns the type name declares in pkgName; a name of
+// resolveMixinTarget returns the type name declares in pkg; a name of
 // another kind is reported as [CodeMixinNonType].
-func (a *analyzer) resolveMixinTarget(mx *ast.Mixin, pkgName, name string) *ast.TypeDecl {
-	pkg := a.packageNamed(pkgName)
-	if pkg == nil {
-		return nil
-	}
+func (a *analyzer) resolveMixinTarget(mx *ast.Mixin, pkg *Package, name string) *ast.TypeDecl {
 	kind := ""
 	switch d := pkg.Decl(name, mixinNamedKinds).(type) {
 	case *ast.TypeDecl:
@@ -260,33 +256,30 @@ func (a *analyzer) resolveMixinTarget(mx *ast.Mixin, pkgName, name string) *ast.
 		return nil
 	}
 	a.diag(mx.Pos, mx.Pos, lexer.SeverityError, CodeMixinNonType,
-		"mixin %s is %s, not a type", a.refDisplay(pkgName, name), kind)
+		"mixin %s is %s, not a type", a.refDisplay(pkg.Name, name), kind)
 	return nil
 }
 
-// collectMixinFields adds the fields of pkgName.name and its nested mixins
-// to seen, reporting conflicts and cycles at mixinPos, the host's mixin. A
-// bare nested mixin resolves in its embedding type's package; visited holds
-// the expansion stack.
+// collectMixinFields adds the fields of type name in pkg and its nested
+// mixins to seen, reporting conflicts and cycles at mixinPos, the host's
+// mixin. A bare nested mixin resolves in its embedding type's package;
+// visited holds the expansion stack.
 func (a *analyzer) collectMixinFields(
-	pkgName, name, sourceLabel string,
+	pkg *Package,
+	name, sourceLabel string,
 	mixinPos lexer.Position,
 	seen map[string]fieldOrigin,
 	visited map[string]bool,
 ) {
-	key := pkgName + "." + name
+	key := pkg.Name + "." + name
 	if visited[key] {
 		a.diag(mixinPos, mixinPos, lexer.SeverityError, CodeMixinCycle,
-			"mixin %s forms a cycle", a.refDisplay(pkgName, name))
+			"mixin %s forms a cycle", a.refDisplay(pkg.Name, name))
 		return
 	}
 	visited[key] = true
 	defer delete(visited, key)
 
-	pkg := a.packageNamed(pkgName)
-	if pkg == nil {
-		return
-	}
 	td, ok := pkg.Types[name]
 	if !ok {
 		return
@@ -310,8 +303,8 @@ func (a *analyzer) collectMixinFields(
 			if v.Ref == nil {
 				continue
 			}
-			if next, sym := a.proj.resolve(pkgName, v.Ref.Name); next != nil {
-				a.collectMixinFields(next.Name, sym, sourceLabel, mixinPos, seen, visited)
+			if next, sym := a.proj.resolve(pkg.Name, v.Ref.Name); next != nil {
+				a.collectMixinFields(next, sym, sourceLabel, mixinPos, seen, visited)
 			}
 		}
 	}

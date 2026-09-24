@@ -12,6 +12,10 @@ import (
 
 type symbolKey struct{ pkg, name string }
 
+// mergedKinds are the declarations the merged document names: types, enums,
+// scalars and errors.
+const mergedKinds = semantic.TypeRefDecls | semantic.ErrorDecls
+
 // projectResolveTable maps each package's declaration names to merged names,
 // `<PascalPkg><Name>` when two packages declare one, and lists the packages.
 func projectResolveTable(proj *semantic.Project) (map[symbolKey]string, []string) {
@@ -23,7 +27,7 @@ func projectResolveTable(proj *semantic.Project) (map[symbolKey]string, []string
 			if p == nil {
 				continue
 			}
-			if hasAnyDecl(p, name) {
+			if p.Decl(name, mergedKinds) != nil {
 				count++
 				if count >= 2 {
 					return true
@@ -38,7 +42,8 @@ func projectResolveTable(proj *semantic.Project) (map[symbolKey]string, []string
 		if p == nil {
 			continue
 		}
-		for _, name := range allDeclNames(p) {
+		for _, d := range p.Decls(mergedKinds) {
+			name := d.DeclName()
 			final := name
 			if collide(name) {
 				final = idents.PascalCase(pkgName) + name
@@ -144,47 +149,6 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 		maps.Copy(out.Middlewares, p.Middlewares)
 	}
 	return out
-}
-
-// hasAnyDecl reports whether p declares a type, enum, error or scalar
-// called name.
-func hasAnyDecl(p *semantic.Package, name string) bool {
-	if _, ok := p.Types[name]; ok {
-		return true
-	}
-	if _, ok := p.Enums[name]; ok {
-		return true
-	}
-	if _, ok := p.Errors[name]; ok {
-		return true
-	}
-	if _, ok := p.Scalars[name]; ok {
-		return true
-	}
-	return false
-}
-
-// allDeclNames returns the type, enum, error and scalar names of p, sorted.
-func allDeclNames(p *semantic.Package) []string {
-	seen := map[string]bool{}
-	add := func(names ...string) {
-		for _, n := range names {
-			seen[n] = true
-		}
-	}
-	for n := range p.Types {
-		add(n)
-	}
-	for n := range p.Enums {
-		add(n)
-	}
-	for n := range p.Errors {
-		add(n)
-	}
-	for n := range p.Scalars {
-		add(n)
-	}
-	return slices.Sorted(maps.Keys(seen))
 }
 
 // cloneTypeDecl copies td as newName, its body refs renamed by rewrite.

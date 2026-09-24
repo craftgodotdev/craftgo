@@ -398,8 +398,7 @@ type Product {
 		t.Fatal("app package missing from project")
 	}
 	dir := t.TempDir()
-	projTypes := semantic.NewResolver(proj, "app").Types
-	if err := generateValidators(appPkg, dir, &projectResolver{Resolver: &semantic.Resolver{Types: projTypes}}); err != nil {
+	if err := generateValidators(appPkg, dir, &projectResolver{Resolver: semantic.NewResolver(proj, "app")}); err != nil {
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(filepath.Join(dir, "app", "validate.go"))

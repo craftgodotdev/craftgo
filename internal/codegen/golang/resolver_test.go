@@ -69,65 +69,6 @@ func TestProjectResolverLookupRouting(t *testing.T) {
 	if r.LookupScalar("shared.Email") == nil {
 		t.Error("cross-pkg scalar must resolve under qualified form")
 	}
-
-	if r.LookupError("OrderNotFound") == nil {
-		t.Error("local error must resolve bare")
-	}
-	if r.LookupError("shared.NotFound") == nil {
-		t.Error("cross-pkg error must resolve under qualified form")
-	}
-
-	if r.LookupMiddleware("Local") == nil {
-		t.Error("local middleware must resolve bare")
-	}
-	if r.LookupMiddleware("shared.AuthRequired") == nil {
-		t.Error("cross-pkg middleware must resolve under qualified form")
-	}
-}
-
-func TestProjectResolverNilTolerant(t *testing.T) {
-	var r *projectResolver
-	if r.LookupType("anything") != nil ||
-		r.LookupEnum("x") != nil ||
-		r.LookupScalar("y") != nil ||
-		r.LookupError("z") != nil ||
-		r.LookupMiddleware("m") != nil {
-		t.Error("nil receiver Lookup* must always return nil - emit sites use the result without a guard")
-	}
-	if r.ImportPath("shared") != "" {
-		t.Error("nil receiver ImportPath must return empty string")
-	}
-	if prefix, path := r.QualifierFor(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "X"}}}); prefix != "" || path != "" {
-		t.Error("nil receiver QualifierFor must return empty pair")
-	}
-}
-
-func TestProjectResolverQualifierFor(t *testing.T) {
-	r := buildProjectResolver(newFixtureProject(), newFixtureConfig(), "design")
-
-	// Cross-pkg ref: prefix + import path.
-	q, path := r.QualifierFor(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "Page"}}})
-	if q != "shared." {
-		t.Errorf("qualifier = %q, want %q", q, "shared.")
-	}
-	if path != "github.com/test/m/internal/types/shared" {
-		t.Errorf("import path = %q, want %q", path, "github.com/test/m/internal/types/shared")
-	}
-
-	// Bare ref: no qualifier and no import.
-	q, path = r.QualifierFor(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"Order"}}})
-	if q != "" || path != "" {
-		t.Errorf("bare ref must yield empty pair; got (%q, %q)", q, path)
-	}
-
-	// Unknown package alias: the qualifier stays, the import path is empty.
-	q, path = r.QualifierFor(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"unknown", "X"}}})
-	if q != "unknown." {
-		t.Errorf("unknown-alias qualifier must still carry the prefix; got %q", q)
-	}
-	if path != "" {
-		t.Errorf("unknown-alias import path must be empty; got %q", path)
-	}
 }
 
 func TestProjectResolverNilProjectStillUsable(t *testing.T) {
@@ -140,25 +81,3 @@ func TestProjectResolverNilProjectStillUsable(t *testing.T) {
 	}
 }
 
-func TestBuildErrorTableKeysQualifiedAcrossPackages(t *testing.T) {
-	tbl := semantic.NewResolver(newFixtureProject(), "design").Errors
-	if _, ok := tbl["OrderNotFound"]; !ok {
-		t.Errorf("local error must appear bare: %v", tbl)
-	}
-	if _, ok := tbl["shared.NotFound"]; !ok {
-		t.Errorf("cross-pkg error must appear under qualified form: %v", tbl)
-	}
-	if _, ok := tbl["NotFound"]; ok {
-		t.Errorf("cross-pkg error must NOT leak under bare name: %v", tbl)
-	}
-}
-
-func TestBuildMiddlewareTableKeysQualifiedAcrossPackages(t *testing.T) {
-	tbl := semantic.NewResolver(newFixtureProject(), "design").Middlewares
-	if _, ok := tbl["Local"]; !ok {
-		t.Errorf("local middleware must appear bare: %v", tbl)
-	}
-	if _, ok := tbl["shared.AuthRequired"]; !ok {
-		t.Errorf("cross-pkg middleware must appear under qualified form: %v", tbl)
-	}
-}

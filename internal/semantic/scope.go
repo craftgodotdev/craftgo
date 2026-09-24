@@ -7,11 +7,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// packageNamed returns the project's package called name, or nil.
-func (a *analyzer) packageNamed(name string) *Package {
-	return a.proj.Packages[name]
-}
-
 // middlewareDeclared reports whether name, bare or `pkg.Name`, is a declared middleware.
 func (a *analyzer) middlewareDeclared(name string) bool {
 	return a.proj.Lookup(a.pkg.Name, name, MiddlewareDecls) != nil
@@ -35,18 +30,6 @@ func (a *analyzer) primaryServiceElsewhere(name string) (string, *ast.ServiceDec
 		}
 	}
 	return "", nil
-}
-
-// refHome splits a reference into its package (the analyser's own for a
-// bare name) and symbol; ok is false for more than one qualifier.
-func (a *analyzer) refHome(n *ast.QualifiedIdent) (pkgName, name string, ok bool) {
-	if n == nil || len(n.Parts) == 0 || len(n.Parts) > 2 {
-		return "", "", false
-	}
-	if len(n.Parts) == 2 {
-		return n.Parts[0], n.Parts[1], true
-	}
-	return a.pkg.Name, n.Parts[0], true
 }
 
 // refDisplay spells (pkgName, name) bare in the analyser's own package and

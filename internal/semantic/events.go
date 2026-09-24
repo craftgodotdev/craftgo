@@ -64,8 +64,7 @@ func (p *Project) LookupEvent(homePkg, ref string) (ResolvedEvent, bool) {
 	if p == nil || ref == "" {
 		return ResolvedEvent{}, false
 	}
-	pkgName, name := splitQualified(ref, homePkg)
-	pkg := p.Packages[pkgName]
+	pkg, name := p.resolveName(homePkg, ref)
 	if pkg == nil {
 		return ResolvedEvent{}, false
 	}
@@ -90,9 +89,11 @@ func (p *Project) resolveEvent(pkg *Package, d *ast.EventDecl) ResolvedEvent {
 	}
 	re.PayloadRef = d.Payload.Type
 	re.PayloadArray = d.Payload.Array
-	re.PayloadPkg, re.PayloadName = splitQualified(d.Payload.Type.Name.String(), pkg.Name)
-	if home := p.Packages[re.PayloadPkg]; home != nil {
-		re.Payload = home.Types[re.PayloadName]
+	home, name := p.resolve(pkg.Name, d.Payload.Type.Name)
+	re.PayloadName = name
+	if home != nil {
+		re.PayloadPkg = home.Name
+		re.Payload = home.Types[name]
 	}
 	return re
 }
@@ -110,15 +111,4 @@ func ContractName(pkgName string, d *ast.EventDecl) string {
 		return d.Name
 	}
 	return pkgName + "." + d.Name
-}
-
-// splitQualified splits `pkg.Name` into its parts, defaulting the
-// qualifier to fallback for a bare name.
-func splitQualified(ref, fallback string) (pkgName, name string) {
-	for i := len(ref) - 1; i >= 0; i-- {
-		if ref[i] == '.' {
-			return ref[:i], ref[i+1:]
-		}
-	}
-	return fallback, ref
 }

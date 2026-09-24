@@ -273,7 +273,8 @@ event Shipped { payload OrderShipped }
 ```
 
 - `event Name { payload Type }` at **file level**. `Type` must name a `type` declaration
-  (`event/payload-kind` otherwise); a missing `payload` is `event/payload-missing`, a duplicate
+  (`event/payload-kind` for a built-in, enum or scalar, `ref/unknown-symbol` for an error or an
+  unknown name); a missing `payload` is `event/payload-missing`, a duplicate
   event name `event/duplicate-name`. An `event` inside a `service` body is a syntax error naming
   the move.
 - `payload Type[]` is a contract whose body is a JSON array of that type: the descriptor is

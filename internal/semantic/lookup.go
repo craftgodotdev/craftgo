@@ -135,20 +135,22 @@ func (p *Project) resolve(home string, q *ast.QualifiedIdent) (*Package, string)
 	return nil, ""
 }
 
+// resolveName is [Project.resolve] for a reference spelled as text.
+func (p *Project) resolveName(home, ref string) (*Package, string) {
+	return p.resolve(home, &ast.QualifiedIdent{Parts: strings.Split(ref, ".")})
+}
+
 // Lookup returns the declaration name refers to among the selected kinds,
 // or nil: a qualified `pkg.Name` in pkg only, a bare name in homePkg, then
 // in the other packages in name order.
 func (p *Project) Lookup(homePkg, name string, kinds DeclKind) ast.Decl {
-	if dot := strings.LastIndexByte(name, '.'); dot >= 0 {
-		if pkg := p.Packages[name[:dot]]; pkg != nil {
-			return pkg.Decl(name[dot+1:], kinds)
-		}
-		return nil
-	}
-	if pkg := p.Packages[homePkg]; pkg != nil {
-		if d := pkg.Decl(name, kinds); d != nil {
+	if pkg, sym := p.resolveName(homePkg, name); pkg != nil {
+		if d := pkg.Decl(sym, kinds); d != nil {
 			return d
 		}
+	}
+	if strings.Contains(name, ".") {
+		return nil
 	}
 	for _, pkgName := range slices.Sorted(maps.Keys(p.Packages)) {
 		if pkgName == homePkg {

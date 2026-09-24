@@ -46,7 +46,7 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 	typesImport := typesImportRoot(cfg) + "/" + pkg.Name
 	data := eventsData{Package: pkg.Name}
 	for _, name := range slices.Sorted(maps.Keys(pkg.Events)) {
-		ev, ok := r.Proj.LookupEvent(pkg.Name, name)
+		ev, ok := r.Project().LookupEvent(pkg.Name, name)
 		if !ok {
 			continue
 		}
@@ -54,7 +54,7 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 		if ev.PayloadArray {
 			payload = "[]" + payload
 		}
-		validate := validateFunc(ev, r.Proj, payload)
+		validate := validateFunc(ev, r.Project(), payload)
 		elems := ev.PayloadArray && validate != "nil"
 		data.UsesFmt = data.UsesFmt || elems
 		data.Events = append(data.Events, eventDescriptor{

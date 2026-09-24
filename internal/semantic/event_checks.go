@@ -48,8 +48,9 @@ func (a *analyzer) checkContractArg(d *ast.EventDecl) {
 	}
 }
 
-// checkPayloadKind reports a payload, or array payload element, that is not
-// a struct type; unknown names are left to the reference pass.
+// checkPayloadKind reports a payload, or array payload element, that names
+// a built-in, an enum or a scalar; other names that are no type are left to
+// the reference check.
 func (a *analyzer) checkPayloadKind(d *ast.EventDecl) {
 	ref := d.Payload.Type.Name.String()
 	if prims.Is(ref) {
@@ -57,21 +58,8 @@ func (a *analyzer) checkPayloadKind(d *ast.EventDecl) {
 		a.payloadKindDiag(d, ref)
 		return
 	}
-	pkgName, name := splitQualified(ref, a.pkg.Name)
-	home := a.pkg
-	if pkgName != a.pkg.Name {
-		if a.proj == nil {
-			return
-		}
-		home = a.proj.Packages[pkgName]
-	}
-	if home == nil {
-		return
-	}
-	if _, ok := home.Types[name]; ok {
-		return
-	}
-	if _, isOther := lookupNonType(home, name); isOther {
+	home, name := a.proj.resolve(a.pkg.Name, d.Payload.Type.Name)
+	if home != nil && home.Decl(name, EnumDecls|ScalarDecls) != nil {
 		a.payloadKindDiag(d, ref)
 	}
 }
@@ -80,21 +68,6 @@ func (a *analyzer) checkPayloadKind(d *ast.EventDecl) {
 func (a *analyzer) payloadKindDiag(d *ast.EventDecl, ref string) {
 	a.diag(d.Payload.Pos, d.Payload.Pos, lexer.SeverityError, CodeEventPayloadKind,
 		"event %q payload %q is not a struct type - a payload must name a `type` declaration so the contract has named fields", d.Name, ref)
-}
-
-// lookupNonType reports whether name resolves in pkg to a declaration
-// that is not a struct type.
-func lookupNonType(pkg *Package, name string) (ast.Decl, bool) {
-	if d, ok := pkg.Enums[name]; ok {
-		return d, true
-	}
-	if d, ok := pkg.Scalars[name]; ok {
-		return d, true
-	}
-	if d, ok := pkg.Errors[name]; ok {
-		return d, true
-	}
-	return nil, false
 }
 
 // checkProjectEvents rejects two events that would share one contract

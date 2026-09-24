@@ -261,8 +261,10 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 - **Fewer duplicate diagnostics.** A generic mixin with the wrong number of
   arguments, or a mixin naming an error or a middleware, got a second
-  diagnostic beside `mixin/arity` or `mixin/non-type`, and a malformed
-  `openapi.basePath` warned once per package; each is now reported once.
+  diagnostic beside `mixin/arity` or `mixin/non-type`; an event payload
+  naming an error got `event/payload-kind` beside `ref/unknown-symbol`; and a
+  malformed `openapi.basePath` warned once per package. Each is now reported
+  once.
 
 ### Deprecated
 

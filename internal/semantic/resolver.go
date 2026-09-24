@@ -2,61 +2,22 @@ package semantic
 
 import "github.com/craftgodotdev/craftgo/internal/ast"
 
-// Resolver is a project's symbol table keyed as references are spelled:
-// the current package's declarations bare (`Order`), every other
-// package's qualified (`shared.Order`). A nil *Resolver misses every lookup.
+// Resolver looks up declarations by name as one package spells them: its own
+// bare (`Order`), another package's qualified (`shared.Order`). A nil
+// *Resolver misses every lookup.
 type Resolver struct {
-	// Proj is the analysed project the tables were built from.
-	Proj        *Project
-	current     string // the package whose declarations are keyed bare
-	Types       map[string]*ast.TypeDecl
-	Enums       map[string]*ast.EnumDecl
-	Scalars     map[string]*ast.ScalarDecl
-	Errors      map[string]*ast.ErrorDecl
-	Middlewares map[string]*ast.MiddlewareDecl
+	proj    *Project
+	current string
 }
 
-// qualifiedTable collects one declaration kind from every package into a
-// single lookup, keyed bare for currentPkg and qualified for the rest.
-func qualifiedTable[T any](proj *Project, currentPkg string, pick func(*Package) map[string]T) map[string]T {
-	if proj == nil {
-		return nil
-	}
-	out := map[string]T{}
-	for pkgName, p := range proj.Packages {
-		if p == nil {
-			continue
-		}
-		for name, decl := range pick(p) {
-			if pkgName == "" || pkgName == currentPkg {
-				out[name] = decl
-				continue
-			}
-			out[pkgName+"."+name] = decl
-		}
-	}
-	return out
+// NewResolver returns the resolver of package current in proj; a nil proj
+// misses every lookup.
+func NewResolver(proj *Project, current string) *Resolver {
+	return &Resolver{proj: proj, current: current}
 }
 
-// NewResolver builds the tables for currentPkg. A nil project yields a
-// usable resolver whose lookups all miss.
-func NewResolver(proj *Project, currentPkg string) *Resolver {
-	return &Resolver{
-		Proj:        proj,
-		current:     currentPkg,
-		Types:       qualifiedTable(proj, currentPkg, func(p *Package) map[string]*ast.TypeDecl { return p.Types }),
-		Enums:       qualifiedTable(proj, currentPkg, func(p *Package) map[string]*ast.EnumDecl { return p.Enums }),
-		Scalars:     qualifiedTable(proj, currentPkg, func(p *Package) map[string]*ast.ScalarDecl { return p.Scalars }),
-		Errors:      qualifiedTable(proj, currentPkg, func(p *Package) map[string]*ast.ErrorDecl { return p.Errors }),
-		Middlewares: qualifiedTable(proj, currentPkg, func(p *Package) map[string]*ast.MiddlewareDecl { return p.Middlewares }),
-	}
-}
-
-// ResolverFor returns r, or a resolver over pkg alone when r is nil.
-func ResolverFor(pkg *Package, r *Resolver) *Resolver {
-	if r != nil {
-		return r
-	}
+// PackageResolver returns the resolver of pkg in a project holding pkg alone.
+func PackageResolver(pkg *Package) *Resolver {
 	return NewResolver(&Project{Packages: map[string]*Package{pkg.Name: pkg}}, pkg.Name)
 }
 
@@ -65,45 +26,35 @@ func (r *Resolver) Project() *Project {
 	if r == nil {
 		return nil
 	}
-	return r.Proj
+	return r.proj
 }
 
 // LookupType returns the type name spells (bare or `pkg.Name`), or nil.
 func (r *Resolver) LookupType(name string) *ast.TypeDecl {
-	if r == nil {
-		return nil
-	}
-	return r.Types[name]
+	d, _ := r.lookup(name, TypeDecls).(*ast.TypeDecl)
+	return d
 }
 
 // LookupEnum is the enum counterpart of [Resolver.LookupType].
 func (r *Resolver) LookupEnum(name string) *ast.EnumDecl {
-	if r == nil {
-		return nil
-	}
-	return r.Enums[name]
+	d, _ := r.lookup(name, EnumDecls).(*ast.EnumDecl)
+	return d
 }
 
 // LookupScalar is the scalar counterpart of [Resolver.LookupType].
 func (r *Resolver) LookupScalar(name string) *ast.ScalarDecl {
-	if r == nil {
-		return nil
-	}
-	return r.Scalars[name]
+	d, _ := r.lookup(name, ScalarDecls).(*ast.ScalarDecl)
+	return d
 }
 
-// LookupError is the error counterpart of [Resolver.LookupType].
-func (r *Resolver) LookupError(name string) *ast.ErrorDecl {
+// lookup returns the declaration of the selected kinds name spells, or nil.
+func (r *Resolver) lookup(name string, kinds DeclKind) ast.Decl {
 	if r == nil {
 		return nil
 	}
-	return r.Errors[name]
-}
-
-// LookupMiddleware is the middleware counterpart of [Resolver.LookupType].
-func (r *Resolver) LookupMiddleware(name string) *ast.MiddlewareDecl {
-	if r == nil {
+	pkg, sym := r.proj.resolveName(r.current, name)
+	if pkg == nil {
 		return nil
 	}
-	return r.Middlewares[name]
+	return pkg.Decl(sym, kinds)
 }
