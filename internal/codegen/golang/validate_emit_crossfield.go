@@ -19,12 +19,12 @@ func crossFieldChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 	for _, d := range td.Decorators {
 		switch d.Name {
 		case "requiresOneOf":
-			names := dedupeStrings(semantic.StringArrayDecoratorArg(d))
+			names := semantic.CrossFieldNames(d)
 			if len(names) > 0 {
 				out = append(out, requiresOneOfCheck(td, names, ctx))
 			}
 		case "mutuallyExclusive":
-			names := dedupeStrings(semantic.StringArrayDecoratorArg(d))
+			names := semantic.CrossFieldNames(d)
 			if len(names) >= 2 {
 				out = append(out, mutuallyExclusiveCheck(td, names, ctx))
 			}

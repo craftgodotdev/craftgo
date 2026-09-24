@@ -95,15 +95,8 @@ func ServicePrefix(svc *ast.ServiceDecl) string {
 	if svc == nil {
 		return ""
 	}
-	for _, d := range svc.Decorators {
-		if d.Name != "prefix" || len(d.Args) == 0 {
-			continue
-		}
-		if s, ok := d.Args[0].Value.(*ast.StringLit); ok {
-			return s.Value
-		}
-	}
-	return ""
+	prefix, _ := ast.StringArg(svc.Decorators, "prefix")
+	return prefix
 }
 
 // ServiceGroup returns the `@group("a/b")` path of a service or extend block,
@@ -112,15 +105,8 @@ func ServiceGroup(svc *ast.ServiceDecl) string {
 	if svc == nil {
 		return ""
 	}
-	for _, d := range svc.Decorators {
-		if d == nil || d.Name != "group" || len(d.Args) == 0 {
-			continue
-		}
-		if s, ok := d.Args[0].Value.(*ast.StringLit); ok {
-			return CleanGroupPath(s.Value)
-		}
-	}
-	return ""
+	group, _ := ast.StringArg(svc.Decorators, "group")
+	return CleanGroupPath(group)
 }
 
 // EffectiveGroup returns the @group of a service block: its own, else the

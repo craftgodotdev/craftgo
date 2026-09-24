@@ -73,28 +73,27 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 		if d.Name != "requiresOneOf" && d.Name != "mutuallyExclusive" {
 			continue
 		}
-		args := collectIdentOrStringArgs(d)
 		seen := map[string]bool{}
-		for _, name := range args {
-			if seen[name.value] {
-				a.diag(name.pos, name.pos, lexer.SeverityWarning, CodeDuplicateGroupField,
+		for _, name := range ast.ArgNames(d) {
+			if seen[name.Value] {
+				a.diag(name.Pos, name.Pos, lexer.SeverityWarning, CodeDuplicateGroupField,
 					"@%s on type %s: field %q listed more than once",
-					d.Name, typeName, name.value)
+					d.Name, typeName, name.Value)
 				continue
 			}
-			seen[name.value] = true
-			pf, ok := getFields()[name.value]
+			seen[name.Value] = true
+			pf, ok := getFields()[name.Value]
 			if !ok {
 				if incomplete {
 					continue // an unresolved, already reported mixin may promote it
 				}
-				a.diag(name.pos, name.pos, lexer.SeverityError, CodeDecoratorRef,
+				a.diag(name.Pos, name.Pos, lexer.SeverityError, CodeDecoratorRef,
 					"@%s on type %s: %q is not a field of this type",
-					d.Name, typeName, name.value)
+					d.Name, typeName, name.Value)
 				continue
 			}
-			reportCrossFieldMemberIssues(d.Name, typeName, name.value, ResolveField(pf.Field, a.packageNamed(pf.Pkg), a.proj), func(code, msg string) {
-				a.diag(name.pos, name.pos, lexer.SeverityError, code, "%s", msg)
+			reportCrossFieldMemberIssues(d.Name, typeName, name.Value, ResolveField(pf.Field, a.packageNamed(pf.Pkg), a.proj), func(code, msg string) {
+				a.diag(name.Pos, name.Pos, lexer.SeverityError, code, "%s", msg)
 			})
 		}
 		if d.Name == "mutuallyExclusive" && len(seen) < 2 {
@@ -184,23 +183,23 @@ func (a *analyzer) checkMemberLevelRefs(decs []*ast.Decorator, lvl Level) {
 // checkErrorsRef resolves every @errors name: a qualified `pkg.Name` in
 // pkg, a bare name in any package.
 func (a *analyzer) checkErrorsRef(d *ast.Decorator) {
-	for _, arg := range collectIdentOrStringArgs(d) {
-		if a.errorDeclared(arg.value) {
+	for _, name := range ast.ArgNames(d) {
+		if a.errorDeclared(name.Value) {
 			continue
 		}
-		a.diag(arg.pos, arg.pos, lexer.SeverityError, CodeDecoratorRef,
-			"@errors: %q is not a declared error type in any package", arg.value)
+		a.diag(name.Pos, name.Pos, lexer.SeverityError, CodeDecoratorRef,
+			"@errors: %q is not a declared error type in any package", name.Value)
 	}
 }
 
 // checkMiddlewareRef is [analyzer.checkErrorsRef] for @middlewares.
 func (a *analyzer) checkMiddlewareRef(d *ast.Decorator) {
-	for _, arg := range collectIdentOrStringArgs(d) {
-		if a.middlewareDeclared(arg.value) {
+	for _, name := range ast.ArgNames(d) {
+		if a.middlewareDeclared(name.Value) {
 			continue
 		}
-		a.diag(arg.pos, arg.pos, lexer.SeverityError, CodeDecoratorRef,
-			"@middlewares: %q is not a declared middleware in any package", arg.value)
+		a.diag(name.Pos, name.Pos, lexer.SeverityError, CodeDecoratorRef,
+			"@middlewares: %q is not a declared middleware in any package", name.Value)
 	}
 }
 
@@ -210,51 +209,12 @@ func (a *analyzer) checkSecurityRef(d *ast.Decorator) {
 	if a.opts.SecuritySchemes == nil {
 		return
 	}
-	check := func(name string, pos lexer.Position) {
-		if slices.Contains(a.opts.SecuritySchemes, name) {
-			return
+	for _, name := range ast.ArgNames(d) {
+		if slices.Contains(a.opts.SecuritySchemes, name.Value) {
+			continue
 		}
-		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorRef,
+		a.diag(name.Pos, name.Pos, lexer.SeverityError, CodeDecoratorRef,
 			"@security: scheme %q is not declared in openapi.securitySchemes (known: %s)",
-			name, joinQuoted(a.opts.SecuritySchemes))
+			name.Value, joinQuoted(a.opts.SecuritySchemes))
 	}
-	for _, ag := range positionalArgs(d) {
-		if arr, ok := ag.Value.(*ast.ArrayLit); ok {
-			for _, el := range arr.Elements {
-				if name, ok := identOrStringValue(el); ok {
-					check(name, el.ExprPos())
-				}
-			}
-			continue
-		}
-		if name, ok := identOrStringValue(ag.Value); ok {
-			check(name, ag.Pos)
-		}
-	}
-}
-
-// argName is a name from a decorator argument and where it appears.
-type argName struct {
-	value string
-	pos   lexer.Position
-}
-
-// collectIdentOrStringArgs returns d's identifier and string positional
-// arguments, array elements included; other literals are skipped.
-func collectIdentOrStringArgs(d *ast.Decorator) []argName {
-	var out []argName
-	for _, ag := range positionalArgs(d) {
-		if arr, ok := ag.Value.(*ast.ArrayLit); ok {
-			for _, el := range arr.Elements {
-				if v, ok := identOrStringValue(el); ok {
-					out = append(out, argName{value: v, pos: el.ExprPos()})
-				}
-			}
-			continue
-		}
-		if v, ok := identOrStringValue(ag.Value); ok {
-			out = append(out, argName{value: v, pos: ag.Pos})
-		}
-	}
-	return out
 }

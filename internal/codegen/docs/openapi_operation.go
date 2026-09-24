@@ -326,19 +326,13 @@ func errorRefsFromDecorators(ds []*ast.Decorator) []string {
 		if d == nil || d.Name != "errors" {
 			continue
 		}
-		for _, a := range d.Args {
-			for _, v := range ast.DecoratorArgValues(a) {
-				id, ok := v.(*ast.IdentExpr)
-				if !ok || id.Name == nil {
-					continue
-				}
-				name := id.Name.Parts[len(id.Name.Parts)-1]
-				if seen[name] {
-					continue
-				}
-				seen[name] = true
-				out = append(out, name)
+		for _, n := range ast.ArgNames(d) {
+			name := n.Value[strings.LastIndexByte(n.Value, '.')+1:]
+			if seen[name] {
+				continue
 			}
+			seen[name] = true
+			out = append(out, name)
 		}
 	}
 	return out
@@ -536,23 +530,15 @@ func operationTags(svcName string, m *ast.Method, pkg *semantic.Package) []strin
 	return out
 }
 
-// tagsFromDecorators returns the string and identifier arguments of every
-// `@tags` in ds.
+// tagsFromDecorators returns the tags every `@tags` in ds lists.
 func tagsFromDecorators(ds []*ast.Decorator) []string {
 	var out []string
 	for _, d := range ds {
 		if d == nil || d.Name != "tags" {
 			continue
 		}
-		for _, a := range d.Args {
-			for _, val := range ast.DecoratorArgValues(a) {
-				switch v := val.(type) {
-				case *ast.StringLit:
-					out = append(out, v.Value)
-				case *ast.IdentExpr:
-					out = append(out, v.Name.String())
-				}
-			}
+		for _, n := range ast.ArgNames(d) {
+			out = append(out, n.Value)
 		}
 	}
 	return out
@@ -560,6 +546,6 @@ func tagsFromDecorators(ds []*ast.Decorator) []string {
 
 // summaryOf returns the `@summary` text in ds.
 func summaryOf(ds []*ast.Decorator) string {
-	s, _ := semantic.DecoratorStringArg(ds, "summary")
+	s, _ := ast.StringArg(ds, "summary")
 	return s
 }

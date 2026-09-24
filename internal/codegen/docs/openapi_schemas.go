@@ -218,7 +218,7 @@ func crossFieldSchemaFragments(decs []*ast.Decorator, members []ast.TypeMember) 
 		}
 		switch d.Name {
 		case "requiresOneOf":
-			names := keys(dedupeStrings(semantic.StringArrayDecoratorArg(d)))
+			names := keys(semantic.CrossFieldNames(d))
 			if len(names) == 0 {
 				continue
 			}
@@ -230,7 +230,7 @@ func crossFieldSchemaFragments(decs []*ast.Decorator, members []ast.TypeMember) 
 				AnyOf: branches,
 			}})
 		case "mutuallyExclusive":
-			names := keys(dedupeStrings(semantic.StringArrayDecoratorArg(d)))
+			names := keys(semantic.CrossFieldNames(d))
 			if len(names) < 2 {
 				continue
 			}

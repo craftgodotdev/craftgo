@@ -210,8 +210,8 @@ func (a *analyzer) requestPathFields(m *ast.Method, pathParams []string) *pathPa
 	out := &pathParamSet{all: map[string]bool{}}
 	for _, pf := range fields {
 		f := pf.Field
-		name, hasExplicit := pathBindingName(f)
-		if hasExplicit {
+		if ast.HasDecorator(f.Decorators, wire.BindingPath) {
+			name := wire.WireName(f, wire.BindingPath)
 			out.all[name] = true
 			out.explicit = append(out.explicit, name)
 			continue
@@ -236,21 +236,4 @@ func hasDivertingWireBinding(ds []*ast.Decorator) bool {
 		}
 	}
 	return false
-}
-
-// pathBindingName returns the segment an `@path` field binds, its non-empty
-// argument or else its own name, and whether the field has `@path`.
-func pathBindingName(f *ast.Field) (string, bool) {
-	for _, d := range f.Decorators {
-		if d == nil || d.Name != wire.BindingPath {
-			continue
-		}
-		if len(d.Args) > 0 {
-			if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
-				return s.Value, true
-			}
-		}
-		return f.Name, true
-	}
-	return "", false
 }

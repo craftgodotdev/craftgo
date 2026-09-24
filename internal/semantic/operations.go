@@ -33,13 +33,8 @@ func OperationBaseName(svcName string, m *ast.Method, counts map[string]int) str
 // OperationID returns a method's operationId: an explicit, non-empty
 // `@operationId("...")` override when present, otherwise base.
 func OperationID(m *ast.Method, base string) string {
-	for _, d := range m.Decorators {
-		if d == nil || d.Name != "operationId" || len(d.Args) == 0 {
-			continue
-		}
-		if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
-			return s.Value
-		}
+	if id, ok := ast.StringArg(m.Decorators, "operationId"); ok && id != "" {
+		return id
 	}
 	return base
 }

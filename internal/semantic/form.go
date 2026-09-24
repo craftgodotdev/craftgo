@@ -56,22 +56,15 @@ func isFileRef(f *ast.Field) bool {
 	return f != nil && f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "file"
 }
 
-// mimeTypesOf reads the `@mimeTypes` allowlist, accepting both the array
-// form and repeated string arguments.
+// mimeTypesOf reads the `@mimeTypes` allowlist.
 func mimeTypesOf(ds []*ast.Decorator) []string {
 	var out []string
 	for _, d := range ds {
-		if d == nil || d.Name != "mimeTypes" || len(d.Args) == 0 {
+		if d == nil || d.Name != "mimeTypes" {
 			continue
 		}
-		if mimes, ok := StringArrayArg(d.Args[0]); ok {
-			out = mimes
-			continue
-		}
-		for _, a := range d.Args {
-			if s, ok := a.Value.(*ast.StringLit); ok {
-				out = append(out, s.Value)
-			}
+		for _, n := range ast.ArgNames(d) {
+			out = append(out, n.Value)
 		}
 	}
 	return out

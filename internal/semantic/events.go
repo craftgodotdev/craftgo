@@ -103,7 +103,7 @@ func ContractName(pkgName string, d *ast.EventDecl) string {
 	if d == nil {
 		return ""
 	}
-	if s, ok := DecoratorStringArg(d.Decorators, DecoratorContract); ok {
+	if s, ok := ast.StringArg(d.Decorators, DecoratorContract); ok {
 		return s
 	}
 	if pkgName == "" {

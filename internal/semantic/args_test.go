@@ -338,21 +338,6 @@ func TestExprMatchesKindMatrix(t *testing.T) {
 	}
 }
 
-func TestIdentOrStringValue(t *testing.T) {
-	if v, ok := identOrStringValue(&ast.IdentExpr{Name: &ast.QualifiedIdent{Parts: []string{"x"}}}); !ok || v != "x" {
-		t.Errorf("ident: %q %v", v, ok)
-	}
-	if _, ok := identOrStringValue(&ast.IdentExpr{Name: nil}); ok {
-		t.Error("nil Name should return ok=false")
-	}
-	if v, ok := identOrStringValue(&ast.StringLit{Value: "y"}); !ok || v != "y" {
-		t.Errorf("string: %q %v", v, ok)
-	}
-	if _, ok := identOrStringValue(&ast.IntLit{}); ok {
-		t.Error("int should return ok=false")
-	}
-}
-
 func TestJoinQuoted(t *testing.T) {
 	if got := joinQuoted([]string{"a", "b"}); got != `"a", "b"` {
 		t.Errorf("got %q", got)

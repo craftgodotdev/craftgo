@@ -77,19 +77,17 @@ func maxSizeCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) st
 // mimeTypesCheck renders @mimeTypes on a file field as a switch over the
 // upload's Content-Type; an absent upload passes.
 func mimeTypesCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	if !isFileField(f) || len(d.Args) == 0 {
+	if !isFileField(f) {
 		return ""
 	}
-	// Both `@mimeTypes(["a", "b"])` and `@mimeTypes("a", "b")`.
-	mimes := semantic.StringArrayDecoratorArg(d)
-	if len(mimes) == 0 {
+	var cases []string
+	for _, mime := range ast.ArgNames(d) {
+		cases = append(cases, strconv.Quote(mime.Value))
+	}
+	if len(cases) == 0 {
 		return ""
 	}
 	ctx.uses["fmt"] = true
-	cases := make([]string, len(mimes))
-	for i, m := range mimes {
-		cases[i] = strconv.Quote(m)
-	}
 	return fmt.Sprintf(`if %s != nil {
 switch %s.Header.Get("Content-Type") {
 case %s:

@@ -21,12 +21,8 @@ func forEachSecurityScheme(ds []*ast.Decorator, fn func(name string)) {
 		if d == nil || d.Name != "security" {
 			continue
 		}
-		for _, a := range d.Args {
-			for _, v := range ast.DecoratorArgValues(a) {
-				if id, ok := v.(*ast.IdentExpr); ok {
-					fn(id.Name.String())
-				}
-			}
+		for _, n := range ast.ArgNames(d) {
+			fn(n.Value)
 		}
 	}
 }
@@ -150,12 +146,8 @@ func securityFromDecorators(ds []*ast.Decorator) *openapi3.SecurityRequirements 
 			continue
 		}
 		req := openapi3.SecurityRequirement{}
-		for _, a := range d.Args {
-			for _, v := range ast.DecoratorArgValues(a) {
-				if id, ok := v.(*ast.IdentExpr); ok {
-					req[id.Name.String()] = []string{}
-				}
-			}
+		for _, n := range ast.ArgNames(d) {
+			req[n.Value] = []string{}
 		}
 		reqs = append(reqs, req)
 	}

@@ -151,13 +151,8 @@ func fileDecoratorString(files []*ast.File, name string) string {
 		if f == nil {
 			continue
 		}
-		for _, d := range f.Decorators {
-			if d == nil || d.Name != name || len(d.Args) == 0 {
-				continue
-			}
-			if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
-				return s.Value
-			}
+		if s, ok := ast.StringArg(f.Decorators, name); ok && s != "" {
+			return s
 		}
 	}
 	return ""

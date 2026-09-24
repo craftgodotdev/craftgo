@@ -323,30 +323,6 @@ func TestResolveMethodPathEmptyParts(t *testing.T) {
 	}
 }
 
-func TestPathBindingNameVariants(t *testing.T) {
-	cases := []struct {
-		f       *ast.Field
-		want    string
-		hasPath bool
-	}{
-		{&ast.Field{Name: "id"}, "", false},
-		{&ast.Field{Name: "id", Decorators: []*ast.Decorator{{Name: "path"}}}, "id", true},
-		{&ast.Field{Name: "id", Decorators: []*ast.Decorator{
-			{Name: "path", Args: []*ast.DecoratorArg{{Value: &ast.StringLit{Value: "user-id"}}}},
-		}}, "user-id", true},
-		// A non-string argument falls back to the field name.
-		{&ast.Field{Name: "id", Decorators: []*ast.Decorator{
-			{Name: "path", Args: []*ast.DecoratorArg{{Value: &ast.IntLit{}}}},
-		}}, "id", true},
-	}
-	for i, c := range cases {
-		got, has := pathBindingName(c.f)
-		if got != c.want || has != c.hasPath {
-			t.Errorf("case %d: got (%q, %v), want (%q, %v)", i, got, has, c.want, c.hasPath)
-		}
-	}
-}
-
 func TestRequestPathFieldsNilGuards(t *testing.T) {
 	a := newTestAnalyzer(&Package{Types: map[string]*ast.TypeDecl{}})
 	if got := a.requestPathFields(&ast.Method{}, nil); got != nil {
@@ -426,18 +402,6 @@ func TestRequestPathFieldsUnknownPackageMixin(t *testing.T) {
 	out := a.requestPathFields(&ast.Method{Request: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"A"}}}}, []string{"id"})
 	if !out.has("id") {
 		t.Error("qualified mixin unresolvable in-package should be skipped, own fields still surface")
-	}
-}
-
-// pathBindingName finds @path after other decorators.
-func TestPathBindingNameSkipsNonPathDecorator(t *testing.T) {
-	f := &ast.Field{Name: "id", Decorators: []*ast.Decorator{
-		{Name: "doc", Args: []*ast.DecoratorArg{{Value: &ast.StringLit{Value: "x"}}}},
-		{Name: "path"},
-	}}
-	got, has := pathBindingName(f)
-	if !has || got != "id" {
-		t.Errorf("got (%q, %v), want (id, true)", got, has)
 	}
 }
 

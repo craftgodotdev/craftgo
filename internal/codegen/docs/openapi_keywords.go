@@ -53,7 +53,7 @@ var schemaKeywords = map[string]schemaKeyword{
 		if len(d.Args) != 1 {
 			return
 		}
-		name := semantic.StringOrIdentArg(d.Args[0])
+		name, _ := ast.TextValue(d.Args[0].Value)
 		if name == "" {
 			return
 		}

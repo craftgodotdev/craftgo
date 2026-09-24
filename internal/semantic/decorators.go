@@ -271,8 +271,11 @@ func HasRawFormat(decs []*ast.Decorator) bool {
 
 // isFormatRaw reports whether d is `@format(raw)`.
 func isFormatRaw(d *ast.Decorator) bool {
-	return d != nil && d.Name == "format" && len(d.Args) > 0 &&
-		StringOrIdentArg(d.Args[0]) == FormatRaw
+	if d == nil || d.Name != "format" || len(d.Args) == 0 {
+		return false
+	}
+	name, _ := ast.TextValue(d.Args[0].Value)
+	return name == FormatRaw
 }
 
 var formatValues = append(strfmt.Names(), FormatRaw)

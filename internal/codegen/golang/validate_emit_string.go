@@ -80,7 +80,7 @@ func patternCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) st
 	if !isStringOrOptString(f) || len(d.Args) != 1 {
 		return ""
 	}
-	s, ok := semantic.StringArg(d.Args[0])
+	s, ok := ast.TextValue(d.Args[0].Value)
 	if !ok {
 		return ""
 	}
@@ -99,7 +99,7 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 	if !isStringOrOptString(f) || len(d.Args) != 1 {
 		return ""
 	}
-	name := semantic.StringOrIdentArg(d.Args[0])
+	name, _ := ast.TextValue(d.Args[0].Value)
 	if name == "" {
 		return ""
 	}

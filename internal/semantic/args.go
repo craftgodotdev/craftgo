@@ -272,7 +272,7 @@ func (a *analyzer) checkEnumOnFirst(d *ast.Decorator, spec Spec, pos []*ast.Deco
 	if len(enum) == 0 || len(pos) == 0 {
 		return
 	}
-	val, ok := identOrStringValue(pos[0].Value)
+	val, ok := ast.TextValue(pos[0].Value)
 	if !ok {
 		return
 	}
@@ -367,20 +367,6 @@ func exprKindName(e ast.Expr) string {
 		name = "array"
 	}
 	return name
-}
-
-// identOrStringValue returns the text of an identifier or string literal.
-func identOrStringValue(e ast.Expr) (string, bool) {
-	switch v := e.(type) {
-	case *ast.IdentExpr:
-		if v.Name == nil {
-			return "", false
-		}
-		return v.Name.String(), true
-	case *ast.StringLit:
-		return v.Value, true
-	}
-	return "", false
 }
 
 // joinQuoted renders xs as `"a", "b", "c"`, in input order.

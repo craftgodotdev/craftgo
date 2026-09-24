@@ -153,24 +153,16 @@ func formatDurationGo(d time.Duration) string {
 	return fmt.Sprintf("%d * time.Nanosecond", d.Nanoseconds())
 }
 
-// extractMiddlewareNames returns the identifier arguments of every @decorator in ds without their
-// package qualifier; middleware names are unique across the project.
+// extractMiddlewareNames returns the names every @decorator in ds lists without their package
+// qualifier; middleware names are unique across the project.
 func extractMiddlewareNames(decorator string, ds []*ast.Decorator) []string {
 	var out []string
 	for _, d := range ds {
-		if d.Name != decorator {
+		if d == nil || d.Name != decorator {
 			continue
 		}
-		for _, a := range d.Args {
-			for _, v := range ast.DecoratorArgValues(a) {
-				if id, ok := v.(*ast.IdentExpr); ok {
-					parts := id.Name.Parts
-					if len(parts) == 0 {
-						continue
-					}
-					out = append(out, parts[len(parts)-1])
-				}
-			}
+		for _, n := range ast.ArgNames(d) {
+			out = append(out, n.Value[strings.LastIndexByte(n.Value, '.')+1:])
 		}
 	}
 	return out

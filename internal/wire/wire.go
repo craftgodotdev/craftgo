@@ -56,13 +56,8 @@ func WireName(f *ast.Field, kind string) string {
 	if f == nil {
 		return ""
 	}
-	for _, d := range f.Decorators {
-		if d == nil || d.Name != kind || len(d.Args) == 0 {
-			continue
-		}
-		if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
-			return s.Value
-		}
+	if s, ok := ast.StringArg(f.Decorators, kind); ok && s != "" {
+		return s
 	}
 	return f.Name
 }
@@ -161,20 +156,7 @@ func JSONShape(f *ast.Field) (name string, presence JSONPresence) {
 
 // JSONName returns a body field's JSON key: the non-empty `@json` argument,
 // else the field's own name.
-func JSONName(f *ast.Field) string {
-	if f == nil {
-		return ""
-	}
-	for _, d := range f.Decorators {
-		if d == nil || d.Name != DecoratorJSON || len(d.Args) == 0 {
-			continue
-		}
-		if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
-			return s.Value
-		}
-	}
-	return f.Name
-}
+func JSONName(f *ast.Field) string { return WireName(f, DecoratorJSON) }
 
 // NonBodyBindingKind returns a field's explicit path, query, header or cookie
 // binding, or "" for a body, form, sensitive or undecorated field.
@@ -192,13 +174,8 @@ func NonBodyBindingKind(f *ast.Field) string {
 // StatusOverride returns the method's `@status(N)` code, if any; the analyser
 // keeps it within 100..599.
 func StatusOverride(m *ast.Method) (int, bool) {
-	for _, d := range m.Decorators {
-		if d == nil || d.Name != "status" || len(d.Args) == 0 {
-			continue
-		}
-		if i, ok := d.Args[0].Value.(*ast.IntLit); ok {
-			return int(i.Value), true
-		}
+	if code, ok := ast.Arg[*ast.IntLit](m.Decorators, "status"); ok {
+		return int(code.Value), true
 	}
 	return 0, false
 }

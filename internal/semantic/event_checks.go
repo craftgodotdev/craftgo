@@ -37,7 +37,7 @@ func (a *analyzer) checkContractArg(d *ast.EventDecl) {
 		if dec == nil || dec.Name != DecoratorContract {
 			continue
 		}
-		name, ok := DecoratorStringArg([]*ast.Decorator{dec}, DecoratorContract)
+		name, ok := ast.StringArg([]*ast.Decorator{dec}, DecoratorContract)
 		if !ok {
 			continue
 		}

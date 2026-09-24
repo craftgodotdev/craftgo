@@ -42,6 +42,37 @@ func TestRawSides(t *testing.T) {
 	}
 }
 
+func TestWireName(t *testing.T) {
+	withArg := func(v ast.Expr) *ast.Field {
+		return &ast.Field{Name: "id", Decorators: []*ast.Decorator{
+			{Name: BindingPath, Args: []*ast.DecoratorArg{{Value: v}}},
+		}}
+	}
+	cases := []struct {
+		name string
+		f    *ast.Field
+		want string
+	}{
+		{"no decorator", &ast.Field{Name: "id"}, "id"},
+		{"no argument", &ast.Field{Name: "id", Decorators: decs(BindingPath)}, "id"},
+		{"string argument", withArg(&ast.StringLit{Value: "user-id"}), "user-id"},
+		{"empty string", withArg(&ast.StringLit{}), "id"},
+		{"non-string argument", withArg(&ast.IntLit{}), "id"},
+		{"another decorator's string", &ast.Field{Name: "id", Decorators: []*ast.Decorator{
+			{Name: "doc", Args: []*ast.DecoratorArg{{Value: &ast.StringLit{Value: "x"}}}},
+			{Name: BindingPath},
+		}}, "id"},
+		{"nil field", nil, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := WireName(c.f, BindingPath); got != c.want {
+				t.Errorf("WireName = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
 // TestJSONShapeSplitsPresenceFourWays checks the presence JSONShape reports
 // for each mix of `?`, `@nullable` and `@sensitive`.
 func TestJSONShapeSplitsPresenceFourWays(t *testing.T) {
