@@ -513,6 +513,27 @@ func TestServerSetJSONCodecPropagatesToGlobal(t *testing.T) {
 	}
 }
 
+// Codec reports the codec JSON returns, after a process-wide swap and under strict JSON.
+func TestServerCodecIsTheCodecInUse(t *testing.T) {
+	t.Cleanup(func() {
+		_ = SetStrictJSON(false)
+		_ = SetGlobalJSONCodec(nil)
+	})
+	s := New(nil)
+	if err := SetGlobalJSONCodec(markerCodec{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := fmt.Sprintf("%T", s.Codec()); got != "server.markerCodec" {
+		t.Errorf("after SetGlobalJSONCodec: Codec() is %s", got)
+	}
+	if err := s.SetStrictJSON(true); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := fmt.Sprintf("%T", s.Codec()), fmt.Sprintf("%T", JSON()); got != want {
+		t.Errorf("under strict JSON: Codec() is %s, JSON() is %s", got, want)
+	}
+}
+
 func TestServerStopBeforeStart(t *testing.T) {
 	if err := New(nil).Stop(context.Background()); err != nil {
 		t.Errorf("Stop before Start should be no-op, got %v", err)

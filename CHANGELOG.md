@@ -30,6 +30,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   of the redirect to the cleaned one; the handler now receives only what the
   mux answers 404.
 
+- **`Server.Codec` reports the codec in use.** It returned the codec last
+  passed to `Server.SetJSONCodec`, missing a `SetGlobalJSONCodec` swap and
+  strict JSON; it now returns what `JSON()` returns.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added

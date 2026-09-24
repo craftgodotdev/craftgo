@@ -23,7 +23,6 @@ type Server struct {
 	httpSrv *http.Server
 
 	logger Logger
-	codec  JSONCodec
 	cors   *CORSOptions
 
 	defaultReadTimeout    time.Duration
@@ -84,7 +83,6 @@ func New(_ any, opts ...Option) *Server {
 	s := &Server{
 		mux:                http.NewServeMux(),
 		logger:             log.New(),
-		codec:              defaultCodec{},
 		healthChecks:       map[string]healthCheck{},
 		healthPaths:        HealthPaths{Liveness: DefaultLivenessPath, Readiness: DefaultReadinessPath},
 		registeredMW:       map[string]Middleware{},
@@ -201,15 +199,8 @@ func (s *Server) SetCORS(opts CORSOptions) *Server {
 	return s
 }
 
-// SetJSONCodec installs c process-wide with [SetGlobalJSONCodec] and records it for
-// [Server.Codec].
-func (s *Server) SetJSONCodec(c JSONCodec) error {
-	if err := SetGlobalJSONCodec(c); err != nil {
-		return err
-	}
-	s.codec = currentCodec().base
-	return nil
-}
+// SetJSONCodec calls the process-wide [SetGlobalJSONCodec].
+func (s *Server) SetJSONCodec(c JSONCodec) error { return SetGlobalJSONCodec(c) }
 
 // SetStrictJSON calls the process-wide [SetStrictJSON].
 func (s *Server) SetStrictJSON(strict bool) error { return SetStrictJSON(strict) }
@@ -226,9 +217,8 @@ func (s *Server) SetLogger(l Logger) *Server {
 // [log.New] logger.
 func (s *Server) Logger() Logger { return s.logger }
 
-// Codec returns the codec last installed with [Server.SetJSONCodec], the built-in one before
-// that; [JSON] returns the codec in effect.
-func (s *Server) Codec() JSONCodec { return s.codec }
+// Codec returns the codec in effect, the one [JSON] returns.
+func (s *Server) Codec() JSONCodec { return JSON() }
 
 // RegisterHealthCheck adds, or replaces, the readiness check name. Each readiness probe runs
 // fn under a context with timeout, and a non-nil error answers 503.
