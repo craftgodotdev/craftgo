@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -475,4 +476,47 @@ type T { remote shared.Gone }`,
 		t.Fatalf("expected %s for an error used as a field type, got %v", CodeRefUnknownSymbol, codes(diags))
 	}
 	expectMessage(t, d, "shared.Gone", "error declaration", "@errors")
+}
+
+// A qualified generic mixin with the wrong arity reports one mixin diagnostic.
+func TestQualifiedMixinArityReportedOnce(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/types.craftgo": `package shared
+type Page<T> { items T[] }`,
+		"app/types.craftgo": `package app
+type List { shared.Page  total int }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if got := codes(diags); !slices.Equal(got, []string{CodeMixinArity}) {
+		t.Errorf("want one %s, got %v", CodeMixinArity, diags)
+	}
+}
+
+// A qualified enum takes no generic arguments.
+func TestQualifiedArgsOnEnum(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/types.craftgo": `package shared
+enum Color { Red Blue }`,
+		"app/types.craftgo": `package app
+type T { c shared.Color<int> }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	d := findCode(diags, CodeGenericNonGeneric)
+	if d == nil {
+		t.Fatalf("want %s, got %v", CodeGenericNonGeneric, diags)
+	}
+	expectMessage(t, d, "shared.Color")
+}
+
+// A file without a package clause joins the only package, so naming that
+// package in a reference is a self-qualification.
+func TestSelfQualifiedRefInPackagelessFile(t *testing.T) {
+	files := parseFiles(t, `package app
+type A { id string }`, `type B { a app.A }`)
+	_, diags := AnalyzeProject(files, Options{})
+	d := findCode(diags, CodeQualifiedRef)
+	if d == nil {
+		t.Fatalf("want %s, got %v", CodeQualifiedRef, diags)
+	}
+	expectMessage(t, d, "redundant self-qualification")
 }

@@ -317,69 +317,6 @@ func TestFolderExists(t *testing.T) {
 	}
 }
 
-func TestProcessFileNilTolerated(t *testing.T) {
-	r := &refResolver{proj: &Project{Packages: map[string]*Package{}}}
-	r.processFile(nil, "/root")
-	if len(r.diags) != 0 {
-		t.Errorf("nil file should not diag, got %v", r.diags)
-	}
-}
-
-func TestCheckQualifiedRefNamelessRef(t *testing.T) {
-	r := &refResolver{proj: &Project{Packages: map[string]*Package{}}}
-	r.checkQualifiedRef(&ast.NamedTypeRef{}, "")
-	if len(r.diags) != 0 {
-		t.Errorf("nameless ref should not diag, got %v", r.diags)
-	}
-}
-
-// An import with an empty path is skipped without a diagnostic.
-func TestProcessFileEmptyPathSkipped(t *testing.T) {
-	r := &refResolver{proj: &Project{Packages: map[string]*Package{}}}
-	f := &ast.File{Imports: []*ast.Import{
-		{Pos: lexer.Position{Line: 1}, Path: ""},
-	}}
-	r.processFile(f, "")
-	if len(r.diags) != 0 {
-		t.Errorf("empty import path should not diag, got %v", r.diags)
-	}
-}
-
-// walkDeclRefs resolves qualified refs in error bodies and in method requests and responses.
-func TestWalkDeclRefsCoversErrorAndService(t *testing.T) {
-	r := &refResolver{proj: &Project{
-		Packages: map[string]*Package{"design": {Types: map[string]*ast.TypeDecl{"User": {}}}},
-	}}
-	r.walkDeclRefs(&ast.ErrorDecl{
-		Body: []ast.TypeMember{
-			&ast.Field{Type: &ast.TypeRef{Named: &ast.NamedTypeRef{
-				Name: &ast.QualifiedIdent{Parts: []string{"design", "User"}},
-			}}},
-		},
-	}, "")
-	r.walkDeclRefs(&ast.ServiceDecl{Members: []ast.ServiceMember{
-		&ast.Method{
-			Request:  &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"design", "User"}}},
-			Response: &ast.MethodResponse{Type: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"design", "User"}}}},
-		},
-		&ast.Method{},
-	}}, "")
-	if len(r.diags) != 0 {
-		t.Errorf("happy-path multi-part refs should resolve, got %v", r.diags)
-	}
-}
-
-func TestWalkDeclRefsMapOfUnqualified(t *testing.T) {
-	r := &refResolver{proj: &Project{Packages: map[string]*Package{}}}
-	r.walkDeclRefs(&ast.TypeDecl{Body: []ast.TypeMember{&ast.Field{Type: &ast.TypeRef{Map: &ast.MapType{
-		Key:   &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"string"}}}},
-		Value: &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"string"}}}},
-	}}}}}, "")
-	if len(r.diags) != 0 {
-		t.Errorf("map of unqualified should not diag, got %v", r.diags)
-	}
-}
-
 func pkgNames(p *Project) []string {
 	out := make([]string, 0, len(p.Packages))
 	for k := range p.Packages {

@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -52,6 +53,15 @@ func TestBasePathFormatRejectsTrailingSlash(t *testing.T) {
 	_, diags := AnalyzeWith(parseFiles(t, `service S {}`), Options{BasePath: "/v1/"})
 	if findCode(diags, CodePathBaseFormat) == nil {
 		t.Fatalf("got %v", codes(diags))
+	}
+}
+
+// A malformed basePath is reported once per project, not once per package.
+func TestBasePathFormatReportedOnce(t *testing.T) {
+	files := parseFiles(t, "package a\ntype A { id string }", "package b\ntype B { id string }")
+	_, diags := AnalyzeProject(files, Options{BasePath: "v1"})
+	if got := codes(diags); !slices.Equal(got, []string{CodePathBaseFormat}) {
+		t.Errorf("want one %s, got %v", CodePathBaseFormat, diags)
 	}
 }
 

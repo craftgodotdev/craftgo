@@ -31,14 +31,14 @@ type segClaim struct {
 
 // checkProjectGroupChecks rejects an output directory shared by services of
 // different DSL packages, or by two services declaring one method name.
-func (r *refResolver) checkProjectGroupChecks() {
+func (c *projectChecks) checkProjectGroupChecks() {
 	claims := map[string][]segClaim{}
-	for pkgName, pkg := range r.proj.Packages {
+	for pkgName, pkg := range c.proj.Packages {
 		if pkg == nil {
 			continue
 		}
 		for svcName, si := range pkg.Services {
-			for seg, claim := range serviceSegmentClaims(pkgName, svcName, si, r.fileCase) {
+			for seg, claim := range serviceSegmentClaims(pkgName, svcName, si, c.fileCase) {
 				claims[seg] = append(claims[seg], claim)
 			}
 		}
@@ -55,14 +55,14 @@ func (r *refResolver) checkProjectGroupChecks() {
 		if len(occs) < 2 {
 			continue
 		}
-		r.reportGroupPackageStraddle(seg, occs)
-		r.reportGroupMemberCollisions(seg, occs)
+		c.reportGroupPackageStraddle(seg, occs)
+		c.reportGroupMemberCollisions(seg, occs)
 	}
 }
 
 // reportGroupPackageStraddle reports every service sharing seg, relating the
 // others, when they come from more than one DSL package.
-func (r *refResolver) reportGroupPackageStraddle(seg string, occs []segClaim) {
+func (c *projectChecks) reportGroupPackageStraddle(seg string, occs []segClaim) {
 	first := occs[0].pkg
 	straddles := false
 	for _, o := range occs {
@@ -93,13 +93,13 @@ func (r *refResolver) reportGroupPackageStraddle(seg string, occs []segClaim) {
 				Msg: fmt.Sprintf("service %q in package %q also emits here (%s)", other.svc, other.pkg, claimSource(other.group)),
 			})
 		}
-		r.diags = append(r.diags, diag)
+		c.diags = append(c.diags, diag)
 	}
 }
 
 // reportGroupMemberCollisions reports each method whose name is declared by
 // more than one service sharing seg.
-func (r *refResolver) reportGroupMemberCollisions(seg string, occs []segClaim) {
+func (c *projectChecks) reportGroupMemberCollisions(seg string, occs []segClaim) {
 	type owner struct {
 		claim  segClaim
 		member segMember
@@ -134,7 +134,7 @@ func (r *refResolver) reportGroupMemberCollisions(seg string, occs []segClaim) {
 					Msg: fmt.Sprintf("also declared by service %q, which emits here (%s)", other.claim.svc, claimSource(other.claim.group)),
 				})
 			}
-			r.diags = append(r.diags, diag)
+			c.diags = append(c.diags, diag)
 		}
 	}
 }

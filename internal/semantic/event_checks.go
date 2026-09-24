@@ -11,7 +11,7 @@ import (
 )
 
 // checkEvents runs the per-package event rules. Contract uniqueness runs
-// at project level (see [refResolver.checkProjectEvents]).
+// at project level (see [projectChecks.checkProjectEvents]).
 func (a *analyzer) checkEvents() {
 	for _, name := range slices.Sorted(maps.Keys(a.pkg.Events)) {
 		a.checkEvent(a.pkg.Events[name])
@@ -99,14 +99,14 @@ func lookupNonType(pkg *Package, name string) (ast.Decl, bool) {
 
 // checkProjectEvents rejects two events that would share one contract
 // name.
-func (r *refResolver) checkProjectEvents() {
+func (c *projectChecks) checkProjectEvents() {
 	byContract := map[string]lexer.Position{}
-	for _, ev := range r.proj.Events() {
+	for _, ev := range c.proj.Events() {
 		if ev.Contract == "" {
 			continue
 		}
 		if prev, dup := byContract[ev.Contract]; dup {
-			d := r.diag(ev.Decl.Pos, lexer.SeverityError, CodeEventContractCollision,
+			d := c.diag(ev.Decl.Pos, lexer.SeverityError, CodeEventContractCollision,
 				"contract %q is declared twice - a listener cannot tell the two apart; rename one or set @contract", ev.Contract)
 			d.Related = related(prev, "first declared here")
 			continue

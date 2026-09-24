@@ -14,11 +14,9 @@ import (
 // defaultHealthPaths are the health routes pkg/server registers by default.
 var defaultHealthPaths = []string{"/healthz", "/readyz"}
 
-// checkPathResolution checks the basePath format, and each method's route
-// against the health paths and its request fields.
+// checkPathResolution checks each method's route against the health paths
+// and its request fields.
 func (a *analyzer) checkPathResolution() {
-	a.checkBasePathFormat()
-
 	healths := a.opts.HealthPaths
 	if len(healths) == 0 {
 		healths = defaultHealthPaths
@@ -45,15 +43,15 @@ func (a *analyzer) checkPathResolution() {
 // refuses to register together: one verb with the same route shape, or
 // overlapping shapes with neither more specific. A same-shape pair within
 // one service is left to [analyzer.checkServiceMethods].
-func (r *refResolver) checkProjectPathCollision() {
+func (c *projectChecks) checkProjectPathCollision() {
 	type routeEntry struct {
 		verb, route, shape   string
 		pos                  lexer.Position
 		pkg, service, method string
 	}
 	var entries []routeEntry
-	for _, pkgName := range slices.Sorted(maps.Keys(r.proj.Packages)) {
-		pkg := r.proj.Packages[pkgName]
+	for _, pkgName := range slices.Sorted(maps.Keys(c.proj.Packages)) {
+		pkg := c.proj.Packages[pkgName]
 		if pkg == nil {
 			continue
 		}
@@ -63,7 +61,7 @@ func (r *refResolver) checkProjectPathCollision() {
 				continue
 			}
 			for _, m := range si.Methods {
-				rt := route.Resolve(r.basePath, si.Primary, m)
+				rt := route.Resolve(c.basePath, si.Primary, m)
 				entries = append(entries, routeEntry{
 					verb: strings.ToUpper(m.Verb), route: rt, shape: route.Shape(rt),
 					pos: m.Pos, pkg: pkgName, service: svcName, method: m.Name,
@@ -84,7 +82,7 @@ func (r *refResolver) checkProjectPathCollision() {
 		if prev.pkg == e.pkg && prev.service == e.service {
 			continue
 		}
-		d := r.diag(e.pos, lexer.SeverityError, CodePathCollision,
+		d := c.diag(e.pos, lexer.SeverityError, CodePathCollision,
 			"method %s.%s resolves to %s %s, which already binds %s.%s%s",
 			e.service, e.method, e.verb, e.route, prev.service, prev.method, packageNote(prev.pkg, e.pkg))
 		d.Related = related(prev.pos, "first declared here")
@@ -96,7 +94,7 @@ func (r *refResolver) checkProjectPathCollision() {
 			if a.verb != b.verb || a.shape == b.shape || !route.PatternsConflict(a.route, b.route) {
 				continue
 			}
-			d := r.diag(a.pos, lexer.SeverityError, CodePathCollision,
+			d := c.diag(a.pos, lexer.SeverityError, CodePathCollision,
 				"method %s.%s resolves to %s %s, which overlaps %s %s of %s.%s%s: both match the same paths and neither is more specific, so net/http rejects the pair at startup; give one route a distinct literal segment or move the variable to @query",
 				a.service, a.method, a.verb, a.route, b.verb, b.route, b.service, b.method, packageNote(b.pkg, a.pkg))
 			d.Related = related(b.pos, "overlaps this route")
@@ -115,8 +113,8 @@ func packageNote(other, own string) string {
 
 // checkBasePathFormat warns when a non-empty basePath lacks the leading
 // `/`, ends with `/` or contains `//`.
-func (a *analyzer) checkBasePathFormat() {
-	bp := a.opts.BasePath
+func (c *projectChecks) checkBasePathFormat() {
+	bp := c.basePath
 	if bp == "" {
 		return
 	}
@@ -133,8 +131,7 @@ func (a *analyzer) checkBasePathFormat() {
 		return
 	}
 	// The manifest value has no source position.
-	a.diag(lexer.Position{}, lexer.Position{}, lexer.SeverityWarning,
-		CodePathBaseFormat,
+	c.diag(lexer.Position{}, lexer.SeverityWarning, CodePathBaseFormat,
 		"basePath %q is malformed: %s - codegen will normalise but please fix the manifest",
 		bp, bad)
 }

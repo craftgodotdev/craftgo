@@ -9,12 +9,14 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// MethodNameCounts counts each method name across pkg's services.
-func MethodNameCounts(pkg *Package) map[string]int {
+// MethodNameCounts counts each method name across the services of pkgs.
+func MethodNameCounts(pkgs ...*Package) map[string]int {
 	counts := map[string]int{}
-	for _, svc := range pkg.Services {
-		for _, m := range svc.Methods {
-			counts[m.Name]++
+	for _, pkg := range pkgs {
+		for _, svc := range pkg.Services {
+			for _, m := range svc.Methods {
+				counts[m.Name]++
+			}
 		}
 	}
 	return counts
@@ -42,30 +44,17 @@ func OperationID(m *ast.Method, base string) string {
 // checkProjectOperationIDUniqueness reports methods that share an
 // operationId. Method names are counted project-wide because one OpenAPI
 // document holds every package's services.
-func (r *refResolver) checkProjectOperationIDUniqueness() {
-	counts := map[string]int{}
-	for _, pkg := range r.proj.Packages {
-		if pkg == nil {
-			continue
-		}
-		for _, si := range pkg.Services {
-			if si == nil {
-				continue
-			}
-			for _, m := range si.Methods {
-				counts[m.Name]++
-			}
-		}
-	}
+func (c *projectChecks) checkProjectOperationIDUniqueness() {
+	counts := MethodNameCounts(slices.Collect(maps.Values(c.proj.Packages))...)
 	type owner struct {
 		ref string
 		pkg string
 		pos lexer.Position
 	}
 	owners := map[string][]owner{}
-	pkgNames := slices.Sorted(maps.Keys(r.proj.Packages))
+	pkgNames := slices.Sorted(maps.Keys(c.proj.Packages))
 	for _, pkgName := range pkgNames {
-		pkg := r.proj.Packages[pkgName]
+		pkg := c.proj.Packages[pkgName]
 		if pkg == nil {
 			continue
 		}
@@ -104,7 +93,7 @@ func (r *refResolver) checkProjectOperationIDUniqueness() {
 			msg = "operationId %q is shared across packages by %s - give each method a distinct @operationId(...)"
 		}
 		for _, o := range who {
-			r.diag(o.pos, lexer.SeverityError, CodeDuplicateOperation, msg, id, joined)
+			c.diag(o.pos, lexer.SeverityError, CodeDuplicateOperation, msg, id, joined)
 		}
 	}
 }

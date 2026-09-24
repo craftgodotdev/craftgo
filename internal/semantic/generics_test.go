@@ -1,10 +1,9 @@
 package semantic
 
 import (
+	"slices"
 	"strings"
 	"testing"
-
-	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
 func TestGenericInstanceCorrectArity(t *testing.T) {
@@ -174,21 +173,30 @@ func TestMixinSkipsGenericArityCheck(t *testing.T) {
 type X { Page<A, B>  total int }
 type A {}
 type B {}`))
-	mixin := 0
-	generic := 0
-	for _, d := range diags {
-		switch d.Code {
-		case CodeMixinArity:
-			mixin++
-		case CodeGenericArity:
-			generic++
-		}
+	if got := codes(diags); !slices.Equal(got, []string{CodeMixinArity}) {
+		t.Errorf("want one %s, got %v", CodeMixinArity, diags)
 	}
-	if mixin != 1 {
-		t.Errorf("expected 1 mixin/arity diag, got %d", mixin)
-	}
-	if mixin+generic < 1 {
-		t.Errorf("expected at least one arity diag")
+}
+
+// A mixin's arguments are type references of their own.
+func TestMixinArgumentArityChecked(t *testing.T) {
+	expectError(t, `type Page<T> { items T[] }
+type Box<T> { value T }
+type X { Page<Box>  total int }`, CodeGenericArity)
+}
+
+// An enum, a scalar or a built-in takes no generic arguments.
+func TestArgsOnEnumScalarAndBuiltin(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `enum Color { Red Blue }
+scalar Email string
+type T {
+	c Color<int>
+	e Email<string>
+	s string<int>
+}`))
+	want := []string{CodeGenericNonGeneric, CodeGenericNonGeneric, CodeGenericNonGeneric}
+	if got := codes(diags); !slices.Equal(got, want) {
+		t.Errorf("want %v, got %v", want, diags)
 	}
 }
 
@@ -203,12 +211,12 @@ func TestUnknownTypeRefSkipsArity(t *testing.T) {
 	}
 }
 
-// Single-package analysis does not check a qualified generic reference's arity.
-func TestQualifiedGenericRefSinglePackageMode(t *testing.T) {
+// A reference into an undeclared package reports the package alone.
+func TestQualifiedGenericRefIntoUnknownPackage(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `type X { p shared.Page<User> }
 type User {}`))
-	if findCode(diags, CodeGenericArity) != nil {
-		t.Errorf("per-package mode should not validate qualified-ref arity, got %v", codes(diags))
+	if got := codes(diags); !slices.Equal(got, []string{CodeRefUnknownPackage}) {
+		t.Errorf("want only %s, got %v", CodeRefUnknownPackage, diags)
 	}
 }
 
@@ -219,14 +227,5 @@ type User {}
 type X { byPage map<Page<User, X>, string> }`))
 	if findCode(diags, CodeGenericArity) == nil {
 		t.Fatalf("got %v", codes(diags))
-	}
-}
-
-// checkNamedRefGenerics accepts a ref without a name.
-func TestGenericCheckNamelessRef(t *testing.T) {
-	a := newTestAnalyzer(&Package{})
-	a.checkNamedRefGenerics(&ast.NamedTypeRef{}, nil)
-	if len(a.diags) != 0 {
-		t.Errorf("nameless ref should not diag, got %v", a.diags)
 	}
 }

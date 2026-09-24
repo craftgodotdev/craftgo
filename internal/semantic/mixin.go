@@ -233,6 +233,10 @@ func (a *analyzer) processMixin(host string, mx *ast.Mixin, seen map[string]fiel
 	a.collectMixinFields(pkgName, name, mx.Ref.Name.String(), mx.Pos, seen, visited)
 }
 
+// mixinNamedKinds are the kinds a mixin's name is resolved among: a type,
+// or a declaration [analyzer.resolveMixinTarget] rejects as no type.
+const mixinNamedKinds = TypeDecls | EnumDecls | ErrorDecls | ScalarDecls | MiddlewareDecls
+
 // resolveMixinTarget returns the type name declares in pkgName; a name of
 // another kind is reported as [CodeMixinNonType].
 func (a *analyzer) resolveMixinTarget(mx *ast.Mixin, pkgName, name string) *ast.TypeDecl {
@@ -240,24 +244,23 @@ func (a *analyzer) resolveMixinTarget(mx *ast.Mixin, pkgName, name string) *ast.
 	if pkg == nil {
 		return nil
 	}
-	if td, ok := pkg.Types[name]; ok {
-		return td
-	}
 	kind := ""
-	switch {
-	case pkg.Enums[name] != nil:
-		kind = "enum"
-	case pkg.Errors[name] != nil:
-		kind = "error"
-	case pkg.Scalars[name] != nil:
-		kind = "scalar"
-	case pkg.Middlewares[name] != nil:
-		kind = "middleware"
+	switch d := pkg.Decl(name, mixinNamedKinds).(type) {
+	case *ast.TypeDecl:
+		return d
+	case *ast.EnumDecl:
+		kind = "an enum"
+	case *ast.ErrorDecl:
+		kind = "an error"
+	case *ast.ScalarDecl:
+		kind = "a scalar"
+	case *ast.MiddlewareDecl:
+		kind = "a middleware"
+	default:
+		return nil
 	}
-	if kind != "" {
-		a.diag(mx.Pos, mx.Pos, lexer.SeverityError, CodeMixinNonType,
-			"mixin %s is a %s, not a type", a.refDisplay(pkgName, name), kind)
-	}
+	a.diag(mx.Pos, mx.Pos, lexer.SeverityError, CodeMixinNonType,
+		"mixin %s is %s, not a type", a.refDisplay(pkgName, name), kind)
 	return nil
 }
 

@@ -119,7 +119,7 @@ func (a *analyzer) runDecoratorPhase(files []*ast.File) {
 }
 
 // runShapePhase checks the structural rules: field, enum, method, mixin,
-// generic, route and event shapes.
+// route and event shapes.
 func (a *analyzer) runShapePhase(files []*ast.File) {
 	a.checkFieldUniqueness()
 	a.checkEnums()
@@ -127,18 +127,16 @@ func (a *analyzer) runShapePhase(files []*ast.File) {
 	a.checkFieldTypeCompat()
 	a.checkRangesAndExtras(files)
 	a.checkMixins()
-	a.checkGenerics()
 	a.checkPathResolution()
 	a.checkCombinationRules(files)
 	a.checkFilePosition()
 	a.checkEvents()
 }
 
-// runRefPhase checks each file's imports and resolves every bare type
-// name; qualified names resolve in the project pass.
+// runRefPhase checks each file's imports and every type reference.
 func (a *analyzer) runRefPhase(files []*ast.File) {
 	a.checkImports(files)
-	a.checkLocalTypeRefs(files)
+	a.checkTypeRefs(files)
 }
 
 type analyzer struct {

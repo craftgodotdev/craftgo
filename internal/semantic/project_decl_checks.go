@@ -17,9 +17,9 @@ type declSite struct {
 
 // checkProjectMiddlewareUniqueness rejects a middleware name declared in
 // more than one package; a bare reference resolves project-wide.
-func (r *refResolver) checkProjectMiddlewareUniqueness() {
+func (c *projectChecks) checkProjectMiddlewareUniqueness() {
 	sites := map[string][]declSite{}
-	for pkgName, pkg := range r.proj.Packages {
+	for pkgName, pkg := range c.proj.Packages {
 		for name, m := range pkg.Middlewares {
 			if m == nil {
 				continue
@@ -27,13 +27,13 @@ func (r *refResolver) checkProjectMiddlewareUniqueness() {
 			sites[name] = append(sites[name], declSite{pkg: pkgName, pos: m.Pos})
 		}
 	}
-	r.reportCrossPackageDuplicates(sites, CodeMiddlewareCollision,
+	c.reportCrossPackageDuplicates(sites, CodeMiddlewareCollision,
 		"middleware %q is declared in multiple packages - names are global; rename or qualify references")
 }
 
 // reportCrossPackageDuplicates reports every site of a name declared in more
 // than one package, relating the others, in an order stable across runs.
-func (r *refResolver) reportCrossPackageDuplicates(sites map[string][]declSite, code, msg string) {
+func (c *projectChecks) reportCrossPackageDuplicates(sites map[string][]declSite, code, msg string) {
 	for _, name := range slices.Sorted(maps.Keys(sites)) {
 		occs := sites[name]
 		if len(occs) < 2 {
@@ -65,7 +65,7 @@ func (r *refResolver) reportCrossPackageDuplicates(sites map[string][]declSite, 
 					Msg: "also declared in package " + other.pkg,
 				})
 			}
-			r.diags = append(r.diags, diag)
+			c.diags = append(c.diags, diag)
 		}
 	}
 }

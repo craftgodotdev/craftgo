@@ -236,6 +236,21 @@ breaking change to the DSL or the generated layout bumps the major version.
   compile; a payload now gets the arity and optional-argument checks a field
   type gets.
 
+- **Generic arguments on an enum, a scalar or a built-in are rejected.**
+  `c Color<int>` passed analysis and generated Go that did not compile, and
+  `s string<int>` silently dropped its argument; both now report
+  `generic/non-generic`.
+
+- **A file without a `package` clause cannot qualify its own package.** Such
+  a file joins the design's only package, so `x app.A` in it generated Go
+  that did not compile; it now gets the `ref/qualified` error the same
+  reference gets in a file that declares `package app`.
+
+- **Fewer duplicate diagnostics.** A generic mixin with the wrong number of
+  arguments, or a mixin naming an error or a middleware, got a second
+  diagnostic beside `mixin/arity` or `mixin/non-type`, and a malformed
+  `openapi.basePath` warned once per package; each is now reported once.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

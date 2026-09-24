@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -87,6 +88,16 @@ type X { Email  name string }`, CodeMixinNonType)
 func TestMixinOnMiddleware(t *testing.T) {
 	expectDiag(t, `middleware Auth
 type X { Auth  name string }`, CodeMixinNonType)
+}
+
+// A mixin naming an error or a middleware gets the mixin diagnostic alone.
+func TestMixinOnNonTypeReportedOnce(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, `error NotFound Gone
+middleware Auth
+type X { Gone  Auth  name string }`))
+	if got := codes(diags); !slices.Equal(got, []string{CodeMixinNonType, CodeMixinNonType}) {
+		t.Errorf("want two %s, got %v", CodeMixinNonType, diags)
+	}
 }
 
 func TestMixinSelfCycle(t *testing.T) {
