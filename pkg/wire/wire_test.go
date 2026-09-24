@@ -7,10 +7,8 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/wire"
 )
 
-// A document survives a round trip byte for byte. Each of the three
-// values is a loss a decode into `any` would take: an explicit null
-// collapses to Go nil, an integer past 2^53 comes back as a float64
-// with different digits, and 1.50 re-encodes as 1.5.
+// A document with an explicit null, an integer past 2^53 and 1.50 survives a
+// round trip byte for byte.
 func TestRawRoundTripsByteForByte(t *testing.T) {
 	const doc = `{"explicit":null,"big":12345678901234567890,"trailing":1.50}`
 
@@ -35,8 +33,7 @@ func TestRawRoundTripsByteForByte(t *testing.T) {
 	}
 }
 
-// A nil Raw is the absent value and encodes as JSON null - the one
-// thing the type writes that it was not given.
+// A nil Raw encodes as JSON null.
 func TestNilRawEncodesAsNull(t *testing.T) {
 	out, err := json.Marshal(wire.Raw(nil))
 	if err != nil {
@@ -47,8 +44,7 @@ func TestNilRawEncodesAsNull(t *testing.T) {
 	}
 }
 
-// A literal `null` that arrived is kept as the four bytes it is: it is
-// a JSON value, not the absence of one, which a nil Raw is.
+// A literal null decodes to the four bytes `null` and re-encodes as null.
 func TestLiteralNullIsKept(t *testing.T) {
 	var r wire.Raw
 	if err := json.Unmarshal([]byte("null"), &r); err != nil {
@@ -66,8 +62,7 @@ func TestLiteralNullIsKept(t *testing.T) {
 	}
 }
 
-// Unmarshal copies rather than aliasing the decoder's buffer, which the
-// caller is free to reuse the moment the call returns.
+// UnmarshalJSON does not alias the caller's buffer.
 func TestUnmarshalCopiesTheBytes(t *testing.T) {
 	buf := []byte(`{"a":1}`)
 	var r wire.Raw
@@ -80,10 +75,7 @@ func TestUnmarshalCopiesTheBytes(t *testing.T) {
 	}
 }
 
-// Why a raw field is a Raw in every shape and never a *Raw:
-// encoding/json nils the pointer on an explicit `null` without ever
-// calling UnmarshalJSON, so a null and an absent key read alike through
-// it. The value shape keeps them apart.
+// An explicit null leaves a *Raw nil but decodes into a Raw as the bytes `null`.
 func TestPointerToRawLosesTheNullTheValueKeeps(t *testing.T) {
 	var got struct {
 		Ptr   *wire.Raw `json:"ptr"`

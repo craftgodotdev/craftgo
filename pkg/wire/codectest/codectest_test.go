@@ -6,23 +6,20 @@ import (
 	"testing"
 )
 
-// jsonCodec is encoding/json behind the three methods, declared here
-// rather than imported: the suite must not depend on a concrete codec,
-// and a codec that never heard of craftgo must still satisfy it.
+// jsonCodec is encoding/json as a [Codec].
 type jsonCodec struct{}
 
 func (jsonCodec) Name() string                    { return "json" }
 func (jsonCodec) Marshal(v any) ([]byte, error)   { return json.Marshal(v) }
 func (jsonCodec) Unmarshal(d []byte, v any) error { return json.Unmarshal(d, v) }
 
-// The suite passes a codec that honours the contract.
+// Run passes a codec that carries Raw unchanged.
 func TestRunPassesForAJSONCodec(t *testing.T) {
 	Run(t, jsonCodec{})
 }
 
-// lossyCodec is what the suite exists to catch: a codec that decodes
-// every value into `any` and re-encodes it, flattening the explicit
-// null, the digits past 2^53 and the trailing zero on the way.
+// lossyCodec decodes through `any`, losing big integers, trailing zeros and
+// explicit nulls.
 type lossyCodec struct{}
 
 func (lossyCodec) Name() string { return "lossy" }
@@ -41,7 +38,7 @@ func (lossyCodec) Unmarshal(data []byte, v any) error {
 	return json.Unmarshal(round, v)
 }
 
-// recorder collects what the suite reports instead of failing a test.
+// recorder collects what the suite reports.
 type recorder struct{ msgs []string }
 
 func (*recorder) Helper() {}
@@ -50,9 +47,7 @@ func (r *recorder) Errorf(format string, args ...any) {
 	r.msgs = append(r.msgs, fmt.Sprintf(format, args...))
 }
 
-// ... and fails one that does not. Each value is checked on its own so
-// a suite that catches one loss is not mistaken for one that catches
-// every loss the shape exists to prevent.
+// The suite fails a lossy codec on each fixture separately.
 func TestRunFailsForALossyCodec(t *testing.T) {
 	for _, v := range [][]byte{
 		[]byte(`12345678901234567890`),
@@ -68,9 +63,7 @@ func TestRunFailsForALossyCodec(t *testing.T) {
 	}
 }
 
-// A codec that answers with a value of its own choosing fails the null
-// check: a required raw field keeps the four bytes it was handed, and
-// "absent" is not one of the answers.
+// RunNull fails a codec that decodes a literal null as absent.
 func TestRunNullFailsWhenTheNullIsDropped(t *testing.T) {
 	var rec recorder
 	runNull(&rec, droppingCodec{}, []byte("null"))
@@ -79,8 +72,7 @@ func TestRunNullFailsWhenTheNullIsDropped(t *testing.T) {
 	}
 }
 
-// droppingCodec encodes as JSON but decodes every raw field as absent -
-// the collapse a required raw field exists to prevent.
+// droppingCodec decodes every Raw field as absent.
 type droppingCodec struct{}
 
 func (droppingCodec) Name() string { return "dropping" }
@@ -99,7 +91,7 @@ func (droppingCodec) Unmarshal(data []byte, v any) error {
 	return nil
 }
 
-// A codec given nothing to carry is not a codec that passed.
+// RunWith with no values reports one failure.
 func TestRunWithNoValuesIsAFailure(t *testing.T) {
 	var rec recorder
 	runWith(&rec, jsonCodec{}, nil...)
