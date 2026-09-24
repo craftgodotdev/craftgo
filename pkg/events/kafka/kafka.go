@@ -146,9 +146,12 @@ func WithClientOptions(opts ...kgo.Opt) Option {
 	return func(t *Transport) { t.dial = append(t.dial, opts...) }
 }
 
-// WithTLS dials the brokers over TLS using cfg, which must be non-nil; an
-// empty tls.Config uses the system roots.
+// WithTLS dials the brokers over TLS using cfg; a nil or empty cfg verifies
+// the brokers against the system roots.
 func WithTLS(cfg *tls.Config) Option {
+	if cfg == nil {
+		cfg = new(tls.Config)
+	}
 	return func(t *Transport) { t.dial = append(t.dial, kgo.DialTLSConfig(cfg)) }
 }
 
