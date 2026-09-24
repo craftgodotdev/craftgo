@@ -38,6 +38,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   was `ok` counted as passing; `/readyz` now answers 503 for any check that
   returns an error.
 
+- **`server.Server` is safe for concurrent use.** The `SetDefault*`,
+  `SetCORS` and `SetLogger` setters wrote without the lock that route
+  registration and `Handler` read under, a data race when configuration ran
+  on another goroutine.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -398,6 +399,27 @@ func TestServerSetters(t *testing.T) {
 	if s.Mux() == nil {
 		t.Error("mux should be non-nil")
 	}
+}
+
+// Setters may run on another goroutine than route registration and Handler.
+func TestServerConfigurationAcrossGoroutines(t *testing.T) {
+	s := newTestServer(t)
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		s.SetDefaultReadTimeout(time.Second).
+			SetDefaultWriteTimeout(time.Second).
+			SetDefaultHandlerTimeout(time.Second).
+			SetDefaultMaxBodySize(1 << 20).
+			SetDefaultMaxHeaderSize(16).
+			SetCORS(CORSPermissive()).
+			SetLogger(log.Default())
+	})
+	wg.Go(func() {
+		s.HandleFunc("GET /a", func(http.ResponseWriter, *http.Request) {})
+		s.Handle("GET /b", http.NotFoundHandler())
+		_ = s.Handler()
+	})
+	wg.Wait()
 }
 
 func TestCORSMiddleware(t *testing.T) {

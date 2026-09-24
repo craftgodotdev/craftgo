@@ -14,7 +14,7 @@ import (
 )
 
 // Server is an HTTP server around a ServeMux; configure it and register routes before
-// [Server.Start].
+// [Server.Start]. Its methods are safe for concurrent use.
 type Server struct {
 	mu sync.Mutex
 
@@ -125,12 +125,15 @@ func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) *Server {
 // applyDefaults wraps h in the default body cap (inner) and handler timeout (outer), each
 // unless h is a [WithLimits] handler that sets its own.
 func (s *Server) applyDefaults(h http.Handler) http.Handler {
+	s.mu.Lock()
+	maxBody, timeout := s.defaultMaxBodySize, s.defaultHandlerTimeout
+	s.mu.Unlock()
 	own, _ := h.(limitedHandler)
-	if s.defaultMaxBodySize > 0 && !own.bodyLimited {
-		h = maxBodySizeHandler(h, s.defaultMaxBodySize)
+	if maxBody > 0 && !own.bodyLimited {
+		h = maxBodySizeHandler(h, maxBody)
 	}
-	if s.defaultHandlerTimeout > 0 && !own.timeoutSet {
-		h = timeoutHandler(h, s.defaultHandlerTimeout)
+	if timeout > 0 && !own.timeoutSet {
+		h = timeoutHandler(h, timeout)
 	}
 	return h
 }
@@ -162,6 +165,8 @@ func (s *Server) With(names []string, h http.HandlerFunc) http.HandlerFunc {
 
 // SetDefaultReadTimeout sets the http.Server ReadTimeout [Server.Start] uses; the default is 30s.
 func (s *Server) SetDefaultReadTimeout(d time.Duration) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.defaultReadTimeout = d
 	return s
 }
@@ -169,6 +174,8 @@ func (s *Server) SetDefaultReadTimeout(d time.Duration) *Server {
 // SetDefaultHandlerTimeout sets the request-context deadline ([Limits.Timeout]) that
 // [Server.Handle] gives routes registered afterwards; 0, the default, sets none.
 func (s *Server) SetDefaultHandlerTimeout(d time.Duration) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.defaultHandlerTimeout = d
 	return s
 }
@@ -176,6 +183,8 @@ func (s *Server) SetDefaultHandlerTimeout(d time.Duration) *Server {
 // SetDefaultWriteTimeout sets the http.Server WriteTimeout, a deadline on writing the whole
 // response; 0, the default, leaves streaming and long downloads uncut.
 func (s *Server) SetDefaultWriteTimeout(d time.Duration) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.defaultWriteTimeout = d
 	return s
 }
@@ -183,18 +192,24 @@ func (s *Server) SetDefaultWriteTimeout(d time.Duration) *Server {
 // SetDefaultMaxBodySize sets the body cap in bytes ([BodyLimit]) that [Server.Handle] gives
 // routes registered afterwards; 0, the default, sets none.
 func (s *Server) SetDefaultMaxBodySize(bytes int64) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.defaultMaxBodySize = bytes
 	return s
 }
 
 // SetDefaultMaxHeaderSize sets the http.Server header cap in kilobytes; the default is 32.
 func (s *Server) SetDefaultMaxHeaderSize(kb int) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.defaultMaxHeaderKB = kb
 	return s
 }
 
 // SetCORS adds CORS handling with opts to the chain; a second call replaces the first.
 func (s *Server) SetCORS(opts CORSOptions) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.cors = &opts
 	return s
 }
@@ -208,6 +223,8 @@ func (s *Server) SetStrictJSON(strict bool) error { return SetStrictJSON(strict)
 // SetLogger sets the logger [Recovery] writes to, read when [Server.Handler] builds the
 // chain, and installs it as [log.Default].
 func (s *Server) SetLogger(l Logger) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.logger = l
 	log.SetDefault(l)
 	return s
@@ -215,7 +232,11 @@ func (s *Server) SetLogger(l Logger) *Server {
 
 // Logger returns the server's logger: the one given to [Server.SetLogger], or its own
 // [log.New] logger.
-func (s *Server) Logger() Logger { return s.logger }
+func (s *Server) Logger() Logger {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.logger
+}
 
 // Codec returns the codec in effect, the one [JSON] returns.
 func (s *Server) Codec() JSONCodec { return JSON() }
