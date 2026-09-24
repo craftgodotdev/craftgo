@@ -127,6 +127,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   both publish paths.** A batch waited for its verdicts until `Close`, but
   a single `Publish` gave up after the client's own 5s default.
 
+- **The Kafka transport refuses a publish or subscribe after `Close`.** It
+  opened a fresh producer or consumer that nothing closed; both now return
+  an error wrapping the new `kafka.ErrClosed`, like `nats.ErrClosed`.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

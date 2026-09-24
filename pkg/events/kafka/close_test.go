@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -12,13 +13,20 @@ import (
 	events "github.com/craftgodotdev/craftgo/pkg/events"
 )
 
-// closeCounter counts each client's closes through franz-go's hook.
-type closeCounter struct {
-	mu sync.Mutex
-	n  map[*kgo.Client]int
+// clientCounter counts the clients opened and each client's closes through franz-go's hooks.
+type clientCounter struct {
+	mu     sync.Mutex
+	opened int
+	n      map[*kgo.Client]int
 }
 
-func (c *closeCounter) OnClientClosed(cl *kgo.Client) {
+func (c *clientCounter) OnNewClient(*kgo.Client) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.opened++
+}
+
+func (c *clientCounter) OnClientClosed(cl *kgo.Client) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.n == nil {
@@ -27,8 +35,15 @@ func (c *closeCounter) OnClientClosed(cl *kgo.Client) {
 	c.n[cl]++
 }
 
+// openedCount reports how many clients were opened.
+func (c *clientCounter) openedCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.opened
+}
+
 // twice reports how many clients were closed more than once.
-func (c *closeCounter) twice() int {
+func (c *clientCounter) twice() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	n := 0
@@ -46,7 +61,7 @@ func TestEveryConsumerClientIsClosedExactlyOnce(t *testing.T) {
 		t.Run(order, func(t *testing.T) {
 			const contract = "orders.Placed"
 			addrs := cluster(t, contract, kversion.V4_2_0())
-			counter := &closeCounter{}
+			counter := &clientCounter{}
 			tr := New(addrs, WithClientOptions(kgo.WithHooks(counter)))
 
 			ctx, cancel := context.WithCancel(context.Background())
@@ -84,7 +99,7 @@ func TestEveryConsumerClientIsClosedExactlyOnce(t *testing.T) {
 func TestASubscriptionCancelledOnItsOwnClosesItsClient(t *testing.T) {
 	const contract = "orders.Placed"
 	addrs := cluster(t, contract, kversion.V4_2_0())
-	counter := &closeCounter{}
+	counter := &clientCounter{}
 	tr := New(addrs, WithClientOptions(kgo.WithHooks(counter)))
 	defer func() { _ = tr.Close() }()
 
@@ -110,5 +125,52 @@ func TestASubscriptionCancelledOnItsOwnClosesItsClient(t *testing.T) {
 			t.Fatal("the client is still open after its subscription's context was cancelled")
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// After Close, a publish, a batch and a subscribe return ErrClosed and open no client.
+func TestPublishAndSubscribeAfterCloseAreRefused(t *testing.T) {
+	const contract = "orders.Placed"
+	counter := &clientCounter{}
+	tr := New(cluster(t, contract, kversion.V4_2_0()), WithClientOptions(kgo.WithHooks(counter)))
+	publish(t, tr, contract, "k", []byte(`{}`))
+	if err := tr.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	opened := counter.openedCount()
+
+	msg := &events.Message{Event: contract, Payload: []byte(`{}`)}
+	if err := tr.Publish(context.Background(), msg); !errors.Is(err, ErrClosed) {
+		t.Errorf("Publish after Close: err = %v, want ErrClosed", err)
+	}
+	if err := tr.PublishBatch(context.Background(), []*events.Message{msg}); !errors.Is(err, ErrClosed) {
+		t.Errorf("PublishBatch after Close: err = %v, want ErrClosed", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, []events.Subscription{{
+		Event: contract, Consumer: "C", Group: "late",
+		Handle: func(context.Context, *events.Message) error { return nil },
+	}}); !errors.Is(err, ErrClosed) {
+		t.Errorf("Subscribe after Close: err = %v, want ErrClosed", err)
+	}
+	if n := counter.openedCount() - opened; n != 0 {
+		t.Errorf("%d client(s) opened after Close", n)
+	}
+}
+
+// A consumer client that finishes opening after Close is refused, not kept for a Close that has run.
+func TestAClientOpenedDuringCloseIsNotKept(t *testing.T) {
+	tr := New(nil)
+	cl, err := kgo.NewClient(kgo.SeedBrokers("127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	defer cl.Close()
+	if err := tr.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if tr.track(cl) {
+		t.Error("the transport kept a client after Close, so nothing would close it")
 	}
 }

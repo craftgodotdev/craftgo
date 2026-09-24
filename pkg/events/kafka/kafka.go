@@ -17,6 +17,7 @@ package kafka
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"regexp"
 	"sync"
@@ -50,6 +51,9 @@ const Adapter = "kafka"
 // the time it was produced.
 const OptionTimestamp = "timestamp"
 
+// ErrClosed is what a publish or subscribe returns after [Transport.Close].
+var ErrClosed = errors.New("transport closed")
+
 // Share-group API keys, probed before a share subscription starts.
 const (
 	apiShareGroupHeartbeat = 76
@@ -78,6 +82,7 @@ type Transport struct {
 	dial []kgo.Opt
 
 	mu       sync.Mutex
+	closed   bool
 	producer *kgo.Client
 	clients  []*kgo.Client
 	// held is the contract each group reads each topic for.
@@ -364,6 +369,9 @@ func (t *Transport) encode(msg *events.Message) (*kgo.Record, error) {
 func (t *Transport) producerClient() (*kgo.Client, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.closed {
+		return nil, fmt.Errorf("kafka: open producer: %w", ErrClosed)
+	}
 	if t.producer != nil {
 		return t.producer, nil
 	}
@@ -405,8 +413,12 @@ func (t *Transport) subscribeOne(ctx context.Context, sub events.Subscription) e
 	return nil
 }
 
-// openConsumer opens one subscription's client, probing share support first.
+// openConsumer opens one subscription's client, probing share support first;
+// after [Transport.Close] it opens nothing.
 func (t *Transport) openConsumer(ctx context.Context, group, topic string) (*kgo.Client, error) {
+	if t.isClosed() {
+		return nil, fmt.Errorf("kafka: open consumer for %q: %w", topic, ErrClosed)
+	}
 	mode := kgo.ConsumerGroup(group)
 	if t.share {
 		if err := t.probeShareAPIs(ctx); err != nil {
@@ -418,10 +430,28 @@ func (t *Transport) openConsumer(ctx context.Context, group, topic string) (*kgo
 	if err != nil {
 		return nil, fmt.Errorf("kafka: open consumer for %q: %w", topic, err)
 	}
-	t.mu.Lock()
-	t.clients = append(t.clients, cl)
-	t.mu.Unlock()
+	if !t.track(cl) {
+		cl.Close()
+		return nil, fmt.Errorf("kafka: open consumer for %q: %w", topic, ErrClosed)
+	}
 	return cl, nil
+}
+
+func (t *Transport) isClosed() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.closed
+}
+
+// track records cl for [Transport.Close], or reports false when Close ran while cl opened.
+func (t *Transport) track(cl *kgo.Client) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed {
+		return false
+	}
+	t.clients = append(t.clients, cl)
+	return true
 }
 
 // probeShareAPIs refuses, before any read loop starts, a broker that cannot
@@ -636,9 +666,11 @@ func decode(contract string, rec *kgo.Record) *events.Message {
 	return out
 }
 
-// Close shuts every client this transport opened and drops its group claims.
+// Close shuts every client this transport opened and drops its group claims;
+// a publish or subscribe after it returns [ErrClosed].
 func (t *Transport) Close() error {
 	t.mu.Lock()
+	t.closed = true
 	producer, clients := t.producer, t.clients
 	t.producer, t.clients = nil, nil
 	t.held = map[groupTopic]*topicClaim{}
