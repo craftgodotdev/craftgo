@@ -30,9 +30,6 @@ type Config struct {
 	// Package is the Go import path of the project root. Load leaves it
 	// empty; gen sets it from [ResolveModulePath].
 	Package string `yaml:"-"`
-
-	// ManifestDir is the absolute folder the manifest was loaded from.
-	ManifestDir string `yaml:"-"`
 }
 
 // Values of [Output.Kind].
@@ -144,8 +141,8 @@ type Plugins struct {
 	GoGRPC string `yaml:"goGrpc"`
 }
 
-// Events lists the languages the event artefacts are generated for; no
-// targets means [DefaultEventTargets].
+// Events lists the languages the event artefacts are generated for; with none,
+// Load sets the go target (`./internal/events`, `./gen/events` for contracts).
 type Events struct {
 	Targets []EventTarget `yaml:"targets"`
 }
@@ -168,9 +165,9 @@ const (
 // SupportedLangs lists the languages an event target may name.
 var SupportedLangs = []string{LangGo}
 
-// DefaultEventTargets returns the targets of a manifest with none. A contracts
+// defaultEventTargets returns the targets of a manifest with none. A contracts
 // project's default is outside `internal/`, which other modules cannot import.
-func DefaultEventTargets(kind string) []EventTarget {
+func defaultEventTargets(kind string) []EventTarget {
 	if kind == KindContracts {
 		return []EventTarget{{Lang: LangGo, Out: "./gen/events"}}
 	}
@@ -357,10 +354,6 @@ func fileExists(path string) bool {
 
 // Load reads, validates and defaults the manifest at path.
 func Load(path string) (*Config, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return nil, err
-	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -372,7 +365,6 @@ func Load(path string) (*Config, error) {
 	if err := checkRemovedKeys(data); err != nil {
 		return nil, err
 	}
-	cfg.ManifestDir = filepath.Dir(abs)
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
@@ -491,7 +483,7 @@ func (c *Config) applyDefaults() {
 		c.Output.FileCase = idents.DefaultFileCase
 	}
 	if len(c.Events.Targets) == 0 {
-		c.Events.Targets = DefaultEventTargets(c.Output.Kind)
+		c.Events.Targets = defaultEventTargets(c.Output.Kind)
 	}
 }
 
