@@ -65,14 +65,14 @@ func staleApplicationOutput(cfg *config.Config, projectRoot string) []string {
 	}
 	var found []string
 	for _, d := range appSideDirs(cfg) {
-		if d.path == "" || d.path == "-" {
+		if d.path == "" || d.path == config.Disabled {
 			continue
 		}
 		if hasGeneratedFile(filepath.Join(projectRoot, d.path)) {
 			found = append(found, d.path)
 		}
 	}
-	if main := cfg.Output.Main; main != "" && main != "-" && isScaffoldFile(filepath.Join(projectRoot, main)) {
+	if main := cfg.Output.Main; main != "" && !cfg.Output.RuntimeDisabled() && isScaffoldFile(filepath.Join(projectRoot, main)) {
 		found = append(found, main)
 	}
 	if len(found) == 0 {

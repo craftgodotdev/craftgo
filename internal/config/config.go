@@ -74,13 +74,57 @@ type Output struct {
 	FileCase string `yaml:"fileCase"`
 }
 
+// Disabled is the value that turns off an output key or event target that
+// accepts it.
+const Disabled = "-"
+
 // RuntimeDisabled reports whether the project opted out of the generated
 // runtime layer (main.go, config, svccontext) with `output.main: "-"`.
-func (o Output) RuntimeDisabled() bool { return o.Main == "-" }
+func (o Output) RuntimeDisabled() bool { return o.Main == Disabled }
 
 // PBDisabled reports whether the project opted out of running the
 // protobuf plugins with `output.pb: "-"`.
-func (o Output) PBDisabled() bool { return o.PB == "-" }
+func (o Output) PBDisabled() bool { return o.PB == Disabled }
+
+// OpenAPIDisabled reports whether the project writes no OpenAPI document:
+// `output.openapi` is "-" or empty.
+func (o Output) OpenAPIDisabled() bool { return o.OpenAPI == "" || o.OpenAPI == Disabled }
+
+// outputKey is one path key of the `output:` block.
+type outputKey struct {
+	name  string
+	field func(*Output) *string
+	// def is the default; contractsDef, when set, replaces it in a contracts
+	// project, whose packages other modules import from outside internal/.
+	def, contractsDef string
+	// file marks a key naming a file; the directory holding it is what can
+	// collide with another key's.
+	file bool
+	// disableable accepts [Disabled].
+	disableable bool
+	// document marks a key whose file holds no Go code.
+	document bool
+}
+
+// outputKeys lists every path key of the `output:` block, in the order the
+// checks report them.
+var outputKeys = []outputKey{
+	{name: "types", field: func(o *Output) *string { return &o.Types }, def: "./internal/types", contractsDef: "./gen/types"},
+	{name: "transport", field: func(o *Output) *string { return &o.Transport }, def: "./internal/transport"},
+	{name: "routes", field: func(o *Output) *string { return &o.Routes }, def: "./internal/routes"},
+	{name: "wiring", field: func(o *Output) *string { return &o.Wiring }, def: "./internal/wiring"},
+	{name: "service", field: func(o *Output) *string { return &o.Service }, def: "./internal/service"},
+	{name: "middleware", field: func(o *Output) *string { return &o.Middleware }, def: "./internal/middleware"},
+	{name: "config", field: func(o *Output) *string { return &o.Config }, def: "./config"},
+	{name: "pb", field: func(o *Output) *string { return &o.PB }, def: "./internal/pb", contractsDef: "./gen/pb", disableable: true},
+	{name: "grpc", field: func(o *Output) *string { return &o.GRPC }, def: "./internal/grpc"},
+	{name: "svccontext", field: func(o *Output) *string { return &o.Svccontext }, def: "./svccontext/svccontext.go", file: true},
+	{name: "main", field: func(o *Output) *string { return &o.Main }, def: "./main.go", file: true, disableable: true},
+	{name: "openapi", field: func(o *Output) *string { return &o.OpenAPI }, def: "./docs/openapi.yaml", file: true, disableable: true, document: true},
+}
+
+// key returns the manifest spelling of k, `output.<name>`.
+func (k outputKey) key() string { return "output." + k.name }
 
 // Proto configures how the design folder's `.proto` files compile. The design
 // folder is the first import root.
@@ -134,7 +178,7 @@ func DefaultEventTargets(kind string) []EventTarget {
 }
 
 // Enabled reports whether the target is generated; "-" skips it.
-func (t EventTarget) Enabled() bool { return t.Out != "-" && t.Out != "" }
+func (t EventTarget) Enabled() bool { return t.Out != Disabled && t.Out != "" }
 
 // TargetFor returns the configured target for lang.
 func (e Events) TargetFor(lang string) (EventTarget, bool) {
@@ -391,27 +435,14 @@ func hasKey(node any, path []string) bool {
 
 // validate checks the manifest as written, before defaults apply.
 func (c *Config) validate() error {
-	for _, out := range []struct{ key, val string }{
-		{"output.types", c.Output.Types},
-		{"output.transport", c.Output.Transport},
-		{"output.routes", c.Output.Routes},
-		{"output.service", c.Output.Service},
-		{"output.main", c.Output.Main},
-		{"output.svccontext", c.Output.Svccontext},
-		{"output.openapi", c.Output.OpenAPI},
-		{"output.middleware", c.Output.Middleware},
-		{"output.config", c.Output.Config},
-		{"output.wiring", c.Output.Wiring},
-		{"output.pb", c.Output.PB},
-		{"output.grpc", c.Output.GRPC},
-	} {
-		if err := checkWithinProject(out.key, out.val); err != nil {
+	for _, k := range outputKeys {
+		if err := checkWithinProject(k.key(), *k.field(&c.Output)); err != nil {
 			return err
 		}
 	}
 	for i, inc := range c.Proto.Includes {
 		key := fmt.Sprintf("proto.includes[%d]", i)
-		if inc == "" || inc == "-" {
+		if inc == "" || inc == Disabled {
 			return fmt.Errorf("%s: an include names a directory", key)
 		}
 		if err := checkWithinProject(key, inc); err != nil {
@@ -447,7 +478,7 @@ func (c *Config) validate() error {
 		}
 		seen[t.Lang] = true
 		if t.Out == "" {
-			return fmt.Errorf("events.targets entry %q has no `out` - set a directory, or %q to skip the target", t.Lang, "-")
+			return fmt.Errorf("events.targets entry %q has no `out` - set a directory, or %q to skip the target", t.Lang, Disabled)
 		}
 	}
 	return nil
@@ -458,50 +489,13 @@ func (c *Config) applyDefaults() {
 	if c.Output.Kind == "" {
 		c.Output.Kind = KindApplication
 	}
-	if c.Output.Types == "" {
-		// Other modules import a contracts project's types, so they stay
-		// outside internal/.
-		c.Output.Types = "./internal/types"
-		if c.Output.ContractsOnly() {
-			c.Output.Types = "./gen/types"
+	for _, k := range outputKeys {
+		if val := k.field(&c.Output); *val == "" {
+			*val = k.def
+			if c.Output.ContractsOnly() && k.contractsDef != "" {
+				*val = k.contractsDef
+			}
 		}
-	}
-	if c.Output.Transport == "" {
-		c.Output.Transport = "./internal/transport"
-	}
-	if c.Output.Routes == "" {
-		c.Output.Routes = "./internal/routes"
-	}
-	if c.Output.Service == "" {
-		c.Output.Service = "./internal/service"
-	}
-	if c.Output.Main == "" {
-		c.Output.Main = "./main.go"
-	}
-	if c.Output.Svccontext == "" {
-		c.Output.Svccontext = "./svccontext/svccontext.go"
-	}
-	if c.Output.OpenAPI == "" {
-		c.Output.OpenAPI = "./docs/openapi.yaml"
-	}
-	if c.Output.Middleware == "" {
-		c.Output.Middleware = "./internal/middleware"
-	}
-	if c.Output.Config == "" {
-		c.Output.Config = "./config"
-	}
-	if c.Output.Wiring == "" {
-		c.Output.Wiring = "./internal/wiring"
-	}
-	if c.Output.PB == "" {
-		// Likewise for a contracts project's pb code.
-		c.Output.PB = "./internal/pb"
-		if c.Output.ContractsOnly() {
-			c.Output.PB = "./gen/pb"
-		}
-	}
-	if c.Output.GRPC == "" {
-		c.Output.GRPC = "./internal/grpc"
 	}
 	if c.Output.FileCase == "" {
 		c.Output.FileCase = idents.DefaultFileCase
@@ -590,68 +584,53 @@ func (c *Config) checkOutputUsable() error {
 	default:
 		return fmt.Errorf("output.kind %q is not one of %q, %q", c.Output.Kind, KindApplication, KindContracts)
 	}
-	for _, out := range []struct{ key, val string }{
-		{"output.types", c.Output.Types},
-		{"output.transport", c.Output.Transport},
-		{"output.routes", c.Output.Routes},
-		{"output.wiring", c.Output.Wiring},
-		{"output.service", c.Output.Service},
-		{"output.svccontext", c.Output.Svccontext},
-		{"output.middleware", c.Output.Middleware},
-		{"output.config", c.Output.Config},
-		{"output.grpc", c.Output.GRPC},
-	} {
-		if out.val == "-" {
-			return fmt.Errorf(`%s cannot be "-" - other generated code imports this package, so there is nothing to disable; "-" is for output.main, output.openapi, output.pb and the event targets`, out.key)
+	var disableable []string
+	for _, k := range outputKeys {
+		if k.disableable {
+			disableable = append(disableable, k.key())
+		}
+	}
+	slices.Sort(disableable)
+	for _, k := range outputKeys {
+		if !k.disableable && *k.field(&c.Output) == Disabled {
+			return fmt.Errorf(`%s cannot be %q - other generated code imports this package, so there is nothing to disable; %q is for %s and the event targets`,
+				k.key(), Disabled, Disabled, strings.Join(disableable, ", "))
 		}
 	}
 	return nil
 }
 
-// checkOutputCollisions rejects two output keys that resolve to one directory;
-// a key naming a file contributes the file's directory.
+// checkOutputCollisions rejects two output keys holding Go code that resolve
+// to one directory; a key naming a file contributes the file's directory.
 func (c *Config) checkOutputCollisions() error {
-	dirs := []struct{ key, dir string }{
-		{"output.types", outputDir(c.Output.Types)},
-		{"output.transport", outputDir(c.Output.Transport)},
-		{"output.routes", outputDir(c.Output.Routes)},
-		{"output.wiring", outputDir(c.Output.Wiring)},
-		{"output.service", outputDir(c.Output.Service)},
-		{"output.middleware", outputDir(c.Output.Middleware)},
-		{"output.config", outputDir(c.Output.Config)},
-		{"output.pb", outputDir(c.Output.PB)},
-		{"output.grpc", outputDir(c.Output.GRPC)},
-		{"output.svccontext", outputFileDir(c.Output.Svccontext)},
-		{"output.main", outputFileDir(c.Output.Main)},
-	}
 	seen := map[string]string{}
-	for _, d := range dirs {
-		if d.dir == "" {
+	for _, k := range outputKeys {
+		if k.document {
 			continue
 		}
-		if first, dup := seen[d.dir]; dup {
-			return fmt.Errorf("%s and %s both write to %q - each generated package needs its own directory, or the two package clauses land in one and nothing compiles", first, d.key, d.dir)
+		dir := k.dir(*k.field(&c.Output))
+		if dir == "" {
+			continue
 		}
-		seen[d.dir] = d.key
+		if first, dup := seen[dir]; dup {
+			return fmt.Errorf("%s and %s both write to %q - each generated package needs its own directory, or the two package clauses land in one and nothing compiles", first, k.key(), dir)
+		}
+		seen[dir] = k.key()
 	}
 	return nil
 }
 
-// outputDir normalises an output path for comparison; "" and "-" yield "".
-func outputDir(val string) string {
-	if val == "" || val == "-" {
+// dir normalises val, k's value, to the directory it writes to; "" and
+// [Disabled] yield "".
+func (k outputKey) dir(val string) string {
+	if val == "" || val == Disabled {
 		return ""
 	}
-	return path.Clean(toSlash(val))
-}
-
-// outputFileDir is outputDir for a key that names a file: it yields the file's
-// directory.
-func outputFileDir(val string) string {
-	if val == "" || val == "-" {
-		return ""
+	val = toSlash(val)
+	if k.file {
+		val = path.Dir(val)
 	}
-	return path.Clean(path.Dir(toSlash(val)))
+	return path.Clean(val)
 }
 
 // toSlash replaces every backslash with a slash, whatever the OS.
@@ -659,10 +638,10 @@ func toSlash(val string) string { return strings.ReplaceAll(val, "\\", "/") }
 
 // checkWithinProject rejects a path outside the project root; "" and "-" pass.
 func checkWithinProject(key, val string) error {
-	if val == "" || val == "-" {
+	if val == "" || val == Disabled {
 		return nil
 	}
-	clean := path.Clean(strings.ReplaceAll(val, "\\", "/"))
+	clean := path.Clean(toSlash(val))
 	if clean == ".." || strings.HasPrefix(clean, "../") || path.IsAbs(clean) {
 		return fmt.Errorf("%s %q must stay inside the project - generated code is imported as `<module>/<path>`, which cannot name a directory outside the module", key, val)
 	}

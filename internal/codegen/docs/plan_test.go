@@ -16,8 +16,8 @@ func docsConfig() *config.Config {
 	return cfg
 }
 
-// A design without a DSL package gets no document, and OutputDir still names
-// its path for the sweep.
+// A design without a DSL package gets no document, and DocumentPath still
+// names its path for the sweep.
 func TestNoDocumentWithoutADSLPackage(t *testing.T) {
 	dir := t.TempDir()
 	cfg := docsConfig()
@@ -32,10 +32,10 @@ func TestNoDocumentWithoutADSLPackage(t *testing.T) {
 	if got := RegeneratedFile(empty, cfg, dir); got != "" {
 		t.Errorf("plan names %q, but nothing writes it", got)
 	}
-	if got := OutputDir(cfg, dir); got != filepath.Join(dir, "docs", "openapi.yaml") {
+	if got := DocumentPath(cfg, dir); got != filepath.Join(dir, "docs", "openapi.yaml") {
 		t.Errorf("the sweep must still reach the directory, got %q", got)
 	}
-	if got := OutputDir(&config.Config{}, dir); got != "" {
+	if got := DocumentPath(&config.Config{}, dir); got != "" {
 		t.Errorf("a disabled document has no directory, got %q", got)
 	}
 }

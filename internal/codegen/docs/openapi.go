@@ -43,7 +43,7 @@ func writeOpenAPI(pkg *semantic.Package, cfg *config.Config, projectRoot string)
 	if err != nil {
 		return err
 	}
-	dest := filepath.Join(projectRoot, cfg.Output.OpenAPI)
+	dest := DocumentPath(cfg, projectRoot)
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func GenerateOpenAPI(proj *semantic.Project, cfg *config.Config, projectRoot str
 	if proj == nil {
 		return nil
 	}
-	if dest := cfg.Output.OpenAPI; dest == "" || dest == "-" {
+	if cfg.Output.OpenAPIDisabled() {
 		return nil
 	}
 	if !describable(proj) {

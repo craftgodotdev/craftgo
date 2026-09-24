@@ -13,17 +13,16 @@ func RegeneratedFile(proj *semantic.Project, cfg *config.Config, projectRoot str
 	if !describable(proj) {
 		return ""
 	}
-	return OutputDir(cfg, projectRoot)
+	return DocumentPath(cfg, projectRoot)
 }
 
-// OutputDir is the document's path, whether or not this run writes it, or ""
-// when `output.openapi` is off.
-func OutputDir(cfg *config.Config, projectRoot string) string {
-	dest := cfg.Output.OpenAPI
-	if dest == "" || dest == "-" {
+// DocumentPath is the path of the document, whether or not this run writes
+// it, or "" when `output.openapi` is off.
+func DocumentPath(cfg *config.Config, projectRoot string) string {
+	if cfg.Output.OpenAPIDisabled() {
 		return ""
 	}
-	return filepath.Join(projectRoot, dest)
+	return filepath.Join(projectRoot, cfg.Output.OpenAPI)
 }
 
 // describable reports whether proj has a DSL package to document; a design

@@ -55,7 +55,7 @@ func outputDirs(cfg *config.Config, projectRoot string, sel map[string]bool) []s
 	}
 	dirs = append(dirs, eventOutputDirs(cfg, projectRoot, sel)...)
 	if sel[TargetDocs] {
-		if doc := docs.OutputDir(cfg, projectRoot); doc != "" {
+		if doc := docs.DocumentPath(cfg, projectRoot); doc != "" {
 			dirs = append(dirs, sweepDir{path: filepath.Dir(doc), headers: generatedHeaders})
 		}
 	}

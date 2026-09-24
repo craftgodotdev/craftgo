@@ -99,7 +99,7 @@ func buildProjectMainData(proj *semantic.Project, protos *protodesign.Set, cfg *
 	}
 	d.HasMiddlewares = len(d.Middlewares) > 0
 
-	if spec := cfg.Output.OpenAPI; d.HasRoutes && spec != "" && spec != "-" {
+	if spec := cfg.Output.OpenAPI; d.HasRoutes && !cfg.Output.OpenAPIDisabled() {
 		mainDir := filepath.Dir(filepath.Clean(cfg.Output.Main))
 		if rel, err := filepath.Rel(mainDir, filepath.Clean(spec)); err == nil {
 			rel = filepath.ToSlash(rel)
