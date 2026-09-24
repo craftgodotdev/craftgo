@@ -11,9 +11,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// The gen-once scaffolds of a project with gRPC services, pinned like the
-// HTTP-only ones: a proto-only project boots the gRPC listener alone, a
-// mixed one boots both under one signal wait.
+// The scaffolds and gRPC wiring of a proto-only and a mixed project match their goldens.
 func TestGRPCScaffoldsArePinned(t *testing.T) {
 	cfg := scaffoldConfig(t)
 	set := loadProtos(t, cfg)
@@ -33,8 +31,7 @@ func TestGRPCScaffoldsArePinned(t *testing.T) {
 		expectGolden(t, tc.golden, string(mainGo))
 	}
 
-	// A gRPC-only project configures no HTTP listener; a mixed one
-	// configures both.
+	// A gRPC-only project configures no HTTP listener; a mixed one configures both.
 	for _, shape := range []struct {
 		hasHTTP bool
 		suffix  string
@@ -180,7 +177,7 @@ func TestScaffoldGapNotes(t *testing.T) {
 	if notes := scaffoldGapNotes(proj, set, cfg, fresh); len(notes) != 0 {
 		t.Errorf("fresh scaffolds noted: %v", notes)
 	}
-	// Plugins disabled and no pb code yet.
+	// Plugins disabled and no pb code generated.
 	external := *cfg
 	external.Output.PB = "-"
 	if _, err := protodesign.Load(t.Context(), filepath.Join("testdata", "proto"), designopts.ProtoOptions(&external, ".")); err == nil {

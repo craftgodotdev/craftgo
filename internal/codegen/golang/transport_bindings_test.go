@@ -2,9 +2,7 @@ package golang
 
 import "testing"
 
-// formatToString drives response @header / @cookie value formatting; the codegen
-// pipeline only exercises a handful of its branches, so pin every (prim, named)
-// arm and its needsStrconv flag directly. `named` is declName != prim.
+// formatToString renders every primitive, bare or named, and reports whether it needs strconv.
 func TestFormatToString(t *testing.T) {
 	cases := []struct {
 		name        string

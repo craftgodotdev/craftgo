@@ -6,8 +6,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// constraintNames returns every decorator the registry classifies as a
-// constraint, optionally narrowed to those with a schema form.
+// constraintNames returns the registry's constraint decorators, or only those with a schema form.
 func constraintNames(schemaOnly bool) map[string]bool {
 	out := map[string]bool{}
 	for name, spec := range semantic.Registry {
@@ -22,9 +21,7 @@ func constraintNames(schemaOnly bool) map[string]bool {
 	return out
 }
 
-// Every constraint decorator compiles to a runtime check. Adding one to
-// the registry without a check here fails rather than silently accepting
-// a decorator that enforces nothing.
+// Every constraint decorator, and nothing else, renders a Go check.
 func TestGoChecksCoverConstraints(t *testing.T) {
 	want := constraintNames(false)
 	for name := range want {
@@ -39,8 +36,7 @@ func TestGoChecksCoverConstraints(t *testing.T) {
 	}
 }
 
-// The runtime-only constraints are the ones a multipart part cannot
-// express as a schema keyword. Pinned so adding a row here is deliberate.
+// The runtime-only constraints are the ones a multipart part cannot express as a schema keyword.
 func TestRuntimeOnlyConstraints(t *testing.T) {
 	want := map[string]bool{"maxSize": true, "mimeTypes": true}
 	for name, spec := range semantic.Registry {

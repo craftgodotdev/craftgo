@@ -8,13 +8,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/config"
 )
 
-// The gen-once scaffolds - main.go, the config package, svccontext.go -
-// are written only when missing, so the committed examples never
-// regenerate them and the drift guard cannot see a template change.
-// These goldens pin the HTTP-only output instead: a mismatch is either
-// an intended template edit, refreshed with -update, or a branch meant
-// for another transport leaking into a project that has none.
-
 // scaffoldConfig is a manifest with every default applied, the way
 // `craftgo gen` sees an empty craftgo.design.yaml.
 func scaffoldConfig(t *testing.T) *config.Config {
@@ -31,9 +24,7 @@ func scaffoldConfig(t *testing.T) *config.Config {
 	return cfg
 }
 
-// httpScaffoldSrc is a design with one route and one applied middleware,
-// so the scaffolds render their middleware wiring and the wiring its
-// guard.
+// httpScaffoldSrc runs one route behind a middleware, so the scaffolds wire it and guard it.
 const httpScaffoldSrc = `package todos
 middleware AuthRequired
 type Todo { id string }
@@ -42,6 +33,7 @@ service TodoService {
 	get ListTodos /todos { response Todo }
 }`
 
+// The scaffolds and wiring of an HTTP-only project match their goldens.
 func TestHTTPScaffoldsArePinned(t *testing.T) {
 	cfg := scaffoldConfig(t)
 	proj := analyzeProject(t, httpScaffoldSrc)

@@ -5,10 +5,7 @@ import (
 	"testing"
 )
 
-// The scaffolded main.go installs the request-body default via
-// SetDefaultMaxBodySize - which a per-method @maxBodySize overrides - rather
-// than a blanket srv.Use(server.BodyLimit(...)) middleware, which wraps every
-// route and could not be overridden by a larger per-method cap.
+// main.go sets the body-size default with SetDefaultMaxBodySize, which @maxBodySize overrides.
 func TestGenerateMainUsesSetDefaultMaxBodySize(t *testing.T) {
 	data := mainData{
 		HasRoutes:        true,
@@ -29,10 +26,7 @@ func TestGenerateMainUsesSetDefaultMaxBodySize(t *testing.T) {
 	}
 }
 
-// The scaffolded main.go installs the handler-timeout default via
-// SetDefaultHandlerTimeout - which a per-method @timeout overrides - rather than
-// a blanket srv.Use(server.Timeout(...)) middleware, which clamps every route to
-// min(default, per-method).
+// main.go sets the handler timeout with SetDefaultHandlerTimeout, which @timeout overrides.
 func TestGenerateMainUsesSetDefaultHandlerTimeout(t *testing.T) {
 	data := mainData{
 		HasRoutes:        true,
@@ -53,10 +47,7 @@ func TestGenerateMainUsesSetDefaultHandlerTimeout(t *testing.T) {
 	}
 }
 
-// The scaffold emits the telemetry wrapper ahead of AccessLog, so the access
-// line carries the span's ids, and both guard defaults ahead of
-// wiring.Register, so every route resolves its timeout and body cap at
-// registration.
+// main.go installs telemetry before AccessLog and both guard defaults before wiring.Register.
 func TestGenerateMainOrdersTheWiring(t *testing.T) {
 	data := mainData{
 		HasRoutes:        true,

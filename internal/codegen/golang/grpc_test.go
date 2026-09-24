@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 )
 
-// loadProtos compiles the greet fixture the way `craftgo gen` would for
-// a manifest with every default.
+// loadProtos compiles the testdata/proto fixture as `craftgo gen` would for cfg.
 func loadProtos(t *testing.T, cfg *config.Config) *protodesign.Set {
 	t.Helper()
 	set, err := protodesign.Load(context.Background(), filepath.Join("testdata", "proto"), designopts.ProtoOptions(cfg, "."))
@@ -37,9 +36,7 @@ func greeter(t *testing.T, set *protodesign.Set) *protodesign.Service {
 	return nil
 }
 
-// Every RPC shape the server layer and the logic scaffold can take, one
-// golden each: the four streaming kinds, a call on well-known types
-// only (no pb import), and a request from another proto package.
+// The server layer and each RPC's method and logic scaffold match their goldens.
 func TestGRPCLayersArePinned(t *testing.T) {
 	cfg := scaffoldConfig(t)
 	svc := greeter(t, loadProtos(t, cfg))
@@ -115,9 +112,7 @@ func protoSet(t *testing.T, cfg *config.Config, proto string) *protodesign.Set {
 	return set
 }
 
-// An RPC whose file would take the server struct's, or whose logic type
-// another RPC's constructor is named after, is rejected before the two
-// files overwrite each other or fail to compile.
+// An RPC whose file or logic type collides with another generated name is rejected.
 func TestValidateProtoOutputsRejectsCollidingRPCNames(t *testing.T) {
 	cfg := scaffoldConfig(t)
 	for proto, want := range map[string]string{

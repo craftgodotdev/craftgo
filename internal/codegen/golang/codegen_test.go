@@ -26,9 +26,7 @@ func analyze(t *testing.T, src string) *semantic.Package {
 		t.Fatalf("parse errors: %v", d)
 	}
 	pkg, diags := semantic.Analyze([]*ast.File{f})
-	// Treat only error-severity diags as fatal - warnings (e.g. the
-	// @nullable-on-T? hint) shouldn't fail codegen tests because the
-	// generated code is still well-defined.
+	// A warning still generates valid code, so only errors fail the test.
 	var fatal []semantic.Diagnostic
 	for _, d := range diags {
 		if d.Severity == lexer.SeverityError {
@@ -50,14 +48,7 @@ func mustParseGo(t *testing.T, src string) {
 	mustImportsMatchUsage(t, file, src)
 }
 
-// stdlibQualifiers are the standard-library packages the emitters render
-// into generated source. A qualifier from this list appearing in the code
-// must have a matching import, and vice versa.
-//
-// Parsing alone cannot catch either half: `fmt.Errorf` with no import
-// block is valid syntax and only fails at compile time, which the unit
-// tests never reach. The list is closed on purpose - a new stdlib
-// dependency belongs here so the check keeps covering it.
+// stdlibQualifiers maps the standard-library qualifiers the import check covers to their paths.
 var stdlibQualifiers = map[string]string{
 	"fmt":       "fmt",
 	"errors":    "errors",
@@ -83,14 +74,7 @@ var stdlibQualifiers = map[string]string{
 	"maps":      "maps",
 }
 
-// mustImportsMatchUsage asserts the file imports exactly the standard
-// library it uses. It walks selector expressions rather than the raw
-// text, so a package name inside a string literal or a comment does not
-// count as a use.
-//
-// The missing half is the one that bites: an emitter that renders
-// `fmt.Errorf` without registering the import produces a file that parses
-// and does not compile, and the generator exits 0.
+// mustImportsMatchUsage asserts file imports exactly the stdlibQualifiers packages it uses.
 func mustImportsMatchUsage(t *testing.T, file *goast.File, src string) {
 	t.Helper()
 
@@ -135,11 +119,7 @@ func mustImportsMatchUsage(t *testing.T, file *goast.File, src string) {
 	}
 }
 
-// mustContainAll asserts every want substring appears somewhere in got.
-// Reports ALL misses at once (not the first only) so a generator change
-// that drops 5 lines surfaces as one diagnostic instead of 5 sequential
-// edit-test-edit cycles. Use it instead of stacking N
-// if-Contains-Errorf blocks per test.
+// mustContainAll asserts every want substring appears in got, reporting all misses at once.
 func mustContainAll(t *testing.T, got string, wants ...string) {
 	t.Helper()
 	var missing []string
@@ -154,10 +134,7 @@ func mustContainAll(t *testing.T, got string, wants ...string) {
 	}
 }
 
-// mustContainNone is the inverse of mustContainAll: every needle MUST
-// NOT appear in got. Used by tests that pin "this line should have
-// been dropped" assertions where the regression risk is accidental
-// re-inclusion.
+// mustContainNone asserts no unwanted substring appears in got.
 func mustContainNone(t *testing.T, got string, unwanted ...string) {
 	t.Helper()
 	var present []string
@@ -174,10 +151,8 @@ func mustContainNone(t *testing.T, got string, unwanted ...string) {
 
 // ---------- types ----------
 
+// A @sensitive field is tagged json:"-" while the others keep their tags.
 func TestGenerateTypesSensitiveJSONDash(t *testing.T) {
-	// `@sensitive` fields are server-internal: they get json:"-" so
-	// neither the request decoder nor the response encoder touches
-	// them. Logic populates the field directly via Go assignment.
 	pkg := analyze(t, `package design
 type User { id string  internal string @sensitive }`)
 	dir := t.TempDir()
@@ -199,10 +174,7 @@ type User { id string  internal string @sensitive }`)
 	}
 }
 
-// A field bound to @path / @query / @header / @cookie carries json:"-" (off
-// the JSON body) plus a binding key naming the wire location, so the
-// generated struct documents where the value rides. The key's value is the
-// decorator's wire-name override when present, else the field name.
+// A @path/@query/@header/@cookie field is tagged json:"-" plus a tag carrying its wire name.
 func TestGenerateTypesNonBodyBindingTag(t *testing.T) {
 	pkg := analyze(t, `package design
 type LookupReq {
@@ -254,7 +226,7 @@ type User { id string  name string  age int? }`)
 	}
 	src := string(out)
 	mustParseGo(t, src)
-	// gofmt aligns struct fields/tags; collapse whitespace before matching.
+	// gofmt aligns fields and tags; collapse whitespace before matching.
 	norm := strings.Join(strings.Fields(src), " ")
 	if !strings.Contains(norm, "type User struct") {
 		t.Error("missing User")
@@ -303,10 +275,7 @@ type Order { items Item[] @json("OrderItem")  storeId string? @json("store_id") 
 	)
 }
 
-// The three shapes a `bytes @format(raw)` field takes, all of them
-// wire.Raw: the slice's own nil is absence, and the four bytes `null` a
-// value that stays distinguishable from it. Only the tag changes - `?`
-// omits an absent value, `@nullable` keeps the key.
+// A bytes @format(raw) field is wire.Raw in every shape, with omitempty only when it is `?`.
 func TestGenerateTypesRawBytesShapes(t *testing.T) {
 	pkg := analyze(t, `package design
 type X { payload bytes @format(raw)  meta bytes? @format(raw)  trace bytes @format(raw) @nullable }`)
@@ -325,10 +294,7 @@ type X { payload bytes @format(raw)  meta bytes? @format(raw)  trace bytes @form
 	)
 }
 
-// A scalar over raw bytes is an ALIAS: the runtime type carries the
-// bytes through the codec on its own methods, and a defined type would
-// leave those behind and silently base64 the value instead. A field of
-// that scalar lowers to the same type it aliases.
+// A scalar over raw bytes is an alias of wire.Raw, so it keeps wire.Raw's codec methods.
 func TestGenerateTypesRawBytesScalar(t *testing.T) {
 	pkg := analyze(t, `package design
 scalar RawDoc bytes @format(raw)
@@ -349,12 +315,7 @@ type X { photos RawDoc?  cover RawDoc  audit RawDoc @nullable }`)
 	)
 }
 
-// Only a PLAIN raw field gets a presence check, and it is a length
-// check rather than a nil compare: wire.Raw is a slice the codec leaves
-// empty when the key is absent. An explicit null is NOT absent for it -
-// it decodes to the four bytes `null` - which is the difference the
-// shape is for. `?` and `@nullable` both say the value may be missing,
-// so neither is checked at all.
+// A required raw field gets a length presence check; a `?` or @nullable one gets none.
 func TestValidateRequiredRawBytesChecksLen(t *testing.T) {
 	src := runValidateGen(t, `package design
 type X { payload bytes @format(raw)  meta bytes? @format(raw)  trace bytes @format(raw) @nullable }`)
@@ -366,10 +327,7 @@ type X { payload bytes @format(raw)  meta bytes? @format(raw)  trace bytes @form
 	}
 }
 
-// A raw scalar declares no validator, so no Validate() method is emitted
-// for it and no field calls one: the scalar is an alias for a type this
-// package cannot define a method on, and either half alone would not
-// compile.
+// A raw scalar aliases a non-local type, so it gets no Validate method and no call to one.
 func TestValidateRawBytesScalarHasNoMethod(t *testing.T) {
 	src := runValidateGen(t, `package design
 scalar RawDoc bytes @format(raw)
@@ -401,9 +359,7 @@ type X { blob bytes  raw any  upload file  at datetime  seen datetime? }`)
 	)
 }
 
-// TestGenerateTypesGenericInstance checks the Go-1.18-generics output
-// shape: a generic decl renders with type-parameter brackets, and
-// references to it use Go generic syntax `Name[Arg1, Arg2]`.
+// A generic decl renders as a Go generic struct and its instances as Name[Arg1, Arg2].
 func TestGenerateTypesGenericInstance(t *testing.T) {
 	pkg := analyze(t, `package design
 type User {}
@@ -417,27 +373,16 @@ type UserOrgPair { p Pair<User, Org> }`)
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	// Generic decl lands as a Go generic struct.
 	if !strings.Contains(src, "type Pair[A any, B any] struct") {
 		t.Errorf("expected `type Pair[A any, B any] struct` in:\n%s", src)
 	}
-	// Instance reference uses Go generic syntax.
 	if !strings.Contains(src, "Pair[User, Org]") {
 		t.Errorf("expected `Pair[User, Org]` instance reference in:\n%s", src)
 	}
 }
 
+// resolveTypeRef renders generic arguments, each qualified by its own package.
 func TestResolveTypeRefGenericArgs(t *testing.T) {
-	// Generic instantiation must propagate through resolveTypeRef so
-	// service / handler signatures land as `Page[types.User]` rather
-	// than bare `Page` (which Go rejects with "cannot use generic
-	// type without instantiation"). Coverage:
-	//
-	//   - local generic with local arg → both qualified via `types`
-	//   - local generic with cross-pkg arg → arg keeps its qualifier
-	//   - cross-pkg generic with local arg → arg picks up local alias
-	//   - nested generic (`Page<Envelope<User>>`)
-	//   - multi-arg generic
 	cross := crossPkg{"shared": "github.com/x/internal/types/shared"}
 	cases := []struct {
 		name      string
@@ -498,10 +443,7 @@ func TestResolveTypeRefGenericArgs(t *testing.T) {
 	}
 }
 
-// resolveTypeRef reports whether the rendered reference reaches the local
-// types package. Callers import `types` from that rather than searching the
-// rendered text: a design package whose name ends in `types` puts the
-// substring `types.` into a reference that touches nothing local.
+// resolveTypeRef reports LocalTypes only when the reference reaches the local types package.
 func TestResolveTypeRefReportsLocalUse(t *testing.T) {
 	cross := crossPkg{
 		"shared":   "example.com/app/internal/types/shared",
@@ -541,12 +483,8 @@ func TestResolveTypeRefReportsLocalUse(t *testing.T) {
 	}
 }
 
+// A same-package mixin embeds by bare name; a cross-package one keeps its qualifier.
 func TestRenderMixinQualifiedRef(t *testing.T) {
-	// Same-package mixin renders as bare ident (Go would refuse a
-	// qualified ref to itself). Cross-package mixin keeps the
-	// qualifier - Go requires `pkg.Type` for an embedded type
-	// declared elsewhere, and the consuming file already carries
-	// the matching import.
 	cases := []struct {
 		name  string
 		parts []string
@@ -582,10 +520,7 @@ type User { Profile  name string }`)
 	}
 }
 
-// TestGenerateTypesDeprecated covers `@deprecated` on both type and
-// field. The Go-side emission must use the canonical `// Deprecated: …`
-// line so `go vet` and `staticcheck` flag callers; per-field
-// deprecation lives in the field's own doc block.
+// @deprecated on a type or field emits a `Deprecated:` doc line, with a fallback reason when bare.
 func TestGenerateTypesDeprecated(t *testing.T) {
 	pkg := analyze(t, `package design
 @deprecated("use NewBook instead")
@@ -602,31 +537,18 @@ type LegacyBook {
 	src := string(out)
 	mustParseGo(t, src)
 
-	// Type-level deprecation message.
 	if !strings.Contains(src, "// Deprecated: use NewBook instead") {
 		t.Errorf("expected type-level Deprecated comment:\n%s", src)
 	}
-	// Field-level deprecation with explicit reason.
 	if !strings.Contains(src, "// Deprecated: use priceCents instead") {
 		t.Errorf("expected field-level Deprecated comment with reason:\n%s", src)
 	}
-	// Field-level deprecation without reason gets the generic fallback.
 	if !strings.Contains(src, "// Deprecated: this entity is deprecated") {
 		t.Errorf("expected fallback Deprecated comment for bare @deprecated:\n%s", src)
 	}
 }
 
-// TestGenerateTypesNullable pins the Go-side wiring for `@nullable`:
-//
-//   - value type (string) → `*T` field, no omitempty (null-emitting).
-//   - already-nilable ([]byte slice / `*FileHeader`) → no extra wrap,
-//     just drop omitempty.
-//   - combined `T? @nullable` → still `*T` (no double-wrap), omitempty
-//     applies because the `?` suffix takes precedence: a nil pointer
-//     must round-trip as absent on the wire, not as explicit JSON
-//     `null`. The combined form is also flagged redundant at semantic
-//     time so users converge on plain `T?`.
-//   - non-nullable required field → unchanged (`T` value, no omitempty).
+// A @nullable field has no omitempty unless also `?`, and gets a pointer only for a value type.
 func TestGenerateTypesNullable(t *testing.T) {
 	pkg := analyze(t, `package design
 type T {
@@ -656,9 +578,7 @@ type T {
 	}
 }
 
-// A package that declares no type and no scalar - one holding only
-// services, or only consume middleware - puts nothing in types.go, so
-// neither the file nor the directory it would sit in is written.
+// A package with no type or scalar writes neither types.go nor its directory.
 func TestGenerateTypesServiceOnlyPackageWritesNothing(t *testing.T) {
 	pkg := analyze(t, `package design
 service Health {
@@ -676,8 +596,7 @@ service Health {
 	}
 }
 
-// A scalar is a Go defined type, so a package declaring one still writes
-// types.go even with no `type` in it.
+// A package declaring only a scalar still writes types.go with the scalar's defined type.
 func TestGenerateTypesScalarWithoutTypeStillWrites(t *testing.T) {
 	pkg := analyze(t, `package design
 scalar Email string @format(email)`)
@@ -696,10 +615,7 @@ scalar Email string @format(email)`)
 	}
 }
 
-// The design dropping its last type writes no types.go and no
-// validate.go: the files would carry a package clause and nothing else.
-// What an earlier run put there is the sweep's to take, not the
-// emitter's.
+// A package without types writes neither types.go nor validate.go.
 func TestGenerateTypesWritesNothingWithoutTypes(t *testing.T) {
 	pkg := analyze(t, `package design
 service Health {
@@ -726,13 +642,7 @@ func TestGenerateTypesNoPackageName(t *testing.T) {
 
 // ---------- enums ----------
 
-// TestGenerateEnums covers all three enum kinds (bare / int /
-// string) via golden snapshot files. Each case generates the enum
-// and compares against the reference at testdata/golden/enums-<kind>.go;
-// run `go test -update` to refresh after an intentional emit
-// change. The snapshot beats hand-written `strings.Contains`
-// chains because a regression shows the entire offending hunk
-// inline, not a single missing substring.
+// Each enum kind matches its testdata/golden/enums-<kind>.go snapshot.
 func TestGenerateEnums(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -803,8 +713,7 @@ error NotFound UserNotFound`)
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	// gofmt aligns struct-literal field assignments and tags with extra
-	// whitespace; collapse to single spaces before substring matching.
+	// gofmt aligns fields and tags; collapse whitespace before matching.
 	norm := strings.Join(strings.Fields(src), " ")
 	for _, want := range []string{
 		`const ErrCodeUserNotFound = "USER_NOT_FOUND"`,
@@ -821,9 +730,7 @@ error NotFound UserNotFound`)
 			t.Errorf("missing %q in:\n%s", want, src)
 		}
 	}
-	// Internal-only contract: code/message live as unexported struct
-	// fields, never on the wire. No body struct should be emitted for
-	// a body-less error.
+	// code and message stay unexported and off the wire.
 	for _, forbidden := range []string{
 		`Code string`,    // would be exported
 		`Message string`, // would be exported
@@ -851,26 +758,21 @@ error BadRequest Validation {
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	// gofmt may align struct fields with extra spaces; collapse whitespace
-	// before substring matching.
+	// gofmt aligns fields and tags; collapse whitespace before matching.
 	norm := strings.Join(strings.Fields(src), " ")
-	// Body struct holds the user-declared field with its JSON tag.
 	if !strings.Contains(norm, "type ValidationBody struct") {
 		t.Errorf("missing body struct:\n%s", src)
 	}
 	if !strings.Contains(norm, `Fields []string `+"`json:\"fields\"`") {
 		t.Errorf("missing custom field on body struct:\n%s", src)
 	}
-	// Err type embeds the body struct (no per-field params on the ctor).
 	if !strings.Contains(src, "func NewValidationErr(body ValidationBody) *ValidationErr") {
 		t.Errorf("constructor must take a body struct:\n%s", src)
 	}
 }
 
+// User-declared code and message become exported body fields beside the unexported metadata.
 func TestGenerateErrorsUserDeclaresCodeAndMessage(t *testing.T) {
-	// User declaring `code` / `message` in the DSL produces exported
-	// wire fields (Go `Code` / `Message`); they coexist with the
-	// framework's unexported metadata fields without conflict.
 	pkg := analyze(t, `package design
 error Internal Boom {
     code string? @default("BOOM_500")
@@ -885,16 +787,12 @@ error Internal Boom {
 	mustParseGo(t, src)
 	norm := strings.Join(strings.Fields(src), " ")
 
-	// User wire fields surface on the body struct as exported Go names
-	// with the DSL JSON tag; an optional field carries omitempty (the same
-	// canonical jsonTag rule regular types use).
 	if !strings.Contains(norm, `Code *string `+"`json:\"code,omitempty\"`") {
 		t.Errorf("user `code?` field should appear on body struct as *Code:\n%s", src)
 	}
 	if !strings.Contains(norm, `Message *string `+"`json:\"message,omitempty\"`") {
 		t.Errorf("user `message?` field should appear on body struct as *Message:\n%s", src)
 	}
-	// Internal metadata stays present and unexported on the err type.
 	if !strings.Contains(norm, "code string message string") {
 		t.Errorf("err type must keep unexported code/message metadata:\n%s", src)
 	}
@@ -921,6 +819,7 @@ error BadRequest ValidationErr`)
 	}
 }
 
+// Error @header/@cookie fields leave the body and are written by WriteResponseHeaders.
 func TestGenerateErrorsResponseBindings(t *testing.T) {
 	pkg := analyze(t, `package design
 error TooManyRequests RateLimited {
@@ -937,21 +836,15 @@ error TooManyRequests RateLimited {
 	mustParseGo(t, src)
 	norm := strings.Join(strings.Fields(src), " ")
 
-	// Header / cookie fields carry json:"-" so they don't double up in the
-	// JSON body alongside the response-header / cookie write, plus a binding
-	// key naming the wire location (header:"retryAfter", cookie:"sessionToken").
 	if !strings.Contains(norm, `RetryAfter string `+"`json:\"-\" header:\"retryAfter\"`") {
 		t.Errorf("retryAfter should be json:\"-\" header:\"retryAfter\":\n%s", src)
 	}
 	if !strings.Contains(norm, `SessionToken string `+"`json:\"-\" cookie:\"sessionToken\"`") {
 		t.Errorf("sessionToken should be json:\"-\" cookie:\"sessionToken\":\n%s", src)
 	}
-	// Optional non-bound field keeps its real JSON tag, with omitempty (the
-	// canonical jsonTag rule - an optional error-body field is omittable).
 	if !strings.Contains(norm, `Bucket *string `+"`json:\"bucket,omitempty\"`") {
 		t.Errorf("bucket should keep its DSL JSON tag:\n%s", src)
 	}
-	// WriteResponseHeaders must be emitted with the expected wire writes.
 	mustContainAll(t, src,
 		"func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter)",
 		`w.Header().Set("retryAfter", e.RetryAfter)`,
@@ -960,10 +853,7 @@ error TooManyRequests RateLimited {
 	)
 }
 
-// A @sensitive field on an error body must be tagged json:"-" - the same
-// canonical jsonTag rule regular types follow - so a server-only secret
-// never rides the error response wire. (Regression: the error emitter once
-// re-derived the tag and leaked the value as json:"<name>".)
+// A @sensitive error-body field is tagged json:"-".
 func TestGenerateErrorsSensitiveFieldExcludedFromBody(t *testing.T) {
 	pkg := analyze(t, `package design
 error Forbidden Boom {
@@ -986,10 +876,7 @@ error Forbidden Boom {
 	}
 }
 
-// TestGenerateErrorsResponseBindingsNonString pins the non-string
-// @header / @cookie formatting on the error path: int / bool values are
-// rendered via strconv (and the strconv import is pulled in), mirroring
-// the success-response writer.
+// Non-string error @header/@cookie values are formatted with strconv.
 func TestGenerateErrorsResponseBindingsNonString(t *testing.T) {
 	pkg := analyze(t, `package design
 scalar Cents int
@@ -1010,22 +897,13 @@ error TooManyRequests RateLimited {
 		`"strconv"`,
 		"func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter)",
 		`w.Header().Set("Retry-After", strconv.Itoa(e.RetryAfter))`,
-		// A numeric scalar resolves to its primitive (int) and formats
-		// the same as a plain int field - proving local scalar
-		// resolution works on the error path too.
+		// A local int scalar converts to int64 for strconv.FormatInt.
 		`w.Header().Set("X-Cost", strconv.FormatInt(int64(e.Cost), 10))`,
 		`http.SetCookie(w, &http.Cookie{Name: "throttled", Value: strconv.FormatBool(e.Throttled)})`,
 	)
 }
 
-// TestGenerateErrorsCrossPkgScalarHeader pins the cross-package scalar
-// resolution on the error path. A non-string scalar imported from
-// another package (shared.Cents → int) must resolve through the
-// ProjectResolver and format via strconv.FormatInt - NOT the broken
-// string(int) conversion the local-only path would emit (wrong runtime
-// value + a go vet diagnostic). This exercises the resolver that
-// GenerateErrors threads through; the local-scalar test above
-// would pass even without it.
+// A cross-package int scalar header on an error formats with strconv.FormatInt.
 func TestGenerateErrorsCrossPkgScalarHeader(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
 		"shared/types.craftgo": `package shared
@@ -1063,9 +941,8 @@ error TooManyRequests RateLimited {
 	}
 }
 
+// Without @header/@cookie fields, errors.go has no net/http import and no WriteResponseHeaders.
 func TestGenerateErrorsNoBindingsNoHTTPImport(t *testing.T) {
-	// Without @header / @cookie fields, errors.go must NOT carry a
-	// `net/http` import or a WriteResponseHeaders method.
 	pkg := analyze(t, `package design
 error NotFound UserNotFound`)
 	dir := t.TempDir()
@@ -1120,11 +997,7 @@ func TestGoFieldName(t *testing.T) {
 	}
 }
 
-// TestGoTypeRefOptionalNilableBase pins the no-redundant-pointer rule:
-// optional fields whose base Go type is already nil-zeroable (slice,
-// map, pointer-shaped builtin, interface) must NOT receive an extra
-// `*`. Value-type optionals (string?, struct?) still get the pointer so
-// "absent" remains distinguishable from the zero value.
+// An optional field gets a pointer only when its Go type is not already nilable.
 func TestGoTypeRefOptionalNilableBase(t *testing.T) {
 	pkg := analyze(t, `package design
 type User { name string }
@@ -1153,7 +1026,7 @@ type T {
 		{"AnyOpt", "any"},
 		{"ArrayOpt", "[]string"},
 		{"MapOpt", "map[string]int"},
-		// Value-type optionals - pointer is still required.
+		// Value types still get a pointer.
 		{"StringOpt", "*string"},
 		{"StructOpt", "*User"},
 	}
@@ -1162,20 +1035,15 @@ type T {
 			t.Errorf("expected field %s with type %q in:\n%s", w.ident, w.tag, src)
 		}
 	}
-	// Negative: no double-pointer or pointer-to-slice anywhere.
 	mustContainNone(t, src,
 		"**",
 	)
 }
 
-// lineHasField reports whether `src` has any line containing both the
-// identifier and the type expression. Whitespace between them is
-// arbitrary so gofmt's column alignment doesn't break the assertion.
+// lineHasField reports whether a line of src holds both ident and typ, but not *typ.
 func lineHasField(src, ident, typ string) bool {
 	for _, line := range strings.Split(src, "\n") {
 		if strings.Contains(line, ident) && strings.Contains(line, typ) {
-			// Reject pointer-to-typ accidentally matching the substring.
-			// e.g. "*[]byte" contains "[]byte" - we want only the bare form.
 			if strings.Contains(line, "*"+typ) {
 				continue
 			}
@@ -1216,10 +1084,7 @@ func TestErrSuffix(t *testing.T) {
 	}
 }
 
-// TestGenerateErrorsEmbedsMixin checks that a mixin embedded in an error
-// body is embedded in the generated Go body struct, so the server can
-// populate the fields the OpenAPI allOf advertises and produce the
-// spec-conformant 4xx response.
+// A mixin in an error body is embedded in the generated body struct.
 func TestGenerateErrorsEmbedsMixin(t *testing.T) {
 	pkg := analyze(t, `package design
 type Audit { actor string  at string @format(datetime) }
@@ -1240,10 +1105,7 @@ error Forbidden Denied {
 	}
 }
 
-// A scalar over the nilable `bytes` primitive lowers to the bare named
-// slice, so an optional / @nullable field of it must NOT carry a
-// redundant pointer - it renders like a raw `bytes` field, and its
-// validator nil-guards before calling the scalar's own Validate().
+// An optional or @nullable scalar-over-bytes field has no pointer; its validator nil-guards it.
 func TestScalarOverBytesNullableRendersWithoutPointer(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
 		"m/m.craftgo": `package m
@@ -1278,8 +1140,6 @@ type Doc {
 		"NulBlob Blob `json:\"nulBlob\"`",
 		"OptBlob Blob `json:\"optBlob,omitempty\"`",
 	)
-	// The nullable/optional scalar's Validate() stays nil-guarded so a
-	// null / absent value skips the scalar's own constraint.
 	mustContainAll(t, string(val),
 		"if v.NulBlob != nil {",
 		"if v.OptBlob != nil {",

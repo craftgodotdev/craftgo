@@ -41,8 +41,7 @@ func eventsConfig() *config.Config {
 	}
 }
 
-// analyzeProject parses each source, analyses them as one project, and
-// fails on any error-severity diagnostic.
+// analyzeProject analyses sources as one project and fails on any error diagnostic.
 func analyzeProject(t *testing.T, sources ...string) *semantic.Project {
 	t.Helper()
 	files := make([]*ast.File, 0, len(sources))
@@ -140,9 +139,7 @@ var Shipped = craftevents.NewEvent[types.ShipmentPayload](ShippedContract, (*typ
 	}
 }
 
-// `@doc("...")` is the author's override for the generated comment: it
-// reaches the descriptor in place of the leading `//` block, and a
-// file-level event puts nothing else in events.go.
+// @doc replaces the event's leading comment on the generated descriptor.
 func TestDocDecoratorDocumentsTheDescriptor(t *testing.T) {
 	proj := analyzeProject(t, `package themes
 type ThemePayload { id string }
@@ -180,10 +177,7 @@ var ThemeCreated = craftevents.NewEvent[types.ThemePayload](ThemeCreatedContract
 	}
 }
 
-// A `payload T[]` contract types the descriptor on the slice, and the
-// slice has no Validate of its own - so the file carries the loop that
-// runs the element type's, naming the element that failed. The contract
-// constant and the doc block are the same as any other contract's.
+// A `payload T[]` descriptor is typed on the slice and validates each element in a generated loop.
 func TestArrayPayloadTypesTheDescriptorOnASlice(t *testing.T) {
 	proj := analyzeProject(t, `package orders
 type AbandonedOrderData {
@@ -233,9 +227,7 @@ func validateAbandonedCreated(items *[]types.AbandonedOrderData) error {
 	}
 }
 
-// An array payload whose element type carries no generated Validate takes
-// nil like any other: there is nothing to loop over the elements with, so
-// the file declares no validator and imports no fmt.
+// An array payload whose element type has no generated Validate takes nil.
 func TestArrayPayloadWithoutValidationTakesNil(t *testing.T) {
 	proj := analyzeProject(t, `package shared
 type Envelope { id string }`, `package orders
@@ -254,8 +246,7 @@ event Batch { payload shared.Envelope[] }`)
 	}
 }
 
-// A payload declared in another design package is imported from that
-// package rather than through the event's own types alias.
+// A payload declared in another design package is imported from that package.
 func TestDescriptorImportsACrossPackagePayload(t *testing.T) {
 	proj := analyzeProject(t, `package shared
 type Envelope { id string }`, `package orders
@@ -271,8 +262,7 @@ event Wrapped { payload shared.Envelope }`)
 	}
 }
 
-// A package with no event leaves no directory: there is nothing for the
-// library to hold.
+// A package with no event gets no events directory.
 func TestPackageWithoutEventsGetsNoDirectory(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc, `package web
 type Page { url string }
@@ -285,9 +275,7 @@ service Docs {
 	}
 }
 
-// The descriptor validates what the payload type declares. A payload
-// whose type carries no generated Validate takes nil, so the library
-// still compiles against the types the run wrote.
+// The descriptor passes the payload type's Validate, or nil when the type has none.
 func TestDescriptorPassesNilWithoutAValidateMethod(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)
 	ev, ok := proj.LookupEvent("orders", "OrderPlaced")
@@ -342,8 +330,7 @@ func TestEventLibraryIsValidGoAndFullyPlanned(t *testing.T) {
 	}
 }
 
-// A DSL package named after an identifier the template binds is imported
-// under a different alias, or the generated file shadows the name.
+// A DSL package named like an identifier the template binds is imported under an escaped alias.
 func TestEventAliasesEscapeReservedIdentifiers(t *testing.T) {
 	proj := analyzeProject(t, `package craftevents
 type Boom { id string }`, `package watch
@@ -357,8 +344,7 @@ event Exploded { payload craftevents.Boom }`)
 	}
 }
 
-// A contracts project generates the library and nothing else - no
-// transport, no wiring, no main.
+// A contracts project generates only the event library.
 func TestContractsProjectGeneratesOnlyTheLibrary(t *testing.T) {
 	cfg := eventsConfig()
 	cfg.Output.Kind = config.KindContracts

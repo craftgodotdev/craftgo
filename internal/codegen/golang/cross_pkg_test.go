@@ -9,9 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// TestBuildCrossPkgResolves verifies the happy path: a project with
-// two declared packages produces a CrossPkg pointing the non-current
-// one at the right Go import path.
+// buildCrossPkg maps each other package to its Go import path and leaves out the current one.
 func TestBuildCrossPkgResolves(t *testing.T) {
 	cfg := &config.Config{
 		Package: "github.com/test/multi",
@@ -27,17 +25,12 @@ func TestBuildCrossPkgResolves(t *testing.T) {
 	if got := cross["shared"]; got != "github.com/test/multi/internal/types/shared" {
 		t.Errorf("expected mapped Go import, got %q", got)
 	}
-	// Self-package excluded.
 	if _, ok := cross["design"]; ok {
 		t.Error("self-package should not appear in CrossPkg")
 	}
 }
 
-// TestBuildTypeTableKeysQualifiedAcrossPackages pins the lookup
-// shape that nestedValidateCall depends on: local types appear bare,
-// cross-package types appear under their qualified DSL form. Without
-// this the qualified-ref recursive validate call (`v.Page.Validate()`
-// for `page shared.Page<ProductRef>`) is silently dropped.
+// The resolver's type table keys local types bare and other packages' types qualified.
 func TestBuildTypeTableKeysQualifiedAcrossPackages(t *testing.T) {
 	proj := &semantic.Project{
 		Packages: map[string]*semantic.Package{
@@ -101,9 +94,8 @@ func TestBuildCrossPkgSkipsEmptyAndCurrent(t *testing.T) {
 	}
 }
 
+// With no current package, buildCrossPkg maps every package.
 func TestBuildCrossPkgEmptyCurrentReturnsAll(t *testing.T) {
-	// When called without a current package, every non-empty package
-	// should be included - useful for tools that need the full map.
 	cfg := &config.Config{Package: "x", Output: config.Output{Types: "./types"}}
 	proj := &semantic.Project{
 		Packages: map[string]*semantic.Package{
@@ -117,8 +109,7 @@ func TestBuildCrossPkgEmptyCurrentReturnsAll(t *testing.T) {
 	}
 }
 
-// TestWalkCrossPkgImports drives the walker through every shape:
-// nil, map, named with multi-part, generic args.
+// walkCrossPkgImports collects imports only for qualified refs, in map values and generic args too.
 func TestWalkCrossPkgImports(t *testing.T) {
 	cross := crossPkg{"shared": "github.com/x/internal/types/shared"}
 
@@ -128,35 +119,30 @@ func TestWalkCrossPkgImports(t *testing.T) {
 		}}
 	}
 
-	// nil - no-op.
 	set := map[string]bool{}
 	walkCrossPkgImports(nil, cross, set)
 	if len(set) != 0 {
 		t.Errorf("nil should not contribute, got %v", set)
 	}
 
-	// Empty crossPkg - no-op even on cross-pkg ref.
 	set = map[string]bool{}
 	walkCrossPkgImports(mkRef("shared", "User"), nil, set)
 	if len(set) != 0 {
 		t.Errorf("empty crossPkg should not contribute, got %v", set)
 	}
 
-	// Single-part ref - no-op.
 	set = map[string]bool{}
 	walkCrossPkgImports(mkRef("User"), cross, set)
 	if len(set) != 0 {
 		t.Errorf("unqualified ref should not contribute, got %v", set)
 	}
 
-	// Multi-part ref - adds import.
 	set = map[string]bool{}
 	walkCrossPkgImports(mkRef("shared", "User"), cross, set)
 	if !set[cross["shared"]] {
 		t.Errorf("multi-part ref should add import, got %v", set)
 	}
 
-	// Map with cross-pkg value.
 	set = map[string]bool{}
 	walkCrossPkgImports(&ast.TypeRef{Map: &ast.MapType{
 		Key:   mkRef("string"),
@@ -166,7 +152,6 @@ func TestWalkCrossPkgImports(t *testing.T) {
 		t.Errorf("map value should propagate, got %v", set)
 	}
 
-	// Generic arg with cross-pkg ref.
 	set = map[string]bool{}
 	walkCrossPkgImports(&ast.TypeRef{Named: &ast.NamedTypeRef{
 		Name: &ast.QualifiedIdent{Parts: []string{"Page"}},
@@ -177,31 +162,23 @@ func TestWalkCrossPkgImports(t *testing.T) {
 	}
 }
 
+// crossPkgImportFor returns "" for a nil map or ref, a bare name and an unknown alias.
 func TestCrossPkgImportForGuards(t *testing.T) {
-	// Empty map → nothing.
 	if got := crossPkgImportFor(&ast.NamedTypeRef{}, nil); got != "" {
 		t.Error("nil map should return empty")
 	}
-	// Nil ref → nothing.
 	if got := crossPkgImportFor(nil, crossPkg{"a": "b"}); got != "" {
 		t.Error("nil ref should return empty")
 	}
-	// Single-part name → nothing.
 	if got := crossPkgImportFor(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"User"}}}, crossPkg{"shared": "x"}); got != "" {
 		t.Error("single-part should return empty")
 	}
-	// Unknown alias → nothing.
 	if got := crossPkgImportFor(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"unknown", "T"}}}, crossPkg{"shared": "x"}); got != "" {
 		t.Error("unknown alias should return empty")
 	}
 }
 
-// TestCollectBodyImportsMixinFileArg pins that the shared body import walk
-// collects a stdlib-backed builtin (`file` → mime/multipart) that appears as
-// the generic ARGUMENT of a MIXIN (`m.Box<file>` → embedded
-// `m.Box[*multipart.FileHeader]`). The mixin branch must route the ref through
-// collectFieldImports like the field branch does, or the generated types.go /
-// errors.go references multipart without importing it.
+// A mixin's generic argument contributes its imports, e.g. file → mime/multipart.
 func TestCollectBodyImportsMixinFileArg(t *testing.T) {
 	cross := crossPkg{"m": "github.com/x/internal/types/m"}
 	body := []ast.TypeMember{

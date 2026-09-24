@@ -59,6 +59,7 @@ func sampleConfig() *config.Config {
 
 // ---------- handler ----------
 
+// Every verb's handler parses; only a body verb decodes the body, and a bodiless method writes 204.
 func TestGenerateTransportAllVerbs(t *testing.T) {
 	pkg := analyze(t, handlerSampleDSL)
 	root := t.TempDir()
@@ -76,17 +77,14 @@ func TestGenerateTransportAllVerbs(t *testing.T) {
 		mustParseGo(t, string(out))
 	}
 
-	// GET handler should have request decode skipped (no body verb).
 	getSrc, _ := os.ReadFile(filepath.Join(dir, "get-user.go"))
 	if strings.Contains(string(getSrc), "server.JSON().Decode(r.Body") {
 		t.Errorf("GET handler must not decode body:\n%s", getSrc)
 	}
-	// POST handler must decode body via the swappable codec.
 	postSrc, _ := os.ReadFile(filepath.Join(dir, "update-user.go"))
 	if !strings.Contains(string(postSrc), "server.JSON().Decode(r.Body") {
 		t.Errorf("POST handler must decode body via server.JSON:\n%s", postSrc)
 	}
-	// Ping (no request, no response decl) → empty body call + 204.
 	pingSrc, _ := os.ReadFile(filepath.Join(dir, "ping.go"))
 	if !strings.Contains(string(pingSrc), "l.Ping()") {
 		t.Errorf("Ping handler should call l.Ping() with no arg:\n%s", pingSrc)
@@ -96,11 +94,8 @@ func TestGenerateTransportAllVerbs(t *testing.T) {
 	}
 }
 
-// TestGenerateTransportSuccessStatus pins the verb-aware success status.
-// A POST that returns a body defaults to 201 Created (written before the
-// body is encoded); GET/PUT keep the implicit 200 (no explicit
-// WriteHeader - the encoder already produces 200); a bodiless method is
-// 204; and @status(N) overrides the verb default.
+// A POST with a body writes 201 before encoding, GET and PUT write no explicit status, a bodiless
+// method writes 204, and @status overrides the verb default.
 func TestGenerateTransportSuccessStatus(t *testing.T) {
 	src := `package design
 type Req { id string }
@@ -142,7 +137,6 @@ service S {
 		return string(out)
 	}
 
-	// POST + body → 201 Created, written before the body encode.
 	create := read("create.go")
 	if !strings.Contains(create, "w.WriteHeader(http.StatusCreated)") {
 		t.Errorf("POST should write 201:\n%s", create)
@@ -151,7 +145,6 @@ service S {
 		t.Errorf("201 must be written before the body encode:\n%s", create)
 	}
 
-	// GET / PUT + body → implicit 200, no explicit WriteHeader.
 	for _, fn := range []string{"get.go", "replace.go"} {
 		body := read(fn)
 		if strings.Contains(body, "w.WriteHeader(") {
@@ -159,21 +152,16 @@ service S {
 		}
 	}
 
-	// @status(202) overrides the POST default.
 	if enqueue := read("enqueue.go"); !strings.Contains(enqueue, "w.WriteHeader(http.StatusAccepted)") {
 		t.Errorf("@status(202) should write 202:\n%s", enqueue)
 	}
 
-	// No response body → 204 No Content regardless of verb.
 	if remove := read("remove.go"); !strings.Contains(remove, "w.WriteHeader(http.StatusNoContent)") {
 		t.Errorf("bodiless handler should write 204:\n%s", remove)
 	}
 }
 
-// TestGenerateTransportDefaults pins the @default pre-fill emission. The
-// handler assigns each declared default BEFORE the JSON decode so
-// fields absent from the body keep the DSL value; explicit fields in
-// the body still overwrite via the standard decoder semantics.
+// Each @default is assigned before the JSON decode, so only a field absent from the body keeps it.
 func TestGenerateTransportDefaults(t *testing.T) {
 	src := `package design
 type Req {
@@ -203,10 +191,7 @@ service S {
 	}
 	body := string(out)
 	mustParseGo(t, body)
-	// Optional `?` fields with @default emit pointer-wrapped pre-fill:
-	// `__d := value; req.Field = &__d` so the JSON decoder leaves a
-	// nil pointer alone but reports the default through the typed
-	// pointer when the field is absent.
+	// An optional field's default is pre-filled through a pointer.
 	mustContainAll(t, body,
 		`__d := "anon"`,
 		`req.Name = &__d`,
@@ -217,10 +202,7 @@ service S {
 		`__d := true`,
 		`req.Active = &__d`,
 	)
-	// A narrow numeric width casts the literal to the field's primitive so
-	// the pointer pre-fill `__d := int32(7)` keeps the field's `*int32`;
-	// without the cast `__d := 7` is `*int` and `&__d` fails to assign.
-	// `int` / `float64` above stay BARE (the literal already matches).
+	// A narrow numeric default is cast so `&__d` has the field's pointer type.
 	mustContainAll(t, body,
 		`__d := int32(7)`,
 		`req.Width = &__d`,
@@ -231,17 +213,12 @@ service S {
 		`__d := float32(1.5)`,
 		`req.Pct = &__d`,
 	)
-	// Guard the no-needless-cast contract: int / float64 literals carry
-	// no cast (would be `int(20)` / `float64(0.5)` if over-applied).
 	if strings.Contains(body, "int(20)") || strings.Contains(body, "float64(0.5)") {
 		t.Errorf("int / float64 defaults must not be cast:\n%s", body)
 	}
-	// The non-defaulted `plain` field must NOT receive an assignment.
 	if strings.Contains(body, "req.Plain =") {
 		t.Errorf("plain field shouldn't be pre-filled:\n%s", body)
 	}
-	// Pre-fill must precede JSON decode so absent body fields keep
-	// their default.
 	if dec := strings.Index(body, "server.JSON().Decode"); dec >= 0 {
 		if pre := body[:dec]; !strings.Contains(pre, `__d := "anon"`) {
 			t.Error("expected default assignments before body decode")
@@ -249,13 +226,7 @@ service S {
 	}
 }
 
-// TestGenerateTransportEnumScalarBindings pins the path / query /
-// header / cookie binding for fields whose declared type is an
-// enum or a scalar - the generated handler must cast the wire
-// string into the typed alias so the request struct lands as
-// `Status` / `Email` / etc., letting `req.Validate()` pick up the
-// scalar's inherited validators (`@format(email)` ...) and the
-// enum's value-set check.
+// A bound enum or scalar field is converted from the wire string to its own type.
 func TestGenerateTransportEnumScalarBindings(t *testing.T) {
 	src := `package design
 
@@ -291,26 +262,20 @@ service S {
 	mustContainAll(t, got,
 		// path: string-backed enum cast
 		`req.State = types.Status(r.PathValue("state"))`,
-		// query string-backed enum + scalar
+		// query: string-backed scalar cast
 		`req.Contact = types.Email(_q.Get("contact"))`,
-		// query int-backed enum: bind helper parses + converts to the enum
+		// query: int-backed enum, parsed by the bind helper
 		`server.BindValue(w, r, "priority", "int", _q.Get("priority"), &req.Priority, server.ParseSigned[types.Priority])`,
-		// query numeric scalar: bind helper parses + converts to the scalar
+		// query: numeric scalar, parsed by the bind helper
 		`server.BindValue(w, r, "cap", "int", _q.Get("cap"), &req.Cap, server.ParseSigned[types.Cents])`,
-		// cookie cast
+		// cookie: plain string
 		`req.Sess = c.Value`,
-		// header cast (string-backed enum)
+		// header: string-backed enum cast
 		`req.Role = types.Status(r.Header.Get("role"))`,
 	)
 }
 
-// TestGenerateTransportEnumArrayQueryDefault pins the enum-array
-// @query @default binder. The slice is pre-filled with the default
-// members' wire values; a present param must REPLACE that pre-fill,
-// not append to it - the `req.X = req.X[:0]` clear is what guards
-// against `?colors=green` yielding `[red green blue]` instead of
-// `[green]`. The has-default oracle the binder consults resolves the
-// enum-member array literal so it agrees with the pre-fill emission.
+// A present enum-array query param replaces its @default pre-fill.
 func TestGenerateTransportEnumArrayQueryDefault(t *testing.T) {
 	src := `package design
 
@@ -335,17 +300,13 @@ service S {
 	mustContainAll(t, got,
 		// pre-fill with the default members' wire values
 		`req.Colors = []types.Color{types.ColorRed, types.ColorBlue}`,
-		// present param REPLACES the pre-fill: clear, then append
+		// a present param replaces the pre-fill: clear, then append
 		`req.Colors = req.Colors[:0]`,
 		`req.Colors = append(req.Colors, types.Color(_v))`,
 	)
 }
 
-// TestGenerateTransportWholeNumberFloatDefault pins that a whole-number
-// float `@default(1.0)` renders as a float literal (`1.0`), not `1` - which
-// would infer `int` and make the optional-field pointer pre-fill `*int`
-// instead of `*float64`. A fractional default (`2.5`) is unchanged and
-// carries no cast.
+// A whole-number float @default renders as 1.0, so its pre-fill pointer stays *float64.
 func TestGenerateTransportWholeNumberFloatDefault(t *testing.T) {
 	src := `package design
 
@@ -374,11 +335,7 @@ service S {
 	}
 }
 
-// TestCollectRequestFieldImports covers the cross-package import
-// walk for request type fields. A request with a `shared.ID` field
-// auto-promoted to @path emits `req.ID = shared.ID(...)` in the
-// handler - without scanning field types for cross-pkg refs the
-// `shared` import never lands and the handler fails to compile.
+// collectRequestFieldImports collects the import of a cross-package request field type.
 func TestCollectRequestFieldImports(t *testing.T) {
 	method := &ast.Method{
 		Request: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"UserRef"}}},
@@ -403,13 +360,7 @@ func TestCollectRequestFieldImports(t *testing.T) {
 	}
 }
 
-// TestGenerateTransportNamedBindingArg covers the explicit-name
-// override on every binding decorator. `@path("user_id")` makes the
-// runtime call `r.PathValue("user_id")` instead of the field's Go
-// name; same for `@header("X-API-Key")` etc. Without honouring the
-// arg, `/users/{user_id}` never binds because `r.PathValue("userId")`
-// returns the empty string and the call site never realises the param
-// went missing.
+// A binding decorator's name argument is the wire key the handler reads.
 func TestGenerateTransportNamedBindingArg(t *testing.T) {
 	src := `package design
 
@@ -440,24 +391,12 @@ service S {
 		`r.Cookie("session_id")`,
 		// The query map is parsed once into _q.
 		`_q := r.URL.Query()`,
-		// @query("sort_by"): _q is read by the WIRE name, not the Go
-		// field name `sortBy`.
 		`_q.Get("sort_by")`,
 	)
-	// No per-field r.URL.Query() calls, and the field name never leaks
-	// in as the query key.
 	mustContainNone(t, got, `r.URL.Query().Get(`, `_q.Get("sortBy")`)
 }
 
-// TestGenerateTransportWireNumericAcrossSources covers the unified
-// wire binding: numeric / bool fields can ride @query, @header,
-// @cookie, AND @form through the same parse + 400 idiom. The only
-// difference between bindings is the source extraction (Query().Get
-// vs Header.Get vs c.Value vs FormValue) - everything else (parse
-// call, cast, error path) is shared by [renderWireBindLine].
-//
-// `int @header` etc. parse the wire value, with parse failures
-// returning 400 Bad Request the same way @query does.
+// Numeric and bool @query/@header/@cookie/@form fields all bind through server.BindValue.
 func TestGenerateTransportWireNumericAcrossSources(t *testing.T) {
 	src := `package design
 
@@ -493,37 +432,23 @@ service S {
 	got := string(body)
 	mustParseGo(t, got)
 	mustContainAll(t, got,
-		// @query int → BindValue + ParseSigned[int].
 		`server.BindValue(w, r, "qLimit", "int", _q.Get("qLimit"), &req.QLimit, server.ParseSigned[int])`,
-		// @query bool → ParseBool.
 		`server.BindValue(w, r, "qFlag", "bool", _q.Get("qFlag"), &req.QFlag, server.ParseBool[bool])`,
-		// @header int: same helper, different source.
 		`server.BindValue(w, r, "hCount", "int", r.Header.Get("hCount"), &req.HCount, server.ParseSigned[int])`,
-		// @header float64 → ParseFloat[float64] (the helper picks the bit width).
 		`server.BindValue(w, r, "hRatio", "float", r.Header.Get("hRatio"), &req.HRatio, server.ParseFloat[float64])`,
-		// @cookie int-enum: wrapped in the cookie guard, parses c.Value.
 		`if c, err := r.Cookie("cTier"); err == nil {`,
 		`server.BindValue(w, r, "cTier", "int", c.Value, &req.CTier, server.ParseSigned[types.Priority])`,
-		// @cookie int-scalar: same shape, scalar type argument.
 		`if c, err := r.Cookie("cAge"); err == nil {`,
 		`server.BindValue(w, r, "cAge", "int", c.Value, &req.CAge, server.ParseSigned[types.Cents])`,
-		// @form int: source becomes FormValue.
 		`server.BindValue(w, r, "fQty", "int", r.FormValue("fQty"), &req.FQty, server.ParseSigned[int])`,
-		// @form bool.
 		`server.BindValue(w, r, "fFlag", "bool", r.FormValue("fFlag"), &req.FFlag, server.ParseBool[bool])`,
-		// @form file: bound through r.FormFile.
 		`r.FormFile("upload")`,
 	)
-	// Parsing lives in the helpers now, so the handler no longer imports strconv.
+	// Parsing lives in the server helpers, so the handler imports no strconv.
 	mustContainNone(t, got, `"strconv"`)
 }
 
-// TestGenerateTransportOptionalHeaderCookie covers `string? @header`
-// and `string? @cookie` binding through to `*<T>`. Missing or empty
-// wire values land the field as a nil pointer; present values flow
-// through the alias cast (when the field is a typed scalar / enum) and
-// address a new alias-typed variable so the pointer carries the
-// field's declared type instead of bare `*string`.
+// An optional header or cookie field is nil when empty, else points at the value cast to its type.
 func TestGenerateTransportOptionalHeaderCookie(t *testing.T) {
 	src := `package design
 
@@ -552,32 +477,25 @@ service S {
 	got := string(body)
 	mustParseGo(t, got)
 	mustContainAll(t, got,
-		// Plain string header: take address of the raw value directly.
+		// plain string header: address of the raw value
 		`if _v := r.Header.Get("auth"); _v != ""`,
 		`req.Auth = &_v`,
-		// Scalar-typed header: route through alias cast into _w.
+		// scalar header: cast into _w
 		`if _v := r.Header.Get("contact"); _v != ""`,
 		`_w := types.Email(_v)`,
 		`req.Contact = &_w`,
-		// Enum-typed cookie: outer cookie guard, inner non-empty guard,
-		// alias cast on c.Value.
+		// enum cookie: cookie guard, non-empty guard, cast
 		`if c, err := r.Cookie("theme"); err == nil {`,
 		`if _v := c.Value; _v != ""`,
 		`_w := types.Color(_v)`,
 		`req.Theme = &_w`,
-		// Plain string cookie: outer cookie guard, inner non-empty
-		// guard, take address of inner _v.
+		// plain string cookie: cookie guard, non-empty guard, address of _v
 		`if c, err := r.Cookie("sid"); err == nil {`,
 		`req.Sid = &_v`,
 	)
 }
 
-// TestGenerateTransportOptionalEnumScalarQuery covers the optional
-// alias-typed query binding. A field `sort Color? @query` becomes
-// `*Color` in Go; the query string yields a raw `string`, so a naive
-// `req.Sort = &_v` is a `*string` and refuses to compile against the
-// `*Color` field. The binder routes the raw string through the alias
-// cast into a fresh variable and addresses THAT variable.
+// An optional enum or scalar query field points at a cast copy of the raw string.
 func TestGenerateTransportOptionalEnumScalarQuery(t *testing.T) {
 	src := `package design
 
@@ -604,22 +522,17 @@ service S {
 	}
 	got := string(body)
 	mustParseGo(t, got)
-	// Optional enum → cast through alias type and address the new
-	// alias-typed variable.
 	mustContainAll(t, got,
 		`_w := types.Color(_v)`,
 		`req.Sort = &_w`,
 		`_w := types.Email(_v)`,
 		`req.Cc = &_w`,
-		// Plain *string still takes the address of the raw value.
+		// A plain *string takes the address of the raw value.
 		`req.Plain = &_v`,
 	)
 }
 
-// TestGenerateTransportDefaultEnum pins the enum-aware @default
-// emission: `@default(Active)` on a `Status`-typed field renders as
-// `req.Field = StatusActive` (the Go const buildEnumView produces),
-// not as the bare DSL identifier "Active" which wouldn't compile.
+// An enum @default pre-fills the member's Go constant.
 func TestGenerateTransportDefaultEnum(t *testing.T) {
 	src := `package design
 enum Status { Active  Inactive  Pending }
@@ -682,8 +595,7 @@ service FilesService {
 			t.Errorf("missing %q in handler:\n%s", want, body)
 		}
 	}
-	// Ensure header/cookie writes precede the body encoder so they hit the
-	// wire before WriteHeader implicitly fires.
+	// Headers are set before the encode, whose first write sends them.
 	if idx := strings.Index(body, "server.JSON().Encode"); idx >= 0 {
 		pre := body[:idx]
 		if !strings.Contains(pre, "w.Header().Set(\"etag\"") {
@@ -691,7 +603,6 @@ service FilesService {
 		}
 	}
 
-	// And the response struct should hide etag/sessionID from the JSON body.
 	typesOut, err := os.ReadFile(filepath.Join(root, "internal/types", "design", "types.go"))
 	if err == nil {
 		// types.go is generated separately; only assert when present.
@@ -702,13 +613,7 @@ service FilesService {
 	}
 }
 
-// TestGenerateTransportResponseHeaderCookieNamedArg pins the
-// explicit-name override on the response side. `@header("X-Y-Z")` /
-// `@cookie("session_id")` drive the wire name, not the Go field name -
-// identical to the request-side behaviour. So
-// `count string @header("X-Total-Count")` emits
-// `w.Header().Set("X-Total-Count", ...)`, keeping the canonical HTTP
-// name.
+// A response @header or @cookie name argument sets the wire name the handler writes.
 func TestGenerateTransportResponseHeaderCookieNamedArg(t *testing.T) {
 	src := `package design
 type ListReq { q string @query }
@@ -738,7 +643,6 @@ service Catalog {
 		`w.Header().Set("X-Total-Count", resp.Total)`,
 		`http.SetCookie(w, &http.Cookie{Name: "session_id", Value: resp.SessionID})`,
 	)
-	// Negative: the Go field name must NOT appear as the wire name.
 	for _, banned := range []string{
 		`w.Header().Set("total"`,
 		`Cookie{Name: "sessionID"`,
@@ -749,11 +653,8 @@ service Catalog {
 	}
 }
 
-// TestGenerateTransportResponseHeaderNonString pins the non-string
-// response @header / @cookie formatting: int / float / bool / enum
-// values are rendered to their wire string via strconv, optional
-// headers are nil-guarded, and array headers emit one Header().Add per
-// element. Plain strings still pass through untouched.
+// Non-string response headers and cookies are converted to their wire string, an optional
+// header is nil-guarded, and an array header adds one value per element.
 func TestGenerateTransportResponseHeaderNonString(t *testing.T) {
 	src := `package design
 enum Tier { Free = "free"  Pro = "pro" }
@@ -790,8 +691,7 @@ service S {
 		`w.Header().Set("X-Total-Count", strconv.Itoa(resp.Count))`,
 		`w.Header().Set("X-Ratio", strconv.FormatFloat(resp.Ratio, 'g', -1, 64))`,
 		`w.Header().Set("X-Tier", string(resp.Tier))`,
-		// Numeric scalar → cast to int64 then strconv; string scalar →
-		// string() conversion.
+		// A numeric scalar converts to int64 for strconv; a string scalar converts with string().
 		`w.Header().Set("X-Price", strconv.FormatInt(int64(resp.Price), 10))`,
 		`w.Header().Set("X-SKU", string(resp.Sku))`,
 		`if resp.NextPage != nil {`,
@@ -799,11 +699,11 @@ service S {
 		`for _, _v := range resp.Labels {`,
 		`w.Header().Add("X-Label", _v)`,
 		`http.SetCookie(w, &http.Cookie{Name: "flag", Value: strconv.FormatBool(resp.Active)})`,
-		// Plain string still writes the value directly (no conversion).
 		`http.SetCookie(w, &http.Cookie{Name: "plain", Value: resp.Plain})`,
 	)
 }
 
+// A non-body field is tagged json:"-" while a body field keeps its tag.
 func TestGenerateTypesNonBodyBindingsAreSkipped(t *testing.T) {
 	pkg := analyze(t, `package design
 type Req {
@@ -820,7 +720,6 @@ type Req {
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	// Each non-body-bound field must have json:"-" on the same line.
 	for _, ident := range []string{"ID", "Q", "Auth", "Sess"} {
 		if !lineHas(src, ident, `json:"-"`) {
 			t.Errorf("expected %q with json:\"-\" tag:\n%s", ident, src)
@@ -831,9 +730,7 @@ type Req {
 	}
 }
 
-// lineHas reports whether `src` has a line containing both `ident` and
-// `tag`. Used by the binding tests because gofmt may align field columns
-// with extra whitespace, defeating literal substring matches.
+// lineHas reports whether a line of src holds both ident and tag.
 func lineHas(src, ident, tag string) bool {
 	for _, line := range strings.Split(src, "\n") {
 		if strings.Contains(line, ident) && strings.Contains(line, tag) {
@@ -852,11 +749,7 @@ func TestGenerateTransportMissingPackageName(t *testing.T) {
 
 // ---------- routes ----------
 
-// TestGenerateRoutesPatterns pins the canonical routes-emit shape
-// (verb + path pattern, handler call, RegisterRoutes signature). The
-// snapshot beats listing 6 substring checks: a regression shows the
-// entire diverging hunk inline so the user immediately sees what
-// changed instead of grepping for one missing string.
+// The UserService routes file matches its golden.
 func TestGenerateRoutesPatterns(t *testing.T) {
 	pkg := analyze(t, handlerSampleDSL)
 	root := t.TempDir()
@@ -879,14 +772,7 @@ func TestGenerateRoutesMissingPackageName(t *testing.T) {
 	}
 }
 
-// TestGenerateRoutesMultipleMiddlewares pins the chaining order: when a
-// method declares `@middlewares(A, B, C)` AND its service declares
-// `@middlewares(S)`, the generated `srv.Handle` call lists service-
-// level middlewares first (outermost) followed by the method's, in
-// source order. Server.Handle wraps variadic middlewares right-to-left
-// so the first arg ends up the outermost frame at runtime - the route
-// line reads top-to-bottom the same way the request flows through
-// (Auth wraps RateLimit wraps RequestCounter wraps the handler).
+// A route lists service middlewares before the method's, in source order; the first is outermost.
 func TestGenerateRoutesMultipleMiddlewares(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -920,12 +806,7 @@ service S {
 	}
 }
 
-// TestGenerateRoutesMergesServicesSharingGroup pins the point of @group:
-// it lays out folders, so two services choosing one group share a
-// directory - and a directory holds exactly one routes.go. Both services'
-// methods must land in that single RegisterRoutes, through the one
-// transport package they also share. Emitting per service instead would
-// overwrite one set of routes with the other.
+// Services sharing a @group share one routes.go and one umbrella call.
 func TestGenerateRoutesMergesServicesSharingGroup(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -964,8 +845,7 @@ service Beta {
 	if !strings.Contains(src, "wires every Alpha and Beta endpoint") {
 		t.Errorf("doc comment should name every contributor:\n%s", src)
 	}
-	// The umbrella dispatches per DIRECTORY. One call per service would
-	// re-register every pattern in the shared file and panic http.ServeMux.
+	// The umbrella registers per directory: ServeMux panics on a pattern registered twice.
 	all, err := os.ReadFile(filepath.Join(root, "internal/routes/routes.go"))
 	if err != nil {
 		t.Fatal(err)
@@ -976,14 +856,8 @@ service Beta {
 	}
 }
 
-// TestGenerateRoutesMergedGroupKeepsPerServiceMiddleware is the
-// interaction test between the two things @group and inheritance each do:
-// several services merge into ONE routes.go, and each method's middleware
-// chain comes from its OWN service. Sharing a file must not share a chain -
-// Beta declares no middleware, so its routes carry none even though Alpha's
-// sit two lines above them in the same function. Both services also extend,
-// and Alpha's extend repeats the inherited Auth, so the dedup has to hold
-// inside a merged file too.
+// Services merged into one routes.go keep their own middleware chains, and a middleware an
+// extend repeats is still wrapped once.
 func TestGenerateRoutesMergedGroupKeepsPerServiceMiddleware(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -1050,13 +924,7 @@ extend service Beta {
 	}
 }
 
-// TestGenerateRoutesDedupsRepeatedMiddleware pins that a middleware named
-// at two inheritance layers is wrapped ONCE, at its outermost position. The
-// layers append rather than override, so `@middlewares(Auth)` on both the
-// primary service and an `extend` block of it - the natural way to write
-// "this block is authenticated too" - used to emit `svcCtx.Auth, svcCtx.Auth`
-// and run Auth twice per request. Dedup keeps the FIRST occurrence, so the
-// method-level RateLimit still lands inside the inherited Auth.
+// A middleware named at two inheritance layers is wrapped once, at its first (outermost) position.
 func TestGenerateRoutesDedupsRepeatedMiddleware(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -1098,11 +966,7 @@ extend service S {
 	}
 }
 
-// TestGenerateRoutesIgnoreMiddlewareClearsInherited pins the
-// `@ignoreMiddleware` opt-out: a method with this decorator must
-// NOT see the service-level chain. Combined with a method-level
-// `@middlewares(...)` it becomes "reset + replace" - the method
-// keeps only its own chain.
+// @ignoreMiddleware drops the inherited chain, leaving only the method's own middlewares.
 func TestGenerateRoutesIgnoreMiddlewareClearsInherited(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -1139,11 +1003,7 @@ service S {
 	}
 }
 
-// TestGenerateGroupNestsOutputNotRoute confirms `@group("admin/ops")` on a
-// service nests its generated transport handlers (and the errors helper) under
-// <transport>/<service>/<group>/ and points the route file's transport import
-// at that nested package - while the route pattern and OpenAPI path stay free
-// of the group. The route file itself stays flat at routes/<service>/.
+// @group replaces the service directory for transport and routes and stays out of the pattern.
 func TestGenerateGroupNestsOutputNotRoute(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -1168,9 +1028,7 @@ service AdminService {
 		t.Fatal(err)
 	}
 
-	// Route pattern carries no group, but the routes file itself lives in the
-	// group folder (the @group replaces the service name on disk, just like the
-	// transport handlers) and imports the group transport package.
+	// The routes file lives in the group folder and imports the group's transport.
 	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/admin/ops/routes.go"))
 	src := string(out)
 	mustParseGo(t, src)
@@ -1189,9 +1047,7 @@ service AdminService {
 		t.Errorf("@group leaked into the route pattern:\n%s", src)
 	}
 
-	// Handlers land under the group path (which replaces the service name on
-	// disk); error rendering is the framework's server.WriteError, so no
-	// per-package errors helper is emitted.
+	// Handlers land in the group folder.
 	for _, rel := range []string{
 		"internal/transport/admin/ops/list-all.go",
 		"internal/transport/admin/ops/health.go",
@@ -1205,11 +1061,7 @@ service AdminService {
 	}
 }
 
-// TestGenerateExtendGroupNestsPerBlock pins per-block @group: a primary block
-// and an extend block each carry their own @group, so the service's methods
-// split across two transport packages on disk - and the routes file follows the
-// same split, one routes file per group folder, each importing only its own
-// group's transport and registering only that group's methods.
+// An extend block with its own @group gets its own transport package and routes file.
 func TestGenerateExtendGroupNestsPerBlock(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -1233,8 +1085,7 @@ extend service Catalog {
 		t.Fatal(err)
 	}
 
-	// Primary method stays at the service directory; the extend block's
-	// method lands under its own group (which replaces the service name).
+	// The primary method stays in the service folder; the extend's lands in its group.
 	for _, rel := range []string{
 		"internal/transport/catalog/list-things.go",
 		"internal/transport/v2/list-things-v2.go",
@@ -1244,8 +1095,7 @@ extend service Catalog {
 		}
 	}
 
-	// Both handlers render errors through the framework's server.WriteError -
-	// no per-package helper, no cross-package transport import.
+	// The grouped handler renders errors through server.WriteError, with no per-package helper.
 	grouped, _ := os.ReadFile(filepath.Join(root, "internal/transport/v2/list-things-v2.go"))
 	if strings.Contains(string(grouped), "roottransport") {
 		t.Error("the grouped handler should not import a root transport package")
@@ -1255,10 +1105,7 @@ extend service Catalog {
 		t.Error("no per-package errors.go should be emitted; errors render via server.WriteError")
 	}
 
-	// Routes split per group, mirroring transport: the ungrouped primary method
-	// has its routes file at the service directory importing the root transport;
-	// the @group("v2") method has its own routes file under v2/ importing only
-	// the v2 transport. Neither file mentions the other group's package.
+	// Each routes file imports and registers only its own group's transport.
 	primaryRoutes, _ := os.ReadFile(filepath.Join(root, "internal/routes/catalog/routes.go"))
 	psrc := string(primaryRoutes)
 	mustParseGo(t, psrc)
@@ -1279,10 +1126,7 @@ extend service Catalog {
 	}
 }
 
-// TestGenerateExtendInheritsPrimaryGroup pins that an extend block WITHOUT its
-// own @group inherits the primary block's @group: its handlers, stubs and routes
-// land in the primary's group folder, not the ungrouped service root. An extend
-// that DOES declare a @group still overrides.
+// An extend without @group inherits the primary's; one with its own @group overrides it.
 func TestGenerateExtendInheritsPrimaryGroup(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -1311,8 +1155,6 @@ extend service Catalog {
 		t.Fatal(err)
 	}
 
-	// Primary + the ungrouped extend both land under the primary's "admin"
-	// group; the @group("legacy") extend overrides into its own folder.
 	for _, rel := range []string{
 		"internal/transport/admin/list-things.go",
 		"internal/transport/admin/inherited.go", // inherited the primary @group
@@ -1322,24 +1164,18 @@ extend service Catalog {
 			t.Errorf("expected generated file %s: %v", rel, err)
 		}
 	}
-	// The inherited method must NOT fall back to the ungrouped service root.
 	if _, err := os.Stat(filepath.Join(root, "internal/transport/catalog/inherited.go")); err == nil {
 		t.Error("ungrouped extend must inherit the primary @group, not land at the service root")
 	}
 
-	// One routes hub at the primary's group registers both primary and the
-	// inherited extend method.
+	// The primary group's routes file registers the inherited method too.
 	adminRoutes, _ := os.ReadFile(filepath.Join(root, "internal/routes/admin/routes.go"))
 	rsrc := string(adminRoutes)
 	mustParseGo(t, rsrc)
 	mustContainAll(t, rsrc, "transportAdmin.ListThings(svcCtx)", "transportAdmin.Inherited(svcCtx)")
 }
 
-// TestGenerateRoutesMethodLimits pins the runtime-limit wrapper for
-// methods declaring `@timeout` / `@maxBodySize`. Routes get wrapped
-// in `server.WithLimits(handler, server.Limits{...})` at the call
-// site; the routes file imports "time" because the emitted literal
-// uses time.Millisecond / time.Second helpers.
+// @timeout and @maxBodySize wrap the route in server.WithLimits.
 func TestGenerateRoutesMethodLimits(t *testing.T) {
 	src := `package design
 type Req { x string }
@@ -1364,11 +1200,7 @@ service S {
 	)
 }
 
-// TestGenerateRoutesPassthroughAppliesTimeout pins that `@timeout`
-// applies to a `@passthrough` route like any other: the limit only
-// derives a context deadline (server.Limits), so a streaming handler
-// that honours ctx.Done() stops cleanly and nothing is cut off on the
-// wire. `@maxBodySize` applies as before.
+// @timeout and @maxBodySize apply to a @passthrough route like any other.
 func TestGenerateRoutesPassthroughAppliesTimeout(t *testing.T) {
 	src := `package design
 service S {
@@ -1440,7 +1272,6 @@ func TestGenerateServiceScaffold(t *testing.T) {
 		}
 		mustParseGo(t, string(out))
 	}
-	// Ping has no request/response → method takes no args, returns error only.
 	pingSrc, _ := os.ReadFile(filepath.Join(dir, "ping.go"))
 	if !strings.Contains(string(pingSrc), "func (l *PingService) Ping() error {") {
 		t.Errorf("Ping logic signature mismatch:\n%s", pingSrc)
@@ -1451,13 +1282,8 @@ func TestGenerateServiceScaffold(t *testing.T) {
 	}
 }
 
+// A service stub renders generic request and response types with their type arguments.
 func TestGenerateServiceGenericInstantiation(t *testing.T) {
-	// `response Page<User>` must render generic args inline as
-	// `*types.Page[types.User]`. A bare `*types.Page` would fail to
-	// compile with "cannot use generic type Page[T any] without
-	// instantiation". Local type args pick up the canonical `types.`
-	// alias; scalar args, multi-arg generics, and nested
-	// instantiations flow through the same path.
 	src := `package design
 type User { id string }
 scalar Email string @format(email)
@@ -1491,7 +1317,7 @@ service S {
 		{"wrap.go", "(*types.Page[types.Envelope[types.User]], error)"},
 		// Multi-arg generic mixing struct + scalar.
 		{"pair.go", "(*types.Pair[types.User, types.Email], error)"},
-		// Generic on the REQUEST side too.
+		// Generic on the request side too.
 		{"mix.go", "(req *types.Page[types.User])"},
 		{"mix.go", "(*types.Envelope[types.User], error)"},
 	}
@@ -1564,8 +1390,7 @@ func TestPathHelpers(t *testing.T) {
 	if wire.IsBodyVerb("GET") || wire.IsBodyVerb("DELETE") {
 		t.Error("expected non-body verbs to be false")
 	}
-	// A malformed @prefix (no args / non-string arg) contributes nothing to
-	// the route; the method path stands alone.
+	// A malformed @prefix contributes nothing to the route.
 	svc := &ast.ServiceDecl{
 		Decorators: []*ast.Decorator{
 			{Name: "tags", Args: []*ast.DecoratorArg{{Value: &ast.StringLit{Value: "x"}}}},
@@ -1671,9 +1496,7 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 	mustParseGo(t, string(handler))
 	mustContainAll(t, string(handler),
 		"r.ParseMultipartForm(",
-		// Temp-file cleanup must follow the parse: handler-scoped removal
-		// releases disk before the response flush and covers panic paths
-		// that bypass net/http's end-of-response sweep.
+		// Handler-scoped cleanup frees temp files before the flush and on panic paths.
 		"defer func() { _ = r.MultipartForm.RemoveAll() }()",
 		`r.FormValue("note")`,
 		`r.FormFile("avatar")`,
@@ -1684,10 +1507,7 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 	}
 }
 
-// TestGenerateTransportFormExplicitWireName pins that an explicit
-// @form("wire_name") sets the runtime r.FormFile / r.FormValue key, not
-// the Go field name, so a client posting under the declared wire name
-// binds.
+// An explicit @form name is the key r.FormValue and r.FormFile read.
 func TestGenerateTransportFormExplicitWireName(t *testing.T) {
 	pkg := analyze(t, `package design
 type UploadReq {
@@ -1708,18 +1528,12 @@ service UploadService {
 		`r.FormValue("note_text")`,
 		`r.FormFile("avatar_file")`,
 	)
-	// The Go field names must NOT leak through as the form keys.
 	if strings.Contains(string(handler), `r.FormValue("caption")`) || strings.Contains(string(handler), `r.FormFile("pic")`) {
 		t.Errorf("explicit @form name ignored - form key fell back to the field name:\n%s", handler)
 	}
 }
 
-// TestRequestFieldsNestedCrossPkgMixin pins that semantic.FlattenFields collects a
-// field reached through a mixin nested INSIDE a cross-package mixin
-// (app.Req -> shared.Outer -> shared.Inner). The bare inner `Inner` must
-// be qualified as `shared.Inner`, or its field silently drops from the
-// binder / default pre-fill while OpenAPI (built from a merged package)
-// still advertises it.
+// semantic.FlattenFields collects a field from a mixin nested inside a cross-package mixin.
 func TestRequestFieldsNestedCrossPkgMixin(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
 		"shared/types.craftgo": `package shared
@@ -1752,12 +1566,7 @@ type Req { shared.Outer  own string }`,
 	}
 }
 
-// TestResolveRequestFieldsQualifiedRequestNestedMixin pins that a QUALIFIED
-// request type (`request shared.Holder`) has its bare nested mixin's fields
-// resolved and bound. The request type lives in `shared`, so its bare mixin
-// `Sub` resolves there - without threading that package as the flatten
-// prefix, `q` and `bod` were silently dropped from the binder while the
-// validator and the semantic path-param check still enforced them.
+// A qualified request type's bare nested mixin resolves in the request's package and binds.
 func TestResolveRequestFieldsQualifiedRequestNestedMixin(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
 		"shared/types.craftgo": `package shared
@@ -1799,9 +1608,7 @@ service S { post DoIt /h/{id} { request shared.Holder  response Resp } }`,
 	}
 }
 
-// TestGenerateTransportMultipartFileArray pins that a `file[]` field binds from
-// the repeated multipart parts (r.MultipartForm.File[name]) while an optional
-// `file?` in the same request uses the conditional single-file r.FormFile path.
+// A file[] field binds from MultipartForm.File and a file? field from r.FormFile.
 func TestGenerateTransportMultipartFileArray(t *testing.T) {
 	pkg := analyze(t, `package design
 type BatchReq {
@@ -1827,18 +1634,14 @@ service MediaService {
 	}
 	src := string(out)
 	mustParseGo(t, src)
-	// file[] binds from the multipart file-header slice.
 	mustContainAll(t, src, `req.Files = r.MultipartForm.File["files"]`)
-	// file? uses the conditional single-file path.
 	mustContainAll(t, src, `r.FormFile("cover")`, `req.Cover = header`)
-	// file[] must NOT fall through to the single-file r.FormFile path.
 	if strings.Contains(src, `r.FormFile("files")`) {
 		t.Errorf("file[] must bind from MultipartForm.File, not r.FormFile:\n%s", src)
 	}
 }
 
-// genRoutes writes pkg's per-directory routes files and the umbrella as a
-// single-package project.
+// genRoutes writes pkg's routes files and the umbrella as a single-package project.
 func genRoutes(t *testing.T, pkg *semantic.Package, cfg *config.Config, root string) error {
 	t.Helper()
 	if err := generateRoutes(pkg, cfg, root); err != nil {
@@ -1848,11 +1651,7 @@ func genRoutes(t *testing.T, pkg *semantic.Package, cfg *config.Config, root str
 	return generateProjectRoutesUmbrella(proj, cfg, root)
 }
 
-// The routes file imports `time` when a route renders a duration, and not
-// otherwise. A group segment whose name ends in `time` produces a handler
-// call like `transportUptime.Ping(svcCtx)` - deciding the import from the
-// rendered call text keeps `time` in a file that never names it, which
-// does not compile.
+// The routes file imports time only for a duration, not for a group name ending in time.
 func TestRoutesImportTimeFollowsTheDuration(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -1882,8 +1681,7 @@ service S {
 				t.Fatal(err)
 			}
 			src := string(out)
-			// mustParseGo asserts the import block matches what the file
-			// uses, so a stray `time` fails here rather than at go build.
+			// mustParseGo also fails on an unused time import.
 			mustParseGo(t, src)
 			if got := strings.Contains(src, `"time"`); got != c.want {
 				t.Errorf("imports time = %v, want %v:\n%s", got, c.want, src)

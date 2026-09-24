@@ -7,11 +7,7 @@ import (
 	"testing"
 )
 
-// The wiring package is what main.go calls, and main.go is generated once.
-// So Register has to exist with the same signature for every design - with
-// routes, with consumers, with both, with neither - or a design that later
-// gains or loses either leaves a frozen main.go calling something that is
-// no longer there.
+// Register keeps one signature for every design, since the gen-once main.go calls it.
 func TestWiringRegisterSurfaceIsTheSameForEveryDesign(t *testing.T) {
 	const httpSrc = `package web
 type Thing { id string }
@@ -62,7 +58,6 @@ type Unused { id string }`
 			}
 			got := readGen(t, dir, "internal/wiring/wiring.go")
 			mustParseGo(t, got)
-			// The signature is the fixed part; only the body varies.
 			mustContainAll(t, got,
 				"func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error) {",
 			)
@@ -74,10 +69,7 @@ type Unused { id string }`
 	}
 }
 
-// Register hands back a shutdown for every design, consumers or not. The
-// handle is what lets delivery be drained beside srv.Stop; adding it later
-// would mean changing a signature that main.go - generated once - already
-// calls, which is the migration this whole indirection exists to avoid.
+// Register returns a shutdown func for every design, with or without events.
 func TestWiringAlwaysReturnsAShutdown(t *testing.T) {
 	const httpSrc = `package web
 type Thing { id string }
@@ -105,9 +97,7 @@ service WebService {
 	}
 }
 
-// With no route left the umbrella is not written: an events-only design
-// has no per-service package to register, and the file an earlier run
-// left behind is the sweep's to take.
+// An events-only design writes no routes umbrella.
 func TestRoutesUmbrellaIsNotWrittenWithoutRoutes(t *testing.T) {
 	dir := t.TempDir()
 	cfg := eventsConfig()
@@ -121,11 +111,7 @@ func TestRoutesUmbrellaIsNotWrittenWithoutRoutes(t *testing.T) {
 	}
 }
 
-// main.go is written once with the wiring import baked in, and nothing
-// prunes a directory `output.wiring` used to name. Moving the key leaves
-// main.go compiling against the copy at the old path, whose body stops
-// tracking the design - silently, because both copies carry the same
-// exported surface.
+// A note fires when main.go imports a wiring package other than output.wiring.
 func TestWiringNoteWhenMainImportsAnotherWiringPackage(t *testing.T) {
 	cases := []struct {
 		name   string

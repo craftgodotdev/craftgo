@@ -42,10 +42,7 @@ func newFixtureConfig() *config.Config {
 	}
 }
 
-// TestProjectResolverLookupRouting pins the keying contract: local
-// symbols resolve under bare names, cross-package symbols only
-// under their qualified DSL form. Without this contract the
-// resolver collapses back into the local-only anti-pattern.
+// The resolver finds local symbols by bare name and other packages' only by qualified name.
 func TestProjectResolverLookupRouting(t *testing.T) {
 	r := buildProjectResolver(newFixtureProject(), newFixtureConfig(), "design")
 
@@ -117,16 +114,13 @@ func TestProjectResolverQualifierFor(t *testing.T) {
 		t.Errorf("import path = %q, want %q", path, "github.com/test/m/internal/types/shared")
 	}
 
-	// Bare ref: empty pair so the caller emits as-is without an
-	// import registration.
+	// Bare ref: no qualifier and no import.
 	q, path = r.QualifierFor(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"Order"}}})
 	if q != "" || path != "" {
 		t.Errorf("bare ref must yield empty pair; got (%q, %q)", q, path)
 	}
 
-	// Unknown package alias: prefix kept (still a qualified ref),
-	// import path empty (no CrossPkg entry) - caller decides whether
-	// emit is safe.
+	// Unknown package alias: the qualifier stays, the import path is empty.
 	q, path = r.QualifierFor(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"unknown", "X"}}})
 	if q != "unknown." {
 		t.Errorf("unknown-alias qualifier must still carry the prefix; got %q", q)
