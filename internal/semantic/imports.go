@@ -1,19 +1,5 @@
 package semantic
 
-// Cross-package import + qualified-ref resolution. Runs after every
-// file has been grouped into a package (by `package X` declaration)
-// and each package has been individually analysed. For every file we:
-//
-//  1. Walk `import` declarations and validate the path against the
-//     design filesystem.
-//  2. Walk every NamedTypeRef (in fields, mixin refs, method
-//     request/response, generic args, map keys/values) and resolve
-//     multi-part qualified names against the project's package set
-//     keyed by the `package X` declaration name.
-//
-// Aliases (`import alias "path"`) are parsed but DO NOT drive
-// resolution - qualified refs use the bare package name.
-
 import (
 	"fmt"
 
@@ -22,23 +8,17 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// refResolver carries the per-call state for cross-package resolution.
-// Kept private - external callers see only the [Project] result.
+// refResolver runs the project-wide checks and collects their diagnostics.
 type refResolver struct {
-	proj  *Project
-	diags []Diagnostic
-	// basePath is the project's openapi.basePath, needed to resolve a
-	// method's final route in [refResolver.checkProjectPathParams].
-	basePath string
-	// fileCase is the project's output.fileCase, already defaulted by
-	// [resolvedFileCase]. It names the directory an ungrouped service
-	// occupies, which [refResolver.checkProjectGroupCollision] compares
-	// against every declared @group.
+	proj     *Project
+	diags    []Diagnostic
+	basePath string // [Options.BasePath]
+	// fileCase is the defaulted output.fileCase, which names an ungrouped
+	// service's directory.
 	fileCase string
 }
 
-// processFile validates one file's imports + every qualified ref it
-// contains.
+// processFile checks one file's import paths and qualified type references.
 func (r *refResolver) processFile(f *ast.File, designRoot string) {
 	if f == nil {
 		return
@@ -53,8 +33,8 @@ func (r *refResolver) processFile(f *ast.File, designRoot string) {
 	}
 }
 
-// resolveImports walks f.Imports, validating each path against the
-// design root; resolution itself uses package names, not aliases.
+// resolveImports checks each import path against the design root. A
+// qualified reference names a package, never an import alias.
 func (r *refResolver) resolveImports(f *ast.File, designRoot string) {
 	currentPkg := ""
 	if f.Package != nil {
@@ -75,10 +55,7 @@ func (r *refResolver) resolveImports(f *ast.File, designRoot string) {
 				"import %q does not match any folder under the design root", path)
 			continue
 		}
-		// Self-import: `package X` importing a folder whose only
-		// `.craftgo` files also declare `package X` - the import is
-		// pulling files from itself. Detected when the imported
-		// folder's package name matches the current file.
+		// A folder named after the file's own package is a self-import.
 		if currentPkg != "" && currentPkg == folderPkg(path) {
 			r.diag(imp.Pos, lexer.SeverityWarning, CodeImportSelf,
 				"import %q resolves back into the current package %q (the files are merged anyway)",
@@ -87,8 +64,7 @@ func (r *refResolver) resolveImports(f *ast.File, designRoot string) {
 	}
 }
 
-// walkDeclRefs descends into a top-level declaration, applying the
-// qualified-ref check to every named type reference it contains.
+// walkDeclRefs checks every qualified type reference in d.
 func (r *refResolver) walkDeclRefs(d ast.Decl, currentPkg string) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
@@ -96,8 +72,6 @@ func (r *refResolver) walkDeclRefs(d ast.Decl, currentPkg string) {
 	case *ast.ErrorDecl:
 		r.walkBodyRefs(dd.Body, currentPkg)
 	case *ast.EventDecl:
-		// Same reference as a service-level event's payload, just declared
-		// outside one.
 		if dd.Payload != nil && dd.Payload.Type != nil {
 			r.walkNamedRef(dd.Payload.Type, currentPkg)
 		}
@@ -113,7 +87,7 @@ func (r *refResolver) walkDeclRefs(d ast.Decl, currentPkg string) {
 	}
 }
 
-// walkBodyRefs walks fields + mixin refs in a type/error body.
+// walkBodyRefs walks the field types and mixins of a type or error body.
 func (r *refResolver) walkBodyRefs(members []ast.TypeMember, currentPkg string) {
 	for _, m := range members {
 		switch v := m.(type) {
@@ -125,8 +99,7 @@ func (r *refResolver) walkBodyRefs(members []ast.TypeMember, currentPkg string) 
 	}
 }
 
-// walkTypeRef descends into a TypeRef, recursing through map keys,
-// values, and generic arguments.
+// walkTypeRef walks t, a map's key and value included.
 func (r *refResolver) walkTypeRef(t *ast.TypeRef, currentPkg string) {
 	if t == nil {
 		return
@@ -141,12 +114,9 @@ func (r *refResolver) walkTypeRef(t *ast.TypeRef, currentPkg string) {
 	}
 }
 
-// walkNamedRef applies the qualified-name validation to one named
-// reference and recurses through its generic arguments. Single-part
-// names are out of scope here - the per-package analyser already
-// resolves them. Multi-part names look up the prefix as a Package
-// name in the project; failures emit [CodeRefUnknownPackage] or
-// [CodeRefUnknownSymbol].
+// walkNamedRef walks n's generic arguments and, when n is qualified,
+// checks its package, symbol and generic arity. Bare names are checked
+// per package.
 func (r *refResolver) walkNamedRef(n *ast.NamedTypeRef, currentPkg string) {
 	if n == nil || n.Name == nil {
 		return
@@ -164,11 +134,6 @@ func (r *refResolver) walkNamedRef(n *ast.NamedTypeRef, currentPkg string) {
 		return
 	}
 	pkgName, sym := parts[0], parts[1]
-	// Self-qualified `currentPkg.Type` is redundant AND breaks codegen: the
-	// type / validate emitter prints the qualifier verbatim (`design.Email`)
-	// inside the `design` package, which is a self-import the package can't
-	// satisfy (`undefined: design`), and the field's validator is dropped.
-	// Reject it with the bare-name fix rather than ship non-compiling Go.
 	if pkgName == currentPkg && currentPkg != "" {
 		r.diag(n.Pos, lexer.SeverityError, CodeQualifiedRef,
 			"redundant self-qualification %q - a type in its own package is referenced by its bare name; write %q",
@@ -186,10 +151,7 @@ func (r *refResolver) walkNamedRef(n *ast.NamedTypeRef, currentPkg string) {
 			"package %q has no symbol %q", pkgName, sym)
 		return
 	}
-	// Arity check for qualified generic refs. The per-package generics
-	// pass (checkGenerics) skips qualified names - it only sees the
-	// local symbol table - so this is the single site that catches
-	// `shared.Page` (declared as `Page<T>`) being used without `<…>`.
+	// The per-package generics check skips qualified refs.
 	if td := target.Types[sym]; td != nil {
 		want := len(td.TypeParams)
 		got := len(n.Args)
@@ -204,9 +166,8 @@ func (r *refResolver) walkNamedRef(n *ast.NamedTypeRef, currentPkg string) {
 	}
 }
 
-// packageHasSymbol reports whether sym is declared in pkg's symbol
-// tables. We accept any kind (type, enum, error, scalar) - DSL
-// resolution doesn't distinguish at the reference site.
+// packageHasSymbol reports whether pkg declares sym as a type, enum, error
+// or scalar.
 func packageHasSymbol(pkg *Package, sym string) bool {
 	if pkg == nil {
 		return false
@@ -226,19 +187,14 @@ func packageHasSymbol(pkg *Package, sym string) bool {
 	return false
 }
 
-// folderPkg returns the conventional `package X` name a folder is
-// expected to declare - by convention, the last path segment. Used
-// for self-import detection without re-parsing the folder's files.
-// A folder whose actual `package X` declaration diverges from this
-// convention will not trip the warning, which is fine: the
-// declaration is the source of truth and the import is informational.
+// folderPkg returns the package name a folder conventionally declares: its
+// last path segment.
 func folderPkg(importPath string) string {
 	return idents.LastSegment(importPath)
 }
 
-// isEscapingPath reports whether the import path uses syntax that
-// would escape the design root or signal an unsupported absolute
-// reference.
+// isEscapingPath reports whether p is absolute or its first segment is `.`
+// or `..`.
 func isEscapingPath(p string) bool {
 	if len(p) == 0 {
 		return false
@@ -255,15 +211,8 @@ func isEscapingPath(p string) bool {
 	return p == ".." || p == "."
 }
 
-// diag is a thin wrapper that appends a diagnostic with End = Pos
-// and returns a pointer to the freshly-stored entry so callers can
-// attach Related links inline (matching [analyzer.diag]). Cross-pkg
-// diagnostics don't have a clean trailing position the way decorator
-// names do; the LSP renders an empty range as a single column
-// underline.
-//
-// Do not retain the returned pointer past the next r.diag call;
-// slice growth invalidates it.
+// diag appends a diagnostic at pos and returns a pointer into r.diags for
+// setting Related; the pointer is invalid after the next append.
 func (r *refResolver) diag(pos lexer.Position, sev lexer.Severity, code, format string, args ...any) *Diagnostic {
 	r.diags = append(r.diags, Diagnostic{
 		Pos:      pos,

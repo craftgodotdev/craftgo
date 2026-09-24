@@ -1,4 +1,3 @@
-// Decorator placement checks (decl, field, scope).
 package semantic
 
 import (
@@ -15,8 +14,7 @@ func (a *analyzer) checkDecoratorPlacement(files []*ast.File) {
 	}
 }
 
-// checkDeclPlacement dispatches placement checks for one top-level
-// declaration plus every nested scope it owns.
+// checkDeclPlacement checks the decorators of d and of every scope nested in it.
 func (a *analyzer) checkDeclPlacement(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
@@ -29,10 +27,6 @@ func (a *analyzer) checkDeclPlacement(d ast.Decl) {
 		}
 	case *ast.ErrorDecl:
 		a.checkPlacement(LvlError, "error "+dd.Name, dd.Decorators)
-		// Error bodies are server-emitted, so binding decorators
-		// (`@path`, `@query`, ...) and input-validators (`@minLength`,
-		// `@pattern`, ...) are rejected via the narrower
-		// [LvlErrorField] site.
 		a.checkFieldPlacement(LvlErrorField, dd.Name, dd.Body)
 	case *ast.ScalarDecl:
 		a.checkPlacement(LvlScalar, "scalar "+dd.Name, dd.Decorators)
@@ -41,9 +35,7 @@ func (a *analyzer) checkDeclPlacement(d ast.Decl) {
 	case *ast.EventDecl:
 		a.checkPlacement(LvlEvent, "event "+dd.Name, dd.Decorators)
 	case *ast.ServiceDecl:
-		// `extend service` cannot carry service-level decorators (rejected
-		// by [mergeServices]); we still walk methods so placement on
-		// extended methods is checked.
+		// mergeServices checks the levels of an extend block's own decorators.
 		if !dd.Extend {
 			a.checkPlacement(LvlService, "service "+dd.Name, dd.Decorators)
 		}
@@ -53,11 +45,8 @@ func (a *analyzer) checkDeclPlacement(d ast.Decl) {
 	}
 }
 
-// checkFieldPlacement applies the placement check to every Field in a
-// type or error body. Mixin members carry no decorators and are skipped.
-// site is [LvlField] for type bodies and [LvlErrorField] for error
-// bodies - the latter rejects request-binding and input-validator
-// decorators that don't make sense on server-emitted payloads.
+// checkFieldPlacement checks each field's decorators against site:
+// [LvlField] in a type body, [LvlErrorField] in an error body.
 func (a *analyzer) checkFieldPlacement(site Level, parent string, members []ast.TypeMember) {
 	for _, m := range members {
 		f, ok := m.(*ast.Field)
@@ -68,15 +57,8 @@ func (a *analyzer) checkFieldPlacement(site Level, parent string, members []ast.
 	}
 }
 
-// checkPlacement is the leaf: for every decorator in decs, look up the
-// registry and emit `decorator/unknown` or `decorator/placement` as
-// appropriate. site is the bit for the current declaration site;
-// scopeLabel is a human-readable phrase for the diagnostic message
-// (e.g. "field User.name").
-//
-// Nil entries are tolerated for symmetry with [checkDecoratorScope] -
-// the parser doesn't produce them today but the defensive guard keeps a
-// future regression from crashing the analyser.
+// checkPlacement reports each decorator in decs that is unknown, removed or
+// not allowed at site; scopeLabel names the site ("field User.name").
 func (a *analyzer) checkPlacement(site Level, scopeLabel string, decs []*ast.Decorator) {
 	for _, d := range decs {
 		if d == nil {

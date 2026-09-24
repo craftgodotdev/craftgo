@@ -1,10 +1,3 @@
-// Resolved field IR: the single, LAYER-AGNOSTIC view of a
-// field's resolved facts - what the field MEANS in the DSL (its category,
-// underlying primitive, home package, nilability), independent of how Go
-// renders it. The LSP and the semantic checks read these directly; codegen
-// derives the Go-specific bits (the *T pointer wrap, the json tag, the Go
-// type string) from them. Computing each fact ONCE here is what stops the
-// "semantic resolves a scalar one way, codegen another" class of drift.
 package semantic
 
 import (
@@ -13,12 +6,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// NilableScalarPrimitive reports whether a scalar's underlying primitive
-// lowers to a Go type that already holds nil (so a scalar over it renders
-// without a pointer wrap): the `bytes` slice and the `any` interface. It is
-// the single authority both the resolved IR ([ResolveField]) and codegen's
-// pointer-wrap decision cite, so the two layers can't disagree on whether a
-// scalar field needs a `*T`.
+// NilableScalarPrimitive reports whether a scalar over prim holds nil
+// without a pointer: true for `bytes` and `any`.
 func NilableScalarPrimitive(prim string) bool {
 	sp, ok := prims.Lookup(prim)
 	return ok && (sp.Kind == prims.Bytes || sp.Kind == prims.Any)
@@ -29,7 +18,7 @@ type FieldCategory int
 
 const (
 	CatUnknown   FieldCategory = iota
-	CatPrimitive               // string / int* / uint* / float* / bool
+	CatPrimitive               // string / int* / uint* / float* / bool / datetime
 	CatBytes                   // the `bytes` builtin (Go []byte)
 	CatAny                     // the `any` builtin (Go interface{})
 	CatRawBytes                // `bytes @format(raw)` (Go wire.Raw)
@@ -41,73 +30,47 @@ const (
 	CatMap                     // a map
 )
 
-// ResolvedField is the layer-agnostic resolved view of one field. It is the
-// floor every stage stands on: a fact read from here cannot disagree with
-// another stage's, because it was computed once.
+// ResolvedField is what one field means in the DSL, independent of any
+// target's syntax.
 type ResolvedField struct {
-	// Field is the source field (post generic-substitution / mixin
-	// promotion); stages needing the raw decorators or type ref read it here.
+	// Field is the source field, after generic substitution and mixin promotion.
 	Field *ast.Field
 
 	DSLName  string        // the source field identifier (wire/json base name)
 	Category FieldCategory // the resolved type category
 
-	// ResolvedPrim is the underlying DSL primitive: the primitive itself for
-	// a primitive/bytes/any field, the `scalar`'s primitive for a scalar
-	// field, and the `enum`'s backing primitive for an enum field - resolved
-	// through the declaring package, so a `lib.Colour` ref reports what
-	// `lib` declared. "" for struct / array / map / file / unresolved.
+	// ResolvedPrim is the DSL primitive behind a primitive, bytes, any,
+	// scalar or enum field, as its declaring package defines it; "" otherwise.
 	ResolvedPrim string
 
-	// HomePkg is the package the field's named type lives in - the qualifier
-	// of a `lib.X` ref, or the package a bare ref was resolved against (which,
-	// for a field promoted across a package boundary, is the mixin's home, NOT
-	// the using package). "" for a builtin primitive or an unresolved ref.
+	// HomePkg is the package a named type resolves in: the qualifier of a
+	// `lib.X` ref, else the resolving package; "" for a built-in or raw field.
 	HomePkg string
 
-	// IsNilable reports whether the Go type holds nil directly (slice, map,
-	// bytes, raw, any, file, or a scalar over a nilable primitive), so an
-	// optional `?` / `@nullable` use of it needs no redundant pointer wrap.
-	// This is the fact codegen's `*T` decision and the cross-field presence
-	// check must agree on. [CatRawBytes] is nilable like the slice it is:
-	// a nil wire.Raw is the absent value and an explicit `null` arrives as
-	// the four bytes `null`, so the two stay apart on their own. A pointer
-	// would lose them: encoding/json nils a pointer on a JSON `null`
-	// without ever calling UnmarshalJSON.
+	// IsNilable reports whether the Go type holds nil itself, so `?` adds no
+	// pointer. A raw field's nil means absent; a JSON null arrives as `null` bytes.
 	IsNilable bool
 
-	// Name is the identifier the target renders the field with, supplied by
-	// the target's own dedup rule during flattening so a promoted field
-	// keeps the name it has in its declaring struct.
+	// Name is the target's identifier for the field, from the [LevelNames]
+	// passed to [ResolveFields]; empty without one.
 	Name string
 
-	// Binding is where the value rides, after request auto-binding.
-	Binding wire.Binding
-	// OnWireBody reports whether the field appears as a property of the
-	// JSON body.
-	OnWireBody bool
-	// AutoBound reports that request resolution promoted an un-decorated
-	// field to @path / @query rather than the field declaring it. Stages use
-	// it to tell an explicit binding that fails to lower (a hard error) from
-	// an auto-promoted field that merely cannot ride the wire (skipped
-	// silently). Always false for response and explicitly bound fields.
+	// Binding is where the value rides; [RequestFields] applies auto-binding.
+	Binding    wire.Binding
+	OnWireBody bool // a property of the JSON body
+	// AutoBound reports that [RequestFields] bound the field to @path or
+	// @query without a binding decorator.
 	AutoBound bool
 
-	// NeedsNilGuard reports that a constraint check must guard before
-	// len()/deref: the field is optional or @nullable.
-	NeedsNilGuard bool
+	NeedsNilGuard bool // optional or @nullable
 
 	HasDefault  bool // carries @default
 	DefaultWire any  // the resolved default as a wire value (enum member -> wire)
 	HasDefValue bool // a default value resolved
 
-	// SpecRequired: the field belongs in the document's required[] (not
-	// optional, no @default). RuntimeEnforced: a presence check is emitted
-	// for it (not optional, not @sensitive). Stored side by side so each
-	// stage reads ONE answer and a test can assert their relationship as a
-	// visible invariant rather than an emergent property of separate
-	// predicates. They differ by design on @default (excluded from
-	// SpecRequired) and on @sensitive (excluded from RuntimeEnforced).
+	// SpecRequired puts the field in the document's required list (no `?`,
+	// no @default); RuntimeEnforced emits a presence check (not optional,
+	// not @sensitive).
 	SpecRequired    bool
 	RuntimeEnforced bool
 }
@@ -118,11 +81,9 @@ func FieldIsOptional(f *ast.Field) bool {
 	return f != nil && f.Type != nil && (f.Type.Optional || ast.HasDecorator(f.Decorators, "nullable"))
 }
 
-// ResolveField computes the layer-agnostic facts for a single field. pkg is
-// the field's HOME package - for a bare named ref it is resolved against pkg,
-// so a field promoted from a sibling-package mixin must be resolved with that
-// mixin's package as pkg (not the using package). proj resolves a qualified
-// `lib.X` ref against its named package.
+// ResolveField resolves f's facts. A bare type name resolves in pkg, so a
+// field promoted from another package's mixin needs that package; a
+// qualified `lib.X` resolves through proj.
 func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 	rf := ResolvedField{Field: f}
 	if f != nil {
@@ -143,12 +104,12 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 	t := f.Type
 	if t.Array {
 		rf.Category = CatArray
-		rf.IsNilable = true // a Go slice holds nil directly
+		rf.IsNilable = true
 		return rf
 	}
 	if t.Map != nil {
 		rf.Category = CatMap
-		rf.IsNilable = true // a Go map holds nil directly
+		rf.IsNilable = true
 		return rf
 	}
 	if t.Named == nil || t.Named.Name == nil {
@@ -156,7 +117,7 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 	}
 	parts := t.Named.Name.Parts
 	if len(parts) == 0 {
-		return rf // a half-typed ref the editor is still holding open
+		return rf
 	}
 	name := parts[len(parts)-1]
 	homePkg := pkg
@@ -190,9 +151,7 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 	if homePkg != nil {
 		if sd, ok := homePkg.Scalars[name]; ok && sd != nil {
 			if sd.Primitive == "bytes" && (HasRawFormat(sd.Decorators) || HasRawFormat(f.Decorators)) {
-				// A scalar over raw bytes names the same Go type a bare
-				// raw field lowers to, so the field IS raw - the scalar
-				// is the design's name for it, not a second type.
+				// A scalar over raw bytes is a raw field.
 				rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatRawBytes, sd.Primitive, true, ""
 				return rf
 			}
@@ -209,5 +168,5 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 			return rf
 		}
 	}
-	return rf // unresolved (e.g. a generic type-param or a missing ref)
+	return rf // unresolved: a type parameter or a missing ref
 }

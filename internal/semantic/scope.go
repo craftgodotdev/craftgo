@@ -6,26 +6,22 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// packageNamed returns the project package declared as `package name`,
-// or nil when the project has none.
+// packageNamed returns the project's package called name, or nil.
 func (a *analyzer) packageNamed(name string) *Package {
 	return a.proj.Packages[name]
 }
 
-// middlewareDeclared reports whether name (bare or `pkg.Name`) is a
-// declared middleware.
+// middlewareDeclared reports whether name, bare or `pkg.Name`, is a declared middleware.
 func (a *analyzer) middlewareDeclared(name string) bool {
 	return a.proj.Lookup(a.pkg.Name, name, MiddlewareDecls) != nil
 }
 
-// errorDeclared reports whether name (bare or `pkg.Name`) is a declared
-// error type.
+// errorDeclared reports whether name, bare or `pkg.Name`, is a declared error.
 func (a *analyzer) errorDeclared(name string) bool {
 	return a.proj.Lookup(a.pkg.Name, name, ErrorDecls) != nil
 }
 
-// sortedNames returns the keys of m in alphabetical order so a pass emits
-// its diagnostics in a stable order.
+// sortedNames returns the keys of m in sorted order.
 func sortedNames[V any](m map[string]V) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
@@ -35,9 +31,8 @@ func sortedNames[V any](m map[string]V) []string {
 	return out
 }
 
-// primaryServiceElsewhere returns the package and declaration of a
-// primary `service name` declared outside the analyser's own package,
-// or ("", nil) when no other package declares one.
+// primaryServiceElsewhere returns the package and declaration of a primary
+// `service name` in another package, or ("", nil).
 func (a *analyzer) primaryServiceElsewhere(name string) (string, *ast.ServiceDecl) {
 	for _, pkgName := range sortedNames(a.proj.Packages) {
 		pkg := a.proj.Packages[pkgName]
@@ -51,10 +46,8 @@ func (a *analyzer) primaryServiceElsewhere(name string) (string, *ast.ServiceDec
 	return "", nil
 }
 
-// refHome splits a type reference into the package it resolves in and
-// the symbol name: a bare name lives in the analyser's own package, a
-// qualified `pkg.Name` in pkg. ok is false for a reference with more
-// than one qualifier.
+// refHome splits a reference into its package (the analyser's own for a
+// bare name) and symbol; ok is false for more than one qualifier.
 func (a *analyzer) refHome(n *ast.QualifiedIdent) (pkgName, name string, ok bool) {
 	if n == nil || len(n.Parts) == 0 || len(n.Parts) > 2 {
 		return "", "", false
@@ -65,8 +58,8 @@ func (a *analyzer) refHome(n *ast.QualifiedIdent) (pkgName, name string, ok bool
 	return a.pkg.Name, n.Parts[0], true
 }
 
-// refDisplay renders a resolved (package, name) pair the way the source
-// spells it: bare inside the analyser's own package, qualified elsewhere.
+// refDisplay spells (pkgName, name) bare in the analyser's own package and
+// qualified elsewhere.
 func (a *analyzer) refDisplay(pkgName, name string) string {
 	if pkgName == a.pkg.Name {
 		return name
@@ -74,10 +67,8 @@ func (a *analyzer) refDisplay(pkgName, name string) string {
 	return pkgName + "." + name
 }
 
-// resolveNamed returns the package a named type reference resolves in and
-// the symbol it names: a bare name resolves in homePkg, a qualified
-// `pkg.Name` in pkg. The package is nil when the project declares none
-// by that name.
+// resolveNamed returns the package n resolves in (homePkg for a bare name)
+// and the symbol it names; the package is nil when the project has none.
 func (a *analyzer) resolveNamed(homePkg string, n *ast.NamedTypeRef) (*Package, string) {
 	if n == nil || n.Name == nil {
 		return nil, ""
@@ -91,8 +82,8 @@ func (a *analyzer) resolveNamed(homePkg string, n *ast.NamedTypeRef) (*Package, 
 	return nil, ""
 }
 
-// lookupScalarIn returns the scalar declaration n names - a bare name
-// resolved in homePkg, a qualified `pkg.Name` in pkg - or nil.
+// lookupScalarIn returns the scalar n names, a bare name resolving in
+// homePkg, or nil.
 func (a *analyzer) lookupScalarIn(homePkg string, n *ast.NamedTypeRef) *ast.ScalarDecl {
 	pkg, sym := a.resolveNamed(homePkg, n)
 	if pkg == nil {
@@ -120,9 +111,8 @@ func (a *analyzer) lookupEnum(n *ast.NamedTypeRef) *ast.EnumDecl {
 	return a.lookupEnumIn(a.pkg.Name, n)
 }
 
-// primOf returns the primitive a non-collection named type lowers to:
-// the primitive behind a scalar (bare or qualified), otherwise the name
-// as spelled. "" when t is not a named type.
+// primOf returns the primitive of the scalar t names, else t's name as
+// spelled; "" when t is not a named type.
 func (a *analyzer) primOf(t *ast.TypeRef) string {
 	if t == nil || t.Named == nil || t.Named.Name == nil {
 		return ""

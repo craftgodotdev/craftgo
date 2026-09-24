@@ -6,15 +6,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
-// checkImports validates per-file import sections for redundancy and
-// alias collisions. The two diagnostics are complementary:
-//
-//   - [CodeImportDuplicate]    - same path imported twice in one file.
-//   - [CodeImportAliasConflict] - two imports share the same alias
-//     (explicit or implicit), making qualified references ambiguous.
-//
-// Both are file-scoped: a project that imports `shared` from two
-// different files is fine; the same file doing it twice is not.
+// checkImports reports an import path, or an alias (explicit or implicit),
+// repeated within one file.
 func (a *analyzer) checkImports(files []*ast.File) {
 	for _, f := range files {
 		seenPath := map[string]*ast.Import{}
@@ -43,9 +36,8 @@ func (a *analyzer) checkImports(files []*ast.File) {
 	}
 }
 
-// importImplicitAlias returns the trailing path segment of an import
-// path - the alias the DSL exposes when the user did not write one
-// explicitly. Mirrors [importAliasSet].
+// importImplicitAlias returns the alias of an import written without one:
+// its last path segment.
 func importImplicitAlias(path string) string {
 	for i := len(path) - 1; i >= 0; i-- {
 		if path[i] == '/' {
@@ -55,21 +47,8 @@ func importImplicitAlias(path string) string {
 	return path
 }
 
-// checkLocalTypeRefs walks every NamedTypeRef in fields, mixins,
-// scalar primitives, generic args, method request/response types, and
-// middleware param types - for each single-segment name (no `pkg.`
-// prefix) it verifies the name resolves to either a built-in
-// primitive or a top-level declaration in the current package. The
-// qualified-ref pass in imports.go covers the multi-segment case.
-//
-// Generic type parameters (`<T>` declared on a TypeDecl) are
-// recognised inside that decl's body so `Page<T> { items T[] }` does
-// not flag `T` as unknown. Single-segment names that match an
-// import alias (or the implicit alias derived from the import path)
-// are also skipped - the parser's recovery for malformed qualified
-// refs (`shared.` with no symbol) leaves a single-part `shared` in
-// the AST, and reporting that as an "unknown type" would mislead the
-// user away from the real "expected identifier" defect.
+// checkLocalTypeRefs checks every bare type name in type and error bodies,
+// event payloads and method requests and responses.
 func (a *analyzer) checkLocalTypeRefs(files []*ast.File) {
 	for _, f := range files {
 		imports := importAliasSet(f.Imports)
@@ -85,14 +64,8 @@ func (a *analyzer) checkLocalTypeRefs(files []*ast.File) {
 					a.checkRefsInMember(m, nil, imports)
 				}
 			case *ast.ScalarDecl:
-				// Scalar primitives are intentionally NOT validated
-				// here. The
-				// type-compat pass tolerates unknown spellings on
-				// purpose so future primitive additions don't break
-				// projects that pulled them in via dependencies.
+				// checkScalarTypeCompat checks a scalar's primitive.
 			case *ast.EventDecl:
-				// A contract declared at file level still names a payload
-				// type, and it resolves exactly like one inside a service.
 				if v.Payload != nil && v.Payload.Type != nil {
 					a.checkLocalNamedRef(v.Payload.Type, nil, imports)
 				}
@@ -110,11 +83,8 @@ func (a *analyzer) checkLocalTypeRefs(files []*ast.File) {
 	}
 }
 
-// importAliasSet collects every name that can legally appear as a
-// qualifier in `pkg.Type`. Each import contributes either its explicit
-// alias (`import x "..."` → `x`) or the trailing segment of its path
-// (`import "from/x/y/z"` → `z`). Returns nil for empty input so callers
-// can pass the result through cheaply.
+// importAliasSet returns each import's alias, else its last path segment;
+// nil for no imports.
 func importAliasSet(imps []*ast.Import) map[string]bool {
 	if len(imps) == 0 {
 		return nil
@@ -139,9 +109,7 @@ func importAliasSet(imps []*ast.Import) map[string]bool {
 	return out
 }
 
-// paramSet builds a quick-lookup set of type parameter names so the
-// recursive type-ref walker can treat them as defined inside the
-// generic body.
+// paramSet returns params as a set; nil when there are none.
 func paramSet(params []string) map[string]bool {
 	if len(params) == 0 {
 		return nil
@@ -153,8 +121,7 @@ func paramSet(params []string) map[string]bool {
 	return out
 }
 
-// checkRefsInMember dispatches on the type-body member shape - a
-// [ast.Field] carries a TypeRef; an [ast.Mixin] is a NamedTypeRef on its own.
+// checkRefsInMember checks a field's type or a mixin's reference.
 func (a *analyzer) checkRefsInMember(m ast.TypeMember, typeParams, imports map[string]bool) {
 	switch v := m.(type) {
 	case *ast.Field:
@@ -164,9 +131,8 @@ func (a *analyzer) checkRefsInMember(m ast.TypeMember, typeParams, imports map[s
 	}
 }
 
-// checkLocalTypeRef descends into compound shapes (`map<K, V>`, generic
-// arguments, array/optional suffixes) so every leaf ident is validated
-// exactly once.
+// checkLocalTypeRef checks every bare name in t, map keys, values and
+// generic arguments included.
 func (a *analyzer) checkLocalTypeRef(t *ast.TypeRef, typeParams, imports map[string]bool) {
 	if t == nil {
 		return
@@ -181,21 +147,9 @@ func (a *analyzer) checkLocalTypeRef(t *ast.TypeRef, typeParams, imports map[str
 	}
 }
 
-// checkLocalNamedRef handles the leaf case: when the qualified name has
-// only one segment, it must be a builtin OR a declared TYPE-position
-// symbol OR (for generic instantiation contexts) a type parameter in
-// scope OR an import alias (the parser's recovery from a half-typed
-// `pkg.` shape leaves a bare single-part `pkg` in the AST).
-//
-// Error declarations are deliberately NOT accepted as a type-position
-// match even though they live in the same package. Errors are only
-// valid inside `@errors(...)` decorator args (handled separately by
-// [checkErrorsRef]); allowing them here would let a user write
-// `field someUser UserNotFound` which compiles but produces a
-// generated struct embedding an HTTP error type - a confusing
-// category mistake. The diagnostic that fires when an error name
-// is used as a field type carries an explicit hint pointing the
-// user at `@errors(<name>)`.
+// checkLocalNamedRef checks n's arguments and, when n is bare, that it
+// names a built-in, a type parameter in scope, or a type, enum or scalar
+// of this package; an error or an import alias gets its own diagnostic.
 func (a *analyzer) checkLocalNamedRef(n *ast.NamedTypeRef, typeParams, imports map[string]bool) {
 	if n == nil || n.Name == nil {
 		return
@@ -208,9 +162,7 @@ func (a *analyzer) checkLocalNamedRef(n *ast.NamedTypeRef, typeParams, imports m
 	}
 	name := n.Name.Parts[0]
 	if name == "object" {
-		// `object` is in the builtin spelling table but its Go renderer emits
-		// an undefined `object` type and a dangling OpenAPI $ref - it is a
-		// broken half-alias. Point the user at the forms that actually work.
+		// `object` is a built-in spelling with no Go or OpenAPI form.
 		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
 			"`object` is not a usable field type - use `any` for an arbitrary JSON value, or `map<string, V>` / a declared `type` for a structured object")
 		return
@@ -231,12 +183,7 @@ func (a *analyzer) checkLocalNamedRef(n *ast.NamedTypeRef, typeParams, imports m
 		return
 	}
 	if imports != nil && imports[name] {
-		// Bare alias used in a type position - almost always a typo
-		// for `alias.SomeType`, sometimes the parser's recovery from
-		// a malformed `alias.` literal (in which case a parse error
-		// already fires at the trailing dot). Either way the right
-		// diagnostic points at the bare name and tells the user they
-		// need a member after it.
+		// The parser also leaves a bare alias for a half-typed `alias.`.
 		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
 			"%q is an imported package, not a type - qualify it as %q.<TypeName>",
 			name, name)
@@ -247,11 +194,8 @@ func (a *analyzer) checkLocalNamedRef(n *ast.NamedTypeRef, typeParams, imports m
 		name, a.pkg.Name)
 }
 
-// isLocalType reports whether name resolves to a TYPE-position symbol
-// in the current package - types, enums, or scalars. Errors are
-// EXCLUDED on purpose: they belong only in `@errors(...)` and are
-// surfaced with a dedicated diagnostic in [checkLocalNamedRef] rather
-// than collapsed into the generic "unknown type" message.
+// isLocalType reports whether this package declares name as a type, enum
+// or scalar.
 func (a *analyzer) isLocalType(name string) bool {
 	if _, ok := a.pkg.Types[name]; ok {
 		return true

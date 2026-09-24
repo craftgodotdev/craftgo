@@ -2,14 +2,9 @@ package semantic
 
 import "github.com/craftgodotdev/craftgo/internal/ast"
 
-// Resolver is the cross-package symbol table a generator resolves
-// qualified references against. Declarations in the package being
-// generated are keyed bare (`Order`); everything else by its qualified
-// DSL form (`shared.Order`), so a reference resolves the same way it is
-// spelled in the design.
-//
-// Lookups are nil-tolerant: `(*Resolver)(nil)` is a usable zero value
-// that always misses, so callers need no guard.
+// Resolver is a project's symbol table keyed as references are spelled:
+// the current package's declarations bare (`Order`), every other
+// package's qualified (`shared.Order`). A nil *Resolver misses every lookup.
 type Resolver struct {
 	// Proj is the analysed project the tables were built from.
 	Proj        *Project
@@ -55,8 +50,7 @@ func NewResolver(proj *Project, currentPkg string) *Resolver {
 	}
 }
 
-// ResolverFor returns r, or a resolver over pkg alone when the caller has
-// no project context, so every lookup goes through one table set.
+// ResolverFor returns r, or a resolver over pkg alone when r is nil.
 func ResolverFor(pkg *Package, r *Resolver) *Resolver {
 	if r != nil {
 		return r
@@ -72,8 +66,7 @@ func (r *Resolver) Project() *Project {
 	return r.Proj
 }
 
-// LookupType returns the type bound to name (bare for local, qualified
-// `pkg.Name` for cross-package), or nil when no match.
+// LookupType returns the type name spells (bare or `pkg.Name`), or nil.
 func (r *Resolver) LookupType(name string) *ast.TypeDecl {
 	if r == nil {
 		return nil

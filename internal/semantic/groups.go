@@ -5,13 +5,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
-// Which `@group` a service member belongs to. The group decides where a
-// member's artefacts land and how a document tags it, so both answers come
-// from here.
-
-// MethodGroupOf returns the @group of the block that declared m (primary or an
-// extend), or "" when ungrouped / not found. The map-free form for callers
-// that need one method's group without building the whole table.
+// MethodGroupOf returns the @group of the block that declares m (an extend
+// block without one inherits the primary's), or "" when none applies.
 func MethodGroupOf(svc *ServiceInfo, m *ast.Method) string {
 	if svc == nil || m == nil {
 		return ""

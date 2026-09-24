@@ -1,25 +1,5 @@
 package semantic
 
-// Path resolution validation. Runs after services are merged, so we
-// have the final method list per service and can compute each method's
-// final route by joining (basePath, @prefix, @group, methodPath). The
-// pass surfaces five distinct issues:
-//
-//   - [CodePathBaseFormat]     - basePath malformed (warning).
-//   - [CodePathCollision]      - two methods resolve to the same
-//     VERB + path across services or packages
-//     ([refResolver.checkProjectPathCollision]).
-//   - [CodePathParamMissing]   - `{name}` in path but no matching
-//     field binding in the request type.
-//   - [CodePathParamOrphan]    - `@path` field with no corresponding
-//     `{name}` segment.
-//   - [CodePathHealthConflict] - declared route equals a reserved
-//     health path.
-//
-// [route.Resolve] is the single route-computation authority for the
-// whole pipeline: codegen's routes / OpenAPI / route-conflict emitters call
-// it too, so the analyzer and the generated server cannot disagree on a route.
-
 import (
 	"maps"
 	"slices"
@@ -31,15 +11,11 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// defaultHealthPaths is the runtime's auto-registered set, mirrored here so
-// the analyser can flag collisions without importing the runtime package.
-// TestHealthPathsMatchRuntime asserts these equal pkg/server's
-// DefaultLivenessPath / DefaultReadinessPath, so the mirror cannot drift.
+// defaultHealthPaths are the health routes pkg/server registers by default.
 var defaultHealthPaths = []string{"/healthz", "/readyz"}
 
-// checkPathResolution runs the basePath format warning, the reserved
-// health-path check, and the `{param}` ↔ field check for every method.
-// The pass is idempotent and stateless beyond [analyzer.diags].
+// checkPathResolution checks the basePath format, and each method's route
+// against the health paths and its request fields.
 func (a *analyzer) checkPathResolution() {
 	a.checkBasePathFormat()
 
@@ -65,15 +41,10 @@ func (a *analyzer) checkPathResolution() {
 	}
 }
 
-// checkProjectPathCollision reports every pair of methods, across all
-// services and packages, that net/http's ServeMux would refuse to register
-// together: two routes of one verb with the same shape (`/u/{id}` and
-// `/u/{uid}` are one pattern), or two that overlap with neither more
-// specific (`/orders/{id}/track` and `/orders/by-status/{status}` both
-// match `/orders/by-status/track`). Either panics at server boot; both are
-// diagnosed here at design time. A same-service duplicate shape is left to
-// [analyzer.checkServiceMethods]. Packages and services iterate in sorted
-// order so "first declared here" is deterministic.
+// checkProjectPathCollision reports method pairs that net/http's ServeMux
+// refuses to register together: one verb with the same route shape, or
+// overlapping shapes with neither more specific. A same-shape pair within
+// one service is left to [analyzer.checkServiceMethods].
 func (r *refResolver) checkProjectPathCollision() {
 	type routeEntry struct {
 		verb, route, shape   string
@@ -100,7 +71,7 @@ func (r *refResolver) checkProjectPathCollision() {
 			}
 		}
 	}
-	// Same shape: the later declaration collides with the first one seen.
+	// Same shape: each later declaration is reported against the first.
 	type routeKey struct{ verb, shape string }
 	first := map[routeKey]routeEntry{}
 	for _, e := range entries {
@@ -118,8 +89,7 @@ func (r *refResolver) checkProjectPathCollision() {
 			e.service, e.method, e.verb, e.route, prev.service, prev.method, packageNote(prev.pkg, e.pkg))
 		d.Related = related(prev.pos, "first declared here")
 	}
-	// Different shapes that overlap: one diagnostic per pair, at the later
-	// declaration.
+	// Overlapping shapes: one diagnostic per pair, at the later declaration.
 	for i := 1; i < len(entries); i++ {
 		for j := 0; j < i; j++ {
 			a, b := entries[i], entries[j]
@@ -143,10 +113,8 @@ func packageNote(other, own string) string {
 	return " (package " + other + ")"
 }
 
-// checkBasePathFormat emits a warning when the configured basePath
-// doesn't match the canonical shape: empty, OR starts with `/`, no
-// trailing slash, no `//`. Codegen normalises in either direction so
-// this is informational rather than blocking.
+// checkBasePathFormat warns when a non-empty basePath lacks the leading
+// `/`, ends with `/` or contains `//`.
 func (a *analyzer) checkBasePathFormat() {
 	bp := a.opts.BasePath
 	if bp == "" {
@@ -164,53 +132,24 @@ func (a *analyzer) checkBasePathFormat() {
 	if bad == "" {
 		return
 	}
-	// We don't have a position for the manifest value (it's parsed by
-	// the config loader, not the DSL parser), so use the zero
-	// position. The IDE renders this as a project-level diagnostic.
+	// The manifest value has no source position.
 	a.diag(lexer.Position{}, lexer.Position{}, lexer.SeverityWarning,
 		CodePathBaseFormat,
 		"basePath %q is malformed: %s - codegen will normalise but please fix the manifest",
 		bp, bad)
 }
 
-// resolveMethodPath is the analyzer-bound shorthand for [route.Resolve] with
-// the configured basePath applied.
+// resolveMethodPath is [route.Resolve] with the configured basePath.
 func (a *analyzer) resolveMethodPath(svc *ast.ServiceDecl, m *ast.Method) string {
 	return route.Resolve(a.opts.BasePath, svc, m)
 }
 
-// checkMethodPathParams validates that `{name}` segments in route
-// match field bindings in the method's request type. Two issues fire:
-//
-//   - missing: a path segment with no field to bind to;
-//   - orphan:  a `@path` / `@path("x")` field with no `{x}` in route.
-//
-// Two rules govern the matching, mirroring the codegen's auto-bind
-// logic in `internal/codegen/golang.collectBindings`:
-//
-//  1. An explicit `@path` decorator binds the field. Custom name
-//     `@path("custom")` wins over the field's identifier.
-//  2. A field whose NAME matches a path segment auto-binds, even
-//     without `@path`. (`type GetUserReq { id string }` paired with
-//     `/users/{id}` is the canonical example.)
-//
-// Auto-bound fields are NOT subject to the orphan check - only
-// explicitly-decorated ones, since a bare-named field that happens
-// to not match the path is just a regular query/body field.
-//
-// The request type and its mixins resolve across packages exactly as the
-// codegen binder does, so `type Req { shared.IdHolder }` binds its `@path`
-// field the same way.
+// checkMethodPathParams reports a `{name}` in rt that no request field
+// binds, by `@path` or by its name, and an explicit `@path` field with no
+// segment in rt. A raw request reads its path values itself.
 func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, rt string) {
 	pathParams := route.Vars(rt)
-	// A method with no request struct generates a bare `func() error`
-	// logic signature, so any `{param}` the route declares has nowhere
-	// to land.
 	if m.Request == nil {
-		// A raw-request method (`@rawRequest` / `@passthrough`) reads
-		// path values straight off the *http.Request via `r.PathValue`,
-		// so no struct binding is needed and the diagnostic would be
-		// spurious for it.
 		rawReq, _ := wire.RawSides(m.Decorators)
 		if len(pathParams) > 0 && !rawReq {
 			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamMissing,
@@ -224,12 +163,8 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, rt strin
 	}
 	reqFields := a.requestPathFields(m, pathParams)
 	if reqFields == nil {
-		// Unknown / cross-package request type - placement / qualified-ref
-		// pass owns the diagnostic; we silently skip rather than emit a
-		// confusing missing-field error on a name we couldn't resolve.
-		return
+		return // an unresolved request type is reported by the reference checks
 	}
-	// Missing: route param has no field.
 	for _, p := range pathParams {
 		if !reqFields.has(p) {
 			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamMissing,
@@ -237,9 +172,6 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, rt strin
 				svcName, m.Name, p)
 		}
 	}
-	// Orphan: field claims @path explicitly but route lacks the segment.
-	// Auto-bound fields don't fire orphan - they're just a regular field
-	// that happens not to coincide with any path segment.
 	for _, name := range reqFields.explicit {
 		if !inSet(name, pathParams) {
 			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamOrphan,
@@ -249,11 +181,8 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, rt strin
 	}
 }
 
-// pathParamSet is the set of names that the request type advertises
-// as path-bindable, plus the subset that did so via an explicit
-// `@path` decorator. The orphan check uses `explicit` so an auto-
-// bound field that doesn't actually appear in the path doesn't
-// false-positive.
+// pathParamSet is the segment names a request binds; explicit holds those
+// bound by `@path`.
 type pathParamSet struct {
 	all      map[string]bool
 	explicit []string
@@ -267,14 +196,8 @@ func (s *pathParamSet) has(name string) bool {
 	return s.all[name]
 }
 
-// requestPathFields classifies the fields of m's request type against
-// pathParams. Mixin members are expanded so `type Req { Base  name string }`
-// exposes Base's fields for path binding - the same view the codegen
-// handler binder gets, including mixins pulled from a sibling package.
-//
-// Returns nil when the request type can't be resolved (unknown name) so
-// the caller can skip path-param checks rather than emit a confusing
-// missing-field error.
+// requestPathFields collects the segment names m's request fields bind,
+// mixin fields included; nil when the request type does not resolve.
 func (a *analyzer) requestPathFields(m *ast.Method, pathParams []string) *pathParamSet {
 	td, fields := a.requestFields(m)
 	if td == nil {
@@ -293,12 +216,7 @@ func (a *analyzer) requestPathFields(m *ast.Method, pathParams []string) *pathPa
 			out.explicit = append(out.explicit, name)
 			continue
 		}
-		// A field auto-binds to a same-named segment ONLY when no other
-		// wire decorator diverts it. `id string @query` on `/u/{id}`
-		// rides the query string, so it does NOT cover the {id} segment
-		// - mirror RequestFieldBinding (auto=false here) or the
-		// path-coverage check passes while {id} stays unbound and the
-		// emitted OpenAPI has no `in: path` parameter for it.
+		// A same-named field binds its segment unless another binding claims it.
 		if paramSet[f.Name] && !hasDivertingWireBinding(f.Decorators) {
 			out.all[f.Name] = true
 		}
@@ -306,10 +224,7 @@ func (a *analyzer) requestPathFields(m *ast.Method, pathParams []string) *pathPa
 	return out
 }
 
-// hasDivertingWireBinding reports whether a field carries a wire binding
-// that routes it away from the path segment its name would otherwise
-// auto-bind to (mirrors RequestFieldBinding returning auto=false). @path
-// is handled by pathBindingName, so only the diverting bindings matter here.
+// hasDivertingWireBinding reports a binding decorator other than @path.
 func hasDivertingWireBinding(ds []*ast.Decorator) bool {
 	for _, d := range ds {
 		if d == nil {
@@ -323,18 +238,14 @@ func hasDivertingWireBinding(ds []*ast.Decorator) bool {
 	return false
 }
 
-// pathBindingName returns the path-segment name a field claims via
-// `@path` and whether the field has the decorator at all. The custom
-// override `@path("custom-name")` wins over the field's own identifier.
+// pathBindingName returns the segment an `@path` field binds, its non-empty
+// argument or else its own name, and whether the field has `@path`.
 func pathBindingName(f *ast.Field) (string, bool) {
 	for _, d := range f.Decorators {
 		if d == nil || d.Name != wire.BindingPath {
 			continue
 		}
 		if len(d.Args) > 0 {
-			// An empty wire-name arg (`@path("")`) falls back to the field
-			// name, mirroring WireName so the path-param check and the
-			// binder agree on the segment a field claims.
 			if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
 				return s.Value, true
 			}

@@ -5,13 +5,10 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// FormField is one field of a multipart request: which key it rides under,
-// whether it must be present, and - for a file - what it accepts. The
-// binder and the document both describe the same part from this.
+// FormField is one part of a multipart request.
 type FormField struct {
 	Field *ast.Field
-	// Name is the target's identifier for the field, from the LevelNames
-	// rule passed to [FormFields].
+	// Name is the target's identifier for the field, from [LevelNames].
 	Name string
 	// WireName is the multipart key, honouring an explicit `@form("k")`.
 	WireName string
@@ -22,9 +19,8 @@ type FormField struct {
 	IsArray bool
 }
 
-// FormFields splits m's request into the multipart text and file parts. A
-// request with no file field is not multipart at all, so both results are
-// empty and the fields fall back to the JSON body.
+// FormFields splits m's body and form fields into multipart text and file
+// parts; both are nil when none is a file.
 func FormFields(m *ast.Method, pkg *Package, r *Resolver, levelNames LevelNames) (text, files []FormField) {
 	if m == nil || m.Request == nil {
 		return nil, nil

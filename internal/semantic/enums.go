@@ -6,18 +6,9 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// The enum value model: what an enum and its members carry on the wire,
-// independent of the language that renders them. Targets read these
-// instead of switching on [ast.EnumValueKind] themselves, so an
-// int-backed member cannot stringify one way in the generated Go and
-// another in the OpenAPI schemas.
-//
-// These read an enum that has passed analysis. [CodeEnumMixedTypes]
-// rejects a mixed-kind enum, which is what lets [EnumPrimitive] decide
-// the whole enum from its first member.
-
-// EnumPrimitive returns the DSL primitive an enum's values lower to:
-// `int` for an int-valued enum, `string` otherwise.
+// EnumPrimitive returns the DSL primitive an enum's values lower to: `int`
+// for an int-valued enum, `string` otherwise. It reads the first member,
+// since analysis rejects a mixed-kind enum.
 func EnumPrimitive(ed *ast.EnumDecl) string {
 	if ed == nil {
 		return "string"
@@ -50,9 +41,8 @@ func EnumMemberInt(v *ast.EnumValue) (int64, bool) {
 	return n, ok
 }
 
-// EnumMemberWireString returns a member's wire value in string form, as it
-// appears as a JSON object key or a propertyNames entry - an int-backed
-// member stringifies to its decimal form because JSON keys are strings.
+// EnumMemberWireString returns a member's wire value as a JSON object key:
+// an int-backed member in decimal.
 func EnumMemberWireString(v *ast.EnumValue) string {
 	if n, ok := EnumMemberInt(v); ok {
 		return strconv.FormatInt(n, 10)
@@ -61,9 +51,7 @@ func EnumMemberWireString(v *ast.EnumValue) string {
 	return s
 }
 
-// EnumKind returns the value kind an enum lowers to, derived from
-// [EnumPrimitive] so the Go base type, the schema type and the event key
-// conversion cannot disagree.
+// EnumKind returns the value kind matching [EnumPrimitive].
 func EnumKind(ed *ast.EnumDecl) ast.EnumValueKind {
 	if EnumPrimitive(ed) == "int" {
 		return ast.EnumInt

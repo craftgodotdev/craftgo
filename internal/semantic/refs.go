@@ -1,20 +1,5 @@
 package semantic
 
-// Cross-reference validation for decorator arguments. Runs after the
-// arity / type check so we know the argument shape is sound; this pass
-// asserts the *names* inside that shape resolve to real entities:
-//
-//   - `@errors(NotFound, Conflict)` - must exist in pkg.Errors
-//   - `@middlewares(Auth, RateLimit)` - must exist in pkg.Middlewares
-//   - `@requiresOneOf(email, phone)` and `@mutuallyExclusive(...)` -
-//     each ident must be a field name in the enclosing type body
-//   - `@security(A, B, ...)` - each scheme ident must appear in
-//     [Options.SecuritySchemes] (when non-nil). Use `@ignoreSecurity`
-//     to opt out of inherited security rather than a sentinel name.
-//
-// Every miss surfaces as [CodeDecoratorRef] so the IDE can render the
-// "unresolved name" squiggle and offer a quick-fix list of candidates.
-
 import (
 	"fmt"
 
@@ -22,10 +7,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// checkDecoratorRefs walks every decorator scope and validates the
-// identifier / string arguments that name an entity elsewhere in the
-// project. Unknown decorators are skipped - placement / args passes
-// already flagged them.
+// checkDecoratorRefs resolves the names that service and method decorators
+// pass to @errors, @middlewares and @security.
 func (a *analyzer) checkDecoratorRefs(files []*ast.File) {
 	for _, f := range files {
 		for _, d := range f.Decls {
@@ -34,14 +17,8 @@ func (a *analyzer) checkDecoratorRefs(files []*ast.File) {
 	}
 }
 
-// checkLocalDecoratorRefs runs only the field-group refs
-// (`@requiresOneOf` / `@mutuallyExclusive`) - these never cross
-// package boundaries (their targets are same-type field names) so
-// they're safe to validate in the per-package pass that
-// [AnalyzeProject] runs with `skipMiddlewareRefCheck=true`. A typoed
-// field name otherwise reaches codegen, which substitutes a literal
-// `false` for the unknown name and produces a validator that never
-// fires.
+// checkLocalDecoratorRefs checks the field names each type's
+// @requiresOneOf and @mutuallyExclusive list.
 func (a *analyzer) checkLocalDecoratorRefs(files []*ast.File) {
 	for _, f := range files {
 		for _, d := range f.Decls {
@@ -54,27 +31,17 @@ func (a *analyzer) checkLocalDecoratorRefs(files []*ast.File) {
 	}
 }
 
-// checkDeclRefs dispatches by declaration kind. Field-group refs
-// (`@requiresOneOf` / `@mutuallyExclusive`) run via
-// [checkLocalDecoratorRefs] before this path because they're always
-// local - TypeDecl bodies skipped here to avoid double-emission.
-// Member / service refs delegate to a shared helper.
+// checkDeclRefs resolves the decorator references of a service and its
+// methods.
 func (a *analyzer) checkDeclRefs(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
-		// Cross-field groups on types run via checkLocalDecoratorRefs -
-		// skipped here to avoid double-emission.
+		// Checked by checkLocalDecoratorRefs.
 	case *ast.ErrorDecl:
-		// Errors don't currently carry @requiresOneOf or
-		// @mutuallyExclusive (the placement matrix gates this); the
-		// case stays here so future additions slot in symmetrically.
+		// An error's decorators name no other declaration.
 	case *ast.ServiceDecl:
 		if dd.Extend {
-			// An extend block's decorators are method decorators that
-			// [analyzer.mergeServices] copies onto the block's methods.
-			// They resolve here, on the block that writes them, so a
-			// block carrying several methods reports one diagnostic
-			// rather than one per method.
+			// Resolved once on the block, not on each method it is copied to.
 			a.checkMemberLevelRefs(dd.Decorators, LvlMethod)
 		} else {
 			a.checkServiceLevelRefs(dd.Decorators)
@@ -85,10 +52,9 @@ func (a *analyzer) checkDeclRefs(d ast.Decl) {
 	}
 }
 
-// checkFieldGroupRefs validates `@requiresOneOf` and `@mutuallyExclusive`
-// argument idents against the type's actual field names. The body slice
-// is walked once to build a name set so multiple decorators on the same
-// type don't pay the O(n) cost twice.
+// checkFieldGroupRefs checks each field a type's @requiresOneOf or
+// @mutuallyExclusive lists: listed once, a field of the type (mixin fields
+// included) and fit for a cross-field group.
 func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, body []ast.TypeMember) {
 	var fieldSet map[string]promotedField
 	var incomplete bool
@@ -96,9 +62,6 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 		if fieldSet != nil {
 			return fieldSet
 		}
-		// Mixin-promoted fields ARE fields of this type - the host struct
-		// embeds them and the validator runs their checks - so a cross-field
-		// decorator may reference them, not only the directly-declared ones.
 		fieldSet, incomplete = a.promotedFieldSet(a.pkg.Name, body)
 		return fieldSet
 	}
@@ -110,11 +73,6 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 			continue
 		}
 		args := collectIdentOrStringArgs(d)
-		// Dedupe within the same decorator. Without this,
-		// `@requiresOneOf(a, a, b)` emits `v.A == nil && v.A == nil`
-		// which `go vet` rejects as a redundant boolean (QF1001),
-		// breaking `go test` for any project running vet (the
-		// default).
 		seen := map[string]bool{}
 		for _, name := range args {
 			if seen[name.value] {
@@ -127,10 +85,7 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 			pf, ok := getFields()[name.value]
 			if !ok {
 				if incomplete {
-					// An unresolved mixin may promote this member; its own
-					// diagnostic already fired, so don't pile a misleading
-					// "not a field" on top.
-					continue
+					continue // an unresolved, already reported mixin may promote it
 				}
 				a.diag(name.pos, name.pos, lexer.SeverityError, CodeDecoratorRef,
 					"@%s on type %s: %q is not a field of this type",
@@ -141,10 +96,6 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 				a.diag(name.pos, name.pos, lexer.SeverityError, code, "%s", msg)
 			})
 		}
-		// `@mutuallyExclusive` with 0 or 1 distinct fields renders
-		// the counter check (`n > 1`) unreachable - dead code that
-		// silently never fires. Flag it so the author either adds
-		// fields or removes the decorator.
 		if d.Name == "mutuallyExclusive" && len(seen) < 2 {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeMutExSingleField,
 				"@mutuallyExclusive needs at least 2 distinct fields (got %d) - the runtime check can never fire",
@@ -153,58 +104,31 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 	}
 }
 
-// reportCrossFieldMemberIssues applies the per-field quality rules a
-// cross-field group member must satisfy and calls `report(code, msg)` for
-// each violation, whether the member is a local field or one promoted from
-// a foreign mixin. The presence-unclean case returns early (it subsumes
-// the optional check); the remaining rules are independent so a field can
-// violate several at once.
+// reportCrossFieldMemberIssues reports every reason rf cannot join a
+// cross-field group; a member without a clean presence check gets only that one.
 func reportCrossFieldMemberIssues(decName, typeName, memberName string, rf ResolvedField, report func(code, msg string)) {
 	f := rf.Field
-	// A nilable member with no clean cross-field presence: `?` /
-	// `@nullable` add no pointer (the Go type is already nilable), so the
-	// runtime can't use the `!= nil` check that lines up with the group's
-	// OpenAPI present-and-non-null. A slice / map is checked by emptiness
-	// (`len(...) > 0`, so an empty `[]` / `{}` reads as absent) and a `bytes`
-	// / `any` member (via a scalar or not) has no presence expression at all
-	// (always treated as present). Reject so the author references a
-	// pointer-backed field instead.
 	if presenceUnclean(rf) {
 		report(CodeCrossFieldNotOptional, fmt.Sprintf(
 			"@%s on type %s: field %q has no clean present/absent state for a cross-field group - a slice / map is checked by emptiness (`len(...) > 0`) and a `bytes` / `any` member is always treated as present, while the group's OpenAPI requires it be present and non-null. Reference a pointer-backed field (string, number, bool, struct, enum, or a scalar) instead.",
 			decName, typeName, memberName))
 		return
 	}
-	// The referenced field must be pointer-backed (optional `?` or
-	// `@nullable`) so its runtime presence check (`!= nil`) lines up with the
-	// present-and-non-null semantics OpenAPI emits for the group. A plain
-	// field falls back to zero-value emptiness, which disagrees with the spec.
 	if !f.Type.Optional && !ast.HasDecorator(f.Decorators, "nullable") {
 		report(CodeCrossFieldNotOptional, fmt.Sprintf(
 			"@%s on type %s: field %q must be optional (`?`) or `@nullable` - a cross-field group needs an unambiguous present/absent state, but a plain field is checked by zero-value emptiness, which disagrees with the OpenAPI schema",
 			decName, typeName, memberName))
 	}
-	// A `@sensitive` member is server-only (`json:"-"`, excluded from the
-	// schema), so a body-level cross-field group can't reference it: the
-	// OpenAPI would name a property the public schema never carries, and the
-	// runtime check reads a field the client never sends.
 	if ast.HasDecorator(f.Decorators, "sensitive") {
 		report(CodeCrossFieldNotOptional, fmt.Sprintf(
 			"@%s on type %s: field %q is @sensitive (server-only, not on the wire), so it can't participate in a cross-field group. Reference a body field instead.",
 			decName, typeName, memberName))
 	}
-	// A wire-bound member (`@query`/`@header`/`@cookie`/`@path`/`@form`) is
-	// excluded from the JSON body schema, so a body-level cross-field group
-	// referencing it advertises a constraint over a property the body never
-	// carries - an unsatisfiable / meaningless schema.
 	if kind, _, bound := wireBinding(f); bound {
 		report(CodeCrossFieldNotOptional, fmt.Sprintf(
 			"@%s on type %s: field %q is bound to @%s and does not ride the JSON body, so it can't participate in a body-level cross-field group. Reference a body field instead.",
 			decName, typeName, memberName, kind))
 	}
-	// A `@default` member is pre-filled before decode, so the runtime group
-	// is always satisfied while the OpenAPI still requires the client to send
-	// it - they disagree on an empty body.
 	if ast.HasDecorator(f.Decorators, "default") {
 		report(CodeCrossFieldNotOptional, fmt.Sprintf(
 			"@%s on type %s: field %q carries @default, so it is always present at runtime and the cross-field check is a no-op the OpenAPI contradicts. Drop @default or the cross-field reference.",
@@ -212,25 +136,14 @@ func reportCrossFieldMemberIssues(decName, typeName, memberName string, rf Resol
 	}
 }
 
-// presenceUnclean reports whether a cross-field member's runtime presence
-// can't be the clean `!= nil` check that matches the group's OpenAPI
-// present-and-non-null. A slice / map is checked by emptiness (`len(...) >
-// 0`); a plain `bytes` (`[]byte`) or `any` (`interface{}`) member - or a
-// scalar over either, which lowers to the bare named slice / interface - has
-// no presence expression and is always treated as present. Two nilable
-// categories are clean and are not flagged: a `file` is
-// `*multipart.FileHeader`, and a [CatRawBytes] member is a wire.Raw whose
-// nil means the key was absent (an explicit `null` arrives as the four bytes
-// `null` and is the present value it is). The nilability fact comes from the
-// resolved IR ([ResolveField]), the single source the codegen pointer-wrap
-// decision reads too, so the cross-field check and the emitted Go agree.
+// presenceUnclean reports whether a member's presence cannot be a nil
+// check: a slice or map is tested by emptiness and bytes or any counts as
+// always present. A file or raw field is nil exactly when absent.
 func presenceUnclean(rf ResolvedField) bool {
 	return rf.IsNilable && rf.Category != CatFile && rf.Category != CatRawBytes
 }
 
-// checkServiceLevelRefs validates `@middlewares` and `@security` at the
-// service decoration site. The same logic applies on methods via
-// [checkMethodLevelRefs].
+// checkServiceLevelRefs resolves a service's @middlewares and @security names.
 func (a *analyzer) checkServiceLevelRefs(decs []*ast.Decorator) {
 	for _, d := range decs {
 		if d == nil {
@@ -245,17 +158,9 @@ func (a *analyzer) checkServiceLevelRefs(decs []*ast.Decorator) {
 	}
 }
 
-// checkMemberLevelRefs validates `@errors`, `@middlewares` and
-// `@security` on one member's decorator list.
-// Member-level decorators take precedence over service-level (per README)
-// but resolution targets are the same.
-//
-// lvl is the level the list is written at, so a decorator that does not
-// belong at this site is left to the placement pass: resolving it too
-// would report one mistake twice.
-//
-// Propagated decorators are skipped: they are copies of an extend
-// block's own list, which resolves at the block.
+// checkMemberLevelRefs resolves the @errors, @middlewares and @security
+// names in decorators written at level lvl. A decorator not allowed at lvl
+// is left to the placement check, and a propagated copy to its extend block.
 func (a *analyzer) checkMemberLevelRefs(decs []*ast.Decorator, lvl Level) {
 	for _, d := range decs {
 		if d == nil || d.Propagated {
@@ -275,12 +180,8 @@ func (a *analyzer) checkMemberLevelRefs(decs []*ast.Decorator, lvl Level) {
 	}
 }
 
-// checkErrorsRef resolves every name passed to `@errors(...)` against
-// the project's error declarations: a qualified `pkg.Name` must be
-// declared in that package, a bare name in any package. Both bare-ident
-// (`UserNotFound`) and array-shortcut (`["UserNotFound", ...]`) forms
-// are accepted by the args pass; we flatten via
-// [collectIdentOrStringArgs].
+// checkErrorsRef resolves every @errors name: a qualified `pkg.Name` in
+// pkg, a bare name in any package.
 func (a *analyzer) checkErrorsRef(d *ast.Decorator) {
 	for _, arg := range collectIdentOrStringArgs(d) {
 		if a.errorDeclared(arg.value) {
@@ -291,9 +192,7 @@ func (a *analyzer) checkErrorsRef(d *ast.Decorator) {
 	}
 }
 
-// checkMiddlewareRef resolves middleware names the same way
-// [checkErrorsRef] resolves errors: qualified against the named package,
-// bare against every package.
+// checkMiddlewareRef is [analyzer.checkErrorsRef] for @middlewares.
 func (a *analyzer) checkMiddlewareRef(d *ast.Decorator) {
 	for _, arg := range collectIdentOrStringArgs(d) {
 		if a.middlewareDeclared(arg.value) {
@@ -304,12 +203,8 @@ func (a *analyzer) checkMiddlewareRef(d *ast.Decorator) {
 	}
 }
 
-// checkSecurityRef validates every scheme name passed to
-// `@security(A, B, ...)` against [Options.SecuritySchemes]. When the
-// options list is nil the check is skipped - the LSP runs without a
-// loaded manifest in some contexts and we don't want spurious errors.
-// To express "this endpoint is public" use `@ignoreSecurity` instead of
-// a sentinel scheme name.
+// checkSecurityRef checks every @security scheme name against
+// [Options.SecuritySchemes]; a nil list skips the check.
 func (a *analyzer) checkSecurityRef(d *ast.Decorator) {
 	if a.opts.SecuritySchemes == nil {
 		return
@@ -337,27 +232,17 @@ func (a *analyzer) checkSecurityRef(d *ast.Decorator) {
 	}
 }
 
-// argName ties a name extracted from a decorator argument to the
-// position where it appeared in source. The position is what the IDE
-// underlines when the name fails to resolve.
+// argName is a name from a decorator argument and where it appears.
 type argName struct {
 	value string
 	pos   lexer.Position
 }
 
-// collectIdentOrStringArgs flattens a decorator's positional arguments
-// into a list of (name, position) pairs. It handles three shapes:
-//
-//   - bare ident / string: `@errors(A, B)` → [A, B]
-//   - array literal:       `@errors([A, B])` → [A, B]
-//   - mixed:               array element idents are mixed with bare
-//
-// Non-textual positions (int, etc.) are silently skipped - the args
-// pass already flagged them with [CodeDecoratorArgType].
+// collectIdentOrStringArgs returns d's identifier and string positional
+// arguments, array elements included; other literals are skipped.
 func collectIdentOrStringArgs(d *ast.Decorator) []argName {
 	var out []argName
 	for _, ag := range positionalArgs(d) {
-		// Array shortcut: walk the elements.
 		if arr, ok := ag.Value.(*ast.ArrayLit); ok {
 			for _, el := range arr.Elements {
 				if v, ok := identOrStringValue(el); ok {

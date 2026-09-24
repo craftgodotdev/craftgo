@@ -7,23 +7,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// checkDeclNameCase emits a warning for every top-level declaration
-// whose identifier does not start with an uppercase letter. The Go
-// codegen pass copies decl names verbatim into the generated source,
-// so a lower-case DSL name produces an unexported Go type - silently
-// breaking cross-package imports the moment a sibling package tries
-// to reference the type via `pkg.X`.
-//
-// The check is a warning rather than an error so tests that use
-// lower-case decls to assert codegen behaviour keep building.
-//
-// Empty names are skipped - they are already flagged as parser
-// recovery artefacts elsewhere and double-reporting only adds noise.
-//
-// Per-spec: type / error / enum / service / middleware / scalar
-// declarations all participate. Method names inside services are
-// checked too because they become exported Go function names on the
-// service struct (and are referenced from the umbrella RegisterAll).
+// checkDeclNameCase warns about each declaration and method name that does
+// not start with an uppercase letter, since Go output keeps names verbatim.
 func (a *analyzer) checkDeclNameCase(files []*ast.File) {
 	for _, f := range files {
 		for _, d := range f.Decls {
@@ -32,10 +17,7 @@ func (a *analyzer) checkDeclNameCase(files []*ast.File) {
 	}
 }
 
-// checkOneDeclNameCase dispatches per top-level decl shape so the
-// kind label in the diagnostic ("type", "service", ...) matches the
-// keyword the user typed - better than a generic "declaration"
-// because the fix is the same kind-keyword they originally wrote.
+// checkOneDeclNameCase checks d's names, labelled with d's keyword.
 func (a *analyzer) checkOneDeclNameCase(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
@@ -45,11 +27,7 @@ func (a *analyzer) checkOneDeclNameCase(d ast.Decl) {
 	case *ast.EnumDecl:
 		a.warnNameCase("enum", dd.Name, dd.Pos)
 	case *ast.ServiceDecl:
-		// `extend service X { ... }` and the original `service X` both
-		// produce a ServiceDecl; only the original carries the canonical
-		// declaration so warning on Extend would double-report against
-		// the same underlying name. Methods added in extend blocks are
-		// new names - always check them.
+		// An extend block repeats its service's name; its methods are new names.
 		if !dd.Extend {
 			a.warnNameCase("service", dd.Name, dd.Pos)
 		}
@@ -65,9 +43,8 @@ func (a *analyzer) checkOneDeclNameCase(d ast.Decl) {
 	}
 }
 
-// warnNameCase records the diagnostic when the supplied name starts
-// with anything other than an uppercase letter. Empty names are
-// silently ignored - those are parser recovery artefacts.
+// warnNameCase warns when a non-empty name does not start with an
+// uppercase letter.
 func (a *analyzer) warnNameCase(kind, name string, pos lexer.Position) {
 	if name == "" {
 		return

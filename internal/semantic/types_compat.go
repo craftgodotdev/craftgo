@@ -1,33 +1,13 @@
 package semantic
 
-// Field-type compatibility check for validator decorators. A `@length`
-// on an int field, or `@uniqueItems` on a string, is almost always a
-// bug - the README's compatibility matrix groups validators by
-// primitive category, and we surface the mismatch as a clear
-// [CodeDecoratorTypeMismatch] diagnostic rather than letting codegen
-// silently drop the validator.
-//
-// The check resolves a field's primitive category by:
-//
-//   1. Inspecting the AST [ast.TypeRef] modifiers: `T[]` and `map<K,V>`
-//      collapse to PrimArray.
-//   2. Looking up the named type - built-in primitives map directly;
-//      custom scalars are followed to their underlying primitive.
-//
-// Generic type parameters and unknown named types fall back to PrimAny
-// so the check doesn't false-positive while semantic resolution catches
-// up.
-
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
-// checkFieldTypeCompat walks every type / error body and checks each
-// field's decorators against the resolved primitive category. Mixin
-// members are skipped - they have no decorators of their own. Errors
-// follow the same field shape as types.
+// checkFieldTypeCompat checks the decorators of every type and error field,
+// and of every scalar, against the primitive category they decorate.
 func (a *analyzer) checkFieldTypeCompat() {
 	for _, td := range a.pkg.Types {
 		a.checkBodyTypeCompat(td.Name, td.Body)
@@ -40,8 +20,8 @@ func (a *analyzer) checkFieldTypeCompat() {
 	}
 }
 
-// checkBodyTypeCompat applies the per-decorator AppliesTo check to
-// every Field in a type / error body.
+// checkBodyTypeCompat checks each field decorator's AppliesTo in a type or
+// error body.
 func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) {
 	for _, m := range members {
 		f, ok := m.(*ast.Field)
@@ -61,9 +41,7 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 				continue
 			}
 			if actual == 0 {
-				// Unresolved field type - skip to avoid false positives
-				// (e.g. generic parameter, qualified ref).
-				continue
+				continue // not a primitive or scalar field
 			}
 			if spec.AppliesTo&actual == 0 {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError,
@@ -75,24 +53,15 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 	}
 }
 
-// checkScalarTypeCompat applies the same check to scalar declarations
-// (`scalar Email string @format(email)`). The scalar's primitive is
-// known directly from the AST. Also validates that the primitive
-// slot holds an actual built-in (a typo like `scalar Check Check`
-// would otherwise silently produce a no-op alias that breaks
-// validator inheritance + codegen).
+// checkScalarTypeCompat checks that a scalar wraps a built-in primitive,
+// then checks its decorators against that primitive.
 func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 	actual := PrimFromName(sd.Primitive)
 	if sd.Primitive == "bytes" && HasRawFormat(sd.Decorators) {
 		actual = PrimRawBytes
 	}
 	if actual == 0 || actual == PrimFile {
-		// Not a recognised scalar primitive. `file` resolves to PrimFile
-		// (non-zero) but is a multipart-upload wire keyword, not a Go type -
-		// `scalar X file` would emit non-compiling `type X file`, so reject it
-		// like an unknown primitive (mirroring the `any` rejection). Flag
-		// explicitly so the user sees it at design time rather than via a
-		// mysterious compile error in the generated Go.
+		// `file` is an upload keyword, not a type a scalar can wrap.
 		a.diag(sd.Pos, sd.Pos, lexer.SeverityError, CodeScalarBadPrimitive,
 			"scalar %q primitive must be a built-in (got %q; expected one of string, bool, bytes, int, int8..int64, uint, uint8..uint64, float32, float64)",
 			sd.Name, sd.Primitive)
@@ -118,19 +87,9 @@ func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 	}
 }
 
-// formatRawMismatch reports `@format(raw)` sitting on anything but the
-// raw-bytes shape, and returns true when it did so the caller skips the
-// generic check for that decorator (one mistake, one diagnostic).
-//
-// `raw` is the one `@format` value the AppliesTo table cannot judge: it
-// is an ARGUMENT, and `@format` legitimately applies to every
-// string-shaped field - so `payload string @format(raw)` passes that
-// check and has to be refused where the argument is read. A field that
-// IS bytes resolves to [PrimRawBytes] instead, which is what makes every
-// OTHER validator refuse on it through the generic path.
-//
-// subject is the diagnostic's subject ("Req.payload", "scalar Blob") and
-// actualDesc how the refused type is spelt.
+// formatRawMismatch reports `@format(raw)` on anything but raw bytes, which
+// AppliesTo cannot catch because `raw` is an argument, and returns whether
+// it did. subject names the decorated site and actualDesc its type.
 func (a *analyzer) formatRawMismatch(d *ast.Decorator, actual Prims, subject, actualDesc string) bool {
 	if !isFormatRaw(d) || actual == PrimRawBytes {
 		return false
@@ -141,13 +100,8 @@ func (a *analyzer) formatRawMismatch(d *ast.Decorator, actual Prims, subject, ac
 	return true
 }
 
-// fieldPrimOf is [analyzer.fieldPrim] for a whole FIELD: the raw-bytes
-// shape is `bytes` plus the `@format(raw)` written on the field or on the
-// scalar it names, so the type ref alone cannot classify it. The resolved
-// IR already answers that question for codegen and the LSP, so it answers
-// it here too rather than the analyser deciding a second way. Every other
-// validator's AppliesTo misses [PrimRawBytes], which is what refuses them
-// on a raw field through the ordinary compatibility check.
+// fieldPrimOf is [analyzer.fieldPrim] for a whole field: a bytes field is
+// [PrimRawBytes] when `@format(raw)` sits on it or on its scalar.
 func (a *analyzer) fieldPrimOf(f *ast.Field) Prims {
 	if f == nil {
 		return 0
@@ -158,16 +112,8 @@ func (a *analyzer) fieldPrimOf(f *ast.Field) Prims {
 	return a.fieldPrim(f.Type)
 }
 
-// fieldPrim resolves a field's [ast.TypeRef] to a single primitive
-// category. Returns 0 (PrimAny) for unresolved types so callers can skip
-// the check rather than emit a misleading mismatch.
-//
-// Resolution rules:
-//   - Array (`T[]`) and map (`map<K,V>`) collapse to PrimArray.
-//   - Built-in primitives map directly via [PrimFromName].
-//   - A scalar - bare or qualified `pkg.Name` - is followed to its
-//     underlying primitive.
-//   - Generic params and unknown names return 0.
+// fieldPrim returns t's primitive category: [PrimArray] for an array or
+// map, the category of a built-in or of a scalar's primitive, else 0.
 func (a *analyzer) fieldPrim(t *ast.TypeRef) Prims {
 	if t == nil {
 		return 0
@@ -189,10 +135,8 @@ func (a *analyzer) fieldPrim(t *ast.TypeRef) Prims {
 	return 0
 }
 
-// PrimFromName maps a built-in primitive name to its [Prims] category.
-// Returns 0 for names this layer can't classify (custom types, `any`,
-// `object` - those are handled by the caller). Exported so the LSP reuses the
-// one classification instead of keeping its own copy.
+// PrimFromName returns the [Prims] category of a built-in primitive name;
+// 0 for any other name, `any` and `object` included.
 func PrimFromName(name string) Prims {
 	sp, ok := prims.Lookup(name)
 	if !ok {

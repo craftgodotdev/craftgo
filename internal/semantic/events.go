@@ -1,6 +1,3 @@
-// Event model: the language-independent view of the contracts a design
-// declares. The resolved type carries every fact a target needs - the
-// contract name, the payload's home package - already resolved.
 package semantic
 
 import (
@@ -9,34 +6,28 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// DecoratorContract overrides the derived contract name.
+// DecoratorContract is the decorator that overrides an event's contract name.
 const DecoratorContract = "contract"
 
-// ResolvedEvent is the layer-agnostic view of one event contract.
+// ResolvedEvent is one event contract, resolved against the project.
 type ResolvedEvent struct {
 	Decl    *ast.EventDecl
 	Package string
 	// Name is the DSL identifier.
 	Name string
 	// Contract is the identity on the wire: `<package>.<Name>`, or the
-	// `@contract` argument when one is given. Transports address it
-	// however they like; both sides agree on this string.
+	// `@contract` argument when one is given.
 	Contract string
-	// PayloadPkg and PayloadName name the payload type. PayloadPkg is
-	// the package the type lives in, which is not always the event's own
-	// package - a `payload shared.Envelope` resolves elsewhere.
+	// PayloadPkg and PayloadName name the payload type; PayloadPkg may
+	// differ from the event's package (`payload shared.Envelope`).
 	PayloadPkg  string
 	PayloadName string
-	// PayloadRef is the payload reference as written, including any
-	// generic arguments. Targets render from this - PayloadName alone
-	// drops the arguments, which a generic payload needs.
+	// PayloadRef is the payload reference as written, generic arguments included.
 	PayloadRef *ast.NamedTypeRef
-	// PayloadArray reports a `payload T[]` contract: the body is an array
-	// of the payload type. PayloadPkg, PayloadName, PayloadRef and Payload
-	// all describe the ELEMENT, resolved exactly as a scalar payload is.
+	// PayloadArray reports a `payload T[]` contract; the other payload
+	// fields then describe the element.
 	PayloadArray bool
-	// Payload is the resolved declaration, nil when the ref did not
-	// resolve (the analyser has already reported that).
+	// Payload is the payload's declaration; nil when it does not resolve.
 	Payload *ast.TypeDecl
 	// Doc is the documentation a target renders above the contract: the
 	// `@doc("...")` argument when one is given, otherwise the leading
@@ -83,7 +74,7 @@ func (p *Project) LookupEvent(homePkg, ref string) (ResolvedEvent, bool) {
 	return p.resolveEvent(pkg, d), true
 }
 
-// resolveEvent computes the layer-agnostic facts for one event.
+// resolveEvent resolves d, declared in pkg.
 func (p *Project) resolveEvent(pkg *Package, d *ast.EventDecl) ResolvedEvent {
 	re := ResolvedEvent{
 		Decl:     d,

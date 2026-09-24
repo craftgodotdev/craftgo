@@ -1,13 +1,5 @@
 package semantic
 
-// Operation-name resolution. The operationId and the component-schema base
-// name a method emits are LANGUAGE facts (derived from the method name, its
-// service, and an explicit @operationId override) - not OpenAPI rendering - so
-// they are decided here, on the floor both the analyser and codegen read.
-// codegen's emit calls [OperationID] / [OperationBaseName];
-// [refResolver.checkProjectOperationIDUniqueness] flags duplicates at design
-// time so the editor surfaces what would otherwise be a codegen-only error.
-
 import (
 	"maps"
 	"slices"
@@ -17,9 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// MethodNameCounts counts how many times each method name appears across every
-// service. A name shared by two services must be service-qualified in the
-// emitted operationId / component names so they stay globally unique.
+// MethodNameCounts counts each method name across pkg's services.
 func MethodNameCounts(pkg *Package) map[string]int {
 	counts := map[string]int{}
 	for _, svc := range pkg.Services {
@@ -30,9 +20,9 @@ func MethodNameCounts(pkg *Package) map[string]int {
 	return counts
 }
 
-// OperationBaseName is the collision-free base for a method's component schema
-// names (`<base>ReqBody`, `<base>RespBody`) and its default operationId: bare
-// when the method name is unique project-wide, service-prefixed when shared.
+// OperationBaseName is the base of a method's component schema names
+// (`<base>ReqBody`, `<base>RespBody`) and default operationId: the method
+// name, prefixed with svcName when counts has it more than once.
 func OperationBaseName(svcName string, m *ast.Method, counts map[string]int) string {
 	if counts[m.Name] >= 2 {
 		return svcName + m.Name
@@ -54,13 +44,9 @@ func OperationID(m *ast.Method, base string) string {
 	return base
 }
 
-// checkProjectOperationIDUniqueness flags every method whose operationId
-// collides with another's anywhere in the project. The single emitted
-// OpenAPI document merges every package's services, so method-name counts
-// are taken PROJECT-WIDE (matching the merged document): an auto id shared
-// by services in different packages is service-prefixed and does not
-// clash; an explicit @operationId override is taken verbatim and can. Runs
-// after services are merged so it sees the full method set per service.
+// checkProjectOperationIDUniqueness reports methods that share an
+// operationId. Method names are counted project-wide because one OpenAPI
+// document holds every package's services.
 func (r *refResolver) checkProjectOperationIDUniqueness() {
 	counts := map[string]int{}
 	for _, pkg := range r.proj.Packages {

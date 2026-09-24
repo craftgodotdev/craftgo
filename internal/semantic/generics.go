@@ -1,38 +1,18 @@
 package semantic
 
-// Generic instantiation validation. Per README §"Type composition", a
-// generic decl is `Foo<T>` and an instance is `Foo<User>`; the codegen
-// renames concrete instances to `FooOfUser` / `FooOfUserAndOrg`. This
-// pass enforces that every reference to a generic decl supplies
-// exactly the right number of type arguments, and that no non-generic
-// type is given args.
-//
-// Diagnostic codes:
-//
-//   - [CodeGenericArity]      - wrong arg count for a generic decl.
-//   - [CodeGenericNonGeneric] - args supplied to a non-generic type.
-//
-// References to type-parameter idents inside a generic decl's body
-// (`f T[]` inside `type Page<T> { ... }`) are NOT flagged: T is in
-// scope as a type variable. The walker tracks the enclosing decl's
-// TypeParams to make that distinction.
-
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// checkGenerics walks every declared type / error body and every
-// service method's request/response, validating each [ast.NamedTypeRef]'s
-// arg count against the referenced decl. Map keys/values and nested
-// generic args are visited recursively so `map<string, Page<User>>`
-// gets the same scrutiny as a top-level field type.
+// checkGenerics checks the generic arguments of every named reference in
+// type and error bodies and in method requests and responses, map keys,
+// values and nested arguments included.
 func (a *analyzer) checkGenerics() {
 	for _, td := range a.pkg.Types {
 		a.walkBodyGenerics(td.Body, td.TypeParams)
 	}
 	for _, ed := range a.pkg.Errors {
-		// Errors carry no type params today, so the param-set is empty.
 		a.walkBodyGenerics(ed.Body, nil)
 	}
 	for _, si := range a.pkg.Services {
@@ -45,9 +25,8 @@ func (a *analyzer) checkGenerics() {
 	}
 }
 
-// walkBodyGenerics walks every Field type and every Mixin ref in
-// members, propagating the enclosing decl's type params so a `T[]`
-// inside `Page<T>` doesn't trip the "unknown type" branch.
+// walkBodyGenerics walks every field type and mixin in members with the
+// enclosing decl's type parameters in scope.
 func (a *analyzer) walkBodyGenerics(members []ast.TypeMember, typeParams []string) {
 	for _, m := range members {
 		switch v := m.(type) {
@@ -59,8 +38,7 @@ func (a *analyzer) walkBodyGenerics(members []ast.TypeMember, typeParams []strin
 	}
 }
 
-// walkTypeRefGenerics descends into a TypeRef. Map types recurse into
-// both key and value; named refs delegate to walkNamedRefGenerics.
+// walkTypeRefGenerics walks t, a map's key and value included.
 func (a *analyzer) walkTypeRefGenerics(t *ast.TypeRef, typeParams []string) {
 	if t == nil {
 		return
@@ -75,43 +53,25 @@ func (a *analyzer) walkTypeRefGenerics(t *ast.TypeRef, typeParams []string) {
 	}
 }
 
-// walkNamedRefGenerics validates one named reference and its generic
-// arguments. The enclosing decl's TypeParams are passed so single-part
-// names matching one of them are recognised as type variables and
-// skipped.
+// walkNamedRefGenerics checks n's generic arguments and its arity; a bare
+// name in typeParams is a type variable, not a type.
 func (a *analyzer) walkNamedRefGenerics(n *ast.NamedTypeRef, typeParams []string) {
 	if n == nil || n.Name == nil {
 		return
 	}
-	// Recurse into args first - even if the outer ref is bogus, we
-	// still want to flag a malformed nested arg.
 	for _, arg := range n.Args {
-		// A generic argument may not be optional (`Page<Item?>`). The `?`
-		// has no single place to live once the argument is substituted into
-		// the decl's body: substituted into `items T[]` the Go side lowers
-		// it to a nullable element (`[]*Item`) while the OpenAPI array items
-		// stay a non-null `$ref` - the two stages disagree. Nullability
-		// belongs on a concrete field of the generic (`type Box<T> { item
-		// T? }`), where it lowers to a clean pointer on both sides.
 		if arg != nil && arg.Optional {
 			a.diag(arg.Pos, arg.Pos, lexer.SeverityError, CodeGenericOptionalArg,
 				"a generic type argument cannot be optional (`?`) - the optionality has no well-defined position after substitution, so the Go type and the OpenAPI schema would disagree. Declare the nullability on a field inside the generic (e.g. `type Box<T> { item T? }`) instead.")
 		}
 		a.walkTypeRefGenerics(arg, typeParams)
 	}
-	// Qualified refs (`pkg.Type`) are owned by the project resolver in
-	// imports.go - the per-package pass that calls this generic checker
-	// runs with skipQualifiedRefCheck=true under [AnalyzeProject], so
-	// firing again here would double-report.
+	// The project pass checks the arity of qualified refs.
 	if len(n.Name.Parts) != 1 {
 		return
 	}
 	name := n.Name.Parts[0]
-	// Type-parameter ref inside a generic decl body. T is an in-scope
-	// type variable, not a type lookup.
 	if inSet(name, typeParams) {
-		// A type variable used with arguments is meaningless ("T<X>"
-		// makes no sense in Go's parametric model). Flag it.
 		if len(n.Args) > 0 {
 			a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeGenericNonGeneric,
 				"type parameter %q does not take generic arguments", name)
@@ -120,9 +80,6 @@ func (a *analyzer) walkNamedRefGenerics(n *ast.NamedTypeRef, typeParams []string
 	}
 	td, ok := a.pkg.Types[name]
 	if !ok {
-		// Unknown type - placement / qualified-ref / built-in handling
-		// covers the diagnostic elsewhere. Bail out to avoid a
-		// confusing "expects 0 args" message.
 		return
 	}
 	want := len(td.TypeParams)

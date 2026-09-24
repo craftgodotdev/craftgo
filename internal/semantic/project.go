@@ -1,43 +1,5 @@
 package semantic
 
-// Multi-package project analysis. AnalyzeProject groups files by
-// their `package X` declaration - files anywhere under the design
-// root that share an X declaration merge into one logical package,
-// while files declaring different package names form separate
-// packages. This matches the README's §"Imports" intent while also
-// preserving the existing fixtures' "import = pull files in this
-// folder into my package" behaviour: when files in different folders
-// happen to declare the same package name, they merge.
-//
-// Lifecycle:
-//
-//   1. Parse every file (caller's responsibility).
-//   2. Group files by their `f.Package.Name`. Files lacking a
-//      package decl join the only named package, or form a group
-//      keyed "" when there is none or several.
-//   3. Build every package's symbol tables, then run the per-package
-//      rule phases with the whole project in scope.
-//   4. For each file, validate `import "path"` against the design
-//      filesystem (when a root is known).
-//   5. Walk every NamedTypeRef across every file; multi-part names
-//      `pkg.Type` resolve directly to the Package whose pkg.Name ==
-//      `pkg`. The DSL keeps no alias-based indirection - `import
-//      alias "path"` is parsed but the alias is informational only.
-//   6. Run the project-wide rules (cross-package uniqueness, path and
-//      operationId collisions, group layout).
-//
-// Codes specific to this layer:
-//
-//   - [CodeImportUnresolved]      - `import "path"` doesn't exist
-//     under the design root.
-//   - [CodeImportEscape]          - path uses `..` / leading `/`.
-//   - [CodeImportSelf]            - file imports its own folder
-//     while declaring a package name that already covers it.
-//   - [CodeRefUnknownPackage]     - `pkg.Type` references a package
-//     name not declared anywhere in the project.
-//   - [CodeRefUnknownSymbol]      - package resolves but the target
-//     doesn't declare the named type.
-
 import (
 	"os"
 	"path/filepath"
@@ -47,24 +9,17 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/config"
 )
 
-// Project is the cross-package analysis result. Packages is keyed by
-// the package's `package X` declaration name (the value of
-// [Package.Name]), so files in any folder sharing the same name
-// merge into a single entry.
+// Project is the analysis of a whole design. Packages is keyed by
+// [Package.Name]; files in any folder that declare one name share an entry.
 type Project struct {
-	// Root is the absolute design folder used for filesystem
-	// validation of `import "path"`. Empty when AnalyzeProject was
-	// called without [Options.DesignRoot].
-	Root string
-	// Packages maps `package X` name → analysed [Package].
+	// Root is [Options.DesignRoot].
+	Root     string
 	Packages map[string]*Package
 }
 
-// AnalyzeProject groups files into packages by their `package X`
+// AnalyzeProject groups files into packages by their `package`
 // declaration, analyses every package with the whole project in scope,
-// and runs the project-wide rules. The returned [Project] is always
-// non-nil; consumers may inspect partial results even when diagnostics
-// are reported.
+// and runs the project-wide rules. The Project is never nil.
 func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	proj := &Project{
 		Root:     opts.DesignRoot,
@@ -105,9 +60,8 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	return proj, r.diags
 }
 
-// singlePackage returns the package a single-package analysis produced:
-// the only named package, or the unnamed bucket when no file declares a
-// package. Falls back to the first package by name.
+// singlePackage returns the only package, else the unnamed one, else the
+// first by name, else an empty package.
 func (p *Project) singlePackage() *Package {
 	if len(p.Packages) == 1 {
 		for _, pkg := range p.Packages {
@@ -128,11 +82,9 @@ func (p *Project) singlePackage() *Package {
 	return newAnalyzer(p, Options{}).pkg
 }
 
-// groupFilesByPackage classifies every file by its `package X`
-// declaration. Files with no decl share the bucket "" - the same
-// loose policy [analyzer.checkPackageName] uses for single-package
-// analysis. Each returned group becomes one [Package] in the
-// resulting [Project].
+// groupFilesByPackage groups files by their `package` name. Files without
+// a declaration join the only named package, or share the "" group when
+// there is none or several.
 func groupFilesByPackage(files []*ast.File) map[string][]*ast.File {
 	groups := map[string][]*ast.File{}
 	for _, f := range files {
@@ -142,8 +94,6 @@ func groupFilesByPackage(files []*ast.File) map[string][]*ast.File {
 		}
 		groups[name] = append(groups[name], f)
 	}
-	// Files without a package declaration belong to the project's only
-	// named package when there is exactly one.
 	if unnamed, ok := groups[""]; ok && len(groups) == 2 {
 		for name, group := range groups {
 			if name != "" {
@@ -155,10 +105,8 @@ func groupFilesByPackage(files []*ast.File) map[string][]*ast.File {
 	return groups
 }
 
-// folderExists reports whether path (relative to designRoot) maps to
-// a directory containing at least one .craftgo file. Used to validate
-// `import "path"` directives - the import is informational in the
-// new package-name-keyed model, but a typo is still worth flagging.
+// folderExists reports whether importPath, relative to designRoot, is a
+// directory holding at least one design file.
 func folderExists(designRoot, importPath string) bool {
 	if designRoot == "" || importPath == "" {
 		return false

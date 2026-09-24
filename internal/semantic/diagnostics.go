@@ -1,4 +1,3 @@
-// Diagnostic code constants + helper builders.
 package semantic
 
 import (
@@ -7,375 +6,175 @@ import (
 )
 
 const (
-	// CodeDecoratorUnknown fires when `@name` is not in the registry.
-	// Decorators are a closed set by design (no escape-hatch).
+	// CodeDecoratorUnknown fires when `@name` is not in the decorator registry.
 	CodeDecoratorUnknown = "decorator/unknown"
-	// CodeDecoratorRemoved fires when `@name` is a decorator craftgo has
-	// since removed. Its own code, because the message names what took
-	// its place and an author migrating a design wants to find every one.
+	// CodeDecoratorRemoved fires when `@name` is a removed decorator.
 	CodeDecoratorRemoved = "decorator/removed"
-	// CodeDecoratorPlacement fires when a known decorator appears at a
-	// site outside its declared [Spec.Levels].
+	// CodeDecoratorPlacement fires when a decorator sits outside its [Spec.Levels].
 	CodeDecoratorPlacement = "decorator/placement"
-	// CodeDecoratorDuplicate fires when the same `@name` appears twice
-	// in the same scope. Args do not disambiguate.
+	// CodeDecoratorDuplicate fires when one scope repeats a non-repeatable decorator.
 	CodeDecoratorDuplicate = "decorator/duplicate"
-	// CodeDecoratorArity fires when the count of arguments to `@name`
-	// is below ArgMin or above ArgMax.
+	// CodeDecoratorArity fires when a decorator has fewer or more arguments than its spec allows.
 	CodeDecoratorArity = "decorator/arity"
-	// CodeDecoratorArgType fires when an argument literal kind does
-	// not match the expected ArgKind for the position.
+	// CodeDecoratorArgType fires when an argument's literal kind does not fit its position.
 	CodeDecoratorArgType = "decorator/argtype"
-	// CodeDecoratorArgValue fires when an argument value falls outside
-	// the allowed enum set (e.g. `@format(garbage)`).
+	// CodeDecoratorArgValue fires when an argument is outside the allowed value set (`@format(garbage)`).
 	CodeDecoratorArgValue = "decorator/argvalue"
-	// CodeDecoratorRange fires when a numeric pair is out of order
-	// (e.g. `@length(20, 5)`) or violates a per-decorator bound.
+	// CodeDecoratorRange fires when a numeric pair is reversed (`@length(20, 5)`) or a value breaks a bound.
 	CodeDecoratorRange = "decorator/range"
-	// CodeDecoratorTypeMismatch fires when a validator decorator is
-	// applied to an incompatible field/scalar primitive (e.g.
-	// `@length` on `int`).
+	// CodeDecoratorTypeMismatch fires when a validator decorates the wrong primitive (`@length` on `int`).
 	CodeDecoratorTypeMismatch = "decorator/typemismatch"
-	// CodeDecoratorRef fires when a decorator argument names an entity
-	// (error / middleware / field / security scheme) that does not
-	// exist in scope.
+	// CodeDecoratorRef fires when a decorator argument names no declared error, middleware, field or scheme.
 	CodeDecoratorRef = "decorator/ref"
-	// CodeDecoratorRedundant fires when two decorators say the same
-	// thing redundantly (warning, not error). Example: `@nullable`
-	// on a `T?` field.
+	// CodeDecoratorRedundant warns when a decorator repeats what its site says (`@nullable` on `T?`).
 	CodeDecoratorRedundant = "decorator/redundant"
-	// CodeDecoratorConflict fires when two decorators on the same site
-	// have semantics that contradict. Example: `@sensitive` paired with
-	// a wire-shaping validator like `@length` (sensitive fields never
-	// cross the wire so wire-level constraints are meaningless).
+	// CodeDecoratorConflict fires when a decorator contradicts another decorator or its site.
 	CodeDecoratorConflict = "decorator/conflict"
-	// CodeDefaultNeedsOptional fires (severity warning) when `@default` is
-	// placed on a non-optional, non-`@path` field. The default fires when the
-	// value is absent, so the field is conceptually optional; `craftgo fmt`
-	// adds the `?` on save, after which types.go, validate.go, and the OpenAPI
-	// agree (optional + nullable). Until then the artifacts can disagree.
+	// CodeDefaultNeedsOptional warns when `@default` sits on a field that is neither optional nor `@path`.
 	CodeDefaultNeedsOptional = "decorator/default-needs-optional"
-	// CodeFlagEmptyParens fires (severity warning) when a Flag
-	// decorator (one that never takes arguments) is written with empty
-	// parens - `@positive()` instead of `@positive`. Warning only:
-	// `craftgo fmt` strips the parens on save so canonical form is
-	// parens-free.
+	// CodeFlagEmptyParens warns when a flag decorator is written with empty parens (`@positive()`).
 	CodeFlagEmptyParens = "decorator/flag-empty-parens"
-	// CodeArgPreferIdent fires (severity warning) when a decorator
-	// argument names a registered identifier (format name, security
-	// scheme, ...) but the source spells it as a quoted string. The
-	// canonical form is bare ident - `@format(email)` not
-	// `@format("email")`. `craftgo fmt` rewrites on save.
+	// CodeArgPreferIdent warns when a registered identifier argument is quoted (`@format("email")`).
 	CodeArgPreferIdent = "decorator/arg-prefer-ident"
-	// CodeBoundOverflow fires when a numeric bound literal exceeds
-	// the field type's capacity. `int8 @lte(300)` - 300 overflows
-	// int8 (max 127). Without this check codegen emits an untyped
-	// integer literal that fails to compile against the typed field.
+	// CodeBoundOverflow fires when a bound or default overflows the field type (`int8 @lte(300)`).
 	CodeBoundOverflow = "decorator/bound-overflow"
-	// CodeBoundEmptyRange fires when two comparison decorators on the
-	// same field define an empty value set. `@gt(5) @lt(5)`,
-	// `@gte(N) @lt(N)`, and `@gt(N) @lte(N)` all reject every value.
+	// CodeBoundEmptyRange warns when a field's comparison bounds admit no value (`@gt(5) @lt(5)`).
 	CodeBoundEmptyRange = "decorator/empty-range"
-	// CodeMutExSingleField fires when `@mutuallyExclusive` is given
-	// fewer than 2 fields. The runtime check (`n > 1`) is provably
-	// unreachable.
+	// CodeMutExSingleField warns when `@mutuallyExclusive` lists fewer than two distinct fields.
 	CodeMutExSingleField = "decorator/single-field-mutex"
-	// CodeDuplicateGroupField fires when a cross-field validator
-	// (`@requiresOneOf`, `@mutuallyExclusive`) lists the same field
-	// name twice. Codegen would emit `v.A == nil && v.A == nil` which
-	// `go vet` rejects as a redundant boolean expression.
+	// CodeDuplicateGroupField warns when a cross-field decorator lists a field twice.
 	CodeDuplicateGroupField = "decorator/duplicate-group-field"
-	// CodeCrossFieldNotOptional fires when a cross-field validator
-	// (`@requiresOneOf`, `@mutuallyExclusive`) references a field that
-	// is neither optional (`?`) nor `@nullable`. Presence is then
-	// ambiguous: OpenAPI expresses the group with key-presence
-	// (`required` / `not.required`) while the runtime validator falls
-	// back to zero-value emptiness (`== ""` / `== 0`), so the spec and
-	// the server disagree on whether an empty-but-present value counts.
-	// Requiring pointer-backed fields makes "present" mean the same
-	// thing on both sides.
+	// CodeCrossFieldNotOptional fires when a cross-field decorator names a field unfit for the group.
 	CodeCrossFieldNotOptional = "decorator/cross-field-not-optional"
-	// CodeMapKeyType fires when a map key type is not a usable, JSON-
-	// serialisable map key. A generic type-parameter or a non-comparable
-	// type fails to compile; a bool / float / struct key compiles but
-	// json.Marshal cannot serialise it (JSON object keys are strings). Only
-	// a string / int* / uint* key, or a scalar / enum over one, is allowed.
+	// CodeMapKeyType fires when a map key is not a string or integer, or a scalar or enum over one.
 	CodeMapKeyType = "type/map-key"
-	// CodeDuplicatePathVar fires when a route template repeats a path
-	// variable name (`/items/{id}/x/{id}`). net/http's ServeMux panics on
-	// a duplicate wildcard at registration.
+	// CodeDuplicatePathVar fires when a route repeats a path variable (`/items/{id}/x/{id}`).
 	CodeDuplicatePathVar = "route/duplicate-path-var"
-	// CodeDuplicateWireName fires when two request fields bind to the same
-	// wire parameter name on the same source (`a @query("x")  b
-	// @query("x")`). The OpenAPI emits a duplicate (name, in) parameter
-	// (an invalid spec) and the binder reads the same value into both.
+	// CodeDuplicateWireName fires when two request fields bind the same wire name in one location.
 	CodeDuplicateWireName = "binding/duplicate-wire-name"
 
-	// CodeDuplicateDecl fires when two top-level declarations share a
-	// name across the merged package.
+	// CodeDuplicateDecl fires when two top-level declarations of one namespace share a name.
 	CodeDuplicateDecl = "decl/duplicate"
-	// CodeDeclBuiltinName fires when a type / enum / scalar / error is
-	// named after a built-in type spelling (`int`, `string`, `any`, ...).
-	// The generated Go type would shadow the built-in and fail to compile.
+	// CodeDeclBuiltinName fires when a type, enum, scalar or error is named after a built-in type.
 	CodeDeclBuiltinName = "decl/builtin-name"
-	// CodeDeclNameCase fires (severity warning) when a top-level decl
-	// - type / error / enum / service / middleware / scalar - does
-	// not start with an uppercase letter. Lower-case decl names are
-	// emitted verbatim by codegen, producing UNEXPORTED Go types
-	// that cannot be imported across packages.
+	// CodeDeclNameCase warns when a declaration or method name is not capitalised.
 	CodeDeclNameCase = "decl/name-case"
-	// CodeFieldNameCollision fires (severity warning) when two field
-	// names in the same type / error body normalise to the same Go
-	// identifier under [internal/idents.GoFieldName] (e.g. `user_id`
-	// and `userId` both → `UserID`). Codegen still emits the struct
-	// using `_2`, `_3`, ... suffixes so the result compiles, but
-	// the JSON wire shape carries both DSL names verbatim - a quiet
-	// schema duplication the user almost certainly did not intend.
+	// CodeFieldNameCollision fires when two fields of one body share a Go name (warning) or a JSON key.
 	CodeFieldNameCollision = "field/name-collision"
-	// CodeEnumValueCollision fires (severity warning) when two enum
-	// values in the same enum normalise to the same Go const name
-	// (e.g. `created` and `Created` both → `<Enum>Created`).
-	// Codegen emits the trailing duplicates with `_2`, `_3`, ...
-	// suffixes so the package compiles, but the wire payload
-	// (string or int) of both values stays distinct - a quiet
-	// duplication the user usually did not intend.
+	// CodeEnumValueCollision warns when two values of one enum share a Go constant name.
 	CodeEnumValueCollision = "enum/value-collision"
-	// CodeDeclGoNameCollision fires (severity ERROR) when two
-	// top-level decls in the same package produce the same Go
-	// identifier under codegen's name-mangling rules. Examples
-	// caught by this rule:
-	//
-	//   - `type FooErr` + `error Foo` - both emit `type FooErr`
-	//   - `type FooBody` + `error Foo { ... }` - both emit `type FooBody`
-	//   - `type FooMiddleware` + `middleware Foo` - same
-	//
-	// Auto-suffixing decls would silently rename a symbol the user
-	// references in their own Go code, so this is a hard error
-	// rather than the soft warning used for FIELD-level dedup.
+	// CodeDeclGoNameCollision fires when two declarations produce one Go name (`type FooErr`, `error Foo`).
 	CodeDeclGoNameCollision = "decl/go-name-collision"
 
-	// CodeDuplicateField fires when two fields in the same type / error
-	// body share a name.
+	// CodeDuplicateField fires when two fields of one type or error body share a name.
 	CodeDuplicateField = "field/duplicate"
 
-	// CodeInvalidGoName fires when a field name maps to an invalid Go
-	// identifier - empty (e.g. `_`, `__`) or digit-leading (e.g. `_2`,
-	// which normalises to `2`). Codegen would emit uncompilable / unexported
-	// Go, so reject at design time with a clean message instead.
+	// CodeInvalidGoName fires when a field name maps to an empty or digit-leading Go name (`_`, `_2`).
 	CodeInvalidGoName = "field/invalid-go-name"
 
-	// CodeEnumDuplicateName fires for two enum values with the same
-	// identifier.
+	// CodeEnumDuplicateName fires when two values of one enum share a name.
 	CodeEnumDuplicateName = "enum/duplicate-name"
-	// CodeEnumMixedTypes fires when an enum mixes bare / int / string
-	// values.
+	// CodeEnumMixedTypes fires when an enum mixes bare, int and string values.
 	CodeEnumMixedTypes = "enum/mixed-types"
-	// CodeEnumDuplicateLiteral fires when two enum values share an
-	// int or string literal.
+	// CodeEnumDuplicateLiteral fires when two values of one enum share a literal.
 	CodeEnumDuplicateLiteral = "enum/duplicate-literal"
-	// CodeEnumEmpty fires when an `enum X { }` has zero values. An
-	// empty enum has no value that passes validation and emits
-	// `enum: []` which violates JSON Schema 2020-12.
+	// CodeEnumEmpty fires when an enum declares no values.
 	CodeEnumEmpty = "enum/empty-values"
 
-	// CodeServiceDuplicate fires for two primary `service` decls of
-	// the same name.
+	// CodeServiceDuplicate fires when two primary `service` declarations share a name.
 	CodeServiceDuplicate = "service/duplicate"
-	// CodeServiceExtendOrphan fires when an `extend service` has no
-	// primary declaration in the package.
+	// CodeServiceExtendOrphan fires when an `extend service` has no primary declaration in its package.
 	CodeServiceExtendOrphan = "service/extend-orphan"
-	// CodeExtendDecoratorNotMethod fires when an `extend service` block
-	// carries a decorator that has no method-level form (e.g. `@prefix`).
-	// Such decorators must sit on the primary service declaration;
-	// putting them on an extend block would propagate to every method
-	// in the block, which is meaningless for service-only directives.
+	// CodeExtendDecoratorNotMethod fires when an `extend service` carries a non-method decorator (`@prefix`).
 	CodeExtendDecoratorNotMethod = "service/extend-decorator-not-method"
-	// CodeServiceDuplicateMethod fires for two methods sharing a name
-	// inside one service (after extends merge).
+	// CodeServiceDuplicateMethod fires when one service declares two methods of the same name.
 	CodeServiceDuplicateMethod = "service/duplicate-method"
-	// CodeServiceDuplicateRoute fires for two methods sharing the
-	// same VERB+path tuple (after extends merge).
+	// CodeServiceDuplicateRoute fires when one service declares two methods of one verb and route shape.
 	CodeServiceDuplicateRoute = "service/duplicate-route"
 
-	// CodeBindingConflict fires when a field has more than one of
-	// `@path / @query / @header / @cookie / @body / @form`.
+	// CodeBindingConflict fires when a field carries more than one binding decorator.
 	CodeBindingConflict = "binding/conflict"
-	// CodeBindingType fires when `@path`, `@header`, or `@cookie` is
-	// applied to a field whose type is not a non-array, non-optional
-	// `string`. The wire formats those decorators target carry only
-	// strings (URL segments, header values, cookie values), and the
-	// codegen would otherwise silently skip the field at gen time -
-	// surfacing the mismatch at design time gives the author an
-	// actionable error.
+	// CodeBindingType fires when a field or method type cannot ride the binding or body it is given.
 	CodeBindingType = "binding/type"
-	// CodeBindingVerb fires when `@body` or `@form` sits on a request
-	// field of a non-body verb (GET / HEAD / DELETE / OPTIONS). Those
-	// handlers decode no request body, so the field would be silently
-	// dropped at gen time - surfacing it at design time prevents the
-	// silent data loss.
+	// CodeBindingVerb fires when `@body` or `@form` sits on a request field of a body-less verb.
 	CodeBindingVerb = "binding/verb"
-	// CodeFilePosition fires when a `file` field appears where the
-	// multipart binder cannot reach it: inside a response type, or nested
-	// below the top level of a request body. The form-binding codegen scans
-	// only the resolved top-level request fields, so a `file` elsewhere is
-	// silently emitted as a JSON-encoded `*multipart.FileHeader` the server
-	// can never populate. `file` is valid only as a top-level request field
-	// (directly or carried in via a mixin).
+	// CodeFilePosition fires when a `file` field sits in a response or below a request's top level.
 	CodeFilePosition = "binding/file-position"
-	// CodeGroupPackageStraddle fires when services from DIFFERENT DSL
-	// packages resolve to the same output directory via `@group`.
-	// Sharing a group is the decorator's purpose - it lays out folders,
-	// and several services landing in one folder merge into a single
-	// routes.go. But a directory is one Go package, and generated files
-	// take their `package` declaration from the DSL package that
-	// declared the service, so a shared folder fed by two DSL packages
-	// emits `package a` and `package b` side by side and the tree does
-	// not compile. Move the services into one DSL package or give them
-	// separate groups.
+	// CodeGroupPackageStraddle fires when services of different DSL packages share an output directory.
 	CodeGroupPackageStraddle = "group/package-straddle"
-	// CodeGroupMethodCollision fires when two services sharing an output
-	// directory declare the same method name. Handlers and stubs are one
-	// file per method named after it, and the handler func is named after
-	// it too, so both services would claim `<method>.go` and declare the
-	// same exported function in one package - the second write wins and
-	// the routes file points half its patterns at the wrong handler.
-	// Rename one method or split the group.
+	// CodeGroupMethodCollision fires when services sharing an output directory declare one method name.
 	CodeGroupMethodCollision = "group/method-collision"
-	// CodeMiddlewareCollision fires when two packages in the same
-	// project both declare a `middleware` of the same name. Cross-
-	// package middleware references are global by design, so a
-	// collision would make `@middlewares(Name)` ambiguous - the
-	// resolver picks the first match silently. The diagnostic
-	// surfaces every conflicting declaration so the author can
-	// rename or consolidate.
+	// CodeMiddlewareCollision fires when two packages declare a middleware of the same name.
 	CodeMiddlewareCollision = "middleware/collision"
 
-	// CodeQualifiedRef fires for a malformed qualified reference: more
-	// than one package segment (`a.b.Type`), or a type in its own package
-	// referenced as `pkg.Type` instead of by its bare name.
+	// CodeQualifiedRef fires when a reference has two qualifiers or qualifies its own package.
 	CodeQualifiedRef = "ref/qualified"
 
-	// CodeMixinNonType fires when a mixin reference resolves to a
-	// non-type entity (enum, error, scalar, middleware).
+	// CodeMixinNonType fires when a mixin names an enum, error, scalar or middleware.
 	CodeMixinNonType = "mixin/non-type"
-	// CodeMixinCycle fires when expanding a mixin would loop back
-	// onto a type already on the expansion stack.
+	// CodeMixinCycle fires when a mixin embeds a type already on its expansion stack.
 	CodeMixinCycle = "mixin/cycle"
-	// CodeMixinConflict fires when expansion produces two fields
-	// with the same name (mixin vs host or mixin vs mixin).
+	// CodeMixinConflict fires when embedding repeats a field or Go name, or embeds a type parameter.
 	CodeMixinConflict = "mixin/conflict"
-	// CodeMixinArity fires when a generic mixin's argument count
-	// disagrees with the target's TypeParams count.
+	// CodeMixinArity fires when a generic mixin has the wrong number of arguments.
 	CodeMixinArity = "mixin/arity"
 
-	// CodeGenericArity fires when a generic instance's argument count
-	// disagrees with the target decl's TypeParams.
+	// CodeGenericArity fires when a generic reference has the wrong number of arguments.
 	CodeGenericArity = "generic/arity"
-	// CodeGenericNonGeneric fires when a non-generic type is referenced
-	// with `<...>` arguments.
+	// CodeGenericNonGeneric fires when a non-generic type or a type parameter is given `<...>` arguments.
 	CodeGenericNonGeneric = "generic/non-generic"
-	// CodeGenericOptionalArg fires when a generic type argument carries a
-	// trailing `?` (`Page<Item?>`). The optionality has no single, well-
-	// defined position once the argument is substituted into the decl's
-	// body, so the Go type and the OpenAPI schema disagree about whether it
-	// applies to the element or the surrounding collection. Declare the
-	// nullability on a concrete field of the generic instead.
+	// CodeGenericOptionalArg fires when a generic type argument is optional (`Page<Item?>`).
 	CodeGenericOptionalArg = "generic/optional-arg"
 
-	// CodePathBaseFormat warns when [Options.BasePath] is malformed -
-	// missing leading slash, trailing slash, or contains `//`. Code-
-	// gen normalises these so this is a warning, not an error.
+	// CodePathBaseFormat warns when [Options.BasePath] lacks a leading `/`, ends with `/` or contains `//`.
 	CodePathBaseFormat = "path/base-format"
-	// CodePathCollision fires when two methods (across any service)
-	// resolve to the same VERB + final-path tuple, or to patterns that
-	// overlap with neither more specific - either is a pair net/http's
-	// ServeMux refuses to register.
+	// CodePathCollision fires when two methods' routes cannot both register with net/http's ServeMux.
 	CodePathCollision = "path/collision"
-	// CodeDuplicateOperation fires when two methods resolve to the same
-	// OpenAPI operationId - auto-prefixing removes same-method-name
-	// collisions, so a survivor comes from an explicit `@operationId(...)`
-	// that two methods share (or that equals another method's auto id),
-	// which would emit an invalid spec.
+	// CodeDuplicateOperation fires when two methods resolve to the same OpenAPI operationId.
 	CodeDuplicateOperation = "operation/duplicate-id"
-	// CodePathParamMissing fires when a `{name}` segment in the
-	// resolved route has no corresponding field binding in the
-	// method's request type.
+	// CodePathParamMissing fires when a route's `{name}` has no request field to bind it.
 	CodePathParamMissing = "path/param-missing"
-	// CodePathParamOrphan fires when a request field uses `@path` /
-	// `@path("name")` but the resolved route has no matching
-	// `{name}` segment.
+	// CodePathParamOrphan fires when an `@path` field names no `{name}` of its route.
 	CodePathParamOrphan = "path/param-orphan"
-	// CodePathHealthConflict fires when a user-declared method's
-	// resolved route equals one of the runtime-reserved health paths
-	// (`/healthz`, `/readyz` by default).
+	// CodePathHealthConflict fires when a method's route equals a reserved health path.
 	CodePathHealthConflict = "path/health-conflict"
 
-	// CodeImportUnresolved fires when `import "path"` does not
-	// correspond to a folder under the design root.
+	// CodeImportUnresolved fires when `import "path"` names no design folder.
 	CodeImportUnresolved = "import/unresolved"
-	// CodeImportEscape fires when an import path uses `..` or starts
-	// with `/` to escape the design root.
+	// CodeImportEscape fires when an import path is absolute or its first segment is `.` or `..`.
 	CodeImportEscape = "import/escape"
-	// CodeImportDuplicate fires when one file imports the same path
-	// twice (with or without matching aliases) - a clear redundancy
-	// the parser cannot detect without per-file context.
+	// CodeImportDuplicate fires when one file imports a path twice.
 	CodeImportDuplicate = "import/duplicate"
-	// CodeImportAliasConflict fires when two imports in the same
-	// file resolve to the same alias (explicit or implicit), making
-	// later qualified references like `alias.Type` ambiguous.
+	// CodeImportAliasConflict fires when two imports of one file share an alias, explicit or implicit.
 	CodeImportAliasConflict = "import/alias-conflict"
-	// CodeImportSelf fires when a file imports a folder whose files
-	// share its own `package X` declaration - the import is a no-op
-	// since the analyser already merges them by package name.
+	// CodeImportSelf warns when a file imports a folder named after its own package.
 	CodeImportSelf = "import/self"
-	// CodeRefUnknownPackage fires when `pkg.Type` references a
-	// package whose `package X` declaration doesn't appear anywhere
-	// in the project.
+	// CodeRefUnknownPackage fires when a qualified reference names an undeclared package.
 	CodeRefUnknownPackage = "ref/unknown-package"
-	// CodeRefUnknownSymbol fires when the package resolves correctly
-	// but doesn't declare the named type.
+	// CodeRefUnknownSymbol fires when a type reference names nothing usable as a type.
 	CodeRefUnknownSymbol = "ref/unknown-symbol"
-	// CodeScalarBadPrimitive fires when a `scalar Name Primitive`
-	// declaration uses a non-builtin word in the primitive slot
-	// (e.g. another type name, a typo, or the scalar's own name).
-	// The scalar's underlying type must be a primitive the framework
-	// knows how to validate; user-defined types in this slot would
-	// silently break inheritance and produce invalid Go.
+	// CodeScalarBadPrimitive fires when a scalar wraps a non-built-in, `any`, `object` or `file`.
 	CodeScalarBadPrimitive = "scalar/bad-primitive"
-	// CodeEventPayloadMissing fires when an `event` body has no
-	// `payload` clause - the contract would carry no shape.
+	// CodeEventPayloadMissing fires when an event has no `payload` clause.
 	CodeEventPayloadMissing = "event/payload-missing"
-	// CodeEventPayloadKind fires when an event's payload names
-	// something other than a `type` declaration.
+	// CodeEventPayloadKind fires when an event's payload names anything but a `type` declaration.
 	CodeEventPayloadKind = "event/payload-kind"
-	// CodeEventContractCollision fires when two events resolve to the
-	// same contract name - a listener could not tell them apart on the
-	// wire.
+	// CodeEventContractCollision fires when two events resolve to one contract name.
 	CodeEventContractCollision = "event/contract-collision"
-	// CodeEventContractFormat fires when an `@contract` argument is
-	// empty or carries whitespace.
+	// CodeEventContractFormat fires when an `@contract` argument is empty or contains whitespace.
 	CodeEventContractFormat = "event/contract-format"
-	// CodeEventDuplicate fires when one package declares two events of
-	// the same name.
+	// CodeEventDuplicate fires when one package declares two events of the same name.
 	CodeEventDuplicate = "event/duplicate-name"
 )
 
-// related is a tiny helper that builds a single-element [lexer.Related]
-// slice. Most semantic diagnostics link to exactly one prior site (a
-// duplicate's first occurrence, a binding's first decorator, etc.); the
-// helper keeps the call site readable.
+// related returns a one-entry [lexer.Related] list.
 func related(pos lexer.Position, msg string) []lexer.Related {
 	return []lexer.Related{{Pos: pos, Msg: msg}}
 }
 
-// decoratorEnd returns the half-open end position covering `@name`, used
-// as the [Diagnostic.End] for placement / unknown errors. We don't have
-// the exact closing-paren position in the AST, so the range covers just
-// the `@name` token - enough for LSP to underline the offending
-// decorator without spilling into argument literals.
+// decoratorEnd returns the position just past d's `@name` token.
 func decoratorEnd(d *ast.Decorator) lexer.Position {
 	end := d.Pos
-	// +1 for the leading '@', +len(Name) for the identifier itself.
 	w := 1 + len(d.Name)
 	end.Column += w
 	end.Offset += w

@@ -1,27 +1,5 @@
 package semantic
 
-// Mixin field expansion + conflict detection. Per README §"Mixin", a
-// bare qualified ident inside a type body embeds the referenced type's
-// fields into the host. The DSL is composition-only - there's no
-// `extends` keyword - so the validation here mirrors Go's struct
-// embedding rules with one extra constraint: a name collision is a
-// hard error rather than promotion shadowing.
-//
-// Diagnostic codes (a name that resolves to nothing is reported by the
-// type-reference pass, not here):
-//
-//   - [CodeMixinNonType]       - name resolves to a non-type entity
-//     (enum, error, scalar, middleware).
-//   - [CodeMixinCycle]         - A mixes B mixes A.
-//   - [CodeMixinConflict]      - two paths bring in the same field.
-//   - [CodeMixinArity]         - generic mixin args disagree with the
-//     target type's `TypeParams`.
-//
-// Generic mixin substitution (`Page<User>` → fields with T replaced by
-// User) is not modelled in detail here - for conflict detection we
-// only care about field NAMES, which are stable across substitution.
-// Codegen does the actual T→User rewrite per-instance.
-
 import (
 	"fmt"
 	"sort"
@@ -31,16 +9,14 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// mixinEmbed records where a mixin first embedded under a given Go
-// field name, for the duplicate-embed diagnostic.
+// mixinEmbed is where a mixin first embedded under a Go field name.
 type mixinEmbed struct {
 	full string
 	pos  lexer.Position
 }
 
-// goEmbedName returns the Go embedded-field name a mixin ref lowers to:
-// the unqualified last segment, so `shared.Leaf` and a local `Leaf` both
-// yield `Leaf` (and would redeclare it in the generated struct).
+// goEmbedName returns the Go embedded-field name of a mixin ref: its last
+// segment, so `shared.Leaf` and `Leaf` both embed as `Leaf`.
 func goEmbedName(n *ast.QualifiedIdent) string {
 	if n == nil || len(n.Parts) == 0 {
 		return ""
@@ -48,9 +24,8 @@ func goEmbedName(n *ast.QualifiedIdent) string {
 	return n.Parts[len(n.Parts)-1]
 }
 
-// duplicateEmbedMsg builds the duplicate-embed diagnostic, distinguishing
-// the exact-same-ref case from two distinct refs (local vs imported, or
-// two imports) that collapse to the same Go field name.
+// duplicateEmbedMsg words the duplicate-embed diagnostic for one ref
+// embedded twice or for two refs with the same Go field name.
 func duplicateEmbedMsg(first, second, leaf string) string {
 	if first == second {
 		return fmt.Sprintf("mixin %q is embedded more than once - the generated Go struct would declare it twice and fail to compile (%q redeclared)", first, leaf)
@@ -58,7 +33,7 @@ func duplicateEmbedMsg(first, second, leaf string) string {
 	return fmt.Sprintf("mixins %q and %q both embed as the Go field %q - the generated struct would redeclare it and fail to compile", first, second, leaf)
 }
 
-// fieldEmbedClash is a field whose Go field-name equals an embedded
+// fieldEmbedClash is a field whose Go field name equals an embedded
 // mixin's type name.
 type fieldEmbedClash struct {
 	pos    lexer.Position
@@ -67,12 +42,8 @@ type fieldEmbedClash struct {
 	mixin  string
 }
 
-// fieldEmbedClashes returns each field whose generated Go field-name
-// collides with an embedded mixin's type name. The mixin embeds as that
-// type name, so the struct would declare the same Go identifier twice
-// (`type Host { Page  page int }` → a `Page` embed and a `Page` field →
-// "Page redeclared"). JSON tags differ, so OpenAPI is unaffected, but the
-// Go output does not compile.
+// fieldEmbedClashes returns each field whose Go field name equals an
+// embedded mixin's type name: `type Host { Page  page int }`.
 func fieldEmbedClashes(body []ast.TypeMember) []fieldEmbedClash {
 	embeds := map[string]bool{}
 	for _, m := range body {
@@ -95,11 +66,8 @@ func fieldEmbedClashes(body []ast.TypeMember) []fieldEmbedClash {
 	return out
 }
 
-// checkMixins walks every type and error body, validating mixins and
-// collecting an "all reachable field names" set for conflict detection.
-// Field-name uniqueness within the host's own body is already
-// enforced by [analyzer.checkFieldUniqueness]; this pass adds the
-// mixin-aware view.
+// checkMixins validates the mixins of every type and error body. A field
+// name reachable twice through embedding is an error, not Go-style shadowing.
 func (a *analyzer) checkMixins() {
 	for _, td := range a.pkg.Types {
 		a.checkOneTypeMixins(td.Name, td.Body)
@@ -110,17 +78,14 @@ func (a *analyzer) checkMixins() {
 	}
 }
 
-// typeParamMixin is a mixin that embeds a bare type-parameter of its host
-// generic, with the source position for the diagnostic.
+// typeParamMixin is a mixin that embeds a type parameter of its host.
 type typeParamMixin struct {
 	pos   lexer.Position
 	param string
 }
 
-// findTypeParamMixins returns every mixin in body that embeds a bare
-// type-parameter of the host generic (`type Box<T> { T }`). Go forbids
-// embedding a type parameter ("embedded field type cannot be a (pointer to a)
-// type parameter"), so the generated struct would never compile.
+// findTypeParamMixins returns every mixin in body that embeds a type
+// parameter of the host (`type Box<T> { T }`), which Go cannot embed.
 func findTypeParamMixins(typeParams []string, body []ast.TypeMember) []typeParamMixin {
 	if len(typeParams) == 0 {
 		return nil
@@ -142,42 +107,31 @@ func findTypeParamMixins(typeParams []string, body []ast.TypeMember) []typeParam
 	return out
 }
 
-// typeParamMixinMsg is the shared diagnostic text for an embedded type-param.
+// typeParamMixinMsg words the embedded-type-parameter diagnostic.
 func typeParamMixinMsg(host, param string) string {
 	return fmt.Sprintf(
 		"type %s cannot embed its type parameter %q as a mixin: Go forbids embedding a type parameter, so the generated struct would not compile. Use a named field instead (e.g. `value %s`).",
 		host, param, param)
 }
 
-// checkTypeParamMixin rejects an embedded type-parameter.
+// checkTypeParamMixin rejects an embedded type parameter.
 func (a *analyzer) checkTypeParamMixin(host string, typeParams []string, body []ast.TypeMember) {
 	for _, tpm := range findTypeParamMixins(typeParams, body) {
 		a.diag(tpm.pos, tpm.pos, lexer.SeverityError, CodeMixinConflict, "%s", typeParamMixinMsg(host, tpm.param))
 	}
 }
 
-// fieldOrigin records where a field name first surfaced when expanding
-// a host's mixins. The pos points at the original field declaration so
-// IDE conflict messages link back to the real source line; the from
-// label distinguishes "host's own" vs "via mixin X".
+// fieldOrigin is where a field name first appeared while expanding a host:
+// the field's declaration and the host or mixin that brought it in.
 type fieldOrigin struct {
 	pos  lexer.Position
 	from string // host name or mixin chain root
 }
 
-// reportGoNameCollisions flags fields whose DSL names differ but whose Go
-// identifiers collide ACROSS an embed boundary. Within one struct's own
-// fields a Go-name collision is dedup-renamed by codegen (`UserID` /
-// `UserID_2`), but a host field and a field promoted from a mixin - or two
-// fields promoted from different mixins - land in SEPARATE Go structs that
-// Go field-promotion merges by name: the binder, validator, and response
-// writers all read `v.UserID`, targeting one field for both (clobber) or, for
-// two equal-depth embeds, producing an ambiguous selector that won't compile.
-// The codegen dedup runs per declaring struct and so cannot fix it; reject at
-// design time so the author renames one. seen holds every contributing field
-// (host's own + promoted) keyed by DSL name with its origin; a Go-name group
-// is safe only when all its members share one origin. emit anchors each
-// diagnostic at the colliding field.
+// reportGoNameCollisions reports fields with different DSL names but one Go
+// name that come from different origins in seen: Go field promotion cannot
+// tell them apart. Fields of one origin share a struct, where the duplicate
+// Go name gets a numeric suffix.
 func reportGoNameCollisions(seen map[string]fieldOrigin, emit func(pos lexer.Position, msg string)) {
 	type ent struct {
 		dsl  string
@@ -199,8 +153,7 @@ func reportGoNameCollisions(seen map[string]fieldOrigin, emit func(pos lexer.Pos
 		if len(ents) < 2 {
 			continue
 		}
-		// Deterministic order: the lowest (from, dsl) is the anchor the
-		// others are reported against.
+		// The lowest (from, dsl) is the anchor the others are reported against.
 		sort.Slice(ents, func(i, j int) bool {
 			if ents[i].from != ents[j].from {
 				return ents[i].from < ents[j].from
@@ -210,7 +163,7 @@ func reportGoNameCollisions(seen map[string]fieldOrigin, emit func(pos lexer.Pos
 		first := ents[0]
 		for _, e := range ents[1:] {
 			if e.from == first.from {
-				continue // same declaring struct - codegen dedups it
+				continue // one struct: the Go name gets a suffix
 			}
 			emit(e.pos, fmt.Sprintf(
 				"field %q (from %s) and field %q (from %s) both lower to the Go field %q across mixin embedding - Go field promotion can't tell them apart, so the generated binder / validator / writers would target one field for both. Rename one.",
@@ -219,18 +172,15 @@ func reportGoNameCollisions(seen map[string]fieldOrigin, emit func(pos lexer.Pos
 	}
 }
 
-// checkOneTypeMixins validates every top-level mixin in body, walking
-// nested mixins recursively: it lands the host's own field origins into
-// seen, rejects two mixins that lower to the same Go embed name, expands
-// each mixin's fields, then reports field-vs-embed-name clashes and
-// cross-embed Go-name collisions.
+// checkOneTypeMixins checks one body's mixins: duplicate embeds, field
+// conflicts through each mixin, fields named like an embed, and Go-name
+// collisions across embeds.
 func (a *analyzer) checkOneTypeMixins(host string, body []ast.TypeMember) {
 	seen := map[string]fieldOrigin{}
 	emit := func(pos lexer.Position, code, format string, args ...any) *Diagnostic {
 		return a.diag(pos, pos, lexer.SeverityError, code, format, args...)
 	}
-	// Host's own fields land first; they always win if a later mixin brings
-	// the same name in (the conflict is reported, never silently overridden).
+	// Host fields first, so a mixin's same-named field is the one reported.
 	for _, m := range body {
 		if f, ok := m.(*ast.Field); ok {
 			if _, dup := seen[f.Name]; dup {
@@ -246,9 +196,6 @@ func (a *analyzer) checkOneTypeMixins(host string, body []ast.TypeMember) {
 			continue
 		}
 		if mx.Ref != nil && mx.Ref.Name != nil {
-			// Key on the Go embedded-field name (the unqualified leaf), not
-			// the dotted ref: `Leaf` and `shared.Leaf` both embed as the
-			// field `Leaf` and would redeclare it.
 			leaf := goEmbedName(mx.Ref.Name)
 			full := mx.Ref.Name.String()
 			if prev, dup := seenMixin[leaf]; dup {
@@ -270,11 +217,8 @@ func (a *analyzer) checkOneTypeMixins(host string, body []ast.TypeMember) {
 	})
 }
 
-// processMixin resolves one mixin reference - bare in the host's package
-// or qualified `pkg.Type` - and expands its fields into seen. visited is
-// initialised with the host so a self-mixin is detected immediately as
-// a cycle. A name that resolves to nothing is left to the type-reference
-// pass, which reports it once.
+// processMixin resolves one mixin, checks its generic arity and expands its
+// fields into seen. An unresolved name is left to the type-reference checks.
 func (a *analyzer) processMixin(host string, mx *ast.Mixin, seen map[string]fieldOrigin) {
 	if mx.Ref == nil || mx.Ref.Name == nil {
 		return
@@ -293,14 +237,13 @@ func (a *analyzer) processMixin(host string, mx *ast.Mixin, seen map[string]fiel
 			mx.Ref.Name.String(), len(td.TypeParams), len(mx.Ref.Args))
 		return
 	}
+	// Seeding the host makes a self-mixin a cycle.
 	visited := map[string]bool{a.pkg.Name + "." + host: true}
 	a.collectMixinFields(pkgName, name, mx.Ref.Name.String(), mx.Pos, seen, visited)
 }
 
-// resolveMixinTarget finds the *TypeDecl that name declares in pkgName.
-// Reports a distinct diagnostic when the name resolves to a different
-// kind of declaration (enum / error / scalar / middleware) so the user
-// sees "you mixin'd an enum" rather than a generic "unresolved".
+// resolveMixinTarget returns the type name declares in pkgName; a name of
+// another kind is reported as [CodeMixinNonType].
 func (a *analyzer) resolveMixinTarget(mx *ast.Mixin, pkgName, name string) *ast.TypeDecl {
 	pkg := a.packageNamed(pkgName)
 	if pkg == nil {
@@ -327,14 +270,10 @@ func (a *analyzer) resolveMixinTarget(mx *ast.Mixin, pkgName, name string) *ast.
 	return nil
 }
 
-// collectMixinFields walks the body of pkgName.name, accumulating field
-// origins into seen. Nested mixins recurse with the same `seen` map so
-// one deep conflict surfaces as one diagnostic at the offending
-// top-level mixin position; a bare nested mixin resolves in the package
-// of the type that embeds it. visited tracks the expansion stack by
-// qualified name to catch cycles, including ones that cross packages.
-// mixinPos is the diagnostic anchor - the host's `MixinName` token, not
-// the nested decl that actually contains the colliding field.
+// collectMixinFields adds the fields of pkgName.name and its nested mixins
+// to seen, reporting conflicts and cycles at mixinPos, the host's mixin. A
+// bare nested mixin resolves in its embedding type's package; visited holds
+// the expansion stack.
 func (a *analyzer) collectMixinFields(
 	pkgName, name, sourceLabel string,
 	mixinPos lexer.Position,
@@ -363,9 +302,7 @@ func (a *analyzer) collectMixinFields(
 		case *ast.Field:
 			if prev, dup := seen[v.Name]; dup {
 				if prev.from == sourceLabel {
-					// Same mixin path bringing in the same field -
-					// nothing to flag.
-					continue
+					continue // reached twice through the same host mixin
 				}
 				diag := a.diag(mixinPos, mixinPos, lexer.SeverityError,
 					CodeMixinConflict,

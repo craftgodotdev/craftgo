@@ -6,8 +6,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// DeclKind selects which declaration tables [Package.Decl], [Package.Decls]
-// and [Project.Lookup] search. Kinds combine as a bit set.
+// DeclKind is a bit set of declaration kinds to search.
 type DeclKind uint8
 
 const (
@@ -17,19 +16,15 @@ const (
 	ErrorDecls
 	MiddlewareDecls
 	ServiceDecls // primary `service` declarations
-	// EventDecls covers every contract the package declares.
 	EventDecls
 
 	AnyDecl = TypeDecls | EnumDecls | ScalarDecls | ErrorDecls | MiddlewareDecls | ServiceDecls | EventDecls
-	// TypeShapeDecls is every kind a type-shape position (a field type, a
-	// mixin, a request or response, a generic argument) can name. An
-	// event is a contract, never a type shape.
+	// TypeShapeDecls leaves out the kinds that never name a type shape.
 	TypeShapeDecls = AnyDecl &^ MiddlewareDecls &^ EventDecls
 )
 
-// Decl returns the declaration of name among the tables kinds selects, or
-// nil. Middleware names live in their own namespace, so a name may be both
-// a middleware and another kind; kinds decides which one is meant.
+// Decl returns the declaration of name among the selected kinds, or nil.
+// Kinds are searched in [Package.Decls] order; the first match wins.
 func (p *Package) Decl(name string, kinds DeclKind) ast.Decl {
 	if kinds&TypeDecls != 0 {
 		if d, ok := p.Types[name]; ok {
@@ -70,7 +65,7 @@ func (p *Package) Decl(name string, kinds DeclKind) ast.Decl {
 }
 
 // Decls returns every declaration of the selected kinds, ordered by kind
-// (type, enum, scalar, error, middleware, service) and then by name.
+// (type, enum, scalar, error, middleware, event, service), then by name.
 func (p *Package) Decls(kinds DeclKind) []ast.Decl {
 	var out []ast.Decl
 	if kinds&TypeDecls != 0 {
@@ -108,11 +103,9 @@ func appendDecls[D ast.Decl](out []ast.Decl, table map[string]D) []ast.Decl {
 	return out
 }
 
-// Lookup resolves name to its declaration among the selected kinds: a
-// qualified `pkg.Name` in package pkg only, a bare name in homePkg first
-// and then in any other package (by name), so a sibling package's
-// declaration is reachable without its qualifier. Nil when nothing
-// matches.
+// Lookup returns the declaration name refers to among the selected kinds,
+// or nil: a qualified `pkg.Name` in pkg only, a bare name in homePkg, then
+// in the other packages in name order.
 func (p *Project) Lookup(homePkg, name string, kinds DeclKind) ast.Decl {
 	if dot := strings.LastIndexByte(name, '.'); dot >= 0 {
 		if pkg := p.Packages[name[:dot]]; pkg != nil {
