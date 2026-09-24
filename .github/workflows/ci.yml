@@ -15,8 +15,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Lint, vulnerability scan, and the codegen drift gate. All OS-independent,
-  # so they run once on Linux; the cross-OS suite is the `test` job below.
+  # Lint, module tidiness, vulnerability scan, and the codegen drift gate. All
+  # OS-independent, so they run once on Linux; the cross-OS suite is the `test`
+  # job below.
   check:
     runs-on: ubuntu-latest
     steps:
@@ -31,6 +32,9 @@ jobs:
 
       - name: fmt-check
         run: make fmt-check
+
+      - name: tidy-check
+        run: make tidy-check
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8

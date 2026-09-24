@@ -141,8 +141,10 @@ Run `make ci` before you tag. Nothing in `make tag` runs the test suite.
   phase 2 fixes.
 
 Between phase 1 and the push, `make tidy` will fail in `pkg/events/nats` and
-`pkg/events/kafka` for exactly that reason. Everything else - `make ci`,
-`make gen-all`, `go build`, `go test`, golangci-lint - keeps working.
+`pkg/events/kafka` for exactly that reason. `make tidy-check`, and with it
+`make ci` and the CI `check` job, fails there until phase 2 commits the
+checksums. Everything else - `make gen-all`, `go build`, `go test`,
+golangci-lint - keeps working.
 
 ## The push
 

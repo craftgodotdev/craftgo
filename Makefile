@@ -189,6 +189,13 @@ tidy: ## go mod tidy in the root module and every sub-module.
 		echo "→ tidy $$d"; (cd "$$d" && $(GO) mod tidy) || exit 1; \
 	done
 
+.PHONY: tidy-check
+tidy-check: ## Fail if go mod tidy would change the go.mod or go.sum of any module.
+	$(GO) mod tidy -diff
+	@for d in $(SUBMODULES); do \
+		echo "→ tidy-check $$d"; (cd "$$d" && $(GO) mod tidy -diff) || exit 1; \
+	done
+
 .PHONY: deps
 deps: ## Download/verify modules.
 	$(GO) mod download
@@ -233,7 +240,7 @@ tag-list: ## Show the four latest tags of each published module (five modules).
 
 # ---- one-shot CI surface -------------------------------------------------
 .PHONY: ci
-ci: lint test-race e2e test-submodules gen-diff build ## Run the CI gates locally: lint, race tests, e2e, sub-module tests, codegen drift, build.
+ci: lint tidy-check test-race e2e test-submodules gen-diff build ## Run the CI gates locally: lint, module tidiness, race tests, e2e, sub-module tests, codegen drift, build.
 
 # ---- docs diagrams --------------------------------------------------------
 # Sources are docs/diagrams/*.excalidraw (edit them on excalidraw.com or with
