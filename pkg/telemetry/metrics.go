@@ -16,12 +16,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 )
 
-// resourceFor is the resource every signal reports under: the SDK
-// defaults (telemetry.sdk.*, `unknown_service:<binary>` as the service
-// name) with `service.name` replaced by serviceName when given. The
-// service name merges in schemaless, so it cannot conflict with the
-// defaults' schema URL; should the merge still fail, the service name
-// wins over the defaults.
+// resourceFor is the SDK default resource with `service.name` set to
+// serviceName when given, or that name alone if the merge fails.
 func resourceFor(serviceName string) *sdkresource.Resource {
 	if serviceName == "" {
 		return sdkresource.Default()
@@ -34,11 +30,8 @@ func resourceFor(serviceName string) *sdkresource.Resource {
 	return merged
 }
 
-// metricReader returns the reader c.Exporter selects and whether it is
-// the Prometheus scrape into reg: a periodic OTLP push for the otlp_*
-// kinds, a manual reader nothing collects from for "none" (instruments
-// resolve, nothing leaves), and the scrape for "prometheus" and any
-// other value, so a typo never silently turns metrics off.
+// metricReader returns the reader c.Exporter selects, falling back to the
+// Prometheus scrape into reg, and whether it is that scrape.
 func metricReader(ctx context.Context, c MetricsConfig, reg prom.Registerer) (sdkmetric.Reader, bool, error) {
 	switch c.Exporter {
 	case ExporterOTLPgRPC:
@@ -64,9 +57,8 @@ func metricReader(ctx context.Context, c MetricsConfig, reg prom.Registerer) (sd
 	return exp, true, nil
 }
 
-// registerRuntimeCollectors adds the Go runtime and process collectors to
-// reg, so the scrape carries `go_*` and `process_*` series alongside the
-// HTTP instruments. A collector already registered is left alone.
+// registerRuntimeCollectors adds the Go runtime and process collectors to reg,
+// tolerating ones already registered.
 func registerRuntimeCollectors(reg prom.Registerer) error {
 	for _, c := range []prom.Collector{
 		collectors.NewGoCollector(),

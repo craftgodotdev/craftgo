@@ -14,9 +14,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/telemetry"
 )
 
-// HTTPMiddleware puts the span on the request context; AccessLog reads that
-// context through WithContext. Wrapped in that order the access line carries
-// trace_id and span_id, and in the other order it carries neither.
+// The access line carries trace_id and span_id only when AccessLog runs inside HTTPMiddleware.
 func TestAccessLogReportsTraceIDsOnlyBehindTheWrapper(t *testing.T) {
 	tel, err := telemetry.Init(context.Background(), telemetry.Config{
 		ServiceName: "ordering",

@@ -10,10 +10,8 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-// newTracerProvider builds the tracer c selects: the resource
-// [resourceFor] stamps plus, when c names an exporter, one batch
-// processor feeding it. Without an exporter spans get valid ids (for log
-// correlation) but go nowhere.
+// newTracerProvider builds the tracer c selects; without an exporter, spans get
+// valid ids for log correlation but are not exported.
 func newTracerProvider(ctx context.Context, c OTelConfig) (*sdktrace.TracerProvider, error) {
 	opts := []sdktrace.TracerProviderOption{sdktrace.WithResource(resourceFor(c.ServiceName))}
 	exp, err := traceExporter(ctx, c)
@@ -26,8 +24,7 @@ func newTracerProvider(ctx context.Context, c OTelConfig) (*sdktrace.TracerProvi
 	return sdktrace.NewTracerProvider(opts...), nil
 }
 
-// traceExporter returns the span exporter c.Exporter names, or nil for
-// "none" and any other value.
+// traceExporter returns the exporter c.Exporter names, or nil for any other value.
 func traceExporter(ctx context.Context, c OTelConfig) (sdktrace.SpanExporter, error) {
 	switch c.Exporter {
 	case ExporterStdout:

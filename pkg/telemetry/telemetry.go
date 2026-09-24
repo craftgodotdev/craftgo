@@ -1,12 +1,7 @@
-// Package telemetry wires a service's traces and metrics as one stack.
-//
-// The two signals must agree on three facts: the `service.name` both
-// report under, whether the HTTP layer is instrumented at all (one
-// otelhttp wrapper emits both), and shutdown. [Init] returns a value that
-// owns all three, plus the Prometheus registry and scrape listener, so
-// two stacks can coexist in one process. The stack initialised last also
-// becomes the process-wide default: `otel.Tracer` / `otel.Meter` in
-// application code report through it.
+// Package telemetry builds a service's traces and metrics as one stack.
+// [Init] returns a [Telemetry] that owns the providers, the Prometheus scrape
+// and their shutdown; it instruments HTTP with [Telemetry.HTTPMiddleware] and
+// gRPC with [Telemetry.GRPCServerHandler] and [Telemetry.GRPCClientHandler].
 package telemetry
 
 import (
@@ -26,9 +21,8 @@ import (
 	prom "github.com/prometheus/client_golang/prometheus"
 )
 
-// Telemetry is a live stack: providers, the registry the scrape gathers,
-// and the listener serving it. A nil *Telemetry is usable - every method
-// degrades to a no-op, so callers never branch on it.
+// Telemetry is a live stack built by [Init]. With both signals off, or on a
+// nil *Telemetry, every method degrades to a no-op.
 type Telemetry struct {
 	serviceName string
 
@@ -41,10 +35,9 @@ type Telemetry struct {
 	adminURL string
 }
 
-// Init builds the stack described by c. Either signal, both, or neither
-// may be enabled. The Prometheus scrape gets its own listener
-// (`metrics.adminAddr`), not the public API port, so it can be firewalled
-// separately.
+// Init builds the stack c describes and makes each enabled signal the
+// process-wide otel default. It fails, leaving nothing running, when a signal
+// cannot be set up; a scrape listener bind failure arrives on [Telemetry.AdminErr].
 func Init(ctx context.Context, c Config) (*Telemetry, error) {
 	t := &Telemetry{serviceName: c.ServiceName}
 	c.OTel.ServiceName = orDefault(c.OTel.ServiceName, c.ServiceName)
@@ -53,15 +46,14 @@ func Init(ctx context.Context, c Config) (*Telemetry, error) {
 		return nil, fmt.Errorf("telemetry: traces: %w", err)
 	}
 	if err := t.initMetrics(ctx, c.Metrics); err != nil {
-		// Traces are already live - a failed Init must leave nothing running.
 		_ = t.Shutdown(ctx)
 		return nil, fmt.Errorf("telemetry: metrics: %w", err)
 	}
 	return t, nil
 }
 
-// initTraces installs the tracer c selects and makes it, together with
-// the W3C propagator, the process-wide default.
+// initTraces installs the tracer c selects, and the W3C propagator, as the
+// process-wide defaults.
 func (t *Telemetry) initTraces(ctx context.Context, c OTelConfig) error {
 	if !c.Enabled {
 		return nil
@@ -76,9 +68,8 @@ func (t *Telemetry) initTraces(ctx context.Context, c OTelConfig) error {
 	return nil
 }
 
-// initMetrics installs the meter c selects on a registry this stack owns
-// and makes it the process-wide default. For the scrape it also registers
-// the runtime collectors and starts the listener.
+// initMetrics installs the meter c selects as the process-wide default; a
+// scrape also gets the runtime collectors and, given an AdminAddr, its listener.
 func (t *Telemetry) initMetrics(ctx context.Context, c MetricsConfig) error {
 	if !c.Enabled {
 		return nil
@@ -113,9 +104,8 @@ func (t *Telemetry) initMetrics(ctx context.Context, c MetricsConfig) error {
 	return nil
 }
 
-// TracerProvider / MeterProvider expose the stack's providers for code
-// that wants its own spans or instruments. Both return the OTel no-op
-// when that signal is off, so call sites never nil-check.
+// TracerProvider returns the stack's tracer provider, or the otel no-op when
+// traces are off.
 func (t *Telemetry) TracerProvider() oteltrace.TracerProvider {
 	if t == nil || t.tracers == nil {
 		return tracenoop.NewTracerProvider()
@@ -123,6 +113,8 @@ func (t *Telemetry) TracerProvider() oteltrace.TracerProvider {
 	return t.tracers
 }
 
+// MeterProvider returns the stack's meter provider, or the otel no-op when
+// metrics are off.
 func (t *Telemetry) MeterProvider() otelmetric.MeterProvider {
 	if t == nil || t.meters == nil {
 		return metricnoop.NewMeterProvider()
@@ -130,8 +122,8 @@ func (t *Telemetry) MeterProvider() otelmetric.MeterProvider {
 	return t.meters
 }
 
-// Registerer exposes the registry backing the scrape, for attaching your
-// own client_golang collectors. Nil when this stack has no scrape.
+// Registerer returns the registry the scrape gathers, for your own collectors,
+// or nil when the stack has no scrape.
 func (t *Telemetry) Registerer() prom.Registerer {
 	if t == nil || t.registry == nil {
 		return nil
@@ -139,10 +131,9 @@ func (t *Telemetry) Registerer() prom.Registerer {
 	return t.registry
 }
 
-// ScrapeHandler serves this stack's scrape in Prometheus exposition, for
-// deployments that route `/metrics` on the public server instead of a
-// dedicated listener (`metrics.adminAddr` empty). Without a scrape it
-// serves an empty, valid exposition, so probes still see 200.
+// ScrapeHandler serves the stack's scrape from a server of your own, for an
+// empty [MetricsConfig.AdminAddr]. Without a scrape it serves an empty
+// exposition.
 func (t *Telemetry) ScrapeHandler() http.Handler {
 	if t == nil || t.registry == nil {
 		return scrapeHandler(prom.NewRegistry())
@@ -150,9 +141,8 @@ func (t *Telemetry) ScrapeHandler() http.Handler {
 	return scrapeHandler(t.registry)
 }
 
-// ScrapeURL is the `host:port/path` the listener bound to, or "" when
-// none started or the bind failed (see [Telemetry.AdminErr]). The port is
-// the resolved one, so a `:0` bind is loggable.
+// ScrapeURL returns the scrape listener's `host:port/path`, with the port
+// resolved, or "" when no listener runs.
 func (t *Telemetry) ScrapeURL() string {
 	if t == nil {
 		return ""
@@ -160,9 +150,9 @@ func (t *Telemetry) ScrapeURL() string {
 	return t.adminURL
 }
 
-// AdminErr surfaces a bind or post-startup failure of the scrape
-// listener, or nil when none runs. Callers must check for nil: receiving
-// from a nil channel blocks forever.
+// AdminErr returns a channel that carries a scrape listener bind or serve
+// failure and closes when the listener stops. It is nil when no listener was
+// configured.
 func (t *Telemetry) AdminErr() <-chan error {
 	if t == nil {
 		return nil
@@ -170,9 +160,8 @@ func (t *Telemetry) AdminErr() <-chan error {
 	return t.adminErr
 }
 
-// Shutdown closes everything this stack owns, listener first, then the
-// providers - whose Shutdown flushes any pending push batch. Errors are
-// collected, not short-circuited, so one failure cannot skip the rest.
+// Shutdown stops the scrape listener, then flushes and closes the providers.
+// It runs every step and returns their errors joined.
 func (t *Telemetry) Shutdown(ctx context.Context) error {
 	if t == nil {
 		return nil
@@ -199,7 +188,6 @@ func (t *Telemetry) Shutdown(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// orDefault returns v, or fallback when v is empty.
 func orDefault(v, fallback string) string {
 	if v == "" {
 		return fallback

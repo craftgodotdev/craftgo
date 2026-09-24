@@ -10,18 +10,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// scrapeHandler serves g in Prometheus text exposition, or OpenMetrics
-// when the scraper asks for `application/openmetrics-text`.
+// scrapeHandler serves g as Prometheus text, or as OpenMetrics when asked.
 func scrapeHandler(g prom.Gatherer) http.Handler {
 	return promhttp.HandlerFor(g, promhttp.HandlerOpts{EnableOpenMetrics: true})
 }
 
-// startAdmin serves h on path from a dedicated listener on addr, so the
-// scrape stays off the public API port and can be firewalled separately.
-// Returns the listening server (its Addr resolved, so a `:0` bind is
-// loggable), or nil when the bind failed, and a channel carrying the bind
-// or serve failure; the channel is buffered, so an unread failure never
-// blocks the listener goroutine.
+// startAdmin serves h on path at addr and returns the server with Addr resolved
+// (nil when the bind fails) and a channel carrying the bind or serve error.
 func startAdmin(addr, path string, h http.Handler) (*http.Server, <-chan error) {
 	mux := http.NewServeMux()
 	mux.Handle(path, h)
