@@ -211,7 +211,7 @@ func (a *analyzer) requestPathFields(m *ast.Method, pathParams []string) *pathPa
 	for _, pf := range fields {
 		f := pf.Field
 		if ast.HasDecorator(f.Decorators, wire.BindingPath) {
-			name := wire.WireName(f, wire.BindingPath)
+			name := wire.WireName(f, wire.BindPath)
 			out.all[name] = true
 			out.explicit = append(out.explicit, name)
 			continue

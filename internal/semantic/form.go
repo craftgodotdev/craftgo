@@ -34,7 +34,7 @@ func FormFields(m *ast.Method, pkg *Package, r *Resolver, levelNames LevelNames)
 		entry := FormField{
 			Field:    f,
 			Name:     rf.Name,
-			WireName: wire.WireName(f, wire.BindingForm),
+			WireName: wire.WireName(f, wire.BindForm),
 			Required: rf.SpecRequired,
 		}
 		if isFileRef(f) {

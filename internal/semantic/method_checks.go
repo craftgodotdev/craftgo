@@ -193,7 +193,7 @@ func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName string, pathSegs 
 	if f.Type == nil {
 		return
 	}
-	if kind, auto := wire.RequestFieldBinding(f, pathSegs, false); kind != wire.BindingQuery || !auto {
+	if b, auto := wire.RequestFieldBinding(f, pathSegs, false); b != wire.BindQuery || !auto {
 		return
 	}
 	if ast.HasDecorator(f.Decorators, "nullable") {

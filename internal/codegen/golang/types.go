@@ -356,8 +356,8 @@ func goFieldName(name string) string {
 // header or cookie field a documentation-only key naming its wire location.
 func structTag(f *ast.Field) string {
 	tag := "json:" + strconv.Quote(jsonTag(f))
-	if kind := nonBodyBindingKind(f); kind != "" {
-		tag += " " + kind + ":" + strconv.Quote(wire.WireName(f, kind))
+	if kind, ok := wire.NonBodyBindingKind(f); ok {
+		tag += " " + kind.String() + ":" + strconv.Quote(wire.WireName(f, kind))
 	}
 	return tag
 }
@@ -374,6 +374,3 @@ func jsonTag(f *ast.Field) string {
 	}
 	return name
 }
-
-// nonBodyBindingKind is [wire.NonBodyBindingKind].
-func nonBodyBindingKind(f *ast.Field) string { return wire.NonBodyBindingKind(f) }

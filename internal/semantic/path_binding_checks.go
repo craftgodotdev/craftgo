@@ -34,7 +34,7 @@ func (a *analyzer) autoPathFieldRule(reqName string, pathSegs map[string]bool, p
 	if f == nil || f.Type == nil {
 		return
 	}
-	if kind, auto := wire.RequestFieldBinding(f, pathSegs, false); kind != wire.BindingPath || !auto {
+	if b, auto := wire.RequestFieldBinding(f, pathSegs, false); b != wire.BindPath || !auto {
 		return
 	}
 	switch {

@@ -227,7 +227,7 @@ func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package, 
 	}
 	out := openapi3.Headers{}
 	for _, f := range headers {
-		name := wire.WireName(f, wire.BindingHeader)
+		name := wire.WireName(f, wire.BindHeader)
 		schema := schemaForTypeRef(f.Type, pkg, registry)
 		applyFieldMetadata(f, schema, pkg)
 		hdr := &openapi3.Header{
@@ -242,7 +242,7 @@ func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package, 
 	if len(cookies) > 0 {
 		names := make([]string, 0, len(cookies))
 		for _, f := range cookies {
-			names = append(names, wire.WireName(f, wire.BindingCookie))
+			names = append(names, wire.WireName(f, wire.BindCookie))
 		}
 		desc := "Sets cookies: " + strings.Join(names, ", ")
 		out["Set-Cookie"] = &openapi3.HeaderRef{Value: &openapi3.Header{

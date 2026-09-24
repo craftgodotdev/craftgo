@@ -90,7 +90,8 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 		rf.DSLName = f.Name
 		dv, hasDV := ResolveDefaultValue(f, pkg)
 		rf.Binding = wire.ExplicitBinding(f)
-		rf.OnWireBody = wire.NonBodyBindingKind(f) == "" && !wire.HasSensitive(f.Decorators)
+		_, offBody := wire.NonBodyBindingKind(f)
+		rf.OnWireBody = !offBody && !wire.HasSensitive(f.Decorators)
 		rf.NeedsNilGuard = FieldIsOptional(f)
 		rf.HasDefault = ast.HasDecorator(f.Decorators, "default")
 		rf.DefaultWire = dv

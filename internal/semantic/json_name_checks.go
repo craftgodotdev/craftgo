@@ -49,7 +49,7 @@ func (a *analyzer) checkJSONDecorator(f *ast.Field) {
 		if d == nil || d.Name != wire.DecoratorJSON {
 			continue
 		}
-		if kind := wire.BindingKind(f.Decorators); kind != "" && kind != wire.BindingBody {
+		if kind, ok := wire.BindingKind(f.Decorators); ok && kind != wire.BindBody {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
 				"@json cannot be combined with @%s: a field bound off the body has no JSON key - name the wire location in @%s(...) instead", kind, kind)
 		}

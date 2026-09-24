@@ -8,18 +8,24 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
+// wireKey is a binding and a canonical wire name, which two fields must not share.
+type wireKey struct {
+	binding wire.Binding
+	name    string
+}
+
 // checkDuplicateWireNames rejects two explicitly bound fields of a body, mixins
 // included, with one binding kind and wire name; header names ignore case.
 func (a *analyzer) checkDuplicateWireNames(parent string, members []ast.TypeMember) {
 	fields, _ := a.promotedFields(a.pkg.Name, members)
-	seen := map[string]promotedField{}
+	seen := map[wireKey]promotedField{}
 	for _, pf := range fields {
 		f := pf.Field
 		kind, name, bound := wireBinding(f)
 		if !bound {
 			continue
 		}
-		key := kind + "\x00" + wire.CanonicalWireName(kind, name)
+		key := wireKey{kind, wire.CanonicalWireName(kind, name)}
 		prev, dup := seen[key]
 		if !dup {
 			seen[key] = pf
@@ -51,17 +57,17 @@ func (a *analyzer) checkDuplicateAutoWireNames(m *ast.Method) {
 		pos  lexer.Position
 		auto bool
 	}
-	seen := map[string]binding{}
+	seen := map[wireKey]binding{}
 	for _, pf := range fields {
 		f := pf.Field
 		kind, auto := wire.RequestFieldBinding(f, pathSegs, bodyVerb)
 		switch kind {
-		case wire.BindingPath, wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingForm:
+		case wire.BindPath, wire.BindQuery, wire.BindHeader, wire.BindCookie, wire.BindForm:
 		default:
 			continue
 		}
 		name := wire.WireName(f, kind)
-		key := kind + "\x00" + wire.CanonicalWireName(kind, name)
+		key := wireKey{kind, wire.CanonicalWireName(kind, name)}
 		if prev, dup := seen[key]; dup {
 			if auto || prev.auto {
 				d := a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDuplicateWireName,
@@ -75,14 +81,14 @@ func (a *analyzer) checkDuplicateAutoWireNames(m *ast.Method) {
 	}
 }
 
-// wireBinding returns the kind and wire name of f's explicit binding; bound
-// is false for a body field.
-func wireBinding(f *ast.Field) (kind, name string, bound bool) {
-	switch k := wire.BindingKind(f.Decorators); k {
-	case wire.BindingPath, wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingForm:
+// wireBinding returns the binding and wire name of f's explicit binding;
+// bound is false for a body field.
+func wireBinding(f *ast.Field) (kind wire.Binding, name string, bound bool) {
+	switch k, _ := wire.BindingKind(f.Decorators); k {
+	case wire.BindPath, wire.BindQuery, wire.BindHeader, wire.BindCookie, wire.BindForm:
 		return k, wire.WireName(f, k), true
 	default:
-		return "", "", false
+		return wire.BindBody, "", false
 	}
 }
 

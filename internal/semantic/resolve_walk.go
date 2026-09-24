@@ -63,12 +63,10 @@ func RequestFields(m *ast.Method, pkg *Package, r *Resolver, levelNames LevelNam
 	for i := range fields {
 		rf := &fields[i]
 		// An explicit @body also reads as BindBody.
-		if rf.Binding != wire.BindBody || wire.BindingKind(rf.Field.Decorators) != "" {
+		if _, explicit := wire.BindingKind(rf.Field.Decorators); explicit || rf.Binding != wire.BindBody {
 			continue
 		}
-		kind, auto := wire.RequestFieldBinding(rf.Field, pathNames, bodyVerb)
-		rf.Binding = wire.BindingFromKind(kind)
-		rf.AutoBound = auto
+		rf.Binding, rf.AutoBound = wire.RequestFieldBinding(rf.Field, pathNames, bodyVerb)
 		rf.OnWireBody = rf.Binding == wire.BindBody
 	}
 	return fields

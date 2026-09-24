@@ -28,8 +28,8 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package, r *projectRes
 func responseBindingsFor(td *ast.TypeDecl, prefix, accessVar string, pkg *semantic.Package, r *projectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
 	for _, ff := range flattenFieldsWithNames(td, prefix, pkg, r, map[string]bool{}) {
 		f := ff.Field
-		kind := wire.BindingKind(f.Decorators)
-		if kind != wire.BindingHeader && kind != wire.BindingCookie {
+		kind, _ := wire.BindingKind(f.Decorators)
+		if kind != wire.BindHeader && kind != wire.BindCookie {
 			continue
 		}
 		stmt, ns := renderResponseWrite(f, pkg, r, kind, accessVar, ff.Name)
@@ -38,9 +38,9 @@ func responseBindingsFor(td *ast.TypeDecl, prefix, accessVar string, pkg *semant
 		}
 		entry := paramBinding{Bind: stmt}
 		switch kind {
-		case wire.BindingHeader:
+		case wire.BindHeader:
 			headers = append(headers, entry)
-		case wire.BindingCookie:
+		case wire.BindCookie:
 			cookies = append(cookies, entry)
 		}
 	}
@@ -49,13 +49,13 @@ func responseBindingsFor(td *ast.TypeDecl, prefix, accessVar string, pkg *semant
 
 // renderResponseWrite renders the statement writing accessVar.goName as a header or cookie:
 // an optional field is nil-guarded and an array header adds one value per element.
-func renderResponseWrite(f *ast.Field, pkg *semantic.Package, r *projectResolver, kind, accessVar, goName string) (stmt string, needsStrconv bool) {
+func renderResponseWrite(f *ast.Field, pkg *semantic.Package, r *projectResolver, kind wire.Binding, accessVar, goName string) (stmt string, needsStrconv bool) {
 	prim, declName := wirePrimName(f, pkg, r)
 	wireName := wire.WireName(f, kind)
 	field := accessVar + "." + goName
 
 	set := func(valueExpr string) string {
-		if kind == wire.BindingCookie {
+		if kind == wire.BindCookie {
 			return fmt.Sprintf("http.SetCookie(w, &http.Cookie{Name: %q, Value: %s})", wireName, valueExpr)
 		}
 		return fmt.Sprintf("w.Header().Set(%q, %s)", wireName, valueExpr)

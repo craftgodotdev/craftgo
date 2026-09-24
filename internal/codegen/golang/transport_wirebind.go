@@ -42,7 +42,7 @@ func wirePrim(name string) (queryPrim, bool) {
 
 // wireSource is how a handler reads the raw strings of one binding source.
 type wireSource struct {
-	kind         string
+	kind         wire.Binding
 	singleExpr   func(wireName string) string
 	arrayExpr    func(wireName string) string // "" when the source has no multi-value form
 	presenceExpr func(wireName string) string // key-present expression; nil skips the presence check
@@ -52,7 +52,7 @@ type wireSource struct {
 func querySource() wireSource {
 	// transport.tmpl declares `_q := r.URL.Query()` once when the method has query params.
 	return wireSource{
-		kind:         wire.BindingQuery,
+		kind:         wire.BindQuery,
 		singleExpr:   func(n string) string { return fmt.Sprintf("_q.Get(%q)", n) },
 		arrayExpr:    func(n string) string { return fmt.Sprintf("_q[%q]", n) },
 		presenceExpr: func(n string) string { return fmt.Sprintf("_q.Has(%q)", n) },
@@ -61,7 +61,7 @@ func querySource() wireSource {
 
 func headerSource() wireSource {
 	return wireSource{
-		kind:         wire.BindingHeader,
+		kind:         wire.BindHeader,
 		singleExpr:   func(n string) string { return fmt.Sprintf("r.Header.Get(%q)", n) },
 		arrayExpr:    func(n string) string { return fmt.Sprintf("r.Header.Values(%q)", n) },
 		presenceExpr: func(n string) string { return fmt.Sprintf("len(r.Header.Values(%q)) > 0", n) },
@@ -70,7 +70,7 @@ func headerSource() wireSource {
 
 func cookieSource() wireSource {
 	return wireSource{
-		kind:         wire.BindingCookie,
+		kind:         wire.BindCookie,
 		singleExpr:   func(string) string { return "c.Value" },
 		arrayExpr:    func(string) string { return "" },
 		cookieGuard:  true,
@@ -81,7 +81,7 @@ func cookieSource() wireSource {
 // pathSource has no presence check: a matched route always supplies the segment.
 func pathSource() wireSource {
 	return wireSource{
-		kind:       wire.BindingPath,
+		kind:       wire.BindPath,
 		singleExpr: func(n string) string { return fmt.Sprintf("r.PathValue(%q)", n) },
 		arrayExpr:  func(string) string { return "" },
 	}
@@ -89,7 +89,7 @@ func pathSource() wireSource {
 
 func formSource() wireSource {
 	return wireSource{
-		kind:       wire.BindingForm,
+		kind:       wire.BindForm,
 		singleExpr: func(n string) string { return fmt.Sprintf("r.FormValue(%q)", n) },
 		arrayExpr:  func(n string) string { return fmt.Sprintf("r.MultipartForm.Value[%q]", n) },
 	}

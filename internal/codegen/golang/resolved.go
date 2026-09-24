@@ -21,7 +21,7 @@ type resolvedField struct {
 func (rf resolvedField) WireName() string {
 	switch rf.Binding {
 	case wire.BindPath, wire.BindQuery, wire.BindHeader, wire.BindCookie, wire.BindForm:
-		return wire.WireName(rf.Field, rf.Binding.String())
+		return wire.WireName(rf.Field, rf.Binding)
 	default:
 		return ""
 	}

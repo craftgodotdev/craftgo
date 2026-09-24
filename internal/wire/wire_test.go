@@ -66,10 +66,78 @@ func TestWireName(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := WireName(c.f, BindingPath); got != c.want {
+			if got := WireName(c.f, BindPath); got != c.want {
 				t.Errorf("WireName = %q, want %q", got, c.want)
 			}
 		})
+	}
+	header := &ast.Field{Name: "traceId", Decorators: []*ast.Decorator{
+		{Name: BindingHeader, Args: []*ast.DecoratorArg{{Value: &ast.StringLit{Value: "X-Trace-Id"}}}},
+	}}
+	if got := WireName(header, BindQuery); got != "traceId" {
+		t.Errorf("another binding's argument must not leak: got %q, want traceId", got)
+	}
+}
+
+func TestBindingKind(t *testing.T) {
+	cases := []struct {
+		decs   []string
+		want   Binding
+		wantOK bool
+	}{
+		{[]string{"query"}, BindQuery, true},
+		{[]string{"path"}, BindPath, true},
+		{[]string{"header"}, BindHeader, true},
+		{[]string{"cookie"}, BindCookie, true},
+		{[]string{"body"}, BindBody, true},
+		{[]string{"form"}, BindForm, true},
+		{[]string{"doc", "query"}, BindQuery, true}, // non-binding decorators are skipped
+		{[]string{"sensitive"}, BindBody, false},
+		{nil, BindBody, false},
+		{[]string{"doc"}, BindBody, false},
+	}
+	for _, c := range cases {
+		if got, ok := BindingKind(decs(c.decs...)); got != c.want || ok != c.wantOK {
+			t.Errorf("BindingKind(%v) = (%v, %v), want (%v, %v)", c.decs, got, ok, c.want, c.wantOK)
+		}
+	}
+}
+
+func TestBindingStringNamesTheDecorator(t *testing.T) {
+	for _, b := range []Binding{BindBody, BindPath, BindQuery, BindHeader, BindCookie, BindForm} {
+		if got, ok := BindingKind(decs(b.String())); !ok || got != b {
+			t.Errorf("BindingKind(@%s) = (%v, %v), want (%v, true)", b, got, ok, b)
+		}
+	}
+	if got := BindSensitive.String(); got != "sensitive" {
+		t.Errorf("BindSensitive.String() = %q, want sensitive", got)
+	}
+}
+
+func TestRequestFieldBinding(t *testing.T) {
+	field := func(name string, ds ...string) *ast.Field {
+		return &ast.Field{Name: name, Decorators: decs(ds...)}
+	}
+	paths := map[string]bool{"id": true}
+	cases := []struct {
+		f        *ast.Field
+		bodyVerb bool
+		want     Binding
+		auto     bool
+	}{
+		{field("q", "query"), false, BindQuery, false}, // explicit wins, not auto
+		{field("s", "sensitive"), false, BindSensitive, false},
+		{field("b", "body"), true, BindBody, false},
+		{field("up", "form"), true, BindForm, false},
+		{field("id"), false, BindPath, true},      // un-decorated, name matches a path segment
+		{field("page"), false, BindQuery, true},   // un-decorated on a body-less verb
+		{field("payload"), true, BindBody, false}, // un-decorated on a body verb
+	}
+	for _, c := range cases {
+		got, auto := RequestFieldBinding(c.f, paths, c.bodyVerb)
+		if got != c.want || auto != c.auto {
+			t.Errorf("RequestFieldBinding(%q, bodyVerb=%v) = (%v, %v), want (%v, %v)", c.f.Name, c.bodyVerb, got, auto, c.want, c.auto)
+		}
 	}
 }
 
@@ -90,9 +158,11 @@ func TestJSONShapeSplitsPresenceFourWays(t *testing.T) {
 	}{
 		{"plain field", field("a", false), JSONRequired},
 		{"optional", field("a", true), JSONOptional},
-		{"nullable", field("a", false, DecoratorNullable), JSONNullable},
-		{"optional beats nullable", field("a", true, DecoratorNullable), JSONOptional},
-		{"sensitive leaves the body", field("a", false, DecoratorSensitive), JSONAbsent},
+		{"nullable", field("a", false, "nullable"), JSONNullable},
+		{"optional beats nullable", field("a", true, "nullable"), JSONOptional},
+		{"sensitive leaves the body", field("a", false, "sensitive"), JSONAbsent},
+		{"header leaves the body", field("a", false, BindingHeader), JSONAbsent},
+		{"form stays in the body", field("a", false, BindingForm), JSONRequired},
 		{"nil field", nil, JSONAbsent},
 	}
 	for _, c := range cases {

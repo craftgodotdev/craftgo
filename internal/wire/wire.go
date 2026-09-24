@@ -10,32 +10,67 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// Binding kinds: where a field's value rides. A binding decorator is named
-// after its kind.
+// Binding decorator names; each declares the [Binding] its name spells.
 const (
-	BindingPath      = "path"
-	BindingQuery     = "query"
-	BindingHeader    = "header"
-	BindingCookie    = "cookie"
-	BindingForm      = "form"
-	BindingBody      = "body"
-	BindingSensitive = "sensitive"
+	BindingPath   = "path"
+	BindingQuery  = "query"
+	BindingHeader = "header"
+	BindingCookie = "cookie"
+	BindingForm   = "form"
+	BindingBody   = "body"
 )
 
-// Field decorators that shape the JSON body without naming a binding.
+// DecoratorJSON sets a body field's JSON key.
+const DecoratorJSON = "json"
+
+// Binding is where a field's value rides.
+type Binding int
+
 const (
-	// DecoratorSensitive keeps a field off the wire in both directions.
-	DecoratorSensitive = "sensitive"
-	// DecoratorJSON sets a body field's JSON key.
-	DecoratorJSON = "json"
-	// DecoratorNullable keeps a field always emitted, with null allowed.
-	DecoratorNullable = "nullable"
+	BindBody Binding = iota // JSON request/response body (the default)
+	BindPath
+	BindQuery
+	BindHeader
+	BindCookie
+	BindForm
+	BindSensitive // @sensitive: server-only, json:"-", excluded everywhere
 )
+
+// String returns the name of the decorator that declares b; for path, query,
+// header and cookie it is also the OpenAPI `in` value.
+func (b Binding) String() string {
+	switch b {
+	case BindPath:
+		return BindingPath
+	case BindQuery:
+		return BindingQuery
+	case BindHeader:
+		return BindingHeader
+	case BindCookie:
+		return BindingCookie
+	case BindForm:
+		return BindingForm
+	case BindSensitive:
+		return "sensitive"
+	default:
+		return BindingBody
+	}
+}
+
+// bindingNamed returns the binding a binding decorator called name declares.
+func bindingNamed(name string) (Binding, bool) {
+	for _, b := range [...]Binding{BindPath, BindQuery, BindHeader, BindCookie, BindBody, BindForm} {
+		if b.String() == name {
+			return b, true
+		}
+	}
+	return BindBody, false
+}
 
 // CanonicalWireName returns the collision key of a wire name: header names are
-// case-insensitive (RFC 7230) and fold to lower case; other kinds pass through.
-func CanonicalWireName(kind, name string) string {
-	if kind == BindingHeader {
+// case-insensitive (RFC 7230) and fold to lower case; other bindings pass through.
+func CanonicalWireName(b Binding, name string) string {
+	if b == BindHeader {
 		return strings.ToLower(name)
 	}
 	return name
@@ -50,56 +85,62 @@ func IsBodyVerb(verb string) bool {
 	return false
 }
 
-// WireName returns the wire name of field f under binding kind: the `@kind`
+// WireName returns the wire name of field f under binding b: the binding
 // decorator's non-empty string argument, else the field's own name.
-func WireName(f *ast.Field, kind string) string {
+func WireName(f *ast.Field, b Binding) string { return nameArg(f, b.String()) }
+
+// nameArg returns the non-empty string argument of f's `@decorator`, else
+// f's own name.
+func nameArg(f *ast.Field, decorator string) string {
 	if f == nil {
 		return ""
 	}
-	if s, ok := ast.StringArg(f.Decorators, kind); ok && s != "" {
+	if s, ok := ast.StringArg(f.Decorators, decorator); ok && s != "" {
 		return s
 	}
 	return f.Name
 }
 
-// BindingKind returns the kind of the first binding decorator in ds, or ""
-// when there is none. Valid input has at most one per field.
-func BindingKind(ds []*ast.Decorator) string {
+// BindingKind returns the binding of the first binding decorator in ds, and
+// false with [BindBody] when there is none. Valid input has at most one per
+// field.
+func BindingKind(ds []*ast.Decorator) (Binding, bool) {
 	for _, d := range ds {
-		if d != nil && IsBindingName(d.Name) {
-			return d.Name
+		if d == nil {
+			continue
+		}
+		if b, ok := bindingNamed(d.Name); ok {
+			return b, true
 		}
 	}
-	return ""
+	return BindBody, false
 }
 
 // IsBindingName reports whether name is a binding decorator: @path, @query,
 // @header, @cookie, @body or @form.
 func IsBindingName(name string) bool {
-	switch name {
-	case BindingPath, BindingQuery, BindingHeader, BindingCookie, BindingBody, BindingForm:
-		return true
-	}
-	return false
+	_, ok := bindingNamed(name)
+	return ok
 }
 
-// RequestFieldBinding returns where a request field rides: "sensitive", else
-// its binding decorator's kind, else auto-bound (auto true) "path" for a
-// `{param}` name or "query" on a body-less verb, else "body".
-func RequestFieldBinding(f *ast.Field, pathNames map[string]bool, bodyVerb bool) (kind string, auto bool) {
-	if ast.HasDecorator(f.Decorators, "sensitive") {
-		return BindingSensitive, false
+// RequestFieldBinding returns where a request field rides: [BindSensitive],
+// else its binding decorator's binding, else auto-bound (auto true)
+// [BindPath] for a `{param}` name or [BindQuery] on a body-less verb, else
+// [BindBody].
+func RequestFieldBinding(f *ast.Field, pathNames map[string]bool, bodyVerb bool) (b Binding, auto bool) {
+	if HasSensitive(f.Decorators) {
+		return BindSensitive, false
 	}
-	if k := BindingKind(f.Decorators); k != "" {
-		return k, false
+	if b, ok := BindingKind(f.Decorators); ok {
+		return b, false
 	}
 	switch {
 	case pathNames[f.Name]:
-		return BindingPath, true
+		return BindPath, true
 	case !bodyVerb:
-		return BindingQuery, true
+		return BindQuery, true
 	default:
-		return BindingBody, false
+		return BindBody, false
 	}
 }
 
@@ -142,13 +183,13 @@ func JSONShape(f *ast.Field) (name string, presence JSONPresence) {
 		return "", JSONAbsent
 	}
 	name = JSONName(f)
-	if NonBodyBindingKind(f) != "" || ast.HasDecorator(f.Decorators, DecoratorSensitive) {
+	if _, offBody := NonBodyBindingKind(f); offBody || HasSensitive(f.Decorators) {
 		return name, JSONAbsent
 	}
 	switch {
 	case f.Type != nil && f.Type.Optional:
 		return name, JSONOptional
-	case ast.HasDecorator(f.Decorators, DecoratorNullable):
+	case ast.HasDecorator(f.Decorators, "nullable"):
 		return name, JSONNullable
 	}
 	return name, JSONRequired
@@ -156,19 +197,19 @@ func JSONShape(f *ast.Field) (name string, presence JSONPresence) {
 
 // JSONName returns a body field's JSON key: the non-empty `@json` argument,
 // else the field's own name.
-func JSONName(f *ast.Field) string { return WireName(f, DecoratorJSON) }
+func JSONName(f *ast.Field) string { return nameArg(f, DecoratorJSON) }
 
 // NonBodyBindingKind returns a field's explicit path, query, header or cookie
-// binding, or "" for a body, form, sensitive or undecorated field.
-func NonBodyBindingKind(f *ast.Field) string {
+// binding, and false for a body, form, sensitive or undecorated field.
+func NonBodyBindingKind(f *ast.Field) (Binding, bool) {
 	if f == nil {
-		return ""
+		return BindBody, false
 	}
-	switch kind := BindingKind(f.Decorators); kind {
-	case BindingPath, BindingQuery, BindingHeader, BindingCookie:
-		return kind
+	switch b, _ := BindingKind(f.Decorators); b {
+	case BindPath, BindQuery, BindHeader, BindCookie:
+		return b, true
 	}
-	return ""
+	return BindBody, false
 }
 
 // StatusOverride returns the method's `@status(N)` code, if any; the analyser
@@ -196,68 +237,15 @@ func SuccessStatus(m *ast.Method) int {
 	return http.StatusOK
 }
 
-// Binding is where a field's value rides, as an enum of the binding kinds.
-type Binding int
-
-const (
-	BindBody Binding = iota // JSON request/response body (the default)
-	BindPath
-	BindQuery
-	BindHeader
-	BindCookie
-	BindForm
-	BindSensitive // @sensitive: server-only, json:"-", excluded everywhere
-)
-
-// String returns the binding kind; for path, query, header and cookie it is
-// also the OpenAPI `in` value.
-func (b Binding) String() string {
-	switch b {
-	case BindPath:
-		return BindingPath
-	case BindQuery:
-		return BindingQuery
-	case BindHeader:
-		return BindingHeader
-	case BindCookie:
-		return BindingCookie
-	case BindForm:
-		return BindingForm
-	case BindSensitive:
-		return BindingSensitive
-	default:
-		return BindingBody
-	}
-}
-
-// BindingFromKind returns the Binding of a binding kind.
-func BindingFromKind(kind string) Binding {
-	switch kind {
-	case BindingPath:
-		return BindPath
-	case BindingQuery:
-		return BindQuery
-	case BindingHeader:
-		return BindHeader
-	case BindingCookie:
-		return BindCookie
-	case BindingForm:
-		return BindForm
-	case BindingSensitive:
-		return BindSensitive
-	default:
-		return BindBody
-	}
-}
-
 // ExplicitBinding returns the placement a field's own decorators declare,
 // ignoring request auto-binding.
 func ExplicitBinding(f *ast.Field) Binding {
 	if HasSensitive(f.Decorators) {
 		return BindSensitive
 	}
-	return BindingFromKind(BindingKind(f.Decorators))
+	b, _ := BindingKind(f.Decorators)
+	return b
 }
 
 // HasSensitive reports whether ds holds `@sensitive`.
-func HasSensitive(ds []*ast.Decorator) bool { return ast.HasDecorator(ds, DecoratorSensitive) }
+func HasSensitive(ds []*ast.Decorator) bool { return ast.HasDecorator(ds, "sensitive") }

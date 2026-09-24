@@ -307,10 +307,10 @@ func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *opena
 // ones a mixin brings included.
 func errorHeaderCookieFields(ed *ast.ErrorDecl, pkg *semantic.Package, r *semantic.Resolver) (headers, cookies []*ast.Field) {
 	for _, f := range semantic.FlattenFields(&ast.TypeDecl{Body: ed.Body}, pkg, r, map[string]bool{}) {
-		switch wire.BindingKind(f.Decorators) {
-		case wire.BindingHeader:
+		switch kind, _ := wire.BindingKind(f.Decorators); kind {
+		case wire.BindHeader:
 			headers = append(headers, f)
-		case wire.BindingCookie:
+		case wire.BindCookie:
 			cookies = append(cookies, f)
 		}
 	}
@@ -351,7 +351,7 @@ func rawPathParams(m *ast.Method) openapi3.Parameters {
 		}
 		params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
 			Name:     seg.Literal,
-			In:       wire.BindingPath,
+			In:       wire.BindPath.String(),
 			Required: true,
 			Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{
 				Type: &openapi3.Types{"string"},
@@ -430,14 +430,14 @@ func multipartRequestBody(forms, files []semantic.FormField, crossDecs []*ast.De
 // parameters with inline schemas; a path parameter is always required.
 func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegistry) openapi3.Parameters {
 	var params openapi3.Parameters
-	add := func(in string, fields []*ast.Field, alwaysRequired bool) {
+	add := func(in wire.Binding, fields []*ast.Field, alwaysRequired bool) {
 		for _, f := range fields {
 			required := alwaysRequired || semantic.FieldIsRequired(f)
 			ref := schemaForTypeRef(f.Type, pkg, registry)
 			applyFieldMetadata(f, ref, pkg)
 			params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
 				Name:     wire.WireName(f, in),
-				In:       in,
+				In:       in.String(),
 				Required: required,
 				// The Parameter carries `deprecated` too, not only its schema.
 				Deprecated: semantic.IsDeprecated(f.Decorators),
@@ -445,10 +445,10 @@ func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegi
 			}})
 		}
 	}
-	add(wire.BindingPath, bins.path, true)
-	add(wire.BindingQuery, bins.query, false)
-	add(wire.BindingHeader, bins.header, false)
-	add(wire.BindingCookie, bins.cookie, false)
+	add(wire.BindPath, bins.path, true)
+	add(wire.BindQuery, bins.query, false)
+	add(wire.BindHeader, bins.header, false)
+	add(wire.BindCookie, bins.cookie, false)
 	return params
 }
 

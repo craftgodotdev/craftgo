@@ -54,10 +54,10 @@ func indentBlock(s string) string {
 // fieldWireName returns the name f travels under - its binding name or its
 // JSON key - escaped by [escapeErrorfName] for a message literal.
 func fieldWireName(f *ast.Field) string {
-	kind := wire.BindingKind(f.Decorators)
+	kind, _ := wire.BindingKind(f.Decorators)
 	name := wire.JSONName(f)
 	switch kind {
-	case wire.BindingPath, wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingForm:
+	case wire.BindPath, wire.BindQuery, wire.BindHeader, wire.BindCookie, wire.BindForm:
 		name = wire.WireName(f, kind)
 	}
 	return escapeErrorfName(name)
