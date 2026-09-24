@@ -1,3 +1,6 @@
+// Package lexer tokenizes craftgo DSL source. Malformed input yields an
+// [Error] token and a [Diagnostic], and lexing carries on. The package also
+// defines the [Position] and [Diagnostic] types every later phase reports with.
 package lexer
 
 import (
@@ -6,24 +9,21 @@ import (
 	"unicode/utf8"
 )
 
-// Severity classifies a [Diagnostic] for IDE rendering. The values mirror
-// the LSP DiagnosticSeverity enum so the LSP server can pass them through
-// without translation. Zero value is [SeverityError] - every diagnostic
-// constructed without an explicit severity is treated as an error.
+// Severity grades a [Diagnostic]. The zero value is [SeverityError].
 type Severity uint8
 
 const (
-	// SeverityError is a hard failure: codegen / runtime would be wrong.
+	// SeverityError blocks gen and fmt.
 	SeverityError Severity = iota
-	// SeverityWarning is a soft issue worth surfacing but not blocking.
+	// SeverityWarning is reported without blocking.
 	SeverityWarning
-	// SeverityInfo is informational (style hints, redundant constructs).
+	// SeverityInfo is informational.
 	SeverityInfo
-	// SeverityHint is a low-priority suggestion, often paired with a fix.
+	// SeverityHint is a low-priority suggestion.
 	SeverityHint
 )
 
-// String renders the severity as a short label for diagnostic formatting.
+// String returns the severity's lower-case name.
 func (s Severity) String() string {
 	switch s {
 	case SeverityWarning:
@@ -37,32 +37,16 @@ func (s Severity) String() string {
 	}
 }
 
-// Related links a [Diagnostic] to a secondary location - typically the
-// "previously declared at" site for a duplicate, or the conflicting
-// decorator for a combination-rule violation. The IDE renders these as
-// clickable secondary markers next to the primary diagnostic.
+// Related is a secondary location a [Diagnostic] refers to, such as the first
+// declaration of a duplicate.
 type Related struct {
 	Pos Position
 	Msg string
 }
 
-// Diagnostic is a single error/warning tied to a source range. The lexer,
-// parser, and semantic analyser all accumulate Diagnostics so the parser,
-// formatter, and LSP server can present them at once.
-//
-// Pos is the start of the offending token / construct; End is the
-// exclusive end of the same range and is used by the LSP layer to draw the
-// red squiggle. End may equal Pos when only a point location is known
-// (e.g. lexer point errors); callers should treat (Pos == End) as
-// "underline a single column".
-//
-// Code is a stable machine-readable identifier (e.g. `decorator/placement`)
-// that the IDE uses for filtering, "disable next line", and documentation
-// links. It must NOT include the message - keep human text in Msg.
-//
-// Related carries secondary positions referenced by Msg. The IDE shows
-// them as clickable cross-links rather than appending another sentence
-// to Msg.
+// Diagnostic is one problem at a source range. End is exclusive, or zero when
+// only Pos is known. Code is a stable identifier such as `decorator/placement`;
+// Msg is the human text.
 type Diagnostic struct {
 	Pos      Position
 	End      Position
@@ -72,25 +56,18 @@ type Diagnostic struct {
 	Related  []Related
 }
 
-// IsError reports whether d blocks a build or a format: everything but a
-// warning, an info or a hint.
+// IsError reports whether d blocks gen and fmt: any severity but warning, info
+// and hint.
 func (d Diagnostic) IsError() bool {
 	return d.Severity != SeverityWarning && d.Severity != SeverityInfo && d.Severity != SeverityHint
 }
 
-// Error implements the error interface, formatted as `pos: msg`. Severity
-// and code are omitted from the default rendering; the LSP layer reads the
-// structured fields directly.
+// Error renders d as `pos: msg`.
 func (d Diagnostic) Error() string {
 	return fmt.Sprintf("%s: %s", d.Pos, d.Msg)
 }
 
-// Lexer tokenizes a single craftgo source buffer.
-//
-// A Lexer holds its position, the original source, accumulated diagnostics,
-// and is consumed via [Lexer.Next] (one token at a time) or [Lexer.Tokenize]
-// (slurp the whole stream). Lexers are not safe for concurrent use; create one
-// per file.
+// Lexer tokenizes one source buffer. It is not safe for concurrent use.
 type Lexer struct {
 	src      string
 	filename string
@@ -99,53 +76,36 @@ type Lexer struct {
 	column   int
 	diags    []Diagnostic
 
-	// pendingDoc accumulates `//`-line comment text (without the slashes
-	// or one optional leading space) seen since the last blank line. The
-	// next non-trivia token claims the whole slice as its [Token.Doc] and
-	// the buffer resets.
+	// pendingDoc holds the leading comments since the last blank line; the
+	// next token takes them as its Doc.
 	pendingDoc []string
 
-	// allComments holds every `//` comment encountered in the file,
-	// regardless of whether it was claimed as leading [Token.Doc],
-	// trailing [Token.Trailing], or dropped on a blank line. Each entry
-	// records source position and [CommentKind] so the formatter can
-	// re-emit comments at the right site without re-scanning the source.
-	// Retrieved via [Lexer.Comments].
+	// allComments records every comment, including those a blank line
+	// detached from any token.
 	allComments []*Comment
 
-	// sawNewlineSinceLastToken is true while the cursor sits on
-	// whitespace / comment trivia AFTER a token has been emitted but
-	// BEFORE any newline has been consumed. A `//` encountered while
-	// this flag is true is a leading comment for the next token; one
-	// encountered while it is false is a trailing comment for the
-	// previous token. Reset to false at the end of every [Lexer.Next]
-	// call.
+	// sawNewlineSinceLastToken is true at file start and after a newline; a
+	// comment seen while it is false trails the previous token.
 	sawNewlineSinceLastToken bool
 }
 
-// New constructs a Lexer ready to tokenize src. filename is informational -
-// it appears in [Position.Filename] on every emitted token and in diagnostics.
-// Pass an empty string when there is no associated file.
+// New returns a Lexer over src. filename goes into every Position and may be
+// empty.
 func New(filename, src string) *Lexer {
 	return &Lexer{
 		src:      src,
 		filename: filename,
 		line:     1,
 		column:   1,
-		// File start is conceptually "after a newline" - any `//` seen
-		// before the first token is leading, never trailing.
+		// A comment before the first token is leading.
 		sawNewlineSinceLastToken: true,
 	}
 }
 
-// Diagnostics returns every error encountered so far. Calling it does not
-// reset internal state, so additional errors from later tokens append to the
-// same slice.
+// Diagnostics returns the diagnostics recorded so far.
 func (l *Lexer) Diagnostics() []Diagnostic { return l.diags }
 
-// Tokenize consumes the entire source and returns every token, terminated by
-// exactly one [EOF] token. Convenience wrapper for callers that want random
-// access (parser does this; LSP keeps a Lexer around for incremental work).
+// Tokenize lexes the rest of the source; the result ends with one [EOF] token.
 func (l *Lexer) Tokenize() []Token {
 	var toks []Token
 	for {
@@ -157,11 +117,8 @@ func (l *Lexer) Tokenize() []Token {
 	}
 }
 
-// Next returns the next token in the stream. It skips whitespace and `//`
-// line comments, then dispatches to a specialised lexer based on the leading
-// rune. Any malformed input produces a token of kind [Error] (with the message
-// in Text) and adds a corresponding [Diagnostic]; the lexer continues from
-// the next available position.
+// Next returns the next token, with the comments above it in Doc and a comment
+// after it on its line in Trailing.
 func (l *Lexer) Next() Token {
 	l.skipWhitespaceAndComments()
 	if l.offset >= len(l.src) {
@@ -194,26 +151,10 @@ func (l *Lexer) Next() Token {
 	return tok
 }
 
-// consumeTrailingComment scans forward from the current cursor for a
-// `// note` that sits on the same line as the token just emitted (no
-// newline encountered before the `//`). When found, the comment text
-// is returned (with the leading `// ` stripped) and the cursor is
-// advanced past the comment so [skipWhitespaceAndComments] on the
-// next [Lexer.Next] call does not re-process it as a leading-doc
-// candidate. The captured comment is also appended to [allComments]
-// with [CommentTrailing] kind so the ast.File.Comments side channel
-// stays exhaustive.
-//
-// When no trailing is found the cursor is restored to its pre-scan
-// position and the empty string is returned.
-//
-// This is the only place in the lexer where we look ahead past the
-// freshly emitted token; without this hook the trailing `// note` would
-// be claimed as the leading doc of whichever non-trivia token came
-// next, which is almost never what the author intended.
+// consumeTrailingComment consumes a `//` comment later on the current line and
+// returns its text; without one it leaves the cursor and returns "".
 func (l *Lexer) consumeTrailingComment(tokenLine int) string {
 	saveOffset, saveLine, saveCol := l.offset, l.line, l.column
-	// Skip space/tab on the current line (newline ends the search).
 	for l.offset < len(l.src) {
 		r := l.peek()
 		if r != ' ' && r != '\t' {
@@ -221,14 +162,13 @@ func (l *Lexer) consumeTrailingComment(tokenLine int) string {
 		}
 		l.advance()
 	}
-	// Need at least 2 bytes for `//`.
 	if l.offset+1 >= len(l.src) || l.src[l.offset] != '/' || l.src[l.offset+1] != '/' {
 		l.offset, l.line, l.column = saveOffset, saveLine, saveCol
 		return ""
 	}
 	commentPos := l.pos()
-	l.advance() // first '/'
-	l.advance() // second '/'
+	l.advance()
+	l.advance()
 	start := l.offset
 	for l.offset < len(l.src) {
 		r := l.peek()
@@ -246,13 +186,11 @@ func (l *Lexer) consumeTrailingComment(tokenLine int) string {
 		Text: text,
 		Kind: CommentTrailing,
 	})
-	_ = tokenLine // currently unused; reserved for future per-line-aware logic
+	_ = tokenLine
 	return text
 }
 
-// lexPunct produces a single-character punctuation token. Unrecognised runes
-// fall through to an Error token so the parser can keep going (for instance,
-// `$` mid-file should not lose subsequent valid tokens).
+// lexPunct lexes a one-rune punctuation token; any other rune is an Error.
 func (l *Lexer) lexPunct(pos Position, r rune) Token {
 	l.advance()
 	var k Kind
@@ -295,8 +233,7 @@ func (l *Lexer) lexPunct(pos Position, r rune) Token {
 	return Token{Kind: k, Text: string(r), Pos: pos}
 }
 
-// lexIdentOrKeyword reads a maximal `[A-Za-z_][A-Za-z0-9_]*` run and looks
-// the result up in [keywords]. Non-ASCII letters are rejected.
+// lexIdentOrKeyword lexes `[A-Za-z_][A-Za-z0-9_]*` as a keyword or an Ident.
 func (l *Lexer) lexIdentOrKeyword(pos Position) Token {
 	start := l.offset
 	for {
@@ -313,11 +250,8 @@ func (l *Lexer) lexIdentOrKeyword(pos Position) Token {
 	return Token{Kind: Ident, Text: text, Pos: pos}
 }
 
-// lexNumber reads an integer or float literal, then peeks for an optional
-// duration or size suffix. Returns Int / Float when no suffix follows;
-// returns Duration / Size when the suffix matches one of the configured units;
-// returns Error otherwise so a typo like `1xyz` is reported instead of being
-// silently split into two tokens.
+// lexNumber lexes an Int or a Float, or a Duration or Size when a unit suffix
+// follows; any other letter suffix makes the whole literal an Error.
 func (l *Lexer) lexNumber(pos Position) Token {
 	start := l.offset
 	for {
@@ -367,9 +301,7 @@ func (l *Lexer) lexNumber(pos Position) Token {
 	return l.errorf(pos, "invalid number suffix %q", suffix)
 }
 
-// digitFollowsDot reports whether the byte AFTER the current `.` is a decimal
-// digit. Used to disambiguate `3.14` (float) from `3.foo` (Int + Dot + Ident).
-// Cheap byte-level check is sufficient because '0'-'9' are ASCII.
+// digitFollowsDot tells `3.14` (a Float) from `3.foo` (Int, Dot, Ident).
 func (l *Lexer) digitFollowsDot() bool {
 	if l.offset+1 >= len(l.src) {
 		return false
@@ -377,17 +309,9 @@ func (l *Lexer) digitFollowsDot() bool {
 	return isDigit(rune(l.src[l.offset+1]))
 }
 
-// lexString reads a double-quoted string literal, supporting the escape
-// sequences `\n \t \r \" \\` and the Unicode form `\u{HEX}` (1-6 hex digits).
-// Newlines inside the literal and unterminated strings produce [Error] tokens
-// - both are common authoring mistakes worth flagging early.
-//
-// The returned token's Text retains the surrounding quotes and the original
-// escape sequences verbatim; the parser is responsible for unescaping when it
-// builds AST literal nodes (see parser.unquoteString).
+// lexString lexes a `"..."` literal with the escapes `\n \t \r \" \\` and
+// `\u{HEX}` (1-6 digits). Text keeps the quotes and escapes as written.
 func (l *Lexer) lexString(pos Position) Token {
-	// Hot path: byte-by-byte string-literal scan. Builder keeps the
-	// per-rune append allocation-free.
 	var sb strings.Builder
 	sb.WriteByte('"')
 	l.advance()
@@ -431,10 +355,8 @@ func (l *Lexer) lexString(pos Position) Token {
 	}
 }
 
-// lexUnicodeEscape consumes a `{HEX}` body following an already-read `\u`.
-// The opening brace is required, the body must contain 1-6 hex digits, and a
-// closing `}` must appear. Returns false when any of those constraints is
-// violated; the caller wraps that into a single user-facing error.
+// lexUnicodeEscape consumes the `{HEX}` after `\u` and reports whether it holds
+// 1-6 hex digits.
 func (l *Lexer) lexUnicodeEscape(sb *strings.Builder) bool {
 	r := l.peek()
 	if r != '{' {
@@ -469,13 +391,8 @@ func (l *Lexer) lexUnicodeEscape(sb *strings.Builder) bool {
 	return true
 }
 
-// lexRawString reads a backtick-quoted string. Contents pass through
-// verbatim - escape sequences are NOT interpreted, and embedded newlines are
-// allowed. This is the right form for long `@doc()` text and complex
-// `@pattern()` regular expressions where backslash escapes would be noisy.
+// lexRawString lexes a backtick literal: no escapes, newlines allowed.
 func (l *Lexer) lexRawString(pos Position) Token {
-	// Hot path: byte-by-byte raw-string scan. Builder keeps the
-	// inner append allocation-free.
 	var sb strings.Builder
 	sb.WriteByte('`')
 	l.advance()
@@ -494,9 +411,8 @@ func (l *Lexer) lexRawString(pos Position) Token {
 	}
 }
 
-// skipWhitespaceAndComments advances past any sequence of ASCII whitespace
-// (space, tab, CR, LF) and `//` line comments. `/* block */` comments are
-// not supported.
+// skipWhitespaceAndComments skips whitespace and `//` comments, recording each
+// comment and queueing the leading ones as the next token's Doc.
 func (l *Lexer) skipWhitespaceAndComments() {
 	consecutiveNewlines := 0
 	for l.offset < len(l.src) {
@@ -506,12 +422,7 @@ func (l *Lexer) skipWhitespaceAndComments() {
 			consecutiveNewlines++
 			l.sawNewlineSinceLastToken = true
 			if consecutiveNewlines >= 2 {
-				// Blank line: comments above are detached from the
-				// upcoming token. Drop the leading buffer so they do
-				// not leak into the next AST node's Doc. They remain
-				// in [allComments] so the formatter can recover them
-				// as free-floating section / closing notes via the
-				// ast.File.Comments side channel populated by the parser.
+				// A blank line detaches the comments above from the next token.
 				l.pendingDoc = nil
 			}
 			l.advance()
@@ -528,10 +439,7 @@ func (l *Lexer) skipWhitespaceAndComments() {
 				l.advance()
 			}
 			line := l.src[start:l.offset]
-			// CRLF files leave a trailing '\r' before the '\n' the scan
-			// stops at; drop it so doc comments (and the OpenAPI
-			// descriptions built from them) don't carry a stray carriage
-			// return.
+			// Drop the '\r' of a CRLF line ending.
 			if len(line) > 0 && line[len(line)-1] == '\r' {
 				line = line[:len(line)-1]
 			}
@@ -557,17 +465,10 @@ func (l *Lexer) skipWhitespaceAndComments() {
 	}
 }
 
-// Comments returns every `//` comment encountered in the source so far,
-// in source order, with their position and leading/trailing kind.
-// Callers (parser snapshot, format printer, lint tools) consume this
-// slice instead of re-scanning the source; it is the single source of
-// truth for "every comment in the file".
+// Comments returns every `//` comment seen so far, in source order.
 func (l *Lexer) Comments() []*Comment { return l.allComments }
 
-// peek returns the rune at the current offset without consuming it. Returns
-// 0 at EOF - callers should treat rune 0 as a sentinel and not try to
-// classify it as a valid character (none of the [isLetter] / [isDigit] /
-// [isHex] helpers accept it).
+// peek returns the rune at the cursor, or 0 at EOF.
 func (l *Lexer) peek() rune {
 	if l.offset >= len(l.src) {
 		return 0
@@ -576,9 +477,8 @@ func (l *Lexer) peek() rune {
 	return r
 }
 
-// advance consumes one rune. Callers MUST ensure l.offset < len(l.src) by
-// peeking first; an out-of-bounds advance would corrupt the column counter
-// without making progress. The function maintains line/column for [pos].
+// advance consumes one rune and updates line and column; the caller ensures a
+// rune remains.
 func (l *Lexer) advance() {
 	r, size := utf8.DecodeRuneInString(l.src[l.offset:])
 	l.offset += size
@@ -590,7 +490,7 @@ func (l *Lexer) advance() {
 	}
 }
 
-// pos returns the current position (used to tag freshly-emitted tokens).
+// pos returns the cursor's Position.
 func (l *Lexer) pos() Position {
 	return Position{
 		Filename: l.filename,
@@ -600,26 +500,24 @@ func (l *Lexer) pos() Position {
 	}
 }
 
-// errorf records a diagnostic at pos and returns a synthetic Error token so
-// the caller can plug it back into the stream without further branching.
+// errorf records a diagnostic at pos and returns it as an Error token.
 func (l *Lexer) errorf(pos Position, format string, args ...any) Token {
 	msg := fmt.Sprintf(format, args...)
 	l.diags = append(l.diags, Diagnostic{Pos: pos, Msg: msg})
 	return Token{Kind: Error, Text: msg, Pos: pos}
 }
 
-// isLetter reports whether r is an ASCII letter (a-z or A-Z).
+// isLetter reports whether r is an ASCII letter.
 func isLetter(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
 }
 
-// isDigit reports whether r is an ASCII decimal digit ('0'-'9').
+// isDigit reports whether r is an ASCII decimal digit.
 func isDigit(r rune) bool {
 	return r >= '0' && r <= '9'
 }
 
-// isHex reports whether r is a valid hexadecimal digit ('0'-'9', 'a'-'f',
-// 'A'-'F'). Used inside `\u{...}` escape parsing.
+// isHex reports whether r is a hexadecimal digit.
 func isHex(r rune) bool {
 	return isDigit(r) || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
 }

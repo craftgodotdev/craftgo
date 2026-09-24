@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// ----- Position -----
-
 func TestPositionString(t *testing.T) {
 	if got := (Position{Filename: "x.craftgo", Line: 2, Column: 3}).String(); got != "x.craftgo:2:3" {
 		t.Errorf("with filename: got %q", got)
@@ -27,8 +25,6 @@ func TestPositionIsValid(t *testing.T) {
 	}
 }
 
-// ----- Kind -----
-
 func TestKindString(t *testing.T) {
 	if EOF.String() != "EOF" {
 		t.Error("EOF")
@@ -41,8 +37,6 @@ func TestKindString(t *testing.T) {
 	}
 }
 
-// ----- Token -----
-
 func TestTokenString(t *testing.T) {
 	tok := Token{Kind: Ident, Text: "foo", Pos: Position{Line: 1, Column: 1}}
 	s := tok.String()
@@ -50,8 +44,6 @@ func TestTokenString(t *testing.T) {
 		t.Errorf("got %q", s)
 	}
 }
-
-// ----- Diagnostic -----
 
 func TestDiagnosticError(t *testing.T) {
 	d := Diagnostic{Pos: Position{Line: 1, Column: 1}, Msg: "bad"}
@@ -69,7 +61,7 @@ func TestSeverityString(t *testing.T) {
 		{SeverityWarning, "warning"},
 		{SeverityInfo, "info"},
 		{SeverityHint, "hint"},
-		{Severity(99), "error"}, // unknown falls back to error
+		{Severity(99), "error"},
 	}
 	for _, c := range cases {
 		if got := c.s.String(); got != c.want {
@@ -106,14 +98,10 @@ func TestDiagnosticStructuredFields(t *testing.T) {
 	}
 }
 
-// ----- Helpers -----
-
 func first(t *testing.T, src string) Token {
 	t.Helper()
 	return New("", src).Next()
 }
-
-// ----- Basic flow -----
 
 func TestEOF(t *testing.T) {
 	if first(t, "").Kind != EOF {
@@ -141,8 +129,6 @@ func TestLineCommentToEOF(t *testing.T) {
 	}
 }
 
-// ----- Keywords -----
-
 func TestKeywords(t *testing.T) {
 	cases := map[string]Kind{
 		"package": KwPackage, "import": KwImport,
@@ -160,8 +146,6 @@ func TestKeywords(t *testing.T) {
 		}
 	}
 }
-
-// ----- Identifiers -----
 
 func TestIdent(t *testing.T) {
 	tok := first(t, "MyType")
@@ -181,8 +165,6 @@ func TestIdentMixed(t *testing.T) {
 		t.Error()
 	}
 }
-
-// ----- Numbers -----
 
 func TestInt(t *testing.T) {
 	tok := first(t, "42")
@@ -250,8 +232,6 @@ func TestBadNumberSuffix(t *testing.T) {
 	}
 }
 
-// ----- Strings -----
-
 func TestString(t *testing.T) {
 	tok := first(t, `"hello"`)
 	if tok.Kind != String || tok.Text != `"hello"` {
@@ -313,8 +293,6 @@ func TestStringBadUnicodeEscape(t *testing.T) {
 	}
 }
 
-// ----- Raw string -----
-
 func TestRawString(t *testing.T) {
 	if first(t, "`hello`").Kind != RawString {
 		t.Error()
@@ -332,8 +310,6 @@ func TestRawStringUnterminated(t *testing.T) {
 		t.Error()
 	}
 }
-
-// ----- Punctuation -----
 
 func TestPunct(t *testing.T) {
 	cases := map[string]Kind{
@@ -359,8 +335,6 @@ func TestUnknownChar(t *testing.T) {
 	}
 }
 
-// ----- Position tracking -----
-
 func TestPositionTracking(t *testing.T) {
 	l := New("test.craftgo", "foo\n  bar")
 	t1 := l.Next()
@@ -375,8 +349,6 @@ func TestPositionTracking(t *testing.T) {
 		t.Error("filename not preserved")
 	}
 }
-
-// ----- Tokenize -----
 
 func TestTokenize(t *testing.T) {
 	toks := New("", "type Foo").Tokenize()
@@ -393,8 +365,6 @@ func TestTokenize(t *testing.T) {
 		t.Error("token[2]")
 	}
 }
-
-// ----- Golden file -----
 
 func TestGoldenSample(t *testing.T) {
 	path, err := filepath.Abs("testdata/sample.craftgo")
@@ -415,9 +385,8 @@ func TestGoldenSample(t *testing.T) {
 	}
 }
 
-// TestLineCommentStripsCarriageReturn pins that a CRLF doc comment
-// does not carry a trailing '\r' into the token Doc (which becomes the
-// OpenAPI description).
+// TestLineCommentStripsCarriageReturn pins that a CRLF comment reaches Doc
+// without its '\r'.
 func TestLineCommentStripsCarriageReturn(t *testing.T) {
 	tok := New("", "// hello\r\nfoo").Next()
 	if tok.Text != "foo" {

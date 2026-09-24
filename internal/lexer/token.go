@@ -2,42 +2,32 @@ package lexer
 
 import "fmt"
 
-// Kind enumerates every token category emitted by the lexer.
-//
-// Kind values are stable and ordered: the keyword block (KwPackage..KwPayload)
-// and the HTTP-verb block (VerbGet..VerbOptions) are contiguous so that callers
-// can detect "any keyword" via simple range checks. New kinds must be appended;
-// reordering breaks parser code that relies on the keyword range.
+// Kind is a token category. The reserved words, KwPackage through VerbOptions,
+// are contiguous so callers can test for one with a range check.
 type Kind int
 
 const (
-	// EOF is emitted exactly once at the end of input.
+	// EOF marks the end of input.
 	EOF Kind = iota
-	// Error wraps a malformed token; the offending source slice is in Text and
-	// a Diagnostic is recorded on the [Lexer]. Parsing should treat this as
-	// "skip and continue" - the diagnostic carries the message for users.
+	// Error is a malformed token; Text holds the diagnostic message.
 	Error
 
-	// Ident is any identifier that is not a reserved keyword.
+	// Ident is an identifier that is not a reserved word.
 	Ident
-	// Int holds a plain decimal integer literal (no sign, no suffix).
+	// Int is an unsigned decimal integer without a suffix.
 	Int
-	// Float holds a decimal float literal of the form `digits.digits`.
+	// Float is `digits.digits`.
 	Float
-	// String holds a double-quoted string with escape sequences preserved
-	// verbatim (parser does the unescape).
+	// String is a double-quoted literal; Text keeps the quotes and escapes.
 	String
-	// RawString holds a backtick-quoted string. Backticks are kept in Text;
-	// no escape processing is performed.
+	// RawString is a backtick literal; Text keeps the backticks.
 	RawString
-	// Duration is a numeric literal followed immediately by a duration suffix
-	// (`ns`, `us`, `µs`, `ms`, `s`, `m`, `h`).
+	// Duration is a number with a [DurationUnits] suffix.
 	Duration
-	// Size is a numeric literal followed immediately by a size suffix
-	// (`B`, `KB`, `MB`, `GB`).
+	// Size is a number with a [SizeUnits] suffix.
 	Size
 
-	// --- Keywords (must stay contiguous; the parser's keyword-range check relies on it). ---
+	// Keywords.
 
 	KwPackage
 	KwImport
@@ -57,7 +47,7 @@ const (
 	KwEvent
 	KwPayload
 
-	// --- HTTP verbs (also keyword-class). ---
+	// HTTP verbs, also reserved words.
 
 	VerbGet
 	VerbPost
@@ -67,7 +57,7 @@ const (
 	VerbHead
 	VerbOptions
 
-	// --- Punctuation. ---
+	// Punctuation.
 
 	LBrace   // {
 	RBrace   // }
@@ -87,8 +77,6 @@ const (
 	Dash     // -
 )
 
-// kindNames maps each [Kind] to a human-readable label used by [Kind.String].
-// Keep in sync with the const block above.
 var kindNames = map[Kind]string{
 	EOF: "EOF", Error: "Error",
 	Ident: "Ident", Int: "Int", Float: "Float",
@@ -111,9 +99,7 @@ var kindNames = map[Kind]string{
 	Dot: ".", Slash: "/", At: "@", Dash: "-",
 }
 
-// String returns a human-readable name for the kind, e.g. `EOF`, `Ident`, or
-// the literal punctuation character. Unknown kinds (added without updating
-// [kindNames]) render as `Kind(N)` so they remain visible in diagnostics.
+// String returns the kind's spelling, or `Kind(N)` for an unknown kind.
 func (k Kind) String() string {
 	if s, ok := kindNames[k]; ok {
 		return s
@@ -121,9 +107,7 @@ func (k Kind) String() string {
 	return fmt.Sprintf("Kind(%d)", int(k))
 }
 
-// keywords maps the spelling of every reserved word to its [Kind]. The lexer
-// looks up identifiers here after collecting them, so any string that matches
-// becomes the corresponding keyword token instead of an [Ident].
+// keywords maps each reserved word to its Kind.
 var keywords = map[string]Kind{
 	"package":    KwPackage,
 	"import":     KwImport,
@@ -152,24 +136,18 @@ var keywords = map[string]Kind{
 	"options": VerbOptions,
 }
 
-// CommentKind classifies a `//` comment by its source position relative
-// to surrounding tokens. Used by the formatter to render leading vs
-// trailing comments at the correct site after parser/AST has lost the
-// raw column information.
+// CommentKind says whether a comment follows code on its line.
 type CommentKind uint8
 
 const (
-	// CommentLeading is the default - the comment was preceded only by
-	// whitespace on its source line.
+	// CommentLeading is a comment with no token before it on its line.
 	CommentLeading CommentKind = iota
-	// CommentTrailing is a comment that follows non-whitespace code on
-	// the same line as the previously emitted token, e.g. the
-	// `// 5 MiB` in `@maxBodySize(5242880) // 5 MiB`. The lexer detects
-	// this via [Lexer.sawNewlineSinceLastToken].
+	// CommentTrailing is a comment after a token on the same line, as in
+	// `@maxBodySize(5242880) // 5 MiB`.
 	CommentTrailing
 )
 
-// String returns "leading" or "trailing" for diagnostic messages.
+// String returns "leading" or "trailing".
 func (k CommentKind) String() string {
 	if k == CommentTrailing {
 		return "trailing"
@@ -177,42 +155,26 @@ func (k CommentKind) String() string {
 	return "leading"
 }
 
-// Comment is one source-level `//` line, captured by the lexer. The
-// formatter / future linters consume the full slice via
-// [Lexer.Comments]; the parser snapshots it onto `*ast.File.Comments`
-// so downstream tools see one canonical view of every comment in the
-// file regardless of whether it ended up attached to an AST node.
+// Comment is one `//` comment.
 type Comment struct {
-	Pos  Position    // position of the leading `/` on the comment line
-	Text string      // comment body with leading `// ` (and one optional space) stripped
-	Kind CommentKind // leading vs trailing
+	Pos  Position    // the first '/'
+	Text string      // without the `//` and one following space
+	Kind CommentKind // leading or trailing
 }
 
-// Token is a single lexed unit of the source.
-//
-// Text holds the literal source slice that produced this token (including
-// surrounding quotes for [String] / [RawString], suffix for [Duration] /
-// [Size]). For keyword tokens, Text is the keyword spelling - useful when
-// echoing source without consulting [kindNames].
+// Token is one lexed token. Text is its source spelling, or the message for an
+// [Error] token.
 type Token struct {
 	Kind Kind
 	Text string
 	Pos  Position
-	// Doc is the contiguous run of `//` line comments immediately
-	// preceding this token, with the leading `//` and a single trailing
-	// space stripped. A blank line between a comment block and the next
-	// token discards the block - only "doc-attached" comments arrive here.
+	// Doc holds the comment lines directly above the token.
 	Doc []string
-	// Trailing is a single `// note` comment that follows this token on
-	// the same source line, with the leading `// ` stripped. Empty when
-	// no trailing comment is present. Captured by [Lexer.Next] right
-	// after the token is constructed; the comment text is consumed from
-	// the source stream so [skipWhitespaceAndComments] on the next
-	// [Lexer.Next] call does not see it again as a leading comment.
+	// Trailing is the comment after the token on its line, if any.
 	Trailing string
 }
 
-// String formats the token for debug and test output as `Kind "text" at pos`.
+// String renders the token as `Kind "text" at pos`.
 func (t Token) String() string {
 	return fmt.Sprintf("%s %q at %s", t.Kind, t.Text, t.Pos)
 }

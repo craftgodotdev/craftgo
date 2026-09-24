@@ -6,10 +6,8 @@ import (
 	"time"
 )
 
-// TestUnitsAreTheOnlyLexableSuffixes pins the vocabulary to the token
-// classifier: every listed suffix lexes as its own kind, and nothing else
-// lexes at all. A suffix that drifts out of a table stops being legal DSL
-// instead of becoming a literal no consumer can evaluate.
+// TestUnitsAreTheOnlyLexableSuffixes pins that exactly the listed suffixes lex
+// as a Duration or a Size.
 func TestUnitsAreTheOnlyLexableSuffixes(t *testing.T) {
 	for _, u := range DurationUnits {
 		if got := first(t, "1"+u).Kind; got != Duration {
@@ -28,9 +26,8 @@ func TestUnitsAreTheOnlyLexableSuffixes(t *testing.T) {
 	}
 }
 
-// TestDurationUnitsParse pins every duration suffix to the stdlib parser
-// that converts the literal: a suffix time.ParseDuration rejects would lex
-// fine and then emit no timeout at all.
+// TestDurationUnitsParse pins that time.ParseDuration accepts every duration
+// suffix.
 func TestDurationUnitsParse(t *testing.T) {
 	for _, u := range DurationUnits {
 		if _, err := time.ParseDuration("1" + u); err != nil {
@@ -88,10 +85,8 @@ func TestParseSize(t *testing.T) {
 	}
 }
 
-// TestParseSizeRejects covers the values that must NOT come back as a byte
-// count: an unknown suffix, a missing or malformed number, and a product
-// past int64. Reporting ok=false is what lets the caller diagnose them -
-// a wrapped or saturated count would silently become the enforced cap.
+// TestParseSizeRejects pins ok=false for an unknown suffix, a missing or
+// malformed number, and a product past int64.
 func TestParseSizeRejects(t *testing.T) {
 	for _, in := range []string{
 		"", "   ", "MB", "B", "xMB", "1.2.3MB", "1TB",
