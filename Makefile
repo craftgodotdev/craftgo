@@ -240,7 +240,8 @@ tag-list: ## Show the four latest tags of each published module (five modules).
 
 # ---- one-shot CI surface -------------------------------------------------
 .PHONY: ci
-ci: lint tidy-check test-race e2e test-submodules gen-diff build ## Run the CI gates locally: lint, module tidiness, race tests, e2e, sub-module tests, codegen drift, build.
+ci: TESTFLAGS += -race
+ci: lint tidy-check test e2e test-submodules gen-diff build ## Run the CI gates locally: lint, module tidiness, the root, e2e and sub-module tests with -race, codegen drift, build.
 
 # ---- docs diagrams --------------------------------------------------------
 # Sources are docs/diagrams/*.excalidraw (edit them on excalidraw.com or with
