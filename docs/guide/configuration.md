@@ -372,8 +372,9 @@ Setting `enabled: true` with `exporter: none` produces in-process spans whose ID
 
 For `otlp_grpc`, `endpoint` may be a bare `host:port` (plaintext) or a full URL
 whose scheme selects transport security - `http://…` (plaintext) or `https://…`
-(TLS). `otlp_http` takes the URL form only; `telemetry.Init` refuses anything
-else at startup. `exporter: none` installs a silent meter (no scrape, no push).
+(TLS). `otlp_http` takes the URL form only. `telemetry.Init` refuses any other
+`endpoint` at startup, an empty one included. `exporter: none` installs a silent
+meter (no scrape, no push).
 
 ### Telemetry identity
 

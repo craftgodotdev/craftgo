@@ -7,12 +7,17 @@ import (
 )
 
 // otlpEndpoint returns the OTLP/gRPC endpoint options for addr: a URL's scheme
-// picks transport security, and a bare host:port is dialled insecure.
-func otlpEndpoint[T any](addr string, endpointURL func(string) T, endpoint func(string) T, insecure func() T) []T {
+// picks transport security, and a bare host:port is dialled insecure. It fails
+// on an addr that names no host.
+func otlpEndpoint[T any](addr string, endpointURL func(string) T, endpoint func(string) T, insecure func() T) ([]T, error) {
 	if strings.Contains(addr, "://") {
-		return []T{endpointURL(addr)}
+		if u, err := url.Parse(addr); err == nil && u.Host != "" {
+			return []T{endpointURL(addr)}, nil
+		}
+	} else if addr != "" {
+		return []T{endpoint(addr), insecure()}, nil
 	}
-	return []T{endpoint(addr), insecure()}
+	return nil, fmt.Errorf("otlp_grpc endpoint %q is neither a host:port nor a URL with a host", addr)
 }
 
 // checkOTLPHTTPEndpoint fails unless addr, the endpoint of an otlp_http exporter, is an

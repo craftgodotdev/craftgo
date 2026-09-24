@@ -80,6 +80,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   `host:port` was accepted, and the exporter then sent to `localhost:4318`
   or nowhere; `otlp_grpc` still takes `host:port`.
 
+- **An `otlp_grpc` exporter needs an endpoint.** `telemetry.Init` fails on
+  an empty `otlp_grpc` endpoint, or a URL with no host. The exporter was
+  built with no address and sent nothing, neither to `localhost:4317` nor
+  to `OTEL_EXPORTER_OTLP_ENDPOINT`.
+
 - **Formatting leaves a file alone rather than damage it.** `craftgo fmt`
   and the editor's Format Document keep a file unchanged when its formatted
   text would not parse, or would drop, duplicate or add a comment.

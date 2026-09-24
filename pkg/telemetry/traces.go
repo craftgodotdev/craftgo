@@ -34,8 +34,12 @@ func traceExporter(ctx context.Context, c OTelConfig) (sdktrace.SpanExporter, er
 		}
 		return exp, nil
 	case ExporterOTLPgRPC:
-		exp, err := otlptracegrpc.New(ctx, otlpEndpoint(c.Endpoint,
-			otlptracegrpc.WithEndpointURL, otlptracegrpc.WithEndpoint, otlptracegrpc.WithInsecure)...)
+		endpoint, err := otlpEndpoint(c.Endpoint,
+			otlptracegrpc.WithEndpointURL, otlptracegrpc.WithEndpoint, otlptracegrpc.WithInsecure)
+		if err != nil {
+			return nil, err
+		}
+		exp, err := otlptracegrpc.New(ctx, endpoint...)
 		if err != nil {
 			return nil, fmt.Errorf("otlp grpc trace exporter: %w", err)
 		}

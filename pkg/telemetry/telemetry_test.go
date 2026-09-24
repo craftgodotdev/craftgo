@@ -318,6 +318,26 @@ func TestOTLPHTTPEndpointMustBeAURL(t *testing.T) {
 	}
 }
 
+// Init refuses an otlp_grpc endpoint that names no collector host, for either signal.
+func TestOTLPGRPCEndpointMustNameAHost(t *testing.T) {
+	for _, addr := range []string{"", "http://", "https://"} {
+		for signal, c := range map[string]telemetry.Config{
+			"traces":  {OTel: telemetry.OTelConfig{Enabled: true, Exporter: "otlp_grpc", Endpoint: addr}},
+			"metrics": {Metrics: telemetry.MetricsConfig{Enabled: true, Exporter: "otlp_grpc", Endpoint: addr}},
+		} {
+			tel, err := telemetry.Init(context.Background(), c)
+			if err == nil {
+				shortShutdown(t, tel)
+				t.Errorf("%s: otlp_grpc endpoint %q accepted", signal, addr)
+				continue
+			}
+			if !strings.Contains(err.Error(), "otlp_grpc endpoint") {
+				t.Errorf("%s: error %q does not name the endpoint", signal, err)
+			}
+		}
+	}
+}
+
 // Metrics exporter "none" starts no scrape listener and exposes no registry.
 func TestNoneExporterDoesNotScrape(t *testing.T) {
 	tel, err := telemetry.Init(context.Background(), telemetry.Config{

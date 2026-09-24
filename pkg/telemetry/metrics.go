@@ -35,8 +35,12 @@ func resourceFor(serviceName string) *sdkresource.Resource {
 func metricReader(ctx context.Context, c MetricsConfig, reg prom.Registerer) (sdkmetric.Reader, bool, error) {
 	switch c.Exporter {
 	case ExporterOTLPgRPC:
-		exp, err := otlpmetricgrpc.New(ctx, otlpEndpoint(c.Endpoint,
-			otlpmetricgrpc.WithEndpointURL, otlpmetricgrpc.WithEndpoint, otlpmetricgrpc.WithInsecure)...)
+		endpoint, err := otlpEndpoint(c.Endpoint,
+			otlpmetricgrpc.WithEndpointURL, otlpmetricgrpc.WithEndpoint, otlpmetricgrpc.WithInsecure)
+		if err != nil {
+			return nil, false, err
+		}
+		exp, err := otlpmetricgrpc.New(ctx, endpoint...)
 		if err != nil {
 			return nil, false, fmt.Errorf("otlp grpc metric exporter: %w", err)
 		}
