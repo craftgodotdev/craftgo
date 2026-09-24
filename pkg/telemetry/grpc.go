@@ -16,12 +16,7 @@ func (t *Telemetry) GRPCServerHandler() stats.Handler {
 	if !t.instrumented() {
 		return noopStats{}
 	}
-	return otelgrpc.NewServerHandler(
-		otelgrpc.WithTracerProvider(t.TracerProvider()),
-		otelgrpc.WithMeterProvider(t.MeterProvider()),
-		otelgrpc.WithPropagators(t.propagator()),
-		otelgrpc.WithFilter(func(info *stats.RPCTagInfo) bool { return !rpc.IsInfrastructureMethod(info.FullMethodName) }),
-	)
+	return otelgrpc.NewServerHandler(t.otelgrpcOptions()...)
 }
 
 // GRPCClientHandler returns the stats handler for [rpc.WithClientStatsHandler]:
@@ -31,12 +26,18 @@ func (t *Telemetry) GRPCClientHandler() stats.Handler {
 	if !t.instrumented() {
 		return noopStats{}
 	}
-	return otelgrpc.NewClientHandler(
+	return otelgrpc.NewClientHandler(t.otelgrpcOptions()...)
+}
+
+// otelgrpcOptions binds a gRPC handler to the stack's providers and propagator
+// and leaves health and reflection calls out.
+func (t *Telemetry) otelgrpcOptions() []otelgrpc.Option {
+	return []otelgrpc.Option{
 		otelgrpc.WithTracerProvider(t.TracerProvider()),
 		otelgrpc.WithMeterProvider(t.MeterProvider()),
 		otelgrpc.WithPropagators(t.propagator()),
 		otelgrpc.WithFilter(func(info *stats.RPCTagInfo) bool { return !rpc.IsInfrastructureMethod(info.FullMethodName) }),
-	)
+	}
 }
 
 // noopStats is the handler of an unconfigured stack.

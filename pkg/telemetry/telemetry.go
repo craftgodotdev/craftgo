@@ -24,8 +24,6 @@ import (
 // Telemetry is a live stack built by [Init]. With both signals off, or on a
 // nil *Telemetry, every method degrades to a no-op.
 type Telemetry struct {
-	serviceName string
-
 	tracers *sdktrace.TracerProvider
 	meters  *sdkmetric.MeterProvider
 
@@ -39,7 +37,7 @@ type Telemetry struct {
 // process-wide otel default. It fails, leaving nothing running, when a signal
 // cannot be set up; a scrape listener bind failure arrives on [Telemetry.AdminErr].
 func Init(ctx context.Context, c Config) (*Telemetry, error) {
-	t := &Telemetry{serviceName: c.ServiceName}
+	t := &Telemetry{}
 	c.OTel.ServiceName = orDefault(c.OTel.ServiceName, c.ServiceName)
 	c.Metrics.ServiceName = orDefault(c.Metrics.ServiceName, c.ServiceName)
 	if err := t.initTraces(ctx, c.OTel); err != nil {

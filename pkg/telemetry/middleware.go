@@ -30,7 +30,7 @@ func (t *Telemetry) HTTPMiddleware() server.Middleware {
 		otelhttp.WithPropagators(prop),
 	}
 	return func(next http.Handler) http.Handler {
-		return instrument(next, t.serviceName, prop, opts...)
+		return instrument(next, prop, opts...)
 	}
 }
 
@@ -46,12 +46,13 @@ func (t *Telemetry) propagator() propagation.TextMapPropagator {
 	return noopPropagator
 }
 
-// instrument wraps next in otelhttp and writes prop's trace context onto the
-// response before next runs. It builds instruments, so it runs once per wrap.
-func instrument(next http.Handler, operation string, prop propagation.TextMapPropagator, opts ...otelhttp.Option) http.Handler {
+// instrument wraps next in otelhttp, which names a span after the method and the
+// matched route, and writes prop's trace context onto the response before next
+// runs. It builds instruments, so it runs once per wrap.
+func instrument(next http.Handler, prop propagation.TextMapPropagator, opts ...otelhttp.Option) http.Handler {
 	withTraceHeaders := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		prop.Inject(r.Context(), propagation.HeaderCarrier(w.Header()))
 		next.ServeHTTP(w, r)
 	})
-	return otelhttp.NewHandler(withTraceHeaders, operation, opts...)
+	return otelhttp.NewHandler(withTraceHeaders, "", opts...)
 }
