@@ -246,6 +246,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   that did not compile; it now gets the `ref/qualified` error the same
   reference gets in a file that declares `package app`.
 
+- **Packages that reference each other's types in a cycle are rejected.**
+  `app.Req { b shared.Base }` beside `shared.Base { a app.Audit }` passed
+  analysis and generated Go packages that import each other, which does not
+  compile; each cycle is now reported once, with its path, as
+  `ref/package-cycle`. Event payloads do not count: events are generated
+  outside the types packages.
+
 - **Fewer duplicate diagnostics.** A generic mixin with the wrong number of
   arguments, or a mixin naming an error or a middleware, got a second
   diagnostic beside `mixin/arity` or `mixin/non-type`, and a malformed

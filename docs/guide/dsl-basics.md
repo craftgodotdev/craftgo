@@ -304,6 +304,8 @@ type User {
 
 The codegen wires the matching Go imports automatically.
 
+Each package's types are one Go package, so two packages cannot reference each other's types in a cycle: `design` using `shared.Contact` while `shared` uses a `design` type is rejected as `ref/package-cycle`. An event payload does not count - events are generated outside the types packages.
+
 ## Comments
 
 `//` line comments. Comments above a declaration become its doc string and surface in OpenAPI:

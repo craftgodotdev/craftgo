@@ -55,6 +55,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	c.checkProjectPathCollision()
 	c.checkProjectOperationIDUniqueness()
 	c.checkProjectEvents()
+	c.checkPackageCycles()
 	sortDiagnostics(c.diags)
 	return proj, c.diags
 }
@@ -82,16 +83,20 @@ func (c *projectChecks) diag(pos lexer.Position, sev lexer.Severity, code, forma
 	return &c.diags[len(c.diags)-1]
 }
 
-// sortDiagnostics orders diags by file, offset, code and message.
+// sortDiagnostics orders diags by position, code and message.
 func sortDiagnostics(diags []Diagnostic) {
 	slices.SortStableFunc(diags, func(a, b Diagnostic) int {
 		return cmp.Or(
-			cmp.Compare(a.Pos.Filename, b.Pos.Filename),
-			cmp.Compare(a.Pos.Offset, b.Pos.Offset),
+			comparePos(a.Pos, b.Pos),
 			cmp.Compare(a.Code, b.Code),
 			cmp.Compare(a.Msg, b.Msg),
 		)
 	})
+}
+
+// comparePos orders positions by file, then offset.
+func comparePos(a, b lexer.Position) int {
+	return cmp.Or(cmp.Compare(a.Filename, b.Filename), cmp.Compare(a.Offset, b.Offset))
 }
 
 // singlePackage returns the only package, else the unnamed one, else the
