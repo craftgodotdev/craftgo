@@ -33,9 +33,9 @@ func importPathPrefix(view snapshotView, c cursor) (string, bool) {
 }
 
 // importPathCompletions offers the folders under the design root that hold a
-// design file, relative to the root and starting with prefix, except the buffer's.
-func importPathCompletions(currentURI, prefix string) []protocol.CompletionItem {
-	fsPath := uriToPath(currentURI)
+// design file, relative to the root and starting with prefix, except the one
+// of the buffer at fsPath.
+func importPathCompletions(fsPath, prefix string) []protocol.CompletionItem {
 	_, root := designProjectOf(fsPath)
 	if root == "" {
 		return nil
@@ -73,8 +73,8 @@ func importPathCompletions(currentURI, prefix string) []protocol.CompletionItem 
 
 // quotedImportPathCompletions is [importPathCompletions] for `import |`: each
 // path is inserted quoted.
-func quotedImportPathCompletions(currentURI string) []protocol.CompletionItem {
-	items := importPathCompletions(currentURI, "")
+func quotedImportPathCompletions(fsPath string) []protocol.CompletionItem {
+	items := importPathCompletions(fsPath, "")
 	for i := range items {
 		items[i].InsertText = strconv.Quote(items[i].Label)
 	}
@@ -83,13 +83,11 @@ func quotedImportPathCompletions(currentURI string) []protocol.CompletionItem {
 
 // packageNameCompletions answers `package |` with the packages the other files
 // in the folder declare or, in a folder with none, every package in the project.
-func (s *server) packageNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
-	fsPath := uriToPath(currentURI)
-	v := s.loadProject(fsPath, currentSrc)
-	dir := filepath.Dir(fsPath)
+func (r *request) packageNameCompletions() []protocol.CompletionItem {
+	dir := filepath.Dir(r.path)
 	siblings, project := map[string]int{}, map[string]bool{}
-	for _, lf := range v.files {
-		if lf.path == fsPath || lf.file == nil || lf.file.Package == nil || lf.file.Package.Name == "" {
+	for _, lf := range r.project().files {
+		if lf.path == r.path || lf.file == nil || lf.file.Package == nil || lf.file.Package.Name == "" {
 			continue
 		}
 		project[lf.file.Package.Name] = true
@@ -128,8 +126,8 @@ func packageItems(names map[string]int, detail string) []protocol.CompletionItem
 
 // packageDeclCompletions offers every declaration of package pkg except its
 // errors, for `pkg.|`.
-func (s *server) packageDeclCompletions(currentURI, currentSrc, pkg string) []protocol.CompletionItem {
-	p := s.loadProject(uriToPath(currentURI), currentSrc).proj.Packages[pkg]
+func (r *request) packageDeclCompletions(pkg string) []protocol.CompletionItem {
+	p := r.project().proj.Packages[pkg]
 	if p == nil {
 		return nil
 	}

@@ -2,11 +2,9 @@ package lsp
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
-	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -73,22 +71,16 @@ func memberKeywordHover(view snapshotView, idx int, tok lexer.Token) *protocol.H
 }
 
 // onHover answers `textDocument/hover`, with null where there is nothing to show.
-func (s *server) onHover(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.HoverParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
+func (s *server) onHover(_ context.Context, params protocol.HoverParams) (any, error) {
+	r, ok := s.open(params.TextDocument.URI)
+	if !ok {
+		return nil, nil
 	}
-	src := s.snapshot(params.TextDocument.URI)
-	if src == "" {
-		return reply(ctx, nil, nil)
-	}
-	view := parseSnapshot(string(params.TextDocument.URI), src)
-	c := view.cursorAt(params.Position)
+	c := r.view().cursorAt(params.Position)
 	if c.at < 0 {
-		return reply(ctx, nil, nil)
+		return nil, nil
 	}
-	hov := s.hoverWithProject(view, c.at, view.tokens[c.at], string(params.TextDocument.URI), src)
-	return reply(ctx, hov, nil)
+	return r.hover(c.at), nil
 }
 
 // hoverForToken returns the hover for token idx from the buffer alone, or nil.
@@ -249,17 +241,19 @@ func typeRefString(t *ast.TypeRef) string {
 	return sb.String()
 }
 
-// hoverWithProject is [hoverForToken] with a project-wide declaration lookup as
-// the fallback, so the project loads only when the buffer has no answer.
-func (s *server) hoverWithProject(view snapshotView, idx int, tok lexer.Token, currentURI string, currentSrc string) *protocol.Hover {
+// hover is [hoverForToken] for token idx with a project-wide declaration
+// lookup as the fallback, so the project loads only when the buffer has no
+// answer.
+func (r *request) hover(idx int) *protocol.Hover {
+	view := r.view()
+	tok := view.tokens[idx]
 	if h := hoverForToken(view, idx, tok); h != nil {
 		return h
 	}
 	if tok.Kind != lexer.Ident {
 		return nil
 	}
-	v := s.loadProject(uriToPath(currentURI), currentSrc)
-	if d := v.lookup(qualifiedNameAt(view, idx), semantic.AnyDecl); d != nil {
+	if d := r.project().lookup(qualifiedNameAt(view, idx), semantic.AnyDecl); d != nil {
 		return userTypeHover(d, rangeOf(view.src, tok))
 	}
 	return nil

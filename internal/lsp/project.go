@@ -16,13 +16,11 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// loadedFile is one design file: its path, the text analysed (the open buffer
-// over the disk copy), its tokens and its AST.
+// loadedFile is one design file of a project: its path and its parse of the
+// text analysed, the open buffer over the disk copy.
 type loadedFile struct {
-	path   string
-	src    string
-	tokens []lexer.Token
-	file   *ast.File
+	path string
+	snapshotView
 }
 
 // projectView is the analysed project of a buffer. Outside a project (no
@@ -39,33 +37,33 @@ type projectView struct {
 // for an untitled buffer) holding src, with the manifest's options.
 func (s *server) loadProject(fsPath, src string) projectView {
 	cfg, root := designProjectOf(fsPath)
-	v := projectView{root: root, current: fsPath}
-
-	if v.root == "" {
-		v.files = []loadedFile{{path: fsPath, src: src}}
-	} else {
-		v.files = s.designFiles(v.root, fsPath, src)
+	srcs := []designopts.Source{{Path: fsPath, Text: src}}
+	if root != "" {
+		srcs = s.designSources(root, fsPath, src)
 	}
-	srcs := make([]designopts.Source, len(v.files))
-	for i, lf := range v.files {
-		srcs[i] = designopts.Source{Path: lf.path, Text: lf.src}
-	}
-	var parsed []designopts.Parsed
-	v.proj, parsed, v.diags = designopts.Analyze(srcs, v.root, cfg)
-	for i := range v.files {
-		v.files[i].file = parsed[i].File
-		v.files[i].tokens = parsed[i].Tokens
+	proj, parsed, diags := designopts.Analyze(srcs, root, cfg)
+	v := projectView{root: root, current: fsPath, files: make([]loadedFile, len(srcs)), proj: proj, diags: diags}
+	for i, in := range srcs {
+		v.files[i] = loadedFile{path: in.Path, snapshotView: snapshotView{src: in.Text, tokens: parsed[i].Tokens, file: parsed[i].File}}
 	}
 	return v
+}
+
+// buffer returns the parse of the buffer the view was built for.
+func (v projectView) buffer() snapshotView {
+	for _, lf := range v.files {
+		if lf.path == v.current {
+			return lf.snapshotView
+		}
+	}
+	return snapshotView{}
 }
 
 // currentPackage returns the package name of the buffer the view was
 // built for ("" when, outside a project, it declares none).
 func (v projectView) currentPackage() string {
-	for _, lf := range v.files {
-		if lf.path == v.current && lf.file.Package != nil {
-			return lf.file.Package.Name
-		}
+	if f := v.buffer().file; f != nil && f.Package != nil {
+		return f.Package.Name
 	}
 	return ""
 }
@@ -87,14 +85,18 @@ func (v projectView) lookup(name string, kinds semantic.DeclKind) ast.Decl {
 	return v.proj.Lookup(v.currentPackage(), name, kinds)
 }
 
-// locationOf returns the location of the n bytes at pos; a span in the buffer
-// keeps the editor's URI, so an untitled buffer still gets one.
+// locationOf returns the location of the n bytes at pos.
 func (v projectView) locationOf(pos lexer.Position, n int, current protocol.DocumentURI) protocol.Location {
-	u := current
-	if pos.Filename != v.current {
-		u = uri.File(pos.Filename)
+	return protocol.Location{URI: v.uriOf(pos.Filename, current), Range: spanRange(v.srcOf(pos.Filename), pos, n)}
+}
+
+// uriOf returns the URI of the file at path; the buffer keeps the editor's
+// URI, current, so an untitled buffer still has one.
+func (v projectView) uriOf(path string, current protocol.DocumentURI) protocol.DocumentURI {
+	if path == v.current {
+		return current
 	}
-	return protocol.Location{URI: u, Range: spanRange(v.srcOf(pos.Filename), pos, n)}
+	return uri.File(path)
 }
 
 // srcOf returns the text analysed for the file at path.
@@ -120,19 +122,20 @@ func designProjectOf(fsPath string) (*config.Config, string) {
 	return cfg, root
 }
 
-// designFiles reads every design file under root, open buffers (src for fsPath)
-// over disk, and appends the open buffers under root the walk did not find.
-func (s *server) designFiles(root, fsPath, src string) []loadedFile {
+// designSources reads every design file under root, open buffers (src for
+// fsPath) over disk, and appends the open buffers under root the walk did
+// not find.
+func (s *server) designSources(root, fsPath, src string) []designopts.Source {
 	seen := map[string]bool{}
-	var out []loadedFile
+	var out []designopts.Source
 	for _, p := range designopts.FilesBestEffort(root) {
 		seen[p] = true
-		out = append(out, loadedFile{path: p, src: s.readFile(p, fsPath, src)})
+		out = append(out, designopts.Source{Path: p, Text: s.readFile(p, fsPath, src)})
 	}
-	var extra []loadedFile
+	var extra []designopts.Source
 	if fsPath != "" && !seen[fsPath] {
 		seen[fsPath] = true
-		extra = append(extra, loadedFile{path: fsPath, src: src})
+		extra = append(extra, designopts.Source{Path: fsPath, Text: src})
 	}
 	for u := range s.openDocURIs() {
 		p := uriToPath(string(u))
@@ -140,9 +143,9 @@ func (s *server) designFiles(root, fsPath, src string) []loadedFile {
 			continue
 		}
 		seen[p] = true
-		extra = append(extra, loadedFile{path: p, src: s.snapshot(u)})
+		extra = append(extra, designopts.Source{Path: p, Text: s.snapshot(u)})
 	}
-	sort.Slice(extra, func(i, j int) bool { return extra[i].path < extra[j].path })
+	sort.Slice(extra, func(i, j int) bool { return extra[i].Path < extra[j].Path })
 	return append(out, extra...)
 }
 

@@ -2,10 +2,8 @@ package lsp
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 
-	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
@@ -13,40 +11,25 @@ import (
 )
 
 // onDocumentSymbol answers `textDocument/documentSymbol` with the buffer's outline.
-func (s *server) onDocumentSymbol(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.DocumentSymbolParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
+func (s *server) onDocumentSymbol(_ context.Context, params protocol.DocumentSymbolParams) (any, error) {
+	r, ok := s.open(params.TextDocument.URI)
+	if !ok {
+		return []protocol.DocumentSymbol{}, nil
 	}
-	src := s.snapshot(params.TextDocument.URI)
-	if src == "" {
-		return reply(ctx, []interface{}{}, nil)
-	}
-	view := parseSnapshot(string(params.TextDocument.URI), src)
-	syms := documentSymbols(view)
-	out := make([]interface{}, 0, len(syms))
-	for _, s := range syms {
-		out = append(out, s)
-	}
-	return reply(ctx, out, nil)
+	return documentSymbols(r.view()), nil
 }
 
 // onWorkspaceSymbol answers `workspace/symbol` with the project's declarations
 // whose name contains the query, ignoring case.
-func (s *server) onWorkspaceSymbol(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.WorkspaceSymbolParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
-	}
+func (s *server) onWorkspaceSymbol(_ context.Context, params protocol.WorkspaceSymbolParams) (any, error) {
 	// The project is found from an open document.
 	anchorPath, anchorSrc := s.anyOpenDocument()
 	if anchorPath == "" {
-		return reply(ctx, []protocol.SymbolInformation{}, nil)
+		return []protocol.SymbolInformation{}, nil
 	}
 	query := strings.ToLower(params.Query)
 	var out []protocol.SymbolInformation
 	for _, p := range s.loadProject(anchorPath, anchorSrc).files {
-		fileURI := uri.File(p.path)
 		for _, d := range p.file.Decls {
 			name := d.DeclName()
 			if name == "" || !strings.Contains(strings.ToLower(name), query) {
@@ -56,14 +39,14 @@ func (s *server) onWorkspaceSymbol(ctx context.Context, reply jsonrpc2.Replier, 
 				Name: name,
 				Kind: workspaceSymbolKind(d),
 				Location: protocol.Location{
-					URI:   protocol.DocumentURI(fileURI),
+					URI:   uri.File(p.path),
 					Range: spanRange(p.src, d.DeclPos(), len(name)),
 				},
 				ContainerName: containerNameFromFile(p.file),
 			})
 		}
 	}
-	return reply(ctx, out, nil)
+	return out, nil
 }
 
 // workspaceSymbolKind returns the symbol kind of a declaration.

@@ -364,12 +364,10 @@ openapi:
 	if err := os.WriteFile(srcPath, []byte(src), 0o644); err != nil {
 		t.Fatalf("write source: %v", err)
 	}
-	view := parseSnapshot(srcPath, src)
-	srv := newTestServer()
-	fileURI := string(uri.File(srcPath))
+	fileURI := uri.File(srcPath)
+	srv := &server{docs: map[uri.URI]string{fileURI: src}}
 	// Cursor right after `@security(`.
-	pos := protocol.Position{Line: 2, Character: 10}
-	items := srv.completionsAt(view, view.cursorAt(pos), fileURI, src)
+	items := completionItems(t, srv, fileURI, protocol.Position{Line: 2, Character: 10})
 	got := make(map[string]string, len(items))
 	for _, it := range items {
 		got[it.Label] = it.Detail
@@ -395,10 +393,9 @@ func TestCompletionSecuritySchemeNoManifest(t *testing.T) {
 	if err := os.WriteFile(srcPath, []byte(src), 0o644); err != nil {
 		t.Fatalf("write source: %v", err)
 	}
-	view := parseSnapshot(srcPath, src)
-	srv := newTestServer()
-	pos := protocol.Position{Line: 2, Character: 10}
-	_ = srv.completionsAt(view, view.cursorAt(pos), string(uri.File(srcPath)), src)
+	fileURI := uri.File(srcPath)
+	srv := &server{docs: map[uri.URI]string{fileURI: src}}
+	_ = completionItems(t, srv, fileURI, protocol.Position{Line: 2, Character: 10})
 }
 
 // keys returns the keys of m in map order.
@@ -876,17 +873,10 @@ func TestCompletionHeaderLines(t *testing.T) {
 
 	run := func(src string) []protocol.CompletionItem {
 		t.Helper()
-		i := strings.Index(src, cursorMark)
-		clean := strings.Replace(src, cursorMark, "", 1)
+		clean, pos := markCursor(t, src)
 		write(buf, clean)
-		head := src[:i]
-		view := parseSnapshot(buf, clean)
-		srv := newTestServer()
-		pos := protocol.Position{
-			Line:      uint32(strings.Count(head, "\n")),
-			Character: uint32(len(head) - (strings.LastIndex(head, "\n") + 1)),
-		}
-		return srv.completionsAt(view, view.cursorAt(pos), string(uri.File(buf)), clean)
+		u := uri.File(buf)
+		return completionItems(t, &server{docs: map[uri.URI]string{u: clean}}, u, pos)
 	}
 
 	t.Run("package name comes from the folder", func(t *testing.T) {
@@ -1050,56 +1040,40 @@ func TestDocumentSymbolsOutline(t *testing.T) {
 	}
 }
 
-// The whole-document range starts at line 0, and storeDoc replaces the text
-// snapshot returns.
+// Formatting a clean buffer replaces the whole document with its canonical
+// text.
 func TestFormattingProducesEdit(t *testing.T) {
 	dirty := "package x\n\ntype T {\n  id string\n}\n"
 	clean := "package x\n\ntype T {\n\tid string\n}\n"
-	if r := wholeDocumentRange(dirty); r.Start.Line != 0 {
-		t.Errorf("Range.Start.Line = %d, want 0", r.Start.Line)
+	edits := formatDoc(t, dirty)
+	if len(edits) != 1 {
+		t.Fatalf("edits = %+v, want one", edits)
 	}
-	uriOf := uri.New("file:///t.craftgo")
-	srv := &server{docs: map[uri.URI]string{uriOf: dirty}}
-	srv.storeDoc(uriOf, dirty)
-	if got := srv.snapshot(uriOf); got != dirty {
-		t.Fatalf("snapshot mismatch")
-	}
-	srv.storeDoc(uriOf, clean)
-	if got := srv.snapshot(uriOf); got != clean {
-		t.Fatalf("snapshot mismatch (clean)")
+	if edits[0].Range != wholeDocumentRange(dirty) || edits[0].NewText != clean {
+		t.Errorf("edit = %+v, want the whole document replaced by %q", edits[0], clean)
 	}
 }
 
-// A declaration's name resolves at the cursor and recurs at its uses.
-func TestRenameAcrossFile(t *testing.T) {
-	src := `package x
-
-type Greeter {
-	id string
-}
-
-type Holder {
-	g Greeter
-}
-`
-	view := parseSnapshot("t.craftgo", src)
-	// The first Greeter is the declaration.
-	pos := findToken(t, view, "Greeter")
-	idx, tok := tokenUnder(view, pos)
-	if tok.Text != "Greeter" {
-		t.Fatalf("token under cursor = %q, want Greeter", tok.Text)
+// Renaming a declaration rewrites it and every use in the buffer.
+func TestRenameRewritesEveryUse(t *testing.T) {
+	u := uri.New("file:///t.craftgo")
+	src := "package x\n\ntype Greeter {\n\tid string\n}\n\ntype Holder {\n\tg Greeter\n}\n"
+	s := &server{docs: map[uri.URI]string{u: src}}
+	res, err := callHandler(t, s, protocol.MethodTextDocumentRename, protocol.RenameParams{
+		TextDocumentPositionParams: docAt(u, protocol.Position{Line: 2, Character: 5}),
+		NewName:                    "Welcomer",
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if findDecl(view.file, tok.Text) == nil {
-		t.Fatal("expected Greeter to resolve to a top-level declaration")
+	edit, _ := res.(*protocol.WorkspaceEdit)
+	if edit == nil || len(edit.Changes[u]) != 2 {
+		t.Fatalf("rename = %+v, want the declaration and the use", res)
 	}
-	var count int
-	for _, tk := range view.tokens {
-		if tk.Text == "Greeter" {
-			count++
+	for _, e := range edit.Changes[u] {
+		if got := rangeText(src, e.Range); got != "Greeter" || e.NewText != "Welcomer" {
+			t.Errorf("edit replaces %q with %q", got, e.NewText)
 		}
-	}
-	if count < 2 {
-		t.Errorf("want >=2 Greeter occurrences, got %d (idx=%d)", count, idx)
 	}
 }
 
@@ -1400,31 +1374,16 @@ func TestDefinitionExtendServiceEndToEnd(t *testing.T) {
 
 	extURI := uri.File(extPath)
 	srv := &server{docs: map[uri.URI]string{extURI: ext}}
-	params := protocol.DefinitionParams{
-		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
-			TextDocument: protocol.TextDocumentIdentifier{URI: protocol.DocumentURI(extURI)},
-			// `extend service Alpha` - the name starts at column 15.
-			Position: protocol.Position{Line: 2, Character: 15},
-		},
-	}
-	req, err := jsonrpc2.NewCall(jsonrpc2.NewNumberID(1), protocol.MethodTextDocumentDefinition, params)
+	// `extend service Alpha` - the name starts at column 15.
+	res, err := callHandler(t, srv, protocol.MethodTextDocumentDefinition, protocol.DefinitionParams{
+		TextDocumentPositionParams: docAt(extURI, protocol.Position{Line: 2, Character: 15}),
+	})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("handler error: %v", err)
 	}
-	var got []protocol.Location
-	replier := func(_ context.Context, result interface{}, err error) error {
-		if err != nil {
-			t.Fatalf("handler error: %v", err)
-		}
-		locs, ok := result.([]protocol.Location)
-		if !ok {
-			t.Fatalf("unexpected reply type %T", result)
-		}
-		got = locs
-		return nil
-	}
-	if err := srv.onDefinition(context.Background(), replier, req); err != nil {
-		t.Fatal(err)
+	got, ok := res.([]protocol.Location)
+	if !ok {
+		t.Fatalf("unexpected reply type %T", res)
 	}
 	if len(got) != 1 {
 		t.Fatalf("want 1 location, got %d (%v)", len(got), got)
@@ -1491,13 +1450,22 @@ func mustHoverAt(t *testing.T, path, src, needle string) string {
 	return hov.Contents.Value
 }
 
-// mustCompletionsAt runs completion at (line, ch) of src, with a URI built
+// mustCompletionsAt runs completion at (line, ch) of src, open at a URI built
 // from path.
 func mustCompletionsAt(t *testing.T, path, src string, line, ch uint32) []protocol.CompletionItem {
 	t.Helper()
-	view := parseSnapshot(path, src)
-	srv := newTestServer()
-	return srv.completionsAt(view, view.cursorAt(protocol.Position{Line: line, Character: ch}), "file:///"+path, src)
+	u := uri.New("file:///" + path)
+	return completionItems(t, &server{docs: map[uri.URI]string{u: src}}, u, protocol.Position{Line: line, Character: ch})
+}
+
+// completionItems runs completion at pos in the open document u.
+func completionItems(t *testing.T, s *server, u uri.URI, pos protocol.Position) []protocol.CompletionItem {
+	t.Helper()
+	res, err := callHandler(t, s, protocol.MethodTextDocumentCompletion, protocol.CompletionParams{TextDocumentPositionParams: docAt(u, pos)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res.(*protocol.CompletionList).Items
 }
 
 // labelSet returns the set of item labels.

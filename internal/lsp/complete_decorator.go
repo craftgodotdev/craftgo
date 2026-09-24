@@ -14,32 +14,32 @@ import (
 
 // decoratorArgItems offers the argument candidates of `@name(...)`, or nil
 // when the slot has no closed set.
-func (s *server) decoratorArgItems(view snapshotView, c cursor, currentURI, currentSrc, name string) []protocol.CompletionItem {
+func (r *request) decoratorArgItems(c cursor, name string) []protocol.CompletionItem {
 	if name == "middlewares" {
-		return s.middlewareNameCompletions(currentURI, currentSrc)
+		return r.middlewareNameCompletions()
 	}
 	if name == "errors" {
-		return s.errorNameCompletions(currentURI, currentSrc)
+		return r.errorNameCompletions()
 	}
 	if name == "status" {
 		return httpStatusCompletions()
 	}
 	if name == "security" {
-		if items := s.securitySchemeCompletions(currentURI); items != nil {
+		if items := r.securitySchemeCompletions(); items != nil {
 			return items
 		}
 	}
 	if name == "default" {
-		if items := s.defaultValueCompletions(view, c, currentURI, currentSrc); items != nil {
+		if items := r.defaultValueCompletions(c); items != nil {
 			return items
 		}
 	}
 	if spec, ok := semantic.Registry[name]; ok && len(spec.Args.Kinds) > 0 {
 		switch spec.Args.Kinds[0] {
 		case semantic.ArgDuration:
-			return durationCompletions(view, c)
+			return durationCompletions(r.view(), c)
 		case semantic.ArgSize:
-			return sizeCompletions(view, c)
+			return sizeCompletions(r.view(), c)
 		}
 	}
 	return decoratorArgCompletions(name)

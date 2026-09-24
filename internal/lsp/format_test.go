@@ -1,10 +1,8 @@
 package lsp
 
 import (
-	"context"
 	"testing"
 
-	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 )
@@ -13,23 +11,13 @@ func formatDoc(t *testing.T, src string) []protocol.TextEdit {
 	t.Helper()
 	u := uri.New("file:///nowhere/t.craftgo")
 	srv := &server{docs: map[uri.URI]string{u: src}}
-	params := protocol.DocumentFormattingParams{TextDocument: protocol.TextDocumentIdentifier{URI: protocol.DocumentURI(u)}}
-	req, err := jsonrpc2.NewCall(jsonrpc2.NewNumberID(1), protocol.MethodTextDocumentFormatting, params)
+	res, err := callHandler(t, srv, protocol.MethodTextDocumentFormatting, protocol.DocumentFormattingParams{
+		TextDocument: protocol.TextDocumentIdentifier{URI: u},
+	})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("handler error: %v", err)
 	}
-	var got []protocol.TextEdit
-	replier := func(_ context.Context, result interface{}, err error) error {
-		if err != nil {
-			t.Fatalf("handler error: %v", err)
-		}
-		got = result.([]protocol.TextEdit)
-		return nil
-	}
-	if err := srv.onFormatting(context.Background(), replier, req); err != nil {
-		t.Fatal(err)
-	}
-	return got
+	return res.([]protocol.TextEdit)
 }
 
 // A buffer with an error gets no edit; the same layout without it gets one.

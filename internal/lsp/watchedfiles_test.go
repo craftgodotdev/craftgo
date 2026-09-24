@@ -124,9 +124,7 @@ func TestWatchedFilesRegistration(t *testing.T) {
 func TestOnInitializedRegistersWatcher(t *testing.T) {
 	conn := &recordingConn{}
 	s := &server{docs: map[uri.URI]string{}, conn: conn}
-	if err := s.onInitialized(context.Background(), func(context.Context, any, error) error { return nil }, nil); err != nil {
-		t.Fatal(err)
-	}
+	s.onInitialized(context.Background())
 	// The Call runs in a goroutine; poll briefly.
 	deadline := time.Now().Add(2 * time.Second)
 	for conn.callCount() == 0 && time.Now().Before(deadline) {
@@ -165,9 +163,7 @@ openapi:
 	s.storeDoc(uri.File(aPath), readFileT(t, aPath))
 	s.storeDoc(uri.File(bPath), readFileT(t, bPath))
 
-	if err := s.onDidChangeWatchedFiles(context.Background(), func(context.Context, any, error) error { return nil }, nil); err != nil {
-		t.Fatal(err)
-	}
+	s.onDidChangeWatchedFiles(context.Background())
 	// One root: each open document is published once.
 	if n := conn.notifyCount(); n != 2 {
 		t.Errorf("expected exactly 2 publishDiagnostics notifications (one per open doc, one analysis), got %d", n)

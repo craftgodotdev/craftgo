@@ -94,9 +94,10 @@ func (r *stdioRWC) Close() error                { return nil }
 func (s *server) handler(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	switch req.Method() {
 	case protocol.MethodInitialize:
-		return s.onInitialize(ctx, reply, req)
+		return handle(ctx, reply, req, s.onInitialize)
 	case protocol.MethodInitialized:
-		return s.onInitialized(ctx, reply, req)
+		s.onInitialized(ctx)
+		return reply(ctx, nil, nil)
 	case protocol.MethodShutdown:
 		s.requestShutdown()
 		return reply(ctx, nil, nil)
@@ -105,48 +106,99 @@ func (s *server) handler(ctx context.Context, reply jsonrpc2.Replier, req jsonrp
 		s.signalExit()
 		return err
 	case protocol.MethodTextDocumentDidOpen:
-		return s.onDidOpen(ctx, reply, req)
+		return handle(ctx, reply, req, s.onDidOpen)
 	case protocol.MethodTextDocumentDidChange:
-		return s.onDidChange(ctx, reply, req)
+		return handle(ctx, reply, req, s.onDidChange)
 	case protocol.MethodTextDocumentDidClose:
-		return s.onDidClose(ctx, reply, req)
+		return handle(ctx, reply, req, s.onDidClose)
 	case protocol.MethodTextDocumentDidSave:
-		return s.onDidSave(ctx, reply, req)
+		return handle(ctx, reply, req, s.onDidSave)
 	case protocol.MethodWorkspaceDidChangeWatchedFiles:
-		return s.onDidChangeWatchedFiles(ctx, reply, req)
+		s.onDidChangeWatchedFiles(ctx)
+		return reply(ctx, nil, nil)
 	case protocol.MethodTextDocumentHover:
-		return s.onHover(ctx, reply, req)
+		return handle(ctx, reply, req, s.onHover)
 	case protocol.MethodTextDocumentCompletion:
-		return s.onCompletion(ctx, reply, req)
+		return handle(ctx, reply, req, s.onCompletion)
 	case protocol.MethodTextDocumentDefinition:
-		return s.onDefinition(ctx, reply, req)
+		return handle(ctx, reply, req, s.onDefinition)
 	case protocol.MethodTextDocumentReferences:
-		return s.onReferences(ctx, reply, req)
+		return handle(ctx, reply, req, s.onReferences)
 	case protocol.MethodTextDocumentDocumentSymbol:
-		return s.onDocumentSymbol(ctx, reply, req)
+		return handle(ctx, reply, req, s.onDocumentSymbol)
 	case protocol.MethodTextDocumentFormatting:
-		return s.onFormatting(ctx, reply, req)
+		return handle(ctx, reply, req, s.onFormatting)
 	case protocol.MethodTextDocumentPrepareRename:
-		return s.onPrepareRename(ctx, reply, req)
+		return handle(ctx, reply, req, s.onPrepareRename)
 	case protocol.MethodTextDocumentRename:
-		return s.onRename(ctx, reply, req)
+		return handle(ctx, reply, req, s.onRename)
 	case protocol.MethodTextDocumentDocumentHighlight:
-		return s.onDocumentHighlight(ctx, reply, req)
+		return handle(ctx, reply, req, s.onDocumentHighlight)
 	case protocol.MethodTextDocumentSignatureHelp:
-		return s.onSignatureHelp(ctx, reply, req)
+		return handle(ctx, reply, req, s.onSignatureHelp)
 	case protocol.MethodWorkspaceSymbol:
-		return s.onWorkspaceSymbol(ctx, reply, req)
+		return handle(ctx, reply, req, s.onWorkspaceSymbol)
 	default:
 		return reply(ctx, nil, fmt.Errorf("%q: %w", req.Method(), jsonrpc2.ErrMethodNotFound))
 	}
 }
 
-func (s *server) onInitialize(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.InitializeParams
+// handle decodes the params of req into P, runs fn on them and replies with
+// its result; params that do not decode are the reply's error.
+func handle[P any](ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request, fn func(context.Context, P) (any, error)) error {
+	var params P
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
 	}
-	return reply(ctx, &protocol.InitializeResult{
+	result, err := fn(ctx, params)
+	return reply(ctx, result, err)
+}
+
+// request is one request on an open buffer. The buffer is parsed once: by
+// the project when [request.project] runs first, else on its own.
+type request struct {
+	s      *server
+	uri    protocol.DocumentURI
+	path   string // "" for a buffer with no file
+	src    string
+	parsed *snapshotView
+	proj   *projectView
+}
+
+// open returns the request on the buffer at u, or false when u is not open.
+func (s *server) open(u protocol.DocumentURI) (*request, bool) {
+	src := s.snapshot(u)
+	if src == "" {
+		return nil, false
+	}
+	return &request{s: s, uri: u, path: uriToPath(string(u)), src: src}, true
+}
+
+// view returns the parsed buffer.
+func (r *request) view() snapshotView {
+	if r.parsed == nil {
+		var v snapshotView
+		if r.proj != nil {
+			v = r.proj.buffer()
+		} else {
+			v = parseSnapshot(r.path, r.src)
+		}
+		r.parsed = &v
+	}
+	return *r.parsed
+}
+
+// project returns the analysed project of the buffer, loaded on first use.
+func (r *request) project() projectView {
+	if r.proj == nil {
+		v := r.s.loadProject(r.path, r.src)
+		r.proj = &v
+	}
+	return *r.proj
+}
+
+func (s *server) onInitialize(_ context.Context, _ protocol.InitializeParams) (any, error) {
+	return &protocol.InitializeResult{
 		Capabilities: protocol.ServerCapabilities{
 			TextDocumentSync:           protocol.TextDocumentSyncKindFull,
 			HoverProvider:              true,
@@ -169,7 +221,7 @@ func (s *server) onInitialize(ctx context.Context, reply jsonrpc2.Replier, req j
 			Name:    "craftgo-lsp",
 			Version: Version,
 		},
-	}, nil)
+	}, nil
 }
 
 // snapshot returns the open text of u, or "" when u is not open.
@@ -179,36 +231,24 @@ func (s *server) snapshot(u uri.URI) string {
 	return s.docs[u]
 }
 
-func (s *server) onDidOpen(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.DidOpenTextDocumentParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
-	}
+func (s *server) onDidOpen(ctx context.Context, params protocol.DidOpenTextDocumentParams) (any, error) {
 	s.storeDoc(params.TextDocument.URI, params.TextDocument.Text)
 	s.publishDiagnostics(ctx, params.TextDocument.URI, params.TextDocument.Text)
-	return reply(ctx, nil, nil)
+	return nil, nil
 }
 
-func (s *server) onDidChange(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.DidChangeTextDocumentParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
-	}
+func (s *server) onDidChange(ctx context.Context, params protocol.DidChangeTextDocumentParams) (any, error) {
 	if len(params.ContentChanges) == 0 {
-		return reply(ctx, nil, nil)
+		return nil, nil
 	}
 	// Full sync: the last change carries the whole buffer.
 	text := params.ContentChanges[len(params.ContentChanges)-1].Text
 	s.storeDoc(params.TextDocument.URI, text)
 	s.publishDiagnostics(ctx, params.TextDocument.URI, text)
-	return reply(ctx, nil, nil)
+	return nil, nil
 }
 
-func (s *server) onDidSave(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.DidSaveTextDocumentParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
-	}
+func (s *server) onDidSave(ctx context.Context, params protocol.DidSaveTextDocumentParams) (any, error) {
 	// A save without text re-checks the cached buffer.
 	text := params.Text
 	if text == "" {
@@ -219,14 +259,10 @@ func (s *server) onDidSave(ctx context.Context, reply jsonrpc2.Replier, req json
 	if text != "" {
 		s.publishDiagnostics(ctx, params.TextDocument.URI, text)
 	}
-	return reply(ctx, nil, nil)
+	return nil, nil
 }
 
-func (s *server) onDidClose(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.DidCloseTextDocumentParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
-	}
+func (s *server) onDidClose(ctx context.Context, params protocol.DidCloseTextDocumentParams) (any, error) {
 	s.mu.Lock()
 	delete(s.docs, params.TextDocument.URI)
 	s.mu.Unlock()
@@ -235,13 +271,13 @@ func (s *server) onDidClose(ctx context.Context, reply jsonrpc2.Replier, req jso
 		URI:         params.TextDocument.URI,
 		Diagnostics: []protocol.Diagnostic{},
 	})
-	return reply(ctx, nil, nil)
+	return nil, nil
 }
 
 // onInitialized asks the client to watch the design files and the manifest; a
 // refusal is ignored. The call runs in a goroutine: the jsonrpc2 read loop is
 // single-threaded, so waiting for the reply in the handler would deadlock.
-func (s *server) onInitialized(ctx context.Context, reply jsonrpc2.Replier, _ jsonrpc2.Request) error {
+func (s *server) onInitialized(ctx context.Context) {
 	go func() {
 		// A closed connection cancels the call, so the goroutine never outlives it.
 		callCtx, cancel := context.WithCancel(ctx)
@@ -255,7 +291,6 @@ func (s *server) onInitialized(ctx context.Context, reply jsonrpc2.Replier, _ js
 		}()
 		_, _ = s.conn.Call(callCtx, protocol.MethodClientRegisterCapability, watchedFilesRegistration(), nil)
 	}()
-	return reply(ctx, nil, nil)
 }
 
 // watchedFilesGlob matches every design-file extension, e.g. `**/*.{craftgo,cg}`.
@@ -291,7 +326,7 @@ func watchedFilesRegistration() protocol.RegistrationParams {
 
 // onDidChangeWatchedFiles re-publishes the diagnostics of every open document
 // after a watched file changes on disk.
-func (s *server) onDidChangeWatchedFiles(ctx context.Context, reply jsonrpc2.Replier, _ jsonrpc2.Request) error {
+func (s *server) onDidChangeWatchedFiles(ctx context.Context) {
 	// One publishDiagnostics per design root covers every open file under it.
 	seenRoots := map[string]bool{}
 	for u := range s.openDocURIs() {
@@ -307,7 +342,6 @@ func (s *server) onDidChangeWatchedFiles(ctx context.Context, reply jsonrpc2.Rep
 		}
 		s.publishDiagnostics(ctx, u, src)
 	}
-	return reply(ctx, nil, nil)
 }
 
 // storeDoc records text as the open content of u.

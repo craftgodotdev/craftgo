@@ -2,11 +2,8 @@ package lsp
 
 import (
 	"context"
-	"encoding/json"
 
-	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
-	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -15,51 +12,47 @@ import (
 
 // onDefinition answers `textDocument/definition` with the declaration the
 // identifier at the cursor names, among the kinds [lookupKindAt] allows.
-func (s *server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.DefinitionParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
+func (s *server) onDefinition(_ context.Context, params protocol.DefinitionParams) (any, error) {
+	r, ok := s.open(params.TextDocument.URI)
+	if !ok {
+		return []protocol.Location{}, nil
 	}
-	src := s.snapshot(params.TextDocument.URI)
-	if src == "" {
-		return reply(ctx, []protocol.Location{}, nil)
-	}
-	view := parseSnapshot(string(params.TextDocument.URI), src)
+	v := r.project()
+	view := r.view()
 	c := view.cursorAt(params.Position)
 	if c.at < 0 || view.tokens[c.at].Kind != lexer.Ident {
-		return reply(ctx, []protocol.Location{}, nil)
+		return []protocol.Location{}, nil
 	}
-	current := params.TextDocument.URI
-	v := s.loadProject(uriToPath(string(current)), src)
-	if loc, ok := enumValueDefinition(v, view, c, current); ok {
-		return reply(ctx, []protocol.Location{loc}, nil)
+	if loc, ok := r.enumValueDefinition(c); ok {
+		return []protocol.Location{loc}, nil
 	}
 	d := v.lookup(qualifiedNameAt(view, c.at), lookupKindAt(view, c))
 	if d == nil {
-		return reply(ctx, []protocol.Location{}, nil)
+		return []protocol.Location{}, nil
 	}
-	return reply(ctx, []protocol.Location{v.locationOf(d.DeclPos(), len(d.DeclName()), current)}, nil)
+	return []protocol.Location{v.locationOf(d.DeclPos(), len(d.DeclName()), r.uri)}, nil
 }
 
 // enumValueDefinition resolves a value named in a field's `@default(...)` or
 // `@example(...)` to its declaration in the field's enum type.
-func enumValueDefinition(v projectView, view snapshotView, c cursor, current protocol.DocumentURI) (protocol.Location, bool) {
+func (r *request) enumValueDefinition(c cursor) (protocol.Location, bool) {
+	view := r.view()
 	decName, _, ok := decoratorArgContext(view, c)
 	if !ok || (decName != "default" && decName != "example") {
 		return protocol.Location{}, false
 	}
-	name := view.tokens[c.at].Text
 	f := fieldAtCursor(view, c)
 	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
 		return protocol.Location{}, false
 	}
+	v := r.project()
 	e, ok := v.lookup(f.Type.Named.Name.String(), semantic.EnumDecls).(*ast.EnumDecl)
 	if !ok {
 		return protocol.Location{}, false
 	}
 	for _, val := range e.EnumValues() {
-		if val.Name == name {
-			return v.locationOf(val.Pos, len(val.Name), current), true
+		if val.Name == view.tokens[c.at].Text {
+			return v.locationOf(val.Pos, len(val.Name), r.uri), true
 		}
 	}
 	return protocol.Location{}, false
@@ -170,92 +163,55 @@ func qualifiedNameAt(view snapshotView, idx int) string {
 
 // onReferences answers `textDocument/references` with every identifier in the
 // project spelt like the one at the cursor.
-func (s *server) onReferences(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.ReferenceParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
+func (s *server) onReferences(_ context.Context, params protocol.ReferenceParams) (any, error) {
+	r, ok := s.open(params.TextDocument.URI)
+	if !ok {
+		return []protocol.Location{}, nil
 	}
-	src := s.snapshot(params.TextDocument.URI)
-	if src == "" {
-		return reply(ctx, []protocol.Location{}, nil)
-	}
-	view := parseSnapshot(string(params.TextDocument.URI), src)
+	v := r.project()
+	view := r.view()
 	c := view.cursorAt(params.Position)
 	if c.at < 0 || view.tokens[c.at].Kind != lexer.Ident {
-		return reply(ctx, []protocol.Location{}, nil)
+		return []protocol.Location{}, nil
 	}
-	out := s.projectNameMatches(view, params.TextDocument.URI, src, view.tokens[c.at].Text, params.Context.IncludeDeclaration)
-	return reply(ctx, out, nil)
+	return v.nameMatches(view.tokens[c.at].Text, params.Context.IncludeDeclaration, r.uri), nil
 }
 
-// projectNameMatches returns the location of every identifier spelt name in
-// the buffer's project, or in the buffer alone outside a project.
-func (s *server) projectNameMatches(view snapshotView, currentURI protocol.DocumentURI, currentSrc, name string, includeDecl bool) []protocol.Location {
-	v := s.loadProject(uriToPath(string(currentURI)), currentSrc)
-	if v.root == "" {
-		return nameMatches(view, currentURI, name, includeDecl)
-	}
+// nameMatches returns the location of every identifier spelt name in the
+// project; the first declaration of that name is left out unless includeDecl.
+func (v projectView) nameMatches(name string, includeDecl bool, current protocol.DocumentURI) []protocol.Location {
 	var declPos *lexer.Position
-	var declURI protocol.DocumentURI
-	for _, p := range v.files {
-		if d := findDecl(p.file, name); d != nil {
-			pos := d.DeclPos()
-			declPos = &pos
-			declURI = protocol.DocumentURI(uri.File(p.path))
+	for _, lf := range v.files {
+		if d := findDecl(lf.file, name); d != nil {
+			p := d.DeclPos()
+			declPos = &p
 			break
 		}
 	}
 	var out []protocol.Location
-	for _, p := range v.files {
-		fileURI := protocol.DocumentURI(uri.File(p.path))
-		for _, t := range p.tokens {
-			if t.Kind != lexer.Ident || t.Text != name {
+	for _, lf := range v.files {
+		u := v.uriOf(lf.path, current)
+		for _, t := range lf.tokens {
+			if t.Kind != lexer.Ident || t.Text != name || (!includeDecl && declPos != nil && t.Pos == *declPos) {
 				continue
 			}
-			if !includeDecl && declPos != nil && fileURI == declURI && t.Pos == *declPos {
-				continue
-			}
-			out = append(out, protocol.Location{URI: fileURI, Range: rangeOf(p.src, t)})
+			out = append(out, protocol.Location{URI: u, Range: rangeOf(lf.src, t)})
 		}
-	}
-	return out
-}
-
-// nameMatches returns the location of every identifier in view spelt name.
-func nameMatches(view snapshotView, u protocol.DocumentURI, name string, includeDecl bool) []protocol.Location {
-	var declPos *lexer.Position
-	if d := findDecl(view.file, name); d != nil {
-		p := d.DeclPos()
-		declPos = &p
-	}
-	var out []protocol.Location
-	for _, t := range view.tokens {
-		if t.Kind != lexer.Ident || t.Text != name {
-			continue
-		}
-		if !includeDecl && declPos != nil && t.Pos == *declPos {
-			continue
-		}
-		out = append(out, protocol.Location{URI: u, Range: rangeOf(view.src, t)})
 	}
 	return out
 }
 
 // onDocumentHighlight answers `textDocument/documentHighlight` with every
 // identifier in the buffer spelt like the one at the cursor.
-func (s *server) onDocumentHighlight(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.DocumentHighlightParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
+func (s *server) onDocumentHighlight(_ context.Context, params protocol.DocumentHighlightParams) (any, error) {
+	r, ok := s.open(params.TextDocument.URI)
+	if !ok {
+		return []protocol.DocumentHighlight{}, nil
 	}
-	src := s.snapshot(params.TextDocument.URI)
-	if src == "" {
-		return reply(ctx, []protocol.DocumentHighlight{}, nil)
-	}
-	view := parseSnapshot(string(params.TextDocument.URI), src)
+	view := r.view()
 	c := view.cursorAt(params.Position)
 	if c.at < 0 || view.tokens[c.at].Kind != lexer.Ident {
-		return reply(ctx, []protocol.DocumentHighlight{}, nil)
+		return []protocol.DocumentHighlight{}, nil
 	}
 	name := view.tokens[c.at].Text
 	out := []protocol.DocumentHighlight{}
@@ -265,5 +221,5 @@ func (s *server) onDocumentHighlight(ctx context.Context, reply jsonrpc2.Replier
 		}
 		out = append(out, protocol.DocumentHighlight{Range: rangeOf(view.src, t), Kind: protocol.DocumentHighlightKindText})
 	}
-	return reply(ctx, out, nil)
+	return out, nil
 }

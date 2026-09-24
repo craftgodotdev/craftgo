@@ -2,9 +2,7 @@ package lsp
 
 import (
 	"context"
-	"encoding/json"
 
-	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -14,37 +12,32 @@ import (
 
 // onCompletion answers `textDocument/completion`; a document that is not open
 // gets an empty list.
-func (s *server) onCompletion(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.CompletionParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
+func (s *server) onCompletion(_ context.Context, params protocol.CompletionParams) (any, error) {
+	r, ok := s.open(params.TextDocument.URI)
+	if !ok {
+		return &protocol.CompletionList{}, nil
 	}
-	src := s.snapshot(params.TextDocument.URI)
-	if src == "" {
-		return reply(ctx, &protocol.CompletionList{}, nil)
-	}
-	view := parseSnapshot(string(params.TextDocument.URI), src)
-	items := s.completionsAt(view, view.cursorAt(params.Position), string(params.TextDocument.URI), src)
-	return reply(ctx, &protocol.CompletionList{IsIncomplete: false, Items: items}, nil)
+	return &protocol.CompletionList{Items: r.completionsAt(r.view().cursorAt(params.Position))}, nil
 }
 
 // namedSlotCompletions answers the slots holding a name the project, the registry
 // or the design folder knows; the bool reports such a slot, even with no answer.
-func (s *server) namedSlotCompletions(view snapshotView, c cursor, currentURI, currentSrc string) ([]protocol.CompletionItem, bool) {
+func (r *request) namedSlotCompletions(c cursor) ([]protocol.CompletionItem, bool) {
+	view := r.view()
 	prev, mid := view.token(c.prev), view.token(c.at)
 	if prefix, ok := importPathPrefix(view, c); ok {
-		return importPathCompletions(currentURI, prefix), true
+		return importPathCompletions(r.path, prefix), true
 	}
 	// `import |`: the paths come with their quotes.
 	if prev != nil && prev.Kind == lexer.KwImport {
-		return quotedImportPathCompletions(currentURI), true
+		return quotedImportPathCompletions(r.path), true
 	}
 	if isExtendServiceContext(view, c) {
-		return s.serviceNameCompletions(currentURI, currentSrc), true
+		return r.serviceNameCompletions(), true
 	}
 	// `@name(|)`: the argument candidates of that decorator.
 	if name, _, ok := decoratorArgContext(view, c); ok {
-		if items := s.decoratorArgItems(view, c, currentURI, currentSrc, name); items != nil {
+		if items := r.decoratorArgItems(c, name); items != nil {
 			return items, true
 		}
 		// A registered decorator with no closed set takes a free literal, so
@@ -56,12 +49,12 @@ func (s *server) namedSlotCompletions(view snapshotView, c cursor, currentURI, c
 	// `pkg.|`: the dot is mid right after it is typed, prev once the member is.
 	if mid != nil && mid.Kind == lexer.Dot {
 		if pkg, ok := identBefore(view, c.at); ok {
-			return s.packageDeclCompletions(currentURI, currentSrc, pkg), true
+			return r.packageDeclCompletions(pkg), true
 		}
 	}
 	if prev != nil && prev.Kind == lexer.Dot {
 		if pkg, ok := identBefore(view, c.prev); ok {
-			return s.packageDeclCompletions(currentURI, currentSrc, pkg), true
+			return r.packageDeclCompletions(pkg), true
 		}
 	}
 	// `@|` or `@na|`: decorator names.
@@ -77,20 +70,21 @@ func (s *server) namedSlotCompletions(view snapshotView, c cursor, currentURI, c
 	}
 	// `package |`
 	if prev != nil && prev.Kind == lexer.KwPackage && (mid == nil || mid.Kind == lexer.Ident) {
-		return s.packageNameCompletions(currentURI, currentSrc), true
+		return r.packageNameCompletions(), true
 	}
 	// `/{|}`: claimed here so the parameter's brace is not read as an opened block.
 	if i, ok := pathParamContext(view, c); ok {
-		return s.pathParamCompletions(view, currentURI, currentSrc, i), true
+		return r.pathParamCompletions(i), true
 	}
 	return nil, false
 }
 
-// completionsAt returns the candidate items for a cursor in view.
-func (s *server) completionsAt(view snapshotView, c cursor, currentURI, currentSrc string) []protocol.CompletionItem {
-	if items, ok := s.namedSlotCompletions(view, c, currentURI, currentSrc); ok {
+// completionsAt returns the candidate items for the cursor c.
+func (r *request) completionsAt(c cursor) []protocol.CompletionItem {
+	if items, ok := r.namedSlotCompletions(c); ok {
 		return items
 	}
+	view := r.view()
 	prev, mid := view.token(c.prev), view.token(c.at)
 	// Right after `{` with nothing typed (mid may be the closing `}`).
 	if prev != nil && prev.Kind == lexer.LBrace && (mid == nil || mid.Kind != lexer.Ident) {
@@ -98,7 +92,7 @@ func (s *server) completionsAt(view snapshotView, c cursor, currentURI, currentS
 		if !blockOffersKeysWhenOpened(block) {
 			return nil
 		}
-		return s.blockKeyCompletions(block, currentURI, currentSrc)
+		return r.blockKeyCompletions(block)
 	}
 	// Past a `?` or `]` suffix the type is finished; the popup waits for `@`.
 	if prev != nil && (prev.Kind == lexer.Question || prev.Kind == lexer.RBracket) && (mid == nil || mid.Kind != lexer.Ident) {
@@ -110,18 +104,18 @@ func (s *server) completionsAt(view snapshotView, c cursor, currentURI, currentS
 	}
 	// `request |`, `response |` and `payload |` name a message type.
 	if prev != nil && (prev.Kind == lexer.KwRequest || prev.Kind == lexer.KwResponse || prev.Kind == lexer.KwPayload) {
-		return s.clauseTypeCompletions(currentURI, currentSrc)
+		return r.clauseTypeCompletions()
 	}
 	if isTypeArgPosition(prev, mid) {
-		return s.typeCompletionsProjectWide(currentURI, currentSrc)
+		return r.typeCompletionsProjectWide()
 	}
 	if isScalarPrimitivePosition(view, c) {
 		return scalarPrimitiveCompletions()
 	}
 	if isFieldTypePosition(view, c) {
-		return s.typeCompletionsProjectWide(currentURI, currentSrc)
+		return r.typeCompletionsProjectWide()
 	}
-	return s.blockKeyCompletions(blockAt(view, c), currentURI, currentSrc)
+	return r.blockKeyCompletions(blockAt(view, c))
 }
 
 // completionBlock is the kind of block a cursor sits in.
@@ -171,10 +165,10 @@ var (
 
 // blockKeyCompletions offers what block accepts: the declared types a mixin
 // can name in a type body, nothing in an enum, keywords elsewhere.
-func (s *server) blockKeyCompletions(block completionBlock, currentURI, currentSrc string) []protocol.CompletionItem {
+func (r *request) blockKeyCompletions(block completionBlock) []protocol.CompletionItem {
 	switch block {
 	case blockType:
-		return s.declCompletions(currentURI, currentSrc, semantic.TypeDecls)
+		return r.declCompletions(semantic.TypeDecls)
 	case blockEnum:
 		return nil
 	case blockService:

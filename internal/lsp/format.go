@@ -2,10 +2,8 @@ package lsp
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 
-	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 
 	"github.com/craftgodotdev/craftgo/internal/format"
@@ -13,28 +11,24 @@ import (
 
 // onFormatting answers `textDocument/formatting` with one whole-document edit,
 // or none when the buffer carries an error or is already formatted.
-func (s *server) onFormatting(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.DocumentFormattingParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
-	}
-	src := s.snapshot(params.TextDocument.URI)
-	if src == "" {
-		return reply(ctx, []protocol.TextEdit{}, nil)
+func (s *server) onFormatting(_ context.Context, params protocol.DocumentFormattingParams) (any, error) {
+	r, ok := s.open(params.TextDocument.URI)
+	if !ok {
+		return []protocol.TextEdit{}, nil
 	}
 	// A buffer with an error is left alone: a mistake the parser tolerates
 	// reads as another construct, which formatting would write back.
-	if s.loadProject(uriToPath(string(params.TextDocument.URI)), src).hasErrors() {
-		return reply(ctx, []protocol.TextEdit{}, nil)
+	if r.project().hasErrors() {
+		return []protocol.TextEdit{}, nil
 	}
-	formatted, diags := format.Format(string(params.TextDocument.URI), src)
-	if len(diags) > 0 || formatted == src {
-		return reply(ctx, []protocol.TextEdit{}, nil)
+	formatted, diags := format.Format(string(params.TextDocument.URI), r.src)
+	if len(diags) > 0 || formatted == r.src {
+		return []protocol.TextEdit{}, nil
 	}
-	return reply(ctx, []protocol.TextEdit{{
-		Range:   wholeDocumentRange(src),
+	return []protocol.TextEdit{{
+		Range:   wholeDocumentRange(r.src),
 		NewText: formatted,
-	}}, nil)
+	}}, nil
 }
 
 // wholeDocumentRange returns the range covering all of src.

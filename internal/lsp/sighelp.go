@@ -2,10 +2,8 @@ package lsp
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 
-	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -14,28 +12,24 @@ import (
 
 // onSignatureHelp answers `textDocument/signatureHelp` inside the argument
 // list of a registered decorator, and with null elsewhere.
-func (s *server) onSignatureHelp(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.SignatureHelpParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
+func (s *server) onSignatureHelp(_ context.Context, params protocol.SignatureHelpParams) (any, error) {
+	r, ok := s.open(params.TextDocument.URI)
+	if !ok {
+		return nil, nil
 	}
-	src := s.snapshot(params.TextDocument.URI)
-	if src == "" {
-		return reply(ctx, nil, nil)
-	}
-	view := parseSnapshot(string(params.TextDocument.URI), src)
+	view := r.view()
 	c := view.cursorAt(params.Position)
 	name, lparen, ok := decoratorArgContext(view, c)
 	if !ok {
-		return reply(ctx, nil, nil)
+		return nil, nil
 	}
 	spec, ok := semantic.Registry[name]
 	if !ok {
-		return reply(ctx, nil, nil)
+		return nil, nil
 	}
 	label, paramLabels := decoratorSignatureLabel(name, spec)
 	if label == "" {
-		return reply(ctx, nil, nil)
+		return nil, nil
 	}
 	paramInfos := make([]protocol.ParameterInformation, 0, len(paramLabels))
 	for _, p := range paramLabels {
@@ -48,11 +42,11 @@ func (s *server) onSignatureHelp(ctx context.Context, reply jsonrpc2.Replier, re
 		Parameters:      paramInfos,
 		ActiveParameter: uint32(active),
 	}
-	return reply(ctx, &protocol.SignatureHelp{
+	return &protocol.SignatureHelp{
 		Signatures:      []protocol.SignatureInformation{sig},
 		ActiveSignature: 0,
 		ActiveParameter: uint32(active),
-	}, nil)
+	}, nil
 }
 
 // decoratorSignatureLabel renders `@name(p1, p2)`, `@name(kind...)` for a
