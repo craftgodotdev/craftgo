@@ -41,26 +41,21 @@ func (s *server) loadProject(fsPath, src string) projectView {
 	cfg, root := designProjectOf(fsPath)
 	v := projectView{root: root, current: fsPath}
 
-	var srcs []designopts.Source
 	if v.root == "" {
 		v.files = []loadedFile{{path: fsPath, src: src}}
 	} else {
 		v.files = s.designFiles(v.root, fsPath, src)
 	}
-	for _, lf := range v.files {
-		srcs = append(srcs, designopts.Source{Path: lf.path, Text: lf.src})
+	srcs := make([]designopts.Source, len(v.files))
+	for i, lf := range v.files {
+		srcs[i] = designopts.Source{Path: lf.path, Text: lf.src}
 	}
-
-	parsed, parseDiags := designopts.Parse(srcs)
-	v.diags = append(v.diags, parseDiags...)
+	var parsed []designopts.Parsed
+	v.proj, parsed, v.diags = designopts.Analyze(srcs, v.root, cfg)
 	for i := range v.files {
 		v.files[i].file = parsed[i].File
 		v.files[i].tokens = parsed[i].Tokens
 	}
-
-	var diags []semantic.Diagnostic
-	v.proj, diags = semantic.AnalyzeProject(designopts.ASTs(parsed), designopts.For(v.root, cfg))
-	v.diags = append(v.diags, diags...)
 	return v
 }
 
