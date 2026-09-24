@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -214,6 +215,40 @@ func TestServerHealthCheckErrorTextIsNeverHealthy(t *testing.T) {
 	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"not_ready"`) {
 		t.Errorf("status %d, body %s; want 503 not_ready", rec.Code, rec.Body.String())
+	}
+}
+
+// A check that panics fails readiness, and the panic is logged under the check's name.
+func TestServerHealthCheckPanicFailsTheProbe(t *testing.T) {
+	logs := observeLogs(t)
+	s := newTestServer(t)
+	s.RegisterHealthCheck("db", time.Second, func(context.Context) error { return nil })
+	s.RegisterHealthCheck("cache", time.Second, func(context.Context) error { panic("cache client is nil") })
+	rec := httptest.NewRecorder()
+	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+
+	var body struct {
+		Status string            `json:"status"`
+		Checks map[string]string `json:"checks"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body %q: %v", rec.Body.String(), err)
+	}
+	if rec.Code != http.StatusServiceUnavailable || body.Status != "not_ready" {
+		t.Errorf("status %d, body %s; want 503 not_ready", rec.Code, rec.Body.String())
+	}
+	if got, want := body.Checks["cache"], "panic: cache client is nil"; got != want {
+		t.Errorf("cache check = %q, want %q", got, want)
+	}
+	if got := body.Checks["db"]; got != "ok" {
+		t.Errorf("db check = %q, want ok", got)
+	}
+	entries := logs.FilterMessage("panic recovered in readiness check").AllUntimed()
+	if len(entries) != 1 {
+		t.Fatalf("want the panic logged once, got %d lines", len(entries))
+	}
+	if fields := entries[0].ContextMap(); fields["check"] != "cache" || fields["stack"] == "" {
+		t.Errorf("log fields %v, want the check's name and the stack", fields)
 	}
 }
 

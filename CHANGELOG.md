@@ -58,6 +58,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   was `ok` counted as passing; `/readyz` now answers 503 for any check that
   returns an error.
 
+- **A panicking readiness check fails the probe.** Each check runs on its
+  own goroutine, so a panic in one ended the process; `/readyz` now answers
+  503 with `panic: <value>` for that check and logs the panic with its
+  stack.
+
 - **`server.Server` is safe for concurrent use.** The `SetDefault*`,
   `SetCORS` and `SetLogger` setters wrote without the lock that route
   registration and `Handler` read under, a data race when configuration ran

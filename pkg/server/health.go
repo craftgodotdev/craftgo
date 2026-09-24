@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -29,6 +31,24 @@ type healthCheck struct {
 	fn      func(context.Context) error
 }
 
+// run calls the check under its timeout. A panic fails the check with "panic: <value>" and
+// is logged with its stack to [log.Default].
+func (hc healthCheck) run(ctx context.Context, name string) (err error) {
+	ctx, cancel := context.WithTimeout(ctx, hc.timeout)
+	defer cancel()
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Default().WithContext(ctx).Error("panic recovered in readiness check",
+				log.String("check", name),
+				log.Any("panic", rec),
+				log.String("stack", string(debug.Stack())),
+			)
+			err = fmt.Errorf("panic: %v", rec)
+		}
+	}()
+	return hc.fn(ctx)
+}
+
 // WithHealthPaths overrides the default `/healthz` and `/readyz` routes.
 func WithHealthPaths(p HealthPaths) Option {
 	return func(s *Server) { s.healthPaths = p }
@@ -38,7 +58,7 @@ func WithHealthPaths(p HealthPaths) Option {
 func WithoutDefaultHealth() Option { return func(s *Server) { s.noHealth = true } }
 
 // RegisterHealthCheck adds, or replaces, the readiness check name. Each readiness probe runs
-// fn under a context with timeout, and a non-nil error answers 503.
+// fn under a context with timeout, and a non-nil error or a panic answers 503.
 func (s *Server) RegisterHealthCheck(name string, timeout time.Duration, fn func(context.Context) error) *Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -86,9 +106,7 @@ func (s *Server) readinessHandler() http.Handler {
 			wg.Add(1)
 			go func(name string, hc healthCheck) {
 				defer wg.Done()
-				ctx, cancel := context.WithTimeout(r.Context(), hc.timeout)
-				defer cancel()
-				err := hc.fn(ctx)
+				err := hc.run(r.Context(), name)
 				resMu.Lock()
 				if err != nil {
 					results[name] = err.Error()

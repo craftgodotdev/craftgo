@@ -53,7 +53,7 @@ srv.RegisterHealthCheck("db", 2*time.Second, func(ctx context.Context) error {
 })
 ```
 
-`RegisterHealthCheck(name, timeout, fn)` adds a probe to `/readyz`. The timeout is mandatory - each probe runs under `context.WithTimeout` and counts as a failure on deadline. `/healthz` (liveness) always returns 200 once the process is up.
+`RegisterHealthCheck(name, timeout, fn)` adds a probe to `/readyz`. The timeout is mandatory - each probe runs under `context.WithTimeout` and counts as a failure on deadline. A check that panics fails too, reported as `panic: <value>` under `checks` in the response, and the panic is logged with its stack. `/healthz` (liveness) always returns 200 once the process is up.
 
 Both probes are answered ahead of the middleware chain (only `Recovery` wraps them): they are never access-logged, traced, counted in the HTTP metrics or CORS-processed, and no `srv.Use` middleware runs for them. `WithoutDefaultHealth()` removes them; register your own route for observed probes.
 
