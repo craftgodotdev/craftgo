@@ -1,8 +1,10 @@
 package lsp
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -138,11 +140,11 @@ type Order { id string  extra Extra }
 		}
 	}
 	if _, ok := v.proj.Packages["orders"]; !ok {
-		t.Fatalf("packages = %v, want the one named package", sortedKeys(v.proj.Packages))
+		t.Fatalf("packages = %v, want the one named package", slices.Sorted(maps.Keys(v.proj.Packages)))
 	}
 	if len(v.proj.Packages) != 1 {
 		t.Errorf("packages = %v, want exactly one - naming a package-less file after its folder splits the project",
-			sortedKeys(v.proj.Packages))
+			slices.Sorted(maps.Keys(v.proj.Packages)))
 	}
 }
 

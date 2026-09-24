@@ -1103,6 +1103,55 @@ type Holder {
 	}
 }
 
+// Rename takes a new name only when it lexes as one identifier; a reserved
+// word is refused.
+func TestRenameAcceptsOnlyAnIdentifier(t *testing.T) {
+	u := uri.New("file:///t.craftgo")
+	src := "package x\n\ntype Greeter { id string }\n\ntype Holder { g Greeter }\n"
+	s := &server{docs: map[uri.URI]string{u: src}}
+	rename := func(newName string) error {
+		t.Helper()
+		_, err := callHandler(t, s, protocol.MethodTextDocumentRename, protocol.RenameParams{
+			TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+				TextDocument: protocol.TextDocumentIdentifier{URI: protocol.DocumentURI(u)},
+				Position:     protocol.Position{Line: 2, Character: 5},
+			},
+			NewName: newName,
+		})
+		return err
+	}
+	for _, name := range []string{"Welcomer", "_x", "x1"} {
+		if err := rename(name); err != nil {
+			t.Errorf("rename to %q refused: %v", name, err)
+		}
+	}
+	for _, name := range []string{"service", "get", "payload", "1x", "a-b", " Welcomer", ""} {
+		if err := rename(name); err == nil {
+			t.Errorf("rename to %q accepted", name)
+		}
+	}
+}
+
+// callHandler sends method with params through the dispatcher and returns the
+// reply's result and error.
+func callHandler(t *testing.T, s *server, method string, params any) (any, error) {
+	t.Helper()
+	req, err := jsonrpc2.NewCall(jsonrpc2.NewNumberID(1), method, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result any
+	var replyErr error
+	replier := func(_ context.Context, r any, err error) error {
+		result, replyErr = r, err
+		return nil
+	}
+	if err := s.handler(context.Background(), replier, req); err != nil {
+		t.Fatal(err)
+	}
+	return result, replyErr
+}
+
 // Inside `@middlewares(...)` a name resolves to the middleware, not to a
 // same-named error.
 func TestDefinitionPrefersKindFromDecoratorContext(t *testing.T) {

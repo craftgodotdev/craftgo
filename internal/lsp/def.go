@@ -6,6 +6,7 @@ import (
 
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
+	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -199,13 +200,13 @@ func (s *server) projectNameMatches(view snapshotView, currentURI protocol.Docum
 		if d := findDecl(p.file, name); d != nil {
 			pos := d.DeclPos()
 			declPos = &pos
-			declURI = protocol.DocumentURI(pathToFileURIString(p.path))
+			declURI = protocol.DocumentURI(uri.File(p.path))
 			break
 		}
 	}
 	var out []protocol.Location
 	for _, p := range v.files {
-		fileURI := protocol.DocumentURI(pathToFileURIString(p.path))
+		fileURI := protocol.DocumentURI(uri.File(p.path))
 		for _, t := range p.tokens {
 			if t.Kind != lexer.Ident || t.Text != name {
 				continue

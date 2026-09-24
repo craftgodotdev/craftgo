@@ -2,7 +2,9 @@ package lsp
 
 import (
 	"fmt"
+	"maps"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -157,7 +159,7 @@ func (s *server) packageNameCompletions(currentURI, currentSrc string) []protoco
 // as %d.
 func packageItems(names map[string]int, detail string) []protocol.CompletionItem {
 	out := make([]protocol.CompletionItem, 0, len(names))
-	for _, name := range sortedKeys(names) {
+	for _, name := range slices.Sorted(maps.Keys(names)) {
 		d := detail
 		if strings.Contains(detail, "%d") {
 			d = fmt.Sprintf(detail, names[name])

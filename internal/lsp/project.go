@@ -97,19 +97,9 @@ func (v projectView) lookup(name string, kinds semantic.DeclKind) ast.Decl {
 func (v projectView) locationOf(pos lexer.Position, n int, current protocol.DocumentURI) protocol.Location {
 	u := current
 	if pos.Filename != v.current {
-		u = uri.New(pathToFileURIString(pos.Filename))
+		u = uri.File(pos.Filename)
 	}
 	return protocol.Location{URI: u, Range: rangeOfPosLen(pos, n)}
-}
-
-// sortedKeys returns the keys of m in alphabetical order.
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // designProjectOf returns the manifest and design root of the project holding
@@ -157,7 +147,7 @@ func (s *server) readFile(path, currentPath, currentSrc string) string {
 	if path == currentPath {
 		return currentSrc
 	}
-	if cached := s.snapshot(uri.New(pathToURI(path))); cached != "" {
+	if cached := s.snapshot(uri.File(path)); cached != "" {
 		return cached
 	}
 	if data, err := os.ReadFile(path); err == nil {

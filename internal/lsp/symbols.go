@@ -3,6 +3,7 @@ package lsp
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
@@ -31,7 +32,7 @@ func (s *server) onDocumentSymbol(ctx context.Context, reply jsonrpc2.Replier, r
 }
 
 // onWorkspaceSymbol answers `workspace/symbol` with the project's declarations
-// whose name contains the query, ignoring ASCII case.
+// whose name contains the query, ignoring case.
 func (s *server) onWorkspaceSymbol(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.WorkspaceSymbolParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
@@ -42,16 +43,13 @@ func (s *server) onWorkspaceSymbol(ctx context.Context, reply jsonrpc2.Replier, 
 	if anchorPath == "" {
 		return reply(ctx, []protocol.SymbolInformation{}, nil)
 	}
-	queryLower := lowerASCII(params.Query)
+	query := strings.ToLower(params.Query)
 	var out []protocol.SymbolInformation
 	for _, p := range s.loadProject(anchorPath, anchorSrc).files {
-		fileURI := uri.New(pathToFileURIString(p.path))
+		fileURI := uri.File(p.path)
 		for _, d := range p.file.Decls {
 			name := d.DeclName()
-			if name == "" {
-				continue
-			}
-			if queryLower != "" && !containsLower(name, queryLower) {
+			if name == "" || !strings.Contains(strings.ToLower(name), query) {
 				continue
 			}
 			out = append(out, protocol.SymbolInformation{
@@ -106,33 +104,6 @@ func (s *server) anyOpenDocument() (string, string) {
 		return uriToPath(string(u)), text
 	}
 	return "", ""
-}
-
-// lowerASCII lowercases the ASCII letters of s.
-func lowerASCII(s string) string {
-	b := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		b[i] = c
-	}
-	return string(b)
-}
-
-// containsLower reports whether haystack, lowercased, contains needleLower.
-func containsLower(haystack, needleLower string) bool {
-	if needleLower == "" {
-		return true
-	}
-	hLower := lowerASCII(haystack)
-	for i := 0; i+len(needleLower) <= len(hLower); i++ {
-		if hLower[i:i+len(needleLower)] == needleLower {
-			return true
-		}
-	}
-	return false
 }
 
 // documentSymbols returns one symbol per named declaration. An unnamed one is

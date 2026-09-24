@@ -2,14 +2,14 @@ package lsp
 
 import (
 	"fmt"
-	"path/filepath"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
 	"go.lsp.dev/protocol"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
@@ -190,7 +190,7 @@ func (s *server) projectDeclItems(currentURI, currentSrc string, kinds semantic.
 	v := s.loadProject(uriToPath(currentURI), currentSrc)
 	seen := map[string]bool{}
 	var out []protocol.CompletionItem
-	for _, pkgName := range sortedKeys(v.proj.Packages) {
+	for _, pkgName := range slices.Sorted(maps.Keys(v.proj.Packages)) {
 		out = append(out, declItems(v.proj.Packages[pkgName], kinds, kind, seen)...)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
@@ -227,12 +227,8 @@ func kindDetail(kind, pkg string) string {
 // securitySchemeCompletions offers the manifest's openapi.securitySchemes, with
 // each scheme's type and its scheme or location as detail; nil when there are none.
 func (s *server) securitySchemeCompletions(currentURI string) []protocol.CompletionItem {
-	fsPath := uriToPath(currentURI)
-	if fsPath == "" {
-		return nil
-	}
-	cfg, _, _, err := config.Find(filepath.Dir(fsPath))
-	if err != nil || cfg == nil || len(cfg.OpenAPI.SecuritySchemes) == 0 {
+	cfg, _ := designProjectOf(uriToPath(currentURI))
+	if cfg == nil || len(cfg.OpenAPI.SecuritySchemes) == 0 {
 		return nil
 	}
 	out := make([]protocol.CompletionItem, 0, len(cfg.OpenAPI.SecuritySchemes))
@@ -329,7 +325,7 @@ func (s *server) declCompletions(currentURI, currentSrc string, kinds semantic.D
 	v := s.loadProject(uriToPath(currentURI), currentSrc)
 	currentPkg := v.currentPackage()
 	var items []protocol.CompletionItem
-	for _, pkgName := range sortedKeys(v.proj.Packages) {
+	for _, pkgName := range slices.Sorted(maps.Keys(v.proj.Packages)) {
 		pkg := v.proj.Packages[pkgName]
 		for _, d := range pkg.Decls(kinds) {
 			label := d.DeclName()
@@ -347,7 +343,7 @@ func (s *server) declCompletions(currentURI, currentSrc string, kinds semantic.D
 			})
 		}
 	}
-	for _, pkgName := range sortedKeys(v.proj.Packages) {
+	for _, pkgName := range slices.Sorted(maps.Keys(v.proj.Packages)) {
 		if pkgName == "" || pkgName == currentPkg {
 			continue
 		}

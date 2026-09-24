@@ -59,10 +59,10 @@ func decoratorSignatureLabel(name string, spec semantic.Spec) (string, []string)
 	rule := spec.Args
 	var parts []string
 	if rule.Variadic != 0 {
-		parts = append(parts, argKindName(rule.Variadic)+"...")
+		parts = append(parts, rule.Variadic.String()+"...")
 	} else if len(rule.Kinds) > 0 {
 		for _, k := range rule.Kinds {
-			parts = append(parts, argKindName(k))
+			parts = append(parts, k.String())
 		}
 	} else if rule.Min == 0 && rule.Max == 0 {
 		return "@" + name, nil
@@ -71,31 +71,6 @@ func decoratorSignatureLabel(name string, spec semantic.Spec) (string, []string)
 		return "@" + name, nil
 	}
 	return "@" + name + "(" + strings.Join(parts, ", ") + ")", parts
-}
-
-// argKindName returns the signature label of an argument kind.
-func argKindName(k semantic.ArgKind) string {
-	switch k {
-	case semantic.ArgString:
-		return "string"
-	case semantic.ArgInt:
-		return "int"
-	case semantic.ArgNumber:
-		return "number"
-	case semantic.ArgBool:
-		return "bool"
-	case semantic.ArgIdent:
-		return "ident"
-	case semantic.ArgStringOrIdent:
-		return "string|ident"
-	case semantic.ArgDuration:
-		return "duration"
-	case semantic.ArgSize:
-		return "size"
-	case semantic.ArgAny:
-		return "any"
-	}
-	return "?"
 }
 
 // activeParamIndex counts the commas between the enclosing `(` and the cursor,

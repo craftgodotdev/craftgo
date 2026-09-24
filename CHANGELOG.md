@@ -148,6 +148,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   contradicts: `Unsent` [1 3] of five read "1 already sent" when three
   went out.
 
+- **The editor's rename refuses a reserved word.** Renaming a declaration to
+  `service`, `get` or any other keyword is an error instead of an edit that
+  breaks every use.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

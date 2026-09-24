@@ -41,7 +41,7 @@ func (s *server) onRename(ctx context.Context, reply jsonrpc2.Replier, req jsonr
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
 	}
-	if !isValidIdent(params.NewName) {
+	if !lexer.IsIdent(params.NewName) {
 		return reply(ctx, nil, fmt.Errorf("invalid rename target %q: not a craftgo identifier", params.NewName))
 	}
 	src := s.snapshot(params.TextDocument.URI)
@@ -66,25 +66,4 @@ func (s *server) onRename(ctx context.Context, reply jsonrpc2.Replier, req jsonr
 		changes[params.TextDocument.URI] = []protocol.TextEdit{}
 	}
 	return reply(ctx, &protocol.WorkspaceEdit{Changes: changes}, nil)
-}
-
-// isValidIdent reports whether s matches `[A-Za-z_][A-Za-z0-9_]*`.
-func isValidIdent(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i, r := range s {
-		switch {
-		case r == '_':
-		case r >= 'A' && r <= 'Z':
-		case r >= 'a' && r <= 'z':
-		case r >= '0' && r <= '9':
-			if i == 0 {
-				return false
-			}
-		default:
-			return false
-		}
-	}
-	return true
 }

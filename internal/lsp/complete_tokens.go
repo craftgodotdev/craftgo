@@ -8,13 +8,7 @@ import (
 
 // identBefore returns the text of the token before t when it is an identifier.
 func identBefore(view snapshotView, t *lexer.Token) (string, bool) {
-	idx := -1
-	for i := range view.tokens {
-		if &view.tokens[i] == t {
-			idx = i
-			break
-		}
-	}
+	idx := tokenIndex(view, t)
 	if idx <= 0 {
 		return "", false
 	}

@@ -68,11 +68,6 @@ func uriToPath(u string) string {
 	return filepath.FromSlash(p)
 }
 
-// pathToURI returns the file:// URI of p.
-func pathToURI(p string) string {
-	return string(uri.File(p))
-}
-
 // keyOf identifies a diagnostic by file, position, code and message, so a
 // repeat is published once.
 func keyOf(d lexer.Diagnostic) string {
