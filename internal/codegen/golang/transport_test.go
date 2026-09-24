@@ -1556,7 +1556,8 @@ type Req { shared.Outer  own string }`,
 	r := buildProjectResolver(proj, newFixtureConfig(), "app")
 	got := map[string]bool{}
 	var names []string
-	for _, f := range semantic.FlattenFields(appPkg.Types["Req"], appPkg, r.Resolver) {
+	for _, ff := range semantic.FlattenFields(appPkg.Types["Req"], "", r.Resolver, nil) {
+		f := ff.Field
 		got[f.Name] = true
 		names = append(names, f.Name)
 	}

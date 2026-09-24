@@ -13,12 +13,12 @@ func collectDefaults(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *p
 	if m.Request == nil {
 		return nil
 	}
-	td, prefix := semantic.LookupMethodType(m.Request, pkg, r.Resolver)
+	td, prefix := semantic.LookupMethodType(m.Request, r.Resolver)
 	if td == nil {
 		return nil
 	}
 	var out []defaultBinding
-	for _, ff := range flattenFieldsWithNames(td, prefix, pkg, r) {
+	for _, ff := range flattenFieldsWithNames(td, prefix, r) {
 		f := ff.Field
 		if f.Type == nil || f.Type.Map != nil {
 			continue

@@ -77,24 +77,6 @@ func SubstituteTypeRef(t *ast.TypeRef, subst map[string]*ast.TypeRef) *ast.TypeR
 	return t
 }
 
-// FlattenFields returns td's fields with its mixins expanded in body order,
-// recursively, and their generic arguments substituted. Mixins resolve
-// through r, so a nil r expands none.
-func FlattenFields(td *ast.TypeDecl, pkg *Package, r *Resolver) []*ast.Field {
-	return FlattenFieldsIn(td, "", pkg, r)
-}
-
-// FlattenFieldsIn is [FlattenFields] for a td reached through a qualified
-// ref: prefix is td's package, where its bare mixins resolve.
-func FlattenFieldsIn(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver) []*ast.Field {
-	flat := FlattenWithNames(td, prefix, pkg, r, nil)
-	out := make([]*ast.Field, len(flat))
-	for i, ff := range flat {
-		out[i] = ff.Field
-	}
-	return out
-}
-
 // FlatField is a field of a type body or one its mixins promote, and the
 // name [LevelNames] gave it in its own struct. Its type is spelled as the
 // flattening's view package spells it, a promoted field's with the mixin's
@@ -105,10 +87,13 @@ type FlatField struct {
 	Home  string
 }
 
-// FlattenWithNames is [FlattenFieldsIn] that also names each field, running
-// levelNames over each struct level's own body. Field types are spelled as
-// r's current package spells them.
-func FlattenWithNames(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver, levelNames LevelNames) []FlatField {
+// FlattenFields returns td's fields with its mixins expanded in body order,
+// recursively, each mixin type once, and names running over each struct
+// level's own body (nil leaves [FlatField.Name] empty). prefix is td's
+// package when a qualified ref reached it, else "" for r's current package.
+// Field types are spelled as r's current package spells them; a nil r
+// expands no mixin.
+func FlattenFields(td *ast.TypeDecl, prefix string, r *Resolver, names LevelNames) []FlatField {
 	if td == nil {
 		return nil
 	}
@@ -121,7 +106,7 @@ func FlattenWithNames(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver
 	if home == "" {
 		home = view
 	}
-	fields, _ := proj.flattenFields(view, home, td.Body, td.TypeParams, levelNames)
+	fields, _ := proj.flattenFields(view, home, td.Body, td.TypeParams, names)
 	return fields
 }
 

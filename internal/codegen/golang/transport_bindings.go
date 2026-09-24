@@ -16,7 +16,7 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package, r *projectRes
 	if m.Response == nil || m.Response.Type == nil {
 		return nil, nil, false
 	}
-	td, prefix := semantic.LookupMethodType(m.Response.Type, pkg, r.Resolver)
+	td, prefix := semantic.LookupMethodType(m.Response.Type, r.Resolver)
 	if td == nil {
 		return nil, nil, false
 	}
@@ -26,7 +26,7 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package, r *projectRes
 // responseBindingsFor renders the @header and @cookie writers of body td, mixin fields included,
 // reading the values from accessVar (`resp`, or `e` for an error body).
 func responseBindingsFor(td *ast.TypeDecl, prefix, accessVar string, pkg *semantic.Package, r *projectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
-	for _, ff := range flattenFieldsWithNames(td, prefix, pkg, r) {
+	for _, ff := range flattenFieldsWithNames(td, prefix, r) {
 		f := ff.Field
 		kind, _ := wire.BindingKind(f.Decorators)
 		if kind != wire.BindHeader && kind != wire.BindCookie {
@@ -247,7 +247,7 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, r *project
 	if m == nil || m.Request == nil || pkg == nil || len(r.CrossPkg) == 0 {
 		return out
 	}
-	if td, _ := semantic.LookupMethodType(m.Request, pkg, r.Resolver); td == nil {
+	if td, _ := semantic.LookupMethodType(m.Request, r.Resolver); td == nil {
 		return out
 	}
 	set := map[string]bool{}

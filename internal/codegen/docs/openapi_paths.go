@@ -204,7 +204,7 @@ func binResponseFields(m *ast.Method, pkg *semantic.Package, r *semantic.Resolve
 	if !ok {
 		return bins
 	}
-	for _, rf := range semantic.ResolveFields(td, pkg, r, nil) {
+	for _, rf := range semantic.ResolveFields(td, "", pkg, r, nil) {
 		switch rf.Binding {
 		case wire.BindSensitive:
 			continue

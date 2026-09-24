@@ -8,7 +8,7 @@ import (
 
 // A field promoted through another package's mixin is spelled as the
 // resolver's package spells it, a generic mixin's type argument included.
-func TestFlattenWithNamesRequalifiesPromotedFields(t *testing.T) {
+func TestFlattenFieldsRequalifiesPromotedFields(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/s.craftgo": `package shared
 type IdHolder<T> { id T }
@@ -26,7 +26,7 @@ type Req { shared.Base  own string }`,
 	expectNoDiags(t, diags)
 	r := NewResolver(proj, "app")
 	got := map[string]string{}
-	for _, ff := range FlattenWithNames(proj.Packages["app"].Types["Req"], "", proj.Packages["app"], r, nil) {
+	for _, ff := range FlattenFields(proj.Packages["app"].Types["Req"], "", r, nil) {
 		got[ff.Field.Name] = ff.Field.Type.Named.Name.String() + " from " + ff.Home
 	}
 	want := map[string]string{
@@ -58,11 +58,11 @@ type Req { shared.Base }`,
 	})
 	proj, diags := AnalyzeProject(files, Options{DesignRoot: root})
 	expectNoDiags(t, diags)
-	fields := FlattenFields(proj.Packages["app"].Types["Req"], proj.Packages["app"], NewResolver(proj, "app"))
-	if len(fields) != 1 || fields[0].Type.Named.Name.String() != "string" {
+	fields := FlattenFields(proj.Packages["app"].Types["Req"], "", NewResolver(proj, "app"), nil)
+	if len(fields) != 1 || fields[0].Field.Type.Named.Name.String() != "string" {
 		var names []string
-		for _, f := range fields {
-			names = append(names, f.Name+" "+f.Type.Named.Name.String())
+		for _, ff := range fields {
+			names = append(names, ff.Field.Name+" "+ff.Field.Type.Named.Name.String())
 		}
 		t.Errorf("fields = %v, want [v string]", names)
 	}
@@ -74,8 +74,8 @@ func TestFlattenWithNilResolverKeepsOwnFields(t *testing.T) {
 		&ast.Mixin{Ref: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"Base"}}}},
 		&ast.Field{Name: "own", Type: ast.Named("string")},
 	}}
-	fields := FlattenFields(td, nil, nil)
-	if len(fields) != 1 || fields[0].Name != "own" {
+	fields := FlattenFields(td, "", nil, nil)
+	if len(fields) != 1 || fields[0].Field.Name != "own" {
 		t.Errorf("fields = %v, want [own]", fields)
 	}
 }

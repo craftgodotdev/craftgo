@@ -306,7 +306,8 @@ func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *opena
 // errorHeaderCookieFields returns the @header and @cookie fields of ed, the
 // ones a mixin brings included.
 func errorHeaderCookieFields(ed *ast.ErrorDecl, pkg *semantic.Package, r *semantic.Resolver) (headers, cookies []*ast.Field) {
-	for _, f := range semantic.FlattenFields(&ast.TypeDecl{Body: ed.Body}, pkg, r) {
+	for _, ff := range semantic.FlattenFields(&ast.TypeDecl{Body: ed.Body}, "", r, nil) {
+		f := ff.Field
 		switch kind, _ := wire.BindingKind(f.Decorators); kind {
 		case wire.BindHeader:
 			headers = append(headers, f)

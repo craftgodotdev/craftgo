@@ -57,12 +57,7 @@ func decorateAll(in []semantic.ResolvedField, pkg *semantic.Package, r *projectR
 
 // resolveFields resolves td's fields with this package's Go names.
 func resolveFields(td *ast.TypeDecl, pkg *semantic.Package, r *projectResolver) []resolvedField {
-	return resolveFieldsWithPrefix(td, "", pkg, r)
-}
-
-// resolveFieldsWithPrefix is [resolveFields] with a package-prefix context.
-func resolveFieldsWithPrefix(td *ast.TypeDecl, prefix string, pkg *semantic.Package, r *projectResolver) []resolvedField {
-	return decorateAll(semantic.ResolveFieldsWithPrefix(td, prefix, pkg, r.Resolver, resolvedGoFieldNames), pkg, r)
+	return decorateAll(semantic.ResolveFields(td, "", pkg, r.Resolver, resolvedGoFieldNames), pkg, r)
 }
 
 // resolveRequestFields resolves m's request fields with method context

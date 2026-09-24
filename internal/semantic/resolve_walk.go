@@ -12,7 +12,7 @@ type LevelNames func([]ast.TypeMember) []string
 // LookupMethodType returns the type ref names through r and the ref's
 // package qualifier ("" when bare), the prefix its bare mixins resolve in.
 // The type is nil when r does not resolve it.
-func LookupMethodType(ref *ast.NamedTypeRef, pkg *Package, r *Resolver) (*ast.TypeDecl, string) {
+func LookupMethodType(ref *ast.NamedTypeRef, r *Resolver) (*ast.TypeDecl, string) {
 	if ref == nil || ref.Name == nil {
 		return nil, ""
 	}
@@ -21,22 +21,13 @@ func LookupMethodType(ref *ast.NamedTypeRef, pkg *Package, r *Resolver) (*ast.Ty
 	if parts := ref.Name.Parts; len(parts) == 2 {
 		prefix = parts[0]
 	}
-	if td := r.LookupType(name); td != nil {
-		return td, prefix
-	}
-	return nil, prefix
+	return r.LookupType(name), prefix
 }
 
-// ResolveFields resolves every field of td, with its mixins expanded and
-// their generic arguments substituted.
-func ResolveFields(td *ast.TypeDecl, pkg *Package, r *Resolver, levelNames LevelNames) []ResolvedField {
-	return ResolveFieldsWithPrefix(td, "", pkg, r, levelNames)
-}
-
-// ResolveFieldsWithPrefix is [ResolveFields] for a td reached through a
-// qualified ref: prefix is td's package, where its bare mixins resolve.
-func ResolveFieldsWithPrefix(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver, levelNames LevelNames) []ResolvedField {
-	flat := FlattenWithNames(td, prefix, pkg, r, levelNames)
+// ResolveFields resolves every field [FlattenFields] returns for td, prefix,
+// r and levelNames; a bare type name resolves in pkg.
+func ResolveFields(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver, levelNames LevelNames) []ResolvedField {
+	flat := FlattenFields(td, prefix, r, levelNames)
 	out := make([]ResolvedField, 0, len(flat))
 	for _, ff := range flat {
 		rf := ResolveField(ff.Field, pkg, r.Project())
@@ -53,13 +44,13 @@ func RequestFields(m *ast.Method, pkg *Package, r *Resolver, levelNames LevelNam
 	if m == nil || m.Request == nil {
 		return nil
 	}
-	td, prefix := LookupMethodType(m.Request, pkg, r)
+	td, prefix := LookupMethodType(m.Request, r)
 	if td == nil {
 		return nil
 	}
 	pathNames := MethodRoutePathVars(m, pkg.Services)
 	bodyVerb := wire.IsBodyVerb(m.Verb)
-	fields := ResolveFieldsWithPrefix(td, prefix, pkg, r, levelNames)
+	fields := ResolveFields(td, prefix, pkg, r, levelNames)
 	for i := range fields {
 		rf := &fields[i]
 		// An explicit @body also reads as BindBody.
