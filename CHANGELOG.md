@@ -7,6 +7,14 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+### Changed
+
+- **Both servers log through `log.Default`.** `server.Server` and
+  `rpc.Server` keep no logger of their own: `SetLogger` installs
+  `log.Default`, `Logger()` returns it, and the panic recovery each server
+  installs looks it up when a panic happens, so `log.SetDefault`, or either
+  server's `SetLogger`, reaches both, even after the handler is built.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

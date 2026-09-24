@@ -15,8 +15,13 @@ import (
 // the value and stack, with the call's trace ids, to logger. [Server] installs
 // it outermost.
 func Recovery(logger log.Logger) Interceptor {
+	return recovery(func() log.Logger { return logger })
+}
+
+// recovery is [Recovery] with the logger looked up when a panic is recovered.
+func recovery(logger func() log.Logger) Interceptor {
 	recovered := func(ctx context.Context, rec any) error {
-		logger.WithContext(ctx).Error("panic recovered",
+		logger().WithContext(ctx).Error("panic recovered",
 			log.Any("panic", rec),
 			log.String("stack", string(debug.Stack())),
 		)

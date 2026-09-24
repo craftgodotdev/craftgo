@@ -232,7 +232,7 @@ log.SetContextFields(func(ctx context.Context) []log.Field {
 
 ### Log level
 
-The level is process-wide, not per-logger. `srv.SetLogger` mirrors one logger into both the server and `log.Default()`, and `New`/`NewConsole` build that logger over a shared `zap.AtomicLevel`, so a single call retunes the server and the generated logic layer together:
+The level is process-wide, not per-logger. The server and the generated logic both write through `log.Default()`, which `srv.SetLogger` installs, and `New`/`NewConsole` build that logger over a shared `zap.AtomicLevel`, so a single call retunes the server and the generated logic layer together:
 
 ```go
 log.SetLevel(log.LevelDebug)   // LevelDebug / LevelInfo / LevelWarn / LevelError

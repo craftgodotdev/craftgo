@@ -23,7 +23,6 @@ import (
 // [Server.Start].
 type Server struct {
 	mu         sync.Mutex
-	logger     log.Logger
 	chain      []Interceptor
 	stats      stats.Handler
 	extra      []grpc.ServerOption
@@ -65,11 +64,10 @@ func WithServerOptions(opts ...grpc.ServerOption) Option {
 	return func(s *Server) { s.extra = append(s.extra, opts...) }
 }
 
-// New returns a Server with its own [log.New] logger, a grpc.health.v1 service
-// reporting SERVING, no reflection and no stats handler. The first argument is
-// unused.
+// New returns a Server with a grpc.health.v1 service reporting SERVING, no
+// reflection and no stats handler. The first argument is unused.
 func New(_ any, opts ...Option) *Server {
-	s := &Server{logger: log.New()}
+	s := &Server{}
 	for _, o := range opts {
 		o(s)
 	}
@@ -86,22 +84,15 @@ func (s *Server) Use(i Interceptor) *Server {
 	return s
 }
 
-// SetLogger sets the logger [Recovery] reports to, if the server is not built
-// yet, and installs l as [log.Default].
+// SetLogger installs l as [log.Default], the logger the server's [Recovery]
+// writes to; nil is ignored.
 func (s *Server) SetLogger(l log.Logger) *Server {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.logger = l
 	log.SetDefault(l)
 	return s
 }
 
-// Logger returns the logger set by New or [Server.SetLogger].
-func (s *Server) Logger() log.Logger {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.logger
-}
+// Logger returns [log.Default].
+func (s *Server) Logger() log.Logger { return log.Default() }
 
 // RegisterService implements [grpc.ServiceRegistrar] and reports the service
 // SERVING on the health service. A registration once serving has begun makes
@@ -119,16 +110,17 @@ func (s *Server) RegisterService(desc *grpc.ServiceDesc, impl any) {
 	s.services = append(s.services, registration{desc: desc, impl: impl})
 }
 
-// GRPCServer builds the *grpc.Server on the first call, with [Recovery] ahead
-// of the Use chain, and returns the same one afterwards.
+// GRPCServer builds the *grpc.Server on the first call, with [Recovery], logging
+// to [log.Default], ahead of the Use chain, and returns the same one afterwards.
 func (s *Server) GRPCServer() *grpc.Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.inner != nil {
 		return s.inner
 	}
-	unary := []grpc.UnaryServerInterceptor{Recovery(s.logger).Unary}
-	stream := []grpc.StreamServerInterceptor{Recovery(s.logger).Stream}
+	guard := recovery(log.Default)
+	unary := []grpc.UnaryServerInterceptor{guard.Unary}
+	stream := []grpc.StreamServerInterceptor{guard.Stream}
 	for _, i := range s.chain {
 		if i.Unary != nil {
 			unary = append(unary, bypassUnary(i.Unary))

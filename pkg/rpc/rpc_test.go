@@ -21,6 +21,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
 // entry is one captured log line.
@@ -215,6 +216,32 @@ func TestUnaryChainLogsRecoversAndOrders(t *testing.T) {
 	// A panic leaves no access line; the recovery line is the record.
 	if access := logs.lines("grpc access"); len(access) != 1 {
 		t.Errorf("access after panic = %+v", access)
+	}
+}
+
+// The Recovery a Server installs logs to log.Default as it is when the panic happens, which
+// the HTTP server's SetLogger sets too.
+func TestRecoveryLogsToTheCurrentDefault(t *testing.T) {
+	prev := log.Default()
+	t.Cleanup(func() { log.SetDefault(prev) })
+	log.SetDefault(log.Discard())
+	srv := New(nil)
+	conn := serve(t, srv, &echo{ping: func(context.Context, *wrapperspb.StringValue) (*wrapperspb.StringValue, error) {
+		panic("kaboom")
+	}})
+	if _, err := ping(conn, "warm"); status.Code(err) != codes.Internal {
+		t.Fatalf("panic answered %v", err)
+	}
+	logs := newCapture()
+	server.New(nil).SetLogger(logs)
+	if _, err := ping(conn, "x"); status.Code(err) != codes.Internal {
+		t.Fatalf("panic answered %v", err)
+	}
+	if got := logs.lines("panic recovered"); len(got) != 1 {
+		t.Errorf("recovery lines on the current default = %d, want 1", len(got))
+	}
+	if srv.Logger() != log.Logger(logs) {
+		t.Error("Logger must return log.Default")
 	}
 }
 

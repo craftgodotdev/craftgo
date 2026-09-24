@@ -37,7 +37,7 @@ Each returns `*Server` for chaining.
 
 | Method | Description |
 |---|---|
-| `SetLogger(l Logger)` / `Logger() Logger` | Swap or read the logger. Also mirrors to `log.Default()` so generated logic reaches the same instance. |
+| `SetLogger(l Logger)` / `Logger() Logger` | Install or read `log.Default()`, the logger the server's `Recovery` and the generated logic write to; the server keeps none of its own. |
 | `SetJSONCodec(c JSONCodec) error` / `Codec() JSONCodec` | Swap or read the process-wide codec handlers and health endpoints use: `SetJSONCodec` delegates to `SetGlobalJSONCodec`, `Codec` returns what `JSON()` returns. `SetJSONCodec` fails, keeping the previous codec, when strict JSON is on and `c` has no `DecodeStrict`. |
 | `SetStrictJSON(strict bool) error` | Reject a JSON body with an unknown field (`400 <field>: unknown field`) or data after the JSON value; `server.strictJSON` in `config.yaml` drives it. Fails, keeping the previous setting, when the installed codec has no `DecodeStrict`. |
 | `SetCORS(opts CORSOptions)` | Install CORS. Calling twice replaces the previous config. |
@@ -653,7 +653,7 @@ grpcSrv := rpc.New(svcCtx, opts...)
 | Method | Description |
 |---|---|
 | `Use(i Interceptor) *Server` | Append an interceptor to the chain, outermost first. Recovery is always ahead of the chain, and health and reflection calls bypass it. |
-| `SetLogger(l log.Logger)` / `Logger() log.Logger` | Swap or read the logger; `SetLogger` also mirrors to `log.Default()`. |
+| `SetLogger(l log.Logger)` / `Logger() log.Logger` | Install or read `log.Default()`, the logger the server's `Recovery` and `Error` write to; the server keeps none of its own. |
 | `RegisterService(desc *grpc.ServiceDesc, impl any)` | `grpc.ServiceRegistrar`, so `pb.RegisterXServer(srv, impl)` takes the server directly. |
 | `GRPCServer() *grpc.Server` | Build the underlying server once and return it. |
 | `Start(addr string) error` | Listen and serve until `Stop`; returns nil once stopped. |

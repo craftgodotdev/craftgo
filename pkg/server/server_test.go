@@ -51,6 +51,21 @@ func TestServerRecoveryConvertsPanic(t *testing.T) {
 	}
 }
 
+// The Recovery a Server installs logs to log.Default as it is when the panic happens.
+func TestServerRecoveryLogsToTheCurrentDefault(t *testing.T) {
+	s := newTestServer(t)
+	s.HandleFunc("GET /boom", func(http.ResponseWriter, *http.Request) { panic("boom") })
+	h := finalize(s)
+	logs := observeLogs(t)
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/boom", nil))
+	if n := logs.FilterMessage("panic recovered").Len(); n != 1 {
+		t.Errorf("want the panic on the current default logger, got %d lines", n)
+	}
+	if s.Logger() != log.Default() {
+		t.Error("Logger must return log.Default")
+	}
+}
+
 // A panic after the response is committed keeps the committed status and body.
 func TestServerRecoveryAfterWriteKeepsOriginalStatus(t *testing.T) {
 	s := newTestServer(t)
@@ -72,7 +87,7 @@ func TestServerRecoveryAfterWriteKeepsOriginalStatus(t *testing.T) {
 // A panic after a Flush leaves the flushed stream alone and is logged as committed.
 func TestServerRecoveryAfterFlushKeepsTheStream(t *testing.T) {
 	logs := observeLogs(t)
-	s := newTestServer(t).SetLogger(log.Default())
+	s := newTestServer(t)
 	s.HandleFunc("GET /events", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.(http.Flusher).Flush()
@@ -118,12 +133,11 @@ func (e stringError) Error() string { return string(e) }
 
 // A panic under a WithLimits timeout reaches Recovery.
 func TestWithLimitsTimeoutPanicReachesRecovery(t *testing.T) {
-	logger := newTestServer(t).logger
 	core := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		panic("inside timeout")
 	})
 	guarded := WithLimits(core, Limits{Timeout: 100 * time.Millisecond})
-	chain := Recovery(logger)(guarded)
+	chain := Recovery(log.Discard())(guarded)
 	rec := httptest.NewRecorder()
 	chain.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
 	if rec.Code != http.StatusInternalServerError {
@@ -256,7 +270,7 @@ func TestServerWithCustomHealthPaths(t *testing.T) {
 }
 
 func TestAccessLogMiddleware(t *testing.T) {
-	s := newTestServer(t).Use(AccessLog(s_logger(t)))
+	s := newTestServer(t).Use(AccessLog(log.Discard()))
 	s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	})
@@ -581,12 +595,6 @@ func TestServerStartAndStop(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	_ = s.Stop(ctx)
-}
-
-// s_logger returns the logger of a new Server.
-func s_logger(t *testing.T) Logger {
-	t.Helper()
-	return newTestServer(t).Logger()
 }
 
 // AccessLogFields adds its fields after the handler ran, so the matched route is available.

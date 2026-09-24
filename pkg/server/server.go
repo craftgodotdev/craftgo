@@ -22,8 +22,7 @@ type Server struct {
 	chain   []Middleware
 	httpSrv *http.Server
 
-	logger Logger
-	cors   *CORSOptions
+	cors *CORSOptions
 
 	defaultReadTimeout    time.Duration
 	defaultWriteTimeout   time.Duration
@@ -77,12 +76,11 @@ func WithHealthPaths(p HealthPaths) Option {
 // WithoutDefaultHealth turns the health probes off.
 func WithoutDefaultHealth() Option { return func(s *Server) { s.noHealth = true } }
 
-// New returns a Server with the health probes, a 30s read timeout, a 32 KB header cap and
-// its own [log.New] logger, then applies opts. The first argument is ignored.
+// New returns a Server with the health probes, a 30s read timeout and a 32 KB header cap,
+// then applies opts. The first argument is ignored.
 func New(_ any, opts ...Option) *Server {
 	s := &Server{
 		mux:                http.NewServeMux(),
-		logger:             log.New(),
 		healthChecks:       map[string]healthCheck{},
 		healthPaths:        HealthPaths{Liveness: DefaultLivenessPath, Readiness: DefaultReadinessPath},
 		registeredMW:       map[string]Middleware{},
@@ -220,23 +218,15 @@ func (s *Server) SetJSONCodec(c JSONCodec) error { return SetGlobalJSONCodec(c) 
 // SetStrictJSON calls the process-wide [SetStrictJSON].
 func (s *Server) SetStrictJSON(strict bool) error { return SetStrictJSON(strict) }
 
-// SetLogger sets the logger [Recovery] writes to, read when [Server.Handler] builds the
-// chain, and installs it as [log.Default].
+// SetLogger installs l as [log.Default], the logger the server's [Recovery] writes to; nil is
+// ignored.
 func (s *Server) SetLogger(l Logger) *Server {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.logger = l
 	log.SetDefault(l)
 	return s
 }
 
-// Logger returns the server's logger: the one given to [Server.SetLogger], or its own
-// [log.New] logger.
-func (s *Server) Logger() Logger {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.logger
-}
+// Logger returns [log.Default].
+func (s *Server) Logger() Logger { return log.Default() }
 
 // Codec returns the codec in effect, the one [JSON] returns.
 func (s *Server) Codec() JSONCodec { return JSON() }
@@ -250,12 +240,12 @@ func (s *Server) RegisterHealthCheck(name string, timeout time.Duration, fn func
 	return s
 }
 
-// Handler returns what [Server.Start] serves: [Recovery], then the [Server.Use] middlewares
-// in order, then CORS when set, then the mux. The health probes are answered ahead of that
+// Handler returns what [Server.Start] serves: [Recovery], logging to [log.Default], then the
+// [Server.Use] middlewares in order, then CORS when set, then the mux. The health probes are answered ahead of that
 // chain, wrapped in Recovery only, so no other middleware sees them.
 func (s *Server) Handler() http.Handler {
 	s.mu.Lock()
-	chain := NewChain(Recovery(s.logger)).Append(s.chain...)
+	chain := NewChain(recovery(log.Default)).Append(s.chain...)
 	if s.cors != nil {
 		chain = chain.Append(corsMiddleware(*s.cors))
 	}
@@ -280,7 +270,7 @@ func (s *Server) probesLocked() map[string]http.Handler {
 	if s.noHealth {
 		return nil
 	}
-	guard := Recovery(s.logger)
+	guard := recovery(log.Default)
 	return map[string]http.Handler{
 		s.healthPaths.Liveness:  guard(s.livenessHandler()),
 		s.healthPaths.Readiness: guard(s.readinessHandler()),
