@@ -1,6 +1,7 @@
-// AST: top-level declaration types (Type / Enum / Error / Scalar / Middleware / Service) + method / path / member shapes.
 package ast
 
+// TypeDecl is `type Name { ... }`, or `type Name<T, ...> { ... }` for a
+// generic; TrailingDoc is the comment after its closing brace.
 type TypeDecl struct {
 	Pos         Pos
 	Decorators  []*Decorator
@@ -15,17 +16,15 @@ func (*TypeDecl) declNode()          { astMarker() }
 func (d *TypeDecl) DeclName() string { return d.Name }
 func (d *TypeDecl) DeclPos() Pos     { return d.Pos }
 
-// TypeMember is the interface for items inside a `{}` type body -
-// either a [Field] or a [Mixin].
+// TypeMember is a [Field], [Mixin] or [FreeComment] in a type body.
 type TypeMember interface {
 	typeMember()
 	// MemberPos returns the position of the member's first token.
 	MemberPos() Pos
 }
 
-// Field is a single `name TypeRef [@decorators]` line in a type body.
-// The Decorators slice holds both the leading and trailing decorator chains
-// merged in source order (parser-side concatenation).
+// Field is `name Type` in a type body. Decorators holds the chains before and
+// after it, in source order.
 type Field struct {
 	Pos        Pos
 	Doc        []string
@@ -37,9 +36,7 @@ type Field struct {
 func (*Field) typeMember()      { astMarker() }
 func (f *Field) MemberPos() Pos { return f.Pos }
 
-// Mixin is a bare reference (qualified ident, optionally generic) inside a
-// type body. The semantic phase expands its fields into the host type.
-// Doc preserves the `//` block immediately above the reference.
+// Mixin is a type named alone in a type body; the host type gains its fields.
 type Mixin struct {
 	Pos Pos
 	Doc []string
@@ -49,22 +46,8 @@ type Mixin struct {
 func (*Mixin) typeMember()      { astMarker() }
 func (m *Mixin) MemberPos() Pos { return m.Pos }
 
-// FreeComment is a free-floating `//` comment block that appears inside a
-// type / enum / service / method body and does not attach to any field,
-// value, or method. Common patterns:
-//
-//   - Section dividers immediately after the opening `{`.
-//   - Closing notes (TODO / NOTE) immediately before the `}`.
-//   - Stand-alone blocks separated from surrounding members by a blank line.
-//
-// Pos is the position of the block's FIRST `//` line; Text holds one entry
-// per source line, with the leading `// ` (slashes plus optional single
-// space) already stripped. The parser harvests these from the comment side
-// channel: every leading comment inside a body that no AST Doc field
-// claimed becomes a FreeComment, so `craftgo fmt` re-emits it in place.
-//
-// Implements [TypeMember], [EnumMember], and [ServiceMember] so the same
-// node can sit inside any body kind.
+// FreeComment is a comment block that belongs to no node, in a body or at file
+// scope. Pos is its first line; Text has one entry per line.
 type FreeComment struct {
 	Pos  Pos
 	Text []string
@@ -75,23 +58,18 @@ func (*FreeComment) enumMember()      { astMarker() }
 func (*FreeComment) serviceMember()   { astMarker() }
 func (c *FreeComment) MemberPos() Pos { return c.Pos }
 
-// EnumDecl is `enum Name { Members* }`. Members are a mix of [EnumValue] (the
-// actual enum entries) and [FreeComment] (free-floating section dividers /
-// closing notes). All [EnumValue] entries must share a kind (all bare, all
-// int, or all string); semantic phase enforces that. Use [EnumDecl.EnumValues]
-// to iterate only the typed values when free-floating comments are not relevant.
+// EnumDecl is `enum Name { ... }`; Members holds [EnumValue] and [FreeComment]
+// entries in source order.
 type EnumDecl struct {
 	Pos         Pos
 	Decorators  []*Decorator
 	Doc         []string
 	Name        string
 	Members     []EnumMember
-	TrailingDoc []string // `// note` on the same line as the body's closing `}`
+	TrailingDoc []string // comment after the closing brace
 }
 
-// EnumValues returns only the [*EnumValue] entries from Members, preserving
-// source order. Convenience for callers (semantic, codegen) that want the
-// typed list and treat free-floating comments as cosmetic.
+// EnumValues returns the [EnumValue] members in source order.
 func (d *EnumDecl) EnumValues() []*EnumValue {
 	if d == nil {
 		return nil
@@ -105,9 +83,7 @@ func (d *EnumDecl) EnumValues() []*EnumValue {
 	return out
 }
 
-// EnumMember is the interface implemented by anything that can appear inside
-// an `enum` body: [*EnumValue] for typed entries, [*FreeComment] for
-// free-floating notes / section dividers.
+// EnumMember is an [EnumValue] or a [FreeComment].
 type EnumMember interface {
 	enumMember()
 	// MemberPos returns the position of the member's first token.
@@ -118,21 +94,20 @@ func (*EnumDecl) declNode()          { astMarker() }
 func (d *EnumDecl) DeclName() string { return d.Name }
 func (d *EnumDecl) DeclPos() Pos     { return d.Pos }
 
-// EnumValueKind tags the runtime representation of an enum value.
+// EnumValueKind is how an enum value is written.
 type EnumValueKind int
 
 const (
-	// EnumBare - `Active` (no `=`); rendered as a Go string constant whose
-	// value matches the identifier.
+	// EnumBare is `Active`.
 	EnumBare EnumValueKind = iota
-	// EnumInt - `Active = 1`; rendered as an `int` constant.
+	// EnumInt is `Active = 1`.
 	EnumInt
-	// EnumString - `Active = "active"`; rendered as a `string` constant.
+	// EnumString is `Active = "active"`.
 	EnumString
 )
 
-// EnumValue is one entry inside an enum declaration. IntValue / StrValue are
-// only meaningful when Kind matches.
+// EnumValue is one enum entry; IntValue and StrValue apply only to the
+// matching Kind.
 type EnumValue struct {
 	Pos        Pos
 	Doc        []string
@@ -146,10 +121,8 @@ type EnumValue struct {
 func (*EnumValue) enumMember()      { astMarker() }
 func (v *EnumValue) MemberPos() Pos { return v.Pos }
 
-// ErrorDecl is `error <Category> Name [{ Body }]`. Body is optional - the
-// shortest form (`error NotFound UserNotFound`) inherits all defaults from
-// the category. HasBody distinguishes "explicit empty body `{}`" from "no
-// body at all" (both produce empty Body slice).
+// ErrorDecl is `error Category Name` with an optional `{ ... }` body; HasBody
+// tells an empty `{}` from no body.
 type ErrorDecl struct {
 	Pos         Pos
 	Decorators  []*Decorator
@@ -158,16 +131,14 @@ type ErrorDecl struct {
 	Name        string
 	Body        []TypeMember
 	HasBody     bool
-	TrailingDoc []string // `// note` on the same line as the body's closing `}`
+	TrailingDoc []string // comment after the closing brace
 }
 
 func (*ErrorDecl) declNode()          { astMarker() }
 func (d *ErrorDecl) DeclName() string { return d.Name }
 func (d *ErrorDecl) DeclPos() Pos     { return d.Pos }
 
-// ScalarDecl is `scalar Name <PrimitiveType> [@decorators]`. Doc holds
-// the run of `//` comments immediately preceding the `scalar` keyword,
-// captured for hover popups and round-trip-safe formatting.
+// ScalarDecl is `scalar Name primitive`.
 type ScalarDecl struct {
 	Pos        Pos
 	Decorators []*Decorator
@@ -180,10 +151,7 @@ func (*ScalarDecl) declNode()          { astMarker() }
 func (d *ScalarDecl) DeclName() string { return d.Name }
 func (d *ScalarDecl) DeclPos() Pos     { return d.Pos }
 
-// MiddlewareDecl is `middleware Name`. The DSL captures only the name -
-// configuration (parameter shape, defaults, behaviour) lives in the
-// hand-written Go impl file the scaffolder produces. Doc preserves the
-// leading `//` block.
+// MiddlewareDecl is `middleware Name`.
 type MiddlewareDecl struct {
 	Pos        Pos
 	Decorators []*Decorator
@@ -195,13 +163,8 @@ func (*MiddlewareDecl) declNode()          { astMarker() }
 func (d *MiddlewareDecl) DeclName() string { return d.Name }
 func (d *MiddlewareDecl) DeclPos() Pos     { return d.Pos }
 
-// ServiceDecl is either a primary `service Name { ... }` (Extend == false) or
-// a continuation `extend service Name { ... }` (Extend == true). The
-// semantic phase merges all extends into the primary.
-//
-// Members is a heterogeneous list of [*Method] (the actual endpoints) and
-// [*FreeComment] (free-floating section dividers / closing notes). Use
-// [ServiceDecl.Methods] when only the typed endpoints are needed.
+// ServiceDecl is `service Name { ... }`, or `extend service Name { ... }` when
+// Extend is set. Members holds [Method] and [FreeComment] entries in order.
 type ServiceDecl struct {
 	Pos         Pos
 	Decorators  []*Decorator
@@ -209,16 +172,14 @@ type ServiceDecl struct {
 	Name        string
 	Members     []ServiceMember
 	Extend      bool
-	TrailingDoc []string // `// note` on the same line as the body's closing `}`
+	TrailingDoc []string // comment after the closing brace
 }
 
 func (*ServiceDecl) declNode()          { astMarker() }
 func (d *ServiceDecl) DeclName() string { return d.Name }
 func (d *ServiceDecl) DeclPos() Pos     { return d.Pos }
 
-// Methods returns only the [*Method] entries from Members in source order.
-// Convenience for callers (semantic, codegen) that ignore free-floating
-// comments and want the typed list.
+// Methods returns the [Method] members in source order.
 func (d *ServiceDecl) Methods() []*Method {
 	if d == nil {
 		return nil
@@ -232,27 +193,14 @@ func (d *ServiceDecl) Methods() []*Method {
 	return out
 }
 
-// ServiceMember is the interface implemented by anything that can appear inside
-// a `service` body: [*Method] for typed endpoints and [*FreeComment] for
-// free-floating notes / section dividers.
+// ServiceMember is a [Method] or a [FreeComment].
 type ServiceMember interface {
 	serviceMember()
 	// MemberPos returns the position of the member's first token.
 	MemberPos() Pos
 }
 
-// Method is a single `<verb> Name [path] { request? response? }`. Path is nil
-// when the method body had no leading `/segment` - the runtime listens at
-// `basePath + servicePrefix` in that case.
-//
-// TrailingDoc captures a `// note` on the same line as the closing `}` of
-// the method body, e.g. `} // returns 404 if not found`.
-//
-// BodyComments holds free-floating comment blocks written inside the
-// method's `{ ... }` body (above the request/response lines or the closing
-// brace); the printer re-emits each at its source-ordered slot. EndPos is
-// the position of the body's closing `}` - the formatter uses it to
-// preserve blank-line grouping between this method and the next member.
+// Method is `verb Name /path { ... }`; Path is nil when omitted.
 type Method struct {
 	Pos          Pos
 	Decorators   []*Decorator
@@ -262,63 +210,51 @@ type Method struct {
 	Path         *Path
 	Request      *NamedTypeRef
 	Response     *MethodResponse
-	TrailingDoc  []string
-	BodyComments []*FreeComment
-	EndPos       Pos
+	TrailingDoc  []string       // comment after the closing brace
+	BodyComments []*FreeComment // comment blocks inside the body
+	EndPos       Pos            // the closing brace
 }
 
 func (*Method) serviceMember()   { astMarker() }
 func (m *Method) MemberPos() Pos { return m.Pos }
 
-// MethodResponse describes the response side of a method. The framework
-// JSON-encodes the named type unless the method hands the response side
-// to logic (`@rawResponse` / `@passthrough`); on a raw side the block is
-// a docs-only contract carried into OpenAPI and the generated types.
+// MethodResponse is a method's `response Type` clause.
 type MethodResponse struct {
 	Pos  Pos
 	Type *NamedTypeRef
 }
 
-// EventDecl is `event Name { payload Type }`: one contract the design
-// declares. It is file-level - which deployable publishes it, and which
-// listen, is the application's rather than the design's.
-//
-// TrailingDoc, BodyComments and EndPos mirror [Method].
+// EventDecl is `event Name { payload Type }`.
 type EventDecl struct {
 	Pos          Pos
 	Decorators   []*Decorator
 	Doc          []string
 	Name         string
 	Payload      *EventPayload
-	TrailingDoc  []string
-	BodyComments []*FreeComment
-	EndPos       Pos
+	TrailingDoc  []string       // comment after the closing brace
+	BodyComments []*FreeComment // comment blocks inside the body
+	EndPos       Pos            // the closing brace
 }
 
 func (*EventDecl) declNode()          { astMarker() }
 func (e *EventDecl) DeclName() string { return e.Name }
 func (e *EventDecl) DeclPos() Pos     { return e.Pos }
 
-// EventPayload is the `payload Type` clause of an event body.
+// EventPayload is the `payload Type` clause of an event.
 type EventPayload struct {
-	Pos  Pos
-	Type *NamedTypeRef
-	// Array marks `payload Type[]`: the contract carries a JSON array of
-	// Type rather than one of it. Only one dimension is legal, so a bool
-	// says everything a depth would.
-	Array bool
+	Pos   Pos
+	Type  *NamedTypeRef
+	Array bool // `payload Type[]`
 }
 
-// Path is the parsed representation of a route path. Each segment is either
-// a literal (possibly hyphenated like `api-v1`) or a `{param}`.
+// Path is a method's route, such as `/users/{id}`.
 type Path struct {
 	Pos      Pos
 	Segments []*PathSegment
 }
 
-// PathSegment models one `/segment` between slashes. Param == true means the
-// source had `{Literal}`; otherwise Literal is the literal text. An empty
-// Literal with Param == false represents a trailing slash.
+// PathSegment is one segment of a [Path]: `{Literal}` when Param is set,
+// otherwise literal text. The root path `/` is one empty segment.
 type PathSegment struct {
 	Pos     Pos
 	Param   bool

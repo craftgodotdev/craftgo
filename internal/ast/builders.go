@@ -1,28 +1,20 @@
 package ast
 
-// Test-friendly constructors for AST literals. Hand-typing
-// `&TypeRef{Named: &NamedTypeRef{Name: &QualifiedIdent{Parts: []string{"X"}}}}`
-// at every test site bloats fixtures with positional cruft; these
-// helpers collapse the common cases into one-liners.
-//
-// Constructors set position info to the zero value - the equality
-// helpers ([Equal] methods on TypeRef / NamedTypeRef / ...) ignore
-// positions anyway. Reuse from production code is not intended.
+// Constructors for test fixtures; positions are left zero.
 
-// Named builds a TypeRef for a single-segment named type
-// (`Named("string")` → DSL `string`). Use [Qualified] for dotted refs.
+// Named returns the TypeRef `name`.
 func Named(name string) *TypeRef {
 	return &TypeRef{Named: &NamedTypeRef{Name: &QualifiedIdent{Parts: []string{name}}}}
 }
 
-// NamedOpt is `Named` + Optional flag (`string?`).
+// NamedOpt returns the TypeRef `name?`.
 func NamedOpt(name string) *TypeRef {
 	t := Named(name)
 	t.Optional = true
 	return t
 }
 
-// NamedArr is `Named` + Array flag (`string[]`).
+// NamedArr returns the TypeRef `name[]`.
 func NamedArr(name string) *TypeRef {
 	t := Named(name)
 	t.Array = true
@@ -30,26 +22,24 @@ func NamedArr(name string) *TypeRef {
 	return t
 }
 
-// NamedArrOpt is array + optional (`string[]?`).
+// NamedArrOpt returns the TypeRef `name[]?`.
 func NamedArrOpt(name string) *TypeRef {
 	t := NamedArr(name)
 	t.Optional = true
 	return t
 }
 
-// Qualified builds a multi-segment named ref (`Qualified("shared", "User")`
-// → DSL `shared.User`). Returns a TypeRef ready to slot into a field.
+// Qualified returns the TypeRef naming the dotted parts, e.g. `shared.User`.
 func Qualified(parts ...string) *TypeRef {
 	return &TypeRef{Named: &NamedTypeRef{Name: &QualifiedIdent{Parts: parts}}}
 }
 
-// MapOf builds a `map<K, V>` TypeRef from two single-segment names.
+// MapOf returns the TypeRef `map<key, value>`.
 func MapOf(key, value string) *TypeRef {
 	return &TypeRef{Map: &MapType{Key: Named(key), Value: Named(value)}}
 }
 
-// Generic builds a generic-instantiation TypeRef
-// (`Generic("Page", Named("Order"))` → DSL `Page<Order>`).
+// Generic returns the TypeRef `name<args...>`.
 func Generic(name string, args ...*TypeRef) *TypeRef {
 	return &TypeRef{Named: &NamedTypeRef{
 		Name: &QualifiedIdent{Parts: []string{name}},
@@ -57,25 +47,22 @@ func Generic(name string, args ...*TypeRef) *TypeRef {
 	}}
 }
 
-// FieldOf is shorthand for a Field with a single-segment named type
-// (`FieldOf("id", "string")` → DSL `id string`).
+// FieldOf returns the field `name typeName`.
 func FieldOf(name, typeName string) *Field {
 	return &Field{Name: name, Type: Named(typeName)}
 }
 
-// FieldT is the general form: arbitrary TypeRef.
+// FieldT returns the field `name t`.
 func FieldT(name string, t *TypeRef) *Field {
 	return &Field{Name: name, Type: t}
 }
 
-// MixinOf builds a Mixin for a single-segment ref
-// (`MixinOf("Profile")` → DSL bare `Profile`).
+// MixinOf returns the mixin `name`.
 func MixinOf(name string) *Mixin {
 	return &Mixin{Ref: &NamedTypeRef{Name: &QualifiedIdent{Parts: []string{name}}}}
 }
 
-// MixinQualified builds a Mixin for a multi-segment qualified ref
-// (`MixinQualified("shared", "Audit")` → DSL `shared.Audit`).
+// MixinQualified returns the mixin naming the dotted parts, e.g. `shared.Audit`.
 func MixinQualified(parts ...string) *Mixin {
 	return &Mixin{Ref: &NamedTypeRef{Name: &QualifiedIdent{Parts: parts}}}
 }

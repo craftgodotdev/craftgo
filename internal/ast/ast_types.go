@@ -1,10 +1,10 @@
-// AST: TypeRef family + QualifiedIdent.
 package ast
 
 import (
 	"strings"
 )
 
+// QualifiedIdent is a dotted name such as `pkg.User`.
 type QualifiedIdent struct {
 	Pos   Pos
 	Parts []string
@@ -13,33 +13,19 @@ type QualifiedIdent struct {
 // String returns the dotted form, e.g. `pkg.Name` or `Name`.
 func (q *QualifiedIdent) String() string { return strings.Join(q.Parts, ".") }
 
-// TypeRef describes a type expression. Exactly one of Map or Named is set;
-// Array and Optional are independent suffix flags so `T[]?` is legal.
-//
-// `ArrayDepth` is the number of trailing `[]` suffixes parsed (0 =
-// not an array). `Array bool` is a derived convenience for call
-// sites that only care whether the field is "any kind of array" -
-// it equals `ArrayDepth > 0` after every parse.
+// TypeRef is a type expression: Map or Named, then ArrayDepth `[]` suffixes and
+// an optional `?`. The parser keeps Array equal to ArrayDepth > 0.
 type TypeRef struct {
-	Pos      Pos
-	Map      *MapType
-	Named    *NamedTypeRef
-	Array    bool
-	Optional bool
-	// ArrayDepth captures multi-dimensional arrays (`Tag[][]` →
-	// 2). Single-dim arrays use depth 1. Code that only needs
-	// "is this an array?" can keep checking [Array] / `> 0`
-	// equivalently.
+	Pos        Pos
+	Map        *MapType
+	Named      *NamedTypeRef
+	Array      bool
+	Optional   bool
 	ArrayDepth int
 }
 
-// ElemTypeRef returns a copy of t with ONE array dimension peeled: the depth
-// is decremented and Array re-set while an inner dimension remains, so a
-// multi-dimensional element keeps its array shape. Optional is dropped - the
-// `?` belongs to the outer field, not each element. Returns nil for a nil
-// receiver. The semantic type-checker (literal type-fit) and the codegen
-// default pre-fill both peel array elements this way; sharing one definition
-// keeps them from drifting.
+// ElemTypeRef returns t's element type: a copy with one array dimension
+// removed and no `?`. It returns nil for a nil t.
 func (t *TypeRef) ElemTypeRef() *TypeRef {
 	if t == nil {
 		return nil
@@ -56,17 +42,15 @@ func (t *TypeRef) ElemTypeRef() *TypeRef {
 	return &clone
 }
 
-// MapType represents `map<K, V>`. Both Key and Value are recursive [TypeRef]
-// values so that nested maps and generic instances work uniformly.
+// MapType is `map<Key, Value>`.
 type MapType struct {
 	Pos   Pos
 	Key   *TypeRef
 	Value *TypeRef
 }
 
-// NamedTypeRef references a declared type, possibly with generic arguments.
-// Args is non-empty only for generic instances; the codegen renames such
-// instances to e.g. `FooOfUserAndOrg`.
+// NamedTypeRef names a type; Args holds the type arguments of a generic
+// instance.
 type NamedTypeRef struct {
 	Pos  Pos
 	Name *QualifiedIdent

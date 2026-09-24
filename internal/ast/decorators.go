@@ -1,8 +1,7 @@
 package ast
 
-// FindDecorator returns the FIRST decorator in decs whose Name matches.
-// Returns nil when no decorator matches or decs is empty. Nil entries
-// in decs are skipped, so callers iterate without their own nil guard.
+// FindDecorator returns the first decorator in decs named name, or nil; nil
+// entries are skipped.
 func FindDecorator(decs []*Decorator, name string) *Decorator {
 	for _, d := range decs {
 		if d != nil && d.Name == name {
@@ -12,20 +11,13 @@ func FindDecorator(decs []*Decorator, name string) *Decorator {
 	return nil
 }
 
-// HasDecorator reports whether decs contains a decorator with the
-// given Name. Equivalent to `FindDecorator(decs, name) != nil` but
-// reads better at call sites that only need the boolean.
+// HasDecorator reports whether decs has a decorator named name.
 func HasDecorator(decs []*Decorator, name string) bool {
 	return FindDecorator(decs, name) != nil
 }
 
-// DecoratorArgValues flattens one decorator argument into the underlying
-// value expressions, expanding the `@x([a, b])` array-shortcut form into its
-// elements. A decorator marked AllowArrayShortcut accepts BOTH the variadic
-// `@x(a, b)` and the array `@x([a, b])` forms, and the analyzer treats them
-// as equivalent - so every consumer (semantic checks AND every codegen
-// emitter) must read them identically through this one helper, or the array
-// form silently contributes nothing.
+// DecoratorArgValues returns a's value, or the elements of an array value, so
+// `@x([a, b])` reads like `@x(a, b)`. It returns nil for a nil a.
 func DecoratorArgValues(a *DecoratorArg) []Expr {
 	if a == nil {
 		return nil
