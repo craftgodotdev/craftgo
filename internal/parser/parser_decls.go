@@ -1,8 +1,6 @@
 package parser
 
 import (
-	"strconv"
-
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -118,8 +116,7 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 		switch p.peek().Kind {
 		case lexer.Int:
 			tok := p.advance()
-			n, _ := strconv.ParseInt(tok.Text, 10, 64)
-			v.IntValue = n
+			v.IntValue = p.signedInt(tok.Pos, tok, false)
 			v.Kind = ast.EnumInt
 		case lexer.String:
 			tok := p.advance()
@@ -128,14 +125,12 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 			v.Kind = ast.EnumString
 		case lexer.Dash:
 			// `Name = -1`: the sign and the integer are one value.
-			p.advance()
+			dash := p.advance()
 			if p.peek().Kind != lexer.Int {
 				p.errorf(p.peek().Pos, "expected integer after '-' in enum value")
 				break
 			}
-			tok := p.advance()
-			n, _ := strconv.ParseInt("-"+tok.Text, 10, 64)
-			v.IntValue = n
+			v.IntValue = p.signedInt(dash.Pos, p.advance(), true)
 			v.Kind = ast.EnumInt
 		default:
 			p.errorf(p.peek().Pos, "expected int or string for enum value")

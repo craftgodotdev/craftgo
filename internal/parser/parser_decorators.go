@@ -154,11 +154,7 @@ func (p *Parser) parseValue() ast.Expr {
 		return &ast.StringLit{Pos: t.Pos, Value: unquote(t), Text: t.Text}
 	case lexer.Int:
 		p.advance()
-		n, err := strconv.ParseInt(t.Text, 10, 64)
-		if err != nil {
-			p.errorf(t.Pos, "integer literal %s is out of range - values beyond the signed 64-bit range (max %s) aren't supported yet", t.Text, "9223372036854775807")
-		}
-		return &ast.IntLit{Pos: t.Pos, Value: n}
+		return &ast.IntLit{Pos: t.Pos, Value: p.signedInt(t.Pos, t, false)}
 	case lexer.Float:
 		p.advance()
 		f, _ := strconv.ParseFloat(t.Text, 64)
@@ -184,11 +180,7 @@ func (p *Parser) parseValue() ast.Expr {
 		next := p.peek()
 		if next.Kind == lexer.Int {
 			p.advance()
-			n, err := strconv.ParseInt("-"+next.Text, 10, 64)
-			if err != nil {
-				p.errorf(t.Pos, "integer literal -%s is out of range - values beyond the signed 64-bit range (min %s) aren't supported yet", next.Text, "-9223372036854775808")
-			}
-			return &ast.IntLit{Pos: t.Pos, Value: n}
+			return &ast.IntLit{Pos: t.Pos, Value: p.signedInt(t.Pos, next, true)}
 		}
 		if next.Kind == lexer.Float {
 			p.advance()
@@ -210,6 +202,20 @@ func (p *Parser) parseValue() ast.Expr {
 	p.errorf(t.Pos, "expected literal, got %s", t.Kind)
 	p.advance()
 	return &ast.NullLit{Pos: t.Pos}
+}
+
+// signedInt returns the value of the Int token tok, negated when neg, and
+// reports at pos a value outside the int64 range.
+func (p *Parser) signedInt(pos lexer.Position, tok lexer.Token, neg bool) int64 {
+	text, bound := tok.Text, "max 9223372036854775807"
+	if neg {
+		text, bound = "-"+tok.Text, "min -9223372036854775808"
+	}
+	n, err := strconv.ParseInt(text, 10, 64)
+	if err != nil {
+		p.errorf(pos, "integer literal %s is out of range - values beyond the signed 64-bit range (%s) aren't supported yet", text, bound)
+	}
+	return n
 }
 
 // unquote returns the value of a String or RawString token; the lexer emits

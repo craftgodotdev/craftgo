@@ -87,6 +87,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   parent.** It said the working directory whenever `-f` is given, and the
   CLI reference said the directory holding `go.mod`.
 
+- **An enum value outside the int64 range is an error**, as it is in a
+  decorator argument. `A = 99999999999999999999` parsed silently as
+  9223372036854775807.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
