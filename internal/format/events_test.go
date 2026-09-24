@@ -22,7 +22,7 @@ type OrderPlacedPayload {
 event OrderPlaced {
 	// the shape a listener receives
 	payload OrderPlacedPayload // versioned with the contract
-}  // end of contract
+} // end of contract
 
 @prefix("/v1")
 service OrderService {
@@ -133,40 +133,28 @@ func TestEveryDeclKindPrints(t *testing.T) {
 	}
 }
 
-// Every declaration kind but ScalarDecl, which prints its decorators inline,
-// has a decorator comment chain.
-func TestEveryDecoratedDeclKindHasACommentChain(t *testing.T) {
-	inlineDecorators := map[string]bool{"*ast.ScalarDecl": true}
-	dec := []*ast.Decorator{{Name: "doc", Pos: ast.Pos{Line: 1}}}
-	for _, d := range ast.AllDeclKinds() {
-		withDecorators(d, dec)
-		kind := fmt.Sprintf("%T", d)
-		spans := chainSpans(&ast.File{Decls: []ast.Decl{d}})
-		if len(spans) == 0 && !inlineDecorators[kind] {
-			t.Errorf("%s contributes no comment chain - comments between its decorators are dropped", kind)
-		}
-		if len(spans) > 0 && inlineDecorators[kind] {
-			t.Errorf("%s now spans a chain; drop it from the inline exception", kind)
-		}
+// Every declaration kind keeps the comments inside its decorator chain and
+// after its decorators in place.
+func TestEveryDeclKindKeepsItsChainComments(t *testing.T) {
+	decls := map[string]string{
+		"*ast.TypeDecl":       "type T {\n\ta string\n}\n",
+		"*ast.EnumDecl":       "enum E {\n\tA\n}\n",
+		"*ast.ErrorDecl":      "error NotFound Gone\n",
+		"*ast.ScalarDecl":     "scalar S string\n",
+		"*ast.MiddlewareDecl": "middleware M\n",
+		"*ast.ServiceDecl":    "service S {\n\tget A /a {}\n}\n",
+		"*ast.EventDecl":      "event E {\n\tpayload T\n}\n",
 	}
-}
-
-// withDecorators attaches decs to whichever declaration kind d is.
-func withDecorators(d ast.Decl, decs []*ast.Decorator) {
-	switch v := d.(type) {
-	case *ast.TypeDecl:
-		v.Decorators = decs
-	case *ast.EnumDecl:
-		v.Decorators = decs
-	case *ast.ErrorDecl:
-		v.Decorators = decs
-	case *ast.ScalarDecl:
-		v.Decorators = decs
-	case *ast.MiddlewareDecl:
-		v.Decorators = decs
-	case *ast.ServiceDecl:
-		v.Decorators = decs
-	case *ast.EventDecl:
-		v.Decorators = decs
+	for _, d := range ast.AllDeclKinds() {
+		kind := fmt.Sprintf("%T", d)
+		decl, ok := decls[kind]
+		if !ok {
+			t.Errorf("%s has no case", kind)
+			continue
+		}
+		t.Run(kind, func(t *testing.T) {
+			src := "package p\n\n// doc\n@a // after a\n// above b\n@b\n// above the keyword\n" + decl
+			formatExact(t, src, src)
+		})
 	}
 }

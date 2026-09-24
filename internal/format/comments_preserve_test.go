@@ -96,6 +96,62 @@ service Things {
 	formatExact(t, canonical, canonical)
 }
 
+// A comment after code stays at the end of that code's line, a comment inside
+// a decorator chain stays in the chain, and each formats to itself.
+func TestFormatKeepsEveryCommentInPlace(t *testing.T) {
+	for name, src := range map[string]string{
+		"after package":                   "package x // c\n",
+		"after middleware":                "package x\n\nmiddleware M // c\n",
+		"after bodiless error":            "package x\n\nerror NotFound Gone // c\n",
+		"after mixin":                     "package x\n\ntype T {\n\tBase // c\n\ta string\n}\n",
+		"after type brace":                "package x\n\ntype T { // c\n\ta string\n}\n",
+		"after generic brace":             "package x\n\ntype P<T> { // c\n\titems T[]\n}\n",
+		"after enum brace":                "package x\n\nenum E { // c\n\tA\n}\n",
+		"after service brace":             "package x\n\nservice S { // c\n\tget A /a {\n\t\tresponse T\n\t}\n}\n",
+		"after method brace":              "package x\n\nservice S {\n\tget A /a { // c\n\t\tresponse T\n\t}\n}\n",
+		"after event brace":               "package x\n\nevent E { // c\n\tpayload T\n}\n",
+		"after closing brace":             "package x\n\ntype T {\n\ta string\n} // c\n",
+		"after empty body":                "package x\n\nservice S {\n\tget A /a {} // c\n}\n",
+		"doc above a commented decorator": "package x\n\ntype T {\n\t// doc\n\t@minLength(1) // c\n\tb string\n}\n",
+		"after a decorator and its field": "package x\n\ntype T {\n\t@minLength(1) // c1\n\tb string // c2\n}\n",
+		"after two field decorators":      "package x\n\ntype T {\n\t@minLength(1) // c1\n\t@maxLength(5) // c2\n\tb string\n}\n",
+		"inside a field chain":            "package x\n\ntype T {\n\t@minLength(1)\n\t// between\n\tb string\n}\n",
+		"inside a scalar chain":           "package x\n\n@minLength(1)\n// in-chain\n@maxLength(5)\nscalar Code string\n",
+		"after a scalar decorator":        "package x\n\n@minLength(1) // c\nscalar S string\n",
+		"under forwarded decorators":      "@doc(\"t\")\n// c\ntype T {\n\ty string\n}\n",
+		"between file decorators":         "@version(\"1\")\n// c\n@doc(\"d\")\npackage x\n",
+		"between imports":                 "package x\n\nimport \"a\"\n\n// free\n\nimport \"b\"\n",
+		"above file decorators":           "// prologue\n\n// doc\n@version(\"1\") // v\npackage x\n",
+		"above forwarded decorators":      "// prologue\n\n// doc\n@doc(\"t\")\ntype T {\n\ty string\n}\n",
+		"after an import":                 "package x\n\nimport \"a\" // c\n",
+		"after enum values":               "package x\n\nenum E {\n\tA = 1 // c\n\tB = 2 @x // d\n}\n",
+		"after clauses":                   "package x\n\nservice S {\n\tget A /a {\n\t\trequest  R // c\n\t\tresponse T // d\n\t}\n}\n",
+	} {
+		t.Run(name, func(t *testing.T) { formatExact(t, src, src) })
+	}
+}
+
+// A comment moves to the line its code joins: a collapsed argument list, a
+// path before the brace, a CRLF line.
+func TestFormatMovesACommentWithItsCode(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{"collapsed decorator arguments", "package x\n\ntype T {\n\ta string @example({\n\t\tx: 1, // c\n\t\ty: 2\n\t})\n}\n", "package x\n\ntype T {\n\ta string @example({x: 1, y: 2}) // c\n}\n"},
+		{"path before the brace", "package x\n\nservice S {\n\tget A /a // c\n\t{\n\t\tresponse T\n\t}\n}\n", "package x\n\nservice S {\n\tget A /a { // c\n\t\tresponse T\n\t}\n}\n"},
+		{"CRLF", "package x\r\n\r\ntype T { // c\r\n\ta string // d\r\n}\r\n", "package x\n\ntype T { // c\n\ta string // d\n}\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
+	}
+}
+
+// Format refuses to put two comments on one collapsed line.
+func TestFormatRefusesTwoCommentsOnOneLine(t *testing.T) {
+	src := "package x\n\ntype T {\n\ta string @example({\n\t\tx: 1, // c1\n\t\ty: 2 // c2\n\t})\n}\n"
+	out, diags := Format("t.craftgo", src)
+	if len(diags) == 0 || out != src {
+		t.Fatalf("diagnostics %v, want a refusal with the source unchanged:\n%s", diags, out)
+	}
+}
+
 // TestFormatBlankRunsCollapse pins that a run of blank lines collapses to one.
 func TestFormatBlankRunsCollapse(t *testing.T) {
 	src := `package demo

@@ -15,7 +15,7 @@ func (p *Parser) parsePackage() *ast.PackageDecl {
 }
 
 // parseImport parses `import "path"` or `import alias "path"`, taking the
-// comment above as Doc and the one after the path as TrailingDoc.
+// comment above as Doc.
 func (p *Parser) parseImport() *ast.Import {
 	importTok := p.advance()
 	p.claimDoc(importTok)
@@ -23,26 +23,25 @@ func (p *Parser) parseImport() *ast.Import {
 	if p.peek().Kind == lexer.Ident {
 		imp.Alias = p.advance().Text
 	}
-	str, ok := p.expect(lexer.String)
-	if ok {
+	if str, ok := p.expect(lexer.String); ok {
 		imp.Path = unquote(str)
 		imp.PathText = str.Text
-		imp.TrailingDoc = str.Trailing
 	}
 	return imp
 }
 
 // parseTopLevelWith parses one declaration, prefixing its decorators with
-// extra.
+// extra. With extra, the comment above the keyword belongs to the chain, and
+// the one above extra is the file's LeadingDoc.
 func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
-	doc := p.docAbove()
+	var doc []string
+	if len(extra) == 0 {
+		doc = p.docAbove()
+	}
 	decs := append([]*ast.Decorator{}, extra...)
 	decs = append(decs, p.parseDecorators()...)
 	t := p.peek()
-	// Comments inside the decorator chain are not free comments.
-	if len(decs) > 0 {
-		p.claimCommentsBetween(decs[0].Pos.Line, t.Pos.Line)
-	}
+	p.claimChain(decs, t.Pos.Line)
 	switch t.Kind {
 	case lexer.KwType:
 		return p.parseTypeDecl(decs, doc)
@@ -80,9 +79,7 @@ func (p *Parser) parseEnumDecl(decs []*ast.Decorator, doc []string) *ast.EnumDec
 			ed.Members = append(ed.Members, v)
 		}
 	})
-	if rbrace.Trailing != "" {
-		ed.TrailingDoc = []string{rbrace.Trailing}
-	}
+	ed.EndPos = rbrace.Pos
 	fcs := p.harvestFreeComments(lbrace.Pos.Line, rbrace.Pos.Line)
 	ed.Members = mergeFreeComments(ed.Members, fcs, func(fc *ast.FreeComment) ast.EnumMember { return fc })
 	return ed
@@ -141,10 +138,7 @@ func (p *Parser) parseErrorDecl(decs []*ast.Decorator, doc []string) *ast.ErrorD
 	if p.peek().Kind == lexer.LBrace {
 		ed.HasBody = true
 		body, rbrace := p.parseTypeBody()
-		ed.Body = body
-		if rbrace.Trailing != "" {
-			ed.TrailingDoc = []string{rbrace.Trailing}
-		}
+		ed.Body, ed.EndPos = body, rbrace.Pos
 	}
 	return ed
 }

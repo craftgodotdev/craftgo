@@ -488,14 +488,11 @@ func TestLineCommentStripsCarriageReturn(t *testing.T) {
 	}
 }
 
-// A comment after a token keeps its line, drops a CRLF's '\r', and is
-// recorded once with the leading ones.
+// A comment after a token is recorded as trailing without a CRLF's '\r', in
+// order with the leading ones.
 func TestTrailingCommentStripsCarriageReturn(t *testing.T) {
 	l := New("", "foo // one\r\n// two\r\nbar \r// three\r\n")
 	toks := l.Tokenize()
-	if toks[0].Trailing != "one" || toks[1].Trailing != "three" {
-		t.Errorf("trailing = %q, %q", toks[0].Trailing, toks[1].Trailing)
-	}
 	if len(toks[1].Doc) != 1 || toks[1].Doc[0] != "two" {
 		t.Errorf("doc of bar = %q", toks[1].Doc)
 	}

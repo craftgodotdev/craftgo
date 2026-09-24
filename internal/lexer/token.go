@@ -177,8 +177,6 @@ type Token struct {
 	Pos  Position
 	// Doc holds the comment lines directly above the token.
 	Doc []string
-	// Trailing is the comment after the token on its line, if any.
-	Trailing string
 }
 
 // String renders the token as `Kind "text" at pos`.

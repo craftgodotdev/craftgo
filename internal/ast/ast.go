@@ -31,6 +31,9 @@ type File struct {
 	Decls      []Decl
 	// FreeComments are the file-scope comment blocks no node claimed.
 	FreeComments []*FreeComment
+	// ChainComments maps the line of a decorator, or of the name or keyword
+	// after a decorator chain, to the comment lines above it inside the chain.
+	ChainComments map[int][]string
 	// Comments is every comment in the file in source order, including those
 	// a Doc field also holds.
 	Comments []*Comment
@@ -44,15 +47,13 @@ type PackageDecl struct {
 }
 
 // Import is `import "path"` or `import alias "path"`. PathText is Path as
-// written, quotes included; Doc is the comment above it and TrailingDoc the one
-// after the path.
+// written, quotes included; Doc is the comment above it.
 type Import struct {
-	Pos         Pos
-	Alias       string
-	Path        string
-	PathText    string
-	Doc         []string
-	TrailingDoc string
+	Pos      Pos
+	Alias    string
+	Path     string
+	PathText string
+	Doc      []string
 }
 
 // Decl is a top-level declaration; [AllDeclKinds] has one of each kind.

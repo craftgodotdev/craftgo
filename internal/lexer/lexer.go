@@ -113,8 +113,8 @@ func (l *Lexer) Tokenize() []Token {
 	}
 }
 
-// Next returns the next token, with the comments above it in Doc and a comment
-// after it on its line in Trailing.
+// Next returns the next token, with the comments above it in Doc; a comment
+// after it on its line is recorded as trailing.
 func (l *Lexer) Next() Token {
 	l.skipWhitespaceAndComments()
 	if l.offset >= len(l.src) {
@@ -142,13 +142,13 @@ func (l *Lexer) Next() Token {
 		tok.Doc = l.pendingDoc
 		l.pendingDoc = nil
 	}
-	tok.Trailing = l.consumeTrailingComment()
+	l.consumeTrailingComment()
 	return tok
 }
 
-// consumeTrailingComment consumes a `//` comment later on the current line and
-// returns its text; without one it leaves the cursor and returns "".
-func (l *Lexer) consumeTrailingComment() string {
+// consumeTrailingComment consumes and records a `//` comment later on the
+// current line; without one it leaves the cursor.
+func (l *Lexer) consumeTrailingComment() {
 	saveOffset, saveLine, saveCol := l.offset, l.line, l.column
 	for l.offset < len(l.src) {
 		r := l.peek()
@@ -159,9 +159,9 @@ func (l *Lexer) consumeTrailingComment() string {
 	}
 	if !l.atLineComment() {
 		l.offset, l.line, l.column = saveOffset, saveLine, saveCol
-		return ""
+		return
 	}
-	return l.lineComment(CommentTrailing)
+	l.lineComment(CommentTrailing)
 }
 
 // atLineComment reports whether a `//` comment starts at the cursor.

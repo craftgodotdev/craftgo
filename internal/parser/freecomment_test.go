@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -221,6 +222,58 @@ type Name {
 `)
 	if len(f.FreeComments) != 0 {
 		t.Errorf("chain comment leaked into File.FreeComments: %#v", f.FreeComments)
+	}
+}
+
+// The comments inside a decorator chain are recorded under the line of the
+// decorator, name or keyword below them, for file, declaration, method and
+// field chains alike, and none is a free comment.
+func TestChainCommentsRecorded(t *testing.T) {
+	f := mustParse(t, `@version("1")
+// file chain
+@doc("d")
+package p
+
+@minLength(1)
+// type chain
+
+// after a blank line
+type Name {
+	@minLength(1)
+	// field chain
+	v string
+}
+
+service S {
+	@doc("m")
+	// method chain
+	get A /a {}
+}
+`)
+	want := map[int][]string{
+		3:  {"file chain"},
+		10: {"type chain", "after a blank line"},
+		13: {"field chain"},
+		19: {"method chain"},
+	}
+	if !reflect.DeepEqual(f.ChainComments, want) {
+		t.Errorf("ChainComments = %v, want %v", f.ChainComments, want)
+	}
+	if len(f.FreeComments) != 0 || len(f.Decls[0].(*ast.TypeDecl).Body) != 1 {
+		t.Errorf("a chain comment became free: file %#v, type body %#v", f.FreeComments, f.Decls[0].(*ast.TypeDecl).Body)
+	}
+}
+
+// In a file without a package, the comment under the decorators it hands to
+// the first declaration belongs to their chain, not to that declaration's doc.
+func TestForwardedChainCommentIsNoDoc(t *testing.T) {
+	f := mustParse(t, "// file doc\n@doc(\"t\")\n// in the chain\ntype T {\n\ty string\n}\n")
+	td := f.Decls[0].(*ast.TypeDecl)
+	if len(td.Doc) != 0 || len(f.LeadingDoc) != 1 || f.LeadingDoc[0] != "file doc" {
+		t.Errorf("Doc = %q, LeadingDoc = %q", td.Doc, f.LeadingDoc)
+	}
+	if got := f.ChainComments[4]; len(got) != 1 || got[0] != "in the chain" {
+		t.Errorf("ChainComments = %v", f.ChainComments)
 	}
 }
 

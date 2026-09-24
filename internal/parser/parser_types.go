@@ -15,10 +15,7 @@ func (p *Parser) parseTypeDecl(decs []*ast.Decorator, doc []string) *ast.TypeDec
 		td.TypeParams = p.parseTypeParams()
 	}
 	body, rbrace := p.parseTypeBody()
-	td.Body = body
-	if rbrace.Trailing != "" {
-		td.TrailingDoc = []string{rbrace.Trailing}
-	}
+	td.Body, td.EndPos = body, rbrace.Pos
 	return td
 }
 
@@ -74,6 +71,7 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 	doc := p.docAbove()
 	decs := p.parseDecorators()
 	t := p.peek()
+	p.claimChain(decs, t.Pos.Line)
 	switch {
 	case t.Kind.IsKeyword():
 		// A reserved word never names a type, so here it is a field name.

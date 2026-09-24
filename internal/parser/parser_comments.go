@@ -12,13 +12,31 @@ func (p *Parser) claimDoc(tok lexer.Token) {
 	}
 }
 
-// claimCommentsBetween claims every leading comment strictly between lines lo
-// and hi.
-func (p *Parser) claimCommentsBetween(lo, hi int) {
+// claimChain claims the comments inside the decorator chain decs, which ends
+// at the name or keyword on line last, and records each block under the line
+// of the decorator, name or keyword below it.
+func (p *Parser) claimChain(decs []*ast.Decorator, last int) {
+	if len(decs) == 0 {
+		return
+	}
+	lines := make([]int, 0, len(decs))
+	for _, d := range decs[1:] {
+		lines = append(lines, d.Pos.Line)
+	}
+	lines = append(lines, last)
+	prev := decs[0].Pos.Line
 	for _, c := range p.allComments {
-		if c != nil && c.Kind == lexer.CommentLeading && c.Pos.Line > lo && c.Pos.Line < hi {
-			p.claimed[c.Pos.Line] = true
+		if c.Kind != lexer.CommentLeading || c.Pos.Line <= prev {
+			continue
 		}
+		for len(lines) > 0 && c.Pos.Line >= lines[0] {
+			prev, lines = lines[0], lines[1:]
+		}
+		if len(lines) == 0 {
+			return
+		}
+		p.claimed[c.Pos.Line] = true
+		p.chainComments[lines[0]] = append(p.chainComments[lines[0]], c.Text)
 	}
 }
 

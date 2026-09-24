@@ -37,8 +37,6 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 	}
 	p.advance()
 	d := &ast.Decorator{Pos: at.Pos, Name: nameTok.Text}
-	// The comment after the decorator's last token is its TrailingDoc.
-	lastTok := nameTok
 	if p.peek().Kind == lexer.LParen {
 		p.advance()
 		d.HasParens = true
@@ -46,10 +44,8 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 			d.Args = append(d.Args, p.parseDecoratorArg())
 			p.listSep(lexer.RParen, "decorator argument")
 		}
-		rparen, _ := p.expect(lexer.RParen)
-		lastTok = rparen
+		p.expect(lexer.RParen)
 	}
-	d.TrailingDoc = lastTok.Trailing
 	return d
 }
 

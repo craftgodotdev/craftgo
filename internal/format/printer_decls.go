@@ -9,9 +9,9 @@ import (
 )
 
 func (p *Printer) TypeDecl(d *ast.TypeDecl) {
-	p.Doc(d.Doc)
+	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), d.Doc)
 	p.declDecorators(d.Decorators, d.Pos.Line)
-	p.indent()
+	p.line(d.Pos.Line)
 	p.write("type ")
 	p.write(d.Name)
 	if len(d.TypeParams) > 0 {
@@ -25,35 +25,18 @@ func (p *Printer) TypeDecl(d *ast.TypeDecl) {
 		p.write(">")
 	}
 	p.write(" {")
-	p.nl()
+	p.endCode()
 	p.depth++
 	p.printTypeBody(d.Body)
 	p.depth--
-	p.indent()
+	p.closeBrace(d.EndPos.Line)
+}
+
+// closeBrace prints the `}` on source line src.
+func (p *Printer) closeBrace(src int) {
+	p.line(src)
 	p.write("}")
-	p.writeTrailing(d.TrailingDoc)
-	p.nl()
-}
-
-// writeTrailing writes the trailing comment td after a closing brace.
-func (p *Printer) writeTrailing(td []string) {
-	if len(td) == 0 {
-		return
-	}
-	p.write("  // ")
-	p.write(strings.Join(td, " "))
-}
-
-// writeSourceTrailing writes the trailing comment on line, unless a decorator on
-// that line already wrote it as its TrailingDoc (decoratorCarriesTrailing).
-func (p *Printer) writeSourceTrailing(line int, decoratorCarriesTrailing bool) {
-	if decoratorCarriesTrailing {
-		return
-	}
-	if c, ok := p.trailing[line]; ok {
-		p.write(" // ")
-		p.write(c)
-	}
+	p.endCode()
 }
 
 // printTypeBody prints body with fields aligned in name and type columns,
@@ -87,10 +70,10 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 			prevEnd = v.Pos.Line
 		case *ast.Mixin:
 			p.blankBetween(prevEnd, v.Pos.Line-len(v.Doc))
-			p.printLeadingDoc(v.Doc, v.Pos.Line)
-			p.indent()
+			p.comments(v.Pos.Line, v.Doc)
+			p.line(v.Pos.Line)
 			p.NamedTypeRef(v.Ref)
-			p.nl()
+			p.endCode()
 			prevEnd = v.Pos.Line
 		case *ast.FreeComment:
 			p.blankBetween(prevEnd, v.Pos.Line)
@@ -104,7 +87,7 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 // and line start; a zero line (first member, or no position) writes none.
 func (p *Printer) blankBetween(prevEnd, start int) {
 	if prevEnd > 0 && start > prevEnd+1 {
-		p.nl()
+		p.blank(start)
 	}
 }
 
@@ -129,70 +112,45 @@ func (p *Printer) typeRefString(t *ast.TypeRef) string {
 }
 
 // alignedField prints f's doc, then f on one line padded to the maxName and
-// maxType columns.
+// maxType columns. Decorators above f join its line unless a comment pins
+// them to their own lines.
 func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
-	p.printFieldDoc(f)
-	p.indent()
+	start := memberStartLine(f.Pos.Line, f.Decorators, 0)
+	p.comments(start, f.Doc)
+	decs := f.Decorators
+	if lead := leadingChain(decs, f.Pos.Line); p.chainCommented(lead, f.Pos.Line) {
+		p.declDecorators(lead, f.Pos.Line)
+		decs, start = decs[len(lead):], f.Pos.Line
+	}
+	p.line(start)
 	p.write(f.Name)
 	p.write(strings.Repeat(" ", maxName-len(f.Name)+1))
 	p.write(ts)
-	var decTrailing []string
-	if len(f.Decorators) > 0 {
+	if len(decs) > 0 {
 		p.write(strings.Repeat(" ", maxType-len(ts)+1))
-		for i, dec := range f.Decorators {
-			if i > 0 {
-				p.write(" ")
-			}
-			// Trailing comments move to the line end: mid-line, one would
-			// comment out the decorators after it.
-			p.decoratorCore(dec)
-			if dec.TrailingDoc != "" {
-				decTrailing = append(decTrailing, dec.TrailingDoc)
-			}
-		}
+		p.inlineDecorators(decs)
 	}
-	if len(decTrailing) > 0 {
-		p.write("  // ")
-		p.write(strings.Join(decTrailing, " "))
-	} else {
-		p.writeSourceTrailing(f.Pos.Line, false)
-	}
-	p.nl()
+	p.endCode()
 }
 
-func (p *Printer) printFieldDoc(f *ast.Field) {
-	p.printLeadingDoc(f.Doc, f.Pos.Line)
-}
-
-// printLeadingDoc prints doc, dropping each line whose source line (assumed to
-// be directly above posLine) has a trailing comment.
-func (p *Printer) printLeadingDoc(doc []string, posLine int) {
-	if len(doc) == 0 {
-		return
-	}
-	if p.trailing == nil {
-		p.Doc(doc)
-		return
-	}
-	keep := make([]string, 0, len(doc))
-	for i, line := range doc {
-		srcLine := posLine - len(doc) + i
-		if _, hit := p.trailing[srcLine]; hit {
-			continue
+// inlineDecorators writes decs on the current line, separated by spaces.
+func (p *Printer) inlineDecorators(decs []*ast.Decorator) {
+	for i, d := range decs {
+		if i > 0 {
+			p.write(" ")
 		}
-		keep = append(keep, line)
+		p.Decorator(d)
 	}
-	p.Doc(keep)
 }
 
 func (p *Printer) EnumDecl(d *ast.EnumDecl) {
-	p.Doc(d.Doc)
+	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), d.Doc)
 	p.declDecorators(d.Decorators, d.Pos.Line)
-	p.indent()
+	p.line(d.Pos.Line)
 	p.write("enum ")
 	p.write(d.Name)
 	p.write(" {")
-	p.nl()
+	p.endCode()
 	p.depth++
 	maxName := 0
 	for _, m := range d.Members {
@@ -216,15 +174,12 @@ func (p *Printer) EnumDecl(d *ast.EnumDecl) {
 		}
 	}
 	p.depth--
-	p.indent()
-	p.write("}")
-	p.writeTrailing(d.TrailingDoc)
-	p.nl()
+	p.closeBrace(d.EndPos.Line)
 }
 
 func (p *Printer) EnumValue(v *ast.EnumValue, maxName int) {
-	p.printLeadingDoc(v.Doc, v.Pos.Line)
-	p.indent()
+	p.comments(v.Pos.Line, v.Doc)
+	p.line(v.Pos.Line)
 	p.write(v.Name)
 	switch v.Kind {
 	case ast.EnumInt:
@@ -236,73 +191,68 @@ func (p *Printer) EnumValue(v *ast.EnumValue, maxName int) {
 		p.write("= ")
 		p.write(v.StrText)
 	}
-	decoratorCarriesTrailing := false
-	for _, dec := range v.Decorators {
+	if len(v.Decorators) > 0 {
 		p.write(" ")
-		p.Decorator(dec)
-		if dec.TrailingDoc != "" {
-			decoratorCarriesTrailing = true
-		}
+		p.inlineDecorators(v.Decorators)
 	}
-	p.writeSourceTrailing(v.Pos.Line, decoratorCarriesTrailing)
-	p.nl()
+	p.endCode()
 }
 
 func (p *Printer) ErrorDecl(d *ast.ErrorDecl) {
-	p.Doc(d.Doc)
+	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), d.Doc)
 	p.declDecorators(d.Decorators, d.Pos.Line)
-	p.indent()
+	p.line(d.Pos.Line)
 	p.write("error ")
 	p.write(d.Category)
 	p.write(" ")
 	p.write(d.Name)
 	if !d.HasBody {
-		p.nl()
+		p.endCode()
 		return
 	}
 	p.write(" {")
-	p.nl()
+	p.endCode()
 	p.depth++
 	p.printTypeBody(d.Body)
 	p.depth--
-	p.indent()
-	p.write("}")
-	p.writeTrailing(d.TrailingDoc)
-	p.nl()
+	p.closeBrace(d.EndPos.Line)
 }
 
+// ScalarDecl prints `scalar Name primitive` with its decorators on the line;
+// a chain above the keyword keeps its lines when a comment pins it.
 func (p *Printer) ScalarDecl(d *ast.ScalarDecl) {
-	p.Doc(d.Doc)
-	p.indent()
+	start := memberStartLine(d.Pos.Line, d.Decorators, 0)
+	p.comments(start, d.Doc)
+	decs := d.Decorators
+	if lead := leadingChain(decs, d.Pos.Line); p.chainCommented(lead, d.Pos.Line) {
+		p.declDecorators(lead, d.Pos.Line)
+		decs, start = decs[len(lead):], d.Pos.Line
+	}
+	p.line(start)
 	p.write("scalar ")
 	p.write(d.Name)
 	p.write(" ")
 	p.write(d.Primitive)
-	decoratorCarriesTrailing := false
-	for _, dec := range d.Decorators {
+	if len(decs) > 0 {
 		p.write(" ")
-		p.Decorator(dec)
-		if dec.TrailingDoc != "" {
-			decoratorCarriesTrailing = true
-		}
+		p.inlineDecorators(decs)
 	}
-	p.writeSourceTrailing(d.Pos.Line, decoratorCarriesTrailing)
-	p.nl()
+	p.endCode()
 }
 
 func (p *Printer) MiddlewareDecl(d *ast.MiddlewareDecl) {
-	p.Doc(d.Doc)
+	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), d.Doc)
 	p.declDecorators(d.Decorators, d.Pos.Line)
-	p.indent()
+	p.line(d.Pos.Line)
 	p.write("middleware ")
 	p.write(d.Name)
-	p.nl()
+	p.endCode()
 }
 
 func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
-	p.Doc(d.Doc)
+	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), d.Doc)
 	p.declDecorators(d.Decorators, d.Pos.Line)
-	p.indent()
+	p.line(d.Pos.Line)
 	if d.Extend {
 		p.write("extend service ")
 	} else {
@@ -310,7 +260,7 @@ func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
 	}
 	p.write(d.Name)
 	p.write(" {")
-	p.nl()
+	p.endCode()
 	p.depth++
 	printedAny := false
 	prevEnd := 0
@@ -328,10 +278,7 @@ func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
 		}
 	}
 	p.depth--
-	p.indent()
-	p.write("}")
-	p.writeTrailing(d.TrailingDoc)
-	p.nl()
+	p.closeBrace(d.EndPos.Line)
 }
 
 // serviceMemberGap separates service members as the source did, or by one
@@ -344,7 +291,7 @@ func (p *Printer) serviceMemberGap(printedAny bool, prevEnd, start int) {
 		p.blankBetween(prevEnd, start)
 		return
 	}
-	p.nl()
+	p.blank(start)
 }
 
 // endOrStart returns end, or start when end is 0 (no closing-brace position).
@@ -364,17 +311,17 @@ type memberClause struct {
 	array   bool // an event payload's `[]` suffix
 }
 
-// memberBody prints a method or event body: clauses and free comments in
-// source order, then the closing brace; an empty body prints as `{}`.
-func (p *Printer) memberBody(clauses []memberClause, comments []*ast.FreeComment, trailing []string) {
+// memberBody prints a method or event body closed on source line end: clauses
+// and free comments in source order, then the closing brace; an empty body
+// prints as `{}`.
+func (p *Printer) memberBody(clauses []memberClause, comments []*ast.FreeComment, end int) {
 	if len(clauses) == 0 && len(comments) == 0 {
 		p.write(" {}")
-		p.writeTrailing(trailing)
-		p.nl()
+		p.endCode()
 		return
 	}
 	p.write(" {")
-	p.nl()
+	p.endCode()
 	p.depth++
 	prevEnd := 0
 	flushBefore := func(line int) {
@@ -389,28 +336,24 @@ func (p *Printer) memberBody(clauses []memberClause, comments []*ast.FreeComment
 	for _, cl := range clauses {
 		flushBefore(cl.line)
 		p.blankBetween(prevEnd, cl.line)
-		p.indent()
+		p.line(cl.line)
 		p.write(cl.keyword)
 		p.NamedTypeRef(cl.ref)
 		if cl.array {
 			p.write("[]")
 		}
-		p.writeSourceTrailing(cl.line, false)
-		p.nl()
+		p.endCode()
 		prevEnd = cl.line
 	}
 	flushBefore(0)
 	p.depth--
-	p.indent()
-	p.write("}")
-	p.writeTrailing(trailing)
-	p.nl()
+	p.closeBrace(end)
 }
 
 func (p *Printer) Method(m *ast.Method) {
-	p.Doc(m.Doc)
+	p.comments(memberStartLine(m.Pos.Line, m.Decorators, 0), m.Doc)
 	p.declDecorators(m.Decorators, m.Pos.Line)
-	p.indent()
+	p.line(m.Pos.Line)
 	p.write(m.Verb)
 	p.write(" ")
 	p.write(m.Name)
@@ -425,20 +368,20 @@ func (p *Printer) Method(m *ast.Method) {
 	if m.Response != nil {
 		clauses = append(clauses, memberClause{keyword: "response ", line: m.Response.Pos.Line, ref: m.Response.Type})
 	}
-	p.memberBody(clauses, m.BodyComments, m.TrailingDoc)
+	p.memberBody(clauses, m.BodyComments, m.EndPos.Line)
 }
 
 func (p *Printer) EventDecl(e *ast.EventDecl) {
-	p.Doc(e.Doc)
+	p.comments(memberStartLine(e.Pos.Line, e.Decorators, 0), e.Doc)
 	p.declDecorators(e.Decorators, e.Pos.Line)
-	p.indent()
+	p.line(e.Pos.Line)
 	p.write("event ")
 	p.write(e.Name)
 	var clauses []memberClause
 	if e.Payload != nil {
 		clauses = append(clauses, memberClause{keyword: "payload ", line: e.Payload.Pos.Line, ref: e.Payload.Type, array: e.Payload.Array})
 	}
-	p.memberBody(clauses, e.BodyComments, e.TrailingDoc)
+	p.memberBody(clauses, e.BodyComments, e.EndPos.Line)
 }
 
 func (p *Printer) Path(path *ast.Path) {
@@ -492,21 +435,5 @@ func (p *Printer) NamedTypeRef(n *ast.NamedTypeRef) {
 			p.TypeRef(a)
 		}
 		p.write(">")
-	}
-}
-
-// declDecorators prints decs one per line with the comments written inside the
-// chain; keywordLine is the source line of the keyword after the chain.
-func (p *Printer) declDecorators(decs []*ast.Decorator, keywordLine int) {
-	for _, d := range decs {
-		if block, ok := p.interDec[d.Pos.Line]; ok {
-			p.Doc(block)
-		}
-		p.indent()
-		p.Decorator(d)
-		p.nl()
-	}
-	if block, ok := p.interDec[keywordLine]; ok {
-		p.Doc(block)
 	}
 }

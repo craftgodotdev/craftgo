@@ -1,15 +1,15 @@
 package ast
 
 // TypeDecl is `type Name { ... }`, or `type Name<T, ...> { ... }` for a
-// generic; TrailingDoc is the comment after its closing brace.
+// generic.
 type TypeDecl struct {
-	Pos         Pos
-	Decorators  []*Decorator
-	Doc         []string
-	Name        string
-	TypeParams  []string
-	Body        []TypeMember
-	TrailingDoc []string
+	Pos        Pos
+	Decorators []*Decorator
+	Doc        []string
+	Name       string
+	TypeParams []string
+	Body       []TypeMember
+	EndPos     Pos // the closing brace
 }
 
 func (*TypeDecl) declNode()          { astMarker() }
@@ -61,12 +61,12 @@ func (c *FreeComment) MemberPos() Pos { return c.Pos }
 // EnumDecl is `enum Name { ... }`; Members holds [EnumValue] and [FreeComment]
 // entries in source order.
 type EnumDecl struct {
-	Pos         Pos
-	Decorators  []*Decorator
-	Doc         []string
-	Name        string
-	Members     []EnumMember
-	TrailingDoc []string // comment after the closing brace
+	Pos        Pos
+	Decorators []*Decorator
+	Doc        []string
+	Name       string
+	Members    []EnumMember
+	EndPos     Pos // the closing brace
 }
 
 // EnumValues returns the [EnumValue] members in source order.
@@ -125,14 +125,14 @@ func (v *EnumValue) MemberPos() Pos { return v.Pos }
 // ErrorDecl is `error Category Name` with an optional `{ ... }` body; HasBody
 // tells an empty `{}` from no body.
 type ErrorDecl struct {
-	Pos         Pos
-	Decorators  []*Decorator
-	Doc         []string
-	Category    string
-	Name        string
-	Body        []TypeMember
-	HasBody     bool
-	TrailingDoc []string // comment after the closing brace
+	Pos        Pos
+	Decorators []*Decorator
+	Doc        []string
+	Category   string
+	Name       string
+	Body       []TypeMember
+	HasBody    bool
+	EndPos     Pos // the closing brace, when HasBody
 }
 
 func (*ErrorDecl) declNode()          { astMarker() }
@@ -167,13 +167,13 @@ func (d *MiddlewareDecl) DeclPos() Pos     { return d.Pos }
 // ServiceDecl is `service Name { ... }`, or `extend service Name { ... }` when
 // Extend is set. Members holds [Method] and [FreeComment] entries in order.
 type ServiceDecl struct {
-	Pos         Pos
-	Decorators  []*Decorator
-	Doc         []string
-	Name        string
-	Members     []ServiceMember
-	Extend      bool
-	TrailingDoc []string // comment after the closing brace
+	Pos        Pos
+	Decorators []*Decorator
+	Doc        []string
+	Name       string
+	Members    []ServiceMember
+	Extend     bool
+	EndPos     Pos // the closing brace
 }
 
 func (*ServiceDecl) declNode()          { astMarker() }
@@ -211,7 +211,6 @@ type Method struct {
 	Path         *Path
 	Request      *NamedTypeRef
 	Response     *MethodResponse
-	TrailingDoc  []string       // comment after the closing brace
 	BodyComments []*FreeComment // comment blocks inside the body
 	EndPos       Pos            // the closing brace
 }
@@ -232,7 +231,6 @@ type EventDecl struct {
 	Doc          []string
 	Name         string
 	Payload      *EventPayload
-	TrailingDoc  []string       // comment after the closing brace
 	BodyComments []*FreeComment // comment blocks inside the body
 	EndPos       Pos            // the closing brace
 }

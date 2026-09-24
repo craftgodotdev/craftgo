@@ -227,7 +227,7 @@ type T {
            @maxLength(5)
 }
 `,
-			want: []string{"@minLength(1)", "@maxLength(5)", "// note"},
+			want: []string{"\tx string @minLength(1) @maxLength(5) // note\n"},
 		},
 		{
 			name: "end-of-file comment block",
@@ -510,19 +510,17 @@ type Other {
 }
 
 // TestImportAndDecoratorComments pins that import docs and the trailing
-// comments of imports and decorators survive formatting.
+// comments of imports and decorators format to themselves.
 func TestImportAndDecoratorComments(t *testing.T) {
 	src := `package users
 
 // shared types for cross-package nesting
 import "shared"
-
 // internal-only utils
 import "util"
+import "auth" // for AuthRequired middleware
 
-import "auth"  // for AuthRequired middleware
-
-@deprecated  // remove in v2 release
+@deprecated // remove in v2 release
 @doc("legacy")
 service AdminAPI {
 	get Health {
@@ -530,40 +528,11 @@ service AdminAPI {
 	}
 }
 `
-	p := parser.New("imports.craftgo", src)
-	f := p.Parse()
-	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("parse: %v", d)
-	}
-	if got := strings.Join(f.Imports[0].Doc, ""); got != "shared types for cross-package nesting" {
-		t.Errorf("Imports[0].Doc = %q", got)
-	}
-	if got := f.Imports[2].TrailingDoc; got != "for AuthRequired middleware" {
-		t.Errorf("Imports[2].TrailingDoc = %q", got)
-	}
-	sd := f.Decls[0].(*ast.ServiceDecl)
-	if got := sd.Decorators[0].TrailingDoc; got != "remove in v2 release" {
-		t.Errorf("Decorators[0].TrailingDoc = %q", got)
-	}
-	formatted, _ := Format("imports.craftgo", src)
-	for _, want := range []string{
-		"// shared types for cross-package nesting\nimport \"shared\"",
-		"// internal-only utils\nimport \"util\"",
-		"import \"auth\"  // for AuthRequired middleware",
-		"@deprecated  // remove in v2 release",
-	} {
-		if !strings.Contains(formatted, want) {
-			t.Errorf("formatted output missing %q:\n%s", want, formatted)
-		}
-	}
-	formatted2, _ := Format("imports.craftgo", formatted)
-	if formatted != formatted2 {
-		t.Errorf("not idempotent\n--first--\n%s\n--second--\n%s", formatted, formatted2)
-	}
+	formatExact(t, src, src)
 }
 
-// TestCloseBraceTrailing pins that the comment after a closing brace lands in
-// TrailingDoc and survives formatting.
+// TestCloseBraceTrailing pins that the comment after a closing brace formats
+// to itself.
 func TestCloseBraceTrailing(t *testing.T) {
 	src := `package x
 
@@ -582,42 +551,7 @@ service Svc {
 	} // health-check returns 200 always
 } // public surface
 `
-	p := parser.New("trailing.craftgo", src)
-	f := p.Parse()
-	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("parse: %v", d)
-	}
-	td := f.Decls[0].(*ast.TypeDecl)
-	if got := strings.Join(td.TrailingDoc, ""); got != "end of User" {
-		t.Errorf("TypeDecl.TrailingDoc = %q, want %q", got, "end of User")
-	}
-	ed := f.Decls[1].(*ast.EnumDecl)
-	if got := strings.Join(ed.TrailingDoc, ""); got != "closed set" {
-		t.Errorf("EnumDecl.TrailingDoc = %q, want %q", got, "closed set")
-	}
-	sd := f.Decls[2].(*ast.ServiceDecl)
-	if got := strings.Join(sd.TrailingDoc, ""); got != "public surface" {
-		t.Errorf("ServiceDecl.TrailingDoc = %q, want %q", got, "public surface")
-	}
-	method := sd.Methods()[0]
-	if got := strings.Join(method.TrailingDoc, ""); got != "health-check returns 200 always" {
-		t.Errorf("Method.TrailingDoc = %q, want %q", got, "health-check returns 200 always")
-	}
-	formatted, _ := Format("trailing.craftgo", src)
-	for _, want := range []string{
-		"}  // end of User",
-		"}  // closed set",
-		"}  // public surface",
-		"}  // health-check returns 200 always",
-	} {
-		if !strings.Contains(formatted, want) {
-			t.Errorf("formatted output missing %q:\n%s", want, formatted)
-		}
-	}
-	formatted2, _ := Format("trailing.craftgo", formatted)
-	if formatted != formatted2 {
-		t.Errorf("not idempotent\nfirst:\n%s\nsecond:\n%s", formatted, formatted2)
-	}
+	formatExact(t, src, src)
 }
 
 // TestFreeCommentRender pins that Print renders the FreeComment members of

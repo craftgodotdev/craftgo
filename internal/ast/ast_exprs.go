@@ -2,10 +2,9 @@ package ast
 
 // Decorator is `@Name` or `@Name(args)`.
 type Decorator struct {
-	Pos         Pos
-	Name        string
-	Args        []*DecoratorArg
-	TrailingDoc string // comment after the decorator on its line
+	Pos  Pos
+	Name string
+	Args []*DecoratorArg
 	// HasParens is set when the source wrote `(...)`, even empty.
 	HasParens bool
 	// Propagated marks a copy semantic prepends to a method from its

@@ -21,6 +21,8 @@ type Parser struct {
 	// claimed holds the lines of comments a node owns, which
 	// harvestFreeComments skips.
 	claimed map[int]bool
+	// chainComments becomes the file's [ast.File.ChainComments].
+	chainComments map[int][]string
 }
 
 // docAbove claims the comment lines directly above the current token and
@@ -36,10 +38,11 @@ func New(filename, src string) *Parser {
 	l := lexer.New(filename, src)
 	toks := l.Tokenize()
 	return &Parser{
-		tokens:      toks,
-		diags:       l.Diagnostics(),
-		allComments: l.Comments(),
-		claimed:     map[int]bool{},
+		tokens:        toks,
+		diags:         l.Diagnostics(),
+		allComments:   l.Comments(),
+		claimed:       map[int]bool{},
+		chainComments: map[int][]string{},
 	}
 }
 
@@ -60,6 +63,10 @@ func (p *Parser) Parse() *ast.File {
 	}
 	leading := p.parseDecorators()
 	if p.peek().Kind == lexer.KwPackage {
+		// The comment directly above `package` is its Doc.
+		if n := len(leading); n > 0 {
+			p.claimChain(leading, leading[n-1].Pos.Line)
+		}
 		f.Decorators = leading
 		leading = nil
 		f.Package = p.parsePackage()
@@ -78,6 +85,7 @@ func (p *Parser) Parse() *ast.File {
 		p.errorf(leading[0].Pos, "decorators without a declaration to attach to")
 	}
 	f.Comments = p.allComments
+	f.ChainComments = p.chainComments
 	// The comments still unclaimed are file-scope blocks.
 	f.FreeComments = p.harvestFreeComments(0, int(^uint(0)>>1))
 	return f

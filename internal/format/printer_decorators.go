@@ -7,16 +7,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
+// Decorator writes `@name` or `@name(args)`.
 func (p *Printer) Decorator(d *ast.Decorator) {
-	p.decoratorCore(d)
-	if d.TrailingDoc != "" {
-		p.write("  // ")
-		p.write(d.TrailingDoc)
-	}
-}
-
-// decoratorCore writes `@name(args)` without d's trailing comment.
-func (p *Printer) decoratorCore(d *ast.Decorator) {
 	p.write("@")
 	name := d.Name
 	p.write(name)

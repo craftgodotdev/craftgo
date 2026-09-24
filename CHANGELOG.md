@@ -19,6 +19,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   `integer literal N is outside the signed 64-bit range (max …)`, and
   `consume` in a service body `a service has no consume member - …`.
 
+- **Formatting sets every trailing comment off by one space**, where a
+  closing brace, a decorator, an import or a scalar took two.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw
@@ -106,6 +109,14 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **Formatting keeps a `@format` name that is a reserved word quoted.**
   `@format("null")` was printed as `@format(null)`, which reads as the null
   literal; the same held for `true`, `service` and the other reserved words.
+
+- **Formatting keeps every comment where it was.** A comment after
+  `package`, `middleware`, a bodiless `error`, a mixin, an opening brace or
+  a decorator line above a field, and one inside a scalar's or a field's
+  decorator chain, was dropped, so formatting refused the file; one under
+  the decorators of a file without `package` was copied again on every run,
+  and one between imports moved. Decorators above a field or a scalar keep
+  their own lines when a comment sits among them.
 
 ### Deprecated
 

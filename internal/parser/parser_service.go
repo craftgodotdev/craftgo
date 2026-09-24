@@ -18,9 +18,7 @@ func (p *Parser) parseServiceDecl(decs []*ast.Decorator, doc []string, extend bo
 			sd.Members = append(sd.Members, m)
 		}
 	})
-	if rbrace.Trailing != "" {
-		sd.TrailingDoc = []string{rbrace.Trailing}
-	}
+	sd.EndPos = rbrace.Pos
 	// Method bodies already claimed their comments, so this collects only the
 	// blocks between members.
 	fcs := p.harvestFreeComments(lbrace.Pos.Line, rbrace.Pos.Line)
@@ -88,7 +86,7 @@ func (p *Parser) parseServiceMember() ast.ServiceMember {
 		p.errorf(t.Pos, "%s", serviceMemberError(t))
 		return nil
 	}
-	p.claimChainComments(decs, t)
+	p.claimChain(decs, t.Pos.Line)
 	return p.parseMethod(decs, doc)
 }
 
@@ -104,19 +102,10 @@ func serviceMemberError(t lexer.Token) string {
 	return "expected an HTTP verb, got " + t.Kind.String()
 }
 
-// claimChainComments claims the comments between the decorators decs and the
-// keyword kw.
-func (p *Parser) claimChainComments(decs []*ast.Decorator, kw lexer.Token) {
-	if len(decs) > 0 {
-		p.claimCommentsBetween(decs[0].Pos.Line, kw.Pos.Line)
-	}
-}
-
 // memberBody is the closing brace and the comments of a method or event body.
 type memberBody struct {
-	TrailingDoc []string
-	Comments    []*ast.FreeComment
-	EndPos      ast.Pos
+	Comments []*ast.FreeComment
+	EndPos   ast.Pos
 }
 
 // parseMemberBody parses a `{ ... }` body. fn parses a clause starting at the
@@ -128,12 +117,10 @@ func (p *Parser) parseMemberBody(fn func(lexer.Token) bool, expected string) mem
 			p.advance()
 		}
 	})
-	b := memberBody{EndPos: rbrace.Pos}
-	if rbrace.Trailing != "" {
-		b.TrailingDoc = []string{rbrace.Trailing}
+	return memberBody{
+		Comments: p.harvestFreeComments(lbrace.Pos.Line, rbrace.Pos.Line),
+		EndPos:   rbrace.Pos,
 	}
-	b.Comments = p.harvestFreeComments(lbrace.Pos.Line, rbrace.Pos.Line)
-	return b
 }
 
 // parseMethod parses `verb Name /path { ... }`, where the path is optional.
@@ -167,7 +154,7 @@ func (p *Parser) parseMethod(decs []*ast.Decorator, doc []string) *ast.Method {
 		}
 		return true
 	}, "request or response in method body")
-	m.TrailingDoc, m.BodyComments, m.EndPos = body.TrailingDoc, body.Comments, body.EndPos
+	m.BodyComments, m.EndPos = body.Comments, body.EndPos
 	return m
 }
 
@@ -188,7 +175,7 @@ func (p *Parser) parseEventDecl(decs []*ast.Decorator, doc []string) *ast.EventD
 		p.parseEventPayloadSuffix(e.Payload)
 		return true
 	}, "payload in event body")
-	e.TrailingDoc, e.BodyComments, e.EndPos = body.TrailingDoc, body.Comments, body.EndPos
+	e.BodyComments, e.EndPos = body.Comments, body.EndPos
 	return e
 }
 

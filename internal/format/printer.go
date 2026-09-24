@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -69,33 +70,39 @@ func refusal(pos lexer.Position, format string, args ...any) []lexer.Diagnostic 
 }
 
 // Print writes the canonical text of f to w and returns the first write error.
-// Comments that no AST node holds are read from f.Comments.
 func Print(w io.Writer, f *ast.File) error {
 	pr := newPrinter(w, f)
 	pr.File(f)
 	return pr.err
 }
 
-// newPrinter builds a Printer with the comment maps derived from f.Comments.
+// newPrinter builds a Printer over the trailing and in-chain comments of f.
 func newPrinter(w io.Writer, f *ast.File) *Printer {
-	return &Printer{
-		w:        w,
-		trailing: buildTrailingFromComments(f),
-		interDec: buildInterDecoratorComments(f),
+	p := &Printer{w: w, chain: f.ChainComments}
+	for _, c := range f.Comments {
+		if c.Kind == lexer.CommentTrailing {
+			p.trailing = append(p.trailing, c)
+		}
 	}
+	return p
 }
 
 // Printer holds the state of one render pass; built without newPrinter it
-// prints none of the comments that come from f.Comments.
+// prints no trailing or in-chain comments.
 type Printer struct {
 	w     io.Writer
 	err   error
 	depth int
-	// trailing maps a source line to the text of the comment after its code.
-	trailing map[int]string
-	// interDec maps the source line of a decorator or keyword to the comment
-	// block written above it inside a decorator chain; no AST node holds these.
-	interDec map[int][]string
+	// trailing holds the comments that follow code on their line, in source
+	// order; the first emitted of them are printed.
+	trailing []*ast.Comment
+	emitted  int
+	// open is set while a code line waits for its newline, so the trailing
+	// comments of the source lines it covers can still join it.
+	open bool
+	// chain maps a source line to the comments above the decorator, name or
+	// keyword on it inside a decorator chain.
+	chain map[int][]string
 }
 
 func (p *Printer) write(s string) {
@@ -111,8 +118,6 @@ func (p *Printer) indent() {
 	}
 }
 
-func (p *Printer) nl() { p.write("\n") }
-
 // File renders f in source order: one blank line between top-level
 // declarations, file-scope comment blocks placed by source line.
 func (p *Printer) File(f *ast.File) {
@@ -124,7 +129,7 @@ func (p *Printer) File(f *ast.File) {
 		flushed := false
 		for len(fcs) > 0 && (line == 0 || fcs[0].Pos.Line < line) {
 			if wroteAny {
-				p.nl()
+				p.blank(fcs[0].Pos.Line)
 			}
 			p.printFreeComment(fcs[0])
 			wroteAny = true
@@ -133,43 +138,48 @@ func (p *Printer) File(f *ast.File) {
 		}
 		return flushed
 	}
-	if len(f.LeadingDoc) > 0 {
-		p.Doc(f.LeadingDoc)
-		wroteAny = true
-	}
-	for _, d := range f.Decorators {
-		p.Decorator(d)
-		p.nl()
-		wroteAny = true
-	}
 	if f.Package != nil {
-		if flushBefore(f.Package.Pos.Line - len(f.Package.Doc)) {
-			p.nl()
+		start := memberStartLine(f.Package.Pos.Line, f.Decorators, len(f.LeadingDoc))
+		if flushBefore(start) {
+			p.blank(start)
 		}
-		p.Doc(f.Package.Doc)
-		p.write("package ")
-		p.write(f.Package.Name)
-		p.nl()
+		p.comments(start, f.LeadingDoc)
+		p.declDecorators(f.Decorators, f.Package.Pos.Line)
+		if flushBefore(f.Package.Pos.Line - len(f.Package.Doc)) {
+			p.blank(f.Package.Pos.Line)
+		}
+		p.comments(f.Package.Pos.Line, f.Package.Doc)
+		p.line(f.Package.Pos.Line)
+		p.write("package " + f.Package.Name)
+		p.endCode()
 		wroteAny = true
 	}
-	if len(f.Imports) > 0 {
-		p.nl()
-		for _, imp := range f.Imports {
-			flushBefore(imp.Pos.Line - len(imp.Doc))
-			p.Import(imp)
-			p.nl()
-			wroteAny = true
+	for i, imp := range f.Imports {
+		// A comment block between imports keeps the blank lines around it.
+		if flushBefore(imp.Pos.Line-len(imp.Doc)) || i == 0 {
+			p.blank(imp.Pos.Line)
 		}
+		p.Import(imp)
+		wroteAny = true
 	}
-	for _, d := range f.Decls {
-		flushBefore(declFirstSourceLine(d))
-		if wroteAny {
-			p.nl()
+	for i, d := range f.Decls {
+		// Without a package, the file's leading decorators and the comment
+		// above them go to the first declaration.
+		var doc []string
+		if i == 0 && f.Package == nil {
+			doc = f.LeadingDoc
 		}
+		start := declFirstSourceLine(d) - len(doc)
+		flushBefore(start)
+		if wroteAny {
+			p.blank(start)
+		}
+		p.comments(start, doc)
 		p.Decl(d)
 		wroteAny = true
 	}
 	flushBefore(0)
+	p.at(math.MaxInt)
 }
 
 // declFirstSourceLine returns the line of d's first decorator, or of d itself.
@@ -191,24 +201,18 @@ func declFirstSourceLine(d ast.Decl) int {
 	case *ast.EventDecl:
 		decs = v.Decorators
 	}
-	if len(decs) > 0 {
-		return decs[0].Pos.Line
-	}
-	return d.DeclPos().Line
+	return memberStartLine(d.DeclPos().Line, decs, 0)
 }
 
 func (p *Printer) Import(imp *ast.Import) {
-	p.Doc(imp.Doc)
+	p.comments(imp.Pos.Line, imp.Doc)
+	p.line(imp.Pos.Line)
 	p.write("import ")
 	if imp.Alias != "" {
-		p.write(imp.Alias)
-		p.write(" ")
+		p.write(imp.Alias + " ")
 	}
 	p.write(imp.PathText)
-	if imp.TrailingDoc != "" {
-		p.write("  // ")
-		p.write(imp.TrailingDoc)
-	}
+	p.endCode()
 }
 
 // Decl dispatches to the concrete printer for each top-level declaration.
@@ -228,18 +232,5 @@ func (p *Printer) Decl(d ast.Decl) {
 		p.ServiceDecl(v)
 	case *ast.EventDecl:
 		p.EventDecl(v)
-	}
-}
-
-func (p *Printer) Doc(lines []string) {
-	for _, line := range lines {
-		p.indent()
-		if line == "" {
-			p.write("//")
-		} else {
-			p.write("// ")
-			p.write(line)
-		}
-		p.nl()
 	}
 }
