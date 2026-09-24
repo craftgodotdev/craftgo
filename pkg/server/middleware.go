@@ -56,8 +56,8 @@ func (w *trackingWriter) Status() int {
 	return w.status
 }
 
-// Recovery answers a panic in next with a 500 text/plain response and logs it, with its
-// stack, to logger. Once the response is committed it only logs; the client keeps what was sent.
+// Recovery logs a panic in next with its stack to logger and answers 500 text/plain, unless the
+// response is committed; [http.ErrAbortHandler] goes on to net/http, which aborts the connection.
 func Recovery(logger log.Logger) Middleware {
 	return recovery(func() log.Logger { return logger })
 }
@@ -69,6 +69,9 @@ func recovery(logger func() log.Logger) Middleware {
 			tw := &trackingWriter{ResponseWriter: w}
 			defer func() {
 				if rec := recover(); rec != nil {
+					if rec == http.ErrAbortHandler {
+						panic(rec)
+					}
 					l := logger().WithContext(r.Context())
 					if tw.Committed() {
 						l.Error("panic recovered after response committed; client receives truncated body",

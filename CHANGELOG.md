@@ -63,6 +63,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   503 with `panic: <value>` for that check and logs the panic with its
   stack.
 
+- **An aborted handler aborts the connection.** `Recovery` took a
+  `panic(http.ErrAbortHandler)` - what `httputil.ReverseProxy` does when
+  copying a response fails - for a crash: it logged the panic and answered
+  500, or ended a response already under way as if it were complete. The
+  panic now goes on to `net/http`, which aborts the connection, so the
+  client sees the response cut off.
+
 - **`server.Server` is safe for concurrent use.** The `SetDefault*`,
   `SetCORS` and `SetLogger` setters wrote without the lock that route
   registration and `Handler` read under, a data race when configuration ran

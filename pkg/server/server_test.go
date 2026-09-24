@@ -104,6 +104,37 @@ func TestServerRecoveryAfterFlushKeepsTheStream(t *testing.T) {
 	}
 }
 
+// A handler that panics with http.ErrAbortHandler has its connection aborted, before or
+// after the response is committed, and is not logged as a crash.
+func TestServerRecoveryLetsAnAbortedHandlerAbortTheConnection(t *testing.T) {
+	logs := observeLogs(t)
+	s := newTestServer(t)
+	s.HandleFunc("GET /abort", func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) })
+	s.HandleFunc("GET /abort-mid-stream", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("partial"))
+		w.(http.Flusher).Flush()
+		panic(http.ErrAbortHandler)
+	})
+	srv := httptest.NewServer(finalize(s))
+	defer srv.Close()
+
+	if resp, err := srv.Client().Get(srv.URL + "/abort"); err == nil {
+		_ = resp.Body.Close()
+		t.Errorf("GET /abort answered %d, want the connection aborted", resp.StatusCode)
+	}
+	resp, err := srv.Client().Get(srv.URL + "/abort-mid-stream")
+	if err != nil {
+		t.Fatalf("GET /abort-mid-stream: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if body, err := io.ReadAll(resp.Body); err == nil {
+		t.Errorf("GET /abort-mid-stream read %q to its end, want the body cut off", body)
+	}
+	if n := logs.FilterMessageSnippet("panic recovered").Len(); n != 0 {
+		t.Errorf("an aborted handler was logged as a panic %d time(s)", n)
+	}
+}
+
 // WriteValidationError leaves a committed response untouched.
 func TestWriteValidationErrorSkipsPostCommit(t *testing.T) {
 	s := newTestServer(t)
