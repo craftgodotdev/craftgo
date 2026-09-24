@@ -219,7 +219,7 @@ deps: ## Download/verify modules.
 
 .PHONY: clean
 clean: ## Remove build artefacts and coverage files.
-	rm -rf $(BIN_DIR) dist coverage.txt coverage.html $(BENCH_DIR)
+	rm -rf $(BIN_DIR) dist coverage.txt coverage.html
 	@find . -type f \( -name '*.test' -o -name '*.out' -o -name '*.prof' -o -name '*.cov' \) -delete
 
 .PHONY: clean-gen
