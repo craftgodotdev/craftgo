@@ -313,3 +313,15 @@ event E { payload P }`, CodeDecoratorUnknown)
 		t.Errorf("msg = %q", d.Msg)
 	}
 }
+
+// An event payload's generic arguments are checked like a field type's.
+func TestEventPayloadGenericArgsChecked(t *testing.T) {
+	const decls = `package app
+type Page<T> { items T[] }
+type Item { id string }
+`
+	d := expectError(t, decls+`event Listed { payload Page<string, int> }`, CodeGenericArity)
+	expectMessage(t, d, "Page expects 1")
+	expectError(t, decls+`event Listed { payload Item<string> }`, CodeGenericNonGeneric)
+	expectError(t, decls+`event Listed { payload Page<Item?> }`, CodeGenericOptionalArg)
+}

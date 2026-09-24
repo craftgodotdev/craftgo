@@ -231,6 +231,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   generated Go that did not compile (`undefined: shared.Gone`); it now gets
   the diagnostic the bare `x Gone` gets.
 
+- **An event payload's generic arguments are checked.** `payload Page<string,
+  int>` against `type Page<T>` passed analysis and generated Go that did not
+  compile; a payload now gets the arity and optional-argument checks a field
+  type gets.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

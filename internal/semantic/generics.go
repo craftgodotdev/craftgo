@@ -8,8 +8,8 @@ import (
 )
 
 // checkGenerics checks the generic arguments of every named reference in
-// type and error bodies and in method requests and responses, map keys,
-// values and nested arguments included.
+// type and error bodies, event payloads and method requests and responses,
+// map keys, values and nested arguments included.
 func (a *analyzer) checkGenerics() {
 	check := func(typeParams []string) func(*ast.NamedTypeRef) {
 		return func(n *ast.NamedTypeRef) { a.checkNamedRefGenerics(n, typeParams) }
@@ -19,6 +19,11 @@ func (a *analyzer) checkGenerics() {
 	}
 	for _, ed := range a.pkg.Errors {
 		walkMemberRefs(ed.Body, check(nil))
+	}
+	for _, ev := range a.pkg.Events {
+		if ev.Payload != nil {
+			ev.Payload.Type.WalkNamedRefs(check(nil))
+		}
 	}
 	for _, si := range a.pkg.Services {
 		for _, m := range si.Methods {
