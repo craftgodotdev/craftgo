@@ -1,6 +1,3 @@
-// Numeric-bound sanity checks: unsigned vs negative bounds, integer
-// capacity overflow, fractional literals on integer targets, and
-// numeric-decorator targeting rules.
 package semantic
 
 import (
@@ -13,12 +10,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
-// checkMultipleOfTarget rejects `@multipleOf` where the generated validator
-// can't enforce what the OpenAPI advertises. Go's `%` operator is
-// integer-only: a float field can't be checked at all, and an integer
-// field with a fractional divisor (`@multipleOf(2.5)`) can't either - the
-// validator silently drops it while the spec still advertises `multipleOf:
-// 2.5`. Both are rejected so the spec and the validator agree.
+// checkMultipleOfTarget rejects `@multipleOf` on a float field, and a
+// fractional divisor on an integer one.
 func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Named == nil {
 		return
@@ -34,8 +27,6 @@ func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
 				"@multipleOf does not support float fields - Go's modulus operator is integer-only. Move the field to an integer type or add a tolerance check in your handler.")
 			continue
 		}
-		// Integer field: a fractional divisor is unenforceable by integer
-		// modulus, yet the OpenAPI would advertise it - reject it.
 		if len(d.Args) == 1 {
 			if fl, ok := d.Args[0].Value.(*ast.FloatLit); ok && !isIntegralFloat(fl.Value) {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
@@ -45,12 +36,8 @@ func (a *analyzer) checkMultipleOfTarget(f *ast.Field) {
 	}
 }
 
-// checkNegativeOnUnsigned rejects `@negative` on an unsigned-integer
-// field. The validator emits a `value >= 0` rejection, which fires for
-// EVERY value of a `uint*` (always >= 0) - the field could never
-// validate. Resolves through a named scalar so `count Quantity
-// @negative` (scalar Quantity uint) is caught the same way a bare
-// `count uint @negative` is.
+// checkNegativeOnUnsigned rejects `@negative` and `@lt(0)` on an unsigned
+// field, scalars included, since no value satisfies them.
 func (a *analyzer) checkNegativeOnUnsigned(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Named == nil {
 		return
@@ -60,11 +47,7 @@ func (a *analyzer) checkNegativeOnUnsigned(f *ast.Field) {
 		return
 	}
 	a.diagNegativeUnsigned(f.Decorators, prim)
-	// `@lt(0)` is the desugared spelling of `@negative`: "value < 0", which
-	// no `uint*` can satisfy. The capacity check ([checkBoundCapacity])
-	// misses it because 0 is itself an in-range value - only the predicate
-	// is empty. (`@lt(N)` / `@lte(N)` with N < 0 are already caught there
-	// as out-of-range literals.)
+	// 0 is in range, so the capacity check passes `@lt(0)`.
 	for _, d := range f.Decorators {
 		if d != nil && d.Name == "lt" && len(d.Args) == 1 && argIsZero(d.Args[0].Value) {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
@@ -73,11 +56,7 @@ func (a *analyzer) checkNegativeOnUnsigned(f *ast.Field) {
 	}
 }
 
-// argIsZero reports whether a decorator argument is the literal zero, written
-// as an integer (`0`) or a float (`0.0`). The `@lt(0)`-on-unsigned check
-// accepts both spellings so `@lt(0.0)` is rejected like `@lt(0)` instead of
-// slipping through to codegen, which emits an always-true `value >= 0` guard
-// that rejects every value.
+// argIsZero reports whether v is the literal 0 or 0.0.
 func argIsZero(v ast.Expr) bool {
 	switch lit := v.(type) {
 	case *ast.IntLit:
@@ -88,8 +67,8 @@ func argIsZero(v ast.Expr) bool {
 	return false
 }
 
-// diagNegativeUnsigned emits the `@negative`-on-unsigned diagnostic for
-// every `@negative` in decs. Shared by the field and scalar passes.
+// diagNegativeUnsigned reports every `@negative` in decs against unsigned
+// prim.
 func (a *analyzer) diagNegativeUnsigned(decs []*ast.Decorator, prim string) {
 	for _, d := range decs {
 		if d != nil && d.Name == "negative" {
@@ -99,13 +78,8 @@ func (a *analyzer) diagNegativeUnsigned(decs []*ast.Decorator, prim string) {
 	}
 }
 
-// checkBoundCapacity rejects numeric bound literals that exceed the
-// field's primitive type capacity. Without this, codegen happily emits
-// `if v.Small > 300 { ... }` against an `int8` field, which fails to
-// compile because 300 overflows int8. float64 captures every literal we
-// accept, but a float32 field whose bound magnitude exceeds the float32
-// range still emits a float32 literal that overflows and won't compile, so
-// it gets its own guard.
+// checkBoundCapacity rejects a numeric bound outside the range of f's
+// integer or float32 type, as a constant that would not compile.
 func (a *analyzer) checkBoundCapacity(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Named == nil {
 		return
@@ -140,10 +114,8 @@ func (a *analyzer) checkBoundCapacity(f *ast.Field) {
 	}
 }
 
-// integralBoundValue extracts a whole-number bound value (an IntLit, or an
-// INTEGRAL FloatLit like `@gte(300.0)` that renders to a bare whole-number Go
-// literal). A fractional float is rejected separately by
-// checkIntBoundFloatLiteral, so it returns ok=false here.
+// integralBoundValue returns a whole-number bound, an int or an integral
+// float such as 300.0, with its text; ok is false for anything else.
 func integralBoundValue(arg *ast.DecoratorArg) (float64, string, bool) {
 	switch lit := arg.Value.(type) {
 	case *ast.IntLit:
@@ -157,18 +129,14 @@ func integralBoundValue(arg *ast.DecoratorArg) (float64, string, bool) {
 	return 0, "", false
 }
 
-// isIntegralFloat reports whether v is a whole number. It uses math.Trunc
-// rather than a round-trip through int64: int64(v) saturates for a value
-// beyond the signed 64-bit range, so `@lte(2e19)` on uint64 would look
-// fractional, skip the capacity check, and reach codegen as a constant that
-// overflows the target integer type.
+// isIntegralFloat reports whether v is a whole number, including one beyond
+// the int64 range.
 func isIntegralFloat(v float64) bool {
 	return v == math.Trunc(v)
 }
 
-// forEachNumericBound invokes check for every numeric-bound decorator argument
-// on f: the single-arg comparisons (@gt/@gte/@lt/@lte/@multipleOf) and both
-// endpoints of dual-arg @range.
+// forEachNumericBound calls check on every numeric bound argument of f, both
+// `@range` endpoints included.
 func forEachNumericBound(f *ast.Field, check func(d *ast.Decorator, arg *ast.DecoratorArg)) {
 	for _, d := range f.Decorators {
 		if d == nil {
@@ -187,10 +155,7 @@ func forEachNumericBound(f *ast.Field, check func(d *ast.Decorator, arg *ast.Dec
 	}
 }
 
-// checkBoundLiteralKind rejects a fractional float bound on an
-// integer-typed field. Resolves the field's primitive (following a
-// local scalar to its underlying type) and defers to the shared
-// per-decorator scan.
+// checkBoundLiteralKind rejects a fractional bound on an integer field.
 func (a *analyzer) checkBoundLiteralKind(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Named == nil {
 		return
@@ -199,20 +164,8 @@ func (a *analyzer) checkBoundLiteralKind(f *ast.Field) {
 	a.checkIntBoundFloatLiteral(prim, fmt.Sprintf("field %q", f.Name), f.Decorators)
 }
 
-// checkIntBoundFloatLiteral rejects a fractional float bound literal
-// (`@gte(0.5)`, `@range(0.5, 10.5)`, …) on an integer-typed target.
-// codegen renders a comparison/range bound verbatim, so the literal
-// `0.5` ends up compared against the integer field value - Go rejects
-// that with "constant 0.5 truncated to integer" and the whole
-// generated package fails to build. Catching it here turns an opaque
-// downstream build error into a precise design-time diagnostic.
-//
-// Only genuinely fractional literals are rejected: an integral float
-// (`1.0`, `1e3`) renders to a whole-number Go literal and compiles
-// fine, and float-typed targets are skipped entirely because a
-// fractional bound is exactly what they are for. `@multipleOf` is not
-// included - its codegen takes the integer-only path and never emits a
-// float literal.
+// checkIntBoundFloatLiteral rejects a fractional `@gt`, `@gte`, `@lt`, `@lte`
+// or `@range` bound on an integer target; an integral float such as 1e3 passes.
 func (a *analyzer) checkIntBoundFloatLiteral(prim, target string, decs []*ast.Decorator) {
 	if _, _, ok := prims.Capacity(prim); !ok {
 		return // not an integer primitive - float bounds are valid
@@ -244,9 +197,7 @@ func (a *analyzer) checkIntBoundFloatLiteral(prim, target string, decs []*ast.De
 	}
 }
 
-// fractionalArg reports a FloatLit argument whose value carries a
-// fractional part. An integral float literal renders to a whole-number
-// Go literal, so it is not flagged.
+// fractionalArg returns a's float literal when it has a fractional part.
 func fractionalArg(a *ast.DecoratorArg) (*ast.FloatLit, bool) {
 	if a == nil {
 		return nil, false
@@ -258,17 +209,8 @@ func fractionalArg(a *ast.DecoratorArg) (*ast.FloatLit, bool) {
 	return fl, true
 }
 
-// checkPatternFormatOnBytes rejects `@pattern` / `@format` on a `bytes`
-// field (or a bytes-backed scalar). Both decorators constrain TEXT - the
-// validator emits a regexp / format check gated on a string shape, so a
-// bytes field silently drops the check while the OpenAPI schema still
-// advertises the pattern / format. A binary value has no string pattern;
-// the author wants a `string` field.
-//
-// A `bytes @format(raw)` field is out of scope here: `raw` constrains
-// nothing, so it is not the mistake this rule describes, and the field
-// resolves to [PrimRawBytes] - which is what refuses `@pattern` on it
-// through the ordinary compatibility check, once.
+// checkPatternFormatOnBytes rejects `@pattern` and `@format` on a `bytes`
+// field; a `bytes @format(raw)` field is left to the [PrimRawBytes] rules.
 func (a *analyzer) checkPatternFormatOnBytes(f *ast.Field) {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
 		return
@@ -286,15 +228,8 @@ func (a *analyzer) checkPatternFormatOnBytes(f *ast.Field) {
 	}
 }
 
-// checkValueConstraintOnTypeParam rejects a field-level VALUE constraint
-// (numeric or string) on a bare type-parameter field (`val T @gte(10)` in
-// a generic decl). The validator is emitted once against the parametric
-// receiver, where the element is `any`-constrained and so can't be
-// compared / measured - yet the monomorphised OpenAPI advertises the
-// bound, diverging from the (silently absent) runtime check. Array-shape
-// constraints (@minItems / @maxItems) are NOT rejected here: they bound
-// the slice length, which is knowable parametrically (@uniqueItems is
-// handled separately by [checkUniqueItemsComparable]).
+// checkValueConstraintOnTypeParam rejects a numeric or text constraint on a
+// bare type-parameter field, which the generic validator sees as `any`.
 func (a *analyzer) checkValueConstraintOnTypeParam(f *ast.Field, typeParams []string) {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
 		return

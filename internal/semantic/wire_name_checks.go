@@ -1,5 +1,3 @@
-// Wire-name and binding-decorator combination checks: duplicate wire names
-// (explicit and auto-bound), single-binding, and overlapping bound forms.
 package semantic
 
 import (
@@ -10,12 +8,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// checkDuplicateWireNames rejects two EXPLICITLY wire-bound fields that share a
-// wire name on one source (request / response / error). The body is flattened
-// so a binding promoted through a mixin - same-package or cross-package - is
-// seen, and header names are case-folded so `X-Trace` / `x-trace` collide.
-// Auto-promoted bindings are route/verb-dependent and handled per-method by
-// [analyzer.checkDuplicateAutoWireNames].
+// checkDuplicateWireNames rejects two explicitly bound fields of a body, mixins
+// included, with one binding kind and wire name; header names ignore case.
 func (a *analyzer) checkDuplicateWireNames(parent string, members []ast.TypeMember) {
 	fields, _ := a.promotedFields(a.pkg.Name, members)
 	seen := map[string]promotedField{}
@@ -40,15 +34,8 @@ func (a *analyzer) checkDuplicateWireNames(parent string, members []ast.TypeMemb
 	}
 }
 
-// checkDuplicateAutoWireNames catches a wire-name collision that involves an
-// AUTO-bound field - an undecorated field promoted to @path (its name matches
-// a {segment}) or to @query (on a body-less verb). The per-declaration
-// [analyzer.checkDuplicateWireNames] sees only EXPLICIT decorators, so an
-// auto-bound field colliding with an explicit (or another auto) binding slips
-// through into a silent double-read + a duplicate OpenAPI parameter. This runs
-// in method context (route segments + verb) where the auto-binding is known,
-// and reports only collisions involving an auto-bound field (explicit/explicit
-// is already covered) so the two checks never double-report.
+// checkDuplicateAutoWireNames rejects a wire-name collision in m's request
+// that involves an auto-bound field; explicit pairs are reported per body.
 func (a *analyzer) checkDuplicateAutoWireNames(m *ast.Method) {
 	if m == nil || m.Request == nil || m.Request.Name == nil {
 		return
@@ -88,9 +75,8 @@ func (a *analyzer) checkDuplicateAutoWireNames(m *ast.Method) {
 	}
 }
 
-// wireBinding returns the wire (kind, name) a field binds to: the binding
-// decorator's explicit string arg, or the field name when the arg is
-// absent. bound is false for an unbound (body) field.
+// wireBinding returns the kind and wire name of f's explicit binding; bound
+// is false for a body field.
 func wireBinding(f *ast.Field) (kind, name string, bound bool) {
 	switch k := wire.BindingKind(f.Decorators); k {
 	case wire.BindingPath, wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingForm:
@@ -100,13 +86,8 @@ func wireBinding(f *ast.Field) (kind, name string, bound bool) {
 	}
 }
 
-// checkBoundOverlap warns when both the closed-form bound
-// (`@length(min, max)` / `@range(min, max)`) and one of its one-sided
-// equivalents (`@minLength`/`@maxLength`, `@gt*`/`@lt*`) appear on the
-// same field. The bound interpretation in OpenAPI is well-defined - the
-// validator path applies every constraint, so the bounds AND together -
-// but two equivalent forms make the source noisy and the canonical form
-// ambiguous. Warn (not error) and let the user pick.
+// checkBoundOverlap warns when `@length` or `@range` shares a field with one
+// of its one-sided forms.
 func (a *analyzer) checkBoundOverlap(parent string, f *ast.Field) {
 	if f == nil {
 		return
@@ -140,10 +121,7 @@ func (a *analyzer) checkBoundOverlap(parent string, f *ast.Field) {
 	}
 }
 
-// checkSingleBinding enforces the "at most one binding" rule. The
-// six binding decorators (`@path / @query / @header / @cookie / @body /
-// @form`) are mutually exclusive; the first wins, every subsequent one
-// gets a diagnostic with a back-reference to the first.
+// checkSingleBinding rejects every binding decorator on f after the first.
 func (a *analyzer) checkSingleBinding(parent string, f *ast.Field) {
 	first := ""
 	var firstPos lexer.Position

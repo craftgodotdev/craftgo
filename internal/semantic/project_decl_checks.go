@@ -1,5 +1,3 @@
-// Project-level declaration checks: service / middleware name uniqueness
-// across packages.
 package semantic
 
 import (
@@ -15,10 +13,8 @@ type declSite struct {
 	pos lexer.Position
 }
 
-// checkProjectMiddlewareUniqueness fires whenever the same middleware
-// name is declared in more than one package. Bare cross-package refs
-// (`@middlewares(AuthRequired)`) resolve through the global union, so a
-// collision would silently pick the first match the iterator hands back.
+// checkProjectMiddlewareUniqueness rejects a middleware name declared in
+// more than one package; a bare reference resolves project-wide.
 func (r *refResolver) checkProjectMiddlewareUniqueness() {
 	sites := map[string][]declSite{}
 	for pkgName, pkg := range r.proj.Packages {
@@ -33,10 +29,8 @@ func (r *refResolver) checkProjectMiddlewareUniqueness() {
 		"middleware %q is declared in multiple packages - names are global; rename or qualify references")
 }
 
-// reportCrossPackageDuplicates emits a diagnostic at every site of a name
-// declared in more than one package, each carrying related entries for the
-// others. Map iteration feeds sites, so the names and the sites within one
-// name are both ordered: the diagnostic set must not shuffle between runs.
+// reportCrossPackageDuplicates reports every site of a name declared in more
+// than one package, relating the others, in an order stable across runs.
 func (r *refResolver) reportCrossPackageDuplicates(sites map[string][]declSite, code, msg string) {
 	names := make([]string, 0, len(sites))
 	for name := range sites {

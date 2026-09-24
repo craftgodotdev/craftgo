@@ -1,5 +1,3 @@
-// Event rules: payload shape, `@contract` format, and contract-name
-// uniqueness.
 package semantic
 
 import (
@@ -48,19 +46,12 @@ func (a *analyzer) checkContractArg(d *ast.EventDecl) {
 	}
 }
 
-// checkPayloadKind reports an event payload that resolves to something
-// other than a struct type. An array payload (`payload T[]`) resolves
-// its ELEMENT here, exactly as a scalar one resolves: an array of a
-// declared type is a contract, an array of anything else is not.
-// Cross-package refs whose package is unknown, and names nothing
-// declares, are left to the reference pass.
+// checkPayloadKind reports a payload, or array payload element, that is not
+// a struct type; unknown names are left to the reference pass.
 func (a *analyzer) checkPayloadKind(d *ast.EventDecl) {
 	ref := d.Payload.Type.Name.String()
 	if prims.Is(ref) {
-		// A primitive names no declaration, so neither the lookup below
-		// nor the reference pass (which knows the primitive) would say
-		// anything - and the contract would carry an unnamed, unvalidated
-		// body.
+		// A primitive names no declaration, so the lookups below miss it.
 		a.payloadKindDiag(d, ref)
 		return
 	}

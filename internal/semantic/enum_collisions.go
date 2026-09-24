@@ -6,24 +6,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// checkEnumValueCollisions emits a warning for each enum whose value
-// names normalise to the same Go const name under
-// [idents.GoFieldName]. The codegen const-name shape is
-// `<EnumName><GoFieldName(value.Name)>`, so two value names that
-// produce the same `GoFieldName` collide as a Go duplicate const.
-//
-// Canonical example:
-//
-//	enum TaskStatus {
-//	    created = "okok"   // → const TaskStatusCreated
-//	    Created = "okok1"  // → const TaskStatusCreated  ← collide!
-//	}
-//
-// The codegen pass auto-suffixes duplicates with `_2`, `_3`, ... so
-// the package compiles, but the WIRE payload of the two values
-// (`"okok"` vs `"okok1"`) stays distinct - a quiet duplication the
-// user almost certainly did not intend. Surfaced as warning so
-// existing projects with intentional aliasing keep building.
+// checkEnumValueCollisions warns when two values of an enum map to one Go
+// const name.
 func (a *analyzer) checkEnumValueCollisions(files []*ast.File) {
 	for _, f := range files {
 		for _, d := range f.Decls {
@@ -34,9 +18,7 @@ func (a *analyzer) checkEnumValueCollisions(files []*ast.File) {
 	}
 }
 
-// warnEnumValueCollisions runs the dedup over an enum's value names
-// and emits one diagnostic per duplicate, anchored at each duplicate's
-// own position so the IDE highlights every offending value.
+// warnEnumValueCollisions reports every colliding value of ed but the first.
 func (a *analyzer) warnEnumValueCollisions(ed *ast.EnumDecl) {
 	if ed == nil {
 		return
@@ -86,7 +68,8 @@ func (a *analyzer) warnEnumValueCollisions(ed *ast.EnumDecl) {
 	}
 }
 
-// int and string enums.
+// checkEnums rejects an empty enum, mixed value kinds, and a repeated value
+// name or literal.
 func (a *analyzer) checkEnums() {
 	for _, ed := range a.pkg.Enums {
 		values := ed.EnumValues()

@@ -1,5 +1,3 @@
-// Decorator-argument literal extractors shared by the validator, OpenAPI,
-// transport, and routes emitters.
 package semantic
 
 import (
@@ -9,17 +7,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// This file groups the decorator-argument extractors used by every emit
-// function in the validator registry. Each helper takes one
-// [ast.DecoratorArg] and pulls a typed value out of it, returning the
-// `(value, ok)` shape; `ok == false` is the standard signal for the
-// caller to skip emitting any check (validator opts out silently).
-
-// NumericLit is the one canonical reading of a numeric decorator-argument
-// literal, shared by every constraint reader so the int/float distinction and
-// the big-integer threshold are decided in a single place (instead of the
-// validator, the OpenAPI bound emitter, and the big-int escape hatch each
-// re-classifying the same literal and risking drift).
+// NumericLit is a numeric decorator argument, read as an integer or a float.
 type NumericLit struct {
 	IntVal   int64   // valid when IsInt
 	FloatVal float64 // always set: float64(IntVal) for an IntLit, the value for a FloatLit
@@ -55,14 +43,8 @@ func IntArg(a *ast.DecoratorArg) (int64, bool) {
 	return 0, false
 }
 
-// NumericArg pulls a numeric value out of a literal DecoratorArg as a
-// formatted Go expression. Returns the rendered text + ok flag.
-// Accepts IntLit (`@gte(0)`) and FloatLit (`@gte(0.5)`); int renders
-// as `0`, float renders via `strconv.FormatFloat` with 'g' so `0.5`
-// stays `0.5`, `1e3` stays `1000`, etc. Used by
-// `@gt/@gte/@lt/@lte/@range/@multipleOf` - accepting only IntLit
-// would silently drop float bounds even though the Spec allows
-// ArgNumber.
+// NumericArg renders a numeric argument as Go literal text: an integer in
+// decimal, a float in its shortest 'g' form.
 func NumericArg(a *ast.DecoratorArg) (string, bool) {
 	l, ok := ParseNumericArg(a)
 	if !ok {
@@ -85,10 +67,8 @@ func StringArg(a *ast.DecoratorArg) (string, bool) {
 	return "", false
 }
 
-// StringOrIdentArg returns the underlying name from either a quoted
-// string literal or a bare identifier. Used by `@format(...)` where both
-// forms are accepted in the DSL. Returns "" for any other expression
-// kind (numbers, booleans, nested decorators).
+// StringOrIdentArg returns the text of a string literal or bare identifier
+// argument, or "" for anything else.
 func StringOrIdentArg(a *ast.DecoratorArg) string {
 	if a == nil || a.Value == nil {
 		return ""
@@ -104,9 +84,8 @@ func StringOrIdentArg(a *ast.DecoratorArg) string {
 	return ""
 }
 
-// StringArrayArg pulls a list of strings out of an `@mimeTypes(["a","b"])`
-// argument. The literal must be an ArrayLit of StringLits - anything
-// else returns nil,false so the validator skips the check.
+// StringArrayArg returns the elements of an array-literal argument, or false
+// unless every element is a string literal.
 func StringArrayArg(a *ast.DecoratorArg) ([]string, bool) {
 	if a == nil || a.Value == nil {
 		return nil, false
@@ -135,9 +114,7 @@ func SizeArg(a *ast.DecoratorArg) (int64, bool) {
 	return SizeBytes(a.Value)
 }
 
-// SizeBytes is [SizeArg] on a bare expression, for callers holding the
-// literal without its [ast.DecoratorArg] wrapper. The suffix vocabulary and
-// its multipliers live in [lexer.ParseSize].
+// SizeBytes is [SizeArg] on a bare expression.
 func SizeBytes(e ast.Expr) (int64, bool) {
 	switch v := e.(type) {
 	case *ast.IntLit:
@@ -148,33 +125,19 @@ func SizeBytes(e ast.Expr) (int64, bool) {
 	return 0, false
 }
 
-// maxExactInt is 2^53 - the largest magnitude an int64 keeps EXACTLY when
-// converted to the float64 that JSON numbers (and openapi3.Schema.Min /
-// Max) carry. Beyond it, float64(int64) rounds, so a bound like
-// `@gte(9007199254740993)` or `@gte(math.MaxInt64)` would advertise a
-// value the runtime validator (which keeps the exact int64) never agrees
-// with - at the extreme an unsatisfiable spec.
+// maxExactInt is 2^53, the magnitude up to which a float64 - and so a JSON
+// number - holds every integer exactly.
 const maxExactInt = int64(1) << 53
 
-// StringArrayDecoratorArg returns the field-name list passed to a
-// type-level decorator like `@requiresOneOf` / `@mutuallyExclusive`.
-// Three argument shapes are accepted, matching the syntax the
-// semantic argument-shape validator allows:
-//
-//   - Variadic bare idents:    @requiresOneOf(email, phone)
-//   - Variadic string literals: @requiresOneOf("email", "phone")
-//   - Array shortcut:           @requiresOneOf(["email", "phone"])
-//
-// Returns nil when the decorator has no arguments at all.
+// StringArrayDecoratorArg returns the names a list decorator such as
+// `@requiresOneOf` carries, as identifiers, strings or one array literal.
 func StringArrayDecoratorArg(d *ast.Decorator) []string {
 	if len(d.Args) == 0 {
 		return nil
 	}
-	// Array shortcut: single positional that's an [ ... ] literal.
 	if arr, ok := d.Args[0].Value.(*ast.ArrayLit); ok && len(d.Args) == 1 {
 		return CollectStringOrIdent(arr.Elements)
 	}
-	// Variadic positional: each arg is its own ident or string lit.
 	out := make([]string, 0, len(d.Args))
 	for _, ag := range d.Args {
 		if ag.Named || ag.Object != nil || ag.Nested != nil {
@@ -192,10 +155,8 @@ func StringArrayDecoratorArg(d *ast.Decorator) []string {
 	return out
 }
 
-// CollectStringOrIdent extracts every string-lit / ident-expr value
-// from an [ast.ArrayLit] elements slice, skipping anything else
-// silently. Other shapes are caught upstream by the
-// argument-shape validator.
+// CollectStringOrIdent returns the text of every string literal and
+// identifier in elems, skipping anything else.
 func CollectStringOrIdent(elems []ast.Expr) []string {
 	out := make([]string, 0, len(elems))
 	for _, e := range elems {

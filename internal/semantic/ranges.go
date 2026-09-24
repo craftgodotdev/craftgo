@@ -1,23 +1,5 @@
 package semantic
 
-// Numeric value-range and combination checks. Sits between the
-// argument-shape pass (kind-correct, count-correct) and codegen, so
-// every numeric pair we observe here is well-formed AST. We catch:
-//
-//   - `@length(min, max)`, `@range(min, max)` - min must be ≤ max.
-//   - `@minLength` paired with `@maxLength` on the same field - same
-//     ordering rule applied across decorators.
-//   - `@minItems` / `@maxItems` pair - likewise.
-//   - `@gte` / `@lte` numeric bound pair (and the strict `@gt` / `@lt`
-//     and mixed combinations) - the lower bound must be ≤ the upper.
-//   - `@multipleOf(0)` - divides nothing; codegen would emit a runtime
-//     %0 panic.
-//   - `@status(code)` - must be in 100..599 (HTTP status range).
-//   - Duration / size literals - must be > 0 (timeout 0s is a footgun;
-//     0-byte cap rejects every request).
-//   - `@nullable` on `T?` field - redundant per README §"Field
-//     presence semantics" (warning, not error).
-
 import (
 	"fmt"
 	"strings"
@@ -27,9 +9,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
-// checkRangesAndExtras runs every per-decorator value sanity rule plus
-// the cross-decorator pair checks. Called after the args pass so we
-// know each decorator's positional count and kinds are sound.
+// checkRangesAndExtras runs the decorator value rules and the field rules
+// over every declaration.
 func (a *analyzer) checkRangesAndExtras(files []*ast.File) {
 	for _, f := range files {
 		for _, d := range f.Decls {
@@ -38,8 +19,7 @@ func (a *analyzer) checkRangesAndExtras(files []*ast.File) {
 	}
 }
 
-// checkDeclRanges dispatches by declaration kind. Type / error bodies
-// are walked field-by-field; service methods get their own dispatch.
+// checkDeclRanges runs the range rules for one declaration.
 func (a *analyzer) checkDeclRanges(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
@@ -50,15 +30,9 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		a.checkDecoratorRanges(dd.Decorators)
 	case *ast.ScalarDecl:
 		a.checkDecoratorRanges(dd.Decorators)
-		// A scalar's bound decorators are inherited into the validator
-		// of every field that uses it, so the float-on-integer check
-		// must run on the scalar declaration as well as on plain fields.
+		// Every field of the scalar's type inherits its constraints, so the
+		// field rules run here on a field of the scalar's primitive.
 		a.checkIntBoundFloatLiteral(dd.Primitive, fmt.Sprintf("scalar %q", dd.Name), dd.Decorators)
-		// The capacity-overflow and unsigned-contradiction checks are
-		// field-shaped, so a scalar carrying an out-of-range bound
-		// (`scalar X uint8 @lte(300)`) or an always-false bound (`scalar X
-		// uint @lt(0)`) runs them through a synthetic field typed as the
-		// scalar's primitive - exactly the decorators a using field inherits.
 		scalarAsField := &ast.Field{
 			Name:       dd.Name,
 			Type:       &ast.TypeRef{Named: &ast.NamedTypeRef{Pos: dd.Pos, Name: &ast.QualifiedIdent{Pos: dd.Pos, Parts: []string{dd.Primitive}}}},
@@ -66,19 +40,8 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		}
 		a.checkBoundCapacity(scalarAsField)
 		a.checkNegativeOnUnsigned(scalarAsField)
-		// Pair-ordering (@gte/@lte, @gt/@lt, @minLength/@maxLength,
-		// @minItems/@maxItems) is purely structural - it reads the
-		// decorators' own numeric args - so a contradictory scalar bound
-		// (`scalar Score int @gte(100) @lte(10)`) must be caught here too,
-		// not only on fields.
 		a.checkPairOrdering(scalarAsField)
 		if dd.Primitive == "bytes" && !HasRawFormat(dd.Decorators) {
-			// Same rule as a bytes field: @pattern / @format constrain text,
-			// not a binary value, so the validator drops them while OpenAPI
-			// advertises them. Caught here too because a scalar carries its
-			// decorators on the declaration, not the using field. A scalar
-			// over `bytes @format(raw)` is out of scope: `raw` constrains
-			// nothing, and the compatibility check refuses the rest.
 			for _, d := range dd.Decorators {
 				if d != nil && (d.Name == "pattern" || d.Name == "format") {
 					a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
@@ -87,11 +50,6 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 				}
 			}
 		}
-		// Same rules as a field's @multipleOf, applied on the declaration
-		// because a scalar carries its decorators here, not on the using
-		// field: a float scalar can't use Go's integer-only modulus at all,
-		// and an integer scalar needs a whole-number divisor or the OpenAPI
-		// advertises a bound the validator drops.
 		isFloat := dd.Primitive == "float32" || dd.Primitive == "float64"
 		for _, d := range dd.Decorators {
 			if d == nil || d.Name != "multipleOf" {
@@ -116,8 +74,8 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 	}
 }
 
-// checkBodyRanges runs the per-field combination rules in addition to
-// the per-decorator value checks. Mixin members are skipped.
+// checkBodyRanges runs the decorator value rules and the field rules on each
+// field of a body.
 func (a *analyzer) checkBodyRanges(members []ast.TypeMember, typeParams []string) {
 	for _, m := range members {
 		f, ok := m.(*ast.Field)
@@ -138,9 +96,7 @@ func (a *analyzer) checkBodyRanges(members []ast.TypeMember, typeParams []string
 	}
 }
 
-// checkDecoratorRanges applies value-sanity checks to each decorator
-// in the slice. The dispatch table is small and explicit so adding a
-// new rule means adding one case here plus the helper.
+// checkDecoratorRanges checks the argument values of each decorator in decs.
 func (a *analyzer) checkDecoratorRanges(decs []*ast.Decorator) {
 	for _, d := range decs {
 		if d == nil {
@@ -163,10 +119,8 @@ func (a *analyzer) checkDecoratorRanges(decs []*ast.Decorator) {
 	}
 }
 
-// checkPairArgs handles `@length(min, max)` / `@range(min, max)`. The
-// 1-arg form of `@length` is "exact length" - still non-negative, or the
-// validator emits an always-true `l != N` reject (RuneCount is never < 0)
-// while OpenAPI advertises no length constraint at all.
+// checkPairArgs requires min ≤ max in `@length` and `@range`, and
+// non-negative `@length` values.
 func (a *analyzer) checkPairArgs(d *ast.Decorator) {
 	pos := positionalArgs(d)
 	if d.Name == "length" && len(pos) == 1 {
@@ -194,12 +148,7 @@ func (a *analyzer) checkPairArgs(d *ast.Decorator) {
 	}
 }
 
-// checkMultipleOf rejects non-positive divisors. Zero panics at
-// runtime (division by zero). Negative divisors are mathematically
-// valid in Go (`%` follows the dividend sign) but every common
-// interpretation of "multiple of N" means N > 0 - accepting negatives
-// silently lets a typo (`@multipleOf(-2)`) compile to a validator
-// that exhibits surprising symmetry around the dividend's sign.
+// checkMultipleOf rejects a divisor that is not positive.
 func (a *analyzer) checkMultipleOf(d *ast.Decorator) {
 	pos := positionalArgs(d)
 	if len(pos) != 1 {
@@ -220,9 +169,7 @@ func (a *analyzer) checkMultipleOf(d *ast.Decorator) {
 	}
 }
 
-// checkHTTPStatus rejects `@status(code)` outside the 100..599 range.
-// Tightening to a known-status set is intentionally avoided - RFC
-// allows future additions and we don't want to lag the spec.
+// checkHTTPStatus rejects a `@status` code outside 100..599.
 func (a *analyzer) checkHTTPStatus(d *ast.Decorator) {
 	pos := positionalArgs(d)
 	if len(pos) != 1 {
@@ -238,11 +185,8 @@ func (a *analyzer) checkHTTPStatus(d *ast.Decorator) {
 	}
 }
 
-// checkPositiveDuration rejects `@timeout(0)` and `@timeout(0s)`: a
-// non-positive deadline cancels nothing. The suffixed form is converted by
-// [lexer.ParseDuration] and the bare-int form (seconds) compared directly,
-// so both spellings answer to the same rule. A literal ParseDuration cannot
-// convert is reported too - the routes emitter turns one into no timeout.
+// checkPositiveDuration rejects a `@timeout` that is not positive, in bare
+// seconds or as a duration, or that [lexer.ParseDuration] cannot read.
 func (a *analyzer) checkPositiveDuration(d *ast.Decorator) {
 	pos := positionalArgs(d)
 	if len(pos) != 1 {
@@ -267,12 +211,8 @@ func (a *analyzer) checkPositiveDuration(d *ast.Decorator) {
 	}
 }
 
-// checkPositiveSize rejects `@maxBodySize(0)` and `@maxBodySize(0B)`:
-// @maxBodySize and @maxSize both read a byte count of zero or less as "no
-// cap" and emit no check, so the decorator would read as a limit and
-// enforce nothing. Both literal forms go through [SizeBytes] so the bare
-// count and the suffixed form answer to the same rule; a suffixed literal
-// whose count does not fit an int64 is reported rather than wrapped.
+// checkPositiveSize rejects a `@maxBodySize` or `@maxSize` of zero or less,
+// which would mean no cap, or one [lexer.ParseSize] cannot read.
 func (a *analyzer) checkPositiveSize(d *ast.Decorator) {
 	pos := positionalArgs(d)
 	if len(pos) != 1 {
@@ -292,8 +232,7 @@ func (a *analyzer) checkPositiveSize(d *ast.Decorator) {
 	}
 }
 
-// checkNonNegativeInt rejects negative @minLength etc. Length / item
-// counts cannot be negative; if the user wrote -1 they likely meant 0.
+// checkNonNegativeInt rejects a negative length or item count.
 func (a *analyzer) checkNonNegativeInt(d *ast.Decorator) {
 	pos := positionalArgs(d)
 	if len(pos) != 1 {
@@ -305,19 +244,8 @@ func (a *analyzer) checkNonNegativeInt(d *ast.Decorator) {
 	}
 }
 
-// checkPairOrdering enforces "lower decorator ≤ upper decorator" when
-// both appear on the same field. Missing one of the pair is fine - the
-// solo decorator is unconstrained. Four pair families:
-//
-//   - String length: `@minLength` vs `@maxLength`
-//   - Array items:   `@minItems` vs `@maxItems`
-//   - Numeric (inclusive): `@gte` vs `@lte`
-//   - Numeric (strict):    `@gt`  vs `@lt`
-//
-// Mixed strict/inclusive pairs (`@gte(5) @lt(5)` etc.) are inspected
-// for emptiness - when at least one bound is strict and the endpoints
-// touch, no value satisfies both checks. Without this, codegen happily
-// emits a validator that rejects every input.
+// checkPairOrdering rejects a lower bound above its upper partner on f, and
+// warns when a pair with a strict bound meets at one value.
 func (a *analyzer) checkPairOrdering(f *ast.Field) {
 	pairs := []struct {
 		lo, hi   string
@@ -343,11 +271,6 @@ func (a *analyzer) checkPairOrdering(f *ast.Field) {
 			diag.Related = related(loPos, "@"+p.lo+" declared here")
 			continue
 		}
-		// Equal endpoints define an empty value set whenever EITHER
-		// bound is strict - `@gt(5) @lte(5)` excludes 5 on the
-		// lower side, `@gte(5) @lt(5)` excludes 5 on the upper side,
-		// `@gt(5) @lt(5)` excludes 5 on both. Only fully-inclusive
-		// `@gte(N) @lte(N)` accepts the single value N.
 		if loV == hiV && (p.loStrict || p.hiStrict) {
 			diag := a.diag(hiPos, hiPos, lexer.SeverityWarning, CodeBoundEmptyRange,
 				"@%s(%g) combined with @%s(%g) defines an empty range - no value satisfies both",
@@ -357,10 +280,7 @@ func (a *analyzer) checkPairOrdering(f *ast.Field) {
 	}
 }
 
-// checkNullableRedundant warns when `@nullable` is applied to a `T?`
-// field. README §"Field presence semantics" splits the four states
-// explicitly; the optional marker already conveys nullability so the
-// decorator is noise.
+// checkNullableRedundant warns about `@nullable` on an optional field.
 func (a *analyzer) checkNullableRedundant(f *ast.Field) {
 	var nullableDec *ast.Decorator
 	for _, d := range f.Decorators {
@@ -379,10 +299,8 @@ func (a *analyzer) checkNullableRedundant(f *ast.Field) {
 	}
 }
 
-// singleNumericArg looks up the first decorator named `name` in decs
-// and extracts its first numeric positional argument. Returns the
-// numeric value, the position the IDE should underline, and ok=false
-// when the decorator is absent or its first arg isn't numeric.
+// singleNumericArg returns the first argument of the first `name` decorator
+// in decs, and its position, when that argument is numeric.
 func singleNumericArg(decs []*ast.Decorator, name string) (float64, lexer.Position, bool) {
 	for _, d := range decs {
 		if d == nil || d.Name != name {
@@ -401,8 +319,7 @@ func singleNumericArg(decs []*ast.Decorator, name string) (float64, lexer.Positi
 	return 0, lexer.Position{}, false
 }
 
-// numericValue extracts a float64 from an int or float literal. Other
-// expr kinds return ok=false.
+// numericValue returns an int or float literal's value as a float64.
 func numericValue(e ast.Expr) (float64, bool) {
 	switch v := e.(type) {
 	case *ast.IntLit:

@@ -1,5 +1,3 @@
-// `file` placement checks: uploads must sit at the top level of a request
-// body where the multipart binder can reach them.
 package semantic
 
 import (
@@ -7,20 +5,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// checkFilePosition rejects a `file` field nested below the top level of a
-// request body. The form-binding codegen scans only
-// the resolved top-level fields of a method's request type, so a `file`
-// reached through a named struct field is never bound: the request is decoded
-// as JSON, the `*multipart.FileHeader` field stays nil, and the upload is
-// silently lost. Both gen and `go build` succeed, so this design-time
-// rejection is the only signal.
-//
-// Only request-side nesting is rejected. A top-level `file` field - directly
-// on the request or flattened in via a mixin - is the supported upload shape.
-// A `file` field that appears in a response (or in a type echoed back as a
-// response, e.g. a profile that carries an avatar) is left alone: that is an
-// established modelling pattern, lowered to the OpenAPI `format: binary`
-// shape.
+// checkFilePosition rejects a `file` field below the top level of a request
+// type, which the multipart binder never reaches, and any `file[][]`.
 func (a *analyzer) checkFilePosition() {
 	bodies := map[string][]ast.TypeMember{}
 	hasFile := false
@@ -32,9 +18,6 @@ func (a *analyzer) checkFilePosition() {
 				continue
 			}
 			hasFile = true
-			// A single `file` lowers to one binary blob and a `file[]` to flat
-			// repeated multipart parts; `file[][]` (or deeper) has no wire
-			// encoding and the binder would assign a 1-D slice to a nested one.
 			if f.Type.ArrayDepth > 1 {
 				a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeFilePosition,
 					"field %s.%s: a multi-dimensional `file` array (`file[][]`) has no multipart encoding - only a single `file` or a 1-D `file[]` is supported", name, f.Name)
@@ -69,10 +52,8 @@ func (a *analyzer) checkFilePosition() {
 	}
 }
 
-// walkRequestForNestedFiles reports every `file` field reachable from a
-// request type below its top level. Top-level fields (direct or mixin-
-// flattened) are the binder's domain and are skipped; descent into a named
-// struct field marks everything beneath it as nested.
+// walkRequestForNestedFiles reports every `file` field reached from request
+// type reqName through a struct-typed field; mixin fields count as top level.
 func (a *analyzer) walkRequestForNestedFiles(reqName string, bodies map[string][]ast.TypeMember, report func(f *ast.Field, owner, path string)) {
 	seen := map[string]bool{}
 	var nested func(owner string, members []ast.TypeMember, path string)
@@ -101,8 +82,6 @@ func (a *analyzer) walkRequestForNestedFiles(reqName string, bodies map[string][
 			}
 		}
 	}
-	// Top level: a direct or mixin-flattened `file` field binds correctly, so
-	// only descend into named struct fields to find nested files.
 	var top func(members []ast.TypeMember)
 	top = func(members []ast.TypeMember) {
 		for _, m := range members {
@@ -126,8 +105,7 @@ func (a *analyzer) walkRequestForNestedFiles(reqName string, bodies map[string][
 	top(bodies[reqName])
 }
 
-// isFileTypeRef reports whether t names the built-in `file` type (bare or
-// optional; arrays included so a misplaced `file[]` is still caught here).
+// isFileTypeRef reports whether t names `file`, optional or in an array.
 func isFileTypeRef(t *ast.TypeRef) bool {
 	return t != nil && t.Named != nil && t.Named.Name != nil && t.Named.Name.String() == "file"
 }

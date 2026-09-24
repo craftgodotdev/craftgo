@@ -1,5 +1,3 @@
-// @default / @example literal validation: target type support, literal
-// kind and value fit.
 package semantic
 
 import (
@@ -19,11 +17,7 @@ func (a *analyzer) checkFieldDefault(f *ast.Field) {
 	if dec == nil {
 		return
 	}
-	// @default targets a primitive / scalar / enum or a SINGLE-level array
-	// of those. A multi-dimensional array default has no real use and its
-	// nested-literal form is a sharp edge, so it is rejected outright. The
-	// check is structural (array depth, independent of the element type), so
-	// it fires for cross-package element types too.
+	// A nested array is refused whatever its element, cross-package included.
 	if f.Type != nil && f.Type.ArrayDepth > 1 {
 		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityError, CodeDecoratorConflict,
 			"@default is not supported on a multi-dimensional array (field %q): a default may target a primitive, scalar, enum, or a single-level array of those - not a nested array",
@@ -37,10 +31,7 @@ func (a *analyzer) checkFieldDefault(f *ast.Field) {
 			f.Name)
 		return
 	}
-	// @default on a non-optional, non-@path field: the default fires when the
-	// value is absent, so the field is conceptually optional. Warn (the docs
-	// promise this, and `craftgo fmt` auto-adds `?`); a @path segment is always
-	// present, so it is exempt.
+	// A @path segment is always present, so it needs no `?`.
 	if f.Type != nil && !f.Type.Optional && !ast.HasDecorator(f.Decorators, wire.BindingPath) {
 		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityWarning, CodeDefaultNeedsOptional,
 			"@default on non-optional field %q: the default fires when the value is absent, so the field is optional - add `?` (or run `craftgo fmt`) so types.go, validate.go, and the OpenAPI agree it is optional",
@@ -53,12 +44,8 @@ func (a *analyzer) checkFieldDefault(f *ast.Field) {
 	a.checkDefaultLiteral(f, f.Type, pos[0].Value, pos[0].Pos)
 }
 
-// checkFieldExample type-checks an `@example` literal against the field's
-// type, reusing the SAME validator as `@default` (checkLiteralType) so the
-// two agree - a string example on an int field, or a non-member value on an
-// enum field, is rejected just as the equivalent default is. Object-literal
-// args are left to [checkExampleArg]. Without this, @example silently
-// emitted spec examples that contradicted their own schema.
+// checkFieldExample checks an `@example` literal against f's type as a
+// `@default` is checked.
 func (a *analyzer) checkFieldExample(f *ast.Field) {
 	if f == nil {
 		return
@@ -67,11 +54,6 @@ func (a *analyzer) checkFieldExample(f *ast.Field) {
 	if dec == nil {
 		return
 	}
-	// A multi-dimensional array has no single-value example shape and its
-	// nested-literal form is the same sharp edge @default rejects - reject up
-	// front with the structural message, rather than letting the per-element
-	// walk misreport the inner array as "expects a single value". Mirrors
-	// [analyzer.checkFieldDefault].
 	if f.Type != nil && f.Type.ArrayDepth > 1 {
 		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityError, CodeDecoratorConflict,
 			"@example is not supported on a multi-dimensional array (field %q): an example may target a primitive, scalar, enum, or a single-level array of those - not a nested array",
@@ -86,23 +68,13 @@ func (a *analyzer) checkFieldExample(f *ast.Field) {
 	}
 }
 
-// checkDefaultLiteral validates a `@default` literal against the field's
-// resolved type. Thin wrapper over [checkLiteralType] - the value-vs-type
-// logic is shared with `@example` so the two decorators agree on what a
-// valid literal is; the `@default`-specific rejects (bytes / file / int
-// capacity) ride inside, gated on the decorator name.
+// checkDefaultLiteral checks a `@default` literal against type t.
 func (a *analyzer) checkDefaultLiteral(f *ast.Field, t *ast.TypeRef, v ast.Expr, pos lexer.Position) {
 	a.checkLiteralType("default", f, t, v, pos)
 }
 
-// checkLiteralType validates a value-bearing decorator's literal against a
-// resolved type: array shape, enum membership, and primitive-kind fit.
-// Recurses through arrays so `[Active, Pending]` on a `Status[]` field flags
-// any non-member element. Shared by `@default` and `@example` (decName) so a
-// string example on an int field is rejected exactly like a string default
-// is. The rejects that are meaningful ONLY for a prefilled default
-// (bytes/file have no literal default form; an out-of-capacity int would not
-// compile) are gated on decName == "default".
+// checkLiteralType checks literal v of decorator decName against type t:
+// array shape, then enum membership or primitive kind per element.
 func (a *analyzer) checkLiteralType(decName string, f *ast.Field, t *ast.TypeRef, v ast.Expr, pos lexer.Position) {
 	if t == nil {
 		return
@@ -131,9 +103,8 @@ func (a *analyzer) checkLiteralType(decName string, f *ast.Field, t *ast.TypeRef
 	a.checkScalarEnumLiteralValue(decName, f.Name, t.Named.Name.String(), a.primOf(t), a.lookupEnum(t.Named), v, pos)
 }
 
-// primitiveArgKind maps a resolved primitive name to the literal kind a
-// value-bearing decorator must carry. Unknown names (structs, unresolved
-// refs) return ArgAny so no kind check fires.
+// primitiveArgKind returns the literal kind a value of primitive prim takes,
+// or ArgAny when there is none to check.
 func primitiveArgKind(prim string) ArgKind {
 	sp, ok := prims.Lookup(prim)
 	if !ok {
@@ -152,12 +123,8 @@ func primitiveArgKind(prim string) ArgKind {
 	return ArgAny
 }
 
-// checkScalarEnumLiteralValue validates one non-array literal against an
-// already-resolved enum (ed != nil) OR a resolved scalar/primitive (prim).
-// dispName is the type name used in messages. decName gates the default-only
-// rejects (bytes/file have no literal form; an out-of-capacity int would not
-// compile). A `shared.Tiny @default(200)` gets the same kind / capacity /
-// membership verdict as a local `Tiny @default(200)`.
+// checkScalarEnumLiteralValue checks one non-array literal against enum ed
+// or, when ed is nil, primitive prim; some checks apply to `@default` only.
 func (a *analyzer) checkScalarEnumLiteralValue(decName, fieldName, dispName, prim string, ed *ast.EnumDecl, v ast.Expr, pos lexer.Position) {
 	if ed != nil {
 		ident, ok := v.(*ast.IdentExpr)
@@ -225,10 +192,8 @@ func (a *analyzer) checkScalarEnumLiteralValue(decName, fieldName, dispName, pri
 	}
 }
 
-// defaultTypeSupported reports whether @default may target a field of
-// type t: primitives, enums, scalars wrapping primitives, optional of
-// those, and arrays of those. Map / struct / generic / array-of-struct
-// return false so the caller can flag the combination.
+// defaultTypeSupported reports whether `@default` may target type t: a
+// primitive, an enum, a scalar over a primitive, or an array of one.
 func (a *analyzer) defaultTypeSupported(t *ast.TypeRef) bool {
 	if t == nil || t.Map != nil {
 		return false
@@ -239,9 +204,8 @@ func (a *analyzer) defaultTypeSupported(t *ast.TypeRef) bool {
 	return a.defaultElemSupported(t)
 }
 
-// defaultElemSupported is the per-element check used both for
-// stand-alone fields and array elements. A qualified name that resolves
-// to nothing is left to the reference pass.
+// defaultElemSupported is defaultTypeSupported for a non-array type; an
+// unresolved qualified name passes, for the reference pass to report.
 func (a *analyzer) defaultElemSupported(t *ast.TypeRef) bool {
 	if t == nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) > 2 {
 		return false
@@ -262,8 +226,7 @@ func (a *analyzer) defaultElemSupported(t *ast.TypeRef) bool {
 	return false
 }
 
-// enumValueList renders an enum's value names as a comma-separated
-// list for diagnostic messages.
+// enumValueList joins ed's value names with ", ".
 func enumValueList(ed *ast.EnumDecl) string {
 	if ed == nil {
 		return ""

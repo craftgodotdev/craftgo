@@ -8,35 +8,16 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// declProducer is one (decl → Go-name) pair captured during the
-// collision pass. Multiple declProducers per Go-name in the same
-// package signal a hard error.
+// declProducer is a decl that emits a given Go name.
 type declProducer struct {
 	dslName string
 	kind    string // "type" | "error" | "enum" | "scalar"
 	pos     lexer.Position
-	emitted string // the specific Go name this declProducer emits
+	emitted string // the Go name
 }
 
-// checkDeclGoNameCollisions emits an ERROR for any pair of top-level
-// declarations in the same package whose codegen output produces the
-// same Go identifier. The codegen mangling rules involved:
-//
-//   - TypeDecl X → emits `type X struct{...}`
-//   - EnumDecl X → emits `type X <kind>` + constants
-//   - ScalarDecl X → emits `type X = <underlying>`
-//   - ErrorDecl X → emits `type XErr struct{...}` and `type XBody
-//     struct{...}` (the latter only when the error body is non-empty)
-//   - MiddlewareDecl X → emits `type XMiddleware = server.Middleware`
-//   - ServiceDecl → no top-level type names (handler/route packages
-//     are namespaced separately)
-//
-// A user writing `type FooErr` AND `error Foo { ... }` would get
-// two `type FooErr struct{...}` declarations in the generated
-// types package; Go would refuse to compile. Auto-suffixing decls
-// is not safe (the user references the name from their own logic),
-// so this surfaces at error severity to fail the build early at
-// the design layer.
+// checkDeclGoNameCollisions rejects two decls of one package that emit the
+// same Go type name.
 func (a *analyzer) checkDeclGoNameCollisions(files []*ast.File) {
 	groups := map[string][]declProducer{}
 	order := []string{}
@@ -61,10 +42,7 @@ func (a *analyzer) checkDeclGoNameCollisions(files []*ast.File) {
 		if len(ps) < 2 {
 			continue
 		}
-		// Anchor the diagnostic at the SECOND declProducer (the dupe)
-		// so the IDE squiggle points at the offending later decl
-		// while the message still names the first as "first
-		// declared at <Pos>". Stable order across runs.
+		// Every producer after the first by position is reported against it.
 		sort.SliceStable(ps, func(i, j int) bool {
 			if ps[i].pos.Line != ps[j].pos.Line {
 				return ps[i].pos.Line < ps[j].pos.Line
@@ -81,8 +59,7 @@ func (a *analyzer) checkDeclGoNameCollisions(files []*ast.File) {
 	}
 }
 
-// producedName ties a generated Go identifier back to the DSL decl
-// that emits it. Used by [checkDeclGoNameCollisions] only.
+// producedName is a Go name a decl emits.
 type producedName struct {
 	goName  string
 	dslName string
@@ -90,10 +67,7 @@ type producedName struct {
 	pos     lexer.Position
 }
 
-// errStructName mirrors codegen's errSuffix: the error struct keeps its
-// name when it already ends in `Err`/`Error`, otherwise `Err` is appended.
-// Replicated here (semantic can't import codegen) so the collision check
-// predicts the SAME Go identifier codegen actually emits.
+// errStructName returns the Go struct name of the error decl name.
 func errStructName(name string) string {
 	if strings.HasSuffix(name, "Err") || strings.HasSuffix(name, "Error") {
 		return name
@@ -101,11 +75,8 @@ func errStructName(name string) string {
 	return name + "Err"
 }
 
-// goNamesProducedBy returns the top-level Go identifiers a decl
-// causes the codegen pass to emit. Empty when the decl produces
-// nothing at the types-package scope (services live in their own
-// package). Mirrors codegen's types / enums / errors / middleware
-// emitters; a change to the declProducer set there must be mirrored here.
+// goNamesProducedBy returns the Go type names d emits into the types
+// package.
 func goNamesProducedBy(d ast.Decl) []producedName {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
@@ -133,16 +104,11 @@ func goNamesProducedBy(d ast.Decl) []producedName {
 		}
 		return out
 	}
-	// MiddlewareDecl is excluded: its alias lives in the svccontext
-	// package, not the types package. Middleware-vs-middleware
-	// uniqueness is handled via the `seenMW` map in [collectDecls].
+	// A middleware's alias lives in the svccontext package.
 	return nil
 }
 
-// describeProducedNames renders a short suffix listing every Go
-// name a decl emits. Used inside diagnostic messages so users see
-// which mangled output collided when a single DSL decl produces
-// more than one name (e.g. ErrorDecl emits both `XErr` and `XBody`).
+// describeProducedNames states p's naming rule for the collision message.
 func describeProducedNames(p declProducer) string {
 	switch p.kind {
 	case "error":

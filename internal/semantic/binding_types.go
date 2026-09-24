@@ -1,6 +1,3 @@
-// Binding type-shape rules: which field types may ride @path / @query /
-// @header / @cookie / @form, and the human-readable type description used
-// in their diagnostics.
 package semantic
 
 import (
@@ -18,41 +15,12 @@ const (
 	msgBindForm        = "field %s.%s: @form requires `file` or string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or file arrays) - got %s"
 )
 
-// checkBindingFieldType vets the type compatibility of `@path`,
-// `@header`, `@cookie`, and `@form` bindings up front so the codegen
-// never has to produce uncompilable Go.
-//
-// Per-decorator rules (mirrors the wire-bind codegen in
-// `internal/codegen/golang.renderWireBindLine`):
-//
-//   - `@path`              - the same wire-bindable shapes as @query
-//     (string / bool / int* / uint* / float*, or a scalar / enum over
-//     one), but never optional or array. Path segments are mandatory by
-//     definition (the route matched or it didn't), so optional makes no
-//     semantic sense, and a path carries one value per segment. A
-//     numeric segment is parsed via the same server.Parse* helper a
-//     numeric @query field uses.
-//   - `@query` / `@header` / `@cookie` - string + numeric + bool +
-//     scalars/enums + arrays of those. Optional string-shaped is
-//     accepted (binder emits `*T`); optional numerics use the
-//     zero-value sentinel because tri-state pointers off a string-
-//     wire are not unambiguous.
-//   - `@form`              - same as @query plus the `file` type
-//     (multipart upload path). Arrays of file are still rejected
-//     because the binder writes a single `*multipart.FileHeader`.
-//
-// Anything outside these categories raises [CodeBindingType] with a
-// message that names the offending shape so the author can repair
-// without consulting docs.
+// checkBindingFieldType rejects a wire binding whose field type the binder
+// cannot fill, `@nullable` on any wire binding, and `@default` on `@path`.
 func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 	if f.Type == nil {
 		return
 	}
-	// `@nullable` marks a JSON-body field as accepting an explicit null.
-	// A wire parameter (path / query / header / cookie / form) is a string
-	// on the wire with no JSON-null form, and the Go field it lowers to
-	// would be a pointer the wire binder can't assign - so the pairing is
-	// rejected outright. `?` is the way to make a parameter optional.
 	if ast.HasDecorator(f.Decorators, "nullable") {
 		for _, d := range f.Decorators {
 			switch d.Name {
@@ -64,11 +32,6 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 			}
 		}
 	}
-	// A path segment of a matched route is ALWAYS supplied, so @default can
-	// never apply. The auto-@path form is rejected by checkAutoPathField;
-	// reject the explicit @path form here too so the two forms agree
-	// (otherwise codegen emits a dead prefill and the OpenAPI param carries
-	// both required:true and a default).
 	if ast.HasDecorator(f.Decorators, "default") {
 		for _, d := range f.Decorators {
 			if d.Name == wire.BindingPath {
@@ -78,14 +41,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 			}
 		}
 	}
-	// A wire-string source (@query / @header / @form) encodes an array
-	// as repeated scalar params (`?x=1&x=2`) - inherently one-dimensional.
-	// A nested array (`int[][]`) has no wire form, so reject it
-	// structurally here, before the qualified-ref skip below: array depth
-	// is independent of the element type, so the check is the same whether
-	// the element is local or cross-package. Without this, codegen emits a
-	// 1-D binder against an N-D field that won't compile. (@cookie / @path
-	// reject every array shape outright elsewhere.)
+	// @cookie and @path refuse every array below.
 	if f.Type.ArrayDepth > 1 {
 		for _, d := range f.Decorators {
 			switch d.Name {
@@ -108,9 +64,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 				parent, f.Name, describeTypeRef(f.Type))
 			return
 		case wire.BindingQuery, wire.BindingHeader, wire.BindingCookie:
-			// Cookie has no multi-value shape; reject arrays with
-			// the source-specific message BEFORE the general wire
-			// check (which accepts arrays for query / header).
+			// The wire check below accepts arrays; a cookie carries one value.
 			if d.Name == wire.BindingCookie && f.Type.Array {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
 					msgBindCookieArray,
@@ -136,9 +90,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 	}
 }
 
-// isQualifiedTypeRef reports whether t names a cross-package symbol
-// (`pkg.Name` with 2 segments). Array / optional wrappers don't
-// affect the named ref inside - strip those down to the head ref.
+// isQualifiedTypeRef reports whether t names a qualified `pkg.Name` symbol.
 func isQualifiedTypeRef(t *ast.TypeRef) bool {
 	if t == nil || t.Named == nil || t.Named.Name == nil {
 		return false
@@ -146,19 +98,8 @@ func isQualifiedTypeRef(t *ast.TypeRef) bool {
 	return len(t.Named.Name.Parts) >= 2
 }
 
-// isPathBindingType reports whether t can bind to `@path`. A path
-// segment is parsed the same way as a `@query` value (string / bool /
-// int* / uint* / float*, or a scalar / enum wrapping one), so the
-// accepted set is exactly [analyzer.isWireBindingType] MINUS two shapes a
-// URL path can't carry:
-//   - optional: a matched route always supplies the segment, so a
-//     nilable path field is meaningless.
-//   - array: a path carries a single value per segment, with no
-//     repeated form.
-//
-// Numeric path IDs (`/users/{id}` with `id int`) are the common REST
-// case; the binder parses the segment via the same server.Parse* helper
-// a numeric @query field uses.
+// isPathBindingType reports whether t can bind to `@path`: a wire-bindable
+// type that is neither optional nor an array.
 func (a *analyzer) isPathBindingType(t *ast.TypeRef) bool {
 	return a.pathBindableIn(a.pkg.Name, t)
 }
@@ -172,20 +113,8 @@ func (a *analyzer) pathBindableIn(homePkg string, t *ast.TypeRef) bool {
 	return a.wireBindableIn(homePkg, t)
 }
 
-// isWireBindingType reports whether t is acceptable as a `@query`,
-// `@header`, or `@cookie` field. The shared set covers every primitive
-// the codegen's wire-bind shape catalogue can parse:
-//
-//   - string                              → directSingle / optionalStringNoCast
-//   - bool / int* / uint* / float*        → singleParsed
-//   - string-backed scalar / enum         → directSingle / optionalStringCast with cast
-//   - numeric scalar / int enum           → singleParsed with cast
-//   - array of any of the above           → directSlice / arrayString / arrayParsed
-//   - optional of any string-shaped item  → optionalString*
-//
-// Optional numerics are accepted too (the binder writes a `*T` and leaves
-// it nil when the key is absent). Rejects: maps, structs, generic
-// instantiations, and the `file` type (which only `@form` accepts).
+// isWireBindingType reports whether t can bind to a query, header or cookie:
+// a parseable primitive, a scalar or enum over one, or a 1-D array of them.
 func (a *analyzer) isWireBindingType(t *ast.TypeRef) bool {
 	return a.wireBindableIn(a.pkg.Name, t)
 }
@@ -196,13 +125,10 @@ func (a *analyzer) wireBindableIn(homePkg string, t *ast.TypeRef) bool {
 	if t == nil || t.Map != nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Args) > 0 {
 		return false
 	}
-	// A wire-string source encodes an array as repeated single values
-	// (`?x=1&x=2`); a nested array has no wire form.
 	if t.ArrayDepth > 1 {
 		return false
 	}
-	// Only a bare name can be a builtin; a qualified ref always names a
-	// declaration.
+	// Only a bare name can be a builtin.
 	if len(t.Named.Name.Parts) == 1 {
 		name := t.Named.Name.String()
 		if name == "file" {
@@ -221,26 +147,20 @@ func (a *analyzer) wireBindableIn(homePkg string, t *ast.TypeRef) bool {
 	return false
 }
 
-// isFormBindingType is the wire-bind set plus the `file` type, which
-// only multipart supports. `file?` and bare `file` are equivalent
-// (the renderer drops the pointer wrap on already-nilable types);
-// `file[]` is rejected because the multipart binder writes a single
-// `*multipart.FileHeader` slot, not a slice.
+// isFormBindingType reports whether t can bind to `@form`: a wire-bindable
+// type, a `file`, or a 1-D `file[]`.
 func (a *analyzer) isFormBindingType(t *ast.TypeRef) bool {
 	if t == nil || t.Named == nil {
 		return false
 	}
 	if t.Named.Name.String() == "file" {
-		// A single `file` or a 1-D `file[]` (repeated multipart parts) binds;
-		// a map or a multi-dimensional `file[][]` has no multipart encoding.
 		return t.Map == nil && t.ArrayDepth <= 1
 	}
 	return a.isWireBindingType(t)
 }
 
-// describeTypeRef renders a short human label for a TypeRef so binding
-// diagnostics can say `got string?` / `got string[]` / `got int`. Kept
-// minimal - the diagnostic only needs to point at the mismatch.
+// describeTypeRef renders t for diagnostics, such as `int[][]` or `string?`;
+// generic arguments are left out.
 func describeTypeRef(t *ast.TypeRef) string {
 	if t == nil {
 		return "(none)"
@@ -258,9 +178,7 @@ func describeTypeRef(t *ast.TypeRef) string {
 		}
 		name = "map<" + key + ", " + val + ">"
 	}
-	// Render one `[]` per array dimension so a multi-dim field reads as
-	// `int[][]`. ArrayDepth is authoritative; fall back to a single `[]`
-	// for any hand-built TypeRef that set only the Array flag.
+	// A hand-built TypeRef may set Array without ArrayDepth.
 	depth := t.ArrayDepth
 	if depth == 0 && t.Array {
 		depth = 1
@@ -293,8 +211,8 @@ func namedTypeRefs(t *ast.TypeRef) []string {
 	return out
 }
 
-// enumWireKindOK returns true when the enum's first member is one of
-// the wire-bindable kinds (bare / string / int).
+// enumWireKindOK reports whether ed has a value of a wire-bindable kind:
+// bare, string or int.
 func enumWireKindOK(ed *ast.EnumDecl) bool {
 	for _, m := range ed.Members {
 		if v, ok := m.(*ast.EnumValue); ok {

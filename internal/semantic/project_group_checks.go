@@ -1,8 +1,3 @@
-// Project-level `@group` checks. Sharing a group between services is
-// supported - that is what the decorator is for - so these passes police
-// only the two things a shared output directory cannot absorb: a Go
-// package declaration per directory, and one file per stub-producing
-// member name.
 package semantic
 
 import (
@@ -15,20 +10,16 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
-// segMember is one stub-producing member - a method - that a service
-// contributes to an output directory. Each scaffolds `<name>.go` in the
-// service logic folder, so they compete for the same filename.
+// segMember is a method a service contributes to an output directory; it
+// scaffolds `<name>.go` there.
 type segMember struct {
 	name string
 	kind string
 	pos  lexer.Position
 }
 
-// segClaim is everything one service puts into one output directory: the
-// package it was declared in, the `@group` that took it there ("" = the
-// service's own directory), the token to anchor a diagnostic at, and the
-// members it contributes. A service reaching one directory from several
-// blocks produces a single claim carrying all their members.
+// segClaim is what one service puts into one output directory; group is ""
+// for the service's own directory.
 type segClaim struct {
 	pkg     string
 	svc     string
@@ -37,19 +28,8 @@ type segClaim struct {
 	members []segMember
 }
 
-// checkProjectGroupChecks runs both shared-directory passes over the
-// project. `@group` REPLACES the service-name segment
-// ([route.OutputSegment]), which is what lets several services share a
-// folder: their handlers and stubs are per-method files that sit side by
-// side, and codegen emits ONE routes.go per directory registering all of
-// them. Two constraints survive that merge, and both are hard errors
-// because neither has a sensible generated form:
-//
-//   - A directory is one Go package. Generated files take their `package`
-//     declaration from the DSL package that declared the service, so a
-//     folder fed by two DSL packages cannot compile.
-//   - A method owns a filename and an exported name inside that package,
-//     so two services in one folder cannot both declare it.
+// checkProjectGroupChecks rejects an output directory shared by services of
+// different DSL packages, or by two services declaring one method name.
 func (r *refResolver) checkProjectGroupChecks() {
 	claims := map[string][]segClaim{}
 	for pkgName, pkg := range r.proj.Packages {
@@ -69,8 +49,7 @@ func (r *refResolver) checkProjectGroupChecks() {
 	sort.Strings(segs)
 	for _, seg := range segs {
 		occs := claims[seg]
-		// Map iteration feeds occs, so order it before emitting: the
-		// diagnostic set must not shuffle between runs.
+		// occs comes from map iteration; sort it for stable output.
 		sort.Slice(occs, func(i, j int) bool {
 			if occs[i].pkg != occs[j].pkg {
 				return occs[i].pkg < occs[j].pkg
@@ -85,9 +64,8 @@ func (r *refResolver) checkProjectGroupChecks() {
 	}
 }
 
-// reportGroupPackageStraddle fires when the services sharing seg were not
-// all declared in the same DSL package. Every claimant is flagged, each
-// pointing at the others, so the editor underlines the whole conflict.
+// reportGroupPackageStraddle reports every service sharing seg, relating the
+// others, when they come from more than one DSL package.
 func (r *refResolver) reportGroupPackageStraddle(seg string, occs []segClaim) {
 	first := occs[0].pkg
 	straddles := false
@@ -123,9 +101,8 @@ func (r *refResolver) reportGroupPackageStraddle(seg string, occs []segClaim) {
 	}
 }
 
-// reportGroupMemberCollisions fires when two services sharing seg declare
-// the same method name. Anchored at the member, not the service, because
-// renaming it is the fix.
+// reportGroupMemberCollisions reports each method whose name is declared by
+// more than one service sharing seg.
 func (r *refResolver) reportGroupMemberCollisions(seg string, occs []segClaim) {
 	type owner struct {
 		claim  segClaim
@@ -184,9 +161,8 @@ func blockStubMembers(block *ast.ServiceDecl) []segMember {
 	return out
 }
 
-// claimSource renders how a service came to emit into a directory, for the
-// diagnostic text: through an explicit `@group`, or by being ungrouped and
-// taking the directory named after itself.
+// claimSource says, for diagnostics, how a service came to emit into a
+// directory: its `@group`, or its own name.
 func claimSource(group string) string {
 	if group == "" {
 		return "its own service directory, no @group"
@@ -194,17 +170,8 @@ func claimSource(group string) string {
 	return fmt.Sprintf("@group(%q)", group)
 }
 
-// serviceSegmentClaims returns every output directory one service emits
-// into, keyed by segment, with the methods it puts in each. A service
-// reaching one segment from several blocks - the primary plus an extend
-// that repeats its @group - merges into a single claim, because those
-// methods share a routes file rather than competing for one.
-//
-// A block contributes the methods it declares - the members that scaffold
-// a file into the service logic folder - so a block with none emits
-// nothing. The claim is anchored at the `@group` decorator when the block
-// carries one (the token an author edits to change the layout) and at the
-// service declaration otherwise.
+// serviceSegmentClaims returns, by segment, each output directory a
+// service's blocks put methods into; blocks sharing one merge into a claim.
 func serviceSegmentClaims(pkgName, svcName string, si *ServiceInfo, fileCase string) map[string]segClaim {
 	out := map[string]segClaim{}
 	if si == nil {
@@ -245,10 +212,7 @@ func groupAnchor(block *ast.ServiceDecl) lexer.Position {
 	return block.Pos
 }
 
-// resolvedFileCase returns the `output.fileCase` the emitters will use.
-// The manifest defaults an unset value to snake before codegen reads it;
-// the analyser mirrors that so the ungrouped service directory it compares
-// is the one that ends up on disk.
+// resolvedFileCase returns fileCase, or [config.DefaultFileCase] when unset.
 func resolvedFileCase(fileCase string) string {
 	if fileCase == "" {
 		return config.DefaultFileCase

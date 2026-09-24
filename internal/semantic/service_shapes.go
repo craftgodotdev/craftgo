@@ -1,4 +1,3 @@
-// Service-method shape checks (uniqueness, route collisions).
 package semantic
 
 import (
@@ -18,13 +17,8 @@ func (a *analyzer) checkServiceMethods() {
 			} else {
 				seenName[m.Name] = m.Pos
 			}
-			// Key the collision by the RESOLVED route shape: the full route
-			// (prefix / group / basePath joined, with the kebab method-name
-			// fallback applied for a pathless method) with param names stripped
-			// to `{}`. This matches the cross-service check, so two pathless
-			// methods of one verb - whose auto-routes differ (`/ping` vs
-			// `/health`) - no longer collide on an empty path, while `/x/{id}`
-			// and `/x/{id1}` still do.
+			// Methods collide on verb plus resolved route shape, parameter
+			// names erased; a pathless method routes by its kebab-cased name.
 			rt := a.resolveMethodPath(si.Primary, m)
 			key := m.Verb + " " + route.Shape(rt)
 			if prev, ok := seenRoute[key]; ok {

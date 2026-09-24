@@ -1,6 +1,3 @@
-// Path-binding checks: auto-@path promotion, duplicate path variables
-// (method-local and @prefix-crossing), and the full-route path-variable set
-// the request auto-binding rule reads.
 package semantic
 
 import (
@@ -10,15 +7,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// checkAutoPathField rejects optional (`?`) / `@nullable` / `@default` on a
-// request field that auto-binds to a `{param}` segment (its name matches the
-// segment and it carries no explicit binding decorator). A matched route
-// always supplies the segment, so an optional path field is meaningless;
-// `@nullable` lowers the field to a pointer while the path binder writes a
-// plain string into it (`req.ID = r.PathValue(...)` into a `*string` -
-// non-compiling); and `@default` can never apply to an always-present
-// segment. The explicit `@path` form is already rejected for these; this
-// mirrors it for the implicit auto-@path path, on every verb.
+// checkAutoPathField checks each request field of m that auto-binds to a
+// route variable.
 func (a *analyzer) checkAutoPathField(m *ast.Method) {
 	if m == nil || m.Path == nil {
 		return
@@ -37,14 +27,8 @@ func (a *analyzer) checkAutoPathField(m *ast.Method) {
 	}
 }
 
-// autoPathFieldRule checks one request field that auto-binds to a path
-// segment (its name matches a `{param}` and it carries no explicit binding
-// decorator): optional `?` / `@nullable` / `@default` are rejected (a matched
-// route always supplies the segment, with no optional / null / default form,
-// and `@nullable` lowers to a pointer the path binder can't write a plain
-// string into - non-compiling), and a type that cannot source a path
-// segment is rejected. The field's type resolves in the package that
-// declares it, so a field promoted from a foreign mixin is judged there.
+// autoPathFieldRule rejects `?`, `@nullable`, `@default` or a non-path type on
+// a field auto-bound to @path; the type resolves in the field's own package.
 func (a *analyzer) autoPathFieldRule(reqName string, pathSegs map[string]bool, pf promotedField) {
 	f := pf.Field
 	if f == nil || f.Type == nil {
@@ -67,29 +51,20 @@ func (a *analyzer) autoPathFieldRule(reqName string, pathSegs map[string]bool, p
 			"field %s.%s auto-binds to the path segment {%s}, which is always supplied, so @default can never apply - drop it.",
 			reqName, f.Name, f.Name)
 	case !a.pathBindableIn(pf.Pkg, f.Type):
-		// A path segment carries a single primitive/scalar/enum value; a
-		// struct / map / array / generic field that auto-binds to it has no
-		// wire form.
 		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
 			"field %s.%s auto-binds to the path segment {%s}, but @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s",
 			reqName, f.Name, f.Name, describeTypeRef(f.Type))
 	}
 }
 
-// checkDuplicatePathVars rejects a route template that repeats a path
-// variable name (`/items/{id}/x/{id}`). net/http's ServeMux panics at
-// registration on a duplicate wildcard, so gen would produce a server
-// that crashes on boot - caught here at design time instead.
+// checkDuplicatePathVars rejects a path variable repeated in m's route, the
+// service @prefix included.
 func (a *analyzer) checkDuplicatePathVars(svc *ast.ServiceDecl, m *ast.Method) {
 	if m == nil || m.Path == nil {
 		return
 	}
 	svcName := svc.Name
-	// Seed with the service @prefix's path variables. The registered route is
-	// prefix + method path (see resolveRoute), so a method segment that reuses
-	// a prefix variable produces a duplicate wildcard in the combined route
-	// exactly as a method-internal repeat does - and ServeMux panics on it at
-	// boot all the same.
+	// The registered route is the @prefix followed by the method path.
 	seen := map[string]bool{}
 	fromPrefix := map[string]bool{}
 	for _, name := range route.Vars(route.ServicePrefix(svc)) {
@@ -116,18 +91,8 @@ func (a *analyzer) checkDuplicatePathVars(svc *ast.ServiceDecl, m *ast.Method) {
 	}
 }
 
-// MethodRoutePathVars returns the path-variable names in method m's full
-// registered route - its owning service's @prefix variables PLUS the method
-// path variables, read off the route [route.Resolve] builds (without the
-// base path) with [route.Vars]. The auto-binding rule
-// ([wire.RequestFieldBinding]) and the auto-@path / body-verb checks read
-// this rather than the method path alone, so they agree with the route that
-// actually registers: a field whose name matches a @prefix variable
-// auto-binds to @path exactly like one matching a method-path variable
-// (without it, the field would wrongly fall through to @query on a GET or
-// @body on a POST, and the path value would never bind). services is the
-// analysed package's service table (pkg.Services), used to find m's owning
-// service for its prefix.
+// MethodRoutePathVars returns the path variables of m's registered route,
+// @prefix included; services is the package's service table.
 func MethodRoutePathVars(m *ast.Method, services map[string]*ServiceInfo) map[string]bool {
 	vars := map[string]bool{}
 	if m == nil {

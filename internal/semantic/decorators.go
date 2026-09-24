@@ -1,18 +1,5 @@
 package semantic
 
-// Decorator registry - the single source of truth describing every
-// decorator the semantic analyser, codegen, and LSP know about.
-//
-// The placement check (see [analyzer.checkDecoratorPlacement]) reads
-// [Registry] to decide whether `@name` may appear at a given declaration
-// site. The same data backs LSP completion, hover docs, and the README's
-// compatibility table - so adding a decorator means adding one entry
-// here, not editing several files.
-//
-// [Spec] carries placement, a one-line doc string, and the positional
-// argument shape ([ArgsRule]); the argument-shape pass validates arity,
-// value types, and enum sets against it.
-
 import (
 	"strings"
 
@@ -20,25 +7,17 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/strfmt"
 )
 
-// Level is a bitmask of declaration sites where a decorator may appear.
-// A [Spec] OR-s the levels it accepts; the placement check passes when
-// at least one bit overlaps with the current site. Single-bit values are
-// used for diagnostic rendering - never combine bits when calling
-// [Level.Name].
+// Level is a bitmask of the declaration sites a decorator may appear at.
 type Level uint32
 
 const (
-	// LvlFile is a file-header decorator, before `package`. Examples:
-	// `@doc("...")`, `@deprecated`.
+	// LvlFile is the file header, before `package`.
 	LvlFile Level = 1 << iota
 	// LvlType is a `type Name { ... }` declaration.
 	LvlType
-	// LvlField is a field inside a `type` body. Fields inside an
-	// `error` body use [LvlErrorField] instead so request-only and
-	// validator decorators are rejected on server-emitted payloads.
+	// LvlField is a field inside a `type` body.
 	LvlField
-	// LvlService is a `service Name { ... }` (primary only - `extend
-	// service` rejects service-level decorators upstream).
+	// LvlService is a primary `service Name { ... }` declaration.
 	LvlService
 	// LvlMethod is a method inside a service body.
 	LvlMethod
@@ -54,20 +33,13 @@ const (
 	LvlMiddleware
 	// LvlEvent is an `event Name { ... }` declaration.
 	LvlEvent
-	// LvlErrorField is a field inside an `error` body. Distinct from
-	// [LvlField] because errors are server-emitted, so request-only
-	// decorators (`@path`, `@query`, `@body`, `@form`, `@maxSize`,
-	// `@mimeTypes`) are rejected. Schema validators (`@minLength`,
-	// `@maxLength`, `@pattern`, `@gte`, ...) are accepted but
-	// contribute only to OpenAPI schema constraints - codegen does
-	// not generate a runtime `Validate()` for ErrorDecl types.
+	// LvlErrorField is a field inside an `error` body; it refuses the
+	// request-only decorators LvlField accepts.
 	LvlErrorField
 )
 
-// levelNames pairs each single-bit level with its human label, in stable
-// order. The order matters: [Level.String] iterates this slice so the
-// rendered list is deterministic across runs (important for golden tests
-// and diff-friendly diagnostics).
+// levelNames labels each single-bit level, in the order [Level.String]
+// lists them.
 var levelNames = []struct {
 	bit  Level
 	name string
@@ -86,9 +58,8 @@ var levelNames = []struct {
 	{LvlErrorField, "error field"},
 }
 
-// Name returns the label for a single-bit level. It returns "unknown"
-// for the zero value or a multi-bit mask - callers rendering a multi-bit
-// mask should use [Level.String] instead.
+// Name returns the label of a single-bit level, or "unknown" for zero or a
+// multi-bit mask.
 func (l Level) Name() string {
 	for _, e := range levelNames {
 		if l == e.bit {
@@ -98,10 +69,8 @@ func (l Level) Name() string {
 	return "unknown"
 }
 
-// String renders every set bit of l joined by ", ", e.g.
-// "field, scalar". Used to format the "@X is only allowed on {levels}"
-// hint. Returns "(none)" for the zero mask so empty Specs surface as a
-// configuration bug rather than a blank message.
+// String joins the labels of every set bit with ", ", or returns "(none)"
+// for zero.
 func (l Level) String() string {
 	if l == 0 {
 		return "(none)"
@@ -115,20 +84,17 @@ func (l Level) String() string {
 	return strings.Join(parts, ", ")
 }
 
-// ArgKind classifies the literal shape expected at a positional argument
-// slot. The argument-validation pass maps an [ast.Expr] to one of these
-// kinds and rejects mismatches with [CodeDecoratorArgType].
+// ArgKind is the literal shape expected at a positional argument slot.
 type ArgKind uint8
 
 const (
-	// ArgAny accepts any expression. Use sparingly - prefer a tighter
-	// kind so the IDE can give a useful "expected X" hint.
+	// ArgAny accepts any expression.
 	ArgAny ArgKind = iota
 	// ArgString matches a [ast.StringLit] (regular or raw).
 	ArgString
 	// ArgInt matches a [ast.IntLit].
 	ArgInt
-	// ArgNumber matches int OR float.
+	// ArgNumber matches an int or float literal.
 	ArgNumber
 	// ArgBool matches a [ast.BoolLit].
 	ArgBool
@@ -138,14 +104,11 @@ const (
 	ArgDuration
 	// ArgSize matches a [ast.SizeLit] (`1MB`, `8KB`, ...).
 	ArgSize
-	// ArgStringOrIdent accepts either, used by `@tags` where humans
-	// commonly write `@tags(users)` and `@tags("user-mgmt")`
-	// interchangeably.
+	// ArgStringOrIdent matches a string literal or a bare identifier.
 	ArgStringOrIdent
 )
 
-// String returns the human label used in `expected X, got Y` messages.
-// Stable across versions - IDE error explainers reference these names.
+// String returns the label used in "expected X, got Y" diagnostics.
 func (k ArgKind) String() string {
 	switch k {
 	case ArgString:
@@ -169,68 +132,48 @@ func (k ArgKind) String() string {
 	}
 }
 
-// ArgsRule captures the positional argument shape of a decorator. Named
-// arguments (`name: value`), nested decorators, and object literals are
-// outside its scope.
+// ArgsRule is the positional argument shape of a decorator.
 type ArgsRule struct {
-	// Min is the minimum number of positional arguments. 0 allows the
-	// no-args form (`@deprecated`).
+	// Min is the fewest positional arguments allowed.
 	Min int
-	// Max is the maximum number of positional arguments; -1 means
-	// unbounded (variadic).
+	// Max is the most positional arguments allowed; -1 means unbounded.
 	Max int
-	// Kinds is the per-position expected kind. When the actual arg
-	// count exceeds len(Kinds), [Variadic] applies to the remainder.
+	// Kinds is the expected kind per position.
 	Kinds []ArgKind
-	// Variadic is the kind for arguments beyond len(Kinds). Only
-	// meaningful when Max < 0 or Max > len(Kinds).
+	// Variadic is the kind of every argument past len(Kinds).
 	Variadic ArgKind
-	// Enum, when non-empty, restricts the first positional argument
-	// value (string OR ident) to this set. Used by `@format` to
-	// constrain string formats (`email`, `uuid`, ...).
+	// Enum, when non-empty, is the set the first argument's string or
+	// identifier value must belong to.
 	Enum []string
-	// AllowArrayShortcut treats a single array-literal positional arg
-	// as variadic-equivalent. Used by `@requiresOneOf(["a","b"])`,
-	// `@mimeTypes(["a/b","c/d"])` etc., where humans naturally write
-	// the list in brackets. The array's elements are validated against
-	// [Variadic]; element count must still satisfy [Min]..[Max].
+	// AllowArrayShortcut accepts one array literal in place of the argument
+	// list, checking its elements against Min, Max and Variadic.
 	AllowArrayShortcut bool
 }
 
-// Prims is a bitmask of primitive type categories a validator
-// decorator can target. Used by the field-type compatibility check
-// (`@length` only makes sense on strings, `@uniqueItems` only on
-// arrays, etc.). A zero value means "no constraint" - applies to
-// anything, used by metadata decorators like `@doc`.
+// Prims is a bitmask of the primitive type categories a decorator applies to.
 type Prims uint8
 
 const (
-	// PrimString covers `string` and any scalar whose primitive is
-	// string. Bytes/format/uri all reduce to this category.
+	// PrimString covers `string` and `bytes`, and scalars over them.
 	PrimString Prims = 1 << iota
-	// PrimNumber covers signed/unsigned integers and floats.
+	// PrimNumber covers integers and floats.
 	PrimNumber
 	// PrimBool covers `bool`.
 	PrimBool
-	// PrimArray covers `T[]` and `map<K,V>` field shapes (arrays and
-	// maps share validation: count, uniqueness).
+	// PrimArray covers arrays and maps.
 	PrimArray
 	// PrimFile covers the `file` primitive (multipart upload).
 	PrimFile
-	// PrimDateTime covers the `datetime` primitive, which no validator
-	// targets: a timestamp has no length, bound or format to check.
+	// PrimDateTime covers `datetime`, which no validator targets.
 	PrimDateTime
-	// PrimRawBytes covers a `bytes @format(raw)` field, which no
-	// validator but that `@format` targets: the point of it is that the
-	// bytes travel unexamined.
+	// PrimRawBytes covers a `bytes @format(raw)` field, which only that
+	// `@format` targets.
 	PrimRawBytes
-	// PrimAny matches any field type - used by validator-style
-	// decorators that don't care about primitive (e.g. `@example`).
+	// PrimAny matches any field type.
 	PrimAny Prims = 0
 )
 
-// String renders a Prims set as a comma-joined list for diagnostics.
-// Used in "@length is for string fields, this field is bool" hints.
+// String joins the category names with ", ", or returns "any" for zero.
 func (p Prims) String() string {
 	if p == 0 {
 		return "any"
@@ -261,129 +204,81 @@ func (p Prims) String() string {
 }
 
 // ConstraintFamily classifies what a constraint decorator restricts.
-// Targets read it to decide which checks or schema keywords a decorator
-// contributes, so the classification is stated once here rather than
-// re-derived per target.
 type ConstraintFamily uint8
 
 const (
-	// ConstraintNumeric bounds a number: @gt, @gte, @lt, @lte, @range,
-	// @positive, @negative, @multipleOf.
+	// ConstraintNumeric bounds a number.
 	ConstraintNumeric ConstraintFamily = 1 << iota
-	// ConstraintLength bounds text length: @length, @minLength, @maxLength.
+	// ConstraintLength bounds text length.
 	ConstraintLength
-	// ConstraintText restricts text shape: @pattern, @format.
+	// ConstraintText restricts text shape.
 	ConstraintText
-	// ConstraintItems bounds a collection: @minItems, @maxItems,
-	// @uniqueItems.
+	// ConstraintItems bounds a collection.
 	ConstraintItems
-	// ConstraintRuntime is checked at runtime but has no schema form:
-	// @maxSize, @mimeTypes on a multipart part.
+	// ConstraintRuntime is checked at runtime on a multipart part and has
+	// no schema form.
 	ConstraintRuntime
 )
 
-// ConstraintNarrowing is every family a field may stack on a referenced
-// type; a $ref field is never a collection or a file.
+// ConstraintNarrowing is every family a field may add to a referenced type;
+// a $ref is never a collection or a file.
 const ConstraintNarrowing = ConstraintNumeric | ConstraintLength | ConstraintText
 
 // ConstraintSchema is every family with a schema form.
 const ConstraintSchema = ConstraintNumeric | ConstraintLength | ConstraintText | ConstraintItems
 
-// Spec describes one decorator: its canonical name, every site it may
-// appear, a short doc string for IDE hover, and the positional argument
-// shape. Every decorator validates through the generic
-// [analyzer.checkPositionalArgs] path - there are no per-decorator
-// argument shape hooks.
+// Spec describes one decorator: where it may appear, its hover doc and its
+// argument shape.
 type Spec struct {
-	// Name is the bare decorator name (no leading `@`). Stored so callers
-	// holding a *Spec can render diagnostics without a separate lookup.
+	// Name is the decorator name without the `@`.
 	Name string
-	// Levels is the OR of every site where `@Name` is legal. The
-	// placement check fails when the current site bit is not set.
+	// Levels is every site where the decorator is legal.
 	Levels Level
-	// Doc is a one-line description shown in LSP hover. Keep it short -
-	// the README is the long-form reference.
+	// Doc is the LSP hover text.
 	Doc string
-	// Args is the positional argument shape; the zero value means
-	// "no args expected".
+	// Args is the positional argument shape; the zero value takes no
+	// arguments.
 	Args ArgsRule
-	// AppliesTo restricts the decorator to fields / scalars whose
-	// primitive type is in the listed categories. Zero (PrimAny)
-	// means no constraint - used by metadata-style decorators. The
-	// field-type compatibility check reads this when LvlField or
-	// LvlScalar is the current site.
+	// AppliesTo is the set of primitive categories the decorated field or
+	// scalar may have; zero allows any.
 	AppliesTo Prims
-	// Constraint classifies the decorator as a constraint and says what
-	// it restricts. Zero means the decorator is not a constraint
-	// (metadata, binding, routing).
+	// Constraint is what the decorator restricts; zero means it is not a
+	// constraint.
 	Constraint ConstraintFamily
-	// Flag reports whether the decorator never accepts arguments. It
-	// is a presentation hint, not a parser rule:
-	//
-	//   - LSP completion inserts `@positive` (no parens) for Flag
-	//     decorators and `@range($1, $2)` (snippet placeholders) for
-	//     the rest.
-	//   - `craftgo fmt` strips empty parens (`@positive()` →
-	//     `@positive`) so canonical form is parens-free.
-	//   - The parser emits [CodeFlagEmptyParens] (warning) when a Flag
-	//     decorator is written with empty `()`. Warning only - the
-	//     formatter rewrites it on save.
-	//
-	// The invariant is `Flag == true ⇒ Args.Max == 0`.
+	// Flag marks a decorator written without arguments or parentheses;
+	// empty `()` on it draws [CodeFlagEmptyParens].
 	Flag bool
-	// Repeatable reports whether multiple `@Name` occurrences on one site
-	// are the intended idiom (each adds to an aggregate: tags merge,
-	// middlewares chain, security OR-alternatives, errors accumulate) rather
-	// than a duplicate. The duplicate-decorator check reads this so the rule
-	// lives ONCE here instead of a separate hardcoded list that drifts.
+	// Repeatable lets the decorator appear more than once on one site, each
+	// occurrence adding to the aggregate.
 	Repeatable bool
-	// Metadata marks a decorator that only documents its target (`@doc`,
-	// `@deprecated`, `@example`) and never shapes the wire or the
-	// generated code. Every other field decorator contradicts
-	// `@sensitive`, whose field never crosses the wire.
+	// Metadata marks a decorator that only documents its target; every
+	// other field decorator conflicts with `@sensitive`.
 	Metadata bool
 }
 
-// FormatRaw is the one `@format` value that checks nothing. On a `bytes`
-// field it says the bytes ALREADY ARE the value in the message's own
-// encoding, so the codec embeds them untouched instead of base64-encoding
-// the buffer. Every other type is refused by [analyzer.formatRawMismatch].
+// FormatRaw is the `@format` value that checks nothing: the `bytes` field it
+// marks already holds the encoded value, which the codec embeds verbatim.
 const FormatRaw = "raw"
 
-// FormatRawDoc is the hover text for that `raw`. Every other `@format`
-// value names a check; this one changes the field's Go type and how its
-// value travels, so it says so where the author is typing it.
+// FormatRawDoc is the hover text for `@format(raw)`.
 const FormatRawDoc = "**`@format(raw)`** - the bytes ARE the value, in the message's own encoding.\n\n" +
 	"Only on a `bytes` field. The codec embeds them untouched instead of base64-encoding the buffer, so what a producer wrote is what a consumer reads - an explicit `null`, an integer past 2^53 and a trailing zero such as `1.50` all survive, none of which does through `any`. Generates `wire.Raw` in Go - in every shape: nil is the absent value and an explicit `null` is the four bytes `null`, so `?` only omits an absent value and `@nullable` only keeps the key. A body field only; no other validator applies and `@default` is refused."
 
-// HasRawFormat reports whether a decorator chain carries `@format(raw)`.
-// Exported because the resolved IR, codegen and the language server all
-// have to recognise the same shape, and re-reading the argument in each
-// is how the three drift apart.
+// HasRawFormat reports whether decs carries `@format(raw)`.
 func HasRawFormat(decs []*ast.Decorator) bool {
 	return isFormatRaw(ast.FindDecorator(decs, "format"))
 }
 
-// isFormatRaw reports whether d is that `@format(raw)`.
+// isFormatRaw reports whether d is `@format(raw)`.
 func isFormatRaw(d *ast.Decorator) bool {
 	return d != nil && d.Name == "format" && len(d.Args) > 0 &&
 		StringOrIdentArg(d.Args[0]) == FormatRaw
 }
 
-// formatValues lists every value `@format` accepts on a field or scalar:
-// the [strfmt] catalogue codegen emits the string checks from - so the
-// legal-name set and the validator set cannot drift - plus [FormatRaw],
-// which is not a check at all but the `bytes` field's statement that its
-// bytes are the encoded value.
 var formatValues = append(strfmt.Names(), FormatRaw)
 
-// Registry is the closed set of decorators the framework recognises. A
-// `@name` not present here is reported as `decorator/unknown` - there is
-// no escape-hatch by design (see README §"Triết lý").
-//
-// Levels mirror the table in README §"Decorator compatibility matrix";
-// keep the two in sync. When in doubt the README table wins, because
-// users read it first.
+// Registry is the closed set of decorators craftgo recognises; any other
+// `@name` is an error.
 var Registry = map[string]Spec{
 	// ---- Universal documentation / lifecycle ----
 	"doc": {
@@ -408,10 +303,6 @@ var Registry = map[string]Spec{
 		Metadata: true,
 	},
 	// ---- OpenAPI file-header metadata ----
-	// Per ast.File comment, file-level decorators carry top-of-file
-	// OpenAPI metadata when no design-yaml override is supplied. Not in
-	// the README §"Decorator compatibility matrix" table - kept here as
-	// the runtime / fixtures rely on them.
 	"version": {
 		Name:   "version",
 		Levels: LvlFile,
@@ -440,10 +331,6 @@ var Registry = map[string]Spec{
 	},
 
 	// ---- Field validation: string ----
-	// On request bodies (LvlField) these emit runtime validators; on
-	// error bodies (LvlErrorField) errors are server-emitted so they
-	// surface only as OpenAPI schema constraints - no runtime check
-	// is generated for ErrorDecl types.
 	"length": {
 		Name: "length", Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:        "Exact or [min,max] length for strings.",
@@ -481,9 +368,6 @@ var Registry = map[string]Spec{
 			Kinds: []ArgKind{ArgStringOrIdent},
 			Enum:  formatValues,
 		},
-		// PrimRawBytes is `bytes @format(raw)` - the one shape `@format`
-		// reaches that is not string-shaped, and the only decorator that
-		// reaches it: it is what put the field in that category.
 		AppliesTo:  PrimString | PrimRawBytes,
 		Constraint: ConstraintText,
 	},
@@ -655,51 +539,24 @@ var Registry = map[string]Spec{
 	"operationId": {Name: "operationId", Levels: LvlMethod, Doc: "Override OpenAPI operationId.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}}},
 	"errors":      {Name: "errors", Levels: LvlMethod, Doc: "Declared error responses for OpenAPI. Args: variadic error idents or a single array literal.", Args: ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true}, Repeatable: true},
 	"status":      {Name: "status", Levels: LvlMethod, Doc: "Override default success status code.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}}},
-	// `@consumes`, `@produces`, `@accepts` are not in the registry.
-	// craftgo's transport hardcodes `application/json` for both request
-	// decode and response encode, so accepting those decorators would
-	// parse but produce no runtime / spec effect. The registry keeps
-	// only decorators with a real effect.
 
 	// ---- Method behavior ----
-	// Raw modes hand one or both transport sides to logic. A `request` /
-	// `response` block on a raw side is a docs-only contract: it shapes
-	// the OpenAPI document and the generated Go types, but the transport
-	// neither binds / validates (raw request) nor encodes (raw response)
-	// it. `@passthrough` is exactly `@rawRequest @rawResponse`; every
-	// layer reads the modes through wire.RawSides.
 	"passthrough": {Name: "passthrough", Levels: LvlMethod, Doc: "Hand both transport sides to logic: the entry point receives the raw http.ResponseWriter and *http.Request and writes the response directly. Equivalent to @rawRequest @rawResponse. Optional request/response blocks are a docs-only contract (OpenAPI + generated types).", Flag: true},
 	"rawRequest":  {Name: "rawRequest", Levels: LvlMethod, Doc: "Hand the request side to logic: the entry point receives the raw *http.Request and the framework skips request bind + validate. A request block is a docs-only contract (OpenAPI + generated type). The response stays framework-encoded unless @rawResponse is also set.", Flag: true},
 	"rawResponse": {Name: "rawResponse", Levels: LvlMethod, Doc: "Hand the response side to logic: the entry point receives the http.ResponseWriter and writes status, headers and body itself; the framework skips the response encode. A response block is a docs-only contract (OpenAPI + generated type). The request stays bound + validated unless @rawRequest is also set.", Flag: true},
 
 	// ---- Method limits ----
-	// `@timeout` derives a context deadline covering the full handler
-	// lifecycle (decode body → user logic → encode response). Handlers
-	// that honour ctx.Done() return early; nothing is cut off on the
-	// wire, so it applies to every mode, raw sides included. Independent
-	// from transport-level deadlines (`http.Server.ReadTimeout` /
-	// `WriteTimeout`) which the user configures on the server itself
-	// when the stdlib defaults are not enough.
 	"timeout":     {Name: "timeout", Levels: LvlMethod, Doc: "Cap the handler's execution time: the request context is cancelled when the deadline elapses (no status is written automatically). Overrides the global handlerTimeout for this route.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgDuration}}},
 	"maxBodySize": {Name: "maxBodySize", Levels: LvlMethod, Doc: "Cap the request body size in bytes. Two enforcement points fire: Content-Length pre-check returns 413 immediately when the declared size exceeds the cap, and MaxBytesReader wraps r.Body so reads past the cap surface as a 400 Read error. Multipart parsers also lift their in-memory budget to this value.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgSize}}},
 }
 
-// Lookup returns the [Spec] for `name` and whether it is registered.
-// Convenience wrapper kept exported so the LSP / CLI can introspect the
-// registry without poking the bare map.
+// Lookup returns the [Spec] registered under name, and whether there is one.
 func Lookup(name string) (Spec, bool) {
 	s, ok := Registry[name]
 	return s, ok
 }
 
-// removed maps a decorator craftgo once accepted to the sentence telling
-// an author what takes its place. A design written against an older
-// craftgo then gets a migration note instead of "not in the framework
-// registry", which says nothing about what to do.
-//
-// It is deliberately separate from [Registry]: a removed decorator is not
-// a decorator, so nothing that walks the registry - completion, hover,
-// the argument-shape pass - has to learn to skip it.
+// removed maps each removed decorator to its migration note.
 var removed = map[string]string{
 	"key": "@key was removed: which entity a message belongs to is decided when it is published, not by the contract. " +
 		"Pass the key to the publish call instead - `orders.OrderPlaced.Publish(ctx, bus, payload, craftevents.WithKey(string(payload.OrderID)))`.",
@@ -709,10 +566,8 @@ var removed = map[string]string{
 		"Install one bus-wide with `bus.Use(retry, timeout)`, or set `Subscription.Chain` for a single registration.",
 }
 
-// RemovedDecorator returns the migration note for a decorator craftgo has
-// removed, and whether `name` is one. The LSP reads it so hovering the
-// decorator in an unmigrated design says the same thing the diagnostic
-// does.
+// RemovedDecorator returns the migration note for a removed decorator, and
+// whether name is one.
 func RemovedDecorator(name string) (string, bool) {
 	msg, ok := removed[name]
 	return msg, ok

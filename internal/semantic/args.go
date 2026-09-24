@@ -1,14 +1,5 @@
 package semantic
 
-// Decorator argument validation. Walks every decorator already passed
-// the placement check and verifies its positional arguments match the
-// [ArgsRule] declared on its [Spec].
-//
-// Three diagnostic codes fire here:
-//   - [CodeDecoratorArity]    - wrong number of positional arguments.
-//   - [CodeDecoratorArgType]  - literal kind doesn't match the slot.
-//   - [CodeDecoratorArgValue] - value outside an allowed enum set.
-
 import (
 	"regexp"
 	"strings"
@@ -17,10 +8,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// checkDecoratorArgs walks every decorator in every scope and validates
-// argument shape against its registry [Spec]. Unknown decorators were
-// already flagged by the placement pass; this pass skips them so the
-// IDE doesn't double-report.
+// checkDecoratorArgs checks every registered decorator's arguments against
+// its [Spec], and each field's `@default` and `@example` value.
 func (a *analyzer) checkDecoratorArgs(files []*ast.File) {
 	for _, f := range files {
 		a.checkArgsScope(f.Decorators)
@@ -30,8 +19,7 @@ func (a *analyzer) checkDecoratorArgs(files []*ast.File) {
 	}
 }
 
-// checkDeclArgs dispatches argument validation for one top-level decl
-// plus every nested scope it owns.
+// checkDeclArgs checks d and every site nested in it.
 func (a *analyzer) checkDeclArgs(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
@@ -61,8 +49,7 @@ func (a *analyzer) checkDeclArgs(d ast.Decl) {
 	}
 }
 
-// checkFieldArgs walks fields in a type or error body. Mixin members
-// have no decorators and are skipped.
+// checkFieldArgs checks every field of a type or error body.
 func (a *analyzer) checkFieldArgs(members []ast.TypeMember) {
 	for _, m := range members {
 		f, ok := m.(*ast.Field)
@@ -88,13 +75,9 @@ func (a *analyzer) checkArgsScope(decs []*ast.Decorator) {
 	}
 }
 
-// checkDecoratorArg validates one decorator against its [Spec]. Flag
-// decorators (`@positive`, `@uniqueItems`, ...) warn on empty parens;
-// everything else goes through the generic positional check.
+// checkDecoratorArg checks d's argument shape against spec, and the values
+// `@example`, `@pattern` and `@group` take.
 func (a *analyzer) checkDecoratorArg(d *ast.Decorator, spec Spec) {
-	// Flag decorators never take arguments - empty parens are
-	// stylistically wrong. Warn (not error); `craftgo fmt` strips
-	// them on save.
 	if spec.Flag && d.HasParens {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeFlagEmptyParens,
 			"@%s never accepts arguments - drop the parens (canonical: `@%s`). `craftgo fmt` fixes this on save.",
@@ -106,11 +89,8 @@ func (a *analyzer) checkDecoratorArg(d *ast.Decorator, spec Spec) {
 	a.checkPositionalArgs(d, spec)
 }
 
-// checkPatternArg verifies the @pattern argument is a compilable RE2
-// regex. The validator lowers it to `regexp.MustCompile`, which panics
-// at package-init time on an invalid expression - crashing every handler
-// in the generated package on first use. Catching it here at design time
-// is the free-form equivalent of the fixed-enum check @format gets.
+// checkPatternArg rejects a `@pattern` that is empty or not a valid RE2
+// expression.
 func (a *analyzer) checkPatternArg(d *ast.Decorator) {
 	if d == nil || d.Name != "pattern" || len(d.Args) == 0 {
 		return
@@ -120,9 +100,6 @@ func (a *analyzer) checkPatternArg(d *ast.Decorator) {
 		return // a non-string arg is already reported by checkPositionalArgs
 	}
 	if s.Value == "" {
-		// An empty pattern is a valid RE2 (matches everything) so it passes
-		// regexp.Compile, but it is a meaningless constraint and the codegen
-		// regex interner has no name for it - reject it at design time.
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgType,
 			"@pattern requires a non-empty regular expression - an empty pattern matches everything and is not a meaningful constraint")
 		return
@@ -133,13 +110,8 @@ func (a *analyzer) checkPatternArg(d *ast.Decorator) {
 	}
 }
 
-// checkGroupArg verifies a @group value is a clean relative path. @group nests
-// a service's generated transport handlers and service stubs under
-// <service>/<group>/ on disk (it never touches the HTTP route), so the value
-// must be a slash-delimited list of plain segments - letters, digits, '-', or
-// '_'. Absolute paths, empty values, and "." / ".." segments are rejected so a
-// group can only ever nest deeper inside the service directory, never escape
-// the output tree.
+// checkGroupArg requires a `@group` path to have at least one segment and
+// only segments of letters, digits, '-' and '_'; extra slashes are ignored.
 func (a *analyzer) checkGroupArg(d *ast.Decorator) {
 	if d == nil || d.Name != "group" || len(d.Args) == 0 {
 		return
@@ -171,9 +143,8 @@ func (a *analyzer) checkGroupArg(d *ast.Decorator) {
 	}
 }
 
-// isPlainPathSegment reports whether s is a single directory segment safe to
-// use verbatim as a generated folder name: a non-empty run of ASCII letters,
-// digits, '-', or '_'.
+// isPlainPathSegment reports whether s is a non-empty run of ASCII letters,
+// digits, '-' and '_'.
 func isPlainPathSegment(s string) bool {
 	for _, r := range s {
 		switch {
@@ -185,15 +156,8 @@ func isPlainPathSegment(s string) bool {
 	return s != ""
 }
 
-// checkExampleArg restricts @example to a literal value (string / int /
-// float / bool / null) or an array of those. An object `{k: v}` arg is
-// rejected: a struct example is composed from each field's own @example
-// by OpenAPI tooling, so the object-literal form only adds JSON-in-DSL
-// syntax with no benefit. For a free-form `any` / `map` field (no
-// sub-fields to compose from), describe the expected shape with @doc
-// instead. A literal or array lands in DecoratorArg.Value; an object
-// (or nested @decorator) leaves Value nil, which is the signature this
-// check rejects.
+// checkExampleArg rejects an `@example` argument that is an object or a
+// nested decorator, which the parser leaves with a nil Value.
 func (a *analyzer) checkExampleArg(d *ast.Decorator) {
 	if d == nil || d.Name != "example" {
 		return
@@ -210,13 +174,8 @@ func (a *analyzer) checkExampleArg(d *ast.Decorator) {
 	}
 }
 
-// positionalArgs splits d.Args into positional vs named. Object and
-// nested-decorator args are treated as positional (they have no name)
-// so the generic checker can count them against [ArgsRule.Min/Max].
-// Per-position kind checks then decide what to do: [ArgAny] passes
-// them through; tighter kinds (`ArgString`, `ArgInt`, ...) reject them
-// because [exprMatchesKind] returns false for `nil` Value with any
-// non-ArgAny kind.
+// positionalArgs returns d's unnamed arguments, objects and nested
+// decorators included.
 func positionalArgs(d *ast.Decorator) []*ast.DecoratorArg {
 	var out []*ast.DecoratorArg
 	for _, ag := range d.Args {
@@ -228,19 +187,9 @@ func positionalArgs(d *ast.Decorator) []*ast.DecoratorArg {
 	return out
 }
 
-// checkPositionalArgs verifies count + per-position kind + first-arg
-// enum set against [Spec.Args]. The array-shortcut form
-// (`@mimeTypes(["a/b","c/d"])`) is expanded transparently when
-// [ArgsRule.AllowArrayShortcut] is set and the decorator received
-// exactly one array-literal positional arg - element kinds and count
-// are validated against the variadic rule.
-//
-// Stops on the first arity mismatch because subsequent kind errors
-// would just compound the user's confusion.
+// checkPositionalArgs checks d's arguments against [Spec.Args]: no named
+// arguments, then the count, then each kind and the first argument's enum.
 func (a *analyzer) checkPositionalArgs(d *ast.Decorator, spec Spec) {
-	// Named args are reserved for decorators with custom shape hooks
-	// (currently none). Reject them globally so users get a single
-	// clear error instead of a silently-ignored argument.
 	for _, ag := range d.Args {
 		if ag != nil && ag.Named {
 			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
@@ -250,9 +199,7 @@ func (a *analyzer) checkPositionalArgs(d *ast.Decorator, spec Spec) {
 	pos := positionalArgs(d)
 	rule := spec.Args
 
-	// Array shortcut: `@name([v1, v2, ...])` is treated as
-	// `@name(v1, v2, ...)`. The expanded form must satisfy the rest of
-	// the rule on its own.
+	// `@name([a, b])` stands for `@name(a, b)`.
 	if rule.AllowArrayShortcut && len(pos) == 1 {
 		if arr, ok := pos[0].Value.(*ast.ArrayLit); ok {
 			a.checkArrayShortcut(d, rule, arr)
@@ -261,10 +208,6 @@ func (a *analyzer) checkPositionalArgs(d *ast.Decorator, spec Spec) {
 		}
 	}
 
-	// Arity. We pin the diagnostic to the decorator name when args are
-	// missing (so the IDE underlines `@name`) and to the first extra
-	// arg when there are too many (so the squiggle points at the
-	// offender).
 	if len(pos) < rule.Min {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArity,
 			"@%s expects at least %d argument(s), got %d", d.Name, rule.Min, len(pos))
@@ -277,7 +220,6 @@ func (a *analyzer) checkPositionalArgs(d *ast.Decorator, spec Spec) {
 		return
 	}
 
-	// Per-position kind.
 	for i, ag := range pos {
 		want := rule.Variadic
 		if i < len(rule.Kinds) {
@@ -295,9 +237,8 @@ func (a *analyzer) checkPositionalArgs(d *ast.Decorator, spec Spec) {
 	a.checkEnumOnFirst(d, spec, pos)
 }
 
-// checkArrayShortcut validates the elements of an array passed as the
-// sole positional arg. Element count must satisfy [ArgsRule.Min/Max];
-// each element must match [ArgsRule.Variadic].
+// checkArrayShortcut checks the array literal standing for d's arguments
+// against rule's Min, Max and Variadic.
 func (a *analyzer) checkArrayShortcut(d *ast.Decorator, rule ArgsRule, arr *ast.ArrayLit) {
 	n := len(arr.Elements)
 	if n < rule.Min {
@@ -323,14 +264,8 @@ func (a *analyzer) checkArrayShortcut(d *ast.Decorator, rule ArgsRule, arr *ast.
 	}
 }
 
-// checkEnumOnFirst applies the value-set check on the first positional
-// arg. Bare-int / non-textual args silently skip - the kind check above
-// already flagged them.
-//
-// When the arg is enum-valid but spelled as a STRING (`@format("email")`
-// instead of `@format(email)`) the canonical form is the bare ident.
-// Emit a soft `CodeArgPreferIdent` warning so the IDE surfaces the
-// non-canonical form; `craftgo fmt` rewrites on save.
+// checkEnumOnFirst rejects a first argument outside spec.Args.Enum, and
+// warns when a valid value is spelled as a string, not an identifier.
 func (a *analyzer) checkEnumOnFirst(d *ast.Decorator, spec Spec, pos []*ast.DecoratorArg) {
 	enum := spec.Args.Enum
 	if len(enum) == 0 || len(pos) == 0 {
@@ -353,18 +288,8 @@ func (a *analyzer) checkEnumOnFirst(d *ast.Decorator, spec Spec, pos []*ast.Deco
 	}
 }
 
-// exprMatchesKind reports whether e is a literal of the given kind.
-// Acceptance rules follow the README's "bare number → seconds / bytes"
-// convention so:
-//
-//   - ArgDuration accepts [ast.DurationLit] OR [ast.IntLit] (bare int =
-//     seconds);
-//   - ArgSize accepts [ast.SizeLit] OR [ast.IntLit] (bare int = bytes);
-//   - ArgNumber accepts int and float;
-//   - ArgStringOrIdent accepts string or bare ident.
-//
-// ArgAny matches everything (including nil) - used as a no-op when the
-// position is shape-validated by a per-decorator hook instead.
+// exprMatchesKind reports whether e fits kind k. A bare int is also a
+// duration (seconds) or a size (bytes), and ArgAny matches even nil.
 func exprMatchesKind(e ast.Expr, k ArgKind) bool {
 	if k == ArgAny {
 		return true
@@ -413,11 +338,8 @@ func exprMatchesKind(e ast.Expr, k ArgKind) bool {
 	return false
 }
 
-// exprKindName renders a human label for the actual kind of e. Used in
-// the "expected X, got Y" message so the IDE points the user at the
-// concrete mismatch. Falls back to "value" for any future ast.Expr
-// implementation we forget to add here - the diagnostic stays useful
-// rather than empty.
+// exprKindName names e's kind for the "expected X, got Y" message, or
+// "value" for an expression it does not list.
 func exprKindName(e ast.Expr) string {
 	if e == nil {
 		return "(no value)"
@@ -446,9 +368,7 @@ func exprKindName(e ast.Expr) string {
 	return name
 }
 
-// identOrStringValue extracts the textual payload of an [ast.IdentExpr]
-// or [ast.StringLit]. Returns ok=false for any other shape so the enum
-// check can skip without false positives.
+// identOrStringValue returns the text of an identifier or string literal.
 func identOrStringValue(e ast.Expr) (string, bool) {
 	switch v := e.(type) {
 	case *ast.IdentExpr:
@@ -462,8 +382,6 @@ func identOrStringValue(e ast.Expr) (string, bool) {
 	return "", false
 }
 
-// inSet reports whether s appears in xs. Linear scan - fine for the
-// short fixed sets we use (≤17 entries for the format value list).
 func inSet(s string, xs []string) bool {
 	for _, x := range xs {
 		if x == s {
@@ -473,9 +391,7 @@ func inSet(s string, xs []string) bool {
 	return false
 }
 
-// joinQuoted renders xs as `"a", "b", "c"` for the "expected one of"
-// hint. Output order matches input order so a stable test golden value
-// is achievable.
+// joinQuoted renders xs as `"a", "b", "c"`, in input order.
 func joinQuoted(xs []string) string {
 	if len(xs) == 0 {
 		return ""

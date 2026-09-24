@@ -1,24 +1,16 @@
-// Resolution of value-bearing decorators (`@default`, `@example`) to the
-// wire value the OpenAPI document and the transport pre-fill both use.
 package semantic
 
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// ResolveDefaultValue resolves a field's `@default` to a typed value for
-// `openapi3.Schema.Default`. When the field is an enum type and the default
-// is a bare member identifier (`@default(active)`), it returns the member's
-// WIRE value (`= 1` / `= "ACTIVE"`), not the DSL spelling.
+// ResolveDefaultValue is [ResolveDecoratorLiteral] for `@default`.
 func ResolveDefaultValue(f *ast.Field, pkg *Package) (any, bool) {
 	return ResolveDecoratorLiteral(f, pkg, "default")
 }
 
-// ResolveDecoratorLiteral resolves the literal value of a value-bearing
-// decorator (`@default` / `@example`) on a field, resolving an enum-member
-// identifier (or an array of them) to its wire value. Shared so @example
-// and @default agree - without it, @example silently drops a bare
-// enum-member ident that @default handles.
+// ResolveDecoratorLiteral returns the literal of f's decName decorator, with
+// enum member names, alone or in an array, resolved to their wire values.
 func ResolveDecoratorLiteral(f *ast.Field, pkg *Package, decName string) (any, bool) {
 	if f == nil {
 		return nil, false
@@ -27,10 +19,7 @@ func ResolveDecoratorLiteral(f *ast.Field, pkg *Package, decName string) (any, b
 		if d == nil || d.Name != decName || len(d.Args) == 0 {
 			continue
 		}
-		// The enum a member identifier resolves against - for an array
-		// field (`Method[]`) the element type carries the enum name too, so
-		// the same lookup serves both `@default(Card)` and `@default([Card,
-		// Bank])`.
+		// An array field's element type names the enum too.
 		enumName := ""
 		if f.Type != nil && f.Type.Named != nil && f.Type.Named.Name != nil {
 			enumName = f.Type.Named.Name.String()
@@ -45,10 +34,6 @@ func ResolveDecoratorLiteral(f *ast.Field, pkg *Package, decName string) (any, b
 			}
 			return v.Name.String(), true
 		case *ast.ArrayLit:
-			// Resolve each element so an array of enum members lands its
-			// wire values (`[Card, Bank]` -> `["card", "bank"]`); without
-			// this the whole array default is dropped, because LiteralToAny
-			// has no member-ident case and bails on the first one.
 			out := make([]any, 0, len(v.Elements))
 			for _, el := range v.Elements {
 				if id, ok := el.(*ast.IdentExpr); ok && id.Name != nil {
@@ -73,9 +58,8 @@ func ResolveDecoratorLiteral(f *ast.Field, pkg *Package, decName string) (any, b
 	return nil, false
 }
 
-// ResolveEnumMember returns the wire value of enumName's `member` (the
-// `= 1` / `= "ACTIVE"` literal), or ok=false when enumName is not an enum
-// in pkg or has no such member.
+// ResolveEnumMember returns the wire value of member in enum enumName, or
+// false when pkg has no such enum or member.
 func ResolveEnumMember(pkg *Package, enumName, member string) (any, bool) {
 	if pkg == nil || enumName == "" {
 		return nil, false
@@ -92,21 +76,13 @@ func ResolveEnumMember(pkg *Package, enumName, member string) (any, bool) {
 	return nil, false
 }
 
-// ExampleValue extracts an `@example(v)` argument as a typed Go value
-// suitable for `openapi3.Schema.Example`. Strings, ints, floats, and
-// booleans all round-trip through YAML correctly when assigned to the
-// `any` Example field. Array literals (`@example(["a", "b"])`) become
-// `[]any` so array-typed properties get a sensible YAML rendering.
-// Returns (nil, false) when no example decorator is present so the
-// caller leaves the schema untouched.
+// ExampleValue is [ResolveDecoratorLiteral] for `@example`.
 func ExampleValue(f *ast.Field, pkg *Package) (any, bool) {
 	return ResolveDecoratorLiteral(f, pkg, "example")
 }
 
-// LiteralToAny converts an [ast.Expr] literal into the equivalent Go
-// runtime value. Arrays recurse so nested literals (e.g. an array of
-// ints) round-trip without losing element types. Unsupported nodes
-// return (nil, false) and the caller skips emission.
+// LiteralToAny converts a literal, arrays included, to its Go value; ok is
+// false for any other expression.
 func LiteralToAny(e ast.Expr) (any, bool) {
 	switch v := e.(type) {
 	case *ast.StringLit:

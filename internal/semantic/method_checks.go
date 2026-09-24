@@ -1,5 +1,3 @@
-// Method-level combination checks: request and response body types,
-// body-verb rules, @status(204) bodies, and raw-mode redundancy.
 package semantic
 
 import (
@@ -11,22 +9,13 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// methodLabel renders the diagnostic phrase for one method, e.g.
-// "method Users.Create".
+// methodLabel renders "method Svc.Name" for diagnostics.
 func methodLabel(svc string, m *ast.Method) string {
 	return "method " + svc + "." + m.Name
 }
 
-// checkRequestBodyType rejects a request type that is a built-in
-// primitive, a scalar or an enum - all fieldless. The request
-// binder/decoder drives off the type's FIELDS, so a fieldless type
-// yields no decode and no parameters - the client payload is silently
-// dropped and the OpenAPI operation loses its `requestBody` - and the
-// Go it emits does not compile: the handler declares `var req
-// types.<name>` and calls a `Validate()` neither a primitive nor a
-// constraint-free scalar has. Wrap the value in a `type { value <T> }`.
-// Mirrors the existing bare-array request reject, which is likewise
-// unconditional.
+// checkRequestBodyType rejects a request type that is a builtin primitive, a
+// scalar or an enum, none of which has fields to bind.
 func (a *analyzer) checkRequestBodyType(m *ast.Method) {
 	if m == nil || m.Request == nil || m.Request.Name == nil {
 		return
@@ -42,21 +31,8 @@ func (a *analyzer) checkRequestBodyType(m *ast.Method) {
 		name, kind, name)
 }
 
-// checkResponseBodyType rejects a response type that is a built-in
-// primitive. The clause names the Go type the stub returns
-// (`(*types.<name>, error)`) and the schema the OpenAPI response body
-// $refs; a built-in supplies neither, so the tree names a type the
-// generated types package never declares and the document carries a
-// dangling `#/components/schemas/<name>`.
-//
-// A scalar or an enum stays accepted: unlike the request side nothing
-// binds a response, and both generate a real named Go type and $ref a
-// schema that IS emitted.
-//
-// Raw sides are rejected too. `@rawResponse` / `@passthrough` make the
-// block docs-only for the transport, but the OpenAPI document is still
-// emitted from it - so the dangling $ref survives the raw flag, exactly
-// as the bare-array reject does.
+// checkResponseBodyType rejects a builtin primitive as a response type, raw
+// or not: no Go type or schema is generated for it.
 func (a *analyzer) checkResponseBodyType(m *ast.Method) {
 	if m == nil || m.Response == nil || m.Response.Type == nil {
 		return
@@ -70,9 +46,8 @@ func (a *analyzer) checkResponseBodyType(m *ast.Method) {
 		name, name)
 }
 
-// bareRequestKind names the fieldless thing a request clause refers to -
-// "built-in primitive", "scalar" or "enum" - or "" when it names a
-// message. sym is the symbol n resolves to in pkg.
+// bareRequestKind names the fieldless kind a request clause refers to, or
+// returns "" for a message; sym is n resolved in pkg.
 func bareRequestKind(pkg *Package, n *ast.NamedTypeRef, sym string) string {
 	if builtinClauseName(n) != "" {
 		return "built-in primitive"
@@ -89,11 +64,8 @@ func bareRequestKind(pkg *Package, n *ast.NamedTypeRef, sym string) string {
 	return ""
 }
 
-// builtinClauseName returns the built-in primitive a `request` /
-// `response` clause names, or "" when it names a declaration. Only a
-// BARE name can be a built-in: a qualified reference always names a
-// declaration, and [CodeDeclBuiltinName] keeps a declaration from taking
-// a built-in's spelling.
+// builtinClauseName returns the builtin primitive a request or response
+// clause names, or ""; [CodeDeclBuiltinName] keeps decls off builtin names.
 func builtinClauseName(n *ast.NamedTypeRef) string {
 	if n == nil || n.Name == nil || len(n.Name.Parts) != 1 {
 		return ""
@@ -104,13 +76,8 @@ func builtinClauseName(n *ast.NamedTypeRef) string {
 	return ""
 }
 
-// checkNoContentStatusBody rejects a no-content success status (204, 304,
-// or any 1xx) on a method that declares a response body. Per RFC 9110
-// those statuses carry no body, but both the OpenAPI emitter and the
-// transport template select their body-emitting branch on response-body
-// presence alone - never the status - so the pairing would advertise a
-// `application/json` body under a status that forbids one and write a body
-// the client never receives.
+// checkNoContentStatusBody rejects a response body on a method whose
+// `@status` is 1xx, 204, 205 or 304, which carry no body (RFC 9110).
 func (a *analyzer) checkNoContentStatusBody(m *ast.Method) {
 	if m == nil || m.Response == nil || m.Response.Type == nil {
 		return
@@ -133,17 +100,8 @@ func (a *analyzer) checkNoContentStatusBody(m *ast.Method) {
 	}
 }
 
-// checkRawModeRedundancy warns when a method spells a raw side twice.
-// `@passthrough` already hands both sides to logic, so `@rawRequest` /
-// `@rawResponse` next to it add nothing; and `@rawRequest @rawResponse`
-// together is exactly `@passthrough`. Codegen reads the modes through
-// wire.RawSides, so the output is identical either way - the diagnostic
-// is a warning, anchored on the later decorator with the earlier one as
-// related context (the same "second occurrence is the offender" rule
-// the other combination checks follow). Decorators propagated from an
-// `extend service` header sit before the method's own, so a method-level
-// flag that repeats a header-level `@passthrough` is anchored on the
-// method's line.
+// checkRawModeRedundancy warns about a raw flag beside `@passthrough`, and
+// `@rawRequest` with `@rawResponse`; the later decorator is reported.
 func (a *analyzer) checkRawModeRedundancy(svcName string, m *ast.Method) {
 	if m == nil {
 		return
@@ -195,17 +153,8 @@ func (a *analyzer) checkRawModeRedundancy(svcName string, m *ast.Method) {
 	}
 }
 
-// checkBodyBindingVerb rejects `@body` / `@form` request fields on a
-// non-body verb (GET / HEAD / DELETE / OPTIONS). Those handlers never
-// decode a request body, so the binder's switch falls through and the
-// field is left zero with no error - silent data loss. The OpenAPI side
-// likewise omits the requestBody for non-body verbs, so the contract and
-// the runtime agree only by both dropping the field. Reject up front.
-//
-// The request type is flattened so a field a request inherits through a
-// mixin is checked too - mirroring the codegen request flatten. Body verbs
-// route `@body` through the JSON decoder and `@form` through the multipart
-// handler, so the check only fires for the non-body set.
+// checkBodyBindingVerb checks every request field, mixins included, of a
+// method whose verb has no body.
 func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	if m == nil || m.Request == nil {
 		return
@@ -225,13 +174,8 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	}
 }
 
-// bodyBindingVerbRules checks one request field of a NON-body-verb method:
-// `@body` / `@form` require a body-bearing verb (the handler decodes no body,
-// so the field would be silently dropped); an un-decorated field auto-binds
-// to @query, where `@nullable` is meaningless (a query string has no
-// JSON-null form, and the pointer it lowers to can't take the binder's plain
-// string - non-compiling); and a type that cannot ride a query string is
-// rejected. The field's type resolves in the package that declares it.
+// bodyBindingVerbRules rejects `@body` and `@form` on a body-less method's
+// field, and `@nullable` or an unbindable type when it auto-binds to @query.
 func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName string, pathSegs map[string]bool, pf promotedField) {
 	f := pf.Field
 	if f == nil {

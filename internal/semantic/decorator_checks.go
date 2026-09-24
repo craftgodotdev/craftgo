@@ -1,4 +1,3 @@
-// Decorator duplicate / scope / conflict / sensitive checks.
 package semantic
 
 import (
@@ -6,13 +5,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// checkDecoratorDuplicates rejects two `@same` decorators in the same
-// declaration scope. Decorators are identified by their bare name; arguments
-// don't disambiguate (`@tags("a")` + `@tags("b")` is still a duplicate). The
-// second occurrence is reported, pointing back at the first for context. We
-// walk every scope that can carry decorators: the file header, top-level
-// declarations, fields inside type / error bodies, enum values, service
-// methods, and middleware-declaration sites.
+// checkDecoratorDuplicates rejects a non-repeatable decorator written twice
+// on one site, whatever its arguments.
 func (a *analyzer) checkDecoratorDuplicates(files []*ast.File) {
 	for _, f := range files {
 		a.checkDecoratorScope("file", f.Decorators)
@@ -22,9 +16,7 @@ func (a *analyzer) checkDecoratorDuplicates(files []*ast.File) {
 	}
 }
 
-// checkDeclDecorators dispatches decorator-uniqueness checks for one
-// top-level declaration plus every nested scope it owns (fields, methods,
-// enum values).
+// checkDeclDecorators checks d and every site nested in it.
 func (a *analyzer) checkDeclDecorators(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
@@ -56,8 +48,7 @@ func (a *analyzer) checkDeclDecorators(d ast.Decl) {
 	}
 }
 
-// checkFieldDecorators applies the duplicate check to every Field in a type
-// or error body. Mixin members carry no decorators and are skipped.
+// checkFieldDecorators checks every field of a type or error body.
 func (a *analyzer) checkFieldDecorators(parent string, members []ast.TypeMember) {
 	for _, m := range members {
 		f, ok := m.(*ast.Field)
@@ -68,17 +59,8 @@ func (a *analyzer) checkFieldDecorators(parent string, members []ast.TypeMember)
 	}
 }
 
-// checkDecoratorScope is the leaf check: emit a diagnostic for any decorator
-// whose Name appears more than once in decs. The first occurrence is silent;
-// every subsequent one is flagged with a Related link to the first so the
-// IDE can render a clickable cross-reference.
-//
-// Repeatable decorators (`@security`, `@tags`, `@middlewares`) bypass the
-// check: each instance is its own semantic contribution (OR alternative
-// for security, additional tag, additional middleware in the chain) and
-// the extend-service propagation naturally produces multiple instances
-// of the same name when a method-level decorator merges with one inherited
-// from an `extend service` block.
+// checkDecoratorScope reports every repeat of a non-repeatable decorator in
+// decs, related to its first occurrence.
 func (a *analyzer) checkDecoratorScope(scope string, decs []*ast.Decorator) {
 	seen := map[string]lexer.Position{}
 	for _, d := range decs {
@@ -99,9 +81,8 @@ func (a *analyzer) checkDecoratorScope(scope string, decs []*ast.Decorator) {
 	}
 }
 
-// checkDecoratorConflicts fires CodeDecoratorConflict for any field
-// that pairs `@sensitive` with a wire-shaping decorator: every field
-// decorator the [Registry] does not mark as [Spec.Metadata].
+// checkDecoratorConflicts rejects `@sensitive` beside any field decorator
+// that is not [Spec.Metadata].
 func (a *analyzer) checkDecoratorConflicts(files []*ast.File) {
 	for _, f := range files {
 		for _, decl := range f.Decls {
@@ -115,9 +96,6 @@ func (a *analyzer) checkDecoratorConflicts(files []*ast.File) {
 	}
 }
 
-// checkSensitiveConflictsIn walks a type / error body once. For every
-// field that carries `@sensitive`, every other field decorator that is
-// not pure metadata becomes a CodeDecoratorConflict diagnostic.
 func (a *analyzer) checkSensitiveConflictsIn(members []ast.TypeMember) {
 	for _, m := range members {
 		f, ok := m.(*ast.Field)
