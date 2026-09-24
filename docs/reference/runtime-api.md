@@ -37,7 +37,7 @@ Each returns `*Server` for chaining.
 
 | Method | Description |
 |---|---|
-| `SetLogger(l Logger)` / `Logger() Logger` | Install or read `log.Default()`, the logger the server's `Recovery` and the generated logic write to; the server keeps none of its own. |
+| `SetLogger(l log.Logger)` / `Logger() log.Logger` | Install or read `log.Default()`, the logger the server's `Recovery` and the generated logic write to; the server keeps none of its own. |
 | `SetJSONCodec(c JSONCodec) error` / `Codec() JSONCodec` | Swap or read the process-wide codec handlers and health endpoints use: `SetJSONCodec` delegates to `SetGlobalJSONCodec`, `Codec` returns what `JSON()` returns. `SetJSONCodec` fails, keeping the previous codec, when strict JSON is on and `c` has no `DecodeStrict`. |
 | `SetStrictJSON(strict bool) error` | Reject a JSON body with an unknown field (`400 <field>: unknown field`) or data after the JSON value; `server.strictJSON` in `config.yaml` drives it. Fails, keeping the previous setting, when the installed codec has no `DecodeStrict`. |
 | `SetCORS(opts CORSOptions)` | Install CORS. Calling twice replaces the previous config. |
@@ -72,7 +72,7 @@ type Middleware = func(http.Handler) http.Handler
 | `Recovery(logger)` | Converts a panic into a 500 (or logs + leaves the committed status if the response already started). Always outermost in the generated chain. |
 | `AccessLog(logger, opts...)` | One `http access` line per request: `method`, `path`, `status`, `latency`, plus the `trace_id` / `span_id` on the context. `AccessLogSkipPaths(paths...)` keeps chosen routes out; `AccessLogFields(fn)` appends fields `fn` derives from the request (client address, user agent, the matched `r.Pattern`). |
 | `BodyLimit(maxBytes)` | Wraps `r.Body` in `http.MaxBytesReader`. |
-| `Timeout(d)` | Caps handler execution; cancels the context and returns 503 on deadline. Panics still propagate to `Recovery`. |
+| `Timeout(d)` | Deprecated: use `srv.SetDefaultHandlerTimeout(d)`, or `WithLimits` for one route. Runs the handler under `http.TimeoutHandler`: 503 on deadline, and a buffered response that cannot flush. |
 
 `WithLimits(h, Limits{...})` applies timeout + body limits to a single handler - this is what `@timeout` / `@maxBodySize` compile to.
 
@@ -94,12 +94,9 @@ srv.Handle("GET /ping", base.ThenFunc(pingFn)) // ThenFunc for bare functions
 
 ### DSL-driven middleware
 
-The generated middleware stubs register their impls so `@middlewares(Name)` in the DSL resolves at runtime:
+`@middlewares(Name)` in the DSL resolves at compile time, not by name at runtime. Codegen adds a `Name` field of type `server.Middleware` to the `Middlewares` struct embedded in `ServiceContext` and a gen-once constructor in `internal/middleware/<name>_middleware.go`; `main.go` assigns `svc.Name = middleware.NewNameMiddleware()`, and the generated `routes.go` passes the fields to `srv.Handle` as per-route middlewares.
 
-| Method | Description |
-|---|---|
-| `RegisterMiddleware(name, mw) *Server` | Map a DSL identifier to a concrete middleware. Called from the gen-once `internal/middleware/<name>_middleware.go`. |
-| `With(names []string, h http.HandlerFunc) http.HandlerFunc` | Look each name up and fold them through a `Chain`, outermost-first (first name = outermost). Unknown names are skipped silently. The generated `routes.go` calls this. |
+`RegisterMiddleware(name, mw)` and `With(names, h)`, a registry keyed by name, are deprecated: nothing generated calls them. Pass the middleware to `Handle` or `Use`, or build a `Chain`.
 
 ## JSON codec
 

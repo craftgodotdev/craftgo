@@ -40,6 +40,8 @@ type Server struct {
 }
 
 // Logger is an alias of [log.Logger].
+//
+// Deprecated: use [log.Logger].
 type Logger = log.Logger
 
 // Middleware wraps an http.Handler.
@@ -79,6 +81,8 @@ func (s *Server) Use(mw Middleware) *Server {
 }
 
 // RegisterMiddleware registers mw under name for [Server.With].
+//
+// Deprecated: pass the middleware to [Server.Handle] or [Server.Use].
 func (s *Server) RegisterMiddleware(name string, mw Middleware) *Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -101,6 +105,8 @@ func (s *Server) Handle(pattern string, h http.Handler, mws ...Middleware) *Serv
 
 // With wraps h in the middlewares registered under names, the first outermost, resolving
 // them when With is called; an unknown name is skipped.
+//
+// Deprecated: pass the middlewares to [Server.Handle], or wrap h in a [Chain].
 func (s *Server) With(names []string, h http.HandlerFunc) http.HandlerFunc {
 	if len(names) == 0 {
 		return h
@@ -175,13 +181,13 @@ func (s *Server) SetStrictJSON(strict bool) error { return SetStrictJSON(strict)
 
 // SetLogger installs l as [log.Default], the logger the server's [Recovery] writes to; nil is
 // ignored.
-func (s *Server) SetLogger(l Logger) *Server {
+func (s *Server) SetLogger(l log.Logger) *Server {
 	log.SetDefault(l)
 	return s
 }
 
 // Logger returns [log.Default].
-func (s *Server) Logger() Logger { return log.Default() }
+func (s *Server) Logger() log.Logger { return log.Default() }
 
 // Codec returns the codec in effect, the one [JSON] returns.
 func (s *Server) Codec() JSONCodec { return JSON() }

@@ -48,7 +48,7 @@ Out of the box:
 - `Recovery(logger)` - converts panics to 500 responses with structured logging
 - `AccessLog(logger)` - one `http access` line per request (method, path, status, latency, plus the trace ids on the context); `AccessLogSkipPaths(...)` keeps chosen routes out, `AccessLogFields(...)` adds fields of your own
 - `BodyLimit(maxBytes)` - caps request bodies
-- `Timeout(d)` - hard deadline on handler execution
+- `Timeout(d)` - deprecated; use `srv.SetDefaultHandlerTimeout(d)` or `@timeout`, which put the deadline on the request context
 - `CORSPermissive()` / `CORSStrict(origin)` - build a `CORSOptions` preset, then attach with `srv.SetCORS(opts)` - preflight + headers
 - `Compress(opts)` - gzip / deflate response compression
 

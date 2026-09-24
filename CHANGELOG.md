@@ -56,6 +56,18 @@ breaking change to the DSL or the generated layout bumps the major version.
   `host:port` was accepted, and the exporter then sent to `localhost:4318`
   or nowhere; `otlp_grpc` still takes `host:port`.
 
+### Deprecated
+
+- **Vestigial `pkg/server` API.** Behaviour is unchanged:
+  - `Server.RegisterMiddleware` and `Server.With`, a middleware registry
+    keyed by name that nothing generated calls: pass the middleware to
+    `Handle` or `Use`, or build a `Chain`.
+  - `server.Timeout`: use `SetDefaultHandlerTimeout`, or `WithLimits` for
+    one route; both put the deadline on the request context.
+  - The `server.Logger` alias: use `log.Logger`.
+  - `server.DocsUI` and its constants: `DocsOptions.UI` takes the name as a
+    string.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added

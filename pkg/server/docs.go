@@ -9,9 +9,13 @@ import (
 
 // DocsUI names an API-reference UI [Server.ServeDocs] can render; [DocsOptions] takes it
 // as a string.
+//
+// Deprecated: set [DocsOptions.UI] to "redoc", "swagger" or "scalar".
 type DocsUI string
 
 // DocsRedoc, DocsSwagger and DocsScalar are the [DocsUI] values.
+//
+// Deprecated: set [DocsOptions.UI] to the name itself.
 const (
 	DocsRedoc   DocsUI = "redoc"
 	DocsSwagger DocsUI = "swagger"

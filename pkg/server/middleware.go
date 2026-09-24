@@ -152,6 +152,8 @@ func BodyLimit(maxBytes int64) Middleware {
 
 // Timeout runs next under [http.TimeoutHandler]: past d the client gets 503 "request
 // timeout". The response is buffered, so next can neither flush nor hijack.
+//
+// Deprecated: use [Server.SetDefaultHandlerTimeout] for every route or [WithLimits] for one.
 func Timeout(d time.Duration) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.TimeoutHandler(next, d, "request timeout")
