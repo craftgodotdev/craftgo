@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 func (p *Printer) Decorator(d *ast.Decorator) {
@@ -32,34 +33,15 @@ func (p *Printer) decoratorCore(d *ast.Decorator) {
 }
 
 // decoratorArgInContext prints argument idx of decoratorName; a first positional
-// @format string spelled like an identifier prints bare (`@format(email)`).
+// @format string that is an identifier prints bare (`@format(email)`).
 func (p *Printer) decoratorArgInContext(decoratorName string, idx int, a *ast.DecoratorArg) {
 	if decoratorName == "format" && idx == 0 && !a.Named {
-		if s, ok := a.Value.(*ast.StringLit); ok && isPlainIdent(s.Value) {
+		if s, ok := a.Value.(*ast.StringLit); ok && lexer.IsIdent(s.Value) {
 			p.write(s.Value)
 			return
 		}
 	}
 	p.DecoratorArg(a)
-}
-
-// isPlainIdent reports whether s is spelled like an identifier; keywords such
-// as null and true also pass.
-func isPlainIdent(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i, r := range s {
-		switch {
-		case r == '_':
-		case r >= 'a' && r <= 'z':
-		case r >= 'A' && r <= 'Z':
-		case i > 0 && r >= '0' && r <= '9':
-		default:
-			return false
-		}
-	}
-	return true
 }
 
 func (p *Printer) DecoratorArg(a *ast.DecoratorArg) {

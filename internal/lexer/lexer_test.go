@@ -293,6 +293,50 @@ func TestStringBadUnicodeEscape(t *testing.T) {
 	}
 }
 
+// Each reserved word lexes to its kind, whose String is the word; IsKeyword
+// holds for exactly the reserved words and IsVerb for the seven HTTP verbs.
+func TestKeywordPredicates(t *testing.T) {
+	verbs := 0
+	for k := EOF; k <= Dash; k++ {
+		_, reserved := keywords[k.String()]
+		if k.IsKeyword() != reserved {
+			t.Errorf("%v: IsKeyword = %v, reserved = %v", k, k.IsKeyword(), reserved)
+		}
+		if reserved {
+			if tok := first(t, k.String()); tok.Kind != k || tok.Text != k.String() {
+				t.Errorf("%q lexes as %+v", k.String(), tok)
+			}
+		}
+		if k.IsVerb() {
+			verbs++
+			if !k.IsKeyword() {
+				t.Errorf("verb %v is not a keyword", k)
+			}
+		}
+	}
+	if verbs != 7 {
+		t.Errorf("%d verbs, want 7", verbs)
+	}
+}
+
+// IsIdent accepts exactly what lexes as one Ident token.
+func TestIsIdent(t *testing.T) {
+	for s, want := range map[string]bool{
+		"email": true, "_x9": true, "X": true, "uuid": true,
+		"": false, "9x": false, "a-b": false, "a b": false, "héllo": false,
+		"null": false, "true": false, "service": false, "get": false,
+	} {
+		if got := IsIdent(s); got != want {
+			t.Errorf("IsIdent(%q) = %v, want %v", s, got, want)
+		}
+		toks := New("", s).Tokenize()
+		lexesAsIdent := len(toks) == 2 && toks[0].Kind == Ident && toks[0].Text == s
+		if lexesAsIdent != want {
+			t.Errorf("%q lexes as %v", s, toks)
+		}
+	}
+}
+
 // Unquote decodes the DSL's escapes, keeps a raw literal's content, and names
 // the first escape it rejects.
 func TestUnquote(t *testing.T) {

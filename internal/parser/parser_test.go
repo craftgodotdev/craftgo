@@ -793,12 +793,6 @@ func TestIsUpperFirst(t *testing.T) {
 	}
 }
 
-func TestVerbFromTokenInvalid(t *testing.T) {
-	if _, ok := verbFromToken(0); ok {
-		t.Error()
-	}
-}
-
 func TestPeekAtOutOfRange(t *testing.T) {
 	p := New("", "x")
 	// peekAt past the end returns the final EOF token.

@@ -87,7 +87,7 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 	decs := p.parseDecorators()
 	t := p.peek()
 	// A reserved word never names a type, so here it is a field name.
-	if isKeywordKind(t.Kind) {
+	if t.Kind.IsKeyword() {
 		name := p.advance()
 		tref := p.parseTypeRef()
 		fieldDecs := p.parseDecorators()

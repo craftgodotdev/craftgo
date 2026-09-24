@@ -105,7 +105,7 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 	p.captureDoc()
 	t := p.peek()
 	// A reserved word is a value name here.
-	if t.Kind != lexer.Ident && !isKeywordKind(t.Kind) {
+	if t.Kind != lexer.Ident && !t.Kind.IsKeyword() {
 		p.errorf(t.Pos, "expected enum value name, got %s", t.Kind)
 		return nil
 	}

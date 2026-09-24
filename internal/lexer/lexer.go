@@ -126,7 +126,7 @@ func (l *Lexer) Next() Token {
 
 	var tok Token
 	switch {
-	case isLetter(r) || r == '_':
+	case isIdentStart(r):
 		tok = l.lexIdentOrKeyword(pos)
 	case isDigit(r):
 		tok = l.lexNumber(pos)
@@ -186,54 +186,18 @@ func (l *Lexer) lineComment(kind CommentKind) string {
 // lexPunct lexes a one-rune punctuation token; any other rune is an Error.
 func (l *Lexer) lexPunct(pos Position, r rune) Token {
 	l.advance()
-	var k Kind
-	switch r {
-	case '{':
-		k = LBrace
-	case '}':
-		k = RBrace
-	case '(':
-		k = LParen
-	case ')':
-		k = RParen
-	case '[':
-		k = LBracket
-	case ']':
-		k = RBracket
-	case '<':
-		k = LAngle
-	case '>':
-		k = RAngle
-	case ',':
-		k = Comma
-	case ':':
-		k = Colon
-	case '=':
-		k = Equal
-	case '?':
-		k = Question
-	case '.':
-		k = Dot
-	case '/':
-		k = Slash
-	case '@':
-		k = At
-	case '-':
-		k = Dash
-	default:
+	text := string(r)
+	k, ok := punctuation[text]
+	if !ok {
 		return l.errorf(pos, "unexpected character %q", r)
 	}
-	return Token{Kind: k, Text: string(r), Pos: pos}
+	return Token{Kind: k, Text: text, Pos: pos}
 }
 
 // lexIdentOrKeyword lexes `[A-Za-z_][A-Za-z0-9_]*` as a keyword or an Ident.
 func (l *Lexer) lexIdentOrKeyword(pos Position) Token {
 	start := l.offset
-	for {
-		r := l.peek()
-		if !isLetter(r) && !isDigit(r) && r != '_' {
-			break
-		}
+	for r := l.peek(); isIdentStart(r) || isDigit(r); r = l.peek() {
 		l.advance()
 	}
 	text := l.src[start:l.offset]
@@ -469,6 +433,11 @@ func (l *Lexer) errorf(pos Position, format string, args ...any) Token {
 // isLetter reports whether r is an ASCII letter.
 func isLetter(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+}
+
+// isIdentStart reports whether r can start an identifier: a letter or `_`.
+func isIdentStart(r rune) bool {
+	return isLetter(r) || r == '_'
 }
 
 // isDigit reports whether r is an ASCII decimal digit.

@@ -139,11 +139,6 @@ func (p *Parser) errorf(pos lexer.Position, format string, args ...any) {
 // peekIs reports whether the current token has kind k.
 func (p *Parser) peekIs(k lexer.Kind) bool { return p.peek().Kind == k }
 
-// isKeywordKind reports whether k is a reserved word, HTTP verbs included.
-func isKeywordKind(k lexer.Kind) bool {
-	return k >= lexer.KwPackage && k <= lexer.VerbOptions
-}
-
 // isUpperFirst reports whether s starts with an upper-case letter.
 func isUpperFirst(s string) bool {
 	if s == "" {

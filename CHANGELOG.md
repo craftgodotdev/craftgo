@@ -99,6 +99,10 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **Formatting a CRLF file writes LF line ends throughout.** A line with a
   trailing comment kept its `\r`.
 
+- **Formatting keeps a `@format` name that is a reserved word quoted.**
+  `@format("null")` was printed as `@format(null)`, which reads as the null
+  literal; the same held for `true`, `service` and the other reserved words.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

@@ -91,13 +91,12 @@ func (p *Parser) parseServiceMember() ast.ServiceMember {
 	p.captureDoc()
 	decs := p.parseDecorators()
 	t := p.peek()
-	verb, ok := verbFromToken(t.Kind)
-	if !ok {
+	if !t.Kind.IsVerb() {
 		p.errorf(t.Pos, "%s", serviceMemberError(t))
 		return nil
 	}
 	p.claimChainComments(decs, t)
-	return p.parseMethod(decs, verb)
+	return p.parseMethod(decs, t.Text)
 }
 
 // serviceMemberError is the diagnostic for a service member that is not a
@@ -259,26 +258,5 @@ func (p *Parser) parsePath() *ast.Path {
 // isPathWordToken reports whether k spells a path word: an identifier or a
 // reserved word.
 func isPathWordToken(k lexer.Kind) bool {
-	return k == lexer.Ident || isKeywordKind(k)
-}
-
-// verbFromToken returns the spelling of an HTTP-verb kind, or ok=false.
-func verbFromToken(k lexer.Kind) (string, bool) {
-	switch k {
-	case lexer.VerbGet:
-		return "get", true
-	case lexer.VerbPost:
-		return "post", true
-	case lexer.VerbPut:
-		return "put", true
-	case lexer.VerbPatch:
-		return "patch", true
-	case lexer.VerbDelete:
-		return "delete", true
-	case lexer.VerbHead:
-		return "head", true
-	case lexer.VerbOptions:
-		return "options", true
-	}
-	return "", false
+	return k == lexer.Ident || k.IsKeyword()
 }

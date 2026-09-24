@@ -474,6 +474,13 @@ type X {
 	}
 }
 
+// A `@format` string spelled like a reserved word stays quoted: bare, it would
+// read as that word's literal.
+func TestFormatKeepsAReservedWordFormatQuoted(t *testing.T) {
+	src := "package design\n\ntype X {\n\ta string @format(\"null\")\n\tb string @format(\"true\")\n\tc string @format(\"service\")\n}\n"
+	formatExact(t, src, src)
+}
+
 // TestClosingNoteInBody pins that a comment above a closing brace stays inside
 // the body.
 func TestClosingNoteInBody(t *testing.T) {

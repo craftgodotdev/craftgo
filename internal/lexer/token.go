@@ -2,8 +2,8 @@ package lexer
 
 import "fmt"
 
-// Kind is a token category. The reserved words, KwPackage through VerbOptions,
-// are contiguous so callers can test for one with a range check.
+// Kind is a token category. The reserved words (KwPackage through VerbOptions,
+// the verbs last) and the punctuation (LBrace through Dash) are contiguous runs.
 type Kind int
 
 const (
@@ -107,33 +107,40 @@ func (k Kind) String() string {
 	return fmt.Sprintf("Kind(%d)", int(k))
 }
 
-// keywords maps each reserved word to its Kind.
-var keywords = map[string]Kind{
-	"package":    KwPackage,
-	"import":     KwImport,
-	"type":       KwType,
-	"enum":       KwEnum,
-	"error":      KwError,
-	"scalar":     KwScalar,
-	"service":    KwService,
-	"extend":     KwExtend,
-	"middleware": KwMiddleware,
-	"request":    KwRequest,
-	"response":   KwResponse,
-	"map":        KwMap,
-	"true":       KwTrue,
-	"false":      KwFalse,
-	"null":       KwNull,
-	"event":      KwEvent,
-	"payload":    KwPayload,
+// IsKeyword reports whether k is a reserved word, the HTTP verbs included.
+func (k Kind) IsKeyword() bool { return k >= KwPackage && k <= VerbOptions }
 
-	"get":     VerbGet,
-	"post":    VerbPost,
-	"put":     VerbPut,
-	"patch":   VerbPatch,
-	"delete":  VerbDelete,
-	"head":    VerbHead,
-	"options": VerbOptions,
+// IsVerb reports whether k is an HTTP verb; its spelling is the token's Text.
+func (k Kind) IsVerb() bool { return k >= VerbGet && k <= VerbOptions }
+
+// keywords maps each reserved word to its Kind.
+var keywords = spellings(KwPackage, VerbOptions)
+
+// punctuation maps each punctuation rune to its Kind.
+var punctuation = spellings(LBrace, Dash)
+
+// spellings maps the spelling of each kind from first to last to the kind.
+func spellings(first, last Kind) map[string]Kind {
+	m := make(map[string]Kind, last-first+1)
+	for k := first; k <= last; k++ {
+		m[kindNames[k]] = k
+	}
+	return m
+}
+
+// IsIdent reports whether s lexes as a single [Ident]: a letter or `_`, then
+// letters, digits and `_`, and not a reserved word.
+func IsIdent(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		if !isIdentStart(r) && (i == 0 || !isDigit(r)) {
+			return false
+		}
+	}
+	_, reserved := keywords[s]
+	return !reserved
 }
 
 // CommentKind says whether a comment follows code on its line.

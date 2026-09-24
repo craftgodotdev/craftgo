@@ -31,7 +31,7 @@ func (p *Parser) parseDecorators() []*ast.Decorator {
 func (p *Parser) parseDecorator() *ast.Decorator {
 	at := p.advance()
 	nameTok := p.peek()
-	if nameTok.Kind != lexer.Ident && !isKeywordKind(nameTok.Kind) {
+	if nameTok.Kind != lexer.Ident && !nameTok.Kind.IsKeyword() {
 		p.errorf(nameTok.Pos, "expected decorator name, got %s", nameTok.Kind)
 		return &ast.Decorator{Pos: at.Pos}
 	}
@@ -110,7 +110,7 @@ func (p *Parser) parseObjectLiteral() []*ast.ObjectField {
 // reserved word.
 func (p *Parser) expectFieldKey() string {
 	t := p.peek()
-	if t.Kind == lexer.Ident || isKeywordKind(t.Kind) {
+	if t.Kind == lexer.Ident || t.Kind.IsKeyword() {
 		p.advance()
 		return t.Text
 	}
@@ -195,7 +195,7 @@ func (p *Parser) parseValue() ast.Expr {
 	}
 	// Any other reserved word is a name, such as the field in
 	// `@requiresOneOf(payload, name)`.
-	if isKeywordKind(t.Kind) {
+	if t.Kind.IsKeyword() {
 		p.advance()
 		return &ast.IdentExpr{Pos: t.Pos, Name: &ast.QualifiedIdent{Pos: t.Pos, Parts: []string{t.Text}}}
 	}
