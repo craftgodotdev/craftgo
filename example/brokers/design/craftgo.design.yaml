@@ -1,4 +1,3 @@
-package: github.com/craftgodotdev/craftgo/example/brokers
 output:
   types:      ./internal/types
   transport:  ./internal/transport
