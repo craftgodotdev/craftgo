@@ -12,9 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 )
 
-// workspaceProject is a fresh project whose go.work names this repo, so
-// `go tool` resolves the plugins the root go.mod pins - the way a
-// project's own `tool` directives would.
+// workspaceProject is a temp project whose go.work uses this repo, so
+// `go tool` resolves the plugins the root go.mod pins.
 func workspaceProject(t *testing.T) string {
 	t.Helper()
 	dir, err := filepath.EvalSymlinks(t.TempDir())
@@ -74,8 +73,7 @@ func protoConfig() *config.Config {
 	return cfg
 }
 
-// The plan must also account for the gRPC server packages and the pb
-// code a proto set adds to a run.
+// The plan names the gRPC server packages and pb code a proto set adds.
 func TestPlanMatchesWhatTheRunWritesWithProtos(t *testing.T) {
 	dir := workspaceProject(t)
 	cfg := protoConfig()
@@ -103,8 +101,8 @@ func TestPlanMatchesWhatTheRunWritesWithProtos(t *testing.T) {
 	}
 }
 
-// A proto service the design drops takes its server package and its pb
-// code with it, while its logic scaffolds - the user's code - stay.
+// A dropped proto service loses its server package and pb code; its logic
+// scaffold stays.
 func TestDroppedProtoServiceLosesItsServerPackage(t *testing.T) {
 	dir := workspaceProject(t)
 	cfg := protoConfig()
@@ -128,7 +126,7 @@ func TestDroppedProtoServiceLosesItsServerPackage(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "internal", "pb", "greet")); !os.IsNotExist(err) {
 		t.Errorf("the pb code of a dropped proto survived: %v", err)
 	}
-	// The pb root is the design's, kept bare like every other output root.
+	// The emptied pb root stays, like every output root.
 	if entries, err := os.ReadDir(filepath.Join(dir, "internal", "pb")); err != nil || len(entries) != 0 {
 		t.Errorf("the pb root must stay, emptied: %v %v", entries, err)
 	}

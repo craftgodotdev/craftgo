@@ -12,10 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// planSrc exercises every shape the plan has to account for: a package
-// with enums and errors and one without, a service with methods, one with
-// methods behind a `@group`, a contract beside them, a second package
-// with no event at all, and a middleware.
+// planSrc is two packages covering the shapes the plan must name: enums,
+// errors, events, a middleware, a `@group` block, and a package without events.
 var planSrc = []string{`package shop
 enum Tier { Gold = 1  Silver = 2 }
 error NotFound OrderMissing { id string }
@@ -39,14 +37,11 @@ service Stock {
 	get Shelves /shelves { response Shelf }
 }`}
 
-// planConfig turns on every target a run can write, so the plan is
-// compared against the widest output craftgo produces. A language added
-// to the catalogue is turned on here.
+// planConfig enables every target, so the plan meets the widest output.
 func planConfig() *config.Config { return eventsConfig() }
 
-// emitOnly runs the writing half of a pass and stops before the sweep. A
-// file the plan misses is deleted the moment it is written, so a test
-// comparing the two has to see the tree the emitters left.
+// emitOnly runs a pass without its sweep, so the test sees every file the
+// emitters wrote.
 func emitOnly(t *testing.T, proj *semantic.Project, cfg *config.Config, dir string) {
 	t.Helper()
 	sel, _ := selection(nil)
@@ -55,10 +50,7 @@ func emitOnly(t *testing.T, proj *semantic.Project, cfg *config.Config, dir stri
 	}
 }
 
-// The plan is the whole of what the sweep spares. A file an emitter
-// writes but the plan misses is deleted the moment it lands, and one the
-// plan names but nothing writes keeps a stale file alive. Either way the
-// two must match.
+// The plan names exactly the regenerated files a pass writes.
 func TestPlanMatchesWhatTheRunWrites(t *testing.T) {
 	dir := t.TempDir()
 	cfg := planConfig()
@@ -84,9 +76,8 @@ func TestPlanMatchesWhatTheRunWrites(t *testing.T) {
 	}
 }
 
-// The gen-once scaffolds are written only when missing. None is part of
-// what a run produces, and a run must leave every one of them alone -
-// svccontext.go included, which sits in a directory the sweep walks.
+// No gen-once scaffold is planned, and each survives the sweep, svccontext.go
+// in a swept directory included.
 func TestScaffoldsSurviveTheSweep(t *testing.T) {
 	dir := t.TempDir()
 	cfg := planConfig()
@@ -115,8 +106,8 @@ func TestScaffoldsSurviveTheSweep(t *testing.T) {
 	}
 }
 
-// The project root is not an output directory: a sibling design's output
-// sits under it, and a sweep of the root would take that with it.
+// The sweep never walks the project root, even when an output key resolves
+// to it.
 func TestTheProjectRootIsNeverSwept(t *testing.T) {
 	dir := t.TempDir()
 	cfg := planConfig()
@@ -132,8 +123,8 @@ func TestTheProjectRootIsNeverSwept(t *testing.T) {
 	}
 }
 
-// regeneratedUnder returns every file under dir that a run rewrites -
-// craftgo's own and the plugins' - by the header each one opens with.
+// regeneratedUnder returns every file under dir that opens with craftgo's
+// or a plugin's generated header.
 func regeneratedUnder(t *testing.T, dir string) map[string]bool {
 	t.Helper()
 	out := map[string]bool{}
