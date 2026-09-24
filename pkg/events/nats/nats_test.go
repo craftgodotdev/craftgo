@@ -1,11 +1,14 @@
 package nats
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/nats-io/nats.go"
 
 	events "github.com/craftgodotdev/craftgo/pkg/events"
+	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
 )
 
 func TestDefaultSubjectIsTheContract(t *testing.T) {
@@ -143,5 +146,17 @@ func TestTheDeduplicationHeaderIsNotLeftInMetadata(t *testing.T) {
 	}
 	if out.Metadata["hops"] != "2" {
 		t.Errorf("caller metadata lost: %v", out.Metadata)
+	}
+}
+
+// A bus over either NATS transport refuses every option under the adapter's name.
+func TestABusRefusesEveryNATSOption(t *testing.T) {
+	for name, pub := range map[string]events.Publisher{"core": New(nil), "JetStream": &JetStream{}} {
+		bus := events.New(events.WithPublisher(pub), events.WithCodec(codecjson.Codec{}))
+		err := bus.Publish(context.Background(), "orders.Placed", struct{}{}, events.WithAdapterOption(Adapter, "subject", "x"))
+		var unknown *events.UnknownOptionError
+		if !errors.As(err, &unknown) || unknown.Adapter != Adapter || len(unknown.Known) != 0 {
+			t.Errorf("%s: err = %v, want an *UnknownOptionError naming %q, which reads no option", name, err, Adapter)
+		}
 	}
 }

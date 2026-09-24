@@ -11,6 +11,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	events "github.com/craftgodotdev/craftgo/pkg/events"
+	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
 )
 
 // The ordering key becomes the record key and the contract a header.
@@ -278,6 +279,19 @@ func TestAnotherAdaptersOptionIsIgnored(t *testing.T) {
 	})
 	if !rec.Timestamp.IsZero() {
 		t.Errorf("another adapter's option changed this record: %+v", rec)
+	}
+}
+
+// A bus over this transport refuses an option under the adapter's name other than OptionTimestamp.
+func TestABusRefusesAKafkaOptionTheAdapterDoesNotRead(t *testing.T) {
+	bus := events.New(events.WithTransport(New([]string{"127.0.0.1:1"})), events.WithCodec(codecjson.Codec{}))
+	err := bus.Publish(context.Background(), "shop.Placed", struct{}{}, events.WithAdapterOption(Adapter, "partition", 3))
+	var unknown *events.UnknownOptionError
+	if !errors.As(err, &unknown) {
+		t.Fatalf("err = %v, want an *UnknownOptionError", err)
+	}
+	if unknown.Adapter != Adapter || !reflect.DeepEqual(unknown.Known, []string{OptionTimestamp}) {
+		t.Errorf("refusal names adapter %q reading %v, want %q reading [%s]", unknown.Adapter, unknown.Known, Adapter, OptionTimestamp)
 	}
 }
 

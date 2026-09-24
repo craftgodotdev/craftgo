@@ -285,3 +285,37 @@ func TestThePublishDefaultsDoNotTouchTheCallersEnvelope(t *testing.T) {
 		t.Errorf("message metadata = %v, want both", got)
 	}
 }
+
+// An empty value clears a publish default only as a per-call option: WithKey("") on
+// Publish clears the default key, an Envelope's empty Key on PublishAll keeps it.
+func TestAnEmptyValueClearsADefaultOnlyAsAnOption(t *testing.T) {
+	tr := &recordingTransport{}
+	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}),
+		events.WithPublishDefaults(events.WithKey("default"), events.WithDedupID("default-id"),
+			events.WithAdapterOption("probe", "k", 1)))
+
+	if err := bus.Publish(context.Background(), "orders.OrderPlaced", payload{ID: "o-1"},
+		events.WithKey(""), events.WithDedupID("")); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if err := bus.PublishAll(context.Background(), []events.Envelope{{
+		Event:          "orders.OrderPlaced",
+		Payload:        payload{ID: "o-2"},
+		AdapterOptions: map[string]map[string]any{"probe": {"j": 2}},
+	}}); err != nil {
+		t.Fatalf("publish all: %v", err)
+	}
+
+	if got := tr.sent[0]; got.Key != "" || got.DedupID != "" {
+		t.Errorf("Publish with empty options: key %q, dedup id %q, want both cleared", got.Key, got.DedupID)
+	}
+	enveloped := tr.sent[1]
+	if enveloped.Key != "default" || enveloped.DedupID != "default-id" {
+		t.Errorf("PublishAll with empty fields: key %q, dedup id %q, want the defaults", enveloped.Key, enveloped.DedupID)
+	}
+	for key, want := range map[string]any{"k": 1, "j": 2} {
+		if got, ok := enveloped.AdapterOption("probe", key); !ok || got != want {
+			t.Errorf("adapter option %q = %v, want %v from the default and the envelope merged", key, got, want)
+		}
+	}
+}

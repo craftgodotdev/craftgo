@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/craftgodotdev/craftgo/pkg/events"
 	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
@@ -99,6 +100,25 @@ func TestBusPublishWithoutPublisher(t *testing.T) {
 	}
 	if err := bus.Start(context.Background()); !errors.Is(err, events.ErrNoSubscriber) {
 		t.Fatalf("want ErrNoSubscriber, got %v", err)
+	}
+}
+
+// WithPublisher and WithSubscriber each install one half of a transport.
+func TestEachHalfOfTheTransportInstallsAlone(t *testing.T) {
+	pub, sub := &recordingTransport{}, &recordingTransport{}
+	bus := events.New(events.WithPublisher(pub), events.WithSubscriber(sub), events.WithCodec(codecjson.Codec{}))
+	start(t, context.Background(), bus, events.Subscription{
+		Event: "x.Y", Consumer: "C", Group: "g",
+		Handle: func(context.Context, *events.Message) error { return nil },
+	})
+	if err := bus.Publish(context.Background(), "x.Y", payload{}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if len(pub.sent) != 1 || pub.batches != 0 {
+		t.Errorf("publisher saw %d messages and %d batches, want 1 and 0", len(pub.sent), pub.batches)
+	}
+	if len(sub.sent) != 0 || sub.batches != 1 {
+		t.Errorf("subscriber saw %d messages and %d batches, want 0 and 1", len(sub.sent), sub.batches)
 	}
 }
 
@@ -251,44 +271,49 @@ func TestMemoryTransportErrorHandler(t *testing.T) {
 	}
 }
 
+// A subscription whose context is cancelled stops receiving.
 func TestMemoryTransportStopsOnContextCancel(t *testing.T) {
 	tr := memory.New()
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
 	ctx, cancel := context.WithCancel(context.Background())
-	var mu sync.Mutex
-	delivered := 0
+	var delivered atomic.Int64
 	start(t, ctx, bus, events.Subscription{
-		Event:    "x.Y",
-		Consumer: "C",
-		Group:    "g",
+		Event: "x.Y", Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error {
-			mu.Lock()
-			delivered++
-			mu.Unlock()
+			delivered.Add(1)
 			return nil
 		},
 	})
-	if err := bus.Publish(ctx, "x.Y", payload{}); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-	tr.Drain()
-	cancel()
-	for i := 0; i < 100; i++ {
+	publish := func() {
+		t.Helper()
 		if err := bus.Publish(context.Background(), "x.Y", payload{}); err != nil {
 			t.Fatalf("publish: %v", err)
 		}
 		tr.Drain()
-		mu.Lock()
-		n := delivered
-		mu.Unlock()
-		if n == 1 {
+	}
+	publish()
+	if n := delivered.Load(); n != 1 {
+		t.Fatalf("delivered %d before the cancel, want 1", n)
+	}
+
+	cancel()
+	// The subscription leaves its group asynchronously: wait for the first publish it misses.
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) {
+		before := delivered.Load()
+		publish()
+		if delivered.Load() == before {
 			break
 		}
+		if time.Now().After(deadline) {
+			t.Fatal("the subscription still receives after its context was cancelled")
+		}
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	if delivered < 1 {
-		t.Fatalf("expected the pre-cancel delivery, got %d", delivered)
+	stopped := delivered.Load()
+	for i := 0; i < 10; i++ {
+		publish()
+	}
+	if n := delivered.Load() - stopped; n != 0 {
+		t.Errorf("%d deliveries after the subscription stopped, want none", n)
 	}
 }
 

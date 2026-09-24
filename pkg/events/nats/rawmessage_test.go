@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 // MsgFrom returns the message a delivery context carries.
@@ -49,4 +50,29 @@ func TestMustMsgPanicsOnAForeignDelivery(t *testing.T) {
 		}
 	}()
 	MustMsg(context.Background())
+}
+
+// jetStreamDelivery stands in for a JetStream message; only its identity matters.
+type jetStreamDelivery struct{ jetstream.Msg }
+
+// MustJetStreamMsg returns the message a JetStream delivery carries.
+func TestMustJetStreamMsgReturnsTheDeliveredMessage(t *testing.T) {
+	m := &jetStreamDelivery{}
+	if got := MustJetStreamMsg(withJetStreamMsg(context.Background(), m)); got != m {
+		t.Errorf("MustJetStreamMsg = %v, want the delivered message", got)
+	}
+}
+
+// MustJetStreamMsg panics, naming the cause, on a core NATS delivery.
+func TestMustJetStreamMsgPanicsOnACoreDelivery(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("MustJetStreamMsg returned on a context with no JetStream message")
+		}
+		if msg, _ := r.(string); !strings.Contains(msg, "not JetStream") {
+			t.Errorf("panic does not say what is wrong: %v", r)
+		}
+	}()
+	MustJetStreamMsg(withMsg(context.Background(), &nats.Msg{Subject: "orders.Placed"}))
 }

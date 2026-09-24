@@ -92,6 +92,12 @@ func TestEveryConsumerClientIsClosedExactlyOnce(t *testing.T) {
 			if n := counter.twice(); n != 0 {
 				t.Errorf("%d client(s) closed more than once", n)
 			}
+			counter.mu.Lock()
+			opened, closed := counter.opened, len(counter.n)
+			counter.mu.Unlock()
+			if closed != opened {
+				t.Errorf("%d of %d clients closed, want every one", closed, opened)
+			}
 		})
 	}
 }
