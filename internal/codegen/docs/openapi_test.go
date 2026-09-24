@@ -11,12 +11,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-// ---------- enum / scalar schema emission ----------
-
-// generateOpenAPIToString runs the OpenAPI generator on `src` and
-// returns the resulting YAML body as a string. Wraps the boilerplate
-// (analyze → temp dir → ReadFile) so each golden-driven openapi
-// test reads as just `src` + `expectGolden`.
+// generateOpenAPIToString returns the YAML document generated from src.
 func generateOpenAPIToString(t *testing.T, src string) string {
 	t.Helper()
 	pkg := analyze(t, src)
@@ -31,16 +26,7 @@ func generateOpenAPIToString(t *testing.T, src string) string {
 	return string(out)
 }
 
-// TestGenerateOpenAPIEnumSchemasEmitted checks that every field
-// referencing an enum type produces a `$ref` whose target schema
-// lives under components.schemas. Both string-based and int-based
-// enums are exercised. The full YAML goes through a golden snapshot;
-// a mismatch surfaces as a diff hunk pointing at the divergent line.
-// TestGenerateOpenAPISensitiveFieldOmitted asserts that `@sensitive`
-// fields are skipped entirely from the OpenAPI spec - not present in
-// schema.properties, not listed under required, not surfaced as a
-// query / path / header / cookie parameter (sensitive can't combine
-// with binding decorators, but defensive double-check).
+// A `@sensitive` field stays out of the document.
 func TestGenerateOpenAPISensitiveFieldOmitted(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Req {
@@ -58,6 +44,7 @@ service S {
 	}
 }
 
+// A string or int enum becomes a component schema its fields $ref.
 func TestGenerateOpenAPIEnumSchemasEmitted(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 enum Priority { Low  Normal  High }
@@ -74,8 +61,7 @@ service S {
 	expectGolden(t, "openapi-enum-schemas.yaml", body)
 }
 
-// TestGenerateOpenAPIScalarSchemasEmitted covers the parallel fix for
-// scalar declarations.
+// A scalar becomes a component schema its fields $ref.
 func TestGenerateOpenAPIScalarSchemasEmitted(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 scalar Email string @format(email)
@@ -84,10 +70,7 @@ service S { post Send /m { request Req } }`)
 	expectGolden(t, "openapi-scalar-schemas.yaml", body)
 }
 
-// TestGenerateOpenAPIScalarFullConstraints checks that every scalar
-// decorator family (format / length / pattern / numeric bounds /
-// multipleOf) flows into the component schema, so generated TS clients
-// keep every validator the runtime enforces.
+// Every constraint family on a scalar reaches its component schema.
 func TestGenerateOpenAPIScalarFullConstraints(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 scalar Email     string @format(email) @maxLength(254)
@@ -126,13 +109,8 @@ service S { post Send /m { request Req } }`)
 	)
 }
 
-// TestGenerateOpenAPIScalarRefFieldConstraint covers a field-level
-// decorator that NARROWS a scalar-ref field. The runtime validator
-// enforces it (`_sv := int(v.Amount); if _sv > N`), so the spec must
-// too: a non-optional field emits allOf:[{$ref}, {constraint}]; an
-// optional field carries the constraint as a sibling of its
-// anyOf-nullable wrapper. A bare $ref would drop it and let a client
-// build a request the server rejects.
+// A constraint narrowing a scalar field joins its $ref in an allOf, or sits
+// beside the anyOf of an optional field.
 func TestGenerateOpenAPIScalarRefFieldConstraint(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 scalar Cents int @gte(0)
@@ -155,9 +133,8 @@ service S { post Run /run { request Req } }`)
 	)
 }
 
-// TestGenerateOpenAPIErrorsDecorator pins the @errors flow:
-// referenced error decls land as components.schemas entries AND as
-// per-operation responses keyed by the error category's HTTP status.
+// `@errors` adds each error's component schema and a response at its
+// category's status.
 func TestGenerateOpenAPIErrorsDecorator(t *testing.T) {
 	src := `package design
 error NotFound BookNotFound
@@ -187,14 +164,11 @@ service S {
 	if !strings.Contains(body, `'#/components/schemas/BookNotFoundErr'`) {
 		t.Error("expected BookNotFoundErr ref")
 	}
-	// CreateBook overrides its success status via @status(202); 202 is a
-	// code the POST verb default (201) would never produce, so this
-	// proves the override is honored rather than coinciding with the
-	// default.
+	// @status(202) replaces the POST default of 201.
 	if !strings.Contains(body, `"202":`) {
 		t.Errorf("expected @status(202) override:\n%s", body)
 	}
-	// 202 response carries the IANA reason phrase, not the hardcoded "OK".
+	// The 202 response carries its reason phrase.
 	if !strings.Contains(body, `description: Accepted`) {
 		t.Errorf("expected `description: Accepted` for 202 response:\n%s", body)
 	}
@@ -204,11 +178,7 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPIErrorResponseHeaders pins that an error type's
-// @header field is documented on its OpenAPI error response (with the
-// field's typed schema), matching the runtime WriteResponseHeaders -
-// so the spec and the wire agree for error headers too, not just
-// success responses.
+// An error's @header field becomes a typed header of its error response.
 func TestGenerateOpenAPIErrorResponseHeaders(t *testing.T) {
 	src := `package design
 error TooManyRequests RateLimited {
@@ -228,8 +198,7 @@ service S {
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
 	body := string(out)
 	mustContainAll(t, body, `"429":`, "headers:", "Retry-After:")
-	// The header carries the field's typed schema (int → integer), not a
-	// string default. Assert the integer schema sits under Retry-After.
+	// The header keeps the field's type (int → integer).
 	if i := strings.Index(body, "Retry-After:"); i >= 0 {
 		if !strings.Contains(body[i:min(i+80, len(body))], "type: integer") {
 			t.Errorf("Retry-After header should carry an integer schema:\n%s", body[i:min(i+120, len(body))])
@@ -237,12 +206,8 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPIMethodNameCollision checks that two services sharing
-// a method name do not collide: their operationId and the
-// <Method>ReqBody/RespBody component schemas are service-prefixed and
-// unique, a unique method name stays bare, and an explicit
-// @operationId still overrides the operationId (while its component
-// names follow the collision-free base so they never clash).
+// A method name two services share gets service-prefixed operationIds and body
+// components; `@operationId` renames only the operationId.
 func TestGenerateOpenAPIMethodNameCollision(t *testing.T) {
 	src := `package design
 type A { x string }
@@ -269,26 +234,18 @@ service DService { get GetThing /d { response A } }`
 		// @operationId override wins for the id; component still qualified.
 		"operationId: customList",
 		"CServiceListRespBody:",
-		// Unique method name stays bare (no churn).
+		// Unique method name stays bare.
 		"operationId: GetThing",
 		"GetThingRespBody:",
 	)
-	// The collision must be fully resolved: no bare List operationId and
-	// no bare ListRespBody component survives.
+	// No bare List operationId or ListRespBody component is left.
 	mustContainNone(t, body, "operationId: List\n", "\n    ListRespBody:")
 }
 
-// TestGenerateOpenAPIDuplicateOperationIDErrors pins that an
-// @operationId override colliding with another method's operationId
-// fails generation with an actionable error (auto-prefixing cannot
-// resolve a user-chosen name, so codegen must not emit an invalid
-// duplicate-operationId spec).
+// GenerateOpenAPI rejects an `@operationId` equal to another method's
+// operationId, even in a design that skipped analysis.
 func TestGenerateOpenAPIDuplicateOperationIDBackstop(t *testing.T) {
-	// The analyser is the primary, editor-visible gate for a duplicate
-	// operationId (see TestOperationID* in internal/semantic). GenerateOpenAPI
-	// keeps a backstop so a direct, un-analysed caller still fails fast instead
-	// of writing an invalid duplicate-operationId spec. AService.Find is pinned
-	// to "Lookup"; BService.Lookup defaults to "Lookup" - they collide.
+	// AService.Find is pinned to "Lookup", BService.Lookup's default.
 	src := `package design
 type R { x string }
 service AService { @operationId("Lookup") get Find /a { response R } }
@@ -303,12 +260,8 @@ service BService { get Lookup /b { response R } }`
 	}
 }
 
-// TestGenerateOpenAPIComponentNameCollisionErrors pins that a name
-// clash in the flat components/schemas namespace fails generation
-// instead of silently overwriting one schema with the other. Here a
-// user-declared `PageOfOrder` collides with the generic instance
-// `Page<Order>` (also named `PageOfOrder`); the same guard covers
-// `<Method>ReqBody`/`RespBody` vs type clashes.
+// A type named like a generic instance's component (`PageOfOrder`) fails
+// generation.
 func TestGenerateOpenAPIComponentNameCollisionErrors(t *testing.T) {
 	src := `package design
 type Order { id string }
@@ -326,11 +279,7 @@ service S { get Get /g { response Resp } }`
 	}
 }
 
-// TestGenerateOpenAPITypeSchemaExcludesHeaderFields checks that @header /
-// @cookie fields are dropped from a type's component schema - they ride
-// on response headers / cookies (json:"-"), never the JSON body, so a
-// generated client (e.g. @hey-api/openapi-ts) does not emit a type with
-// a field the wire never carries.
+// @header and @cookie fields stay out of a type's component schema.
 func TestGenerateOpenAPITypeSchemaExcludesHeaderFields(t *testing.T) {
 	src := `package design
 type ListResp {
@@ -353,8 +302,7 @@ service S {
 	if !strings.Contains(body, "X-Total-Count:") {
 		t.Errorf("expected X-Total-Count response header in spec:\n%s", body)
 	}
-	// @header / @cookie field names must NOT appear as body schema
-	// properties (indented one level under `properties:`).
+	// Neither field is a body property, one level under `properties:`.
 	for _, banned := range []string{"\n        total:", "\n        sess:"} {
 		if strings.Contains(body, banned) {
 			t.Errorf("header/cookie field leaked into a body schema (%q):\n%s", banned, body)
@@ -362,10 +310,8 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPISuccessStatusDefaults pins the verb-aware default
-// success status on the OpenAPI side so the spec agrees with the
-// generated handler: POST with a body → 201, GET → 200, and a bodiless
-// method → 204, none of them carrying an explicit @status.
+// Without @status a POST with a body documents 201, a GET 200 and a bodiless
+// method 204.
 func TestGenerateOpenAPISuccessStatusDefaults(t *testing.T) {
 	src := `package design
 type Req { id string }
@@ -387,17 +333,13 @@ service S {
 	mustContainAll(t, body, `"201":`, "description: Created")
 	// GET keeps 200 OK; the bodiless DELETE is 204 No Content.
 	mustContainAll(t, body, `"200":`, `"204":`, "description: No Content")
-	// The default path must not leak the generic "OK" onto the 201/204
-	// responses (a regression guard for the IANA reason-phrase lookup).
+	// Only the GET 200 is described "OK".
 	if strings.Count(body, "description: OK") != 1 {
 		t.Errorf("expected exactly one `description: OK` (the GET 200):\n%s", body)
 	}
 }
 
-// TestGenerateOpenAPISameStatusErrorsMerge checks the @errors merge:
-// two error decls sharing one HTTP status (e.g. both Conflict) render
-// as `oneOf` so neither vanishes from the spec - without the merge a
-// second op.Responses.Set call overwrites the first.
+// Two errors with one status share a `oneOf` response.
 func TestGenerateOpenAPISameStatusErrorsMerge(t *testing.T) {
 	src := `package design
 error Conflict EmailTaken { email string }
@@ -418,10 +360,7 @@ service S {
 	if !strings.Contains(body, "oneOf:") {
 		t.Errorf("expected oneOf for same-status errors:\n%s", body)
 	}
-	// Count $ref entries between `oneOf:` and the next non-list-item
-	// line so the assertion fails fast if codegen accidentally
-	// duplicates or drops a schema (e.g. a deduplication bug would
-	// silently let the test pass on substring presence alone).
+	// The oneOf lists each error exactly once.
 	oneOfIdx := strings.Index(body, "oneOf:")
 	if oneOfIdx < 0 {
 		t.Fatalf("oneOf block missing:\n%s", body)
@@ -439,11 +378,8 @@ service S {
 	)
 }
 
-// TestGenerateOpenAPIDocSummaryDescription covers the doc-flavour
-// trio: type/field/operation `@doc` propagates to OpenAPI
-// `description`, `@summary` lands on the operation summary, and
-// leading `// comment` blocks fall through as descriptions when no
-// `@doc` is supplied.
+// `@doc` and a leading comment become descriptions, `@summary` the
+// operation's summary.
 func TestGenerateOpenAPIDocSummaryDescription(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 // Book represents a catalog entry.
@@ -460,8 +396,8 @@ service S {
 	expectGolden(t, "openapi-doc-summary.yaml", body)
 }
 
-// TestGenerateOpenAPIExampleNullable covers the field-side metadata
-// pair (@example/@nullable).
+// `@example` becomes the field's example and `@nullable` adds "null" to its
+// type list.
 func TestGenerateOpenAPIExampleNullable(t *testing.T) {
 	src := `package design
 type T {
@@ -489,11 +425,7 @@ service S { post Create /c { request T  response T } }`
 	}
 }
 
-// TestGenerateOpenAPIValidatorConstraints pins the mapping from
-// validator decorators onto OpenAPI's numeric / string / array /
-// pattern / format keywords. Without this wiring, client generators
-// would see fields as unbounded primitives and produce types that
-// don't match the server's accepted shape.
+// Each validator decorator on a field stamps its OpenAPI keyword.
 func TestGenerateOpenAPIValidatorConstraints(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Order {
@@ -514,8 +446,7 @@ service S { post Make /m { request Order  response Order } }`)
 		"maximum: 1000000",
 		"minimum: 1",
 		"maximum: 999",
-		// 3.1: exclusive bounds are the numeric limit (@gt(0)/@positive
-		// → exclusiveMinimum: 0; @lt(100) → exclusiveMaximum: 100).
+		// 3.1 exclusive bounds are numbers, not booleans.
 		"exclusiveMinimum: 0",
 		"exclusiveMaximum: 100",
 		"multipleOf: 5",
@@ -533,12 +464,7 @@ service S { post Make /m { request Order  response Order } }`)
 	)
 }
 
-// TestGenerateOpenAPIMultipartMimeTypes checks that a `file @form`
-// field with `@mimeTypes(...)` surfaces the allowlist under
-// multipart/form-data `encoding[field].contentType` so generated
-// client SDKs can pre-check / warn the user when the upload's MIME
-// falls outside the contract. Without the encoding entry, only the
-// runtime validator carries the allowlist - client SDKs upload blind.
+// A file's `@mimeTypes` becomes its multipart `encoding` contentType.
 func TestGenerateOpenAPIMultipartMimeTypes(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type UploadReq {
@@ -556,17 +482,13 @@ service S {
 		"avatar:",
 		"contentType: image/png, image/jpeg",
 	)
-	// File without @mimeTypes leaves encoding empty for that field.
+	// A file without @mimeTypes gets no contentType.
 	if strings.Contains(body, "doc:\n          contentType") {
 		t.Errorf("file without @mimeTypes should not produce contentType:\n%s", body)
 	}
 }
 
-// TestGenerateOpenAPIMultipartRequired checks that the multipart
-// form-data schema lists every NON-optional form/file field under
-// `required[]` and omits optional (`?`) ones, so a generated client
-// mirrors the server's validator instead of treating a mandatory file
-// upload as optional.
+// The multipart schema requires every non-optional form and file field.
 func TestGenerateOpenAPIMultipartRequired(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type UploadReq {
@@ -581,8 +503,8 @@ service S {
 	if i < 0 {
 		t.Fatalf("no multipart body:\n%s", body)
 	}
-	// Scope to the schema-level `required:` block (the first one after
-	// the media type; the requestBody-level `required: true` comes later).
+	// The schema's `required:` is the first after the media type; the
+	// requestBody's `required: true` comes later.
 	block := body[i:]
 	r := strings.Index(block, "required:")
 	if r < 0 {
@@ -592,8 +514,7 @@ service S {
 	if !strings.Contains(reqList, "- avatar") {
 		t.Errorf("required file `avatar` must be listed under multipart required[]:\n%s", reqList)
 	}
-	// `userId` is path-bound (not in the body) and `caption` is optional
-	// (`?`) - neither may appear in the multipart required list.
+	// `caption` is optional and `userId` is not in the body.
 	if strings.Contains(reqList, "caption") {
 		t.Errorf("optional form field `caption` must NOT be in multipart required[]:\n%s", reqList)
 	}
@@ -602,10 +523,8 @@ service S {
 	}
 }
 
-// A type-level cross-field constraint (@mutuallyExclusive / @requiresOneOf) on
-// a multipart request type must ride the SERVED multipart schema (allOf + the
-// constraint fragment), not just the unused component schema - otherwise the
-// runtime validator enforces a rule the spec never advertises.
+// A multipart request's cross-field constraint wraps its inline schema in an
+// allOf.
 func TestGenerateOpenAPIMultipartCrossField(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 @mutuallyExclusive(a, b)
@@ -627,36 +546,24 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPIMixinFlatten checks that embedded mixins
-// surface in the host schema via OpenAPI's allOf composition so
-// generated TS clients see every field - including those inherited
-// from the mixin. Without it, runtime requests carrying mixin
-// fields (`createdAt`, `updatedAt`, ...) fail type-checks against
-// the spec because the host schema lists only its own properties.
+// A type with a mixin is an allOf of the mixin's $ref and its own properties.
 func TestGenerateOpenAPIMixinFlatten(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Audit { createdAt string @format(datetime)  updatedAt string @format(datetime) }
 type User { Audit  id string  name string }
 service S { post Create /c { request User  response User } }`)
-	// User schema must use allOf with Audit ref + its own properties.
 	if !strings.Contains(body, "allOf:") {
 		t.Errorf("mixin host should use allOf:\n%s", body)
 	}
 	if !strings.Contains(body, "$ref: '#/components/schemas/Audit'") {
 		t.Errorf("mixin ref missing:\n%s", body)
 	}
-	// Host's own properties must still appear via the inline branch.
 	if !strings.Contains(body, "id:") || !strings.Contains(body, "name:") {
 		t.Errorf("host properties missing:\n%s", body)
 	}
 }
 
-// TestGenerateOpenAPIGenericInstanceEmitsComponent pins the core
-// generic-naming contract: every distinct generic instantiation lands
-// as its own component in `components.schemas`, and the reference
-// site emits a `$ref` instead of inlining the body. Without per-
-// instantiation components, OpenAPI consumers would see anonymous
-// inline schemas and fail to discriminate Page<Order> from Page<User>.
+// A generic instance is a component of its own, which the field $refs.
 func TestGenerateOpenAPIGenericInstanceEmitsComponent(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Order { id string }
@@ -669,8 +576,7 @@ service S { get List /things { response ListResp } }`)
 	if !strings.Contains(body, "$ref: '#/components/schemas/PageOfOrder'") {
 		t.Errorf("expected $ref to PageOfOrder from listing site:\n%s", body)
 	}
-	// PageOfOrder body MUST reference Order by component $ref, not
-	// inline the Order schema (it has its own component).
+	// Its items $ref the Order component.
 	idx := strings.Index(body, "PageOfOrder:")
 	if idx < 0 {
 		t.Fatal("PageOfOrder not found")
@@ -681,13 +587,8 @@ service S { get List /things { response ListResp } }`)
 	}
 }
 
-// TestGenerateOpenAPIGenericInstanceCarriesFieldMetadata checks that a
-// concrete generic instance inherits the SAME field-level validator
-// metadata (@gte/@lte/@default/@maxLength/@format) and the type-level
-// description that a non-generic type of the same shape carries.
-// schemaForType and instantiateGeneric share one body-walk
-// ([schemaFromTypeDecl]), so the instance keeps every constraint and
-// the description the runtime validator also enforces.
+// A generic instance keeps its declaration's field constraints and
+// description.
 func TestGenerateOpenAPIGenericInstanceCarriesFieldMetadata(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Order { id string }
@@ -720,10 +621,7 @@ service S { get Get /things { response Host } }`)
 	}
 }
 
-// TestGenerateOpenAPIGenericInstanceMixinFlatten checks mixin
-// preservation through generic substitution: a mixin reference inside
-// the generic body surfaces in the instance component via the
-// `allOf` composition, identical to the non-generic mixin emission.
+// A generic declaration's mixin reaches the instance as an allOf $ref.
 func TestGenerateOpenAPIGenericInstanceMixinFlatten(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Audit { createdAt string  updatedAt string }
@@ -744,12 +642,7 @@ service S { get List /things { response ListResp } }`)
 	}
 }
 
-// TestGenerateOpenAPIRecursiveGenericTerminatesViaRef checks the
-// termination guarantee for self-referential generics like
-// `type Tree<T> = { val: T, kids: Tree<T>[] }`. The registry
-// short-circuits by returning the already-registered component name
-// when the substituted body re-encounters the same instance, so
-// emission terminates instead of inlining forever.
+// A recursive generic instance $refs itself.
 func TestGenerateOpenAPIRecursiveGenericTerminatesViaRef(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Leaf { id string }
@@ -761,20 +654,13 @@ service S { get Get /trees { response Forest } }`)
 	}
 	idx := strings.Index(body, "TreeOfLeaf:")
 	tail := body[idx : idx+400]
-	// The kids field is `Tree<T>[]` post-substitution `Tree<Leaf>[]`,
-	// which the emitter recognises as the same instance and rewrites
-	// to a $ref - the cycle terminator.
+	// `kids Tree<T>[]` substitutes to `Tree<Leaf>[]`, the same instance.
 	if !strings.Contains(tail, "$ref: '#/components/schemas/TreeOfLeaf'") {
 		t.Errorf("TreeOfLeaf body should $ref itself in the kids field:\n%s", tail)
 	}
 }
 
-// TestGenerateOpenAPIGenericOptionalWraps pins the
-// `Page<User>?` → `anyOf: [$ref:PageOfUser, {type: null}]` shape (the
-// OpenAPI 3.1 "ref OR null" idiom). Without the wrapper, client codegen
-// (`openapi-typescript`, ...) types the field as required-and-non-null
-// even though the server may send `null` because the wire decoder
-// accepts both.
+// An optional generic instance is `anyOf: [{$ref}, {type: null}]`.
 func TestGenerateOpenAPIGenericOptionalWraps(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Order { id string }
@@ -797,11 +683,7 @@ service S { get Get /h { response Holder } }`)
 	}
 }
 
-// TestGenerateOpenAPIGenericResponseTopLevel covers the
-// `response Page<Order>` path. The method's response sits directly on
-// a generic instance - the per-operation `<Method>RespBody` schema
-// must $ref the synthetic component name, not the bare generic decl
-// name (which would dangle - the generic decl never gets emitted).
+// `response Page<Order>` makes `<base>RespBody` $ref `PageOfOrder`.
 func TestGenerateOpenAPIGenericResponseTopLevel(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Order { id string }
@@ -817,8 +699,7 @@ service S { get List /things { response Page<Order> } }`)
 	}
 }
 
-// TestGenerateOpenAPIGenericMultiParam ensures multi-param naming
-// uses the `And` separator and emits the expected component shape.
+// `Pair<Order, ProductRef>` is the component `PairOfOrderAndProductRef`.
 func TestGenerateOpenAPIGenericMultiParam(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Order { id string }
@@ -831,10 +712,8 @@ service S { get Get /p { response Resp } }`)
 	}
 }
 
-// TestGenerateOpenAPIServiceLevelSecurityInherit pins the
-// service+method security inheritance: a `@security` on the primary
-// service applies to every operation, and a method-level `@security`
-// adds an OR alternative on top.
+// A service's `@security` applies to every operation; a method's own adds an
+// alternative requirement.
 func TestGenerateOpenAPIServiceLevelSecurityInherit(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 @security(Bearer)
@@ -858,11 +737,7 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPIIgnoreSecurityClearsInherited pins the
-// `@ignoreSecurity` opt-out: a method with this decorator MUST NOT
-// inherit the service-level `@security` chain, so the operation
-// renders without any `security:` clause (or with an explicit empty
-// requirement, which OpenAPI tooling treats as "no auth").
+// `@ignoreSecurity` drops the service's `@security` from the operation.
 func TestGenerateOpenAPIIgnoreSecurityClearsInherited(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 @security(Bearer)
@@ -883,9 +758,7 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPIIgnoreTagsClearsInherited mirrors the
-// security case for `@ignoreTags`: cleared inherited tags, plus any
-// method-level `@tags(...)` start from an empty list.
+// `@ignoreTags` drops the service's tags and keeps the method's own.
 func TestGenerateOpenAPIIgnoreTagsClearsInherited(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 @tags("users")
@@ -908,23 +781,16 @@ service S {
 	}
 }
 
-// operationBlock returns the slice of YAML body covering exactly one
-// operation. It walks back from the operationId line to the matching
-// verb line so sibling fields emitted alphabetically before operationId
-// (description, ...) stay inside the block, and trims forward at the
-// next path or end-of-paths so the block terminates before the following
-// operation's header.
+// operationBlock returns the YAML of operation opID, from its verb line to
+// the next verb or path.
 func operationBlock(t *testing.T, body, opID string) string {
 	t.Helper()
 	idx := strings.Index(body, "\n      operationId: "+opID)
 	if idx < 0 {
 		t.Fatalf("operation %q not found in:\n%s", opID, body)
 	}
-	// Walk backward to the nearest verb line above the operationId. The
-	// verb line's trailing newline is the newline the operationId match
-	// starts at, so the search window must include body[idx] or the
-	// operation's own verb is missed and the block starts one operation
-	// too early.
+	// The backward search includes idx: the operationId match can start at
+	// the verb line's own newline.
 	verbs := []string{"\n    get:\n", "\n    post:\n", "\n    put:\n", "\n    patch:\n", "\n    delete:\n"}
 	start := -1
 	for _, v := range verbs {
@@ -935,10 +801,7 @@ func operationBlock(t *testing.T, body, opID string) string {
 	if start < 0 {
 		start = idx
 	}
-	// Walk forward from PAST the operationId line to find the next
-	// path entry (`  /...:` at two-space indent) or the next verb
-	// (which would belong to a sibling operation on the same path).
-	// Either marks the end of this operation block.
+	// The block ends at the next verb or path entry.
 	searchFrom := idx + 1
 	end := len(body)
 	for _, v := range verbs {
@@ -953,32 +816,23 @@ func operationBlock(t *testing.T, body, opID string) string {
 	return body[start:end]
 }
 
-// TestGenerateOpenAPIResponseHeaders pins the response @header /
-// @cookie split: fields decorated with @header land in the
-// operation's response.headers map, fields decorated with @cookie
-// collapse into a Set-Cookie header (OpenAPI 3.x has no first-class
-// cookie response slot), and ONLY the unbound fields end up in the
-// JSON body schema.
+// Response @header fields become headers, @cookie fields one Set-Cookie
+// header, and only the rest form the body.
 func TestGenerateOpenAPIResponseHeaders(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Resp { items string  total string @header("X-Total-Count")  session string @cookie("sid") }
 service S { get List /things { response Resp } }`)
-	// Header field surfaces under response.headers, NOT body schema.
 	if !strings.Contains(body, "X-Total-Count:") {
 		t.Errorf("X-Total-Count header missing:\n%s", body)
 	}
-	// Cookie field collapses into Set-Cookie with a names hint.
 	if !strings.Contains(body, "Set-Cookie:") {
 		t.Errorf("Set-Cookie header missing:\n%s", body)
 	}
 	if !strings.Contains(body, "Sets cookies: sid") {
 		t.Errorf("cookie names hint missing:\n%s", body)
 	}
-	// ListRespBody must NOT advertise the header/cookie fields.
+	// ListRespBody lists only `items`.
 	if strings.Contains(body, "total:") && strings.Contains(body, "ListRespBody:\n      properties:\n        items:") {
-		// total appears, but make sure it's NOT inside the body schema.
-		// A precise check: the body schema's properties block must list
-		// only `items`.
 		idx := strings.Index(body, "ListRespBody:")
 		if idx >= 0 {
 			tail := body[idx:]
@@ -992,10 +846,7 @@ service S { get List /things { response Resp } }`)
 	}
 }
 
-// TestGenerateOpenAPIErrorMixinFlatten mirrors the type-side mixin
-// flatten for ErrorDecl bodies: an `error X { Timestamps; ... }`
-// must expose every Timestamps field on the wire, otherwise clients
-// pre-parsing error envelopes drop fields they should accept.
+// An error's mixin reaches its schema as an allOf $ref.
 func TestGenerateOpenAPIErrorMixinFlatten(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Audit { createdAt string @format(datetime)  updatedAt string @format(datetime) }
@@ -1014,12 +865,8 @@ service S { @errors(BookNotFound) get GetBook /b/{id} { request BookReq  respons
 	}
 }
 
-// TestGenerateOpenAPIOptionalRefNullable checks that an optional
-// struct-typed field (`boss User?`) emits nullable in the component
-// schema. Bare `$ref` carries no nullable flag; OpenAPI 3.1 expresses
-// "ref OR null" via `anyOf: [$ref, {type: null}]`. Without the wrapper,
-// TS client generators type the field as required `User` and refuse
-// `null` even though the server accepts it.
+// An optional named-type field is `anyOf: [{$ref}, {type: null}]`; a plain
+// one stays a bare $ref.
 func TestGenerateOpenAPIOptionalRefNullable(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Inner { id string }
@@ -1028,11 +875,9 @@ type T {
     optional Inner?
 }
 service S { post Create /c { request T  response T } }`)
-	// Plain Inner stays as bare $ref.
 	if !strings.Contains(body, "$ref: '#/components/schemas/Inner'") {
 		t.Errorf("plain ref missing:\n%s", body)
 	}
-	// Optional Inner wraps in anyOf with the 3.1 null type.
 	if !strings.Contains(body, `type: "null"`) {
 		t.Errorf("optional ref should carry the 3.1 null type:\n%s", body)
 	}
@@ -1041,10 +886,8 @@ service S { post Create /c { request T  response T } }`)
 	}
 }
 
-// TestGenerateOpenAPIOptionalEmitsNullable: a `T?` field produces a
-// 3.1 `type: [string, "null"]` in OpenAPI so spec consumers accept JSON
-// `null` for it. The `?` field is also dropped from `required[]`; an
-// `@nullable` field stays in required. Both forms add the null type.
+// `T?` and `@nullable` both add "null" to the type list; only `T?` leaves
+// `required`.
 func TestGenerateOpenAPIOptionalEmitsNullable(t *testing.T) {
 	src := `package design
 type T {
@@ -1061,13 +904,11 @@ service S { post Create /c { request T  response T } }`
 	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
 	out := string(body)
 
-	// Both `a` (T?) and `b` (@nullable) add a `"null"` type entry. The
-	// per-operation `CreateReqBody` doubles each, so total = 4.
+	// `a` and `b` in both T and CreateReqBody: four "null" entries.
 	if got := strings.Count(out, `- "null"`); got < 4 {
 		t.Errorf("expected the 3.1 null type for T? and @nullable in BOTH T and CreateReqBody (got %d):\n%s", got, out)
 	}
-	// required[]: c stays (plain), b stays (@nullable), a goes (T?).
-	// CreateReqBody mirrors the same shape, so each marker doubles.
+	// `c` and `b` stay required, `a` does not, in both schemas.
 	if got := strings.Count(out, "- c\n"); got < 2 {
 		t.Errorf("c must remain in required[] for T and CreateReqBody (got %d):\n%s", got, out)
 	}
@@ -1079,12 +920,8 @@ service S { post Create /c { request T  response T } }`
 	}
 }
 
-// TestGenerateOpenAPIPerOperationSchemaMetadata: the inline
-// `<Method>Req{Body,Query,Path,Header,Cookie}` schemas carry the
-// same field-level decorator effects (@default, @example,
-// @nullable, @doc, @deprecated) as the top-level type schema.
-// Without applyFieldMetadata in schemaFromFields, per-operation
-// schemas would silently drop them.
+// The per-operation body schema carries the same field metadata as the
+// type's component.
 func TestGenerateOpenAPIPerOperationSchemaMetadata(t *testing.T) {
 	src := `package design
 type T {
@@ -1102,10 +939,7 @@ service S { post Create /c { request T  response T } }`
 	}
 	body, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
 	out := string(body)
-	// Each marker should appear twice: once under the top-level `T`
-	// schema, and once under the per-operation `CreateReqBody`.
-	// A single occurrence means schemaFromFields skipped
-	// applyFieldMetadata.
+	// Each marker appears under both T and CreateReqBody.
 	for _, want := range []string{
 		"example: alice",
 		"default: 18",
@@ -1120,11 +954,8 @@ service S { post Create /c { request T  response T } }`
 	}
 }
 
-// TestGenerateOpenAPIDeprecated covers the three @deprecated emission
-// sites: type-level marks the schema deprecated, field-level marks
-// only that property, and method-level marks the operation. A
-// per-decorator string argument lands in the OpenAPI description so
-// docs viewers display the deprecation reason inline.
+// @deprecated marks a type's schema, a field's property or an operation, and
+// its reason joins the description.
 func TestGenerateOpenAPIDeprecated(t *testing.T) {
 	src := `package design
 @deprecated
@@ -1146,10 +977,7 @@ service S {
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
 	body := string(out)
 
-	// Type-level: LegacyBook schema is deprecated. The marker shows
-	// up directly under the schema name in the YAML, so a small fixed
-	// window is enough - and dodges the pitfall of "next schema"
-	// indentation (4-space property prefix vs 4-space top-level key).
+	// Type-level: the marker sits right under the schema name.
 	legacyIdx := strings.Index(body, "    LegacyBook:")
 	if legacyIdx < 0 {
 		t.Fatal("missing LegacyBook schema")
@@ -1162,12 +990,12 @@ service S {
 		t.Errorf("expected schema-level deprecated near LegacyBook:\n%s", body[legacyIdx:end])
 	}
 
-	// Field-level: sku property is deprecated with description.
+	// Field-level: the sku property carries its reason.
 	if !strings.Contains(body, "use ISBN") {
 		t.Errorf("expected field-level deprecation reason:\n%s", body)
 	}
 
-	// Method-level: legacy operation deprecated, new operation NOT.
+	// Method-level: only LegacyList is deprecated.
 	legacyOpIdx := strings.Index(body, "/legacy:")
 	newOpIdx := strings.Index(body, "/new:")
 	if legacyOpIdx < 0 || newOpIdx < 0 {
@@ -1186,10 +1014,7 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPIBasePathNotDuplicated checks that `basePath: /api`
-// keeps path keys relative and puts the basePath only in
-// servers[0].url, so spec resolvers (kin-openapi, swagger-cli) compute
-// `/api/v1/foo` rather than the doubled `/api/api/v1/foo`.
+// `basePath` goes into the server URL only, never into the path keys.
 func TestGenerateOpenAPIBasePathNotDuplicated(t *testing.T) {
 	pkg := analyze(t, `package design
 type GetThingReq { id string @path }
@@ -1224,8 +1049,6 @@ service S {
 	}
 }
 
-// ---------- @security cross-check ----------
-
 func TestValidateSecuritySchemesHappyPath(t *testing.T) {
 	cfg := &config.Config{
 		Package: "x/y",
@@ -1248,7 +1071,7 @@ func TestValidateSecuritySchemesOAuth2RequiresFlows(t *testing.T) {
 			},
 		}}
 	}
-	// No flows → rejected (would emit invalid OpenAPI).
+	// No flows → rejected.
 	if errs := ValidateSecuritySchemes(base(nil)); len(errs) == 0 {
 		t.Error("expected an error for an oauth2 scheme with no flows")
 	}
@@ -1285,7 +1108,7 @@ func TestGenerateOpenAPI(t *testing.T) {
 		"openapi: 3.1.0",
 		"title: API",
 		"version: 1.2.3",
-		// /v1/api/v1/users/{id}, matching the runtime listen path.
+		// The @prefix path; the basePath is the server URL.
 		"/api/v1/users/{id}",
 		"- url: /v1",
 		"get:",
@@ -1293,13 +1116,12 @@ func TestGenerateOpenAPI(t *testing.T) {
 		"delete:",
 		"operationId: GetUser",
 		"#/components/schemas/User",
-		// so the schema is defined but not referenced.
+		// A type binding only parameters still gets a component.
 		"GetUserReq:",
 		"components:",
 		"schemas:",
 	)
-	// Negative: the basePath must NOT appear at the start of any path
-	// key - that would be a doubled prefix.
+	// No path key starts with the basePath.
 	if strings.Contains(src, "/v1/api/v1/users/{id}") {
 		t.Errorf("path key still has duplicated basePath:\n%s", src)
 	}
@@ -1350,10 +1172,7 @@ type Bag {
 	}
 }
 
-// TestGenerateOpenAPIPostWithQueryAndPath verifies that a body-bearing
-// verb still emits requestBody AND surfaces explicitly-decorated fields
-// as parameters. Demonstrates the "POST /resource?dry_run=true" pattern
-// with a path id baked in for good measure.
+// A POST's @path and @query fields become parameters and the rest its body.
 func TestGenerateOpenAPIPostWithQueryAndPath(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -1379,11 +1198,8 @@ service S {
 	src := string(out)
 	mustContainAll(t, src,
 		"requestBody:",
-		// Only the body gets a grouped schema ($ref'd by requestBody);
-		// path/query are emitted inline as parameters.
 		"$ref: '#/components/schemas/CreateReqBody'",
 		"CreateReqBody:",
-		// Response side uses the same convention: <Method>RespBody.
 		"CreateRespBody:",
 		"$ref: '#/components/schemas/CreateRespBody'",
 		"in: path",
@@ -1391,23 +1207,16 @@ service S {
 		"name: id",
 		"name: dryRun",
 	)
-	// No orphan <Method>ReqQuery wrapper (params are inline).
+	// Parameters are inline, with no component of their own.
 	mustContainNone(t, src, "CreateReqQuery:")
-	// `payload` carries no binding decorator → should NOT appear as a
-	// parameter; it stays in the requestBody schema only.
+	// The unbound `payload` is body only.
 	if strings.Contains(src, "name: payload") {
 		t.Errorf("unmarked body field leaked into parameters:\n%s", src)
 	}
 }
 
-// @body / @form on a non-body verb is rejected at semantic time - see
-// TestBodyFormOnNonBodyVerbRejected in internal/semantic - so there is
-// no codegen behaviour for the "GET with body" case to assert here.
-
-// TestGenerateOpenAPICookieAndHeaderInline pins the rule that path /
-// query / header / cookie bins stay inline as parameters; only the body
-// gets a grouped `<Method>ReqBody` schema (the one actually $ref'd by
-// requestBody). No `<Method>Req{Query,Header,Cookie,Path}` wrappers.
+// Path, query, header and cookie fields become inline parameters; only the
+// body gets a component.
 func TestGenerateOpenAPICookieAndHeaderInline(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -1433,8 +1242,6 @@ service S {
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
 	src := string(out)
-	// Only the body gets a grouped schema; path/query/header/cookie are
-	// emitted inline as parameters.
 	mustContainAll(t, src,
 		"CallReqBody:",
 		"in: query",
@@ -1445,16 +1252,11 @@ service S {
 		"name: session",
 		"in: path",
 	)
-	// Parameters render inline; the wrapper
-	// `<Method>Req{Query,Header,Cookie,Path}` schemas are NOT registered
-	// (never $ref'd - they only bloated the spec and broke generators
-	// that can't name a property-walk $ref path).
 	mustContainNone(t, src, "CallReqQuery:", "CallReqHeader:", "CallReqCookie:", "CallReqPath:")
 }
 
-// TestGenerateOpenAPITagsFromDecorators covers @tags resolution at
-// service level + method level + the empty fallback. Confirms both the
-// string-literal and bare-identifier argument forms are accepted.
+// Service and method `@tags`, string or identifier, combine; a service with
+// none tags its operations with its name.
 func TestGenerateOpenAPITagsFromDecorators(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -1503,9 +1305,8 @@ service Bare {
 	)
 }
 
-// TestGenerateOpenAPIGroupAddsTag pins that a service's @group value rides
-// along as an OpenAPI tag (appended to any explicit @tags, deduped), while
-// @ignoreTags on a method drops it like the rest of the inherited chain.
+// A service's @group is a tag after its @tags, deduplicated; `@ignoreTags`
+// drops it with the rest of the service's tags.
 func TestGenerateOpenAPIGroupAddsTag(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -1539,8 +1340,7 @@ service T {
 		"operationId: Append",
 		"- users",
 		"- admin/ops",
-		// @ignoreTags drops the service chain including the group tag,
-		// so Drop falls back to the service-name default.
+		// Drop has no tag left, so it gets the service name.
 		"operationId: Drop",
 		"- S",
 	)
@@ -1550,12 +1350,7 @@ service T {
 	}
 }
 
-// TestGenerateOpenAPIDatetimeFormatKeyword pins that the craftgo @format
-// name `datetime` is emitted as the OpenAPI / JSON Schema standard keyword
-// `date-time`, while a name without a differing standard keyword (`date`)
-// passes through unchanged. The DSL keeps its own spelling; only the
-// generated spec is normalised so validators and client generators
-// recognise the format.
+// `@format(datetime)` is written `date-time`; `date` stays `date`.
 func TestGenerateOpenAPIDatetimeFormatKeyword(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -1582,11 +1377,8 @@ service S {
 	)
 }
 
-// TestGenerateOpenAPINumericFormats pins the primitive numeric OpenAPI mapping:
-// int32/int64 and float32/float64 carry their standard format keywords so a
-// client can distinguish widths; int/int8/int16 stay bare (no registered
-// standard format); every unsigned type advertises minimum: 0; and a user
-// @gte tightens that minimum (it never loosens below 0).
+// int32, int64, float32 and float64 carry their standard format and the other
+// widths none; an unsigned type has `minimum: 0`, which `@gte` tightens.
 func TestGenerateOpenAPINumericFormats(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type R {
@@ -1602,8 +1394,7 @@ type R {
 }
 service S { get Get /a { response R } }`)
 
-	// block returns the property lines of one schema field: the lines more
-	// deeply indented than the `<field>:` line, stopping at the next sibling.
+	// block returns the lines under `<field>:`, up to the next sibling.
 	block := func(field string) string {
 		lines := strings.Split(body, "\n")
 		start, indent := -1, 0
@@ -1644,7 +1435,7 @@ service S { get Get /a { response R } }`)
 			t.Errorf("field %s: expected %q in:\n%s", f, sub, b)
 		}
 	}
-	// int / int8 / int16 have no standard format keyword - must stay bare.
+	// int, int8 and int16 have no standard format.
 	for _, f := range []string{"ii", "i8", "i16"} {
 		if b := block(f); strings.Contains(b, "format:") {
 			t.Errorf("field %s should carry no format (no standard keyword), got:\n%s", f, b)
@@ -1652,9 +1443,7 @@ service S { get Get /a { response R } }`)
 	}
 }
 
-// TestGenerateOpenAPIOperationIDDefaultAndOverride pins the rule:
-// default operationId = method name verbatim (PascalCase from DSL),
-// override = whatever string literal `@operationId("...")` supplies.
+// The operationId is the method name, or `@operationId`'s string verbatim.
 func TestGenerateOpenAPIOperationIDDefaultAndOverride(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -1686,10 +1475,7 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPITagsWithSpaces confirms tag values are written
-// verbatim - including spaces. YAML output quotes them automatically
-// when the value contains a space, so consumer tooling reads back the
-// exact original string.
+// A tag keeps its spaces.
 func TestGenerateOpenAPITagsWithSpaces(t *testing.T) {
 	pkg := analyze(t, `package design
 
@@ -1708,16 +1494,13 @@ service S {
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
 	src := string(out)
 	mustContainAll(t, src,
-		// YAML quotes the space-containing string when emitting.
 		`- user management`,
 		`- v1`,
 	)
 }
 
-// TestGenerateOpenAPIPerModeMediaTypes pins the content-type a method
-// emits for each handler mode. Without this guard, the dispatch in
-// buildOperation could regress to plain `application/json` and the
-// spec would silently disagree with the runtime wire format.
+// A passthrough response documents `*/*` and a file upload
+// `multipart/form-data`.
 func TestGenerateOpenAPIPerModeMediaTypes(t *testing.T) {
 	const dsl = `package design
 
@@ -1743,16 +1526,12 @@ service S {
 		t.Fatal(err)
 	}
 	src := string(out)
-	// Passthrough endpoint advertises `*/*` for its response body
-	// because the framework lets logic write whatever wire format it
-	// likes - there is no schema to publish.
 	mustContainAll(t, src,
 		"'*/*'",
 		"multipart/form-data",
 		"format: binary",
 	)
-	// Multipart endpoint must NOT advertise application/json for the
-	// request body - file uploads only flow through multipart.
+	// The Upload operation's own body is multipart.
 	uploadIdx := strings.Index(src, "operationId: Upload")
 	if uploadIdx < 0 {
 		t.Fatalf("Upload operation not found in spec")
@@ -1766,9 +1545,7 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPISecurityArrayRegistersSchemes checks that the
-// array form @security([A, B]) (the AND form) registers BOTH schemes
-// under components.securitySchemes, not just bare-ident @security(A).
+// `@security([A, B])` registers both schemes.
 func TestGenerateOpenAPISecurityArrayRegistersSchemes(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Req { id string }
@@ -1779,9 +1556,7 @@ service S {
 	mustContainAll(t, body, "Bearer:", "ApiKey:")
 }
 
-// TestGenerateOpenAPIErrorSchemaRequired checks that an error schema
-// lists its non-optional fields under required[] (an optional field
-// stays out).
+// An error schema requires its non-optional fields.
 func TestGenerateOpenAPIErrorSchemaRequired(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 error Conflict DuplicateKey { resource string  detail string? }
@@ -1805,9 +1580,7 @@ service S {
 	}
 }
 
-// TestGenerateOpenAPIMapItemsConstraints checks that @minItems/
-// @maxItems on a map emit the OBJECT keywords minProperties/maxProperties
-// (entry count), never the array-only minItems/maxItems.
+// `@minItems` and `@maxItems` on a map become minProperties and maxProperties.
 func TestGenerateOpenAPIMapItemsConstraints(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type T { counts map<string, int> @minItems(1) @maxItems(50) }
@@ -1818,9 +1591,7 @@ service S { post Make /m { request T } }`)
 	}
 }
 
-// TestGenerateOpenAPIGenericScalarArg pins that a generic over a scalar
-// (Page<Email>) emits a PageOfEmail component whose items $ref the scalar
-// component instead of inlining the scalar's shape.
+// `Page<Email>`'s items $ref the Email scalar component.
 func TestGenerateOpenAPIGenericScalarArg(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 scalar Email string @format(email)
@@ -1830,10 +1601,7 @@ service S { get Get /e { response EmailList } }`)
 	mustContainAll(t, body, "PageOfEmail:", "$ref: '#/components/schemas/Email'")
 }
 
-// TestGenerateOpenAPIMultipartNoOrphanReqBody pins that a multipart request does
-// NOT emit an orphaned <base>ReqBody component: the body is rendered inline on
-// the operation (multipart/form-data), so a component schema would never be
-// $ref'd and would only bloat the spec.
+// A multipart request's inline body gets no `<base>ReqBody` component.
 func TestGenerateOpenAPIMultipartNoOrphanReqBody(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type UploadReq { doc file  title string @form }
@@ -1843,7 +1611,6 @@ service S { post Upload /up { request UploadReq  response Resp } }`)
 	if strings.Contains(body, "UploadReqBody") {
 		t.Errorf("multipart request emitted an orphaned UploadReqBody component:\n%s", body)
 	}
-	// The operation still carries the inline multipart body.
 	mustContainAll(t, body, "multipart/form-data")
 }
 
@@ -1854,9 +1621,8 @@ func genOpenAPI(t *testing.T, pkg *semantic.Package, cfg *config.Config, root st
 	return GenerateOpenAPI(proj, cfg, root)
 }
 
-// @doc / @example on a field whose type is a named ref ($ref) is carried
-// onto an allOf wrapper instead of being dropped - a bare $ref can't hold
-// sibling keywords portably.
+// `@doc` on a named-type field wraps its $ref in an allOf that carries the
+// description.
 func TestNamedRefDocExampleWrappedInAllOf(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
 		"m/m.craftgo": `package m
@@ -1893,7 +1659,7 @@ type Outer {
 	}
 }
 
-// genDoc analyzes src into a merged OpenAPI doc for assertions.
+// genDoc builds the merged document of the design in src.
 func genDoc(t *testing.T, src map[string]string, cfg *config.Config) *openapi3.T {
 	t.Helper()
 	root, files := projectFiles(t, src)
@@ -1908,11 +1674,8 @@ func genDoc(t *testing.T, src map[string]string, cfg *config.Config) *openapi3.T
 	return doc
 }
 
-// @minItems / @maxItems are array/map count keywords. On a NAMED-TYPE
-// (struct/enum) field they have no meaning, so the OpenAPI must not stamp
-// minProperties/maxProperties onto the field's anyOf-null wrapper (the runtime
-// enforces nothing there - it would be an unenforced, unsatisfiable
-// constraint). A map field still gets minProperties.
+// `@minItems` gives a map field minProperties and an optional named-type
+// field's wrapper nothing.
 func TestMinItemsNotLeakedOntoNamedTypeWrapper(t *testing.T) {
 	doc := genDoc(t, map[string]string{
 		"m/m.craftgo": `package m
@@ -1931,8 +1694,7 @@ type T {
 	}
 }
 
-// @errors([...]) and @tags([...]) array-shortcut forms must contribute the
-// same responses / tags as the variadic form (they were silently dropped).
+// `@errors([...])` and `@tags([...])` add their responses and tags.
 func TestArrayShortcutErrorsAndTags(t *testing.T) {
 	doc := genDoc(t, map[string]string{
 		"s/s.craftgo": `package s
@@ -1953,8 +1715,7 @@ service S {
 	}
 }
 
-// Stacked exclusive bounds (@gt + @positive / @lt + @negative) must
-// advertise the TIGHTEST bound (intersect), not the last writer.
+// Stacked exclusive bounds document the tightest one, in either order.
 func TestExclusiveBoundsIntersect(t *testing.T) {
 	doc := genDoc(t, map[string]string{
 		"ct/ct.craftgo": `package ct
@@ -1977,8 +1738,8 @@ service S { post M /m { request T  response T } }`,
 	}
 }
 
-// A bodyless error must advertise the {code, message} envelope the runtime
-// actually returns (not an empty object).
+// A bodyless error's schema is the `{code, message}` envelope the runtime
+// sends.
 func TestBodylessErrorEnvelopeSchema(t *testing.T) {
 	doc := genDoc(t, map[string]string{
 		"app/app.craftgo": `package app
@@ -1996,8 +1757,7 @@ service App {
 	}
 }
 
-// A declared apiKey security scheme must be emitted with its config shape,
-// not the hardcoded http/bearer default.
+// A scheme the manifest declares is emitted as declared.
 func TestSecuritySchemeFromConfig(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.OpenAPI.SecuritySchemes = map[string]config.SecurityScheme{
@@ -2020,8 +1780,7 @@ service S {
 	}
 }
 
-// @example(<enum-member>) must resolve to the member's wire value in the
-// spec, like @default does (it was silently dropped before).
+// `@example(Green)` on an enum field documents the member's wire value.
 func TestExampleEnumMemberResolved(t *testing.T) {
 	doc := genDoc(t, map[string]string{
 		"m/m.craftgo": `package m
@@ -2040,9 +1799,8 @@ service Svc { get Fetch /t/{id} { request Req  response Thing } }`,
 	}
 }
 
-// #5 (M6): two distinct cross-package decls that disambiguate to the same
-// merged component name (shared.User -> SharedUser, colliding with a real
-// api.SharedUser) are rejected instead of one silently overwriting the other.
+// A merge rename onto another declaration's name (`shared.User` to the
+// `SharedUser` of package api) is a collision.
 func TestCrossPkgMergeNameCollisionRejected(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
 		"shared/s.craftgo": `package shared
@@ -2083,11 +1841,8 @@ service S {
 	}
 }
 
-// A `bytes @format(raw)` field is an unconstrained schema - the document
-// says nothing about a value craftgo never reads - carrying the one
-// description that tells a reader the emptiness is deliberate rather
-// than a field left undocumented. `any` renders the same schema without
-// the description, and plain `bytes` keeps its base64 string type.
+// A `bytes @format(raw)` field has an untyped schema with only the raw note;
+// `any` is untyped without it, and plain `bytes` stays `format: byte`.
 func TestGenerateOpenAPIRawBytesIsUnconstrained(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Req { payload bytes @format(raw)  meta bytes? @format(raw)  raw any  blob bytes }
@@ -2104,14 +1859,13 @@ service S {
 			t.Errorf("the document does not carry %q:\n%s", want, body)
 		}
 	}
-	// Unconstrained means unconstrained: no type, no format.
+	// A raw field has no type.
 	if strings.Contains(body, "raw encoded value\n          type:") {
 		t.Errorf("a raw field must not be given a type:\n%s", body)
 	}
 }
 
-// A scalar over raw bytes renders the same unconstrained schema, with
-// its own doc ahead of the line that says what the emptiness means.
+// A raw-bytes scalar's doc goes ahead of the raw note.
 func TestGenerateOpenAPIRawBytesScalar(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 // A document stored as it arrived.
@@ -2125,13 +1879,8 @@ service S {
 	}
 }
 
-// A scalar or an enum in `response` is the one fieldless shape the
-// analyser still accepts there, so the document it produces has to hold
-// up: `<M>RespBody` must $ref the declaration's own component and that
-// component must actually be emitted. The assertion is over EVERY $ref
-// in the document, which is also what catches the dangling
-// `#/components/schemas/string` a built-in primitive used to leave
-// behind before the analyser rejected it.
+// A scalar or enum response gets a `<base>RespBody` that $refs its
+// component, and every $ref in the document resolves.
 func TestGenerateOpenAPIScalarAndEnumResponseRefsResolve(t *testing.T) {
 	for label, src := range map[string]string{
 		"scalar": "package design\nscalar Token string\ntype Req { v string }\nservice S { post Do /do { request Req  response Token } }",
@@ -2152,8 +1901,8 @@ func TestGenerateOpenAPIScalarAndEnumResponseRefsResolve(t *testing.T) {
 	}
 }
 
-// declaredSchemaNames returns the keys under `components.schemas`, which
-// the emitter writes at a fixed four-space indent.
+// declaredSchemaNames returns the keys under `components.schemas`, written
+// at a four-space indent.
 func declaredSchemaNames(body string) map[string]bool {
 	out := map[string]bool{}
 	inSchemas := false

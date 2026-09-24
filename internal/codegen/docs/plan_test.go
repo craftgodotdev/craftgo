@@ -9,17 +9,15 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// docsConfig points the document at docs/openapi.yaml, the default.
+// docsConfig puts the document at docs/openapi.yaml.
 func docsConfig() *config.Config {
 	cfg := &config.Config{}
 	cfg.Output.OpenAPI = "./docs/openapi.yaml"
 	return cfg
 }
 
-// A design of protos alone has no DSL package, so the document would
-// carry an empty `paths` and an empty `components` and nothing would
-// serve it. None is written, and the directory is still swept so one an
-// earlier run left behind goes with the package that seeded it.
+// A design without a DSL package gets no document, and OutputDir still names
+// its path for the sweep.
 func TestNoDocumentWithoutADSLPackage(t *testing.T) {
 	dir := t.TempDir()
 	cfg := docsConfig()

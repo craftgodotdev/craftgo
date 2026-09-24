@@ -8,9 +8,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// When two packages declare an error of the same name, the OpenAPI merge
-// renames both; the method's @errors decorator must follow the rename so
-// its error response is not silently dropped from the spec.
+// `@errors` follows the merge's rename of an error two packages declare.
 func TestCrossPkgErrorNameCollisionFollowsRename(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
 		"a/a.craftgo": `package a

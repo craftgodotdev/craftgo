@@ -10,10 +10,6 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-// helper builders for TypeRef AST so the table-driven tests below stay
-// readable. The tests would otherwise drown in 4-line literal struct
-// initialisers and the actual assertion intent would be lost.
-
 func tRef(name string, args ...*ast.TypeRef) *ast.TypeRef {
 	return &ast.TypeRef{Named: &ast.NamedTypeRef{
 		Name: &ast.QualifiedIdent{Parts: []string{name}},
@@ -45,13 +41,8 @@ func tMap(key, value *ast.TypeRef) *ast.TypeRef {
 	return &ast.TypeRef{Map: &ast.MapType{Key: key, Value: value}}
 }
 
-// TestGenericComponentName exercises the naming function across every
-// shape the registry produces: single-param, multi-param, primitive
-// arg, cross-pkg arg, nested generic arg, optional arg, array arg,
-// map arg. The expected strings are the wire-level contract that
-// downstream client codegen (TypeScript / Python / etc.) reads off
-// the OpenAPI spec; renaming any of them is a breaking change for
-// every consumer.
+// Instance component names follow `<Decl>Of<Arg>And<Arg>` for every
+// argument shape.
 func TestGenericComponentName(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -131,11 +122,8 @@ func TestGenericComponentName(t *testing.T) {
 	}
 }
 
-// TestGenericRegistryDedup pins the dedup contract: registering the
-// same (decl, args) tuple twice returns the same component name AND
-// does NOT inflate the pending list. Without this guarantee, the
-// emitter would walk the same body twice and write duplicate schemas
-// to `components.schemas`.
+// Registering an instance twice returns one name and leaves one pending
+// entry.
 func TestGenericRegistryDedup(t *testing.T) {
 	r := newGenericRegistry()
 	pageDecl := &ast.TypeDecl{Name: "Page"}
@@ -150,9 +138,7 @@ func TestGenericRegistryDedup(t *testing.T) {
 	}
 }
 
-// TestGenericRegistryMarkEmittedSkips checks the emission loop's exit
-// condition: once a name is marked emitted, `pending` must not return
-// it again, otherwise the emit loop would never terminate.
+// pending leaves out an instance once it is marked emitted.
 func TestGenericRegistryMarkEmittedSkips(t *testing.T) {
 	r := newGenericRegistry()
 	r.register(&ast.TypeDecl{Name: "Page"}, []*ast.TypeRef{tRef("User")})
@@ -166,11 +152,7 @@ func TestGenericRegistryMarkEmittedSkips(t *testing.T) {
 	}
 }
 
-// TestPascalQualified covers the cross-pkg name fragment generation.
-// Single-segment names pass through with first-rune uppercased;
-// qualified `pkg.Name` names join segments PascalCase-style so the
-// final synthetic component name is collision-safe inside the flat
-// OpenAPI `components.schemas` namespace.
+// pascalQualified joins a dotted name's segments, each upper-cased first.
 func TestPascalQualified(t *testing.T) {
 	cases := map[string]string{
 		"":           "",
@@ -189,10 +171,7 @@ func TestPascalQualified(t *testing.T) {
 	}
 }
 
-// TestIsPrimitiveName ensures the primitive set matches the DSL's
-// builtin types verbatim. A missing entry would let a user-declared
-// type silently shadow a primitive name in the synthetic component
-// naming, leading to surprising `$ref`s in client code.
+// isPrimitiveName accepts the DSL's builtin type names and no other.
 func TestIsPrimitiveName(t *testing.T) {
 	prim := []string{"string", "bool", "int", "int8", "int16", "int32", "int64",
 		"uint", "uint8", "uint16", "uint32", "uint64",
@@ -209,10 +188,7 @@ func TestIsPrimitiveName(t *testing.T) {
 	}
 }
 
-// TestGenericRegistryOrderIsStable pins the iteration order to
-// registration order. OpenAPI YAML serialisation depends on a stable
-// component ordering for deterministic builds - any drift in pending()
-// ordering would surface as noisy diffs after every regen.
+// pending returns instances in registration order.
 func TestGenericRegistryOrderIsStable(t *testing.T) {
 	r := newGenericRegistry()
 	want := []string{
@@ -229,9 +205,8 @@ func TestGenericRegistryOrderIsStable(t *testing.T) {
 	}
 }
 
-// #4 (M6): two structurally distinct generic instances that collapse to the
-// same component name (Page<IntArray> and Page<int[]> both -> PageOfIntArray)
-// are rejected; structurally distinct args that DON'T collide stay clean.
+// Two distinct instances named alike (`Page<IntArray>`, `Page<int[]>`) are
+// rejected; distinct names are not.
 func TestGenericInstanceNameCollisionRejected(t *testing.T) {
 	mk := func(respFields string) (*openapi3.T, error) {
 		root, files := projectFiles(t, map[string]string{

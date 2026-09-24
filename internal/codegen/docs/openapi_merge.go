@@ -1,4 +1,3 @@
-// Multi-package merge + clone/rewrite helpers for the OpenAPI document builder.
 package docs
 
 import (
@@ -11,12 +10,8 @@ import (
 
 type symbolKey struct{ pkg, name string }
 
-// projectResolveTable builds the cross-package name-resolution table used by
-// the OpenAPI merge: each (pkg, origName) → the merged component identifier
-// its schema lives under. A bare name that appears in 2+ packages is
-// disambiguated to <PascalPkg><Name>. Also returns the sorted non-blank
-// package names. Shared by [mergeProjectForOpenAPI] and
-// [projectMergeCollisions] so the rename rule lives once.
+// projectResolveTable maps each package's declaration names to merged names,
+// `<PascalPkg><Name>` when two packages declare one, and lists the packages.
 func projectResolveTable(proj *semantic.Project) (map[symbolKey]string, []string) {
 	pkgNames := sortedPackageNames(proj)
 	collide := func(name string) bool {
@@ -52,12 +47,8 @@ func projectResolveTable(proj *semantic.Project) (map[symbolKey]string, []string
 	return resolve, pkgNames
 }
 
-// projectMergeCollisions returns the merged component names that 2+ DISTINCT
-// declarations resolve to - e.g. `shared.User` disambiguated to `SharedUser`
-// colliding with an `api.SharedUser` that already spells that name. The merge
-// keys both clones under the same map entry, so one silently overwrites the
-// other (its schema dropped, and a field of that type advertised with the
-// WRONG shape). The OpenAPI generators reject up front instead.
+// projectMergeCollisions returns the merged names two declarations share,
+// such as `shared.User` renamed to the `SharedUser` that package api declares.
 func projectMergeCollisions(proj *semantic.Project) []string {
 	resolve, _ := projectResolveTable(proj)
 	owners := map[string]map[string]bool{}
@@ -91,11 +82,8 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 		out.Name = pkgNames[0]
 	}
 
-	// Clone every decl into the merged package, rewriting the decl's
-	// body type refs so `$ref` resolution still lines up. rewriteRef
-	// takes the SOURCE package + a NamedTypeRef and returns either
-	// the original ref (no rewrite needed) or a new ref with the
-	// resolved single-part name.
+	// rewriteRef returns a copy of n, a ref written in srcPkg, carrying its
+	// merged name, or n itself when the name does not change.
 	rewriteRef := func(srcPkg string, n *ast.NamedTypeRef) *ast.NamedTypeRef {
 		if n == nil || n.Name == nil {
 			return n
@@ -144,15 +132,7 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 			sd.Name = resolve[symbolKey{pkg: pkgName, name: k}]
 			out.Scalars[sd.Name] = &sd
 		}
-		// A service contributes to the document only through its methods,
-		// so one that declares none is left out: its name is unique only
-		// within its package, and merging it would overwrite an HTTP
-		// service of the same name declared elsewhere. Two services that
-		// DO declare methods cannot share a name across packages - their
-		// output directories collide, which the semantic layer rejects
-		// (CodeGroupPackageStraddle) before codegen runs - so the merged
-		// name needs no disambiguation. Middleware names are global for
-		// the same reason (CodeMiddlewareCollision).
+		// Services merge by name; one without methods is left out.
 		for name, si := range p.Services {
 			if len(si.Methods) == 0 {
 				continue
@@ -166,8 +146,8 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 	return out
 }
 
-// hasAnyDecl reports whether p has a type/enum/error/scalar named
-// `name`. Used by the collision detector during the OpenAPI merge.
+// hasAnyDecl reports whether p declares a type, enum, error or scalar
+// called name.
 func hasAnyDecl(p *semantic.Package, name string) bool {
 	if _, ok := p.Types[name]; ok {
 		return true
@@ -184,9 +164,7 @@ func hasAnyDecl(p *semantic.Package, name string) bool {
 	return false
 }
 
-// allDeclNames returns every type/enum/error/scalar name in p, in
-// stable alphabetical order. Used to seed the resolve table during
-// the OpenAPI merge.
+// allDeclNames returns the type, enum, error and scalar names of p, sorted.
 func allDeclNames(p *semantic.Package) []string {
 	seen := map[string]bool{}
 	add := func(names ...string) {
@@ -209,9 +187,7 @@ func allDeclNames(p *semantic.Package) []string {
 	return sortedKeys(seen)
 }
 
-// cloneTypeDecl deep-copies td and rewrites every named type ref in
-// its body using rewrite (which carries srcPkg context). The
-// returned decl is safe to mutate further.
+// cloneTypeDecl copies td as newName, its body refs renamed by rewrite.
 func cloneTypeDecl(td *ast.TypeDecl, newName, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *ast.TypeDecl {
 	cp := *td
 	cp.Name = newName
@@ -219,7 +195,7 @@ func cloneTypeDecl(td *ast.TypeDecl, newName, srcPkg string, rewrite func(string
 	return &cp
 }
 
-// cloneErrorDecl mirrors [cloneTypeDecl] for errors.
+// cloneErrorDecl copies ed as newName, its body refs renamed by rewrite.
 func cloneErrorDecl(ed *ast.ErrorDecl, newName, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *ast.ErrorDecl {
 	cp := *ed
 	cp.Name = newName
@@ -227,9 +203,8 @@ func cloneErrorDecl(ed *ast.ErrorDecl, newName, srcPkg string, rewrite func(stri
 	return &cp
 }
 
-// rewriteMembers walks members, deep-copying every Field and Mixin
-// with rewritten type refs. The original list is left untouched so
-// upstream semantic results stay valid.
+// rewriteMembers returns copies of members with their refs renamed by
+// rewrite, leaving the analysed declarations untouched.
 func rewriteMembers(members []ast.TypeMember, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) []ast.TypeMember {
 	out := make([]ast.TypeMember, 0, len(members))
 	for _, m := range members {
@@ -241,10 +216,7 @@ func rewriteMembers(members []ast.TypeMember, srcPkg string, rewrite func(string
 		case *ast.Mixin:
 			cp := *v
 			nr := rewrite(srcPkg, v.Ref)
-			// rewrite touches only the ref's NAME; its generic args (a
-			// cross-pkg arg like `lib.Owner` in `lib.Page<lib.Owner>`)
-			// must be rewritten too, or the merged generic instance's
-			// element `$ref` dangles at `lib.Owner`.
+			// rewrite renames only the ref itself, not its type arguments.
 			nr = rewriteNamedArgs(nr, srcPkg, rewrite)
 			cp.Ref = nr
 			out = append(out, &cp)
@@ -255,9 +227,8 @@ func rewriteMembers(members []ast.TypeMember, srcPkg string, rewrite func(string
 	return out
 }
 
-// rewriteTypeRef descends into a TypeRef and applies rewrite to every
-// embedded NamedTypeRef, including map keys/values and generic args.
-// Returns a fresh tree so the caller can safely mutate further.
+// rewriteTypeRef returns a copy of t with every named ref in it renamed by
+// rewrite, map entries and type arguments included.
 func rewriteTypeRef(t *ast.TypeRef, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *ast.TypeRef {
 	if t == nil {
 		return nil
@@ -271,21 +242,14 @@ func rewriteTypeRef(t *ast.TypeRef, srcPkg string, rewrite func(string, *ast.Nam
 	}
 	if t.Named != nil {
 		named := rewrite(srcPkg, t.Named)
-		// Recurse into generic args so a nested cross-pkg ref is
-		// also rewritten.
 		named = rewriteNamedArgs(named, srcPkg, rewrite)
 		cp.Named = named
 	}
 	return &cp
 }
 
-// cloneServiceInfo shallow-clones a ServiceInfo and rewrites every
-// method's request/response type so $ref resolution lines up after
-// the merge's rename pass. Both the top-level NamedTypeRef name AND
-// any generic args are rewritten - without arg rewriting, a method
-// response like `Envelope<Order>` keeps a stale `Order` arg even when
-// the merge renamed it to `ScalarsOrder`, producing two divergent
-// generic instantiation components.
+// cloneServiceInfo copies si with each method's request, response and
+// `@errors` refs renamed by rewrite, type arguments included.
 func cloneServiceInfo(si *semantic.ServiceInfo, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *semantic.ServiceInfo {
 	out := *si
 	out.Methods = make([]*ast.Method, len(si.Methods))
@@ -305,16 +269,8 @@ func cloneServiceInfo(si *semantic.ServiceInfo, srcPkg string, rewrite func(stri
 	return &out
 }
 
-// rewriteErrorDecorators rewrites the error refs inside every
-// `@errors(...)` decorator so they track the merge's rename pass. When
-// two packages declare an error of the same name, the merge renames both
-// (e.g. `Dup` → `ADup` / `BDup`) and stores each under its renamed key in
-// the merged Errors map. The per-operation response builder looks the
-// error up by the decorator's trailing segment, so without rewriting the
-// decorator that lookup misses the renamed schema and the error silently
-// drops from the OpenAPI responses. Decorators other than `@errors` pass
-// through unchanged, and a ref the rename table leaves alone returns its
-// original node.
+// rewriteErrorDecorators renames, through rewrite, each identifier argument
+// of every `@errors` in ds (`Dup` → `ADup`).
 func rewriteErrorDecorators(ds []*ast.Decorator, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) []*ast.Decorator {
 	if len(ds) == 0 {
 		return ds
@@ -345,10 +301,7 @@ func rewriteErrorDecorators(ds []*ast.Decorator, srcPkg string, rewrite func(str
 	return out
 }
 
-// rewriteNamedTypeRef rewrites a NamedTypeRef itself plus the args
-// recursively. Used by the service-clone path where the request and
-// response types are stored as *NamedTypeRef (not wrapped in TypeRef),
-// so [rewriteTypeRef] cannot be reused directly.
+// rewriteNamedTypeRef is [rewriteTypeRef] for a bare named ref.
 func rewriteNamedTypeRef(n *ast.NamedTypeRef, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *ast.NamedTypeRef {
 	if n == nil {
 		return nil
@@ -356,10 +309,8 @@ func rewriteNamedTypeRef(n *ast.NamedTypeRef, srcPkg string, rewrite func(string
 	return rewriteNamedArgs(rewrite(srcPkg, n), srcPkg, rewrite)
 }
 
-// rewriteNamedArgs deep-copies n with its generic Args rewritten, so a nested
-// cross-package ref inside a generic instance is also rewritten. Returns n
-// unchanged when it is nil or carries no args. Shared by the mixin, type-ref
-// and named-ref rewrite paths.
+// rewriteNamedArgs returns a copy of n with its type arguments renamed by
+// rewrite, or n when it has none.
 func rewriteNamedArgs(n *ast.NamedTypeRef, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *ast.NamedTypeRef {
 	if n == nil || len(n.Args) == 0 {
 		return n

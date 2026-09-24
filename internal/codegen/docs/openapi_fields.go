@@ -1,4 +1,3 @@
-// Field-level decorator -> schema metadata mapping.
 package docs
 
 import (
@@ -11,12 +10,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// rawIfBigInt returns the exact decimal text of an integer-literal bound
-// whose magnitude exceeds float64's exact range, as a json.Number to be
-// emitted verbatim through Extensions. For in-range or non-integer args it
-// returns ok=false so the caller takes the ordinary float64 path. The
-// big-integer classification is shared with the validator via
-// [semantic.ParseNumericArg] so the two sides agree on which bounds need exact text.
+// rawIfBigInt returns argument i as an exact json.Number when it is an
+// integer beyond float64's exact range.
 func rawIfBigInt(d *ast.Decorator, i int) (json.Number, bool) {
 	if i >= len(d.Args) {
 		return "", false
@@ -27,9 +22,8 @@ func rawIfBigInt(d *ast.Decorator, i int) (json.Number, bool) {
 	return "", false
 }
 
-// stampDeprecated marks s deprecated when the field carries @deprecated and
-// appends any reason to its description. Shared by applyFieldMetadata's three
-// schema-shape branches so the stamp is spelled once.
+// stampDeprecated marks s deprecated when decs carry @deprecated, appending
+// the reason to its description.
 func stampDeprecated(s *openapi3.Schema, decs []*ast.Decorator) {
 	if !semantic.IsDeprecated(decs) {
 		return
@@ -44,21 +38,8 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 	if ref == nil {
 		return
 	}
-	// Plain $ref: the referenced schema carries the type's own
-	// description / example / constraints. A bare $ref can't carry
-	// sibling keywords portably, so any FIELD-LEVEL metadata forces a
-	// wrapper:
-	//   - @nullable / `?`   -> anyOf:[{$ref}, {type:null}] (the value may
-	//     be null; a `@nullable`-without-`?` field stays in `required`,
-	//     matching the Go struct that always emits the key as JSON null).
-	//   - narrowing constraint (`unitCents Cents @lte(1000000)`) -> allOf:
-	//     [{$ref}, {constraints}], so a field that tightens the referenced
-	//     type advertises the bound the runtime validator enforces.
-	//   - @default / @deprecated -> carried on the wrapper.
-	//   - field-level @doc / @example -> carried on the wrapper as
-	//     siblings of the allOf/anyOf, so a field that documents or
-	//     exemplifies the referenced type keeps that metadata instead of
-	//     dropping it (a bare $ref has nowhere portable to hang them).
+	// A bare $ref takes no sibling keywords, so field metadata wraps it: in
+	// `anyOf: [{$ref}, {type: null}]` when optional, else in an `allOf`.
 	if ref.Ref != "" {
 		nullable := semantic.FieldIsOptional(f)
 		extra := fieldConstraintSchema(f)
@@ -100,12 +81,7 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 	if ref.Value == nil {
 		return
 	}
-	// Optional-ref wrapper (anyOf:[$ref, {type:null}]). Field-level
-	// metadata lands on the wrapper as siblings of the anyOf: the
-	// field's @doc / @example document this specific use of the
-	// referenced type, and `default` / narrowing constraints are ANDed
-	// with the resolved value (a numeric bound is vacuous for the `null`
-	// branch), keeping the spec in step with the runtime validator.
+	// An optional ref's wrapper takes the field metadata beside its anyOf.
 	if isNullableRefWrapper(ref.Value) {
 		if desc := semantic.Description(f.Decorators, f.Doc); desc != "" {
 			ref.Value.Description = desc
@@ -141,12 +117,8 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 	applyFieldConstraints(f.Decorators, ref.Value)
 }
 
-// fieldConstraintSchema builds a schema carrying ONLY the field-level
-// narrowing constraints (numeric / string-length / pattern / format) a
-// field stacks on top of a referenced type, or nil when it declares
-// none. A $ref field is never an array (arrays render as
-// `{type: array, items: {$ref}}`), so the array keywords are not
-// applicable here.
+// fieldConstraintSchema returns a schema of the constraints f adds to the
+// type it refs, or nil when it adds none.
 func fieldConstraintSchema(f *ast.Field) *openapi3.Schema {
 	if f == nil || !hasFieldConstraintDecorator(f.Decorators) {
 		return nil
@@ -156,13 +128,8 @@ func fieldConstraintSchema(f *ast.Field) *openapi3.Schema {
 	return s
 }
 
-// isNullableRefWrapper recognises the `anyOf: [{$ref}, {type: null}]`
-// shape that schemaForTypeRef emits for an optional named-type (or
-// optional generic-instance) field - the OpenAPI 3.1 idiom for "ref OR
-// null" (3.1 dropped the `nullable` keyword, and a bare $ref still can
-// not carry sibling validators portably). Metadata on the wrapper is
-// interpreted inconsistently by clients, so callers branch on this
-// signature to avoid stamping description/example on it.
+// isNullableRefWrapper reports whether s is the [nullableRef] wrapper,
+// `anyOf: [{$ref}, {type: null}]`.
 func isNullableRefWrapper(s *openapi3.Schema) bool {
 	if s == nil || len(s.AnyOf) != 2 || s.Type != nil || len(s.Properties) != 0 {
 		return false
@@ -170,17 +137,13 @@ func isNullableRefWrapper(s *openapi3.Schema) bool {
 	return s.AnyOf[0].Ref != "" && isNullTypeSchema(s.AnyOf[1].Value)
 }
 
-// isNullTypeSchema reports whether s is exactly the 3.1 null sentinel
-// (`type: "null"` with no other shape) used as the second branch of a
-// nullable-ref wrapper's anyOf.
+// isNullTypeSchema reports whether s has the lone type "null".
 func isNullTypeSchema(s *openapi3.Schema) bool {
 	return s != nil && s.Type != nil && s.Type.Is("null")
 }
 
-// numericArgValue pulls the i-th positional argument as a float64.
-// Accepts both IntLit and FloatLit so callers don't have to switch on
-// type. Returns (0, false) for any other kind of literal so the OpenAPI
-// emitter silently skips invalid args.
+// numericArgValue returns argument i as a float64, or false when it is not
+// a number.
 func numericArgValue(d *ast.Decorator, i int) (float64, bool) {
 	if i >= len(d.Args) {
 		return 0, false
@@ -191,22 +154,8 @@ func numericArgValue(d *ast.Decorator, i int) (float64, bool) {
 	return 0, false
 }
 
-// applyNullable marks a value schema as nullable using the OpenAPI 3.1
-// canonical form: it appends "null" to the schema's `type` list
-// (`type: [string, "null"]`). OpenAPI 3.1 REMOVED the 3.0 boolean
-// `nullable: true` keyword, so emitting it inside a doc that declares
-// `openapi: 3.1.0` makes every 3.1-aware client generator (hey-api,
-// openapi-typescript, openapi-generator >=7, Swagger UI 3.1) silently
-// drop the null union - `bio string @nullable` then types as `string`
-// on the client instead of `string | null`.
-//
-// Only typed value schemas pass through here; named-ref nullability has
-// no `type` list to extend and is handled in [schemaForTypeRef] via the
-// `anyOf: [{$ref}, {type: null}]` wrapper instead.
-//
-// craftgo never runs kin-openapi's `T.Validate()` on the emitted doc,
-// so that library's lagging rejection of the 3.1 null-array form does
-// not apply here.
+// applyNullable adds "null" to s's type list: OpenAPI 3.1 has no `nullable`.
+// A ref has no type list and takes the [nullableRef] wrapper.
 func applyNullable(s *openapi3.Schema) {
 	if s == nil || s.Type == nil {
 		return
@@ -216,9 +165,8 @@ func applyNullable(s *openapi3.Schema) {
 	}
 }
 
-// appendDescription joins a new note onto an existing description with
-// a single blank-line separator. Empty existing description means the
-// note becomes the entire description; empty note is a no-op.
+// appendDescription joins note onto existing after a blank line; when either
+// is empty the result is the other.
 func appendDescription(existing, note string) string {
 	if note == "" {
 		return existing
@@ -229,10 +177,8 @@ func appendDescription(existing, note string) string {
 	return existing + "\n\n" + note
 }
 
-// schemaExt sets a raw schema keyword through Extensions, which marshal as
-// plain keywords - the route for the OpenAPI 3.1 numeric forms kin-openapi
-// still models as 3.0 booleans, and for big-integer literals that must
-// survive as exact json.Number values.
+// schemaExt sets keyword key through Extensions, which marshal as plain
+// keywords: kin-openapi has no 3.1 exclusive bound and no exact big integer.
 func schemaExt(s *openapi3.Schema, key string, v interface{}) {
 	if s.Extensions == nil {
 		s.Extensions = make(map[string]interface{})
@@ -240,8 +186,8 @@ func schemaExt(s *openapi3.Schema, key string, v interface{}) {
 	s.Extensions[key] = v
 }
 
-// curExtNumber reads the current numeric value of an Extensions key as a
-// float64, handling both the float64 and json.Number representations.
+// curExtNumber reads Extensions key as a float64, stored as either a
+// float64 or a json.Number.
 func curExtNumber(s *openapi3.Schema, key string) (float64, bool) {
 	if s.Extensions == nil {
 		return 0, false
@@ -257,10 +203,8 @@ func curExtNumber(s *openapi3.Schema, key string) (float64, bool) {
 	return 0, false
 }
 
-// setMin / setMax intersect an inclusive bound rather than overwrite it:
-// the runtime validator runs EVERY decorator (tightest bound wins), so
-// stacking `@gte(10) @range(0,100)` enforces min 10 at runtime - the spec
-// must advertise the same, not the last writer's looser 0.
+// setMin and setMax keep the tighter inclusive bound: the validator runs
+// every decorator, so `@gte(10) @range(0, 100)` enforces a minimum of 10.
 func setMin(s *openapi3.Schema, v float64) {
 	if s.Min == nil || v > *s.Min {
 		s.Min = &v
@@ -273,9 +217,8 @@ func setMax(s *openapi3.Schema, v float64) {
 	}
 }
 
-// emitBound writes an inclusive minimum / maximum: a big integer literal
-// rides through Extensions as a raw json.Number (exact), everything else
-// uses the native float64 field so existing specs are unchanged.
+// emitBound writes argument i as an inclusive bound: a big integer exactly
+// through Extensions, any other number through native.
 func emitBound(s *openapi3.Schema, key string, d *ast.Decorator, i int, native func(*openapi3.Schema, float64)) {
 	if r, ok := rawIfBigInt(d, i); ok {
 		schemaExt(s, key, r)
@@ -286,13 +229,8 @@ func emitBound(s *openapi3.Schema, key string, d *ast.Decorator, i int, native f
 	}
 }
 
-// setExclusive intersects an exclusive bound: the runtime runs EVERY
-// decorator, so the tightest wins - the LARGEST exclusiveMinimum and the
-// SMALLEST exclusiveMaximum. Without this, stacking `@gt(5) @positive`
-// (or `@lt(-5) @negative`) would advertise the LOOSER last-writer bound
-// (exclusiveMinimum 0) while the validator enforces the tighter one.
-// Exclusive bounds always ride through Extensions as numbers (kin-openapi
-// still models ExclusiveMin/Max as the 3.0 booleans).
+// setExclusive keeps the tighter exclusive bound (the larger minimum, the
+// smaller maximum), writing raw when it is non-nil, else v.
 func setExclusive(s *openapi3.Schema, key string, v float64, raw interface{}) {
 	if cur, ok := curExtNumber(s, key); ok {
 		if key == "exclusiveMinimum" && v <= cur {
@@ -309,8 +247,8 @@ func setExclusive(s *openapi3.Schema, key string, v float64, raw interface{}) {
 	}
 }
 
-// emitExclusive writes an exclusive bound from a decorator argument: big
-// integers ride as a raw json.Number, smaller values as a float64.
+// emitExclusive writes argument i as an exclusive bound: a big integer as an
+// exact json.Number, any other number as a float64.
 func emitExclusive(s *openapi3.Schema, key string, d *ast.Decorator, i int) {
 	if r, ok := rawIfBigInt(d, i); ok {
 		if f, err := r.Float64(); err == nil {
@@ -325,9 +263,7 @@ func emitExclusive(s *openapi3.Schema, key string, d *ast.Decorator, i int) {
 	}
 }
 
-// setMinLen / setMaxLen intersect a string-length bound (tightest wins),
-// matching the runtime which runs every decorator: `@length(5)
-// @minLength(3) @maxLength(10)` enforces exactly 5, so the spec must too.
+// setMinLen and setMaxLen keep the tighter string-length bound.
 func setMinLen(s *openapi3.Schema, v uint64) {
 	if v > s.MinLength {
 		s.MinLength = v
@@ -340,22 +276,12 @@ func setMaxLen(s *openapi3.Schema, v uint64) {
 	}
 }
 
-// lengthKeywordsApply reports whether string-length keywords belong on s.
-// `bytes` renders as `{type: string, format: byte}` (a base64 string):
-// `minLength` / `maxLength` there would constrain the BASE64-encoded
-// character count, whereas the runtime validator (and the author's intent)
-// count RAW bytes - so the keyword would advertise a different bound than
-// the server enforces. JSON Schema has no decoded-byte-length keyword, so
-// the constraint is left to the runtime rather than advertised incorrectly.
+// lengthKeywordsApply reports whether length keywords fit s: on `format: byte`
+// they would count base64 characters, not the raw bytes the validator counts.
 func lengthKeywordsApply(s *openapi3.Schema) bool { return s.Format != "byte" }
 
-// itemCountKeyword stores an item-count bound on the keyword matching the
-// schema's shape: array fields count elements via minItems / maxItems, map
-// (object) fields count entries via minProperties / maxProperties. A
-// composition wrapper (the `anyOf:[{$ref}, {null}]` of a nullable
-// named-type field) is neither, so it gets nothing - emitting
-// minProperties there advertises an unenforced, unsatisfiable constraint.
-// Includes, not Is, because an optional array is `type: [array, "null"]`.
+// itemCountKeyword stores an item count through array or object by s's type,
+// matched with Includes so an optional `[array, "null"]` counts as an array.
 func itemCountKeyword(s *openapi3.Schema, d *ast.Decorator, array func(uint64), object func(uint64)) {
 	v, ok := numericArgValue(d, 0)
 	if !ok || v < 0 {

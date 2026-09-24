@@ -1,7 +1,6 @@
-// OpenAPI codegen uses `github.com/getkin/kin-openapi` to build a strongly-
-// typed openapi3.T document and `sigs.k8s.io/yaml` to render it as YAML.
-// The library handles spec compliance, default ordering, and the small
-// quirks of OpenAPI 3.1; we only translate craftgo's AST into its types.
+// Package docs emits the OpenAPI 3.1 document of a design's HTTP surface. It
+// merges the project's packages into one component namespace and works from
+// the analysed project and the manifest alone.
 package docs
 
 import (
@@ -18,12 +17,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// schemaNames guards the flat `components/schemas` namespace during
-// OpenAPI assembly. A user-declared type whose name collides with a
-// generated name - a per-operation `<Method>ReqBody`/`RespBody` or a
-// generic-instance component (`PageOfOrder`) - records the collision in
-// dups instead of overwriting one schema with the other (Go map
-// last-writer-wins) so [buildOpenAPIDoc] fails loudly.
+// schemaNames adds component schemas, recording in dups each name already
+// taken, such as a type named like a generated `<base>ReqBody` or `PageOfOrder`.
 type schemaNames struct{ dups []string }
 
 func (s *schemaNames) put(doc *openapi3.T, name string, ref *openapi3.SchemaRef) {
@@ -34,10 +29,7 @@ func (s *schemaNames) put(doc *openapi3.T, name string, ref *openapi3.SchemaRef)
 	doc.Components.Schemas[name] = ref
 }
 
-// writeOpenAPI builds an OpenAPI 3.1 document for pkg and writes it as
-// YAML to the path configured by `output.openapi`. Each service contributes
-// one set of operations under its `@prefix`; every concrete TypeDecl
-// becomes a schema in `components.schemas`.
+// writeOpenAPI builds pkg's document and writes it as YAML to `output.openapi`.
 func writeOpenAPI(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
@@ -61,11 +53,8 @@ func writeOpenAPI(pkg *semantic.Package, cfg *config.Config, projectRoot string)
 	return os.WriteFile(dest, append(header, out...), 0o644)
 }
 
-// ValidateOpenAPI runs every OpenAPI-level uniqueness check
-// (operationId + component-schema names) against the merged project
-// WITHOUT writing anything. The CLI calls it as a pre-flight before any
-// codegen step touches disk, so a name collision fails the whole run up
-// front instead of after types/transport are already written.
+// ValidateOpenAPI builds the project's document without writing it and returns
+// the merge, operationId or component name collision that stops it.
 func ValidateOpenAPI(proj *semantic.Project, cfg *config.Config) error {
 	if proj == nil {
 		return nil
@@ -84,21 +73,12 @@ func ValidateOpenAPI(proj *semantic.Project, cfg *config.Config) error {
 	return err
 }
 
-// GenerateOpenAPI merges every package's types/enums/errors/
-// scalars/services into a single OpenAPI 3.1 document written to
-// `output.openapi`. When two
-// packages declare a same-named entity, the second-and-subsequent
-// occurrences get renamed to `<PascalPkg><Name>` (e.g. two packages
-// each declaring `User` produce `User` for the first-seen and
-// `AuthUser` / `SharedUser` for collisions). Non-conflicting names
-// stay bare so simple projects keep readable schema names.
+// GenerateOpenAPI writes the project as one OpenAPI 3.1 document to
+// `output.openapi`, naming a declaration two packages share `<PascalPkg><Name>`.
 func GenerateOpenAPI(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
 	if proj == nil {
 		return nil
 	}
-	// `-` disables the document, the way it does for main.go. Without the
-	// check the path is joined literally and the document lands in a file
-	// named `-`.
 	if dest := cfg.Output.OpenAPI; dest == "" || dest == "-" {
 		return nil
 	}
@@ -110,15 +90,14 @@ func GenerateOpenAPI(proj *semantic.Project, cfg *config.Config, projectRoot str
 	}
 	merged := mergeProjectForOpenAPI(proj)
 	if merged.Name == "" {
-		// Fallback for fully-empty projects - title must come from
-		// somewhere so use the manifest or a sensible default.
+		// The name is the title when the manifest sets none.
 		merged.Name = "design"
 	}
 	return writeOpenAPI(merged, cfg, projectRoot)
 }
 
-// mergeCollisionError formats the cross-package merge-collision diagnostic
-// (see [projectMergeCollisions]).
+// mergeCollisionError is the error for the names [projectMergeCollisions]
+// returns.
 func mergeCollisionError(dups []string) error {
 	return fmt.Errorf("cross-package OpenAPI name collision: %s - a type/enum/error/scalar in one package disambiguates to a component name another package already declares, which would silently drop one schema and advertise the wrong shape. Rename one of the clashing declarations", strings.Join(dups, ", "))
 }
@@ -137,25 +116,15 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	if cfg.OpenAPI.BasePath != "" {
 		doc.Servers = openapi3.Servers{{URL: cfg.OpenAPI.BasePath}}
 	}
-	// Single registry shared across schema + path emission so generic
-	// instantiations encountered anywhere (type fields, method request/
-	// response, error bodies) deduplicate into one component each.
+	// One registry for the whole document: each generic instance, wherever
+	// it is named, becomes one component.
 	registry := newGenericRegistry()
 	registry.resolver = semantic.ResolverFor(pkg, nil)
-	// Pre-pass: walk all TypeDecls / ErrorDecls / methods to seed the
-	// registry with every (decl, args) tuple. Emission then proceeds
-	// with the full set already known, which keeps component ordering
-	// deterministic and lets nested instantiations resolve their
-	// shared bases on first reference.
 	collectGenericInstancesInPackage(pkg, registry)
 	names := &schemaNames{}
 	addSchemas(doc, pkg, registry, names)
 	addPaths(doc, pkg, registry, names)
-	// Generic instance components are emitted last so any nested
-	// generic encountered during schema / path emission has had a
-	// chance to register. The loop drains until no new pending
-	// instances remain - recursive generics (`Tree<User>`) terminate
-	// because they $ref themselves rather than re-instantiate.
+	// Instances go last: schema and path emission register them.
 	emitGenericInstanceComponents(doc, pkg, registry, names)
 	addSecuritySchemes(doc, pkg, cfg)
 	if len(names.dups) > 0 {
@@ -168,8 +137,7 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	return doc, nil
 }
 
-// dedupSorted returns the distinct values of in, sorted, for stable and
-// noise-free error messages.
+// dedupSorted returns the distinct values of in, sorted.
 func dedupSorted(in []string) []string {
 	seen := make(map[string]bool, len(in))
 	out := make([]string, 0, len(in))
@@ -183,10 +151,8 @@ func dedupSorted(in []string) []string {
 	return out
 }
 
-// emitGenericInstanceComponents drains the registry by emitting one
-// component schema per registered instance. Emission may register new
-// nested instances; the loop continues until the pending list is
-// stable. The function is idempotent on already-emitted names.
+// emitGenericInstanceComponents emits one component per registered instance
+// until none is pending; emitting one may register more.
 func emitGenericInstanceComponents(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
 	for {
 		pending := registry.pending()
