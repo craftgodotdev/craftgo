@@ -412,7 +412,7 @@ func TestPublishAllReportsProgressOnPartialFailure(t *testing.T) {
 	if partial.Event != "c.Three" {
 		t.Errorf("failed on %q, want c.Three", partial.Event)
 	}
-	if !strings.Contains(err.Error(), "2 already sent") {
+	if !strings.Contains(err.Error(), "first unsent at index 2") {
 		t.Errorf("error does not say how far it got: %v", err)
 	}
 	if got := partial.Unsent; len(got) != 2 || got[0] != 2 || got[1] != 3 {
@@ -925,6 +925,18 @@ func TestUnsentAtReportsScatteredIndicesAndSortsThem(t *testing.T) {
 	}
 	if got.Sent != 1 || got.Event != "b.Two" {
 		t.Errorf("Sent/Event = %d/%q, want 1/b.Two - both derived from the first unsent", got.Sent, got.Event)
+	}
+}
+
+// The message names the first unsent index, which counts nothing sent when failures scatter.
+func TestAPartialErrorNamesTheFirstUnsentIndex(t *testing.T) {
+	msgs := []*events.Message{{Event: "a.One"}, {Event: "b.Two"}, {Event: "c.Three"}, {Event: "d.Four"}, {Event: "e.Five"}}
+	text := events.UnsentAt([]int{1, 3}, msgs, errors.New("partition leader moved")).Error()
+	if want := "2 of the batch unsent, first unsent at index 1"; !strings.Contains(text, want) {
+		t.Errorf("error = %q, want it to say %q", text, want)
+	}
+	if strings.Contains(text, "already sent") {
+		t.Errorf("error = %q counts index 1 as the envelopes sent, but 3 went out", text)
 	}
 }
 

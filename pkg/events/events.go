@@ -253,7 +253,7 @@ type PartialPublishError struct {
 }
 
 func (e *PartialPublishError) Error() string {
-	return fmt.Sprintf("events: publish %s (%d of the batch unsent, %d already sent): %v",
+	return fmt.Sprintf("events: publish %s (%d of the batch unsent, first unsent at index %d): %v",
 		e.Event, len(e.Unsent), e.Sent, e.Err)
 }
 
@@ -329,13 +329,8 @@ func (b *Bus) checkedBatch(err error, msgs []*Message) error {
 		return err
 	}
 	if bad := validateUnsent(partial, len(msgs)); bad != "" {
-		return &PartialPublishError{
-			Sent:   0,
-			Unsent: allIndices(len(msgs)),
-			Event:  msgs[0].Event,
-			Err: fmt.Errorf("events: transport %s reported an impossible partial publish (%s); treating the whole batch as unsent: %w",
-				adapterLabel(b.pub), bad, partial.Err),
-		}
+		return UnsentFrom(0, msgs, fmt.Errorf("events: transport %s reported an impossible partial publish (%s); treating the whole batch as unsent: %w",
+			adapterLabel(b.pub), bad, partial.Err))
 	}
 	partial.Sent = partial.Unsent[0]
 	return err
@@ -357,14 +352,6 @@ func validateUnsent(p *PartialPublishError, n int) string {
 		prev = i
 	}
 	return ""
-}
-
-func allIndices(n int) []int {
-	out := make([]int, 0, n)
-	for i := 0; i < n; i++ {
-		out = append(out, i)
-	}
-	return out
 }
 
 // adapterLabel names a transport for a diagnostic: its adapter name, else its Go type.

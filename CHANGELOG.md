@@ -143,6 +143,11 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **A core NATS subscription on a context that never ends parks no
   goroutine.** Each one left a goroutine waiting for ever on `ctx.Done()`.
 
+- **A `*PartialPublishError` message names its first unsent index.** It
+  called that index the number already sent, which a scattered report
+  contradicts: `Unsent` [1 3] of five read "1 already sent" when three
+  went out.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
