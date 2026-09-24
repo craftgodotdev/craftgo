@@ -302,7 +302,8 @@ var simpleEscapes = map[byte]byte{'n': '\n', 't': '\t', 'r': '\r', '"': '"', '\\
 
 // Unquote returns the value of a String or RawString token's text: a raw
 // literal's content, or a quoted literal's with its escapes decoded. The
-// escapes are \n \t \r \" \\ and \u{HEX} with 1 to 6 hex digits.
+// escapes are \n \t \r \" \\ and \u{HEX}: 1 to 6 hex digits naming a code
+// point up to 10FFFF outside the surrogates D800-DFFF.
 func Unquote(text string) (string, error) {
 	n := len(text)
 	if n >= 2 && text[0] == '`' && text[n-1] == '`' {
@@ -340,6 +341,9 @@ func Unquote(text string) (string, error) {
 		v, err := strconv.ParseUint(s[2:end], 16, 32)
 		if err != nil {
 			return "", errors.New("invalid unicode escape")
+		}
+		if !utf8.ValidRune(rune(v)) {
+			return "", fmt.Errorf("unicode escape \\u{%s} is outside the valid code points (0-D7FF, E000-10FFFF)", s[2:end])
 		}
 		sb.WriteRune(rune(v))
 		s = s[end+1:]

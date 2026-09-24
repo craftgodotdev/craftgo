@@ -108,6 +108,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   category "{"`, `type name "{" should start with an uppercase letter`; the
   missing name is now the only error.
 
+- **A `\u{…}` escape must name a character.** A surrogate, `\u{D800}` to
+  `\u{DFFF}`, or a value above `\u{10FFFF}` is an error; it decoded
+  silently to U+FFFD.
+
 - **Formatting a CRLF file writes LF line ends throughout.** A line with a
   trailing comment kept its `\r`.
 

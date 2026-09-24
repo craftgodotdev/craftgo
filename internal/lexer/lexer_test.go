@@ -248,7 +248,7 @@ func TestStringEscapes(t *testing.T) {
 }
 
 func TestStringUnicodeEscape(t *testing.T) {
-	for _, c := range []string{`"\u{1F600}"`, `"\u{a}"`, `"\u{123456}"`} {
+	for _, c := range []string{`"\u{1F600}"`, `"\u{a}"`, `"\u{D7FF}"`, `"\u{E000}"`, `"\u{10FFFF}"`} {
 		if first(t, c).Kind != String {
 			t.Errorf("%q", c)
 		}
@@ -285,6 +285,10 @@ func TestStringBadUnicodeEscape(t *testing.T) {
 		`"\u{}"`,       // empty
 		`"\u{xyz}"`,    // bad hex
 		`"\u{1234567}`, // 7 chars, no closing }
+		`"\u{D800}"`,   // surrogate
+		`"\u{dfff}"`,   // surrogate
+		`"\u{110000}"`, // above U+10FFFF
+		`"\u{123456}"`, // above U+10FFFF
 	}
 	for _, c := range cases {
 		if first(t, c).Kind != Error {
@@ -349,6 +353,7 @@ func TestUnquote(t *testing.T) {
 		{`"a\"b\\c"`, "a\"b\\c", ""},
 		{`"\u{61}\u{7}\u{0}"`, "a\a\x00", ""},
 		{`"\u{1F600}"`, "\U0001F600", ""},
+		{`"\u{D7FF}\u{E000}\u{10FFFF}"`, "\ud7ff\ue000\U0010FFFF", ""},
 		{"\"zero\u200bwidth\"", "zero\u200bwidth", ""},
 		{"`^\\d+$`", `^\d+$`, ""},
 		{"`a\nb`", "a\nb", ""},
@@ -359,6 +364,9 @@ func TestUnquote(t *testing.T) {
 		{`"\u{}"`, "", "invalid unicode escape"},
 		{`"\u{ZZ}"`, "", "invalid unicode escape"},
 		{`"\u{1234567}"`, "", "invalid unicode escape"},
+		{`"\u{D800}"`, "", `unicode escape \u{D800} is outside the valid code points (0-D7FF, E000-10FFFF)`},
+		{`"a\u{dfff}"`, "", `unicode escape \u{dfff} is outside the valid code points (0-D7FF, E000-10FFFF)`},
+		{`"\u{110000}"`, "", `unicode escape \u{110000} is outside the valid code points (0-D7FF, E000-10FFFF)`},
 		{`"a\"`, "", "unterminated escape sequence"},
 		{`"`, "", `"\"" is not a string literal`},
 		{`abc`, "", `"abc" is not a string literal`},
