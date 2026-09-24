@@ -112,6 +112,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   `\u{DFFF}`, or a value above `\u{10FFFF}` is an error; it decoded
   silently to U+FFFD.
 
+- **A `type` needs a body.** `type T` with no `{ … }` is a parse error; it
+  parsed as an empty type, and formatting wrote `type T {}`.
+
 - **Formatting a CRLF file writes LF line ends throughout.** A line with a
   trailing comment kept its `\r`.
 

@@ -6,13 +6,19 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
-// parseTypeDecl parses `type Name { ... }` or `type Name<T, ...> { ... }`.
+// parseTypeDecl parses `type Name { ... }` or `type Name<T, ...> { ... }`; a
+// missing body is reported, and the next declaration starts at the token
+// found instead.
 func (p *Parser) parseTypeDecl(decs []*ast.Decorator, doc []string) *ast.TypeDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
 	td := &ast.TypeDecl{Pos: pos, Decorators: decs, Doc: doc, Name: name.Text}
 	if p.peek().Kind == lexer.LAngle {
 		td.TypeParams = p.parseTypeParams()
+	}
+	if !p.peekIs(lexer.LBrace) {
+		p.expect(lexer.LBrace)
+		return td
 	}
 	body, rbrace := p.parseTypeBody()
 	td.Body, td.EndPos = body, rbrace.Pos
@@ -47,13 +53,9 @@ func (p *Parser) parseTypeParams() []string {
 	return params
 }
 
-// parseTypeBody parses a type or error body into fields, mixins and free
-// comments, and returns the closing brace token; without a `{` it parses
-// nothing.
+// parseTypeBody parses the type or error body that opens at the current `{`
+// into fields, mixins and free comments, and returns the closing brace token.
 func (p *Parser) parseTypeBody() ([]ast.TypeMember, lexer.Token) {
-	if !p.peekIs(lexer.LBrace) {
-		return nil, lexer.Token{}
-	}
 	var members []ast.TypeMember
 	lbrace, rbrace := p.braced(func() {
 		if m := p.parseTypeMember(); m != nil {

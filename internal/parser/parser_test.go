@@ -914,12 +914,21 @@ func TestTypeParamsExpectFails(t *testing.T) {
 	}
 }
 
+// A type without a body is reported once and leaves the next declaration
+// intact.
 func TestTypeNoBody(t *testing.T) {
-	// A type without a body leaves the next declaration intact.
-	f, _ := parseWithErrors(t, `type X
-type Y {}`)
-	if len(f.Decls) < 2 {
-		t.Errorf("decls: %d", len(f.Decls))
+	for src, want := range map[string]string{
+		"type X\ntype Y {}":                 "expected {, got type",
+		"type X<T>\n@doc(\"y\")\ntype Y {}": "expected {, got @",
+		"type X":                            "expected {, got EOF",
+	} {
+		f, errs := parseWithErrors(t, src)
+		if len(errs) != 1 || errs[0] != want {
+			t.Errorf("%q: diagnostics %q, want [%q]", src, errs, want)
+		}
+		if strings.Contains(src, "Y") && len(f.Decls) != 2 {
+			t.Errorf("%q: %d declarations, want 2", src, len(f.Decls))
+		}
 	}
 }
 
