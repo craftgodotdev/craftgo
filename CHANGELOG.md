@@ -179,6 +179,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   `nats.ErrClosed`. It registered a queue subscriber that only the end of
   its context removed.
 
+- **A finished JetStream group can subscribe again.** A group whose
+  context had ended, or whose durable `nats.ErrConsumerStopped` reported
+  deleted, stayed "already subscribed" on its transport for good. The group
+  is now free once its running handler has returned, and before that report
+  is made.
+
 - **A core NATS subscription on a context that never ends parks no
   goroutine.** Each one left a goroutine waiting for ever on `ctx.Done()`.
 

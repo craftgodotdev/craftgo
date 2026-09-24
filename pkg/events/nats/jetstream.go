@@ -338,8 +338,9 @@ func (j *JetStream) PublishBatch(ctx context.Context, msgs []*events.Message) er
 
 // Subscribe binds each group to one durable filtering all of the group's
 // subjects, so all of a group's contracts must arrive in one call. Groups
-// started before a refusal stay live. Once [JetStream.Close] has begun it
-// returns [ErrClosed].
+// started before a refusal stay live. A group subscribes again once its
+// context has ended and its running handler has returned. Once
+// [JetStream.Close] has begun it returns [ErrClosed].
 func (j *JetStream) Subscribe(ctx context.Context, subs []events.Subscription) error {
 	if j.isClosing() {
 		return fmt.Errorf("nats: subscribe: %w", ErrClosed)
@@ -432,7 +433,8 @@ func (j *JetStream) subscribed(group events.Group) bool {
 
 // ErrConsumerStopped reports, through [WithJetStreamErrorHandler], a group
 // whose durable or its stream was deleted after boot. Nothing recreates the
-// durable; an application that wants the group back matches this error.
+// durable; an application that wants the group back matches this error and
+// subscribes the group again.
 var ErrConsumerStopped = errors.New("nats: consumer stopped consuming")
 
 func (j *JetStream) consumeGroup(ctx context.Context, g *groupPlan) error {
@@ -478,15 +480,27 @@ func (j *JetStream) consumeGroup(ctx context.Context, g *groupPlan) error {
 	go func() {
 		select {
 		case <-cc.Closed():
+			j.release(g.name, cc)
 			if ctx.Err() == nil && !j.isClosing() {
 				j.report(whole, nil, fmt.Errorf("%w: %q on stream %q - it was deleted, or the stream was", ErrConsumerStopped, g.name, g.stream))
 			}
 		case <-ctx.Done():
 			cc.Stop()
+			<-cc.Closed()
+			j.release(g.name, cc)
 		case <-j.closing:
 		}
 	}()
 	return nil
+}
+
+// release forgets group and its consume context cc once cc has closed, so the group can
+// subscribe again.
+func (j *JetStream) release(group events.Group, cc jetstream.ConsumeContext) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	delete(j.groups, group)
+	j.consuming = slices.DeleteFunc(j.consuming, func(c jetstream.ConsumeContext) bool { return c == cc })
 }
 
 func (j *JetStream) isClosing() bool {

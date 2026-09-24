@@ -229,6 +229,37 @@ func TestAGroupSubscribedTwiceOnOneTransportIsRefused(t *testing.T) {
 	}
 }
 
+// A group whose context has ended can subscribe again on the same transport.
+func TestAGroupWhoseContextEndedCanSubscribeAgain(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn)
+	subs := func(d *deliveries) []events.Subscription {
+		return []events.Subscription{{Event: "orders.Placed", Consumer: "C", Group: "g", Handle: recording(d)}}
+	}
+
+	first, endFirst := context.WithCancel(context.Background())
+	if err := tr.Subscribe(first, subs(&deliveries{})); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	endFirst()
+
+	got := &deliveries{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	deadline := time.Now().Add(10 * time.Second)
+	for err := tr.Subscribe(ctx, subs(got)); err != nil; err = tr.Subscribe(ctx, subs(got)) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the group is still refused 10s after its context ended: %v", err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Key: "o-1", Payload: []byte(`{}`)}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	got.waitFor(t, 1, 15*time.Second)
+}
+
 func TestAGroupSubscribingOneSubjectTwiceIsRefused(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")

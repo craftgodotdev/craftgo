@@ -1139,7 +1139,7 @@ func TestACloseDuringSubscribeLeavesNothingConsuming(t *testing.T) {
 }
 
 // deletedDurableGroup runs handle in group "deleted-durable" on one message.
-func deletedDurableGroup(t *testing.T, conn *natsclient.Conn, handle func(context.Context, *events.Message) error) (<-chan error, jetstream.Consumer) {
+func deletedDurableGroup(t *testing.T, conn *natsclient.Conn, handle func(context.Context, *events.Message) error) (*craftnats.JetStream, <-chan error, jetstream.Consumer) {
 	t.Helper()
 	provision(t, conn, "ORDERS", "orders.>")
 
@@ -1175,7 +1175,7 @@ func deletedDurableGroup(t *testing.T, conn *natsclient.Conn, handle func(contex
 	if err != nil {
 		t.Fatalf("consumer handle: %v", err)
 	}
-	return reported, durable
+	return tr, reported, durable
 }
 
 // deleteConsumer deletes a durable from under a running process.
@@ -1214,19 +1214,10 @@ func awaitConsumerStopped(t *testing.T, reported <-chan error, within time.Durat
 	}
 }
 
-// A durable deleted under a waiting pull is reported as ErrConsumerStopped.
-func TestADeletedDurableWithAPullWaitingIsReportedAtOnce(t *testing.T) {
-	conn := runJetStreamServer(t)
-
-	delivered := make(chan struct{}, 1)
-	reported, durable := deletedDurableGroup(t, conn, func(context.Context, *events.Message) error {
-		select {
-		case delivered <- struct{}{}:
-		default:
-		}
-		return nil
-	})
-
+// deleteUnderAWaitingPull deletes the durable once the group has consumed and its next pull
+// waits, so the server answers that pull with the deletion at once.
+func deleteUnderAWaitingPull(t *testing.T, conn *natsclient.Conn, delivered <-chan struct{}, durable jetstream.Consumer) {
+	t.Helper()
 	select {
 	case <-delivered:
 	case <-time.After(20 * time.Second):
@@ -1250,8 +1241,46 @@ func TestADeletedDurableWithAPullWaitingIsReportedAtOnce(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	deleteConsumer(t, conn, "ORDERS", "deleted-durable")
+}
+
+// signal is a handler that reports each delivery on delivered without blocking.
+func signal(delivered chan<- struct{}) events.Handler {
+	return func(context.Context, *events.Message) error {
+		select {
+		case delivered <- struct{}{}:
+		default:
+		}
+		return nil
+	}
+}
+
+// A durable deleted under a waiting pull is reported as ErrConsumerStopped.
+func TestADeletedDurableWithAPullWaitingIsReportedAtOnce(t *testing.T) {
+	conn := runJetStreamServer(t)
+
+	delivered := make(chan struct{}, 1)
+	_, reported, durable := deletedDurableGroup(t, conn, signal(delivered))
+	deleteUnderAWaitingPull(t, conn, delivered, durable)
 
 	awaitConsumerStopped(t, reported, 20*time.Second)
+}
+
+// A group is free to subscribe again by the time its ErrConsumerStopped is reported.
+func TestAGroupWhoseDurableWasDeletedCanSubscribeAgain(t *testing.T) {
+	conn := runJetStreamServer(t)
+
+	delivered := make(chan struct{}, 1)
+	tr, reported, durable := deletedDurableGroup(t, conn, signal(delivered))
+	deleteUnderAWaitingPull(t, conn, delivered, durable)
+	awaitConsumerStopped(t, reported, 20*time.Second)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, []events.Subscription{{
+		Event: "orders.Placed", Consumer: "C", Group: "deleted-durable", Handle: signal(delivered),
+	}}); err != nil {
+		t.Fatalf("subscribe after ErrConsumerStopped: %v", err)
+	}
 }
 
 func TestADeletedDurableWithNoPullWaitingIsReportedOnTheNextMissedHeartbeat(t *testing.T) {
@@ -1262,7 +1291,7 @@ func TestADeletedDurableWithNoPullWaitingIsReportedOnTheNextMissedHeartbeat(t *t
 	releaseHandler := sync.OnceFunc(func() { close(release) })
 	t.Cleanup(releaseHandler)
 
-	reported, durable := deletedDurableGroup(t, conn, func(context.Context, *events.Message) error {
+	_, reported, durable := deletedDurableGroup(t, conn, func(context.Context, *events.Message) error {
 		select {
 		case delivered <- struct{}{}:
 		default:
