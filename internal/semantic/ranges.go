@@ -182,16 +182,17 @@ func (a *analyzer) checkHTTPStatus(d *ast.Decorator) {
 }
 
 // checkPositiveDuration rejects a `@timeout` that is not positive, in bare
-// seconds or as a duration, or that [lexer.ParseDuration] cannot read.
+// seconds or as a duration, or that [DurationArg] cannot read.
 func (a *analyzer) checkPositiveDuration(d *ast.Decorator) {
 	pos := positionalArgs(d)
 	if len(pos) != 1 {
 		return
 	}
-	if v, ok := pos[0].Value.(*ast.DurationLit); ok {
-		dur, parsed := lexer.ParseDuration(v.Text)
+	dur, ok := DurationArg(pos[0])
+	switch v := pos[0].Value.(type) {
+	case *ast.DurationLit:
 		switch {
-		case !parsed:
+		case !ok:
 			a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
 				"@%s: %s is not a duration (suffix must be one of %s)",
 				d.Name, v.Text, strings.Join(lexer.DurationUnits, ", "))
@@ -199,11 +200,15 @@ func (a *analyzer) checkPositiveDuration(d *ast.Decorator) {
 			a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
 				"@%s: duration must be > 0 (got %s)", d.Name, v.Text)
 		}
-		return
-	}
-	if v, ok := pos[0].Value.(*ast.IntLit); ok && v.Value <= 0 {
-		a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
-			"@%s: duration must be > 0 (got %d)", d.Name, v.Value)
+	case *ast.IntLit:
+		switch {
+		case v.Value <= 0:
+			a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
+				"@%s: duration must be > 0 (got %d)", d.Name, v.Value)
+		case !ok:
+			a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
+				"@%s: %d seconds is out of range for a duration (at most %d)", d.Name, v.Value, maxDurationSeconds)
+		}
 	}
 }
 

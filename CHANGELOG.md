@@ -27,6 +27,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   batch of N: <cause>`, and `kafka: <cause>` inside a
   `*PartialPublishError`. `errors.Is` still reaches franz-go's error.
 
+- **A bare-integer `@timeout` renders like a duration literal.** The routes
+  file writes `@timeout(60)` as `1 * time.Minute`, the largest whole unit, as
+  it always wrote `@timeout(60s)`; the value is unchanged.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw
@@ -269,6 +273,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   naming an error got `event/payload-kind` beside `ref/unknown-symbol`; and a
   malformed `openapi.basePath` warned once per package. Each is now reported
   once.
+
+- **`@timeout` rejects bare seconds past a Go duration.** `@timeout(9999999999)`
+  generated routes that did not compile (`constant ... overflows int64`); it
+  now reports `decorator/range`.
 
 ### Deprecated
 

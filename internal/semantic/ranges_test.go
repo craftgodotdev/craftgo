@@ -108,6 +108,15 @@ func TestZeroDurationLiteralRejected(t *testing.T) {
 }`, CodeDecoratorRange)
 }
 
+// Bare seconds past a Go duration's range are rejected.
+func TestOverflowingDurationRejected(t *testing.T) {
+	d := expectError(t, `service S {
+	@timeout(9999999999)
+	get G /g {}
+}`, CodeDecoratorRange)
+	expectMessage(t, d, "9999999999", "out of range")
+}
+
 func TestZeroSizeRejected(t *testing.T) {
 	expectDiag(t, `service S {
 	@maxBodySize(0)

@@ -58,58 +58,17 @@ func buildMiddlewareArgs(mws []string) string {
 // false when m declares neither.
 func methodLimitsLiteral(m *ast.Method) (lit string, usesTime, ok bool) {
 	var fields []string
-	if d := durationDecoratorArg(m.Decorators, "timeout"); d != "" {
-		fields = append(fields, "Timeout: "+d)
+	if d, ok := semantic.DurationArg(firstArg(m.Decorators, "timeout")); ok {
+		fields = append(fields, "Timeout: "+formatDurationGo(d))
 		usesTime = true
 	}
-	if n := sizeDecoratorArg(m.Decorators, "maxBodySize"); n > 0 {
+	if n, _ := semantic.SizeArg(firstArg(m.Decorators, "maxBodySize")); n > 0 {
 		fields = append(fields, fmt.Sprintf("MaxBodySize: %d", n))
 	}
 	if len(fields) == 0 {
 		return "", false, false
 	}
 	return "server.Limits{" + strings.Join(fields, ", ") + "}", usesTime, true
-}
-
-// durationDecoratorArg renders @name's duration as Go source, a bare integer counting seconds;
-// "" when absent or unparsable.
-func durationDecoratorArg(ds []*ast.Decorator, name string) string {
-	for _, d := range ds {
-		if d.Name != name || len(d.Args) == 0 {
-			continue
-		}
-		switch v := d.Args[0].Value.(type) {
-		case *ast.DurationLit:
-			if dur, ok := parseDurationText(v.Text); ok {
-				return formatDurationGo(dur)
-			}
-		case *ast.IntLit:
-			return fmt.Sprintf("%d * time.Second", v.Value)
-		}
-	}
-	return ""
-}
-
-// sizeDecoratorArg returns @name's size in bytes (`10MB`, `1024`), 0 when absent.
-func sizeDecoratorArg(ds []*ast.Decorator, name string) int64 {
-	for _, d := range ds {
-		if d.Name != name || len(d.Args) == 0 {
-			continue
-		}
-		if n, ok := semantic.SizeArg(d.Args[0]); ok {
-			return n
-		}
-	}
-	return 0
-}
-
-func parseDurationText(text string) (time.Duration, bool) {
-	// `µs` and `us` are both DSL-legal; ParseDuration accepts both.
-	d, err := time.ParseDuration(text)
-	if err != nil {
-		return 0, false
-	}
-	return d, true
 }
 
 // formatDurationGo renders d in the largest unit that divides it (`30 * time.Second`).

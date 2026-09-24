@@ -1,7 +1,9 @@
 package semantic
 
 import (
+	"math"
 	"strconv"
+	"time"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -65,6 +67,25 @@ func SizeArg(a *ast.DecoratorArg) (int64, bool) {
 	return SizeBytes(a.Value)
 }
 
+// DurationArg extracts a duration from a Duration literal (`30s`) or a bare
+// integer, which counts seconds. Returns 0,false on any other expression
+// kind, an unreadable literal, or seconds past a [time.Duration].
+func DurationArg(a *ast.DecoratorArg) (time.Duration, bool) {
+	if a == nil {
+		return 0, false
+	}
+	switch v := a.Value.(type) {
+	case *ast.IntLit:
+		if v.Value > maxDurationSeconds || v.Value < -maxDurationSeconds {
+			return 0, false
+		}
+		return time.Duration(v.Value) * time.Second, true
+	case *ast.DurationLit:
+		return lexer.ParseDuration(v.Text)
+	}
+	return 0, false
+}
+
 // SizeBytes is [SizeArg] on a bare expression.
 func SizeBytes(e ast.Expr) (int64, bool) {
 	switch v := e.(type) {
@@ -75,6 +96,9 @@ func SizeBytes(e ast.Expr) (int64, bool) {
 	}
 	return 0, false
 }
+
+// maxDurationSeconds is the most whole seconds a [time.Duration] holds.
+const maxDurationSeconds = math.MaxInt64 / int64(time.Second)
 
 // maxExactInt is 2^53, the magnitude up to which a float64 - and so a JSON
 // number - holds every integer exactly.

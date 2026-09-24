@@ -205,7 +205,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 			d.BodyDecode = false
 			const stdlibDefault int64 = 32 << 20
 			d.MultipartMaxMemory = stdlibDefault
-			if n := sizeDecoratorArg(m.Decorators, "maxBodySize"); n > stdlibDefault {
+			if n, _ := semantic.SizeArg(firstArg(m.Decorators, "maxBodySize")); n > stdlibDefault {
 				d.MultipartMaxMemory = n
 			}
 		}
