@@ -8,7 +8,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/stats"
-	"google.golang.org/grpc/status"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
@@ -110,11 +109,7 @@ func clientAccessLog(logger log.Logger) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		start := time.Now()
 		err := invoker(ctx, method, req, reply, cc, opts...)
-		logger.WithContext(ctx).Info("grpc client",
-			log.String("method", method),
-			log.String("code", status.Code(err).String()),
-			log.Duration("latency", time.Since(start)),
-		)
+		logger.WithContext(ctx).Info("grpc client", callFields(method, err, start)...)
 		return err
 	}
 }

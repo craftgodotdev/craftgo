@@ -43,11 +43,7 @@ func AccessLog(logger log.Logger, opts ...AccessLogOption) Interceptor {
 		o(cfg)
 	}
 	logLine := func(ctx context.Context, fullMethod string, start time.Time, err error) {
-		fields := []log.Field{
-			log.String("method", fullMethod),
-			log.String("code", status.Code(err).String()),
-			log.Duration("latency", time.Since(start)),
-		}
+		fields := callFields(fullMethod, err, start)
 		if cfg.fields != nil {
 			fields = append(fields, cfg.fields(ctx, fullMethod)...)
 		}
@@ -72,5 +68,14 @@ func AccessLog(logger log.Logger, opts ...AccessLogOption) Interceptor {
 			logLine(ss.Context(), info.FullMethod, start, err)
 			return err
 		},
+	}
+}
+
+// callFields returns the method, code and latency fields a call's log line starts with.
+func callFields(method string, err error, start time.Time) []log.Field {
+	return []log.Field{
+		log.String("method", method),
+		log.String("code", status.Code(err).String()),
+		log.Duration("latency", time.Since(start)),
 	}
 }
