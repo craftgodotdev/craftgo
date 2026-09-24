@@ -10,6 +10,7 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
@@ -206,7 +207,7 @@ func (r *request) projectDeclItems(kinds semantic.DeclKind) []protocol.Completio
 // securitySchemeCompletions offers the manifest's openapi.securitySchemes, with
 // each scheme's type and its scheme or location as detail; nil when there are none.
 func (r *request) securitySchemeCompletions() []protocol.CompletionItem {
-	cfg, _ := designProjectOf(r.path)
+	cfg, _ := designopts.ProjectOf(r.path)
 	if cfg == nil || len(cfg.OpenAPI.SecuritySchemes) == 0 {
 		return nil
 	}

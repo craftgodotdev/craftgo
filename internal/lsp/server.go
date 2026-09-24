@@ -17,6 +17,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/designopts"
 )
 
 // errExitWithoutShutdown reports an `exit` that arrived before `shutdown`;
@@ -332,7 +333,7 @@ func (s *server) onDidChangeWatchedFiles(ctx context.Context) {
 		if src == "" {
 			continue
 		}
-		if _, root := designProjectOf(uriToPath(string(u))); root != "" {
+		if _, root := designopts.ProjectOf(uriToPath(string(u))); root != "" {
 			if seenRoots[root] {
 				continue
 			}

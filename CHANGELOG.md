@@ -169,6 +169,9 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **Completion on a one-line type body uses the field before the cursor**:
   `@default(|)` after a body's second field offers that field's values.
 
+- **The editor analyses a file outside every design folder on its own**, as
+  `craftgo fmt` checks it: the folder's declarations do not resolve in it.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

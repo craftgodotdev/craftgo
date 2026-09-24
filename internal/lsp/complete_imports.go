@@ -36,7 +36,7 @@ func importPathPrefix(view snapshotView, c cursor) (string, bool) {
 // design file, relative to the root and starting with prefix, except the one
 // of the buffer at fsPath.
 func importPathCompletions(fsPath, prefix string) []protocol.CompletionItem {
-	_, root := designProjectOf(fsPath)
+	_, root := designopts.ProjectOf(fsPath)
 	if root == "" {
 		return nil
 	}

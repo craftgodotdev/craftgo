@@ -36,7 +36,7 @@ type projectView struct {
 // loadProject parses and analyses the project of the buffer at fsPath (empty
 // for an untitled buffer) holding src, with the manifest's options.
 func (s *server) loadProject(fsPath, src string) projectView {
-	cfg, root := designProjectOf(fsPath)
+	cfg, root := designopts.ProjectOf(fsPath)
 	srcs := []designopts.Source{{Path: fsPath, Text: src}}
 	if root != "" {
 		srcs = s.designSources(root, fsPath, src)
@@ -68,17 +68,6 @@ func (v projectView) currentPackage() string {
 	return ""
 }
 
-// hasErrors reports whether the buffer's own or untagged diagnostics hold an
-// error; a warning does not count.
-func (v projectView) hasErrors() bool {
-	for _, d := range v.diags {
-		if d.IsError() && (d.Pos.Filename == v.current || d.Pos.Filename == "") {
-			return true
-		}
-	}
-	return false
-}
-
 // lookup resolves name (bare or `pkg.Name`) to a declaration of the
 // selected kinds as seen from the buffer's package.
 func (v projectView) lookup(name string, kinds semantic.DeclKind) ast.Decl {
@@ -107,19 +96,6 @@ func (v projectView) srcOf(path string) string {
 		}
 	}
 	return ""
-}
-
-// designProjectOf returns the manifest and design root of the project holding
-// fsPath; both are zero when fsPath is empty or no manifest is found above it.
-func designProjectOf(fsPath string) (*config.Config, string) {
-	if fsPath == "" {
-		return nil, ""
-	}
-	cfg, _, root, err := config.Find(filepath.Dir(fsPath))
-	if err != nil {
-		return nil, ""
-	}
-	return cfg, root
 }
 
 // designSources reads every design file under root, open buffers (src for

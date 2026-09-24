@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/craftgodotdev/craftgo/internal/designopts"
 )
 
 // manifestProject writes a design root with the given manifest body and
@@ -50,8 +52,8 @@ service S {
 			t.Errorf("basePath /api moves the route to /api/healthz, so there is no conflict: %s", d.Msg)
 		}
 	}
-	if v.hasErrors() {
-		t.Errorf("a clean design must not block formatting: %+v", v.diags)
+	if errs := designopts.FileErrors(v.diags, v.current); len(errs) > 0 {
+		t.Errorf("a clean design must not block formatting: %+v", errs)
 	}
 
 	// Without a basePath the route is /healthz.
@@ -148,21 +150,17 @@ type Order { id string  extra Extra }
 	}
 }
 
-// designProjectOf returns the manifest with the root, and neither for an
-// untitled buffer.
-func TestDesignProjectOfReturnsTheManifestWithTheRoot(t *testing.T) {
-	path := manifestProject(t, layoutOnly+"  basePath: /api\n", "package svc\ntype R {}\n")
-
-	cfg, root := designProjectOf(path)
-	if root == "" || cfg == nil {
-		t.Fatalf("designProjectOf(%s) = %v, %q", path, cfg, root)
-	}
-	if cfg.OpenAPI.BasePath != "/api" {
-		t.Errorf("basePath = %q, want /api", cfg.OpenAPI.BasePath)
-	}
-
-	if cfg, root := designProjectOf(""); cfg != nil || root != "" {
-		t.Errorf("an untitled buffer = %v, %q; want nil and empty", cfg, root)
+// A file beside a design folder is analysed on its own, as `craftgo fmt`
+// analyses it: the folder's declarations do not resolve in it.
+func TestAFileOutsideTheDesignRootIsAnalysedAlone(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "design", "craftgo.design.yaml"), layoutOnly)
+	mustWrite(t, filepath.Join(root, "design", "app.craftgo"), "package app\n\ntype A { x string }\n")
+	stray := filepath.Join(root, "stray.craftgo")
+	mustWrite(t, stray, "package app\n\ntype B { a A }\n")
+	v := newTestServer().loadProject(stray, readFileT(t, stray))
+	if v.root != "" || len(v.files) != 1 {
+		t.Errorf("root %q with %d file(s), want the file alone", v.root, len(v.files))
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 
 	"go.lsp.dev/protocol"
 
+	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/format"
 )
 
@@ -18,7 +19,7 @@ func (s *server) onFormatting(_ context.Context, params protocol.DocumentFormatt
 	}
 	// A buffer with an error is left alone: a mistake the parser tolerates
 	// reads as another construct, which formatting would write back.
-	if r.project().hasErrors() {
+	if len(designopts.FileErrors(r.project().diags, r.path)) > 0 {
 		return []protocol.TextEdit{}, nil
 	}
 	formatted, diags := format.Format(string(params.TextDocument.URI), r.src)
