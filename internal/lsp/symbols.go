@@ -57,7 +57,7 @@ func (s *server) onWorkspaceSymbol(ctx context.Context, reply jsonrpc2.Replier, 
 				Kind: workspaceSymbolKind(d),
 				Location: protocol.Location{
 					URI:   protocol.DocumentURI(fileURI),
-					Range: rangeOfPosLen(d.DeclPos(), len(name)),
+					Range: spanRange(p.src, d.DeclPos(), len(name)),
 				},
 				ContainerName: containerNameFromFile(p.file),
 			})
@@ -117,14 +117,14 @@ func documentSymbols(view snapshotView) []protocol.DocumentSymbol {
 		if d.DeclName() == "" {
 			continue
 		}
-		out = append(out, declSymbol(d))
+		out = append(out, declSymbol(view.src, d))
 	}
 	return out
 }
 
-func declSymbol(d ast.Decl) protocol.DocumentSymbol {
+func declSymbol(src string, d ast.Decl) protocol.DocumentSymbol {
 	pos := d.DeclPos()
-	r := rangeOfPosLen(pos, len(d.DeclName()))
+	r := spanRange(src, pos, len(d.DeclName()))
 	switch v := d.(type) {
 	case *ast.TypeDecl:
 		children := make([]protocol.DocumentSymbol, 0, len(v.Body))
@@ -133,7 +133,7 @@ func declSymbol(d ast.Decl) protocol.DocumentSymbol {
 			if !ok || f.Name == "" {
 				continue
 			}
-			children = append(children, fieldSymbol(f))
+			children = append(children, fieldSymbol(src, f))
 		}
 		return protocol.DocumentSymbol{
 			Name:           v.Name,
@@ -150,7 +150,7 @@ func declSymbol(d ast.Decl) protocol.DocumentSymbol {
 			if ev.Name == "" {
 				continue
 			}
-			er := rangeOfPosLen(ev.Pos, len(ev.Name))
+			er := spanRange(src, ev.Pos, len(ev.Name))
 			children = append(children, protocol.DocumentSymbol{
 				Name:           ev.Name,
 				Kind:           protocol.SymbolKindEnumMember,
@@ -191,12 +191,12 @@ func declSymbol(d ast.Decl) protocol.DocumentSymbol {
 			SelectionRange: r,
 		}
 	case *ast.EventDecl:
-		return eventSymbol(v)
+		return eventSymbol(src, v)
 	case *ast.ServiceDecl:
 		children := make([]protocol.DocumentSymbol, 0, len(v.Members))
 		for _, member := range v.Members {
 			if m, ok := member.(*ast.Method); ok && m.Name != "" {
-				children = append(children, methodSymbol(m))
+				children = append(children, methodSymbol(src, m))
 			}
 		}
 		return protocol.DocumentSymbol{
@@ -216,8 +216,8 @@ func declSymbol(d ast.Decl) protocol.DocumentSymbol {
 	}
 }
 
-func fieldSymbol(f *ast.Field) protocol.DocumentSymbol {
-	r := rangeOfPosLen(f.Pos, len(f.Name))
+func fieldSymbol(src string, f *ast.Field) protocol.DocumentSymbol {
+	r := spanRange(src, f.Pos, len(f.Name))
 	return protocol.DocumentSymbol{
 		Name:           f.Name,
 		Kind:           protocol.SymbolKindField,
@@ -227,8 +227,8 @@ func fieldSymbol(f *ast.Field) protocol.DocumentSymbol {
 }
 
 // eventSymbol returns the outline entry `event Name (Payload)`.
-func eventSymbol(e *ast.EventDecl) protocol.DocumentSymbol {
-	r := rangeOfPosLen(e.Pos, len("event")+1+len(e.Name))
+func eventSymbol(src string, e *ast.EventDecl) protocol.DocumentSymbol {
+	r := spanRange(src, e.Pos, len("event")+1+len(e.Name))
 	detail := "event " + e.Name
 	if e.Payload != nil && e.Payload.Type != nil && e.Payload.Type.Name != nil {
 		payload := e.Payload.Type.Name.String()
@@ -246,8 +246,8 @@ func eventSymbol(e *ast.EventDecl) protocol.DocumentSymbol {
 	}
 }
 
-func methodSymbol(m *ast.Method) protocol.DocumentSymbol {
-	r := rangeOfPosLen(m.Pos, len(m.Verb)+1+len(m.Name))
+func methodSymbol(src string, m *ast.Method) protocol.DocumentSymbol {
+	r := spanRange(src, m.Pos, len(m.Verb)+1+len(m.Name))
 	// Detail: `verb Name (Req → Resp)`, without a missing side.
 	detail := m.Verb + " " + m.Name
 	req, resp := "", ""
@@ -267,11 +267,12 @@ func methodSymbol(m *ast.Method) protocol.DocumentSymbol {
 	}
 	namePos := m.Pos
 	namePos.Column += len(m.Verb) + 1
+	namePos.Offset += len(m.Verb) + 1
 	return protocol.DocumentSymbol{
 		Name:           m.Name,
 		Detail:         detail,
 		Kind:           protocol.SymbolKindMethod,
 		Range:          r,
-		SelectionRange: rangeOfPosLen(namePos, len(m.Name)),
+		SelectionRange: spanRange(src, namePos, len(m.Name)),
 	}
 }

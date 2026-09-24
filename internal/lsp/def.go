@@ -25,16 +25,16 @@ func (s *server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req j
 		return reply(ctx, []protocol.Location{}, nil)
 	}
 	view := parseSnapshot(string(params.TextDocument.URI), src)
-	idx, tok := view.tokenAt(params.Position.Line, params.Position.Character)
-	if idx < 0 || tok.Kind != lexer.Ident {
+	c := view.cursorAt(params.Position)
+	if c.at < 0 || view.tokens[c.at].Kind != lexer.Ident {
 		return reply(ctx, []protocol.Location{}, nil)
 	}
 	current := params.TextDocument.URI
 	v := s.loadProject(uriToPath(string(current)), src)
-	if loc, ok := enumValueDefinition(v, view, params.Position, tok.Text, current); ok {
+	if loc, ok := enumValueDefinition(v, view, c, current); ok {
 		return reply(ctx, []protocol.Location{loc}, nil)
 	}
-	d := v.lookup(qualifiedNameAt(view, idx), lookupKindAt(view, idx, params.Position))
+	d := v.lookup(qualifiedNameAt(view, c.at), lookupKindAt(view, c))
 	if d == nil {
 		return reply(ctx, []protocol.Location{}, nil)
 	}
@@ -43,12 +43,13 @@ func (s *server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req j
 
 // enumValueDefinition resolves a value named in a field's `@default(...)` or
 // `@example(...)` to its declaration in the field's enum type.
-func enumValueDefinition(v projectView, view snapshotView, pos protocol.Position, name string, current protocol.DocumentURI) (protocol.Location, bool) {
-	decName, ok := decoratorArgContext(view, pos)
+func enumValueDefinition(v projectView, view snapshotView, c cursor, current protocol.DocumentURI) (protocol.Location, bool) {
+	decName, _, ok := decoratorArgContext(view, c)
 	if !ok || (decName != "default" && decName != "example") {
 		return protocol.Location{}, false
 	}
-	f := fieldAtCursor(view, pos)
+	name := view.tokens[c.at].Text
+	f := fieldAtCursor(view, c)
 	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
 		return protocol.Location{}, false
 	}
@@ -91,10 +92,10 @@ func enclosingDeclKeyword(view snapshotView, idx int) (lexer.Kind, int) {
 	return last, depth
 }
 
-// lookupKindAt returns the declaration kinds a definition at token idx may
-// resolve to, from the tokens around it.
-func lookupKindAt(view snapshotView, idx int, pos protocol.Position) semantic.DeclKind {
-	if decName, ok := decoratorArgContext(view, pos); ok {
+// lookupKindAt returns the declaration kinds the identifier under the cursor
+// may resolve to, from the tokens around it.
+func lookupKindAt(view snapshotView, c cursor) semantic.DeclKind {
+	if decName, _, ok := decoratorArgContext(view, c); ok {
 		switch decName {
 		case "middlewares":
 			return semantic.MiddlewareDecls
@@ -103,10 +104,10 @@ func lookupKindAt(view snapshotView, idx int, pos protocol.Position) semantic.De
 		}
 		return semantic.AnyDecl
 	}
-	if isServiceHeaderPosition(view, idx) {
+	if isServiceHeaderPosition(view, c.at) {
 		return semantic.ServiceDecls
 	}
-	if isTypeShapePosition(view, idx) {
+	if isTypeShapePosition(view, c.at) {
 		return semantic.TypeShapeDecls
 	}
 	return semantic.AnyDecl
@@ -179,11 +180,11 @@ func (s *server) onReferences(ctx context.Context, reply jsonrpc2.Replier, req j
 		return reply(ctx, []protocol.Location{}, nil)
 	}
 	view := parseSnapshot(string(params.TextDocument.URI), src)
-	idx, tok := view.tokenAt(params.Position.Line, params.Position.Character)
-	if idx < 0 || tok.Kind != lexer.Ident {
+	c := view.cursorAt(params.Position)
+	if c.at < 0 || view.tokens[c.at].Kind != lexer.Ident {
 		return reply(ctx, []protocol.Location{}, nil)
 	}
-	out := s.projectNameMatches(view, params.TextDocument.URI, src, tok.Text, params.Context.IncludeDeclaration)
+	out := s.projectNameMatches(view, params.TextDocument.URI, src, view.tokens[c.at].Text, params.Context.IncludeDeclaration)
 	return reply(ctx, out, nil)
 }
 
@@ -214,7 +215,7 @@ func (s *server) projectNameMatches(view snapshotView, currentURI protocol.Docum
 			if !includeDecl && declPos != nil && fileURI == declURI && t.Pos == *declPos {
 				continue
 			}
-			out = append(out, protocol.Location{URI: fileURI, Range: rangeOf(t)})
+			out = append(out, protocol.Location{URI: fileURI, Range: rangeOf(p.src, t)})
 		}
 	}
 	return out
@@ -235,7 +236,7 @@ func nameMatches(view snapshotView, u protocol.DocumentURI, name string, include
 		if !includeDecl && declPos != nil && t.Pos == *declPos {
 			continue
 		}
-		out = append(out, protocol.Location{URI: u, Range: rangeOf(t)})
+		out = append(out, protocol.Location{URI: u, Range: rangeOf(view.src, t)})
 	}
 	return out
 }
@@ -252,17 +253,17 @@ func (s *server) onDocumentHighlight(ctx context.Context, reply jsonrpc2.Replier
 		return reply(ctx, []protocol.DocumentHighlight{}, nil)
 	}
 	view := parseSnapshot(string(params.TextDocument.URI), src)
-	idx, tok := view.tokenAt(params.Position.Line, params.Position.Character)
-	if idx < 0 || tok.Kind != lexer.Ident {
+	c := view.cursorAt(params.Position)
+	if c.at < 0 || view.tokens[c.at].Kind != lexer.Ident {
 		return reply(ctx, []protocol.DocumentHighlight{}, nil)
 	}
+	name := view.tokens[c.at].Text
 	out := []protocol.DocumentHighlight{}
 	for _, t := range view.tokens {
-		if t.Kind != lexer.Ident || t.Text != tok.Text {
+		if t.Kind != lexer.Ident || t.Text != name {
 			continue
 		}
-		kind := protocol.DocumentHighlightKindText
-		out = append(out, protocol.DocumentHighlight{Range: rangeOf(t), Kind: kind})
+		out = append(out, protocol.DocumentHighlight{Range: rangeOf(view.src, t), Kind: protocol.DocumentHighlightKindText})
 	}
 	return reply(ctx, out, nil)
 }

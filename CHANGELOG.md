@@ -152,6 +152,17 @@ breaking change to the DSL or the generated layout bumps the major version.
   `service`, `get` or any other keyword is an error instead of an edit that
   breaks every use.
 
+- **Signature help highlights the argument the cursor is in**, on whitespace
+  and right after a comma too, and closes outside the parentheses.
+
+- **Editor ranges are exact after an emoji.** Highlights, references, rename
+  and completion edits cover the right text on a line holding a character
+  outside the Basic Multilingual Plane, and import-path completion narrows
+  correctly after a non-ASCII character.
+
+- **Completion on a one-line type body uses the field before the cursor**:
+  `@default(|)` after a body's second field offers that field's values.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

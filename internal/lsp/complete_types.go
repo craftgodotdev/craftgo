@@ -17,8 +17,8 @@ import (
 
 // defaultValueCompletions answers `@default(|)` from the field's type: an
 // enum's values, or true and false for a bool or a scalar over one; else nil.
-func (s *server) defaultValueCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
-	f := fieldAtCursor(view, pos)
+func (s *server) defaultValueCompletions(view snapshotView, c cursor, currentURI, currentSrc string) []protocol.CompletionItem {
+	f := fieldAtCursor(view, c)
 	if f == nil || f.Type == nil || f.Type.Map != nil || f.Type.Array || f.Type.Named == nil || f.Type.Named.Name == nil {
 		return nil
 	}

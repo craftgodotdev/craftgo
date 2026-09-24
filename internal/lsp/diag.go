@@ -109,22 +109,6 @@ func toLSP(d lexer.Diagnostic, srcByFile map[string]string) protocol.Diagnostic 
 	return out
 }
 
-// lspPos converts a 1-based lexer position to a 0-based LSP one, copying the
-// rune column as the character.
-func lspPos(p lexer.Position) protocol.Position {
-	line, col := p.Line, p.Column
-	if line < 1 {
-		line = 1
-	}
-	if col < 1 {
-		col = 1
-	}
-	return protocol.Position{
-		Line:      uint32(line - 1),
-		Character: uint32(col - 1),
-	}
-}
-
 func lspSeverity(s lexer.Severity) protocol.DiagnosticSeverity {
 	switch s {
 	case lexer.SeverityError:

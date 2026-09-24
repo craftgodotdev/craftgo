@@ -68,7 +68,7 @@ func memberKeywordHover(view snapshotView, idx int, tok lexer.Token) *protocol.H
 	}
 	return &protocol.Hover{
 		Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: kd.doc},
-		Range:    rangePtr(rangeOf(tok)),
+		Range:    rangePtr(rangeOf(view.src, tok)),
 	}
 }
 
@@ -83,11 +83,11 @@ func (s *server) onHover(ctx context.Context, reply jsonrpc2.Replier, req jsonrp
 		return reply(ctx, nil, nil)
 	}
 	view := parseSnapshot(string(params.TextDocument.URI), src)
-	idx, tok := view.tokenAt(params.Position.Line, params.Position.Character)
-	if idx < 0 {
+	c := view.cursorAt(params.Position)
+	if c.at < 0 {
 		return reply(ctx, nil, nil)
 	}
-	hov := s.hoverWithProject(view, idx, tok, string(params.TextDocument.URI), src)
+	hov := s.hoverWithProject(view, c.at, view.tokens[c.at], string(params.TextDocument.URI), src)
 	return reply(ctx, hov, nil)
 }
 
@@ -97,11 +97,11 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 	if tok.Kind == lexer.At && idx+1 < len(view.tokens) {
 		next := view.tokens[idx+1]
 		if next.Kind == lexer.Ident && view.tokens[idx+1].Pos.Line == tok.Pos.Line {
-			return decoratorHover(next.Text, joinedRange(tok, next))
+			return decoratorHover(next.Text, joinedRange(view.src, tok, next))
 		}
 	}
 	if tok.Kind == lexer.Ident && idx > 0 && view.tokens[idx-1].Kind == lexer.At {
-		return decoratorHover(tok.Text, joinedRange(view.tokens[idx-1], tok))
+		return decoratorHover(tok.Text, joinedRange(view.src, view.tokens[idx-1], tok))
 	}
 	if h := formatRawArgHover(view, idx, tok); h != nil {
 		return h
@@ -109,7 +109,7 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 	if doc, ok := verbDocs[tok.Text]; ok && isVerbToken(tok) {
 		return &protocol.Hover{
 			Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: doc},
-			Range:    rangePtr(rangeOf(tok)),
+			Range:    rangePtr(rangeOf(view.src, tok)),
 		}
 	}
 	if h := memberKeywordHover(view, idx, tok); h != nil {
@@ -120,18 +120,18 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 		if sp, ok := prims.Lookup(tok.Text); ok && sp.Doc != "" {
 			return &protocol.Hover{
 				Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: sp.Doc},
-				Range:    rangePtr(rangeOf(tok)),
+				Range:    rangePtr(rangeOf(view.src, tok)),
 			}
 		}
 		if errcat.IsCategory(tok.Text) {
-			return errorCategoryHover(tok)
+			return errorCategoryHover(tok.Text, rangeOf(view.src, tok))
 		}
 		if d := findDecl(view.file, tok.Text); d != nil {
-			return userTypeHover(d, rangeOf(tok))
+			return userTypeHover(d, rangeOf(view.src, tok))
 		}
 		// A field's own name token shows the field.
 		if f, parent := findFieldAtPos(view.file, tok.Pos); f != nil {
-			return fieldHover(parent, f, rangeOf(tok))
+			return fieldHover(parent, f, rangeOf(view.src, tok))
 		}
 	}
 	return nil
@@ -150,7 +150,7 @@ func formatRawArgHover(view snapshotView, idx int, tok lexer.Token) *protocol.Ho
 	}
 	return &protocol.Hover{
 		Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: semantic.FormatRawDoc},
-		Range:    rangePtr(rangeOf(tok)),
+		Range:    rangePtr(rangeOf(view.src, tok)),
 	}
 }
 
@@ -260,7 +260,7 @@ func (s *server) hoverWithProject(view snapshotView, idx int, tok lexer.Token, c
 	}
 	v := s.loadProject(uriToPath(currentURI), currentSrc)
 	if d := v.lookup(qualifiedNameAt(view, idx), semantic.AnyDecl); d != nil {
-		return userTypeHover(d, rangeOf(tok))
+		return userTypeHover(d, rangeOf(view.src, tok))
 	}
 	return nil
 }
@@ -343,21 +343,18 @@ func userTypeHover(d ast.Decl, r protocol.Range) *protocol.Hover {
 	}
 }
 
-// errorCategoryHover renders the hover of an error category name.
-func errorCategoryHover(tok lexer.Token) *protocol.Hover {
-	body := fmt.Sprintf("**`%s`** - built-in error category.\n\nReserved name; use as `error %s YourErrorName` to declare an error of this kind.", tok.Text, tok.Text)
+// errorCategoryHover renders the hover of the error category name at r.
+func errorCategoryHover(name string, r protocol.Range) *protocol.Hover {
+	body := fmt.Sprintf("**`%s`** - built-in error category.\n\nReserved name; use as `error %s YourErrorName` to declare an error of this kind.", name, name)
 	return &protocol.Hover{
 		Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: body},
-		Range:    rangePtr(rangeOf(tok)),
+		Range:    rangePtr(r),
 	}
 }
 
-// joinedRange returns the range from a's start to b's end; both must be on
-// one line.
-func joinedRange(a, b lexer.Token) protocol.Range {
-	end := b.Pos
-	end.Column += len(b.Text)
-	return protocol.Range{Start: lspPos(a.Pos), End: lspPos(end)}
+// joinedRange returns the range from a's start to b's end, tokens of src.
+func joinedRange(src string, a, b lexer.Token) protocol.Range {
+	return protocol.Range{Start: rangeOf(src, a).Start, End: rangeOf(src, b).End}
 }
 
 func rangePtr(r protocol.Range) *protocol.Range { return &r }

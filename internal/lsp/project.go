@@ -87,14 +87,24 @@ func (v projectView) lookup(name string, kinds semantic.DeclKind) ast.Decl {
 	return v.proj.Lookup(v.currentPackage(), name, kinds)
 }
 
-// locationOf returns the location of the n-column span at pos; a span in the
-// buffer keeps the editor's URI, so an untitled buffer still gets one.
+// locationOf returns the location of the n bytes at pos; a span in the buffer
+// keeps the editor's URI, so an untitled buffer still gets one.
 func (v projectView) locationOf(pos lexer.Position, n int, current protocol.DocumentURI) protocol.Location {
 	u := current
 	if pos.Filename != v.current {
 		u = uri.File(pos.Filename)
 	}
-	return protocol.Location{URI: u, Range: rangeOfPosLen(pos, n)}
+	return protocol.Location{URI: u, Range: spanRange(v.srcOf(pos.Filename), pos, n)}
+}
+
+// srcOf returns the text analysed for the file at path.
+func (v projectView) srcOf(path string) string {
+	for _, lf := range v.files {
+		if lf.path == path {
+			return lf.src
+		}
+	}
+	return ""
 }
 
 // designProjectOf returns the manifest and design root of the project holding

@@ -96,7 +96,7 @@ func hoverAtToken(t *testing.T, view snapshotView, text string) string {
 		if tok.Text != text {
 			continue
 		}
-		idx, at := view.tokenAt(uint32(tok.Pos.Line-1), uint32(tok.Pos.Column-1))
+		idx, at := tokenUnder(view, protocol.Position{Line: uint32(tok.Pos.Line - 1), Character: uint32(tok.Pos.Column - 1)})
 		hov := hoverForToken(view, idx, at)
 		if hov == nil {
 			t.Fatalf("no hover on the token %q", text)
@@ -126,7 +126,7 @@ func TestHoverUserType(t *testing.T) {
 	if hits < 2 {
 		t.Fatalf("expected at least 2 Greeter occurrences, got %d", hits)
 	}
-	idx, tok := view.tokenAt(pos.Line, pos.Character)
+	idx, tok := tokenUnder(view, pos)
 	hov := hoverForToken(view, idx, tok)
 	if hov == nil {
 		t.Fatal("expected hover for Greeter ref")
@@ -148,8 +148,8 @@ type T {
 	st Status? @default()
 }
 `
-	// Cursor at the `(` of `@default()`.
-	items := mustCompletionsAt(t, "t.craftgo", src, 3, 20)
+	// Cursor between the parens of `@default()`.
+	items := mustCompletionsAt(t, "t.craftgo", src, 3, 21)
 	if len(items) != 3 {
 		t.Fatalf("expected 3 enum-value completions, got %d: %+v", len(items), items)
 	}
@@ -369,7 +369,7 @@ openapi:
 	fileURI := string(uri.File(srcPath))
 	// Cursor right after `@security(`.
 	pos := protocol.Position{Line: 2, Character: 10}
-	items := srv.completionsAt(view, pos, fileURI, src)
+	items := srv.completionsAt(view, view.cursorAt(pos), fileURI, src)
 	got := make(map[string]string, len(items))
 	for _, it := range items {
 		got[it.Label] = it.Detail
@@ -398,7 +398,7 @@ func TestCompletionSecuritySchemeNoManifest(t *testing.T) {
 	view := parseSnapshot(srcPath, src)
 	srv := newTestServer()
 	pos := protocol.Position{Line: 2, Character: 10}
-	_ = srv.completionsAt(view, pos, string(uri.File(srcPath)), src)
+	_ = srv.completionsAt(view, view.cursorAt(pos), string(uri.File(srcPath)), src)
 }
 
 // keys returns the keys of m in map order.
@@ -886,7 +886,7 @@ func TestCompletionHeaderLines(t *testing.T) {
 			Line:      uint32(strings.Count(head, "\n")),
 			Character: uint32(len(head) - (strings.LastIndex(head, "\n") + 1)),
 		}
-		return srv.completionsAt(view, pos, string(uri.File(buf)), clean)
+		return srv.completionsAt(view, view.cursorAt(pos), string(uri.File(buf)), clean)
 	}
 
 	t.Run("package name comes from the folder", func(t *testing.T) {
@@ -1085,7 +1085,7 @@ type Holder {
 	view := parseSnapshot("t.craftgo", src)
 	// The first Greeter is the declaration.
 	pos := findToken(t, view, "Greeter")
-	idx, tok := view.tokenAt(pos.Line, pos.Character)
+	idx, tok := tokenUnder(view, pos)
 	if tok.Text != "Greeter" {
 		t.Fatalf("token under cursor = %q, want Greeter", tok.Text)
 	}
@@ -1180,7 +1180,7 @@ service S {
 	if count < 3 {
 		t.Fatalf("expected at least 3 AuthRequired tokens, got %d", count)
 	}
-	decName, ok := decoratorArgContext(view, inside)
+	decName, _, ok := decoratorArgContext(view, view.cursorAt(inside))
 	if !ok || decName != "middlewares" {
 		t.Fatalf("decoratorArgContext should detect @middlewares, got name=%q ok=%v", decName, ok)
 	}
@@ -1214,8 +1214,7 @@ type Holder { g Greeter }
 			break
 		}
 	}
-	idx, _ := view.tokenAt(fieldTypePos.Line, fieldTypePos.Character)
-	if kind := lookupKindAt(view, idx, fieldTypePos); kind != semantic.TypeShapeDecls {
+	if kind := lookupKindAt(view, view.cursorAt(fieldTypePos)); kind != semantic.TypeShapeDecls {
 		t.Errorf("expected type-shape kinds for field-type position, got %v", kind)
 	}
 	d := lookupIn(t, "x", "Greeter", semantic.TypeShapeDecls, view.file)
@@ -1301,8 +1300,7 @@ extend service Alpha {
 	if count < 2 {
 		t.Fatalf("expected 2 Alpha tokens, got %d", count)
 	}
-	idx, _ := view.tokenAt(pos.Line, pos.Character)
-	if kind := lookupKindAt(view, idx, pos); kind != semantic.ServiceDecls {
+	if kind := lookupKindAt(view, view.cursorAt(pos)); kind != semantic.ServiceDecls {
 		t.Fatalf("expected service kinds for an extend header, got %v", kind)
 	}
 	d := lookupIn(t, "x", "Alpha", semantic.ServiceDecls, view.file)
@@ -1333,11 +1331,11 @@ extend service Alpha {
 `
 	view := parseSnapshot("alpha-extra.craftgo", ext)
 	pos := protocol.Position{Line: 2, Character: 15} // the Alpha in the extend header
-	idx, tok := view.tokenAt(pos.Line, pos.Character)
+	_, tok := tokenUnder(view, pos)
 	if tok.Text != "Alpha" {
 		t.Fatalf("probe landed on %q, not the service name", tok.Text)
 	}
-	if kind := lookupKindAt(view, idx, pos); kind != semantic.ServiceDecls {
+	if kind := lookupKindAt(view, view.cursorAt(pos)); kind != semantic.ServiceDecls {
 		t.Fatalf("expected service kinds, got %v", kind)
 	}
 	// The extend-only file holds no definition site.
@@ -1370,7 +1368,7 @@ extend service Alpha {
 `
 	view := parseSnapshot("t.craftgo", src)
 	pos := protocol.Position{Line: 3, Character: 15}
-	idx, tok := view.tokenAt(pos.Line, pos.Character)
+	idx, tok := tokenUnder(view, pos)
 	if tok.Text != "Alpha" {
 		t.Fatalf("probe landed on %q, not the service name", tok.Text)
 	}
@@ -1485,7 +1483,7 @@ func mustHoverAt(t *testing.T, path, src, needle string) string {
 	t.Helper()
 	view := parseSnapshot(path, src)
 	pos := findToken(t, view, needle)
-	idx, tok := view.tokenAt(pos.Line, pos.Character)
+	idx, tok := tokenUnder(view, pos)
 	hov := hoverForToken(view, idx, tok)
 	if hov == nil {
 		t.Fatalf("expected hover at %q", needle)
@@ -1499,7 +1497,7 @@ func mustCompletionsAt(t *testing.T, path, src string, line, ch uint32) []protoc
 	t.Helper()
 	view := parseSnapshot(path, src)
 	srv := newTestServer()
-	return srv.completionsAt(view, protocol.Position{Line: line, Character: ch}, "file:///"+path, src)
+	return srv.completionsAt(view, view.cursorAt(protocol.Position{Line: line, Character: ch}), "file:///"+path, src)
 }
 
 // labelSet returns the set of item labels.

@@ -24,27 +24,27 @@ func (s *server) onCompletion(ctx context.Context, reply jsonrpc2.Replier, req j
 		return reply(ctx, &protocol.CompletionList{}, nil)
 	}
 	view := parseSnapshot(string(params.TextDocument.URI), src)
-	items := s.completionsAt(view, params.Position, string(params.TextDocument.URI), src)
+	items := s.completionsAt(view, view.cursorAt(params.Position), string(params.TextDocument.URI), src)
 	return reply(ctx, &protocol.CompletionList{IsIncomplete: false, Items: items}, nil)
 }
 
 // namedSlotCompletions answers the slots holding a name the project, the registry
 // or the design folder knows; the bool reports such a slot, even with no answer.
-func (s *server) namedSlotCompletions(view snapshotView, pos protocol.Position, currentURI, currentSrc string, prev, mid *lexer.Token) ([]protocol.CompletionItem, bool) {
-	if isInsideImportString(view, pos) {
-		prefix := importStringPrefix(view, pos)
+func (s *server) namedSlotCompletions(view snapshotView, c cursor, currentURI, currentSrc string) ([]protocol.CompletionItem, bool) {
+	prev, mid := view.token(c.prev), view.token(c.at)
+	if prefix, ok := importPathPrefix(view, c); ok {
 		return importPathCompletions(currentURI, prefix), true
 	}
 	// `import |`: the paths come with their quotes.
 	if prev != nil && prev.Kind == lexer.KwImport {
 		return quotedImportPathCompletions(currentURI), true
 	}
-	if isExtendServiceContext(view, pos) {
+	if isExtendServiceContext(view, c) {
 		return s.serviceNameCompletions(currentURI, currentSrc), true
 	}
 	// `@name(|)`: the argument candidates of that decorator.
-	if name, ok := decoratorArgContext(view, pos); ok {
-		if items := s.decoratorArgItems(view, pos, currentURI, currentSrc, name, prev, mid); items != nil {
+	if name, _, ok := decoratorArgContext(view, c); ok {
+		if items := s.decoratorArgItems(view, c, currentURI, currentSrc, name); items != nil {
 			return items, true
 		}
 		// A registered decorator with no closed set takes a free literal, so
@@ -55,21 +55,21 @@ func (s *server) namedSlotCompletions(view snapshotView, pos protocol.Position, 
 	}
 	// `pkg.|`: the dot is mid right after it is typed, prev once the member is.
 	if mid != nil && mid.Kind == lexer.Dot {
-		if pkg, ok := identBefore(view, mid); ok {
+		if pkg, ok := identBefore(view, c.at); ok {
 			return s.packageDeclCompletions(currentURI, currentSrc, pkg), true
 		}
 	}
 	if prev != nil && prev.Kind == lexer.Dot {
-		if pkg, ok := identBefore(view, prev); ok {
+		if pkg, ok := identBefore(view, c.prev); ok {
 			return s.packageDeclCompletions(currentURI, currentSrc, pkg), true
 		}
 	}
 	// `@|` or `@na|`: decorator names.
 	if mid != nil && mid.Kind == lexer.At {
-		return decoratorCompletions(view, pos, ""), true
+		return decoratorCompletions(view, c, ""), true
 	}
 	if mid != nil && mid.Kind == lexer.Ident && prev != nil && prev.Kind == lexer.At {
-		return decoratorCompletions(view, pos, mid.Text), true
+		return decoratorCompletions(view, c, mid.Text), true
 	}
 	// `error |`: the error categories.
 	if prev != nil && prev.Kind == lexer.KwError && (mid == nil || mid.Kind == lexer.Ident) {
@@ -80,21 +80,21 @@ func (s *server) namedSlotCompletions(view snapshotView, pos protocol.Position, 
 		return s.packageNameCompletions(currentURI, currentSrc), true
 	}
 	// `/{|}`: claimed here so the parameter's brace is not read as an opened block.
-	if i, ok := pathParamContext(view, prev); ok {
+	if i, ok := pathParamContext(view, c); ok {
 		return s.pathParamCompletions(view, currentURI, currentSrc, i), true
 	}
 	return nil, false
 }
 
 // completionsAt returns the candidate items for a cursor in view.
-func (s *server) completionsAt(view snapshotView, pos protocol.Position, currentURI, currentSrc string) []protocol.CompletionItem {
-	prev, mid := surroundingTokens(view, pos)
-	if items, ok := s.namedSlotCompletions(view, pos, currentURI, currentSrc, prev, mid); ok {
+func (s *server) completionsAt(view snapshotView, c cursor, currentURI, currentSrc string) []protocol.CompletionItem {
+	if items, ok := s.namedSlotCompletions(view, c, currentURI, currentSrc); ok {
 		return items
 	}
+	prev, mid := view.token(c.prev), view.token(c.at)
 	// Right after `{` with nothing typed (mid may be the closing `}`).
 	if prev != nil && prev.Kind == lexer.LBrace && (mid == nil || mid.Kind != lexer.Ident) {
-		block := blockAt(view, pos)
+		block := blockAt(view, c)
 		if !blockOffersKeysWhenOpened(block) {
 			return nil
 		}
@@ -105,7 +105,7 @@ func (s *server) completionsAt(view snapshotView, pos protocol.Position, current
 		return nil
 	}
 	// `type Page<|>` declares a parameter, whose name is the author's.
-	if isTypeParamDeclPosition(view, pos) {
+	if isTypeParamDeclPosition(view, c) {
 		return nil
 	}
 	// `request |`, `response |` and `payload |` name a message type.
@@ -115,13 +115,13 @@ func (s *server) completionsAt(view snapshotView, pos protocol.Position, current
 	if isTypeArgPosition(prev, mid) {
 		return s.typeCompletionsProjectWide(currentURI, currentSrc)
 	}
-	if isScalarPrimitivePosition(view, pos) {
+	if isScalarPrimitivePosition(view, c) {
 		return scalarPrimitiveCompletions()
 	}
-	if isFieldTypePosition(view, pos, prev) {
+	if isFieldTypePosition(view, c) {
 		return s.typeCompletionsProjectWide(currentURI, currentSrc)
 	}
-	return s.blockKeyCompletions(blockAt(view, pos), currentURI, currentSrc)
+	return s.blockKeyCompletions(blockAt(view, c), currentURI, currentSrc)
 }
 
 // completionBlock is the kind of block a cursor sits in.
@@ -140,10 +140,8 @@ const (
 
 // blockAt classifies the cursor's block by the enclosing declaration keyword
 // and the brace depth; depth 2 inside a service is a method body.
-func blockAt(view snapshotView, pos protocol.Position) completionBlock {
-	idx, _ := view.tokenAt(pos.Line, pos.Character)
-	target := lexer.Position{Line: int(pos.Line) + 1, Column: int(pos.Character) + 1}
-	kw, depth := enclosingDeclKeyword(view, scanFromIndex(view, idx, target)+1)
+func blockAt(view snapshotView, c cursor) completionBlock {
+	kw, depth := enclosingDeclKeyword(view, c.lead())
 	if depth == 0 {
 		return blockFile
 	}
@@ -201,8 +199,8 @@ func blockOffersKeysWhenOpened(b completionBlock) bool {
 
 // pathParamContext reports whether the cursor is inside a route parameter
 // (`/{|}` or `/{i|d}`) and returns the index of its `{`.
-func pathParamContext(view snapshotView, prev *lexer.Token) (int, bool) {
-	i := tokenIndex(view, prev)
+func pathParamContext(view snapshotView, c cursor) (int, bool) {
+	i := c.prev
 	if i < 0 {
 		return 0, false
 	}
@@ -219,66 +217,8 @@ func pathParamContext(view snapshotView, prev *lexer.Token) (int, bool) {
 	return 0, false
 }
 
-// tokenIndex returns the index of t, a pointer into view.tokens, or -1.
-func tokenIndex(view snapshotView, t *lexer.Token) int {
-	for i := range view.tokens {
-		if &view.tokens[i] == t {
-			return i
-		}
-	}
-	return -1
-}
-
-// surroundingTokens returns the token before the cursor (prev) and the one
-// under it (mid); on whitespace prev is the last token ending before it.
-func surroundingTokens(view snapshotView, pos protocol.Position) (prev, mid *lexer.Token) {
-	idx, _ := view.tokenAt(pos.Line, pos.Character)
-	if idx >= 0 {
-		mid = &view.tokens[idx]
-	}
-	target := lexer.Position{Line: int(pos.Line) + 1, Column: int(pos.Character) + 1}
-	scanFrom := scanFromIndex(view, idx, target)
-	for i := scanFrom; i >= 0; i-- {
-		t := view.tokens[i]
-		if t.Kind == lexer.EOF {
-			continue
-		}
-		prev = &view.tokens[i]
-		break
-	}
-	return prev, mid
-}
-
-// scanFromIndex returns the index to scan backward from: idx-1 when the cursor
-// is on a token, else the last non-EOF token ending at or before target, or -1.
-func scanFromIndex(view snapshotView, idx int, target lexer.Position) int {
-	if idx >= 0 {
-		return idx - 1
-	}
-	for i := len(view.tokens) - 1; i >= 0; i-- {
-		t := view.tokens[i]
-		if t.Kind == lexer.EOF {
-			continue
-		}
-		end := t.Pos
-		end.Column += len(t.Text)
-		if posLessEq(end, target) {
-			return i
-		}
-	}
-	return -1
-}
-
-// posLessEq reports whether a is at or before b.
-func posLessEq(a, b lexer.Position) bool {
-	if a.Line != b.Line {
-		return a.Line < b.Line
-	}
-	return a.Column <= b.Column
-}
-
 // isTypeArgPosition reports whether the cursor is in a generic or map argument
-// list (`Page<|`, `map<K, |`); tokenAt makes a touched `<` or `,` mid.
+// list (`Page<|`, `map<K, |`); a touched `<` or `,` is mid.
 func isTypeArgPosition(prev, mid *lexer.Token) bool {
 	if mid != nil && (mid.Kind == lexer.LAngle || mid.Kind == lexer.Comma) {
 		return true
@@ -288,23 +228,20 @@ func isTypeArgPosition(prev, mid *lexer.Token) bool {
 
 // isFieldTypePosition reports whether the cursor is in a field's type slot
 // (`name |`): prev is the name token of a parsed field.
-func isFieldTypePosition(view snapshotView, pos protocol.Position, prev *lexer.Token) bool {
-	if prev == nil {
+func isFieldTypePosition(view snapshotView, c cursor) bool {
+	if c.prev < 0 {
 		return false
 	}
-	f := fieldAtCursor(view, pos)
-	return f != nil && f.Pos == prev.Pos
+	f := fieldAtCursor(view, c)
+	return f != nil && f.Pos == view.tokens[c.prev].Pos
 }
 
 // isTypeParamDeclPosition reports whether the cursor is in a type parameter
 // list being declared (`type Page<|`), not a generic argument (`Page<|`).
-func isTypeParamDeclPosition(view snapshotView, pos protocol.Position) bool {
-	idx, _ := view.tokenAt(pos.Line, pos.Character)
-	target := lexer.Position{Line: int(pos.Line) + 1, Column: int(pos.Character) + 1}
-	i := scanFromIndex(view, idx, target)
-	if idx >= 0 && idx < len(view.tokens) &&
-		(view.tokens[idx].Kind == lexer.LAngle || view.tokens[idx].Kind == lexer.Comma) {
-		i = idx
+func isTypeParamDeclPosition(view snapshotView, c cursor) bool {
+	i := c.prev
+	if c.at >= 0 && (view.tokens[c.at].Kind == lexer.LAngle || view.tokens[c.at].Kind == lexer.Comma) {
+		i = c.at
 	}
 	for ; i >= 2; i-- {
 		switch view.tokens[i].Kind {
@@ -320,31 +257,22 @@ func isTypeParamDeclPosition(view snapshotView, pos protocol.Position) bool {
 
 // isScalarPrimitivePosition reports whether the cursor is in the primitive
 // slot of `scalar Name |`.
-func isScalarPrimitivePosition(view snapshotView, pos protocol.Position) bool {
-	idx, _ := view.tokenAt(pos.Line, pos.Character)
-	target := lexer.Position{Line: int(pos.Line) + 1, Column: int(pos.Character) + 1}
-	scanFrom := scanFromIndex(view, idx, target)
-	if scanFrom < 1 {
-		return false
-	}
-	prev := view.tokens[scanFrom]
-	prevPrev := view.tokens[scanFrom-1]
-	return prev.Kind == lexer.Ident && prevPrev.Kind == lexer.KwScalar
+func isScalarPrimitivePosition(view snapshotView, c cursor) bool {
+	return c.prev >= 1 && view.tokens[c.prev].Kind == lexer.Ident && view.tokens[c.prev-1].Kind == lexer.KwScalar
 }
 
-// guessLevel returns the decorator site level of a `@` at pos.
-func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
+// guessLevel returns the decorator site level of a `@` at the cursor.
+func guessLevel(view snapshotView, c cursor) semantic.Level {
 	if view.file == nil {
 		return semantic.LvlFile
 	}
-	line := int(pos.Line) + 1
 	// At or above the `package` line the site is the file.
-	if view.file.Package != nil && line <= view.file.Package.Pos.Line {
+	if view.file.Package != nil && c.line <= view.file.Package.Pos.Line {
 		return semantic.LvlFile
 	}
 	var prevDecl, nextDecl ast.Decl
 	for _, d := range view.file.Decls {
-		if d.DeclPos().Line >= line {
+		if d.DeclPos().Line >= c.line {
 			if nextDecl == nil {
 				nextDecl = d
 			}
@@ -352,7 +280,7 @@ func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 			prevDecl = d
 		}
 	}
-	if prevDecl != nil && cursorInsideDeclBody(view, pos, prevDecl) {
+	if prevDecl != nil && cursorInsideDeclBody(view, c, prevDecl) {
 		// Inside a type, enum, bodied error or service: its member level.
 		switch v := prevDecl.(type) {
 		case *ast.TypeDecl:
@@ -373,21 +301,20 @@ func guessLevel(view snapshotView, pos protocol.Position) semantic.Level {
 	}
 	// A half-typed `@` swallows the next keyword as its name (`@service`), so the
 	// declaration below is recovered from the tokens.
-	if lvl := nextTopLevelDeclLevel(view, pos); lvl != 0 {
+	if lvl := nextTopLevelDeclLevel(view, c); lvl != 0 {
 		return lvl
 	}
 	// After the last declaration the site is the file.
 	return semantic.LvlFile
 }
 
-// firstTopLevelDeclKeyword returns the first declaration keyword after pos at
-// brace depth 0, or [lexer.EOF] when none follows or pos is inside a body.
-func firstTopLevelDeclKeyword(view snapshotView, pos protocol.Position) lexer.Kind {
-	cursorLine := int(pos.Line) + 1
-	cursorCol := int(pos.Character) + 1
+// firstTopLevelDeclKeyword returns the first declaration keyword after the
+// cursor at brace depth 0, or [lexer.EOF] when none follows or the cursor is
+// inside a body.
+func firstTopLevelDeclKeyword(view snapshotView, c cursor) lexer.Kind {
 	depth := 0
 	for _, t := range view.tokens {
-		if t.Pos.Line < cursorLine || (t.Pos.Line == cursorLine && t.Pos.Column <= cursorCol) {
+		if t.Pos.Offset <= c.off {
 			continue
 		}
 		switch t.Kind {
@@ -415,8 +342,8 @@ func firstTopLevelDeclKeyword(view snapshotView, pos protocol.Position) lexer.Ki
 
 // nextTopLevelDeclLevel maps the next top-level decl keyword to its decorator
 // site level, or 0 when none follows.
-func nextTopLevelDeclLevel(view snapshotView, pos protocol.Position) semantic.Level {
-	switch firstTopLevelDeclKeyword(view, pos) {
+func nextTopLevelDeclLevel(view snapshotView, c cursor) semantic.Level {
+	switch firstTopLevelDeclKeyword(view, c) {
 	case lexer.KwType:
 		return semantic.LvlType
 	case lexer.KwEnum:
@@ -435,21 +362,19 @@ func nextTopLevelDeclLevel(view snapshotView, pos protocol.Position) semantic.Le
 	return 0
 }
 
-// cursorInsideDeclBody reports whether pos is inside prev's braces, counted
-// from prev's line since AST nodes carry no end position.
-func cursorInsideDeclBody(view snapshotView, pos protocol.Position, prev ast.Decl) bool {
+// cursorInsideDeclBody reports whether the cursor is inside prev's braces,
+// counted from prev's line since AST nodes carry no end position.
+func cursorInsideDeclBody(view snapshotView, c cursor, prev ast.Decl) bool {
 	if prev == nil {
 		return false
 	}
-	cursorLine := int(pos.Line) + 1
-	cursorCol := int(pos.Character) + 1
 	startLine := prev.DeclPos().Line
 	depth := 0
 	for _, t := range view.tokens {
 		if t.Pos.Line < startLine {
 			continue
 		}
-		if t.Pos.Line > cursorLine || (t.Pos.Line == cursorLine && t.Pos.Column > cursorCol) {
+		if t.Pos.Offset > c.off {
 			break
 		}
 		switch t.Kind {

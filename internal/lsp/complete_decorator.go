@@ -14,7 +14,7 @@ import (
 
 // decoratorArgItems offers the argument candidates of `@name(...)`, or nil
 // when the slot has no closed set.
-func (s *server) decoratorArgItems(view snapshotView, pos protocol.Position, currentURI, currentSrc, name string, prev, mid *lexer.Token) []protocol.CompletionItem {
+func (s *server) decoratorArgItems(view snapshotView, c cursor, currentURI, currentSrc, name string) []protocol.CompletionItem {
 	if name == "middlewares" {
 		return s.middlewareNameCompletions(currentURI, currentSrc)
 	}
@@ -30,16 +30,16 @@ func (s *server) decoratorArgItems(view snapshotView, pos protocol.Position, cur
 		}
 	}
 	if name == "default" {
-		if items := s.defaultValueCompletions(view, pos, currentURI, currentSrc); items != nil {
+		if items := s.defaultValueCompletions(view, c, currentURI, currentSrc); items != nil {
 			return items
 		}
 	}
 	if spec, ok := semantic.Registry[name]; ok && len(spec.Args.Kinds) > 0 {
 		switch spec.Args.Kinds[0] {
 		case semantic.ArgDuration:
-			return durationCompletions(prev, mid)
+			return durationCompletions(view, c)
 		case semantic.ArgSize:
-			return sizeCompletions(prev, mid)
+			return sizeCompletions(view, c)
 		}
 	}
 	return decoratorArgCompletions(name)
@@ -86,28 +86,14 @@ func httpStatusCompletions() []protocol.CompletionItem {
 	return out
 }
 
-// decoratorArgContext reports whether pos is inside a `@name(...)` argument
-// list and returns name. The backward walk starts at the cursor's own token
-// (a cursor on the `(` counts), or on whitespace at the last token before it.
-func decoratorArgContext(view snapshotView, pos protocol.Position) (string, bool) {
-	idx, _ := view.tokenAt(pos.Line, pos.Character)
-	start := idx
-	if idx < 0 {
-		target := lexer.Position{Line: int(pos.Line) + 1, Column: int(pos.Character) + 1}
-		start = scanFromIndex(view, idx, target)
-	}
+// decoratorArgContext reports whether the cursor is inside a `@name(...)`
+// argument list, one whose `(` starts before the cursor and whose `)` does
+// not, and returns name and the index of the `(`.
+func decoratorArgContext(view snapshotView, c cursor) (string, int, bool) {
 	depth := 0
-	for i := start; i >= 0; i-- {
-		if i >= len(view.tokens) {
-			continue
-		}
-		t := view.tokens[i]
-		switch t.Kind {
+	for i := view.lastBefore(c); i >= 0; i-- {
+		switch view.tokens[i].Kind {
 		case lexer.RParen:
-			// The cursor's own `)` closes the list it is in.
-			if i == idx {
-				continue
-			}
 			depth++
 		case lexer.LParen:
 			if depth > 0 {
@@ -117,12 +103,12 @@ func decoratorArgContext(view snapshotView, pos protocol.Position) (string, bool
 			// The unmatched `(`: a decorator when `@` is two tokens back (the
 			// name may be spelt like a keyword).
 			if i >= 2 && view.tokens[i-2].Kind == lexer.At {
-				return view.tokens[i-1].Text, true
+				return view.tokens[i-1].Text, i, true
 			}
-			return "", false
+			return "", 0, false
 		}
 	}
-	return "", false
+	return "", 0, false
 }
 
 // decoratorArgCompletions offers the registry's argument values of @name (the
@@ -149,21 +135,21 @@ func decoratorArgCompletions(name string) []protocol.CompletionItem {
 }
 
 // decoratorCompletions offers the registered decorators legal at the site
-// level of pos whose name starts with prefix.
-func decoratorCompletions(view snapshotView, pos protocol.Position, prefix string) []protocol.CompletionItem {
-	level := guessLevel(view, pos)
+// level of the cursor whose name starts with prefix.
+func decoratorCompletions(view snapshotView, c cursor, prefix string) []protocol.CompletionItem {
+	level := guessLevel(view, c)
 	// On a field or scalar, the type's primitive category must meet the
 	// decorator's AppliesTo; 0 on either side means no filter.
 	var fieldPrim semantic.Prims
 	switch level {
 	case semantic.LvlField:
-		fieldPrim = fieldPrimAt(view, pos)
+		fieldPrim = fieldPrimAt(view, c)
 	case semantic.LvlScalar:
-		fieldPrim = scalarPrimAt(view, pos)
+		fieldPrim = scalarPrimAt(view, c)
 	}
 	// An `extend service` takes the service decorators that have a method form,
 	// plus @group.
-	extendSite := level == semantic.LvlService && firstTopLevelDeclKeyword(view, pos) == lexer.KwExtend
+	extendSite := level == semantic.LvlService && firstTopLevelDeclKeyword(view, c) == lexer.KwExtend
 	names := make([]string, 0, len(semantic.Registry))
 	for name := range semantic.Registry {
 		names = append(names, name)

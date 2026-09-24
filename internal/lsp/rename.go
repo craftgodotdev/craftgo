@@ -23,14 +23,11 @@ func (s *server) onPrepareRename(ctx context.Context, reply jsonrpc2.Replier, re
 		return reply(ctx, nil, nil)
 	}
 	view := parseSnapshot(string(params.TextDocument.URI), src)
-	idx, tok := view.tokenAt(params.Position.Line, params.Position.Character)
-	if idx < 0 || tok.Kind != lexer.Ident {
+	c := view.cursorAt(params.Position)
+	if c.at < 0 || view.tokens[c.at].Kind != lexer.Ident || findDecl(view.file, view.tokens[c.at].Text) == nil {
 		return reply(ctx, nil, nil)
 	}
-	if findDecl(view.file, tok.Text) == nil {
-		return reply(ctx, nil, nil)
-	}
-	r := rangeOf(tok)
+	r := rangeOf(view.src, view.tokens[c.at])
 	return reply(ctx, &r, nil)
 }
 
@@ -49,11 +46,11 @@ func (s *server) onRename(ctx context.Context, reply jsonrpc2.Replier, req jsonr
 		return reply(ctx, nil, nil)
 	}
 	view := parseSnapshot(string(params.TextDocument.URI), src)
-	idx, tok := view.tokenAt(params.Position.Line, params.Position.Character)
-	if idx < 0 || tok.Kind != lexer.Ident || findDecl(view.file, tok.Text) == nil {
+	c := view.cursorAt(params.Position)
+	if c.at < 0 || view.tokens[c.at].Kind != lexer.Ident || findDecl(view.file, view.tokens[c.at].Text) == nil {
 		return reply(ctx, nil, nil)
 	}
-	matches := s.projectNameMatches(view, params.TextDocument.URI, src, tok.Text, true)
+	matches := s.projectNameMatches(view, params.TextDocument.URI, src, view.tokens[c.at].Text, true)
 	changes := map[protocol.DocumentURI][]protocol.TextEdit{}
 	for _, loc := range matches {
 		changes[loc.URI] = append(changes[loc.URI], protocol.TextEdit{

@@ -6,17 +6,13 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// identBefore returns the text of the token before t when it is an identifier.
-func identBefore(view snapshotView, t *lexer.Token) (string, bool) {
-	idx := tokenIndex(view, t)
-	if idx <= 0 {
+// identBefore returns the text of the token before token i when it is an
+// identifier.
+func identBefore(view snapshotView, i int) (string, bool) {
+	if i <= 0 || view.tokens[i-1].Kind != lexer.Ident {
 		return "", false
 	}
-	prev := view.tokens[idx-1]
-	if prev.Kind != lexer.Ident {
-		return "", false
-	}
-	return prev.Text, true
+	return view.tokens[i-1].Text, true
 }
 
 // durationPresets and sizePresets fill an argument with no digits typed.
@@ -24,21 +20,21 @@ var durationPresets = []string{"100ms", "500ms", "1s", "5s", "10s", "30s", "1m",
 var sizePresets = []string{"1KB", "10KB", "100KB", "1MB", "10MB", "100MB"}
 
 // durationCompletions is [unitCompletions] for a duration argument.
-func durationCompletions(prev, mid *lexer.Token) []protocol.CompletionItem {
-	return unitCompletions(prev, mid, "duration", lexer.DurationUnits, durationPresets)
+func durationCompletions(view snapshotView, c cursor) []protocol.CompletionItem {
+	return unitCompletions(view, c, "duration", lexer.DurationUnits, durationPresets)
 }
 
 // sizeCompletions is the byte-size analogue of [durationCompletions].
-func sizeCompletions(prev, mid *lexer.Token) []protocol.CompletionItem {
-	return unitCompletions(prev, mid, "size", lexer.SizeSuffixes(), sizePresets)
+func sizeCompletions(view snapshotView, c cursor) []protocol.CompletionItem {
+	return unitCompletions(view, c, "size", lexer.SizeSuffixes(), sizePresets)
 }
 
 // unitCompletions offers the typed digits joined with each suffix, as edits
 // replacing the digits, or the presets when no digits are typed.
-func unitCompletions(prev, mid *lexer.Token, detail string, suffixes, presets []string) []protocol.CompletionItem {
-	intTok := pickIntForUnit(prev, mid)
+func unitCompletions(view snapshotView, c cursor, detail string, suffixes, presets []string) []protocol.CompletionItem {
+	intTok := pickIntForUnit(view.token(c.prev), view.token(c.at))
 	if intTok != nil {
-		editRange := rangeOf(*intTok)
+		editRange := rangeOf(view.src, *intTok)
 		out := make([]protocol.CompletionItem, 0, len(suffixes))
 		for _, u := range suffixes {
 			value := intTok.Text + u
@@ -64,8 +60,8 @@ func unitCompletions(prev, mid *lexer.Token, detail string, suffixes, presets []
 	return out
 }
 
-// pickIntForUnit returns the Int token under or before the cursor; tokenAt
-// resolves `@timeout(10|)` to the `)`, leaving the digits in prev.
+// pickIntForUnit returns the Int token under or before the cursor; at
+// `@timeout(10|)` the cursor's token is the `)` and the digits are prev.
 func pickIntForUnit(prev, mid *lexer.Token) *lexer.Token {
 	if mid != nil && mid.Kind == lexer.Int {
 		return mid
@@ -78,17 +74,8 @@ func pickIntForUnit(prev, mid *lexer.Token) *lexer.Token {
 
 // isExtendServiceContext reports whether the cursor is in the name slot of
 // `extend service |`, a partly typed name included.
-func isExtendServiceContext(view snapshotView, pos protocol.Position) bool {
-	idx, _ := view.tokenAt(pos.Line, pos.Character)
-	target := lexer.Position{Line: int(pos.Line) + 1, Column: int(pos.Character) + 1}
-	end := scanFromIndex(view, idx, target) + 1
-	if idx >= 0 && idx < len(view.tokens) && view.tokens[idx].Kind == lexer.Ident {
-		end = idx
-	}
-	if end < 2 {
-		return false
-	}
-	return view.tokens[end-1].Kind == lexer.KwService && view.tokens[end-2].Kind == lexer.KwExtend
+func isExtendServiceContext(view snapshotView, c cursor) bool {
+	return c.prev >= 1 && view.tokens[c.prev].Kind == lexer.KwService && view.tokens[c.prev-1].Kind == lexer.KwExtend
 }
 
 // keywordCompletions offers the keywords in want, in catalogue order, as

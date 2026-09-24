@@ -59,7 +59,7 @@ func TestDecoratorSiteLevelFollowsTheDeclaration(t *testing.T) {
 	} {
 		pos := findToken(t, view, c.needle)
 		above := protocol.Position{Line: pos.Line - 1, Character: 0}
-		if got := guessLevel(view, above); got != c.want {
+		if got := guessLevel(view, view.cursorAt(above)); got != c.want {
 			t.Errorf("level above %q = %s, want %s", c.needle, got.Name(), c.want.Name())
 		}
 	}
@@ -95,7 +95,7 @@ event OrderPlaced {
 	pos := findToken(t, view, "@")
 	pos.Character++
 	have := map[string]bool{}
-	for _, item := range decoratorCompletions(view, pos, "") {
+	for _, item := range decoratorCompletions(view, view.cursorAt(pos), "") {
 		have[item.Label] = true
 	}
 	for _, want := range []string{"contract", "doc"} {
@@ -129,7 +129,7 @@ type Holder {
 
 	// Hover on the field named `event` must not show the keyword doc.
 	pos := findToken(t, view, "event")
-	idx, tok := view.tokenAt(pos.Line, pos.Character)
+	idx, tok := tokenUnder(view, pos)
 	if hov := hoverForToken(view, idx, tok); hov != nil && strings.Contains(hov.Contents.Value, "a contract this design declares") {
 		t.Errorf("a field named `event` showed the event keyword doc: %q", hov.Contents.Value)
 	}

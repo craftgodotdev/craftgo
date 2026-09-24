@@ -22,63 +22,81 @@ func parseSnapshot(filename, src string) snapshotView {
 	return snapshotView{src: src, tokens: p.Tokens(), file: f}
 }
 
-// tokenAt returns the index and token whose byte span, end included, holds
-// the LSP position (the later token on a tie), or -1 when none does.
-func (v snapshotView) tokenAt(line, character uint32) (int, lexer.Token) {
-	off := offsetFromLSP(v.src, line, character)
-	best := -1
+// cursor is an LSP position located in a snapshotView's tokens.
+type cursor struct {
+	off  int // byte offset in the buffer
+	line int // 1-based
+	// at is the token whose span, end included, holds off (the later of two
+	// that touch), or -1 on whitespace.
+	at int
+	// prev is the token before at or, on whitespace, the last token before
+	// off; -1 when there is none.
+	prev int
+}
+
+// cursorAt locates pos in the buffer.
+func (v snapshotView) cursorAt(pos protocol.Position) cursor {
+	c := cursor{off: offsetFromLSP(v.src, pos.Line, pos.Character), line: int(pos.Line) + 1, at: -1, prev: -1}
 	for i, t := range v.tokens {
-		if t.Kind == lexer.EOF {
-			continue
+		if t.Kind == lexer.EOF || t.Pos.Offset > c.off {
+			break
 		}
-		start := t.Pos.Offset
-		end := start + len(t.Text)
-		if start <= off && off <= end {
-			best = i
+		if c.off <= t.Pos.Offset+len(t.Text) {
+			c.at = i
+		} else {
+			c.prev = i
 		}
 	}
-	if best < 0 {
-		return -1, lexer.Token{}
+	if c.at >= 0 {
+		c.prev = c.at - 1
 	}
-	return best, v.tokens[best]
+	return c
 }
 
-// rangeOf returns the LSP range covering t.
-func rangeOf(t lexer.Token) protocol.Range {
-	start := lspPos(t.Pos)
-	endPos := t.Pos
-	endPos.Column += len(t.Text)
-	return protocol.Range{Start: start, End: lspPos(endPos)}
+// token returns the token at index i, or nil for -1.
+func (v snapshotView) token(i int) *lexer.Token {
+	if i < 0 {
+		return nil
+	}
+	return &v.tokens[i]
 }
 
-// rangeOfPosLen returns the range of n columns starting at p.
-func rangeOfPosLen(p lexer.Position, n int) protocol.Range {
-	start := lspPos(p)
-	endPos := p
-	endPos.Column += n
-	return protocol.Range{Start: start, End: lspPos(endPos)}
+// lead returns the number of tokens before the one under c, or before c on
+// whitespace.
+func (c cursor) lead() int {
+	if c.at >= 0 {
+		return c.at
+	}
+	return c.prev + 1
 }
 
-// fieldAtCursor returns the type or error field on the cursor's line, or nil.
-func fieldAtCursor(view snapshotView, pos protocol.Position) *ast.Field {
+// lastBefore returns the last token that starts before c, or -1.
+func (v snapshotView) lastBefore(c cursor) int {
+	if c.at >= 0 && v.tokens[c.at].Pos.Offset < c.off {
+		return c.at
+	}
+	return c.prev
+}
+
+// fieldAtCursor returns the type or error field on the cursor's line: the last
+// one starting before the cursor, else the line's first; nil off a field row.
+func fieldAtCursor(view snapshotView, c cursor) *ast.Field {
 	if view.file == nil {
 		return nil
 	}
-	line := int(pos.Line) + 1
+	var at *ast.Field
 	for _, d := range view.file.Decls {
 		body, ok := declBody(d)
 		if !ok {
 			continue
 		}
 		for _, m := range body {
-			f, ok := m.(*ast.Field)
-			if !ok || f.Pos.Line != line {
-				continue
+			if f, ok := m.(*ast.Field); ok && f.Pos.Line == c.line && (at == nil || f.Pos.Offset < c.off) {
+				at = f
 			}
-			return f
 		}
 	}
-	return nil
+	return at
 }
 
 // findDecl returns f's first declaration named name, or nil.

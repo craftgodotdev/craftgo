@@ -64,6 +64,27 @@ func utf16Position(src string, p lexer.Position) protocol.Position {
 	return protocol.Position{Line: uint32(line), Character: uint32(runeColToUTF16(lineText, col))}
 }
 
+// spanRange returns the LSP range of the n bytes of src that start at p, a
+// position in src.
+func spanRange(src string, p lexer.Position, n int) protocol.Range {
+	start := utf16Position(src, p)
+	from := min(max(p.Offset, 0), len(src))
+	text := src[from:min(from+n, len(src))]
+	end := start
+	if nl := strings.LastIndexByte(text, '\n'); nl >= 0 {
+		end.Line += uint32(strings.Count(text, "\n"))
+		end.Character = uint32(utf16Len(text[nl+1:]))
+	} else {
+		end.Character += uint32(utf16Len(text))
+	}
+	return protocol.Range{Start: start, End: end}
+}
+
+// rangeOf returns the LSP range of t, a token lexed from src.
+func rangeOf(src string, t lexer.Token) protocol.Range {
+	return spanRange(src, t.Pos, len(t.Text))
+}
+
 // nthLine returns the text of the 0-indexed line n (without its trailing
 // newline) and whether the line exists in src.
 func nthLine(src string, n int) (string, bool) {

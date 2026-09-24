@@ -8,6 +8,7 @@ import (
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -23,7 +24,8 @@ func (s *server) onSignatureHelp(ctx context.Context, reply jsonrpc2.Replier, re
 		return reply(ctx, nil, nil)
 	}
 	view := parseSnapshot(string(params.TextDocument.URI), src)
-	name, ok := decoratorArgContext(view, params.Position)
+	c := view.cursorAt(params.Position)
+	name, lparen, ok := decoratorArgContext(view, c)
 	if !ok {
 		return reply(ctx, nil, nil)
 	}
@@ -39,7 +41,7 @@ func (s *server) onSignatureHelp(ctx context.Context, reply jsonrpc2.Replier, re
 	for _, p := range paramLabels {
 		paramInfos = append(paramInfos, protocol.ParameterInformation{Label: p})
 	}
-	active := activeParamIndex(view, params.Position, len(paramLabels))
+	active := activeParamIndex(view, c, lparen, len(paramLabels))
 	sig := protocol.SignatureInformation{
 		Label:           label,
 		Documentation:   spec.Doc,
@@ -73,34 +75,24 @@ func decoratorSignatureLabel(name string, spec semantic.Spec) (string, []string)
 	return "@" + name + "(" + strings.Join(parts, ", ") + ")", parts
 }
 
-// activeParamIndex counts the commas between the enclosing `(` and the cursor,
-// capped at max-1.
-func activeParamIndex(view snapshotView, pos protocol.Position, max int) int {
-	idx, _ := view.tokenAt(pos.Line, pos.Character)
-	if idx < 0 {
-		idx = len(view.tokens)
-	}
-	commas := 0
-	depth := 0
-	for i := idx - 1; i >= 0; i-- {
-		t := view.tokens[i]
-		switch t.Text {
-		case ")":
+// activeParamIndex counts the top-level commas after the `(` at lparen that
+// start before the cursor, capped at max-1.
+func activeParamIndex(view snapshotView, c cursor, lparen, max int) int {
+	commas, depth, last := 0, 0, view.lastBefore(c)
+	for i := lparen + 1; i <= last; i++ {
+		switch view.tokens[i].Kind {
+		case lexer.LParen, lexer.LBracket, lexer.LBrace:
 			depth++
-		case "(":
-			if depth > 0 {
-				depth--
-				continue
-			}
-			if max > 0 && commas >= max {
-				return max - 1
-			}
-			return commas
-		case ",":
+		case lexer.RParen, lexer.RBracket, lexer.RBrace:
+			depth--
+		case lexer.Comma:
 			if depth == 0 {
 				commas++
 			}
 		}
+	}
+	if max > 0 && commas >= max {
+		return max - 1
 	}
 	return commas
 }

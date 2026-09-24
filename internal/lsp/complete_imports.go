@@ -15,32 +15,21 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// isInsideImportString reports whether pos is inside the string of an
-// `import "..."` line, after an optional alias.
-func isInsideImportString(view snapshotView, pos protocol.Position) bool {
-	line := int(pos.Line) + 1
-	col := int(pos.Character) + 1
-	for i, t := range view.tokens {
-		if t.Kind != lexer.KwImport {
-			continue
-		}
-		for j := i + 1; j < len(view.tokens) && j < i+4; j++ {
-			tk := view.tokens[j]
-			if tk.Kind == lexer.String {
-				start := tk.Pos
-				end := tk.Pos
-				end.Column += len(tk.Text)
-				if start.Line == line && start.Column <= col && col <= end.Column {
-					return true
-				}
-				break
-			}
-			if tk.Kind != lexer.Ident {
-				break
-			}
-		}
+// importPathPrefix reports whether the cursor is on the path string of an
+// `import [alias] "..."` line and returns the part typed before the cursor.
+func importPathPrefix(view snapshotView, c cursor) (string, bool) {
+	if c.at < 0 || view.tokens[c.at].Kind != lexer.String {
+		return "", false
 	}
-	return false
+	i := c.at - 1
+	if i >= 0 && view.tokens[i].Kind == lexer.Ident {
+		i--
+	}
+	if i < 0 || view.tokens[i].Kind != lexer.KwImport {
+		return "", false
+	}
+	start := view.tokens[c.at].Pos.Offset + 1
+	return view.src[start:max(start, c.off)], true
 }
 
 // importPathCompletions offers the folders under the design root that hold a
@@ -90,43 +79,6 @@ func quotedImportPathCompletions(currentURI string) []protocol.CompletionItem {
 		items[i].InsertText = strconv.Quote(items[i].Label)
 	}
 	return items
-}
-
-// importStringPrefix returns the part of the `import "..."` literal between
-// the opening quote and the cursor.
-func importStringPrefix(view snapshotView, pos protocol.Position) string {
-	line := int(pos.Line) + 1
-	col := int(pos.Character) + 1
-	for i, t := range view.tokens {
-		if t.Kind != lexer.KwImport {
-			continue
-		}
-		for j := i + 1; j < len(view.tokens) && j < i+4; j++ {
-			tk := view.tokens[j]
-			if tk.Kind == lexer.String {
-				start := tk.Pos
-				if start.Line != line {
-					return ""
-				}
-				typed := tk.Text
-				if len(typed) > 0 && typed[0] == '"' {
-					typed = typed[1:]
-				}
-				offset := col - (start.Column + 1)
-				if offset <= 0 {
-					return ""
-				}
-				if offset > len(typed) {
-					offset = len(typed)
-				}
-				return typed[:offset]
-			}
-			if tk.Kind != lexer.Ident {
-				break
-			}
-		}
-	}
-	return ""
 }
 
 // packageNameCompletions answers `package |` with the packages the other files

@@ -1,48 +1,32 @@
 package lsp
 
 import (
-	"go.lsp.dev/protocol"
-
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // fieldPrimAt returns the primitive category of the field on the cursor's
 // line, or 0 off a field row.
-func fieldPrimAt(view snapshotView, pos protocol.Position) semantic.Prims {
-	if view.file == nil {
+func fieldPrimAt(view snapshotView, c cursor) semantic.Prims {
+	f := fieldAtCursor(view, c)
+	if f == nil {
 		return 0
 	}
-	line := int(pos.Line) + 1
-	for _, d := range view.file.Decls {
-		body, ok := declBody(d)
-		if !ok {
-			continue
-		}
-		for _, m := range body {
-			f, ok := m.(*ast.Field)
-			if !ok || f.Pos.Line != line {
-				continue
-			}
-			return primOfTypeRef(f.Type, f.Decorators, view.file)
-		}
-	}
-	return 0
+	return primOfTypeRef(f.Type, f.Decorators, view.file)
 }
 
 // scalarPrimAt returns the primitive category of the scalar on the cursor's
 // line, or of the first one below the cursor's decorator lines; else 0.
-func scalarPrimAt(view snapshotView, pos protocol.Position) semantic.Prims {
+func scalarPrimAt(view snapshotView, c cursor) semantic.Prims {
 	if view.file == nil {
 		return 0
 	}
-	line := int(pos.Line) + 1
 	for _, d := range view.file.Decls {
 		sd, ok := d.(*ast.ScalarDecl)
 		if !ok {
 			continue
 		}
-		if sd.Pos.Line == line || (sd.Pos.Line >= line && noDeclBetween(view.file, line, sd.Pos.Line)) {
+		if sd.Pos.Line == c.line || (sd.Pos.Line >= c.line && noDeclBetween(view.file, c.line, sd.Pos.Line)) {
 			return primFromIdent(sd.Primitive, sd.Decorators)
 		}
 	}
