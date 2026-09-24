@@ -271,17 +271,24 @@ func primitiveCompletions() []protocol.CompletionItem {
 	return items
 }
 
-// scalarPrimitiveCompletions offers the built-ins `scalar Name |` accepts: those
+// scalarPrimitives returns the built-ins a scalar can wrap: those
 // [semantic.PrimFromName] classifies, except file.
+func scalarPrimitives() []string {
+	var out []string
+	for _, sp := range prims.All() {
+		if p := semantic.PrimFromName(sp.Name); p != 0 && p != semantic.PrimFile {
+			out = append(out, sp.Name)
+		}
+	}
+	return out
+}
+
+// scalarPrimitiveCompletions offers [scalarPrimitives] for `scalar Name |`.
 func scalarPrimitiveCompletions() []protocol.CompletionItem {
 	var out []protocol.CompletionItem
-	for _, sp := range prims.All() {
-		p := semantic.PrimFromName(sp.Name)
-		if p == 0 || p == semantic.PrimFile {
-			continue
-		}
+	for _, name := range scalarPrimitives() {
 		out = append(out, protocol.CompletionItem{
-			Label:  sp.Name,
+			Label:  name,
 			Kind:   protocol.CompletionItemKindKeyword,
 			Detail: "built-in",
 		})

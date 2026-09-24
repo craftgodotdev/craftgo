@@ -1,8 +1,11 @@
 package lsp
 
 import (
+	"strings"
+
 	"go.lsp.dev/protocol"
 
+	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
@@ -85,13 +88,17 @@ func keywordCompletions(want ...string) []protocol.CompletionItem {
 		label   string
 		snippet string // empty: plain insert
 	}
+	categories := make([]string, len(errcat.Categories))
+	for i, c := range errcat.Categories {
+		categories[i] = c.Name
+	}
 	entries := []entry{
 		{"package", "package $1"},
 		{"import", "import \"$1\""},
 		{"type", "type ${1:Name} {\n\t$0\n}"},
 		{"enum", "enum ${1:Name} {\n\t$0\n}"},
-		{"error", "error ${1|BadRequest,Unauthorized,Forbidden,NotFound,Conflict,UnprocessableEntity,TooManyRequests,Internal|} ${2:Name}"},
-		{"scalar", "scalar ${1:Name} ${2|string,int,int32,int64,uint,float64,bool,bytes|}"},
+		{"error", "error ${1|" + strings.Join(categories, ",") + "|} ${2:Name}"},
+		{"scalar", "scalar ${1:Name} ${2|" + strings.Join(scalarPrimitives(), ",") + "|}"},
 		{"service", "service ${1:Name} {\n\t$0\n}"},
 		{"extend", "extend service ${1:Name} {\n\t$0\n}"},
 		{"middleware", "middleware ${1:Name}"},

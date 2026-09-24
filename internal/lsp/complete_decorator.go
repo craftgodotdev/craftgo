@@ -2,7 +2,10 @@ package lsp
 
 import (
 	"fmt"
+	"net/http"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"go.lsp.dev/protocol"
@@ -45,42 +48,27 @@ func (r *request) decoratorArgItems(c cursor, name string) []protocol.Completion
 	return decoratorArgCompletions(name)
 }
 
-// httpStatusCompletions offers common HTTP status codes for `@status(...)`,
-// with the reason phrase as detail.
+// successStatuses are the success and redirect codes `@status(...)` offers
+// beside the statuses of the error categories.
+var successStatuses = []int{200, 201, 202, 204, 301, 302, 304, 307, 308}
+
+// httpStatusCompletions offers [successStatuses] and each error category's
+// status for `@status(...)`, with the reason phrase as detail.
 func httpStatusCompletions() []protocol.CompletionItem {
-	type entry struct {
-		code   string
-		phrase string
+	codes := slices.Clone(successStatuses)
+	for _, c := range errcat.Categories {
+		codes = append(codes, c.Status)
 	}
-	entries := []entry{
-		{"200", "OK"},
-		{"201", "Created"},
-		{"202", "Accepted"},
-		{"204", "No Content"},
-		{"301", "Moved Permanently"},
-		{"302", "Found"},
-		{"304", "Not Modified"},
-		{"307", "Temporary Redirect"},
-		{"308", "Permanent Redirect"},
-		{"400", "Bad Request"},
-		{"401", "Unauthorized"},
-		{"403", "Forbidden"},
-		{"404", "Not Found"},
-		{"409", "Conflict"},
-		{"422", "Unprocessable Entity"},
-		{"429", "Too Many Requests"},
-		{"500", "Internal Server Error"},
-		{"502", "Bad Gateway"},
-		{"503", "Service Unavailable"},
-		{"504", "Gateway Timeout"},
-	}
-	out := make([]protocol.CompletionItem, 0, len(entries))
-	for _, e := range entries {
+	slices.Sort(codes)
+	codes = slices.Compact(codes)
+	out := make([]protocol.CompletionItem, 0, len(codes))
+	for _, code := range codes {
+		label := strconv.Itoa(code)
 		out = append(out, protocol.CompletionItem{
-			Label:      e.code,
+			Label:      label,
 			Kind:       protocol.CompletionItemKindValue,
-			Detail:     "HTTP " + e.code + " " + e.phrase,
-			InsertText: e.code,
+			Detail:     "HTTP " + label + " " + http.StatusText(code),
+			InsertText: label,
 		})
 	}
 	return out

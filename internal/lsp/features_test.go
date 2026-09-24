@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -986,10 +988,36 @@ func TestCompletionStatusDecoratorArgs(t *testing.T) {
 		"}\n"
 	// Cursor right after `@status(`.
 	items := mustCompletionsAt(t, "t.craftgo", src, 5, 12)
-	expectLabels(t, items, "200", "201", "204", "400", "404", "500")
+	expectLabels(t, items, "200", "201", "204")
+	for _, c := range errcat.Categories {
+		expectLabels(t, items, strconv.Itoa(c.Status))
+	}
 	for _, it := range items {
 		if it.Label == "201" && it.Detail != "HTTP 201 Created" {
 			t.Errorf("HTTP 201 detail = %q, want IANA reason phrase", it.Detail)
+		}
+	}
+}
+
+// The `error` and `scalar` snippets choose among every error category and
+// every built-in `scalar Name |` offers.
+func TestKeywordSnippetChoices(t *testing.T) {
+	snippets := map[string]string{}
+	for _, it := range keywordCompletions("error", "scalar") {
+		snippets[it.Label] = it.InsertText
+	}
+	var categories, primitives []string
+	for _, c := range errcat.Categories {
+		categories = append(categories, c.Name)
+	}
+	for _, it := range scalarPrimitiveCompletions() {
+		primitives = append(primitives, it.Label)
+	}
+	for kw, want := range map[string][]string{"error": categories, "scalar": primitives} {
+		_, choices, _ := strings.Cut(snippets[kw], "|")
+		choices, _, _ = strings.Cut(choices, "|}")
+		if got := strings.Split(choices, ","); !slices.Equal(got, want) {
+			t.Errorf("%s snippet choices = %v, want %v", kw, got, want)
 		}
 	}
 }
