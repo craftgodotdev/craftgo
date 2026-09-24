@@ -113,6 +113,21 @@ event OrderPlaced {
 	}
 }
 
+// Inside an event body or a method body, whose members take no decorators,
+// `@` offers none.
+func TestNoDecoratorCompletionsInsideABodyOfClauses(t *testing.T) {
+	for label, src := range map[string]string{
+		"event body":  "package x\nevent Created {\n\t@|\n\tpayload P\n}\ntype P { a string }\n",
+		"method body": "package x\ntype P { a string }\nservice S {\n\tget G /g {\n\t\t@|\n\t\trequest P\n\t}\n}\n",
+	} {
+		t.Run(label, func(t *testing.T) {
+			if items := mustCompletionsAtCursor(t, "t.craftgo", src); len(items) != 0 {
+				t.Errorf("decorators offered: %v", labelSet(items))
+			}
+		})
+	}
+}
+
 // A field named `event` gets no keyword hover, and its type is still a type
 // position.
 func TestMemberKeywordsStayFieldNamesInsideATypeBody(t *testing.T) {

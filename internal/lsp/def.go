@@ -58,28 +58,27 @@ func (r *request) enumValueDefinition(c cursor) (protocol.Location, bool) {
 	return protocol.Location{}, false
 }
 
-// enclosingDeclKeyword returns the keyword of the declaration holding token idx
-// ([lexer.EOF] at file level) and the brace depth there. The walk is forward:
+// enclosingDecl returns the index of the keyword of the declaration holding
+// token idx (-1 at file level) and the brace depth there. The walk is forward:
 // a keyword is also a legal field name, and only its depth tells them apart.
-func enclosingDeclKeyword(view snapshotView, idx int) (lexer.Kind, int) {
-	last := lexer.EOF
-	depth := 0
-	for i := 0; i < idx && i < len(view.tokens); i++ {
-		switch k := view.tokens[i].Kind; k {
-		case lexer.LBrace:
+func enclosingDecl(view snapshotView, idx int) (int, int) {
+	last, depth := -1, 0
+	for i := range view.outsideParens(-1) {
+		if i >= idx {
+			break
+		}
+		switch k := view.tokens[i].Kind; {
+		case k == lexer.LBrace:
 			depth++
-		case lexer.RBrace:
+		case k == lexer.RBrace:
 			if depth > 0 {
 				depth--
 			}
 			if depth == 0 {
-				last = lexer.EOF
+				last = -1
 			}
-		case lexer.KwService, lexer.KwExtend, lexer.KwType, lexer.KwEnum,
-			lexer.KwError, lexer.KwScalar, lexer.KwMiddleware, lexer.KwEvent:
-			if depth == 0 {
-				last = k
-			}
+		case depth == 0 && isDeclKeyword(k):
+			last = i
 		}
 	}
 	return last, depth
@@ -130,8 +129,8 @@ func isTypeShapePosition(view snapshotView, idx int) bool {
 			return true
 		case lexer.KwEvent:
 			// `event X` declares a contract; inside a type body `event` is a field.
-			kw, _ := enclosingDeclKeyword(view, idx)
-			return kw != lexer.KwEvent
+			kw, _ := enclosingDecl(view, idx)
+			return view.kind(kw) != lexer.KwEvent
 		case lexer.KwService, lexer.KwExtend:
 			// A service name, not a type.
 			return false

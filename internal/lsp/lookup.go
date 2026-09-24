@@ -1,6 +1,8 @@
 package lsp
 
 import (
+	"iter"
+
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
@@ -59,6 +61,33 @@ func (v snapshotView) token(i int) *lexer.Token {
 		return nil
 	}
 	return &v.tokens[i]
+}
+
+// kind returns the kind of the token at index i, or [lexer.EOF] for -1.
+func (v snapshotView) kind(i int) lexer.Kind {
+	if i < 0 {
+		return lexer.EOF
+	}
+	return v.tokens[i].Kind
+}
+
+// outsideParens yields, in order, the indices of the tokens that start after
+// byte offset after, skipping every parenthesised decorator argument list.
+func (v snapshotView) outsideParens(after int) iter.Seq[int] {
+	return func(yield func(int) bool) {
+		parens := 0
+		for i, t := range v.tokens {
+			switch {
+			case t.Pos.Offset <= after:
+			case t.Kind == lexer.LParen:
+				parens++
+			case t.Kind == lexer.RParen:
+				parens = max(parens-1, 0)
+			case parens == 0 && !yield(i):
+				return
+			}
+		}
+	}
 }
 
 // lead returns the number of tokens before the one under c, or before c on

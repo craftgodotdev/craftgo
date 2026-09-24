@@ -94,16 +94,14 @@ func (r *request) pathParamCompletions(brace int) []protocol.CompletionItem {
 // "" when the method has none; the scan stops at the next verb or declaration.
 func requestTypeAfter(view snapshotView, i int) string {
 	for j := i + 1; j < len(view.tokens); j++ {
-		switch view.tokens[j].Kind {
-		case lexer.KwRequest:
+		t := view.tokens[j]
+		switch {
+		case t.Kind == lexer.KwRequest:
 			if j+1 >= len(view.tokens) || view.tokens[j+1].Kind != lexer.Ident {
 				return ""
 			}
 			return qualifiedNameAt(view, j+1)
-		case lexer.VerbGet, lexer.VerbPost, lexer.VerbPut, lexer.VerbPatch,
-			lexer.VerbDelete, lexer.VerbHead, lexer.VerbOptions,
-			lexer.KwType, lexer.KwEnum, lexer.KwError, lexer.KwScalar,
-			lexer.KwService, lexer.KwExtend, lexer.KwMiddleware, lexer.KwEvent:
+		case t.Kind.IsVerb() || isDeclKeyword(t.Kind):
 			return ""
 		}
 	}

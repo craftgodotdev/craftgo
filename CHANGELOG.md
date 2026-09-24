@@ -155,6 +155,9 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **Signature help highlights the argument the cursor is in**, on whitespace
   and right after a comma too, and closes outside the parentheses.
 
+- **`@` inside an event or a method body offers no decorator**: no member of
+  those bodies takes one.
+
 - **Editor ranges are exact after an emoji.** Highlights, references, rename
   and completion edits cover the right text on a line holding a character
   outside the Basic Multilingual Plane, and import-path completion narrows

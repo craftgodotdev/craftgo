@@ -14,16 +14,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// isVerbToken reports whether t is an HTTP verb keyword.
-func isVerbToken(t lexer.Token) bool {
-	switch t.Kind {
-	case lexer.VerbGet, lexer.VerbPost, lexer.VerbPut, lexer.VerbPatch,
-		lexer.VerbDelete, lexer.VerbHead, lexer.VerbOptions:
-		return true
-	}
-	return false
-}
-
 // verbDocs is the hover text of each HTTP verb keyword.
 var verbDocs = map[string]string{
 	"get":     "**`get`** - safe, idempotent retrieval. The handler reads no body (the JSON decoder is skipped at codegen time).",
@@ -57,7 +47,8 @@ func memberKeywordHover(view snapshotView, idx int, tok lexer.Token) *protocol.H
 	if !ok {
 		return nil
 	}
-	site, _ := enclosingDeclKeyword(view, idx+1)
+	kw, _ := enclosingDecl(view, idx+1)
+	site := view.kind(kw)
 	if site == lexer.KwExtend {
 		site = lexer.KwService
 	}
@@ -98,7 +89,7 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 	if h := formatRawArgHover(view, idx, tok); h != nil {
 		return h
 	}
-	if doc, ok := verbDocs[tok.Text]; ok && isVerbToken(tok) {
+	if doc, ok := verbDocs[tok.Text]; ok && tok.Kind.IsVerb() {
 		return &protocol.Hover{
 			Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: doc},
 			Range:    rangePtr(rangeOf(view.src, tok)),

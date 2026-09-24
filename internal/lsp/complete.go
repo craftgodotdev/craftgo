@@ -5,7 +5,6 @@ import (
 
 	"go.lsp.dev/protocol"
 
-	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -132,27 +131,46 @@ const (
 	blockEvent
 )
 
+// declSite is what a declaration keyword opens: the decorator level of the
+// declaration, the level of its body's members (0 when they take none) and
+// the completion block of that body.
+type declSite struct {
+	self, member semantic.Level
+	block        completionBlock
+	// trailing: decorators after the head, on its line, are the declaration's.
+	trailing bool
+}
+
+// declSites holds every declaration keyword.
+var declSites = map[lexer.Kind]declSite{
+	lexer.KwType:       {self: semantic.LvlType, member: semantic.LvlField, block: blockType},
+	lexer.KwEnum:       {self: semantic.LvlEnum, member: semantic.LvlEnumValue, block: blockEnum},
+	lexer.KwError:      {self: semantic.LvlError, member: semantic.LvlErrorField, block: blockType},
+	lexer.KwScalar:     {self: semantic.LvlScalar, trailing: true},
+	lexer.KwMiddleware: {self: semantic.LvlMiddleware},
+	lexer.KwService:    {self: semantic.LvlService, member: semantic.LvlMethod, block: blockService},
+	lexer.KwExtend:     {self: semantic.LvlService, member: semantic.LvlMethod, block: blockService},
+	lexer.KwEvent:      {self: semantic.LvlEvent, block: blockEvent},
+}
+
+// isDeclKeyword reports whether k starts a declaration.
+func isDeclKeyword(k lexer.Kind) bool {
+	_, ok := declSites[k]
+	return ok
+}
+
 // blockAt classifies the cursor's block by the enclosing declaration keyword
 // and the brace depth; depth 2 inside a service is a method body.
 func blockAt(view snapshotView, c cursor) completionBlock {
-	kw, depth := enclosingDeclKeyword(view, c.lead())
-	if depth == 0 {
+	kw, depth := enclosingDecl(view, c.lead())
+	block := declSites[view.kind(kw)].block
+	switch {
+	case depth == 0:
 		return blockFile
+	case depth > 1 && block == blockService:
+		return blockMethod
 	}
-	switch kw {
-	case lexer.KwType, lexer.KwError:
-		return blockType
-	case lexer.KwEnum:
-		return blockEnum
-	case lexer.KwEvent:
-		return blockEvent
-	case lexer.KwService, lexer.KwExtend:
-		if depth > 1 {
-			return blockMethod
-		}
-		return blockService
-	}
-	return blockFile
+	return block
 }
 
 // The keywords each block accepts as the first word of a member.
@@ -255,149 +273,45 @@ func isScalarPrimitivePosition(view snapshotView, c cursor) bool {
 	return c.prev >= 1 && view.tokens[c.prev].Kind == lexer.Ident && view.tokens[c.prev-1].Kind == lexer.KwScalar
 }
 
-// guessLevel returns the decorator site level of a `@` at the cursor.
+// guessLevel returns the decorator site level of a `@` at the cursor: inside a
+// body the level of its members, after a trailing declaration's head on its
+// line that declaration's, else that of the declaration below, or the file's
+// above `package` and past the last declaration.
 func guessLevel(view snapshotView, c cursor) semantic.Level {
-	if view.file == nil {
-		return semantic.LvlFile
+	kw, depth := enclosingDecl(view, c.lead())
+	site := declSites[view.kind(kw)]
+	switch {
+	case depth == 1:
+		return site.member
+	case depth > 1:
+		return 0
+	case site.trailing && view.tokens[kw].Pos.Line == c.line:
+		return site.self
 	}
-	// At or above the `package` line the site is the file.
-	if view.file.Package != nil && c.line <= view.file.Package.Pos.Line {
-		return semantic.LvlFile
+	if next, ok := declSites[nextTopLevelKeyword(view, c)]; ok {
+		return next.self
 	}
-	var prevDecl, nextDecl ast.Decl
-	for _, d := range view.file.Decls {
-		if d.DeclPos().Line >= c.line {
-			if nextDecl == nil {
-				nextDecl = d
-			}
-		} else {
-			prevDecl = d
-		}
-	}
-	if prevDecl != nil && cursorInsideDeclBody(view, c, prevDecl) {
-		// Inside a type, enum, bodied error or service: its member level.
-		switch v := prevDecl.(type) {
-		case *ast.TypeDecl:
-			return semantic.LvlField
-		case *ast.EnumDecl:
-			return semantic.LvlEnumValue
-		case *ast.ErrorDecl:
-			if v.HasBody {
-				return semantic.LvlErrorField
-			}
-		case *ast.ServiceDecl:
-			return semantic.LvlMethod
-		}
-	}
-	if nextDecl != nil {
-		// Above a declaration: that declaration's level.
-		return declSiteLevel(nextDecl)
-	}
-	// A half-typed `@` swallows the next keyword as its name (`@service`), so the
-	// declaration below is recovered from the tokens.
-	if lvl := nextTopLevelDeclLevel(view, c); lvl != 0 {
-		return lvl
-	}
-	// After the last declaration the site is the file.
 	return semantic.LvlFile
 }
 
-// firstTopLevelDeclKeyword returns the first declaration keyword after the
-// cursor at brace depth 0, or [lexer.EOF] when none follows or the cursor is
-// inside a body.
-func firstTopLevelDeclKeyword(view snapshotView, c cursor) lexer.Kind {
+// nextTopLevelKeyword returns the first `package` or declaration keyword after
+// the cursor at brace depth 0, or [lexer.EOF] when none follows or the cursor
+// is inside a body.
+func nextTopLevelKeyword(view snapshotView, c cursor) lexer.Kind {
 	depth := 0
-	for _, t := range view.tokens {
-		if t.Pos.Offset <= c.off {
-			continue
-		}
-		switch t.Kind {
-		case lexer.LBrace:
+	for i := range view.outsideParens(c.off) {
+		t := view.tokens[i]
+		switch {
+		case t.Kind == lexer.LBrace:
 			depth++
-			continue
-		case lexer.RBrace:
+		case t.Kind == lexer.RBrace:
 			if depth == 0 {
 				return lexer.EOF
 			}
 			depth--
-			continue
-		}
-		if depth != 0 {
-			continue
-		}
-		switch t.Kind {
-		case lexer.KwType, lexer.KwEnum, lexer.KwError, lexer.KwScalar,
-			lexer.KwService, lexer.KwExtend, lexer.KwMiddleware, lexer.KwEvent:
+		case depth == 0 && (t.Kind == lexer.KwPackage || isDeclKeyword(t.Kind)):
 			return t.Kind
 		}
 	}
 	return lexer.EOF
-}
-
-// nextTopLevelDeclLevel maps the next top-level decl keyword to its decorator
-// site level, or 0 when none follows.
-func nextTopLevelDeclLevel(view snapshotView, c cursor) semantic.Level {
-	switch firstTopLevelDeclKeyword(view, c) {
-	case lexer.KwType:
-		return semantic.LvlType
-	case lexer.KwEnum:
-		return semantic.LvlEnum
-	case lexer.KwError:
-		return semantic.LvlError
-	case lexer.KwScalar:
-		return semantic.LvlScalar
-	case lexer.KwEvent:
-		return semantic.LvlEvent
-	case lexer.KwService, lexer.KwExtend:
-		return semantic.LvlService
-	case lexer.KwMiddleware:
-		return semantic.LvlMiddleware
-	}
-	return 0
-}
-
-// cursorInsideDeclBody reports whether the cursor is inside prev's braces,
-// counted from prev's line since AST nodes carry no end position.
-func cursorInsideDeclBody(view snapshotView, c cursor, prev ast.Decl) bool {
-	if prev == nil {
-		return false
-	}
-	startLine := prev.DeclPos().Line
-	depth := 0
-	for _, t := range view.tokens {
-		if t.Pos.Line < startLine {
-			continue
-		}
-		if t.Pos.Offset > c.off {
-			break
-		}
-		switch t.Kind {
-		case lexer.LBrace:
-			depth++
-		case lexer.RBrace:
-			depth--
-		}
-	}
-	return depth > 0
-}
-
-// declSiteLevel returns the decorator site level of d.
-func declSiteLevel(d ast.Decl) semantic.Level {
-	switch d.(type) {
-	case *ast.TypeDecl:
-		return semantic.LvlType
-	case *ast.EnumDecl:
-		return semantic.LvlEnum
-	case *ast.ErrorDecl:
-		return semantic.LvlError
-	case *ast.ScalarDecl:
-		return semantic.LvlScalar
-	case *ast.EventDecl:
-		return semantic.LvlEvent
-	case *ast.MiddlewareDecl:
-		return semantic.LvlMiddleware
-	case *ast.ServiceDecl:
-		return semantic.LvlService
-	}
-	return 0
 }

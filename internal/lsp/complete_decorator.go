@@ -149,7 +149,7 @@ func decoratorCompletions(view snapshotView, c cursor, prefix string) []protocol
 	}
 	// An `extend service` takes the service decorators that have a method form,
 	// plus @group.
-	extendSite := level == semantic.LvlService && firstTopLevelDeclKeyword(view, c) == lexer.KwExtend
+	extendSite := level == semantic.LvlService && nextTopLevelKeyword(view, c) == lexer.KwExtend
 	names := make([]string, 0, len(semantic.Registry))
 	for name := range semantic.Registry {
 		names = append(names, name)
