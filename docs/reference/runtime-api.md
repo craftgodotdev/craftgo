@@ -33,7 +33,7 @@ srv := server.New(svcCtx, opts...)
 
 ### Configuration setters
 
-Each returns `*Server` for chaining.
+Each setter returns `*Server` for chaining, except `SetJSONCodec` and `SetStrictJSON`, which return an `error`.
 
 | Method | Description |
 |---|---|
@@ -43,7 +43,9 @@ Each returns `*Server` for chaining.
 | `SetCORS(opts CORSOptions)` | Install CORS. Calling twice replaces the previous config. |
 | `SetHandleNotFound(h http.Handler)` | Customize 404 responses - receives every request the mux would answer 404; a method mismatch keeps its 405 with `Allow`. |
 | `SetDefaultReadTimeout(d)` / `SetDefaultWriteTimeout(d)` | Defaults applied to the underlying `*http.Server`. |
-| `SetDefaultMaxBodySize(bytes)` / `SetDefaultMaxHeaderSize(kb)` | Defaults for every method that doesn't declare its own `@maxBodySize`. |
+| `SetDefaultMaxBodySize(bytes)` | Body cap for each route `Handle` registers afterwards, unless its `WithLimits` sets one (a method's `@maxBodySize`). 0, the default, sets none. |
+| `SetDefaultHandlerTimeout(d)` | Request-context deadline for each route `Handle` registers afterwards, unless its `WithLimits` sets one (a method's `@timeout`). 0, the default, sets none. |
+| `SetDefaultMaxHeaderSize(kb)` | The `*http.Server`'s cap on request headers, in kilobytes; 32 by default. |
 
 ### Health checks
 
@@ -59,10 +61,10 @@ Both probes are answered ahead of the middleware chain (only `Recovery` wraps th
 
 ## Middleware
 
-`Middleware` is an alias for the standard shape:
+`Middleware` is a defined type over the standard shape, so a `func(http.Handler) http.Handler` value is assignable to it as is:
 
 ```go
-type Middleware = func(http.Handler) http.Handler
+type Middleware func(http.Handler) http.Handler
 ```
 
 ### Built-in middleware
@@ -245,8 +247,10 @@ filtering every subject its group consumes - cannot register a group one contrac
 at a time, so every adapter is handed the set. It registers and returns; it must
 not block. A push transport hands the handler its callback, a pull transport
 starts its own loop; delivery runs until `ctx` is cancelled. A handler error
-means the message was not processed - retry, nack and dead-letter are the
-transport's policy.
+does not decide what becomes of the message: the chain does, through the
+[disposition](#dispositions) it asks for. Once the handler returns, the
+transport answers the delivery with that disposition, and settles it when
+nothing was asked or the transport cannot honour what was.
 
 `Group` is a named type so an application declares its groups once and passes
 them around as values rather than as loose strings. It has no fallback: a
@@ -467,8 +471,8 @@ var ErrDispositionUnsupported = errors.New(...)
 A middleware asks for something other than "done" through the message. Options
 apply in chain order and the last writer wins: the chain returns innermost
 first, so the outermost middleware decides last. A frame that panicked did not
-finish deciding, so the recover clears what it asked for - unset, not settle,
-leaving the decision to whatever is above it.
+finish deciding, so the recover clears what it asked for; [Recovery](#recovery)
+says what is asked in its place.
 
 `Dispositioner` is asked per INSTANCE, not per type: one adapter may be built in
 a mode that can redeliver and in a mode that cannot. A transport that does not
@@ -507,10 +511,12 @@ func IsReservedMeta(key string) bool
 ```
 
 `IsReservedMeta` names every key the caller does not own, case-insensitively:
-`MetaCodec`, and the adapter headers under `MetaPrefix` - Kafka's
-`craftgo-event` and `craftgo-key`, NATS's `Craftgo-Key`. An `Envelope.Metadata`
-entry under one of those is dropped silently and the runtime's or the adapter's
-own value takes its place; every other key is carried untouched. A generated
+`MetaCodec`, and every key under `MetaPrefix`, which holds the adapter headers -
+Kafka's `craftgo-event`, `craftgo-key` and `craftgo-dedup-id`, NATS's
+`Craftgo-Key`. An `Envelope.Metadata` entry under one of those is dropped
+silently and the runtime's or the adapter's own value takes its place. Every
+other key is carried untouched, except that the NATS adapters never let one
+override `Nats-Msg-Id`, the header that carries the dedup ID. A generated
 consumer is handed the decoded payload, so metadata is read in a
 [middleware](#consumer-middleware) or a hand-written `Subscription`, both of
 which are handed the `Message`.
@@ -520,9 +526,9 @@ which are handed the `Message`.
 ```go
 type PanicError struct {
 	Event    string // the contract being delivered
-	Consumer string // the handler that panicked
+	Consumer string // the consumer whose handler or chain panicked
 	Group    Group  // its broker identity
-	Value    any    // what the handler passed to panic
+	Value    any    // what was passed to panic
 	Stack    []byte // the trace where the panic fired; not part of Error()
 }
 ```
@@ -535,10 +541,13 @@ the wrap goes on both sides of it, so the chain observes the panic and a panic i
 the chain is caught too. The recovered panic is
 returned as a `*PanicError`, which the transport sees as an ordinary handler
 error: it reaches the error handler installed on the transport, and delivery
-continues with the next message. Nothing is redelivered.
+continues with the next message. A panicking handler leaves the disposition
+unset, not settled, so the chain above it decides as it does for any error; a
+panic in the chain itself, with nothing above it to decide, asks for redelivery
+where the transport can honour one.
 
 `*PanicError` is a concrete type, so `errors.As` picks one out of a chain, and
-its `Unwrap` reaches the panic value when the handler panicked with an error.
+its `Unwrap` reaches the panic value when that value is an error.
 
 ```go
 type PayloadError struct {
