@@ -748,15 +748,17 @@ func (j *JetStream) deliver(ctx context.Context, sub events.Subscription, ackWai
 	}
 }
 
-// holdOpen resets m's redelivery timer until the returned func is called, so
-// a handler slower than AckWait does not see its message redelivered.
+// holdOpen resets m's redelivery timer until the returned func is called and
+// returns, so a slow handler keeps its message and no reset follows the answer.
 func holdOpen(m jetstream.Msg, ackWait time.Duration) func() {
 	every := ackWait / 2
 	if every <= 0 {
 		return func() {}
 	}
 	done := make(chan struct{})
+	stopped := make(chan struct{})
 	go func() {
+		defer close(stopped)
 		t := time.NewTicker(every)
 		defer t.Stop()
 		for {
@@ -768,7 +770,7 @@ func holdOpen(m jetstream.Msg, ackWait time.Duration) func() {
 			}
 		}
 	}()
-	return func() { close(done) }
+	return func() { close(done); <-stopped }
 }
 
 // answer acks, naks or terms m as the chain decided; unset settles.
