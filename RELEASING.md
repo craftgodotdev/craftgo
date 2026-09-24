@@ -95,7 +95,7 @@ What it does:
    no-op.
 
 2. Bumps every place the version is written down - `var version` in
-   `cmd/craftgo/main.go`, `Version` in `internal/lsp/server.go`, and
+   `cmd/craftgo/main.go` and in `cmd/craftgo-lsp/main.go`, and
    `const VERSION` in `docs/.vitepress/config.ts` - to the bare `X.Y.Z`.
    Release builds overwrite the two Go values through `-ldflags`; the source
    value is the fallback for `go install` from a checkout. The docs constant

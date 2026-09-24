@@ -19,23 +19,20 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/config"
 )
 
-// Version is the version the server reports on initialize. Release builds set
-// it with `-ldflags -X`, which only writes a var.
-var Version = "1.9.0"
-
 // errExitWithoutShutdown reports an `exit` that arrived before `shutdown`;
 // LSP requires a non-zero exit status then.
 var errExitWithoutShutdown = errors.New("exit notification without prior shutdown")
 
-// Serve speaks LSP over in and out until `exit` or the end of the connection;
-// an `exit` without `shutdown` is an error.
-func Serve(ctx context.Context, in io.Reader, out io.Writer) error {
+// Serve speaks LSP over in and out until `exit` or the end of the connection,
+// reporting version on initialize; an `exit` without `shutdown` is an error.
+func Serve(ctx context.Context, in io.Reader, out io.Writer, version string) error {
 	stream := jsonrpc2.NewStream(&stdioRWC{in: in, out: out})
 	conn := jsonrpc2.NewConn(stream)
 	srv := &server{
-		conn: conn,
-		docs: make(map[uri.URI]string),
-		exit: make(chan struct{}),
+		conn:    conn,
+		version: version,
+		docs:    make(map[uri.URI]string),
+		exit:    make(chan struct{}),
 	}
 	conn.Go(ctx, srv.handler)
 	select {
@@ -55,6 +52,7 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 // server is the state of one LSP session; [Serve] builds it.
 type server struct {
 	conn     jsonrpc2.Conn
+	version  string
 	mu       sync.Mutex         // guards docs and shutdown
 	docs     map[uri.URI]string // the full text of each open file (full sync)
 	exit     chan struct{}
@@ -219,7 +217,7 @@ func (s *server) onInitialize(_ context.Context, _ protocol.InitializeParams) (a
 		},
 		ServerInfo: &protocol.ServerInfo{
 			Name:    "craftgo-lsp",
-			Version: Version,
+			Version: s.version,
 		},
 	}, nil
 }

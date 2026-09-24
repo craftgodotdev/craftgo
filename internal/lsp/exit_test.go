@@ -7,6 +7,8 @@ import (
 	"io"
 	"testing"
 	"time"
+
+	"go.lsp.dev/protocol"
 )
 
 const (
@@ -24,7 +26,7 @@ func serveMessages(t *testing.T, bodies ...string) error {
 	t.Cleanup(func() { _ = pw.Close() })
 
 	done := make(chan error, 1)
-	go func() { done <- Serve(context.Background(), pr, io.Discard) }()
+	go func() { done <- Serve(context.Background(), pr, io.Discard, "0.0.0") }()
 	go func() {
 		for _, body := range bodies {
 			if _, err := fmt.Fprintf(pw, "Content-Length: %d\r\n\r\n%s", len(body), body); err != nil {
@@ -52,5 +54,16 @@ func TestServeExitWithoutShutdown(t *testing.T) {
 	err := serveMessages(t, initializeMsg, exitMsg)
 	if !errors.Is(err, errExitWithoutShutdown) {
 		t.Fatalf("Serve() = %v, want %v", err, errExitWithoutShutdown)
+	}
+}
+
+// initialize reports the version the server runs as.
+func TestInitializeReportsTheVersion(t *testing.T) {
+	res, err := callHandler(t, &server{version: "1.2.3"}, protocol.MethodInitialize, protocol.InitializeParams{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info := res.(*protocol.InitializeResult).ServerInfo; info == nil || info.Name != "craftgo-lsp" || info.Version != "1.2.3" {
+		t.Errorf("serverInfo = %+v", info)
 	}
 }

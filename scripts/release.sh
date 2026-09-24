@@ -53,7 +53,7 @@ CHANGELOG="CHANGELOG.md"
 # the docs constant is what the site's nav shows. <file>|<declaration>
 VERSION_VARS=(
 	"cmd/craftgo/main.go|var version"
-	"internal/lsp/server.go|var Version"
+	"cmd/craftgo-lsp/main.go|var version"
 	"docs/.vitepress/config.ts|const VERSION"
 )
 
