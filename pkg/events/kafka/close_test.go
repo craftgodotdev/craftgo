@@ -165,6 +165,49 @@ func TestPublishAndSubscribeAfterCloseAreRefused(t *testing.T) {
 	}
 }
 
+// bufferedHook signals each record the producer takes.
+type bufferedHook chan struct{}
+
+func (h bufferedHook) OnProduceRecordBuffered(*kgo.Record) {
+	select {
+	case h <- struct{}{}:
+	default:
+	}
+}
+
+// A publish or a batch still waiting on the broker when Close runs returns ErrClosed, and
+// franz-go's own error stays reachable.
+func TestAPublishRacingCloseReportsErrClosed(t *testing.T) {
+	msg := &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)}
+	for name, publish := range map[string]func(*Transport) error{
+		"Publish":      func(tr *Transport) error { return tr.Publish(context.Background(), msg) },
+		"PublishBatch": func(tr *Transport) error { return tr.PublishBatch(context.Background(), []*events.Message{msg}) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			buffered := make(bufferedHook, 1)
+			tr := New([]string{"127.0.0.1:1"}, WithClientOptions(kgo.WithHooks(buffered)))
+			done := make(chan error, 1)
+			go func() { done <- publish(tr) }()
+			select {
+			case <-buffered:
+			case <-time.After(10 * time.Second):
+				t.Fatal("the record never reached the producer")
+			}
+			if err := tr.Close(); err != nil {
+				t.Fatalf("close: %v", err)
+			}
+			select {
+			case err := <-done:
+				if !errors.Is(err, ErrClosed) || !errors.Is(err, kgo.ErrClientClosed) {
+					t.Errorf("err = %v, want ErrClosed wrapping kgo.ErrClientClosed", err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("the publish outlived Close")
+			}
+		})
+	}
+}
+
 // A consumer client that finishes opening after Close is refused, not kept for a Close that has run.
 func TestAClientOpenedDuringCloseIsNotKept(t *testing.T) {
 	tr := New(nil)

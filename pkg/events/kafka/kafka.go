@@ -51,7 +51,8 @@ const Adapter = "kafka"
 // the time it was produced.
 const OptionTimestamp = "timestamp"
 
-// ErrClosed is what a publish or subscribe returns after [Transport.Close].
+// ErrClosed is what a publish or subscribe returns after [Transport.Close], and a publish
+// that Close cuts off.
 var ErrClosed = errors.New("transport closed")
 
 // Share-group API keys, probed before a share subscription starts.
@@ -287,9 +288,18 @@ func (t *Transport) Publish(ctx context.Context, msg *events.Message) error {
 		return err
 	}
 	if err := cl.ProduceSync(ctx, rec).FirstErr(); err != nil {
-		return fmt.Errorf("kafka: publish %s: %w", msg.Event, err)
+		return fmt.Errorf("kafka: publish %s: %w", msg.Event, produceErr(err))
 	}
 	return nil
+}
+
+// produceErr wraps err in [ErrClosed] as well when [Transport.Close] shut the producer
+// under the publish.
+func produceErr(err error) error {
+	if errors.Is(err, kgo.ErrClientClosed) {
+		return fmt.Errorf("%w: %w", ErrClosed, err)
+	}
+	return err
 }
 
 // PublishBatch produces the whole batch in one call. A message it cannot
@@ -319,7 +329,7 @@ func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) er
 			continue
 		}
 		if firstErr == nil {
-			firstErr = r.Err
+			firstErr = produceErr(r.Err)
 		}
 		if i, ok := index[r.Record]; ok {
 			unsent = append(unsent, i)
@@ -673,7 +683,7 @@ func decode(contract string, rec *kgo.Record) *events.Message {
 }
 
 // Close shuts every client this transport opened and drops its group claims;
-// a publish or subscribe after it returns [ErrClosed].
+// a publish it cuts off, and a publish or subscribe after it, returns [ErrClosed].
 func (t *Transport) Close() error {
 	t.mu.Lock()
 	t.closed = true
