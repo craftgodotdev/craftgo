@@ -27,19 +27,10 @@ jobs:
           cache: true
 
       - name: vet
-        run: |
-          go vet ./...
-          (cd pkg/events && go vet ./...)
-          (cd pkg/events/nats && go vet ./...)
-          (cd pkg/events/kafka && go vet ./...)
-          (cd pkg/wire && go vet ./...)
+        run: make vet
 
       - name: fmt-check
-        run: |
-          diff=$(gofmt -l -s .)
-          if [ -n "$diff" ]; then
-            echo "unformatted files:"; echo "$diff"; exit 1
-          fi
+        run: make fmt-check
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
@@ -74,43 +65,13 @@ jobs:
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
-      - name: build root (CLI + LSP)
-        run: go build ./...
+      - name: build root + submodules
+        run: make build-all
 
-      - name: build submodules
-        run: |
-          set -e
-          for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers example/grpc \
-                   tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka pkg/wire; do
-            echo "→ build $d"
-            (cd "$d" && go build ./...)
-          done
-
-      # Regenerate every example / e2e fixture from current source; any diff
-      # against the committed output is a codegen regression.
-      - name: generate
-        run: |
-          set -e
-          for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/grpc; do
-            echo "→ gen $d"
-            go run ./cmd/craftgo gen -f "$d/design" -c "$d"
-          done
-          # Every manifest in the fixture: the design's own, and each
-          # deployable that projects it.
-          for d in tests/e2e/matrix; do
-            for m in $(find "$d" -name craftgo.design.yaml | sort); do
-              mdir=$(dirname "$m")
-              echo "→ gen $mdir"
-              go run ./cmd/craftgo gen -f "$mdir" -c "$(dirname "$mdir")"
-            done
-          done
-
+      # Regenerate every example and the e2e fixture from current source; any
+      # difference from the committed output is a codegen regression.
       - name: drift gate (gen output must match committed)
-        run: |
-          if ! git diff --exit-code; then
-            echo "::error::generated files drifted from committed output - run \`make gen-all\` and commit the diff"
-            exit 1
-          fi
+        run: make gen-diff
 
   # The project ships binaries for Linux, macOS, and Windows, so the suite runs
   # on each - catching path / file / line-ending bugs a Linux-only run misses.
@@ -127,7 +88,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     defaults:
       run:
-        shell: bash # Git Bash on Windows, so the loops below work everywhere
+        shell: bash # Git Bash on Windows, so make runs the Makefile's loops in its sh
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
@@ -136,35 +97,13 @@ jobs:
           cache: true
 
       - name: build root + submodules
-        run: |
-          set -e
-          go build ./...
-          for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers example/grpc \
-                   tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka pkg/wire; do
-            (cd "$d" && go build ./...)
-          done
+        run: make build-all
 
-      - name: test core (lexer / parser / ast / semantic)
-        run: |
-          go test ${{ matrix.race }} -count=1 \
-            ./internal/lexer/... ./internal/parser/... \
-            ./internal/ast/... ./internal/semantic/...
-
-      - name: test rest (root module)
-        run: |
-          go test ${{ matrix.race }} -count=1 \
-            ./internal/codegen/... ./internal/lsp/... ./internal/idents/... \
-            ./internal/errcat/... ./internal/strfmt/... ./internal/format/... \
-            ./internal/config/... ./internal/bench/... ./pkg/... ./cmd/...
+      - name: test root module
+        run: make test TESTFLAGS="${{ matrix.race }}"
 
       - name: test e2e orchestrator
-        run: go test -count=1 ./tests/e2e/...
+        run: make e2e
 
       - name: test submodules
-        run: |
-          set -e
-          for d in example/todo example/upload example/raw example/ecommerce example/taskflow example/brokers example/grpc \
-                   tests/e2e/matrix pkg/events pkg/events/nats pkg/events/kafka pkg/wire; do
-            echo "→ test $d"
-            (cd "$d" && go test ${{ matrix.race }} -count=1 ./...)
-          done
+        run: make test-submodules TESTFLAGS="${{ matrix.race }}"

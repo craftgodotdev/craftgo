@@ -8,6 +8,9 @@ EXAMPLE_PROJECTS := example/todo example/upload example/raw example/ecommerce ex
 
 GO           ?= go
 GOFLAGS      ?=
+# Extra `go test` flags for every test target, e.g. TESTFLAGS=-race.
+TESTFLAGS    ?=
+# Root packages under `make test`; ./tests/e2e is the orchestrator `make e2e` runs.
 GO_PKGS      := ./internal/... ./pkg/... ./cmd/...
 
 # Sub-modules that have their own go.mod (each gets `tidy`/`build` per target).
@@ -26,6 +29,13 @@ help: ## Show this help.
 build: ## Build the craftgo CLI to bin/craftgo.
 	@mkdir -p $(BIN_DIR)
 	$(GO) build $(GOFLAGS) -o $(BIN) ./cmd/craftgo
+
+.PHONY: build-all
+build-all: ## Compile the root module and every sub-module.
+	$(GO) build $(GOFLAGS) ./...
+	@for d in $(SUBMODULES); do \
+		echo "→ build $$d"; (cd "$$d" && $(GO) build $(GOFLAGS) ./...) || exit 1; \
+	done
 
 .PHONY: install
 install: ## Install craftgo into $$GOBIN (or $$GOPATH/bin).
@@ -55,26 +65,26 @@ docs-preview: ## Serve the built docs locally to verify the output.
 # ---- test / lint ---------------------------------------------------------
 .PHONY: test
 test: ## Run all unit tests in the root module.
-	$(GO) test $(GOFLAGS) -count=1 $(GO_PKGS)
+	$(GO) test $(GOFLAGS) $(TESTFLAGS) -count=1 $(GO_PKGS)
 
 .PHONY: test-race
 test-race: ## Run unit tests with the race detector.
-	$(GO) test $(GOFLAGS) -race -count=1 $(GO_PKGS)
+	$(GO) test $(GOFLAGS) $(TESTFLAGS) -race -count=1 $(GO_PKGS)
 
 .PHONY: cover
 cover: ## Run tests with coverage and write coverage.html.
-	$(GO) test $(GOFLAGS) -count=1 -coverprofile=coverage.txt $(GO_PKGS)
+	$(GO) test $(GOFLAGS) $(TESTFLAGS) -count=1 -coverprofile=coverage.txt $(GO_PKGS)
 	$(GO) tool cover -html=coverage.txt -o coverage.html
 	@echo "wrote coverage.html"
 
 .PHONY: e2e
 e2e: ## Run the e2e orchestrator: gen + `go test` the matrix fixture.
-	$(GO) test $(GOFLAGS) -count=1 ./tests/e2e/...
+	$(GO) test $(GOFLAGS) $(TESTFLAGS) -count=1 ./tests/e2e/...
 
 .PHONY: test-submodules
 test-submodules: ## Run tests inside every sub-module (example/, e2e fixtures).
 	@for d in $(SUBMODULES); do \
-		echo "→ test $$d"; (cd "$$d" && $(GO) test $(GOFLAGS) -count=1 ./...) || exit 1; \
+		echo "→ test $$d"; (cd "$$d" && $(GO) test $(GOFLAGS) $(TESTFLAGS) -count=1 ./...) || exit 1; \
 	done
 
 .PHONY: test-all
@@ -82,7 +92,7 @@ test-all: test e2e test-submodules ## Run every test suite - root, e2e orchestra
 
 .PHONY: vet
 vet: ## go vet over all root packages and every published nested module.
-	$(GO) vet $(GO_PKGS)
+	$(GO) vet ./...
 	@(cd pkg/events && $(GO) vet ./...)
 	@(cd pkg/events/nats && $(GO) vet ./...)
 	@(cd pkg/events/kafka && $(GO) vet ./...)
