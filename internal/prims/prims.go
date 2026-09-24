@@ -1,8 +1,5 @@
-// Package prims is the catalogue of the DSL's built-in type spellings. One
-// row per name carries every fact the analyser, the code generators, and
-// the language server read about it, so a built-in is described once. Each
-// output gets its own column (Go, the OpenAPI pair); adding a target
-// language adds a column here rather than a second mapping table.
+// Package prims is the catalogue of the DSL's built-in types: one row per
+// name with its Go type, OpenAPI type and format, value range and hover text.
 package prims
 
 // Kind classifies a built-in by the values it holds.
@@ -17,7 +14,7 @@ const (
 	Bytes    // raw byte buffer
 	Any      // opaque JSON value
 	File     // multipart upload
-	Object   // bag of fields, valid only inside `@example({...})`
+	Object   // not a usable field type; the analyser rejects it
 	DateTime // RFC 3339 timestamp
 )
 
@@ -25,14 +22,12 @@ const (
 type Spec struct {
 	Name string
 	Kind Kind
-	// Bits is the width of a sized integer or float (8, 16, 32, 64); 0
-	// for the platform-sized `int` / `uint` and for non-numeric kinds.
+	// Bits is the width of a sized number; 0 for `int`, `uint` and non-numbers.
 	Bits int
 	// Go is the Go type the name lowers to; "" when it has none.
 	Go string
-	// Parser is the strconv function a wire-string binder parses the
-	// value with; "" for `string` (used verbatim) and for kinds with no
-	// wire form.
+	// Parser is the strconv function that parses the kind from a wire string;
+	// "" for `string` and for kinds with no wire form.
 	Parser string
 	// OASType and OASFormat are the OpenAPI schema `type` and `format`;
 	// an empty OASType is an unconstrained schema.
@@ -88,9 +83,8 @@ func Is(name string) bool {
 	return ok
 }
 
-// IsWireParseable reports whether a wire-string binder (`@query`,
-// `@header`, `@cookie`, `@form`) can parse name from a single string:
-// string, bool, and the integer and float kinds.
+// IsWireParseable reports whether a `@query`, `@header`, `@cookie` or `@form`
+// value of type name can be parsed from a single string.
 func IsWireParseable(name string) bool {
 	switch byName[name].Kind {
 	case String, Bool, Int, Uint, Float:
@@ -120,8 +114,8 @@ func IsInteger(name string) bool {
 // IsUnsigned reports whether name is an unsigned integer kind.
 func IsUnsigned(name string) bool { return byName[name].Kind == Uint }
 
-// Capacity returns the value range an integer kind can hold; ok is false
-// for every other name.
+// Capacity returns the value range of an integer kind; ok is false for any
+// other name.
 func Capacity(name string) (lo, hi float64, ok bool) {
 	s := byName[name]
 	if s.Kind != Int && s.Kind != Uint {

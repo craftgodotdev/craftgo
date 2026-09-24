@@ -37,10 +37,8 @@ func TestDedupNoCollision(t *testing.T) {
 	}
 }
 
-// TestDedupUserIdVsUserID pins the canonical example: `user_id` and
-// `userId` both map to `UserID`. The first occurrence keeps the bare
-// Go name; the second is suffixed `_2` so the struct compiles. The
-// collision record carries both DSL spellings so callers can warn.
+// TestDedupUserIdVsUserID checks that `user_id` and `userId` collide on
+// `UserID` and the second becomes `UserID_2`.
 func TestDedupUserIdVsUserID(t *testing.T) {
 	resolved, collisions := DedupGoFieldNames([]string{"user_id", "userId"})
 	want := []string{"UserID", "UserID_2"}
@@ -62,13 +60,8 @@ func TestDedupUserIdVsUserID(t *testing.T) {
 	}
 }
 
-// TestDedupThreeWayCollision pins the suffix sequencing - second
-// duplicate gets `_2`, third gets `_3`, etc. The bare canonical is
-// reserved for the first occurrence regardless of which DSL spelling
-// appeared first in source. All three of `user_id`, `userId`, and
-// `USER_ID` normalise to `UserID` under [GoFieldName] (the title-case
-// + initialism rules collapse case differences in the input parts),
-// so the trio collides as a single group.
+// TestDedupThreeWayCollision checks that three names mapping to `UserID` form
+// one group, suffixed `_2` and `_3`.
 func TestDedupThreeWayCollision(t *testing.T) {
 	resolved, collisions := DedupGoFieldNames([]string{"user_id", "userId", "USER_ID"})
 	want := []string{"UserID", "UserID_2", "UserID_3"}
@@ -83,11 +76,8 @@ func TestDedupThreeWayCollision(t *testing.T) {
 	}
 }
 
-// TestDedupOrderStability pins the rule that the FIRST occurrence
-// keeps the bare canonical Go name even when the user later adds a
-// duplicate. Generated code remains stable for already-published
-// struct shapes - adding a colliding alias does not retroactively
-// rename the original field.
+// TestDedupOrderStability checks that the first occurrence keeps the bare
+// name whichever spelling it uses.
 func TestDedupOrderStability(t *testing.T) {
 	resolved, _ := DedupGoFieldNames([]string{"userId", "user_id"})
 	if resolved[0] != "UserID" {
@@ -115,7 +105,7 @@ func TestFileName(t *testing.T) {
 		if got := FileName(c.name, "camel"); got != c.camel {
 			t.Errorf("FileName(%q, camel) = %q, want %q", c.name, got, c.camel)
 		}
-		// An empty/unknown style falls back to kebab, byte-identical to KebabCase.
+		// An empty style falls back to kebab.
 		if got := FileName(c.name, ""); got != KebabCase(c.name) {
 			t.Errorf("FileName(%q, \"\") = %q, want KebabCase %q", c.name, got, KebabCase(c.name))
 		}
@@ -123,8 +113,7 @@ func TestFileName(t *testing.T) {
 }
 
 func TestFileNameWordsSuffix(t *testing.T) {
-	// The middleware file appends a literal "middleware" word so the separator
-	// between the name and the suffix follows the chosen case.
+	// An appended literal word takes the case's separator.
 	words := append(SplitFieldName("AuthRequired"), "middleware")
 	want := map[string]string{
 		"kebab": "auth-required-middleware",

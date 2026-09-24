@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// Every spec carries a name and a label, and exactly one check: a
-// condition template with a single value placeholder, or a pattern.
+// TestSpecsAreWellFormed checks that every spec has a unique name, a label and
+// exactly one check.
 func TestSpecsAreWellFormed(t *testing.T) {
 	seen := map[string]bool{}
 	for _, s := range All {

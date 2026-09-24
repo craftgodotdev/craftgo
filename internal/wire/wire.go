@@ -1,10 +1,6 @@
-// Package wire is the leaf vocabulary of craftgo's wire bindings: where a
-// field's value rides (path / query / header / cookie / form / body /
-// sensitive), how its wire name is derived, and the request auto-binding
-// rule. It sits below both the analyzer and codegen - each rule here is
-// decided exactly once and every layer imports the same answer, so the
-// editor's diagnostics, the generated binder, and the OpenAPI document
-// cannot disagree on where a field rides or what it is called.
+// Package wire decides where a field's value rides (path, query, header,
+// cookie, form, body, or nowhere for `@sensitive`), its wire and JSON names,
+// the request auto-binding rule and a method's success status.
 package wire
 
 import (
@@ -14,10 +10,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// Binding-kind vocabulary: the wire-placement names shared by the analyzer
-// and codegen (for the binding decorators, the decorator name IS the kind).
-// Kind comparisons and cross-layer calls use these constants so a typo fails
-// to compile instead of silently never matching.
+// Binding kinds: where a field's value rides. A binding decorator is named
+// after its kind.
 const (
 	BindingPath      = "path"
 	BindingQuery     = "query"
@@ -32,19 +26,14 @@ const (
 const (
 	// DecoratorSensitive keeps a field off the wire in both directions.
 	DecoratorSensitive = "sensitive"
-	// DecoratorJSON names a body field on the wire when the JSON key is
-	// not the field name - a contract another system owns.
+	// DecoratorJSON sets a body field's JSON key.
 	DecoratorJSON = "json"
-	// DecoratorNullable keeps a field always-emitted with a null value
-	// allowed.
+	// DecoratorNullable keeps a field always emitted, with null allowed.
 	DecoratorNullable = "nullable"
 )
 
-// CanonicalWireName folds a wire name to its collision key. HTTP header names
-// are case-insensitive (RFC 7230) and net/http canonicalises them, so two
-// fields bound to `X-Trace` and `x-trace` reach the same header - fold header
-// names to lower case for the key. Path / query / cookie names are
-// case-sensitive on the wire and pass through unchanged.
+// CanonicalWireName returns the collision key of a wire name: header names are
+// case-insensitive (RFC 7230) and fold to lower case; other kinds pass through.
 func CanonicalWireName(kind, name string) string {
 	if kind == BindingHeader {
 		return strings.ToLower(name)
@@ -52,9 +41,7 @@ func CanonicalWireName(kind, name string) string {
 	return name
 }
 
-// IsBodyVerb reports whether verb carries a request body (POST/PUT/PATCH) -
-// the condition under which an undecorated field rides @body rather than
-// auto-promoting to @query.
+// IsBodyVerb reports whether verb carries a request body: POST, PUT or PATCH.
 func IsBodyVerb(verb string) bool {
 	switch strings.ToUpper(verb) {
 	case http.MethodPost, http.MethodPut, http.MethodPatch:
@@ -63,12 +50,8 @@ func IsBodyVerb(verb string) bool {
 	return false
 }
 
-// WireName returns the on-the-wire name for field f under binding kind
-// (path/query/header/cookie/form): the binding decorator's first non-empty
-// string argument, or the field's own name when none is given. It is the one
-// rule shared by the analyser's binding checks and codegen's binders /
-// OpenAPI parameter emit, so the documented parameter name and the name the
-// handler actually reads cannot disagree.
+// WireName returns the wire name of field f under binding kind: the `@kind`
+// decorator's non-empty string argument, else the field's own name.
 func WireName(f *ast.Field, kind string) string {
 	if f == nil {
 		return ""
@@ -84,13 +67,8 @@ func WireName(f *ast.Field, kind string) string {
 	return f.Name
 }
 
-// BindingKind returns the binding kind named by the first binding decorator
-// in ds - "path" / "query" / "header" / "cookie" / "body" / "form" - or "" when
-// none is present. It is the single "which decorator binds this field"
-// classifier the analyser's binding checks and codegen's binders both read, so
-// the two layers cannot disagree on where a field rides. (Valid input carries
-// at most one binding decorator per field - the single-binding rule rejects
-// the rest - so first-match is unambiguous.)
+// BindingKind returns the kind of the first binding decorator in ds, or ""
+// when there is none. Valid input has at most one per field.
 func BindingKind(ds []*ast.Decorator) string {
 	for _, d := range ds {
 		if d != nil && IsBindingName(d.Name) {
@@ -100,8 +78,8 @@ func BindingKind(ds []*ast.Decorator) string {
 	return ""
 }
 
-// IsBindingName reports whether name is one of the six wire-binding decorator
-// names (@path / @query / @header / @cookie / @body / @form).
+// IsBindingName reports whether name is a binding decorator: @path, @query,
+// @header, @cookie, @body or @form.
 func IsBindingName(name string) bool {
 	switch name {
 	case BindingPath, BindingQuery, BindingHeader, BindingCookie, BindingBody, BindingForm:
@@ -110,14 +88,9 @@ func IsBindingName(name string) bool {
 	return false
 }
 
-// RequestFieldBinding resolves where a request field rides once method
-// context is applied: its explicit binding decorator if any (or @sensitive),
-// otherwise the auto-binding rule - an un-decorated field auto-binds to "path"
-// when its name matches a `{param}` segment, to "query" on a body-less verb
-// (there is no body to decode into), or stays "body". auto is true only for an
-// auto-promoted path/query field. This is the single place the request
-// auto-binding rule lives, read by both the analyser's binding checks and
-// codegen's request resolver so the two cannot disagree on where a field rides.
+// RequestFieldBinding returns where a request field rides: "sensitive", else
+// its binding decorator's kind, else auto-bound (auto true) "path" for a
+// `{param}` name or "query" on a body-less verb, else "body".
 func RequestFieldBinding(f *ast.Field, pathNames map[string]bool, bodyVerb bool) (kind string, auto bool) {
 	if ast.HasDecorator(f.Decorators, "sensitive") {
 		return BindingSensitive, false
@@ -135,10 +108,8 @@ func RequestFieldBinding(f *ast.Field, pathNames map[string]bool, bodyVerb bool)
 	}
 }
 
-// Raw-mode decorator names. `@passthrough` hands both transport sides to
-// logic; the two flags hand over one side each. Every layer that needs
-// to know who owns a side reads [RawSides] rather than matching these
-// names itself.
+// Raw-mode decorator names: `@passthrough` hands both transport sides to
+// logic, each flag one side.
 const (
 	DecoratorPassthrough = "passthrough"
 	DecoratorRawRequest  = "rawRequest"
@@ -146,12 +117,7 @@ const (
 )
 
 // RawSides reports which transport sides logic owns for a method with
-// decorators ds. A raw request side skips bind + validate and hands
-// logic the *http.Request; a raw response side skips the response
-// encode and hands logic the http.ResponseWriter. `@passthrough` is
-// exactly `@rawRequest @rawResponse`. A `request` / `response` block on
-// a raw side is a docs-only contract: the OpenAPI document and the
-// generated Go types describe it, the transport never touches it.
+// decorators ds; the transport never binds or encodes a raw side.
 func RawSides(ds []*ast.Decorator) (rawRequest, rawResponse bool) {
 	if ast.HasDecorator(ds, DecoratorPassthrough) {
 		return true, true
@@ -163,8 +129,7 @@ func RawSides(ds []*ast.Decorator) (rawRequest, rawResponse bool) {
 type JSONPresence int
 
 const (
-	// JSONAbsent - the field never rides the JSON body: it is bound to
-	// the URL, a header or a cookie, or it is `@sensitive`.
+	// JSONAbsent - bound outside the body, or `@sensitive`.
 	JSONAbsent JSONPresence = iota
 	// JSONRequired - always emitted, never null.
 	JSONRequired
@@ -174,14 +139,9 @@ const (
 	JSONNullable
 )
 
-// JSONShape reports the wire name a field carries in the JSON body and
-// whether it is present, optional, nullable, or off the body entirely.
-// The Go struct tag and every language target read it, so a generated
-// type in any language describes the same JSON.
-//
-// `?` dominates `@nullable`: the wire contract is "may be absent", so a
-// missing value is omitted rather than sent as an explicit null.
-// `@form` stays in the body - the multipart handler binds its own table.
+// JSONShape returns a field's JSON key and how it appears in the JSON body.
+// `?` wins over `@nullable`, so a missing value is omitted, not sent as null;
+// an `@form` field counts as a body field.
 func JSONShape(f *ast.Field) (name string, presence JSONPresence) {
 	if f == nil {
 		return "", JSONAbsent
@@ -199,8 +159,8 @@ func JSONShape(f *ast.Field) (name string, presence JSONPresence) {
 	return name, JSONRequired
 }
 
-// JSONName is the key a body field carries in JSON: the `@json` argument
-// when the field has one, else the field's own name.
+// JSONName returns a body field's JSON key: the non-empty `@json` argument,
+// else the field's own name.
 func JSONName(f *ast.Field) string {
 	if f == nil {
 		return ""
@@ -216,10 +176,8 @@ func JSONName(f *ast.Field) string {
 	return f.Name
 }
 
-// NonBodyBindingKind returns the wire location an explicit binding
-// decorator places a field in - path / query / header / cookie, the
-// bindings served outside the JSON body - or "" for a body, form,
-// sensitive or undecorated field.
+// NonBodyBindingKind returns a field's explicit path, query, header or cookie
+// binding, or "" for a body, form, sensitive or undecorated field.
 func NonBodyBindingKind(f *ast.Field) string {
 	if f == nil {
 		return ""
@@ -231,8 +189,8 @@ func NonBodyBindingKind(f *ast.Field) string {
 	return ""
 }
 
-// StatusOverride returns the explicit `@status(N)` code on the method, if
-// any. The value is range-validated (100..599) by the semantic layer.
+// StatusOverride returns the method's `@status(N)` code, if any; the analyser
+// keeps it within 100..599.
 func StatusOverride(m *ast.Method) (int, bool) {
 	for _, d := range m.Decorators {
 		if d == nil || d.Name != "status" || len(d.Args) == 0 {
@@ -245,15 +203,9 @@ func StatusOverride(m *ast.Method) (int, bool) {
 	return 0, false
 }
 
-// SuccessStatus resolves the status a method's successful response carries.
-// `@status(N)` wins; otherwise the default is verb-aware:
-//
-//   - no response body          -> 204 No Content
-//   - POST returning a body     -> 201 Created
-//   - any other verb with a body -> 200 OK
-//
-// The "no body -> 204" rule takes precedence over the verb default: a POST
-// that returns nothing is 204, not 201.
+// SuccessStatus returns the status of a method's successful response:
+// `@status(N)` when set, else 204 with no response body, 201 for a POST with
+// one, and 200 otherwise.
 func SuccessStatus(m *ast.Method) int {
 	if code, ok := StatusOverride(m); ok {
 		return code
@@ -267,9 +219,7 @@ func SuccessStatus(m *ast.Method) int {
 	return http.StatusOK
 }
 
-// Binding is where a field's value rides. It is the enum form of the
-// BindingKind strings, so a stage can switch on placement without
-// comparing text.
+// Binding is where a field's value rides, as an enum of the binding kinds.
 type Binding int
 
 const (
@@ -282,7 +232,8 @@ const (
 	BindSensitive // @sensitive: server-only, json:"-", excluded everywhere
 )
 
-// String renders the OpenAPI `in` value; body and sensitive have no `in`.
+// String returns the binding kind; for path, query, header and cookie it is
+// also the OpenAPI `in` value.
 func (b Binding) String() string {
 	switch b {
 	case BindPath:
@@ -302,7 +253,7 @@ func (b Binding) String() string {
 	}
 }
 
-// BindingFromKind maps a BindingKind string onto its enum form.
+// BindingFromKind returns the Binding of a binding kind.
 func BindingFromKind(kind string) Binding {
 	switch kind {
 	case BindingPath:
@@ -322,8 +273,8 @@ func BindingFromKind(kind string) Binding {
 	}
 }
 
-// ExplicitBinding is the placement a field's own decorators declare,
-// before any request auto-binding.
+// ExplicitBinding returns the placement a field's own decorators declare,
+// ignoring request auto-binding.
 func ExplicitBinding(f *ast.Field) Binding {
 	if HasSensitive(f.Decorators) {
 		return BindSensitive
@@ -331,5 +282,5 @@ func ExplicitBinding(f *ast.Field) Binding {
 	return BindingFromKind(BindingKind(f.Decorators))
 }
 
-// HasSensitive reports whether `@sensitive` marks the field server-only.
+// HasSensitive reports whether ds holds `@sensitive`.
 func HasSensitive(ds []*ast.Decorator) bool { return ast.HasDecorator(ds, DecoratorSensitive) }

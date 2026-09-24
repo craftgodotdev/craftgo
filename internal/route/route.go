@@ -1,12 +1,6 @@
-// Package route is the leaf authority for craftgo's two path namespaces and
-// the wall between them. The URL side: how a method's final route is assembled
-// (base path + @prefix + method path), the string form of a DSL path, the shape
-// key two colliding routes share, and net/http's pattern-overlap rule. The disk
-// side: `@group`, which decides the output segment a block's generated files
-// land under and never contributes to the URL. The analyzer, the routes/OpenAPI
-// emitters, and the route-conflict detector all read these - one implementation,
-// so the route and the directory the editor diagnoses are byte-for-byte the ones
-// the generated server mounts and codegen writes.
+// Package route builds a method's URL route, detects net/http pattern
+// conflicts, and names the directory of a service block's generated files.
+// `@group` shapes only that directory, never the URL.
 package route
 
 import (
@@ -16,16 +10,9 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/idents"
 )
 
-// Resolve joins the OpenAPI base path, the service's @prefix, and the
-// method's own path into the single absolute route the server registers and
-// the OpenAPI document advertises. Empty segments are dropped, consecutive
-// slashes collapse, the result always begins with '/', and a pathless method
-// falls back to its kebab-cased name ("Ping" → "/ping"). @group is absent on
-// purpose - it nests generated files on disk, never the URL.
-//
-// This is THE route authority: the analyzer's path checks and every codegen
-// emitter (routes, OpenAPI paths, route-conflict detection) call it, so the
-// route the editor diagnoses is byte-for-byte the route the server mounts.
+// Resolve joins basePath, the service's @prefix and the method's path into an
+// absolute route with no empty segments or trailing slash. A pathless method
+// uses its kebab-cased name: "Ping" → "/ping".
 func Resolve(basePath string, svc *ast.ServiceDecl, m *ast.Method) string {
 	parts := []string{}
 	if basePath != "" {
@@ -52,6 +39,7 @@ func Resolve(basePath string, svc *ast.ServiceDecl, m *ast.Method) string {
 	return joined
 }
 
+// PathString renders a DSL path in route form, e.g. `/users/{id}`; "" for nil.
 func PathString(p *ast.Path) string {
 	if p == nil {
 		return ""
@@ -70,9 +58,8 @@ func PathString(p *ast.Path) string {
 	return sb.String()
 }
 
-// Shape replaces every variable segment of a resolved route with `{}`, so
-// routes that differ only in variable names compare equal - they register
-// the same net/http pattern.
+// Shape replaces every variable segment of a route with `{}`, so routes that
+// differ only in variable names compare equal.
 func Shape(route string) string {
 	segs := splitRouteSegments(route)
 	for i, seg := range segs {
@@ -83,9 +70,8 @@ func Shape(route string) string {
 	return "/" + strings.Join(segs, "/")
 }
 
-// Vars returns the `{name}` variable segments of a route, prefix or path
-// string, in order. This is the one rule every layer applies to decide
-// which segments bind a field and which patterns overlap.
+// Vars returns the names of the `{name}` segments of a route, prefix or path,
+// in order.
 func Vars(route string) []string {
 	var out []string
 	for _, seg := range splitRouteSegments(route) {
@@ -96,8 +82,7 @@ func Vars(route string) []string {
 	return out
 }
 
-// varName returns the name of a `{name}` segment - the only variable form
-// the parser produces.
+// varName returns the name of a whole-segment `{name}` variable.
 func varName(seg string) (string, bool) {
 	if len(seg) > 2 && seg[0] == '{' && seg[len(seg)-1] == '}' {
 		return seg[1 : len(seg)-1], true
@@ -105,8 +90,7 @@ func varName(seg string) (string, bool) {
 	return "", false
 }
 
-// ServicePrefix returns the `@prefix("...")` string declared on the
-// service decl, or "" when absent.
+// ServicePrefix returns the service's `@prefix("...")` string, or "".
 func ServicePrefix(svc *ast.ServiceDecl) string {
 	if svc == nil {
 		return ""
@@ -122,12 +106,8 @@ func ServicePrefix(svc *ast.ServiceDecl) string {
 	return ""
 }
 
-// ServiceGroup returns the cleaned `@group("a/b")` path declared on a service
-// or `extend service` block, or "" when the decorator is absent. @group is the
-// URL's mirror image: it decides where a block's GENERATED FILES land on disk
-// and never contributes a path segment to the route (see [Resolve]). Values are
-// normalised through [CleanGroupPath]; the analyser rejects traversal and
-// non-plain segments outright before codegen or the collision check read them.
+// ServiceGroup returns the `@group("a/b")` path of a service or extend block,
+// cleaned by [CleanGroupPath], or "" when absent.
 func ServiceGroup(svc *ast.ServiceDecl) string {
 	if svc == nil {
 		return ""
@@ -143,11 +123,8 @@ func ServiceGroup(svc *ast.ServiceDecl) string {
 	return ""
 }
 
-// EffectiveGroup returns the @group that applies to one service block. The
-// block's own @group wins; an extend block declaring none inherits the primary
-// block's, so `@group("admin")` on the service covers its extend blocks unless
-// an extend overrides it. Pass the primary block's own group as primaryGroup
-// (it is its own effective group).
+// EffectiveGroup returns the @group of a service block: its own, else the
+// primary block's group, passed as primaryGroup.
 func EffectiveGroup(block *ast.ServiceDecl, primaryGroup string) string {
 	if g := ServiceGroup(block); g != "" {
 		return g
@@ -155,12 +132,8 @@ func EffectiveGroup(block *ast.ServiceDecl, primaryGroup string) string {
 	return primaryGroup
 }
 
-// CleanGroupPath normalises a @group value into a relative slash path: it trims
-// surrounding slashes and drops empty segments so "/admin/" and "admin//ops"
-// become "admin" and "admin/ops". Traversal (".", "..") segments are dropped as
-// a defence-in-depth backstop - the semantic phase rejects them outright - so a
-// malformed value reaching codegen can only ever nest deeper inside the output
-// tree, never escape it.
+// CleanGroupPath normalises a @group value to a relative slash path, dropping
+// empty, "." and ".." segments so the result stays inside the output tree.
 func CleanGroupPath(raw string) string {
 	segs := strings.Split(raw, "/")
 	kept := segs[:0]
@@ -173,18 +146,9 @@ func CleanGroupPath(raw string) string {
 	return strings.Join(kept, "/")
 }
 
-// OutputSegment returns the path segment, under any output base, that holds a
-// service block's generated files. A non-empty @group REPLACES the service-name
-// segment entirely (so `@group("v2")` on any service emits to `<base>/v2/`),
-// giving the author full control of the layout; the ungrouped case falls back
-// to the service directory under the configured file case. The result is a
-// forward-slash path - the group may itself be nested ("admin/ops").
-//
-// Because the group replaces the service name it is effectively a GLOBAL
-// namespace: two services picking the same group would land in one directory
-// and overwrite each other's routes file. This is the segment the analyser's
-// group-collision check compares, so the directory the editor diagnoses is the
-// directory codegen writes.
+// OutputSegment returns the slash path, under an output base, of a service
+// block's generated files: the group when set, else the service name in
+// fileCase. Services sharing a group therefore share a directory.
 func OutputSegment(svcName, group, fileCase string) string {
 	if group != "" {
 		return group
@@ -193,12 +157,8 @@ func OutputSegment(svcName, group, fileCase string) string {
 }
 
 // PatternsConflict reports whether two same-verb mux patterns overlap with
-// neither strictly more specific - the exact condition net/http rejects. It
-// models craftgo's single-segment wildcards (`{name}`): patterns of different
-// segment counts can never overlap, and at each shared position a literal beats
-// a wildcard. The pair conflicts when one is more specific at some segment AND
-// the other is more specific at another (a cross-over), or when they are the
-// same pattern (every segment ties) - i.e. neither side wins outright.
+// neither more specific, which net/http rejects. A `{name}` wildcard spans one
+// segment and a literal is more specific than a wildcard.
 func PatternsConflict(a, b string) bool {
 	as, bs := splitRouteSegments(a), splitRouteSegments(b)
 	if len(as) != len(bs) {
@@ -220,8 +180,7 @@ func PatternsConflict(a, b string) bool {
 			// both wildcard → tie, no winner at this segment
 		}
 	}
-	// Overlapping (no disjoint segment). Conflict unless exactly one side is
-	// strictly more specific overall.
+	// No disjoint segment: a conflict unless exactly one side is more specific.
 	return aMoreSpecific == bMoreSpecific
 }
 
