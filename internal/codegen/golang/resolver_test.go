@@ -80,4 +80,3 @@ func TestProjectResolverNilProjectStillUsable(t *testing.T) {
 		t.Error("empty resolver lookups must miss")
 	}
 }
-

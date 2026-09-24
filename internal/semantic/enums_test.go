@@ -38,9 +38,9 @@ func TestEnumMemberWire(t *testing.T) {
 			if got := EnumMemberWireString(&v); got != c.wantText {
 				t.Errorf("EnumMemberWireString = %q, want %q", got, c.wantText)
 			}
-			n, IsInt := EnumMemberInt(&v)
+			n, IsInt := enumMemberInt(&v)
 			if IsInt != c.wantIsInt || n != c.wantInt {
-				t.Errorf("EnumMemberInt = (%d, %v), want (%d, %v)", n, IsInt, c.wantInt, c.wantIsInt)
+				t.Errorf("enumMemberInt = (%d, %v), want (%d, %v)", n, IsInt, c.wantInt, c.wantIsInt)
 			}
 		})
 	}

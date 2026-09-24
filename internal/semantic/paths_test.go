@@ -31,7 +31,7 @@ func TestResolveMethodPathPathlessUsesIdentsKebab(t *testing.T) {
 func TestBasePathFormatOK(t *testing.T) {
 	cases := []string{"", "/", "/v1", "/api/v1"}
 	for _, bp := range cases {
-		_, diags := AnalyzeWith(parseFiles(t, `service S {}`), Options{BasePath: bp})
+		_, diags := analyzeWith(parseFiles(t, `service S {}`), Options{BasePath: bp})
 		if findCode(diags, CodePathBaseFormat) != nil {
 			t.Errorf("basePath %q should be OK, got %v", bp, codes(diags))
 		}
@@ -39,7 +39,7 @@ func TestBasePathFormatOK(t *testing.T) {
 }
 
 func TestBasePathFormatRejectsMissingSlash(t *testing.T) {
-	_, diags := AnalyzeWith(parseFiles(t, `service S {}`), Options{BasePath: "v1"})
+	_, diags := analyzeWith(parseFiles(t, `service S {}`), Options{BasePath: "v1"})
 	d := findCode(diags, CodePathBaseFormat)
 	if d == nil {
 		t.Fatalf("got %v", codes(diags))
@@ -50,7 +50,7 @@ func TestBasePathFormatRejectsMissingSlash(t *testing.T) {
 }
 
 func TestBasePathFormatRejectsTrailingSlash(t *testing.T) {
-	_, diags := AnalyzeWith(parseFiles(t, `service S {}`), Options{BasePath: "/v1/"})
+	_, diags := analyzeWith(parseFiles(t, `service S {}`), Options{BasePath: "/v1/"})
 	if findCode(diags, CodePathBaseFormat) == nil {
 		t.Fatalf("got %v", codes(diags))
 	}
@@ -66,7 +66,7 @@ func TestBasePathFormatReportedOnce(t *testing.T) {
 }
 
 func TestBasePathFormatRejectsDoubleSlash(t *testing.T) {
-	_, diags := AnalyzeWith(parseFiles(t, `service S {}`), Options{BasePath: "/v1//api"})
+	_, diags := analyzeWith(parseFiles(t, `service S {}`), Options{BasePath: "/v1//api"})
 	if findCode(diags, CodePathBaseFormat) == nil {
 		t.Fatalf("got %v", codes(diags))
 	}
@@ -100,7 +100,7 @@ service B { get B /v1/users {} }`))
 }
 
 func TestPathCollisionWithBasePath(t *testing.T) {
-	_, diags := AnalyzeWith(parseFiles(t,
+	_, diags := analyzeWith(parseFiles(t,
 		`service A { get A /users {} }
 service B { get B /users {} }`),
 		Options{BasePath: "/api"})
@@ -288,7 +288,7 @@ func TestHealthConflictRespectsCustomList(t *testing.T) {
 	files := parseFiles(t, `service S {
 	get Health /healthz {}
 }`)
-	_, diags := AnalyzeWith(files, Options{HealthPaths: []string{"/_status"}})
+	_, diags := analyzeWith(files, Options{HealthPaths: []string{"/_status"}})
 	if findCode(diags, CodePathHealthConflict) != nil {
 		t.Errorf("/healthz should not conflict when HealthPaths overrides it, got %v", codes(diags))
 	}
@@ -310,7 +310,7 @@ func TestResolveMethodPathFallbackName(t *testing.T) {
 
 func TestResolveMethodPathIgnoresGroup(t *testing.T) {
 	// @group shapes the output folders, not the route.
-	pkg, diags := AnalyzeWith(parseFiles(t, `@prefix("/v1")
+	pkg, diags := analyzeWith(parseFiles(t, `@prefix("/v1")
 @group("admin")
 service S { get GetUser /users {} }`), Options{})
 	if len(diags) > 0 {

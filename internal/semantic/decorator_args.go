@@ -64,7 +64,7 @@ func SizeArg(a *ast.DecoratorArg) (int64, bool) {
 	if a == nil {
 		return 0, false
 	}
-	return SizeBytes(a.Value)
+	return sizeBytes(a.Value)
 }
 
 // DurationArg extracts a duration from a Duration literal (`30s`) or a bare
@@ -86,8 +86,8 @@ func DurationArg(a *ast.DecoratorArg) (time.Duration, bool) {
 	return 0, false
 }
 
-// SizeBytes is [SizeArg] on a bare expression.
-func SizeBytes(e ast.Expr) (int64, bool) {
+// sizeBytes is [SizeArg] on a bare expression.
+func sizeBytes(e ast.Expr) (int64, bool) {
 	switch v := e.(type) {
 	case *ast.IntLit:
 		return v.Value, true

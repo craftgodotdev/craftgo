@@ -59,33 +59,35 @@ type Options struct {
 	FileCase string
 }
 
-// Analyze is [AnalyzeWith] with zero [Options].
+// Analyze runs [AnalyzeProject] with zero [Options] and returns the
+// project's only package, else the unnamed one, else the first by name. The
+// package is never nil.
 func Analyze(files []*ast.File) (*Package, []Diagnostic) {
-	return AnalyzeWith(files, Options{})
+	return analyzeWith(files, Options{})
 }
 
-// AnalyzeWith runs [AnalyzeProject] and returns the project's only package,
-// else the unnamed one, else the first by name. The package is never nil.
-func AnalyzeWith(files []*ast.File, opts Options) (*Package, []Diagnostic) {
+// analyzeWith is [Analyze] with opts.
+func analyzeWith(files []*ast.File, opts Options) (*Package, []Diagnostic) {
 	proj, diags := AnalyzeProject(files, opts)
 	return proj.singlePackage(), diags
 }
 
+// newPackage returns a package with empty symbol tables.
+func newPackage() *Package {
+	return &Package{
+		Types:       map[string]*ast.TypeDecl{},
+		Enums:       map[string]*ast.EnumDecl{},
+		Errors:      map[string]*ast.ErrorDecl{},
+		Scalars:     map[string]*ast.ScalarDecl{},
+		Middlewares: map[string]*ast.MiddlewareDecl{},
+		Services:    map[string]*ServiceInfo{},
+		Events:      map[string]*ast.EventDecl{},
+	}
+}
+
 // newAnalyzer returns an analyzer with empty symbol tables for one package.
 func newAnalyzer(proj *Project, opts Options) *analyzer {
-	return &analyzer{
-		pkg: &Package{
-			Types:       map[string]*ast.TypeDecl{},
-			Enums:       map[string]*ast.EnumDecl{},
-			Errors:      map[string]*ast.ErrorDecl{},
-			Scalars:     map[string]*ast.ScalarDecl{},
-			Middlewares: map[string]*ast.MiddlewareDecl{},
-			Services:    map[string]*ServiceInfo{},
-			Events:      map[string]*ast.EventDecl{},
-		},
-		proj: proj,
-		opts: opts,
-	}
+	return &analyzer{pkg: newPackage(), proj: proj, opts: opts}
 }
 
 // runDeclPhase builds the symbol tables and merges services; every other
@@ -114,7 +116,6 @@ func (a *analyzer) runDecoratorPhase(files []*ast.File) {
 	a.checkDecoratorArgs(files)
 	a.checkDecoratorConflicts(files)
 	a.checkJSONNames(files)
-	a.checkLocalDecoratorRefs(files)
 	a.checkDecoratorRefs(files)
 }
 

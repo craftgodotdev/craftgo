@@ -22,7 +22,7 @@ func TestEventResolvesContractAndPayload(t *testing.T) {
 		t.Fatalf("events = %d, want 1", len(pkg.Events))
 	}
 	proj, _ := AnalyzeProject(parseFiles(t, ordersDesign), Options{})
-	events := proj.Events()
+	events := proj.events()
 	if len(events) != 1 {
 		t.Fatalf("project events = %d, want 1", len(events))
 	}
@@ -30,11 +30,8 @@ func TestEventResolvesContractAndPayload(t *testing.T) {
 	if ev.Contract != "orders.OrderPlaced" {
 		t.Errorf("contract = %q, want orders.OrderPlaced", ev.Contract)
 	}
-	if ev.Package != "orders" {
-		t.Errorf("home = %s", ev.Package)
-	}
-	if ev.PayloadPkg != "orders" || ev.PayloadName != "OrderPlacedPayload" || ev.Payload == nil {
-		t.Errorf("payload = %s.%s (%v)", ev.PayloadPkg, ev.PayloadName, ev.Payload)
+	if ev.PayloadPkg != "orders" || ev.Payload == nil || ev.Payload.Name != "OrderPlacedPayload" {
+		t.Errorf("payload = %s (%v)", ev.PayloadPkg, ev.Payload)
 	}
 }
 
@@ -52,8 +49,8 @@ event OrderPlaced { payload shared.Envelope }`,
 	if !ok {
 		t.Fatal("event did not resolve")
 	}
-	if ev.PayloadPkg != "shared" || ev.PayloadName != "Envelope" || ev.Payload == nil {
-		t.Errorf("payload = %s.%s (%v)", ev.PayloadPkg, ev.PayloadName, ev.Payload)
+	if ev.PayloadPkg != "shared" || ev.Payload == nil || ev.Payload.Name != "Envelope" {
+		t.Errorf("payload = %s (%v)", ev.PayloadPkg, ev.Payload)
 	}
 }
 
@@ -64,7 +61,7 @@ type P { id string }
 event OrderPlaced { payload P }`
 	expectClean(t, src)
 	proj, _ := AnalyzeProject(parseFiles(t, src), Options{})
-	if got := proj.Events()[0].Contract; got != "order.placed.v2" {
+	if got := proj.events()[0].Contract; got != "order.placed.v2" {
 		t.Errorf("contract = %q", got)
 	}
 }
@@ -146,8 +143,8 @@ event BatchPlaced { payload OrderPlacedPayload[] }`
 	if !ev.PayloadArray {
 		t.Error("PayloadArray is false - the contract reads as a single payload")
 	}
-	if ev.PayloadPkg != "orders" || ev.PayloadName != "OrderPlacedPayload" || ev.Payload == nil {
-		t.Errorf("element = %s.%s (%v), want the declared type", ev.PayloadPkg, ev.PayloadName, ev.Payload)
+	if ev.PayloadPkg != "orders" || ev.Payload == nil || ev.Payload.Name != "OrderPlacedPayload" {
+		t.Errorf("element = %s (%v), want the declared type", ev.PayloadPkg, ev.Payload)
 	}
 }
 
@@ -165,8 +162,8 @@ event Batch { payload shared.Envelope[] }`,
 	if !ok {
 		t.Fatal("event did not resolve")
 	}
-	if !ev.PayloadArray || ev.PayloadPkg != "shared" || ev.PayloadName != "Envelope" || ev.Payload == nil {
-		t.Errorf("payload = []%s.%s (%v, array=%v)", ev.PayloadPkg, ev.PayloadName, ev.Payload, ev.PayloadArray)
+	if !ev.PayloadArray || ev.PayloadPkg != "shared" || ev.Payload == nil || ev.Payload.Name != "Envelope" {
+		t.Errorf("payload = []%s (%v, array=%v)", ev.PayloadPkg, ev.Payload, ev.PayloadArray)
 	}
 }
 

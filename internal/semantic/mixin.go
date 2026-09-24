@@ -41,7 +41,6 @@ type fieldEmbedClash struct {
 	pos    lexer.Position
 	field  string
 	goName string
-	mixin  string
 }
 
 // fieldEmbedClashes returns each field whose Go field name equals an
@@ -58,7 +57,7 @@ func fieldEmbedClashes(body []ast.TypeMember) []fieldEmbedClash {
 	var out []fieldEmbedClash
 	for _, f := range ast.Fields(body) {
 		if gn := idents.GoFieldName(f.Name); embeds[gn] {
-			out = append(out, fieldEmbedClash{pos: f.Pos, field: f.Name, goName: gn, mixin: gn})
+			out = append(out, fieldEmbedClash{pos: f.Pos, field: f.Name, goName: gn})
 		}
 	}
 	return out
@@ -201,7 +200,7 @@ func (a *analyzer) checkOneTypeMixins(host string, body []ast.TypeMember) {
 	for _, c := range fieldEmbedClashes(body) {
 		emit(c.pos, CodeMixinConflict,
 			"field %q collides with the embedded mixin %q: both become the Go field %q in the generated struct. Rename the field.",
-			c.field, c.mixin, c.goName)
+			c.field, c.goName, c.goName)
 	}
 	reportGoNameCollisions(seen, func(pos lexer.Position, msg string) {
 		emit(pos, CodeMixinConflict, "%s", msg)

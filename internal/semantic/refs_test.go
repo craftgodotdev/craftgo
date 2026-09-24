@@ -126,7 +126,7 @@ service S {}`)
 // expectRefWithOptions analyzes src with opts and returns its CodeDecoratorRef diagnostic.
 func expectRefWithOptions(t *testing.T, src string, opts Options) *Diagnostic {
 	t.Helper()
-	_, diags := AnalyzeWith(parseFiles(t, src), opts)
+	_, diags := analyzeWith(parseFiles(t, src), opts)
 	d := findCode(diags, CodeDecoratorRef)
 	if d == nil {
 		t.Fatalf("expected %s, got %v", CodeDecoratorRef, codes(diags))
@@ -137,7 +137,7 @@ func expectRefWithOptions(t *testing.T, src string, opts Options) *Diagnostic {
 // expectNoRefWithOptions fails if analyzing src with opts reports CodeDecoratorRef.
 func expectNoRefWithOptions(t *testing.T, src string, opts Options) {
 	t.Helper()
-	_, diags := AnalyzeWith(parseFiles(t, src), opts)
+	_, diags := analyzeWith(parseFiles(t, src), opts)
 	if d := findCode(diags, CodeDecoratorRef); d != nil {
 		t.Fatalf("did not expect %s, got %q", CodeDecoratorRef, d.Msg)
 	}

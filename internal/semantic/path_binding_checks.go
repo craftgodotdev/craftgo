@@ -17,7 +17,7 @@ func (a *analyzer) checkAutoPathField(m *ast.Method) {
 	if !ok {
 		return
 	}
-	pathSegs := MethodRoutePathVars(m, a.pkg.Services)
+	pathSegs := methodRoutePathVars(m, a.pkg.Services)
 	if len(pathSegs) == 0 {
 		return
 	}
@@ -90,9 +90,9 @@ func (a *analyzer) checkDuplicatePathVars(svc *ast.ServiceDecl, m *ast.Method) {
 	}
 }
 
-// MethodRoutePathVars returns the path variables of m's registered route,
+// methodRoutePathVars returns the path variables of m's registered route,
 // @prefix included; services is the package's service table.
-func MethodRoutePathVars(m *ast.Method, services map[string]*ServiceInfo) map[string]bool {
+func methodRoutePathVars(m *ast.Method, services map[string]*ServiceInfo) map[string]bool {
 	vars := map[string]bool{}
 	if m == nil {
 		return vars

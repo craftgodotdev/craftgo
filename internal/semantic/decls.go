@@ -45,57 +45,33 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 	}
 	for _, f := range files {
 		for _, d := range f.Decls {
-			if d == nil {
-				continue
-			}
 			switch dd := d.(type) {
 			case *ast.TypeDecl:
-				if dd == nil {
-					continue
-				}
 				if registerIn(seen, dd.Name, dd.Pos, true) {
 					a.pkg.Types[dd.Name] = dd
 				}
 			case *ast.EnumDecl:
-				if dd == nil {
-					continue
-				}
 				if registerIn(seen, dd.Name, dd.Pos, true) {
 					a.pkg.Enums[dd.Name] = dd
 				}
 			case *ast.ErrorDecl:
-				if dd == nil {
-					continue
-				}
 				if registerIn(seen, dd.Name, dd.Pos, true) {
 					a.pkg.Errors[dd.Name] = dd
 				}
 			case *ast.ScalarDecl:
-				if dd == nil {
-					continue
-				}
 				if registerIn(seen, dd.Name, dd.Pos, true) {
 					a.pkg.Scalars[dd.Name] = dd
 				}
 			case *ast.MiddlewareDecl:
-				if dd == nil {
-					continue
-				}
 				if registerIn(seenMW, dd.Name, dd.Pos, false) {
 					a.pkg.Middlewares[dd.Name] = dd
 				}
 			case *ast.EventDecl:
-				if dd == nil {
-					continue
-				}
 				if a.registerMember(seenEv, dd.Name, dd.Pos, CodeEventDuplicate,
 					"duplicate event %q in package %q - a listener names an event by this identifier, so it must be unique across the package") {
 					a.pkg.Events[dd.Name] = dd
 				}
 			case *ast.ServiceDecl:
-				if dd == nil {
-					continue
-				}
 				si, ok := a.pkg.Services[dd.Name]
 				if !ok {
 					si = &ServiceInfo{}

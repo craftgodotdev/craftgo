@@ -6,9 +6,9 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// NilableScalarPrimitive reports whether a scalar over prim holds nil
+// nilableScalarPrimitive reports whether a scalar over prim holds nil
 // without a pointer: true for `bytes` and `any`.
-func NilableScalarPrimitive(prim string) bool {
+func nilableScalarPrimitive(prim string) bool {
 	sp, ok := prims.Lookup(prim)
 	return ok && (sp.Kind == prims.Bytes || sp.Kind == prims.Any)
 }
@@ -157,7 +157,7 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 				return rf
 			}
 			rf.Category, rf.ResolvedPrim = CatScalar, sd.Primitive
-			rf.IsNilable = NilableScalarPrimitive(sd.Primitive)
+			rf.IsNilable = nilableScalarPrimitive(sd.Primitive)
 			return rf
 		}
 		if ed, ok := homePkg.Enums[name]; ok {

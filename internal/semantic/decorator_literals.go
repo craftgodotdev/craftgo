@@ -4,14 +4,15 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// ResolveDefaultValue is [ResolveDecoratorLiteral] for `@default`.
+// ResolveDefaultValue returns the literal of f's `@default`, with enum
+// member names, alone or in an array, resolved to their wire values.
 func ResolveDefaultValue(f *ast.Field, pkg *Package) (any, bool) {
-	return ResolveDecoratorLiteral(f, pkg, "default")
+	return resolveDecoratorLiteral(f, pkg, "default")
 }
 
-// ResolveDecoratorLiteral returns the literal of f's decName decorator, with
+// resolveDecoratorLiteral returns the literal of f's decName decorator, with
 // enum member names, alone or in an array, resolved to their wire values.
-func ResolveDecoratorLiteral(f *ast.Field, pkg *Package, decName string) (any, bool) {
+func resolveDecoratorLiteral(f *ast.Field, pkg *Package, decName string) (any, bool) {
 	if f == nil {
 		return nil, false
 	}
@@ -29,7 +30,7 @@ func ResolveDecoratorLiteral(f *ast.Field, pkg *Package, decName string) (any, b
 			if v.Name == nil {
 				return nil, false
 			}
-			if wire, ok := ResolveEnumMember(pkg, enumName, v.Name.String()); ok {
+			if wire, ok := resolveEnumMember(pkg, enumName, v.Name.String()); ok {
 				return wire, true
 			}
 			return v.Name.String(), true
@@ -37,14 +38,14 @@ func ResolveDecoratorLiteral(f *ast.Field, pkg *Package, decName string) (any, b
 			out := make([]any, 0, len(v.Elements))
 			for _, el := range v.Elements {
 				if id, ok := el.(*ast.IdentExpr); ok && id.Name != nil {
-					if wire, ok := ResolveEnumMember(pkg, enumName, id.Name.String()); ok {
+					if wire, ok := resolveEnumMember(pkg, enumName, id.Name.String()); ok {
 						out = append(out, wire)
 					} else {
 						out = append(out, id.Name.String())
 					}
 					continue
 				}
-				x, ok := LiteralToAny(el)
+				x, ok := literalToAny(el)
 				if !ok {
 					return nil, false
 				}
@@ -52,15 +53,15 @@ func ResolveDecoratorLiteral(f *ast.Field, pkg *Package, decName string) (any, b
 			}
 			return out, true
 		default:
-			return LiteralToAny(d.Args[0].Value)
+			return literalToAny(d.Args[0].Value)
 		}
 	}
 	return nil, false
 }
 
-// ResolveEnumMember returns the wire value of member in enum enumName, or
+// resolveEnumMember returns the wire value of member in enum enumName, or
 // false when pkg has no such enum or member.
-func ResolveEnumMember(pkg *Package, enumName, member string) (any, bool) {
+func resolveEnumMember(pkg *Package, enumName, member string) (any, bool) {
 	if pkg == nil || enumName == "" {
 		return nil, false
 	}
@@ -76,14 +77,14 @@ func ResolveEnumMember(pkg *Package, enumName, member string) (any, bool) {
 	return nil, false
 }
 
-// ExampleValue is [ResolveDecoratorLiteral] for `@example`.
+// ExampleValue is [ResolveDefaultValue] for `@example`.
 func ExampleValue(f *ast.Field, pkg *Package) (any, bool) {
-	return ResolveDecoratorLiteral(f, pkg, "example")
+	return resolveDecoratorLiteral(f, pkg, "example")
 }
 
-// LiteralToAny converts a literal, arrays included, to its Go value; ok is
+// literalToAny converts a literal, arrays included, to its Go value; ok is
 // false for any other expression.
-func LiteralToAny(e ast.Expr) (any, bool) {
+func literalToAny(e ast.Expr) (any, bool) {
 	switch v := e.(type) {
 	case *ast.StringLit:
 		return v.Value, true
@@ -98,7 +99,7 @@ func LiteralToAny(e ast.Expr) (any, bool) {
 	case *ast.ArrayLit:
 		out := make([]any, 0, len(v.Elements))
 		for _, el := range v.Elements {
-			x, ok := LiteralToAny(el)
+			x, ok := literalToAny(el)
 			if !ok {
 				return nil, false
 			}

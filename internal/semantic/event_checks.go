@@ -34,10 +34,10 @@ func (a *analyzer) checkEvent(d *ast.EventDecl) {
 // whitespace.
 func (a *analyzer) checkContractArg(d *ast.EventDecl) {
 	for _, dec := range d.Decorators {
-		if dec == nil || dec.Name != DecoratorContract {
+		if dec == nil || dec.Name != decoratorContract {
 			continue
 		}
-		name, ok := ast.StringArg([]*ast.Decorator{dec}, DecoratorContract)
+		name, ok := ast.StringArg([]*ast.Decorator{dec}, decoratorContract)
 		if !ok {
 			continue
 		}
@@ -74,7 +74,7 @@ func (a *analyzer) payloadKindDiag(d *ast.EventDecl, ref string) {
 // name.
 func (c *projectChecks) checkProjectEvents() {
 	byContract := map[string]lexer.Position{}
-	for _, ev := range c.proj.Events() {
+	for _, ev := range c.proj.events() {
 		if ev.Contract == "" {
 			continue
 		}

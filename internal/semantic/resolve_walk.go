@@ -48,7 +48,7 @@ func RequestFields(m *ast.Method, pkg *Package, r *Resolver, levelNames LevelNam
 	if td == nil {
 		return nil
 	}
-	pathNames := MethodRoutePathVars(m, pkg.Services)
+	pathNames := methodRoutePathVars(m, pkg.Services)
 	bodyVerb := wire.IsBodyVerb(m.Verb)
 	fields := ResolveFields(td, prefix, pkg, r, levelNames)
 	for i := range fields {

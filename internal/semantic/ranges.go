@@ -227,7 +227,7 @@ func (a *analyzer) checkPositiveSize(d *ast.Decorator) {
 			return
 		}
 	}
-	if n, ok := SizeBytes(pos[0].Value); ok && n <= 0 {
+	if n, ok := sizeBytes(pos[0].Value); ok && n <= 0 {
 		a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
 			"@%s: size must be > 0 (got %d)", d.Name, n)
 	}

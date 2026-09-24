@@ -50,7 +50,7 @@ func (a *analyzer) checkDuplicateAutoWireNames(m *ast.Method) {
 	if !ok {
 		return
 	}
-	pathSegs := MethodRoutePathVars(m, a.pkg.Services)
+	pathSegs := methodRoutePathVars(m, a.pkg.Services)
 	bodyVerb := wire.IsBodyVerb(m.Verb)
 	reqName := m.Request.Name.String()
 	type binding struct {

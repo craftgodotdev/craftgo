@@ -330,7 +330,7 @@ func TestDeclNamedAfterBuiltinRejected(t *testing.T) {
 	expectError(t, `type string { a int }`, CodeDeclBuiltinName)
 	expectError(t, `enum bool { X Y }`, CodeDeclBuiltinName)
 	expectError(t, `error NotFound any`, CodeDeclBuiltinName)
-	if _, diags := AnalyzeWith(parseFiles(t, `middleware int`), Options{}); findCode(diags, CodeDeclBuiltinName) != nil {
+	if _, diags := analyzeWith(parseFiles(t, `middleware int`), Options{}); findCode(diags, CodeDeclBuiltinName) != nil {
 		t.Error("middleware named after a builtin should not be a builtin-collision error")
 	}
 	mustClean(t, `scalar Email string  scalar UserID string`)

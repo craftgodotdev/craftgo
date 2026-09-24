@@ -8,22 +8,20 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// DecoratorContract is the decorator that overrides an event's contract name.
-const DecoratorContract = "contract"
+// decoratorContract is the decorator that overrides an event's contract name.
+const decoratorContract = "contract"
 
 // ResolvedEvent is one event contract, resolved against the project.
 type ResolvedEvent struct {
-	Decl    *ast.EventDecl
-	Package string
+	Decl *ast.EventDecl
 	// Name is the DSL identifier.
 	Name string
 	// Contract is the identity on the wire: `<package>.<Name>`, or the
 	// `@contract` argument when one is given.
 	Contract string
-	// PayloadPkg and PayloadName name the payload type; PayloadPkg may
-	// differ from the event's package (`payload shared.Envelope`).
-	PayloadPkg  string
-	PayloadName string
+	// PayloadPkg is the package declaring the payload type, which may differ
+	// from the event's (`payload shared.Envelope`); "" when it does not resolve.
+	PayloadPkg string
 	// PayloadRef is the payload reference as written, generic arguments included.
 	PayloadRef *ast.NamedTypeRef
 	// PayloadArray reports a `payload T[]` contract; the other payload
@@ -39,7 +37,7 @@ type ResolvedEvent struct {
 
 // Events returns every event declared in the project, ordered by contract
 // name.
-func (p *Project) Events() []ResolvedEvent {
+func (p *Project) events() []ResolvedEvent {
 	if p == nil {
 		return nil
 	}
@@ -79,9 +77,8 @@ func (p *Project) LookupEvent(homePkg, ref string) (ResolvedEvent, bool) {
 func (p *Project) resolveEvent(pkg *Package, d *ast.EventDecl) ResolvedEvent {
 	re := ResolvedEvent{
 		Decl:     d,
-		Package:  pkg.Name,
 		Name:     d.Name,
-		Contract: ContractName(pkg.Name, d),
+		Contract: contractName(pkg.Name, d),
 		Doc:      descriptionLines(d.Decorators, d.Doc),
 	}
 	if d.Payload == nil || d.Payload.Type == nil || d.Payload.Type.Name == nil {
@@ -89,22 +86,20 @@ func (p *Project) resolveEvent(pkg *Package, d *ast.EventDecl) ResolvedEvent {
 	}
 	re.PayloadRef = d.Payload.Type
 	re.PayloadArray = d.Payload.Array
-	home, name := p.resolve(pkg.Name, d.Payload.Type.Name)
-	re.PayloadName = name
-	if home != nil {
+	if home, name := p.resolve(pkg.Name, d.Payload.Type.Name); home != nil {
 		re.PayloadPkg = home.Name
 		re.Payload = home.Types[name]
 	}
 	return re
 }
 
-// ContractName returns the wire identity of an event declared in pkgName:
+// contractName returns the wire identity of an event declared in pkgName:
 // the `@contract` argument when present, otherwise `<pkgName>.<Name>`.
-func ContractName(pkgName string, d *ast.EventDecl) string {
+func contractName(pkgName string, d *ast.EventDecl) string {
 	if d == nil {
 		return ""
 	}
-	if s, ok := ast.StringArg(d.Decorators, DecoratorContract); ok {
+	if s, ok := ast.StringArg(d.Decorators, decoratorContract); ok {
 		return s
 	}
 	if pkgName == "" {

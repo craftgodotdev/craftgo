@@ -487,7 +487,7 @@ var Registry = map[string]Spec{
 	},
 	// ---- Events ----
 	"contract": {
-		Name:   DecoratorContract,
+		Name:   decoratorContract,
 		Levels: LvlEvent,
 		Doc:    "Overrides the event's wire identity. Defaults to `<package>.<Event>`; set it to interoperate with a contract another system already publishes.",
 		Args:   ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},

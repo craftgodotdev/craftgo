@@ -8,8 +8,9 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// checkDecoratorRefs resolves the names that service and method decorators
-// pass to @errors, @middlewares and @security.
+// checkDecoratorRefs resolves the names decorators refer to: the fields a
+// type's @requiresOneOf and @mutuallyExclusive list, and what service and
+// method decorators pass to @errors, @middlewares and @security.
 func (a *analyzer) checkDecoratorRefs(files []*ast.File) {
 	for _, f := range files {
 		for _, d := range f.Decls {
@@ -18,28 +19,12 @@ func (a *analyzer) checkDecoratorRefs(files []*ast.File) {
 	}
 }
 
-// checkLocalDecoratorRefs checks the field names each type's
-// @requiresOneOf and @mutuallyExclusive list.
-func (a *analyzer) checkLocalDecoratorRefs(files []*ast.File) {
-	for _, f := range files {
-		for _, d := range f.Decls {
-			td, ok := d.(*ast.TypeDecl)
-			if !ok {
-				continue
-			}
-			a.checkFieldGroupRefs(td.Name, td.Decorators, td.Body)
-		}
-	}
-}
-
-// checkDeclRefs resolves the decorator references of a service and its
-// methods.
+// checkDeclRefs resolves the decorator references of a type, or of a
+// service and its methods.
 func (a *analyzer) checkDeclRefs(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
-		// Checked by checkLocalDecoratorRefs.
-	case *ast.ErrorDecl:
-		// An error's decorators name no other declaration.
+		a.checkFieldGroupRefs(dd.Name, dd.Decorators, dd.Body)
 	case *ast.ServiceDecl:
 		var inherited []*ast.Decorator
 		if dd.Extend {

@@ -168,7 +168,7 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	}
 	verb := strings.ToUpper(m.Verb)
 	reqName := m.Request.Name.String()
-	pathSegs := MethodRoutePathVars(m, a.pkg.Services)
+	pathSegs := methodRoutePathVars(m, a.pkg.Services)
 	for _, ff := range fields {
 		a.bodyBindingVerbRules(reqName, verb, svcName, view, pathSegs, ff.Field)
 	}

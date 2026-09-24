@@ -16,8 +16,6 @@ import (
 // Project is the analysis of a whole design. Packages is keyed by
 // [Package.Name]; files in any folder that declare one name share an entry.
 type Project struct {
-	// Root is [Options.DesignRoot].
-	Root     string
 	Packages map[string]*Package
 }
 
@@ -25,10 +23,7 @@ type Project struct {
 // declaration, analyses every package with the whole project in scope,
 // and runs the project-wide rules. The Project is never nil.
 func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
-	proj := &Project{
-		Root:     opts.DesignRoot,
-		Packages: map[string]*Package{},
-	}
+	proj := &Project{Packages: map[string]*Package{}}
 	groups := groupFilesByPackage(files)
 	names := slices.Sorted(maps.Keys(groups))
 	analyzers := make(map[string]*analyzer, len(groups))
@@ -114,7 +109,7 @@ func (p *Project) singlePackage() *Package {
 	if len(names) > 0 {
 		return p.Packages[names[0]]
 	}
-	return newAnalyzer(p, Options{}).pkg
+	return newPackage()
 }
 
 // groupFilesByPackage groups files by their `package` name. Files without
