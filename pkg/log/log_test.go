@@ -11,8 +11,7 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 )
 
-// newObserver returns a Logger backed by an in-memory zap core whose
-// captured entries can be asserted on.
+// newObserver returns a Logger that records into the returned logs.
 func newObserver(t *testing.T) (Logger, *observer.ObservedLogs) {
 	t.Helper()
 	core, logs := observer.New(zap.DebugLevel)
@@ -30,11 +29,7 @@ func TestZapLoggerEmitsAllLevels(t *testing.T) {
 	}
 }
 
-// TestZapLoggerWithContextChain pins the canonical context-aware call
-// shape: callers that have a context use `WithContext(ctx).<level>(...)`
-// instead of a dedicated `InfoCtx(ctx, ...)` shorthand. The interface
-// stays minimal, the chain reads explicitly, and the same code path
-// powers both empty-context and trace-bearing-context flows.
+// A WithContext logger writes at every level.
 func TestZapLoggerWithContextChain(t *testing.T) {
 	l, logs := newObserver(t)
 	ctx := context.Background()
@@ -58,10 +53,7 @@ func TestZapLoggerWithAndWithContext(t *testing.T) {
 	}
 }
 
-// TestZapLoggerWithContextExtractsTrace pins the trace-ID propagation
-// rule: when ctx carries an active OTel SpanContext, WithContext
-// returns a logger whose subsequent calls automatically tag every
-// line with `trace_id` and `span_id`.
+// WithContext adds the trace_id and span_id of a valid span.
 func TestZapLoggerWithContextExtractsTrace(t *testing.T) {
 	traceID, _ := trace.TraceIDFromHex("0102030405060708090a0b0c0d0e0f10")
 	spanID, _ := trace.SpanIDFromHex("0102030405060708")
@@ -84,9 +76,7 @@ func TestZapLoggerWithContextExtractsTrace(t *testing.T) {
 	}
 }
 
-// TestZapLoggerWithContextNoTrace confirms the inverse: when ctx has
-// no trace info, WithContext is a no-op and produces an unchanged
-// logger.
+// WithContext adds no trace fields without a span.
 func TestZapLoggerWithContextNoTrace(t *testing.T) {
 	l, logs := newObserver(t)
 	l.WithContext(context.Background()).Info("plain")
@@ -126,7 +116,6 @@ func TestFieldConstructors(t *testing.T) {
 func TestNewZapDefault(t *testing.T) {
 	l := New()
 	l.Info("smoke")
-	// Ensure smoke test does not panic and Logger is non-nil.
 	if l == nil {
 		t.Fatal("New() returned nil")
 	}
@@ -141,11 +130,7 @@ func TestErrFieldNamedError(t *testing.T) {
 	}
 }
 
-// TestSetLevelGatesSharedLoggers pins the global-level contract: a logger
-// whose core reads the package-level atomic drops entries below the level
-// set by SetLevel and keeps the rest, with no logger swap in between. This
-// is the same atomic that New / NewConsole - and therefore the server and
-// generated logic - share, so one SetLevel call retunes them together.
+// SetLevel gates a logger on the shared level without replacing it.
 func TestSetLevelGatesSharedLoggers(t *testing.T) {
 	t.Cleanup(func() { SetLevel(LevelInfo) })
 	core, logs := observer.New(level)
@@ -167,8 +152,7 @@ func TestSetLevelGatesSharedLoggers(t *testing.T) {
 	}
 }
 
-// TestGetLevelRoundTrip confirms SetLevel/GetLevel agree across the enum,
-// including the clamp that snaps sub-debug and super-error inputs.
+// GetLevel returns each level SetLevel set.
 func TestGetLevelRoundTrip(t *testing.T) {
 	t.Cleanup(func() { SetLevel(LevelInfo) })
 	for _, want := range []Level{LevelDebug, LevelInfo, LevelWarn, LevelError} {
@@ -179,9 +163,7 @@ func TestGetLevelRoundTrip(t *testing.T) {
 	}
 }
 
-// TestParseLevel pins the config-string mapping main.go relies on,
-// including the case/space insensitivity and the false flag on unknown
-// input that lets callers keep their default.
+// ParseLevel ignores case and space and rejects unknown names.
 func TestParseLevel(t *testing.T) {
 	ok := map[string]Level{
 		"debug":   LevelDebug,
@@ -220,8 +202,7 @@ func TestToZapLevelMapping(t *testing.T) {
 
 type tenantKey struct{}
 
-// Fields derived from the context by SetContextFields ride every line
-// logged through WithContext.
+// The SetContextFields fields ride every line logged through WithContext.
 func TestWithContextAppendsRegisteredFields(t *testing.T) {
 	SetContextFields(func(ctx context.Context) []Field {
 		if v, ok := ctx.Value(tenantKey{}).(string); ok {

@@ -1,6 +1,5 @@
-// Package log defines the Logger interface used across craftgo together
-// with a default zap adapter. Projects that already standardised on slog
-// or zerolog can satisfy the same interface with their own adapter.
+// Package log is craftgo's structured logging: the [Logger] interface, a zap implementation,
+// a process-wide default logger and level, and [Slog], a log/slog bridge.
 package log
 
 import (
@@ -14,10 +13,10 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// Logger is the structured-logging surface every craftgo middleware
-// depends on. Callers with a request context chain
-// `logger.WithContext(ctx).Info(...)` to fan trace_id / span_id into the
-// line; callers without one call `Info(...)` directly.
+// Logger is craftgo's structured logger. Beyond a method per level, an implementation:
+//   - returns from With a logger that adds fields to every line;
+//   - returns from WithContext one that adds the context's trace_id and span_id;
+//   - reports from Enabled whether a level is written.
 type Logger interface {
 	Debug(msg string, fields ...Field)
 	Info(msg string, fields ...Field)
@@ -29,13 +28,10 @@ type Logger interface {
 	Enabled(level Level) bool
 }
 
-// Level is a coarse level enum that maps onto zap's atomic level. Values
-// align with the standard slog levels so external adapters translate
-// without surprises.
+// Level is a log level; its values equal the matching log/slog levels.
 type Level int8
 
-// Level constants. The numeric gaps mirror slog (-4/0/4/8) so adapter
-// authors can copy the conversion table verbatim.
+// LevelDebug, LevelInfo, LevelWarn and LevelError are the levels, most verbose first.
 const (
 	LevelDebug Level = -4
 	LevelInfo  Level = 0
@@ -43,50 +39,56 @@ const (
 	LevelError Level = 8
 )
 
-// Field is a typed key/value pair. Use the constructors below; building a
-// literal works but skips the typing benefit.
+// Field is a key and value on a log line.
 type Field struct {
 	Key   string
 	Value any
 }
 
-// String / Int / Int64 / Float64 / Bool / Time / Duration / Err / Any /
-// Group are the canonical Field constructors documented in the README.
-func String(k, v string) Field          { return Field{Key: k, Value: v} }
-func Int(k string, v int) Field         { return Field{Key: k, Value: v} }
-func Int64(k string, v int64) Field     { return Field{Key: k, Value: v} }
+// String returns a string field.
+func String(k, v string) Field { return Field{Key: k, Value: v} }
+
+// Int returns an int field.
+func Int(k string, v int) Field { return Field{Key: k, Value: v} }
+
+// Int64 returns an int64 field.
+func Int64(k string, v int64) Field { return Field{Key: k, Value: v} }
+
+// Float64 returns a float64 field.
 func Float64(k string, v float64) Field { return Field{Key: k, Value: v} }
-func Bool(k string, v bool) Field       { return Field{Key: k, Value: v} }
-func Time(k string, v time.Time) Field  { return Field{Key: k, Value: v} }
+
+// Bool returns a bool field.
+func Bool(k string, v bool) Field { return Field{Key: k, Value: v} }
+
+// Time returns a time field.
+func Time(k string, v time.Time) Field { return Field{Key: k, Value: v} }
+
+// Duration returns a duration field.
 func Duration(k string, v time.Duration) Field {
 	return Field{Key: k, Value: v}
 }
-func Err(err error) Field               { return Field{Key: "error", Value: err} }
-func Any(k string, v any) Field         { return Field{Key: k, Value: v} }
+
+// Err returns err under the key "error".
+func Err(err error) Field { return Field{Key: "error", Value: err} }
+
+// Any returns a field holding any value.
+func Any(k string, v any) Field { return Field{Key: k, Value: v} }
+
+// Group returns a field nesting fs under k.
 func Group(k string, fs ...Field) Field { return Field{Key: k, Value: fs} }
 
-// level is the process-wide minimum level shared by every Logger built
-// through [New] and [NewConsole]. Those loggers wrap this one
-// zap.AtomicLevel rather than a copy each, so [SetLevel] retunes the
-// server logger and the generated logic layer together from a single
-// call. Loggers brought in via [NewZap] carry their own level and are
-// unaffected.
+// level is the minimum level every New and NewConsole logger shares.
 var level = zap.NewAtomicLevelAt(toZapLevel(LevelInfo))
 
-// SetLevel retunes the process-wide level for every Logger created by
-// [New] and [NewConsole], including the instance mirrored into [Default]
-// and the one held by the server. The swap is atomic and takes effect on
-// the next log call without replacing any logger. Loggers wrapped via
-// [NewZap] manage their own level and ignore this.
+// SetLevel sets the minimum level of every [New] and [NewConsole] logger, from their next
+// line on; [NewZap] loggers keep their own. The default is [LevelInfo].
 func SetLevel(l Level) { level.SetLevel(toZapLevel(l)) }
 
-// GetLevel reports the current process-wide level.
+// GetLevel returns the level [SetLevel] set.
 func GetLevel() Level { return fromZapLevel(level.Level()) }
 
-// ParseLevel maps a config string ("debug" / "info" / "warn" / "error",
-// case- and space-insensitive) onto a Level. The bool reports whether the
-// string was recognised so callers can keep their current level on a
-// blank or misspelled value instead of silently snapping to one.
+// ParseLevel parses "debug", "info", "warn" (or "warning") or "error", ignoring case and
+// surrounding space; for anything else it returns LevelInfo and false.
 func ParseLevel(s string) (Level, bool) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "debug":
@@ -102,9 +104,8 @@ func ParseLevel(s string) (Level, bool) {
 	}
 }
 
-// New returns the default Logger: a production-configured zap logger
-// writing JSON to stderr. Its threshold tracks the process-wide level
-// (info by default); call [SetLevel] to retune it.
+// New returns a Logger writing JSON lines to stderr (zap's production config) at the
+// [SetLevel] level.
 func New() Logger {
 	cfg := zap.NewProductionConfig()
 	cfg.Level = level
@@ -112,12 +113,8 @@ func New() Logger {
 	return NewZap(z)
 }
 
-// NewConsole returns a development-configured Logger that emits
-// human-readable, colour-tagged lines to stderr. Same Logger contract
-// as [New] - drop into `srv.SetLogger(log.NewConsole())` for local
-// `go run` sessions and switch back to [New] for production. It shares
-// the process-wide level with [New]; call `log.SetLevel(log.LevelDebug)`
-// for verbose local runs.
+// NewConsole returns a Logger writing human-readable lines to stderr (zap's development
+// config) at the [SetLevel] level.
 func NewConsole() Logger {
 	cfg := zap.NewDevelopmentConfig()
 	cfg.Level = level
@@ -125,21 +122,13 @@ func NewConsole() Logger {
 	return NewZap(z)
 }
 
-// NewZap wraps an existing `*zap.Logger` so projects that already
-// configured zap can reuse it.
+// NewZap returns a Logger writing to z at z's own level.
 func NewZap(z *zap.Logger) Logger { return &zapLogger{z: z} }
 
-// defaultLogger is the package-level Logger that callers without an
-// explicit instance reach for via [Default]. The atomic.Value lets
-// runtime swaps (e.g. `Server.SetLogger`) take effect immediately
-// without locks. The initial value - assigned in init() - is a
-// production zap so a fresh import is silently usable.
+// defaultLogger holds the loggerHolder [Default] returns.
 var defaultLogger atomic.Value
 
-// SetDefault swaps the package-level Logger. Server.SetLogger calls
-// this so codegen-emitted logic files can read the same instance via
-// [Default] without a constructor parameter or context lookup.
-// Passing nil is a no-op.
+// SetDefault makes l the logger [Default] returns; nil is ignored.
 func SetDefault(l Logger) {
 	if l == nil {
 		return
@@ -147,10 +136,7 @@ func SetDefault(l Logger) {
 	defaultLogger.Store(loggerHolder{l})
 }
 
-// Default returns the current package-level Logger. Generated logic
-// constructors read it (typically chained with `.WithContext(ctx)`)
-// so user code can call `l.Info(...)` directly without juggling
-// context plumbing.
+// Default returns the process-wide logger: a [New] logger until [SetDefault] replaces it.
 func Default() Logger {
 	if v := defaultLogger.Load(); v != nil {
 		return v.(loggerHolder).Logger
@@ -158,29 +144,17 @@ func Default() Logger {
 	return New()
 }
 
-// loggerHolder is a tiny value wrapper so atomic.Value sees a
-// consistent concrete type across stores (it forbids storing
-// values of different concrete types).
+// loggerHolder gives atomic.Value one concrete type for every stored Logger.
 type loggerHolder struct{ Logger }
 
 func init() {
 	SetDefault(New())
 }
 
-// zapLogger is the default Logger implementation. It maps Field values
-// onto zap's strongly-typed `zap.Field` constructors.
+// zapLogger is the Logger over a *zap.Logger.
 type zapLogger struct{ z *zap.Logger }
 
-// toZap converts a single craftgo Field into a zap.Field. Group fields
-// recurse so nested structures preserve their shape in the output.
-//
-// time.Duration values are rendered through `Duration.String()`
-// ("1.5ms", "250µs", "5s") rather than the default zap behaviour of
-// "fractional seconds" - the human-readable form is the right
-// default for log lines a person actually reads (access logs,
-// op-error breadcrumbs). Code that needs the numeric form for
-// dashboards / alerts should record the duration as a metric (a
-// Histogram on the OTel meter) instead of a log field.
+// toZap converts f to a zap field; a group nests and a duration is written as text ("1.5ms").
 func toZap(f Field) zap.Field {
 	switch v := f.Value.(type) {
 	case []Field:
@@ -204,7 +178,6 @@ func toZap(f Field) zap.Field {
 // fieldsObject implements zapcore.ObjectMarshaler for nested groups.
 type fieldsObject []zap.Field
 
-// MarshalLogObject writes each nested field through the supplied encoder.
 func (g fieldsObject) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	for _, f := range g {
 		f.AddTo(enc)
@@ -212,7 +185,6 @@ func (g fieldsObject) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
-// fieldsToZap converts the variadic Field slice into zap's []zap.Field.
 func fieldsToZap(fs []Field) []zap.Field {
 	out := make([]zap.Field, 0, len(fs))
 	for _, f := range fs {
@@ -230,12 +202,8 @@ func (s *zapLogger) With(fs ...Field) Logger {
 	return &zapLogger{z: s.z.With(fieldsToZap(fs)...)}
 }
 
-// WithContext extracts the active OpenTelemetry trace ids from ctx, plus
-// whatever [SetContextFields] derives from it, and returns a Logger with
-// those fields baked in, so every subsequent line on it carries them.
-//
-// When ctx carries no trace context (test runs, batch tools) the
-// trace fields are simply omitted from the output.
+// WithContext adds the trace_id and span_id of ctx's span, when valid, and the
+// [SetContextFields] fields.
 func (s *zapLogger) WithContext(ctx context.Context) Logger {
 	if ctx == nil {
 		return s
@@ -256,8 +224,8 @@ func (s *zapLogger) WithContext(ctx context.Context) Logger {
 	return &zapLogger{z: s.z.With(fields...)}
 }
 
-// ContextFields derives extra fields from a request context - a tenant or
-// user id a middleware stored there, for example.
+// ContextFields derives log fields from a request context, such as a tenant id a middleware
+// stored there.
 type ContextFields func(ctx context.Context) []Field
 
 type contextFieldsHolder struct{ fn ContextFields }
@@ -266,18 +234,15 @@ var contextFields atomic.Value
 
 func init() { contextFields.Store(contextFieldsHolder{}) }
 
-// SetContextFields installs fn; [Logger.WithContext] appends what it
-// returns next to the trace ids, so every line logged through a request
-// context carries the fields - the framework's own lines (access log,
-// unknown errors, recovered panics) and the generated logic's alike. Nil
-// removes it. Call once at startup.
+// SetContextFields installs fn; the WithContext of [New], [NewConsole] and [NewZap] loggers
+// adds the fields it returns to every line. nil removes it.
 func SetContextFields(fn ContextFields) { contextFields.Store(contextFieldsHolder{fn: fn}) }
 
 func (s *zapLogger) Enabled(level Level) bool {
 	return s.z.Core().Enabled(toZapLevel(level))
 }
 
-// toZapLevel translates the public Level enum to zap's level type.
+// toZapLevel maps l to zap's level, rounding up between levels and clamping above LevelError.
 func toZapLevel(l Level) zapcore.Level {
 	switch {
 	case l <= LevelDebug:
@@ -291,9 +256,7 @@ func toZapLevel(l Level) zapcore.Level {
 	}
 }
 
-// fromZapLevel maps zap's level back onto the public Level enum, snapping
-// anything at or below debug onto LevelDebug and anything at or above
-// error onto LevelError.
+// fromZapLevel maps l to a Level, clamped to LevelDebug..LevelError.
 func fromZapLevel(l zapcore.Level) Level {
 	switch {
 	case l <= zapcore.DebugLevel:

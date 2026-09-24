@@ -44,16 +44,12 @@ func (r *recorder) count() int {
 	return len(r.lines)
 }
 
-// THE RULE: Slog resolves the craftgo logger PER LINE, not at capture.
-// A library holding a *slog.Logger from start-up must still write to a
-// logger the project installs afterwards - otherwise SetLevel keeps
-// moving the HTTP lines and silently stops moving these.
+// Slog writes to a logger installed after it was created.
 func TestSlogResolvesTheDefaultLoggerPerLine(t *testing.T) {
 	restore := log.Default()
 	t.Cleanup(func() { log.SetDefault(restore) })
 
-	// Captured BEFORE the project installs its own, which is what a
-	// library wiring itself at start-up does.
+	// Created before SetDefault.
 	captured := log.Slog()
 
 	rec := &recorder{}
@@ -68,8 +64,7 @@ func TestSlogResolvesTheDefaultLoggerPerLine(t *testing.T) {
 	}
 }
 
-// The delivery context reaches the craftgo logger through WithContext,
-// which is what fans trace_id / span_id into the line.
+// The record's context reaches the logger's WithContext.
 func TestSlogPassesTheContextThrough(t *testing.T) {
 	restore := log.Default()
 	t.Cleanup(func() { log.SetDefault(restore) })
@@ -91,8 +86,7 @@ func TestSlogPassesTheContextThrough(t *testing.T) {
 	}
 }
 
-// Attributes and levels survive the bridge, including an error value,
-// which the craftgo logger renders under its own key.
+// Slog carries both With and call attributes.
 func TestSlogCarriesAttributesAndLevels(t *testing.T) {
 	restore := log.Default()
 	t.Cleanup(func() { log.SetDefault(restore) })
@@ -117,8 +111,7 @@ func TestSlogCarriesAttributesAndLevels(t *testing.T) {
 	}
 }
 
-// A group qualifies the keys under it, so two subsystems logging "status"
-// do not collide.
+// A group prefixes the keys under it.
 func TestSlogQualifiesGroupedKeys(t *testing.T) {
 	restore := log.Default()
 	t.Cleanup(func() { log.SetDefault(restore) })

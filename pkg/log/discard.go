@@ -2,15 +2,9 @@ package log
 
 import "context"
 
-// Discard returns a Logger that drops every call silently. Useful for
-// tests, batch tools, and any runtime where log output is undesirable.
-// Wire it via `srv.SetLogger(log.Discard())`.
+// Discard returns a Logger that writes nothing; its Enabled reports false.
 func Discard() Logger { return discardLogger{} }
 
-// discardLogger is the no-op Logger implementation. Every method is a
-// nothing - including the With/WithContext/Enabled surface - so the
-// receiver type can be passed through middleware that expects to chain
-// further configuration.
 type discardLogger struct{}
 
 func (discardLogger) Debug(string, ...Field)               {}
