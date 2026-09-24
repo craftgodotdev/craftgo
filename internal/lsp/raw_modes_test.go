@@ -8,11 +8,6 @@ import (
 	"go.lsp.dev/uri"
 )
 
-// The raw-mode decorators reach the editor through the registry alone:
-// completion, hover and diagnostics need no LSP-side knowledge of them.
-// These tests pin that the registry entries are wired the way an editor
-// user sees them.
-
 func TestCompletionRawModeFlagsAtMethodSite(t *testing.T) {
 	src := "package x\n\nservice S {\n\t@\n\tget A /a {}\n}\n"
 	// Cursor right after the `@` on the method line (0-indexed line 3).
@@ -21,7 +16,7 @@ func TestCompletionRawModeFlagsAtMethodSite(t *testing.T) {
 	for _, it := range items {
 		switch it.Label {
 		case "rawRequest", "rawResponse", "passthrough":
-			// Flags insert bare - no `($0)` snippet to delete.
+			// Flags insert bare.
 			if it.InsertText != it.Label {
 				t.Errorf("@%s must insert without parens, got %q", it.Label, it.InsertText)
 			}

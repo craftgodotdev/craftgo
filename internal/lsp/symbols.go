@@ -12,9 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// onDocumentSymbol answers `textDocument/documentSymbol`. The result is
-// a hierarchical outline (DocumentSymbol[]) - types/services nest their
-// fields/methods so the editor's outline view shows structure.
+// onDocumentSymbol answers `textDocument/documentSymbol` with the buffer's outline.
 func (s *Server) onDocumentSymbol(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DocumentSymbolParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
@@ -33,21 +31,14 @@ func (s *Server) onDocumentSymbol(ctx context.Context, reply jsonrpc2.Replier, r
 	return reply(ctx, out, nil)
 }
 
-// onWorkspaceSymbol answers `workspace/symbol`. Walks every parsed
-// `.craftgo` file under the design root collecting top-level decls
-// whose names match the query as a (case-insensitive) substring so
-// the editor's Ctrl-T / Cmd-T picker surfaces project-wide symbols
-// in one search. Empty query returns every symbol - that matches the
-// LSP convention used by gopls / rust-analyzer where an empty query
-// is "show me everything".
+// onWorkspaceSymbol answers `workspace/symbol` with the project's declarations
+// whose name contains the query, ignoring ASCII case.
 func (s *Server) onWorkspaceSymbol(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.WorkspaceSymbolParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
 	}
-	// The project is anchored at any open document; with none open there
-	// is no design folder to walk, so the result is empty rather than a
-	// scan of the whole disk.
+	// The project is found from an open document.
 	anchorPath, anchorSrc := s.anyOpenDocument()
 	if anchorPath == "" {
 		return reply(ctx, []protocol.SymbolInformation{}, nil)
@@ -78,9 +69,7 @@ func (s *Server) onWorkspaceSymbol(ctx context.Context, reply jsonrpc2.Replier, 
 	return reply(ctx, out, nil)
 }
 
-// workspaceSymbolKind picks the LSP SymbolKind for a top-level decl.
-// Mirrors [declSymbol]'s mapping so the workspace picker and the
-// per-file outline use the same icons.
+// workspaceSymbolKind returns the symbol kind of a declaration.
 func workspaceSymbolKind(d ast.Decl) protocol.SymbolKind {
 	switch d.(type) {
 	case *ast.TypeDecl:
@@ -101,8 +90,7 @@ func workspaceSymbolKind(d ast.Decl) protocol.SymbolKind {
 	return protocol.SymbolKindNull
 }
 
-// containerNameFromFile returns the package name so the workspace
-// picker groups symbols by package in its sub-label ("Pkg • Name").
+// containerNameFromFile returns f's package name.
 func containerNameFromFile(f *ast.File) string {
 	if f == nil || f.Package == nil {
 		return ""
@@ -110,9 +98,8 @@ func containerNameFromFile(f *ast.File) string {
 	return f.Package.Name
 }
 
-// anyOpenDocument returns the filesystem path and text of any currently
-// open document, to anchor the design-root walk. Empty when no document
-// is open.
+// anyOpenDocument returns the path and text of some open document, or empty
+// strings when none is open.
 func (s *Server) anyOpenDocument() (string, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -122,8 +109,7 @@ func (s *Server) anyOpenDocument() (string, string) {
 	return "", ""
 }
 
-// lowerASCII / containsLower are tiny case-insensitive helpers so the
-// workspace-symbol filter stays allocation-free on the hot path.
+// lowerASCII lowercases the ASCII letters of s.
 func lowerASCII(s string) string {
 	b := make([]byte, len(s))
 	for i := 0; i < len(s); i++ {
@@ -136,6 +122,7 @@ func lowerASCII(s string) string {
 	return string(b)
 }
 
+// containsLower reports whether haystack, lowercased, contains needleLower.
 func containsLower(haystack, needleLower string) bool {
 	if needleLower == "" {
 		return true
@@ -149,17 +136,8 @@ func containsLower(haystack, needleLower string) bool {
 	return false
 }
 
-// documentSymbols walks the top-level declarations and emits one
-// DocumentSymbol each. Type and service declarations carry nested
-// children for their fields and methods respectively.
-//
-// Declarations whose name token has not been parsed yet (typical
-// while the author is mid-typing - e.g. just `service` with no
-// identifier yet) are filtered out entirely: VS Code's
-// `DocumentSymbol` validator rejects a falsy `Name` with
-// "name must not be falsy", which crashes the symbol provider for
-// the whole file. Skipping incomplete decls keeps the outline view
-// usable while typing.
+// documentSymbols returns one symbol per named declaration. An unnamed one is
+// skipped: VS Code rejects the whole outline over an empty name.
 func documentSymbols(view snapshotView) []protocol.DocumentSymbol {
 	if view.file == nil {
 		return nil
@@ -278,8 +256,7 @@ func fieldSymbol(f *ast.Field) protocol.DocumentSymbol {
 	}
 }
 
-// eventSymbol builds the outline entry for a contract:
-// `event <Name> (<Payload>)`.
+// eventSymbol returns the outline entry `event Name (Payload)`.
 func eventSymbol(e *ast.EventDecl) protocol.DocumentSymbol {
 	r := rangeOfPosLen(e.Pos, len("event")+1+len(e.Name))
 	detail := "event " + e.Name
@@ -301,11 +278,7 @@ func eventSymbol(e *ast.EventDecl) protocol.DocumentSymbol {
 
 func methodSymbol(m *ast.Method) protocol.DocumentSymbol {
 	r := rangeOfPosLen(m.Pos, len(m.Verb)+1+len(m.Name))
-	// Build a one-line signature: "verb name (Req -> Resp)" so the
-	// outline preview tells the user what the method binds + returns
-	// without expanding. Missing slots collapse gracefully -
-	// `request` only shows the request type, `response` only shows
-	// the response, no body shows neither.
+	// Detail: `verb Name (Req → Resp)`, without a missing side.
 	detail := m.Verb + " " + m.Name
 	req, resp := "", ""
 	if m.Request != nil && m.Request.Name != nil {
@@ -331,8 +304,7 @@ func methodSymbol(m *ast.Method) protocol.DocumentSymbol {
 	}
 }
 
-// positionAfter is a tiny helper for advancing a column count; it keeps
-// the symbol code free of inline arithmetic and makes the intent obvious.
+// positionAfter returns p moved n columns right.
 func positionAfter(p lexer.Position, n int) lexer.Position {
 	p.Column += n
 	return p

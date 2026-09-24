@@ -13,10 +13,7 @@ import (
 	"go.lsp.dev/uri"
 )
 
-// TestDeletedButOpenFileStaysVisible pins the fix for the watched-files refresh
-// exposing a project-walk gap: a file deleted from disk while still open in the
-// editor must keep contributing its live buffer, so dependent files do not get
-// spurious "unknown type" errors and the file itself keeps its own diagnostics.
+// A file deleted from disk while open stays in the project with its buffer.
 func TestDeletedButOpenFileStaysVisible(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "design", "craftgo.design.yaml"), `output:
@@ -33,7 +30,7 @@ openapi:
 `)
 	aPath := filepath.Join(root, "design", "things", "a.craftgo")
 	bPath := filepath.Join(root, "design", "things", "b.craftgo")
-	// A defines type A (used by B) AND has its own real error (unknown Nope).
+	// A declares the type B uses and has an error of its own (unknown Nope).
 	mustWrite(t, aPath, "package things\ntype A {}\ntype HasErr { x Nope }\n")
 	mustWrite(t, bPath, "package things\ntype B { a A }\n")
 
@@ -49,7 +46,7 @@ openapi:
 		t.Fatal(err)
 	}
 
-	// Trigger via B (still on disk); the project pass must still see A's buffer.
+	// Analysing from B still sees A's buffer.
 	perFile, designRoot := s.buildProjectDiagnostics(bURI, readFileT(t, bPath))
 	if designRoot == "" {
 		t.Fatal("expected project mode")
@@ -62,8 +59,7 @@ openapi:
 	}
 }
 
-// recordingConn is a jsonrpc2.Conn that records the methods sent to the client
-// so a handler's outbound notifications / requests can be asserted.
+// recordingConn is a jsonrpc2.Conn that records the methods sent to the client.
 type recordingConn struct {
 	mu       sync.Mutex
 	notifies []string
@@ -101,10 +97,7 @@ func (c *recordingConn) notifyCount() int {
 	return len(c.notifies)
 }
 
-// TestWatchedFilesRegistration pins the registration payload: it subscribes to
-// the design-file glob AND to the manifest under the workspace-watcher
-// capability. The manifest is an analysis input, so a design that is wrong
-// only because the manifest is stale has to re-check when it is saved.
+// The registration watches every design-file extension and the manifest.
 func TestWatchedFilesRegistration(t *testing.T) {
 	reg := watchedFilesRegistration()
 	if len(reg.Registrations) != 1 {
@@ -119,8 +112,6 @@ func TestWatchedFilesRegistration(t *testing.T) {
 		t.Fatalf("register options malformed: %#v", r.RegisterOptions)
 	}
 	globs := []string{opts.Watchers[0].GlobPattern, opts.Watchers[1].GlobPattern}
-	// The first glob covers every accepted source extension via a brace group,
-	// so a `.cg` file change is watched alongside `.craftgo`.
 	want := []string{"**/*.{craftgo,cg}", "**/craftgo.design.yaml"}
 	for i := range want {
 		if globs[i] != want[i] {
@@ -129,8 +120,7 @@ func TestWatchedFilesRegistration(t *testing.T) {
 	}
 }
 
-// TestOnInitializedRegistersWatcher confirms the initialized handler sends a
-// client/registerCapability request (from its goroutine).
+// onInitialized sends client/registerCapability.
 func TestOnInitializedRegistersWatcher(t *testing.T) {
 	conn := &recordingConn{}
 	s := &Server{docs: map[uri.URI]*document{}, conn: conn}
@@ -150,9 +140,7 @@ func TestOnInitializedRegistersWatcher(t *testing.T) {
 	}
 }
 
-// TestOnDidChangeWatchedFilesRepublishes confirms a watched-file event
-// re-publishes diagnostics for every open document against the fresh project
-// state on disk.
+// A watched-file event re-publishes the diagnostics of every open document.
 func TestOnDidChangeWatchedFilesRepublishes(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "design", "craftgo.design.yaml"), `output:
@@ -180,9 +168,7 @@ openapi:
 	if err := s.onDidChangeWatchedFiles(context.Background(), func(context.Context, any, error) error { return nil }, nil); err != nil {
 		t.Fatal(err)
 	}
-	// Both docs share one design root, so the handler analyses once and the
-	// single fan-out publishes each open doc exactly once: 2 notifications, not
-	// the 4 (N*N) an un-deduped per-doc loop would emit.
+	// One root: each open document is published once.
 	if n := conn.notifyCount(); n != 2 {
 		t.Errorf("expected exactly 2 publishDiagnostics notifications (one per open doc, one analysis), got %d", n)
 	}

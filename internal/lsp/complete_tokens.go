@@ -1,4 +1,3 @@
-// Token-level helpers: duration/size unit completions + keyword list + extend-service context.
 package lsp
 
 import (
@@ -7,9 +6,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// identBefore returns the identifier token immediately before t (skipping
-// only whitespace, which the tokenizer has already stripped). Returns ok
-// = false when the previous token is not an identifier.
+// identBefore returns the text of the token before t when it is an identifier.
 func identBefore(view snapshotView, t *lexer.Token) (string, bool) {
 	idx := -1
 	for i := range view.tokens {
@@ -28,17 +25,11 @@ func identBefore(view snapshotView, t *lexer.Token) (string, bool) {
 	return prev.Text, true
 }
 
-// durationPresets / sizePresets are the values surfaced when the
-// cursor is inside an empty argument slot (just after `(`) so users
-// who don't have a number in mind get a sensible starter list.
+// durationPresets and sizePresets fill an argument with no digits typed.
 var durationPresets = []string{"100ms", "500ms", "1s", "5s", "10s", "30s", "1m", "5m"}
 var sizePresets = []string{"1KB", "10KB", "100KB", "1MB", "10MB", "100MB"}
 
-// durationCompletions surfaces duration-typed completions for the
-// cursor's slot. When the user has typed a bare digit run (Int token
-// at or just-before cursor), each suffix is paired with that prefix
-// and emitted as a TextEdit replacing the Int. Otherwise a curated
-// preset list is offered.
+// durationCompletions is [unitCompletions] for a duration argument.
 func durationCompletions(prev, mid *lexer.Token) []protocol.CompletionItem {
 	return unitCompletions(prev, mid, "duration", lexer.DurationUnits, durationPresets)
 }
@@ -48,11 +39,8 @@ func sizeCompletions(prev, mid *lexer.Token) []protocol.CompletionItem {
 	return unitCompletions(prev, mid, "size", lexer.SizeSuffixes(), sizePresets)
 }
 
-// unitCompletions builds the suffix / preset list for both duration
-// and size paths. When mid OR prev is a bare Int token (cursor
-// inside the digits, or right at their trailing edge) the digits
-// become the prefix and TextEdit-bound completions replace the
-// existing Int. Otherwise the preset list flows through.
+// unitCompletions offers the typed digits joined with each suffix, as edits
+// replacing the digits, or the presets when no digits are typed.
 func unitCompletions(prev, mid *lexer.Token, detail string, suffixes, presets []string) []protocol.CompletionItem {
 	intTok := pickIntForUnit(prev, mid)
 	if intTok != nil {
@@ -82,11 +70,8 @@ func unitCompletions(prev, mid *lexer.Token, detail string, suffixes, presets []
 	return out
 }
 
-// pickIntForUnit returns the Int token the cursor is editing when one
-// of mid / prev is a bare digit literal. tokenAt's inclusive
-// end-column rule can resolve the cursor between an Int and a
-// trailing punctuator (`@timeout(10|)`) onto the punctuator, so
-// `prev` is the secondary anchor.
+// pickIntForUnit returns the Int token under or before the cursor; tokenAt
+// resolves `@timeout(10|)` to the `)`, leaving the digits in prev.
 func pickIntForUnit(prev, mid *lexer.Token) *lexer.Token {
 	if mid != nil && mid.Kind == lexer.Int {
 		return mid
@@ -97,22 +82,12 @@ func pickIntForUnit(prev, mid *lexer.Token) *lexer.Token {
 	return nil
 }
 
-// isExtendServiceContext reports whether the cursor sits at the
-// identifier slot of an `extend service <cursor>` clause: the two
-// tokens before it, skipping any partial ident being typed, are
-// `service` then `extend`.
-//
-// `end` is the exclusive bound of the tokens that precede the cursor.
-// [scanFromIndex] computes it for both cursor shapes and, crucially,
-// steps over the EOF token the stream always ends with - reading the
-// slice's last entry instead would see EOF as the previous token and
-// never fire on a clause the user is typing at the end of the buffer.
+// isExtendServiceContext reports whether the cursor is in the name slot of
+// `extend service |`, a partly typed name included.
 func isExtendServiceContext(view snapshotView, pos protocol.Position) bool {
 	idx, _ := view.tokenAt(pos.Line, pos.Character)
 	target := lexer.Position{Line: int(pos.Line) + 1, Column: int(pos.Character) + 1}
 	end := scanFromIndex(view, idx, target) + 1
-	// The service name the user is mid-typing is not part of the prefix
-	// being matched.
 	if idx >= 0 && idx < len(view.tokens) && view.tokens[idx].Kind == lexer.Ident {
 		end = idx
 	}
@@ -122,21 +97,12 @@ func isExtendServiceContext(view snapshotView, pos protocol.Position) bool {
 	return view.tokens[end-1].Kind == lexer.KwService && view.tokens[end-2].Kind == lexer.KwExtend
 }
 
-// keywordCompletions surfaces the named reserved keywords as completion
-// items, in catalogue order. Callers pass the set that is legal where
-// the cursor sits - a keyword offered outside the block that accepts it
-// is a suggestion the parser would reject.
-//
-// The high-traffic declaration keywords (`type`, `service`, `error`,
-// `enum`, `scalar`, `middleware`, `extend`, the verb set) carry snippet
-// expansions so Tab-completes a fully-shaped skeleton with the cursor
-// landing at the body's first edit point - the keyword set is exactly
-// what the user types most when scaffolding a new file, and the snippet
-// payoff outweighs the popup verbosity.
+// keywordCompletions offers the keywords in want, in catalogue order, as
+// snippets where the keyword has one.
 func keywordCompletions(want ...string) []protocol.CompletionItem {
 	type entry struct {
 		label   string
-		snippet string // empty means plain insert (no snippet)
+		snippet string // empty: plain insert
 	}
 	entries := []entry{
 		{"package", "package $1"},
@@ -160,7 +126,6 @@ func keywordCompletions(want ...string) []protocol.CompletionItem {
 		{"delete", "delete ${1:Name} /${2:path} {\n\trequest  ${3:Req}\n\tresponse ${4:Resp}\n}"},
 		{"head", "head ${1:Name} /${2:path} {\n\tresponse ${3:Resp}\n}"},
 		{"options", "options ${1:Name} /${2:path} {\n\tresponse ${3:Resp}\n}"},
-		// True / false / null are literal keywords - no snippet, just the value.
 		{"true", ""},
 		{"false", ""},
 		{"null", ""},

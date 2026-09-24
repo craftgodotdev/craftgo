@@ -9,16 +9,12 @@ import (
 	"go.lsp.dev/uri"
 )
 
-// newTestServer returns an empty Server suitable for unit tests that
-// invoke buildDiagnostics directly. It sidesteps the JSON-RPC wiring -
-// the diag pipeline only reads from s.docs and the file system.
+// newTestServer returns a Server with no open documents and no connection.
 func newTestServer() *Server {
 	return &Server{docs: map[uri.URI]*document{}}
 }
 
-// TestBuildDiagnosticsClean verifies that valid DSL produces no
-// diagnostics - the formatter's roundtrip cases live there too, so this
-// is mostly a smoke check that wiring is alive.
+// Valid source produces no diagnostics.
 func TestBuildDiagnosticsClean(t *testing.T) {
 	src := `package design
 
@@ -33,8 +29,7 @@ type User {
 	}
 }
 
-// TestBuildDiagnosticsParseError checks that a syntax error is surfaced
-// with a usable position (line/character non-zero) and the source label.
+// A syntax error is reported with the craftgo source and a message.
 func TestBuildDiagnosticsParseError(t *testing.T) {
 	// Missing closing brace.
 	src := `package design
@@ -55,17 +50,7 @@ type User {
 	}
 }
 
-// TestBuildProjectDiagnosticsPartitionsByFile pins the cross-file
-// invalidation contract: when one file's edit changes the diagnostic
-// surface in a sibling file, the per-file map MUST surface both files'
-// post-edit state so the publisher can refresh stale squigglies in the
-// dependent file without forcing the user to re-trigger an edit there.
-//
-// Scenario: a service file references a path-param field declared in a
-// sibling types file. Editing the types file to add the matching field
-// should clear the service file's "path segment has no matching field"
-// error - but only if the publisher sends an updated (empty) list for
-// the service file, which is what this contract enables.
+// A change in one file changes the diagnostics reported for its sibling.
 func TestBuildProjectDiagnosticsPartitionsByFile(t *testing.T) {
 	root := t.TempDir()
 	manifest := `output:
@@ -83,8 +68,7 @@ openapi:
 `
 	mustWrite(t, filepath.Join(root, "design", "craftgo.design.yaml"), manifest)
 
-	// Service references a path-param `id`; sibling types file has the
-	// matching field. Both files must analyse clean.
+	// The service's path parameter `id` matches a field in the types file.
 	servicePath := filepath.Join(root, "design", "things", "service.craftgo")
 	typesPath := filepath.Join(root, "design", "things", "types.craftgo")
 	mustWrite(t, servicePath, `package things
@@ -109,11 +93,7 @@ type Resp {}
 		t.Errorf("service file should have zero diags when sibling provides the field: %+v", perFile[servicePath])
 	}
 
-	// Now break the contract: remove the `id` field from Req. The
-	// service file's diagnostic surface must surface the path-param
-	// mismatch even though we passed the SERVICE file as the trigger -
-	// proving the partition includes diagnostics emitted against
-	// sibling files via the project analyser.
+	// Without Req.id the service file reports its path parameter.
 	mustWrite(t, typesPath, `package things
 type Req {}
 type Resp {}
@@ -135,15 +115,7 @@ type Resp {}
 	}
 }
 
-// TestBuildProjectDiagnosticsClearsAfterRevert pins the "edit-and-undo"
-// flow: the perFile partition defaults to a non-nil empty slice so a
-// cleared file marshals to JSON `[]` not `null`, which several LSP
-// clients interpret as "no change" rather than "clear".
-//
-// Scenario: edit types file to break a path-param reference (error
-// fires in service file), then revert the edit (error should clear
-// from service file's per-file partition as an EMPTY non-nil slice
-// so the JSON payload is `[]` not `null`).
+// Reverting a breaking edit clears the sibling's diagnostics to `[]`.
 func TestBuildProjectDiagnosticsClearsAfterRevert(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "design", "craftgo.design.yaml"), `output:
@@ -163,7 +135,7 @@ service S {
     }
 }
 `)
-	// Initial: types provides matching `id` field - clean state.
+	// Clean: Req has the `id` field.
 	mustWrite(t, typesPath, `package things
 type Req { id string }
 type Resp {}
@@ -173,7 +145,7 @@ type Resp {}
 		t.Fatalf("expected service to be clean initially, got %+v", perFile[servicePath])
 	}
 
-	// Break: rename id → id1 so the path param has no matching field.
+	// Break: rename id to id1.
 	mustWrite(t, typesPath, `package things
 type Req { id1 string }
 type Resp {}
@@ -182,10 +154,7 @@ type Resp {}
 		t.Fatalf("expected service path-param error after rename; got: %+v", perFile)
 	}
 
-	// Revert: rename back. The service file's slot in perFile MUST be
-	// non-nil even though it now carries zero diagnostics - otherwise
-	// the publisher would send JSON `null` and the LSP client would
-	// keep the stale squiggly.
+	// Revert: rename back.
 	mustWrite(t, typesPath, `package things
 type Req { id string }
 type Resp {}
@@ -194,8 +163,7 @@ type Resp {}
 	if len(perFile[servicePath]) != 0 {
 		t.Errorf("expected service diags to clear after revert, got %+v", perFile[servicePath])
 	}
-	// The publisher path: diagsFor() must hand back a non-nil empty
-	// slice so the wire payload is `[]` (clears) not `null` (ignored).
+	// diagsFor returns an empty, non-nil list: clients ignore null.
 	cleared := diagsFor(perFile, servicePath)
 	if cleared == nil {
 		t.Error("diagsFor returned nil; LSP clients treat JSON null as no-op - should be empty slice")
@@ -205,9 +173,7 @@ type Resp {}
 	}
 }
 
-// mustWrite writes b to path, creating the parent dir tree on demand.
-// Test-only helper - tests fail fast on filesystem errors so the body
-// stays focused on the contract under test.
+// mustWrite writes content to path, creating its parent directories.
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -227,9 +193,7 @@ func readFileT(t *testing.T, p string) string {
 	return string(data)
 }
 
-// TestBuildDiagnosticsSemanticError checks that semantic errors (e.g.
-// unknown decorator) are reported with their stable diagnostic codes,
-// not just generic parse failures.
+// An unknown decorator is reported with a decorator/* code.
 func TestBuildDiagnosticsSemanticError(t *testing.T) {
 	src := `package design
 
@@ -251,10 +215,8 @@ type User {
 	}
 }
 
-// The editor is where a `@format(raw)` on the wrong type is caught, so
-// the analyser's decorator/type mismatch has to reach the buffer with
-// the code and the offending spelling intact - a raw field is accepted
-// beside it, so what is reported is the type and not the decorator.
+// `@format(raw)` on a string field is reported as decorator/typemismatch on
+// that row, while the bytes field beside it is accepted.
 func TestBuildDiagnosticsFormatRawOffBytes(t *testing.T) {
 	src := `package design
 

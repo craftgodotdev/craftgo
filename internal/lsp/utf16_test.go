@@ -7,10 +7,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// "😀" (U+1F600) is a supplementary character: 4 UTF-8 bytes, 1 rune, but
-// TWO UTF-16 code units. "é" (U+00E9) is BMP: 2 UTF-8 bytes, 1 rune, 1
-// UTF-16 unit. These are the two cases where byte, rune, and UTF-16 unit
-// counts diverge.
+// "😀" is 4 bytes, 1 rune and 2 UTF-16 units; "é" is 2 bytes, 1 rune, 1 unit.
 
 func TestUTF16Len(t *testing.T) {
 	cases := []struct {
@@ -40,9 +37,9 @@ func TestOffsetFromLSP(t *testing.T) {
 		{0, 1, 1}, // after 'a'
 		{0, 3, 5}, // after the emoji (char 1 + 2 units) → byte 1+4
 		{0, 4, 6}, // after 'b'
-		{1, 0, 6}, // start of line 1 (after '\n' at byte 5... 'a'1 '😀'4 'b'1 = 6, '\n' at 6, line1 starts at 7)
+		{1, 0, 6}, // start of line 1; wantOffset is fixed below
 	}
-	// recompute: a(1)😀(4)b(1)=6 bytes, then '\n' at byte 6, line 1 starts byte 7.
+	// a(1) 😀(4) b(1) '\n'(1): line 1 starts at byte 7.
 	cases[4].wantOffset = 7
 	for _, c := range cases {
 		if got := offsetFromLSP(src, c.line, c.char); got != c.wantOffset {
@@ -52,21 +49,19 @@ func TestOffsetFromLSP(t *testing.T) {
 }
 
 func TestUTF16Position(t *testing.T) {
-	// Single line "a😀b": rune column 3 (1-indexed) is 'b', which sits at
-	// UTF-16 character 3 (a=1 + emoji=2). A naive rune→unit copy would
-	// report character 2.
+	// In "a😀b", rune column 3 ('b') is UTF-16 character 3, not 2.
 	src := "a😀b"
 	got := utf16Position(src, lexer.Position{Line: 1, Column: 3})
 	if got.Line != 0 || got.Character != 3 {
 		t.Errorf("utf16Position rune col 3 over %q = (%d,%d), want (0,3)", src, got.Line, got.Character)
 	}
-	// On line 2, the converter must use line 2's text, not line 1's.
+	// Line 2 is converted with line 2's text.
 	multi := "😀\nabX"
 	got = utf16Position(multi, lexer.Position{Line: 2, Column: 3})
 	if got.Line != 1 || got.Character != 2 {
 		t.Errorf("utf16Position line2 col3 = (%d,%d), want (1,2)", got.Line, got.Character)
 	}
-	// No source / out-of-range falls back to rune column verbatim.
+	// A line src lacks keeps the rune column.
 	fb := utf16Position("", lexer.Position{Line: 5, Column: 4})
 	if fb.Line != 4 || fb.Character != 3 {
 		t.Errorf("utf16Position fallback = (%d,%d), want (4,3)", fb.Line, fb.Character)

@@ -18,10 +18,7 @@ import (
 
 func isErrorCategory(s string) bool { return errcat.IsCategory(s) }
 
-// isVerbToken reports whether t is a lexer-recognised HTTP verb
-// keyword. Used by [hoverForToken] to gate the verb-doc dispatch so
-// arbitrary idents that happen to be spelt "get" never surface the
-// verb popup.
+// isVerbToken reports whether t is an HTTP verb keyword.
 func isVerbToken(t lexer.Token) bool {
 	switch t.Kind {
 	case lexer.VerbGet, lexer.VerbPost, lexer.VerbPut, lexer.VerbPatch,
@@ -31,11 +28,7 @@ func isVerbToken(t lexer.Token) bool {
 	return false
 }
 
-// verbDocs documents the HTTP verb keywords so a hover on `get` /
-// `post` / ... explains the semantic the framework attaches to it.
-// Surfaced for keyword tokens that are recognised verbs - the same
-// markdown a user would read in the language reference, scoped to
-// the spot where they are about to commit a route to it.
+// verbDocs is the hover text of each HTTP verb keyword.
 var verbDocs = map[string]string{
 	"get":     "**`get`** - safe, idempotent retrieval. The handler reads no body (the JSON decoder is skipped at codegen time).",
 	"post":    "**`post`** - resource creation or non-idempotent action. JSON body decoded into the request struct.",
@@ -46,18 +39,14 @@ var verbDocs = map[string]string{
 	"options": "**`options`** - capability discovery (CORS preflight handler). The handler may return a custom Allow header set.",
 }
 
-// keywordDoc is one construct's hover text together with the declaration
-// keyword it is written under - `payload` inside an `event`, `request`
-// inside a `service`. The site is what keeps a field spelled `payload`
-// in a type body silent.
+// keywordDoc is a clause keyword's hover text and the declaration keyword it
+// must sit under, so a field named `payload` gets none.
 type keywordDoc struct {
 	site lexer.Kind
 	doc  string
 }
 
-// memberKeywordDocs documents the `event` declaration, its `payload`
-// clause and the method clause keywords, so a hover explains the
-// construct the cursor sits on.
+// memberKeywordDocs documents `event`, `payload`, `request` and `response`.
 var memberKeywordDocs = map[lexer.Kind]keywordDoc{
 	lexer.KwEvent:    {lexer.KwEvent, "**`event Name { payload Type }`** - a contract this design declares, at file level: a service publishes HTTP, never events. Codegen emits one descriptor for it - publish and subscribe both go through that; transport, codec and which deployable listens are runtime wiring, not part of the contract."},
 	lexer.KwPayload:  {lexer.KwEvent, "**`payload Type`** - the type an event contract carries. Must name a `type` declaration."},
@@ -65,9 +54,8 @@ var memberKeywordDocs = map[lexer.Kind]keywordDoc{
 	lexer.KwResponse: {lexer.KwService, "**`response Type`** - the type a method returns; the framework encodes it."},
 }
 
-// memberKeywordHover renders a clause keyword's doc when the cursor sits
-// inside the declaration that keyword belongs to. An `extend service`
-// body counts as a service body.
+// memberKeywordHover renders a clause keyword's doc when it sits in its own
+// declaration; an `extend service` counts as a service.
 func memberKeywordHover(view snapshotView, idx int, tok lexer.Token) *protocol.Hover {
 	kd, ok := memberKeywordDocs[tok.Kind]
 	if !ok {
@@ -86,11 +74,7 @@ func memberKeywordHover(view snapshotView, idx int, tok lexer.Token) *protocol.H
 	}
 }
 
-// onHover answers `textDocument/hover`. It tokenises the buffer, finds
-// the token under the cursor, and dispatches to a kind-specific renderer
-// (decorator, builtin type, user type). Cursors that fall on whitespace,
-// punctuation, or anywhere we have nothing to say return a nil result
-// (LSP-spec for "no hover available here").
+// onHover answers `textDocument/hover`, with null where there is nothing to show.
 func (s *Server) onHover(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.HoverParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
@@ -109,13 +93,9 @@ func (s *Server) onHover(ctx context.Context, reply jsonrpc2.Replier, req jsonrp
 	return reply(ctx, hov, nil)
 }
 
-// hoverForToken classifies the token at idx and returns the hover popup
-// or nil when nothing useful applies. It is exported as an internal
-// helper so unit tests can exercise the formatting without spinning up
-// a JSON-RPC stack.
+// hoverForToken returns the hover for token idx from the buffer alone, or nil.
 func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover {
-	// `@name` decorators: the @ token sits at idx-1 (or idx itself when
-	// the cursor lands on @). Inspect both.
+	// `@name`: the cursor is on the `@` or on the name.
 	if tok.Kind == lexer.At && idx+1 < len(view.tokens) {
 		next := view.tokens[idx+1]
 		if next.Kind == lexer.Ident && view.tokens[idx+1].Pos.Line == tok.Pos.Line {
@@ -128,9 +108,6 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 	if h := formatRawArgHover(view, idx, tok); h != nil {
 		return h
 	}
-	// HTTP verb keywords (`get`, `post`, ...) - the lexer assigns
-	// these distinct Kw* token kinds, so dispatch by token text via
-	// the verbDocs table.
 	if doc, ok := verbDocs[tok.Text]; ok && isVerbToken(tok) {
 		return &protocol.Hover{
 			Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: doc},
@@ -140,10 +117,7 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 	if h := memberKeywordHover(view, idx, tok); h != nil {
 		return h
 	}
-	// Built-in types - only when the token spelling matches AND the
-	// surrounding context is a type position (right after `request`,
-	// `response`, `:`, a field name, etc.). The cheap heuristic: if it
-	// is a bare Ident and the spelling is a known builtin, render it.
+	// Any identifier spelt like a documented built-in gets its doc.
 	if tok.Kind == lexer.Ident {
 		if sp, ok := prims.Lookup(tok.Text); ok && sp.Doc != "" {
 			return &protocol.Hover{
@@ -157,11 +131,7 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 		if d := findDecl(view.file, tok.Text); d != nil {
 			return userTypeHover(d, rangeOf(tok))
 		}
-		// Field-name hover: when the ident is a field declared in
-		// some type / error body, render its type + decorator chain so
-		// the user can audit a field's contract without jumping to
-		// the decl. Looked up by position so we only fire on the
-		// definition site (not every occurrence of the same word).
+		// A field's own name token shows the field.
 		if f, parent := findFieldAtPos(view.file, tok.Pos); f != nil {
 			return fieldHover(parent, f, rangeOf(tok))
 		}
@@ -169,11 +139,8 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 	return nil
 }
 
-// formatRawArgHover renders the popup for the `raw` ident inside
-// `@format(raw)`. Every other `@format` value names a check the
-// reference page lists and the hover on `@format` itself covers; `raw`
-// changes the field's Go type and how its value travels, so it answers
-// for itself where the author is typing it.
+// formatRawArgHover renders the hover for `raw` in `@format(raw)`, the @format
+// value that changes the field's Go type.
 func formatRawArgHover(view snapshotView, idx int, tok lexer.Token) *protocol.Hover {
 	if tok.Kind != lexer.Ident || tok.Text != semantic.FormatRaw || idx < 3 {
 		return nil
@@ -189,11 +156,8 @@ func formatRawArgHover(view snapshotView, idx int, tok lexer.Token) *protocol.Ho
 	}
 }
 
-// findFieldAtPos walks every type / error body looking for a field
-// whose declared name token starts at pos. Returns the field and the
-// parent type / error name (for the hover header). Linear over body
-// members - small bodies, infrequent calls; the cost is well within
-// the LSP responsiveness budget.
+// findFieldAtPos returns the field whose name token starts at pos, with the
+// name of its type or error.
 func findFieldAtPos(f *ast.File, pos lexer.Position) (*ast.Field, string) {
 	if f == nil {
 		return nil, ""
@@ -212,10 +176,7 @@ func findFieldAtPos(f *ast.File, pos lexer.Position) (*ast.Field, string) {
 	return nil, ""
 }
 
-// fieldHover renders the markdown popup for a field declaration: the
-// owning type, the field's spelt-out type with optional / array
-// markers, plus the decorator chain (one per line) so a reader scans
-// the contract without leaving the cursor.
+// fieldHover renders a field's owner, type, decorators and doc.
 func fieldHover(parent string, f *ast.Field, r protocol.Range) *protocol.Hover {
 	var sb strings.Builder
 	if parent != "" {
@@ -252,8 +213,8 @@ func fieldHover(parent string, f *ast.Field, r protocol.Range) *protocol.Hover {
 	}
 }
 
-// typeRefString prints a TypeRef in source-style for hover output:
-// `string`, `User[]`, `Page<User>?`, `map<string, int>`.
+// typeRefString prints t as the source spells it: `User[]`, `Page<User>?`,
+// `map<string, int>`.
 func typeRefString(t *ast.TypeRef) string {
 	if t == nil {
 		return "?"
@@ -290,9 +251,8 @@ func typeRefString(t *ast.TypeRef) string {
 	return sb.String()
 }
 
-// hoverWithProject extends [hoverForToken] with a project-wide lookup, so
-// the project is only loaded for hovers that did not resolve in the
-// current file.
+// hoverWithProject is [hoverForToken] with a project-wide declaration lookup as
+// the fallback, so the project loads only when the buffer has no answer.
 func (s *Server) hoverWithProject(view snapshotView, idx int, tok lexer.Token, currentURI string, currentSrc string) *protocol.Hover {
 	if h := hoverForToken(view, idx, tok); h != nil {
 		return h
@@ -307,10 +267,8 @@ func (s *Server) hoverWithProject(view snapshotView, idx int, tok lexer.Token, c
 	return nil
 }
 
-// decoratorHover renders the popup for `@name`. The body lists the
-// allowed levels and the argument shape registered with the semantic
-// analyser so editor and `craftgo lint` agree on what the decorator
-// expects.
+// decoratorHover renders `@name` from its registry entry, or says the name is
+// removed or unknown.
 func decoratorHover(name string, r protocol.Range) *protocol.Hover {
 	spec, ok := semantic.Registry[name]
 	if !ok {
@@ -348,8 +306,8 @@ func decoratorHover(name string, r protocol.Range) *protocol.Hover {
 	}
 }
 
-// argsRuleSummary turns the Min/Max/Kinds shape into a human-readable
-// "1 string", "0..n", "1 ident or string" line for hover popups.
+// argsRuleSummary renders an argument rule as "1 (string)", "0..n arg" or
+// "1..2 (int, int)".
 func argsRuleSummary(r semantic.ArgsRule) string {
 	var arity string
 	switch {
@@ -373,9 +331,7 @@ func argsRuleSummary(r semantic.ArgsRule) string {
 	return arity + " (" + strings.Join(parts, ", ") + ")"
 }
 
-// userTypeHover formats the popup for a reference to a declared type,
-// enum, error, scalar, middleware, or service. The signature line
-// summarises the declaration; any doc comment follows below.
+// userTypeHover renders d's declaration line and doc.
 func userTypeHover(d ast.Decl, r protocol.Range) *protocol.Hover {
 	header := declSummary(d)
 	doc := strings.Join(declDoc(d), "\n")
@@ -389,9 +345,7 @@ func userTypeHover(d ast.Decl, r protocol.Range) *protocol.Hover {
 	}
 }
 
-// errorCategoryHover documents one of the reserved HTTP-status category
-// names (BadRequest, NotFound, ...). The body is short - these are the
-// well-known categories from the README.
+// errorCategoryHover renders the hover of an error category name.
 func errorCategoryHover(tok lexer.Token) *protocol.Hover {
 	body := fmt.Sprintf("**`%s`** - built-in error category.\n\nReserved name; use as `error %s YourErrorName` to declare an error of this kind.", tok.Text, tok.Text)
 	return &protocol.Hover{
@@ -400,9 +354,8 @@ func errorCategoryHover(tok lexer.Token) *protocol.Hover {
 	}
 }
 
-// joinedRange returns the LSP range covering the source span from a's
-// first character through b's last character. Both tokens must be on
-// the same line - used for `@name` (At + Ident).
+// joinedRange returns the range from a's start to b's end; both must be on
+// one line.
 func joinedRange(a, b lexer.Token) protocol.Range {
 	end := b.Pos
 	end.Column += len(b.Text)

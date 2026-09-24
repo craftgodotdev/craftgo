@@ -1,6 +1,3 @@
-// Cursor-context classification for completion / hover: the primitive
-// category of the field or scalar at the cursor, and declaration
-// summaries / docs for hover rendering.
 package lsp
 
 import (
@@ -10,14 +7,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// fieldPrimAt returns the primitive category of the field at the
-// cursor's source line, when the cursor is inside a type / error
-// body. The category drives the AppliesTo filter on `@<decorator>`
-// completion: a `total int? @<cursor>` should only see number-side
-// validators, not string-side or array-side ones.
-//
-// Returns 0 (PrimAny) when the cursor is not inside a recognised
-// field row - caller treats that as "no AppliesTo filter".
+// fieldPrimAt returns the primitive category of the field on the cursor's
+// line, or 0 off a field row.
 func fieldPrimAt(view snapshotView, pos protocol.Position) semantic.Prims {
 	if view.file == nil {
 		return 0
@@ -39,18 +30,8 @@ func fieldPrimAt(view snapshotView, pos protocol.Position) semantic.Prims {
 	return 0
 }
 
-// scalarPrimAt resolves the underlying primitive category for a scalar
-// declaration the cursor sits on. Walks the file's top-level decls
-// looking for a ScalarDecl whose position is on the same line as the
-// cursor (or whose decorator chain reaches the cursor's line). Returns
-// 0 (PrimAny) when the cursor is not inside a scalar context, so the
-// caller skips the AppliesTo filter cleanly.
-//
-// Used by `@<cursor>` completion at LvlScalar to drop decorators
-// whose AppliesTo bit does not intersect the scalar's primitive -
-// otherwise typing `scalar Gmail string @<cursor>` would offer
-// number-only validators like `@gt` that the semantic phase would
-// later reject as a type mismatch.
+// scalarPrimAt returns the primitive category of the scalar on the cursor's
+// line, or of the first one below the cursor's decorator lines; else 0.
 func scalarPrimAt(view snapshotView, pos protocol.Position) semantic.Prims {
 	if view.file == nil {
 		return 0
@@ -61,10 +42,6 @@ func scalarPrimAt(view snapshotView, pos protocol.Position) semantic.Prims {
 		if !ok {
 			continue
 		}
-		// Match scalars on the cursor's own line OR scalars sitting
-		// just below decorator lines the user is currently editing
-		// (the "decorator zone above the decl"). Same heuristic as
-		// guessLevel.
 		if sd.Pos.Line == line || (sd.Pos.Line >= line && noDeclBetween(view.file, line, sd.Pos.Line)) {
 			return primFromIdent(sd.Primitive, sd.Decorators)
 		}
@@ -72,12 +49,8 @@ func scalarPrimAt(view snapshotView, pos protocol.Position) semantic.Prims {
 	return 0
 }
 
-// primFromIdent maps a built-in primitive spelling, plus the decorators
-// written alongside it, to its semantic category bit. Delegates to
-// [semantic.PrimFromName] so the editor's primitive classification can't
-// drift from the analyser's - and reads the same `@format(raw)` the
-// analyser does, since that is what tells a `bytes` field apart from the
-// raw shape no other validator may touch.
+// primFromIdent returns the category of a built-in name; `bytes` with
+// `@format(raw)` among decs is [semantic.PrimRawBytes].
 func primFromIdent(name string, decs []*ast.Decorator) semantic.Prims {
 	if name == "bytes" && semantic.HasRawFormat(decs) {
 		return semantic.PrimRawBytes
@@ -85,17 +58,8 @@ func primFromIdent(name string, decs []*ast.Decorator) semantic.Prims {
 	return semantic.PrimFromName(name)
 }
 
-// primOfTypeRef reduces a TypeRef to its primitive bucket.
-//
-// Array and map fields collapse to [semantic.PrimArray] regardless of
-// their element type - that's the bucket the array-level decorators
-// (`@minItems`, `@maxItems`, `@uniqueItems`) check against. Optional
-// (`?`) is transparent: `int?` is still PrimNumber.
-//
-// User scalars look up the scalar's primitive (recursively, in case a
-// scalar references another scalar). Unknown / cross-package refs
-// return 0 so the caller falls back to "no AppliesTo filter" rather
-// than hiding decorators we cannot classify.
+// primOfTypeRef returns the category of a field type: [semantic.PrimArray] for
+// an array or map, else that of its built-in or of a scalar declared in file.
 func primOfTypeRef(t *ast.TypeRef, decs []*ast.Decorator, file *ast.File) semantic.Prims {
 	if t == nil {
 		return 0
@@ -107,9 +71,7 @@ func primOfTypeRef(t *ast.TypeRef, decs []*ast.Decorator, file *ast.File) semant
 		return 0
 	}
 	name := t.Named.Name.String()
-	// Built-in primitive names classify through the shared oracle; `any` /
-	// `object` are deliberately unclassified (0) and never fall to the
-	// scalar-decl lookup below.
+	// `any` and `object` stay unclassified.
 	if p := primFromIdent(name, decs); p != 0 {
 		return p
 	}
@@ -119,13 +81,9 @@ func primOfTypeRef(t *ast.TypeRef, decs []*ast.Decorator, file *ast.File) semant
 	if file != nil {
 		for _, d := range file.Decls {
 			if sd, ok := d.(*ast.ScalarDecl); ok && sd.Name == name {
-				// Synthesise a TypeRef around the scalar's primitive
-				// name and recurse so the lookup transparently
-				// handles scalar-of-scalar chains.
 				inner := &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{sd.Primitive}}}}
 				if semantic.HasRawFormat(sd.Decorators) {
-					// The scalar's own `@format(raw)` reaches every
-					// field of the type, decorated or not.
+					// The scalar's `@format(raw)` covers every field typed with it.
 					decs = sd.Decorators
 				}
 				return primOfTypeRef(inner, decs, file)
@@ -135,9 +93,8 @@ func primOfTypeRef(t *ast.TypeRef, decs []*ast.Decorator, file *ast.File) semant
 	return 0
 }
 
-// declSummary renders a short one-line signature for d, suitable for the
-// header of a hover popup. It mirrors the canonical formatter style so
-// editors and `craftgo fmt` agree on what the construct looks like.
+// declSummary renders d's declaration line, e.g. `type Page<T>` or
+// `error NotFound Missing`.
 func declSummary(d ast.Decl) string {
 	switch v := d.(type) {
 	case *ast.TypeDecl:
@@ -172,9 +129,7 @@ func declSummary(d ast.Decl) string {
 	return ""
 }
 
-// declDoc returns the doc-comment lines of d. Every doc-bearing decl
-// type is enumerated here so hover popups stay consistent across
-// type / enum / error / service / scalar / middleware.
+// declDoc returns d's doc-comment lines.
 func declDoc(d ast.Decl) []string {
 	switch v := d.(type) {
 	case *ast.TypeDecl:

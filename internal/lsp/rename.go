@@ -11,11 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// onPrepareRename answers `textDocument/prepareRename`. The editor calls
-// this before showing its rename UI to learn whether the symbol under
-// the cursor is renameable and what range covers it. We accept renames
-// of identifiers that match a top-level declaration in the same file -
-// every other position returns nil (LSP for "not supported here").
+// onPrepareRename answers `textDocument/prepareRename` with the range of an
+// identifier that names a declaration in the buffer, else null.
 func (s *Server) onPrepareRename(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.PrepareRenameParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
@@ -37,14 +34,8 @@ func (s *Server) onPrepareRename(ctx context.Context, reply jsonrpc2.Replier, re
 	return reply(ctx, &r, nil)
 }
 
-// onRename answers `textDocument/rename`. Every `.craftgo` file under
-// the design root is scanned for Ident tokens matching the symbol's
-// current name and rewritten in one WorkspaceEdit so a project-wide
-// rename leaves no stale references in sibling files.
-//
-// Precondition: the cursor must sit on an identifier whose decl exists
-// in the current file, so the user renames a thing they own rather than
-// an imported foreign symbol.
+// onRename answers `textDocument/rename`, rewriting every same-spelt identifier
+// in the project when the cursor names a declaration in the buffer.
 func (s *Server) onRename(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.RenameParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
@@ -71,16 +62,13 @@ func (s *Server) onRename(ctx context.Context, reply jsonrpc2.Replier, req jsonr
 		})
 	}
 	if len(changes) == 0 {
-		// Ensure the current document still appears in the response
-		// so the editor's rename UI does not error out on empty maps.
+		// The buffer is always listed: the rename UI fails on an empty map.
 		changes[params.TextDocument.URI] = []protocol.TextEdit{}
 	}
 	return reply(ctx, &protocol.WorkspaceEdit{Changes: changes}, nil)
 }
 
-// isValidIdent enforces the lexer's identifier rule (`[A-Za-z_][A-Za-z0-9_]*`)
-// so the rename result will lex back into a single Ident token. Empty
-// strings, leading digits, and embedded punctuation are rejected.
+// isValidIdent reports whether s matches `[A-Za-z_][A-Za-z0-9_]*`.
 func isValidIdent(s string) bool {
 	if s == "" {
 		return false

@@ -9,10 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/parser"
 )
 
-// snapshotView is the shared parse view that every feature handler operates
-// on. Re-tokenising and re-parsing on every request keeps the wire model
-// simple and matches what `craftgo lint` would see - no risk of stale
-// AST drift between editor and CLI.
+// snapshotView is one buffer's source, tokens and AST, parsed per request.
 type snapshotView struct {
 	src    string
 	tokens []lexer.Token
@@ -25,17 +22,9 @@ func parseSnapshot(filename, src string) snapshotView {
 	return snapshotView{src: src, tokens: p.Tokens(), file: f}
 }
 
-// tokenAt returns the token whose source span covers the supplied
-// LSP-style (0-indexed) cursor and the index into the token slice. The
-// hit token may be EOF for cursors past the last real token; callers
-// should check Kind to filter that out.
+// tokenAt returns the index and token whose byte span, end included, holds
+// the LSP position (the later token on a tie), or -1 when none does.
 func (v snapshotView) tokenAt(line, character uint32) (int, lexer.Token) {
-	// Resolve the editor's UTF-16 (line, character) to a byte offset and
-	// match tokens by their byte span. Byte offsets avoid the unit
-	// mismatches a line/column compare carries (the LSP character is
-	// UTF-16 while the lexer column is runes, and `Column + len(Text)`
-	// would mix a rune column with a byte length): every Token carries
-	// Pos.Offset and its byte length is len(Text).
 	off := offsetFromLSP(v.src, line, character)
 	best := -1
 	for i, t := range v.tokens {
@@ -62,7 +51,7 @@ func rangeOf(t lexer.Token) protocol.Range {
 	return protocol.Range{Start: start, End: lspPos(endPos)}
 }
 
-// rangeOfPosLen builds a range starting at p with width n columns.
+// rangeOfPosLen returns the range of n columns starting at p.
 func rangeOfPosLen(p lexer.Position, n int) protocol.Range {
 	start := lspPos(p)
 	endPos := p
@@ -70,9 +59,7 @@ func rangeOfPosLen(p lexer.Position, n int) protocol.Range {
 	return protocol.Range{Start: start, End: lspPos(endPos)}
 }
 
-// fieldAtCursor returns the field whose row matches the cursor's line
-// when the cursor is inside a type / error body. Returns nil when the
-// cursor is not on a field row.
+// fieldAtCursor returns the type or error field on the cursor's line, or nil.
 func fieldAtCursor(view snapshotView, pos protocol.Position) *ast.Field {
 	if view.file == nil {
 		return nil
@@ -94,9 +81,7 @@ func fieldAtCursor(view snapshotView, pos protocol.Position) *ast.Field {
 	return nil
 }
 
-// findDecl returns the first top-level declaration whose declared name
-// matches. Cross-package lookups are not handled here - the caller can
-// inspect the import list separately if needed.
+// findDecl returns f's first declaration named name, or nil.
 func findDecl(f *ast.File, name string) ast.Decl {
 	if f == nil {
 		return nil
@@ -109,10 +94,8 @@ func findDecl(f *ast.File, name string) ast.Decl {
 	return nil
 }
 
-// declBody returns a type-body slice for declarations that have one
-// (TypeDecl always; ErrorDecl when HasBody is set). The bool says
-// whether a body exists; nil-body decls return false so callers can
-// short-circuit cleanly.
+// declBody returns the members of a type or of an error with a body, and
+// whether d has one.
 func declBody(d ast.Decl) ([]ast.TypeMember, bool) {
 	switch v := d.(type) {
 	case *ast.TypeDecl:
@@ -125,9 +108,7 @@ func declBody(d ast.Decl) ([]ast.TypeMember, bool) {
 	return nil, false
 }
 
-// declName returns the declared name for the body-bearing decl kinds
-// (TypeDecl / ErrorDecl), used as the parent label alongside [declBody]; ""
-// for decls without a body.
+// declName returns the name of a type or error declaration, else "".
 func declName(d ast.Decl) string {
 	switch v := d.(type) {
 	case *ast.TypeDecl:
@@ -138,9 +119,8 @@ func declName(d ast.Decl) string {
 	return ""
 }
 
-// noDeclBetween reports whether the file has zero declarations on
-// lines strictly between `from` (exclusive) and `to` (exclusive). Used
-// by scalarPrimAt to make sure the "above" attribution stays adjacent.
+// noDeclBetween reports whether f declares nothing on the lines strictly
+// between from and to.
 func noDeclBetween(f *ast.File, from, to int) bool {
 	for _, d := range f.Decls {
 		l := d.DeclPos().Line
@@ -151,15 +131,10 @@ func noDeclBetween(f *ast.File, from, to int) bool {
 	return true
 }
 
-// pathToFileURIString builds a `file://...` URI string from an absolute
-// filesystem path. Feature handlers feed the result into [uri.New] so
-// the typed URI lines up with what the editor would have sent for a
-// sibling file in the same project.
+// pathToFileURIString returns the file:// URI of path, or "" for an empty path.
 func pathToFileURIString(path string) string {
 	if path == "" {
 		return ""
 	}
-	// uri.File handles the Windows drive letter and percent-encoding and
-	// absolutises a relative path, matching what the editor would send.
 	return string(uri.File(path))
 }

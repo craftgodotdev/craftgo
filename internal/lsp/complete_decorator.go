@@ -1,4 +1,3 @@
-// Decorator-arg/name LSP completions: dispatcher, context detection, error categories.
 package lsp
 
 import (
@@ -13,21 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// decoratorArgItems dispatches a decorator-argument completion to
-// the right resolver based on which decorator the cursor sits in.
-// Special-cased decorators:
-//
-//   - `@middlewares(...)` → declared middleware names.
-//   - `@security(A, B, ...)` → keys declared in the project's
-//     `openapi.securitySchemes` (any slot, since the decorator is a
-//     variadic ident list).
-//   - `@default(...)` → the closed set the field's own type has: an
-//     enum's values, or `true` / `false` for a bool.
-//   - everything else → the registered enum values from the
-//     decorator's [semantic.Spec].
-//
-// Returns nil when none of the slots match - the caller falls back
-// to its general-context branch.
+// decoratorArgItems offers the argument candidates of `@name(...)`, or nil
+// when the slot has no closed set.
 func (s *Server) decoratorArgItems(view snapshotView, pos protocol.Position, currentURI, currentSrc, name string, prev, mid *lexer.Token) []protocol.CompletionItem {
 	if name == "middlewares" {
 		return s.middlewareNameCompletions(currentURI, currentSrc)
@@ -59,13 +45,8 @@ func (s *Server) decoratorArgItems(view snapshotView, pos protocol.Position, cur
 	return decoratorArgCompletions(name)
 }
 
-// httpStatusCompletions surfaces the canonical HTTP status code set
-// inside `@status(...)` decorator arguments. Editors render the
-// integer label as a Value-kind item with the IANA reason phrase as
-// Detail so the user picks "201 (Created)" from a short list instead
-// of memorising the codes. Restricted to the reserved success +
-// redirect range plus the framework's error-category codes so a typo
-// like 999 never silently survives the completion popup.
+// httpStatusCompletions offers common HTTP status codes for `@status(...)`,
+// with the reason phrase as detail.
 func httpStatusCompletions() []protocol.CompletionItem {
 	type entry struct {
 		code   string
@@ -105,26 +86,9 @@ func httpStatusCompletions() []protocol.CompletionItem {
 	return out
 }
 
-// decoratorArgContext detects whether pos sits inside a `@name(…)`
-// argument list and returns the decorator's bare name when it does.
-// The walk is purely token-based: we step backwards from the cursor,
-// tracking parenthesis depth, until we land on an opening `(` whose
-// preceding tokens spell `@Ident`. A `)` along the way pops the depth
-// counter - once it goes negative we have left every enclosing
-// decorator and the cursor is not in an arg list.
-//
-// Walks include the cursor's own token (`idx`, not `idx-1`) so a
-// cursor sitting exactly on the opening `(` - common right after the
-// user types `@middlewares(` - still resolves cleanly. RParens are
-// only counted when they're STRICTLY before the cursor; that keeps
-// the closing paren of the decorator we're inside from prematurely
-// flipping `depth` negative.
-//
-// A cursor on whitespace has no token of its own, and the walk then
-// starts at the last token that ENDS before it. Starting at the end of
-// the stream instead would count every `)` further down the file,
-// including the one closing the very list the cursor sits in, and the
-// depth counter would swallow the `(` we are looking for.
+// decoratorArgContext reports whether pos is inside a `@name(...)` argument
+// list and returns name. The backward walk starts at the cursor's own token
+// (a cursor on the `(` counts), or on whitespace at the last token before it.
 func decoratorArgContext(view snapshotView, pos protocol.Position) (string, bool) {
 	idx, _ := view.tokenAt(pos.Line, pos.Character)
 	start := idx
@@ -140,8 +104,7 @@ func decoratorArgContext(view snapshotView, pos protocol.Position) (string, bool
 		t := view.tokens[i]
 		switch t.Kind {
 		case lexer.RParen:
-			// Skip the cursor's own RParen - we're INSIDE its
-			// decorator, not after it.
+			// The cursor's own `)` closes the list it is in.
 			if i == idx {
 				continue
 			}
@@ -151,9 +114,8 @@ func decoratorArgContext(view snapshotView, pos protocol.Position) (string, bool
 				depth--
 				continue
 			}
-			// Found the unmatched `(`. Look two tokens back for
-			// `@<ident>`. The Ident may be either a plain identifier
-			// or one of the keyword-spelt decorators (`@true`).
+			// The unmatched `(`: a decorator when `@` is two tokens back (the
+			// name may be spelt like a keyword).
 			if i >= 2 && view.tokens[i-2].Kind == lexer.At {
 				return view.tokens[i-1].Text, true
 			}
@@ -163,10 +125,8 @@ func decoratorArgContext(view snapshotView, pos protocol.Position) (string, bool
 	return "", false
 }
 
-// decoratorArgCompletions returns the registry-declared enum values for
-// @name's first argument (e.g. @format's format set) as completion items.
-// Returns nil when the decorator declares no argument enum so the caller
-// falls through to the generic completions.
+// decoratorArgCompletions offers the registry's argument values of @name (the
+// formats of @format, for one), or nil when it declares none.
 func decoratorArgCompletions(name string) []protocol.CompletionItem {
 	spec, ok := semantic.Registry[name]
 	if !ok {
@@ -188,22 +148,12 @@ func decoratorArgCompletions(name string) []protocol.CompletionItem {
 	return out
 }
 
-// decoratorCompletions enumerates the registry, optionally filtered by
-// a declaration-level guess inferred from the cursor's surroundings.
-// `prefix` lets the editor narrow as the user types - in practice the
-// LSP client also filters, so an empty prefix is fine.
+// decoratorCompletions offers the registered decorators legal at the site
+// level of pos whose name starts with prefix.
 func decoratorCompletions(view snapshotView, pos protocol.Position, prefix string) []protocol.CompletionItem {
 	level := guessLevel(view, pos)
-	// Narrow the AppliesTo filter by the surrounding type's primitive
-	// category. Two sites carry one:
-	//   - field rows (`total int? @<cursor>`)
-	//   - scalar decls (`scalar Gmail string @<cursor>` -> string)
-	// In both cases the validator's AppliesTo bit must intersect the
-	// resolved primitive; mismatches like `@gt` on a string scalar
-	// would otherwise surface in the popup and only fail at gen time.
-	// Returns 0 (PrimAny) when the cursor is not on a recognised row,
-	// in which case the AppliesTo filter is a no-op and only the
-	// level filter applies.
+	// On a field or scalar, the type's primitive category must meet the
+	// decorator's AppliesTo; 0 on either side means no filter.
 	var fieldPrim semantic.Prims
 	switch level {
 	case semantic.LvlField:
@@ -211,10 +161,8 @@ func decoratorCompletions(view snapshotView, pos protocol.Position, prefix strin
 	case semantic.LvlScalar:
 		fieldPrim = scalarPrimAt(view, pos)
 	}
-	// An `extend service` block accepts only the method-level-applicable
-	// service decorators plus @group (which groups that block's methods);
-	// @prefix is primary-only. The decl-site level is LvlService for both a
-	// primary and an extend, so narrow it here for the extend case.
+	// An `extend service` takes the service decorators that have a method form,
+	// plus @group.
 	extendSite := level == semantic.LvlService && nextDeclDecoratorIsExtend(view, pos)
 	names := make([]string, 0, len(semantic.Registry))
 	for name := range semantic.Registry {
@@ -224,24 +172,12 @@ func decoratorCompletions(view snapshotView, pos protocol.Position, prefix strin
 	out := make([]protocol.CompletionItem, 0, len(names))
 	for _, name := range names {
 		spec := semantic.Registry[name]
-		// Strict level filter: only surface decorators whose
-		// declared site mask intersects the cursor's level. The
-		// guard against `spec.Levels == 0` is defensive for any
-		// future Registry entry without a Levels declaration -
-		// treating "no levels" as "not applicable here" keeps the
-		// completion list focused on supported decorators.
 		if spec.Levels == 0 || spec.Levels&level == 0 {
 			continue
 		}
 		if extendSite && spec.Levels&semantic.LvlMethod == 0 && name != "group" {
-			// @prefix is the only LvlService decorator with no method-level
-			// form, so it is the one dropped from an extend block's popup.
 			continue
 		}
-		// Per-primitive filter: at field level, drop validators
-		// whose AppliesTo doesn't intersect the field's resolved
-		// primitive. Decorators with AppliesTo == 0 (PrimAny) pass
-		// through - they apply regardless of type.
 		if fieldPrim != 0 && spec.AppliesTo != 0 && spec.AppliesTo&fieldPrim == 0 {
 			continue
 		}
@@ -264,20 +200,14 @@ func decoratorCompletions(view snapshotView, pos protocol.Position, prefix strin
 	return out
 }
 
-// needsArgs reports whether the decorator REQUIRES arguments - only
-// then do we expand the completion item into `name($0)` so the cursor
-// lands inside the parens. Decorators where args are optional (Min=0)
-// like `@deprecated` should insert bare so the user can accept the
-// no-arg form without deleting empty parentheses.
+// needsArgs reports whether a decorator requires arguments; its completion then
+// inserts `name($0)`.
 func needsArgs(r semantic.ArgsRule) bool {
 	return r.Min > 0 || r.Variadic != 0
 }
 
-// errorCategoryCompletions returns one completion item per reserved
-// HTTP error category. Fired when the cursor sits in the
-// `error <cursor>` position. Each item carries the HTTP status as
-// Detail and a short doc snippet that the LSP client can render in
-// the autocomplete popup. The catalogue is the shared [errcat.Categories] table.
+// errorCategoryCompletions offers each of [errcat.Categories] for `error |`,
+// with its HTTP status as detail.
 func errorCategoryCompletions() []protocol.CompletionItem {
 	out := make([]protocol.CompletionItem, 0, len(errcat.Categories))
 	for _, c := range errcat.Categories {

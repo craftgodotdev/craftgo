@@ -17,8 +17,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// mustParseFile parses src into an [ast.File] for tests that need to
-// build a synthetic project layout (multi-file go-to-def fixtures).
+// mustParseFile parses src, failing on any parse diagnostic.
 func mustParseFile(t *testing.T, path, src string) *ast.File {
 	t.Helper()
 	p := parser.New(path, src)
@@ -52,8 +51,7 @@ service GreeterService {
 }
 `
 
-// TestHoverDecorator confirms hover on a `@length` decorator returns
-// markdown referencing both the registry doc and the legal levels.
+// Hovering `@length` shows the decorator and its field level.
 func TestHoverDecorator(t *testing.T) {
 	v := mustHoverAt(t, "test.craftgo", testDSL, "length")
 	if !strings.Contains(v, "@length") {
@@ -64,8 +62,7 @@ func TestHoverDecorator(t *testing.T) {
 	}
 }
 
-// TestHoverBuiltinType verifies hovering over `string` produces the
-// built-in primitive doc.
+// Hovering `string` shows the built-in's doc.
 func TestHoverBuiltinType(t *testing.T) {
 	v := mustHoverAt(t, "test.craftgo", testDSL, "string")
 	if !strings.Contains(v, "UTF-8") {
@@ -73,10 +70,8 @@ func TestHoverBuiltinType(t *testing.T) {
 	}
 }
 
-// `@format(raw)` is the one `@format` value that is not a check: it
-// changes the field's Go type and how its value travels, so the token
-// answers for itself rather than leaving the author to the reference
-// page. The `bytes` beside it explains the pairing from its own side.
+// Hovering `raw` in `@format(raw)` explains the raw shape, and hovering
+// `bytes` points at it.
 func TestHoverFormatRawOnABytesField(t *testing.T) {
 	const src = `package design
 
@@ -112,12 +107,10 @@ func hoverAtToken(t *testing.T, view snapshotView, text string) string {
 	return ""
 }
 
-// TestHoverUserType verifies hovering over a reference to `Greeter`
-// returns the declaration's signature and doc string.
+// Hovering a type reference shows the declaration line and doc.
 func TestHoverUserType(t *testing.T) {
 	view := parseSnapshot("test.craftgo", testDSL)
-	// Find the second `Greeter` token - first is the decl, second is
-	// the reference inside the service method.
+	// The second Greeter is a reference.
 	var hits int
 	var pos protocol.Position
 	for _, tok := range view.tokens {
@@ -147,9 +140,7 @@ func TestHoverUserType(t *testing.T) {
 	}
 }
 
-// TestCompletionDefaultOnEnumField pins enum-aware completion: when
-// the cursor sits inside `@default(...)` of a field whose declared
-// type is an enum in scope, only that enum's value names are offered.
+// `@default(|)` on an enum field offers exactly the enum's values.
 func TestCompletionDefaultOnEnumField(t *testing.T) {
 	src := `package x
 enum Status { Active  Inactive  Pending }
@@ -157,7 +148,7 @@ type T {
 	st Status? @default()
 }
 `
-	// Cursor inside `@default(|)` - column lands between the parens.
+	// Cursor at the `(` of `@default()`.
 	items := mustCompletionsAt(t, "t.craftgo", src, 3, 20)
 	if len(items) != 3 {
 		t.Fatalf("expected 3 enum-value completions, got %d: %+v", len(items), items)
@@ -165,9 +156,7 @@ type T {
 	expectLabels(t, items, "Active", "Inactive", "Pending")
 }
 
-// TestCompletionDurationPresets covers the empty-slot case for an
-// ArgDuration decorator: cursor right after `(`, no partial number
-// → preset list (e.g. "5s", "1m", ...).
+// An empty duration argument offers the presets.
 func TestCompletionDurationPresets(t *testing.T) {
 	src := `package x
 service S {
@@ -183,9 +172,7 @@ service S {
 	expectLabels(t, items, "5s", "1m")
 }
 
-// TestCompletionDurationPartialNumber covers the digits-typed case:
-// cursor right after `10` inside `@timeout(...)` → emit suffixed
-// values that REPLACE the Int token (TextEdit-bound completions).
+// Digits typed in a duration argument get each unit, as edits replacing them.
 func TestCompletionDurationPartialNumber(t *testing.T) {
 	src := `package x
 service S {
@@ -193,7 +180,7 @@ service S {
 	get G /g {}
 }
 `
-	// Cursor right after `10` - column 12 = `@timeout(10|)`.
+	// `@timeout(10|)`: column 12.
 	items := mustCompletionsAt(t, "t.craftgo", src, 2, 12)
 	if len(items) == 0 {
 		t.Fatal("expected partial-aware duration completions")
@@ -206,8 +193,7 @@ service S {
 	expectLabels(t, items, "10s", "10m", "10h", "10ms")
 }
 
-// TestCompletionSizePartialNumber is the byte-size analogue of the
-// duration-partial test.
+// Digits typed in a size argument get each unit.
 func TestCompletionSizePartialNumber(t *testing.T) {
 	src := `package x
 service S {
@@ -222,9 +208,7 @@ service S {
 	expectLabels(t, items, "10KB", "10MB", "10GB")
 }
 
-// TestCompletionDecoratorAfterAt checks that typing `@` at field level
-// surfaces decorators that are valid on field sites and excludes ones
-// that are not.
+// `@` on a field row offers field decorators.
 func TestCompletionDecoratorAfterAt(t *testing.T) {
 	src := `package x
 
@@ -232,7 +216,7 @@ type T {
 	id string @
 }
 `
-	// Cursor right after the `@` (line index 3 in 0-indexed LSP coords).
+	// Cursor right after the `@` on line 3.
 	items := mustCompletionsAt(t, "t.craftgo", src, 3, 12)
 	if len(items) == 0 {
 		t.Fatal("expected completion items after @ at field site")
@@ -240,11 +224,8 @@ type T {
 	expectLabels(t, items, "length", "sensitive")
 }
 
-// A `bytes @format(raw)` field takes no other validator, so the popup
-// offers none: the field resolves to its own category that no
-// validator's AppliesTo names. The decorators that shape a field
-// regardless of type still appear, and so does `@format` - it is what
-// put the field in that category.
+// A `bytes @format(raw)` field offers no validator, only @format and the
+// decorators that apply to every type.
 func TestCompletionOnARawBytesFieldOffersNoValidator(t *testing.T) {
 	src := "package x\n\ntype T {\n\tpayload bytes @format(raw) @\n}\n"
 	items := mustCompletionsAt(t, "t.craftgo", src, 3, 28)
@@ -255,40 +236,28 @@ func TestCompletionOnARawBytesFieldOffersNoValidator(t *testing.T) {
 	expectLabels(t, items, "format", "json", "nullable", "doc", "sensitive")
 }
 
-// A plain `bytes` field is string-shaped, so the same popup one
-// decorator earlier still offers the text validators: it is the
-// `@format(raw)` that narrows the field, nothing about `bytes` itself.
+// A plain `bytes` field still offers the text validators.
 func TestCompletionOnAPlainBytesFieldStillOffersTextValidators(t *testing.T) {
 	src := "package x\n\ntype T {\n\tpayload bytes @\n}\n"
 	items := mustCompletionsAt(t, "t.craftgo", src, 3, 16)
 	expectLabels(t, items, "format", "minLength", "maxLength")
 }
 
-// `raw` is offered inside `@format(...)` beside the string formats: the
-// argument popup is generated from the registry's enum, which is the
-// same list the analyser accepts.
+// `@format(|)` offers `raw` beside the string formats.
 func TestCompletionFormatArgOffersRaw(t *testing.T) {
 	src := "package x\n\ntype T {\n\tpayload bytes @format(\n}\n"
 	items := mustCompletionsAt(t, "t.craftgo", src, 3, 23)
 	expectLabels(t, items, "raw", "email", "uuid")
 }
 
-// The built-in popup is generated from the catalogue, so `datetime`
-// appears in it the way `string` does - otherwise the only way to find
-// it is the reference page. A FIELD type slot is where the catalogue
-// belongs; a `request` / `response` clause names a message, and the
-// analyser rejects every primitive in one.
+// A field's type slot offers every built-in, `datetime` included.
 func TestCompletionTypePositionOffersBuiltins(t *testing.T) {
 	items := mustCompletionsAtCursor(t, "t.craftgo", "package x\n\ntype User {\n    home |\n}\n")
 	expectLabels(t, items, "datetime", "bytes", "any", "string")
 }
 
-// TestCompletionServiceDecoratorSite pins the decorator popup for the zone
-// above a `service` / `extend service`. While the leading `@` is mid-typed the
-// parser swallows the following keyword as the decorator name, so the site must
-// be recovered from the token stream - otherwise it misreads as file scope and
-// the service-level decorators vanish. An extend block additionally drops
-// `@prefix` (primary-only) while keeping `@group`.
+// A half-typed `@` above a service offers the service decorators; above an
+// extend it drops @prefix and keeps @group.
 func TestCompletionServiceDecoratorSite(t *testing.T) {
 	primary := "package x\n\n@\nservice S {\n  get A /a {}\n}\n"
 	items := mustCompletionsAt(t, "t.craftgo", primary, 2, 1)
@@ -300,13 +269,7 @@ func TestCompletionServiceDecoratorSite(t *testing.T) {
 	expectNoLabels(t, eitems, "prefix")
 }
 
-// TestSemanticSurvivesPartialEditsViaSnapshot pins the LSP-side
-// resilience contract: while a user is mid-typing (`extend `,
-// `service `, `type `, etc.) the parser may produce decls that are
-// only partially populated. The full pipeline - parser → semantic
-// analyzer → LSP diagnostics - must complete without panicking, since a
-// nil-pointer dereference in any stage crashes the whole language
-// server.
+// Half-typed declarations panic neither the outline nor the analyser.
 func TestSemanticSurvivesPartialEditsViaSnapshot(t *testing.T) {
 	cases := []string{
 		"package x\nextend ",
@@ -329,12 +292,8 @@ func TestSemanticSurvivesPartialEditsViaSnapshot(t *testing.T) {
 				}
 			}()
 			view := parseSnapshot("t.craftgo", src)
-			// Symbol provider must not crash on partial decls.
 			_ = documentSymbols(view)
-			// Single-file diagnostic mode runs semantic.Analyze on
-			// the same AST - exercise that path too. If a typed-nil
-			// decl ever leaks back into f.Decls, this is where the
-			// panic surfaces.
+			// The analyser runs on the same partial AST.
 			if view.file != nil {
 				_, _ = semantic.Analyze([]*ast.File{view.file})
 			}
@@ -342,13 +301,7 @@ func TestSemanticSurvivesPartialEditsViaSnapshot(t *testing.T) {
 	}
 }
 
-// TestDocumentSymbolsSkipUnnamedDecls protects against the
-// "name must not be falsy" crash in VS Code's symbol provider:
-// while a user is mid-typing (`service ` with no identifier yet) the
-// parser produces a decl with an empty Name. Emitting that as a
-// DocumentSymbol crashes the entire outline view, so the LSP must
-// silently skip incomplete decls - the partial syntax surfaces via
-// diagnostics instead.
+// The outline has no symbol with an empty name, which VS Code rejects.
 func TestDocumentSymbolsSkipUnnamedDecls(t *testing.T) {
 	cases := []struct {
 		label string
@@ -379,16 +332,10 @@ func TestDocumentSymbolsSkipUnnamedDecls(t *testing.T) {
 	}
 }
 
-// TestCompletionSecuritySchemeAtArgOne pins the autocompletion that
-// fires inside `@security(A, B, ...)` - the LSP loads the project's
-// craftgo.design.yaml and surfaces every key declared under
-// `openapi.securitySchemes` so the user picks from a closed set
-// instead of memorising names. The decorator is a variadic ident
-// list, so completions fire at every slot.
+// `@security(|)` offers the manifest's security schemes, detailed by type.
 func TestCompletionSecuritySchemeAtArgOne(t *testing.T) {
 	t.Helper()
-	// Spin up an isolated project root with a manifest declaring two
-	// security schemes - kept tiny so the test is hermetic.
+	// A manifest declaring two security schemes.
 	root := t.TempDir()
 	yaml := `package: example.com/m
 output:
@@ -420,7 +367,7 @@ openapi:
 	view := parseSnapshot(srcPath, src)
 	srv := &Server{docs: map[uri.URI]*document{}}
 	fileURI := string(uri.File(srcPath))
-	// Cursor right after `@security(` - line 2 (0-indexed), char 10.
+	// Cursor right after `@security(`.
 	pos := protocol.Position{Line: 2, Character: 10}
 	items := srv.completionsAt(view, pos, fileURI, src)
 	got := make(map[string]string, len(items))
@@ -440,11 +387,7 @@ openapi:
 	}
 }
 
-// TestCompletionSecuritySchemeNoManifest verifies the LSP stays
-// permissive when the project has no craftgo.design.yaml or no
-// `securitySchemes` map - the completion popup must not crash and
-// must not hijack the slot with an empty list (the generic
-// fallback should surface instead).
+// `@security(|)` completion without a manifest does not panic.
 func TestCompletionSecuritySchemeNoManifest(t *testing.T) {
 	root := t.TempDir()
 	src := "package x\n\n@security(\nservice S {}"
@@ -455,13 +398,10 @@ func TestCompletionSecuritySchemeNoManifest(t *testing.T) {
 	view := parseSnapshot(srcPath, src)
 	srv := &Server{docs: map[uri.URI]*document{}}
 	pos := protocol.Position{Line: 2, Character: 10}
-	// Must not panic; an empty result is acceptable since there are
-	// no schemes to suggest.
 	_ = srv.completionsAt(view, pos, string(uri.File(srcPath)), src)
 }
 
-// keys returns the keys of m in arbitrary order. Tiny helper used
-// by completion tests so error messages list what we actually got.
+// keys returns the keys of m in map order.
 func keys(m map[string]string) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
@@ -470,19 +410,12 @@ func keys(m map[string]string) []string {
 	return out
 }
 
-// TestCompletionSuppressedAfterOpenBrace pins the half of the
-// just-opened-a-brace rule that still answers nothing: a block whose
-// members open on free text (a field name, an enum value) has nothing
-// to offer, and its one closed alternative - a mixin row - is every
-// declared type in the project, which is the dump this rule exists to
-// stop. Typing a character still reaches those declarations through the
-// regular block fallback. The blocks that DO answer are pinned by
-// TestCompletionJustOpenedBlockOffersItsKeys.
+// A just-opened type, error or enum body offers nothing.
 func TestCompletionSuppressedAfterOpenBrace(t *testing.T) {
 	cases := []struct {
 		label string
 		src   string
-		// pos is the (line, character) the cursor sits at after `{`.
+		// line, col: the cursor after `{`.
 		line int
 		col  int
 	}{
@@ -517,12 +450,7 @@ func TestCompletionSuppressedAfterOpenBrace(t *testing.T) {
 	}
 }
 
-// TestCompletionJustOpenedBlockOffersItsKeys is the other half: a block
-// whose members can only open with one of a short, closed list of keys
-// answers with that list the moment its brace is opened. The fallback
-// already narrowed each block to its own set, so there is no dump left
-// to suppress - the keys ARE the affordance, and a cursor sitting in an
-// empty `{}` is exactly when an author wants to see them.
+// A just-opened service, method or event body offers its keys.
 func TestCompletionJustOpenedBlockOffersItsKeys(t *testing.T) {
 	cases := []struct {
 		label        string
@@ -575,12 +503,7 @@ func TestCompletionJustOpenedBlockOffersItsKeys(t *testing.T) {
 	}
 }
 
-// TestCompletionTypePositionExcludesErrors pins the type-position
-// filter: completions in a `field <name> <cursor>` slot must not
-// surface `error` declarations even though they live in the same
-// project. Errors are reserved for `@errors(...)` decorator args
-// and using one as a field type is rejected by the semantic phase
-// (see TestErrorNameRejectedAsFieldType).
+// A field's type slot offers no error declaration.
 func TestCompletionTypePositionExcludesErrors(t *testing.T) {
 	src := "package x\n\n" +
 		"type RealType { id string }\n" +
@@ -588,27 +511,21 @@ func TestCompletionTypePositionExcludesErrors(t *testing.T) {
 		"type Holder {\n" +
 		"    ref \n" +
 		"}\n"
-	// Cursor sits right after `ref ` (line index 4, after the four
-	// chars of `    ` + `ref ` = 8). Line numbering is 0-based.
+	// Cursor right after `    ref `: line 5, character 8.
 	items := mustCompletionsAt(t, "t.craftgo", src, 5, 8)
 	for _, it := range items {
 		if it.Label == "MissingErr" {
 			t.Errorf("error declaration leaked into type-position completions: %+v", it)
 		}
 	}
-	// Sanity: a real type IS suggested - the filter must not be over-broad.
+	// A type is still offered.
 	expectLabels(t, items, "RealType")
 }
 
-// cursorMark is the caret in a completion fixture. Exactly one `|` in
-// the source marks where the cursor sits; it is stripped before the
-// buffer is parsed. The DSL has no `|` token, so the mark is never
-// ambiguous - and a marked fixture reads as the buffer the user is
-// looking at, which a hand-counted line/character pair does not.
+// cursorMark marks the cursor in a completion fixture; the DSL has no `|` token.
 const cursorMark = "|"
 
-// mustCompletionsAtCursor runs the completion provider at the fixture's
-// cursor mark.
+// mustCompletionsAtCursor runs completion at the fixture's cursor mark.
 func mustCompletionsAtCursor(t *testing.T, path, src string) []protocol.CompletionItem {
 	t.Helper()
 	i := strings.Index(src, cursorMark)
@@ -621,19 +538,11 @@ func mustCompletionsAtCursor(t *testing.T, path, src string) []protocol.Completi
 		uint32(len(head)-(strings.LastIndex(head, "\n")+1)))
 }
 
-// typeSlotFixtures is the shared preamble for the completion tables: one
-// declared type, one enum and one bool scalar, so a popup that offers
-// declarations has something to offer.
+// typeSlotFixtures declares one type, one enum and one bool scalar.
 const typeSlotFixtures = "package x\n\ntype Address { city string }\nenum Kind { Active }\nscalar Flag bool\n"
 
-// TestCompletionTypeSlots pins every position where the grammar makes a
-// type name the legal next token. The field slot is the one the DSL
-// spells without a separator - `name Type`, no colon - so it has no
-// trigger token of its own and used to fall through to the generic
-// keyword list, which carries no primitives at all. The map / generic
-// cases sit with the cursor touching the `<` or `,`, where tokenAt
-// resolves the punctuation as the cursor's own token rather than the
-// preceding one.
+// Every type slot offers the built-ins, `map` and the project's types, enums
+// and scalars.
 func TestCompletionTypeSlots(t *testing.T) {
 	cases := map[string]string{
 		"field type slot":                       "type User {\n    home |\n}\n",
@@ -648,21 +557,14 @@ func TestCompletionTypeSlots(t *testing.T) {
 	for label, body := range cases {
 		t.Run(label, func(t *testing.T) {
 			items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+body)
-			// Built-in primitives, `map`, AND the project's declarations.
 			expectLabels(t, items, "string", "int", "bytes", "datetime", "any", "file", "map", "Address", "Kind", "Flag")
-			// `object` is only legal inside `@example({...})`, and the
-			// declaration keywords belong to the block fallback - a type
-			// slot that surfaces either has taken the wrong branch.
+			// `object` is legal only inside `@example({...})`.
 			expectNoLabels(t, items, "object", "service", "middleware", "extend")
 		})
 	}
 }
 
-// TestCompletionClauseSlotsOfferMessageTypes pins `request`, `response`
-// and `payload`. All three name a message, and the analyser rejects a
-// built-in primitive, an enum and a scalar in every one of them - so all
-// three popups carry `type` declarations and nothing else, even though
-// the primitives and the other two kinds are perfectly good FIELD types.
+// `request |`, `response |` and `payload |` offer only `type` declarations.
 func TestCompletionClauseSlotsOfferMessageTypes(t *testing.T) {
 	for label, body := range map[string]string{
 		"method request":  "service S {\n    get Fetch /f {\n        request |\n    }\n}\n",
@@ -672,19 +574,13 @@ func TestCompletionClauseSlotsOfferMessageTypes(t *testing.T) {
 		t.Run(label, func(t *testing.T) {
 			items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+body)
 			expectLabels(t, items, "Address")
-			// A primitive names no generated type, an enum / scalar has
-			// no fields to bind, and `map` does not parse in a clause at
-			// all.
 			expectNoLabels(t, items, "string", "int", "bytes", "datetime", "any", "file",
 				"Kind", "Flag", "map", "object", "get", "request", "response", "payload")
 		})
 	}
 }
 
-// TestCompletionTypePositionNotInOtherSlots is the precision half of
-// TestCompletionTypeSlots: every slot here takes a name, a value or a
-// keyword rather than a type, so the primitives must stay out and each
-// position must offer what the block it sits in legally accepts.
+// A slot that takes a name, a value or a keyword offers no built-in.
 func TestCompletionTypePositionNotInOtherSlots(t *testing.T) {
 	cases := []struct {
 		label string
@@ -734,11 +630,7 @@ func TestCompletionTypePositionNotInOtherSlots(t *testing.T) {
 	}
 }
 
-// TestCompletionSuppressedAfterTypeSuffix pins the second suppression
-// rule alongside TestCompletionSuppressedAfterOpenBrace: past a `?` or
-// a `[]` the field's type is finished, so the popup stays shut until
-// the user types `@`. A type-position branch that reached this far
-// would bury that silence under the whole primitive catalogue.
+// Past a `?` or `[]` suffix nothing is offered.
 func TestCompletionSuppressedAfterTypeSuffix(t *testing.T) {
 	for label, body := range map[string]string{
 		"optional suffix": "type User {\n    home Address? |\n}\n",
@@ -752,12 +644,7 @@ func TestCompletionSuppressedAfterTypeSuffix(t *testing.T) {
 	}
 }
 
-// TestCompletionBlockFallbackMatchesTheBlock pins the fallback the
-// dispatcher lands on when no specific branch claims the cursor. Each
-// block accepts a different set of words - a service body holds HTTP
-// methods, a method body holds two clauses, an enum body holds names
-// the author invents - and the fallback now answers with that set
-// instead of the whole keyword catalogue plus every declared type.
+// The fallback offers what the enclosing block accepts.
 func TestCompletionBlockFallbackMatchesTheBlock(t *testing.T) {
 	cases := []struct {
 		label        string
@@ -774,9 +661,7 @@ func TestCompletionBlockFallbackMatchesTheBlock(t *testing.T) {
 			label: "type body",
 			src:   typeSlotFixtures + "type User {\n    id string\n    |\n}\n",
 			want:  []string{"Address"},
-			// A mixin names a `type`; an enum or scalar there is rejected
-			// ("mixin K is a enum, not a type"), and the keyword dump is
-			// what this fallback used to be.
+			// A mixin names a `type`, never an enum or a scalar.
 			banned: []string{"Kind", "Flag", "type", "service", "get", "request", "string"},
 		},
 		{
@@ -813,10 +698,7 @@ func TestCompletionBlockFallbackMatchesTheBlock(t *testing.T) {
 	}
 }
 
-// TestCompletionEnumBodyOffersNothing is the block whose legal content
-// is entirely the author's: an enum value is a name nobody else can
-// supply, so the popup stays shut rather than dumping declarations that
-// are illegal between those braces.
+// An enum body offers nothing: its values are the author's names.
 func TestCompletionEnumBodyOffersNothing(t *testing.T) {
 	for label, body := range map[string]string{
 		"after a value":       "enum E {\n    Active\n    |\n}\n",
@@ -831,10 +713,8 @@ func TestCompletionEnumBodyOffersNothing(t *testing.T) {
 	}
 }
 
-// pathParamFixture declares a request type whose fields cover each
-// path-binding verdict: `id` binds, `q` is already bound to the query
-// string, `tags` is an array and `note` is optional - a matched route
-// always supplies a segment, so neither can source one.
+// pathParamFixture's Req has fields that can bind a path segment (id, sku)
+// and fields that cannot (q is a query field, tags an array, note optional).
 const pathParamFixture = "package x\n\ntype Req {\n" +
 	"    id string\n" +
 	"    sku int\n" +
@@ -843,12 +723,8 @@ const pathParamFixture = "package x\n\ntype Req {\n" +
 	"    note string?\n" +
 	"}\n"
 
-// TestCompletionPathParameterOffersRequestFields pins `/{<cursor>}`.
-// A `{param}` binds to the request field of the same name, so the
-// request type is the closed set the slot accepts. The empty-brace case
-// is the one an auto-closing editor produces, and it is also the one
-// the parser cannot represent - `{}` is not a path parameter to it, so
-// the clause is read from the token stream.
+// `/{|}` offers the request fields that can bind a path segment and are not
+// bound yet.
 func TestCompletionPathParameterOffersRequestFields(t *testing.T) {
 	cases := []struct {
 		label        string
@@ -883,9 +759,7 @@ func TestCompletionPathParameterOffersRequestFields(t *testing.T) {
 	}
 }
 
-// TestCompletionPathParameterWithoutRequestStaysSilent pins the limit of
-// the rule above: with no `request` clause written yet there is no field
-// set to read, and the popup says nothing rather than guessing.
+// Without a request clause `/{|}` offers nothing.
 func TestCompletionPathParameterWithoutRequestStaysSilent(t *testing.T) {
 	src := pathParamFixture + "service S {\n    get A /store/{|} { }\n}\n"
 	if items := mustCompletionsAtCursor(t, "t.craftgo", src); len(items) != 0 {
@@ -893,11 +767,8 @@ func TestCompletionPathParameterWithoutRequestStaysSilent(t *testing.T) {
 	}
 }
 
-// TestCompletionDefaultValueFollowsTheFieldType pins `@default(...)`.
-// The decorator takes ArgAny, so the legal set is the FIELD's: an enum
-// offers its values, a bool offers the two literals, and a scalar is
-// followed to the primitive it wraps. Every other type takes a free
-// literal, where a popup can only get in the way.
+// `@default(|)` offers an enum's values, or true and false for a bool or a
+// bool scalar, and nothing for a string.
 func TestCompletionDefaultValueFollowsTheFieldType(t *testing.T) {
 	cases := []struct {
 		label string
@@ -935,10 +806,7 @@ func TestCompletionDefaultValueFollowsTheFieldType(t *testing.T) {
 	})
 }
 
-// TestCompletionDecoratorArgWithNoClosedSetStaysSilent pins the rule for
-// every other decorator slot: a registered decorator whose argument is a
-// free literal answers with nothing, rather than falling through to a
-// block fallback whose declarations are illegal inside parentheses.
+// A decorator argument with no closed set offers nothing.
 func TestCompletionDecoratorArgWithNoClosedSetStaysSilent(t *testing.T) {
 	for label, body := range map[string]string{
 		"doc prose":            "type User {\n    s string @doc(|)\n}\n",
@@ -953,21 +821,14 @@ func TestCompletionDecoratorArgWithNoClosedSetStaysSilent(t *testing.T) {
 	}
 }
 
-// TestCompletionScalarPrimitiveSlotIsBuiltinsOnly narrows the slot the
-// analyser calls a closed set: `scalar Name X` accepts a built-in that
-// lowers to a Go type and nothing else - not a declared type, not
-// another scalar, and not `any` / `file` / `object` / `map`, all of
-// which it rejects with CodeScalarBadPrimitive.
+// `scalar Name |` offers only the built-ins a scalar can wrap.
 func TestCompletionScalarPrimitiveSlotIsBuiltinsOnly(t *testing.T) {
 	items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+"scalar Email |\n")
 	expectLabels(t, items, "string", "int", "bool", "bytes", "float64", "datetime")
 	expectNoLabels(t, items, "any", "file", "object", "map", "Address", "Kind", "Flag")
 }
 
-// TestCompletionTypeParameterDeclarationOffersNothing separates the two
-// meanings of `<`: `Page<User>` references a type, while `type Page<T>`
-// declares a parameter whose name is the author's to invent. The second
-// used to answer with the whole type catalogue.
+// A type parameter being declared (`type Page<|>`) offers nothing.
 func TestCompletionTypeParameterDeclarationOffersNothing(t *testing.T) {
 	for label, body := range map[string]string{
 		"first parameter":  "type Page<|> { id string }\n",
@@ -981,25 +842,18 @@ func TestCompletionTypeParameterDeclarationOffersNothing(t *testing.T) {
 	}
 }
 
-// TestCompletionExtendServiceTargetAtEndOfBuffer covers the clause the
-// user is typing at the very end of the file, where the only thing after
-// the cursor is the stream's EOF token. Reading the slice's last entry
-// saw EOF as the previous token, so the service list never fired.
+// `extend service |` at the end of the buffer offers the services.
 func TestCompletionExtendServiceTargetAtEndOfBuffer(t *testing.T) {
 	src := "package x\n\nservice Api {\n    get A /a {}\n}\nextend service |"
 	for _, tail := range []string{"", "Ap"} {
 		items := mustCompletionsAtCursor(t, "t.craftgo", src+tail)
 		expectLabels(t, items, "Api")
-		// The service list is exclusive: a keyword here means the branch
-		// did not fire and the block fallback answered instead.
+		// Only the services are offered.
 		expectNoLabels(t, items, "type", "service", "extend", "package")
 	}
 }
 
-// TestCompletionHeaderLines pins the two file-header slots, both of
-// which need the project on disk: `package <cursor>` answers with the
-// name the folder's other files already declare, and `import <cursor>`
-// offers the importable folders with the quotes the line still needs.
+// `package |` offers the folder's package, and `import |` quoted import paths.
 func TestCompletionHeaderLines(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "craftgo.design.yaml"),
@@ -1052,21 +906,15 @@ func TestCompletionHeaderLines(t *testing.T) {
 	})
 }
 
-// TestCompletionScalarPrimitivePosition checks that typing
-// `scalar Email <cursor>` offers the primitive set rather than the
-// keyword list. The `scalar Name <primitive>` slot is the ONLY legal
-// place to put a builtin, so the LSP surfaces it without the user
-// having to remember the keyword set.
+// `scalar Email |` offers the primitives.
 func TestCompletionScalarPrimitivePosition(t *testing.T) {
 	src := "package x\n\nscalar Email "
-	// Cursor right after `scalar Email ` (line 2, col 13).
+	// Cursor right after `scalar Email `.
 	items := mustCompletionsAt(t, "t.craftgo", src, 2, 13)
 	expectLabels(t, items, "string", "int", "bool")
 }
 
-// TestCompletionErrorsDecoratorArgs pins the @errors arg completion -
-// the popup must surface every declared error type name in the
-// project, not the generic keyword list.
+// `@errors(|)` offers the declared errors.
 func TestCompletionErrorsDecoratorArgs(t *testing.T) {
 	src := "package x\n\n" +
 		"error NotFound UserNotFoundErr\n" +
@@ -1077,52 +925,34 @@ func TestCompletionErrorsDecoratorArgs(t *testing.T) {
 		"    @errors(\n" +
 		"    post Save /save { request Req response Resp }\n" +
 		"}\n"
-	// Cursor right after `@errors(` - line 7, char 12.
+	// Cursor right after `@errors(`.
 	items := mustCompletionsAt(t, "t.craftgo", src, 7, 12)
 	expectLabels(t, items, "UserNotFoundErr", "EmailTakenErr")
 }
 
-// TestCompletionDecoratorOnScalarFiltersByPrimitive checks that
-// `scalar Gmail string @<cursor>` does not list `@gt`, which only
-// applies to numeric types. The completion popup intersects the
-// scalar's primitive with each decorator's AppliesTo so the user
-// only sees decorators the semantic phase would later accept.
+// `@` on a string scalar offers the string validators only.
 func TestCompletionDecoratorOnScalarFiltersByPrimitive(t *testing.T) {
 	src := "package x\n\n" +
 		"scalar Gmail string @\n"
-	// Cursor right after `@` on line 2 (0-indexed), char 21.
+	// Cursor right after the `@`.
 	items := mustCompletionsAt(t, "t.craftgo", src, 2, 21)
-	// String-applicable validators must appear.
 	expectLabels(t, items, "length", "minLength", "maxLength", "pattern", "format")
-	// Numeric-only validators must NOT appear on a string scalar.
 	expectNoLabels(t, items, "gt", "gte", "lt", "lte", "range", "positive", "negative", "multipleOf")
-	// Array-only validators must also be filtered out.
 	expectNoLabels(t, items, "minItems", "maxItems", "uniqueItems")
 }
 
-// TestCompletionFormatDecoratorArgs pins the @format arg completion -
-// the popup must surface the registered format-validator names so
-// the user picks `email`, `uuid`, `url`, etc. from a closed set
-// instead of memorising the values.
+// `@format(|)` offers the registered formats.
 func TestCompletionFormatDecoratorArgs(t *testing.T) {
-	// Field decorator chain shape that the parser tolerates while the
-	// user is mid-typing `@format(` - the trailing newline + close
-	// brace keeps the type body well-formed enough for tokenisation
-	// to find the decorator span.
 	src := "package x\n" +
 		"type Req {\n" +
 		"  email string @format(\n" +
 		"}\n"
-	// Cursor right after `@format(` - line 2 (0-indexed), char 24.
-	// "  email string @format(" = 23 chars; cursor sits at 23.
+	// Cursor right after `  email string @format(`: line 2, character 23.
 	items := mustCompletionsAt(t, "t.craftgo", src, 2, 23)
 	expectLabels(t, items, "email", "uuid", "url")
 }
 
-// TestCompletionStatusDecoratorArgs pins the @status arg completion -
-// HTTP status codes should appear with their IANA reason phrase as
-// detail so the user picks `201 (Created)` rather than memorising
-// codes.
+// `@status(|)` offers status codes with their reason phrase.
 func TestCompletionStatusDecoratorArgs(t *testing.T) {
 	src := "package x\n\n" +
 		"type Req { id string }\n" +
@@ -1131,7 +961,7 @@ func TestCompletionStatusDecoratorArgs(t *testing.T) {
 		"    @status(\n" +
 		"    post Save /save { request Req response Resp }\n" +
 		"}\n"
-	// Cursor right after `@status(` - line 5, char 12.
+	// Cursor right after `@status(`.
 	items := mustCompletionsAt(t, "t.craftgo", src, 5, 12)
 	expectLabels(t, items, "200", "201", "204", "400", "404", "500")
 	for _, it := range items {
@@ -1141,21 +971,13 @@ func TestCompletionStatusDecoratorArgs(t *testing.T) {
 	}
 }
 
-// TestCompletionErrorCategoryAfterKeyword pins the autocompletion that
-// fires right after the `error` keyword: every reserved HTTP category
-// must appear with its HTTP status surfaced as the detail line, and
-// items unrelated to that position (decorator names, declaration
-// keywords) must NOT leak in.
+// `error |` offers exactly the error categories, each with its HTTP status.
 func TestCompletionErrorCategoryAfterKeyword(t *testing.T) {
-	// Cursor sits right after the trailing space of `error `. The LSP
-	// sees the previous non-trivia token as KwError and drives the
-	// category-completion branch.
 	src := "package x\n\nerror "
 	items := mustCompletionsAt(t, "t.craftgo", src, 2, 6)
 	if len(items) != len(errcat.Categories) {
 		t.Fatalf("expected %d category items (one per reserved HTTP category), got %d", len(errcat.Categories), len(items))
 	}
-	// Spot-check coverage of common categories + their HTTP statuses.
 	want := map[string]string{
 		"NotFound":            "HTTP 404",
 		"Conflict":            "HTTP 409",
@@ -1174,8 +996,6 @@ func TestCompletionErrorCategoryAfterKeyword(t *testing.T) {
 			t.Errorf("category %q detail = %q, want %q", label, got[label], detail)
 		}
 	}
-	// The category branch must be exclusive - no decorator names or
-	// stray keywords should sneak in.
 	for _, it := range items {
 		switch it.Label {
 		case "length", "doc", "package", "type", "service":
@@ -1184,10 +1004,7 @@ func TestCompletionErrorCategoryAfterKeyword(t *testing.T) {
 	}
 }
 
-// TestCompletionErrorCategoryWhileTyping confirms the category list
-// also fires when the user has started typing a partial identifier -
-// the LSP client filters by prefix on its own, but the server must
-// surface the full set so client-side filtering has anything to match.
+// A partly typed category still gets every category; the client filters.
 func TestCompletionErrorCategoryWhileTyping(t *testing.T) {
 	src := "package x\n\nerror Not"
 	items := mustCompletionsAt(t, "t.craftgo", src, 2, 9)
@@ -1196,10 +1013,7 @@ func TestCompletionErrorCategoryWhileTyping(t *testing.T) {
 	}
 }
 
-// TestCompletionErrorCategoryNotInOtherPositions makes sure the
-// category branch does NOT fire once a category has already been
-// chosen - a cursor at `error NotFound <here>` is naming the error,
-// not picking a category.
+// `error NotFound |` names the error, so no category is offered.
 func TestCompletionErrorCategoryNotInOtherPositions(t *testing.T) {
 	src := "package x\n\nerror NotFound "
 	items := mustCompletionsAt(t, "t.craftgo", src, 2, 15)
@@ -1210,8 +1024,8 @@ func TestCompletionErrorCategoryNotInOtherPositions(t *testing.T) {
 	}
 }
 
-// TestDocumentSymbolsOutline verifies the outline contains a top-level
-// entry for every declaration with the right kind.
+// The outline has one symbol per declaration, with its kind and a type's
+// fields as children.
 func TestDocumentSymbolsOutline(t *testing.T) {
 	view := parseSnapshot("t.craftgo", testDSL)
 	syms := documentSymbols(view)
@@ -1229,7 +1043,6 @@ func TestDocumentSymbolsOutline(t *testing.T) {
 			t.Errorf("symbol %q: kind = %v, want %v", name, got[name], kind)
 		}
 	}
-	// Greeter should have nested field children.
 	for _, s := range syms {
 		if s.Name == "Greeter" && len(s.Children) < 2 {
 			t.Errorf("Greeter should have >=2 field children, got %d", len(s.Children))
@@ -1237,31 +1050,27 @@ func TestDocumentSymbolsOutline(t *testing.T) {
 	}
 }
 
-// TestFormattingProducesEdit confirms the formatter wires through to a
-// single TextEdit when the source needs reformatting, and an empty
-// slice when the source is already canonical.
+// The whole-document range starts at line 0, and storeDoc replaces the text
+// snapshot returns.
 func TestFormattingProducesEdit(t *testing.T) {
 	dirty := "package x\n\ntype T {\n  id string\n}\n"
 	clean := "package x\n\ntype T {\n\tid string\n}\n"
 	if r := wholeDocumentRange(dirty); r.Start.Line != 0 {
 		t.Errorf("Range.Start.Line = %d, want 0", r.Start.Line)
 	}
-	// Dirty input should produce one edit.
 	uriOf := uri.New("file:///t.craftgo")
 	srv := &Server{docs: map[uri.URI]*document{uriOf: {text: dirty}}}
 	srv.storeDoc(uriOf, dirty, 1)
 	if got := srv.snapshot(uriOf); got != dirty {
 		t.Fatalf("snapshot mismatch")
 	}
-	// Clean input should not.
 	srv.storeDoc(uriOf, clean, 1)
 	if got := srv.snapshot(uriOf); got != clean {
 		t.Fatalf("snapshot mismatch (clean)")
 	}
 }
 
-// TestRenameAcrossFile rewrites every Ident token whose text matches
-// the symbol under cursor.
+// A declaration's name resolves at the cursor and recurs at its uses.
 func TestRenameAcrossFile(t *testing.T) {
 	src := `package x
 
@@ -1274,7 +1083,7 @@ type Holder {
 }
 `
 	view := parseSnapshot("t.craftgo", src)
-	// Find the FIRST Greeter (the decl itself) and rename to Greeting.
+	// The first Greeter is the declaration.
 	pos := findToken(t, view, "Greeter")
 	idx, tok := view.tokenAt(pos.Line, pos.Character)
 	if tok.Text != "Greeter" {
@@ -1283,7 +1092,6 @@ type Holder {
 	if findDecl(view.file, tok.Text) == nil {
 		t.Fatal("expected Greeter to resolve to a top-level declaration")
 	}
-	// Walk tokens, count matches.
 	var count int
 	for _, tk := range view.tokens {
 		if tk.Text == "Greeter" {
@@ -1295,12 +1103,8 @@ type Holder {
 	}
 }
 
-// findToken locates the first occurrence of needle in src and returns
-// its 0-indexed LSP position at the start of the token.
-// TestDefinitionPrefersKindFromDecoratorContext pins cross-namespace
-// disambiguation: when an identifier names both a middleware AND a
-// same-named error decl, a click inside `@middlewares(...)` jumps to
-// the middleware decl, not the error decl declared earlier in the file.
+// Inside `@middlewares(...)` a name resolves to the middleware, not to a
+// same-named error.
 func TestDefinitionPrefersKindFromDecoratorContext(t *testing.T) {
 	src := `package x
 error Forbidden AuthRequired { reason string }
@@ -1311,9 +1115,7 @@ service S {
 }
 `
 	view := parseSnapshot("t.craftgo", src)
-	// Find the AuthRequired token INSIDE @middlewares(...) - it is the
-	// third occurrence in source order (after the error name and the
-	// middleware decl name).
+	// The third AuthRequired is the one inside @middlewares(...).
 	var inside protocol.Position
 	count := 0
 	for _, tok := range view.tokens {
@@ -1329,9 +1131,6 @@ service S {
 	if count < 3 {
 		t.Fatalf("expected at least 3 AuthRequired tokens, got %d", count)
 	}
-	// Without context, findDecl would return the FIRST decl named
-	// AuthRequired - in this fixture, the error decl. With context, we
-	// expect the middleware decl.
 	decName, ok := decoratorArgContext(view, inside)
 	if !ok || decName != "middlewares" {
 		t.Fatalf("decoratorArgContext should detect @middlewares, got name=%q ok=%v", decName, ok)
@@ -1345,12 +1144,7 @@ service S {
 	}
 }
 
-// TestDefinitionTypeShapePositionExcludesMiddleware pins the inverse
-// disambiguation: a click on an ident in a TYPE-shape position
-// (mixin, field type, request, response, generic arg) must NEVER
-// jump to a middleware decl even when one shares the name. Middleware
-// has its own decl namespace; in type positions, only TypeDecl /
-// EnumDecl / ScalarDecl / ErrorDecl are reachable.
+// A type position never resolves to a same-named middleware.
 func TestDefinitionTypeShapePositionExcludesMiddleware(t *testing.T) {
 	src := `package x
 middleware Greeter
@@ -1358,7 +1152,7 @@ type Greeter { id string }
 type Holder { g Greeter }
 `
 	view := parseSnapshot("t.craftgo", src)
-	// Locate `Greeter` inside `g Greeter` (the field-type position).
+	// The third Greeter is the field type in `g Greeter`.
 	count := 0
 	var fieldTypePos protocol.Position
 	for _, tok := range view.tokens {
@@ -1387,12 +1181,8 @@ type Holder { g Greeter }
 	}
 }
 
-// TestDefinitionKindAwareAcrossFiles pins the cross-file branch of the
-// context-aware lookup: a click on `AuthRequired` in
-// `@middlewares(AuthRequired)` must resolve to the middleware decl, not
-// a same-named error decl in another file. Here the middleware lives in
-// one virtual file, the error in another, and the cursor in a third
-// (the import-only `services` file).
+// Across files a name resolves to the middleware or the error the lookup
+// kinds select.
 func TestDefinitionKindAwareAcrossFiles(t *testing.T) {
 	mwFile := `package shared
 middleware AuthRequired
@@ -1412,8 +1202,6 @@ service S {
 		mustParseFile(t, "shared/err.craftgo", errFile),
 		mustParseFile(t, "services/use.craftgo", useFile),
 	}
-	// The bare name (no qualifier) - what `qualifiedNameAt` returns for
-	// the cursor on `AuthRequired`.
 	d := lookupIn(t, "services", "AuthRequired", semantic.MiddlewareDecls, files...)
 	if d == nil {
 		t.Fatal("middleware lookup did not find the decl across files")
@@ -1424,8 +1212,6 @@ service S {
 	if got := d.DeclPos().Filename; got != "shared/mw.craftgo" {
 		t.Errorf("expected hit in shared/mw.craftgo, got %s", got)
 	}
-	// The reverse direction also works: `@errors(AuthRequired)` finds
-	// the error decl, not the middleware.
 	d = lookupIn(t, "services", "AuthRequired", semantic.ErrorDecls, files...)
 	if d == nil {
 		t.Fatal("error lookup did not find the decl across files")
@@ -1438,14 +1224,7 @@ service S {
 	}
 }
 
-// TestDefinitionExtendServiceJumpsToPrimary pins ctrl+click on the name
-// in `extend service X`: an extend is a CONTINUATION, not a declaration
-// site, so the jump must land on X's primary block. The name sits in a
-// header, which is not a type-shape position - misreading it as one used
-// to send the lookup down the "anything but a middleware" path, where the
-// first decl named X in the file wins. In the file layout the docs call
-// typical (one extend per file) that first decl is the extend itself, so
-// the editor jumped the cursor onto the token it started from.
+// The name in `extend service X` resolves to X's primary block.
 func TestDefinitionExtendServiceJumpsToPrimary(t *testing.T) {
 	src := `package x
 service Alpha {
@@ -1457,7 +1236,7 @@ extend service Alpha {
 }
 `
 	view := parseSnapshot("t.craftgo", src)
-	// Second `Alpha` token - the name in the extend header.
+	// The second Alpha is the name in the extend header.
 	count := 0
 	var pos protocol.Position
 	for _, tok := range view.tokens {
@@ -1490,10 +1269,7 @@ extend service Alpha {
 	}
 }
 
-// TestDefinitionExtendServiceResolvesAcrossFiles is the layout the fix is
-// really for: the extend lives in its own file, so nothing in that file
-// can answer the click. The primary has to be found in a sibling file
-// rather than the extend the cursor sits in.
+// An extend in a file of its own resolves to the primary in a sibling file.
 func TestDefinitionExtendServiceResolvesAcrossFiles(t *testing.T) {
 	primary := `package x
 service Alpha {
@@ -1534,10 +1310,7 @@ extend service Alpha {
 	}
 }
 
-// TestDefinitionServiceHeaderIsNotATypeShape guards the classification
-// that caused the bug: the walk back from a service name must stop at the
-// header instead of running into the previous declaration, where the
-// first Ident it meets would read as a field-type pair.
+// A service header's name is not a type position, even after a type declaration.
 func TestDefinitionServiceHeaderIsNotATypeShape(t *testing.T) {
 	src := `package x
 type Thing { id string }
@@ -1557,12 +1330,8 @@ extend service Alpha {
 	}
 }
 
-// TestDefinitionExtendServiceEndToEnd drives the real
-// `textDocument/definition` handler over a project on disk, in the layout
-// that actually ships: the primary in one file, the extend in another.
-// Ctrl+click on the extend's name must reply with a Location in the
-// PRIMARY's file - not with the extend's own position, and not with an
-// empty list.
+// `textDocument/definition` on an extend's name replies with the primary's
+// location in its own file.
 func TestDefinitionExtendServiceEndToEnd(t *testing.T) {
 	root := t.TempDir()
 	design := filepath.Join(root, "design")
@@ -1621,9 +1390,8 @@ func TestDefinitionExtendServiceEndToEnd(t *testing.T) {
 	}
 }
 
-// TestDefinitionErrorContextResolvesToError mirrors the middleware
-// case for `@errors(...)` - the cursor lands on the error decl even
-// when a same-named middleware exists.
+// Inside `@errors(...)` a name resolves to the error, not to a same-named
+// middleware.
 func TestDefinitionErrorContextResolvesToError(t *testing.T) {
 	src := `package x
 middleware Conflict
@@ -1651,6 +1419,7 @@ func lookupIn(t *testing.T, homePkg, name string, kinds semantic.DeclKind, files
 	return proj.Lookup(homePkg, name, kinds)
 }
 
+// findToken returns the 0-based LSP position of the first token spelt needle.
 func findToken(t *testing.T, view snapshotView, needle string) protocol.Position {
 	t.Helper()
 	for _, tok := range view.tokens {
@@ -1662,11 +1431,7 @@ func findToken(t *testing.T, view snapshotView, needle string) protocol.Position
 	return protocol.Position{}
 }
 
-// mustHoverAt parses src, finds the first occurrence of needle, and
-// returns the hover markdown text. It bundles the
-// `parseSnapshot → findToken → tokenAt → hoverForToken → nil check`
-// sequence into one call. Fails when no hover is produced - tests use
-// the return value to assert on contents directly.
+// mustHoverAt returns the hover text of the first token spelt needle in src.
 func mustHoverAt(t *testing.T, path, src, needle string) string {
 	t.Helper()
 	view := parseSnapshot(path, src)
@@ -1679,11 +1444,8 @@ func mustHoverAt(t *testing.T, path, src, needle string) string {
 	return hov.Contents.Value
 }
 
-// mustCompletionsAt parses src and runs the completion provider at the
-// supplied LSP-coordinate position. Bundles the `parseSnapshot →
-// &Server{} → completionsAt` 3-liner that opens every completion
-// test. The URI is synthesized from path so call sites don't repeat
-// `"file:///" + path` boilerplate.
+// mustCompletionsAt runs completion at (line, ch) of src, with a URI built
+// from path.
 func mustCompletionsAt(t *testing.T, path, src string, line, ch uint32) []protocol.CompletionItem {
 	t.Helper()
 	view := parseSnapshot(path, src)
@@ -1691,8 +1453,7 @@ func mustCompletionsAt(t *testing.T, path, src string, line, ch uint32) []protoc
 	return srv.completionsAt(view, protocol.Position{Line: line, Character: ch}, "file:///"+path, src)
 }
 
-// labelSet collects every completion item's Label into a presence map
-// for cheap `set[name]` lookups. Used by expectLabels / expectNoLabels.
+// labelSet returns the set of item labels.
 func labelSet(items []protocol.CompletionItem) map[string]bool {
 	got := make(map[string]bool, len(items))
 	for _, it := range items {
@@ -1701,9 +1462,7 @@ func labelSet(items []protocol.CompletionItem) map[string]bool {
 	return got
 }
 
-// expectLabels asserts every want label appears in items, bundling the
-// `got := map[string]bool{...}; for _, w := range []string{...} { ...
-// !got[w] ... }` check that closes every completion test.
+// expectLabels fails unless every want label is in items.
 func expectLabels(t *testing.T, items []protocol.CompletionItem, wants ...string) {
 	t.Helper()
 	got := labelSet(items)
@@ -1718,10 +1477,7 @@ func expectLabels(t *testing.T, items []protocol.CompletionItem, wants ...string
 	}
 }
 
-// expectNoLabels is the negative-filter partner: every banned label
-// MUST NOT appear in items. Used by tests that pin "this category /
-// kind must NOT leak into this completion site" - e.g. number-only
-// validators on a string scalar.
+// expectNoLabels fails if any banned label is in items.
 func expectNoLabels(t *testing.T, items []protocol.CompletionItem, banned ...string) {
 	t.Helper()
 	got := labelSet(items)

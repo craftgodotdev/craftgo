@@ -11,11 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/format"
 )
 
-// onFormatting answers `textDocument/formatting`. We rely on the
-// canonical formatter in internal/format and replace the document text
-// wholesale via a single TextEdit. If the formatter reports parse
-// diagnostics we leave the buffer untouched - formatting a syntactically
-// broken file would mangle it.
+// onFormatting answers `textDocument/formatting` with one whole-document edit,
+// or none when the buffer carries an error or is already formatted.
 func (s *Server) onFormatting(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.DocumentFormattingParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
@@ -25,9 +22,8 @@ func (s *Server) onFormatting(ctx context.Context, reply jsonrpc2.Replier, req j
 	if src == "" {
 		return reply(ctx, []protocol.TextEdit{}, nil)
 	}
-	// A buffer with an error, parse or semantic, is left alone: a mistake
-	// the parser tolerates reads as a different construct, and formatting
-	// would write that reading back.
+	// A buffer with an error is left alone: a mistake the parser tolerates
+	// reads as another construct, which formatting would write back.
 	if s.loadProject(uriToPath(string(params.TextDocument.URI)), src).hasErrors() {
 		return reply(ctx, []protocol.TextEdit{}, nil)
 	}
@@ -41,18 +37,14 @@ func (s *Server) onFormatting(ctx context.Context, reply jsonrpc2.Replier, req j
 	}}, nil)
 }
 
-// wholeDocumentRange returns a range covering the entire source buffer.
-// Replacing this range with the formatted output is how LSP servers
-// implement whole-document formatting without exchanging diff hunks.
+// wholeDocumentRange returns the range covering all of src.
 func wholeDocumentRange(src string) protocol.Range {
 	lines := strings.Count(src, "\n")
 	lastLine := src
 	if i := strings.LastIndexByte(src, '\n'); i >= 0 {
 		lastLine = src[i+1:]
 	}
-	// LSP character offsets are UTF-16 code units, not bytes - a last line
-	// holding multi-byte UTF-8 (Vietnamese, CJK, emoji) would otherwise
-	// over-shoot and the formatting TextEdit would target the wrong range.
+	// The end character counts UTF-16 units.
 	return protocol.Range{
 		Start: protocol.Position{Line: 0, Character: 0},
 		End:   protocol.Position{Line: uint32(lines), Character: uint32(utf16Len(lastLine))},

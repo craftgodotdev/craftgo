@@ -1,4 +1,3 @@
-// Import path + package-decl LSP completions.
 package lsp
 
 import (
@@ -13,11 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// isInsideImportString reports whether pos lies inside an `import "…"`
-// string literal - the cursor sits between the two double-quotes that
-// follow an `import` keyword. We rely on token-level inspection rather
-// than re-lexing the partial line because the editor may send a cursor
-// position that splits a token mid-string.
+// isInsideImportString reports whether pos is inside the string of an
+// `import "..."` line, after an optional alias.
 func isInsideImportString(view snapshotView, pos protocol.Position) bool {
 	line := int(pos.Line) + 1
 	col := int(pos.Character) + 1
@@ -25,8 +21,6 @@ func isInsideImportString(view snapshotView, pos protocol.Position) bool {
 		if t.Kind != lexer.KwImport {
 			continue
 		}
-		// Look ahead for an optional alias ident, then a String token
-		// on the same logical statement.
 		for j := i + 1; j < len(view.tokens) && j < i+4; j++ {
 			tk := view.tokens[j]
 			if tk.Kind == lexer.String {
@@ -46,12 +40,8 @@ func isInsideImportString(view snapshotView, pos protocol.Position) bool {
 	return false
 }
 
-// importPathCompletions returns one item per directory under the design
-// root that holds at least one `.craftgo` file. Labels are the directory
-// path relative to the design root, matching the literal the user is
-// expected to type inside `import "…"` (e.g. `shared`, `v1/api`,
-// `auth/oauth`). The current file's own directory is filtered out so
-// users do not import themselves.
+// importPathCompletions offers the folders under the design root that hold a
+// design file, relative to the root and starting with prefix, except the buffer's.
 func importPathCompletions(currentURI, prefix string) []protocol.CompletionItem {
 	fsPath := uriToPath(currentURI)
 	_, root := designProjectOf(fsPath)
@@ -71,16 +61,11 @@ func importPathCompletions(currentURI, prefix string) []protocol.CompletionItem 
 		if err != nil || rel == "." {
 			continue
 		}
-		// Use forward slashes - the DSL stores import paths in POSIX
-		// form regardless of host OS, matching the rest of the toolchain.
+		// Import paths use forward slashes on every OS.
 		rel = filepath.ToSlash(rel)
 		if _, dup := seen[rel]; dup {
 			continue
 		}
-		// Filter by what the user has typed inside the quotes so far.
-		// Without this, `import "shared/<cursor>"` would still see
-		// `users`, `orders`, etc. as suggestions because VSCode's
-		// fuzzy filter does not look past the leading `/`.
 		if prefix != "" && !strings.HasPrefix(rel, prefix) {
 			continue
 		}
@@ -94,9 +79,8 @@ func importPathCompletions(currentURI, prefix string) []protocol.CompletionItem 
 	return out
 }
 
-// quotedImportPathCompletions is [importPathCompletions] for the slot
-// BEFORE the quotes exist (`import <cursor>`), so each item inserts the
-// literal the line needs rather than a bare path.
+// quotedImportPathCompletions is [importPathCompletions] for `import |`: each
+// path is inserted quoted.
 func quotedImportPathCompletions(currentURI string) []protocol.CompletionItem {
 	items := importPathCompletions(currentURI, "")
 	for i := range items {
@@ -105,10 +89,8 @@ func quotedImportPathCompletions(currentURI string) []protocol.CompletionItem {
 	return items
 }
 
-// importStringPrefix returns the substring of the `import "…"` literal
-// that lies between the opening quote and the cursor - used as the
-// prefix filter for [importPathCompletions]. Returns an empty string
-// when the cursor is at the very start of the literal.
+// importStringPrefix returns the part of the `import "..."` literal between
+// the opening quote and the cursor.
 func importStringPrefix(view snapshotView, pos protocol.Position) string {
 	line := int(pos.Line) + 1
 	col := int(pos.Character) + 1
@@ -123,15 +105,10 @@ func importStringPrefix(view snapshotView, pos protocol.Position) string {
 				if start.Line != line {
 					return ""
 				}
-				// Token text includes both surrounding quotes - skip
-				// the first.
 				typed := tk.Text
 				if len(typed) > 0 && typed[0] == '"' {
 					typed = typed[1:]
 				}
-				// How many runes between the opening quote and the
-				// cursor? Column-based math is OK because the lexer
-				// uses 1-indexed runes.
 				offset := col - (start.Column + 1)
 				if offset <= 0 {
 					return ""
@@ -149,16 +126,8 @@ func importStringPrefix(view snapshotView, pos protocol.Position) string {
 	return ""
 }
 
-// packageNameCompletions answers `package <cursor>`. A design file's
-// package is not free-form: the sibling files in its folder have already
-// named it, and an import resolves a FOLDER to the package its files
-// declare - so a file that disagrees with its neighbours lands its
-// declarations in a package nothing imports.
-//
-// Siblings in the same folder are therefore the answer whenever there
-// are any. In a brand-new folder there are none, and the project's other
-// package names are offered instead: the flat layout, where every design
-// file shares one package, is the other common shape.
+// packageNameCompletions answers `package |` with the packages the other files
+// in the folder declare or, in a folder with none, every package in the project.
 func (s *Server) packageNameCompletions(currentURI, currentSrc string) []protocol.CompletionItem {
 	fsPath := uriToPath(currentURI)
 	v := s.loadProject(fsPath, currentSrc)
@@ -183,8 +152,8 @@ func (s *Server) packageNameCompletions(currentURI, currentSrc string) []protoco
 	return packageItems(counts, "package declared elsewhere in this project")
 }
 
-// packageItems renders one item per package name in names, sorted. The
-// detail carries the count when the format string takes one.
+// packageItems renders one item per name, sorted; detail may take the count
+// as %d.
 func packageItems(names map[string]int, detail string) []protocol.CompletionItem {
 	out := make([]protocol.CompletionItem, 0, len(names))
 	for _, name := range sortedKeys(names) {
@@ -202,14 +171,8 @@ func packageItems(names map[string]int, detail string) []protocol.CompletionItem
 	return out
 }
 
-// packageDeclCompletions returns every declaration of the package named
-// pkg, for the right side of a qualified reference (`shared.<cursor>`).
-//
-// `error` declarations are dropped: errors are NOT cross-package
-// referenceable (the `@errors(...)` resolver only looks at the current
-// package's table) and they cannot be used as field types either, so
-// surfacing them under a cross-package qualifier would offer dead-end
-// suggestions.
+// packageDeclCompletions offers every declaration of package pkg except its
+// errors, for `pkg.|`.
 func (s *Server) packageDeclCompletions(currentURI, currentSrc, pkg string) []protocol.CompletionItem {
 	p := s.loadProject(uriToPath(currentURI), currentSrc).proj.Packages[pkg]
 	if p == nil {

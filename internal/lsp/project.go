@@ -1,7 +1,3 @@
-// Project loading: the design root a buffer belongs to, walked once per
-// request, every design file parsed once, and the semantic project built
-// from them. Every handler that looks past the current buffer reads this
-// view, so diagnostics, navigation and completion see the same project.
 package lsp
 
 import (
@@ -20,9 +16,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// loadedFile is one design file of the project: its absolute path, the
-// source the analysis saw (the editor buffer when the file is open, the
-// disk copy otherwise), its token stream and its parsed AST.
+// loadedFile is one design file: its path, the text analysed (the open buffer
+// over the disk copy), its tokens and its AST.
 type loadedFile struct {
 	path   string
 	src    string
@@ -30,9 +25,8 @@ type loadedFile struct {
 	file   *ast.File
 }
 
-// projectView is the project a buffer belongs to. Outside a project (no
-// manifest above the buffer) root is empty and files holds the buffer
-// alone, so single-file editing keeps every feature working.
+// projectView is the analysed project of a buffer. Outside a project (no
+// manifest above the buffer) root is empty and files holds the buffer alone.
 type projectView struct {
 	root    string
 	current string // path of the buffer the view was built for
@@ -41,14 +35,8 @@ type projectView struct {
 	diags   []lexer.Diagnostic
 }
 
-// loadProject builds the view for the buffer at fsPath holding src. In a
-// project every design file under the root is loaded. fsPath is empty for
-// an untitled buffer.
-//
-// The manifest is loaded with the root and its options are passed to the
-// analyser, so the editor applies the same rules `craftgo gen` does -
-// including the ones that only SILENCE a diagnostic, such as an
-// openapi.basePath that moves a route off a reserved path.
+// loadProject parses and analyses the project of the buffer at fsPath (empty
+// for an untitled buffer) holding src, with the manifest's options.
 func (s *Server) loadProject(fsPath, src string) projectView {
 	cfg, root := designProjectOf(fsPath)
 	v := projectView{root: root, current: fsPath}
@@ -87,9 +75,8 @@ func (v projectView) currentPackage() string {
 	return ""
 }
 
-// hasErrors reports whether the buffer the view was built for carries an
-// error (a warning does not count): its own file's diagnostics, plus the
-// untagged ones, which the diagnostics partition also assigns to it.
+// hasErrors reports whether the buffer's own or untagged diagnostics hold an
+// error; a warning does not count.
 func (v projectView) hasErrors() bool {
 	for _, d := range v.diags {
 		if d.IsError() && (d.Pos.Filename == v.current || d.Pos.Filename == "") {
@@ -105,9 +92,8 @@ func (v projectView) lookup(name string, kinds semantic.DeclKind) ast.Decl {
 	return v.proj.Lookup(v.currentPackage(), name, kinds)
 }
 
-// locationOf returns the LSP location of the n-column span at pos. A span
-// inside the buffer itself reports the editor's own URI, so an untitled
-// or non-file buffer still gets a usable location.
+// locationOf returns the location of the n-column span at pos; a span in the
+// buffer keeps the editor's URI, so an untitled buffer still gets one.
 func (v projectView) locationOf(pos lexer.Position, n int, current protocol.DocumentURI) protocol.Location {
 	u := current
 	if pos.Filename != v.current {
@@ -126,13 +112,8 @@ func sortedKeys[V any](m map[string]V) []string {
 	return out
 }
 
-// designProjectOf returns the manifest and the design root of the project
-// containing fsPath. Both are zero when fsPath is empty or no manifest is
-// found above it: config.Find reports every failure as (nil, "", "", err),
-// so "no manifest" and "root unknown" are one state and a nil cfg always
-// travels with an empty root.
-//
-// The manifest is what the CLI reads and the editor used to throw away.
+// designProjectOf returns the manifest and design root of the project holding
+// fsPath; both are zero when fsPath is empty or no manifest is found above it.
 func designProjectOf(fsPath string) (*config.Config, string) {
 	if fsPath == "" {
 		return nil, ""
@@ -144,18 +125,14 @@ func designProjectOf(fsPath string) (*config.Config, string) {
 	return cfg, root
 }
 
-// designFilePaths lists every design file under root in walk order. A
-// directory the walk cannot read is skipped rather than failing the
-// request: an editor has to keep working on a tree it can only partly
-// see.
+// designFilePaths lists the design files under root in walk order, skipping
+// directories it cannot read.
 func designFilePaths(root string) []string {
 	return designopts.FilesBestEffort(root)
 }
 
-// designFiles reads every design file under root. The buffer at fsPath
-// (src) and every other open buffer take precedence over the disk copy,
-// and open buffers under root that the walk did not find (deleted or not
-// yet saved while open) are appended so they still take part.
+// designFiles reads every design file under root, open buffers (src for fsPath)
+// over disk, and appends the open buffers under root the walk did not find.
 func (s *Server) designFiles(root, fsPath, src string) []loadedFile {
 	seen := map[string]bool{}
 	var out []loadedFile
@@ -180,9 +157,8 @@ func (s *Server) designFiles(root, fsPath, src string) []loadedFile {
 	return append(out, extra...)
 }
 
-// readFile returns the source of path: currentSrc when path is the buffer
-// being served, the editor's copy when the file is open, the disk copy
-// otherwise ("" when unreadable).
+// readFile returns the text of path: currentSrc for currentPath, else the open
+// buffer, else the disk copy ("" when unreadable).
 func (s *Server) readFile(path, currentPath, currentSrc string) string {
 	if path == currentPath {
 		return currentSrc
@@ -196,10 +172,8 @@ func (s *Server) readFile(path, currentPath, currentSrc string) string {
 	return ""
 }
 
-// isUnderDesignRoot reports whether file path p lives inside dir,
-// requiring a path-separator boundary after the prefix so a sibling like
-// `/proj/design2` or `/proj/design_backup` does NOT match the design root
-// `/proj/design` (which a bare strings.HasPrefix would).
+// isUnderDesignRoot reports whether p is dir or inside it; `/proj/design2` is
+// not inside `/proj/design`.
 func isUnderDesignRoot(p, dir string) bool {
 	if dir == "" {
 		return false

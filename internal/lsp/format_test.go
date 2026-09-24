@@ -32,8 +32,7 @@ func formatDoc(t *testing.T, src string) []protocol.TextEdit {
 	return got
 }
 
-// A buffer the analyser rejects is left alone even when its layout is off;
-// the same layout formats once the error is gone.
+// A buffer with an error gets no edit; the same layout without it gets one.
 func TestFormattingRefusesBuffersWithErrors(t *testing.T) {
 	if edits := formatDoc(t, "package p\n\ntype A {  x   Missing }\n"); len(edits) != 0 {
 		t.Errorf("buffer with a semantic error got %d edit(s)", len(edits))

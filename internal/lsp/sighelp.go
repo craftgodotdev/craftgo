@@ -11,13 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// onSignatureHelp answers `textDocument/signatureHelp`. Surfaces the
-// decorator-registry parameter list so the editor's parameter-hint
-// popup follows the cursor through a `@name(arg1, arg2, ...)` call.
-// The DSL is structurally simple - only decorator args carry typed
-// parameters - so this handler does NOT attempt to drive hints from
-// the in-file AST. Activates only when the cursor lives inside a
-// decorator argument list.
+// onSignatureHelp answers `textDocument/signatureHelp` inside the argument
+// list of a registered decorator, and with null elsewhere.
 func (s *Server) onSignatureHelp(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params protocol.SignatureHelpParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
@@ -58,13 +53,8 @@ func (s *Server) onSignatureHelp(ctx context.Context, reply jsonrpc2.Replier, re
 	}, nil)
 }
 
-// decoratorSignatureLabel renders a `@name(p1, p2, ...)` style label
-// from the registry's argument shape. Returns the label PLUS the
-// individual parameter labels so [protocol.ParameterInformation]
-// entries can point at each slot for highlighting. For variadic
-// decorators (`@middlewares(A, B, ...)`) the label includes a
-// trailing `...` placeholder so the user sees there is no fixed
-// arity ceiling.
+// decoratorSignatureLabel renders `@name(p1, p2)`, `@name(kind...)` for a
+// variadic, or `@name` without arguments, and returns the parameter labels.
 func decoratorSignatureLabel(name string, spec semantic.Spec) (string, []string) {
 	rule := spec.Args
 	var parts []string
@@ -83,10 +73,7 @@ func decoratorSignatureLabel(name string, spec semantic.Spec) (string, []string)
 	return "@" + name + "(" + strings.Join(parts, ", ") + ")", parts
 }
 
-// argKindName turns an [semantic.ArgKind] into a short human label
-// suitable for a signature-help parameter slot. Mirrors the table
-// the user already sees in the README and on hover so the popup
-// stays in sync without duplicating descriptions.
+// argKindName returns the signature label of an argument kind.
 func argKindName(k semantic.ArgKind) string {
 	switch k {
 	case semantic.ArgString:
@@ -111,11 +98,8 @@ func argKindName(k semantic.ArgKind) string {
 	return "?"
 }
 
-// activeParamIndex walks tokens from the cursor backward to the
-// opening `(` of the enclosing decorator and counts the commas in
-// between - the count is the zero-based active parameter slot. Caps
-// the result at `max-1` so variadic decorators do not push the
-// highlight past the last documented slot.
+// activeParamIndex counts the commas between the enclosing `(` and the cursor,
+// capped at max-1.
 func activeParamIndex(view snapshotView, pos protocol.Position, max int) int {
 	idx, _ := view.tokenAt(pos.Line, pos.Character)
 	if idx < 0 {
