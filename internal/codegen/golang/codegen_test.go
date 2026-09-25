@@ -633,13 +633,6 @@ service Health {
 	}
 }
 
-func TestGenerateTypesNoPackageName(t *testing.T) {
-	pkg := &semantic.Package{Types: map[string]*ast.TypeDecl{}}
-	if err := generateTypes(pkg, t.TempDir(), nil); err == nil {
-		t.Error("expected error for missing pkg name")
-	}
-}
-
 // ---------- enums ----------
 
 // Each enum kind matches its testdata/golden/enums-<kind>.go snapshot.
@@ -691,13 +684,6 @@ type X {}`)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "design", "enums.go")); !os.IsNotExist(err) {
 		t.Error("expected no enums.go for empty enum set")
-	}
-}
-
-func TestGenerateEnumsNoPackageName(t *testing.T) {
-	pkg := &semantic.Package{Enums: map[string]*ast.EnumDecl{"X": {Name: "X"}}}
-	if err := generateEnums(pkg, t.TempDir()); err == nil {
-		t.Error("expected error")
 	}
 }
 
@@ -969,13 +955,6 @@ type X {}`)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "design", "errors.go")); !os.IsNotExist(err) {
 		t.Error("expected no errors.go")
-	}
-}
-
-func TestGenerateErrorsNoPackageName(t *testing.T) {
-	pkg := &semantic.Package{Errors: map[string]*ast.ErrorDecl{"X": {Name: "X", Category: "NotFound"}}}
-	if err := generateErrors(pkg, t.TempDir(), nil); err == nil {
-		t.Error("expected error")
 	}
 }
 

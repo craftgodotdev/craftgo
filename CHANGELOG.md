@@ -63,6 +63,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   a warning on stderr (`craftgo: warning: output.typs is not a manifest key
   and is ignored`), then generates. A removed key still stops the run.
 
+- **Every design file declares its `package`.** A file that imports or
+  declares anything without a `package` clause is an error,
+  `package/missing`, at its first import or declaration, and joins no
+  package; it used to merge into the design's only package, or into an
+  unnamed one. A file holding only comments needs no clause.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

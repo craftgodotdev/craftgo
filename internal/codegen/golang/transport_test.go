@@ -717,13 +717,6 @@ func lineHas(src, ident, tag string) bool {
 	return false
 }
 
-func TestGenerateTransportMissingPackageName(t *testing.T) {
-	pkg := &semantic.Package{Services: map[string]*semantic.ServiceInfo{}}
-	if err := generateTransport(pkg, sampleConfig(), t.TempDir(), nil); err == nil {
-		t.Fatal("expected error for empty package name")
-	}
-}
-
 // ---------- routes ----------
 
 // The UserService routes file matches its golden.
@@ -740,13 +733,6 @@ func TestGenerateRoutesPatterns(t *testing.T) {
 	}
 	mustParseGo(t, string(out))
 	expectGolden(t, "routes-user-service.go", string(out))
-}
-
-func TestGenerateRoutesMissingPackageName(t *testing.T) {
-	pkg := &semantic.Package{Services: map[string]*semantic.ServiceInfo{}}
-	if err := genRoutes(t, pkg, sampleConfig(), t.TempDir()); err == nil {
-		t.Fatal("expected error for empty package name")
-	}
 }
 
 // A route lists service middlewares before the method's, in source order; the first is outermost.
@@ -1330,13 +1316,6 @@ func TestGenerateServiceSkipsExisting(t *testing.T) {
 	out, _ := os.ReadFile(existing)
 	if string(out) != string(custom) {
 		t.Errorf("scaffold overwrote user file:\n%s", out)
-	}
-}
-
-func TestGenerateServiceMissingPackageName(t *testing.T) {
-	pkg := &semantic.Package{Services: map[string]*semantic.ServiceInfo{}}
-	if err := generateService(pkg, sampleConfig(), t.TempDir(), nil); err == nil {
-		t.Fatal("expected error for empty package name")
 	}
 }
 

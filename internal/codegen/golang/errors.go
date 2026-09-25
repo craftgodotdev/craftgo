@@ -18,9 +18,6 @@ import (
 // generateErrors writes outDir/<pkg>/errors.go, an error type with its code
 // const and methods per error; a package without errors writes nothing.
 func generateErrors(pkg *semantic.Package, outDir string, r *projectResolver) error {
-	if pkg.Name == "" {
-		return fmt.Errorf("package has no name")
-	}
 	if len(pkg.Errors) == 0 {
 		return nil
 	}

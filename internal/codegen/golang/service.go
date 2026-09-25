@@ -1,8 +1,6 @@
 package golang
 
 import (
-	"fmt"
-
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/route"
@@ -43,9 +41,6 @@ func logicTypeName(method string) string { return method + "Service" }
 // generateService writes each method's gen-once logic scaffold to
 // output.service/<segment>/<method>.go. A nil r resolves local names only.
 func generateService(pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
-	if pkg.Name == "" {
-		return fmt.Errorf("package has no name")
-	}
 	r = resolverFor(pkg, r)
 	crossPkg := r.CrossPkg
 	for _, svcName := range pkg.ServiceNames() {
@@ -80,7 +75,7 @@ func buildServiceData(pkgName, svcName string, m *ast.Method, imps importPaths, 
 		respRef = imports.named(m.Response.Type)
 	}
 	d := serviceData{
-		Package:          servicePkgName(pkgName, svcName),
+		Package:          pkgName,
 		Service:          svcName,
 		Method:           m.Name,
 		ServiceName:      logicTypeName(m.Name),

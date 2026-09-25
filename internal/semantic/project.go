@@ -21,19 +21,19 @@ type Project struct {
 
 // AnalyzeProject groups files into packages by their `package`
 // declaration, analyses every package with the whole project in scope,
-// and runs the project-wide rules. The Project is never nil.
+// and runs the project-wide rules. A file without a `package` clause joins
+// no package. The Project is never nil.
 func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	proj := &Project{Packages: map[string]*Package{}}
-	groups := groupFilesByPackage(files)
+	groups, diags := groupFilesByPackage(files)
 	names := slices.Sorted(maps.Keys(groups))
 	analyzers := make(map[string]*analyzer, len(groups))
 	for _, name := range names {
-		a := newAnalyzer(proj, opts)
+		a := newAnalyzer(proj, name, opts)
 		a.runDeclPhase(groups[name])
 		proj.Packages[name] = a.pkg
 		analyzers[name] = a
 	}
-	var diags []Diagnostic
 	for _, name := range names {
 		a := analyzers[name]
 		group := groups[name]
@@ -118,45 +118,41 @@ func comparePos(a, b lexer.Position) int {
 	return cmp.Or(cmp.Compare(a.Filename, b.Filename), cmp.Compare(a.Offset, b.Offset))
 }
 
-// singlePackage returns the only package, else the unnamed one, else the
-// first by name, else an empty package.
-func (p *Project) singlePackage() *Package {
-	if len(p.Packages) == 1 {
-		for _, pkg := range p.Packages {
-			return pkg
+// groupFilesByPackage groups files by their `package` name and reports each
+// file that declares something without a `package` clause. A clause whose
+// name did not parse joins no group either; the parser reported it.
+func groupFilesByPackage(files []*ast.File) (map[string][]*ast.File, []Diagnostic) {
+	groups := map[string][]*ast.File{}
+	var diags []Diagnostic
+	for _, f := range files {
+		switch {
+		case f.Package == nil:
+			if pos, ok := firstDeclarationPos(f); ok {
+				diags = append(diags, Diagnostic{
+					Pos:      pos,
+					End:      pos,
+					Severity: lexer.SeverityError,
+					Code:     CodePackageMissing,
+					Msg:      "this file has no `package` clause - every design file starts with `package <name>`",
+				})
+			}
+		case f.Package.Name != "":
+			groups[f.Package.Name] = append(groups[f.Package.Name], f)
 		}
 	}
-	if pkg := p.Packages[""]; pkg != nil {
-		return pkg
-	}
-	names := slices.Sorted(maps.Keys(p.Packages))
-	if len(names) > 0 {
-		return p.Packages[names[0]]
-	}
-	return newPackage()
+	return groups, diags
 }
 
-// groupFilesByPackage groups files by their `package` name. Files without
-// a declaration join the only named package, or share the "" group when
-// there is none or several.
-func groupFilesByPackage(files []*ast.File) map[string][]*ast.File {
-	groups := map[string][]*ast.File{}
-	for _, f := range files {
-		name := ""
-		if f.Package != nil {
-			name = f.Package.Name
-		}
-		groups[name] = append(groups[name], f)
+// firstDeclarationPos returns the position of f's first import or
+// declaration; ok is false when f declares nothing.
+func firstDeclarationPos(f *ast.File) (lexer.Position, bool) {
+	switch {
+	case len(f.Imports) > 0:
+		return f.Imports[0].Pos, true
+	case len(f.Decls) > 0:
+		return f.Decls[0].DeclPos(), true
 	}
-	if unnamed, ok := groups[""]; ok && len(groups) == 2 {
-		for name, group := range groups {
-			if name != "" {
-				groups[name] = append(group, unnamed...)
-				delete(groups, "")
-			}
-		}
-	}
-	return groups
+	return lexer.Position{}, false
 }
 
 // folderExists reports whether importPath, relative to designRoot, is a

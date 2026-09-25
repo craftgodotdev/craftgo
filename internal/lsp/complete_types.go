@@ -173,7 +173,7 @@ func (r *request) serviceNameCompletions() []protocol.CompletionItem {
 func declItem(d ast.Decl, pkg, current string) protocol.CompletionItem {
 	info := infoOf(d)
 	detail := info.summary
-	if pkg != "" && pkg != current {
+	if pkg != current {
 		detail += " (" + pkg + ")"
 	}
 	return protocol.CompletionItem{
@@ -300,7 +300,7 @@ func (r *request) declCompletions(kinds semantic.DeclKind) []protocol.Completion
 	for _, pkgName := range slices.Sorted(maps.Keys(v.proj.Packages)) {
 		for _, d := range v.proj.Packages[pkgName].Decls(kinds) {
 			item := declItem(d, pkgName, currentPkg)
-			if pkgName != "" && pkgName != currentPkg {
+			if pkgName != currentPkg {
 				item.Label = pkgName + "." + item.Label
 				item.InsertText = item.Label
 			}
@@ -308,7 +308,7 @@ func (r *request) declCompletions(kinds semantic.DeclKind) []protocol.Completion
 		}
 	}
 	for _, pkgName := range slices.Sorted(maps.Keys(v.proj.Packages)) {
-		if pkgName == "" || pkgName == currentPkg {
+		if pkgName == currentPkg {
 			continue
 		}
 		items = append(items, protocol.CompletionItem{

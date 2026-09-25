@@ -17,15 +17,6 @@ import (
 // servicePackage lower-cases a service name ("UserService" -> "userservice").
 func servicePackage(svcName string) string { return strings.ToLower(svcName) }
 
-// servicePkgName is the Go package name of a service's handler, logic and routes files: the DSL
-// package's name, or servicePackage for an unnamed package.
-func servicePkgName(pkgName, svcName string) string {
-	if pkgName == "" {
-		return servicePackage(svcName)
-	}
-	return pkgName
-}
-
 // goImportFromRel turns a project-relative directory ("./internal/handler") into its import
 // path under modulePath.
 func goImportFromRel(modulePath, rel string) string {

@@ -102,8 +102,5 @@ func contractName(pkgName string, d *ast.EventDecl) string {
 	if s, ok := ast.StringArg(d.Decorators, decoratorContract); ok {
 		return s
 	}
-	if pkgName == "" {
-		return d.Name
-	}
 	return pkgName + "." + d.Name
 }

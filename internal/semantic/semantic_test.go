@@ -9,6 +9,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
+// parseFiles parses each source as the file test<i>.craftgo; a source
+// without a `package` clause is a file of package test.
 func parseFiles(t *testing.T, sources ...string) []*ast.File {
 	t.Helper()
 	var files []*ast.File
@@ -17,6 +19,9 @@ func parseFiles(t *testing.T, sources ...string) []*ast.File {
 		f := p.Parse()
 		if d := p.Diagnostics(); len(d) > 0 {
 			t.Fatalf("parse error in source %d: %v", i, d)
+		}
+		if f.Package == nil {
+			f.Package = &ast.PackageDecl{Name: "test"}
 		}
 		files = append(files, f)
 	}
@@ -81,13 +86,6 @@ service S { get GetUser /u {} }`)
 	}
 	if len(pkg.Services) != 1 {
 		t.Error("service")
-	}
-}
-
-func TestPackageNameMissing(t *testing.T) {
-	pkg := mustClean(t, `type X {}`)
-	if pkg.Name != "" {
-		t.Error("expected empty name")
 	}
 }
 

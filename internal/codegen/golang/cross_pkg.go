@@ -18,7 +18,7 @@ func buildCrossPkg(proj *semantic.Project, cfg *config.Config, currentPkgName st
 	out := crossPkg{}
 	types := outputsOf(cfg).types
 	for name := range proj.Packages {
-		if name == "" || name == currentPkgName {
+		if name == currentPkgName {
 			continue
 		}
 		out[name] = types.sub(name).pkg

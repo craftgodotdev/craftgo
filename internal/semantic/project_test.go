@@ -50,13 +50,45 @@ type X { id string }`)
 	}
 }
 
-// Without a design root, a package with no `package` clause is keyed under "".
-func TestAnalyzeProjectEmptyRootNoPackageDecl(t *testing.T) {
-	files := parseFiles(t, `type X { id string }`)
-	proj, _ := AnalyzeProject(files, Options{})
-	if _, ok := proj.Packages[""]; !ok {
-		t.Errorf("expected fallback empty key, got %v", pkgNames(proj))
+// A file that declares something without a `package` clause is an error at
+// its first declaration, and joins no package.
+func TestFileWithoutPackageIsAnError(t *testing.T) {
+	files := parseFileMap(t, map[string]string{
+		"test0.craftgo": `package app
+type A { id string }`,
+		"test1.craftgo": `
+
+type B { id string }`,
+	})
+	proj, diags := AnalyzeProject(files, Options{})
+	d := findCode(diags, CodePackageMissing)
+	if d == nil {
+		t.Fatalf("want %s, got %v", CodePackageMissing, diags)
 	}
+	if d.Pos.Filename != "test1.craftgo" || d.Pos.Line != 3 || d.Pos.Column != 1 {
+		t.Errorf("reported at %s, want test1.craftgo:3:1", d.Pos)
+	}
+	expectMessage(t, d, "package <name>")
+	if len(diags) != 1 {
+		t.Errorf("want the one diagnostic, got %v", diags)
+	}
+	if got := pkgNames(proj); len(got) != 1 || got[0] != "app" {
+		t.Errorf("packages = %v, want [app]", got)
+	}
+	if proj.Packages["app"].Types["B"] != nil {
+		t.Error("the file without a package joined package app")
+	}
+}
+
+// A file that declares nothing needs no `package` clause.
+func TestEmptyFileNeedsNoPackage(t *testing.T) {
+	files := parseFileMap(t, map[string]string{
+		"a.craftgo":     "package app\ntype A { id string }",
+		"notes.craftgo": "// notes\n",
+		"empty.craftgo": "",
+	})
+	_, diags := AnalyzeProject(files, Options{})
+	expectNoDiags(t, diags)
 }
 
 func TestAnalyzeProjectCrossPackageRef(t *testing.T) {

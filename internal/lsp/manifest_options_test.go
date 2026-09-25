@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/designopts"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // manifestProject writes a design root with the given manifest body and
@@ -123,30 +124,32 @@ service S {
 	}
 }
 
-// A file that declares no package joins the project's only named package.
-func TestAPackagelessFileJoinsTheOnlyNamedPackage(t *testing.T) {
+// A file that declares no package is reported, as the CLI reports it, and
+// joins no package.
+func TestAPackagelessFileIsReported(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "design", "craftgo.design.yaml"), layoutOnly)
 	named := filepath.Join(root, "design", "orders.craftgo")
 	mustWrite(t, named, `package orders
-type Order { id string  extra Extra }
+type Order { id string }
 `)
-	mustWrite(t, filepath.Join(root, "design", "extra.craftgo"), `type Extra { note string }
+	extra := filepath.Join(root, "design", "extra.craftgo")
+	mustWrite(t, extra, `type Extra { note string }
 `)
 
 	s := newTestServer()
 	v := s.loadProject(named, readFileT(t, named))
+	var missing []string
 	for _, d := range v.diags {
-		if d.IsError() {
-			t.Errorf("the package-less file's type must resolve, as it does for the CLI: %s at %s", d.Msg, d.Pos)
+		if d.Code == semantic.CodePackageMissing {
+			missing = append(missing, d.Pos.Filename)
 		}
 	}
-	if _, ok := v.proj.Packages["orders"]; !ok {
-		t.Fatalf("packages = %v, want the one named package", slices.Sorted(maps.Keys(v.proj.Packages)))
+	if len(missing) != 1 || missing[0] != extra {
+		t.Errorf("package/missing reported in %v, want [%s]", missing, extra)
 	}
-	if len(v.proj.Packages) != 1 {
-		t.Errorf("packages = %v, want exactly one - naming a package-less file after its folder splits the project",
-			slices.Sorted(maps.Keys(v.proj.Packages)))
+	if got := slices.Sorted(maps.Keys(v.proj.Packages)); len(got) != 1 || got[0] != "orders" {
+		t.Errorf("packages = %v, want [orders]", got)
 	}
 }
 

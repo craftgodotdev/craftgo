@@ -139,6 +139,8 @@ const (
 	// CodePathHealthConflict fires when a method's route equals a reserved health path.
 	CodePathHealthConflict = "path/health-conflict"
 
+	// CodePackageMissing fires when a file declares something without a `package` clause.
+	CodePackageMissing = "package/missing"
 	// CodeImportUnresolved fires when `import "path"` names no design folder.
 	CodeImportUnresolved = "import/unresolved"
 	// CodeImportEscape fires when an import path is absolute or its first segment is `.` or `..`.

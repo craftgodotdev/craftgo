@@ -112,10 +112,9 @@ func (p *Package) ServiceNames() []string {
 	return slices.Sorted(maps.Keys(p.Services))
 }
 
-// PackageNames returns the names of p's named packages, sorted; the package
-// of files without a `package` clause is left out.
+// PackageNames returns the names of p's packages, sorted.
 func (p *Project) PackageNames() []string {
-	return slices.DeleteFunc(slices.Sorted(maps.Keys(p.Packages)), func(name string) bool { return name == "" })
+	return slices.Sorted(maps.Keys(p.Packages))
 }
 
 // resolve returns the package q names a declaration of and that

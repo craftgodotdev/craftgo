@@ -60,7 +60,7 @@ func (v projectView) buffer() snapshotView {
 }
 
 // currentPackage returns the package name of the buffer the view was
-// built for ("" when, outside a project, it declares none).
+// built for, "" when it declares none.
 func (v projectView) currentPackage() string {
 	if f := v.buffer().file; f != nil && f.Package != nil {
 		return f.Package.Name

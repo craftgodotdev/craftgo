@@ -74,9 +74,6 @@ type paramBinding struct {
 // generateTransport writes each method's handler to output.transport/<segment>/<method>.go,
 // the segment being the @group or the service directory. A nil r resolves local names only.
 func generateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
-	if pkg.Name == "" {
-		return fmt.Errorf("package has no name")
-	}
 	r = resolverFor(pkg, r)
 	for _, svcName := range pkg.ServiceNames() {
 		svc := pkg.Services[svcName]
@@ -91,7 +88,7 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 	out := outputsOf(cfg)
 	for _, m := range svc.Methods {
 		seg := route.OutputSegment(svcName, semantic.MethodGroupOf(svc, m), cfg.Output.FileCase)
-		data, err := buildTransportData(svcName, m, out.segmentImports(pkg.Name, seg), pkg, r)
+		data, err := buildTransportData(m, out.segmentImports(pkg.Name, seg), pkg, r)
 		if err != nil {
 			return fmt.Errorf("%s.%s: %w", svcName, m.Name, err)
 		}
@@ -103,11 +100,11 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 }
 
 // buildTransportData fails on a field its binding source cannot carry, such as @query on a struct.
-func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *semantic.Package, r *projectResolver) (transportData, error) {
+func buildTransportData(m *ast.Method, imps importPaths, pkg *semantic.Package, r *projectResolver) (transportData, error) {
 	mode := modeOf(m)
 	imports := newImportSet(r.CrossPkg, goImport{Alias: localAlias, Path: imps.Types}, transportNames)
 	d := transportData{
-		Package:          servicePkgName(pkg.Name, svcName),
+		Package:          pkg.Name,
 		Method:           m.Name,
 		ServiceName:      logicTypeName(m.Name),
 		Verb:             strings.ToUpper(m.Verb),

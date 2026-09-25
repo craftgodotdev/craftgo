@@ -17,7 +17,7 @@ type Diagnostic = lexer.Diagnostic
 // Package is the merged result of analysing the files of one DSL package.
 // Every map is keyed by the unqualified declaration name.
 type Package struct {
-	// Name is the declared package name; empty when no file declares one.
+	// Name is the name the package's files declare.
 	Name        string
 	Types       map[string]*ast.TypeDecl
 	Enums       map[string]*ast.EnumDecl
@@ -60,8 +60,7 @@ type Options struct {
 }
 
 // Analyze runs [AnalyzeProject] with zero [Options] and returns the
-// project's only package, else the unnamed one, else the first by name. The
-// package is never nil.
+// project's first package by name, or an empty package when it has none.
 func Analyze(files []*ast.File) (*Package, []Diagnostic) {
 	return analyzeWith(files, Options{})
 }
@@ -69,12 +68,16 @@ func Analyze(files []*ast.File) (*Package, []Diagnostic) {
 // analyzeWith is [Analyze] with opts.
 func analyzeWith(files []*ast.File, opts Options) (*Package, []Diagnostic) {
 	proj, diags := AnalyzeProject(files, opts)
-	return proj.singlePackage(), diags
+	if names := proj.PackageNames(); len(names) > 0 {
+		return proj.Packages[names[0]], diags
+	}
+	return newPackage(""), diags
 }
 
-// newPackage returns a package with empty symbol tables.
-func newPackage() *Package {
+// newPackage returns package name with empty symbol tables.
+func newPackage(name string) *Package {
 	return &Package{
+		Name:        name,
 		Types:       map[string]*ast.TypeDecl{},
 		Enums:       map[string]*ast.EnumDecl{},
 		Errors:      map[string]*ast.ErrorDecl{},
@@ -85,15 +88,14 @@ func newPackage() *Package {
 	}
 }
 
-// newAnalyzer returns an analyzer with empty symbol tables for one package.
-func newAnalyzer(proj *Project, opts Options) *analyzer {
-	return &analyzer{pkg: newPackage(), proj: proj, opts: opts}
+// newAnalyzer returns an analyzer with empty symbol tables for package name.
+func newAnalyzer(proj *Project, name string, opts Options) *analyzer {
+	return &analyzer{pkg: newPackage(name), proj: proj, opts: opts}
 }
 
 // runDeclPhase builds the symbol tables and merges services; every other
 // phase reads them, so it runs first for every package.
 func (a *analyzer) runDeclPhase(files []*ast.File) {
-	a.setPackageName(files)
 	a.collectDecls(files)
 	a.mergeServices()
 }

@@ -295,7 +295,7 @@ func TestParityTransportCallMatchesStubSignature(t *testing.T) {
 	cfg := sampleConfig()
 	for _, m := range svc.Methods {
 		imps := outputsOf(cfg).segmentImports(pkg.Name, route.OutputSegment("DemoService", "", cfg.Output.FileCase))
-		td, err := buildTransportData("DemoService", m, imps, pkg, resolverFor(pkg, nil))
+		td, err := buildTransportData(m, imps, pkg, resolverFor(pkg, nil))
 		if err != nil {
 			t.Fatalf("%s: %v", m.Name, err)
 		}

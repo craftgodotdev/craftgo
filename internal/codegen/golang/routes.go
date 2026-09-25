@@ -105,9 +105,6 @@ type routesData struct {
 // generateRoutes writes one output.routes/<segment>/routes.go per segment pkg's services occupy;
 // services sharing a segment through @group share its RegisterRoutes.
 func generateRoutes(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	if pkg.Name == "" {
-		return fmt.Errorf("package has no name")
-	}
 	bySeg := map[string][]segment{}
 	for s := range segments(pkg, cfg.Output.FileCase) {
 		bySeg[s.dir] = append(bySeg[s.dir], s)
@@ -160,7 +157,7 @@ func generateRoutesForSegment(contribs []segment, cfg *config.Config, projectRoo
 	imports := newImportSet(nil, goImport{}, routesNames)
 	alias := imports.add(transportAlias(lead.group), out.transport.sub(lead.dir).pkg)
 	data := routesData{
-		Package:          servicePkgName(lead.pkg.Name, lead.name),
+		Package:          lead.pkg.Name,
 		Service:          contributorLabel(contribs),
 		SvccontextImport: out.svccontext.pkg,
 		Imports:          imports.imports(),

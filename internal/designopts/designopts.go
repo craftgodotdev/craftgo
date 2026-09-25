@@ -118,7 +118,7 @@ type Parsed struct {
 }
 
 // Parse parses srcs in order and returns them with every parser diagnostic. A
-// file without a `package` clause keeps none; [semantic.AnalyzeProject] places it.
+// file without a `package` clause keeps none; [semantic.AnalyzeProject] reports it.
 func Parse(srcs []Source) ([]Parsed, []lexer.Diagnostic) {
 	out := make([]Parsed, 0, len(srcs))
 	var diags []lexer.Diagnostic

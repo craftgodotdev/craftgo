@@ -1,7 +1,6 @@
 package golang
 
 import (
-	"fmt"
 	"maps"
 	"path/filepath"
 	"slices"
@@ -37,9 +36,6 @@ type eventDescriptor struct {
 // generatePackageEvents writes outDir/<package>/events.go, a contract constant and a descriptor
 // per event; a package without events gets no file.
 func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoot, outDir string, r *projectResolver) error {
-	if pkg.Name == "" {
-		return fmt.Errorf("package has no name")
-	}
 	r = resolverFor(pkg, r)
 	imports := newImportSet(r.CrossPkg, goImport{Alias: localAlias, Path: outputsOf(cfg).types.sub(pkg.Name).pkg}, eventsNames)
 	data := eventsData{Package: pkg.Name}

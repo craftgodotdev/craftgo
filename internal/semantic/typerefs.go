@@ -78,7 +78,7 @@ func (a *analyzer) checkTypeRef(n *ast.NamedTypeRef, typeParams []string, import
 		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeQualifiedRef,
 			"qualified reference %q has too many segments (max 1 package prefix)", n.Name.String())
 		return
-	case len(parts) == 2 && parts[0] == a.pkg.Name && a.pkg.Name != "":
+	case len(parts) == 2 && parts[0] == a.pkg.Name:
 		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeQualifiedRef,
 			"redundant self-qualification %q - a type in its own package is referenced by its bare name; write %q",
 			n.Name.String(), parts[1])

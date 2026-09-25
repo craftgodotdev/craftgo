@@ -35,7 +35,7 @@ package <ident>
   [@decorator]* <verb> Name [path] { request Type?  response Type? }
 ```
 
-Files in the same directory share `package` and see each other's declarations. Cross-directory references qualify with the target package's name (`shared.Type`); no import statement is needed (an `import "<sibling-dir>"` line is still accepted but deprecated). Packages whose type or error declarations reference each other in a cycle are rejected (`ref/package-cycle`); event payloads do not count.
+Every file starts with its `package` line; a file without one is rejected (`package/missing`). Files in the same directory share `package` and see each other's declarations. Cross-directory references qualify with the target package's name (`shared.Type`); no import statement is needed (an `import "<sibling-dir>"` line is still accepted but deprecated). Packages whose type or error declarations reference each other in a cycle are rejected (`ref/package-cycle`); event payloads do not count.
 
 ## Keywords (17)
 

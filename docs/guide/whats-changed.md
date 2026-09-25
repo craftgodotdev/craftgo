@@ -52,7 +52,7 @@ The strip under the diagram lists what the design no longer carries; none of it 
 ## Fixed
 
 - `craftgo-lsp` exits on `exit`, with status 1 when no `shutdown` preceded it, instead of waiting for the client to close its stdin.
-- The editor reports what `craftgo gen` reports, and a design file without a `package` declaration resolves the same way in both.
+- The editor reports what `craftgo gen` reports.
 - A type whose fields all delegate to another package compiles.
 - A `@group` whose name ends in `time`, a service named `Craft`, a package whose name ends in `types`: none breaks its generated files.
 - `@security` scheme names are listed in a stable order.

@@ -42,9 +42,6 @@ type validatorType struct {
 // generateValidators writes outDir/<pkg>/validate.go, where every type gets a
 // Validate() even when empty; a package with nothing to validate writes none.
 func generateValidators(pkg *semantic.Package, outDir string, r *projectResolver) error {
-	if pkg.Name == "" {
-		return fmt.Errorf("package has no name")
-	}
 	if !pkgValidates(pkg) {
 		return nil
 	}

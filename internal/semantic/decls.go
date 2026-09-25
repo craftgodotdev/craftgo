@@ -9,16 +9,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
-// setPackageName records the package name the group's files declare.
-func (a *analyzer) setPackageName(files []*ast.File) {
-	for _, f := range files {
-		if f.Package != nil {
-			a.pkg.Name = f.Package.Name
-			return
-		}
-	}
-}
-
 // collectDecls fills the symbol tables and reports duplicate names. Types,
 // enums, scalars and errors share one namespace; middlewares and events
 // each have their own; a service's primary and extend blocks are collected

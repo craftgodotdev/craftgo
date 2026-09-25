@@ -36,9 +36,6 @@ func (s *schemaNames) put(doc *openapi3.T, name string, ref *openapi3.SchemaRef)
 
 // writeOpenAPI builds pkg's document and writes it as YAML to `output.openapi`.
 func writeOpenAPI(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	if pkg.Name == "" {
-		return fmt.Errorf("package has no name")
-	}
 	if err := checkOperationIDUniqueness(pkg); err != nil {
 		return err
 	}

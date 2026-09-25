@@ -508,11 +508,11 @@ type T { c shared.Color<int> }`,
 	expectMessage(t, d, "shared.Color")
 }
 
-// A file without a package clause joins the only package, so naming that
-// package in a reference is a self-qualification.
-func TestSelfQualifiedRefInPackagelessFile(t *testing.T) {
+// Naming a reference's own package is a self-qualification.
+func TestSelfQualifiedRef(t *testing.T) {
 	files := parseFiles(t, `package app
-type A { id string }`, `type B { a app.A }`)
+type A { id string }`, `package app
+type B { a app.A }`)
 	_, diags := AnalyzeProject(files, Options{})
 	d := findCode(diags, CodeQualifiedRef)
 	if d == nil {

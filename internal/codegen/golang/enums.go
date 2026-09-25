@@ -1,7 +1,6 @@
 package golang
 
 import (
-	"fmt"
 	"maps"
 	"path/filepath"
 	"slices"
@@ -15,9 +14,6 @@ import (
 // generateEnums writes outDir/<pkg>/enums.go, a defined type and const block per
 // enum; a package without enums writes nothing.
 func generateEnums(pkg *semantic.Package, outDir string) error {
-	if pkg.Name == "" {
-		return fmt.Errorf("package has no name")
-	}
 	if len(pkg.Enums) == 0 {
 		return nil
 	}

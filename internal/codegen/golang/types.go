@@ -25,9 +25,6 @@ const (
 // generateTypes writes outDir/<pkg>/types.go with pkg's scalars and structs,
 // generic ones included; a package with neither writes nothing.
 func generateTypes(pkg *semantic.Package, outDir string, r *projectResolver) error {
-	if pkg.Name == "" {
-		return fmt.Errorf("package has no name")
-	}
 	if !pkgDeclaresTypes(pkg) {
 		return nil
 	}

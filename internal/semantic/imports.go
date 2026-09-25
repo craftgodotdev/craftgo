@@ -53,7 +53,7 @@ func (a *analyzer) checkImportPath(imp *ast.Import) {
 		return
 	}
 	// A folder named after the file's own package is a self-import.
-	if a.pkg.Name != "" && a.pkg.Name == idents.LastSegment(path) {
+	if a.pkg.Name == idents.LastSegment(path) {
 		a.diag(imp.Pos, imp.Pos, lexer.SeverityWarning, CodeImportSelf,
 			"import %q resolves back into the current package %q (the files are merged anyway)",
 			path, a.pkg.Name)

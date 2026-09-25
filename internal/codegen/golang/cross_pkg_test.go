@@ -39,19 +39,15 @@ func TestBuildCrossPkgReturnsNilOnNilInputs(t *testing.T) {
 	}
 }
 
-func TestBuildCrossPkgSkipsEmptyAndCurrent(t *testing.T) {
+func TestBuildCrossPkgSkipsCurrent(t *testing.T) {
 	cfg := &config.Config{Package: "x", Output: config.Output{Types: "./types"}}
 	proj := &semantic.Project{
 		Packages: map[string]*semantic.Package{
-			"":       {Name: ""}, // empty default group
 			"design": {Name: "design"},
 			"shared": {Name: "shared"},
 		},
 	}
 	cross := buildCrossPkg(proj, cfg, "design")
-	if _, ok := cross[""]; ok {
-		t.Error("empty key should not appear")
-	}
 	if _, ok := cross["design"]; ok {
 		t.Error("current package should not appear")
 	}
