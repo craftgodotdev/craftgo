@@ -350,6 +350,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   method starts on the same line, as in `} @doc("b") type B { … }`, the
   decorator is its own.
 
+- **A decorator above the first enum value is one error.** It was read as
+  a value named after the decorator, with an `expected enum value name`
+  error for each token of its arguments; it is now `decorator @doc has no
+  enum value before it; an enum value's decorators follow it`, and the enum
+  gains no value named `doc`.
+
 - **A comment right above a declaration's keyword is its doc.** In
   `@deprecated` / `// Order is the order.` / `type Order {}`, the comment
   reached neither the Go doc nor the OpenAPI description; it now follows the

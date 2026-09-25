@@ -338,6 +338,39 @@ func TestEnumValueBadAfterEqual(t *testing.T) {
 	}
 }
 
+// A decorator with no enum value before it is one error at its `@`, and the
+// value below it still parses; so is a stray `@` before `Name =`.
+func TestEnumDecoratorBeforeAnyValue(t *testing.T) {
+	const rule = "has no enum value before it; an enum value's decorators follow it"
+	for _, c := range []struct {
+		src    string
+		want   []string
+		values []string
+	}{
+		{"enum E {\n\t@doc(\"a\")\n\tA\n\tB\n}", []string{"4:2: decorator @doc " + rule}, []string{"A", "B"}},
+		{"enum E { @doc(\"a\") @deprecated A }", []string{"3:10: decorator @doc " + rule, "3:20: decorator @deprecated " + rule}, []string{"A"}},
+		{"enum E {\n\t@doc(\"a\")\n}", []string{"4:2: decorator @doc " + rule}, nil},
+		{"enum M {\n\t@Card = \"card\"\n\tCash  = \"cash\"\n}", []string{"4:2: expected enum value name, got @"}, []string{"Card", "Cash"}},
+	} {
+		p := New("t.craftgo", "package p\n\n"+c.src+"\n")
+		f := p.Parse()
+		var got []string
+		for _, d := range p.Diagnostics() {
+			got = append(got, fmt.Sprintf("%d:%d: %s", d.Pos.Line, d.Pos.Column, d.Msg))
+		}
+		if !slices.Equal(got, c.want) {
+			t.Errorf("%q: diagnostics = %q, want %q", c.src, got, c.want)
+		}
+		var values []string
+		for _, v := range f.Decls[0].(*ast.EnumDecl).EnumValues() {
+			values = append(values, v.Name)
+		}
+		if !slices.Equal(values, c.values) {
+			t.Errorf("%q: values = %q, want %q", c.src, values, c.values)
+		}
+	}
+}
+
 func TestErrorShort(t *testing.T) {
 	f := mustParse(t, `error NotFound UserNotFound`)
 	ed := f.Decls[0].(*ast.ErrorDecl)
@@ -643,6 +676,11 @@ func TestUnclosedArgumentsCloseAtAnInnerDecorator(t *testing.T) {
 			"type User {\n\t@doc(@example(\n\temail string @format(email)\n\tname  string\n}\n\ntype Other {\n\tid string\n}\n",
 			[]string{"4:7: a decorator cannot be an argument of @doc", "7:1: expected ',' or ')' after decorator argument, got }"},
 			[]string{"User", "Other"},
+		},
+		{
+			"enum Status {\n\t@doc(\n\tActive\n\tInactive\n}\n\ntype Other {\n\tid string\n}\n",
+			[]string{"6:2: expected ',' or ')' after decorator argument, got Ident", "7:1: expected ',' or ')' after decorator argument, got }", "4:2: decorator @doc has no enum value before it; an enum value's decorators follow it"},
+			[]string{"Status", "Other"},
 		},
 		{
 			"type T {\n\ta string @length(@x(1) 5)\n}\n",

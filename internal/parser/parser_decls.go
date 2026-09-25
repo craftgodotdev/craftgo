@@ -103,9 +103,22 @@ func (p *Parser) parseEnumDecl(decs []*ast.Decorator, doc []string) *ast.EnumDec
 }
 
 // parseEnumValue parses `Name` or `Name = literal`, then its decorators.
+// Decorators before the name are reported and dropped.
 func (p *Parser) parseEnumValue() *ast.EnumValue {
 	doc := p.docAbove()
+	// An `@` before `Name =` is a stray one, and the value after it still counts.
+	if p.peekIs(lexer.At) && p.peekAt(2).Kind == lexer.Equal {
+		p.errorf(p.peek().Pos, "expected enum value name, got %s", lexer.At)
+		p.advance()
+	}
+	for _, d := range p.parseDecorators() {
+		p.errorf(d.Pos, "decorator @%s has no enum value before it; an enum value's decorators follow it", d.Name)
+	}
 	t := p.peek()
+	// Decorators that close the body leave no value to parse.
+	if t.Kind == lexer.RBrace {
+		return nil
+	}
 	// A reserved word is a value name here.
 	if t.Kind != lexer.Ident && !t.Kind.IsKeyword() {
 		p.errorf(t.Pos, "expected enum value name, got %s", t.Kind)
