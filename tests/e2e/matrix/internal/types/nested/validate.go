@@ -44,8 +44,8 @@ func (v *B) Validate() error {
 // Validate checks every field-level constraint declared on Catalog.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Catalog) Validate() error {
-	for _, val := range v.Users {
-		if err := val.Validate(); err != nil {
+	for _, val0 := range v.Users {
+		if err := val0.Validate(); err != nil {
 			return err
 		}
 	}

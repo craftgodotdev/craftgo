@@ -41,12 +41,12 @@ func (v *OkResp) Validate() error {
 // Validate checks every field-level constraint declared on Page.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Page[T]) Validate() error {
-	for i := range v.Items {
-		if vv, ok := any(&v.Items[i]).(interface{ Validate() error }); ok {
+	for i0 := range v.Items {
+		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
 				return err
 			}
-		} else if err := validateValue(v.Items[i]); err != nil {
+		} else if err := validateValue(v.Items[i0]); err != nil {
 			return err
 		}
 	}

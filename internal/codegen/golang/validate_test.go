@@ -255,17 +255,34 @@ type Catalog {
 }`)
 	mustContainAll(t, src,
 		// plain: range values, validate each
-		"for _, val := range v.Plain",
-		"val.Validate()",
+		"for _, val0 := range v.Plain",
+		"val0.Validate()",
 		// array value: outer loop + inner loop
-		"for _, val := range v.ArrayV",
-		"for i0 := range val",
-		"val[i0].Validate()",
+		"for _, val0 := range v.ArrayV",
+		"for i1 := range val0",
+		"val0[i1].Validate()",
 		// optional value: range + nil-guard
-		"for _, val := range v.OptV",
-		"if val != nil",
+		"for _, val0 := range v.OptV",
+		"if val0 != nil",
 	)
 	mustParseGo(t, src)
+}
+
+// A map's key and value errors name the field's JSON key alike, at any nesting.
+func TestValidateMapKeyAndValueNameOneSubject(t *testing.T) {
+	src := runValidateGen(t, `package design
+scalar Code string @minLength(2)
+scalar Email string @format(email)
+type Holder {
+    byCode map<Code, Email> @json("by_code")
+    nested map<string, map<Code, Email>> @json("nested_map")
+}`)
+	for _, subject := range []string{"by_code", "nested_map"} {
+		if got := strings.Count(src, `fmt.Errorf("`+subject+`: %w", err)`); got != 2 {
+			t.Errorf("want the key and the value error to name %q, got %d:\n%s", subject, got, src)
+		}
+	}
+	mustContainNone(t, src, `"byCode: %w"`, `"nested: %w"`)
 }
 
 // Patterns and regex-backed formats compile once into deduplicated package-level vars.
@@ -486,18 +503,18 @@ type Pick {
 		"if err := v.Many[i0].Validate(); err != nil", //   per-element
 		"if v.Maybe != nil",                           // optional
 		"if err := v.Maybe.Validate(); err != nil",    //   inside guard
-		"for _, val := range v.Keyed",                 // map value
-		"for key := range v.KeyEnum",                  // map key
-		"for key, val := range v.Both",                // map both
-		"if err := key.Validate(); err != nil",
-		"if err := val.Validate(); err != nil",
+		"for _, val0 := range v.Keyed",                // map value
+		"for key0 := range v.KeyEnum",                 // map key
+		"for key0, val0 := range v.Both",              // map both
+		"if err := key0.Validate(); err != nil",
+		"if err := val0.Validate(); err != nil",
 	)
 	// app neither inlines the switch nor imports shared, and its loops need no gofmt -s rewrite.
 	mustContainNone(t, src,
 		"switch v.One",
 		"shared.ColorRed",
 		"github.com/test/m/internal/types/shared",
-		"for key, _ := range",
+		"for key0, _ := range",
 		"for _, _ := range",
 	)
 }
@@ -524,8 +541,8 @@ type Bag { byEmail map<shared.Email, string> }`,
 	src := string(out)
 	mustParseGo(t, src)
 	mustContainAll(t, src,
-		"for key := range v.ByEmail",
-		"key.Validate()",
+		"for key0 := range v.ByEmail",
+		"key0.Validate()",
 	)
 }
 
@@ -717,6 +734,30 @@ type Page<T> { items T[]  total int }`)
 	if !strings.Contains(src, "interface{ Validate() error }") {
 		t.Errorf("expected runtime assertion path:\n%s", src)
 	}
+}
+
+// A type parameter's value is probed at run time wherever it sits: through an optional's
+// pointer, in every array dimension and as a map value.
+func TestValidateTypeParamProbes(t *testing.T) {
+	src := runValidateGen(t, `package design
+type Box<T> {
+    one  T
+    opt  T?
+    many T[]
+    grid T[][]
+    byId map<string, T>
+}`)
+	mustContainAll(t, src,
+		"any(&v.One).(interface{ Validate() error })",
+		"if v.Opt != nil {",
+		"any(v.Opt).(interface{ Validate() error })",
+		"for i0 := range v.Many {",
+		"any(&v.Many[i0]).(interface{ Validate() error })",
+		"for i1 := range v.Grid[i0] {",
+		"any(&v.Grid[i0][i1]).(interface{ Validate() error })",
+		"for _, val0 := range v.ByID {",
+		"any(&val0).(interface{ Validate() error })",
+	)
 }
 
 // Constraint decorators on a generic type's fields emit their usual checks.

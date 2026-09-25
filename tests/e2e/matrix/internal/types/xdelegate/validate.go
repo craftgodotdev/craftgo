@@ -47,16 +47,16 @@ func (v *XDelegatedShapes) Validate() error {
 			return fmt.Errorf("maybe: %w", err)
 		}
 	}
-	for key, val := range v.ByEmail {
-		if err := key.Validate(); err != nil {
+	for key0, val0 := range v.ByEmail {
+		if err := key0.Validate(); err != nil {
 			return fmt.Errorf("byEmail: %w", err)
 		}
-		if err := val.Validate(); err != nil {
+		if err := val0.Validate(); err != nil {
 			return fmt.Errorf("byEmail: %w", err)
 		}
 	}
-	for _, val := range v.ByLabel {
-		if err := val.Validate(); err != nil {
+	for _, val0 := range v.ByLabel {
+		if err := val0.Validate(); err != nil {
 			return fmt.Errorf("byLabel: %w", err)
 		}
 	}

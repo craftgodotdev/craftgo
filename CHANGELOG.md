@@ -606,6 +606,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   optional map value whose type holds nil, as in `map<string, Blob?>` with
   `scalar Blob bytes`, is now a `Blob`, as a `Blob?` field is, not a `*Blob`.
 
+- **A map's key and value errors name the same field.** With `byCode
+  map<Code, Email> @json("by_code")`, a bad key was reported as `by_code: ...`
+  and a bad value as `byCode: ...`; both now name `by_code`, through nested
+  maps and arrays too.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
@@ -25,20 +24,6 @@ func errSubject(name string) string {
 		return ""
 	}
 	return name + ": "
-}
-
-// shape hands body each element of an array t holds, the dereferenced value of
-// a nil-guarded pointer, or t's access itself.
-func shape(t checkTarget, body func(elem string) string) string {
-	switch {
-	case t.cat == semantic.CatArray:
-		return fmt.Sprintf("for i := range %s {\n%s\n}", t.access, body(t.access+"[i]"))
-	case t.pointer:
-		// Parenthesised so a method call applies to the dereferenced value.
-		return fmt.Sprintf("if %s != nil {\n%s\n}", t.access, body("(*"+t.access+")"))
-	default:
-		return body(t.access)
-	}
 }
 
 // ifReturnf renders `if cond { return fmt.Errorf(msg) }` and registers the fmt import.

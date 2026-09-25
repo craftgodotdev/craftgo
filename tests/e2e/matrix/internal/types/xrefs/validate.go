@@ -48,21 +48,21 @@ func (v *XEnumDefault) Validate() error {
 // Validate checks every field-level constraint declared on XEnumMaps.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XEnumMaps) Validate() error {
-	for _, val := range v.ByString {
-		if err := val.Validate(); err != nil {
+	for _, val0 := range v.ByString {
+		if err := val0.Validate(); err != nil {
 			return fmt.Errorf("byString: %w", err)
 		}
 	}
-	for key := range v.ByEnum {
-		if err := key.Validate(); err != nil {
+	for key0 := range v.ByEnum {
+		if err := key0.Validate(); err != nil {
 			return fmt.Errorf("byEnum: %w", err)
 		}
 	}
-	for key, val := range v.BothEnum {
-		if err := key.Validate(); err != nil {
+	for key0, val0 := range v.BothEnum {
+		if err := key0.Validate(); err != nil {
 			return fmt.Errorf("bothEnum: %w", err)
 		}
-		if err := val.Validate(); err != nil {
+		if err := val0.Validate(); err != nil {
 			return fmt.Errorf("bothEnum: %w", err)
 		}
 	}
@@ -212,8 +212,8 @@ func (v *XTypeFields) Validate() error {
 			return err
 		}
 	}
-	for _, val := range v.ByKey {
-		if err := val.Validate(); err != nil {
+	for _, val0 := range v.ByKey {
+		if err := val0.Validate(); err != nil {
 			return err
 		}
 	}

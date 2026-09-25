@@ -134,7 +134,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 }
 
 // collectChecks returns td's Validate() statements: per field its constraint
-// checks, then a type-param probe or nested Validate() call.
+// checks, then the Validate() calls and type-parameter probes its value needs.
 func collectChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 	var out []string
 	// The struct's own deduped Go names (`UserID`, `UserID_2`).
@@ -147,14 +147,8 @@ func collectChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 			t := fieldTarget(rf, "v."+levelNames[fieldIdx], fieldWireName(v))
 			fieldIdx++
 			out = append(out, fieldChecks(rf, t, ctx)...)
-			if isTypeParamRef(v.Type, td.TypeParams) {
-				if call := typeParamValidateCall(t, ctx); call != "" {
-					out = append(out, call)
-				}
-				continue
-			}
-			if nested := nestedValidateCall(t, v.Name, ctx); nested != "" {
-				out = append(out, nested)
+			if calls := validateCalls(t, td.TypeParams, ctx); calls != "" {
+				out = append(out, calls)
 			}
 		case *ast.Mixin:
 			if call := mixinValidateCall(v); call != "" {

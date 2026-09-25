@@ -42,9 +42,9 @@ func (v *Attachments) Validate() error {
 			return fmt.Errorf("cover: %w", err)
 		}
 	}
-	for _, val := range v.Files {
-		if val != nil {
-			if err := val.Validate(); err != nil {
+	for _, val0 := range v.Files {
+		if val0 != nil {
+			if err := val0.Validate(); err != nil {
 				return fmt.Errorf("files: %w", err)
 			}
 		}
@@ -219,7 +219,7 @@ func (v *Keyed[Key]) Validate() error {
 			if err := vv.Validate(); err != nil {
 				return err
 			}
-		} else if err := validateValue((*v.Key)); err != nil {
+		} else if err := validateValue(v.Key); err != nil {
 			return err
 		}
 	}
@@ -257,7 +257,7 @@ func (v *Lookup[T]) Validate() error {
 			if err := vv.Validate(); err != nil {
 				return err
 			}
-		} else if err := validateValue((*v.Level)); err != nil {
+		} else if err := validateValue(v.Level); err != nil {
 			return err
 		}
 	}
@@ -267,8 +267,8 @@ func (v *Lookup[T]) Validate() error {
 // Validate checks every field-level constraint declared on MapValueGeneric.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *MapValueGeneric) Validate() error {
-	for _, val := range v.Bucket {
-		if err := val.Validate(); err != nil {
+	for _, val0 := range v.Bucket {
+		if err := val0.Validate(); err != nil {
 			return err
 		}
 	}
@@ -283,7 +283,7 @@ func (v *Maybe[T]) Validate() error {
 			if err := vv.Validate(); err != nil {
 				return err
 			}
-		} else if err := validateValue((*v.Value)); err != nil {
+		} else if err := validateValue(v.Value); err != nil {
 			return err
 		}
 	}
@@ -346,12 +346,12 @@ func (v *OrderPage) Validate() error {
 // Validate checks every field-level constraint declared on Page.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Page[T]) Validate() error {
-	for i := range v.Items {
-		if vv, ok := any(&v.Items[i]).(interface{ Validate() error }); ok {
+	for i0 := range v.Items {
+		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
 				return err
 			}
-		} else if err := validateValue(v.Items[i]); err != nil {
+		} else if err := validateValue(v.Items[i0]); err != nil {
 			return err
 		}
 	}
@@ -373,12 +373,12 @@ func (v *PageWithAudit[T]) Validate() error {
 	if err := v.AuditFields.Validate(); err != nil {
 		return err
 	}
-	for i := range v.Items {
-		if vv, ok := any(&v.Items[i]).(interface{ Validate() error }); ok {
+	for i0 := range v.Items {
+		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
 				return err
 			}
-		} else if err := validateValue(v.Items[i]); err != nil {
+		} else if err := validateValue(v.Items[i0]); err != nil {
 			return err
 		}
 	}

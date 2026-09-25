@@ -1,8 +1,10 @@
 package matrix
 
 import (
+	"strings"
 	"testing"
 
+	collections "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
 	combine "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	regression "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/regression"
 	scalars "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
@@ -130,6 +132,22 @@ func TestScalarMapKeyAndValueValidated(t *testing.T) {
 	rejects(t, "key 0 below the key's @gte(1)", bag(0, "ok"))
 	rejects(t, "value empty below the value's @minLength(1)", bag(1, ""))
 	accepts(t, "valid key and value", bag(1, "ok"))
+}
+
+// A map's key and value errors both name the field's JSON key:
+// Map_JSONKey.index is map<NonEmptyID, Email> @json("by_id").
+func TestMapErrorsNameTheJSONKey(t *testing.T) {
+	cases := map[string]*collections.Map_JSONKey{
+		"empty key":     {Index: map[collections.NonEmptyID]collections.Email{"": "a@b.co"}},
+		"invalid email": {Index: map[collections.NonEmptyID]collections.Email{"id": "nope"}},
+	}
+	for name, v := range cases {
+		if err := v.Validate(); err == nil || !strings.HasPrefix(err.Error(), "by_id: ") {
+			t.Errorf("%s: want an error naming by_id, got %v", name, err)
+		}
+	}
+	accepts(t, "valid key and value",
+		&collections.Map_JSONKey{Index: map[collections.NonEmptyID]collections.Email{"id": "a@b.co"}})
 }
 
 // An integer bound past 2^53 is compared exactly: minId is @gte(2^53 + 1).

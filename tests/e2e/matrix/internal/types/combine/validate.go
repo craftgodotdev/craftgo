@@ -240,21 +240,21 @@ func (v *XPkgEnum) Validate() error {
 			return fmt.Errorf("maybe: %w", err)
 		}
 	}
-	for _, val := range v.ByString {
-		if err := val.Validate(); err != nil {
+	for _, val0 := range v.ByString {
+		if err := val0.Validate(); err != nil {
 			return fmt.Errorf("byString: %w", err)
 		}
 	}
-	for key := range v.ByEnum {
-		if err := key.Validate(); err != nil {
+	for key0 := range v.ByEnum {
+		if err := key0.Validate(); err != nil {
 			return fmt.Errorf("byEnum: %w", err)
 		}
 	}
-	for key, val := range v.BothEnum {
-		if err := key.Validate(); err != nil {
+	for key0, val0 := range v.BothEnum {
+		if err := key0.Validate(); err != nil {
 			return fmt.Errorf("bothEnum: %w", err)
 		}
-		if err := val.Validate(); err != nil {
+		if err := val0.Validate(); err != nil {
 			return fmt.Errorf("bothEnum: %w", err)
 		}
 	}

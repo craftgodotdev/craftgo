@@ -71,14 +71,14 @@ func (v *Rg2Fmt) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Rg2Maps) Validate() error {
 	for i0 := range v.M {
-		for _, val := range v.M[i0] {
-			if err := val.Validate(); err != nil {
+		for _, val1 := range v.M[i0] {
+			if err := val1.Validate(); err != nil {
 				return fmt.Errorf("m: %w", err)
 			}
 		}
 	}
-	for _, val := range v.Plain {
-		if err := val.Validate(); err != nil {
+	for _, val0 := range v.Plain {
+		if err := val0.Validate(); err != nil {
 			return fmt.Errorf("plain: %w", err)
 		}
 	}
@@ -167,17 +167,17 @@ func (v *Rg3MultipleOf) Validate() error {
 // Validate checks every field-level constraint declared on Rg3NestedMaps.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Rg3NestedMaps) Validate() error {
-	for _, val := range v.Mm {
-		for _, v0 := range val {
-			if err := v0.Validate(); err != nil {
+	for _, val0 := range v.Mm {
+		for _, val1 := range val0 {
+			if err := val1.Validate(); err != nil {
 				return fmt.Errorf("mm: %w", err)
 			}
 		}
 	}
-	for _, val := range v.Maa {
-		for i0 := range val {
-			for _, v1 := range val[i0] {
-				if err := v1.Validate(); err != nil {
+	for _, val0 := range v.Maa {
+		for i1 := range val0 {
+			for _, val2 := range val0[i1] {
+				if err := val2.Validate(); err != nil {
 					return fmt.Errorf("maa: %w", err)
 				}
 			}
@@ -255,12 +255,12 @@ func (v *Rg4Item) Validate() error {
 // Validate checks every field-level constraint declared on Rg4Page.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Rg4Page[T]) Validate() error {
-	for i := range v.Items {
-		if vv, ok := any(&v.Items[i]).(interface{ Validate() error }); ok {
+	for i0 := range v.Items {
+		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
 				return err
 			}
-		} else if err := validateValue(v.Items[i]); err != nil {
+		} else if err := validateValue(v.Items[i0]); err != nil {
 			return err
 		}
 	}
@@ -279,11 +279,11 @@ func (v *Rg4Secret) Validate() error {
 // Validate checks every field-level constraint declared on Rg5Bag.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Rg5Bag) Validate() error {
-	for key, val := range v.ByUser {
-		if err := key.Validate(); err != nil {
+	for key0, val0 := range v.ByUser {
+		if err := key0.Validate(); err != nil {
 			return fmt.Errorf("byUser: %w", err)
 		}
-		if err := val.Validate(); err != nil {
+		if err := val0.Validate(); err != nil {
 			return err
 		}
 	}
@@ -371,12 +371,12 @@ func (v *Rg5Ok) Validate() error {
 // Validate checks every field-level constraint declared on Rg5Page.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Rg5Page[T]) Validate() error {
-	for i := range v.Items {
-		if vv, ok := any(&v.Items[i]).(interface{ Validate() error }); ok {
+	for i0 := range v.Items {
+		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
 				return err
 			}
-		} else if err := validateValue(v.Items[i]); err != nil {
+		} else if err := validateValue(v.Items[i0]); err != nil {
 			return err
 		}
 	}
@@ -452,21 +452,21 @@ func (v *Rg6Stacked) Validate() error {
 // Validate checks every field-level constraint declared on Rg7Box.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Rg7Box[T]) Validate() error {
-	for i := range v.Req {
-		if vv, ok := any(&v.Req[i]).(interface{ Validate() error }); ok {
+	for i0 := range v.Req {
+		if vv, ok := any(&v.Req[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
 				return err
 			}
-		} else if err := validateValue(v.Req[i]); err != nil {
+		} else if err := validateValue(v.Req[i0]); err != nil {
 			return err
 		}
 	}
-	for i := range v.Opt {
-		if vv, ok := any(&v.Opt[i]).(interface{ Validate() error }); ok {
+	for i0 := range v.Opt {
+		if vv, ok := any(&v.Opt[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
 				return err
 			}
-		} else if err := validateValue(v.Opt[i]); err != nil {
+		} else if err := validateValue(v.Opt[i0]); err != nil {
 			return err
 		}
 	}
@@ -536,13 +536,13 @@ func (v *RgContact) Validate() error {
 // Validate checks every field-level constraint declared on RgEnumMaps.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *RgEnumMaps) Validate() error {
-	for key := range v.ByColor {
-		if err := key.Validate(); err != nil {
+	for key0 := range v.ByColor {
+		if err := key0.Validate(); err != nil {
 			return fmt.Errorf("byColor: %w", err)
 		}
 	}
-	for key := range v.ByPrio {
-		if err := key.Validate(); err != nil {
+	for key0 := range v.ByPrio {
+		if err := key0.Validate(); err != nil {
 			return fmt.Errorf("byPrio: %w", err)
 		}
 	}
@@ -662,12 +662,12 @@ func (v *RgNullableScalars) Validate() error {
 // Validate checks every field-level constraint declared on RgPage.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *RgPage[T]) Validate() error {
-	for i := range v.Items {
-		if vv, ok := any(&v.Items[i]).(interface{ Validate() error }); ok {
+	for i0 := range v.Items {
+		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
 				return err
 			}
-		} else if err := validateValue(v.Items[i]); err != nil {
+		} else if err := validateValue(v.Items[i0]); err != nil {
 			return err
 		}
 	}

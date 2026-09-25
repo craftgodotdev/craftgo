@@ -159,9 +159,9 @@ func (v *Arr_TagSlice) Validate() error {
 // Validate checks every field-level constraint declared on Map_ArrayValue.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Map_ArrayValue) Validate() error {
-	for _, val := range v.Buckets {
-		for i0 := range val {
-			if err := val[i0].Validate(); err != nil {
+	for _, val0 := range v.Buckets {
+		for i1 := range val0 {
+			if err := val0[i1].Validate(); err != nil {
 				return fmt.Errorf("buckets: %w", err)
 			}
 		}
@@ -181,14 +181,28 @@ func (v *Map_Bounds) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on Map_JSONKey.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Map_JSONKey) Validate() error {
+	for key0, val0 := range v.Index {
+		if err := key0.Validate(); err != nil {
+			return fmt.Errorf("by_id: %w", err)
+		}
+		if err := val0.Validate(); err != nil {
+			return fmt.Errorf("by_id: %w", err)
+		}
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on Map_KeyAndValue.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Map_KeyAndValue) Validate() error {
-	for key, val := range v.Index {
-		if err := key.Validate(); err != nil {
+	for key0, val0 := range v.Index {
+		if err := key0.Validate(); err != nil {
 			return fmt.Errorf("index: %w", err)
 		}
-		if err := val.Validate(); err != nil {
+		if err := val0.Validate(); err != nil {
 			return fmt.Errorf("index: %w", err)
 		}
 	}
@@ -210,8 +224,8 @@ func (v *Map_Plain) Validate() error {
 // Validate checks every field-level constraint declared on Map_ScalarValue.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Map_ScalarValue) Validate() error {
-	for _, val := range v.Labels {
-		if err := val.Validate(); err != nil {
+	for _, val0 := range v.Labels {
+		if err := val0.Validate(); err != nil {
 			return fmt.Errorf("labels: %w", err)
 		}
 	}
@@ -221,8 +235,8 @@ func (v *Map_ScalarValue) Validate() error {
 // Validate checks every field-level constraint declared on Map_StructAddress.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Map_StructAddress) Validate() error {
-	for _, val := range v.Addresses {
-		if err := val.Validate(); err != nil {
+	for _, val0 := range v.Addresses {
+		if err := val0.Validate(); err != nil {
 			return err
 		}
 	}
@@ -232,8 +246,8 @@ func (v *Map_StructAddress) Validate() error {
 // Validate checks every field-level constraint declared on Map_StructValue.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Map_StructValue) Validate() error {
-	for _, val := range v.Users {
-		if err := val.Validate(); err != nil {
+	for _, val0 := range v.Users {
+		if err := val0.Validate(); err != nil {
 			return err
 		}
 	}

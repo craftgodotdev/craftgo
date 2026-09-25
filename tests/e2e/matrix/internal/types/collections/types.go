@@ -115,6 +115,12 @@ type Map_Bounds struct {
 	Counts map[string]int `json:"counts"`
 }
 
+// Map_JSONKey renames a map whose keys and values both carry validators:
+// a bad key and a bad value are reported under the JSON key alike.
+type Map_JSONKey struct {
+	Index map[NonEmptyID]Email `json:"by_id"`
+}
+
 // Map_KeyAndValue puts scalars on BOTH sides - NonEmptyID on the key,
 // Email on the value. Generator should emit TWO loops: one for keys
 // (`for k0 := range v.Index`) and one for values

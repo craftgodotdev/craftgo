@@ -2955,6 +2955,22 @@ components:
       required:
       - counts
       type: object
+    Map_JSONKey:
+      description: |-
+        Map_JSONKey renames a map whose keys and values both carry validators:
+        a bad key and a bad value are reported under the JSON key alike.
+      properties:
+        by_id:
+          additionalProperties:
+            $ref: '#/components/schemas/CollectionsEmail'
+          propertyNames:
+            maxLength: 64
+            minLength: 1
+            type: string
+          type: object
+      required:
+      - by_id
+      type: object
     Map_KeyAndValue:
       description: |-
         Map_KeyAndValue puts scalars on BOTH sides - NonEmptyID on the key,

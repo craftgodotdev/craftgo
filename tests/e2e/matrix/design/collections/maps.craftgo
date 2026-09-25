@@ -60,6 +60,12 @@ type Map_KeyAndValue {
 	index map<NonEmptyID, Email>
 }
 
+// Map_JSONKey renames a map whose keys and values both carry validators:
+// a bad key and a bad value are reported under the JSON key alike.
+type Map_JSONKey {
+	index map<NonEmptyID, Email> @json("by_id")
+}
+
 // Map_Optional is the optional-map case. The field carries no bounds,
 // so its validator reduces to an outer nil-guard around any inner
 // iteration.

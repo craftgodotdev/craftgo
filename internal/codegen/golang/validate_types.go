@@ -60,18 +60,3 @@ func (t checkTarget) primIs(kinds ...prims.Kind) bool {
 	sp, _ := prims.Lookup(t.prim)
 	return slices.Contains(kinds, sp.Kind)
 }
-
-// isTypeParamRef reports whether t, or the value type of a map t, names one of
-// params.
-func isTypeParamRef(t *ast.TypeRef, params []string) bool {
-	if t == nil {
-		return false
-	}
-	if t.Map != nil {
-		return isTypeParamRef(t.Map.Value, params)
-	}
-	if t.Named == nil {
-		return false
-	}
-	return slices.Contains(params, t.Named.Name.String())
-}
