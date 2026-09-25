@@ -199,6 +199,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   the member, and two trailing comments among them made formatting refuse
   the file.
 
+- **A trailing comment stays with its own member.** With a comment block
+  inside a member's lines, in a decorator's arguments or in a declaration
+  split over lines, formatting put the trailing comment of a later line of
+  that member on the next member. Formatting also refuses a file whose
+  result would hold a comment in another place: after another member, as a
+  doc, or in another block.
+
 - **`kafka.WithTLS(nil)` dials over TLS.** franz-go reads a nil config as
   "no TLS", so the brokers were dialed in plaintext and `WithSASLPlain`
   sent the password in clear. A nil config now dials with an empty one,

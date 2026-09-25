@@ -104,7 +104,7 @@ Errors appear inline as you type:
 
 ### Format
 
-The `craftgo fmt` CLI rewrites a file in canonical form: aligned field columns, consistent decorator spacing, tab indentation. The VS Code extension wires this to the editor's "Format Document" command. A buffer with an error, parse or semantic, is left untouched: fix the diagnostic first, then format. So is a buffer whose formatted text would not parse, or would lose a comment.
+The `craftgo fmt` CLI rewrites a file in canonical form: aligned field columns, consistent decorator spacing, tab indentation. The VS Code extension wires this to the editor's "Format Document" command. A buffer with an error, parse or semantic, is left untouched: fix the diagnostic first, then format. So is a buffer whose formatted text would not parse, or would lose or move a comment.
 
 ## Other editors
 

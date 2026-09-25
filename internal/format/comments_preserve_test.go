@@ -188,6 +188,30 @@ func TestFormatContinuedDecorators(t *testing.T) {
 	}
 }
 
+// A comment block inside a member's lines prints after the member, and the
+// trailing comments of the member's lines stay on the member's line.
+func TestFormatKeepsATrailingCommentWithItsMember(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{
+			"comment block inside a decorator's arguments",
+			"package x\n\ntype T {\n\ta string @doc(\n\t\t// note about the doc\n\t\t\"x\" // why x\n\t)\n\tb string\n}\n",
+			"package x\n\ntype T {\n\ta string @doc(\"x\") // why x\n\t// note about the doc\n\n\tb string\n}\n",
+		},
+		{
+			"trailing comment after the closing parenthesis",
+			"package x\n\ntype T {\n\ta string @header(\n\t//TODO\n\t\"X\") // n\n\tb string\n}\n",
+			"package x\n\ntype T {\n\ta string @header(\"X\") // n\n\t// TODO\n\n\tb string\n}\n",
+		},
+		{
+			"comment block inside a declaration",
+			"package x\n\nmiddleware\n// c\n A // t\n\nmiddleware B\n",
+			"package x\n\nmiddleware A // t\n\n// c\n\nmiddleware B\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
+	}
+}
+
 // Format refuses to put two comments on one collapsed line.
 func TestFormatRefusesTwoCommentsOnOneLine(t *testing.T) {
 	src := "package x\n\ntype T {\n\ta string @example({\n\t\tx: 1, // c1\n\t\ty: 2 // c2\n\t})\n}\n"

@@ -16,7 +16,8 @@ import (
 
 // Format parses src (filename only labels diagnostics) and returns its canonical
 // text. With diagnostics it returns src unchanged: src does not parse, or its
-// canonical text would not parse or would not hold the same comments.
+// canonical text would not parse or would not hold the same comments in the
+// same places.
 func Format(filename, src string) (string, []lexer.Diagnostic) {
 	p := parser.New(filename, src)
 	f := p.Parse()
@@ -33,7 +34,8 @@ func Format(filename, src string) (string, []lexer.Diagnostic) {
 }
 
 // checkOutput reports why out, the canonical text of in, cannot replace the
-// source in was parsed from: out does not parse, or its comments differ.
+// source in was parsed from: out does not parse, or its comments differ or
+// sit elsewhere.
 func checkOutput(filename string, in *ast.File, out string) []lexer.Diagnostic {
 	fileStart := lexer.Position{Filename: filename, Line: 1, Column: 1}
 	p := parser.New(filename, out)
@@ -61,6 +63,29 @@ func checkOutput(filename string, in *ast.File, out string) []lexer.Diagnostic {
 			return refusal(fileStart, "formatting would add the comment %q", c.Text)
 		}
 	}
+	return movedComment(in, outFile)
+}
+
+// movedComment reports a comment of in that out holds in another place: after
+// another construct, as another construct's doc, or in another scope.
+func movedComment(in, out *ast.File) []lexer.Diagnostic {
+	left := map[placedComment]int{}
+	for _, c := range fileLayout(out).comments {
+		left[c]++
+	}
+	moved := map[string]bool{}
+	for _, c := range fileLayout(in).comments {
+		if left[c] > 0 {
+			left[c]--
+			continue
+		}
+		moved[c.text] = true
+	}
+	for _, c := range in.Comments {
+		if moved[c.Text] {
+			return refusal(c.Pos, "formatting would move the comment %q", c.Text)
+		}
+	}
 	return nil
 }
 
@@ -76,9 +101,10 @@ func Print(w io.Writer, f *ast.File) error {
 	return pr.err
 }
 
-// newPrinter builds a Printer over the trailing and in-chain comments of f.
+// newPrinter builds a Printer over the trailing, in-chain and free comments of
+// f.
 func newPrinter(w io.Writer, f *ast.File) *Printer {
-	p := &Printer{w: w, chain: f.ChainComments}
+	p := &Printer{w: w, chain: f.ChainComments, codeAfter: fileLayout(f).codeAfterFreeComments()}
 	for _, c := range f.Comments {
 		if c.Kind == lexer.CommentTrailing {
 			p.trailing = append(p.trailing, c)
@@ -103,6 +129,9 @@ type Printer struct {
 	// chain maps a source line to the comments above the decorator, name or
 	// keyword on it inside a decorator chain.
 	chain map[int][]string
+	// codeAfter maps the first line of a free comment block to the first
+	// line of the construct below it.
+	codeAfter map[int]int
 }
 
 func (p *Printer) write(s string) {

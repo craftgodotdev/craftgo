@@ -15,10 +15,15 @@ func (p *Printer) endCode() { p.open = true }
 
 // at ends the open code line before the construct that starts on source line
 // src; the trailing comments of the source lines before src join it. A line
-// holds one: a second is left out, and Format then refuses the output.
+// holds one: a second is left out, and Format then refuses the output. A free
+// comment block prints below the construct it sits in, so before one the
+// trailing comments up to the next construct join the line.
 func (p *Printer) at(src int) {
 	if !p.open {
 		return
+	}
+	if next, ok := p.codeAfter[src]; ok {
+		src = next
 	}
 	for n := 0; p.emitted < len(p.trailing) && p.trailing[p.emitted].Pos.Line < src; n++ {
 		if n == 0 {

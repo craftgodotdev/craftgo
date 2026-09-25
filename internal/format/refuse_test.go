@@ -96,6 +96,34 @@ func TestCheckOutput(t *testing.T) {
 	}
 }
 
+// checkOutput refuses canonical text that holds a comment in another place:
+// after another member, or as a doc where the source had a free comment.
+func TestCheckOutputRefusesAMovedComment(t *testing.T) {
+	src := "package p\n\ntype A {\n\tx string // note\n\ty string\n}\n\n// free\n\ntype B {}\n"
+	for _, c := range []struct {
+		name, out, want string
+	}{
+		{"same places", "package p\n\ntype A {\n\tx string  // note\n\n\ty string\n}\n\n// free\n\ntype B {}\n", ""},
+		{"trailing comment on the next member", "package p\n\ntype A {\n\tx string\n\ty string // note\n}\n\n// free\n\ntype B {}\n", `t.craftgo:4:11: formatting would move the comment "note"`},
+		{"free comment turned doc", "package p\n\ntype A {\n\tx string // note\n\ty string\n}\n\n// free\ntype B {}\n", `t.craftgo:8:1: formatting would move the comment "free"`},
+		{"free comment into a body", "package p\n\ntype A {\n\tx string // note\n\ty string\n\n\t// free\n}\n\ntype B {}\n", `t.craftgo:8:1: formatting would move the comment "free"`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := parser.New("t.craftgo", src).Parse()
+			diags := checkOutput("t.craftgo", f, c.out)
+			if c.want == "" {
+				if len(diags) > 0 {
+					t.Fatalf("unexpected diagnostics: %v", diags)
+				}
+				return
+			}
+			if len(diags) == 0 || diags[0].Error() != c.want {
+				t.Fatalf("diagnostics %v, want %q", diags, c.want)
+			}
+		})
+	}
+}
+
 // commentTexts returns the text of every comment in src, sorted.
 func commentTexts(src string) []string {
 	p := parser.New("t.craftgo", src)
