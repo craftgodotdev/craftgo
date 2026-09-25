@@ -8,100 +8,63 @@ import (
 // checkFilePosition rejects a `file` field below the top level of a request
 // type, which the multipart binder never reaches, and any `file[][]`.
 func (a *analyzer) checkFilePosition() {
-	bodies := map[string][]ast.TypeMember{}
-	hasFile := false
-	record := func(name string, body []ast.TypeMember) {
-		bodies[name] = body
-		for _, f := range ast.Fields(body) {
-			if !isFileTypeRef(f.Type) {
-				continue
-			}
-			hasFile = true
-			if f.Type.ArrayDepth > 1 {
-				a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeFilePosition,
-					"field %s.%s: a multi-dimensional `file` array (`file[][]`) has no multipart encoding - only a single `file` or a 1-D `file[]` is supported", name, f.Name)
-			}
-		}
-	}
 	for _, td := range a.pkg.Types {
-		record(td.Name, td.Body)
+		a.checkFileArrayDepth(td.Name, td.Body)
 	}
 	for _, ed := range a.pkg.Errors {
-		record(ed.Name, ed.Body)
+		a.checkFileArrayDepth(ed.Name, ed.Body)
 	}
-	if !hasFile {
-		return
-	}
-
-	reported := map[*ast.Field]bool{}
-	report := func(f *ast.Field, owner, path string) {
-		if reported[f] {
-			return
-		}
-		reported[f] = true
-		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeFilePosition,
-			"field %s.%s: a `file` field nested inside a request body (reached through %s) is not bindable - the multipart binder reads only top-level request fields; move the `file` to the top level of the request type (or carry it in via a mixin)", owner, f.Name, path)
-	}
+	reported := map[lexer.Position]bool{}
 	for _, si := range a.pkg.Services {
 		for _, m := range si.Methods {
-			if m.Request != nil && m.Request.Name != nil {
-				a.walkRequestForNestedFiles(m.Request.Name.String(), bodies, report)
+			view, fields, ok := a.requestFields(m)
+			if !ok {
+				continue
+			}
+			seen := map[string]bool{}
+			for _, ff := range fields {
+				a.reportNestedFiles(view, ff.Field.Type, m.Request.Name.String()+"."+ff.Field.Name, seen, reported)
 			}
 		}
 	}
 }
 
-// walkRequestForNestedFiles reports every `file` field reached from request
-// type reqName through a struct-typed field; mixin fields count as top level.
-func (a *analyzer) walkRequestForNestedFiles(reqName string, bodies map[string][]ast.TypeMember, report func(f *ast.Field, owner, path string)) {
-	seen := map[string]bool{}
-	var nested func(owner string, members []ast.TypeMember, path string)
-	nested = func(owner string, members []ast.TypeMember, path string) {
-		if seen[owner] {
+// checkFileArrayDepth rejects a `file[][]` field of the body of owner.
+func (a *analyzer) checkFileArrayDepth(owner string, body []ast.TypeMember) {
+	for _, f := range ast.Fields(body) {
+		if isFileTypeRef(f.Type) && f.Type.ArrayDepth > 1 {
+			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeFilePosition,
+				"field %s.%s: a multi-dimensional `file` array (`file[][]`) has no multipart encoding - only a single `file` or a 1-D `file[]` is supported", owner, f.Name)
+		}
+	}
+}
+
+// reportNestedFiles reports each `file` field of the struct types t reaches,
+// mixin fields included, and of the structs below them; t is spelled as
+// package view spells it and path names how the request reaches it.
+func (a *analyzer) reportNestedFiles(view string, t *ast.TypeRef, path string, seen map[string]bool, reported map[lexer.Position]bool) {
+	t.WalkNamedRefs(func(n *ast.NamedTypeRef) {
+		pkg, sym := a.proj.resolve(view, n.Name)
+		if pkg == nil || pkg.Types[sym] == nil || seen[pkg.Name+"."+sym] {
 			return
 		}
-		seen[owner] = true
-		for _, m := range members {
-			switch v := m.(type) {
-			case *ast.Field:
-				if isFileTypeRef(v.Type) {
-					report(v, owner, path)
-					continue
-				}
-				for _, n := range namedTypeRefs(v.Type) {
-					if n != "file" {
-						nested(n, bodies[n], path+"."+v.Name)
-					}
-				}
-			case *ast.Mixin:
-				if v.Ref != nil && v.Ref.Name != nil {
-					name := v.Ref.Name.String()
-					nested(name, bodies[name], path)
-				}
+		seen[pkg.Name+"."+sym] = true
+		td := pkg.Types[sym]
+		fields, _ := a.proj.flattenFields(view, pkg.Name, td.Body, td.TypeParams, nil)
+		for _, ff := range fields {
+			f := ff.Field
+			if !isFileTypeRef(f.Type) {
+				a.reportNestedFiles(view, f.Type, path+"."+f.Name, seen, reported)
+				continue
 			}
-		}
-	}
-	var top func(members []ast.TypeMember)
-	top = func(members []ast.TypeMember) {
-		for _, m := range members {
-			switch v := m.(type) {
-			case *ast.Field:
-				if isFileTypeRef(v.Type) {
-					continue
-				}
-				for _, n := range namedTypeRefs(v.Type) {
-					if n != "file" {
-						nested(n, bodies[n], reqName+"."+v.Name)
-					}
-				}
-			case *ast.Mixin:
-				if v.Ref != nil && v.Ref.Name != nil {
-					top(bodies[v.Ref.Name.String()])
-				}
+			if reported[f.Pos] {
+				continue
 			}
+			reported[f.Pos] = true
+			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeFilePosition,
+				"field %s.%s: a `file` field nested inside a request body (reached through %s) is not bindable - the multipart binder reads only top-level request fields; move the `file` to the top level of the request type (or carry it in via a mixin)", td.Name, f.Name, path)
 		}
-	}
-	top(bodies[reqName])
+	})
 }
 
 // isFileTypeRef reports whether t names `file`, optional or in an array.

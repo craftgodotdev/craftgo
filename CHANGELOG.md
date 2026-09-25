@@ -372,6 +372,12 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **A repeated enum value name or literal points at its first use.** The
   third `A` of an enum related to the second one as "first declared here".
 
+- **A `file` nested in another package's type is found.** A request field
+  `att shared.Attachment`, whose type holds a `file`, passed analysis, and
+  the multipart binder never read the file; so did a request type declared
+  in another package. Both now report `binding/file-position`, as a local struct
+  already did.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

@@ -186,22 +186,3 @@ func describeTypeRef(t *ast.TypeRef) string {
 	}
 	return name
 }
-
-// namedTypeRefs returns the leaf names of every named type referenced by t -
-// the named type itself, its generic arguments, and map key / value types.
-func namedTypeRefs(t *ast.TypeRef) []string {
-	if t == nil {
-		return nil
-	}
-	if t.Map != nil {
-		return append(namedTypeRefs(t.Map.Key), namedTypeRefs(t.Map.Value)...)
-	}
-	var out []string
-	if t.Named != nil && t.Named.Name != nil {
-		out = append(out, t.Named.Name.String())
-		for _, arg := range t.Named.Args {
-			out = append(out, namedTypeRefs(arg)...)
-		}
-	}
-	return out
-}

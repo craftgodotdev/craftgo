@@ -1,6 +1,9 @@
 package semantic
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // A `file` below the request's top level is rejected; top-level, mixin and response files are not.
 func TestNestedRequestFileRejected(t *testing.T) {
@@ -39,6 +42,24 @@ service S { post Up /up { request UploadReq  response Resp } }`)
 	mustNoFilePosition("echo", `package design
 type Profile { avatar file @form  name string }
 service S { post Up /up { request Profile  response Profile } }`)
+}
+
+// A `file` nested in a struct another package declares is rejected too, and
+// in a request type another package declares.
+func TestNestedRequestFileAcrossPackagesRejected(t *testing.T) {
+	for label, api := range map[string]string{
+		"nested struct": "type UploadReq { att shared.Attachment }\nservice S { post Up /up { request UploadReq  response Resp } }",
+		"request type":  "service S { post Up /up { request shared.UploadReq  response Resp } }",
+	} {
+		root, files := projectFixture(t, map[string]string{
+			"shared/s.craftgo": "package shared\ntype Attachment { data file }\ntype UploadReq { att Attachment }",
+			"api.craftgo":      "package api\nimport \"shared\"\ntype Resp { ok bool }\n" + api,
+		})
+		_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+		if d := findCode(diags, CodeFilePosition); d == nil || !strings.Contains(d.Msg, "UploadReq.att") {
+			t.Errorf("%s: want the nested file reported through UploadReq.att, got %v", label, diags)
+		}
+	}
 }
 
 // A `file[][]` field is rejected; a `file[]` field is accepted.
