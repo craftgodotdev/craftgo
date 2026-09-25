@@ -1555,8 +1555,8 @@ service S { post DoIt /h/{id} { request shared.Holder  response Resp } }`,
 	got := map[string]wire.Binding{}
 	var names []string
 	for _, rf := range resolveRequestFields(m, appPkg, r) {
-		got[rf.DSLName] = rf.Binding
-		names = append(names, rf.DSLName)
+		got[rf.Field.Name] = rf.Binding
+		names = append(names, rf.Field.Name)
 	}
 	if got["q"] != wire.BindQuery {
 		t.Errorf("q should bind @query (from the cross-pkg request's bare mixin); got %v, fields %v", got["q"], names)

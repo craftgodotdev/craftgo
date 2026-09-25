@@ -36,16 +36,11 @@ type ResolvedField struct {
 	// Field is the source field, after generic substitution and mixin promotion.
 	Field *ast.Field
 
-	DSLName  string        // the source field identifier (wire/json base name)
 	Category FieldCategory // the resolved type category
 
 	// ResolvedPrim is the DSL primitive behind a built-in, scalar or enum
 	// field, as its declaring package defines it; "" otherwise.
 	ResolvedPrim string
-
-	// HomePkg is the package a named type resolves in: the qualifier of a
-	// `lib.X` ref, else the resolving package; "" for a built-in or raw field.
-	HomePkg string
 
 	// IsNilable reports whether the Go type holds nil itself, so `?` adds no
 	// pointer. A raw field's nil means absent; a JSON null arrives as `null` bytes.
@@ -63,10 +58,7 @@ type ResolvedField struct {
 	AutoBound bool
 
 	NeedsNilGuard bool // optional or @nullable
-
-	HasDefault  bool // carries @default
-	DefaultWire any  // the resolved default as a wire value (enum member -> wire)
-	HasDefValue bool // a default value resolved
+	HasDefValue   bool // carries a @default whose value resolves
 
 	// SpecRequired puts the field in the document's required list (no `?`,
 	// no @default); RuntimeEnforced emits a presence check (not optional,
@@ -116,15 +108,11 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 	}
 	rf.Field = f
 	if f != nil {
-		rf.DSLName = f.Name
-		dv, hasDV := ResolveDefaultValue(f, pkg)
 		rf.Binding = wire.ExplicitBinding(f)
 		_, offBody := wire.NonBodyBindingKind(f)
 		rf.OnWireBody = !offBody && !wire.HasSensitive(f.Decorators)
 		rf.NeedsNilGuard = FieldIsOptional(f)
-		rf.HasDefault = ast.HasDecorator(f.Decorators, "default")
-		rf.DefaultWire = dv
-		rf.HasDefValue = hasDV
+		_, rf.HasDefValue = ResolveDefaultValue(f, pkg)
 		rf.SpecRequired = FieldIsRequired(f)
 		rf.RuntimeEnforced = f.Type != nil && !FieldIsOptional(f) && !wire.HasSensitive(f.Decorators)
 	}
@@ -170,29 +158,26 @@ func resolveTypeRef(t *ast.TypeRef, raw bool, pkg *Package, proj *Project) Resol
 	name := parts[len(parts)-1]
 	homePkg := pkg
 	if len(parts) == 2 && proj != nil {
-		rf.HomePkg = parts[0]
 		homePkg = proj.Packages[parts[0]]
-	} else if pkg != nil {
-		rf.HomePkg = pkg.Name
 	}
 
 	if sp, ok := prims.Lookup(name); ok {
 		switch sp.Kind {
 		case prims.Bytes:
 			if raw {
-				rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatRawBytes, name, true, ""
+				rf.Category, rf.ResolvedPrim, rf.IsNilable = CatRawBytes, name, true
 				return rf
 			}
-			rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatBytes, name, true, ""
+			rf.Category, rf.ResolvedPrim, rf.IsNilable = CatBytes, name, true
 			return rf
 		case prims.Any:
-			rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatAny, name, true, ""
+			rf.Category, rf.ResolvedPrim, rf.IsNilable = CatAny, name, true
 			return rf
 		case prims.File:
-			rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatFile, name, true, ""
+			rf.Category, rf.ResolvedPrim, rf.IsNilable = CatFile, name, true
 			return rf
 		case prims.String, prims.Bool, prims.Int, prims.Uint, prims.Float, prims.DateTime:
-			rf.Category, rf.ResolvedPrim, rf.HomePkg = CatPrimitive, name, ""
+			rf.Category, rf.ResolvedPrim = CatPrimitive, name
 			return rf
 		}
 	}
@@ -200,7 +185,7 @@ func resolveTypeRef(t *ast.TypeRef, raw bool, pkg *Package, proj *Project) Resol
 		if sd, ok := homePkg.Scalars[name]; ok && sd != nil {
 			if sd.Primitive == "bytes" && (raw || HasRawFormat(sd.Decorators)) {
 				// A scalar over raw bytes is a raw field.
-				rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatRawBytes, sd.Primitive, true, ""
+				rf.Category, rf.ResolvedPrim, rf.IsNilable = CatRawBytes, sd.Primitive, true
 				return rf
 			}
 			rf.Category, rf.ResolvedPrim = CatScalar, sd.Primitive

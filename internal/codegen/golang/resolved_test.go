@@ -45,7 +45,7 @@ service S {
 	bind := func(m *ast.Method) map[string]wire.Binding {
 		out := map[string]wire.Binding{}
 		for _, rf := range resolveRequestFields(m, pkg, resolverFor(pkg, nil)) {
-			out[rf.DSLName] = rf.Binding
+			out[rf.Field.Name] = rf.Binding
 		}
 		return out
 	}
@@ -90,7 +90,7 @@ type Req {
 	got := resolveTypeFields(td, pkg)
 	byName := map[string]resolvedField{}
 	for _, rf := range got {
-		byName[rf.DSLName] = rf
+		byName[rf.Field.Name] = rf
 	}
 
 	if _, ok := byName["createdAt"]; !ok {
@@ -106,7 +106,7 @@ type Req {
 		// name: plain required body field.
 		{"name", resolvedField{ResolvedField: semantic.ResolvedField{Binding: wire.BindBody, OnWireBody: true, SpecRequired: true}, IsPointer: false}},
 		// sort: optional (`?`) → pointer + nil-guard; @default → never required.
-		{"sort", resolvedField{ResolvedField: semantic.ResolvedField{Binding: wire.BindBody, OnWireBody: true, NeedsNilGuard: true, HasDefault: true, SpecRequired: false}, IsPointer: true}},
+		{"sort", resolvedField{ResolvedField: semantic.ResolvedField{Binding: wire.BindBody, OnWireBody: true, NeedsNilGuard: true, HasDefValue: true, SpecRequired: false}, IsPointer: true}},
 		// bio: @nullable → pointer + nil-guard, still required (the key is sent, maybe as null).
 		{"bio", resolvedField{ResolvedField: semantic.ResolvedField{Binding: wire.BindBody, OnWireBody: true, NeedsNilGuard: true, SpecRequired: true}, IsPointer: true}},
 		// token: @query - off the body, wire name from the arg.
@@ -130,8 +130,8 @@ type Req {
 		if rf.NeedsNilGuard != c.want.NeedsNilGuard {
 			t.Errorf("%s: NeedsNilGuard = %v, want %v", c.name, rf.NeedsNilGuard, c.want.NeedsNilGuard)
 		}
-		if rf.HasDefault != c.want.HasDefault {
-			t.Errorf("%s: HasDefault = %v, want %v", c.name, rf.HasDefault, c.want.HasDefault)
+		if rf.HasDefValue != c.want.HasDefValue {
+			t.Errorf("%s: HasDefValue = %v, want %v", c.name, rf.HasDefValue, c.want.HasDefValue)
 		}
 		if rf.SpecRequired != c.want.SpecRequired {
 			t.Errorf("%s: SpecRequired = %v, want %v", c.name, rf.SpecRequired, c.want.SpecRequired)
@@ -143,10 +143,6 @@ type Req {
 			t.Errorf("%s wire name = %q, want %q", name, wireName(rf.Field, rf.Binding), want)
 		}
 	}
-	if dv := byName["sort"].DefaultWire; dv != "asc" {
-		t.Errorf("sort DefaultWire = %v, want asc", dv)
-	}
-
 	// A @sensitive field is off the wire, so it gets no runtime presence check.
 	if byName["secret"].RuntimeEnforced {
 		t.Errorf("secret (@sensitive): RuntimeEnforced = true, want false (off-wire, presence check unsatisfiable)")
@@ -165,25 +161,27 @@ type T {
 	e string  @nullable
 }`)
 	for _, rf := range resolveTypeFields(pkg.Types["T"], pkg) {
+		name := rf.Field.Name
 		optional := rf.Field.Type != nil && rf.Field.Type.Optional
 		nullable := ast.HasDecorator(rf.Field.Decorators, "nullable")
-		if rf.SpecRequired && (optional || rf.HasDefault) {
-			t.Errorf("%s: SpecRequired but optional=%v hasDefault=%v - required[] must exclude both",
-				rf.DSLName, optional, rf.HasDefault)
+		defaulted := ast.HasDecorator(rf.Field.Decorators, "default")
+		if rf.SpecRequired && (optional || defaulted) {
+			t.Errorf("%s: SpecRequired but optional=%v defaulted=%v - required[] must exclude both",
+				name, optional, defaulted)
 		}
-		if !rf.SpecRequired && !optional && !rf.HasDefault {
-			t.Errorf("%s: not SpecRequired yet neither optional nor defaulted", rf.DSLName)
+		if !rf.SpecRequired && !optional && !defaulted {
+			t.Errorf("%s: not SpecRequired yet neither optional nor defaulted", name)
 		}
 		// RuntimeEnforced excludes optional and @nullable fields but not defaulted ones.
 		if rf.RuntimeEnforced != (!optional && !nullable) {
-			t.Errorf("%s: RuntimeEnforced=%v, want %v", rf.DSLName, rf.RuntimeEnforced, !optional && !nullable)
+			t.Errorf("%s: RuntimeEnforced=%v, want %v", name, rf.RuntimeEnforced, !optional && !nullable)
 		}
 		if rf.SpecRequired != rf.RuntimeEnforced {
-			divergeByDefault := rf.HasDefault && !optional && !nullable
-			divergeByNullable := nullable && !optional && !rf.HasDefault
+			divergeByDefault := defaulted && !optional && !nullable
+			divergeByNullable := nullable && !optional && !defaulted
 			if !divergeByDefault && !divergeByNullable {
 				t.Errorf("%s: SpecRequired(%v) != RuntimeEnforced(%v) for an unexpected reason (default=%v nullable=%v)",
-					rf.DSLName, rf.SpecRequired, rf.RuntimeEnforced, rf.HasDefault, nullable)
+					name, rf.SpecRequired, rf.RuntimeEnforced, defaulted, nullable)
 			}
 		}
 	}
@@ -192,7 +190,7 @@ type T {
 func names(fs []resolvedField) []string {
 	out := make([]string, len(fs))
 	for i, f := range fs {
-		out[i] = f.DSLName
+		out[i] = f.Field.Name
 	}
 	return out
 }
