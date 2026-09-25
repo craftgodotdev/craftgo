@@ -200,6 +200,13 @@ type Lookup[T any] struct {
 	Level *T   `json:"level,omitempty"`
 }
 
+// MapPages instantiates Page over a map and over an array of those maps:
+// two components, the second's name ending in `Array`.
+type MapPages struct {
+	ByKey   Page[map[string]Order]   `json:"byKey"`
+	ByBatch Page[[]map[string]Order] `json:"byBatch"`
+}
+
 // MapValueGeneric verifies that generic instances ride the `map<K, V>`
 // builtin without losing their synthetic name: the value branch goes
 // through schemaForTypeRef recursively, so `Page<Order>` is registered

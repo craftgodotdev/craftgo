@@ -305,6 +305,18 @@ func (v *Lookup[T]) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on MapPages.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *MapPages) Validate() error {
+	if err := v.ByKey.Validate(); err != nil {
+		return err
+	}
+	if err := v.ByBatch.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on MapValueGeneric.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *MapValueGeneric) Validate() error {

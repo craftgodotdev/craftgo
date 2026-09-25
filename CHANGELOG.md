@@ -833,6 +833,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   security scheme without flows, stopped the Go code too; it now stops only a
   run that writes the document.
 
+- **A generic over an array of maps gets its own OpenAPI component.**
+  `Page<map<string, Item>[]>` was named like `Page<map<string, Item>>`,
+  `PageOfMapOfStringAndItem`, so a design using both stopped with a
+  generic-instance collision; the array's is `PageOfMapOfStringAndItemArray`.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

@@ -93,6 +93,12 @@ func TestGenericComponentName(t *testing.T) {
 			want:     "EnvelopeOfMapOfStringAndUser",
 		},
 		{
+			name:     "array of maps keeps its suffix",
+			declName: "Envelope",
+			args:     []*ast.TypeRef{tArray(tMap(tRef("string"), tRef("User")))},
+			want:     "EnvelopeOfMapOfStringAndUserArray",
+		},
+		{
 			name:     "deep recursion stays linear in tokens",
 			declName: "Page",
 			args:     []*ast.TypeRef{tRef("Result", tRef("User"), tRef("Error"))},
@@ -224,7 +230,12 @@ service S { post G /g { request Req  response Resp } }`,
 	if _, err := mk("real Page<IntArray>  prim Page<int[]>"); err == nil || !strings.Contains(err.Error(), "structurally distinct generic") {
 		t.Errorf("expected generic-instance collision error, got: %v", err)
 	}
-	if _, err := mk("a Page<int>  b Page<string>"); err != nil {
-		t.Errorf("distinct generic instances wrongly rejected: %v", err)
+	for _, fields := range []string{
+		"a Page<int>  b Page<string>",
+		"a Page<map<string, int>>  b Page<map<string, int>[]>",
+	} {
+		if _, err := mk(fields); err != nil {
+			t.Errorf("distinct generic instances %s wrongly rejected: %v", fields, err)
+		}
 	}
 }

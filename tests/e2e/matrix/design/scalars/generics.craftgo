@@ -119,6 +119,13 @@ type MapValueGeneric {
 	bucket map<string, Page<Order>>
 }
 
+// MapPages instantiates Page over a map and over an array of those maps:
+// two components, the second's name ending in `Array`.
+type MapPages {
+	byKey   Page<map<string, Order>>
+	byBatch Page<map<string, Order>[]>
+}
+
 // PageOfPrimitive exercises a non-component arg type: `Page<string>`
 // must emit a component `PageOfString` whose items field is
 // `{ type: string }` (primitive inline), not `$ref:String`. The

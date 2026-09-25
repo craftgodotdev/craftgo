@@ -117,11 +117,10 @@ func typeRefName(t *ast.TypeRef) string {
 	}
 	var name string
 	switch {
+	case t.Array:
+		name = typeRefName(t.ElemTypeRef()) + "Array"
 	case t.Map != nil:
 		name = "MapOf" + typeRefName(t.Map.Key) + "And" + typeRefName(t.Map.Value)
-	case t.Array:
-		inner := t.ElemTypeRef()
-		name = typeRefName(inner) + "Array"
 	case t.Named != nil:
 		name = namedTypeName(t.Named)
 	default:

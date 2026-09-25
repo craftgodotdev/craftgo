@@ -2792,7 +2792,7 @@ components:
     ListKeyedRespBody:
       $ref: '#/components/schemas/OrderPage'
     ListOrderGroupsRespBody:
-      $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrder'
+      $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrderArray'
     ListOrdersReq:
       description: |-
         ListOrdersReq mirrors the canonical cursor-pagination request shape.
@@ -3049,6 +3049,19 @@ components:
       type: object
     MapKeyValueRespBody:
       $ref: '#/components/schemas/Map_KeyAndValue'
+    MapPages:
+      description: |-
+        MapPages instantiates Page over a map and over an array of those maps:
+        two components, the second's name ending in `Array`.
+      properties:
+        byBatch:
+          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrderArray'
+        byKey:
+          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrder'
+      required:
+      - byKey
+      - byBatch
+      type: object
     MapStructReqBody:
       description: |-
         Map_StructValue is the struct-valued map. The generator emits a
@@ -6198,6 +6211,28 @@ components:
       - total
       type: object
     ScalarsPageOfMapOfStringAndScalarsOrder:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            additionalProperties:
+              $ref: '#/components/schemas/ScalarsOrder'
+            type: object
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    ScalarsPageOfMapOfStringAndScalarsOrderArray:
       description: |-
         Page<T> is the canonical cursor-pagination envelope. T-typed
         fields use the runtime-Validate path (interface assertion);
