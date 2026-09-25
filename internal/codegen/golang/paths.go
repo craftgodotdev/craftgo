@@ -38,10 +38,7 @@ func goImportFromRel(modulePath, rel string) string {
 // relDir spells a project-relative directory ("./internal/config/") as forward-slash segments
 // ("internal/config"), "" for the project root.
 func relDir(rel string) string {
-	rel = strings.ReplaceAll(rel, "\\", "/")
-	rel = strings.TrimPrefix(rel, "./")
-	rel = strings.TrimPrefix(rel, "/")
-	return strings.TrimSuffix(rel, "/")
+	return strings.TrimPrefix(path.Clean("/"+strings.ReplaceAll(rel, "\\", "/")), "/")
 }
 
 // displayDir renders a project-relative directory for generated paths and comments; the root is ".".
