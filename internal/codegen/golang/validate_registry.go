@@ -8,7 +8,7 @@ import (
 // out when the field type does not fit.
 type goCheck func(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string
 
-// goChecks maps every constraint decorator in [semantic.Registry] to its Go check.
+// goChecks maps every constraint decorator of [semantic.Names] to its Go check.
 var goChecks = map[string]goCheck{
 	// string
 	"length": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return lengthCheck(f, a, d, c) },

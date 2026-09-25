@@ -25,7 +25,7 @@ func (a *analyzer) checkDecoratorArgs(s decoratorSite) {
 // checkDecoratorArg checks d's argument shape against spec, and the values
 // `@example`, `@pattern` and `@group` take.
 func (a *analyzer) checkDecoratorArg(d *ast.Decorator, spec Spec) {
-	if spec.Flag && d.HasParens {
+	if spec.Args.Max == 0 && d.HasParens {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeFlagEmptyParens,
 			"@%s never accepts arguments - drop the parens (canonical: `@%s`). `craftgo fmt` fixes this on save.",
 			d.Name, d.Name)

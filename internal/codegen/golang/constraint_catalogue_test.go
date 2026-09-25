@@ -9,7 +9,8 @@ import (
 // constraintNames returns the registry's constraint decorators, or only those with a schema form.
 func constraintNames(schemaOnly bool) map[string]bool {
 	out := map[string]bool{}
-	for name, spec := range semantic.Registry {
+	for _, name := range semantic.Names() {
+		spec, _ := semantic.Lookup(name)
 		if spec.Constraint == 0 {
 			continue
 		}
@@ -39,7 +40,8 @@ func TestGoChecksCoverConstraints(t *testing.T) {
 // The runtime-only constraints are the ones a multipart part cannot express as a schema keyword.
 func TestRuntimeOnlyConstraints(t *testing.T) {
 	want := map[string]bool{"maxSize": true, "mimeTypes": true}
-	for name, spec := range semantic.Registry {
+	for _, name := range semantic.Names() {
+		spec, _ := semantic.Lookup(name)
 		if spec.Constraint != semantic.ConstraintRuntime {
 			continue
 		}

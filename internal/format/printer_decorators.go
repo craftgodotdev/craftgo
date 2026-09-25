@@ -5,6 +5,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // Decorator writes `@name` or `@name(args)`.
@@ -24,10 +25,11 @@ func (p *Printer) Decorator(d *ast.Decorator) {
 	}
 }
 
-// decoratorArgInContext prints argument idx of decoratorName; a first positional
-// @format string that is an identifier prints bare (`@format(email)`).
+// decoratorArgInContext prints argument idx of decoratorName; a string that is
+// an identifier prints bare as the first positional argument of a decorator
+// whose first argument names one of a closed set (`@format(email)`).
 func (p *Printer) decoratorArgInContext(decoratorName string, idx int, a *ast.DecoratorArg) {
-	if decoratorName == "format" && idx == 0 && !a.Named {
+	if spec, known := semantic.Lookup(decoratorName); known && len(spec.Args.Enum) > 0 && idx == 0 && !a.Named {
 		if s, ok := a.Value.(*ast.StringLit); ok && lexer.IsIdent(s.Value) {
 			p.write(s.Value)
 			return

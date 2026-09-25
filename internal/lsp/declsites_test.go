@@ -55,9 +55,10 @@ func TestDeclSitesMatchSemanticPlacement(t *testing.T) {
 				t.Fatalf("%s fixture without a decorator: %v", kw, bare.errs)
 			}
 			kinds[fmt.Sprintf("%T", bare.file.Decls[0])] = true
-			for _, name := range slices.Sorted(maps.Keys(semantic.Registry)) {
+			for _, name := range semantic.Names() {
 				got := parseDesign(t, strings.Replace(c.fixture, "@D", "@"+name, 1)).misplaced
-				want := semantic.Registry[name].Levels&c.level == 0
+				spec, _ := semantic.Lookup(name)
+				want := spec.Levels&c.level == 0
 				if got != want {
 					t.Errorf("%s at level %q: @%s misplaced = %v, want %v", kw, c.level, name, got, want)
 				}
@@ -76,7 +77,7 @@ func TestDeclSitesMatchSemanticPlacement(t *testing.T) {
 func TestExtendSiteCompletionMatchesSemantic(t *testing.T) {
 	const fixture = "service S { get A /a {} }\n@D\nextend service S {\n\tget G /g {}\n}\n"
 	offered := labelSet(mustCompletionsAtCursor(t, "t.craftgo", "package x\n"+strings.Replace(fixture, "@D", "@|", 1)))
-	for _, name := range slices.Sorted(maps.Keys(semantic.Registry)) {
+	for _, name := range semantic.Names() {
 		accepted := !parseDesign(t, strings.Replace(fixture, "@D", "@"+name, 1)).misplaced
 		if offered[name] != accepted {
 			t.Errorf("@%s above an extend: offered = %v, accepted by analysis = %v", name, offered[name], accepted)
@@ -114,8 +115,8 @@ func TestFieldDecoratorCompletionMatchesSemanticTypes(t *testing.T) {
 	for _, typ := range []string{"string", "bytes", "int", "float64", "bool", "datetime", "string[]", "map<string, int>", "Email", "Flag", "Raw"} {
 		const decls = "scalar Email string\nscalar Flag bool\nscalar Raw bytes @format(raw)\n"
 		offered := labelSet(mustCompletionsAtCursor(t, "t.craftgo", "package x\n"+decls+"type T {\n\tv "+typ+" @|\n}\n"))
-		for _, name := range slices.Sorted(maps.Keys(semantic.Registry)) {
-			spec := semantic.Registry[name]
+		for _, name := range semantic.Names() {
+			spec, _ := semantic.Lookup(name)
 			if spec.AppliesTo == 0 || spec.Levels&semantic.LvlField == 0 {
 				continue
 			}

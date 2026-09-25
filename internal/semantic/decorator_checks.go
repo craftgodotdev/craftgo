@@ -15,7 +15,7 @@ func (a *analyzer) checkDecoratorDuplicates(s decoratorSite) {
 		}
 	}
 	for _, d := range s.decs {
-		if Registry[d.Name].Repeatable {
+		if spec, _ := Lookup(d.Name); spec.Repeatable {
 			continue
 		}
 		if prev, ok := seen[d.Name]; ok {

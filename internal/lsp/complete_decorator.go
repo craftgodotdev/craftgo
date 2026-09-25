@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -37,7 +36,7 @@ func (r *request) decoratorArgItems(c cursor, name string) []protocol.Completion
 			return items
 		}
 	}
-	if spec, ok := semantic.Registry[name]; ok && len(spec.Args.Kinds) > 0 {
+	if spec, ok := semantic.Lookup(name); ok && len(spec.Args.Kinds) > 0 {
 		switch spec.Args.Kinds[0] {
 		case semantic.ArgDuration:
 			return durationCompletions(r.view(), c)
@@ -102,7 +101,7 @@ func decoratorArgContext(view snapshotView, c cursor) (string, int, bool) {
 // decoratorArgCompletions offers the registry's argument values of @name (the
 // formats of @format, for one), or nil when it declares none.
 func decoratorArgCompletions(name string) []protocol.CompletionItem {
-	spec, ok := semantic.Registry[name]
+	spec, ok := semantic.Lookup(name)
 	if !ok {
 		return nil
 	}
@@ -131,14 +130,9 @@ func (r *request) decoratorCompletions(c cursor, prefix string) []protocol.Compl
 	// decorator's AppliesTo; 0 on either side means no filter.
 	fieldPrim := r.primsAt(level, c)
 	extendSite := level == semantic.LvlService && nextTopLevelKeyword(view, c) == lexer.KwExtend
-	names := make([]string, 0, len(semantic.Registry))
-	for name := range semantic.Registry {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	out := make([]protocol.CompletionItem, 0, len(names))
-	for _, name := range names {
-		spec := semantic.Registry[name]
+	var out []protocol.CompletionItem
+	for _, name := range semantic.Names() {
+		spec, _ := semantic.Lookup(name)
 		allowed := spec.Levels&level != 0
 		if extendSite {
 			allowed = semantic.ExtendAllows(name)

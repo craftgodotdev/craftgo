@@ -243,6 +243,9 @@ func TestFlagDecoratorEmptyParensWarn(t *testing.T) {
 	expectDiag(t, `type X { age int @positive() }`, CodeFlagEmptyParens)
 	expectDiag(t, `type X { tag string[] @uniqueItems() }`, CodeFlagEmptyParens)
 	expectDiag(t, `type X { nick string @nullable() }`, CodeFlagEmptyParens)
+	for _, name := range []string{"ignoreTags", "ignoreMiddleware", "ignoreSecurity"} {
+		expectDiag(t, "type R { ok bool }\nservice S {\n  @"+name+"()\n  get A /a { response R }\n}", CodeFlagEmptyParens)
+	}
 }
 
 func TestFlagDecoratorBareForm(t *testing.T) {

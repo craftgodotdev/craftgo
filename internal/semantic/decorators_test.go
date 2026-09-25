@@ -83,7 +83,7 @@ func TestRegistrySpecLevels(t *testing.T) {
 }
 
 func TestRegistrySpecsHaveDocs(t *testing.T) {
-	for name, s := range Registry {
+	for name, s := range registry {
 		if s.Name != name {
 			t.Errorf("registry key %q != Spec.Name %q", name, s.Name)
 		}
@@ -812,7 +812,7 @@ extend service S {
 
 // ExtendAllows accepts @group and every decorator a method takes.
 func TestExtendAllows(t *testing.T) {
-	for name, spec := range Registry {
+	for name, spec := range registry {
 		want := name == "group" || spec.Levels&LvlMethod != 0
 		if got := ExtendAllows(name); got != want {
 			t.Errorf("ExtendAllows(%q) = %v, want %v", name, got, want)

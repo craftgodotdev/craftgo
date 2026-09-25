@@ -382,6 +382,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   in another package. Both now report `binding/file-position`, as a local struct
   already did.
 
+- **`@ignoreTags()`, `@ignoreMiddleware()` and `@ignoreSecurity()` warn about
+  their empty parentheses** with `decorator/flag-empty-parens`, as every
+  other decorator that takes no argument does and as the decorator
+  reference says; `craftgo fmt` already removed them.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

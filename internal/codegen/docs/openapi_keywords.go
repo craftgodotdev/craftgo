@@ -13,7 +13,7 @@ const rawSchemaDescription = "raw encoded value"
 // schemaKeyword stamps one constraint decorator onto a schema.
 type schemaKeyword func(d *ast.Decorator, s *openapi3.Schema)
 
-// schemaKeywords maps each constraint decorator [semantic.Registry] gives a
+// schemaKeywords maps each constraint decorator of [semantic.Names] with a
 // schema form to its keyword; a ConstraintRuntime decorator has no row.
 var schemaKeywords = map[string]schemaKeyword{
 	"length": func(d *ast.Decorator, s *openapi3.Schema) {

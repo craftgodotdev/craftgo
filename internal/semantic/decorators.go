@@ -1,6 +1,8 @@
 package semantic
 
 import (
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -249,7 +251,8 @@ type Spec struct {
 	// Doc is the LSP hover text.
 	Doc string
 	// Args is the positional argument shape; the zero value takes no
-	// arguments.
+	// arguments, which makes the decorator a flag: empty `()` on it draws
+	// [CodeFlagEmptyParens].
 	Args ArgsRule
 	// AppliesTo is the set of primitive categories the decorated field or
 	// scalar may have; zero allows any.
@@ -257,9 +260,6 @@ type Spec struct {
 	// Constraint is what the decorator restricts; zero means it is not a
 	// constraint.
 	Constraint ConstraintFamily
-	// Flag marks a decorator written without arguments or parentheses;
-	// empty `()` on it draws [CodeFlagEmptyParens].
-	Flag bool
 	// Repeatable lets the decorator appear more than once on one site, each
 	// occurrence adding to the aggregate.
 	Repeatable bool
@@ -292,9 +292,9 @@ func isFormatRaw(d *ast.Decorator) bool {
 
 var formatValues = append(strfmt.Names(), FormatRaw)
 
-// Registry is the closed set of decorators craftgo recognises; any other
-// `@name` is an error.
-var Registry = map[string]Spec{
+// registry is the closed set of decorators craftgo recognises; any other
+// `@name` is an error. [Lookup] and [Names] read it.
+var registry = map[string]Spec{
 	// ---- Universal documentation / lifecycle ----
 	"doc": {
 		Name:     "doc",
@@ -423,8 +423,8 @@ var Registry = map[string]Spec{
 		AppliesTo:  PrimNumber,
 		Constraint: ConstraintNumeric,
 	},
-	"positive": {Name: "positive", Levels: LvlField | LvlScalar | LvlErrorField, Doc: "Value must be > 0.", AppliesTo: PrimNumber, Flag: true, Constraint: ConstraintNumeric},
-	"negative": {Name: "negative", Levels: LvlField | LvlScalar | LvlErrorField, Doc: "Value must be < 0.", AppliesTo: PrimNumber, Flag: true, Constraint: ConstraintNumeric},
+	"positive": {Name: "positive", Levels: LvlField | LvlScalar | LvlErrorField, Doc: "Value must be > 0.", AppliesTo: PrimNumber, Constraint: ConstraintNumeric},
+	"negative": {Name: "negative", Levels: LvlField | LvlScalar | LvlErrorField, Doc: "Value must be < 0.", AppliesTo: PrimNumber, Constraint: ConstraintNumeric},
 	"multipleOf": {
 		Name: "multipleOf", Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:        "Value must be a multiple of N.",
@@ -448,7 +448,7 @@ var Registry = map[string]Spec{
 		AppliesTo:  PrimArray | PrimMap,
 		Constraint: ConstraintItems,
 	},
-	"uniqueItems": {Name: "uniqueItems", Levels: LvlField | LvlErrorField, Doc: "Array elements must be unique.", AppliesTo: PrimArray, Flag: true, Constraint: ConstraintItems},
+	"uniqueItems": {Name: "uniqueItems", Levels: LvlField | LvlErrorField, Doc: "Array elements must be unique.", AppliesTo: PrimArray, Constraint: ConstraintItems},
 
 	// ---- Field validation: file ----
 	"maxSize": {
@@ -472,14 +472,14 @@ var Registry = map[string]Spec{
 		Doc:  "Default value applied when field absent.",
 		Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgAny}},
 	},
-	"nullable": {Name: "nullable", Levels: LvlField | LvlErrorField, Doc: "Marks the field as accepting an explicit JSON null.", Flag: true},
+	"nullable": {Name: "nullable", Levels: LvlField | LvlErrorField, Doc: "Marks the field as accepting an explicit JSON null."},
 	"json": {
 		Name: "json", Levels: LvlField | LvlErrorField,
 		Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
 		Doc:  "Sets the JSON key of a body field when it is not the field name - a contract another system owns, or a key the parser reads as a mixin (`OrderItem Item[]`). The Go struct tag, the documents and validation messages all use it. Not for a field bound off the body (@path / @query / @header / @cookie / @form), which names its own wire location.",
 	},
 	"sensitive": {
-		Name: "sensitive", Levels: LvlField | LvlErrorField, Flag: true,
+		Name: "sensitive", Levels: LvlField | LvlErrorField,
 		Doc: "Server-only field: tagged `json:\"-\"` so neither the request decoder nor the response encoder touches it, and skipped entirely from OpenAPI. Cannot combine with any wire-shaping decorator: validators (@length / @gt / @gte / @lt / @lte / @range / @pattern / @format / @minItems / @maxItems / @multipleOf / @positive / @negative / @uniqueItems / @requiresOneOf / @mutuallyExclusive), nullability / defaults (@nullable / @default), or any binding (@body / @path / @query / @header / @cookie / @form). The field stays as a Go struct member that server logic populates / reads internally.",
 	},
 
@@ -556,9 +556,9 @@ var Registry = map[string]Spec{
 	"status":      {Name: "status", Levels: LvlMethod, Doc: "Override default success status code.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}}},
 
 	// ---- Method behavior ----
-	"passthrough": {Name: "passthrough", Levels: LvlMethod, Doc: "Hand both transport sides to logic: the entry point receives the raw http.ResponseWriter and *http.Request and writes the response directly. Equivalent to @rawRequest @rawResponse. Optional request/response blocks are a docs-only contract (OpenAPI + generated types).", Flag: true},
-	"rawRequest":  {Name: "rawRequest", Levels: LvlMethod, Doc: "Hand the request side to logic: the entry point receives the raw *http.Request and the framework skips request bind + validate. A request block is a docs-only contract (OpenAPI + generated type). The response stays framework-encoded unless @rawResponse is also set.", Flag: true},
-	"rawResponse": {Name: "rawResponse", Levels: LvlMethod, Doc: "Hand the response side to logic: the entry point receives the http.ResponseWriter and writes status, headers and body itself; the framework skips the response encode. A response block is a docs-only contract (OpenAPI + generated type). The request stays bound + validated unless @rawRequest is also set.", Flag: true},
+	"passthrough": {Name: "passthrough", Levels: LvlMethod, Doc: "Hand both transport sides to logic: the entry point receives the raw http.ResponseWriter and *http.Request and writes the response directly. Equivalent to @rawRequest @rawResponse. Optional request/response blocks are a docs-only contract (OpenAPI + generated types)."},
+	"rawRequest":  {Name: "rawRequest", Levels: LvlMethod, Doc: "Hand the request side to logic: the entry point receives the raw *http.Request and the framework skips request bind + validate. A request block is a docs-only contract (OpenAPI + generated type). The response stays framework-encoded unless @rawResponse is also set."},
+	"rawResponse": {Name: "rawResponse", Levels: LvlMethod, Doc: "Hand the response side to logic: the entry point receives the http.ResponseWriter and writes status, headers and body itself; the framework skips the response encode. A response block is a docs-only contract (OpenAPI + generated type). The request stays bound + validated unless @rawRequest is also set."},
 
 	// ---- Method limits ----
 	"timeout":     {Name: "timeout", Levels: LvlMethod, Doc: "Cap the handler's execution time: the request context is cancelled when the deadline elapses (no status is written automatically). Overrides the global handlerTimeout for this route.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgDuration}}},
@@ -567,8 +567,13 @@ var Registry = map[string]Spec{
 
 // Lookup returns the [Spec] registered under name, and whether there is one.
 func Lookup(name string) (Spec, bool) {
-	s, ok := Registry[name]
+	s, ok := registry[name]
 	return s, ok
+}
+
+// Names returns the name of every registered decorator, sorted.
+func Names() []string {
+	return slices.Sorted(maps.Keys(registry))
 }
 
 // removed maps each removed decorator to its migration note.
