@@ -257,6 +257,13 @@ openapi:
 
     oauth2:                    # @security(oauth2)
       type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.example.com/authorize
+          tokenUrl: https://auth.example.com/token
+          scopes:
+            read: Read access
+            write: Write access
 
     openIdConnect:
       type: openIdConnect
@@ -267,7 +274,7 @@ Supported `type` values: `http`, `apiKey`, `oauth2`, `openIdConnect`, `mutualTLS
 
 - `http`: `scheme` (e.g. `bearer`, `basic`), optional `bearerFormat`
 - `apiKey`: `in` (`header` / `query` / `cookie`), `name`
-- `oauth2`: scopes are application-defined - validated as strings, not against a fixed set
+- `oauth2`: `flows`, at least one of `implicit` (needs `authorizationUrl`), `password` and `clientCredentials` (each needs `tokenUrl`), and `authorizationCode` (needs both); each flow takes an optional `refreshUrl` and `scopes`, a map of scope name to description. `craftgo gen` stops on a missing flow or URL, naming the scheme and the flow
 - `openIdConnect`: `openIdConnectUrl`
 
 The semantic analyzer cross-checks every `@security(<name>)` reference against this map. Unknown names fail at gen time, not at deploy.

@@ -1396,6 +1396,44 @@ func TestValidateSecuritySchemesOAuth2RequiresFlows(t *testing.T) {
 	}
 }
 
+// Each oauth2 flow carries the URLs OpenAPI requires of its grant, and a
+// message naming the scheme and the flow reports each one missing.
+func TestValidateSecuritySchemesOAuth2FlowURLs(t *testing.T) {
+	const auth, token = "https://auth.example.com/authorize", "https://auth.example.com/token"
+	cfg := &config.Config{Package: "x/y", OpenAPI: config.OpenAPI{
+		SecuritySchemes: map[string]config.SecurityScheme{
+			"missing": {Type: "oauth2", Flows: &config.OAuthFlows{
+				Implicit:          &config.OAuthFlow{TokenURL: token},
+				Password:          &config.OAuthFlow{AuthorizationURL: auth},
+				ClientCredentials: &config.OAuthFlow{RefreshURL: token},
+				AuthorizationCode: &config.OAuthFlow{},
+			}},
+			"complete": {Type: "oauth2", Flows: &config.OAuthFlows{
+				Implicit:          &config.OAuthFlow{AuthorizationURL: auth},
+				Password:          &config.OAuthFlow{TokenURL: token},
+				ClientCredentials: &config.OAuthFlow{TokenURL: token},
+				AuthorizationCode: &config.OAuthFlow{AuthorizationURL: auth, TokenURL: token},
+			}},
+		},
+	}}
+	want := []string{
+		`securityScheme "missing": flow implicit has no authorizationUrl`,
+		`securityScheme "missing": flow password has no tokenUrl`,
+		`securityScheme "missing": flow clientCredentials has no tokenUrl`,
+		`securityScheme "missing": flow authorizationCode has no authorizationUrl`,
+		`securityScheme "missing": flow authorizationCode has no tokenUrl`,
+	}
+	errs := validateSecuritySchemes(cfg)
+	if len(errs) != len(want) {
+		t.Fatalf("got %d messages, want %d:\n%s", len(errs), len(want), strings.Join(errs, "\n"))
+	}
+	for i, w := range want {
+		if !strings.HasPrefix(errs[i], w) {
+			t.Errorf("message %d = %q, want it to start %q", i, errs[i], w)
+		}
+	}
+}
+
 func TestGenerateOpenAPI(t *testing.T) {
 	pkg := analyze(t, handlerSampleDSL)
 	root := t.TempDir()

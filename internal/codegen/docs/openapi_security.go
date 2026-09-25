@@ -101,13 +101,41 @@ func oauthFlowsFor(f *config.OAuthFlows) *openapi3.OAuthFlows {
 	}
 }
 
-// validateSecuritySchemes returns one message per oauth2 scheme in the
-// manifest that declares no flow; OpenAPI requires one.
+// validateSecuritySchemes returns a message per oauth2 scheme in the manifest
+// without a flow and per URL OpenAPI requires of a flow's grant that it lacks.
 func validateSecuritySchemes(cfg *config.Config) []string {
 	var out []string
 	for _, name := range slices.Sorted(maps.Keys(cfg.OpenAPI.SecuritySchemes)) {
-		if sc := cfg.OpenAPI.SecuritySchemes[name]; sc.Type == "oauth2" && !sc.Flows.HasFlow() {
+		sc := cfg.OpenAPI.SecuritySchemes[name]
+		if sc.Type != "oauth2" {
+			continue
+		}
+		if !sc.Flows.HasFlow() {
 			out = append(out, fmt.Sprintf("securityScheme %q is type oauth2 but declares no flows: add an openapi.securitySchemes.%s.flows entry (implicit / password / clientCredentials / authorizationCode) - an oauth2 scheme without flows is invalid OpenAPI", name, name))
+			continue
+		}
+		for _, grant := range []struct {
+			flow                                 string
+			f                                    *config.OAuthFlow
+			needsAuthorizationURL, needsTokenURL bool
+		}{
+			{"implicit", sc.Flows.Implicit, true, false},
+			{"password", sc.Flows.Password, false, true},
+			{"clientCredentials", sc.Flows.ClientCredentials, false, true},
+			{"authorizationCode", sc.Flows.AuthorizationCode, true, true},
+		} {
+			if grant.f == nil {
+				continue
+			}
+			missing := func(key string) {
+				out = append(out, fmt.Sprintf("securityScheme %q: flow %s has no %s: add openapi.securitySchemes.%s.flows.%s.%s - OpenAPI requires it of the %s flow", name, grant.flow, key, name, grant.flow, key, grant.flow))
+			}
+			if grant.needsAuthorizationURL && grant.f.AuthorizationURL == "" {
+				missing("authorizationUrl")
+			}
+			if grant.needsTokenURL && grant.f.TokenURL == "" {
+				missing("tokenUrl")
+			}
 		}
 	}
 	return out

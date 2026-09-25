@@ -192,6 +192,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   written, such as `@maxLength(3)` on a `@minLength(5)` scalar, is
   `decorator/range`.
 
+- **An oauth2 flow must carry the URLs its grant needs.** `clientCredentials`
+  or `password` without `tokenUrl`, `implicit` without `authorizationUrl`,
+  and `authorizationCode` without either generated a document OpenAPI
+  validators reject. A run that writes the document now stops, naming the
+  scheme and the flow: `securityScheme "oauth": flow clientCredentials has no
+  tokenUrl`. The configuration guide's oauth2 example, which declared no flow
+  and so did not generate, declares one.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw
