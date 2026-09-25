@@ -38,3 +38,17 @@ func TestFormattingRefusesBuffersWithErrors(t *testing.T) {
 		t.Errorf("clean buffer got %d edit(s), want 1", len(edits))
 	}
 }
+
+// Formatting a clean buffer replaces the whole document with its canonical
+// text.
+func TestFormattingProducesEdit(t *testing.T) {
+	dirty := "package x\n\ntype T {\n  id string\n}\n"
+	clean := "package x\n\ntype T {\n\tid string\n}\n"
+	edits := formatDoc(t, dirty)
+	if len(edits) != 1 {
+		t.Fatalf("edits = %+v, want one", edits)
+	}
+	if edits[0].Range != wholeDocumentRange(dirty) || edits[0].NewText != clean {
+		t.Errorf("edit = %+v, want the whole document replaced by %q", edits[0], clean)
+	}
+}
