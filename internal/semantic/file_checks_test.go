@@ -180,6 +180,12 @@ type UploadReq { grid file[][]  name string @form }
 type Resp { ok bool }
 service S { post Up /up { request UploadReq  response Resp } }`, CodeFilePosition)
 
+	// A declared `file[][]` in a request type is reported once, at the field.
+	expectCodeCount(t, `package design
+type UploadReq { grid file[][]  name string @form }
+type Resp { ok bool }
+service S { post Up /up { request UploadReq  response Resp } }`, CodeFilePosition, 1)
+
 	// With and without an explicit @form.
 	for label, src := range map[string]string{
 		"auto": `package design
@@ -195,4 +201,29 @@ service S { post Up /up { request UploadReq  response Resp } }`,
 			t.Errorf("%s file[]: unexpected file-position rejection", label)
 		}
 	}
+}
+
+// A request whose type arguments make a top-level field a `file` array of two
+// or more dimensions is rejected at the request clause; a `file[]` is not.
+func TestMultiDimFileArrayThroughTypeArguments(t *testing.T) {
+	const decls = "package design\ntype Box<T> { v T[]  name string }\ntype Up<T> { f T  name string }\ntype Resp { ok bool }\n"
+	for label, c := range map[string]struct{ src, msg string }{
+		"parameter array": {`service S { post A /a { request Box<file[]>  response Resp } }`,
+			"request Box<file[]> of S.A types field v as `file[][]`"},
+		"argument": {`service S { post A /a { request Up<file[][]>  response Resp } }`,
+			"request Up<file[][]> of S.A types field f as `file[][]`"},
+		"mixin": {`type R { Box<file[]>  n string }
+service S { post A /a { request R  response Resp } }`,
+			"request R of S.A types field v as `file[][]`"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			src := decls + c.src
+			d := expectError(t, src, CodeFilePosition)
+			expectMessage(t, d, c.msg, "only a single `file` or a 1-D `file[]`")
+			if want := strings.Count(src, "\n") + 1; d.Pos.Line != want {
+				t.Errorf("reported at line %d, want the request clause's line %d", d.Pos.Line, want)
+			}
+		})
+	}
+	expectNoCode(t, decls+`service S { post A /a { request Box<file>  response Resp } }`, CodeFilePosition)
 }

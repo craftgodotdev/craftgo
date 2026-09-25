@@ -304,12 +304,16 @@ func (a *analyzer) checkFilePosition() {
 	a.checkPayloadFiles()
 }
 
+// msgFileArrayDepth ends a diagnostic about a `file` array of two or more
+// dimensions.
+const msgFileArrayDepth = "a multi-dimensional `file` array has no multipart encoding - only a single `file` or a 1-D `file[]` is supported"
+
 // checkFileArrayDepth rejects a `file[][]` field of the body of owner.
 func (a *analyzer) checkFileArrayDepth(owner string, body []ast.TypeMember) {
 	for _, f := range ast.Fields(body) {
 		if isFileTypeRef(f.Type) && f.Type.ArrayDepth > 1 {
 			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeFilePosition,
-				"field %s.%s: a multi-dimensional `file` array (`file[][]`) has no multipart encoding - only a single `file` or a 1-D `file[]` is supported", owner, f.Name)
+				"field %s.%s is `%s`: "+msgFileArrayDepth, owner, f.Name, f.Type)
 		}
 	}
 }
@@ -338,6 +342,10 @@ func (a *analyzer) checkRequestFiles() {
 				f := ff.Field
 				switch {
 				case isFileTypeRef(f.Type):
+					if ff.paramTyped && f.Type.ArrayDepth > 1 {
+						a.diag(m.Request.Pos, m.Request.Pos, lexer.SeverityError, CodeFilePosition,
+							"request %s of %s.%s types field %s as `%s`: "+msgFileArrayDepth, m.Request, svcName, m.Name, f.Name, f.Type)
+					}
 				case holdsFile(f.Type):
 					report(reqName, f, "")
 				default:

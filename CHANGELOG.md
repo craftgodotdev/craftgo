@@ -869,6 +869,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   `Box<file>`, which bring the `file` to the request's top level, stay
   accepted.
 
+- **A type argument that makes a `file[][]` is rejected.** `request
+  Box<file[]>` with `type Box<T> { v T[] }`, or `request Up<file[][]>`, gave
+  the request a top-level `file[][]`, which has no multipart encoding, and
+  generated a handler that did not compile. It is now
+  `binding/file-position` at the request clause, as a declared `file[][]` is
+  at its field.
+
 - **Every multipart form part is checked in analysis.** Beside a `file`, a
   body field no form value carries - a struct, a map, a generic instance,
   `any`, `bytes` or `datetime` - stopped `craftgo gen` only in the Go

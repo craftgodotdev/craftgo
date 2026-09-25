@@ -97,6 +97,9 @@ type FlatField struct {
 	// array: its Go value is a pointer to the slice, which Field's type spells
 	// as an optional array.
 	sliceBehindPointer bool
+	// paramTyped reports a field declared as a type parameter the flattening
+	// binds, `T` or `T[]`: its type is spelled from the argument.
+	paramTyped bool
 }
 
 // FlattenFields returns td's fields with its mixins expanded in body order,
@@ -193,7 +196,8 @@ func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []strin
 	for _, m := range body {
 		switch v := m.(type) {
 		case *ast.Field:
-			ff := FlatField{Field: v, Home: home, embedPath: embedPath, sliceBehindPointer: optionalParamOverArray(v.Type, subst)}
+			ff := FlatField{Field: v, Home: home, embedPath: embedPath,
+				sliceBehindPointer: optionalParamOverArray(v.Type, subst), paramTyped: boundParam(v.Type, subst) != nil}
 			if i < len(names) {
 				ff.Name = names[i]
 			}
@@ -214,11 +218,20 @@ func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []strin
 // optionalParamOverArray reports whether t is `T?` for a type parameter T
 // that subst binds to an array.
 func optionalParamOverArray(t *ast.TypeRef, subst map[string]*ast.TypeRef) bool {
-	if t == nil || !t.Optional || t.Array || t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) != 1 {
+	if t == nil || !t.Optional || t.Array {
 		return false
 	}
-	arg := subst[t.Named.Name.Parts[0]]
+	arg := boundParam(t, subst)
 	return arg != nil && arg.Array
+}
+
+// boundParam returns the argument subst binds to the type parameter t names,
+// whatever t's suffixes; nil when t names none.
+func boundParam(t *ast.TypeRef, subst map[string]*ast.TypeRef) *ast.TypeRef {
+	if t == nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) != 1 {
+		return nil
+	}
+	return subst[t.Named.Name.Parts[0]]
 }
 
 // spell returns t, written in package home with typeParams in scope and
