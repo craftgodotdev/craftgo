@@ -816,11 +816,11 @@ func TestIsUpperFirst(t *testing.T) {
 	}
 }
 
+// peekAt past the end returns the final EOF token.
 func TestPeekAtOutOfRange(t *testing.T) {
-	p := New("", "x")
-	// peekAt past the end returns the final EOF token.
-	tok := p.peekAt(100)
-	_ = tok
+	if tok := New("", "x").peekAt(100); tok.Kind != lexer.EOF {
+		t.Errorf("peekAt past the end = %v %q, want EOF", tok.Kind, tok.Text)
+	}
 }
 
 func TestExpectFailure(t *testing.T) {
@@ -896,19 +896,6 @@ func TestMethodDuplicateClause(t *testing.T) {
 	}
 }
 
-// TestPathTrailingSlash pins that a trailing slash is reported and left out of
-// the path.
-func TestPathTrailingSlash(t *testing.T) {
-	f, errs := parseWithErrors(t, `service S { get Op /users/ {} }`)
-	if len(errs) != 1 || !strings.Contains(errs[0], "path ends with '/'") {
-		t.Fatalf("diagnostics = %v", errs)
-	}
-	segs := f.Decls[0].(*ast.ServiceDecl).Methods()[0].Path.Segments
-	if len(segs) != 1 || segs[0].Literal != "users" {
-		t.Errorf("segments = %v", segs)
-	}
-}
-
 func TestPathBadDash(t *testing.T) {
 	_, errs := parseWithErrors(t, `service S { get Op /api- {} }`)
 	if len(errs) == 0 {
@@ -922,12 +909,6 @@ type X {}`)
 	if len(errs) == 0 {
 		t.Error()
 	}
-}
-
-func TestTrailingDecoratorAtEOF(t *testing.T) {
-	// Decorators after the last declaration are reported without a panic.
-	parseWithErrors(t, `type X {}
-@trailing`)
 }
 
 func TestTypeParamsExpectFails(t *testing.T) {

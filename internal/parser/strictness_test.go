@@ -82,18 +82,21 @@ func TestOneDiagnosticPerPosition(t *testing.T) {
 	}
 }
 
-// TestPathSlashes pins that `//` and a trailing `/` are errors while the root
-// path `/` is valid.
+// TestPathSlashes pins that `//` and a trailing `/` are errors, the trailing
+// `/` left out of the path, while the root path `/` is valid.
 func TestPathSlashes(t *testing.T) {
-	_, msgs := parseWithErrors(t, "package p\nservice S {\n\tget X /items/ { response A }\n}\n")
-	if !strings.Contains(firstMsg(msgs), "path ends with '/'") {
+	f, msgs := parseWithErrors(t, "package p\nservice S {\n\tget X /items/ { response A }\n}\n")
+	if len(msgs) != 1 || !strings.Contains(msgs[0], "path ends with '/'") {
 		t.Errorf("trailing slash: diagnostics = %v", msgs)
+	}
+	if got := pathStr(f.Decls[0].(*astServiceDecl).Members[0].(*astMethod).Path); got != "/items" {
+		t.Errorf("trailing slash: path = %q, want /items", got)
 	}
 	_, msgs = parseWithErrors(t, "package p\nservice S {\n\tget X /a/ /b { response A }\n}\n")
 	if !strings.Contains(firstMsg(msgs), "empty path segment") {
 		t.Errorf("double slash: diagnostics = %v", msgs)
 	}
-	f, msgs := parseWithErrors(t, "package p\nservice S {\n\tget Root / { response A }\n}\n")
+	f, msgs = parseWithErrors(t, "package p\nservice S {\n\tget Root / { response A }\n}\n")
 	if len(msgs) != 0 {
 		t.Fatalf("root path: unexpected diagnostics %v", msgs)
 	}
