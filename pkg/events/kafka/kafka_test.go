@@ -284,8 +284,12 @@ func TestAnotherAdaptersOptionIsIgnored(t *testing.T) {
 
 // A bus over this transport refuses an option under the adapter's name other than OptionTimestamp.
 func TestABusRefusesAKafkaOptionTheAdapterDoesNotRead(t *testing.T) {
-	bus := events.New(events.WithTransport(New([]string{"127.0.0.1:1"})), events.WithCodec(codecjson.Codec{}))
-	err := bus.Publish(context.Background(), "shop.Placed", struct{}{}, events.WithAdapterOption(Adapter, "partition", 3))
+	tr := New([]string{"127.0.0.1:1"})
+	defer func() { _ = tr.Close() }()
+	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := bus.Publish(ctx, "shop.Placed", struct{}{}, events.WithAdapterOption(Adapter, "partition", 3))
 	var unknown *events.UnknownOptionError
 	if !errors.As(err, &unknown) {
 		t.Fatalf("err = %v, want an *UnknownOptionError", err)
