@@ -755,23 +755,6 @@ func TestMinLengthAloneClean(t *testing.T) {
 type T { name string @minLength(1) @maxLength(80) }`)
 }
 
-func codes(diags []Diagnostic) []string {
-	out := make([]string, 0, len(diags))
-	for _, d := range diags {
-		out = append(out, d.Code)
-	}
-	return out
-}
-
-func findCode(diags []Diagnostic, code string) *Diagnostic {
-	for i := range diags {
-		if diags[i].Code == code {
-			return &diags[i]
-		}
-	}
-	return nil
-}
-
 // @maxSize and @mimeTypes conflict with @sensitive.
 func TestSensitiveConflictsFileValidators(t *testing.T) {
 	expectError(t, `type Req { secret file @sensitive @maxSize(1000) }`, CodeDecoratorConflict)

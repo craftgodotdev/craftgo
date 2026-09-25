@@ -1,62 +1,11 @@
 package semantic
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/route"
 )
-
-// parseFiles parses each source as the file test<i>.craftgo; a source
-// without a `package` clause is a file of package test.
-func parseFiles(t *testing.T, sources ...string) []*ast.File {
-	t.Helper()
-	var files []*ast.File
-	for i, src := range sources {
-		p := parser.New("test"+itoa(i)+".craftgo", src)
-		f := p.Parse()
-		if d := p.Diagnostics(); len(d) > 0 {
-			t.Fatalf("parse error in source %d: %v", i, d)
-		}
-		if f.Package == nil {
-			f.Package = &ast.PackageDecl{Name: "test"}
-		}
-		files = append(files, f)
-	}
-	return files
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	const digits = "0123456789"
-	var sb strings.Builder
-	if n < 0 {
-		sb.WriteByte('-')
-		n = -n
-	}
-	var stack []byte
-	for n > 0 {
-		stack = append(stack, digits[n%10])
-		n /= 10
-	}
-	for i := len(stack) - 1; i >= 0; i-- {
-		sb.WriteByte(stack[i])
-	}
-	return sb.String()
-}
-
-func mustClean(t *testing.T, sources ...string) *Package {
-	t.Helper()
-	pkg, diags := Analyze(parseFiles(t, sources...))
-	if len(diags) > 0 {
-		t.Fatalf("unexpected diagnostics: %v", diags)
-	}
-	return pkg
-}
 
 func TestAnalyzeBasic(t *testing.T) {
 	pkg := mustClean(t, `package design
@@ -378,9 +327,4 @@ func TestDeclNamedAfterBuiltinRejected(t *testing.T) {
 		t.Error("middleware named after a builtin should not be a builtin-collision error")
 	}
 	mustClean(t, `scalar Email string  scalar UserID string`)
-}
-
-// newTestAnalyzer returns an analyzer whose project holds pkg alone.
-func newTestAnalyzer(pkg *Package) *analyzer {
-	return &analyzer{pkg: pkg, proj: &Project{Packages: map[string]*Package{pkg.Name: pkg}}}
 }

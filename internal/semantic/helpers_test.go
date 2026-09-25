@@ -1,10 +1,14 @@
 package semantic
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/parser"
 )
 
 // expectClean fails the test when src produces any diagnostic.
@@ -126,6 +130,125 @@ func analyzeOneFile(t *testing.T, src string) []Diagnostic {
 func hasDiagContaining(diags []Diagnostic, substr string) bool {
 	for _, d := range diags {
 		if strings.Contains(d.Msg, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+// parseFiles parses each source as the file test<i>.craftgo; a source
+// without a `package` clause is a file of package test.
+func parseFiles(t *testing.T, sources ...string) []*ast.File {
+	t.Helper()
+	var files []*ast.File
+	for i, src := range sources {
+		p := parser.New("test"+itoa(i)+".craftgo", src)
+		f := p.Parse()
+		if d := p.Diagnostics(); len(d) > 0 {
+			t.Fatalf("parse error in source %d: %v", i, d)
+		}
+		if f.Package == nil {
+			f.Package = &ast.PackageDecl{Name: "test"}
+		}
+		files = append(files, f)
+	}
+	return files
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	const digits = "0123456789"
+	var sb strings.Builder
+	if n < 0 {
+		sb.WriteByte('-')
+		n = -n
+	}
+	var stack []byte
+	for n > 0 {
+		stack = append(stack, digits[n%10])
+		n /= 10
+	}
+	for i := len(stack) - 1; i >= 0; i-- {
+		sb.WriteByte(stack[i])
+	}
+	return sb.String()
+}
+
+func mustClean(t *testing.T, sources ...string) *Package {
+	t.Helper()
+	pkg, diags := Analyze(parseFiles(t, sources...))
+	if len(diags) > 0 {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	return pkg
+}
+
+// newTestAnalyzer returns an analyzer whose project holds pkg alone.
+func newTestAnalyzer(pkg *Package) *analyzer {
+	return &analyzer{pkg: pkg, proj: &Project{Packages: map[string]*Package{pkg.Name: pkg}}}
+}
+
+func codes(diags []Diagnostic) []string {
+	out := make([]string, 0, len(diags))
+	for _, d := range diags {
+		out = append(out, d.Code)
+	}
+	return out
+}
+
+func findCode(diags []Diagnostic, code string) *Diagnostic {
+	for i := range diags {
+		if diags[i].Code == code {
+			return &diags[i]
+		}
+	}
+	return nil
+}
+
+// parseFileMap parses each file of files, keyed by name.
+func parseFileMap(t *testing.T, files map[string]string) []*ast.File {
+	t.Helper()
+	out := make([]*ast.File, 0, len(files))
+	for name, src := range files {
+		p := parser.New(name, src)
+		f := p.Parse()
+		if d := p.Diagnostics(); len(d) > 0 {
+			t.Fatalf("parse %s: %v", name, d)
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+// projectFixture writes src (design-relative path → content) under a temp root and parses it.
+func projectFixture(t *testing.T, src map[string]string) (string, []*ast.File) {
+	t.Helper()
+	root := t.TempDir()
+	var files []*ast.File
+	for rel, content := range src {
+		full := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		p := parser.New(full, content)
+		f := p.Parse()
+		if d := p.Diagnostics(); len(d) > 0 {
+			t.Fatalf("parse error in %s: %v", rel, d)
+		}
+		files = append(files, f)
+	}
+	return root, files
+}
+
+// hasCode reports whether any diagnostic carries code.
+func hasCode(diags []Diagnostic, code string) bool {
+	for _, d := range diags {
+		if d.Code == code {
 			return true
 		}
 	}

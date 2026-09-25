@@ -4,25 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/route"
 )
-
-// parseFileMap parses each file of files, keyed by name.
-func parseFileMap(t *testing.T, files map[string]string) []*ast.File {
-	t.Helper()
-	out := make([]*ast.File, 0, len(files))
-	for name, src := range files {
-		p := parser.New(name, src)
-		f := p.Parse()
-		if d := p.Diagnostics(); len(d) > 0 {
-			t.Fatalf("parse %s: %v", name, d)
-		}
-		out = append(out, f)
-	}
-	return out
-}
 
 func TestSemanticMergesMultipleFilesSamePackage(t *testing.T) {
 	files := parseFileMap(t, map[string]string{

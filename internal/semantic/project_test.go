@@ -6,34 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
-	"github.com/craftgodotdev/craftgo/internal/parser"
 )
-
-// projectFixture writes src (design-relative path → content) under a temp root and parses it.
-func projectFixture(t *testing.T, src map[string]string) (string, []*ast.File) {
-	t.Helper()
-	root := t.TempDir()
-	var files []*ast.File
-	for rel, content := range src {
-		full := filepath.Join(root, rel)
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		p := parser.New(full, content)
-		f := p.Parse()
-		if d := p.Diagnostics(); len(d) > 0 {
-			t.Fatalf("parse error in %s: %v", rel, d)
-		}
-		files = append(files, f)
-	}
-	return root, files
-}
 
 func TestAnalyzeProjectEmptyRootDelegates(t *testing.T) {
 	files := parseFiles(t, `package design
@@ -488,16 +463,6 @@ type Order { allowed shared.CurrencyCode[]? @default(["USD", "EUR"]) }`,
 	if len(diags) > 0 {
 		t.Fatalf("expected no diags for cross-pkg scalar array @default, got: %v", diags)
 	}
-}
-
-// hasCode reports whether any diagnostic carries code.
-func hasCode(diags []Diagnostic, code string) bool {
-	for _, d := range diags {
-		if d.Code == code {
-			return true
-		}
-	}
-	return false
 }
 
 // A type embeds a mixin declared in another package.
