@@ -101,12 +101,9 @@ func oauthFlowsFor(f *config.OAuthFlows) *openapi3.OAuthFlows {
 	}
 }
 
-// ValidateSecuritySchemes returns one message per oauth2 scheme in the
+// validateSecuritySchemes returns one message per oauth2 scheme in the
 // manifest that declares no flow; OpenAPI requires one.
-func ValidateSecuritySchemes(cfg *config.Config) []string {
-	if cfg == nil {
-		return nil
-	}
+func validateSecuritySchemes(cfg *config.Config) []string {
 	var out []string
 	for _, name := range slices.Sorted(maps.Keys(cfg.OpenAPI.SecuritySchemes)) {
 		if sc := cfg.OpenAPI.SecuritySchemes[name]; sc.Type == "oauth2" && !sc.Flows.HasFlow() {

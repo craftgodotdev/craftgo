@@ -72,7 +72,7 @@ func Generate(in Inputs, cfg *config.Config, projectRoot string, targets ...stri
 	if err != nil {
 		return err
 	}
-	if err := validate(in, cfg); err != nil {
+	if err := validate(in, cfg, sel); err != nil {
 		return err
 	}
 	if err := emit(in, cfg, projectRoot, sel); err != nil {
@@ -155,14 +155,14 @@ func selection(targets []string) (map[string]bool, error) {
 	return sel, nil
 }
 
-// validate rejects, before any file is written, a design whose document
-// would be invalid or whose outputs would overwrite each other.
-func validate(in Inputs, cfg *config.Config) error {
-	if errs := docs.ValidateSecuritySchemes(cfg); len(errs) > 0 {
-		return fmt.Errorf("security scheme errors:\n  %s", strings.Join(errs, "\n  "))
-	}
-	if err := docs.ValidateOpenAPI(in.Design, cfg); err != nil {
-		return err
+// validate rejects, before any file is written, a design whose outputs would
+// overwrite each other or, when the selection writes the document, whose
+// document would be invalid.
+func validate(in Inputs, cfg *config.Config, sel map[string]bool) error {
+	if sel[targetDocs] {
+		if err := docs.ValidateOpenAPI(in.Design, cfg); err != nil {
+			return err
+		}
 	}
 	return golang.ValidateProtoOutputs(in.Design, in.Protos, cfg)
 }

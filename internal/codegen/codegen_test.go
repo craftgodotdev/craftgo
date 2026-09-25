@@ -175,6 +175,40 @@ func TestUnknownTargetIsRejected(t *testing.T) {
 	}
 }
 
+// What only the OpenAPI document gets wrong, a component name collision or an
+// oauth2 scheme without flows, stops a run that writes the document and no
+// other: `--target go` and `output.openapi: "-"` write the Go output.
+func TestDocumentOnlyErrorsStopOnlyTheDocument(t *testing.T) {
+	for label, c := range map[string]struct {
+		src   string
+		setup func(*config.Config)
+	}{
+		"component name collision": {src: `package p
+type Order { id string }
+type PageOfOrder { hijacked string }
+type Page<T> { items T[] }
+type Resp { real Page<Order>  fake PageOfOrder }
+service S { get Get /g { response Resp } }`, setup: func(*config.Config) {}},
+		"oauth2 scheme without flows": {src: ordersSrc, setup: func(cfg *config.Config) {
+			cfg.OpenAPI.SecuritySchemes = map[string]config.SecurityScheme{"oauth": {Type: "oauth2"}}
+		}},
+	} {
+		proj := analyzeProject(t, c.src)
+		cfg := eventsConfig()
+		c.setup(cfg)
+		if err := Generate(Inputs{Design: proj}, cfg, t.TempDir()); err == nil {
+			t.Errorf("%s: the run writing the document succeeds", label)
+		}
+		if err := Generate(Inputs{Design: proj}, cfg, t.TempDir(), config.LangGo); err != nil {
+			t.Errorf("%s: --target go fails: %v", label, err)
+		}
+		cfg.Output.OpenAPI = config.Disabled
+		if err := Generate(Inputs{Design: proj}, cfg, t.TempDir()); err != nil {
+			t.Errorf("%s: output.openapi %q fails: %v", label, config.Disabled, err)
+		}
+	}
+}
+
 // Every name SelectableTargets offers runs.
 func TestSelectableTargetsAreKnown(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)

@@ -1250,7 +1250,7 @@ func TestValidateSecuritySchemesHappyPath(t *testing.T) {
 			},
 		},
 	}
-	if errs := ValidateSecuritySchemes(cfg); len(errs) != 0 {
+	if errs := validateSecuritySchemes(cfg); len(errs) != 0 {
 		t.Errorf("expected no errors, got: %v", errs)
 	}
 }
@@ -1264,7 +1264,7 @@ func TestValidateSecuritySchemesOAuth2RequiresFlows(t *testing.T) {
 		}}
 	}
 	// No flows → rejected.
-	if errs := ValidateSecuritySchemes(base(nil)); len(errs) == 0 {
+	if errs := validateSecuritySchemes(base(nil)); len(errs) == 0 {
 		t.Error("expected an error for an oauth2 scheme with no flows")
 	}
 	// With a flow → accepted.
@@ -1272,7 +1272,7 @@ func TestValidateSecuritySchemesOAuth2RequiresFlows(t *testing.T) {
 		TokenURL: "https://example.com/token",
 		Scopes:   map[string]string{"read": "Read"},
 	}}
-	if errs := ValidateSecuritySchemes(base(withFlow)); len(errs) != 0 {
+	if errs := validateSecuritySchemes(base(withFlow)); len(errs) != 0 {
 		t.Errorf("oauth2 with a flow should validate, got: %v", errs)
 	}
 	// The emitted scheme carries the flows object.

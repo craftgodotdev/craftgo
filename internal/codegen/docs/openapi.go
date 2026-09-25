@@ -35,10 +35,14 @@ func (s *schemaNames) put(doc *openapi3.T, name string, ref *openapi3.SchemaRef)
 }
 
 // ValidateOpenAPI builds the project's document without writing it and returns
-// the merge or component name collision that stops it.
+// what stops it: an oauth2 scheme without flows, or a merge or component name
+// collision. It is nil when [GenerateOpenAPI] writes no document.
 func ValidateOpenAPI(proj *semantic.Project, cfg *config.Config) error {
-	if proj == nil {
+	if cfg.Output.OpenAPIDisabled() || !describable(proj) {
 		return nil
+	}
+	if errs := validateSecuritySchemes(cfg); len(errs) > 0 {
+		return fmt.Errorf("security scheme errors:\n  %s", strings.Join(errs, "\n  "))
 	}
 	_, err := buildProjectDocument(proj, cfg)
 	return err

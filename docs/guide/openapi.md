@@ -242,3 +242,8 @@ By default `docs/openapi.yaml`. Change with `output.openapi` in `craftgo.design.
 output:
   openapi: ./api/openapi.yaml
 ```
+
+`output.openapi: "-"` writes no document. What only the document gets wrong,
+such as two component schemas sharing a name or an `oauth2` security scheme
+without flows, stops a run that writes it, and no other: with `"-"`, or with
+`craftgo gen --target go`, the Go code is generated.

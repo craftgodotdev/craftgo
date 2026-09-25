@@ -827,6 +827,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   name keeps it; the other's components take the lowest free number, as
   `ReportCardList2RespBody`.
 
+- **A run that writes no OpenAPI document is not stopped by it.** With
+  `output.openapi: "-"`, or `craftgo gen --target go`, an error only the
+  document has, such as two component schemas sharing a name or an `oauth2`
+  security scheme without flows, stopped the Go code too; it now stops only a
+  run that writes the document.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
