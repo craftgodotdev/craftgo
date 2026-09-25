@@ -38,6 +38,14 @@ func NullableForm(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if _v := r.FormValue("meta"); _v != "" {
 			req.Meta = &_v
 		}
+		if _v := r.FormValue("tint"); _v != "" {
+			_w := types.Color(_v)
+			req.Tint = &_w
+		}
+		if _v := r.FormValue("ref"); _v != "" {
+			_w := types.UUID(_v)
+			req.Ref = &_w
+		}
 		if _, header, err := r.FormFile("doc"); err == nil {
 			req.Doc = header
 		}

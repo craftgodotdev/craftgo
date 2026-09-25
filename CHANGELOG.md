@@ -994,6 +994,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   (`minLength: 1`), a file when it is sent, for the request type's groups and
   its mixins' alike.
 
+- **A multipart text part is never documented as null.** A form part is sent
+  or not, but an optional or `@nullable` part read `type: [string, "null"]`,
+  or an `anyOf` with `null` for an enum or scalar, in the multipart schema. Its
+  schema is now its type alone; `required` still carries its optionality.
+
 - **A response body beside a header keeps its cross-field groups in
   OpenAPI.** The body of a response that sends a header or cookie left out
   the `@requiresOneOf` and `@mutuallyExclusive` of the response type and of

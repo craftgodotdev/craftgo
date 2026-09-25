@@ -303,8 +303,8 @@ func multipartRequestBody(s opShape, pkg *semantic.Package, registry *genericReg
 	text := map[string]bool{}
 	var required []string
 	for _, f := range s.form {
-		ref := schemaForTypeRef(f.Field.Type, pkg, registry)
-		applyFieldMetadata(f.Field, ref, pkg)
+		ref := schemaForTypeRef(partType(f), pkg, registry)
+		applyFieldMetadata(f.Field, ref, pkg, false)
 		props[f.WireName] = ref
 		keys[f.Field.Name] = f.WireName
 		text[f.WireName] = true
@@ -314,11 +314,7 @@ func multipartRequestBody(s opShape, pkg *semantic.Package, registry *genericReg
 	}
 	encoding := map[string]*openapi3.Encoding{}
 	for _, f := range s.files {
-		// A file part is present or absent, never null: `required` carries its
-		// optionality, so its schema is built from the type without `?`.
-		ft := *f.Field.Type
-		ft.Optional = false
-		ref := schemaForTypeRef(&ft, pkg, registry)
+		ref := schemaForTypeRef(partType(f), pkg, registry)
 		if ref.Value != nil {
 			applyConstraintFamilies(f.Field.Decorators, ref.Value, semantic.ConstraintItems, "file")
 		}
@@ -354,6 +350,14 @@ func multipartRequestBody(s opShape, pkg *semantic.Package, registry *genericReg
 	}}
 }
 
+// partType returns the type of form part f without `?`: a part is sent or
+// not, never null, and `required` carries its optionality.
+func partType(f semantic.FormField) *ast.TypeRef {
+	t := *f.Field.Type
+	t.Optional = false
+	return &t
+}
+
 // paramsFromBins turns the path, query, header and cookie bins into
 // parameters with inline schemas; a path parameter is always required.
 func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegistry) openapi3.Parameters {
@@ -362,7 +366,7 @@ func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegi
 		for _, rf := range fields {
 			f := rf.Field
 			ref := schemaForTypeRef(f.Type, pkg, registry)
-			applyFieldMetadata(f, ref, pkg)
+			applyFieldMetadata(f, ref, pkg, semantic.FieldIsOptional(f))
 			params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
 				Name:     wire.WireName(f, in),
 				In:       in.String(),

@@ -230,6 +230,16 @@ func (v *NullableFormReq) Validate() error {
 	if v.Meta != nil && utf8.RuneCountInString(*v.Meta) > 120 {
 		return fmt.Errorf("meta: length greater than 120")
 	}
+	if v.Tint != nil {
+		if err := v.Tint.Validate(); err != nil {
+			return fmt.Errorf("tint: %w", err)
+		}
+	}
+	if v.Ref != nil {
+		if err := v.Ref.Validate(); err != nil {
+			return fmt.Errorf("ref: %w", err)
+		}
+	}
 	return nil
 }
 

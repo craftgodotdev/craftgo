@@ -47,15 +47,16 @@ func stampDeprecated(s *openapi3.Schema, decs []*ast.Decorator) {
 	}
 }
 
-func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Package) {
+// applyFieldMetadata stamps f's docs, default, example and constraints onto
+// ref, the schema of its value, which admits null when nullable.
+func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Package, nullable bool) {
 	if ref == nil {
 		return
 	}
 	prim := semantic.ResolveField(f, pkg, nil).ResolvedPrim
 	// A bare $ref takes no sibling keywords, so field metadata wraps it: in
-	// `anyOf: [{$ref}, {type: null}]` when optional, else in an `allOf`.
+	// `anyOf: [{$ref}, {type: null}]` when nullable, else in an `allOf`.
 	if ref.Ref != "" {
-		nullable := semantic.FieldIsOptional(f)
 		extra := fieldConstraintSchema(f, prim)
 		def, hasDef := semantic.ResolveDefaultValue(f, pkg)
 		deprecated := semantic.IsDeprecated(f.Decorators)
@@ -119,7 +120,7 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 			ref.Value.Description = appendDescription(ref.Value.Description, "Deprecated: "+reason)
 		}
 	}
-	if semantic.FieldIsOptional(f) {
+	if nullable {
 		applyNullable(ref.Value)
 	}
 	if ex, ok := semantic.ExampleValue(f, pkg); ok {

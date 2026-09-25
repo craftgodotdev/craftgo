@@ -3975,6 +3975,17 @@ components:
           type:
           - string
           - "null"
+        ref:
+          anyOf:
+          - $ref: '#/components/schemas/BindingsUUID'
+          - type: "null"
+        tint:
+          anyOf:
+          - $ref: '#/components/schemas/BindingsColor'
+          - type: "null"
+          description: |-
+            tint and ref are optional enum and scalar parts: each is sent or not,
+            never null.
       required:
       - doc
       - meta
@@ -9443,9 +9454,15 @@ paths:
                   type: string
                 meta:
                   maxLength: 120
-                  type:
-                  - string
-                  - "null"
+                  type: string
+                ref:
+                  $ref: '#/components/schemas/BindingsUUID'
+                tint:
+                  allOf:
+                  - $ref: '#/components/schemas/BindingsColor'
+                  description: |-
+                    tint and ref are optional enum and scalar parts: each is sent or not,
+                    never null.
               required:
               - meta
               - doc
@@ -9641,9 +9658,7 @@ paths:
                   type: string
                 note:
                   maxLength: 280
-                  type:
-                  - string
-                  - "null"
+                  type: string
               required:
               - avatar_file
               type: object
@@ -10314,9 +10329,7 @@ paths:
                   title:
                     type: string
                   url:
-                    type:
-                    - string
-                    - "null"
+                    type: string
                 required:
                 - title
                 type: object
@@ -10420,13 +10433,9 @@ paths:
               allOf:
               - properties:
                   a:
-                    type:
-                    - string
-                    - "null"
+                    type: string
                   b:
-                    type:
-                    - string
-                    - "null"
+                    type: string
                   doc:
                     format: binary
                     type: string

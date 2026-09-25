@@ -1607,9 +1607,7 @@ paths:
               properties:
                 caption:
                   maxLength: 200
-                  type:
-                  - string
-                  - "null"
+                  type: string
                 file:
                   format: binary
                   type: string

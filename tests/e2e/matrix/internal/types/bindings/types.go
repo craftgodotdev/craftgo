@@ -172,6 +172,10 @@ type NullableDetail struct {
 type NullableFormReq struct {
 	Doc  *multipart.FileHeader `json:"doc"`
 	Meta *string               `json:"meta"`
+	// tint and ref are optional enum and scalar parts: each is sent or not,
+	// never null.
+	Tint *Color `json:"tint,omitempty"`
+	Ref  *UUID  `json:"ref,omitempty"`
 }
 
 // OkResp answers FilterTags.

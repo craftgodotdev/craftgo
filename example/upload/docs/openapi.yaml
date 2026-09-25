@@ -324,9 +324,7 @@ paths:
                   type: string
                 description:
                   maxLength: 2000
-                  type:
-                  - string
-                  - "null"
+                  type: string
                 featured:
                   type: boolean
                 photos:
@@ -382,9 +380,7 @@ paths:
               properties:
                 notes:
                   maxLength: 2000
-                  type:
-                  - string
-                  - "null"
+                  type: string
                 pdf:
                   format: binary
                   type: string

@@ -249,6 +249,10 @@ type UploadReq {
 type NullableFormReq {
 	doc  file   @form
 	meta string @nullable @maxLength(120)
+	// tint and ref are optional enum and scalar parts: each is sent or not,
+	// never null.
+	tint Color?
+	ref  UUID?
 }
 
 // BatchUploadReq pins the file[] multipart shape: a 1-D `file[]` binds from

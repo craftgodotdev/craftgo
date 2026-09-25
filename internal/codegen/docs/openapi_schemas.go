@@ -182,7 +182,7 @@ func addBodyProperty(s *openapi3.Schema, rf semantic.ResolvedField, ft *ast.Type
 		return
 	}
 	ref := schemaForTypeRef(ft, pkg, registry)
-	applyFieldMetadata(rf.Field, ref, pkg)
+	applyFieldMetadata(rf.Field, ref, pkg, semantic.FieldIsOptional(rf.Field))
 	key := wire.JSONName(rf.Field)
 	s.Properties[key] = ref
 	if rf.SpecRequired {

@@ -573,6 +573,48 @@ service S {
 	}
 }
 
+// An optional multipart part is left out of `required`, never documented as
+// null: a form part is sent or not.
+func TestMultipartOptionalPartsAreNotNullable(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+enum Level { low  high }
+scalar Code string @minLength(2)
+type Up {
+	doc     file
+	caption string? @maxLength(80)
+	count   int?
+	level   Level?
+	code    Code?   @maxLength(8)
+	tags    string[]?
+	note    string @nullable
+}
+type Ok { ok bool }
+service S { post U /u { request Up  response Ok } }`,
+	}, &config.Config{})
+	body := doc.Paths.Find("/u").Post.RequestBody.Value.Content.Get(mimeMultipartFormData).Schema.Value
+	want := map[string]string{
+		"caption": `{"maxLength":80,"type":"string"}`,
+		"count":   `{"type":"integer"}`,
+		"level":   `{"$ref":"#/components/schemas/Level"}`,
+		"code":    `{"allOf":[{"$ref":"#/components/schemas/Code"},{"maxLength":8}]}`,
+		"tags":    `{"items":{"type":"string"},"type":"array"}`,
+		"note":    `{"type":"string"}`,
+	}
+	for name, w := range want {
+		raw, err := json.Marshal(body.Properties[name])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(raw) != w {
+			t.Errorf("part %s = %s, want %s", name, raw, w)
+		}
+	}
+	if !slices.Equal(body.Required, []string{"note", "doc"}) {
+		t.Errorf("required = %v, want [note doc]", body.Required)
+	}
+}
+
 // A multipart request's cross-field constraint wraps its inline schema in an
 // allOf.
 func TestGenerateOpenAPIMultipartCrossField(t *testing.T) {
