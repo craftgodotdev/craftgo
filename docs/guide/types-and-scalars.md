@@ -248,7 +248,7 @@ scalar Cents int @gte(0) @multipleOf(2)
 scalar Latitude float64 @gte(-90) @lte(90)
 ```
 
-The DSL form is `scalar <Name> <PrimitiveType> [@validators...]`. The primitive must be one of the built-in primitives (string, bytes, int variants, float variants, bool).
+The DSL form is `scalar <Name> <PrimitiveType> [@validators...]`. The primitive must be one of the built-in primitives (string, bytes, int variants, float variants, bool); a scalar over `datetime`, `file` or `any` is rejected as `scalar/bad-primitive`.
 
 ### Use
 

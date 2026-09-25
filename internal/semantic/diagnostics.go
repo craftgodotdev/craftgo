@@ -157,7 +157,7 @@ const (
 	CodeRefUnknownSymbol = "ref/unknown-symbol"
 	// CodeRefPackageCycle fires when the type and error declarations of packages reference each other in a cycle.
 	CodeRefPackageCycle = "ref/package-cycle"
-	// CodeScalarBadPrimitive fires when a scalar wraps a non-built-in, `any`, `object` or `file`.
+	// CodeScalarBadPrimitive fires when a scalar wraps a non-built-in, `any`, `datetime` or `file`.
 	CodeScalarBadPrimitive = "scalar/bad-primitive"
 	// CodeEventPayloadMissing fires when an event has no `payload` clause.
 	CodeEventPayloadMissing = "event/payload-missing"

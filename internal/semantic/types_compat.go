@@ -48,16 +48,22 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 	}
 }
 
-// checkScalarTypeCompat checks that a scalar wraps a built-in primitive,
-// then checks its decorators against that primitive.
+// checkScalarTypeCompat checks that a scalar wraps a primitive
+// [ScalarWraps] accepts, then checks its decorators against that primitive.
 func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 	if sd.Primitive == "" {
 		return // the parser reported the missing primitive
 	}
-	if !ScalarWraps(sd.Primitive) {
+	switch wraps := strings.Join(ScalarPrimitives(), ", "); {
+	case !prims.Is(sd.Primitive):
 		a.diag(sd.Pos, sd.Pos, lexer.SeverityError, CodeScalarBadPrimitive,
 			"scalar %q primitive must be a built-in (got %q; expected one of %s)",
-			sd.Name, sd.Primitive, strings.Join(ScalarPrimitives(), ", "))
+			sd.Name, sd.Primitive, wraps)
+		return
+	case !ScalarWraps(sd.Primitive):
+		a.diag(sd.Pos, sd.Pos, lexer.SeverityError, CodeScalarBadPrimitive,
+			"scalar %q cannot wrap %s (expected one of %s)",
+			sd.Name, sd.Primitive, wraps)
 		return
 	}
 	actual := ScalarPrims(sd)
@@ -131,10 +137,11 @@ func PrimFromName(name string) Prims {
 }
 
 // ScalarWraps reports whether a scalar may wrap built-in name: any
-// classified primitive but `file`, an upload rather than a value.
+// classified primitive but `file`, an upload rather than a value, and
+// `datetime`, whose defined type would have none of time.Time's methods.
 func ScalarWraps(name string) bool {
 	p := PrimFromName(name)
-	return p != 0 && p != PrimFile
+	return p != 0 && p != PrimFile && p != PrimDateTime
 }
 
 // ScalarPrimitives returns the built-ins a scalar may wrap, in catalogue

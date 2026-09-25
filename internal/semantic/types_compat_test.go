@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -197,7 +198,19 @@ func TestScalarUnknownPrimitiveRejected(t *testing.T) {
 	d := expectDiag(t, `scalar Weird unknownPrim`, CodeScalarBadPrimitive)
 	expectMessage(t, d, "Weird", "unknownPrim")
 	// The message lists every primitive a scalar may wrap.
-	expectMessage(t, d, "expected one of "+strings.Join(ScalarPrimitives(), ", "), "datetime")
+	expectMessage(t, d, "expected one of "+strings.Join(ScalarPrimitives(), ", "))
+}
+
+// A scalar cannot wrap `datetime`, `file` or `any`; the message names the
+// built-in and lists the primitives a scalar wraps.
+func TestScalarOverUnwrappableBuiltinRejected(t *testing.T) {
+	for _, prim := range []string{"datetime", "file", "any"} {
+		d := expectError(t, "scalar When "+prim, CodeScalarBadPrimitive)
+		expectMessage(t, d, `scalar "When" cannot wrap `+prim, "expected one of string, bool, int,", "bytes")
+		if slices.Contains(ScalarPrimitives(), prim) {
+			t.Errorf("ScalarPrimitives lists %s", prim)
+		}
+	}
 }
 
 // The diagnostics state the rules analysis applies: a `@group` replaces the

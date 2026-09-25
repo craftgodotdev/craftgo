@@ -478,11 +478,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   `scalar S` missing its primitive `primitive must be a built-in (got "")`.
 
 - **Diagnostics state the rules they apply.** A scalar over an unknown
-  primitive lists every built-in it may wrap, `datetime` included; a
-  `@group` segment of `.` or `..` says the group's directory takes the place
-  of the service's own, where it said the group nests under it; and a
-  `@form` on the wrong type says a single-level array binds, `file[]`
-  included, where it said file arrays do not.
+  primitive lists every built-in it may wrap; a `@group` segment of `.` or
+  `..` says the group's directory takes the place of the service's own,
+  where it said the group nests under it; and a `@form` on the wrong type
+  says a single-level array binds, `file[]` included, where it said file
+  arrays do not.
 
 - **A package named like an import of the generated code compiles.** A DSL
   package named `server`, `log`, `context`, `fmt` or another name a handler,
@@ -497,6 +497,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   generated `Path()` returned `config/config.yaml`, so `main.go` silently ran
   on defaults. A `config.go` generated before keeps the old path, since gen
   writes it once; edit its `Path()` by hand.
+
+- **A scalar cannot wrap `datetime`.** `scalar When datetime` generated
+  `type When time.Time`, which has none of `time.Time`'s methods: it encoded
+  as `{}` and never decoded. It is `scalar/bad-primitive` now, as a scalar
+  over `file` or `any` is, and the message lists the primitives a scalar
+  wraps. Use `datetime` directly.
 
 ### Deprecated
 

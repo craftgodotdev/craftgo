@@ -153,7 +153,7 @@ scalar OrderID   string  @length(8, 64) @pattern("^ord_[A-Z0-9]+$")
 scalar Cents     int     @gte(0) @multipleOf(2)
 ```
 
-Wraps a primitive. Validators inherit to every field of the scalar's type. Generated as a Go **defined type** (`type Email string`, not an alias) so it can carry a `Validate()` method; callers convert raw primitives (`Email("a@b.com")`).
+Wraps a primitive: `string`, `bytes`, an integer, a float or `bool` - never `datetime`, `file` or `any` (`scalar/bad-primitive`). Validators inherit to every field of the scalar's type. Generated as a Go **defined type** (`type Email string`, not an alias) so it can carry a `Validate()` method; callers convert raw primitives (`Email("a@b.com")`).
 
 ## Errors
 

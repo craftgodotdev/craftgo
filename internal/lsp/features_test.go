@@ -856,8 +856,8 @@ func TestCompletionDecoratorArgWithNoClosedSetStaysSilent(t *testing.T) {
 // `scalar Name |` offers only the built-ins a scalar can wrap.
 func TestCompletionScalarPrimitiveSlotIsBuiltinsOnly(t *testing.T) {
 	items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+"scalar Email |\n")
-	expectLabels(t, items, "string", "int", "bool", "bytes", "float64", "datetime")
-	expectNoLabels(t, items, "any", "file", "object", "map", "Address", "Kind", "Flag")
+	expectLabels(t, items, "string", "int", "bool", "bytes", "float64")
+	expectNoLabels(t, items, "any", "datetime", "file", "object", "map", "Address", "Kind", "Flag")
 }
 
 // A type parameter being declared (`type Page<|>`) offers nothing.
