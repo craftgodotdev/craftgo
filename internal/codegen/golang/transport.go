@@ -128,13 +128,14 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 	}
 	if d.BindRequest {
 		d.RequestType = imports.named(m.Request)
-		var err error
-		d.PathParams, d.QueryParams, d.HeaderParams, d.CookieParams, err = collectBindings(m, pkg, imports, r)
+		fields := resolveRequestFields(m, pkg, r)
+		binds, err := collectBindings(m, fields, pkg, r, imports)
 		if err != nil {
 			return transportData{}, err
 		}
-		d.BodyDecode = wire.IsBodyVerb(m.Verb) && hasUnboundField(m, pkg, r)
-		forms, files, ferr := collectFormBindings(m, pkg, imports, r)
+		d.PathParams, d.QueryParams, d.HeaderParams, d.CookieParams = binds[wire.BindPath], binds[wire.BindQuery], binds[wire.BindHeader], binds[wire.BindCookie]
+		d.BodyDecode = wire.IsBodyVerb(m.Verb) && hasBodyField(fields)
+		forms, files, ferr := collectFormBindings(m, fields, pkg, r, imports)
 		if ferr != nil {
 			return d, ferr
 		}
@@ -150,7 +151,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 				d.MultipartMaxMemory = n
 			}
 		}
-		d.Defaults = collectDefaults(m, pkg, imports, r)
+		d.Defaults = collectDefaults(fields, r, imports)
 	}
 	// On a raw response side logic writes its own headers.
 	if d.WriteResponse && mode.HasResponse {

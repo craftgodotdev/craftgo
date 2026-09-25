@@ -26,13 +26,12 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package, r *projectRes
 // responseBindingsFor renders the @header and @cookie writers of body td, mixin fields included,
 // reading the values from accessVar (`resp`, or `e` for an error body).
 func responseBindingsFor(td *ast.TypeDecl, prefix, accessVar string, pkg *semantic.Package, r *projectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
-	for _, ff := range flattenFieldsWithNames(td, prefix, r) {
-		f := ff.Field
-		kind, _ := wire.BindingKind(f.Decorators)
+	for _, rf := range semantic.ResolveFields(td, prefix, pkg, r.Resolver, resolvedGoFieldNames) {
+		kind, _ := wire.BindingKind(rf.Field.Decorators)
 		if kind != wire.BindHeader && kind != wire.BindCookie {
 			continue
 		}
-		stmt, ns := renderResponseWrite(f, pkg, r, kind, accessVar, ff.Name)
+		stmt, ns := renderResponseWrite(rf, pkg, r, kind, accessVar)
 		if ns {
 			needsStrconv = true
 		}
@@ -47,12 +46,17 @@ func responseBindingsFor(td *ast.TypeDecl, prefix, accessVar string, pkg *semant
 	return headers, cookies, needsStrconv
 }
 
-// renderResponseWrite renders the statement writing accessVar.goName as a header or cookie:
-// an optional field is nil-guarded and an array header adds one value per element.
-func renderResponseWrite(f *ast.Field, pkg *semantic.Package, r *projectResolver, kind wire.Binding, accessVar, goName string) (stmt string, needsStrconv bool) {
-	prim, declName := wirePrimName(f, pkg, r)
+// renderResponseWrite renders the statement writing accessVar's rf as a header or cookie: an
+// optional field is nil-guarded and an array header adds one value per element.
+func renderResponseWrite(rf semantic.ResolvedField, pkg *semantic.Package, r *projectResolver, kind wire.Binding, accessVar string) (stmt string, needsStrconv bool) {
+	f := rf.Field
+	prim, declared, ok := wireTarget(rf, pkg, r)
+	if !ok {
+		prim = "string"
+	}
+	named := declared != "" || !ok
 	wireName := wire.WireName(f, kind)
-	field := accessVar + "." + goName
+	field := accessVar + "." + rf.Name
 
 	set := func(valueExpr string) string {
 		if kind == wire.BindCookie {
@@ -64,49 +68,20 @@ func renderResponseWrite(f *ast.Field, pkg *semantic.Package, r *projectResolver
 	switch {
 	case f.Type != nil && f.Type.Array:
 		// The analyser rejects a @cookie array, so this is a header.
-		expr, ns := formatToString(prim, declName, "_v")
+		expr, ns := formatToString(prim, named, "_v")
 		return fmt.Sprintf("for _, _v := range %s {\nw.Header().Add(%q, %s)\n}", field, wireName, expr), ns
 	case f.Type != nil && f.Type.Optional:
-		expr, ns := formatToString(prim, declName, "*"+field)
+		expr, ns := formatToString(prim, named, "*"+field)
 		return fmt.Sprintf("if %s != nil {\n%s\n}", field, set(expr)), ns
 	default:
-		expr, ns := formatToString(prim, declName, field)
+		expr, ns := formatToString(prim, named, field)
 		return set(expr), ns
 	}
 }
 
-// wirePrimName resolves f's type to the primitive it is formatted as, a scalar to its primitive
-// and an enum to "int" or "string", falling back to "string"; declName is f's own type name.
-func wirePrimName(f *ast.Field, pkg *semantic.Package, r *projectResolver) (prim, declName string) {
-	if f.Type == nil || f.Type.Named == nil {
-		return "string", ""
-	}
-	declName = f.Type.Named.Name.String()
-	if prims.IsWireParseable(declName) {
-		return declName, declName
-	}
-	if sc := r.LookupScalar(declName); sc != nil {
-		if prims.IsWireParseable(sc.Primitive) {
-			return sc.Primitive, declName
-		}
-	}
-	if ed := r.LookupEnum(declName); ed != nil {
-		return enumWirePrim(ed), declName
-	}
-	return "string", declName
-}
-
-func enumWirePrim(ed *ast.EnumDecl) string {
-	if semantic.EnumKind(ed) == ast.EnumInt {
-		return "int"
-	}
-	return "string"
-}
-
-// formatToString renders access as a string expression, converting a scalar or enum
-// (declName != prim) to its primitive first; needsStrconv reports a strconv call.
-func formatToString(prim, declName, access string) (expr string, needsStrconv bool) {
-	named := declName != prim
+// formatToString renders access, of primitive prim or of a scalar or enum over it (named), as a
+// string expression; needsStrconv reports a strconv call.
+func formatToString(prim string, named bool, access string) (expr string, needsStrconv bool) {
 	sp, ok := prims.Lookup(prim)
 	if !ok {
 		return access, false
@@ -144,13 +119,17 @@ func formatToString(prim, declName, access string) (expr string, needsStrconv bo
 	return access, false
 }
 
-// collectFormBindings returns the [semantic.FormFields] parts, each text part with its bind statement.
-func collectFormBindings(m *ast.Method, pkg *semantic.Package, imports *importSet, r *projectResolver) (text, files []paramBinding, err error) {
-	nText, nFiles := semantic.FormFields(m, pkg, r.Resolver, resolvedGoFieldNames)
-	if len(nFiles) == 0 {
-		return nil, nil, nil
+// collectFormBindings returns the multipart parts of m's request fields, each text part with its
+// bind statement; both are nil when no part is a file.
+func collectFormBindings(m *ast.Method, fields []resolvedField, pkg *semantic.Package, r *projectResolver, imports *importSet) (text, files []paramBinding, err error) {
+	resolved := make([]semantic.ResolvedField, len(fields))
+	byField := make(map[*ast.Field]resolvedField, len(fields))
+	for i, rf := range fields {
+		resolved[i] = rf.ResolvedField
+		byField[rf.Field] = rf
 	}
-	for _, ff := range nFiles {
+	textParts, fileParts := semantic.FormParts(resolved)
+	for _, ff := range fileParts {
 		files = append(files, paramBinding{
 			DSLName:   ff.WireName,
 			GoName:    ff.Name,
@@ -160,11 +139,10 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, imports *importSe
 			MimeTypes: ff.MimeTypes,
 		})
 	}
-	for _, ff := range nText {
-		line, lerr := renderWireBindLine(ff.Field, pkg, r, imports, ff.WireName, ff.Name, formSource())
+	for _, ff := range textParts {
+		line, lerr := renderWireBindLine(byField[ff.Field], wire.BindForm, ff.WireName, pkg, r, imports)
 		if lerr != nil {
-			return nil, nil, fmt.Errorf("%s.%s on %s %s: %w",
-				m.Request.Name.String(), ff.Field.Name, httpVerb(m.Verb), route.PathString(m.Path), lerr)
+			return nil, nil, bindError(m, ff.Field, lerr)
 		}
 		text = append(text, paramBinding{
 			DSLName:  ff.WireName,
@@ -177,75 +155,47 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, imports *importSe
 	return text, files, nil
 }
 
-// collectBindings renders the path, query, header and cookie bindings of m's request fields,
-// failing on a field its binding source cannot carry.
-func collectBindings(m *ast.Method, pkg *semantic.Package, imports *importSet, r *projectResolver) (path, query, header, cookie []paramBinding, err error) {
-	if m.Request == nil {
-		return
-	}
+// collectBindings renders the bind statement of each request field a path, query, header or cookie
+// carries, grouped by binding in field order; a field its source cannot carry fails the method,
+// unless its name alone bound it to the path.
+func collectBindings(m *ast.Method, fields []resolvedField, pkg *semantic.Package, r *projectResolver, imports *importSet) (map[wire.Binding][]paramBinding, error) {
 	reqName := m.Request.Name.String()
-	for _, rf := range resolveRequestFields(m, pkg, r) {
-		// A @sensitive field is never read from the wire.
-		if rf.Binding == wire.BindSensitive {
+	binds := map[wire.Binding][]paramBinding{}
+	for _, rf := range fields {
+		switch rf.Binding {
+		case wire.BindPath, wire.BindQuery, wire.BindHeader, wire.BindCookie:
+		default:
 			continue
 		}
 		f := rf.Field
-		wireName := rf.WireName()
-		switch rf.Binding {
-		case wire.BindPath:
-			// A field that cannot bind as a segment is an error under @path and skipped when auto-bound.
-			if f.Type != nil && (f.Type.Optional || f.Type.Array) {
-				if rf.AutoBound {
-					continue
-				}
-				err = fmt.Errorf("%s.%s: @path requires a non-optional, non-array field - got %s", reqName, f.Name, f.Type)
-				return
+		autoPath := rf.Binding == wire.BindPath && rf.AutoBound
+		// A route segment is one value and always present.
+		if rf.Binding == wire.BindPath && f.Type != nil && (f.Type.Optional || f.Type.Array) {
+			if autoPath {
+				continue
 			}
-			line, lerr := renderWireBindLine(f, pkg, r, imports, wireName, rf.GoName, pathSource())
-			if lerr != nil {
-				if rf.AutoBound {
-					continue
-				}
-				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), route.PathString(m.Path), lerr)
-				return
-			}
-			path = append(path, paramBinding{
-				DSLName: wireName,
-				GoName:  rf.GoName,
-				Bind:    line,
-			})
-		case wire.BindQuery:
-			line, lerr := renderWireBindLine(f, pkg, r, imports, wireName, rf.GoName, querySource())
-			if lerr != nil {
-				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), route.PathString(m.Path), lerr)
-				return
-			}
-			query = append(query, paramBinding{DSLName: wireName, GoName: rf.GoName, Bind: line})
-		case wire.BindHeader:
-			line, lerr := renderWireBindLine(f, pkg, r, imports, wireName, rf.GoName, headerSource())
-			if lerr != nil {
-				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), route.PathString(m.Path), lerr)
-				return
-			}
-			header = append(header, paramBinding{DSLName: wireName, GoName: rf.GoName, Bind: line})
-		case wire.BindCookie:
-			line, lerr := renderWireBindLine(f, pkg, r, imports, wireName, rf.GoName, cookieSource())
-			if lerr != nil {
-				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), route.PathString(m.Path), lerr)
-				return
-			}
-			cookie = append(cookie, paramBinding{DSLName: wireName, GoName: rf.GoName, Bind: line})
+			return nil, fmt.Errorf("%s.%s: @path requires a non-optional, non-array field - got %s", reqName, f.Name, f.Type)
 		}
+		line, err := renderWireBindLine(rf, rf.Binding, rf.WireName(), pkg, r, imports)
+		if err != nil {
+			if autoPath {
+				continue
+			}
+			return nil, bindError(m, f, err)
+		}
+		binds[rf.Binding] = append(binds[rf.Binding], paramBinding{DSLName: rf.WireName(), GoName: rf.GoName, Bind: line})
 	}
-	return
+	return binds, nil
 }
 
-// hasUnboundField reports whether any request field binds to the body or a form part.
-func hasUnboundField(m *ast.Method, pkg *semantic.Package, r *projectResolver) bool {
-	if m.Request == nil {
-		return false
-	}
-	for _, rf := range resolveRequestFields(m, pkg, r) {
+// bindError names the request field of m that err keeps from binding.
+func bindError(m *ast.Method, f *ast.Field, err error) error {
+	return fmt.Errorf("%s.%s on %s %s: %w", m.Request.Name.String(), f.Name, httpVerb(m.Verb), route.PathString(m.Path), err)
+}
+
+// hasBodyField reports whether any request field binds to the body or a form part.
+func hasBodyField(fields []resolvedField) bool {
+	for _, rf := range fields {
 		switch rf.Binding {
 		case wire.BindBody, wire.BindForm:
 			return true

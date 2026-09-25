@@ -72,7 +72,7 @@ func buildServiceData(pkgName, svcName string, m *ast.Method, imps importPaths, 
 	mode := modeOf(m)
 	imports := newImportSet(crossPkg, goImport{Alias: localAlias, Path: imps.Types}, serviceNames)
 	var reqRef, respRef string
-	if mode.StubTakesReq() {
+	if mode.BindRequest() {
 		reqRef = imports.named(m.Request)
 	}
 	if mode.StubReturnsResp() {

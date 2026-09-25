@@ -26,15 +26,13 @@ func modeOf(m *ast.Method) methodMode {
 	}
 }
 
-// BindRequest reports whether the handler binds and validates the request before calling logic.
+// BindRequest reports whether the handler binds and validates the request and logic receives it
+// as `req *T`.
 func (m methodMode) BindRequest() bool { return m.HasRequest && !m.RawRequest }
 
 // WriteResponse reports whether the handler writes the response
 // (headers, status, JSON body) after logic returns.
 func (m methodMode) WriteResponse() bool { return !m.RawResponse }
-
-// StubTakesReq reports whether the service stub receives `req *T`.
-func (m methodMode) StubTakesReq() bool { return m.HasRequest && !m.RawRequest }
 
 // StubReturnsResp reports whether the service stub returns `(*T, error)`.
 func (m methodMode) StubReturnsResp() bool { return m.HasResponse && !m.RawResponse }
@@ -67,7 +65,7 @@ func buildSignature(mode methodMode, reqRef, respRef string) methodSignature {
 		params = append(params, "r *http.Request")
 		args = append(args, "r")
 	}
-	if mode.StubTakesReq() {
+	if mode.BindRequest() {
 		params = append(params, "req *"+reqRef)
 		args = append(args, "&req")
 	}

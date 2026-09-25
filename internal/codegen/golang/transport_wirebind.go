@@ -2,11 +2,11 @@ package golang
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
@@ -40,198 +40,155 @@ func wirePrim(name string) (queryPrim, bool) {
 	return q, true
 }
 
-// wireSource is how a handler reads the raw strings of one binding source.
+// wireSource is how a handler reads the raw strings of one binding.
 type wireSource struct {
-	kind         wire.Binding
-	singleExpr   func(wireName string) string
-	arrayExpr    func(wireName string) string // "" when the source has no multi-value form
-	presenceExpr func(wireName string) string // key-present expression; nil skips the presence check
-	cookieGuard  bool                         // wrap in `if c, err := r.Cookie(name)`, which supplies c
+	single  func(wireName string) string // the value
+	array   func(wireName string) string // every value; nil when the source carries one per name
+	present func(wireName string) string // whether the key came at all; nil skips the presence check
+	cookie  bool                         // read inside `if c, err := r.Cookie(name)`, which supplies c
 }
 
-func querySource() wireSource {
+// wireSources are the sources of the bindings a handler reads from strings.
+var wireSources = map[wire.Binding]wireSource{
+	// A matched route always supplies its segments.
+	wire.BindPath: {
+		single: func(n string) string { return fmt.Sprintf("r.PathValue(%q)", n) },
+	},
 	// transport.tmpl declares `_q := r.URL.Query()` once when the method has query params.
-	return wireSource{
-		kind:         wire.BindQuery,
-		singleExpr:   func(n string) string { return fmt.Sprintf("_q.Get(%q)", n) },
-		arrayExpr:    func(n string) string { return fmt.Sprintf("_q[%q]", n) },
-		presenceExpr: func(n string) string { return fmt.Sprintf("_q.Has(%q)", n) },
-	}
+	wire.BindQuery: {
+		single:  func(n string) string { return fmt.Sprintf("_q.Get(%q)", n) },
+		array:   func(n string) string { return fmt.Sprintf("_q[%q]", n) },
+		present: func(n string) string { return fmt.Sprintf("_q.Has(%q)", n) },
+	},
+	wire.BindHeader: {
+		single:  func(n string) string { return fmt.Sprintf("r.Header.Get(%q)", n) },
+		array:   func(n string) string { return fmt.Sprintf("r.Header.Values(%q)", n) },
+		present: func(n string) string { return fmt.Sprintf("len(r.Header.Values(%q)) > 0", n) },
+	},
+	wire.BindCookie: {
+		single:  func(string) string { return "c.Value" },
+		present: func(n string) string { return fmt.Sprintf("server.CookiePresent(r, %q)", n) },
+		cookie:  true,
+	},
+	wire.BindForm: {
+		single: func(n string) string { return fmt.Sprintf("r.FormValue(%q)", n) },
+		array:  func(n string) string { return fmt.Sprintf("r.MultipartForm.Value[%q]", n) },
+	},
 }
 
-func headerSource() wireSource {
-	return wireSource{
-		kind:         wire.BindHeader,
-		singleExpr:   func(n string) string { return fmt.Sprintf("r.Header.Get(%q)", n) },
-		arrayExpr:    func(n string) string { return fmt.Sprintf("r.Header.Values(%q)", n) },
-		presenceExpr: func(n string) string { return fmt.Sprintf("len(r.Header.Values(%q)) > 0", n) },
-	}
-}
-
-func cookieSource() wireSource {
-	return wireSource{
-		kind:         wire.BindCookie,
-		singleExpr:   func(string) string { return "c.Value" },
-		arrayExpr:    func(string) string { return "" },
-		cookieGuard:  true,
-		presenceExpr: func(n string) string { return fmt.Sprintf("server.CookiePresent(r, %q)", n) },
-	}
-}
-
-// pathSource has no presence check: a matched route always supplies the segment.
-func pathSource() wireSource {
-	return wireSource{
-		kind:       wire.BindPath,
-		singleExpr: func(n string) string { return fmt.Sprintf("r.PathValue(%q)", n) },
-		arrayExpr:  func(string) string { return "" },
-	}
-}
-
-func formSource() wireSource {
-	return wireSource{
-		kind:       wire.BindForm,
-		singleExpr: func(n string) string { return fmt.Sprintf("r.FormValue(%q)", n) },
-		arrayExpr:  func(n string) string { return fmt.Sprintf("r.MultipartForm.Value[%q]", n) },
-	}
-}
-
-// renderWireBindLine renders the statement binding field f from src into req.goName, or an error
-// for a shape src cannot carry (a map, a struct, an array on a single-value source).
-func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *projectResolver, imports *importSet, wireName, goName string, src wireSource) (string, error) {
-	if f.Type == nil {
+// renderWireBindLine renders the statement binding rf from binding's source into req, or an error
+// for a shape the source cannot carry (a map, a struct, an array on a single-value source).
+func renderWireBindLine(rf resolvedField, binding wire.Binding, wireName string, pkg *semantic.Package, r *projectResolver, imports *importSet) (string, error) {
+	f, src := rf.Field, wireSources[binding]
+	switch {
+	case f.Type == nil:
 		return "", fmt.Errorf("field %q has no resolved type", f.Name)
+	case f.Type.Map != nil:
+		return "", fmt.Errorf("field %q: map types cannot bind to @%s - only string/bool/int*/uint*/float* and arrays of those", f.Name, binding)
+	case f.Type.Named == nil:
+		return "", fmt.Errorf("field %q: anonymous types cannot bind to @%s - only string/bool/int*/uint*/float* and arrays of those", f.Name, binding)
+	case len(f.Type.Named.Args) > 0:
+		return "", fmt.Errorf("field %q: generic type %s<...> cannot bind to @%s - only string/bool/int*/uint*/float* and arrays of those", f.Name, f.Type.Named.Name.String(), binding)
+	case f.Type.Array && src.array == nil:
+		return "", fmt.Errorf("field %q: arrays cannot bind to @%s - this wire format carries a single value per name", f.Name, binding)
 	}
-	if f.Type.Map != nil {
-		return "", fmt.Errorf("field %q: map types cannot bind to @%s - only string/bool/int*/uint*/float* and arrays of those", f.Name, src.kind)
+	primName, declared, ok := wireTarget(rf.ResolvedField, pkg, r)
+	if !ok {
+		return "", fmt.Errorf("field %q: type %s cannot bind to @%s - only string/bool/int*/uint*/float*, scalars/enums, and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, f.Type, binding)
 	}
-	if f.Type.Named == nil {
-		return "", fmt.Errorf("field %q: anonymous types cannot bind to @%s - only string/bool/int*/uint*/float* and arrays of those", f.Name, src.kind)
-	}
-	if len(f.Type.Named.Args) > 0 {
-		return "", fmt.Errorf("field %q: generic type %s<...> cannot bind to @%s - only string/bool/int*/uint*/float* and arrays of those", f.Name, f.Type.Named.Name.String(), src.kind)
-	}
-	if f.Type.Array && src.arrayExpr(wireName) == "" {
-		return "", fmt.Errorf("field %q: arrays cannot bind to @%s - this wire format carries a single value per name", f.Name, src.kind)
-	}
-	declName := f.Type.Named.Name.String()
-	prim, ok := wirePrim(declName)
+	prim, _ := wirePrim(primName)
 	cast := ""
-	if !ok {
-		// A scalar or enum casts to its declared type.
-		if sc := r.LookupScalar(declName); sc != nil {
-			if p2, pOk := wirePrim(sc.Primitive); pOk {
-				prim = p2
-				ok = true
-				cast = declName
-			}
-		}
-		if !ok {
-			if ed := r.LookupEnum(declName); ed != nil {
-				prim, _ = wirePrim(enumWirePrim(ed))
-				ok = true
-				cast = declName
-			}
-		}
+	if declared != "" {
+		cast = imports.qualify(declared)
 	}
-	if !ok {
-		return "", fmt.Errorf("field %q: type %s cannot bind to @%s - only string/bool/int*/uint*/float*, scalars/enums, and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, f.Type, src.kind)
-	}
-	if cast != "" {
-		cast = imports.qualify(cast)
-	}
-	wrap := func(s string) string {
-		if cast == "" {
-			return s
-		}
-		return cast + "(" + s + ")"
-	}
-	singleSrc := src.singleExpr(wireName)
-	arraySrc := src.arrayExpr(wireName)
 	data := wireBindData{
 		DSLNameQuoted: strconv.Quote(wireName),
-		GoName:        goName,
+		GoName:        rf.GoName,
 		Label:         prim.label,
-		SingleSource:  singleSrc,
-		ArraySource:   arraySrc,
+		SingleSource:  src.single(wireName),
 	}
-	// The parser's type argument is the cast, else the Go type, else (for bool) the DSL name.
+	if src.array != nil {
+		data.ArraySource = src.array(wireName)
+	}
 	if prim.parser != "" {
-		bindType := cast
-		if bindType == "" {
-			bindType = prim.goType
-		}
-		if bindType == "" {
-			bindType = declName
-		}
-		data.ParseFn = bindParseFamily(prim.parser) + "[" + bindType + "]"
+		data.ParseFn = bindParseFamily(prim.parser) + "[" + cmp.Or(cast, primName) + "]"
 	}
-	var shape string
-	if f.Type.Array {
-		// A present key replaces an array @default and an absent key keeps it: server.BindValues
-		// does both, and the string-slice shapes have *Defaulted variants for it.
-		_, hasDef := semantic.ResolveDefaultValue(f, pkg)
-		if prim.parser == "" {
-			if cast == "" {
-				if hasDef {
-					shape = renderWireBindShape("directSliceDefaulted", data)
-				} else {
-					shape = renderWireBindShape("directSlice", data)
-				}
-			} else {
-				data.Wrap = wrap("_v")
-				if hasDef {
-					shape = renderWireBindShape("arrayStringDefaulted", data)
-				} else {
-					shape = renderWireBindShape("arrayString", data)
-				}
-			}
-		} else {
-			shape = renderWireBindShape("arrayParsed", data)
-		}
-	} else {
-		// An absent and an empty (`?x=`) value both leave a single field unset.
-		if prim.parser == "" {
-			if goFieldIsPointer(f, pkg, r) {
-				if cast == "" {
-					shape = renderWireBindShape("optionalStringNoCast", data)
-				} else {
-					data.Wrap = wrap("_v")
-					shape = renderWireBindShape("optionalStringCast", data)
-				}
-			} else if _, hasDef := semantic.ResolveDefaultValue(f, pkg); hasDef {
-				// Only a non-empty value overwrites the pre-filled @default.
-				data.Wrap = wrap("_v")
-				shape = renderWireBindShape("directSingleDefaulted", data)
-			} else {
-				data.Wrap = wrap(singleSrc)
-				shape = renderWireBindShape("directSingle", data)
-			}
-		} else {
-			if goFieldIsPointer(f, pkg, r) {
-				shape = renderWireBindShape("optionalParsed", data)
-			} else {
-				shape = renderWireBindShape("singleParsed", data)
-			}
-		}
+	shape := bindShape(rf, prim.parser != "", cast != "")
+	// directSingle converts the source expression; every other shape the `_v` it read.
+	data.Wrap = castTo(cast, "_v")
+	if shape == "directSingle" {
+		data.Wrap = castTo(cast, data.SingleSource)
 	}
-	if src.cookieGuard {
-		shape = wrapCookieGuard(wireName, shape)
-	}
-	// A missing required key (non-optional, no @default) answers 400; a present empty value passes.
-	// The check sits outside the cookie guard, so a missing cookie reaches it.
-	if src.presenceExpr != nil && !f.Type.Optional {
-		if _, hasDef := semantic.ResolveDefaultValue(f, pkg); !hasDef {
-			guard := fmt.Sprintf("if !server.RequirePresent(w, r, %s, %q, %q) {\nreturn\n}", src.presenceExpr(wireName), wireName, src.kind)
-			shape = guard + "\n" + shape
-		}
-	}
-	return shape, nil
+	return guardBind(renderWireBindShape(shape, data), rf, binding, wireName), nil
 }
 
-// wrapCookieGuard runs inner only when the request carries the cookie.
-func wrapCookieGuard(wireName, inner string) string {
-	indented := indentLines(inner, "\t")
-	return fmt.Sprintf("if c, err := r.Cookie(%q); err == nil {\n%s\n}", wireName, indented)
+// wireTarget resolves what one wire string of rf holds, an array's element for an array: the
+// primitive it parses as and the scalar or enum it converts to, "" for a primitive; ok is false
+// for a type no wire string carries.
+func wireTarget(rf semantic.ResolvedField, pkg *semantic.Package, r *projectResolver) (prim, declared string, ok bool) {
+	if t := rf.Field.Type; t != nil && t.Array {
+		elem := *rf.Field
+		elem.Type = t.ElemTypeRef()
+		rf = semantic.ResolveField(&elem, pkg, r.Project())
+	}
+	switch rf.Category {
+	case semantic.CatPrimitive:
+		return rf.ResolvedPrim, "", prims.IsWireParseable(rf.ResolvedPrim)
+	case semantic.CatScalar, semantic.CatEnum:
+		return rf.ResolvedPrim, rf.Field.Type.Named.Name.String(), prims.IsWireParseable(rf.ResolvedPrim)
+	}
+	return "", "", false
+}
+
+// bindShape names the transport_wire_bind.tmpl shape binding rf: array or single value, parsed or
+// kept a string, converted to a declared type, stored behind a pointer, pre-filled by a default.
+func bindShape(rf resolvedField, parsed, cast bool) string {
+	array, defaulted := rf.Field.Type.Array, rf.HasDefValue
+	switch {
+	case array && parsed:
+		return "arrayParsed"
+	case array && !cast && defaulted:
+		return "directSliceDefaulted"
+	case array && !cast:
+		return "directSlice"
+	case array && defaulted:
+		return "arrayStringDefaulted"
+	case array:
+		return "arrayString"
+	case parsed && rf.IsPointer:
+		return "optionalParsed"
+	case parsed:
+		return "singleParsed"
+	case rf.IsPointer && cast:
+		return "optionalStringCast"
+	case rf.IsPointer:
+		return "optionalStringNoCast"
+	case defaulted:
+		return "directSingleDefaulted"
+	}
+	return "directSingle"
+}
+
+// castTo converts the Go expression v to type, unless type is "".
+func castTo(typ, v string) string {
+	if typ == "" {
+		return v
+	}
+	return typ + "(" + v + ")"
+}
+
+// guardBind wraps bind in its source's guards: a cookie is read inside `if c, err :=
+// r.Cookie(name)`, and a missing required key (no `?`, no @default) answers 400 before it, outside
+// the cookie guard so a missing cookie reaches the check. A present empty value passes.
+func guardBind(bind string, rf resolvedField, binding wire.Binding, wireName string) string {
+	src := wireSources[binding]
+	if src.cookie {
+		bind = fmt.Sprintf("if c, err := r.Cookie(%q); err == nil {\n%s\n}", wireName, indentLines(bind, "\t"))
+	}
+	if src.present != nil && !rf.Field.Type.Optional && !rf.HasDefValue {
+		bind = fmt.Sprintf("if !server.RequirePresent(w, r, %s, %q, %q) {\nreturn\n}\n", src.present(wireName), wireName, binding) + bind
+	}
+	return bind
 }
 
 // indentLines prepends prefix to every non-empty line of s.

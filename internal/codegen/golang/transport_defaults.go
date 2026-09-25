@@ -6,45 +6,23 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/prims"
-	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func collectDefaults(m *ast.Method, pkg *semantic.Package, imports *importSet, r *projectResolver) []defaultBinding {
-	if m.Request == nil {
-		return nil
-	}
-	td, prefix := semantic.LookupMethodType(m.Request, r.Resolver)
-	if td == nil {
-		return nil
-	}
+// collectDefaults pre-fills the request fields that carry a @default, before the request is bound.
+func collectDefaults(fields []resolvedField, r *projectResolver, imports *importSet) []defaultBinding {
 	var out []defaultBinding
-	for _, ff := range flattenFieldsWithNames(td, prefix, r) {
-		f := ff.Field
-		if f.Type == nil || f.Type.Map != nil {
+	for _, rf := range fields {
+		f, arg := rf.Field, firstArg(rf.Field.Decorators, "default")
+		if !rf.HasDefValue || arg == nil || f.Type == nil || f.Type.Map != nil {
 			continue
 		}
-		lit := defaultLiteral(f, r, imports)
+		lit := renderDefault(f.Type, arg.Value, r, imports)
 		if lit == "" {
 			continue
 		}
-		out = append(out, defaultBinding{
-			GoName:  ff.Name,
-			Literal: lit,
-			Ptr:     goFieldIsPointer(f, pkg, r),
-		})
+		out = append(out, defaultBinding{GoName: rf.GoName, Literal: lit, Ptr: rf.IsPointer})
 	}
 	return out
-}
-
-// defaultLiteral renders f's @default as Go source, or "" when it is absent or unrenderable.
-func defaultLiteral(f *ast.Field, r *projectResolver, imports *importSet) string {
-	for _, d := range f.Decorators {
-		if d.Name != "default" || len(d.Args) != 1 {
-			continue
-		}
-		return renderDefault(f.Type, d.Args[0].Value, r, imports)
-	}
-	return ""
 }
 
 // renderDefault renders v as a Go value of type t, or returns "" when it cannot.

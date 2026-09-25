@@ -25,7 +25,12 @@ func FormFields(m *ast.Method, pkg *Package, r *Resolver, levelNames LevelNames)
 	if m == nil || m.Request == nil {
 		return nil, nil
 	}
-	for _, rf := range RequestFields(m, pkg, r, levelNames) {
+	return FormParts(RequestFields(m, pkg, r, levelNames))
+}
+
+// FormParts is [FormFields] over a request's resolved fields.
+func FormParts(fields []ResolvedField) (text, files []FormField) {
+	for _, rf := range fields {
 		switch rf.Binding {
 		case wire.BindPath, wire.BindQuery, wire.BindHeader, wire.BindCookie, wire.BindSensitive:
 			continue
