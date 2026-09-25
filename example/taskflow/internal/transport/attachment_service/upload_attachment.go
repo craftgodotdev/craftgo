@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// Upload a file attachment to a task (image, PDF or text; ≤10MB).
+//
 // UploadAttachment returns the http.HandlerFunc for the
 // POST UploadAttachment multipart endpoint. The handler parses
 // `multipart/form-data` bodies, binds every form field declared on

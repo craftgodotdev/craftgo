@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 )
 
+// Create a new todo.
+//
 // CreateTodo returns the http.HandlerFunc for the
 // POST CreateTodo endpoint.
 func CreateTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Map of nested - validates map presence but does NOT recurse into values (map-value validators are not yet wired through the codegen walker).
+//
 // EchoCatalog returns the http.HandlerFunc for the
 // POST EchoCatalog endpoint.
 func EchoCatalog(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

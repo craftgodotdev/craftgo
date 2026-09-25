@@ -21,8 +21,9 @@ type transportData struct {
 	Verb        string
 	// RequestType is the Go type the handler binds the request into.
 	RequestType string
-	Doc         []string
-	BodyDecode  bool
+	// Doc heads the handler's doc comment ([docHead]).
+	Doc        []string
+	BodyDecode bool
 	// RawRequest and RawResponse report the transport sides logic owns ([wire.RawSides]).
 	RawRequest    bool
 	RawResponse   bool
@@ -103,7 +104,7 @@ func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, 
 		Method:        m.Name,
 		ServiceName:   logicTypeName(m.Name),
 		Verb:          strings.ToUpper(m.Verb),
-		Doc:           m.Doc,
+		Doc:           docHead(semantic.DescriptionLines(decs, m.Doc)),
 		RawRequest:    mode.RawRequest,
 		RawResponse:   mode.RawResponse,
 		BindRequest:   mode.BindRequest(),

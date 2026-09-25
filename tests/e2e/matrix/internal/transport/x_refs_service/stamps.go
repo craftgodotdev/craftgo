@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// A generic response over datetime: the stub imports time for the type argument.
+//
 // Stamps returns the http.HandlerFunc for the
 // GET Stamps endpoint.
 func Stamps(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

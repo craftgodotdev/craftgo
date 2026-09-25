@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Pins cross-package scalar BINDING casts. Handler must emit `req.Q = xshared.XEmail(r.URL.Query().Get("q"))` (qualified cast) - bare strings fail to compile against the *xshared.XEmail field type.
+//
 // Search returns the http.HandlerFunc for the
 // GET Search endpoint.
 func Search(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

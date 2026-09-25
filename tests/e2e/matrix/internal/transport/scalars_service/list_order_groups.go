@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// List orders grouped by region. The response is a generic instance over an array of maps, Page<map<string, Order>[]>.
+//
 // ListOrderGroups returns the http.HandlerFunc for the
 // GET ListOrderGroups endpoint.
 func ListOrderGroups(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

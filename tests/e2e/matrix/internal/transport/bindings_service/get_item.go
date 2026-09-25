@@ -12,9 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetItem drives the path-scalar binder: id lands as the UUID
-// scalar type, the inherited @format(uuid) fires (via UUID.Validate())
-// during req.Validate().
+// Fetch one item by id. The path placeholder lands as the UUID scalar type; the inherited @format(uuid) validator rejects malformed ids at the boundary.
+//
 // GetItem returns the http.HandlerFunc for the
 // GET GetItem endpoint.
 func GetItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

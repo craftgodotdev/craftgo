@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Echo the boundary-default matrix. Smoke tests assert that the pre-fill happens before req.Validate() so the defaulted values land in the response.
+//
 // EchoBoundary returns the http.HandlerFunc for the
 // POST EchoBoundary endpoint.
 func EchoBoundary(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

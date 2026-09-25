@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Echo the scalar default. Missing size on the wire results in size=20 after pre-fill, and the scalar's @gte/@lte bounds still apply.
+//
 // EchoScalar returns the http.HandlerFunc for the
 // POST EchoScalar endpoint.
 func EchoScalar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

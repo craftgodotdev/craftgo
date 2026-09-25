@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
+// Echo every @default form.
+//
 // Defaults returns the http.HandlerFunc for the
 // POST Defaults endpoint.
 func Defaults(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

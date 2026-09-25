@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// Server + storage counters for the admin dashboard. Public within the admin surface.
+//
 // Stats returns the http.HandlerFunc for the
 // GET Stats endpoint.
 func Stats(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

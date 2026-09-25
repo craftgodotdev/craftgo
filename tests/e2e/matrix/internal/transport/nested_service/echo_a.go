@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Mutual recursion entry - request A traverses A → B → A → ...
+//
 // EchoA returns the http.HandlerFunc for the
 // POST EchoA endpoint.
 func EchoA(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

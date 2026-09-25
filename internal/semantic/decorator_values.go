@@ -45,8 +45,9 @@ func Description(decs []*ast.Decorator, doc []string) string {
 	return strings.Join(doc, "\n")
 }
 
-// descriptionLines is [Description] split at the author's line breaks.
-func descriptionLines(decs []*ast.Decorator, doc []string) []string {
+// DescriptionLines is [Description] split at the author's line breaks; nil for
+// a node the design does not describe.
+func DescriptionLines(decs []*ast.Decorator, doc []string) []string {
 	desc := Description(decs, doc)
 	if desc == "" {
 		return nil

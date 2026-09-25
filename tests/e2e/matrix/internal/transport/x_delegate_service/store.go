@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Round-trips the delegating types so the handler path compiles too.
+//
 // Store returns the http.HandlerFunc for the
 // POST Store endpoint.
 func Store(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

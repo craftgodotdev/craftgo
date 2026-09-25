@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Raw request whose docs-only contract has a file field: OpenAPI says multipart, the transport parses nothing.
+//
 // RqDocsReq returns the http.HandlerFunc for the
 // POST RqDocsReq raw-request endpoint. The handler hands the
 // *http.Request to logic unread and encodes the returned response.

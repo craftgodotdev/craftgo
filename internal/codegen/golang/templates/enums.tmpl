@@ -1,10 +1,10 @@
 package {{.Package}}
 {{range .Enums}}
-type {{.Name}} {{.GoBase}}
+{{.Doc}}type {{.Name}} {{.GoBase}}
 
 const (
 {{- range .Values}}
-	{{.ConstName}} {{.EnumName}} = {{.Literal}}
+{{.Doc}}	{{.ConstName}} {{.EnumName}} = {{.Literal}}
 {{- end}}
 )
 {{end}}

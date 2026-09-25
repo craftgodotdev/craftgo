@@ -2,6 +2,8 @@
 
 package events
 
+// Warehouse is an int-valued enum, carried as a payload field and used
+// as a publish key at the call site.
 type Warehouse int
 
 const (

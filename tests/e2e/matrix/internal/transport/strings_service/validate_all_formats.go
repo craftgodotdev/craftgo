@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Validate every @format(name) in the catalogue. The request body is AllFormats - one field per format - so a malformed value in any slot fails the boundary check.
+//
 // ValidateAllFormats returns the http.HandlerFunc for the
 // POST ValidateAllFormats endpoint.
 func ValidateAllFormats(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

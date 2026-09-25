@@ -213,3 +213,12 @@ func renderDoc(doc []string, indent string) string {
 	}
 	return strings.Join(lines, "")
 }
+
+// docHead returns the lines that head a doc comment whose generated lines follow: the
+// declaration's description, then an empty line; none for a declaration without one.
+func docHead(desc []string) []string {
+	if len(desc) == 0 {
+		return nil
+	}
+	return slices.Concat(desc, []string{""})
+}

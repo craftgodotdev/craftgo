@@ -6,6 +6,10 @@ import (
 	"mime/multipart"
 )
 
+// UUID is a string-backed scalar that adds @format(uuid) inheritance
+// to every field that references it. Used in PathScalarReq so the
+// path binder lands a typed alias instead of a bare string.
+//
 // UUID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type UUID string
 

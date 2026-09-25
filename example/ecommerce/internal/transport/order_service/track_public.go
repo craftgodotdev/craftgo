@@ -12,10 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// Ignore + replace: clears the inherited chain then appends fresh
-// middleware, for a public endpoint that still needs some
-// cross-cutting concerns (CORS for browser callers) but none of
-// the auth/rate-limit chain.
+// Public order tracking by id - CORS only, no auth.
+//
 // TrackPublic returns the http.HandlerFunc for the
 // GET TrackPublic endpoint.
 func TrackPublic(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

@@ -2,6 +2,8 @@
 
 package scalars
 
+// Priority is a small local enum used purely to exercise a generic
+// instantiated over an ENUM type parameter (`Page<Priority>`).
 type Priority string
 
 const (

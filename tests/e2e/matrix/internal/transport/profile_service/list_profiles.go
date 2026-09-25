@@ -12,6 +12,7 @@ import (
 )
 
 // ListProfiles returns every stored profile in id order.
+//
 // ListProfiles returns the http.HandlerFunc for the
 // GET ListProfiles endpoint.
 func ListProfiles(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

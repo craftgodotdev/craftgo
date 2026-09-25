@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Recursive tree node.
+//
 // EchoNode returns the http.HandlerFunc for the
 // POST EchoNode endpoint.
 func EchoNode(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

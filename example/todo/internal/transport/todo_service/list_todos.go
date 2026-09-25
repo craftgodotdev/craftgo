@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 )
 
+// List todos with cursor pagination, optional status filter.
+//
 // ListTodos returns the http.HandlerFunc for the
 // GET ListTodos endpoint.
 func ListTodos(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

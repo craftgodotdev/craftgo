@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// Create a project (v1).
+//
 // CreateProject returns the http.HandlerFunc for the
 // POST CreateProject endpoint.
 func CreateProject(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

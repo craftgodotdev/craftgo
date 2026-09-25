@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Echo the narrow-width default matrix. The pre-fill casts each literal to the field primitive so the *T pointer assignment compiles (int32 / int64 / uint16 / float32).
+//
 // EchoWidth returns the http.HandlerFunc for the
 // POST EchoWidth endpoint.
 func EchoWidth(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

@@ -1121,6 +1121,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   no operation lists it as a parameter. A constraint
   such as `@minLength` has no place in a server variable.
 
+- **Go docs carry the design's description.** A scalar, an enum and each of
+  its values, an error and a middleware lost the comment the design wrote
+  above them, and a type, field or method with `@doc` kept its comment
+  instead, where the OpenAPI document shows the `@doc`. Each generated
+  declaration the design names now opens its doc with the design's `@doc`,
+  else its comment, and an empty `//` line parts it from the lines craftgo
+  adds. A logic stub or middleware written once keeps the doc it was
+  written with.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

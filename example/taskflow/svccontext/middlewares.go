@@ -20,6 +20,9 @@ type AuthRequiredMiddleware = server.Middleware
 // field below has a self-documenting name.
 type RateLimitMiddleware = server.Middleware
 
+// Declared middlewares. Each becomes a typed field on ServiceContext that
+// main.go wires once at startup; services attach them via @middlewares.
+//
 // RequestIDMiddleware is the typed alias for the RequestID middleware so the
 // field below has a self-documenting name.
 type RequestIDMiddleware = server.Middleware

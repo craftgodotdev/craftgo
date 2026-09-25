@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Exercise stacked length + pattern + format decorators on a single field. The request body's three lines each layer the full validator menu.
+//
 // CombineConstraints returns the http.HandlerFunc for the
 // POST CombineConstraints endpoint.
 func CombineConstraints(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

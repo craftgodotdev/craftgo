@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
+// Upload customer avatar (multipart, ≤5MB).
+//
 // UploadAvatar returns the http.HandlerFunc for the
 // POST UploadAvatar multipart endpoint. The handler parses
 // `multipart/form-data` bodies, binds every form field declared on

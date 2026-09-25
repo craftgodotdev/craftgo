@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Pins cross-package enum `@default` pre-fill in transport. Body decode must seed `req.Color = &__d` with `__d := xshared.XColorRed` before JSON.Decode runs; without resolver the default literal silently drops because the local pkg.Enums miss.
+//
 // PostDefault returns the http.HandlerFunc for the
 // POST PostDefault endpoint.
 func PostDefault(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

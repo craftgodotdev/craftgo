@@ -36,9 +36,10 @@ type grpcMethodData struct {
 	Method      string
 	FullMethod  string
 	ServiceName string
-	Doc         []string
-	Sig         grpcSignature
-	ImportDecl  string
+	// Doc heads the method's doc comment ([docHead]) with the RPC's proto comment.
+	Doc        []string
+	Sig        grpcSignature
+	ImportDecl string
 }
 
 func grpcImportsFor(cfg *config.Config, svc *protodesign.Service) grpcImports {
@@ -96,7 +97,7 @@ func buildGRPCMethodData(svc *protodesign.Service, m *protodesign.Method, imps g
 		Method:      m.Name,
 		FullMethod:  m.FullMethod,
 		ServiceName: logicTypeName(m.Name),
-		Doc:         m.Doc,
+		Doc:         docHead(m.Doc),
 		Sig:         sig,
 		ImportDecl:  set.decl(),
 	}
@@ -126,7 +127,7 @@ func buildGRPCServiceData(svc *protodesign.Service, m *protodesign.Method, imps 
 		Service:     svc.Name,
 		Method:      m.Name,
 		ServiceName: logicTypeName(m.Name),
-		Doc:         m.Doc,
+		Doc:         docHead(m.Doc),
 		Notes:       streamNotes(m.Kind),
 		Sig:         sig.Logic,
 		ImportDecl:  stubImportDecl(set, sig.Logic, imps.Svccontext),

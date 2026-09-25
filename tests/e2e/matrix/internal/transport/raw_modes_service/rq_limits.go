@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Raw request under @timeout + @maxBodySize: the 413 pre-check and the context deadline both apply.
+//
 // RqLimits returns the http.HandlerFunc for the
 // POST RqLimits raw-request endpoint. The handler hands the
 // *http.Request to logic unread and encodes the returned response.

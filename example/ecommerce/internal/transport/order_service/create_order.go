@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
+// Create a new order.
+//
 // CreateOrder returns the http.HandlerFunc for the
 // POST CreateOrder endpoint.
 func CreateOrder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

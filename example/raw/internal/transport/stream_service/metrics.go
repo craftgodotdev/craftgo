@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 
+// Prometheus scrape endpoint (text/plain).
+//
 // Metrics returns the http.HandlerFunc for the
 // GET Metrics passthrough endpoint. The framework stays
 // out of the way: logic receives the raw http.ResponseWriter and

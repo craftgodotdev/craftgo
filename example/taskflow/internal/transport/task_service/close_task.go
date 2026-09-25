@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// Deprecated: use SetTaskStatus with status=done. Kept for older clients.
+//
 // CloseTask returns the http.HandlerFunc for the
 // POST CloseTask endpoint.
 func CloseTask(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

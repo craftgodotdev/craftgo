@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
+// Admin force-ship. Idempotent.
+//
 // ForceShip returns the http.HandlerFunc for the
 // POST ForceShip endpoint.
 func ForceShip(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Raw response over a multipart request: the form is parsed and validated before logic runs.
+//
 // RrMultipart returns the http.HandlerFunc for the
 // POST RrMultipart raw-response endpoint. The handler binds and
 // validates the request, then hands the http.ResponseWriter and

@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Kept so the fixture exercises a package that both serves HTTP and declares events.
+//
 // Health returns the http.HandlerFunc for the
 // GET Health endpoint.
 func Health(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

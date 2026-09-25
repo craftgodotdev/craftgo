@@ -2,6 +2,8 @@
 
 package shared
 
+// Reason a validation failed, surfaced in the ValidationErr body so clients
+// can branch without string-matching messages.
 type FieldProblem string
 
 const (

@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Cancel a queued job. No body on success - 204 keeps the wire silent.
+//
 // CancelJob returns the http.HandlerFunc for the
 // DELETE CancelJob endpoint.
 func CancelJob(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

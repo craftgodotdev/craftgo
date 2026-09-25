@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Plain nested - User has an Address. Validates recursively.
+//
 // EchoUser returns the http.HandlerFunc for the
 // POST EchoUser endpoint.
 func EchoUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Raw response on a method that drops the inherited middleware chain.
+//
 // RrNoMw returns the http.HandlerFunc for the
 // GET RrNoMw raw-response endpoint. The handler binds and
 // validates the request, then hands the http.ResponseWriter and

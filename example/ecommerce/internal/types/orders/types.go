@@ -58,21 +58,22 @@ type ListOrdersReq struct {
 }
 
 type Order struct {
-	ID         shared.NonEmptyID     `json:"id"`
-	Customer   customers.Customer    `json:"customer"`
-	Items      []LineItem            `json:"items"`
-	Payment    *Payment              `json:"payment,omitempty"`
-	TotalCents shared.Cents          `json:"totalCents"`
-	Status     OrderStatus           `json:"status"`
-	Notes      *string               `json:"notes,omitempty"`
-	ShippedAt  *string               `json:"shippedAt,omitempty"`
-	Currency   *shared.CurrencyCode  `json:"currency,omitempty"`
-	Tags       []string              `json:"tags"`
-	Grid       [][]string            `json:"grid"`
-	Metadata   map[string]string     `json:"metadata,omitempty"`
-	Extras     any                   `json:"extras,omitempty"`
-	CreatedBy  customers.CustomerRef `json:"createdBy"`
-	CreatedAt  string                `json:"createdAt"`
+	ID         shared.NonEmptyID    `json:"id"`
+	Customer   customers.Customer   `json:"customer"`
+	Items      []LineItem           `json:"items"`
+	Payment    *Payment             `json:"payment,omitempty"`
+	TotalCents shared.Cents         `json:"totalCents"`
+	Status     OrderStatus          `json:"status"`
+	Notes      *string              `json:"notes,omitempty"`
+	ShippedAt  *string              `json:"shippedAt,omitempty"`
+	Currency   *shared.CurrencyCode `json:"currency,omitempty"`
+	Tags       []string             `json:"tags"`
+	Grid       [][]string           `json:"grid"`
+	Metadata   map[string]string    `json:"metadata,omitempty"`
+	// Free-form provider payload, e.g. { trackingNumber, carrier }.
+	Extras    any                   `json:"extras,omitempty"`
+	CreatedBy customers.CustomerRef `json:"createdBy"`
+	CreatedAt string                `json:"createdAt"`
 }
 
 type Payment struct {

@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 )
 
+// Fetch one todo by id.
+//
 // GetTodo returns the http.HandlerFunc for the
 // GET GetTodo endpoint.
 func GetTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

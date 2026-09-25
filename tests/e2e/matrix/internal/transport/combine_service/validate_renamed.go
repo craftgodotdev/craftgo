@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Validate a path id beside a body keyed by @json names. The operation body and the @requiresOneOf name primary_email and backup_email; the response sends ETag as a header and primary_email in the body.
+//
 // ValidateRenamed returns the http.HandlerFunc for the
 // POST ValidateRenamed endpoint.
 func ValidateRenamed(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

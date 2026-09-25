@@ -12,9 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ListPage auto-binds a field that carries @json to the query string:
-// the binder reads `?pageSize`, and a value below its bound is
-// reported under that name.
+// List one page of items. `pageSize` rides the query string; a value below its bound is reported as pageSize.
+//
 // ListPage returns the http.HandlerFunc for the
 // GET ListPage endpoint.
 func ListPage(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

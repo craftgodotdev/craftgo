@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 )
 
+// Create a gallery from a BATCH of uploaded photos. Showcases `file[]` (many files, 1–20) + an optional `cover` file + form values of every shape - text, a repeated `tags string[]`, an enum, a bool and an int - in one multipart/form-data request.
+//
 // CreateGallery returns the http.HandlerFunc for the
 // POST CreateGallery multipart endpoint. The handler parses
 // `multipart/form-data` bodies, binds every form field declared on

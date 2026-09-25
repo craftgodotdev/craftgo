@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Raw response over a cross-package request whose field reaches a third package (shared.Severity cast).
+//
 // RrXpkg returns the http.HandlerFunc for the
 // GET RrXpkg raw-response endpoint. The handler binds and
 // validates the request, then hands the http.ResponseWriter and

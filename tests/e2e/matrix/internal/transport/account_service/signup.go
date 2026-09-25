@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Sign up - public, only inherits rate limiting.
+//
 // Signup returns the http.HandlerFunc for the
 // POST Signup endpoint.
 func Signup(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

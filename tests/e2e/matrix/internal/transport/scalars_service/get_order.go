@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Fetch one order by id. Path-bound id is a UUID scalar so the per-field decorator chain reduces to @path; the inherited @format(uuid) check runs in req.Validate().
+//
 // GetOrder returns the http.HandlerFunc for the
 // GET GetOrder endpoint.
 func GetOrder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

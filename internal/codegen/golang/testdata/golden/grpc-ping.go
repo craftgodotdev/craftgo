@@ -12,6 +12,7 @@ import (
 )
 
 // Ping uses only well-known types.
+//
 // Ping serves the unary RPC /greet.Greeter/Ping: it hands the
 // call context to the logic and maps the error it returns onto a status,
 // as the HTTP handler does with WriteError.

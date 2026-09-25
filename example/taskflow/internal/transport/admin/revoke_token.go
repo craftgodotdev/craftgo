@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// Revoke an API token.
+//
 // RevokeToken returns the http.HandlerFunc for the
 // DELETE RevokeToken endpoint.
 func RevokeToken(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

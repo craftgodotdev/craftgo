@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Pins cross-package scalar @query promotion: the GET handler casts xshared.XEmail and imports xshared, both needing the promoted field's type re-qualified.
+//
 // PromoteWire returns the http.HandlerFunc for the
 // GET PromoteWire endpoint.
 func PromoteWire(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

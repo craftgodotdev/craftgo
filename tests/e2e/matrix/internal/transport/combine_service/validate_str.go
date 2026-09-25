@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Validate stacked string decorators (length + format + pattern). The handler fails any of the three independently.
+//
 // ValidateStr returns the http.HandlerFunc for the
 // POST ValidateStr endpoint.
 func ValidateStr(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

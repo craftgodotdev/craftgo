@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Tally integers. A generic response writes its argument-typed header as the argument's type.
+//
 // TallyInts returns the http.HandlerFunc for the
 // GET TallyInts endpoint.
 func TallyInts(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

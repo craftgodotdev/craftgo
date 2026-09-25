@@ -13,6 +13,7 @@ import (
 )
 
 // id binds as int, uid as an int scalar, kind as a string enum.
+//
 // GetItemByPath returns the http.HandlerFunc for the
 // GET GetItemByPath endpoint.
 func GetItemByPath(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

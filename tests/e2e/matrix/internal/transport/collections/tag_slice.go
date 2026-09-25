@@ -15,6 +15,7 @@ import (
 // TagSlice exercises the scalar-array case - per-element Tag
 // validators (minLength + maxLength + pattern) fire on every
 // element via the scalar-leaves walk.
+//
 // TagSlice returns the http.HandlerFunc for the
 // POST TagSlice endpoint.
 func TagSlice(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

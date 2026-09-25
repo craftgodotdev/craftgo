@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// Create a project (v2 requires an ownerId).
+//
 // CreateProjectV2 returns the http.HandlerFunc for the
 // POST CreateProjectV2 endpoint.
 func CreateProjectV2(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

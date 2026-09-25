@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// Bulk-create up to 100 tasks in one request. Larger body budget than the default.
+//
 // BulkCreateTasks returns the http.HandlerFunc for the
 // POST BulkCreateTasks endpoint.
 func BulkCreateTasks(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

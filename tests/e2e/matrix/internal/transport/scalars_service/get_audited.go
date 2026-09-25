@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Read audited record. Response type uses the mixin pattern (AuditFields embedded into Audited).
+//
 // GetAudited returns the http.HandlerFunc for the
 // GET GetAudited endpoint.
 func GetAudited(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

@@ -33,6 +33,7 @@ func NewPingService(ctx context.Context, svcCtx *svccontext.ServiceContext) *Pin
 }
 
 // Ping uses only well-known types.
+//
 // Ping is the service entry point. Replace the
 // TODO with the real implementation.
 func (l *PingService) Ping(req *emptypb.Empty) (*emptypb.Empty, error) {

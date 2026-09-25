@@ -12,9 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// UploadAvatar exercises the path + form-file combination. The
-// `id` field auto-binds to the path segment; the `file` field
-// rides the multipart/form-data body.
+// Upload a user avatar. Demonstrates the path + multipart-form combo - id from /users/{id}/avatar, file via multipart/form-data with @maxSize + @mimeTypes validation.
+//
 // UploadAvatar returns the http.HandlerFunc for the
 // POST UploadAvatar multipart endpoint. The handler parses
 // `multipart/form-data` bodies, binds every form field declared on

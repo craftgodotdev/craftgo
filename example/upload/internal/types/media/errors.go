@@ -9,6 +9,8 @@ import (
 // ErrCodeMediaNotFound is the canonical machine-readable code for MediaNotFoundErr.
 const ErrCodeMediaNotFound = "MEDIA_NOT_FOUND"
 
+// MediaNotFound is returned by GetMedia for an unknown id - maps to HTTP 404.
+//
 // MediaNotFoundErr is the typed NotFound error generated for `MediaNotFound`.
 type MediaNotFoundErr struct{}
 

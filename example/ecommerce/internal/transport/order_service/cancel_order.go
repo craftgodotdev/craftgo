@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
+// Admin cancellation. Idempotent.
+//
 // CancelOrder returns the http.HandlerFunc for the
 // POST CancelOrder endpoint.
 func CancelOrder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Passthrough with a docs-only contract: typed OpenAPI, still `(w, r) error`.
+//
 // PtBlocks returns the http.HandlerFunc for the
 // GET PtBlocks passthrough endpoint. The framework stays
 // out of the way: logic receives the raw http.ResponseWriter and

@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Slice of nested with array-level bounds.
+//
 // EchoTeam returns the http.HandlerFunc for the
 // POST EchoTeam endpoint.
 func EchoTeam(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

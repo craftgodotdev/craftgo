@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Logout - inherits RateLimit + AuthRequired. Also appends Audit at method level.
+//
 // Logout returns the http.HandlerFunc for the
 // POST Logout endpoint.
 func Logout(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

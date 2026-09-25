@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
+// List products with cursor pagination.
+//
 // ListProducts returns the http.HandlerFunc for the
 // GET ListProducts endpoint.
 func ListProducts(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

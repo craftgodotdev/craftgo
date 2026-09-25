@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Create an order from a full payload. Every scalar-typed field on Order runs its inherited validators.
+//
 // CreateOrder returns the http.HandlerFunc for the
 // POST CreateOrder endpoint.
 func CreateOrder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

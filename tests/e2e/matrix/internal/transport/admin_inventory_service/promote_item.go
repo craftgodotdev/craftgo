@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Promote an item to the featured slot. Inherits the same auth chain plus a method-level admin scope.
+//
 // PromoteItem returns the http.HandlerFunc for the
 // POST PromoteItem endpoint.
 func PromoteItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

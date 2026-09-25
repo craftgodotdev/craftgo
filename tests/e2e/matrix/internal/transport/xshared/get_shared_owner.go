@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// A method of the xshared XRefsService: documented beside the methods of xrefs' service of the same name.
+//
 // GetSharedOwner returns the http.HandlerFunc for the
 // GET GetSharedOwner endpoint.
 func GetSharedOwner(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

@@ -13,6 +13,7 @@ import (
 )
 
 // GetUser returns the user identified by req.ID.
+//
 // GetUser returns the http.HandlerFunc for the
 // GET GetUser endpoint.
 func GetUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

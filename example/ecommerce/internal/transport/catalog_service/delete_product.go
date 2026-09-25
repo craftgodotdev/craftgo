@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
+// Delete a product (admin only).
+//
 // DeleteProduct returns the http.HandlerFunc for the
 // DELETE DeleteProduct endpoint.
 func DeleteProduct(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

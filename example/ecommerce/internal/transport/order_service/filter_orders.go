@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
+// Filter orders by status - showcases @query/@header/@cookie on one DTO. Status is a @query filter (a literal sub-path keeps it from colliding with /{id}/... actions on the ServeMux).
+//
 // FilterOrders returns the http.HandlerFunc for the
 // GET FilterOrders endpoint.
 func FilterOrders(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

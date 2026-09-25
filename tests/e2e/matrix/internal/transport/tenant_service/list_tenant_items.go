@@ -12,8 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GET: `tenantID` (no @path) auto-binds to the @prefix segment and
-// reads from r.PathValue; `limit` is a plain @query.
+// List a tenant's items. tenantID auto-binds to the @prefix path segment; without the prefix-aware rule it would read from the query string instead.
+//
 // ListTenantItems returns the http.HandlerFunc for the
 // GET ListTenantItems endpoint.
 func ListTenantItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

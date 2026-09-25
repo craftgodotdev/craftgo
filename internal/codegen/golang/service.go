@@ -13,8 +13,9 @@ type serviceData struct {
 	Service     string
 	Method      string
 	ServiceName string
-	Doc         []string
-	// Notes follow Doc on the entry point: a streaming RPC's usage hint.
+	// Doc heads the entry point's doc comment ([docHead]).
+	Doc []string
+	// Notes open the entry point's generated doc lines: a streaming RPC's usage hint.
 	Notes       []string
 	HasRequest  bool
 	HasResponse bool
@@ -73,7 +74,7 @@ func buildServiceData(pkgName, svcName string, m *ast.Method, decs []*ast.Decora
 		Service:       svcName,
 		Method:        m.Name,
 		ServiceName:   logicTypeName(m.Name),
-		Doc:           m.Doc,
+		Doc:           docHead(semantic.DescriptionLines(decs, m.Doc)),
 		HasRequest:    mode.HasRequest,
 		HasResponse:   mode.HasResponse,
 		RawRequest:    mode.RawRequest,

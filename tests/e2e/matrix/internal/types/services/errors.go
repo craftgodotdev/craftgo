@@ -81,6 +81,9 @@ type OverloadedBody struct {
 	RetryHint
 }
 
+// Overloaded holds only the header field its mixin promotes, so its body is
+// the {code, message} envelope, as RateLimited's is.
+//
 // OverloadedErr is the typed ServiceUnavailable error generated for `Overloaded`.
 type OverloadedErr struct {
 	OverloadedBody
@@ -124,6 +127,11 @@ type RateLimitedBody struct {
 	RetryAfter int `json:"-" header:"Retry-After"`
 }
 
+// RateLimited surfaces the back-off hint on a non-string `Retry-After`
+// response header - exercising @header value formatting on the error
+// path (errorResponseBindings) the same way PaginatedResp does for the
+// success path.
+//
 // RateLimitedErr is the typed TooManyRequests error generated for `RateLimited`.
 type RateLimitedErr struct {
 	RateLimitedBody

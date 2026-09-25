@@ -2,9 +2,18 @@
 
 package shared
 
+// Email is the cross-package email shape - capped at the RFC-5321
+// maximum and gated by the @format(email) validator. Referenced as
+// `shared.Email` from anywhere a user-facing email address appears.
+//
 // Email is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type Email string
 
+// ID is the cross-package opaque identifier shape. Referenced as
+// `shared.ID` from `services/` so every entity-id field inherits
+// the same 1..64 char cap without each consumer repeating the
+// validator stack.
+//
 // ID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type ID string
 

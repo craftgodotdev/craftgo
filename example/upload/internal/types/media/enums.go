@@ -2,6 +2,8 @@
 
 package media
 
+// Visibility controls who can see a gallery. A string-valued enum that rides
+// the multipart body as a plain form field (wire value "private" / ...).
 type Visibility string
 
 const (

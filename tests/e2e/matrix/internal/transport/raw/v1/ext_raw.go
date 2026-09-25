@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Inherits @rawResponse from the extend header; no contract.
+//
 // ExtRaw returns the http.HandlerFunc for the
 // GET ExtRaw raw-response endpoint. The handler binds and
 // validates the request, then hands the http.ResponseWriter and

@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
+// Delete a customer. Idempotent.
+//
 // DeleteCustomer returns the http.HandlerFunc for the
 // DELETE DeleteCustomer endpoint.
 func DeleteCustomer(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

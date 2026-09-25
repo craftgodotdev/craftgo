@@ -16,6 +16,13 @@ type AccessRevokedBody struct {
 	Reason string `json:"reason"`
 }
 
+// AccessRevoked exercises a mixin inside an `error` body. The emitter
+// lifts `AuditTrail` into the error schema via
+// `allOf: [$ref:AuditTrail, <host>]` exactly like it does for regular
+// type decls, so the spec advertises `actor` / `at` alongside `reason`.
+// (Named distinctly from bindings' `AccessDenied`, whose `Err`-suffixed
+// component would otherwise clash.)
+//
 // AccessRevokedErr is the typed Forbidden error generated for `AccessRevoked`.
 type AccessRevokedErr struct {
 	AccessRevokedBody
@@ -50,6 +57,11 @@ type ConflictErrBody struct {
 	Reason string `json:"reason"`
 }
 
+// ConflictErr is the canonical 409 envelope. `reason` is a free-
+// form explanation slot - kept as a plain string here because the
+// conflict taxonomy varies per resource and consolidating it into a
+// shared enum would force every new resource to extend the enum.
+//
 // ConflictErr is the typed Conflict error generated for `ConflictErr`.
 type ConflictErr struct {
 	ConflictErrBody
@@ -85,6 +97,11 @@ type NotFoundErrBody struct {
 	ID       ID     `json:"id"`
 }
 
+// NotFoundErr is the canonical 404 envelope. Carries the resource
+// kind (`user`, `project`, ...) and the offending id so clients can
+// render a targeted error message ("user X not found") without an
+// extra round-trip.
+//
 // NotFoundErr is the typed NotFound error generated for `NotFoundErr`.
 type NotFoundErr struct {
 	NotFoundErrBody

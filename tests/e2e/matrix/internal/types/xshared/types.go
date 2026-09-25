@@ -6,15 +6,33 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
 )
 
+// XEmail exercises cross-package scalar refs with inherited
+// validators. The @format(email) + @maxLength(254) inherit into every
+// xrefs field typed `xshared.XEmail` (scalar inheritance resolves via
+// resolver.LookupScalar against the project ScalarTable).
+//
 // XEmail is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type XEmail string
 
+// XNodeID exercises a numeric cross-package scalar. The cast in
+// generated transport binding (`req.ID = xshared.XNodeID(int(_n))`)
+// qualifies the type name and registers the xshared import.
+//
 // XNodeID is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
 type XNodeID int
 
+// XSize is a numeric scalar used to pin cross-package scalar-default
+// PROMOTION: a field of this type reached through a mixin must have its
+// @default literal cast to the scalar's home-package type (xshared.XSize),
+// not a bare int.
+//
 // XSize is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
 type XSize int
 
+// XTimestamp is a string-backed scalar with no inherited validator,
+// exercising scalar resolution when the scalar has no decorators of
+// its own.
+//
 // XTimestamp is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type XTimestamp string
 

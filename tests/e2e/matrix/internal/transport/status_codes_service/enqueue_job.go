@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Enqueue a job for async processing; returns once accepted by the queue.
+//
 // EnqueueJob returns the http.HandlerFunc for the
 // POST EnqueueJob endpoint.
 func EnqueueJob(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

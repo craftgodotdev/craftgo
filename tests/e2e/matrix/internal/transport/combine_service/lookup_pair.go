@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Look a pair up by name or by id from the query string.
+//
 // LookupPair returns the http.HandlerFunc for the
 // GET LookupPair endpoint.
 func LookupPair(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

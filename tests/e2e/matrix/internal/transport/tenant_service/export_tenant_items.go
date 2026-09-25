@@ -11,8 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// A raw request reads its path values itself, and the document still
-// declares every variable of the route, the @prefix one included.
+// Export a tenant's items in a format logic picks. Logic reads the raw request; the document declares tenantID and format as path parameters.
+//
 // ExportTenantItems returns the http.HandlerFunc for the
 // GET ExportTenantItems passthrough endpoint. The framework stays
 // out of the way: logic receives the raw http.ResponseWriter and

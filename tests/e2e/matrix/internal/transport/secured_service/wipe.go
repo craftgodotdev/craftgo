@@ -11,13 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Wipe is the sensitive companion to Reset: the method-level
-// `@security(AdminBearer, MFA)` is the AND form - both schemes
-// must satisfy the request, so MFA-less tokens are rejected even
-// when AdminBearer is otherwise valid. The inherited service-level
-// `@security(AdminBearer)` is APPENDED, so the final OpenAPI
-// security[] has two alternatives: the inherited single-scheme
-// requirement OR the stricter AND pair.
+// Destructive admin op - requires AdminBearer AND MFA on top of the service-level inheritance.
+//
 // Wipe returns the http.HandlerFunc for the
 // POST Wipe endpoint.
 func Wipe(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

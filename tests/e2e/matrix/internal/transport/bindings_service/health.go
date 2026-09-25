@@ -11,9 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Health is the bodyless probe - no request type, no response
-// type. Only the @errors declaration rides on the method line so
-// the OpenAPI doc still lists the rate-limit envelope.
+// Health probe. No request, no response - just a 200 OK when the service is reachable, plus the rate-limit 429 envelope.
+//
 // Health returns the http.HandlerFunc for the
 // GET Health endpoint.
 func Health(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

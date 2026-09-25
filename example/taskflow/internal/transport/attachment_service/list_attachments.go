@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// List a task's attachments.
+//
 // ListAttachments returns the http.HandlerFunc for the
 // GET ListAttachments endpoint.
 func ListAttachments(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

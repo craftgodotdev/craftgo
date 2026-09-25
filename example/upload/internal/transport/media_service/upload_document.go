@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 )
 
+// Upload a PDF document with title + optional notes.
+//
 // UploadDocument returns the http.HandlerFunc for the
 // POST UploadDocument multipart endpoint. The handler parses
 // `multipart/form-data` bodies, binds every form field declared on

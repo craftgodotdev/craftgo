@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Deep chain - Person → Home → Room → Furniture exercises the four-level cascade.
+//
 // EchoPerson returns the http.HandlerFunc for the
 // POST EchoPerson endpoint.
 func EchoPerson(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

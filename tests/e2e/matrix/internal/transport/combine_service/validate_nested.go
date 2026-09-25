@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Validate a path id beside a body whose @requiresOneOf a nested mixin declares. The operation body carries the group: sending neither a nor b fails.
+//
 // ValidateNested returns the http.HandlerFunc for the
 // POST ValidateNested endpoint.
 func ValidateNested(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

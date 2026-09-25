@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Shares its method name with xshared's XRefsService.Describe: its body component is XrefsXRefsServiceDescribeRespBody.
+//
 // Describe returns the http.HandlerFunc for the
 // GET Describe endpoint.
 func Describe(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

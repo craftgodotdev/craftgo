@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 
+// Stream a file download: the request is bound and validated, logic serves the body with http.ServeContent.
+//
 // Download returns the http.HandlerFunc for the
 // GET Download raw-response endpoint. The handler binds and
 // validates the request, then hands the http.ResponseWriter and

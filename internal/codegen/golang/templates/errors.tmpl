@@ -12,7 +12,8 @@ type {{.BodyName}} struct {
 {{.BodyInterior}}}
 {{end -}}
 
-// {{.TypeName}} is the typed {{.Category}} error generated for `{{.DSLName}}`.
+{{range .Doc}}// {{.}}
+{{end}}// {{.TypeName}} is the typed {{.Category}} error generated for `{{.DSLName}}`.
 type {{.TypeName}} struct{{if .HasBody}} {
 	{{.BodyName}}
 }{{else}}{}{{end}}

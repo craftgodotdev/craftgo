@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Delete an account - admin-only. Chain: [RateLimit, BasicAuth, Audit].
+//
 // DeleteAccount returns the http.HandlerFunc for the
 // DELETE DeleteAccount endpoint.
 func DeleteAccount(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

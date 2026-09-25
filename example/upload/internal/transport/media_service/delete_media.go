@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 )
 
+// Delete media. Idempotent.
+//
 // DeleteMedia returns the http.HandlerFunc for the
 // DELETE DeleteMedia endpoint.
 func DeleteMedia(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

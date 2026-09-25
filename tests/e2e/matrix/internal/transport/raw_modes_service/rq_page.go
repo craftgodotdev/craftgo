@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Raw request returning a cross-package generic instantiated with a local type.
+//
 // RqPage returns the http.HandlerFunc for the
 // GET RqPage raw-request endpoint. The handler hands the
 // *http.Request to logic unread and encodes the returned response.

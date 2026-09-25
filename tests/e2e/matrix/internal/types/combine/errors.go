@@ -20,6 +20,9 @@ type FieldRulesFailedBody struct {
 	Legacy string `json:"legacy"`
 }
 
+// FieldRulesFailed is an error body with field constraints, an optional
+// field and a @deprecated field.
+//
 // FieldRulesFailedErr is the typed UnprocessableEntity error generated for `FieldRulesFailed`.
 type FieldRulesFailedErr struct {
 	FieldRulesFailedBody

@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// List items a page at a time. The `page` query value lands in the field the embedded Page mixin carries under its own name.
+//
 // ListPaged returns the http.HandlerFunc for the
 // GET ListPaged endpoint.
 func ListPaged(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

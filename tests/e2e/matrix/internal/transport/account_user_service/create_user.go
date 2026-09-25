@@ -13,6 +13,7 @@ import (
 )
 
 // CreateUser stores a new user and returns the freshly created entity.
+//
 // CreateUser returns the http.HandlerFunc for the
 // POST CreateUser endpoint.
 func CreateUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Upload a file beside the parts of a mixin with a @requiresOneOf. The multipart body carries the group: sending neither a nor b fails.
+//
 // UploadPairs returns the http.HandlerFunc for the
 // POST UploadPairs multipart endpoint. The handler parses
 // `multipart/form-data` bodies, binds every form field declared on

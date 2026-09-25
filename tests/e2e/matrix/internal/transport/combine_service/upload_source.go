@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Upload a file or a link, exactly one. The multipart body carries the request type's own groups; an empty url part counts as absent.
+//
 // UploadSource returns the http.HandlerFunc for the
 // POST UploadSource multipart endpoint. The handler parses
 // `multipart/form-data` bodies, binds every form field declared on

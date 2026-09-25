@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// Issue a new API token. The secret is returned once.
+//
 // CreateToken returns the http.HandlerFunc for the
 // POST CreateToken endpoint.
 func CreateToken(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

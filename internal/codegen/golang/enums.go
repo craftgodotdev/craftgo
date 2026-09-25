@@ -27,6 +27,7 @@ type enumsView struct {
 }
 
 type enumView struct {
+	Doc    string
 	Name   string
 	GoBase string
 	Values []enumValueView
@@ -34,6 +35,7 @@ type enumView struct {
 
 // enumValueView is one const of an enum.
 type enumValueView struct {
+	Doc       string
 	ConstName string
 	EnumName  string
 	Literal   string
@@ -60,12 +62,14 @@ func buildEnumView(ed *ast.EnumDecl) enumView {
 	values := make([]enumValueView, len(members))
 	for i, m := range members {
 		values[i] = enumValueView{
+			Doc:       renderDoc(m.Doc, "\t"),
 			ConstName: m.ConstName,
 			EnumName:  ed.Name,
 			Literal:   m.Literal,
 		}
 	}
-	return enumView{Name: ed.Name, GoBase: goBase, Values: values}
+	doc := renderDoc(semantic.DescriptionLines(ed.Decorators, ed.Doc), "")
+	return enumView{Doc: doc, Name: ed.Name, GoBase: goBase, Values: values}
 }
 
 // enumLiteral renders one value's right-hand side; a bare value is its name as a string.
@@ -86,6 +90,7 @@ type enumMember struct {
 	ConstName string // enum name + member name, deduped across the enum (`EActive_2`)
 	Literal   string // Go const right-hand side
 	Wire      string // the value on the wire, an int in decimal
+	Doc       []string
 }
 
 // enumMembers returns ed's members in source order.
@@ -103,6 +108,7 @@ func enumMembers(ed *ast.EnumDecl) []enumMember {
 			ConstName: consts[i],
 			Literal:   enumLiteral(v),
 			Wire:      semantic.EnumMemberWireString(v),
+			Doc:       semantic.DescriptionLines(v.Decorators, v.Doc),
 		}
 	}
 	return out

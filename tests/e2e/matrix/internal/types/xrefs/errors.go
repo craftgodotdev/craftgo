@@ -19,6 +19,9 @@ type XLostBody struct {
 	ID string `json:"id"`
 }
 
+// XLost shares its name with xshared.XLost, so the merged OpenAPI document
+// names this one XrefsXLostErr.
+//
 // XLostErr is the typed NotFound error generated for `XLost`.
 type XLostErr struct {
 	XLostBody
@@ -54,6 +57,11 @@ type XMixinErrBody struct {
 	Reason string `json:"reason"`
 }
 
+// XMixinErr is an error whose body embeds a CROSS-PACKAGE mixin
+// (xshared.XOwner). The error emitter's import walk must collect the xshared
+// import - the generated errors.go embeds `xshared.XOwner`, so without the
+// mixin branch in the import walk it references an undefined package.
+//
 // XMixinErr is the typed Conflict error generated for `XMixinErr`.
 type XMixinErr struct {
 	XMixinErrBody
@@ -89,6 +97,8 @@ type XStdNamesClashBody struct {
 	Slot time2.Slot `json:"slot"`
 }
 
+// XStdNamesClash carries a datetime beside a type of package time.
+//
 // XStdNamesClashErr is the typed Conflict error generated for `XStdNamesClash`.
 type XStdNamesClashErr struct {
 	XStdNamesClashBody

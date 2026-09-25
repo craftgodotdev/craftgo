@@ -12,6 +12,7 @@ import (
 )
 
 // DashboardStats reuses ListProfilesResp as a minimal stat payload.
+//
 // DashboardStats returns the http.HandlerFunc for the
 // GET DashboardStats endpoint.
 func DashboardStats(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

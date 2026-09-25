@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Pins generic-mixin OpenAPI substitution: xshared.XWrapInBag<XOwner> must register XBagOfXOwner, no phantom XBagOfT / dangling $ref.
+//
 // PromoteBag returns the http.HandlerFunc for the
 // POST PromoteBag endpoint.
 func PromoteBag(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

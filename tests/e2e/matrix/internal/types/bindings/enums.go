@@ -2,6 +2,10 @@
 
 package bindings
 
+// Color is a string-backed enum (bare-ident form, default string
+// values are the ident text). Exercised across path, query, and the
+// cookie binders so every wire-format binder gets the enum cast +
+// validate path.
 type Color string
 
 const (

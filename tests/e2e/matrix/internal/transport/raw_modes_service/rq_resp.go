@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Raw request with a typed response: the body is handed over unread, the response is JSON-encoded with the verb default 201.
+//
 // RqResp returns the http.HandlerFunc for the
 // POST RqResp raw-request endpoint. The handler hands the
 // *http.Request to logic unread and encodes the returned response.

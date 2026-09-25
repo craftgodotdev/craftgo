@@ -13,6 +13,7 @@ import (
 )
 
 // sortQ / colorQ / limitQ fall back to their defaults when absent.
+//
 // SearchWithDefaults returns the http.HandlerFunc for the
 // GET SearchWithDefaults endpoint.
 func SearchWithDefaults(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

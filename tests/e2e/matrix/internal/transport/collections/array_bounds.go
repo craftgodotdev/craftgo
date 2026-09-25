@@ -14,6 +14,7 @@ import (
 
 // ArrayBounds echoes the canonical @minItems + @maxItems +
 // @uniqueItems combo from Arr_BoundsBasic.
+//
 // ArrayBounds returns the http.HandlerFunc for the
 // POST ArrayBounds endpoint.
 func ArrayBounds(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

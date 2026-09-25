@@ -2,45 +2,73 @@
 
 package scalars
 
+// Blob is a bytes scalar: its Go type holds nil itself, so an optional
+// Blob takes no pointer, as a field or as a map value.
+//
 // Blob is a DSL scalar over bytes; its declared validators live on its Validate() method and are inherited by every field of this type.
 type Blob []byte
 
+// Cents is the canonical money scalar - non-negative integer with a
+// per-request ceiling. Bound stacking (@gte + @lte) demonstrates that
+// numeric scalars accept both lower and upper bounds.
+//
 // Cents is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
 type Cents int
 
 // Count is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
 type Count int
 
+// Email centralises the canonical email-shape contract. Every field
+// of type Email inherits @format(email) and @maxLength(254) so the
+// per-field decorator chain stays empty.
+//
 // Email is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type Email string
 
 // EmailAddress is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type EmailAddress string
 
+// ISO3 stacks @length + @pattern. @length(3, 3) pins the string to
+// exactly three characters; the @pattern enforces the alphabet.
+//
 // ISO3 is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type ISO3 string
 
+// Key is a non-empty lookup key.
+//
 // Key is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type Key string
 
+// NonEmpty is the "must be at least one character" string scalar.
+//
 // NonEmpty is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type NonEmpty string
 
+// Percent is a 0-1 ratio. @gte/@lte on a float64 scalar exercises
+// the numeric-bound emitter on a non-integer primitive.
+//
 // Percent is a DSL scalar over float64; its declared validators live on its Validate() method and are inherited by every field of this type.
 type Percent float64
 
 // PinCode is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type PinCode string
 
+// Tag stacks @minLength + @maxLength + @pattern so a SINGLE scalar
+// reference brings in three element-level validators.
+//
 // Tag is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type Tag string
 
 // Token is a DSL scalar over bytes; its declared validators live on its Validate() method and are inherited by every field of this type.
 type Token []byte
 
+// URL carries the @format(url) check for safe-URL fields.
+//
 // URL is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type URL string
 
+// UUID carries the @format(uuid) check.
+//
 // UUID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type UUID string
 

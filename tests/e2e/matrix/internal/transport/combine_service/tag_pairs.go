@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Tag a pair. The response sends ETag as a header; its body carries the response type's @mutuallyExclusive and its mixin's @requiresOneOf.
+//
 // TagPairs returns the http.HandlerFunc for the
 // POST TagPairs endpoint.
 func TagPairs(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

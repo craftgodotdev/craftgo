@@ -33,6 +33,7 @@ func NewSayHelloService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 }
 
 // SayHello answers one greeting.
+//
 // SayHello is the service entry point. Replace the
 // TODO with the real implementation.
 func (l *SayHelloService) SayHello(req *pb.HelloRequest) (*pb.HelloReply, error) {

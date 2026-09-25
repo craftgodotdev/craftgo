@@ -15,6 +15,7 @@ import (
 // MapStruct exposes the struct-valued map so the generated
 // validate.go for Map_StructValue is visible in the e2e
 // snapshot.
+//
 // MapStruct returns the http.HandlerFunc for the
 // POST MapStruct endpoint.
 func MapStruct(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

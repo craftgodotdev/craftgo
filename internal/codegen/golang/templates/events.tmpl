@@ -6,8 +6,7 @@ package {{.Package}}
 // Publisher and listener both address the contract by this value.
 const {{.ConstName}} = "{{.Contract}}"
 
-{{if .Doc}}{{range .Doc}}// {{.}}
-{{end}}//
+{{range .Doc}}// {{.}}
 {{end}}// {{.Name}} is the {{.Contract}} contract.
 // {{.Name}}.Publish(ctx, bus, payload) sends one; a listener registers
 // {{.Name}}.Subscribe(bus, group, fn) on its own bus.

@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// List items with the total surfaced via response header and the auth cookie refreshed in passing.
+//
 // ListItems returns the http.HandlerFunc for the
 // GET ListItems endpoint.
 func ListItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

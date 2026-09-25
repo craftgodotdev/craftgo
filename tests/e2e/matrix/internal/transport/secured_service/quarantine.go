@@ -11,12 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Quarantine exercises the array-shortcut form: `@security([A, B])`
-// is the bracket-wrapped sugar that any variadic decorator accepts.
-// It parses identical to `@security(A, B)`, so the generated
-// OpenAPI security[] entry must look exactly like Wipe's
-// AdminBearer+MFA AND-combination once the inherited service-level
-// `@security(AdminBearer)` is layered in.
+// Locks a tenant; array-form security is functionally equal to the comma form.
+//
 // Quarantine returns the http.HandlerFunc for the
 // POST Quarantine endpoint.
 func Quarantine(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

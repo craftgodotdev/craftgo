@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Names XLost, which this package does not declare and xrefs and xshared both do: the 404 is xrefs's (XrefsXLostErr), the package the analyser resolves the bare name in.
+//
 // LookupLost returns the http.HandlerFunc for the
 // GET LookupLost endpoint.
 func LookupLost(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// Fetch one project (v1).
+//
 // GetProject returns the http.HandlerFunc for the
 // GET GetProject endpoint.
 func GetProject(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// 3-D slice of nested.
+//
 // EchoCube returns the http.HandlerFunc for the
 // POST EchoCube endpoint.
 func EchoCube(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

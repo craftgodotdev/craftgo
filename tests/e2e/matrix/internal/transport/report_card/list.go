@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Lists every report card; its body component is ReportCardListRespBody.
+//
 // List returns the http.HandlerFunc for the
 // GET List endpoint.
 func List(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

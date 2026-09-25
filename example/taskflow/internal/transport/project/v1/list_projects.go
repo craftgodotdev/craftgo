@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// List projects (v1).
+//
 // ListProjects returns the http.HandlerFunc for the
 // GET ListProjects endpoint.
 func ListProjects(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

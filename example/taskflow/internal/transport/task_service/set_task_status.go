@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// Move a task to a new status.
+//
 // SetTaskStatus returns the http.HandlerFunc for the
 // PATCH SetTaskStatus endpoint.
 func SetTaskStatus(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

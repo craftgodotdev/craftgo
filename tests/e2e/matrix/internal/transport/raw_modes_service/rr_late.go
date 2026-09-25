@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Raw response whose stub writes part of a body and then returns an error: the committed body must stay intact.
+//
 // RrLate returns the http.HandlerFunc for the
 // GET RrLate raw-response endpoint. The handler binds and
 // validates the request, then hands the http.ResponseWriter and

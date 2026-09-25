@@ -11,6 +11,7 @@ import (
 )
 
 // Chat echoes greetings for as long as the client keeps sending.
+//
 // Chat serves the bidi-streaming RPC /greet.Greeter/Chat: it hands the
 // call context to the logic and maps the error it returns onto a status,
 // as the HTTP handler does with WriteError.

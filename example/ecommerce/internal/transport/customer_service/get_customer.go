@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
+// Fetch one customer.
+//
 // GetCustomer returns the http.HandlerFunc for the
 // GET GetCustomer endpoint.
 func GetCustomer(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

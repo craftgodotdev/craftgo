@@ -16,6 +16,11 @@ type DuplicateEmailBody struct {
 	Email string  `json:"email"`
 }
 
+// DuplicateEmail is the 409 surfaced when CreateProfile lands on an
+// email already taken. Echoes the offending email back so the client
+// can show a precise message. `code` is declared explicitly so it
+// surfaces on the wire (the framework's internal `code` is unexported).
+//
 // DuplicateEmailErr is the typed Conflict error generated for `DuplicateEmail`.
 type DuplicateEmailErr struct {
 	DuplicateEmailBody
@@ -51,6 +56,9 @@ type InsufficientPermissionsBody struct {
 	RequiredRole string  `json:"required_role"`
 }
 
+// InsufficientPermissions communicates the role the caller is missing.
+// Maps to 403.
+//
 // InsufficientPermissionsErr is the typed Forbidden error generated for `InsufficientPermissions`.
 type InsufficientPermissionsErr struct {
 	InsufficientPermissionsBody
@@ -89,6 +97,11 @@ type PfRateLimitedBody struct {
 	RetryAfter int     `json:"retry_after"`
 }
 
+// PfRateLimited tells the caller how many seconds to wait before retrying.
+// Maps to 429. `code` and `message` are user-declared wire fields; the
+// `@default` decorator records the canonical value for OpenAPI but logic
+// code still has to set them explicitly when constructing the body.
+//
 // PfRateLimitedErr is the typed TooManyRequests error generated for `PfRateLimited`.
 type PfRateLimitedErr struct {
 	PfRateLimitedBody
@@ -117,6 +130,9 @@ func (e *PfRateLimitedErr) MarshalJSON() ([]byte, error) { return json.Marshal(e
 // ErrCodeProfileNotFound is the canonical machine-readable code for ProfileNotFoundErr.
 const ErrCodeProfileNotFound = "PROFILE_NOT_FOUND"
 
+// ProfileNotFound is raised when GetProfile / UpdateProfile cannot
+// locate the addressed id. Maps to HTTP 404 / USER-style code.
+//
 // ProfileNotFoundErr is the typed NotFound error generated for `ProfileNotFound`.
 type ProfileNotFoundErr struct{}
 
@@ -152,6 +168,10 @@ type ProfileValidationFailedBody struct {
 	Fields []string `json:"fields"`
 }
 
+// ProfileValidationFailed is the 422 returned when business-rule
+// validation (cross-field, async, third-party) rejects an otherwise
+// schema-valid request. The `fields` slice lists which paths failed.
+//
 // ProfileValidationFailedErr is the typed UnprocessableEntity error generated for `ProfileValidationFailed`.
 type ProfileValidationFailedErr struct {
 	ProfileValidationFailedBody
@@ -190,6 +210,9 @@ type StaleVersionBody struct {
 	ActualVersion   int     `json:"actual_version"`
 }
 
+// StaleVersion is the optimistic-concurrency 412 surfaced when a write
+// arrives with a version older than the stored row.
+//
 // StaleVersionErr is the typed PreconditionFailed error generated for `StaleVersion`.
 type StaleVersionErr struct {
 	StaleVersionBody
@@ -224,6 +247,9 @@ type ThrottledBody struct {
 	RetryAfter *int `json:"retryAfter,omitempty"`
 }
 
+// Throttled has only optional body fields: with none set it is written as
+// {}, an instance of its declared body.
+//
 // ThrottledErr is the typed TooManyRequests error generated for `Throttled`.
 type ThrottledErr struct {
 	ThrottledBody

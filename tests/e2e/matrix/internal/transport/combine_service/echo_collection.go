@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Echo the array / map default shapes. The map<,>?-with-object-default field is expected to be rejected at codegen time.
+//
 // EchoCollection returns the http.HandlerFunc for the
 // POST EchoCollection endpoint.
 func EchoCollection(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

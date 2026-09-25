@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 )
 
+// Delete a todo. Idempotent.
+//
 // DeleteTodo returns the http.HandlerFunc for the
 // DELETE DeleteTodo endpoint.
 func DeleteTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

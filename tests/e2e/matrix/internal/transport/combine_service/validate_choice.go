@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Validate orthogonal @mutuallyExclusive + @requiresOneOf. Sending only c is valid; sending a+b fails exclusivity; sending nothing fails the one-of.
+//
 // ValidateChoice returns the http.HandlerFunc for the
 // POST ValidateChoice endpoint.
 func ValidateChoice(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

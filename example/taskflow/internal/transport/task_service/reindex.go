@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// Rebuild the project's task search index. Long-running; capped at 30s.
+//
 // Reindex returns the http.HandlerFunc for the
 // POST Reindex endpoint.
 func Reindex(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

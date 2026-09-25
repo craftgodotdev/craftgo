@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 
+// Plain JSON health check - contrasts with the raw endpoints above.
+//
 // Health returns the http.HandlerFunc for the
 // GET Health endpoint.
 func Health(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

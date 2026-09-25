@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// A generic response whose type parameter is spelled like the xshared type its field names: XOwnerPairOfString refs XOwner for `owner` and types `value` a string.
+//
 // GetOwnerPair returns the http.HandlerFunc for the
 // GET GetOwnerPair endpoint.
 func GetOwnerPair(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

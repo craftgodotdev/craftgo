@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Search by tag. Demonstrates ARRAY-of-scalar (Tag[]) on a request DTO - per-element @pattern fires once per item.
+//
 // SearchProducts returns the http.HandlerFunc for the
 // POST SearchProducts endpoint.
 func SearchProducts(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

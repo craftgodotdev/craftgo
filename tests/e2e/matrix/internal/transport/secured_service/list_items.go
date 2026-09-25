@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Normal authenticated endpoint - inherits everything from service-level.
+//
 // ListItems returns the http.HandlerFunc for the
 // GET ListItems endpoint.
 func ListItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

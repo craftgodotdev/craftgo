@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// Update a project (v1).
+//
 // UpdateProject returns the http.HandlerFunc for the
 // PATCH UpdateProject endpoint.
 func UpdateProject(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

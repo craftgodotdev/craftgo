@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Public status page - no auth or rate limit, only the block's Audit.
+//
 // Status returns the http.HandlerFunc for the
 // GET Status endpoint.
 func Status(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

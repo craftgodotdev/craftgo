@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Echo a wrapped/nested generic instance. Probes Page<Envelope<Order>> end-to-end through transport + OpenAPI.
+//
 // EchoWrapped returns the http.HandlerFunc for the
 // POST EchoWrapped endpoint.
 func EchoWrapped(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

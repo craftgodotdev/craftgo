@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Get the current user - inherits RateLimit + AuthRequired.
+//
 // Me returns the http.HandlerFunc for the
 // GET Me endpoint.
 func Me(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

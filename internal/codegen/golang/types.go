@@ -66,13 +66,14 @@ func renderScalars(pkg *semantic.Package, imports *importSet) string {
 	parts := make([]string, len(names))
 	for i, n := range names {
 		sd := pkg.Scalars[n]
+		head := renderDoc(docHead(semantic.DescriptionLines(sd.Decorators, sd.Doc)), "")
 		if semantic.HasRawFormat(sd.Decorators) {
 			imports.use(rawImportPath)
-			parts[i] = fmt.Sprintf(rawTmpl, sd.Name, sd.Name, rawGoType)
+			parts[i] = head + fmt.Sprintf(rawTmpl, sd.Name, sd.Name, rawGoType)
 			continue
 		}
 		imports.importBuiltin(sd.Primitive)
-		parts[i] = fmt.Sprintf(tmpl, sd.Name, sd.Primitive, sd.Name, scalarPrimitiveGo(sd.Primitive))
+		parts[i] = head + fmt.Sprintf(tmpl, sd.Name, sd.Primitive, sd.Name, scalarPrimitiveGo(sd.Primitive))
 	}
 	return strings.Join(parts, "")
 }
@@ -85,7 +86,7 @@ func scalarPrimitiveGo(name string) string {
 
 // renderType returns td's Go struct with its doc and any deprecation notice.
 func renderType(td *ast.TypeDecl, pkg *semantic.Package, r *projectResolver, imports *importSet) string {
-	doc := renderDoc(td.Doc, "")
+	doc := renderDoc(semantic.DescriptionLines(td.Decorators, td.Doc), "")
 	doc += renderDeprecatedDoc(td.Decorators, "")
 	body := renderTypeBody(td.Body, pkg, r, imports)
 	header := "type " + td.Name + renderTypeParams(td.TypeParams) + " struct {\n" + body + "}\n"
@@ -149,7 +150,7 @@ func resolvedGoFieldNames(members []ast.TypeMember) []string {
 
 // renderField returns one tab-indented struct field named goName, with its doc.
 func renderField(f *ast.Field, goName string, pkg *semantic.Package, r *projectResolver, imports *importSet) string {
-	return renderDoc(f.Doc, "\t") +
+	return renderDoc(semantic.DescriptionLines(f.Decorators, f.Doc), "\t") +
 		renderDeprecatedDoc(f.Decorators, "\t") +
 		fmt.Sprintf("\t%s %s `%s`\n", goName, goFieldType(f, pkg, r, imports), structTag(f))
 }

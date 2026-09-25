@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Pins a QUALIFIED request type whose fields come from a bare nested mixin (xshared.XHolder embeds xshared.XHolderSub). The handler must bind `q` from @query and decode `bod` from the body - without threading xshared as the flatten prefix both silently drop while the validator still enforces them.
+//
 // PromoteHolder returns the http.HandlerFunc for the
 // POST PromoteHolder endpoint.
 func PromoteHolder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

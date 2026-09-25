@@ -15,6 +15,7 @@ import (
 // CreateProfile stores a new profile and assigns its id. The handler
 // surfaces every error in the @errors list with the matching HTTP
 // status driven by its category.
+//
 // CreateProfile returns the http.HandlerFunc for the
 // POST CreateProfile endpoint.
 func CreateProfile(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

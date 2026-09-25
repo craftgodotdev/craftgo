@@ -12,10 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// DeleteItem reuses GetItemReq (path-only DTO) and pins two
-// errors: a 404 (RecordNotFound, bodyless) and a 403
-// (AccessDenied, typed body). Idempotent - repeated deletes
-// surface the same response.
+// Delete an item. Idempotent. Surfaces RecordNotFound (404) for unknown ids and AccessDenied (403) when the caller lacks permission.
+//
 // DeleteItem returns the http.HandlerFunc for the
 // DELETE DeleteItem endpoint.
 func DeleteItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

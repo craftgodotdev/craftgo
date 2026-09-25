@@ -12,6 +12,7 @@ import (
 )
 
 // Ping is a liveness-style endpoint with no body.
+//
 // Ping returns the http.HandlerFunc for the
 // GET Ping endpoint.
 func Ping(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

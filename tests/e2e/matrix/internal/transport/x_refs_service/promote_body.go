@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Pins cross-package mixin BODY promotion: the POST handler decodes the body (its only body fields are promoted from xshared.XPromoteBody) and pre-fills the promoted scalar/enum defaults with qualified casts.
+//
 // PromoteBody returns the http.HandlerFunc for the
 // POST PromoteBody endpoint.
 func PromoteBody(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

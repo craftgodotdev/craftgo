@@ -11,6 +11,7 @@ import (
 )
 
 // ListHellos streams `count` greetings back.
+//
 // ListHellos serves the server-streaming RPC /greet.Greeter/ListHellos: it hands the
 // call context to the logic and maps the error it returns onto a status,
 // as the HTTP handler does with WriteError.

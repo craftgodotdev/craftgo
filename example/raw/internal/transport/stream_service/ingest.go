@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 
+// Accept raw bytes (any content-type); the framework encodes the typed result.
+//
 // Ingest returns the http.HandlerFunc for the
 // POST Ingest raw-request endpoint. The handler hands the
 // *http.Request to logic unread and encodes the returned response.

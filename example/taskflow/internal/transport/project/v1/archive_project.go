@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// Archive a project (v1). Idempotent.
+//
 // ArchiveProject returns the http.HandlerFunc for the
 // DELETE ArchiveProject endpoint.
 func ArchiveProject(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

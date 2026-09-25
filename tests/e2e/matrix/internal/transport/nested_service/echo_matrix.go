@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// 2-D slice of nested.
+//
 // EchoMatrix returns the http.HandlerFunc for the
 // POST EchoMatrix endpoint.
 func EchoMatrix(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

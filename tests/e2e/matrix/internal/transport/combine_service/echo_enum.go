@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Echo the enum default. Missing c on the wire results in c=Red after pre-fill.
+//
 // EchoEnum returns the http.HandlerFunc for the
 // POST EchoEnum endpoint.
 func EchoEnum(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

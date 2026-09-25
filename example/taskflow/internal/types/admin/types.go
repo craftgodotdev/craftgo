@@ -22,9 +22,10 @@ type ApiToken struct {
 
 // Returned once, at creation - the caller must store `secret` immediately.
 type ApiTokenSecret struct {
-	ID     shared.ID `json:"id"`
-	Name   string    `json:"name"`
-	Secret string    `json:"secret"`
+	ID   shared.ID `json:"id"`
+	Name string    `json:"name"`
+	// The full token; shown once and never retrievable again.
+	Secret string `json:"secret"`
 }
 
 type CreateTokenReq struct {

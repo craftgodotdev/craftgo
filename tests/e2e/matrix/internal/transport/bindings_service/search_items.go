@@ -12,14 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// SearchItems is the multi-binder mixer: cursor (optional
-// string), limit (required int), sort enum, ids array, active
-// bool. Covers every query-binder shape in one method.
+// Search items. Demonstrates the full @query matrix - optional string cursor, required int limit, optional enum sort, repeated int ids, required bool active, optional int offset, optional bool verbose.
 //
-// The response is wrapped in a per-service `ItemList` envelope
-// because the parser rejects bare-array response forms (`Item[]`)
-// in the method body - wrapping in a typed list is the idiomatic
-// shape every other service uses.
 // SearchItems returns the http.HandlerFunc for the
 // GET SearchItems endpoint.
 func SearchItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

@@ -12,12 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// BatchUpload pins the `file[]` (repeated multipart parts) shape:
-// `files` binds from `r.MultipartForm.File["files"]` as
-// `[]*multipart.FileHeader`, with `@minItems`/`@maxItems` validating
-// the slice length; a single optional `cover file?` and a repeated
-// `string[] @form` value ride the same request. The OpenAPI multipart
-// schema renders `files` as `{type: array, items: {format: binary}}`.
+// Batch upload. files[] rides as repeated multipart parts ([]*multipart.FileHeader, @minItems/@maxItems); cover is one optional file; tags is a repeated form value.
+//
 // BatchUpload returns the http.HandlerFunc for the
 // POST BatchUpload multipart endpoint. The handler parses
 // `multipart/form-data` bodies, binds every form field declared on

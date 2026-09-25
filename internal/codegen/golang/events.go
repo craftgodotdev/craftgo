@@ -28,7 +28,8 @@ type eventDescriptor struct {
 	Validate string
 	// ValidateElems declares Validate as a loop over an array payload's elements.
 	ValidateElems bool
-	Doc           []string
+	// Doc heads the descriptor's doc comment ([docHead]).
+	Doc []string
 }
 
 // generatePackageEvents writes outDir/<package>/events.go, a contract constant and a descriptor
@@ -59,7 +60,7 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 			PayloadType:   payload,
 			Validate:      validate,
 			ValidateElems: elems,
-			Doc:           ev.Doc,
+			Doc:           docHead(ev.Doc),
 		})
 	}
 	if len(data.Events) == 0 {

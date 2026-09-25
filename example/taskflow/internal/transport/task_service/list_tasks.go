@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// List tasks in a project, filterable by status / priority / assignee.
+//
 // ListTasks returns the http.HandlerFunc for the
 // GET ListTasks endpoint.
 func ListTasks(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

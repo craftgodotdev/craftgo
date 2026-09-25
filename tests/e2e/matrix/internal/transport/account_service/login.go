@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Log in - public, only inherits rate limiting.
+//
 // Login returns the http.HandlerFunc for the
 // POST Login endpoint.
 func Login(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

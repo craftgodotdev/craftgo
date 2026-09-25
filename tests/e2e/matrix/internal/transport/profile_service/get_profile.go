@@ -13,6 +13,7 @@ import (
 )
 
 // GetProfile returns the profile with the given id.
+//
 // GetProfile returns the http.HandlerFunc for the
 // GET GetProfile endpoint.
 func GetProfile(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

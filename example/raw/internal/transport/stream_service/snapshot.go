@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 
+// Serve a snapshot that is cached already gzip-compressed, negotiating Content-Encoding per request.
+//
 // Snapshot returns the http.HandlerFunc for the
 // GET Snapshot raw-response endpoint. The handler binds and
 // validates the request, then hands the http.ResponseWriter and

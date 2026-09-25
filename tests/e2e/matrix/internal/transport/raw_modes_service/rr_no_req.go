@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Raw response, no request: `(w, r) error`, serves a pre-gzipped body.
+//
 // RrNoReq returns the http.HandlerFunc for the
 // GET RrNoReq raw-response endpoint. The handler binds and
 // validates the request, then hands the http.ResponseWriter and

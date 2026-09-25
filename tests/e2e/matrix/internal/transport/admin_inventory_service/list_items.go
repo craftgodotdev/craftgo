@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// List inventory items. Inherits auth + tags from the extend block.
+//
 // ListItems returns the http.HandlerFunc for the
 // GET ListItems endpoint.
 func ListItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

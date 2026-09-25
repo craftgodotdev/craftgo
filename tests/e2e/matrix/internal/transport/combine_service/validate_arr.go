@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Validate stacked array decorators (minItems + maxItems + uniqueItems + each(@length)). Outer bounds plus per-element check.
+//
 // ValidateArr returns the http.HandlerFunc for the
 // POST ValidateArr endpoint.
 func ValidateArr(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

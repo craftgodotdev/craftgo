@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Fetch a blob by its slash-separated key. The trailing {key...} variable binds the key field.
+//
 // GetBlob returns the http.HandlerFunc for the
 // GET GetBlob endpoint.
 func GetBlob(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

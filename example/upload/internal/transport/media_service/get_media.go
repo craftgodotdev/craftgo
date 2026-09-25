@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 )
 
+// Get media metadata.
+//
 // GetMedia returns the http.HandlerFunc for the
 // GET GetMedia endpoint.
 func GetMedia(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

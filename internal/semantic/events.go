@@ -79,7 +79,7 @@ func (p *Project) resolveEvent(pkg *Package, d *ast.EventDecl) ResolvedEvent {
 		Decl:     d,
 		Name:     d.Name,
 		Contract: contractName(pkg.Name, d),
-		Doc:      descriptionLines(d.Decorators, d.Doc),
+		Doc:      DescriptionLines(d.Decorators, d.Doc),
 	}
 	if d.Payload == nil || d.Payload.Type == nil || d.Payload.Type.Name == nil {
 		return re

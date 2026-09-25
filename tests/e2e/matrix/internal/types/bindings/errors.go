@@ -17,6 +17,11 @@ type AccessDeniedBody struct {
 	RetryAfter *int   `json:"retryAfter,omitempty"`
 }
 
+// AccessDenied is a 403 with a typed body. `reason` carries a human
+// summary (@minLength prevents the empty-string degenerate case);
+// `retryAfter` hints when the client can retry - absent for hard
+// denials.
+//
 // AccessDeniedErr is the typed Forbidden error generated for `AccessDenied`.
 type AccessDeniedErr struct {
 	AccessDeniedBody
@@ -51,6 +56,11 @@ type AuthRequiredBody struct {
 	Realm string `json:"realm"`
 }
 
+// AuthRequired is the 401 envelope. `realm` lets the client render a
+// targeted "sign in to <realm>" prompt - every protected service
+// should pin its realm so multi-realm clients can pick the right
+// credential.
+//
 // AuthRequiredErr is the typed Unauthorized error generated for `AuthRequired`.
 type AuthRequiredErr struct {
 	AuthRequiredBody
@@ -87,6 +97,9 @@ type CodeMessageErrBody struct {
 	Extra   string `json:"extra"`
 }
 
+// CodeMessageErr declares its own code and message fields: they are on the
+// wire, validated, and documented with their constraints.
+//
 // CodeMessageErr is the typed NotFound error generated for `CodeMessageErr`.
 type CodeMessageErr struct {
 	CodeMessageErrBody
@@ -122,6 +135,11 @@ type DuplicateKeyBody struct {
 	Resource string `json:"resource"`
 }
 
+// DuplicateKey is a 409 with a typed body. `key` echoes the unique
+// constraint that fired; `resource` names the table / collection so
+// clients can render "the username is already taken" vs "the email
+// is already taken" without parsing the message.
+//
 // DuplicateKeyErr is the typed Conflict error generated for `DuplicateKey`.
 type DuplicateKeyErr struct {
 	DuplicateKeyBody
@@ -156,6 +174,12 @@ type EmailTakenBody struct {
 	Email string `json:"email"`
 }
 
+// EmailTaken is the SECOND Conflict declaration - verifies that the
+// generator allows multiple errors in the same category bucket so
+// long as the names are unique. The body carries the colliding email
+// back so the client can render "another account already uses
+// <email>".
+//
 // EmailTakenErr is the typed Conflict error generated for `EmailTaken`.
 type EmailTakenErr struct {
 	EmailTakenBody
@@ -193,6 +217,10 @@ type ForbiddenDetailsBody struct {
 	Note   string  `json:"note"`
 }
 
+// ForbiddenDetails keeps a @sensitive field off the wire, omits an absent
+// optional field, writes a code-named @header field as a response header,
+// and documents an @example.
+//
 // ForbiddenDetailsErr is the typed Forbidden error generated for `ForbiddenDetails`.
 type ForbiddenDetailsErr struct {
 	ForbiddenDetailsBody
@@ -279,6 +307,11 @@ type InvalidInputBody struct {
 	Trace  *string  `json:"trace,omitempty"`
 }
 
+// InvalidInput is the catch-all 400. The body shape mirrors the
+// JSON-Pointer style - each entry in `errors` is a path that failed
+// the boundary check; `trace` is an optional correlation id for
+// support escalation.
+//
 // InvalidInputErr is the typed BadRequest error generated for `InvalidInput`.
 type InvalidInputErr struct {
 	InvalidInputBody
@@ -314,6 +347,9 @@ type NullableFieldsErrBody struct {
 	Note   *string         `json:"note"`
 }
 
+// NullableFieldsErr holds @nullable body fields as pointers, so the server
+// can send the explicit null OpenAPI documents.
+//
 // NullableFieldsErr is the typed BadRequest error generated for `NullableFieldsErr`.
 type NullableFieldsErr struct {
 	NullableFieldsErrBody
@@ -350,6 +386,11 @@ type RateLimitExceededBody struct {
 	RetryAfter int `json:"retryAfter"`
 }
 
+// RateLimitExceeded is the canonical 429. `retryAfter` is in seconds
+// (matches the `Retry-After` header convention); @gte(1) prevents the
+// "retry in 0 seconds" degenerate that would translate to "retry
+// immediately, please hammer us harder".
+//
 // RateLimitExceededErr is the typed TooManyRequests error generated for `RateLimitExceeded`.
 type RateLimitExceededErr struct {
 	RateLimitExceededBody
@@ -380,6 +421,10 @@ func (e *RateLimitExceededErr) MarshalJSON() ([]byte, error) {
 // ErrCodeRecordNotFound is the canonical machine-readable code for RecordNotFoundErr.
 const ErrCodeRecordNotFound = "RECORD_NOT_FOUND"
 
+// RecordNotFound is the canonical 404 marker. No body - the URL
+// already carried the offending id, so echoing it would be
+// redundant.
+//
 // RecordNotFoundErr is the typed NotFound error generated for `RecordNotFound`.
 type RecordNotFoundErr struct{}
 
@@ -414,6 +459,9 @@ type SharedStatusConflictBody struct {
 	Detail string `json:"detail"`
 }
 
+// SharedStatusConflict shares its 409 with the success response of
+// PostSharedStatus: OpenAPI documents both bodies as a oneOf.
+//
 // SharedStatusConflictErr is the typed Conflict error generated for `SharedStatusConflict`.
 type SharedStatusConflictErr struct {
 	SharedStatusConflictBody

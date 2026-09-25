@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// @timeout applies to a passthrough route: the stub sees a context deadline.
+//
 // PtTimeout returns the http.HandlerFunc for the
 // GET PtTimeout passthrough endpoint. The framework stays
 // out of the way: logic receives the raw http.ResponseWriter and

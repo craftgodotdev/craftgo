@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Look an order up by id. The request is a generic instance, Lookup<Priority>, bound from the path and the query string.
+//
 // LookupOrder returns the http.HandlerFunc for the
 // GET LookupOrder endpoint.
 func LookupOrder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

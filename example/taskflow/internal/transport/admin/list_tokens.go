@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// List issued API tokens (secrets are never returned here).
+//
 // ListTokens returns the http.HandlerFunc for the
 // GET ListTokens endpoint.
 func ListTokens(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

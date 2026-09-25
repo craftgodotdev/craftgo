@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Put a key. A generic request split by a header reads its argument-typed field from the body beside the field a nested mixin brings.
+//
 // PutKeyed returns the http.HandlerFunc for the
 // PUT PutKeyed endpoint.
 func PutKeyed(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

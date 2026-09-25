@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Lists the entries of a ledger entry.
+//
 // EntryList returns the http.HandlerFunc for the
 // GET EntryList endpoint.
 func EntryList(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

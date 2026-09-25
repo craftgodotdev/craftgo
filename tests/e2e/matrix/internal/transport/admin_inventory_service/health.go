@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Liveness probe. Public on purpose - operators hit this before secrets are loaded.
+//
 // Health returns the http.HandlerFunc for the
 // GET Health endpoint.
 func Health(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

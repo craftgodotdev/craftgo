@@ -13,6 +13,7 @@ import (
 
 // Health is path-less so it falls back to the kebab-cased method
 // name. End URL: `/api/v1/admin/health`.
+//
 // Health returns the http.HandlerFunc for the
 // GET Health endpoint.
 func Health(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

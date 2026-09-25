@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 )
 
+// Attach a small blob to a note (tight 500KB cap).
+//
 // UploadAttachment returns the http.HandlerFunc for the
 // POST UploadAttachment multipart endpoint. The handler parses
 // `multipart/form-data` bodies, binds every form field declared on

@@ -11,6 +11,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Pins cross-package response generic. Component must be `XBagOfXOwner`, not dangling `xshared.XBag`.
+//
 // ListItems returns the http.HandlerFunc for the
 // GET ListItems endpoint.
 func ListItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

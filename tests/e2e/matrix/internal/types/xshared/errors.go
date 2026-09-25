@@ -15,6 +15,9 @@ type XLostBody struct {
 	Key string `json:"key"`
 }
 
+// XLost shares its name with xrefs.XLost, so the merged OpenAPI document
+// names this one XsharedXLostErr.
+//
 // XLostErr is the typed NotFound error generated for `XLost`.
 type XLostErr struct {
 	XLostBody
@@ -50,6 +53,10 @@ type XNotFoundBody struct {
 	ID       string `json:"id"`
 }
 
+// XNotFound is a cross-package error. Methods on xrefs' service
+// declare `@errors(xshared.XNotFound)` so the OpenAPI responses list
+// resolves the error schema through the project ErrorTable.
+//
 // XNotFoundErr is the typed NotFound error generated for `XNotFound`.
 type XNotFoundErr struct {
 	XNotFoundBody

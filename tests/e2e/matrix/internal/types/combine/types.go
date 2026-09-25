@@ -8,6 +8,12 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
 )
 
+// PageSize is a numeric scalar - every field of this type inherits
+// the @gte/@lte bounds, carried on PageSize.Validate(). Used in
+// DefaultScalar below to verify that the @default literal threads
+// through the scalar's defined type without losing the inherited
+// validators.
+//
 // PageSize is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
 type PageSize int
 

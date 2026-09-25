@@ -12,6 +12,7 @@ import (
 )
 
 // SayHello answers one greeting; an empty name is refused.
+//
 // SayHello serves the unary RPC /grpcmatrix.Greeter/SayHello: it hands the
 // call context to the logic and maps the error it returns onto a status,
 // as the HTTP handler does with WriteError.

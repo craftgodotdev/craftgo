@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Raw response over a bound + validated request; @status(201) and the Location header are docs-only.
+//
 // RrReq returns the http.HandlerFunc for the
 // POST RrReq raw-response endpoint. The handler binds and
 // validates the request, then hands the http.ResponseWriter and

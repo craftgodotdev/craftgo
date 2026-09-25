@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
+// Generic-instantiation-like page envelope.
+//
 // EchoListPage returns the http.HandlerFunc for the
 // POST EchoListPage endpoint.
 func EchoListPage(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

@@ -11,6 +11,7 @@ import (
 )
 
 // RecordHellos counts the greetings the client streams in.
+//
 // RecordHellos serves the client-streaming RPC /greet.Greeter/RecordHellos: it hands the
 // call context to the logic and maps the error it returns onto a status,
 // as the HTTP handler does with WriteError.

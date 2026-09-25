@@ -40,6 +40,8 @@ func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
 
 // errorTemplateData is the errors.tmpl input for one error.
 type errorTemplateData struct {
+	// Doc heads the error type's doc comment ([docHead]).
+	Doc                []string
 	TypeName           string
 	BodyName           string
 	ConstName          string
@@ -67,6 +69,7 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver, i
 		imports.use("strconv")
 	}
 	data := errorTemplateData{
+		Doc:                docHead(semantic.DescriptionLines(ed.Decorators, ed.Doc)),
 		TypeName:           idents.ErrorTypeName(ed.Name),
 		BodyName:           idents.ErrorBodyName(ed.Name),
 		ConstName:          idents.ErrorCodeName(ed.Name),

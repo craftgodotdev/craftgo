@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// Add a comment to a task.
+//
 // AddComment returns the http.HandlerFunc for the
 // POST AddComment endpoint.
 func AddComment(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

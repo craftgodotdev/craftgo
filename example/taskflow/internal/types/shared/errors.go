@@ -47,6 +47,7 @@ const ErrCodeForbiddenErr = "FORBIDDEN_ERR"
 // ForbiddenErrBody is the wire-shape payload declared at design time for ForbiddenErr.
 // User code instantiates this struct and hands it to NewForbiddenErr.
 type ForbiddenErrBody struct {
+	// The role or scope the caller is missing.
 	Need string `json:"need"`
 }
 

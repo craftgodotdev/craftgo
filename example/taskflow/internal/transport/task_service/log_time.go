@@ -13,6 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
+// Log time against a task, in 5-minute increments.
+//
 // LogTime returns the http.HandlerFunc for the
 // POST LogTime endpoint.
 func LogTime(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

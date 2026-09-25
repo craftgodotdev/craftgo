@@ -12,12 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// NullableForm pins that a `@nullable` body field in a multipart
-// request (form-bound because the sibling `doc file` makes the
-// request multipart) binds as `*string` with a present-guard. The
-// transport's pointer decision uses the same predicate as the type
-// emitter, so `types.go` (`*string`) and the binder agree - a bare
-// direct assign against a pointer field would not compile.
+// Upload a doc with optional-null metadata. The @nullable `meta` body field form-binds as *string (nil when the form value is absent).
+//
 // NullableForm returns the http.HandlerFunc for the
 // POST NullableForm multipart endpoint. The handler parses
 // `multipart/form-data` bodies, binds every form field declared on

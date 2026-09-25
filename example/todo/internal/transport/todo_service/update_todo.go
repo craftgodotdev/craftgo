@@ -12,6 +12,8 @@ import (
 	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 )
 
+// Patch a todo. Only supplied fields are updated.
+//
 // UpdateTodo returns the http.HandlerFunc for the
 // PATCH UpdateTodo endpoint.
 func UpdateTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
