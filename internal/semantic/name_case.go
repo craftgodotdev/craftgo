@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"fmt"
 	"go/token"
 	"strconv"
 	"strings"
@@ -25,6 +26,11 @@ func (a *analyzer) checkOneDeclNameCase(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
 		a.checkTypeTableName("type", dd.Name, dd.Pos)
+		for _, p := range dd.TypeParams {
+			// The generated Go spells the parameter as written.
+			a.requireUppercase(p, dd.NamePos, fmt.Sprintf("type parameter %q of %s", p, dd.Name),
+				"a lower-case one can hide a package or a variable the generated Go uses, such as fmt or the receiver v")
+		}
 	case *ast.ErrorDecl:
 		a.checkTypeTableName("error", dd.Name, dd.Pos)
 	case *ast.EnumDecl:
@@ -58,6 +64,13 @@ func (a *analyzer) checkTypeTableName(kind, name string, pos lexer.Position) {
 // checkExportedName rejects a non-empty name that the Go identifiers
 // generated from it would carry unexported.
 func (a *analyzer) checkExportedName(kind, name string, pos lexer.Position) {
+	a.requireUppercase(name, pos, fmt.Sprintf("%s name %q", kind, name),
+		"a Go identifier generated from it would be unexported, out of reach of the other generated packages")
+}
+
+// requireUppercase rejects a non-empty name that does not start with an
+// uppercase letter; what names it in the message and why says what breaks.
+func (a *analyzer) requireUppercase(name string, pos lexer.Position, what, why string) {
 	if name == "" || token.IsExported(name) {
 		return
 	}
@@ -66,8 +79,7 @@ func (a *analyzer) checkExportedName(kind, name string, pos lexer.Position) {
 		fix = strconv.Quote(exported)
 	}
 	a.diag(pos, pos, lexer.SeverityError, CodeDeclNameCase,
-		"%s name %q must start with an uppercase letter: a Go identifier generated from it would be unexported, out of reach of the other generated packages - rename it %s",
-		kind, name, fix)
+		"%s must start with an uppercase letter: %s - rename it %s", what, why, fix)
 }
 
 // warnServiceNameCase warns about a service name that does not start with an

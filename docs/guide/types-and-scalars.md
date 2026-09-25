@@ -156,7 +156,7 @@ type UserList {
 }
 ```
 
-Generic type parameters are bare identifiers - no constraint or variance syntax. The Go output uses standard Go 1.18+ generics with an implicit `any` constraint; each concrete instantiation also becomes a flat schema in OpenAPI (`Page<User>` emits a component named `PageOfUser`). Inside the generic's body a type parameter hides any declaration of the same name, as in Go. `extend` only applies to `service` - there is no `extend type` / `extend enum`.
+Generic type parameters are bare identifiers starting with an uppercase letter - no constraint or variance syntax. The Go output uses standard Go 1.18+ generics with an implicit `any` constraint; each concrete instantiation also becomes a flat schema in OpenAPI (`Page<User>` emits a component named `PageOfUser`). Inside the generic's body a type parameter hides any declaration of the same name, as in Go. `extend` only applies to `service` - there is no `extend type` / `extend enum`.
 
 A type **argument** cannot carry a trailing `?` (`Page<User?>` is rejected): the optionality has no well-defined position once the argument is substituted into the decl's body, so the Go type and the OpenAPI schema would disagree. Declare the nullability on a concrete field of the generic instead (`type Box<T> { item T? }`, used as `Box<User>`).
 

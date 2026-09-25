@@ -79,6 +79,18 @@ extend service userService {
 }`, CodeDeclNameCase, 2)
 }
 
+// A type parameter must start with an uppercase letter, at its type's name.
+func TestTypeParamNameMustBeExported(t *testing.T) {
+	for param, fix := range map[string]string{"fmt": `"Fmt"`, "v": `"V"`, "time": `"Time"`, "shared": `"Shared"`, "_x": `"X"`} {
+		d := expectError(t, "package app\ntype Box<"+param+"> { item "+param+" }", CodeDeclNameCase)
+		expectMessage(t, d, `type parameter "`+param+`" of Box must start with an uppercase letter`, "rename it "+fix)
+		if d.Pos.Line != 2 || d.Pos.Column != 6 {
+			t.Errorf("%s: reported at %d:%d, want the type's name at 2:6", param, d.Pos.Line, d.Pos.Column)
+		}
+	}
+	expectNoCode(t, "package app\ntype Box<T> { item T }\ntype Pair<Key, Value> { k Key  v Value }", CodeDeclNameCase)
+}
+
 // An empty name, left by a parse error, is not checked.
 func TestDeclNameCaseEmptyNameSkipped(t *testing.T) {
 	a := newTestAnalyzer(&Package{})

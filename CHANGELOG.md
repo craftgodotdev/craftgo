@@ -816,6 +816,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   name; a lower-case `service` name, which names only directories and
   documents, still warns.
 
+- **A type parameter starts with an uppercase letter.** The generated Go
+  spells a type parameter as the design does, so a lower-case one hid what
+  the code around it uses: `type Box<fmt>` broke `fmt.Errorf`, `<v>` the
+  validator's receiver, and `<time>` or an imported package's name the types
+  it spells, and none of them compiled. Each is now `decl/name-case` at the
+  type's name, suggesting the capitalised name.
+
 - **A package name is one Go can use.** The DSL package's name is the
   generated Go package's, yet `package func` passed analysis and crashed gen
   while formatting `types.go`; `package main` and `package init` generated
