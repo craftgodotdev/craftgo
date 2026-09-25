@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
@@ -88,7 +90,7 @@ func generateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot st
 func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
 	out := outputsOf(cfg)
 	for _, m := range svc.Methods {
-		seg := outputSegFor(svcName, semantic.MethodGroupOf(svc, m), cfg.Output.FileCase)
+		seg := route.OutputSegment(svcName, semantic.MethodGroupOf(svc, m), cfg.Output.FileCase)
 		data, err := buildTransportData(svcName, m, out.segmentImports(pkg.Name, seg), pkg, r)
 		if err != nil {
 			return fmt.Errorf("%s.%s: %w", svcName, m.Name, err)
@@ -108,7 +110,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		Package:          servicePkgName(pkg.Name, svcName),
 		Method:           m.Name,
 		ServiceName:      logicTypeName(m.Name),
-		Verb:             httpVerb(m.Verb),
+		Verb:             strings.ToUpper(m.Verb),
 		Doc:              m.Doc,
 		RawRequest:       mode.RawRequest,
 		RawResponse:      mode.RawResponse,

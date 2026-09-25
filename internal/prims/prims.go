@@ -14,7 +14,6 @@ const (
 	Bytes    // raw byte buffer
 	Any      // opaque JSON value
 	File     // multipart upload
-	Object   // not a usable field type; the analyser rejects it
 	DateTime // RFC 3339 timestamp
 )
 
@@ -28,9 +27,6 @@ type Spec struct {
 	Go string
 	// GoImport is the package Go's type is declared in; "" for a predeclared type.
 	GoImport string
-	// Parser is the strconv function that parses the kind from a wire string;
-	// "" for `string` and for kinds with no wire form.
-	Parser string
 	// OASType and OASFormat are the OpenAPI schema `type` and `format`;
 	// an empty OASType is an unconstrained schema.
 	OASType, OASFormat string
@@ -42,24 +38,23 @@ type Spec struct {
 
 var specs = []Spec{
 	{Name: "string", Kind: String, Go: "string", OASType: "string", Doc: "**`string`** - UTF-8 text primitive."},
-	{Name: "bool", Kind: Bool, Go: "bool", Parser: "strconv.ParseBool", OASType: "boolean", Doc: "**`bool`** - boolean primitive (`true` / `false`)."},
-	{Name: "int", Kind: Int, Go: "int", Parser: "strconv.ParseInt", OASType: "integer", Lo: -9223372036854775808, Hi: 9223372036854775807, Doc: "**`int`** - platform-sized signed integer."},
-	{Name: "int8", Kind: Int, Bits: 8, Go: "int8", Parser: "strconv.ParseInt", OASType: "integer", Lo: -128, Hi: 127, Doc: "**`int8`** - 8-bit signed integer."},
-	{Name: "int16", Kind: Int, Bits: 16, Go: "int16", Parser: "strconv.ParseInt", OASType: "integer", Lo: -32768, Hi: 32767, Doc: "**`int16`** - 16-bit signed integer."},
-	{Name: "int32", Kind: Int, Bits: 32, Go: "int32", Parser: "strconv.ParseInt", OASType: "integer", OASFormat: "int32", Lo: -2147483648, Hi: 2147483647, Doc: "**`int32`** - 32-bit signed integer."},
-	{Name: "int64", Kind: Int, Bits: 64, Go: "int64", Parser: "strconv.ParseInt", OASType: "integer", OASFormat: "int64", Lo: -9223372036854775808, Hi: 9223372036854775807, Doc: "**`int64`** - 64-bit signed integer."},
-	{Name: "uint", Kind: Uint, Go: "uint", Parser: "strconv.ParseUint", OASType: "integer", Lo: 0, Hi: 18446744073709551615, Doc: "**`uint`** - platform-sized unsigned integer."},
-	{Name: "uint8", Kind: Uint, Bits: 8, Go: "uint8", Parser: "strconv.ParseUint", OASType: "integer", Lo: 0, Hi: 255, Doc: "**`uint8`** - 8-bit unsigned integer."},
-	{Name: "uint16", Kind: Uint, Bits: 16, Go: "uint16", Parser: "strconv.ParseUint", OASType: "integer", Lo: 0, Hi: 65535, Doc: "**`uint16`** - 16-bit unsigned integer."},
-	{Name: "uint32", Kind: Uint, Bits: 32, Go: "uint32", Parser: "strconv.ParseUint", OASType: "integer", Lo: 0, Hi: 4294967295, Doc: "**`uint32`** - 32-bit unsigned integer."},
-	{Name: "uint64", Kind: Uint, Bits: 64, Go: "uint64", Parser: "strconv.ParseUint", OASType: "integer", Lo: 0, Hi: 18446744073709551615, Doc: "**`uint64`** - 64-bit unsigned integer."},
-	{Name: "float32", Kind: Float, Bits: 32, Go: "float32", Parser: "strconv.ParseFloat", OASType: "number", OASFormat: "float", Doc: "**`float32`** - 32-bit IEEE-754 float."},
-	{Name: "float64", Kind: Float, Bits: 64, Go: "float64", Parser: "strconv.ParseFloat", OASType: "number", OASFormat: "double", Doc: "**`float64`** - 64-bit IEEE-754 float."},
+	{Name: "bool", Kind: Bool, Go: "bool", OASType: "boolean", Doc: "**`bool`** - boolean primitive (`true` / `false`)."},
+	{Name: "int", Kind: Int, Go: "int", OASType: "integer", Lo: -9223372036854775808, Hi: 9223372036854775807, Doc: "**`int`** - platform-sized signed integer."},
+	{Name: "int8", Kind: Int, Bits: 8, Go: "int8", OASType: "integer", Lo: -128, Hi: 127, Doc: "**`int8`** - 8-bit signed integer."},
+	{Name: "int16", Kind: Int, Bits: 16, Go: "int16", OASType: "integer", Lo: -32768, Hi: 32767, Doc: "**`int16`** - 16-bit signed integer."},
+	{Name: "int32", Kind: Int, Bits: 32, Go: "int32", OASType: "integer", OASFormat: "int32", Lo: -2147483648, Hi: 2147483647, Doc: "**`int32`** - 32-bit signed integer."},
+	{Name: "int64", Kind: Int, Bits: 64, Go: "int64", OASType: "integer", OASFormat: "int64", Lo: -9223372036854775808, Hi: 9223372036854775807, Doc: "**`int64`** - 64-bit signed integer."},
+	{Name: "uint", Kind: Uint, Go: "uint", OASType: "integer", Lo: 0, Hi: 18446744073709551615, Doc: "**`uint`** - platform-sized unsigned integer."},
+	{Name: "uint8", Kind: Uint, Bits: 8, Go: "uint8", OASType: "integer", Lo: 0, Hi: 255, Doc: "**`uint8`** - 8-bit unsigned integer."},
+	{Name: "uint16", Kind: Uint, Bits: 16, Go: "uint16", OASType: "integer", Lo: 0, Hi: 65535, Doc: "**`uint16`** - 16-bit unsigned integer."},
+	{Name: "uint32", Kind: Uint, Bits: 32, Go: "uint32", OASType: "integer", Lo: 0, Hi: 4294967295, Doc: "**`uint32`** - 32-bit unsigned integer."},
+	{Name: "uint64", Kind: Uint, Bits: 64, Go: "uint64", OASType: "integer", Lo: 0, Hi: 18446744073709551615, Doc: "**`uint64`** - 64-bit unsigned integer."},
+	{Name: "float32", Kind: Float, Bits: 32, Go: "float32", OASType: "number", OASFormat: "float", Doc: "**`float32`** - 32-bit IEEE-754 float."},
+	{Name: "float64", Kind: Float, Bits: 64, Go: "float64", OASType: "number", OASFormat: "double", Doc: "**`float64`** - 64-bit IEEE-754 float."},
 	{Name: "bytes", Kind: Bytes, Go: "[]byte", OASType: "string", OASFormat: "byte", Doc: "**`bytes`** - raw byte buffer.\n\nGenerates `[]byte` in Go, base64 on the wire. Add `@format(raw)` when the bytes already ARE the value in the message's own encoding and the codec must embed them untouched."},
 	{Name: "any", Kind: Any, Go: "any", Doc: "**`any`** - opaque JSON value.\n\nGenerates `any` in Go."},
 	{Name: "datetime", Kind: DateTime, Go: "time.Time", GoImport: "time", OASType: "string", OASFormat: "date-time", Doc: "**`datetime`** - an RFC 3339 timestamp.\n\nGenerates `time.Time` in Go and travels as an RFC 3339 string in JSON. A body field only: it cannot be bound from a query, header, cookie or form value."},
 	{Name: "file", Kind: File, Go: "*multipart.FileHeader", GoImport: "mime/multipart", OASType: "string", OASFormat: "binary", Doc: "**`file`** - multipart file upload (request only, must be paired with `@form`).\n\nGenerates `*multipart.FileHeader`."},
-	{Name: "object", Kind: Object},
 }
 
 var byName = func() map[string]Spec {

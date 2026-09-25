@@ -171,23 +171,6 @@ func TestPascalQualified(t *testing.T) {
 	}
 }
 
-// isPrimitiveName accepts the DSL's builtin type names and no other.
-func TestIsPrimitiveName(t *testing.T) {
-	prim := []string{"string", "bool", "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"float32", "float64", "bytes", "any", "file"}
-	for _, p := range prim {
-		if !isPrimitiveName(p) {
-			t.Errorf("%q should be primitive", p)
-		}
-	}
-	for _, p := range []string{"User", "string1", "STRING", "Float64", ""} {
-		if isPrimitiveName(p) {
-			t.Errorf("%q should NOT be primitive", p)
-		}
-	}
-}
-
 // pending returns instances in registration order.
 func TestGenericRegistryOrderIsStable(t *testing.T) {
 	r := newGenericRegistry()

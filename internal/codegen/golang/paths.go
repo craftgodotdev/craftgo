@@ -131,13 +131,6 @@ func (o outputs) segmentImports(pkgName, seg string) importPaths {
 	}
 }
 
-func httpVerb(verb string) string { return strings.ToUpper(verb) }
-
-// outputSegFor is [route.OutputSegment]: the @group, or the service's directory when ungrouped.
-func outputSegFor(svcName, group, style string) string {
-	return route.OutputSegment(svcName, group, style)
-}
-
 // methodFile is the file a method's handler and logic stub are written to.
 func methodFile(m *ast.Method, fileCase string) string {
 	return idents.FileName(m.Name, fileCase) + ".go"
@@ -170,7 +163,7 @@ func segments(pkg *semantic.Package, fileCase string) iter.Seq[segment] {
 		for _, name := range pkg.ServiceNames() {
 			svc := pkg.Services[name]
 			for _, group := range distinctGroups(svc) {
-				if !yield(segment{pkg: pkg, name: name, svc: svc, group: group, dir: outputSegFor(name, group, fileCase)}) {
+				if !yield(segment{pkg: pkg, name: name, svc: svc, group: group, dir: route.OutputSegment(name, group, fileCase)}) {
 					return
 				}
 			}
@@ -208,14 +201,9 @@ func distinctGroups(svc *semantic.ServiceInfo) []string {
 	return slices.Compact(groups)
 }
 
-// groupAliasSuffix is the import-alias suffix of a @group ("admin/ops" → "AdminOps", "" → "").
-func groupAliasSuffix(group string) string {
-	return idents.PascalCase(group)
-}
-
 // transportAlias is a routes file's alias for a group's transport package ("transport", "transportV2").
 func transportAlias(group string) string {
-	return "transport" + groupAliasSuffix(group)
+	return "transport" + idents.PascalCase(group)
 }
 
 // renderDoc renders doc as indented `//` comment lines, "" for none.

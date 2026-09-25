@@ -10,6 +10,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -140,7 +141,7 @@ func generateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 		if imports.has(path) {
 			continue
 		}
-		data.Imports = append(data.Imports, goImport{Alias: imports.add(servicePackage(s.name)+groupAliasSuffix(s.group)+"routes", path), Path: path})
+		data.Imports = append(data.Imports, goImport{Alias: imports.add(servicePackage(s.name)+idents.PascalCase(s.group)+"routes", path), Path: path})
 	}
 	return writeGo(out.routes.at(projectRoot, "routes.go"), tmpl("routes-all.tmpl"), data)
 }
@@ -173,7 +174,7 @@ func generateRoutesForSegment(contribs []segment, cfg *config.Config, projectRoo
 				data.NeedsTime = true
 			}
 			data.Routes = append(data.Routes, routeEntry{
-				Pattern:     httpVerb(m.Verb) + " " + full,
+				Pattern:     strings.ToUpper(m.Verb) + " " + full,
 				HandlerCall: call,
 				Middlewares: buildMiddlewareArgs(mws),
 			})

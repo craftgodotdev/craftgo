@@ -5,6 +5,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -59,7 +60,7 @@ func generateService(pkg *semantic.Package, cfg *config.Config, projectRoot stri
 func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg crossPkg) error {
 	out := outputsOf(cfg)
 	for _, m := range svc.Methods {
-		seg := outputSegFor(svcName, semantic.MethodGroupOf(svc, m), cfg.Output.FileCase)
+		seg := route.OutputSegment(svcName, semantic.MethodGroupOf(svc, m), cfg.Output.FileCase)
 		data := buildServiceData(pkg.Name, svcName, m, out.segmentImports(pkg.Name, seg), crossPkg)
 		if err := writeGoOnce(out.service.sub(seg).at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("service.tmpl"), data); err != nil {
 			return err

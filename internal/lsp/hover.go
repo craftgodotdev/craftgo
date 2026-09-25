@@ -98,9 +98,9 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 	if h := memberKeywordHover(view, idx, tok); h != nil {
 		return h
 	}
-	// Any identifier spelt like a documented built-in gets its doc.
+	// Any identifier spelt like a built-in gets its doc.
 	if tok.Kind == lexer.Ident {
-		if sp, ok := prims.Lookup(tok.Text); ok && sp.Doc != "" {
+		if sp, ok := prims.Lookup(tok.Text); ok {
 			return &protocol.Hover{
 				Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: sp.Doc},
 				Range:    rangePtr(rangeOf(view.src, tok)),

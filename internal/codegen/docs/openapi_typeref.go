@@ -127,7 +127,7 @@ func instantiateGeneric(decl *ast.TypeDecl, args []*ast.TypeRef, pkg *semantic.P
 // name. An unsigned type gets `minimum: 0`.
 func primitiveSchema(name string) *openapi3.Schema {
 	sp, ok := prims.Lookup(name)
-	if !ok || sp.Kind == prims.Object {
+	if !ok {
 		return nil
 	}
 	if sp.OASType == "" {

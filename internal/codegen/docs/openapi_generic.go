@@ -129,7 +129,7 @@ func namedTypeName(n *ast.NamedTypeRef) string {
 		return "Unknown"
 	}
 	bare := n.Name.String()
-	if isPrimitiveName(bare) {
+	if prims.Is(bare) {
 		return pascalIdent(bare)
 	}
 	full := pascalQualified(bare)
@@ -146,15 +146,6 @@ func namedTypeName(n *ast.NamedTypeRef) string {
 		b.WriteString(typeRefName(a))
 	}
 	return b.String()
-}
-
-// isPrimitiveName reports whether name is a DSL primitive other than
-// `object`, the example-only type.
-func isPrimitiveName(name string) bool {
-	if !prims.Is(name) {
-		return false
-	}
-	return name != "object"
 }
 
 // pascalIdent upper-cases the first rune of name.

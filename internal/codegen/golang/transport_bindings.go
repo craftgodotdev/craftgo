@@ -2,6 +2,7 @@ package golang
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/prims"
@@ -177,7 +178,7 @@ func collectBindings(m *ast.Method, fields []resolvedField, pkg *semantic.Packag
 
 // bindError names the request field of m that err keeps from binding.
 func bindError(m *ast.Method, f *ast.Field, err error) error {
-	return fmt.Errorf("%s.%s on %s %s: %w", m.Request.Name.String(), f.Name, httpVerb(m.Verb), route.PathString(m.Path), err)
+	return fmt.Errorf("%s.%s on %s %s: %w", m.Request.Name.String(), f.Name, strings.ToUpper(m.Verb), route.PathString(m.Path), err)
 }
 
 // hasBodyField reports whether any request field binds to the body or a form part.

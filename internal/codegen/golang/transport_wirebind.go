@@ -12,32 +12,19 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-type queryPrim struct {
-	parser string // strconv.ParseX function, "" for a string
-	goType string // bind helper type argument ("int", "float64", ...), "" for bool and string
-	label  string // kind named in a parse error
+// wireParse is how a handler parses a wire string of one primitive kind: the pkg/server parser,
+// "" for a string, which binds as it is, and the kind a parse error names.
+type wireParse struct {
+	parser, label string
 }
 
-// wirePrim returns the binder metadata for a wire-parseable primitive.
-func wirePrim(name string) (queryPrim, bool) {
-	sp, ok := prims.Lookup(name)
-	if !ok || !prims.IsWireParseable(name) {
-		return queryPrim{}, false
-	}
-	q := queryPrim{parser: sp.Parser}
-	switch sp.Kind {
-	case prims.String:
-		q.label = "string"
-	case prims.Bool:
-		q.label = "bool"
-	case prims.Int:
-		q.label, q.goType = "int", name
-	case prims.Uint:
-		q.label, q.goType = "uint", name
-	case prims.Float:
-		q.label, q.goType = "float", name
-	}
-	return q, true
+// wireParses are the kinds a wire string binds as.
+var wireParses = map[prims.Kind]wireParse{
+	prims.String: {"", "string"},
+	prims.Bool:   {"server.ParseBool", "bool"},
+	prims.Int:    {"server.ParseSigned", "int"},
+	prims.Uint:   {"server.ParseUnsigned", "uint"},
+	prims.Float:  {"server.ParseFloat", "float"},
 }
 
 // wireSource is how a handler reads the raw strings of one binding.
@@ -96,7 +83,8 @@ func renderWireBindLine(rf resolvedField, binding wire.Binding, wireName string,
 	if !ok {
 		return "", fmt.Errorf("field %q: type %s cannot bind to @%s - only string/bool/int*/uint*/float*, scalars/enums, and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, f.Type, binding)
 	}
-	prim, _ := wirePrim(primName)
+	sp, _ := prims.Lookup(primName)
+	parse := wireParses[sp.Kind]
 	cast := ""
 	if declared != "" {
 		cast = imports.qualify(declared)
@@ -104,16 +92,16 @@ func renderWireBindLine(rf resolvedField, binding wire.Binding, wireName string,
 	data := wireBindData{
 		DSLNameQuoted: strconv.Quote(wireName),
 		GoName:        rf.GoName,
-		Label:         prim.label,
+		Label:         parse.label,
 		SingleSource:  src.single(wireName),
 	}
 	if src.array != nil {
 		data.ArraySource = src.array(wireName)
 	}
-	if prim.parser != "" {
-		data.ParseFn = bindParseFamily(prim.parser) + "[" + cmp.Or(cast, primName) + "]"
+	if parse.parser != "" {
+		data.ParseFn = parse.parser + "[" + cmp.Or(cast, primName) + "]"
 	}
-	shape := bindShape(rf, prim.parser != "", cast != "")
+	shape := bindShape(rf, parse.parser != "", cast != "")
 	// directSingle converts the source expression; every other shape the `_v` it read.
 	data.Wrap = castTo(cast, "_v")
 	if shape == "directSingle" {
@@ -214,20 +202,6 @@ type wireBindData struct {
 	Label        string
 	SingleSource string
 	ArraySource  string
-}
-
-// bindParseFamily maps a strconv parser to the generic pkg/server parser a handler calls.
-func bindParseFamily(parser string) string {
-	switch parser {
-	case "strconv.ParseBool":
-		return "server.ParseBool"
-	case "strconv.ParseFloat":
-		return "server.ParseFloat"
-	case "strconv.ParseUint":
-		return "server.ParseUnsigned"
-	default: // strconv.ParseInt
-		return "server.ParseSigned"
-	}
 }
 
 // renderWireBindShape executes the named shape of transport_wire_bind.tmpl; an unknown name panics.

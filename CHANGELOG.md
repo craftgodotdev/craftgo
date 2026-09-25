@@ -50,6 +50,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   where a generator error said `[]Point`. The editor's hover and
   completion details use the same spelling.
 
+- **`object` is no longer a built-in type.** It was listed as one only to be
+  rejected: a declaration may now take the name, while a field typed `object`
+  still gets the hint to use `any` or `map<string, V>`.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

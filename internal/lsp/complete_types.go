@@ -255,14 +255,10 @@ func (r *request) typeCompletionsProjectWide() []protocol.CompletionItem {
 	return items
 }
 
-// primitiveCompletions offers every documented built-in; `object` has no doc,
-// being legal only inside an `@example({...})` literal.
+// primitiveCompletions offers every built-in.
 func primitiveCompletions() []protocol.CompletionItem {
 	var items []protocol.CompletionItem
 	for _, sp := range prims.All() {
-		if sp.Doc == "" {
-			continue
-		}
 		items = append(items, protocol.CompletionItem{
 			Label:  sp.Name,
 			Kind:   protocol.CompletionItemKindKeyword,
