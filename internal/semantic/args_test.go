@@ -495,3 +495,61 @@ func TestParityDefaultExampleShareTypeCheck(t *testing.T) {
 		t.Errorf("@default/@example type-check parity broken: default rejected=%v, example rejected=%v", defRej, exRej)
 	}
 }
+
+// A @default that breaks a constraint of its field, its scalar's included, is
+// rejected at the argument, naming the constraint and the value; an array
+// default is held to the field's item constraints and each element to its
+// scalar's.
+func TestDefaultBreakingItsConstraintsRejected(t *testing.T) {
+	const head = "package app\nscalar Tag string @minLength(2)\nscalar Port int @range(1, 65535)\nscalar Mail string @format(email)\n"
+	for _, c := range []struct{ field, msg string }{
+		{`name string? @minLength(3) @default("ab")`, `@default("ab") violates @minLength(3)`},
+		{`name string? @maxLength(4) @default("héllo")`, `@default("héllo") violates @maxLength(4)`},
+		{`name string? @length(4) @default("abc")`, `@default("abc") violates @length(4)`},
+		{`name string? @length(1, 2) @default("abc")`, `@default("abc") violates @length(1, 2)`},
+		{`name string? @pattern("^[a-z]+$") @default("a b")`, `@default("a b") violates @pattern("^[a-z]+$")`},
+		{`site string? @format(url) @default("ftp://x.io")`, `@default("ftp://x.io") violates @format(url)`},
+		{`code string? @format(uuid) @default("nope")`, `@default("nope") violates @format(uuid)`},
+		{`n int? @positive @default(0)`, `@default(0) violates @positive`},
+		{`n int? @negative @default(1)`, `@default(1) violates @negative`},
+		{`n int? @gt(5) @default(5)`, `@default(5) violates @gt(5)`},
+		{`n int? @gte(5) @default(4)`, `@default(4) violates @gte(5)`},
+		{`n int? @lt(5) @default(5)`, `@default(5) violates @lt(5)`},
+		{`n int? @lte(5) @default(6)`, `@default(6) violates @lte(5)`},
+		{`n int? @range(1, 10) @default(11)`, `@default(11) violates @range(1, 10)`},
+		{`n int? @multipleOf(5) @default(7)`, `@default(7) violates @multipleOf(5)`},
+		{`r float64? @lte(0.5) @default(0.75)`, `@default(0.75) violates @lte(0.5)`},
+		{`big uint64? @lte(9223372036854775806.0) @default(9223372036854775807)`, `@default(9223372036854775807) violates @lte(9223372036854775806.0)`},
+		{`t Tag? @default("a")`, `@default("a") violates @minLength(2) of scalar Tag`},
+		{`p Port? @default(0)`, `@default(0) violates @range(1, 65535) of scalar Port`},
+		{`m Mail? @default("nope")`, `@default("nope") violates @format(email) of scalar Mail`},
+		{`tags string[]? @minItems(2) @default(["a"])`, `@default(["a"]) violates @minItems(2)`},
+		{`tags string[]? @maxItems(1) @default(["a", "b"])`, `@default(["a", "b"]) violates @maxItems(1)`},
+		{`tags string[]? @uniqueItems @default(["a", "b", "a"])`, `@default(["a", "b", "a"]) violates @uniqueItems`},
+		{`ns float64[]? @uniqueItems @default([1.0, 1.00])`, `violates @uniqueItems`},
+		{`tags Tag[]? @default(["ok", "x"])`, `@default element "x" violates @minLength(2) of scalar Tag`},
+	} {
+		t.Run(c.field, func(t *testing.T) {
+			d := expectError(t, head+"type R { "+c.field+" }", CodeDecoratorConflict)
+			expectMessage(t, d, c.msg)
+		})
+	}
+	mustClean(t, head+`type R {
+	a string? @minLength(2) @default("ab")
+	b int? @range(1, 10) @default(10)
+	c Tag? @default("ok")
+	d string[]? @minItems(1) @uniqueItems @default(["a", "b"])
+	e uint64? @lte(9223372036854775807.0) @default(9223372036854775807)
+	f float32? @lt(0.5) @default(0.25)
+	g string? @format(email) @default("a@b.co")
+	h int? @multipleOf(5) @default(-10)
+	i Port[]? @uniqueItems @default([80, 443])
+	j Mail? @default("ops@example.com")
+}`)
+}
+
+// A @default of the wrong kind gets the type error alone.
+func TestDefaultOfWrongKindSkipsConstraints(t *testing.T) {
+	expectCodeCount(t, `package app
+type R { n int? @gte(5) @default(4.5)  s string? @minLength(3) @default(1) }`, CodeDecoratorConflict, 0)
+}

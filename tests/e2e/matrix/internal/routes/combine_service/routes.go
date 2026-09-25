@@ -22,7 +22,6 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/combine/pairs/contact", transport.ValidateContact(svcCtx))
 	srv.Handle("POST /api/combine/pairs/choice", transport.ValidateChoice(svcCtx))
 	srv.Handle("POST /api/combine/defaults/boundary", transport.EchoBoundary(svcCtx))
-	srv.Handle("POST /api/combine/defaults/conflict", transport.EchoConflict(svcCtx))
 	srv.Handle("POST /api/combine/defaults/collection", transport.EchoCollection(svcCtx))
 	srv.Handle("POST /api/combine/defaults/enum", transport.EchoEnum(svcCtx))
 	srv.Handle("POST /api/combine/defaults/scalar", transport.EchoScalar(svcCtx))

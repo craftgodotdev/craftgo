@@ -94,6 +94,18 @@ breaking change to the DSL or the generated layout bumps the major version.
   though no decorator reads one; it is now a parse error, `expected
   literal, got @`.
 
+- **A `@default` must pass its field's constraints.** A default that broke a
+  validator of its field or of the field's scalar - `@default("")` beside
+  `@minLength(1)`, `@default(0)` beside `@positive`, `@default("nope")` on an
+  `@format(email)` scalar, an array default against `@minItems`, `@maxItems`
+  or `@uniqueItems`, or an element its scalar refuses - generated, and the
+  handler then refused every request that omitted the field, since it
+  validates the pre-filled value. Such a design, which generated before, is
+  now rejected with `decorator/conflict` at the default, naming the
+  constraint and the value: `@default("ab") violates @minLength(3): its
+  length is 2`. An exact or ranged `@length` also bounds a `@minLength` or
+  `@maxLength` beside it: `@length(5) @maxLength(3)` is `decorator/range`.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

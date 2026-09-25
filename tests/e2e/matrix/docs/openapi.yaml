@@ -1361,22 +1361,6 @@ components:
           - array
           - "null"
       type: object
-    DefaultsConflict:
-      description: |-
-        DefaultsConflict exercises a default literal that fails the per-field
-        validator. Codegen accepts the design: the generated code emits the
-        default and then rejects the pre-filled value at req.Validate().
-      properties:
-        empty:
-          default: ""
-          description: |-
-            Empty string default + @minLength(1). The pre-fill IS the
-            validator's failure case.
-          minLength: 1
-          type:
-          - string
-          - "null"
-      type: object
     DefaultsEnum:
       description: |-
         DefaultsEnum uses an enum default (bare ident → Go const). The enum
@@ -1731,24 +1715,6 @@ components:
       type: object
     EchoCompositeRespBody:
       $ref: '#/components/schemas/Rg5Composite'
-    EchoConflictReqBody:
-      description: |-
-        DefaultsConflict exercises a default literal that fails the per-field
-        validator. Codegen accepts the design: the generated code emits the
-        default and then rejects the pre-filled value at req.Validate().
-      properties:
-        empty:
-          default: ""
-          description: |-
-            Empty string default + @minLength(1). The pre-fill IS the
-            validator's failure case.
-          minLength: 1
-          type:
-          - string
-          - "null"
-      type: object
-    EchoConflictRespBody:
-      $ref: '#/components/schemas/DefaultsConflict'
     EchoCubeReqBody:
       description: |-
         Cube is the 3-D slice of nested case. Three nested for-loops
@@ -9076,27 +9042,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EchoCollectionRespBody'
-          description: Created
-      tags:
-      - combine
-  /combine/defaults/conflict:
-    post:
-      description: Echo the deliberate default-vs-validator clash. The empty-string
-        default would fail @minLength(1) - if codegen accepts the design, the handler
-        will reject the pre-filled value.
-      operationId: EchoConflict
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoConflictReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoConflictRespBody'
           description: Created
       tags:
       - combine

@@ -1,14 +1,20 @@
 package semantic
 
 import (
+	"cmp"
+	"fmt"
 	"math"
+	"math/big"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/prims"
+	"github.com/craftgodotdev/craftgo/internal/strfmt"
 )
 
 // checkValueRules runs the rules on the values decs constrain, of primitive
@@ -61,7 +67,8 @@ type boundSide struct {
 }
 
 // boundDecorators gives each bound decorator what it limits and the side of
-// each argument in order; a flag bounds at 0 on its one side.
+// each argument in order; a flag bounds at 0 on its one side, and a
+// one-argument `@length` bounds the length on both sides.
 var boundDecorators = map[string]struct {
 	limits string
 	sides  []boundSide
@@ -73,6 +80,7 @@ var boundDecorators = map[string]struct {
 	"range":     {"value", []boundSide{{lower: true}, {}}},
 	"positive":  {"value", []boundSide{{lower: true, strict: true}}},
 	"negative":  {"value", []boundSide{{strict: true}}},
+	"length":    {"length", []boundSide{{lower: true}, {}}},
 	"minLength": {"length", []boundSide{{lower: true}}},
 	"maxLength": {"length", []boundSide{{}}},
 	"minItems":  {"item count", []boundSide{{lower: true}}},
@@ -122,6 +130,9 @@ func declaredBounds(decs []*ast.Decorator) []bound {
 			continue
 		}
 		args := positionalArgs(d)
+		if d.Name == "length" && len(args) == 1 {
+			args = []*ast.DecoratorArg{args[0], args[0]}
+		}
 		if len(args) != len(spec.sides) {
 			continue
 		}
@@ -139,6 +150,181 @@ func declaredBounds(decs []*ast.Decorator) []bound {
 		}
 	}
 	return out
+}
+
+// admits reports whether q, a value of primitive prim or a length or item
+// count, lies within b; a float compares at its primitive's width, as the
+// generated check does, anything else exactly.
+func (b bound) admits(prim string, q NumericLit) bool {
+	c := q.Cmp(b.value)
+	if sp, ok := prims.Lookup(prim); ok && sp.Kind == prims.Float {
+		c = cmp.Compare(q.FloatVal, b.value.FloatVal)
+		if sp.Bits == 32 {
+			c = cmp.Compare(float32(q.FloatVal), float32(b.value.FloatVal))
+		}
+	}
+	switch {
+	case b.lower && b.strict:
+		return c > 0
+	case b.lower:
+		return c >= 0
+	case b.strict:
+		return c < 0
+	}
+	return c <= 0
+}
+
+// constraintSite is a decorator list that constrains a value, and how a
+// diagnostic names it: "" for the field's own, ` of scalar <Name>` for its
+// type's.
+type constraintSite struct {
+	decs []*ast.Decorator
+	of   string
+}
+
+// valueConstraintSites returns the sites that constrain a value of type t:
+// decs, then those of the scalar t names.
+func (a *analyzer) valueConstraintSites(t *ast.TypeRef, decs []*ast.Decorator) []constraintSite {
+	sites := []constraintSite{{decs: decs}}
+	if sd := a.lookupScalar(t.Named); sd != nil {
+		sites = append(sites, constraintSite{decs: sd.Decorators, of: " of scalar " + t.Named.Name.String()})
+	}
+	return sites
+}
+
+// checkDefaultConstraints rejects a `@default` of f, whose argument is arg,
+// that breaks a constraint f carries or its scalar declares: an array
+// default meets f's item constraints and each element its scalar's. A
+// literal of the wrong kind is left to [analyzer.checkLiteralType].
+func (a *analyzer) checkDefaultConstraints(f *ast.Field, arg *ast.DecoratorArg) {
+	t := f.Type
+	if t == nil {
+		return
+	}
+	if !t.Array {
+		a.checkValueConstraints(a.valueConstraintSites(t, f.Decorators), a.primOf(t), arg.Value, arg.Pos, "@default("+literalText(arg.Value)+")")
+		return
+	}
+	arr, ok := arg.Value.(*ast.ArrayLit)
+	if !ok {
+		return
+	}
+	elem := t.ElemTypeRef()
+	prim := a.primOf(elem)
+	subject := "@default(" + literalText(arr) + ")"
+	for _, b := range declaredBounds(f.Decorators) {
+		if b.limits == "item count" && !b.admits("", countLit(len(arr.Elements))) {
+			a.diag(arg.Pos, arg.Pos, lexer.SeverityError, CodeDecoratorConflict,
+				"%s violates %s: it holds %d items", subject, decoratorCall(b.dec), len(arr.Elements))
+		}
+	}
+	if ast.HasDecorator(f.Decorators, "uniqueItems") {
+		seen := map[string]bool{}
+		for _, e := range arr.Elements {
+			key := literalKey(prim, e)
+			if seen[key] {
+				a.diag(arg.Pos, arg.Pos, lexer.SeverityError, CodeDecoratorConflict,
+					"%s violates @uniqueItems: %s repeats", subject, literalText(e))
+				break
+			}
+			seen[key] = true
+		}
+	}
+	sites := a.valueConstraintSites(elem, nil)
+	for _, e := range arr.Elements {
+		a.checkValueConstraints(sites, prim, e, e.ExprPos(), "@default element "+literalText(e))
+	}
+}
+
+// checkValueConstraints reports each constraint of sites that literal v, a
+// value of primitive prim written at pos, breaks; subject names v. A
+// constraint on another kind of value than v's is left to the type checks.
+func (a *analyzer) checkValueConstraints(sites []constraintSite, prim string, v ast.Expr, pos lexer.Position, subject string) {
+	if !exprMatchesKind(v, primitiveArgKind(prim)) {
+		return
+	}
+	report := func(d *ast.Decorator, of, format string, args ...any) {
+		a.diag(pos, pos, lexer.SeverityError, CodeDecoratorConflict,
+			"%s violates %s%s: %s", subject, decoratorCall(d), of, fmt.Sprintf(format, args...))
+	}
+	for _, site := range sites {
+		switch v := v.(type) {
+		case *ast.StringLit:
+			length := utf8.RuneCountInString(v.Value)
+			for _, b := range declaredBounds(site.decs) {
+				if b.limits == "length" && !b.admits("", countLit(length)) {
+					report(b.dec, site.of, "its length is %d", length)
+				}
+			}
+			for _, d := range site.decs {
+				if why := textConstraintBreach(d, v.Value); why != "" {
+					report(d, site.of, "%s", why)
+				}
+			}
+		case *ast.IntLit, *ast.FloatLit:
+			q, _ := ParseNumeric(v)
+			for _, b := range declaredBounds(site.decs) {
+				if b.limits == "value" && !b.admits(prim, q) {
+					report(b.dec, site.of, "it is not %s", b.relation())
+				}
+			}
+			if d := ast.FindDecorator(site.decs, "multipleOf"); d != nil && prims.IsInteger(prim) {
+				if div, ok := ParseNumericArg(firstPositional(d)); ok && div.FloatVal != 0 && !new(big.Rat).Quo(q.Rat(), div.Rat()).IsInt() {
+					report(d, site.of, "it is not a multiple of %s", literalText(firstPositional(d).Value))
+				}
+			}
+		}
+	}
+}
+
+// textConstraintBreach says how s breaks d, a `@pattern` or a `@format` the
+// generated check validates, or returns "".
+func textConstraintBreach(d *ast.Decorator, s string) string {
+	arg := firstPositional(d)
+	if arg == nil {
+		return ""
+	}
+	switch d.Name {
+	case "pattern":
+		pattern, _ := ast.TextValue(arg.Value)
+		if re, err := regexp.Compile(pattern); err == nil && !re.MatchString(s) {
+			return "it does not match"
+		}
+	case "format":
+		name, _ := ast.TextValue(arg.Value)
+		if spec, ok := strfmt.Lookup(name); ok && !spec.Valid(s) {
+			return "it is not a valid " + spec.Label
+		}
+	}
+	return ""
+}
+
+// countLit returns n, a length or an item count, as a [NumericLit].
+func countLit(n int) NumericLit {
+	return NumericLit{IntVal: int64(n), FloatVal: float64(n), IsInt: true}
+}
+
+// firstPositional returns d's first unnamed argument, or nil.
+func firstPositional(d *ast.Decorator) *ast.DecoratorArg {
+	if args := positionalArgs(d); len(args) > 0 {
+		return args[0]
+	}
+	return nil
+}
+
+// literalKey is the value literal e holds as an element of primitive prim,
+// so that two literals of one value, such as 1.0 and 1.00, share it.
+func literalKey(prim string, e ast.Expr) string {
+	if l, ok := ParseNumeric(e); ok {
+		if sp, isPrim := prims.Lookup(prim); isPrim && sp.Kind == prims.Float {
+			if sp.Bits == 32 {
+				return "n" + strconv.FormatFloat(float64(float32(l.FloatVal)), 'g', -1, 32)
+			}
+			return "n" + strconv.FormatFloat(l.FloatVal, 'g', -1, 64)
+		}
+		return "n" + l.Rat().RatString()
+	}
+	return fmt.Sprintf("%T:%s", e, literalText(e))
 }
 
 // decoratorCall renders d with its literal arguments as written: `@gte(5)`,
@@ -170,6 +356,14 @@ func literalText(e ast.Expr) string {
 		if v.Name != nil {
 			return v.Name.String()
 		}
+	case *ast.NullLit:
+		return "null"
+	case *ast.ArrayLit:
+		parts := make([]string, len(v.Elements))
+		for i, el := range v.Elements {
+			parts[i] = literalText(el)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
 	}
 	return exprKind(e)
 }

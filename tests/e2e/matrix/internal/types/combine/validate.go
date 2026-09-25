@@ -38,15 +38,6 @@ func (v *DefaultsCollection) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on DefaultsConflict.
-// Returns the first violation; nil when the value satisfies the contract.
-func (v *DefaultsConflict) Validate() error {
-	if v.Empty != nil && utf8.RuneCountInString(*v.Empty) < 1 {
-		return fmt.Errorf("empty: length less than 1")
-	}
-	return nil
-}
-
 // Validate checks every field-level constraint declared on DefaultsEnum.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *DefaultsEnum) Validate() error {

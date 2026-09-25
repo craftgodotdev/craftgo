@@ -51,15 +51,6 @@ type DefaultsCollection struct {
 	Arr []int `json:"arr,omitempty"`
 }
 
-// DefaultsConflict exercises a default literal that fails the per-field
-// validator. Codegen accepts the design: the generated code emits the
-// default and then rejects the pre-filled value at req.Validate().
-type DefaultsConflict struct {
-	// Empty string default + @minLength(1). The pre-fill IS the
-	// validator's failure case.
-	Empty *string `json:"empty,omitempty"`
-}
-
 // DefaultsEnum uses an enum default (bare ident → Go const). The enum
 // value reference resolves through the enum decl above.
 type DefaultsEnum struct {

@@ -192,7 +192,7 @@ type ListUsersReq {
 }
 ```
 
-`@default` works on primitives, scalars, enums, and arrays of those. The field must be optional (`?`) for the default to fire - the formatter auto-adds `?` on save when missing, and the semantic analyzer warns until you save.
+`@default` works on primitives, scalars, enums, and arrays of those. The field must be optional (`?`) for the default to fire - the formatter auto-adds `?` on save when missing, and the semantic analyzer warns until you save. The default must pass the field's validators, its scalar's included - the handler validates the pre-filled value - so a default that breaks one is `decorator/conflict`.
 
 ## Error messages
 

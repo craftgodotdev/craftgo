@@ -199,6 +199,14 @@ func TestContradictingSignConstraintsRejected(t *testing.T) {
 	mustClean(t, `type X { v int @positive @lte(10)  w float64 @negative @gte(-0.5) }`)
 }
 
+// An exact or ranged @length bounds the length on both sides, so a
+// @minLength or @maxLength outside it leaves no length.
+func TestLengthContradictingMinMaxLength(t *testing.T) {
+	d := expectError(t, `type X { s string @length(5) @maxLength(3) }`, CodeDecoratorRange)
+	expectMessage(t, d, "@maxLength(3) contradicts @length(5): no length is both ≥ 5 and ≤ 3")
+	expectError(t, `type X { s string @length(1, 4) @minLength(6) }`, CodeDecoratorRange)
+}
+
 // Bounds compare by their exact values: past 2^53 two whole floats that
 // share a float64 still differ.
 func TestBoundsCompareExactly(t *testing.T) {

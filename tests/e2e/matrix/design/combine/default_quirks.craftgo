@@ -29,15 +29,6 @@ type DefaultsBoundary {
 	negOne int?  @default(-1) @lt(0)
 }
 
-// DefaultsConflict exercises a default literal that fails the per-field
-// validator. Codegen accepts the design: the generated code emits the
-// default and then rejects the pre-filled value at req.Validate().
-type DefaultsConflict {
-	// Empty string default + @minLength(1). The pre-fill IS the
-	// validator's failure case.
-	empty string? @default("") @minLength(1)
-}
-
 // DefaultsCollection covers the collection / map default shapes.
 //
 //   - arr:  @default([1, 2, 3]) - array literal default on int[]?.

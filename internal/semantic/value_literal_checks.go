@@ -27,7 +27,7 @@ func DefaultNeedsOptional(f *ast.Field) bool {
 }
 
 // checkFieldDefault checks f's `@default`: the type it targets, the `?` it
-// implies and its literal.
+// implies, its literal and the constraints its value meets.
 func (a *analyzer) checkFieldDefault(f *ast.Field) {
 	dec := ast.FindDecorator(f.Decorators, "default")
 	if dec == nil {
@@ -44,6 +44,7 @@ func (a *analyzer) checkFieldDefault(f *ast.Field) {
 	}
 	if args := positionalArgs(dec); len(args) == 1 {
 		a.checkLiteralType("default", f, f.Type, args[0].Value, args[0].Pos)
+		a.checkDefaultConstraints(f, args[0])
 	}
 }
 
