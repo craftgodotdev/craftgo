@@ -38,7 +38,7 @@ error BadRequest Validation {
 
 // Field names with distinct Go names do not warn.
 func TestFieldCollisionNoFalsePositive(t *testing.T) {
-	expectClean(t, `package x
+	mustClean(t, `package x
 type User {
     firstName string
     last_name string

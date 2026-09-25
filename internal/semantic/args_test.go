@@ -433,10 +433,7 @@ func TestExplicitPathDefaultRejected(t *testing.T) {
 type R { id string @path @default("x") }
 type Resp { x string }
 service S { get M /u/{id} { request R  response Resp } }`
-	diags := analyzeOneFile(t, src)
-	if !hasDiagContaining(diags, "@default cannot be combined with @path") {
-		t.Errorf("expected explicit @path @default reject, got: %v", diags)
-	}
+	expectMsg(t, "@default cannot be combined with @path", src)
 }
 
 // @default on a `@format(raw)` bytes field is rejected, as on any bytes field.
@@ -456,43 +453,24 @@ func TestDateTimeTakesNoValidator(t *testing.T) {
 }
 
 func TestDefaultOnFileRejected(t *testing.T) {
-	diags := analyzeOneFile(t, "package p\ntype U { blob file @form @default(\"x\") }\nservice S { post Up /up { request U  response U } }")
-	if !hasDiagContaining(diags, "@default is not supported on a `file`") {
-		t.Errorf("expected @default-on-file reject, got: %v", diags)
-	}
+	expectMsg(t, "@default is not supported on a `file`", "package p\ntype U { blob file @form @default(\"x\") }\nservice S { post Up /up { request U  response U } }")
 }
 
 // @example is type-checked against the field: a kind mismatch or an unknown enum value is rejected.
 func TestExampleTypeChecked(t *testing.T) {
-	cases := map[string]bool{ // src -> expectReject
-		`package p
-type T { count int @example("nope") }`: true,
-		`package p
-enum Color { Red Green }
-type T { c Color @example(Purple) }`: true,
-		`package p
-enum Color { Red Green }
-type T { c Color @example(Green) }`: false,
-		`package p
-type T { name string @example("alice") }`: false,
-	}
-	for src, expectReject := range cases {
-		diags := analyzeOneFile(t, src)
-		got := hasDiagContaining(diags, "requires a") || hasDiagContaining(diags, "not a value of enum") || hasDiagContaining(diags, "must reference an enum")
-		if got != expectReject {
-			t.Errorf("@example type-check: reject=%v want=%v for:\n%s\ndiags: %v", got, expectReject, src, diags)
-		}
-	}
+	d := expectError(t, "package p\ntype T { count int @example(\"nope\") }", CodeDecoratorArgType)
+	expectMessage(t, d, "requires a int literal")
+	d = expectError(t, "package p\nenum Color { Red Green }\ntype T { c Color @example(Purple) }", CodeDecoratorArgValue)
+	expectMessage(t, d, "is not a value of enum Color")
+	mustClean(t, "package p\nenum Color { Red Green }\ntype T { c Color @example(Green) }")
+	mustClean(t, "package p\ntype T { name string @example(\"alice\") }")
 }
 
 // @default and @example both reject a string literal on an int field.
 func TestParityDefaultExampleShareTypeCheck(t *testing.T) {
-	defDiags := analyzeOneFile(t, "package p\ntype T { n int @default(\"nope\") }")
-	exDiags := analyzeOneFile(t, "package p\ntype T { n int @example(\"nope\") }")
-	defRej := hasDiagContaining(defDiags, "requires a")
-	exRej := hasDiagContaining(exDiags, "requires a")
-	if !defRej || !exRej {
-		t.Errorf("@default/@example type-check parity broken: default rejected=%v, example rejected=%v", defRej, exRej)
+	for _, dec := range []string{"default", "example"} {
+		d := expectError(t, "package p\ntype T { n int @"+dec+"(\"nope\") }", CodeDecoratorArgType)
+		expectMessage(t, d, "@"+dec+" on field \"n\" (int) requires a int literal")
 	}
 }
 

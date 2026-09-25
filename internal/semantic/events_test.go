@@ -17,7 +17,7 @@ type Nested { a string }
 event OrderPlaced { payload OrderPlacedPayload }`
 
 func TestEventResolvesContractAndPayload(t *testing.T) {
-	pkg := expectClean(t, ordersDesign)
+	pkg := mustClean(t, ordersDesign)
 	if len(pkg.Events) != 1 {
 		t.Fatalf("events = %d, want 1", len(pkg.Events))
 	}
@@ -59,7 +59,7 @@ func TestContractDecoratorOverridesTheDerivedName(t *testing.T) {
 type P { id string }
 @contract("order.placed.v2")
 event OrderPlaced { payload P }`
-	expectClean(t, src)
+	mustClean(t, src)
 	proj, _ := AnalyzeProject(parseFiles(t, src), Options{})
 	if got := proj.events()[0].Contract; got != "order.placed.v2" {
 		t.Errorf("contract = %q", got)
@@ -134,7 +134,7 @@ func TestEventPayloadMayBeAnArrayOfAType(t *testing.T) {
 	src := `package orders
 type OrderPlacedPayload { orderId string }
 event BatchPlaced { payload OrderPlacedPayload[] }`
-	expectClean(t, src)
+	mustClean(t, src)
 	proj, _ := AnalyzeProject(parseFiles(t, src), Options{})
 	ev, ok := proj.LookupEvent("orders", "BatchPlaced")
 	if !ok {
@@ -169,7 +169,7 @@ event Batch { payload shared.Envelope[] }`,
 
 // An event and a type may share a name.
 func TestEventAndTypeShareANamespaceFreely(t *testing.T) {
-	expectClean(t, `package p
+	mustClean(t, `package p
 type OrderPlaced { id string }
 event OrderPlaced { payload OrderPlaced }`)
 }
@@ -326,7 +326,7 @@ type Item { id string }
 // A payload naming an error gets the reference diagnostic alone, bare or
 // qualified.
 func TestEventPayloadErrorReportedOnce(t *testing.T) {
-	diags := analyzeOneFile(t, "package p\nerror NotFound Gone\nevent E { payload Gone }")
+	_, diags := Analyze(parseFiles(t, "package p\nerror NotFound Gone\nevent E { payload Gone }"))
 	if got := codes(diags); !slices.Equal(got, []string{CodeRefUnknownSymbol}) {
 		t.Errorf("bare: want one %s, got %v", CodeRefUnknownSymbol, diags)
 	}

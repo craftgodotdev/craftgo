@@ -497,13 +497,8 @@ func TestWireBoundFieldDoesNotCoverPathSegment(t *testing.T) {
 type R { id string @query }
 type Resp { x string }
 service S { get M /u/{id} { request R  response Resp } }`
-	diags := analyzeOneFile(t, src)
-	if len(diags) == 0 {
-		t.Fatalf("expected a path-coverage diagnostic for the diverted {id} field")
-	}
-	if !hasDiagContaining(diags, "path segment") && !hasDiagContaining(diags, "no matching field") {
-		t.Errorf("expected path-coverage reject, got: %v", diags)
-	}
+	d := expectError(t, src, CodePathParamMissing)
+	expectMessage(t, d, "path segment {id} has no matching field")
 }
 
 // A generic mixin's field binds a path variable as its type argument's type.

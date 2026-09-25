@@ -1,8 +1,10 @@
 package semantic
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -47,7 +49,7 @@ type B { id string }`,
 	if len(diags) != 1 {
 		t.Errorf("want the one diagnostic, got %v", diags)
 	}
-	if got := pkgNames(proj); len(got) != 1 || got[0] != "app" {
+	if got := slices.Sorted(maps.Keys(proj.Packages)); len(got) != 1 || got[0] != "app" {
 		t.Errorf("packages = %v, want [app]", got)
 	}
 	if proj.Packages["app"].Types["B"] != nil {
@@ -122,7 +124,7 @@ type User { id string }`,
 		t.Fatalf("unexpected diags: %v", diags)
 	}
 	if proj.Packages["design"] == nil || proj.Packages["shared"] == nil {
-		t.Errorf("expected packages design + shared, got %v", pkgNames(proj))
+		t.Errorf("expected packages design + shared, got %v", slices.Sorted(maps.Keys(proj.Packages)))
 	}
 }
 
@@ -139,7 +141,7 @@ type Pong { name string }`,
 		t.Fatalf("unexpected diags: %v", diags)
 	}
 	if len(proj.Packages) != 1 {
-		t.Errorf("expected one merged package, got %d: %v", len(proj.Packages), pkgNames(proj))
+		t.Errorf("expected one merged package, got %d: %v", len(proj.Packages), slices.Sorted(maps.Keys(proj.Packages)))
 	}
 	pkg := proj.Packages["design"]
 	if pkg == nil {
@@ -367,14 +369,6 @@ func TestFolderExists(t *testing.T) {
 	}
 }
 
-func pkgNames(p *Project) []string {
-	out := make([]string, 0, len(p.Packages))
-	for k := range p.Packages {
-		out = append(out, k)
-	}
-	return out
-}
-
 // A valid @default on a cross-package scalar is accepted.
 func TestAnalyzeProjectDefaultCrossPkgScalarOK(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
@@ -400,7 +394,7 @@ import "shared"
 type Order { currency shared.CurrencyCode? @default(42) }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if !hasCode(diags, CodeDecoratorArgType) {
+	if findCode(diags, CodeDecoratorArgType) == nil {
 		t.Fatalf("expected %s for int literal on string scalar, got: %v", CodeDecoratorArgType, diags)
 	}
 }
@@ -430,7 +424,7 @@ import "shared"
 type Customer { tier shared.Tier? @default(Ultimate) }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if !hasCode(diags, CodeDecoratorArgValue) {
+	if findCode(diags, CodeDecoratorArgValue) == nil {
 		t.Fatalf("expected %s for unknown enum value, got: %v", CodeDecoratorArgValue, diags)
 	}
 }
@@ -445,7 +439,7 @@ import "shared"
 type Order { bag shared.Bag? @default("nope") }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if !hasCode(diags, CodeDecoratorConflict) {
+	if findCode(diags, CodeDecoratorConflict) == nil {
 		t.Fatalf("expected %s for @default on struct cross-pkg ref, got: %v", CodeDecoratorConflict, diags)
 	}
 }
@@ -502,7 +496,7 @@ type Order {
 }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if !hasCode(diags, CodeMixinConflict) {
+	if findCode(diags, CodeMixinConflict) == nil {
 		t.Fatalf("expected %s for cross-pkg field collision, got: %v", CodeMixinConflict, diags)
 	}
 }
@@ -517,7 +511,7 @@ import "shared"
 type Order { shared.Color }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if !hasCode(diags, CodeMixinNonType) {
+	if findCode(diags, CodeMixinNonType) == nil {
 		t.Fatalf("expected %s for cross-pkg enum mixin, got: %v", CodeMixinNonType, diags)
 	}
 }
@@ -533,7 +527,7 @@ import "shared"
 type A { shared.B }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if !hasCode(diags, CodeMixinCycle) {
+	if findCode(diags, CodeMixinCycle) == nil {
 		t.Fatalf("expected %s for cross-pkg mixin cycle, got: %v", CodeMixinCycle, diags)
 	}
 }
@@ -548,7 +542,7 @@ import "shared"
 type Order { shared.MissingType }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if !hasCode(diags, CodeRefUnknownSymbol) {
+	if findCode(diags, CodeRefUnknownSymbol) == nil {
 		t.Fatalf("expected %s for unresolved cross-pkg mixin, got: %v", CodeRefUnknownSymbol, diags)
 	}
 }

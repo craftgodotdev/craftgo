@@ -12,7 +12,7 @@ import (
 // inherited ones; its block's drops the primary's, as written on the method
 // ahead of the block's own @middlewares.
 func TestInheritedDecorators(t *testing.T) {
-	pkg := expectClean(t, `package app
+	pkg := mustClean(t, `package app
 middleware A
 middleware B
 middleware C

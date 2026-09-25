@@ -6,7 +6,7 @@ import (
 )
 
 func TestJSONKeyMayDifferFromTheFieldName(t *testing.T) {
-	expectClean(t, `type Item { id string }
+	mustClean(t, `type Item { id string }
 type Order { items Item[] @json("OrderItem")  storeId string @json("store_id") }`)
 }
 

@@ -296,7 +296,7 @@ type Req { grid shared.Tag[][] @query }
 service S { get List /list { request Req } }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if !hasCode(diags, CodeBindingType) {
+	if findCode(diags, CodeBindingType) == nil {
 		t.Fatalf("expected multi-dim cross-pkg @query rejection; got %v", codes(diags))
 	}
 }
@@ -772,8 +772,5 @@ service S {
   @errors(Taken)
   get X /x { response Resp }
 }`
-	diags := analyzeOneFile(t, src)
-	if hasDiagContaining(diags, "duplicate decorator") {
-		t.Errorf("repeated @errors wrongly rejected as duplicate: %v", diags)
-	}
+	expectNoMsg(t, "duplicate decorator", src)
 }

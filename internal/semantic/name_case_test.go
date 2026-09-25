@@ -53,7 +53,7 @@ service userService { }`, CodeDeclNameCase)
 
 // PascalCase names pass.
 func TestDeclNameCasePascalCasePasses(t *testing.T) {
-	expectClean(t, `package x
+	mustClean(t, `package x
 type MyType { id string }
 error NotFound BadName { code string }
 enum Priority { Low High }

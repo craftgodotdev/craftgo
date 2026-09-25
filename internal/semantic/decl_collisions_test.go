@@ -25,14 +25,14 @@ error Conflict Foo { reason string }`, CodeDeclGoNameCollision)
 
 // A type named AuthMiddleware does not collide with `middleware Auth`.
 func TestDeclCollisionMiddlewareSeparatePackage(t *testing.T) {
-	expectClean(t, `package x
+	mustClean(t, `package x
 type AuthMiddleware { token string }
 middleware Auth`)
 }
 
 // A type named FooBody beside a body-less error Foo is accepted.
 func TestDeclCollisionErrorWithoutBodySkipsBodyEmit(t *testing.T) {
-	expectClean(t, `package x
+	mustClean(t, `package x
 type FooBody { extra string }
 error NotFound Foo`)
 }
@@ -67,7 +67,7 @@ func TestDeclCollisionEmittedNames(t *testing.T) {
 
 // An error whose body holds only a comment emits no body struct.
 func TestDeclCollisionCommentOnlyErrorBody(t *testing.T) {
-	expectClean(t, `package x
+	mustClean(t, `package x
 error Conflict Noted {
     // a note
 }
@@ -98,7 +98,7 @@ func TestNamelessDeclsAfterAParseError(t *testing.T) {
 
 // Distinct declaration names produce no collision.
 func TestDeclCollisionNoFalsePositive(t *testing.T) {
-	expectClean(t, `package x
+	mustClean(t, `package x
 type User { id string }
 error NotFound UserMissing { reason string }
 enum Role { Admin User_ }

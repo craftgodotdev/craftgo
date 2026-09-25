@@ -476,7 +476,7 @@ type T1 { n shared.Count @lt(0) }
 type T2 { m shared.Count @lte(-1) }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if !hasCode(diags, CodeDecoratorTypeMismatch) || !hasCode(diags, CodeBoundOverflow) {
+	if findCode(diags, CodeDecoratorTypeMismatch) == nil || findCode(diags, CodeBoundOverflow) == nil {
 		t.Fatalf("expected unsigned @lt(0) + capacity-overflow rejections; got %v", codes(diags))
 	}
 }
@@ -488,10 +488,7 @@ func TestScalarDeclBoundCapacityRejected(t *testing.T) {
 		"package p\nscalar X int8 @gte(200)\n",
 		"package p\nscalar X uint16 @gt(70000)\n",
 	} {
-		diags := analyzeOneFile(t, src)
-		if !hasDiagContaining(diags, "exceeds") {
-			t.Errorf("expected capacity reject for %q, got: %v", strings.TrimSpace(src), diags)
-		}
+		expectMsg(t, "exceeds", src)
 	}
 }
 
@@ -501,35 +498,23 @@ func TestScalarDeclUnsignedContradictionRejected(t *testing.T) {
 		"package p\nscalar X uint @lt(0)\n",
 		"package p\nscalar X uint8 @negative\n",
 	} {
-		diags := analyzeOneFile(t, src)
-		if !hasDiagContaining(diags, "cannot apply to an unsigned") {
-			t.Errorf("expected unsigned-contradiction reject for %q, got: %v", strings.TrimSpace(src), diags)
-		}
+		expectMsg(t, "cannot apply to an unsigned", src)
 	}
 }
 
 // An in-range bound on a scalar declaration is accepted.
 func TestScalarDeclBoundInRangeClean(t *testing.T) {
-	diags := analyzeOneFile(t, "package p\nscalar X uint8 @lte(200) @gte(1)\n")
-	if hasDiagContaining(diags, "exceeds") {
-		t.Errorf("in-range scalar bound wrongly rejected: %v", diags)
-	}
+	expectNoMsg(t, "exceeds", "package p\nscalar X uint8 @lte(200) @gte(1)\n")
 }
 
 // A negative exact length `@length(-1)` is rejected.
 func TestNegativeExactLengthRejected(t *testing.T) {
-	diags := analyzeOneFile(t, "package p\ntype T { a string @length(-1) }\n")
-	if !hasDiagContaining(diags, "exact length must be") {
-		t.Errorf("expected @length(-1) reject, got: %v", diags)
-	}
+	expectMsg(t, "exact length must be", "package p\ntype T { a string @length(-1) }\n")
 }
 
 // An integral float bound that overflows the field's primitive is rejected.
 func TestIntegralFloatBoundCapacityRejected(t *testing.T) {
-	diags := analyzeOneFile(t, "package p\ntype T { a int8 @gte(300.0) }\n")
-	if !hasDiagContaining(diags, "exceeds") {
-		t.Errorf("expected integral-float capacity reject, got: %v", diags)
-	}
+	expectMsg(t, "exceeds", "package p\ntype T { a int8 @gte(300.0) }\n")
 }
 
 // A whole float at an integer primitive's limit is held to the exact range: one past it is
@@ -540,17 +525,13 @@ func TestIntegerLimitFloatBoundCapacity(t *testing.T) {
 		"package p\ntype T { a int64 @gte(-9223372036854775809.0) }\n",
 		"package p\ntype T { a uint64 @multipleOf(18446744073709551616.0) }\n",
 	} {
-		if diags := analyzeOneFile(t, src); !hasDiagContaining(diags, "exceeds") {
-			t.Errorf("expected capacity reject for %q, got: %v", strings.TrimSpace(src), diags)
-		}
+		expectMsg(t, "exceeds", src)
 	}
 	for _, src := range []string{
 		"package p\ntype T { a int64 @lte(9223372036854775807.0) @gte(-9223372036854775808.0) }\n",
 		"package p\ntype T { a uint64 @multipleOf(18446744073709551615.0) }\n",
 	} {
-		if diags := analyzeOneFile(t, src); hasDiagContaining(diags, "exceeds") {
-			t.Errorf("in-range bound wrongly rejected for %q: %v", strings.TrimSpace(src), diags)
-		}
+		expectNoMsg(t, "exceeds", src)
 	}
 }
 
@@ -560,9 +541,6 @@ func TestScalarDeclPairOrderingRejected(t *testing.T) {
 		"package p\nscalar Score int @gte(100) @lte(10)\n",
 		"package p\nscalar Name string @minLength(10) @maxLength(5)\n",
 	} {
-		diags := analyzeOneFile(t, src)
-		if !hasDiagContaining(diags, "contradicts") {
-			t.Errorf("expected scalar pair-ordering reject for %q, got: %v", strings.TrimSpace(src), diags)
-		}
+		expectMsg(t, "contradicts", src)
 	}
 }

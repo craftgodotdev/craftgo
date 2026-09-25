@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -14,10 +13,7 @@ service S {
   @status(204)
   get G /things/{id} { request Req  response Out }
 }`
-	diags := analyzeOneFile(t, src)
-	if !hasDiagContaining(diags, "no-content status and cannot carry a response body") {
-		t.Errorf("expected @status(204)+body reject, got: %v", diags)
-	}
+	expectMsg(t, "no-content status and cannot carry a response body", src)
 }
 
 // A bare scalar or enum request type is rejected.
@@ -26,10 +22,7 @@ func TestBareScalarEnumRequestRejected(t *testing.T) {
 		"package p\nscalar Token string\nservice S { post Do /do { request Token  response Token } }",
 		"package p\nenum Color { red green }\nservice S { post Do /do { request Color  response Color } }",
 	} {
-		diags := analyzeOneFile(t, src)
-		if !hasDiagContaining(diags, "has no fields to bind or decode") {
-			t.Errorf("expected bare scalar/enum request reject for %q, got: %v", strings.TrimSpace(src), diags)
-		}
+		expectMsg(t, "has no fields to bind or decode", src)
 	}
 }
 
@@ -74,7 +67,7 @@ func TestScalarAndEnumResponseAccepted(t *testing.T) {
 		{"enum", "package p\nenum Color { red green }\ntype Req { v string }\nservice S { post Do /do { request Req  response Color } }"},
 	} {
 		t.Run(c.label, func(t *testing.T) {
-			expectNoDiags(t, analyzeOneFile(t, c.src))
+			mustClean(t, c.src)
 		})
 	}
 }
@@ -82,11 +75,7 @@ func TestScalarAndEnumResponseAccepted(t *testing.T) {
 // A qualified clause type spelt like a primitive (`other.string`) is not a built-in.
 func TestQualifiedClauseRefIsNotABuiltin(t *testing.T) {
 	src := "package p\ntype Ok { v string }\nservice S { post Do /do { request other.string  response Ok } }"
-	for _, d := range analyzeOneFile(t, src) {
-		if d.Code == CodeBindingType {
-			t.Errorf("qualified ref reported as a built-in primitive: %v", d)
-		}
-	}
+	expectNoCode(t, src, CodeBindingType)
 }
 
 // @status(205) (Reset Content) with a response body is rejected.
@@ -98,8 +87,5 @@ service S {
   @status(205)
   post M /m { request Req  response Resp }
 }`
-	diags := analyzeOneFile(t, src)
-	if !hasDiagContaining(diags, "no-content status and cannot carry a response body") {
-		t.Errorf("expected @status(205)+body reject, got: %v", diags)
-	}
+	expectMsg(t, "no-content status and cannot carry a response body", src)
 }

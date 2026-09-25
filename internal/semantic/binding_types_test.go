@@ -102,10 +102,7 @@ service S { get G /it/{id} { request R } }`)
 
 // An auto-@path field of struct type is rejected.
 func TestAutoPathNonBindableRejected(t *testing.T) {
-	diags := analyzeOneFile(t, "package p\ntype Inner { a string }\ntype R { id Inner }\ntype Resp { ok bool }\nservice S { get G /u/{id} { request R  response Resp } }")
-	if !hasDiagContaining(diags, "@path requires a non-optional") {
-		t.Errorf("expected auto-path non-bindable reject, got: %v", diags)
-	}
+	expectMsg(t, "@path requires a non-optional", "package p\ntype Inner { a string }\ntype R { id Inner }\ntype Resp { ok bool }\nservice S { get G /u/{id} { request R  response Resp } }")
 }
 
 // A datetime travels only in a body: a wire binder has no parser for it.

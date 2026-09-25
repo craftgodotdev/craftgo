@@ -3,6 +3,7 @@ package semantic
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -10,12 +11,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/parser"
 )
-
-// expectClean fails the test when src produces any diagnostic.
-func expectClean(t *testing.T, src string) *Package {
-	t.Helper()
-	return mustClean(t, src)
-}
 
 // expectDiag returns the first diagnostic with code that src produces, failing when there is none.
 func expectDiag(t *testing.T, src, code string) *Diagnostic {
@@ -96,7 +91,7 @@ func expectMsg(t *testing.T, substr string, sources ...string) *Diagnostic {
 			return &diags[i]
 		}
 	}
-	t.Fatalf("no diagnostic contained %q; got %v", substr, diags)
+	t.Fatalf("no diagnostic of %q contains %q; got %v", sources, substr, diags)
 	return nil
 }
 
@@ -119,30 +114,13 @@ func expectNoDiags(t *testing.T, diags []Diagnostic) {
 	}
 }
 
-// analyzeOneFile runs a single-package analysis and returns the diagnostics.
-func analyzeOneFile(t *testing.T, src string) []Diagnostic {
-	t.Helper()
-	files := parseFiles(t, src)
-	_, diags := Analyze(files)
-	return diags
-}
-
-func hasDiagContaining(diags []Diagnostic, substr string) bool {
-	for _, d := range diags {
-		if strings.Contains(d.Msg, substr) {
-			return true
-		}
-	}
-	return false
-}
-
 // parseFiles parses each source as the file test<i>.craftgo; a source
 // without a `package` clause is a file of package test.
 func parseFiles(t *testing.T, sources ...string) []*ast.File {
 	t.Helper()
 	var files []*ast.File
 	for i, src := range sources {
-		p := parser.New("test"+itoa(i)+".craftgo", src)
+		p := parser.New("test"+strconv.Itoa(i)+".craftgo", src)
 		f := p.Parse()
 		if d := p.Diagnostics(); len(d) > 0 {
 			t.Fatalf("parse error in source %d: %v", i, d)
@@ -153,27 +131,6 @@ func parseFiles(t *testing.T, sources ...string) []*ast.File {
 		files = append(files, f)
 	}
 	return files
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	const digits = "0123456789"
-	var sb strings.Builder
-	if n < 0 {
-		sb.WriteByte('-')
-		n = -n
-	}
-	var stack []byte
-	for n > 0 {
-		stack = append(stack, digits[n%10])
-		n /= 10
-	}
-	for i := len(stack) - 1; i >= 0; i-- {
-		sb.WriteByte(stack[i])
-	}
-	return sb.String()
 }
 
 func mustClean(t *testing.T, sources ...string) *Package {
@@ -243,14 +200,4 @@ func projectFixture(t *testing.T, src map[string]string) (string, []*ast.File) {
 		files = append(files, f)
 	}
 	return root, files
-}
-
-// hasCode reports whether any diagnostic carries code.
-func hasCode(diags []Diagnostic, code string) bool {
-	for _, d := range diags {
-		if d.Code == code {
-			return true
-		}
-	}
-	return false
 }

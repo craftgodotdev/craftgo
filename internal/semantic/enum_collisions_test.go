@@ -49,6 +49,6 @@ func TestEnumValueCollisionRelatesTheFirstValue(t *testing.T) {
 
 // Distinct enum value names do not warn.
 func TestEnumValueCollisionNoFalsePositive(t *testing.T) {
-	expectClean(t, `package x
+	mustClean(t, `package x
 enum Color { Red Green Blue }`)
 }
