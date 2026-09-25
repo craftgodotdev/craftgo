@@ -143,16 +143,17 @@ func collectChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 	for _, m := range td.Body {
 		switch v := m.(type) {
 		case *ast.Field:
-			goName := levelNames[fieldIdx]
+			rf := semantic.ResolveField(v, ctx.pkg, ctx.resolver.Project())
+			t := fieldTarget(rf, "v."+levelNames[fieldIdx], fieldWireName(v))
 			fieldIdx++
-			out = append(out, fieldChecksWithScalar(v, goName, ctx)...)
+			out = append(out, fieldChecks(rf, t, ctx)...)
 			if isTypeParamRef(v.Type, td.TypeParams) {
-				if call := typeParamValidateCall(v, goName, ctx); call != "" {
+				if call := typeParamValidateCall(t, ctx); call != "" {
 					out = append(out, call)
 				}
 				continue
 			}
-			if nested := nestedValidateCall(v, goName, ctx); nested != "" {
+			if nested := nestedValidateCall(t, v.Name, ctx); nested != "" {
 				out = append(out, nested)
 			}
 		case *ast.Mixin:

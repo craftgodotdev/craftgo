@@ -5,52 +5,60 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/prims"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// isStringOrOptString reports whether f is a flat `string` field, optional or not.
-func isStringOrOptString(f *ast.Field) bool {
-	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil {
-		return false
-	}
-	return f.Type.Named != nil && f.Type.Named.Name.String() == "string"
+// checkTarget is the value a constraint check tests: a field, the primitive
+// value of a scalar- or enum-typed field, or a scalar's own receiver.
+type checkTarget struct {
+	access   string                 // the Go expression holding the value
+	pointer  bool                   // access is a pointer to the value
+	nilGuard bool                   // nil is the value's valid absent state: optional or @nullable
+	cat      semantic.FieldCategory // a field's category; 0 for a primitive value
+	prim     string                 // the DSL primitive a flat value is checked as
+	typ      *ast.TypeRef           // a field's type
+	subject  string                 // the message subject, escaped for a format literal; "" for none
 }
 
-// isLengthCheckable reports whether f is a flat `string` or `bytes` field.
-func isLengthCheckable(f *ast.Field) bool {
-	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
-		return false
+// fieldTarget is the check target of field rf held in access.
+func fieldTarget(rf semantic.ResolvedField, access, subject string) checkTarget {
+	return checkTarget{
+		access:   access,
+		pointer:  rf.GoPointer(),
+		nilGuard: rf.NeedsNilGuard,
+		cat:      rf.Category,
+		prim:     rf.ResolvedPrim,
+		typ:      rf.Field.Type,
+		subject:  subject,
 	}
-	switch sp, _ := prims.Lookup(f.Type.Named.Name.String()); sp.Kind {
-	case prims.String, prims.Bytes:
-		return true
-	}
-	return false
 }
 
-// isNumericField reports whether f is a non-array integer or float field,
-// optional or not.
-func isNumericField(f *ast.Field) bool {
-	if f.Type == nil || f.Type.Array || f.Type.Named == nil {
-		return false
-	}
-	return prims.IsNumeric(f.Type.Named.Name.String())
+// primTarget is the check target of a value of DSL primitive prim held in access.
+func primTarget(access, prim, subject string) checkTarget {
+	return checkTarget{access: access, prim: prim, subject: subject}
 }
 
-// isIntegerField reports whether f is a non-array integer field, optional or not.
-func isIntegerField(f *ast.Field) bool {
-	if f.Type == nil || f.Type.Array || f.Type.Named == nil {
-		return false
+// val returns the value t tests: its access, dereferenced when a pointer.
+func (t checkTarget) val() string {
+	if t.pointer {
+		return "*" + t.access
 	}
-	return prims.IsInteger(f.Type.Named.Name.String())
+	return t.access
 }
 
-// isFileField reports whether f is a flat `file` field; `file` and `file?` are
-// both `*multipart.FileHeader`.
-func isFileField(f *ast.Field) bool {
-	if f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
-		return false
+// guard returns the `access != nil && ` prefix of a check on a value whose
+// nil is its valid absent state, else "".
+func (t checkTarget) guard() string {
+	if t.nilGuard {
+		return t.access + " != nil && "
 	}
-	return f.Type.Named.Name.String() == "file"
+	return ""
+}
+
+// primIs reports whether t is a flat value of one of kinds.
+func (t checkTarget) primIs(kinds ...prims.Kind) bool {
+	sp, _ := prims.Lookup(t.prim)
+	return slices.Contains(kinds, sp.Kind)
 }
 
 // isTypeParamRef reports whether t, or the value type of a map t, names one of
@@ -66,22 +74,4 @@ func isTypeParamRef(t *ast.TypeRef, params []string) bool {
 		return false
 	}
 	return slices.Contains(params, t.Named.Name.String())
-}
-
-// optionalGuard returns the `access != nil && ` prefix for an optional or
-// @nullable field, whose nil is the valid absent/null value.
-func optionalGuard(f *ast.Field, access string) string {
-	if fieldNeedsNilGuard(f) {
-		return access + " != nil && "
-	}
-	return ""
-}
-
-// valueExpr dereferences access when f is a pointer; pair it with
-// [optionalGuard].
-func valueExpr(f *ast.Field, access string, ctx emitCtx) string {
-	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
-		return "*" + access
-	}
-	return access
 }

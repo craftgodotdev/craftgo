@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // mapRangeLoop ranges access binding only the sides the body uses (`key`,
@@ -22,16 +23,16 @@ func mapRangeLoop(access string, keyHas, valHas bool, body string) string {
 	}
 }
 
-// typeParamValidateCall probes a type-parameter field through a pointer (a
-// struct's Validate() has a pointer receiver), else walks it with validateValue.
-func typeParamValidateCall(f *ast.Field, goName string, ctx emitCtx) string {
-	access := "v." + goName
+// typeParamValidateCall probes a type-parameter field held in t through a
+// pointer (a struct's Validate() has a pointer receiver), else walks it with
+// validateValue.
+func typeParamValidateCall(t checkTarget, ctx emitCtx) string {
 	ctx.uses["reflect"] = true
-	return shape(f, access, ctx, func(elem string) string {
+	return shape(t, func(elem string) string {
 		probe := "&" + elem
 		// A `T?` field is already the pointer to probe.
-		if f.Type.Optional && !f.Type.Array {
-			probe = access
+		if t.typ.Optional && t.cat != semantic.CatArray {
+			probe = t.access
 		}
 		return fmt.Sprintf(`if vv, ok := any(%s).(interface{ Validate() error }); ok {
 if err := vv.Validate(); err != nil {
@@ -66,22 +67,21 @@ func validateDispatch(elem, wrapName string, ctx emitCtx) string {
 	return fmt.Sprintf("if err := %s.Validate(); err != nil {\nreturn err\n}", elem)
 }
 
-// nestedValidateCall calls Validate() on a field whose type has one, through
-// array dimensions and map keys and values; a nil optional is skipped.
-func nestedValidateCall(f *ast.Field, goName string, ctx emitCtx) string {
-	if ctx.pkg == nil || f.Type == nil {
-		return ""
-	}
-	access := "v." + goName
+// nestedValidateCall calls Validate() on a field held in t whose type has one,
+// through array dimensions and map keys and values; a nil optional is skipped.
+// A map value's scalar or enum error names dslName.
+func nestedValidateCall(t checkTarget, dslName string, ctx emitCtx) string {
+	access := t.access
 	wrapFor := func(n *ast.NamedTypeRef) string {
 		if namedIsScalarOrEnum(n, ctx) {
-			return fieldWireName(f)
+			return t.subject
 		}
 		return ""
 	}
-	if f.Type.Map != nil {
-		k := f.Type.Map.Key
-		v := f.Type.Map.Value
+	typ := t.typ
+	if typ.Map != nil {
+		k := typ.Map.Key
+		v := typ.Map.Value
 		keyHas := typeRefHasValidator(k, ctx)
 		valHas := typeRefHasValidator(v, ctx)
 		if !keyHas && !valHas {
@@ -94,13 +94,13 @@ func nestedValidateCall(f *ast.Field, goName string, ctx emitCtx) string {
 				stmts = append(stmts, validateDispatch("key", wrapFor(k.Named), ctx))
 			}
 			if valHas {
-				stmts = append(stmts, nestedValueChecks(v, "val", 0, ctx, f.Name))
+				stmts = append(stmts, nestedValueChecks(v, "val", 0, ctx, dslName))
 			}
 			return mapRangeLoop(mapAccess, keyHas, valHas, strings.Join(stmts, "\n"))
 		}
 		// `map<K,V>[]` sets both Map and Array: loop the array dimensions first.
-		if f.Type.Array {
-			depth := f.Type.ArrayDepth
+		if typ.Array {
+			depth := typ.ArrayDepth
 			if depth < 1 {
 				depth = 1
 			}
@@ -108,21 +108,21 @@ func nestedValidateCall(f *ast.Field, goName string, ctx emitCtx) string {
 		}
 		return mapWalk(access)
 	}
-	if f.Type.Named == nil {
+	if typ.Named == nil {
 		return ""
 	}
-	if !typeRefNamedHasValidator(f.Type.Named, ctx) {
+	if !typeRefNamedHasValidator(typ.Named, ctx) {
 		return ""
 	}
-	dispatch := func(elem string) string { return validateDispatch(elem, wrapFor(f.Type.Named), ctx) }
+	dispatch := func(elem string) string { return validateDispatch(elem, wrapFor(typ.Named), ctx) }
 	switch {
-	case f.Type.Array:
-		depth := f.Type.ArrayDepth
+	case typ.Array:
+		depth := typ.ArrayDepth
 		if depth < 1 {
 			depth = 1
 		}
 		return emitNestedForLoops(access, depth, dispatch)
-	case fieldNeedsNilGuard(f):
+	case t.nilGuard:
 		// Nil is the valid absent/null value, pointer or not (`scalar Blob bytes`).
 		return fmt.Sprintf("if %s != nil {\n%s\n}", access, dispatch(access))
 	default:

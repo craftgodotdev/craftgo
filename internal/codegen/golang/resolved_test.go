@@ -14,8 +14,11 @@ import (
 
 // resolveTypeFields resolves td's fields, mixins flattened, with their Go rendering.
 func resolveTypeFields(td *ast.TypeDecl, pkg *semantic.Package) []resolvedField {
-	r := resolverFor(pkg, nil)
-	return decorateAll(semantic.ResolveFields(td, "", pkg, r.Resolver, resolvedGoFieldNames), pkg, r)
+	var out []resolvedField
+	for _, rf := range semantic.ResolveFields(td, "", pkg, resolverFor(pkg, nil).Resolver, resolvedGoFieldNames) {
+		out = append(out, decorate(rf))
+	}
+	return out
 }
 
 // An undecorated request field binds to @path when a segment matches it, else to @query on a

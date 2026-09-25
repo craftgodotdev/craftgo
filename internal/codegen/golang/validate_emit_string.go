@@ -4,13 +4,14 @@ import (
 	"fmt"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/strfmt"
 )
 
-// lengthCheck renders @length(n) or @length(min, max) on a string or bytes field.
-func lengthCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	if !isLengthCheckable(f) || len(d.Args) == 0 || len(d.Args) > 2 {
+// lengthCheck renders @length(n) or @length(min, max) on a string or bytes value.
+func lengthCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	if !t.primIs(prims.String, prims.Bytes) || len(d.Args) == 0 || len(d.Args) > 2 {
 		return ""
 	}
 	lo, ok1 := semantic.IntArg(d.Args[0])
@@ -25,9 +26,8 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 		}
 		hi = v
 	}
-	val := valueExpr(f, access, ctx)
-	guard := optionalGuard(f, access)
-	count := lengthCount(f, val, ctx)
+	guard := t.guard()
+	count := lengthCount(t, ctx)
 	// An init statement cannot follow the nil guard, so the guarded form counts twice.
 	var cond string
 	if guard == "" {
@@ -37,17 +37,17 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 	}
 	var msg string
 	if lo == hi {
-		msg = fmt.Sprintf(`"%slength must be %d"`, errSubject(fieldWireName(f)), lo)
+		msg = fmt.Sprintf(`"%slength must be %d"`, errSubject(t.subject), lo)
 	} else {
-		msg = fmt.Sprintf(`"%slength out of range [%d, %d]"`, errSubject(fieldWireName(f)), lo, hi)
+		msg = fmt.Sprintf(`"%slength out of range [%d, %d]"`, errSubject(t.subject), lo, hi)
 	}
 	return ifReturnf(cond, msg, ctx)
 }
 
 // minMaxLengthCheck renders @minLength or @maxLength (kind "min" or "max") on a
-// string or bytes field.
-func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind string, ctx emitCtx) string {
-	if !isLengthCheckable(f) || len(d.Args) != 1 {
+// string or bytes value.
+func minMaxLengthCheck(t checkTarget, d *ast.Decorator, kind string, ctx emitCtx) string {
+	if !t.primIs(prims.String, prims.Bytes) || len(d.Args) != 1 {
 		return ""
 	}
 	n, ok := semantic.IntArg(d.Args[0])
@@ -58,26 +58,24 @@ func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind strin
 	if kind == "max" {
 		op, label = ">", "greater than"
 	}
-	val := valueExpr(f, access, ctx)
-	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%s%s %s %d", guard, lengthCount(f, val, ctx), op, n)
-	msg := fmt.Sprintf(`"%slength %s %d"`, errSubject(fieldWireName(f)), label, n)
+	cond := fmt.Sprintf("%s%s %s %d", t.guard(), lengthCount(t, ctx), op, n)
+	msg := fmt.Sprintf(`"%slength %s %d"`, errSubject(t.subject), label, n)
 	return ifReturnf(cond, msg, ctx)
 }
 
 // lengthCount measures a string in runes, as OpenAPI minLength/maxLength do,
-// and a bytes field in bytes.
-func lengthCount(f *ast.Field, val string, ctx emitCtx) string {
-	if f != nil && f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "bytes" {
-		return "len(" + val + ")"
+// and a bytes value in bytes.
+func lengthCount(t checkTarget, ctx emitCtx) string {
+	if t.primIs(prims.Bytes) {
+		return "len(" + t.val() + ")"
 	}
 	ctx.uses["unicode/utf8"] = true
-	return "utf8.RuneCountInString(" + val + ")"
+	return "utf8.RuneCountInString(" + t.val() + ")"
 }
 
-// patternCheck renders @pattern on a string field against a package-level regex.
-func patternCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	if !isStringOrOptString(f) || len(d.Args) != 1 {
+// patternCheck renders @pattern on a string value against a package-level regex.
+func patternCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	if !t.primIs(prims.String) || len(d.Args) != 1 {
 		return ""
 	}
 	s, ok := ast.TextValue(d.Args[0].Value)
@@ -85,18 +83,16 @@ func patternCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) st
 		return ""
 	}
 	ctx.uses["regexp"] = true
-	val := valueExpr(f, access, ctx)
-	guard := optionalGuard(f, access)
 	patVar := ctx.regexes.intern(s)
-	cond := fmt.Sprintf("%s!%s.MatchString(%s)", guard, patVar, val)
-	msg := fmt.Sprintf(`"%sdoes not match pattern"`, errSubject(fieldWireName(f)))
+	cond := fmt.Sprintf("%s!%s.MatchString(%s)", t.guard(), patVar, t.val())
+	msg := fmt.Sprintf(`"%sdoes not match pattern"`, errSubject(t.subject))
 	return ifReturnf(cond, msg, ctx)
 }
 
-// formatCheck renders @format on a string field from its [strfmt] entry, a regex
+// formatCheck renders @format on a string value from its [strfmt] entry, a regex
 // or a stdlib condition; an unknown format renders nothing.
-func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	if !isStringOrOptString(f) || len(d.Args) != 1 {
+func formatCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	if !t.primIs(prims.String) || len(d.Args) != 1 {
 		return ""
 	}
 	name, _ := ast.TextValue(d.Args[0].Value)
@@ -110,18 +106,17 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 	for _, imp := range sp.Imports {
 		ctx.uses[imp] = true
 	}
-	val := valueExpr(f, access, ctx)
-	msg := fmt.Sprintf(`"%snot a valid %s"`, errSubject(fieldWireName(f)), sp.Label)
+	msg := fmt.Sprintf(`"%snot a valid %s"`, errSubject(t.subject), sp.Label)
 	var check string
 	if sp.Pattern != "" {
 		ctx.uses["regexp"] = true
-		check = ifReturnf("!"+ctx.regexes.intern(sp.Pattern)+".MatchString("+val+")", msg, ctx)
+		check = ifReturnf("!"+ctx.regexes.intern(sp.Pattern)+".MatchString("+t.val()+")", msg, ctx)
 	} else {
-		check = ifReturnf(fmt.Sprintf(sp.Cond, val), msg, ctx)
+		check = ifReturnf(fmt.Sprintf(sp.Cond, t.val()), msg, ctx)
 	}
-	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
+	if t.pointer {
 		// Nested: a format condition may carry an init statement, which `&&` cannot guard.
-		return fmt.Sprintf("if %s != nil {\n%s\n}", access, check)
+		return fmt.Sprintf("if %s != nil {\n%s\n}", t.access, check)
 	}
 	return check
 }

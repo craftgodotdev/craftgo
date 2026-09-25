@@ -6,12 +6,13 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // itemsBoundCheck renders @minItems/@maxItems as a len() bound on an array or map.
-func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label string, ctx emitCtx) string {
-	if f.Type == nil || len(d.Args) != 1 || (!f.Type.Array && f.Type.Map == nil) {
+func itemsBoundCheck(t checkTarget, d *ast.Decorator, op, label string, ctx emitCtx) string {
+	if (t.cat != semantic.CatArray && t.cat != semantic.CatMap) || len(d.Args) != 1 {
 		return ""
 	}
 	n, ok := semantic.IntArg(d.Args[0])
@@ -26,26 +27,26 @@ func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label st
 	if op == "<=" {
 		flip = ">"
 	}
-	cond := fmt.Sprintf("len(%s) %s %d", access, flip, n)
-	msg := fmt.Sprintf(`"%s: %s %d"`, fieldWireName(f), label, n)
+	cond := fmt.Sprintf("len(%s) %s %d", t.access, flip, n)
+	msg := fmt.Sprintf(`"%s: %s %d"`, t.subject, label, n)
 	check := ifReturnf(cond, msg, ctx)
 	// Nil is the valid absent/null value of an optional or @nullable collection.
-	if fieldNeedsNilGuard(f) {
-		return fmt.Sprintf("if %s != nil {\n%s\n}", access, check)
+	if t.nilGuard {
+		return fmt.Sprintf("if %s != nil {\n%s\n}", t.access, check)
 	}
 	return check
 }
 
 // uniqueItemsCheck renders @uniqueItems on an array as a dedupe map keyed by
 // element, inside its own block so each check's `seen` stays local.
-func uniqueItemsCheck(f *ast.Field, access string, ctx emitCtx) string {
-	if f.Type == nil || !f.Type.Array {
+func uniqueItemsCheck(t checkTarget, ctx emitCtx) string {
+	if t.cat != semantic.CatArray {
 		return ""
 	}
-	elem := goType(f.Type.ElemTypeRef(), ctx.resolver.Resolver, nil)
+	elem := goType(t.typ.ElemTypeRef(), ctx.resolver.Resolver, nil)
 	ctx.uses["fmt"] = true
 	// The element type keys the map and may name another package.
-	f.Type.WalkNamedRefs(ctx.resolver.CrossPkg.importsInto(ctx.uses))
+	t.typ.WalkNamedRefs(ctx.resolver.CrossPkg.importsInto(ctx.uses))
 	return fmt.Sprintf(`{
 seen := make(map[%s]struct{}, len(%s))
 for _, item := range %s {
@@ -54,27 +55,27 @@ return fmt.Errorf("%s: items must be unique")
 }
 seen[item] = struct{}{}
 }
-}`, elem, access, access, fieldWireName(f))
+}`, elem, t.access, t.access, t.subject)
 }
 
-// maxSizeCheck renders @maxSize on a file field as a nil-guarded bound on its Size.
-func maxSizeCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	if !isFileField(f) || len(d.Args) != 1 {
+// maxSizeCheck renders @maxSize on a file as a nil-guarded bound on its Size.
+func maxSizeCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	if !t.primIs(prims.File) || len(d.Args) != 1 {
 		return ""
 	}
 	bytes, ok := semantic.SizeArg(d.Args[0])
 	if !ok || bytes <= 0 {
 		return ""
 	}
-	cond := fmt.Sprintf("%s != nil && %s.Size > %d", access, access, bytes)
-	msg := fmt.Sprintf(`"%s: file size exceeds %d bytes"`, fieldWireName(f), bytes)
+	cond := fmt.Sprintf("%s != nil && %s.Size > %d", t.access, t.access, bytes)
+	msg := fmt.Sprintf(`"%s: file size exceeds %d bytes"`, t.subject, bytes)
 	return ifReturnf(cond, msg, ctx)
 }
 
-// mimeTypesCheck renders @mimeTypes on a file field as a switch over the
-// upload's Content-Type; an absent upload passes.
-func mimeTypesCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	if !isFileField(f) {
+// mimeTypesCheck renders @mimeTypes on a file as a switch over the upload's
+// Content-Type; an absent upload passes.
+func mimeTypesCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	if !t.primIs(prims.File) {
 		return ""
 	}
 	var cases []string
@@ -91,5 +92,5 @@ case %s:
 default:
 return fmt.Errorf("%s: disallowed content type")
 }
-}`, access, access, strings.Join(cases, ", "), fieldWireName(f))
+}`, t.access, t.access, strings.Join(cases, ", "), t.subject)
 }

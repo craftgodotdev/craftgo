@@ -4,13 +4,14 @@ import (
 	"fmt"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// numericBoundCheck renders @gt/@gte/@lt/@lte on a numeric field; op is the
+// numericBoundCheck renders @gt/@gte/@lt/@lte on a numeric value; op is the
 // relation a valid value satisfies, and the emitted condition negates it.
-func numericBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label string, ctx emitCtx) string {
-	if !isNumericField(f) || len(d.Args) != 1 {
+func numericBoundCheck(t checkTarget, d *ast.Decorator, op, label string, ctx emitCtx) string {
+	if !prims.IsNumeric(t.prim) || len(d.Args) != 1 {
 		return ""
 	}
 	n, ok := semantic.NumericArg(d.Args[0])
@@ -28,16 +29,14 @@ func numericBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label 
 	case "<":
 		flip = ">="
 	}
-	val := valueExpr(f, access, ctx)
-	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%s%s %s %s", guard, val, flip, n)
-	msg := fmt.Sprintf(`"%s%s %s"`, errSubject(fieldWireName(f)), label, n)
+	cond := fmt.Sprintf("%s%s %s %s", t.guard(), t.val(), flip, n)
+	msg := fmt.Sprintf(`"%s%s %s"`, errSubject(t.subject), label, n)
 	return ifReturnf(cond, msg, ctx)
 }
 
-// rangeCheck renders @range(lo, hi) on a numeric field as one inclusive bound check.
-func rangeCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	if !isNumericField(f) || len(d.Args) != 2 {
+// rangeCheck renders @range(lo, hi) on a numeric value as one inclusive bound check.
+func rangeCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	if !prims.IsNumeric(t.prim) || len(d.Args) != 2 {
 		return ""
 	}
 	lo, ok1 := semantic.NumericArg(d.Args[0])
@@ -45,38 +44,35 @@ func rangeCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) stri
 	if !ok1 || !ok2 {
 		return ""
 	}
-	val := valueExpr(f, access, ctx)
-	guard := optionalGuard(f, access)
+	val, guard := t.val(), t.guard()
 	var cond string
 	if guard == "" {
 		cond = fmt.Sprintf("%s < %s || %s > %s", val, lo, val, hi)
 	} else {
 		cond = fmt.Sprintf("%s(%s < %s || %s > %s)", guard, val, lo, val, hi)
 	}
-	msg := fmt.Sprintf(`"%sout of range [%s, %s]"`, errSubject(fieldWireName(f)), lo, hi)
+	msg := fmt.Sprintf(`"%sout of range [%s, %s]"`, errSubject(t.subject), lo, hi)
 	return ifReturnf(cond, msg, ctx)
 }
 
-// signCheck renders @positive or @negative (kind) on a numeric field.
-func signCheck(f *ast.Field, access, kind string, ctx emitCtx) string {
-	if !isNumericField(f) {
+// signCheck renders @positive or @negative (kind) on a numeric value.
+func signCheck(t checkTarget, kind string, ctx emitCtx) string {
+	if !prims.IsNumeric(t.prim) {
 		return ""
 	}
 	op, label := "<=", "must be positive"
 	if kind == "negative" {
 		op, label = ">=", "must be negative"
 	}
-	val := valueExpr(f, access, ctx)
-	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%s%s %s 0", guard, val, op)
-	msg := fmt.Sprintf(`"%s%s"`, errSubject(fieldWireName(f)), label)
+	cond := fmt.Sprintf("%s%s %s 0", t.guard(), t.val(), op)
+	msg := fmt.Sprintf(`"%s%s"`, errSubject(t.subject), label)
 	return ifReturnf(cond, msg, ctx)
 }
 
-// multipleOfCheck renders @multipleOf on an integer field; a whole float
+// multipleOfCheck renders @multipleOf on an integer value; a whole float
 // divisor such as 5.0 is the integer it holds.
-func multipleOfCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	if !isIntegerField(f) || len(d.Args) != 1 {
+func multipleOfCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	if !prims.IsInteger(t.prim) || len(d.Args) != 1 {
 		return ""
 	}
 	l, ok := semantic.ParseNumericArg(d.Args[0])
@@ -87,9 +83,7 @@ func multipleOfCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx)
 	if !whole || n == "0" {
 		return ""
 	}
-	val := valueExpr(f, access, ctx)
-	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%s%s%%%s != 0", guard, val, n)
-	msg := fmt.Sprintf(`"%smust be a multiple of %s"`, errSubject(fieldWireName(f)), n)
+	cond := fmt.Sprintf("%s%s%%%s != 0", t.guard(), t.val(), n)
+	msg := fmt.Sprintf(`"%smust be a multiple of %s"`, errSubject(t.subject), n)
 	return ifReturnf(cond, msg, ctx)
 }

@@ -43,35 +43,34 @@ func (r *regexRegistry) intern(pattern string) string {
 	return name
 }
 
-// fieldChecksWithScalar renders f's required check and the constraints declared
-// on f; a scalar- or enum-typed field checks them via [scalarFieldLevelChecks].
-func fieldChecksWithScalar(f *ast.Field, goName string, ctx emitCtx) []string {
-	access := "v." + goName
+// fieldChecks renders field rf's required check and the constraints declared
+// on it, held in t; a scalar- or enum-typed field checks them via [primValueChecks].
+func fieldChecks(rf semantic.ResolvedField, t checkTarget, ctx emitCtx) []string {
 	var out []string
-
 	// A @nullable field gets no required check: a missing key and `null` both decode to nil.
-	if resolveField(f, ctx.pkg, ctx.resolver).RuntimeEnforced {
-		if s := requiredCheckEnumAware(f, access, ctx); s != "" {
+	if rf.RuntimeEnforced {
+		if s := requiredCheck(rf, t, ctx); s != "" {
 			out = append(out, s)
 		}
 	}
-
-	prim := scalarFieldPrimitive(f, ctx)
-	if prim == "" {
-		prim = enumFieldPrimitive(f, ctx)
-	}
-	if prim != "" {
-		if blk := scalarFieldLevelChecks(f, access, prim, ctx); blk != "" {
+	if rf.Category == semantic.CatScalar || rf.Category == semantic.CatEnum {
+		if blk := primValueChecks(rf, t, ctx); blk != "" {
 			out = append(out, blk)
 		}
 		return out
 	}
-	for _, d := range f.Decorators {
+	return append(out, decoratorChecks(t, rf.Field.Decorators, ctx)...)
+}
+
+// decoratorChecks renders the check of each constraint decorator of decs on t.
+func decoratorChecks(t checkTarget, decs []*ast.Decorator, ctx emitCtx) []string {
+	var out []string
+	for _, d := range decs {
 		check := goChecks[d.Name]
 		if check == nil {
 			continue
 		}
-		if s := check(f, access, d, ctx); s != "" {
+		if s := check(t, d, ctx); s != "" {
 			out = append(out, s)
 		}
 	}

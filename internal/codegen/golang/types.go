@@ -210,14 +210,16 @@ func goFieldType(f *ast.Field, pkg *semantic.Package, r *projectResolver) string
 	if f == nil || f.Type == nil {
 		return ""
 	}
-	// goFieldPointerWrap decides the `*`, so the `?` is dropped here.
-	clone := *f.Type
-	clone.Optional = false
-	s := goType(&clone, r.Resolver, nil)
-	if isRawBytesField(f, pkg, r) {
-		s = rawGoType
+	rf := semantic.ResolveField(f, pkg, r.Project())
+	s := rawGoType
+	if rf.Category != semantic.CatRawBytes {
+		// The pointer below decides the `*`, so the `?` is dropped here.
+		clone := *f.Type
+		clone.Optional = false
+		s = goType(&clone, r.Resolver, nil)
 	}
-	if goFieldPointerWrap(f, pkg, r) {
+	// A file's Go type spells its pointer already.
+	if rf.GoPointer() && rf.Category != semantic.CatFile {
 		s = "*" + s
 	}
 	return s
@@ -227,18 +229,6 @@ func goFieldType(f *ast.Field, pkg *semantic.Package, r *projectResolver) string
 // @format(raw)`, or a scalar over one - whose Go type is [rawGoType].
 func isRawBytesField(f *ast.Field, pkg *semantic.Package, r *projectResolver) bool {
 	return semantic.ResolveField(f, pkg, r.Project()).Category == semantic.CatRawBytes
-}
-
-// goFieldPointerWrap reports whether [goFieldType] prepends `*`: f's Go value
-// is a pointer its type does not spell already, as `file` does.
-func goFieldPointerWrap(f *ast.Field, pkg *semantic.Package, r *projectResolver) bool {
-	rf := semantic.ResolveField(f, pkg, r.Project())
-	return rf.GoPointer() && rf.Category != semantic.CatFile
-}
-
-// goFieldIsPointer reports whether f's Go value is a pointer.
-func goFieldIsPointer(f *ast.Field, pkg *semantic.Package, r *projectResolver) bool {
-	return semantic.ResolveField(f, pkg, r.Project()).GoPointer()
 }
 
 // renderMixin returns the embed line for m with its package qualifier and
