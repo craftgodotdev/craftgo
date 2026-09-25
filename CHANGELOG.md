@@ -427,6 +427,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   naming the member at fault. A map key naming no declared type gets only
   the reference error.
 
+- **`@uniqueItems` refuses a `datetime` element.** Its `time.Time` carries
+  a location, so the validator let two equal instants in different zones
+  through as distinct, and `datetime[] @uniqueItems` generated code without
+  its `time` import. An element that is or holds a `datetime` reports
+  `decorator/typemismatch`.
+
 - **A `@multipleOf` divisor past int64 is enforced.** On a `uint64` field,
   `@multipleOf(10000000000000000000.0)` - a whole float, the only way to
   write a divisor that size - passed analysis and reached the OpenAPI

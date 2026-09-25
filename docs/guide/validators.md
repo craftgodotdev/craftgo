@@ -119,7 +119,7 @@ type Post {
 }
 ```
 
-`@uniqueItems` compares elements by value, so each element must be a primitive, an enum, a scalar or a type whose members all are. An element holding an optional or `@nullable` member, a `file`, `bytes`, `any`, an array or a map is rejected with `decorator/typemismatch`.
+`@uniqueItems` compares elements by value, so each element must be a primitive, an enum, a scalar or a type whose members all are. An element holding an optional or `@nullable` member, a `file`, `bytes`, `any`, a `datetime`, an array or a map is rejected with `decorator/typemismatch`; a `datetime` carries its time zone, so two equal instants would count as distinct.
 
 ### Cross-field
 

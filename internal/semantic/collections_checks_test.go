@@ -85,8 +85,20 @@ func TestUniqueItemsAcceptsValueMembers(t *testing.T) {
 	mustClean(t, `enum S { A B }
 scalar Email string
 type Inner { id string  n int }
-type O { s S  e Email  inner Inner  at datetime }
+type O { s S  e Email  inner Inner }
 type R { xs O[] @uniqueItems  ys Email[] @uniqueItems  zs S[] @uniqueItems }`)
+}
+
+// @uniqueItems refuses a datetime element or member: its time.Time carries a
+// location, so the dedupe map keeps two equal instants in different zones apart.
+func TestUniqueItemsRejectsDatetime(t *testing.T) {
+	for _, c := range []struct{ src, subject string }{
+		{"type R { xs datetime[] @uniqueItems }", "datetime is a datetime"},
+		{"type O { at datetime }\ntype R { xs O[] @uniqueItems }", "O.at (datetime) is a datetime"},
+	} {
+		d := expectError(t, c.src, CodeDecoratorTypeMismatch)
+		expectMessage(t, d, c.subject)
+	}
 }
 
 // A cross-package generic instance is judged with the arguments its referrer gives it.

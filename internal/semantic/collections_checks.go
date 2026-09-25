@@ -91,7 +91,12 @@ func (a *analyzer) checkUniqueItemsComparable(f *ast.Field, typeParams []string)
 func (a *analyzer) dedupeKeyProblem(t *ast.TypeRef, view, path string, seen map[string]bool) string {
 	rt := resolveTypeRef(t, false, a.proj.Packages[view], a.proj)
 	switch rt.Category {
-	case CatPrimitive, CatEnum, CatUnknown:
+	case CatPrimitive:
+		if sp, _ := prims.Lookup(rt.ResolvedPrim); sp.Kind == prims.DateTime {
+			return dedupeSubject(path, t) + " is a datetime, a time.Time that carries its location: two equal instants in different zones compare unequal"
+		}
+		return ""
+	case CatEnum, CatUnknown:
 		return ""
 	case CatScalar:
 		if !rt.IsNilable {
