@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // TestParseEveryDocumentedDecorator pins that every built-in decorator parses
@@ -27,7 +28,7 @@ type T {
     @maxLength(100)
     @pattern("^[a-z]+$")
     @format("email")
-    @enum("a", "b")
+    @json("full_name")
     @example("alice")
     @doc("field doc")
     @default("d")
@@ -64,6 +65,7 @@ type T {
     headerField  string
 
     @cookie
+    @sensitive
     cookieField  string
 
     @body
@@ -102,6 +104,8 @@ service S {
     @errors(MyErr)
     @status(200)
     @ignoreSecurity
+    @ignoreMiddleware
+    @ignoreTags
     @deprecated
     @passthrough
     @timeout(5s)
@@ -116,6 +120,11 @@ service S {
 
 middleware Auth
 middleware RateLimit
+
+@contract("design.placed.v1")
+event Placed {
+    payload T
+}
 `
 	p := New("decorators.craftgo", src)
 	f := p.Parse()
@@ -126,22 +135,8 @@ middleware RateLimit
 		t.Errorf("file decorators count = %d, want >= 3", len(f.Decorators))
 	}
 
-	want := []string{
-		"version", "doc", "deprecated",
-		"example", "requiresOneOf", "mutuallyExclusive",
-		"length", "minLength", "maxLength", "pattern", "format", "enum",
-		"gt", "gte", "lt", "lte", "range", "positive", "negative", "multipleOf",
-		"minItems", "maxItems", "uniqueItems", "maxSize", "mimeTypes",
-		"default", "nullable",
-		"path", "query", "body", "header", "cookie", "form",
-		"prefix", "middlewares", "group", "tags", "security",
-		"ignoreSecurity",
-		"summary", "operationId", "errors", "status",
-		"passthrough", "rawRequest", "rawResponse",
-		"timeout", "maxBodySize",
-	}
 	seen := collectAllDecoratorNames(f)
-	for _, w := range want {
+	for _, w := range semantic.Names() {
 		if !seen[w] {
 			t.Errorf("expected decorator %q to be parsed somewhere", w)
 		}
@@ -187,6 +182,8 @@ func collectAllDecoratorNames(f *ast.File) map[string]bool {
 			for _, mtd := range v.Methods() {
 				add(mtd.Decorators)
 			}
+		case *ast.EventDecl:
+			add(v.Decorators)
 		}
 	}
 	return out
