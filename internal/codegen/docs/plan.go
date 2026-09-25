@@ -7,18 +7,22 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// RegeneratedFile is the document [GenerateOpenAPI] writes, or "" when it
-// writes none: `output.openapi` is off, or the design has no DSL package.
-func RegeneratedFile(proj *semantic.Project, cfg *config.Config, projectRoot string) string {
-	if !describable(proj) {
-		return ""
+// Plan lists what [GenerateOpenAPI] writes under projectRoot: the document's directory, with the
+// header of the file written there, and the document, which a design with no DSL package does not
+// get. With `output.openapi` off there is neither.
+func Plan(proj *semantic.Project, cfg *config.Config, projectRoot string) (dirs map[string][]string, files []string) {
+	doc := documentPath(cfg, projectRoot)
+	if doc == "" {
+		return nil, nil
 	}
-	return DocumentPath(cfg, projectRoot)
+	if describable(proj) {
+		files = []string{doc}
+	}
+	return map[string][]string{filepath.Dir(doc): {GeneratedHeader}}, files
 }
 
-// DocumentPath is the path of the document, whether or not this run writes
-// it, or "" when `output.openapi` is off.
-func DocumentPath(cfg *config.Config, projectRoot string) string {
+// documentPath is the path of the document, or "" when `output.openapi` is off.
+func documentPath(cfg *config.Config, projectRoot string) string {
 	if cfg.Output.OpenAPIDisabled() {
 		return ""
 	}

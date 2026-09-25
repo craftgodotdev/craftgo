@@ -46,7 +46,7 @@ func writeOpenAPI(pkg *semantic.Package, cfg *config.Config, projectRoot string)
 	if err != nil {
 		return err
 	}
-	dest := DocumentPath(cfg, projectRoot)
+	dest := documentPath(cfg, projectRoot)
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}

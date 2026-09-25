@@ -82,7 +82,7 @@ func TestPlanMatchesWhatTheRunWritesWithProtos(t *testing.T) {
 	if err := emit(in, cfg, dir, sel); err != nil {
 		t.Fatalf("emit: %v", err)
 	}
-	planned := regeneratedFiles(in, cfg, dir)
+	_, planned := plan(in, cfg, dir, sel)
 	written := regeneratedUnder(t, dir)
 	for _, rel := range []string{filepath.Join("internal", "grpc", "greeter", "server.go"), filepath.Join("internal", "pb", "greet", "greet_grpc.pb.go")} {
 		if !written[filepath.Join(dir, rel)] {

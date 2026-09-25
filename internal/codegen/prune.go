@@ -2,23 +2,15 @@ package codegen
 
 import (
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
-
-	"github.com/craftgodotdev/craftgo/internal/codegen/docs"
-	"github.com/craftgodotdev/craftgo/internal/codegen/golang"
-	"github.com/craftgodotdev/craftgo/internal/config"
-	"github.com/craftgodotdev/craftgo/internal/protodesign"
 )
 
-// generatedHeaders open the files craftgo rewrites on every run, Go and
-// YAML. A gen-once scaffold opens with another line, so the sweep keeps it.
-var generatedHeaders = []string{golang.GeneratedHeader, docs.GeneratedHeader}
-
-// sweepDir is a directory the sweep walks and the headers that mark a file
-// in it as regenerated: the plugins' in the pb directory, craftgo's elsewhere.
+// sweepDir is a directory the sweep walks and the headers that mark a file in it as regenerated.
 type sweepDir struct {
 	path    string
 	headers []string
@@ -39,75 +31,26 @@ func isGenerated(path string, headers []string) bool {
 	return false
 }
 
-// outputDirs are the directories the selected targets regenerate into.
-func outputDirs(cfg *config.Config, projectRoot string, sel map[string]bool) []sweepDir {
-	var dirs []sweepDir
-	if sel[config.LangGo] {
-		for _, dir := range golang.OutputDirs(cfg, projectRoot) {
-			dirs = append(dirs, sweepDir{path: dir, headers: generatedHeaders})
-		}
-		if !cfg.Output.PBDisabled() {
-			dirs = append(dirs, sweepDir{path: filepath.Join(projectRoot, cfg.Output.PB), headers: protodesign.PluginHeaders})
-		}
-	}
-	for _, target := range langTargets {
-		if !sel[target.lang] {
-			continue
-		}
-		cfgTarget, ok := cfg.Events.TargetFor(target.lang)
-		if !ok || !cfgTarget.Enabled() {
-			continue
-		}
-		dirs = append(dirs, sweepDir{path: filepath.Join(projectRoot, cfgTarget.Out), headers: generatedHeaders})
-	}
-	if sel[targetDocs] {
-		if doc := docs.DocumentPath(cfg, projectRoot); doc != "" {
-			dirs = append(dirs, sweepDir{path: filepath.Dir(doc), headers: generatedHeaders})
-		}
-	}
-	return owned(dirs, projectRoot)
-}
-
-// owned drops duplicates, the project root and its ancestors, and sorts the
-// rest. The root may hold a sibling design's output, so it is never swept.
-func owned(dirs []sweepDir, projectRoot string) []sweepDir {
+// owned lists dirs, a directory's headers from every target writing there, in path order,
+// dropping the project root and its ancestors: the root may hold a sibling design's output, so it
+// is never swept.
+func owned(dirs map[string][]string, projectRoot string) []sweepDir {
 	root := filepath.Clean(projectRoot)
-	seen := map[string]bool{}
-	out := make([]sweepDir, 0, len(dirs))
-	for _, dir := range dirs {
-		dir.path = filepath.Clean(dir.path)
-		if dir.path == root || strings.HasPrefix(root, dir.path+string(filepath.Separator)) || seen[dir.path] {
+	merged := map[string][]string{}
+	for dir, headers := range dirs {
+		dir = filepath.Clean(dir)
+		if dir == root || strings.HasPrefix(root, dir+string(filepath.Separator)) {
 			continue
 		}
-		seen[dir.path] = true
-		out = append(out, dir)
+		merged[dir] = append(merged[dir], headers...)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].path < out[j].path })
+	out := make([]sweepDir, 0, len(merged))
+	for _, dir := range slices.Sorted(maps.Keys(merged)) {
+		headers := merged[dir]
+		slices.Sort(headers)
+		out = append(out, sweepDir{path: dir, headers: slices.Compact(headers)})
+	}
 	return out
-}
-
-// regeneratedFiles is every file the project's targets produce, whatever
-// `--target` selects: a target that does not run still owns its files.
-func regeneratedFiles(in Inputs, cfg *config.Config, projectRoot string) map[string]bool {
-	proj := in.Design
-	files := golang.RegeneratedFiles(proj, in.Protos, cfg, projectRoot)
-	for _, target := range langTargets {
-		cfgTarget, ok := cfg.Events.TargetFor(target.lang)
-		if !ok || !cfgTarget.Enabled() {
-			continue
-		}
-		if target.lang == config.LangGo {
-			files = append(files, golang.RegeneratedEventFiles(proj, projectRoot, cfgTarget.Out)...)
-		}
-	}
-	if doc := docs.RegeneratedFile(proj, cfg, projectRoot); doc != "" {
-		files = append(files, doc)
-	}
-	set := make(map[string]bool, len(files))
-	for _, file := range files {
-		set[file] = true
-	}
-	return set
 }
 
 // prune deletes, under each of dirs, the generated files written does not

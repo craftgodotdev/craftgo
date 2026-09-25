@@ -316,7 +316,8 @@ func TestEventLibraryIsValidGoAndFullyPlanned(t *testing.T) {
 		t.Fatalf("wrote %d files, want one events.go per declaring package: %v", len(written), written)
 	}
 	planned := map[string]bool{}
-	for _, f := range RegeneratedEventFiles(proj, dir, goEventsOut) {
+	_, files := EventPlan(proj, dir, goEventsOut)
+	for _, f := range files {
 		planned[f] = true
 	}
 	for f := range written {
