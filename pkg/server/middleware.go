@@ -61,8 +61,9 @@ func (w *trackingWriter) Status() int {
 	return w.status
 }
 
-// Recovery logs a panic in next with its stack to logger and answers 500 text/plain, or aborts the
-// connection once the response is committed; a panic with [http.ErrAbortHandler] aborts it unlogged.
+// Recovery logs a panic in next with its stack to logger and answers 500
+// {"message":"internal server error"}, or aborts the connection once the response is committed; a
+// panic with [http.ErrAbortHandler] aborts it unlogged.
 func Recovery(logger log.Logger) Middleware {
 	return recovery(func() log.Logger { return logger })
 }
@@ -89,7 +90,7 @@ func recovery(logger func() log.Logger) Middleware {
 						log.Any("panic", rec),
 						log.String("stack", string(debug.Stack())),
 					)
-					http.Error(tw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					writeStatusError(tw, http.StatusInternalServerError)
 				}
 			}()
 			next.ServeHTTP(tw, r)
@@ -151,7 +152,8 @@ func AccessLog(logger log.Logger, opts ...AccessLogOption) Middleware {
 }
 
 // BodyLimit caps request bodies at maxBytes: a declared Content-Length above it is answered
-// 413 before next runs, and a read past it fails with an [*http.MaxBytesError].
+// 413 {"message":"request entity too large"} before next runs, and a read past it fails with
+// an [*http.MaxBytesError], which [WriteValidationError] answers 413 too.
 func BodyLimit(maxBytes int64) Middleware {
 	return func(next http.Handler) http.Handler {
 		return maxBodySizeHandler(next, maxBytes)

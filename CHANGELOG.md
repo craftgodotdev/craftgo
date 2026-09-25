@@ -125,6 +125,25 @@ breaking change to the DSL or the generated layout bumps the major version.
   `status: must be one of [open in_progress done]`, where it read `status:
   invalid TodoStatus value`.
 
+- **The errors the framework writes are JSON.** A panic `Recovery` catches
+  answers 500 `{"message":"internal server error"}`, the default of
+  `SetDefaultValidationFailed` 400 `{"message":"<error text>"}`, a body over
+  `BodyLimit` or `@maxBodySize` 413 `{"message":"request entity too large"}`,
+  a request no route matches 404 `{"message":"not found"}` (the default of
+  `SetHandleNotFound`, and after `SetHandleNotFound(nil)`), and a method
+  mismatch 405 `{"message":"method not allowed"}` with its `Allow` header,
+  each as `application/json; charset=utf-8` with `X-Content-Type-Options:
+  nosniff`; they were `text/plain`. The message is the status text in lower
+  case, or the validation error's text. A redirect to a cleaned path stays the
+  mux's. Telling a 404 or 405 from a route costs each request a second
+  `ServeMux` lookup, about 100 ns.
+
+- **A body read past its cap answers 413, not 400.** `WriteValidationError`
+  answers an `*http.MaxBytesError` or `multipart.ErrMessageTooLarge` 413
+  `{"message":"request entity too large"}` without calling the
+  `SetDefaultValidationFailed` handler, so a chunked body over `@maxBodySize`
+  gets the answer a declared `Content-Length` over it gets.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

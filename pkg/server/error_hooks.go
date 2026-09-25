@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -25,8 +26,8 @@ func init() {
 	SetHandleUnknownError(nil)
 }
 
-// defaultValidationFailed answers 400 with err's text, or only logs err once the response
-// is committed.
+// defaultValidationFailed answers 400 with err's text as the message, or only logs err once
+// the response is committed.
 func defaultValidationFailed(w http.ResponseWriter, r *http.Request, err error) {
 	if responseCommitted(w) {
 		log.Default().WithContext(r.Context()).Error(
@@ -35,7 +36,34 @@ func defaultValidationFailed(w http.ResponseWriter, r *http.Request, err error) 
 		)
 		return
 	}
-	http.Error(w, err.Error(), http.StatusBadRequest)
+	writeErrorMessage(w, http.StatusBadRequest, err.Error())
+}
+
+// writeErrorHead starts an error response with status: a JSON Content-Type, nosniff, and no
+// Content-Length left from another body.
+func writeErrorHead(w http.ResponseWriter, status int) {
+	h := w.Header()
+	h.Del("Content-Length")
+	h.Set("Content-Type", contentTypeJSON)
+	h.Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(status)
+}
+
+// writeErrorMessage answers status with the JSON body {"message": msg}.
+func writeErrorMessage(w http.ResponseWriter, status int, msg string) {
+	writeErrorHead(w, status)
+	_ = JSON().Encode(w, map[string]string{"message": msg})
+}
+
+// writeStatusError answers status with its status text, in lower case, as the message.
+func writeStatusError(w http.ResponseWriter, status int) {
+	writeErrorMessage(w, status, strings.ToLower(http.StatusText(status)))
+}
+
+// bodyTooLarge reports whether err is a read past a body cap.
+func bodyTooLarge(err error) bool {
+	var tooLarge *http.MaxBytesError
+	return errors.As(err, &tooLarge) || errors.Is(err, multipart.ErrMessageTooLarge)
 }
 
 // responseCommitted asks the first writer on w's Unwrap chain that has a Committed method.
@@ -54,7 +82,7 @@ func responseCommitted(w http.ResponseWriter) bool {
 }
 
 // SetDefaultValidationFailed installs h, process-wide and safe while serving, as the handler
-// [WriteValidationError] calls. nil restores the default: 400 text/plain with err's text.
+// [WriteValidationError] calls. nil restores the default: 400 {"message": err's text}.
 func SetDefaultValidationFailed(h ValidationFailedHandler) {
 	if h == nil {
 		h = defaultValidationFailed
@@ -62,8 +90,13 @@ func SetDefaultValidationFailed(h ValidationFailedHandler) {
 	validationFailed.Store(&h)
 }
 
-// WriteValidationError renders err with the [SetDefaultValidationFailed] handler.
+// WriteValidationError renders err with the [SetDefaultValidationFailed] handler; a read past
+// a body cap is answered 413 {"message":"request entity too large"} without it.
 func WriteValidationError(w http.ResponseWriter, r *http.Request, err error) {
+	if bodyTooLarge(err) && !responseCommitted(w) {
+		writeStatusError(w, http.StatusRequestEntityTooLarge)
+		return
+	}
 	(*validationFailed.Load())(w, r, err)
 }
 
@@ -89,9 +122,7 @@ type UnknownErrorHandler func(w http.ResponseWriter, r *http.Request, err error)
 // {"message":"internal server error"}, keeping err's text off the wire.
 func defaultUnknownError(w http.ResponseWriter, r *http.Request, err error) {
 	log.Default().WithContext(r.Context()).Error("unhandled service error", log.Err(err))
-	w.Header().Set("Content-Type", contentTypeJSON)
-	w.WriteHeader(http.StatusInternalServerError)
-	_ = JSON().Encode(w, map[string]string{"message": "internal server error"})
+	writeStatusError(w, http.StatusInternalServerError)
 }
 
 // SetHandleUnknownError installs h, process-wide and safe while serving, for errors with no
@@ -124,8 +155,7 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.As(err, &hw) {
 		hw.WriteResponseHeaders(w)
 	}
-	w.Header().Set("Content-Type", contentTypeJSON)
-	w.WriteHeader(se.HTTPStatus())
+	writeErrorHead(w, se.HTTPStatus())
 	codec := JSON()
 	var buf bytes.Buffer
 	mErr := codec.Encode(&buf, se)

@@ -66,7 +66,7 @@ func timeoutHandler(h http.Handler, d time.Duration) http.Handler {
 func maxBodySizeHandler(h http.Handler, n int64) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if n > 0 && r.ContentLength > n {
-			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			writeStatusError(w, http.StatusRequestEntityTooLarge)
 			return
 		}
 		if r.Body != nil {

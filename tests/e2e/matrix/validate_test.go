@@ -1,6 +1,7 @@
 package matrix
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -166,7 +167,9 @@ func TestAutoBoundQueryErrorNamesTheParameter(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusBadRequest || !strings.HasPrefix(string(body), "pageSize: ") {
+	var got struct{ Message string }
+	_ = json.Unmarshal(body, &got)
+	if resp.StatusCode != http.StatusBadRequest || !strings.HasPrefix(got.Message, "pageSize: ") {
 		t.Errorf("want 400 naming pageSize, got %d %q", resp.StatusCode, body)
 	}
 }

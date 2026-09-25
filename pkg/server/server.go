@@ -201,7 +201,7 @@ func (s *Server) Handler() http.Handler {
 	if s.cors != nil {
 		chain = chain.Append(corsMiddleware(*s.cors))
 	}
-	app := chain.Then(s.muxWithNotFoundLocked())
+	app := chain.Then(s.muxLocked())
 	probes := s.probesLocked()
 	s.mu.Unlock()
 	if probes == nil {
@@ -216,8 +216,8 @@ func (s *Server) Handler() http.Handler {
 	})
 }
 
-// SetHandleNotFound sets the handler for the requests the mux answers 404; a method mismatch
-// keeps its 405. nil restores the mux's own answer.
+// SetHandleNotFound sets the handler for the requests the mux answers 404, which otherwise
+// get 404 {"message":"not found"}; a method mismatch keeps its 405. nil restores the default.
 func (s *Server) SetHandleNotFound(h http.Handler) *Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -225,31 +225,37 @@ func (s *Server) SetHandleNotFound(h http.Handler) *Server {
 	return s
 }
 
-// muxWithNotFoundLocked returns s.mux, handing the requests it would answer 404 to s.notFound
-// when set; the caller holds s.mu.
-func (s *Server) muxWithNotFoundLocked() http.Handler {
-	if s.notFound == nil {
-		return s.mux
-	}
+// muxLocked returns s.mux with the answers it writes itself to a request no route matches
+// replaced: a 404 by the SetHandleNotFound handler, a 405 by {"message":"method not allowed"}
+// with its Allow header; a redirect stays the mux's. The caller holds s.mu.
+func (s *Server) muxLocked() http.Handler {
 	notFound := s.notFound
+	if notFound == nil {
+		notFound = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			writeStatusError(w, http.StatusNotFound)
+		})
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if h, pattern := s.mux.Handler(r); pattern == "" && answersNotFound(h, r) {
-			notFound.ServeHTTP(w, r)
+		h, pattern := s.mux.Handler(r)
+		if pattern != "" {
+			s.mux.ServeHTTP(w, r)
 			return
 		}
-		s.mux.ServeHTTP(w, r)
+		p := &statusProbe{header: http.Header{}}
+		h.ServeHTTP(p, r)
+		switch p.status {
+		case http.StatusNotFound:
+			notFound.ServeHTTP(w, r)
+		case http.StatusMethodNotAllowed:
+			w.Header().Set("Allow", p.header.Get("Allow"))
+			writeStatusError(w, http.StatusMethodNotAllowed)
+		default:
+			s.mux.ServeHTTP(w, r)
+		}
 	})
 }
 
-// answersNotFound reports whether h, the mux's answer to a request no route matches, is a
-// 404 rather than a 405 or a redirect to the cleaned path.
-func answersNotFound(h http.Handler, r *http.Request) bool {
-	p := &statusProbe{header: http.Header{}}
-	h.ServeHTTP(p, r)
-	return p.status == http.StatusNotFound
-}
-
-// statusProbe is a ResponseWriter that discards the response and keeps its status.
+// statusProbe is a ResponseWriter that discards the body and keeps the status and header.
 type statusProbe struct {
 	header http.Header
 	status int

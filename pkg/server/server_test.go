@@ -365,8 +365,8 @@ func TestSetHandleNotFoundTakesOnlyThe404s(t *testing.T) {
 	}
 }
 
-// SetHandleNotFound(nil) restores the mux's own 404.
-func TestSetHandleNotFoundNilRestoresTheMux(t *testing.T) {
+// SetHandleNotFound(nil) restores the default 404.
+func TestSetHandleNotFoundNilRestoresTheDefault(t *testing.T) {
 	s := newTestServer(t)
 	s.SetHandleNotFound(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
@@ -374,8 +374,8 @@ func TestSetHandleNotFoundNilRestoresTheMux(t *testing.T) {
 	s.SetHandleNotFound(nil)
 	rec := httptest.NewRecorder()
 	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/missing", nil))
-	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "404 page not found") {
-		t.Errorf("status %d, body %q; want the mux's 404", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusNotFound || rec.Body.String() != `{"message":"not found"}`+"\n" {
+		t.Errorf("status %d, body %q; want the default JSON 404", rec.Code, rec.Body.String())
 	}
 }
 

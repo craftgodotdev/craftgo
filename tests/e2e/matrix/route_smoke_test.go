@@ -18,8 +18,9 @@ import (
 )
 
 // bootAll serves every service through the generated routes.RegisterAll,
-// with every declared middleware assigned.
-func bootAll(t *testing.T) *httptest.Server {
+// with every declared middleware assigned; each configure runs on the server
+// before the routes are registered.
+func bootAll(t *testing.T, configure ...func(*server.Server)) *httptest.Server {
 	t.Helper()
 	svc := svccontext.NewServiceContext()
 	svc.Audit = middleware.NewAuditMiddleware()
@@ -30,6 +31,9 @@ func bootAll(t *testing.T) *httptest.Server {
 	svc.RequestStamp = middleware.NewRequestStampMiddleware()
 	svc.Timing = middleware.NewTimingMiddleware()
 	srv := server.New(svc, server.WithoutDefaultHealth())
+	for _, c := range configure {
+		c(srv)
+	}
 	routes.RegisterAll(srv, svc)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -112,9 +116,9 @@ func TestEveryRouteRegisteredAndHandled(t *testing.T) {
 		}
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64))
 		resp.Body.Close()
-		// Only the mux's own 404 text means unmounted; a typed NotFound
+		// Only the framework's own 404 body means unmounted; a typed NotFound
 		// means the handler ran.
-		muxMiss := resp.StatusCode == http.StatusNotFound && strings.TrimSpace(string(body)) == "404 page not found"
+		muxMiss := resp.StatusCode == http.StatusNotFound && strings.TrimSpace(string(body)) == `{"message":"not found"}`
 		if muxMiss || resp.StatusCode == http.StatusMethodNotAllowed {
 			miss = append(miss, verb+" "+specPath+" → "+resp.Status)
 		}
