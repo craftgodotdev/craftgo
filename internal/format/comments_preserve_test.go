@@ -499,16 +499,8 @@ service Raw {
 	get stream /stream {}  // bypasses the JSON codec
 }
 `
-	out, diags := Format("t.craftgo", canonical)
-	if len(diags) > 0 {
-		t.Fatalf("diagnostics: %v", diags)
-	}
-	if !strings.Contains(out, "// bypasses the JSON codec") {
+	if out := formatStable(t, canonical); !strings.Contains(out, "// bypasses the JSON codec") {
 		t.Errorf("empty-body trailing note dropped:\n%s", out)
-	}
-	out2, _ := Format("t.craftgo", out)
-	if out2 != out {
-		t.Errorf("not idempotent.\n--- first ---\n%s\n--- second ---\n%s", out, out2)
 	}
 }
 

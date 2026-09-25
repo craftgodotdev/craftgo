@@ -32,20 +32,7 @@ service OrderService {
 	}
 }
 `
-	out, diags := Format("t.craftgo", src)
-	if len(diags) > 0 {
-		t.Fatalf("diagnostics: %v", diags)
-	}
-	if out != src {
-		t.Errorf("canonical source reformatted.\n--- want ---\n%s\n--- got ---\n%s", src, out)
-	}
-	again, diags := Format("t.craftgo", out)
-	if len(diags) > 0 {
-		t.Fatalf("reformat diagnostics: %v", diags)
-	}
-	if again != out {
-		t.Errorf("not idempotent.\n--- first ---\n%s\n--- second ---\n%s", out, again)
-	}
+	formatExact(t, src, src)
 }
 
 // A one-line event declaration expands to canonical form.
@@ -53,10 +40,7 @@ func TestFormatExpandsCompactEvent(t *testing.T) {
 	src := `package p
 event E { payload P }
 `
-	out, diags := Format("t.craftgo", src)
-	if len(diags) > 0 {
-		t.Fatalf("diagnostics: %v", diags)
-	}
+	out := formatStable(t, src)
 	if want := "event E {\n\tpayload P\n}"; !strings.Contains(out, want) {
 		t.Errorf("formatted output missing %q:\n%s", want, out)
 	}
@@ -74,17 +58,7 @@ event BatchPlaced {
 	payload OrderPlacedPayload[]
 }
 `
-	out, diags := Format("t.craftgo", src)
-	if len(diags) > 0 {
-		t.Fatalf("diagnostics: %v", diags)
-	}
-	if out != src {
-		t.Errorf("not round-tripped.\n--- want ---\n%s\n--- got ---\n%s", src, out)
-	}
-	again, _ := Format("t.craftgo", out)
-	if again != out {
-		t.Errorf("not idempotent.\n--- first ---\n%s\n--- second ---\n%s", out, again)
-	}
+	formatExact(t, src, src)
 }
 
 // A documented @contract event beside a service formats to itself.
@@ -108,17 +82,7 @@ service LedgerService {
 	}
 }
 `
-	out, diags := Format("t.craftgo", src)
-	if len(diags) > 0 {
-		t.Fatalf("diagnostics: %v", diags)
-	}
-	if out != src {
-		t.Errorf("not round-tripped.\n--- want ---\n%s\n--- got ---\n%s", src, out)
-	}
-	again, _ := Format("t.craftgo", out)
-	if again != out {
-		t.Errorf("not idempotent.\n--- first ---\n%s\n--- second ---\n%s", out, again)
-	}
+	formatExact(t, src, src)
 }
 
 // Every declaration kind in [ast.AllDeclKinds] prints something.

@@ -169,19 +169,7 @@ service S {
 		},
 	}
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			out1, diags := Format("test.craftgo", c.src)
-			if len(diags) > 0 {
-				t.Fatalf("first parse had diagnostics: %v", diags)
-			}
-			out2, diags := Format("test.craftgo", out1)
-			if len(diags) > 0 {
-				t.Fatalf("formatted output failed to parse: %v\nformatted:\n%s", diags, out1)
-			}
-			if out1 != out2 {
-				t.Errorf("not idempotent.\n--- first ---\n%s\n--- second ---\n%s", out1, out2)
-			}
-		})
+		t.Run(c.name, func(t *testing.T) { formatStable(t, c.src) })
 	}
 }
 
@@ -196,10 +184,7 @@ enum Color {
 	Red = 1 @deprecated // legacy red
 }
 `
-	out, diags := Format("t.craftgo", src)
-	if len(diags) > 0 {
-		t.Fatalf("diagnostics: %v", diags)
-	}
+	out := formatStable(t, src)
 	if got := strings.Count(out, "// a tag"); got != 1 {
 		t.Errorf("scalar trailing comment must appear exactly once, got %d:\n%s", got, out)
 	}
@@ -327,21 +312,11 @@ enum Status {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			out, diags := Format("t.craftgo", c.src)
-			if len(diags) > 0 {
-				t.Fatalf("diagnostics: %v", diags)
-			}
+			out := formatStable(t, c.src)
 			for _, w := range c.want {
 				if !strings.Contains(out, w) {
 					t.Errorf("formatted output dropped %q:\n%s", w, out)
 				}
-			}
-			out2, diags := Format("t.craftgo", out)
-			if len(diags) > 0 {
-				t.Fatalf("formatted output failed to re-parse: %v\n%s", diags, out)
-			}
-			if out != out2 {
-				t.Errorf("not idempotent.\n--- first ---\n%s\n--- second ---\n%s", out, out2)
 			}
 		})
 	}
@@ -350,10 +325,7 @@ enum Status {
 // TestFormatCommentOnlyFilePreserved pins that a file holding only comments keeps them.
 func TestFormatCommentOnlyFilePreserved(t *testing.T) {
 	src := "// just a note\n// another line\n"
-	out, diags := Format("c.craftgo", src)
-	if len(diags) > 0 {
-		t.Fatalf("diags: %v", diags)
-	}
+	out := formatStable(t, src)
 	if strings.TrimSpace(out) == "" {
 		t.Fatalf("comment-only file was blanked: %q", out)
 	}
@@ -361,9 +333,6 @@ func TestFormatCommentOnlyFilePreserved(t *testing.T) {
 		if !strings.Contains(out, w) {
 			t.Errorf("dropped %q:\n%q", w, out)
 		}
-	}
-	if out2, _ := Format("c.craftgo", out); out != out2 {
-		t.Errorf("not idempotent:\n%q\n%q", out, out2)
 	}
 }
 
@@ -378,10 +347,7 @@ type T {
 	id string @path @default("x")
 }
 `
-	out, diags := Format("t.craftgo", src)
-	if len(diags) > 0 {
-		t.Fatalf("diagnostics: %v", diags)
-	}
+	out := formatStable(t, src)
 	if !strings.Contains(out, "flag bool?") {
 		t.Errorf("fmt should add ? to a @default field:\n%s", out)
 	}
@@ -390,10 +356,6 @@ type T {
 	}
 	if !strings.Contains(out, "id   string  @path") {
 		t.Errorf("@path @default field must NOT get ? (path is always present):\n%s", out)
-	}
-	out2, _ := Format("t.craftgo", out)
-	if out != out2 {
-		t.Errorf("not idempotent:\n--- first ---\n%s\n--- second ---\n%s", out, out2)
 	}
 }
 
@@ -407,7 +369,7 @@ type Foo {
 	x string
 }
 `
-	formatted, _ := Format("t.craftgo", src)
+	formatted := formatStable(t, src)
 	p := parser.New("t.craftgo", formatted)
 	f := p.Parse()
 	if len(p.Diagnostics()) > 0 {
@@ -432,7 +394,7 @@ type X {
 	nick string @nullable()
 }
 `
-	formatted, _ := Format("t.craftgo", src)
+	formatted := formatStable(t, src)
 	for _, bad := range []string{"@positive()", "@uniqueItems()", "@nullable()"} {
 		if strings.Contains(formatted, bad) {
 			t.Errorf("empty parens not stripped: %q remained\nformatted:\n%s", bad, formatted)
@@ -456,7 +418,7 @@ type X {
 	uid   string @format(uuid)
 }
 `
-	formatted, _ := Format("t.craftgo", src)
+	formatted := formatStable(t, src)
 	if !strings.Contains(formatted, "@format(email)") || strings.Contains(formatted, `@format("email")`) {
 		t.Errorf(`@format("email") not rewritten to @format(email):`+"\n%s", formatted)
 	}
@@ -465,10 +427,6 @@ type X {
 	}
 	if !strings.Contains(formatted, "@format(uuid)") {
 		t.Errorf("bare-ident form should stay as-is:\n%s", formatted)
-	}
-	formatted2, _ := Format("t.craftgo", formatted)
-	if formatted != formatted2 {
-		t.Errorf("not idempotent:\n--first--\n%s\n--second--\n%s", formatted, formatted2)
 	}
 }
 
@@ -494,16 +452,12 @@ type Other {
 	id string
 }
 `
-	formatted, _ := Format("close.craftgo", src)
+	formatted := formatStable(t, src)
 	if !strings.Contains(formatted, "\t// todo: add reason field\n}") {
 		t.Errorf("// todo should sit inside body before }, got:\n%s", formatted)
 	}
 	if strings.Contains(formatted, "// todo: add reason field\ntype Other") {
 		t.Errorf("// todo must not drift above next decl, got:\n%s", formatted)
-	}
-	formatted2, _ := Format("close.craftgo", formatted)
-	if formatted != formatted2 {
-		t.Errorf("not idempotent\n--first--\n%s\n--second--\n%s", formatted, formatted2)
 	}
 }
 
