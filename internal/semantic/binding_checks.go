@@ -109,7 +109,12 @@ func (a *analyzer) checkInstanceWireBindings(ref *ast.NamedTypeRef, pos lexer.Po
 		if !ff.paramTyped || (kind != wire.BindHeader && kind != wire.BindCookie) {
 			continue
 		}
-		if msg := a.proj.wireTypeFault(ref.String(), view, ff.Field, kind); msg != "" {
+		msg := a.proj.wireTypeFault(ref.String(), view, ff.Field, kind)
+		if msg == "" && ff.sliceBehindPointer {
+			msg = fmt.Sprintf("field %s.%s: @%s rides an optional type parameter over an array, whose Go value is a pointer to a slice no %s binding reads or writes - drop the `?` from the type parameter (an array is already nilable)",
+				ref, ff.Field.Name, kind, kind)
+		}
+		if msg != "" {
 			a.diag(pos, pos, lexer.SeverityError, CodeBindingType, "%s", msg)
 		}
 	}

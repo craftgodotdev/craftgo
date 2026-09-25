@@ -942,7 +942,8 @@ breaking change to the DSL or the generated layout bumps the major version.
   field is now legal on any type parameter, the handler formats the
   argument's type, and each request, response or error mixin that
   instantiates the type is checked with its argument: `response Paged<Item>`
-  is `binding/type` at the response clause.
+  is `binding/type` at the response clause, as is a `T?` header whose
+  argument is an array, a pointer to a slice no header reads or writes.
 
 - **A mixin's cross-field groups reach every OpenAPI request body.** The
   body of a request that also binds a path, query, header or cookie field,

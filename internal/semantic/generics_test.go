@@ -319,6 +319,12 @@ service S {
 		"request":      {`service S { post A /a { request Req<Item>  response Item } }`, "field Req<Item>.h: @header requires"},
 		"mixin":        {`service S { get A /a { response Wrap } }`, "field Wrap.count: @header requires"},
 		"error mixin":  {`error Conflict E { Paged<Item> }`, "field Paged<Item>.count: @header requires"},
+		"optional over an array": {`type OptH<T> { h T? @header("X-Opt")  n int }
+service S { get A /a { response OptH<string[]> } }`, "field OptH<string[]>.h: @header rides an optional type parameter over an array"},
+		"optional over an array in a request": {`type OptH<T> { h T? @header("X-Opt")  n int }
+service S { get A /a { request OptH<int[]>  response Item } }`, "field OptH<int[]>.h: @header rides an optional type parameter over an array"},
+		"optional over an array in an error mixin": {`type OptH<T> { h T? @header("X-Opt")  n int }
+error Conflict E { OptH<int[]> }`, "field OptH<int[]>.h: @header rides an optional type parameter over an array"},
 	} {
 		t.Run(label, func(t *testing.T) {
 			src := decls + c.src
