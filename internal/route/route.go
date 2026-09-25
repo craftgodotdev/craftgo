@@ -1,10 +1,11 @@
-// Package route builds a method's URL route, detects net/http pattern
-// conflicts, and names the directory of a service block's generated files.
-// `@group` shapes only that directory, never the URL.
+// Package route builds a method's URL route, finds the segments and pattern
+// pairs net/http's ServeMux refuses, and names the directory of a service
+// block's generated files. `@group` shapes only that directory, never the URL.
 package route
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
@@ -61,7 +62,7 @@ func PathString(p *ast.Path) string {
 // Shape replaces every variable segment of a route with `{}`, so routes that
 // differ only in variable names compare equal.
 func Shape(route string) string {
-	segs := splitRouteSegments(route)
+	segs := Segments(route)
 	for i, seg := range segs {
 		if _, ok := varName(seg); ok {
 			segs[i] = "{}"
@@ -74,7 +75,7 @@ func Shape(route string) string {
 // in order.
 func Vars(route string) []string {
 	var out []string
-	for _, seg := range splitRouteSegments(route) {
+	for _, seg := range Segments(route) {
 		if name, ok := varName(seg); ok {
 			out = append(out, name)
 		}
@@ -146,7 +147,7 @@ func OutputSegment(svcName, group, fileCase string) string {
 // neither more specific, which net/http rejects. A `{name}` wildcard spans one
 // segment and a literal is more specific than a wildcard.
 func PatternsConflict(a, b string) bool {
-	as, bs := splitRouteSegments(a), splitRouteSegments(b)
+	as, bs := Segments(a), Segments(b)
 	if len(as) != len(bs) {
 		return false
 	}
@@ -170,7 +171,8 @@ func PatternsConflict(a, b string) bool {
 	return aMoreSpecific == bMoreSpecific
 }
 
-func splitRouteSegments(pattern string) []string {
+// Segments returns the non-empty segments of a route, prefix or path.
+func Segments(pattern string) []string {
 	var out []string
 	for s := range strings.SplitSeq(pattern, "/") {
 		if s != "" {
@@ -178,4 +180,59 @@ func splitRouteSegments(pattern string) []string {
 		}
 	}
 	return out
+}
+
+// SegmentProblem says why net/http's ServeMux refuses seg, one segment of a
+// route, wherever it stands, or returns "": a `.` or `..`, or a `{` that
+// opens no whole-segment `{name}`, `{name...}` or `{$}` whose name is a Go
+// identifier.
+func SegmentProblem(seg string) string {
+	if seg == "." || seg == ".." {
+		return "net/http cleans `.` and `..` out of a request path before matching, so no request would match"
+	}
+	if !strings.Contains(seg, "{") {
+		return ""
+	}
+	if seg[0] != '{' || seg[len(seg)-1] != '}' {
+		return "a path variable is a whole segment, `{name}`"
+	}
+	inner := seg[1 : len(seg)-1]
+	if inner == "$" {
+		return ""
+	}
+	switch name := strings.TrimSuffix(inner, "..."); {
+	case name == "":
+		return "a path variable needs a name"
+	case !isGoIdent(name):
+		return "a path variable's name is a Go identifier"
+	}
+	return ""
+}
+
+// EndsRoute reports whether seg is a wildcard net/http's ServeMux takes only
+// as the last segment of a route: `{name...}` or `{$}`.
+func EndsRoute(seg string) bool {
+	return len(seg) > 2 && seg[0] == '{' && (seg == "{$}" || strings.HasSuffix(seg, "...}"))
+}
+
+// WildcardName returns the name net/http's ServeMux gives wildcard segment
+// seg, `{name}` or `{name...}`; ok is false for any other segment, `{$}`
+// included.
+func WildcardName(seg string) (string, bool) {
+	if len(seg) < 3 || seg[0] != '{' || seg[len(seg)-1] != '}' || seg == "{$}" {
+		return "", false
+	}
+	name := strings.TrimSuffix(seg[1:len(seg)-1], "...")
+	return name, name != ""
+}
+
+// isGoIdent reports whether s is a Go identifier: a letter or `_`, then
+// letters, digits and `_`.
+func isGoIdent(s string) bool {
+	for i, r := range s {
+		if !unicode.IsLetter(r) && r != '_' && (i == 0 || !unicode.IsDigit(r)) {
+			return false
+		}
+	}
+	return s != ""
 }

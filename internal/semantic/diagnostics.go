@@ -51,6 +51,9 @@ const (
 	CodeMapKeyType = "type/map-key"
 	// CodeDuplicatePathVar fires when a route repeats a path variable (`/items/{id}/x/{id}`).
 	CodeDuplicatePathVar = "route/duplicate-path-var"
+	// CodeRoutePattern fires when a route holds a segment net/http's ServeMux refuses to
+	// register (`/org-{org}`, a `{rest...}` before the last segment).
+	CodeRoutePattern = "route/pattern"
 	// CodeDuplicateWireName fires when two request fields bind the same wire name in one location.
 	CodeDuplicateWireName = "binding/duplicate-wire-name"
 

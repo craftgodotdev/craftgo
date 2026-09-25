@@ -703,6 +703,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   one route it registers, the basePath's included: the field binds to the path
   segment, and the OpenAPI document lists it as a path parameter.
 
+- **A route net/http cannot register is rejected.** `@prefix("/org-{org}")`,
+  a `{rest...}` before a route's last segment, a `.` or `..` segment and a
+  variable such as `{a-b}` passed analysis, and the server panicked at startup
+  registering the route; so did a variable repeated by the basePath and a
+  method path, within a `@prefix`, or by an extend block's method path and the
+  primary service's `@prefix`. Each is now an error, `route/pattern` or
+  `route/duplicate-path-var`, at the `@prefix` or the method, or once for a
+  basePath.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

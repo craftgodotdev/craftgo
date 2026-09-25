@@ -14,8 +14,8 @@ import (
 // defaultHealthPaths are the health routes pkg/server registers by default.
 var defaultHealthPaths = []string{"/healthz", "/readyz"}
 
-// checkPathResolution checks each method's route against the health paths
-// and its request fields.
+// checkPathResolution checks each service's @prefix, and each method's route
+// against net/http's ServeMux, the health paths and its request fields.
 func (a *analyzer) checkPathResolution() {
 	healths := a.opts.HealthPaths
 	if len(healths) == 0 {
@@ -27,6 +27,7 @@ func (a *analyzer) checkPathResolution() {
 	}
 	for _, svcName := range slices.Sorted(maps.Keys(a.pkg.Services)) {
 		si := a.pkg.Services[svcName]
+		a.checkPrefixPattern(si)
 		for _, m := range si.Methods {
 			rt := si.registeredRoute(m)
 			if healthSet[rt] {
@@ -34,9 +35,69 @@ func (a *analyzer) checkPathResolution() {
 					"method %s.%s resolves to %s, which is a reserved health path",
 					svcName, m.Name, rt)
 			}
+			a.checkRouteEnd(svcName, m, rt)
+			a.checkDuplicatePathVars(si, svcName, m)
 			a.checkMethodPathParams(svcName, m, si.Decorators(m), rt)
 		}
 	}
+}
+
+// checkPrefixPattern rejects a segment of si's @prefix that net/http's
+// ServeMux refuses, and a path variable it repeats or the basePath has.
+func (a *analyzer) checkPrefixPattern(si *ServiceInfo) {
+	if si.Primary == nil {
+		return
+	}
+	d := ast.FindDecorator(si.Primary.Decorators, "prefix")
+	prefix := route.ServicePrefix(si.Primary)
+	if d == nil || prefix == "" {
+		return
+	}
+	boundBy := wildcardOrigins(si.basePath, "the basePath")
+	for _, seg := range route.Segments(prefix) {
+		if why := route.SegmentProblem(seg); why != "" {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeRoutePattern,
+				"@prefix %q: net/http's ServeMux refuses the segment %q - %s", prefix, seg, why)
+			continue
+		}
+		name, ok := route.WildcardName(seg)
+		if !ok {
+			continue
+		}
+		if where, dup := boundBy[name]; dup {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDuplicatePathVar,
+				"@prefix %q repeats the path variable {%s}, already bound by %s: net/http's ServeMux panics on a duplicate wildcard at registration. Rename one.",
+				prefix, name, where)
+			continue
+		}
+		boundBy[name] = "an earlier segment of the @prefix"
+	}
+}
+
+// checkRouteEnd rejects a `{name...}` or `{$}` wildcard before the last
+// segment of rt, m's registered route; a segment net/http refuses outright
+// is reported where it is written.
+func (a *analyzer) checkRouteEnd(svcName string, m *ast.Method, rt string) {
+	segs := route.Segments(rt)
+	for _, seg := range segs[:max(len(segs)-1, 0)] {
+		if route.EndsRoute(seg) && route.SegmentProblem(seg) == "" {
+			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodeRoutePattern,
+				"method %s.%s resolves to %s, where %s is not the last segment: net/http's ServeMux takes `{name...}` and `{$}` only at the end of a route, so registering it panics",
+				svcName, m.Name, rt, seg)
+		}
+	}
+}
+
+// wildcardOrigins maps each path variable of path, a route or part of one,
+// to where.
+func wildcardOrigins(path, where string) map[string]string {
+	out := map[string]string{}
+	for _, seg := range route.Segments(path) {
+		if name, ok := route.WildcardName(seg); ok {
+			out[name] = where
+		}
+	}
+	return out
 }
 
 // checkProjectPathCollision reports method pairs that net/http's ServeMux
@@ -109,6 +170,30 @@ func packageNote(other, own string) string {
 		return ""
 	}
 	return " (package " + other + ")"
+}
+
+// checkBasePathPattern rejects a segment of the basePath that net/http's
+// ServeMux refuses, and a path variable it repeats; the manifest value has no
+// source position.
+func (c *projectChecks) checkBasePathPattern() {
+	seen := map[string]bool{}
+	for _, seg := range route.Segments(c.basePath) {
+		if why := route.SegmentProblem(seg); why != "" {
+			c.diag(lexer.Position{}, lexer.SeverityError, CodeRoutePattern,
+				"basePath %q: net/http's ServeMux refuses the segment %q - %s", c.basePath, seg, why)
+			continue
+		}
+		name, ok := route.WildcardName(seg)
+		if !ok {
+			continue
+		}
+		if seen[name] {
+			c.diag(lexer.Position{}, lexer.SeverityError, CodeDuplicatePathVar,
+				"basePath %q repeats the path variable {%s}: net/http's ServeMux panics on a duplicate wildcard at registration. Rename one.",
+				c.basePath, name)
+		}
+		seen[name] = true
+	}
 }
 
 // checkBasePathFormat warns when a non-empty basePath lacks the leading
@@ -222,31 +307,31 @@ func (a *analyzer) requestPathFields(m *ast.Method, pathParams []string) *pathPa
 	return out
 }
 
-// checkDuplicatePathVars rejects a path variable repeated in m's route, the
-// service @prefix included.
-func (a *analyzer) checkDuplicatePathVars(svc *ast.ServiceDecl, m *ast.Method) {
-	if m == nil || m.Path == nil {
+// checkDuplicatePathVars rejects a path variable m's path repeats, or one
+// the basePath or the service @prefix, which its registered route starts
+// with, already has; si is m's service.
+func (a *analyzer) checkDuplicatePathVars(si *ServiceInfo, svcName string, m *ast.Method) {
+	if m.Path == nil {
 		return
 	}
-	svcName := svc.Name
-	// The registered route is the @prefix followed by the method path.
-	seen := map[string]bool{}
-	fromPrefix := map[string]bool{}
-	for _, name := range route.Vars(route.ServicePrefix(svc)) {
-		seen[name] = true
-		fromPrefix[name] = true
+	boundBy := wildcardOrigins(si.basePath, "the basePath")
+	for name := range wildcardOrigins(route.ServicePrefix(si.Primary), "the service @prefix") {
+		if _, dup := boundBy[name]; !dup {
+			boundBy[name] = "the service @prefix"
+		}
 	}
+	seen := map[string]bool{}
 	for _, seg := range m.Path.Segments {
 		if !seg.Param {
 			continue
 		}
+		if where, dup := boundBy[seg.Literal]; dup {
+			a.diag(seg.Pos, seg.Pos, lexer.SeverityError, CodeDuplicatePathVar,
+				"%s.%s route repeats the path variable {%s} already bound by %s: the registered route is basePath + @prefix + method path, so net/http's ServeMux panics on the duplicate wildcard at registration. Drop {%s} from the method path.",
+				svcName, m.Name, seg.Literal, where, seg.Literal)
+			return
+		}
 		if seen[seg.Literal] {
-			if fromPrefix[seg.Literal] {
-				a.diag(seg.Pos, seg.Pos, lexer.SeverityError, CodeDuplicatePathVar,
-					"%s.%s route repeats the path variable {%s} already bound by the service @prefix: the registered route is prefix + method path, so net/http's ServeMux panics on the duplicate wildcard at registration. Drop {%s} from the method path.",
-					svcName, m.Name, seg.Literal, seg.Literal)
-				return
-			}
 			a.diag(seg.Pos, seg.Pos, lexer.SeverityError, CodeDuplicatePathVar,
 				"%s.%s route repeats the path variable {%s}: net/http's ServeMux panics on a duplicate wildcard at registration. Rename one segment.",
 				svcName, m.Name, seg.Literal)

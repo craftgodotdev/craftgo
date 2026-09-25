@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -129,6 +130,61 @@ type Req { tenant string? }
 service S { get A /a { request Req } }`), opts)
 	if d := findCode(diags, CodeDecoratorConflict); d == nil || !strings.Contains(d.Msg, "auto-binds to the path segment {tenant}") {
 		t.Errorf("want an optional basePath variable refused as a path segment, got %v", diags)
+	}
+}
+
+// muxRefuses reports whether a real net/http ServeMux panics registering
+// pattern.
+func muxRefuses(pattern string) (refused bool) {
+	defer func() { refused = recover() != nil }()
+	http.NewServeMux().Handle(pattern, http.NotFoundHandler())
+	return false
+}
+
+// A route net/http's ServeMux refuses to register is rejected, and one it
+// takes is not; a real mux decides which is which.
+func TestRoutePatternsNetHTTPRefusesRejected(t *testing.T) {
+	cases := []struct {
+		label, basePath, src string
+		code                 string // "" for a route the mux takes
+	}{
+		{"variable inside a segment", "", `@prefix("/org-{org}") service S { @passthrough get A /a {} }`, CodeRoutePattern},
+		{"text after a variable", "", `@prefix("/{org}x") service S { @passthrough get A /a {} }`, CodeRoutePattern},
+		{"rest before the end", "", `@prefix("/files/{rest...}") service S { @passthrough get A /a {} }`, CodeRoutePattern},
+		{"dollar before the end", "", `@prefix("/x/{$}") service S { @passthrough get A /a {} }`, CodeRoutePattern},
+		{"dot-dot segment", "", `@prefix("/v1/../v2") service S { get A /a {} }`, CodeRoutePattern},
+		{"dot segment", "", `@prefix("/v1/.") service S { get A /a {} }`, CodeRoutePattern},
+		{"name not an identifier", "", `@prefix("/{a-b}") service S { @passthrough get A /a {} }`, CodeRoutePattern},
+		{"empty name", "", `@prefix("/{}") service S { @passthrough get A /a {} }`, CodeRoutePattern},
+		{"name of dots", "", `@prefix("/{...}") service S { @passthrough get A /a {} }`, CodeRoutePattern},
+		{"basePath variable inside a segment", "/t-{x}", `service S { get A /a {} }`, CodeRoutePattern},
+		{"basePath rest before the end", "/t/{x...}", `service S { get A /a {} }`, CodeRoutePattern},
+		{"prefix repeats a variable", "", `@prefix("/{a}/{a}") service S { @passthrough get A /x {} }`, CodeDuplicatePathVar},
+		{"basePath variable repeated", "/t/{id}", `type R { id string }
+service S { get A /a/{id} { request R } }`, CodeDuplicatePathVar},
+		{"extend block repeats the prefix's variable", "", `type R { id string }
+@prefix("/o/{id}") service S {}
+extend service S { get A /x/{id} { request R } }`, CodeDuplicatePathVar},
+		{"rest ending the route", "", `@prefix("/files/{rest...}") service S { @passthrough get A / {} }`, ""},
+		{"prefix variable", "/t/{tenant}", `type R { tenant string  org string }
+@prefix("/orgs/{org}") service S { get A /a { request R } }`, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.label, func(t *testing.T) {
+			pkg, diags := analyzeWith(parseFiles(t, "package app\n"+c.src), Options{BasePath: c.basePath})
+			si := pkg.Services["S"]
+			rt := si.registeredRoute(si.Methods[0])
+			if refused := muxRefuses("GET " + rt); refused != (c.code != "") {
+				t.Fatalf("net/http refuses %q: %v, want %v", rt, refused, c.code != "")
+			}
+			if c.code == "" {
+				expectNoDiags(t, diags)
+				return
+			}
+			if d := findCode(diags, c.code); d == nil || d.Severity != lexer.SeverityError {
+				t.Errorf("want a %s error for route %q, got %v", c.code, rt, diags)
+			}
+		})
 	}
 }
 

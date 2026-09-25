@@ -47,6 +47,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	}
 	c := &projectChecks{proj: proj, diags: diags, basePath: opts.BasePath, fileCase: opts.FileCase}
 	c.checkBasePathFormat()
+	c.checkBasePathPattern()
 	c.checkProjectGroupChecks()
 	c.checkProjectMiddlewareUniqueness()
 	c.checkProjectPathCollision()

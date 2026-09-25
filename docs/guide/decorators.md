@@ -421,6 +421,8 @@ service UserService {
 }
 ```
 
+A path variable in the prefix is a whole segment, as in `/orgs/{org}`. A route net/http's ServeMux would refuse to register is rejected: a segment such as `org-{org}`, `.` or `..`, or a variable name that is no Go identifier (`route/pattern`), a `{rest...}` before the route's last segment (`route/pattern`), and a variable the basePath, the prefix or the method path repeats (`route/duplicate-path-var`).
+
 ### `@group(path)`
 
 Does two things: (1) sets where the service's generated **files** land on disk - the value **replaces** the service-name segment, so the files go to `<output>/<group>/` instead of `<output>/<service-name>/` - and (2) adds its value as an **OpenAPI tag**. It does **not** change the HTTP route or the OpenAPI *path* - use `@prefix` for that.
