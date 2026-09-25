@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"slices"
@@ -37,16 +38,7 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 		for _, m := range ed.Body {
 			switch v := m.(type) {
 			case *ast.Field:
-				rf := semantic.ResolveField(v, pkg, registry.resolver.Project())
-				if !rf.OnWireBody {
-					continue
-				}
-				ref := schemaForTypeRef(v.Type, pkg, registry)
-				applyFieldMetadata(v, ref, pkg)
-				s.Properties[wire.JSONName(v)] = ref
-				if rf.SpecRequired {
-					s.Required = append(s.Required, wire.JSONName(v))
-				}
+				addBodyProperty(s, semantic.ResolveField(v, pkg, registry.resolver.Project()), v.Type, pkg, registry)
 			case *ast.Mixin:
 				if v == nil || v.Ref == nil || v.Ref.Name == nil {
 					continue
@@ -151,20 +143,11 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 	for _, m := range td.Body {
 		switch v := m.(type) {
 		case *ast.Field:
-			rf := semantic.ResolveField(v, pkg, registry.resolver.Project())
-			if !rf.OnWireBody {
-				continue
-			}
 			ft := v.Type
 			if subst != nil {
 				ft = semantic.SubstituteTypeRef(v.Type, subst)
 			}
-			ref := schemaForTypeRef(ft, pkg, registry)
-			applyFieldMetadata(v, ref, pkg)
-			s.Properties[wire.JSONName(v)] = ref
-			if rf.SpecRequired {
-				s.Required = append(s.Required, wire.JSONName(v))
-			}
+			addBodyProperty(s, semantic.ResolveField(v, pkg, registry.resolver.Project()), ft, pkg, registry)
 		case *ast.Mixin:
 			if v == nil || v.Ref == nil || v.Ref.Name == nil {
 				continue
@@ -185,7 +168,7 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 			})
 		}
 	}
-	crossFragments := crossFieldSchemaFragments(td.Decorators, td.Body)
+	crossFragments := typeFragments(td, registry)
 
 	if len(mixinRefs) > 0 {
 		wrapAllOfWithHost(s, mixinRefs, crossFragments)
@@ -206,11 +189,37 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 	return s
 }
 
-// crossFieldSchemaFragments returns an allOf fragment per cross-field decorator:
-// `@requiresOneOf(x, y)` an `anyOf` of "x present", "y present", and
-// `@mutuallyExclusive(x, y)` a `not` of "both present". members gives JSON keys.
-func crossFieldSchemaFragments(decs []*ast.Decorator, members []ast.TypeMember) openapi3.SchemaRefs {
-	keys := jsonKeys(members)
+// addBodyProperty puts rf's field, typed ft, in s under its JSON name,
+// required when rf.SpecRequired; a field off the body is left out.
+func addBodyProperty(s *openapi3.Schema, rf semantic.ResolvedField, ft *ast.TypeRef, pkg *semantic.Package, registry *genericRegistry) {
+	if !rf.OnWireBody {
+		return
+	}
+	ref := schemaForTypeRef(ft, pkg, registry)
+	applyFieldMetadata(rf.Field, ref, pkg)
+	key := wire.JSONName(rf.Field)
+	s.Properties[key] = ref
+	if rf.SpecRequired {
+		s.Required = append(s.Required, key)
+	}
+}
+
+// typeFragments returns the cross-field fragments of td's decorators, each
+// member under its JSON key.
+func typeFragments(td *ast.TypeDecl, registry *genericRegistry) openapi3.SchemaRefs {
+	return crossFieldSchemaFragments(td.Decorators, jsonKeys(semantic.FlattenFields(td, "", registry.resolver, nil)))
+}
+
+// crossFieldSchemaFragments returns `@requiresOneOf` as an `anyOf` of "x present" branches and
+// `@mutuallyExclusive` as a `not` of "all present", each member under its keys entry, else its name.
+func crossFieldSchemaFragments(decs []*ast.Decorator, keys map[string]string) openapi3.SchemaRefs {
+	memberKeys := func(d *ast.Decorator) []string {
+		names := semantic.CrossFieldNames(d)
+		for i, n := range names {
+			names[i] = cmp.Or(keys[n], n)
+		}
+		return names
+	}
 	var out openapi3.SchemaRefs
 	for _, d := range decs {
 		if d == nil {
@@ -218,7 +227,7 @@ func crossFieldSchemaFragments(decs []*ast.Decorator, members []ast.TypeMember) 
 		}
 		switch d.Name {
 		case "requiresOneOf":
-			names := keys(semantic.CrossFieldNames(d))
+			names := memberKeys(d)
 			if len(names) == 0 {
 				continue
 			}
@@ -230,7 +239,7 @@ func crossFieldSchemaFragments(decs []*ast.Decorator, members []ast.TypeMember) 
 				AnyOf: branches,
 			}})
 		case "mutuallyExclusive":
-			names := keys(semantic.CrossFieldNames(d))
+			names := memberKeys(d)
 			if len(names) < 2 {
 				continue
 			}
@@ -242,25 +251,16 @@ func crossFieldSchemaFragments(decs []*ast.Decorator, members []ast.TypeMember) 
 	return out
 }
 
-// jsonKeys maps the DSL field names a cross-field decorator lists onto
-// the JSON keys the document carries, which differ under @json.
-func jsonKeys(members []ast.TypeMember) func([]string) []string {
-	byField := map[string]string{}
-	for _, f := range ast.Fields(members) {
-		if f.Name != "" {
-			byField[f.Name] = wire.JSONName(f)
+// jsonKeys maps the name of each of fields to its JSON key; of two fields
+// sharing a name, the first counts.
+func jsonKeys(fields []semantic.FlatField) map[string]string {
+	keys := map[string]string{}
+	for _, ff := range fields {
+		if _, dup := keys[ff.Field.Name]; !dup {
+			keys[ff.Field.Name] = wire.JSONName(ff.Field)
 		}
 	}
-	return func(names []string) []string {
-		out := make([]string, len(names))
-		for i, n := range names {
-			if key, ok := byField[n]; ok {
-				n = key
-			}
-			out[i] = n
-		}
-		return out
-	}
+	return keys
 }
 
 // presentNonNull matches a body with every named field present and not null,

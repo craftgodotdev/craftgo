@@ -144,12 +144,32 @@ type PairsDoc struct {
 	B *string `json:"b,omitempty"`
 }
 
+// PairsKeyed promotes a field under its @json name.
+type PairsKeyed struct {
+	Primary *string `json:"primary_email,omitempty"`
+}
+
 // PairsNum stacks @range (lo,hi pair) with @multipleOf and the
 // strict-bound @gt / @lte. Both the soft and strict bounds are present
 // so the validator firing order is visible in the generated code:
 // each decorator should emit one comparison.
 type PairsNum struct {
 	Score int `json:"score"`
+}
+
+// PairsRenamed puts a path id beside a body keyed by @json names: the
+// operation body and the @requiresOneOf over the promoted member name the
+// JSON keys.
+type PairsRenamed struct {
+	PairsKeyed
+	ID     string  `json:"-" path:"id"`
+	Backup *string `json:"backup_email,omitempty"`
+}
+
+// PairsRenamedResp splits a header off a body keyed by a @json name.
+type PairsRenamedResp struct {
+	Etag    string  `json:"-" header:"ETag"`
+	Primary *string `json:"primary_email,omitempty"`
 }
 
 // PairsStr stacks every string validator the generator supports on a

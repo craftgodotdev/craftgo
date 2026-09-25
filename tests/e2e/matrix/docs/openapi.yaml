@@ -4101,6 +4101,14 @@ components:
         its keyword; the Go doc and the OpenAPI description hold both, in order.
         Either a or b carries the value.
       type: object
+    PairsKeyed:
+      description: PairsKeyed promotes a field under its @json name.
+      properties:
+        primary_email:
+          type:
+          - string
+          - "null"
+      type: object
     PairsNum:
       description: |-
         PairsNum stacks @range (lo,hi pair) with @multipleOf and the
@@ -4116,6 +4124,41 @@ components:
           type: integer
       required:
       - score
+      type: object
+    PairsRenamed:
+      allOf:
+      - $ref: '#/components/schemas/PairsKeyed'
+      - properties:
+          backup_email:
+            type:
+            - string
+            - "null"
+        type: object
+      - anyOf:
+        - properties:
+            primary_email:
+              not:
+                type: "null"
+          required:
+          - primary_email
+        - properties:
+            backup_email:
+              not:
+                type: "null"
+          required:
+          - backup_email
+      description: |-
+        PairsRenamed puts a path id beside a body keyed by @json names: the
+        operation body and the @requiresOneOf over the promoted member name the
+        JSON keys.
+      type: object
+    PairsRenamedResp:
+      description: PairsRenamedResp splits a header off a body keyed by a @json name.
+      properties:
+        primary_email:
+          type:
+          - string
+          - "null"
       type: object
     PairsStr:
       description: |-
@@ -7081,6 +7124,38 @@ components:
       type: object
     ValidateNumRespBody:
       $ref: '#/components/schemas/PairsNum'
+    ValidateRenamedReqBody:
+      allOf:
+      - properties:
+          backup_email:
+            type:
+            - string
+            - "null"
+          primary_email:
+            type:
+            - string
+            - "null"
+        type: object
+      - anyOf:
+        - properties:
+            primary_email:
+              not:
+                type: "null"
+          required:
+          - primary_email
+        - properties:
+            backup_email:
+              not:
+                type: "null"
+          required:
+          - backup_email
+    ValidateRenamedRespBody:
+      properties:
+        primary_email:
+          type:
+          - string
+          - "null"
+      type: object
     ValidateStrReqBody:
       description: |-
         PairsStr stacks every string validator the generator supports on a
@@ -8962,6 +9037,37 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidateNumRespBody'
           description: Created
+      tags:
+      - combine
+  /combine/pairs/renamed/{id}:
+    post:
+      description: Validate a path id beside a body keyed by @json names. The operation
+        body and the @requiresOneOf name primary_email and backup_email; the response
+        sends ETag as a header and primary_email in the body.
+      operationId: ValidateRenamed
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateRenamedReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateRenamedRespBody'
+          description: Created
+          headers:
+            ETag:
+              schema:
+                type: string
       tags:
       - combine
   /combine/pairs/str:

@@ -127,7 +127,7 @@ func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package,
 	// bring included, and the cross-field fragments.
 	if len(bins.body) > 0 {
 		s := schemaFromFields(bins.body, pkg, registry)
-		if frags := crossFieldSchemaFragments(td.Decorators, td.Body); len(frags) > 0 {
+		if frags := typeFragments(td, registry); len(frags) > 0 {
 			s = &openapi3.Schema{
 				AllOf: append(openapi3.SchemaRefs{{Value: s}}, frags...),
 			}
@@ -264,16 +264,7 @@ func schemaFromFields(fields []*ast.Field, pkg *semantic.Package, registry *gene
 		Properties: openapi3.Schemas{},
 	}
 	for _, f := range fields {
-		rf := semantic.ResolveField(f, pkg, registry.resolver.Project())
-		if !rf.OnWireBody {
-			continue
-		}
-		ref := schemaForTypeRef(f.Type, pkg, registry)
-		applyFieldMetadata(f, ref, pkg)
-		s.Properties[f.Name] = ref
-		if rf.SpecRequired {
-			s.Required = append(s.Required, f.Name)
-		}
+		addBodyProperty(s, semantic.ResolveField(f, pkg, registry.resolver.Project()), f.Type, pkg, registry)
 	}
 	return s
 }

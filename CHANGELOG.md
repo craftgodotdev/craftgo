@@ -564,6 +564,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   related it to itself; each now sits on its own value and relates to the
   first `A`.
 
+- **OpenAPI bodies use the `@json` key.** The body of a request that also
+  binds a path, query, header or cookie field, and of a response that sends a
+  header or cookie, listed a `@json` field under its field name; a
+  `@requiresOneOf` or `@mutuallyExclusive` did the same for a member a mixin
+  brings. Both now use the key the server reads and writes.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

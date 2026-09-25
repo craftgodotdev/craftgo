@@ -87,4 +87,10 @@ service CombineService {
 		request  DefaultsWidth
 		response DefaultsWidth
 	}
+
+	@doc("Validate a path id beside a body keyed by @json names. The operation body and the @requiresOneOf name primary_email and backup_email; the response sends ETag as a header and primary_email in the body.")
+	post ValidateRenamed /pairs/renamed/{id} {
+		request  PairsRenamed
+		response PairsRenamedResp
+	}
 }

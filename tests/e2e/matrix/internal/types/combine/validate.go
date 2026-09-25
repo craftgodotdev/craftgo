@@ -158,6 +158,12 @@ func (v *PairsDoc) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on PairsKeyed.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PairsKeyed) Validate() error {
+	return nil
+}
+
 // Validate checks every field-level constraint declared on PairsNum.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PairsNum) Validate() error {
@@ -173,6 +179,24 @@ func (v *PairsNum) Validate() error {
 	if v.Score > 99 {
 		return fmt.Errorf("score: above maximum 99")
 	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on PairsRenamed.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PairsRenamed) Validate() error {
+	if err := v.PairsKeyed.Validate(); err != nil {
+		return err
+	}
+	if v.Primary == nil && v.Backup == nil {
+		return fmt.Errorf("PairsRenamed: requiresOneOf [primary backup] - at least one must be set")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on PairsRenamedResp.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PairsRenamedResp) Validate() error {
 	return nil
 }
 

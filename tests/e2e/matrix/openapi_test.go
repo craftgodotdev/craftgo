@@ -1,11 +1,18 @@
 package matrix
 
 import (
+	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
+
+	combine "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 )
 
 func readOpenAPI(t *testing.T) string {
@@ -120,5 +127,64 @@ func TestOpenAPI_RawModesContracts(t *testing.T) {
 
 	if !strings.Contains(doc, "PageOfRqItem:") {
 		t.Errorf("cross-package generic response on a raw request must register its instance component")
+	}
+}
+
+// schemaDoc is the part of a component schema the body-key checks read.
+type schemaDoc struct {
+	Properties map[string]any `yaml:"properties"`
+	Required   []string       `yaml:"required"`
+	AllOf      []schemaDoc    `yaml:"allOf"`
+	AnyOf      []schemaDoc    `yaml:"anyOf"`
+}
+
+// readSchemas returns the component schemas of docs/openapi.yaml.
+func readSchemas(t *testing.T) map[string]schemaDoc {
+	t.Helper()
+	var doc struct {
+		Components struct {
+			Schemas map[string]schemaDoc `yaml:"schemas"`
+		} `yaml:"components"`
+	}
+	if err := yaml.Unmarshal([]byte(readOpenAPI(t)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	return doc.Components.Schemas
+}
+
+// An operation body beside a path id keys its properties and its
+// @requiresOneOf members by their @json names, which the runtime decodes.
+func TestOpenAPI_BodyKeysAreJSONNames(t *testing.T) {
+	schemas := readSchemas(t)
+	want := []string{"backup_email", "primary_email"}
+
+	req := schemas["ValidateRenamedReqBody"]
+	if len(req.AllOf) != 2 {
+		t.Fatalf("ValidateRenamedReqBody: want the body and one cross-field fragment, got %+v", req)
+	}
+	if got := slices.Sorted(maps.Keys(req.AllOf[0].Properties)); !slices.Equal(got, want) {
+		t.Errorf("ValidateRenamedReqBody properties = %v, want %v", got, want)
+	}
+	var members []string
+	for _, branch := range req.AllOf[1].AnyOf {
+		members = append(members, branch.Required...)
+	}
+	slices.Sort(members)
+	if !slices.Equal(members, want) {
+		t.Errorf("ValidateRenamedReqBody @requiresOneOf names %v, want %v", members, want)
+	}
+	for _, key := range members {
+		var body combine.PairsRenamed
+		if err := json.Unmarshal([]byte(`{"`+key+`": "a@b.c"}`), &body); err != nil {
+			t.Fatal(err)
+		}
+		if err := body.Validate(); err != nil {
+			t.Errorf("a body carrying only the documented %q fails the group: %v", key, err)
+		}
+	}
+
+	resp := schemas["ValidateRenamedRespBody"]
+	if got := slices.Sorted(maps.Keys(resp.Properties)); !slices.Equal(got, []string{"primary_email"}) {
+		t.Errorf("ValidateRenamedRespBody properties = %v, want [primary_email]", got)
 	}
 }

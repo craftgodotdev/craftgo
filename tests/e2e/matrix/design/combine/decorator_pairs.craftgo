@@ -66,3 +66,24 @@ type PairsDoc {
 	a string?
 	b string?
 }
+
+// PairsKeyed promotes a field under its @json name.
+type PairsKeyed {
+	primary string? @json("primary_email")
+}
+
+// PairsRenamed puts a path id beside a body keyed by @json names: the
+// operation body and the @requiresOneOf over the promoted member name the
+// JSON keys.
+@requiresOneOf(primary, backup)
+type PairsRenamed {
+	PairsKeyed
+	id     string  @path
+	backup string? @json("backup_email")
+}
+
+// PairsRenamedResp splits a header off a body keyed by a @json name.
+type PairsRenamedResp {
+	etag    string  @header("ETag")
+	primary string? @json("primary_email")
+}
