@@ -3,10 +3,12 @@ package docs
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/getkin/kin-openapi/openapi3"
 )
@@ -242,21 +244,30 @@ service DService { get GetThing /d { response A } }`
 	mustContainNone(t, body, "operationId: List\n", "\n    ListRespBody:")
 }
 
-// GenerateOpenAPI rejects an `@operationId` equal to another method's
-// operationId, even in a design that skipped analysis.
-func TestGenerateOpenAPIDuplicateOperationIDBackstop(t *testing.T) {
-	// AService.Find is pinned to "Lookup", BService.Lookup's default.
-	src := `package design
+// No document is built with a duplicate operationId: the analyser rejects an
+// `@operationId` equal to another method's, in one package or across two.
+func TestDuplicateOperationIDRejectedBeforeTheDocument(t *testing.T) {
+	for label, src := range map[string]map[string]string{
+		"one package": {"a/a.craftgo": `package a
 type R { x string }
 service AService { @operationId("Lookup") get Find /a { response R } }
-service BService { get Lookup /b { response R } }`
-	pkg := analyzeIgnoringErrors(t, src)
-	err := genOpenAPI(t, pkg, sampleConfig(), t.TempDir())
-	if err == nil {
-		t.Fatal("expected a duplicate-operationId error, got nil")
-	}
-	if !strings.Contains(err.Error(), "duplicate operationId") || !strings.Contains(err.Error(), "Lookup") {
-		t.Errorf("error should name the duplicate operationId; got: %v", err)
+service BService { get Lookup /b { response R } }`},
+		"two packages": {
+			"a/a.craftgo": `package a
+type R { x string }
+service AService { @operationId("Lookup") get Find /a { response R } }`,
+			"b/b.craftgo": `package b
+type R { x string }
+service BService { get Lookup /b { response R } }`,
+		},
+	} {
+		root, files := projectFiles(t, src)
+		_, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+		if !slices.ContainsFunc(diags, func(d semantic.Diagnostic) bool {
+			return d.Code == semantic.CodeDuplicateOperation && d.Severity == lexer.SeverityError
+		}) {
+			t.Errorf("%s: want a %s error, got %v", label, semantic.CodeDuplicateOperation, diags)
+		}
 	}
 }
 
@@ -1685,8 +1696,7 @@ type Outer {
 	if len(diags) > 0 {
 		t.Fatalf("semantic: %v", diags)
 	}
-	merged := mergeProjectForOpenAPI(proj)
-	doc, err := buildOpenAPIDoc(merged, &config.Config{})
+	doc, err := buildProjectDocument(proj, &config.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1717,7 +1727,7 @@ func genDoc(t *testing.T, src map[string]string, cfg *config.Config) *openapi3.T
 	if len(diags) > 0 {
 		t.Fatalf("semantic: %v", diags)
 	}
-	doc, err := buildOpenAPIDoc(mergeProjectForOpenAPI(proj), cfg)
+	doc, err := buildProjectDocument(proj, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

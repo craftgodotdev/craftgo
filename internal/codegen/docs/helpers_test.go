@@ -39,18 +39,6 @@ func analyze(t *testing.T, src string) *semantic.Package {
 	return pkg
 }
 
-// analyzeIgnoringErrors is [analyze] without failing on semantic errors.
-func analyzeIgnoringErrors(t *testing.T, src string) *semantic.Package {
-	t.Helper()
-	p := craftparser.New("test.craftgo", src)
-	f := p.Parse()
-	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("parse errors: %v", d)
-	}
-	pkg, _ := semantic.Analyze([]*ast.File{f})
-	return pkg
-}
-
 // mustContainAll reports, in one error, every want missing from got.
 func mustContainAll(t *testing.T, got string, wants ...string) {
 	t.Helper()

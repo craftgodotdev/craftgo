@@ -34,67 +34,43 @@ func (s *schemaNames) put(doc *openapi3.T, name string, ref *openapi3.SchemaRef)
 	doc.Components.Schemas[name] = ref
 }
 
-// writeOpenAPI builds pkg's document and writes it as YAML to `output.openapi`.
-func writeOpenAPI(pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	if err := checkOperationIDUniqueness(pkg); err != nil {
-		return err
-	}
-	doc, err := buildOpenAPIDoc(pkg, cfg)
-	if err != nil {
-		return err
-	}
-	dest := documentPath(cfg, projectRoot)
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
-	}
-	out, err := yaml.Marshal(doc)
-	if err != nil {
-		return fmt.Errorf("marshal openapi: %w", err)
-	}
-	return os.WriteFile(dest, append([]byte(GeneratedHeader+"\n"), out...), 0o644)
-}
-
 // ValidateOpenAPI builds the project's document without writing it and returns
-// the merge, operationId or component name collision that stops it.
+// the merge or component name collision that stops it.
 func ValidateOpenAPI(proj *semantic.Project, cfg *config.Config) error {
 	if proj == nil {
 		return nil
 	}
-	if dups := projectMergeCollisions(proj); len(dups) > 0 {
-		return mergeCollisionError(dups)
-	}
-	merged := mergeProjectForOpenAPI(proj)
-	if merged.Name == "" {
-		merged.Name = "design"
-	}
-	if err := checkOperationIDUniqueness(merged); err != nil {
-		return err
-	}
-	_, err := buildOpenAPIDoc(merged, cfg)
+	_, err := buildProjectDocument(proj, cfg)
 	return err
 }
 
 // GenerateOpenAPI writes the project as one OpenAPI 3.1 document to
 // `output.openapi`, naming a declaration two packages share `<PascalPkg><Name>`.
 func GenerateOpenAPI(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
-	if proj == nil {
+	dest := documentPath(cfg, projectRoot)
+	if dest == "" || !describable(proj) {
 		return nil
 	}
-	if cfg.Output.OpenAPIDisabled() {
-		return nil
+	doc, err := buildProjectDocument(proj, cfg)
+	if err != nil {
+		return err
 	}
-	if !describable(proj) {
-		return nil
+	out, err := yaml.Marshal(doc)
+	if err != nil {
+		return fmt.Errorf("marshal openapi: %w", err)
 	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(dest, append([]byte(GeneratedHeader+"\n"), out...), 0o644)
+}
+
+// buildProjectDocument merges proj's packages into one and builds its document.
+func buildProjectDocument(proj *semantic.Project, cfg *config.Config) (*openapi3.T, error) {
 	if dups := projectMergeCollisions(proj); len(dups) > 0 {
-		return mergeCollisionError(dups)
+		return nil, mergeCollisionError(dups)
 	}
-	merged := mergeProjectForOpenAPI(proj)
-	if merged.Name == "" {
-		// The name is the title when the manifest sets none.
-		merged.Name = "design"
-	}
-	return writeOpenAPI(merged, cfg, projectRoot)
+	return buildOpenAPIDoc(mergeProjectForOpenAPI(proj), cfg)
 }
 
 // mergeCollisionError is the error for the names [projectMergeCollisions]
@@ -103,11 +79,13 @@ func mergeCollisionError(dups []string) error {
 	return fmt.Errorf("cross-package OpenAPI name collision: %s - a type/enum/error/scalar in one package disambiguates to a component name another package already declares, which would silently drop one schema and advertise the wrong shape. Rename one of the clashing declarations", strings.Join(dups, ", "))
 }
 
+// buildOpenAPIDoc builds pkg's document; its title, unless the manifest sets
+// one, is the package name, else "design".
 func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, error) {
 	doc := &openapi3.T{
 		OpenAPI: "3.1.0",
 		Info: &openapi3.Info{
-			Title:       cmp.Or(cfg.OpenAPI.Title, pkg.Name),
+			Title:       cmp.Or(cfg.OpenAPI.Title, pkg.Name, "design"),
 			Version:     cmp.Or(cfg.OpenAPI.Version, "0.1.0"),
 			Description: cfg.OpenAPI.Description,
 		},

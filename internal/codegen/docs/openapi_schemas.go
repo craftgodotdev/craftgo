@@ -70,7 +70,7 @@ func addTypeSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericReg
 		if len(td.TypeParams) > 0 {
 			continue
 		}
-		names.put(doc, name, &openapi3.SchemaRef{Value: schemaForType(td, pkg, registry)})
+		names.put(doc, name, &openapi3.SchemaRef{Value: schemaFromTypeDecl(td, nil, pkg, registry)})
 	}
 }
 
@@ -109,11 +109,6 @@ func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames
 		}
 		names.put(doc, name, &openapi3.SchemaRef{Value: base})
 	}
-}
-
-// schemaForType is the schema of a non-generic type.
-func schemaForType(td *ast.TypeDecl, pkg *semantic.Package, registry *genericRegistry) *openapi3.Schema {
-	return schemaFromTypeDecl(td, nil, pkg, registry)
 }
 
 // schemaFromTypeDecl builds td's object schema, substituting subst into its

@@ -1,7 +1,6 @@
 package docs
 
 import (
-	"maps"
 	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -65,12 +64,11 @@ type merger struct {
 func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 	m := &merger{proj: proj, names: mergedNames(proj)}
 	out := &semantic.Package{
-		Types:       map[string]*ast.TypeDecl{},
-		Enums:       map[string]*ast.EnumDecl{},
-		Errors:      map[string]*ast.ErrorDecl{},
-		Scalars:     map[string]*ast.ScalarDecl{},
-		Middlewares: map[string]*ast.MiddlewareDecl{},
-		Services:    map[string]*semantic.ServiceInfo{},
+		Types:    map[string]*ast.TypeDecl{},
+		Enums:    map[string]*ast.EnumDecl{},
+		Errors:   map[string]*ast.ErrorDecl{},
+		Scalars:  map[string]*ast.ScalarDecl{},
+		Services: map[string]*semantic.ServiceInfo{},
 	}
 	pkgNames := proj.PackageNames()
 	if len(pkgNames) > 0 {
@@ -108,7 +106,6 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 			}
 			out.Services[pkgName+"."+name] = m.service(pkgName, si)
 		}
-		maps.Copy(out.Middlewares, p.Middlewares)
 	}
 	return out
 }

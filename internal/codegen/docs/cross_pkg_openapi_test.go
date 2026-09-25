@@ -35,8 +35,7 @@ type MkB { name string }`,
 	if len(diags) > 0 {
 		t.Fatalf("semantic: %v", diags)
 	}
-	merged := mergeProjectForOpenAPI(proj)
-	doc, err := buildOpenAPIDoc(merged, &config.Config{})
+	doc, err := buildProjectDocument(proj, &config.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}

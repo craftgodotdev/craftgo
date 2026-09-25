@@ -172,7 +172,7 @@ service S { post G /g { request Req  response Resp } }`,
 		if len(diags) > 0 {
 			t.Fatalf("semantic: %v", diags)
 		}
-		return buildOpenAPIDoc(mergeProjectForOpenAPI(proj), &config.Config{})
+		return buildProjectDocument(proj, &config.Config{})
 	}
 	if _, err := mk("real Page<IntArray>  prim Page<int[]>"); err == nil || !strings.Contains(err.Error(), "structurally distinct generic") {
 		t.Errorf("expected generic-instance collision error, got: %v", err)

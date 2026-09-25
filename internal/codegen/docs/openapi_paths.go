@@ -1,9 +1,6 @@
 package docs
 
 import (
-	"fmt"
-	"maps"
-	"slices"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -14,12 +11,13 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
+// addPaths adds an operation per method of pkg, each under its route.
 func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
-	counts := methodNameCounts(pkg)
+	counts := semantic.MethodNameCounts(pkg)
 	for _, key := range pkg.ServiceNames() {
 		svc := pkg.Services[key]
 		for _, m := range svc.Methods {
-			s := newOpShape(svc, m, route.Resolve("", svc.Primary, m), operationBaseName(svc.Primary.Name, m, counts), pkg, registry.resolver)
+			s := newOpShape(svc, m, route.Resolve("", svc.Primary, m), semantic.OperationBaseName(svc.Primary.Name, m, counts), pkg, registry.resolver)
 			item := doc.Paths.Value(s.full)
 			if item == nil {
 				item = &openapi3.PathItem{}
@@ -28,38 +26,6 @@ func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry,
 			setOperation(item, m.Verb, buildOperation(doc, svc, s, pkg, registry, names))
 		}
 	}
-}
-
-func methodNameCounts(pkg *semantic.Package) map[string]int {
-	return semantic.MethodNameCounts(pkg)
-}
-
-func operationBaseName(svcName string, m *ast.Method, counts map[string]int) string {
-	return semantic.OperationBaseName(svcName, m, counts)
-}
-
-// checkOperationIDUniqueness fails when two methods share an operationId,
-// which only an explicit `@operationId` can cause.
-func checkOperationIDUniqueness(pkg *semantic.Package) error {
-	counts := methodNameCounts(pkg)
-	owners := map[string][]string{} // operationId -> ["Service.Method", ...]
-	for _, key := range pkg.ServiceNames() {
-		svc := pkg.Services[key]
-		for _, m := range svc.Methods {
-			id := operationID(svc.Decorators(m), operationBaseName(svc.Primary.Name, m, counts))
-			owners[id] = append(owners[id], svc.Primary.Name+"."+m.Name)
-		}
-	}
-	var dups []string
-	for _, id := range slices.Sorted(maps.Keys(owners)) {
-		if who := owners[id]; len(who) >= 2 {
-			dups = append(dups, fmt.Sprintf("%q (from %s)", id, strings.Join(who, ", ")))
-		}
-	}
-	if len(dups) > 0 {
-		return fmt.Errorf("duplicate operationId %s - give each method a distinct @operationId(...)", strings.Join(dups, "; "))
-	}
-	return nil
 }
 
 // opShape is a method as its operation documents it: its route, the stem of

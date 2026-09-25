@@ -27,7 +27,7 @@ const (
 // it refs.
 func buildOperation(doc *openapi3.T, svc *semantic.ServiceInfo, s opShape, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) *openapi3.Operation {
 	op := &openapi3.Operation{
-		OperationID: operationID(s.decs, s.base),
+		OperationID: semantic.OperationID(s.decs, s.base),
 		Tags:        operationTags(svc, s.m),
 		// NewResponses would seed a `default` response.
 		Responses:   openapi3.NewResponsesWithCapacity(2),
@@ -396,10 +396,6 @@ func setOperation(item *openapi3.PathItem, verb string, op *openapi3.Operation) 
 	case "OPTIONS":
 		item.Options = op
 	}
-}
-
-func operationID(decs []*ast.Decorator, base string) string {
-	return semantic.OperationID(decs, base)
 }
 
 // operationTags returns the service's `@tags`, its `@group`, then the method's
