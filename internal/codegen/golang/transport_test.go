@@ -228,6 +228,39 @@ service S {
 	}
 }
 
+// A non-optional field's @default is assigned to the value itself, cast to
+// its scalar, before the JSON decode.
+func TestGenerateTransportNonOptionalDefault(t *testing.T) {
+	src := `package design
+scalar Cents int @gte(0)
+type Req {
+    limit Cents @default(20)
+    plain string
+}
+service S {
+    post Make /make { request Req }
+}`
+	pkg := analyze(t, src)
+	root := t.TempDir()
+	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(root, "internal/transport/s/make.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(out)
+	mustParseGo(t, body)
+	const prefill = "req.Limit = types.Cents(20)"
+	dec := strings.Index(body, "server.JSON().Decode")
+	if pre := strings.Index(body, prefill); pre < 0 || dec < 0 || pre > dec {
+		t.Errorf("want %q before the body decode:\n%s", prefill, body)
+	}
+	if strings.Contains(body, "&__d") {
+		t.Errorf("a non-optional default is pre-filled through a pointer:\n%s", body)
+	}
+}
+
 // A bound enum or scalar field is converted from the wire string to its own type.
 func TestGenerateTransportEnumScalarBindings(t *testing.T) {
 	src := `package design
