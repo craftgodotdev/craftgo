@@ -166,27 +166,6 @@ gen-diff: gen-all ## Re-gen examples + e2e and fail on any changed or new file u
 		exit 1; \
 	fi
 
-# ---- bench ---------------------------------------------------------------
-BENCH_DIR    := bench
-BENCH_RAW    := $(BENCH_DIR)/results.txt
-BENCH_REPORT := $(BENCH_DIR)/REPORT.md
-BENCH_PKG    := ./internal/bench/...
-BENCH_RUN    ?= BenchmarkParse
-BENCH_TIME   ?= 2s
-BENCH_COUNT  ?= 3
-
-.PHONY: bench
-bench: ## Run bind-path microbenchmarks; raw output to bench/results.txt.
-	@mkdir -p $(BENCH_DIR)
-	$(GO) test -run=^$$ -bench=$(BENCH_RUN) -benchmem -benchtime=$(BENCH_TIME) -count=$(BENCH_COUNT) $(BENCH_PKG) | tee $(BENCH_RAW)
-
-.PHONY: bench-report
-bench-report: ## Convert bench/results.txt into Markdown at bench/REPORT.md.
-	@scripts/bench-report.sh $(BENCH_RAW) $(BENCH_REPORT)
-
-.PHONY: bench-all
-bench-all: bench bench-report ## Run benchmarks and regenerate the Markdown report.
-
 # ---- module hygiene ------------------------------------------------------
 .PHONY: tidy
 tidy: ## go mod tidy in the root module and every sub-module.
