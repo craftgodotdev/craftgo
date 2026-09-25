@@ -71,7 +71,7 @@ type Middleware func(http.Handler) http.Handler
 
 | Constructor | Purpose |
 |---|---|
-| `Recovery(logger)` | Converts a panic into a 500 (or logs + leaves the committed status if the response already started). A panic with `http.ErrAbortHandler` goes on to `net/http`, which aborts the connection without logging it. Always outermost in the generated chain. |
+| `Recovery(logger)` | Converts a panic into a 500 and logs it with its stack. Once the response has started it logs the panic and aborts the connection instead, so the client sees the response cut off. A panic with `http.ErrAbortHandler` goes on to `net/http`, which aborts the connection without logging it. Always outermost in the generated chain. |
 | `AccessLog(logger, opts...)` | One `http access` line per request: `method`, `path`, `status`, `latency`, plus the `trace_id` / `span_id` on the context. `AccessLogSkipPaths(paths...)` keeps chosen routes out; `AccessLogFields(fn)` appends fields `fn` derives from the request (client address, user agent, the matched `r.Pattern`). |
 | `BodyLimit(maxBytes)` | Wraps `r.Body` in `http.MaxBytesReader`. |
 | `Timeout(d)` | Deprecated: use `srv.SetDefaultHandlerTimeout(d)`, or `WithLimits` for one route. Runs the handler under `http.TimeoutHandler`: 503 on deadline, and a buffered response that cannot flush. |

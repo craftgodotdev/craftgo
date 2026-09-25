@@ -67,40 +67,43 @@ func TestServerRecoveryLogsToTheCurrentDefault(t *testing.T) {
 	}
 }
 
-// A panic after the response is committed keeps the committed status and body.
-func TestServerRecoveryAfterWriteKeepsOriginalStatus(t *testing.T) {
-	s := newTestServer(t)
-	s.HandleFunc("GET /half", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"partial":true`)) // intentional truncation
-		panic("after write")
-	})
-	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/half", nil))
-	if rec.Code != http.StatusOK {
-		t.Errorf("post-write panic must not rewrite status, got %d", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), `"partial":true`) {
-		t.Errorf("expected partial body intact, got %q", rec.Body.String())
-	}
-}
-
-// A panic after a Flush leaves the flushed stream alone and is logged as committed.
-func TestServerRecoveryAfterFlushKeepsTheStream(t *testing.T) {
+// A panic after the response is committed is logged and aborts the connection, so the client
+// never reads a clean end: a buffered body is dropped and a flushed stream is cut off.
+func TestServerRecoveryAfterCommitAbortsTheConnection(t *testing.T) {
 	logs := observeLogs(t)
 	s := newTestServer(t)
-	s.HandleFunc("GET /events", func(w http.ResponseWriter, _ *http.Request) {
+	s.HandleFunc("GET /written", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"partial":true`))
+		panic("after write")
+	})
+	s.HandleFunc("GET /flushed", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: 1\n\n"))
 		w.(http.Flusher).Flush()
 		panic("after flush")
 	})
-	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/events", nil))
-	if rec.Code != http.StatusOK || rec.Body.Len() != 0 {
-		t.Errorf("flushed stream rewritten: status %d, body %q", rec.Code, rec.Body.String())
+	srv := httptest.NewServer(finalize(s))
+	defer srv.Close()
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+
+	if resp, err := client.Get(srv.URL + "/written"); err == nil {
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err == nil {
+			t.Errorf("GET /written read %d %q to a clean end, want the connection aborted", resp.StatusCode, body)
+		}
 	}
-	if n := logs.FilterMessageSnippet("after response committed").Len(); n != 1 {
-		t.Errorf("want the panic logged as after-commit once, got %d lines", n)
+	resp, err := client.Get(srv.URL + "/flushed")
+	if err != nil {
+		t.Fatalf("GET /flushed: %v", err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(body) != "data: 1\n\n" || err == nil {
+		t.Errorf("GET /flushed: %d %q, read error %v; want 200 and the flushed event, then the cut", resp.StatusCode, body, err)
+	}
+	if n := logs.FilterMessageSnippet("after response committed").Len(); n != 2 {
+		t.Errorf("want each panic logged as after-commit once, got %d lines", n)
 	}
 }
 

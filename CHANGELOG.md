@@ -34,10 +34,10 @@ breaking change to the DSL or the generated layout bumps the major version.
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw
-  handler returns, after a `Flush` is logged and leaves the stream alone:
-  `Recovery` no longer appends a 500 body to it and `WriteError` no longer
-  writes a JSON envelope into an event stream. The access log records the
-  first final status written, the one the client receives.
+  handler returns, after a `Flush` is logged and never written into the
+  stream: `Recovery` no longer appends a 500 body to it and `WriteError` no
+  longer writes a JSON envelope into an event stream. The access log records
+  the first final status written, the one the client receives.
 
 - **`Compress` survives a flush before any write.** A handler that flushes
   before writing, as a server-sent-events stream does, gets a 200 head sent
@@ -78,6 +78,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   500, or ended a response already under way as if it were complete. The
   panic now goes on to `net/http`, which aborts the connection, so the
   client sees the response cut off.
+
+- **A panic after the response started aborts the connection.** `Recovery`
+  logged it and let the handler return, so `net/http` finished the response
+  as if it were complete - a chunked stream got its closing chunk - and the
+  client could not tell the body was cut short. It still logs the panic,
+  then aborts the connection as a `panic(http.ErrAbortHandler)` does.
 
 - **`server.Server` is safe for concurrent use.** The `SetDefault*`,
   `SetCORS` and `SetLogger` setters wrote without the lock that route

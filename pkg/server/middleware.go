@@ -61,8 +61,8 @@ func (w *trackingWriter) Status() int {
 	return w.status
 }
 
-// Recovery logs a panic in next with its stack to logger and answers 500 text/plain, unless the
-// response is committed; [http.ErrAbortHandler] goes on to net/http, which aborts the connection.
+// Recovery logs a panic in next with its stack to logger and answers 500 text/plain, or aborts the
+// connection once the response is committed; a panic with [http.ErrAbortHandler] aborts it unlogged.
 func Recovery(logger log.Logger) Middleware {
 	return recovery(func() log.Logger { return logger })
 }
@@ -83,7 +83,7 @@ func recovery(logger func() log.Logger) Middleware {
 							log.Any("panic", rec),
 							log.String("stack", string(debug.Stack())),
 						)
-						return
+						panic(http.ErrAbortHandler)
 					}
 					l.Error("panic recovered",
 						log.Any("panic", rec),

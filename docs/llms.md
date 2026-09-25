@@ -791,7 +791,7 @@ srv.Start(":8080")
 
 | Constructor                  | Effect                                                   |
 | ---------------------------- | -------------------------------------------------------- |
-| `server.Recovery(logger)`    | Panic -> 500 + structured log (auto-installed outermost); `http.ErrAbortHandler` aborts the connection |
+| `server.Recovery(logger)`    | Panic -> 500 + structured log, or log + aborted connection once the response started (auto-installed outermost); `http.ErrAbortHandler` aborts it unlogged |
 | `server.AccessLog(logger)`   | One `http access` line per request (health probes never reach it) |
 | `server.BodyLimit(maxBytes)` | Cap request body size                                    |
 | `server.Timeout(d)`          | Deprecated: use `srv.SetDefaultHandlerTimeout(d)` / `@timeout` |
