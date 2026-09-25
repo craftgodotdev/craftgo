@@ -74,7 +74,8 @@ const (
 	// CodeDuplicateField fires when two fields of one type or error body share a name.
 	CodeDuplicateField = "field/duplicate"
 
-	// CodeInvalidGoName fires when a field name maps to an empty or digit-leading Go name (`_`, `_2`).
+	// CodeInvalidGoName fires when a field name maps to an empty or digit-leading Go name (`_`, `_2`),
+	// or a field or mixin to a Go name a generated method or embedded struct takes (`validate`).
 	CodeInvalidGoName = "field/invalid-go-name"
 
 	// CodeEnumDuplicateName fires when two values of one enum share a name.

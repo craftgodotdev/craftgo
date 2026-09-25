@@ -155,6 +155,12 @@ type fieldWalk struct {
 	embedDepths map[string][]int
 }
 
+// levelName returns the name [LevelNames] gave ff in its own struct:
+// [FlatField.Name] without the embed path.
+func (ff FlatField) levelName() string {
+	return ff.Name[strings.LastIndexByte(ff.Name, '.')+1:]
+}
+
 // nameShadowedByPath gives each promoted field that another member at its
 // depth or above shares a name with its embed path as [FlatField.Name].
 func (w *fieldWalk) nameShadowedByPath(fields []FlatField) {

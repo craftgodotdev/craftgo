@@ -212,41 +212,90 @@ func (a *analyzer) checkFieldUniqueness() {
 	}
 	for _, td := range a.pkg.Types {
 		check(td.Name, td.Body)
+		a.checkGeneratedMemberNames("type "+td.Name, td.Body, "")
 	}
 	for _, ed := range a.pkg.Errors {
 		check(ed.Name, ed.Body)
-		a.checkErrorReservedFieldNames(ed)
+		a.checkGeneratedMemberNames("error "+ed.Name, ed.Body, ed.Name)
 	}
 }
 
-// errorReservedGoNames are the methods generated on an error type; each
-// shadows an embedded body field of the same Go name.
-var errorReservedGoNames = map[string]bool{
-	"Error": true, "ErrCode": true, "HTTPStatus": true, "WriteResponseHeaders": true, "MarshalJSON": true,
+// bodyStructMethods are the methods the generator declares on every struct
+// holding a body's fields: a type's struct, a mixin's included, and an
+// error's body struct.
+var bodyStructMethods = []string{"Validate"}
+
+// errorTypeMethods are the methods the generator declares on an error type,
+// which embeds the error's body struct.
+var errorTypeMethods = []string{"Error", "ErrCode", "HTTPStatus", "MarshalJSON", "WriteResponseHeaders"}
+
+// generatedMemberClash names the generated member a body field Go-named
+// goName clashes with, and how, or returns "". errName is the error whose
+// body it is, "" for a type; promoted marks a field a mixin brings, whose
+// clash with its own struct's methods is reported where the mixin declares it.
+func generatedMemberClash(goName, errName string, promoted bool) string {
+	const hidden = " - it hides the field on the error type"
+	switch {
+	case !promoted && slices.Contains(bodyStructMethods, goName):
+		return "the generated method " + goName + "() of the same struct - Go rejects a field and a method of one name"
+	case errName == "":
+		return ""
+	case slices.Contains(errorTypeMethods, goName):
+		return "the generated error method " + goName + "()" + hidden
+	case goName == idents.ErrorBodyName(errName):
+		return "the body struct the generated error type embeds" + hidden
+	}
+	return ""
 }
 
-// checkErrorReservedFieldNames rejects an error body field whose Go field name
-// collides with a generated error method: at the field, or at the mixin that
-// brings it.
-func (a *analyzer) checkErrorReservedFieldNames(ed *ast.ErrorDecl) {
-	const msg = "error %s field %q%s maps to the Go name %q, which collides with the generated error method %s() - the value would be shadowed by the method and produce non-compiling Go. Rename the field."
-	for _, m := range ed.Body {
+// checkGeneratedMemberNames rejects a field of body, the body of type or
+// error label (errName names the error, "" for a type), whose Go name a
+// member the generator declares takes: at the field, or at the mixin that
+// brings it. A mixin embedding under its struct's method name is rejected
+// too; the error type never reads an embedded mixin by name.
+func (a *analyzer) checkGeneratedMemberNames(label string, body []ast.TypeMember, errName string) {
+	const msg = "%s field %q%s maps to the Go name %q, the name of %s. Rename the field."
+	names := goLevelNames(body)
+	i := 0
+	for _, m := range body {
 		switch v := m.(type) {
 		case *ast.Field:
-			if gn := idents.GoFieldName(v.Name); errorReservedGoNames[gn] {
-				a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeInvalidGoName, msg, ed.Name, v.Name, "", gn, gn)
+			gn := names[i]
+			i++
+			if clash := generatedMemberClash(gn, errName, false); clash != "" {
+				a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeInvalidGoName, msg, label, v.Name, "", gn, clash)
 			}
 		case *ast.Mixin:
-			fields, _ := a.proj.flattenFields(a.pkg.Name, a.pkg.Name, []ast.TypeMember{v}, nil, nil, nil)
+			if v.Ref == nil {
+				continue
+			}
+			if embed := goEmbedName(v.Ref.Name); slices.Contains(bodyStructMethods, embed) {
+				a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeInvalidGoName,
+					"%s mixin %s embeds as the Go field %q, the name of %s. Rename the mixin's type.",
+					label, v.Ref, embed, generatedMemberClash(embed, "", false))
+			}
+			fields, _ := a.proj.flattenFields(a.pkg.Name, a.pkg.Name, []ast.TypeMember{v}, nil, nil, goLevelNames)
 			for _, ff := range fields {
-				if gn := idents.GoFieldName(ff.Field.Name); errorReservedGoNames[gn] {
+				gn := ff.levelName()
+				if clash := generatedMemberClash(gn, errName, true); clash != "" {
 					d := a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeInvalidGoName, msg,
-						ed.Name, ff.Field.Name, ", from mixin "+v.Ref.String()+",", gn, gn)
+						label, ff.Field.Name, ", from mixin "+v.Ref.String()+",", gn, clash)
 					d.Related = related(ff.Field.Pos, "declared here")
 				}
 			}
 		}
 	}
+}
+
+// goLevelNames is the [LevelNames] of the Go structs: each field's Go name,
+// deduplicated within its struct.
+func goLevelNames(body []ast.TypeMember) []string {
+	var dsl []string
+	for _, f := range ast.Fields(body) {
+		dsl = append(dsl, f.Name)
+	}
+	names, _ := idents.DedupGoFieldNames(dsl)
+	return names
 }
 
 // checkJSONKeys rejects two body fields of one type or error, mixin fields

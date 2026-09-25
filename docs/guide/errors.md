@@ -108,6 +108,8 @@ error Conflict EmailTaken {
 }
 ```
 
+A body field cannot take the Go name of a member of the error type, which would hide it: the methods `error`, `errCode`, `httpStatus`, `marshalJSON` and `writeResponseHeaders`, or `<name>Body`, the struct the type embeds (`emailTakenBody` here). Like every body, an error's cannot hold `validate` either; each is `field/invalid-go-name`.
+
 ## Categories
 
 The `<Category>` slot picks the HTTP status. Built-in categories:

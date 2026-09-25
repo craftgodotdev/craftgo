@@ -27,6 +27,8 @@ type Signup {
 
 `@minLength(12)` belongs to `password`, and `craftgo fmt` moves it onto that line. A field takes decorators written above it only as the first member of its body or right below a mixin.
 
+Every type's struct gets a `Validate()` method, so a field whose Go name is `Validate` - `validate`, say - is rejected (`field/invalid-go-name`), as is a mixin of a type named `Validate`.
+
 ### Primitive types
 
 | DSL        | Go         | Notes                                |

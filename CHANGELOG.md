@@ -1036,6 +1036,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   is now `field/invalid-go-name` at the mixin, as the error's own field of
   that name is.
 
+- **A field named like a generated method is rejected.** A field `validate`
+  of any type or error body, or a mixin of a type named `Validate`, shared
+  its Go name with the struct's generated `Validate()` method, which Go
+  rejects; an error body field whose Go name is `<Name>Body`, the struct the
+  error type embeds, was hidden behind it, and as a header or a cookie
+  generated Go that did not compile. Each is now `field/invalid-go-name`.
+
 - **Every multipart form part is checked in analysis.** Beside a `file`, a
   body field no form value carries - a struct, a map, a generic instance,
   `any`, `bytes` or `datetime` - stopped `craftgo gen` only in the Go
