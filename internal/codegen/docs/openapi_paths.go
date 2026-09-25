@@ -189,7 +189,7 @@ func responseBodySchema(s opShape, pkg *semantic.Package, registry *genericRegis
 // cross-field fragments of td and of the mixins it embeds.
 func inlineBody(fields []semantic.ResolvedField, td *ast.TypeDecl, pkg *semantic.Package, registry *genericRegistry) *openapi3.SchemaRef {
 	body := schemaFromFields(fields, pkg, registry)
-	if frags := inlineFragments(td, jsonKeys(td, registry), registry); len(frags) > 0 {
+	if frags := inlineFragments(td, jsonKeys(td, registry), presentNonNull, registry); len(frags) > 0 {
 		body = &openapi3.Schema{AllOf: append(openapi3.SchemaRefs{{Value: body}}, frags...)}
 	}
 	return &openapi3.SchemaRef{Value: body}

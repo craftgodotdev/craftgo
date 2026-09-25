@@ -278,6 +278,27 @@ func (v *PairsRenamedResp) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on PairsSource.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PairsSource) Validate() error {
+	{
+		n := 0
+		if v.Doc != nil {
+			n++
+		}
+		if v.URL != nil {
+			n++
+		}
+		if n > 1 {
+			return fmt.Errorf("mutuallyExclusive [doc url] - at most one may be set")
+		}
+	}
+	if v.Doc == nil && v.URL == nil {
+		return fmt.Errorf("requiresOneOf [doc url] - at least one must be set")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on PairsStacked.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PairsStacked) Validate() error {

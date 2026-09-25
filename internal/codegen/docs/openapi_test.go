@@ -652,6 +652,46 @@ service S {
 	}
 }
 
+// A multipart group counts a text part present when it is sent non-empty, as
+// the handler binds it, and a file part when it is sent.
+func TestMultipartGroupsCountNonEmptyParts(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+@requiresOneOf(email, phone)
+type Contact {
+	email string?
+	phone int?
+}
+@mutuallyExclusive(doc, url)
+@requiresOneOf(doc, url)
+type Up {
+	Contact
+	doc   file?
+	url   string?
+	title string
+}
+type Ok { ok bool }
+service S { post U /u { request Up  response Ok } }`,
+	}, &config.Config{})
+	body := doc.Paths.Find("/u").Post.RequestBody.Value.Content.Get(mimeMultipartFormData).Schema.Value
+	var got []string
+	for _, frag := range body.AllOf[1:] {
+		raw, err := json.Marshal(frag)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, string(raw))
+	}
+	want := []string{
+		`{"anyOf":[{"properties":{"email":{"minLength":1}},"required":["email"]},{"properties":{"phone":{"minLength":1}},"required":["phone"]}]}`,
+		`{"not":{"properties":{"url":{"minLength":1}},"required":["doc","url"]}}`,
+		`{"anyOf":[{"required":["doc"]},{"properties":{"url":{"minLength":1}},"required":["url"]}]}`,
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("multipart group fragments:\n got  %s\n want %s", strings.Join(got, "\n      "), strings.Join(want, "\n      "))
+	}
+}
+
 // A response body listed in place beside a header or a cookie carries the
 // cross-field groups of its type and of the mixins it embeds.
 func TestHeaderSplitResponseBodyCarriesGroups(t *testing.T) {

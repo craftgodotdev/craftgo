@@ -214,6 +214,15 @@ type PairsRenamedResp struct {
 	Primary *string `json:"primary_email,omitempty"`
 }
 
+// PairsSource sends a file or a link as multipart parts, exactly one: the
+// multipart body counts the url part present only when it is non-empty, as
+// the handler binds it, and the file part when it is sent.
+type PairsSource struct {
+	Doc   *multipart.FileHeader `json:"doc,omitempty"`
+	URL   *string               `json:"url,omitempty"`
+	Title string                `json:"title"`
+}
+
 // PairsStacked stacks bounds of one family: OpenAPI documents their
 // intersection, which the validator enforces (10..90; a length of 5).
 type PairsStacked struct {

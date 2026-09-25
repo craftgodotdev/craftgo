@@ -5030,6 +5030,52 @@ components:
           - string
           - "null"
       type: object
+    PairsSource:
+      allOf:
+      - properties:
+          doc:
+            format: binary
+            type:
+            - string
+            - "null"
+          title:
+            type: string
+          url:
+            type:
+            - string
+            - "null"
+        required:
+        - title
+        type: object
+      - not:
+          properties:
+            doc:
+              not:
+                type: "null"
+            url:
+              not:
+                type: "null"
+          required:
+          - doc
+          - url
+      - anyOf:
+        - properties:
+            doc:
+              not:
+                type: "null"
+          required:
+          - doc
+        - properties:
+            url:
+              not:
+                type: "null"
+          required:
+          - url
+      description: |-
+        PairsSource sends a file or a link as multipart parts, exactly one: the
+        multipart body counts the url part present only when it is non-empty, as
+        the handler binds it, and the file part when it is sent.
+      type: object
     PairsStacked:
       description: |-
         PairsStacked stacks bounds of one family: OpenAPI documents their
@@ -7252,6 +7298,8 @@ components:
       required:
       - file
       type: object
+    UploadSourceRespBody:
+      $ref: '#/components/schemas/PairsDoc'
     Urgency:
       enum:
       - 1
@@ -10249,6 +10297,55 @@ paths:
                 type: string
       tags:
       - combine
+  /combine/pairs/source:
+    post:
+      description: Upload a file or a link, exactly one. The multipart body carries
+        the request type's own groups; an empty url part counts as absent.
+      operationId: UploadSource
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              allOf:
+              - properties:
+                  doc:
+                    format: binary
+                    type: string
+                  title:
+                    type: string
+                  url:
+                    type:
+                    - string
+                    - "null"
+                required:
+                - title
+                type: object
+              - not:
+                  properties:
+                    url:
+                      minLength: 1
+                  required:
+                  - doc
+                  - url
+              - anyOf:
+                - required:
+                  - doc
+                - properties:
+                    url:
+                      minLength: 1
+                  required:
+                  - url
+              type: object
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadSourceRespBody'
+          description: Created
+      tags:
+      - combine
   /combine/pairs/stacked:
     post:
       operationId: ValidateStacked
@@ -10339,14 +10436,12 @@ paths:
               - anyOf:
                 - properties:
                     a:
-                      not:
-                        type: "null"
+                      minLength: 1
                   required:
                   - a
                 - properties:
                     b:
-                      not:
-                        type: "null"
+                      minLength: 1
                   required:
                   - b
               type: object

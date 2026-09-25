@@ -300,12 +300,14 @@ func rawPathParams(full string) openapi3.Parameters {
 func multipartRequestBody(s opShape, pkg *semantic.Package, registry *genericRegistry) *openapi3.RequestBodyRef {
 	props := openapi3.Schemas{}
 	keys := map[string]string{}
+	text := map[string]bool{}
 	var required []string
 	for _, f := range s.form {
 		ref := schemaForTypeRef(f.Field.Type, pkg, registry)
 		applyFieldMetadata(f.Field, ref, pkg)
 		props[f.WireName] = ref
 		keys[f.Field.Name] = f.WireName
+		text[f.WireName] = true
 		if f.Required {
 			required = append(required, f.WireName)
 		}
@@ -336,7 +338,7 @@ func multipartRequestBody(s opShape, pkg *semantic.Package, registry *genericReg
 		Properties: props,
 		Required:   required,
 	}
-	if frags := inlineFragments(s.reqType, keys, registry); len(frags) > 0 {
+	if frags := inlineFragments(s.reqType, keys, presentParts(text), registry); len(frags) > 0 {
 		schema = &openapi3.Schema{
 			Type:  &openapi3.Types{"object"},
 			AllOf: append(openapi3.SchemaRefs{{Value: schema}}, frags...),

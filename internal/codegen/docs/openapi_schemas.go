@@ -193,13 +193,14 @@ func addBodyProperty(s *openapi3.Schema, rf semantic.ResolvedField, ft *ast.Type
 // typeFragments returns the cross-field fragments of td's own decorators,
 // each member under its JSON key; the schema's mixin refs carry theirs.
 func typeFragments(td *ast.TypeDecl, registry *genericRegistry) openapi3.SchemaRefs {
-	return crossFieldSchemaFragments(td.Decorators, jsonKeys(td, registry))
+	return crossFieldSchemaFragments(td.Decorators, jsonKeys(td, registry), presentNonNull)
 }
 
 // inlineFragments returns the cross-field fragments of a body listing td's
 // fields in place: those of each type its mixins embed, recursively and each
-// type once, then its own, every member under its keys entry.
-func inlineFragments(td *ast.TypeDecl, keys map[string]string, registry *genericRegistry) openapi3.SchemaRefs {
+// type once, then its own, every member under its keys entry and matched as
+// present by present.
+func inlineFragments(td *ast.TypeDecl, keys map[string]string, present presence, registry *genericRegistry) openapi3.SchemaRefs {
 	var decs []*ast.Decorator
 	seen := map[*ast.TypeDecl]bool{}
 	var walk func(*ast.TypeDecl)
@@ -216,12 +217,16 @@ func inlineFragments(td *ast.TypeDecl, keys map[string]string, registry *generic
 		decs = append(decs, td.Decorators...)
 	}
 	walk(td)
-	return crossFieldSchemaFragments(decs, keys)
+	return crossFieldSchemaFragments(decs, keys, present)
 }
+
+// presence returns the schema matching a body in which every named member is
+// present.
+type presence func(names []string) *openapi3.Schema
 
 // crossFieldSchemaFragments returns `@requiresOneOf` as an `anyOf` of "x present" branches and
 // `@mutuallyExclusive` as a `not` of "all present", each member under its keys entry, else its name.
-func crossFieldSchemaFragments(decs []*ast.Decorator, keys map[string]string) openapi3.SchemaRefs {
+func crossFieldSchemaFragments(decs []*ast.Decorator, keys map[string]string, present presence) openapi3.SchemaRefs {
 	memberKeys := func(d *ast.Decorator) []string {
 		names := semantic.CrossFieldNames(d)
 		for i, n := range names {
@@ -242,7 +247,7 @@ func crossFieldSchemaFragments(decs []*ast.Decorator, keys map[string]string) op
 			}
 			branches := make(openapi3.SchemaRefs, 0, len(names))
 			for _, n := range names {
-				branches = append(branches, &openapi3.SchemaRef{Value: presentNonNull([]string{n})})
+				branches = append(branches, &openapi3.SchemaRef{Value: present([]string{n})})
 			}
 			out = append(out, &openapi3.SchemaRef{Value: &openapi3.Schema{
 				AnyOf: branches,
@@ -253,7 +258,7 @@ func crossFieldSchemaFragments(decs []*ast.Decorator, keys map[string]string) op
 				continue
 			}
 			out = append(out, &openapi3.SchemaRef{Value: &openapi3.Schema{
-				Not: &openapi3.SchemaRef{Value: presentNonNull(names)},
+				Not: &openapi3.SchemaRef{Value: present(names)},
 			}})
 		}
 	}
@@ -272,8 +277,8 @@ func jsonKeys(td *ast.TypeDecl, registry *genericRegistry) map[string]string {
 	return keys
 }
 
-// presentNonNull matches a body with every named field present and not null,
-// as the runtime counts presence; `required` alone accepts `{"x": null}`.
+// presentNonNull matches a JSON body with every named field present and not
+// null, as the runtime counts presence; `required` alone accepts `{"x": null}`.
 func presentNonNull(names []string) *openapi3.Schema {
 	props := openapi3.Schemas{}
 	for _, n := range names {
@@ -284,6 +289,24 @@ func presentNonNull(names []string) *openapi3.Schema {
 	return &openapi3.Schema{
 		Required:   append([]string(nil), names...),
 		Properties: props,
+	}
+}
+
+// presentParts matches a multipart body with every named part sent, one in
+// text non-empty: the handler binds an empty text part as absent.
+func presentParts(text map[string]bool) presence {
+	return func(names []string) *openapi3.Schema {
+		s := &openapi3.Schema{Required: append([]string(nil), names...)}
+		for _, n := range names {
+			if !text[n] {
+				continue
+			}
+			if s.Properties == nil {
+				s.Properties = openapi3.Schemas{}
+			}
+			s.Properties[n] = &openapi3.SchemaRef{Value: &openapi3.Schema{MinLength: 1}}
+		}
+		return s
 	}
 }
 

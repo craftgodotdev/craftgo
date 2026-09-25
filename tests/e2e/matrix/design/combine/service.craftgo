@@ -90,6 +90,12 @@ service CombineService {
 		response PairsDoc
 	}
 
+	@doc("Upload a file or a link, exactly one. The multipart body carries the request type's own groups; an empty url part counts as absent.")
+	post UploadSource /pairs/source {
+		request  PairsSource
+		response PairsDoc
+	}
+
 	@doc("Tag a pair. The response sends ETag as a header; its body carries the response type's @mutuallyExclusive and its mixin's @requiresOneOf.")
 	post TagPairs /pairs/tagged {
 		request  PairsDoc

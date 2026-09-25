@@ -108,6 +108,17 @@ type PairsUpload {
 	doc file
 }
 
+// PairsSource sends a file or a link as multipart parts, exactly one: the
+// multipart body counts the url part present only when it is non-empty, as
+// the handler binds it, and the file part when it is sent.
+@mutuallyExclusive(doc, url)
+@requiresOneOf(doc, url)
+type PairsSource {
+	doc   file?
+	url   string?
+	title string
+}
+
 // PairsTagged sends an ETag header beside a body that carries its own
 // @mutuallyExclusive and the @requiresOneOf of its mixin PairsDoc.
 @mutuallyExclusive(c, d)

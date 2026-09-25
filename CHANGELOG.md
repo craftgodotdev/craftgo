@@ -985,6 +985,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   declared on a mixin the request embeds, though the server enforces it; both
   now list it beside the request type's own.
 
+- **A multipart group counts an empty text part as absent in OpenAPI, as the
+  handler does.** The document matched a group member as present whenever its
+  part was sent, but the handler binds an empty text part as absent: an empty
+  `email` satisfied `@requiresOneOf(email, phone)` in the document and got a
+  400, and a file beside an empty `url` broke `@mutuallyExclusive(doc, url)`
+  in the document only. A text member now counts when it is non-empty
+  (`minLength: 1`), a file when it is sent, for the request type's groups and
+  its mixins' alike.
+
 - **A response body beside a header keeps its cross-field groups in
   OpenAPI.** The body of a response that sends a header or cookie left out
   the `@requiresOneOf` and `@mutuallyExclusive` of the response type and of
