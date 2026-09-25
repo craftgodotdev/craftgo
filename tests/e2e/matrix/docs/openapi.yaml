@@ -2896,20 +2896,6 @@ components:
       $ref: '#/components/schemas/ID'
     LookupLostRespBody:
       $ref: '#/components/schemas/XDelegatedEnum'
-    LookupOfPriority:
-      description: |-
-        Lookup<T> is a generic request type: `Lookup<Priority>` binds `id` from
-        the route's {id} and `level` as a Priority from the query string.
-      properties:
-        id:
-          $ref: '#/components/schemas/ScalarsUUID'
-        level:
-          anyOf:
-          - $ref: '#/components/schemas/Priority'
-          - type: "null"
-      required:
-      - id
-      type: object
     LookupOrderRespBody:
       $ref: '#/components/schemas/ScalarsOrder'
     Map_ArrayValue:

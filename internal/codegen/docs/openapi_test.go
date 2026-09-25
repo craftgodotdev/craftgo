@@ -618,6 +618,25 @@ service S {
 	}
 }
 
+// A request with nothing on the body gets neither a request body nor the
+// `<base>ReqBody` and instance components one would ref.
+func TestGenerateOpenAPIRequestWithoutBodyHasNoReqBody(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+type Item { id string }
+type Wrap<T> { data T @sensitive }
+service S { post P /p { request Wrap<Item> } }`,
+	}, &config.Config{})
+	if op := doc.Paths.Find("/p").Post; op == nil || op.RequestBody != nil {
+		t.Fatalf("POST /p should document no request body: %+v", op)
+	}
+	for _, name := range []string{"PReqBody", "WrapOfItem"} {
+		if _, ok := doc.Components.Schemas[name]; ok {
+			t.Errorf("component %s is emitted though nothing refs it", name)
+		}
+	}
+}
+
 // A generic instance keeps its declaration's field constraints and
 // description.
 func TestGenerateOpenAPIGenericInstanceCarriesFieldMetadata(t *testing.T) {

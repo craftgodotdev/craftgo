@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"cmp"
 	"maps"
 	"net/http"
 	"slices"
@@ -22,125 +23,104 @@ const (
 	mimeMultipartFormData = "multipart/form-data"
 )
 
-// isMultipartRequest reports whether m's request declares a file field. Such
-// a body is inlined as multipart/form-data and gets no `<base>ReqBody`.
-func isMultipartRequest(m *ast.Method, pkg *semantic.Package, r *semantic.Resolver) bool {
-	if m == nil || m.Request == nil {
-		return false
-	}
-	_, files := semantic.FormFields(m, pkg, r, nil)
-	return len(files) > 0
-}
-
-func buildOperation(svc *semantic.ServiceInfo, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, full, base string) *openapi3.Operation {
-	decs := svc.Decorators(m)
+// buildOperation builds the operation of s, adding to doc the body components
+// it refs.
+func buildOperation(doc *openapi3.T, svc *semantic.ServiceInfo, s opShape, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) *openapi3.Operation {
 	op := &openapi3.Operation{
-		OperationID: operationID(decs, base),
-		Tags:        operationTags(svc, m),
+		OperationID: operationID(s.decs, s.base),
+		Tags:        operationTags(svc, s.m),
 		// NewResponses would seed a `default` response.
 		Responses:   openapi3.NewResponsesWithCapacity(2),
-		Description: semantic.Description(decs, m.Doc),
-		Summary:     summaryOf(decs),
+		Description: semantic.Description(s.decs, s.m.Doc),
+		Summary:     summaryOf(s.decs),
+		Security:    operationSecurity(svc, s.m),
 	}
-	// Any one requirement is enough; the service's come first.
+	markDeprecated(op, svc, s.decs)
+	requestSide(doc, op, s, pkg, registry, names)
+	successResponse(doc, op, s, pkg, registry, names)
+	addErrorResponses(op, s.decs, pkg, registry)
+	return op
+}
+
+// operationSecurity returns m's security requirements, the service's first,
+// or nil for none; any one requirement is enough.
+func operationSecurity(svc *semantic.ServiceInfo, m *ast.Method) *openapi3.SecurityRequirements {
 	service, member, _ := svc.InheritedDecorators(m, "security")
-	if sec := securityFromDecorators(slices.Concat(service, member)); sec != nil {
-		deduped := dedupSecurity(*sec)
-		op.Security = &deduped
+	sec := securityFromDecorators(slices.Concat(service, member))
+	if sec == nil {
+		return nil
 	}
-	// @deprecated on the method or its primary service marks the operation;
-	// the reason joins the description.
-	deprecated := semantic.IsDeprecated(decs)
-	if !deprecated && svc != nil && svc.Primary != nil {
-		deprecated = semantic.IsDeprecated(svc.Primary.Decorators)
+	deduped := dedupSecurity(*sec)
+	return &deduped
+}
+
+// markDeprecated marks op deprecated when decs, a method's decorators, or its
+// primary service carry @deprecated; the reason, the method's first, joins the description.
+func markDeprecated(op *openapi3.Operation, svc *semantic.ServiceInfo, decs []*ast.Decorator) {
+	service := svc.Primary.Decorators
+	if !semantic.IsDeprecated(decs) && !semantic.IsDeprecated(service) {
+		return
 	}
-	if deprecated {
-		op.Deprecated = true
-		reason := semantic.DeprecatedReason(decs)
-		if reason == "" && svc != nil && svc.Primary != nil {
-			reason = semantic.DeprecatedReason(svc.Primary.Decorators)
+	op.Deprecated = true
+	if reason := cmp.Or(semantic.DeprecatedReason(decs), semantic.DeprecatedReason(service)); reason != "" {
+		op.Description = appendDescription(op.Description, "Deprecated: "+reason)
+	}
+}
+
+// requestSide sets op's parameters and request body, adding the
+// `<base>ReqBody` component a JSON body refs. A block on a raw side is
+// documented like a typed one; a raw request without one has only its path.
+func requestSide(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
+	if s.m.Request == nil {
+		if rawReq, _ := wire.RawSides(s.decs); rawReq {
+			op.Parameters = rawPathParams(s.full)
 		}
-		if reason != "" {
-			op.Description = appendDescription(op.Description, "Deprecated: "+reason)
-		}
+		return
 	}
-	// A block on a raw side is documented like a typed one; the raw flags
-	// matter only without a block and for a raw response's success status.
-	rawReq, rawResp := wire.RawSides(decs)
-	isMultipart := isMultipartRequest(m, pkg, registry.resolver)
-	formStrings, formFiles := []semantic.FormField(nil), []semantic.FormField(nil)
-	if isMultipart {
-		formStrings, formFiles = semantic.FormFields(m, pkg, registry.resolver, nil)
-	}
-	if m.Request != nil {
-		bins := binRequestFields(m, pkg, registry.resolver)
-		if wire.IsBodyVerb(m.Verb) {
-			switch {
-			case isMultipart:
-				// The request type's decorators carry its cross-field constraints.
-				var crossDecs []*ast.Decorator
-				if m.Request != nil && m.Request.Name != nil {
-					if td, ok := pkg.Types[m.Request.Name.String()]; ok {
-						crossDecs = td.Decorators
-					}
-				}
-				op.RequestBody = multipartRequestBody(formStrings, formFiles, crossDecs, pkg, registry)
-			case len(bins.body) > 0:
-				op.RequestBody = &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
-					Required: true,
-					Content: openapi3.Content{
-						mimeApplicationJSON: &openapi3.MediaType{
-							Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + base + "ReqBody"},
-						},
-					},
-				}}
-			}
-		}
-		if !isMultipart {
-			op.Parameters = paramsFromBins(bins, pkg, registry)
-		} else {
-			op.Parameters = paramsFromBins(fieldBins{path: bins.path, query: bins.query, header: bins.header, cookie: bins.cookie}, pkg, registry)
-		}
-	}
-	if m.Request == nil && rawReq {
-		op.Parameters = rawPathParams(full)
+	op.Parameters = paramsFromBins(s.req, pkg, registry)
+	if !wire.IsBodyVerb(s.m.Verb) {
+		return
 	}
 	switch {
-	case m.Response != nil && m.Response.Type != nil:
-		successCode := strconv.Itoa(wire.SuccessStatus(m, decs))
-		if rawResp {
-			successCode = rawResponseStatus(decs)
-		}
-		desc := successDescription(successCode)
-		resp := &openapi3.Response{
-			Description: &desc,
+	case len(s.files) > 0:
+		op.RequestBody = multipartRequestBody(s, pkg, registry)
+	case len(s.req.body) > 0:
+		names.put(doc, s.base+"ReqBody", requestBodySchema(s, pkg, registry))
+		op.RequestBody = &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
+			Required: true,
 			Content: openapi3.Content{
 				mimeApplicationJSON: &openapi3.MediaType{
-					Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + base + "RespBody"},
+					Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.base + "ReqBody"},
 				},
 			},
-		}
-		if respBins := binResponseFields(m, pkg, registry.resolver); len(respBins.header) > 0 || len(respBins.cookie) > 0 {
-			resp.Headers = buildResponseHeaders(respBins.header, respBins.cookie, pkg, registry)
-		}
-		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: resp})
-	case rawResp:
-		// Logic writes a raw response in any format, so it has no schema.
-		successCode := rawResponseStatus(decs)
-		desc := successDescription(successCode)
-		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{
-			Description: &desc,
-			Content: openapi3.Content{
-				"*/*": &openapi3.MediaType{},
-			},
-		}})
-	default:
-		successCode := strconv.Itoa(wire.SuccessStatus(m, decs))
-		desc := successDescription(successCode)
-		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{Description: &desc}})
+		}}
 	}
-	addErrorResponses(op, decs, pkg, registry)
-	return op
+}
+
+// successResponse adds op's success response, and the `<base>RespBody`
+// component it refs: a raw response without a block has no schema, since
+// logic writes it in any format.
+func successResponse(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
+	_, rawResp := wire.RawSides(s.decs)
+	code := strconv.Itoa(wire.SuccessStatus(s.m, s.decs))
+	if rawResp {
+		code = rawResponseStatus(s.decs)
+	}
+	desc := successDescription(code)
+	resp := &openapi3.Response{Description: &desc}
+	switch {
+	case s.m.Response != nil && s.m.Response.Type != nil:
+		names.put(doc, s.base+"RespBody", responseBodySchema(s, pkg, registry))
+		resp.Content = openapi3.Content{
+			mimeApplicationJSON: &openapi3.MediaType{
+				Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.base + "RespBody"},
+			},
+		}
+		resp.Headers = buildResponseHeaders(s.resp.header, s.resp.cookie, pkg, registry)
+	case rawResp:
+		resp.Content = openapi3.Content{"*/*": &openapi3.MediaType{}}
+	}
+	op.Responses.Set(code, &openapi3.ResponseRef{Value: resp})
 }
 
 // successDescription returns the reason phrase of status code (`Created`), or
@@ -177,8 +157,8 @@ func addErrorResponses(op *openapi3.Operation, decs []*ast.Decorator, pkg *seman
 	type byStatus struct {
 		refs       []string
 		categories []string
-		headers    []*ast.Field
-		cookies    []*ast.Field
+		headers    []semantic.ResolvedField
+		cookies    []semantic.ResolvedField
 	}
 	grouped := map[string]*byStatus{}
 	var statusOrder []string
@@ -197,9 +177,9 @@ func addErrorResponses(op *openapi3.Operation, decs []*ast.Decorator, pkg *seman
 		}
 		entry.refs = append(entry.refs, "#/components/schemas/"+typeName)
 		entry.categories = append(entry.categories, ed.Category)
-		hs, cs := errorHeaderCookieFields(ed, pkg, registry.resolver)
-		entry.headers = append(entry.headers, hs...)
-		entry.cookies = append(entry.cookies, cs...)
+		bins := binFields(semantic.ResolveFields(&ast.TypeDecl{Body: ed.Body}, "", pkg, registry.resolver, nil))
+		entry.headers = append(entry.headers, bins.header...)
+		entry.cookies = append(entry.cookies, bins.cookie...)
 	}
 	for _, status := range statusOrder {
 		entry := grouped[status]
@@ -281,21 +261,6 @@ func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *opena
 	return merged
 }
 
-// errorHeaderCookieFields returns the @header and @cookie fields of ed, the
-// ones a mixin brings included.
-func errorHeaderCookieFields(ed *ast.ErrorDecl, pkg *semantic.Package, r *semantic.Resolver) (headers, cookies []*ast.Field) {
-	for _, ff := range semantic.FlattenFields(&ast.TypeDecl{Body: ed.Body}, "", r, nil) {
-		f := ff.Field
-		switch kind, _ := wire.BindingKind(f.Decorators); kind {
-		case wire.BindHeader:
-			headers = append(headers, f)
-		case wire.BindCookie:
-			cookies = append(cookies, f)
-		}
-	}
-	return headers, cookies
-}
-
 // errorRefsFromDecorators returns the distinct error names of every `@errors`
 // in ds, in order.
 func errorRefsFromDecorators(ds []*ast.Decorator) []string {
@@ -332,38 +297,31 @@ func rawPathParams(full string) openapi3.Parameters {
 
 // multipartRequestBody renders the multipart/form-data body of the form and
 // file fields; a file's `@mimeTypes` becomes its `encoding` contentType.
-func multipartRequestBody(forms, files []semantic.FormField, crossDecs []*ast.Decorator, pkg *semantic.Package, registry *genericRegistry) *openapi3.RequestBodyRef {
+func multipartRequestBody(s opShape, pkg *semantic.Package, registry *genericRegistry) *openapi3.RequestBodyRef {
 	props := openapi3.Schemas{}
+	keys := map[string]string{}
 	var required []string
-	for _, f := range forms {
-		var ref *openapi3.SchemaRef
-		if f.Field != nil {
-			ref = schemaForTypeRef(f.Field.Type, pkg, registry)
-			applyFieldMetadata(f.Field, ref, pkg)
-		} else {
-			ref = &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
-		}
+	for _, f := range s.form {
+		ref := schemaForTypeRef(f.Field.Type, pkg, registry)
+		applyFieldMetadata(f.Field, ref, pkg)
 		props[f.WireName] = ref
+		keys[f.Field.Name] = f.WireName
 		if f.Required {
 			required = append(required, f.WireName)
 		}
 	}
 	encoding := map[string]*openapi3.Encoding{}
-	for _, f := range files {
+	for _, f := range s.files {
 		// A file part is present or absent, never null: `required` carries its
 		// optionality, so its schema is built from the type without `?`.
-		var ref *openapi3.SchemaRef
-		if f.Field != nil && f.Field.Type != nil {
-			ft := *f.Field.Type
-			ft.Optional = false
-			ref = schemaForTypeRef(&ft, pkg, registry)
-			if ref.Value != nil {
-				applyConstraintFamilies(f.Field.Decorators, ref.Value, semantic.ConstraintItems)
-			}
-		} else {
-			ref = &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}, Format: "binary"}}
+		ft := *f.Field.Type
+		ft.Optional = false
+		ref := schemaForTypeRef(&ft, pkg, registry)
+		if ref.Value != nil {
+			applyConstraintFamilies(f.Field.Decorators, ref.Value, semantic.ConstraintItems)
 		}
 		props[f.WireName] = ref
+		keys[f.Field.Name] = f.WireName
 		if f.Required {
 			required = append(required, f.WireName)
 		}
@@ -378,8 +336,7 @@ func multipartRequestBody(forms, files []semantic.FormField, crossDecs []*ast.De
 		Properties: props,
 		Required:   required,
 	}
-	// Parts go by their form names, so the fragments get no JSON-key map.
-	if frags := crossFieldSchemaFragments(crossDecs, nil); len(frags) > 0 {
+	if frags := crossFieldSchemaFragments(s.reqType.Decorators, keys); len(frags) > 0 {
 		schema = &openapi3.Schema{
 			Type:  &openapi3.Types{"object"},
 			AllOf: append(openapi3.SchemaRefs{{Value: schema}}, frags...),
@@ -399,15 +356,15 @@ func multipartRequestBody(forms, files []semantic.FormField, crossDecs []*ast.De
 // parameters with inline schemas; a path parameter is always required.
 func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegistry) openapi3.Parameters {
 	var params openapi3.Parameters
-	add := func(in wire.Binding, fields []*ast.Field, alwaysRequired bool) {
-		for _, f := range fields {
-			required := alwaysRequired || semantic.FieldIsRequired(f)
+	add := func(in wire.Binding, fields []semantic.ResolvedField, alwaysRequired bool) {
+		for _, rf := range fields {
+			f := rf.Field
 			ref := schemaForTypeRef(f.Type, pkg, registry)
 			applyFieldMetadata(f, ref, pkg)
 			params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
 				Name:     wire.WireName(f, in),
 				In:       in.String(),
-				Required: required,
+				Required: alwaysRequired || rf.SpecRequired,
 				// The Parameter carries `deprecated` too, not only its schema.
 				Deprecated: semantic.IsDeprecated(f.Decorators),
 				Schema:     ref,

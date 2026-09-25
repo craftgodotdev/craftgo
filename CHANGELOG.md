@@ -73,6 +73,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   instance named only by a `@sensitive` field, or by a response whose
   header fields keep it inline, no longer gets a component of its own.
 
+- **The OpenAPI document holds only the components it refers to.** A
+  generic instance named only by a `@sensitive` field, or by a response
+  whose header fields keep it inline, and the `<Method>ReqBody` of a request
+  with nothing on its body no longer get a component.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw
