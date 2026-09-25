@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 func (p *Printer) TypeDecl(d *ast.TypeDecl) {
@@ -50,9 +51,7 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 				maxName = n
 			}
 			ts := p.typeRefString(f.Type)
-			// @default makes a field optional, so its type gains `?`; a @path
-			// field is exempt because an optional @path is a semantic error.
-			if f.Type != nil && !f.Type.Optional && fieldHasDefault(f) && !ast.HasDecorator(f.Decorators, "path") {
+			if semantic.DefaultNeedsOptional(f) {
 				ts += "?"
 			}
 			typeStr[f] = ts
@@ -107,10 +106,6 @@ func memberEndLine(pos int, decs []*ast.Decorator) int {
 		return decs[n-1].Pos.Line
 	}
 	return pos
-}
-
-func fieldHasDefault(f *ast.Field) bool {
-	return f != nil && ast.HasDecorator(f.Decorators, "default")
 }
 
 func (p *Printer) typeRefString(t *ast.TypeRef) string {

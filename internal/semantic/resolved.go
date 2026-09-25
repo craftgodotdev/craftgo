@@ -39,8 +39,8 @@ type ResolvedField struct {
 	DSLName  string        // the source field identifier (wire/json base name)
 	Category FieldCategory // the resolved type category
 
-	// ResolvedPrim is the DSL primitive behind a primitive, bytes, any,
-	// scalar or enum field, as its declaring package defines it; "" otherwise.
+	// ResolvedPrim is the DSL primitive behind a built-in, scalar or enum
+	// field, as its declaring package defines it; "" otherwise.
 	ResolvedPrim string
 
 	// HomePkg is the package a named type resolves in: the qualifier of a
@@ -174,7 +174,7 @@ func resolveTypeRef(t *ast.TypeRef, raw bool, pkg *Package, proj *Project) Resol
 			rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatAny, name, true, ""
 			return rf
 		case prims.File:
-			rf.Category, rf.IsNilable, rf.HomePkg = CatFile, true, ""
+			rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatFile, name, true, ""
 			return rf
 		case prims.String, prims.Bool, prims.Int, prims.Uint, prims.Float, prims.DateTime:
 			rf.Category, rf.ResolvedPrim, rf.HomePkg = CatPrimitive, name, ""

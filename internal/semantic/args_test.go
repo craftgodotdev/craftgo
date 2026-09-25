@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -358,6 +359,41 @@ func TestDefaultOutOfRangeRejected(t *testing.T) {
 // An in-range @default on a narrow int is accepted.
 func TestDefaultInRangeClean(t *testing.T) {
 	mustClean(t, `type Req { b int8? @default(100)  u uint8? @default(0) }`)
+}
+
+// One rule decides what @default may target, reported once at the decorator:
+// a primitive, enum or scalar with a literal form, or a single-level array of one.
+func TestDefaultTargets(t *testing.T) {
+	for _, c := range []struct{ decls, field, msg string }{
+		{"", `b bytes? @default("x")`, "@default is not supported on a `bytes` field"},
+		{"scalar Blob bytes", `b Blob? @default("x")`, "@default is not supported on a `bytes` field"},
+		{"", `at datetime[]? @default(["2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"])`, "@default is not supported on a `datetime` field"},
+		{"", `a any? @default(1)`, "only primitives, enums, scalars"},
+		{"", `m map<string, int>? @default(1)`, "only primitives, enums, scalars"},
+		{"type In { x int }", `s In? @default(1)`, "only primitives, enums, scalars"},
+		{"", `g int[][]? @default([[1]])`, "@default is not supported on a multi-dimensional array"},
+	} {
+		src := c.decls + "\ntype R { " + c.field + " }"
+		d := expectError(t, src, CodeDecoratorConflict)
+		expectMessage(t, d, c.msg)
+		expectCodeCount(t, src, CodeDecoratorConflict, 1)
+	}
+	expectError(t, "type Box<T> { v T? @default(1) }", CodeDecoratorConflict)
+	mustClean(t, "enum C { A B }\nscalar Email string\ntype R { c C? @default(A)  e Email? @default(\"a@b.c\")  xs int[]? @default([1])  cs C[]? @default([A]) }")
+}
+
+// A @default field needs `?` unless @path binds it.
+func TestDefaultNeedsOptional(t *testing.T) {
+	pkg, diags := Analyze(parseFiles(t, `type R { a int @default(1)  b int? @default(1)  c int  d string @path @default("x") }`))
+	want := map[string]bool{"a": true, "b": false, "c": false, "d": false}
+	for _, f := range ast.Fields(pkg.Types["R"].Body) {
+		if got := DefaultNeedsOptional(f); got != want[f.Name] {
+			t.Errorf("%s: DefaultNeedsOptional = %v, want %v", f.Name, got, want[f.Name])
+		}
+	}
+	if n := len(slices.DeleteFunc(diags, func(d Diagnostic) bool { return d.Code != CodeDefaultNeedsOptional })); n != 1 {
+		t.Errorf("want one %s warning, for a; got %d", CodeDefaultNeedsOptional, n)
+	}
 }
 
 // @default on a `bytes` field is rejected.

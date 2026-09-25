@@ -41,6 +41,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   `raw` on `bytes` reads `@format(email) applies to string, but …`. The codes
   are unchanged.
 
+- **A `@default` on a type it cannot target is reported once, at the
+  decorator.** A default on a `bytes`, `file` or `datetime` array was
+  reported once per element, beside a warning asking for `?`.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw
