@@ -212,6 +212,30 @@ func TestEnumDuplicateString(t *testing.T) {
 	expectMsg(t, "duplicate string value", `enum X { A = "x"  B = "x" }`)
 }
 
+// Every repeat of an enum value name or literal relates to its first use.
+func TestEnumDuplicatesRelateToTheFirst(t *testing.T) {
+	for _, src := range []string{
+		"enum X {\n A\n A\n A\n}",
+		"enum X {\n A = 1\n B = 1\n C = 1\n}",
+		"enum X {\n A = \"x\"\n B = \"x\"\n C = \"x\"\n}",
+	} {
+		_, diags := Analyze(parseFiles(t, src))
+		n := 0
+		for _, d := range diags {
+			if d.Code != CodeEnumDuplicateName && d.Code != CodeEnumDuplicateLiteral {
+				continue
+			}
+			n++
+			if len(d.Related) != 1 || d.Related[0].Pos.Line != 2 {
+				t.Errorf("%q: %s at line %d relates to %v, want line 2", src, d.Code, d.Pos.Line, d.Related)
+			}
+		}
+		if n != 2 {
+			t.Errorf("%q: want 2 duplicate diagnostics, got %v", src, diags)
+		}
+	}
+}
+
 func TestDuplicateDecoratorOnField(t *testing.T) {
 	expectMsg(t, "duplicate decorator", `type X { name string @doc("a") @doc("b") }`)
 }

@@ -74,27 +74,18 @@ func (c *projectChecks) reportGroupPackageStraddle(seg string, occs []segClaim) 
 	if !straddles {
 		return
 	}
+	reports := make([]siteReport, len(occs))
 	for i, o := range occs {
-		diag := Diagnostic{
-			Pos:      o.pos,
-			End:      o.pos,
-			Severity: lexer.SeverityError,
-			Code:     CodeGroupPackageStraddle,
-			Msg: fmt.Sprintf(
+		reports[i] = siteReport{
+			pos: o.pos,
+			msg: fmt.Sprintf(
 				"service %q (package %q) shares output directory %q with a service from another package - generated files take their Go package from the DSL package, so the directory would hold two different `package` declarations and fail to compile; sharing a @group is fine within one DSL package, otherwise give them separate groups",
 				o.svc, o.pkg, seg),
+			note: fmt.Sprintf("service %q in package %q also emits here (%s)", o.svc, o.pkg, claimSource(o.group)),
+			peer: o.pkg,
 		}
-		for j, other := range occs {
-			if j == i || other.pkg == o.pkg {
-				continue
-			}
-			diag.Related = append(diag.Related, lexer.Related{
-				Pos: other.pos,
-				Msg: fmt.Sprintf("service %q in package %q also emits here (%s)", other.svc, other.pkg, claimSource(other.group)),
-			})
-		}
-		c.diags = append(c.diags, diag)
 	}
+	c.reportEverySite(CodeGroupPackageStraddle, reports)
 }
 
 // reportGroupMemberCollisions reports each method whose name is declared by
@@ -115,27 +106,17 @@ func (c *projectChecks) reportGroupMemberCollisions(seg string, occs []segClaim)
 		if len(owners) < 2 {
 			continue
 		}
+		reports := make([]siteReport, len(owners))
 		for i, o := range owners {
-			diag := Diagnostic{
-				Pos:      o.member.pos,
-				End:      o.member.pos,
-				Severity: lexer.SeverityError,
-				Code:     CodeGroupMethodCollision,
-				Msg: fmt.Sprintf(
+			reports[i] = siteReport{
+				pos: o.member.pos,
+				msg: fmt.Sprintf(
 					"%s %q of service %q collides with another service's %s of the same name in shared output directory %q - stubs are one file per member and the generated function is named after it, so both would claim %s.go and declare the same function; rename one or split the group",
 					o.member.kind, name, o.claim.svc, o.member.kind, seg, name),
+				note: fmt.Sprintf("also declared by service %q, which emits here (%s)", o.claim.svc, claimSource(o.claim.group)),
 			}
-			for j, other := range owners {
-				if j == i {
-					continue
-				}
-				diag.Related = append(diag.Related, lexer.Related{
-					Pos: other.member.pos,
-					Msg: fmt.Sprintf("also declared by service %q, which emits here (%s)", other.claim.svc, claimSource(other.claim.group)),
-				})
-			}
-			c.diags = append(c.diags, diag)
 		}
+		c.reportEverySite(CodeGroupMethodCollision, reports)
 	}
 }
 

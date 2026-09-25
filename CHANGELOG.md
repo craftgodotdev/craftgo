@@ -362,6 +362,16 @@ breaking change to the DSL or the generated layout bumps the major version.
   once**, as a decorator on the wrong type; it also drew the unsigned-value
   error meant for a single number.
 
+- **A mixin's fields count toward a body's JSON keys.** `type R { Base
+  identifier string @json("id") }` with `Base { id string }` passed analysis,
+  and the generated struct carried two fields tagged `json:"id"`, one of
+  which encoding/json silently drops; it now reports
+  `field/name-collision` at R's own field, as two local fields sharing a
+  key already did.
+
+- **A repeated enum value name or literal points at its first use.** The
+  third `A` of an enum related to the second one as "first declared here".
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

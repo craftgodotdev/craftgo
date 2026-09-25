@@ -89,8 +89,9 @@ func (a *analyzer) checkEnums() {
 				d := a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeEnumDuplicateName,
 					"duplicate enum value name %q in %q", v.Name, ed.Name)
 				d.Related = related(prev, "first declared here")
+			} else {
+				seenNames[v.Name] = v.Pos
 			}
-			seenNames[v.Name] = v.Pos
 			if first {
 				firstKind = v.Kind
 				firstKindPos = v.Pos
@@ -106,15 +107,17 @@ func (a *analyzer) checkEnums() {
 					d := a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeEnumDuplicateLiteral,
 						"duplicate int value %d in enum %q", v.IntValue, ed.Name)
 					d.Related = related(prev, "first used here")
+				} else {
+					seenInts[v.IntValue] = v.Pos
 				}
-				seenInts[v.IntValue] = v.Pos
 			case ast.EnumString:
 				if prev, dup := seenStrs[v.StrValue]; dup {
 					d := a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeEnumDuplicateLiteral,
 						"duplicate string value %q in enum %q", v.StrValue, ed.Name)
 					d.Related = related(prev, "first used here")
+				} else {
+					seenStrs[v.StrValue] = v.Pos
 				}
-				seenStrs[v.StrValue] = v.Pos
 			}
 		}
 	}

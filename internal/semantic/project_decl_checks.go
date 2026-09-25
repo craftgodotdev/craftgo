@@ -48,24 +48,10 @@ func (c *projectChecks) reportCrossPackageDuplicates(sites map[string][]declSite
 			}
 			return occs[i].pos.Offset < occs[j].pos.Offset
 		})
+		reports := make([]siteReport, len(occs))
 		for i, o := range occs {
-			diag := Diagnostic{
-				Pos:      o.pos,
-				End:      o.pos,
-				Severity: lexer.SeverityError,
-				Code:     code,
-				Msg:      fmt.Sprintf(msg, name),
-			}
-			for j, other := range occs {
-				if j == i {
-					continue
-				}
-				diag.Related = append(diag.Related, lexer.Related{
-					Pos: other.pos,
-					Msg: "also declared in package " + other.pkg,
-				})
-			}
-			c.diags = append(c.diags, diag)
+			reports[i] = siteReport{pos: o.pos, msg: fmt.Sprintf(msg, name), note: "also declared in package " + o.pkg}
 		}
+		c.reportEverySite(code, reports)
 	}
 }

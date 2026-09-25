@@ -78,6 +78,30 @@ func (c *projectChecks) diag(pos lexer.Position, sev lexer.Severity, code, forma
 	return &c.diags[len(c.diags)-1]
 }
 
+// siteReport is one site of a problem reported at every site: the message
+// there, and the note the other sites relate it by.
+type siteReport struct {
+	pos  lexer.Position
+	msg  string
+	note string
+	// peer groups sites that relate none of their group; "" relates every site.
+	peer string
+}
+
+// reportEverySite reports each site's message under code, relating every
+// other site by its note.
+func (c *projectChecks) reportEverySite(code string, sites []siteReport) {
+	for i, s := range sites {
+		d := c.diag(s.pos, lexer.SeverityError, code, "%s", s.msg)
+		for j, o := range sites {
+			if j == i || (s.peer != "" && o.peer == s.peer) {
+				continue
+			}
+			d.Related = append(d.Related, lexer.Related{Pos: o.pos, Msg: o.note})
+		}
+	}
+}
+
 // sortDiagnostics orders diags by position, code and message.
 func sortDiagnostics(diags []Diagnostic) {
 	slices.SortStableFunc(diags, func(a, b Diagnostic) int {

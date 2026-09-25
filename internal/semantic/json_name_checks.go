@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -8,8 +9,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// checkJSONKeys rejects two body fields of one type or error that would
-// share a JSON key.
+// checkJSONKeys rejects two body fields of one type or error, mixin fields
+// included, that would share a JSON key.
 func (a *analyzer) checkJSONKeys(files []*ast.File) {
 	for _, f := range files {
 		for _, decl := range f.Decls {
@@ -23,9 +24,15 @@ func (a *analyzer) checkJSONKeys(files []*ast.File) {
 	}
 }
 
+// checkJSONKeysIn reports each field of members that shares a JSON key with
+// an earlier one: at the body's own field when one of the pair is, as
+// encoding/json keeps only one of them.
 func (a *analyzer) checkJSONKeysIn(parent string, members []ast.TypeMember) {
+	own := ast.Fields(members)
+	fields, _ := a.proj.flattenFields(a.pkg.Name, a.pkg.Name, members, nil, nil)
 	seen := map[string]*ast.Field{}
-	for _, f := range ast.Fields(members) {
+	for _, ff := range fields {
+		f := ff.Field
 		if f.Name == "" {
 			continue
 		}
@@ -33,13 +40,18 @@ func (a *analyzer) checkJSONKeysIn(parent string, members []ast.TypeMember) {
 		if presence == wire.JSONAbsent {
 			continue
 		}
-		if prev, dup := seen[name]; dup {
-			d := a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeFieldNameCollision,
-				"field %q of %s carries JSON key %q, which field %q already carries - two members cannot share one key", f.Name, parent, name, prev.Name)
-			d.Related = related(prev.Pos, "first carried here")
+		prev, dup := seen[name]
+		if !dup {
+			seen[name] = f
 			continue
 		}
-		seen[name] = f
+		at, other := f, prev
+		if !slices.Contains(own, f) && slices.Contains(own, prev) {
+			at, other = prev, f
+		}
+		d := a.diag(at.Pos, at.Pos, lexer.SeverityError, CodeFieldNameCollision,
+			"field %q of %s carries JSON key %q, which field %q also carries - two members cannot share one key", at.Name, parent, name, other.Name)
+		d.Related = related(other.Pos, "also carried here")
 	}
 }
 
