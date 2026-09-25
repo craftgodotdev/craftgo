@@ -22,7 +22,7 @@ import (
 // for any DSL-typed `file` declarations.
 func UploadAvatar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(33554432); err != nil {
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
 			return
 		}

@@ -30,5 +30,5 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/raw/rq", transport.RqResp(svcCtx), svcCtx.Timing)
 	srv.Handle("GET /api/raw/rq/page", transport.RqPage(svcCtx), svcCtx.Timing)
 	srv.Handle("POST /api/raw/rq/docs", transport.RqDocsReq(svcCtx), svcCtx.Timing)
-	srv.Handle("POST /api/raw/rq/limits", server.WithLimits(transport.RqLimits(svcCtx), server.Limits{Timeout: 2 * time.Second, MaxBodySize: 1024}), svcCtx.Timing)
+	srv.Handle("POST /api/raw/rq/limits", server.WithLimits(transport.RqLimits(svcCtx), server.Limits{Timeout: 2 * time.Second, MaxBodySize: 1 << 10}), svcCtx.Timing)
 }

@@ -1192,7 +1192,7 @@ service S {
 		`"time"`,
 		"server.WithLimits",
 		"Timeout: 500 * time.Millisecond",
-		"MaxBodySize: 1024",
+		"MaxBodySize: 1 << 10",
 	)
 }
 
@@ -1215,8 +1215,30 @@ service S {
 	mustContainAll(t, string(body),
 		`"time"`,
 		"Timeout: 5 * time.Second",
-		"MaxBodySize: 2048",
+		"MaxBodySize: 2 << 10",
 	)
+}
+
+// A size is a shift of the largest unit that divides it, else a byte count.
+func TestFormatSizeGo(t *testing.T) {
+	for _, tc := range []struct {
+		n    int64
+		want string
+	}{
+		{1 << 30, "1 << 30"},
+		{3 << 30, "3 << 30"},
+		{1536 << 20, "1536 << 20"},
+		{32 << 20, "32 << 20"},
+		{12 << 20, "12 << 20"},
+		{1 << 10, "1 << 10"},
+		{1536, "1536"},
+		{1000, "1000"},
+		{1, "1"},
+	} {
+		if got := formatSizeGo(tc.n); got != tc.want {
+			t.Errorf("formatSizeGo(%d) = %q, want %q", tc.n, got, tc.want)
+		}
+	}
 }
 
 func TestGenerateRoutesNoBasePathNoPrefix(t *testing.T) {
@@ -1488,7 +1510,7 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 	handler, _ := os.ReadFile(filepath.Join(root, "internal/transport/upload-service/upload.go"))
 	mustParseGo(t, string(handler))
 	mustContainAll(t, string(handler),
-		"r.ParseMultipartForm(",
+		"r.ParseMultipartForm(32 << 20)",
 		// Handler-scoped cleanup frees temp files before the flush and on panic paths.
 		"defer func() { _ = r.MultipartForm.RemoveAll() }()",
 		`r.FormValue("note")`,
@@ -1497,6 +1519,36 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 	)
 	if strings.Contains(string(handler), "server.JSON().Decode(r.Body") {
 		t.Errorf("multipart handler must not JSON-decode body:\n%s", handler)
+	}
+}
+
+// The multipart memory budget is 32 MiB, or @maxBodySize when larger, written
+// in the largest size unit that divides it.
+func TestGenerateTransportMultipartBudget(t *testing.T) {
+	for _, tc := range []struct{ decorator, want string }{
+		{"", "r.ParseMultipartForm(32 << 20)"},
+		{"@maxBodySize(1MB)", "r.ParseMultipartForm(32 << 20)"},
+		{"@maxBodySize(64MB)", "r.ParseMultipartForm(64 << 20)"},
+		{"@maxBodySize(1.5GB)", "r.ParseMultipartForm(1536 << 20)"},
+	} {
+		pkg := analyze(t, `package design
+type UploadReq { avatar file }
+service S {
+    `+tc.decorator+`
+    post Upload /upload { request UploadReq }
+}`)
+		root := t.TempDir()
+		if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
+			t.Fatal(err)
+		}
+		handler, err := os.ReadFile(filepath.Join(root, "internal/transport/s/upload.go"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		mustParseGo(t, string(handler))
+		if !strings.Contains(string(handler), tc.want) {
+			t.Errorf("%q: want %s:\n%s", tc.decorator, tc.want, handler)
+		}
 	}
 }
 

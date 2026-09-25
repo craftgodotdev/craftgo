@@ -33,6 +33,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   file writes `@timeout(60)` as `1 * time.Minute`, the largest whole unit, as
   it always wrote `@timeout(60s)`; the value is unchanged.
 
+- **Sizes render in their unit.** The routes file writes `@maxBodySize(12MB)`
+  as `MaxBodySize: 12 << 20`, and a multipart handler parses with
+  `ParseMultipartForm(32 << 20)`, where both wrote a byte count; the values
+  are unchanged.
+
 - **A decorator on the wrong kind of value reads the same everywhere.**
   `@pattern` on `bytes`, `@multipleOf` on a float and `@uniqueItems` on a
   map report `@X applies to <kinds> fields, but <field> is <kind>`, as every

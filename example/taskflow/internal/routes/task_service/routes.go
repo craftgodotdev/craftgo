@@ -20,7 +20,7 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/projects/v1/{projectId}/tasks", transport.ListTasks(svcCtx), svcCtx.RequestID, svcCtx.AccessLog, svcCtx.RateLimit, svcCtx.AuthRequired)
 	srv.Handle("GET /api/projects/v1/{projectId}/tasks/{id}", transport.GetTask(svcCtx), svcCtx.RequestID, svcCtx.AccessLog, svcCtx.RateLimit, svcCtx.AuthRequired)
 	srv.Handle("POST /api/projects/v1/{projectId}/tasks", transport.CreateTask(svcCtx), svcCtx.RequestID, svcCtx.AccessLog, svcCtx.RateLimit, svcCtx.AuthRequired)
-	srv.Handle("POST /api/projects/v1/{projectId}/tasks/bulk", server.WithLimits(transport.BulkCreateTasks(svcCtx), server.Limits{MaxBodySize: 2097152}), svcCtx.RequestID, svcCtx.AccessLog, svcCtx.RateLimit, svcCtx.AuthRequired)
+	srv.Handle("POST /api/projects/v1/{projectId}/tasks/bulk", server.WithLimits(transport.BulkCreateTasks(svcCtx), server.Limits{MaxBodySize: 2 << 20}), svcCtx.RequestID, svcCtx.AccessLog, svcCtx.RateLimit, svcCtx.AuthRequired)
 	srv.Handle("PATCH /api/projects/v1/{projectId}/tasks/{id}/status", transport.SetTaskStatus(svcCtx), svcCtx.RequestID, svcCtx.AccessLog, svcCtx.RateLimit, svcCtx.AuthRequired)
 	srv.Handle("POST /api/projects/v1/{projectId}/tasks/{id}/time", transport.LogTime(svcCtx), svcCtx.RequestID, svcCtx.AccessLog, svcCtx.RateLimit, svcCtx.AuthRequired)
 	srv.Handle("POST /api/projects/v1/{projectId}/tasks/{id}/comments", transport.AddComment(svcCtx), svcCtx.RequestID, svcCtx.AccessLog, svcCtx.RateLimit, svcCtx.AuthRequired)

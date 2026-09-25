@@ -30,8 +30,8 @@ type transportData struct {
 	WriteResponse bool
 	Sig           methodSignature
 	IsMultipart   bool
-	// MultipartMaxMemory is the ParseMultipartForm memory budget: 32 MiB, or @maxBodySize when larger.
-	MultipartMaxMemory int64
+	// MultipartMaxMemory spells the ParseMultipartForm memory budget: 32 MiB, or @maxBodySize when larger.
+	MultipartMaxMemory string
 	PathParams         []paramBinding
 	QueryParams        []paramBinding
 	HeaderParams       []paramBinding
@@ -126,10 +126,11 @@ func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, 
 			// The multipart parser owns the body.
 			d.BodyDecode = false
 			const stdlibDefault int64 = 32 << 20
-			d.MultipartMaxMemory = stdlibDefault
+			budget := stdlibDefault
 			if n, _ := semantic.SizeArg(firstArg(decs, "maxBodySize")); n > stdlibDefault {
-				d.MultipartMaxMemory = n
+				budget = n
 			}
+			d.MultipartMaxMemory = formatSizeGo(budget)
 		}
 		d.Defaults = collectDefaults(fields, r, imports)
 	}

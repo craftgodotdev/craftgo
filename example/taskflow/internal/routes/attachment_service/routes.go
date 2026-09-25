@@ -15,6 +15,6 @@ import (
 // ServiceContext (embedded Middlewares struct), so no runtime name
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("POST /api/projects/v1/{projectId}/tasks/{taskId}/attachments", server.WithLimits(transport.UploadAttachment(svcCtx), server.Limits{MaxBodySize: 12582912}), svcCtx.RequestID, svcCtx.AccessLog, svcCtx.AuthRequired)
+	srv.Handle("POST /api/projects/v1/{projectId}/tasks/{taskId}/attachments", server.WithLimits(transport.UploadAttachment(svcCtx), server.Limits{MaxBodySize: 12 << 20}), svcCtx.RequestID, svcCtx.AccessLog, svcCtx.AuthRequired)
 	srv.Handle("GET /api/projects/v1/{projectId}/tasks/{taskId}/attachments", transport.ListAttachments(svcCtx), svcCtx.RequestID, svcCtx.AccessLog, svcCtx.AuthRequired)
 }

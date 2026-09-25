@@ -453,7 +453,7 @@ func TestRawModesMixWithMethodDecorators(t *testing.T) {
 
 	routes := read("internal/routes/mix-service/routes.go")
 	mustContainAll(t, routes,
-		"server.WithLimits(transport.RrAll(svcCtx), server.Limits{Timeout: 3 * time.Second, MaxBodySize: 2097152}), svcCtx.Auth, svcCtx.Audit)",
+		"server.WithLimits(transport.RrAll(svcCtx), server.Limits{Timeout: 3 * time.Second, MaxBodySize: 2 << 20}), svcCtx.Auth, svcCtx.Audit)",
 		"transport.RrIgnore(svcCtx))",
 	)
 	mustContainNone(t, routes, "RrIgnore(svcCtx), svcCtx")

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"maps"
+	"math/bits"
 	"slices"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -62,7 +64,7 @@ func methodLimitsLiteral(decs []*ast.Decorator) (lit string, usesTime, ok bool) 
 		usesTime = true
 	}
 	if n, _ := semantic.SizeArg(firstArg(decs, "maxBodySize")); n > 0 {
-		fields = append(fields, fmt.Sprintf("MaxBodySize: %d", n))
+		fields = append(fields, "MaxBodySize: "+formatSizeGo(n))
 	}
 	if len(fields) == 0 {
 		return "", false, false
@@ -83,6 +85,17 @@ func formatDurationGo(d time.Duration) string {
 		return fmt.Sprintf("%d * time.Millisecond", d/time.Millisecond)
 	}
 	return fmt.Sprintf("%d * time.Nanosecond", d.Nanoseconds())
+}
+
+// formatSizeGo renders n bytes as a shift of the largest size unit that divides
+// it (`12 << 20`), or as a byte count when no unit does.
+func formatSizeGo(n int64) string {
+	for _, u := range lexer.SizeUnits {
+		if u.Bytes > 1 && n%u.Bytes == 0 {
+			return fmt.Sprintf("%d << %d", n/u.Bytes, bits.TrailingZeros64(uint64(u.Bytes)))
+		}
+	}
+	return fmt.Sprintf("%d", n)
 }
 
 // routeEntry is one `srv.Handle(Pattern, HandlerCall, Middlewares)` line of routes.tmpl.
