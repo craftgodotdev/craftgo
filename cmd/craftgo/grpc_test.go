@@ -1,8 +1,10 @@
 package main
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -44,11 +46,7 @@ func grpcProject(t *testing.T) string {
 	}
 	goVersion := goDirective(t, root)
 	mustWrite(t, dir, "go.mod", "module craftgo.test/grpcapp\n\ngo "+goVersion+"\n")
-	uses := []string{".", root}
-	for _, m := range repoModules {
-		uses = append(uses, filepath.Join(root, filepath.FromSlash(m)))
-	}
-	mustWrite(t, dir, "go.work", "go "+goVersion+"\n\nuse (\n\t"+strings.Join(uses, "\n\t")+"\n)\n")
+	writeWorkspace(t, dir, root, goVersion)
 	t.Setenv("GOWORK", filepath.Join(dir, "go.work"))
 	t.Setenv("GOFLAGS", "")
 	return dir
@@ -74,7 +72,7 @@ func TestRunGenProtoOnlyProjectCompiles(t *testing.T) {
 	dir := grpcProject(t)
 	mustWrite(t, dir, "design/craftgo.design.yaml", protoOnlyManifest)
 	mustWrite(t, dir, "design/greet/greet.proto", greetProto)
-	genGRPC(t, dir)
+	genProject(t, dir)
 
 	for _, rel := range []string{
 		"internal/pb/greet/greet.pb.go",
@@ -108,9 +106,9 @@ func TestRunGenProtoOnlyProjectCompiles(t *testing.T) {
 	goCheck(t, dir)
 
 	before := treeOf(t, dir)
-	genGRPC(t, dir)
-	if got := treeOf(t, dir); !sameTree(got, before) {
-		t.Errorf("a second run must change nothing:\nbefore %v\nafter  %v", keysOf(before), keysOf(got))
+	genProject(t, dir)
+	if got := treeOf(t, dir); !maps.Equal(got, before) {
+		t.Errorf("a second run must change nothing:\nbefore %v\nafter  %v", slices.Sorted(maps.Keys(before)), slices.Sorted(maps.Keys(got)))
 	}
 }
 
@@ -121,7 +119,7 @@ func TestRunGenMixedProjectCompiles(t *testing.T) {
 	mustWrite(t, dir, "design/craftgo.design.yaml", routesOnlyManifest)
 	mustWrite(t, dir, "design/api.craftgo", routesOnlyDesign)
 	mustWrite(t, dir, "design/greet/greet.proto", greetProto)
-	genGRPC(t, dir)
+	genProject(t, dir)
 	mustContain(t, dir, "main.go", "wiring.Register(ctx, srv, svc)", "wiring.RegisterGRPC(ctx, grpcSrv, svc)", "srv.Start(cfg.Server.Addr)", "grpcSrv.Start(cfg.GRPC.Addr)")
 	if !exists(t, dir, "internal", "routes", "thing_service", "routes.go") || !exists(t, dir, "internal", "grpc", "greeter", "server.go") {
 		t.Error("both halves must be generated")
@@ -147,13 +145,13 @@ func TestRenamedProtoServiceLeavesNothingBehind(t *testing.T) {
 	dir := grpcProject(t)
 	mustWrite(t, dir, "design/craftgo.design.yaml", protoOnlyManifest)
 	mustWrite(t, dir, "design/greet/greet.proto", greetProto)
-	genGRPC(t, dir)
+	genProject(t, dir)
 
 	if err := os.Remove(filepath.Join(dir, "design", "greet", "greet.proto")); err != nil {
 		t.Fatal(err)
 	}
 	mustWrite(t, dir, "design/hello/hello.proto", strings.NewReplacer("package greet;", "package hello;", "service Greeter", "service Hello").Replace(greetProto))
-	genGRPC(t, dir)
+	genProject(t, dir)
 
 	for _, rel := range []string{"internal/grpc/greeter", "internal/pb/greet"} {
 		if exists(t, dir, filepath.FromSlash(rel)) {

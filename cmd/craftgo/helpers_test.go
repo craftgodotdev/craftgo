@@ -21,6 +21,7 @@ func mustWrite(t *testing.T, root, rel, content string) {
 	}
 }
 
+// exists reports whether the path joined from parts exists.
 func exists(t *testing.T, parts ...string) bool {
 	t.Helper()
 	_, err := os.Stat(filepath.Join(parts...))
@@ -53,26 +54,7 @@ func treeOf(t *testing.T, root string) map[string]string {
 	return out
 }
 
-func sameTree(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for path, body := range a {
-		if b[path] != body {
-			return false
-		}
-	}
-	return true
-}
-
-func keysOf(tree map[string]string) []string {
-	out := make([]string, 0, len(tree))
-	for path := range tree {
-		out = append(out, path)
-	}
-	return out
-}
-
+// genProject runs gen over dir/design into dir.
 func genProject(t *testing.T, dir string) {
 	t.Helper()
 	if err := runGen([]string{"-f", filepath.Join(dir, "design"), "-c", dir}); err != nil {
@@ -80,24 +62,34 @@ func genProject(t *testing.T, dir string) {
 	}
 }
 
-func genGRPC(t *testing.T, dir string) {
-	t.Helper()
-	if err := runGen([]string{"-f", filepath.Join(dir, "design"), "-c", dir}); err != nil {
-		t.Fatalf("runGen: %v", err)
-	}
+// goIn runs the go command with args in dir, under the workspace dir/go.work,
+// and returns its combined output.
+func goIn(dir string, args ...string) ([]byte, error) {
+	cmd := exec.Command("go", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK="+filepath.Join(dir, "go.work"), "GOFLAGS=")
+	return cmd.CombinedOutput()
 }
 
 // goCheck builds and vets the generated project inside its workspace.
 func goCheck(t *testing.T, dir string) {
 	t.Helper()
-	for _, args := range [][]string{{"build", "./..."}, {"vet", "./..."}} {
-		cmd := exec.Command("go", args...)
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GOWORK="+filepath.Join(dir, "go.work"), "GOFLAGS=")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("go %s: %v\n%s", args[0], err, out)
+	for _, verb := range []string{"build", "vet"} {
+		if out, err := goIn(dir, verb, "./..."); err != nil {
+			t.Fatalf("go %s: %v\n%s", verb, err, out)
 		}
 	}
+}
+
+// writeWorkspace writes dir/go.work over dir, the repository at root and its
+// nested modules, so a generated project resolves craftgo from this tree.
+func writeWorkspace(t *testing.T, dir, root, goVersion string) {
+	t.Helper()
+	uses := []string{".", root}
+	for _, m := range repoModules {
+		uses = append(uses, filepath.Join(root, filepath.FromSlash(m)))
+	}
+	mustWrite(t, dir, "go.work", "go "+goVersion+"\n\nuse (\n\t"+strings.Join(uses, "\n\t")+"\n)\n")
 }
 
 // repoModules are the nested modules of this repo a generated project's

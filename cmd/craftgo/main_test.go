@@ -89,11 +89,7 @@ service ProbeService {
 // into `design/` under the working directory.
 func TestRunInitDefaultPath(t *testing.T) {
 	dir := t.TempDir()
-	prev, _ := os.Getwd()
-	defer os.Chdir(prev)
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
+	t.Chdir(dir)
 	if err := runInit(nil); err != nil {
 		t.Fatal(err)
 	}

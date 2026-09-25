@@ -2,9 +2,7 @@ package main
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -192,13 +190,11 @@ func TestScaffoldsCompile(t *testing.T) {
 		t.Run(shape.name, func(t *testing.T) {
 			dir := generateScaffoldProject(t, root, shape)
 
-			check := exec.Command("go", "vet", "./...")
+			verb := "vet"
 			if shape.link {
-				check = exec.Command("go", "build", "./...")
+				verb = "build"
 			}
-			check.Dir = dir
-			check.Env = append(os.Environ(), "GOWORK="+filepath.Join(dir, "go.work"), "GOFLAGS=")
-			if out, err := check.CombinedOutput(); err != nil {
+			if out, err := goIn(dir, verb, "./..."); err != nil {
 				t.Fatalf("the generated project does not compile: %v\n%s", err, out)
 			}
 
@@ -252,10 +248,7 @@ func TestGeneratedConfigRoundTrips(t *testing.T) {
 func assertConfigRoundTrips(t *testing.T, dir string) {
 	t.Helper()
 	mustWrite(t, filepath.Join(dir, "config"), "roundtrip_test.go", configRoundTripTest)
-	run := exec.Command("go", "test", "./config/")
-	run.Dir = dir
-	run.Env = append(os.Environ(), "GOWORK="+filepath.Join(dir, "go.work"), "GOFLAGS=")
-	if out, err := run.CombinedOutput(); err != nil {
+	if out, err := goIn(dir, "test", "./config/"); err != nil {
 		t.Errorf("config.yaml.tmpl and config.go.tmpl disagree: %v\n%s", err, out)
 	}
 }
@@ -295,10 +288,7 @@ func assertRawFieldRoundTrips(t *testing.T, dir string) {
 	t.Helper()
 	pkg := filepath.Join("internal", "types", "gate")
 	mustWrite(t, filepath.Join(dir, pkg), "roundtrip_test.go", rawRoundTripTest)
-	run := exec.Command("go", "test", "./"+filepath.ToSlash(pkg)+"/")
-	run.Dir = dir
-	run.Env = append(os.Environ(), "GOWORK="+filepath.Join(dir, "go.work"), "GOFLAGS=")
-	if out, err := run.CombinedOutput(); err != nil {
+	if out, err := goIn(dir, "test", "./"+filepath.ToSlash(pkg)+"/"); err != nil {
 		t.Errorf("a raw field does not carry its bytes through unchanged: %v\n%s", err, out)
 	}
 }
@@ -320,21 +310,12 @@ func generateScaffoldProject(t *testing.T, root string, shape scaffoldShape) str
 	mustWrite(t, design, "craftgo.design.yaml", shape.manifest)
 	mustWrite(t, design, "api.craftgo", shape.design)
 
-	if err := runGen([]string{"-f", design, "-c", dir}); err != nil {
-		t.Fatalf("runGen: %v", err)
-	}
+	genProject(t, dir)
 	for rel, tmpl := range shape.goScaffolds {
 		if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
 			t.Fatalf("%s wrote no %s, so this test no longer covers it: %v", tmpl, rel, err)
 		}
 	}
-
-	// The workspace resolves craftgo and its nested modules from this repo.
-	uses := []string{".", root}
-	for _, m := range repoModules {
-		uses = append(uses, filepath.Join(root, filepath.FromSlash(m)))
-	}
-	mustWrite(t, dir, "go.work", "go "+goVersion+"\n\nuse (\n\t"+
-		strings.Join(uses, "\n\t")+"\n)\n")
+	writeWorkspace(t, dir, root, goVersion)
 	return dir
 }

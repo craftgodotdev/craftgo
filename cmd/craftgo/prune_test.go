@@ -1,8 +1,10 @@
 package main
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -48,13 +50,14 @@ type Entry {
 }
 `
 
-// storeProject lays out a project whose design is src and returns its root.
-func storeProject(t *testing.T, src string) string {
+// storeProject lays out a project whose design is storeDesign and returns its
+// root.
+func storeProject(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	mustWrite(t, dir, "go.mod", "module github.com/test/store\n\ngo 1.24\n")
 	mustWrite(t, dir, "design/craftgo.design.yaml", "")
-	mustWrite(t, dir, "design/store.craftgo", src)
+	mustWrite(t, dir, "design/store.craftgo", storeDesign)
 	return dir
 }
 
@@ -62,7 +65,7 @@ func storeProject(t *testing.T, src string) string {
 // service sweeps its old handlers and routes, keeps its logic stub, and that
 // a further run changes nothing.
 func TestRenamedServiceLeavesNoApplicationHalfBehind(t *testing.T) {
-	dir := storeProject(t, storeDesign)
+	dir := storeProject(t)
 	genProject(t, dir)
 
 	for _, path := range []string{
@@ -103,15 +106,15 @@ func TestRenamedServiceLeavesNoApplicationHalfBehind(t *testing.T) {
 
 	before := treeOf(t, dir)
 	genProject(t, dir)
-	if got := treeOf(t, dir); !sameTree(got, before) {
-		t.Errorf("a third run must change nothing:\nbefore %v\nafter  %v", keysOf(before), keysOf(got))
+	if got := treeOf(t, dir); !maps.Equal(got, before) {
+		t.Errorf("a third run must change nothing:\nbefore %v\nafter  %v", slices.Sorted(maps.Keys(before)), slices.Sorted(maps.Keys(got)))
 	}
 }
 
 // TestRemovedPackageLosesItsTypesFolder checks that removing a DSL package
 // removes its types folder.
 func TestRemovedPackageLosesItsTypesFolder(t *testing.T) {
-	dir := storeProject(t, storeDesign)
+	dir := storeProject(t)
 	mustWrite(t, dir, "design/audit.craftgo", auditDesign)
 	genProject(t, dir)
 
@@ -137,7 +140,7 @@ func TestRemovedPackageLosesItsTypesFolder(t *testing.T) {
 // TestPackageThatStopsPublishingLosesItsEventLibrary checks that a package
 // left with no event loses its event library folder.
 func TestPackageThatStopsPublishingLosesItsEventLibrary(t *testing.T) {
-	dir := storeProject(t, storeDesign)
+	dir := storeProject(t)
 	genProject(t, dir)
 	if !exists(t, dir, "internal", "events", "store", "events.go") {
 		t.Fatal("the first run must write the event library")
@@ -164,7 +167,7 @@ service Orders {
 // TestHandWrittenFilesInAnOutputDirectorySurvive checks that the sweep, which
 // goes by the generated header, keeps hand-written files and their directory.
 func TestHandWrittenFilesInAnOutputDirectorySurvive(t *testing.T) {
-	dir := storeProject(t, storeDesign)
+	dir := storeProject(t)
 	genProject(t, dir)
 
 	mustWrite(t, dir, "internal/transport/orders/helper.go", "package orders\n\nfunc Helper() {}\n")
@@ -189,7 +192,7 @@ func TestHandWrittenFilesInAnOutputDirectorySurvive(t *testing.T) {
 // TestDroppingTheLastServiceClearsTheHTTPHalf checks that dropping the last
 // service removes the routes umbrella, the service routes and the handlers.
 func TestDroppingTheLastServiceClearsTheHTTPHalf(t *testing.T) {
-	dir := storeProject(t, storeDesign)
+	dir := storeProject(t)
 	genProject(t, dir)
 	if !exists(t, dir, "internal", "routes", "routes.go") {
 		t.Fatal("the first run must write the routes umbrella")
