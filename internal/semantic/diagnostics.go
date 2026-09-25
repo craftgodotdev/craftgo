@@ -85,7 +85,7 @@ const (
 	CodeServiceDuplicate = "service/duplicate"
 	// CodeServiceExtendOrphan fires when an `extend service` has no primary declaration in its package.
 	CodeServiceExtendOrphan = "service/extend-orphan"
-	// CodeExtendDecoratorNotMethod fires when an `extend service` carries a non-method decorator (`@prefix`).
+	// CodeExtendDecoratorNotMethod fires when an `extend service` carries a non-method decorator (`@prefix`) or `@operationId`.
 	CodeExtendDecoratorNotMethod = "service/extend-decorator-not-method"
 	// CodeServiceDuplicateMethod fires when one service declares two methods of the same name.
 	CodeServiceDuplicateMethod = "service/duplicate-method"

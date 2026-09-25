@@ -553,6 +553,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   name with a member at its depth or above is selected through the mixins
   that embed it.
 
+- **An `extend service` block refuses `@operationId`.** Every method of the
+  block took the one id, so a block of two or more methods always failed
+  with `operation/duplicate-id`, and the editor offered the decorator there.
+  It is `service/extend-decorator-not-method` now and no longer offered: an
+  operationId belongs on each method.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

@@ -13,10 +13,17 @@ var chainIgnores = map[string]string{
 }
 
 // ExtendAllows reports whether decorator name may sit on an `extend service`
-// block: @group, or a decorator every method of the block inherits.
+// block: @group, or a decorator every method of the block inherits, which
+// excludes one naming a single operation.
 func ExtendAllows(name string) bool {
 	spec, ok := DecoratorSpec(name)
-	return ok && (name == "group" || spec.Levels&LvlMethod != 0)
+	return ok && !namesOneOperation(name) && (name == "group" || spec.Levels&LvlMethod != 0)
+}
+
+// namesOneOperation reports whether method decorator name identifies one
+// operation, so no two methods may share it: `@operationId`.
+func namesOneOperation(name string) bool {
+	return name == "operationId"
 }
 
 // inheritedFrom returns the decorators each method of extend block e

@@ -774,6 +774,14 @@ extend service S {
 }`
 }
 
+// An extend block refuses @operationId, which would name every method of the
+// block the same operation.
+func TestExtendServiceRefusesOperationID(t *testing.T) {
+	d := expectError(t, extendBlockSrc(`@operationId("same")`), CodeExtendDecoratorNotMethod)
+	expectMessage(t, d, `@operationId on extend service "S"`, "put it on each method")
+	expectCodeCount(t, extendBlockSrc(`@operationId("same")`), CodeDuplicateOperation, 0)
+}
+
 // An unknown decorator on an extend block is reported once, at the block.
 func TestExtendServiceReportsUnknownDecorator(t *testing.T) {
 	expectCodeCount(t, extendBlockSrc("@bogus"), CodeDecoratorUnknown, 1)
@@ -813,10 +821,11 @@ extend service S {
 	}
 }
 
-// ExtendAllows accepts @group and every decorator a method takes.
+// ExtendAllows accepts @group and every decorator a method takes but
+// @operationId.
 func TestExtendAllows(t *testing.T) {
 	for name, spec := range registry {
-		want := name == "group" || spec.Levels&LvlMethod != 0
+		want := name != "operationId" && (name == "group" || spec.Levels&LvlMethod != 0)
 		if got := ExtendAllows(name); got != want {
 			t.Errorf("ExtendAllows(%q) = %v, want %v", name, got, want)
 		}

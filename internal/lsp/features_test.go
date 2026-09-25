@@ -259,7 +259,7 @@ func TestCompletionTypePositionOffersBuiltins(t *testing.T) {
 }
 
 // A half-typed `@` above a service offers the service decorators; above an
-// extend it drops @prefix and keeps @group.
+// extend it drops @prefix and @operationId and keeps @group.
 func TestCompletionServiceDecoratorSite(t *testing.T) {
 	primary := "package x\n\n@\nservice S {\n  get A /a {}\n}\n"
 	items := mustCompletionsAt(t, "t.craftgo", primary, 2, 1)
@@ -268,7 +268,7 @@ func TestCompletionServiceDecoratorSite(t *testing.T) {
 	extend := "package x\n\nservice S { get A /a {} }\n\n@\nextend service S {\n  get B /b {}\n}\n"
 	eitems := mustCompletionsAt(t, "t.craftgo", extend, 4, 1)
 	expectLabels(t, eitems, "group", "middlewares", "tags", "security")
-	expectNoLabels(t, eitems, "prefix")
+	expectNoLabels(t, eitems, "prefix", "operationId")
 }
 
 // Half-typed declarations panic neither the outline nor the analyser.

@@ -130,6 +130,9 @@ func (a *analyzer) checkPlacement(s decoratorSite) {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorUnknown,
 				"unknown decorator @%s on %s (not in the framework registry)", d.Name, s.label)
 		case s.allows(d.Name):
+		case s.extendBlock() && namesOneOperation(d.Name):
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeExtendDecoratorNotMethod,
+				"@%s on extend service %q would give every method of the block the same one; put it on each method", d.Name, s.decl.(*ast.ServiceDecl).Name)
 		case s.extendBlock():
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeExtendDecoratorNotMethod,
 				"decorator @%s on extend service %q is not valid on a method; move it to the primary service", d.Name, s.decl.(*ast.ServiceDecl).Name)
