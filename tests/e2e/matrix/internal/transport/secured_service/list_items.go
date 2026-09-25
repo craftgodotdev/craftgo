@@ -13,8 +13,7 @@ import (
 
 // Normal authenticated endpoint - inherits everything from service-level.
 //
-// ListItems returns the http.HandlerFunc for the
-// GET ListItems endpoint.
+// ListItems returns the GET ListItems handler.
 func ListItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewListItemsService(r.Context(), svcCtx)

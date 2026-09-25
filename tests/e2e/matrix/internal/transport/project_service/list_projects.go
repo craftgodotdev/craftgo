@@ -11,8 +11,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ListProjects returns the http.HandlerFunc for the
-// GET ListProjects endpoint.
+// ListProjects returns the GET ListProjects handler.
 func ListProjects(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewListProjectsService(r.Context(), svcCtx)

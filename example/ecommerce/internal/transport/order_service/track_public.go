@@ -14,8 +14,7 @@ import (
 
 // Public order tracking by id - CORS only, no auth.
 //
-// TrackPublic returns the http.HandlerFunc for the
-// GET TrackPublic endpoint.
+// TrackPublic returns the GET TrackPublic handler.
 func TrackPublic(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetOrderReq

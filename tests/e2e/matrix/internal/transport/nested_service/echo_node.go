@@ -14,8 +14,7 @@ import (
 
 // Recursive tree node.
 //
-// EchoNode returns the http.HandlerFunc for the
-// POST EchoNode endpoint.
+// EchoNode returns the POST EchoNode handler.
 func EchoNode(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Node

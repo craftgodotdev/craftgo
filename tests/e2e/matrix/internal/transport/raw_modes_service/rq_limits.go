@@ -13,9 +13,7 @@ import (
 
 // Raw request under @timeout + @maxBodySize: the 413 pre-check and the context deadline both apply.
 //
-// RqLimits returns the http.HandlerFunc for the
-// POST RqLimits raw-request endpoint. The handler hands the
-// *http.Request to logic unread and encodes the returned response.
+// RqLimits returns the POST RqLimits handler.
 func RqLimits(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewRqLimitsService(r.Context(), svcCtx)

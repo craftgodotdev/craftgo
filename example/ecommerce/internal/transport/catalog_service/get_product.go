@@ -14,8 +14,7 @@ import (
 
 // Fetch one product by id.
 //
-// GetProduct returns the http.HandlerFunc for the
-// GET GetProduct endpoint.
+// GetProduct returns the GET GetProduct handler.
 func GetProduct(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetProductReq

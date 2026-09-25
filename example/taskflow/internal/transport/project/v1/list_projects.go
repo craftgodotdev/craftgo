@@ -14,8 +14,7 @@ import (
 
 // List projects (v1).
 //
-// ListProjects returns the http.HandlerFunc for the
-// GET ListProjects endpoint.
+// ListProjects returns the GET ListProjects handler.
 func ListProjects(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListProjectsReq

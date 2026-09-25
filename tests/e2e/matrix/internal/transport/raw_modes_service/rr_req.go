@@ -14,10 +14,7 @@ import (
 
 // Raw response over a bound + validated request; @status(201) and the Location header are docs-only.
 //
-// RrReq returns the http.HandlerFunc for the
-// POST RrReq raw-response endpoint. The handler binds and
-// validates the request, then hands the http.ResponseWriter and
-// *http.Request to logic, which writes the response directly.
+// RrReq returns the POST RrReq handler.
 func RrReq(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.RrReq

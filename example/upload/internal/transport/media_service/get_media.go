@@ -14,8 +14,7 @@ import (
 
 // Get media metadata.
 //
-// GetMedia returns the http.HandlerFunc for the
-// GET GetMedia endpoint.
+// GetMedia returns the GET GetMedia handler.
 func GetMedia(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetMediaReq

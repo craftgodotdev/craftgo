@@ -1,11 +1,7 @@
 package wiring
 
 {{.ImportDecl}}
-// RegisterGRPC attaches the design to srv: every gRPC service the protos
-// declare. The body varies with the design; this signature does not, so
-// main.go - written once - never needs editing.
-//
-// The returned shutdown runs beside srv.Stop.
+// RegisterGRPC registers the protos' gRPC services on srv.
 func RegisterGRPC(ctx context.Context, srv *rpc.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error) {
 {{- range .Services}}
 	{{.PBAlias}}.Register{{.Service}}Server(srv, {{.ServerAlias}}.NewServer(svcCtx))

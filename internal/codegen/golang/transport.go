@@ -24,9 +24,7 @@ type transportData struct {
 	// Doc heads the handler's doc comment ([docHead]).
 	Doc        []string
 	BodyDecode bool
-	// RawRequest and RawResponse report the transport sides logic owns ([wire.RawSides]).
-	RawRequest    bool
-	RawResponse   bool
+	// BindRequest and WriteResponse report the sides the handler owns ([wire.RawSides]).
 	BindRequest   bool
 	WriteResponse bool
 	Sig           methodSignature
@@ -105,8 +103,6 @@ func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, 
 		ServiceName:   logicTypeName(m.Name),
 		Verb:          strings.ToUpper(m.Verb),
 		Doc:           docHead(semantic.DescriptionLines(decs, m.Doc)),
-		RawRequest:    mode.RawRequest,
-		RawResponse:   mode.RawResponse,
 		BindRequest:   mode.BindRequest(),
 		WriteResponse: mode.WriteResponse(),
 	}

@@ -7,8 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-// Validate checks every field-level constraint declared on Credentials.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Credentials) Validate() error {
 	if err := v.Session.Validate(); err != nil {
 		return fmt.Errorf("session: %w", err)
@@ -24,8 +23,7 @@ func (v *Credentials) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on SessionID.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v SessionID) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("length less than 1")
@@ -33,8 +31,7 @@ func (v SessionID) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Channel.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Channel) Validate() error {
 	switch v {
 	case ChannelWeb, ChannelMobile:

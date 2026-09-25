@@ -13,8 +13,7 @@ import (
 
 // Health probe. No request, no response - just a 200 OK when the service is reachable, plus the rate-limit 429 envelope.
 //
-// Health returns the http.HandlerFunc for the
-// GET Health endpoint.
+// Health returns the GET Health handler.
 func Health(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewHealthService(r.Context(), svcCtx)

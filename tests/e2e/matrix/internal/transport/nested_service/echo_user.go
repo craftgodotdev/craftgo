@@ -14,8 +14,7 @@ import (
 
 // Plain nested - User has an Address. Validates recursively.
 //
-// EchoUser returns the http.HandlerFunc for the
-// POST EchoUser endpoint.
+// EchoUser returns the POST EchoUser handler.
 func EchoUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.User

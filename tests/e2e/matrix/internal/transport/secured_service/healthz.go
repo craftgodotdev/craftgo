@@ -13,8 +13,7 @@ import (
 
 // Liveness probe - public on purpose.
 //
-// Healthz returns the http.HandlerFunc for the
-// GET Healthz endpoint.
+// Healthz returns the GET Healthz handler.
 func Healthz(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewHealthzService(r.Context(), svcCtx)

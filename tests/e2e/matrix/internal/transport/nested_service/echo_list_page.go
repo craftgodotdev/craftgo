@@ -14,8 +14,7 @@ import (
 
 // Generic-instantiation-like page envelope.
 //
-// EchoListPage returns the http.HandlerFunc for the
-// POST EchoListPage endpoint.
+// EchoListPage returns the POST EchoListPage handler.
 func EchoListPage(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListPage

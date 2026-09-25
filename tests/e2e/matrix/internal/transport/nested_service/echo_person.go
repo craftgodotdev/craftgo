@@ -14,8 +14,7 @@ import (
 
 // Deep chain - Person → Home → Room → Furniture exercises the four-level cascade.
 //
-// EchoPerson returns the http.HandlerFunc for the
-// POST EchoPerson endpoint.
+// EchoPerson returns the POST EchoPerson handler.
 func EchoPerson(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Person

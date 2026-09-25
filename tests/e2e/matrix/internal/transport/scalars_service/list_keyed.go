@@ -14,8 +14,7 @@ import (
 
 // List by key. A generic mixin over a nested mixin binds each query field with the type its own level declares.
 //
-// ListKeyed returns the http.HandlerFunc for the
-// GET ListKeyed endpoint.
+// ListKeyed returns the GET ListKeyed handler.
 func ListKeyed(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListKeyedReq

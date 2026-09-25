@@ -14,8 +14,7 @@ import (
 
 // 3-D slice of nested.
 //
-// EchoCube returns the http.HandlerFunc for the
-// POST EchoCube endpoint.
+// EchoCube returns the POST EchoCube handler.
 func EchoCube(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Cube

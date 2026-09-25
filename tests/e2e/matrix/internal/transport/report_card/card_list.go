@@ -13,8 +13,7 @@ import (
 
 // Lists the cards of a report card.
 //
-// CardList returns the http.HandlerFunc for the
-// GET CardList endpoint.
+// CardList returns the GET CardList handler.
 func CardList(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewCardListService(r.Context(), svcCtx)

@@ -14,8 +14,7 @@ import (
 
 // Fetch one todo by id.
 //
-// GetTodo returns the http.HandlerFunc for the
-// GET GetTodo endpoint.
+// GetTodo returns the GET GetTodo handler.
 func GetTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetTodoReq

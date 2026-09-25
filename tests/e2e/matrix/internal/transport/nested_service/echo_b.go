@@ -14,8 +14,7 @@ import (
 
 // Mutual recursion entry - request B traverses B → A → B → ...
 //
-// EchoB returns the http.HandlerFunc for the
-// POST EchoB endpoint.
+// EchoB returns the POST EchoB handler.
 func EchoB(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.B

@@ -15,8 +15,7 @@ import (
 
 // Create a task.
 //
-// CreateTask returns the http.HandlerFunc for the
-// POST CreateTask endpoint.
+// CreateTask returns the POST CreateTask handler.
 func CreateTask(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateTaskReq

@@ -14,8 +14,7 @@ import (
 
 // Pins a QUALIFIED cross-package RESPONSE with @header/@cookie (xshared.XHeaderResp). The handler must write w.Header().Set / http.SetCookie even though the response type is cross-package - else the values silently drop (json:"-") while OpenAPI advertises them.
 //
-// GetTraced returns the http.HandlerFunc for the
-// GET GetTraced endpoint.
+// GetTraced returns the GET GetTraced handler.
 func GetTraced(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XGetReq

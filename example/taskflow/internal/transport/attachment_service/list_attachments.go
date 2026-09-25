@@ -15,8 +15,7 @@ import (
 
 // List a task's attachments.
 //
-// ListAttachments returns the http.HandlerFunc for the
-// GET ListAttachments endpoint.
+// ListAttachments returns the GET ListAttachments handler.
 func ListAttachments(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListAttachmentsReq

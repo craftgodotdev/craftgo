@@ -14,8 +14,7 @@ import (
 
 // Echo the presence-state matrix. Smoke tests assert that plain is in required[], optional / nullable / bothNullable produce a 'type: [string, null]' (OpenAPI 3.1 null), and the default rows surface a default key in OpenAPI.
 //
-// EchoPresence returns the http.HandlerFunc for the
-// POST EchoPresence endpoint.
+// EchoPresence returns the POST EchoPresence handler.
 func EchoPresence(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PresenceMatrix

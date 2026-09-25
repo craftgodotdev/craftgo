@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetSessionCookie returns the http.HandlerFunc for the
-// GET GetSessionCookie endpoint.
+// GetSessionCookie returns the GET GetSessionCookie handler.
 func GetSessionCookie(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.SessionCookieReq

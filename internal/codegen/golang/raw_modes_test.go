@@ -179,7 +179,7 @@ func TestGenerateRawResponseBindsThenHandsWriter(t *testing.T) {
 	mustContainAll(t, s,
 		`"net/http"`,
 		"func (l *ListUsersService) ListUsers(w http.ResponseWriter, r *http.Request, req *types.ListReq) error {",
-		"documented as\n// types.UserList",
+		"// Its response is documented as types.UserList.",
 		`http.Error(w, "not implemented", http.StatusNotImplemented)`,
 	)
 }
@@ -223,7 +223,7 @@ func TestGenerateRawRequestHandsRequestThenEncodes(t *testing.T) {
 	s := read("service", "ingest.go")
 	mustContainAll(t, s,
 		"func (l *IngestService) Ingest(r *http.Request) (*types.IngestResult, error) {",
-		"documented as\n// types.IngestResult",
+		"// Its request is documented as types.IngestResult, whose Validate checks it.",
 		"return nil, nil",
 	)
 }
@@ -246,13 +246,12 @@ func TestGeneratePassthroughWithBlocksKeepsSignature(t *testing.T) {
 	s := read("service", "events.go")
 	mustContainAll(t, s,
 		"func (l *EventsService) Events(w http.ResponseWriter, r *http.Request) error {",
-		"decode the request into types.Item yourself",
-		"write a body matching types.Event",
+		"// Its request is documented as types.Item and its response as types.Event.",
 	)
 	mustContainNone(t, s, `types "`)
-	// A bare passthrough stub carries no contract paragraph.
+	// A bare passthrough stub carries no contract line.
 	bare := read("service", "metrics.go")
-	if strings.Contains(bare, "docs-only contract") {
+	if strings.Contains(bare, "documented as") {
 		t.Errorf("bare @passthrough stub must not mention a contract:\n%s", bare)
 	}
 }

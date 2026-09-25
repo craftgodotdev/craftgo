@@ -15,8 +15,7 @@ import (
 
 // Delete an account - admin-only. Chain: [RateLimit, BasicAuth, Audit].
 //
-// DeleteAccount returns the http.HandlerFunc for the
-// DELETE DeleteAccount endpoint.
+// DeleteAccount returns the DELETE DeleteAccount handler.
 func DeleteAccount(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.DeleteAccountReq

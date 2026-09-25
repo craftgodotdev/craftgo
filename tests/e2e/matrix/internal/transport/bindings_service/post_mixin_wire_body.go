@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PostMixinWireBody returns the http.HandlerFunc for the
-// POST PostMixinWireBody endpoint.
+// PostMixinWireBody returns the POST PostMixinWireBody handler.
 func PostMixinWireBody(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.MixinWireBodyReq

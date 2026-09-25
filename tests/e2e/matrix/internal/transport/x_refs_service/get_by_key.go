@@ -14,8 +14,7 @@ import (
 
 // Pins cross-package mixin @path binding. The {key} segment binds through xshared.XPathKey's field; the project-level path-param check must resolve the sibling-package mixin or it false-rejects this route.
 //
-// GetByKey returns the http.HandlerFunc for the
-// GET GetByKey endpoint.
+// GetByKey returns the GET GetByKey handler.
 func GetByKey(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XByKeyReq

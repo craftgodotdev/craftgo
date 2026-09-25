@@ -15,8 +15,7 @@ import (
 
 // Cancel a queued job. No body on success - 204 keeps the wire silent.
 //
-// CancelJob returns the http.HandlerFunc for the
-// DELETE CancelJob endpoint.
+// CancelJob returns the DELETE CancelJob handler.
 func CancelJob(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CancelJobReq

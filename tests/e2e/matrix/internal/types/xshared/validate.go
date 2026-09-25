@@ -10,8 +10,7 @@ import (
 	"unicode/utf8"
 )
 
-// Validate checks every field-level constraint declared on XAudit.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XAudit) Validate() error {
 	if err := v.CreatedAt.Validate(); err != nil {
 		return fmt.Errorf("createdAt: %w", err)
@@ -22,8 +21,7 @@ func (v *XAudit) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XBag.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XBag[T]) Validate() error {
 	for i0 := range v.Items {
 		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
@@ -43,8 +41,7 @@ func (v *XBag[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XGrand.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XGrand) Validate() error {
 	if l := utf8.RuneCountInString(v.GKey); l < 1 || l > 40 {
 		return fmt.Errorf("gKey: length out of range [1, 40]")
@@ -52,14 +49,12 @@ func (v *XGrand) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XHeaderResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XHeaderResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XHolder.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XHolder) Validate() error {
 	if err := v.XHolderSub.Validate(); err != nil {
 		return err
@@ -67,8 +62,7 @@ func (v *XHolder) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XHolderSub.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XHolderSub) Validate() error {
 	if l := utf8.RuneCountInString(v.Q); l < 2 || l > 5 {
 		return fmt.Errorf("q: length out of range [2, 5]")
@@ -79,8 +73,7 @@ func (v *XHolderSub) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XOwner.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XOwner) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -91,8 +84,7 @@ func (v *XOwner) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XParent.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XParent) Validate() error {
 	if err := v.XGrand.Validate(); err != nil {
 		return err
@@ -100,8 +92,7 @@ func (v *XParent) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XPathKey.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XPathKey) Validate() error {
 	if l := utf8.RuneCountInString(v.Key); l < 1 || l > 64 {
 		return fmt.Errorf("key: length out of range [1, 64]")
@@ -109,8 +100,7 @@ func (v *XPathKey) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XPromoteBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XPromoteBody) Validate() error {
 	if utf8.RuneCountInString(v.Label) < 1 {
 		return fmt.Errorf("label: length less than 1")
@@ -128,8 +118,7 @@ func (v *XPromoteBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XPromoteWire.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XPromoteWire) Validate() error {
 	if err := v.Q.Validate(); err != nil {
 		return fmt.Errorf("q: %w", err)
@@ -137,8 +126,7 @@ func (v *XPromoteWire) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XThirdReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XThirdReq) Validate() error {
 	if v.Sev == "" {
 		return fmt.Errorf("sev: required")
@@ -152,8 +140,7 @@ func (v *XThirdReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XWrapInBag.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XWrapInBag[T]) Validate() error {
 	if err := v.XBag.Validate(); err != nil {
 		return err
@@ -161,8 +148,7 @@ func (v *XWrapInBag[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XEmail.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v XEmail) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
 		return fmt.Errorf("not a valid email")
@@ -173,8 +159,7 @@ func (v XEmail) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XNodeID.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v XNodeID) Validate() error {
 	if int(v) < 1 {
 		return fmt.Errorf("below minimum 1")
@@ -185,8 +170,7 @@ func (v XNodeID) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XSize.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v XSize) Validate() error {
 	if int(v) < 1 {
 		return fmt.Errorf("below minimum 1")
@@ -197,8 +181,7 @@ func (v XSize) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XTimestamp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v XTimestamp) Validate() error {
 	if _, _err := time.Parse(time.RFC3339, string(v)); _err != nil {
 		return fmt.Errorf("not a valid RFC 3339 datetime")
@@ -206,8 +189,7 @@ func (v XTimestamp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XColor.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v XColor) Validate() error {
 	switch v {
 	case XColorRed, XColorGreen, XColorBlue:
@@ -217,8 +199,7 @@ func (v XColor) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XTier.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v XTier) Validate() error {
 	switch v {
 	case XTierBronze, XTierGold:
@@ -228,14 +209,12 @@ func (v XTier) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XLostBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XLostBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XNotFoundBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XNotFoundBody) Validate() error {
 	if l := utf8.RuneCountInString(v.Resource); l < 1 || l > 200 {
 		return fmt.Errorf("resource: length out of range [1, 200]")
@@ -243,16 +222,12 @@ func (v *XNotFoundBody) Validate() error {
 	return nil
 }
 
-// validateValue is the fallback for a generic type-parameter field whose
-// argument is a composite type. The direct `any(x).(Validate)` probe finds
-// a Validate() only when the argument type itself has one; when the
-// argument is a slice or map whose ELEMENT carries the constraint, this
-// walks the value and validates each leaf so the runtime enforces what the
-// OpenAPI schema advertises.
+// validateValue validates each element of a composite type-parameter value.
 func validateValue(v any) error {
 	return validateReflect(reflect.ValueOf(v))
 }
 
+// validateReflect validates rv, else each element of a slice, array or map rv.
 func validateReflect(rv reflect.Value) error {
 	if !rv.IsValid() {
 		return nil
@@ -266,9 +241,7 @@ func validateReflect(rv reflect.Value) error {
 		}
 		return validateReflect(rv.Elem())
 	}
-	// A non-pointer value: probe the value form, then an addressable copy
-	// so a pointer-receiver Validate() is still found (map values and other
-	// non-addressable elements need the copy).
+	// A pointer-receiver Validate needs an addressable value, so a map value is copied.
 	if vv, ok := rv.Interface().(interface{ Validate() error }); ok {
 		return vv.Validate()
 	}

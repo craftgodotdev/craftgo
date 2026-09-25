@@ -9,7 +9,7 @@ import (
 // ErrCodeInternalErr is the canonical machine-readable code for InternalErr.
 const ErrCodeInternalErr = "INTERNAL_ERR"
 
-// InternalErr is the typed Internal error generated for `InternalErr`.
+// InternalErr is the Internal error InternalErr.
 type InternalErr struct{}
 
 // NewInternalErr constructs InternalErr.
@@ -20,13 +20,10 @@ func NewInternalErr() *InternalErr {
 // Error returns the Internal category's default message.
 func (e *InternalErr) Error() string { return "Internal server error" }
 
-// ErrCode returns ErrCodeInternalErr. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeInternalErr.
 func (e *InternalErr) ErrCode() string { return ErrCodeInternalErr }
 
-// HTTPStatus returns the HTTP status code associated with the Internal
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the Internal status.
 func (e *InternalErr) HTTPStatus() int { return 500 }
 
 // MarshalJSON encodes the {"code", "message"} envelope.
@@ -37,14 +34,13 @@ func (e *InternalErr) MarshalJSON() ([]byte, error) {
 // ErrCodeMaintenanceWindow is the canonical machine-readable code for MaintenanceWindowErr.
 const ErrCodeMaintenanceWindow = "MAINTENANCE_WINDOW"
 
-// MaintenanceWindowBody is the wire-shape payload declared at design time for MaintenanceWindowErr.
-// User code instantiates this struct and hands it to NewMaintenanceWindowErr.
+// MaintenanceWindowBody is the body of MaintenanceWindowErr.
 type MaintenanceWindowBody struct {
 	Reason         MaintenanceReason `json:"reason"`
 	EstimatedEndAt string            `json:"estimatedEndAt"`
 }
 
-// MaintenanceWindowErr is the typed ServiceUnavailable error generated for `MaintenanceWindow`.
+// MaintenanceWindowErr is the ServiceUnavailable error MaintenanceWindow.
 type MaintenanceWindowErr struct {
 	MaintenanceWindowBody
 }
@@ -57,13 +53,10 @@ func NewMaintenanceWindowErr(body MaintenanceWindowBody) *MaintenanceWindowErr {
 // Error returns the ServiceUnavailable category's default message.
 func (e *MaintenanceWindowErr) Error() string { return "Service unavailable" }
 
-// ErrCode returns ErrCodeMaintenanceWindow. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeMaintenanceWindow.
 func (e *MaintenanceWindowErr) ErrCode() string { return ErrCodeMaintenanceWindow }
 
-// HTTPStatus returns the HTTP status code associated with the ServiceUnavailable
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the ServiceUnavailable status.
 func (e *MaintenanceWindowErr) HTTPStatus() int { return 503 }
 
 // MarshalJSON encodes the body alone.
@@ -74,14 +67,13 @@ func (e *MaintenanceWindowErr) MarshalJSON() ([]byte, error) {
 // ErrCodeRateLimitedErr is the canonical machine-readable code for RateLimitedErr.
 const ErrCodeRateLimitedErr = "RATE_LIMITED_ERR"
 
-// RateLimitedErrBody is the wire-shape payload declared at design time for RateLimitedErr.
-// User code instantiates this struct and hands it to NewRateLimitedErr.
+// RateLimitedErrBody is the body of RateLimitedErr.
 type RateLimitedErrBody struct {
 	RetryAfter int     `json:"retryAfter"`
 	Bucket     *string `json:"bucket,omitempty"`
 }
 
-// RateLimitedErr is the typed TooManyRequests error generated for `RateLimitedErr`.
+// RateLimitedErr is the TooManyRequests error RateLimitedErr.
 type RateLimitedErr struct {
 	RateLimitedErrBody
 }
@@ -94,13 +86,10 @@ func NewRateLimitedErr(body RateLimitedErrBody) *RateLimitedErr {
 // Error returns the TooManyRequests category's default message.
 func (e *RateLimitedErr) Error() string { return "Too many requests" }
 
-// ErrCode returns ErrCodeRateLimitedErr. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeRateLimitedErr.
 func (e *RateLimitedErr) ErrCode() string { return ErrCodeRateLimitedErr }
 
-// HTTPStatus returns the HTTP status code associated with the TooManyRequests
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the TooManyRequests status.
 func (e *RateLimitedErr) HTTPStatus() int { return 429 }
 
 // MarshalJSON encodes the body alone.
@@ -109,13 +98,12 @@ func (e *RateLimitedErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.R
 // ErrCodeUnauthorizedErr is the canonical machine-readable code for UnauthorizedErr.
 const ErrCodeUnauthorizedErr = "UNAUTHORIZED_ERR"
 
-// UnauthorizedErrBody is the wire-shape payload declared at design time for UnauthorizedErr.
-// User code instantiates this struct and hands it to NewUnauthorizedErr.
+// UnauthorizedErrBody is the body of UnauthorizedErr.
 type UnauthorizedErrBody struct {
 	Code *string `json:"code,omitempty"`
 }
 
-// UnauthorizedErr is the typed Unauthorized error generated for `UnauthorizedErr`.
+// UnauthorizedErr is the Unauthorized error UnauthorizedErr.
 type UnauthorizedErr struct {
 	UnauthorizedErrBody
 }
@@ -128,13 +116,10 @@ func NewUnauthorizedErr(body UnauthorizedErrBody) *UnauthorizedErr {
 // Error returns the Unauthorized category's default message.
 func (e *UnauthorizedErr) Error() string { return "Unauthorized" }
 
-// ErrCode returns ErrCodeUnauthorizedErr. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeUnauthorizedErr.
 func (e *UnauthorizedErr) ErrCode() string { return ErrCodeUnauthorizedErr }
 
-// HTTPStatus returns the HTTP status code associated with the Unauthorized
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the Unauthorized status.
 func (e *UnauthorizedErr) HTTPStatus() int { return 401 }
 
 // MarshalJSON encodes the body alone.

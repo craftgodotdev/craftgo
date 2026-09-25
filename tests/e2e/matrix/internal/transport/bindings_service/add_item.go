@@ -14,8 +14,7 @@ import (
 
 // Create a new item. Surfaces DuplicateKey (409) on unique-constraint conflict and InvalidInput (400) on validation failure.
 //
-// AddItem returns the http.HandlerFunc for the
-// POST AddItem endpoint.
+// AddItem returns the POST AddItem handler.
 func AddItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.AddItemReq

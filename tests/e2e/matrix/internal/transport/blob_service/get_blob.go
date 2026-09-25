@@ -14,8 +14,7 @@ import (
 
 // Fetch a blob by its slash-separated key. The trailing {key...} variable binds the key field.
 //
-// GetBlob returns the http.HandlerFunc for the
-// GET GetBlob endpoint.
+// GetBlob returns the GET GetBlob handler.
 func GetBlob(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.BlobReq

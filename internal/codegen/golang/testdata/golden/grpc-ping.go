@@ -13,9 +13,7 @@ import (
 
 // Ping uses only well-known types.
 //
-// Ping serves the unary RPC /greet.Greeter/Ping: it hands the
-// call context to the logic and maps the error it returns onto a status,
-// as the HTTP handler does with WriteError.
+// Ping serves the unary RPC /greet.Greeter/Ping.
 func (s *Server) Ping(ctx context.Context, req *emptypb.Empty) (*emptypb.Empty, error) {
 	if err := rpc.Validate(req); err != nil {
 		return nil, err

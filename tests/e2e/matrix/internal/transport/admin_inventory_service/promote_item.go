@@ -14,8 +14,7 @@ import (
 
 // Promote an item to the featured slot. Inherits the same auth chain plus a method-level admin scope.
 //
-// PromoteItem returns the http.HandlerFunc for the
-// POST PromoteItem endpoint.
+// PromoteItem returns the POST PromoteItem handler.
 func PromoteItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PromoteItemReq

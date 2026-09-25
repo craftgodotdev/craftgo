@@ -6,8 +6,7 @@ import (
 	"fmt"
 )
 
-// Validate checks every field-level constraint declared on Settlement.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Settlement) Validate() error {
 	if err := v.OrderID.Validate(); err != nil {
 		return fmt.Errorf("orderId: %w", err)

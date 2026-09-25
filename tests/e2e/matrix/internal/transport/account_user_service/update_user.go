@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// UpdateUser returns the http.HandlerFunc for the
-// PUT UpdateUser endpoint.
+// UpdateUser returns the PUT UpdateUser handler.
 func UpdateUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.AcctUpdateUserReq

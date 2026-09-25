@@ -15,8 +15,7 @@ import (
 
 // Pins a QUALIFIED GENERIC request whose type-arg comes from a THIRD package named paytypes, with a cross-package response too. Nothing on either side is local, so the handler and the scaffold must both drop the canonical `types` import - deciding that by searching the rendered text for `types.` keeps it, and the file fails to build with `imported as types and not used`.
 //
-// WrapForeign returns the http.HandlerFunc for the
-// POST WrapForeign endpoint.
+// WrapForeign returns the POST WrapForeign handler.
 func WrapForeign(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req xshared.XWrapInBag[paytypes.XPayItem]

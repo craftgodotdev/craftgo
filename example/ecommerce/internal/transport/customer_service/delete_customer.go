@@ -14,8 +14,7 @@ import (
 
 // Delete a customer. Idempotent.
 //
-// DeleteCustomer returns the http.HandlerFunc for the
-// DELETE DeleteCustomer endpoint.
+// DeleteCustomer returns the DELETE DeleteCustomer handler.
 func DeleteCustomer(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetCustomerReq

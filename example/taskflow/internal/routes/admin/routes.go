@@ -9,12 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// RegisterRoutes wires every AdminService endpoint onto srv. Patterns
-// use the Go 1.22 method-prefixed form so VERB and path match together;
-// service prefix and OpenAPI basePath are baked in. Methods declaring
-// `@middlewares(...)` are wrapped via the corresponding fields on
-// ServiceContext (embedded Middlewares struct), so no runtime name
-// lookup is required - the values come pre-wired.
+// RegisterRoutes registers the AdminService routes of group admin on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/admin/tokens", transportAdmin.ListTokens(svcCtx), svcCtx.RequestID, svcCtx.AccessLog, svcCtx.AdminOnly)
 	srv.Handle("POST /api/admin/tokens", transportAdmin.CreateToken(svcCtx), svcCtx.RequestID, svcCtx.AccessLog, svcCtx.AdminOnly)

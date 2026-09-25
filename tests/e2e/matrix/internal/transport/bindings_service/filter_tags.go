@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// FilterTags returns the http.HandlerFunc for the
-// GET FilterTags endpoint.
+// FilterTags returns the GET FilterTags handler.
 func FilterTags(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.RequiredArrayQueryReq

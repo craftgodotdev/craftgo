@@ -14,21 +14,13 @@ import (
 
 // Upload a doc with optional-null metadata. The @nullable `meta` body field form-binds as *string (nil when the form value is absent).
 //
-// NullableForm returns the http.HandlerFunc for the
-// POST NullableForm multipart endpoint. The handler parses
-// `multipart/form-data` bodies, binds every form field declared on
-// the request type, and populates `*multipart.FileHeader` fields
-// for any DSL-typed `file` declarations.
+// NullableForm returns the POST NullableForm handler.
 func NullableForm(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
-		// Remove the temp files the parser spilled to disk as soon as the
-		// handler returns. net/http sweeps them again at end-of-response, but
-		// the explicit cleanup releases disk before the response flush and
-		// still runs on panic paths that bypass that sweep.
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.NullableFormReq
 		if _v := r.FormValue("meta"); _v != "" {

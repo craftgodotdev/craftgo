@@ -13,10 +13,7 @@ import (
 
 // @timeout applies to a passthrough route: the stub sees a context deadline.
 //
-// PtTimeout returns the http.HandlerFunc for the
-// GET PtTimeout passthrough endpoint. The framework stays
-// out of the way: logic receives the raw http.ResponseWriter and
-// *http.Request and writes the response directly.
+// PtTimeout returns the GET PtTimeout handler.
 func PtTimeout(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewPtTimeoutService(r.Context(), svcCtx)

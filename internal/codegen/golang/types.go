@@ -60,20 +60,18 @@ func renderScalars(pkg *semantic.Package, imports *importSet) string {
 		return ""
 	}
 	names := slices.Sorted(maps.Keys(pkg.Scalars))
-	const tmpl = "// %s is a DSL scalar over %s; its declared validators live on its Validate() method and are inherited by every field of this type.\ntype %s %s\n\n"
-	// A raw scalar is an alias: a defined type would drop wire.Raw's codec methods.
-	const rawTmpl = "// %s is a DSL scalar over bytes @format(raw): an alias for the runtime's pass-through type, whose codec methods carry the bytes untouched.\ntype %s = %s\n\n"
 	parts := make([]string, len(names))
 	for i, n := range names {
 		sd := pkg.Scalars[n]
-		head := renderDoc(docHead(semantic.DescriptionLines(sd.Decorators, sd.Doc)), "")
+		doc := renderDoc(semantic.DescriptionLines(sd.Decorators, sd.Doc), "")
+		// A raw scalar is an alias: a defined type would drop wire.Raw's codec methods.
 		if semantic.HasRawFormat(sd.Decorators) {
 			imports.use(rawImportPath)
-			parts[i] = head + fmt.Sprintf(rawTmpl, sd.Name, sd.Name, rawGoType)
+			parts[i] = doc + "type " + sd.Name + " = " + rawGoType + "\n\n"
 			continue
 		}
 		imports.importBuiltin(sd.Primitive)
-		parts[i] = head + fmt.Sprintf(tmpl, sd.Name, sd.Primitive, sd.Name, scalarPrimitiveGo(sd.Primitive))
+		parts[i] = doc + "type " + sd.Name + " " + scalarPrimitiveGo(sd.Primitive) + "\n\n"
 	}
 	return strings.Join(parts, "")
 }

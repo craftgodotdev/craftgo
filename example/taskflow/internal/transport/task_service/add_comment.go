@@ -15,8 +15,7 @@ import (
 
 // Add a comment to a task.
 //
-// AddComment returns the http.HandlerFunc for the
-// POST AddComment endpoint.
+// AddComment returns the POST AddComment handler.
 func AddComment(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.AddCommentReq

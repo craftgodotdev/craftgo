@@ -13,8 +13,7 @@ import (
 
 // Shares its method name with xshared's XRefsService.Describe: its body component is XrefsXRefsServiceDescribeRespBody.
 //
-// Describe returns the http.HandlerFunc for the
-// GET Describe endpoint.
+// Describe returns the GET Describe handler.
 func Describe(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewDescribeService(r.Context(), svcCtx)

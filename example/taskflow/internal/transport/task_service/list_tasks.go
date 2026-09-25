@@ -15,8 +15,7 @@ import (
 
 // List tasks in a project, filterable by status / priority / assignee.
 //
-// ListTasks returns the http.HandlerFunc for the
-// GET ListTasks endpoint.
+// ListTasks returns the GET ListTasks handler.
 func ListTasks(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListTasksReq

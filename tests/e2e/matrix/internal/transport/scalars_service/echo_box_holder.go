@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoBoxHolder returns the http.HandlerFunc for the
-// POST EchoBoxHolder endpoint.
+// EchoBoxHolder returns the POST EchoBoxHolder handler.
 func EchoBoxHolder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.BoxHolder

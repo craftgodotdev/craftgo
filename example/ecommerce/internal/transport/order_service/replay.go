@@ -14,8 +14,7 @@ import (
 
 // Admin replay (parent chain only).
 //
-// Replay returns the http.HandlerFunc for the
-// POST Replay endpoint.
+// Replay returns the POST Replay handler.
 func Replay(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetOrderReq

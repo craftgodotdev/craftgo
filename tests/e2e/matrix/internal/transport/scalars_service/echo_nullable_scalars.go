@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoNullableScalars returns the http.HandlerFunc for the
-// POST EchoNullableScalars endpoint.
+// EchoNullableScalars returns the POST EchoNullableScalars handler.
 func EchoNullableScalars(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.NullableScalars

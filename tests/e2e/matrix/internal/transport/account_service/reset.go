@@ -13,8 +13,7 @@ import (
 
 // Hard reset - bypasses BasicAuth, uses its own minimal chain.
 //
-// Reset returns the http.HandlerFunc for the
-// POST Reset endpoint.
+// Reset returns the POST Reset handler.
 func Reset(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewResetService(r.Context(), svcCtx)

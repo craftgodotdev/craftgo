@@ -13,8 +13,7 @@ import (
 
 // Public readiness probe - bypasses every parent middleware AND security.
 //
-// PublicHealth returns the http.HandlerFunc for the
-// GET PublicHealth endpoint.
+// PublicHealth returns the GET PublicHealth handler.
 func PublicHealth(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewPublicHealthService(r.Context(), svcCtx)

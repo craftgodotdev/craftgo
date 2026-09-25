@@ -15,8 +15,7 @@ import (
 
 // Deprecated: use SetTaskStatus with status=done. Kept for older clients.
 //
-// CloseTask returns the http.HandlerFunc for the
-// POST CloseTask endpoint.
+// CloseTask returns the POST CloseTask handler.
 func CloseTask(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetTaskReq

@@ -13,9 +13,7 @@ import (
 
 // Raw request whose docs-only contract has a file field: OpenAPI says multipart, the transport parses nothing.
 //
-// RqDocsReq returns the http.HandlerFunc for the
-// POST RqDocsReq raw-request endpoint. The handler hands the
-// *http.Request to logic unread and encodes the returned response.
+// RqDocsReq returns the POST RqDocsReq handler.
 func RqDocsReq(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewRqDocsReqService(r.Context(), svcCtx)

@@ -13,8 +13,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// BanUser returns the http.HandlerFunc for the
-// POST BanUser endpoint.
+// BanUser returns the POST BanUser handler.
 func BanUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.UserRef

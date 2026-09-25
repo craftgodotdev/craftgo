@@ -13,8 +13,7 @@ import (
 
 // Public status page - no auth or rate limit, only the block's Audit.
 //
-// Status returns the http.HandlerFunc for the
-// GET Status endpoint.
+// Status returns the GET Status handler.
 func Status(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewStatusService(r.Context(), svcCtx)

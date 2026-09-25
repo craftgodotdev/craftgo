@@ -13,8 +13,7 @@ import (
 
 // Kept so the fixture exercises a package that both serves HTTP and declares events.
 //
-// Health returns the http.HandlerFunc for the
-// GET Health endpoint.
+// Health returns the GET Health handler.
 func Health(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewHealthService(r.Context(), svcCtx)

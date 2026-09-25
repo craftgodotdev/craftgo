@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoScalarKeyMap returns the http.HandlerFunc for the
-// POST EchoScalarKeyMap endpoint.
+// EchoScalarKeyMap returns the POST EchoScalarKeyMap handler.
 func EchoScalarKeyMap(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Map_ScalarKey

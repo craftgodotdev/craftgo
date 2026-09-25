@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoCollidingNames returns the http.HandlerFunc for the
-// POST EchoCollidingNames endpoint.
+// EchoCollidingNames returns the POST EchoCollidingNames handler.
 func EchoCollidingNames(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CollidingNames

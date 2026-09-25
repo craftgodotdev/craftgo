@@ -14,8 +14,7 @@ import (
 
 // Fetch one item by id. The path placeholder lands as the UUID scalar type; the inherited @format(uuid) validator rejects malformed ids at the boundary.
 //
-// GetItem returns the http.HandlerFunc for the
-// GET GetItem endpoint.
+// GetItem returns the GET GetItem handler.
 func GetItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetItemReq

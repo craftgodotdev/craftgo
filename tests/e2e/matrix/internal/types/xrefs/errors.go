@@ -13,8 +13,7 @@ import (
 // ErrCodeXLost is the canonical machine-readable code for XLostErr.
 const ErrCodeXLost = "X_LOST"
 
-// XLostBody is the wire-shape payload declared at design time for XLostErr.
-// User code instantiates this struct and hands it to NewXLostErr.
+// XLostBody is the body of XLostErr.
 type XLostBody struct {
 	ID string `json:"id"`
 }
@@ -22,7 +21,7 @@ type XLostBody struct {
 // XLost shares its name with xshared.XLost, so the merged OpenAPI document
 // names this one XrefsXLostErr.
 //
-// XLostErr is the typed NotFound error generated for `XLost`.
+// XLostErr is the NotFound error XLost.
 type XLostErr struct {
 	XLostBody
 }
@@ -35,13 +34,10 @@ func NewXLostErr(body XLostBody) *XLostErr {
 // Error returns the NotFound category's default message.
 func (e *XLostErr) Error() string { return "Not found" }
 
-// ErrCode returns ErrCodeXLost. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeXLost.
 func (e *XLostErr) ErrCode() string { return ErrCodeXLost }
 
-// HTTPStatus returns the HTTP status code associated with the NotFound
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the NotFound status.
 func (e *XLostErr) HTTPStatus() int { return 404 }
 
 // MarshalJSON encodes the body alone.
@@ -50,8 +46,7 @@ func (e *XLostErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.XLostBo
 // ErrCodeXMixinErr is the canonical machine-readable code for XMixinErr.
 const ErrCodeXMixinErr = "X_MIXIN_ERR"
 
-// XMixinErrBody is the wire-shape payload declared at design time for XMixinErr.
-// User code instantiates this struct and hands it to NewXMixinErr.
+// XMixinErrBody is the body of XMixinErr.
 type XMixinErrBody struct {
 	xshared.XOwner
 	Reason string `json:"reason"`
@@ -62,7 +57,7 @@ type XMixinErrBody struct {
 // import - the generated errors.go embeds `xshared.XOwner`, so without the
 // mixin branch in the import walk it references an undefined package.
 //
-// XMixinErr is the typed Conflict error generated for `XMixinErr`.
+// XMixinErr is the Conflict error XMixinErr.
 type XMixinErr struct {
 	XMixinErrBody
 }
@@ -75,13 +70,10 @@ func NewXMixinErr(body XMixinErrBody) *XMixinErr {
 // Error returns the Conflict category's default message.
 func (e *XMixinErr) Error() string { return "Conflict" }
 
-// ErrCode returns ErrCodeXMixinErr. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeXMixinErr.
 func (e *XMixinErr) ErrCode() string { return ErrCodeXMixinErr }
 
-// HTTPStatus returns the HTTP status code associated with the Conflict
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the Conflict status.
 func (e *XMixinErr) HTTPStatus() int { return 409 }
 
 // MarshalJSON encodes the body alone.
@@ -90,8 +82,7 @@ func (e *XMixinErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.XMixin
 // ErrCodeXStdNamesClash is the canonical machine-readable code for XStdNamesClashErr.
 const ErrCodeXStdNamesClash = "X_STD_NAMES_CLASH"
 
-// XStdNamesClashBody is the wire-shape payload declared at design time for XStdNamesClashErr.
-// User code instantiates this struct and hands it to NewXStdNamesClashErr.
+// XStdNamesClashBody is the body of XStdNamesClashErr.
 type XStdNamesClashBody struct {
 	At   time.Time  `json:"at"`
 	Slot time2.Slot `json:"slot"`
@@ -99,7 +90,7 @@ type XStdNamesClashBody struct {
 
 // XStdNamesClash carries a datetime beside a type of package time.
 //
-// XStdNamesClashErr is the typed Conflict error generated for `XStdNamesClash`.
+// XStdNamesClashErr is the Conflict error XStdNamesClash.
 type XStdNamesClashErr struct {
 	XStdNamesClashBody
 }
@@ -112,13 +103,10 @@ func NewXStdNamesClashErr(body XStdNamesClashBody) *XStdNamesClashErr {
 // Error returns the Conflict category's default message.
 func (e *XStdNamesClashErr) Error() string { return "Conflict" }
 
-// ErrCode returns ErrCodeXStdNamesClash. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeXStdNamesClash.
 func (e *XStdNamesClashErr) ErrCode() string { return ErrCodeXStdNamesClash }
 
-// HTTPStatus returns the HTTP status code associated with the Conflict
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the Conflict status.
 func (e *XStdNamesClashErr) HTTPStatus() int { return 409 }
 
 // MarshalJSON encodes the body alone.

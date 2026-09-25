@@ -14,8 +14,7 @@ import (
 
 // Validate stacked string decorators (length + format + pattern). The handler fails any of the three independently.
 //
-// ValidateStr returns the http.HandlerFunc for the
-// POST ValidateStr endpoint.
+// ValidateStr returns the POST ValidateStr handler.
 func ValidateStr(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PairsStr

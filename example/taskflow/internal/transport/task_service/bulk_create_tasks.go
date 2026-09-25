@@ -15,8 +15,7 @@ import (
 
 // Bulk-create up to 100 tasks in one request. Larger body budget than the default.
 //
-// BulkCreateTasks returns the http.HandlerFunc for the
-// POST BulkCreateTasks endpoint.
+// BulkCreateTasks returns the POST BulkCreateTasks handler.
 func BulkCreateTasks(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.BulkCreateReq

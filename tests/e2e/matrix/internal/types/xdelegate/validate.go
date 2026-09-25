@@ -6,8 +6,7 @@ import (
 	"fmt"
 )
 
-// Validate checks every field-level constraint declared on XDelegatedEnum.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XDelegatedEnum) Validate() error {
 	if v.Color != nil {
 		if err := v.Color.Validate(); err != nil {
@@ -17,8 +16,7 @@ func (v *XDelegatedEnum) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XDelegatedScalars.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XDelegatedScalars) Validate() error {
 	if err := v.Email.Validate(); err != nil {
 		return fmt.Errorf("email: %w", err)
@@ -34,8 +32,7 @@ func (v *XDelegatedScalars) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XDelegatedShapes.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XDelegatedShapes) Validate() error {
 	for i0 := range v.Many {
 		if err := v.Many[i0].Validate(); err != nil {

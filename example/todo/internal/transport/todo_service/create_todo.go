@@ -14,8 +14,7 @@ import (
 
 // Create a new todo.
 //
-// CreateTodo returns the http.HandlerFunc for the
-// POST CreateTodo endpoint.
+// CreateTodo returns the POST CreateTodo handler.
 func CreateTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateTodoReq

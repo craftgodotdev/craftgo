@@ -884,7 +884,7 @@ service Beta {
 	if n := strings.Count(src, "srv.Handle("); n != 2 {
 		t.Errorf("want both services' routes in one file, got %d", n)
 	}
-	if !strings.Contains(src, "wires every Alpha and Beta endpoint") {
+	if !strings.Contains(src, "registers the Alpha and Beta routes of group shared/v1 on srv") {
 		t.Errorf("doc comment should name every contributor:\n%s", src)
 	}
 	// The umbrella registers per directory: ServeMux panics on a pattern registered twice.

@@ -13,8 +13,7 @@ import (
 
 // Page keys. A generic response sends its argument-typed field in a header, and the body keeps the field a nested mixin brings as declared.
 //
-// PageKeyed returns the http.HandlerFunc for the
-// GET PageKeyed endpoint.
+// PageKeyed returns the GET PageKeyed handler.
 func PageKeyed(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewPageKeyedService(r.Context(), svcCtx)

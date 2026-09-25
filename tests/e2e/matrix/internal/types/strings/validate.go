@@ -14,11 +14,7 @@ import (
 	"unicode/utf8"
 )
 
-// Pattern regexes compile ONCE at package init so Validate() calls
-// reference the precompiled var instead of recompiling per request.
-// The pattern is rendered via %q (Go-quoted) rather than a raw-string
-// literal so regexes containing a backtick, backslash, or quote still
-// produce compilable Go - a raw `...` literal would break on a backtick.
+// The regexes of the @pattern and @format checks, compiled once.
 var (
 	_pattern0 = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 	_pattern1 = regexp.MustCompile("^\\+?[0-9 ()-]{6,20}$")
@@ -32,8 +28,7 @@ var (
 	_pattern9 = regexp.MustCompile("^`[^`]+`$")
 )
 
-// Validate checks every field-level constraint declared on AllFormats.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *AllFormats) Validate() error {
 	if _, _err := mail.ParseAddress(v.Email); _err != nil {
 		return fmt.Errorf("email: not a valid email")
@@ -140,8 +135,7 @@ func (v *AllFormats) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Str_Combos.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Str_Combos) Validate() error {
 	if l := utf8.RuneCountInString(v.Email1); l < 1 || l > 80 {
 		return fmt.Errorf("email1: length out of range [1, 80]")
@@ -170,8 +164,7 @@ func (v *Str_Combos) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Str_Default.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Str_Default) Validate() error {
 	if v.Greeting != nil {
 		if l := utf8.RuneCountInString(*v.Greeting); l < 1 || l > 100 {
@@ -181,8 +174,7 @@ func (v *Str_Default) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Str_EchoReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Str_EchoReq) Validate() error {
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 80 {
 		return fmt.Errorf("name: length out of range [1, 80]")
@@ -207,8 +199,7 @@ func (v *Str_EchoReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Str_EchoResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Str_EchoResp) Validate() error {
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 80 {
 		return fmt.Errorf("name: length out of range [1, 80]")
@@ -231,8 +222,7 @@ func (v *Str_EchoResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Str_Lengths.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Str_Lengths) Validate() error {
 	if utf8.RuneCountInString(v.ZeroLower) > 100 {
 		return fmt.Errorf("zeroLower: length out of range [0, 100]")
@@ -252,8 +242,7 @@ func (v *Str_Lengths) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Str_Nullable.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Str_Nullable) Validate() error {
 	if v.Tag != nil && utf8.RuneCountInString(*v.Tag) > 50 {
 		return fmt.Errorf("tag: length greater than 50")
@@ -261,8 +250,7 @@ func (v *Str_Nullable) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Str_NullableFormat.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Str_NullableFormat) Validate() error {
 	if v.Email != nil {
 		if _, _err := mail.ParseAddress(*v.Email); _err != nil {
@@ -272,8 +260,7 @@ func (v *Str_NullableFormat) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Str_Optionals.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Str_Optionals) Validate() error {
 	if v.LenOpt != nil {
 		if l := utf8.RuneCountInString(*v.LenOpt); l < 1 || l > 100 {
@@ -301,8 +288,7 @@ func (v *Str_Optionals) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Str_Patterns.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Str_Patterns) Validate() error {
 	if !_pattern6.MatchString(v.Upper) {
 		return fmt.Errorf("upper: does not match pattern")
@@ -319,8 +305,7 @@ func (v *Str_Patterns) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Str_UTF8.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Str_UTF8) Validate() error {
 	if l := utf8.RuneCountInString(v.VnName); l < 1 || l > 80 {
 		return fmt.Errorf("vnName: length out of range [1, 80]")

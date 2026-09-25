@@ -14,8 +14,7 @@ import (
 
 // Issue a new API token. The secret is returned once.
 //
-// CreateToken returns the http.HandlerFunc for the
-// POST CreateToken endpoint.
+// CreateToken returns the POST CreateToken handler.
 func CreateToken(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateTokenReq

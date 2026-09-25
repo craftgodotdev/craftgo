@@ -14,8 +14,7 @@ import (
 
 // Create an item under a tenant. tenantID binds from the path; the JSON body carries only name.
 //
-// CreateTenantItem returns the http.HandlerFunc for the
-// POST CreateTenantItem endpoint.
+// CreateTenantItem returns the POST CreateTenantItem handler.
 func CreateTenantItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.TenantCreateReq

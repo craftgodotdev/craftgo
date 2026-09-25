@@ -18,8 +18,7 @@ import (
 // Method-level `@tags(snapshot)` adds to the service-level tags
 // list, NOT replacing it - clients see [admin, ops, snapshot].
 //
-// Snapshot returns the http.HandlerFunc for the
-// GET Snapshot endpoint.
+// Snapshot returns the GET Snapshot handler.
 func Snapshot(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewSnapshotService(r.Context(), svcCtx)

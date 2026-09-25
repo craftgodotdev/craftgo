@@ -8,17 +8,12 @@ import (
 	"unicode/utf8"
 )
 
-// Pattern regexes compile ONCE at package init so Validate() calls
-// reference the precompiled var instead of recompiling per request.
-// The pattern is rendered via %q (Go-quoted) rather than a raw-string
-// literal so regexes containing a backtick, backslash, or quote still
-// produce compilable Go - a raw `...` literal would break on a backtick.
+// The regexes of the @pattern and @format checks, compiled once.
 var (
 	_pattern0 = regexp.MustCompile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
 )
 
-// Validate checks every field-level constraint declared on ContactInfo.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ContactInfo) Validate() error {
 	if !_pattern0.MatchString(v.Email) {
 		return fmt.Errorf("email: does not match pattern")
@@ -32,8 +27,7 @@ func (v *ContactInfo) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Coords.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Coords) Validate() error {
 	if v.Lat < -90 || v.Lat > 90 {
 		return fmt.Errorf("lat: out of range [-90, 90]")
@@ -44,8 +38,7 @@ func (v *Coords) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CreateProfileReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CreateProfileReq) Validate() error {
 	if l := utf8.RuneCountInString(v.DisplayName); l < 1 || l > 50 {
 		return fmt.Errorf("displayName: length out of range [1, 50]")
@@ -70,14 +63,12 @@ func (v *CreateProfileReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GetProfileReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GetProfileReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ListProfilesResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ListProfilesResp) Validate() error {
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
@@ -87,8 +78,7 @@ func (v *ListProfilesResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PatchProfileReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PatchProfileReq) Validate() error {
 	if l := utf8.RuneCountInString(v.DisplayName); l < 1 || l > 50 {
 		return fmt.Errorf("displayName: length out of range [1, 50]")
@@ -96,14 +86,12 @@ func (v *PatchProfileReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PatchProfileResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PatchProfileResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PfAddress.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PfAddress) Validate() error {
 	if l := utf8.RuneCountInString(v.Street); l < 1 || l > 200 {
 		return fmt.Errorf("street: length out of range [1, 200]")
@@ -122,8 +110,7 @@ func (v *PfAddress) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Profile.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Profile) Validate() error {
 	if l := utf8.RuneCountInString(v.DisplayName); l < 1 || l > 50 {
 		return fmt.Errorf("displayName: length out of range [1, 50]")
@@ -148,38 +135,32 @@ func (v *Profile) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on DuplicateEmailBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *DuplicateEmailBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on InsufficientPermissionsBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *InsufficientPermissionsBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PfRateLimitedBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PfRateLimitedBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ProfileValidationFailedBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ProfileValidationFailedBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on StaleVersionBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *StaleVersionBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ThrottledBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ThrottledBody) Validate() error {
 	return nil
 }

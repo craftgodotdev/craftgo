@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoListing returns the http.HandlerFunc for the
-// POST EchoListing endpoint.
+// EchoListing returns the POST EchoListing handler.
 func EchoListing(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Listing[types.EmailAddress]

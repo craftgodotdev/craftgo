@@ -14,8 +14,7 @@ import (
 
 // Optional slice of nested.
 //
-// EchoOrg returns the http.HandlerFunc for the
-// POST EchoOrg endpoint.
+// EchoOrg returns the POST EchoOrg handler.
 func EchoOrg(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Org

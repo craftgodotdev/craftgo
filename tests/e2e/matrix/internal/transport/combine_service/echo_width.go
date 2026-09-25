@@ -14,8 +14,7 @@ import (
 
 // Echo the narrow-width default matrix. The pre-fill casts each literal to the field primitive so the *T pointer assignment compiles (int32 / int64 / uint16 / float32).
 //
-// EchoWidth returns the http.HandlerFunc for the
-// POST EchoWidth endpoint.
+// EchoWidth returns the POST EchoWidth handler.
 func EchoWidth(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.DefaultsWidth

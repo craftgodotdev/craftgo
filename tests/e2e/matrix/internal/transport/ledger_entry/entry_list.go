@@ -13,8 +13,7 @@ import (
 
 // Lists the entries of a ledger entry.
 //
-// EntryList returns the http.HandlerFunc for the
-// GET EntryList endpoint.
+// EntryList returns the GET EntryList handler.
 func EntryList(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewEntryListService(r.Context(), svcCtx)

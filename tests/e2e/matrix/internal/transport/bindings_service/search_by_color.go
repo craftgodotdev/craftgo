@@ -14,8 +14,7 @@ import (
 
 // Search by colors with an enum-array @query default. An absent `colors` keeps the [Red, Blue] pre-fill; a present `?colors=green` REPLACES it (not appends), so the result is exactly the requested set.
 //
-// SearchByColor returns the http.HandlerFunc for the
-// GET SearchByColor endpoint.
+// SearchByColor returns the GET SearchByColor handler.
 func SearchByColor(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.QueryArrayEnumDefaultReq

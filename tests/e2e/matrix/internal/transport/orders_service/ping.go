@@ -11,8 +11,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Ping returns the http.HandlerFunc for the
-// GET Ping endpoint.
+// Ping returns the GET Ping handler.
 func Ping(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewPingService(r.Context(), svcCtx)

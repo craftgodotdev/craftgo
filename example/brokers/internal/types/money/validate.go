@@ -8,17 +8,12 @@ import (
 	"unicode/utf8"
 )
 
-// Pattern regexes compile ONCE at package init so Validate() calls
-// reference the precompiled var instead of recompiling per request.
-// The pattern is rendered via %q (Go-quoted) rather than a raw-string
-// literal so regexes containing a backtick, backslash, or quote still
-// produce compilable Go - a raw `...` literal would break on a backtick.
+// The regexes of the @pattern and @format checks, compiled once.
 var (
 	_pattern0 = regexp.MustCompile("^[A-Za-z0-9-]+$")
 )
 
-// Validate checks every field-level constraint declared on Amount.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Amount) Validate() error {
 	if int64(v) < 0 {
 		return fmt.Errorf("below minimum 0")
@@ -26,8 +21,7 @@ func (v Amount) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on OrderID.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v OrderID) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("length less than 1")

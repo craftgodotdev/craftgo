@@ -15,8 +15,7 @@ import (
 
 // Fetch one task.
 //
-// GetTask returns the http.HandlerFunc for the
-// GET GetTask endpoint.
+// GetTask returns the GET GetTask handler.
 func GetTask(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetTaskReq

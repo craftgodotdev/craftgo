@@ -14,8 +14,7 @@ import (
 
 // Validate per-field decorators under a type-level @requiresOneOf. Sending neither field fails the cross-field check; sending one passes.
 //
-// ValidateContact returns the http.HandlerFunc for the
-// POST ValidateContact endpoint.
+// ValidateContact returns the POST ValidateContact handler.
 func ValidateContact(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PairsContact

@@ -11,12 +11,7 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// RegisterRoutes wires every TaskService endpoint onto srv. Patterns
-// use the Go 1.22 method-prefixed form so VERB and path match together;
-// service prefix and OpenAPI basePath are baked in. Methods declaring
-// `@middlewares(...)` are wrapped via the corresponding fields on
-// ServiceContext (embedded Middlewares struct), so no runtime name
-// lookup is required - the values come pre-wired.
+// RegisterRoutes registers the TaskService routes on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/projects/v1/{projectId}/tasks", transport.ListTasks(svcCtx), svcCtx.RequestID, svcCtx.AccessLog, svcCtx.RateLimit, svcCtx.AuthRequired)
 	srv.Handle("GET /api/projects/v1/{projectId}/tasks/{id}", transport.GetTask(svcCtx), svcCtx.RequestID, svcCtx.AccessLog, svcCtx.RateLimit, svcCtx.AuthRequired)

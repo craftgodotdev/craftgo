@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RaiseErrorShapes returns the http.HandlerFunc for the
-// POST RaiseErrorShapes endpoint.
+// RaiseErrorShapes returns the POST RaiseErrorShapes handler.
 func RaiseErrorShapes(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.EmptyReq

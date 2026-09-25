@@ -14,8 +14,7 @@ import (
 
 // Delete a product (admin only).
 //
-// DeleteProduct returns the http.HandlerFunc for the
-// DELETE DeleteProduct endpoint.
+// DeleteProduct returns the DELETE DeleteProduct handler.
 func DeleteProduct(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetProductReq

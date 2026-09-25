@@ -13,8 +13,7 @@ import (
 
 // Lists every ledger entry; its body component is LedgerEntryListRespBody.
 //
-// List returns the http.HandlerFunc for the
-// GET List endpoint.
+// List returns the GET List handler.
 func List(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewListService(r.Context(), svcCtx)

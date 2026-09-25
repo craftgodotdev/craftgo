@@ -13,8 +13,7 @@ import (
 
 // Sign up - public, only inherits rate limiting.
 //
-// Signup returns the http.HandlerFunc for the
-// POST Signup endpoint.
+// Signup returns the POST Signup handler.
 func Signup(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewSignupService(r.Context(), svcCtx)

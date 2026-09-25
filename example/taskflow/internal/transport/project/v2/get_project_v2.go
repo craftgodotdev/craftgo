@@ -15,8 +15,7 @@ import (
 
 // Fetch one project (v2 shape: owner + description).
 //
-// GetProjectV2 returns the http.HandlerFunc for the
-// GET GetProjectV2 endpoint.
+// GetProjectV2 returns the GET GetProjectV2 handler.
 func GetProjectV2(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetProjectReq

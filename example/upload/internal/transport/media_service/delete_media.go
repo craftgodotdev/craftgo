@@ -14,8 +14,7 @@ import (
 
 // Delete media. Idempotent.
 //
-// DeleteMedia returns the http.HandlerFunc for the
-// DELETE DeleteMedia endpoint.
+// DeleteMedia returns the DELETE DeleteMedia handler.
 func DeleteMedia(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetMediaReq

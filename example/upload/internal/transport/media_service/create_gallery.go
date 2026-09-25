@@ -14,21 +14,13 @@ import (
 
 // Create a gallery from a BATCH of uploaded photos. Showcases `file[]` (many files, 1–20) + an optional `cover` file + form values of every shape - text, a repeated `tags string[]`, an enum, a bool and an int - in one multipart/form-data request.
 //
-// CreateGallery returns the http.HandlerFunc for the
-// POST CreateGallery multipart endpoint. The handler parses
-// `multipart/form-data` bodies, binds every form field declared on
-// the request type, and populates `*multipart.FileHeader` fields
-// for any DSL-typed `file` declarations.
+// CreateGallery returns the POST CreateGallery handler.
 func CreateGallery(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
-		// Remove the temp files the parser spilled to disk as soon as the
-		// handler returns. net/http sweeps them again at end-of-response, but
-		// the explicit cleanup releases disk before the response flush and
-		// still runs on panic paths that bypass that sweep.
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.CreateGalleryReq
 		req.AlbumID = r.PathValue("albumId")

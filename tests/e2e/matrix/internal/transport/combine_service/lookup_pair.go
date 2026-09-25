@@ -14,8 +14,7 @@ import (
 
 // Look a pair up by name or by id from the query string.
 //
-// LookupPair returns the http.HandlerFunc for the
-// GET LookupPair endpoint.
+// LookupPair returns the GET LookupPair handler.
 func LookupPair(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PairsLookup

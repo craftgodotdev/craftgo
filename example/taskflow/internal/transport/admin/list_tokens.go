@@ -14,8 +14,7 @@ import (
 
 // List issued API tokens (secrets are never returned here).
 //
-// ListTokens returns the http.HandlerFunc for the
-// GET ListTokens endpoint.
+// ListTokens returns the GET ListTokens handler.
 func ListTokens(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req shared.PageParams

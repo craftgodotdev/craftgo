@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoEnumMaps returns the http.HandlerFunc for the
-// POST EchoEnumMaps endpoint.
+// EchoEnumMaps returns the POST EchoEnumMaps handler.
 func EchoEnumMaps(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.EnumKeyedMaps

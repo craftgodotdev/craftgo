@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// AddMixed returns the http.HandlerFunc for the
-// POST AddMixed endpoint.
+// AddMixed returns the POST AddMixed handler.
 func AddMixed(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.MixedReq

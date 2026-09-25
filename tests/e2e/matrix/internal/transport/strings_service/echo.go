@@ -14,8 +14,7 @@ import (
 
 // Echo a request that carries one field per interesting validator shape (length, pattern, format, optional, default). Logic just returns the payload after Validate() so smoke tests can assert the round-trip preserves wire fidelity.
 //
-// Echo returns the http.HandlerFunc for the
-// POST Echo endpoint.
+// Echo returns the POST Echo handler.
 func Echo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Str_EchoReq

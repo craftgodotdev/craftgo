@@ -14,8 +14,7 @@ import (
 
 // Delete a todo. Idempotent.
 //
-// DeleteTodo returns the http.HandlerFunc for the
-// DELETE DeleteTodo endpoint.
+// DeleteTodo returns the DELETE DeleteTodo handler.
 func DeleteTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetTodoReq

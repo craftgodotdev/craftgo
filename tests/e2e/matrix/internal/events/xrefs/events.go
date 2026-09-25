@@ -10,12 +10,9 @@ import (
 )
 
 // PayBatchedContract is the wire identity of PayBatched.
-// Publisher and listener both address the contract by this value.
 const PayBatchedContract = "xrefs.PayBatched"
 
 // The package's ONLY event, and its payload reaches no local type: the generated events.go must carry no canonical `types` import, though the rendered payload spells `paytypes.XPayItem`. An event with a local payload in the same package would supply the import and hide it.
 //
-// PayBatched is the xrefs.PayBatched contract.
-// PayBatched.Publish(ctx, bus, payload) sends one; a listener registers
-// PayBatched.Subscribe(bus, group, fn) on its own bus.
+// PayBatched is the xrefs.PayBatched event contract.
 var PayBatched = craftevents.NewEvent[xshared.XBag[paytypes.XPayItem]](PayBatchedContract, (*xshared.XBag[paytypes.XPayItem]).Validate)

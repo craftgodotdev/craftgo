@@ -17,8 +17,7 @@ import (
 // and a body displayName so each value's transport binding is
 // verifiable.
 //
-// PatchProfile returns the http.HandlerFunc for the
-// PATCH PatchProfile endpoint.
+// PatchProfile returns the PATCH PatchProfile handler.
 func PatchProfile(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PatchProfileReq

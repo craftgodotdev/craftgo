@@ -14,8 +14,7 @@ import (
 
 // Read audited record. Response type uses the mixin pattern (AuditFields embedded into Audited).
 //
-// GetAudited returns the http.HandlerFunc for the
-// GET GetAudited endpoint.
+// GetAudited returns the GET GetAudited handler.
 func GetAudited(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetOrderReq

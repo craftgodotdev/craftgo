@@ -10,9 +10,7 @@ import (
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/greeter"
 )
 
-// RecordHellos serves the client-streaming RPC /grpcmatrix.Greeter/RecordHellos: it hands the
-// call context to the logic and maps the error it returns onto a status,
-// as the HTTP handler does with WriteError.
+// RecordHellos serves the client-streaming RPC /grpcmatrix.Greeter/RecordHellos.
 func (s *Server) RecordHellos(stream grpc.ClientStreamingServer[pb.HelloRequest, pb.HelloReply]) error {
 	ctx := stream.Context()
 	l := service.NewRecordHellosService(ctx, s.svcCtx)

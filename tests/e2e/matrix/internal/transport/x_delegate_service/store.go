@@ -14,8 +14,7 @@ import (
 
 // Round-trips the delegating types so the handler path compiles too.
 //
-// Store returns the http.HandlerFunc for the
-// POST Store endpoint.
+// Store returns the POST Store handler.
 func Store(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XDelegatedScalars

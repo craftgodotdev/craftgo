@@ -13,9 +13,7 @@ import (
 
 // SayHello answers one greeting.
 //
-// SayHello serves the unary RPC /greet.Greeter/SayHello: it hands the
-// call context to the logic and maps the error it returns onto a status,
-// as the HTTP handler does with WriteError.
+// SayHello serves the unary RPC /greet.Greeter/SayHello.
 func (s *Server) SayHello(ctx context.Context, req *pb.HelloRequest) (*pb.HelloReply, error) {
 	if err := rpc.Validate(req); err != nil {
 		return nil, err

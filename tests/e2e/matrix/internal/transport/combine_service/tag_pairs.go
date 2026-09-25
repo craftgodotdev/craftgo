@@ -14,8 +14,7 @@ import (
 
 // Tag a pair. The response sends ETag as a header; its body carries the response type's @mutuallyExclusive and its mixin's @requiresOneOf.
 //
-// TagPairs returns the http.HandlerFunc for the
-// POST TagPairs endpoint.
+// TagPairs returns the POST TagPairs handler.
 func TagPairs(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PairsDoc

@@ -13,8 +13,7 @@ import (
 
 // Destructive admin op - requires AdminBearer AND MFA on top of the service-level inheritance.
 //
-// Wipe returns the http.HandlerFunc for the
-// POST Wipe endpoint.
+// Wipe returns the POST Wipe handler.
 func Wipe(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewWipeService(r.Context(), svcCtx)

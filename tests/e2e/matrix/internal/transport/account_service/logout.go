@@ -13,8 +13,7 @@ import (
 
 // Logout - inherits RateLimit + AuthRequired. Also appends Audit at method level.
 //
-// Logout returns the http.HandlerFunc for the
-// POST Logout endpoint.
+// Logout returns the POST Logout handler.
 func Logout(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewLogoutService(r.Context(), svcCtx)

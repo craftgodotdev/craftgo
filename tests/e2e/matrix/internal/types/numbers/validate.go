@@ -6,8 +6,7 @@ import (
 	"fmt"
 )
 
-// Validate checks every field-level constraint declared on BoundaryReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *BoundaryReq) Validate() error {
 	if err := v.Body.Validate(); err != nil {
 		return fmt.Errorf("body: %w", err)
@@ -15,8 +14,7 @@ func (v *BoundaryReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CounterReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CounterReq) Validate() error {
 	if err := v.Body.Validate(); err != nil {
 		return fmt.Errorf("body: %w", err)
@@ -24,8 +22,7 @@ func (v *CounterReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ExactReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ExactReq) Validate() error {
 	if err := v.Body.Validate(); err != nil {
 		return fmt.Errorf("body: %w", err)
@@ -33,8 +30,7 @@ func (v *ExactReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on MixedReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *MixedReq) Validate() error {
 	if err := v.Body.Validate(); err != nil {
 		return fmt.Errorf("body: %w", err)
@@ -42,8 +38,7 @@ func (v *MixedReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NumberBigBounds.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *NumberBigBounds) Validate() error {
 	if v.MinID < 9007199254740993 {
 		return fmt.Errorf("minId: below minimum 9007199254740993")
@@ -60,8 +55,7 @@ func (v *NumberBigBounds) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NumberBigMultipleOf.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *NumberBigMultipleOf) Validate() error {
 	if v.N%9007199254740993 != 0 {
 		return fmt.Errorf("n: must be a multiple of 9007199254740993")
@@ -69,14 +63,12 @@ func (v *NumberBigMultipleOf) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NumberBoundary.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *NumberBoundary) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NumberCounter.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *NumberCounter) Validate() error {
 	if v.RangeInt < 0 || v.RangeInt > 1000 {
 		return fmt.Errorf("rangeInt: out of range [0, 1000]")
@@ -177,8 +169,7 @@ func (v *NumberCounter) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NumberExact.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *NumberExact) Validate() error {
 	if v.Exactly5 < 5 {
 		return fmt.Errorf("exactly5: below minimum 5")
@@ -201,8 +192,7 @@ func (v *NumberExact) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NumberMixed.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *NumberMixed) Validate() error {
 	if v.GtLte <= 0 {
 		return fmt.Errorf("gtLte: must be greater than 0")
@@ -237,8 +227,7 @@ func (v *NumberMixed) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NumberMultipleOf.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *NumberMultipleOf) Validate() error {
 	if v.Qty%5 != 0 {
 		return fmt.Errorf("qty: must be a multiple of 5")
@@ -246,8 +235,7 @@ func (v *NumberMultipleOf) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NumberOptional.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *NumberOptional) Validate() error {
 	if v.OptInt != nil && *v.OptInt < 0 {
 		return fmt.Errorf("optInt: below minimum 0")
@@ -285,8 +273,7 @@ func (v *NumberOptional) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NumberPrice.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *NumberPrice) Validate() error {
 	if v.RangeF32 < 0 || v.RangeF32 > 1 {
 		return fmt.Errorf("rangeF32: out of range [0, 1]")
@@ -342,8 +329,7 @@ func (v *NumberPrice) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NumberUnsigned.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *NumberUnsigned) Validate() error {
 	if v.RangeUint > 1000 {
 		return fmt.Errorf("rangeUint: out of range [0, 1000]")
@@ -402,8 +388,7 @@ func (v *NumberUnsigned) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on OptionalReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *OptionalReq) Validate() error {
 	if err := v.Body.Validate(); err != nil {
 		return fmt.Errorf("body: %w", err)
@@ -411,8 +396,7 @@ func (v *OptionalReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PriceReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PriceReq) Validate() error {
 	if err := v.Body.Validate(); err != nil {
 		return fmt.Errorf("body: %w", err)
@@ -420,8 +404,7 @@ func (v *PriceReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UnsignedReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UnsignedReq) Validate() error {
 	if err := v.Body.Validate(); err != nil {
 		return fmt.Errorf("body: %w", err)

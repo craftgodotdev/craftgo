@@ -14,8 +14,7 @@ import (
 
 // Echo a wrapped/nested generic instance. Probes Page<Envelope<Order>> end-to-end through transport + OpenAPI.
 //
-// EchoWrapped returns the http.HandlerFunc for the
-// POST EchoWrapped endpoint.
+// EchoWrapped returns the POST EchoWrapped handler.
 func EchoWrapped(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.EchoWrappedReq

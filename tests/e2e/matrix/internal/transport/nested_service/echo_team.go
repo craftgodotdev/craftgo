@@ -14,8 +14,7 @@ import (
 
 // Slice of nested with array-level bounds.
 //
-// EchoTeam returns the http.HandlerFunc for the
-// POST EchoTeam endpoint.
+// EchoTeam returns the POST EchoTeam handler.
 func EchoTeam(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Team

@@ -13,10 +13,7 @@ import (
 
 // Export a tenant's items in a format logic picks. Logic reads the raw request; the document declares tenantID and format as path parameters.
 //
-// ExportTenantItems returns the http.HandlerFunc for the
-// GET ExportTenantItems passthrough endpoint. The framework stays
-// out of the way: logic receives the raw http.ResponseWriter and
-// *http.Request and writes the response directly.
+// ExportTenantItems returns the GET ExportTenantItems handler.
 func ExportTenantItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewExportTenantItemsService(r.Context(), svcCtx)

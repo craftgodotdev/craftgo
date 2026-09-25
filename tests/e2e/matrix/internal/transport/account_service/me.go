@@ -13,8 +13,7 @@ import (
 
 // Get the current user - inherits RateLimit + AuthRequired.
 //
-// Me returns the http.HandlerFunc for the
-// GET Me endpoint.
+// Me returns the GET Me handler.
 func Me(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewMeService(r.Context(), svcCtx)

@@ -14,20 +14,13 @@ import (
 
 // Raw response over a multipart request: the form is parsed and validated before logic runs.
 //
-// RrMultipart returns the http.HandlerFunc for the
-// POST RrMultipart raw-response endpoint. The handler binds and
-// validates the request, then hands the http.ResponseWriter and
-// *http.Request to logic, which writes the response directly.
+// RrMultipart returns the POST RrMultipart handler.
 func RrMultipart(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
-		// Remove the temp files the parser spilled to disk as soon as the
-		// handler returns. net/http sweeps them again at end-of-response, but
-		// the explicit cleanup releases disk before the response flush and
-		// still runs on panic paths that bypass that sweep.
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.RrUploadReq
 		req.Note = r.FormValue("note")

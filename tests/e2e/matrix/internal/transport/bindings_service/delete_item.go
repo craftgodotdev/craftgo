@@ -14,8 +14,7 @@ import (
 
 // Delete an item. Idempotent. Surfaces RecordNotFound (404) for unknown ids and AccessDenied (403) when the caller lacks permission.
 //
-// DeleteItem returns the http.HandlerFunc for the
-// DELETE DeleteItem endpoint.
+// DeleteItem returns the DELETE DeleteItem handler.
 func DeleteItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetItemReq

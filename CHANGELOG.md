@@ -45,6 +45,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   myapp`). An import names an alias only when it differs from the package's
   name. A file written once keeps the imports it was written with.
 
+- **Generated comments say one line about their symbol.** A handler, a
+  routes or wiring function, a gRPC method and server, an event contract, an
+  error's methods, a validator and a middleware each carry one line about
+  that symbol, where most carried a paragraph; a scalar, an enum and its
+  values carry the design's description alone. A logic stub names what its
+  entry point does in one line, and on a raw side the type the design
+  documents in a second. A file written once keeps the comments it was
+  written with.
+
 - **A decorator on the wrong kind of value reads the same everywhere.**
   `@pattern` on `bytes`, `@multipleOf` on a float and `@uniqueItems` on a
   map report `@X applies to <kinds> fields, but <field> is <kind>`, as every

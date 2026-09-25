@@ -12,19 +12,14 @@ import (
 	"unicode/utf8"
 )
 
-// Pattern regexes compile ONCE at package init so Validate() calls
-// reference the precompiled var instead of recompiling per request.
-// The pattern is rendered via %q (Go-quoted) rather than a raw-string
-// literal so regexes containing a backtick, backslash, or quote still
-// produce compilable Go - a raw `...` literal would break on a backtick.
+// The regexes of the @pattern and @format checks, compiled once.
 var (
 	_pattern0 = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 	_pattern1 = regexp.MustCompile("^[A-Z]{3}$")
 	_pattern2 = regexp.MustCompile("^[a-z-]+$")
 )
 
-// Validate checks every field-level constraint declared on ArrayBox.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ArrayBox[T]) Validate() error {
 	for i0 := range v.Req {
 		if vv, ok := any(&v.Req[i0]).(interface{ Validate() error }); ok {
@@ -47,8 +42,7 @@ func (v *ArrayBox[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ArrayOfGenericInstance.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ArrayOfGenericInstance) Validate() error {
 	for i0 := range v.Pages {
 		if err := v.Pages[i0].Validate(); err != nil {
@@ -58,8 +52,7 @@ func (v *ArrayOfGenericInstance) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Attachments.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Attachments) Validate() error {
 	if v.Cover != nil {
 		if err := v.Cover.Validate(); err != nil {
@@ -76,8 +69,7 @@ func (v *Attachments) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on AuditFields.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *AuditFields) Validate() error {
 	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {
 		return fmt.Errorf("createdAt: not a valid RFC 3339 datetime")
@@ -88,8 +80,7 @@ func (v *AuditFields) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Audited.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Audited) Validate() error {
 	if err := v.AuditFields.Validate(); err != nil {
 		return err
@@ -100,8 +91,7 @@ func (v *Audited) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on AuditedPage.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *AuditedPage) Validate() error {
 	if err := v.Page.Validate(); err != nil {
 		return fmt.Errorf("page: %w", err)
@@ -109,8 +99,7 @@ func (v *AuditedPage) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Bag.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Bag) Validate() error {
 	if len(v.Tags) < 1 {
 		return fmt.Errorf("tags: minItems 1")
@@ -126,8 +115,7 @@ func (v *Bag) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on BoxHolder.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *BoxHolder) Validate() error {
 	if err := v.Box.Validate(); err != nil {
 		return fmt.Errorf("box: %w", err)
@@ -135,8 +123,7 @@ func (v *BoxHolder) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CompositeArg.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CompositeArg) Validate() error {
 	if err := v.Page.Validate(); err != nil {
 		return fmt.Errorf("page: %w", err)
@@ -144,8 +131,7 @@ func (v *CompositeArg) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ConstrainedBox.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ConstrainedBox[T]) Validate() error {
 	if vv, ok := any(&v.Item).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
@@ -169,8 +155,7 @@ func (v *ConstrainedBox[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ConstrainedBoxHost.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ConstrainedBoxHost) Validate() error {
 	if err := v.Box.Validate(); err != nil {
 		return fmt.Errorf("box: %w", err)
@@ -178,8 +163,7 @@ func (v *ConstrainedBoxHost) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CreateOrderReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CreateOrderReq) Validate() error {
 	if err := v.Order.Validate(); err != nil {
 		return fmt.Errorf("order: %w", err)
@@ -187,8 +171,7 @@ func (v *CreateOrderReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on EchoWrappedReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *EchoWrappedReq) Validate() error {
 	if err := v.Payload.Validate(); err != nil {
 		return fmt.Errorf("payload: %w", err)
@@ -196,8 +179,7 @@ func (v *EchoWrappedReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on EnumKeyedMaps.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *EnumKeyedMaps) Validate() error {
 	for key0 := range v.ByColor {
 		if err := key0.Validate(); err != nil {
@@ -212,8 +194,7 @@ func (v *EnumKeyedMaps) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Envelope.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Envelope[T]) Validate() error {
 	if vv, ok := any(&v.Data).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
@@ -225,8 +206,7 @@ func (v *Envelope[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on EnvelopePages.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *EnvelopePages) Validate() error {
 	if err := v.OfList.Validate(); err != nil {
 		return fmt.Errorf("ofList: %w", err)
@@ -237,8 +217,7 @@ func (v *EnvelopePages) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GenericMixinHost.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GenericMixinHost) Validate() error {
 	if err := v.MixinPage.Validate(); err != nil {
 		return err
@@ -246,8 +225,7 @@ func (v *GenericMixinHost) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GenericOverEnum.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GenericOverEnum) Validate() error {
 	if err := v.Levels.Validate(); err != nil {
 		return fmt.Errorf("levels: %w", err)
@@ -255,8 +233,7 @@ func (v *GenericOverEnum) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GenericOverScalar.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GenericOverScalar) Validate() error {
 	if err := v.Emails.Validate(); err != nil {
 		return fmt.Errorf("emails: %w", err)
@@ -267,8 +244,7 @@ func (v *GenericOverScalar) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GetOrderReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GetOrderReq) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -276,8 +252,7 @@ func (v *GetOrderReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ItemPath.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ItemPath) Validate() error {
 	if err := v.Uid.Validate(); err != nil {
 		return fmt.Errorf("uid: %w", err)
@@ -291,14 +266,12 @@ func (v *ItemPath) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ItemView.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ItemView) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on KeyMeta.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *KeyMeta) Validate() error {
 	if v.Code != nil {
 		if err := v.Code.Validate(); err != nil {
@@ -308,8 +281,7 @@ func (v *KeyMeta) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Keyed.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Keyed[Key]) Validate() error {
 	if err := v.KeyMeta.Validate(); err != nil {
 		return err
@@ -326,8 +298,7 @@ func (v *Keyed[Key]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on KeyedPage.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *KeyedPage[Key]) Validate() error {
 	if err := v.KeyMeta.Validate(); err != nil {
 		return err
@@ -351,8 +322,7 @@ func (v *KeyedPage[Key]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on KeyedPut.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *KeyedPut[Key]) Validate() error {
 	if err := v.KeyMeta.Validate(); err != nil {
 		return err
@@ -367,8 +337,7 @@ func (v *KeyedPut[Key]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ListKeyedReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ListKeyedReq) Validate() error {
 	if err := v.Keyed.Validate(); err != nil {
 		return err
@@ -376,8 +345,7 @@ func (v *ListKeyedReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ListOrdersReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ListOrdersReq) Validate() error {
 	if v.Limit != nil {
 		if err := v.Limit.Validate(); err != nil {
@@ -387,8 +355,7 @@ func (v *ListOrdersReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Listing.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Listing[T]) Validate() error {
 	for i0 := range v.Items {
 		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
@@ -405,8 +372,7 @@ func (v *Listing[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Lookup.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Lookup[T]) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -423,8 +389,7 @@ func (v *Lookup[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on MapPages.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *MapPages) Validate() error {
 	if err := v.ByKey.Validate(); err != nil {
 		return fmt.Errorf("byKey: %w", err)
@@ -441,8 +406,7 @@ func (v *MapPages) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on MapValueGeneric.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *MapValueGeneric) Validate() error {
 	for _, val0 := range v.Bucket {
 		if err := val0.Validate(); err != nil {
@@ -452,8 +416,7 @@ func (v *MapValueGeneric) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Maybe.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Maybe[T]) Validate() error {
 	if v.Value != nil {
 		if vv, ok := any(v.Value).(interface{ Validate() error }); ok {
@@ -467,8 +430,7 @@ func (v *Maybe[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on MaybeOrder.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *MaybeOrder) Validate() error {
 	if err := v.Hit.Validate(); err != nil {
 		return fmt.Errorf("hit: %w", err)
@@ -476,14 +438,12 @@ func (v *MaybeOrder) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on MixinItem.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *MixinItem) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on MixinPage.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *MixinPage[T]) Validate() error {
 	for i0 := range v.Items {
 		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
@@ -500,8 +460,7 @@ func (v *MixinPage[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NullableScalars.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *NullableScalars) Validate() error {
 	if v.NulCapped != nil {
 		_sv := int(*v.NulCapped)
@@ -542,8 +501,7 @@ func (v *NullableScalars) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on OptionalPage.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *OptionalPage) Validate() error {
 	if v.MaybePage != nil {
 		if err := v.MaybePage.Validate(); err != nil {
@@ -553,8 +511,7 @@ func (v *OptionalPage) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Order.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Order) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -577,8 +534,7 @@ func (v *Order) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on OrderPage.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *OrderPage) Validate() error {
 	if err := v.Page.Validate(); err != nil {
 		return fmt.Errorf("page: %w", err)
@@ -586,8 +542,7 @@ func (v *OrderPage) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Page.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Page[T]) Validate() error {
 	for i0 := range v.Items {
 		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
@@ -601,8 +556,7 @@ func (v *Page[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PageOfPrimitiveHost.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PageOfPrimitiveHost) Validate() error {
 	if err := v.Rows.Validate(); err != nil {
 		return fmt.Errorf("rows: %w", err)
@@ -610,8 +564,7 @@ func (v *PageOfPrimitiveHost) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PageWithAudit.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PageWithAudit[T]) Validate() error {
 	if err := v.AuditFields.Validate(); err != nil {
 		return err
@@ -628,8 +581,7 @@ func (v *PageWithAudit[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Pair.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Pair[A, B]) Validate() error {
 	if vv, ok := any(&v.Left).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
@@ -648,8 +600,7 @@ func (v *Pair[A, B]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PairUserOrder.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PairUserOrder) Validate() error {
 	if err := v.Pair.Validate(); err != nil {
 		return fmt.Errorf("pair: %w", err)
@@ -657,8 +608,7 @@ func (v *PairUserOrder) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ProductPage.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ProductPage) Validate() error {
 	if err := v.Page.Validate(); err != nil {
 		return fmt.Errorf("page: %w", err)
@@ -666,8 +616,7 @@ func (v *ProductPage) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ProductRef.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ProductRef) Validate() error {
 	if err := v.Sku.Validate(); err != nil {
 		return fmt.Errorf("sku: %w", err)
@@ -678,8 +627,7 @@ func (v *ProductRef) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on QueryDefaults.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *QueryDefaults) Validate() error {
 	if v.ColorQ != nil {
 		if err := v.ColorQ.Validate(); err != nil {
@@ -689,8 +637,7 @@ func (v *QueryDefaults) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RecursiveHost.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RecursiveHost) Validate() error {
 	if err := v.Root.Validate(); err != nil {
 		return fmt.Errorf("root: %w", err)
@@ -698,14 +645,12 @@ func (v *RecursiveHost) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RefInner.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RefInner) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RefMeta.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RefMeta) Validate() error {
 	if v.NulInner != nil {
 		if err := v.NulInner.Validate(); err != nil {
@@ -731,8 +676,7 @@ func (v *RefMeta) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ScalarFieldOverrides.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ScalarFieldOverrides) Validate() error {
 	{
 		_sv := int(v.Amount)
@@ -766,8 +710,7 @@ func (v *ScalarFieldOverrides) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ScalarLengths.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ScalarLengths) Validate() error {
 	if err := v.Code.Validate(); err != nil {
 		return fmt.Errorf("code: %w", err)
@@ -798,8 +741,7 @@ func (v *ScalarLengths) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Search.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Search) Validate() error {
 	for i0 := range v.Keywords {
 		if err := v.Keywords[i0].Validate(); err != nil {
@@ -814,8 +756,7 @@ func (v *Search) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Shadowed.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Shadowed[Blob, Priority]) Validate() error {
 	if v.Payload != nil {
 		if vv, ok := any(v.Payload).(interface{ Validate() error }); ok {
@@ -836,8 +777,7 @@ func (v *Shadowed[Blob, Priority]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ShadowedHost.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ShadowedHost) Validate() error {
 	if err := v.S.Validate(); err != nil {
 		return fmt.Errorf("s: %w", err)
@@ -845,8 +785,7 @@ func (v *ShadowedHost) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on SkuItem.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *SkuItem) Validate() error {
 	if utf8.RuneCountInString(v.Sku) < 2 {
 		return fmt.Errorf("sku: length less than 2")
@@ -854,8 +793,7 @@ func (v *SkuItem) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on SkuPage.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *SkuPage[T]) Validate() error {
 	for i0 := range v.Items {
 		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
@@ -869,8 +807,7 @@ func (v *SkuPage[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Tallied.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Tallied[T]) Validate() error {
 	if vv, ok := any(&v.Tally).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
@@ -891,8 +828,7 @@ func (v *Tallied[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Tree.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Tree[T]) Validate() error {
 	if vv, ok := any(&v.Val).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
@@ -909,8 +845,7 @@ func (v *Tree[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UUIDItem.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UUIDItem) Validate() error {
 	if !_pattern0.MatchString(v.ID) {
 		return fmt.Errorf("id: not a valid UUID")
@@ -918,8 +853,7 @@ func (v *UUIDItem) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Wrapped.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Wrapped) Validate() error {
 	if err := v.Results.Validate(); err != nil {
 		return fmt.Errorf("results: %w", err)
@@ -927,8 +861,7 @@ func (v *Wrapped) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Blob.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Blob) Validate() error {
 	if len([]byte(v)) > 1024 {
 		return fmt.Errorf("length greater than 1024")
@@ -936,8 +869,7 @@ func (v Blob) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Cents.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Cents) Validate() error {
 	if int(v) < 0 {
 		return fmt.Errorf("below minimum 0")
@@ -948,8 +880,7 @@ func (v Cents) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Count.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Count) Validate() error {
 	if int(v) < 0 {
 		return fmt.Errorf("below minimum 0")
@@ -957,8 +888,7 @@ func (v Count) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Email.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Email) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
 		return fmt.Errorf("not a valid email")
@@ -969,8 +899,7 @@ func (v Email) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on EmailAddress.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v EmailAddress) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
 		return fmt.Errorf("not a valid email")
@@ -978,8 +907,7 @@ func (v EmailAddress) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ISO3.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v ISO3) Validate() error {
 	if utf8.RuneCountInString(string(v)) != 3 {
 		return fmt.Errorf("length must be 3")
@@ -990,8 +918,7 @@ func (v ISO3) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Key.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Key) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("length less than 1")
@@ -999,8 +926,7 @@ func (v Key) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NonEmpty.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v NonEmpty) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("length less than 1")
@@ -1008,8 +934,7 @@ func (v NonEmpty) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Percent.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Percent) Validate() error {
 	if float64(v) < 0 {
 		return fmt.Errorf("below minimum 0")
@@ -1020,8 +945,7 @@ func (v Percent) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PinCode.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v PinCode) Validate() error {
 	if utf8.RuneCountInString(string(v)) != 4 {
 		return fmt.Errorf("length must be 4")
@@ -1029,8 +953,7 @@ func (v PinCode) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Tag.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Tag) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("length less than 1")
@@ -1044,8 +967,7 @@ func (v Tag) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Token.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Token) Validate() error {
 	if len([]byte(v)) < 16 {
 		return fmt.Errorf("length less than 16")
@@ -1056,8 +978,7 @@ func (v Token) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on URL.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v URL) Validate() error {
 	if _u, _err := url.Parse(string(v)); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
 		return fmt.Errorf("not a valid URL")
@@ -1065,8 +986,7 @@ func (v URL) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UUID.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v UUID) Validate() error {
 	if !_pattern0.MatchString(string(v)) {
 		return fmt.Errorf("not a valid UUID")
@@ -1074,8 +994,7 @@ func (v UUID) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Priority.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Priority) Validate() error {
 	switch v {
 	case PriorityLow, PriorityMedium, PriorityHigh:
@@ -1085,8 +1004,7 @@ func (v Priority) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Shade.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Shade) Validate() error {
 	switch v {
 	case ShadeRed, ShadeGreen, ShadeBlue:
@@ -1096,8 +1014,7 @@ func (v Shade) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Urgency.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Urgency) Validate() error {
 	switch v {
 	case UrgencyLow, UrgencyMedium, UrgencyHigh:
@@ -1107,16 +1024,12 @@ func (v Urgency) Validate() error {
 	return nil
 }
 
-// validateValue is the fallback for a generic type-parameter field whose
-// argument is a composite type. The direct `any(x).(Validate)` probe finds
-// a Validate() only when the argument type itself has one; when the
-// argument is a slice or map whose ELEMENT carries the constraint, this
-// walks the value and validates each leaf so the runtime enforces what the
-// OpenAPI schema advertises.
+// validateValue validates each element of a composite type-parameter value.
 func validateValue(v any) error {
 	return validateReflect(reflect.ValueOf(v))
 }
 
+// validateReflect validates rv, else each element of a slice, array or map rv.
 func validateReflect(rv reflect.Value) error {
 	if !rv.IsValid() {
 		return nil
@@ -1130,9 +1043,7 @@ func validateReflect(rv reflect.Value) error {
 		}
 		return validateReflect(rv.Elem())
 	}
-	// A non-pointer value: probe the value form, then an addressable copy
-	// so a pointer-receiver Validate() is still found (map values and other
-	// non-addressable elements need the copy).
+	// A pointer-receiver Validate needs an addressable value, so a map value is copied.
 	if vv, ok := rv.Interface().(interface{ Validate() error }); ok {
 		return vv.Validate()
 	}

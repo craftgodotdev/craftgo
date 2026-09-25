@@ -49,7 +49,7 @@ service Orders {
 		return string(body)
 	}
 	mustContainAll(t, read("internal/types/app/types.go"),
-		"// Cents is an amount in cents.\n//\n// Cents is a DSL scalar over int",
+		"// Cents is an amount in cents.\ntype Cents int",
 		"// An order line.\ntype Line struct {",
 		"\t// How many.\n\tQty ",
 	)
@@ -58,12 +58,12 @@ service Orders {
 		"\t// Open orders take changes.\n\tStatusOpen ",
 	)
 	mustContainAll(t, read("internal/types/app/errors.go"),
-		"// Missing is returned for an unknown order.\n//\n// MissingErr is the typed NotFound error",
+		"// Missing is returned for an unknown order.\n//\n// MissingErr is the NotFound error Missing.",
 	)
-	mustContainAll(t, read("internal/transport/orders/get.go"), "// Fetch a line.\n//\n// Get returns the http.HandlerFunc")
-	mustContainAll(t, read("internal/service/orders/get.go"), "// Fetch a line.\n//\n// Get is the service entry point.")
-	mustContainAll(t, read("svccontext/middlewares.go"), "// Audit records who called.\n//\n// AuditMiddleware is the typed alias")
-	mustContainAll(t, read("internal/middleware/audit-middleware.go"), "// Audit records who called.\n//\n// NewAuditMiddleware constructs")
+	mustContainAll(t, read("internal/transport/orders/get.go"), "// Fetch a line.\n//\n// Get returns the POST Get handler.")
+	mustContainAll(t, read("internal/service/orders/get.go"), "// Fetch a line.\n//\n// Get implements Orders.Get.")
+	mustContainAll(t, read("svccontext/middlewares.go"), "// Audit records who called.\n//\n// AuditMiddleware is the Audit middleware.")
+	mustContainAll(t, read("internal/middleware/audit-middleware.go"), "// Audit records who called.\n//\n// NewAuditMiddleware returns the Audit middleware")
 	for _, rel := range []string{"internal/types/app/types.go", "internal/transport/orders/get.go", "internal/service/orders/get.go"} {
 		mustContainNone(t, read(rel), "This comment gives way")
 	}

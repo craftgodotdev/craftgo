@@ -14,8 +14,7 @@ import (
 
 // Create a job; the row is persisted before the response returns.
 //
-// CreateJob returns the http.HandlerFunc for the
-// POST CreateJob endpoint.
+// CreateJob returns the POST CreateJob handler.
 func CreateJob(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateJobReq

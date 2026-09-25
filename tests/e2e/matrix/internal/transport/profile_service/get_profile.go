@@ -14,8 +14,7 @@ import (
 
 // GetProfile returns the profile with the given id.
 //
-// GetProfile returns the http.HandlerFunc for the
-// GET GetProfile endpoint.
+// GetProfile returns the GET GetProfile handler.
 func GetProfile(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetProfileReq

@@ -14,8 +14,7 @@ import (
 
 // Look an order up by id. The request is a generic instance, Lookup<Priority>, bound from the path and the query string.
 //
-// LookupOrder returns the http.HandlerFunc for the
-// GET LookupOrder endpoint.
+// LookupOrder returns the GET LookupOrder handler.
 func LookupOrder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Lookup[types.Priority]

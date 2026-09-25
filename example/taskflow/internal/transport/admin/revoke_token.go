@@ -15,8 +15,7 @@ import (
 
 // Revoke an API token.
 //
-// RevokeToken returns the http.HandlerFunc for the
-// DELETE RevokeToken endpoint.
+// RevokeToken returns the DELETE RevokeToken handler.
 func RevokeToken(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.RevokeTokenReq

@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ListUsers returns the http.HandlerFunc for the
-// GET ListUsers endpoint.
+// ListUsers returns the GET ListUsers handler.
 func ListUsers(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListUsersReq

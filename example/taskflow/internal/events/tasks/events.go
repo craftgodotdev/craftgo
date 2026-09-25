@@ -9,23 +9,17 @@ import (
 )
 
 // TaskCreatedContract is the wire identity of TaskCreated.
-// Publisher and listener both address the contract by this value.
 const TaskCreatedContract = "tasks.TaskCreated"
 
 // A task was created.
 //
-// TaskCreated is the tasks.TaskCreated contract.
-// TaskCreated.Publish(ctx, bus, payload) sends one; a listener registers
-// TaskCreated.Subscribe(bus, group, fn) on its own bus.
+// TaskCreated is the tasks.TaskCreated event contract.
 var TaskCreated = craftevents.NewEvent[types.TaskCreated](TaskCreatedContract, (*types.TaskCreated).Validate)
 
 // TaskStatusChangedContract is the wire identity of TaskStatusChanged.
-// Publisher and listener both address the contract by this value.
 const TaskStatusChangedContract = "tasks.TaskStatusChanged"
 
 // A task moved between statuses.
 //
-// TaskStatusChanged is the tasks.TaskStatusChanged contract.
-// TaskStatusChanged.Publish(ctx, bus, payload) sends one; a listener registers
-// TaskStatusChanged.Subscribe(bus, group, fn) on its own bus.
+// TaskStatusChanged is the tasks.TaskStatusChanged event contract.
 var TaskStatusChanged = craftevents.NewEvent[types.TaskStatusChanged](TaskStatusChangedContract, (*types.TaskStatusChanged).Validate)

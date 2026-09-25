@@ -6,14 +6,13 @@ struct, the error type with its methods and constructor.
 const {{.ConstName}} = {{.QuotedCode}}
 
 {{if .HasBody -}}
-// {{.BodyName}} is the wire-shape payload declared at design time for {{.TypeName}}.
-// User code instantiates this struct and hands it to {{.CtorName}}.
+// {{.BodyName}} is the body of {{.TypeName}}.
 type {{.BodyName}} struct {
 {{.BodyInterior}}}
 {{end -}}
 
 {{range .Doc}}// {{.}}
-{{end}}// {{.TypeName}} is the typed {{.Category}} error generated for `{{.DSLName}}`.
+{{end}}// {{.TypeName}} is the {{.Category}} error {{.DSLName}}.
 type {{.TypeName}} struct{{if .HasBody}} {
 	{{.BodyName}}
 }{{else}}{}{{end}}
@@ -26,13 +25,10 @@ func {{.CtorName}}({{if .HasBody}}body {{.BodyName}}{{end}}) *{{.TypeName}} {
 // Error returns the {{.Category}} category's default message.
 func (e *{{.TypeName}}) Error() string { return {{.QuotedMessage}} }
 
-// ErrCode returns {{.ConstName}}. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns {{.ConstName}}.
 func (e *{{.TypeName}}) ErrCode() string { return {{.ConstName}} }
 
-// HTTPStatus returns the HTTP status code associated with the {{.Category}}
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the {{.Category}} status.
 func (e *{{.TypeName}}) HTTPStatus() int { return {{.Status}} }
 {{if .HasJSONMember}}
 // MarshalJSON encodes the body alone.
@@ -44,9 +40,7 @@ func (e *{{.TypeName}}) MarshalJSON() ([]byte, error) {
 }
 {{end -}}
 {{if .HasResponseHeaders}}
-// WriteResponseHeaders writes the `@header` / `@cookie` fields onto w.
-// Called by the framework's server.WriteError before the JSON body is
-// encoded so values reach the wire in a single response.
+// WriteResponseHeaders sets the @header and @cookie fields on w.
 func (e *{{.TypeName}}) WriteResponseHeaders(w http.ResponseWriter) {
 {{- range .Headers}}
 	{{.Bind}}

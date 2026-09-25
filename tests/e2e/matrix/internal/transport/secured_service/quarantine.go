@@ -13,8 +13,7 @@ import (
 
 // Locks a tenant; array-form security is functionally equal to the comma form.
 //
-// Quarantine returns the http.HandlerFunc for the
-// POST Quarantine endpoint.
+// Quarantine returns the POST Quarantine handler.
 func Quarantine(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewQuarantineService(r.Context(), svcCtx)

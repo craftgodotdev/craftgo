@@ -14,8 +14,7 @@ import (
 
 // Validate orthogonal @mutuallyExclusive + @requiresOneOf. Sending only c is valid; sending a+b fails exclusivity; sending nothing fails the one-of.
 //
-// ValidateChoice returns the http.HandlerFunc for the
-// POST ValidateChoice endpoint.
+// ValidateChoice returns the POST ValidateChoice handler.
 func ValidateChoice(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PairsChoice

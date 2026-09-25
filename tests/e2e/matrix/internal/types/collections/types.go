@@ -3,41 +3,29 @@
 package collections
 
 // DeepTag is the value scalar of Map_Nested.
-//
-// DeepTag is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type DeepTag string
 
 // Email is the canonical email-format scalar. Used as a map VALUE in
 // maps.craftgo to confirm that scalar @format(email) + @maxLength
 // fire on every value during map iteration.
-//
-// Email is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type Email string
 
 // MapTag is the value scalar of Map_ArrayOfMaps.
-//
-// MapTag is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type MapTag string
 
 // MemberID is a numeric map key: its @gte(1) runs at runtime, and
 // propertyNames leaves it out because JSON object keys are strings.
-//
-// MemberID is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
 type MemberID int
 
 // NonEmptyID is the canonical id scalar (non-empty, bounded length).
 // Used as a map KEY in maps.craftgo to confirm that key-side scalar
 // decorators emit a key-only iteration loop.
-//
-// NonEmptyID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type NonEmptyID string
 
 // Tag is the kebab-case label scalar reused across the array and map
 // tests. Per-element validators (@minLength + @maxLength + @pattern)
 // are stacked so each enclosing `for` loop has THREE distinct
 // validators to emit per element.
-//
-// Tag is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type Tag string
 
 // Address is a struct used as a map VALUE in maps.craftgo. The two

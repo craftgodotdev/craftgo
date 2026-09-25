@@ -14,8 +14,7 @@ import (
 
 // 2-D slice of nested.
 //
-// EchoMatrix returns the http.HandlerFunc for the
-// POST EchoMatrix endpoint.
+// EchoMatrix returns the POST EchoMatrix handler.
 func EchoMatrix(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Matrix

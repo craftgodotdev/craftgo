@@ -11,7 +11,7 @@ import (
 // ErrCodeAcctUserNotFound is the canonical machine-readable code for AcctUserNotFoundErr.
 const ErrCodeAcctUserNotFound = "ACCT_USER_NOT_FOUND"
 
-// AcctUserNotFoundErr is the typed NotFound error generated for `AcctUserNotFound`.
+// AcctUserNotFoundErr is the NotFound error AcctUserNotFound.
 type AcctUserNotFoundErr struct{}
 
 // NewAcctUserNotFoundErr constructs AcctUserNotFoundErr.
@@ -22,13 +22,10 @@ func NewAcctUserNotFoundErr() *AcctUserNotFoundErr {
 // Error returns the NotFound category's default message.
 func (e *AcctUserNotFoundErr) Error() string { return "Not found" }
 
-// ErrCode returns ErrCodeAcctUserNotFound. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeAcctUserNotFound.
 func (e *AcctUserNotFoundErr) ErrCode() string { return ErrCodeAcctUserNotFound }
 
-// HTTPStatus returns the HTTP status code associated with the NotFound
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the NotFound status.
 func (e *AcctUserNotFoundErr) HTTPStatus() int { return 404 }
 
 // MarshalJSON encodes the {"code", "message"} envelope.
@@ -39,13 +36,12 @@ func (e *AcctUserNotFoundErr) MarshalJSON() ([]byte, error) {
 // ErrCodeAcctValidationFailed is the canonical machine-readable code for AcctValidationFailedErr.
 const ErrCodeAcctValidationFailed = "ACCT_VALIDATION_FAILED"
 
-// AcctValidationFailedBody is the wire-shape payload declared at design time for AcctValidationFailedErr.
-// User code instantiates this struct and hands it to NewAcctValidationFailedErr.
+// AcctValidationFailedBody is the body of AcctValidationFailedErr.
 type AcctValidationFailedBody struct {
 	Fields []string `json:"fields"`
 }
 
-// AcctValidationFailedErr is the typed BadRequest error generated for `AcctValidationFailed`.
+// AcctValidationFailedErr is the BadRequest error AcctValidationFailed.
 type AcctValidationFailedErr struct {
 	AcctValidationFailedBody
 }
@@ -58,13 +54,10 @@ func NewAcctValidationFailedErr(body AcctValidationFailedBody) *AcctValidationFa
 // Error returns the BadRequest category's default message.
 func (e *AcctValidationFailedErr) Error() string { return "Bad request" }
 
-// ErrCode returns ErrCodeAcctValidationFailed. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeAcctValidationFailed.
 func (e *AcctValidationFailedErr) ErrCode() string { return ErrCodeAcctValidationFailed }
 
-// HTTPStatus returns the HTTP status code associated with the BadRequest
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the BadRequest status.
 func (e *AcctValidationFailedErr) HTTPStatus() int { return 400 }
 
 // MarshalJSON encodes the body alone.
@@ -75,8 +68,7 @@ func (e *AcctValidationFailedErr) MarshalJSON() ([]byte, error) {
 // ErrCodeOverloaded is the canonical machine-readable code for OverloadedErr.
 const ErrCodeOverloaded = "OVERLOADED"
 
-// OverloadedBody is the wire-shape payload declared at design time for OverloadedErr.
-// User code instantiates this struct and hands it to NewOverloadedErr.
+// OverloadedBody is the body of OverloadedErr.
 type OverloadedBody struct {
 	RetryHint
 }
@@ -84,7 +76,7 @@ type OverloadedBody struct {
 // Overloaded holds only the header field its mixin promotes, so its body is
 // the {code, message} envelope, as RateLimited's is.
 //
-// OverloadedErr is the typed ServiceUnavailable error generated for `Overloaded`.
+// OverloadedErr is the ServiceUnavailable error Overloaded.
 type OverloadedErr struct {
 	OverloadedBody
 }
@@ -97,13 +89,10 @@ func NewOverloadedErr(body OverloadedBody) *OverloadedErr {
 // Error returns the ServiceUnavailable category's default message.
 func (e *OverloadedErr) Error() string { return "Service unavailable" }
 
-// ErrCode returns ErrCodeOverloaded. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeOverloaded.
 func (e *OverloadedErr) ErrCode() string { return ErrCodeOverloaded }
 
-// HTTPStatus returns the HTTP status code associated with the ServiceUnavailable
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the ServiceUnavailable status.
 func (e *OverloadedErr) HTTPStatus() int { return 503 }
 
 // MarshalJSON encodes the {"code", "message"} envelope.
@@ -111,9 +100,7 @@ func (e *OverloadedErr) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]string{"code": ErrCodeOverloaded, "message": e.Error()})
 }
 
-// WriteResponseHeaders writes the `@header` / `@cookie` fields onto w.
-// Called by the framework's server.WriteError before the JSON body is
-// encoded so values reach the wire in a single response.
+// WriteResponseHeaders sets the @header and @cookie fields on w.
 func (e *OverloadedErr) WriteResponseHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Retry-In", strconv.Itoa(e.RetryIn))
 }
@@ -121,8 +108,7 @@ func (e *OverloadedErr) WriteResponseHeaders(w http.ResponseWriter) {
 // ErrCodeRateLimited is the canonical machine-readable code for RateLimitedErr.
 const ErrCodeRateLimited = "RATE_LIMITED"
 
-// RateLimitedBody is the wire-shape payload declared at design time for RateLimitedErr.
-// User code instantiates this struct and hands it to NewRateLimitedErr.
+// RateLimitedBody is the body of RateLimitedErr.
 type RateLimitedBody struct {
 	RetryAfter int `json:"-" header:"Retry-After"`
 }
@@ -132,7 +118,7 @@ type RateLimitedBody struct {
 // path (errorResponseBindings) the same way PaginatedResp does for the
 // success path.
 //
-// RateLimitedErr is the typed TooManyRequests error generated for `RateLimited`.
+// RateLimitedErr is the TooManyRequests error RateLimited.
 type RateLimitedErr struct {
 	RateLimitedBody
 }
@@ -145,13 +131,10 @@ func NewRateLimitedErr(body RateLimitedBody) *RateLimitedErr {
 // Error returns the TooManyRequests category's default message.
 func (e *RateLimitedErr) Error() string { return "Too many requests" }
 
-// ErrCode returns ErrCodeRateLimited. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeRateLimited.
 func (e *RateLimitedErr) ErrCode() string { return ErrCodeRateLimited }
 
-// HTTPStatus returns the HTTP status code associated with the TooManyRequests
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the TooManyRequests status.
 func (e *RateLimitedErr) HTTPStatus() int { return 429 }
 
 // MarshalJSON encodes the {"code", "message"} envelope.
@@ -159,9 +142,7 @@ func (e *RateLimitedErr) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]string{"code": ErrCodeRateLimited, "message": e.Error()})
 }
 
-// WriteResponseHeaders writes the `@header` / `@cookie` fields onto w.
-// Called by the framework's server.WriteError before the JSON body is
-// encoded so values reach the wire in a single response.
+// WriteResponseHeaders sets the @header and @cookie fields on w.
 func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter) {
 	w.Header().Set("Retry-After", strconv.Itoa(e.RetryAfter))
 }

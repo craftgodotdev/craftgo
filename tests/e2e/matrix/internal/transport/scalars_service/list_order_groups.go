@@ -14,8 +14,7 @@ import (
 
 // List orders grouped by region. The response is a generic instance over an array of maps, Page<map<string, Order>[]>.
 //
-// ListOrderGroups returns the http.HandlerFunc for the
-// GET ListOrderGroups endpoint.
+// ListOrderGroups returns the GET ListOrderGroups handler.
 func ListOrderGroups(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListOrdersReq

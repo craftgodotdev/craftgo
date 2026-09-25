@@ -13,8 +13,7 @@ import (
 
 // Log in - public, only inherits rate limiting.
 //
-// Login returns the http.HandlerFunc for the
-// POST Login endpoint.
+// Login returns the POST Login handler.
 func Login(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewLoginService(r.Context(), svcCtx)

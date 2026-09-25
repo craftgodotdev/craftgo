@@ -13,9 +13,7 @@ import (
 
 // Accept raw bytes (any content-type); the framework encodes the typed result.
 //
-// Ingest returns the http.HandlerFunc for the
-// POST Ingest raw-request endpoint. The handler hands the
-// *http.Request to logic unread and encodes the returned response.
+// Ingest returns the POST Ingest handler.
 func Ingest(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewIngestService(r.Context(), svcCtx)

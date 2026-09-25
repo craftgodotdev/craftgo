@@ -13,8 +13,6 @@ import (
 // DefaultScalar below to verify that the @default literal threads
 // through the scalar's defined type without losing the inherited
 // validators.
-//
-// PageSize is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
 type PageSize int
 
 // ArrayDefaults documents an array-of-enum @default as its wire values

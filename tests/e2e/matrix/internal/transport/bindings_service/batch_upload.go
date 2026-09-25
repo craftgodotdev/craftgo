@@ -14,21 +14,13 @@ import (
 
 // Batch upload. files[] rides as repeated multipart parts ([]*multipart.FileHeader, @minItems/@maxItems); cover is one optional file; tags is a repeated form value.
 //
-// BatchUpload returns the http.HandlerFunc for the
-// POST BatchUpload multipart endpoint. The handler parses
-// `multipart/form-data` bodies, binds every form field declared on
-// the request type, and populates `*multipart.FileHeader` fields
-// for any DSL-typed `file` declarations.
+// BatchUpload returns the POST BatchUpload handler.
 func BatchUpload(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
-		// Remove the temp files the parser spilled to disk as soon as the
-		// handler returns. net/http sweeps them again at end-of-response, but
-		// the explicit cleanup releases disk before the response flush and
-		// still runs on panic paths that bypass that sweep.
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.BatchUploadReq
 		req.Tags = r.MultipartForm.Value["tags"]

@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoCompositeArg returns the http.HandlerFunc for the
-// POST EchoCompositeArg endpoint.
+// EchoCompositeArg returns the POST EchoCompositeArg handler.
 func EchoCompositeArg(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CompositeArg

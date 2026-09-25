@@ -12,11 +12,7 @@ import (
 	"unicode/utf8"
 )
 
-// Pattern regexes compile ONCE at package init so Validate() calls
-// reference the precompiled var instead of recompiling per request.
-// The pattern is rendered via %q (Go-quoted) rather than a raw-string
-// literal so regexes containing a backtick, backslash, or quote still
-// produce compilable Go - a raw `...` literal would break on a backtick.
+// The regexes of the @pattern and @format checks, compiled once.
 var (
 	_pattern0 = regexp.MustCompile("^[A-Z]{2}$")
 	_pattern1 = regexp.MustCompile("^[A-Z]{3}$")
@@ -25,8 +21,7 @@ var (
 	_pattern4 = regexp.MustCompile("^[a-z][a-z0-9-]*$")
 )
 
-// Validate checks every field-level constraint declared on AuditFields.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *AuditFields) Validate() error {
 	if err := v.AuditedBy.Validate(); err != nil {
 		return fmt.Errorf("auditedBy: %w", err)
@@ -37,8 +32,7 @@ func (v *AuditFields) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Envelope.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Envelope[T]) Validate() error {
 	if vv, ok := any(&v.Data).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
@@ -50,14 +44,12 @@ func (v *Envelope[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on OkResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *OkResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Page.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Page[T]) Validate() error {
 	for i0 := range v.Items {
 		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
@@ -71,8 +63,7 @@ func (v *Page[T]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Pagination.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Pagination) Validate() error {
 	if v.Limit < 0 {
 		return fmt.Errorf("limit: below minimum 0")
@@ -83,8 +74,7 @@ func (v *Pagination) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Result.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Result[T, E]) Validate() error {
 	if v.Ok != nil {
 		if vv, ok := any(v.Ok).(interface{ Validate() error }); ok {
@@ -107,8 +97,7 @@ func (v *Result[T, E]) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Cents.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Cents) Validate() error {
 	if int(v) < 0 {
 		return fmt.Errorf("below minimum 0")
@@ -116,8 +105,7 @@ func (v Cents) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CountryCode.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v CountryCode) Validate() error {
 	if utf8.RuneCountInString(string(v)) != 2 {
 		return fmt.Errorf("length must be 2")
@@ -128,8 +116,7 @@ func (v CountryCode) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CurrencyCode.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v CurrencyCode) Validate() error {
 	if utf8.RuneCountInString(string(v)) != 3 {
 		return fmt.Errorf("length must be 3")
@@ -140,8 +127,7 @@ func (v CurrencyCode) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Email.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Email) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
 		return fmt.Errorf("not a valid email")
@@ -152,8 +138,7 @@ func (v Email) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Latitude.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Latitude) Validate() error {
 	if float64(v) < -90 {
 		return fmt.Errorf("below minimum -90")
@@ -164,8 +149,7 @@ func (v Latitude) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Longitude.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Longitude) Validate() error {
 	if float64(v) < -180 {
 		return fmt.Errorf("below minimum -180")
@@ -176,8 +160,7 @@ func (v Longitude) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NonEmptyID.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v NonEmptyID) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("length less than 1")
@@ -191,8 +174,7 @@ func (v NonEmptyID) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PercentBP.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v PercentBP) Validate() error {
 	if int(v) < 0 {
 		return fmt.Errorf("below minimum 0")
@@ -203,8 +185,7 @@ func (v PercentBP) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on SKU.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v SKU) Validate() error {
 	if !_pattern3.MatchString(string(v)) {
 		return fmt.Errorf("does not match pattern")
@@ -212,8 +193,7 @@ func (v SKU) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on SafeURL.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v SafeURL) Validate() error {
 	if _u, _err := url.Parse(string(v)); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
 		return fmt.Errorf("not a valid URL")
@@ -224,8 +204,7 @@ func (v SafeURL) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Slug.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Slug) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("length less than 1")
@@ -239,8 +218,7 @@ func (v Slug) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on MaintenanceReason.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v MaintenanceReason) Validate() error {
 	switch v {
 	case MaintenanceReasonScheduled, MaintenanceReasonIncident, MaintenanceReasonCapacity:
@@ -250,8 +228,7 @@ func (v MaintenanceReason) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on MaintenanceWindowBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *MaintenanceWindowBody) Validate() error {
 	if v.Reason == "" {
 		return fmt.Errorf("reason: required")
@@ -265,8 +242,7 @@ func (v *MaintenanceWindowBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RateLimitedErrBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RateLimitedErrBody) Validate() error {
 	if v.RetryAfter < 1 {
 		return fmt.Errorf("retryAfter: below minimum 1")
@@ -277,22 +253,17 @@ func (v *RateLimitedErrBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UnauthorizedErrBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UnauthorizedErrBody) Validate() error {
 	return nil
 }
 
-// validateValue is the fallback for a generic type-parameter field whose
-// argument is a composite type. The direct `any(x).(Validate)` probe finds
-// a Validate() only when the argument type itself has one; when the
-// argument is a slice or map whose ELEMENT carries the constraint, this
-// walks the value and validates each leaf so the runtime enforces what the
-// OpenAPI schema advertises.
+// validateValue validates each element of a composite type-parameter value.
 func validateValue(v any) error {
 	return validateReflect(reflect.ValueOf(v))
 }
 
+// validateReflect validates rv, else each element of a slice, array or map rv.
 func validateReflect(rv reflect.Value) error {
 	if !rv.IsValid() {
 		return nil
@@ -306,9 +277,7 @@ func validateReflect(rv reflect.Value) error {
 		}
 		return validateReflect(rv.Elem())
 	}
-	// A non-pointer value: probe the value form, then an addressable copy
-	// so a pointer-receiver Validate() is still found (map values and other
-	// non-addressable elements need the copy).
+	// A pointer-receiver Validate needs an addressable value, so a map value is copied.
 	if vv, ok := rv.Interface().(interface{ Validate() error }); ok {
 		return vv.Validate()
 	}

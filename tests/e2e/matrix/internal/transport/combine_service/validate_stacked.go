@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ValidateStacked returns the http.HandlerFunc for the
-// POST ValidateStacked endpoint.
+// ValidateStacked returns the POST ValidateStacked handler.
 func ValidateStacked(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PairsStacked

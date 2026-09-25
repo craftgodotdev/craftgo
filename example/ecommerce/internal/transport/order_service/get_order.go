@@ -14,8 +14,7 @@ import (
 
 // Fetch one order.
 //
-// GetOrder returns the http.HandlerFunc for the
-// GET GetOrder endpoint.
+// GetOrder returns the GET GetOrder handler.
 func GetOrder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetOrderReq

@@ -14,8 +14,7 @@ import (
 
 // Exercise stacked length + pattern + format decorators on a single field. The request body's three lines each layer the full validator menu.
 //
-// CombineConstraints returns the http.HandlerFunc for the
-// POST CombineConstraints endpoint.
+// CombineConstraints returns the POST CombineConstraints handler.
 func CombineConstraints(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Str_Combos

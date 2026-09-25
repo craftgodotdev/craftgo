@@ -15,8 +15,7 @@ import (
 
 // Create a project (v1).
 //
-// CreateProject returns the http.HandlerFunc for the
-// POST CreateProject endpoint.
+// CreateProject returns the POST CreateProject handler.
 func CreateProject(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateProjectReq

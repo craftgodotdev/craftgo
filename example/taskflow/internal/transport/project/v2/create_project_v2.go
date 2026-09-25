@@ -15,8 +15,7 @@ import (
 
 // Create a project (v2 requires an ownerId).
 //
-// CreateProjectV2 returns the http.HandlerFunc for the
-// POST CreateProjectV2 endpoint.
+// CreateProjectV2 returns the POST CreateProjectV2 handler.
 func CreateProjectV2(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateProjectV2Req

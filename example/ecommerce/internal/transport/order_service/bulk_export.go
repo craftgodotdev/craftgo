@@ -14,8 +14,7 @@ import (
 
 // Bulk export - admin only, extra body-limit/timeout on top of parent chain.
 //
-// BulkExport returns the http.HandlerFunc for the
-// POST BulkExport endpoint.
+// BulkExport returns the POST BulkExport handler.
 func BulkExport(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListOrdersReq

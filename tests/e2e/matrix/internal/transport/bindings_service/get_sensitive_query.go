@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetSensitiveQuery returns the http.HandlerFunc for the
-// GET GetSensitiveQuery endpoint.
+// GetSensitiveQuery returns the GET GetSensitiveQuery handler.
 func GetSensitiveQuery(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.SensitiveQueryReq

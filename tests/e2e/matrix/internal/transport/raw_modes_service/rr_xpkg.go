@@ -15,10 +15,7 @@ import (
 
 // Raw response over a cross-package request whose field reaches a third package (shared.Severity cast).
 //
-// RrXpkg returns the http.HandlerFunc for the
-// GET RrXpkg raw-response endpoint. The handler binds and
-// validates the request, then hands the http.ResponseWriter and
-// *http.Request to logic, which writes the response directly.
+// RrXpkg returns the GET RrXpkg handler.
 func RrXpkg(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req xshared.XThirdReq

@@ -7,8 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-// Validate checks every field-level constraint declared on Row.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Row) Validate() error {
 	if utf8.RuneCountInString(v.Cell) < 1 {
 		return fmt.Errorf("cell: length less than 1")

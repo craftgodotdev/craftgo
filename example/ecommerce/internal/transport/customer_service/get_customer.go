@@ -14,8 +14,7 @@ import (
 
 // Fetch one customer.
 //
-// GetCustomer returns the http.HandlerFunc for the
-// GET GetCustomer endpoint.
+// GetCustomer returns the GET GetCustomer handler.
 func GetCustomer(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetCustomerReq

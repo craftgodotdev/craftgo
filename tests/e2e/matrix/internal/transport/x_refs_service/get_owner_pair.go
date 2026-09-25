@@ -13,8 +13,7 @@ import (
 
 // A generic response whose type parameter is spelled like the xshared type its field names: XOwnerPairOfString refs XOwner for `owner` and types `value` a string.
 //
-// GetOwnerPair returns the http.HandlerFunc for the
-// GET GetOwnerPair endpoint.
+// GetOwnerPair returns the GET GetOwnerPair handler.
 func GetOwnerPair(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewGetOwnerPairService(r.Context(), svcCtx)

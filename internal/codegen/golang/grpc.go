@@ -128,7 +128,7 @@ func buildGRPCServiceData(svc *protodesign.Service, m *protodesign.Method, imps 
 		Method:      m.Name,
 		ServiceName: logicTypeName(m.Name),
 		Doc:         docHead(m.Doc),
-		Notes:       streamNotes(m.Kind),
+		Entry:       []string{grpcEntry(svc.Name, m)},
 		Sig:         sig.Logic,
 		ImportDecl:  stubImportDecl(set, sig.Logic, imps.Svccontext),
 	}

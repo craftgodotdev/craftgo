@@ -14,8 +14,7 @@ import (
 
 // List items with the total surfaced via response header and the auth cookie refreshed in passing.
 //
-// ListItems returns the http.HandlerFunc for the
-// GET ListItems endpoint.
+// ListItems returns the GET ListItems handler.
 func ListItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewListItemsService(r.Context(), svcCtx)

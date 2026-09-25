@@ -14,8 +14,7 @@ import (
 
 // Patch a todo. Only supplied fields are updated.
 //
-// UpdateTodo returns the http.HandlerFunc for the
-// PATCH UpdateTodo endpoint.
+// UpdateTodo returns the PATCH UpdateTodo handler.
 func UpdateTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.UpdateTodoReq

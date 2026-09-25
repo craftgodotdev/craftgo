@@ -8,17 +8,7 @@ import (
 )
 
 {{range .Doc}}// {{.}}
-{{end}}// New{{.Name}}Middleware constructs the {{.Name}} middleware.
-//
-// craftgo never overwrites this file after the first generation, so
-// add wiring (token store, logger, rate-limit budget, ...) or change
-// the param types freely.
-//
-// Wire it from main.go:
-//
-//	svc := svccontext.NewServiceContext()
-//	svc.{{.Name}} = middleware.New{{.Name}}Middleware(/* args */)
-//	routes.RegisterRoutes(srv, svc)
+{{end}}// New{{.Name}}Middleware returns the {{.Name}} middleware, which ServiceContext's {{.Name}} field holds.
 func New{{.Name}}Middleware() server.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

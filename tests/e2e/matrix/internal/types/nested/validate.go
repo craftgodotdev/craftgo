@@ -7,8 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-// Validate checks every field-level constraint declared on A.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *A) Validate() error {
 	if v.B != nil {
 		if err := v.B.Validate(); err != nil {
@@ -18,8 +17,7 @@ func (v *A) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Address.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Address) Validate() error {
 	if utf8.RuneCountInString(v.Street) < 1 {
 		return fmt.Errorf("street: length less than 1")
@@ -30,8 +28,7 @@ func (v *Address) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on AuditedHost.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *AuditedHost) Validate() error {
 	if err := v.CreatedAudit.Validate(); err != nil {
 		return err
@@ -39,8 +36,7 @@ func (v *AuditedHost) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on B.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *B) Validate() error {
 	if v.A != nil {
 		if err := v.A.Validate(); err != nil {
@@ -50,8 +46,7 @@ func (v *B) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Catalog.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Catalog) Validate() error {
 	for _, val0 := range v.Users {
 		if err := val0.Validate(); err != nil {
@@ -61,8 +56,7 @@ func (v *Catalog) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CreatedAudit.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CreatedAudit) Validate() error {
 	if utf8.RuneCountInString(v.CreatedAt) < 1 {
 		return fmt.Errorf("createdAt: length less than 1")
@@ -70,8 +64,7 @@ func (v *CreatedAudit) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Cube.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Cube) Validate() error {
 	for i0 := range v.Space {
 		for i1 := range v.Space[i0] {
@@ -85,8 +78,7 @@ func (v *Cube) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Furniture.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Furniture) Validate() error {
 	if utf8.RuneCountInString(v.Name) < 1 {
 		return fmt.Errorf("name: length less than 1")
@@ -97,8 +89,7 @@ func (v *Furniture) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on HeaderedResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *HeaderedResp) Validate() error {
 	if err := v.ResponseAudit.Validate(); err != nil {
 		return err
@@ -106,8 +97,7 @@ func (v *HeaderedResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Home.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Home) Validate() error {
 	for i0 := range v.Rooms {
 		if err := v.Rooms[i0].Validate(); err != nil {
@@ -117,8 +107,7 @@ func (v *Home) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ListPage.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ListPage) Validate() error {
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
@@ -133,8 +122,7 @@ func (v *ListPage) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Matrix.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Matrix) Validate() error {
 	for i0 := range v.Grid {
 		for i1 := range v.Grid[i0] {
@@ -146,8 +134,7 @@ func (v *Matrix) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Node.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Node) Validate() error {
 	if utf8.RuneCountInString(v.ID) < 1 {
 		return fmt.Errorf("id: length less than 1")
@@ -160,8 +147,7 @@ func (v *Node) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Order.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Order) Validate() error {
 	if utf8.RuneCountInString(v.ID) < 1 {
 		return fmt.Errorf("id: length less than 1")
@@ -169,8 +155,7 @@ func (v *Order) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Org.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Org) Validate() error {
 	for i0 := range v.Teams {
 		if err := v.Teams[i0].Validate(); err != nil {
@@ -180,8 +165,7 @@ func (v *Org) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Person.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Person) Validate() error {
 	if err := v.Home.Validate(); err != nil {
 		return fmt.Errorf("home: %w", err)
@@ -189,14 +173,12 @@ func (v *Person) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RateMeta.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RateMeta) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RateResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RateResp) Validate() error {
 	if err := v.RateMeta.Validate(); err != nil {
 		return err
@@ -204,8 +186,7 @@ func (v *RateResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ResponseAudit.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ResponseAudit) Validate() error {
 	if utf8.RuneCountInString(v.CreatedAt) < 1 {
 		return fmt.Errorf("createdAt: length less than 1")
@@ -213,8 +194,7 @@ func (v *ResponseAudit) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Room.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Room) Validate() error {
 	for i0 := range v.Furniture {
 		if err := v.Furniture[i0].Validate(); err != nil {
@@ -224,8 +204,7 @@ func (v *Room) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Team.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Team) Validate() error {
 	if len(v.Members) < 1 {
 		return fmt.Errorf("members: minItems 1")
@@ -241,8 +220,7 @@ func (v *Team) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on User.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *User) Validate() error {
 	if err := v.Addr.Validate(); err != nil {
 		return fmt.Errorf("addr: %w", err)

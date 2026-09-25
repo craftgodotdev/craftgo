@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// AddPrice returns the http.HandlerFunc for the
-// POST AddPrice endpoint.
+// AddPrice returns the POST AddPrice handler.
 func AddPrice(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PriceReq

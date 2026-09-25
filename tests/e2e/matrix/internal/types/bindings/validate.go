@@ -10,18 +10,13 @@ import (
 	"unicode/utf8"
 )
 
-// Pattern regexes compile ONCE at package init so Validate() calls
-// reference the precompiled var instead of recompiling per request.
-// The pattern is rendered via %q (Go-quoted) rather than a raw-string
-// literal so regexes containing a backtick, backslash, or quote still
-// produce compilable Go - a raw `...` literal would break on a backtick.
+// The regexes of the @pattern and @format checks, compiled once.
 var (
 	_pattern0 = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 	_pattern1 = regexp.MustCompile("^E_[A-Z]+$")
 )
 
-// Validate checks every field-level constraint declared on AddItemReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *AddItemReq) Validate() error {
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 200 {
 		return fmt.Errorf("name: length out of range [1, 200]")
@@ -38,8 +33,7 @@ func (v *AddItemReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on BatchUploadReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *BatchUploadReq) Validate() error {
 	if len(v.Files) < 1 {
 		return fmt.Errorf("files: minItems 1")
@@ -53,14 +47,12 @@ func (v *BatchUploadReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on BodyExplicitReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *BodyExplicitReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on BodyMixin.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *BodyMixin) Validate() error {
 	if utf8.RuneCountInString(v.Note) < 1 {
 		return fmt.Errorf("note: length less than 1")
@@ -68,8 +60,7 @@ func (v *BodyMixin) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on BodyOnlyMixin.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *BodyOnlyMixin) Validate() error {
 	if utf8.RuneCountInString(v.CreatedAt) < 1 {
 		return fmt.Errorf("createdAt: length less than 1")
@@ -77,38 +68,32 @@ func (v *BodyOnlyMixin) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CollidingQueryReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CollidingQueryReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CookieReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CookieReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CountsPayload.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CountsPayload) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on DoneResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *DoneResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on EmptyReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *EmptyReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ErrorHeaderMeta.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ErrorHeaderMeta) Validate() error {
 	if utf8.RuneCountInString(v.Note) < 1 {
 		return fmt.Errorf("note: length less than 1")
@@ -116,8 +101,7 @@ func (v *ErrorHeaderMeta) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on FormFileReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *FormFileReq) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -138,8 +122,7 @@ func (v *FormFileReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GetItemReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GetItemReq) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -147,26 +130,22 @@ func (v *GetItemReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on HeaderMetadataResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *HeaderMetadataResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on HeaderOptionalReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *HeaderOptionalReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on HeaderReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *HeaderReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Item.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Item) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -180,8 +159,7 @@ func (v *Item) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ItemList.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ItemList) Validate() error {
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
@@ -191,8 +169,7 @@ func (v *ItemList) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on MixinBodyReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *MixinBodyReq) Validate() error {
 	if err := v.BodyOnlyMixin.Validate(); err != nil {
 		return err
@@ -200,8 +177,7 @@ func (v *MixinBodyReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on MixinWireBodyReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *MixinWireBodyReq) Validate() error {
 	if err := v.WireMixin.Validate(); err != nil {
 		return err
@@ -212,8 +188,7 @@ func (v *MixinWireBodyReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NullableDetail.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *NullableDetail) Validate() error {
 	if utf8.RuneCountInString(v.Name) < 1 {
 		return fmt.Errorf("name: length less than 1")
@@ -221,8 +196,7 @@ func (v *NullableDetail) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NullableFormReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *NullableFormReq) Validate() error {
 	if v.Doc == nil {
 		return fmt.Errorf("doc: required")
@@ -243,14 +217,12 @@ func (v *NullableFormReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on OkResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *OkResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Page.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Page) Validate() error {
 	if v.Page < 1 {
 		return fmt.Errorf("page: below minimum 1")
@@ -258,8 +230,7 @@ func (v *Page) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PageReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PageReq) Validate() error {
 	if v.PageSize < 1 {
 		return fmt.Errorf("pageSize: below minimum 1")
@@ -267,8 +238,7 @@ func (v *PageReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PagedReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PagedReq) Validate() error {
 	if err := v.Page.Validate(); err != nil {
 		return err
@@ -276,8 +246,7 @@ func (v *PagedReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PathEnumReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PathEnumReq) Validate() error {
 	if v.C == "" {
 		return fmt.Errorf("c: required")
@@ -288,8 +257,7 @@ func (v *PathEnumReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PathExplicitNameReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PathExplicitNameReq) Validate() error {
 	if l := utf8.RuneCountInString(v.UserID); l < 1 || l > 64 {
 		return fmt.Errorf("user_id: length out of range [1, 64]")
@@ -297,8 +265,7 @@ func (v *PathExplicitNameReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PathScalarReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PathScalarReq) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -306,8 +273,7 @@ func (v *PathScalarReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PathStringReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PathStringReq) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -315,8 +281,7 @@ func (v *PathStringReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on QueryArrayEnumDefaultReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *QueryArrayEnumDefaultReq) Validate() error {
 	for i0 := range v.Colors {
 		if err := v.Colors[i0].Validate(); err != nil {
@@ -326,20 +291,17 @@ func (v *QueryArrayEnumDefaultReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on QueryArrayIntReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *QueryArrayIntReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on QueryArrayStringReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *QueryArrayStringReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on QueryBesideBodyReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *QueryBesideBodyReq) Validate() error {
 	if utf8.RuneCountInString(v.Payload) < 1 {
 		return fmt.Errorf("payload: length less than 1")
@@ -347,14 +309,12 @@ func (v *QueryBesideBodyReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on QueryBoolReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *QueryBoolReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on QueryEnumReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *QueryEnumReq) Validate() error {
 	if v.C != nil {
 		if err := v.C.Validate(); err != nil {
@@ -364,8 +324,7 @@ func (v *QueryEnumReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on QueryIntReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *QueryIntReq) Validate() error {
 	if v.Page != nil && *v.Page < 1 {
 		return fmt.Errorf("page: below minimum 1")
@@ -373,8 +332,7 @@ func (v *QueryIntReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on QueryIntRequiredReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *QueryIntRequiredReq) Validate() error {
 	if v.Page < 1 {
 		return fmt.Errorf("page: below minimum 1")
@@ -382,8 +340,7 @@ func (v *QueryIntRequiredReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on QueryRequiredReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *QueryRequiredReq) Validate() error {
 	if v.Limit < 1 {
 		return fmt.Errorf("limit: below minimum 1")
@@ -394,26 +351,22 @@ func (v *QueryRequiredReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on QueryStringReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *QueryStringReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RequiredArrayQueryReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RequiredArrayQueryReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RequiredParamsReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RequiredParamsReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on SearchReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *SearchReq) Validate() error {
 	if v.Limit < 1 {
 		return fmt.Errorf("limit: below minimum 1")
@@ -432,20 +385,17 @@ func (v *SearchReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on SensitiveQueryReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *SensitiveQueryReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on SessionCookieReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *SessionCookieReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UploadReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UploadReq) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -469,8 +419,7 @@ func (v *UploadReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UserAvatar.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UserAvatar) Validate() error {
 	if _u, _err := url.Parse(v.URL); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
 		return fmt.Errorf("url: not a valid URL")
@@ -484,14 +433,12 @@ func (v *UserAvatar) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on WireMixin.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *WireMixin) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on WireRenameReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *WireRenameReq) Validate() error {
 	if l := utf8.RuneCountInString(v.UserID); l < 1 || l > 64 {
 		return fmt.Errorf("user_id: length out of range [1, 64]")
@@ -499,8 +446,7 @@ func (v *WireRenameReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UUID.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v UUID) Validate() error {
 	if !_pattern0.MatchString(string(v)) {
 		return fmt.Errorf("not a valid UUID")
@@ -508,8 +454,7 @@ func (v UUID) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Color.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Color) Validate() error {
 	switch v {
 	case ColorRed, ColorGreen, ColorBlue:
@@ -519,8 +464,7 @@ func (v Color) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on AccessDeniedBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *AccessDeniedBody) Validate() error {
 	if utf8.RuneCountInString(v.Reason) < 1 {
 		return fmt.Errorf("reason: length less than 1")
@@ -528,14 +472,12 @@ func (v *AccessDeniedBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on AuthRequiredBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *AuthRequiredBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CodeMessageErrBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CodeMessageErrBody) Validate() error {
 	if utf8.RuneCountInString(v.Code) < 3 {
 		return fmt.Errorf("code: length less than 3")
@@ -552,14 +494,12 @@ func (v *CodeMessageErrBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on DuplicateKeyBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *DuplicateKeyBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on EmailTakenBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *EmailTakenBody) Validate() error {
 	if _, _err := mail.ParseAddress(v.Email); _err != nil {
 		return fmt.Errorf("email: not a valid email")
@@ -567,14 +507,12 @@ func (v *EmailTakenBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ForbiddenDetailsBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ForbiddenDetailsBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on HeaderMixinErrorBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *HeaderMixinErrorBody) Validate() error {
 	if err := v.ErrorHeaderMeta.Validate(); err != nil {
 		return err
@@ -582,14 +520,12 @@ func (v *HeaderMixinErrorBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on InvalidInputBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *InvalidInputBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NullableFieldsErrBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *NullableFieldsErrBody) Validate() error {
 	if v.Detail != nil {
 		if err := v.Detail.Validate(); err != nil {
@@ -599,8 +535,7 @@ func (v *NullableFieldsErrBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RateLimitExceededBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RateLimitExceededBody) Validate() error {
 	if v.RetryAfter < 1 {
 		return fmt.Errorf("retryAfter: below minimum 1")
@@ -608,8 +543,7 @@ func (v *RateLimitExceededBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on SharedStatusConflictBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *SharedStatusConflictBody) Validate() error {
 	return nil
 }

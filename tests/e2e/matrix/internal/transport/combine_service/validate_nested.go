@@ -14,8 +14,7 @@ import (
 
 // Validate a path id beside a body whose @requiresOneOf a nested mixin declares. The operation body carries the group: sending neither a nor b fails.
 //
-// ValidateNested returns the http.HandlerFunc for the
-// POST ValidateNested endpoint.
+// ValidateNested returns the POST ValidateNested handler.
 func ValidateNested(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PairsNested

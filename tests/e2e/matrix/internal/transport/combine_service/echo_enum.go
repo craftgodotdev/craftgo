@@ -14,8 +14,7 @@ import (
 
 // Echo the enum default. Missing c on the wire results in c=Red after pre-fill.
 //
-// EchoEnum returns the http.HandlerFunc for the
-// POST EchoEnum endpoint.
+// EchoEnum returns the POST EchoEnum handler.
 func EchoEnum(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.DefaultsEnum

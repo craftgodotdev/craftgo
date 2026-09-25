@@ -15,8 +15,7 @@ import (
 
 // Log time against a task, in 5-minute increments.
 //
-// LogTime returns the http.HandlerFunc for the
-// POST LogTime endpoint.
+// LogTime returns the POST LogTime handler.
 func LogTime(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.LogTimeReq

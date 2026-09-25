@@ -14,8 +14,7 @@ import (
 
 // List products with cursor pagination.
 //
-// ListProducts returns the http.HandlerFunc for the
-// GET ListProducts endpoint.
+// ListProducts returns the GET ListProducts handler.
 func ListProducts(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListProductsReq

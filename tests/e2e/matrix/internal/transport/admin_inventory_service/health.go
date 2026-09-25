@@ -13,8 +13,7 @@ import (
 
 // Liveness probe. Public on purpose - operators hit this before secrets are loaded.
 //
-// Health returns the http.HandlerFunc for the
-// GET Health endpoint.
+// Health returns the GET Health handler.
 func Health(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewHealthService(r.Context(), svcCtx)

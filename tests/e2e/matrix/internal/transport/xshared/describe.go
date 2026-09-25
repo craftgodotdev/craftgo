@@ -14,8 +14,7 @@ import (
 
 // Shares its method name with xrefs' XRefsService.Describe: its operationId is its own and its body components are XsharedXRefsServiceDescribeReqBody and XsharedXRefsServiceDescribeRespBody.
 //
-// Describe returns the http.HandlerFunc for the
-// POST Describe endpoint.
+// Describe returns the POST Describe handler.
 func Describe(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XOwner

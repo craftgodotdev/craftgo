@@ -14,8 +14,7 @@ import (
 
 // Echo the array / map default shapes. The map<,>?-with-object-default field is expected to be rejected at codegen time.
 //
-// EchoCollection returns the http.HandlerFunc for the
-// POST EchoCollection endpoint.
+// EchoCollection returns the POST EchoCollection handler.
 func EchoCollection(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.DefaultsCollection

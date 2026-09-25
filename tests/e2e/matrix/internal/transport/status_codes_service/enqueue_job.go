@@ -14,8 +14,7 @@ import (
 
 // Enqueue a job for async processing; returns once accepted by the queue.
 //
-// EnqueueJob returns the http.HandlerFunc for the
-// POST EnqueueJob endpoint.
+// EnqueueJob returns the POST EnqueueJob handler.
 func EnqueueJob(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateJobReq

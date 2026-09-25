@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoArrayOfMaps returns the http.HandlerFunc for the
-// POST EchoArrayOfMaps endpoint.
+// EchoArrayOfMaps returns the POST EchoArrayOfMaps handler.
 func EchoArrayOfMaps(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Map_ArrayOfMaps

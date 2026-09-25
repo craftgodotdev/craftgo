@@ -15,8 +15,7 @@ import (
 
 // List todos with cursor pagination, optional status filter.
 //
-// ListTodos returns the http.HandlerFunc for the
-// GET ListTodos endpoint.
+// ListTodos returns the GET ListTodos handler.
 func ListTodos(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListTodosReq

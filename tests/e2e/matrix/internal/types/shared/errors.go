@@ -9,8 +9,7 @@ import (
 // ErrCodeAccessRevoked is the canonical machine-readable code for AccessRevokedErr.
 const ErrCodeAccessRevoked = "ACCESS_REVOKED"
 
-// AccessRevokedBody is the wire-shape payload declared at design time for AccessRevokedErr.
-// User code instantiates this struct and hands it to NewAccessRevokedErr.
+// AccessRevokedBody is the body of AccessRevokedErr.
 type AccessRevokedBody struct {
 	AuditTrail
 	Reason string `json:"reason"`
@@ -23,7 +22,7 @@ type AccessRevokedBody struct {
 // (Named distinctly from bindings' `AccessDenied`, whose `Err`-suffixed
 // component would otherwise clash.)
 //
-// AccessRevokedErr is the typed Forbidden error generated for `AccessRevoked`.
+// AccessRevokedErr is the Forbidden error AccessRevoked.
 type AccessRevokedErr struct {
 	AccessRevokedBody
 }
@@ -36,13 +35,10 @@ func NewAccessRevokedErr(body AccessRevokedBody) *AccessRevokedErr {
 // Error returns the Forbidden category's default message.
 func (e *AccessRevokedErr) Error() string { return "Forbidden" }
 
-// ErrCode returns ErrCodeAccessRevoked. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeAccessRevoked.
 func (e *AccessRevokedErr) ErrCode() string { return ErrCodeAccessRevoked }
 
-// HTTPStatus returns the HTTP status code associated with the Forbidden
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the Forbidden status.
 func (e *AccessRevokedErr) HTTPStatus() int { return 403 }
 
 // MarshalJSON encodes the body alone.
@@ -51,8 +47,7 @@ func (e *AccessRevokedErr) MarshalJSON() ([]byte, error) { return json.Marshal(e
 // ErrCodeConflictErr is the canonical machine-readable code for ConflictErr.
 const ErrCodeConflictErr = "CONFLICT_ERR"
 
-// ConflictErrBody is the wire-shape payload declared at design time for ConflictErr.
-// User code instantiates this struct and hands it to NewConflictErr.
+// ConflictErrBody is the body of ConflictErr.
 type ConflictErrBody struct {
 	Reason string `json:"reason"`
 }
@@ -62,7 +57,7 @@ type ConflictErrBody struct {
 // conflict taxonomy varies per resource and consolidating it into a
 // shared enum would force every new resource to extend the enum.
 //
-// ConflictErr is the typed Conflict error generated for `ConflictErr`.
+// ConflictErr is the Conflict error ConflictErr.
 type ConflictErr struct {
 	ConflictErrBody
 }
@@ -75,13 +70,10 @@ func NewConflictErr(body ConflictErrBody) *ConflictErr {
 // Error returns the Conflict category's default message.
 func (e *ConflictErr) Error() string { return "Conflict" }
 
-// ErrCode returns ErrCodeConflictErr. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeConflictErr.
 func (e *ConflictErr) ErrCode() string { return ErrCodeConflictErr }
 
-// HTTPStatus returns the HTTP status code associated with the Conflict
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the Conflict status.
 func (e *ConflictErr) HTTPStatus() int { return 409 }
 
 // MarshalJSON encodes the body alone.
@@ -90,8 +82,7 @@ func (e *ConflictErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.Conf
 // ErrCodeNotFoundErr is the canonical machine-readable code for NotFoundErr.
 const ErrCodeNotFoundErr = "NOT_FOUND_ERR"
 
-// NotFoundErrBody is the wire-shape payload declared at design time for NotFoundErr.
-// User code instantiates this struct and hands it to NewNotFoundErr.
+// NotFoundErrBody is the body of NotFoundErr.
 type NotFoundErrBody struct {
 	Resource string `json:"resource"`
 	ID       ID     `json:"id"`
@@ -102,7 +93,7 @@ type NotFoundErrBody struct {
 // render a targeted error message ("user X not found") without an
 // extra round-trip.
 //
-// NotFoundErr is the typed NotFound error generated for `NotFoundErr`.
+// NotFoundErr is the NotFound error NotFoundErr.
 type NotFoundErr struct {
 	NotFoundErrBody
 }
@@ -115,13 +106,10 @@ func NewNotFoundErr(body NotFoundErrBody) *NotFoundErr {
 // Error returns the NotFound category's default message.
 func (e *NotFoundErr) Error() string { return "Not found" }
 
-// ErrCode returns ErrCodeNotFoundErr. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeNotFoundErr.
 func (e *NotFoundErr) ErrCode() string { return ErrCodeNotFoundErr }
 
-// HTTPStatus returns the HTTP status code associated with the NotFound
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the NotFound status.
 func (e *NotFoundErr) HTTPStatus() int { return 404 }
 
 // MarshalJSON encodes the body alone.

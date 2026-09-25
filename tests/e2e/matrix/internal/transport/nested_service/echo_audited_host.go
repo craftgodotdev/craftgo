@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoAuditedHost returns the http.HandlerFunc for the
-// POST EchoAuditedHost endpoint.
+// EchoAuditedHost returns the POST EchoAuditedHost handler.
 func EchoAuditedHost(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.AuditedHost

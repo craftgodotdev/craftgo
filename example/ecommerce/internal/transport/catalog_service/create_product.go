@@ -15,8 +15,7 @@ import (
 
 // Create a product (admin only).
 //
-// CreateProduct returns the http.HandlerFunc for the
-// POST CreateProduct endpoint.
+// CreateProduct returns the POST CreateProduct handler.
 func CreateProduct(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateProductReq

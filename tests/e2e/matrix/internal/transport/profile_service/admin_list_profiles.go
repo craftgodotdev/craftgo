@@ -15,8 +15,7 @@ import (
 // wraps the handler with ProfileAuth at gen time; unauthenticated
 // callers get a 401 from the middleware before the handler runs.
 //
-// AdminListProfiles returns the http.HandlerFunc for the
-// GET AdminListProfiles endpoint.
+// AdminListProfiles returns the GET AdminListProfiles handler.
 func AdminListProfiles(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewAdminListProfilesService(r.Context(), svcCtx)

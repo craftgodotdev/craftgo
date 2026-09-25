@@ -14,8 +14,7 @@ import (
 
 // Plain JSON health check - contrasts with the raw endpoints above.
 //
-// Health returns the http.HandlerFunc for the
-// GET Health endpoint.
+// Health returns the GET Health handler.
 func Health(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.HealthReq

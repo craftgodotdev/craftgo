@@ -15,8 +15,7 @@ import (
 
 // Pins cross-package scalar @query promotion: the GET handler casts xshared.XEmail and imports xshared, both needing the promoted field's type re-qualified.
 //
-// PromoteWire returns the http.HandlerFunc for the
-// GET PromoteWire endpoint.
+// PromoteWire returns the GET PromoteWire handler.
 func PromoteWire(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XWirePromoteReq

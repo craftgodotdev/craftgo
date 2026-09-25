@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoRefMeta returns the http.HandlerFunc for the
-// POST EchoRefMeta endpoint.
+// EchoRefMeta returns the POST EchoRefMeta handler.
 func EchoRefMeta(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.RefMeta

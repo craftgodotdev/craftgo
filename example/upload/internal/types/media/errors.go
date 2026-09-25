@@ -11,7 +11,7 @@ const ErrCodeMediaNotFound = "MEDIA_NOT_FOUND"
 
 // MediaNotFound is returned by GetMedia for an unknown id - maps to HTTP 404.
 //
-// MediaNotFoundErr is the typed NotFound error generated for `MediaNotFound`.
+// MediaNotFoundErr is the NotFound error MediaNotFound.
 type MediaNotFoundErr struct{}
 
 // NewMediaNotFoundErr constructs MediaNotFoundErr.
@@ -22,13 +22,10 @@ func NewMediaNotFoundErr() *MediaNotFoundErr {
 // Error returns the NotFound category's default message.
 func (e *MediaNotFoundErr) Error() string { return "Not found" }
 
-// ErrCode returns ErrCodeMediaNotFound. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeMediaNotFound.
 func (e *MediaNotFoundErr) ErrCode() string { return ErrCodeMediaNotFound }
 
-// HTTPStatus returns the HTTP status code associated with the NotFound
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the NotFound status.
 func (e *MediaNotFoundErr) HTTPStatus() int { return 404 }
 
 // MarshalJSON encodes the {"code", "message"} envelope.

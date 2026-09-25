@@ -13,10 +13,7 @@ import (
 
 // Raw response on a method that drops the inherited middleware chain.
 //
-// RrNoMw returns the http.HandlerFunc for the
-// GET RrNoMw raw-response endpoint. The handler binds and
-// validates the request, then hands the http.ResponseWriter and
-// *http.Request to logic, which writes the response directly.
+// RrNoMw returns the GET RrNoMw handler.
 func RrNoMw(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewRrNoMwService(r.Context(), svcCtx)

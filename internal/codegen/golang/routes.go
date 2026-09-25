@@ -107,8 +107,10 @@ type routeEntry struct {
 
 // routesData is the template input for routes.tmpl.
 type routesData struct {
-	Package    string
-	Service    string
+	Package string
+	Service string
+	// Group is the segment's @group, "" for none.
+	Group      string
 	ImportDecl string
 	Routes     []routeEntry
 }
@@ -176,6 +178,7 @@ func generateRoutesForSegment(contribs []segment, cfg *config.Config, projectRoo
 	data := routesData{
 		Package: lead.pkg.Name,
 		Service: contributorLabel(contribs),
+		Group:   lead.group,
 	}
 	for _, c := range contribs {
 		for m := range c.methods() {

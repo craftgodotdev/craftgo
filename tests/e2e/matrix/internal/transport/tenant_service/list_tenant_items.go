@@ -14,8 +14,7 @@ import (
 
 // List a tenant's items. tenantID auto-binds to the @prefix path segment; without the prefix-aware rule it would read from the query string instead.
 //
-// ListTenantItems returns the http.HandlerFunc for the
-// GET ListTenantItems endpoint.
+// ListTenantItems returns the GET ListTenantItems handler.
 func ListTenantItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.TenantListReq

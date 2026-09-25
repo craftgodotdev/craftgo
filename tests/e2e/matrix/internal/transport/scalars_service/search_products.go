@@ -14,8 +14,7 @@ import (
 
 // Search by tag. Demonstrates ARRAY-of-scalar (Tag[]) on a request DTO - per-element @pattern fires once per item.
 //
-// SearchProducts returns the http.HandlerFunc for the
-// POST SearchProducts endpoint.
+// SearchProducts returns the POST SearchProducts handler.
 func SearchProducts(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Search

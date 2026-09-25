@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoGenericMixinHost returns the http.HandlerFunc for the
-// POST EchoGenericMixinHost endpoint.
+// EchoGenericMixinHost returns the POST EchoGenericMixinHost handler.
 func EchoGenericMixinHost(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GenericMixinHost

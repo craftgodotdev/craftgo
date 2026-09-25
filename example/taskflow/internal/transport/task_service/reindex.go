@@ -15,8 +15,7 @@ import (
 
 // Rebuild the project's task search index. Long-running; capped at 30s.
 //
-// Reindex returns the http.HandlerFunc for the
-// POST Reindex endpoint.
+// Reindex returns the POST Reindex handler.
 func Reindex(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ReindexReq

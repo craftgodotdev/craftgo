@@ -11,8 +11,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// LegacyPing returns the http.HandlerFunc for the
-// GET LegacyPing endpoint.
+// LegacyPing returns the GET LegacyPing handler.
 func LegacyPing(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewLegacyPingService(r.Context(), svcCtx)

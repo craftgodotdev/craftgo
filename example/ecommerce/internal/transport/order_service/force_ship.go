@@ -14,8 +14,7 @@ import (
 
 // Admin force-ship. Idempotent.
 //
-// ForceShip returns the http.HandlerFunc for the
-// POST ForceShip endpoint.
+// ForceShip returns the POST ForceShip handler.
 func ForceShip(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetOrderReq

@@ -14,8 +14,7 @@ import (
 
 // Validate stacked array decorators (minItems + maxItems + uniqueItems + each(@length)). Outer bounds plus per-element check.
 //
-// ValidateArr returns the http.HandlerFunc for the
-// POST ValidateArr endpoint.
+// ValidateArr returns the POST ValidateArr handler.
 func ValidateArr(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PairsArr

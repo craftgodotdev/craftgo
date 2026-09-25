@@ -14,8 +14,7 @@ import (
 
 // List orders.
 //
-// ListOrders returns the http.HandlerFunc for the
-// GET ListOrders endpoint.
+// ListOrders returns the GET ListOrders handler.
 func ListOrders(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListOrdersReq

@@ -14,8 +14,7 @@ import (
 
 // A request from package server and a response from package log, each named like a package the handler or the stub imports: both files import them under another alias.
 //
-// SignIn returns the http.HandlerFunc for the
-// POST SignIn endpoint.
+// SignIn returns the POST SignIn handler.
 func SignIn(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req server2.Credentials

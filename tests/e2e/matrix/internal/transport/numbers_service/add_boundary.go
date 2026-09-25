@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// AddBoundary returns the http.HandlerFunc for the
-// POST AddBoundary endpoint.
+// AddBoundary returns the POST AddBoundary handler.
 func AddBoundary(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.BoundaryReq

@@ -9,8 +9,7 @@ import (
 	"unicode/utf8"
 )
 
-// Validate checks every field-level constraint declared on Audit.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Audit) Validate() error {
 	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {
 		return fmt.Errorf("createdAt: not a valid RFC 3339 datetime")
@@ -21,8 +20,7 @@ func (v *Audit) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on AuditTrail.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *AuditTrail) Validate() error {
 	if _, _err := time.Parse(time.RFC3339, v.At); _err != nil {
 		return fmt.Errorf("at: not a valid RFC 3339 datetime")
@@ -30,8 +28,7 @@ func (v *AuditTrail) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Money.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Money) Validate() error {
 	if v.Amount < 0 {
 		return fmt.Errorf("amount: below minimum 0")
@@ -42,8 +39,7 @@ func (v *Money) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Pagination.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Pagination) Validate() error {
 	if v.Limit != nil && *v.Limit < 1 {
 		return fmt.Errorf("limit: below minimum 1")
@@ -54,8 +50,7 @@ func (v *Pagination) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Email.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Email) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
 		return fmt.Errorf("not a valid email")
@@ -66,8 +61,7 @@ func (v Email) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ID.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v ID) Validate() error {
 	if l := utf8.RuneCountInString(string(v)); l < 1 || l > 64 {
 		return fmt.Errorf("length out of range [1, 64]")
@@ -75,8 +69,7 @@ func (v ID) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Severity.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Severity) Validate() error {
 	switch v {
 	case SeverityInfo, SeverityWarning, SeverityError, SeverityCritical:
@@ -86,8 +79,7 @@ func (v Severity) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on AccessRevokedBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *AccessRevokedBody) Validate() error {
 	if err := v.AuditTrail.Validate(); err != nil {
 		return err
@@ -95,14 +87,12 @@ func (v *AccessRevokedBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ConflictErrBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ConflictErrBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NotFoundErrBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *NotFoundErrBody) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)

@@ -13,8 +13,7 @@ import (
 
 // List inventory items. Inherits auth + tags from the extend block.
 //
-// ListItems returns the http.HandlerFunc for the
-// GET ListItems endpoint.
+// ListItems returns the GET ListItems handler.
 func ListItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewListItemsService(r.Context(), svcCtx)

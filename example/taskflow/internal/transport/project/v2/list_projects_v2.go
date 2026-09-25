@@ -15,8 +15,7 @@ import (
 
 // List projects (v2: owner + status filters, richer resource).
 //
-// ListProjectsV2 returns the http.HandlerFunc for the
-// GET ListProjectsV2 endpoint.
+// ListProjectsV2 returns the GET ListProjectsV2 handler.
 func ListProjectsV2(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListProjectsV2Req

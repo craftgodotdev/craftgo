@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// AddExact returns the http.HandlerFunc for the
-// POST AddExact endpoint.
+// AddExact returns the POST AddExact handler.
 func AddExact(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ExactReq

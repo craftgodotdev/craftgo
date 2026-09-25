@@ -9,8 +9,7 @@ import (
 // ErrCodeDuplicateEmail is the canonical machine-readable code for DuplicateEmailErr.
 const ErrCodeDuplicateEmail = "DUPLICATE_EMAIL"
 
-// DuplicateEmailBody is the wire-shape payload declared at design time for DuplicateEmailErr.
-// User code instantiates this struct and hands it to NewDuplicateEmailErr.
+// DuplicateEmailBody is the body of DuplicateEmailErr.
 type DuplicateEmailBody struct {
 	Code  *string `json:"code,omitempty"`
 	Email string  `json:"email"`
@@ -21,7 +20,7 @@ type DuplicateEmailBody struct {
 // can show a precise message. `code` is declared explicitly so it
 // surfaces on the wire (the framework's internal `code` is unexported).
 //
-// DuplicateEmailErr is the typed Conflict error generated for `DuplicateEmail`.
+// DuplicateEmailErr is the Conflict error DuplicateEmail.
 type DuplicateEmailErr struct {
 	DuplicateEmailBody
 }
@@ -34,13 +33,10 @@ func NewDuplicateEmailErr(body DuplicateEmailBody) *DuplicateEmailErr {
 // Error returns the Conflict category's default message.
 func (e *DuplicateEmailErr) Error() string { return "Conflict" }
 
-// ErrCode returns ErrCodeDuplicateEmail. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeDuplicateEmail.
 func (e *DuplicateEmailErr) ErrCode() string { return ErrCodeDuplicateEmail }
 
-// HTTPStatus returns the HTTP status code associated with the Conflict
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the Conflict status.
 func (e *DuplicateEmailErr) HTTPStatus() int { return 409 }
 
 // MarshalJSON encodes the body alone.
@@ -49,8 +45,7 @@ func (e *DuplicateEmailErr) MarshalJSON() ([]byte, error) { return json.Marshal(
 // ErrCodeInsufficientPermissions is the canonical machine-readable code for InsufficientPermissionsErr.
 const ErrCodeInsufficientPermissions = "INSUFFICIENT_PERMISSIONS"
 
-// InsufficientPermissionsBody is the wire-shape payload declared at design time for InsufficientPermissionsErr.
-// User code instantiates this struct and hands it to NewInsufficientPermissionsErr.
+// InsufficientPermissionsBody is the body of InsufficientPermissionsErr.
 type InsufficientPermissionsBody struct {
 	Code         *string `json:"code,omitempty"`
 	RequiredRole string  `json:"required_role"`
@@ -59,7 +54,7 @@ type InsufficientPermissionsBody struct {
 // InsufficientPermissions communicates the role the caller is missing.
 // Maps to 403.
 //
-// InsufficientPermissionsErr is the typed Forbidden error generated for `InsufficientPermissions`.
+// InsufficientPermissionsErr is the Forbidden error InsufficientPermissions.
 type InsufficientPermissionsErr struct {
 	InsufficientPermissionsBody
 }
@@ -72,13 +67,10 @@ func NewInsufficientPermissionsErr(body InsufficientPermissionsBody) *Insufficie
 // Error returns the Forbidden category's default message.
 func (e *InsufficientPermissionsErr) Error() string { return "Forbidden" }
 
-// ErrCode returns ErrCodeInsufficientPermissions. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeInsufficientPermissions.
 func (e *InsufficientPermissionsErr) ErrCode() string { return ErrCodeInsufficientPermissions }
 
-// HTTPStatus returns the HTTP status code associated with the Forbidden
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the Forbidden status.
 func (e *InsufficientPermissionsErr) HTTPStatus() int { return 403 }
 
 // MarshalJSON encodes the body alone.
@@ -89,8 +81,7 @@ func (e *InsufficientPermissionsErr) MarshalJSON() ([]byte, error) {
 // ErrCodePfRateLimited is the canonical machine-readable code for PfRateLimitedErr.
 const ErrCodePfRateLimited = "PF_RATE_LIMITED"
 
-// PfRateLimitedBody is the wire-shape payload declared at design time for PfRateLimitedErr.
-// User code instantiates this struct and hands it to NewPfRateLimitedErr.
+// PfRateLimitedBody is the body of PfRateLimitedErr.
 type PfRateLimitedBody struct {
 	Code       *string `json:"code,omitempty"`
 	Message    *string `json:"message,omitempty"`
@@ -102,7 +93,7 @@ type PfRateLimitedBody struct {
 // `@default` decorator records the canonical value for OpenAPI but logic
 // code still has to set them explicitly when constructing the body.
 //
-// PfRateLimitedErr is the typed TooManyRequests error generated for `PfRateLimited`.
+// PfRateLimitedErr is the TooManyRequests error PfRateLimited.
 type PfRateLimitedErr struct {
 	PfRateLimitedBody
 }
@@ -115,13 +106,10 @@ func NewPfRateLimitedErr(body PfRateLimitedBody) *PfRateLimitedErr {
 // Error returns the TooManyRequests category's default message.
 func (e *PfRateLimitedErr) Error() string { return "Too many requests" }
 
-// ErrCode returns ErrCodePfRateLimited. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodePfRateLimited.
 func (e *PfRateLimitedErr) ErrCode() string { return ErrCodePfRateLimited }
 
-// HTTPStatus returns the HTTP status code associated with the TooManyRequests
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the TooManyRequests status.
 func (e *PfRateLimitedErr) HTTPStatus() int { return 429 }
 
 // MarshalJSON encodes the body alone.
@@ -133,7 +121,7 @@ const ErrCodeProfileNotFound = "PROFILE_NOT_FOUND"
 // ProfileNotFound is raised when GetProfile / UpdateProfile cannot
 // locate the addressed id. Maps to HTTP 404 / USER-style code.
 //
-// ProfileNotFoundErr is the typed NotFound error generated for `ProfileNotFound`.
+// ProfileNotFoundErr is the NotFound error ProfileNotFound.
 type ProfileNotFoundErr struct{}
 
 // NewProfileNotFoundErr constructs ProfileNotFoundErr.
@@ -144,13 +132,10 @@ func NewProfileNotFoundErr() *ProfileNotFoundErr {
 // Error returns the NotFound category's default message.
 func (e *ProfileNotFoundErr) Error() string { return "Not found" }
 
-// ErrCode returns ErrCodeProfileNotFound. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeProfileNotFound.
 func (e *ProfileNotFoundErr) ErrCode() string { return ErrCodeProfileNotFound }
 
-// HTTPStatus returns the HTTP status code associated with the NotFound
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the NotFound status.
 func (e *ProfileNotFoundErr) HTTPStatus() int { return 404 }
 
 // MarshalJSON encodes the {"code", "message"} envelope.
@@ -161,8 +146,7 @@ func (e *ProfileNotFoundErr) MarshalJSON() ([]byte, error) {
 // ErrCodeProfileValidationFailed is the canonical machine-readable code for ProfileValidationFailedErr.
 const ErrCodeProfileValidationFailed = "PROFILE_VALIDATION_FAILED"
 
-// ProfileValidationFailedBody is the wire-shape payload declared at design time for ProfileValidationFailedErr.
-// User code instantiates this struct and hands it to NewProfileValidationFailedErr.
+// ProfileValidationFailedBody is the body of ProfileValidationFailedErr.
 type ProfileValidationFailedBody struct {
 	Code   *string  `json:"code,omitempty"`
 	Fields []string `json:"fields"`
@@ -172,7 +156,7 @@ type ProfileValidationFailedBody struct {
 // validation (cross-field, async, third-party) rejects an otherwise
 // schema-valid request. The `fields` slice lists which paths failed.
 //
-// ProfileValidationFailedErr is the typed UnprocessableEntity error generated for `ProfileValidationFailed`.
+// ProfileValidationFailedErr is the UnprocessableEntity error ProfileValidationFailed.
 type ProfileValidationFailedErr struct {
 	ProfileValidationFailedBody
 }
@@ -185,13 +169,10 @@ func NewProfileValidationFailedErr(body ProfileValidationFailedBody) *ProfileVal
 // Error returns the UnprocessableEntity category's default message.
 func (e *ProfileValidationFailedErr) Error() string { return "Unprocessable entity" }
 
-// ErrCode returns ErrCodeProfileValidationFailed. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeProfileValidationFailed.
 func (e *ProfileValidationFailedErr) ErrCode() string { return ErrCodeProfileValidationFailed }
 
-// HTTPStatus returns the HTTP status code associated with the UnprocessableEntity
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the UnprocessableEntity status.
 func (e *ProfileValidationFailedErr) HTTPStatus() int { return 422 }
 
 // MarshalJSON encodes the body alone.
@@ -202,8 +183,7 @@ func (e *ProfileValidationFailedErr) MarshalJSON() ([]byte, error) {
 // ErrCodeStaleVersion is the canonical machine-readable code for StaleVersionErr.
 const ErrCodeStaleVersion = "STALE_VERSION"
 
-// StaleVersionBody is the wire-shape payload declared at design time for StaleVersionErr.
-// User code instantiates this struct and hands it to NewStaleVersionErr.
+// StaleVersionBody is the body of StaleVersionErr.
 type StaleVersionBody struct {
 	Code            *string `json:"code,omitempty"`
 	ExpectedVersion int     `json:"expected_version"`
@@ -213,7 +193,7 @@ type StaleVersionBody struct {
 // StaleVersion is the optimistic-concurrency 412 surfaced when a write
 // arrives with a version older than the stored row.
 //
-// StaleVersionErr is the typed PreconditionFailed error generated for `StaleVersion`.
+// StaleVersionErr is the PreconditionFailed error StaleVersion.
 type StaleVersionErr struct {
 	StaleVersionBody
 }
@@ -226,13 +206,10 @@ func NewStaleVersionErr(body StaleVersionBody) *StaleVersionErr {
 // Error returns the PreconditionFailed category's default message.
 func (e *StaleVersionErr) Error() string { return "Precondition failed" }
 
-// ErrCode returns ErrCodeStaleVersion. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeStaleVersion.
 func (e *StaleVersionErr) ErrCode() string { return ErrCodeStaleVersion }
 
-// HTTPStatus returns the HTTP status code associated with the PreconditionFailed
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the PreconditionFailed status.
 func (e *StaleVersionErr) HTTPStatus() int { return 412 }
 
 // MarshalJSON encodes the body alone.
@@ -241,8 +218,7 @@ func (e *StaleVersionErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.
 // ErrCodeThrottled is the canonical machine-readable code for ThrottledErr.
 const ErrCodeThrottled = "THROTTLED"
 
-// ThrottledBody is the wire-shape payload declared at design time for ThrottledErr.
-// User code instantiates this struct and hands it to NewThrottledErr.
+// ThrottledBody is the body of ThrottledErr.
 type ThrottledBody struct {
 	RetryAfter *int `json:"retryAfter,omitempty"`
 }
@@ -250,7 +226,7 @@ type ThrottledBody struct {
 // Throttled has only optional body fields: with none set it is written as
 // {}, an instance of its declared body.
 //
-// ThrottledErr is the typed TooManyRequests error generated for `Throttled`.
+// ThrottledErr is the TooManyRequests error Throttled.
 type ThrottledErr struct {
 	ThrottledBody
 }
@@ -263,13 +239,10 @@ func NewThrottledErr(body ThrottledBody) *ThrottledErr {
 // Error returns the TooManyRequests category's default message.
 func (e *ThrottledErr) Error() string { return "Too many requests" }
 
-// ErrCode returns ErrCodeThrottled. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeThrottled.
 func (e *ThrottledErr) ErrCode() string { return ErrCodeThrottled }
 
-// HTTPStatus returns the HTTP status code associated with the TooManyRequests
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the TooManyRequests status.
 func (e *ThrottledErr) HTTPStatus() int { return 429 }
 
 // MarshalJSON encodes the body alone.

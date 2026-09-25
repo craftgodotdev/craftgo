@@ -14,10 +14,7 @@ import (
 
 // Inherits @rawResponse from the extend header over a bound request.
 //
-// ExtTyped returns the http.HandlerFunc for the
-// GET ExtTyped raw-response endpoint. The handler binds and
-// validates the request, then hands the http.ResponseWriter and
-// *http.Request to logic, which writes the response directly.
+// ExtTyped returns the GET ExtTyped handler.
 func ExtTyped(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PtReq

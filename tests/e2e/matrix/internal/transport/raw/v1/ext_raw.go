@@ -13,10 +13,7 @@ import (
 
 // Inherits @rawResponse from the extend header; no contract.
 //
-// ExtRaw returns the http.HandlerFunc for the
-// GET ExtRaw raw-response endpoint. The handler binds and
-// validates the request, then hands the http.ResponseWriter and
-// *http.Request to logic, which writes the response directly.
+// ExtRaw returns the GET ExtRaw handler.
 func ExtRaw(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewExtRawService(r.Context(), svcCtx)

@@ -14,10 +14,7 @@ import (
 
 // Stream a file download: the request is bound and validated, logic serves the body with http.ServeContent.
 //
-// Download returns the http.HandlerFunc for the
-// GET Download raw-response endpoint. The handler binds and
-// validates the request, then hands the http.ResponseWriter and
-// *http.Request to logic, which writes the response directly.
+// Download returns the GET Download handler.
 func Download(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.DownloadReq

@@ -13,8 +13,7 @@ import (
 
 // Names XLost, which this package does not declare and xrefs and xshared both do: the 404 is xrefs's (XrefsXLostErr), the package the analyser resolves the bare name in.
 //
-// LookupLost returns the http.HandlerFunc for the
-// GET LookupLost endpoint.
+// LookupLost returns the GET LookupLost handler.
 func LookupLost(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewLookupLostService(r.Context(), svcCtx)

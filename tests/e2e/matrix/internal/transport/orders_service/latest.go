@@ -11,8 +11,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Latest returns the http.HandlerFunc for the
-// GET Latest endpoint.
+// Latest returns the GET Latest handler.
 func Latest(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewLatestService(r.Context(), svcCtx)

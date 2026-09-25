@@ -14,8 +14,7 @@ import (
 
 // Create a customer.
 //
-// CreateCustomer returns the http.HandlerFunc for the
-// POST CreateCustomer endpoint.
+// CreateCustomer returns the POST CreateCustomer handler.
 func CreateCustomer(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateCustomerReq

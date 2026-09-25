@@ -15,8 +15,7 @@ import (
 
 // Echo every @default form.
 //
-// Defaults returns the http.HandlerFunc for the
-// POST Defaults endpoint.
+// Defaults returns the POST Defaults handler.
 func Defaults(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.DefaultsShowcaseReq

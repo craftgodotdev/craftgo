@@ -15,8 +15,7 @@ import (
 
 // Update a project (v1).
 //
-// UpdateProject returns the http.HandlerFunc for the
-// PATCH UpdateProject endpoint.
+// UpdateProject returns the PATCH UpdateProject handler.
 func UpdateProject(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.UpdateProjectReq

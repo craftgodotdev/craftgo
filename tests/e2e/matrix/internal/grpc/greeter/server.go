@@ -7,10 +7,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Server implements pb.GreeterServer (grpcmatrix.Greeter): one method per
-// RPC, each in its own file beside this one. The embedded
-// UnimplementedGreeterServer answers Unimplemented for an RPC the
-// proto gains before the next gen.
+// Server implements pb.GreeterServer (grpcmatrix.Greeter).
 type Server struct {
 	pb.UnimplementedGreeterServer
 	svcCtx *svccontext.ServiceContext

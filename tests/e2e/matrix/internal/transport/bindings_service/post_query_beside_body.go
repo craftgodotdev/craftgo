@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PostQueryBesideBody returns the http.HandlerFunc for the
-// POST PostQueryBesideBody endpoint.
+// PostQueryBesideBody returns the POST PostQueryBesideBody handler.
 func PostQueryBesideBody(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.QueryBesideBodyReq

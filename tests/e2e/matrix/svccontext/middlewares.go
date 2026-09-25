@@ -10,8 +10,7 @@ import "github.com/craftgodotdev/craftgo/pkg/server"
 // drops the service-wide AuthRequired/RateLimit pair in favour of
 // its own chain.
 //
-// AuditMiddleware is the typed alias for the Audit middleware so the
-// field below has a self-documenting name.
+// AuditMiddleware is the Audit middleware.
 type AuditMiddleware = server.Middleware
 
 // AuthRequired enforces a Bearer token on every request flowing
@@ -19,8 +18,7 @@ type AuditMiddleware = server.Middleware
 // configuration (token lifetime, issuer, audience) lives in
 // svccontext / config, not in the DSL contract.
 //
-// AuthRequiredMiddleware is the typed alias for the AuthRequired middleware so the
-// field below has a self-documenting name.
+// AuthRequiredMiddleware is the AuthRequired middleware.
 type AuthRequiredMiddleware = server.Middleware
 
 // BasicAuth is an alternative auth strategy used by the
@@ -29,52 +27,36 @@ type AuthRequiredMiddleware = server.Middleware
 // scaffolded; behaviour (Authorization header parse, credential
 // lookup, ...) lives in the generated impl file.
 //
-// BasicAuthMiddleware is the typed alias for the BasicAuth middleware so the
-// field below has a self-documenting name.
+// BasicAuthMiddleware is the BasicAuth middleware.
 type BasicAuthMiddleware = server.Middleware
 
 // ProfileAuth is the bearer-token middleware. The runtime resolves it
 // against the project's `middleware.NewAuthRequiredMiddleware(...)`
 // implementation, wired in main.go.
 //
-// ProfileAuthMiddleware is the typed alias for the ProfileAuth middleware so the
-// field below has a self-documenting name.
+// ProfileAuthMiddleware is the ProfileAuth middleware.
 type ProfileAuthMiddleware = server.Middleware
 
 // RateLimit applies a token-bucket per remote IP. The concrete refill
 // rate, burst size, and storage backend are choices the user makes
 // inside the generated impl file - the DSL only reserves the slot.
 //
-// RateLimitMiddleware is the typed alias for the RateLimit middleware so the
-// field below has a self-documenting name.
+// RateLimitMiddleware is the RateLimit middleware.
 type RateLimitMiddleware = server.Middleware
 
 // RequestStamp adds a response header for downstream tracing.
 //
-// RequestStampMiddleware is the typed alias for the RequestStamp middleware so the
-// field below has a self-documenting name.
+// RequestStampMiddleware is the RequestStamp middleware.
 type RequestStampMiddleware = server.Middleware
 
 // Timing emits a structured warn-log entry whenever a handler exceeds
 // the user-configured threshold. Threshold value, log level, and
 // reporter are wired up in the impl file.
 //
-// TimingMiddleware is the typed alias for the Timing middleware so the
-// field below has a self-documenting name.
+// TimingMiddleware is the Timing middleware.
 type TimingMiddleware = server.Middleware
 
-// Middlewares carries the runtime middleware values the project wired
-// up at startup. Each `middleware Name` declaration in the DSL becomes
-// one typed field here; main.go assigns each field to a value built by
-// the matching `New<Name>Middleware` constructor in the project's
-// middleware package.
-//
-// Embed this in ServiceContext:
-//
-//	type ServiceContext struct {
-//	    Middlewares
-//	    // ... your own fields ...
-//	}
+// Middlewares holds one field per middleware the design declares.
 type Middlewares struct {
 	Audit        AuditMiddleware
 	AuthRequired AuthRequiredMiddleware

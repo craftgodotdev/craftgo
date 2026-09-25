@@ -13,8 +13,7 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// RegisterAll wires every service's routes onto srv with one call.
-// Generated from the DSL service set; always overwritten.
+// RegisterAll registers every service's routes on srv.
 func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	adminserviceAdminroutes.RegisterRoutes(srv, svcCtx)
 	attachmentserviceroutes.RegisterRoutes(srv, svcCtx)

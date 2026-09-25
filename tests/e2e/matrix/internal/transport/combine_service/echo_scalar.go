@@ -14,8 +14,7 @@ import (
 
 // Echo the scalar default. Missing size on the wire results in size=20 after pre-fill, and the scalar's @gte/@lte bounds still apply.
 //
-// EchoScalar returns the http.HandlerFunc for the
-// POST EchoScalar endpoint.
+// EchoScalar returns the POST EchoScalar handler.
 func EchoScalar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.DefaultsScalar

@@ -14,8 +14,7 @@ import (
 
 // List one page of items. `pageSize` rides the query string; a value below its bound is reported as pageSize.
 //
-// ListPage returns the http.HandlerFunc for the
-// GET ListPage endpoint.
+// ListPage returns the GET ListPage handler.
 func ListPage(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PageReq

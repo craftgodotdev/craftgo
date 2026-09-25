@@ -11,8 +11,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Featured returns the http.HandlerFunc for the
-// GET Featured endpoint.
+// Featured returns the GET Featured handler.
 func Featured(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewFeaturedService(r.Context(), svcCtx)

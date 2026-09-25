@@ -15,8 +15,7 @@ import (
 
 // Move a task to a new status.
 //
-// SetTaskStatus returns the http.HandlerFunc for the
-// PATCH SetTaskStatus endpoint.
+// SetTaskStatus returns the PATCH SetTaskStatus handler.
 func SetTaskStatus(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.SetTaskStatusReq

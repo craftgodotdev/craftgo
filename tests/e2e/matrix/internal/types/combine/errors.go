@@ -9,8 +9,7 @@ import (
 // ErrCodeFieldRulesFailed is the canonical machine-readable code for FieldRulesFailedErr.
 const ErrCodeFieldRulesFailed = "FIELD_RULES_FAILED"
 
-// FieldRulesFailedBody is the wire-shape payload declared at design time for FieldRulesFailedErr.
-// User code instantiates this struct and hands it to NewFieldRulesFailedErr.
+// FieldRulesFailedBody is the body of FieldRulesFailedErr.
 type FieldRulesFailedBody struct {
 	Attempts int     `json:"attempts"`
 	Field    string  `json:"field"`
@@ -23,7 +22,7 @@ type FieldRulesFailedBody struct {
 // FieldRulesFailed is an error body with field constraints, an optional
 // field and a @deprecated field.
 //
-// FieldRulesFailedErr is the typed UnprocessableEntity error generated for `FieldRulesFailed`.
+// FieldRulesFailedErr is the UnprocessableEntity error FieldRulesFailed.
 type FieldRulesFailedErr struct {
 	FieldRulesFailedBody
 }
@@ -36,13 +35,10 @@ func NewFieldRulesFailedErr(body FieldRulesFailedBody) *FieldRulesFailedErr {
 // Error returns the UnprocessableEntity category's default message.
 func (e *FieldRulesFailedErr) Error() string { return "Unprocessable entity" }
 
-// ErrCode returns ErrCodeFieldRulesFailed. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeFieldRulesFailed.
 func (e *FieldRulesFailedErr) ErrCode() string { return ErrCodeFieldRulesFailed }
 
-// HTTPStatus returns the HTTP status code associated with the UnprocessableEntity
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the UnprocessableEntity status.
 func (e *FieldRulesFailedErr) HTTPStatus() int { return 422 }
 
 // MarshalJSON encodes the body alone.

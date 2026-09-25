@@ -14,8 +14,7 @@ import (
 
 // Admin cancellation. Idempotent.
 //
-// CancelOrder returns the http.HandlerFunc for the
-// POST CancelOrder endpoint.
+// CancelOrder returns the POST CancelOrder handler.
 func CancelOrder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetOrderReq

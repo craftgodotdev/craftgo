@@ -13,63 +13,46 @@ import (
 )
 
 // EnvelopedContract is the wire identity of Enveloped.
-// Publisher and listener both address the contract by this value.
 const EnvelopedContract = "events.Enveloped"
 
 // Generic payload: the argument must survive into every target.
 //
-// Enveloped is the events.Enveloped contract.
-// Enveloped.Publish(ctx, bus, payload) sends one; a listener registers
-// Enveloped.Subscribe(bus, group, fn) on its own bus.
+// Enveloped is the events.Enveloped event contract.
 var Enveloped = craftevents.NewEvent[types.Envelope[types.ItemStocked]](EnvelopedContract, (*types.Envelope[types.ItemStocked]).Validate)
 
 // ForgedContract is the wire identity of Forged.
-// Publisher and listener both address the contract by this value.
 const ForgedContract = "events.Forged"
 
 // A second contract over the payload ItemStocked already uses, so a batch can mix two contracts of one package.
 //
-// Forged is the events.Forged contract.
-// Forged.Publish(ctx, bus, payload) sends one; a listener registers
-// Forged.Subscribe(bus, group, fn) on its own bus.
+// Forged is the events.Forged event contract.
 var Forged = craftevents.NewEvent[types.ItemStocked](ForgedContract, (*types.ItemStocked).Validate)
 
 // ItemStockedContract is the wire identity of ItemStocked.
-// Publisher and listener both address the contract by this value.
 const ItemStockedContract = "events.ItemStocked"
 
 // Stock arrived at a warehouse. Its sku rides in through the mixin.
 //
-// ItemStocked is the events.ItemStocked contract.
-// ItemStocked.Publish(ctx, bus, payload) sends one; a listener registers
-// ItemStocked.Subscribe(bus, group, fn) on its own bus.
+// ItemStocked is the events.ItemStocked event contract.
 var ItemStocked = craftevents.NewEvent[types.ItemStocked](ItemStockedContract, (*types.ItemStocked).Validate)
 
 // ReconciledContract is the wire identity of Reconciled.
-// Publisher and listener both address the contract by this value.
 const ReconciledContract = "legacy.inventory.reconciled.v2"
 
 // The wire name is fixed by a system outside this design.
 //
-// Reconciled is the legacy.inventory.reconciled.v2 contract.
-// Reconciled.Publish(ctx, bus, payload) sends one; a listener registers
-// Reconciled.Subscribe(bus, group, fn) on its own bus.
+// Reconciled is the legacy.inventory.reconciled.v2 event contract.
 var Reconciled = craftevents.NewEvent[types.ItemStocked](ReconciledContract, (*types.ItemStocked).Validate)
 
 // RowsImportedContract is the wire identity of RowsImported.
-// Publisher and listener both address the contract by this value.
 const RowsImportedContract = "events.RowsImported"
 
 // An array payload from package fmt, named like the package the element validator imports.
 //
-// RowsImported is the events.RowsImported contract.
-// RowsImported.Publish(ctx, bus, payload) sends one; a listener registers
-// RowsImported.Subscribe(bus, group, fn) on its own bus.
+// RowsImported is the events.RowsImported event contract.
 var RowsImported = craftevents.NewEvent[[]fmt2.Row](RowsImportedContract, validateRowsImported)
 
-// validateRowsImported validates every element the payload carries. The failing
-// element names its index, and the descriptor turns the error into a
-// *craftevents.PayloadError exactly as it does for a single payload.
+// validateRowsImported validates each element of a RowsImported payload.
 func validateRowsImported(items *[]fmt2.Row) error {
 	for i := range *items {
 		if err := (*items)[i].Validate(); err != nil {
@@ -80,56 +63,41 @@ func validateRowsImported(items *[]fmt2.Row) error {
 }
 
 // ShipmentDispatchedContract is the wire identity of ShipmentDispatched.
-// Publisher and listener both address the contract by this value.
 const ShipmentDispatchedContract = "events.ShipmentDispatched"
 
 // A shipment left. Its id is a scalar over a string primitive.
 //
-// ShipmentDispatched is the events.ShipmentDispatched contract.
-// ShipmentDispatched.Publish(ctx, bus, payload) sends one; a listener registers
-// ShipmentDispatched.Subscribe(bus, group, fn) on its own bus.
+// ShipmentDispatched is the events.ShipmentDispatched event contract.
 var ShipmentDispatched = craftevents.NewEvent[types.ShipmentDispatched](ShipmentDispatchedContract, (*types.ShipmentDispatched).Validate)
 
 // StampedContract is the wire identity of Stamped.
-// Publisher and listener both address the contract by this value.
 const StampedContract = "events.Stamped"
 
 // A generic payload over datetime: the event file imports time for the type argument.
 //
-// Stamped is the events.Stamped contract.
-// Stamped.Publish(ctx, bus, payload) sends one; a listener registers
-// Stamped.Subscribe(bus, group, fn) on its own bus.
+// Stamped is the events.Stamped event contract.
 var Stamped = craftevents.NewEvent[types.Envelope[time.Time]](StampedContract, (*types.Envelope[time.Time]).Validate)
 
 // StocktakeStartedContract is the wire identity of StocktakeStarted.
-// Publisher and listener both address the contract by this value.
 const StocktakeStartedContract = "events.StocktakeStarted"
 
 // Published without a key, so the transport places it where it likes.
 //
-// StocktakeStarted is the events.StocktakeStarted contract.
-// StocktakeStarted.Publish(ctx, bus, payload) sends one; a listener registers
-// StocktakeStarted.Subscribe(bus, group, fn) on its own bus.
+// StocktakeStarted is the events.StocktakeStarted event contract.
 var StocktakeStarted = craftevents.NewEvent[types.StocktakeStarted](StocktakeStartedContract, (*types.StocktakeStarted).Validate)
 
 // TierPromotedContract is the wire identity of TierPromoted.
-// Publisher and listener both address the contract by this value.
 const TierPromotedContract = "events.TierPromoted"
 
 // Carries an int-valued enum declared in another package.
 //
-// TierPromoted is the events.TierPromoted contract.
-// TierPromoted.Publish(ctx, bus, payload) sends one; a listener registers
-// TierPromoted.Subscribe(bus, group, fn) on its own bus.
+// TierPromoted is the events.TierPromoted event contract.
 var TierPromoted = craftevents.NewEvent[types.TierPromoted](TierPromotedContract, (*types.TierPromoted).Validate)
 
 // WarehouseClosedContract is the wire identity of WarehouseClosed.
-// Publisher and listener both address the contract by this value.
 const WarehouseClosedContract = "events.WarehouseClosed"
 
 // Carries an int-valued enum declared in this package.
 //
-// WarehouseClosed is the events.WarehouseClosed contract.
-// WarehouseClosed.Publish(ctx, bus, payload) sends one; a listener registers
-// WarehouseClosed.Subscribe(bus, group, fn) on its own bus.
+// WarehouseClosed is the events.WarehouseClosed event contract.
 var WarehouseClosed = craftevents.NewEvent[types.WarehouseClosed](WarehouseClosedContract, (*types.WarehouseClosed).Validate)

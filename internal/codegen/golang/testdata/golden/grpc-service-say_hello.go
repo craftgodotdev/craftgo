@@ -11,19 +11,14 @@ import (
 	"example.com/app/svccontext"
 )
 
-// SayHelloService carries the per-request state for the
-// SayHello endpoint of Greeter. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// SayHelloService runs Greeter.SayHello for one request.
 type SayHelloService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewSayHelloService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewSayHelloService binds SayHelloService to ctx; its Logger carries ctx's trace ids.
 func NewSayHelloService(ctx context.Context, svcCtx *svccontext.ServiceContext) *SayHelloService {
 	return &SayHelloService{
 		Logger: log.Default().WithContext(ctx),
@@ -34,8 +29,7 @@ func NewSayHelloService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 
 // SayHello answers one greeting.
 //
-// SayHello is the service entry point. Replace the
-// TODO with the real implementation.
+// SayHello implements Greeter.SayHello.
 func (l *SayHelloService) SayHello(req *pb.HelloRequest) (*pb.HelloReply, error) {
 	// TODO: implement
 	return nil, nil

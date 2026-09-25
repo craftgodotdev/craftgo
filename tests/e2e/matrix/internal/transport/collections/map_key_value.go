@@ -14,8 +14,7 @@ import (
 
 // MapKeyValue is the scalar-on-both-sides map case.
 //
-// MapKeyValue returns the http.HandlerFunc for the
-// POST MapKeyValue endpoint.
+// MapKeyValue returns the POST MapKeyValue handler.
 func MapKeyValue(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Map_KeyAndValue

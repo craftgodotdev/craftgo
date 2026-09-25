@@ -9,17 +9,12 @@ import (
 	"unicode/utf8"
 )
 
-// Pattern regexes compile ONCE at package init so Validate() calls
-// reference the precompiled var instead of recompiling per request.
-// The pattern is rendered via %q (Go-quoted) rather than a raw-string
-// literal so regexes containing a backtick, backslash, or quote still
-// produce compilable Go - a raw `...` literal would break on a backtick.
+// The regexes of the @pattern and @format checks, compiled once.
 var (
 	_pattern0 = regexp.MustCompile("^[a-z0-9-]+$")
 )
 
-// Validate checks every field-level constraint declared on CreateTodoReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CreateTodoReq) Validate() error {
 	if l := utf8.RuneCountInString(v.Title); l < 1 || l > 200 {
 		return fmt.Errorf("title: length out of range [1, 200]")
@@ -55,8 +50,7 @@ func (v *CreateTodoReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GetTodoReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GetTodoReq) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -64,8 +58,7 @@ func (v *GetTodoReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ListTodosReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ListTodosReq) Validate() error {
 	if v.Limit < 0 {
 		return fmt.Errorf("limit: below minimum 0")
@@ -86,14 +79,12 @@ func (v *ListTodosReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on OkResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *OkResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Todo.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Todo) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -133,8 +124,7 @@ func (v *Todo) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on TodoList.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *TodoList) Validate() error {
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
@@ -147,8 +137,7 @@ func (v *TodoList) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UpdateTodoReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UpdateTodoReq) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -174,8 +163,7 @@ func (v *UpdateTodoReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Millis.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Millis) Validate() error {
 	if int(v) < 0 {
 		return fmt.Errorf("below minimum 0")
@@ -183,8 +171,7 @@ func (v Millis) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Tag.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Tag) Validate() error {
 	if l := utf8.RuneCountInString(string(v)); l < 1 || l > 40 {
 		return fmt.Errorf("length out of range [1, 40]")
@@ -195,8 +182,7 @@ func (v Tag) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on TodoPriority.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v TodoPriority) Validate() error {
 	switch v {
 	case TodoPriorityLow, TodoPriorityMedium, TodoPriorityHigh:
@@ -206,8 +192,7 @@ func (v TodoPriority) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on TodoStatus.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v TodoStatus) Validate() error {
 	switch v {
 	case TodoStatusOpen, TodoStatusInProgress, TodoStatusDone:

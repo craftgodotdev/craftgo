@@ -14,8 +14,7 @@ import (
 
 // Search items. Demonstrates the full @query matrix - optional string cursor, required int limit, optional enum sort, repeated int ids, required bool active, optional int offset, optional bool verbose.
 //
-// SearchItems returns the http.HandlerFunc for the
-// GET SearchItems endpoint.
+// SearchItems returns the GET SearchItems handler.
 func SearchItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.SearchReq

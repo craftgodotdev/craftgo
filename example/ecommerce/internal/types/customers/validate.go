@@ -10,18 +10,13 @@ import (
 	"unicode/utf8"
 )
 
-// Pattern regexes compile ONCE at package init so Validate() calls
-// reference the precompiled var instead of recompiling per request.
-// The pattern is rendered via %q (Go-quoted) rather than a raw-string
-// literal so regexes containing a backtick, backslash, or quote still
-// produce compilable Go - a raw `...` literal would break on a backtick.
+// The regexes of the @pattern and @format checks, compiled once.
 var (
 	_pattern0 = regexp.MustCompile("^[A-Z0-9 -]{3,12}$")
 	_pattern1 = regexp.MustCompile("^\\+?[0-9 ()-]{6,20}$")
 )
 
-// Validate checks every field-level constraint declared on Address.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Address) Validate() error {
 	if l := utf8.RuneCountInString(v.Street); l < 1 || l > 200 {
 		return fmt.Errorf("street: length out of range [1, 200]")
@@ -52,8 +47,7 @@ func (v *Address) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Contact.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Contact) Validate() error {
 	if v.Email != nil {
 		if err := v.Email.Validate(); err != nil {
@@ -81,8 +75,7 @@ func (v *Contact) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CreateCustomerReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CreateCustomerReq) Validate() error {
 	if err := v.Email.Validate(); err != nil {
 		return fmt.Errorf("email: %w", err)
@@ -102,8 +95,7 @@ func (v *CreateCustomerReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Customer.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Customer) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -145,8 +137,7 @@ func (v *Customer) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CustomerRef.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CustomerRef) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -157,8 +148,7 @@ func (v *CustomerRef) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Geocode.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Geocode) Validate() error {
 	if err := v.Lat.Validate(); err != nil {
 		return fmt.Errorf("lat: %w", err)
@@ -178,8 +168,7 @@ func (v *Geocode) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GetCustomerReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GetCustomerReq) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -187,8 +176,7 @@ func (v *GetCustomerReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UploadAvatarReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UploadAvatarReq) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")

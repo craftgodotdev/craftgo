@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ValidateChannels returns the http.HandlerFunc for the
-// POST ValidateChannels endpoint.
+// ValidateChannels returns the POST ValidateChannels handler.
 func ValidateChannels(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ContactChannels

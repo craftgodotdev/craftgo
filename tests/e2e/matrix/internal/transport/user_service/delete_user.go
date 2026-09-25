@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// DeleteUser returns the http.HandlerFunc for the
-// DELETE DeleteUser endpoint.
+// DeleteUser returns the DELETE DeleteUser handler.
 func DeleteUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetUserReq

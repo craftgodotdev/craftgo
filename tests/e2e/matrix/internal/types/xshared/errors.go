@@ -9,8 +9,7 @@ import (
 // ErrCodeXLost is the canonical machine-readable code for XLostErr.
 const ErrCodeXLost = "X_LOST"
 
-// XLostBody is the wire-shape payload declared at design time for XLostErr.
-// User code instantiates this struct and hands it to NewXLostErr.
+// XLostBody is the body of XLostErr.
 type XLostBody struct {
 	Key string `json:"key"`
 }
@@ -18,7 +17,7 @@ type XLostBody struct {
 // XLost shares its name with xrefs.XLost, so the merged OpenAPI document
 // names this one XsharedXLostErr.
 //
-// XLostErr is the typed NotFound error generated for `XLost`.
+// XLostErr is the NotFound error XLost.
 type XLostErr struct {
 	XLostBody
 }
@@ -31,13 +30,10 @@ func NewXLostErr(body XLostBody) *XLostErr {
 // Error returns the NotFound category's default message.
 func (e *XLostErr) Error() string { return "Not found" }
 
-// ErrCode returns ErrCodeXLost. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeXLost.
 func (e *XLostErr) ErrCode() string { return ErrCodeXLost }
 
-// HTTPStatus returns the HTTP status code associated with the NotFound
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the NotFound status.
 func (e *XLostErr) HTTPStatus() int { return 404 }
 
 // MarshalJSON encodes the body alone.
@@ -46,8 +42,7 @@ func (e *XLostErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.XLostBo
 // ErrCodeXNotFound is the canonical machine-readable code for XNotFoundErr.
 const ErrCodeXNotFound = "X_NOT_FOUND"
 
-// XNotFoundBody is the wire-shape payload declared at design time for XNotFoundErr.
-// User code instantiates this struct and hands it to NewXNotFoundErr.
+// XNotFoundBody is the body of XNotFoundErr.
 type XNotFoundBody struct {
 	Resource string `json:"resource"`
 	ID       string `json:"id"`
@@ -57,7 +52,7 @@ type XNotFoundBody struct {
 // declare `@errors(xshared.XNotFound)` so the OpenAPI responses list
 // resolves the error schema through the project ErrorTable.
 //
-// XNotFoundErr is the typed NotFound error generated for `XNotFound`.
+// XNotFoundErr is the NotFound error XNotFound.
 type XNotFoundErr struct {
 	XNotFoundBody
 }
@@ -70,13 +65,10 @@ func NewXNotFoundErr(body XNotFoundBody) *XNotFoundErr {
 // Error returns the NotFound category's default message.
 func (e *XNotFoundErr) Error() string { return "Not found" }
 
-// ErrCode returns ErrCodeXNotFound. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeXNotFound.
 func (e *XNotFoundErr) ErrCode() string { return ErrCodeXNotFound }
 
-// HTTPStatus returns the HTTP status code associated with the NotFound
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the NotFound status.
 func (e *XNotFoundErr) HTTPStatus() int { return 404 }
 
 // MarshalJSON encodes the body alone.

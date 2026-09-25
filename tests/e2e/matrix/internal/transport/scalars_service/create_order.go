@@ -14,8 +14,7 @@ import (
 
 // Create an order from a full payload. Every scalar-typed field on Order runs its inherited validators.
 //
-// CreateOrder returns the http.HandlerFunc for the
-// POST CreateOrder endpoint.
+// CreateOrder returns the POST CreateOrder handler.
 func CreateOrder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateOrderReq

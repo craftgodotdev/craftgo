@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// AddCounter returns the http.HandlerFunc for the
-// POST AddCounter endpoint.
+// AddCounter returns the POST AddCounter handler.
 func AddCounter(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CounterReq

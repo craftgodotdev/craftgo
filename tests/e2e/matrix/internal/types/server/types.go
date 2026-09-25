@@ -2,7 +2,6 @@
 
 package server
 
-// SessionID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type SessionID string
 
 // Credentials binds a scalar from the path and an enum with a default from

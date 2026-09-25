@@ -15,8 +15,7 @@ import (
 
 // Pins cross-package mixin BODY promotion: the POST handler decodes the body (its only body fields are promoted from xshared.XPromoteBody) and pre-fills the promoted scalar/enum defaults with qualified casts.
 //
-// PromoteBody returns the http.HandlerFunc for the
-// POST PromoteBody endpoint.
+// PromoteBody returns the POST PromoteBody handler.
 func PromoteBody(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XBodyPromoteReq

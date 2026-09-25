@@ -64,16 +64,16 @@ func buildGRPCSignature(m *protodesign.Method, in, out string) grpcSignature {
 	return sig
 }
 
-// streamNotes is the usage hint the logic scaffold carries for a
-// streaming RPC, one line per entry.
-func streamNotes(kind protodesign.Kind) []string {
-	switch kind {
+// grpcEntry is the generated doc line of m's logic entry point, a method of proto service svc:
+// how a streaming RPC uses its stream.
+func grpcEntry(svc string, m *protodesign.Method) string {
+	switch m.Kind {
 	case protodesign.ServerStream:
-		return []string{"Send each response with stream.Send; returning ends the stream."}
+		return m.Name + " sends each response with stream.Send; returning ends the stream."
 	case protodesign.ClientStream:
-		return []string{"Read requests with stream.Recv until io.EOF, then answer with", "stream.SendAndClose."}
+		return m.Name + " reads requests with stream.Recv until io.EOF, then answers with stream.SendAndClose."
 	case protodesign.Bidi:
-		return []string{"Read requests with stream.Recv and answer with stream.Send;", "returning ends the stream."}
+		return m.Name + " reads requests with stream.Recv and answers with stream.Send; returning ends the stream."
 	}
-	return nil
+	return m.Name + " implements " + svc + "." + m.Name + "."
 }

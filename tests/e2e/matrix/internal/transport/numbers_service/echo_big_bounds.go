@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoBigBounds returns the http.HandlerFunc for the
-// POST EchoBigBounds endpoint.
+// EchoBigBounds returns the POST EchoBigBounds handler.
 func EchoBigBounds(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.NumberBigBounds

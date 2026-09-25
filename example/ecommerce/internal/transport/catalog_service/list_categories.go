@@ -14,8 +14,7 @@ import (
 
 // List categories.
 //
-// ListCategories returns the http.HandlerFunc for the
-// GET ListCategories endpoint.
+// ListCategories returns the GET ListCategories handler.
 func ListCategories(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req shared.Pagination

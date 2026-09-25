@@ -16,8 +16,7 @@ import (
 // surfaces every error in the @errors list with the matching HTTP
 // status driven by its category.
 //
-// CreateProfile returns the http.HandlerFunc for the
-// POST CreateProfile endpoint.
+// CreateProfile returns the POST CreateProfile handler.
 func CreateProfile(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateProfileReq

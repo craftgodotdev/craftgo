@@ -15,21 +15,13 @@ import (
 
 // Upload a file attachment to a task (image, PDF or text; ≤10MB).
 //
-// UploadAttachment returns the http.HandlerFunc for the
-// POST UploadAttachment multipart endpoint. The handler parses
-// `multipart/form-data` bodies, binds every form field declared on
-// the request type, and populates `*multipart.FileHeader` fields
-// for any DSL-typed `file` declarations.
+// UploadAttachment returns the POST UploadAttachment handler.
 func UploadAttachment(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
-		// Remove the temp files the parser spilled to disk as soon as the
-		// handler returns. net/http sweeps them again at end-of-response, but
-		// the explicit cleanup releases disk before the response flush and
-		// still runs on panic paths that bypass that sweep.
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.UploadAttachmentReq
 		req.ProjectID = shared.ID(r.PathValue("projectId"))

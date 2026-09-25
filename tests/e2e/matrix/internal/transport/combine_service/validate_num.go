@@ -14,8 +14,7 @@ import (
 
 // Validate stacked numeric decorators (range + multipleOf + gt + lte). All four fire in declaration order.
 //
-// ValidateNum returns the http.HandlerFunc for the
-// POST ValidateNum endpoint.
+// ValidateNum returns the POST ValidateNum handler.
 func ValidateNum(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PairsNum

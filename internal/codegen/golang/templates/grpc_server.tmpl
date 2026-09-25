@@ -1,10 +1,7 @@
 package {{.Package}}
 
 {{.ImportDecl}}
-// Server implements pb.{{.Service}}Server ({{.FullName}}): one method per
-// RPC, each in its own file beside this one. The embedded
-// Unimplemented{{.Service}}Server answers Unimplemented for an RPC the
-// proto gains before the next gen.
+// Server implements pb.{{.Service}}Server ({{.FullName}}).
 type Server struct {
 	pb.Unimplemented{{.Service}}Server
 	svcCtx *svccontext.ServiceContext

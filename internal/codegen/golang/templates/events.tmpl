@@ -3,18 +3,13 @@ package {{.Package}}
 {{.ImportDecl}}
 {{- range .Events}}
 // {{.ConstName}} is the wire identity of {{.Name}}.
-// Publisher and listener both address the contract by this value.
 const {{.ConstName}} = "{{.Contract}}"
 
 {{range .Doc}}// {{.}}
-{{end}}// {{.Name}} is the {{.Contract}} contract.
-// {{.Name}}.Publish(ctx, bus, payload) sends one; a listener registers
-// {{.Name}}.Subscribe(bus, group, fn) on its own bus.
+{{end}}// {{.Name}} is the {{.Contract}} event contract.
 var {{.Name}} = craftevents.NewEvent[{{.PayloadType}}]({{.ConstName}}, {{.Validate}})
 {{if .ValidateElems}}
-// {{.Validate}} validates every element the payload carries. The failing
-// element names its index, and the descriptor turns the error into a
-// *craftevents.PayloadError exactly as it does for a single payload.
+// {{.Validate}} validates each element of a {{.Name}} payload.
 func {{.Validate}}(items *{{.PayloadType}}) error {
 	for i := range *items {
 		if err := (*items)[i].Validate(); err != nil {

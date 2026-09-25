@@ -15,8 +15,7 @@ import (
 
 // Pins a QUALIFIED request whose field reaches a THIRD package (xshared.XThirdReq.sev is shared.Severity). The xrefs handler casts shared.Severity(...), so the import collector must resolve the qualified request and pull in `shared` - else `undefined: shared`. Also pins an error (XMixinErr) whose body embeds a cross-package mixin, so the error emitter's import walk must collect xshared.
 //
-// GetThird returns the http.HandlerFunc for the
-// GET GetThird endpoint.
+// GetThird returns the GET GetThird handler.
 func GetThird(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req xshared.XThirdReq

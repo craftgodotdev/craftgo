@@ -15,8 +15,7 @@ import (
 
 // Pins a QUALIFIED GENERIC request with a LOCAL type-arg (xshared.XWrapInBag<XLocalItem>). The handler renders `var req xshared.XWrapInBag[types.XLocalItem]`, so it must keep the canonical `types` import for the local arg even though the outer type is cross-package - otherwise `undefined: types`.
 //
-// WrapLocal returns the http.HandlerFunc for the
-// POST WrapLocal endpoint.
+// WrapLocal returns the POST WrapLocal handler.
 func WrapLocal(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req xshared.XWrapInBag[types.XLocalItem]

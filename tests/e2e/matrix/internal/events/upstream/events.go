@@ -11,30 +11,22 @@ import (
 )
 
 // PaymentSettledContract is the wire identity of PaymentSettled.
-// Publisher and listener both address the contract by this value.
 const PaymentSettledContract = "payments.settled.v1"
 
 // A payment cleared upstream.
 //
-// PaymentSettled is the payments.settled.v1 contract.
-// PaymentSettled.Publish(ctx, bus, payload) sends one; a listener registers
-// PaymentSettled.Subscribe(bus, group, fn) on its own bus.
+// PaymentSettled is the payments.settled.v1 event contract.
 var PaymentSettled = craftevents.NewEvent[types.PaymentSettledPayload](PaymentSettledContract, (*types.PaymentSettledPayload).Validate)
 
 // PaymentsSettledBatchContract is the wire identity of PaymentsSettledBatch.
-// Publisher and listener both address the contract by this value.
 const PaymentsSettledBatchContract = "payments.settled.batch.v1"
 
 // A batch of payments cleared upstream.
 //
-// PaymentsSettledBatch is the payments.settled.batch.v1 contract.
-// PaymentsSettledBatch.Publish(ctx, bus, payload) sends one; a listener registers
-// PaymentsSettledBatch.Subscribe(bus, group, fn) on its own bus.
+// PaymentsSettledBatch is the payments.settled.batch.v1 event contract.
 var PaymentsSettledBatch = craftevents.NewEvent[[]types.PaymentSettledPayload](PaymentsSettledBatchContract, validatePaymentsSettledBatch)
 
-// validatePaymentsSettledBatch validates every element the payload carries. The failing
-// element names its index, and the descriptor turns the error into a
-// *craftevents.PayloadError exactly as it does for a single payload.
+// validatePaymentsSettledBatch validates each element of a PaymentsSettledBatch payload.
 func validatePaymentsSettledBatch(items *[]types.PaymentSettledPayload) error {
 	for i := range *items {
 		if err := (*items)[i].Validate(); err != nil {

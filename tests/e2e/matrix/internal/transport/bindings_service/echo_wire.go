@@ -14,8 +14,7 @@ import (
 
 // Echo wire-renamed params. Path, query, header, and cookie each use an explicit @decorator("wire-name") distinct from the Go field name.
 //
-// EchoWire returns the http.HandlerFunc for the
-// GET EchoWire endpoint.
+// EchoWire returns the GET EchoWire handler.
 func EchoWire(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.WireRenameReq

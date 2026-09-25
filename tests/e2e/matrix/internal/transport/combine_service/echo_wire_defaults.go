@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoWireDefaults returns the http.HandlerFunc for the
-// POST EchoWireDefaults endpoint.
+// EchoWireDefaults returns the POST EchoWireDefaults handler.
 func EchoWireDefaults(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.WireDefaults

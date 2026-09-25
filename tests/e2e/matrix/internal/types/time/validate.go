@@ -2,8 +2,7 @@
 
 package time
 
-// Validate checks every field-level constraint declared on Slot.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Slot) Validate() error {
 	return nil
 }

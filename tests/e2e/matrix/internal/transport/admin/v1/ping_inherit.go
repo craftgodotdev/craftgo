@@ -11,8 +11,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PingInherit returns the http.HandlerFunc for the
-// GET PingInherit endpoint.
+// PingInherit returns the GET PingInherit handler.
 func PingInherit(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewPingInheritService(r.Context(), svcCtx)

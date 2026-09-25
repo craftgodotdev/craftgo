@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetUser returns the http.HandlerFunc for the
-// GET GetUser endpoint.
+// GetUser returns the GET GetUser handler.
 func GetUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetUserReq

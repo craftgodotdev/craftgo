@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ValidatePromoted returns the http.HandlerFunc for the
-// POST ValidatePromoted endpoint.
+// ValidatePromoted returns the POST ValidatePromoted handler.
 func ValidatePromoted(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PromotedContact

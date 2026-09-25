@@ -10,10 +10,7 @@ import (
 	"github.com/craftgodotdev/craftgo/example/brokers/svccontext"
 )
 
-// Register attaches every HTTP route the design declares to srv. The
-// body varies with the design; this signature does not, so main.go -
-// written once - never needs editing. main.go calls it while the design
-// has a route, and the returned shutdown then runs beside srv.Stop.
+// Register registers the design's HTTP routes on srv.
 func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error) {
 	return func(context.Context) error { return nil }, nil
 }

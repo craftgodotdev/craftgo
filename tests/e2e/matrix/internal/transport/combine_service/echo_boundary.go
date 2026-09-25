@@ -14,8 +14,7 @@ import (
 
 // Echo the boundary-default matrix. Smoke tests assert that the pre-fill happens before req.Validate() so the defaulted values land in the response.
 //
-// EchoBoundary returns the http.HandlerFunc for the
-// POST EchoBoundary endpoint.
+// EchoBoundary returns the POST EchoBoundary handler.
 func EchoBoundary(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.DefaultsBoundary

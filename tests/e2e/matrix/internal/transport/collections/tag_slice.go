@@ -16,8 +16,7 @@ import (
 // validators (minLength + maxLength + pattern) fire on every
 // element via the scalar-leaves walk.
 //
-// TagSlice returns the http.HandlerFunc for the
-// POST TagSlice endpoint.
+// TagSlice returns the POST TagSlice handler.
 func TagSlice(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Arr_TagSlice

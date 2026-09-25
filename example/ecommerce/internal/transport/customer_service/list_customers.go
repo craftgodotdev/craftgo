@@ -14,8 +14,7 @@ import (
 
 // List customers.
 //
-// ListCustomers returns the http.HandlerFunc for the
-// GET ListCustomers endpoint.
+// ListCustomers returns the GET ListCustomers handler.
 func ListCustomers(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req shared.Pagination

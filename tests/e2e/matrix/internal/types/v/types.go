@@ -2,5 +2,4 @@
 
 package v
 
-// Code is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type Code string

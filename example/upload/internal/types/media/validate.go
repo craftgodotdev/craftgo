@@ -9,8 +9,7 @@ import (
 	"unicode/utf8"
 )
 
-// Validate checks every field-level constraint declared on CreateGalleryReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CreateGalleryReq) Validate() error {
 	if l := utf8.RuneCountInString(v.AlbumID); l < 1 || l > 64 {
 		return fmt.Errorf("albumId: length out of range [1, 64]")
@@ -52,8 +51,7 @@ func (v *CreateGalleryReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Gallery.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Gallery) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -92,8 +90,7 @@ func (v *Gallery) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GalleryPhoto.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GalleryPhoto) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -113,8 +110,7 @@ func (v *GalleryPhoto) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GetMediaReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GetMediaReq) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -122,14 +118,12 @@ func (v *GetMediaReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on OkResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *OkResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UploadAttachmentReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UploadAttachmentReq) Validate() error {
 	if l := utf8.RuneCountInString(v.NoteID); l < 1 || l > 64 {
 		return fmt.Errorf("noteId: length out of range [1, 64]")
@@ -150,8 +144,7 @@ func (v *UploadAttachmentReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UploadAvatarReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UploadAvatarReq) Validate() error {
 	if l := utf8.RuneCountInString(v.UserID); l < 1 || l > 64 {
 		return fmt.Errorf("userId: length out of range [1, 64]")
@@ -172,8 +165,7 @@ func (v *UploadAvatarReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UploadDocumentReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UploadDocumentReq) Validate() error {
 	if v.PDF == nil {
 		return fmt.Errorf("pdf: required")
@@ -197,8 +189,7 @@ func (v *UploadDocumentReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UploadResult.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UploadResult) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -224,8 +215,7 @@ func (v *UploadResult) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Visibility.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Visibility) Validate() error {
 	switch v {
 	case VisibilityPrivate, VisibilityUnlisted, VisibilityPublic:

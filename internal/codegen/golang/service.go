@@ -13,21 +13,13 @@ type serviceData struct {
 	Service     string
 	Method      string
 	ServiceName string
-	// Doc heads the entry point's doc comment ([docHead]).
-	Doc []string
-	// Notes open the entry point's generated doc lines: a streaming RPC's usage hint.
-	Notes       []string
-	HasRequest  bool
-	HasResponse bool
-	// RawRequest and RawResponse report the transport sides logic owns ([wire.RawSides]).
-	RawRequest    bool
-	RawResponse   bool
-	IsPassthrough bool
-	Sig           methodSignature
-	// RequestContract and ResponseContract name a raw side's documented type in the stub's doc.
-	RequestContract  string
-	ResponseContract string
-	ImportDecl       string
+	// Doc heads the entry point's doc comment ([docHead]); Entry is the rest.
+	Doc   []string
+	Entry []string
+	// RawResponse reports that logic writes the response ([wire.RawSides]).
+	RawResponse bool
+	Sig         methodSignature
+	ImportDecl  string
 }
 
 // logicTypeName is the name of a method's or an RPC's logic struct.
@@ -69,29 +61,56 @@ func buildServiceData(pkgName, svcName string, m *ast.Method, decs []*ast.Decora
 		respRef = imports.named(m.Response.Type)
 	}
 	sig := buildSignature(mode, reqRef, respRef)
-	d := serviceData{
-		Package:       pkgName,
-		Service:       svcName,
-		Method:        m.Name,
-		ServiceName:   logicTypeName(m.Name),
-		Doc:           docHead(semantic.DescriptionLines(decs, m.Doc)),
-		HasRequest:    mode.HasRequest,
-		HasResponse:   mode.HasResponse,
-		RawRequest:    mode.RawRequest,
-		RawResponse:   mode.RawResponse,
-		IsPassthrough: mode.RawRequest && mode.RawResponse,
-		Sig:           sig,
-		ImportDecl:    stubImportDecl(imports, sig, imps.Svccontext),
-	}
 	// A contract appears only in the stub's doc, so it adds no import.
 	doc := imports.scratch()
+	var reqContract, respContract string
 	if mode.HasRequest {
-		d.RequestContract = doc.named(m.Request)
+		reqContract = doc.named(m.Request)
 	}
 	if mode.HasResponse {
-		d.ResponseContract = doc.named(m.Response.Type)
+		respContract = doc.named(m.Response.Type)
 	}
-	return d
+	return serviceData{
+		Package:     pkgName,
+		Service:     svcName,
+		Method:      m.Name,
+		ServiceName: logicTypeName(m.Name),
+		Doc:         docHead(semantic.DescriptionLines(decs, m.Doc)),
+		Entry:       stubEntry(svcName, m.Name, mode, sig, reqContract, respContract),
+		RawResponse: mode.RawResponse,
+		Sig:         sig,
+		ImportDecl:  stubImportDecl(imports, sig, imps.Svccontext),
+	}
+}
+
+// stubEntry returns the generated doc lines of an HTTP method's logic entry point: what it does
+// in mode, then the type its design documents on a raw side, reqContract or respContract.
+func stubEntry(svc, method string, mode methodMode, sig methodSignature, reqContract, respContract string) []string {
+	var does string
+	switch {
+	case mode.RawRequest && mode.RawResponse:
+		does = method + " reads r and writes the response to w; a returned error goes to server.WriteError."
+	case mode.RawResponse:
+		does = method + " writes the response to w; a returned error goes to server.WriteError."
+	case mode.RawRequest && sig.HasResult:
+		does = method + " reads the request from r; craftgo encodes the response it returns."
+	case mode.RawRequest:
+		does = method + " reads the request from r."
+	default:
+		return []string{method + " implements " + svc + "." + method + "."}
+	}
+	var contract string
+	switch req, resp := mode.RawRequest && mode.HasRequest, mode.RawResponse && mode.HasResponse; {
+	case req && resp:
+		contract = "Its request is documented as " + reqContract + " and its response as " + respContract + "."
+	case req:
+		contract = "Its request is documented as " + reqContract + ", whose Validate checks it."
+	case resp:
+		contract = "Its response is documented as " + respContract + "."
+	default:
+		return []string{does}
+	}
+	return []string{does, contract}
 }
 
 // stubImportDecl renders a logic stub's imports: those its signature names, already in imports,

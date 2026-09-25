@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetRateResp returns the http.HandlerFunc for the
-// GET GetRateResp endpoint.
+// GetRateResp returns the GET GetRateResp handler.
 func GetRateResp(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewGetRateRespService(r.Context(), svcCtx)

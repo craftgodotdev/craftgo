@@ -15,8 +15,7 @@ import (
 
 // Archive a project (v1). Idempotent.
 //
-// ArchiveProject returns the http.HandlerFunc for the
-// DELETE ArchiveProject endpoint.
+// ArchiveProject returns the DELETE ArchiveProject handler.
 func ArchiveProject(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetProjectReq

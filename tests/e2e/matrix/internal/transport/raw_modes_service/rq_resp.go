@@ -13,9 +13,7 @@ import (
 
 // Raw request with a typed response: the body is handed over unread, the response is JSON-encoded with the verb default 201.
 //
-// RqResp returns the http.HandlerFunc for the
-// POST RqResp raw-request endpoint. The handler hands the
-// *http.Request to logic unread and encodes the returned response.
+// RqResp returns the POST RqResp handler.
 func RqResp(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewRqRespService(r.Context(), svcCtx)

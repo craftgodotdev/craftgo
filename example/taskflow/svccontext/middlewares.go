@@ -4,41 +4,25 @@ package svccontext
 
 import "github.com/craftgodotdev/craftgo/pkg/server"
 
-// AccessLogMiddleware is the typed alias for the AccessLog middleware so the
-// field below has a self-documenting name.
+// AccessLogMiddleware is the AccessLog middleware.
 type AccessLogMiddleware = server.Middleware
 
-// AdminOnlyMiddleware is the typed alias for the AdminOnly middleware so the
-// field below has a self-documenting name.
+// AdminOnlyMiddleware is the AdminOnly middleware.
 type AdminOnlyMiddleware = server.Middleware
 
-// AuthRequiredMiddleware is the typed alias for the AuthRequired middleware so the
-// field below has a self-documenting name.
+// AuthRequiredMiddleware is the AuthRequired middleware.
 type AuthRequiredMiddleware = server.Middleware
 
-// RateLimitMiddleware is the typed alias for the RateLimit middleware so the
-// field below has a self-documenting name.
+// RateLimitMiddleware is the RateLimit middleware.
 type RateLimitMiddleware = server.Middleware
 
 // Declared middlewares. Each becomes a typed field on ServiceContext that
 // main.go wires once at startup; services attach them via @middlewares.
 //
-// RequestIDMiddleware is the typed alias for the RequestID middleware so the
-// field below has a self-documenting name.
+// RequestIDMiddleware is the RequestID middleware.
 type RequestIDMiddleware = server.Middleware
 
-// Middlewares carries the runtime middleware values the project wired
-// up at startup. Each `middleware Name` declaration in the DSL becomes
-// one typed field here; main.go assigns each field to a value built by
-// the matching `New<Name>Middleware` constructor in the project's
-// middleware package.
-//
-// Embed this in ServiceContext:
-//
-//	type ServiceContext struct {
-//	    Middlewares
-//	    // ... your own fields ...
-//	}
+// Middlewares holds one field per middleware the design declares.
 type Middlewares struct {
 	AccessLog    AccessLogMiddleware
 	AdminOnly    AdminOnlyMiddleware

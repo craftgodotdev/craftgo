@@ -116,23 +116,17 @@ import (
 )
 
 // OrderPlacedContract is the wire identity of OrderPlaced.
-// Publisher and listener both address the contract by this value.
 const OrderPlacedContract = "orders.OrderPlaced"
 
-// OrderPlaced is the orders.OrderPlaced contract.
-// OrderPlaced.Publish(ctx, bus, payload) sends one; a listener registers
-// OrderPlaced.Subscribe(bus, group, fn) on its own bus.
+// OrderPlaced is the orders.OrderPlaced event contract.
 var OrderPlaced = craftevents.NewEvent[types.OrderPlacedPayload](OrderPlacedContract, (*types.OrderPlacedPayload).Validate)
 
 // ShippedContract is the wire identity of Shipped.
-// Publisher and listener both address the contract by this value.
 const ShippedContract = "order.shipped.v2"
 
 // Shipped is published by the warehouse, not by this design.
 //
-// Shipped is the order.shipped.v2 contract.
-// Shipped.Publish(ctx, bus, payload) sends one; a listener registers
-// Shipped.Subscribe(bus, group, fn) on its own bus.
+// Shipped is the order.shipped.v2 event contract.
 var Shipped = craftevents.NewEvent[types.ShipmentPayload](ShippedContract, (*types.ShipmentPayload).Validate)
 `
 	if got != want {
@@ -160,14 +154,11 @@ import (
 )
 
 // ThemeCreatedContract is the wire identity of ThemeCreated.
-// Publisher and listener both address the contract by this value.
 const ThemeCreatedContract = "theme.created.v1"
 
 // Fires when a theme is created.
 //
-// ThemeCreated is the theme.created.v1 contract.
-// ThemeCreated.Publish(ctx, bus, payload) sends one; a listener registers
-// ThemeCreated.Subscribe(bus, group, fn) on its own bus.
+// ThemeCreated is the theme.created.v1 event contract.
 var ThemeCreated = craftevents.NewEvent[types.ThemePayload](ThemeCreatedContract, (*types.ThemePayload).Validate)
 `
 	if got != want {
@@ -201,19 +192,14 @@ import (
 )
 
 // AbandonedCreatedContract is the wire identity of AbandonedCreated.
-// Publisher and listener both address the contract by this value.
 const AbandonedCreatedContract = "orders.AbandonedCreated"
 
 // Emitted once a sweep finds abandoned orders.
 //
-// AbandonedCreated is the orders.AbandonedCreated contract.
-// AbandonedCreated.Publish(ctx, bus, payload) sends one; a listener registers
-// AbandonedCreated.Subscribe(bus, group, fn) on its own bus.
+// AbandonedCreated is the orders.AbandonedCreated event contract.
 var AbandonedCreated = craftevents.NewEvent[[]types.AbandonedOrderData](AbandonedCreatedContract, validateAbandonedCreated)
 
-// validateAbandonedCreated validates every element the payload carries. The failing
-// element names its index, and the descriptor turns the error into a
-// *craftevents.PayloadError exactly as it does for a single payload.
+// validateAbandonedCreated validates each element of a AbandonedCreated payload.
 func validateAbandonedCreated(items *[]types.AbandonedOrderData) error {
 	for i := range *items {
 		if err := (*items)[i].Validate(); err != nil {

@@ -14,8 +14,7 @@ import (
 
 // Pins a @path + @default nested two mixin levels deep through a cross-package mixin (xshared.XParent embeds xshared.XGrand). The {gKey} segment and g32/p64 defaults must all survive flattening - the bare inner XGrand resolves as xshared.XGrand.
 //
-// GetNested returns the http.HandlerFunc for the
-// GET GetNested endpoint.
+// GetNested returns the GET GetNested handler.
 func GetNested(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XNestedReq

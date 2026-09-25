@@ -14,8 +14,7 @@ import (
 
 // List orders with cursor pagination. Demonstrates a generic-instance response (Page<Order>) - codegen emits the parametric struct and substitutes T=Order at the concrete site.
 //
-// ListOrders returns the http.HandlerFunc for the
-// GET ListOrders endpoint.
+// ListOrders returns the GET ListOrders handler.
 func ListOrders(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListOrdersReq

@@ -12,8 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoBigMultipleOf returns the http.HandlerFunc for the
-// POST EchoBigMultipleOf endpoint.
+// EchoBigMultipleOf returns the POST EchoBigMultipleOf handler.
 func EchoBigMultipleOf(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.NumberBigMultipleOf

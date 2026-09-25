@@ -14,8 +14,7 @@ import (
 
 // Pins generic-mixin OpenAPI substitution: xshared.XWrapInBag<XOwner> must register XBagOfXOwner, no phantom XBagOfT / dangling $ref.
 //
-// PromoteBag returns the http.HandlerFunc for the
-// POST PromoteBag endpoint.
+// PromoteBag returns the POST PromoteBag handler.
 func PromoteBag(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XBagPromoteReq

@@ -13,8 +13,7 @@ import (
 
 // A generic response over datetime: the stub imports time for the type argument.
 //
-// Stamps returns the http.HandlerFunc for the
-// GET Stamps endpoint.
+// Stamps returns the GET Stamps handler.
 func Stamps(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewStampsService(r.Context(), svcCtx)

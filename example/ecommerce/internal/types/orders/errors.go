@@ -11,14 +11,13 @@ import (
 // ErrCodeActionDenied is the canonical machine-readable code for ActionDeniedErr.
 const ErrCodeActionDenied = "ACTION_DENIED"
 
-// ActionDeniedBody is the wire-shape payload declared at design time for ActionDeniedErr.
-// User code instantiates this struct and hands it to NewActionDeniedErr.
+// ActionDeniedBody is the body of ActionDeniedErr.
 type ActionDeniedBody struct {
 	Code   *string          `json:"code,omitempty"`
 	Reason SuspensionReason `json:"reason"`
 }
 
-// ActionDeniedErr is the typed Forbidden error generated for `ActionDenied`.
+// ActionDeniedErr is the Forbidden error ActionDenied.
 type ActionDeniedErr struct {
 	ActionDeniedBody
 }
@@ -31,13 +30,10 @@ func NewActionDeniedErr(body ActionDeniedBody) *ActionDeniedErr {
 // Error returns the Forbidden category's default message.
 func (e *ActionDeniedErr) Error() string { return "Forbidden" }
 
-// ErrCode returns ErrCodeActionDenied. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeActionDenied.
 func (e *ActionDeniedErr) ErrCode() string { return ErrCodeActionDenied }
 
-// HTTPStatus returns the HTTP status code associated with the Forbidden
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the Forbidden status.
 func (e *ActionDeniedErr) HTTPStatus() int { return 403 }
 
 // MarshalJSON encodes the body alone.
@@ -46,7 +42,7 @@ func (e *ActionDeniedErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.
 // ErrCodeOrderNotFound is the canonical machine-readable code for OrderNotFoundErr.
 const ErrCodeOrderNotFound = "ORDER_NOT_FOUND"
 
-// OrderNotFoundErr is the typed NotFound error generated for `OrderNotFound`.
+// OrderNotFoundErr is the NotFound error OrderNotFound.
 type OrderNotFoundErr struct{}
 
 // NewOrderNotFoundErr constructs OrderNotFoundErr.
@@ -57,13 +53,10 @@ func NewOrderNotFoundErr() *OrderNotFoundErr {
 // Error returns the NotFound category's default message.
 func (e *OrderNotFoundErr) Error() string { return "Not found" }
 
-// ErrCode returns ErrCodeOrderNotFound. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodeOrderNotFound.
 func (e *OrderNotFoundErr) ErrCode() string { return ErrCodeOrderNotFound }
 
-// HTTPStatus returns the HTTP status code associated with the NotFound
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the NotFound status.
 func (e *OrderNotFoundErr) HTTPStatus() int { return 404 }
 
 // MarshalJSON encodes the {"code", "message"} envelope.
@@ -74,15 +67,14 @@ func (e *OrderNotFoundErr) MarshalJSON() ([]byte, error) {
 // ErrCodePaymentFailed is the canonical machine-readable code for PaymentFailedErr.
 const ErrCodePaymentFailed = "PAYMENT_FAILED"
 
-// PaymentFailedBody is the wire-shape payload declared at design time for PaymentFailedErr.
-// User code instantiates this struct and hands it to NewPaymentFailedErr.
+// PaymentFailedBody is the body of PaymentFailedErr.
 type PaymentFailedBody struct {
 	Code      *string               `json:"code,omitempty"`
 	Method    PaymentMethod         `json:"method"`
 	ChargedBy customers.CustomerRef `json:"chargedBy"`
 }
 
-// PaymentFailedErr is the typed Conflict error generated for `PaymentFailed`.
+// PaymentFailedErr is the Conflict error PaymentFailed.
 type PaymentFailedErr struct {
 	PaymentFailedBody
 }
@@ -95,13 +87,10 @@ func NewPaymentFailedErr(body PaymentFailedBody) *PaymentFailedErr {
 // Error returns the Conflict category's default message.
 func (e *PaymentFailedErr) Error() string { return "Conflict" }
 
-// ErrCode returns ErrCodePaymentFailed. It is named so that it does not shadow a
-// `code` field of the body; rpc.Error puts it on the gRPC status.
+// ErrCode returns ErrCodePaymentFailed.
 func (e *PaymentFailedErr) ErrCode() string { return ErrCodePaymentFailed }
 
-// HTTPStatus returns the HTTP status code associated with the Conflict
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the Conflict status.
 func (e *PaymentFailedErr) HTTPStatus() int { return 409 }
 
 // MarshalJSON encodes the body alone.
