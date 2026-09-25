@@ -196,11 +196,15 @@ func typeFragments(td *ast.TypeDecl, registry *genericRegistry) openapi3.SchemaR
 	return crossFieldSchemaFragments(td.Decorators, jsonKeys(td, registry), presentNonNull)
 }
 
-// inlineFragments returns the cross-field fragments of a body listing td's
-// fields in place: those of each type its mixins embed, recursively and each
-// type once, then its own, every member under its keys entry and matched as
-// present by present.
+// inlineFragments returns the fragments of [inlineDecorators] for a body listing
+// td's fields in place, each member under its keys entry, present per present.
 func inlineFragments(td *ast.TypeDecl, keys map[string]string, present presence, registry *genericRegistry) openapi3.SchemaRefs {
+	return crossFieldSchemaFragments(inlineDecorators(td, registry), keys, present)
+}
+
+// inlineDecorators returns the decorators of td's mixins, recursively and each
+// type once, then td's own: the groups a value listing td's fields runs.
+func inlineDecorators(td *ast.TypeDecl, registry *genericRegistry) []*ast.Decorator {
 	var decs []*ast.Decorator
 	seen := map[*ast.TypeDecl]bool{}
 	var walk func(*ast.TypeDecl)
@@ -217,7 +221,7 @@ func inlineFragments(td *ast.TypeDecl, keys map[string]string, present presence,
 		decs = append(decs, td.Decorators...)
 	}
 	walk(td)
-	return crossFieldSchemaFragments(decs, keys, present)
+	return decs
 }
 
 // presence returns the schema matching a body in which every named member is

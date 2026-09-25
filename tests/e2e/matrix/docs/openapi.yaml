@@ -3391,6 +3391,8 @@ components:
       $ref: '#/components/schemas/XDelegatedEnum'
     LookupOrderRespBody:
       $ref: '#/components/schemas/ScalarsOrder'
+    LookupPairRespBody:
+      $ref: '#/components/schemas/PairsDoc'
     Map_ArrayOfMaps:
       description: |-
         Map_ArrayOfMaps holds an array of maps whose value carries a validator;
@@ -4986,6 +4988,36 @@ components:
           type:
           - string
           - "null"
+      type: object
+    PairsLookup:
+      allOf:
+      - properties:
+          by_id:
+            type:
+            - string
+            - "null"
+          by_name:
+            type:
+            - string
+            - "null"
+        type: object
+      - anyOf:
+        - properties:
+            by_name:
+              not:
+                type: "null"
+          required:
+          - by_name
+        - properties:
+            by_id:
+              not:
+                type: "null"
+          required:
+          - by_id
+      description: |-
+        PairsLookup is a GET request, so both fields ride the query string: the
+        operation's description names its @requiresOneOf, which each parameter's
+        own schema cannot express.
       type: object
     PairsNested:
       allOf:
@@ -10230,6 +10262,35 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidateContactRespBody'
           description: Created
+      tags:
+      - combine
+  /combine/pairs/lookup:
+    get:
+      description: |-
+        Look a pair up by name or by id from the query string.
+
+        At least one of the parameters byName, byId must be set.
+      operationId: LookupPair
+      parameters:
+      - in: query
+        name: byName
+        schema:
+          type:
+          - string
+          - "null"
+      - in: query
+        name: byId
+        schema:
+          type:
+          - string
+          - "null"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LookupPairRespBody'
+          description: OK
       tags:
       - combine
   /combine/pairs/nested/{id}:

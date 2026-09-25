@@ -119,6 +119,15 @@ type PairsSource {
 	title string
 }
 
+// PairsLookup is a GET request, so both fields ride the query string: the
+// operation's description names its @requiresOneOf, which each parameter's
+// own schema cannot express.
+@requiresOneOf(byName, byId)
+type PairsLookup {
+	byName string? @json("by_name")
+	byId   string? @json("by_id")
+}
+
 // PairsTagged sends an ETag header beside a body that carries its own
 // @mutuallyExclusive and the @requiresOneOf of its mixin PairsDoc.
 @mutuallyExclusive(c, d)

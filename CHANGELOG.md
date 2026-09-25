@@ -1002,6 +1002,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   (`minLength: 1`), a file when it is sent, for the request type's groups and
   its mixins' alike.
 
+- **A group over request parameters is named on the operation.** A
+  `@requiresOneOf` or `@mutuallyExclusive` whose members all ride as
+  parameters, such as the fields of a GET request bound from the query
+  string, was documented nowhere on the operation, though the handler
+  enforces it. Each parameter's schema constrains that parameter alone, so the
+  operation's description names the group: `At least one of the parameters
+  byName, byId must be set.`
+
 - **A multipart text part is never documented as null.** A form part is sent
   or not, but an optional or `@nullable` part read `type: [string, "null"]`,
   or an `anyOf` with `null` for an enum or scalar, in the multipart schema. Its

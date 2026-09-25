@@ -96,6 +96,12 @@ service CombineService {
 		response PairsDoc
 	}
 
+	@doc("Look a pair up by name or by id from the query string.")
+	get LookupPair /pairs/lookup {
+		request  PairsLookup
+		response PairsDoc
+	}
+
 	@doc("Tag a pair. The response sends ETag as a header; its body carries the response type's @mutuallyExclusive and its mixin's @requiresOneOf.")
 	post TagPairs /pairs/tagged {
 		request  PairsDoc

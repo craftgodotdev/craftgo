@@ -30,6 +30,7 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/combine/pairs/nested/{id}", transport.ValidateNested(svcCtx))
 	srv.Handle("POST /api/combine/pairs/upload", transport.UploadPairs(svcCtx))
 	srv.Handle("POST /api/combine/pairs/source", transport.UploadSource(svcCtx))
+	srv.Handle("GET /api/combine/pairs/lookup", transport.LookupPair(svcCtx))
 	srv.Handle("POST /api/combine/pairs/tagged", transport.TagPairs(svcCtx))
 	srv.Handle("POST /api/combine/enums/zero-member", transport.EchoZeroMember(svcCtx))
 	srv.Handle("POST /api/combine/defaults/wire", transport.EchoWireDefaults(svcCtx))

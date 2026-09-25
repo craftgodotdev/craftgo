@@ -224,6 +224,15 @@ func (v *PairsKeyed) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on PairsLookup.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PairsLookup) Validate() error {
+	if v.ByName == nil && v.ByID == nil {
+		return fmt.Errorf("requiresOneOf [byName byId] - at least one must be set")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on PairsNested.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PairsNested) Validate() error {

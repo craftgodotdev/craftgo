@@ -178,6 +178,14 @@ type PairsKeyed struct {
 	Primary *string `json:"primary_email,omitempty"`
 }
 
+// PairsLookup is a GET request, so both fields ride the query string: the
+// operation's description names its @requiresOneOf, which each parameter's
+// own schema cannot express.
+type PairsLookup struct {
+	ByName *string `json:"by_name,omitempty"`
+	ByID   *string `json:"by_id,omitempty"`
+}
+
 // PairsNested puts a path id beside a body whose @requiresOneOf a nested
 // mixin declares: the operation body carries the group the validator runs.
 type PairsNested struct {

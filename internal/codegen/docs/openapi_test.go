@@ -763,6 +763,36 @@ service S { post U /u { request Up  response Ok } }`,
 	}
 }
 
+// A cross-field group whose members all ride as parameters, the type's own or
+// a mixin's, is named in the operation's description.
+func TestParameterGroupsAreNamedOnTheOperation(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+@mutuallyExclusive(ref, code)
+type Legacy {
+	ref  string?
+	code string?
+}
+@requiresOneOf(byName, byId)
+type Find {
+	Legacy
+	byName string? @json("by_name")
+	byId   string? @json("by_id")
+}
+type R { ok bool }
+service S {
+	@doc("Finds one.")
+	get Find /find { request Find  response R }
+}`,
+	}, &config.Config{})
+	want := "Finds one.\n\n" +
+		"At most one of the parameters ref, code may be set.\n\n" +
+		"At least one of the parameters byName, byId must be set."
+	if got := doc.Paths.Find("/find").Get.Description; got != want {
+		t.Errorf("description = %q\nwant          %q", got, want)
+	}
+}
+
 // A response body listed in place beside a header or a cookie carries the
 // cross-field groups of its type and of the mixins it embeds.
 func TestHeaderSplitResponseBodyCarriesGroups(t *testing.T) {

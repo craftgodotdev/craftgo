@@ -2,6 +2,7 @@ package docs
 
 import (
 	"cmp"
+	"fmt"
 	"maps"
 	"net/http"
 	"slices"
@@ -78,6 +79,7 @@ func requestSide(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *semant
 		return
 	}
 	op.Parameters = paramsFromBins(s.req, pkg, registry)
+	op.Description = appendDescription(op.Description, parameterGroups(s, registry))
 	if !wire.IsBodyVerb(s.m.Verb) {
 		return
 	}
@@ -356,6 +358,50 @@ func partType(f semantic.FormField) *ast.TypeRef {
 	t := *f.Field.Type
 	t.Optional = false
 	return &t
+}
+
+// parameterGroups words, a paragraph each, the cross-field groups of s's request
+// whose members all ride as parameters, which each constrain only themselves.
+func parameterGroups(s opShape, registry *genericRegistry) string {
+	params := map[string]string{}
+	for binding, fields := range map[wire.Binding][]semantic.ResolvedField{
+		wire.BindPath:   slices.Concat(s.req.path, s.server),
+		wire.BindQuery:  s.req.query,
+		wire.BindHeader: s.req.header,
+		wire.BindCookie: s.req.cookie,
+	} {
+		for _, rf := range fields {
+			params[rf.Field.Name] = wire.WireName(rf.Field, binding)
+		}
+	}
+	var notes []string
+	for _, d := range inlineDecorators(s.reqType, registry) {
+		if d == nil {
+			continue
+		}
+		var note string
+		switch d.Name {
+		case "requiresOneOf":
+			note = "At least one of the parameters %s must be set."
+		case "mutuallyExclusive":
+			note = "At most one of the parameters %s may be set."
+		default:
+			continue
+		}
+		names := semantic.CrossFieldNames(d)
+		wires := make([]string, 0, len(names))
+		for _, n := range names {
+			if w, ok := params[n]; ok {
+				wires = append(wires, w)
+			}
+		}
+		// A group with a member on the body is the body schema's.
+		if len(wires) == 0 || len(wires) < len(names) || (d.Name == "mutuallyExclusive" && len(wires) < 2) {
+			continue
+		}
+		notes = append(notes, fmt.Sprintf(note, strings.Join(wires, ", ")))
+	}
+	return strings.Join(notes, "\n\n")
 }
 
 // paramsFromBins turns the path, query, header and cookie bins into
