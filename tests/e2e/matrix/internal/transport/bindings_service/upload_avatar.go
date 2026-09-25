@@ -23,7 +23,7 @@ import (
 func UploadAvatar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
-			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+			server.WriteValidationError(w, r, err)
 			return
 		}
 		// Remove the temp files the parser spilled to disk as soon as the

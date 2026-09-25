@@ -144,6 +144,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   `SetDefaultValidationFailed` handler, so a chunked body over `@maxBodySize`
   gets the answer a declared `Content-Length` over it gets.
 
+- **A multipart body the parser refuses is a failed validation.** A
+  regenerated multipart handler passes a `ParseMultipartForm` error to
+  `server.WriteValidationError`: a body that is not `multipart/form-data`, or
+  lacks its boundary, answers 400 `{"message":"request Content-Type isn't
+  multipart/form-data"}` through the `SetDefaultValidationFailed` handler,
+  and a body read past its cap 413 `{"message":"request entity too large"}`.
+  Both answered 413 `text/plain` with the parser's error.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

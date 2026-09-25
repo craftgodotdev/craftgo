@@ -1522,6 +1522,28 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 	}
 }
 
+// A body the multipart parser refuses is a failed validation, which
+// server.WriteValidationError answers: 413 past the body cap, else 400.
+func TestGenerateTransportMultipartParseFailureIsValidationError(t *testing.T) {
+	pkg := analyze(t, multipartSampleDSL)
+	root := t.TempDir()
+	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := os.ReadFile(filepath.Join(root, "internal/transport/upload-service/upload.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(handler)
+	mustParseGo(t, src)
+	_, afterParse, parses := strings.Cut(src, "r.ParseMultipartForm(")
+	failure, _, _ := strings.Cut(afterParse, "return")
+	if !parses || !strings.Contains(failure, "server.WriteValidationError(w, r, err)") {
+		t.Errorf("a parse failure must go to server.WriteValidationError:\n%s", src)
+	}
+	mustContainNone(t, src, "http.Error(")
+}
+
 // The multipart memory budget is 32 MiB, or @maxBodySize when larger, written
 // in the largest size unit that divides it.
 func TestGenerateTransportMultipartBudget(t *testing.T) {
