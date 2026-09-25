@@ -91,6 +91,7 @@ type errorTemplateData struct {
 	TypeName           string
 	BodyName           string
 	ConstName          string
+	CtorName           string
 	QuotedCode         string
 	QuotedMessage      string
 	Category           string
@@ -109,7 +110,8 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver) s
 	data := errorTemplateData{
 		TypeName:           idents.ErrorTypeName(ed.Name),
 		BodyName:           idents.ErrorBodyName(ed.Name),
-		ConstName:          "ErrCode" + ed.Name,
+		ConstName:          idents.ErrorCodeName(ed.Name),
+		CtorName:           idents.ErrorConstructorName(ed.Name),
 		QuotedCode:         strconv.Quote(screamingSnake(ed.Name)),
 		QuotedMessage:      strconv.Quote(errcat.Message(ed.Category)),
 		Category:           ed.Category,
@@ -119,8 +121,8 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver) s
 		HasResponseHeaders: len(headers)+len(cookies) > 0,
 		Headers:            toErrorBindings(headers),
 		Cookies:            toErrorBindings(cookies),
+		HasBody:            len(ast.Members(ed.Body)) > 0,
 	}
-	data.HasBody = errorBodyHasMembers(ed)
 	var buf bytes.Buffer
 	if err := errorsTemplate.Execute(&buf, data); err != nil {
 		panic(fmt.Sprintf("codegen: render error %s: %v", ed.Name, err))
@@ -138,18 +140,6 @@ func toErrorBindings(in []paramBinding) []errorBinding {
 		out[i] = errorBinding{Stmt: b.Bind}
 	}
 	return out
-}
-
-// errorBodyHasMembers reports whether ed has a body field or mixin, and so a
-// `<Name>Body` struct.
-func errorBodyHasMembers(ed *ast.ErrorDecl) bool {
-	for _, m := range ed.Body {
-		switch m.(type) {
-		case *ast.Field, *ast.Mixin:
-			return true
-		}
-	}
-	return false
 }
 
 // errorResponseBindings returns ed's @header and @cookie fields with their write

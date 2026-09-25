@@ -20,6 +20,17 @@ func TestFieldsSkipsMixinsAndComments(t *testing.T) {
 	}
 }
 
+func TestMembersSkipsComments(t *testing.T) {
+	a, mx := &Field{Name: "a"}, &Mixin{Ref: named("Base")}
+	body := []TypeMember{&FreeComment{Text: []string{"// c"}}, a, mx}
+	if got := Members(body); !reflect.DeepEqual(got, []TypeMember{a, mx}) {
+		t.Errorf("Members = %v, want [a Base]", got)
+	}
+	if got := Members([]TypeMember{&FreeComment{}}); got != nil {
+		t.Errorf("Members of a comment-only body = %v, want nil", got)
+	}
+}
+
 func TestWalkNamedRefsVisitsArgumentsFirst(t *testing.T) {
 	// map<Key, Page<Pair<A, B[]>>?>
 	page := named("Page", &TypeRef{Named: named("Pair",

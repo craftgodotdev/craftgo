@@ -318,6 +318,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   there - any decorator a method takes, plus `@group` - where it left out
   `@timeout`, `@errors` and the other method-only ones.
 
+- **Every Go name a declaration generates is checked for clashes.** A type
+  named like an error's `ErrCode<Name>` constant or `New<Type>` constructor,
+  like an enum value's `<Enum><Value>` constant, or two events where one is
+  named like the other's `<Event>Contract` constant passed analysis and
+  generated Go that did not compile; each now reports
+  `decl/go-name-collision`, naming what each side emits. An error whose body
+  holds only a comment no longer counts as emitting a `<Name>Body` struct.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

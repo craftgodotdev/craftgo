@@ -182,7 +182,7 @@ Categories (drives HTTP status):
 | `LengthRequired`     | 411    | `UnsupportedMediaType` | 415    |
 | `PreconditionFailed` | 412    |                       |        |
 
-Constructed via `New<TypeName>()` (no body) or `New<TypeName>(<TypeName>Body{...})`, where `<TypeName>` is the DSL name with `Err` appended unless it already ends in `Err`/`Error` (DSL `EmailTaken` -> `NewEmailTakenErr()`; DSL `RateLimitedErr` -> `NewRateLimitedErr()`). Implements `Error() string`, `HTTPStatus() int`, and `ErrCode() string` (the machine-readable code used in the no-body wire envelope). Each error type also exports a package-level `const ErrCode<Name>` holding that code string (e.g. `const ErrCodeEmailTaken = "EMAIL_TAKEN"`).
+Constructed via `New<TypeName>()` (no body) or `New<TypeName>(<Name>Body{...})`, where `<TypeName>` is the DSL name with `Err` appended unless it already ends in `Err`/`Error` (DSL `EmailTaken` -> `NewEmailTakenErr()`; DSL `RateLimitedErr` -> `NewRateLimitedErr()`) and `<Name>Body` is the DSL name with `Body` appended. Implements `Error() string`, `HTTPStatus() int`, and `ErrCode() string` (the machine-readable code used in the no-body wire envelope). Each error type also exports a package-level `const ErrCode<Name>` holding that code string (e.g. `const ErrCodeEmailTaken = "EMAIL_TAKEN"`). No other declaration of the package may take one of these names, an enum value's `<Enum><Value>` constant, or an event's `<Event>Contract` constant: `decl/go-name-collision`.
 
 ## Services and methods
 

@@ -9,7 +9,7 @@ const {{.ConstName}} = {{.QuotedCode}}
 
 {{if .HasBody -}}
 // {{.BodyName}} is the wire-shape payload declared at design time for {{.TypeName}}.
-// User code instantiates this struct and hands it to New{{.TypeName}}; the
+// User code instantiates this struct and hands it to {{.CtorName}}; the
 // framework wraps it with the type-bound code / message metadata.
 type {{.BodyName}} struct {
 {{.BodyInterior}}}
@@ -28,10 +28,10 @@ type {{.TypeName}} struct {
 {{- end}}
 }
 
-// New{{.TypeName}} constructs {{.TypeName}} with the framework metadata baked in.
+// {{.CtorName}} constructs {{.TypeName}} with the framework metadata baked in.
 // `code` and `message` are bound to the type and not exposed as
 // constructor parameters; only the body struct varies per instance.
-func New{{.TypeName}}({{if .HasBody}}body {{.BodyName}}{{end}}) *{{.TypeName}} {
+func {{.CtorName}}({{if .HasBody}}body {{.BodyName}}{{end}}) *{{.TypeName}} {
 	return &{{.TypeName}}{
 		code:    {{.ConstName}},
 		message: {{.QuotedMessage}},

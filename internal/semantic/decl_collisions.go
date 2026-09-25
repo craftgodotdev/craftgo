@@ -1,110 +1,112 @@
 package semantic
 
 import (
-	"sort"
+	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// declProducer is a decl that emits a given Go name.
-type declProducer struct {
-	dslName string
-	kind    string // "type" | "error" | "enum" | "scalar"
-	pos     lexer.Position
-	emitted string // the Go name
+// goName is a Go identifier a declaration emits.
+type goName struct {
+	name string
+	// source names what emits it, such as `error "UserGone"`.
+	source string
+	// role says what the identifier is to its source, such as "its code constant".
+	role string
+	pos  lexer.Position
 }
 
-// checkDeclGoNameCollisions rejects two decls of one package that emit the
-// same Go type name.
+// checkDeclGoNameCollisions rejects two declarations of one package that
+// emit the same Go identifier into its types package or its events package.
 func (a *analyzer) checkDeclGoNameCollisions(files []*ast.File) {
-	groups := map[string][]declProducer{}
-	order := []string{}
-	add := func(goName, dslName, kind string, pos lexer.Position) {
-		p := declProducer{dslName: dslName, kind: kind, pos: pos, emitted: goName}
-		if _, seen := groups[goName]; !seen {
-			order = append(order, goName)
-		}
-		groups[goName] = append(groups[goName], p)
-	}
-
+	var types, events []goName
 	for _, f := range files {
 		for _, d := range f.Decls {
-			for _, n := range goNamesProducedBy(d) {
-				add(n.goName, n.dslName, n.kind, n.pos)
+			if d.DeclName() == "" {
+				continue
 			}
+			if ev, ok := d.(*ast.EventDecl); ok {
+				events = append(events, eventGoNames(ev)...)
+				continue
+			}
+			types = append(types, typesGoNames(d)...)
 		}
 	}
+	a.reportGoNameCollisions(types)
+	a.reportGoNameCollisions(events)
+}
 
-	for _, goName := range order {
-		ps := groups[goName]
-		if len(ps) < 2 {
+// reportGoNameCollisions reports each identifier of one Go package that
+// names emits more than once, every later one by position against the first.
+func (a *analyzer) reportGoNameCollisions(names []goName) {
+	groups := map[string][]goName{}
+	var order []string
+	for _, n := range names {
+		if _, seen := groups[n.name]; !seen {
+			order = append(order, n.name)
+		}
+		groups[n.name] = append(groups[n.name], n)
+	}
+	for _, name := range order {
+		ns := groups[name]
+		if len(ns) < 2 {
 			continue
 		}
-		// Every producer after the first by position is reported against it.
-		sort.SliceStable(ps, func(i, j int) bool {
-			if ps[i].pos.Line != ps[j].pos.Line {
-				return ps[i].pos.Line < ps[j].pos.Line
-			}
-			return ps[i].pos.Column < ps[j].pos.Column
-		})
-		first := ps[0]
-		for _, dupe := range ps[1:] {
+		slices.SortStableFunc(ns, func(x, y goName) int { return comparePos(x.pos, y.pos) })
+		first := ns[0]
+		for _, dupe := range ns[1:] {
 			d := a.diag(dupe.pos, dupe.pos, lexer.SeverityError, CodeDeclGoNameCollision,
-				"%s %q would emit Go identifier %q which already comes from %s %q (%s) - codegen cannot disambiguate decl names; rename one to fix",
-				dupe.kind, dupe.dslName, goName, first.kind, first.dslName, describeProducedNames(first))
+				"%s would emit Go identifier %q as %s, which %s already emits as %s - codegen cannot disambiguate decl names; rename one to fix",
+				dupe.source, name, dupe.role, first.source, first.role)
 			d.Related = related(first.pos, "first emitted here")
 		}
 	}
 }
 
-// producedName is a Go name a decl emits.
-type producedName struct {
-	goName  string
-	dslName string
-	kind    string // "type" | "error" | "enum" | "scalar"
-	pos     lexer.Position
-}
-
-// goNamesProducedBy returns the Go type names d emits into the types
-// package.
-func goNamesProducedBy(d ast.Decl) []producedName {
+// typesGoNames returns the Go identifiers d emits into its package's types
+// package; a middleware's live in the svccontext package.
+func typesGoNames(d ast.Decl) []goName {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
-		if dd.Name == "" {
-			return nil
-		}
-		return []producedName{{goName: dd.Name, dslName: dd.Name, kind: "type", pos: dd.Pos}}
-	case *ast.EnumDecl:
-		if dd.Name == "" {
-			return nil
-		}
-		return []producedName{{goName: dd.Name, dslName: dd.Name, kind: "enum", pos: dd.Pos}}
+		return []goName{{name: dd.Name, source: `type "` + dd.Name + `"`, role: "its type", pos: dd.Pos}}
 	case *ast.ScalarDecl:
-		if dd.Name == "" {
-			return nil
+		return []goName{{name: dd.Name, source: `scalar "` + dd.Name + `"`, role: "its type", pos: dd.Pos}}
+	case *ast.EnumDecl:
+		out := []goName{{name: dd.Name, source: `enum "` + dd.Name + `"`, role: "its type", pos: dd.Pos}}
+		values := dd.EnumValues()
+		names := make([]string, len(values))
+		for i, v := range values {
+			names[i] = v.Name
 		}
-		return []producedName{{goName: dd.Name, dslName: dd.Name, kind: "scalar", pos: dd.Pos}}
+		for i, c := range idents.EnumConstNames(dd.Name, names) {
+			if v := values[i]; v.Name != "" {
+				out = append(out, goName{name: c, source: `enum value "` + dd.Name + "." + v.Name + `"`, role: "its constant", pos: v.Pos})
+			}
+		}
+		return out
 	case *ast.ErrorDecl:
-		if dd.Name == "" {
-			return nil
+		source := `error "` + dd.Name + `"`
+		out := []goName{
+			{name: idents.ErrorTypeName(dd.Name), source: source, role: "its type", pos: dd.Pos},
+			{name: idents.ErrorCodeName(dd.Name), source: source, role: "its code constant", pos: dd.Pos},
+			{name: idents.ErrorConstructorName(dd.Name), source: source, role: "its constructor", pos: dd.Pos},
 		}
-		out := []producedName{{goName: idents.ErrorTypeName(dd.Name), dslName: dd.Name, kind: "error", pos: dd.Pos}}
-		if len(dd.Body) > 0 {
-			out = append(out, producedName{goName: idents.ErrorBodyName(dd.Name), dslName: dd.Name, kind: "error", pos: dd.Pos})
+		if len(ast.Members(dd.Body)) > 0 {
+			out = append(out, goName{name: idents.ErrorBodyName(dd.Name), source: source, role: "its body struct", pos: dd.Pos})
 		}
 		return out
 	}
-	// A middleware's alias lives in the svccontext package.
 	return nil
 }
 
-// describeProducedNames states p's naming rule for the collision message.
-func describeProducedNames(p declProducer) string {
-	switch p.kind {
-	case "error":
-		return "error decls emit `<Name>Err` and `<Name>Body`"
+// eventGoNames returns the Go identifiers ev emits into its package's events
+// package.
+func eventGoNames(ev *ast.EventDecl) []goName {
+	source := `event "` + ev.Name + `"`
+	return []goName{
+		{name: ev.Name, source: source, role: "its descriptor", pos: ev.Pos},
+		{name: idents.EventContractName(ev.Name), source: source, role: "its contract constant", pos: ev.Pos},
 	}
-	return "decl emits its name verbatim"
 }

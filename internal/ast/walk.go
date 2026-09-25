@@ -12,6 +12,19 @@ func Fields(body []TypeMember) []*Field {
 	return out
 }
 
+// Members returns the fields and mixins of a type or error body in source
+// order; comments are skipped.
+func Members(body []TypeMember) []TypeMember {
+	var out []TypeMember
+	for _, m := range body {
+		switch m.(type) {
+		case *Field, *Mixin:
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // WalkNamedRefs calls fn on every named type t reaches, through map keys and
 // values and generic arguments, each after the named types in its arguments.
 func (t *TypeRef) WalkNamedRefs(fn func(*NamedTypeRef)) {

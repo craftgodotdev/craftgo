@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -59,7 +60,7 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 		data.UsesFmt = data.UsesFmt || elems
 		data.Events = append(data.Events, eventDescriptor{
 			Name:          ev.Name,
-			ConstName:     ev.Name + "Contract",
+			ConstName:     idents.EventContractName(ev.Name),
 			Contract:      ev.Contract,
 			PayloadType:   payload,
 			Validate:      validate,

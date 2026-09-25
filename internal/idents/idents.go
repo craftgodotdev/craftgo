@@ -204,8 +204,8 @@ func PascalCase(s string) string {
 	return string(b)
 }
 
-// ErrorTypeName returns the Go and OpenAPI name of an error's body type: the
-// DSL name plus `Err`, unless it already ends in `Err` or `Error`.
+// ErrorTypeName returns the Go and OpenAPI name of an error's type: the DSL
+// name plus `Err`, unless it already ends in `Err` or `Error`.
 func ErrorTypeName(name string) string {
 	if strings.HasSuffix(name, "Err") || strings.HasSuffix(name, "Error") {
 		return name
@@ -216,3 +216,25 @@ func ErrorTypeName(name string) string {
 // ErrorBodyName returns the Go name of the struct an error with fields embeds:
 // the DSL name plus `Body`.
 func ErrorBodyName(name string) string { return name + "Body" }
+
+// ErrorCodeName returns the Go name of the constant holding an error's code:
+// `ErrCode` plus the DSL name.
+func ErrorCodeName(name string) string { return "ErrCode" + name }
+
+// ErrorConstructorName returns the Go name of an error's constructor: `New`
+// plus its [ErrorTypeName].
+func ErrorConstructorName(name string) string { return "New" + ErrorTypeName(name) }
+
+// EventContractName returns the Go name of the constant holding an event's
+// wire identity: the event name plus `Contract`.
+func EventContractName(event string) string { return event + "Contract" }
+
+// EnumConstNames returns the Go names of an enum's value constants, in the
+// order of values: the enum name plus each value's name from [DedupGoFieldNames].
+func EnumConstNames(enum string, values []string) []string {
+	names, _ := DedupGoFieldNames(values)
+	for i, n := range names {
+		names[i] = enum + n
+	}
+	return names
+}

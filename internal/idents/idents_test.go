@@ -155,10 +155,10 @@ func TestPascalCase(t *testing.T) {
 }
 
 func TestErrorNames(t *testing.T) {
-	cases := []struct{ dsl, typeName, bodyName string }{
-		{"UserGone", "UserGoneErr", "UserGoneBody"},
-		{"QuotaErr", "QuotaErr", "QuotaErrBody"},
-		{"AuthError", "AuthError", "AuthErrorBody"},
+	cases := []struct{ dsl, typeName, bodyName, codeName, ctorName string }{
+		{"UserGone", "UserGoneErr", "UserGoneBody", "ErrCodeUserGone", "NewUserGoneErr"},
+		{"QuotaErr", "QuotaErr", "QuotaErrBody", "ErrCodeQuotaErr", "NewQuotaErr"},
+		{"AuthError", "AuthError", "AuthErrorBody", "ErrCodeAuthError", "NewAuthError"},
 	}
 	for _, c := range cases {
 		if got := ErrorTypeName(c.dsl); got != c.typeName {
@@ -167,5 +167,25 @@ func TestErrorNames(t *testing.T) {
 		if got := ErrorBodyName(c.dsl); got != c.bodyName {
 			t.Errorf("ErrorBodyName(%q) = %q, want %q", c.dsl, got, c.bodyName)
 		}
+		if got := ErrorCodeName(c.dsl); got != c.codeName {
+			t.Errorf("ErrorCodeName(%q) = %q, want %q", c.dsl, got, c.codeName)
+		}
+		if got := ErrorConstructorName(c.dsl); got != c.ctorName {
+			t.Errorf("ErrorConstructorName(%q) = %q, want %q", c.dsl, got, c.ctorName)
+		}
+	}
+}
+
+func TestEnumConstNames(t *testing.T) {
+	got := EnumConstNames("Status", []string{"Active", "active", "on_hold"})
+	want := []string{"StatusActive", "StatusActive_2", "StatusOnHold"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("EnumConstNames = %v, want %v", got, want)
+	}
+}
+
+func TestEventContractName(t *testing.T) {
+	if got := EventContractName("OrderPlaced"); got != "OrderPlacedContract" {
+		t.Errorf("EventContractName = %q, want OrderPlacedContract", got)
 	}
 }

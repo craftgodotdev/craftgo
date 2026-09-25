@@ -73,23 +73,11 @@ func pkgValidates(pkg *semantic.Package) bool {
 		}
 	}
 	for _, ed := range pkg.Errors {
-		if len(errorBodyMembers(ed)) > 0 {
+		if len(ast.Members(ed.Body)) > 0 {
 			return true
 		}
 	}
 	return false
-}
-
-// errorBodyMembers returns the fields and mixins of ed's `<Name>Body` struct.
-func errorBodyMembers(ed *ast.ErrorDecl) []ast.TypeMember {
-	var out []ast.TypeMember
-	for _, m := range ed.Body {
-		switch m.(type) {
-		case *ast.Field, *ast.Mixin:
-			out = append(out, m)
-		}
-	}
-	return out
 }
 
 // buildValidateData renders the Validate() bodies of pkg's types, constrained
@@ -137,7 +125,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 
 	for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
 		ed := pkg.Errors[name]
-		body := &ast.TypeDecl{Name: idents.ErrorBodyName(name), Body: errorBodyMembers(ed)}
+		body := &ast.TypeDecl{Name: idents.ErrorBodyName(name), Body: ast.Members(ed.Body)}
 		if len(body.Body) == 0 {
 			continue
 		}

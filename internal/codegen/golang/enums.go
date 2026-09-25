@@ -110,12 +110,12 @@ func enumMembers(ed *ast.EnumDecl) []enumMember {
 	for i, v := range vals {
 		dslNames[i] = v.Name
 	}
-	resolved, _ := idents.DedupGoFieldNames(dslNames)
+	consts := idents.EnumConstNames(ed.Name, dslNames)
 	out := make([]enumMember, len(vals))
 	for i, v := range vals {
 		out[i] = enumMember{
 			DSLName:    v.Name,
-			ConstName:  ed.Name + resolved[i],
+			ConstName:  consts[i],
 			Kind:       v.Kind,
 			Wire:       semantic.EnumMemberWire(v),
 			WireString: semantic.EnumMemberWireString(v),
