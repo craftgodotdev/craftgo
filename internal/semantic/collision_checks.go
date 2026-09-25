@@ -295,52 +295,33 @@ func (a *analyzer) checkEnumValueCollisions(files []*ast.File) {
 	}
 }
 
-// warnEnumValueCollisions reports every colliding value of ed but the first.
+// warnEnumValueCollisions reports every value of ed whose Go constant an
+// earlier value already takes, relating it to that first value.
 func (a *analyzer) warnEnumValueCollisions(ed *ast.EnumDecl) {
 	if ed == nil {
 		return
 	}
-	enumVals := ed.EnumValues()
-	if len(enumVals) < 2 {
-		return
-	}
-	names := make([]string, 0, len(enumVals))
-	for _, v := range enumVals {
+	var vals []*ast.EnumValue
+	var names []string
+	for _, v := range ed.EnumValues() {
 		if v == nil || v.Name == "" {
 			continue
 		}
+		vals = append(vals, v)
 		names = append(names, v.Name)
 	}
-	if len(names) < 2 {
-		return
-	}
-	_, collisions := idents.DedupGoFieldNames(names)
-	if len(collisions) == 0 {
-		return
-	}
-	byName := map[string]*ast.EnumValue{}
-	for _, v := range enumVals {
-		if v != nil {
-			byName[v.Name] = v
-		}
-	}
-	for _, c := range collisions {
-		if len(c.DSLNames) < 2 {
+	resolved, _ := idents.DedupGoFieldNames(names)
+	first := map[string]*ast.EnumValue{} // canonical Go name -> the value that keeps it
+	for i, v := range vals {
+		canonical := idents.GoFieldName(v.Name)
+		prev, taken := first[canonical]
+		if !taken {
+			first[canonical] = v
 			continue
 		}
-		firstDSL := c.DSLNames[0]
-		first := byName[firstDSL]
-		for rank, dupeName := range c.DSLNames[1:] {
-			anchor := byName[dupeName]
-			if anchor == nil {
-				continue
-			}
-			d := a.diag(anchor.Pos, anchor.Pos, lexer.SeverityWarning, CodeEnumValueCollision,
-				"enum value %q collides with %q in enum %s - both normalise to Go const %q; codegen will emit %q to keep the package compilable, but the wire payloads stay distinct (rename one if this duplication was unintended)",
-				dupeName, firstDSL, ed.Name, ed.Name+c.CanonicalGoName, ed.Name+c.ResolvedGoNames[rank+1])
-			if first != nil {
-				d.Related = related(first.Pos, "first declared here (keeps the canonical const name)")
-			}
-		}
+		d := a.diag(v.Pos, v.Pos, lexer.SeverityWarning, CodeEnumValueCollision,
+			"enum value %q collides with %q in enum %s - both normalise to Go const %q; codegen will emit %q to keep the package compilable, but the wire payloads stay distinct (rename one if this duplication was unintended)",
+			v.Name, prev.Name, ed.Name, ed.Name+canonical, ed.Name+resolved[i])
+		d.Related = related(prev.Pos, "first declared here (keeps the canonical const name)")
 	}
 }

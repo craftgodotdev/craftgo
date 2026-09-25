@@ -559,6 +559,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   It is `service/extend-decorator-not-method` now and no longer offered: an
   operationId belongs on each method.
 
+- **An enum value collision points at each colliding value.** In `enum E {
+  A B A A }` both `enum/value-collision` warnings sat on the last `A` and
+  related it to itself; each now sits on its own value and relates to the
+  first `A`.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
