@@ -427,7 +427,7 @@ service UserService {
 
 A path variable in the prefix is a whole segment, as in `/orgs/{org}`. A route net/http's ServeMux would refuse to register is rejected: a segment such as `org-{org}`, `.` or `..`, or a variable name that is no Go identifier (`route/pattern`), a `{rest...}` before the route's last segment (`route/pattern`), and a variable the basePath, the prefix or the method path repeats (`route/duplicate-path-var`).
 
-A trailing `{rest...}` matches the rest of the path and is named `rest`: a request field `rest`, or one with `@path("rest")`, binds it. OpenAPI has no variable that spans segments, so the document lists it as a plain string path parameter `rest` in the path `/…/{rest}`.
+A trailing `{rest...}` matches the rest of the path and is named `rest`: a request field `rest`, or one with `@path("rest")`, binds it. OpenAPI has no variable that spans segments, so the document lists `rest` as an ordinary path parameter, typed like its field (a plain string for a `string` field), in the path `/…/{rest}`.
 
 ### `@group(path)`
 

@@ -561,10 +561,16 @@ service S { get Get / { request R  response Resp } }`)
 	mustClean(t, head+`type R { q string }
 @prefix("/root/{$}")
 service S { get Get / { request R  response Resp } }`)
-	d := expectError(t, head+`type R { p string @path("rest...") }
+	misnamed := head + `type R { p string @path("rest...") }
 @prefix("/files/{rest...}")
-service S { get Get / { request R  response Resp } }`, CodePathParamOrphan)
+service S { get Get / { request R  response Resp } }`
+	d := expectError(t, misnamed, CodePathParamOrphan)
 	expectMessage(t, d, `the variable {rest...} is named "rest"`)
+	expectCodeCount(t, misnamed, CodePathParamMissing, 0)
+	d = expectError(t, head+`type R { q string }
+@prefix("/files/{rest...}")
+service S { get Get / { request R  response Resp } }`, CodePathParamMissing)
+	expectMessage(t, d, "path segment {rest...} has no matching field")
 }
 
 // A @sensitive field never rides the wire, so a same-named segment stays unbound.

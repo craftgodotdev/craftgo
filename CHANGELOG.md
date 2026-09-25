@@ -872,12 +872,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   has no matching field`), and `@path("rest...")` read
   `r.PathValue("rest...")`, which is always empty. The variable is `rest`,
   as net/http names it, `@path("rest...")` is an error that says so, and the
-  OpenAPI document lists a string path parameter `rest` in the path
-  `/…/{rest}`. A route ending with `{$}` no longer counts `$` as a variable
-  no field could bind, and its OpenAPI path ends with the slash it matches;
-  a root `/{$}` beside a root `/` of the same method, which the document
-  cannot tell apart, stops a run that writes the document with an error
-  naming both.
+  OpenAPI document lists the path parameter `rest` of a `@prefix` or method
+  path in the path `/…/{rest}`. A route ending with `{$}` no longer counts
+  `$` as a variable no field could bind, and its OpenAPI path ends with the
+  slash it matches; a root `/{$}` beside a root `/` of the same method, which
+  the document cannot tell apart, stops a run that writes the document with
+  an error naming both.
 
 - **A route net/http cannot register is rejected.** `@prefix("/org-{org}")`,
   a `{rest...}` before a route's last segment, a `.` or `..` segment and a
