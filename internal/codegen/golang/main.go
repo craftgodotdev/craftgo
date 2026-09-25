@@ -13,7 +13,9 @@ import (
 
 // mainData is the template input for main.tmpl.
 type mainData struct {
-	ConfigImport     string
+	ConfigImport string
+	// ConfigDir is output.config, where example.config.yaml documents config.yaml.
+	ConfigDir        string
 	WiringImport     string
 	MiddlewareImport string
 	SvccontextImport string
@@ -63,6 +65,7 @@ func projectHasRoutes(proj *semantic.Project) bool {
 func buildProjectMainData(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config) mainData {
 	d := mainData{
 		ConfigImport:     goImportFromRel(cfg.Package, cfg.Output.Config),
+		ConfigDir:        relDir(cfg.Output.Config),
 		WiringImport:     goImportFromRel(cfg.Package, cfg.Output.Wiring),
 		MiddlewareImport: goImportFromRel(cfg.Package, cfg.Output.Middleware),
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),

@@ -1,12 +1,12 @@
 //
 // Package config is the project's runtime configuration loader. main.go
-// reads `config/config.yaml` at boot, fills in framework defaults, and
+// reads `{{.ConfigDir}}/config.yaml` at boot, fills in framework defaults, and
 // hands the resulting *Config to svccontext so every
 // service/middleware/logic function reads the same source of truth.
 //
 // Layout convention:
 //
-//	config/
+//	{{.ConfigDir}}/
 //	├── config.go             - this file (Go struct + loader)
 //	├── config.yaml           - local dev values (gitignore in real
 //	│                           projects; commit only the example)
@@ -29,7 +29,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/telemetry"
 )
 
-// Config is the in-memory shape of `config/config.yaml`. Each section
+// Config is the in-memory shape of `{{.ConfigDir}}/config.yaml`. Each section
 // maps to one runtime concern - a listener, distributed tracing,
 // metrics - so feature owners can extend their own block without
 // stepping on each other.
@@ -192,7 +192,7 @@ type (
 // Path returns the conventional config-file location. Override by
 // passing a different path to [Load] directly.
 func Path() string {
-	return "config/config.yaml"
+	return "{{.ConfigDir}}/config.yaml"
 }
 
 // Load reads cfgPath (when non-empty) and fills in framework defaults

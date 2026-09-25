@@ -34,16 +34,10 @@ func TestGRPCScaffoldsArePinned(t *testing.T) {
 
 	// A gRPC-only project configures no HTTP listener; a mixed one configures both.
 	for _, shape := range []struct {
-		hasHTTP bool
-		suffix  string
-	}{{false, "grpc"}, {true, "mixed"}} {
-		data := runtimeData{
-			Package:       cfg.Package,
-			OperationName: operationNameFor(cfg.Package),
-			ConfigImport:  goImportFromRel(cfg.Package, cfg.Output.Config),
-			HasGRPC:       true,
-			HasHTTP:       shape.hasHTTP,
-		}
+		proj   *semantic.Project
+		suffix string
+	}{{empty, "grpc"}, {analyzeProject(t, httpScaffoldSrc), "mixed"}} {
+		data := buildRuntimeData(shape.proj, set, cfg)
 		for _, f := range []struct {
 			template string
 			render   func(*template.Template, any) ([]byte, error)

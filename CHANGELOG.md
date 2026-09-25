@@ -473,6 +473,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   in `payload Page<datetime>`, now brings its `time` or `mime/multipart`
   import too.
 
+- **`config.Path()` names the `config.yaml` under `output.config`.** With
+  `output.config: ./internal/config`, gen wrote `config.yaml` there while the
+  generated `Path()` returned `config/config.yaml`, so `main.go` silently ran
+  on defaults. A `config.go` generated before keeps the old path, since gen
+  writes it once; edit its `Path()` by hand.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

@@ -45,12 +45,7 @@ func TestHTTPScaffoldsArePinned(t *testing.T) {
 	}
 	expectGolden(t, "main-http.go", string(mainGo))
 
-	data := runtimeData{
-		Package:       cfg.Package,
-		OperationName: operationNameFor(cfg.Package),
-		ConfigImport:  goImportFromRel(cfg.Package, cfg.Output.Config),
-		HasHTTP:       true,
-	}
+	data := buildRuntimeData(proj, nil, cfg)
 	for _, f := range []struct {
 		template string
 		render   func(*template.Template, any) ([]byte, error)
@@ -77,4 +72,29 @@ func TestHTTPScaffoldsArePinned(t *testing.T) {
 		t.Fatal(err)
 	}
 	expectGolden(t, "wiring-http.go", string(wiring))
+}
+
+// config.Path and the scaffold comments name the directory output.config writes config.yaml into.
+func TestConfigPathFollowsOutputConfig(t *testing.T) {
+	cfg := scaffoldConfig(t)
+	cfg.Output.Config = "./internal/config"
+	root := t.TempDir()
+	proj := analyzeProject(t, httpScaffoldSrc)
+	if err := generateRuntimeConfig(proj, nil, cfg, root); err != nil {
+		t.Fatal(err)
+	}
+	configGo, err := os.ReadFile(filepath.Join(root, "internal", "config", "config.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustContainAll(t, string(configGo), `return "internal/config/config.yaml"`, "`internal/config/config.yaml`")
+	mustContainNone(t, string(configGo), "`config/config.yaml`", `"config/config.yaml"`)
+	if _, err := os.Stat(filepath.Join(root, "internal", "config", "config.yaml")); err != nil {
+		t.Errorf("config.yaml is not where Path points: %v", err)
+	}
+	mainGo, err := renderScaffold(tmpl("main.tmpl"), buildProjectMainData(proj, nil, cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustContainAll(t, string(mainGo), "internal/config/example.config.yaml")
 }

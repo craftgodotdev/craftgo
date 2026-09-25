@@ -27,14 +27,19 @@ func servicePkgName(pkgName, svcName string) string {
 // goImportFromRel turns a project-relative directory ("./internal/handler") into its import
 // path under modulePath.
 func goImportFromRel(modulePath, rel string) string {
+	if rel = relDir(rel); rel != "" {
+		return modulePath + "/" + rel
+	}
+	return modulePath
+}
+
+// relDir spells a project-relative directory ("./internal/config/") as forward-slash segments
+// ("internal/config"), "" for the project root.
+func relDir(rel string) string {
 	rel = strings.ReplaceAll(rel, "\\", "/")
 	rel = strings.TrimPrefix(rel, "./")
 	rel = strings.TrimPrefix(rel, "/")
-	rel = strings.TrimSuffix(rel, "/")
-	if rel == "" {
-		return modulePath
-	}
-	return modulePath + "/" + rel
+	return strings.TrimSuffix(rel, "/")
 }
 
 // fileDirRel returns the forward-slash directory of a project-relative file path, "" for a root file.

@@ -437,7 +437,7 @@ Read from your service via `svcCtx.Config.DB.DSN`.
 
 ### File location at runtime
 
-`main.go` reads `config/config.yaml` by default. Pass a different path by editing the call:
+`main.go` reads the `config.yaml` beside `config.go`, which `config.Path()` names: `config/config.yaml` under the default `output.config`. Pass a different path by editing the call:
 
 ```go
 cfg, err := config.Load("/etc/myapp/config.yaml")

@@ -13,6 +13,8 @@ type runtimeData struct {
 	Package       string
 	OperationName string
 	ConfigImport  string
+	// ConfigDir is output.config, where config.go reads config.yaml from.
+	ConfigDir string
 	// HasGRPC adds the `grpc:` config block.
 	HasGRPC bool
 	// HasHTTP keeps the `server:` and `docs:` blocks; it is false only for gRPC services without a route.
@@ -26,13 +28,7 @@ func generateRuntimeConfig(proj *semantic.Project, protos *protodesign.Set, cfg 
 		return nil
 	}
 	dir := filepath.Join(projectRoot, cfg.Output.Config)
-	data := runtimeData{
-		Package:       cfg.Package,
-		OperationName: operationNameFor(cfg.Package),
-		ConfigImport:  goImportFromRel(cfg.Package, cfg.Output.Config),
-		HasGRPC:       protos.HasServices(),
-		HasHTTP:       projectHasRoutes(proj) || !protos.HasServices(),
-	}
+	data := buildRuntimeData(proj, protos, cfg)
 	if err := writeGoOnce(filepath.Join(dir, "config.go"), tmpl("config.go.tmpl"), data); err != nil {
 		return err
 	}
@@ -40,6 +36,18 @@ func generateRuntimeConfig(proj *semantic.Project, protos *protodesign.Set, cfg 
 		return err
 	}
 	return writeTextOnce(filepath.Join(dir, "example.config.yaml"), tmpl("example.config.yaml.tmpl"), data)
+}
+
+// buildRuntimeData is the input of the config scaffolds.
+func buildRuntimeData(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config) runtimeData {
+	return runtimeData{
+		Package:       cfg.Package,
+		OperationName: operationNameFor(cfg.Package),
+		ConfigImport:  goImportFromRel(cfg.Package, cfg.Output.Config),
+		ConfigDir:     relDir(cfg.Output.Config),
+		HasGRPC:       protos.HasServices(),
+		HasHTTP:       projectHasRoutes(proj) || !protos.HasServices(),
+	}
 }
 
 // generateSvccontext writes the gen-once output.svccontext file, whose ServiceContext embeds the
