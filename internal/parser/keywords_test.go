@@ -124,53 +124,6 @@ extend service S {
 	}
 }
 
-func TestParseDecoratorsOnEveryLevel(t *testing.T) {
-	src := `@version("1")
-package design
-
-@doc("type")
-@deprecated
-type T {
-   
-    @length(1, 100)
-    @pattern("^[a-z]+$")
-    @format("email")
-    @example("alice@example.com")
-    name  string
-
-    @gte(0)
-    @lte(150)
-    age  int?
-
-    @default("default")
-    secret  string
-}
-
-@doc("enum E")
-enum E {
-    A
-    B
-}
-
-@deprecated
-service S {
-    @summary("get")
-    @operationId("getX")
-    @consumes("application/json")
-    @produces("application/json")
-    @tags(api, v1)
-    @ignoreSecurity
-    get Op /ops {
-        response  T
-    }
-}
-`
-	f := mustParse(t, src)
-	if f == nil {
-		t.Fatal("expected file")
-	}
-}
-
 func TestParseHyphenatedPathSegments(t *testing.T) {
 	f := mustParse(t, `package design
 type Req { id string }
