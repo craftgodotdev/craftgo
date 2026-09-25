@@ -291,3 +291,20 @@ type R { items Holder[] @uniqueItems }`,
 		t.Errorf("comparable cross-pkg field must not be rejected; got: %s", d.Msg)
 	}
 }
+
+// @uniqueItems refuses an element built on a type parameter, bare or as an
+// argument: the generic validator cannot key a map on a value constrained by
+// `any`. A declared type a nested struct names like the parameter is not it.
+func TestUniqueItemsRejectsTypeParameterElements(t *testing.T) {
+	for _, src := range []string{
+		"type Page<T> { items T[] @uniqueItems }",
+		"type Box<T> { v T }\ntype Page<T> { items Box<T>[] @uniqueItems }",
+		"type Pair<A, B> { a A  b B }\ntype Page<T> { items Pair<string, T>[] @uniqueItems }",
+	} {
+		d := expectError(t, src, CodeDecoratorTypeMismatch)
+		expectMessage(t, d, "the type parameter T")
+	}
+	mustClean(t, `scalar T string
+type Meta { t T }
+type Page<T> { items Meta[] @uniqueItems  other T }`)
+}

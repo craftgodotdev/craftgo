@@ -433,6 +433,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   its `time` import. An element that is or holds a `datetime` reports
   `decorator/typemismatch`.
 
+- **`@uniqueItems` refuses an element built on a type parameter.** Inside
+  `type Page<T>`, only a bare `T[]` was refused: `items Box<T>[] @uniqueItems`
+  passed analysis and the generic validator keyed a map on `Box[T]`, which
+  does not compile. An element that names a type parameter anywhere, bare or
+  as a type argument, reports `decorator/typemismatch`.
+
 - **A `@multipleOf` divisor past int64 is enforced.** On a `uint64` field,
   `@multipleOf(10000000000000000000.0)` - a whole float, the only way to
   write a divisor that size - passed analysis and reached the OpenAPI

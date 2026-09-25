@@ -74,15 +74,27 @@ func (a *analyzer) checkUniqueItemsComparable(f *ast.Field, typeParams []string)
 		return
 	}
 	elem := f.Type.ElemTypeRef()
-	if !elem.Array && elem.Named != nil && elem.Named.Name != nil && slices.Contains(typeParams, elem.Named.Name.String()) {
+	if param := typeParamIn(elem, typeParams); param != "" {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-			"@uniqueItems is not supported on a type-parameter element (%s): the parametric validator can't build a dedupe map over an `any`-constrained value. Drop @uniqueItems, or use a concrete comparable element type.", elem.Named.Name)
+			"@uniqueItems is not supported on an element built on the type parameter %s (%s): the parametric validator can't build a dedupe map over an `any`-constrained value. Drop @uniqueItems, or use a concrete comparable element type.", param, elem)
 		return
 	}
 	if problem := a.dedupeKeyProblem(elem, a.pkg.Name, "", map[string]bool{}); problem != "" {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
 			"@uniqueItems needs elements the validator compares by value, as map keys: %s. Restructure the element, or drop @uniqueItems.", problem)
 	}
+}
+
+// typeParamIn returns the first of typeParams t names, itself or inside its
+// type arguments or map key and value; "" when it names none.
+func typeParamIn(t *ast.TypeRef, typeParams []string) string {
+	param := ""
+	t.WalkNamedRefs(func(n *ast.NamedTypeRef) {
+		if param == "" && n.Name != nil && len(n.Name.Parts) == 1 && slices.Contains(typeParams, n.Name.Parts[0]) {
+			param = n.Name.Parts[0]
+		}
+	})
+	return param
 }
 
 // dedupeKeyProblem says why values of t, spelled as package view spells it,
