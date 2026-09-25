@@ -410,13 +410,14 @@ func (a *analyzer) visitFileHolders(view string, t *ast.TypeRef, path string, se
 	})
 }
 
-// holdsFile reports whether t is a `file`, optional or in an array, or a map
-// holding one as key or value.
+// holdsFile reports whether t names `file` itself, optional or in an array,
+// or as a map key or value or a generic argument, at any depth.
 func holdsFile(t *ast.TypeRef) bool {
-	if t != nil && t.Map != nil {
-		return holdsFile(t.Map.Key) || holdsFile(t.Map.Value)
-	}
-	return isFileTypeRef(t)
+	found := false
+	t.WalkNamedRefs(func(n *ast.NamedTypeRef) {
+		found = found || (n.Name != nil && n.Name.String() == "file")
+	})
+	return found
 }
 
 // isFileTypeRef reports whether t names `file`, optional or in an array.

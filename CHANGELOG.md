@@ -712,6 +712,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   `route/duplicate-path-var`, at the `@prefix` or the method, or once for a
   basePath.
 
+- **A `file` passed to a generic type is found.** A request field `b
+  Box<file>`, or a `Box<file>` in a response, an error body or an event
+  payload, passed the `file` placement checks, which read the generic type
+  without its arguments: the request's handler never bound the file, and a
+  response encoded its `multipart.FileHeader` as JSON. Each is now
+  `binding/file-position` at the field naming the instance; a generic request
+  `Up<file>` or a mixin `Box<file>`, which bring the `file` to the request's
+  top level, stay accepted.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

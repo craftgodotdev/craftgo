@@ -86,6 +86,39 @@ event Placed { payload P[] }`, "P.att.data"},
 	}
 }
 
+// A `file` a generic instance takes as an argument is found wherever the
+// instance sits; a generic request or mixin that takes it to its top level is
+// accepted.
+func TestFileThroughGenericInstance(t *testing.T) {
+	const box = "package design\ntype Box<T> { v T }\ntype Resp { ok bool }\n"
+	for label, c := range map[string]struct{ src, at string }{
+		"request field": {`type R { f file  b Box<file> }
+service S { post A /a { request R  response Resp } }`, "R.b"},
+		"nested request field": {`type Meta { b Box<file[]> }
+type R { f file  m Meta }
+service S { post A /a { request R  response Resp } }`, "Meta.b"},
+		"response": {`type Out { b Box<file> }
+service S { get A /a { response Out } }`, "Out.b"},
+		"payload": {`type P { b Box<map<string, file>> }
+event Placed { payload P }`, "P.b"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			d := expectError(t, box+c.src, CodeFilePosition)
+			expectMessage(t, d, c.at)
+		})
+	}
+	for label, src := range map[string]string{
+		"generic request": `type Up<T> { f T  name string }
+service S { post A /a { request Up<file>  response Resp } }`,
+		"generic mixin": `type R { Box<file>  name string }
+service S { post A /a { request R  response Resp } }`,
+	} {
+		t.Run(label, func(t *testing.T) {
+			expectNoCode(t, box+src, CodeFilePosition)
+		})
+	}
+}
+
 // A response type another package declares is checked at the response
 // clause that names it.
 func TestFileInCrossPackageResponseRejected(t *testing.T) {
