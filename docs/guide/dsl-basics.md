@@ -316,7 +316,16 @@ Each package's types are one Go package, so two packages cannot reference each o
 type User { ... }
 ```
 
-`//` only - no `/* */`.
+Below a declaration's decorators, the comment right above its keyword joins the doc too, after the one above the decorators:
+
+```craftgo
+// Order is a placed order.
+@deprecated
+// Use Purchase instead.
+type Order { ... }
+```
+
+A blank line between that comment and the keyword leaves it out of the doc. `//` only - no `/* */`.
 
 ## Next
 

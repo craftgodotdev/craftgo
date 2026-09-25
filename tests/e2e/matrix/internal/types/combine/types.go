@@ -136,6 +136,14 @@ type PairsContact struct {
 	Phone *string `json:"phone,omitempty"`
 }
 
+// PairsDoc has a doc above its decorators and one below them, right above
+// its keyword; the Go doc and the OpenAPI description hold both, in order.
+// Either a or b carries the value.
+type PairsDoc struct {
+	A *string `json:"a,omitempty"`
+	B *string `json:"b,omitempty"`
+}
+
 // PairsNum stacks @range (lo,hi pair) with @multipleOf and the
 // strict-bound @gt / @lte. Both the soft and strict bounds are present
 // so the validator firing order is visible in the generated code:

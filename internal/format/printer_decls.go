@@ -9,7 +9,7 @@ import (
 )
 
 func (p *Printer) TypeDecl(d *ast.TypeDecl) {
-	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), d.Doc)
+	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
 	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.line(d.Pos.Line)
 	p.write("type ")
@@ -137,7 +137,7 @@ func (p *Printer) inlineDecorators(decs []*ast.Decorator) {
 }
 
 func (p *Printer) EnumDecl(d *ast.EnumDecl) {
-	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), d.Doc)
+	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
 	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.line(d.Pos.Line)
 	p.write("enum ")
@@ -189,7 +189,7 @@ func (p *Printer) EnumValue(v *ast.EnumValue, maxName int) {
 }
 
 func (p *Printer) ErrorDecl(d *ast.ErrorDecl) {
-	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), d.Doc)
+	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
 	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.line(d.Pos.Line)
 	p.write("error ")
@@ -212,7 +212,7 @@ func (p *Printer) ErrorDecl(d *ast.ErrorDecl) {
 // a chain above the keyword keeps its lines when a comment pins it.
 func (p *Printer) ScalarDecl(d *ast.ScalarDecl) {
 	start := memberStartLine(d.Pos.Line, d.Decorators, 0)
-	p.comments(start, d.Doc)
+	p.comments(start, p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
 	decs := d.Decorators
 	if lead := leadingChain(decs, d.Pos.Line); len(lead) > 0 && p.chainCommented(lead[0].Pos.Line, d.Pos.Line) {
 		p.declDecorators(lead, d.Pos.Line)
@@ -231,7 +231,7 @@ func (p *Printer) ScalarDecl(d *ast.ScalarDecl) {
 }
 
 func (p *Printer) MiddlewareDecl(d *ast.MiddlewareDecl) {
-	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), d.Doc)
+	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
 	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.line(d.Pos.Line)
 	p.write("middleware ")
@@ -240,7 +240,7 @@ func (p *Printer) MiddlewareDecl(d *ast.MiddlewareDecl) {
 }
 
 func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
-	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), d.Doc)
+	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
 	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.line(d.Pos.Line)
 	if d.Extend {
@@ -362,7 +362,7 @@ func (p *Printer) Method(m *ast.Method) {
 }
 
 func (p *Printer) EventDecl(e *ast.EventDecl) {
-	p.comments(memberStartLine(e.Pos.Line, e.Decorators, 0), e.Doc)
+	p.comments(memberStartLine(e.Pos.Line, e.Decorators, 0), p.docAboveDecorators(e.Doc, e.Decorators, e.Pos.Line))
 	p.declDecorators(e.Decorators, e.Pos.Line)
 	p.line(e.Pos.Line)
 	p.write("event ")

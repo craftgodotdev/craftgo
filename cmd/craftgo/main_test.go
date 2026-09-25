@@ -244,6 +244,22 @@ func TestCommandArguments(t *testing.T) {
 	}
 }
 
+// The comment right above a declaration's keyword, below its decorators, is
+// the generated Go doc.
+func TestRunGenDocAboveTheKeyword(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "go.mod", "module github.com/test/app\n\ngo 1.24\n")
+	mustWrite(t, dir, "design/craftgo.design.yaml", "")
+	mustWrite(t, dir, "design/api.craftgo", "package api\n\n@deprecated\n// Order is the order.\ntype Order {\n\tid string\n}\n")
+	if err := runGen([]string{"-f", filepath.Join(dir, "design")}); err != nil {
+		t.Fatalf("runGen: %v", err)
+	}
+	types, _ := os.ReadFile(filepath.Join(dir, "internal", "types", "api", "types.go"))
+	if !strings.Contains(string(types), "// Order is the order.\n") {
+		t.Errorf("types.go lacks the doc:\n%s", types)
+	}
+}
+
 // fmt on a design folder that holds only protos has nothing to format.
 func TestRunFmtProtoOnlyDesign(t *testing.T) {
 	dir := t.TempDir()

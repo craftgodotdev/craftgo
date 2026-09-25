@@ -57,3 +57,12 @@ type PairsChoice {
 	b string?
 	c string?
 }
+
+// PairsDoc has a doc above its decorators and one below them, right above
+// its keyword; the Go doc and the OpenAPI description hold both, in order.
+@requiresOneOf(a, b)
+// Either a or b carries the value.
+type PairsDoc {
+	a string?
+	b string?
+}

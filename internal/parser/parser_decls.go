@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"slices"
+
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -31,8 +33,9 @@ func (p *Parser) parseImport() *ast.Import {
 }
 
 // parseTopLevelWith parses one declaration, prefixing its decorators with
-// extra. With extra, the comment above the keyword belongs to the chain, and
-// the one above extra is the file's LeadingDoc.
+// extra, whose doc is the file's LeadingDoc. The declaration's doc is the
+// comment above its own decorators, then the one right above its keyword,
+// which also stays in the chain.
 func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 	var doc []string
 	if len(extra) == 0 {
@@ -42,6 +45,9 @@ func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 	decs = append(decs, p.parseDecorators()...)
 	t := p.peek()
 	p.claimChain(decs, t.Pos.Line)
+	if len(decs) > 0 {
+		doc = slices.Concat(doc, t.Doc)
+	}
 	switch t.Kind {
 	case lexer.KwType:
 		return p.parseTypeDecl(decs, doc)

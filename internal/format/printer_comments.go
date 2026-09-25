@@ -81,6 +81,16 @@ func (p *Printer) blankBefore(prevEnd, start int) bool {
 	return !p.code[start-1] || p.freeEnd > 0 && p.freeEnd != start-1
 }
 
+// docAboveDecorators returns the lines of doc, the doc of a declaration whose
+// keyword is on source line kw, that go above its decorators: all but the ones
+// right above the keyword, which print there among the decorators' comments.
+func (p *Printer) docAboveDecorators(doc []string, decs []*ast.Decorator, kw int) []string {
+	if len(decs) == 0 || decs[0].Pos.Line >= kw {
+		return doc
+	}
+	return doc[:len(doc)-p.docLines(kw, len(doc))]
+}
+
 func (p *Printer) printFreeComment(c *ast.FreeComment) {
 	p.comments(c.Pos.Line, c.Text)
 	p.freeEnd = c.Pos.Line + len(c.Text) - 1
@@ -100,8 +110,26 @@ func (p *Printer) declDecorators(decs []*ast.Decorator, last int) {
 		p.endCode()
 	}
 	if len(decs) > 0 && last != prev {
-		p.comments(last, p.chain[last])
+		// The comments that sat right above the name or keyword are a
+		// declaration's doc; a blank line keeps the others off it.
+		chain := p.chain[last]
+		other := len(chain) - p.docLines(last, len(chain))
+		p.comments(last, chain[:other])
+		if other > 0 {
+			p.write("\n")
+		}
+		p.comments(last, chain[other:])
 	}
+}
+
+// docLines counts the comment lines right above source line line, at most max:
+// the doc of a name or keyword there.
+func (p *Printer) docLines(line, max int) int {
+	n := 0
+	for n < max && p.commentLine[line-1-n] {
+		n++
+	}
+	return n
 }
 
 // trailingDecorators writes decs, the decorators after the code of a member

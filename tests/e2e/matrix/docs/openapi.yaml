@@ -4134,6 +4134,36 @@ components:
         / phone; when present, each field is independently validated by its
         own decorator chain.
       type: object
+    PairsDoc:
+      allOf:
+      - properties:
+          a:
+            type:
+            - string
+            - "null"
+          b:
+            type:
+            - string
+            - "null"
+        type: object
+      - anyOf:
+        - properties:
+            a:
+              not:
+                type: "null"
+          required:
+          - a
+        - properties:
+            b:
+              not:
+                type: "null"
+          required:
+          - b
+      description: |-
+        PairsDoc has a doc above its decorators and one below them, right above
+        its keyword; the Go doc and the OpenAPI description hold both, in order.
+        Either a or b carries the value.
+      type: object
     PairsNum:
       description: |-
         PairsNum stacks @range (lo,hi pair) with @multipleOf and the

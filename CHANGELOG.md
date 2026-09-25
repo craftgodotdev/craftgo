@@ -243,6 +243,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   declaration or method; it is now reported, like one after a mixin. A
   decorator goes before what it decorates.
 
+- **A comment right above a declaration's keyword is its doc.** In
+  `@deprecated` / `// Order is the order.` / `type Order {}`, the comment
+  reached neither the Go doc nor the OpenAPI description; it now follows the
+  doc above the decorators there, and formatting keeps it above the keyword.
+  One set off from the keyword by a blank line, or between two decorators,
+  is no doc.
+
 - **A comment in a declaration's header stays in the declaration.** A
   comment block between the keyword of a type, enum, error, service, event
   or method and its `{` moved below the whole declaration; formatting now

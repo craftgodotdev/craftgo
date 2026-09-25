@@ -149,6 +149,15 @@ func (v *PairsContact) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on PairsDoc.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PairsDoc) Validate() error {
+	if v.A == nil && v.B == nil {
+		return fmt.Errorf("PairsDoc: requiresOneOf [a b] - at least one must be set")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on PairsNum.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PairsNum) Validate() error {

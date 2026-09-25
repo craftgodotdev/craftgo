@@ -299,16 +299,40 @@ enum E {
 	}
 }
 
-// In a file without a package, the comment under the decorators it hands to
-// the first declaration belongs to their chain, not to that declaration's doc.
-func TestForwardedChainCommentIsNoDoc(t *testing.T) {
-	f := mustParse(t, "// file doc\n@doc(\"t\")\n// in the chain\ntype T {\n\ty string\n}\n")
-	td := f.Decls[0].(*ast.TypeDecl)
-	if len(td.Doc) != 0 || len(f.LeadingDoc) != 1 || f.LeadingDoc[0] != "file doc" {
-		t.Errorf("Doc = %q, LeadingDoc = %q", td.Doc, f.LeadingDoc)
-	}
-	if got := f.ChainComments[4]; len(got) != 1 || got[0] != "in the chain" {
-		t.Errorf("ChainComments = %v", f.ChainComments)
+// The comment lines right above a declaration's keyword, below its decorators,
+// are its doc, after the doc above the decorators; they stay in the chain,
+// where they print. One set off by a blank line, or between two decorators,
+// is no doc.
+func TestCommentAboveTheKeywordIsTheDoc(t *testing.T) {
+	for _, c := range []struct {
+		name, src string
+		doc       []string
+		chain     []string
+	}{
+		{"own decorators", "package p\n\n@deprecated\n// Order is the order.\ntype Order {\n\tid string\n}\n", []string{"Order is the order."}, []string{"Order is the order."}},
+		{"doc above the decorators too", "package p\n\n// Order doc.\n@deprecated\n// More on it.\ntype Order {\n\tid string\n}\n", []string{"Order doc.", "More on it."}, []string{"More on it."}},
+		{"set off by a blank line", "package p\n\n@deprecated\n// apart\n\ntype Order {\n\tid string\n}\n", nil, []string{"apart"}},
+		{"between decorators", "package p\n\n@deprecated\n// between\n@doc(\"d\")\ntype Order {\n\tid string\n}\n", nil, nil},
+		{"under forwarded decorators", "// file doc\n@doc(\"t\")\n// Order is the order.\ntype Order {\n\tid string\n}\n", []string{"Order is the order."}, []string{"Order is the order."}},
+		{"scalar", "package p\n\n@minLength(1)\n// Code is a code.\nscalar Code string\n", []string{"Code is a code."}, []string{"Code is a code."}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := mustParse(t, c.src)
+			d := f.Decls[0]
+			var doc []string
+			switch v := d.(type) {
+			case *ast.TypeDecl:
+				doc = v.Doc
+			case *ast.ScalarDecl:
+				doc = v.Doc
+			}
+			if !reflect.DeepEqual(doc, c.doc) {
+				t.Errorf("Doc = %q, want %q", doc, c.doc)
+			}
+			if got := f.ChainComments[d.DeclPos().Line]; !reflect.DeepEqual(got, c.chain) {
+				t.Errorf("chain above the keyword = %q, want %q", got, c.chain)
+			}
+		})
 	}
 }
 

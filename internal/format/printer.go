@@ -85,6 +85,11 @@ func movedComment(in, out *ast.File) []lexer.Diagnostic {
 		}
 		moved[c.text] = true
 	}
+	for c, n := range left {
+		if n > 0 {
+			moved[c.text] = true
+		}
+	}
 	for _, c := range in.Comments {
 		if moved[c.Text] {
 			return refusal(c.Pos, "formatting would move the comment %q", c.Text)
@@ -101,10 +106,12 @@ func refusal(pos lexer.Position, format string, args ...any) []lexer.Diagnostic 
 // newPrinter builds a Printer over the trailing, in-chain and free comments of
 // f, whose source holds a token or a comment on the code lines.
 func newPrinter(w io.Writer, f *ast.File, code map[int]bool) *Printer {
-	p := &Printer{w: w, chain: f.ChainComments, codeAfter: fileLayout(f).codeAfterFreeComments(), code: code}
+	p := &Printer{w: w, chain: f.ChainComments, codeAfter: fileLayout(f).codeAfterFreeComments(), code: code, commentLine: map[int]bool{}}
 	for _, c := range f.Comments {
 		if c.Kind == lexer.CommentTrailing {
 			p.trailing = append(p.trailing, c)
+		} else {
+			p.commentLine[c.Pos.Line] = true
 		}
 	}
 	return p
@@ -134,6 +141,8 @@ type Printer struct {
 	// code holds the source lines with a token or a comment; the others are
 	// blank.
 	code map[int]bool
+	// commentLine holds the source lines that hold a comment and no code.
+	commentLine map[int]bool
 	// freeEnd is the last source line of the free comment block printed last,
 	// or 0 once code follows it.
 	freeEnd int
