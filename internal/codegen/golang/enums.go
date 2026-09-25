@@ -85,6 +85,7 @@ type enumMember struct {
 	DSLName   string
 	ConstName string // enum name + member name, deduped across the enum (`EActive_2`)
 	Literal   string // Go const right-hand side
+	Wire      string // the value on the wire, an int in decimal
 }
 
 // enumMembers returns ed's members in source order.
@@ -101,6 +102,7 @@ func enumMembers(ed *ast.EnumDecl) []enumMember {
 			DSLName:   v.Name,
 			ConstName: consts[i],
 			Literal:   enumLiteral(v),
+			Wire:      semantic.EnumMemberWireString(v),
 		}
 	}
 	return out

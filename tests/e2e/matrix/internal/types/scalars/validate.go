@@ -689,7 +689,7 @@ func (v Priority) Validate() error {
 	switch v {
 	case PriorityLow, PriorityMedium, PriorityHigh:
 	default:
-		return fmt.Errorf("invalid Priority value")
+		return fmt.Errorf("must be one of [low medium high]")
 	}
 	return nil
 }

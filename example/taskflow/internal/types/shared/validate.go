@@ -152,7 +152,7 @@ func (v FieldProblem) Validate() error {
 	switch v {
 	case FieldProblemMissing, FieldProblemTooLong, FieldProblemTooShort, FieldProblemFormat:
 	default:
-		return fmt.Errorf("invalid FieldProblem value")
+		return fmt.Errorf("must be one of [Missing TooLong TooShort Format]")
 	}
 	return nil
 }

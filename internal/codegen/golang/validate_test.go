@@ -685,6 +685,38 @@ type T { a bool?  b bool? }`)
 	}
 }
 
+// A cross-field message has no subject and names each member as the member's
+// own checks do, by its @json key, a mixin-promoted member included.
+func TestValidateCrossFieldMessagesNameMembersByWireName(t *testing.T) {
+	src := runValidateGen(t, `package design
+type Keyed { primary string? @json("primary_email") }
+@requiresOneOf(primary, backup)
+@mutuallyExclusive(primary, backup)
+type Renamed {
+    Keyed
+    backup string? @json("backup_email")
+}`)
+	mustContainAll(t, src,
+		`fmt.Errorf("requiresOneOf [primary_email backup_email] - at least one must be set")`,
+		`fmt.Errorf("mutuallyExclusive [primary_email backup_email] - at most one may be set")`)
+	if strings.Contains(src, `"Renamed: `) {
+		t.Errorf("a cross-field message names the DSL type:\n%s", src)
+	}
+}
+
+// A member a GET request auto-binds is named by its query parameter.
+func TestValidateCrossFieldMessageNamesAutoBoundParameter(t *testing.T) {
+	src := runValidateGen(t, `package design
+@requiresOneOf(byName, byId)
+type Find {
+    byName string? @json("by_name")
+    byId   string? @json("by_id")
+}
+type R { ok bool }
+service S { get Find /find { request Find  response R } }`)
+	mustContainAll(t, src, `fmt.Errorf("requiresOneOf [byName byId] - at least one must be set")`)
+}
+
 // ---------- enum value validation ----------
 
 // An enum's value-set switch lives on its own Validate, which its fields call.
@@ -701,11 +733,30 @@ type User { status Status }`)
 	if !strings.Contains(src, "case StatusActive, StatusInactive, StatusPending:") {
 		t.Errorf("expected case list with enum constants:\n%s", src)
 	}
-	if !strings.Contains(src, "invalid Status value") {
+	if !strings.Contains(src, `fmt.Errorf("must be one of [Active Inactive Pending]")`) {
 		t.Errorf("expected enum error message:\n%s", src)
 	}
 	if !strings.Contains(src, "if err := v.Status.Validate(); err != nil {") {
 		t.Errorf("expected enum field to dispatch through Validate():\n%s", src)
+	}
+}
+
+// An enum's message lists the values the wire carries: a string member's
+// value, an int member's number, a bare member's name.
+func TestValidateEnumMessageListsWireValues(t *testing.T) {
+	src := runValidateGen(t, `package design
+enum Phase { Todo = "todo"  InProgress = "in_progress" }
+enum Tier { Bronze = 1  Silver = 2 }
+enum Mode { Fast  Safe }
+type T { p Phase  t Tier  m Mode }`)
+	mustContainAll(t, src,
+		`fmt.Errorf("must be one of [todo in_progress]")`,
+		`fmt.Errorf("must be one of [1 2]")`,
+		`fmt.Errorf("must be one of [Fast Safe]")`)
+	for _, dslName := range []string{"Phase", "Tier", "Mode"} {
+		if strings.Contains(src, "invalid "+dslName) {
+			t.Errorf("an enum message names the DSL type %s:\n%s", dslName, src)
+		}
 	}
 }
 
@@ -779,7 +830,7 @@ type Alert { level Sev @doc("severity") @deprecated }`)
 	if !strings.Contains(src, `return fmt.Errorf("level: %w", err)`) {
 		t.Errorf("expected enum field error wrapped with the field name:\n%s", src)
 	}
-	if !strings.Contains(src, `"invalid Sev value"`) || strings.Contains(src, `"Sev: invalid Sev value"`) {
+	if !strings.Contains(src, `fmt.Errorf("must be one of [Low High]")`) {
 		t.Errorf("enum value-set message should be subject-less:\n%s", src)
 	}
 	// Alert returns from its presence check and its wrap, Sev from its value-set check.

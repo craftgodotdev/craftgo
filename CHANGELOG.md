@@ -111,6 +111,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   length is 2`. An exact or ranged `@length` also bounds a `@minLength` or
   `@maxLength` beside it: `@length(5) @maxLength(3)` is `decorator/range`.
 
+- **Validation messages name what the wire carries, not the design.** A
+  `@requiresOneOf` or `@mutuallyExclusive` failure lists its members by the
+  names their own messages use, the `@json` key or the parameter, and no
+  longer starts with the type's name: `requiresOneOf [primary_email
+  backup_email] - at least one must be set`, where it read `PairsRenamed:
+  requiresOneOf [primary backup] - …`. An enum value outside its set reads
+  `status: must be one of [open in_progress done]`, where it read `status:
+  invalid TodoStatus value`.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

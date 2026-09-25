@@ -280,7 +280,7 @@ func (v OrderStatus) Validate() error {
 	switch v {
 	case OrderStatusPending, OrderStatusPaid, OrderStatusShipped, OrderStatusDelivered, OrderStatusCancelled:
 	default:
-		return fmt.Errorf("invalid OrderStatus value")
+		return fmt.Errorf("must be one of [pending paid shipped delivered cancelled]")
 	}
 	return nil
 }
@@ -291,7 +291,7 @@ func (v PaymentMethod) Validate() error {
 	switch v {
 	case PaymentMethodCard, PaymentMethodBank, PaymentMethodWallet, PaymentMethodInvoice:
 	default:
-		return fmt.Errorf("invalid PaymentMethod value")
+		return fmt.Errorf("must be one of [card bank wallet invoice]")
 	}
 	return nil
 }
@@ -302,7 +302,7 @@ func (v SuspensionReason) Validate() error {
 	switch v {
 	case SuspensionReasonPolicyViolation, SuspensionReasonPaymentFailure, SuspensionReasonOperatorAction:
 	default:
-		return fmt.Errorf("invalid SuspensionReason value")
+		return fmt.Errorf("must be one of [PolicyViolation PaymentFailure OperatorAction]")
 	}
 	return nil
 }

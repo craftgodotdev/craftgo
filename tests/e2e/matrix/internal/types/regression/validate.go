@@ -134,7 +134,7 @@ func (v *Rg3Contact) Validate() error {
 		return err
 	}
 	if v.Email == nil && v.Phone == nil {
-		return fmt.Errorf("Rg3Contact: requiresOneOf [email phone] - at least one must be set")
+		return fmt.Errorf("requiresOneOf [email phone] - at least one must be set")
 	}
 	return nil
 }
@@ -226,7 +226,7 @@ func (v *Rg4Collide) Validate() error {
 		return fmt.Errorf("userId: length less than 2")
 	}
 	if v.UserID == nil && v.UserID_2 == nil {
-		return fmt.Errorf("Rg4Collide: requiresOneOf [userId user_id] - at least one must be set")
+		return fmt.Errorf("requiresOneOf [userId user_id] - at least one must be set")
 	}
 	return nil
 }
@@ -516,7 +516,7 @@ func (v *RgAudit) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *RgContact) Validate() error {
 	if v.Email == nil && v.Phone == nil {
-		return fmt.Errorf("RgContact: requiresOneOf [email phone] - at least one must be set")
+		return fmt.Errorf("requiresOneOf [email phone] - at least one must be set")
 	}
 	{
 		n := 0
@@ -527,7 +527,7 @@ func (v *RgContact) Validate() error {
 			n++
 		}
 		if n > 1 {
-			return fmt.Errorf("RgContact: mutuallyExclusive [email sms] - at most one may be set")
+			return fmt.Errorf("mutuallyExclusive [email sms] - at most one may be set")
 		}
 	}
 	return nil
@@ -790,7 +790,7 @@ func (v Rg3Color) Validate() error {
 	switch v {
 	case Rg3ColorRed, Rg3ColorGreen:
 	default:
-		return fmt.Errorf("invalid Rg3Color value")
+		return fmt.Errorf("must be one of [RED GREEN]")
 	}
 	return nil
 }
@@ -801,7 +801,7 @@ func (v Rg3Level) Validate() error {
 	switch v {
 	case Rg3LevelLow, Rg3LevelHigh:
 	default:
-		return fmt.Errorf("invalid Rg3Level value")
+		return fmt.Errorf("must be one of [1 9]")
 	}
 	return nil
 }
@@ -812,7 +812,7 @@ func (v Rg3Status) Validate() error {
 	switch v {
 	case Rg3StatusInactive, Rg3StatusActive, Rg3StatusBanned:
 	default:
-		return fmt.Errorf("invalid Rg3Status value")
+		return fmt.Errorf("must be one of [0 1 2]")
 	}
 	return nil
 }
@@ -823,7 +823,7 @@ func (v Rg5Method) Validate() error {
 	switch v {
 	case Rg5MethodCard, Rg5MethodBank:
 	default:
-		return fmt.Errorf("invalid Rg5Method value")
+		return fmt.Errorf("must be one of [card bank]")
 	}
 	return nil
 }
@@ -834,7 +834,7 @@ func (v RgColor) Validate() error {
 	switch v {
 	case RgColorRed, RgColorGreen, RgColorBlue:
 	default:
-		return fmt.Errorf("invalid RgColor value")
+		return fmt.Errorf("must be one of [red green blue]")
 	}
 	return nil
 }
@@ -845,7 +845,7 @@ func (v RgPriority) Validate() error {
 	switch v {
 	case RgPriorityLow, RgPriorityMedium, RgPriorityHigh:
 	default:
-		return fmt.Errorf("invalid RgPriority value")
+		return fmt.Errorf("must be one of [1 5 10]")
 	}
 	return nil
 }

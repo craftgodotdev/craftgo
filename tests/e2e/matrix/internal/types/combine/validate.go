@@ -114,11 +114,11 @@ func (v *PairsChoice) Validate() error {
 			n++
 		}
 		if n > 1 {
-			return fmt.Errorf("PairsChoice: mutuallyExclusive [a b] - at most one may be set")
+			return fmt.Errorf("mutuallyExclusive [a b] - at most one may be set")
 		}
 	}
 	if v.A == nil && v.B == nil && v.C == nil {
-		return fmt.Errorf("PairsChoice: requiresOneOf [a b c] - at least one must be set")
+		return fmt.Errorf("requiresOneOf [a b c] - at least one must be set")
 	}
 	return nil
 }
@@ -135,7 +135,7 @@ func (v *PairsContact) Validate() error {
 		return fmt.Errorf("phone: does not match pattern")
 	}
 	if v.Email == nil && v.Phone == nil {
-		return fmt.Errorf("PairsContact: requiresOneOf [email phone] - at least one must be set")
+		return fmt.Errorf("requiresOneOf [email phone] - at least one must be set")
 	}
 	return nil
 }
@@ -144,7 +144,7 @@ func (v *PairsContact) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PairsDoc) Validate() error {
 	if v.A == nil && v.B == nil {
-		return fmt.Errorf("PairsDoc: requiresOneOf [a b] - at least one must be set")
+		return fmt.Errorf("requiresOneOf [a b] - at least one must be set")
 	}
 	return nil
 }
@@ -198,7 +198,7 @@ func (v *PairsRenamed) Validate() error {
 		return err
 	}
 	if v.Primary == nil && v.Backup == nil {
-		return fmt.Errorf("PairsRenamed: requiresOneOf [primary backup] - at least one must be set")
+		return fmt.Errorf("requiresOneOf [primary_email backup_email] - at least one must be set")
 	}
 	return nil
 }
@@ -239,7 +239,7 @@ func (v *PairsTagged) Validate() error {
 			n++
 		}
 		if n > 1 {
-			return fmt.Errorf("PairsTagged: mutuallyExclusive [c d] - at most one may be set")
+			return fmt.Errorf("mutuallyExclusive [c d] - at most one may be set")
 		}
 	}
 	return nil
@@ -321,7 +321,7 @@ func (v Color) Validate() error {
 	switch v {
 	case ColorRed, ColorGreen, ColorBlue:
 	default:
-		return fmt.Errorf("invalid Color value")
+		return fmt.Errorf("must be one of [Red Green Blue]")
 	}
 	return nil
 }
@@ -332,7 +332,7 @@ func (v DiscKind) Validate() error {
 	switch v {
 	case DiscKindType, DiscKindCombo, DiscKindStandalone:
 	default:
-		return fmt.Errorf("invalid DiscKind value")
+		return fmt.Errorf("must be one of [type combo standalone]")
 	}
 	return nil
 }

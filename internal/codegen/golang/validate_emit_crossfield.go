@@ -9,7 +9,8 @@ import (
 )
 
 // crossFieldChecks renders td's @requiresOneOf (at least one member set) and
-// @mutuallyExclusive (at most one member set) checks.
+// @mutuallyExclusive (at most one member set) checks. A group is td's own
+// rule, so its message has no subject.
 func crossFieldChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 	if len(td.Decorators) == 0 {
 		return nil
@@ -20,47 +21,66 @@ func crossFieldChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 		case "requiresOneOf":
 			names := semantic.CrossFieldNames(d)
 			if len(names) > 0 {
-				out = append(out, requiresOneOfCheck(td, names, ctx))
+				out = append(out, requiresOneOfCheck(groupMembers(td, names, ctx), ctx))
 			}
 		case "mutuallyExclusive":
 			names := semantic.CrossFieldNames(d)
 			if len(names) >= 2 {
-				out = append(out, mutuallyExclusiveCheck(td, names, ctx))
+				out = append(out, mutuallyExclusiveCheck(groupMembers(td, names, ctx), ctx))
 			}
 		}
 	}
 	return out
 }
 
-// requiresOneOfCheck fails when every named member is nil.
-func requiresOneOfCheck(td *ast.TypeDecl, names []string, ctx emitCtx) string {
-	cond := strings.Join(memberNilExprs(td, names, "==", ctx), " && ")
-	return failIf(cond, td.Name, fmt.Sprintf("requiresOneOf %v - at least one must be set", names), ctx)
+// requiresOneOfCheck fails when every member is nil.
+func requiresOneOfCheck(members []semantic.FlatField, ctx emitCtx) string {
+	cond := strings.Join(memberNilExprs(members, "=="), " && ")
+	return failIf(cond, "", fmt.Sprintf("requiresOneOf %v - at least one must be set", memberSubjects(members, ctx)), ctx)
 }
 
-// mutuallyExclusiveCheck counts the named members set and fails above one,
-// inside its own block so each check's `n` stays local.
-func mutuallyExclusiveCheck(td *ast.TypeDecl, names []string, ctx emitCtx) string {
-	set := memberNilExprs(td, names, "!=", ctx)
+// mutuallyExclusiveCheck counts the members set and fails above one, inside
+// its own block so each check's `n` stays local.
+func mutuallyExclusiveCheck(members []semantic.FlatField, ctx emitCtx) string {
+	set := memberNilExprs(members, "!=")
 	counters := make([]string, len(set))
 	for i, p := range set {
 		counters[i] = fmt.Sprintf("if %s {\nn++\n}", p)
 	}
-	fail := failIf("n > 1", td.Name, fmt.Sprintf("mutuallyExclusive %v - at most one may be set", names), ctx)
+	fail := failIf("n > 1", "", fmt.Sprintf("mutuallyExclusive %v - at most one may be set", memberSubjects(members, ctx)), ctx)
 	return fmt.Sprintf("{\nn := 0\n%s\n%s\n}", strings.Join(counters, "\n"), fail)
 }
 
-// memberNilExprs renders `v.<Member> <op> nil` for each named member of td,
-// mixin-promoted members included; semantic makes every member of a
-// cross-field group a Go value that is nil exactly when absent.
-func memberNilExprs(td *ast.TypeDecl, names []string, op string, ctx emitCtx) []string {
-	goNames := map[string]string{}
+// groupMembers returns the members of td a cross-field group names, in the
+// group's order, mixin-promoted members included.
+func groupMembers(td *ast.TypeDecl, names []string, ctx emitCtx) []semantic.FlatField {
+	byName := map[string]semantic.FlatField{}
 	for _, ff := range semantic.FlattenFields(td, "", ctx.resolver.Resolver, resolvedGoFieldNames) {
-		goNames[ff.Field.Name] = ff.Name
+		byName[ff.Field.Name] = ff
 	}
-	out := make([]string, len(names))
+	out := make([]semantic.FlatField, len(names))
 	for i, name := range names {
-		out[i] = "v." + goNames[name] + " " + op + " nil"
+		out[i] = byName[name]
+	}
+	return out
+}
+
+// memberNilExprs renders `v.<Member> <op> nil` for each member; semantic
+// makes every member of a cross-field group a Go value that is nil exactly
+// when absent.
+func memberNilExprs(members []semantic.FlatField, op string) []string {
+	out := make([]string, len(members))
+	for i, ff := range members {
+		out[i] = "v." + ff.Name + " " + op + " nil"
+	}
+	return out
+}
+
+// memberSubjects returns the name each member's own validation messages carry.
+func memberSubjects(members []semantic.FlatField, ctx emitCtx) []string {
+	out := make([]string, len(members))
+	for i, ff := range members {
+		out[i] = ctx.subject(ff.Field)
 	}
 	return out
 }

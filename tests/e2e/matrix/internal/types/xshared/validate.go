@@ -212,7 +212,7 @@ func (v XColor) Validate() error {
 	switch v {
 	case XColorRed, XColorGreen, XColorBlue:
 	default:
-		return fmt.Errorf("invalid XColor value")
+		return fmt.Errorf("must be one of [Red Green Blue]")
 	}
 	return nil
 }
@@ -223,7 +223,7 @@ func (v XTier) Validate() error {
 	switch v {
 	case XTierBronze, XTierGold:
 	default:
-		return fmt.Errorf("invalid XTier value")
+		return fmt.Errorf("must be one of [1 2]")
 	}
 	return nil
 }

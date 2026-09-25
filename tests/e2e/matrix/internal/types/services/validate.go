@@ -255,7 +255,7 @@ func (v AcctPriority) Validate() error {
 	switch v {
 	case AcctPriorityLow, AcctPriorityMed, AcctPriorityHigh:
 	default:
-		return fmt.Errorf("invalid AcctPriority value")
+		return fmt.Errorf("must be one of [1 2 3]")
 	}
 	return nil
 }
@@ -266,7 +266,7 @@ func (v AcctRole) Validate() error {
 	switch v {
 	case AcctRoleAdmin, AcctRoleUser, AcctRoleGuest:
 	default:
-		return fmt.Errorf("invalid AcctRole value")
+		return fmt.Errorf("must be one of [admin user guest]")
 	}
 	return nil
 }

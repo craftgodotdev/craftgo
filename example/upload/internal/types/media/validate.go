@@ -230,7 +230,7 @@ func (v Visibility) Validate() error {
 	switch v {
 	case VisibilityPrivate, VisibilityUnlisted, VisibilityPublic:
 	default:
-		return fmt.Errorf("invalid Visibility value")
+		return fmt.Errorf("must be one of [private unlisted public]")
 	}
 	return nil
 }

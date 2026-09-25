@@ -39,7 +39,7 @@ func (v Channel) Validate() error {
 	switch v {
 	case ChannelWeb, ChannelMobile:
 	default:
-		return fmt.Errorf("invalid Channel value")
+		return fmt.Errorf("must be one of [Web Mobile]")
 	}
 	return nil
 }

@@ -81,7 +81,7 @@ func (v Severity) Validate() error {
 	switch v {
 	case SeverityInfo, SeverityWarning, SeverityError, SeverityCritical:
 	default:
-		return fmt.Errorf("invalid Severity value")
+		return fmt.Errorf("must be one of [Info Warning Error Critical]")
 	}
 	return nil
 }

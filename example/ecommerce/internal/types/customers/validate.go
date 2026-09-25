@@ -64,7 +64,7 @@ func (v *Contact) Validate() error {
 		return fmt.Errorf("phone: does not match pattern")
 	}
 	if v.Email == nil && v.Phone == nil {
-		return fmt.Errorf("Contact: requiresOneOf [email phone] - at least one must be set")
+		return fmt.Errorf("requiresOneOf [email phone] - at least one must be set")
 	}
 	{
 		n := 0
@@ -75,7 +75,7 @@ func (v *Contact) Validate() error {
 			n++
 		}
 		if n > 1 {
-			return fmt.Errorf("Contact: mutuallyExclusive [work personal] - at most one may be set")
+			return fmt.Errorf("mutuallyExclusive [work personal] - at most one may be set")
 		}
 	}
 	return nil

@@ -361,7 +361,7 @@ func (v Priority) Validate() error {
 	switch v {
 	case PriorityLow, PriorityMedium, PriorityHigh, PriorityUrgent:
 	default:
-		return fmt.Errorf("invalid Priority value")
+		return fmt.Errorf("must be one of [1 2 3 4]")
 	}
 	return nil
 }
@@ -372,7 +372,7 @@ func (v TaskStatus) Validate() error {
 	switch v {
 	case TaskStatusTodo, TaskStatusInProgress, TaskStatusDone, TaskStatusBlocked:
 	default:
-		return fmt.Errorf("invalid TaskStatus value")
+		return fmt.Errorf("must be one of [todo in_progress done blocked]")
 	}
 	return nil
 }

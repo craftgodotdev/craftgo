@@ -111,7 +111,7 @@ func (v Warehouse) Validate() error {
 	switch v {
 	case WarehouseNorth, WarehouseSouth:
 	default:
-		return fmt.Errorf("invalid Warehouse value")
+		return fmt.Errorf("must be one of [1 2]")
 	}
 	return nil
 }

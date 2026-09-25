@@ -371,7 +371,7 @@ func (v Color) Validate() error {
 	switch v {
 	case ColorRed, ColorGreen, ColorBlue:
 	default:
-		return fmt.Errorf("invalid Color value")
+		return fmt.Errorf("must be one of [Red Green Blue]")
 	}
 	return nil
 }

@@ -202,7 +202,7 @@ func (v *User) Validate() error {
 		}
 	}
 	if v.Name == nil && v.Alias == nil {
-		return fmt.Errorf("User: requiresOneOf [name alias] - at least one must be set")
+		return fmt.Errorf("requiresOneOf [name alias] - at least one must be set")
 	}
 	return nil
 }

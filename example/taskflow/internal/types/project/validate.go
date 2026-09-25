@@ -187,7 +187,7 @@ func (v ProjectStatus) Validate() error {
 	switch v {
 	case ProjectStatusActive, ProjectStatusArchived:
 	default:
-		return fmt.Errorf("invalid ProjectStatus value")
+		return fmt.Errorf("must be one of [active archived]")
 	}
 	return nil
 }

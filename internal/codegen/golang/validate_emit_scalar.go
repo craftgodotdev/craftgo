@@ -47,20 +47,22 @@ func scalarValidateChecks(sd *ast.ScalarDecl, ctx emitCtx) []string {
 }
 
 // enumValidateChecks renders the body of ed's Validate(): a switch over its
-// members' consts, or nothing for an enum without members. The error has no
-// subject: the using field wraps it with its name.
+// members' consts, or nothing for an enum without members. The error lists
+// the members' wire values and has no subject: the using field wraps it with
+// its name.
 func enumValidateChecks(ed *ast.EnumDecl, ctx emitCtx) []string {
 	members := enumMembers(ed)
 	if len(members) == 0 {
 		return nil
 	}
 	consts := make([]string, len(members))
+	wires := make([]string, len(members))
 	for i, m := range members {
-		consts[i] = m.ConstName
+		consts[i], wires[i] = m.ConstName, m.Wire
 	}
 	return []string{fmt.Sprintf(`switch v {
 case %s:
 default:
 return %s
-}`, strings.Join(consts, ", "), errorf("", "invalid "+ed.Name+" value", ctx))}
+}`, strings.Join(consts, ", "), errorf("", fmt.Sprintf("must be one of %v", wires), ctx))}
 }

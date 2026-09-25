@@ -245,7 +245,7 @@ func (v MaintenanceReason) Validate() error {
 	switch v {
 	case MaintenanceReasonScheduled, MaintenanceReasonIncident, MaintenanceReasonCapacity:
 	default:
-		return fmt.Errorf("invalid MaintenanceReason value")
+		return fmt.Errorf("must be one of [Scheduled Incident Capacity]")
 	}
 	return nil
 }

@@ -201,7 +201,7 @@ func (v TodoPriority) Validate() error {
 	switch v {
 	case TodoPriorityLow, TodoPriorityMedium, TodoPriorityHigh:
 	default:
-		return fmt.Errorf("invalid TodoPriority value")
+		return fmt.Errorf("must be one of [low medium high]")
 	}
 	return nil
 }
@@ -212,7 +212,7 @@ func (v TodoStatus) Validate() error {
 	switch v {
 	case TodoStatusOpen, TodoStatusInProgress, TodoStatusDone:
 	default:
-		return fmt.Errorf("invalid TodoStatus value")
+		return fmt.Errorf("must be one of [open in_progress done]")
 	}
 	return nil
 }
