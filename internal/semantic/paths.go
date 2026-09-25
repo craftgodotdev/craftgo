@@ -252,15 +252,16 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, decs []*
 	if reqFields == nil {
 		return // an unresolved request type is reported by the reference checks
 	}
-	// A `@path("name...")` binds no variable; the orphan report names `{name...}`.
-	misnamed := map[string]bool{}
+	// Each unbound variable is reported once: by the report of a
+	// `@path("name...")` that misses it, else by its first segment.
+	reported := map[string]bool{}
 	for _, name := range reqFields.explicit {
 		if slices.Contains(pathParams, name) {
 			continue
 		}
 		hint := ""
 		if trimmed := strings.TrimSuffix(name, "..."); trimmed != name && slices.Contains(pathParams, trimmed) {
-			misnamed[trimmed] = true
+			reported[trimmed] = true
 			hint = fmt.Sprintf(" - the variable {%s} is named %q", name, trimmed)
 		}
 		a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamOrphan,
@@ -268,7 +269,8 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, decs []*
 			svcName, m.Name, name, rt, name, hint)
 	}
 	for _, seg := range route.Segments(rt) {
-		if p, ok := route.WildcardName(seg); ok && !reqFields.has(p) && !misnamed[p] {
+		if p, ok := route.WildcardName(seg); ok && !reqFields.has(p) && !reported[p] {
+			reported[p] = true
 			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamMissing,
 				"method %s.%s: path segment %s has no matching field in request type",
 				svcName, m.Name, seg)

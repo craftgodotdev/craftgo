@@ -107,7 +107,8 @@ breaking change to the DSL or the generated layout bumps the major version.
   problem showed at the top of whichever design file the editor had open. It
   now names the manifest, `craftgo.design.yaml: openapi.basePath ...`, the
   editor shows it on the manifest, and `craftgo fmt` formats the design
-  files. A segment or a variable the basePath repeats is reported once.
+  files. A segment or a variable the basePath repeats is reported once, and
+  so is the missing field of a method whose request binds no such variable.
 
 - **A decorator is no decorator argument.** The grammar took `@a(@b)`,
   though no decorator reads one; it is now one parse error at the inner

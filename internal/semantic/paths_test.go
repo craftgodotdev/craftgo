@@ -573,6 +573,20 @@ service S { get Get / { request R  response Resp } }`, CodePathParamMissing)
 	expectMessage(t, d, "path segment {rest...} has no matching field")
 }
 
+// A route variable the basePath repeats is reported unbound once.
+func TestRepeatedPathVariableReportedMissingOnce(t *testing.T) {
+	_, diags := analyzeWith(parseFiles(t, "package app\ntype R { q string }\nservice S { get A /a { request R } }"), Options{BasePath: "/t/{id}/{id}"})
+	n := 0
+	for _, d := range diags {
+		if d.Code == CodePathParamMissing {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("want one %s, got %v", CodePathParamMissing, diags)
+	}
+}
+
 // A @sensitive field never rides the wire, so a same-named segment stays unbound.
 func TestSensitiveFieldDoesNotCoverPathSegment(t *testing.T) {
 	d := expectError(t, `package p
