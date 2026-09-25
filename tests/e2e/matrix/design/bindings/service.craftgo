@@ -173,6 +173,11 @@ service BindingsService {
 		response OkResp
 	}
 
+	get GetQueryFloat /query-float {
+		request  QueryFloatReq
+		response OkResp
+	}
+
 	@errors(ForbiddenDetails)
 	post EchoHeaderMetadata /header-metadata {
 		request  CountsPayload

@@ -37,6 +37,22 @@ func TestParseUnsignedAndFloat(t *testing.T) {
 	}
 }
 
+// ParseFloat refuses NaN and infinities, which strconv spells in several ways, at either width.
+func TestParseFloatRejectsNonFinite(t *testing.T) {
+	for _, s := range []string{"NaN", "nan", "Inf", "+Inf", "-Infinity", "inf"} {
+		if v, err := ParseFloat[float64](s); err == nil {
+			t.Errorf("ParseFloat[float64](%q) = %v, want an error", s, v)
+		}
+		if v, err := ParseFloat[float32](s); err == nil {
+			t.Errorf("ParseFloat[float32](%q) = %v, want an error", s, v)
+		}
+	}
+	var numErr *strconv.NumError
+	if _, err := ParseFloat[float64]("NaN"); !errors.As(err, &numErr) || !strings.Contains(err.Error(), "not a finite number") {
+		t.Errorf("ParseFloat(NaN) err = %v, want a *strconv.NumError saying not a finite number", err)
+	}
+}
+
 // BindValue with ParseUnsigned answers 400 naming the field for a value out of range.
 func TestBindValueUnsignedOutOfRange(t *testing.T) {
 	w := httptest.NewRecorder()

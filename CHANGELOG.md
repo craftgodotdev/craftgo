@@ -1183,6 +1183,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   existing `main.go`, replace `srv.Use(tel.HTTPMiddleware())` with that
   option, since keeping both records every span and metric twice.
 
+- **A float parameter refuses NaN and the infinities.** `server.ParseFloat`,
+  which the generated binders call for a float query, header, cookie or form
+  value, took `NaN`, which passes every bound, and `Inf`, which an unbounded
+  field kept; both now fail to bind and answer 400, e.g. `ratio: invalid
+  float value: strconv.ParseFloat: parsing "NaN": not a finite number`.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

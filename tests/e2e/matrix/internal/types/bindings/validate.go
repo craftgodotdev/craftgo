@@ -325,6 +325,14 @@ func (v *QueryEnumReq) Validate() error {
 }
 
 // Validate returns the first constraint v violates, or nil.
+func (v *QueryFloatReq) Validate() error {
+	if v.Ratio < 0 || v.Ratio > 1 {
+		return fmt.Errorf("ratio: out of range [0, 1]")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *QueryIntReq) Validate() error {
 	if v.Page != nil && *v.Page < 1 {
 		return fmt.Errorf("page: below minimum 1")

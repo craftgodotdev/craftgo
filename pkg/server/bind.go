@@ -1,7 +1,9 @@
 package server
 
 import (
+	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"unsafe"
@@ -35,9 +37,16 @@ func ParseUnsigned[T wireUnsigned](s string) (T, error) {
 	return T(n), err
 }
 
-// ParseFloat parses s as a float sized to T (float32 / float64).
+// errNotFinite is the reason [ParseFloat] refuses NaN and the infinities.
+var errNotFinite = errors.New("not a finite number")
+
+// ParseFloat parses s as a finite float of T's width, failing with strconv's error, or with a
+// *strconv.NumError for NaN and the infinities.
 func ParseFloat[T wireFloat](s string) (T, error) {
 	n, err := strconv.ParseFloat(s, bitSize[T]())
+	if err == nil && (math.IsNaN(n) || math.IsInf(n, 0)) {
+		return 0, &strconv.NumError{Func: "ParseFloat", Num: s, Err: errNotFinite}
+	}
 	return T(n), err
 }
 

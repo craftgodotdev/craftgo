@@ -280,6 +280,13 @@ type QueryEnumReq struct {
 	C *Color `json:"-" query:"c"`
 }
 
+// QueryFloatReq binds a bounded float64 and an unbounded optional float32
+// from the query string; NaN and infinities fail to bind.
+type QueryFloatReq struct {
+	Ratio float64  `json:"-" query:"ratio"`
+	Scale *float32 `json:"-" query:"scale"`
+}
+
 // QueryIntReq is the optional-int query path. The binder reads the raw
 // string, parses it on presence, and writes a `*int`; an absent or empty
 // `?page=` leaves the field nil. `@gte(1)` runs on the dereferenced value.

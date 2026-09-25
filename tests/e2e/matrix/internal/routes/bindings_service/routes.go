@@ -32,6 +32,7 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/bindings/session-cookie", transport.GetSessionCookie(svcCtx))
 	srv.Handle("POST /api/bindings/error-shapes", transport.RaiseErrorShapes(svcCtx))
 	srv.Handle("GET /api/bindings/filter-tags", transport.FilterTags(svcCtx))
+	srv.Handle("GET /api/bindings/query-float", transport.GetQueryFloat(svcCtx))
 	srv.Handle("POST /api/bindings/header-metadata", transport.EchoHeaderMetadata(svcCtx))
 	srv.Handle("POST /api/bindings/shared-status", transport.PostSharedStatus(svcCtx))
 }

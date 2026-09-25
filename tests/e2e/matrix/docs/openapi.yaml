@@ -2922,6 +2922,8 @@ components:
       type: object
     GetProfileRespBody:
       $ref: '#/components/schemas/Profile'
+    GetQueryFloatRespBody:
+      $ref: '#/components/schemas/OkResp'
     GetRateRespRespBody:
       properties:
         data:
@@ -5808,6 +5810,11 @@ components:
         QueryEnumReq drives the enum cast path through @query. Enums are
         string-shape on the wire, so optional is fine - the binder reads
         the raw string and casts up to the Color alias.
+      type: object
+    QueryFloatReq:
+      description: |-
+        QueryFloatReq binds a bounded float64 and an unbounded optional float32
+        from the query string; NaN and infinities fail to bind.
       type: object
     QueryIntReq:
       description: |-
@@ -9601,6 +9608,34 @@ paths:
               schema:
                 $ref: '#/components/schemas/PostQueryBesideBodyRespBody'
           description: Created
+      tags:
+      - bindings
+  /bindings/query-float:
+    get:
+      operationId: GetQueryFloat
+      parameters:
+      - in: query
+        name: ratio
+        required: true
+        schema:
+          format: double
+          maximum: 1
+          minimum: 0
+          type: number
+      - in: query
+        name: scale
+        schema:
+          format: float
+          type:
+          - number
+          - "null"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetQueryFloatRespBody'
+          description: OK
       tags:
       - bindings
   /bindings/required-params:

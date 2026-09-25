@@ -174,6 +174,31 @@ func TestAutoBoundQueryErrorNamesTheParameter(t *testing.T) {
 	}
 }
 
+// A float query parameter refuses NaN, which passes every bound, and the infinities, which an
+// unbounded field would take; a finite value binds.
+func TestFloatQueryRejectsNonFinite(t *testing.T) {
+	ts := bootAll(t)
+	for query, want := range map[string]int{
+		"ratio=NaN":            http.StatusBadRequest,
+		"ratio=0.5&scale=Inf":  http.StatusBadRequest,
+		"ratio=0.5&scale=-inf": http.StatusBadRequest,
+		"ratio=0.5&scale=1e3":  http.StatusOK,
+	} {
+		resp, err := ts.Client().Get(ts.URL + "/api/bindings/query-float?" + query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Errorf("?%s: got %d %q, want %d", query, resp.StatusCode, body, want)
+		}
+		if want == http.StatusBadRequest && !strings.Contains(string(body), "not a finite number") {
+			t.Errorf("?%s: body %q does not say the value is not finite", query, body)
+		}
+	}
+}
+
 // A type naming packages called like the standard packages its files import
 // validates through them: XStdNames.rows is fmt.Row[] @uniqueItems.
 func TestStdNamedPackagesValidate(t *testing.T) {
