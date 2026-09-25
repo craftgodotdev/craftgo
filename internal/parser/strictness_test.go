@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 type (
@@ -156,4 +157,75 @@ func TestDecoratorAfterADeclarationOnItsLine(t *testing.T) {
 			t.Errorf("%q: unexpected diagnostics %v", src, msgs)
 		}
 	}
+	for name, src := range map[string]string{
+		"import before import": "package p\n\nimport \"a\" @doc(\"x\") import \"b\"\n\ntype T {\n\tid string\n}\n",
+		"method before brace":  "package p\n\nservice S {\n\tget A /a {} @doc(\"x\") }\n\ntype T {\n\tid string\n}\n",
+	} {
+		if _, msgs := parseWithErrors(t, src); len(msgs) != 1 || !strings.Contains(msgs[0], "goes before what it decorates") {
+			t.Errorf("%s: diagnostics = %v, want one saying the decorator goes before what it decorates", name, msgs)
+		}
+	}
+}
+
+// A decorator after a declaration or a method on its line decorates the
+// declaration or method that starts later on that line.
+func TestDecoratorBeforeTheNextDeclarationOnItsLine(t *testing.T) {
+	for name, src := range map[string]string{
+		"closing brace":  "package p\n\ntype A { a string } @doc(\"b\") type B { b string }\n",
+		"middleware":     "package p\n\nmiddleware A @doc(\"b\") middleware B\n",
+		"bodiless error": "package p\n\nerror NotFound A @doc(\"b\") type B { b string }\n",
+		"package clause": "package p @doc(\"b\") type B { b string }\n",
+		"import":         "package p\n\nimport \"a\" @doc(\"b\") type B { b string }\n",
+		"extend":         "package p\n\nservice A {} @doc(\"b\") extend service B {}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, msgs := parseWithErrors(t, src)
+			if len(msgs) != 0 {
+				t.Fatalf("unexpected diagnostics %v", msgs)
+			}
+			n := len(f.Decls)
+			if n == 2 && len(declDecorators(f.Decls[0])) != 0 {
+				t.Errorf("the declaration before took a decorator")
+			}
+			if last := declDecorators(f.Decls[n-1]); len(last) != 1 || last[0].Name != "doc" {
+				t.Errorf("the declaration after has %d decorator(s), want @doc", len(last))
+			}
+		})
+	}
+	f, msgs := parseWithErrors(t, "package p\n\ntype R { ok bool }\n\nservice S {\n\tget A /a { response R } @deprecated @doc(\"b\") get B /b { response R }\n}\n")
+	if len(msgs) != 0 {
+		t.Fatalf("method: unexpected diagnostics %v", msgs)
+	}
+	ms := f.Decls[1].(*ast.ServiceDecl).Methods()
+	if len(ms) != 2 || len(ms[0].Decorators) != 0 || len(ms[1].Decorators) != 2 {
+		t.Errorf("method: want A without decorators and B with @deprecated and @doc, got %d methods", len(ms))
+	}
+}
+
+// startsDecl holds for exactly the reserved words a top-level declaration is
+// parsed from.
+func TestStartsDeclMatchesTheDeclarations(t *testing.T) {
+	for k := lexer.KwPackage; k <= lexer.VerbOptions; k++ {
+		_, msgs := parseWithErrors(t, "package p\n\nmiddleware M\n"+k.String()+" X\n")
+		parsed := !strings.Contains(strings.Join(msgs, "\n"), "expected declaration, got "+k.String())
+		if parsed != startsDecl(k) {
+			t.Errorf("%s: startsDecl = %v, but a declaration parsed = %v (%v)", k, startsDecl(k), parsed, msgs)
+		}
+	}
+}
+
+// declDecorators returns the decorators of a type, error, middleware or
+// service declaration.
+func declDecorators(d ast.Decl) []*ast.Decorator {
+	switch d := d.(type) {
+	case *ast.TypeDecl:
+		return d.Decorators
+	case *ast.ErrorDecl:
+		return d.Decorators
+	case *ast.MiddlewareDecl:
+		return d.Decorators
+	case *ast.ServiceDecl:
+		return d.Decorators
+	}
+	return nil
 }

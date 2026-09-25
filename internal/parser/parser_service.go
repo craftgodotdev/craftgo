@@ -88,7 +88,7 @@ func (p *Parser) parseServiceMember() ast.ServiceMember {
 	}
 	p.claimChain(decs, t.Pos.Line)
 	m := p.parseMethod(decs, doc)
-	p.rejectDecoratorsAfter("method")
+	p.rejectDecoratorsAfter("method", lexer.Kind.IsVerb)
 	return m
 }
 

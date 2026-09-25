@@ -281,7 +281,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   `middleware M @doc("m")`, `error NotFound E @doc("e")`, `} @doc("t")` and
   a method's `} @deprecated`, the decorator went silently to the next
   declaration or method; it is now reported, like one after a mixin. A
-  decorator goes before what it decorates.
+  decorator goes before what it decorates, so when the next declaration or
+  method starts on the same line, as in `} @doc("b") type B { … }`, the
+  decorator is its own.
 
 - **A comment right above a declaration's keyword is its doc.** In
   `@deprecated` / `// Order is the order.` / `type Order {}`, the comment

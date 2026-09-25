@@ -75,6 +75,16 @@ func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 	return nil
 }
 
+// startsDecl reports whether k is a keyword [Parser.parseTopLevelWith] parses
+// a declaration from.
+func startsDecl(k lexer.Kind) bool {
+	switch k {
+	case lexer.KwType, lexer.KwEnum, lexer.KwError, lexer.KwScalar, lexer.KwMiddleware, lexer.KwEvent, lexer.KwService, lexer.KwExtend:
+		return true
+	}
+	return false
+}
+
 // parseEnumDecl parses `enum Name { ... }`, accepting any mix of value kinds.
 func (p *Parser) parseEnumDecl(decs []*ast.Decorator, doc []string) *ast.EnumDecl {
 	pos := p.advance().Pos

@@ -36,10 +36,17 @@ func (p *Parser) decoratorsOnLine(line int) []*ast.Decorator {
 }
 
 // rejectDecoratorsAfter reports and consumes the decorators on the line where
-// the construct just parsed, what, ends; the next construct would otherwise
-// take them.
-func (p *Parser) rejectDecoratorsAfter(what string) {
-	for _, d := range p.decoratorsOnLine(p.tokens[p.pos-1].Pos.Line) {
+// the construct just parsed, what, ends. When a token for which starts holds
+// follows them on that line, they stay unconsumed for the construct it starts.
+func (p *Parser) rejectDecoratorsAfter(what string, starts func(lexer.Kind) bool) {
+	line := p.tokens[p.pos-1].Pos.Line
+	pos, ndiags := p.pos, len(p.diags)
+	decs := p.decoratorsOnLine(line)
+	if next := p.peek(); len(decs) > 0 && next.Pos.Line == line && starts(next.Kind) {
+		p.pos, p.diags = pos, p.diags[:ndiags]
+		return
+	}
+	for _, d := range decs {
 		p.errorf(d.Pos, "decorator @%s follows a %s on its line; a decorator goes before what it decorates", d.Name, what)
 	}
 }
