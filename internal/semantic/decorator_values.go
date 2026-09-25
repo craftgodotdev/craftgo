@@ -142,10 +142,8 @@ func resolveEnumMember(pkg *Package, enumName, member string) (any, bool) {
 	if !ok {
 		return nil, false
 	}
-	for _, ev := range ed.EnumValues() {
-		if ev.Name == member {
-			return EnumMemberWire(ev), true
-		}
+	if ev := enumMember(ed, member); ev != nil {
+		return EnumMemberWire(ev), true
 	}
 	return nil, false
 }

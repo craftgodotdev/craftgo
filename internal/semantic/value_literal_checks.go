@@ -181,10 +181,8 @@ func (a *analyzer) checkEnumLiteral(decName, fieldName string, ed *ast.EnumDecl,
 		return
 	}
 	want := ident.Name.Parts[0]
-	for _, ev := range ed.EnumValues() {
-		if ev.Name == want {
-			return
-		}
+	if enumMember(ed, want) != nil {
+		return
 	}
 	a.diag(pos, pos, lexer.SeverityError, CodeDecoratorArgValue,
 		"@%s %q is not a value of enum %s; expected one of %s",

@@ -320,7 +320,7 @@ Works on:
 
 Conflicts: cannot combine with any binding, or be applied to map / struct / generic fields. The formatter auto-adds `?` to the field type on save so OpenAPI marks the field as not-required (consistent with `@default` firing when absent).
 
-The default must pass the field's own validators and its scalar's: `@default(0)` beside `@positive`, or `@default(["a"])` beside `@minItems(2)`, is `decorator/conflict`. An array default is held to `@minItems`, `@maxItems` and `@uniqueItems`, and each element to its scalar's validators.
+The default must pass the field's own validators and its scalar's: `@default(0)` beside `@positive`, or `@default(["a"])` beside `@minItems(2)`, is `decorator/conflict`. An array default is held to `@minItems`, `@maxItems` and `@uniqueItems`, and each element to its scalar's validators. An enum member is checked as its wire value: with `enum Prio { Low = 1  High = 2 }`, `@default(Low)` beside `@range(2, 9)` is `decorator/conflict`.
 
 ```craftgo
 type ListReq {

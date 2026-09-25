@@ -493,7 +493,7 @@ A field with no binding decorator falls back to `body` for body verbs (POST/PUT/
 | `@sensitive`      | field, errorField | Server-only. `json:"-"`, omitted from OpenAPI. No validators, bindings, `@nullable`, `@default`. |
 | `@json("key")`    | field, errorField | JSON key when it is not the field name (a foreign contract, or a PascalCase key the parser reads as a mixin). Not with an off-body binding. |
 
-`@default` requires the field be optional (`?`). The formatter auto-adds `?` on save when missing, and the semantic analyzer warns until you do. For enum fields, the value is the bare ident (`@default(Active)`). The default must pass the field's validators and its scalar's (an array default: `@minItems` / `@maxItems` / `@uniqueItems`, and each element its scalar's); one that breaks them is `decorator/conflict`.
+`@default` requires the field be optional (`?`). The formatter auto-adds `?` on save when missing, and the semantic analyzer warns until you do. For enum fields, the value is the bare ident (`@default(Active)`), checked as its wire value. The default must pass the field's validators and its scalar's (an array default: `@minItems` / `@maxItems` / `@uniqueItems`, and each element its scalar's); one that breaks them is `decorator/conflict`.
 
 ### Service / method
 

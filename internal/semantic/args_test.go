@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -530,4 +531,42 @@ func TestDefaultBreakingItsConstraintsRejected(t *testing.T) {
 func TestDefaultOfWrongKindSkipsConstraints(t *testing.T) {
 	expectCodeCount(t, `package app
 type R { n int? @gte(5) @default(4.5)  s string? @minLength(3) @default(1) }`, CodeDecoratorConflict, 0)
+}
+
+// An enum @default is checked as its member's wire value, alone or in an
+// array; the message names the member as the design writes it.
+func TestEnumDefaultBreakingItsConstraintsRejected(t *testing.T) {
+	const head = "package app\nenum Code { A = \"a\"  BB = \"bb\" }\nenum Mail { Ok = \"a@b.co\"  Bad = \"nope\" }\nenum Prio { Low = 1  High = 2 }\n"
+	for _, c := range []struct{ field, msg string }{
+		{`c Code? @minLength(2) @default(A)`, `@default(A), whose wire value is "a", violates @minLength(2): its length is 1`},
+		{`c Code? @pattern("^b+$") @default(A)`, `@default(A), whose wire value is "a", violates @pattern("^b+$"): it does not match`},
+		{`m Mail? @format(email) @default(Bad)`, `@default(Bad), whose wire value is "nope", violates @format(email)`},
+		{`p Prio? @range(2, 9) @default(Low)`, `@default(Low), whose wire value is 1, violates @range(2, 9)`},
+		{`p Prio? @gt(1) @default(Low)`, `@default(Low), whose wire value is 1, violates @gt(1)`},
+		{`p Prio? @multipleOf(2) @default(Low)`, `@default(Low), whose wire value is 1, violates @multipleOf(2)`},
+		{`ps Prio[]? @uniqueItems @default([Low, High, Low])`, `@default([Low, High, Low]) violates @uniqueItems: Low repeats`},
+	} {
+		t.Run(c.field, func(t *testing.T) {
+			d := expectError(t, head+"type R { "+c.field+" }", CodeDecoratorConflict)
+			expectMessage(t, d, c.msg)
+		})
+	}
+	mustClean(t, head+`type R {
+	c Code? @minLength(2) @default(BB)
+	m Mail? @format(email) @default(Ok)
+	p Prio? @range(2, 9) @default(High)
+	ps Prio[]? @maxItems(2) @uniqueItems @default([Low, High])
+}`)
+}
+
+// A @default message counts one item in the singular and quotes a string as
+// the design writes it.
+func TestDefaultConstraintMessageWording(t *testing.T) {
+	d := expectError(t, "package app\ntype R { tags string[]? @minItems(2) @default([\"a\"]) }", CodeDecoratorConflict)
+	expectMessage(t, d, `@default(["a"]) violates @minItems(2): it holds 1 item`)
+	if strings.Contains(d.Msg, "1 items") {
+		t.Errorf("message counts one item in the plural: %q", d.Msg)
+	}
+	d = expectError(t, "package app\ntype R { s string? @maxLength(1) @default(\"a\\u{301}\") }", CodeDecoratorConflict)
+	expectMessage(t, d, `@default("a\u{301}") violates @maxLength(1): its length is 2`)
 }

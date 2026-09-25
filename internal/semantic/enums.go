@@ -34,6 +34,16 @@ func EnumMemberWire(v *ast.EnumValue) any {
 	}
 }
 
+// enumMember returns ed's member named name, or nil.
+func enumMember(ed *ast.EnumDecl, name string) *ast.EnumValue {
+	for _, ev := range ed.EnumValues() {
+		if ev.Name == name {
+			return ev
+		}
+	}
+	return nil
+}
+
 // enumMemberInt returns a member's integer wire value, and false when the
 // member is string-backed.
 func enumMemberInt(v *ast.EnumValue) (int64, bool) {

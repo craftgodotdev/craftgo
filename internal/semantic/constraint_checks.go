@@ -194,15 +194,18 @@ func (a *analyzer) valueConstraintSites(t *ast.TypeRef, decs []*ast.Decorator) [
 
 // checkDefaultConstraints rejects a `@default` of f, whose argument is arg,
 // that breaks a constraint f carries or its scalar declares: an array
-// default meets f's item constraints and each element its scalar's. A
-// literal of the wrong kind is left to [analyzer.checkLiteralType].
+// default meets f's item constraints and each element its scalar's. An enum
+// member is checked as its wire value. A literal of the wrong kind is left
+// to [analyzer.checkLiteralType].
 func (a *analyzer) checkDefaultConstraints(f *ast.Field, arg *ast.DecoratorArg) {
 	t := f.Type
 	if t == nil {
 		return
 	}
 	if !t.Array {
-		a.checkValueConstraints(a.valueConstraintSites(t, f.Decorators), a.primOf(t), arg.Value, arg.Pos, "@default("+literalText(arg.Value)+")")
+		v := a.checkedValue(t, arg.Value)
+		a.checkValueConstraints(a.valueConstraintSites(t, f.Decorators), a.checkedPrim(t), v, arg.Pos,
+			"@default("+literalText(arg.Value)+")"+wireNote(arg.Value, v))
 		return
 	}
 	arr, ok := arg.Value.(*ast.ArrayLit)
@@ -210,30 +213,77 @@ func (a *analyzer) checkDefaultConstraints(f *ast.Field, arg *ast.DecoratorArg) 
 		return
 	}
 	elem := t.ElemTypeRef()
-	prim := a.primOf(elem)
+	prim := a.checkedPrim(elem)
 	subject := "@default(" + literalText(arr) + ")"
+	held := fmt.Sprintf("%d items", len(arr.Elements))
+	if len(arr.Elements) == 1 {
+		held = "1 item"
+	}
 	for _, b := range declaredBounds(f.Decorators) {
 		if b.limits == "item count" && !b.admits("", countLit(len(arr.Elements))) {
 			a.diag(arg.Pos, arg.Pos, lexer.SeverityError, CodeDecoratorConflict,
-				"%s violates %s: it holds %d items", subject, decoratorCall(b.dec), len(arr.Elements))
+				"%s violates %s: it holds %s", subject, decoratorCall(b.dec), held)
 		}
+	}
+	values := make([]ast.Expr, len(arr.Elements))
+	for i, e := range arr.Elements {
+		values[i] = a.checkedValue(elem, e)
 	}
 	if ast.HasDecorator(f.Decorators, "uniqueItems") {
 		seen := map[string]bool{}
-		for _, e := range arr.Elements {
-			key := literalKey(prim, e)
+		for i, v := range values {
+			key := literalKey(prim, v)
 			if seen[key] {
 				a.diag(arg.Pos, arg.Pos, lexer.SeverityError, CodeDecoratorConflict,
-					"%s violates @uniqueItems: %s repeats", subject, literalText(e))
+					"%s violates @uniqueItems: %s repeats", subject, literalText(arr.Elements[i]))
 				break
 			}
 			seen[key] = true
 		}
 	}
 	sites := a.valueConstraintSites(elem, nil)
-	for _, e := range arr.Elements {
-		a.checkValueConstraints(sites, prim, e, e.ExprPos(), "@default element "+literalText(e))
+	for i, e := range arr.Elements {
+		a.checkValueConstraints(sites, prim, values[i], e.ExprPos(), "@default element "+literalText(e)+wireNote(e, values[i]))
 	}
+}
+
+// wireNote names the wire value checked, where e, as the design writes it,
+// is an enum member: `, whose wire value is "a",`.
+func wireNote(e, checked ast.Expr) string {
+	if checked == e {
+		return ""
+	}
+	return ", whose wire value is " + literalText(checked) + ","
+}
+
+// checkedPrim returns the primitive a value of type t is checked as: an
+// enum's wire primitive, else [analyzer.primOf].
+func (a *analyzer) checkedPrim(t *ast.TypeRef) string {
+	if ed := a.lookupEnum(t.Named); ed != nil {
+		return EnumPrimitive(ed)
+	}
+	return a.primOf(t)
+}
+
+// checkedValue returns literal e, a value of type t, as its constraints read
+// it: a member of the enum t names as the member's wire value.
+func (a *analyzer) checkedValue(t *ast.TypeRef, e ast.Expr) ast.Expr {
+	ed := a.lookupEnum(t.Named)
+	ident, ok := e.(*ast.IdentExpr)
+	if ed == nil || !ok || ident.Name == nil {
+		return e
+	}
+	ev := enumMember(ed, ident.Name.String())
+	if ev == nil {
+		return e
+	}
+	switch wire := EnumMemberWire(ev).(type) {
+	case int64:
+		return &ast.IntLit{Pos: ident.Pos, Value: wire}
+	case string:
+		return &ast.StringLit{Pos: ident.Pos, Value: wire}
+	}
+	return e
 }
 
 // checkValueConstraints reports each constraint of sites that literal v, a
@@ -324,6 +374,9 @@ func literalKey(prim string, e ast.Expr) string {
 		}
 		return "n" + l.Rat().RatString()
 	}
+	if s, ok := e.(*ast.StringLit); ok {
+		return "s" + s.Value
+	}
 	return fmt.Sprintf("%T:%s", e, literalText(e))
 }
 
@@ -345,6 +398,9 @@ func decoratorCall(d *ast.Decorator) string {
 func literalText(e ast.Expr) string {
 	switch v := e.(type) {
 	case *ast.StringLit:
+		if v.Text != "" {
+			return v.Text
+		}
 		return strconv.Quote(v.Value)
 	case *ast.IntLit:
 		return strconv.FormatInt(v.Value, 10)
