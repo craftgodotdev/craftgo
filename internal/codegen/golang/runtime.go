@@ -43,7 +43,7 @@ func buildRuntimeData(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 	return runtimeData{
 		OperationName: operationNameFor(cfg.Package),
 		ConfigImport:  dir.pkg,
-		ConfigDir:     relDir(dir.rel),
+		ConfigDir:     displayDir(dir.rel),
 		HasGRPC:       protos.HasServices(),
 		HasHTTP:       projectHasRoutes(proj) || !protos.HasServices(),
 	}

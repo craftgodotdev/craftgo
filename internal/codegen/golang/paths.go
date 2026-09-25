@@ -44,6 +44,14 @@ func relDir(rel string) string {
 	return strings.TrimSuffix(rel, "/")
 }
 
+// displayDir renders a project-relative directory for generated paths and comments; the root is ".".
+func displayDir(rel string) string {
+	if d := relDir(rel); d != "" {
+		return d
+	}
+	return "."
+}
+
 // fileDirRel returns the forward-slash directory of a project-relative file path, "" for a root file.
 func fileDirRel(filePath string) string {
 	filePath = strings.ReplaceAll(filePath, "\\", "/")

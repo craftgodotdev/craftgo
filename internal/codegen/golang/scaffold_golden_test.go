@@ -3,6 +3,7 @@ package golang
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"text/template"
 
@@ -74,27 +75,36 @@ func TestHTTPScaffoldsArePinned(t *testing.T) {
 	expectGolden(t, "wiring-http.go", string(wiring))
 }
 
-// config.Path and the scaffold comments name the directory output.config writes config.yaml into.
+// config.Path names, relative to the project root, the config.yaml gen writes under output.config,
+// and the scaffold comments name that directory.
 func TestConfigPathFollowsOutputConfig(t *testing.T) {
-	cfg := scaffoldConfig(t)
-	cfg.Output.Config = "./internal/config"
-	root := t.TempDir()
-	proj := analyzeProject(t, httpScaffoldSrc)
-	if err := generateRuntimeConfig(proj, nil, cfg, root); err != nil {
-		t.Fatal(err)
+	for _, c := range []struct {
+		dir, path string
+	}{
+		{"./internal/config", "internal/config/config.yaml"},
+		{"./", "./config.yaml"},
+	} {
+		t.Run(c.dir, func(t *testing.T) {
+			cfg := scaffoldConfig(t)
+			cfg.Output.Config = c.dir
+			root := t.TempDir()
+			proj := analyzeProject(t, httpScaffoldSrc)
+			if err := generateRuntimeConfig(proj, nil, cfg, root); err != nil {
+				t.Fatal(err)
+			}
+			configGo, err := os.ReadFile(filepath.Join(root, c.dir, "config.go"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			mustContainAll(t, string(configGo), `return "`+c.path+`"`, "`"+c.path+"`")
+			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(c.path))); err != nil {
+				t.Errorf("config.yaml is not where Path points: %v", err)
+			}
+			mainGo, err := renderScaffold(tmpl("main.tmpl"), buildProjectMainData(proj, nil, cfg))
+			if err != nil {
+				t.Fatal(err)
+			}
+			mustContainAll(t, string(mainGo), strings.TrimSuffix(c.path, "config.yaml")+"example.config.yaml")
+		})
 	}
-	configGo, err := os.ReadFile(filepath.Join(root, "internal", "config", "config.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	mustContainAll(t, string(configGo), `return "internal/config/config.yaml"`, "`internal/config/config.yaml`")
-	mustContainNone(t, string(configGo), "`config/config.yaml`", `"config/config.yaml"`)
-	if _, err := os.Stat(filepath.Join(root, "internal", "config", "config.yaml")); err != nil {
-		t.Errorf("config.yaml is not where Path points: %v", err)
-	}
-	mainGo, err := renderScaffold(tmpl("main.tmpl"), buildProjectMainData(proj, nil, cfg))
-	if err != nil {
-		t.Fatal(err)
-	}
-	mustContainAll(t, string(mainGo), "internal/config/example.config.yaml")
 }

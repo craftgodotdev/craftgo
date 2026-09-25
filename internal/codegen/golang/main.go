@@ -65,7 +65,7 @@ func buildProjectMainData(proj *semantic.Project, protos *protodesign.Set, cfg *
 	out := outputsOf(cfg)
 	d := mainData{
 		ConfigImport:     out.config.pkg,
-		ConfigDir:        relDir(out.config.rel),
+		ConfigDir:        displayDir(out.config.rel),
 		WiringImport:     out.wiring.pkg,
 		MiddlewareImport: out.middleware.pkg,
 		SvccontextImport: out.svccontext.pkg,
