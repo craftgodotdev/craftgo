@@ -235,6 +235,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   context canceled by anything, a middleware of your own included, counts as
   a client that has gone.
 
+- **`AccessLog` records 499 for a client that left before any response**, as
+  nginx does, where it recorded the 200 `net/http` would have sent.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

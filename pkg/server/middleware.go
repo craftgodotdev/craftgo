@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"runtime/debug"
 	"time"
@@ -98,6 +100,10 @@ func recovery(logger func() log.Logger) Middleware {
 	}
 }
 
+// statusClientClosed is the status the access log records for a request whose client left
+// before anything was written, as nginx does.
+const statusClientClosed = 499
+
 // AccessLogOption configures [AccessLog].
 type AccessLogOption func(*accessLogConfig)
 
@@ -123,6 +129,7 @@ func AccessLogSkipPaths(paths ...string) AccessLogOption {
 
 // AccessLog logs "http access" at Info after each request with method, path, status and
 // latency, plus what [log.Logger.WithContext] adds (trace ids need an outer tracing middleware).
+// The status is 499 for a client that left before anything was written.
 func AccessLog(logger log.Logger, opts ...AccessLogOption) Middleware {
 	cfg := &accessLogConfig{skip: map[string]bool{}}
 	for _, o := range opts {
@@ -137,10 +144,14 @@ func AccessLog(logger log.Logger, opts ...AccessLogOption) Middleware {
 			start := time.Now()
 			tw := &trackingWriter{ResponseWriter: w}
 			next.ServeHTTP(tw, r)
+			status := tw.Status()
+			if !tw.Committed() && errors.Is(r.Context().Err(), context.Canceled) {
+				status = statusClientClosed
+			}
 			fields := []log.Field{
 				log.String("method", r.Method),
 				log.String("path", r.URL.Path),
-				log.Int("status", tw.Status()),
+				log.Int("status", status),
 				log.Duration("latency", time.Since(start)),
 			}
 			if cfg.fields != nil {

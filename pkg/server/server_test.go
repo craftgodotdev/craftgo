@@ -454,6 +454,58 @@ func TestAccessLogRecordsTheFirstFinalStatus(t *testing.T) {
 	}
 }
 
+// A client that left before anything was written is logged with status 499; one that left
+// after the head was written keeps that status.
+func TestAccessLogRecords499ForAGoneClient(t *testing.T) {
+	for name, tc := range map[string]struct {
+		handler http.HandlerFunc
+		want    int64
+	}{
+		"nothing written": {func(w http.ResponseWriter, r *http.Request) { WriteError(w, r, r.Context().Err()) }, 499},
+		"head written":    {func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusCreated) }, http.StatusCreated},
+	} {
+		t.Run(name, func(t *testing.T) {
+			logs := observeLogs(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			req := httptest.NewRequest(http.MethodGet, "/x", nil).WithContext(ctx)
+			AccessLog(log.Default())(tc.handler).ServeHTTP(httptest.NewRecorder(), req)
+			entries := logs.FilterMessage("http access").All()
+			if len(entries) != 1 || entries[0].ContextMap()["status"] != tc.want {
+				t.Errorf("access lines %v, want one with status %d", entries, tc.want)
+			}
+		})
+	}
+}
+
+// A client that disconnects while its handler waits is logged with status 499.
+func TestAccessLogRecords499OverAConnection(t *testing.T) {
+	logs := observeLogs(t)
+	s := newTestServer(t).Use(AccessLog(log.Default()))
+	s.HandleFunc("GET /wait", func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+		WriteError(w, r, r.Context().Err())
+	})
+	ts := httptest.NewServer(finalize(s))
+	defer ts.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/wait", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.AfterFunc(20*time.Millisecond, cancel)
+	if _, err := ts.Client().Do(req); err == nil {
+		t.Fatal("the request outlived its canceled context")
+	}
+	for wait := time.Now().Add(5 * time.Second); logs.FilterMessage("http access").Len() == 0 && time.Now().Before(wait); {
+		time.Sleep(5 * time.Millisecond)
+	}
+	entries := logs.FilterMessage("http access").All()
+	if len(entries) != 1 || entries[0].ContextMap()["status"] != int64(499) {
+		t.Errorf("access lines %v, want one with status 499", entries)
+	}
+}
+
 // No Use middleware sees the health probes, on default or custom paths.
 func TestProbesBypassMiddlewareChain(t *testing.T) {
 	for name, opts := range map[string][]Option{
