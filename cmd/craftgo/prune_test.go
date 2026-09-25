@@ -48,58 +48,6 @@ type Entry {
 }
 `
 
-func exists(t *testing.T, parts ...string) bool {
-	t.Helper()
-	_, err := os.Stat(filepath.Join(parts...))
-	return err == nil
-}
-
-// treeOf maps each generated file under root, by relative slash path, to its
-// contents.
-func treeOf(t *testing.T, root string) map[string]string {
-	t.Helper()
-	out := map[string]string{}
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || filepath.Ext(path) == ".craftgo" || filepath.Base(path) == "craftgo.design.yaml" {
-			return err
-		}
-		body, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return relErr
-		}
-		out[filepath.ToSlash(rel)] = string(body)
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
-
-func sameTree(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for path, body := range a {
-		if b[path] != body {
-			return false
-		}
-	}
-	return true
-}
-
-func keysOf(tree map[string]string) []string {
-	out := make([]string, 0, len(tree))
-	for path := range tree {
-		out = append(out, path)
-	}
-	return out
-}
-
 // storeProject lays out a project whose design is src and returns its root.
 func storeProject(t *testing.T, src string) string {
 	t.Helper()
@@ -108,13 +56,6 @@ func storeProject(t *testing.T, src string) string {
 	mustWrite(t, dir, "design/craftgo.design.yaml", "")
 	mustWrite(t, dir, "design/store.craftgo", src)
 	return dir
-}
-
-func genProject(t *testing.T, dir string) {
-	t.Helper()
-	if err := runGen([]string{"-f", filepath.Join(dir, "design"), "-c", dir}); err != nil {
-		t.Fatalf("runGen %s: %v", dir, err)
-	}
 }
 
 // TestRenamedServiceLeavesNoApplicationHalfBehind checks that renaming a

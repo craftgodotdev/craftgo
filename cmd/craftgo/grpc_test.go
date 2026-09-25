@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,26 +52,6 @@ func grpcProject(t *testing.T) string {
 	t.Setenv("GOWORK", filepath.Join(dir, "go.work"))
 	t.Setenv("GOFLAGS", "")
 	return dir
-}
-
-func genGRPC(t *testing.T, dir string) {
-	t.Helper()
-	if err := runGen([]string{"-f", filepath.Join(dir, "design"), "-c", dir}); err != nil {
-		t.Fatalf("runGen: %v", err)
-	}
-}
-
-// goCheck builds and vets the generated project inside its workspace.
-func goCheck(t *testing.T, dir string) {
-	t.Helper()
-	for _, args := range [][]string{{"build", "./..."}, {"vet", "./..."}} {
-		cmd := exec.Command("go", args...)
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GOWORK="+filepath.Join(dir, "go.work"), "GOFLAGS=")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("go %s: %v\n%s", args[0], err, out)
-		}
-	}
 }
 
 func mustContain(t *testing.T, dir, rel string, needles ...string) string {

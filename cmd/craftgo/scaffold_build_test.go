@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -338,54 +337,4 @@ func generateScaffoldProject(t *testing.T, root string, shape scaffoldShape) str
 	mustWrite(t, dir, "go.work", "go "+goVersion+"\n\nuse (\n\t"+
 		strings.Join(uses, "\n\t")+"\n)\n")
 	return dir
-}
-
-// repoModules are the nested modules of this repo a generated project's
-// workspace must use besides the root module.
-var repoModules = []string{"pkg/events", "pkg/wire"}
-
-// repoRoot walks up to the directory holding go.mod and every module in
-// repoModules.
-func repoRoot(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for {
-		_, mod := os.Stat(filepath.Join(dir, "go.mod"))
-		nested := true
-		for _, m := range repoModules {
-			if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(m), "go.mod")); err != nil {
-				nested = false
-				break
-			}
-		}
-		if mod == nil && nested {
-			real, err := filepath.EvalSymlinks(dir)
-			if err != nil {
-				t.Fatal(err)
-			}
-			return real
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatalf("no craftgo module root above %s", dir)
-		}
-		dir = parent
-	}
-}
-
-// goDirective returns the go version of the root go.mod.
-func goDirective(t *testing.T, root string) string {
-	t.Helper()
-	body, err := os.ReadFile(filepath.Join(root, "go.mod"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	m := regexp.MustCompile(`(?m)^go (\S+)$`).FindStringSubmatch(string(body))
-	if m == nil {
-		t.Fatalf("no go directive in %s/go.mod", root)
-	}
-	return strings.TrimSpace(m[1])
 }

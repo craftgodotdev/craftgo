@@ -522,15 +522,3 @@ type Token { value string }
 		t.Errorf("logic should not import the canonical types alias when both sides cross-pkg:\n%s", ls)
 	}
 }
-
-// mustWrite writes root/rel, creating its directories.
-func mustWrite(t *testing.T, root, rel, content string) {
-	t.Helper()
-	full := filepath.Join(root, rel)
-	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
