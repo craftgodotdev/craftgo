@@ -26,9 +26,6 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 	for _, f := range ast.Fields(members) {
 		actual := ResolveField(f, a.pkg, a.proj).Prims()
 		for _, d := range f.Decorators {
-			if d == nil {
-				continue
-			}
 			if a.formatArgMismatch(d, actual, parent+"."+f.Name, f.Type.String()) {
 				continue
 			}
@@ -60,9 +57,6 @@ func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 	}
 	actual := ScalarPrims(sd)
 	for _, d := range sd.Decorators {
-		if d == nil {
-			continue
-		}
 		if a.formatArgMismatch(d, actual, "scalar "+sd.Name, sd.Primitive) {
 			continue
 		}

@@ -18,75 +18,31 @@ const (
 // checkBindingFieldType rejects a wire binding whose field type the binder
 // cannot fill, `@nullable` on any wire binding, and `@default` on `@path`.
 func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
-	if f.Type == nil {
+	kind, _ := wire.BindingKind(f.Decorators)
+	if f.Type == nil || !kind.IsParam() {
 		return
 	}
-	if ast.HasDecorator(f.Decorators, "nullable") {
-		for _, d := range f.Decorators {
-			switch d.Name {
-			case wire.BindingPath, wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingForm:
-				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
-					"@nullable cannot be combined with @%s: a wire parameter is a string with no JSON-null form. Use `?` to make the parameter optional.",
-					d.Name)
-				return
-			}
-		}
-	}
-	if ast.HasDecorator(f.Decorators, "default") {
-		for _, d := range f.Decorators {
-			if d.Name == wire.BindingPath {
-				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
-					"@default cannot be combined with @path: a path segment is always supplied for a matched route, so the default can never apply - drop it.")
-				return
-			}
-		}
-	}
-	// @cookie and @path refuse every array below.
-	if f.Type.ArrayDepth > 1 {
-		for _, d := range f.Decorators {
-			switch d.Name {
-			case wire.BindingQuery, wire.BindingHeader, wire.BindingForm:
-				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-					"field %s.%s: @%s cannot bind to a multi-dimensional array - a wire parameter carries repeated single values (`?x=1&x=2`), which has no nested form. Move the field to the JSON body or flatten to a single-level array.",
-					parent, f.Name, d.Name)
-				return
-			}
-		}
-	}
-	for _, d := range f.Decorators {
-		switch d.Name {
-		case wire.BindingPath:
-			if a.isPathBindingType(f.Type) {
-				continue
-			}
-			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-				msgBindPath,
-				parent, f.Name, f.Type.String())
-			return
-		case wire.BindingQuery, wire.BindingHeader, wire.BindingCookie:
-			// The wire check below accepts arrays; a cookie carries one value.
-			if d.Name == wire.BindingCookie && f.Type.Array {
-				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-					msgBindCookieArray,
-					parent, f.Name)
-				return
-			}
-			if a.isWireBindingType(f.Type) {
-				continue
-			}
-			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-				msgBindWire,
-				parent, f.Name, d.Name, f.Type.String())
-			return
-		case wire.BindingForm:
-			if a.isFormBindingType(f.Type) {
-				continue
-			}
-			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-				msgBindForm,
-				parent, f.Name, f.Type.String())
-			return
-		}
+	d := ast.FindDecorator(f.Decorators, kind.String())
+	switch {
+	case ast.HasDecorator(f.Decorators, "nullable"):
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
+			"@nullable cannot be combined with @%s: a wire parameter is a string with no JSON-null form. Use `?` to make the parameter optional.",
+			d.Name)
+	case kind == wire.BindPath && ast.HasDecorator(f.Decorators, "default"):
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
+			"@default cannot be combined with @path: a path segment is always supplied for a matched route, so the default can never apply - drop it.")
+	case f.Type.ArrayDepth > 1 && (kind == wire.BindQuery || kind == wire.BindHeader || kind == wire.BindForm):
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
+			"field %s.%s: @%s cannot bind to a multi-dimensional array - a wire parameter carries repeated single values (`?x=1&x=2`), which has no nested form. Move the field to the JSON body or flatten to a single-level array.",
+			parent, f.Name, d.Name)
+	case kind == wire.BindPath && !a.isPathBindingType(f.Type):
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType, msgBindPath, parent, f.Name, f.Type)
+	case kind == wire.BindCookie && f.Type.Array:
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType, msgBindCookieArray, parent, f.Name)
+	case (kind == wire.BindQuery || kind == wire.BindHeader || kind == wire.BindCookie) && !a.isWireBindingType(f.Type):
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType, msgBindWire, parent, f.Name, d.Name, f.Type)
+	case kind == wire.BindForm && !a.isFormBindingType(f.Type):
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType, msgBindForm, parent, f.Name, f.Type)
 	}
 }
 

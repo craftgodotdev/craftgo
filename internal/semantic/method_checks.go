@@ -74,77 +74,62 @@ func builtinClauseName(n *ast.NamedTypeRef) string {
 // checkNoContentStatusBody rejects a response body on a method whose
 // `@status` is 1xx, 204, 205 or 304, which carry no body (RFC 9110).
 func (a *analyzer) checkNoContentStatusBody(m *ast.Method) {
-	if m == nil || m.Response == nil || m.Response.Type == nil {
+	if m.Response == nil || m.Response.Type == nil {
 		return
 	}
-	for _, d := range m.Decorators {
-		if d == nil || d.Name != "status" || len(d.Args) != 1 {
-			continue
-		}
-		il, ok := d.Args[0].Value.(*ast.IntLit)
-		if !ok {
-			continue
-		}
-		code := il.Value
-		if code == 204 || code == 205 || code == 304 || (code >= 100 && code < 200) {
-			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
-				"@status(%d) is a no-content status and cannot carry a response body, but method %s declares one - drop the response, or use a status that allows a body.",
-				code, m.Name)
-			return
-		}
+	code, ok := wire.StatusOverride(m)
+	if !ok || !noContentStatus(code) {
+		return
 	}
+	d := ast.FindDecorator(m.Decorators, "status")
+	a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
+		"@status(%d) is a no-content status and cannot carry a response body, but method %s declares one - drop the response, or use a status that allows a body.",
+		code, m.Name)
+}
+
+// noContentStatus reports whether HTTP status code carries no body.
+func noContentStatus(code int) bool {
+	return code == 204 || code == 205 || code == 304 || (code >= 100 && code < 200)
 }
 
 // checkRawModeRedundancy warns about a raw flag beside `@passthrough`, and
-// `@rawRequest` with `@rawResponse`; the later decorator is reported.
+// `@rawRequest` with `@rawResponse` written before any `@passthrough`; the
+// later decorator of each pair is reported.
 func (a *analyzer) checkRawModeRedundancy(svcName string, m *ast.Method) {
-	if m == nil {
+	pass := ast.FindDecorator(m.Decorators, wire.DecoratorPassthrough)
+	req := ast.FindDecorator(m.Decorators, wire.DecoratorRawRequest)
+	resp := ast.FindDecorator(m.Decorators, wire.DecoratorRawResponse)
+	before := func(x, y *ast.Decorator) bool { return comparePos(x.Pos, y.Pos) < 0 }
+	for _, flag := range []struct {
+		d    *ast.Decorator
+		side string
+	}{{req, "request"}, {resp, "response"}} {
+		switch {
+		case pass == nil || flag.d == nil:
+		case before(flag.d, pass):
+			diag := a.diag(pass.Pos, decoratorEnd(pass), lexer.SeverityWarning, CodeDecoratorRedundant,
+				"@passthrough on method %s.%s already covers @%s - drop the flag",
+				svcName, m.Name, flag.d.Name)
+			diag.Related = related(flag.d.Pos, "@"+flag.d.Name+" declared here")
+		default:
+			diag := a.diag(flag.d.Pos, decoratorEnd(flag.d), lexer.SeverityWarning, CodeDecoratorRedundant,
+				"@%s is redundant on method %s.%s: @passthrough already makes the %s side raw",
+				flag.d.Name, svcName, m.Name, flag.side)
+			diag.Related = related(pass.Pos, "@passthrough declared here")
+		}
+	}
+	if req == nil || resp == nil {
 		return
 	}
-	var passthrough, rawReq, rawResp *ast.Decorator
-	for _, d := range m.Decorators {
-		if d == nil {
-			continue
-		}
-		switch d.Name {
-		case wire.DecoratorPassthrough:
-			for _, flag := range []*ast.Decorator{rawReq, rawResp} {
-				if flag == nil {
-					continue
-				}
-				diag := a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeDecoratorRedundant,
-					"@passthrough on method %s.%s already covers @%s - drop the flag",
-					svcName, m.Name, flag.Name)
-				diag.Related = related(flag.Pos, "@"+flag.Name+" declared here")
-			}
-			if passthrough == nil {
-				passthrough = d
-			}
-		case wire.DecoratorRawRequest, wire.DecoratorRawResponse:
-			side, other := "request", rawResp
-			if d.Name == wire.DecoratorRawResponse {
-				side, other = "response", rawReq
-			}
-			switch {
-			case passthrough != nil:
-				diag := a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeDecoratorRedundant,
-					"@%s is redundant on method %s.%s: @passthrough already makes the %s side raw",
-					d.Name, svcName, m.Name, side)
-				diag.Related = related(passthrough.Pos, "@passthrough declared here")
-			case other != nil:
-				diag := a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeDecoratorRedundant,
-					"@rawRequest together with @rawResponse is exactly @passthrough on method %s.%s - write @passthrough instead",
-					svcName, m.Name)
-				diag.Related = related(other.Pos, "@"+other.Name+" declared here")
-			}
-			if d.Name == wire.DecoratorRawRequest {
-				if rawReq == nil {
-					rawReq = d
-				}
-			} else if rawResp == nil {
-				rawResp = d
-			}
-		}
+	first, second := req, resp
+	if before(resp, req) {
+		first, second = resp, req
+	}
+	if pass == nil || before(second, pass) {
+		diag := a.diag(second.Pos, decoratorEnd(second), lexer.SeverityWarning, CodeDecoratorRedundant,
+			"@rawRequest together with @rawResponse is exactly @passthrough on method %s.%s - write @passthrough instead",
+			svcName, m.Name)
+		diag.Related = related(first.Pos, "@"+first.Name+" declared here")
 	}
 }
 

@@ -309,25 +309,23 @@ func TestBodyRangesSkipMixins(t *testing.T) {
 }
 
 // The range helpers report nothing for a wrong arity or a non-numeric argument.
-func TestRangeHelpersTolerateBadShape(t *testing.T) {
-	a := newTestAnalyzer(&Package{})
-
-	// Wrong arity.
-	a.checkPairArgs(&ast.Decorator{Name: "length"}) // 0 args
-	a.checkMultipleOf(&ast.Decorator{Name: "multipleOf"})
-	a.checkHTTPStatus(&ast.Decorator{Name: "status"})
-	a.checkPositiveDuration(&ast.Decorator{Name: "timeout"})
-	a.checkPositiveSize(&ast.Decorator{Name: "maxBodySize"})
-	a.checkNonNegativeInt(&ast.Decorator{Name: "minLength"})
-
-	// Non-numeric value.
-	StringArg := []*ast.DecoratorArg{{Value: &ast.StringLit{}}}
-	a.checkPairArgs(&ast.Decorator{Name: "length", Args: append(StringArg, &ast.DecoratorArg{Value: &ast.StringLit{}})})
-	a.checkMultipleOf(&ast.Decorator{Name: "multipleOf", Args: StringArg})
-	a.checkHTTPStatus(&ast.Decorator{Name: "status", Args: StringArg})
-
-	if len(a.diags) != 0 {
-		t.Errorf("defensive helpers should not diag on bad shape, got %v", a.diags)
+// A decorator whose arguments break its shape gets that error alone; its
+// value rules run only on a well-formed decorator.
+func TestValueRulesSkipAMalformedDecorator(t *testing.T) {
+	for _, c := range []struct{ src, code string }{
+		{`type X { s string @length() }`, CodeDecoratorArity},
+		{`type X { s string @length(-1, 2, 3) }`, CodeDecoratorArity},
+		{`type X { n int @multipleOf("0") }`, CodeDecoratorArgType},
+		{`type X { s string @pattern("(", "x") }`, CodeDecoratorArity},
+		{`type X { s string @minLength(-1, 2) }`, CodeDecoratorArity},
+		{"type R { ok bool }\nservice S {\n  @status(99, 1)\n  get A /a { response R }\n}", CodeDecoratorArity},
+		{"type R { ok bool }\nservice S {\n  @timeout(0, 1)\n  get A /a { response R }\n}", CodeDecoratorArity},
+		{"@group(\"..\", \"x\")\nservice S { get A /a {} }", CodeDecoratorArity},
+	} {
+		_, diags := Analyze(parseFiles(t, c.src))
+		if len(diags) != 1 || diags[0].Code != c.code {
+			t.Errorf("%s: want only %s, got %v", c.src, c.code, diags)
+		}
 	}
 }
 

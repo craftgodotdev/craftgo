@@ -61,9 +61,7 @@ func (a *analyzer) checkDuplicateAutoWireNames(m *ast.Method) {
 	for _, ff := range fields {
 		f := ff.Field
 		kind, auto := wire.RequestFieldBinding(f, pathSegs, bodyVerb)
-		switch kind {
-		case wire.BindPath, wire.BindQuery, wire.BindHeader, wire.BindCookie, wire.BindForm:
-		default:
+		if !kind.IsParam() {
 			continue
 		}
 		name := wire.WireName(f, kind)
@@ -84,12 +82,10 @@ func (a *analyzer) checkDuplicateAutoWireNames(m *ast.Method) {
 // wireBinding returns the binding and wire name of f's explicit binding;
 // bound is false for a body field.
 func wireBinding(f *ast.Field) (kind wire.Binding, name string, bound bool) {
-	switch k, _ := wire.BindingKind(f.Decorators); k {
-	case wire.BindPath, wire.BindQuery, wire.BindHeader, wire.BindCookie, wire.BindForm:
+	if k, _ := wire.BindingKind(f.Decorators); k.IsParam() {
 		return k, wire.WireName(f, k), true
-	default:
-		return wire.BindBody, "", false
 	}
+	return wire.BindBody, "", false
 }
 
 // checkBoundOverlap warns when `@length` or `@range` shares a field with one

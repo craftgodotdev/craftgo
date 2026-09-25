@@ -57,6 +57,16 @@ func (b Binding) String() string {
 	}
 }
 
+// IsParam reports whether b places a field in a named parameter - a path
+// segment, a query, a header, a cookie or a form part - rather than the body.
+func (b Binding) IsParam() bool {
+	switch b {
+	case BindPath, BindQuery, BindHeader, BindCookie, BindForm:
+		return true
+	}
+	return false
+}
+
 // bindingNamed returns the binding a binding decorator called name declares.
 func bindingNamed(name string) (Binding, bool) {
 	for _, b := range [...]Binding{BindPath, BindQuery, BindHeader, BindCookie, BindBody, BindForm} {

@@ -113,6 +113,16 @@ func TestBindingStringNamesTheDecorator(t *testing.T) {
 	}
 }
 
+// Every binding but the body and @sensitive names a parameter.
+func TestBindingIsParam(t *testing.T) {
+	for b, want := range map[Binding]bool{BindBody: false, BindSensitive: false,
+		BindPath: true, BindQuery: true, BindHeader: true, BindCookie: true, BindForm: true} {
+		if got := b.IsParam(); got != want {
+			t.Errorf("%v.IsParam() = %v, want %v", b, got, want)
+		}
+	}
+}
+
 func TestRequestFieldBinding(t *testing.T) {
 	field := func(name string, ds ...string) *ast.Field {
 		return &ast.Field{Name: name, Decorators: decs(ds...)}

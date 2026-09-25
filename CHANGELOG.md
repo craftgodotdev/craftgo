@@ -392,6 +392,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   other decorator that takes no argument does and as the decorator
   reference says; `craftgo fmt` already removed them.
 
+- **A decorator with the wrong number or kind of arguments gets that error
+  alone.** `@pattern("(", "x")` also reported its first argument as a bad
+  regular expression, and `@group("..", "x")` its path; a decorator's values
+  are now checked only once its arguments fit.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

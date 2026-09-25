@@ -56,8 +56,7 @@ func indentBlock(s string) string {
 func fieldWireName(f *ast.Field) string {
 	kind, _ := wire.BindingKind(f.Decorators)
 	name := wire.JSONName(f)
-	switch kind {
-	case wire.BindPath, wire.BindQuery, wire.BindHeader, wire.BindCookie, wire.BindForm:
+	if kind.IsParam() {
 		name = wire.WireName(f, kind)
 	}
 	return escapeErrorfName(name)

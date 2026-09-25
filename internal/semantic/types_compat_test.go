@@ -149,7 +149,7 @@ func TestArrayValidatorOnStringRejected(t *testing.T) {
 }
 
 func TestArrayValidatorOnMap(t *testing.T) {
-	// Maps share the array category.
+	// The item-count validators take a map too.
 	mustClean(t, `type X { meta map<string, string> @maxItems(50) }`)
 }
 
@@ -211,8 +211,8 @@ func TestQualifiedFieldTypeSkipsCompat(t *testing.T) {
 	}
 }
 
-// The type-compat checks skip nil and unknown decorators on fields and scalars.
-func TestTypeCompatNilDecoratorTolerated(t *testing.T) {
+// The type-compat checks skip unknown decorators on fields and scalars.
+func TestTypeCompatSkipsUnknownDecorators(t *testing.T) {
 	a := newTestAnalyzer(&Package{
 		Scalars: map[string]*ast.ScalarDecl{},
 	})
@@ -220,7 +220,6 @@ func TestTypeCompatNilDecoratorTolerated(t *testing.T) {
 		Name: "name",
 		Type: &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"string"}}}},
 		Decorators: []*ast.Decorator{
-			nil,
 			{Name: "unknownDecorator"},
 			// @doc applies to any primitive.
 			{Name: "doc", Args: []*ast.DecoratorArg{{Value: &ast.StringLit{Value: "x"}}}},
@@ -230,13 +229,10 @@ func TestTypeCompatNilDecoratorTolerated(t *testing.T) {
 
 	a.checkScalarTypeCompat(&ast.ScalarDecl{
 		Name: "S", Primitive: "string",
-		Decorators: []*ast.Decorator{
-			nil,
-			{Name: "unknownDecorator"},
-		},
+		Decorators: []*ast.Decorator{{Name: "unknownDecorator"}},
 	})
 	if len(a.diags) != 0 {
-		t.Errorf("nil/unknown decorators should not diag, got %v", a.diags)
+		t.Errorf("unknown decorators should not diag, got %v", a.diags)
 	}
 }
 

@@ -10,41 +10,38 @@ import (
 )
 
 // checkDecoratorArgs checks every known decorator at s: its argument shape
-// against its [Spec], then the values it takes.
+// against its [Spec], then, when the shape holds, the values it takes.
 func (a *analyzer) checkDecoratorArgs(s decoratorSite) {
 	for _, d := range s.decs {
 		spec, ok := Lookup(d.Name)
 		if !ok {
 			continue
 		}
-		a.checkDecoratorArg(d, spec)
-		a.checkDecoratorValue(d)
+		if a.checkDecoratorShape(d, spec) {
+			a.checkDecoratorValue(d)
+		}
 	}
 }
 
-// checkDecoratorArg checks d's argument shape against spec, and the values
-// `@example`, `@pattern` and `@group` take.
-func (a *analyzer) checkDecoratorArg(d *ast.Decorator, spec Spec) {
+// checkDecoratorShape checks d's arguments against spec - empty `()` on a
+// flag, an object where a literal belongs, then the positional arguments -
+// and reports whether they hold.
+func (a *analyzer) checkDecoratorShape(d *ast.Decorator, spec Spec) bool {
 	if spec.Args.Max == 0 && d.HasParens {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeFlagEmptyParens,
 			"@%s never accepts arguments - drop the parens (canonical: `@%s`). `craftgo fmt` fixes this on save.",
 			d.Name, d.Name)
 	}
-	a.checkExampleArg(d)
-	a.checkPatternArg(d)
-	a.checkGroupArg(d)
-	a.checkPositionalArgs(d, spec)
+	exampleOK := a.checkExampleArg(d)
+	return a.checkPositionalArgs(d, spec) && exampleOK
 }
 
 // checkPatternArg rejects a `@pattern` that is empty or not a valid RE2
 // expression.
 func (a *analyzer) checkPatternArg(d *ast.Decorator) {
-	if d == nil || d.Name != "pattern" || len(d.Args) == 0 {
-		return
-	}
 	s, ok := d.Args[0].Value.(*ast.StringLit)
 	if !ok {
-		return // a non-string arg is already reported by checkPositionalArgs
+		return
 	}
 	if s.Value == "" {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgType,
@@ -60,12 +57,9 @@ func (a *analyzer) checkPatternArg(d *ast.Decorator) {
 // checkGroupArg requires a `@group` path to have at least one segment and
 // only segments of letters, digits, '-' and '_'; extra slashes are ignored.
 func (a *analyzer) checkGroupArg(d *ast.Decorator) {
-	if d == nil || d.Name != "group" || len(d.Args) == 0 {
-		return
-	}
 	s, ok := d.Args[0].Value.(*ast.StringLit)
 	if !ok {
-		return // a non-string arg is already reported by checkPositionalArgs
+		return
 	}
 	hasSegment := false
 	for _, seg := range strings.Split(s.Value, "/") {
@@ -104,21 +98,20 @@ func isPlainPathSegment(s string) bool {
 }
 
 // checkExampleArg rejects an `@example` argument that is an object or a
-// nested decorator, which the parser leaves with a nil Value.
-func (a *analyzer) checkExampleArg(d *ast.Decorator) {
-	if d == nil || d.Name != "example" {
-		return
+// nested decorator, which the parser leaves with a nil Value, and reports
+// whether there is none.
+func (a *analyzer) checkExampleArg(d *ast.Decorator) bool {
+	if d.Name != "example" {
+		return true
 	}
-	for _, ag := range d.Args {
-		if ag == nil || ag.Named {
-			continue
-		}
+	for _, ag := range positionalArgs(d) {
 		if ag.Value == nil {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgType,
 				"@example takes a literal (string/int/float/bool) or an array of those, not an object - a struct example is composed from each field's own @example; for a free-form any/map field, describe the shape with @doc")
-			return
+			return false
 		}
 	}
+	return true
 }
 
 // positionalArgs returns d's unnamed arguments, objects and nested
@@ -135,12 +128,15 @@ func positionalArgs(d *ast.Decorator) []*ast.DecoratorArg {
 }
 
 // checkPositionalArgs checks d's arguments against [Spec.Args]: no named
-// arguments, then the count, then each kind and the first argument's enum.
-func (a *analyzer) checkPositionalArgs(d *ast.Decorator, spec Spec) {
+// arguments, then the count, then each kind and the first argument's enum;
+// it reports whether they hold.
+func (a *analyzer) checkPositionalArgs(d *ast.Decorator, spec Spec) bool {
+	ok := true
 	for _, ag := range d.Args {
-		if ag != nil && ag.Named {
+		if ag.Named {
 			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
 				"@%s: named argument %q is not supported (use positional args)", d.Name, ag.Name)
+			ok = false
 		}
 	}
 	pos := positionalArgs(d)
@@ -148,23 +144,23 @@ func (a *analyzer) checkPositionalArgs(d *ast.Decorator, spec Spec) {
 
 	// `@name([a, b])` stands for `@name(a, b)`.
 	if rule.AllowArrayShortcut && len(pos) == 1 {
-		if arr, ok := pos[0].Value.(*ast.ArrayLit); ok {
-			a.checkArrayShortcut(d, rule, arr)
-			a.checkEnumOnFirst(d, spec, pos)
-			return
+		if arr, isArray := pos[0].Value.(*ast.ArrayLit); isArray {
+			shortcutOK := a.checkArrayShortcut(d, rule, arr)
+			enumOK := a.checkEnumOnFirst(d, spec, pos)
+			return ok && shortcutOK && enumOK
 		}
 	}
 
 	if len(pos) < rule.Min {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArity,
 			"@%s expects at least %d argument(s), got %d", d.Name, rule.Min, len(pos))
-		return
+		return false
 	}
 	if rule.Max >= 0 && len(pos) > rule.Max {
 		extra := pos[rule.Max]
 		a.diag(extra.Pos, extra.Pos, lexer.SeverityError, CodeDecoratorArity,
 			"@%s accepts at most %d argument(s), got %d", d.Name, rule.Max, len(pos))
-		return
+		return false
 	}
 
 	for i, ag := range pos {
@@ -172,67 +168,66 @@ func (a *analyzer) checkPositionalArgs(d *ast.Decorator, spec Spec) {
 		if i < len(rule.Kinds) {
 			want = rule.Kinds[i]
 		}
-		if want == ArgAny {
-			continue
-		}
 		if !exprMatchesKind(ag.Value, want) {
 			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
 				"@%s arg %d: expected %s, got %s", d.Name, i+1, want, exprKind(ag.Value))
+			ok = false
 		}
 	}
 
-	a.checkEnumOnFirst(d, spec, pos)
+	return a.checkEnumOnFirst(d, spec, pos) && ok
 }
 
 // checkArrayShortcut checks the array literal standing for d's arguments
-// against rule's Min, Max and Variadic.
-func (a *analyzer) checkArrayShortcut(d *ast.Decorator, rule ArgsRule, arr *ast.ArrayLit) {
+// against rule's Min, Max and Variadic, and reports whether it holds.
+func (a *analyzer) checkArrayShortcut(d *ast.Decorator, rule ArgsRule, arr *ast.ArrayLit) bool {
 	n := len(arr.Elements)
 	if n < rule.Min {
 		a.diag(arr.Pos, arr.Pos, lexer.SeverityError, CodeDecoratorArity,
 			"@%s expects at least %d element(s) in array, got %d", d.Name, rule.Min, n)
-		return
+		return false
 	}
 	if rule.Max >= 0 && n > rule.Max {
 		a.diag(arr.Elements[rule.Max].ExprPos(), arr.Elements[rule.Max].ExprPos(),
 			lexer.SeverityError, CodeDecoratorArity,
 			"@%s accepts at most %d element(s) in array, got %d", d.Name, rule.Max, n)
-		return
+		return false
 	}
-	want := rule.Variadic
-	if want == ArgAny {
-		return
-	}
+	ok := true
 	for i, el := range arr.Elements {
-		if !exprMatchesKind(el, want) {
+		if !exprMatchesKind(el, rule.Variadic) {
 			a.diag(el.ExprPos(), el.ExprPos(), lexer.SeverityError, CodeDecoratorArgType,
-				"@%s array[%d]: expected %s, got %s", d.Name, i, want, exprKind(el))
+				"@%s array[%d]: expected %s, got %s", d.Name, i, rule.Variadic, exprKind(el))
+			ok = false
 		}
 	}
+	return ok
 }
 
 // checkEnumOnFirst rejects a first argument outside spec.Args.Enum, and
-// warns when a valid value is spelled as a string, not an identifier.
-func (a *analyzer) checkEnumOnFirst(d *ast.Decorator, spec Spec, pos []*ast.DecoratorArg) {
+// warns when a valid value is spelled as a string, not an identifier; it
+// reports whether the argument is in the set.
+func (a *analyzer) checkEnumOnFirst(d *ast.Decorator, spec Spec, pos []*ast.DecoratorArg) bool {
 	enum := spec.Args.Enum
 	if len(enum) == 0 || len(pos) == 0 {
-		return
+		return true
 	}
 	val, ok := ast.TextValue(pos[0].Value)
 	if !ok {
-		return
+		return true
 	}
 	if !slices.Contains(enum, val) {
 		a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorArgValue,
 			"@%s arg 1: %q is not a valid value (expected one of: %s)",
 			d.Name, val, joinQuoted(enum))
-		return
+		return false
 	}
 	if _, isStr := pos[0].Value.(*ast.StringLit); isStr {
 		a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityWarning, CodeArgPreferIdent,
 			"@%s arg 1: prefer bare identifier `%s` over string \"%s\" (`craftgo fmt` rewrites this on save)",
 			d.Name, val, val)
 	}
+	return true
 }
 
 // exprMatchesKind reports whether e fits kind k; ArgAny matches even nil.

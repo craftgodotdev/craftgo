@@ -61,9 +61,14 @@ func (a *analyzer) valuePrim(f *ast.Field) string {
 	return a.primOf(f.Type)
 }
 
-// checkDecoratorValue checks the argument values of d.
+// checkDecoratorValue checks the argument values of d, a decorator whose
+// arguments fit its [Spec].
 func (a *analyzer) checkDecoratorValue(d *ast.Decorator) {
 	switch d.Name {
+	case "pattern":
+		a.checkPatternArg(d)
+	case "group":
+		a.checkGroupArg(d)
 	case "length", "range":
 		a.checkPairArgs(d)
 	case "multipleOf":
@@ -90,9 +95,6 @@ func (a *analyzer) checkPairArgs(d *ast.Decorator) {
 		}
 		return
 	}
-	if len(pos) != 2 {
-		return
-	}
 	loLit, loOk := ParseNumericArg(pos[0])
 	hiLit, hiOk := ParseNumericArg(pos[1])
 	if !loOk || !hiOk {
@@ -112,9 +114,6 @@ func (a *analyzer) checkPairArgs(d *ast.Decorator) {
 // checkMultipleOf rejects a divisor that is not positive.
 func (a *analyzer) checkMultipleOf(d *ast.Decorator) {
 	pos := positionalArgs(d)
-	if len(pos) != 1 {
-		return
-	}
 	l, ok := ParseNumericArg(pos[0])
 	if !ok {
 		return
@@ -134,9 +133,6 @@ func (a *analyzer) checkMultipleOf(d *ast.Decorator) {
 // checkHTTPStatus rejects a `@status` code outside 100..599.
 func (a *analyzer) checkHTTPStatus(d *ast.Decorator) {
 	pos := positionalArgs(d)
-	if len(pos) != 1 {
-		return
-	}
 	v, ok := pos[0].Value.(*ast.IntLit)
 	if !ok {
 		return
@@ -151,9 +147,6 @@ func (a *analyzer) checkHTTPStatus(d *ast.Decorator) {
 // seconds or as a duration, or that [DurationArg] cannot read.
 func (a *analyzer) checkPositiveDuration(d *ast.Decorator) {
 	pos := positionalArgs(d)
-	if len(pos) != 1 {
-		return
-	}
 	dur, ok := DurationArg(pos[0])
 	switch v := pos[0].Value.(type) {
 	case *ast.DurationLit:
@@ -182,9 +175,6 @@ func (a *analyzer) checkPositiveDuration(d *ast.Decorator) {
 // which would mean no cap, or one [lexer.ParseSize] cannot read.
 func (a *analyzer) checkPositiveSize(d *ast.Decorator) {
 	pos := positionalArgs(d)
-	if len(pos) != 1 {
-		return
-	}
 	if v, ok := pos[0].Value.(*ast.SizeLit); ok {
 		if _, parsed := lexer.ParseSize(v.Text); !parsed {
 			a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
@@ -202,9 +192,6 @@ func (a *analyzer) checkPositiveSize(d *ast.Decorator) {
 // checkNonNegativeInt rejects a negative length or item count.
 func (a *analyzer) checkNonNegativeInt(d *ast.Decorator) {
 	pos := positionalArgs(d)
-	if len(pos) != 1 {
-		return
-	}
 	if v, ok := pos[0].Value.(*ast.IntLit); ok && v.Value < 0 {
 		a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
 			"@%s: value must be ≥ 0 (got %d)", d.Name, v.Value)

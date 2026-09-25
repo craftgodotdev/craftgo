@@ -19,12 +19,10 @@ type resolvedField struct {
 // WireName returns the field's name in its path, query, header, cookie or form
 // binding, or "" for a body or sensitive field.
 func (rf resolvedField) WireName() string {
-	switch rf.Binding {
-	case wire.BindPath, wire.BindQuery, wire.BindHeader, wire.BindCookie, wire.BindForm:
+	if rf.Binding.IsParam() {
 		return wire.WireName(rf.Field, rf.Binding)
-	default:
-		return ""
 	}
+	return ""
 }
 
 // resolveField is [semantic.ResolveField] with f's Go rendering.

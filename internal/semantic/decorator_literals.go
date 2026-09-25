@@ -10,6 +10,11 @@ func ResolveDefaultValue(f *ast.Field, pkg *Package) (any, bool) {
 	return resolveDecoratorLiteral(f, pkg, "default")
 }
 
+// ExampleValue is [ResolveDefaultValue] for `@example`.
+func ExampleValue(f *ast.Field, pkg *Package) (any, bool) {
+	return resolveDecoratorLiteral(f, pkg, "example")
+}
+
 // resolveDecoratorLiteral returns the literal of f's decName decorator, with
 // enum member names, alone or in an array, resolved to their wire values.
 func resolveDecoratorLiteral(f *ast.Field, pkg *Package, decName string) (any, bool) {
@@ -17,7 +22,7 @@ func resolveDecoratorLiteral(f *ast.Field, pkg *Package, decName string) (any, b
 		return nil, false
 	}
 	for _, d := range f.Decorators {
-		if d == nil || d.Name != decName || len(d.Args) == 0 {
+		if d.Name != decName || len(d.Args) == 0 {
 			continue
 		}
 		// An array field's element type names the enum too.
@@ -25,36 +30,45 @@ func resolveDecoratorLiteral(f *ast.Field, pkg *Package, decName string) (any, b
 		if f.Type != nil && f.Type.Named != nil && f.Type.Named.Name != nil {
 			enumName = f.Type.Named.Name.String()
 		}
-		switch v := d.Args[0].Value.(type) {
-		case *ast.IdentExpr:
-			if v.Name == nil {
+		return literalValue(d.Args[0].Value, func(name string) any {
+			if wire, ok := resolveEnumMember(pkg, enumName, name); ok {
+				return wire
+			}
+			return name
+		})
+	}
+	return nil, false
+}
+
+// literalValue converts literal e, arrays included, to its Go value, with
+// ident giving an identifier's; ok is false for any other expression.
+func literalValue(e ast.Expr, ident func(name string) any) (any, bool) {
+	switch v := e.(type) {
+	case *ast.StringLit:
+		return v.Value, true
+	case *ast.IntLit:
+		return v.Value, true
+	case *ast.FloatLit:
+		return v.Value, true
+	case *ast.BoolLit:
+		return v.Value, true
+	case *ast.NullLit:
+		return nil, true
+	case *ast.IdentExpr:
+		if v.Name == nil {
+			return nil, false
+		}
+		return ident(v.Name.String()), true
+	case *ast.ArrayLit:
+		out := make([]any, 0, len(v.Elements))
+		for _, el := range v.Elements {
+			x, ok := literalValue(el, ident)
+			if !ok {
 				return nil, false
 			}
-			if wire, ok := resolveEnumMember(pkg, enumName, v.Name.String()); ok {
-				return wire, true
-			}
-			return v.Name.String(), true
-		case *ast.ArrayLit:
-			out := make([]any, 0, len(v.Elements))
-			for _, el := range v.Elements {
-				if id, ok := el.(*ast.IdentExpr); ok && id.Name != nil {
-					if wire, ok := resolveEnumMember(pkg, enumName, id.Name.String()); ok {
-						out = append(out, wire)
-					} else {
-						out = append(out, id.Name.String())
-					}
-					continue
-				}
-				x, ok := literalToAny(el)
-				if !ok {
-					return nil, false
-				}
-				out = append(out, x)
-			}
-			return out, true
-		default:
-			return literalToAny(d.Args[0].Value)
+			out = append(out, x)
 		}
+		return out, true
 	}
 	return nil, false
 }
@@ -73,39 +87,6 @@ func resolveEnumMember(pkg *Package, enumName, member string) (any, bool) {
 		if ev.Name == member {
 			return EnumMemberWire(ev), true
 		}
-	}
-	return nil, false
-}
-
-// ExampleValue is [ResolveDefaultValue] for `@example`.
-func ExampleValue(f *ast.Field, pkg *Package) (any, bool) {
-	return resolveDecoratorLiteral(f, pkg, "example")
-}
-
-// literalToAny converts a literal, arrays included, to its Go value; ok is
-// false for any other expression.
-func literalToAny(e ast.Expr) (any, bool) {
-	switch v := e.(type) {
-	case *ast.StringLit:
-		return v.Value, true
-	case *ast.IntLit:
-		return v.Value, true
-	case *ast.FloatLit:
-		return v.Value, true
-	case *ast.BoolLit:
-		return v.Value, true
-	case *ast.NullLit:
-		return nil, true
-	case *ast.ArrayLit:
-		out := make([]any, 0, len(v.Elements))
-		for _, el := range v.Elements {
-			x, ok := literalToAny(el)
-			if !ok {
-				return nil, false
-			}
-			out = append(out, x)
-		}
-		return out, true
 	}
 	return nil, false
 }

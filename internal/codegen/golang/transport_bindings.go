@@ -253,8 +253,7 @@ func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, r *project
 	set := map[string]bool{}
 	addImports := r.CrossPkg.importsInto(set)
 	for _, rf := range resolveRequestFields(m, pkg, r) {
-		switch rf.Binding {
-		case wire.BindPath, wire.BindQuery, wire.BindHeader, wire.BindCookie, wire.BindForm:
+		if rf.Binding.IsParam() {
 			rf.Field.Type.WalkNamedRefs(addImports)
 		}
 		// A pre-fill names the foreign package: `xshared.XColorRed`, `shared.Code("USD")`.
