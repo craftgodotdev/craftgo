@@ -1,10 +1,6 @@
 package semantic
 
-import (
-	"testing"
-
-	"github.com/craftgodotdev/craftgo/internal/ast"
-)
+import "testing"
 
 func TestErrorsRefResolved(t *testing.T) {
 	mustClean(t, `error NotFound UserNotFound
@@ -206,19 +202,6 @@ extend service S {
 	}
 	if n != 1 {
 		t.Errorf("expected 1 %s diagnostic, got %d: %v", CodeDecoratorRef, n, diags)
-	}
-}
-
-func TestRefsNilDecoratorTolerated(t *testing.T) {
-	a := newTestAnalyzer(&Package{
-		Errors:      map[string]*ast.ErrorDecl{},
-		Middlewares: map[string]*ast.MiddlewareDecl{},
-	})
-	a.checkFieldGroupRefs("X", []*ast.Decorator{nil}, nil)
-	a.checkServiceLevelRefs([]*ast.Decorator{nil})
-	a.checkMemberLevelRefs([]*ast.Decorator{nil}, LvlMethod)
-	if len(a.diags) != 0 {
-		t.Errorf("nil decorator entries should not diag, got %v", a.diags)
 	}
 }
 

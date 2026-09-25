@@ -108,15 +108,11 @@ func (a *analyzer) runNamingPhase(files []*ast.File) {
 	a.checkDeclGoNameCollisions(files)
 }
 
-// runDecoratorPhase checks decorator duplicates, placement, arguments,
-// conflicts and the names decorator arguments refer to.
+// runDecoratorPhase checks the decorators at every site and the JSON keys
+// they give each body.
 func (a *analyzer) runDecoratorPhase(files []*ast.File) {
-	a.checkDecoratorDuplicates(files)
-	a.checkDecoratorPlacement(files)
-	a.checkDecoratorArgs(files)
-	a.checkDecoratorConflicts(files)
-	a.checkJSONNames(files)
-	a.checkDecoratorRefs(files)
+	a.checkDecoratorSites(files)
+	a.checkJSONKeys(files)
 }
 
 // runShapePhase checks the structural rules: field, enum, method, mixin,

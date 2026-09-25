@@ -9,8 +9,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
-// checkRangesAndExtras runs the decorator value rules and the field rules
-// over every declaration.
+// checkRangesAndExtras runs the field rules over every type and error body
+// and the matching rules over every scalar.
 func (a *analyzer) checkRangesAndExtras(files []*ast.File) {
 	for _, f := range files {
 		for _, d := range f.Decls {
@@ -26,10 +26,7 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		a.checkBodyRanges(dd.Body, dd.TypeParams)
 	case *ast.ErrorDecl:
 		a.checkBodyRanges(dd.Body, nil)
-	case *ast.EventDecl:
-		a.checkDecoratorRanges(dd.Decorators)
 	case *ast.ScalarDecl:
-		a.checkDecoratorRanges(dd.Decorators)
 		// Every field of the scalar's type inherits its constraints, so the
 		// field rules run here on a field of the scalar's primitive.
 		a.checkIntBoundFloatLiteral(dd.Primitive, fmt.Sprintf("scalar %q", dd.Name), dd.Decorators)
@@ -67,18 +64,12 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 				}
 			}
 		}
-	case *ast.ServiceDecl:
-		for _, m := range dd.Methods() {
-			a.checkDecoratorRanges(m.Decorators)
-		}
 	}
 }
 
-// checkBodyRanges runs the decorator value rules and the field rules on each
-// field of a body.
+// checkBodyRanges runs the field rules on each field of a body.
 func (a *analyzer) checkBodyRanges(members []ast.TypeMember, typeParams []string) {
 	for _, f := range ast.Fields(members) {
-		a.checkDecoratorRanges(f.Decorators)
 		a.checkPairOrdering(f)
 		a.checkNullableRedundant(f)
 		a.checkBoundCapacity(f)
@@ -92,26 +83,21 @@ func (a *analyzer) checkBodyRanges(members []ast.TypeMember, typeParams []string
 	}
 }
 
-// checkDecoratorRanges checks the argument values of each decorator in decs.
-func (a *analyzer) checkDecoratorRanges(decs []*ast.Decorator) {
-	for _, d := range decs {
-		if d == nil {
-			continue
-		}
-		switch d.Name {
-		case "length", "range":
-			a.checkPairArgs(d)
-		case "multipleOf":
-			a.checkMultipleOf(d)
-		case "status":
-			a.checkHTTPStatus(d)
-		case "timeout":
-			a.checkPositiveDuration(d)
-		case "maxBodySize", "maxSize":
-			a.checkPositiveSize(d)
-		case "minLength", "maxLength", "minItems", "maxItems":
-			a.checkNonNegativeInt(d)
-		}
+// checkDecoratorValue checks the argument values of d.
+func (a *analyzer) checkDecoratorValue(d *ast.Decorator) {
+	switch d.Name {
+	case "length", "range":
+		a.checkPairArgs(d)
+	case "multipleOf":
+		a.checkMultipleOf(d)
+	case "status":
+		a.checkHTTPStatus(d)
+	case "timeout":
+		a.checkPositiveDuration(d)
+	case "maxBodySize", "maxSize":
+		a.checkPositiveSize(d)
+	case "minLength", "maxLength", "minItems", "maxItems":
+		a.checkNonNegativeInt(d)
 	}
 }
 

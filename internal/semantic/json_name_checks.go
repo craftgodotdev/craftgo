@@ -8,28 +8,27 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// checkJSONNames validates every `@json` and rejects two body fields of
-// one type that would share a JSON key.
-func (a *analyzer) checkJSONNames(files []*ast.File) {
+// checkJSONKeys rejects two body fields of one type or error that would
+// share a JSON key.
+func (a *analyzer) checkJSONKeys(files []*ast.File) {
 	for _, f := range files {
 		for _, decl := range f.Decls {
 			switch dd := decl.(type) {
 			case *ast.TypeDecl:
-				a.checkJSONNamesIn("type "+dd.Name, dd.Body)
+				a.checkJSONKeysIn("type "+dd.Name, dd.Body)
 			case *ast.ErrorDecl:
-				a.checkJSONNamesIn("error "+dd.Name, dd.Body)
+				a.checkJSONKeysIn("error "+dd.Name, dd.Body)
 			}
 		}
 	}
 }
 
-func (a *analyzer) checkJSONNamesIn(parent string, members []ast.TypeMember) {
+func (a *analyzer) checkJSONKeysIn(parent string, members []ast.TypeMember) {
 	seen := map[string]*ast.Field{}
 	for _, f := range ast.Fields(members) {
 		if f.Name == "" {
 			continue
 		}
-		a.checkJSONDecorator(f)
 		name, presence := wire.JSONShape(f)
 		if presence == wire.JSONAbsent {
 			continue
@@ -44,9 +43,11 @@ func (a *analyzer) checkJSONNamesIn(parent string, members []ast.TypeMember) {
 	}
 }
 
+// checkJSONDecorator rejects `@json` off the body, and a `@json` key that is
+// empty or holds whitespace, a quote, a comma or a backslash.
 func (a *analyzer) checkJSONDecorator(f *ast.Field) {
 	for _, d := range f.Decorators {
-		if d == nil || d.Name != wire.DecoratorJSON {
+		if d.Name != wire.DecoratorJSON {
 			continue
 		}
 		if kind, ok := wire.BindingKind(f.Decorators); ok && kind != wire.BindBody {

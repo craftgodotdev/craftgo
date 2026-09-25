@@ -597,7 +597,7 @@ Methods inside an `extend` block inherit the **block's own** decorators in addit
 
 #### Rules for `extend service` decorators
 
-- Only **method-level-applicable** decorators are valid on an `extend service` block - `@middlewares`, `@security`, `@tags`, `@deprecated`, `@doc` - plus `@group`, which groups that block's own methods on disk. `@prefix` is primary-only and produces `service/extend-decorator-not-method` if put on extend.
+- Only **method-level-applicable** decorators are valid on an `extend service` block - any decorator a method takes, such as `@middlewares`, `@security`, `@tags`, `@timeout` or `@errors`, which every method of the block inherits - plus `@group`, which groups that block's own methods on disk. `@prefix` is primary-only and produces `service/extend-decorator-not-method` if put on extend.
 - The primary service declaration must exist in the same package. A cross-package extend produces `service/extend-orphan` with a Related pointer to where the primary was found (or expected). To extend a service from another package, move the extend file into the primary's folder or rename the extend block to a new service.
 
 #### Combinations cheatsheet

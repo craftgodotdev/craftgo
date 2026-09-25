@@ -9,11 +9,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// methodLabel renders "method Svc.Name" for diagnostics.
-func methodLabel(svc string, m *ast.Method) string {
-	return "method " + svc + "." + m.Name
-}
-
 // checkRequestBodyType rejects a request type that is a builtin primitive, a
 // scalar or an enum, none of which has fields to bind.
 func (a *analyzer) checkRequestBodyType(m *ast.Method) {

@@ -290,9 +290,8 @@ func TestSingleNumericArgMissing(t *testing.T) {
 	}
 }
 
-func TestRangesNilDecoratorTolerated(t *testing.T) {
+func TestBodyRangesSkipMixins(t *testing.T) {
 	a := newTestAnalyzer(&Package{})
-	a.checkDecoratorRanges([]*ast.Decorator{nil})
 	a.checkBodyRanges([]ast.TypeMember{
 		// Mixin members are skipped.
 		&ast.Mixin{Ref: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"Other"}}}},

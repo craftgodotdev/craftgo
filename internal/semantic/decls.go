@@ -108,28 +108,14 @@ func (a *analyzer) registerMember(table map[string]lexer.Position, key string, p
 }
 
 // mergeServices fills each service's Methods. The decorators an extend
-// block's methods inherit ([inheritedFrom]) are prepended to each of them,
-// @group stays on the block, and any other known decorator on the block is
-// an error.
+// block's methods inherit ([inheritedFrom]) are prepended to each of them.
 func (a *analyzer) mergeServices() {
-	for name, si := range a.pkg.Services {
+	for _, si := range a.pkg.Services {
 		if si.Primary == nil {
 			continue
 		}
 		si.Methods = append(si.Methods, si.Primary.Methods()...)
 		for _, e := range si.Extends {
-			for _, d := range e.Decorators {
-				spec, ok := Lookup(d.Name)
-				switch {
-				case !ok:
-				case d.Name == "group":
-					// The args pass skips extend blocks, so @group's argument is checked here.
-					a.checkGroupArg(d)
-				case spec.Levels&LvlMethod == 0:
-					a.diag(d.Pos, d.Pos, lexer.SeverityError, CodeExtendDecoratorNotMethod,
-						"decorator @%s on extend service %q is not valid on a method; move it to the primary service", d.Name, name)
-				}
-			}
 			inherited := inheritedFrom(e)
 			for _, m := range e.Methods() {
 				if len(inherited) > 0 {

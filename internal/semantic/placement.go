@@ -5,75 +5,27 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-func (a *analyzer) checkDecoratorPlacement(files []*ast.File) {
-	for _, f := range files {
-		a.checkPlacement(LvlFile, "file", f.Decorators)
-		for _, d := range f.Decls {
-			a.checkDeclPlacement(d)
-		}
-	}
-}
-
-// checkDeclPlacement checks the decorators of d and of every scope nested in it.
-func (a *analyzer) checkDeclPlacement(d ast.Decl) {
-	switch dd := d.(type) {
-	case *ast.TypeDecl:
-		a.checkPlacement(LvlType, "type "+dd.Name, dd.Decorators)
-		a.checkFieldPlacement(LvlField, dd.Name, dd.Body)
-	case *ast.EnumDecl:
-		a.checkPlacement(LvlEnum, "enum "+dd.Name, dd.Decorators)
-		for _, v := range dd.EnumValues() {
-			a.checkPlacement(LvlEnumValue, "enum value "+dd.Name+"."+v.Name, v.Decorators)
-		}
-	case *ast.ErrorDecl:
-		a.checkPlacement(LvlError, "error "+dd.Name, dd.Decorators)
-		a.checkFieldPlacement(LvlErrorField, dd.Name, dd.Body)
-	case *ast.ScalarDecl:
-		a.checkPlacement(LvlScalar, "scalar "+dd.Name, dd.Decorators)
-	case *ast.MiddlewareDecl:
-		a.checkPlacement(LvlMiddleware, "middleware "+dd.Name, dd.Decorators)
-	case *ast.EventDecl:
-		a.checkPlacement(LvlEvent, "event "+dd.Name, dd.Decorators)
-	case *ast.ServiceDecl:
-		// mergeServices checks the levels of an extend block's own decorators.
-		if !dd.Extend {
-			a.checkPlacement(LvlService, "service "+dd.Name, dd.Decorators)
-		}
-		for _, m := range dd.Methods() {
-			a.checkPlacement(LvlMethod, methodLabel(dd.Name, m), m.Decorators)
-		}
-	}
-}
-
-// checkFieldPlacement checks each field's decorators against site:
-// [LvlField] in a type body, [LvlErrorField] in an error body.
-func (a *analyzer) checkFieldPlacement(site Level, parent string, members []ast.TypeMember) {
-	for _, f := range ast.Fields(members) {
-		a.checkPlacement(site, site.Name()+" "+parent+"."+f.Name, f.Decorators)
-	}
-}
-
-// checkPlacement reports each decorator in decs that is unknown, removed or
-// not allowed at site; scopeLabel names the site ("field User.name").
-func (a *analyzer) checkPlacement(site Level, scopeLabel string, decs []*ast.Decorator) {
-	for _, d := range decs {
-		if d == nil {
-			continue
-		}
+// checkPlacement reports each decorator at s that is unknown, removed or not
+// allowed there.
+func (a *analyzer) checkPlacement(s decoratorSite) {
+	for _, d := range s.decs {
 		spec, known := Lookup(d.Name)
-		if !known {
+		switch {
+		case !known:
 			if note, gone := RemovedDecorator(d.Name); gone {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorRemoved,
-					"@%s on %s is no longer a craftgo decorator. %s", d.Name, scopeLabel, note)
+					"@%s on %s is no longer a craftgo decorator. %s", d.Name, s.label, note)
 				continue
 			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorUnknown,
-				"unknown decorator @%s on %s (not in the framework registry)", d.Name, scopeLabel)
-			continue
-		}
-		if spec.Levels&site == 0 {
+				"unknown decorator @%s on %s (not in the framework registry)", d.Name, s.label)
+		case s.allows(d.Name):
+		case s.extendBlock():
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeExtendDecoratorNotMethod,
+				"decorator @%s on extend service %q is not valid on a method; move it to the primary service", d.Name, s.decl.(*ast.ServiceDecl).Name)
+		default:
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorPlacement,
-				"@%s is not allowed on %s; valid sites: %s", d.Name, scopeLabel, spec.Levels)
+				"@%s is not allowed on %s; valid sites: %s", d.Name, s.label, spec.Levels)
 		}
 	}
 }

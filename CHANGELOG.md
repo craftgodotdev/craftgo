@@ -310,6 +310,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   generated routes that did not compile (`constant ... overflows int64`); it
   now reports `decorator/range`.
 
+- **An `extend service` block's decorators are checked once, at the block.**
+  An unknown decorator there passed analysis silently; it now reports
+  `decorator/unknown`. A bad argument or a repeated decorator on the block
+  was reported once per method of the block; it is now reported once. The
+  editor offers above an extend block every decorator analysis accepts
+  there - any decorator a method takes, plus `@group` - where it left out
+  `@timeout`, `@errors` and the other method-only ones.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

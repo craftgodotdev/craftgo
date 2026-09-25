@@ -135,8 +135,6 @@ func decoratorCompletions(view snapshotView, c cursor, prefix string) []protocol
 	case semantic.LvlScalar:
 		fieldPrim = scalarPrimAt(view, c)
 	}
-	// An `extend service` takes the service decorators that have a method form,
-	// plus @group.
 	extendSite := level == semantic.LvlService && nextTopLevelKeyword(view, c) == lexer.KwExtend
 	names := make([]string, 0, len(semantic.Registry))
 	for name := range semantic.Registry {
@@ -146,10 +144,11 @@ func decoratorCompletions(view snapshotView, c cursor, prefix string) []protocol
 	out := make([]protocol.CompletionItem, 0, len(names))
 	for _, name := range names {
 		spec := semantic.Registry[name]
-		if spec.Levels == 0 || spec.Levels&level == 0 {
-			continue
+		allowed := spec.Levels&level != 0
+		if extendSite {
+			allowed = semantic.ExtendAllows(name)
 		}
-		if extendSite && spec.Levels&semantic.LvlMethod == 0 && name != "group" {
+		if !allowed {
 			continue
 		}
 		if fieldPrim != 0 && spec.AppliesTo != 0 && spec.AppliesTo&fieldPrim == 0 {

@@ -87,12 +87,12 @@ func TestArgTypeArgAnyAcceptsAnything(t *testing.T) {
 	}`)
 }
 
-func TestArgsScopeNilEntry(t *testing.T) {
+// The argument check leaves an unknown decorator to the placement check.
+func TestDecoratorArgsSkipUnknownName(t *testing.T) {
 	a := newTestAnalyzer(&Package{})
-	a.checkArgsScope([]*ast.Decorator{nil})
-	a.checkArgsScope([]*ast.Decorator{{Name: "doesNotExist"}})
+	a.checkDecoratorArgs(decoratorSite{level: LvlField, decs: []*ast.Decorator{{Name: "doesNotExist", HasParens: true}}})
 	if len(a.diags) != 0 {
-		t.Errorf("nil entry / unknown name should not diag, got %v", a.diags)
+		t.Errorf("unknown name should not diag, got %v", a.diags)
 	}
 }
 

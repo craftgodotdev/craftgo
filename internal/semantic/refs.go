@@ -8,34 +8,25 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// checkDecoratorRefs resolves the names decorators refer to: the fields a
-// type's @requiresOneOf and @mutuallyExclusive list, and what service and
-// method decorators pass to @errors, @middlewares and @security.
-func (a *analyzer) checkDecoratorRefs(files []*ast.File) {
-	for _, f := range files {
-		for _, d := range f.Decls {
-			a.checkDeclRefs(d)
-		}
+// checkDecoratorRefs resolves the names the decorators at s refer to: the
+// fields a type's @requiresOneOf and @mutuallyExclusive list, and the names
+// @errors, @middlewares and @security take where s allows them.
+func (a *analyzer) checkDecoratorRefs(s decoratorSite) {
+	if td, ok := s.decl.(*ast.TypeDecl); ok && s.level == LvlType {
+		a.checkFieldGroupRefs(td.Name, s.decs, td.Body)
+		return
 	}
-}
-
-// checkDeclRefs resolves the decorator references of a type, or of a
-// service and its methods.
-func (a *analyzer) checkDeclRefs(d ast.Decl) {
-	switch dd := d.(type) {
-	case *ast.TypeDecl:
-		a.checkFieldGroupRefs(dd.Name, dd.Decorators, dd.Body)
-	case *ast.ServiceDecl:
-		var inherited []*ast.Decorator
-		if dd.Extend {
-			// Resolved once on the block, not on each method that inherits it.
-			a.checkMemberLevelRefs(dd.Decorators, LvlMethod)
-			inherited = inheritedFrom(dd)
-		} else {
-			a.checkServiceLevelRefs(dd.Decorators)
+	for _, d := range s.decs {
+		if !s.allows(d.Name) {
+			continue
 		}
-		for _, m := range dd.Methods() {
-			a.checkMemberLevelRefs(ownDecorators(m, inherited), LvlMethod)
+		switch d.Name {
+		case "errors":
+			a.checkErrorsRef(d)
+		case "middlewares":
+			a.checkMiddlewareRef(d)
+		case "security":
+			a.checkSecurityRef(d)
 		}
 	}
 }
@@ -61,9 +52,6 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 		return byName
 	}
 	for _, d := range decs {
-		if d == nil {
-			continue
-		}
 		if d.Name != "requiresOneOf" && d.Name != "mutuallyExclusive" {
 			continue
 		}
@@ -135,43 +123,6 @@ func reportCrossFieldMemberIssues(decName, typeName, memberName string, rf Resol
 // always present. A file or raw field is nil exactly when absent.
 func presenceUnclean(rf ResolvedField) bool {
 	return rf.IsNilable && rf.Category != CatFile && rf.Category != CatRawBytes
-}
-
-// checkServiceLevelRefs resolves a service's @middlewares and @security names.
-func (a *analyzer) checkServiceLevelRefs(decs []*ast.Decorator) {
-	for _, d := range decs {
-		if d == nil {
-			continue
-		}
-		switch d.Name {
-		case "middlewares":
-			a.checkMiddlewareRef(d)
-		case "security":
-			a.checkSecurityRef(d)
-		}
-	}
-}
-
-// checkMemberLevelRefs resolves the @errors, @middlewares and @security
-// names in decorators written at level lvl. A decorator not allowed at lvl
-// is left to the placement check.
-func (a *analyzer) checkMemberLevelRefs(decs []*ast.Decorator, lvl Level) {
-	for _, d := range decs {
-		if d == nil {
-			continue
-		}
-		if spec, ok := Lookup(d.Name); !ok || spec.Levels&lvl == 0 {
-			continue
-		}
-		switch d.Name {
-		case "errors":
-			a.checkErrorsRef(d)
-		case "middlewares":
-			a.checkMiddlewareRef(d)
-		case "security":
-			a.checkSecurityRef(d)
-		}
-	}
 }
 
 // checkErrorsRef resolves every @errors name: a qualified `pkg.Name` in

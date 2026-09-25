@@ -9,66 +9,16 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// checkDecoratorArgs checks every registered decorator's arguments against
-// its [Spec], and each field's `@default` and `@example` value.
-func (a *analyzer) checkDecoratorArgs(files []*ast.File) {
-	for _, f := range files {
-		a.checkArgsScope(f.Decorators)
-		for _, d := range f.Decls {
-			a.checkDeclArgs(d)
-		}
-	}
-}
-
-// checkDeclArgs checks d and every site nested in it.
-func (a *analyzer) checkDeclArgs(d ast.Decl) {
-	switch dd := d.(type) {
-	case *ast.TypeDecl:
-		a.checkArgsScope(dd.Decorators)
-		a.checkFieldArgs(dd.Body)
-	case *ast.EnumDecl:
-		a.checkArgsScope(dd.Decorators)
-		for _, v := range dd.EnumValues() {
-			a.checkArgsScope(v.Decorators)
-		}
-	case *ast.ErrorDecl:
-		a.checkArgsScope(dd.Decorators)
-		a.checkFieldArgs(dd.Body)
-	case *ast.ScalarDecl:
-		a.checkArgsScope(dd.Decorators)
-	case *ast.MiddlewareDecl:
-		a.checkArgsScope(dd.Decorators)
-	case *ast.EventDecl:
-		a.checkArgsScope(dd.Decorators)
-	case *ast.ServiceDecl:
-		if !dd.Extend {
-			a.checkArgsScope(dd.Decorators)
-		}
-		for _, m := range dd.Methods() {
-			a.checkArgsScope(m.Decorators)
-		}
-	}
-}
-
-// checkFieldArgs checks every field of a type or error body.
-func (a *analyzer) checkFieldArgs(members []ast.TypeMember) {
-	for _, f := range ast.Fields(members) {
-		a.checkArgsScope(f.Decorators)
-		a.checkFieldDefault(f)
-		a.checkFieldExample(f)
-	}
-}
-
-func (a *analyzer) checkArgsScope(decs []*ast.Decorator) {
-	for _, d := range decs {
-		if d == nil {
-			continue
-		}
+// checkDecoratorArgs checks every known decorator at s: its argument shape
+// against its [Spec], then the values it takes.
+func (a *analyzer) checkDecoratorArgs(s decoratorSite) {
+	for _, d := range s.decs {
 		spec, ok := Lookup(d.Name)
 		if !ok {
 			continue
 		}
 		a.checkDecoratorArg(d, spec)
+		a.checkDecoratorValue(d)
 	}
 }
 

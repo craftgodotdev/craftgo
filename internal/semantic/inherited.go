@@ -14,12 +14,19 @@ var chainIgnores = map[string]string{
 	"tags":        "ignoreTags",
 }
 
+// ExtendAllows reports whether decorator name may sit on an `extend service`
+// block: @group, or a decorator every method of the block inherits.
+func ExtendAllows(name string) bool {
+	spec, ok := Lookup(name)
+	return ok && (name == "group" || spec.Levels&LvlMethod != 0)
+}
+
 // inheritedFrom returns the decorators each method of extend block e
-// inherits: every known method-level decorator but @group.
+// inherits: every one [ExtendAllows] but @group.
 func inheritedFrom(e *ast.ServiceDecl) []*ast.Decorator {
 	var out []*ast.Decorator
 	for _, d := range e.Decorators {
-		if spec, ok := Lookup(d.Name); ok && d.Name != "group" && spec.Levels&LvlMethod != 0 {
+		if d.Name != "group" && ExtendAllows(d.Name) {
 			out = append(out, d)
 		}
 	}

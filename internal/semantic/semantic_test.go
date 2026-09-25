@@ -212,15 +212,6 @@ func TestEnumDuplicateString(t *testing.T) {
 	expectMsg(t, "duplicate string value", `enum X { A = "x"  B = "x" }`)
 }
 
-// checkDecoratorScope skips nil decorator entries.
-func TestCheckDecoratorScopeNilEntry(t *testing.T) {
-	a := newTestAnalyzer(&Package{})
-	a.checkDecoratorScope("test", []*ast.Decorator{nil, {Name: "doc"}, nil})
-	if len(a.diags) != 0 {
-		t.Errorf("expected no diags from nil-only chain, got %v", a.diags)
-	}
-}
-
 func TestDuplicateDecoratorOnField(t *testing.T) {
 	expectMsg(t, "duplicate decorator", `type X { name string @doc("a") @doc("b") }`)
 }
@@ -266,7 +257,7 @@ error NotFound UserNotFound`)
 }
 
 func TestDuplicateDecoratorOnErrorField(t *testing.T) {
-	expectMsg(t, "duplicate decorator @doc on field E.code", `error BadRequest E { code string @doc("a") @doc("b") }`)
+	expectMsg(t, "duplicate decorator @doc on error field E.code", `error BadRequest E { code string @doc("a") @doc("b") }`)
 }
 
 func TestDuplicateDecoratorPreservesFirst(t *testing.T) {

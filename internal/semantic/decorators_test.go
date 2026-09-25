@@ -208,16 +208,6 @@ func TestPlacementListsValidSitesInMessage(t *testing.T) {
 	expectMessage(t, d, "service")
 }
 
-// checkPlacement skips nil decorator entries.
-func TestPlacementNilEntry(t *testing.T) {
-	a := newTestAnalyzer(&Package{})
-	a.checkPlacement(LvlField, "field X.y", nil)
-	a.checkPlacement(LvlField, "field X.y", []*ast.Decorator{nil, {Name: "doc"}})
-	if len(a.diags) != 0 {
-		t.Errorf("nil entries + a valid @doc on field should not diag, got %v", a.diags)
-	}
-}
-
 func TestCodeOnDuplicateDecl(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `type X {}
 type X {}`))
@@ -766,6 +756,71 @@ middleware Auth
 extend service S {
     get GetX /x {}
 }`)
+}
+
+// extendBlockSrc returns a design whose three-method extend block carries decs.
+func extendBlockSrc(decs string) string {
+	return `package design
+type R { ok bool }
+service S { get A /a { response R } }
+` + decs + `
+extend service S {
+    get B /b { response R }
+    get C /c { response R }
+    get D /d { response R }
+}`
+}
+
+// An unknown decorator on an extend block is reported once, at the block.
+func TestExtendServiceReportsUnknownDecorator(t *testing.T) {
+	expectCodeCount(t, extendBlockSrc("@bogus"), CodeDecoratorUnknown, 1)
+}
+
+// An extend block's decorators are checked once, not once per method that inherits them.
+func TestExtendServiceDecoratorsCheckedOnce(t *testing.T) {
+	for _, c := range []struct{ decs, code string }{
+		{`@tags(1)`, CodeDecoratorArgType},
+		{`@timeout(0)`, CodeDecoratorRange},
+		{`@group("..")`, CodeDecoratorArgValue},
+		{`@summary("a") @summary("b")`, CodeDecoratorDuplicate},
+		{`@prefix("/v1")`, CodeExtendDecoratorNotMethod},
+	} {
+		t.Run(c.decs, func(t *testing.T) {
+			expectCodeCount(t, extendBlockSrc(c.decs), c.code, 1)
+		})
+	}
+}
+
+// A method repeating a non-repeatable decorator its extend block gives it
+// is reported at the method's own decorator.
+func TestExtendServiceMethodRepeatsInheritedDecorator(t *testing.T) {
+	src := `package design
+type R { ok bool }
+service S { get A /a { response R } }
+@summary("block")
+extend service S {
+    @summary("own")
+    get B /b { response R }
+    get C /c { response R }
+}`
+	expectCodeCount(t, src, CodeDecoratorDuplicate, 1)
+	d := expectMsg(t, "duplicate decorator @summary on method S.B", src)
+	if d.Pos.Line != 6 || len(d.Related) != 1 || d.Related[0].Pos.Line != 4 {
+		t.Errorf("want the method's own @summary related to the block's, got %v", d)
+	}
+}
+
+// ExtendAllows accepts @group and every decorator a method takes.
+func TestExtendAllows(t *testing.T) {
+	for name, spec := range Registry {
+		want := name == "group" || spec.Levels&LvlMethod != 0
+		if got := ExtendAllows(name); got != want {
+			t.Errorf("ExtendAllows(%q) = %v, want %v", name, got, want)
+		}
+	}
+	if ExtendAllows("bogus") {
+		t.Error("ExtendAllows accepts an unknown decorator")
+	}
 }
 
 func TestLengthOverlapsMinLengthWarning(t *testing.T) {

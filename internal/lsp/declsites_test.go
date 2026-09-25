@@ -68,6 +68,19 @@ func TestDeclSitesMatchSemanticPlacement(t *testing.T) {
 	}
 }
 
+// Decorator completion above an `extend service` offers exactly the
+// decorators analysis accepts on the block.
+func TestExtendSiteCompletionMatchesSemantic(t *testing.T) {
+	const fixture = "service S { get A /a {} }\n@D\nextend service S {\n\tget G /g {}\n}\n"
+	offered := labelSet(mustCompletionsAtCursor(t, "t.craftgo", "package x\n"+strings.Replace(fixture, "@D", "@|", 1)))
+	for _, name := range slices.Sorted(maps.Keys(semantic.Registry)) {
+		accepted := !parseDesign(t, strings.Replace(fixture, "@D", "@"+name, 1)).misplaced
+		if offered[name] != accepted {
+			t.Errorf("@%s above an extend: offered = %v, accepted by analysis = %v", name, offered[name], accepted)
+		}
+	}
+}
+
 // A reserved word among a decorator's arguments is an argument: the site of
 // `@` stays the declaration's that follows the chain.
 func TestDecoratorArgumentsNeverOpenADeclaration(t *testing.T) {
@@ -117,7 +130,7 @@ func parseDesign(t *testing.T, src string) design {
 		if diag.IsError() {
 			d.errs = append(d.errs, diag.Code+": "+diag.Msg)
 		}
-		if diag.Code == semantic.CodeDecoratorPlacement {
+		if diag.Code == semantic.CodeDecoratorPlacement || diag.Code == semantic.CodeExtendDecoratorNotMethod {
 			d.misplaced = true
 		}
 	}
