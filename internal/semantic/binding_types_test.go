@@ -92,6 +92,41 @@ service S { post Do /do/{filter} { request SearchReq } }`, CodeBindingType)
 	}
 }
 
+// Beside a `file`, every body field rides a multipart form part, which carries
+// only a wire-bindable value or a single-level array of one; a raw request is
+// not bound.
+func TestMultipartTextPartTypes(t *testing.T) {
+	const head = "package app\ntype Box<T> { v T }\ntype Meta { x int }\nscalar Blob bytes\ntype Resp { ok bool }\n"
+	for label, c := range map[string]struct{ types, request string }{
+		"2-D array":       {`type R { f file  tags string[][] }`, "R"},
+		"2-D array @body": {`type R { f file  tags string[][] @body }`, "R"},
+		"2-D array mixin": {`type M { grid int[][] }
+type R { f file  M }`, "R"},
+		"struct":            {`type R { f file  meta Meta }`, "R"},
+		"struct @body":      {`type R { f file  meta Meta @body }`, "R"},
+		"struct array":      {`type R { f file  metas Meta[] }`, "R"},
+		"map":               {`type R { f file  m map<string, string> }`, "R"},
+		"generic":           {`type R { f file  b Box<string> }`, "R"},
+		"any":               {`type R { f file  x any }`, "R"},
+		"bytes":             {`type R { f file  x bytes }`, "R"},
+		"raw bytes":         {`type R { f file  x bytes @format(raw) }`, "R"},
+		"datetime":          {`type R { f file  at datetime }`, "R"},
+		"scalar over bytes": {`type R { f file  x Blob }`, "R"},
+		"type argument":     {`type Up<T> { f file  x T }`, "Up<Meta>"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			d := expectError(t, head+c.types+"\nservice S { post A /a { request "+c.request+"  response Resp } }", CodeBindingType)
+			expectMessage(t, d, "multipart form part")
+		})
+	}
+	mustClean(t, head+`enum Color { Red Blue }
+scalar Email string @format(email)
+type R { f file  a string  b int?  c Color  d Email[]  e float64[]?  g bool @form("gg")  h int @query }
+service S { post A /a { request R  response Resp } }`)
+	mustClean(t, head+`type R { f file  meta Meta  tags string[][] }
+service S { @rawRequest post A /a { request R  response Resp } }`)
+}
+
 // An optional type parameter instantiated with an array is a pointer to a
 // slice, which neither the query nor the multipart form binder can fill; a
 // JSON body carries it, and a non-optional parameter binds as the slice.

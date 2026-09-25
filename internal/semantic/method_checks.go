@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -185,28 +184,50 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	}
 }
 
-// checkMultipartTextParts rejects a text part of m's multipart request,
-// mixins included, whose Go value is a pointer to a slice.
-func (a *analyzer) checkMultipartTextParts(svcName string, m *ast.Method) {
+// checkMultipartTextParts rejects a text part of m's multipart request - a
+// body or form field, mixins included, beside a `file` - that the form binder
+// cannot fill: a type no form value carries, or an optional type parameter
+// over an array, whose Go value is a pointer to a slice; decs are the
+// decorators that apply to m. A raw request is not bound, and an explicit
+// @form or a field holding a `file` is reported where it is declared.
+func (a *analyzer) checkMultipartTextParts(svcName string, m *ast.Method, decs []*ast.Decorator) {
 	if m == nil || m.Request == nil || !wire.IsBodyVerb(m.Verb) {
 		return
 	}
-	_, fields, ok := a.requestFields(m)
-	if !ok || !slices.ContainsFunc(fields, func(ff FlatField) bool { return isFileTypeRef(ff.Field.Type) }) {
+	if rawReq, _ := wire.RawSides(decs); rawReq {
+		return
+	}
+	view, fields, ok := a.requestFields(m)
+	if !ok {
 		return
 	}
 	pathSegs := methodRoutePathVars(m, a.pkg.Services)
+	var parts []FlatField
+	multipart := false
 	for _, ff := range fields {
+		if b, _ := wire.RequestFieldBinding(ff.Field, pathSegs, true); b == wire.BindBody || b == wire.BindForm {
+			parts = append(parts, ff)
+			multipart = multipart || isFileTypeRef(ff.Field.Type)
+		}
+	}
+	if !multipart {
+		return
+	}
+	verb, reqName := strings.ToUpper(m.Verb), m.Request.Name.String()
+	for _, ff := range parts {
 		f := ff.Field
-		if !ff.sliceBehindPointer {
-			continue
+		switch {
+		case holdsFile(f.Type):
+		case ff.sliceBehindPointer:
+			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
+				"field %s.%s: on the %s %s handler this rides a multipart form part (the request carries a file), but it is an optional type parameter over an array, whose Go value is a pointer to a slice the form binder cannot fill - drop the `?` from the type parameter (an array is already nilable)",
+				reqName, f.Name, verb, svcName)
+		case ast.HasDecorator(f.Decorators, wire.BindingForm):
+		case !a.wireBindableIn(view, f.Type):
+			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
+				"field %s.%s: on the %s %s handler this rides a multipart form part (the request carries a file), but %s is no form value - a part carries string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or a single-level array of those (no maps, structs, generic instantiations or nested arrays); split it into such fields, or send it in a request without a file",
+				reqName, f.Name, verb, svcName, f.Type.String())
 		}
-		if b, _ := wire.RequestFieldBinding(f, pathSegs, true); b != wire.BindBody && b != wire.BindForm {
-			continue
-		}
-		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
-			"field %s.%s: on the %s %s handler this rides a multipart form part (the request carries a file), but it is an optional type parameter over an array, whose Go value is a pointer to a slice the form binder cannot fill - drop the `?` from the type parameter (an array is already nilable)",
-			m.Request.Name.String(), f.Name, strings.ToUpper(m.Verb), svcName)
 	}
 }
 

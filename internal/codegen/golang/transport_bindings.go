@@ -2,11 +2,9 @@ package golang
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/prims"
-	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
@@ -120,9 +118,9 @@ func formatToString(prim string, named bool, access string) (expr string, needsS
 	return access, false
 }
 
-// collectFormBindings returns the multipart parts of m's request fields, each text part with its
+// collectFormBindings returns the multipart parts of a request's fields, each text part with its
 // bind statement; both are nil when no part is a file.
-func collectFormBindings(m *ast.Method, fields []resolvedField, pkg *semantic.Package, r *projectResolver, imports *importSet) (text, files []paramBinding, err error) {
+func collectFormBindings(fields []resolvedField, pkg *semantic.Package, r *projectResolver, imports *importSet) (text, files []paramBinding) {
 	resolved := make([]semantic.ResolvedField, len(fields))
 	byField := make(map[*ast.Field]resolvedField, len(fields))
 	for i, rf := range fields {
@@ -134,52 +132,25 @@ func collectFormBindings(m *ast.Method, fields []resolvedField, pkg *semantic.Pa
 		files = append(files, paramBinding{DSLName: ff.WireName, GoName: ff.Name, IsArray: ff.IsArray})
 	}
 	for _, ff := range textParts {
-		line, lerr := renderWireBindLine(byField[ff.Field], wire.BindForm, ff.WireName, pkg, r, imports)
-		if lerr != nil {
-			return nil, nil, bindError(m, ff.Field, lerr)
-		}
+		line := renderWireBindLine(byField[ff.Field], wire.BindForm, ff.WireName, pkg, r, imports)
 		text = append(text, paramBinding{DSLName: ff.WireName, GoName: ff.Name, Bind: line})
 	}
-	return text, files, nil
+	return text, files
 }
 
 // collectBindings renders the bind statement of each request field a path, query, header or cookie
-// carries, grouped by binding in field order; a field its source cannot carry fails the method,
-// unless its name alone bound it to the path.
-func collectBindings(m *ast.Method, fields []resolvedField, pkg *semantic.Package, r *projectResolver, imports *importSet) (map[wire.Binding][]paramBinding, error) {
-	reqName := m.Request.Name.String()
+// carries, grouped by binding in field order.
+func collectBindings(fields []resolvedField, pkg *semantic.Package, r *projectResolver, imports *importSet) map[wire.Binding][]paramBinding {
 	binds := map[wire.Binding][]paramBinding{}
 	for _, rf := range fields {
 		switch rf.Binding {
 		case wire.BindPath, wire.BindQuery, wire.BindHeader, wire.BindCookie:
-		default:
-			continue
+			name := wireName(rf.Field, rf.Binding)
+			line := renderWireBindLine(rf, rf.Binding, name, pkg, r, imports)
+			binds[rf.Binding] = append(binds[rf.Binding], paramBinding{DSLName: name, GoName: rf.GoName, Bind: line})
 		}
-		f := rf.Field
-		autoPath := rf.Binding == wire.BindPath && rf.AutoBound
-		// A route segment is one value and always present.
-		if rf.Binding == wire.BindPath && f.Type != nil && (f.Type.Optional || f.Type.Array) {
-			if autoPath {
-				continue
-			}
-			return nil, fmt.Errorf("%s.%s: @path requires a non-optional, non-array field - got %s", reqName, f.Name, f.Type)
-		}
-		name := wireName(f, rf.Binding)
-		line, err := renderWireBindLine(rf, rf.Binding, name, pkg, r, imports)
-		if err != nil {
-			if autoPath {
-				continue
-			}
-			return nil, bindError(m, f, err)
-		}
-		binds[rf.Binding] = append(binds[rf.Binding], paramBinding{DSLName: name, GoName: rf.GoName, Bind: line})
 	}
-	return binds, nil
-}
-
-// bindError names the request field of m that err keeps from binding.
-func bindError(m *ast.Method, f *ast.Field, err error) error {
-	return fmt.Errorf("%s.%s on %s %s: %w", m.Request.Name.String(), f.Name, strings.ToUpper(m.Verb), route.PathString(m.Path), err)
+	return binds
 }
 
 // hasBodyField reports whether any request field binds to the body or a form part.

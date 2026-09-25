@@ -63,26 +63,11 @@ var wireSources = map[wire.Binding]wireSource{
 	},
 }
 
-// renderWireBindLine renders the statement binding rf from binding's source into req, or an error
-// for a shape the source cannot carry (a map, a struct, an array on a single-value source).
-func renderWireBindLine(rf resolvedField, binding wire.Binding, wireName string, pkg *semantic.Package, r *projectResolver, imports *importSet) (string, error) {
-	f, src := rf.Field, wireSources[binding]
-	switch {
-	case f.Type == nil:
-		return "", fmt.Errorf("field %q has no resolved type", f.Name)
-	case f.Type.Map != nil:
-		return "", fmt.Errorf("field %q: map types cannot bind to @%s - only string/bool/int*/uint*/float* and arrays of those", f.Name, binding)
-	case f.Type.Named == nil:
-		return "", fmt.Errorf("field %q: anonymous types cannot bind to @%s - only string/bool/int*/uint*/float* and arrays of those", f.Name, binding)
-	case len(f.Type.Named.Args) > 0:
-		return "", fmt.Errorf("field %q: generic type %s<...> cannot bind to @%s - only string/bool/int*/uint*/float* and arrays of those", f.Name, f.Type.Named.Name.String(), binding)
-	case f.Type.Array && src.array == nil:
-		return "", fmt.Errorf("field %q: arrays cannot bind to @%s - this wire format carries a single value per name", f.Name, binding)
-	}
-	primName, declared, ok := wireTarget(rf.ResolvedField, pkg, r)
-	if !ok {
-		return "", fmt.Errorf("field %q: type %s cannot bind to @%s - only string/bool/int*/uint*/float*, scalars/enums, and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, f.Type, binding)
-	}
+// renderWireBindLine renders the statement binding rf from binding's source into req; the
+// analyser admits only a field whose type the source carries.
+func renderWireBindLine(rf resolvedField, binding wire.Binding, wireName string, pkg *semantic.Package, r *projectResolver, imports *importSet) string {
+	src := wireSources[binding]
+	primName, declared, _ := wireTarget(rf.ResolvedField, pkg, r)
 	sp, _ := prims.Lookup(primName)
 	parse := wireParses[sp.Kind]
 	cast := ""
@@ -107,7 +92,7 @@ func renderWireBindLine(rf resolvedField, binding wire.Binding, wireName string,
 	if shape == "directSingle" {
 		data.Wrap = castTo(cast, data.SingleSource)
 	}
-	return guardBind(renderWireBindShape(shape, data), rf, binding, wireName), nil
+	return guardBind(renderWireBindShape(shape, data), rf, binding, wireName)
 }
 
 // wireTarget resolves what one wire string of rf holds, an array's element for an array: the

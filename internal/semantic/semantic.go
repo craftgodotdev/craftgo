@@ -222,7 +222,7 @@ func (a *analyzer) checkMethodCombinations(svc *ast.ServiceDecl, m *ast.Method) 
 	}
 	a.checkRawModeRedundancy(svcName, m, decs)
 	a.checkBodyBindingVerb(svcName, m)
-	a.checkMultipartTextParts(svcName, m)
+	a.checkMultipartTextParts(svcName, m, decs)
 	a.checkAutoPathField(m)
 	a.checkDuplicateAutoWireNames(m)
 	a.checkNoContentStatusBody(m, decs)

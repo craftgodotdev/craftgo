@@ -886,6 +886,8 @@ service UserService {
 }
 ```
 
+Beside a `file`, every body or `@form` field rides a form part: a string, bool, number, a scalar or enum over one, or a single-level array of those. A struct, map, generic instance or nested array there is `binding/type`.
+
 ### Custom error with body and headers
 
 ```craftgo

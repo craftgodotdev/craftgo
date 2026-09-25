@@ -1,7 +1,6 @@
 package golang
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -88,10 +87,7 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 	out := outputsOf(cfg)
 	for _, m := range svc.Methods {
 		seg := route.OutputSegment(svcName, semantic.MethodGroupOf(svc, m), cfg.Output.FileCase)
-		data, err := buildTransportData(m, svc.Decorators(m), out.segmentImports(pkg.Name, seg), pkg, r)
-		if err != nil {
-			return fmt.Errorf("%s.%s: %w", svcName, m.Name, err)
-		}
+		data := buildTransportData(m, svc.Decorators(m), out.segmentImports(pkg.Name, seg), pkg, r)
 		if err := writeGo(out.transport.sub(seg).at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("transport.tmpl"), data); err != nil {
 			return err
 		}
@@ -99,9 +95,8 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 	return nil
 }
 
-// buildTransportData renders m's handler, decs being the decorators that apply to m; it fails on
-// a field its binding source cannot carry, such as @query on a struct.
-func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, pkg *semantic.Package, r *projectResolver) (transportData, error) {
+// buildTransportData renders m's handler, decs being the decorators that apply to m.
+func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, pkg *semantic.Package, r *projectResolver) transportData {
 	mode := modeOf(m, decs)
 	imports := newImportSet(r, goImport{Alias: localAlias, Path: imps.Types}, transportNames)
 	d := transportData{
@@ -120,16 +115,10 @@ func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, 
 	if d.BindRequest {
 		d.RequestType = imports.named(m.Request)
 		fields := resolveRequestFields(m, pkg, r)
-		binds, err := collectBindings(m, fields, pkg, r, imports)
-		if err != nil {
-			return transportData{}, err
-		}
+		binds := collectBindings(fields, pkg, r, imports)
 		d.PathParams, d.QueryParams, d.HeaderParams, d.CookieParams = binds[wire.BindPath], binds[wire.BindQuery], binds[wire.BindHeader], binds[wire.BindCookie]
 		d.BodyDecode = wire.IsBodyVerb(m.Verb) && hasBodyField(fields)
-		forms, files, ferr := collectFormBindings(m, fields, pkg, r, imports)
-		if ferr != nil {
-			return d, ferr
-		}
+		forms, files := collectFormBindings(fields, pkg, r, imports)
 		if len(files) > 0 {
 			d.IsMultipart = true
 			d.FormStrings = forms
@@ -161,7 +150,7 @@ func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, 
 	d.Imports = imports.imports()
 	d.SuccessStatus = wire.SuccessStatus(m, decs)
 	d.SuccessStatusExpr = statusConstExpr(d.SuccessStatus)
-	return d, nil
+	return d
 }
 
 // statusConstExpr spells a 2xx code as its net/http constant and any other code as a literal.

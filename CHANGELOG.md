@@ -721,6 +721,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   `Up<file>` or a mixin `Box<file>`, which bring the `file` to the request's
   top level, stay accepted.
 
+- **Every multipart form part is checked in analysis.** Beside a `file`, a
+  body field no form value carries - a struct, a map, a generic instance,
+  `any`, `bytes` or `datetime` - stopped `craftgo gen` only in the Go
+  generator, so the editor never showed it, and a nested array such as
+  `string[][]` generated a handler that did not compile. Each is now
+  `binding/type` at the field; a raw request, which the handler does not
+  bind, is not checked.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
