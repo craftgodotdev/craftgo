@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"time"
@@ -87,8 +86,7 @@ type cappedBody struct {
 
 func (b *cappedBody) Read(p []byte) (int, error) {
 	n, err := b.ReadCloser.Read(p)
-	var tooLarge *http.MaxBytesError
-	if errors.As(err, &tooLarge) {
+	if _, tooLarge := err.(*http.MaxBytesError); tooLarge {
 		b.over = true
 	}
 	return n, err

@@ -39,3 +39,17 @@ func TestBodyLimitAllowsWithinCap(t *testing.T) {
 		t.Errorf("within-cap body should pass, got %d", rec.Code)
 	}
 }
+
+// Reading a capped body allocates nothing per Read.
+func TestBodyLimitReadsAllocateNothing(t *testing.T) {
+	var allocs float64
+	h := BodyLimit(1 << 20)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		buf := make([]byte, 64)
+		allocs = testing.AllocsPerRun(100, func() { _, _ = r.Body.Read(buf) })
+	}))
+	req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(strings.Repeat("x", 1<<16)))
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if allocs != 0 {
+		t.Errorf("a Read of a capped body allocated %.0f time(s), want 0", allocs)
+	}
+}
