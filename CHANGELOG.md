@@ -639,6 +639,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   enum-typed field named the field itself (`code`) while its other errors
   named its JSON key or parameter (`c`); all of them now name the same.
 
+- **A parse error is reported once.** A declaration cut short, as in
+  `error {` or a `scalar` line with nothing after the keyword, reported the
+  same error twice or a second one at the same place, and a string with a
+  bad escape or a number with a bad suffix also reported `expected literal,
+  got Error`; each place in a file now gets one diagnostic.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

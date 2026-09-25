@@ -16,6 +16,8 @@ type Parser struct {
 	tokens []lexer.Token
 	pos    int
 	diags  []lexer.Diagnostic
+	// reported holds the position of every diagnostic in diags.
+	reported map[lexer.Position]bool
 	// allComments is every comment in the file.
 	allComments []*lexer.Comment
 	// claimed holds the lines of comments a node owns, which
@@ -37,9 +39,14 @@ func (p *Parser) docAbove() []string {
 func New(filename, src string) *Parser {
 	l := lexer.New(filename, src)
 	toks := l.Tokenize()
+	reported := map[lexer.Position]bool{}
+	for _, d := range l.Diagnostics() {
+		reported[d.Pos] = true
+	}
 	return &Parser{
 		tokens:        toks,
 		diags:         l.Diagnostics(),
+		reported:      reported,
 		allComments:   l.Comments(),
 		claimed:       map[int]bool{},
 		chainComments: map[int][]string{},
@@ -126,8 +133,13 @@ func (p *Parser) expect(k lexer.Kind) (lexer.Token, bool) {
 	return lexer.Token{Pos: p.peek().Pos}, false
 }
 
-// errorf records an error diagnostic at pos.
+// errorf records an error diagnostic at pos unless the lexer or the parser
+// already reported one there, which a second one would only follow from.
 func (p *Parser) errorf(pos lexer.Position, format string, args ...any) {
+	if p.reported[pos] {
+		return
+	}
+	p.reported[pos] = true
 	p.diags = append(p.diags, lexer.Diagnostic{Pos: pos, Msg: fmt.Sprintf(format, args...)})
 }
 

@@ -52,6 +52,36 @@ func TestMismatchedTokenIsNoName(t *testing.T) {
 	}
 }
 
+// A position gets one diagnostic: a construct that stops at a token reports it
+// once, and a token the lexer rejected is not reported again.
+func TestOneDiagnosticPerPosition(t *testing.T) {
+	for src, want := range map[string]string{
+		"package p\n\nscalar\nscalar\n":                                    "expected Ident, got scalar",
+		"package p\n\nerror {\n":                                           "expected Ident, got {",
+		"package p\n\ntype\n":                                              "expected Ident, got EOF",
+		"package p\n\nservice S {\n\tget\n}\n":                             "expected Ident, got }",
+		"package p\n\ntype T {\n\ta string @doc(\"\\q\")\n}\n":             `invalid escape sequence \q`,
+		"package p\n\ntype T {\n\ta string @minLength(5x)\n}\n":            `invalid number suffix "x"`,
+		"package p\n\nenum E { A = \"\\q\" }\n":                            `invalid escape sequence \q`,
+		"package p\n\nimport \"\\q\"\n\ntype T {\n\ta string\n}\n":         `invalid escape sequence \q`,
+		"package p\n\ntype A { a string } @doc(1 2) type B { b string }\n": "expected ',' or ')' after decorator argument, got Int",
+	} {
+		p := New("t.craftgo", src)
+		p.Parse()
+		seen := map[lexer.Position]string{}
+		for _, d := range p.Diagnostics() {
+			if prev, ok := seen[d.Pos]; ok {
+				t.Errorf("%q: two diagnostics at %s: %q and %q", src, d.Pos, prev, d.Msg)
+				continue
+			}
+			seen[d.Pos] = d.Msg
+		}
+		if first := p.Diagnostics()[0].Msg; first != want {
+			t.Errorf("%q: first diagnostic %q, want %q", src, first, want)
+		}
+	}
+}
+
 // TestPathSlashes pins that `//` and a trailing `/` are errors while the root
 // path `/` is valid.
 func TestPathSlashes(t *testing.T) {
