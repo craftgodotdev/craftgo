@@ -19,10 +19,11 @@ import (
 func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
 	for _, op := range operations(pkg) {
 		s := newOpShape(op.svc, op.m, route.Resolve("", op.svc.Primary, op.m), op.id, op.stem, pkg, registry.resolver)
-		item := doc.Paths.Value(s.full)
+		path := route.OpenAPIPath(s.full)
+		item := doc.Paths.Value(path)
 		if item == nil {
 			item = &openapi3.PathItem{}
-			doc.Paths.Set(s.full, item)
+			doc.Paths.Set(path, item)
 		}
 		setOperation(item, op.m.Verb, buildOperation(doc, op.svc, s, pkg, registry, names))
 	}

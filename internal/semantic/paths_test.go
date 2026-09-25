@@ -526,6 +526,26 @@ service S { get Get /things/{id} { request GetReq  response Resp } }`,
 	expectNoDiags(t, diags)
 }
 
+// A trailing {name...} variable is named name: a field of that name, or
+// @path("name"), binds it, and @path("name...") names no variable. A {$} is
+// no variable.
+func TestRestVariableBindsAsItsName(t *testing.T) {
+	const head = "package app\ntype Resp { ok bool }\n"
+	mustClean(t, head+`type R { rest string }
+@prefix("/files/{rest...}")
+service S { get Get / { request R  response Resp } }`)
+	mustClean(t, head+`type R { p string @path("rest") }
+@prefix("/files/{rest...}")
+service S { get Get / { request R  response Resp } }`)
+	mustClean(t, head+`type R { q string }
+@prefix("/root/{$}")
+service S { get Get / { request R  response Resp } }`)
+	d := expectError(t, head+`type R { p string @path("rest...") }
+@prefix("/files/{rest...}")
+service S { get Get / { request R  response Resp } }`, CodePathParamOrphan)
+	expectMessage(t, d, `the variable {rest...} is named "rest"`)
+}
+
 // A @sensitive field never rides the wire, so a same-named segment stays unbound.
 func TestSensitiveFieldDoesNotCoverPathSegment(t *testing.T) {
 	d := expectError(t, `package p

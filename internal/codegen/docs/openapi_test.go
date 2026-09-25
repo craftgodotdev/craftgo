@@ -2007,6 +2007,35 @@ service App {
 	}
 }
 
+// A trailing {name...} variable is a string path parameter named name, which
+// the path template names; a raw operation declares it too.
+func TestRestVariableDocumentedAsItsName(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"app/app.craftgo": `package app
+type FileReq { rest string }
+type Resp { ok bool }
+@prefix("/files/{rest...}")
+service S {
+  get Get / { request FileReq  response Resp }
+  @rawRequest
+  put Put / { response Resp }
+}`,
+	}, &config.Config{})
+	item := doc.Paths.Value("/files/{rest}")
+	if item == nil {
+		t.Fatalf("no /files/{rest} path, got %v", doc.Paths.InMatchingOrder())
+	}
+	for verb, op := range map[string]*openapi3.Operation{"get": item.Get, "put": item.Put} {
+		if op == nil || len(op.Parameters) != 1 {
+			t.Fatalf("%s: want one parameter, got %+v", verb, op)
+		}
+		p := op.Parameters[0].Value
+		if p.Name != "rest" || p.In != "path" || !p.Schema.Value.Type.Is("string") {
+			t.Errorf("%s: parameter %s in %s, want the string path parameter rest", verb, p.Name, p.In)
+		}
+	}
+}
+
 // A scheme the manifest declares is emitted as declared.
 func TestSecuritySchemeFromConfig(t *testing.T) {
 	cfg := &config.Config{}

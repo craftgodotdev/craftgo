@@ -913,6 +913,22 @@ components:
         Blob takes no pointer, as a field or as a map value.
       format: byte
       type: string
+    BlobInfo:
+      properties:
+        key:
+          type: string
+      required:
+      - key
+      type: object
+    BlobReq:
+      description: 'BlobReq: key auto-binds to the trailing {key...} variable.'
+      properties:
+        key:
+          minLength: 1
+          type: string
+      required:
+      - key
+      type: object
     BodyExplicitReq:
       description: |-
         BodyExplicitReq has one explicit `@body`-bound field. Useful when
@@ -2856,6 +2872,8 @@ components:
       type: object
     GetAuditedRespBody:
       $ref: '#/components/schemas/Audited'
+    GetBlobRespBody:
+      $ref: '#/components/schemas/BlobInfo'
     GetByKeyRespBody:
       $ref: '#/components/schemas/XOwner'
     GetItemByPathRespBody:
@@ -9484,6 +9502,27 @@ paths:
           description: OK
       tags:
       - bindings
+  /blobs/{key}:
+    get:
+      description: Fetch a blob by its slash-separated key. The trailing {key...}
+        variable binds the key field.
+      operationId: GetBlob
+      parameters:
+      - in: path
+        name: key
+        required: true
+        schema:
+          minLength: 1
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetBlobRespBody'
+          description: OK
+      tags:
+      - prefixvar
   /catalog/featured:
     get:
       operationId: Featured

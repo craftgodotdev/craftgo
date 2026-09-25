@@ -7,6 +7,21 @@ import (
 	"unicode/utf8"
 )
 
+// Validate checks every field-level constraint declared on BlobInfo.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *BlobInfo) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on BlobReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *BlobReq) Validate() error {
+	if utf8.RuneCountInString(v.Key) < 1 {
+		return fmt.Errorf("key: length less than 1")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on TenantCreateReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *TenantCreateReq) Validate() error {

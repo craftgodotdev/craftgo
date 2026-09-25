@@ -71,6 +71,15 @@ func TestServer_GenericResponseHeaderTakesItsArgument(t *testing.T) {
 	}
 }
 
+// A trailing {key...} variable binds the rest of the path to the field key.
+func TestServer_RestVariableBindsItsField(t *testing.T) {
+	ts := bootAll(t)
+	var blob struct{ Key string }
+	if s := getJSON(t, ts, "/api/blobs/a/b/c.txt", &blob); s != http.StatusOK || blob.Key != "a/b/c.txt" {
+		t.Errorf("status %d, key %q; want 200, \"a/b/c.txt\"", s, blob.Key)
+	}
+}
+
 func TestServer_NoCrossServiceCollision(t *testing.T) {
 	ts, _ := boot(t)
 	var p runtimetypes.RtPong

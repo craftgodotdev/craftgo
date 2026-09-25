@@ -713,6 +713,25 @@ service S {
 	)
 }
 
+// A trailing {name...} variable binds the field of its name.
+func TestGenerateTransportRestVariable(t *testing.T) {
+	pkg := analyze(t, `package design
+type FileReq { rest string }
+type Resp { ok bool }
+@prefix("/files/{rest...}")
+service S { get Get / { request FileReq  response Resp } }`)
+	root := t.TempDir()
+	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.ReadFile(filepath.Join(root, "internal/transport/s/get.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustParseGo(t, string(out))
+	mustContainAll(t, string(out), `req.Rest = r.PathValue("rest")`)
+}
+
 // A generic response writes its type-parameter header as the instance's
 // argument: an int through strconv, an enum through string().
 func TestGenerateTransportGenericResponseHeader(t *testing.T) {

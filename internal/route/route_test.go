@@ -20,9 +20,28 @@ func TestVars(t *testing.T) {
 		{"/v{1}/x", ""},  // a variable is a whole segment
 		{"/{}/x", ""},    // an empty name is not a variable
 		{"/{open/x", ""}, // unterminated
+		{"/files/{rest...}", "rest"},
+		{"/a/{id}/{rest...}", "id,rest"},
+		{"/root/{$}", ""},
 	} {
 		if got := strings.Join(Vars(c.in), ","); got != c.want {
 			t.Errorf("Vars(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// OpenAPIPath names a trailing `{name...}` as `{name}` and spells `{$}` as the
+// trailing slash it matches.
+func TestOpenAPIPath(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"/users/{id}", "/users/{id}"},
+		{"/files/{rest...}", "/files/{rest}"},
+		{"/a/{id}/{rest...}", "/a/{id}/{rest}"},
+		{"/root/{$}", "/root/"},
+		{"/", "/"},
+	} {
+		if got := OpenAPIPath(c.in); got != c.want {
+			t.Errorf("OpenAPIPath(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }

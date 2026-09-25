@@ -14,6 +14,7 @@ import (
 	adminapiAdminV3routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/v3"
 	admininventoryserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin_inventory_service"
 	bindingsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/bindings_service"
+	blobserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/blob_service"
 	catalogserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/catalog_service"
 	collectionsroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/collections"
 	combineserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/combine_service"
@@ -54,6 +55,7 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	adminserviceAdminroutes.RegisterRoutes(srv, svcCtx)
 	adminserviceAdminLegacyroutes.RegisterRoutes(srv, svcCtx)
 	bindingsserviceroutes.RegisterRoutes(srv, svcCtx)
+	blobserviceroutes.RegisterRoutes(srv, svcCtx)
 	catalogserviceroutes.RegisterRoutes(srv, svcCtx)
 	collectionsroutes.RegisterRoutes(srv, svcCtx)
 	combineserviceroutes.RegisterRoutes(srv, svcCtx)

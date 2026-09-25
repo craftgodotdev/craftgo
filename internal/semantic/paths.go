@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -257,11 +258,16 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, decs []*
 		}
 	}
 	for _, name := range reqFields.explicit {
-		if !slices.Contains(pathParams, name) {
-			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamOrphan,
-				"method %s.%s: field %q has @path binding but route %s has no {%s} segment",
-				svcName, m.Name, name, rt, name)
+		if slices.Contains(pathParams, name) {
+			continue
 		}
+		hint := ""
+		if trimmed := strings.TrimSuffix(name, "..."); trimmed != name && slices.Contains(pathParams, trimmed) {
+			hint = fmt.Sprintf(" - the variable {%s} is named %q", name, trimmed)
+		}
+		a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamOrphan,
+			"method %s.%s: field %q has @path binding but route %s has no {%s} segment%s",
+			svcName, m.Name, name, rt, name, hint)
 	}
 }
 

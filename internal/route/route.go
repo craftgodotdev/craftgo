@@ -64,31 +64,44 @@ func PathString(p *ast.Path) string {
 func Shape(route string) string {
 	segs := Segments(route)
 	for i, seg := range segs {
-		if _, ok := varName(seg); ok {
+		if isVarSegment(seg) {
 			segs[i] = "{}"
 		}
 	}
 	return "/" + strings.Join(segs, "/")
 }
 
-// Vars returns the names of the `{name}` segments of a route, prefix or path,
-// in order.
+// Vars returns the names of the variables of a route, prefix or path, in
+// order: `name` for `{name}` and `{name...}`, as net/http's PathValue reads
+// them.
 func Vars(route string) []string {
 	var out []string
 	for _, seg := range Segments(route) {
-		if name, ok := varName(seg); ok {
+		if name, ok := WildcardName(seg); ok {
 			out = append(out, name)
 		}
 	}
 	return out
 }
 
-// varName returns the name of a whole-segment `{name}` variable.
-func varName(seg string) (string, bool) {
-	if len(seg) > 2 && seg[0] == '{' && seg[len(seg)-1] == '}' {
-		return seg[1 : len(seg)-1], true
+// OpenAPIPath spells route as an OpenAPI path template: `{name...}` as
+// `{name}`, and `{$}` as the trailing slash it matches.
+func OpenAPIPath(route string) string {
+	segs := Segments(route)
+	for i, seg := range segs {
+		if seg == "{$}" {
+			segs[i] = ""
+		} else if name, ok := WildcardName(seg); ok {
+			segs[i] = "{" + name + "}"
+		}
 	}
-	return "", false
+	return "/" + strings.Join(segs, "/")
+}
+
+// isVarSegment reports whether seg is a whole-segment `{...}` variable,
+// `{name...}` and `{$}` included.
+func isVarSegment(seg string) bool {
+	return len(seg) > 2 && seg[0] == '{' && seg[len(seg)-1] == '}'
 }
 
 // ServicePrefix returns the service's `@prefix("...")` string, or "".
@@ -153,8 +166,7 @@ func PatternsConflict(a, b string) bool {
 	}
 	aMoreSpecific, bMoreSpecific := false, false
 	for i := range as {
-		_, aWild := varName(as[i])
-		_, bWild := varName(bs[i])
+		aWild, bWild := isVarSegment(as[i]), isVarSegment(bs[i])
 		switch {
 		case !aWild && !bWild:
 			if as[i] != bs[i] {
