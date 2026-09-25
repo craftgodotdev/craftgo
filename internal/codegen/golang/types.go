@@ -2,9 +2,7 @@ package golang
 
 import (
 	"fmt"
-	"go/format"
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -33,17 +31,7 @@ func generateTypes(pkg *semantic.Package, outDir string, r *projectResolver) err
 	if !pkgDeclaresTypes(pkg) {
 		return nil
 	}
-	r = resolverFor(pkg, r)
-	pkgDir := filepath.Join(outDir, pkg.Name)
-	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
-		return err
-	}
-	src := buildTypesGo(pkg, r)
-	formatted, err := format.Source([]byte(src))
-	if err != nil {
-		return fmt.Errorf("format types.go: %w\n--- source ---\n%s", err, src)
-	}
-	return os.WriteFile(filepath.Join(pkgDir, "types.go"), formatted, 0o644)
+	return writeGoSource(filepath.Join(outDir, pkg.Name, "types.go"), buildTypesGo(pkg, resolverFor(pkg, r)))
 }
 
 // pkgDeclaresTypes reports whether pkg has a struct or scalar for types.go.
@@ -53,10 +41,7 @@ func pkgDeclaresTypes(pkg *semantic.Package) bool {
 
 // buildTypesGo returns the unformatted source of pkg's types.go.
 func buildTypesGo(pkg *semantic.Package, r *projectResolver) string {
-	parts := []string{
-		generatedHeader + "\n",
-		"package " + pkg.Name + "\n",
-	}
+	parts := []string{"package " + pkg.Name + "\n"}
 	if imps := collectImports(pkg, r); len(imps) > 0 {
 		parts = append(parts, renderImports(imps))
 	}

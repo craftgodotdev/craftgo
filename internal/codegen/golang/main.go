@@ -1,9 +1,7 @@
 package golang
 
 import (
-	"fmt"
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -43,19 +41,7 @@ func generateProjectMain(proj *semantic.Project, protos *protodesign.Set, cfg *c
 	if !projectHasRoutes(proj) && !protos.HasServices() {
 		return nil
 	}
-	dest := filepath.Join(projectRoot, cfg.Output.Main)
-	if _, err := os.Stat(dest); err == nil {
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
-	}
-	data := buildProjectMainData(proj, protos, cfg)
-	formatted, err := renderGo(tmpl("main.tmpl"), data)
-	if err != nil {
-		return fmt.Errorf("render main.go: %w", err)
-	}
-	return os.WriteFile(dest, formatted, 0o644)
+	return writeGoOnce(filepath.Join(projectRoot, cfg.Output.Main), tmpl("main.tmpl"), buildProjectMainData(proj, protos, cfg))
 }
 
 // projectHasRoutes reports whether any service declares an HTTP method.

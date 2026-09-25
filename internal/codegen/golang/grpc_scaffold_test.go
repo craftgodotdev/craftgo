@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"text/template"
 
 	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
@@ -24,7 +25,7 @@ func TestGRPCScaffoldsArePinned(t *testing.T) {
 		{"main-grpc.go", empty},
 		{"main-mixed.go", analyzeProject(t, httpScaffoldSrc)},
 	} {
-		mainGo, err := renderGo(tmpl("main.tmpl"), buildProjectMainData(tc.proj, set, cfg))
+		mainGo, err := renderScaffold(tmpl("main.tmpl"), buildProjectMainData(tc.proj, set, cfg))
 		if err != nil {
 			t.Fatalf("%s: %v", tc.golden, err)
 		}
@@ -45,14 +46,14 @@ func TestGRPCScaffoldsArePinned(t *testing.T) {
 		}
 		for _, f := range []struct {
 			template string
-			formatGo bool
+			render   func(*template.Template, any) ([]byte, error)
 			golden   string
 		}{
-			{"config.go.tmpl", true, "config-" + shape.suffix + ".go"},
-			{"config.yaml.tmpl", false, "config-" + shape.suffix + ".yaml"},
-			{"example.config.yaml.tmpl", false, "example-config-" + shape.suffix + ".yaml"},
+			{"config.go.tmpl", renderScaffold, "config-" + shape.suffix + ".go"},
+			{"config.yaml.tmpl", execute, "config-" + shape.suffix + ".yaml"},
+			{"example.config.yaml.tmpl", execute, "example-config-" + shape.suffix + ".yaml"},
 		} {
-			body, err := renderRuntimeTemplate(f.template, data, f.formatGo)
+			body, err := f.render(tmpl(f.template), data)
 			if err != nil {
 				t.Fatalf("%s: %v", f.template, err)
 			}

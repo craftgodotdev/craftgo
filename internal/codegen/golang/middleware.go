@@ -1,9 +1,7 @@
 package golang
 
 import (
-	"fmt"
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 
@@ -52,23 +50,10 @@ func writeProjectMiddlewareImpls(cfg *config.Config, projectRoot string, proj *s
 		return nil
 	}
 	dir := filepath.Join(projectRoot, cfg.Output.Middleware)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	tpl := tmpl("middleware.tmpl")
 	declByName := projectMiddlewareDecls(proj)
 	for _, name := range names {
 		filename := idents.FileNameWords(cfg.Output.FileCase, append(idents.SplitFieldName(name), "middleware")) + ".go"
-		dest := filepath.Join(dir, filename)
-		if _, err := os.Stat(dest); err == nil {
-			continue
-		}
-		data := buildMiddlewareData(name, declByName[name])
-		formatted, err := renderGo(tpl, data)
-		if err != nil {
-			return fmt.Errorf("render middleware %s: %w", name, err)
-		}
-		if err := os.WriteFile(dest, formatted, 0o644); err != nil {
+		if err := writeGoOnce(filepath.Join(dir, filename), tmpl("middleware.tmpl"), buildMiddlewareData(name, declByName[name])); err != nil {
 			return err
 		}
 	}
@@ -97,14 +82,5 @@ func buildMiddlewareData(name string, _ *ast.MiddlewareDecl) middlewareData {
 // writeMiddlewareFields writes middlewares.go even with no middleware, since svccontext.go embeds
 // its Middlewares type.
 func writeMiddlewareFields(cfg *config.Config, projectRoot string, names []string) error {
-	dir := filepath.Join(projectRoot, fileDirRel(cfg.Output.Svccontext))
-	dest := filepath.Join(dir, "middlewares.go")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	formatted, err := renderGo(tmpl("middleware-fields.tmpl"), middlewareFieldsData{Names: names})
-	if err != nil {
-		return fmt.Errorf("render middlewares.go: %w", err)
-	}
-	return os.WriteFile(dest, formatted, 0o644)
+	return writeGo(filepath.Join(projectRoot, fileDirRel(cfg.Output.Svccontext), "middlewares.go"), tmpl("middleware-fields.tmpl"), middlewareFieldsData{Names: names})
 }

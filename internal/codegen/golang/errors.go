@@ -3,9 +3,7 @@ package golang
 import (
 	"bytes"
 	"fmt"
-	"go/format"
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -26,17 +24,7 @@ func generateErrors(pkg *semantic.Package, outDir string, r *projectResolver) er
 	if len(pkg.Errors) == 0 {
 		return nil
 	}
-	r = resolverFor(pkg, r)
-	pkgDir := filepath.Join(outDir, pkg.Name)
-	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
-		return err
-	}
-	src := buildErrorsGo(pkg, r)
-	formatted, err := format.Source([]byte(src))
-	if err != nil {
-		return fmt.Errorf("format errors.go: %w\n--- source ---\n%s", err, src)
-	}
-	return os.WriteFile(filepath.Join(pkgDir, "errors.go"), formatted, 0o644)
+	return writeGoSource(filepath.Join(outDir, pkg.Name, "errors.go"), buildErrorsGo(pkg, resolverFor(pkg, r)))
 }
 
 // buildErrorsGo returns the unformatted source of pkg's errors.go, errors in
@@ -67,10 +55,7 @@ func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
 		collectBodyImports(pkg.Errors[name].Body, pkg, r, imports)
 	}
 
-	parts := []string{
-		generatedHeader + "\n",
-		"package " + pkg.Name + "\n",
-	}
+	parts := []string{"package " + pkg.Name + "\n"}
 	if len(imports) > 0 {
 		parts = append(parts, renderImports(slices.Sorted(maps.Keys(imports))))
 	}

@@ -3,7 +3,6 @@ package golang
 import (
 	"fmt"
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -22,15 +21,7 @@ func generateEnums(pkg *semantic.Package, outDir string) error {
 	if len(pkg.Enums) == 0 {
 		return nil
 	}
-	pkgDir := filepath.Join(outDir, pkg.Name)
-	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
-		return err
-	}
-	formatted, err := renderGo(tmpl("enums.tmpl"), buildEnumsView(pkg))
-	if err != nil {
-		return fmt.Errorf("render enums.go: %w", err)
-	}
-	return os.WriteFile(filepath.Join(pkgDir, "enums.go"), formatted, 0o644)
+	return writeGo(filepath.Join(outDir, pkg.Name, "enums.go"), tmpl("enums.tmpl"), buildEnumsView(pkg))
 }
 
 // enumsView is the template input for enums.tmpl.

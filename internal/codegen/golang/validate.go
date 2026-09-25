@@ -3,7 +3,6 @@ package golang
 import (
 	"fmt"
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 
@@ -49,17 +48,7 @@ func generateValidators(pkg *semantic.Package, outDir string, r *projectResolver
 	if !pkgValidates(pkg) {
 		return nil
 	}
-	r = resolverFor(pkg, r)
-	pkgDir := filepath.Join(outDir, pkg.Name)
-	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
-		return err
-	}
-	data := buildValidateData(pkg, r)
-	formatted, err := renderGo(tmpl("validate.tmpl"), data)
-	if err != nil {
-		return fmt.Errorf("render validate.go: %w", err)
-	}
-	return os.WriteFile(filepath.Join(pkgDir, "validate.go"), formatted, 0o644)
+	return writeGo(filepath.Join(outDir, pkg.Name, "validate.go"), tmpl("validate.tmpl"), buildValidateData(pkg, resolverFor(pkg, r)))
 }
 
 // pkgValidates reports whether pkg declares anything with a generated Validate().

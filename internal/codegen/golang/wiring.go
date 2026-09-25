@@ -3,7 +3,6 @@ package golang
 import (
 	"fmt"
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -38,11 +37,7 @@ func generateWiring(proj *semantic.Project, cfg *config.Config, projectRoot stri
 	if data.HasRoutes {
 		data.RoutesImport = goImportFromRel(cfg.Package, cfg.Output.Routes)
 	}
-	dir := filepath.Join(projectRoot, cfg.Output.Wiring)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	return writeRendered(dir, "wiring.go", "wiring.tmpl", data)
+	return writeGo(filepath.Join(projectRoot, cfg.Output.Wiring, "wiring.go"), tmpl("wiring.tmpl"), data)
 }
 
 // middlewareGuards returns a nil check for every middleware a method runs; the chain silently

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -104,24 +103,15 @@ func generateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot st
 }
 
 func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
-	t := tmpl("transport.tmpl")
 	for _, m := range svc.Methods {
 		group := semantic.MethodGroupOf(svc, m)
 		imps := importPathsForGroup(cfg, pkg, svcName, group)
 		dir := serviceOutputDir(projectRoot, cfg.Output.Transport, svcName, group, cfg.Output.FileCase)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
-		}
 		data, err := buildTransportData(svcName, m, imps, pkg, r)
 		if err != nil {
 			return fmt.Errorf("%s.%s: %w", svcName, m.Name, err)
 		}
-		formatted, err := renderGo(t, data)
-		if err != nil {
-			return fmt.Errorf("render %s transport: %w", idents.FileName(m.Name, cfg.Output.FileCase), err)
-		}
-		filename := idents.FileName(m.Name, cfg.Output.FileCase) + ".go"
-		if err := os.WriteFile(filepath.Join(dir, filename), formatted, 0o644); err != nil {
+		if err := writeGo(filepath.Join(dir, idents.FileName(m.Name, cfg.Output.FileCase)+".go"), tmpl("transport.tmpl"), data); err != nil {
 			return err
 		}
 	}

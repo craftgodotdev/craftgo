@@ -13,7 +13,7 @@ func TestGenerateMainUsesSetDefaultMaxBodySize(t *testing.T) {
 		WiringImport:     "example.com/app/internal/wiring",
 		SvccontextImport: "example.com/app/svccontext",
 	}
-	out, err := renderGo(tmpl("main.tmpl"), data)
+	out, err := renderScaffold(tmpl("main.tmpl"), data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestGenerateMainUsesSetDefaultHandlerTimeout(t *testing.T) {
 		WiringImport:     "example.com/app/internal/wiring",
 		SvccontextImport: "example.com/app/svccontext",
 	}
-	out, err := renderGo(tmpl("main.tmpl"), data)
+	out, err := renderScaffold(tmpl("main.tmpl"), data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestGenerateMainOrdersTheWiring(t *testing.T) {
 		WiringImport:     "example.com/app/internal/wiring",
 		SvccontextImport: "example.com/app/svccontext",
 	}
-	out, err := renderGo(tmpl("main.tmpl"), data)
+	out, err := renderScaffold(tmpl("main.tmpl"), data)
 	if err != nil {
 		t.Fatal(err)
 	}

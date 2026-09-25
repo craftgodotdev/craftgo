@@ -52,7 +52,7 @@ func TestGRPCLayersArePinned(t *testing.T) {
 			t.Fatalf("%s: %v", m.Name, err)
 		}
 		expectGolden(t, "grpc-"+m.File+".go", string(method))
-		logic, err := renderGo(tmpl("service.tmpl"), buildGRPCServiceData(svc, m, imps))
+		logic, err := renderScaffold(tmpl("service.tmpl"), buildGRPCServiceData(svc, m, imps))
 		if err != nil {
 			t.Fatalf("%s logic: %v", m.Name, err)
 		}

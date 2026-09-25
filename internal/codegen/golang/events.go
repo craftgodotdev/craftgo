@@ -3,7 +3,6 @@ package golang
 import (
 	"fmt"
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 
@@ -42,7 +41,6 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 		return fmt.Errorf("package has no name")
 	}
 	r = resolverFor(pkg, r)
-	dir := filepath.Join(projectRoot, outDir, pkg.Name)
 	imports := newImportSet(r.CrossPkg)
 	typesImport := typesImportRoot(cfg) + "/" + pkg.Name
 	data := eventsData{Package: pkg.Name}
@@ -72,7 +70,7 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 		return nil
 	}
 	data.Imports = imports.sorted()
-	return writeRendered(dir, "events.go", "events.tmpl", data)
+	return writeGo(filepath.Join(projectRoot, outDir, pkg.Name, "events.go"), tmpl("events.tmpl"), data)
 }
 
 // validateFunc renders NewEvent's validator: the payload's Validate method value, the file's
@@ -86,17 +84,4 @@ func validateFunc(ev semantic.ResolvedEvent, proj *semantic.Project, payloadType
 		return "validate" + ev.Name
 	}
 	return "(*" + payloadType + ").Validate"
-}
-
-// writeRendered renders tmplName into dir/name, overwriting any existing
-// file.
-func writeRendered(dir, name, tmplName string, data any) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	formatted, err := renderGo(tmpl(tmplName), data)
-	if err != nil {
-		return fmt.Errorf("render %s: %w", name, err)
-	}
-	return os.WriteFile(filepath.Join(dir, name), formatted, 0o644)
 }

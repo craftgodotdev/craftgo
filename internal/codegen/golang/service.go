@@ -65,7 +65,7 @@ func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic
 		imps := importPathsForGroup(cfg, pkg, svcName, group)
 		dir := serviceOutputDir(projectRoot, cfg.Output.Service, svcName, group, cfg.Output.FileCase)
 		filename := idents.FileName(m.Name, cfg.Output.FileCase) + ".go"
-		if err := writeScaffoldOnce(filepath.Join(dir, filename), "service.tmpl", buildServiceData(pkg.Name, svcName, m, imps, crossPkg)); err != nil {
+		if err := writeGoOnce(filepath.Join(dir, filename), tmpl("service.tmpl"), buildServiceData(pkg.Name, svcName, m, imps, crossPkg)); err != nil {
 			return err
 		}
 	}

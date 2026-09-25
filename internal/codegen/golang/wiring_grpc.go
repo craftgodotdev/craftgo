@@ -1,7 +1,6 @@
 package golang
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -31,11 +30,7 @@ func generateWiringGRPC(protos *protodesign.Set, cfg *config.Config, projectRoot
 	if !protos.HasServices() {
 		return nil
 	}
-	dir := filepath.Join(projectRoot, cfg.Output.Wiring)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	return writeRendered(dir, "grpc.go", "wiring_grpc.tmpl", buildWiringGRPCData(protos, cfg))
+	return writeGo(filepath.Join(projectRoot, cfg.Output.Wiring, "grpc.go"), tmpl("wiring_grpc.tmpl"), buildWiringGRPCData(protos, cfg))
 }
 
 // buildWiringGRPCData imports each pb package as `<name>pb` and each server package as

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"text/template"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 )
@@ -38,7 +39,7 @@ func TestHTTPScaffoldsArePinned(t *testing.T) {
 	cfg := scaffoldConfig(t)
 	proj := analyzeProject(t, httpScaffoldSrc)
 
-	mainGo, err := renderGo(tmpl("main.tmpl"), buildProjectMainData(proj, nil, cfg))
+	mainGo, err := renderScaffold(tmpl("main.tmpl"), buildProjectMainData(proj, nil, cfg))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,15 +53,15 @@ func TestHTTPScaffoldsArePinned(t *testing.T) {
 	}
 	for _, f := range []struct {
 		template string
-		formatGo bool
+		render   func(*template.Template, any) ([]byte, error)
 		golden   string
 	}{
-		{"config.go.tmpl", true, "config-http.go"},
-		{"config.yaml.tmpl", false, "config-http.yaml"},
-		{"example.config.yaml.tmpl", false, "example-config-http.yaml"},
-		{"svccontext.go.tmpl", true, "svccontext-http.go"},
+		{"config.go.tmpl", renderScaffold, "config-http.go"},
+		{"config.yaml.tmpl", execute, "config-http.yaml"},
+		{"example.config.yaml.tmpl", execute, "example-config-http.yaml"},
+		{"svccontext.go.tmpl", renderScaffold, "svccontext-http.go"},
 	} {
-		body, err := renderRuntimeTemplate(f.template, data, f.formatGo)
+		body, err := f.render(tmpl(f.template), data)
 		if err != nil {
 			t.Fatalf("%s: %v", f.template, err)
 		}

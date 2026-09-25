@@ -3,7 +3,6 @@ package golang
 import (
 	"fmt"
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -177,10 +176,6 @@ func generateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 		return entries[i].group < entries[j].group
 	})
 
-	dir := filepath.Join(projectRoot, cfg.Output.Routes)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
 	data := routesAllData{
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
 	}
@@ -193,11 +188,7 @@ func generateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 		seen[e.seg] = true
 		data.Imports = append(data.Imports, makeRoutesAllImport(cfg, e.name, e.group, e.seg))
 	}
-	formatted, err := renderGo(tmpl("routes-all.tmpl"), data)
-	if err != nil {
-		return fmt.Errorf("render routes-all: %w", err)
-	}
-	return os.WriteFile(filepath.Join(dir, "routes.go"), formatted, 0o644)
+	return writeGo(filepath.Join(projectRoot, cfg.Output.Routes, "routes.go"), tmpl("routes-all.tmpl"), data)
 }
 
 // routesAllImport is one aliased routes-package import of the umbrella routes.go.
@@ -225,10 +216,6 @@ type routesAllData struct {
 func generateRoutesForSegment(seg string, contribs []segContribution, pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
 	if len(contribs) == 0 {
 		return nil
-	}
-	dir := filepath.Join(projectRoot, cfg.Output.Routes, filepath.FromSlash(seg))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
 	}
 	lead := contribs[0]
 	alias := transportAlias(lead.group)
@@ -260,11 +247,7 @@ func generateRoutesForSegment(seg string, contribs []segContribution, pkg *seman
 			})
 		}
 	}
-	formatted, err := renderGo(tmpl("routes.tmpl"), data)
-	if err != nil {
-		return fmt.Errorf("render routes: %w", err)
-	}
-	return os.WriteFile(filepath.Join(dir, "routes.go"), formatted, 0o644)
+	return writeGo(filepath.Join(projectRoot, cfg.Output.Routes, filepath.FromSlash(seg), "routes.go"), tmpl("routes.tmpl"), data)
 }
 
 // contributorLabel joins the contributing service names for the routes.go doc ("A, B and C").

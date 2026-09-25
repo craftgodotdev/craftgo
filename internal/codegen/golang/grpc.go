@@ -2,7 +2,6 @@ package golang
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
@@ -72,11 +71,11 @@ func generateGRPCServers(protos *protodesign.Set, cfg *config.Config, projectRoo
 	for _, svc := range protos.Services {
 		dir := grpcServerDir(projectRoot, cfg, svc)
 		imps := grpcImportsFor(cfg, svc)
-		if err := writeRendered(dir, grpcServerFile+".go", "grpc_server.tmpl", buildGRPCServerData(svc, imps)); err != nil {
+		if err := writeGo(filepath.Join(dir, grpcServerFile+".go"), tmpl("grpc_server.tmpl"), buildGRPCServerData(svc, imps)); err != nil {
 			return err
 		}
 		for _, m := range svc.Methods {
-			if err := writeRendered(dir, m.File+".go", "grpc_method.tmpl", buildGRPCMethodData(svc, m, imps)); err != nil {
+			if err := writeGo(filepath.Join(dir, m.File+".go"), tmpl("grpc_method.tmpl"), buildGRPCMethodData(svc, m, imps)); err != nil {
 				return err
 			}
 		}
@@ -116,7 +115,7 @@ func generateGRPCServices(protos *protodesign.Set, cfg *config.Config, projectRo
 		dir := grpcServiceDir(projectRoot, cfg, svc)
 		imps := grpcImportsFor(cfg, svc)
 		for _, m := range svc.Methods {
-			if err := writeScaffoldOnce(filepath.Join(dir, m.File+".go"), "service.tmpl", buildGRPCServiceData(svc, m, imps)); err != nil {
+			if err := writeGoOnce(filepath.Join(dir, m.File+".go"), tmpl("service.tmpl"), buildGRPCServiceData(svc, m, imps)); err != nil {
 				return err
 			}
 		}
@@ -165,21 +164,6 @@ func (r *typeRefs) render(ref protodesign.TypeRef) string {
 	}
 	r.imports.add(extraImport{Alias: ref.Package, Path: ref.ImportPath})
 	return r.imports.aliasFor(ref.ImportPath) + "." + ref.Name
-}
-
-// writeScaffoldOnce renders tmplName into path unless the file exists.
-func writeScaffoldOnce(path, tmplName string, data any) error {
-	if _, err := os.Stat(path); err == nil {
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	formatted, err := renderGo(tmpl(tmplName), data)
-	if err != nil {
-		return fmt.Errorf("render %s: %w", filepath.Base(path), err)
-	}
-	return os.WriteFile(path, formatted, 0o644)
 }
 
 // ValidateProtoOutputs rejects gRPC output that would collide: an RPC file named like the server
