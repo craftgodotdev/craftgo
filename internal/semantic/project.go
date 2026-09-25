@@ -19,6 +19,9 @@ import (
 // [Package.Name]; files in any folder that declare one name share an entry.
 type Project struct {
 	Packages map[string]*Package
+	// typeParams holds each reference to a type parameter in a generic
+	// type's body; [Project.resolve] finds no declaration for one.
+	typeParams map[*ast.QualifiedIdent]bool
 }
 
 // AnalyzeProject groups files into packages by their `package`
@@ -36,6 +39,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 		proj.Packages[name] = a.pkg
 		analyzers[name] = a
 	}
+	proj.typeParams = typeParamRefs(proj.Packages)
 	for _, name := range names {
 		a := analyzers[name]
 		group := groups[name]

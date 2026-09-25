@@ -901,6 +901,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   did a request body beside a header. Each field now takes the arguments of
   its own level.
 
+- **A type parameter named like a declaration is the parameter.** In `type
+  Box<Blob> { v Blob? }` beside `scalar Blob bytes`, or `type Tagged<Color>
+  { c Color }` beside `enum Color`, the field was read as the declaration:
+  the optional `v` got no pointer, the validator compared the values with
+  `nil` and `""`, and the generated code did not compile; a `@default(Red)`
+  or a `@query` on such a field passed the declaration's checks. Inside its
+  type's body the parameter now hides the declaration, as it does in Go.
+
 - **A header typed by a type parameter is written as the argument.** A
   `@header` or `@cookie` on a field typed `T` passed analysis only when a
   declared type was also named `T`, and was then checked as that type: the

@@ -1144,3 +1144,31 @@ type Attach {
 		t.Fatalf("expected a nil presence check for the file member, got:\n%s", out)
 	}
 }
+
+// A type parameter spelled like a declaration is the parameter: an optional
+// one is a pointer its probe reads through, and it takes no check of the
+// declaration's kind.
+func TestTypeParamShadowsDeclaration(t *testing.T) {
+	pkg := analyze(t, `package design
+scalar Blob bytes
+enum Color { Red  Green }
+type Box<Blob> { v Blob? }
+type Tagged<Color> { c Color }`)
+	dir := t.TempDir()
+	if err := generateTypes(pkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := generateValidators(pkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	types, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
+	validate, _ := os.ReadFile(filepath.Join(dir, "design", "validate.go"))
+	mustParseGo(t, string(types))
+	mustParseGo(t, string(validate))
+	if norm := strings.Join(strings.Fields(string(types)), " "); !strings.Contains(norm, "V *Blob `json:\"v,omitempty\"`") {
+		t.Errorf("an optional type parameter must be a pointer:\n%s", types)
+	}
+	if !strings.Contains(string(validate), "any(v.V).(interface{ Validate() error })") || strings.Contains(string(validate), "v.C ==") {
+		t.Errorf("a type parameter must be probed through its pointer and get no enum check:\n%s", validate)
+	}
+}

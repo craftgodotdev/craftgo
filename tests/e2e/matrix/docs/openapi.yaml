@@ -6385,6 +6385,29 @@ components:
       - green
       - blue
       type: string
+    ShadowedHost:
+      description: ShadowedHost instantiates Shadowed over an int and a string.
+      properties:
+        s:
+          $ref: '#/components/schemas/ShadowedOfIntAndString'
+      required:
+      - s
+      type: object
+    ShadowedOfIntAndString:
+      description: |-
+        Shadowed<Blob, Priority> spells its type parameters like the Blob scalar
+        and the Priority enum: each field takes its argument's type, the optional
+        `payload` behind a pointer, and neither is checked as the declaration.
+      properties:
+        level:
+          type: string
+        payload:
+          type:
+          - integer
+          - "null"
+      required:
+      - level
+      type: object
     SharedEmail:
       description: |-
         Email is the cross-package email shape - capped at the RFC-5321

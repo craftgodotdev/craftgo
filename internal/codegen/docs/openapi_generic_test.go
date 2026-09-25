@@ -209,6 +209,28 @@ service S {
 	}
 }
 
+// A type parameter spelled like a declaration is documented as its argument.
+func TestGenericTypeParamShadowsDeclaration(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+scalar Blob bytes
+enum Color { Red  Green }
+type Box<Blob, Color> { v Blob?  c Color }
+type Host { b Box<int, string> }
+service S { get L /l { response Host } }`,
+	}, &config.Config{})
+	box := doc.Components.Schemas["BoxOfIntAndString"].Value
+	for field, want := range map[string]string{"v": `{"type":["integer","null"]}`, "c": `{"type":"string"}`} {
+		got, err := json.Marshal(box.Properties[field])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != want {
+			t.Errorf("%s = %s, want %s", field, got, want)
+		}
+	}
+}
+
 // A response header typed by a type parameter is documented as the
 // instance's argument.
 func TestGenericResponseHeaderTakesItsArgument(t *testing.T) {

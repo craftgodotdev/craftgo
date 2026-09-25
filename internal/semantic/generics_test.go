@@ -278,6 +278,20 @@ service S { get A /a { request Box<string[]>  response Resp } }`, CodeBindingTyp
 	expectMessage(t, d, "Box.a", "optional type parameter over an array")
 }
 
+// A type parameter spelled like a declaration is the parameter: the rules a
+// type parameter breaks are enforced although the declaration would pass them.
+func TestTypeParamShadowsDeclaration(t *testing.T) {
+	for label, c := range map[string]struct{ src, code string }{
+		"enum default":   {"enum Color { Red  Green }\ntype Box<Color> { c Color? @default(Red) }", CodeDecoratorConflict},
+		"scalar default": {"scalar Blob string\ntype Box<Blob> { v Blob? @default(\"x\") }", CodeDecoratorConflict},
+		"query":          {"scalar Key string\ntype Q<Key> { k Key @query }", CodeBindingType},
+	} {
+		t.Run(label, func(t *testing.T) {
+			expectError(t, "package app\n"+c.src, c.code)
+		})
+	}
+}
+
 // A @header or @cookie on a type parameter is legal at the declaration; each
 // request, response or error mixin that instantiates the type is checked
 // with the argument, at the clause or mixin naming the instance.

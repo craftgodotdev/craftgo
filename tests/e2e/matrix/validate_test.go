@@ -224,3 +224,12 @@ func TestStringLengthCountsCharacters(t *testing.T) {
 	rejects(t, "café is 4 characters, not 5, at @length(5,5)", mk("café"))
 	rejects(t, "abcdef is 6 characters at @length(5,5)", mk("abcdef"))
 }
+
+// A type parameter spelled like a declaration takes its argument's type:
+// Shadowed<int, string>'s optional `payload` is an *int, unset or set, and
+// its `level` any string, though Priority names an enum.
+func TestTypeParamShadowsDeclaration(t *testing.T) {
+	n := 7
+	accepts(t, "unset payload", &scalars.ShadowedHost{S: scalars.Shadowed[int, string]{Level: "any"}})
+	accepts(t, "set payload", &scalars.ShadowedHost{S: scalars.Shadowed[int, string]{Payload: &n, Level: "x"}})
+}

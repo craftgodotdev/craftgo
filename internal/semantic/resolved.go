@@ -148,7 +148,7 @@ func resolveTypeRef(t *ast.TypeRef, raw bool, pkg *Package, proj *Project) Resol
 		rf.IsNilable = true
 		return rf
 	}
-	if t.Named == nil || t.Named.Name == nil {
+	if t.Named == nil || t.Named.Name == nil || proj.namesTypeParam(t.Named.Name) {
 		return rf
 	}
 	parts := t.Named.Name.Parts

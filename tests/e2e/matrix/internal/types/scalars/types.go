@@ -472,6 +472,19 @@ type Search struct {
 	Limit    *Cents `json:"limit,omitempty"`
 }
 
+// Shadowed<Blob, Priority> spells its type parameters like the Blob scalar
+// and the Priority enum: each field takes its argument's type, the optional
+// `payload` behind a pointer, and neither is checked as the declaration.
+type Shadowed[Blob any, Priority any] struct {
+	Payload *Blob    `json:"payload,omitempty"`
+	Level   Priority `json:"level"`
+}
+
+// ShadowedHost instantiates Shadowed over an int and a string.
+type ShadowedHost struct {
+	S Shadowed[int, string] `json:"s"`
+}
+
 type SkuItem struct {
 	Sku string `json:"sku"`
 }

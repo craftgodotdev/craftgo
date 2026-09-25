@@ -260,6 +260,19 @@ type KeyedPage<Key> {
 	items Key[]
 }
 
+// Shadowed<Blob, Priority> spells its type parameters like the Blob scalar
+// and the Priority enum: each field takes its argument's type, the optional
+// `payload` behind a pointer, and neither is checked as the declaration.
+type Shadowed<Blob, Priority> {
+	payload Blob?
+	level   Priority
+}
+
+// ShadowedHost instantiates Shadowed over an int and a string.
+type ShadowedHost {
+	s Shadowed<int, string>
+}
+
 // Tallied<T> sends a field of its argument's type in a header:
 // `Tallied<int>` writes `tally` as a decimal integer.
 type Tallied<T> {

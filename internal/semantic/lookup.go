@@ -117,10 +117,10 @@ func (p *Project) PackageNames() []string {
 
 // resolve returns the package q names a declaration of and that
 // declaration's name: a bare name resolves in home, `pkg.Name` in pkg. The
-// package is nil when the project has none of that name, or q has more
-// qualifiers.
+// package is nil when the project has none of that name, q has more
+// qualifiers, or q names a type parameter.
 func (p *Project) resolve(home string, q *ast.QualifiedIdent) (*Package, string) {
-	if p == nil || q == nil {
+	if p == nil || q == nil || p.namesTypeParam(q) {
 		return nil, ""
 	}
 	switch len(q.Parts) {
@@ -130,6 +130,28 @@ func (p *Project) resolve(home string, q *ast.QualifiedIdent) (*Package, string)
 		return p.Packages[q.Parts[0]], q.Parts[1]
 	}
 	return nil, ""
+}
+
+// namesTypeParam reports whether q, in the body of a generic type, names one
+// of the type's parameters, which no declaration of the same name replaces.
+func (p *Project) namesTypeParam(q *ast.QualifiedIdent) bool {
+	return p != nil && p.typeParams[q]
+}
+
+// typeParamRefs returns each reference, in the body of a generic type of
+// pkgs, to one of the type's parameters.
+func typeParamRefs(pkgs map[string]*Package) map[*ast.QualifiedIdent]bool {
+	refs := map[*ast.QualifiedIdent]bool{}
+	for _, pkg := range pkgs {
+		for _, td := range pkg.Types {
+			walkTypeRefs(td, func(n *ast.NamedTypeRef, typeParams []string, _ bool) {
+				if n.Name != nil && len(n.Name.Parts) == 1 && slices.Contains(typeParams, n.Name.Parts[0]) {
+					refs[n.Name] = true
+				}
+			})
+		}
+	}
+	return refs
 }
 
 // resolveName is [Project.resolve] for a reference spelled as text.
@@ -261,7 +283,8 @@ func NewResolver(proj *Project, current string) *Resolver {
 
 // PackageResolver returns the resolver of pkg in a project holding pkg alone.
 func PackageResolver(pkg *Package) *Resolver {
-	return NewResolver(&Project{Packages: map[string]*Package{pkg.Name: pkg}}, pkg.Name)
+	pkgs := map[string]*Package{pkg.Name: pkg}
+	return NewResolver(&Project{Packages: pkgs, typeParams: typeParamRefs(pkgs)}, pkg.Name)
 }
 
 // Project returns the analysed project, or nil on a nil receiver.

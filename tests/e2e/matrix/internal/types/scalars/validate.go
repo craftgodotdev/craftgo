@@ -796,6 +796,37 @@ func (v *Search) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on Shadowed.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Shadowed[Blob, Priority]) Validate() error {
+	if v.Payload != nil {
+		if vv, ok := any(v.Payload).(interface{ Validate() error }); ok {
+			if err := vv.Validate(); err != nil {
+				return err
+			}
+		} else if err := validateValue(v.Payload); err != nil {
+			return err
+		}
+	}
+	if vv, ok := any(&v.Level).(interface{ Validate() error }); ok {
+		if err := vv.Validate(); err != nil {
+			return err
+		}
+	} else if err := validateValue(v.Level); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on ShadowedHost.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *ShadowedHost) Validate() error {
+	if err := v.S.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on SkuItem.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *SkuItem) Validate() error {
