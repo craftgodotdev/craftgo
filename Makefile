@@ -241,8 +241,9 @@ tag-list: ## Show the four latest tags of each published module (five modules).
 
 # ---- one-shot CI surface -------------------------------------------------
 .PHONY: ci
-ci: TESTFLAGS += -race
-ci: lint tidy-check test e2e test-submodules gen-diff build ## Run the CI gates locally: lint, module tidiness, the root, e2e and sub-module tests with -race, codegen drift, build.
+# override keeps -race when TESTFLAGS is given on the command line.
+ci: override TESTFLAGS += -race
+ci: lint tidy-check test e2e test-submodules gen-diff build-all ## Run the CI gates locally: lint, module tidiness, the root, e2e and sub-module tests with -race (a TESTFLAGS adds to it), codegen drift, every module's build.
 
 # ---- docs diagrams --------------------------------------------------------
 # Sources are docs/diagrams/*.excalidraw (edit them on excalidraw.com or with
