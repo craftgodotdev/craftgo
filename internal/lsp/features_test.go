@@ -1288,11 +1288,16 @@ func callHandler(t *testing.T, s *server, method string, params any) (any, error
 }
 
 // definitionAt answers `textDocument/definition` at the cursor mark of
-// marked, open outside any project.
-func definitionAt(t *testing.T, marked string) []protocol.Location {
+// marked, written to path and open; an empty path opens it outside any
+// project.
+func definitionAt(t *testing.T, path, marked string) []protocol.Location {
 	t.Helper()
 	src, pos := markCursor(t, marked)
 	u := uri.New("file:///t.craftgo")
+	if path != "" {
+		mustWrite(t, path, src)
+		u = uri.File(path)
+	}
 	res, err := callHandler(t, &server{docs: map[uri.URI]string{u: src}}, protocol.MethodTextDocumentDefinition,
 		protocol.DefinitionParams{TextDocumentPositionParams: docAt(u, pos)})
 	if err != nil {
@@ -1307,11 +1312,11 @@ func TestDefinitionTypePositionNamesTypesOnly(t *testing.T) {
 	const design = "package x\n\nerror NotFound Gone\nservice Svc { get G /g {} }\ntype H {\n\ta Gone\n\tb Svc\n}\n"
 	for _, field := range []string{"a Gone", "b Svc"} {
 		marked := strings.Replace(design, field, field[:3]+cursorMark+field[3:], 1)
-		if locs := definitionAt(t, marked); len(locs) != 0 {
+		if locs := definitionAt(t, "", marked); len(locs) != 0 {
 			t.Errorf("`%s` is no type reference, yet definition answers %+v", field, locs)
 		}
 	}
-	locs := definitionAt(t, strings.Replace(design, "NotFound Gone", "NotFound Go"+cursorMark+"ne", 1))
+	locs := definitionAt(t, "", strings.Replace(design, "NotFound Gone", "NotFound Go"+cursorMark+"ne", 1))
 	if len(locs) != 1 || locs[0].Range.Start.Line != 2 {
 		t.Errorf("the error's own name resolves to %+v, want the error on line 3", locs)
 	}

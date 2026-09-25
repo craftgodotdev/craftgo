@@ -516,6 +516,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   enums and scalars only, and go-to-definition on a field type that names a
   service or an error finds nothing, as analysis finds no type.
 
+- **Go-to-definition and hover resolve a bare name as analysis does.** A
+  bare type name resolves in its own package only; the editor jumped to a
+  same-named type of another package where analysis reports `unknown type`.
+  A bare middleware or error name still resolves in any package.
+
 - **`@negative` or `@lt(0)` on an array of unsigned integers is reported
   once**, as a decorator on the wrong type; it also drew the unsigned-value
   error meant for a single number.

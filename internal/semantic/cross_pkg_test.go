@@ -6,6 +6,28 @@ import (
 	"testing"
 )
 
+// A bare name resolves in its own package; a middleware or an error name
+// declared elsewhere resolves in the other packages, as the reference checks
+// resolve it.
+func TestLookupOfABareName(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"a/a.craftgo": "package a\ntype H { x string }\n",
+		"b/b.craftgo": "package b\ntype Foo { y int }\nmiddleware Auth\nerror NotFound Gone\n",
+	})
+	proj, _ := AnalyzeProject(files, Options{DesignRoot: root})
+	if d := proj.Lookup("a", "Foo", AnyDecl); d != nil {
+		t.Errorf("bare Foo in package a resolves to %s's %T", d.DeclPos().Filename, d)
+	}
+	for _, c := range []struct {
+		name  string
+		kinds DeclKind
+	}{{"Auth", MiddlewareDecls}, {"Gone", ErrorDecls}, {"Auth", AnyDecl}, {"b.Foo", TypeDecls}} {
+		if d := proj.Lookup("a", c.name, c.kinds); d == nil || !strings.HasSuffix(c.name, d.DeclName()) {
+			t.Errorf("Lookup(a, %s) = %v, want the declaration of package b", c.name, d)
+		}
+	}
+}
+
 // A qualified reference to a generic type without type arguments reports its arity.
 func TestQualifiedGenericRefMissingArgs(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{

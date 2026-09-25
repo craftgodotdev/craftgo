@@ -137,23 +137,27 @@ func (p *Project) resolveName(home, ref string) (*Package, string) {
 	return p.resolve(home, &ast.QualifiedIdent{Parts: strings.Split(ref, ".")})
 }
 
+// projectWideDecls are the kinds a bare name finds in any package: a
+// middleware or an error its own package does not declare.
+const projectWideDecls = MiddlewareDecls | ErrorDecls
+
 // Lookup returns the declaration name refers to among the selected kinds,
-// or nil: a qualified `pkg.Name` in pkg only, a bare name in homePkg, then
-// in the other packages in name order.
+// or nil: a qualified `pkg.Name` in pkg only, a bare name in homePkg, then,
+// for [projectWideDecls], in the other packages in name order.
 func (p *Project) Lookup(homePkg, name string, kinds DeclKind) ast.Decl {
 	if pkg, sym := p.resolveName(homePkg, name); pkg != nil {
 		if d := pkg.Decl(sym, kinds); d != nil {
 			return d
 		}
 	}
-	if strings.Contains(name, ".") {
+	if kinds&projectWideDecls == 0 || strings.Contains(name, ".") {
 		return nil
 	}
-	for _, pkgName := range slices.Sorted(maps.Keys(p.Packages)) {
+	for _, pkgName := range p.PackageNames() {
 		if pkgName == homePkg {
 			continue
 		}
-		if d := p.Packages[pkgName].Decl(name, kinds); d != nil {
+		if d := p.Packages[pkgName].Decl(name, kinds&projectWideDecls); d != nil {
 			return d
 		}
 	}
