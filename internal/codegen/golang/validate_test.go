@@ -218,6 +218,23 @@ type X {
 	}
 }
 
+// A whole float bound at an integer primitive's limit is emitted as the exact integer it writes.
+func TestValidateIntegerLimitFloatBounds(t *testing.T) {
+	src := runValidateGen(t, `package design
+type X {
+    u  uint64 @multipleOf(18446744073709551615.0)
+    i  int64  @multipleOf(9223372036854775807.0)
+    lo int64  @lte(9223372036854775807.0)
+    r  int64  @range(-9223372036854775808.0, 9223372036854775807.0)
+}`)
+	mustContainAll(t, src,
+		"v.U%18446744073709551615 != 0",
+		"v.I%9223372036854775807 != 0",
+		"v.Lo > 9223372036854775807",
+		"v.R < -9223372036854775808 || v.R > 9223372036854775807",
+	)
+}
+
 // @multipleOf on a float field is rejected, since Go's % is integer-only.
 func TestValidateMultipleOfRejectsFloat(t *testing.T) {
 	src := tryRunValidateGen(t, `package design

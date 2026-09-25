@@ -183,6 +183,12 @@ func (v *NumberCounter) Validate() error {
 	if v.StepInt64%100 != 0 {
 		return fmt.Errorf("stepInt64: must be a multiple of 100")
 	}
+	if v.EdgeInt64 < -9223372036854775808 || v.EdgeInt64 > 9223372036854775807 {
+		return fmt.Errorf("edgeInt64: out of range [-9223372036854775808, 9223372036854775807]")
+	}
+	if v.EdgeInt64%9223372036854775807 != 0 {
+		return fmt.Errorf("edgeInt64: must be a multiple of 9223372036854775807")
+	}
 	return nil
 }
 
@@ -413,6 +419,9 @@ func (v *NumberUnsigned) Validate() error {
 	}
 	if v.StepUint64%10000000000000000000 != 0 {
 		return fmt.Errorf("stepUint64: must be a multiple of 10000000000000000000")
+	}
+	if v.MaxUint64%18446744073709551615 != 0 {
+		return fmt.Errorf("maxUint64: must be a multiple of 18446744073709551615")
 	}
 	return nil
 }

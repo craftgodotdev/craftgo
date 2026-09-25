@@ -464,9 +464,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@multipleOf(10000000000000000000.0)` - a whole float, the only way to
   write a divisor that size - passed analysis and reached the OpenAPI
   document, but the generated validator had no check for it; it now checks
-  the exact integer. A `@default` is held to the same range rule as a bound:
-  one beyond `float32` is rejected too, and an out-of-range one reads
-  `@default 200 exceeds int8 range [-128, 127]`.
+  the exact integer. A whole float bound is read exactly as written:
+  `@lte(9223372036854775807.0)` on an `int64` generated a constant rounded
+  past the type (`truncated to int64`), and it now compares with
+  9223372036854775807; a bound one past the type's range, such as
+  `@multipleOf(18446744073709551616.0)` on `uint64`, is rejected. A
+  `@default` is held to the same range rule as a bound: one beyond `float32`
+  is rejected too, and an out-of-range one reads `@default 200 exceeds int8
+  range [-128, 127]`.
 
 - **The editor offers a field the decorators its type takes.** On a field
   typed with a scalar declared in another file or package, `@` offered

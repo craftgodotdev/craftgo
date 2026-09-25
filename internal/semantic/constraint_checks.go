@@ -121,9 +121,9 @@ func (a *analyzer) checkBoundCapacity(prim string, decs []*ast.Decorator) {
 // beyond float32's.
 func (a *analyzer) checkCapacity(prim string, l NumericLit, pos lexer.Position, what string) {
 	if lo, hi, ok := prims.Capacity(prim); ok {
-		if text, whole := l.WholeText(); whole && (l.FloatVal < lo || l.FloatVal > hi) {
+		if n, whole := l.wholeInt(); whole && (n.Cmp(lo) < 0 || n.Cmp(hi) > 0) {
 			a.diag(pos, pos, lexer.SeverityError, CodeBoundOverflow,
-				"%s %s exceeds %s range [%g, %g]", what, text, prim, lo, hi)
+				"%s %s exceeds %s range [%s, %s]", what, n, prim, lo, hi)
 		}
 		return
 	}

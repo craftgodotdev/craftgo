@@ -1,6 +1,8 @@
 // Package prims is the catalogue of the DSL's built-in types: one row per
-// name with its Go type, OpenAPI type and format, value range and hover text.
+// name with its Go type, OpenAPI type and format, width and hover text.
 package prims
+
+import "math/big"
 
 // Kind classifies a built-in by the values it holds.
 type Kind uint8
@@ -30,8 +32,6 @@ type Spec struct {
 	// OASType and OASFormat are the OpenAPI schema `type` and `format`;
 	// an empty OASType is an unconstrained schema.
 	OASType, OASFormat string
-	// Lo and Hi bound the values an integer kind can hold.
-	Lo, Hi float64
 	// Doc is the hover text the language server shows.
 	Doc string
 }
@@ -39,16 +39,16 @@ type Spec struct {
 var specs = []Spec{
 	{Name: "string", Kind: String, Go: "string", OASType: "string", Doc: "**`string`** - UTF-8 text primitive."},
 	{Name: "bool", Kind: Bool, Go: "bool", OASType: "boolean", Doc: "**`bool`** - boolean primitive (`true` / `false`)."},
-	{Name: "int", Kind: Int, Go: "int", OASType: "integer", Lo: -9223372036854775808, Hi: 9223372036854775807, Doc: "**`int`** - platform-sized signed integer."},
-	{Name: "int8", Kind: Int, Bits: 8, Go: "int8", OASType: "integer", Lo: -128, Hi: 127, Doc: "**`int8`** - 8-bit signed integer."},
-	{Name: "int16", Kind: Int, Bits: 16, Go: "int16", OASType: "integer", Lo: -32768, Hi: 32767, Doc: "**`int16`** - 16-bit signed integer."},
-	{Name: "int32", Kind: Int, Bits: 32, Go: "int32", OASType: "integer", OASFormat: "int32", Lo: -2147483648, Hi: 2147483647, Doc: "**`int32`** - 32-bit signed integer."},
-	{Name: "int64", Kind: Int, Bits: 64, Go: "int64", OASType: "integer", OASFormat: "int64", Lo: -9223372036854775808, Hi: 9223372036854775807, Doc: "**`int64`** - 64-bit signed integer."},
-	{Name: "uint", Kind: Uint, Go: "uint", OASType: "integer", Lo: 0, Hi: 18446744073709551615, Doc: "**`uint`** - platform-sized unsigned integer."},
-	{Name: "uint8", Kind: Uint, Bits: 8, Go: "uint8", OASType: "integer", Lo: 0, Hi: 255, Doc: "**`uint8`** - 8-bit unsigned integer."},
-	{Name: "uint16", Kind: Uint, Bits: 16, Go: "uint16", OASType: "integer", Lo: 0, Hi: 65535, Doc: "**`uint16`** - 16-bit unsigned integer."},
-	{Name: "uint32", Kind: Uint, Bits: 32, Go: "uint32", OASType: "integer", Lo: 0, Hi: 4294967295, Doc: "**`uint32`** - 32-bit unsigned integer."},
-	{Name: "uint64", Kind: Uint, Bits: 64, Go: "uint64", OASType: "integer", Lo: 0, Hi: 18446744073709551615, Doc: "**`uint64`** - 64-bit unsigned integer."},
+	{Name: "int", Kind: Int, Go: "int", OASType: "integer", Doc: "**`int`** - platform-sized signed integer."},
+	{Name: "int8", Kind: Int, Bits: 8, Go: "int8", OASType: "integer", Doc: "**`int8`** - 8-bit signed integer."},
+	{Name: "int16", Kind: Int, Bits: 16, Go: "int16", OASType: "integer", Doc: "**`int16`** - 16-bit signed integer."},
+	{Name: "int32", Kind: Int, Bits: 32, Go: "int32", OASType: "integer", OASFormat: "int32", Doc: "**`int32`** - 32-bit signed integer."},
+	{Name: "int64", Kind: Int, Bits: 64, Go: "int64", OASType: "integer", OASFormat: "int64", Doc: "**`int64`** - 64-bit signed integer."},
+	{Name: "uint", Kind: Uint, Go: "uint", OASType: "integer", Doc: "**`uint`** - platform-sized unsigned integer."},
+	{Name: "uint8", Kind: Uint, Bits: 8, Go: "uint8", OASType: "integer", Doc: "**`uint8`** - 8-bit unsigned integer."},
+	{Name: "uint16", Kind: Uint, Bits: 16, Go: "uint16", OASType: "integer", Doc: "**`uint16`** - 16-bit unsigned integer."},
+	{Name: "uint32", Kind: Uint, Bits: 32, Go: "uint32", OASType: "integer", Doc: "**`uint32`** - 32-bit unsigned integer."},
+	{Name: "uint64", Kind: Uint, Bits: 64, Go: "uint64", OASType: "integer", Doc: "**`uint64`** - 64-bit unsigned integer."},
 	{Name: "float32", Kind: Float, Bits: 32, Go: "float32", OASType: "number", OASFormat: "float", Doc: "**`float32`** - 32-bit IEEE-754 float."},
 	{Name: "float64", Kind: Float, Bits: 64, Go: "float64", OASType: "number", OASFormat: "double", Doc: "**`float64`** - 64-bit IEEE-754 float."},
 	{Name: "bytes", Kind: Bytes, Go: "[]byte", OASType: "string", OASFormat: "byte", Doc: "**`bytes`** - raw byte buffer.\n\nGenerates `[]byte` in Go, base64 on the wire. Add `@format(raw)` when the bytes already ARE the value in the message's own encoding and the codec must embed them untouched."},
@@ -111,12 +111,25 @@ func IsInteger(name string) bool {
 // IsUnsigned reports whether name is an unsigned integer kind.
 func IsUnsigned(name string) bool { return byName[name].Kind == Uint }
 
-// Capacity returns the value range of an integer kind; ok is false for any
-// other name.
-func Capacity(name string) (lo, hi float64, ok bool) {
+// Capacity returns the value range of an integer kind, exactly, with `int`
+// and `uint` as wide as their 64-bit forms; ok is false for any other name.
+func Capacity(name string) (lo, hi *big.Int, ok bool) {
 	s := byName[name]
-	if s.Kind != Int && s.Kind != Uint {
-		return 0, 0, false
+	bits := uint(s.Bits)
+	if bits == 0 {
+		bits = 64
 	}
-	return s.Lo, s.Hi, true
+	one := big.NewInt(1)
+	switch s.Kind {
+	case Int:
+		hi = new(big.Int).Lsh(one, bits-1)
+		lo = new(big.Int).Neg(hi)
+		hi.Sub(hi, one)
+	case Uint:
+		lo = new(big.Int)
+		hi = new(big.Int).Sub(new(big.Int).Lsh(one, bits), one)
+	default:
+		return nil, nil, false
+	}
+	return lo, hi, true
 }

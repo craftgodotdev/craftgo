@@ -75,6 +75,9 @@ type NumberCounter struct {
 	// @multipleOf on int.
 	StepInt   int   `json:"stepInt"`
 	StepInt64 int64 `json:"stepInt64"`
+	// Whole floats at the int64 limits: checked as the exact integers they
+	// write.
+	EdgeInt64 int64 `json:"edgeInt64"`
 }
 
 // NumberExact is the boundary case where @gte and @lte share the
@@ -174,8 +177,9 @@ type NumberUnsigned struct {
 	// still accepted at the decorator layer, so we don't test that).
 	PosUint uint `json:"posUint"`
 	// A divisor past int64 can only be written as a whole float; the
-	// validator checks it as that integer.
+	// validator checks it as that integer, up to the uint64 limit.
 	StepUint64 uint64 `json:"stepUint64"`
+	MaxUint64  uint64 `json:"maxUint64"`
 }
 
 // OptionalReq wraps NumberOptional (presence axes).

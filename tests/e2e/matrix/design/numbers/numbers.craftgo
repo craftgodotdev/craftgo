@@ -39,6 +39,9 @@ type NumberCounter {
 	// @multipleOf on int.
 	stepInt     int   @multipleOf(5)
 	stepInt64   int64 @multipleOf(100)
+	// Whole floats at the int64 limits: checked as the exact integers they
+	// write.
+	edgeInt64   int64 @range(-9223372036854775808.0, 9223372036854775807.0) @multipleOf(9223372036854775807.0)
 }
 
 // NumberUnsigned covers the full uint family. Lower bound 0 is
@@ -70,8 +73,9 @@ type NumberUnsigned {
 	// still accepted at the decorator layer, so we don't test that).
 	posUint      uint   @positive
 	// A divisor past int64 can only be written as a whole float; the
-	// validator checks it as that integer.
+	// validator checks it as that integer, up to the uint64 limit.
 	stepUint64   uint64 @multipleOf(10000000000000000000.0)
+	maxUint64    uint64 @multipleOf(18446744073709551615.0)
 }
 
 // NumberPrice exercises float32 + float64 with float literal bounds.

@@ -8,13 +8,27 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
+// boundLiteral renders a numeric bound for a value of primitive prim: for an
+// integer, the exact whole number it writes (`1e19` as 10000000000000000000),
+// for a float its Go float text.
+func boundLiteral(a *ast.DecoratorArg, prim string) (string, bool) {
+	l, ok := semantic.ParseNumericArg(a)
+	if !ok {
+		return "", false
+	}
+	if prims.IsInteger(prim) {
+		return l.WholeText()
+	}
+	return l.Text(), true
+}
+
 // numericBoundCheck renders @gt/@gte/@lt/@lte on a numeric value, failing it
 // when `value failOp bound` holds.
 func numericBoundCheck(t checkTarget, d *ast.Decorator, failOp, label string, ctx emitCtx) string {
 	if !prims.IsNumeric(t.prim) || len(d.Args) != 1 {
 		return ""
 	}
-	n, ok := semantic.NumericArg(d.Args[0])
+	n, ok := boundLiteral(d.Args[0], t.prim)
 	if !ok {
 		return ""
 	}
@@ -26,8 +40,8 @@ func rangeCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 	if !prims.IsNumeric(t.prim) || len(d.Args) != 2 {
 		return ""
 	}
-	lo, ok1 := semantic.NumericArg(d.Args[0])
-	hi, ok2 := semantic.NumericArg(d.Args[1])
+	lo, ok1 := boundLiteral(d.Args[0], t.prim)
+	hi, ok2 := boundLiteral(d.Args[1], t.prim)
 	if !ok1 || !ok2 {
 		return ""
 	}

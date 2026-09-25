@@ -3391,6 +3391,15 @@ components:
         both), @gt/@lt (strict both). Also adds @positive, @negative, and
         @multipleOf on int to cover the marquee combinations.
       properties:
+        edgeInt64:
+          description: |-
+            Whole floats at the int64 limits: checked as the exact integers they
+            write.
+          format: int64
+          maximum: 9223372036854776000
+          minimum: -9.223372036854776e+18
+          multipleOf: 9223372036854776000
+          type: integer
         gtLtInt:
           exclusiveMaximum: 1000
           exclusiveMinimum: 0
@@ -3504,6 +3513,7 @@ components:
       - posInt64
       - stepInt
       - stepInt64
+      - edgeInt64
       type: object
     NumberExact:
       description: |-
@@ -3760,6 +3770,10 @@ components:
           maximum: 1000000000000
           minimum: 0
           type: integer
+        maxUint64:
+          minimum: 0
+          multipleOf: 1.8446744073709552e+19
+          type: integer
         posUint:
           description: |-
             @positive on uint - semantically equivalent to @gt(0), but the
@@ -3796,7 +3810,7 @@ components:
         stepUint64:
           description: |-
             A divisor past int64 can only be written as a whole float; the
-            validator checks it as that integer.
+            validator checks it as that integer, up to the uint64 limit.
           minimum: 0
           multipleOf: 10000000000000000000
           type: integer
@@ -3818,6 +3832,7 @@ components:
       - gtLtUint64
       - posUint
       - stepUint64
+      - maxUint64
       type: object
     OptionalPage:
       description: |-

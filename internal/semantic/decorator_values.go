@@ -156,6 +156,7 @@ type NumericLit struct {
 	FloatVal float64 // always set: float64(IntVal) for an IntLit, the value for a FloatLit
 	IsInt    bool    // the literal was an integer
 	IsBigInt bool    // an integer whose magnitude exceeds maxExactInt, so float64 would lose precision
+	written  string  // a FloatLit as written, whose exact value FloatVal may round
 }
 
 // ParseNumeric classifies e, an int or float literal; ok is false for any
@@ -170,7 +171,7 @@ func ParseNumeric(e ast.Expr) (NumericLit, bool) {
 			IsBigInt: v.Value > maxExactInt || v.Value < -maxExactInt,
 		}, true
 	case *ast.FloatLit:
-		return NumericLit{FloatVal: v.Value}, true
+		return NumericLit{FloatVal: v.Value, written: v.Text}, true
 	}
 	return NumericLit{}, false
 }
@@ -184,10 +185,30 @@ func ParseNumericArg(a *ast.DecoratorArg) (NumericLit, bool) {
 	return ParseNumeric(a.Value)
 }
 
-// IsWhole reports whether l is a finite whole number: an integer, or a
+// IsWhole reports whether l is a whole number as written: an integer, or a
 // float with no fractional part such as 300.0.
 func (l NumericLit) IsWhole() bool {
-	return l.IsInt || (!math.IsInf(l.FloatVal, 0) && l.FloatVal == math.Trunc(l.FloatVal))
+	_, ok := l.wholeInt()
+	return ok
+}
+
+// wholeInt returns l's value as written as an exact integer; ok is false when
+// l is not a whole number.
+func (l NumericLit) wholeInt() (*big.Int, bool) {
+	if l.IsInt {
+		return big.NewInt(l.IntVal), true
+	}
+	r, ok := new(big.Rat).SetString(l.written)
+	if !ok {
+		// A literal with no written text holds FloatVal exactly; nil for a non-finite one.
+		if r = new(big.Rat).SetFloat64(l.FloatVal); r == nil {
+			return nil, false
+		}
+	}
+	if !r.IsInt() {
+		return nil, false
+	}
+	return r.Num(), true
 }
 
 // Text renders l as Go literal text: an integer in decimal, a float in its
@@ -199,16 +220,13 @@ func (l NumericLit) Text() string {
 	return strconv.FormatFloat(l.FloatVal, 'g', -1, 64)
 }
 
-// WholeText renders a whole l in decimal digits, a float as the exact
-// integer it holds; ok is false when l is not [NumericLit.IsWhole].
+// WholeText renders a whole l in decimal digits, a float as the exact integer
+// it writes; ok is false when l is not [NumericLit.IsWhole].
 func (l NumericLit) WholeText() (string, bool) {
-	if l.IsInt {
-		return strconv.FormatInt(l.IntVal, 10), true
-	}
-	if !l.IsWhole() {
+	n, ok := l.wholeInt()
+	if !ok {
 		return "", false
 	}
-	n, _ := new(big.Float).SetFloat64(l.FloatVal).Int(nil)
 	return n.String(), true
 }
 
@@ -218,15 +236,6 @@ func IntArg(a *ast.DecoratorArg) (int64, bool) {
 		return l.IntVal, true
 	}
 	return 0, false
-}
-
-// NumericArg renders a numeric argument as [NumericLit.Text].
-func NumericArg(a *ast.DecoratorArg) (string, bool) {
-	l, ok := ParseNumericArg(a)
-	if !ok {
-		return "", false
-	}
-	return l.Text(), true
 }
 
 // SizeArg extracts a byte count from a Size literal (`5MB`) or a bare

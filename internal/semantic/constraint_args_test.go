@@ -35,15 +35,12 @@ func TestParseNumericArg(t *testing.T) {
 		t.Error("non-numeric arg must be !ok")
 	}
 
-	// IntArg and NumericArg read through it.
+	// IntArg reads through it.
 	if v, ok := IntArg(mkInt(42)); !ok || v != 42 {
 		t.Errorf("IntArg(42) = %d,%v", v, ok)
 	}
 	if _, ok := IntArg(mkFloat(1.5)); ok {
 		t.Error("IntArg must reject a float")
-	}
-	if s, ok := NumericArg(mkFloat(0.5)); !ok || s != "0.5" {
-		t.Errorf("NumericArg(0.5) = %q,%v", s, ok)
 	}
 }
 
@@ -59,6 +56,9 @@ func TestNumericLitForms(t *testing.T) {
 		{&ast.FloatLit{Value: 1e19}, true, "1e+19", "10000000000000000000"},
 		{&ast.FloatLit{Value: 0.5}, false, "0.5", ""},
 		{&ast.FloatLit{Value: math.Inf(1)}, false, "+Inf", ""},
+		// The written text is exact where float64 rounds.
+		{&ast.FloatLit{Value: 18446744073709551615.0, Text: "18446744073709551615.0"}, true, "1.8446744073709552e+19", "18446744073709551615"},
+		{&ast.FloatLit{Value: 1, Text: "1.00000000000000000001"}, false, "1", ""},
 	} {
 		l, ok := ParseNumeric(c.e)
 		if !ok {

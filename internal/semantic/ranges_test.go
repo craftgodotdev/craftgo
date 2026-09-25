@@ -497,6 +497,28 @@ func TestIntegralFloatBoundCapacityRejected(t *testing.T) {
 	}
 }
 
+// A whole float at an integer primitive's limit is held to the exact range: one past it is
+// rejected, the limit itself accepted.
+func TestIntegerLimitFloatBoundCapacity(t *testing.T) {
+	for _, src := range []string{
+		"package p\ntype T { a int64 @lte(9223372036854775808.0) }\n",
+		"package p\ntype T { a int64 @gte(-9223372036854775809.0) }\n",
+		"package p\ntype T { a uint64 @multipleOf(18446744073709551616.0) }\n",
+	} {
+		if diags := analyzeOneFile(t, src); !hasDiagContaining(diags, "exceeds") {
+			t.Errorf("expected capacity reject for %q, got: %v", strings.TrimSpace(src), diags)
+		}
+	}
+	for _, src := range []string{
+		"package p\ntype T { a int64 @lte(9223372036854775807.0) @gte(-9223372036854775808.0) }\n",
+		"package p\ntype T { a uint64 @multipleOf(18446744073709551615.0) }\n",
+	} {
+		if diags := analyzeOneFile(t, src); hasDiagContaining(diags, "exceeds") {
+			t.Errorf("in-range bound wrongly rejected for %q: %v", strings.TrimSpace(src), diags)
+		}
+	}
+}
+
 // A scalar declaration with contradictory pair bounds is rejected.
 func TestScalarDeclPairOrderingRejected(t *testing.T) {
 	for _, src := range []string{
