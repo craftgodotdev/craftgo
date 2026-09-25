@@ -3,6 +3,7 @@ package docs
 import (
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -11,20 +12,21 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// addPaths adds an operation per method of pkg under its route (doc holds pkg's components) and
-// describes each one it leaves out because its path holds an operation of its method already.
-func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) (shared []string) {
+// addPaths adds pkg's operations to doc (which holds pkg's components), each with its basePath-bound
+// fields; shared describes each left out because its path already holds an operation of its method.
+func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) (ops []boundOperation, shared []string) {
 	held := map[string]string{}
-	for _, op := range operations(pkg, doc.Components.Schemas) {
-		s := newOpShape(op.svc, op.m, route.Resolve("", op.svc.Primary, op.m), op.id, op.stem, pkg, registry.resolver)
+	for _, o := range operations(pkg, doc.Components.Schemas) {
+		s := newOpShape(o.svc, o.m, route.Resolve("", o.svc.Primary, o.m), o.id, o.stem, pkg, registry.resolver)
 		path := route.OpenAPIPath(s.full)
-		verb := strings.ToUpper(op.m.Verb)
-		this := fmt.Sprintf("%s.%s (%s %s)", op.svc.Primary.Name, op.m.Name, verb, s.full)
+		verb := strings.ToUpper(o.m.Verb)
+		this := fmt.Sprintf("%s.%s (%s %s)", o.svc.Primary.Name, o.m.Name, verb, s.full)
 		if first, taken := held[verb+" "+path]; taken {
 			shared = append(shared, fmt.Sprintf("OpenAPI path %s %s holds two operations: %s and %s", verb, path, first, this))
 			continue
@@ -35,9 +37,81 @@ func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry,
 			item = &openapi3.PathItem{}
 			doc.Paths.Set(path, item)
 		}
-		setOperation(item, op.m.Verb, buildOperation(doc, op.svc, s, pkg, registry, names))
+		op := buildOperation(doc, o.svc, s, pkg, registry, names)
+		setOperation(item, o.m.Verb, op)
+		ops = append(ops, boundOperation{op: op, fields: s.server})
 	}
-	return shared
+	return ops, shared
+}
+
+// boundOperation is an operation and its request fields bound to a variable
+// of the basePath.
+type boundOperation struct {
+	op     *openapi3.Operation
+	fields []semantic.ResolvedField
+}
+
+// basePathServer returns the server at basePath, each variable as every
+// operation describes it, bare for one binding it to no field; an operation
+// describing it otherwise gets a server of its own.
+func basePathServer(basePath string, ops []boundOperation, pkg *semantic.Package) *openapi3.Server {
+	own := make([]*openapi3.Server, len(ops))
+	for i, o := range ops {
+		own[i] = describedServer(basePath, o.fields, pkg)
+	}
+	root := describedServer(basePath, nil, pkg)
+	for name := range root.Variables {
+		if len(own) > 0 && !slices.ContainsFunc(own[1:], func(s *openapi3.Server) bool {
+			return !reflect.DeepEqual(s.Variables[name], own[0].Variables[name])
+		}) {
+			root.Variables[name] = own[0].Variables[name]
+		}
+	}
+	for i, o := range ops {
+		if !reflect.DeepEqual(own[i], root) {
+			o.op.Servers = &openapi3.Servers{own[i]}
+		}
+	}
+	return root
+}
+
+// describedServer returns the server at basePath, each `{name}` segment a
+// variable the one of fields bound to it describes.
+func describedServer(basePath string, fields []semantic.ResolvedField, pkg *semantic.Package) *openapi3.Server {
+	server := &openapi3.Server{URL: basePath, Variables: map[string]*openapi3.ServerVariable{}}
+	for _, name := range route.Vars(basePath) {
+		v := &openapi3.ServerVariable{Default: name}
+		for _, rf := range fields {
+			if wire.WireName(rf.Field, wire.BindPath) == name {
+				v = serverVariable(name, rf, pkg)
+				break
+			}
+		}
+		server.Variables[name] = v
+	}
+	return server
+}
+
+// serverVariable describes basePath variable name from rf, the request field
+// bound to it: its doc, its enum's values and a default its type takes.
+func serverVariable(name string, rf semantic.ResolvedField, pkg *semantic.Package) *openapi3.ServerVariable {
+	v := &openapi3.ServerVariable{Default: name, Description: semantic.Description(rf.Field.Decorators, rf.Field.Doc)}
+	sp, _ := prims.Lookup(rf.ResolvedPrim)
+	switch {
+	case rf.Category == semantic.CatEnum:
+		if ed := pkg.Enums[rf.Field.Type.Named.Name.String()]; ed != nil && len(ed.EnumValues()) > 0 {
+			v.Enum = enumWireStrings(ed)
+			v.Default = v.Enum[0]
+		}
+	case sp.Kind == prims.Int || sp.Kind == prims.Uint || sp.Kind == prims.Float:
+		v.Default = "0"
+	case sp.Kind == prims.Bool:
+		v.Default = "false"
+	}
+	if ex, ok := semantic.ExampleValue(rf.Field, pkg); ok {
+		v.Default = fmt.Sprint(ex)
+	}
+	return v
 }
 
 // operation is a method of a service of the merged package, with its
@@ -115,7 +189,8 @@ type opShape struct {
 	decs           []*ast.Decorator // m's decorators, its extend block's first
 	full, id, stem string
 	req, resp      fieldBins
-	form, files    []semantic.FormField // files is non-empty for a multipart request
+	server         []semantic.ResolvedField // request fields bound to a basePath variable
+	form, files    []semantic.FormField     // files is non-empty for a multipart request
 	reqType        *ast.TypeDecl
 	respType       *ast.TypeDecl // nil for a scalar or enum response
 }
@@ -128,6 +203,7 @@ func newOpShape(svc *semantic.ServiceInfo, m *ast.Method, full, id, stem string,
 		s.reqType = pkg.Types[m.Request.Name.String()]
 		fields := semantic.RequestFields(m, pkg, r, nil)
 		s.req = binFields(fields)
+		s.req.path, s.server = splitServerBound(s.req.path, full)
 		s.form, s.files = semantic.FormParts(fields)
 	}
 	if m.Response != nil && m.Response.Type != nil {
@@ -136,6 +212,20 @@ func newOpShape(svc *semantic.ServiceInfo, m *ast.Method, full, id, stem string,
 		}
 	}
 	return s
+}
+
+// splitServerBound splits path-bound fields into those of route full's
+// variables and those of the basePath's, which full leaves to the server.
+func splitServerBound(path []semantic.ResolvedField, full string) (routed, server []semantic.ResolvedField) {
+	vars := route.Vars(full)
+	for _, rf := range path {
+		if slices.Contains(vars, wire.WireName(rf.Field, wire.BindPath)) {
+			routed = append(routed, rf)
+		} else {
+			server = append(server, rf)
+		}
+	}
+	return routed, server
 }
 
 // fieldBins holds resolved fields by where they ride, @sensitive ones left
@@ -169,7 +259,7 @@ func binFields(fields []semantic.ResolvedField) fieldBins {
 // whole request type when nothing rides off the body, else [inlineBody].
 func requestBodySchema(s opShape, pkg *semantic.Package, registry *genericRegistry) *openapi3.SchemaRef {
 	td := s.reqType
-	if len(s.req.path)+len(s.req.query)+len(s.req.header)+len(s.req.cookie) == 0 {
+	if len(s.req.path)+len(s.server)+len(s.req.query)+len(s.req.header)+len(s.req.cookie) == 0 {
 		if len(td.TypeParams) > 0 {
 			// A generic declaration has no schema of its own.
 			return &openapi3.SchemaRef{Ref: "#/components/schemas/" + registry.refName(s.m.Request)}

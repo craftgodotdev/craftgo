@@ -622,6 +622,8 @@ service UserService {
 }
 ```
 
+A `{name}` segment of the basePath (`/t/{tenant}`) binds each request's field of that name like a path variable. The document declares it as a variable of `servers[0]`, not as an operation parameter, described by the field bound to it: its doc, an enum's values, and a default - the field's `@example`, else the enum's first value, else `0` or `false` for a number or a bool, else the variable's name. The document's server describes it so only when every operation does, bare when a raw operation binds it to no field; an operation describing it otherwise gets a server of its own.
+
 ### `openapi.securitySchemes`
 
 Each key is the name referenced via `@security(<key>)`. Supported `type` values: `http`, `apiKey`, `oauth2`, `openIdConnect`, `mutualTLS`. Per-type extra fields:

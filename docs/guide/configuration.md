@@ -236,7 +236,7 @@ Metadata that flows into the generated `openapi.yaml`.
 
 `version` can also be set per-file via `@version("...")` - file-level decorator wins when present. `title` is manifest-only.
 
-`basePath` rides into the `servers[0].url` field of the generated spec. If you need multiple servers or richer descriptions, edit the generated `openapi.yaml` after gen (it is committed; craftgo regenerates it on every run).
+`basePath` rides into the `servers[0].url` field of the generated spec. A `{name}` segment of it is a server variable, not an operation's path parameter, described by the request field bound to it: its doc, an enum's values, and a default - the field's `@example`, else the enum's first value, else `0` or `false` for a number or a bool, else the variable's name. The document's server describes a variable so only when every operation does, and leaves it bare when a raw operation binds it to no field; an operation describing it otherwise gets a server of its own. A constraint such as `@minLength` has no place in a server variable. If you need multiple servers or richer descriptions, edit the generated `openapi.yaml` after gen (it is committed; craftgo regenerates it on every run).
 
 ### `openapi.securitySchemes`
 

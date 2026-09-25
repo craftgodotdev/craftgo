@@ -1320,6 +1320,136 @@ service S {
 	}
 }
 
+// A basePath variable is a variable of the document's server, which the field
+// bound to it describes, and no operation's path parameter.
+func TestBasePathVariablesAreServerVariables(t *testing.T) {
+	const basePath = "/t/{tenant}/{region}"
+	root, files := projectFiles(t, map[string]string{"a/a.craftgo": `package a
+enum Region { eu  us }
+type Req {
+	// The tenant's slug.
+	tenant string
+	region Region
+	id     string
+}
+type Resp { ok bool }
+service S {
+	get A /a/{id} { request Req  response Resp }
+	post B /b { request Req  response Resp }
+}`})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root, BasePath: basePath})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	doc, err := buildProjectDocument(proj, &config.Config{OpenAPI: config.OpenAPI{BasePath: basePath}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(doc.Servers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `[{"url":"/t/{tenant}/{region}","variables":{"region":{"default":"eu","enum":["eu","us"]},"tenant":{"default":"tenant","description":"The tenant's slug."}}}]`
+	if string(raw) != want {
+		t.Errorf("servers = %s\nwant      %s", raw, want)
+	}
+	for path, params := range map[string][]string{"/a/{id}": {"id"}, "/b": nil} {
+		var got []string
+		for _, p := range doc.Paths.Find(path).Operations() {
+			for _, ref := range p.Parameters {
+				got = append(got, ref.Value.Name)
+			}
+		}
+		if !slices.Equal(got, params) {
+			t.Errorf("%s parameters = %v, want %v", path, got, params)
+		}
+	}
+}
+
+// Operations whose fields describe a basePath variable differently each get a
+// server of their own, and a variable defaults to a value its field accepts.
+func TestBasePathVariablesFollowEachOperation(t *testing.T) {
+	const basePath = "/x/{tier}/{n}"
+	root, files := projectFiles(t, map[string]string{
+		"a/a.craftgo": `package a
+enum Tier { gold  free }
+type AReq { tier Tier  n int  name string }
+type Ok { ok bool }
+service S { post A /a { request AReq  response Ok } }`,
+		"b/b.craftgo": `package b
+type BReq {
+	tier string @example("pro")
+	n    int
+}
+type Ok2 { ok bool }
+service T { get B /b { request BReq  response Ok2 } }`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root, BasePath: basePath})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	doc, err := buildProjectDocument(proj, &config.Config{OpenAPI: config.OpenAPI{BasePath: basePath}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range map[string]struct {
+		servers any
+		want    string
+	}{
+		"document": {doc.Servers, `[{"url":"/x/{tier}/{n}","variables":{"n":{"default":"0"},"tier":{"default":"tier"}}}]`},
+		"A":        {doc.Paths.Find("/a").Post.Servers, `[{"url":"/x/{tier}/{n}","variables":{"n":{"default":"0"},"tier":{"default":"gold","enum":["gold","free"]}}}]`},
+		"B":        {doc.Paths.Find("/b").Get.Servers, `[{"url":"/x/{tier}/{n}","variables":{"n":{"default":"0"},"tier":{"default":"pro"}}}]`},
+	} {
+		raw, err := json.Marshal(c.servers)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(raw) != c.want {
+			t.Errorf("%s servers = %s\nwant %s", name, raw, c.want)
+		}
+	}
+}
+
+// A raw operation that binds no basePath variable takes any value there, so
+// the document's server leaves the variable bare and a typed operation
+// describing it gets a server of its own.
+func TestBasePathVariablesOfARawOperationStayBare(t *testing.T) {
+	const basePath = "/x/{tier}"
+	root, files := projectFiles(t, map[string]string{"a/a.craftgo": `package a
+enum Tier { gold  free }
+type AReq { tier Tier  name string }
+type Ok { ok bool }
+service S {
+	post A /a { request AReq  response Ok }
+	@rawRequest
+	post R /r { response Ok }
+}`})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root, BasePath: basePath})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	doc, err := buildProjectDocument(proj, &config.Config{OpenAPI: config.OpenAPI{BasePath: basePath}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range map[string]struct {
+		servers any
+		want    string
+	}{
+		"document": {doc.Servers, `[{"url":"/x/{tier}","variables":{"tier":{"default":"tier"}}}]`},
+		"A":        {doc.Paths.Find("/a").Post.Servers, `[{"url":"/x/{tier}","variables":{"tier":{"default":"gold","enum":["gold","free"]}}}]`},
+		"R":        {doc.Paths.Find("/r").Post.Servers, `null`},
+	} {
+		raw, err := json.Marshal(c.servers)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(raw) != c.want {
+			t.Errorf("%s servers = %s\nwant %s", name, raw, c.want)
+		}
+	}
+}
+
 // `basePath` goes into the server URL only, never into the path keys.
 func TestGenerateOpenAPIBasePathNotDuplicated(t *testing.T) {
 	pkg := analyze(t, `package design

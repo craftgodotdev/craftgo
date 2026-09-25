@@ -84,11 +84,10 @@ func propertyNamesForMapKey(t *ast.TypeRef, pkg *semantic.Package) *openapi3.Sch
 		return nil
 	}
 	if ed, ok := pkg.Enums[name]; ok && ed != nil {
-		values := ed.EnumValues()
-		out := make([]any, 0, len(values))
-		for _, v := range values {
-			// Keys are strings: an int enum lists "1", "5", ...
-			out = append(out, semantic.EnumMemberWireString(v))
+		values := enumWireStrings(ed)
+		out := make([]any, len(values))
+		for i, v := range values {
+			out[i] = v
 		}
 		return &openapi3.Schema{
 			Type: &openapi3.Types{"string"},
@@ -102,6 +101,17 @@ func propertyNamesForMapKey(t *ast.TypeRef, pkg *semantic.Package) *openapi3.Sch
 		return base
 	}
 	return nil
+}
+
+// enumWireStrings returns ed's wire values as strings, the form a map key or
+// a URL takes: an int enum lists "1", "5", ...
+func enumWireStrings(ed *ast.EnumDecl) []string {
+	values := ed.EnumValues()
+	out := make([]string, len(values))
+	for i, v := range values {
+		out[i] = semantic.EnumMemberWireString(v)
+	}
+	return out
 }
 
 // instantiateGeneric builds the schema of decl with args substituted for its

@@ -1086,6 +1086,19 @@ breaking change to the DSL or the generated layout bumps the major version.
   write. It now reports `generated 0 package(s)` when it writes nothing, and
   gRPC services only when it runs the Go target.
 
+- **A basePath variable is a server variable in OpenAPI.** With `basePath:
+  /t/{tenant}`, each operation listed `tenant` as a path parameter its path
+  template (`/a`) does not hold, which OpenAPI validators reject, and
+  `servers[0]` declared no variable. The document now declares `tenant` under
+  `servers[0].variables`, described by the request field bound to it: its
+  doc, an enum's values, and a default - the field's `@example`, else the
+  enum's first value, else `0` or `false` for a number or a bool, else the
+  variable's name. The document's server describes it so only when every
+  operation does, and leaves it bare when a raw operation binds it to no
+  field; an operation describing it otherwise gets a server of its own, and
+  no operation lists it as a parameter. A constraint
+  such as `@minLength` has no place in a server variable.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

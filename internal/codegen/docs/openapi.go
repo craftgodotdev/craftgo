@@ -96,16 +96,16 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 		Paths:      &openapi3.Paths{},
 		Components: &openapi3.Components{Schemas: openapi3.Schemas{}},
 	}
-	if cfg.OpenAPI.BasePath != "" {
-		doc.Servers = openapi3.Servers{{URL: cfg.OpenAPI.BasePath}}
-	}
 	// One registry for the whole document: each generic instance, wherever
 	// it is named, becomes one component.
 	registry := newGenericRegistry()
 	registry.resolver = semantic.PackageResolver(pkg)
 	names := &schemaNames{}
 	addSchemas(doc, pkg, registry, names)
-	shared := addPaths(doc, pkg, registry, names)
+	ops, shared := addPaths(doc, pkg, registry, names)
+	if cfg.OpenAPI.BasePath != "" {
+		doc.Servers = openapi3.Servers{basePathServer(cfg.OpenAPI.BasePath, ops, pkg)}
+	}
 	// Instances go last: schema and path emission register them.
 	emitGenericInstanceComponents(doc, pkg, registry, names)
 	addSecuritySchemes(doc, pkg, cfg)
