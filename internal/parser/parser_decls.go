@@ -56,7 +56,7 @@ func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 	case lexer.KwEvent:
 		return p.parseEventDecl(decs, doc)
 	case lexer.KwService:
-		return p.parseServiceDecl(decs, doc, false)
+		return p.parseServiceDecl(decs, doc, t.Pos.Line, false)
 	case lexer.KwExtend:
 		return p.parseExtendService(decs, doc)
 	case lexer.EOF:
@@ -74,13 +74,14 @@ func (p *Parser) parseEnumDecl(decs []*ast.Decorator, doc []string) *ast.EnumDec
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
 	ed := &ast.EnumDecl{Pos: pos, Decorators: decs, Doc: doc, Name: name.Text}
-	lbrace, rbrace := p.braced(func() {
+	_, rbrace := p.braced(func() {
 		if v := p.parseEnumValue(); v != nil {
 			ed.Members = append(ed.Members, v)
 		}
 	})
 	ed.EndPos = rbrace.Pos
-	fcs := p.harvestFreeComments(lbrace.Pos.Line, rbrace.Pos.Line)
+	// A comment block in the header, above the `{`, opens the body.
+	fcs := p.harvestFreeComments(pos.Line, rbrace.Pos.Line)
 	ed.Members = mergeFreeComments(ed.Members, fcs, func(fc *ast.FreeComment) ast.EnumMember { return fc })
 	return ed
 }
@@ -138,7 +139,7 @@ func (p *Parser) parseErrorDecl(decs []*ast.Decorator, doc []string) *ast.ErrorD
 	ed := &ast.ErrorDecl{Pos: pos, Decorators: decs, Doc: doc, Category: cat.Text, Name: name.Text}
 	if p.peek().Kind == lexer.LBrace {
 		ed.HasBody = true
-		body, rbrace := p.parseTypeBody()
+		body, rbrace := p.parseTypeBody(pos.Line)
 		ed.Body, ed.EndPos = body, rbrace.Pos
 	}
 	return ed

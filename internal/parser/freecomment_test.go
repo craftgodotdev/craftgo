@@ -331,3 +331,68 @@ type User {
 		t.Errorf("mixin doc not captured: %#v", mx.Doc)
 	}
 }
+
+// A comment block inside a declaration's or a method's header, before its
+// opening brace, is a free comment at the top of its body.
+func TestHeaderCommentOpensTheBody(t *testing.T) {
+	f := mustParse(t, `package p
+
+type
+// in type
+T {
+	a string
+}
+
+enum E
+// in enum
+{
+	A
+}
+
+error NotFound
+// in error
+Gone {
+	b string
+}
+
+extend
+// in extend
+service S {
+	get A
+	// in method
+	/a {
+		response T
+	}
+}
+
+event
+// in event
+Ev {
+	payload T
+}
+`)
+	if len(f.FreeComments) != 0 {
+		t.Fatalf("a header comment stayed at file scope: %#v", f.FreeComments)
+	}
+	svc := f.Decls[3].(*ast.ServiceDecl)
+	for want, got := range map[string]any{
+		"in type":   f.Decls[0].(*ast.TypeDecl).Body[0],
+		"in enum":   f.Decls[1].(*ast.EnumDecl).Members[0],
+		"in error":  f.Decls[2].(*ast.ErrorDecl).Body[0],
+		"in extend": svc.Members[0],
+		"in method": firstComment(svc.Methods()[0].BodyComments),
+		"in event":  firstComment(f.Decls[4].(*ast.EventDecl).BodyComments),
+	} {
+		if fc, ok := got.(*ast.FreeComment); !ok || !reflect.DeepEqual(fc.Text, []string{want}) {
+			t.Errorf("first member %#v, want the free comment %q", got, want)
+		}
+	}
+}
+
+// firstComment returns the first of fcs, or nil.
+func firstComment(fcs []*ast.FreeComment) any {
+	if len(fcs) == 0 {
+		return nil
+	}
+	return fcs[0]
+}

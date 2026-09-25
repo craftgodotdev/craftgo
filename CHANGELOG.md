@@ -206,6 +206,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   result would hold a comment in another place: after another member, as a
   doc, or in another block.
 
+- **A comment in a declaration's header stays in the declaration.** A
+  comment block between the keyword of a type, enum, error, service, event
+  or method and its `{` moved below the whole declaration; formatting now
+  prints it at the top of the body.
+
 - **`kafka.WithTLS(nil)` dials over TLS.** franz-go reads a nil config as
   "no TLS", so the brokers were dialed in plaintext and `WithSASLPlain`
   sent the password in clear. A nil config now dials with an empty one,

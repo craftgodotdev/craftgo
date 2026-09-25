@@ -20,7 +20,7 @@ func (p *Parser) parseTypeDecl(decs []*ast.Decorator, doc []string) *ast.TypeDec
 		p.expect(lexer.LBrace)
 		return td
 	}
-	body, rbrace := p.parseTypeBody()
+	body, rbrace := p.parseTypeBody(pos.Line)
 	td.Body, td.EndPos = body, rbrace.Pos
 	return td
 }
@@ -55,14 +55,16 @@ func (p *Parser) parseTypeParams() []string {
 
 // parseTypeBody parses the type or error body that opens at the current `{`
 // into fields, mixins and free comments, and returns the closing brace token.
-func (p *Parser) parseTypeBody() ([]ast.TypeMember, lexer.Token) {
+// A comment block below header, the keyword's line, and above the `{` is the
+// body's first free comment.
+func (p *Parser) parseTypeBody(header int) ([]ast.TypeMember, lexer.Token) {
 	var members []ast.TypeMember
-	lbrace, rbrace := p.braced(func() {
+	_, rbrace := p.braced(func() {
 		if m := p.parseTypeMember(); m != nil {
 			members = append(members, m)
 		}
 	})
-	fcs := p.harvestFreeComments(lbrace.Pos.Line, rbrace.Pos.Line)
+	fcs := p.harvestFreeComments(header, rbrace.Pos.Line)
 	members = mergeFreeComments(members, fcs, func(fc *ast.FreeComment) ast.TypeMember { return fc })
 	return members, rbrace
 }

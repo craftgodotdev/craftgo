@@ -212,6 +212,30 @@ func TestFormatKeepsATrailingCommentWithItsMember(t *testing.T) {
 	}
 }
 
+// A comment block inside a declaration's or a method's header, before its
+// opening brace, prints at the top of its body.
+func TestFormatKeepsAHeaderCommentInItsDeclaration(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{
+			"type",
+			"package x\n\ntype\n// c\nT { // t\n\ta string\n}\n\nmiddleware M\n",
+			"package x\n\ntype T { // t\n\t// c\n\n\ta string\n}\n\nmiddleware M\n",
+		},
+		{
+			"method",
+			"package x\n\nservice S {\n\tget A\n\t// c\n\t/a {\n\t\tresponse T\n\t}\n\n\tget B /b {}\n}\n",
+			"package x\n\nservice S {\n\tget A /a {\n\t\t// c\n\n\t\tresponse T\n\t}\n\n\tget B /b {}\n}\n",
+		},
+		{
+			"empty method body",
+			"package x\n\nservice S {\n\tget A\n\t// c\n\t/a {}\n}\n",
+			"package x\n\nservice S {\n\tget A /a {\n\t\t// c\n\t}\n}\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
+	}
+}
+
 // Format refuses to put two comments on one collapsed line.
 func TestFormatRefusesTwoCommentsOnOneLine(t *testing.T) {
 	src := "package x\n\ntype T {\n\ta string @example({\n\t\tx: 1, // c1\n\t\ty: 2 // c2\n\t})\n}\n"

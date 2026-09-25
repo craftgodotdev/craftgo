@@ -8,20 +8,20 @@ import (
 )
 
 // parseServiceDecl parses `service Name { ... }`; extend marks the body of an
-// `extend service`.
-func (p *Parser) parseServiceDecl(decs []*ast.Decorator, doc []string, extend bool) *ast.ServiceDecl {
+// `extend service`. header is the line of the declaration's first keyword.
+func (p *Parser) parseServiceDecl(decs []*ast.Decorator, doc []string, header int, extend bool) *ast.ServiceDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
 	sd := &ast.ServiceDecl{Pos: pos, Decorators: decs, Doc: doc, Name: name.Text, Extend: extend}
-	lbrace, rbrace := p.braced(func() {
+	_, rbrace := p.braced(func() {
 		if m := p.parseServiceMember(); m != nil {
 			sd.Members = append(sd.Members, m)
 		}
 	})
 	sd.EndPos = rbrace.Pos
-	// Method bodies already claimed their comments, so this collects only the
-	// blocks between members.
-	fcs := p.harvestFreeComments(lbrace.Pos.Line, rbrace.Pos.Line)
+	// Method bodies already claimed their comments, so this collects the
+	// blocks between members and, as the body's first, one in the header.
+	fcs := p.harvestFreeComments(header, rbrace.Pos.Line)
 	sd.Members = mergeFreeComments(sd.Members, fcs, func(fc *ast.FreeComment) ast.ServiceMember { return fc })
 	return sd
 }
@@ -29,12 +29,12 @@ func (p *Parser) parseServiceDecl(decs []*ast.Decorator, doc []string, extend bo
 // parseExtendService parses `extend service Name { ... }`, returning nil when
 // `service` does not follow `extend`.
 func (p *Parser) parseExtendService(decs []*ast.Decorator, doc []string) ast.Decl {
-	p.advance()
+	extend := p.advance()
 	if p.peek().Kind != lexer.KwService {
 		p.errorf(p.peek().Pos, "expected 'service' after 'extend'")
 		return nil
 	}
-	return p.parseServiceDecl(decs, doc, true)
+	return p.parseServiceDecl(decs, doc, extend.Pos.Line, true)
 }
 
 // rejectMethodTypeSuffix reports and skips a `[]` or `?` after a request or
@@ -110,15 +110,17 @@ type memberBody struct {
 
 // parseMemberBody parses a `{ ... }` body. fn parses a clause starting at the
 // given token and reports whether it knew it; others are reported and skipped.
-func (p *Parser) parseMemberBody(fn func(lexer.Token) bool, expected string) memberBody {
-	lbrace, rbrace := p.braced(func() {
+// A comment block below header, the keyword's line, and above the `{` is the
+// body's first comment.
+func (p *Parser) parseMemberBody(header int, fn func(lexer.Token) bool, expected string) memberBody {
+	_, rbrace := p.braced(func() {
 		if !fn(p.peek()) {
 			p.errorf(p.peek().Pos, "expected %s, got %s", expected, p.peek().Kind)
 			p.advance()
 		}
 	})
 	return memberBody{
-		Comments: p.harvestFreeComments(lbrace.Pos.Line, rbrace.Pos.Line),
+		Comments: p.harvestFreeComments(header, rbrace.Pos.Line),
 		EndPos:   rbrace.Pos,
 	}
 }
@@ -131,7 +133,7 @@ func (p *Parser) parseMethod(decs []*ast.Decorator, doc []string) *ast.Method {
 	if p.peek().Kind == lexer.Slash {
 		m.Path = p.parsePath()
 	}
-	body := p.parseMemberBody(func(tok lexer.Token) bool {
+	body := p.parseMemberBody(verb.Pos.Line, func(tok lexer.Token) bool {
 		switch tok.Kind {
 		case lexer.KwRequest:
 			kw := p.advance()
@@ -163,7 +165,7 @@ func (p *Parser) parseEventDecl(decs []*ast.Decorator, doc []string) *ast.EventD
 	t := p.advance()
 	name, _ := p.expect(lexer.Ident)
 	e := &ast.EventDecl{Pos: t.Pos, Decorators: decs, Doc: doc, Name: name.Text}
-	body := p.parseMemberBody(func(tok lexer.Token) bool {
+	body := p.parseMemberBody(t.Pos.Line, func(tok lexer.Token) bool {
 		if tok.Kind != lexer.KwPayload {
 			return false
 		}
