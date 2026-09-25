@@ -12,21 +12,11 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 )
 
-// busWith builds a bus over a recording transport and the given chain.
-func busWith(mws ...events.Middleware) (*events.Bus, *recordingTransport) {
-	tr := &recordingTransport{}
-	return events.New(
-		events.WithTransport(tr),
-		events.WithCodec(codecjson.Codec{}),
-		events.WithMiddleware(mws...),
-	), tr
-}
-
 // wrapped registers sub on a bus carrying mws and returns the handler the transport was
 // handed.
 func wrapped(t *testing.T, sub events.Subscription, mws ...events.Middleware) events.Handler {
 	t.Helper()
-	bus, tr := busWith(mws...)
+	bus, tr := busOver(events.WithMiddleware(mws...))
 	start(t, context.Background(), bus, sub)
 	return tr.subs[0].Handle
 }
@@ -58,7 +48,7 @@ func TestBusMiddlewareWrapsEverySubscription(t *testing.T) {
 // their own chains.
 func TestUseWrapsEverySubscriptionOutsideItsOwnChain(t *testing.T) {
 	var trace string
-	bus, tr := busWith(tagMW(&trace, "N"))
+	bus, tr := busOver(events.WithMiddleware(tagMW(&trace, "N")))
 	sub := tracingSub(&trace, "x.Y", "C1", "g")
 	sub.Chain = events.NewChain(tagMW(&trace, "S"))
 	if err := errors.Join(bus.Register(sub), bus.Register(tracingSub(&trace, "other.Z", "C2", "g2"))); err != nil {
@@ -88,7 +78,7 @@ func TestUseWrapsEverySubscriptionOutsideItsOwnChain(t *testing.T) {
 // Use after Start panics with a message naming both methods.
 func TestUseAfterStartPanics(t *testing.T) {
 	var trace string
-	bus, _ := busWith()
+	bus, _ := busOver()
 	start(t, context.Background(), bus, tracingSub(&trace, "x.Y", "C1", "g"))
 
 	defer func() {
@@ -156,7 +146,7 @@ func TestBusMiddlewareCoversEverySubscription(t *testing.T) {
 		}
 	}
 	var trace string
-	bus, tr := busWith(record)
+	bus, tr := busOver(events.WithMiddleware(record))
 	start(t, context.Background(), bus,
 		tracingSub(&trace, "x.Y", "Generated", "g1"),
 		tracingSub(&trace, "other.Z", "HandWritten", "g2"),
