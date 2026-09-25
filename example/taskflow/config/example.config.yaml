@@ -3,19 +3,19 @@
 # your environment, and commit the example only (the live file
 # typically lives in `.gitignore` or is rendered from secrets/CI).
 #
-# This file is the single source of truth: per-environment overrides
-# go in `config.yaml` itself (one file per env, mounted by the
-# deployer). No environment variables are read.
+# Per-environment overrides go in `config.yaml` itself (one file per
+# env, mounted by the deployer). craftgo reads no environment variable,
+# but the OpenTelemetry SDK reads its own OTEL_* variables, such as
+# OTEL_EXPORTER_OTLP_HEADERS and OTEL_TRACES_SAMPLER.
 
 # Public HTTP listener.
 #
-# handlerTimeout / maxBodySize are GLOBAL DEFAULTS. A per-method
-# `@timeout` or `@maxBodySize` OVERRIDES the matching default (used
-# as-is, longer/larger or shorter/smaller); routes without one inherit
-# it. Zero = no global default (per-method decorators still apply).
+# handlerTimeout and maxBodySize are defaults: a method's @timeout or
+# @maxBodySize replaces the matching one, longer or shorter, and a route
+# without one takes it. Zero sets none; the decorators still apply.
 #
-# The read and write deadlines and the header cap are not here: main.go
-# sets them with srv.SetDefaultReadTimeout, SetDefaultWriteTimeout and
+# The read and write deadlines and the header cap are not here: set them
+# in main.go with srv.SetDefaultReadTimeout, SetDefaultWriteTimeout and
 # SetDefaultMaxHeaderSize when the defaults do not fit.
 server:
   addr: ":8080"               # bind address; "127.0.0.1:8080" for localhost-only
@@ -29,9 +29,9 @@ server:
     minSize: 0                # skip bodies under N bytes; 0 → framework default (1024)
     level: 0                  # gzip level 1..9; 0 → DefaultCompression
 
-# Process-wide logger. main.go feeds level to log.SetLevel, which retunes
-# the server and the generated logic layer together. Format (JSON vs
-# console) is chosen in main.go, not here.
+# Process-wide logger: main.go passes level to log.SetLevel, for the
+# server and the generated logic alike. The default logger writes JSON
+# lines; install another with log.SetDefault.
 logging:
   level: info                 # debug | info | warn | error; unknown → info
 
@@ -41,9 +41,9 @@ logging:
 # below, but only do that to report under a different name on purpose.
 serviceName: taskflow
 
-# Distributed tracing via OpenTelemetry. Note that the HTTP middleware
-# emits BOTH signals from one wrapper, so `enabled: false` here stops the
-# SPANS, not the http.server.* metrics - those follow metrics.enabled.
+# Distributed tracing via OpenTelemetry. The server instrumentation emits
+# both signals from one wrapper, so `enabled: false` here stops the spans,
+# not the request metrics - those follow metrics.enabled.
 otel:
   enabled: true               # false → no spans, no traceparent header
   exporter: none              # none | stdout | otlp_grpc | otlp_http
