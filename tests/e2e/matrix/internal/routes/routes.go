@@ -4,6 +4,7 @@ package routes
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	accountserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/account_service"
 	accountuserserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/account_user_service"
 	adminserviceAdminroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin"
@@ -40,7 +41,6 @@ import (
 	xdelegateserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/x_delegate_service"
 	xrefsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/x_refs_service"
 	xrefsserviceXsharedroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/xshared"
-
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 

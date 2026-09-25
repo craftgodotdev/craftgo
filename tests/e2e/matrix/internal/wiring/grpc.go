@@ -9,7 +9,6 @@ import (
 
 	greetergrpc "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/grpc/greeter"
 	grpcpb "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/pb/grpc"
-
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 

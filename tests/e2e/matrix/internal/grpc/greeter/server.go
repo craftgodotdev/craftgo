@@ -4,7 +4,6 @@ package grpc
 
 import (
 	pb "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/pb/grpc"
-
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 

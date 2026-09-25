@@ -3,9 +3,10 @@
 package project
 
 import (
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transportProjectV1 "github.com/craftgodotdev/craftgo/example/taskflow/internal/transport/project/v1"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
-	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
 // RegisterRoutes wires every ProjectService endpoint onto srv. Patterns

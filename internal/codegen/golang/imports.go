@@ -32,6 +32,15 @@ func (imp goImport) Spec() string {
 // localAlias is the alias a file imports its own DSL package's types under.
 const localAlias = "types"
 
+// The runtime packages generated files import.
+const (
+	serverImport        = "github.com/craftgodotdev/craftgo/pkg/server"
+	rpcImport           = "github.com/craftgodotdev/craftgo/pkg/rpc"
+	logImport           = "github.com/craftgodotdev/craftgo/pkg/log"
+	eventsRuntimeImport = "github.com/craftgodotdev/craftgo/pkg/events"
+	grpcImport          = "google.golang.org/grpc"
+)
+
 // The names each template binds where it writes an imported package's name.
 var (
 	transportNames  = []string{"http", "strconv", "server", "service", "svccontext", "svcCtx", "w", "r", "req", "c", "err", "_q", "_v", "_vs", "_w"}
@@ -60,6 +69,7 @@ func formatPackages() []string {
 // one alias per import path, distinct from the others, from the names the file's template binds
 // and from the packages a builtin's Go type lives in.
 type importSet struct {
+	module   string // the project's module path, whose packages form the last import group
 	crossPkg crossPkg
 	res      *semantic.Resolver
 	home     goImport
@@ -68,12 +78,12 @@ type importSet struct {
 	taken    map[string]string // alias → path
 }
 
-// newImportSet returns an empty set for a file whose template binds names. r resolves the DSL types
-// the file names, nil for a file that names none; home is the package the file names under a fixed
-// alias: the current DSL package's types, or a proto service's messages. A file of the DSL package's
-// own types has no home and names that package's types bare.
-func newImportSet(r *projectResolver, home goImport, names []string) *importSet {
-	s := &importSet{home: home, reserved: map[string]bool{}, byPath: map[string]string{}, taken: map[string]string{}}
+// newImportSet returns an empty set for a file of the project module whose template binds names.
+// r resolves the DSL types the file names, nil for a file that names none; home is the package the
+// file names under a fixed alias: the current DSL package's types, or a proto service's messages. A
+// file of the DSL package's own types has no home and names that package's types bare.
+func newImportSet(module string, r *projectResolver, home goImport, names []string) *importSet {
+	s := &importSet{module: module, home: home, reserved: map[string]bool{}, byPath: map[string]string{}, taken: map[string]string{}}
 	if r != nil {
 		s.crossPkg, s.res = r.CrossPkg, r.Resolver
 	}
@@ -110,6 +120,12 @@ func (s *importSet) use(path string) {
 	s.byPath[path] = ""
 }
 
+// fixed imports path under alias, a name the file's template writes for it.
+func (s *importSet) fixed(alias, path string) {
+	s.byPath[path] = alias
+	s.taken[alias] = path
+}
+
 // has reports whether path is imported.
 func (s *importSet) has(path string) bool {
 	_, ok := s.byPath[path]
@@ -123,6 +139,47 @@ func (s *importSet) imports() []goImport {
 		out = append(out, goImport{Alias: s.byPath[p], Path: p})
 	}
 	return out
+}
+
+// Import groups, in the order a file lists them.
+const (
+	stdGroup = iota
+	moduleGroup
+	projectGroup
+)
+
+// group returns the group of import path: the project's own module first, since a module path
+// need not hold a dot, then the standard library, whose first element holds none, then any other
+// module.
+func (s *importSet) group(path string) int {
+	first, _, _ := strings.Cut(path, "/")
+	switch {
+	case s.module != "" && (path == s.module || strings.HasPrefix(path, s.module+"/")):
+		return projectGroup
+	case !strings.Contains(first, "."):
+		return stdGroup
+	}
+	return moduleGroup
+}
+
+// decl renders the file's import declaration, a blank line between its groups and each group in
+// path order; "" for a file that imports nothing.
+func (s *importSet) decl() string {
+	var groups [projectGroup + 1][]string
+	for _, imp := range s.imports() {
+		g := s.group(imp.Path)
+		groups[g] = append(groups[g], "\t"+imp.Spec())
+	}
+	var blocks []string
+	for _, g := range groups {
+		if len(g) > 0 {
+			blocks = append(blocks, strings.Join(g, "\n"))
+		}
+	}
+	if len(blocks) == 0 {
+		return ""
+	}
+	return "import (\n" + strings.Join(blocks, "\n\n") + "\n)\n"
 }
 
 // scratch returns a copy of s whose imports never reach s, to spell a type the file names only

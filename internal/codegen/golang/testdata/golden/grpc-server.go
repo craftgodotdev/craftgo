@@ -4,7 +4,6 @@ package greet
 
 import (
 	pb "example.com/app/internal/pb/greet"
-
 	"example.com/app/svccontext"
 )
 

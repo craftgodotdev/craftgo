@@ -1,29 +1,7 @@
 
 package {{.Package}}
 
-import (
-	"context"
-{{- if .Sig.NeedsHTTP}}
-	"net/http"
-{{- end}}
-{{- if .NeedsTypes}}
-{{end}}
-{{- range .Imports}}
-	{{if .Alias}}{{.Alias}} {{end}}"{{.Path}}"
-{{- end}}
-{{- if .PBImports}}
-{{range .PBImports}}
-	{{.Alias}} "{{.Path}}"
-{{- end}}
-{{- end}}
-
-	"github.com/craftgodotdev/craftgo/pkg/log"
-{{- if .Sig.NeedsGRPC}}
-	"google.golang.org/grpc"
-{{- end}}
-	"{{.SvccontextImport}}"
-)
-
+{{.ImportDecl}}
 {{- if .IsPassthrough}}
 
 // {{.ServiceName}} carries the per-request state for the

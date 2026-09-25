@@ -3,8 +3,9 @@
 package customers
 
 import (
-	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
 	"mime/multipart"
+
+	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
 )
 
 type Address struct {

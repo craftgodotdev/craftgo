@@ -3,10 +3,99 @@ package golang
 import (
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
+
+// groupedSrc is a design whose files each import the standard library, the runtime and the
+// project: a handler and stub naming another package's types, its routes and wiring, and the
+// types, errors and events of a package naming them too.
+var groupedSrc = []string{`package app
+import "shared"
+error NotFound Missing { id shared.ID @header("X-Id") }
+event Seen { payload shared.Item }
+service Items {
+	@timeout(5s)
+	post Find /items/{id} { request shared.Item  response shared.Item }
+}`, `package shared
+scalar ID string @minLength(1)
+type Item { id ID  at datetime }`}
+
+// importGroupsOf returns the import specs of src's import declaration, group by group.
+func importGroupsOf(t *testing.T, src string) [][]string {
+	t.Helper()
+	_, rest, ok := strings.Cut(src, "\nimport (\n")
+	if !ok {
+		t.Fatalf("no import declaration:\n%s", src)
+	}
+	block, _, _ := strings.Cut(rest, "\n)\n")
+	var groups [][]string
+	for _, g := range strings.Split(block, "\n\n") {
+		groups = append(groups, strings.Split(strings.TrimSpace(g), "\n"))
+	}
+	return groups
+}
+
+// Every generated file imports the standard library, then other modules, then the project's
+// own module, a blank line between the groups: the module is recognised by its path, dotted or
+// not.
+func TestImportsGroupStdOtherModulesProject(t *testing.T) {
+	for _, module := range []string{"github.com/example/app", "myapp"} {
+		t.Run(module, func(t *testing.T) {
+			proj := analyzeProject(t, groupedSrc...)
+			cfg := sampleConfig()
+			cfg.Package = module
+			root := t.TempDir()
+			if err := Generate(proj, nil, cfg, root); err != nil {
+				t.Fatal(err)
+			}
+			if err := GenerateEventTarget(proj, cfg, root, goEventsOut); err != nil {
+				t.Fatal(err)
+			}
+			for _, rel := range []string{
+				"internal/types/app/errors.go",
+				"internal/types/app/validate.go",
+				"internal/types/shared/types.go",
+				"internal/transport/items/find.go",
+				"internal/service/items/find.go",
+				"internal/routes/items/routes.go",
+				"internal/routes/routes.go",
+				"internal/wiring/wiring.go",
+				goEventsOut + "/app/events.go",
+			} {
+				body, err := os.ReadFile(filepath.Join(root, rel))
+				if err != nil {
+					t.Fatal(err)
+				}
+				// 0 is the standard library, 1 another module, 2 the project.
+				group := func(spec string) int {
+					path, _ := strconv.Unquote(spec[strings.IndexByte(spec, '"'):])
+					first, _, _ := strings.Cut(path, "/")
+					switch {
+					case path == module || strings.HasPrefix(path, module+"/"):
+						return 2
+					case !strings.Contains(first, "."):
+						return 0
+					}
+					return 1
+				}
+				last := -1
+				for _, specs := range importGroupsOf(t, string(body)) {
+					g := group(specs[0])
+					for _, spec := range specs {
+						if group(spec) != g || g <= last {
+							t.Errorf("%s: %s is out of its group:\n%s", rel, spec, body)
+						}
+					}
+					last = g
+				}
+			}
+		})
+	}
+}
 
 // importClashSrc names packages after identifiers the templates bind (`server` in the handler,
 // `log` and `context` in the stub, `fmt` in the event file) and passes a builtin that lives in

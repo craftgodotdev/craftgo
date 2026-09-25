@@ -1,17 +1,6 @@
 package {{.Package}}
 
-import (
-{{- if .NeedsTime}}
-	"time"
-
-{{end -}}
-{{- range .Imports}}
-	{{.Alias}} "{{.Path}}"
-{{- end}}
-	"github.com/craftgodotdev/craftgo/pkg/server"
-	"{{.SvccontextImport}}"
-)
-
+{{.ImportDecl}}
 // RegisterRoutes wires every {{.Service}} endpoint onto srv. Patterns
 // use the Go 1.22 method-prefixed form so VERB and path match together;
 // service prefix and OpenAPI basePath are baked in. Methods declaring

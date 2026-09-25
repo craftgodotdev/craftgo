@@ -3,8 +3,9 @@
 package attachments
 
 import (
-	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 	"mime/multipart"
+
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 )
 
 type Attachment struct {

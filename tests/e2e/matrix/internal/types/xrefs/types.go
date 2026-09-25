@@ -3,11 +3,12 @@
 package xrefs
 
 import (
+	"time"
+
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/fmt"
 	time2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/time"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/v"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
-	"time"
 )
 
 // XBagPromoteReq instantiates the generic mixin host xshared.XWrapInBag

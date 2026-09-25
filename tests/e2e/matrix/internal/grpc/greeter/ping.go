@@ -6,9 +6,9 @@ import (
 	"context"
 
 	"github.com/craftgodotdev/craftgo/pkg/rpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/greeter"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // Ping serves the unary RPC /grpcmatrix.Greeter/Ping: it hands the

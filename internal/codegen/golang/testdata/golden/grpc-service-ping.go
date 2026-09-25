@@ -5,10 +5,10 @@ package greet
 import (
 	"context"
 
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	"github.com/craftgodotdev/craftgo/pkg/log"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"example.com/app/svccontext"
-	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
 // PingService carries the per-request state for the

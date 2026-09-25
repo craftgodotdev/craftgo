@@ -12,11 +12,9 @@ import (
 
 // eventsData is the template input for one package's events.go.
 type eventsData struct {
-	Package string
-	Imports []goImport
-	Events  []eventDescriptor
-	// UsesFmt is set when the file declares an element validator, which formats its error.
-	UsesFmt bool
+	Package    string
+	ImportDecl string
+	Events     []eventDescriptor
 }
 
 // eventDescriptor is one event contract and the payload type its descriptor carries.
@@ -37,7 +35,8 @@ type eventDescriptor struct {
 // per event; a package without events gets no file.
 func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoot, outDir string, r *projectResolver) error {
 	r = resolverFor(pkg, r)
-	imports := newImportSet(r, goImport{Alias: localAlias, Path: outputsOf(cfg).types.sub(pkg.Name).pkg}, eventsNames)
+	imports := newImportSet(r.Module, r, goImport{Alias: localAlias, Path: outputsOf(cfg).types.sub(pkg.Name).pkg}, eventsNames)
+	imports.fixed("craftevents", eventsRuntimeImport)
 	data := eventsData{Package: pkg.Name}
 	for _, name := range slices.Sorted(maps.Keys(pkg.Events)) {
 		ev, ok := r.Project().LookupEvent(pkg.Name, name)
@@ -50,7 +49,9 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 		}
 		validate := validateFunc(ev, r.Project(), payload)
 		elems := ev.PayloadArray && validate != "nil"
-		data.UsesFmt = data.UsesFmt || elems
+		if elems {
+			imports.use("fmt")
+		}
 		data.Events = append(data.Events, eventDescriptor{
 			Name:          ev.Name,
 			ConstName:     idents.EventContractName(ev.Name),
@@ -64,7 +65,7 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 	if len(data.Events) == 0 {
 		return nil
 	}
-	data.Imports = imports.imports()
+	data.ImportDecl = imports.decl()
 	return writeGo(filepath.Join(projectRoot, outDir, pkg.Name, "events.go"), tmpl("events.tmpl"), data)
 }
 

@@ -5,9 +5,10 @@ package tasks
 import (
 	"time"
 
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/example/taskflow/internal/transport/task_service"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
-	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
 // RegisterRoutes wires every TaskService endpoint onto srv. Patterns

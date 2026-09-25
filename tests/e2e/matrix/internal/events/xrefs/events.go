@@ -5,8 +5,8 @@ package xrefs
 import (
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 
-	paytypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/paytypes"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/paytypes"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 )
 
 // PayBatchedContract is the wire identity of PayBatched.

@@ -3,8 +3,9 @@
 package combine
 
 import (
-	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
 	"mime/multipart"
+
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
 )
 
 // PageSize is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.

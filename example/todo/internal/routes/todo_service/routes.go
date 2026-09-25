@@ -3,9 +3,10 @@
 package todos
 
 import (
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/example/todo/internal/transport/todo_service"
 	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
-	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
 // RegisterRoutes wires every TodoService endpoint onto srv. Patterns

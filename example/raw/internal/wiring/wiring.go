@@ -8,7 +8,6 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	"github.com/craftgodotdev/craftgo/example/raw/internal/routes"
-
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 

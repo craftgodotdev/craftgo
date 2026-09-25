@@ -10,6 +10,8 @@ import (
 type projectResolver struct {
 	*semantic.Resolver
 	CrossPkg crossPkg
+	// Module is the project's module path, cfg.Package.
+	Module string
 }
 
 // buildProjectResolver returns the resolver for currentPkgName; it is non-nil
@@ -18,6 +20,7 @@ func buildProjectResolver(proj *semantic.Project, cfg *config.Config, currentPkg
 	return &projectResolver{
 		Resolver: semantic.NewResolver(proj, currentPkgName),
 		CrossPkg: buildCrossPkg(proj, cfg, currentPkgName),
+		Module:   cfg.Package,
 	}
 }
 

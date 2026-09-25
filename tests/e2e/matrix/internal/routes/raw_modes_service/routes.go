@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/raw_modes_service"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )

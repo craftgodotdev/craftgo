@@ -8,7 +8,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/example/ecommerce/internal/service/catalog_service"
-	shared "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 

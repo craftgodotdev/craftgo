@@ -6,9 +6,9 @@ import (
 	"context"
 
 	"github.com/craftgodotdev/craftgo/pkg/rpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	service "example.com/app/internal/service/greeter"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // Ping uses only well-known types.

@@ -5,11 +5,11 @@ package greet
 import (
 	"context"
 
-	pb "example.com/app/internal/pb/greet"
-
-	"example.com/app/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
 	"google.golang.org/grpc"
+
+	pb "example.com/app/internal/pb/greet"
+	"example.com/app/svccontext"
 )
 
 // ListHellosService carries the per-request state for the

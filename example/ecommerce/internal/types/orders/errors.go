@@ -4,6 +4,7 @@ package orders
 
 import (
 	"encoding/json"
+
 	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/customers"
 )
 

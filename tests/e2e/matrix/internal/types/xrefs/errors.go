@@ -4,9 +4,10 @@ package xrefs
 
 import (
 	"encoding/json"
+	"time"
+
 	time2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/time"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
-	"time"
 )
 
 // ErrCodeXLost is the canonical machine-readable code for XLostErr.

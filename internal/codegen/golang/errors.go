@@ -27,14 +27,14 @@ func generateErrors(pkg *semantic.Package, outDir string, r *projectResolver) er
 // buildErrorsGo returns the unformatted source of pkg's errors.go, errors in
 // name order.
 func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
-	imports := newImportSet(r, goImport{}, errorsNames)
+	imports := newImportSet(r.Module, r, goImport{}, errorsNames)
 	// Every error type's MarshalJSON encodes through encoding/json.
 	imports.use("encoding/json")
 	var decls []string
 	for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
 		decls = append(decls, renderError(pkg, pkg.Errors[name], r, imports))
 	}
-	parts := []string{"package " + pkg.Name + "\n", renderImports(imports.imports())}
+	parts := []string{"package " + pkg.Name + "\n", imports.decl()}
 	return strings.Join(append(parts, decls...), "\n")
 }
 

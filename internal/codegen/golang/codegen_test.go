@@ -414,7 +414,7 @@ func TestImportSetSpellsGenericArgs(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			set := newImportSet(&projectResolver{CrossPkg: cross}, goImport{Alias: localAlias, Path: "github.com/x/internal/types/app"}, nil)
+			set := newImportSet("", &projectResolver{CrossPkg: cross}, goImport{Alias: localAlias, Path: "github.com/x/internal/types/app"}, nil)
 			if got := set.named(c.ref); got != c.want {
 				t.Errorf("got %q, want %q", got, c.want)
 			}
@@ -455,7 +455,7 @@ func TestImportSetImportsWhatItSpells(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			set := newImportSet(&projectResolver{CrossPkg: cross}, goImport{Alias: localAlias, Path: local}, nil)
+			set := newImportSet("", &projectResolver{CrossPkg: cross}, goImport{Alias: localAlias, Path: local}, nil)
 			spelled := set.named(c.ref)
 			var got []string
 			for _, imp := range set.imports() {
@@ -471,7 +471,7 @@ func TestImportSetImportsWhatItSpells(t *testing.T) {
 // A package named like a name the template binds, or like another import, takes a numbered alias.
 func TestImportSetAvoidsBoundNames(t *testing.T) {
 	cross := crossPkg{"server": "example.com/app/internal/types/server", "types": "example.com/app/internal/types/types"}
-	set := newImportSet(&projectResolver{CrossPkg: cross}, goImport{Alias: localAlias, Path: "example.com/app/internal/types/app"}, transportNames)
+	set := newImportSet("", &projectResolver{CrossPkg: cross}, goImport{Alias: localAlias, Path: "example.com/app/internal/types/app"}, transportNames)
 	if got := set.named(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"server", "Cred"}}}); got != "server2.Cred" {
 		t.Errorf("a package named like a template import: got %q", got)
 	}
@@ -496,7 +496,7 @@ func TestRenderMixinQualifiedRef(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			m := &ast.Mixin{Ref: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: c.parts}}}
-			imports := newImportSet(&projectResolver{CrossPkg: crossPkg{"shared": "x/types/shared"}}, goImport{}, typesNames)
+			imports := newImportSet("", &projectResolver{CrossPkg: crossPkg{"shared": "x/types/shared"}}, goImport{}, typesNames)
 			if got := renderTypeBody([]ast.TypeMember{m}, &semantic.Package{}, &projectResolver{}, imports); got != c.want {
 				t.Errorf("mixin %v renders %q, want %q", c.parts, got, c.want)
 			}

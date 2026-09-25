@@ -9,7 +9,7 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/x_refs_service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 

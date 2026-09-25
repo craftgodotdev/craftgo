@@ -4,6 +4,7 @@ package rawmodes
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transportRawV1 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/raw/v1"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )

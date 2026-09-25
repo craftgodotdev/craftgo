@@ -12,9 +12,8 @@ import (
 
 // wiringData is the template input for wiring.tmpl.
 type wiringData struct {
-	RoutesImport     string
-	SvccontextImport string
-	HasRoutes        bool
+	ImportDecl string
+	HasRoutes  bool
 	// Guards has one startup check per middleware a method runs.
 	Guards []middlewareGuard
 }
@@ -30,13 +29,20 @@ type middlewareGuard struct {
 func generateWiring(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
 	out := outputsOf(cfg)
 	data := wiringData{
-		SvccontextImport: out.svccontext.pkg,
-		HasRoutes:        projectHasRoutes(proj),
-		Guards:           middlewareGuards(proj, cfg.Output.RuntimeDisabled()),
+		HasRoutes: projectHasRoutes(proj),
+		Guards:    middlewareGuards(proj, cfg.Output.RuntimeDisabled()),
 	}
+	imports := newImportSet(cfg.Package, nil, goImport{}, nil)
+	imports.use("context")
+	if len(data.Guards) > 0 {
+		imports.use("errors")
+	}
+	imports.use(serverImport)
 	if data.HasRoutes {
-		data.RoutesImport = out.routes.pkg
+		imports.use(out.routes.pkg)
 	}
+	imports.use(out.svccontext.pkg)
+	data.ImportDecl = imports.decl()
 	return writeGo(out.wiring.at(projectRoot, "wiring.go"), tmpl("wiring.tmpl"), data)
 }
 

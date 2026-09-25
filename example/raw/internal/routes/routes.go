@@ -3,9 +3,9 @@
 package routes
 
 import (
-	streamserviceroutes "github.com/craftgodotdev/craftgo/example/raw/internal/routes/stream_service"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
+	streamserviceroutes "github.com/craftgodotdev/craftgo/example/raw/internal/routes/stream_service"
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 

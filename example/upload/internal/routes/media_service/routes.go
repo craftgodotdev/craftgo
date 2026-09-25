@@ -3,9 +3,10 @@
 package media
 
 import (
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/example/upload/internal/transport/media_service"
 	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
-	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
 // RegisterRoutes wires every MediaService endpoint onto srv. Patterns

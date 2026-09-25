@@ -9,7 +9,6 @@ import (
 
 	greetergrpc "github.com/craftgodotdev/craftgo/example/grpc/internal/grpc/greeter"
 	greetpb "github.com/craftgodotdev/craftgo/example/grpc/internal/pb/greet"
-
 	"github.com/craftgodotdev/craftgo/example/grpc/svccontext"
 )
 

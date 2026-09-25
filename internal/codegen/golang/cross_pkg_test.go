@@ -93,7 +93,7 @@ func TestHomelessImportSet(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			set := newImportSet(&projectResolver{CrossPkg: crossPkg{"shared": shared}}, goImport{}, typesNames)
+			set := newImportSet("", &projectResolver{CrossPkg: crossPkg{"shared": shared}}, goImport{}, typesNames)
 			if got := set.goType(c.ref); got != c.spelt {
 				t.Errorf("spelt %q, want %q", got, c.spelt)
 			}

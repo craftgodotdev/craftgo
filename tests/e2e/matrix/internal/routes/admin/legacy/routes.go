@@ -4,6 +4,7 @@ package design
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transportAdminLegacy "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/admin/legacy"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )

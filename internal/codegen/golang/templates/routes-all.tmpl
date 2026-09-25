@@ -1,19 +1,10 @@
 package routes
 
-import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
-
-{{- range .Imports}}
-	{{.Alias}} "{{.Path}}"
-{{- end}}
-
-	"{{.SvccontextImport}}"
-)
-
+{{.ImportDecl}}
 // RegisterAll wires every service's routes onto srv with one call.
 // Generated from the DSL service set; always overwritten.
 func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-{{- range .Imports}}
-	{{.Alias}}.RegisterRoutes(srv, svcCtx)
+{{- range .Registrars}}
+	{{.}}.RegisterRoutes(srv, svcCtx)
 {{- end}}
 }

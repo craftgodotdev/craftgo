@@ -3,9 +3,10 @@
 package orders
 
 import (
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/example/ecommerce/internal/transport/order_service"
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
-	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
 // RegisterRoutes wires every OrderService endpoint onto srv. Patterns

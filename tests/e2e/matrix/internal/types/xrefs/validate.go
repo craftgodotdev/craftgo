@@ -4,10 +4,11 @@ package xrefs
 
 import (
 	"fmt"
-	fmt2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/fmt"
-	v2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/v"
 	"reflect"
 	"unicode/utf8"
+
+	fmt2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/fmt"
+	v2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/v"
 )
 
 // Validate checks every field-level constraint declared on XBagPromoteReq.

@@ -8,11 +8,12 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// grpcImports bundles the import paths one proto service's files use.
+// grpcImports bundles the import paths one proto service's files use, and the project's module.
 type grpcImports struct {
 	PB         string
 	Service    string
 	Svccontext string
+	Module     string
 }
 
 // pbAlias is the import alias of a proto service's own pb package.
@@ -23,24 +24,21 @@ const grpcServerFile = "server"
 
 // grpcServerData is the template input for grpc_server.tmpl.
 type grpcServerData struct {
-	Package          string
-	Service          string
-	FullName         string
-	PBImport         string
-	SvccontextImport string
+	Package    string
+	Service    string
+	FullName   string
+	ImportDecl string
 }
 
 // grpcMethodData is the template input for grpc_method.tmpl.
 type grpcMethodData struct {
-	Package       string
-	Method        string
-	FullMethod    string
-	ServiceName   string
-	Doc           []string
-	Sig           grpcSignature
-	ServiceImport string
-	// Imports are the pb packages of the RPC's messages.
-	Imports []goImport
+	Package     string
+	Method      string
+	FullMethod  string
+	ServiceName string
+	Doc         []string
+	Sig         grpcSignature
+	ImportDecl  string
 }
 
 func grpcImportsFor(cfg *config.Config, svc *protodesign.Service) grpcImports {
@@ -49,6 +47,7 @@ func grpcImportsFor(cfg *config.Config, svc *protodesign.Service) grpcImports {
 		PB:         svc.PBImport,
 		Service:    out.service.sub(svc.Dir).pkg,
 		Svccontext: out.svccontext.pkg,
+		Module:     cfg.Package,
 	}
 }
 
@@ -71,26 +70,35 @@ func generateGRPCServers(protos *protodesign.Set, cfg *config.Config, projectRoo
 }
 
 func buildGRPCServerData(svc *protodesign.Service, imps grpcImports) grpcServerData {
+	set := newImportSet(imps.Module, nil, goImport{}, nil)
+	set.fixed(pbAlias, imps.PB)
+	set.use(imps.Svccontext)
 	return grpcServerData{
-		Package:          svc.Package,
-		Service:          svc.Name,
-		FullName:         svc.FullName,
-		PBImport:         imps.PB,
-		SvccontextImport: imps.Svccontext,
+		Package:    svc.Package,
+		Service:    svc.Name,
+		FullName:   svc.FullName,
+		ImportDecl: set.decl(),
 	}
 }
 
 func buildGRPCMethodData(svc *protodesign.Service, m *protodesign.Method, imps grpcImports) grpcMethodData {
-	set := grpcImportSet(svc, grpcMethodNames)
+	set := grpcImportSet(imps.Module, svc, grpcMethodNames)
+	sig := buildGRPCSignature(m, set.protoType(m.In), set.protoType(m.Out))
+	if sig.IsUnary {
+		set.use("context")
+	} else {
+		set.use(grpcImport)
+	}
+	set.use(rpcImport)
+	set.fixed("service", imps.Service)
 	return grpcMethodData{
-		Package:       svc.Package,
-		Method:        m.Name,
-		FullMethod:    m.FullMethod,
-		ServiceName:   logicTypeName(m.Name),
-		Doc:           m.Doc,
-		Sig:           buildGRPCSignature(m, set.protoType(m.In), set.protoType(m.Out)),
-		ServiceImport: imps.Service,
-		Imports:       set.imports(),
+		Package:     svc.Package,
+		Method:      m.Name,
+		FullMethod:  m.FullMethod,
+		ServiceName: logicTypeName(m.Name),
+		Doc:         m.Doc,
+		Sig:         sig,
+		ImportDecl:  set.decl(),
 	}
 }
 
@@ -111,25 +119,24 @@ func generateGRPCServices(protos *protodesign.Set, cfg *config.Config, projectRo
 
 // buildGRPCServiceData leaves every HTTP-only field zero, so service.tmpl renders the plain entry point.
 func buildGRPCServiceData(svc *protodesign.Service, m *protodesign.Method, imps grpcImports) serviceData {
-	set := grpcImportSet(svc, serviceNames)
+	set := grpcImportSet(imps.Module, svc, serviceNames)
 	sig := buildGRPCSignature(m, set.protoType(m.In), set.protoType(m.Out))
 	return serviceData{
-		Package:          svc.Package,
-		Service:          svc.Name,
-		Method:           m.Name,
-		ServiceName:      logicTypeName(m.Name),
-		Doc:              m.Doc,
-		Notes:            streamNotes(m.Kind),
-		Sig:              sig.Logic,
-		SvccontextImport: imps.Svccontext,
-		PBImports:        set.imports(),
+		Package:     svc.Package,
+		Service:     svc.Name,
+		Method:      m.Name,
+		ServiceName: logicTypeName(m.Name),
+		Doc:         m.Doc,
+		Notes:       streamNotes(m.Kind),
+		Sig:         sig.Logic,
+		ImportDecl:  stubImportDecl(set, sig.Logic, imps.Svccontext),
 	}
 }
 
-// grpcImportSet returns the set of a file of svc whose template binds names: svc's own messages
-// under [pbAlias].
-func grpcImportSet(svc *protodesign.Service, names []string) *importSet {
-	return newImportSet(nil, goImport{Alias: pbAlias, Path: svc.PBImport}, names)
+// grpcImportSet returns the set of a file of svc, in module, whose template binds names: svc's own
+// messages under [pbAlias].
+func grpcImportSet(module string, svc *protodesign.Service, names []string) *importSet {
+	return newImportSet(module, nil, goImport{Alias: pbAlias, Path: svc.PBImport}, names)
 }
 
 // protoType spells a message as `<alias>.<Name>`, importing its package: the set's own messages

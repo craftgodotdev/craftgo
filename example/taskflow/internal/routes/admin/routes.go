@@ -3,9 +3,10 @@
 package admin
 
 import (
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transportAdmin "github.com/craftgodotdev/craftgo/example/taskflow/internal/transport/admin"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
-	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
 // RegisterRoutes wires every AdminService endpoint onto srv. Patterns

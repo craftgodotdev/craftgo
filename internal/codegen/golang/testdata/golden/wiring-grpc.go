@@ -9,7 +9,6 @@ import (
 
 	greetergrpc "example.com/app/internal/grpc/greeter"
 	greetpb "example.com/app/internal/pb/greet"
-
 	"example.com/app/svccontext"
 )
 

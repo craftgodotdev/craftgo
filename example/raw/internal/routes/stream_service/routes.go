@@ -3,9 +3,10 @@
 package stream
 
 import (
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/example/raw/internal/transport/stream_service"
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
-	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
 // RegisterRoutes wires every StreamService endpoint onto srv. Patterns

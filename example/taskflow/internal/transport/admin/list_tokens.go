@@ -8,7 +8,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/example/taskflow/internal/service/admin"
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 

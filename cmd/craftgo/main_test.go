@@ -490,7 +490,7 @@ type Token { value string }
 		t.Fatalf("read handler: %v", err)
 	}
 	hs := string(handler)
-	if !strings.Contains(hs, `shared "github.com/test/cross/internal/types/shared"`) {
+	if !strings.Contains(hs, "\t\"github.com/test/cross/internal/types/shared\"\n") {
 		t.Errorf("handler missing cross-pkg import:\n%s", hs)
 	}
 	if !strings.Contains(hs, "var req shared.Cred") {
@@ -505,7 +505,7 @@ type Token { value string }
 		t.Fatalf("read logic: %v", err)
 	}
 	ls := string(logic)
-	if !strings.Contains(ls, `shared "github.com/test/cross/internal/types/shared"`) {
+	if !strings.Contains(ls, "\t\"github.com/test/cross/internal/types/shared\"\n") {
 		t.Errorf("logic missing cross-pkg import:\n%s", ls)
 	}
 	if !strings.Contains(ls, "(req *shared.Cred)") {

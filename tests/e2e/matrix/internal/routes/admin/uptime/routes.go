@@ -4,6 +4,7 @@ package adminapi
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transportAdminUptime "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/admin/uptime"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )

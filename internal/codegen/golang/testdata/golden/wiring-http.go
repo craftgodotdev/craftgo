@@ -9,7 +9,6 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	"example.com/app/internal/routes"
-
 	"example.com/app/svccontext"
 )
 

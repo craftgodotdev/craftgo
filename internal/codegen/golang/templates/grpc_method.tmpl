@@ -1,20 +1,6 @@
 package {{.Package}}
 
-import (
-{{- if .Sig.IsUnary}}
-	"context"
-{{end}}
-	"github.com/craftgodotdev/craftgo/pkg/rpc"
-{{- if not .Sig.IsUnary}}
-	"google.golang.org/grpc"
-{{- end}}
-
-	service "{{.ServiceImport}}"
-{{- range .Imports}}
-	{{.Alias}} "{{.Path}}"
-{{- end}}
-)
-
+{{.ImportDecl}}
 {{- range .Doc}}
 // {{.}}
 {{- end}}

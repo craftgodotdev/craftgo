@@ -5,10 +5,10 @@ package greet
 import (
 	"context"
 
-	pb "example.com/app/internal/pb/greet"
-
-	"example.com/app/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	pb "example.com/app/internal/pb/greet"
+	"example.com/app/svccontext"
 )
 
 // SayHelloService carries the per-request state for the

@@ -1,20 +1,6 @@
 package {{.Package}}
 
-import (
-	"net/http"
-{{- if .NeedsStrconv}}
-	"strconv"
-{{- end}}
-
-	"github.com/craftgodotdev/craftgo/pkg/server"
-
-	service "{{.ServiceImport}}"
-{{- range .Imports}}
-	{{if .Alias}}{{.Alias}} {{end}}"{{.Path}}"
-{{- end}}
-	"{{.SvccontextImport}}"
-)
-
+{{.ImportDecl}}
 {{- range .Doc}}
 // {{.}}
 {{- end}}

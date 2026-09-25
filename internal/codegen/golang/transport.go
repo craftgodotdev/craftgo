@@ -43,15 +43,10 @@ type transportData struct {
 	RespCookies []paramBinding
 	// Defaults pre-fill the request before binding, so an absent field keeps its @default.
 	Defaults []defaultBinding
-	// NeedsStrconv is set when a response header or cookie formats a non-string value.
-	NeedsStrconv bool
 	// SuccessStatus is the method's [wire.SuccessStatus]; SuccessStatusExpr spells it in Go.
 	SuccessStatus     int
 	SuccessStatusExpr string
-	ServiceImport     string
-	SvccontextImport  string
-	// Imports are the packages the request's type, bindings and defaults name.
-	Imports []goImport
+	ImportDecl        string
 }
 
 // defaultBinding pre-fills field GoName with the Go expression Literal, through a temp when Ptr.
@@ -98,19 +93,21 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 // buildTransportData renders m's handler, decs being the decorators that apply to m.
 func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, pkg *semantic.Package, r *projectResolver) transportData {
 	mode := modeOf(m, decs)
-	imports := newImportSet(r, goImport{Alias: localAlias, Path: imps.Types}, transportNames)
+	imports := newImportSet(r.Module, r, goImport{Alias: localAlias, Path: imps.Types}, transportNames)
+	imports.use("net/http")
+	imports.use(serverImport)
+	imports.fixed("service", imps.Service)
+	imports.use(imps.Svccontext)
 	d := transportData{
-		Package:          pkg.Name,
-		Method:           m.Name,
-		ServiceName:      logicTypeName(m.Name),
-		Verb:             strings.ToUpper(m.Verb),
-		Doc:              m.Doc,
-		RawRequest:       mode.RawRequest,
-		RawResponse:      mode.RawResponse,
-		BindRequest:      mode.BindRequest(),
-		WriteResponse:    mode.WriteResponse(),
-		ServiceImport:    imps.Service,
-		SvccontextImport: imps.Svccontext,
+		Package:       pkg.Name,
+		Method:        m.Name,
+		ServiceName:   logicTypeName(m.Name),
+		Verb:          strings.ToUpper(m.Verb),
+		Doc:           m.Doc,
+		RawRequest:    mode.RawRequest,
+		RawResponse:   mode.RawResponse,
+		BindRequest:   mode.BindRequest(),
+		WriteResponse: mode.WriteResponse(),
 	}
 	if d.BindRequest {
 		d.RequestType = imports.named(m.Request)
@@ -139,7 +136,7 @@ func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, 
 		var respStrconv bool
 		d.RespHeaders, d.RespCookies, respStrconv = collectResponseBindings(m, pkg, r)
 		if respStrconv {
-			d.NeedsStrconv = true
+			imports.use("strconv")
 		}
 	}
 	var respRef string
@@ -148,7 +145,7 @@ func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, 
 		respRef = imports.scratch().named(m.Response.Type)
 	}
 	d.Sig = buildSignature(mode, d.RequestType, respRef)
-	d.Imports = imports.imports()
+	d.ImportDecl = imports.decl()
 	d.SuccessStatus = wire.SuccessStatus(m, decs)
 	d.SuccessStatusExpr = statusConstExpr(d.SuccessStatus)
 	return d

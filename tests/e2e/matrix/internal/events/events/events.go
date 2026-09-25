@@ -4,12 +4,12 @@ package events
 
 import (
 	"fmt"
+	"time"
 
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
 	fmt2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/fmt"
-	"time"
 )
 
 // EnvelopedContract is the wire identity of Enveloped.

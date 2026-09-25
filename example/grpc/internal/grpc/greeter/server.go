@@ -4,7 +4,6 @@ package greet
 
 import (
 	pb "github.com/craftgodotdev/craftgo/example/grpc/internal/pb/greet"
-
 	"github.com/craftgodotdev/craftgo/example/grpc/svccontext"
 )
 

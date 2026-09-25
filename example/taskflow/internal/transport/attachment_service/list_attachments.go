@@ -9,7 +9,7 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/example/taskflow/internal/service/attachment_service"
 	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/attachments"
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 

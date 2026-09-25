@@ -254,7 +254,7 @@ type Envelope { id string }`, `package orders
 event Wrapped { payload shared.Envelope }`)
 	got := readGen(t, genEvents(t, proj, eventsConfig()), "internal/events/orders/events.go")
 	for _, want := range []string{
-		`shared "example.com/app/internal/types/shared"`,
+		"\t\"example.com/app/internal/types/shared\"\n",
 		"craftevents.NewEvent[shared.Envelope](WrappedContract, (*shared.Envelope).Validate)",
 	} {
 		if !strings.Contains(got, want) {

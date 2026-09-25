@@ -9,7 +9,7 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/user_service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-	shared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 

@@ -38,7 +38,7 @@ func pkgDeclaresTypes(pkg *semantic.Package) bool {
 
 // buildTypesGo returns the unformatted source of pkg's types.go.
 func buildTypesGo(pkg *semantic.Package, r *projectResolver) string {
-	imports := newImportSet(r, goImport{}, typesNames)
+	imports := newImportSet(r.Module, r, goImport{}, typesNames)
 	var decls []string
 	if scs := renderScalars(pkg, imports); scs != "" {
 		decls = append(decls, scs)
@@ -47,8 +47,8 @@ func buildTypesGo(pkg *semantic.Package, r *projectResolver) string {
 		decls = append(decls, renderType(pkg.Types[name], pkg, r, imports))
 	}
 	parts := []string{"package " + pkg.Name + "\n"}
-	if imps := imports.imports(); len(imps) > 0 {
-		parts = append(parts, renderImports(imps))
+	if decl := imports.decl(); decl != "" {
+		parts = append(parts, decl)
 	}
 	return strings.Join(append(parts, decls...), "\n")
 }
@@ -81,15 +81,6 @@ func renderScalars(pkg *semantic.Package, imports *importSet) string {
 func scalarPrimitiveGo(name string) string {
 	sp, _ := prims.Lookup(name)
 	return sp.Go
-}
-
-// renderImports returns the `import (...)` block for imps.
-func renderImports(imps []goImport) string {
-	lines := make([]string, len(imps))
-	for i, imp := range imps {
-		lines[i] = "\t" + imp.Spec()
-	}
-	return fmt.Sprintf("import (\n%s\n)\n", strings.Join(lines, "\n"))
 }
 
 // renderType returns td's Go struct with its doc and any deprecation notice.

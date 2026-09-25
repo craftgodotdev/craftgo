@@ -1,11 +1,6 @@
 package {{.Package}}
 
-import (
-	pb "{{.PBImport}}"
-
-	"{{.SvccontextImport}}"
-)
-
+{{.ImportDecl}}
 // Server implements pb.{{.Service}}Server ({{.FullName}}): one method per
 // RPC, each in its own file beside this one. The embedded
 // Unimplemented{{.Service}}Server answers Unimplemented for an RPC the

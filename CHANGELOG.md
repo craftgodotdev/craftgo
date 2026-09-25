@@ -38,6 +38,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   `ParseMultipartForm(32 << 20)`, where both wrote a byte count; the values
   are unchanged.
 
+- **Generated imports sit in three groups.** Every generated file lists the
+  standard library, then other modules, then the project's own packages, a
+  blank line between, as `goimports -local` does; the project's packages are
+  recognised by the module path, which need not hold a dot (`go mod init
+  myapp`). An import names an alias only when it differs from the package's
+  name. A file written once keeps the imports it was written with.
+
 - **A decorator on the wrong kind of value reads the same everywhere.**
   `@pattern` on `bytes`, `@multipleOf` on a float and `@uniqueItems` on a
   map report `@X applies to <kinds> fields, but <field> is <kind>`, as every

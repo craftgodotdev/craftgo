@@ -3,9 +3,10 @@
 package customers
 
 import (
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/example/ecommerce/internal/transport/customer_service"
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
-	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
 // RegisterRoutes wires every CustomerService endpoint onto srv. Patterns

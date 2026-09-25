@@ -7,7 +7,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/pkg/rpc"
 
-	common "example.com/app/internal/pb/common"
+	"example.com/app/internal/pb/common"
 	pb "example.com/app/internal/pb/greet"
 	service "example.com/app/internal/service/greeter"
 )

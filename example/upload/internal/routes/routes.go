@@ -3,9 +3,9 @@
 package routes
 
 import (
-	mediaserviceroutes "github.com/craftgodotdev/craftgo/example/upload/internal/routes/media_service"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
+	mediaserviceroutes "github.com/craftgodotdev/craftgo/example/upload/internal/routes/media_service"
 	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 )
 

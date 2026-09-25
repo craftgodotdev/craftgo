@@ -107,12 +107,10 @@ type routeEntry struct {
 
 // routesData is the template input for routes.tmpl.
 type routesData struct {
-	Package          string
-	Service          string
-	Imports          []goImport
-	SvccontextImport string
-	Routes           []routeEntry
-	NeedsTime        bool
+	Package    string
+	Service    string
+	ImportDecl string
+	Routes     []routeEntry
 }
 
 // generateRoutes writes one output.routes/<segment>/routes.go per segment pkg's services occupy;
@@ -143,23 +141,27 @@ func generateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 		return cmp.Or(cmp.Compare(a.name, b.name), cmp.Compare(a.group, b.group))
 	})
 	out := outputsOf(cfg)
-	data := routesAllData{SvccontextImport: out.svccontext.pkg}
-	imports := newImportSet(nil, goImport{}, routesNames)
+	imports := newImportSet(cfg.Package, nil, goImport{}, routesNames)
+	imports.use(serverImport)
+	imports.use(out.svccontext.pkg)
+	var data routesAllData
 	for _, s := range entries {
 		path := out.routes.sub(s.dir).pkg
 		// Services sharing a segment share its RegisterRoutes, so it is called once.
 		if imports.has(path) {
 			continue
 		}
-		data.Imports = append(data.Imports, goImport{Alias: imports.add(servicePackage(s.name)+idents.PascalCase(s.group)+"routes", path), Path: path})
+		data.Registrars = append(data.Registrars, imports.add(servicePackage(s.name)+idents.PascalCase(s.group)+"routes", path))
 	}
+	data.ImportDecl = imports.decl()
 	return writeGo(out.routes.at(projectRoot, "routes.go"), tmpl("routes-all.tmpl"), data)
 }
 
-// routesAllData is the template input for `routes-all.tmpl`; Imports are in call order.
+// routesAllData is the template input for `routes-all.tmpl`: the alias of each segment's routes
+// package, in call order.
 type routesAllData struct {
-	Imports          []goImport
-	SvccontextImport string
+	ImportDecl string
+	Registrars []string
 }
 
 // generateRoutesForSegment writes the routes.go of the segment contribs share: each contributor's
@@ -167,13 +169,13 @@ type routesAllData struct {
 func generateRoutesForSegment(contribs []segment, cfg *config.Config, projectRoot string) error {
 	lead := contribs[0]
 	out := outputsOf(cfg)
-	imports := newImportSet(nil, goImport{}, routesNames)
+	imports := newImportSet(cfg.Package, nil, goImport{}, routesNames)
 	alias := imports.add(transportAlias(lead.group), out.transport.sub(lead.dir).pkg)
+	imports.use(serverImport)
+	imports.use(out.svccontext.pkg)
 	data := routesData{
-		Package:          lead.pkg.Name,
-		Service:          contributorLabel(contribs),
-		SvccontextImport: out.svccontext.pkg,
-		Imports:          imports.imports(),
+		Package: lead.pkg.Name,
+		Service: contributorLabel(contribs),
 	}
 	for _, c := range contribs {
 		for m := range c.methods() {
@@ -181,7 +183,7 @@ func generateRoutesForSegment(contribs []segment, cfg *config.Config, projectRoo
 			mws := middlewareNames(c.svc, m)
 			call, needsTime := buildHandlerCall(m, c.svc.Decorators(m), alias)
 			if needsTime {
-				data.NeedsTime = true
+				imports.use("time")
 			}
 			data.Routes = append(data.Routes, routeEntry{
 				Pattern:     strings.ToUpper(m.Verb) + " " + full,
@@ -190,6 +192,7 @@ func generateRoutesForSegment(contribs []segment, cfg *config.Config, projectRoo
 			})
 		}
 	}
+	data.ImportDecl = imports.decl()
 	return writeGo(out.routes.sub(lead.dir).at(projectRoot, "routes.go"), tmpl("routes.tmpl"), data)
 }
 

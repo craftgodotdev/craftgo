@@ -5,11 +5,11 @@ package greet
 import (
 	"context"
 
-	common "example.com/app/internal/pb/common"
-	pb "example.com/app/internal/pb/greet"
-
-	"example.com/app/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	"example.com/app/internal/pb/common"
+	pb "example.com/app/internal/pb/greet"
+	"example.com/app/svccontext"
 )
 
 // QuoteService carries the per-request state for the

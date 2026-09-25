@@ -4,9 +4,10 @@ package tasks
 
 import (
 	"fmt"
-	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 	"time"
 	"unicode/utf8"
+
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 )
 
 // Validate checks every field-level constraint declared on AddCommentReq.

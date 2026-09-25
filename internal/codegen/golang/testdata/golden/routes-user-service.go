@@ -4,6 +4,7 @@ package design
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/example/app/internal/transport/user-service"
 	"github.com/example/app/svccontext"
 )

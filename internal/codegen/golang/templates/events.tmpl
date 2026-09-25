@@ -1,13 +1,7 @@
 package {{.Package}}
 
-import (
-{{if .UsesFmt}}	"fmt"
-
-{{end}}	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
-{{if .Imports}}
-{{range .Imports}}	{{if .Alias}}{{.Alias}} {{end}}"{{.Path}}"
-{{end}}{{end}})
-{{range .Events}}
+{{.ImportDecl}}
+{{- range .Events}}
 // {{.ConstName}} is the wire identity of {{.Name}}.
 // Publisher and listener both address the contract by this value.
 const {{.ConstName}} = "{{.Contract}}"

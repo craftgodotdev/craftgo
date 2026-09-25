@@ -4,6 +4,7 @@ package xshared
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transportXshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )

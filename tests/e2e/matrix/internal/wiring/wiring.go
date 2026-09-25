@@ -9,7 +9,6 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes"
-
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 

@@ -1,12 +1,7 @@
 package {{.Package}}
-{{if .Imports}}
-import (
-{{- range .Imports}}
-	{{.Spec}}
-{{- end}}
-)
-{{- end}}
-{{if .RegexVars}}
+
+{{.ImportDecl}}
+{{- if .RegexVars}}
 // Pattern regexes compile ONCE at package init so Validate() calls
 // reference the precompiled var instead of recompiling per request.
 // The pattern is rendered via %q (Go-quoted) rather than a raw-string

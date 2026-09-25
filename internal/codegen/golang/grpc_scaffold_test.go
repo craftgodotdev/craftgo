@@ -113,7 +113,7 @@ func TestWiringGRPCIsWrittenOnlyWithServices(t *testing.T) {
 	if pbAliasFor("greet") != "greetpb" || pbAliasFor("greetpb") != "greetpb" {
 		t.Error("a package named with a pb suffix keeps it once")
 	}
-	imports := newImportSet(nil, goImport{}, wiringGRPCNames)
+	imports := newImportSet("", nil, goImport{}, wiringGRPCNames)
 	if a, b := imports.add("greetpb", "x/a"), imports.add("greetpb", "x/b"); a != "greetpb" || b != "greetpb2" {
 		t.Errorf("aliases = %s, %s", a, b)
 	}
