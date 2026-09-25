@@ -97,7 +97,8 @@ var errorsTemplate = tmpl("errors.tmpl")
 // statements, and whether any of them needs strconv.
 func errorResponseBindings(ed *ast.ErrorDecl, pkg *semantic.Package, r *projectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
 	// A field promoted from a mixin is reachable as `e.X`.
-	return responseBindingsFor(&ast.TypeDecl{Body: ed.Body}, "", "e", pkg, r)
+	fields := semantic.ResolveFields(&ast.TypeDecl{Body: ed.Body}, "", pkg, r.Resolver, resolvedGoFieldNames)
+	return responseBindingsFor(fields, "e", pkg, r)
 }
 
 // screamingSnake converts an identifier to SCREAMING_SNAKE_CASE, keeping

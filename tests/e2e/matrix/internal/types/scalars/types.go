@@ -480,6 +480,13 @@ type SkuPage[T any] struct {
 	Items []T `json:"items"`
 }
 
+// Tallied<T> sends a field of its argument's type in a header:
+// `Tallied<int>` writes `tally` as a decimal integer.
+type Tallied[T any] struct {
+	Tally T   `json:"-" header:"X-Tally"`
+	Items []T `json:"items"`
+}
+
 // Tree<T> is the marquee recursive-generic test: the body references
 // `Tree<T>` itself through the `kids` field. The instance registers
 // as `TreeOfOrder`, emits its body, hits `kids: Tree<T>[]` substituted

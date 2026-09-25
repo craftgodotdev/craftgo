@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -21,7 +22,9 @@ const (
 
 // checkBindingFieldType rejects a wire binding whose field type the binder
 // cannot fill, `@nullable` on any wire binding, and `@default` on `@path`.
-func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
+// A @header or @cookie field typed by one of typeParams, the declaration's
+// type parameters, is checked where the type is instantiated.
+func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field, typeParams []string) {
 	kind, _ := wire.BindingKind(f.Decorators)
 	if f.Type == nil || !kind.IsParam() {
 		return
@@ -35,18 +38,80 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 	case kind == wire.BindPath && ast.HasDecorator(f.Decorators, "default"):
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
 			"@default cannot be combined with @path: a path segment is always supplied for a matched route, so the default can never apply - drop it.")
-	case f.Type.ArrayDepth > 1 && (kind == wire.BindQuery || kind == wire.BindHeader || kind == wire.BindForm):
-		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
-			"field %s.%s: @%s cannot bind to a multi-dimensional array - a wire parameter carries repeated single values (`?x=1&x=2`), which has no nested form. Move the field to the JSON body or flatten to a single-level array.",
-			parent, f.Name, d.Name)
-	case kind == wire.BindPath && !a.proj.pathBindable(a.pkg.Name, f.Type):
-		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType, msgBindPath, parent, f.Name, f.Type)
-	case kind == wire.BindCookie && f.Type.Array:
-		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType, msgBindCookieArray, parent, f.Name)
-	case (kind == wire.BindQuery || kind == wire.BindHeader || kind == wire.BindCookie) && !a.isWireBindingType(f.Type):
-		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType, msgBindWire, parent, f.Name, d.Name, f.Type)
-	case kind == wire.BindForm && !a.isFormBindingType(f.Type):
-		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType, msgBindForm, parent, f.Name, f.Type)
+	case (kind == wire.BindHeader || kind == wire.BindCookie) && typeParamNamed(f.Type, typeParams):
+	default:
+		if msg := a.proj.wireTypeFault(parent, a.pkg.Name, f, kind); msg != "" {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType, "%s", msg)
+		}
+	}
+}
+
+// wireTypeFault says why field f of parent, whose type package home spells,
+// cannot ride binding kind, or returns "".
+func (p *Project) wireTypeFault(parent, home string, f *ast.Field, kind wire.Binding) string {
+	t := f.Type
+	switch {
+	case t.ArrayDepth > 1 && (kind == wire.BindQuery || kind == wire.BindHeader || kind == wire.BindForm):
+		return fmt.Sprintf("field %s.%s: @%s cannot bind to a multi-dimensional array - a wire parameter carries repeated single values (`?x=1&x=2`), which has no nested form. Move the field to the JSON body or flatten to a single-level array.",
+			parent, f.Name, kind)
+	case kind == wire.BindPath && !p.pathBindable(home, t):
+		return fmt.Sprintf(msgBindPath, parent, f.Name, t)
+	case kind == wire.BindCookie && t.Array:
+		return fmt.Sprintf(msgBindCookieArray, parent, f.Name)
+	case (kind == wire.BindQuery || kind == wire.BindHeader || kind == wire.BindCookie) && !p.wireBindable(home, t):
+		return fmt.Sprintf(msgBindWire, parent, f.Name, kind, t)
+	case kind == wire.BindForm && !p.formBindable(home, t):
+		return fmt.Sprintf(msgBindForm, parent, f.Name, t)
+	}
+	return ""
+}
+
+// typeParamNamed reports whether t names one of typeParams, whatever its
+// suffixes.
+func typeParamNamed(t *ast.TypeRef, typeParams []string) bool {
+	return t.Map == nil && t.Named != nil && t.Named.Name != nil && len(t.Named.Name.Parts) == 1 &&
+		slices.Contains(typeParams, t.Named.Name.Parts[0])
+}
+
+// checkTypeParamWireBindings rejects, at each request, response or error
+// mixin that instantiates a type, a @header or @cookie field typed by one
+// of the type's parameters whose argument cannot ride the binding.
+func (a *analyzer) checkTypeParamWireBindings() {
+	for _, svcName := range a.pkg.ServiceNames() {
+		for _, m := range a.pkg.Services[svcName].Methods {
+			if m.Request != nil {
+				a.checkInstanceWireBindings(m.Request, m.Request.Pos)
+			}
+			if m.Response != nil {
+				a.checkInstanceWireBindings(m.Response.Type, m.Response.Pos)
+			}
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(a.pkg.Errors)) {
+		for _, member := range a.pkg.Errors[name].Body {
+			if mx, ok := member.(*ast.Mixin); ok {
+				a.checkInstanceWireBindings(mx.Ref, mx.Pos)
+			}
+		}
+	}
+}
+
+// checkInstanceWireBindings reports at pos each @header or @cookie field of
+// the type ref names, typed by a type parameter, whose argument cannot ride
+// the binding.
+func (a *analyzer) checkInstanceWireBindings(ref *ast.NamedTypeRef, pos lexer.Position) {
+	view, fields, ok := a.instanceFields(ref)
+	if !ok {
+		return
+	}
+	for _, ff := range fields {
+		kind, _ := wire.BindingKind(ff.Field.Decorators)
+		if !ff.paramTyped || (kind != wire.BindHeader && kind != wire.BindCookie) {
+			continue
+		}
+		if msg := a.proj.wireTypeFault(ref.String(), view, ff.Field, kind); msg != "" {
+			a.diag(pos, pos, lexer.SeverityError, CodeBindingType, "%s", msg)
+		}
 	}
 }
 
@@ -59,14 +124,9 @@ func (p *Project) pathBindable(home string, t *ast.TypeRef) bool {
 	return p.wireBindable(home, t)
 }
 
-// isWireBindingType reports whether t can bind to a query, header or cookie:
-// a parseable primitive, a scalar or enum over one, or a 1-D array of them.
-func (a *analyzer) isWireBindingType(t *ast.TypeRef) bool {
-	return a.proj.wireBindable(a.pkg.Name, t)
-}
-
-// wireBindable is [analyzer.isWireBindingType] with bare type names
-// resolved in home - the package of the type that declares the field.
+// wireBindable reports whether t, as package home spells it, can bind to a
+// query, header or cookie: a parseable primitive, a scalar or enum over one,
+// or a 1-D array of them.
 func (p *Project) wireBindable(home string, t *ast.TypeRef) bool {
 	if t == nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Args) > 0 || t.ArrayDepth > 1 {
 		return false
@@ -80,16 +140,16 @@ func (p *Project) wireBindable(home string, t *ast.TypeRef) bool {
 	return false
 }
 
-// isFormBindingType reports whether t can bind to `@form`: a wire-bindable
-// type, a `file`, or a 1-D `file[]`.
-func (a *analyzer) isFormBindingType(t *ast.TypeRef) bool {
+// formBindable reports whether t, as package home spells it, can bind to
+// `@form`: a wire-bindable type, a `file`, or a 1-D `file[]`.
+func (p *Project) formBindable(home string, t *ast.TypeRef) bool {
 	if t == nil || t.Named == nil {
 		return false
 	}
-	if a.proj.elemFacts(a.pkg.Name, t).Category == CatFile {
+	if p.elemFacts(home, t).Category == CatFile {
 		return t.ArrayDepth <= 1
 	}
-	return a.isWireBindingType(t)
+	return p.wireBindable(home, t)
 }
 
 // elemFacts resolves t in home, or the element of t when t is an array.
@@ -158,7 +218,7 @@ func (a *analyzer) checkDuplicateAutoWireNames(m *ast.Method) {
 	if m == nil || m.Request == nil || m.Request.Name == nil {
 		return
 	}
-	_, fields, ok := a.requestFields(m)
+	_, fields, ok := a.instanceFields(m.Request)
 	if !ok {
 		return
 	}
@@ -206,7 +266,7 @@ func (a *analyzer) checkAutoPathField(m *ast.Method) {
 	if m == nil || m.Path == nil {
 		return
 	}
-	view, fields, ok := a.requestFields(m)
+	view, fields, ok := a.instanceFields(m.Request)
 	if !ok {
 		return
 	}
@@ -332,7 +392,7 @@ func (a *analyzer) checkRequestFiles() {
 	}
 	for _, svcName := range a.pkg.ServiceNames() {
 		for _, m := range a.pkg.Services[svcName].Methods {
-			view, fields, ok := a.requestFields(m)
+			view, fields, ok := a.instanceFields(m.Request)
 			if !ok {
 				continue
 			}

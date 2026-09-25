@@ -277,3 +277,42 @@ type Resp { ok bool }
 service S { get A /a { request Box<string[]>  response Resp } }`, CodeBindingType)
 	expectMessage(t, d, "Box.a", "optional type parameter over an array")
 }
+
+// A @header or @cookie on a type parameter is legal at the declaration; each
+// request, response or error mixin that instantiates the type is checked
+// with the argument, at the clause or mixin naming the instance.
+func TestTypeParamWireBindingCheckedPerInstance(t *testing.T) {
+	const decls = `package app
+type Item { id string }
+type Paged<T> { count T @header("X-Count")  items T[] }
+type Tagged<T> { tag T @cookie("tag") }
+type Req<T> { h T @header("X-H")  id string }
+type Wrap { Paged<Item> }
+`
+	mustClean(t, decls+`enum Prio { Low  High }
+service S {
+	get A /a { response Paged<int> }
+	get B /b { response Paged<Prio> }
+	get C /c { response Paged<string[]> }
+	get D /d { response Tagged<bool> }
+	post E /e { request Req<int>  response Item }
+}`)
+	for label, c := range map[string]struct{ src, msg string }{
+		"struct":       {`service S { get A /a { response Paged<Item> } }`, "field Paged<Item>.count: @header requires"},
+		"map":          {`service S { get A /a { response Paged<map<string, int>> } }`, "got map<string, int>"},
+		"nested array": {`service S { get A /a { response Paged<int[][]> } }`, "field Paged<int[][]>.count: @header cannot bind to a multi-dimensional array"},
+		"cookie array": {`service S { get A /a { response Tagged<int[]> } }`, "field Tagged<int[]>.tag: @cookie cannot bind to an array"},
+		"request":      {`service S { post A /a { request Req<Item>  response Item } }`, "field Req<Item>.h: @header requires"},
+		"mixin":        {`service S { get A /a { response Wrap } }`, "field Wrap.count: @header requires"},
+		"error mixin":  {`error Conflict E { Paged<Item> }`, "field Paged<Item>.count: @header requires"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			src := decls + c.src
+			d := expectError(t, src, CodeBindingType)
+			expectMessage(t, d, c.msg)
+			if want := strings.Count(src, "\n") + 1; d.Pos.Line != want {
+				t.Errorf("reported at line %d, want the instantiating line %d", d.Pos.Line, want)
+			}
+		})
+	}
+}

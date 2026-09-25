@@ -115,17 +115,10 @@ func newOpShape(svc *semantic.ServiceInfo, m *ast.Method, full, id, stem string,
 	}
 	if m.Response != nil && m.Response.Type != nil {
 		if s.respType = pkg.Types[m.Response.Type.Name.String()]; s.respType != nil {
-			s.resp = binFields(instanceFields(m.Response.Type, pkg, r))
+			s.resp = binFields(semantic.ResponseFields(m, pkg, r, nil))
 		}
 	}
 	return s
-}
-
-// instanceFields resolves the fields of the type ref names as a body
-// embedding ref gets them: mixins included, each level's generic arguments
-// bound on that level alone (`Page<Item>`'s `items T[]` as `items Item[]`).
-func instanceFields(ref *ast.NamedTypeRef, pkg *semantic.Package, r *semantic.Resolver) []semantic.ResolvedField {
-	return semantic.ResolveFields(&ast.TypeDecl{Body: []ast.TypeMember{&ast.Mixin{Ref: ref}}}, "", pkg, r, nil)
 }
 
 // fieldBins holds resolved fields by where they ride, @sensitive ones left

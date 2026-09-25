@@ -820,6 +820,28 @@ func (v *SkuPage[T]) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on Tallied.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Tallied[T]) Validate() error {
+	if vv, ok := any(&v.Tally).(interface{ Validate() error }); ok {
+		if err := vv.Validate(); err != nil {
+			return err
+		}
+	} else if err := validateValue(v.Tally); err != nil {
+		return err
+	}
+	for i0 := range v.Items {
+		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
+			if err := vv.Validate(); err != nil {
+				return err
+			}
+		} else if err := validateValue(v.Items[i0]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on Tree.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Tree[T]) Validate() error {

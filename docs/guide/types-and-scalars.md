@@ -160,6 +160,8 @@ Generic type parameters are bare identifiers - no constraint or variance syntax.
 
 A type **argument** cannot carry a trailing `?` (`Page<User?>` is rejected): the optionality has no well-defined position once the argument is substituted into the decl's body, so the Go type and the OpenAPI schema would disagree. Declare the nullability on a concrete field of the generic instead (`type Box<T> { item T? }`, used as `Box<User>`).
 
+A field typed by a type parameter may carry `@header` or `@cookie` (`type Paged<T> { count T @header("X-Count") items T[] }`). Each request, response or error mixin that instantiates the type is checked with its argument: `response Paged<int>` sends `X-Count` as an integer, and `response Paged<User>` is `binding/type` at the response clause.
+
 ### Mixins
 
 Reuse another type's fields by writing its name on its own inside a type body. No special prefix - just the PascalCase identifier.

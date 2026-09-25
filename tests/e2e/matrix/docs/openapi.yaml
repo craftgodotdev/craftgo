@@ -6862,6 +6862,15 @@ components:
       type: object
     TagSliceRespBody:
       $ref: '#/components/schemas/Arr_TagSlice'
+    TallyIntsRespBody:
+      properties:
+        items:
+          items:
+            type: integer
+          type: array
+      required:
+      - items
+      type: object
     Team:
       description: |-
         Team gates `members` with both the array-level bound decorators
@@ -11538,6 +11547,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/SearchProductsRespBody'
           description: Created
+      tags:
+      - scalars
+  /scalars/tally:
+    get:
+      description: Tally integers. A generic response writes its argument-typed header
+        as the argument's type.
+      operationId: TallyInts
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TallyIntsRespBody'
+          description: OK
+          headers:
+            X-Tally:
+              schema:
+                type: integer
       tags:
       - scalars
   /scalars/wrapped:

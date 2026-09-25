@@ -9,23 +9,17 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// collectResponseBindings renders the writers of m's response @header and @cookie fields;
-// needsStrconv reports a non-string value formatted through strconv.
+// collectResponseBindings renders the writers of m's response @header and @cookie fields, the
+// response type's generic arguments substituted; needsStrconv reports a non-string value
+// formatted through strconv.
 func collectResponseBindings(m *ast.Method, pkg *semantic.Package, r *projectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
-	if m.Response == nil || m.Response.Type == nil {
-		return nil, nil, false
-	}
-	td, prefix := semantic.LookupMethodType(m.Response.Type, r.Resolver)
-	if td == nil {
-		return nil, nil, false
-	}
-	return responseBindingsFor(td, prefix, "resp", pkg, r)
+	return responseBindingsFor(semantic.ResponseFields(m, pkg, r.Resolver, resolvedGoFieldNames), "resp", pkg, r)
 }
 
-// responseBindingsFor renders the @header and @cookie writers of body td, mixin fields included,
-// reading the values from accessVar (`resp`, or `e` for an error body).
-func responseBindingsFor(td *ast.TypeDecl, prefix, accessVar string, pkg *semantic.Package, r *projectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
-	for _, rf := range semantic.ResolveFields(td, prefix, pkg, r.Resolver, resolvedGoFieldNames) {
+// responseBindingsFor renders the @header and @cookie writers of a body's fields, reading the
+// values from accessVar (`resp`, or `e` for an error body).
+func responseBindingsFor(fields []semantic.ResolvedField, accessVar string, pkg *semantic.Package, r *projectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
+	for _, rf := range fields {
 		kind, _ := wire.BindingKind(rf.Field.Decorators)
 		if kind != wire.BindHeader && kind != wire.BindCookie {
 			continue

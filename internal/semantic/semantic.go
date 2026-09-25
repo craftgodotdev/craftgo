@@ -131,6 +131,7 @@ func (a *analyzer) runShapePhase(files []*ast.File) {
 	a.checkMixins()
 	a.checkPathResolution()
 	a.checkCombinationRules(files)
+	a.checkTypeParamWireBindings()
 	a.checkFilePosition()
 	a.checkEvents()
 }
@@ -191,10 +192,10 @@ func (a *analyzer) checkCombinationRules(files []*ast.File) {
 func (a *analyzer) checkDeclCombinations(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
-		a.checkFieldCombinations(dd.Name, dd.Body)
+		a.checkFieldCombinations(dd.Name, dd.Body, dd.TypeParams)
 		a.checkDuplicateWireNames(dd.Name, dd.Body)
 	case *ast.ErrorDecl:
-		a.checkFieldCombinations(dd.Name, dd.Body)
+		a.checkFieldCombinations(dd.Name, dd.Body, nil)
 		a.checkDuplicateWireNames(dd.Name, dd.Body)
 	case *ast.ServiceDecl:
 		for _, m := range dd.Methods() {
@@ -203,11 +204,12 @@ func (a *analyzer) checkDeclCombinations(d ast.Decl) {
 	}
 }
 
-// checkFieldCombinations checks every field of a type or error body.
-func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMember) {
+// checkFieldCombinations checks every field of a type or error body, the
+// type's parameters being typeParams.
+func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMember, typeParams []string) {
 	for _, f := range ast.Fields(members) {
 		a.checkSingleBinding(parent, f)
-		a.checkBindingFieldType(parent, f)
+		a.checkBindingFieldType(parent, f, typeParams)
 		a.checkBoundOverlap(parent, f)
 	}
 }

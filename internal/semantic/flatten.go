@@ -323,20 +323,20 @@ func (p *Project) requalify(t *ast.TypeRef, home, view string, typeParams []stri
 	return &clone
 }
 
-// requestFields returns the fields of m's request type, mixins included and
-// its generic arguments substituted, spelled as view, the package declaring
-// the type, spells them; ok is false when m has no request or it names no type.
-func (a *analyzer) requestFields(m *ast.Method) (view string, fields []FlatField, ok bool) {
-	if m == nil || m.Request == nil {
+// instanceFields returns the fields of the type ref names, mixins included
+// and its generic arguments substituted, spelled as view, the package
+// declaring the type, spells them; ok is false when ref names no type.
+func (a *analyzer) instanceFields(ref *ast.NamedTypeRef) (view string, fields []FlatField, ok bool) {
+	if ref == nil {
 		return "", nil, false
 	}
-	pkg, sym := a.proj.resolve(a.pkg.Name, m.Request.Name)
+	pkg, sym := a.proj.resolve(a.pkg.Name, ref.Name)
 	if pkg == nil || pkg.Types[sym] == nil {
 		return "", nil, false
 	}
 	td := pkg.Types[sym]
-	args := make([]*ast.TypeRef, len(m.Request.Args))
-	for i, arg := range m.Request.Args {
+	args := make([]*ast.TypeRef, len(ref.Args))
+	for i, arg := range ref.Args {
 		args[i] = a.proj.requalify(arg, a.pkg.Name, pkg.Name, nil)
 	}
 	fields, _ = a.proj.flattenFields(pkg.Name, pkg.Name, td.Body, td.TypeParams, args, nil)

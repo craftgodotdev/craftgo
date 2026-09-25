@@ -172,7 +172,7 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	if wire.IsBodyVerb(m.Verb) {
 		return // body-bearing verbs decode @body / @form normally
 	}
-	view, fields, ok := a.requestFields(m)
+	view, fields, ok := a.instanceFields(m.Request)
 	if !ok {
 		return
 	}
@@ -197,7 +197,7 @@ func (a *analyzer) checkMultipartTextParts(svcName string, m *ast.Method, decs [
 	if rawReq, _ := wire.RawSides(decs); rawReq {
 		return
 	}
-	view, fields, ok := a.requestFields(m)
+	view, fields, ok := a.instanceFields(m.Request)
 	if !ok {
 		return
 	}

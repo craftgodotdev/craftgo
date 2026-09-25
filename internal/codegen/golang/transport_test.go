@@ -713,6 +713,33 @@ service S {
 	)
 }
 
+// A generic response writes its type-parameter header as the instance's
+// argument: an int through strconv, an enum through string().
+func TestGenerateTransportGenericResponseHeader(t *testing.T) {
+	pkg := analyze(t, `package design
+enum Prio { Low  High }
+type Paged<T> { count T @header("X-Count")  items T[] }
+service S {
+    get Ints /ints { response Paged<int> }
+    get Prios /prios { response Paged<Prio> }
+}`)
+	root := t.TempDir()
+	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
+		t.Fatal(err)
+	}
+	for file, want := range map[string]string{
+		"ints.go":  `w.Header().Set("X-Count", strconv.Itoa(resp.Count))`,
+		"prios.go": `w.Header().Set("X-Count", string(resp.Count))`,
+	} {
+		out, err := os.ReadFile(filepath.Join(root, "internal/transport/s", file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		mustParseGo(t, string(out))
+		mustContainAll(t, string(out), want)
+	}
+}
+
 // A non-body field is tagged json:"-" while a body field keeps its tag.
 func TestGenerateTypesNonBodyBindingsAreSkipped(t *testing.T) {
 	pkg := analyze(t, `package design

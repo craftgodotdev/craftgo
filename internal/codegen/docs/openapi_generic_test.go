@@ -209,6 +209,23 @@ service S {
 	}
 }
 
+// A response header typed by a type parameter is documented as the
+// instance's argument.
+func TestGenericResponseHeaderTakesItsArgument(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+type Tallied<T> { tally T @header("X-Tally")  items T[] }
+service S { get L /l { response Tallied<int> } }`,
+	}, &config.Config{})
+	got, err := json.Marshal(doc.Paths.Find("/l").Get.Responses.Status(200).Value.Headers["X-Tally"].Value.Schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != `{"type":"integer"}` {
+		t.Errorf("X-Tally = %s, want an integer", got)
+	}
+}
+
 // Two distinct instances named alike (`Page<IntArray>`, `Page<int[]>`) are
 // rejected; distinct names are not.
 func TestGenericInstanceNameCollisionRejected(t *testing.T) {

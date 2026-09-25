@@ -901,6 +901,16 @@ breaking change to the DSL or the generated layout bumps the major version.
   did a request body beside a header. Each field now takes the arguments of
   its own level.
 
+- **A header typed by a type parameter is written as the argument.** A
+  `@header` or `@cookie` on a field typed `T` passed analysis only when a
+  declared type was also named `T`, and was then checked as that type: the
+  handler of `response Paged<int>` wrote `string(resp.Count)`, a rune
+  conversion, and `Paged<Item>` generated a handler that did not compile. The
+  field is now legal on any type parameter, the handler formats the
+  argument's type, and each request, response or error mixin that
+  instantiates the type is checked with its argument: `response Paged<Item>`
+  is `binding/type` at the response clause.
+
 - **A mixin's cross-field groups reach every OpenAPI request body.** The
   body of a request that also binds a path, query, header or cookie field,
   and a multipart body, left out a `@requiresOneOf` or `@mutuallyExclusive`

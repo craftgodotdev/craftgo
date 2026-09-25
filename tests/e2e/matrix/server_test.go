@@ -53,6 +53,24 @@ func TestServer_CatalogFeaturedSeeded(t *testing.T) {
 	}
 }
 
+// A generic response writes its type-parameter header as its argument's
+// type: `Tallied<int>` sends X-Tally as a decimal integer.
+func TestServer_GenericResponseHeaderTakesItsArgument(t *testing.T) {
+	ts := bootAll(t)
+	var body struct{ Items []int }
+	resp, err := ts.Client().Get(ts.URL + "/api/scalars/tally")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("X-Tally") != "3" || len(body.Items) != 3 {
+		t.Errorf("status %d, X-Tally %q, items %v; want 200, \"3\", [4 5 6]", resp.StatusCode, resp.Header.Get("X-Tally"), body.Items)
+	}
+}
+
 func TestServer_NoCrossServiceCollision(t *testing.T) {
 	ts, _ := boot(t)
 	var p runtimetypes.RtPong

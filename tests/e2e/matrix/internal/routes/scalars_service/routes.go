@@ -22,6 +22,7 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/scalars/audited/{id}", transport.GetAudited(svcCtx))
 	srv.Handle("GET /api/scalars/keyed", transport.ListKeyed(svcCtx))
 	srv.Handle("GET /api/scalars/keyed/page", transport.PageKeyed(svcCtx))
+	srv.Handle("GET /api/scalars/tally", transport.TallyInts(svcCtx))
 	srv.Handle("PUT /api/scalars/keyed", transport.PutKeyed(svcCtx))
 	srv.Handle("GET /api/scalars/lookup/{id}", transport.LookupOrder(svcCtx))
 	srv.Handle("POST /api/scalars/wrapped", transport.EchoWrapped(svcCtx))

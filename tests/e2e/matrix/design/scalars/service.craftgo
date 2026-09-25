@@ -48,6 +48,11 @@ service ScalarsService {
 		response KeyedPage<Priority>
 	}
 
+	@doc("Tally integers. A generic response writes its argument-typed header as the argument's type.")
+	get TallyInts /tally {
+		response Tallied<int>
+	}
+
 	@doc("Put a key. A generic request split by a header reads its argument-typed field from the body beside the field a nested mixin brings.")
 	put PutKeyed /keyed {
 		request  KeyedPut<Priority>

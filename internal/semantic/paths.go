@@ -283,7 +283,7 @@ func (s *pathParamSet) has(name string) bool {
 // requestPathFields collects the segment names m's request fields bind,
 // mixin fields included; nil when the request type does not resolve.
 func (a *analyzer) requestPathFields(m *ast.Method, pathParams []string) *pathParamSet {
-	_, fields, ok := a.requestFields(m)
+	_, fields, ok := a.instanceFields(m.Request)
 	if !ok {
 		return nil
 	}

@@ -260,6 +260,13 @@ type KeyedPage<Key> {
 	items Key[]
 }
 
+// Tallied<T> sends a field of its argument's type in a header:
+// `Tallied<int>` writes `tally` as a decimal integer.
+type Tallied<T> {
+	tally T   @header("X-Tally")
+	items T[]
+}
+
 // KeyedPut<Key> is a request body a header splits: `KeyedPut<Priority>` reads
 // `key` as a Priority while the `code` KeyMeta brings stays a Key.
 type KeyedPut<Key> {
