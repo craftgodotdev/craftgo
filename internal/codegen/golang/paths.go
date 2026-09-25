@@ -91,35 +91,33 @@ func outputsOf(cfg *config.Config) outputs {
 	}
 }
 
-// outputKey is one output key of the Go target by its manifest name.
+// outputKey is one output key of the Go target.
 type outputKey struct {
-	name string
-	dir  outputDir
+	dir outputDir
 	// regenerated reports a directory whose files every run rewrites, which the sweep walks.
 	regenerated bool
 	// application reports a directory a contracts project writes nothing into.
 	application bool
 }
 
-// keys lists o by manifest name.
+// keys lists o's output keys.
 func (o outputs) keys() []outputKey {
 	return []outputKey{
-		{"output.types", o.types, true, false},
-		{"output.transport", o.transport, true, true},
-		{"output.routes", o.routes, true, true},
-		{"output.service", o.service, false, true},
-		{"output.grpc", o.grpc, true, true},
-		{"output.wiring", o.wiring, true, true},
-		{"output.middleware", o.middleware, false, true},
-		{"output.config", o.config, false, true},
-		{"output.svccontext", o.svccontext, true, true},
+		{o.types, true, false},
+		{o.transport, true, true},
+		{o.routes, true, true},
+		{o.service, false, true},
+		{o.grpc, true, true},
+		{o.wiring, true, true},
+		{o.middleware, false, true},
+		{o.config, false, true},
+		{o.svccontext, true, true},
 	}
 }
 
 // importPaths are the import paths the files of one service segment name.
 type importPaths struct {
 	Types      string
-	Transport  string
 	Service    string
 	Svccontext string
 }
@@ -128,7 +126,6 @@ type importPaths struct {
 func (o outputs) segmentImports(pkgName, seg string) importPaths {
 	return importPaths{
 		Types:      o.types.sub(pkgName).pkg,
-		Transport:  o.transport.sub(seg).pkg,
 		Service:    o.service.sub(seg).pkg,
 		Svccontext: o.svccontext.pkg,
 	}

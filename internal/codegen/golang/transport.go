@@ -21,9 +21,6 @@ type transportData struct {
 	// RequestType is the Go type the handler binds the request into.
 	RequestType string
 	Doc         []string
-	HasRequest  bool
-	HasResponse bool
-	BodyVerb    bool
 	BodyDecode  bool
 	// RawRequest and RawResponse report the transport sides logic owns ([wire.RawSides]).
 	RawRequest    bool
@@ -65,12 +62,9 @@ type defaultBinding struct {
 
 // paramBinding is one field binding in a handler; Bind is its rendered Go statement.
 type paramBinding struct {
-	DSLName   string
-	GoName    string
-	Bind      string
-	MimeTypes []string
-	Required  bool
-	Field     *ast.Field
+	DSLName string
+	GoName  string
+	Bind    string
 	// IsArray marks a `file[]` field, bound from every part of its name.
 	IsArray bool
 }
@@ -116,9 +110,6 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		ServiceName:      logicTypeName(m.Name),
 		Verb:             httpVerb(m.Verb),
 		Doc:              m.Doc,
-		HasRequest:       mode.HasRequest,
-		HasResponse:      mode.HasResponse,
-		BodyVerb:         wire.IsBodyVerb(m.Verb),
 		RawRequest:       mode.RawRequest,
 		RawResponse:      mode.RawResponse,
 		BindRequest:      mode.BindRequest(),

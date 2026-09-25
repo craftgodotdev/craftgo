@@ -20,7 +20,6 @@ type mainData struct {
 	MiddlewareImport string
 	SvccontextImport string
 	Middlewares      []string
-	HasMiddlewares   bool
 	// HasDocs embeds and serves the OpenAPI document when the design has routes and the document
 	// sits under main.go's directory, which go:embed cannot leave.
 	HasDocs bool
@@ -87,7 +86,6 @@ func buildProjectMainData(proj *semantic.Project, protos *protodesign.Set, cfg *
 			d.Middlewares = append(d.Middlewares, name)
 		}
 	}
-	d.HasMiddlewares = len(d.Middlewares) > 0
 
 	if spec := cfg.Output.OpenAPI; d.HasRoutes && !cfg.Output.OpenAPIDisabled() {
 		mainDir := filepath.Dir(filepath.Clean(cfg.Output.Main))

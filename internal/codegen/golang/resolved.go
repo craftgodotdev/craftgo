@@ -53,11 +53,6 @@ func decorateAll(in []semantic.ResolvedField, pkg *semantic.Package, r *projectR
 	return out
 }
 
-// resolveFields resolves td's fields with this package's Go names.
-func resolveFields(td *ast.TypeDecl, pkg *semantic.Package, r *projectResolver) []resolvedField {
-	return decorateAll(semantic.ResolveFields(td, "", pkg, r.Resolver, resolvedGoFieldNames), pkg, r)
-}
-
 // resolveRequestFields resolves m's request fields with method context
 // (auto-binding) applied, then adds the Go rendering.
 func resolveRequestFields(m *ast.Method, pkg *semantic.Package, r *projectResolver) []resolvedField {

@@ -130,27 +130,14 @@ func collectFormBindings(m *ast.Method, fields []resolvedField, pkg *semantic.Pa
 	}
 	textParts, fileParts := semantic.FormParts(resolved)
 	for _, ff := range fileParts {
-		files = append(files, paramBinding{
-			DSLName:   ff.WireName,
-			GoName:    ff.Name,
-			Required:  ff.Required,
-			Field:     ff.Field,
-			IsArray:   ff.IsArray,
-			MimeTypes: ff.MimeTypes,
-		})
+		files = append(files, paramBinding{DSLName: ff.WireName, GoName: ff.Name, IsArray: ff.IsArray})
 	}
 	for _, ff := range textParts {
 		line, lerr := renderWireBindLine(byField[ff.Field], wire.BindForm, ff.WireName, pkg, r, imports)
 		if lerr != nil {
 			return nil, nil, bindError(m, ff.Field, lerr)
 		}
-		text = append(text, paramBinding{
-			DSLName:  ff.WireName,
-			GoName:   ff.Name,
-			Required: ff.Required,
-			Field:    ff.Field,
-			Bind:     line,
-		})
+		text = append(text, paramBinding{DSLName: ff.WireName, GoName: ff.Name, Bind: line})
 	}
 	return text, files, nil
 }

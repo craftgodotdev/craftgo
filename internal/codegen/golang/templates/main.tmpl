@@ -44,7 +44,7 @@ import (
 
 	"{{.ConfigImport}}"
 	"{{.WiringImport}}"
-{{- if .HasMiddlewares}}
+{{- if .Middlewares}}
 	"{{.MiddlewareImport}}"
 {{- end}}
 	"{{.SvccontextImport}}"
@@ -100,7 +100,7 @@ func main() {
 	}
 
 	svc := svccontext.NewServiceContext(cfg)
-{{- if .HasMiddlewares}}
+{{- if .Middlewares}}
 
 	// Each design-declared middleware lives on the embedded
 	// Middlewares struct of ServiceContext. Wire each field once at

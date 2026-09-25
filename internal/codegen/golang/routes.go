@@ -87,7 +87,6 @@ func formatDurationGo(d time.Duration) string {
 // routeEntry is one `srv.Handle(Pattern, HandlerCall, Middlewares)` line of routes.tmpl.
 type routeEntry struct {
 	Pattern     string
-	Method      string
 	HandlerCall string
 	Middlewares string
 }
@@ -175,7 +174,6 @@ func generateRoutesForSegment(contribs []segment, cfg *config.Config, projectRoo
 			}
 			data.Routes = append(data.Routes, routeEntry{
 				Pattern:     httpVerb(m.Verb) + " " + full,
-				Method:      m.Name,
 				HandlerCall: call,
 				Middlewares: buildMiddlewareArgs(mws),
 			})

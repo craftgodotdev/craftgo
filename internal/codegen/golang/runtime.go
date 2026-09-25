@@ -10,7 +10,6 @@ import (
 
 // runtimeData is the template input for the config and svccontext scaffolds.
 type runtimeData struct {
-	Package       string
 	OperationName string
 	ConfigImport  string
 	// ConfigDir is output.config, where config.go reads config.yaml from.
@@ -42,7 +41,6 @@ func generateRuntimeConfig(proj *semantic.Project, protos *protodesign.Set, cfg 
 func buildRuntimeData(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config) runtimeData {
 	dir := outputsOf(cfg).config
 	return runtimeData{
-		Package:       cfg.Package,
 		OperationName: operationNameFor(cfg.Package),
 		ConfigImport:  dir.pkg,
 		ConfigDir:     relDir(dir.rel),
@@ -53,12 +51,11 @@ func buildRuntimeData(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 
 // generateSvccontext writes the gen-once output.svccontext file, whose ServiceContext embeds the
 // Middlewares struct regenerated beside it.
-func generateSvccontext(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
+func generateSvccontext(cfg *config.Config, projectRoot string) error {
 	if cfg.Output.RuntimeDisabled() {
 		return nil
 	}
 	data := runtimeData{
-		Package:       cfg.Package,
 		OperationName: operationNameFor(cfg.Package),
 		ConfigImport:  outputsOf(cfg).config.pkg,
 	}

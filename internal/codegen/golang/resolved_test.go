@@ -12,6 +12,12 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
+// resolveTypeFields resolves td's fields, mixins flattened, with their Go rendering.
+func resolveTypeFields(td *ast.TypeDecl, pkg *semantic.Package) []resolvedField {
+	r := resolverFor(pkg, nil)
+	return decorateAll(semantic.ResolveFields(td, "", pkg, r.Resolver, resolvedGoFieldNames), pkg, r)
+}
+
 // An undecorated request field binds to @path when a segment matches it, else to @query on a
 // body-less verb or the body on a body verb; an explicit binding wins.
 func TestResolveRequestFields(t *testing.T) {
@@ -78,7 +84,7 @@ type Req {
 	if td == nil {
 		t.Fatal("Req not found")
 	}
-	got := resolveFields(td, pkg, resolverFor(pkg, nil))
+	got := resolveTypeFields(td, pkg)
 	byName := map[string]resolvedField{}
 	for _, rf := range got {
 		byName[rf.DSLName] = rf
@@ -156,9 +162,9 @@ type T {
 	d string? @default("x")
 	e string  @nullable
 }`)
-	for _, rf := range resolveFields(pkg.Types["T"], pkg, resolverFor(pkg, nil)) {
+	for _, rf := range resolveTypeFields(pkg.Types["T"], pkg) {
 		optional := rf.Field.Type != nil && rf.Field.Type.Optional
-		nullable := hasNullableDecorator(rf.Field.Decorators)
+		nullable := ast.HasDecorator(rf.Field.Decorators, "nullable")
 		if rf.SpecRequired && (optional || rf.HasDefault) {
 			t.Errorf("%s: SpecRequired but optional=%v hasDefault=%v - required[] must exclude both",
 				rf.DSLName, optional, rf.HasDefault)
