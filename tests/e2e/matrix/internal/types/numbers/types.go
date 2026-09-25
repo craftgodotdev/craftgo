@@ -89,7 +89,7 @@ type NumberCounter struct {
 	// @multipleOf on int.
 	StepInt   int   `json:"stepInt"`
 	StepInt64 int64 `json:"stepInt64"`
-	// Whole floats at the int64 limits: checked as the exact integers they
+	// Whole floats at the int64 limits, read as the exact integers they
 	// write.
 	EdgeInt64 int64 `json:"edgeInt64"`
 	// Two maxima past 2^53: the document keeps the tighter one.
@@ -170,9 +170,8 @@ type NumberPrice struct {
 	PosF32   float32 `json:"posF32"`
 }
 
-// NumberUnsigned covers the full uint family. Lower bound 0 is
-// implicit at the type level but we still emit @gte(0) explicitly to
-// confirm codegen doesn't emit a dead `v < 0` for unsigned fields.
+// NumberUnsigned covers the uint family; its @gte(0) and full-capacity
+// bounds are the ones the type already implies.
 type NumberUnsigned struct {
 	// uint
 	RangeUint  uint `json:"rangeUint"`

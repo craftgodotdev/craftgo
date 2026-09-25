@@ -116,10 +116,8 @@ type Map_ArrayOfMaps struct {
 	Plain map[string]MapTag   `json:"plain"`
 }
 
-// Map_ArrayValue stacks an array INSIDE a map value: each value is a
-// `Tag[]`. The scalar-leaves walk should produce a doubly-nested
-// loop: `for _, val0 := range v.Buckets` then
-// `for i1 := range val0` then Tag's three validators on `val0[i1]`.
+// Map_ArrayValue holds an array in each map value (Tag[]): every element
+// of every value runs Tag's three validators.
 type Map_ArrayValue struct {
 	Buckets map[string][]Tag `json:"buckets"`
 }
@@ -137,11 +135,9 @@ type Map_JSONKey struct {
 	Index map[NonEmptyID]Email `json:"by_id"`
 }
 
-// Map_KeyAndValue puts scalars on BOTH sides - NonEmptyID on the key,
-// Email on the value. Generator should emit TWO loops: one for keys
-// (`for k0 := range v.Index`) and one for values
-// (`for _, val0 := range v.Index`), each running the matching
-// scalar's validators.
+// Map_KeyAndValue puts scalars on both sides: each key runs NonEmptyID's
+// validators and each value Email's, and a bad key and a bad value are
+// reported under the field name alike.
 type Map_KeyAndValue struct {
 	Index map[NonEmptyID]Email `json:"index"`
 }
@@ -180,10 +176,8 @@ type Map_ScalarKey struct {
 	ByUser map[MemberID]MemberTag `json:"byUser"`
 }
 
-// Map_ScalarValue uses a scalar value type (Tag). Unlike the struct
-// case, the scalar-leaves walk DOES descend into the value side here:
-// the generator emits `for _, val0 := range v.Labels` and fires Tag's
-// @minLength + @maxLength + @pattern on `val0`.
+// Map_ScalarValue uses a scalar value type (Tag): each value runs Tag's
+// @minLength, @maxLength and @pattern.
 type Map_ScalarValue struct {
 	Labels map[string]Tag `json:"labels"`
 }
@@ -195,9 +189,8 @@ type Map_StructAddress struct {
 	Addresses map[string]Address `json:"addresses"`
 }
 
-// Map_StructValue is the struct-valued map. The generator emits a
-// per-entry `val.Validate()` call so each User's `name` / `email`
-// fields are validated, including the `email` scalar's @format(email).
+// Map_StructValue is the struct-valued map: each User value is validated,
+// its email scalar's @format(email) included.
 type Map_StructValue struct {
 	Users map[string]User `json:"users"`
 }

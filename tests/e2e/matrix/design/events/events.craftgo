@@ -1,5 +1,5 @@
-// events.craftgo is the event-model cornercase fixture. It pins, in one
-// package, every shape the contract → descriptor pipeline has to render:
+// events.craftgo pins, in one package, every shape the contract →
+// descriptor pipeline has to render:
 //
 //   - payload fields of every shape a publish option might be built from
 //     at the call site - a scalar over a string, a local int enum, an int

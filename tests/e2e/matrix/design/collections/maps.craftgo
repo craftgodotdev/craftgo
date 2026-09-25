@@ -5,13 +5,11 @@
 //     number of entries (`len(map)` semantics).
 //   - Map values that are themselves typed (User struct, Address
 //     struct, scalar Tag, nested map<string, Tag[]>).
-//   - Map keys that are typed (NonEmptyID scalar) - key-side
-//     validators emit a `for k := range v.M` key-only loop.
+//   - Map keys that are typed (NonEmptyID scalar), validated per key.
 //   - Optional map: `map<K, V>?`.
 //
-// Map values are walked per entry: a struct value type emits a
-// per-entry `val.Validate()` call, and a scalar value type runs the
-// scalar's leaf validators on each value.
+// Each entry is validated: a struct value by its own Validate, a scalar
+// value by the scalar's validators.
 package collections
 
 // Map_Plain is the simplest case - no validators, no scalars, no
@@ -28,34 +26,27 @@ type Map_Bounds {
 	counts map<string, int> @minItems(1) @maxItems(100)
 }
 
-// Map_StructValue is the struct-valued map. The generator emits a
-// per-entry `val.Validate()` call so each User's `name` / `email`
-// fields are validated, including the `email` scalar's @format(email).
+// Map_StructValue is the struct-valued map: each User value is validated,
+// its email scalar's @format(email) included.
 type Map_StructValue {
 	users map<string, User>
 }
 
-// Map_ScalarValue uses a scalar value type (Tag). Unlike the struct
-// case, the scalar-leaves walk DOES descend into the value side here:
-// the generator emits `for _, val0 := range v.Labels` and fires Tag's
-// @minLength + @maxLength + @pattern on `val0`.
+// Map_ScalarValue uses a scalar value type (Tag): each value runs Tag's
+// @minLength, @maxLength and @pattern.
 type Map_ScalarValue {
 	labels map<string, Tag>
 }
 
-// Map_ArrayValue stacks an array INSIDE a map value: each value is a
-// `Tag[]`. The scalar-leaves walk should produce a doubly-nested
-// loop: `for _, val0 := range v.Buckets` then
-// `for i1 := range val0` then Tag's three validators on `val0[i1]`.
+// Map_ArrayValue holds an array in each map value (Tag[]): every element
+// of every value runs Tag's three validators.
 type Map_ArrayValue {
 	buckets map<string, Tag[]>
 }
 
-// Map_KeyAndValue puts scalars on BOTH sides - NonEmptyID on the key,
-// Email on the value. Generator should emit TWO loops: one for keys
-// (`for k0 := range v.Index`) and one for values
-// (`for _, val0 := range v.Index`), each running the matching
-// scalar's validators.
+// Map_KeyAndValue puts scalars on both sides: each key runs NonEmptyID's
+// validators and each value Email's, and a bad key and a bad value are
+// reported under the field name alike.
 type Map_KeyAndValue {
 	index map<NonEmptyID, Email>
 }

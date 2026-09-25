@@ -14,7 +14,7 @@
 //   ISO3         string + @length + @pattern          → length + pattern
 //   Blob         bytes + @maxLength                   → nilable scalar
 //
-// Cornercase probes (commented out where the framework rejects them):
+// Probes the framework rejects, kept commented out:
 //
 //   OptionalEmail    `scalar X string? @format(email)` - the parser
 //                    grammar requires the primitive token to be an

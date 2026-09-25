@@ -11,7 +11,7 @@ events:
     - lang: go
       out: ./internal/events
 openapi:
-  title:    Cornercase API
+  title:    Matrix API
   version:  1.0.0
   basePath: /api
   securitySchemes:

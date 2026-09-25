@@ -1,8 +1,7 @@
 package combine
 
-// Color is a string-valued bare enum used by DefaultEnum below. Bare
-// values (no `= "..."` literal) render as the matching Go const name
-// in lower case for the wire form.
+// Color is a bare string enum used by DefaultsEnum below: a value without
+// `= "..."` goes on the wire as its name (Red).
 enum Color {
 	Red
 	Green

@@ -1,16 +1,8 @@
 package combine
 
-// CombineService wires the cross-decorator combination types into a
-// real handler so the codegen + transport stack has a body-decode +
-// validate path to drive for each cluster:
-//
-//   - Presence:        round-trips the presence-state matrix.
-//   - Pairs/StrPairs:  stacked string decorators (length+format+pattern).
-//   - Pairs/NumPairs:  stacked numeric decorators (range+multipleOf+gt+lte).
-//   - Pairs/ArrPairs:  stacked array decorators (minItems+maxItems+uniqueItems+each).
-//   - Pairs/Contact:   per-field decorators under a type-level @requiresOneOf.
-//   - Pairs/Choice:    overlapping @mutuallyExclusive + @requiresOneOf.
-//   - Defaults:        every supported default shape (boundary, enum, scalar).
+// CombineService wires the cross-decorator combination types into real
+// handlers: each method gives the codegen and transport stack a body to
+// decode and validate.
 @prefix("/combine")
 @tags(combine)
 service CombineService {

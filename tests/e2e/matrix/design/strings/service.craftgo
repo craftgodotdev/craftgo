@@ -1,15 +1,7 @@
 package strings
 
-// StringsService exposes a small surface so the generator wires the
-// string-cornercase types into a real handler. Three POST endpoints
-// give the codegen + transport stack a body-decode path to drive
-// for each type cluster:
-//
-//   - Echo: round-trips the canonical Str_EchoReq.
-//   - Validate: takes AllFormats so every @format(name) in the
-//     catalogue feeds through req.Validate().
-//   - Combine: takes Str_Combos so the stacked length+pattern+
-//     format decorators all fire at request time.
+// StringsService wires the string types into real handlers: each POST
+// gives the codegen and transport stack a body to decode and validate.
 @prefix("/strings")
 @tags(strings)
 service StringsService {

@@ -132,8 +132,8 @@ type ConstrainedBoxHost struct {
 }
 
 // CreateOrderReq is a full-shape POST body that drives every Order
-// field through the validator. Note: id is supplied client-side so
-// the cornercase fixture can keep the request DTO simple.
+// field through the validator; the client supplies the id, which keeps
+// the request DTO simple.
 type CreateOrderReq struct {
 	Order Order `json:"order"`
 }
