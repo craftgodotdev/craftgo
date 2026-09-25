@@ -43,6 +43,17 @@ service ScalarsService {
 		response OrderPage
 	}
 
+	@doc("Page keys. A generic response sends its argument-typed field in a header, and the body keeps the field a nested mixin brings as declared.")
+	get PageKeyed /keyed/page {
+		response KeyedPage<Priority>
+	}
+
+	@doc("Put a key. A generic request split by a header reads its argument-typed field from the body beside the field a nested mixin brings.")
+	put PutKeyed /keyed {
+		request  KeyedPut<Priority>
+		response Order
+	}
+
 	@doc("Look an order up by id. The request is a generic instance, Lookup<Priority>, bound from the path and the query string.")
 	get LookupOrder /lookup/{id} {
 		request  Lookup<Priority>

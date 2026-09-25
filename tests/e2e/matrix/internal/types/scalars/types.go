@@ -160,6 +160,23 @@ type Keyed[Key any] struct {
 	Key *Key `json:"key,omitempty"`
 }
 
+// KeyedPage<Key> answers its Key-spelled parameter in a header beside the
+// body: `KeyedPage<Priority>` sends `key` and `items` as Priority values while
+// the `code` KeyMeta brings stays a Key.
+type KeyedPage[Key any] struct {
+	KeyMeta
+	Key   Key   `json:"-" header:"X-Key"`
+	Items []Key `json:"items"`
+}
+
+// KeyedPut<Key> is a request body a header splits: `KeyedPut<Priority>` reads
+// `key` as a Priority while the `code` KeyMeta brings stays a Key.
+type KeyedPut[Key any] struct {
+	KeyMeta
+	Trace string `json:"-" header:"X-Trace"`
+	Key   Key    `json:"key"`
+}
+
 // ListKeyedReq binds `code` as the Key scalar and `key` as a Priority,
 // both from the query string.
 type ListKeyedReq struct {

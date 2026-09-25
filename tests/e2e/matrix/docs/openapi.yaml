@@ -3849,6 +3849,19 @@ components:
           - array
           - "null"
       type: object
+    PageKeyedRespBody:
+      properties:
+        code:
+          anyOf:
+          - $ref: '#/components/schemas/Key'
+          - type: "null"
+        items:
+          items:
+            $ref: '#/components/schemas/Priority'
+          type: array
+      required:
+      - items
+      type: object
     PageOfPrimitiveHost:
       description: |-
         PageOfPrimitive exercises a non-component arg type: `Page<string>`
@@ -4661,6 +4674,19 @@ components:
       required:
       - echo
       type: object
+    PutKeyedReqBody:
+      properties:
+        code:
+          anyOf:
+          - $ref: '#/components/schemas/Key'
+          - type: "null"
+        key:
+          $ref: '#/components/schemas/Priority'
+      required:
+      - key
+      type: object
+    PutKeyedRespBody:
+      $ref: '#/components/schemas/ScalarsOrder'
     QuarantineRespBody:
       $ref: '#/components/schemas/HealthResp'
     QueryArrayEnumDefaultReq:
@@ -10884,6 +10910,49 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListKeyedRespBody'
           description: OK
+      tags:
+      - scalars
+    put:
+      description: Put a key. A generic request split by a header reads its argument-typed
+        field from the body beside the field a nested mixin brings.
+      operationId: PutKeyed
+      parameters:
+      - in: header
+        name: X-Trace
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutKeyedReqBody'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutKeyedRespBody'
+          description: OK
+      tags:
+      - scalars
+  /scalars/keyed/page:
+    get:
+      description: Page keys. A generic response sends its argument-typed field in
+        a header, and the body keeps the field a nested mixin brings as declared.
+      operationId: PageKeyed
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageKeyedRespBody'
+          description: OK
+          headers:
+            X-Key:
+              schema:
+                $ref: '#/components/schemas/Priority'
       tags:
       - scalars
   /scalars/lookup/{id}:

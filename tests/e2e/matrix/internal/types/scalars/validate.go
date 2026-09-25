@@ -226,6 +226,47 @@ func (v *Keyed[Key]) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on KeyedPage.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *KeyedPage[Key]) Validate() error {
+	if err := v.KeyMeta.Validate(); err != nil {
+		return err
+	}
+	if vv, ok := any(&v.Key).(interface{ Validate() error }); ok {
+		if err := vv.Validate(); err != nil {
+			return err
+		}
+	} else if err := validateValue(v.Key); err != nil {
+		return err
+	}
+	for i0 := range v.Items {
+		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
+			if err := vv.Validate(); err != nil {
+				return err
+			}
+		} else if err := validateValue(v.Items[i0]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on KeyedPut.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *KeyedPut[Key]) Validate() error {
+	if err := v.KeyMeta.Validate(); err != nil {
+		return err
+	}
+	if vv, ok := any(&v.Key).(interface{ Validate() error }); ok {
+		if err := vv.Validate(); err != nil {
+			return err
+		}
+	} else if err := validateValue(v.Key); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on ListKeyedReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ListKeyedReq) Validate() error {

@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -153,6 +154,52 @@ func TestGenericRegistryOrderIsStable(t *testing.T) {
 	}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("pending order:\n  got:  %v\n  want: %v", got, want)
+	}
+}
+
+// A generic request or response split by a header binds its arguments to its
+// own fields and headers alone: the `t` the non-generic Meta brings stays the
+// scalar T although both generics spell their parameter T.
+func TestSplitGenericBodiesSubstituteOnTheirOwnLevel(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+scalar T string
+enum Prio { low  high }
+type Meta { t T? }
+type Paged<T> {
+	Meta
+	count T @header("X-Count")
+	data  T
+}
+type Put<T> {
+	Meta
+	trace string @header("X-Trace")
+	data  T
+}
+type Item { id string }
+service S {
+	get L /l { response Paged<Prio> }
+	post P /p { request Put<int>  response Item }
+}`,
+	}, &config.Config{})
+	nullableT := `{"anyOf":[{"$ref":"#/components/schemas/T"},{"type":"null"}]}`
+	for name, c := range map[string]struct {
+		got  *openapi3.SchemaRef
+		want string
+	}{
+		"LRespBody.t":    {doc.Components.Schemas["LRespBody"].Value.Properties["t"], nullableT},
+		"LRespBody.data": {doc.Components.Schemas["LRespBody"].Value.Properties["data"], `{"$ref":"#/components/schemas/Prio"}`},
+		"PReqBody.t":     {doc.Components.Schemas["PReqBody"].Value.Properties["t"], nullableT},
+		"PReqBody.data":  {doc.Components.Schemas["PReqBody"].Value.Properties["data"], `{"type":"integer"}`},
+		"X-Count":        {doc.Paths.Find("/l").Get.Responses.Status(200).Value.Headers["X-Count"].Value.Schema, `{"$ref":"#/components/schemas/Prio"}`},
+	} {
+		got, err := json.Marshal(c.got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != c.want {
+			t.Errorf("%s = %s, want %s", name, got, c.want)
+		}
 	}
 }
 

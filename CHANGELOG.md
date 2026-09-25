@@ -797,6 +797,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   `binding/type` at the field; a raw request, which the handler does not
   bind, is not checked.
 
+- **A generic response's headers take its type arguments in OpenAPI.** For
+  `response Paged<Prio>` with `type Paged<T> { Meta  count T @header("X-Count")
+  data T }`, the `X-Count` header was documented as `T`, and the body gave the
+  `t T?` that `Meta` declares over a type named `T` the argument's type, as
+  did a request body beside a header. Each field now takes the arguments of
+  its own level.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

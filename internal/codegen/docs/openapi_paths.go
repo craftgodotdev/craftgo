@@ -66,10 +66,17 @@ func newOpShape(svc *semantic.ServiceInfo, m *ast.Method, full, id, stem string,
 	}
 	if m.Response != nil && m.Response.Type != nil {
 		if s.respType = pkg.Types[m.Response.Type.Name.String()]; s.respType != nil {
-			s.resp = binFields(semantic.ResolveFields(s.respType, "", pkg, r, nil))
+			s.resp = binFields(instanceFields(m.Response.Type, pkg, r))
 		}
 	}
 	return s
+}
+
+// instanceFields resolves the fields of the type ref names as a body
+// embedding ref gets them: mixins included, each level's generic arguments
+// bound on that level alone (`Page<Item>`'s `items T[]` as `items Item[]`).
+func instanceFields(ref *ast.NamedTypeRef, pkg *semantic.Package, r *semantic.Resolver) []semantic.ResolvedField {
+	return semantic.ResolveFields(&ast.TypeDecl{Body: []ast.TypeMember{&ast.Mixin{Ref: ref}}}, "", pkg, r, nil)
 }
 
 // fieldBins holds resolved fields by where they ride, @sensitive ones left
@@ -111,7 +118,7 @@ func requestBodySchema(s opShape, pkg *semantic.Package, registry *genericRegist
 		}
 		return &openapi3.SchemaRef{Value: schemaFromTypeDecl(td, nil, pkg, registry)}
 	}
-	body := schemaFromFields(substituteGenericFields(s.req.body, td, s.m.Request.Args), pkg, registry)
+	body := schemaFromFields(s.req.body, pkg, registry)
 	if frags := typeFragments(td, registry); len(frags) > 0 {
 		body = &openapi3.Schema{AllOf: append(openapi3.SchemaRefs{{Value: body}}, frags...)}
 	}
@@ -125,24 +132,7 @@ func responseBodySchema(s opShape, pkg *semantic.Package, registry *genericRegis
 		// A generic response refs its instance: the declaration has no schema.
 		return &openapi3.SchemaRef{Ref: "#/components/schemas/" + registry.refName(s.m.Response.Type)}
 	}
-	return &openapi3.SchemaRef{Value: schemaFromFields(substituteGenericFields(s.resp.body, s.respType, s.m.Response.Type.Args), pkg, registry)}
-}
-
-// substituteGenericFields returns fields with args substituted for td's type
-// parameters (`data T` → `data Item`).
-func substituteGenericFields(fields []semantic.ResolvedField, td *ast.TypeDecl, args []*ast.TypeRef) []semantic.ResolvedField {
-	if td == nil || len(td.TypeParams) == 0 || len(args) == 0 {
-		return fields
-	}
-	subst := semantic.SubstMap(td.TypeParams, args)
-	out := make([]semantic.ResolvedField, len(fields))
-	for i, rf := range fields {
-		fc := *rf.Field
-		fc.Type = semantic.SubstituteTypeRef(rf.Field.Type, subst)
-		rf.Field = &fc
-		out[i] = rf
-	}
-	return out
+	return &openapi3.SchemaRef{Value: schemaFromFields(s.resp.body, pkg, registry)}
 }
 
 // buildResponseHeaders documents the @header fields as headers and the @cookie
