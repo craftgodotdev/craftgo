@@ -101,6 +101,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   do. An error body field named `marshalJSON`, its own or a mixin's, is
   rejected, like one named after the other generated methods.
 
+- **A basePath problem is reported on the manifest.** An `openapi.basePath`
+  net/http cannot register printed as `0:0: basePath ...` in `craftgo gen`
+  and kept `craftgo fmt` from formatting any design file, and every basePath
+  problem showed at the top of whichever design file the editor had open. It
+  now names the manifest, `craftgo.design.yaml: openapi.basePath ...`, the
+  editor shows it on the manifest, and `craftgo fmt` formats the design
+  files. A segment or a variable the basePath repeats is reported once.
+
 - **A decorator is no decorator argument.** The grammar took `@a(@b)`,
   though no decorator reads one; it is now one parse error at the inner
   `@`, `a decorator cannot be an argument of @a`, however deep the
@@ -874,8 +882,8 @@ breaking change to the DSL or the generated layout bumps the major version.
   registering the route; so did a variable repeated by the basePath and a
   method path, within a `@prefix`, or by an extend block's method path and the
   primary service's `@prefix`. Each is now an error, `route/pattern` or
-  `route/duplicate-path-var`, at the `@prefix` or the method, or once for a
-  basePath.
+  `route/duplicate-path-var`, at the `@prefix` or the method, or once, on the
+  manifest, for a basePath.
 
 - **A `file` passed to a generic type is found.** A request field `b
   Box<file>`, or a `Box<file>` in a response, an error body or an event

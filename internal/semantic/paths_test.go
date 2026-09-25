@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -63,6 +64,26 @@ func TestBasePathFormatReportedOnce(t *testing.T) {
 	_, diags := AnalyzeProject(files, Options{BasePath: "v1"})
 	if got := codes(diags); !slices.Equal(got, []string{CodePathBaseFormat}) {
 		t.Errorf("want one %s, got %v", CodePathBaseFormat, diags)
+	}
+}
+
+// A basePath problem is reported once, on the manifest, naming its key.
+func TestBasePathDiagnosticsNameTheManifest(t *testing.T) {
+	root := t.TempDir()
+	for basePath, c := range map[string]struct{ code, msg string }{
+		"/t/{a-b}/{a-b}": {CodeRoutePattern, `openapi.basePath "/t/{a-b}/{a-b}": net/http's ServeMux refuses the segment "{a-b}"`},
+		"/t/{id}/{id}":   {CodeDuplicatePathVar, `openapi.basePath "/t/{id}/{id}" repeats the path variable {id}`},
+		"v1":             {CodePathBaseFormat, `openapi.basePath "v1" is malformed`},
+	} {
+		_, diags := analyzeWith(parseFiles(t, "package app\ntype R { ok bool }"), Options{BasePath: basePath, DesignRoot: root})
+		if got := codes(diags); !slices.Equal(got, []string{c.code}) {
+			t.Errorf("%s: want one %s, got %v", basePath, c.code, diags)
+			continue
+		}
+		d := diags[0]
+		if d.Pos.Filename != filepath.Join(root, "craftgo.design.yaml") || d.Pos.Line != 0 || !strings.Contains(d.Msg, c.msg) {
+			t.Errorf("%s: got %s: %s, want the manifest with %q", basePath, d.Pos, d.Msg, c.msg)
+		}
 	}
 }
 

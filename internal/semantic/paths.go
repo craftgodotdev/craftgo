@@ -173,24 +173,27 @@ func packageNote(other, own string) string {
 	return " (package " + other + ")"
 }
 
-// checkBasePathPattern rejects a segment of the basePath that net/http's
-// ServeMux refuses, and a path variable it repeats; the manifest value has no
-// source position.
+// checkBasePathPattern rejects, once each, a segment of the basePath that
+// net/http's ServeMux refuses and a path variable it repeats.
 func (c *projectChecks) checkBasePathPattern() {
-	seen := map[string]bool{}
+	refused, repeated, seen := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, seg := range route.Segments(c.basePath) {
 		if why := route.SegmentProblem(seg); why != "" {
-			c.diag(lexer.Position{}, lexer.SeverityError, CodeRoutePattern,
-				"basePath %q: net/http's ServeMux refuses the segment %q - %s", c.basePath, seg, why)
+			if !refused[seg] {
+				c.diag(c.manifest, lexer.SeverityError, CodeRoutePattern,
+					"openapi.basePath %q: net/http's ServeMux refuses the segment %q - %s", c.basePath, seg, why)
+			}
+			refused[seg] = true
 			continue
 		}
 		name, ok := route.WildcardName(seg)
 		if !ok {
 			continue
 		}
-		if seen[name] {
-			c.diag(lexer.Position{}, lexer.SeverityError, CodeDuplicatePathVar,
-				"basePath %q repeats the path variable {%s}: net/http's ServeMux panics on a duplicate wildcard at registration. Rename one.",
+		if seen[name] && !repeated[name] {
+			repeated[name] = true
+			c.diag(c.manifest, lexer.SeverityError, CodeDuplicatePathVar,
+				"openapi.basePath %q repeats the path variable {%s}: net/http's ServeMux panics on a duplicate wildcard at registration. Rename one.",
 				c.basePath, name)
 		}
 		seen[name] = true
@@ -216,9 +219,8 @@ func (c *projectChecks) checkBasePathFormat() {
 	if bad == "" {
 		return
 	}
-	// The manifest value has no source position.
-	c.diag(lexer.Position{}, lexer.SeverityWarning, CodePathBaseFormat,
-		"basePath %q is malformed: %s - codegen will normalise but please fix the manifest",
+	c.diag(c.manifest, lexer.SeverityWarning, CodePathBaseFormat,
+		"openapi.basePath %q is malformed: %s - codegen will normalise but please fix the manifest",
 		bp, bad)
 }
 

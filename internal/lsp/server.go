@@ -343,7 +343,7 @@ func (s *server) onDidChangeWatchedFiles(ctx context.Context) {
 	}
 	for _, m := range s.publishedManifests() {
 		if !seenRoots[filepath.Dir(m)] {
-			s.publishManifest(ctx, m)
+			s.publishManifest(ctx, m, nil)
 		}
 	}
 }
@@ -372,20 +372,25 @@ func (s *server) publishDiagnostics(ctx context.Context, u uri.URI, src string) 
 		s.publish(ctx, openURI, diagsFor(perFile, op))
 	}
 	if designRoot != "" {
-		s.publishManifest(ctx, manifestPath(designRoot))
+		manifest := manifestPath(designRoot)
+		s.publishManifest(ctx, manifest, perFile[manifest])
 		return
 	}
 	for _, m := range s.publishedManifests() {
 		if isUnderDesignRoot(path, filepath.Dir(m)) {
-			s.publishManifest(ctx, m)
+			s.publishManifest(ctx, m, nil)
 		}
 	}
 }
 
-// publishManifest publishes the diagnostics of the manifest at path, and
-// forgets it once it is gone.
-func (s *server) publishManifest(ctx context.Context, path string) {
+// publishManifest publishes the diagnostics of the manifest at path, those
+// the design's analysis reports on its values after its own, and forgets it
+// once it is gone.
+func (s *server) publishManifest(ctx context.Context, path string, analysis []protocol.Diagnostic) {
 	diags, ok := manifestDiagnostics(path)
+	if ok {
+		diags = append(diags, analysis...)
+	}
 	s.mu.Lock()
 	if s.manifests == nil {
 		s.manifests = map[string]bool{}

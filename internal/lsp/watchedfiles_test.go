@@ -135,6 +135,21 @@ func TestManifestWarningsShowOnTheManifest(t *testing.T) {
 	}
 }
 
+// A basePath problem shows once on the manifest, not on the design file.
+func TestBasePathDiagnosticsShowOnTheManifest(t *testing.T) {
+	path := manifestProject(t, layoutOnly+"  basePath: \"/t/{a-b}/{a-b}\"\n", "package svc\n")
+	manifest := filepath.Join(filepath.Dir(path), "craftgo.design.yaml")
+	conn := &recordingConn{}
+	s := &server{docs: map[uri.URI]string{}, conn: conn}
+	s.publishDiagnostics(context.Background(), uri.File(path), readFileT(t, path))
+	if got, _ := conn.lastPublished(uri.File(manifest)); len(got) != 1 || !strings.Contains(got[0].Message, "openapi.basePath") {
+		t.Errorf("manifest diagnostics = %+v, want the one basePath error", got)
+	}
+	if got, _ := conn.lastPublished(uri.File(path)); len(got) != 0 {
+		t.Errorf("design file diagnostics = %+v, want none", got)
+	}
+}
+
 // A manifest edited so it no longer loads shows the error in place of its
 // warnings, and one fixed while no design file is open is cleared.
 func TestManifestDiagnosticsFollowTheManifest(t *testing.T) {

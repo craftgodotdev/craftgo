@@ -50,6 +50,9 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 		diags = append(diags, a.diags...)
 	}
 	c := &projectChecks{proj: proj, diags: diags, basePath: opts.BasePath, fileCase: opts.FileCase}
+	if opts.DesignRoot != "" {
+		c.manifest = lexer.Position{Filename: filepath.Join(opts.DesignRoot, config.Filename)}
+	}
 	c.checkBasePathFormat()
 	c.checkBasePathPattern()
 	c.checkProjectGroupChecks()
@@ -70,6 +73,9 @@ type projectChecks struct {
 	basePath string // [Options.BasePath]
 	// fileCase is output.fileCase, which names an ungrouped service's directory.
 	fileCase string
+	// manifest is where a diagnostic about a manifest value points: the
+	// manifest file, without a line; the zero position without a design root.
+	manifest lexer.Position
 }
 
 // diag appends a diagnostic at pos and returns a pointer into c.diags for

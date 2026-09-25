@@ -15,6 +15,9 @@ func TestPositionString(t *testing.T) {
 	if got := (Position{Line: 1, Column: 1}).String(); got != "1:1" {
 		t.Errorf("without filename: got %q", got)
 	}
+	if got := (Position{Filename: "craftgo.design.yaml"}).String(); got != "craftgo.design.yaml" {
+		t.Errorf("a file without a line: got %q", got)
+	}
 }
 
 func TestPositionIsValid(t *testing.T) {

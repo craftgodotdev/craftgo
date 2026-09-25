@@ -10,10 +10,13 @@ type Position struct {
 	Column   int    // 1-based, counted in runes
 }
 
-// String renders the position as `file:line:col`, or `line:col` without a
-// filename.
+// String renders the position as `file:line:col`, `line:col` without a
+// filename, or the filename alone without a line.
 func (p Position) String() string {
-	if p.Filename != "" {
+	switch {
+	case p.Filename != "" && p.Line == 0:
+		return p.Filename
+	case p.Filename != "":
 		return fmt.Sprintf("%s:%d:%d", p.Filename, p.Line, p.Column)
 	}
 	return fmt.Sprintf("%d:%d", p.Line, p.Column)
