@@ -53,46 +53,35 @@ func TestEventTargetsAreConfigured(t *testing.T) {
 	}
 }
 
-// TestRemovedKeysAreRejected checks that each removed key fails Load with an
-// error naming it.
-func TestRemovedKeysAreRejected(t *testing.T) {
+// TestRemovedKeysWarnWithWhatReplacedThem checks that a removed key loads with
+// one warning naming the key and what took its place.
+func TestRemovedKeysWarnWithWhatReplacedThem(t *testing.T) {
 	cases := []struct {
 		name string
 		body string
-		key  string
+		want string
 	}{
-		{"design source", "design:\n  from: ../contracts\n  root: ..\n", "design"},
-		{"service selection", "output:\n  services: [shop.Orders]\n", "output.services"},
-		{"consume middleware", "output:\n  consumeMiddleware: ./internal/consume\n", "output.consumeMiddleware"},
-		{"asyncapi", "events:\n  asyncapi: ./docs/asyncapi.yaml\n", "events.asyncapi"},
+		{"design source", "design:\n  from: ../contracts\n  root: ..\n",
+			"design is no longer a manifest key and is ignored - a manifest holds its own design folder"},
+		{"service selection", "output:\n  services: [shop.Orders]\n",
+			"output.services is no longer a manifest key and is ignored - a project generates every service"},
+		{"consume middleware", "output:\n  consumeMiddleware: ./internal/consume\n",
+			"output.consumeMiddleware is no longer a manifest key and is ignored - middleware is installed on the bus"},
+		{"asyncapi", "events:\n  asyncapi: ./docs/asyncapi.yaml\n",
+			"events.asyncapi is no longer a manifest key and is ignored - craftgo writes no asyncapi document"},
+		{"target layout", "events:\n  targets:\n    - lang: go\n      out: ./internal/events\n      layout:\n        types: ./gen/types\n",
+			"events.targets[0].layout is no longer a manifest key and is ignored - the go target places its artefacts"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := Load(writeManifest(t, c.body))
-			if err == nil {
-				t.Fatalf("%s was accepted", c.key)
+			cfg, err := Load(writeManifest(t, c.body))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
 			}
-			if !strings.Contains(err.Error(), c.key) {
-				t.Errorf("error does not name the key: %v", err)
+			if len(cfg.Warnings) != 1 || !strings.HasPrefix(cfg.Warnings[0], c.want) {
+				t.Errorf("warnings = %q, want one starting %q", cfg.Warnings, c.want)
 			}
 		})
-	}
-}
-
-// TestTargetLayoutIsRejected checks that a target's `layout:` fails Load.
-func TestTargetLayoutIsRejected(t *testing.T) {
-	_, err := Load(writeManifest(t, `events:
-  targets:
-    - lang: go
-      out: ./internal/events
-      layout:
-        types: ./gen/types
-`))
-	if err == nil {
-		t.Fatal("a layout on a target that reads none must be rejected")
-	}
-	if !strings.Contains(err.Error(), "layout") {
-		t.Errorf("error does not name the key: %v", err)
 	}
 }
 

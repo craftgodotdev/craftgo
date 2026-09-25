@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -63,18 +64,116 @@ func TestLoadFullOverride(t *testing.T) {
 	}
 }
 
-// TestLoadIgnoresStrayPackageKey checks that a `package:` key is ignored and
-// leaves Package empty.
-func TestLoadIgnoresStrayPackageKey(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, Filename)
-	writeFile(t, path, "package: github.com/old/manifest\n")
-	cfg, err := Load(path)
+// TestLoadWarnsOnUndeclaredKeys checks that a key no field declares loads, is
+// ignored, and is named by its path, in document order.
+func TestLoadWarnsOnUndeclaredKeys(t *testing.T) {
+	cfg, err := loadManifest(t, `package: github.com/old/manifest
+output:
+  typs: ./gen/types
+openapi:
+  securitySchemes:
+    bearer:
+      type: http
+      description: Signed by the gateway
+events:
+  targets:
+    - lang: go
+      out: ./internal/events
+      format: json
+proto:
+  plugins:
+    python: protoc-gen-python
+`)
 	if err != nil {
-		t.Fatalf("legacy manifest with stray package: should still load: %v", err)
+		t.Fatal(err)
+	}
+	want := []string{
+		"package is not a manifest key and is ignored",
+		"output.typs is not a manifest key and is ignored",
+		"openapi.securitySchemes.bearer.description is not a manifest key and is ignored",
+		"events.targets[0].format is not a manifest key and is ignored",
+		"proto.plugins.python is not a manifest key and is ignored",
+	}
+	if !slices.Equal(cfg.Warnings, want) {
+		t.Errorf("warnings:\n%s\nwant:\n%s", strings.Join(cfg.Warnings, "\n"), strings.Join(want, "\n"))
 	}
 	if cfg.Package != "" {
-		t.Errorf("Package must be empty after Load (set later by ResolveModulePath); got %q", cfg.Package)
+		t.Errorf("Package = %q, want it left for gen to resolve", cfg.Package)
+	}
+	if cfg.Output.Types != "./internal/types" {
+		t.Errorf("output.types = %q, want the default", cfg.Output.Types)
+	}
+}
+
+// TestLoadEveryDeclaredKeyRaisesNoWarning checks that a manifest setting every
+// key, through anchors, aliases and merge keys too, loads without a warning.
+func TestLoadEveryDeclaredKeyRaisesNoWarning(t *testing.T) {
+	cfg, err := loadManifest(t, `output:
+  kind: application
+  types: ./internal/types
+  transport: ./internal/transport
+  routes: ./internal/routes
+  service: ./internal/service
+  main: ./main.go
+  svccontext: ./svccontext/svccontext.go
+  openapi: ./docs/openapi.yaml
+  middleware: ./internal/middleware
+  wiring: ./internal/wiring
+  config: ./config
+  pb: ./internal/pb
+  grpc: ./internal/grpc
+  fileCase: snake
+openapi:
+  title: API
+  version: 1.0.0
+  description: The API.
+  basePath: /api
+  securitySchemes:
+    bearer: &bearer
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    admin: *bearer
+    staff:
+      <<: *bearer
+      bearerFormat: opaque
+    key:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    oidc:
+      type: openIdConnect
+      openIdConnectUrl: https://id.example.com/.well-known/openid-configuration
+    oauth:
+      type: oauth2
+      flows:
+        implicit: &flow
+          authorizationUrl: https://id.example.com/authorize
+          refreshUrl: https://id.example.com/refresh
+          scopes:
+            read: Read access
+        password:
+          tokenUrl: https://id.example.com/token
+        clientCredentials:
+          tokenUrl: https://id.example.com/token
+        authorizationCode:
+          <<: [*flow]
+          tokenUrl: https://id.example.com/token
+events:
+  targets:
+    - lang: go
+      out: ./internal/events
+proto:
+  includes: [./third_party]
+  plugins:
+    go: protoc-gen-go
+    goGrpc: protoc-gen-go-grpc
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Warnings) != 0 {
+		t.Errorf("warnings = %q, want none", cfg.Warnings)
 	}
 }
 

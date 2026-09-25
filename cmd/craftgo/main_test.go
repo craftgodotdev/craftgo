@@ -10,7 +10,8 @@ import (
 )
 
 // TestRunInitWritesScaffold checks that init writes the manifest into the given
-// folder, with no `package:` key, and that gen then runs from it.
+// folder, with no `package:` key, and that gen then runs from it without a
+// warning.
 func TestRunInitWritesScaffold(t *testing.T) {
 	dir := t.TempDir()
 	designFolder := filepath.Join(dir, "contracts", "v1")
@@ -31,8 +32,13 @@ func TestRunInitWritesScaffold(t *testing.T) {
 	mustWrite(t, designFolder, "api.craftgo", minimalDesignDSL)
 	mustWrite(t, dir, "go.mod", "module github.com/test/app\n\ngo 1.24\n")
 
-	if err := runGen([]string{"-f", designFolder, "-c", dir}); err != nil {
+	var err error
+	_, stderr := captureOutput(t, func() { err = runGen([]string{"-f", designFolder, "-c", dir}) })
+	if err != nil {
 		t.Fatalf("runGen on scaffold: %v", err)
+	}
+	if strings.Contains(stderr, "craftgo: warning:") {
+		t.Errorf("the init manifest raised warnings:\n%s", stderr)
 	}
 	for _, rel := range []string{
 		"main.go",
@@ -257,6 +263,36 @@ func TestRunGenDocAboveTheKeyword(t *testing.T) {
 	types, _ := os.ReadFile(filepath.Join(dir, "internal", "types", "api", "types.go"))
 	if !strings.Contains(string(types), "// Order is the order.\n") {
 		t.Errorf("types.go lacks the doc:\n%s", types)
+	}
+}
+
+// TestRunGenWarnsOnUnknownManifestKeys checks that gen names each manifest key
+// it ignores on stderr and still generates.
+func TestRunGenWarnsOnUnknownManifestKeys(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "go.mod", "module github.com/test/app\n\ngo 1.24\n")
+	mustWrite(t, dir, "design/craftgo.design.yaml", `output:
+  typs: ./gen/types
+openapi:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: Signed by the gateway
+`)
+	mustWrite(t, dir, "design/api.craftgo", minimalDesignDSL)
+	var err error
+	_, stderr := captureOutput(t, func() { err = runGen([]string{"-f", filepath.Join(dir, "design")}) })
+	if err != nil {
+		t.Fatalf("runGen: %v", err)
+	}
+	for _, key := range []string{"output.typs", "openapi.securitySchemes.bearer.description"} {
+		if !strings.Contains(stderr, "craftgo: warning: "+key+" ") {
+			t.Errorf("stderr does not warn about %s:\n%s", key, stderr)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "internal", "types", "api", "types.go")); err != nil {
+		t.Errorf("gen stopped at the warning: %v", err)
 	}
 }
 

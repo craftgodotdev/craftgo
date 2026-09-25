@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -90,6 +91,9 @@ func runGen(args []string) error {
 	cfg, projectRoot, designDir, err := findManifest(a)
 	if err != nil {
 		return err
+	}
+	for _, w := range cfg.Warnings {
+		fmt.Fprintln(os.Stderr, "craftgo: warning: "+w)
 	}
 	modulePath, err := config.ResolveModulePath(projectRoot)
 	if err != nil {

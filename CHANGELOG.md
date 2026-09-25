@@ -58,6 +58,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   embedded nats-server live in a module of their own, so the adapter no
   longer requires `nats-server`, whose Go 1.26 floor it inherited.
 
+- **An unknown manifest key is reported instead of dropped in silence.**
+  `craftgo gen` names each key of `craftgo.design.yaml` it does not read in
+  a warning on stderr (`craftgo: warning: output.typs is not a manifest key
+  and is ignored`), then generates. A removed key - `design`,
+  `output.services`, `output.consumeMiddleware`, `events.asyncapi` or an
+  event target's `layout` - no longer stops the run: it gets the same
+  warning, naming what replaced it.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

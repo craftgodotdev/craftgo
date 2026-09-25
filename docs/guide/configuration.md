@@ -64,6 +64,8 @@ openapi:
       bearerFormat: JWT
 ```
 
+A key the manifest does not declare - a misspelling, or a key craftgo no longer reads - is ignored, and `craftgo gen` names it in a warning on stderr.
+
 ### `output.*` paths
 
 All paths are relative to the **project root** (the parent of the design folder, the directory holding `go.mod`). Override any of them to relocate the corresponding artifact.

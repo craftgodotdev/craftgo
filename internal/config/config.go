@@ -11,6 +11,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -30,6 +32,9 @@ type Config struct {
 	// Package is the Go import path of the project root. Load leaves it
 	// empty; gen sets it from [ResolveModulePath].
 	Package string `yaml:"-"`
+	// Warnings names each manifest key Load ignored because no field declares
+	// it, with what replaced a removed key.
+	Warnings []string `yaml:"-"`
 }
 
 // Values of [Output.Kind].
@@ -153,8 +158,6 @@ type Events struct {
 type EventTarget struct {
 	Lang string `yaml:"lang"`
 	Out  string `yaml:"out"`
-	// Layout is rejected when set; the `output:` block places every artefact.
-	Layout map[string]any `yaml:"layout"`
 }
 
 // Language names accepted in [EventTarget.Lang].
@@ -352,18 +355,23 @@ func fileExists(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
-// Load reads, validates and defaults the manifest at path.
+// Load reads, validates and defaults the manifest at path. A key no field
+// declares is ignored and named in [Config.Warnings].
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	if err := checkRemovedKeys(data); err != nil {
-		return nil, err
+	var cfg Config
+	if err := doc.Decode(&cfg); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	for _, key := range undeclaredKeys(&doc, reflect.TypeFor[Config](), "") {
+		cfg.Warnings = append(cfg.Warnings, ignoredKeyWarning(key))
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -379,40 +387,98 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// removedKeys are keys Load rejects, each with the note its error carries.
-// Any other unknown key is ignored.
-var removedKeys = []struct{ key, note string }{
-	{"design", "a manifest holds its own design folder - generate each deployable from the design beside it"},
-	{"output.services", "a project generates every service its design declares"},
-	{"output.consumeMiddleware", "middleware is installed on the bus with bus.Use, or on one subscription through Subscription.Chain"},
-	{"events.asyncapi", "craftgo writes no asyncapi document"},
+// removedKeys are the keys the manifest no longer reads, each with what took
+// its place; a list index in a key reads `[]`.
+var removedKeys = map[string]string{
+	"design":                   "a manifest holds its own design folder - generate each deployable from the design beside it",
+	"output.services":          "a project generates every service its design declares",
+	"output.consumeMiddleware": "middleware is installed on the bus with bus.Use, or on one subscription through Subscription.Chain",
+	"events.asyncapi":          "craftgo writes no asyncapi document",
+	"events.targets[].layout":  "the go target places its artefacts through the `output:` block",
 }
 
-// checkRemovedKeys rejects a manifest that sets one of the removedKeys.
-func checkRemovedKeys(data []byte) error {
-	var doc map[string]any
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil
+// listIndex matches the index of a list item in a key path.
+var listIndex = regexp.MustCompile(`\[\d+\]`)
+
+// ignoredKeyWarning is the warning for key, a path [undeclaredKeys] returned.
+func ignoredKeyWarning(key string) string {
+	if note, ok := removedKeys[listIndex.ReplaceAllString(key, "[]")]; ok {
+		return fmt.Sprintf("%s is no longer a manifest key and is ignored - %s", key, note)
 	}
-	for _, removed := range removedKeys {
-		if hasKey(doc, strings.Split(removed.key, ".")) {
-			return fmt.Errorf("%s is no longer a manifest key - %s; drop it", removed.key, removed.note)
+	return fmt.Sprintf("%s is not a manifest key and is ignored", key)
+}
+
+// undeclaredKeys returns, in document order, the path of every mapping key
+// under node that t, the type node decodes into, declares no field for. A path
+// joins keys with dots and writes a list item as `[i]`: `events.targets[0].out`.
+func undeclaredKeys(node *yaml.Node, t reflect.Type, path string) []string {
+	if node.Kind == yaml.AliasNode {
+		node = node.Alias
+	}
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	var out []string
+	switch {
+	case node.Kind == yaml.DocumentNode:
+		for _, n := range node.Content {
+			out = append(out, undeclaredKeys(n, t, path)...)
+		}
+	case node.Kind == yaml.SequenceNode && t.Kind() == reflect.Slice:
+		for i, n := range node.Content {
+			out = append(out, undeclaredKeys(n, t.Elem(), fmt.Sprintf("%s[%d]", path, i))...)
+		}
+	case node.Kind == yaml.MappingNode && (t.Kind() == reflect.Struct || t.Kind() == reflect.Map):
+		var fields map[string]reflect.Type
+		if t.Kind() == reflect.Struct {
+			fields = yamlFields(t)
+		}
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key, val := node.Content[i], node.Content[i+1]
+			if key.Tag == "!!merge" {
+				// `<<: *anchor` or `<<: [*a, *b]` merges the anchored mappings in.
+				merged := []*yaml.Node{val}
+				if val.Kind == yaml.SequenceNode {
+					merged = val.Content
+				}
+				for _, m := range merged {
+					out = append(out, undeclaredKeys(m, t, path)...)
+				}
+				continue
+			}
+			sub := key.Value
+			if path != "" {
+				sub = path + "." + key.Value
+			}
+			switch {
+			case t.Kind() == reflect.Map:
+				out = append(out, undeclaredKeys(val, t.Elem(), sub)...)
+			case fields[key.Value] != nil:
+				out = append(out, undeclaredKeys(val, fields[key.Value], sub)...)
+			default:
+				out = append(out, sub)
+			}
 		}
 	}
-	return nil
+	return out
 }
 
-// hasKey reports whether the decoded manifest holds the nested key path.
-func hasKey(node any, path []string) bool {
-	m, ok := node.(map[string]any)
-	if !ok {
-		return false
+// yamlFields maps each key the struct t declares to its field's type, as
+// yaml.v3 names them: the tag's name, else the lower-cased field name.
+func yamlFields(t reflect.Type) map[string]reflect.Type {
+	fields := map[string]reflect.Type{}
+	for i := range t.NumField() {
+		f := t.Field(i)
+		name, _, _ := strings.Cut(f.Tag.Get("yaml"), ",")
+		if !f.IsExported() || name == "-" {
+			continue
+		}
+		if name == "" {
+			name = strings.ToLower(f.Name)
+		}
+		fields[name] = f.Type
 	}
-	v, ok := m[path[0]]
-	if !ok {
-		return false
-	}
-	return len(path) == 1 || hasKey(v, path[1:])
+	return fields
 }
 
 // validate checks the manifest as written, before defaults apply.
@@ -432,12 +498,8 @@ func (c *Config) validate() error {
 		}
 	}
 	for _, t := range c.Events.Targets {
-		key := "events.targets[" + t.Lang + "]"
-		if err := checkWithinProject(key+".out", t.Out); err != nil {
+		if err := checkWithinProject("events.targets["+t.Lang+"].out", t.Out); err != nil {
 			return err
-		}
-		if len(t.Layout) > 0 {
-			return fmt.Errorf("%s.layout: no target reads a `layout:` - the go target places its artefacts through the `output:` block", key)
 		}
 	}
 	switch c.Output.FileCase {
