@@ -2007,6 +2007,26 @@ service App {
 	}
 }
 
+// Two operations of one method on one OpenAPI path, the exact root `/{$}` and
+// the root `/`, stop the document with an error naming both.
+func TestOperationsSharingAnOpenAPIPathRefused(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{
+		"app/app.craftgo": `package app
+type Resp { ok bool }
+@prefix("/{$}")
+service S { get A / { response Resp } }
+service T { get B / { response Resp } }`,
+	})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	_, err := buildProjectDocument(proj, &config.Config{})
+	if err == nil || !strings.Contains(err.Error(), `OpenAPI path GET / holds two operations: S.A (GET /{$}) and T.B (GET /)`) {
+		t.Fatalf("want the shared path refused, got %v", err)
+	}
+}
+
 // A trailing {name...} variable is a string path parameter named name, which
 // the path template names; a raw operation declares it too.
 func TestRestVariableDocumentedAsItsName(t *testing.T) {

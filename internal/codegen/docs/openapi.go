@@ -105,10 +105,13 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	registry.resolver = semantic.PackageResolver(pkg)
 	names := &schemaNames{}
 	addSchemas(doc, pkg, registry, names)
-	addPaths(doc, pkg, registry, names)
+	shared := addPaths(doc, pkg, registry, names)
 	// Instances go last: schema and path emission register them.
 	emitGenericInstanceComponents(doc, pkg, registry, names)
 	addSecuritySchemes(doc, pkg, cfg)
+	if len(shared) > 0 {
+		return doc, fmt.Errorf("%s - a path of the document holds one operation per method, and a route ending in {$} is documented by the slash it matches; give one of them another route", strings.Join(shared, "; "))
+	}
 	if len(names.dups) > 0 {
 		return doc, fmt.Errorf("duplicate component schema name(s): %s - a user-declared type clashes with a generated name (a per-operation <Method>ReqBody/RespBody or a generic instance like PageOfX); rename the type or the method", strings.Join(slices.Compact(slices.Sorted(slices.Values(names.dups))), ", "))
 	}

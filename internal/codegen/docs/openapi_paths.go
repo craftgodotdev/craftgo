@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -15,11 +16,21 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// addPaths adds an operation per method of pkg, each under its route.
-func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
+// addPaths adds an operation per method of pkg, each under its route, and
+// describes each one it leaves out because its path holds an operation of
+// its method already.
+func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) (shared []string) {
+	held := map[string]string{}
 	for _, op := range operations(pkg) {
 		s := newOpShape(op.svc, op.m, route.Resolve("", op.svc.Primary, op.m), op.id, op.stem, pkg, registry.resolver)
 		path := route.OpenAPIPath(s.full)
+		verb := strings.ToUpper(op.m.Verb)
+		this := fmt.Sprintf("%s.%s (%s %s)", op.svc.Primary.Name, op.m.Name, verb, s.full)
+		if first, taken := held[verb+" "+path]; taken {
+			shared = append(shared, fmt.Sprintf("OpenAPI path %s %s holds two operations: %s and %s", verb, path, first, this))
+			continue
+		}
+		held[verb+" "+path] = this
 		item := doc.Paths.Value(path)
 		if item == nil {
 			item = &openapi3.PathItem{}
@@ -27,6 +38,7 @@ func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry,
 		}
 		setOperation(item, op.m.Verb, buildOperation(doc, op.svc, s, pkg, registry, names))
 	}
+	return shared
 }
 
 // operation is a method of a service of the merged package, with its
