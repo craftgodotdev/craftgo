@@ -508,6 +508,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@uniqueItems` on a map are no longer offered, and an error's fields are
   filtered like a type's.
 
+- **The editor offers what analysis accepts in a route variable and a
+  type.** `/{|}` offers the variables the request's fields bind, a mixin's
+  fields included and an `@path("name")` field under that name; it no
+  longer offers a `@nullable`, `@default` or `@sensitive` field, which
+  analysis rejects there. `pkg.|` in a type offers the package's types,
+  enums and scalars only, and go-to-definition on a field type that names a
+  service or an error finds nothing, as analysis finds no type.
+
 - **`@negative` or `@lt(0)` on an array of unsigned integers is reported
   once**, as a decorator on the wrong type; it also drew the unsigned-value
   error meant for a single number.

@@ -23,8 +23,6 @@ const (
 	AnyDecl = TypeDecls | EnumDecls | ScalarDecls | ErrorDecls | MiddlewareDecls | ServiceDecls | EventDecls
 	// TypeRefDecls are the kinds a type reference may name.
 	TypeRefDecls = TypeDecls | EnumDecls | ScalarDecls
-	// TypeShapeDecls leaves out the kinds that never name a type shape.
-	TypeShapeDecls = AnyDecl &^ MiddlewareDecls &^ EventDecls
 )
 
 // Decl returns the declaration of name among the selected kinds, or nil.

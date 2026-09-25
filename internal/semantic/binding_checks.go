@@ -39,7 +39,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
 			"field %s.%s: @%s cannot bind to a multi-dimensional array - a wire parameter carries repeated single values (`?x=1&x=2`), which has no nested form. Move the field to the JSON body or flatten to a single-level array.",
 			parent, f.Name, d.Name)
-	case kind == wire.BindPath && !a.isPathBindingType(f.Type):
+	case kind == wire.BindPath && !a.proj.pathBindable(a.pkg.Name, f.Type):
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType, msgBindPath, parent, f.Name, f.Type)
 	case kind == wire.BindCookie && f.Type.Array:
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType, msgBindCookieArray, parent, f.Name)
@@ -50,34 +50,28 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 	}
 }
 
-// isPathBindingType reports whether t can bind to `@path`: a wire-bindable
-// type that is neither optional nor an array.
-func (a *analyzer) isPathBindingType(t *ast.TypeRef) bool {
-	return a.pathBindableIn(a.pkg.Name, t)
-}
-
-// pathBindableIn is [analyzer.isPathBindingType] with bare type names
-// resolved in homePkg.
-func (a *analyzer) pathBindableIn(homePkg string, t *ast.TypeRef) bool {
+// pathBindable reports whether t, as package home spells it, can bind a
+// route variable: a wire-bindable type that is neither optional nor an array.
+func (p *Project) pathBindable(home string, t *ast.TypeRef) bool {
 	if t == nil || t.Optional || t.Array {
 		return false
 	}
-	return a.wireBindableIn(homePkg, t)
+	return p.wireBindable(home, t)
 }
 
 // isWireBindingType reports whether t can bind to a query, header or cookie:
 // a parseable primitive, a scalar or enum over one, or a 1-D array of them.
 func (a *analyzer) isWireBindingType(t *ast.TypeRef) bool {
-	return a.wireBindableIn(a.pkg.Name, t)
+	return a.proj.wireBindable(a.pkg.Name, t)
 }
 
-// wireBindableIn is [analyzer.isWireBindingType] with bare type names
-// resolved in homePkg - the package of the type that declares the field.
-func (a *analyzer) wireBindableIn(homePkg string, t *ast.TypeRef) bool {
+// wireBindable is [analyzer.isWireBindingType] with bare type names
+// resolved in home - the package of the type that declares the field.
+func (p *Project) wireBindable(home string, t *ast.TypeRef) bool {
 	if t == nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Args) > 0 || t.ArrayDepth > 1 {
 		return false
 	}
-	switch rt := a.elemFacts(homePkg, t); rt.Category {
+	switch rt := p.elemFacts(home, t); rt.Category {
 	case CatPrimitive, CatScalar:
 		return prims.IsWireParseable(rt.ResolvedPrim)
 	case CatEnum:
@@ -92,18 +86,18 @@ func (a *analyzer) isFormBindingType(t *ast.TypeRef) bool {
 	if t == nil || t.Named == nil {
 		return false
 	}
-	if a.elemFacts(a.pkg.Name, t).Category == CatFile {
+	if a.proj.elemFacts(a.pkg.Name, t).Category == CatFile {
 		return t.ArrayDepth <= 1
 	}
 	return a.isWireBindingType(t)
 }
 
-// elemFacts resolves t in homePkg, or the element of t when t is an array.
-func (a *analyzer) elemFacts(homePkg string, t *ast.TypeRef) ResolvedField {
+// elemFacts resolves t in home, or the element of t when t is an array.
+func (p *Project) elemFacts(home string, t *ast.TypeRef) ResolvedField {
 	if t.Array {
 		t = t.ElemTypeRef()
 	}
-	return resolveTypeRef(t, false, a.proj.Packages[homePkg], a.proj)
+	return resolveTypeRef(t, false, p.Packages[home], p)
 }
 
 // checkSingleBinding rejects every binding decorator on f after the first.
@@ -226,8 +220,49 @@ func (a *analyzer) checkAutoPathField(m *ast.Method) {
 	}
 }
 
-// autoPathFieldRule rejects `?`, `@nullable`, `@default` or a non-path type on
-// a field auto-bound to @path; the field's type resolves in package view.
+// pathFault is what keeps a field from binding a route variable.
+type pathFault uint8
+
+const (
+	pathBinds    pathFault = iota
+	pathOptional           // `T?`
+	pathNullable           // @nullable
+	pathDefault            // @default
+	pathType               // a type no route variable parses into
+)
+
+// pathFaultOf returns what keeps f, whose type package home spells, from
+// binding a route variable.
+func (p *Project) pathFaultOf(home string, f *ast.Field) pathFault {
+	switch {
+	case f.Type.Optional:
+		return pathOptional
+	case ast.HasDecorator(f.Decorators, "nullable"):
+		return pathNullable
+	case ast.HasDecorator(f.Decorators, "default"):
+		return pathDefault
+	case !p.pathBindable(home, f.Type):
+		return pathType
+	}
+	return pathBinds
+}
+
+// PathParam returns the route variable request field f binds: its @path
+// name, or its own name when it carries no binding decorator and no
+// @sensitive; f's type resolves in package home. ok is false when f binds
+// none or binding one is an error.
+func (p *Project) PathParam(home string, f *ast.Field) (name string, ok bool) {
+	if f == nil || f.Type == nil {
+		return "", false
+	}
+	if b, _ := wire.RequestFieldBinding(f, map[string]bool{f.Name: true}, false); b != wire.BindPath {
+		return "", false
+	}
+	return wire.WireName(f, wire.BindPath), p.pathFaultOf(home, f) == pathBinds
+}
+
+// autoPathFieldRule rejects a field auto-bound to @path that
+// [Project.pathFaultOf] faults; the field's type resolves in package view.
 func (a *analyzer) autoPathFieldRule(reqName, view string, pathSegs map[string]bool, f *ast.Field) {
 	if f == nil || f.Type == nil {
 		return
@@ -235,20 +270,20 @@ func (a *analyzer) autoPathFieldRule(reqName, view string, pathSegs map[string]b
 	if b, auto := wire.RequestFieldBinding(f, pathSegs, false); b != wire.BindPath || !auto {
 		return
 	}
-	switch {
-	case f.Type.Optional:
+	switch a.proj.pathFaultOf(view, f) {
+	case pathOptional:
 		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDecoratorConflict,
 			"field %s.%s auto-binds to the path segment {%s}, which a matched route always supplies - drop the optional `?` (a path parameter is never absent).",
 			reqName, f.Name, f.Name)
-	case ast.HasDecorator(f.Decorators, "nullable"):
+	case pathNullable:
 		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDecoratorConflict,
 			"field %s.%s auto-binds to the path segment {%s}, but @nullable makes it a pointer while the path binder writes a plain string - drop @nullable (a path parameter has no null form).",
 			reqName, f.Name, f.Name)
-	case ast.HasDecorator(f.Decorators, "default"):
+	case pathDefault:
 		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDecoratorConflict,
 			"field %s.%s auto-binds to the path segment {%s}, which is always supplied, so @default can never apply - drop it.",
 			reqName, f.Name, f.Name)
-	case !a.pathBindableIn(view, f.Type):
+	case pathType:
 		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
 			"field %s.%s auto-binds to the path segment {%s}, but @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s",
 			reqName, f.Name, f.Name, f.Type.String())

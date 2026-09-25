@@ -429,12 +429,12 @@ func TestCompletionItemIsOnePerDeclaration(t *testing.T) {
 		return byLabel
 	}
 	head := "package app\n\nimport \"shared\"\n\n"
-	mwArg := complete(head + "service S {\n\t@middlewares(|)\n\tget G /g {}\n}\n")
 	member := complete(head + "type T {\n\tm shared.|\n}\n")
 	typeSlot := complete(head + "type T {\n\tm |\n}\n")
+	mixin := complete(head + "type T {\n\ta int\n\t|\n}\n")
 	for _, c := range []struct{ a, b protocol.CompletionItem }{
-		{mwArg["Auth"], member["Auth"]},
 		{member["Money"], typeSlot["shared.Money"]},
+		{typeSlot["shared.Money"], mixin["shared.Money"]},
 	} {
 		if c.a.Label == "" || c.b.Label == "" || c.a.Kind != c.b.Kind || c.a.Detail != c.b.Detail || c.a.Documentation != c.b.Documentation {
 			t.Errorf("items differ:\n%+v\n%+v", c.a, c.b)
@@ -797,6 +797,70 @@ func TestCompletionPathParameterWithoutRequestStaysSilent(t *testing.T) {
 	if items := mustCompletionsAtCursor(t, "t.craftgo", src); len(items) != 0 {
 		t.Errorf("expected no completions without a request clause, got %v", labelSet(items))
 	}
+}
+
+// `/{|}` offers a route variable exactly when the analyser binds it to a
+// request field, a mixin's included, without an error.
+func TestCompletionPathParameterAgreesWithTheAnalyser(t *testing.T) {
+	cases := []struct {
+		types  string
+		params []string
+	}{
+		{
+			types: "enum Kind { A }\nscalar Blob bytes\ntype IDs { tenant string }\ntype Req {\n\tIDs\n\tid string @nullable\n" +
+				"\tsku string @sensitive\n\tn int @default(3)\n\tok string\n\tkind Kind\n\tblob Blob\n\topt string?\n" +
+				"\ttags string[]\n\tq string @query\n}\n",
+			params: []string{"tenant", "id", "sku", "n", "ok", "kind", "blob", "opt", "tags", "q"},
+		},
+		{
+			types:  "type Req {\n\tcode string @path(\"sku\")\n}\n",
+			params: []string{"sku", "code"},
+		},
+	}
+	for _, c := range cases {
+		route := func(param string) string {
+			return "package x\n\n" + c.types + "service S {\n\tpost A /store/{" + param + "} { request Req }\n}\n"
+		}
+		offered := labelSet(mustCompletionsAtCursor(t, "t.craftgo", route(cursorMark)))
+		for _, param := range c.params {
+			clean := true
+			for _, d := range bufferDiagnostics(route(param)) {
+				if d.Severity == protocol.DiagnosticSeverityError {
+					clean = false
+				}
+			}
+			if offered[param] != clean {
+				t.Errorf("{%s}: offered %v, but the analyser binds it cleanly: %v", param, offered[param], clean)
+			}
+		}
+	}
+}
+
+// `pkg.|` in a type position offers the types, enums and scalars of pkg.
+func TestCompletionPackageMembersInATypePosition(t *testing.T) {
+	design := designProject(t, map[string]string{
+		"shared/shared.craftgo": "package shared\n\ntype Addr { city string }\nenum Kind { A }\nscalar Email string\n" +
+			"middleware Auth\nerror NotFound Gone\nservice Svc { get G /g {} }\nevent Moved { payload Addr }\n",
+	})
+	src, pos := markCursor(t, "package app\n\nimport \"shared\"\n\ntype User {\n\thome shared.|\n}\n")
+	path := filepath.Join(design, "app", "app.craftgo")
+	mustWrite(t, path, src)
+	u := uri.File(path)
+	items := completionItems(t, &server{docs: map[uri.URI]string{u: src}}, u, pos)
+	expectLabels(t, items, "Addr", "Kind", "Email")
+	expectNoLabels(t, items, "Auth", "Gone", "Svc", "Moved")
+}
+
+// designProject writes a manifest and files, keyed by their path under the
+// design folder, and returns the design folder.
+func designProject(t *testing.T, files map[string]string) string {
+	t.Helper()
+	design := filepath.Join(t.TempDir(), "design")
+	mustWrite(t, filepath.Join(design, "craftgo.design.yaml"), layoutOnly)
+	for rel, src := range files {
+		mustWrite(t, filepath.Join(design, filepath.FromSlash(rel)), src)
+	}
+	return design
 }
 
 // `@default(|)` offers an enum's values, or true and false for a bool or a
@@ -1223,6 +1287,36 @@ func callHandler(t *testing.T, s *server, method string, params any) (any, error
 	return result, replyErr
 }
 
+// definitionAt answers `textDocument/definition` at the cursor mark of
+// marked, open outside any project.
+func definitionAt(t *testing.T, marked string) []protocol.Location {
+	t.Helper()
+	src, pos := markCursor(t, marked)
+	u := uri.New("file:///t.craftgo")
+	res, err := callHandler(t, &server{docs: map[uri.URI]string{u: src}}, protocol.MethodTextDocumentDefinition,
+		protocol.DefinitionParams{TextDocumentPositionParams: docAt(u, pos)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res.([]protocol.Location)
+}
+
+// A type position names a type, an enum or a scalar; an error's own name
+// still resolves to the error.
+func TestDefinitionTypePositionNamesTypesOnly(t *testing.T) {
+	const design = "package x\n\nerror NotFound Gone\nservice Svc { get G /g {} }\ntype H {\n\ta Gone\n\tb Svc\n}\n"
+	for _, field := range []string{"a Gone", "b Svc"} {
+		marked := strings.Replace(design, field, field[:3]+cursorMark+field[3:], 1)
+		if locs := definitionAt(t, marked); len(locs) != 0 {
+			t.Errorf("`%s` is no type reference, yet definition answers %+v", field, locs)
+		}
+	}
+	locs := definitionAt(t, strings.Replace(design, "NotFound Gone", "NotFound Go"+cursorMark+"ne", 1))
+	if len(locs) != 1 || locs[0].Range.Start.Line != 2 {
+		t.Errorf("the error's own name resolves to %+v, want the error on line 3", locs)
+	}
+}
+
 // Inside `@middlewares(...)` a name resolves to the middleware, not to a
 // same-named error.
 func TestDefinitionPrefersKindFromDecoratorContext(t *testing.T) {
@@ -1285,10 +1379,10 @@ type Holder { g Greeter }
 			break
 		}
 	}
-	if kind := lookupKindAt(view, view.cursorAt(fieldTypePos)); kind != semantic.TypeShapeDecls {
-		t.Errorf("expected type-shape kinds for field-type position, got %v", kind)
+	if kind := lookupKindAt(view, view.cursorAt(fieldTypePos)); kind != semantic.TypeRefDecls {
+		t.Errorf("expected the type-reference kinds for a field-type position, got %v", kind)
 	}
-	d := lookupIn(t, "x", "Greeter", semantic.TypeShapeDecls, view.file)
+	d := lookupIn(t, "x", "Greeter", semantic.TypeRefDecls, view.file)
 	if d == nil {
 		t.Fatal("type-context lookup returned nil")
 	}

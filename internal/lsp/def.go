@@ -96,22 +96,26 @@ func lookupKindAt(view snapshotView, c cursor) semantic.DeclKind {
 		}
 		return semantic.AnyDecl
 	}
-	if isServiceHeaderPosition(view, c.at) {
-		return semantic.ServiceDecls
+	if kinds, ok := headerKinds(view, c.at); ok {
+		return kinds
 	}
 	if isTypeShapePosition(view, c.at) {
-		return semantic.TypeShapeDecls
+		return semantic.TypeRefDecls
 	}
 	return semantic.AnyDecl
 }
 
-// isServiceHeaderPosition reports whether token idx is the name in a
-// `service X` or `extend service X` header.
-func isServiceHeaderPosition(view snapshotView, idx int) bool {
-	if idx <= 0 || idx >= len(view.tokens) {
-		return false
+// headerKinds returns the kinds of the declaration a header names at token
+// idx: a service in `service X` and `extend service X`, an error in
+// `error Category X`.
+func headerKinds(view snapshotView, idx int) (semantic.DeclKind, bool) {
+	switch {
+	case view.kind(idx-1) == lexer.KwService:
+		return semantic.ServiceDecls, true
+	case view.kind(idx-1) == lexer.Ident && view.kind(idx-2) == lexer.KwError:
+		return semantic.ErrorDecls, true
 	}
-	return view.tokens[idx-1].Kind == lexer.KwService
+	return 0, false
 }
 
 // isTypeShapePosition reports whether token idx names a type (a field type, a

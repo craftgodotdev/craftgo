@@ -124,8 +124,8 @@ func packageItems(names map[string]int, detail string) []protocol.CompletionItem
 	return out
 }
 
-// packageDeclCompletions offers every declaration of package pkg except its
-// errors, for `pkg.|`.
+// packageDeclCompletions offers the declarations of package pkg a type
+// reference can name, for `pkg.|`.
 func (r *request) packageDeclCompletions(pkg string) []protocol.CompletionItem {
 	v := r.project()
 	p := v.proj.Packages[pkg]
@@ -133,7 +133,7 @@ func (r *request) packageDeclCompletions(pkg string) []protocol.CompletionItem {
 		return nil
 	}
 	var out []protocol.CompletionItem
-	for _, d := range p.Decls(semantic.AnyDecl &^ semantic.ErrorDecls) {
+	for _, d := range p.Decls(semantic.TypeRefDecls) {
 		out = append(out, declItem(d, pkg, v.currentPackage()))
 	}
 	return out

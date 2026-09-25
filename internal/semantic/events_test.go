@@ -221,7 +221,7 @@ event lowered { payload P }`, CodeDeclNameCase)
 	}
 }
 
-// Decl lookups return events under EventDecls, never under TypeShapeDecls.
+// Decl lookups return events under EventDecls, never under TypeRefDecls.
 func TestEventsAreALookupKind(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"upstream/upstream.craftgo": `package upstream
@@ -245,9 +245,9 @@ event Shipped { payload P }`,
 			t.Errorf("Decls(EventDecls) missing %q: %v", want, names)
 		}
 	}
-	for _, d := range pkg.Decls(TypeShapeDecls) {
+	for _, d := range pkg.Decls(TypeRefDecls) {
 		if d.DeclName() == "PaymentSettled" {
-			t.Error("an event is offered in a type-shape position")
+			t.Error("an event is offered in a type position")
 		}
 	}
 	if d := pkg.Decl("PaymentSettled", EventDecls); d == nil {

@@ -1,6 +1,10 @@
 package semantic
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/craftgodotdev/craftgo/internal/ast"
+)
 
 // A multi-dimensional array field that auto-binds to @query is rejected, like an explicit one.
 func TestAutoQueryMultiDimArrayRejected(t *testing.T) {
@@ -62,6 +66,32 @@ service S { get G /it/{id} { request R } }`, CodeDecoratorConflict)
 service S { post P /it/{id} { request R } }`, CodeDecoratorConflict)
 	expectError(t, `type R { id string @default("x") }
 service S { get G /it/{id} { request R } }`, CodeDecoratorConflict)
+}
+
+// PathParam names the route variable a request field binds without an error:
+// its @path name, else its own when no other binding claims it.
+func TestPathParam(t *testing.T) {
+	proj, _ := AnalyzeProject(parseFiles(t, `enum Kind { A }
+scalar Slug string
+type Req {
+	ok string
+	kind Kind
+	slug Slug
+	code string @path("sku")
+	id string @nullable
+	sec string @sensitive
+	n int @default(3)
+	opt string?
+	tags string[]
+	q string @query
+}`), Options{})
+	want := map[string]string{"ok": "ok", "kind": "kind", "slug": "slug", "code": "sku"}
+	for _, f := range ast.Fields(proj.Packages["test"].Types["Req"].Body) {
+		name, ok := proj.PathParam("test", f)
+		if ok != (want[f.Name] != "") || ok && name != want[f.Name] {
+			t.Errorf("%s: PathParam = %q, %v; want %q", f.Name, name, ok, want[f.Name])
+		}
+	}
 }
 
 // A plain string auto-@path field is accepted.

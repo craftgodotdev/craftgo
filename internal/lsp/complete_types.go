@@ -59,9 +59,10 @@ func boolLiteralCompletions() []protocol.CompletionItem {
 	}
 }
 
-// pathParamCompletions answers `/{|}` with the request fields that can bind a
-// path segment and are not in the template yet; nil without a request clause.
-// The clause is read from tokens: the parser takes an unfinished `{}` for the body.
+// pathParamCompletions answers `/{|}` with the route variables the request's
+// fields, mixin fields included, bind and the template does not name yet; nil
+// without a request clause. The clause is read from tokens: the parser takes
+// an unfinished `{}` for the body.
 func (r *request) pathParamCompletions(brace int) []protocol.CompletionItem {
 	view := r.view()
 	name := requestTypeAfter(view, brace)
@@ -73,19 +74,24 @@ func (r *request) pathParamCompletions(brace int) []protocol.CompletionItem {
 	if !ok {
 		return nil
 	}
+	qualifier, _, qualified := strings.Cut(name, ".")
+	if !qualified {
+		qualifier = ""
+	}
+	current := v.currentPackage()
 	used := pathParamsBefore(view, brace)
 	var out []protocol.CompletionItem
-	for _, mem := range td.Body {
-		f, ok := mem.(*ast.Field)
-		if !ok || used[f.Name] || !pathBindableField(v, f) {
+	for _, ff := range semantic.FlattenFields(td, qualifier, semantic.NewResolver(v.proj, current), nil) {
+		param, ok := v.proj.PathParam(current, ff.Field)
+		if !ok || used[param] {
 			continue
 		}
 		out = append(out, protocol.CompletionItem{
-			Label:         f.Name,
+			Label:         param,
 			Kind:          protocol.CompletionItemKindField,
-			Detail:        f.Type.String() + " - field of " + td.Name,
-			Documentation: strings.Join(f.Doc, "\n"),
-			InsertText:    f.Name,
+			Detail:        ff.Field.Type.String() + " - field of " + td.Name,
+			Documentation: strings.Join(ff.Field.Doc, "\n"),
+			InsertText:    param,
 		})
 	}
 	return out
@@ -123,32 +129,6 @@ func pathParamsBefore(view snapshotView, i int) map[string]bool {
 		}
 	}
 	return used
-}
-
-// pathBindableField reports whether f can bind a `{param}`: a required,
-// non-array, non-map field with no other binding decorator, whose type is a
-// wire-parseable built-in, an enum or a scalar over one.
-func pathBindableField(v projectView, f *ast.Field) bool {
-	t := f.Type
-	if t == nil || t.Named == nil || t.Map != nil || t.Array || t.Optional {
-		return false
-	}
-	for _, d := range []string{"query", "header", "cookie", "body", "form"} {
-		if ast.HasDecorator(f.Decorators, d) {
-			return false
-		}
-	}
-	name := t.Named.Name.String()
-	if prims.Is(name) {
-		return prims.IsWireParseable(name)
-	}
-	switch d := v.lookup(name, semantic.EnumDecls|semantic.ScalarDecls).(type) {
-	case *ast.EnumDecl:
-		return true
-	case *ast.ScalarDecl:
-		return prims.IsWireParseable(d.Primitive)
-	}
-	return false
 }
 
 // serviceNameCompletions offers the primary services of the buffer's package,
@@ -251,7 +231,7 @@ func (r *request) errorNameCompletions() []protocol.CompletionItem {
 func (r *request) typeCompletionsProjectWide() []protocol.CompletionItem {
 	items := primitiveCompletions()
 	items = append(items, keywordCompletions("map")...)
-	items = append(items, r.declCompletions(typePositionDecls)...)
+	items = append(items, r.declCompletions(semantic.TypeRefDecls)...)
 	return items
 }
 
@@ -281,9 +261,6 @@ func scalarPrimitiveCompletions() []protocol.CompletionItem {
 	}
 	return out
 }
-
-// typePositionDecls is the set of declaration kinds a field's type may name.
-const typePositionDecls = semantic.TypeDecls | semantic.EnumDecls | semantic.ScalarDecls
 
 // clauseTypeCompletions offers the `type` declarations, the only kind a
 // `request`, `response` or `payload` clause accepts.

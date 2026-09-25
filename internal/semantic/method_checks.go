@@ -223,7 +223,7 @@ func (a *analyzer) checkMultipartTextParts(svcName string, m *ast.Method, decs [
 				"field %s.%s: on the %s %s handler this rides a multipart form part (the request carries a file), but it is an optional type parameter over an array, whose Go value is a pointer to a slice the form binder cannot fill - drop the `?` from the type parameter (an array is already nilable)",
 				reqName, f.Name, verb, svcName)
 		case ast.HasDecorator(f.Decorators, wire.BindingForm):
-		case !a.wireBindableIn(view, f.Type):
+		case !a.proj.wireBindable(view, f.Type):
 			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
 				"field %s.%s: on the %s %s handler this rides a multipart form part (the request carries a file), but %s is no form value - a part carries string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or a single-level array of those (no maps, structs, generic instantiations or nested arrays); split it into such fields, or send it in a request without a file",
 				reqName, f.Name, verb, svcName, f.Type.String())
@@ -266,7 +266,7 @@ func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName, view string, pat
 			reqName, f.Name, verb, svcName)
 		return
 	}
-	if !a.wireBindableIn(view, f.Type) {
+	if !a.proj.wireBindable(view, f.Type) {
 		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
 			"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but %s can't ride a query string - switch to a body verb (POST/PUT/PATCH) so it rides @body, give it an explicit binding, or change the type",
 			reqName, f.Name, verb, svcName, f.Type.String())
