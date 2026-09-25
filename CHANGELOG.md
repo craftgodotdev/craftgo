@@ -577,6 +577,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   parameter named like a type two packages declare stays a parameter, where
   the generic's instance referred to one of those types.
 
+- **A raw request declares its `@prefix` path variables in OpenAPI.** A
+  `@rawRequest` or `@passthrough` method without a `request` block declared
+  only the variables of its own path, so under `@prefix("/orgs/{org}")`
+  `{org}` went undeclared and the document was invalid.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

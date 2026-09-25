@@ -5,6 +5,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -127,6 +128,45 @@ func TestOpenAPI_RawModesContracts(t *testing.T) {
 
 	if !strings.Contains(doc, "PageOfRqItem:") {
 		t.Errorf("cross-package generic response on a raw request must register its instance component")
+	}
+}
+
+// Every operation declares each variable of its path, and only those, as a
+// path parameter: a raw request's route, @prefix included, too.
+func TestOpenAPI_EveryPathVariableIsDeclared(t *testing.T) {
+	var doc struct {
+		Paths map[string]map[string]struct {
+			Parameters []struct {
+				In   string `yaml:"in"`
+				Name string `yaml:"name"`
+			} `yaml:"parameters"`
+		} `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal([]byte(readOpenAPI(t)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := doc.Paths["/tenant/{tenantID}/export/{format}"]["get"]; !ok {
+		t.Fatal("the raw ExportTenantItems operation is missing")
+	}
+	vars := regexp.MustCompile(`\{([^}]+)\}`)
+	for path, item := range doc.Paths {
+		var want []string
+		for _, m := range vars.FindAllStringSubmatch(path, -1) {
+			want = append(want, m[1])
+		}
+		slices.Sort(want)
+		for verb, op := range item {
+			var got []string
+			for _, p := range op.Parameters {
+				if p.In == "path" {
+					got = append(got, p.Name)
+				}
+			}
+			slices.Sort(got)
+			if !slices.Equal(got, want) {
+				t.Errorf("%s %s declares path parameters %v, want %v", strings.ToUpper(verb), path, got, want)
+			}
+		}
 	}
 }
 

@@ -28,7 +28,7 @@ func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry,
 				item = &openapi3.PathItem{}
 				doc.Paths.Set(full, item)
 			}
-			op := buildOperation(svcName, m, pkg, registry, base)
+			op := buildOperation(svcName, m, pkg, registry, full, base)
 			setOperation(item, m.Verb, op)
 		}
 	}

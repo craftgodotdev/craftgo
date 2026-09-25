@@ -11049,6 +11049,29 @@ paths:
           description: Created
       tags:
       - strings
+  /tenant/{tenantID}/export/{format}:
+    get:
+      description: Export a tenant's items in a format logic picks. Logic reads the
+        raw request; the document declares tenantID and format as path parameters.
+      operationId: ExportTenantItems
+      parameters:
+      - in: path
+        name: tenantID
+        required: true
+        schema:
+          type: string
+      - in: path
+        name: format
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*': {}
+          description: OK
+      tags:
+      - prefixvar
   /tenant/{tenantID}/items:
     get:
       description: List a tenant's items. tenantID auto-binds to the @prefix path

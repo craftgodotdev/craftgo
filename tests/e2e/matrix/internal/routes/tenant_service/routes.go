@@ -17,4 +17,5 @@ import (
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/tenant/{tenantID}/items", transport.ListTenantItems(svcCtx))
 	srv.Handle("POST /api/tenant/{tenantID}/items", transport.CreateTenantItem(svcCtx))
+	srv.Handle("GET /api/tenant/{tenantID}/export/{format}", transport.ExportTenantItems(svcCtx))
 }

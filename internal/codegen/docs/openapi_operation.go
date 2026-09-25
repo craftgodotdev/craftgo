@@ -12,6 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
@@ -31,7 +32,7 @@ func isMultipartRequest(m *ast.Method, pkg *semantic.Package, r *semantic.Resolv
 	return len(files) > 0
 }
 
-func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string) *openapi3.Operation {
+func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, full, base string) *openapi3.Operation {
 	svc := pkg.Services[svcName]
 	decs := svc.Decorators(m)
 	op := &openapi3.Operation{
@@ -103,7 +104,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		}
 	}
 	if m.Request == nil && rawReq {
-		op.Parameters = rawPathParams(m)
+		op.Parameters = rawPathParams(full)
 	}
 	switch {
 	case m.Response != nil && m.Response.Type != nil:
@@ -313,19 +314,13 @@ func errorRefsFromDecorators(ds []*ast.Decorator) []string {
 	return out
 }
 
-// rawPathParams declares each `{name}` segment of m's path as a string path
-// parameter.
-func rawPathParams(m *ast.Method) openapi3.Parameters {
-	if m.Path == nil {
-		return nil
-	}
+// rawPathParams declares each variable of route full, the service @prefix's
+// included, as a string path parameter.
+func rawPathParams(full string) openapi3.Parameters {
 	var params openapi3.Parameters
-	for _, seg := range m.Path.Segments {
-		if !seg.Param {
-			continue
-		}
+	for _, name := range route.Vars(full) {
 		params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
-			Name:     seg.Literal,
+			Name:     name,
 			In:       wire.BindPath.String(),
 			Required: true,
 			Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{
