@@ -1,7 +1,7 @@
 package lsp
 
 import (
-	"os"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -23,7 +23,7 @@ type T {
 }
 `
 	// Cursor between the parens of `@default()`.
-	items := mustCompletionsAt(t, "t.craftgo", src, 3, 21)
+	items := mustCompletionsAt(t, src, 3, 21)
 	if len(items) != 3 {
 		t.Fatalf("expected 3 enum-value completions, got %d: %+v", len(items), items)
 	}
@@ -39,7 +39,7 @@ service S {
 }
 `
 	// Cursor between the parens of @timeout(|).
-	items := mustCompletionsAt(t, "t.craftgo", src, 2, 10)
+	items := mustCompletionsAt(t, src, 2, 10)
 	if len(items) == 0 {
 		t.Fatal("expected duration preset completions")
 	}
@@ -55,7 +55,7 @@ service S {
 }
 `
 	// `@timeout(10|)`: column 12.
-	items := mustCompletionsAt(t, "t.craftgo", src, 2, 12)
+	items := mustCompletionsAt(t, src, 2, 12)
 	if len(items) == 0 {
 		t.Fatal("expected partial-aware duration completions")
 	}
@@ -75,7 +75,7 @@ service S {
 	get G /g {}
 }
 `
-	items := mustCompletionsAt(t, "t.craftgo", src, 2, 16)
+	items := mustCompletionsAt(t, src, 2, 16)
 	if len(items) == 0 {
 		t.Fatal("expected partial-aware size completions")
 	}
@@ -91,7 +91,7 @@ type T {
 }
 `
 	// Cursor right after the `@` on line 3.
-	items := mustCompletionsAt(t, "t.craftgo", src, 3, 12)
+	items := mustCompletionsAt(t, src, 3, 12)
 	if len(items) == 0 {
 		t.Fatal("expected completion items after @ at field site")
 	}
@@ -102,7 +102,7 @@ type T {
 // decorators that apply to every type.
 func TestCompletionOnARawBytesFieldOffersNoValidator(t *testing.T) {
 	src := "package x\n\ntype T {\n\tpayload bytes @format(raw) @\n}\n"
-	items := mustCompletionsAt(t, "t.craftgo", src, 3, 28)
+	items := mustCompletionsAt(t, src, 3, 28)
 	expectNoLabels(t, items,
 		"length", "minLength", "maxLength", "pattern",
 		"gt", "gte", "lt", "lte", "range", "positive", "negative", "multipleOf",
@@ -113,20 +113,20 @@ func TestCompletionOnARawBytesFieldOffersNoValidator(t *testing.T) {
 // A plain `bytes` field still offers the text validators.
 func TestCompletionOnAPlainBytesFieldStillOffersTextValidators(t *testing.T) {
 	src := "package x\n\ntype T {\n\tpayload bytes @\n}\n"
-	items := mustCompletionsAt(t, "t.craftgo", src, 3, 16)
+	items := mustCompletionsAt(t, src, 3, 16)
 	expectLabels(t, items, "format", "minLength", "maxLength")
 }
 
 // `@format(|)` offers `raw` beside the string formats.
 func TestCompletionFormatArgOffersRaw(t *testing.T) {
 	src := "package x\n\ntype T {\n\tpayload bytes @format(\n}\n"
-	items := mustCompletionsAt(t, "t.craftgo", src, 3, 23)
+	items := mustCompletionsAt(t, src, 3, 23)
 	expectLabels(t, items, "raw", "email", "uuid")
 }
 
 // A field's type slot offers every built-in, `datetime` included.
 func TestCompletionTypePositionOffersBuiltins(t *testing.T) {
-	items := mustCompletionsAtCursor(t, "t.craftgo", "package x\n\ntype User {\n    home |\n}\n")
+	items := mustCompletionsAtCursor(t, "package x\n\ntype User {\n    home |\n}\n")
 	expectLabels(t, items, "datetime", "bytes", "any", "string")
 }
 
@@ -134,18 +134,17 @@ func TestCompletionTypePositionOffersBuiltins(t *testing.T) {
 // extend it drops @prefix and @operationId and keeps @group.
 func TestCompletionServiceDecoratorSite(t *testing.T) {
 	primary := "package x\n\n@\nservice S {\n  get A /a {}\n}\n"
-	items := mustCompletionsAt(t, "t.craftgo", primary, 2, 1)
+	items := mustCompletionsAt(t, primary, 2, 1)
 	expectLabels(t, items, "prefix", "group", "middlewares", "tags", "security")
 
 	extend := "package x\n\nservice S { get A /a {} }\n\n@\nextend service S {\n  get B /b {}\n}\n"
-	eitems := mustCompletionsAt(t, "t.craftgo", extend, 4, 1)
+	eitems := mustCompletionsAt(t, extend, 4, 1)
 	expectLabels(t, eitems, "group", "middlewares", "tags", "security")
 	expectNoLabels(t, eitems, "prefix", "operationId")
 }
 
 // `@security(|)` offers the manifest's security schemes, detailed by type.
 func TestCompletionSecuritySchemeAtArgOne(t *testing.T) {
-	t.Helper()
 	// A manifest declaring two security schemes.
 	root := t.TempDir()
 	yaml := `package: example.com/m
@@ -164,17 +163,10 @@ openapi:
       in: header
       name: X-API-Key
 `
-	if err := os.WriteFile(filepath.Join(root, "craftgo.design.yaml"), []byte(yaml), 0o644); err != nil {
-		t.Fatalf("write manifest: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(root, "design"), 0o755); err != nil {
-		t.Fatalf("mkdir design: %v", err)
-	}
+	mustWrite(t, filepath.Join(root, "craftgo.design.yaml"), yaml)
 	src := "package x\n\n@security(\nservice S {}"
 	srcPath := filepath.Join(root, "design", "t.craftgo")
-	if err := os.WriteFile(srcPath, []byte(src), 0o644); err != nil {
-		t.Fatalf("write source: %v", err)
-	}
+	mustWrite(t, srcPath, src)
 	fileURI := uri.File(srcPath)
 	srv := &server{docs: map[uri.URI]string{fileURI: src}}
 	// Cursor right after `@security(`.
@@ -185,7 +177,7 @@ openapi:
 	}
 	for _, name := range []string{"bearer", "apiKey"} {
 		if _, ok := got[name]; !ok {
-			t.Errorf("expected scheme %q in completions, got labels %v", name, keys(got))
+			t.Errorf("expected scheme %q in completions, got labels %v", name, slices.Sorted(maps.Keys(got)))
 		}
 	}
 	if got["bearer"] != "http bearer" {
@@ -201,21 +193,10 @@ func TestCompletionSecuritySchemeNoManifest(t *testing.T) {
 	root := t.TempDir()
 	src := "package x\n\n@security(\nservice S {}"
 	srcPath := filepath.Join(root, "t.craftgo")
-	if err := os.WriteFile(srcPath, []byte(src), 0o644); err != nil {
-		t.Fatalf("write source: %v", err)
-	}
+	mustWrite(t, srcPath, src)
 	fileURI := uri.File(srcPath)
 	srv := &server{docs: map[uri.URI]string{fileURI: src}}
 	_ = completionItems(t, srv, fileURI, protocol.Position{Line: 2, Character: 10})
-}
-
-// keys returns the keys of m in map order.
-func keys(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
 }
 
 // A declaration completes as one item in every slot that offers it; a type
@@ -283,7 +264,7 @@ func TestCompletionSuppressedAfterOpenBrace(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {
-			items := mustCompletionsAt(t, "t.craftgo", c.src, uint32(c.line), uint32(c.col))
+			items := mustCompletionsAt(t, c.src, uint32(c.line), uint32(c.col))
 			if len(items) != 0 {
 				t.Errorf("expected no completions right after `{`, got %d items: %v", len(items), labelSet(items))
 			}
@@ -337,7 +318,7 @@ func TestCompletionJustOpenedBlockOffersItsKeys(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {
-			items := mustCompletionsAt(t, "t.craftgo", c.src, uint32(c.line), uint32(c.col))
+			items := mustCompletionsAt(t, c.src, uint32(c.line), uint32(c.col))
 			expectLabels(t, items, c.want...)
 			expectNoLabels(t, items, c.banned...)
 		})
@@ -353,7 +334,7 @@ func TestCompletionTypePositionExcludesErrors(t *testing.T) {
 		"    ref \n" +
 		"}\n"
 	// Cursor right after `    ref `: line 5, character 8.
-	items := mustCompletionsAt(t, "t.craftgo", src, 5, 8)
+	items := mustCompletionsAt(t, src, 5, 8)
 	for _, it := range items {
 		if it.Label == "MissingErr" {
 			t.Errorf("error declaration leaked into type-position completions: %+v", it)
@@ -381,7 +362,7 @@ func TestCompletionTypeSlots(t *testing.T) {
 	}
 	for label, body := range cases {
 		t.Run(label, func(t *testing.T) {
-			items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+body)
+			items := mustCompletionsAtCursor(t, typeSlotFixtures+body)
 			expectLabels(t, items, "string", "int", "bytes", "datetime", "any", "file", "map", "Address", "Kind", "Flag")
 			// `object` is legal only inside `@example({...})`.
 			expectNoLabels(t, items, "object", "service", "middleware", "extend")
@@ -397,7 +378,7 @@ func TestCompletionClauseSlotsOfferMessageTypes(t *testing.T) {
 		"event payload":   "event Moved {\n    payload |\n}\n",
 	} {
 		t.Run(label, func(t *testing.T) {
-			items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+body)
+			items := mustCompletionsAtCursor(t, typeSlotFixtures+body)
 			expectLabels(t, items, "Address")
 			expectNoLabels(t, items, "string", "int", "bytes", "datetime", "any", "file",
 				"Kind", "Flag", "map", "object", "get", "request", "response", "payload")
@@ -448,7 +429,7 @@ func TestCompletionTypePositionNotInOtherSlots(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {
-			items := mustCompletionsAtCursor(t, "t.craftgo", c.src)
+			items := mustCompletionsAtCursor(t, c.src)
 			expectNoLabels(t, items, "string", "int", "bytes", "datetime")
 			expectLabels(t, items, c.want...)
 		})
@@ -462,7 +443,7 @@ func TestCompletionSuppressedAfterTypeSuffix(t *testing.T) {
 		"array suffix":    "type User {\n    home Address[] |\n}\n",
 	} {
 		t.Run(label, func(t *testing.T) {
-			if items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+body); len(items) != 0 {
+			if items := mustCompletionsAtCursor(t, typeSlotFixtures+body); len(items) != 0 {
 				t.Errorf("expected no completions past a type suffix, got %d items: %v", len(items), labelSet(items))
 			}
 		})
@@ -516,7 +497,7 @@ func TestCompletionBlockFallbackMatchesTheBlock(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {
-			items := mustCompletionsAtCursor(t, "t.craftgo", c.src)
+			items := mustCompletionsAtCursor(t, c.src)
 			expectLabels(t, items, c.want...)
 			expectNoLabels(t, items, c.banned...)
 		})
@@ -531,7 +512,7 @@ func TestCompletionEnumBodyOffersNothing(t *testing.T) {
 		"after an assignment": "enum E {\n    Active = |\n}\n",
 	} {
 		t.Run(label, func(t *testing.T) {
-			if items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+body); len(items) != 0 {
+			if items := mustCompletionsAtCursor(t, typeSlotFixtures+body); len(items) != 0 {
 				t.Errorf("expected no completions in an enum body, got %d items: %v", len(items), labelSet(items))
 			}
 		})
@@ -577,7 +558,7 @@ func TestCompletionPathParameterOffersRequestFields(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {
-			items := mustCompletionsAtCursor(t, "t.craftgo", c.src)
+			items := mustCompletionsAtCursor(t, c.src)
 			expectLabels(t, items, c.want...)
 			expectNoLabels(t, items, c.banned...)
 		})
@@ -587,7 +568,7 @@ func TestCompletionPathParameterOffersRequestFields(t *testing.T) {
 // Without a request clause `/{|}` offers nothing.
 func TestCompletionPathParameterWithoutRequestStaysSilent(t *testing.T) {
 	src := pathParamFixture + "service S {\n    get A /store/{|} { }\n}\n"
-	if items := mustCompletionsAtCursor(t, "t.craftgo", src); len(items) != 0 {
+	if items := mustCompletionsAtCursor(t, src); len(items) != 0 {
 		t.Errorf("expected no completions without a request clause, got %v", labelSet(items))
 	}
 }
@@ -614,7 +595,7 @@ func TestCompletionPathParameterAgreesWithTheAnalyser(t *testing.T) {
 		route := func(param string) string {
 			return "package x\n\n" + c.types + "service S {\n\tpost A /store/{" + param + "} { request Req }\n}\n"
 		}
-		offered := labelSet(mustCompletionsAtCursor(t, "t.craftgo", route(cursorMark)))
+		offered := labelSet(mustCompletionsAtCursor(t, route(cursorMark)))
 		for _, param := range c.params {
 			clean := true
 			for _, d := range bufferDiagnostics(route(param)) {
@@ -670,14 +651,14 @@ func TestCompletionDefaultValueFollowsTheFieldType(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {
-			items := mustCompletionsAtCursor(t, "t.craftgo", c.src)
+			items := mustCompletionsAtCursor(t, c.src)
 			expectLabels(t, items, c.want...)
 			expectNoLabels(t, items, "string", "Address", "type")
 		})
 	}
 	t.Run("string field has no closed set", func(t *testing.T) {
 		src := typeSlotFixtures + "type User {\n    s string @default(|)\n}\n"
-		if items := mustCompletionsAtCursor(t, "t.craftgo", src); len(items) != 0 {
+		if items := mustCompletionsAtCursor(t, src); len(items) != 0 {
 			t.Errorf("expected no completions for a free-literal default, got %v", labelSet(items))
 		}
 	})
@@ -691,7 +672,7 @@ func TestCompletionDecoratorArgWithNoClosedSetStaysSilent(t *testing.T) {
 		"pattern literal":      "type User {\n    s string @pattern(|)\n}\n",
 	} {
 		t.Run(label, func(t *testing.T) {
-			if items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+body); len(items) != 0 {
+			if items := mustCompletionsAtCursor(t, typeSlotFixtures+body); len(items) != 0 {
 				t.Errorf("expected no completions in a free-literal decorator slot, got %v", labelSet(items))
 			}
 		})
@@ -704,20 +685,20 @@ func TestCompletionNoDecoratorInsideDecoratorArguments(t *testing.T) {
 	for _, args := range []string{"@doc(@|)", "@doc(\"a\", @de| )", "@format(@|)", "@length(1, @|)", "@nope(@| )", "@nope(@de| )", "@example({ s: @| })"} {
 		t.Run(args, func(t *testing.T) {
 			src := typeSlotFixtures + "middleware Auth\n\ntype User {\n\ts string " + args + "\n}\n"
-			if items := mustCompletionsAtCursor(t, "t.craftgo", src); len(items) != 0 {
+			if items := mustCompletionsAtCursor(t, src); len(items) != 0 {
 				t.Errorf("completion inside %s = %v, want nothing", args, labelSet(items))
 			}
 		})
 	}
 	src := typeSlotFixtures + "middleware Auth\n\nservice S {\n\t@middlewares(@|)\n\tget G /g {}\n}\n"
-	if items := mustCompletionsAtCursor(t, "t.craftgo", src); len(items) != 0 {
+	if items := mustCompletionsAtCursor(t, src); len(items) != 0 {
 		t.Errorf("completion inside @middlewares(@) = %v, want nothing", labelSet(items))
 	}
 }
 
 // `scalar Name |` offers only the built-ins a scalar can wrap.
 func TestCompletionScalarPrimitiveSlotIsBuiltinsOnly(t *testing.T) {
-	items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+"scalar Email |\n")
+	items := mustCompletionsAtCursor(t, typeSlotFixtures+"scalar Email |\n")
 	expectLabels(t, items, "string", "int", "bool", "bytes", "float64")
 	expectNoLabels(t, items, "any", "datetime", "file", "object", "map", "Address", "Kind", "Flag")
 }
@@ -729,7 +710,7 @@ func TestCompletionTypeParameterDeclarationOffersNothing(t *testing.T) {
 		"second parameter": "type Pair<A, |> { id string }\n",
 	} {
 		t.Run(label, func(t *testing.T) {
-			if items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+body); len(items) != 0 {
+			if items := mustCompletionsAtCursor(t, typeSlotFixtures+body); len(items) != 0 {
 				t.Errorf("expected no completions in a type-parameter declaration, got %v", labelSet(items))
 			}
 		})
@@ -740,7 +721,7 @@ func TestCompletionTypeParameterDeclarationOffersNothing(t *testing.T) {
 func TestCompletionExtendServiceTargetAtEndOfBuffer(t *testing.T) {
 	src := "package x\n\nservice Api {\n    get A /a {}\n}\nextend service |"
 	for _, tail := range []string{"", "Ap"} {
-		items := mustCompletionsAtCursor(t, "t.craftgo", src+tail)
+		items := mustCompletionsAtCursor(t, src+tail)
 		expectLabels(t, items, "Api")
 		// Only the services are offered.
 		expectNoLabels(t, items, "type", "service", "extend", "package")
@@ -750,28 +731,16 @@ func TestCompletionExtendServiceTargetAtEndOfBuffer(t *testing.T) {
 // `package |` offers the folder's package, and `import |` quoted import paths.
 func TestCompletionHeaderLines(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "craftgo.design.yaml"),
-		[]byte("package: example.com/m\noutput:\n  types: ./types\n"), 0o644); err != nil {
-		t.Fatalf("write manifest: %v", err)
-	}
+	mustWrite(t, filepath.Join(root, "craftgo.design.yaml"), "package: example.com/m\noutput:\n  types: ./types\n")
 	dir := filepath.Join(root, "design")
-	if err := os.MkdirAll(filepath.Join(dir, "shared"), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	write := func(p, body string) {
-		t.Helper()
-		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
-			t.Fatalf("write %s: %v", p, err)
-		}
-	}
-	write(filepath.Join(dir, "a.craftgo"), "package shop\n\ntype Ping { id string }\n")
-	write(filepath.Join(dir, "shared", "s.craftgo"), "package shared\n\ntype Money { amount int }\n")
+	mustWrite(t, filepath.Join(dir, "a.craftgo"), "package shop\n\ntype Ping { id string }\n")
+	mustWrite(t, filepath.Join(dir, "shared", "s.craftgo"), "package shared\n\ntype Money { amount int }\n")
 	buf := filepath.Join(dir, "b.craftgo")
 
 	run := func(src string) []protocol.CompletionItem {
 		t.Helper()
 		clean, pos := markCursor(t, src)
-		write(buf, clean)
+		mustWrite(t, buf, clean)
 		u := uri.File(buf)
 		return completionItems(t, &server{docs: map[uri.URI]string{u: clean}}, u, pos)
 	}
@@ -797,7 +766,7 @@ func TestCompletionHeaderLines(t *testing.T) {
 func TestCompletionScalarPrimitivePosition(t *testing.T) {
 	src := "package x\n\nscalar Email "
 	// Cursor right after `scalar Email `.
-	items := mustCompletionsAt(t, "t.craftgo", src, 2, 13)
+	items := mustCompletionsAt(t, src, 2, 13)
 	expectLabels(t, items, "string", "int", "bool")
 }
 
@@ -813,7 +782,7 @@ func TestCompletionErrorsDecoratorArgs(t *testing.T) {
 		"    post Save /save { request Req response Resp }\n" +
 		"}\n"
 	// Cursor right after `@errors(`.
-	items := mustCompletionsAt(t, "t.craftgo", src, 7, 12)
+	items := mustCompletionsAt(t, src, 7, 12)
 	expectLabels(t, items, "UserNotFoundErr", "EmailTakenErr")
 }
 
@@ -822,7 +791,7 @@ func TestCompletionDecoratorOnScalarFiltersByPrimitive(t *testing.T) {
 	src := "package x\n\n" +
 		"scalar Gmail string @\n"
 	// Cursor right after the `@`.
-	items := mustCompletionsAt(t, "t.craftgo", src, 2, 21)
+	items := mustCompletionsAt(t, src, 2, 21)
 	expectLabels(t, items, "length", "minLength", "maxLength", "pattern", "format")
 	expectNoLabels(t, items, "gt", "gte", "lt", "lte", "range", "positive", "negative", "multipleOf")
 	expectNoLabels(t, items, "minItems", "maxItems", "uniqueItems")
@@ -835,7 +804,7 @@ func TestCompletionFormatDecoratorArgs(t *testing.T) {
 		"  email string @format(\n" +
 		"}\n"
 	// Cursor right after `  email string @format(`: line 2, character 23.
-	items := mustCompletionsAt(t, "t.craftgo", src, 2, 23)
+	items := mustCompletionsAt(t, src, 2, 23)
 	expectLabels(t, items, "email", "uuid", "url")
 }
 
@@ -849,7 +818,7 @@ func TestCompletionStatusDecoratorArgs(t *testing.T) {
 		"    post Save /save { request Req response Resp }\n" +
 		"}\n"
 	// Cursor right after `@status(`.
-	items := mustCompletionsAt(t, "t.craftgo", src, 5, 12)
+	items := mustCompletionsAt(t, src, 5, 12)
 	expectLabels(t, items, "200", "201", "204")
 	for _, c := range errcat.Categories {
 		expectLabels(t, items, strconv.Itoa(c.Status))
@@ -887,7 +856,7 @@ func TestKeywordSnippetChoices(t *testing.T) {
 // `error |` offers exactly the error categories, each with its HTTP status.
 func TestCompletionErrorCategoryAfterKeyword(t *testing.T) {
 	src := "package x\n\nerror "
-	items := mustCompletionsAt(t, "t.craftgo", src, 2, 6)
+	items := mustCompletionsAt(t, src, 2, 6)
 	if len(items) != len(errcat.Categories) {
 		t.Fatalf("expected %d category items (one per reserved HTTP category), got %d", len(errcat.Categories), len(items))
 	}
@@ -920,7 +889,7 @@ func TestCompletionErrorCategoryAfterKeyword(t *testing.T) {
 // A partly typed category still gets every category; the client filters.
 func TestCompletionErrorCategoryWhileTyping(t *testing.T) {
 	src := "package x\n\nerror Not"
-	items := mustCompletionsAt(t, "t.craftgo", src, 2, 9)
+	items := mustCompletionsAt(t, src, 2, 9)
 	if len(items) != len(errcat.Categories) {
 		t.Fatalf("expected %d category items while typing, got %d", len(errcat.Categories), len(items))
 	}
@@ -929,7 +898,7 @@ func TestCompletionErrorCategoryWhileTyping(t *testing.T) {
 // `error NotFound |` names the error, so no category is offered.
 func TestCompletionErrorCategoryNotInOtherPositions(t *testing.T) {
 	src := "package x\n\nerror NotFound "
-	items := mustCompletionsAt(t, "t.craftgo", src, 2, 15)
+	items := mustCompletionsAt(t, src, 2, 15)
 	for _, it := range items {
 		if it.Detail != "" && strings.HasPrefix(it.Detail, "HTTP ") {
 			t.Errorf("category completions leaked into name position: got %q (%s)", it.Label, it.Detail)

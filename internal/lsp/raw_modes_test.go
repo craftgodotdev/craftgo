@@ -10,7 +10,7 @@ import (
 func TestCompletionRawModeFlagsAtMethodSite(t *testing.T) {
 	src := "package x\n\nservice S {\n\t@\n\tget A /a {}\n}\n"
 	// Cursor right after the `@` on the method line (0-indexed line 3).
-	items := mustCompletionsAt(t, "t.craftgo", src, 3, 2)
+	items := mustCompletionsAt(t, src, 3, 2)
 	expectLabels(t, items, "rawRequest", "rawResponse", "passthrough")
 	for _, it := range items {
 		switch it.Label {
@@ -25,7 +25,7 @@ func TestCompletionRawModeFlagsAtMethodSite(t *testing.T) {
 		}
 	}
 	// Method-level only: the flags must not show up at a field site.
-	fieldItems := mustCompletionsAt(t, "t.craftgo", "package x\n\ntype T {\n\tid string @\n}\n", 3, 12)
+	fieldItems := mustCompletionsAt(t, "package x\n\ntype T {\n\tid string @\n}\n", 3, 12)
 	expectNoLabels(t, fieldItems, "rawRequest", "rawResponse", "passthrough")
 }
 

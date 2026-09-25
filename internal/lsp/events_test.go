@@ -121,7 +121,7 @@ func TestNoDecoratorCompletionsInsideABodyOfClauses(t *testing.T) {
 		"method body": "package x\ntype P { a string }\nservice S {\n\tget G /g {\n\t\t@|\n\t\trequest P\n\t}\n}\n",
 	} {
 		t.Run(label, func(t *testing.T) {
-			if items := mustCompletionsAtCursor(t, "t.craftgo", src); len(items) != 0 {
+			if items := mustCompletionsAtCursor(t, src); len(items) != 0 {
 				t.Errorf("decorators offered: %v", labelSet(items))
 			}
 		})

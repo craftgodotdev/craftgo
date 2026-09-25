@@ -117,7 +117,7 @@ func TestRangesAfterAnAstralCharacter(t *testing.T) {
 // On a line holding several fields the cursor's field is the last one that
 // starts before it.
 func TestCursorFieldOnAOneLineBody(t *testing.T) {
-	items := mustCompletionsAtCursor(t, "t.craftgo", "package x\n\nenum Kind { A B }\n\ntype T { s string  k Kind @default(|) }\n")
+	items := mustCompletionsAtCursor(t, "package x\n\nenum Kind { A B }\n\ntype T { s string  k Kind @default(|) }\n")
 	expectLabels(t, items, "A", "B")
 }
 
@@ -152,6 +152,6 @@ func TestCompletionBelowAnArgumentListLeftOpen(t *testing.T) {
 				marked = strings.Replace(marked, other, "", 1)
 			}
 		}
-		expectLabels(t, mustCompletionsAtCursor(t, "t.craftgo", strings.Replace(marked, mark, cursorMark, 1)), want)
+		expectLabels(t, mustCompletionsAtCursor(t, strings.Replace(marked, mark, cursorMark, 1)), want)
 	}
 }

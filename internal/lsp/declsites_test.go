@@ -76,7 +76,7 @@ func TestDeclSitesMatchSemanticPlacement(t *testing.T) {
 // decorators analysis accepts on the block.
 func TestExtendSiteCompletionMatchesSemantic(t *testing.T) {
 	const fixture = "service S { get A /a {} }\n@D\nextend service S {\n\tget G /g {}\n}\n"
-	offered := labelSet(mustCompletionsAtCursor(t, "t.craftgo", "package x\n"+strings.Replace(fixture, "@D", "@|", 1)))
+	offered := labelSet(mustCompletionsAtCursor(t, "package x\n"+strings.Replace(fixture, "@D", "@|", 1)))
 	for _, name := range semantic.Names() {
 		accepted := !parseDesign(t, strings.Replace(fixture, "@D", "@"+name, 1)).misplaced
 		if offered[name] != accepted {
@@ -114,7 +114,7 @@ func TestDecoratorsFollowAScalarDeclaredElsewhere(t *testing.T) {
 func TestFieldDecoratorCompletionMatchesSemanticTypes(t *testing.T) {
 	for _, typ := range []string{"string", "bytes", "int", "float64", "bool", "datetime", "string[]", "map<string, int>", "Email", "Flag", "Raw"} {
 		const decls = "scalar Email string\nscalar Flag bool\nscalar Raw bytes @format(raw)\n"
-		offered := labelSet(mustCompletionsAtCursor(t, "t.craftgo", "package x\n"+decls+"type T {\n\tv "+typ+" @|\n}\n"))
+		offered := labelSet(mustCompletionsAtCursor(t, "package x\n"+decls+"type T {\n\tv "+typ+" @|\n}\n"))
 		for _, name := range semantic.Names() {
 			spec, _ := semantic.DecoratorSpec(name)
 			if spec.AppliesTo == 0 || spec.Levels&semantic.LvlField == 0 {
@@ -136,7 +136,7 @@ func TestFieldDecoratorCompletionMatchesSemanticTypes(t *testing.T) {
 
 // An error's field takes the decorators its type takes, as a type's does.
 func TestErrorFieldDecoratorsFollowTheFieldType(t *testing.T) {
-	items := mustCompletionsAtCursor(t, "t.craftgo", "package x\n\nerror NotFound E {\n\tcount int @|\n}\n")
+	items := mustCompletionsAtCursor(t, "package x\n\nerror NotFound E {\n\tcount int @|\n}\n")
 	expectLabels(t, items, "gt", "range")
 	expectNoLabels(t, items, "minLength", "pattern")
 }
@@ -155,7 +155,7 @@ func TestDecoratorArgumentsNeverOpenADeclaration(t *testing.T) {
 		{"after a scalar argument", "package r\n\n@requiresOneOf(scalar) @| @doc(\"x\")\ntype V { scalar string? }\n", []string{"requiresOneOf"}, []string{"length", "format"}},
 	} {
 		t.Run(c.label, func(t *testing.T) {
-			items := mustCompletionsAtCursor(t, "t.craftgo", c.src)
+			items := mustCompletionsAtCursor(t, c.src)
 			expectLabels(t, items, c.want...)
 			expectNoLabels(t, items, c.banned...)
 		})
@@ -164,7 +164,7 @@ func TestDecoratorArgumentsNeverOpenADeclaration(t *testing.T) {
 
 // On a one-line type body `@` offers the decorators of the field before it.
 func TestDecoratorsOnAOneLineBodyFollowTheFieldBeforeTheCursor(t *testing.T) {
-	items := mustCompletionsAtCursor(t, "t.craftgo", "package r\n\ntype Mini { a string  b int @| }\n")
+	items := mustCompletionsAtCursor(t, "package r\n\ntype Mini { a string  b int @| }\n")
 	expectLabels(t, items, "gt", "range", "doc")
 	expectNoLabels(t, items, "minLength", "pattern", "mutuallyExclusive")
 }

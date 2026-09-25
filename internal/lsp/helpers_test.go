@@ -40,17 +40,12 @@ service GreeterService {
 // cursorMark marks the cursor in a completion fixture; the DSL has no `|` token.
 const cursorMark = "|"
 
-// mustCompletionsAtCursor runs completion at the fixture's cursor mark.
-func mustCompletionsAtCursor(t *testing.T, path, src string) []protocol.CompletionItem {
+// mustCompletionsAtCursor runs completion at the cursor mark of marked, open
+// outside any project.
+func mustCompletionsAtCursor(t *testing.T, marked string) []protocol.CompletionItem {
 	t.Helper()
-	i := strings.Index(src, cursorMark)
-	if i < 0 {
-		t.Fatalf("fixture carries no %q cursor mark", cursorMark)
-	}
-	head := src[:i]
-	return mustCompletionsAt(t, path, strings.Replace(src, cursorMark, "", 1),
-		uint32(strings.Count(head, "\n")),
-		uint32(len(head)-(strings.LastIndex(head, "\n")+1)))
+	s, u, pos := openMarked(t, "", marked)
+	return completionItems(t, s, u, pos)
 }
 
 // designProject writes a manifest and files, keyed by their path under the
@@ -110,11 +105,11 @@ func mustHoverAt(t *testing.T, path, src, needle string) string {
 	return h.Contents.Value
 }
 
-// mustCompletionsAt runs completion at (line, ch) of src, open at a URI built
-// from path.
-func mustCompletionsAt(t *testing.T, path, src string, line, ch uint32) []protocol.CompletionItem {
+// mustCompletionsAt runs completion at (line, ch) of src, open outside any
+// project.
+func mustCompletionsAt(t *testing.T, src string, line, ch uint32) []protocol.CompletionItem {
 	t.Helper()
-	u := uri.New("file:///" + path)
+	u := uri.New("file:///t.craftgo")
 	return completionItems(t, &server{docs: map[uri.URI]string{u: src}}, u, protocol.Position{Line: line, Character: ch})
 }
 

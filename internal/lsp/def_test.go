@@ -1,7 +1,6 @@
 package lsp
 
 import (
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -596,21 +595,11 @@ extend service Alpha {
 func TestDefinitionExtendServiceEndToEnd(t *testing.T) {
 	root := t.TempDir()
 	design := filepath.Join(root, "design")
-	if err := os.MkdirAll(design, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "craftgo.design.yaml"), []byte("package: example.com/p\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	primary := "package x\nservice Alpha {\n\tget A /a {}\n}\n"
-	if err := os.WriteFile(filepath.Join(design, "alpha.craftgo"), []byte(primary), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	mustWrite(t, filepath.Join(root, "craftgo.design.yaml"), "package: example.com/p\n")
+	mustWrite(t, filepath.Join(design, "alpha.craftgo"), "package x\nservice Alpha {\n\tget A /a {}\n}\n")
 	ext := "package x\n\nextend service Alpha {\n\tget B /b {}\n}\n"
 	extPath := filepath.Join(design, "alpha-extra.craftgo")
-	if err := os.WriteFile(extPath, []byte(ext), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	mustWrite(t, extPath, ext)
 
 	extURI := uri.File(extPath)
 	srv := &server{docs: map[uri.URI]string{extURI: ext}}
