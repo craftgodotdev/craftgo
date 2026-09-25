@@ -75,13 +75,21 @@ func New(conn *nats.Conn, opts ...Option) *Transport {
 }
 
 // Publish sends one message. A nil error means it reached the connection's
-// buffer, not that a subscriber received it.
+// buffer, not that a subscriber received it. After [Transport.Close] it
+// returns [ErrClosed].
 func (t *Transport) Publish(_ context.Context, msg *events.Message) error {
+	if t.isClosed() {
+		return fmt.Errorf("nats: publish %s: %w", msg.Event, ErrClosed)
+	}
 	return t.conn.PublishMsg(t.encode(msg))
 }
 
-// PublishBatch sends the whole batch, then flushes once.
+// PublishBatch sends the whole batch, then flushes once. After
+// [Transport.Close] it returns [ErrClosed].
 func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) error {
+	if t.isClosed() {
+		return fmt.Errorf("nats: publish batch of %d: %w", len(msgs), ErrClosed)
+	}
 	for i, msg := range msgs {
 		if err := t.conn.PublishMsg(t.encode(msg)); err != nil {
 			return events.UnsentFrom(i, msgs, err)
@@ -192,8 +200,8 @@ func decodeFrom(contract string, header nats.Header, data []byte) *events.Messag
 	return out
 }
 
-// Close unsubscribes everything this transport registered; a subscribe
-// after it returns [ErrClosed]. The connection is left open.
+// Close unsubscribes everything this transport registered; a publish or
+// subscribe after it returns [ErrClosed]. The connection is left open.
 func (t *Transport) Close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -203,4 +211,10 @@ func (t *Transport) Close() error {
 	}
 	t.subs = nil
 	return nil
+}
+
+func (t *Transport) isClosed() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.closed
 }

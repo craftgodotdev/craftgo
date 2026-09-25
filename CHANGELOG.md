@@ -179,9 +179,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   `nats.ErrClosed`. A late subscribe created its durable and consumed with
   nothing to stop it: neither `Close` nor cancelling its context ended it.
 
-- **The core NATS transport refuses a subscribe after `Close`**, with
-  `nats.ErrClosed`. It registered a queue subscriber that only the end of
-  its context removed.
+- **The core NATS transport refuses a publish or subscribe after `Close`**,
+  with `nats.ErrClosed`, as `nats.JetStream` and the Kafka transport do. A
+  subscribe registered a queue subscriber that only the end of its context
+  removed, and a publish still went out on the connection, which `Close`
+  leaves open.
 
 - **A finished JetStream group can subscribe again.** A group whose
   context had ended, or whose durable `nats.ErrConsumerStopped` reported

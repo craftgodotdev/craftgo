@@ -211,6 +211,34 @@ func TestSubscribeAfterCloseIsRefusedOverNATS(t *testing.T) {
 	}
 }
 
+// After Close, a publish and a batch return ErrClosed and send nothing.
+func TestPublishAfterCloseIsRefusedOverNATS(t *testing.T) {
+	conn := runServer(t)
+	sent := make(chan *natsclient.Msg, 2)
+	if _, err := conn.ChanSubscribe("orders.Placed", sent); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	tr := craftnats.New(conn)
+	if err := tr.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	msg := &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)}
+	if err := tr.Publish(context.Background(), msg); !errors.Is(err, craftnats.ErrClosed) {
+		t.Errorf("Publish after Close: err = %v, want ErrClosed", err)
+	}
+	if err := tr.PublishBatch(context.Background(), []*events.Message{msg}); !errors.Is(err, craftnats.ErrClosed) {
+		t.Errorf("PublishBatch after Close: err = %v, want ErrClosed", err)
+	}
+	if err := conn.Flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	select {
+	case m := <-sent:
+		t.Errorf("%s was sent after Close", m.Subject)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
 // A subscription on a context that never ends parks no goroutine waiting for it.
 func TestASubscriptionOnAContextThatNeverEndsParksNoWatcher(t *testing.T) {
 	conn := runServer(t)
