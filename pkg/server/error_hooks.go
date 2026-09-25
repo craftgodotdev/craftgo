@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"mime/multipart"
@@ -114,7 +115,7 @@ type ResponseHeaderWriter interface {
 	WriteResponseHeaders(http.ResponseWriter)
 }
 
-// UnknownErrorHandler renders an error with no [StatusError] in its chain; see
+// UnknownErrorHandler renders an error [WriteError] has no answer of its own for; see
 // [SetHandleUnknownError].
 type UnknownErrorHandler func(w http.ResponseWriter, r *http.Request, err error)
 
@@ -125,9 +126,9 @@ func defaultUnknownError(w http.ResponseWriter, r *http.Request, err error) {
 	writeStatusError(w, http.StatusInternalServerError)
 }
 
-// SetHandleUnknownError installs h, process-wide and safe while serving, for errors with no
-// [StatusError] in their chain. nil restores the default: log err with the request's trace
-// ids and answer 500 {"message":"internal server error"}.
+// SetHandleUnknownError installs h, process-wide and safe while serving, for each error
+// [WriteError] has no answer of its own for. nil restores the default: log err with the
+// request's trace ids and answer 500 {"message":"internal server error"}.
 func SetHandleUnknownError(h UnknownErrorHandler) {
 	if h == nil {
 		h = defaultUnknownError
@@ -135,10 +136,15 @@ func SetHandleUnknownError(h UnknownErrorHandler) {
 	unknownError.Store(&h)
 }
 
-// WriteError renders err: a [StatusError] in its chain, unlogged, as its status, its
-// [ResponseHeaderWriter] headers and a JSON body (Content-Type forced); any other error through
-// the [SetHandleUnknownError] handler. Once the response is committed, err is only logged.
+// WriteError renders err: a [StatusError] in its chain, unlogged, as its status, headers and
+// JSON body; a deadline as 504 {"message":"gateway timeout"}; a canceled request as nothing;
+// anything else through the [SetHandleUnknownError] handler, or the log once committed.
 func WriteError(w http.ResponseWriter, r *http.Request, err error) {
+	var se StatusError
+	isStatus := errors.As(err, &se)
+	if !isStatus && writeContextError(w, r, err) {
+		return
+	}
 	if responseCommitted(w) {
 		log.Default().WithContext(r.Context()).Error(
 			"service error after response committed; not rewriting",
@@ -146,8 +152,7 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 		)
 		return
 	}
-	var se StatusError
-	if !errors.As(err, &se) {
+	if !isStatus {
 		(*unknownError.Load())(w, r, err)
 		return
 	}
@@ -171,4 +176,25 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 	_, _ = w.Write(buf.Bytes())
+}
+
+// writeContextError answers a context error, reporting whether it did: nothing when the request
+// context is canceled, as by a gone client; 504 for a deadline, a dependency's logged at Warn.
+func writeContextError(w http.ResponseWriter, r *http.Request, err error) bool {
+	deadline := errors.Is(err, context.DeadlineExceeded)
+	if !deadline && !errors.Is(err, context.Canceled) {
+		return false
+	}
+	switch reqErr := r.Context().Err(); {
+	case errors.Is(reqErr, context.Canceled):
+		return true
+	case reqErr == nil && !deadline:
+		return false
+	case reqErr == nil:
+		log.Default().WithContext(r.Context()).Warn("dependency deadline exceeded", log.Err(err))
+	}
+	if !responseCommitted(w) {
+		writeStatusError(w, http.StatusGatewayTimeout)
+	}
+	return true
 }

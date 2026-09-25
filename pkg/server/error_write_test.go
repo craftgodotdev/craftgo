@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -64,16 +66,19 @@ func TestWriteError_TypedErrorRendersStatusNoLog(t *testing.T) {
 	}
 }
 
+// errDBDown is an error with no status.
+var errDBDown = errors.New("dial tcp 10.0.0.5:5432: connection refused")
+
 // An error without a status is logged with the trace ids and answered with an opaque 500.
 func TestWriteError_UnknownErrorLogsWithTrace(t *testing.T) {
 	logs := observeLogs(t)
 	rec := httptest.NewRecorder()
-	WriteError(rec, reqWithTrace(), context.DeadlineExceeded)
+	WriteError(rec, reqWithTrace(), errDBDown)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("unknown error must answer 500, got %d", rec.Code)
 	}
-	if strings.Contains(rec.Body.String(), context.DeadlineExceeded.Error()) {
+	if strings.Contains(rec.Body.String(), errDBDown.Error()) {
 		t.Errorf("raw error text must NOT leak into the 500 body, got %q", rec.Body.String())
 	}
 	if !strings.Contains(rec.Body.String(), "internal server error") {
@@ -91,7 +96,7 @@ func TestWriteError_UnknownErrorLogsWithTrace(t *testing.T) {
 		t.Errorf("log line must carry span_id; fields: %v", fields)
 	}
 	// The log carries the real error.
-	if got, _ := fields["error"].(string); got != context.DeadlineExceeded.Error() {
+	if got, _ := fields["error"].(string); got != errDBDown.Error() {
 		t.Errorf("log line must carry the real error; got error=%q", got)
 	}
 }
@@ -108,12 +113,12 @@ func TestSetHandleUnknownError_Swaps(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := reqWithTrace()
-	WriteError(rec, req, context.DeadlineExceeded)
+	WriteError(rec, req, errDBDown)
 
 	if rec.Code != http.StatusTeapot {
 		t.Errorf("custom handler should drive the status, got %d want 418", rec.Code)
 	}
-	if gotErr != context.DeadlineExceeded {
+	if gotErr != errDBDown {
 		t.Errorf("custom handler did not receive the error, got %v", gotErr)
 	}
 	if gotReq != req {
@@ -200,5 +205,136 @@ func TestWriteErrorUnwrapsTypedErrors(t *testing.T) {
 	}
 	if logs.Len() != 0 {
 		t.Errorf("a typed error must not be logged, got %v", logs.All())
+	}
+}
+
+// pastDeadline returns a traced request whose own deadline has passed.
+func pastDeadline(t *testing.T) *http.Request {
+	t.Helper()
+	req := reqWithTrace()
+	ctx, cancel := context.WithDeadline(req.Context(), time.Now().Add(-time.Second))
+	t.Cleanup(cancel)
+	return req.WithContext(ctx)
+}
+
+// clientGone returns a request whose context is canceled, as a client that disconnects
+// leaves it.
+func clientGone() *http.Request {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return httptest.NewRequest(http.MethodGet, "/x", nil).WithContext(ctx)
+}
+
+// A deadline answers 504 {"message":"gateway timeout"}: the request's own, whatever context
+// error the service returns, unlogged; a dependency's on a live request, logged at Warn with
+// the trace ids.
+func TestWriteErrorDeadline504(t *testing.T) {
+	for name, tc := range map[string]struct {
+		req  *http.Request
+		err  error
+		warn bool
+	}{
+		"own deadline":                    {pastDeadline(t), fmt.Errorf("query: %w", context.DeadlineExceeded), false},
+		"canceled after the own deadline": {pastDeadline(t), fmt.Errorf("worker: %w", context.Canceled), false},
+		"a dependency's deadline":         {reqWithTrace(), fmt.Errorf("payments api: %w", context.DeadlineExceeded), true},
+	} {
+		logs := observeLogs(t)
+		rec := httptest.NewRecorder()
+		WriteError(rec, tc.req, tc.err)
+		if rec.Code != http.StatusGatewayTimeout || rec.Body.String() != `{"message":"gateway timeout"}`+"\n" {
+			t.Errorf("%s: got %d %q, want the JSON 504", name, rec.Code, rec.Body.String())
+		}
+		if n := logs.FilterMessage("unhandled service error").Len(); n != 0 {
+			t.Errorf("%s: logged as an unhandled service error", name)
+		}
+		warns := logs.FilterMessage("dependency deadline exceeded").All()
+		if tc.warn != (len(warns) == 1) || logs.Len() != len(warns) {
+			t.Errorf("%s: want the Warn line %v, got %v", name, tc.warn, logs.All())
+			continue
+		}
+		if tc.warn {
+			fields := warns[0].ContextMap()
+			if warns[0].Level != zapcore.WarnLevel || fields["trace_id"] == nil || fields["error"] != tc.err.Error() {
+				t.Errorf("%s: Warn line %v %v, want the trace ids and the error", name, warns[0].Level, fields)
+			}
+		}
+	}
+}
+
+// A context error once the client has gone writes nothing and logs nothing.
+func TestWriteErrorCanceledRequestWritesNothing(t *testing.T) {
+	for name, err := range map[string]error{
+		"canceled":            context.Canceled,
+		"a deadline, wrapped": fmt.Errorf("db: %w", context.DeadlineExceeded),
+	} {
+		logs := observeLogs(t)
+		rec := httptest.NewRecorder()
+		tw := &trackingWriter{ResponseWriter: rec}
+		WriteError(tw, clientGone(), err)
+		if tw.Committed() || rec.Body.Len() != 0 || logs.Len() != 0 {
+			t.Errorf("%s: committed %v, body %q, logs %v; want nothing", name, tw.Committed(), rec.Body.String(), logs.All())
+		}
+	}
+}
+
+// A context.Canceled on a request that is still live is the service's own and stays an
+// unknown error: 500, logged.
+func TestWriteErrorCanceledLiveRequestIsUnknown(t *testing.T) {
+	logs := observeLogs(t)
+	rec := httptest.NewRecorder()
+	WriteError(rec, reqWithTrace(), fmt.Errorf("lookup: %w", context.Canceled))
+	if rec.Code != http.StatusInternalServerError || logs.FilterMessage("unhandled service error").Len() != 1 {
+		t.Errorf("got %d with logs %v, want 500 and the unhandled-error line", rec.Code, logs.All())
+	}
+}
+
+// A deadline after the response is committed writes nothing and logs nothing.
+func TestWriteErrorDeadlineAfterCommitWritesNothing(t *testing.T) {
+	logs := observeLogs(t)
+	rec := httptest.NewRecorder()
+	tw := &trackingWriter{ResponseWriter: rec}
+	tw.WriteHeader(http.StatusOK)
+	WriteError(tw, pastDeadline(t), context.DeadlineExceeded)
+	if rec.Code != http.StatusOK || rec.Body.Len() != 0 || logs.Len() != 0 {
+		t.Errorf("got %d %q with logs %v, want the 200 alone", rec.Code, rec.Body.String(), logs.All())
+	}
+}
+
+// The SetHandleUnknownError handler never receives a context error WriteError answers.
+func TestSetHandleUnknownErrorSkipsContextErrors(t *testing.T) {
+	called := 0
+	SetHandleUnknownError(func(w http.ResponseWriter, _ *http.Request, _ error) {
+		called++
+		w.WriteHeader(http.StatusTeapot)
+	})
+	t.Cleanup(func() { SetHandleUnknownError(nil) })
+	observeLogs(t)
+	WriteError(httptest.NewRecorder(), pastDeadline(t), context.DeadlineExceeded)
+	WriteError(httptest.NewRecorder(), clientGone(), context.Canceled)
+	WriteError(httptest.NewRecorder(), reqWithTrace(), context.DeadlineExceeded)
+	if called != 0 {
+		t.Errorf("the unknown-error handler ran %d times", called)
+	}
+}
+
+// A handler past its route's timeout that returns the context's error answers 504 over a real
+// connection.
+func TestRouteTimeoutAnswers504(t *testing.T) {
+	observeLogs(t)
+	srv := New(nil)
+	srv.Handle("GET /slow", WithLimits(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+		WriteError(w, r, r.Context().Err())
+	}), Limits{Timeout: 10 * time.Millisecond}))
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	res, err := ts.Client().Get(ts.URL + "/slow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusGatewayTimeout || string(body) != `{"message":"gateway timeout"}`+"\n" {
+		t.Errorf("got %d %q, want the JSON 504", res.StatusCode, body)
 	}
 }

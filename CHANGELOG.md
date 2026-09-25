@@ -223,6 +223,18 @@ breaking change to the DSL or the generated layout bumps the major version.
   alias] - at least one must be set`, which read without their path. A
   mixin's fields are the type's own and keep their bare names.
 
+- **A deadline answers 504, and a client that has gone gets nothing.**
+  `WriteError` answers an error that wraps `context.DeadlineExceeded`, or any
+  context error once the request's own deadline (`@timeout`,
+  `server.handlerTimeout`) has passed, 504 `{"message":"gateway timeout"}`,
+  and writes nothing for a context error once the client has gone; both were
+  500 with an `unhandled service error` line at Error. A dependency's deadline
+  on a live request is logged at Warn as `dependency deadline exceeded`, with
+  the error. The `SetHandleUnknownError` handler no longer receives these
+  errors; a `context.Canceled` on a live request still reaches it. A request
+  context canceled by anything, a middleware of your own included, counts as
+  a client that has gone.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw
