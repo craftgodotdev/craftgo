@@ -88,15 +88,22 @@ type Lexer struct {
 }
 
 // New returns a Lexer over src. filename goes into every Position and may be
-// empty.
+// empty. A UTF-8 byte-order mark opening src is skipped, taking no column.
 func New(filename, src string) *Lexer {
-	return &Lexer{
+	l := &Lexer{
 		src:      src,
 		filename: filename,
 		line:     1,
 		column:   1,
 	}
+	if strings.HasPrefix(src, byteOrderMark) {
+		l.offset = len(byteOrderMark)
+	}
+	return l
 }
+
+// byteOrderMark is U+FEFF in UTF-8, which some editors write first in a file.
+const byteOrderMark = "\ufeff"
 
 // Diagnostics returns the diagnostics recorded so far.
 func (l *Lexer) Diagnostics() []Diagnostic { return l.diags }

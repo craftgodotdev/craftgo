@@ -536,6 +536,28 @@ func TestLoneCarriageReturnEndsALine(t *testing.T) {
 	}
 }
 
+// A UTF-8 byte-order mark at the start of the source is skipped: the first
+// token is at line 1, column 1, and nothing is reported. Anywhere else it is
+// an unexpected character.
+func TestByteOrderMarkIsSkipped(t *testing.T) {
+	l := New("", "\ufeff// doc\npackage p")
+	tok := l.Next()
+	if tok.Kind != KwPackage || tok.Pos.Line != 2 || tok.Pos.Column != 1 || len(tok.Doc) != 1 || tok.Doc[0] != "doc" {
+		t.Errorf("first token %+v", tok)
+	}
+	if c := l.Comments()[0]; c.Pos.Line != 1 || c.Pos.Column != 1 || c.Pos.Offset != len("\ufeff") {
+		t.Errorf("comment at %+v", c.Pos)
+	}
+	if d := l.Diagnostics(); len(d) > 0 {
+		t.Errorf("diagnostics: %v", d)
+	}
+	l = New("", "p \ufeff")
+	l.Tokenize()
+	if len(l.Diagnostics()) != 1 {
+		t.Errorf("a mark after the start: diagnostics %v", l.Diagnostics())
+	}
+}
+
 // lexed renders the tokens of src with their lines, columns and docs, then its
 // comments; a line end inside a token reads as "\n".
 func lexed(src string) string {

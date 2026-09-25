@@ -183,6 +183,10 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **A `type` needs a body.** `type T` with no `{ … }` is a parse error; it
   parsed as an empty type, and formatting wrote `type T {}`.
 
+- **A file may open with a UTF-8 byte-order mark.** gen and fmt rejected
+  one as an unexpected character U+FEFF; the mark is skipped, and formatting
+  writes the file without it.
+
 - **A lone carriage return ends a line**, as `\n` and `\r\n` do. In a file
   with CR-only line ends, or with a CR among LF ones, a `//` comment ran on
   to the next `\n` and swallowed the declarations after it, which gen then

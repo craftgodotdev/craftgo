@@ -71,6 +71,15 @@ func TestFormatDropsCarriageReturns(t *testing.T) {
 	}
 }
 
+// Format reads a file that opens with a byte-order mark and writes it without
+// the mark.
+func TestFormatDropsTheByteOrderMark(t *testing.T) {
+	out, diags := Format("t.craftgo", "\ufeff// doc\npackage p\n")
+	if len(diags) > 0 || out != "// doc\npackage p\n" {
+		t.Errorf("got %q, %v", out, diags)
+	}
+}
+
 // checkOutput refuses canonical text that fails to parse or whose comments
 // differ from the source's, naming the comment at its source position.
 func TestCheckOutput(t *testing.T) {
