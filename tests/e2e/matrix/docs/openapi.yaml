@@ -2512,6 +2512,8 @@ components:
         Two operations sharing one DTO is fine - they both want the same
         "lookup by id" handle.
       type: object
+    GetLostRespBody:
+      $ref: '#/components/schemas/XOwner'
     GetNestedRespBody:
       $ref: '#/components/schemas/XOwner'
     GetOrderReq:
@@ -2890,6 +2892,8 @@ components:
       $ref: '#/components/schemas/AccountLoginResp'
     LogoutRespBody:
       $ref: '#/components/schemas/ID'
+    LookupLostRespBody:
+      $ref: '#/components/schemas/XDelegatedEnum'
     LookupOfPriority:
       description: |-
         Lookup<T> is a generic request type: `Lookup<Priority>` binds `id` from
@@ -8002,6 +8006,22 @@ components:
         host's type-param into the embedded generic's args, or it registers a
         phantom `XBagOfT` whose element `$ref` dangles.
       type: object
+    XrefsXLostErr:
+      description: NotFound error response (HTTP 404).
+      properties:
+        id:
+          type: string
+      required:
+      - id
+      type: object
+    XsharedXLostErr:
+      description: NotFound error response (HTTP 404).
+      properties:
+        key:
+          type: string
+      required:
+      - key
+      type: object
   securitySchemes:
     AdminBearer:
       scheme: bearer
@@ -11411,6 +11431,27 @@ paths:
           description: OK
       tags:
       - ProfileService
+  /xdelegate/lost:
+    get:
+      description: 'Names XLost, which this package does not declare and xrefs and
+        xshared both do: the 404 is xrefs''s (XrefsXLostErr), the package the analyser
+        resolves the bare name in.'
+      operationId: LookupLost
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LookupLostRespBody'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XrefsXLostErr'
+          description: NotFound
+      tags:
+      - XDelegateService
   /xdelegate/store:
     post:
       description: Round-trips the delegating types so the handler path compiles too.
@@ -11514,6 +11555,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/XNotFoundErr'
+          description: NotFound
+      tags:
+      - XRefsService
+  /xrefs/lost/{id}:
+    get:
+      description: 'Pins @errors in its array form over an error two packages declare:
+        the 404 is a oneOf of this package''s XLost (XrefsXLostErr) and xshared''s
+        (XsharedXLostErr).'
+      operationId: GetLost
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          maxLength: 64
+          minLength: 1
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetLostRespBody'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/XrefsXLostErr'
+                - $ref: '#/components/schemas/XsharedXLostErr'
           description: NotFound
       tags:
       - XRefsService

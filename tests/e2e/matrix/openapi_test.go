@@ -130,6 +130,23 @@ func TestOpenAPI_RawModesContracts(t *testing.T) {
 	}
 }
 
+// An @errors name two packages declare documents the error the analyser
+// resolves it to, in the array form and from a package declaring neither.
+func TestOpenAPI_ErrorsFollowTheMergedNames(t *testing.T) {
+	doc := readOpenAPI(t)
+	for opID, wants := range map[string][]string{
+		"GetLost":    {"- $ref: '#/components/schemas/XrefsXLostErr'", "- $ref: '#/components/schemas/XsharedXLostErr'"},
+		"LookupLost": {"$ref: '#/components/schemas/XrefsXLostErr'"},
+	} {
+		block := pathBlock(t, doc, opID)
+		for _, want := range append(wants, `"404":`) {
+			if !strings.Contains(block, want) {
+				t.Errorf("%s missing %q:\n%s", opID, want, block)
+			}
+		}
+	}
+}
+
 // schemaDoc is the part of a component schema the body-key checks read.
 type schemaDoc struct {
 	Properties map[string]any `yaml:"properties"`

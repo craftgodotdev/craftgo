@@ -6,6 +6,56 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 )
 
+// ErrCodeXLost is the canonical machine-readable code for XLostErr.
+const ErrCodeXLost = "X_LOST"
+
+// XLostBody is the wire-shape payload declared at design time for XLostErr.
+// User code instantiates this struct and hands it to NewXLostErr; the
+// framework wraps it with the type-bound code / message metadata.
+type XLostBody struct {
+	ID string `json:"id"`
+}
+
+// XLostErr is the typed NotFound error generated for `XLost`.
+// The unexported `code` and `message` fields hold the type-bound
+// metadata populated by the constructor. Because they are unexported,
+// json.Marshal omits them from the wire payload - clients see only
+// the embedded body shape (or `{}` when no body was declared).
+type XLostErr struct {
+	code    string
+	message string
+	XLostBody
+}
+
+// NewXLostErr constructs XLostErr with the framework metadata baked in.
+// `code` and `message` are bound to the type and not exposed as
+// constructor parameters; only the body struct varies per instance.
+func NewXLostErr(body XLostBody) *XLostErr {
+	return &XLostErr{
+		code:      ErrCodeXLost,
+		message:   "Not found",
+		XLostBody: body,
+	}
+}
+
+// Error implements the standard error interface and returns the
+// category-default message bound to the type.
+func (e *XLostErr) Error() string { return e.message }
+
+// ErrCode returns the machine-readable error code bound to the type.
+// The transport layer reads this via an `interface{ ErrCode() string }`
+// assertion when assembling the fallback JSON envelope for errors
+// whose body would otherwise marshal to `{}`, and rpc.Error reads it
+// for the ErrorInfo detail it puts on the gRPC status. The accessor is
+// named `ErrCode` (not `Code`) so it does not shadow a user-declared
+// `code <type>` field promoted from the embedded body struct.
+func (e *XLostErr) ErrCode() string { return e.code }
+
+// HTTPStatus returns the HTTP status code associated with the NotFound
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
+func (e *XLostErr) HTTPStatus() int { return 404 }
+
 // ErrCodeXMixinErr is the canonical machine-readable code for XMixinErr.
 const ErrCodeXMixinErr = "X_MIXIN_ERR"
 

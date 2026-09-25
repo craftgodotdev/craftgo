@@ -3,79 +3,67 @@ package docs
 import (
 	"maps"
 	"slices"
-	"sort"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
-
-type symbolKey struct{ pkg, name string }
 
 // mergedKinds are the declarations the merged document names: types, enums,
 // scalars and errors.
 const mergedKinds = semantic.TypeRefDecls | semantic.ErrorDecls
 
-// projectResolveTable maps each package's declaration names to merged names,
-// `<PascalPkg><Name>` when two packages declare one, and lists the packages.
-func projectResolveTable(proj *semantic.Project) (map[symbolKey]string, []string) {
-	pkgNames := proj.PackageNames()
-	collide := func(name string) bool {
-		count := 0
-		for _, pn := range pkgNames {
-			p := proj.Packages[pn]
-			if p == nil {
-				continue
-			}
-			if p.Decl(name, mergedKinds) != nil {
-				count++
-				if count >= 2 {
-					return true
-				}
-			}
+// mergedNames returns the name the merged document gives each declaration of
+// mergedKinds: its own, or `<PascalPkg><Name>` when two packages declare it.
+func mergedNames(proj *semantic.Project) map[ast.Decl]string {
+	declared := map[string]int{}
+	for _, pkgName := range proj.PackageNames() {
+		for _, d := range proj.Packages[pkgName].Decls(mergedKinds) {
+			declared[d.DeclName()]++
 		}
-		return false
 	}
-	resolve := map[symbolKey]string{}
-	for _, pkgName := range pkgNames {
-		p := proj.Packages[pkgName]
-		if p == nil {
-			continue
-		}
-		for _, d := range p.Decls(mergedKinds) {
+	names := map[ast.Decl]string{}
+	for _, pkgName := range proj.PackageNames() {
+		for _, d := range proj.Packages[pkgName].Decls(mergedKinds) {
 			name := d.DeclName()
-			final := name
-			if collide(name) {
-				final = idents.PascalCase(pkgName) + name
+			if declared[name] >= 2 {
+				name = idents.PascalCase(pkgName) + name
 			}
-			resolve[symbolKey{pkg: pkgName, name: name}] = final
+			names[d] = name
 		}
 	}
-	return resolve, pkgNames
+	return names
 }
 
 // projectMergeCollisions returns the merged names two declarations share,
 // such as `shared.User` renamed to the `SharedUser` that package api declares.
 func projectMergeCollisions(proj *semantic.Project) []string {
-	resolve, _ := projectResolveTable(proj)
-	owners := map[string]map[string]bool{}
-	for k, final := range resolve {
-		if owners[final] == nil {
-			owners[final] = map[string]bool{}
-		}
-		owners[final][k.pkg+"."+k.name] = true
+	owners := map[string]int{}
+	for _, name := range mergedNames(proj) {
+		owners[name]++
 	}
 	var dups []string
-	for final, set := range owners {
-		if len(set) >= 2 {
-			dups = append(dups, final)
+	for name, n := range owners {
+		if n >= 2 {
+			dups = append(dups, name)
 		}
 	}
-	sort.Strings(dups)
+	slices.Sort(dups)
 	return dups
 }
 
+// merger copies a project's declarations into one package, each reference
+// renamed to the merged name of the declaration semantic resolves it to.
+type merger struct {
+	proj  *semantic.Project
+	names map[ast.Decl]string
+}
+
+// mergeProjectForOpenAPI returns proj's packages as one package, each
+// declaration under its merged name.
 func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
+	m := &merger{proj: proj, names: mergedNames(proj)}
 	out := &semantic.Package{
 		Types:       map[string]*ast.TypeDecl{},
 		Enums:       map[string]*ast.EnumDecl{},
@@ -84,187 +72,158 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 		Middlewares: map[string]*ast.MiddlewareDecl{},
 		Services:    map[string]*semantic.ServiceInfo{},
 	}
-	resolve, pkgNames := projectResolveTable(proj)
+	pkgNames := proj.PackageNames()
 	if len(pkgNames) > 0 {
 		out.Name = pkgNames[0]
 	}
-
-	// rewriteRef returns a copy of n, a ref written in srcPkg, carrying its
-	// merged name, or n itself when the name does not change.
-	rewriteRef := func(srcPkg string, n *ast.NamedTypeRef) *ast.NamedTypeRef {
-		if n == nil || n.Name == nil {
-			return n
-		}
-		switch len(n.Name.Parts) {
-		case 1:
-			final, ok := resolve[symbolKey{pkg: srcPkg, name: n.Name.Parts[0]}]
-			if !ok || final == n.Name.Parts[0] {
-				return n
-			}
-			cp := *n
-			cp.Name = &ast.QualifiedIdent{Pos: n.Name.Pos, Parts: []string{final}}
-			return &cp
-		case 2:
-			final, ok := resolve[symbolKey{pkg: n.Name.Parts[0], name: n.Name.Parts[1]}]
-			if !ok {
-				return n
-			}
-			cp := *n
-			cp.Name = &ast.QualifiedIdent{Pos: n.Name.Pos, Parts: []string{final}}
-			return &cp
-		}
-		return n
-	}
-
 	for _, pkgName := range pkgNames {
 		p := proj.Packages[pkgName]
-		if p == nil {
-			continue
-		}
-		for _, k := range slices.Sorted(maps.Keys(p.Types)) {
-			td := cloneTypeDecl(p.Types[k], resolve[symbolKey{pkg: pkgName, name: k}], pkgName, rewriteRef)
-			out.Types[td.Name] = td
-		}
-		for _, k := range slices.Sorted(maps.Keys(p.Enums)) {
-			ed := *p.Enums[k]
-			ed.Name = resolve[symbolKey{pkg: pkgName, name: k}]
-			out.Enums[ed.Name] = &ed
-		}
-		for _, k := range slices.Sorted(maps.Keys(p.Errors)) {
-			ed := cloneErrorDecl(p.Errors[k], resolve[symbolKey{pkg: pkgName, name: k}], pkgName, rewriteRef)
-			out.Errors[ed.Name] = ed
-		}
-		for _, k := range slices.Sorted(maps.Keys(p.Scalars)) {
-			sd := *p.Scalars[k]
-			sd.Name = resolve[symbolKey{pkg: pkgName, name: k}]
-			out.Scalars[sd.Name] = &sd
+		for _, d := range p.Decls(mergedKinds) {
+			switch d := d.(type) {
+			case *ast.TypeDecl:
+				cp := *d
+				cp.Name = m.names[d]
+				cp.Body = m.members(pkgName, d.Body, d.TypeParams)
+				out.Types[cp.Name] = &cp
+			case *ast.EnumDecl:
+				cp := *d
+				cp.Name = m.names[d]
+				out.Enums[cp.Name] = &cp
+			case *ast.ScalarDecl:
+				cp := *d
+				cp.Name = m.names[d]
+				out.Scalars[cp.Name] = &cp
+			case *ast.ErrorDecl:
+				cp := *d
+				cp.Name = m.names[d]
+				cp.Body = m.members(pkgName, d.Body, nil)
+				out.Errors[cp.Name] = &cp
+			}
 		}
 		// Services merge by name; one without methods is left out.
 		for name, si := range p.Services {
 			if len(si.Methods) == 0 {
 				continue
 			}
-			out.Services[name] = cloneServiceInfo(si, pkgName, rewriteRef)
+			out.Services[name] = m.service(pkgName, si)
 		}
 		maps.Copy(out.Middlewares, p.Middlewares)
 	}
 	return out
 }
 
-// cloneTypeDecl copies td as newName, its body refs renamed by rewrite.
-func cloneTypeDecl(td *ast.TypeDecl, newName, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *ast.TypeDecl {
-	cp := *td
-	cp.Name = newName
-	cp.Body = rewriteMembers(td.Body, srcPkg, rewrite)
-	return &cp
-}
-
-// cloneErrorDecl copies ed as newName, its body refs renamed by rewrite.
-func cloneErrorDecl(ed *ast.ErrorDecl, newName, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *ast.ErrorDecl {
-	cp := *ed
-	cp.Name = newName
-	cp.Body = rewriteMembers(ed.Body, srcPkg, rewrite)
-	return &cp
-}
-
-// rewriteMembers returns copies of members with their refs renamed by
-// rewrite, leaving the analysed declarations untouched.
-func rewriteMembers(members []ast.TypeMember, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) []ast.TypeMember {
-	out := make([]ast.TypeMember, 0, len(members))
-	for _, m := range members {
-		switch v := m.(type) {
-		case *ast.Field:
-			cp := *v
-			cp.Type = rewriteTypeRef(v.Type, srcPkg, rewrite)
-			out = append(out, &cp)
-		case *ast.Mixin:
-			cp := *v
-			nr := rewrite(srcPkg, v.Ref)
-			// rewrite renames only the ref itself, not its type arguments.
-			nr = rewriteNamedArgs(nr, srcPkg, rewrite)
-			cp.Ref = nr
-			out = append(out, &cp)
-		default:
-			out = append(out, m)
+// ref returns n, written in package home with typeParams in scope, under the
+// merged name of the declaration of kinds it resolves to, type arguments too.
+func (m *merger) ref(home string, n *ast.NamedTypeRef, typeParams []string, kinds semantic.DeclKind) *ast.NamedTypeRef {
+	if n == nil || n.Name == nil {
+		return n
+	}
+	out := n
+	name := n.Name.String()
+	if final, ok := m.names[m.decl(home, name, typeParams, kinds)]; ok && final != name {
+		cp := *n
+		cp.Name = &ast.QualifiedIdent{Pos: n.Name.Pos, Parts: []string{final}}
+		out = &cp
+	}
+	if len(n.Args) > 0 {
+		if out == n {
+			cp := *n
+			out = &cp
+		}
+		out.Args = make([]*ast.TypeRef, len(n.Args))
+		for i, a := range n.Args {
+			out.Args[i] = m.typeRef(home, a, typeParams)
 		}
 	}
 	return out
 }
 
-// rewriteTypeRef returns a copy of t with every named ref in it renamed by
-// rewrite, map entries and type arguments included.
-func rewriteTypeRef(t *ast.TypeRef, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *ast.TypeRef {
+// decl returns the declaration of kinds that name, written in package home
+// with typeParams in scope, refers to, or nil for a built-in or a type
+// parameter.
+func (m *merger) decl(home, name string, typeParams []string, kinds semantic.DeclKind) ast.Decl {
+	if prims.Is(name) || slices.Contains(typeParams, name) {
+		return nil
+	}
+	return m.proj.Lookup(home, name, kinds)
+}
+
+// typeRef returns a copy of t with every named ref in it renamed by
+// [merger.ref], map entries included.
+func (m *merger) typeRef(home string, t *ast.TypeRef, typeParams []string) *ast.TypeRef {
 	if t == nil {
 		return nil
 	}
 	cp := *t
 	if t.Map != nil {
 		mp := *t.Map
-		mp.Key = rewriteTypeRef(t.Map.Key, srcPkg, rewrite)
-		mp.Value = rewriteTypeRef(t.Map.Value, srcPkg, rewrite)
+		mp.Key = m.typeRef(home, t.Map.Key, typeParams)
+		mp.Value = m.typeRef(home, t.Map.Value, typeParams)
 		cp.Map = &mp
 	}
-	if t.Named != nil {
-		named := rewrite(srcPkg, t.Named)
-		named = rewriteNamedArgs(named, srcPkg, rewrite)
-		cp.Named = named
-	}
+	cp.Named = m.ref(home, t.Named, typeParams, semantic.TypeRefDecls)
 	return &cp
 }
 
-// cloneServiceInfo copies si with each method's request, response and
-// `@errors` refs, its extend blocks' `@errors` included, renamed by rewrite,
-// type arguments included.
-func cloneServiceInfo(si *semantic.ServiceInfo, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *semantic.ServiceInfo {
+// members returns copies of body's fields and mixins with their refs renamed,
+// leaving the analysed declarations untouched.
+func (m *merger) members(home string, body []ast.TypeMember, typeParams []string) []ast.TypeMember {
+	out := make([]ast.TypeMember, 0, len(body))
+	for _, member := range body {
+		switch v := member.(type) {
+		case *ast.Field:
+			cp := *v
+			cp.Type = m.typeRef(home, v.Type, typeParams)
+			out = append(out, &cp)
+		case *ast.Mixin:
+			cp := *v
+			cp.Ref = m.ref(home, v.Ref, typeParams, semantic.TypeRefDecls)
+			out = append(out, &cp)
+		default:
+			out = append(out, member)
+		}
+	}
+	return out
+}
+
+// service copies si with each method's request, response and `@errors`
+// names renamed.
+func (m *merger) service(home string, si *semantic.ServiceInfo) *semantic.ServiceInfo {
 	out := *si
 	out.Extends = make([]*ast.ServiceDecl, len(si.Extends))
 	for i, e := range si.Extends {
 		ec := *e
-		ec.Decorators = rewriteErrorDecorators(e.Decorators, srcPkg, rewrite)
+		ec.Decorators = m.errorsDecorators(home, e.Decorators)
 		out.Extends[i] = &ec
 	}
 	out.Methods = make([]*ast.Method, len(si.Methods))
-	for i, m := range si.Methods {
-		cp := *m
-		if m.Request != nil {
-			cp.Request = rewriteNamedTypeRef(m.Request, srcPkg, rewrite)
+	for i, method := range si.Methods {
+		cp := *method
+		cp.Request = m.ref(home, method.Request, nil, semantic.TypeRefDecls)
+		if method.Response != nil && method.Response.Type != nil {
+			resp := *method.Response
+			resp.Type = m.ref(home, method.Response.Type, nil, semantic.TypeRefDecls)
+			cp.Response = &resp
 		}
-		if m.Response != nil && m.Response.Type != nil {
-			respCopy := *m.Response
-			respCopy.Type = rewriteNamedTypeRef(m.Response.Type, srcPkg, rewrite)
-			cp.Response = &respCopy
-		}
-		cp.Decorators = rewriteErrorDecorators(m.Decorators, srcPkg, rewrite)
+		cp.Decorators = m.errorsDecorators(home, method.Decorators)
 		out.Methods[i] = &cp
 	}
 	return &out
 }
 
-// rewriteErrorDecorators renames, through rewrite, each identifier argument
-// of every `@errors` in ds (`Dup` → `ADup`).
-func rewriteErrorDecorators(ds []*ast.Decorator, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) []*ast.Decorator {
-	if len(ds) == 0 {
-		return ds
-	}
-	out := make([]*ast.Decorator, len(ds))
+// errorsDecorators returns ds with every error each `@errors` names renamed,
+// the elements of `@errors([A, B])` included.
+func (m *merger) errorsDecorators(home string, ds []*ast.Decorator) []*ast.Decorator {
+	out := slices.Clone(ds)
 	for i, d := range ds {
 		if d == nil || d.Name != "errors" {
-			out[i] = d
 			continue
 		}
 		dc := *d
 		dc.Args = make([]*ast.DecoratorArg, len(d.Args))
 		for j, a := range d.Args {
-			id, ok := a.Value.(*ast.IdentExpr)
-			if !ok || id.Name == nil {
-				dc.Args[j] = a
-				continue
-			}
-			named := rewrite(srcPkg, &ast.NamedTypeRef{Pos: id.Pos, Name: id.Name})
 			ac := *a
-			idc := *id
-			idc.Name = named.Name
-			ac.Value = &idc
+			ac.Value = m.errorName(home, a.Value)
 			dc.Args[j] = &ac
 		}
 		out[i] = &dc
@@ -272,25 +231,22 @@ func rewriteErrorDecorators(ds []*ast.Decorator, srcPkg string, rewrite func(str
 	return out
 }
 
-// rewriteNamedTypeRef is [rewriteTypeRef] for a bare named ref.
-func rewriteNamedTypeRef(n *ast.NamedTypeRef, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *ast.NamedTypeRef {
-	if n == nil {
-		return nil
+// errorName returns e, an `@errors` argument written in package home, with
+// the error it names renamed, each element of an array.
+func (m *merger) errorName(home string, e ast.Expr) ast.Expr {
+	switch v := e.(type) {
+	case *ast.ArrayLit:
+		cp := *v
+		cp.Elements = make([]ast.Expr, len(v.Elements))
+		for i, el := range v.Elements {
+			cp.Elements[i] = m.errorName(home, el)
+		}
+		return &cp
+	case *ast.IdentExpr:
+		n := m.ref(home, &ast.NamedTypeRef{Pos: v.Pos, Name: v.Name}, nil, semantic.ErrorDecls)
+		cp := *v
+		cp.Name = n.Name
+		return &cp
 	}
-	return rewriteNamedArgs(rewrite(srcPkg, n), srcPkg, rewrite)
-}
-
-// rewriteNamedArgs returns a copy of n with its type arguments renamed by
-// rewrite, or n when it has none.
-func rewriteNamedArgs(n *ast.NamedTypeRef, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *ast.NamedTypeRef {
-	if n == nil || len(n.Args) == 0 {
-		return n
-	}
-	args := make([]*ast.TypeRef, len(n.Args))
-	for i, a := range n.Args {
-		args[i] = rewriteTypeRef(a, srcPkg, rewrite)
-	}
-	cp := *n
-	cp.Args = args
-	return &cp
+	return e
 }

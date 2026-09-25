@@ -570,6 +570,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@requiresOneOf` or `@mutuallyExclusive` did the same for a member a mixin
   brings. Both now use the key the server reads and writes.
 
+- **The OpenAPI document keeps every `@errors` response.** An error named
+  in the array form, `@errors([Lost])`, lost its response when two packages
+  declare `Lost`, and so did a bare name two other packages declare; each
+  now documents the error the analyser resolves the name to. A type
+  parameter named like a type two packages declare stays a parameter, where
+  the generic's instance referred to one of those types.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

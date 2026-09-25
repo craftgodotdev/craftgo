@@ -16,4 +16,5 @@ import (
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/xdelegate/store", transport.Store(svcCtx))
+	srv.Handle("GET /api/xdelegate/lost", transport.LookupLost(svcCtx))
 }

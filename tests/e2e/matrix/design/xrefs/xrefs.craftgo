@@ -105,6 +105,12 @@ error Conflict XMixinErr {
 	reason string @length(1, 200)
 }
 
+// XLost shares its name with xshared.XLost, so the merged OpenAPI document
+// names this one XrefsXLostErr.
+error NotFound XLost {
+	id string
+}
+
 // ----- ERROR + service matrix -----
 
 type XGetReq {
@@ -248,6 +254,13 @@ service XRefsService {
 	@errors(XMixinErr)
 	get GetThird /third/{id} {
 		request  xshared.XThirdReq
+		response xshared.XOwner
+	}
+
+	@doc("Pins @errors in its array form over an error two packages declare: the 404 is a oneOf of this package's XLost (XrefsXLostErr) and xshared's (XsharedXLostErr).")
+	@errors([XLost, xshared.XLost])
+	get GetLost /lost/{id} {
+		request  XGetReq
 		response xshared.XOwner
 	}
 

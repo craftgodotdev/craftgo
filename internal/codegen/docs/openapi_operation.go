@@ -297,21 +297,17 @@ func errorHeaderCookieFields(ed *ast.ErrorDecl, pkg *semantic.Package, r *semant
 }
 
 // errorRefsFromDecorators returns the distinct error names of every `@errors`
-// in ds, in order; a qualified name keeps its last segment.
+// in ds, in order.
 func errorRefsFromDecorators(ds []*ast.Decorator) []string {
-	seen := map[string]bool{}
 	var out []string
 	for _, d := range ds {
 		if d == nil || d.Name != "errors" {
 			continue
 		}
 		for _, n := range ast.ArgNames(d) {
-			name := n.Value[strings.LastIndexByte(n.Value, '.')+1:]
-			if seen[name] {
-				continue
+			if !slices.Contains(out, n.Value) {
+				out = append(out, n.Value)
 			}
-			seen[name] = true
-			out = append(out, name)
 		}
 	}
 	return out

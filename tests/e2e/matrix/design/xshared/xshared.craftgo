@@ -172,6 +172,12 @@ error NotFound XNotFound {
 	id       string
 }
 
+// XLost shares its name with xrefs.XLost, so the merged OpenAPI document
+// names this one XsharedXLostErr.
+error NotFound XLost {
+	key string
+}
+
 // XTier is an INT-valued enum carried cross-package by an event payload
 // (`events.TierPromoted`). Resolving the enum against the consuming
 // package instead of the declaring one finds nothing, falls back to the
