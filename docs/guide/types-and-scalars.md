@@ -14,6 +14,19 @@ type CreateUserReq {
 
 Each field is `name type [decorators]`. Types compose from primitives, arrays, maps, and other types.
 
+A field's decorators follow it: on its line, or on lines of their own below it, up to the next member. So a decorator on a line of its own between two fields is the upper field's, even across a blank line or a comment:
+
+```craftgo
+type Signup {
+    email    string @format(email)
+    password string
+        @minLength(12)
+    nickname string?
+}
+```
+
+`@minLength(12)` belongs to `password`, and `craftgo fmt` moves it onto that line. A field takes decorators written above it only as the first member of its body or right below a mixin.
+
 ### Primitive types
 
 | DSL        | Go         | Notes                                |
@@ -223,7 +236,7 @@ The recommended style is to keep field names lowercase (`createdAt string`) and 
 
 #### Restrictions
 
-A mixin must reference a `type` declaration. Referencing an `enum`, `error`, `scalar`, or `middleware` raises `mixin/non-type`. An unknown name raises `ref/unknown-symbol`, like any other type reference (`ref/unknown-package` when a `pkg.Type` names a package that does not exist). A mixin takes no decorators: one written before it, or after it on its own line, is an error rather than being attached to the next field.
+A mixin must reference a `type` declaration. Referencing an `enum`, `error`, `scalar`, or `middleware` raises `mixin/non-type`. An unknown name raises `ref/unknown-symbol`, like any other type reference (`ref/unknown-package` when a `pkg.Type` names a package that does not exist). A mixin takes no decorators: one after it on its line is an error. A decorator on a line of its own above a mixin belongs to the field above, when there is one; at the top of the body or below another mixin it is an error. One on a line of its own below a mixin goes to the field below it.
 
 The Go output uses struct embedding:
 

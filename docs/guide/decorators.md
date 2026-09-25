@@ -55,6 +55,18 @@ The decorator set is closed - an unknown decorator fires `decorator/unknown`. If
 | `method`       | Above an HTTP method inside a service body                 |
 | `middleware`   | Above a `middleware` declaration                           |
 
+The decorators of a field or an enum value follow it: on its line, or on lines of their own below it, up to the next member. A decorator on a line of its own between two fields therefore decorates the upper one, even across a blank line or a comment:
+
+```craftgo
+type T {
+    x string
+    @minLength(1)
+    y string
+}
+```
+
+Here `@minLength(1)` is `x`'s. A field takes decorators written above it only as the first member of its body or right below a mixin. An enum value takes none from above: above the first value they are an error.
+
 ## Documentation and lifecycle
 
 ### `@doc(text)`
