@@ -261,6 +261,25 @@ func TestScalarRangeChecked(t *testing.T) {
 	expectDiag(t, `scalar Score int @range(100, 1)`, CodeDecoratorRange)
 }
 
+// A scalar's constraints obey every value rule a field's do, each reported once.
+func TestScalarAndFieldShareValueRules(t *testing.T) {
+	for _, c := range []struct{ prim, decs, code string }{
+		{"int8", "@lte(300)", CodeBoundOverflow},
+		{"float32", "@lte(400000000000000000000000000000000000000.0)", CodeBoundOverflow},
+		{"int", "@gte(0.5)", CodeDecoratorTypeMismatch},
+		{"int", "@multipleOf(2.5)", CodeDecoratorTypeMismatch},
+		{"uint", "@negative", CodeDecoratorTypeMismatch},
+		{"uint", "@lt(0)", CodeDecoratorTypeMismatch},
+		{"int", "@gte(10) @lte(1)", CodeDecoratorRange},
+		{"int", "@gt(5) @lt(5)", CodeBoundEmptyRange},
+	} {
+		expectCodeCount(t, "scalar S "+c.prim+" "+c.decs, c.code, 1)
+		expectCodeCount(t, "type X { v "+c.prim+" "+c.decs+" }", c.code, 1)
+	}
+	// An array takes no value rule; its type mismatch is the one report.
+	expectCodeCount(t, "type X { xs uint[] @negative }", CodeDecoratorTypeMismatch, 1)
+}
+
 func TestSingleNumericArgMissing(t *testing.T) {
 	v, _, ok := singleNumericArg([]*ast.Decorator{{Name: "min"}}, "min")
 	if ok {

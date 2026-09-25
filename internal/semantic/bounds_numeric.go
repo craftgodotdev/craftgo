@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"fmt"
 	"math"
 	"slices"
 
@@ -11,16 +10,12 @@ import (
 )
 
 // checkNegativeOnUnsigned rejects `@negative` and `@lt(0)` on an unsigned
-// field, scalars included, since no value satisfies them.
-func (a *analyzer) checkNegativeOnUnsigned(f *ast.Field) {
-	if f == nil || f.Type == nil || f.Type.Named == nil {
-		return
-	}
-	prim := a.primOf(f.Type)
+// prim, since no value satisfies them.
+func (a *analyzer) checkNegativeOnUnsigned(prim string, decs []*ast.Decorator) {
 	if !prims.IsUnsigned(prim) {
 		return
 	}
-	for _, d := range f.Decorators {
+	for _, d := range decs {
 		switch {
 		case d.Name == "negative":
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
@@ -35,14 +30,10 @@ func (a *analyzer) checkNegativeOnUnsigned(f *ast.Field) {
 	}
 }
 
-// checkBoundCapacity rejects a numeric constraint argument f's integer or
-// float32 type cannot hold, as a constant that would not compile.
-func (a *analyzer) checkBoundCapacity(f *ast.Field) {
-	if f == nil || f.Type == nil || f.Type.Array || f.Type.Named == nil {
-		return
-	}
-	prim := a.primOf(f.Type)
-	for _, d := range f.Decorators {
+// checkBoundCapacity rejects a numeric constraint argument in decs that
+// prim cannot hold, as a constant that would not compile.
+func (a *analyzer) checkBoundCapacity(prim string, decs []*ast.Decorator) {
+	for _, d := range decs {
 		for _, arg := range numericArgs(d) {
 			if l, ok := ParseNumericArg(arg); ok {
 				a.checkCapacity(prim, l, arg.Pos, "@"+d.Name+" bound")
@@ -81,16 +72,6 @@ func numericArgs(d *ast.Decorator) []*ast.DecoratorArg {
 		return nil
 	}
 	return args
-}
-
-// checkBoundLiteralKind rejects a fractional numeric constraint argument on
-// an integer field.
-func (a *analyzer) checkBoundLiteralKind(f *ast.Field) {
-	if f == nil || f.Type == nil || f.Type.Array || f.Type.Named == nil {
-		return
-	}
-	prim := a.primOf(f.Type)
-	a.checkIntBoundFloatLiteral(prim, fmt.Sprintf("field %q", f.Name), f.Decorators)
 }
 
 // checkIntBoundFloatLiteral rejects a fractional argument of a numeric

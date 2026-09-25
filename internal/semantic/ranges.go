@@ -26,32 +26,39 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 	case *ast.ErrorDecl:
 		a.checkBodyRanges(dd.Body, nil)
 	case *ast.ScalarDecl:
-		// Every field of the scalar's type inherits its constraints, so the
-		// field rules run here on a field of the scalar's primitive.
-		a.checkIntBoundFloatLiteral(dd.Primitive, fmt.Sprintf("scalar %q", dd.Name), dd.Decorators)
-		scalarAsField := &ast.Field{
-			Name:       dd.Name,
-			Type:       &ast.TypeRef{Named: &ast.NamedTypeRef{Pos: dd.Pos, Name: &ast.QualifiedIdent{Pos: dd.Pos, Parts: []string{dd.Primitive}}}},
-			Decorators: dd.Decorators,
-		}
-		a.checkBoundCapacity(scalarAsField)
-		a.checkNegativeOnUnsigned(scalarAsField)
-		a.checkPairOrdering(scalarAsField)
+		// Every field of the scalar's type inherits its constraints.
+		a.checkValueRules(dd.Primitive, fmt.Sprintf("scalar %q", dd.Name), dd.Decorators)
 	}
 }
 
-// checkBodyRanges runs the field rules on each field of a body.
+// checkBodyRanges runs the value rules and the field rules on each field of
+// a body.
 func (a *analyzer) checkBodyRanges(members []ast.TypeMember, typeParams []string) {
 	for _, f := range ast.Fields(members) {
-		a.checkPairOrdering(f)
+		a.checkValueRules(a.valuePrim(f), fmt.Sprintf("field %q", f.Name), f.Decorators)
 		a.checkNullableRedundant(f)
-		a.checkBoundCapacity(f)
-		a.checkBoundLiteralKind(f)
-		a.checkNegativeOnUnsigned(f)
 		a.checkUniqueItemsComparable(f, typeParams)
 		a.checkValueConstraintOnTypeParam(f, typeParams)
 		a.checkMapKeyComparable(f, typeParams)
 	}
+}
+
+// checkValueRules runs the rules on the values decs constrain, of primitive
+// prim, at the field or scalar subject names.
+func (a *analyzer) checkValueRules(prim, subject string, decs []*ast.Decorator) {
+	a.checkPairOrdering(decs)
+	a.checkBoundCapacity(prim, decs)
+	a.checkIntBoundFloatLiteral(prim, subject, decs)
+	a.checkNegativeOnUnsigned(prim, decs)
+}
+
+// valuePrim returns the primitive of f's values - a scalar's, else the type
+// as spelled - or "" for an array or a map.
+func (a *analyzer) valuePrim(f *ast.Field) string {
+	if f.Type == nil || f.Type.Array {
+		return ""
+	}
+	return a.primOf(f.Type)
 }
 
 // checkDecoratorValue checks the argument values of d.
@@ -206,7 +213,7 @@ func (a *analyzer) checkNonNegativeInt(d *ast.Decorator) {
 
 // checkPairOrdering rejects a lower bound above its upper partner on f, and
 // warns when a pair with a strict bound meets at one value.
-func (a *analyzer) checkPairOrdering(f *ast.Field) {
+func (a *analyzer) checkPairOrdering(decs []*ast.Decorator) {
 	pairs := []struct {
 		lo, hi   string
 		loStrict bool
@@ -220,8 +227,8 @@ func (a *analyzer) checkPairOrdering(f *ast.Field) {
 		{lo: "gt", hi: "lte", loStrict: true},
 	}
 	for _, p := range pairs {
-		loV, loPos, loOk := singleNumericArg(f.Decorators, p.lo)
-		hiV, hiPos, hiOk := singleNumericArg(f.Decorators, p.hi)
+		loV, loPos, loOk := singleNumericArg(decs, p.lo)
+		hiV, hiPos, hiOk := singleNumericArg(decs, p.hi)
 		if !loOk || !hiOk {
 			continue
 		}

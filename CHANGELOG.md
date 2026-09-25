@@ -358,6 +358,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@uniqueItems` on a map are no longer offered, and an error's fields are
   filtered like a type's.
 
+- **`@negative` or `@lt(0)` on an array of unsigned integers is reported
+  once**, as a decorator on the wrong type; it also drew the unsigned-value
+  error meant for a single number.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
