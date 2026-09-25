@@ -131,11 +131,11 @@ func TestFormatKeepsEveryCommentInPlace(t *testing.T) {
 	}
 }
 
-// A comment moves to the line its code joins: a collapsed argument list, a
-// path before the brace, a CRLF line.
+// A comment moves to the line its code joins: an argument list joined after
+// its last argument, a path before the brace, a CRLF line.
 func TestFormatMovesACommentWithItsCode(t *testing.T) {
 	for _, c := range []struct{ name, src, want string }{
-		{"collapsed decorator arguments", "package x\n\ntype T {\n\ta string @example({\n\t\tx: 1, // c\n\t\ty: 2\n\t})\n}\n", "package x\n\ntype T {\n\ta string @example({x: 1, y: 2}) // c\n}\n"},
+		{"after a joined argument list", "package x\n\ntype T {\n\ta string @example({\n\t\tx: 1,\n\t\ty: 2\n\t}) // c\n}\n", "package x\n\ntype T {\n\ta string @example({x: 1, y: 2}) // c\n}\n"},
 		{"path before the brace", "package x\n\nservice S {\n\tget A /a // c\n\t{\n\t\tresponse T\n\t}\n}\n", "package x\n\nservice S {\n\tget A /a { // c\n\t\tresponse T\n\t}\n}\n"},
 		{"CRLF", "package x\r\n\r\ntype T { // c\r\n\ta string // d\r\n}\r\n", "package x\n\ntype T { // c\n\ta string // d\n}\n"},
 	} {
@@ -189,18 +189,18 @@ func TestFormatContinuedDecorators(t *testing.T) {
 }
 
 // A comment block inside a member's lines prints after the member, and the
-// trailing comments of the member's lines stay on the member's line.
+// trailing comments of the member's lines stay with the member.
 func TestFormatKeepsATrailingCommentWithItsMember(t *testing.T) {
 	for _, c := range []struct{ name, src, want string }{
 		{
 			"comment block inside a decorator's arguments",
 			"package x\n\ntype T {\n\ta string @doc(\n\t\t// note about the doc\n\t\t\"x\" // why x\n\t)\n\tb string\n}\n",
-			"package x\n\ntype T {\n\ta string @doc(\"x\") // why x\n\t// note about the doc\n\n\tb string\n}\n",
+			"package x\n\ntype T {\n\ta string @doc(\n\t\t\"x\", // why x\n\t)\n\t// note about the doc\n\n\tb string\n}\n",
 		},
 		{
 			"trailing comment after the closing parenthesis",
 			"package x\n\ntype T {\n\ta string @header(\n\t//TODO\n\t\"X\") // n\n\tb string\n}\n",
-			"package x\n\ntype T {\n\ta string @header(\"X\") // n\n\t// TODO\n\n\tb string\n}\n",
+			"package x\n\ntype T {\n\ta string @header(\n\t\t\"X\", // n\n\t)\n\t// TODO\n\n\tb string\n}\n",
 		},
 		{
 			"comment block inside a declaration",
@@ -236,12 +236,87 @@ func TestFormatKeepsAHeaderCommentInItsDeclaration(t *testing.T) {
 	}
 }
 
-// Format refuses to put two comments on one collapsed line.
+// An argument list, array or object written over several lines keeps its
+// lines when a trailing comment sits on one of them: each source line of
+// elements on its own line one level deeper, the closer on its own line.
+func TestFormatKeepsAnArgumentListWithComments(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{
+			"two comments in the arguments",
+			"package x\n\ntype T {\n\tname string\n\tid string @oneOf(\n\t\t\"a\", // first\n\t\t\"b\" // second\n\t)\n}\n",
+			"package x\n\ntype T {\n\tname string\n\tid   string @oneOf(\n\t\t\"a\", // first\n\t\t\"b\", // second\n\t)\n}\n",
+		},
+		{
+			"comment after the opening parenthesis",
+			"package x\n\ntype T {\n\tid string @length( // c0\n\t\t1, // min\n\t\t64\n\t)\n}\n",
+			"package x\n\ntype T {\n\tid string @length( // c0\n\t\t1, // min\n\t\t64,\n\t)\n}\n",
+		},
+		{
+			"comment after the closing parenthesis",
+			"package x\n\ntype T {\n\tid string @length(\n\t\t1, // a\n\t\t80\n\t) // b\n}\n",
+			"package x\n\ntype T {\n\tid string @length(\n\t\t1, // a\n\t\t80,\n\t) // b\n}\n",
+		},
+		{
+			"first argument on the opening line",
+			"package x\n\ntype T {\n\tid string @length(1, // min\n\t\t64)\n}\n",
+			"package x\n\ntype T {\n\tid string @length(\n\t\t1, // min\n\t\t64,\n\t)\n}\n",
+		},
+		{
+			"arguments below the name",
+			"package x\n\ntype T {\n\tid string @doc // c1\n\t\t(\"x\") // c2\n}\n",
+			"package x\n\ntype T {\n\tid string @doc( // c1\n\t\t\"x\", // c2\n\t)\n}\n",
+		},
+		{
+			"arguments sharing a line",
+			"package x\n\ntype T {\n\tid string @oneOf(\n\t\t\"a\", \"b\", // ab\n\t\t\"c\" // c\n\t)\n}\n",
+			"package x\n\ntype T {\n\tid string @oneOf(\n\t\t\"a\", \"b\", // ab\n\t\t\"c\", // c\n\t)\n}\n",
+		},
+		{
+			"array",
+			"package x\n\ntype T {\n\tid string @oneOf([\n\t\t\"a\", // c1\n\t\t\"b\" // c2\n\t])\n}\n",
+			"package x\n\ntype T {\n\tid string @oneOf([\n\t\t\"a\", // c1\n\t\t\"b\", // c2\n\t])\n}\n",
+		},
+		{
+			"object",
+			"package x\n\ntype T {\n\ta string @example({\n\t\tx: 1, // c\n\t\ty: 2\n\t})\n}\n",
+			"package x\n\ntype T {\n\ta string @example({\n\t\tx: 1, // c\n\t\ty: 2,\n\t})\n}\n",
+		},
+		{
+			"declaration decorator",
+			"package x\n\n@doc(\n\t\"a\", // a\n\t\"b\" // b\n)\nmiddleware M\n",
+			"package x\n\n@doc(\n\t\"a\", // a\n\t\"b\", // b\n)\nmiddleware M\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
+	}
+}
+
+// The member after an argument list written over several lines gets a blank
+// line above it only where the source has one.
+func TestFormatBlankLinesAfterAListOverSeveralLines(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{
+			"kept lines",
+			"package x\n\ntype T {\n\tid string @oneOf(\n\t\t\"a\", // first\n\t\t\"b\" // second\n\t)\n\tname string\n}\n",
+			"package x\n\ntype T {\n\tid   string @oneOf(\n\t\t\"a\", // first\n\t\t\"b\", // second\n\t)\n\tname string\n}\n",
+		},
+		{
+			"joined",
+			"package x\n\ntype T {\n\tid string @length(\n\t\t1,\n\t\t64\n\t)\n\tname string\n\n\tage int\n}\n",
+			"package x\n\ntype T {\n\tid   string @length(1, 64)\n\tname string\n\n\tage  int\n}\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
+	}
+}
+
+// Format refuses to put two comments on one line, and says so.
 func TestFormatRefusesTwoCommentsOnOneLine(t *testing.T) {
-	src := "package x\n\ntype T {\n\ta string @example({\n\t\tx: 1, // c1\n\t\ty: 2 // c2\n\t})\n}\n"
+	src := "package x\n\nmiddleware // c1\n\tM // c2\n"
 	out, diags := Format("t.craftgo", src)
-	if len(diags) == 0 || out != src {
-		t.Fatalf("diagnostics %v, want a refusal with the source unchanged:\n%s", diags, out)
+	want := `t.craftgo:4:4: formatting would put the comments "c1" and "c2" on one line`
+	if len(diags) != 1 || diags[0].Error() != want || out != src {
+		t.Fatalf("diagnostics %v, want %q with the source unchanged:\n%s", diags, want, out)
 	}
 }
 

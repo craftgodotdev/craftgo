@@ -55,17 +55,18 @@ func TestFormatNeverDamagesTheFile(t *testing.T) {
 }
 
 // Format writes LF line ends for CRLF and CR-only input, trailing comments
-// included.
+// included; "\r\r\n" is two line ends.
 func TestFormatDropsCarriageReturns(t *testing.T) {
-	for _, src := range []string{
-		"package p\r\n\r\n// doc\r\ntype A {\r\n\tx string // note\r\n}\r\n",
-		"package p\r\r// doc\rtype A {\r\tx string // note\r}\r",
+	for src, want := range map[string]string{
+		"package p\r\n\r\n// doc\r\ntype A {\r\n\tx string // note\r\n}\r\n":             "package p\n\n// doc\ntype A {\n\tx string // note\n}\n",
+		"package p\r\r// doc\rtype A {\r\tx string // note\r}\r":                         "package p\n\n// doc\ntype A {\n\tx string // note\n}\n",
+		"package p\r\r\n\r\r\n// doc\r\r\ntype A {\r\r\n\tx string // note\r\r\n}\r\r\n": "package p\n\n// doc\n\ntype A {\n\tx string // note\n}\n",
 	} {
 		out, diags := Format("t.craftgo", src)
 		if len(diags) > 0 {
 			t.Fatalf("%q: diagnostics: %v", src, diags)
 		}
-		if want := "package p\n\n// doc\ntype A {\n\tx string // note\n}\n"; out != want {
+		if out != want {
 			t.Errorf("%q: got %q, want %q", src, out, want)
 		}
 	}

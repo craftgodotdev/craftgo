@@ -11,23 +11,33 @@ func (p *Printer) line(src int) {
 
 // endCode ends a code line. Its newline waits for the next construct, so the
 // trailing comments of the source lines it covers can still join it.
-func (p *Printer) endCode() { p.open = true }
+func (p *Printer) endCode() {
+	p.open = true
+	p.freeEnd = 0
+}
 
 // at ends the open code line before the construct that starts on source line
-// src; the trailing comments of the source lines before src join it. A line
-// holds one: a second is left out, and Format then refuses the output. A free
-// comment block prints below the construct it sits in, so before one the
-// trailing comments up to the next construct join the line.
+// src. A free comment block prints below the construct it sits in, so before
+// one the trailing comments up to the next construct join the line.
 func (p *Printer) at(src int) {
-	if !p.open {
-		return
-	}
 	if next, ok := p.codeAfter[src]; ok {
 		src = next
+	}
+	p.endLine(src)
+}
+
+// endLine ends the open code line; the trailing comments of the source lines
+// before src join it. A line holds one: joined records a second, which is left
+// out, and Format then refuses the output.
+func (p *Printer) endLine(src int) {
+	if !p.open {
+		return
 	}
 	for n := 0; p.emitted < len(p.trailing) && p.trailing[p.emitted].Pos.Line < src; n++ {
 		if n == 0 {
 			p.comment(" ", p.trailing[p.emitted].Text)
+		} else if p.joined[0] == nil {
+			p.joined = [2]*ast.Comment{p.trailing[p.emitted-n], p.trailing[p.emitted]}
 		}
 		p.emitted++
 	}
@@ -60,8 +70,20 @@ func (p *Printer) blank(src int) {
 	p.write("\n")
 }
 
+// blankBefore reports whether a blank line goes above the construct that
+// starts on source line start, below the one on line prevEnd: the source has
+// one there, or a free comment block printed last did not sit right above it,
+// which it would then read as its doc.
+func (p *Printer) blankBefore(prevEnd, start int) bool {
+	if prevEnd == 0 || start <= prevEnd {
+		return false
+	}
+	return !p.code[start-1] || p.freeEnd > 0 && p.freeEnd != start-1
+}
+
 func (p *Printer) printFreeComment(c *ast.FreeComment) {
 	p.comments(c.Pos.Line, c.Text)
+	p.freeEnd = c.Pos.Line + len(c.Text) - 1
 }
 
 // declDecorators prints decs one per line with the comments inside their
@@ -135,9 +157,15 @@ func (p *Printer) chainCommented(first, last int) bool {
 			return true
 		}
 	}
+	return p.trailingBefore(first, last)
+}
+
+// trailingBefore reports whether a trailing comment still to print sits on a
+// source line from first up to, not including, end.
+func (p *Printer) trailingBefore(first, end int) bool {
 	for _, c := range p.trailing[p.emitted:] {
-		if c.Pos.Line >= last {
-			break
+		if c.Pos.Line >= end {
+			return false
 		}
 		if c.Pos.Line >= first {
 			return true

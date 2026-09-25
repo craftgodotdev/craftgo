@@ -1,11 +1,9 @@
 package format
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
-	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/parser"
 )
 
@@ -554,50 +552,34 @@ service Svc {
 	formatExact(t, src, src)
 }
 
-// TestFreeCommentRender pins that Print renders the FreeComment members of
-// hand-built type, enum and service bodies.
+// TestFreeCommentRender pins that the comment blocks between the members of a
+// type, an enum and a service body format to themselves.
 func TestFreeCommentRender(t *testing.T) {
-	file := &ast.File{
-		Package: &ast.PackageDecl{Name: "x"},
-		Decls: []ast.Decl{
-			&ast.TypeDecl{
-				Name: "User",
-				Body: []ast.TypeMember{
-					&ast.Field{Name: "id", Type: &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"string"}}}}},
-					&ast.FreeComment{Text: []string{"section: contact info"}},
-					&ast.Field{Name: "email", Type: &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"string"}}}}},
-				},
-			},
-			&ast.EnumDecl{
-				Name: "Status",
-				Members: []ast.EnumMember{
-					&ast.EnumValue{Name: "Active", Kind: ast.EnumBare},
-					&ast.FreeComment{Text: []string{"deprecated values below"}},
-					&ast.EnumValue{Name: "Inactive", Kind: ast.EnumBare},
-				},
-			},
-			&ast.ServiceDecl{
-				Name: "Svc",
-				Members: []ast.ServiceMember{
-					&ast.Method{Verb: "get", Name: "Health"},
-					&ast.FreeComment{Text: []string{"admin endpoints"}},
-					&ast.Method{Verb: "delete", Name: "Purge"},
-				},
-			},
-		},
-	}
-	var buf bytes.Buffer
-	if err := Print(&buf, file); err != nil {
-		t.Fatalf("Print: %v", err)
-	}
-	out := buf.String()
-	for _, want := range []string{
-		"// section: contact info",
-		"// deprecated values below",
-		"// admin endpoints",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("expected output to contain %q, got:\n%s", want, out)
-		}
-	}
+	canonical := `package x
+
+type User {
+	id    string
+
+	// section: contact info
+
+	email string
+}
+
+enum Status {
+	Active
+
+	// deprecated values below
+
+	Inactive
+}
+
+service Svc {
+	get Health /health {}
+
+	// admin endpoints
+
+	delete Purge /purge {}
+}
+`
+	formatExact(t, canonical, canonical)
 }

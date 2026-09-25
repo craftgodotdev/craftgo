@@ -3,6 +3,7 @@ package format
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -219,6 +220,29 @@ func (l *layout) at(line int) string {
 		}
 	}
 	return best.name
+}
+
+// codeLines returns the source lines that hold a token or a comment, a raw
+// string's every line included.
+func codeLines(toks []lexer.Token, comments []*lexer.Comment) map[int]bool {
+	lines := map[int]bool{}
+	for _, t := range toks {
+		if t.Kind == lexer.EOF {
+			continue
+		}
+		for l := t.Pos.Line; l <= t.Pos.Line+lineEnds(t.Text); l++ {
+			lines[l] = true
+		}
+	}
+	for _, c := range comments {
+		lines[c.Pos.Line] = true
+	}
+	return lines
+}
+
+// lineEnds counts the line ends in s: "\n", "\r\n" and a lone "\r".
+func lineEnds(s string) int {
+	return strings.Count(s, "\n") + strings.Count(s, "\r") - strings.Count(s, "\r\n")
 }
 
 // codeAfterFreeComments maps the first line of each free comment block to the

@@ -25,7 +25,11 @@ func Format(filename, src string) (string, []lexer.Diagnostic) {
 		return src, diags
 	}
 	var buf bytes.Buffer
-	newPrinter(&buf, f).File(f)
+	pr := newPrinter(&buf, f, codeLines(p.Tokens(), f.Comments))
+	pr.File(f)
+	if c := pr.joined; c[0] != nil {
+		return src, refusal(c[1].Pos, "formatting would put the comments %q and %q on one line", c[0].Text, c[1].Text)
+	}
 	out := buf.String()
 	if diags := checkOutput(filename, f, out); len(diags) > 0 {
 		return src, diags
@@ -94,17 +98,10 @@ func refusal(pos lexer.Position, format string, args ...any) []lexer.Diagnostic 
 	return []lexer.Diagnostic{{Pos: pos, Msg: fmt.Sprintf(format, args...)}}
 }
 
-// Print writes the canonical text of f to w and returns the first write error.
-func Print(w io.Writer, f *ast.File) error {
-	pr := newPrinter(w, f)
-	pr.File(f)
-	return pr.err
-}
-
 // newPrinter builds a Printer over the trailing, in-chain and free comments of
-// f.
-func newPrinter(w io.Writer, f *ast.File) *Printer {
-	p := &Printer{w: w, chain: f.ChainComments, codeAfter: fileLayout(f).codeAfterFreeComments()}
+// f, whose source holds a token or a comment on the code lines.
+func newPrinter(w io.Writer, f *ast.File, code map[int]bool) *Printer {
+	p := &Printer{w: w, chain: f.ChainComments, codeAfter: fileLayout(f).codeAfterFreeComments(), code: code}
 	for _, c := range f.Comments {
 		if c.Kind == lexer.CommentTrailing {
 			p.trailing = append(p.trailing, c)
@@ -132,6 +129,14 @@ type Printer struct {
 	// codeAfter maps the first line of a free comment block to the first
 	// line of the construct below it.
 	codeAfter map[int]int
+	// joined holds the first two trailing comments that fell on one line.
+	joined [2]*ast.Comment
+	// code holds the source lines with a token or a comment; the others are
+	// blank.
+	code map[int]bool
+	// freeEnd is the last source line of the free comment block printed last,
+	// or 0 once code follows it.
+	freeEnd int
 }
 
 func (p *Printer) write(s string) {

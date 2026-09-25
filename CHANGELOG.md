@@ -221,6 +221,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   result would hold a comment in another place: after another member, as a
   doc, or in another block.
 
+- **An argument list with a comment keeps its lines.** A decorator's
+  arguments, an array or an object written over several lines stays on its
+  lines when a trailing comment sits on one of them: each line of elements
+  one level deeper, the closing bracket on a line of its own. The list was
+  joined onto one line, and with two comments in it formatting refused the
+  file. A member written over several lines no longer gains a blank line
+  below it, and a refusal to put two comments on one line now says so
+  rather than that a comment would be dropped.
+
 - **A decorator after a declaration on its line is an error.** In
   `middleware M @doc("m")`, `error NotFound E @doc("e")`, `} @doc("t")` and
   a method's `} @deprecated`, the decorator went silently to the next

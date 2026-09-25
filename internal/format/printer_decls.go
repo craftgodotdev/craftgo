@@ -81,10 +81,10 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 	}
 }
 
-// blankBetween writes one blank line if the source had any between line prevEnd
-// and line start; a zero line (first member, or no position) writes none.
+// blankBetween writes one blank line where [Printer.blankBefore] puts one; a
+// zero line (first member, or no position) writes none.
 func (p *Printer) blankBetween(prevEnd, start int) {
-	if prevEnd > 0 && start > prevEnd+1 {
+	if p.blankBefore(prevEnd, start) {
 		p.blank(start)
 	}
 }
