@@ -31,7 +31,7 @@ func (s *server) onDefinition(_ context.Context, params protocol.DefinitionParam
 	if d == nil {
 		return []protocol.Location{}, nil
 	}
-	return []protocol.Location{v.locationOf(d.DeclPos(), len(d.DeclName()), r.uri)}, nil
+	return []protocol.Location{v.locationOf(d.DeclNamePos(), len(d.DeclName()), r.uri)}, nil
 }
 
 // enumValueDefinition resolves a value named in a field's `@default(...)` or
@@ -227,16 +227,19 @@ func (s *server) onReferences(_ context.Context, params protocol.ReferenceParams
 	if d == nil {
 		return []protocol.Location{}, nil
 	}
-	return v.references(d, r.uri), nil
+	return v.references(d, params.Context.IncludeDeclaration, r.uri), nil
 }
 
 // references returns the location of every identifier in the project that
-// names d.
-func (v projectView) references(d ast.Decl, current protocol.DocumentURI) []protocol.Location {
+// names d; d's own name is left out unless includeDecl.
+func (v projectView) references(d ast.Decl, includeDecl bool, current protocol.DocumentURI) []protocol.Location {
 	out := []protocol.Location{}
 	for _, lf := range v.files {
 		u := v.uriOf(lf.path, current)
 		for i, t := range lf.tokens {
+			if !includeDecl && t.Pos == d.DeclNamePos() {
+				continue
+			}
 			if t.Kind == lexer.Ident && t.Text == d.DeclName() && !isQualifier(lf.snapshotView, i) && v.symbolAt(lf.snapshotView, i) == d {
 				out = append(out, protocol.Location{URI: u, Range: rangeOf(lf.src, t)})
 			}

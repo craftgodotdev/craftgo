@@ -8,6 +8,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // onDocumentSymbol answers `textDocument/documentSymbol` with the buffer's outline.
@@ -40,7 +41,7 @@ func (s *server) onWorkspaceSymbol(_ context.Context, params protocol.WorkspaceS
 				Kind: infoOf(d).symbol,
 				Location: protocol.Location{
 					URI:   uri.File(p.path),
-					Range: spanRange(p.src, d.DeclPos(), len(name)),
+					Range: spanRange(p.src, d.DeclNamePos(), len(name)),
 				},
 				ContainerName: p.packageName(),
 			})
@@ -81,16 +82,19 @@ func documentSymbols(view snapshotView) []protocol.DocumentSymbol {
 // detail.
 func declSymbol(src string, d ast.Decl) protocol.DocumentSymbol {
 	info := infoOf(d)
-	r := spanRange(src, d.DeclPos(), len(d.DeclName()))
-	sym := protocol.DocumentSymbol{Name: d.DeclName(), Detail: info.summary, Kind: info.symbol, Range: r, SelectionRange: r}
+	name := spanRange(src, d.DeclNamePos(), len(d.DeclName()))
+	sym := protocol.DocumentSymbol{Name: d.DeclName(), Detail: info.summary, Kind: info.symbol, SelectionRange: name}
+	var end lexer.Position // the body's closing brace
 	switch v := d.(type) {
 	case *ast.TypeDecl:
+		end = v.EndPos
 		for _, m := range v.Body {
 			if f, ok := m.(*ast.Field); ok && f.Name != "" {
 				sym.Children = append(sym.Children, fieldSymbol(src, f))
 			}
 		}
 	case *ast.EnumDecl:
+		end = v.EndPos
 		for _, ev := range v.EnumValues() {
 			if ev.Name == "" {
 				continue
@@ -103,9 +107,10 @@ func declSymbol(src string, d ast.Decl) protocol.DocumentSymbol {
 				SelectionRange: er,
 			})
 		}
+	case *ast.ErrorDecl:
+		end = v.EndPos
 	case *ast.EventDecl:
-		sym.Range = spanRange(src, v.Pos, len("event")+1+len(v.Name))
-		sym.SelectionRange = sym.Range
+		end = v.EndPos
 		if v.Payload != nil && v.Payload.Type != nil && v.Payload.Type.Name != nil {
 			payload := v.Payload.Type.Name.String()
 			if v.Payload.Array {
@@ -114,13 +119,25 @@ func declSymbol(src string, d ast.Decl) protocol.DocumentSymbol {
 			sym.Detail += " (" + payload + ")"
 		}
 	case *ast.ServiceDecl:
+		end = v.EndPos
 		for _, member := range v.Members {
 			if m, ok := member.(*ast.Method); ok && m.Name != "" {
 				sym.Children = append(sym.Children, methodSymbol(src, m))
 			}
 		}
 	}
+	sym.Range = symbolRange(src, d.DeclPos(), name, end)
 	return sym
+}
+
+// symbolRange returns the range of a symbol from its keyword at start to the
+// closing brace at end, or to the end of its name when end is unset.
+func symbolRange(src string, start lexer.Position, name protocol.Range, end lexer.Position) protocol.Range {
+	r := protocol.Range{Start: utf16Position(src, start), End: name.End}
+	if end.IsValid() {
+		r.End = spanRange(src, end, len("}")).End
+	}
+	return r
 }
 
 func fieldSymbol(src string, f *ast.Field) protocol.DocumentSymbol {
@@ -134,7 +151,7 @@ func fieldSymbol(src string, f *ast.Field) protocol.DocumentSymbol {
 }
 
 func methodSymbol(src string, m *ast.Method) protocol.DocumentSymbol {
-	r := spanRange(src, m.Pos, len(m.Verb)+1+len(m.Name))
+	name := spanRange(src, m.NamePos, len(m.Name))
 	// Detail: `verb Name (Req → Resp)`, without a missing side.
 	detail := m.Verb + " " + m.Name
 	req, resp := "", ""
@@ -152,14 +169,11 @@ func methodSymbol(src string, m *ast.Method) protocol.DocumentSymbol {
 	case resp != "":
 		detail += " (→ " + resp + ")"
 	}
-	namePos := m.Pos
-	namePos.Column += len(m.Verb) + 1
-	namePos.Offset += len(m.Verb) + 1
 	return protocol.DocumentSymbol{
 		Name:           m.Name,
 		Detail:         detail,
 		Kind:           protocol.SymbolKindMethod,
-		Range:          r,
-		SelectionRange: spanRange(src, namePos, len(m.Name)),
+		Range:          symbolRange(src, m.Pos, name, m.EndPos),
+		SelectionRange: name,
 	}
 }

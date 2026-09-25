@@ -6,22 +6,26 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-var nodePos = lexer.Position{Filename: "ast_test.go", Line: 1, Column: 1}
+var (
+	nodePos = lexer.Position{Filename: "ast_test.go", Line: 1, Column: 1}
+	namePos = lexer.Position{Filename: "ast_test.go", Line: 1, Column: 6, Offset: 5}
+)
 
-// TestDeclMarkers pins DeclName and DeclPos for the declaration kinds.
+// TestDeclMarkers pins DeclName, DeclPos and DeclNamePos for the declaration
+// kinds.
 func TestDeclMarkers(t *testing.T) {
 	cases := []struct {
 		name string
 		d    Decl
 		want string
-		pos  Pos
 	}{
-		{"TypeDecl", &TypeDecl{Pos: nodePos, Name: "Foo"}, "Foo", nodePos},
-		{"EnumDecl", &EnumDecl{Pos: nodePos, Name: "Status"}, "Status", nodePos},
-		{"ErrorDecl", &ErrorDecl{Pos: nodePos, Category: "NotFound", Name: "UserNotFound"}, "UserNotFound", nodePos},
-		{"ScalarDecl", &ScalarDecl{Pos: nodePos, Name: "Email"}, "Email", nodePos},
-		{"MiddlewareDecl", &MiddlewareDecl{Pos: nodePos, Name: "Auth"}, "Auth", nodePos},
-		{"ServiceDecl", &ServiceDecl{Pos: nodePos, Name: "Users"}, "Users", nodePos},
+		{"TypeDecl", &TypeDecl{Pos: nodePos, NamePos: namePos, Name: "Foo"}, "Foo"},
+		{"EnumDecl", &EnumDecl{Pos: nodePos, NamePos: namePos, Name: "Status"}, "Status"},
+		{"ErrorDecl", &ErrorDecl{Pos: nodePos, NamePos: namePos, Category: "NotFound", Name: "UserNotFound"}, "UserNotFound"},
+		{"ScalarDecl", &ScalarDecl{Pos: nodePos, NamePos: namePos, Name: "Email"}, "Email"},
+		{"MiddlewareDecl", &MiddlewareDecl{Pos: nodePos, NamePos: namePos, Name: "Auth"}, "Auth"},
+		{"ServiceDecl", &ServiceDecl{Pos: nodePos, NamePos: namePos, Name: "Users"}, "Users"},
+		{"EventDecl", &EventDecl{Pos: nodePos, NamePos: namePos, Name: "Placed"}, "Placed"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -29,8 +33,11 @@ func TestDeclMarkers(t *testing.T) {
 			if got := c.d.DeclName(); got != c.want {
 				t.Errorf("DeclName = %q, want %q", got, c.want)
 			}
-			if got := c.d.DeclPos(); got != c.pos {
-				t.Errorf("DeclPos = %v, want %v", got, c.pos)
+			if got := c.d.DeclPos(); got != nodePos {
+				t.Errorf("DeclPos = %v, want %v", got, nodePos)
+			}
+			if got := c.d.DeclNamePos(); got != namePos {
+				t.Errorf("DeclNamePos = %v, want %v", got, namePos)
 			}
 		})
 	}

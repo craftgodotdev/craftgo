@@ -530,6 +530,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   declares it. A decorator's argument list left open while typing ends with
   its line, so the names and completions below it keep working.
 
+- **Editor declaration ranges cover the name.** Go-to-definition, the outline
+  and workspace symbols placed a declaration at its keyword, so the jump
+  selected text such as `middleware A`, and a method's or an event's entry
+  was off when more than one space followed its keyword; each now selects
+  the declared name, and an outline entry spans its declaration to its
+  closing brace. References with the declaration excluded leave it out,
+  where they listed it anyway.
+
 - **`@negative` or `@lt(0)` on an array of unsigned integers is reported
   once**, as a decorator on the wrong type; it also drew the unsigned-value
   error meant for a single number.

@@ -612,6 +612,31 @@ func TestExtendService(t *testing.T) {
 	}
 }
 
+// Every declaration and method records where its name starts, however far
+// from its keyword.
+func TestDeclarationNamePositions(t *testing.T) {
+	src := "type  T {}\nenum   E { A }\nerror NotFound    Err\nscalar  S string\nmiddleware M\n" +
+		"service  Svc {\n\tget   Op /x {}\n}\nextend service   Svc {}\nevent    Ev { payload T }\n"
+	f := mustParse(t, src)
+	at := func(what string, got ast.Pos, name string) {
+		t.Helper()
+		if got.Offset < 0 || !strings.HasPrefix(src[got.Offset:], name) || got.Line == 0 {
+			t.Errorf("%s: name position %v does not start %q", what, got, name)
+		}
+	}
+	for _, d := range f.Decls {
+		at(d.DeclName(), d.DeclNamePos(), d.DeclName())
+		if sd, ok := d.(*ast.ServiceDecl); ok {
+			for _, m := range sd.Methods() {
+				at(m.Name, m.NamePos, m.Name)
+			}
+		}
+	}
+	if len(f.Decls) != 8 {
+		t.Fatalf("parsed %d declarations, want 8", len(f.Decls))
+	}
+}
+
 func TestExtendNotService(t *testing.T) {
 	_, errs := parseWithErrors(t, `extend type S {}`)
 	if len(errs) == 0 {

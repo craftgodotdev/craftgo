@@ -41,7 +41,7 @@ func (s *server) onRename(_ context.Context, params protocol.RenameParams) (any,
 		return nil, nil
 	}
 	changes := map[protocol.DocumentURI][]protocol.TextEdit{}
-	for _, loc := range r.project().references(d, r.uri) {
+	for _, loc := range r.project().references(d, true, r.uri) {
 		changes[loc.URI] = append(changes[loc.URI], protocol.TextEdit{
 			Range:   loc.Range,
 			NewText: params.NewName,

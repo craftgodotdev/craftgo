@@ -4,6 +4,7 @@ package ast
 // generic.
 type TypeDecl struct {
 	Pos        Pos
+	NamePos    Pos
 	Decorators []*Decorator
 	Doc        []string
 	Name       string
@@ -15,6 +16,7 @@ type TypeDecl struct {
 func (*TypeDecl) declNode()          { astMarker() }
 func (d *TypeDecl) DeclName() string { return d.Name }
 func (d *TypeDecl) DeclPos() Pos     { return d.Pos }
+func (d *TypeDecl) DeclNamePos() Pos { return d.NamePos }
 
 // TypeMember is a [Field], [Mixin] or [FreeComment] in a type body.
 type TypeMember interface {
@@ -62,6 +64,7 @@ func (c *FreeComment) MemberPos() Pos { return c.Pos }
 // entries in source order.
 type EnumDecl struct {
 	Pos        Pos
+	NamePos    Pos
 	Decorators []*Decorator
 	Doc        []string
 	Name       string
@@ -93,6 +96,7 @@ type EnumMember interface {
 func (*EnumDecl) declNode()          { astMarker() }
 func (d *EnumDecl) DeclName() string { return d.Name }
 func (d *EnumDecl) DeclPos() Pos     { return d.Pos }
+func (d *EnumDecl) DeclNamePos() Pos { return d.NamePos }
 
 // EnumValueKind is how an enum value is written.
 type EnumValueKind int
@@ -126,6 +130,7 @@ func (v *EnumValue) MemberPos() Pos { return v.Pos }
 // tells an empty `{}` from no body.
 type ErrorDecl struct {
 	Pos        Pos
+	NamePos    Pos
 	Decorators []*Decorator
 	Doc        []string
 	Category   string
@@ -138,10 +143,12 @@ type ErrorDecl struct {
 func (*ErrorDecl) declNode()          { astMarker() }
 func (d *ErrorDecl) DeclName() string { return d.Name }
 func (d *ErrorDecl) DeclPos() Pos     { return d.Pos }
+func (d *ErrorDecl) DeclNamePos() Pos { return d.NamePos }
 
 // ScalarDecl is `scalar Name primitive`.
 type ScalarDecl struct {
 	Pos        Pos
+	NamePos    Pos
 	Decorators []*Decorator
 	Doc        []string
 	Name       string
@@ -151,10 +158,12 @@ type ScalarDecl struct {
 func (*ScalarDecl) declNode()          { astMarker() }
 func (d *ScalarDecl) DeclName() string { return d.Name }
 func (d *ScalarDecl) DeclPos() Pos     { return d.Pos }
+func (d *ScalarDecl) DeclNamePos() Pos { return d.NamePos }
 
 // MiddlewareDecl is `middleware Name`.
 type MiddlewareDecl struct {
 	Pos        Pos
+	NamePos    Pos
 	Decorators []*Decorator
 	Doc        []string
 	Name       string
@@ -163,11 +172,13 @@ type MiddlewareDecl struct {
 func (*MiddlewareDecl) declNode()          { astMarker() }
 func (d *MiddlewareDecl) DeclName() string { return d.Name }
 func (d *MiddlewareDecl) DeclPos() Pos     { return d.Pos }
+func (d *MiddlewareDecl) DeclNamePos() Pos { return d.NamePos }
 
 // ServiceDecl is `service Name { ... }`, or `extend service Name { ... }` when
 // Extend is set. Members holds [Method] and [FreeComment] entries in order.
 type ServiceDecl struct {
 	Pos        Pos
+	NamePos    Pos
 	Decorators []*Decorator
 	Doc        []string
 	Name       string
@@ -179,6 +190,7 @@ type ServiceDecl struct {
 func (*ServiceDecl) declNode()          { astMarker() }
 func (d *ServiceDecl) DeclName() string { return d.Name }
 func (d *ServiceDecl) DeclPos() Pos     { return d.Pos }
+func (d *ServiceDecl) DeclNamePos() Pos { return d.NamePos }
 
 // Methods returns the [Method] members in source order.
 func (d *ServiceDecl) Methods() []*Method {
@@ -204,6 +216,7 @@ type ServiceMember interface {
 // Method is `verb Name /path { ... }`; Path is nil when omitted.
 type Method struct {
 	Pos          Pos
+	NamePos      Pos
 	Decorators   []*Decorator
 	Doc          []string
 	Verb         string
@@ -227,6 +240,7 @@ type MethodResponse struct {
 // EventDecl is `event Name { payload Type }`.
 type EventDecl struct {
 	Pos          Pos
+	NamePos      Pos
 	Decorators   []*Decorator
 	Doc          []string
 	Name         string
@@ -238,6 +252,7 @@ type EventDecl struct {
 func (*EventDecl) declNode()          { astMarker() }
 func (e *EventDecl) DeclName() string { return e.Name }
 func (e *EventDecl) DeclPos() Pos     { return e.Pos }
+func (e *EventDecl) DeclNamePos() Pos { return e.NamePos }
 
 // EventPayload is the `payload Type` clause of an event.
 type EventPayload struct {

@@ -12,7 +12,7 @@ import (
 func (p *Parser) parseTypeDecl(decs []*ast.Decorator, doc []string) *ast.TypeDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
-	td := &ast.TypeDecl{Pos: pos, Decorators: decs, Doc: doc, Name: name.Text}
+	td := &ast.TypeDecl{Pos: pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Name: name.Text}
 	if p.peek().Kind == lexer.LAngle {
 		td.TypeParams = p.parseTypeParams()
 	}

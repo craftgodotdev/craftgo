@@ -63,4 +63,7 @@ type Decl interface {
 	DeclName() string
 	// DeclPos returns the position of the declaration keyword.
 	DeclPos() Pos
+	// DeclNamePos returns the position of the declared name, the extended
+	// service's for `extend service`.
+	DeclNamePos() Pos
 }

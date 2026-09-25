@@ -240,6 +240,54 @@ func TestRenameRefusesAPackageQualifier(t *testing.T) {
 	}
 }
 
+// namesDSL spaces each declared name away from its keyword.
+const namesDSL = "package x\n\n@doc(\"m\")\nmiddleware   AuthRequired\n\ntype  User { name string }\n\n" +
+	"error NotFound   Gone\n\nservice S {\n\t@middlewares(AuthRequired)\n\tget   Fetch /f { response User }\n}\n\n" +
+	"event  Placed { payload User }\n"
+
+// Definition, the outline, workspace symbols and references place a
+// declaration at its name.
+func TestDeclarationRangesCoverTheName(t *testing.T) {
+	u := uri.New("file:///t.craftgo")
+	s := &server{docs: map[uri.URI]string{u: namesDSL}}
+	marked := strings.Replace(namesDSL, "@middlewares(AuthRequired)", "@middlewares(Auth|Required)", 1)
+	for _, l := range definitionAt(t, "", marked) {
+		if got := rangeText(namesDSL, l.Range); got != "AuthRequired" {
+			t.Errorf("definition covers %q", got)
+		}
+	}
+	res, _ := callHandler(t, s, protocol.MethodTextDocumentDocumentSymbol, protocol.DocumentSymbolParams{TextDocument: protocol.TextDocumentIdentifier{URI: u}})
+	var walk func(syms []protocol.DocumentSymbol)
+	walk = func(syms []protocol.DocumentSymbol) {
+		for _, sym := range syms {
+			if got := rangeText(namesDSL, sym.SelectionRange); got != sym.Name {
+				t.Errorf("outline selects %q for %s", got, sym.Name)
+			}
+			if !strings.Contains(rangeText(namesDSL, sym.Range), sym.Name) {
+				t.Errorf("outline range of %s covers %q", sym.Name, rangeText(namesDSL, sym.Range))
+			}
+			walk(sym.Children)
+		}
+	}
+	walk(res.([]protocol.DocumentSymbol))
+	res, _ = callHandler(t, s, protocol.MethodWorkspaceSymbol, protocol.WorkspaceSymbolParams{})
+	for _, sym := range res.([]protocol.SymbolInformation) {
+		if got := rangeText(namesDSL, sym.Location.Range); got != sym.Name {
+			t.Errorf("workspace symbol %s covers %q", sym.Name, got)
+		}
+	}
+	_, pos := markCursor(t, strings.Replace(namesDSL, "type  User", "type  Us|er", 1))
+	res, _ = callHandler(t, s, protocol.MethodTextDocumentReferences, protocol.ReferenceParams{TextDocumentPositionParams: docAt(u, pos)})
+	for _, l := range res.([]protocol.Location) {
+		if l.Range.Start.Line == 5 {
+			t.Errorf("references without the declaration list it: %+v", l)
+		}
+	}
+	if n := len(res.([]protocol.Location)); n != 2 {
+		t.Errorf("references = %d, want the response and the payload", n)
+	}
+}
+
 // Each identifier resolves among the kinds of declaration its position
 // names, and a name that is no reference among none.
 func TestLookupKindAtEveryPosition(t *testing.T) {

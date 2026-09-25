@@ -89,7 +89,7 @@ func startsDecl(k lexer.Kind) bool {
 func (p *Parser) parseEnumDecl(decs []*ast.Decorator, doc []string) *ast.EnumDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
-	ed := &ast.EnumDecl{Pos: pos, Decorators: decs, Doc: doc, Name: name.Text}
+	ed := &ast.EnumDecl{Pos: pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Name: name.Text}
 	_, rbrace := p.braced(func() {
 		if v := p.parseEnumValue(); v != nil {
 			ed.Members = append(ed.Members, v)
@@ -152,7 +152,7 @@ func (p *Parser) parseErrorDecl(decs []*ast.Decorator, doc []string) *ast.ErrorD
 		p.errorf(cat.Pos, "unknown error category %q", cat.Text)
 	}
 	name, _ := p.expect(lexer.Ident)
-	ed := &ast.ErrorDecl{Pos: pos, Decorators: decs, Doc: doc, Category: cat.Text, Name: name.Text}
+	ed := &ast.ErrorDecl{Pos: pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Category: cat.Text, Name: name.Text}
 	if p.peek().Kind == lexer.LBrace {
 		ed.HasBody = true
 		body, rbrace := p.parseTypeBody(pos.Line)
@@ -166,7 +166,7 @@ func (p *Parser) parseScalarDecl(decs []*ast.Decorator, doc []string) *ast.Scala
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
 	prim, _ := p.expect(lexer.Ident)
-	sd := &ast.ScalarDecl{Pos: pos, Decorators: decs, Doc: doc, Name: name.Text, Primitive: prim.Text}
+	sd := &ast.ScalarDecl{Pos: pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Name: name.Text, Primitive: prim.Text}
 	// Only decorators on the primitive's line trail the scalar; one on a later
 	// line starts the next declaration's chain.
 	sd.Decorators = append(sd.Decorators, p.decoratorsOnLine(prim.Pos.Line)...)
@@ -178,7 +178,7 @@ func (p *Parser) parseScalarDecl(decs []*ast.Decorator, doc []string) *ast.Scala
 func (p *Parser) parseMiddlewareDecl(decs []*ast.Decorator, doc []string) *ast.MiddlewareDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
-	md := &ast.MiddlewareDecl{Pos: pos, Decorators: decs, Doc: doc, Name: name.Text}
+	md := &ast.MiddlewareDecl{Pos: pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Name: name.Text}
 	if p.peek().Kind == lexer.LParen {
 		p.errorf(p.peek().Pos, "middleware declaration takes no parameters - configuration lives in the generated impl file, not the DSL")
 		depth := 0

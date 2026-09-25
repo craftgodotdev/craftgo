@@ -12,7 +12,7 @@ import (
 func (p *Parser) parseServiceDecl(decs []*ast.Decorator, doc []string, header int, extend bool) *ast.ServiceDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
-	sd := &ast.ServiceDecl{Pos: pos, Decorators: decs, Doc: doc, Name: name.Text, Extend: extend}
+	sd := &ast.ServiceDecl{Pos: pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Name: name.Text, Extend: extend}
 	_, rbrace := p.braced(func() {
 		if m := p.parseServiceMember(); m != nil {
 			sd.Members = append(sd.Members, m)
@@ -131,7 +131,7 @@ func (p *Parser) parseMemberBody(header int, fn func(lexer.Token) bool, expected
 func (p *Parser) parseMethod(decs []*ast.Decorator, doc []string) *ast.Method {
 	verb := p.advance()
 	name, _ := p.expect(lexer.Ident)
-	m := &ast.Method{Pos: verb.Pos, Decorators: decs, Doc: doc, Verb: verb.Text, Name: name.Text}
+	m := &ast.Method{Pos: verb.Pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Verb: verb.Text, Name: name.Text}
 	if p.peek().Kind == lexer.Slash {
 		m.Path = p.parsePath()
 	}
@@ -166,7 +166,7 @@ func (p *Parser) parseMethod(decs []*ast.Decorator, doc []string) *ast.Method {
 func (p *Parser) parseEventDecl(decs []*ast.Decorator, doc []string) *ast.EventDecl {
 	t := p.advance()
 	name, _ := p.expect(lexer.Ident)
-	e := &ast.EventDecl{Pos: t.Pos, Decorators: decs, Doc: doc, Name: name.Text}
+	e := &ast.EventDecl{Pos: t.Pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Name: name.Text}
 	body := p.parseMemberBody(t.Pos.Line, func(tok lexer.Token) bool {
 		if tok.Kind != lexer.KwPayload {
 			return false
