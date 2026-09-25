@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestRunInitWritesScaffold checks that init writes the manifest into the given
@@ -259,6 +260,37 @@ func TestRunGenDocAboveTheKeyword(t *testing.T) {
 	types, _ := os.ReadFile(filepath.Join(dir, "internal", "types", "api", "types.go"))
 	if !strings.Contains(string(types), "// Order is the order.\n") {
 		t.Errorf("types.go lacks the doc:\n%s", types)
+	}
+}
+
+// gen stops at a generic that instantiates itself with a growing argument,
+// which no instance count can finish.
+func TestRunGenRefusesAnExpandingGeneric(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "go.mod", "module github.com/test/app\n\ngo 1.24\n")
+	mustWrite(t, dir, "design/craftgo.design.yaml", "")
+	mustWrite(t, dir, "design/api.craftgo", `package api
+
+type Tree<T> {
+	v    T
+	kids Tree<Tree<T>>[]
+}
+
+type Req { id string }
+
+service S {
+	get A /a { request Req  response Tree<int> }
+}
+`)
+	done := make(chan error, 1)
+	go func() { done <- runGen([]string{"-f", filepath.Join(dir, "design")}) }()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "Tree<Tree<T>>") {
+			t.Errorf("runGen: err = %v, want the instantiation cycle at Tree<Tree<T>>", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("runGen did not finish within 10s")
 	}
 }
 

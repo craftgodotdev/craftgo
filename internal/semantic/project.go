@@ -22,6 +22,9 @@ type Project struct {
 	// typeParams holds each reference to a type parameter in a generic
 	// type's body; [Project.resolve] finds no declaration for one.
 	typeParams map[*ast.QualifiedIdent]bool
+	// endlessFlows are the instantiations that never end, from
+	// [Project.endlessParamFlows].
+	endlessFlows []paramFlow
 }
 
 // AnalyzeProject groups files into packages by their `package`
@@ -40,6 +43,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 		analyzers[name] = a
 	}
 	proj.typeParams = typeParamRefs(proj.Packages)
+	proj.endlessFlows = proj.endlessParamFlows()
 	for _, name := range names {
 		a := analyzers[name]
 		group := groups[name]
@@ -61,6 +65,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	c.checkProjectOperationIDUniqueness()
 	c.checkProjectEvents()
 	c.checkPackageCycles()
+	c.checkInstantiationCycles()
 	sortDiagnostics(c.diags)
 	return proj, c.diags
 }

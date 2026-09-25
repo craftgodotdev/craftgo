@@ -4,6 +4,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 func TestGenericInstanceCorrectArity(t *testing.T) {
@@ -217,6 +220,67 @@ func TestQualifiedGenericRefIntoUnknownPackage(t *testing.T) {
 type User {}`))
 	if got := codes(diags); !slices.Equal(got, []string{CodeRefUnknownPackage}) {
 		t.Errorf("want only %s, got %v", CodeRefUnknownPackage, diags)
+	}
+}
+
+// A generic that instantiates itself with an argument built from one of its
+// type parameters, directly or through other generics, needs an ever larger
+// instance; passing a parameter on unchanged is plain recursion.
+func TestExpandingGenericInstantiationRejected(t *testing.T) {
+	for label, c := range map[string]struct {
+		sources []string
+		site    string
+	}{
+		"nested instance":  {[]string{`type Tree<T> { kids Tree<Tree<T>>[]  v T }`}, "Tree<Tree<T>>"},
+		"array argument":   {[]string{`type Tree<T> { kids Tree<T[]>?  v T }`}, "Tree<T[]>"},
+		"map argument":     {[]string{`type Tree<T> { kids map<string, Tree<map<string, T>>> }`}, "Tree<map<string, T>>"},
+		"through another":  {[]string{"type A<T> { b B<T[]>? }\ntype B<U> { a A<U>? }"}, "B<T[]>"},
+		"through a mixin":  {[]string{"type A<T> { B<T[]> }\ntype B<U> { a A<U>? }"}, "B<T[]>"},
+		"second parameter": {[]string{`type P<K, V> { x P<K, P<K, V>>? }`}, "P<K, P<K, V>>"},
+		"across packages": {[]string{
+			"package app\ntype A<T> { b shared.B<T[]>? }",
+			"package shared\ntype B<U> { a app.A<U>? }",
+		}, "shared.B<T[]>"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			_, diags := Analyze(parseFiles(t, c.sources...))
+			var got []Diagnostic
+			for _, d := range diags {
+				if d.Code == CodeGenericInstantiationCycle {
+					got = append(got, d)
+				}
+			}
+			if len(got) != 1 {
+				t.Fatalf("want one %s, got %v", CodeGenericInstantiationCycle, diags)
+			}
+			if got[0].Severity != lexer.SeverityError {
+				t.Errorf("severity = %v, want error", got[0].Severity)
+			}
+			expectMessage(t, &got[0], c.site)
+		})
+	}
+	mustClean(t, `type Tree<T> { kids Tree<T>[]  v T }
+type Pair<K, V> { swapped Pair<V, K>? }
+type Box<T> { v T }
+type Forest<T> { trees Box<Forest<T>>[]  ints Forest<int>[] }`)
+}
+
+// Analysis ends on an expanding generic that a rule walking the structs an
+// instance reaches meets, as @uniqueItems does over a by-value member.
+func TestExpandingGenericAnalysisEnds(t *testing.T) {
+	files := parseFiles(t, "type Tree<T> { kid Tree<Tree<T>>  v T }\ntype R { rows Tree<int>[] @uniqueItems }")
+	done := make(chan []Diagnostic, 1)
+	go func() {
+		_, diags := Analyze(files)
+		done <- diags
+	}()
+	select {
+	case diags := <-done:
+		if findCode(diags, CodeGenericInstantiationCycle) == nil {
+			t.Errorf("want %s, got %v", CodeGenericInstantiationCycle, diags)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("analysis did not finish within 10s")
 	}
 }
 

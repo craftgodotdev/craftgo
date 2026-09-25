@@ -131,6 +131,9 @@ const (
 	CodeGenericNonGeneric = "generic/non-generic"
 	// CodeGenericOptionalArg fires when a generic type argument is optional (`Page<Item?>`).
 	CodeGenericOptionalArg = "generic/optional-arg"
+	// CodeGenericInstantiationCycle fires when a generic type instantiates itself, directly or
+	// through other generics, with an argument built from its own type parameter (`Tree<Tree<T>>`).
+	CodeGenericInstantiationCycle = "generic/instantiation-cycle"
 
 	// CodePathBaseFormat warns when [Options.BasePath] lacks a leading `/`, ends with `/` or contains `//`.
 	CodePathBaseFormat = "path/base-format"

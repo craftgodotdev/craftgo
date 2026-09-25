@@ -160,6 +160,8 @@ Generic type parameters are bare identifiers starting with an uppercase letter -
 
 A type **argument** cannot carry a trailing `?` (`Page<User?>` is rejected): the optionality has no well-defined position once the argument is substituted into the decl's body, so the Go type and the OpenAPI schema would disagree. Declare the nullability on a concrete field of the generic instead (`type Box<T> { item T? }`, used as `Box<User>`).
 
+A generic may name itself in its own body with its parameters passed on unchanged (`type Tree<T> { kids Tree<T>[] }`). Passing a parameter back inside a larger type, directly or through another generic (`kids Tree<Tree<T>>[]`, `Tree<T[]>`), is `generic/instantiation-cycle`: every instance would need a larger one, which Go rejects as an instantiation cycle.
+
 A field typed by a type parameter may carry `@header` or `@cookie` (`type Paged<T> { count T @header("X-Count") items T[] }`). Each request, response or error mixin that instantiates the type is checked with its argument: `response Paged<int>` sends `X-Count` as an integer, and `response Paged<User>` is `binding/type` at the response clause.
 
 ### Mixins

@@ -623,6 +623,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   `s string<int>` silently dropped its argument; both now report
   `generic/non-generic`.
 
+- **A generic that passes its parameter back to itself inside a larger type
+  is rejected.** `type Tree<T> { kids Tree<Tree<T>>[] }`, `Tree<T[]>`, or
+  such a loop through another generic passed analysis; `craftgo gen` then
+  never finished the OpenAPI document and wrote Go that did not compile
+  (`instantiation cycle`). It is now `generic/instantiation-cycle` at the
+  instantiation; `kids Tree<T>[]`, which passes the parameter on unchanged,
+  stays legal.
+
 - **A file without a `package` clause cannot qualify its own package.** Such
   a file joins the design's only package, so `x app.A` in it generated Go
   that did not compile; it now gets the `ref/qualified` error the same

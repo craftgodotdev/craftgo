@@ -126,20 +126,20 @@ func (a *analyzer) dedupeKeyProblem(t *ast.TypeRef, view, path string, seen map[
 // every member, mixin members included, must be compared by value, and no
 // member may be a pointer. A revisited instance is a cycle and passes.
 func (a *analyzer) structDedupeProblem(t *ast.TypeRef, view, path string, seen map[string]bool) string {
-	key := t.String()
-	if seen[key] {
-		return ""
-	}
-	seen[key] = true
 	pkg, sym := a.proj.resolve(view, t.Named.Name)
 	if pkg == nil || pkg.Types[sym] == nil {
 		return ""
 	}
 	td := pkg.Types[sym]
+	args, key := a.proj.walkedInstance(pkg, td, t.Named)
+	if seen[key] {
+		return ""
+	}
+	seen[key] = true
 	if path == "" {
 		path = t.String()
 	}
-	fields, _ := a.proj.flattenFields(view, pkg.Name, td.Body, td.TypeParams, t.Named.Args, nil)
+	fields, _ := a.proj.flattenFields(view, pkg.Name, td.Body, td.TypeParams, args, nil)
 	for _, ff := range fields {
 		m := ff.Field
 		member := path + "." + m.Name
