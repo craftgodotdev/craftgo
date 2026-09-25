@@ -545,6 +545,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   with a bad escape, the cursor no longer counts as on that token for the
   length of its error message.
 
+- **Editor requests read the buffers the editor holds.** An open buffer
+  holding no text counts as open, so completion answers in it and analysis
+  reads it rather than the disk copy; an open file is read from its buffer
+  whatever escaping the editor gives its URI; workspace symbol search
+  covers the project of every open document, not one picked at random; and
+  a related location in an untitled buffer points at the buffer. Hover on
+  an error named like a category, such as `error NotFound Gone`, shows the
+  error, where it showed the category.
+
 - **`@negative` or `@lt(0)` on an array of unsigned integers is reported
   once**, as a decorator on the wrong type; it also drew the unsigned-value
   error meant for a single number.

@@ -100,6 +100,21 @@ func TestHoverOnAQualifiedName(t *testing.T) {
 	}
 }
 
+// An error named like a category hovers as the error; the category slot of
+// its header hovers as the category.
+func TestHoverOnAnErrorNamedLikeACategory(t *testing.T) {
+	const src = "package x\n\nerror NotFound Gone\n\nservice S {\n\t@errors(Gone)\n\tget G /g {}\n}\n"
+	for _, at := range []string{"NotFound Go|ne", "@errors(Go|ne)"} {
+		marked := strings.Replace(src, strings.Replace(at, "|", "", 1), at, 1)
+		if h := hoverAt(t, "", marked); !strings.Contains(h, "error NotFound Gone") {
+			t.Errorf("hover at %q = %q, want the error", at, h)
+		}
+	}
+	if h := hoverAt(t, "", strings.Replace(src, "NotFound Gone", "Not|Found Gone", 1)); !strings.Contains(h, "built-in error category") {
+		t.Errorf("hover on the category = %q", h)
+	}
+}
+
 // usersProject declares `User` in packages a and b; a's file, returned with
 // its path, also has a method and a route word spelt User.
 func usersProject(t *testing.T) (string, string) {

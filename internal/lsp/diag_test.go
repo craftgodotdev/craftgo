@@ -22,6 +22,24 @@ func bufferDiagnostics(src string) []protocol.Diagnostic {
 	return perFile[uriToPath(string(u))]
 }
 
+// A related location in an untitled buffer points at the buffer.
+func TestRelatedInformationInAnUntitledBuffer(t *testing.T) {
+	u := uri.URI("untitled:Untitled-1")
+	perFile, _ := newTestServer().buildProjectDiagnostics(u, "package x\n\ntype A {}\ntype A {}\n")
+	related := 0
+	for _, d := range perFile[""] {
+		for _, r := range d.RelatedInformation {
+			related++
+			if r.Location.URI != u {
+				t.Errorf("related location in %q, want the buffer's %q", r.Location.URI, u)
+			}
+		}
+	}
+	if related == 0 {
+		t.Fatalf("no related information in %+v", perFile)
+	}
+}
+
 // Valid source produces no diagnostics.
 func TestBuildDiagnosticsClean(t *testing.T) {
 	src := `package design

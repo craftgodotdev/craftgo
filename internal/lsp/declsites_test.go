@@ -134,6 +134,13 @@ func TestFieldDecoratorCompletionMatchesSemanticTypes(t *testing.T) {
 	}
 }
 
+// An error's field takes the decorators its type takes, as a type's does.
+func TestErrorFieldDecoratorsFollowTheFieldType(t *testing.T) {
+	items := mustCompletionsAtCursor(t, "t.craftgo", "package x\n\nerror NotFound E {\n\tcount int @|\n}\n")
+	expectLabels(t, items, "gt", "range")
+	expectNoLabels(t, items, "minLength", "pattern")
+}
+
 // A reserved word among a decorator's arguments is an argument: the site of
 // `@` stays the declaration's that follows the chain.
 func TestDecoratorArgumentsNeverOpenADeclaration(t *testing.T) {

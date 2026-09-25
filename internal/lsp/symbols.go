@@ -2,12 +2,14 @@ package lsp
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"strings"
 
 	"go.lsp.dev/protocol"
-	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
@@ -20,45 +22,42 @@ func (s *server) onDocumentSymbol(_ context.Context, params protocol.DocumentSym
 	return documentSymbols(r.view()), nil
 }
 
-// onWorkspaceSymbol answers `workspace/symbol` with the project's declarations
-// whose name contains the query, ignoring case.
+// onWorkspaceSymbol answers `workspace/symbol` with the declarations whose
+// name contains the query, ignoring case, in the project of every open
+// document.
 func (s *server) onWorkspaceSymbol(_ context.Context, params protocol.WorkspaceSymbolParams) (any, error) {
-	// The project is found from an open document.
-	anchorPath, anchorSrc := s.anyOpenDocument()
-	if anchorPath == "" {
-		return []protocol.SymbolInformation{}, nil
-	}
 	query := strings.ToLower(params.Query)
-	var out []protocol.SymbolInformation
-	for _, p := range s.loadProject(anchorPath, anchorSrc).files {
-		for _, d := range p.file.Decls {
-			name := d.DeclName()
-			if name == "" || !strings.Contains(strings.ToLower(name), query) {
+	out := []protocol.SymbolInformation{}
+	docs := s.openDocs()
+	roots := map[string]bool{}
+	for _, u := range slices.Sorted(maps.Keys(docs)) {
+		path := uriToPath(string(u))
+		if _, root := designopts.ProjectOf(path); root != "" {
+			if roots[root] {
 				continue
 			}
-			out = append(out, protocol.SymbolInformation{
-				Name: name,
-				Kind: infoOf(d).symbol,
-				Location: protocol.Location{
-					URI:   uri.File(p.path),
-					Range: spanRange(p.src, d.DeclNamePos(), len(name)),
-				},
-				ContainerName: p.packageName(),
-			})
+			roots[root] = true
+		}
+		v := s.loadProject(path, docs[u])
+		for _, p := range v.files {
+			for _, d := range p.file.Decls {
+				name := d.DeclName()
+				if name == "" || !strings.Contains(strings.ToLower(name), query) {
+					continue
+				}
+				out = append(out, protocol.SymbolInformation{
+					Name: name,
+					Kind: infoOf(d).symbol,
+					Location: protocol.Location{
+						URI:   v.uriOf(p.path, u),
+						Range: spanRange(p.src, d.DeclNamePos(), len(name)),
+					},
+					ContainerName: p.packageName(),
+				})
+			}
 		}
 	}
 	return out, nil
-}
-
-// anyOpenDocument returns the path and text of some open document, or empty
-// strings when none is open.
-func (s *server) anyOpenDocument() (string, string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for u, text := range s.docs {
-		return uriToPath(string(u)), text
-	}
-	return "", ""
 }
 
 // documentSymbols returns one symbol per named declaration. An unnamed one is

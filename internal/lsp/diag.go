@@ -40,7 +40,7 @@ func (s *server) buildProjectDiagnostics(u uri.URI, src string) (map[string][]pr
 			continue
 		}
 		seen[key][k] = true
-		perFile[key] = append(perFile[key], toLSP(d, srcByFile))
+		perFile[key] = append(perFile[key], v.toLSP(d, srcByFile, u))
 	}
 	if _, ok := perFile[fsPath]; !ok && fsPath != "" {
 		perFile[fsPath] = []protocol.Diagnostic{}
@@ -75,8 +75,9 @@ func keyOf(d lexer.Diagnostic) string {
 }
 
 // toLSP converts d to LSP, placing columns in UTF-16 units with the file texts
-// in srcByFile; an invalid End collapses the range to Pos.
-func toLSP(d lexer.Diagnostic, srcByFile map[string]string) protocol.Diagnostic {
+// in srcByFile; an invalid End collapses the range to Pos. A related location
+// in the buffer takes its URI, current.
+func (v projectView) toLSP(d lexer.Diagnostic, srcByFile map[string]string, current protocol.DocumentURI) protocol.Diagnostic {
 	end := d.End
 	if !end.IsValid() {
 		end = d.Pos
@@ -98,7 +99,7 @@ func toLSP(d lexer.Diagnostic, srcByFile map[string]string) protocol.Diagnostic 
 			rng := protocol.Range{Start: rp, End: rp}
 			related = append(related, protocol.DiagnosticRelatedInformation{
 				Location: protocol.Location{
-					URI:   protocol.DocumentURI(pathToFileURIString(r.Pos.Filename)),
+					URI:   v.uriOf(r.Pos.Filename, current),
 					Range: rng,
 				},
 				Message: r.Msg,

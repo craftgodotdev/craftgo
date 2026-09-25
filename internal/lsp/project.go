@@ -96,40 +96,34 @@ func (v projectView) srcOf(path string) string {
 }
 
 // designSources reads every design file under root, open buffers (src for
-// fsPath) over disk, and appends the open buffers under root the walk did
-// not find.
+// fsPath) over disk, and appends the buffer at fsPath and the open buffers
+// under root the walk did not find.
 func (s *server) designSources(root, fsPath, src string) []designopts.Source {
+	open := s.openFiles()
+	if fsPath != "" {
+		open[fsPath] = src
+	}
 	seen := map[string]bool{}
 	var out []designopts.Source
 	for _, p := range designopts.FilesBestEffort(root) {
 		seen[p] = true
-		out = append(out, designopts.Source{Path: p, Text: s.readFile(p, fsPath, src)})
+		out = append(out, designopts.Source{Path: p, Text: readFile(p, open)})
 	}
 	var extra []designopts.Source
-	if fsPath != "" && !seen[fsPath] {
-		seen[fsPath] = true
-		extra = append(extra, designopts.Source{Path: fsPath, Text: src})
-	}
-	for u := range s.openDocURIs() {
-		p := uriToPath(string(u))
-		if p == "" || seen[p] || !config.IsDesignFile(p) || !isUnderDesignRoot(p, root) {
-			continue
+	for p, text := range open {
+		if !seen[p] && (p == fsPath || config.IsDesignFile(p) && isUnderDesignRoot(p, root)) {
+			extra = append(extra, designopts.Source{Path: p, Text: text})
 		}
-		seen[p] = true
-		extra = append(extra, designopts.Source{Path: p, Text: s.snapshot(u)})
 	}
 	sort.Slice(extra, func(i, j int) bool { return extra[i].Path < extra[j].Path })
 	return append(out, extra...)
 }
 
-// readFile returns the text of path: currentSrc for currentPath, else the open
-// buffer, else the disk copy ("" when unreadable).
-func (s *server) readFile(path, currentPath, currentSrc string) string {
-	if path == currentPath {
-		return currentSrc
-	}
-	if cached := s.snapshot(uri.File(path)); cached != "" {
-		return cached
+// readFile returns the text of the file at path: its open buffer, else the
+// disk copy ("" when unreadable).
+func readFile(path string, open map[string]string) string {
+	if text, ok := open[path]; ok {
+		return text
 	}
 	if data, err := os.ReadFile(path); err == nil {
 		return string(data)

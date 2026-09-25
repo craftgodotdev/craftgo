@@ -106,7 +106,7 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 				Range:    rangePtr(rangeOf(view.src, tok)),
 			}
 		}
-		if errcat.IsCategory(tok.Text) {
+		if view.kind(idx-1) == lexer.KwError && errcat.IsCategory(tok.Text) {
 			return errorCategoryHover(tok.Text, rangeOf(view.src, tok))
 		}
 		// A field's own name token shows the field.

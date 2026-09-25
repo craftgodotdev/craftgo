@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"go.lsp.dev/protocol"
-	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -206,12 +205,4 @@ func noDeclBetween(f *ast.File, from, to int) bool {
 		}
 	}
 	return true
-}
-
-// pathToFileURIString returns the file:// URI of path, or "" for an empty path.
-func pathToFileURIString(path string) string {
-	if path == "" {
-		return ""
-	}
-	return string(uri.File(path))
 }

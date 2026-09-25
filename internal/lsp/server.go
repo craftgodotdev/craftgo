@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"strings"
 	"sync"
 
@@ -166,8 +167,8 @@ type request struct {
 
 // open returns the request on the buffer at u, or false when u is not open.
 func (s *server) open(u protocol.DocumentURI) (*request, bool) {
-	src := s.snapshot(u)
-	if src == "" {
+	src, ok := s.snapshot(u)
+	if !ok {
 		return nil, false
 	}
 	return &request{s: s, uri: u, path: uriToPath(string(u)), src: src}, true
@@ -223,11 +224,12 @@ func (s *server) onInitialize(_ context.Context, _ protocol.InitializeParams) (a
 	}, nil
 }
 
-// snapshot returns the open text of u, or "" when u is not open.
-func (s *server) snapshot(u uri.URI) string {
+// snapshot returns the open text of u and whether u is open.
+func (s *server) snapshot(u uri.URI) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.docs[u]
+	text, ok := s.docs[u]
+	return text, ok
 }
 
 func (s *server) onDidOpen(ctx context.Context, params protocol.DidOpenTextDocumentParams) (any, error) {
@@ -248,16 +250,18 @@ func (s *server) onDidChange(ctx context.Context, params protocol.DidChangeTextD
 }
 
 func (s *server) onDidSave(ctx context.Context, params protocol.DidSaveTextDocumentParams) (any, error) {
-	// A save without text re-checks the cached buffer.
+	// A save without text re-checks the open buffer.
 	text := params.Text
 	if text == "" {
-		text = s.snapshot(params.TextDocument.URI)
+		cached, ok := s.snapshot(params.TextDocument.URI)
+		if !ok {
+			return nil, nil
+		}
+		text = cached
 	} else {
 		s.storeDoc(params.TextDocument.URI, text)
 	}
-	if text != "" {
-		s.publishDiagnostics(ctx, params.TextDocument.URI, text)
-	}
+	s.publishDiagnostics(ctx, params.TextDocument.URI, text)
 	return nil, nil
 }
 
@@ -328,11 +332,7 @@ func watchedFilesRegistration() protocol.RegistrationParams {
 func (s *server) onDidChangeWatchedFiles(ctx context.Context) {
 	// One publishDiagnostics per design root covers every open file under it.
 	seenRoots := map[string]bool{}
-	for u := range s.openDocURIs() {
-		src := s.snapshot(u)
-		if src == "" {
-			continue
-		}
+	for u, src := range s.openDocs() {
 		if _, root := designopts.ProjectOf(uriToPath(string(u))); root != "" {
 			if seenRoots[root] {
 				continue
@@ -360,7 +360,7 @@ func (s *server) publishDiagnostics(ctx context.Context, u uri.URI, src string) 
 		Diagnostics: diagsFor(perFile, path),
 	})
 	pushed := map[string]bool{path: true}
-	for openURI := range s.openDocURIs() {
+	for openURI := range s.openDocs() {
 		op := uriToPath(string(openURI))
 		if op == "" || pushed[op] || !isUnderDesignRoot(op, designRoot) {
 			continue
@@ -382,13 +382,21 @@ func diagsFor(perFile map[string][]protocol.Diagnostic, key string) []protocol.D
 	return []protocol.Diagnostic{}
 }
 
-// openDocURIs returns the URIs of the open documents.
-func (s *server) openDocURIs() map[uri.URI]struct{} {
+// openDocs returns the text of each open document by URI.
+func (s *server) openDocs() map[uri.URI]string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make(map[uri.URI]struct{}, len(s.docs))
-	for k := range s.docs {
-		out[k] = struct{}{}
+	return maps.Clone(s.docs)
+}
+
+// openFiles returns the text of each open document by file path, whatever
+// the escaping of its URI; a buffer with no file is left out.
+func (s *server) openFiles() map[string]string {
+	out := map[string]string{}
+	for u, text := range s.openDocs() {
+		if p := uriToPath(string(u)); p != "" {
+			out[p] = text
+		}
 	}
 	return out
 }
