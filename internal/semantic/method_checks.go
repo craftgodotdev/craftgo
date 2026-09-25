@@ -200,6 +200,6 @@ func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName, view string, pat
 	if !a.wireBindableIn(view, f.Type) {
 		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
 			"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but %s can't ride a query string - switch to a body verb (POST/PUT/PATCH) so it rides @body, give it an explicit binding, or change the type",
-			reqName, f.Name, verb, svcName, describeTypeRef(f.Type))
+			reqName, f.Name, verb, svcName, f.Type.String())
 	}
 }

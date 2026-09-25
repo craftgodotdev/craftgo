@@ -83,7 +83,7 @@ func (r *request) pathParamCompletions(brace int) []protocol.CompletionItem {
 		out = append(out, protocol.CompletionItem{
 			Label:         f.Name,
 			Kind:          protocol.CompletionItemKindField,
-			Detail:        typeRefString(f.Type) + " - field of " + td.Name,
+			Detail:        f.Type.String() + " - field of " + td.Name,
 			Documentation: strings.Join(f.Doc, "\n"),
 			InsertText:    f.Name,
 		})

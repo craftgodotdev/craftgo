@@ -110,28 +110,29 @@ const (
 	ArgStringOrIdent
 )
 
+// argKinds gives each ArgKind the label its diagnostics use and the
+// expression kinds, as [exprKind] names them, it accepts; a bare int is also
+// a duration (seconds) or a size (bytes).
+var argKinds = map[ArgKind]struct {
+	label   string
+	accepts []string
+}{
+	ArgString:        {"string", []string{"string"}},
+	ArgInt:           {"int", []string{"int"}},
+	ArgNumber:        {"int or float", []string{"int", "float"}},
+	ArgBool:          {"bool", []string{"bool"}},
+	ArgIdent:         {"identifier", []string{"identifier"}},
+	ArgDuration:      {"duration", []string{"duration", "int"}},
+	ArgSize:          {"size", []string{"size", "int"}},
+	ArgStringOrIdent: {"string or identifier", []string{"string", "identifier"}},
+}
+
 // String returns the label used in "expected X, got Y" diagnostics.
 func (k ArgKind) String() string {
-	switch k {
-	case ArgString:
-		return "string"
-	case ArgInt:
-		return "int"
-	case ArgNumber:
-		return "int or float"
-	case ArgBool:
-		return "bool"
-	case ArgIdent:
-		return "identifier"
-	case ArgDuration:
-		return "duration"
-	case ArgSize:
-		return "size"
-	case ArgStringOrIdent:
-		return "string or identifier"
-	default:
-		return "any"
+	if e, ok := argKinds[k]; ok {
+		return e.label
 	}
+	return "any"
 }
 
 // ArgsRule is the positional argument shape of a decorator.

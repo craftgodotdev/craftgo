@@ -101,7 +101,7 @@ type R { xs lib.Box<Item>[] @uniqueItems }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
 	d := findCode(diags, CodeDecoratorTypeMismatch)
-	if d == nil || !strings.Contains(d.Msg, "lib.Box.value.tags (string[]) is not comparable") {
+	if d == nil || !strings.Contains(d.Msg, "lib.Box<Item>.value.tags (string[]) is not comparable") {
 		t.Fatalf("expected the local argument's slice reported, got %v", diags)
 	}
 }

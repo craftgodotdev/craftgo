@@ -134,7 +134,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *projectResolver,
 		}
 	}
 	if !ok {
-		return "", fmt.Errorf("field %q: type %s cannot bind to @%s - only string/bool/int*/uint*/float*, scalars/enums, and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, describeFieldType(f), src.kind)
+		return "", fmt.Errorf("field %q: type %s cannot bind to @%s - only string/bool/int*/uint*/float*, scalars/enums, and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, f.Type, src.kind)
 	}
 	// A local cast gets the request package's alias.
 	if cast != "" && pkgAlias != "" && !strings.Contains(cast, ".") {

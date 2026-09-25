@@ -2,7 +2,6 @@ package semantic
 
 import (
 	"slices"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -26,7 +25,7 @@ func (a *analyzer) mapKeysComparable(t *ast.TypeRef, f *ast.Field, typeParams []
 		if !a.keyMarshalable(t.Map.Key, typeParams) {
 			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeMapKeyType,
 				"map key %s is not a usable map key: a JSON object key is a string, so encoding/json supports only a string / int* / uint* key (or a scalar / enum over one). An optional (`?`), bool, float, struct, slice, map, bytes, or generic type-parameter key either fails to compile or panics at json.Marshal. Use a non-optional string / int* / uint* / string- or int-scalar / enum key.",
-				describeTypeRef(t.Map.Key))
+				t.Map.Key.String())
 		}
 		a.mapKeysComparable(t.Map.Value, f, typeParams)
 		a.mapKeysComparable(t.Map.Key, f, typeParams)
@@ -110,7 +109,7 @@ func (a *analyzer) dedupeKeyProblem(t *ast.TypeRef, view, path string, seen map[
 // every member, mixin members included, must be compared by value, and no
 // member may be a pointer. A revisited instance is a cycle and passes.
 func (a *analyzer) structDedupeProblem(t *ast.TypeRef, view, path string, seen map[string]bool) string {
-	key := comparableKey(t)
+	key := t.String()
 	if seen[key] {
 		return ""
 	}
@@ -121,7 +120,7 @@ func (a *analyzer) structDedupeProblem(t *ast.TypeRef, view, path string, seen m
 	}
 	td := pkg.Types[sym]
 	if path == "" {
-		path = describeTypeRef(t)
+		path = t.String()
 	}
 	subst := SubstMap(td.TypeParams, t.Named.Args)
 	fields, _ := a.proj.flattenFields(view, pkg.Name, td.Body, td.TypeParams, nil)
@@ -146,34 +145,7 @@ func (a *analyzer) structDedupeProblem(t *ast.TypeRef, view, path string, seen m
 // dedupeSubject names t at path for a @uniqueItems diagnostic.
 func dedupeSubject(path string, t *ast.TypeRef) string {
 	if path == "" {
-		return describeTypeRef(t)
+		return t.String()
 	}
-	return path + " (" + describeTypeRef(t) + ")"
-}
-
-// comparableKey renders t's name, generic arguments and array or map shape
-// as the cycle key of the comparability walk.
-func comparableKey(t *ast.TypeRef) string {
-	if t == nil {
-		return ""
-	}
-	if t.Map != nil {
-		return "map<" + comparableKey(t.Map.Key) + "," + comparableKey(t.Map.Value) + ">"
-	}
-	prefix := strings.Repeat("[]", t.ArrayDepth)
-	if t.ArrayDepth == 0 && t.Array {
-		prefix = "[]"
-	}
-	if t.Named == nil || t.Named.Name == nil {
-		return prefix + "?"
-	}
-	key := prefix + t.Named.Name.String()
-	if len(t.Named.Args) > 0 {
-		parts := make([]string, len(t.Named.Args))
-		for i, a := range t.Named.Args {
-			parts[i] = comparableKey(a)
-		}
-		key += "<" + strings.Join(parts, ",") + ">"
-	}
-	return key
+	return path + " (" + t.String() + ")"
 }

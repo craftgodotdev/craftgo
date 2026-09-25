@@ -1,7 +1,6 @@
 package format
 
 import (
-	"bytes"
 	"strconv"
 	"strings"
 
@@ -50,7 +49,7 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 			if n := len(f.Name); n > maxName {
 				maxName = n
 			}
-			ts := p.typeRefString(f.Type)
+			ts := f.Type.String()
 			if semantic.DefaultNeedsOptional(f) {
 				ts += "?"
 			}
@@ -71,7 +70,7 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 			p.blankBetween(prevEnd, v.Pos.Line-len(v.Doc))
 			p.comments(v.Pos.Line, v.Doc)
 			p.line(v.Pos.Line)
-			p.NamedTypeRef(v.Ref)
+			p.write(v.Ref.String())
 			p.endCode()
 			prevEnd = v.Pos.Line
 		case *ast.FreeComment:
@@ -106,13 +105,6 @@ func memberEndLine(pos int, decs []*ast.Decorator) int {
 		return decs[n-1].Pos.Line
 	}
 	return pos
-}
-
-func (p *Printer) typeRefString(t *ast.TypeRef) string {
-	var buf bytes.Buffer
-	sub := &Printer{w: &buf}
-	sub.TypeRef(t)
-	return buf.String()
 }
 
 // alignedField prints f's doc, then f on one line padded to the maxName and
@@ -336,7 +328,7 @@ func (p *Printer) memberBody(clauses []memberClause, comments []*ast.FreeComment
 		p.blankBetween(prevEnd, cl.line)
 		p.line(cl.line)
 		p.write(cl.keyword)
-		p.NamedTypeRef(cl.ref)
+		p.write(cl.ref.String())
 		if cl.array {
 			p.write("[]")
 		}
@@ -401,37 +393,5 @@ func (p *Printer) Path(path *ast.Path) {
 			p.write(seg.Literal)
 			first = false
 		}
-	}
-}
-
-func (p *Printer) TypeRef(t *ast.TypeRef) {
-	if t.Map != nil {
-		p.write("map<")
-		p.TypeRef(t.Map.Key)
-		p.write(", ")
-		p.TypeRef(t.Map.Value)
-		p.write(">")
-	} else if t.Named != nil {
-		p.NamedTypeRef(t.Named)
-	}
-	for i := 0; i < t.ArrayDepth; i++ {
-		p.write("[]")
-	}
-	if t.Optional {
-		p.write("?")
-	}
-}
-
-func (p *Printer) NamedTypeRef(n *ast.NamedTypeRef) {
-	p.write(n.Name.String())
-	if len(n.Args) > 0 {
-		p.write("<")
-		for i, a := range n.Args {
-			if i > 0 {
-				p.write(", ")
-			}
-			p.TypeRef(a)
-		}
-		p.write(">")
 	}
 }

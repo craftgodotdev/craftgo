@@ -174,7 +174,7 @@ func fieldHover(parent string, f *ast.Field, r protocol.Range) *protocol.Hover {
 	sb.WriteString("```craftgo\n")
 	sb.WriteString(f.Name)
 	sb.WriteByte(' ')
-	sb.WriteString(typeRefString(f.Type))
+	sb.WriteString(f.Type.String())
 	sb.WriteString("\n```\n")
 	if len(f.Decorators) > 0 {
 		sb.WriteString("\n**Decorators**\n")
@@ -192,44 +192,6 @@ func fieldHover(parent string, f *ast.Field, r protocol.Range) *protocol.Hover {
 		Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: sb.String()},
 		Range:    rangePtr(r),
 	}
-}
-
-// typeRefString prints t as the source spells it: `User[]`, `Page<User>?`,
-// `map<string, int>`.
-func typeRefString(t *ast.TypeRef) string {
-	if t == nil {
-		return "?"
-	}
-	var sb strings.Builder
-	if t.Map != nil {
-		sb.WriteString("map<")
-		sb.WriteString(typeRefString(t.Map.Key))
-		sb.WriteString(", ")
-		sb.WriteString(typeRefString(t.Map.Value))
-		sb.WriteByte('>')
-	} else if t.Named != nil {
-		sb.WriteString(t.Named.Name.String())
-		if len(t.Named.Args) > 0 {
-			sb.WriteByte('<')
-			for i, a := range t.Named.Args {
-				if i > 0 {
-					sb.WriteString(", ")
-				}
-				sb.WriteString(typeRefString(a))
-			}
-			sb.WriteByte('>')
-		}
-	}
-	if t.Array {
-		sb.WriteString("[]")
-	}
-	for i := 1; i < t.ArrayDepth; i++ {
-		sb.WriteString("[]")
-	}
-	if t.Optional {
-		sb.WriteByte('?')
-	}
-	return sb.String()
 }
 
 // hover is [hoverForToken] for token idx with a project-wide declaration

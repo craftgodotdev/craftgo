@@ -290,7 +290,7 @@ func TestExprKindName(t *testing.T) {
 		{"array", &ast.ArrayLit{}, "array"},
 	}
 	for _, c := range cases {
-		if got := exprKindName(c.e); got != c.want {
+		if got := exprKind(c.e); got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
 		}
 	}

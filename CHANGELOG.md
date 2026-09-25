@@ -45,6 +45,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   decorator.** A default on a `bytes`, `file` or `datetime` array was
   reported once per element, beside a warning asking for `?`.
 
+- **Diagnostics spell a type as the design does, generic arguments
+  included**: `got Page<User>` where they said `got Page`, and `Point[]`
+  where a generator error said `[]Point`. The editor's hover and
+  completion details use the same spelling.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

@@ -198,7 +198,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *p
 				if rf.AutoBound {
 					continue
 				}
-				err = fmt.Errorf("%s.%s: @path requires a non-optional, non-array field - got %s", reqName, f.Name, describeFieldType(f))
+				err = fmt.Errorf("%s.%s: @path requires a non-optional, non-array field - got %s", reqName, f.Name, f.Type)
 				return
 			}
 			line, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, pathSource())
@@ -290,32 +290,6 @@ func isQualifiedNamedWithDefault(f *ast.Field, crossPkg crossPkg) bool {
 		return true
 	}
 	return false
-}
-
-// describeFieldType renders f's type for an error message, eliding type and map arguments
-// (`[]Point`, `Page<...>?`, `map<...>`).
-func describeFieldType(f *ast.Field) string {
-	if f == nil || f.Type == nil {
-		return "<unresolved>"
-	}
-	t := f.Type
-	switch {
-	case t.Map != nil:
-		return "map<...>"
-	case t.Named == nil:
-		return "<anonymous>"
-	}
-	name := t.Named.Name.String()
-	if len(t.Named.Args) > 0 {
-		name += "<...>"
-	}
-	if t.Array {
-		name = "[]" + name
-	}
-	if t.Optional {
-		name += "?"
-	}
-	return name
 }
 
 // hasUnboundField reports whether any request field binds to the body or a form part.

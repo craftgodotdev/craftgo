@@ -52,7 +52,7 @@ func (a *analyzer) autoPathFieldRule(reqName, view string, pathSegs map[string]b
 	case !a.pathBindableIn(view, f.Type):
 		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
 			"field %s.%s auto-binds to the path segment {%s}, but @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s",
-			reqName, f.Name, f.Name, describeTypeRef(f.Type))
+			reqName, f.Name, f.Name, f.Type.String())
 	}
 }
 

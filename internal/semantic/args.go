@@ -177,7 +177,7 @@ func (a *analyzer) checkPositionalArgs(d *ast.Decorator, spec Spec) {
 		}
 		if !exprMatchesKind(ag.Value, want) {
 			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
-				"@%s arg %d: expected %s, got %s", d.Name, i+1, want, exprKindName(ag.Value))
+				"@%s arg %d: expected %s, got %s", d.Name, i+1, want, exprKind(ag.Value))
 		}
 	}
 
@@ -206,7 +206,7 @@ func (a *analyzer) checkArrayShortcut(d *ast.Decorator, rule ArgsRule, arr *ast.
 	for i, el := range arr.Elements {
 		if !exprMatchesKind(el, want) {
 			a.diag(el.ExprPos(), el.ExprPos(), lexer.SeverityError, CodeDecoratorArgType,
-				"@%s array[%d]: expected %s, got %s", d.Name, i, want, exprKindName(el))
+				"@%s array[%d]: expected %s, got %s", d.Name, i, want, exprKind(el))
 		}
 	}
 }
@@ -235,84 +235,37 @@ func (a *analyzer) checkEnumOnFirst(d *ast.Decorator, spec Spec, pos []*ast.Deco
 	}
 }
 
-// exprMatchesKind reports whether e fits kind k. A bare int is also a
-// duration (seconds) or a size (bytes), and ArgAny matches even nil.
+// exprMatchesKind reports whether e fits kind k; ArgAny matches even nil.
 func exprMatchesKind(e ast.Expr, k ArgKind) bool {
-	if k == ArgAny {
-		return true
-	}
-	if e == nil {
-		return false
-	}
-	switch k {
-	case ArgString:
-		_, ok := e.(*ast.StringLit)
-		return ok
-	case ArgInt:
-		_, ok := e.(*ast.IntLit)
-		return ok
-	case ArgNumber:
-		switch e.(type) {
-		case *ast.IntLit, *ast.FloatLit:
-			return true
-		}
-		return false
-	case ArgBool:
-		_, ok := e.(*ast.BoolLit)
-		return ok
-	case ArgIdent:
-		_, ok := e.(*ast.IdentExpr)
-		return ok
-	case ArgDuration:
-		switch e.(type) {
-		case *ast.DurationLit, *ast.IntLit:
-			return true
-		}
-		return false
-	case ArgSize:
-		switch e.(type) {
-		case *ast.SizeLit, *ast.IntLit:
-			return true
-		}
-		return false
-	case ArgStringOrIdent:
-		switch e.(type) {
-		case *ast.StringLit, *ast.IdentExpr:
-			return true
-		}
-		return false
-	}
-	return false
+	return k == ArgAny || slices.Contains(argKinds[k].accepts, exprKind(e))
 }
 
-// exprKindName names e's kind for the "expected X, got Y" message, or
-// "value" for an expression it does not list.
-func exprKindName(e ast.Expr) string {
-	if e == nil {
-		return "(no value)"
-	}
-	name := "value"
+// exprKind names e's kind for the "expected X, got Y" message: its literal
+// form, "(no value)" for nil, or "value" for an expression it does not list.
+func exprKind(e ast.Expr) string {
 	switch e.(type) {
+	case nil:
+		return "(no value)"
 	case *ast.StringLit:
-		name = "string"
+		return "string"
 	case *ast.IntLit:
-		name = "int"
+		return "int"
 	case *ast.FloatLit:
-		name = "float"
+		return "float"
 	case *ast.BoolLit:
-		name = "bool"
+		return "bool"
 	case *ast.NullLit:
-		name = "null"
+		return "null"
 	case *ast.IdentExpr:
-		name = "identifier"
+		return "identifier"
 	case *ast.DurationLit:
-		name = "duration"
+		return "duration"
 	case *ast.SizeLit:
-		name = "size"
+		return "size"
 	case *ast.ArrayLit:
-		name = "array"
+		return "array"
 	}
-	return name
+	return "value"
 }
 
 // joinQuoted renders xs as `"a", "b", "c"`, in input order.

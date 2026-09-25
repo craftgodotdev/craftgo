@@ -61,7 +61,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
 				msgBindPath,
-				parent, f.Name, describeTypeRef(f.Type))
+				parent, f.Name, f.Type.String())
 			return
 		case wire.BindingQuery, wire.BindingHeader, wire.BindingCookie:
 			// The wire check below accepts arrays; a cookie carries one value.
@@ -76,7 +76,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
 				msgBindWire,
-				parent, f.Name, d.Name, describeTypeRef(f.Type))
+				parent, f.Name, d.Name, f.Type.String())
 			return
 		case wire.BindingForm:
 			if a.isFormBindingType(f.Type) {
@@ -84,7 +84,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field) {
 			}
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType,
 				msgBindForm,
-				parent, f.Name, describeTypeRef(f.Type))
+				parent, f.Name, f.Type.String())
 			return
 		}
 	}
@@ -152,37 +152,4 @@ func (a *analyzer) elemFacts(homePkg string, t *ast.TypeRef) ResolvedField {
 		t = t.ElemTypeRef()
 	}
 	return resolveTypeRef(t, false, a.proj.Packages[homePkg], a.proj)
-}
-
-// describeTypeRef renders t for diagnostics, such as `int[][]` or `string?`;
-// generic arguments are left out.
-func describeTypeRef(t *ast.TypeRef) string {
-	if t == nil {
-		return "(none)"
-	}
-	name := "?"
-	if t.Named != nil {
-		name = t.Named.Name.String()
-	} else if t.Map != nil {
-		key, val := "?", "?"
-		if t.Map.Key != nil {
-			key = describeTypeRef(t.Map.Key)
-		}
-		if t.Map.Value != nil {
-			val = describeTypeRef(t.Map.Value)
-		}
-		name = "map<" + key + ", " + val + ">"
-	}
-	// A hand-built TypeRef may set Array without ArrayDepth.
-	depth := t.ArrayDepth
-	if depth == 0 && t.Array {
-		depth = 1
-	}
-	for i := 0; i < depth; i++ {
-		name += "[]"
-	}
-	if t.Optional {
-		name += "?"
-	}
-	return name
 }

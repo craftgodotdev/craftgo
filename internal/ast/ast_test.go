@@ -99,3 +99,31 @@ func TestQualifiedIdentString(t *testing.T) {
 		}
 	}
 }
+
+// A type reference renders as the DSL spells it, generic arguments included.
+func TestTypeRefString(t *testing.T) {
+	named := func(name string, args ...*TypeRef) *TypeRef {
+		return &TypeRef{Named: &NamedTypeRef{Name: &QualifiedIdent{Parts: []string{name}}, Args: args}}
+	}
+	grid := named("int")
+	grid.Array, grid.ArrayDepth = true, 2
+	page := named("Page", named("User"), named("int"))
+	page.Optional = true
+	handBuilt := named("Item")
+	handBuilt.Array = true
+	cases := []struct {
+		t    *TypeRef
+		want string
+	}{
+		{nil, "?"},
+		{grid, "int[][]"},
+		{page, "Page<User, int>?"},
+		{&TypeRef{Map: &MapType{Key: named("string"), Value: page}}, "map<string, Page<User, int>?>"},
+		{handBuilt, "Item[]"},
+	}
+	for _, c := range cases {
+		if got := c.t.String(); got != c.want {
+			t.Errorf("String() = %q, want %q", got, c.want)
+		}
+	}
+}

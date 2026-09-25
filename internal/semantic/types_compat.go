@@ -29,7 +29,7 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 			if d == nil {
 				continue
 			}
-			if a.formatArgMismatch(d, actual, parent+"."+f.Name, describeTypeRef(f.Type)) {
+			if a.formatArgMismatch(d, actual, parent+"."+f.Name, f.Type.String()) {
 				continue
 			}
 			spec, ok := Lookup(d.Name)
