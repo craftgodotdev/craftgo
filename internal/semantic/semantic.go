@@ -214,6 +214,7 @@ func (a *analyzer) checkMethodCombinations(svc *ast.ServiceDecl, m *ast.Method) 
 	svcName := svc.Name
 	a.checkRawModeRedundancy(svcName, m)
 	a.checkBodyBindingVerb(svcName, m)
+	a.checkMultipartTextParts(svcName, m)
 	a.checkDuplicatePathVars(svc, m)
 	a.checkAutoPathField(m)
 	a.checkDuplicateAutoWireNames(m)

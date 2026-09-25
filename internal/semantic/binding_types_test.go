@@ -91,3 +91,31 @@ func TestRawBytesIsNotWireBindable(t *testing.T) {
 service S { post Do /do/{filter} { request SearchReq } }`, CodeBindingType)
 	}
 }
+
+// An optional type parameter instantiated with an array is a pointer to a
+// slice, which neither the query nor the multipart form binder can fill; a
+// JSON body carries it, and a non-optional parameter binds as the slice.
+func TestOptionalTypeParamOverArrayRefusedOnTheWire(t *testing.T) {
+	d := expectError(t, `package app
+type Box<T> { a T? }
+type R1 { Box<string[]> }
+type Resp { ok bool }
+service S { get A /a { request R1  response Resp } }`, CodeBindingType)
+	expectMessage(t, d, "R1.a", "auto-binds to @query", "optional type parameter over an array", "drop the `?`")
+	d = expectError(t, `package app
+type Box<T> { a T? }
+type R1 { Box<string[]>  f file @form }
+type Resp { ok bool }
+service S { post A /a { request R1  response Resp } }`, CodeBindingType)
+	expectMessage(t, d, "R1.a", "multipart form part", "optional type parameter over an array", "drop the `?`")
+	mustClean(t, `package app
+type Box<T> { a T? }
+type R1 { Box<string[]>  b int? }
+type Resp { ok bool }
+service S { post A /a { request R1  response Resp } }`)
+	mustClean(t, `package app
+type Box<T> { a T }
+type R1 { Box<string[]> }
+type Resp { ok bool }
+service S { get A /a { request R1  response Resp } }`)
+}

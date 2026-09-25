@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -178,14 +179,40 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	reqName := m.Request.Name.String()
 	pathSegs := methodRoutePathVars(m, a.pkg.Services)
 	for _, ff := range fields {
-		a.bodyBindingVerbRules(reqName, verb, svcName, view, pathSegs, ff.Field)
+		a.bodyBindingVerbRules(reqName, verb, svcName, view, pathSegs, ff)
+	}
+}
+
+// checkMultipartTextParts rejects a text part of m's multipart request,
+// mixins included, whose Go value is a pointer to a slice.
+func (a *analyzer) checkMultipartTextParts(svcName string, m *ast.Method) {
+	if m == nil || m.Request == nil || !wire.IsBodyVerb(m.Verb) {
+		return
+	}
+	_, fields, ok := a.requestFields(m)
+	if !ok || !slices.ContainsFunc(fields, func(ff FlatField) bool { return isFileTypeRef(ff.Field.Type) }) {
+		return
+	}
+	pathSegs := methodRoutePathVars(m, a.pkg.Services)
+	for _, ff := range fields {
+		f := ff.Field
+		if !ff.sliceBehindPointer {
+			continue
+		}
+		if b, _ := wire.RequestFieldBinding(f, pathSegs, true); b != wire.BindBody && b != wire.BindForm {
+			continue
+		}
+		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
+			"field %s.%s: on the %s %s handler this rides a multipart form part (the request carries a file), but it is an optional type parameter over an array, whose Go value is a pointer to a slice the form binder cannot fill - drop the `?` from the type parameter (an array is already nilable)",
+			m.Request.Name.String(), f.Name, strings.ToUpper(m.Verb), svcName)
 	}
 }
 
 // bodyBindingVerbRules rejects `@body` and `@form` on a body-less method's
 // field, and `@nullable` or an unbindable type when it auto-binds to @query;
 // the field's type resolves in package view.
-func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName, view string, pathSegs map[string]bool, f *ast.Field) {
+func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName, view string, pathSegs map[string]bool, ff FlatField) {
+	f := ff.Field
 	if f == nil {
 		return
 	}
@@ -207,6 +234,12 @@ func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName, view string, pat
 	if ast.HasDecorator(f.Decorators, "nullable") {
 		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeDecoratorConflict,
 			"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but @nullable has no meaning on a wire parameter - a query string has no JSON-null form. Use `?` to make it optional, or switch to a body verb (POST/PUT/PATCH).",
+			reqName, f.Name, verb, svcName)
+		return
+	}
+	if ff.sliceBehindPointer {
+		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
+			"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but it is an optional type parameter over an array, whose Go value is a pointer to a slice the query binder cannot fill - drop the `?` from the type parameter (an array is already nilable), or switch to a body verb (POST/PUT/PATCH)",
 			reqName, f.Name, verb, svcName)
 		return
 	}

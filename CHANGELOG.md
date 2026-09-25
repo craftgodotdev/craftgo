@@ -512,6 +512,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   argument's type. A field keeps the type its own declaration gives it; a
   nested generic mixin receives the arguments through its own.
 
+- **An optional type parameter over an array is refused on the wire.** In
+  `type Box<T> { a T? }` used as `Box<string[]>`, `a` is a `*[]string` in Go,
+  which neither the query binder of a body-less verb nor the multipart form
+  binder can fill, so the handler did not compile. Both are `binding/type`
+  now; a JSON body still carries the field, and `a T` binds as the slice.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

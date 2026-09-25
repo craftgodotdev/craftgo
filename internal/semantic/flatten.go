@@ -85,6 +85,10 @@ type FlatField struct {
 	Field *ast.Field
 	Name  string
 	Home  string
+	// sliceBehindPointer reports a field declared `T?` whose argument is an
+	// array: its Go value is a pointer to the slice, which Field's type spells
+	// as an optional array.
+	sliceBehindPointer bool
 }
 
 // FlattenFields returns td's fields with its mixins expanded in body order,
@@ -142,7 +146,7 @@ func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []strin
 	for _, m := range body {
 		switch v := m.(type) {
 		case *ast.Field:
-			ff := FlatField{Field: v, Home: home}
+			ff := FlatField{Field: v, Home: home, sliceBehindPointer: optionalParamOverArray(v.Type, subst)}
 			if i < len(names) {
 				ff.Name = names[i]
 			}
@@ -158,6 +162,16 @@ func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []strin
 		}
 	}
 	return out
+}
+
+// optionalParamOverArray reports whether t is `T?` for a type parameter T
+// that subst binds to an array.
+func optionalParamOverArray(t *ast.TypeRef, subst map[string]*ast.TypeRef) bool {
+	if t == nil || !t.Optional || t.Array || t.Named == nil || t.Named.Name == nil || len(t.Named.Name.Parts) != 1 {
+		return false
+	}
+	arg := subst[t.Named.Name.Parts[0]]
+	return arg != nil && arg.Array
 }
 
 // spell returns t, written in package home with typeParams in scope and
