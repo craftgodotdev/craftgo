@@ -37,18 +37,20 @@ func inheritedFrom(e *ast.ServiceDecl) []*ast.Decorator {
 // decorators, as name says, that apply to m, outermost first: service holds
 // the primary service's, member those of m's extend block, then m's own. The
 // method's own @ignoreMiddleware, @ignoreSecurity or @ignoreTags drops the
-// inherited ones and sets ignored.
+// inherited ones and its extend block's drops the primary service's; either
+// sets ignored.
 func (svc *ServiceInfo) InheritedDecorators(m *ast.Method, name string) (service, member []*ast.Decorator, ignored bool) {
 	var inherited []*ast.Decorator
 	if b := svc.blockOf(m); b != nil && b.Extend {
 		inherited = inheritedFrom(b)
 	}
 	own := ownDecorators(m, inherited)
-	ignored = ast.HasDecorator(own, chainIgnores[name])
-	if !ignored {
-		if svc.Primary != nil {
-			service = decoratorsNamed(svc.Primary.Decorators, name)
-		}
+	ownIgnored := ast.HasDecorator(own, chainIgnores[name])
+	ignored = ownIgnored || ast.HasDecorator(inherited, chainIgnores[name])
+	if !ignored && svc.Primary != nil {
+		service = decoratorsNamed(svc.Primary.Decorators, name)
+	}
+	if !ownIgnored {
 		member = decoratorsNamed(inherited, name)
 	}
 	return service, append(member, decoratorsNamed(own, name)...), ignored

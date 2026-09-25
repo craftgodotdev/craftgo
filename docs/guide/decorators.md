@@ -564,7 +564,7 @@ The combine semantic is **clear-then-append**:
 
 So `@ignoreMiddleware` + `@middlewares(Audit)` = method chain is exactly `[Audit]` (no inherited Auth). This is the **reset-and-replace** pattern - useful when one endpoint needs a completely different chain instead of the default.
 
-The `@ignore*` decorators only apply at method level. They take no arguments. Repeating them is a `decorator/duplicate` error.
+The `@ignore*` decorators take no arguments. Repeating them is a `decorator/duplicate` error. On an `extend service` block they apply to every method of the block, as if each method wrote them: the primary service's chain is dropped, and the block's own `@X(...)` decorators start the chain afresh.
 
 When the service is split across an `extend service` block, `@ignore*` clears the **combined** inherited chain - both decorators on the primary `service { ... }` declaration AND decorators on the `extend service` block. A method that opts out walks back to an empty chain regardless of which side of the split introduced the inheritance.
 
@@ -610,6 +610,7 @@ Methods inside an `extend` block inherit the **block's own** decorators in addit
 | Extend in a different folder (different package)     | no     | `service/extend-orphan`                                |
 | Multiple extend blocks targeting the same service    | yes    | Each block's decorators apply only to its own methods  |
 | `@ignoreMiddleware` on a method inside extend        | yes    | Clears extend-block + primary middleware chain        |
+| `@ignoreMiddleware` on an extend block               | yes    | Clears the primary chain for each method of the block |
 
 ## Method decorators
 

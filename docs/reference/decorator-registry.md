@@ -129,7 +129,7 @@ Method-level `@middlewares` / `@tags` / `@security` **append** to the service-le
 | `@rawResponse` | - | Logic writes the response to `http.ResponseWriter`; the request is still bound + validated. A `response` block is a docs-only contract. Stub: `(w, r, req *types.Req) error` (flag form). |
 | `@rawRequest` | - | Logic reads the raw `*http.Request`; the response is still JSON-encoded. A `request` block is a docs-only contract. Stub: `(r *http.Request) (*types.Resp, error)` (flag form). |
 | `@passthrough` | - | Both sides raw - exactly `@rawRequest @rawResponse`. Stub: `(w, r) error`. Optional blocks document the contract (flag form). |
-| `@ignoreMiddleware` | - | Clear the inherited `@middlewares` chain on this method - the method's own decorator then starts from empty instead of appending to the service-level chain. |
+| `@ignoreMiddleware` | - | Clear the inherited `@middlewares` chain on this method - the method's own decorator then starts from empty instead of appending to the service-level chain. On an `extend service` block, each of its methods drops the primary's chain. |
 | `@ignoreSecurity` | - | Clear the inherited `@security` chain (e.g. a public endpoint in an authed service). |
 | `@ignoreTags` | - | Clear the inherited `@tags` list. |
 

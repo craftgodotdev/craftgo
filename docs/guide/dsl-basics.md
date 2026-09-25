@@ -221,7 +221,7 @@ The extend block's `@middlewares` / `@security` decorators apply to every method
 - The extended service must already be declared somewhere in the **same package** (same design subfolder); a cross-package extend raises `service/extend-orphan`.
 - Multiple `extend` blocks for the same service are allowed (one per file is the typical pattern). Each block contributes its own decorators only to its own methods.
 
-The extended methods inherit every service-level decorator from the primary AND every decorator on the extend block. Method-level decorators of the same kind (`@middlewares`, `@security`, `@tags`) append; use `@ignoreMiddleware` / `@ignoreSecurity` / `@ignoreTags` to drop the inherited chain for one specific method.
+The extended methods inherit every service-level decorator from the primary AND every decorator on the extend block. Method-level decorators of the same kind (`@middlewares`, `@security`, `@tags`) append; use `@ignoreMiddleware` / `@ignoreSecurity` / `@ignoreTags` to drop the inherited chain for one specific method, or on the extend block to drop the primary's chain for every method of the block.
 
 See [Decorators - Service-level decorators and inheritance](/guide/decorators#service-level-decorators-and-inheritance) for the full combine semantics and combinations cheatsheet.
 

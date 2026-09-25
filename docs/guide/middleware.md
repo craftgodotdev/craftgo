@@ -176,7 +176,7 @@ Restrictions:
 
 - The extended service must exist somewhere in the same package.
 - `@prefix` lives on the primary `service` block; an extend block carrying it raises `service/extend-decorator-not-method`. `@group` is allowed on an extend block and moves that block's methods into the group's directory.
-- Inside an extend block, individual methods may opt out of the inherited chain via `@ignoreMiddleware` (see [Opt-out: `@ignoreMiddleware`](#opt-out-ignoremiddleware) below).
+- Inside an extend block, individual methods may opt out of the inherited chain via `@ignoreMiddleware`, and an `@ignoreMiddleware` on the block itself opts out every method of the block (see [Opt-out: `@ignoreMiddleware`](#opt-out-ignoremiddleware) below).
 
 ## Opt-out: `@ignoreMiddleware`
 
@@ -198,7 +198,7 @@ service Secured {
 
 The combine semantic is **clear-then-append**: `@ignoreMiddleware` clears the inherited chain, then any method-level `@middlewares(...)` decorators append to the now-empty chain.
 
-`@ignoreMiddleware` is method-level only, takes no arguments. Pair it with `@ignoreSecurity` / `@ignoreTags` to drop those inherited chains too.
+`@ignoreMiddleware` takes no arguments. Pair it with `@ignoreSecurity` / `@ignoreTags` to drop those inherited chains too. On an `extend service` block it applies to every method of the block, as if each method wrote it: the primary service's chain is dropped, and the block's own `@middlewares(...)` start the chain afresh.
 
 ## Middleware order at runtime
 

@@ -518,6 +518,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   binder can fill, so the handler did not compile. Both are `binding/type`
   now; a JSON body still carries the field, and `a T` binds as the slice.
 
+- **`@ignoreMiddleware`, `@ignoreSecurity` and `@ignoreTags` on an `extend
+  service` block take effect.** They were accepted and changed nothing: the
+  block's methods kept the primary service's middlewares, security and tags.
+  They apply to each method of the block as if written on it: the primary's
+  chain is dropped, and the block's own `@middlewares`, `@security` or
+  `@tags` start it afresh.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

@@ -8,8 +8,9 @@ import (
 )
 
 // A method's chain holds the primary service's decorators, then its extend
-// block's, then its own; only the method's own @ignoreMiddleware drops the
-// inherited ones.
+// block's, then its own. The method's own @ignoreMiddleware drops the
+// inherited ones; its block's drops the primary's, as written on the method
+// ahead of the block's own @middlewares.
 func TestInheritedDecorators(t *testing.T) {
 	pkg := expectClean(t, `package app
 middleware A
@@ -32,6 +33,12 @@ extend service S {
 @ignoreMiddleware
 extend service S {
     get Four /four {}
+}
+@ignoreMiddleware
+@middlewares(B)
+extend service S {
+    @middlewares(C)
+    get Five /five {}
 }`)
 	svc := pkg.Services["S"]
 	names := func(ds []*ast.Decorator) string {
@@ -47,7 +54,8 @@ extend service S {
 		"One":   "A | C | false",
 		"Two":   "A | B,C | false",
 		"Three": " | C | true",
-		"Four":  "A |  | false",
+		"Four":  " |  | true",
+		"Five":  " | B,C | true",
 	}
 	for _, m := range svc.Methods {
 		service, member, ignored := svc.InheritedDecorators(m, "middlewares")

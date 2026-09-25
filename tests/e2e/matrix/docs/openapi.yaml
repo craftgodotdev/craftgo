@@ -6284,6 +6284,8 @@ components:
       type: object
     StampsRespBody:
       $ref: '#/components/schemas/XBagOfDatetime'
+    StatusRespBody:
+      $ref: '#/components/schemas/HealthResp'
     StocktakeStarted:
       description: An event may carry a payload of its own name - separate namespaces.
       properties:
@@ -10732,6 +10734,19 @@ paths:
       - AdminBearer: []
       tags:
       - internal
+  /secured/status:
+    get:
+      description: Public status page - no auth or rate limit, only the block's Audit.
+      operationId: Status
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusRespBody'
+          description: OK
+      tags:
+      - public
   /secured/wipe:
     post:
       description: Destructive admin op - requires AdminBearer AND MFA on top of the

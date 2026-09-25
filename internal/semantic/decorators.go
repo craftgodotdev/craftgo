@@ -534,19 +534,19 @@ var registry = map[string]Spec{
 	"ignoreMiddleware": {
 		Name:   "ignoreMiddleware",
 		Levels: LvlMethod,
-		Doc:    "Clear the inherited @middlewares chain on this method. The method's own decorator then starts from empty instead of appending to the service-level chain.",
+		Doc:    "Clear the inherited @middlewares chain on this method. The method's own decorator then starts from empty instead of appending to the service-level chain. On an extend service block, every method of the block drops the primary service's chain.",
 		Args:   ArgsRule{Min: 0, Max: 0},
 	},
 	"ignoreSecurity": {
 		Name:   "ignoreSecurity",
 		Levels: LvlMethod,
-		Doc:    "Clear the inherited @security chain on this method. Useful for public endpoints inside an otherwise-authenticated service.",
+		Doc:    "Clear the inherited @security chain on this method. Useful for public endpoints inside an otherwise-authenticated service. On an extend service block, every method of the block drops the primary service's chain.",
 		Args:   ArgsRule{Min: 0, Max: 0},
 	},
 	"ignoreTags": {
 		Name:   "ignoreTags",
 		Levels: LvlMethod,
-		Doc:    "Clear the inherited @tags list on this method. Method-level @tags(...) then start from empty.",
+		Doc:    "Clear the inherited @tags list on this method. Method-level @tags(...) then start from empty. On an extend service block, every method of the block drops the primary service's list.",
 		Args:   ArgsRule{Min: 0, Max: 0},
 	},
 

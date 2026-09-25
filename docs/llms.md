@@ -233,7 +233,7 @@ extend service Users {
 
 ### Inheritance and opt-outs
 
-Service-level decorators (and decorators on an `extend service` block) apply to every method inside. Method-level decorators of the same kind **append** to the inherited chain. Use `@ignoreMiddleware` / `@ignoreSecurity` / `@ignoreTags` at method level to drop the inherited chain entirely (then any method-level `@X(...)` decorators start from empty - the "clear-then-append" reset pattern).
+Service-level decorators (and decorators on an `extend service` block) apply to every method inside. Method-level decorators of the same kind **append** to the inherited chain. Use `@ignoreMiddleware` / `@ignoreSecurity` / `@ignoreTags` at method level to drop the inherited chain entirely (then any method-level `@X(...)` decorators start from empty - the "clear-then-append" reset pattern). On an `extend service` block they apply to each method of the block: the primary service's chain is dropped and the block's own `@X(...)` start afresh.
 
 ## Middleware
 
