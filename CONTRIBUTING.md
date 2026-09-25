@@ -23,7 +23,7 @@ The generated output - handlers, types, OpenAPI specs under `example/` and `test
 make gen-all && git add -A
 ```
 
-CI runs `make gen-diff` and fails if the committed output doesn't match what your code produces. It's the project's best review signal: a behavior change shows up as a diff in the generated files. And every fix should add a small case that exercises exactly what you changed, in the matching topic package under `tests/e2e/matrix/design/` (`numbers/`, `bindings/`, `events/`, ...). The matrix has to generate, so a design your fix now rejects gets a test in `internal/semantic` instead.
+CI runs `make gen-diff` and fails if the committed output doesn't match what your code produces. It's the project's best review signal: a behavior change shows up as a diff in the generated files. And every fix should add a small case that exercises exactly what you changed, in the matching topic package under `tests/e2e/matrix/design/` (`numbers/`, `bindings/`, `events/`, ...). The matrix has to generate, so a design your fix now rejects gets a test in `internal/semantic` instead. Committed design files stay in canonical form: run `go run ./cmd/craftgo fmt` on the design folder you edit, or `make test` fails.
 
 ## Opening a PR
 

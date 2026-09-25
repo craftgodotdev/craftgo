@@ -9,7 +9,8 @@ import (
 )
 
 // TestFormatDesignCorpus pins that every committed design file, in the examples
-// and the e2e matrix, formats without diagnostics and idempotently.
+// and the e2e matrix, is in canonical form: it formats to itself without
+// diagnostics.
 func TestFormatDesignCorpus(t *testing.T) {
 	repo, files := designCorpus(t)
 	for _, name := range files {
@@ -18,19 +19,30 @@ func TestFormatDesignCorpus(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			once, diags := Format(name, string(src))
+			out, diags := Format(name, string(src))
 			if len(diags) > 0 {
 				t.Fatalf("format produced diagnostics: %v", diags)
 			}
-			twice, diags := Format(name, once)
-			if len(diags) > 0 {
-				t.Fatalf("re-format produced diagnostics: %v\nformatted:\n%s", diags, once)
-			}
-			if once != twice {
-				t.Error("format is not idempotent")
+			if out != string(src) {
+				got, want := firstDifference(string(src), out)
+				t.Errorf("not in canonical form (run craftgo fmt on it); first differing line:\n  file: %q\n  fmt:  %q", got, want)
 			}
 		})
 	}
+}
+
+// firstDifference returns the first line on which a and b differ, from each.
+func firstDifference(a, b string) (string, string) {
+	al, bl := strings.Split(a, "\n"), strings.Split(b, "\n")
+	for i := range min(len(al), len(bl)) {
+		if al[i] != bl[i] {
+			return al[i], bl[i]
+		}
+	}
+	if len(al) > len(bl) {
+		return al[len(bl)], ""
+	}
+	return "", bl[len(al)]
 }
 
 // designCorpus returns the repository and the path of every .craftgo file under
