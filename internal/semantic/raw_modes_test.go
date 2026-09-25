@@ -115,8 +115,8 @@ service S {
 }
 
 // Under @rawResponse alone, a path segment without a request type is still reported.
-func TestRawResponsePathParamStillWarns(t *testing.T) {
-	expectDiag(t, `package x
+func TestRawResponsePathParamStillMissing(t *testing.T) {
+	expectError(t, `package x
 service S {
     @rawResponse
     get A /users/{id} {}

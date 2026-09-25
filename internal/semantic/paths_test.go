@@ -315,14 +315,14 @@ service S {
 }
 
 // A path variable is reported missing when the method has no request type.
-func TestPathParamWarnsWithoutRequest(t *testing.T) {
-	expectDiag(t, `service S {
+func TestPathParamMissingWithoutRequest(t *testing.T) {
+	expectError(t, `service S {
 	get GetUser /users/{id} {}
 }`, CodePathParamMissing)
 }
 
 // A passthrough method reads path values off the raw request and needs no request type.
-func TestPathParamPassthroughSkipsWarn(t *testing.T) {
+func TestPathParamPassthroughNeedsNoRequest(t *testing.T) {
 	mustClean(t, `service S {
 	@passthrough
 	get Stream /users/{id}/feed {}
