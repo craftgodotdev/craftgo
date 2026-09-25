@@ -37,7 +37,7 @@ type eventDescriptor struct {
 // per event; a package without events gets no file.
 func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoot, outDir string, r *projectResolver) error {
 	r = resolverFor(pkg, r)
-	imports := newImportSet(r.CrossPkg, goImport{Alias: localAlias, Path: outputsOf(cfg).types.sub(pkg.Name).pkg}, eventsNames)
+	imports := newImportSet(r, goImport{Alias: localAlias, Path: outputsOf(cfg).types.sub(pkg.Name).pkg}, eventsNames)
 	data := eventsData{Package: pkg.Name}
 	for _, name := range slices.Sorted(maps.Keys(pkg.Events)) {
 		ev, ok := r.Project().LookupEvent(pkg.Name, name)

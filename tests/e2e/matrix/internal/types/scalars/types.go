@@ -2,6 +2,9 @@
 
 package scalars
 
+// Blob is a DSL scalar over bytes; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Blob []byte
+
 // Cents is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
 type Cents int
 
@@ -36,6 +39,13 @@ type UUID string
 // is just an OpenAPI `type: array, items: ...` shape.
 type ArrayOfGenericInstance struct {
 	Pages []Page[Order] `json:"pages"`
+}
+
+// Attachments holds an optional Blob as a field and as a map value; both
+// render as Blob, whose nil is the absent value.
+type Attachments struct {
+	Cover Blob            `json:"cover,omitempty"`
+	Files map[string]Blob `json:"files"`
 }
 
 // AuditFields is the mixin source - two timestamp fields with

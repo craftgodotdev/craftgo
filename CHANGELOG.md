@@ -597,6 +597,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   operation of the other. When both have a method of one name, each such
   operation's body components take its package first, as `ASGetReqBody`.
 
+- **A generic argument that is an array of maps keeps its `[]`.** A method
+  returning `Page<map<string, Item>[]>` got a logic stub returning
+  `*types.Page[map[string]types.Item]`, while `types.go` and the OpenAPI
+  document hold an array of maps; the stub, the handler and an event
+  payload now spell `Page[[]map[string]Item]`. A stub generated before
+  keeps its signature, since gen writes it once; edit it by hand. An
+  optional map value whose type holds nil, as in `map<string, Blob?>` with
+  `scalar Blob bytes`, is now a `Blob`, as a `Blob?` field is, not a `*Blob`.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

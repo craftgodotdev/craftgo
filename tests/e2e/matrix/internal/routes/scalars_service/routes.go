@@ -23,4 +23,5 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/scalars/keyed", transport.ListKeyed(svcCtx))
 	srv.Handle("GET /api/scalars/lookup/{id}", transport.LookupOrder(svcCtx))
 	srv.Handle("POST /api/scalars/wrapped", transport.EchoWrapped(svcCtx))
+	srv.Handle("GET /api/scalars/order-groups", transport.ListOrderGroups(svcCtx))
 }

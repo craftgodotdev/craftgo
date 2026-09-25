@@ -1257,12 +1257,14 @@ type CreateReq { user User }
 type EchoReq { v string }
 type WrapReq { v string }
 type PairReq { v string }
+type GridReq { v string }
 service S {
     post Create /c   { request CreateReq  response Page<User> }
     post Echo   /e   { request EchoReq    response Envelope<Email> }
     post Wrap   /w   { request WrapReq    response Page<Envelope<User>> }
     post Pair   /p   { request PairReq    response Pair<User, Email> }
     post Mix    /m   { request Page<User> response Envelope<User> }
+    post Grid   /g   { request GridReq    response Page<map<string, User>[]> }
 }`
 	pkg := analyze(t, src)
 	root := t.TempDir()
@@ -1283,6 +1285,8 @@ service S {
 		// Generic on the request side too.
 		{"mix.go", "(req *types.Page[types.User])"},
 		{"mix.go", "(*types.Envelope[types.User], error)"},
+		// An array-of-maps argument keeps its `[]`.
+		{"grid.go", "(*types.Page[[]map[string]types.User], error)"},
 	}
 	for _, c := range cases {
 		body, err := os.ReadFile(filepath.Join(root, "internal/service/s", c.file))

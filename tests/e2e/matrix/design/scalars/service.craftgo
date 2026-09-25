@@ -54,6 +54,12 @@ service ScalarsService {
 		request  EchoWrappedReq
 		response Wrapped
 	}
+
+	@doc("List orders grouped by region. The response is a generic instance over an array of maps, Page<map<string, Order>[]>.")
+	get ListOrderGroups /order-groups {
+		request  ListOrdersReq
+		response Page<map<string, Order>[]>
+	}
 }
 
 // GetOrderReq pins a UUID-typed path parameter. The scalar's

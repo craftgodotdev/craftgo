@@ -42,7 +42,7 @@ func uniqueItemsCheck(f *ast.Field, access string, ctx emitCtx) string {
 	if f.Type == nil || !f.Type.Array {
 		return ""
 	}
-	elem := goTypeRef(f.Type.ElemTypeRef())
+	elem := goType(f.Type.ElemTypeRef(), ctx.resolver.Resolver, nil)
 	ctx.uses["fmt"] = true
 	// The element type keys the map and may name another package.
 	f.Type.WalkNamedRefs(ctx.resolver.CrossPkg.importsInto(ctx.uses))

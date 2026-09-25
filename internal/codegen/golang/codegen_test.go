@@ -414,7 +414,7 @@ func TestImportSetSpellsGenericArgs(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			set := newImportSet(cross, goImport{Alias: localAlias, Path: "github.com/x/internal/types/app"}, nil)
+			set := newImportSet(&projectResolver{CrossPkg: cross}, goImport{Alias: localAlias, Path: "github.com/x/internal/types/app"}, nil)
 			if got := set.named(c.ref); got != c.want {
 				t.Errorf("got %q, want %q", got, c.want)
 			}
@@ -455,7 +455,7 @@ func TestImportSetImportsWhatItSpells(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			set := newImportSet(cross, goImport{Alias: localAlias, Path: local}, nil)
+			set := newImportSet(&projectResolver{CrossPkg: cross}, goImport{Alias: localAlias, Path: local}, nil)
 			spelled := set.named(c.ref)
 			var got []string
 			for _, imp := range set.imports() {
@@ -471,7 +471,7 @@ func TestImportSetImportsWhatItSpells(t *testing.T) {
 // A package named like a name the template binds, or like another import, takes a numbered alias.
 func TestImportSetAvoidsBoundNames(t *testing.T) {
 	cross := crossPkg{"server": "example.com/app/internal/types/server", "types": "example.com/app/internal/types/types"}
-	set := newImportSet(cross, goImport{Alias: localAlias, Path: "example.com/app/internal/types/app"}, transportNames)
+	set := newImportSet(&projectResolver{CrossPkg: cross}, goImport{Alias: localAlias, Path: "example.com/app/internal/types/app"}, transportNames)
 	if got := set.named(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"server", "Cred"}}}); got != "server2.Cred" {
 		t.Errorf("a package named like a template import: got %q", got)
 	}
@@ -496,7 +496,7 @@ func TestRenderMixinQualifiedRef(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			m := &ast.Mixin{Ref: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: c.parts}}}
-			if got := renderMixin(m); got != c.want {
+			if got := renderMixin(m, &projectResolver{}); got != c.want {
 				t.Errorf("renderMixin(%v) = %q, want %q", c.parts, got, c.want)
 			}
 		})
@@ -1003,6 +1003,38 @@ type T {
 	)
 }
 
+// An optional type that holds nil gets no pointer wherever it is nested, as a field of it gets none.
+func TestGoTypeNestedOptionalNilable(t *testing.T) {
+	pkg := analyze(t, `package design
+scalar Blob bytes
+type Box<T> { v T }
+type Holder {
+    field  Blob?
+    values map<string, Blob?>
+    nested map<string, map<string, Blob?>>
+    boxed  Box<map<string, Blob?>>
+    counts map<string, int?>
+}`)
+	dir := t.TempDir()
+	if err := generateTypes(pkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	for _, w := range []struct{ ident, typ string }{
+		{"Field", "Blob"},
+		{"Values", "map[string]Blob"},
+		{"Nested", "map[string]map[string]Blob"},
+		{"Boxed", "Box[map[string]Blob]"},
+		{"Counts", "map[string]*int"},
+	} {
+		if !lineHasField(src, w.ident, w.typ) {
+			t.Errorf("expected field %s with type %q in:\n%s", w.ident, w.typ, src)
+		}
+	}
+}
+
 // lineHasField reports whether a line of src holds both ident and typ, but not *typ.
 func lineHasField(src, ident, typ string) bool {
 	for _, line := range strings.Split(src, "\n") {
@@ -1016,8 +1048,8 @@ func lineHasField(src, ident, typ string) bool {
 	return false
 }
 
-func TestGoTypeRefNil(t *testing.T) {
-	if goTypeRef(nil) != "" {
+func TestGoTypeNil(t *testing.T) {
+	if goType(nil, nil, nil) != "" {
 		t.Error()
 	}
 }

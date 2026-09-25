@@ -131,6 +131,21 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 	return rf
 }
 
+// ResolveTypeRef returns the type facts of t as r's package spells it,
+// resolved as [ResolveField] resolves a field's type; a nil r resolves
+// builtins, arrays and maps only.
+func (r *Resolver) ResolveTypeRef(t *ast.TypeRef) ResolvedField {
+	if t == nil {
+		return ResolvedField{}
+	}
+	proj := r.Project()
+	var pkg *Package
+	if proj != nil {
+		pkg = proj.Packages[r.current]
+	}
+	return resolveTypeRef(t, false, pkg, proj)
+}
+
 // resolveTypeRef returns the type facts of t, resolved as [ResolveField]
 // resolves a field's type; raw says `@format(raw)` sits on the field.
 func resolveTypeRef(t *ast.TypeRef, raw bool, pkg *Package, proj *Project) ResolvedField {

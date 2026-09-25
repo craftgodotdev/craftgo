@@ -103,7 +103,7 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 // a field its binding source cannot carry, such as @query on a struct.
 func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, pkg *semantic.Package, r *projectResolver) (transportData, error) {
 	mode := modeOf(m, decs)
-	imports := newImportSet(r.CrossPkg, goImport{Alias: localAlias, Path: imps.Types}, transportNames)
+	imports := newImportSet(r, goImport{Alias: localAlias, Path: imps.Types}, transportNames)
 	d := transportData{
 		Package:          pkg.Name,
 		Method:           m.Name,

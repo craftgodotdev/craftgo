@@ -661,6 +661,24 @@ components:
       - jobId
       - queued
       type: object
+    Attachments:
+      description: |-
+        Attachments holds an optional Blob as a field and as a map value; both
+        render as Blob, whose nil is the absent value.
+      properties:
+        cover:
+          anyOf:
+          - $ref: '#/components/schemas/Blob'
+          - type: "null"
+        files:
+          additionalProperties:
+            anyOf:
+            - $ref: '#/components/schemas/Blob'
+            - type: "null"
+          type: object
+      required:
+      - files
+      type: object
     Audit:
       description: |-
         Audit captures the create/update bookkeeping every persistent
@@ -841,6 +859,12 @@ components:
         to every field that references it. Used in PathScalarReq so the
         path binder lands a typed alias instead of a bare string.
       format: uuid
+      type: string
+    Blob:
+      description: |-
+        Blob is a bytes scalar: its Go type holds nil itself, so an optional
+        Blob takes no pointer, as a field or as a map value.
+      format: byte
       type: string
     BodyExplicitReq:
       description: |-
@@ -2797,6 +2821,8 @@ components:
       type: object
     ListKeyedRespBody:
       $ref: '#/components/schemas/OrderPage'
+    ListOrderGroupsRespBody:
+      $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrder'
     ListOrdersReq:
       description: |-
         ListOrdersReq mirrors the canonical cursor-pagination request shape.
@@ -6045,6 +6071,30 @@ components:
         items:
           items:
             $ref: '#/components/schemas/Cents'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    ScalarsPageOfMapOfStringAndScalarsOrder:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            items:
+              additionalProperties:
+                $ref: '#/components/schemas/ScalarsOrder'
+              type: object
+            type: array
           type: array
         total:
           type: integer
@@ -10789,6 +10839,34 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LookupOrderRespBody'
+          description: OK
+      tags:
+      - scalars
+  /scalars/order-groups:
+    get:
+      description: List orders grouped by region. The response is a generic instance
+        over an array of maps, Page<map<string, Order>[]>.
+      operationId: ListOrderGroups
+      parameters:
+      - in: query
+        name: cursor
+        schema:
+          type:
+          - string
+          - "null"
+      - in: query
+        name: limit
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/Cents'
+          - type: "null"
+          default: 20
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListOrderGroupsRespBody'
           description: OK
       tags:
       - scalars

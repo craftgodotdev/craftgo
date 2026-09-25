@@ -42,21 +42,20 @@ func logicTypeName(method string) string { return method + "Service" }
 // output.service/<segment>/<method>.go. A nil r resolves local names only.
 func generateService(pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
 	r = resolverFor(pkg, r)
-	crossPkg := r.CrossPkg
 	for _, svcName := range pkg.ServiceNames() {
 		svc := pkg.Services[svcName]
-		if err := generateServiceFor(svcName, svc, pkg, cfg, projectRoot, crossPkg); err != nil {
+		if err := generateServiceFor(svcName, svc, pkg, cfg, projectRoot, r); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg crossPkg) error {
+func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
 	out := outputsOf(cfg)
 	for _, m := range svc.Methods {
 		seg := route.OutputSegment(svcName, semantic.MethodGroupOf(svc, m), cfg.Output.FileCase)
-		data := buildServiceData(pkg.Name, svcName, m, svc.Decorators(m), out.segmentImports(pkg.Name, seg), crossPkg)
+		data := buildServiceData(pkg.Name, svcName, m, svc.Decorators(m), out.segmentImports(pkg.Name, seg), r)
 		if err := writeGoOnce(out.service.sub(seg).at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("service.tmpl"), data); err != nil {
 			return err
 		}
@@ -64,9 +63,9 @@ func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic
 	return nil
 }
 
-func buildServiceData(pkgName, svcName string, m *ast.Method, decs []*ast.Decorator, imps importPaths, crossPkg crossPkg) serviceData {
+func buildServiceData(pkgName, svcName string, m *ast.Method, decs []*ast.Decorator, imps importPaths, r *projectResolver) serviceData {
 	mode := modeOf(m, decs)
-	imports := newImportSet(crossPkg, goImport{Alias: localAlias, Path: imps.Types}, serviceNames)
+	imports := newImportSet(r, goImport{Alias: localAlias, Path: imps.Types}, serviceNames)
 	var reqRef, respRef string
 	if mode.BindRequest() {
 		reqRef = imports.named(m.Request)

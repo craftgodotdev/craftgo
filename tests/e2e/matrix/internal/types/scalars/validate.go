@@ -34,6 +34,24 @@ func (v *ArrayOfGenericInstance) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on Attachments.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Attachments) Validate() error {
+	if v.Cover != nil {
+		if err := v.Cover.Validate(); err != nil {
+			return fmt.Errorf("cover: %w", err)
+		}
+	}
+	for _, val := range v.Files {
+		if val != nil {
+			if err := val.Validate(); err != nil {
+				return fmt.Errorf("files: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on AuditFields.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AuditFields) Validate() error {
@@ -500,6 +518,15 @@ func (v *Tree[T]) Validate() error {
 func (v *Wrapped) Validate() error {
 	if err := v.Results.Validate(); err != nil {
 		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Blob.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Blob) Validate() error {
+	if len([]byte(v)) > 1024 {
+		return fmt.Errorf("length greater than 1024")
 	}
 	return nil
 }

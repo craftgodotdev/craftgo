@@ -9,6 +9,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/prims"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // goImport is one import of a generated file; an empty Alias imports the package under its own name.
@@ -35,16 +36,21 @@ var (
 // and from the packages a builtin's Go type lives in.
 type importSet struct {
 	crossPkg crossPkg
+	res      *semantic.Resolver
 	home     goImport
 	reserved map[string]bool
 	byPath   map[string]string // path → alias
 	taken    map[string]string // alias → path
 }
 
-// newImportSet returns an empty set for a file whose template binds names. home is the package the
-// file names under a fixed alias: the current DSL package's types, or a proto service's messages.
-func newImportSet(crossPkg crossPkg, home goImport, names []string) *importSet {
-	s := &importSet{crossPkg: crossPkg, home: home, reserved: map[string]bool{}, byPath: map[string]string{}, taken: map[string]string{}}
+// newImportSet returns an empty set for a file whose template binds names. r resolves the DSL types
+// the file names, nil for a file that names none; home is the package the file names under a fixed
+// alias: the current DSL package's types, or a proto service's messages.
+func newImportSet(r *projectResolver, home goImport, names []string) *importSet {
+	s := &importSet{home: home, reserved: map[string]bool{}, byPath: map[string]string{}, taken: map[string]string{}}
+	if r != nil {
+		s.crossPkg, s.res = r.CrossPkg, r.Resolver
+	}
 	for _, n := range names {
 		s.reserved[n] = true
 	}
@@ -96,49 +102,25 @@ func (s *importSet) scratch() *importSet {
 	return &c
 }
 
-// goType spells t in Go, importing every package it reaches; an optional is a pointer unless the
-// type already holds nil.
+// goType spells t as the file names it, a declared type through [importSet.qualify], and imports
+// every package t reaches.
 func (s *importSet) goType(t *ast.TypeRef) string {
-	if t == nil {
-		return ""
-	}
-	if t.Map != nil {
-		return "map[" + s.goType(t.Map.Key) + "]" + s.goType(t.Map.Value)
-	}
-	depth := t.ArrayDepth
-	if depth == 0 && t.Array {
-		depth = 1
-	}
-	leaf := strings.Repeat("[]", depth) + s.named(t.Named)
-	if t.Optional && !isNilableGoType(leaf) {
-		leaf = "*" + leaf
-	}
-	return leaf
+	t.WalkNamedRefs(s.importBuiltin)
+	return goType(t, s.res, s.qualify)
 }
 
-// named spells n in Go, importing every package it and its type arguments reach: a builtin as its
-// Go type, a declared type through [importSet.qualify].
+// named is [importSet.goType] for a named type.
 func (s *importSet) named(n *ast.NamedTypeRef) string {
-	if n == nil || n.Name == nil {
-		return ""
+	n.WalkNamedRefs(s.importBuiltin)
+	return goNamedType(n, s.res, s.qualify)
+}
+
+// importBuiltin imports the package whose Go type the builtin n names, under the package's own
+// name, which no other import can take.
+func (s *importSet) importBuiltin(n *ast.NamedTypeRef) {
+	if sp, ok := prims.Lookup(n.Name.String()); ok && sp.GoImport != "" {
+		s.byPath[sp.GoImport] = ""
 	}
-	name := n.Name.String()
-	if sp, ok := prims.Lookup(name); ok {
-		if sp.GoImport != "" {
-			// The package keeps its own name, which no other import can take.
-			s.byPath[sp.GoImport] = ""
-		}
-		return sp.Go
-	}
-	out := s.qualify(name)
-	if len(n.Args) == 0 {
-		return out
-	}
-	args := make([]string, len(n.Args))
-	for i, a := range n.Args {
-		args[i] = s.goType(a)
-	}
-	return out + "[" + strings.Join(args, ", ") + "]"
 }
 
 // qualify spells a declared type's name: a bare name under the home package's alias, a qualified

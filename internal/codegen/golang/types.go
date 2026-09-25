@@ -180,7 +180,7 @@ func renderTypeBody(members []ast.TypeMember, pkg *semantic.Package, r *projectR
 			parts = append(parts, renderField(v, resolved[fieldIdx], pkg, r))
 			fieldIdx++
 		case *ast.Mixin:
-			parts = append(parts, renderMixin(v))
+			parts = append(parts, renderMixin(v, r))
 		}
 	}
 	return strings.Join(parts, "")
@@ -213,7 +213,7 @@ func goFieldType(f *ast.Field, pkg *semantic.Package, r *projectResolver) string
 	// goFieldPointerWrap decides the `*`, so the `?` is dropped here.
 	clone := *f.Type
 	clone.Optional = false
-	s := goTypeRef(&clone)
+	s := goType(&clone, r.Resolver, nil)
 	if isRawBytesField(f, pkg, r) {
 		s = rawGoType
 	}
@@ -243,72 +243,51 @@ func goFieldIsPointer(f *ast.Field, pkg *semantic.Package, r *projectResolver) b
 
 // renderMixin returns the embed line for m with its package qualifier and
 // generic arguments.
-func renderMixin(m *ast.Mixin) string {
-	return "\t" + goNamedType(m.Ref) + "\n"
+func renderMixin(m *ast.Mixin, r *projectResolver) string {
+	return "\t" + goNamedType(m.Ref, r.Resolver, nil) + "\n"
 }
 
-// goTypeRef returns the Go type of t; an optional gets `*` unless the type
-// already holds nil.
-func goTypeRef(t *ast.TypeRef) string {
+// goType spells t in Go: a builtin as its Go type, a declared type by its name
+// as declared spells it (nil keeps the name as written), a generic instance
+// with its arguments; an optional is a pointer unless res resolves its type to
+// one that holds nil.
+func goType(t *ast.TypeRef, res *semantic.Resolver, declared func(name string) string) string {
 	if t == nil {
 		return ""
 	}
 	var s string
 	if t.Map != nil {
-		s = "map[" + goTypeRef(t.Map.Key) + "]" + goTypeRef(t.Map.Value)
-	} else if t.Named != nil {
-		s = goNamedType(t.Named)
+		s = "map[" + goType(t.Map.Key, res, declared) + "]" + goType(t.Map.Value, res, declared)
+	} else {
+		s = goNamedType(t.Named, res, declared)
 	}
-	depth := t.ArrayDepth
-	if depth == 0 && t.Array {
-		// A hand-built node may set Array without ArrayDepth.
-		depth = 1
-	}
-	for i := 0; i < depth; i++ {
-		s = "[]" + s
-	}
-	if t.Optional && !isNilableGoType(s) {
+	s = strings.Repeat("[]", t.ArrayDepth) + s
+	if t.Optional && !res.ResolveTypeRef(t).IsNilable {
 		s = "*" + s
 	}
 	return s
 }
 
-// isNilableGoType reports whether the Go type spelt s holds nil, judged from
-// the spelling alone.
-func isNilableGoType(s string) bool {
-	if s == "" {
-		return false
+// goNamedType is [goType] for a named type.
+func goNamedType(n *ast.NamedTypeRef, res *semantic.Resolver, declared func(name string) string) string {
+	if n == nil || n.Name == nil {
+		return ""
 	}
-	switch {
-	case strings.HasPrefix(s, "[]"),
-		strings.HasPrefix(s, "map["),
-		strings.HasPrefix(s, "*"),
-		strings.HasPrefix(s, "chan "),
-		strings.HasPrefix(s, "func("):
-		return true
-	}
-	switch s {
-	case "any", "interface{}", "error":
-		return true
-	}
-	return false
-}
-
-// goNamedType returns the Go form of n: a builtin's Go type, or the name with
-// its generic arguments.
-func goNamedType(n *ast.NamedTypeRef) string {
 	name := n.Name.String()
-	if sp, ok := prims.Lookup(name); ok && sp.Go != "" {
+	if sp, ok := prims.Lookup(name); ok {
 		return sp.Go
 	}
-	if len(n.Args) > 0 {
-		var parts []string
-		for _, a := range n.Args {
-			parts = append(parts, goTypeRef(a))
-		}
-		return name + "[" + strings.Join(parts, ", ") + "]"
+	if declared != nil {
+		name = declared(name)
 	}
-	return name
+	if len(n.Args) == 0 {
+		return name
+	}
+	args := make([]string, len(n.Args))
+	for i, a := range n.Args {
+		args[i] = goType(a, res, declared)
+	}
+	return name + "[" + strings.Join(args, ", ") + "]"
 }
 
 // structTag returns f's struct tag: the json key, plus for a path, query,
