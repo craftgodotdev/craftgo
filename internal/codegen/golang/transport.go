@@ -3,12 +3,10 @@ package golang
 import (
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
-	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
@@ -17,7 +15,9 @@ import (
 type transportData struct {
 	Package string
 	Method  string
-	Verb    string
+	// ServiceName is the logic type the handler calls.
+	ServiceName string
+	Verb        string
 	// RequestType is the Go type the handler binds the request into.
 	RequestType string
 	Doc         []string
@@ -92,15 +92,14 @@ func generateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot st
 }
 
 func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
+	out := outputsOf(cfg)
 	for _, m := range svc.Methods {
-		group := semantic.MethodGroupOf(svc, m)
-		imps := importPathsForGroup(cfg, pkg, svcName, group)
-		dir := serviceOutputDir(projectRoot, cfg.Output.Transport, svcName, group, cfg.Output.FileCase)
-		data, err := buildTransportData(svcName, m, imps, pkg, r)
+		seg := outputSegFor(svcName, semantic.MethodGroupOf(svc, m), cfg.Output.FileCase)
+		data, err := buildTransportData(svcName, m, out.segmentImports(pkg.Name, seg), pkg, r)
 		if err != nil {
 			return fmt.Errorf("%s.%s: %w", svcName, m.Name, err)
 		}
-		if err := writeGo(filepath.Join(dir, idents.FileName(m.Name, cfg.Output.FileCase)+".go"), tmpl("transport.tmpl"), data); err != nil {
+		if err := writeGo(out.transport.sub(seg).at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("transport.tmpl"), data); err != nil {
 			return err
 		}
 	}
@@ -114,6 +113,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 	d := transportData{
 		Package:          servicePkgName(pkg.Name, svcName),
 		Method:           m.Name,
+		ServiceName:      logicTypeName(m.Name),
 		Verb:             httpVerb(m.Verb),
 		Doc:              m.Doc,
 		HasRequest:       mode.HasRequest,

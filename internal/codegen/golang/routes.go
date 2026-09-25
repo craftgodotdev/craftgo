@@ -1,11 +1,10 @@
 package golang
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
-	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -109,80 +108,42 @@ func generateRoutes(pkg *semantic.Package, cfg *config.Config, projectRoot strin
 	if pkg.Name == "" {
 		return fmt.Errorf("package has no name")
 	}
-	dirs := routeSegments(pkg, cfg)
-	for _, seg := range slices.Sorted(maps.Keys(dirs)) {
-		if err := generateRoutesForSegment(seg, dirs[seg], pkg, cfg, projectRoot); err != nil {
+	bySeg := map[string][]segment{}
+	for s := range segments(pkg, cfg.Output.FileCase) {
+		bySeg[s.dir] = append(bySeg[s.dir], s)
+	}
+	// The analyser rejects a segment shared across DSL packages or repeating a method name.
+	for _, dir := range slices.Sorted(maps.Keys(bySeg)) {
+		if err := generateRoutesForSegment(bySeg[dir], cfg, projectRoot); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// segContribution is one service's methods under one @group ("" when ungrouped).
-type segContribution struct {
-	svcName string
-	svc     *semantic.ServiceInfo
-	group   string
-}
-
-// routeSegments maps each output segment of pkg to its contributors in service order; the
-// analyser rejects a segment shared across DSL packages or repeating a method name.
-func routeSegments(pkg *semantic.Package, cfg *config.Config) map[string][]segContribution {
-	out := map[string][]segContribution{}
-	for _, svcName := range pkg.ServiceNames() {
-		svc := pkg.Services[svcName]
-		for _, g := range distinctGroups(svc) {
-			seg := outputSegFor(svcName, g, cfg.Output.FileCase)
-			out[seg] = append(out[seg], segContribution{svcName: svcName, svc: svc, group: g})
-		}
-	}
-	return out
-}
-
 // generateProjectRoutesUmbrella writes output.routes/routes.go, whose RegisterAll calls every
 // segment's RegisterRoutes; no file is written when no service has a method.
 func generateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
-	type svcEntry struct {
-		name    string
-		pkgName string
-		group   string
-		seg     string
-	}
-	var entries []svcEntry
-	for pkgName, p := range proj.Packages {
-		if pkgName == "" || p == nil {
-			continue
-		}
-		for _, svcName := range p.ServiceNames() {
-			for _, g := range distinctGroups(p.Services[svcName]) {
-				entries = append(entries, svcEntry{name: svcName, pkgName: pkgName, group: g, seg: outputSegFor(svcName, g, cfg.Output.FileCase)})
-			}
-		}
-	}
+	entries := slices.Collect(projectSegments(proj, cfg.Output.FileCase))
 	if len(entries) == 0 {
 		return nil
 	}
 	// Service names are project-unique, but a service has one entry per group.
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].name != entries[j].name {
-			return entries[i].name < entries[j].name
-		}
-		return entries[i].group < entries[j].group
+	slices.SortFunc(entries, func(a, b segment) int {
+		return cmp.Or(cmp.Compare(a.name, b.name), cmp.Compare(a.group, b.group))
 	})
-
-	data := routesAllData{
-		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
-	}
+	out := outputsOf(cfg)
+	data := routesAllData{SvccontextImport: out.svccontext.pkg}
 	imports := newImportSet(nil, goImport{}, routesNames)
-	for _, e := range entries {
-		path := goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + e.seg
+	for _, s := range entries {
+		path := out.routes.sub(s.dir).pkg
 		// Services sharing a segment share its RegisterRoutes, so it is called once.
 		if imports.has(path) {
 			continue
 		}
-		data.Imports = append(data.Imports, goImport{Alias: imports.add(servicePackage(e.name)+groupAliasSuffix(e.group)+"routes", path), Path: path})
+		data.Imports = append(data.Imports, goImport{Alias: imports.add(servicePackage(s.name)+groupAliasSuffix(s.group)+"routes", path), Path: path})
 	}
-	return writeGo(filepath.Join(projectRoot, cfg.Output.Routes, "routes.go"), tmpl("routes-all.tmpl"), data)
+	return writeGo(out.routes.at(projectRoot, "routes.go"), tmpl("routes-all.tmpl"), data)
 }
 
 // routesAllData is the template input for `routes-all.tmpl`; Imports are in call order.
@@ -191,26 +152,21 @@ type routesAllData struct {
 	SvccontextImport string
 }
 
-// generateRoutesForSegment writes the routes.go of segment seg: each contributor's methods in
-// source order, all through the segment's one transport package.
-func generateRoutesForSegment(seg string, contribs []segContribution, pkg *semantic.Package, cfg *config.Config, projectRoot string) error {
-	if len(contribs) == 0 {
-		return nil
-	}
+// generateRoutesForSegment writes the routes.go of the segment contribs share: each contributor's
+// methods in source order, all through the segment's one transport package.
+func generateRoutesForSegment(contribs []segment, cfg *config.Config, projectRoot string) error {
 	lead := contribs[0]
+	out := outputsOf(cfg)
 	imports := newImportSet(nil, goImport{}, routesNames)
-	alias := imports.add(transportAlias(lead.group), importPathsForGroup(cfg, pkg, lead.svcName, lead.group).Transport)
+	alias := imports.add(transportAlias(lead.group), out.transport.sub(lead.dir).pkg)
 	data := routesData{
-		Package:          servicePkgName(pkg.Name, lead.svcName),
+		Package:          servicePkgName(lead.pkg.Name, lead.name),
 		Service:          contributorLabel(contribs),
-		SvccontextImport: importPathsForGroup(cfg, pkg, lead.svcName, "").Svccontext,
+		SvccontextImport: out.svccontext.pkg,
 		Imports:          imports.imports(),
 	}
 	for _, c := range contribs {
-		for _, m := range c.svc.Methods {
-			if semantic.MethodGroupOf(c.svc, m) != c.group {
-				continue
-			}
+		for m := range c.methods() {
 			full := route.Resolve(cfg.OpenAPI.BasePath, c.svc.Primary, m)
 			mws := middlewareNames(c.svc, m)
 			call, needsTime := buildHandlerCall(m, alias)
@@ -225,19 +181,19 @@ func generateRoutesForSegment(seg string, contribs []segContribution, pkg *seman
 			})
 		}
 	}
-	return writeGo(filepath.Join(projectRoot, cfg.Output.Routes, filepath.FromSlash(seg), "routes.go"), tmpl("routes.tmpl"), data)
+	return writeGo(out.routes.sub(lead.dir).at(projectRoot, "routes.go"), tmpl("routes.tmpl"), data)
 }
 
 // contributorLabel joins the contributing service names for the routes.go doc ("A, B and C").
-func contributorLabel(contribs []segContribution) string {
+func contributorLabel(contribs []segment) string {
 	seen := map[string]bool{}
 	var names []string
 	for _, c := range contribs {
-		if seen[c.svcName] {
+		if seen[c.name] {
 			continue
 		}
-		seen[c.svcName] = true
-		names = append(names, c.svcName)
+		seen[c.name] = true
+		names = append(names, c.name)
 	}
 	switch len(names) {
 	case 1:

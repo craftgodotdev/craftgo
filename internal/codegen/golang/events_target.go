@@ -40,20 +40,6 @@ func expectedEventFiles(proj *semantic.Project, root string) map[string]bool {
 	return keep
 }
 
-// appSideDirs are the application outputs a contracts project does not write, by config key.
-func appSideDirs(cfg *config.Config) []struct{ key, path string } {
-	return []struct{ key, path string }{
-		{"output.transport", cfg.Output.Transport},
-		{"output.routes", cfg.Output.Routes},
-		{"output.service", cfg.Output.Service},
-		{"output.wiring", cfg.Output.Wiring},
-		{"output.grpc", cfg.Output.GRPC},
-		{"output.middleware", cfg.Output.Middleware},
-		{"output.config", cfg.Output.Config},
-		{"output.svccontext", fileDirRel(cfg.Output.Svccontext)},
-	}
-}
-
 // staleApplicationOutput names generated application files still on disk in a contracts
 // project; the sweep never walks those directories.
 func staleApplicationOutput(cfg *config.Config, projectRoot string) []string {
@@ -61,12 +47,12 @@ func staleApplicationOutput(cfg *config.Config, projectRoot string) []string {
 		return nil
 	}
 	var found []string
-	for _, d := range appSideDirs(cfg) {
-		if d.path == "" || d.path == config.Disabled {
+	for _, k := range outputsOf(cfg).keys() {
+		if !k.application || k.dir.rel == "" || k.dir.rel == config.Disabled {
 			continue
 		}
-		if hasGeneratedFile(filepath.Join(projectRoot, d.path)) {
-			found = append(found, d.path)
+		if hasGeneratedFile(k.dir.at(projectRoot)) {
+			found = append(found, k.dir.rel)
 		}
 	}
 	if main := cfg.Output.Main; main != "" && !cfg.Output.RuntimeDisabled() && fileHasPrefix(filepath.Join(projectRoot, main), scaffoldHeader) {
@@ -126,25 +112,15 @@ func orphanedStubNotes(proj *semantic.Project, protos *protodesign.Set, cfg *con
 		return nil
 	}
 	owned := map[string]bool{}
-	if proj != nil {
-		for _, name := range proj.PackageNames() {
-			pkg := proj.Packages[name]
-			if pkg == nil {
-				continue
-			}
-			for _, svcName := range pkg.ServiceNames() {
-				for _, group := range distinctGroups(pkg.Services[svcName]) {
-					owned[outputSegFor(svcName, group, cfg.Output.FileCase)] = true
-				}
-			}
-		}
+	for s := range projectSegments(proj, cfg.Output.FileCase) {
+		owned[s.dir] = true
 	}
 	if protos != nil {
 		for _, svc := range protos.Services {
 			owned[svc.Dir] = true
 		}
 	}
-	root := filepath.Join(projectRoot, cfg.Output.Service)
+	root := outputsOf(cfg).service.at(projectRoot)
 	orphaned := map[string]bool{}
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !fileHasPrefix(path, scaffoldHeader) {
@@ -173,7 +149,7 @@ func scaffoldGapNotes(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 		return nil
 	}
 	mainPath := filepath.Join(projectRoot, cfg.Output.Main)
-	configPath := filepath.Join(projectRoot, cfg.Output.Config, "config.go")
+	configPath := outputsOf(cfg).config.at(projectRoot, "config.go")
 	var out []string
 	if _, err := os.Stat(mainPath); err == nil {
 		if protos.HasServices() && !fileMentions(mainPath, "wiring.RegisterGRPC(") {
@@ -209,7 +185,7 @@ func staleWiringImport(cfg *config.Config, projectRoot string) []string {
 		return nil
 	}
 	mainPath := filepath.Join(projectRoot, cfg.Output.Main)
-	wiringImport := goImportFromRel(cfg.Package, cfg.Output.Wiring)
+	wiringImport := outputsOf(cfg).wiring.pkg
 	if !fileMentions(mainPath, "wiring.Register(") || fileMentions(mainPath, `"`+wiringImport+`"`) {
 		return nil
 	}

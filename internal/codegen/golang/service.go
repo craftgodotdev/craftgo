@@ -2,11 +2,9 @@ package golang
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
-	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -38,6 +36,9 @@ type serviceData struct {
 	PBImports []goImport
 }
 
+// logicTypeName is the name of a method's or an RPC's logic struct.
+func logicTypeName(method string) string { return method + "Service" }
+
 // generateService writes each method's gen-once logic scaffold to
 // output.service/<segment>/<method>.go. A nil r resolves local names only.
 func generateService(pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
@@ -56,12 +57,11 @@ func generateService(pkg *semantic.Package, cfg *config.Config, projectRoot stri
 }
 
 func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg crossPkg) error {
+	out := outputsOf(cfg)
 	for _, m := range svc.Methods {
-		group := semantic.MethodGroupOf(svc, m)
-		imps := importPathsForGroup(cfg, pkg, svcName, group)
-		dir := serviceOutputDir(projectRoot, cfg.Output.Service, svcName, group, cfg.Output.FileCase)
-		filename := idents.FileName(m.Name, cfg.Output.FileCase) + ".go"
-		if err := writeGoOnce(filepath.Join(dir, filename), tmpl("service.tmpl"), buildServiceData(pkg.Name, svcName, m, imps, crossPkg)); err != nil {
+		seg := outputSegFor(svcName, semantic.MethodGroupOf(svc, m), cfg.Output.FileCase)
+		data := buildServiceData(pkg.Name, svcName, m, out.segmentImports(pkg.Name, seg), crossPkg)
+		if err := writeGoOnce(out.service.sub(seg).at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("service.tmpl"), data); err != nil {
 			return err
 		}
 	}
@@ -82,7 +82,7 @@ func buildServiceData(pkgName, svcName string, m *ast.Method, imps importPaths, 
 		Package:          servicePkgName(pkgName, svcName),
 		Service:          svcName,
 		Method:           m.Name,
-		ServiceName:      m.Name + "Service",
+		ServiceName:      logicTypeName(m.Name),
 		Doc:              m.Doc,
 		HasRequest:       mode.HasRequest,
 		HasResponse:      mode.HasResponse,

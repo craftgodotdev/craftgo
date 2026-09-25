@@ -63,12 +63,13 @@ func projectHasRoutes(proj *semantic.Project) bool {
 
 // buildProjectMainData lists every package's middlewares once, in package order.
 func buildProjectMainData(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config) mainData {
+	out := outputsOf(cfg)
 	d := mainData{
-		ConfigImport:     goImportFromRel(cfg.Package, cfg.Output.Config),
-		ConfigDir:        relDir(cfg.Output.Config),
-		WiringImport:     goImportFromRel(cfg.Package, cfg.Output.Wiring),
-		MiddlewareImport: goImportFromRel(cfg.Package, cfg.Output.Middleware),
-		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
+		ConfigImport:     out.config.pkg,
+		ConfigDir:        relDir(out.config.rel),
+		WiringImport:     out.wiring.pkg,
+		MiddlewareImport: out.middleware.pkg,
+		SvccontextImport: out.svccontext.pkg,
 		HasRoutes:        projectHasRoutes(proj),
 		HasGRPC:          protos.HasServices(),
 	}

@@ -41,7 +41,7 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 		return fmt.Errorf("package has no name")
 	}
 	r = resolverFor(pkg, r)
-	imports := newImportSet(r.CrossPkg, goImport{Alias: localAlias, Path: typesImportRoot(cfg) + "/" + pkg.Name}, eventsNames)
+	imports := newImportSet(r.CrossPkg, goImport{Alias: localAlias, Path: outputsOf(cfg).types.sub(pkg.Name).pkg}, eventsNames)
 	data := eventsData{Package: pkg.Name}
 	for _, name := range slices.Sorted(maps.Keys(pkg.Events)) {
 		ev, ok := r.Project().LookupEvent(pkg.Name, name)

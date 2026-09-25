@@ -72,8 +72,9 @@ func TestGRPCLogicIsWrittenOnceAndServersAlways(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	logic := filepath.Join(grpcServiceDir(root, cfg, svc), "say_hello.go")
-	server := filepath.Join(grpcServerDir(root, cfg, svc), "say_hello.go")
+	out := outputsOf(cfg)
+	logic := out.service.sub(svc.Dir).at(root, "say_hello.go")
+	server := out.grpc.sub(svc.Dir).at(root, "say_hello.go")
 	for _, p := range []string{logic, server} {
 		if err := os.WriteFile(p, []byte("package greet // edited\n"), 0o644); err != nil {
 			t.Fatal(err)
@@ -90,7 +91,7 @@ func TestGRPCLogicIsWrittenOnceAndServersAlways(t *testing.T) {
 	if body, _ := os.ReadFile(server); strings.Contains(string(body), "// edited") {
 		t.Error("the server layer was not regenerated")
 	}
-	if _, err := os.Stat(filepath.Join(grpcServerDir(root, cfg, svc), "server.go")); err != nil {
+	if _, err := os.Stat(out.grpc.sub(svc.Dir).at(root, "server.go")); err != nil {
 		t.Error("server.go missing")
 	}
 }

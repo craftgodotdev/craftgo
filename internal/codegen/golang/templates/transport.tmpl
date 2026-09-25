@@ -101,7 +101,7 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 {{- end}}
-		l := service.New{{.Method}}Service(r.Context(), svcCtx)
+		l := service.New{{.ServiceName}}(r.Context(), svcCtx)
 {{- if .Sig.HasResult}}
 		resp, err := l.{{.Method}}({{.Sig.CallArgs}})
 		if err != nil {

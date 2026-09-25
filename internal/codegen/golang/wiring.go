@@ -3,7 +3,6 @@ package golang
 import (
 	"fmt"
 	"maps"
-	"path/filepath"
 	"slices"
 	"strconv"
 
@@ -29,15 +28,16 @@ type middlewareGuard struct {
 // generateWiring writes output.wiring/wiring.go, whose Register attaches every HTTP route. It is
 // written even for a design without routes, since a gen-once main.go may still call Register.
 func generateWiring(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
+	out := outputsOf(cfg)
 	data := wiringData{
-		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
+		SvccontextImport: out.svccontext.pkg,
 		HasRoutes:        projectHasRoutes(proj),
 		Guards:           middlewareGuards(proj, cfg.Output.RuntimeDisabled()),
 	}
 	if data.HasRoutes {
-		data.RoutesImport = goImportFromRel(cfg.Package, cfg.Output.Routes)
+		data.RoutesImport = out.routes.pkg
 	}
-	return writeGo(filepath.Join(projectRoot, cfg.Output.Wiring, "wiring.go"), tmpl("wiring.tmpl"), data)
+	return writeGo(out.wiring.at(projectRoot, "wiring.go"), tmpl("wiring.tmpl"), data)
 }
 
 // middlewareGuards returns a nil check for every middleware a method runs; the chain silently

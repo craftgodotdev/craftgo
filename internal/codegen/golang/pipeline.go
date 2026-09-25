@@ -2,7 +2,6 @@ package golang
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
@@ -17,7 +16,7 @@ func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Confi
 	for _, name := range names {
 		resolvers[name] = buildProjectResolver(proj, cfg, name)
 	}
-	typesDir := filepath.Join(projectRoot, cfg.Output.Types)
+	typesDir := outputsOf(cfg).types.at(projectRoot)
 	for _, name := range names {
 		p, r := proj.Packages[name], resolvers[name]
 		if err := runSteps(name, []genStep{

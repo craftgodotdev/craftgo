@@ -2,7 +2,6 @@ package golang
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
@@ -21,9 +20,6 @@ const pbAlias = "pb"
 
 // grpcServerFile is the base name of the file holding the server struct.
 const grpcServerFile = "server"
-
-// logicTypeName is the name of an RPC's logic struct.
-func logicTypeName(method string) string { return method + "Service" }
 
 // grpcServerData is the template input for grpc_server.tmpl.
 type grpcServerData struct {
@@ -48,33 +44,25 @@ type grpcMethodData struct {
 }
 
 func grpcImportsFor(cfg *config.Config, svc *protodesign.Service) grpcImports {
+	out := outputsOf(cfg)
 	return grpcImports{
 		PB:         svc.PBImport,
-		Service:    goImportFromRel(cfg.Package, cfg.Output.Service) + "/" + svc.Dir,
-		Svccontext: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
+		Service:    out.service.sub(svc.Dir).pkg,
+		Svccontext: out.svccontext.pkg,
 	}
 }
 
-// grpcServerDir holds a proto service's server package.
-func grpcServerDir(projectRoot string, cfg *config.Config, svc *protodesign.Service) string {
-	return filepath.Join(projectRoot, cfg.Output.GRPC, svc.Dir)
-}
-
-// grpcServiceDir holds a proto service's logic scaffolds.
-func grpcServiceDir(projectRoot string, cfg *config.Config, svc *protodesign.Service) string {
-	return filepath.Join(projectRoot, cfg.Output.Service, svc.Dir)
-}
-
-// generateGRPCServers writes each proto service's server package: server.go and one file per RPC.
+// generateGRPCServers writes each proto service's server package under output.grpc: server.go
+// and one file per RPC.
 func generateGRPCServers(protos *protodesign.Set, cfg *config.Config, projectRoot string) error {
 	for _, svc := range protos.Services {
-		dir := grpcServerDir(projectRoot, cfg, svc)
+		dir := outputsOf(cfg).grpc.sub(svc.Dir)
 		imps := grpcImportsFor(cfg, svc)
-		if err := writeGo(filepath.Join(dir, grpcServerFile+".go"), tmpl("grpc_server.tmpl"), buildGRPCServerData(svc, imps)); err != nil {
+		if err := writeGo(dir.at(projectRoot, grpcServerFile+".go"), tmpl("grpc_server.tmpl"), buildGRPCServerData(svc, imps)); err != nil {
 			return err
 		}
 		for _, m := range svc.Methods {
-			if err := writeGo(filepath.Join(dir, m.File+".go"), tmpl("grpc_method.tmpl"), buildGRPCMethodData(svc, m, imps)); err != nil {
+			if err := writeGo(dir.at(projectRoot, m.File+".go"), tmpl("grpc_method.tmpl"), buildGRPCMethodData(svc, m, imps)); err != nil {
 				return err
 			}
 		}
@@ -106,13 +94,14 @@ func buildGRPCMethodData(svc *protodesign.Service, m *protodesign.Method, imps g
 	}
 }
 
-// generateGRPCServices writes each RPC's gen-once logic scaffold, rendered from service.tmpl.
+// generateGRPCServices writes each RPC's gen-once logic scaffold under output.service, rendered
+// from service.tmpl.
 func generateGRPCServices(protos *protodesign.Set, cfg *config.Config, projectRoot string) error {
 	for _, svc := range protos.Services {
-		dir := grpcServiceDir(projectRoot, cfg, svc)
+		dir := outputsOf(cfg).service.sub(svc.Dir)
 		imps := grpcImportsFor(cfg, svc)
 		for _, m := range svc.Methods {
-			if err := writeGoOnce(filepath.Join(dir, m.File+".go"), tmpl("service.tmpl"), buildGRPCServiceData(svc, m, imps)); err != nil {
+			if err := writeGoOnce(dir.at(projectRoot, m.File+".go"), tmpl("service.tmpl"), buildGRPCServiceData(svc, m, imps)); err != nil {
 				return err
 			}
 		}
@@ -174,20 +163,9 @@ func ValidateProtoOutputs(proj *semantic.Project, protos *protodesign.Set, cfg *
 			}
 		}
 	}
-	if proj == nil {
-		return nil
-	}
 	owners := map[string]string{}
-	for _, name := range proj.PackageNames() {
-		pkg := proj.Packages[name]
-		if pkg == nil {
-			continue
-		}
-		for _, svcName := range pkg.ServiceNames() {
-			for _, group := range distinctGroups(pkg.Services[svcName]) {
-				owners[filepath.ToSlash(outputSegFor(svcName, group, cfg.Output.FileCase))] = svcName
-			}
-		}
+	for s := range projectSegments(proj, cfg.Output.FileCase) {
+		owners[s.dir] = s.name
 	}
 	for _, svc := range protos.Services {
 		if owner, ok := owners[svc.Dir]; ok {

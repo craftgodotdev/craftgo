@@ -16,12 +16,12 @@ func buildCrossPkg(proj *semantic.Project, cfg *config.Config, currentPkgName st
 		return nil
 	}
 	out := crossPkg{}
-	typesPathPrefix := typesImportRoot(cfg)
+	types := outputsOf(cfg).types
 	for name := range proj.Packages {
 		if name == "" || name == currentPkgName {
 			continue
 		}
-		out[name] = typesPathPrefix + "/" + name
+		out[name] = types.sub(name).pkg
 	}
 	return out
 }

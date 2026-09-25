@@ -27,24 +27,25 @@ func generateRuntimeConfig(proj *semantic.Project, protos *protodesign.Set, cfg 
 	if cfg.Output.RuntimeDisabled() {
 		return nil
 	}
-	dir := filepath.Join(projectRoot, cfg.Output.Config)
+	dir := outputsOf(cfg).config
 	data := buildRuntimeData(proj, protos, cfg)
-	if err := writeGoOnce(filepath.Join(dir, "config.go"), tmpl("config.go.tmpl"), data); err != nil {
+	if err := writeGoOnce(dir.at(projectRoot, "config.go"), tmpl("config.go.tmpl"), data); err != nil {
 		return err
 	}
-	if err := writeTextOnce(filepath.Join(dir, "config.yaml"), tmpl("config.yaml.tmpl"), data); err != nil {
+	if err := writeTextOnce(dir.at(projectRoot, "config.yaml"), tmpl("config.yaml.tmpl"), data); err != nil {
 		return err
 	}
-	return writeTextOnce(filepath.Join(dir, "example.config.yaml"), tmpl("example.config.yaml.tmpl"), data)
+	return writeTextOnce(dir.at(projectRoot, "example.config.yaml"), tmpl("example.config.yaml.tmpl"), data)
 }
 
 // buildRuntimeData is the input of the config scaffolds.
 func buildRuntimeData(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config) runtimeData {
+	dir := outputsOf(cfg).config
 	return runtimeData{
 		Package:       cfg.Package,
 		OperationName: operationNameFor(cfg.Package),
-		ConfigImport:  goImportFromRel(cfg.Package, cfg.Output.Config),
-		ConfigDir:     relDir(cfg.Output.Config),
+		ConfigImport:  dir.pkg,
+		ConfigDir:     relDir(dir.rel),
 		HasGRPC:       protos.HasServices(),
 		HasHTTP:       projectHasRoutes(proj) || !protos.HasServices(),
 	}
@@ -59,7 +60,7 @@ func generateSvccontext(proj *semantic.Project, cfg *config.Config, projectRoot 
 	data := runtimeData{
 		Package:       cfg.Package,
 		OperationName: operationNameFor(cfg.Package),
-		ConfigImport:  goImportFromRel(cfg.Package, cfg.Output.Config),
+		ConfigImport:  outputsOf(cfg).config.pkg,
 	}
 	return writeGoOnce(filepath.Join(projectRoot, cfg.Output.Svccontext), tmpl("svccontext.go.tmpl"), data)
 }

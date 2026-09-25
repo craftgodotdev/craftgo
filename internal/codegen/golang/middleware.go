@@ -2,7 +2,6 @@ package golang
 
 import (
 	"maps"
-	"path/filepath"
 	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -49,11 +48,11 @@ func writeProjectMiddlewareImpls(cfg *config.Config, projectRoot string, proj *s
 	if len(names) == 0 {
 		return nil
 	}
-	dir := filepath.Join(projectRoot, cfg.Output.Middleware)
+	dir := outputsOf(cfg).middleware
 	declByName := projectMiddlewareDecls(proj)
 	for _, name := range names {
 		filename := idents.FileNameWords(cfg.Output.FileCase, append(idents.SplitFieldName(name), "middleware")) + ".go"
-		if err := writeGoOnce(filepath.Join(dir, filename), tmpl("middleware.tmpl"), buildMiddlewareData(name, declByName[name])); err != nil {
+		if err := writeGoOnce(dir.at(projectRoot, filename), tmpl("middleware.tmpl"), buildMiddlewareData(name, declByName[name])); err != nil {
 			return err
 		}
 	}
@@ -82,5 +81,5 @@ func buildMiddlewareData(name string, _ *ast.MiddlewareDecl) middlewareData {
 // writeMiddlewareFields writes middlewares.go even with no middleware, since svccontext.go embeds
 // its Middlewares type.
 func writeMiddlewareFields(cfg *config.Config, projectRoot string, names []string) error {
-	return writeGo(filepath.Join(projectRoot, fileDirRel(cfg.Output.Svccontext), "middlewares.go"), tmpl("middleware-fields.tmpl"), middlewareFieldsData{Names: names})
+	return writeGo(outputsOf(cfg).svccontext.at(projectRoot, "middlewares.go"), tmpl("middleware-fields.tmpl"), middlewareFieldsData{Names: names})
 }

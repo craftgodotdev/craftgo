@@ -1,7 +1,6 @@
 package golang
 
 import (
-	"path/filepath"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
@@ -30,16 +29,17 @@ func generateWiringGRPC(protos *protodesign.Set, cfg *config.Config, projectRoot
 	if !protos.HasServices() {
 		return nil
 	}
-	return writeGo(filepath.Join(projectRoot, cfg.Output.Wiring, "grpc.go"), tmpl("wiring_grpc.tmpl"), buildWiringGRPCData(protos, cfg))
+	return writeGo(outputsOf(cfg).wiring.at(projectRoot, "grpc.go"), tmpl("wiring_grpc.tmpl"), buildWiringGRPCData(protos, cfg))
 }
 
 // buildWiringGRPCData imports each pb package as `<name>pb` and each server package as
 // `<dir>grpc`; the import set numbers a clashing alias.
 func buildWiringGRPCData(protos *protodesign.Set, cfg *config.Config) wiringGRPCData {
+	out := outputsOf(cfg)
 	imports := newImportSet(nil, goImport{}, wiringGRPCNames)
-	d := wiringGRPCData{SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext))}
+	d := wiringGRPCData{SvccontextImport: out.svccontext.pkg}
 	for _, svc := range protos.Services {
-		serverImport := goImportFromRel(cfg.Package, cfg.Output.GRPC) + "/" + svc.Dir
+		serverImport := out.grpc.sub(svc.Dir).pkg
 		d.Services = append(d.Services, wiringGRPCService{
 			Service:     svc.Name,
 			PBAlias:     imports.add(pbAliasFor(svc.Package), svc.PBImport),
