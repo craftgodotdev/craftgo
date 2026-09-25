@@ -1,6 +1,9 @@
 package format
 
-import "github.com/craftgodotdev/craftgo/internal/ast"
+import (
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
+)
 
 // line starts an output line for the construct that starts on source line
 // src: the open code line ends first, then the indent is written.
@@ -126,10 +129,88 @@ func (p *Printer) declDecorators(decs []*ast.Decorator, last int) {
 // the doc of a name or keyword there.
 func (p *Printer) docLines(line, max int) int {
 	n := 0
-	for n < max && p.commentLine[line-1-n] {
+	for n < max {
+		if _, ok := p.ownLine[line-1-n]; !ok {
+			break
+		}
 		n++
 	}
 	return n
+}
+
+// inPlace writes the lines of a comment block that starts on source line src
+// where the output has reached: the open code line ends first, joined by the
+// trailing comments of the source lines above src only.
+func (p *Printer) inPlace(src int, lines []string) {
+	p.endLine(src)
+	for _, l := range lines {
+		p.indent()
+		p.comment("", l)
+		p.write("\n")
+	}
+}
+
+// header writes words, the rest of a header whose keyword is at kw, on the
+// keyword's line. A comment the source holds between two of them, after the
+// first on its line or on lines of its own, stays there, and the words below
+// it continue one level deeper.
+func (p *Printer) header(kw lexer.Position, words ...string) {
+	deeper := false
+	prev := kw.Line
+	for i, w := range words {
+		line := p.src.after(kw, i+1).Pos.Line
+		blocks := p.freeBefore(line)
+		if len(blocks) == 0 && !p.trailingBefore(prev, line) {
+			p.write(" " + w)
+			prev = line
+			continue
+		}
+		if !deeper {
+			p.depth++
+			deeper = true
+		}
+		p.endCode()
+		for j, b := range blocks {
+			if j > 0 {
+				p.write("\n")
+			}
+			p.inPlace(b.Pos.Line, b.Text)
+		}
+		p.line(line)
+		p.write(w)
+		prev = line
+	}
+	if deeper {
+		p.depth--
+	}
+}
+
+// argComment returns the text of the comment on source line line when it
+// sits on a line of its own inside a decorator's arguments.
+func (p *Printer) argComment(line int) (string, bool) {
+	text, ok := p.ownLine[line]
+	return text, ok && p.src.inArguments(line)
+}
+
+// argCommentBetween reports whether a comment of a decorator's arguments sits
+// on a source line between lo and hi.
+func (p *Printer) argCommentBetween(lo, hi int) bool {
+	for l := lo + 1; l < hi; l++ {
+		if _, ok := p.argComment(l); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// argComments writes, in place, the comments of a decorator's arguments on the
+// source lines between lo and hi.
+func (p *Printer) argComments(lo, hi int) {
+	for l := lo + 1; l < hi; l++ {
+		if text, ok := p.argComment(l); ok {
+			p.inPlace(l, []string{text})
+		}
+	}
 }
 
 // trailingDecorators writes decs, the decorators after the code of a member

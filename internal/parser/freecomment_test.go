@@ -299,6 +299,36 @@ enum E {
 	}
 }
 
+// A comment inside a decorator with arguments, from its `@` to its `)`,
+// belongs to its arguments: it is neither a chain comment nor a free comment.
+func TestArgumentCommentsAreNotChainOrFree(t *testing.T) {
+	f := mustParse(t, `package p
+
+@tags(
+	// lead
+	"a",
+	// tail
+)
+// chain
+@deprecated
+type T {
+	x string @minLength(
+		// in the field's
+		1)
+	y string @maxLength
+		// before the parenthesis
+		(5)
+}
+`)
+	want := map[int][]string{9: {"chain"}}
+	if !reflect.DeepEqual(f.ChainComments, want) {
+		t.Errorf("ChainComments = %v, want %v", f.ChainComments, want)
+	}
+	if body := f.Decls[0].(*ast.TypeDecl).Body; len(f.FreeComments) != 0 || len(body) != 2 {
+		t.Errorf("an argument comment became free: file %#v, type body %#v", f.FreeComments, body)
+	}
+}
+
 // The comment lines right above a declaration's keyword, below its decorators,
 // are its doc, after the doc above the decorators; they stay in the chain,
 // where they print. One set off by a blank line, or between two decorators,

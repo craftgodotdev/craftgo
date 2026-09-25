@@ -34,11 +34,11 @@ type layout struct {
 	comments []placedComment
 }
 
-// fileLayout returns the anchors of f and the place of every comment in it: the
-// construct a trailing comment follows, the construct a doc or chain comment
-// documents, or the scope of a free comment block with the number of the
-// scope's constructs above it.
-func fileLayout(f *ast.File) *layout {
+// fileLayout returns the anchors of f, parsed from src, and the place of every
+// comment in it: the construct a trailing comment follows, the construct a doc,
+// chain or argument comment documents, or the scope of a free comment block
+// with the number of the scope's constructs above it.
+func fileLayout(f *ast.File, src *source) *layout {
 	l := &layout{}
 	l.doc("file", f.LeadingDoc)
 	if f.Package != nil {
@@ -51,7 +51,7 @@ func fileLayout(f *ast.File) *layout {
 		l.doc(name, imp.Doc)
 	}
 	for i, d := range f.Decls {
-		l.decl(fmt.Sprintf("declaration %d", i), d)
+		l.decl(fmt.Sprintf("declaration %d", i), d, src.firstLine(d))
 	}
 	for _, c := range f.FreeComments {
 		above := 0
@@ -62,14 +62,20 @@ func fileLayout(f *ast.File) *layout {
 		}
 		l.free("file", above, c)
 	}
+	// A chain comment is recorded under the line of the decorator or keyword
+	// below it, where the members of a body written on that line start too;
+	// the construct whose chain holds it is the last to start above that line.
 	for line, texts := range f.ChainComments {
 		for _, text := range texts {
-			l.comments = append(l.comments, placedComment{"in the decorators of " + l.at(line), text})
+			l.comments = append(l.comments, placedComment{"in the decorators of " + l.at(line-1), text})
 		}
 	}
 	for _, c := range f.Comments {
-		if c.Kind == lexer.CommentTrailing {
+		switch {
+		case c.Kind == lexer.CommentTrailing:
 			l.comments = append(l.comments, placedComment{"after " + l.at(c.Pos.Line), c.Text})
+		case src.inArguments(c.Pos.Line):
+			l.comments = append(l.comments, placedComment{"in the arguments of " + l.at(c.Pos.Line), c.Text})
 		}
 	}
 	return l
@@ -102,8 +108,9 @@ func (l *layout) free(scope string, above int, c *ast.FreeComment) {
 	}
 }
 
-func (l *layout) decl(name string, d ast.Decl) {
-	l.top(declFirstSourceLine(d), name)
+// decl records d, whose first source line is first.
+func (l *layout) decl(name string, d ast.Decl, first int) {
+	l.top(first, name)
 	switch v := d.(type) {
 	case *ast.TypeDecl:
 		l.doc(name, v.Doc)

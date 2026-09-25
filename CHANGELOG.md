@@ -273,8 +273,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   lines when a trailing comment sits on one of them: each line of elements
   one level deeper, the closing bracket on a line of its own. The list was
   joined onto one line, and with two comments in it formatting refused the
-  file. A member written over several lines no longer gains a blank line
-  below it, and a refusal to put two comments on one line now says so
+  file. A comment on a line of its own inside the list stays there too; it
+  moved out below the member or the decorators, or made formatting refuse
+  the file. A member written over several lines no longer gains a blank
+  line below it, and a refusal to put two comments on one line now says so
   rather than that a comment would be dropped.
 
 - **A decorator after a declaration on its line is an error.** In
@@ -288,14 +290,22 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **A comment right above a declaration's keyword is its doc.** In
   `@deprecated` / `// Order is the order.` / `type Order {}`, the comment
   reached neither the Go doc nor the OpenAPI description; it now follows the
-  doc above the decorators there, and formatting keeps it above the keyword.
-  One set off from the keyword by a blank line, or between two decorators,
-  is no doc.
+  doc above the decorators there, and formatting keeps it above the keyword,
+  also over a body written on the keyword's line, where it refused the
+  file. One set off from the keyword by a blank line, or between two
+  decorators, is no doc.
 
 - **A comment in a declaration's header stays in the declaration.** A
   comment block between the keyword of a type, enum, error, service, event
   or method and its `{` moved below the whole declaration; formatting now
-  prints it at the top of the body.
+  prints it at the top of the body. In a `package` or `import` line or a
+  `middleware`, `scalar` or bodiless `error` declaration, which have no
+  body, a comment between the words moved below or above it, or made
+  formatting refuse the file; it now stays between them, the words after it
+  one level deeper. With `extend` on a line of its own, the doc
+  above an extend block was dropped, so formatting refused the file, and a
+  comment after `extend` moved to the declaration above; both stay with the
+  block.
 
 - **`kafka.WithTLS(nil)` dials over TLS.** franz-go reads a nil config as
   "no TLS", so the brokers were dialed in plaintext and `WithSASLPlain`

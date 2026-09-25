@@ -70,7 +70,8 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 			d.Args = append(d.Args, p.parseDecoratorArg())
 			p.listSep(lexer.RParen, "decorator argument")
 		}
-		p.expect(lexer.RParen)
+		rparen, _ := p.expect(lexer.RParen)
+		p.claimInside(at.Pos.Line, rparen.Pos.Line)
 	}
 	return d
 }

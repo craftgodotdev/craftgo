@@ -97,7 +97,7 @@ func TestCheckOutput(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			p := parser.New("t.craftgo", src)
 			f := p.Parse()
-			diags := checkOutput("t.craftgo", f, c.out)
+			diags := checkOutput("t.craftgo", f, newSource(p.Tokens()), c.out)
 			if c.want == "" {
 				if len(diags) > 0 {
 					t.Fatalf("unexpected diagnostics: %v", diags)
@@ -124,8 +124,9 @@ func TestCheckOutputRefusesAMovedComment(t *testing.T) {
 		{"free comment into a body", "package p\n\ntype A {\n\tx string // note\n\ty string\n\n\t// free\n}\n\ntype B {}\n", `t.craftgo:8:1: formatting would move the comment "free"`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			f := parser.New("t.craftgo", src).Parse()
-			diags := checkOutput("t.craftgo", f, c.out)
+			p := parser.New("t.craftgo", src)
+			f := p.Parse()
+			diags := checkOutput("t.craftgo", f, newSource(p.Tokens()), c.out)
 			if c.want == "" {
 				if len(diags) > 0 {
 					t.Fatalf("unexpected diagnostics: %v", diags)

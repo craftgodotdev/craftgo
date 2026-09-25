@@ -142,7 +142,9 @@ func TestFormatMovesACommentWithItsCode(t *testing.T) {
 		{"after a joined argument list", "package x\n\ntype T {\n\ta string @example({\n\t\tx: 1,\n\t\ty: 2\n\t}) // c\n}\n", "package x\n\ntype T {\n\ta string @example({x: 1, y: 2}) // c\n}\n"},
 		{"path before the brace", "package x\n\nservice S {\n\tget A /a // c\n\t{\n\t\tresponse T\n\t}\n}\n", "package x\n\nservice S {\n\tget A /a { // c\n\t\tresponse T\n\t}\n}\n"},
 		{"CRLF", "package x\r\n\r\ntype T { // c\r\n\ta string // d\r\n}\r\n", "package x\n\ntype T { // c\n\ta string // d\n}\n"},
-		{"comment in a declaration's last decorator", "package x\n\n@doc(\n\t// inside\n\t\"d\"\n)\ntype T {\n\ty string\n}\n", "package x\n\n@doc(\"d\")\n// inside\n\ntype T {\n\ty string\n}\n"},
+		{"after a split extend", "package x\n\nservice S {\n\tget A /a {}\n}\n\nextend // c\nservice S {\n\tget B /b {}\n}\n", "package x\n\nservice S {\n\tget A /a {}\n}\n\nextend service S { // c\n\tget B /b {}\n}\n"},
+		{"doc above the keyword of a one-line body", "package x\n\n@deprecated\n// c\ntype T { a string }\n", "package x\n\n@deprecated\n// c\ntype T {\n\ta string\n}\n"},
+		{"doc above the keyword of a one-line service", "package x\n\n@deprecated\n// c\nservice S { get A /a {} }\n", "package x\n\n@deprecated\n// c\nservice S {\n\tget A /a {}\n}\n"},
 	} {
 		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
 	}
@@ -193,24 +195,158 @@ func TestFormatContinuedDecorators(t *testing.T) {
 	}
 }
 
-// A comment block inside a member's lines prints after the member, and the
+// A comment block inside a member's type prints after the member, and the
 // trailing comments of the member's lines stay with the member.
 func TestFormatKeepsATrailingCommentWithItsMember(t *testing.T) {
 	for _, c := range []struct{ name, src, want string }{
 		{
-			"comment block inside a decorator's arguments",
+			"comment block inside a field's type",
+			"package x\n\ntype T {\n\ta map<string,\n\t\t// c\n\t\tint> // t\n\tb string\n}\n",
+			"package x\n\ntype T {\n\ta map<string, int> // t\n\t// c\n\n\tb string\n}\n",
+		},
+		{
+			"comment block inside a mixin",
+			"package x\n\ntype U {\n\tPage<\n\t\t// c\n\t\tstring> // t\n\tb string\n}\n",
+			"package x\n\ntype U {\n\tPage<string> // t\n\t// c\n\n\tb string\n}\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
+	}
+}
+
+// A comment on its own line inside a decorator's arguments stays there: the
+// argument list keeps its lines, one level deeper, with the comment above the
+// arguments or the closer it sat above.
+func TestFormatKeepsACommentInDecoratorArguments(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{
+			"field decorator",
 			"package x\n\ntype T {\n\ta string @doc(\n\t\t// note about the doc\n\t\t\"x\" // why x\n\t)\n\tb string\n}\n",
-			"package x\n\ntype T {\n\ta string @doc(\n\t\t\"x\", // why x\n\t)\n\t// note about the doc\n\n\tb string\n}\n",
+			"package x\n\ntype T {\n\ta string @doc(\n\t\t// note about the doc\n\t\t\"x\", // why x\n\t)\n\tb string\n}\n",
 		},
 		{
-			"trailing comment after the closing parenthesis",
+			"closing parenthesis on the argument's line",
 			"package x\n\ntype T {\n\ta string @header(\n\t//TODO\n\t\"X\") // n\n\tb string\n}\n",
-			"package x\n\ntype T {\n\ta string @header(\n\t\t\"X\", // n\n\t)\n\t// TODO\n\n\tb string\n}\n",
+			"package x\n\ntype T {\n\ta string @header(\n\t\t// TODO\n\t\t\"X\", // n\n\t)\n\tb string\n}\n",
 		},
 		{
-			"comment block inside a declaration",
+			"arguments on the decorator's line",
+			"package x\n\ntype T {\n\ta string @length(1, 64\n\t\t// why\n\t)\n}\n",
+			"package x\n\ntype T {\n\ta string @length(\n\t\t1, 64,\n\t\t// why\n\t)\n}\n",
+		},
+		{
+			"declaration decorator",
+			"package x\n\n@tags(\n\t// lead\n\t\"a\", // first\n\t\"b\", \"c\" // second\n\t// tail\n)\nservice S { get A /a {} }\n",
+			"package x\n\n@tags(\n\t// lead\n\t\"a\", // first\n\t\"b\", \"c\", // second\n\t// tail\n)\nservice S {\n\tget A /a {}\n}\n",
+		},
+		{
+			"declaration's last decorator",
+			"package x\n\n@doc(\n\t// inside\n\t\"d\"\n)\ntype T {\n\ty string\n}\n",
+			"package x\n\n@doc(\n\t// inside\n\t\"d\",\n)\ntype T {\n\ty string\n}\n",
+		},
+		{
+			"decorator above a field",
+			"package x\n\ntype T {\n\t@minLength(\n\t\t// c\n\t\t1)\n\ta string\n}\n",
+			"package x\n\ntype T {\n\ta string @minLength(\n\t\t// c\n\t\t1,\n\t)\n}\n",
+		},
+		{
+			"array",
+			"package x\n\ntype T {\n\ta string[] @example([\n\t\t// first\n\t\t\"x\",\n\t\t\"y\",\n\t\t// last\n\t]) // t\n}\n",
+			"package x\n\ntype T {\n\ta string[] @example([\n\t\t// first\n\t\t\"x\",\n\t\t\"y\",\n\t\t// last\n\t]) // t\n}\n",
+		},
+		{
+			"object",
+			"package x\n\ntype T {\n\ta string @example({\n\t\t// k\n\t\tx: 1\n\t})\n}\n",
+			"package x\n\ntype T {\n\ta string @example({\n\t\t// k\n\t\tx: 1,\n\t})\n}\n",
+		},
+		{
+			"empty parentheses",
+			"package x\n\ntype T {\n\ta string @deprecated(\n\t\t// why\n\t)\n}\n",
+			"package x\n\ntype T {\n\ta string @deprecated(\n\t\t// why\n\t)\n}\n",
+		},
+		{
+			"scalar decorator",
+			"package x\n\nscalar When string @format(datetime\n// c\n)\n",
+			"package x\n\nscalar When string @format(\n\tdatetime,\n\t// c\n)\n",
+		},
+		{
+			"comment before the parenthesis",
+			"package x\n\nscalar Size int @lte\n// c\n(100)\n",
+			"package x\n\nscalar Size int @lte(\n\t// c\n\t100,\n)\n",
+		},
+		{
+			"enum value decorator",
+			"package x\n\nenum E {\n\tA @doc(\n\t\t// c\n\t\t\"a\")\n\tB\n}\n",
+			"package x\n\nenum E {\n\tA @doc(\n\t\t// c\n\t\t\"a\",\n\t)\n\tB\n}\n",
+		},
+		{
+			"method decorator",
+			"package x\n\nservice S {\n\t@doc(\n\t\t// c\n\t\t\"a\")\n\tget A /a {}\n}\n",
+			"package x\n\nservice S {\n\t@doc(\n\t\t// c\n\t\t\"a\",\n\t)\n\tget A /a {}\n}\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
+	}
+}
+
+// A comment block between the words of a declaration without a body stays
+// there: the words after it continue one level deeper.
+func TestFormatKeepsAHeaderCommentOfABodilessDeclaration(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{
+			"middleware",
 			"package x\n\nmiddleware\n// c\n A // t\n\nmiddleware B\n",
-			"package x\n\nmiddleware A // t\n\n// c\n\nmiddleware B\n",
+			"package x\n\nmiddleware\n\t// c\n\tA // t\n\nmiddleware B\n",
+		},
+		{
+			"middleware with doc and decorator",
+			"package x\n\n// M doc.\n@doc(\"m\")\nmiddleware // k\n// c\nM\n",
+			"package x\n\n// M doc.\n@doc(\"m\")\nmiddleware // k\n\t// c\n\tM\n",
+		},
+		{
+			"trailing comment after the keyword",
+			"package x\n\nmiddleware // c1\n\tM // c2\n",
+			"package x\n\nmiddleware // c1\n\tM // c2\n",
+		},
+		{
+			"two comment blocks",
+			"package x\n\nmiddleware\n// a\n\n// b\nM\n",
+			"package x\n\nmiddleware\n\t// a\n\n\t// b\n\tM\n",
+		},
+		{
+			"scalar trailing comment",
+			"package x\n\nscalar S // c\n string @minLength(1)\n",
+			"package x\n\nscalar S // c\n\tstring @minLength(1)\n",
+		},
+		{
+			"scalar name",
+			"package x\n\nscalar\n// c\nS string @minLength(1)\n\ntype T {\n\ta S\n}\n",
+			"package x\n\nscalar\n\t// c\n\tS string @minLength(1)\n\ntype T {\n\ta S\n}\n",
+		},
+		{
+			"scalar primitive",
+			"package x\n\nscalar S\n// c\nstring\n",
+			"package x\n\nscalar S\n\t// c\n\tstring\n",
+		},
+		{
+			"error name",
+			"package x\n\nerror NotFound\n// c\nGone\n",
+			"package x\n\nerror NotFound\n\t// c\n\tGone\n",
+		},
+		{
+			"import",
+			"package x\n\nimport\n// c\n\"a\"\n\ntype T {\n\ta string\n}\n",
+			"package x\n\nimport\n\t// c\n\t\"a\"\n\ntype T {\n\ta string\n}\n",
+		},
+		{
+			"package",
+			"package\n// c\nx\n\ntype T {\n\ta string\n}\n",
+			"package\n\t// c\n\tx\n\ntype T {\n\ta string\n}\n",
+		},
+		{
+			"package after file decorators",
+			"@version(\"1\")\npackage // c\n x // d\n",
+			"@version(\"1\")\npackage // c\n\tx // d\n",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
@@ -235,6 +371,11 @@ func TestFormatKeepsAHeaderCommentInItsDeclaration(t *testing.T) {
 			"empty method body",
 			"package x\n\nservice S {\n\tget A\n\t// c\n\t/a {}\n}\n",
 			"package x\n\nservice S {\n\tget A /a {\n\t\t// c\n\t}\n}\n",
+		},
+		{
+			"extend block",
+			"package x\n\n// d\n@group(\"g\")\nextend\n// c\n service S {\n\tget A /a {}\n}\n",
+			"package x\n\n// d\n@group(\"g\")\nextend service S {\n\t// c\n\n\tget A /a {}\n}\n",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
@@ -317,9 +458,9 @@ func TestFormatBlankLinesAfterAListOverSeveralLines(t *testing.T) {
 
 // Format refuses to put two comments on one line, and says so.
 func TestFormatRefusesTwoCommentsOnOneLine(t *testing.T) {
-	src := "package x\n\nmiddleware // c1\n\tM // c2\n"
+	src := "package x\n\ntype T {\n\ta // c1\n\t\tstring // c2\n}\n"
 	out, diags := Format("t.craftgo", src)
-	want := `t.craftgo:4:4: formatting would put the comments "c1" and "c2" on one line`
+	want := `t.craftgo:5:10: formatting would put the comments "c1" and "c2" on one line`
 	if len(diags) != 1 || diags[0].Error() != want || out != src {
 		t.Fatalf("diagnostics %v, want %q with the source unchanged:\n%s", diags, want, out)
 	}

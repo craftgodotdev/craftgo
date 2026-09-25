@@ -192,15 +192,13 @@ func (p *Printer) ErrorDecl(d *ast.ErrorDecl) {
 	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
 	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.line(d.Pos.Line)
-	p.write("error ")
-	p.write(d.Category)
-	p.write(" ")
-	p.write(d.Name)
+	p.write("error")
 	if !d.HasBody {
+		p.header(d.Pos, d.Category, d.Name)
 		p.endCode()
 		return
 	}
-	p.write(" {")
+	p.write(" " + d.Category + " " + d.Name + " {")
 	p.endCode()
 	p.depth++
 	p.printTypeBody(d.Body)
@@ -219,10 +217,8 @@ func (p *Printer) ScalarDecl(d *ast.ScalarDecl) {
 		decs, start = decs[len(lead):], d.Pos.Line
 	}
 	p.line(start)
-	p.write("scalar ")
-	p.write(d.Name)
-	p.write(" ")
-	p.write(d.Primitive)
+	p.write("scalar")
+	p.header(d.Pos, d.Name, d.Primitive)
 	if len(decs) > 0 {
 		p.write(" ")
 		p.inlineDecorators(decs)
@@ -234,15 +230,16 @@ func (p *Printer) MiddlewareDecl(d *ast.MiddlewareDecl) {
 	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
 	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.line(d.Pos.Line)
-	p.write("middleware ")
-	p.write(d.Name)
+	p.write("middleware")
+	p.header(d.Pos, d.Name)
 	p.endCode()
 }
 
 func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
-	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
-	p.declDecorators(d.Decorators, d.Pos.Line)
-	p.line(d.Pos.Line)
+	kw := p.src.keywordLine(d)
+	p.comments(memberStartLine(kw, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, kw))
+	p.declDecorators(d.Decorators, kw)
+	p.line(kw)
 	if d.Extend {
 		p.write("extend service ")
 	} else {

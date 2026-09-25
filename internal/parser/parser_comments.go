@@ -38,12 +38,22 @@ func decoratorLines(decs []*ast.Decorator) []int {
 	return lines
 }
 
-// claimBetween claims the comments below line start and above the last of
-// lines, and records each block under the first of lines below it.
+// claimInside claims the comments on the lines between open and close, the
+// lines of a decorator's `@` and `)`: they belong to its arguments.
+func (p *Parser) claimInside(open, close int) {
+	for _, c := range p.allComments {
+		if c.Kind == lexer.CommentLeading && c.Pos.Line > open && c.Pos.Line < close {
+			p.claimed[c.Pos.Line] = true
+		}
+	}
+}
+
+// claimBetween claims the unclaimed comments below line start and above the
+// last of lines, and records each block under the first of lines below it.
 func (p *Parser) claimBetween(start int, lines []int) {
 	prev := start
 	for _, c := range p.allComments {
-		if c.Kind != lexer.CommentLeading || c.Pos.Line <= prev {
+		if c.Kind != lexer.CommentLeading || c.Pos.Line <= prev || p.claimed[c.Pos.Line] {
 			continue
 		}
 		for len(lines) > 0 && c.Pos.Line >= lines[0] {

@@ -25,22 +25,23 @@ func Format(filename, src string) (string, []lexer.Diagnostic) {
 		return src, diags
 	}
 	var buf bytes.Buffer
-	pr := newPrinter(&buf, f, codeLines(p.Tokens(), f.Comments))
+	in := newSource(p.Tokens())
+	pr := newPrinter(&buf, f, in)
 	pr.File(f)
 	if c := pr.joined; c[0] != nil {
 		return src, refusal(c[1].Pos, "formatting would put the comments %q and %q on one line", c[0].Text, c[1].Text)
 	}
 	out := buf.String()
-	if diags := checkOutput(filename, f, out); len(diags) > 0 {
+	if diags := checkOutput(filename, f, in, out); len(diags) > 0 {
 		return src, diags
 	}
 	return out, nil
 }
 
 // checkOutput reports why out, the canonical text of in, cannot replace the
-// source in was parsed from: out does not parse, or its comments differ or
-// sit elsewhere.
-func checkOutput(filename string, in *ast.File, out string) []lexer.Diagnostic {
+// source in was parsed from, whose tokens are inSrc: out does not parse, or
+// its comments differ or sit elsewhere.
+func checkOutput(filename string, in *ast.File, inSrc *source, out string) []lexer.Diagnostic {
 	fileStart := lexer.Position{Filename: filename, Line: 1, Column: 1}
 	p := parser.New(filename, out)
 	outFile := p.Parse()
@@ -67,18 +68,19 @@ func checkOutput(filename string, in *ast.File, out string) []lexer.Diagnostic {
 			return refusal(fileStart, "formatting would add the comment %q", c.Text)
 		}
 	}
-	return movedComment(in, outFile)
+	return movedComment(in, fileLayout(in, inSrc), fileLayout(outFile, newSource(p.Tokens())))
 }
 
-// movedComment reports a comment of in that out holds in another place: after
-// another construct, as another construct's doc, or in another scope.
-func movedComment(in, out *ast.File) []lexer.Diagnostic {
+// movedComment reports a comment of f, laid out as in, that out holds in
+// another place: after another construct, as another construct's doc, or in
+// another scope.
+func movedComment(f *ast.File, in, out *layout) []lexer.Diagnostic {
 	left := map[placedComment]int{}
-	for _, c := range fileLayout(out).comments {
+	for _, c := range out.comments {
 		left[c]++
 	}
 	moved := map[string]bool{}
-	for _, c := range fileLayout(in).comments {
+	for _, c := range in.comments {
 		if left[c] > 0 {
 			left[c]--
 			continue
@@ -90,7 +92,7 @@ func movedComment(in, out *ast.File) []lexer.Diagnostic {
 			moved[c.text] = true
 		}
 	}
-	for _, c := range in.Comments {
+	for _, c := range f.Comments {
 		if moved[c.Text] {
 			return refusal(c.Pos, "formatting would move the comment %q", c.Text)
 		}
@@ -103,15 +105,14 @@ func refusal(pos lexer.Position, format string, args ...any) []lexer.Diagnostic 
 	return []lexer.Diagnostic{{Pos: pos, Msg: fmt.Sprintf(format, args...)}}
 }
 
-// newPrinter builds a Printer over the trailing, in-chain and free comments of
-// f, whose source holds a token or a comment on the code lines.
-func newPrinter(w io.Writer, f *ast.File, code map[int]bool) *Printer {
-	p := &Printer{w: w, chain: f.ChainComments, codeAfter: fileLayout(f).codeAfterFreeComments(), code: code, commentLine: map[int]bool{}}
+// newPrinter builds a Printer over the comments of f, parsed from src.
+func newPrinter(w io.Writer, f *ast.File, src *source) *Printer {
+	p := &Printer{w: w, src: src, chain: f.ChainComments, codeAfter: fileLayout(f, src).codeAfterFreeComments(), code: codeLines(src.toks, f.Comments), ownLine: map[int]string{}}
 	for _, c := range f.Comments {
 		if c.Kind == lexer.CommentTrailing {
 			p.trailing = append(p.trailing, c)
 		} else {
-			p.commentLine[c.Pos.Line] = true
+			p.ownLine[c.Pos.Line] = c.Text
 		}
 	}
 	return p
@@ -123,6 +124,7 @@ type Printer struct {
 	w     io.Writer
 	err   error
 	depth int
+	src   *source
 	// trailing holds the comments that follow code on their line, in source
 	// order; the first emitted of them are printed.
 	trailing []*ast.Comment
@@ -141,8 +143,11 @@ type Printer struct {
 	// code holds the source lines with a token or a comment; the others are
 	// blank.
 	code map[int]bool
-	// commentLine holds the source lines that hold a comment and no code.
-	commentLine map[int]bool
+	// ownLine maps the source lines that hold a comment and no code to the
+	// comment's text.
+	ownLine map[int]string
+	// free holds the file-scope comment blocks still to print.
+	free []*ast.FreeComment
 	// freeEnd is the last source line of the free comment block printed last,
 	// or 0 once code follows it.
 	freeEnd int
@@ -164,36 +169,36 @@ func (p *Printer) indent() {
 // File renders f in source order: one blank line between top-level
 // declarations, file-scope comment blocks placed by source line.
 func (p *Printer) File(f *ast.File) {
-	fcs := f.FreeComments
+	p.free = f.FreeComments
 	wroteAny := false
 	// flushBefore prints the file-scope comment blocks that start before line
-	// (0 means all) and reports whether it printed any.
+	// and reports whether it printed any.
 	flushBefore := func(line int) bool {
-		flushed := false
-		for len(fcs) > 0 && (line == 0 || fcs[0].Pos.Line < line) {
+		blocks := p.freeBefore(line)
+		for _, c := range blocks {
 			if wroteAny {
-				p.blank(fcs[0].Pos.Line)
+				p.blank(c.Pos.Line)
 			}
-			p.printFreeComment(fcs[0])
+			p.printFreeComment(c)
 			wroteAny = true
-			flushed = true
-			fcs = fcs[1:]
 		}
-		return flushed
+		return len(blocks) > 0
 	}
 	if f.Package != nil {
-		start := memberStartLine(f.Package.Pos.Line, f.Decorators, len(f.LeadingDoc))
+		kw := p.src.after(f.Package.Pos, -1).Pos
+		start := memberStartLine(kw.Line, f.Decorators, len(f.LeadingDoc))
 		if flushBefore(start) {
 			p.blank(start)
 		}
 		p.comments(start, f.LeadingDoc)
-		p.declDecorators(f.Decorators, f.Package.Pos.Line)
-		if flushBefore(f.Package.Pos.Line - len(f.Package.Doc)) {
-			p.blank(f.Package.Pos.Line)
+		p.declDecorators(f.Decorators, kw.Line)
+		if flushBefore(kw.Line - len(f.Package.Doc)) {
+			p.blank(kw.Line)
 		}
-		p.comments(f.Package.Pos.Line, f.Package.Doc)
-		p.line(f.Package.Pos.Line)
-		p.write("package " + f.Package.Name)
+		p.comments(kw.Line, f.Package.Doc)
+		p.line(kw.Line)
+		p.write("package")
+		p.header(kw, f.Package.Name)
 		p.endCode()
 		wroteAny = true
 	}
@@ -212,7 +217,7 @@ func (p *Printer) File(f *ast.File) {
 		if i == 0 && f.Package == nil {
 			doc = f.LeadingDoc
 		}
-		start := declFirstSourceLine(d) - len(doc)
+		start := p.src.firstLine(d) - len(doc)
 		flushBefore(start)
 		if wroteAny {
 			p.blank(start)
@@ -221,40 +226,31 @@ func (p *Printer) File(f *ast.File) {
 		p.Decl(d)
 		wroteAny = true
 	}
-	flushBefore(0)
+	flushBefore(math.MaxInt)
 	p.at(math.MaxInt)
 }
 
-// declFirstSourceLine returns the line of d's first decorator, or of d itself.
-func declFirstSourceLine(d ast.Decl) int {
-	var decs []*ast.Decorator
-	switch v := d.(type) {
-	case *ast.TypeDecl:
-		decs = v.Decorators
-	case *ast.EnumDecl:
-		decs = v.Decorators
-	case *ast.ErrorDecl:
-		decs = v.Decorators
-	case *ast.ScalarDecl:
-		decs = v.Decorators
-	case *ast.MiddlewareDecl:
-		decs = v.Decorators
-	case *ast.ServiceDecl:
-		decs = v.Decorators
-	case *ast.EventDecl:
-		decs = v.Decorators
+// freeBefore removes and returns the file-scope comment blocks still to print
+// that start before line.
+func (p *Printer) freeBefore(line int) []*ast.FreeComment {
+	n := 0
+	for n < len(p.free) && p.free[n].Pos.Line < line {
+		n++
 	}
-	return memberStartLine(d.DeclPos().Line, decs, 0)
+	blocks := p.free[:n]
+	p.free = p.free[n:]
+	return blocks
 }
 
 func (p *Printer) Import(imp *ast.Import) {
 	p.comments(imp.Pos.Line, imp.Doc)
 	p.line(imp.Pos.Line)
-	p.write("import ")
+	p.write("import")
+	words := []string{imp.PathText}
 	if imp.Alias != "" {
-		p.write(imp.Alias + " ")
+		words = []string{imp.Alias, imp.PathText}
 	}
-	p.write(imp.PathText)
+	p.header(imp.Pos, words...)
 	p.endCode()
 }
 
