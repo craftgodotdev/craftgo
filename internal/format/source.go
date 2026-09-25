@@ -104,6 +104,39 @@ func (s *source) namedEnd(t *ast.NamedTypeRef) lexer.Token {
 	return s.closing(s.after(name.Pos, 1).Pos)
 }
 
+// clauseEnd returns the last token of a clause's type ref, the `[]` after it
+// when array is set.
+func (s *source) clauseEnd(ref *ast.NamedTypeRef, array bool) lexer.Token {
+	end := s.namedEnd(ref)
+	if array {
+		end = s.after(end.Pos, 2)
+	}
+	return end
+}
+
+// valueEnd returns the last token of the enum value v before its decorators:
+// its name, or the literal after `=`.
+func (s *source) valueEnd(v *ast.EnumValue) lexer.Token {
+	if v.Kind == ast.EnumBare {
+		return s.after(v.Pos, 0)
+	}
+	// `Name = value`, where the value may be `-` and an integer.
+	if end := s.after(v.Pos, 2); end.Kind != lexer.Dash {
+		return end
+	}
+	return s.after(v.Pos, 3)
+}
+
+// memberEndLine returns the last line of a member whose code before its
+// decorators ends at token code, or of its last decorator when that ends lower.
+func (s *source) memberEndLine(code lexer.Token, decs []*ast.Decorator) int {
+	end := code.Pos.Line
+	if n := len(decs); n > 0 {
+		end = max(end, s.after(decs[n-1].Pos, 1).Pos.Line, s.argsCloseLine(decs[n-1]))
+	}
+	return end
+}
+
 // argsCloseLine returns the line of the `)` that closes d's arguments, or d's
 // own line when it has none.
 func (s *source) argsCloseLine(d *ast.Decorator) int {

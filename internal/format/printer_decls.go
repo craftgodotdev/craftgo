@@ -60,14 +60,14 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 		case *ast.Field:
 			p.blankBetween(prevEnd, memberStartLine(v.Pos.Line, v.Decorators, len(v.Doc)))
 			p.alignedField(v, maxName, maxType, typeStr[v])
-			prevEnd = memberEndLine(v.Pos.Line, v.Decorators)
+			prevEnd = p.src.memberEndLine(p.src.typeEnd(v.Type), v.Decorators)
 		case *ast.Mixin:
 			p.blankBetween(prevEnd, v.Pos.Line-len(v.Doc))
 			p.comments(v.Pos.Line, v.Doc)
 			p.line(v.Pos.Line)
 			p.write(v.Ref.String())
 			p.endCode()
-			prevEnd = v.Pos.Line
+			prevEnd = p.src.namedEnd(v.Ref).Pos.Line
 		case *ast.FreeComment:
 			p.blankBetween(prevEnd, v.Pos.Line)
 			p.printFreeComment(v)
@@ -91,15 +91,6 @@ func memberStartLine(pos int, decs []*ast.Decorator, docLen int) int {
 		pos = decs[0].Pos.Line
 	}
 	return pos - docLen
-}
-
-// memberEndLine returns the last source line of a member on line pos: its
-// last decorator's line when that is below pos.
-func memberEndLine(pos int, decs []*ast.Decorator) int {
-	if n := len(decs); n > 0 && decs[n-1].Pos.Line > pos {
-		return decs[n-1].Pos.Line
-	}
-	return pos
 }
 
 // alignedField prints f's doc, then f on one line padded to the maxName and
@@ -154,7 +145,7 @@ func (p *Printer) EnumDecl(d *ast.EnumDecl) {
 		case *ast.EnumValue:
 			p.blankBetween(prevEnd, v.Pos.Line-len(v.Doc))
 			p.EnumValue(v, maxName)
-			prevEnd = memberEndLine(v.Pos.Line, v.Decorators)
+			prevEnd = p.src.memberEndLine(p.src.valueEnd(v), v.Decorators)
 		case *ast.FreeComment:
 			p.blankBetween(prevEnd, v.Pos.Line)
 			p.printFreeComment(v)
@@ -326,7 +317,7 @@ func (p *Printer) memberBody(clauses []memberClause, comments []*ast.FreeComment
 			p.write("[]")
 		}
 		p.endCode()
-		prevEnd = cl.line
+		prevEnd = p.src.clauseEnd(cl.ref, cl.array).Pos.Line
 	}
 	flushBefore(0)
 	p.depth--

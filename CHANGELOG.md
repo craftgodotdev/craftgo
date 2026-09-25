@@ -352,6 +352,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   line below it, and a refusal to put two comments on one line now says so
   rather than that a comment would be dropped.
 
+- **A member that starts where the one above it ends gains no blank line.**
+  After a field, a mixin, an enum value or a method's `request` whose type,
+  value or decorators ran over lines with a blank line among them, as in
+  `a string @doc(` / (blank) / `"x") b string`, formatting put a blank line
+  before the member that started on its last line.
+
 - **A decorator after a declaration on its line is an error.** In
   `middleware M @doc("m")`, `error NotFound E @doc("e")`, `} @doc("t")` and
   a method's `} @deprecated`, the decorator went silently to the next

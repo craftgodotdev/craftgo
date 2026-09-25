@@ -229,9 +229,8 @@ func (l *layout) at(line int) string {
 	return best.name
 }
 
-// head is the source lines from and to of words formatting prints on one line:
-// a member's name and type, a clause's keyword and type, or a decorator's `@`
-// and name. what names it in a diagnostic.
+// head is the source lines from and to of a member's name and type, a clause's
+// keyword and type, or a decorator's `@` and name, which print on one line.
 type head struct {
 	from, to int
 	what     string
@@ -268,14 +267,7 @@ func heads(f *ast.File, src *source) []head {
 			body(d.Body)
 		case *ast.EnumDecl:
 			for _, v := range d.EnumValues() {
-				end := src.after(v.Pos, 0)
-				if v.Kind != ast.EnumBare {
-					// `Name = value`, where the value may be `-` and an integer.
-					if end = src.after(v.Pos, 2); end.Kind == lexer.Dash {
-						end = src.after(v.Pos, 3)
-					}
-				}
-				add(v.Pos, end, "enum value "+v.Name)
+				add(v.Pos, src.valueEnd(v), "enum value "+v.Name)
 			}
 		case *ast.ServiceDecl:
 			for _, m := range d.Methods() {
@@ -288,11 +280,7 @@ func heads(f *ast.File, src *source) []head {
 			}
 		case *ast.EventDecl:
 			if pl := d.Payload; pl != nil {
-				end := src.namedEnd(pl.Type)
-				if pl.Array {
-					end = src.after(end.Pos, 2)
-				}
-				add(src.after(pl.Pos, -1).Pos, end, "the payload of event "+d.Name)
+				add(src.after(pl.Pos, -1).Pos, src.clauseEnd(pl.Type, pl.Array), "the payload of event "+d.Name)
 			}
 		}
 	}

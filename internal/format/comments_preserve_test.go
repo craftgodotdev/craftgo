@@ -486,10 +486,35 @@ func TestFormatKeepsAnArgumentListWithComments(t *testing.T) {
 	}
 }
 
-// The member after an argument list written over several lines gets a blank
-// line above it only where the source has one.
+// The member after one written over several lines gets a blank line above it
+// only where the source has one between the two.
 func TestFormatBlankLinesAfterAListOverSeveralLines(t *testing.T) {
 	for _, c := range []struct{ name, src, want string }{
+		{
+			"on the line the arguments above end",
+			"package x\n\ntype T {\n\ta string @doc(\n\n\t\t\"x\") b string\n}\n",
+			"package x\n\ntype T {\n\ta string @doc(\"x\")\n\tb string\n}\n",
+		},
+		{
+			"on the line the type above ends",
+			"package x\n\ntype T {\n\ta map<string,\n\n\t\tint> b string\n}\n",
+			"package x\n\ntype T {\n\ta map<string, int>\n\tb string\n}\n",
+		},
+		{
+			"on the line the mixin above ends",
+			"package x\n\ntype T {\n\tPage<\n\n\t\tstring> b string\n}\n",
+			"package x\n\ntype T {\n\tPage<string>\n\tb string\n}\n",
+		},
+		{
+			"on the line the enum value above ends",
+			"package x\n\nenum E {\n\tA @doc(\n\n\t\t\"x\") B\n}\n",
+			"package x\n\nenum E {\n\tA @doc(\"x\")\n\tB\n}\n",
+		},
+		{
+			"on the line the clause above ends",
+			"package x\n\nservice S {\n\tget A /a {\n\t\trequest Box<\n\n\t\t\tint> response R\n\t}\n}\n",
+			"package x\n\nservice S {\n\tget A /a {\n\t\trequest  Box<int>\n\t\tresponse R\n\t}\n}\n",
+		},
 		{
 			"kept lines",
 			"package x\n\ntype T {\n\tid string @oneOf(\n\t\t\"a\", // first\n\t\t\"b\" // second\n\t)\n\tname string\n}\n",
