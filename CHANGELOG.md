@@ -815,6 +815,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   the `@requiresOneOf` and `@mutuallyExclusive` of the response type and of
   its mixins; it now lists them.
 
+- **A type a generic names keeps its schema when a type parameter shares its
+  OpenAPI name.** In `type Pair<Item> { o b.Item }`, or `type Box<ADup> { w
+  Dup }` when two packages declare `Dup` (merged as `ADup`), the instance
+  documented the field as the type argument; it now refers to the type.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

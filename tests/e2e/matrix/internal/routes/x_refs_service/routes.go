@@ -22,6 +22,7 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/xrefs/promote-bag", transport.PromoteBag(svcCtx))
 	srv.Handle("GET /api/xrefs/nested/{gKey}", transport.GetNested(svcCtx))
 	srv.Handle("GET /api/xrefs/items", transport.ListItems(svcCtx))
+	srv.Handle("GET /api/xrefs/owner-pair", transport.GetOwnerPair(svcCtx))
 	srv.Handle("GET /api/xrefs/search", transport.Search(svcCtx))
 	srv.Handle("POST /api/xrefs/defaults", transport.PostDefault(svcCtx))
 	srv.Handle("POST /api/xrefs/promote-holder/{id}", transport.PromoteHolder(svcCtx))

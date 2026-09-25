@@ -2515,6 +2515,8 @@ components:
       type: object
     GetOrderRespBody:
       $ref: '#/components/schemas/ScalarsOrder'
+    GetOwnerPairRespBody:
+      $ref: '#/components/schemas/XOwnerPairOfString'
     GetProfileReq:
       description: |-
         GetProfileReq carries only the path id; the handler binds it from
@@ -7973,6 +7975,20 @@ components:
       - id
       - email
       type: object
+    XOwnerPairOfString:
+      description: |-
+        XOwnerPair<XOwner> spells its type parameter like the xshared XOwner its
+        `owner` field names: the OpenAPI instance keeps `owner` an XOwner and
+        gives `value` the argument.
+      properties:
+        owner:
+          $ref: '#/components/schemas/XOwner'
+        value:
+          type: string
+      required:
+      - owner
+      - value
+      type: object
     XParent:
       allOf:
       - $ref: '#/components/schemas/XGrand'
@@ -12156,6 +12172,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetNestedRespBody'
+          description: OK
+      tags:
+      - XRefsService
+  /xrefs/owner-pair:
+    get:
+      description: 'A generic response whose type parameter is spelled like the xshared
+        type its field names: XOwnerPairOfString refs XOwner for `owner` and types
+        `value` a string.'
+      operationId: GetOwnerPair
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOwnerPairRespBody'
           description: OK
       tags:
       - XRefsService

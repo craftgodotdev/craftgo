@@ -96,6 +96,14 @@ type XLocalItem {
 	id string
 }
 
+// XOwnerPair<XOwner> spells its type parameter like the xshared XOwner its
+// `owner` field names: the OpenAPI instance keeps `owner` an XOwner and
+// gives `value` the argument.
+type XOwnerPair<XOwner> {
+	owner xshared.XOwner
+	value XOwner
+}
+
 // XMixinErr is an error whose body embeds a CROSS-PACKAGE mixin
 // (xshared.XOwner). The error emitter's import walk must collect the xshared
 // import - the generated errors.go embeds `xshared.XOwner`, so without the
@@ -212,6 +220,11 @@ service XRefsService {
 	@doc("Pins cross-package response generic. Component must be `XBagOfXOwner`, not dangling `xshared.XBag`.")
 	get ListItems /items {
 		response xshared.XBag<xshared.XOwner>
+	}
+
+	@doc("A generic response whose type parameter is spelled like the xshared type its field names: XOwnerPairOfString refs XOwner for `owner` and types `value` a string.")
+	get GetOwnerPair /owner-pair {
+		response XOwnerPair<string>
 	}
 
 	@doc("Pins cross-package scalar BINDING casts. Handler must emit `req.Q = xshared.XEmail(r.URL.Query().Get(\"q\"))` (qualified cast) - bare strings fail to compile against the *xshared.XEmail field type.")

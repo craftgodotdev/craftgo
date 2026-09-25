@@ -192,3 +192,51 @@ type T { y string }`,
 		t.Errorf("BoxOfItem.inner refs %q, want the type argument Item", got)
 	}
 }
+
+// A reference the merge names like a type parameter in scope still names its
+// declaration: `w Dup` in `Box<ADup>` is a's Dup, merged as ADup, and `o b.Item`
+// in `Pair<Item>` is b's Item, merged as Item.
+func TestCrossPkgMergeNeverRenamesOntoTypeParameters(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+import "b"
+type Dup { x int }
+type Box<ADup> {
+	w   Dup
+	val ADup
+}
+type Pair<Item> {
+	o b.Item
+	v Item
+}
+type Holder {
+	box  Box<string>
+	pair Pair<string>
+}
+service S { get L /l { response Holder } }`,
+		"b/b.craftgo": `package b
+type Dup { y string }
+type Item { id string }`,
+	}, &config.Config{})
+	for _, c := range []struct{ inst, field, ref string }{
+		{"BoxOfString", "w", "ADup"},
+		{"BoxOfString", "val", ""},
+		{"PairOfString", "o", "Item"},
+		{"PairOfString", "v", ""},
+	} {
+		s := doc.Components.Schemas[c.inst]
+		if s == nil || s.Value == nil {
+			t.Fatalf("no %s component", c.inst)
+		}
+		prop := s.Value.Properties[c.field]
+		if c.ref != "" {
+			if got := prop.Ref; got != "#/components/schemas/"+c.ref {
+				t.Errorf("%s.%s refs %q, want the declaration merged as %s", c.inst, c.field, got, c.ref)
+			}
+			continue
+		}
+		if prop.Value == nil || !prop.Value.Type.Is("string") {
+			t.Errorf("%s.%s is not the type argument string", c.inst, c.field)
+		}
+	}
+}

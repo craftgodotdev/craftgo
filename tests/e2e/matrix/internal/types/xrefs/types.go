@@ -86,6 +86,14 @@ type XNestedReq struct {
 	xshared.XParent
 }
 
+// XOwnerPair<XOwner> spells its type parameter like the xshared XOwner its
+// `owner` field names: the OpenAPI instance keeps `owner` an XOwner and
+// gives `value` the argument.
+type XOwnerPair[XOwner any] struct {
+	Owner xshared.XOwner `json:"owner"`
+	Value XOwner         `json:"value"`
+}
+
 // XScalarBindings exercises scalar refs at wire binding sites. The
 // transport handler emits qualified casts:
 //   - `req.Path = xshared.XEmail(r.PathValue("path"))`

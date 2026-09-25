@@ -6,6 +6,7 @@ import (
 	"fmt"
 	fmt2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/fmt"
 	v2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/v"
+	"reflect"
 	"unicode/utf8"
 )
 
@@ -130,6 +131,22 @@ func (v *XLocalItem) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XNestedReq) Validate() error {
 	if err := v.XParent.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XOwnerPair.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XOwnerPair[XOwner]) Validate() error {
+	if err := v.Owner.Validate(); err != nil {
+		return err
+	}
+	if vv, ok := any(&v.Value).(interface{ Validate() error }); ok {
+		if err := vv.Validate(); err != nil {
+			return err
+		}
+	} else if err := validateValue(v.Value); err != nil {
 		return err
 	}
 	return nil
@@ -298,6 +315,67 @@ func (v *XMixinErrBody) Validate() error {
 func (v *XStdNamesClashBody) Validate() error {
 	if err := v.Slot.Validate(); err != nil {
 		return err
+	}
+	return nil
+}
+
+// validateValue is the fallback for a generic type-parameter field whose
+// argument is a composite type. The direct `any(x).(Validate)` probe finds
+// a Validate() only when the argument type itself has one; when the
+// argument is a slice or map whose ELEMENT carries the constraint, this
+// walks the value and validates each leaf so the runtime enforces what the
+// OpenAPI schema advertises.
+func validateValue(v any) error {
+	return validateReflect(reflect.ValueOf(v))
+}
+
+func validateReflect(rv reflect.Value) error {
+	if !rv.IsValid() {
+		return nil
+	}
+	if rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			return nil
+		}
+		if vv, ok := rv.Interface().(interface{ Validate() error }); ok {
+			return vv.Validate()
+		}
+		return validateReflect(rv.Elem())
+	}
+	// A non-pointer value: probe the value form, then an addressable copy
+	// so a pointer-receiver Validate() is still found (map values and other
+	// non-addressable elements need the copy).
+	if vv, ok := rv.Interface().(interface{ Validate() error }); ok {
+		return vv.Validate()
+	}
+	if rv.CanAddr() {
+		if vv, ok := rv.Addr().Interface().(interface{ Validate() error }); ok {
+			return vv.Validate()
+		}
+	} else {
+		cp := reflect.New(rv.Type())
+		cp.Elem().Set(rv)
+		if vv, ok := cp.Interface().(interface{ Validate() error }); ok {
+			return vv.Validate()
+		}
+	}
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < rv.Len(); i++ {
+			if err := validateReflect(rv.Index(i)); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		iter := rv.MapRange()
+		for iter.Next() {
+			if err := validateReflect(iter.Value()); err != nil {
+				return err
+			}
+			if err := validateReflect(iter.Key()); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

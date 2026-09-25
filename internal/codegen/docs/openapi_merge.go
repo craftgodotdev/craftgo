@@ -2,6 +2,7 @@ package docs
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -58,12 +59,16 @@ func projectMergeCollisions(proj *semantic.Project) []string {
 type merger struct {
 	proj  *semantic.Project
 	names map[ast.Decl]string
+	taken map[string]bool // every merged name
 }
 
 // mergeProjectForOpenAPI returns proj's packages as one package, each
 // declaration under its merged name.
 func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
-	m := &merger{proj: proj, names: mergedNames(proj)}
+	m := &merger{proj: proj, names: mergedNames(proj), taken: map[string]bool{}}
+	for _, name := range m.names {
+		m.taken[name] = true
+	}
 	out := &semantic.Package{
 		Types:    map[string]*ast.TypeDecl{},
 		Enums:    map[string]*ast.EnumDecl{},
@@ -82,7 +87,9 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 			case *ast.TypeDecl:
 				cp := *d
 				cp.Name = m.names[d]
-				cp.Body = m.members(pkgName, d.Body, d.TypeParams)
+				var params map[string]string
+				cp.TypeParams, params = m.typeParams(d.TypeParams)
+				cp.Body = m.members(pkgName, d.Body, params)
 				out.Types[cp.Name] = &cp
 			case *ast.EnumDecl:
 				cp := *d
@@ -120,15 +127,44 @@ func servicePackage(key string) string {
 	return pkg
 }
 
-// ref returns n, written in package home with typeParams in scope, under the
-// merged name of the declaration of kinds it resolves to, type arguments too.
-func (m *merger) ref(home string, n *ast.NamedTypeRef, typeParams []string, kinds semantic.DeclKind) *ast.NamedTypeRef {
+// typeParams returns params as the merged package names them, and each
+// parameter to that name: its own, or, when a merged declaration takes it,
+// the first free one with a number appended (`ADup` → `ADup2`).
+func (m *merger) typeParams(params []string) ([]string, map[string]string) {
+	if len(params) == 0 {
+		return params, nil
+	}
+	used := map[string]bool{}
+	for _, p := range params {
+		used[p] = true
+	}
+	names := make([]string, len(params))
+	scope := make(map[string]string, len(params))
+	for i, p := range params {
+		name := p
+		for n := 2; m.taken[name] || (name != p && used[name]); n++ {
+			name = p + strconv.Itoa(n)
+		}
+		used[name] = true
+		names[i], scope[p] = name, name
+	}
+	return names, scope
+}
+
+// ref returns n, written in package home with the type parameters params
+// maps in scope, under the merged name of the parameter or of the
+// declaration of kinds it resolves to, type arguments too.
+func (m *merger) ref(home string, n *ast.NamedTypeRef, params map[string]string, kinds semantic.DeclKind) *ast.NamedTypeRef {
 	if n == nil || n.Name == nil {
 		return n
 	}
 	out := n
 	name := n.Name.String()
-	if final, ok := m.names[m.decl(home, name, typeParams, kinds)]; ok && final != name {
+	final, ok := params[name]
+	if !ok && !prims.Is(name) {
+		final, ok = m.names[m.proj.Lookup(home, name, kinds)]
+	}
+	if ok && final != name {
 		cp := *n
 		cp.Name = &ast.QualifiedIdent{Pos: n.Name.Pos, Parts: []string{final}}
 		out = &cp
@@ -140,52 +176,42 @@ func (m *merger) ref(home string, n *ast.NamedTypeRef, typeParams []string, kind
 		}
 		out.Args = make([]*ast.TypeRef, len(n.Args))
 		for i, a := range n.Args {
-			out.Args[i] = m.typeRef(home, a, typeParams)
+			out.Args[i] = m.typeRef(home, a, params)
 		}
 	}
 	return out
 }
 
-// decl returns the declaration of kinds that name, written in package home
-// with typeParams in scope, refers to, or nil for a built-in or a type
-// parameter.
-func (m *merger) decl(home, name string, typeParams []string, kinds semantic.DeclKind) ast.Decl {
-	if prims.Is(name) || slices.Contains(typeParams, name) {
-		return nil
-	}
-	return m.proj.Lookup(home, name, kinds)
-}
-
 // typeRef returns a copy of t with every named ref in it renamed by
 // [merger.ref], map entries included.
-func (m *merger) typeRef(home string, t *ast.TypeRef, typeParams []string) *ast.TypeRef {
+func (m *merger) typeRef(home string, t *ast.TypeRef, params map[string]string) *ast.TypeRef {
 	if t == nil {
 		return nil
 	}
 	cp := *t
 	if t.Map != nil {
 		mp := *t.Map
-		mp.Key = m.typeRef(home, t.Map.Key, typeParams)
-		mp.Value = m.typeRef(home, t.Map.Value, typeParams)
+		mp.Key = m.typeRef(home, t.Map.Key, params)
+		mp.Value = m.typeRef(home, t.Map.Value, params)
 		cp.Map = &mp
 	}
-	cp.Named = m.ref(home, t.Named, typeParams, semantic.TypeRefDecls)
+	cp.Named = m.ref(home, t.Named, params, semantic.TypeRefDecls)
 	return &cp
 }
 
 // members returns copies of body's fields and mixins with their refs renamed,
 // leaving the analysed declarations untouched.
-func (m *merger) members(home string, body []ast.TypeMember, typeParams []string) []ast.TypeMember {
+func (m *merger) members(home string, body []ast.TypeMember, params map[string]string) []ast.TypeMember {
 	out := make([]ast.TypeMember, 0, len(body))
 	for _, member := range body {
 		switch v := member.(type) {
 		case *ast.Field:
 			cp := *v
-			cp.Type = m.typeRef(home, v.Type, typeParams)
+			cp.Type = m.typeRef(home, v.Type, params)
 			out = append(out, &cp)
 		case *ast.Mixin:
 			cp := *v
-			cp.Ref = m.ref(home, v.Ref, typeParams, semantic.TypeRefDecls)
+			cp.Ref = m.ref(home, v.Ref, params, semantic.TypeRefDecls)
 			out = append(out, &cp)
 		default:
 			out = append(out, member)
