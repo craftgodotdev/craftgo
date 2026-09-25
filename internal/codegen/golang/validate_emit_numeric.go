@@ -82,24 +82,23 @@ func signCheck(f *ast.Field, access, kind string, ctx emitCtx) string {
 	return ifReturnf(cond, msg, ctx)
 }
 
-// multipleOfCheck renders @multipleOf on an integer field.
+// multipleOfCheck renders @multipleOf on an integer field; a whole float
+// divisor such as 5.0 is the integer it holds.
 func multipleOfCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
 	if !isIntegerField(f) || len(d.Args) != 1 {
 		return ""
 	}
-	n, ok := semantic.IntArg(d.Args[0])
+	l, ok := semantic.ParseNumericArg(d.Args[0])
 	if !ok {
-		// A whole-valued float literal (`@multipleOf(5.0)`) is an integer divisor.
-		if fl, fok := d.Args[0].Value.(*ast.FloatLit); fok && fl.Value == float64(int64(fl.Value)) {
-			n, ok = int64(fl.Value), true
-		}
+		return ""
 	}
-	if !ok || n == 0 {
+	n, whole := l.WholeText()
+	if !whole || n == "0" {
 		return ""
 	}
 	val := numericValueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%s%s%%%d != 0", guard, val, n)
-	msg := fmt.Sprintf(`"%smust be a multiple of %d"`, errSubject(fieldWireName(f)), n)
+	cond := fmt.Sprintf("%s%s%%%s != 0", guard, val, n)
+	msg := fmt.Sprintf(`"%smust be a multiple of %s"`, errSubject(fieldWireName(f)), n)
 	return ifReturnf(cond, msg, ctx)
 }

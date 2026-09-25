@@ -58,7 +58,7 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 				continue
 			}
 			if prims.IsInteger(dd.Primitive) && len(d.Args) == 1 {
-				if fl, ok := d.Args[0].Value.(*ast.FloatLit); ok && !isIntegralFloat(fl.Value) {
+				if l, ok := ParseNumericArg(d.Args[0]); ok && !l.IsWhole() {
 					a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
 						"@multipleOf on an integer scalar needs a whole-number divisor - Go's modulus is integer-only, so a fractional divisor can't be enforced (the OpenAPI would advertise a bound the validator drops). Use a whole number.")
 				}
@@ -106,20 +106,21 @@ func (a *analyzer) checkDecoratorValue(d *ast.Decorator) {
 func (a *analyzer) checkPairArgs(d *ast.Decorator) {
 	pos := positionalArgs(d)
 	if d.Name == "length" && len(pos) == 1 {
-		if v, ok := numericValue(pos[0].Value); ok && v < 0 {
+		if l, ok := ParseNumericArg(pos[0]); ok && l.FloatVal < 0 {
 			a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
-				"@length: exact length must be ≥ 0 (got %g)", v)
+				"@length: exact length must be ≥ 0 (got %g)", l.FloatVal)
 		}
 		return
 	}
 	if len(pos) != 2 {
 		return
 	}
-	lo, loOk := numericValue(pos[0].Value)
-	hi, hiOk := numericValue(pos[1].Value)
+	loLit, loOk := ParseNumericArg(pos[0])
+	hiLit, hiOk := ParseNumericArg(pos[1])
 	if !loOk || !hiOk {
 		return
 	}
+	lo, hi := loLit.FloatVal, hiLit.FloatVal
 	if lo > hi {
 		a.diag(pos[1].Pos, pos[1].Pos, lexer.SeverityError, CodeDecoratorRange,
 			"@%s: min (%g) must be ≤ max (%g)", d.Name, lo, hi)
@@ -136,10 +137,11 @@ func (a *analyzer) checkMultipleOf(d *ast.Decorator) {
 	if len(pos) != 1 {
 		return
 	}
-	v, ok := numericValue(pos[0].Value)
+	l, ok := ParseNumericArg(pos[0])
 	if !ok {
 		return
 	}
+	v := l.FloatVal
 	if v == 0 {
 		a.diag(pos[0].Pos, pos[0].Pos, lexer.SeverityError, CodeDecoratorRange,
 			"@multipleOf: divisor must not be 0")
@@ -297,22 +299,11 @@ func singleNumericArg(decs []*ast.Decorator, name string) (float64, lexer.Positi
 		if len(pos) == 0 {
 			return 0, lexer.Position{}, false
 		}
-		v, ok := numericValue(pos[0].Value)
+		l, ok := ParseNumericArg(pos[0])
 		if !ok {
 			return 0, lexer.Position{}, false
 		}
-		return v, pos[0].Pos, true
+		return l.FloatVal, pos[0].Pos, true
 	}
 	return 0, lexer.Position{}, false
-}
-
-// numericValue returns an int or float literal's value as a float64.
-func numericValue(e ast.Expr) (float64, bool) {
-	switch v := e.(type) {
-	case *ast.IntLit:
-		return float64(v.Value), true
-	case *ast.FloatLit:
-		return v.Value, true
-	}
-	return 0, false
 }

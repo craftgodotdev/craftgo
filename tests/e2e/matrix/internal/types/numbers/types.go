@@ -173,6 +173,9 @@ type NumberUnsigned struct {
 	// unsigned domain makes @negative semantically vacuous (it is
 	// still accepted at the decorator layer, so we don't test that).
 	PosUint uint `json:"posUint"`
+	// A divisor past int64 can only be written as a whole float; the
+	// validator checks it as that integer.
+	StepUint64 uint64 `json:"stepUint64"`
 }
 
 // OptionalReq wraps NumberOptional (presence axes).

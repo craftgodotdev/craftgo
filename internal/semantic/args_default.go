@@ -180,14 +180,8 @@ func (a *analyzer) checkScalarEnumLiteralValue(decName, fieldName, dispName, pri
 		return
 	}
 	if decName == "default" {
-		if il, ok := v.(*ast.IntLit); ok {
-			if lo, hi, capOK := prims.Capacity(prim); capOK {
-				fv := float64(il.Value)
-				if fv < lo || fv > hi {
-					a.diag(pos, pos, lexer.SeverityError, CodeBoundOverflow,
-						"@default %d is out of range for %s [%g, %g]", il.Value, prim, lo, hi)
-				}
-			}
+		if l, ok := ParseNumeric(v); ok {
+			a.checkCapacity(prim, l, pos, "@default")
 		}
 	}
 }

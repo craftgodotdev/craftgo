@@ -411,6 +411,9 @@ func (v *NumberUnsigned) Validate() error {
 	if v.PosUint <= 0 {
 		return fmt.Errorf("posUint: must be positive")
 	}
+	if v.StepUint64%10000000000000000000 != 0 {
+		return fmt.Errorf("stepUint64: must be a multiple of 10000000000000000000")
+	}
 	return nil
 }
 

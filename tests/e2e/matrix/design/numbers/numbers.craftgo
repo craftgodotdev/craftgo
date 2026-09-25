@@ -69,6 +69,9 @@ type NumberUnsigned {
 	// unsigned domain makes @negative semantically vacuous (it is
 	// still accepted at the decorator layer, so we don't test that).
 	posUint      uint   @positive
+	// A divisor past int64 can only be written as a whole float; the
+	// validator checks it as that integer.
+	stepUint64   uint64 @multipleOf(10000000000000000000.0)
 }
 
 // NumberPrice exercises float32 + float64 with float literal bounds.

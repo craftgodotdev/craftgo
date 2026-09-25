@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"math"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -43,5 +44,32 @@ func TestParseNumericArg(t *testing.T) {
 	}
 	if s, ok := NumericArg(mkFloat(0.5)); !ok || s != "0.5" {
 		t.Errorf("NumericArg(0.5) = %q,%v", s, ok)
+	}
+}
+
+// NumericLit tells whole values from fractional ones and renders each.
+func TestNumericLitForms(t *testing.T) {
+	for _, c := range []struct {
+		e            ast.Expr
+		whole        bool
+		text, wholeT string
+	}{
+		{&ast.IntLit{Value: -7}, true, "-7", "-7"},
+		{&ast.FloatLit{Value: 300}, true, "300", "300"},
+		{&ast.FloatLit{Value: 1e19}, true, "1e+19", "10000000000000000000"},
+		{&ast.FloatLit{Value: 0.5}, false, "0.5", ""},
+		{&ast.FloatLit{Value: math.Inf(1)}, false, "+Inf", ""},
+	} {
+		l, ok := ParseNumeric(c.e)
+		if !ok {
+			t.Fatalf("ParseNumeric(%#v) not numeric", c.e)
+		}
+		wt, whole := l.WholeText()
+		if l.IsWhole() != c.whole || whole != c.whole || l.Text() != c.text || wt != c.wholeT {
+			t.Errorf("%#v: IsWhole=%v Text=%q WholeText=%q,%v; want %v %q %q", c.e, l.IsWhole(), l.Text(), wt, whole, c.whole, c.text, c.wholeT)
+		}
+	}
+	if _, ok := ParseNumeric(&ast.StringLit{}); ok {
+		t.Error("a string is not numeric")
 	}
 }

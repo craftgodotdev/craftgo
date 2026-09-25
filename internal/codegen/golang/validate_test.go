@@ -182,6 +182,20 @@ type X { count int @multipleOf(5) }`)
 	}
 }
 
+// A whole float divisor is checked as the integer it holds, past int64 too.
+func TestValidateMultipleOfWholeFloat(t *testing.T) {
+	src := runValidateGen(t, `package design
+type X {
+    count int    @multipleOf(5.0)
+    big   uint64 @multipleOf(10000000000000000000.0)
+}`)
+	for _, want := range []string{"v.Count%5 != 0", "v.Big%10000000000000000000 != 0", "must be a multiple of 10000000000000000000"} {
+		if !strings.Contains(src, want) {
+			t.Errorf("missing %q:\n%s", want, src)
+		}
+	}
+}
+
 // @multipleOf on a float field is rejected, since Go's % is integer-only.
 func TestValidateMultipleOfRejectsFloat(t *testing.T) {
 	src := tryRunValidateGen(t, `package design

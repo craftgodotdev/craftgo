@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"math"
+	"math/big"
 	"strconv"
 	"time"
 
@@ -9,7 +10,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// NumericLit is a numeric decorator argument, read as an integer or a float.
+// NumericLit is a numeric literal, read as an integer or a float.
 type NumericLit struct {
 	IntVal   int64   // valid when IsInt
 	FloatVal float64 // always set: float64(IntVal) for an IntLit, the value for a FloatLit
@@ -17,13 +18,10 @@ type NumericLit struct {
 	IsBigInt bool    // an integer whose magnitude exceeds maxExactInt, so float64 would lose precision
 }
 
-// ParseNumericArg classifies a numeric decorator argument (IntLit / FloatLit).
-// ok is false for a missing or non-numeric argument.
-func ParseNumericArg(a *ast.DecoratorArg) (NumericLit, bool) {
-	if a == nil || a.Value == nil {
-		return NumericLit{}, false
-	}
-	switch v := a.Value.(type) {
+// ParseNumeric classifies e, an int or float literal; ok is false for any
+// other expression.
+func ParseNumeric(e ast.Expr) (NumericLit, bool) {
+	switch v := e.(type) {
 	case *ast.IntLit:
 		return NumericLit{
 			IntVal:   v.Value,
@@ -37,6 +35,43 @@ func ParseNumericArg(a *ast.DecoratorArg) (NumericLit, bool) {
 	return NumericLit{}, false
 }
 
+// ParseNumericArg is [ParseNumeric] on a decorator argument; ok is false
+// for a missing one.
+func ParseNumericArg(a *ast.DecoratorArg) (NumericLit, bool) {
+	if a == nil {
+		return NumericLit{}, false
+	}
+	return ParseNumeric(a.Value)
+}
+
+// IsWhole reports whether l is a finite whole number: an integer, or a
+// float with no fractional part such as 300.0.
+func (l NumericLit) IsWhole() bool {
+	return l.IsInt || (!math.IsInf(l.FloatVal, 0) && l.FloatVal == math.Trunc(l.FloatVal))
+}
+
+// Text renders l as Go literal text: an integer in decimal, a float in its
+// shortest 'g' form.
+func (l NumericLit) Text() string {
+	if l.IsInt {
+		return strconv.FormatInt(l.IntVal, 10)
+	}
+	return strconv.FormatFloat(l.FloatVal, 'g', -1, 64)
+}
+
+// WholeText renders a whole l in decimal digits, a float as the exact
+// integer it holds; ok is false when l is not [NumericLit.IsWhole].
+func (l NumericLit) WholeText() (string, bool) {
+	if l.IsInt {
+		return strconv.FormatInt(l.IntVal, 10), true
+	}
+	if !l.IsWhole() {
+		return "", false
+	}
+	n, _ := new(big.Float).SetFloat64(l.FloatVal).Int(nil)
+	return n.String(), true
+}
+
 // IntArg pulls an int64 out of a literal DecoratorArg.
 func IntArg(a *ast.DecoratorArg) (int64, bool) {
 	if l, ok := ParseNumericArg(a); ok && l.IsInt {
@@ -45,17 +80,13 @@ func IntArg(a *ast.DecoratorArg) (int64, bool) {
 	return 0, false
 }
 
-// NumericArg renders a numeric argument as Go literal text: an integer in
-// decimal, a float in its shortest 'g' form.
+// NumericArg renders a numeric argument as [NumericLit.Text].
 func NumericArg(a *ast.DecoratorArg) (string, bool) {
 	l, ok := ParseNumericArg(a)
 	if !ok {
 		return "", false
 	}
-	if l.IsInt {
-		return strconv.FormatInt(l.IntVal, 10), true
-	}
-	return strconv.FormatFloat(l.FloatVal, 'g', -1, 64), true
+	return l.Text(), true
 }
 
 // SizeArg extracts a byte count from a Size literal (`5MB`) or a bare

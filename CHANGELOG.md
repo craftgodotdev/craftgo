@@ -335,6 +335,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   naming the member at fault. A map key naming no declared type gets only
   the reference error.
 
+- **A `@multipleOf` divisor past int64 is enforced.** On a `uint64` field,
+  `@multipleOf(10000000000000000000.0)` - a whole float, the only way to
+  write a divisor that size - passed analysis and reached the OpenAPI
+  document, but the generated validator had no check for it; it now checks
+  the exact integer. A `@default` is held to the same range rule as a bound:
+  one beyond `float32` is rejected too, and an out-of-range one reads
+  `@default 200 exceeds int8 range [-128, 127]`.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

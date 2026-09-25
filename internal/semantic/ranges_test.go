@@ -261,18 +261,6 @@ func TestScalarRangeChecked(t *testing.T) {
 	expectDiag(t, `scalar Score int @range(100, 1)`, CodeDecoratorRange)
 }
 
-func TestNumericValue(t *testing.T) {
-	if v, ok := numericValue(&ast.IntLit{Value: 7}); !ok || v != 7 {
-		t.Error("int")
-	}
-	if v, ok := numericValue(&ast.FloatLit{Value: 1.5}); !ok || v != 1.5 {
-		t.Error("float")
-	}
-	if _, ok := numericValue(&ast.StringLit{}); ok {
-		t.Error("string should not match")
-	}
-}
-
 func TestSingleNumericArgMissing(t *testing.T) {
 	v, _, ok := singleNumericArg([]*ast.Decorator{{Name: "min"}}, "min")
 	if ok {

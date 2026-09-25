@@ -3671,6 +3671,13 @@ components:
           maximum: 1000000000000
           minimum: 0
           type: integer
+        stepUint64:
+          description: |-
+            A divisor past int64 can only be written as a whole float; the
+            validator checks it as that integer.
+          minimum: 0
+          multipleOf: 10000000000000000000
+          type: integer
       required:
       - rangeUint
       - gteLteUint
@@ -3688,6 +3695,7 @@ components:
       - gteLteUint64
       - gtLtUint64
       - posUint
+      - stepUint64
       type: object
     OptionalPage:
       description: |-

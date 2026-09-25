@@ -347,10 +347,12 @@ func TestJoinQuoted(t *testing.T) {
 	}
 }
 
-// An integer @default outside the field primitive's range is rejected.
+// A @default outside the values the field primitive holds is rejected, as a bound is.
 func TestDefaultOutOfRangeRejected(t *testing.T) {
 	expectError(t, `type Req { u uint? @default(-5) }`, CodeBoundOverflow)
-	expectError(t, `type Req { b int8? @default(200) }`, CodeBoundOverflow)
+	d := expectError(t, `type Req { b int8? @default(200) }`, CodeBoundOverflow)
+	expectMessage(t, d, "@default 200 exceeds int8 range [-128, 127]")
+	expectError(t, `type Req { r float32? @default(400000000000000000000000000000000000000.0) }`, CodeBoundOverflow)
 }
 
 // An in-range @default on a narrow int is accepted.
