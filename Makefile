@@ -175,11 +175,13 @@ tidy: ## go mod tidy in the root module and every sub-module.
 	done
 
 .PHONY: tidy-check
-tidy-check: ## Fail if go mod tidy would change the go.mod or go.sum of any module.
-	$(GO) mod tidy -diff
-	@for d in $(SUBMODULES); do \
-		echo "→ tidy-check $$d"; (cd "$$d" && $(GO) mod tidy -diff) || exit 1; \
-	done
+tidy-check: ## Fail if go mod tidy would change the go.mod or go.sum of any module; every module is checked.
+	@fail=0; \
+	$(GO) mod tidy -diff || fail=1; \
+	for d in $(SUBMODULES); do \
+		echo "→ tidy-check $$d"; (cd "$$d" && $(GO) mod tidy -diff) || fail=1; \
+	done; \
+	exit $$fail
 
 .PHONY: deps
 deps: ## Download/verify modules.
