@@ -3,6 +3,7 @@ package matrix
 import (
 	"encoding/json"
 	"maps"
+	"mime/multipart"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -267,5 +268,43 @@ func TestOpenAPI_BodyKeysAreJSONNames(t *testing.T) {
 	resp := schemas["ValidateRenamedRespBody"]
 	if got := slices.Sorted(maps.Keys(resp.Properties)); !slices.Equal(got, []string{"primary_email"}) {
 		t.Errorf("ValidateRenamedRespBody properties = %v, want [primary_email]", got)
+	}
+}
+
+// A body listed in place carries the @requiresOneOf of a mixin it embeds,
+// which the validator runs: the JSON body beside a path id and the multipart
+// body beside a file.
+func TestOpenAPI_InlineBodiesCarryMixinGroups(t *testing.T) {
+	var doc struct {
+		Paths map[string]map[string]struct {
+			RequestBody struct {
+				Content map[string]struct {
+					Schema schemaDoc `yaml:"schema"`
+				} `yaml:"content"`
+			} `yaml:"requestBody"`
+		} `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal([]byte(readOpenAPI(t)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]schemaDoc{
+		"ValidateNestedReqBody": readSchemas(t)["ValidateNestedReqBody"],
+		"UploadPairs multipart": doc.Paths["/combine/pairs/upload"]["post"].RequestBody.Content["multipart/form-data"].Schema,
+	} {
+		var members []string
+		for _, part := range body.AllOf {
+			for _, branch := range part.AnyOf {
+				members = append(members, branch.Required...)
+			}
+		}
+		if !slices.Equal(members, []string{"a", "b"}) {
+			t.Errorf("%s @requiresOneOf names %v, want [a b]", name, members)
+		}
+	}
+	if err := (&combine.PairsNested{Note: "n"}).Validate(); err == nil {
+		t.Error("PairsNested without a or b passes validation")
+	}
+	if err := (&combine.PairsUpload{Doc: &multipart.FileHeader{}}).Validate(); err == nil {
+		t.Error("PairsUpload without a or b passes validation")
 	}
 }

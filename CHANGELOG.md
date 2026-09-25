@@ -804,6 +804,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   did a request body beside a header. Each field now takes the arguments of
   its own level.
 
+- **A mixin's cross-field groups reach every OpenAPI request body.** The
+  body of a request that also binds a path, query, header or cookie field,
+  and a multipart body, left out a `@requiresOneOf` or `@mutuallyExclusive`
+  declared on a mixin the request embeds, though the server enforces it; both
+  now list it beside the request type's own.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

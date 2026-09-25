@@ -4152,6 +4152,19 @@ components:
           - string
           - "null"
       type: object
+    PairsNested:
+      allOf:
+      - $ref: '#/components/schemas/PairsReach'
+      - properties:
+          note:
+            type: string
+        required:
+        - note
+        type: object
+      description: |-
+        PairsNested puts a path id beside a body whose @requiresOneOf a nested
+        mixin declares: the operation body carries the group the validator runs.
+      type: object
     PairsNum:
       description: |-
         PairsNum stacks @range (lo,hi pair) with @multipleOf and the
@@ -4167,6 +4180,12 @@ components:
           type: integer
       required:
       - score
+      type: object
+    PairsReach:
+      allOf:
+      - $ref: '#/components/schemas/PairsDoc'
+      - type: object
+      description: PairsReach embeds PairsDoc, and its @requiresOneOf, one level down.
       type: object
     PairsRenamed:
       allOf:
@@ -4220,6 +4239,20 @@ components:
           type: string
       required:
       - email
+      type: object
+    PairsUpload:
+      allOf:
+      - $ref: '#/components/schemas/PairsDoc'
+      - properties:
+          doc:
+            format: binary
+            type: string
+        required:
+        - doc
+        type: object
+      description: |-
+        PairsUpload sends PairsDoc's fields as multipart parts beside a file: the
+        multipart body carries PairsDoc's @requiresOneOf.
       type: object
     PatchProfileReq:
       description: |-
@@ -6904,6 +6937,8 @@ components:
       $ref: '#/components/schemas/AcctUser'
     UploadAvatarRespBody:
       $ref: '#/components/schemas/UserAvatar'
+    UploadPairsRespBody:
+      $ref: '#/components/schemas/PairsDoc'
     UploadReq:
       description: |-
         UploadReq pairs the path-bound id with the form-file upload. The
@@ -7206,6 +7241,37 @@ components:
       type: object
     ValidateContactRespBody:
       $ref: '#/components/schemas/PairsContact'
+    ValidateNestedReqBody:
+      allOf:
+      - properties:
+          a:
+            type:
+            - string
+            - "null"
+          b:
+            type:
+            - string
+            - "null"
+          note:
+            type: string
+        required:
+        - note
+        type: object
+      - anyOf:
+        - properties:
+            a:
+              not:
+                type: "null"
+          required:
+          - a
+        - properties:
+            b:
+              not:
+                type: "null"
+          required:
+          - b
+    ValidateNestedRespBody:
+      $ref: '#/components/schemas/PairsDoc'
     ValidateNumReqBody:
       description: |-
         PairsNum stacks @range (lo,hi pair) with @multipleOf and the
@@ -9193,6 +9259,33 @@ paths:
           description: Created
       tags:
       - combine
+  /combine/pairs/nested/{id}:
+    post:
+      description: 'Validate a path id beside a body whose @requiresOneOf a nested
+        mixin declares. The operation body carries the group: sending neither a nor
+        b fails.'
+      operationId: ValidateNested
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateNestedReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateNestedRespBody'
+          description: Created
+      tags:
+      - combine
   /combine/pairs/num:
     post:
       description: Validate stacked numeric decorators (range + multipleOf + gt +
@@ -9261,6 +9354,55 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ValidateStrRespBody'
+          description: Created
+      tags:
+      - combine
+  /combine/pairs/upload:
+    post:
+      description: 'Upload a file beside the parts of a mixin with a @requiresOneOf.
+        The multipart body carries the group: sending neither a nor b fails.'
+      operationId: UploadPairs
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              allOf:
+              - properties:
+                  a:
+                    type:
+                    - string
+                    - "null"
+                  b:
+                    type:
+                    - string
+                    - "null"
+                  doc:
+                    format: binary
+                    type: string
+                required:
+                - doc
+                type: object
+              - anyOf:
+                - properties:
+                    a:
+                      not:
+                        type: "null"
+                  required:
+                  - a
+                - properties:
+                    b:
+                      not:
+                        type: "null"
+                  required:
+                  - b
+              type: object
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadPairsRespBody'
           description: Created
       tags:
       - combine

@@ -336,7 +336,7 @@ func multipartRequestBody(s opShape, pkg *semantic.Package, registry *genericReg
 		Properties: props,
 		Required:   required,
 	}
-	if frags := crossFieldSchemaFragments(s.reqType.Decorators, keys); len(frags) > 0 {
+	if frags := inlineFragments(s.reqType, keys, registry); len(frags) > 0 {
 		schema = &openapi3.Schema{
 			Type:  &openapi3.Types{"object"},
 			AllOf: append(openapi3.SchemaRefs{{Value: schema}}, frags...),

@@ -27,4 +27,6 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/combine/defaults/scalar", transport.EchoScalar(svcCtx))
 	srv.Handle("POST /api/combine/defaults/width", transport.EchoWidth(svcCtx))
 	srv.Handle("POST /api/combine/pairs/renamed/{id}", transport.ValidateRenamed(svcCtx))
+	srv.Handle("POST /api/combine/pairs/nested/{id}", transport.ValidateNested(svcCtx))
+	srv.Handle("POST /api/combine/pairs/upload", transport.UploadPairs(svcCtx))
 }

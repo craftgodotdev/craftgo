@@ -4,6 +4,7 @@ package combine
 
 import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
+	"mime/multipart"
 )
 
 // PageSize is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
@@ -140,12 +141,25 @@ type PairsKeyed struct {
 	Primary *string `json:"primary_email,omitempty"`
 }
 
+// PairsNested puts a path id beside a body whose @requiresOneOf a nested
+// mixin declares: the operation body carries the group the validator runs.
+type PairsNested struct {
+	PairsReach
+	ID   string `json:"-" path:"id"`
+	Note string `json:"note"`
+}
+
 // PairsNum stacks @range (lo,hi pair) with @multipleOf and the
 // strict-bound @gt / @lte. Both the soft and strict bounds are present
 // so the validator firing order is visible in the generated code:
 // each decorator should emit one comparison.
 type PairsNum struct {
 	Score int `json:"score"`
+}
+
+// PairsReach embeds PairsDoc, and its @requiresOneOf, one level down.
+type PairsReach struct {
+	PairsDoc
 }
 
 // PairsRenamed puts a path id beside a body keyed by @json names: the
@@ -171,6 +185,13 @@ type PairsRenamedResp struct {
 //     on top of the format check.
 type PairsStr struct {
 	Email string `json:"email"`
+}
+
+// PairsUpload sends PairsDoc's fields as multipart parts beside a file: the
+// multipart body carries PairsDoc's @requiresOneOf.
+type PairsUpload struct {
+	PairsDoc
+	Doc *multipart.FileHeader `json:"doc"`
 }
 
 // PresenceMatrix is the canonical presence-state matrix.

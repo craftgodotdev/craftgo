@@ -87,3 +87,23 @@ type PairsRenamedResp {
 	etag    string  @header("ETag")
 	primary string? @json("primary_email")
 }
+
+// PairsReach embeds PairsDoc, and its @requiresOneOf, one level down.
+type PairsReach {
+	PairsDoc
+}
+
+// PairsNested puts a path id beside a body whose @requiresOneOf a nested
+// mixin declares: the operation body carries the group the validator runs.
+type PairsNested {
+	PairsReach
+	id   string @path
+	note string
+}
+
+// PairsUpload sends PairsDoc's fields as multipart parts beside a file: the
+// multipart body carries PairsDoc's @requiresOneOf.
+type PairsUpload {
+	PairsDoc
+	doc file
+}

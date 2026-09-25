@@ -155,6 +155,15 @@ func (v *PairsKeyed) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on PairsNested.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PairsNested) Validate() error {
+	if err := v.PairsReach.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on PairsNum.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PairsNum) Validate() error {
@@ -169,6 +178,15 @@ func (v *PairsNum) Validate() error {
 	}
 	if v.Score > 99 {
 		return fmt.Errorf("score: above maximum 99")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on PairsReach.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PairsReach) Validate() error {
+	if err := v.PairsDoc.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -202,6 +220,18 @@ func (v *PairsStr) Validate() error {
 	}
 	if !_pattern2.MatchString(v.Email) {
 		return fmt.Errorf("email: does not match pattern")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on PairsUpload.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PairsUpload) Validate() error {
+	if err := v.PairsDoc.Validate(); err != nil {
+		return err
+	}
+	if v.Doc == nil {
+		return fmt.Errorf("doc: required")
 	}
 	return nil
 }

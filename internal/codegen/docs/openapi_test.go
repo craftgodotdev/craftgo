@@ -560,6 +560,61 @@ service S {
 	}
 }
 
+// A request body listed in place, beside a path variable or a header or as
+// multipart parts, carries the cross-field groups of the mixins it embeds,
+// nested and generic ones included, which the server's validation runs.
+func TestInlineRequestBodiesCarryMixinGroups(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+@requiresOneOf(email, phone)
+type Contact {
+	email string? @json("e_mail")
+	phone string?
+}
+@mutuallyExclusive(fax, pager)
+type Legacy {
+	fax   string?
+	pager string?
+}
+type Reach { Contact }
+type Box<T> {
+	Contact
+	val T
+}
+type Mixed {
+	Reach
+	id   string @path
+	note string
+}
+type GenMixed {
+	Box<int>
+	trace string @header("X-Trace")
+}
+type Upload {
+	Contact
+	Legacy
+	doc file
+}
+service S {
+	post M /m/{id} { request Mixed  response Contact }
+	post G /g { request GenMixed  response Contact }
+	post U /u { request Upload  response Contact }
+}`,
+	}, &config.Config{})
+	for name, c := range map[string]struct {
+		got  *openapi3.SchemaRef
+		want []string
+	}{
+		"MReqBody":    {doc.Components.Schemas["MReqBody"], []string{"e_mail", "phone"}},
+		"GReqBody":    {doc.Components.Schemas["GReqBody"], []string{"e_mail", "phone"}},
+		"U multipart": {doc.Paths.Find("/u").Post.RequestBody.Value.Content.Get(mimeMultipartFormData).Schema, []string{"email", "fax", "pager", "phone"}},
+	} {
+		if got := fragmentKeys(c.got.Value); !slices.Equal(got, c.want) {
+			t.Errorf("%s cross-field fragment keys = %v, want %v", name, got, c.want)
+		}
+	}
+}
+
 // A type with a mixin is an allOf of the mixin's $ref and its own properties.
 func TestGenerateOpenAPIMixinFlatten(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design

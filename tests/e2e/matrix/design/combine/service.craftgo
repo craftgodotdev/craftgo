@@ -85,4 +85,16 @@ service CombineService {
 		request  PairsRenamed
 		response PairsRenamedResp
 	}
+
+	@doc("Validate a path id beside a body whose @requiresOneOf a nested mixin declares. The operation body carries the group: sending neither a nor b fails.")
+	post ValidateNested /pairs/nested/{id} {
+		request  PairsNested
+		response PairsDoc
+	}
+
+	@doc("Upload a file beside the parts of a mixin with a @requiresOneOf. The multipart body carries the group: sending neither a nor b fails.")
+	post UploadPairs /pairs/upload {
+		request  PairsUpload
+		response PairsDoc
+	}
 }

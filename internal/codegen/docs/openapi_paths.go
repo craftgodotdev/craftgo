@@ -119,7 +119,7 @@ func requestBodySchema(s opShape, pkg *semantic.Package, registry *genericRegist
 		return &openapi3.SchemaRef{Value: schemaFromTypeDecl(td, nil, pkg, registry)}
 	}
 	body := schemaFromFields(s.req.body, pkg, registry)
-	if frags := typeFragments(td, registry); len(frags) > 0 {
+	if frags := inlineFragments(td, jsonKeys(td, registry), registry); len(frags) > 0 {
 		body = &openapi3.Schema{AllOf: append(openapi3.SchemaRefs{{Value: body}}, frags...)}
 	}
 	return &openapi3.SchemaRef{Value: body}

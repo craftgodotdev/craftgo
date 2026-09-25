@@ -187,10 +187,33 @@ func addBodyProperty(s *openapi3.Schema, rf semantic.ResolvedField, ft *ast.Type
 	}
 }
 
-// typeFragments returns the cross-field fragments of td's decorators, each
-// member under its JSON key.
+// typeFragments returns the cross-field fragments of td's own decorators,
+// each member under its JSON key; the schema's mixin refs carry theirs.
 func typeFragments(td *ast.TypeDecl, registry *genericRegistry) openapi3.SchemaRefs {
-	return crossFieldSchemaFragments(td.Decorators, jsonKeys(semantic.FlattenFields(td, "", registry.resolver, nil)))
+	return crossFieldSchemaFragments(td.Decorators, jsonKeys(td, registry))
+}
+
+// inlineFragments returns the cross-field fragments of a body listing td's
+// fields in place: those of each type its mixins embed, recursively and each
+// type once, then its own, every member under its keys entry.
+func inlineFragments(td *ast.TypeDecl, keys map[string]string, registry *genericRegistry) openapi3.SchemaRefs {
+	var decs []*ast.Decorator
+	seen := map[*ast.TypeDecl]bool{}
+	var walk func(*ast.TypeDecl)
+	walk = func(td *ast.TypeDecl) {
+		if td == nil || seen[td] {
+			return
+		}
+		seen[td] = true
+		for _, m := range td.Body {
+			if mx, ok := m.(*ast.Mixin); ok && mx.Ref != nil && mx.Ref.Name != nil {
+				walk(registry.resolver.LookupType(mx.Ref.Name.String()))
+			}
+		}
+		decs = append(decs, td.Decorators...)
+	}
+	walk(td)
+	return crossFieldSchemaFragments(decs, keys)
 }
 
 // crossFieldSchemaFragments returns `@requiresOneOf` as an `anyOf` of "x present" branches and
@@ -234,11 +257,11 @@ func crossFieldSchemaFragments(decs []*ast.Decorator, keys map[string]string) op
 	return out
 }
 
-// jsonKeys maps the name of each of fields to its JSON key; of two fields
-// sharing a name, the first counts.
-func jsonKeys(fields []semantic.FlatField) map[string]string {
+// jsonKeys maps the name of each field of td, mixins included, to its JSON
+// key; of two fields sharing a name, the first counts.
+func jsonKeys(td *ast.TypeDecl, registry *genericRegistry) map[string]string {
 	keys := map[string]string{}
-	for _, ff := range fields {
+	for _, ff := range semantic.FlattenFields(td, "", registry.resolver, nil) {
 		if _, dup := keys[ff.Field.Name]; !dup {
 			keys[ff.Field.Name] = wire.JSONName(ff.Field)
 		}
