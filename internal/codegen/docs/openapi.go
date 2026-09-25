@@ -117,7 +117,7 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	}
 	if len(registry.dups) > 0 {
 		clashes := slices.Sorted(maps.Keys(registry.dups))
-		return doc, fmt.Errorf("two structurally distinct generic instances map to the same component name(s): %s - e.g. an array argument and a struct of that array's element name collide. Rename the struct (or wrap the array) so each instantiation gets a distinct schema", strings.Join(clashes, ", "))
+		return doc, fmt.Errorf("two structurally distinct generic instances map to the same component name(s): %s - a declared type is named like another instance's argument, as `IntArray` is spelled like `int[]` and `String` like `string`. Rename that type so each instantiation gets a distinct schema", strings.Join(clashes, ", "))
 	}
 	return doc, nil
 }

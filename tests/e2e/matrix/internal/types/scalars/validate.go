@@ -225,6 +225,18 @@ func (v *Envelope[T]) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on EnvelopePages.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *EnvelopePages) Validate() error {
+	if err := v.OfList.Validate(); err != nil {
+		return err
+	}
+	if err := v.ListOf.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on GenericMixinHost.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GenericMixinHost) Validate() error {
@@ -418,6 +430,12 @@ func (v *MapPages) Validate() error {
 		return err
 	}
 	if err := v.ByBatch.Validate(); err != nil {
+		return err
+	}
+	if err := v.ByList.Validate(); err != nil {
+		return err
+	}
+	if err := v.ByMaybe.Validate(); err != nil {
 		return err
 	}
 	return nil

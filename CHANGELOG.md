@@ -115,6 +115,20 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@`, `a decorator cannot be an argument of @a`, however deep the
   arguments it carries.
 
+- **Generic instances that differ in where `[]` or `?` sits get their own
+  OpenAPI components.** `Page<map<string, Item>[]>` was named like
+  `Page<map<string, Item>>`, and `Page<Box<Item>[]>` like
+  `Page<Box<Item[]>>`, so a design using both stopped with a generic-instance
+  collision. `[]` and `?` on a map or a generic instance, or on an array of
+  one, now lead its name as `ArrayOf` and `NullOr`, so these components are
+  renamed: `Page<map<string, Item>[]>` from `PageOfMapOfStringAndItem` to
+  `PageOfArrayOfMapOfStringAndItem`, `Page<Box<Item>[]>` from
+  `PageOfBoxOfItemArray` to `PageOfArrayOfBoxOfItem`, and a map value such as
+  `Box<Item>?` from `BoxOfItemOrNull` to `NullOrBoxOfItem`. On any other type
+  they still end the name, as in `PageOfMapOfStringAndItemArray` and
+  `PageOfBoxOfItemArray` for `Page<map<string, Item[]>>` and
+  `Page<Box<Item[]>>`.
+
 - **A `@default` must pass its field's constraints.** A default that broke a
   validator of its field or of the field's scalar - `@default("")` beside
   `@minLength(1)`, `@default(0)` beside `@positive`, `@default("nope")` on an

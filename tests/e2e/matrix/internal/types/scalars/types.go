@@ -158,6 +158,13 @@ type Envelope[T any] struct {
 	Meta *string `json:"meta,omitempty"`
 }
 
+// EnvelopePages instantiates Page over an Envelope of an array and over an
+// array of Envelopes: `[]` on the Envelope leads its name as `ArrayOf`.
+type EnvelopePages struct {
+	OfList Page[Envelope[[]Order]] `json:"ofList"`
+	ListOf Page[[]Envelope[Order]] `json:"listOf"`
+}
+
 // GenericMixinHost embeds the generic instance MixinPage<MixinItem>: the
 // embed promotes the instance's fields, and OpenAPI allOf-refs the
 // MixinPageOfMixinItem component.
@@ -264,11 +271,14 @@ type Lookup[T any] struct {
 	Level *T   `json:"level,omitempty"`
 }
 
-// MapPages instantiates Page over a map and over an array of those maps:
-// two components, the second's name ending in `Array`.
+// MapPages instantiates Page over a map, an array of those maps, a map of
+// arrays and a map of optional values: four components. `[]` on the map leads
+// its name as `ArrayOf`; on the map's value, a leaf, it ends it as `Array`.
 type MapPages struct {
 	ByKey   Page[map[string]Order]   `json:"byKey"`
 	ByBatch Page[[]map[string]Order] `json:"byBatch"`
+	ByList  Page[map[string][]Order] `json:"byList"`
+	ByMaybe Page[map[string]*Order]  `json:"byMaybe"`
 }
 
 // MapValueGeneric verifies that generic instances ride the `map<K, V>`

@@ -119,11 +119,21 @@ type MapValueGeneric {
 	bucket map<string, Page<Order>>
 }
 
-// MapPages instantiates Page over a map and over an array of those maps:
-// two components, the second's name ending in `Array`.
+// MapPages instantiates Page over a map, an array of those maps, a map of
+// arrays and a map of optional values: four components. `[]` on the map leads
+// its name as `ArrayOf`; on the map's value, a leaf, it ends it as `Array`.
 type MapPages {
 	byKey   Page<map<string, Order>>
 	byBatch Page<map<string, Order>[]>
+	byList  Page<map<string, Order[]>>
+	byMaybe Page<map<string, Order?>>
+}
+
+// EnvelopePages instantiates Page over an Envelope of an array and over an
+// array of Envelopes: `[]` on the Envelope leads its name as `ArrayOf`.
+type EnvelopePages {
+	ofList Page<Envelope<Order[]>>
+	listOf Page<Envelope<Order>[]>
 }
 
 // PageOfPrimitive exercises a non-component arg type: `Page<string>`

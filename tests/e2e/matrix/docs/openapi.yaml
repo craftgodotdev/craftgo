@@ -2736,6 +2736,19 @@ components:
       - byColor
       - byPrio
       type: object
+    EnvelopePages:
+      description: |-
+        EnvelopePages instantiates Page over an Envelope of an array and over an
+        array of Envelopes: `[]` on the Envelope leads its name as `ArrayOf`.
+      properties:
+        listOf:
+          $ref: '#/components/schemas/ScalarsPageOfArrayOfScalarsEnvelopeOfScalarsOrder'
+        ofList:
+          $ref: '#/components/schemas/ScalarsPageOfScalarsEnvelopeOfScalarsOrderArray'
+      required:
+      - ofList
+      - listOf
+      type: object
     ErrorHeaderMeta:
       description: |-
         ErrorHeaderMeta brings a @header field into HeaderMixinError: the error
@@ -3242,7 +3255,7 @@ components:
     ListKeyedRespBody:
       $ref: '#/components/schemas/OrderPage'
     ListOrderGroupsRespBody:
-      $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrderArray'
+      $ref: '#/components/schemas/ScalarsPageOfArrayOfMapOfStringAndScalarsOrder'
     ListOrdersReq:
       description: |-
         ListOrdersReq mirrors the canonical cursor-pagination request shape.
@@ -3579,16 +3592,23 @@ components:
       $ref: '#/components/schemas/Map_KeyAndValue'
     MapPages:
       description: |-
-        MapPages instantiates Page over a map and over an array of those maps:
-        two components, the second's name ending in `Array`.
+        MapPages instantiates Page over a map, an array of those maps, a map of
+        arrays and a map of optional values: four components. `[]` on the map leads
+        its name as `ArrayOf`; on the map's value, a leaf, it ends it as `Array`.
       properties:
         byBatch:
-          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrderArray'
+          $ref: '#/components/schemas/ScalarsPageOfArrayOfMapOfStringAndScalarsOrder'
         byKey:
           $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrder'
+        byList:
+          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrderArray'
+        byMaybe:
+          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrderOrNull'
       required:
       - byKey
       - byBatch
+      - byList
+      - byMaybe
       type: object
     MapStructReqBody:
       description: |-
@@ -6031,6 +6051,23 @@ components:
       required:
       - data
       type: object
+    ScalarsEnvelopeOfScalarsOrderArray:
+      description: |-
+        Envelope<T> wraps a single value plus an optional meta string.
+        Exercises generic decl WITHOUT an array field - codegen still
+        emits a parametric Validate() receiver for it.
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/ScalarsOrder'
+          type: array
+        meta:
+          type:
+          - string
+          - "null"
+      required:
+      - data
+      type: object
     ScalarsOrder:
       description: |-
         Order is the marquee type: six scalar-typed fields, all of which
@@ -6069,6 +6106,52 @@ components:
       - rate
       - tag
       - country
+      type: object
+    ScalarsPageOfArrayOfMapOfStringAndScalarsOrder:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            items:
+              additionalProperties:
+                $ref: '#/components/schemas/ScalarsOrder'
+              type: object
+            type: array
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    ScalarsPageOfArrayOfScalarsEnvelopeOfScalarsOrder:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            items:
+              $ref: '#/components/schemas/ScalarsEnvelopeOfScalarsOrder'
+            type: array
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
       type: object
     ScalarsPageOfCents:
       description: |-
@@ -6124,11 +6207,35 @@ components:
           - "null"
         items:
           items:
-            items:
-              additionalProperties:
+            additionalProperties:
+              items:
                 $ref: '#/components/schemas/ScalarsOrder'
-              type: object
-            type: array
+              type: array
+            type: object
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    ScalarsPageOfMapOfStringAndScalarsOrderOrNull:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            additionalProperties:
+              anyOf:
+              - $ref: '#/components/schemas/ScalarsOrder'
+              - type: "null"
+            type: object
           type: array
         total:
           type: integer
@@ -6229,6 +6336,26 @@ components:
         items:
           items:
             $ref: '#/components/schemas/ScalarsEnvelopeOfScalarsOrder'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    ScalarsPageOfScalarsEnvelopeOfScalarsOrderArray:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            $ref: '#/components/schemas/ScalarsEnvelopeOfScalarsOrderArray'
           type: array
         total:
           type: integer

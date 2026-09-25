@@ -93,10 +93,64 @@ func TestGenericComponentName(t *testing.T) {
 			want:     "EnvelopeOfMapOfStringAndUser",
 		},
 		{
-			name:     "array of maps keeps its suffix",
+			name:     "array of maps leads with ArrayOf",
 			declName: "Envelope",
 			args:     []*ast.TypeRef{tArray(tMap(tRef("string"), tRef("User")))},
+			want:     "EnvelopeOfArrayOfMapOfStringAndUser",
+		},
+		{
+			name:     "2-D array of maps",
+			declName: "Envelope",
+			args:     []*ast.TypeRef{{Map: &ast.MapType{Key: tRef("string"), Value: tRef("User")}, Array: true, ArrayDepth: 2}},
+			want:     "EnvelopeOfArrayOfArrayOfMapOfStringAndUser",
+		},
+		{
+			name:     "map of arrays ends with Array",
+			declName: "Envelope",
+			args:     []*ast.TypeRef{tMap(tRef("string"), tArray(tRef("User")))},
 			want:     "EnvelopeOfMapOfStringAndUserArray",
+		},
+		{
+			name:     "optional map value ends with OrNull",
+			declName: "Envelope",
+			args:     []*ast.TypeRef{tMap(tRef("string"), tOptional(tRef("User")))},
+			want:     "EnvelopeOfMapOfStringAndUserOrNull",
+		},
+		{
+			name:     "optional array map value",
+			declName: "Envelope",
+			args:     []*ast.TypeRef{tMap(tRef("string"), tOptional(tArray(tRef("User"))))},
+			want:     "EnvelopeOfMapOfStringAndUserArrayOrNull",
+		},
+		{
+			name:     "optional map map value leads with NullOr",
+			declName: "Envelope",
+			args:     []*ast.TypeRef{tMap(tRef("string"), tOptional(tMap(tRef("string"), tRef("User"))))},
+			want:     "EnvelopeOfMapOfStringAndNullOrMapOfStringAndUser",
+		},
+		{
+			name:     "nested instance over an array ends with Array",
+			declName: "Page",
+			args:     []*ast.TypeRef{tRef("Box", tArray(tRef("Item")))},
+			want:     "PageOfBoxOfItemArray",
+		},
+		{
+			name:     "array of a nested instance leads with ArrayOf",
+			declName: "Page",
+			args:     []*ast.TypeRef{tArray(tRef("Box", tRef("Item")))},
+			want:     "PageOfArrayOfBoxOfItem",
+		},
+		{
+			name:     "a nested pair ends its leaves with Array",
+			declName: "Page",
+			args:     []*ast.TypeRef{tRef("Pair", tRef("string"), tArray(tRef("Item")))},
+			want:     "PageOfPairOfStringAndItemArray",
+		},
+		{
+			name:     "every leaf argument keeps its suffix",
+			declName: "Pair",
+			args:     []*ast.TypeRef{tArray(tRef("Item")), tArray(tRef("Item"))},
+			want:     "PairOfItemArrayAndItemArray",
 		},
 		{
 			name:     "deep recursion stays linear in tokens",
@@ -248,14 +302,18 @@ service S { get L /l { response Tallied<int> } }`,
 	}
 }
 
-// Two distinct instances named alike (`Page<IntArray>`, `Page<int[]>`) are
-// rejected; distinct names are not.
+// A declared type named like another instance's argument, `IntArray` or
+// `String`, is rejected; instances that differ in shape never share a name.
 func TestGenericInstanceNameCollisionRejected(t *testing.T) {
 	mk := func(respFields string) (*openapi3.T, error) {
 		root, files := projectFiles(t, map[string]string{
 			"app/app.craftgo": `package app
 type Page<T> { items T[] }
+type Box<T> { v T }
+type Pair<A, B> { a A  b B }
 type IntArray { whatever int }
+type String { whatever int }
+type Item { id string }
 type Req { id string }
 type Resp { ` + respFields + ` }
 service S { post G /g { request Req  response Resp } }`,
@@ -266,12 +324,29 @@ service S { post G /g { request Req  response Resp } }`,
 		}
 		return buildProjectDocument(proj, &config.Config{})
 	}
-	if _, err := mk("real Page<IntArray>  prim Page<int[]>"); err == nil || !strings.Contains(err.Error(), "structurally distinct generic") {
-		t.Errorf("expected generic-instance collision error, got: %v", err)
+	for fields, clash := range map[string]string{
+		"real Page<IntArray>  prim Page<int[]>": "PageOfIntArray",
+		"real Page<String>  prim Page<string>":  "PageOfString",
+	} {
+		_, err := mk(fields)
+		if err == nil || !strings.Contains(err.Error(), "structurally distinct generic") || !strings.Contains(err.Error(), clash) {
+			t.Errorf("%s: expected a generic-instance collision on %s, got: %v", fields, clash, err)
+			continue
+		}
+		if strings.Contains(err.Error(), "struct of") {
+			t.Errorf("%s: hint names a struct: %v", fields, err)
+		}
 	}
 	for _, fields := range []string{
 		"a Page<int>  b Page<string>",
 		"a Page<map<string, int>>  b Page<map<string, int>[]>",
+		"a Page<map<string, Item[]>>  b Page<map<string, Item>[]>",
+		"a Page<map<string, Item[]>[]>  b Page<map<string, Item[][]>>  c Page<map<string, Item>[][]>",
+		"a Page<map<string, map<string, int>[]>>  b Page<map<string, map<string, int[]>>>",
+		"a Page<map<string, map<string, int>?>>  b Page<map<string, map<string, int?>>>",
+		"a Page<Box<Item[]>>  b Page<Box<Item>[]>",
+		"a Page<Pair<string, Item[]>>  b Page<Pair<string, Item>[]>",
+		"a Pair<map<string, Item[]>, int>  b Pair<map<string, Item>[], int>",
 	} {
 		if _, err := mk(fields); err != nil {
 			t.Errorf("distinct generic instances %s wrongly rejected: %v", fields, err)

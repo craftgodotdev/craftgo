@@ -90,46 +90,59 @@ func (r *genericRegistry) markEmitted(name string) {
 // genericComponentName names an instance `<Decl>Of<Arg>And<Arg>...`, never
 // truncated:
 //
-//	Page<User>           → PageOfUser
-//	Page<User<Test>>     → PageOfUserOfTest
-//	Result<User, Error>  → ResultOfUserAndError
-//	Page<string>         → PageOfString
-//	Page<Order[]>        → PageOfOrderArray
-//	Page<Order?>         → PageOfOrderOrNull
+//	Page<User>                 → PageOfUser
+//	Page<User<Test>>           → PageOfUserOfTest
+//	Result<User, Error>        → ResultOfUserAndError
+//	Page<string>               → PageOfString
+//	Page<Order[]>              → PageOfOrderArray
+//	Page<map<string, Order[]>> → PageOfMapOfStringAndOrderArray
+//	Page<map<string, Order>[]> → PageOfArrayOfMapOfStringAndOrder
 func genericComponentName(decl *ast.TypeDecl, args []*ast.TypeRef) string {
-	var b strings.Builder
-	b.WriteString(pascalIdent(decl.Name))
-	b.WriteString("Of")
-	for i, a := range args {
-		if i > 0 {
-			b.WriteString("And")
-		}
-		b.WriteString(typeRefName(a))
-	}
-	return b.String()
+	return pascalIdent(decl.Name) + "Of" + argsName(args)
 }
 
-// typeRefName returns the name fragment of one type argument; `[]` and `?`
-// add `Array` and `OrNull`, so `Page<User>` and `Page<User?>` differ.
+// argsName joins the name fragments of args with `And`.
+func argsName(args []*ast.TypeRef) string {
+	parts := make([]string, len(args))
+	for i, a := range args {
+		parts[i] = typeRefName(a)
+	}
+	return strings.Join(parts, "And")
+}
+
+// typeRefName names one type argument: `[]` and `?` end a leaf's name as `Array`
+// and `OrNull`, and lead a compound's as `ArrayOf` and `NullOr`.
 func typeRefName(t *ast.TypeRef) string {
-	if t == nil {
-		return "Unknown"
-	}
-	var name string
 	switch {
+	case t == nil:
+		return "Unknown"
+	case t.Optional:
+		present := *t
+		present.Optional = false
+		if compound(&present) {
+			return "NullOr" + typeRefName(&present)
+		}
+		return typeRefName(&present) + "OrNull"
 	case t.Array:
-		name = typeRefName(t.ElemTypeRef()) + "Array"
+		elem := t.ElemTypeRef()
+		if compound(elem) {
+			return "ArrayOf" + typeRefName(elem)
+		}
+		return typeRefName(elem) + "Array"
 	case t.Map != nil:
-		name = "MapOf" + typeRefName(t.Map.Key) + "And" + typeRefName(t.Map.Value)
+		return "MapOf" + typeRefName(t.Map.Key) + "And" + typeRefName(t.Map.Value)
 	case t.Named != nil:
-		name = namedTypeName(t.Named)
-	default:
-		name = "Unknown"
+		return namedTypeName(t.Named)
 	}
-	if t.Optional {
-		name += "OrNull"
+	return "Unknown"
+}
+
+// compound reports whether t is a map or a generic instance, or an array of one.
+func compound(t *ast.TypeRef) bool {
+	for t != nil && t.Array {
+		t = t.ElemTypeRef()
 	}
-	return name
+	return t != nil && (t.Map != nil || t.Named != nil && len(t.Named.Args) > 0)
 }
 
 // namedTypeName returns the name fragment of a named argument, its own
@@ -142,16 +155,7 @@ func namedTypeName(n *ast.NamedTypeRef) string {
 	if len(n.Args) == 0 {
 		return name
 	}
-	var b strings.Builder
-	b.WriteString(name)
-	b.WriteString("Of")
-	for i, a := range n.Args {
-		if i > 0 {
-			b.WriteString("And")
-		}
-		b.WriteString(typeRefName(a))
-	}
-	return b.String()
+	return name + "Of" + argsName(n.Args)
 }
 
 // pascalIdent upper-cases the first rune of name.
