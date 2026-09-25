@@ -178,6 +178,11 @@ type PromoteItemReq struct {
 	Slot   int    `json:"slot"`
 }
 
+// ReportCards is the page Report and ReportCard answer.
+type ReportCards struct {
+	Names []string `json:"names"`
+}
+
 // User is the full entity. Embeds `shared.Audit` via the implicit
 // CROSS-PACKAGE MIXIN form (`shared.Audit` alone on a body line is
 // a mixin reference, not a field) so the createdAt / updatedAt /

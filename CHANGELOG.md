@@ -820,6 +820,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   Dup }` when two packages declare `Dup` (merged as `ADup`), the instance
   documented the field as the type argument; it now refers to the type.
 
+- **Two operations whose body components share a name both generate.** When
+  `Report.CardList` and `ReportCard.List` are each named after their service,
+  both bodies come to `ReportCardList`, and the OpenAPI target stopped with an
+  error blaming a user-declared type. The operation whose operationId is that
+  name keeps it; the other's components take the lowest free number, as
+  `ReportCardList2RespBody`.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

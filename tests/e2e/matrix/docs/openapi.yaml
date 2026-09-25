@@ -5015,6 +5015,24 @@ components:
       $ref: '#/components/schemas/RgHost'
     RegressionServiceGetItemRespBody:
       $ref: '#/components/schemas/RgItemView'
+    ReportCardCardListRespBody:
+      $ref: '#/components/schemas/ReportCards'
+    ReportCardList2RespBody:
+      $ref: '#/components/schemas/ReportCards'
+    ReportCardListRespBody:
+      $ref: '#/components/schemas/ReportCards'
+    ReportCards:
+      description: ReportCards is the page Report and ReportCard answer.
+      properties:
+        names:
+          items:
+            type: string
+          type: array
+      required:
+      - names
+      type: object
+    ReportListRespBody:
+      $ref: '#/components/schemas/ReportCards'
     Rg2Audit:
       description: |-
         A request whose entire body comes from a mixin. The server decodes the
@@ -11149,6 +11167,58 @@ paths:
           description: Created
       tags:
       - regression
+  /report-card/all:
+    get:
+      description: Lists every report card; its body component is ReportCardListRespBody.
+      operationId: ReportCardList
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportCardListRespBody'
+          description: OK
+      tags:
+      - ReportCard
+  /report-card/cards:
+    get:
+      description: Lists the cards of a report card.
+      operationId: ReportCardCardList
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportCardCardListRespBody'
+          description: OK
+      tags:
+      - ReportCard
+  /report/all:
+    get:
+      description: Lists every report.
+      operationId: ReportList
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportListRespBody'
+          description: OK
+      tags:
+      - Report
+  /report/cards:
+    get:
+      description: Lists the report's cards; its body component is ReportCardList2RespBody.
+      operationId: listReportCards
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportCardList2RespBody'
+          description: OK
+      tags:
+      - Report
   /scalars/audited/{id}:
     get:
       description: Read audited record. Response type uses the mixin pattern (AuditFields

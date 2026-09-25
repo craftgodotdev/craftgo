@@ -213,6 +213,12 @@ func (v *PromoteItemReq) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on ReportCards.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *ReportCards) Validate() error {
+	return nil
+}
+
 // Validate checks every field-level constraint declared on User.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *User) Validate() error {

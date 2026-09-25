@@ -1,6 +1,9 @@
 package docs
 
 import (
+	"maps"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -14,15 +17,41 @@ import (
 
 // addPaths adds an operation per method of pkg, each under its route.
 func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
+	for _, op := range operations(pkg) {
+		s := newOpShape(op.svc, op.m, route.Resolve("", op.svc.Primary, op.m), op.id, op.stem, pkg, registry.resolver)
+		item := doc.Paths.Value(s.full)
+		if item == nil {
+			item = &openapi3.PathItem{}
+			doc.Paths.Set(s.full, item)
+		}
+		setOperation(item, op.m.Verb, buildOperation(doc, op.svc, s, pkg, registry, names))
+	}
+}
+
+// operation is a method of a service of the merged package, with its
+// operationId and the stem of its body component names.
+type operation struct {
+	svc      *semantic.ServiceInfo
+	m        *ast.Method
+	id, stem string
+}
+
+// operations returns pkg's methods in document order. A stem is the method's
+// base name, its package first (`ASGet`) when a service of its name in
+// another package has a method of its name. Of operations sharing a stem
+// (`A.BC` and `AB.C` are both ABC), the one whose operationId it is, else the
+// first, keeps it; each other takes it with the lowest number no operation
+// holds (`ABC2`).
+func operations(pkg *semantic.Package) []operation {
 	counts := semantic.MethodNameCounts(pkg)
-	// Services of one name in two packages may share a method name: those
-	// operations' body components take their package first (`ASGetReqBody`).
 	owners := map[string]int{}
 	for _, svc := range pkg.Services {
 		for _, m := range svc.Methods {
 			owners[svc.Primary.Name+"."+m.Name]++
 		}
 	}
+	var ops []operation
+	byStem := map[string][]int{}
 	for _, key := range pkg.ServiceNames() {
 		svc := pkg.Services[key]
 		for _, m := range svc.Methods {
@@ -31,15 +60,35 @@ func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry,
 			if owners[svc.Primary.Name+"."+m.Name] >= 2 {
 				stem = idents.PascalCase(servicePackage(key)) + base
 			}
-			s := newOpShape(svc, m, route.Resolve("", svc.Primary, m), semantic.OperationID(svc.Decorators(m), base), stem, pkg, registry.resolver)
-			item := doc.Paths.Value(s.full)
-			if item == nil {
-				item = &openapi3.PathItem{}
-				doc.Paths.Set(s.full, item)
-			}
-			setOperation(item, m.Verb, buildOperation(doc, svc, s, pkg, registry, names))
+			byStem[stem] = append(byStem[stem], len(ops))
+			ops = append(ops, operation{svc: svc, m: m, id: semantic.OperationID(svc.Decorators(m), base), stem: stem})
 		}
 	}
+	for _, stem := range slices.Sorted(maps.Keys(byStem)) {
+		shared := byStem[stem]
+		if len(shared) < 2 {
+			continue
+		}
+		keep := shared[0]
+		for _, i := range shared {
+			if ops[i].id == stem {
+				keep = i
+				break
+			}
+		}
+		n := 2
+		for _, i := range shared {
+			if i == keep {
+				continue
+			}
+			for len(byStem[stem+strconv.Itoa(n)]) > 0 {
+				n++
+			}
+			ops[i].stem = stem + strconv.Itoa(n)
+			byStem[ops[i].stem] = []int{i}
+		}
+	}
+	return ops
 }
 
 // opShape is a method as its operation documents it: its route, operationId

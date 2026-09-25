@@ -1,0 +1,41 @@
+// body_names.craftgo exercises the names of the per-operation body
+// components when two services' names run into their method names.
+package services
+
+// ReportCards is the page Report and ReportCard answer.
+type ReportCards {
+	names string[]
+}
+
+// Report and ReportCard both declare CardList and List, so each method is
+// named after its service, and Report.CardList and ReportCard.List both come
+// to ReportCardList. ReportCard.List, whose operationId it is, keeps
+// ReportCardListRespBody; Report.CardList, named listReportCards, answers
+// ReportCardList2RespBody.
+@prefix("/report")
+service Report {
+	@doc("Lists the report's cards; its body component is ReportCardList2RespBody.")
+	@operationId("listReportCards")
+	get CardList /cards {
+		response ReportCards
+	}
+
+	@doc("Lists every report.")
+	get List /all {
+		response ReportCards
+	}
+}
+
+// ReportCard is the service Report's names run into.
+@prefix("/report-card")
+service ReportCard {
+	@doc("Lists every report card; its body component is ReportCardListRespBody.")
+	get List /all {
+		response ReportCards
+	}
+
+	@doc("Lists the cards of a report card.")
+	get CardList /cards {
+		response ReportCards
+	}
+}

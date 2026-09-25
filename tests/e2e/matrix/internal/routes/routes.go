@@ -33,6 +33,8 @@ import (
 	regressionbatch6routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch6"
 	regressionbatch7routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch7"
 	regressionserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_service"
+	reportroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/report"
+	reportcardroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/report_card"
 	scalarsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/scalars_service"
 	securedserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/secured_service"
 	statuscodesserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/status_codes_service"
@@ -78,6 +80,8 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	regressionbatch6routes.RegisterRoutes(srv, svcCtx)
 	regressionbatch7routes.RegisterRoutes(srv, svcCtx)
 	regressionserviceroutes.RegisterRoutes(srv, svcCtx)
+	reportroutes.RegisterRoutes(srv, svcCtx)
+	reportcardroutes.RegisterRoutes(srv, svcCtx)
 	scalarsserviceroutes.RegisterRoutes(srv, svcCtx)
 	securedserviceroutes.RegisterRoutes(srv, svcCtx)
 	statuscodesserviceroutes.RegisterRoutes(srv, svcCtx)

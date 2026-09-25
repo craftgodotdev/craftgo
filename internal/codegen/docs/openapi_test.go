@@ -244,6 +244,40 @@ service DService { get GetThing /d { response A } }`
 	mustContainNone(t, body, "operationId: List\n", "\n    ListRespBody:")
 }
 
+// Operations whose body components would share a name, `A.BC` and `AB.C`
+// both being ABC, get distinct ones: the operation whose operationId is ABC
+// keeps it and the other takes the lowest number no operation holds.
+func TestOperationBodyComponentsNeverCollide(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+type Req { name string }
+type Resp { ok bool }
+service A {
+	@operationId("renamedBC")
+	post BC /a/bc { request Req  response Resp }
+}
+service AB {
+	post C /ab/c { request Req  response Resp }
+}
+service X {
+	post BC /x/bc { request Req  response Resp }
+	post C /x/c { request Req  response Resp }
+}
+service Y {
+	post ABC2 /y { request Req  response Resp }
+}`,
+	}, &config.Config{})
+	for path, stem := range map[string]string{"/ab/c": "ABC", "/a/bc": "ABC3", "/y": "ABC2"} {
+		op := doc.Paths.Find(path).Post
+		if got := op.RequestBody.Value.Content.Get(mimeApplicationJSON).Schema.Ref; got != "#/components/schemas/"+stem+"ReqBody" {
+			t.Errorf("%s request body refs %q, want %sReqBody", path, got, stem)
+		}
+		if got := op.Responses.Status(201).Value.Content.Get(mimeApplicationJSON).Schema.Ref; got != "#/components/schemas/"+stem+"RespBody" {
+			t.Errorf("%s response body refs %q, want %sRespBody", path, got, stem)
+		}
+	}
+}
+
 // No document is built with a duplicate operationId: the analyser rejects an
 // `@operationId` equal to another method's, in one package or across two.
 func TestDuplicateOperationIDRejectedBeforeTheDocument(t *testing.T) {
