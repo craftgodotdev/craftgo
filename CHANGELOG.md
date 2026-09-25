@@ -85,6 +85,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   client could not tell the body was cut short. It still logs the panic,
   then aborts the connection as a `panic(http.ErrAbortHandler)` does.
 
+- **An invalid status is answered 500.** A `WriteHeader` with a code
+  outside 100-999, which `net/http` rejects with a panic, counted as
+  committing the response, so `Recovery` left an empty 200 in place of its
+  500.
+
 - **`server.Server` is safe for concurrent use.** The `SetDefault*`,
   `SetCORS` and `SetLogger` setters wrote without the lock that route
   registration and `Handler` read under, a data race when configuration ran

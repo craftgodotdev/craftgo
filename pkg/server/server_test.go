@@ -138,6 +138,42 @@ func TestServerRecoveryLetsAnAbortedHandlerAbortTheConnection(t *testing.T) {
 	}
 }
 
+// A status net/http rejects commits nothing, so Recovery answers 500, through AccessLog and
+// Compress too.
+func TestAnInvalidStatusIsAnswered500(t *testing.T) {
+	observeLogs(t)
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	for _, code := range []int{0, 99, 1000} {
+		for name, chain := range map[string][]Middleware{
+			"default chain":           nil,
+			"access log and compress": {AccessLog(log.Default()), Compress()},
+		} {
+			t.Run(fmt.Sprintf("%s/%d", name, code), func(t *testing.T) {
+				s := newTestServer(t)
+				for _, mw := range chain {
+					s.Use(mw)
+				}
+				s.HandleFunc("GET /x", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(code) })
+				srv := httptest.NewServer(finalize(s))
+				defer srv.Close()
+				req, err := http.NewRequest(http.MethodGet, srv.URL+"/x", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				req.Header.Set("Accept-Encoding", "gzip")
+				resp, err := client.Do(req)
+				if err != nil {
+					t.Fatalf("WriteHeader(%d): %v, want a 500", code, err)
+				}
+				_ = resp.Body.Close()
+				if resp.StatusCode != http.StatusInternalServerError {
+					t.Errorf("WriteHeader(%d): status %d, want 500", code, resp.StatusCode)
+				}
+			})
+		}
+	}
+}
+
 // WriteValidationError leaves a committed response untouched.
 func TestWriteValidationErrorSkipsPostCommit(t *testing.T) {
 	s := newTestServer(t)
