@@ -178,6 +178,17 @@ error NotFound XLost {
 	key string
 }
 
+// XRefsService shares its name with the service of package xrefs; its own
+// @group keeps the generated code apart, and the OpenAPI document lists both.
+@prefix("/xshared")
+@group("xshared")
+service XRefsService {
+	@doc("A method of the xshared XRefsService: documented beside the methods of xrefs' service of the same name.")
+	get GetSharedOwner /owner {
+		response XOwner
+	}
+}
+
 // XTier is an INT-valued enum carried cross-package by an event payload
 // (`events.TierPromoted`). Resolving the enum against the consuming
 // package instead of the declaring one finds nothing, falls back to the

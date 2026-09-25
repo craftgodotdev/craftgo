@@ -41,6 +41,7 @@ import (
 	userserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/user_service"
 	xdelegateserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/x_delegate_service"
 	xrefsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/x_refs_service"
+	xrefsserviceXsharedroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/xshared"
 
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
@@ -85,4 +86,5 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	userserviceroutes.RegisterRoutes(srv, svcCtx)
 	xdelegateserviceroutes.RegisterRoutes(srv, svcCtx)
 	xrefsserviceroutes.RegisterRoutes(srv, svcCtx)
+	xrefsserviceXsharedroutes.RegisterRoutes(srv, svcCtx)
 }

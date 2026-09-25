@@ -100,12 +100,13 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 				out.Errors[cp.Name] = &cp
 			}
 		}
-		// Services merge by name; one without methods is left out.
+		// A service goes under its qualified name, `a.S`, so two packages'
+		// services of one name both stay; one without methods is left out.
 		for name, si := range p.Services {
 			if len(si.Methods) == 0 {
 				continue
 			}
-			out.Services[name] = m.service(pkgName, si)
+			out.Services[pkgName+"."+name] = m.service(pkgName, si)
 		}
 		maps.Copy(out.Middlewares, p.Middlewares)
 	}

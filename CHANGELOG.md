@@ -582,6 +582,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   only the variables of its own path, so under `@prefix("/orgs/{org}")`
   `{org}` went undeclared and the document was invalid.
 
+- **The OpenAPI document lists services of one name from every package.**
+  Two packages may each declare a service of the same name under their own
+  `@group`; the document kept one of them and silently dropped every
+  operation of the other.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

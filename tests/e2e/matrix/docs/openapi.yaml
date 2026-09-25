@@ -2535,6 +2535,8 @@ components:
       type: object
     GetProfileRespBody:
       $ref: '#/components/schemas/Profile'
+    GetSharedOwnerRespBody:
+      $ref: '#/components/schemas/XOwner'
     GetThirdRespBody:
       $ref: '#/components/schemas/XOwner'
     GetTracedRespBody:
@@ -11954,5 +11956,19 @@ paths:
           description: Created
       tags:
       - XRefsService
+  /xshared/owner:
+    get:
+      description: 'A method of the xshared XRefsService: documented beside the methods
+        of xrefs'' service of the same name.'
+      operationId: GetSharedOwner
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSharedOwnerRespBody'
+          description: OK
+      tags:
+      - xshared
 servers:
 - url: /api

@@ -16,11 +16,11 @@ import (
 
 func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
 	counts := methodNameCounts(pkg)
-	for _, svcName := range pkg.ServiceNames() {
-		svc := pkg.Services[svcName]
+	for _, key := range pkg.ServiceNames() {
+		svc := pkg.Services[key]
 		for _, m := range svc.Methods {
 			full := route.Resolve("", svc.Primary, m)
-			base := operationBaseName(svcName, m, counts)
+			base := operationBaseName(svc.Primary.Name, m, counts)
 			addRequestBodySchema(doc, m, pkg, registry, base, names)
 			addPerOperationResponseSchema(doc, m, pkg, registry, base, names)
 			item := doc.Paths.Value(full)
@@ -28,7 +28,7 @@ func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry,
 				item = &openapi3.PathItem{}
 				doc.Paths.Set(full, item)
 			}
-			op := buildOperation(svcName, m, pkg, registry, full, base)
+			op := buildOperation(svc, m, pkg, registry, full, base)
 			setOperation(item, m.Verb, op)
 		}
 	}
@@ -47,11 +47,11 @@ func operationBaseName(svcName string, m *ast.Method, counts map[string]int) str
 func checkOperationIDUniqueness(pkg *semantic.Package) error {
 	counts := methodNameCounts(pkg)
 	owners := map[string][]string{} // operationId -> ["Service.Method", ...]
-	for _, svcName := range pkg.ServiceNames() {
-		svc := pkg.Services[svcName]
+	for _, key := range pkg.ServiceNames() {
+		svc := pkg.Services[key]
 		for _, m := range svc.Methods {
-			id := operationID(svc.Decorators(m), operationBaseName(svcName, m, counts))
-			owners[id] = append(owners[id], svcName+"."+m.Name)
+			id := operationID(svc.Decorators(m), operationBaseName(svc.Primary.Name, m, counts))
+			owners[id] = append(owners[id], svc.Primary.Name+"."+m.Name)
 		}
 	}
 	var dups []string

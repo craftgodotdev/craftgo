@@ -32,12 +32,11 @@ func isMultipartRequest(m *ast.Method, pkg *semantic.Package, r *semantic.Resolv
 	return len(files) > 0
 }
 
-func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, full, base string) *openapi3.Operation {
-	svc := pkg.Services[svcName]
+func buildOperation(svc *semantic.ServiceInfo, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, full, base string) *openapi3.Operation {
 	decs := svc.Decorators(m)
 	op := &openapi3.Operation{
 		OperationID: operationID(decs, base),
-		Tags:        operationTags(svcName, m, pkg),
+		Tags:        operationTags(svc, m),
 		// NewResponses would seed a `default` response.
 		Responses:   openapi3.NewResponsesWithCapacity(2),
 		Description: semantic.Description(decs, m.Doc),
@@ -449,7 +448,7 @@ func operationID(decs []*ast.Decorator, base string) string {
 // operationTags returns the service's `@tags`, its `@group`, then the method's
 // `@tags`, each once, else the service name. `@ignoreTags` keeps only the
 // method's own.
-func operationTags(svcName string, m *ast.Method, pkg *semantic.Package) []string {
+func operationTags(svc *semantic.ServiceInfo, m *ast.Method) []string {
 	var out []string
 	add := func(tags ...string) {
 		for _, t := range tags {
@@ -458,7 +457,6 @@ func operationTags(svcName string, m *ast.Method, pkg *semantic.Package) []strin
 			}
 		}
 	}
-	svc := pkg.Services[svcName]
 	service, member, ignored := svc.InheritedDecorators(m, "tags")
 	add(tagsFromDecorators(service)...)
 	if !ignored && svc.Primary != nil {
@@ -468,7 +466,7 @@ func operationTags(svcName string, m *ast.Method, pkg *semantic.Package) []strin
 	}
 	add(tagsFromDecorators(member)...)
 	if len(out) == 0 {
-		out = []string{svcName}
+		out = []string{svc.Primary.Name}
 	}
 	return out
 }

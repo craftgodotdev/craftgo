@@ -170,6 +170,20 @@ func TestOpenAPI_EveryPathVariableIsDeclared(t *testing.T) {
 	}
 }
 
+// The XRefsService of xrefs and the one of xshared are both documented,
+// each under its own tag.
+func TestOpenAPI_SameNamedServicesAreAllDocumented(t *testing.T) {
+	doc := readOpenAPI(t)
+	for opID, tag := range map[string]string{
+		"XRefsServiceGetItem": "- XRefsService",
+		"GetSharedOwner":      "- xshared",
+	} {
+		if block := pathBlock(t, doc, opID); !strings.Contains(block, tag) {
+			t.Errorf("%s is not tagged %q:\n%s", opID, tag, block)
+		}
+	}
+}
+
 // An @errors name two packages declare documents the error the analyser
 // resolves it to, in the array form and from a package declaring neither.
 func TestOpenAPI_ErrorsFollowTheMergedNames(t *testing.T) {

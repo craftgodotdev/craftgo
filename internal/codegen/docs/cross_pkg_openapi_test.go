@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -95,6 +96,37 @@ error NotFound Gone { c string }`,
 		}
 		if got := r404.Value.Content.Get("application/json").Schema.Ref; got != want {
 			t.Errorf("%s: 404 refs %q, want %q", path, got, want)
+		}
+	}
+}
+
+// Services two packages name alike are each documented with their own
+// prefix, tags and group.
+func TestCrossPkgSameNamedServicesAreAllDocumented(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+type R { ok bool }
+@prefix("/pa")
+@tags(alpha)
+@group("x")
+service S { get One /one { response R } }`,
+		"b/b.craftgo": `package b
+type Q { n int }
+@tags(beta)
+@group("y")
+service S { get Two /two { response Q } }`,
+	}, &config.Config{})
+	for path, want := range map[string][]string{
+		"/pa/one": {"alpha", "x"},
+		"/two":    {"beta", "y"},
+	} {
+		item := doc.Paths.Find(path)
+		if item == nil || item.Get == nil {
+			t.Errorf("GET %s is not documented", path)
+			continue
+		}
+		if !slices.Equal(item.Get.Tags, want) {
+			t.Errorf("GET %s tags = %v, want %v", path, item.Get.Tags, want)
 		}
 	}
 }
