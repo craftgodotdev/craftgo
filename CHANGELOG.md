@@ -253,6 +253,13 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **`AccessLog` records 499 for a client that left before any response**, as
   nginx does, where it recorded the 200 `net/http` would have sent.
 
+- **A new project's `config.go` defaults only what the runtime cannot.** Its
+  `applyDefaults` fills the listener addresses and `serviceName` and leaves
+  every other blank field to the runtime, whose default is the same value,
+  except `metrics.adminAddr`: left out of `config.yaml`, it starts no scrape
+  listener, as `telemetry` documents; the generated `config.yaml` sets
+  `:9090`. `config.go` is written once, so an existing project keeps its own.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

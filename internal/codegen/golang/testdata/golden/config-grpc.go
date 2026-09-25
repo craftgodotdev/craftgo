@@ -25,9 +25,8 @@ import (
 	"os"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/craftgodotdev/craftgo/pkg/telemetry"
+	"gopkg.in/yaml.v3"
 )
 
 // Config is the in-memory shape of `config/config.yaml`. Each section
@@ -121,33 +120,12 @@ func Load(cfgPath string) (*Config, error) {
 	return cfg, nil
 }
 
-// applyDefaults fills any blank field with the framework's recommended
-// value. Mirrors the example.config.yaml that ships with `craftgo init`
-// so a project that deletes config.yaml and runs purely on defaults
-// behaves identically to one that copied the example.
+// applyDefaults fills the fields the runtime has no default of its own for.
 func (c *Config) applyDefaults() {
 	if c.GRPC.Addr == "" {
 		c.GRPC.Addr = ":9000"
 	}
-
-	if c.Logging.Level == "" {
-		c.Logging.Level = "info"
-	}
-
 	if c.ServiceName == "" {
 		c.ServiceName = "app"
-	}
-	if c.OTel.Exporter == "" {
-		c.OTel.Exporter = "none"
-	}
-
-	if c.Metrics.Exporter == "" {
-		c.Metrics.Exporter = "prometheus"
-	}
-	if c.Metrics.AdminAddr == "" {
-		c.Metrics.AdminAddr = ":9090"
-	}
-	if c.Metrics.Path == "" {
-		c.Metrics.Path = "/metrics"
 	}
 }

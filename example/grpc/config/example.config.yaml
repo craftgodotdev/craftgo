@@ -45,5 +45,5 @@ metrics:
                               # gRPC example: "otel-collector.observability:4317"
                               # HTTP example: "http://collector:4318"
   serviceName: ""             # overrides the top-level serviceName for metrics
-  adminAddr: ":9090"          # bind address for /metrics scrape (prometheus only)
+  adminAddr: ":9090"          # scrape listener address (prometheus only); empty → no listener
   path: /metrics              # route the scrape is exposed on (prometheus only)

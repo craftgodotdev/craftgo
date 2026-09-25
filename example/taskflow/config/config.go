@@ -25,9 +25,8 @@ import (
 	"os"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/craftgodotdev/craftgo/pkg/telemetry"
+	"gopkg.in/yaml.v3"
 )
 
 // Config is the in-memory shape of `config/config.yaml`. Each section
@@ -61,7 +60,8 @@ type LogConfig struct {
 // main.go serves the generated OpenAPI document plus an HTML page that renders
 // it with the chosen UI (assets loaded from a CDN).
 type DocsConfig struct {
-	// Enabled toggles the docs + spec routes. Default true.
+	// Enabled serves the docs and spec routes; false, the zero value, serves
+	// neither.
 	Enabled bool `yaml:"enabled"`
 
 	// UI is the renderer: "redoc" (default), "swagger", or "scalar".
@@ -79,12 +79,9 @@ type DocsConfig struct {
 // traffic. The admin / metrics scrape lives on a separate listener
 // (see [MetricsConfig]) so ops can firewall the two independently.
 //
-// Transport-level deadlines (`http.Server.ReadTimeout`,
-// `WriteTimeout`, `IdleTimeout`, `ReadHeaderTimeout`,
-// `MaxHeaderBytes`) are NOT modelled here - those are server-wide
-// stdlib knobs the user sets directly on the http.Server in main.go
-// when the defaults are insufficient. This struct only carries
-// per-handler defaults the framework can enforce uniformly.
+// The read and write deadlines and the header cap are not modelled here:
+// main.go sets them with srv.SetDefaultReadTimeout, SetDefaultWriteTimeout
+// and SetDefaultMaxHeaderSize when the defaults do not fit.
 type ServerConfig struct {
 	// Addr is the bind address for the public HTTP server, e.g. ":8080"
 	// or "127.0.0.1:8080" to limit to localhost during development.
@@ -178,43 +175,12 @@ func Load(cfgPath string) (*Config, error) {
 	return cfg, nil
 }
 
-// applyDefaults fills any blank field with the framework's recommended
-// value. Mirrors the example.config.yaml that ships with `craftgo init`
-// so a project that deletes config.yaml and runs purely on defaults
-// behaves identically to one that copied the example.
+// applyDefaults fills the fields the runtime has no default of its own for.
 func (c *Config) applyDefaults() {
 	if c.Server.Addr == "" {
 		c.Server.Addr = ":8080"
 	}
-
-	if c.Logging.Level == "" {
-		c.Logging.Level = "info"
-	}
-
 	if c.ServiceName == "" {
 		c.ServiceName = "taskflow"
-	}
-	if c.OTel.Exporter == "" {
-		c.OTel.Exporter = "none"
-	}
-
-	if c.Metrics.Exporter == "" {
-		c.Metrics.Exporter = "prometheus"
-	}
-	if c.Metrics.AdminAddr == "" {
-		c.Metrics.AdminAddr = ":9090"
-	}
-	if c.Metrics.Path == "" {
-		c.Metrics.Path = "/metrics"
-	}
-
-	if c.Docs.UI == "" {
-		c.Docs.UI = "redoc"
-	}
-	if c.Docs.Path == "" {
-		c.Docs.Path = "/docs"
-	}
-	if c.Docs.SpecPath == "" {
-		c.Docs.SpecPath = "/openapi.yaml"
 	}
 }
