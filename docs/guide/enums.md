@@ -209,7 +209,7 @@ If you need custom marshaling (e.g., always emit lowercase regardless of the con
 ## Restrictions
 
 - Enum values cannot share a Go-side identifier (`Active` and `active` would both produce `StatusActive`); the analyzer flags collisions
-- Enum names follow Go's exported convention - lower-case names produce unexported types and are flagged with a warning
+- Enum names start with an uppercase letter - a lower-case name would give an unexported Go type, so the analyzer rejects it
 - Empty enums are not allowed
 
 ## When to prefer scalars

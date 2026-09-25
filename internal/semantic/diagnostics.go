@@ -57,7 +57,8 @@ const (
 	CodeDuplicateDecl = "decl/duplicate"
 	// CodeDeclBuiltinName fires when a type, enum, scalar or error is named after a built-in type.
 	CodeDeclBuiltinName = "decl/builtin-name"
-	// CodeDeclNameCase warns when a declaration or method name is not capitalised.
+	// CodeDeclNameCase fires when a declaration or method name would make a generated Go
+	// identifier unexported; a lower-case service name warns.
 	CodeDeclNameCase = "decl/name-case"
 	// CodeFieldNameCollision fires when two fields of one body share a Go name (warning) or a JSON key.
 	CodeFieldNameCollision = "field/name-collision"

@@ -212,8 +212,8 @@ event E { payload P }`, CodeDecoratorPlacement)
 	}
 }
 
-func TestEventNameCaseWarning(t *testing.T) {
-	d := expectWarning(t, `package p
+func TestEventNameCaseError(t *testing.T) {
+	d := expectError(t, `package p
 type P { id string }
 event lowered { payload P }`, CodeDeclNameCase)
 	if !strings.Contains(d.Msg, "event name") {

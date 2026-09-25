@@ -1,14 +1,17 @@
 package semantic
 
 import (
+	"go/token"
+	"strconv"
+	"strings"
 	"unicode"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
-// checkDeclNameCase warns about each declaration and method name that does
-// not start with an uppercase letter, since Go output keeps names verbatim.
+// checkDeclNameCase checks the name of every declaration and method of files.
 func (a *analyzer) checkDeclNameCase(files []*ast.File) {
 	for _, f := range files {
 		for _, d := range f.Decls {
@@ -21,39 +24,68 @@ func (a *analyzer) checkDeclNameCase(files []*ast.File) {
 func (a *analyzer) checkOneDeclNameCase(d ast.Decl) {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
-		a.warnNameCase("type", dd.Name, dd.Pos)
+		a.checkTypeTableName("type", dd.Name, dd.Pos)
 	case *ast.ErrorDecl:
-		a.warnNameCase("error", dd.Name, dd.Pos)
+		a.checkTypeTableName("error", dd.Name, dd.Pos)
 	case *ast.EnumDecl:
-		a.warnNameCase("enum", dd.Name, dd.Pos)
+		a.checkTypeTableName("enum", dd.Name, dd.Pos)
+	case *ast.ScalarDecl:
+		a.checkTypeTableName("scalar", dd.Name, dd.Pos)
 	case *ast.ServiceDecl:
 		// An extend block repeats its service's name; its methods are new names.
 		if !dd.Extend {
-			a.warnNameCase("service", dd.Name, dd.Pos)
+			a.warnServiceNameCase(dd.Name, dd.Pos)
 		}
 		for _, m := range dd.Methods() {
-			a.warnNameCase("method", m.Name, m.Pos)
+			a.checkExportedName("method", m.Name, m.Pos)
 		}
 	case *ast.MiddlewareDecl:
-		a.warnNameCase("middleware", dd.Name, dd.Pos)
+		a.checkExportedName("middleware", dd.Name, dd.Pos)
 	case *ast.EventDecl:
-		a.warnNameCase("event", dd.Name, dd.Pos)
-	case *ast.ScalarDecl:
-		a.warnNameCase("scalar", dd.Name, dd.Pos)
+		a.checkExportedName("event", dd.Name, dd.Pos)
 	}
 }
 
-// warnNameCase warns when a non-empty name does not start with an
-// uppercase letter.
-func (a *analyzer) warnNameCase(kind, name string, pos lexer.Position) {
-	if name == "" {
+// checkTypeTableName is [analyzer.checkExportedName] for a type, error, enum
+// or scalar, whose built-in spelling [CodeDeclBuiltinName] reports.
+func (a *analyzer) checkTypeTableName(kind, name string, pos lexer.Position) {
+	if prims.Is(name) {
 		return
 	}
-	first := []rune(name)[0]
-	if unicode.IsUpper(first) {
+	a.checkExportedName(kind, name, pos)
+}
+
+// checkExportedName rejects a non-empty name that the Go identifiers
+// generated from it would carry unexported.
+func (a *analyzer) checkExportedName(kind, name string, pos lexer.Position) {
+	if name == "" || token.IsExported(name) {
+		return
+	}
+	fix := "to start with an uppercase letter"
+	if exported := exportedSpelling(name); exported != "" {
+		fix = strconv.Quote(exported)
+	}
+	a.diag(pos, pos, lexer.SeverityError, CodeDeclNameCase,
+		"%s name %q must start with an uppercase letter: a Go identifier generated from it would be unexported, out of reach of the other generated packages - rename it %s",
+		kind, name, fix)
+}
+
+// warnServiceNameCase warns about a service name that does not start with an
+// uppercase letter; it names only directories and documents.
+func (a *analyzer) warnServiceNameCase(name string, pos lexer.Position) {
+	if name == "" || token.IsExported(name) {
 		return
 	}
 	a.diag(pos, pos, lexer.SeverityWarning, CodeDeclNameCase,
-		"%s name %q should start with an uppercase letter - codegen emits decl names verbatim, so lower-case becomes an unexported Go identifier (cross-package imports will fail)",
-		kind, name)
+		"service name %q should start with an uppercase letter, as the names of its methods must", name)
+}
+
+// exportedSpelling returns name without its leading underscores and with an
+// upper-case first letter, or "" when no letter leads what remains.
+func exportedSpelling(name string) string {
+	rest := strings.TrimLeft(name, "_")
+	if rest == "" || !unicode.IsLetter(rune(rest[0])) {
+		return ""
+	}
+	return strings.ToUpper(rest[:1]) + rest[1:]
 }

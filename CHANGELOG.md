@@ -51,8 +51,8 @@ breaking change to the DSL or the generated layout bumps the major version.
   completion details use the same spelling.
 
 - **`object` is no longer a built-in type.** It was listed as one only to be
-  rejected: a declaration may now take the name, while a field typed `object`
-  still gets the hint to use `any` or `map<string, V>`.
+  rejected; a field typed `object` still gets the hint to use `any` or
+  `map<string, V>`.
 
 - **`pkg/events/nats` needs Go 1.25, not 1.26.** Its tests against an
   embedded nats-server live in a module of their own, so the adapter no
@@ -658,6 +658,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   same error twice or a second one at the same place, and a string with a
   bad escape or a number with a bad suffix also reported `expected literal,
   got Error`; each place in a file now gets one diagnostic.
+
+- **A declaration name starts with an uppercase letter.** A `type`, `enum`,
+  `scalar`, `error`, `middleware`, `event` or method named in lower case, or
+  with a leading `_`, only warned, and the generated Go declared it
+  unexported: another package's `lib.user` did not compile (`undefined:
+  lib.user`), and a lower-case method or middleware broke its handler or the
+  routes. It is now an error, `decl/name-case`, suggesting the capitalised
+  name; a lower-case `service` name, which names only directories and
+  documents, still warns.
 
 ### Deprecated
 
