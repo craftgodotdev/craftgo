@@ -60,13 +60,13 @@ func eventTargets(cfg *config.Config) iter.Seq2[langTarget, string] {
 // targetDocs is the `--target` name of the OpenAPI document.
 const targetDocs = "docs"
 
-// SelectableTargets is everything `--target` accepts, in run order.
+// SelectableTargets is everything `--target` accepts.
 func SelectableTargets() []string {
 	return append(append([]string{}, config.SupportedLangs...), targetDocs)
 }
 
-// Generate runs a pass for in under projectRoot: Go, the event targets, then
-// OpenAPI. targets narrows the run and its sweep; none selects every target.
+// Generate runs OpenAPI, which a new main.go embeds from disk, then Go and the
+// event targets for in under projectRoot; targets narrows the run and its sweep.
 func Generate(in Inputs, cfg *config.Config, projectRoot string, targets ...string) error {
 	sel, err := selection(targets)
 	if err != nil {
@@ -119,20 +119,17 @@ var craftgoHeaders = []string{golang.GeneratedHeader, docs.GeneratedHeader}
 
 // emit runs the selected targets in order, without the sweep.
 func emit(in Inputs, cfg *config.Config, projectRoot string, sel map[string]bool) error {
-	if sel[config.LangGo] {
-		if err := golang.Generate(in.Design, in.Protos, cfg, projectRoot); err != nil {
-			return err
-		}
-	}
-	if err := generateEventTargets(in.Design, cfg, projectRoot, sel); err != nil {
-		return err
-	}
 	if sel[targetDocs] {
 		if err := docs.GenerateOpenAPI(in.Design, cfg, projectRoot); err != nil {
 			return fmt.Errorf("openapi: %w", err)
 		}
 	}
-	return nil
+	if sel[config.LangGo] {
+		if err := golang.Generate(in.Design, in.Protos, cfg, projectRoot); err != nil {
+			return err
+		}
+	}
+	return generateEventTargets(in.Design, cfg, projectRoot, sel)
 }
 
 // selection turns the requested names into a set, rejecting an unknown

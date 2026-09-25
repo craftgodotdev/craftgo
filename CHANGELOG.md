@@ -1065,6 +1065,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@gte(0.1)` there stays `minimum: 0.1`, so a `@default(0.1)` beside it
   remains valid.
 
+- **`craftgo gen --target go` on a new project builds.** Its new `main.go`
+  embedded the OpenAPI document, which that run does not write, so `go build`
+  failed with `pattern docs/openapi.yaml: no matching files found`. A new
+  `main.go` now embeds the document only when it is on disk as the Go code is
+  generated, and a full run writes the document first.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

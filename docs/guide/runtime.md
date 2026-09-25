@@ -179,8 +179,10 @@ docs:
 ```
 
 `main.go` embeds the generated `openapi.yaml` and wires it via
-`server.ServeDocs(...)`. To add it to a hand-written server (or an existing
-project whose gen-once `main.go` predates the feature):
+`server.ServeDocs(...)`, when the document is on disk as `main.go` is first
+generated. To add it to a hand-written server (or an existing project whose
+gen-once `main.go` predates the feature or was generated without the
+document):
 
 ```go
 //go:embed docs/openapi.yaml

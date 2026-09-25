@@ -209,6 +209,48 @@ service S { get Get /g { response Resp } }`, setup: func(*config.Config) {}},
 	}
 }
 
+// A new main.go embeds the OpenAPI document when the run writes it or finds
+// it on disk, and only then: `--target go` on a fresh project embeds none.
+func TestMainEmbedsTheDocumentOnlyWhenOneExists(t *testing.T) {
+	proj := analyzeProject(t, `package p
+type P { id string }
+service S { get Read /r { response P } }`)
+	cfg := eventsConfig()
+	cfg.Output.Main = "./main.go"
+	embeds := func(dir string) bool {
+		t.Helper()
+		src, err := os.ReadFile(filepath.Join(dir, "main.go"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Contains(string(src), "//go:embed docs/openapi.yaml")
+	}
+	fresh := t.TempDir()
+	if err := Generate(Inputs{Design: proj}, cfg, fresh, config.LangGo); err != nil {
+		t.Fatal(err)
+	}
+	if embeds(fresh) {
+		t.Error("--target go on a fresh project embeds a document the run never writes")
+	}
+	full := t.TempDir()
+	if err := Generate(Inputs{Design: proj}, cfg, full); err != nil {
+		t.Fatal(err)
+	}
+	if !embeds(full) {
+		t.Error("a full run does not embed the document it writes")
+	}
+	onDisk := t.TempDir()
+	if err := Generate(Inputs{Design: proj}, cfg, onDisk, targetDocs); err != nil {
+		t.Fatal(err)
+	}
+	if err := Generate(Inputs{Design: proj}, cfg, onDisk, config.LangGo); err != nil {
+		t.Fatal(err)
+	}
+	if !embeds(onDisk) {
+		t.Error("--target go does not embed the document it finds on disk")
+	}
+}
+
 // Every name SelectableTargets offers runs.
 func TestSelectableTargetsAreKnown(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)

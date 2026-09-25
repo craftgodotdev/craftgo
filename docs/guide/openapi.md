@@ -295,4 +295,7 @@ output:
 `output.openapi: "-"` writes no document. What only the document gets wrong,
 such as two component schemas sharing a name or an `oauth2` security scheme
 without flows, stops a run that writes it, and no other: with `"-"`, or with
-`craftgo gen --target go`, the Go code is generated.
+`craftgo gen --target go`, the Go code is generated. A new `main.go` embeds
+and serves the document only when it is on disk as the Go code is generated,
+so a project first generated with `--target go` gets a `main.go` without it;
+add the [embed](/guide/runtime#api-reference-docs) once the document exists.

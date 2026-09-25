@@ -2,6 +2,7 @@ package golang
 
 import (
 	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -20,8 +21,8 @@ type mainData struct {
 	MiddlewareImport string
 	SvccontextImport string
 	Middlewares      []string
-	// HasDocs embeds and serves the OpenAPI document when the design has routes and the document
-	// sits under main.go's directory, which go:embed cannot leave.
+	// HasDocs embeds and serves the OpenAPI document of a design with routes; go:embed takes it
+	// only from disk and under main.go's directory.
 	HasDocs bool
 	// OpenAPIEmbed is the document's forward-slash path relative to main.go, for go:embed.
 	OpenAPIEmbed string
@@ -42,7 +43,11 @@ func generateProjectMain(proj *semantic.Project, protos *protodesign.Set, cfg *c
 	if !projectHasRoutes(proj) && !protos.HasServices() {
 		return nil
 	}
-	return writeGoOnce(filepath.Join(projectRoot, cfg.Output.Main), tmpl("main.tmpl"), buildProjectMainData(proj, protos, cfg))
+	data := buildProjectMainData(proj, protos, cfg)
+	if _, err := os.Stat(filepath.Join(projectRoot, cfg.Output.OpenAPI)); err != nil {
+		data.HasDocs = false
+	}
+	return writeGoOnce(filepath.Join(projectRoot, cfg.Output.Main), tmpl("main.tmpl"), data)
 }
 
 // projectHasRoutes reports whether any service declares an HTTP method.
