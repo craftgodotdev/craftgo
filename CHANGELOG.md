@@ -43,6 +43,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   before writing, as a server-sent-events stream does, gets a 200 head sent
   uncompressed instead of a `WriteHeader(0)` panic and a 500.
 
+- **`Compress` sends an informational status at once.** It held a
+  `103 Early Hints` back as the final status, so the client got 200 in
+  place of the status written after it, and a `WriteError` after it was
+  dropped, leaving an empty 200.
+
 - **A method's own `@timeout` survives the default body cap.** With both
   `server.handlerTimeout` and `server.maxBodySize` set, a method with a
   `@timeout` longer than the default and no `@maxBodySize` was cut to the

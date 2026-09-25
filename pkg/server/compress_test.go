@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
+	"net/textproto"
 	"strings"
 	"testing"
 )
@@ -245,6 +249,60 @@ func TestCompressFlushBeforeWrite(t *testing.T) {
 	}
 	if got := rec.Body.String(); got != "data: hi\n\n" {
 		t.Errorf("body = %q", got)
+	}
+}
+
+// An informational status goes out at once under Compress, and the final status written after
+// it reaches the client.
+func TestCompressSendsAnInformationalStatusAtOnce(t *testing.T) {
+	observeLogs(t)
+	s := New(nil)
+	s.Use(Compress())
+	s.HandleFunc("GET /created", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Link", "</app.css>; rel=preload")
+		w.WriteHeader(http.StatusEarlyHints)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write(largeBody())
+	})
+	s.HandleFunc("GET /failed", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusEarlyHints)
+		WriteError(w, r, errors.New("boom"))
+	})
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+
+	for _, tc := range []struct {
+		path     string
+		status   int
+		encoding string
+	}{
+		{"/created", http.StatusCreated, "gzip"},
+		{"/failed", http.StatusInternalServerError, ""},
+	} {
+		hints := 0
+		ctx := httptrace.WithClientTrace(context.Background(), &httptrace.ClientTrace{
+			Got1xxResponse: func(code int, _ textproto.MIMEHeader) error {
+				if code == http.StatusEarlyHints {
+					hints++
+				}
+				return nil
+			},
+		})
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+tc.path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Accept-Encoding", "gzip")
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatalf("GET %s: %v", tc.path, err)
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		if got := resp.Header.Get("Content-Encoding"); resp.StatusCode != tc.status || got != tc.encoding || hints != 1 {
+			t.Errorf("GET %s: %d, encoding %q, after %d early hints; want %d, %q, after 1",
+				tc.path, resp.StatusCode, got, hints, tc.status, tc.encoding)
+		}
 	}
 }
 

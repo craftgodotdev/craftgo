@@ -22,10 +22,15 @@ func (w *trackingWriter) commit(status int) {
 	}
 }
 
-// WriteHeader commits on a final status; net/http keeps the response open after a 1xx other
-// than 101.
+// finalStatus reports whether code ends the response head; net/http sends a 1xx other than 101
+// at once and keeps the head open.
+func finalStatus(code int) bool {
+	return code >= 200 || code == http.StatusSwitchingProtocols
+}
+
+// WriteHeader commits on a final status.
 func (w *trackingWriter) WriteHeader(code int) {
-	if code >= 200 || code == http.StatusSwitchingProtocols {
+	if finalStatus(code) {
 		w.commit(code)
 	}
 	w.ResponseWriter.WriteHeader(code)

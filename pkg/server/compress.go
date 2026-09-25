@@ -179,9 +179,14 @@ type compressWriter struct {
 	cmp resettableWriter
 }
 
-// WriteHeader records the first status; it is sent once the choice is made.
+// WriteHeader records the first final status, sent once the choice is made; a status that is not
+// final goes straight out.
 func (cw *compressWriter) WriteHeader(code int) {
 	if cw.headerSet {
+		return
+	}
+	if !finalStatus(code) {
+		cw.ResponseWriter.WriteHeader(code)
 		return
 	}
 	cw.statusCode = code
