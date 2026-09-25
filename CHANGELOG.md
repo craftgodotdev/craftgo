@@ -166,6 +166,18 @@ breaking change to the DSL or the generated layout bumps the major version.
   and a body read past its cap 413 `{"message":"request entity too large"}`.
   Both answered 413 `text/plain` with the parser's error.
 
+- **Bounds that leave no value are rejected wherever they sit.** Bounds no
+  value of the type meets generated a validator that refused every value;
+  each is now `decorator/empty-range`: a field's bound against its scalar's
+  (`scalar Pos int @positive` and a field `Pos @negative`, reported at the
+  field), bounds no whole number meets (`int @gt(4) @lt(5)`, `uint @positive
+  @lt(1)`), a strict bound at the type's edge (`uint8 @gt(255)`), float
+  bounds that round to the same `float64` or `float32` (`@gt(0.1)
+  @lt(0.10000000000000001)`), and a `@multipleOf` no value within the bounds
+  meets (`@range(1, 4) @multipleOf(5)`). A field's bound past its scalar's as
+  written, such as `@maxLength(3)` on a `@minLength(5)` scalar, is
+  `decorator/range`.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

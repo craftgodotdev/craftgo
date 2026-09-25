@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"cmp"
 	"fmt"
 	"math"
 	"math/big"
@@ -17,13 +16,14 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/strfmt"
 )
 
-// checkValueRules runs the rules on the values decs constrain, of primitive
-// prim, at the field or scalar subject names.
-func (a *analyzer) checkValueRules(prim, subject string, decs []*ast.Decorator) {
-	a.checkPairOrdering(decs)
+// checkValueRules runs the rules on the values the site sites[0] constrains,
+// of primitive prim, at the field or scalar subject names; a later site is
+// the scalar a field's type names.
+func (a *analyzer) checkValueRules(prim, subject string, sites []constraintSite) {
+	decs := sites[0].decs
 	a.checkBoundCapacity(prim, decs)
 	a.checkIntBoundFloatLiteral(prim, subject, decs)
-	a.checkNegativeOnUnsigned(prim, decs)
+	a.checkValueDomain(prim, sites)
 }
 
 // valuePrim returns the primitive of f's values - a scalar's, else the type
@@ -33,31 +33,6 @@ func (a *analyzer) valuePrim(f *ast.Field) string {
 		return ""
 	}
 	return a.primOf(f.Type)
-}
-
-// checkPairOrdering rejects a lower bound in decs above an upper bound on
-// the same quantity, or meeting it where either is strict: no value, length
-// or item count satisfies both.
-func (a *analyzer) checkPairOrdering(decs []*ast.Decorator) {
-	bs := declaredBounds(decs)
-	for _, lo := range bs {
-		for _, hi := range bs {
-			if !lo.lower || hi.lower || lo.dec == hi.dec || lo.limits != hi.limits {
-				continue
-			}
-			code := CodeDecoratorRange
-			switch c := lo.value.Cmp(hi.value); {
-			case c < 0, c == 0 && !lo.strict && !hi.strict:
-				continue
-			case c == 0:
-				code = CodeBoundEmptyRange
-			}
-			diag := a.diag(hi.pos, hi.pos, lexer.SeverityError, code,
-				"%s contradicts %s: no %s is both %s and %s",
-				decoratorCall(hi.dec), decoratorCall(lo.dec), lo.limits, lo.relation(), hi.relation())
-			diag.Related = related(lo.pos, decoratorCall(lo.dec)+" declared here")
-		}
-	}
 }
 
 // boundSide is where one argument of a bound decorator puts the limit: below
@@ -153,16 +128,9 @@ func declaredBounds(decs []*ast.Decorator) []bound {
 }
 
 // admits reports whether q, a value of primitive prim or a length or item
-// count, lies within b; a float compares at its primitive's width, as the
-// generated check does, anything else exactly.
+// count, lies within b, compared as the generated check compares.
 func (b bound) admits(prim string, q NumericLit) bool {
-	c := q.Cmp(b.value)
-	if sp, ok := prims.Lookup(prim); ok && sp.Kind == prims.Float {
-		c = cmp.Compare(q.FloatVal, b.value.FloatVal)
-		if sp.Bits == 32 {
-			c = cmp.Compare(float32(q.FloatVal), float32(b.value.FloatVal))
-		}
-	}
+	c := scaleOf(prim, b.limits).cmp(q, b.value)
 	switch {
 	case b.lower && b.strict:
 		return c > 0
@@ -423,27 +391,6 @@ func literalText(e ast.Expr) string {
 		return "[" + strings.Join(parts, ", ") + "]"
 	}
 	return exprKind(e)
-}
-
-// checkNegativeOnUnsigned rejects `@negative` and `@lt(0)` on an unsigned
-// prim, since no value satisfies them.
-func (a *analyzer) checkNegativeOnUnsigned(prim string, decs []*ast.Decorator) {
-	if !prims.IsUnsigned(prim) {
-		return
-	}
-	for _, d := range decs {
-		switch {
-		case d.Name == "negative":
-			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-				"@negative cannot apply to an unsigned type (%s is always >= 0) - every value would be rejected; use a signed integer or drop @negative", prim)
-		case d.Name == "lt" && len(d.Args) == 1:
-			// 0 is in range, so the capacity check passes `@lt(0)`.
-			if l, ok := ParseNumericArg(d.Args[0]); ok && l.FloatVal == 0 {
-				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-					"@lt(0) cannot apply to an unsigned type (%s is always >= 0) - every value would be rejected; use a signed integer or a positive bound", prim)
-			}
-		}
-	}
 }
 
 // checkBoundCapacity rejects a numeric constraint argument in decs that

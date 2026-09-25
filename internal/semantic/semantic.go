@@ -161,15 +161,19 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		a.checkBodyRanges(dd.Body, nil)
 	case *ast.ScalarDecl:
 		// Every field of the scalar's type inherits its constraints.
-		a.checkValueRules(dd.Primitive, fmt.Sprintf("scalar %q", dd.Name), dd.Decorators)
+		a.checkValueRules(dd.Primitive, fmt.Sprintf("scalar %q", dd.Name), []constraintSite{{decs: dd.Decorators}})
 	}
 }
 
 // checkBodyRanges runs the value rules and the field rules on each field of
-// a body.
+// a body; a field's value rules see its scalar's constraints too.
 func (a *analyzer) checkBodyRanges(members []ast.TypeMember, typeParams []string) {
 	for _, f := range ast.Fields(members) {
-		a.checkValueRules(a.valuePrim(f), fmt.Sprintf("field %q", f.Name), f.Decorators)
+		prim, sites := a.valuePrim(f), []constraintSite{{decs: f.Decorators}}
+		if prim != "" {
+			sites = a.valueConstraintSites(f.Type, f.Decorators)
+		}
+		a.checkValueRules(prim, fmt.Sprintf("field %q", f.Name), sites)
 		a.checkNullableRedundant(f)
 		a.checkUniqueItemsComparable(f, typeParams)
 		a.checkValueConstraintOnTypeParam(f, typeParams)
