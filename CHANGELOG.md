@@ -69,6 +69,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   package; it used to merge into the design's only package, or into an
   unnamed one. A file holding only comments needs no clause.
 
+- **The OpenAPI document holds only the generic instances it refers to.** An
+  instance named only by a `@sensitive` field, or by a response whose
+  header fields keep it inline, no longer gets a component of its own.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

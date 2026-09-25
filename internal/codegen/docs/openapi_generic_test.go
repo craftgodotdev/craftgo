@@ -17,13 +17,6 @@ func tRef(name string, args ...*ast.TypeRef) *ast.TypeRef {
 	}}
 }
 
-func tQualifiedRef(pkg, name string, args ...*ast.TypeRef) *ast.TypeRef {
-	return &ast.TypeRef{Named: &ast.NamedTypeRef{
-		Name: &ast.QualifiedIdent{Parts: []string{pkg, name}},
-		Args: args,
-	}}
-}
-
 func tArray(inner *ast.TypeRef) *ast.TypeRef {
 	cp := *inner
 	cp.Array = true
@@ -79,12 +72,6 @@ func TestGenericComponentName(t *testing.T) {
 			declName: "Page",
 			args:     []*ast.TypeRef{tRef("User", tRef("Test"))},
 			want:     "PageOfUserOfTest",
-		},
-		{
-			name:     "cross-pkg arg",
-			declName: "Page",
-			args:     []*ast.TypeRef{tQualifiedRef("users", "User")},
-			want:     "PageOfUsersUser",
 		},
 		{
 			name:     "optional arg propagates suffix",
@@ -149,25 +136,6 @@ func TestGenericRegistryMarkEmittedSkips(t *testing.T) {
 	r.markEmitted(pending[0].name)
 	if len(r.pending()) != 0 {
 		t.Errorf("pending after mark = %d, want 0", len(r.pending()))
-	}
-}
-
-// pascalQualified joins a dotted name's segments, each upper-cased first.
-func TestPascalQualified(t *testing.T) {
-	cases := map[string]string{
-		"":           "",
-		"x":          "X",
-		"User":       "User",
-		"users.User": "UsersUser",
-		"a.b.c":      "ABC",
-		"my_pkg.Foo": "My_pkgFoo", // underscores in segments stay (PascalCase per-segment only)
-		"my-pkg.Foo": "My-pkgFoo",
-	}
-	for in, want := range cases {
-		got := pascalQualified(in)
-		if got != want {
-			t.Errorf("pascalQualified(%q) = %q, want %q", in, got, want)
-		}
 	}
 }
 

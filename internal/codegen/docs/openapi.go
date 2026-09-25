@@ -121,7 +121,6 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	// it is named, becomes one component.
 	registry := newGenericRegistry()
 	registry.resolver = semantic.PackageResolver(pkg)
-	collectGenericInstancesInPackage(pkg, registry)
 	names := &schemaNames{}
 	addSchemas(doc, pkg, registry, names)
 	addPaths(doc, pkg, registry, names)

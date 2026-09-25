@@ -44,7 +44,7 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 					continue
 				}
 				mixinRefs = append(mixinRefs, &openapi3.SchemaRef{
-					Ref: "#/components/schemas/" + mixinRefName(v.Ref, pkg, registry),
+					Ref: "#/components/schemas/" + registry.refName(v.Ref),
 				})
 			}
 		}
@@ -61,18 +61,6 @@ func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRe
 		wrapAllOfWithHost(s, mixinRefs, nil)
 		names.put(doc, typeName, &openapi3.SchemaRef{Value: s})
 	}
-}
-
-// mixinRefName returns the component a mixin refs: its instance for a
-// generic (`Page<Item>` → `PageOfItem`), else its own name.
-func mixinRefName(ref *ast.NamedTypeRef, pkg *semantic.Package, registry *genericRegistry) string {
-	name := ref.Name.String()
-	if len(ref.Args) > 0 && pkg != nil && registry != nil {
-		if decl, ok := pkg.Types[name]; ok && len(decl.TypeParams) > 0 {
-			return registry.register(decl, ref.Args)
-		}
-	}
-	return name
 }
 
 // addTypeSchemas emits one schema per non-generic type.
@@ -164,7 +152,7 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 				ref = &cp
 			}
 			mixinRefs = append(mixinRefs, &openapi3.SchemaRef{
-				Ref: "#/components/schemas/" + mixinRefName(ref, pkg, registry),
+				Ref: "#/components/schemas/" + registry.refName(ref),
 			})
 		}
 	}

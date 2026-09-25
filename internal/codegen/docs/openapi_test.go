@@ -587,6 +587,37 @@ service S { get List /things { response ListResp } }`)
 	}
 }
 
+// A generic instance only a @sensitive field or a header-split response
+// names gets no component: nothing in the document refs it.
+func TestGenerateOpenAPIUnreferencedGenericInstanceHasNoComponent(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+type Item { id string }
+type Other { id string }
+type Page<T> {
+	trace string @header("X-Trace")
+	items T[]
+}
+type Box<T> { inner T }
+type Holder {
+	secret Box<Other> @sensitive
+	x      string
+}
+service S {
+	get L /l { response Page<Item> }
+	get H /h { response Holder }
+}`,
+	}, &config.Config{})
+	for _, orphan := range []string{"BoxOfOther", "PageOfItem"} {
+		if _, ok := doc.Components.Schemas[orphan]; ok {
+			t.Errorf("unreferenced instance %s has a component", orphan)
+		}
+	}
+	if _, ok := doc.Components.Schemas["LRespBody"]; !ok {
+		t.Error("the header-split response has no LRespBody component")
+	}
+}
+
 // A generic instance keeps its declaration's field constraints and
 // description.
 func TestGenerateOpenAPIGenericInstanceCarriesFieldMetadata(t *testing.T) {

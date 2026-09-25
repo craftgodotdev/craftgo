@@ -6,7 +6,6 @@ import (
 	"unicode"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -23,7 +22,7 @@ type genericRegistry struct {
 	// dups holds the names two structurally distinct instances share:
 	// `Page<int[]>` and `Page<IntArray>` are both `PageOfIntArray`.
 	dups map[string]bool
-	// resolver resolves type names for the field IR.
+	// resolver resolves the document package's type names.
 	resolver *semantic.Resolver
 }
 
@@ -42,6 +41,18 @@ func newGenericRegistry() *genericRegistry {
 		emitted:   map[string]bool{},
 		dups:      map[string]bool{},
 	}
+}
+
+// refName returns the component n refs: its generic instance, registered on
+// first use (`Page<Item>` → `PageOfItem`), else n's own name.
+func (r *genericRegistry) refName(n *ast.NamedTypeRef) string {
+	name := n.Name.String()
+	if len(n.Args) > 0 {
+		if decl := r.resolver.LookupType(name); decl != nil && len(decl.TypeParams) > 0 {
+			return r.register(decl, n.Args)
+		}
+	}
+	return name
 }
 
 // register records the instance of decl over args and returns its component
@@ -128,16 +139,12 @@ func namedTypeName(n *ast.NamedTypeRef) string {
 	if n == nil {
 		return "Unknown"
 	}
-	bare := n.Name.String()
-	if prims.Is(bare) {
-		return pascalIdent(bare)
-	}
-	full := pascalQualified(bare)
+	name := pascalIdent(n.Name.String())
 	if len(n.Args) == 0 {
-		return full
+		return name
 	}
 	var b strings.Builder
-	b.WriteString(full)
+	b.WriteString(name)
 	b.WriteString("Of")
 	for i, a := range n.Args {
 		if i > 0 {
@@ -156,54 +163,4 @@ func pascalIdent(name string) string {
 	runes := []rune(name)
 	runes[0] = unicode.ToUpper(runes[0])
 	return string(runes)
-}
-
-// pascalQualified joins the segments of a dotted name, each upper-cased
-// first (`users.User` → `UsersUser`).
-func pascalQualified(name string) string {
-	if !strings.Contains(name, ".") {
-		return pascalIdent(name)
-	}
-	parts := strings.Split(name, ".")
-	for i, p := range parts {
-		parts[i] = pascalIdent(p)
-	}
-	return strings.Join(parts, "")
-}
-
-// collectGenericInstancesInPackage registers every generic instance named by
-// pkg's type and error fields and by its method requests and responses.
-func collectGenericInstancesInPackage(pkg *semantic.Package, registry *genericRegistry) {
-	if pkg == nil || registry == nil {
-		return
-	}
-	visit := func(n *ast.NamedTypeRef) {
-		if len(n.Args) == 0 {
-			return
-		}
-		if decl, ok := pkg.Types[n.Name.String()]; ok && len(decl.TypeParams) > 0 {
-			registry.register(decl, n.Args)
-		}
-	}
-	for _, td := range pkg.Types {
-		if len(td.TypeParams) > 0 {
-			continue
-		}
-		for _, f := range ast.Fields(td.Body) {
-			f.Type.WalkNamedRefs(visit)
-		}
-	}
-	for _, ed := range pkg.Errors {
-		for _, f := range ast.Fields(ed.Body) {
-			f.Type.WalkNamedRefs(visit)
-		}
-	}
-	for _, si := range pkg.Services {
-		for _, m := range si.Methods {
-			m.Request.WalkNamedRefs(visit)
-			if m.Response != nil {
-				m.Response.Type.WalkNamedRefs(visit)
-			}
-		}
-	}
 }

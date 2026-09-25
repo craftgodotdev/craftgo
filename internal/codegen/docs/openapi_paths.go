@@ -112,10 +112,9 @@ func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package,
 	if !wireBound {
 		// The body is the whole request type: its mixins, type arguments
 		// and cross-field fragments included.
-		if len(m.Request.Args) > 0 && len(td.TypeParams) > 0 {
+		if len(td.TypeParams) > 0 {
 			// A generic declaration has no schema of its own.
-			inst := registry.register(td, m.Request.Args)
-			names.put(doc, base+"ReqBody", &openapi3.SchemaRef{Ref: "#/components/schemas/" + inst})
+			names.put(doc, base+"ReqBody", &openapi3.SchemaRef{Ref: "#/components/schemas/" + registry.refName(m.Request)})
 			return
 		}
 		if requestHasBodyContent(m, pkg, registry.resolver) {
@@ -156,14 +155,8 @@ func addPerOperationResponseSchema(doc *openapi3.T, m *ast.Method, pkg *semantic
 	bins := binResponseFields(m, pkg, registry.resolver)
 	if len(bins.header) == 0 && len(bins.cookie) == 0 {
 		// A generic response refs its instance: the declaration has no schema.
-		respName := m.Response.Type.Name.String()
-		if len(m.Response.Type.Args) > 0 {
-			if decl, ok := pkg.Types[respName]; ok && len(decl.TypeParams) > 0 {
-				respName = registry.register(decl, m.Response.Type.Args)
-			}
-		}
 		names.put(doc, base+"RespBody", &openapi3.SchemaRef{
-			Ref: "#/components/schemas/" + respName,
+			Ref: "#/components/schemas/" + registry.refName(m.Response.Type),
 		})
 		return
 	}

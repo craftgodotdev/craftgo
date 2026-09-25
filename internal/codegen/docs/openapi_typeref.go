@@ -37,26 +37,14 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 		return &openapi3.SchemaRef{Value: s}
 	}
 	if t.Named != nil {
-		name := t.Named.Name.String()
-		if prim := primitiveSchema(name); prim != nil {
+		if prim := primitiveSchema(t.Named.Name.String()); prim != nil {
 			// An optional primitive value (`map<K, int?>`) may be null.
 			if t.Optional {
 				applyNullable(prim)
 			}
 			return &openapi3.SchemaRef{Value: prim}
 		}
-		if len(t.Named.Args) > 0 {
-			if generic, ok := pkg.Types[name]; ok && len(generic.TypeParams) > 0 {
-				if registry != nil {
-					componentName := registry.register(generic, t.Named.Args)
-					if t.Optional {
-						return nullableRef(componentName)
-					}
-					return &openapi3.SchemaRef{Ref: "#/components/schemas/" + componentName}
-				}
-				return &openapi3.SchemaRef{Value: instantiateGeneric(generic, t.Named.Args, pkg, nil)}
-			}
-		}
+		name := registry.refName(t.Named)
 		if t.Optional {
 			return nullableRef(name)
 		}
