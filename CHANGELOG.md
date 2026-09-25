@@ -184,6 +184,17 @@ breaking change to the DSL or the generated layout bumps the major version.
   `status: must be one of [open in_progress done]`, where it read `status:
   invalid TodoStatus value`.
 
+- **A body value of the wrong JSON type names its JSON path, not Go's.** The
+  built-in codec answers `{"c": 5}` with `c: expected string, got number`,
+  where encoding/json's `json: cannot unmarshal number into Go struct field
+  DefaultsEnum.c of type combine.Color` reached the client: the path leaves
+  out the embedded structs a mixin makes, `body.n` names a nested field, a
+  number too large for its field reads `300 is out of range`, and a type
+  mismatch at the root is reported under `body`. The
+  `*json.UnmarshalTypeError` stays in the error chain. A `datetime` field
+  still reports `time`'s own error, and a codec installed with
+  `SetGlobalJSONCodec` its own errors.
+
 - **The errors the framework writes are JSON.** A panic `Recovery` catches
   answers 500 `{"message":"internal server error"}`, the default of
   `SetDefaultValidationFailed` 400 `{"message":"<error text>"}`, a body over

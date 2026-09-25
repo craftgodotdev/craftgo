@@ -174,6 +174,30 @@ func TestAutoBoundQueryErrorNamesTheParameter(t *testing.T) {
 	}
 }
 
+// A body value of the wrong JSON type is reported under its JSON key, a mixin's field
+// included, naming no Go struct or type.
+func TestDecodeErrorsNameTheWireField(t *testing.T) {
+	ts := bootAll(t)
+	for _, tc := range []struct{ path, body, want string }{
+		{"/api/combine/defaults/enum", `{"c": 5}`, "c: expected string, got number"},
+		{"/api/combine/pairs/renamed/x", `{"primary_email": 5}`, "primary_email: expected string, got number"},
+		{"/api/combine/pairs/renamed/x", `{"backup_email": ["a"]}`, "backup_email: expected string, got array"},
+		{"/api/numbers/counter", `{"body": {"rangeInt8": 300}}`, "body.rangeInt8: 300 is out of range"},
+	} {
+		resp, err := ts.Client().Post(ts.URL+tc.path, "application/json", strings.NewReader(tc.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		var got struct{ Message string }
+		_ = json.Unmarshal(body, &got)
+		if resp.StatusCode != http.StatusBadRequest || got.Message != tc.want {
+			t.Errorf("POST %s %s: got %d %q, want 400 %q", tc.path, tc.body, resp.StatusCode, body, tc.want)
+		}
+	}
+}
+
 // A float query parameter refuses NaN, which passes every bound, and the infinities, which an
 // unbounded field would take; a finite value binds.
 func TestFloatQueryRejectsNonFinite(t *testing.T) {
