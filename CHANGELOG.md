@@ -7,13 +7,24 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+### Added
+
+- **`log.Follow()`**, a `Logger` that writes each line through `log.Default`
+  as it is at that line, as do the loggers its `With` and `WithContext`
+  return, so a later `log.SetDefault` reaches them. `log.SetDefault` given
+  one installs the logger it writes through at that moment, so
+  `grpcSrv.SetLogger(httpSrv.Logger())` keeps the current logger.
+
 ### Changed
 
 - **Both servers log through `log.Default`.** `server.Server` and
   `rpc.Server` keep no logger of their own: `SetLogger` installs
-  `log.Default`, `Logger()` returns it, and the panic recovery each server
-  installs looks it up when a panic happens, so `log.SetDefault`, or either
-  server's `SetLogger`, reaches both, even after the handler is built.
+  `log.Default`, `Logger()` returns a `log.Follow()` logger that writes
+  each line through it, and the panic recovery each server installs looks it
+  up when a panic happens, so `log.SetDefault`, or either server's
+  `SetLogger`, reaches both, even after the handler is built. The
+  `AccessLog(srv.Logger())` a generated `main.go` installs at startup now
+  follows a later `SetLogger` too.
 
 - **Two parser errors read as facts.** An out-of-range integer reports
   `integer literal N is outside the signed 64-bit range (max …)`, and

@@ -91,8 +91,8 @@ func (s *Server) SetLogger(l log.Logger) *Server {
 	return s
 }
 
-// Logger returns [log.Default].
-func (s *Server) Logger() log.Logger { return log.Default() }
+// Logger returns a [log.Follow] logger: each line goes to [log.Default] as it is then.
+func (s *Server) Logger() log.Logger { return log.Follow() }
 
 // RegisterService implements [grpc.ServiceRegistrar] and reports the service
 // SERVING on the health service. A registration once serving has begun makes

@@ -128,10 +128,14 @@ func NewZap(z *zap.Logger) Logger { return &zapLogger{z: z} }
 // defaultLogger holds the logger [Default] returns.
 var defaultLogger atomic.Pointer[Logger]
 
-// SetDefault makes l the logger [Default] returns; nil is ignored.
+// SetDefault makes l the logger [Default] returns; nil is ignored, and a [Follow] logger is
+// replaced by the logger it writes through at the call.
 func SetDefault(l Logger) {
 	if l == nil {
 		return
+	}
+	if f, ok := l.(*follower); ok {
+		l = f.on(Default())
 	}
 	defaultLogger.Store(&l)
 }
@@ -142,7 +146,11 @@ func Default() Logger { return *defaultLogger.Load() }
 func init() { SetDefault(New()) }
 
 // zapLogger is the Logger over a *zap.Logger.
-type zapLogger struct{ z *zap.Logger }
+type zapLogger struct {
+	z *zap.Logger
+	// skipped is what skipCaller returns, built on its first call.
+	skipped atomic.Pointer[zapLogger]
+}
 
 // toZap converts f to a zap field; a group nests and a duration is written as text ("1.5ms").
 func toZap(f Field) zap.Field {
@@ -190,6 +198,14 @@ func (s *zapLogger) Error(msg string, fs ...Field) { s.z.Error(msg, fieldsToZap(
 
 func (s *zapLogger) With(fs ...Field) Logger {
 	return &zapLogger{z: s.z.With(fieldsToZap(fs)...)}
+}
+
+func (s *zapLogger) skipCaller() Logger {
+	if p := s.skipped.Load(); p != nil {
+		return p
+	}
+	s.skipped.CompareAndSwap(nil, &zapLogger{z: s.z.WithOptions(zap.AddCallerSkip(1))})
+	return s.skipped.Load()
 }
 
 // WithContext adds the trace_id and span_id of ctx's span, when valid, and the

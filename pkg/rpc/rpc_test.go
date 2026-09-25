@@ -240,8 +240,23 @@ func TestRecoveryLogsToTheCurrentDefault(t *testing.T) {
 	if got := logs.lines("panic recovered"); len(got) != 1 {
 		t.Errorf("recovery lines on the current default = %d, want 1", len(got))
 	}
-	if srv.Logger() != log.Logger(logs) {
-		t.Error("Logger must return log.Default")
+}
+
+// An access log built from Logger writes to the logger a later SetLogger installs.
+func TestAccessLogFollowsSetLogger(t *testing.T) {
+	prev := log.Default()
+	t.Cleanup(func() { log.SetDefault(prev) })
+	log.SetDefault(log.Discard())
+	srv := New(nil)
+	srv.Use(AccessLog(srv.Logger()))
+	conn := serve(t, srv, &echo{ping: pong})
+	logs := newCapture()
+	srv.SetLogger(logs)
+	if _, err := ping(conn, "x"); err != nil {
+		t.Fatal(err)
+	}
+	if got := logs.lines("grpc access"); len(got) != 1 {
+		t.Errorf("access lines on the logger SetLogger installed = %d, want 1", len(got))
 	}
 }
 

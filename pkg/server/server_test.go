@@ -14,6 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
+
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
@@ -62,8 +66,46 @@ func TestServerRecoveryLogsToTheCurrentDefault(t *testing.T) {
 	if n := logs.FilterMessage("panic recovered").Len(); n != 1 {
 		t.Errorf("want the panic on the current default logger, got %d lines", n)
 	}
-	if s.Logger() != log.Default() {
-		t.Error("Logger must return log.Default")
+}
+
+// An access log built from Logger writes to the logger a later SetLogger installs.
+func TestAccessLogFollowsSetLogger(t *testing.T) {
+	observeLogs(t)
+	s := newTestServer(t)
+	s.Use(AccessLog(s.Logger()))
+	s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	h := finalize(s)
+	core, logs := observer.New(zapcore.InfoLevel)
+	s.SetLogger(log.NewZap(zap.New(core)))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/a", nil))
+	if n := logs.FilterMessage("http access").Len(); n != 1 {
+		t.Errorf("access lines on the logger SetLogger installed = %d, want 1", n)
+	}
+}
+
+// The logger Logger returns compares equal to another, and its access lines name AccessLog's
+// own code as their caller.
+func TestLoggerComparesAndKeepsTheCaller(t *testing.T) {
+	observeLogs(t)
+	s := newTestServer(t)
+	func() {
+		defer func() {
+			if p := recover(); p != nil {
+				t.Errorf("comparing Logger() results panics: %v", p)
+			}
+		}()
+		if s.Logger() != s.Logger() {
+			t.Error("Logger() != Logger()")
+		}
+	}()
+	core, logs := observer.New(zapcore.InfoLevel)
+	s.SetLogger(log.NewZap(zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))))
+	s.Use(AccessLog(s.Logger()))
+	s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	finalize(s).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/a", nil))
+	lines := logs.FilterMessage("http access").All()
+	if len(lines) != 1 || !strings.HasSuffix(lines[0].Caller.File, "server/middleware.go") {
+		t.Errorf("access lines %v, want one whose caller is server/middleware.go", lines)
 	}
 }
 
