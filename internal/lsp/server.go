@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -53,13 +55,14 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, version string) err
 
 // server is the state of one LSP session; [Serve] builds it.
 type server struct {
-	conn     jsonrpc2.Conn
-	version  string
-	mu       sync.Mutex         // guards docs and shutdown
-	docs     map[uri.URI]string // the full text of each open file (full sync)
-	exit     chan struct{}
-	exitOnce sync.Once
-	shutdown bool
+	conn      jsonrpc2.Conn
+	version   string
+	mu        sync.Mutex         // guards docs, manifests and shutdown
+	docs      map[uri.URI]string // the full text of each open file (full sync)
+	manifests map[string]bool    // the manifests whose diagnostics were published
+	exit      chan struct{}
+	exitOnce  sync.Once
+	shutdown  bool
 }
 
 func (s *server) signalExit() {
@@ -270,10 +273,7 @@ func (s *server) onDidClose(ctx context.Context, params protocol.DidCloseTextDoc
 	delete(s.docs, params.TextDocument.URI)
 	s.mu.Unlock()
 	// An empty list clears the closed file's diagnostics.
-	_ = s.conn.Notify(ctx, protocol.MethodTextDocumentPublishDiagnostics, &protocol.PublishDiagnosticsParams{
-		URI:         params.TextDocument.URI,
-		Diagnostics: []protocol.Diagnostic{},
-	})
+	s.publish(ctx, params.TextDocument.URI, []protocol.Diagnostic{})
 	return nil, nil
 }
 
@@ -328,7 +328,7 @@ func watchedFilesRegistration() protocol.RegistrationParams {
 }
 
 // onDidChangeWatchedFiles re-publishes the diagnostics of every open document
-// after a watched file changes on disk.
+// and every manifest published before, after a watched file changes on disk.
 func (s *server) onDidChangeWatchedFiles(ctx context.Context) {
 	// One publishDiagnostics per design root covers every open file under it.
 	seenRoots := map[string]bool{}
@@ -341,6 +341,11 @@ func (s *server) onDidChangeWatchedFiles(ctx context.Context) {
 		}
 		s.publishDiagnostics(ctx, u, src)
 	}
+	for _, m := range s.publishedManifests() {
+		if !seenRoots[filepath.Dir(m)] {
+			s.publishManifest(ctx, m)
+		}
+	}
 }
 
 // storeDoc records text as the open content of u.
@@ -351,14 +356,12 @@ func (s *server) storeDoc(u uri.URI, text string) {
 }
 
 // publishDiagnostics analyses the project of u holding src and publishes the
-// diagnostics of u and of every other open file under the same design root.
+// diagnostics of u, of the other open files under its design root and of the
+// root's manifest, or, outside a project, of the manifests published above u.
 func (s *server) publishDiagnostics(ctx context.Context, u uri.URI, src string) {
 	perFile, designRoot := s.buildProjectDiagnostics(u, src)
 	path := uriToPath(string(u))
-	_ = s.conn.Notify(ctx, protocol.MethodTextDocumentPublishDiagnostics, &protocol.PublishDiagnosticsParams{
-		URI:         u,
-		Diagnostics: diagsFor(perFile, path),
-	})
+	s.publish(ctx, u, diagsFor(perFile, path))
 	pushed := map[string]bool{path: true}
 	for openURI := range s.openDocs() {
 		op := uriToPath(string(openURI))
@@ -366,11 +369,50 @@ func (s *server) publishDiagnostics(ctx context.Context, u uri.URI, src string) 
 			continue
 		}
 		pushed[op] = true
-		_ = s.conn.Notify(ctx, protocol.MethodTextDocumentPublishDiagnostics, &protocol.PublishDiagnosticsParams{
-			URI:         openURI,
-			Diagnostics: diagsFor(perFile, op),
-		})
+		s.publish(ctx, openURI, diagsFor(perFile, op))
 	}
+	if designRoot != "" {
+		s.publishManifest(ctx, manifestPath(designRoot))
+		return
+	}
+	for _, m := range s.publishedManifests() {
+		if isUnderDesignRoot(path, filepath.Dir(m)) {
+			s.publishManifest(ctx, m)
+		}
+	}
+}
+
+// publishManifest publishes the diagnostics of the manifest at path, and
+// forgets it once it is gone.
+func (s *server) publishManifest(ctx context.Context, path string) {
+	diags, ok := manifestDiagnostics(path)
+	s.mu.Lock()
+	if s.manifests == nil {
+		s.manifests = map[string]bool{}
+	}
+	if ok {
+		s.manifests[path] = true
+	} else {
+		delete(s.manifests, path)
+	}
+	s.mu.Unlock()
+	s.publish(ctx, uri.File(path), diags)
+}
+
+// publishedManifests returns the manifests whose diagnostics were published,
+// sorted.
+func (s *server) publishedManifests() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Sorted(maps.Keys(s.manifests))
+}
+
+// publish sends the diagnostics of u to the client.
+func (s *server) publish(ctx context.Context, u uri.URI, diags []protocol.Diagnostic) {
+	_ = s.conn.Notify(ctx, protocol.MethodTextDocumentPublishDiagnostics, &protocol.PublishDiagnosticsParams{
+		URI:         u,
+		Diagnostics: diags,
+	})
 }
 
 // diagsFor returns the diagnostics of key, never nil: clients ignore a null

@@ -593,7 +593,7 @@ All `output.*` paths resolve against the **project root** (the directory holding
 
 The Go module path is **not** in this file. craftgo reads it from `go.mod` at gen time.
 
-A key the manifest does not declare is ignored: `craftgo gen` names it on stderr (`craftgo: warning: output.typs is not a manifest key and is ignored`) and generates. A removed key (`design`, `output.services`, `output.consumeMiddleware`, `events.asyncapi`, an event target's `layout`) is an error naming what replaced it.
+A key the manifest does not declare is ignored: `craftgo gen` names it on stderr (`craftgo: warning: output.typs is not a manifest key and is ignored`) and generates, and the editor shows the warning on the manifest. A removed key (`design`, `output.services`, `output.consumeMiddleware`, `events.asyncapi`, an event target's `layout`) is an error naming what replaced it.
 
 `output.kind: contracts` generates only what other projects import - payload types, the event library and the documents - and stops before the application half. Its defaults move out of `internal/`, which Go forbids importing across modules: `output.types: ./gen/types` and `events.targets[].out: ./gen/events`.
 

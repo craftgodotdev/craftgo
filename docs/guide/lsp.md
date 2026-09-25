@@ -98,6 +98,8 @@ Errors appear inline as you type:
 - `service/path-conflict` - two methods on the same verb + path
 - `enum/value-collision` - two values produce the same Go constant
 
+A key of `craftgo.design.yaml` that craftgo does not read shows as a warning at the top of the manifest, naming the key, and an edit that stops the manifest from loading shows the error there.
+
 ### Go-to-definition
 
 `Cmd+click` (or `gd` in vim-mode) on a type reference jumps to its declaration. Works across files in the same package and across packages (a `shared.Type` reference jumps to the `shared` package's declaration).

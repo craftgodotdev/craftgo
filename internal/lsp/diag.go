@@ -1,6 +1,8 @@
 package lsp
 
 import (
+	"errors"
+	"io/fs"
 	"net/url"
 	"path/filepath"
 	"strconv"
@@ -8,6 +10,7 @@ import (
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 
+	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
@@ -46,6 +49,29 @@ func (s *server) buildProjectDiagnostics(u uri.URI, src string) (map[string][]pr
 		perFile[fsPath] = []protocol.Diagnostic{}
 	}
 	return perFile, v.root
+}
+
+// manifestPath returns the path of the manifest in the design folder root.
+func manifestPath(root string) string {
+	return filepath.Join(root, config.Filename)
+}
+
+// manifestDiagnostics loads the manifest at path and returns, at its start,
+// the error that keeps it from loading, else a warning for each key it
+// ignores; ok is false when path is gone.
+func manifestDiagnostics(path string) (diags []protocol.Diagnostic, ok bool) {
+	cfg, err := config.Load(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return []protocol.Diagnostic{}, false
+	case err != nil:
+		return []protocol.Diagnostic{{Severity: protocol.DiagnosticSeverityError, Source: "craftgo", Message: err.Error()}}, true
+	}
+	diags = []protocol.Diagnostic{}
+	for _, w := range cfg.Warnings {
+		diags = append(diags, protocol.Diagnostic{Severity: protocol.DiagnosticSeverityWarning, Source: "craftgo", Message: w})
+	}
+	return diags, true
 }
 
 // uriToPath returns the file path of a file:// URI, or "" for any other URI.

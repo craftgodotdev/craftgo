@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -59,18 +60,36 @@ openapi:
 	}
 }
 
-// recordingConn is a jsonrpc2.Conn that records the methods sent to the client.
+// recordingConn is a jsonrpc2.Conn that records the methods sent to the
+// client and the diagnostics published.
 type recordingConn struct {
-	mu       sync.Mutex
-	notifies []string
-	calls    []string
+	mu        sync.Mutex
+	notifies  []string
+	calls     []string
+	published []*protocol.PublishDiagnosticsParams
 }
 
-func (c *recordingConn) Notify(_ context.Context, method string, _ any) error {
+func (c *recordingConn) Notify(_ context.Context, method string, params any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.notifies = append(c.notifies, method)
+	if p, ok := params.(*protocol.PublishDiagnosticsParams); ok {
+		c.published = append(c.published, p)
+	}
 	return nil
+}
+
+// lastPublished returns the diagnostics last published for u, and whether
+// any were.
+func (c *recordingConn) lastPublished(u uri.URI) ([]protocol.Diagnostic, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := len(c.published) - 1; i >= 0; i-- {
+		if c.published[i].URI == u {
+			return c.published[i].Diagnostics, true
+		}
+	}
+	return nil, false
 }
 
 func (c *recordingConn) Call(_ context.Context, method string, _, _ any) (jsonrpc2.ID, error) {
@@ -95,6 +114,52 @@ func (c *recordingConn) notifyCount() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.notifies)
+}
+
+// A manifest key craftgo does not read shows as a warning on the manifest,
+// published with the diagnostics of its design and cleared once it goes.
+func TestManifestWarningsShowOnTheManifest(t *testing.T) {
+	path := manifestProject(t, layoutOnly+"typo: 1\n", "package svc\n")
+	manifest := filepath.Join(filepath.Dir(path), "craftgo.design.yaml")
+	conn := &recordingConn{}
+	s := &server{docs: map[uri.URI]string{}, conn: conn}
+	s.publishDiagnostics(context.Background(), uri.File(path), readFileT(t, path))
+	got, ok := conn.lastPublished(uri.File(manifest))
+	if !ok || len(got) != 1 || got[0].Severity != protocol.DiagnosticSeverityWarning || !strings.Contains(got[0].Message, "typo") {
+		t.Fatalf("manifest diagnostics = %+v (published %v), want the typo warning", got, ok)
+	}
+	mustWrite(t, manifest, layoutOnly)
+	s.publishDiagnostics(context.Background(), uri.File(path), readFileT(t, path))
+	if got, _ := conn.lastPublished(uri.File(manifest)); got == nil || len(got) != 0 {
+		t.Errorf("manifest diagnostics after the fix = %+v, want an empty list", got)
+	}
+}
+
+// A manifest edited so it no longer loads shows the error in place of its
+// warnings, and one fixed while no design file is open is cleared.
+func TestManifestDiagnosticsFollowTheManifest(t *testing.T) {
+	path := manifestProject(t, layoutOnly+"typo: 1\n", "package svc\n")
+	manifest := filepath.Join(filepath.Dir(path), "craftgo.design.yaml")
+	u := uri.File(path)
+	conn := &recordingConn{}
+	s := &server{docs: map[uri.URI]string{}, conn: conn}
+	ctx := context.Background()
+	s.storeDoc(u, readFileT(t, path))
+	s.publishDiagnostics(ctx, u, readFileT(t, path))
+	mustWrite(t, manifest, layoutOnly+"design: ./x\n")
+	s.onDidChangeWatchedFiles(ctx)
+	got, _ := conn.lastPublished(uri.File(manifest))
+	if len(got) != 1 || got[0].Severity != protocol.DiagnosticSeverityError || !strings.Contains(got[0].Message, "design") {
+		t.Errorf("manifest diagnostics after a removed key = %+v, want its error", got)
+	}
+	if _, err := callHandler(t, s, protocol.MethodTextDocumentDidClose, protocol.DidCloseTextDocumentParams{TextDocument: protocol.TextDocumentIdentifier{URI: u}}); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, manifest, layoutOnly)
+	s.onDidChangeWatchedFiles(ctx)
+	if got, _ := conn.lastPublished(uri.File(manifest)); got == nil || len(got) != 0 {
+		t.Errorf("manifest diagnostics after the fix = %+v, want an empty list", got)
+	}
 }
 
 // The registration watches every design-file extension and the manifest.
@@ -164,8 +229,8 @@ openapi:
 	s.storeDoc(uri.File(bPath), readFileT(t, bPath))
 
 	s.onDidChangeWatchedFiles(context.Background())
-	// One root: each open document is published once.
-	if n := conn.notifyCount(); n != 2 {
-		t.Errorf("expected exactly 2 publishDiagnostics notifications (one per open doc, one analysis), got %d", n)
+	// One root: each open document and the manifest are published once.
+	if n := conn.notifyCount(); n != 3 {
+		t.Errorf("expected exactly 3 publishDiagnostics notifications (one per open doc and the manifest, one analysis), got %d", n)
 	}
 }

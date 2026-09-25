@@ -64,7 +64,7 @@ openapi:
       bearerFormat: JWT
 ```
 
-A key the manifest does not declare - a misspelling, say - is ignored, and `craftgo gen` names it in a warning on stderr. A key craftgo no longer reads is an error naming what replaced it.
+A key the manifest does not declare - a misspelling, say - is ignored, and `craftgo gen` names it in a warning on stderr; the editor shows the same warning on `craftgo.design.yaml`. A key craftgo no longer reads is an error naming what replaced it.
 
 ### `output.*` paths
 
