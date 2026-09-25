@@ -3,6 +3,7 @@ package semantic
 import (
 	"fmt"
 	"go/token"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -31,6 +32,7 @@ func (a *analyzer) checkOneDeclNameCase(d ast.Decl) {
 			a.requireUppercase(p, dd.NamePos, fmt.Sprintf("type parameter %q of %s", p, dd.Name),
 				"a lower-case one can hide a package or a variable the generated Go uses, such as fmt or the receiver v")
 		}
+		a.checkTypeParamsHidePackages(dd)
 	case *ast.ErrorDecl:
 		a.checkTypeTableName("error", dd.Name, dd.Pos)
 	case *ast.EnumDecl:
@@ -49,6 +51,32 @@ func (a *analyzer) checkOneDeclNameCase(d ast.Decl) {
 		a.checkExportedName("middleware", dd.Name, dd.Pos)
 	case *ast.EventDecl:
 		a.checkExportedName("event", dd.Name, dd.Pos)
+	}
+}
+
+// checkTypeParamsHidePackages rejects, at td's name, a type parameter of td
+// spelled like a package its body names, `w Lib.Item` in `type Box<Lib>`:
+// inside the generated type the parameter hides the package. A parameter
+// that is no exported name, or a qualifier naming no other package, has its
+// own error.
+func (a *analyzer) checkTypeParamsHidePackages(td *ast.TypeDecl) {
+	hidden := map[string]string{}
+	walkTypeRefs(td, func(n *ast.NamedTypeRef, typeParams []string, _ bool) {
+		if n.Name == nil || len(n.Name.Parts) != 2 {
+			return
+		}
+		pkg := n.Name.Parts[0]
+		imported := pkg != a.pkg.Name && a.proj.Packages[pkg] != nil
+		if slices.Contains(typeParams, pkg) && token.IsExported(pkg) && imported && hidden[pkg] == "" {
+			hidden[pkg] = n.Name.String()
+		}
+	})
+	for _, p := range td.TypeParams {
+		if ref := hidden[p]; ref != "" {
+			a.diag(td.NamePos, td.NamePos, lexer.SeverityError, CodeDeclGoNameCollision,
+				"type parameter %q of %s hides package %s in the generated type, where %s names it - rename the parameter",
+				p, td.Name, p, ref)
+		}
 	}
 }
 

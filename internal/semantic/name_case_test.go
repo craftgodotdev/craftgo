@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -89,6 +90,57 @@ func TestTypeParamNameMustBeExported(t *testing.T) {
 		}
 	}
 	expectNoCode(t, "package app\ntype Box<T> { item T }\ntype Pair<Key, Value> { k Key  v Value }", CodeDeclNameCase)
+}
+
+// A type parameter spelled like a package its type's body names hides that
+// package from the generated Go, and is rejected at the type's name.
+func TestTypeParamHidingAPackageRejected(t *testing.T) {
+	for label, body := range map[string]string{
+		"field":       "v Lib  w Lib.Item",
+		"argument":    "v Lib  w Lib.Page<Lib.Item>",
+		"mixin":       "Lib.Base  v Lib",
+		"map value":   "v Lib  m map<string, Lib.Item>",
+		"array field": "v Lib  ws Lib.Item[]",
+	} {
+		t.Run(label, func(t *testing.T) {
+			root, files := projectFixture(t, map[string]string{
+				"lib/lib.craftgo": "package Lib\ntype Item { id string }\ntype Base { n int }\ntype Page<T> { items T[] }",
+				"app/app.craftgo": "package app\ntype Box<Lib> { " + body + " }",
+			})
+			_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+			d := findCode(diags, CodeDeclGoNameCollision)
+			if d == nil || d.Pos.Filename != filepath.Join(root, "app/app.craftgo") || d.Pos.Line != 2 || d.Pos.Column != 6 {
+				t.Fatalf("want one %s at app.craftgo:2:6, got %v", CodeDeclGoNameCollision, diags)
+			}
+			expectMessage(t, d, `type parameter "Lib" of Box hides package Lib`)
+		})
+	}
+	root, files := projectFixture(t, map[string]string{
+		"lib/lib.craftgo": "package Lib\ntype Item { id string }",
+		"app/app.craftgo": "package app\ntype Box<Lib> { v Lib }\ntype Other { w Lib.Item }",
+	})
+	if _, diags := AnalyzeProject(files, Options{DesignRoot: root}); len(diags) > 0 {
+		t.Errorf("a type parameter its own body never qualifies with is accepted, got %v", diags)
+	}
+	// A qualifier that names no package or the type's own, and a lower-case
+	// parameter, have their own errors.
+	for label, src := range map[string]map[string]string{
+		"no such package": {"app/app.craftgo": "package app\ntype Box<Lib> { v Lib  w Lib.Item }"},
+		"own package":     {"lib/lib.craftgo": "package Lib\ntype Item { id string }\ntype Box<Lib> { v Lib  w Lib.Item }"},
+		"lower-case": {
+			"shared/s.craftgo": "package shared\ntype Item { id string }",
+			"app/app.craftgo":  "package app\ntype Box<shared> { v shared  w shared.Item }",
+		},
+	} {
+		root, files := projectFixture(t, src)
+		_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+		if d := findCode(diags, CodeDeclGoNameCollision); d != nil {
+			t.Errorf("%s: unexpected %s: %s", label, CodeDeclGoNameCollision, d.Msg)
+		}
+		if len(diags) == 0 {
+			t.Errorf("%s: want the design's own error, got none", label)
+		}
+	}
 }
 
 // An empty name, left by a parse error, is not checked.

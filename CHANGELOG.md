@@ -830,7 +830,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   the code around it uses: `type Box<fmt>` broke `fmt.Errorf`, `<v>` the
   validator's receiver, and `<time>` or an imported package's name the types
   it spells, and none of them compiled. Each is now `decl/name-case` at the
-  type's name, suggesting the capitalised name.
+  type's name, suggesting the capitalised name; a type parameter spelled like
+  a package its type names, `Lib` in `type Box<Lib> { w Lib.Item }`, is
+  `decl/go-name-collision` there.
 
 - **A package name is one Go can use.** The DSL package's name is the
   generated Go package's, yet `package func` passed analysis and crashed gen
