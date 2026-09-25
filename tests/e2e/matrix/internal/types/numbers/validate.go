@@ -327,6 +327,18 @@ func (v *NumberPrice) Validate() error {
 	if v.PosF32 <= 0 {
 		return fmt.Errorf("posF32: must be positive")
 	}
+	if v.WideF64 < 9.007199254740992e+15 {
+		return fmt.Errorf("wideF64: below minimum 9.007199254740992e+15")
+	}
+	if v.WideF64 > 9.223372036854776e+18 {
+		return fmt.Errorf("wideF64: above maximum 9.223372036854776e+18")
+	}
+	if v.WideF32 <= 0.1 {
+		return fmt.Errorf("wideF32: must be greater than 0.1")
+	}
+	if v.WideF32 > 16777217 {
+		return fmt.Errorf("wideF32: above maximum 16777217")
+	}
 	return nil
 }
 

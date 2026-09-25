@@ -105,7 +105,7 @@ func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames
 		if base == nil {
 			base = &openapi3.Schema{Type: &openapi3.Types{"string"}}
 		}
-		applyFieldConstraints(sc.Decorators, base)
+		applyFieldConstraints(sc.Decorators, base, sc.Primitive)
 		if desc := semantic.Description(sc.Decorators, sc.Doc); desc != "" {
 			// The doc goes ahead of the note `@format(raw)` may have set.
 			base.Description = appendDescription(desc, base.Description)

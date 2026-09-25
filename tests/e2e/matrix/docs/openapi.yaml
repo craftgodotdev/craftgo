@@ -4441,6 +4441,22 @@ components:
           maximum: 0.9
           minimum: 0.1
           type: number
+        wideF32:
+          description: |-
+            A float32's bounds judge the literal and the float32 the validator
+            compares against alike: 0.1 and float32(0.1) fail, 16777217 and 2^24 pass.
+          exclusiveMinimum: 0.10000000149011612
+          format: float
+          maximum: 16777217
+          type: number
+        wideF64:
+          description: |-
+            Bounds a float64 cannot hold are documented as the float64 the
+            validator compares against: 2^53 and 2^63.
+          format: double
+          maximum: 9223372036854775808
+          minimum: 9007199254740992
+          type: number
       required:
       - rangeF32
       - gteLteF32
@@ -4451,6 +4467,8 @@ components:
       - posFloat
       - negFloat
       - posF32
+      - wideF64
+      - wideF32
       type: object
     NumberUnsigned:
       description: |-

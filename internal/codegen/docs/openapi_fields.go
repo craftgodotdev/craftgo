@@ -7,6 +7,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -50,11 +51,12 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 	if ref == nil {
 		return
 	}
+	prim := semantic.ResolveField(f, pkg, nil).ResolvedPrim
 	// A bare $ref takes no sibling keywords, so field metadata wraps it: in
 	// `anyOf: [{$ref}, {type: null}]` when optional, else in an `allOf`.
 	if ref.Ref != "" {
 		nullable := semantic.FieldIsOptional(f)
-		extra := fieldConstraintSchema(f)
+		extra := fieldConstraintSchema(f, prim)
 		def, hasDef := semantic.ResolveDefaultValue(f, pkg)
 		deprecated := semantic.IsDeprecated(f.Decorators)
 		desc := semantic.Description(f.Decorators, f.Doc)
@@ -71,7 +73,7 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 				{Ref: base},
 				nullSchemaRef(),
 			}
-			applyFieldConstraints(f.Decorators, w)
+			applyFieldConstraints(f.Decorators, w, prim)
 		case extra != nil:
 			w.AllOf = openapi3.SchemaRefs{{Ref: base}, {Value: extra}}
 		default:
@@ -105,7 +107,7 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 			ref.Value.Default = def
 		}
 		stampDeprecated(ref.Value, f.Decorators)
-		applyFieldConstraints(f.Decorators, ref.Value)
+		applyFieldConstraints(f.Decorators, ref.Value, prim)
 		return
 	}
 	if desc := semantic.Description(f.Decorators, f.Doc); desc != "" {
@@ -126,17 +128,17 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 	if def, ok := semantic.ResolveDefaultValue(f, pkg); ok {
 		ref.Value.Default = def
 	}
-	applyFieldConstraints(f.Decorators, ref.Value)
+	applyFieldConstraints(f.Decorators, ref.Value, prim)
 }
 
-// fieldConstraintSchema returns a schema of the constraints f adds to the
-// type it refs, or nil when it adds none.
-func fieldConstraintSchema(f *ast.Field) *openapi3.Schema {
+// fieldConstraintSchema returns a schema of the constraints f, a value of DSL
+// primitive prim, adds to the type it refs, or nil when it adds none.
+func fieldConstraintSchema(f *ast.Field, prim string) *openapi3.Schema {
 	if f == nil || !hasFieldConstraintDecorator(f.Decorators) {
 		return nil
 	}
 	s := &openapi3.Schema{}
-	applyFieldConstraints(f.Decorators, s)
+	applyFieldConstraints(f.Decorators, s, prim)
 	return s
 }
 
@@ -254,11 +256,50 @@ func tightenBound(s *openapi3.Schema, key string, v *big.Rat) {
 	setNumber(s, key, v)
 }
 
-// emitBound tightens bound key with argument i of d.
-func emitBound(s *openapi3.Schema, key string, d *ast.Decorator, i int) {
-	if v, ok := numberArg(d, i); ok {
-		tightenBound(s, key, v)
+// emitBound tightens bound key with argument i of d, a bound on a value of
+// DSL primitive prim.
+func emitBound(s *openapi3.Schema, key string, d *ast.Decorator, i int, prim string) {
+	v, ok := numberArg(d, i)
+	if !ok {
+		return
 	}
+	if sp, _ := prims.Lookup(prim); sp.Kind == prims.Float {
+		v = floatBound(key, v, d.Args[i], sp.Bits)
+	}
+	tightenBound(s, key, v)
+}
+
+// floatBound returns bound key for literal, argument a on a float of width bits,
+// judging the literal and the float the validator checks as the validator does.
+func floatBound(key string, literal *big.Rat, a *ast.DecoratorArg, bits int) *big.Rat {
+	l, _ := semantic.ParseNumericArg(a)
+	constant, ok := new(big.Rat).SetString(l.Text())
+	if !ok {
+		return literal
+	}
+	checked, sent := atWidth(constant, bits), atWidth(literal, bits)
+	if checked == nil || sent == nil {
+		return literal
+	}
+	lower := key == "minimum" || key == "exclusiveMinimum"
+	c := sent.Cmp(checked)
+	admitsLiteral := c == 0 && (key == "minimum" || key == "maximum") || c > 0 && lower || c < 0 && !lower
+	literalLooser := (literal.Cmp(checked) < 0) == lower
+	if admitsLiteral == literalLooser {
+		return literal
+	}
+	return checked
+}
+
+// atWidth returns r rounded to the nearest float of width bits, as Go rounds
+// a constant and parses a request's value; nil past the float's range.
+func atWidth(r *big.Rat, bits int) *big.Rat {
+	f, _ := r.Float64()
+	if bits == 32 {
+		f32, _ := r.Float32()
+		f = float64(f32)
+	}
+	return new(big.Rat).SetFloat64(f)
 }
 
 // setMinLen and setMaxLen keep the tighter string-length bound.

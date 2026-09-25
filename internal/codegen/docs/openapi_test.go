@@ -1,6 +1,8 @@
 package docs
 
 import (
+	"bytes"
+	"encoding/json"
 	"maps"
 	"os"
 	"path/filepath"
@@ -1955,6 +1957,68 @@ service S { post M /m { request Limits  response Limits } }`)
 		"maxLength: 9223372036854775807",
 	)
 	mustContainNone(t, body, "e+18", "e+19", "9223372036854776000", "maxLength: 9223372036854775808")
+}
+
+// A float bound judges the literal and the float the validator compares
+// against as the validator does; an integer field keeps the literal.
+func TestFloatBoundsAgreeWithTheValidator(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+scalar P32 float32
+scalar P64 float64 @lte(9223372036854775807.0)
+type Limits {
+	a float64 @gte(9007199254740993.0) @lte(18446744073709551615.0)
+	b float64 @lt(9007199254740993)
+	c float32 @range(16777217, 16777219.0)
+	d float32 @gt(0.1)
+	e P32 @lte(16777217)
+	f P32? @lt(0.1)
+	g int64 @lte(9223372036854775807.0)
+	h float32? @gte(0.1) @default(0.1)
+	i float32 @lte(0.7) @example(0.7)
+	j float64 @lte(9007199254740993)
+	k float32 @lt(0.7)
+	l float32 @gte(1.0000000596046447)
+}
+service S { post M /m { request Limits  response Limits } }`}, &config.Config{})
+	keywords := func(ref *openapi3.SchemaRef) map[string]any {
+		raw, err := json.Marshal(ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.UseNumber()
+		var out map[string]any
+		if err := dec.Decode(&out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	props := doc.Components.Schemas["Limits"].Value.Properties
+	for name, c := range map[string]struct {
+		schema *openapi3.SchemaRef
+		want   map[string]string
+	}{
+		"a":   {props["a"], map[string]string{"minimum": "9007199254740992", "maximum": "18446744073709551616"}},
+		"b":   {props["b"], map[string]string{"exclusiveMaximum": "9007199254740992"}},
+		"c":   {props["c"], map[string]string{"minimum": "16777216", "maximum": "16777220"}},
+		"d":   {props["d"], map[string]string{"exclusiveMinimum": "0.10000000149011612"}},
+		"e":   {props["e"].Value.AllOf[1], map[string]string{"maximum": "16777217"}},
+		"f":   {props["f"], map[string]string{"exclusiveMaximum": "0.1"}},
+		"g":   {props["g"], map[string]string{"maximum": "9223372036854775807"}},
+		"h":   {props["h"], map[string]string{"minimum": "0.1", "default": "0.1"}},
+		"i":   {props["i"], map[string]string{"maximum": "0.7", "example": "0.7"}},
+		"j":   {props["j"], map[string]string{"maximum": "9007199254740993"}},
+		"k":   {props["k"], map[string]string{"exclusiveMaximum": "0.699999988079071"}},
+		"l":   {props["l"], map[string]string{"minimum": "1.0000001192092896"}},
+		"P64": {doc.Components.Schemas["P64"], map[string]string{"maximum": "9223372036854775808"}},
+	} {
+		got := keywords(c.schema)
+		for kw, want := range c.want {
+			if n, _ := got[kw].(json.Number); string(n) != want {
+				t.Errorf("%s.%s = %v, want %s", name, kw, got[kw], want)
+			}
+		}
+	}
 }
 
 // A bodyless error's schema is the `{code, message}` envelope the runtime

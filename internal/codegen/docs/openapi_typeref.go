@@ -98,7 +98,7 @@ func propertyNamesForMapKey(t *ast.TypeRef, pkg *semantic.Package) *openapi3.Sch
 	if sc, ok := pkg.Scalars[name]; ok && sc != nil && sc.Primitive == "string" {
 		// A numeric scalar's bounds have no form that holds for a string key.
 		base := &openapi3.Schema{Type: &openapi3.Types{"string"}}
-		applyConstraintFamilies(sc.Decorators, base, semantic.ConstraintLength|semantic.ConstraintText)
+		applyConstraintFamilies(sc.Decorators, base, semantic.ConstraintLength|semantic.ConstraintText, sc.Primitive)
 		return base
 	}
 	return nil

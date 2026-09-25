@@ -168,6 +168,12 @@ type NumberPrice struct {
 	PosFloat float64 `json:"posFloat"`
 	NegFloat float64 `json:"negFloat"`
 	PosF32   float32 `json:"posF32"`
+	// Bounds a float64 cannot hold are documented as the float64 the
+	// validator compares against: 2^53 and 2^63.
+	WideF64 float64 `json:"wideF64"`
+	// A float32's bounds judge the literal and the float32 the validator
+	// compares against alike: 0.1 and float32(0.1) fail, 16777217 and 2^24 pass.
+	WideF32 float32 `json:"wideF32"`
 }
 
 // NumberUnsigned covers the uint family; its @gte(0) and full-capacity

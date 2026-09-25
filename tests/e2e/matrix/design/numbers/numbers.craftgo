@@ -95,6 +95,12 @@ type NumberPrice {
 	posFloat  float64 @positive
 	negFloat  float64 @negative
 	posF32    float32 @positive
+	// Bounds a float64 cannot hold are documented as the float64 the
+	// validator compares against: 2^53 and 2^63.
+	wideF64   float64 @gte(9007199254740993.0) @lte(9223372036854775807.0)
+	// A float32's bounds judge the literal and the float32 the validator
+	// compares against alike: 0.1 and float32(0.1) fail, 16777217 and 2^24 pass.
+	wideF32   float32 @gt(0.1) @lte(16777217)
 	// @multipleOf on float is rejected at semantic time - Go's
 	// modulus operator is integer-only.
 	// stepFloat float64 @multipleOf(0.5)

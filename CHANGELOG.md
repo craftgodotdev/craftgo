@@ -1037,6 +1037,20 @@ breaking change to the DSL or the generated layout bumps the major version.
   all such bounds keeps its `Validate()`, which its fields no longer call.
   Float bounds keep their checks.
 
+- **The OpenAPI document states each numeric bound as the validator checks
+  it.** On an integer field, a whole-float bound such as
+  `@lte(9223372036854775807.0)` or `@multipleOf(18446744073709551615.0)` read
+  `9223372036854776000` or `1.8446744073709552e+19`, a `@maxLength` or item
+  count that large was rounded, the second of two such maxima won even when
+  looser, and a `@gte` that large on an unsigned field gave way to the type's
+  `minimum: 0`; each is now the exact integer, the tighter one of two. On a
+  float field, where the validator compares against the literal's float, a
+  bound judges the literal and that float as the validator does:
+  `@gte(9007199254740993.0)` on a `float64` is `minimum: 9007199254740992`,
+  `@lte(0.1)` on a `float32` is `maximum: 0.10000000149011612`, and
+  `@gte(0.1)` there stays `minimum: 0.1`, so a `@default(0.1)` beside it
+  remains valid.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

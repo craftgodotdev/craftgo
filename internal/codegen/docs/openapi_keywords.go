@@ -12,13 +12,14 @@ import (
 // rawSchemaDescription describes a `@format(raw)` schema, which has no type.
 const rawSchemaDescription = "raw encoded value"
 
-// schemaKeyword stamps one constraint decorator onto a schema.
-type schemaKeyword func(d *ast.Decorator, s *openapi3.Schema)
+// schemaKeyword stamps one constraint decorator onto a schema of a value of
+// DSL primitive prim.
+type schemaKeyword func(d *ast.Decorator, s *openapi3.Schema, prim string)
 
 // schemaKeywords maps each constraint decorator of [semantic.Names] with a
 // schema form to its keyword; a ConstraintRuntime decorator has no row.
 var schemaKeywords = map[string]schemaKeyword{
-	"length": func(d *ast.Decorator, s *openapi3.Schema) {
+	"length": func(d *ast.Decorator, s *openapi3.Schema, _ string) {
 		if !lengthKeywordsApply(s) {
 			return
 		}
@@ -34,24 +35,24 @@ var schemaKeywords = map[string]schemaKeyword{
 		setMinLen(s, lo)
 		setMaxLen(s, hi)
 	},
-	"minLength": func(d *ast.Decorator, s *openapi3.Schema) {
+	"minLength": func(d *ast.Decorator, s *openapi3.Schema, _ string) {
 		if v, ok := countArg(d, 0); ok && lengthKeywordsApply(s) {
 			setMinLen(s, v)
 		}
 	},
-	"maxLength": func(d *ast.Decorator, s *openapi3.Schema) {
+	"maxLength": func(d *ast.Decorator, s *openapi3.Schema, _ string) {
 		if v, ok := countArg(d, 0); ok && lengthKeywordsApply(s) {
 			setMaxLen(s, v)
 		}
 	},
-	"pattern": func(d *ast.Decorator, s *openapi3.Schema) {
+	"pattern": func(d *ast.Decorator, s *openapi3.Schema, _ string) {
 		if len(d.Args) == 1 {
 			if sl, ok := d.Args[0].Value.(*ast.StringLit); ok {
 				s.Pattern = sl.Value
 			}
 		}
 	},
-	"format": func(d *ast.Decorator, s *openapi3.Schema) {
+	"format": func(d *ast.Decorator, s *openapi3.Schema, _ string) {
 		if len(d.Args) != 1 {
 			return
 		}
@@ -67,28 +68,32 @@ var schemaKeywords = map[string]schemaKeyword{
 		}
 		s.Format = strfmt.OpenAPIFormat(name)
 	},
-	"gt":  func(d *ast.Decorator, s *openapi3.Schema) { emitBound(s, "exclusiveMinimum", d, 0) },
-	"gte": func(d *ast.Decorator, s *openapi3.Schema) { emitBound(s, "minimum", d, 0) },
-	"lt":  func(d *ast.Decorator, s *openapi3.Schema) { emitBound(s, "exclusiveMaximum", d, 0) },
-	"lte": func(d *ast.Decorator, s *openapi3.Schema) { emitBound(s, "maximum", d, 0) },
-	"range": func(d *ast.Decorator, s *openapi3.Schema) {
-		emitBound(s, "minimum", d, 0)
-		emitBound(s, "maximum", d, 1)
+	"gt":  func(d *ast.Decorator, s *openapi3.Schema, prim string) { emitBound(s, "exclusiveMinimum", d, 0, prim) },
+	"gte": func(d *ast.Decorator, s *openapi3.Schema, prim string) { emitBound(s, "minimum", d, 0, prim) },
+	"lt":  func(d *ast.Decorator, s *openapi3.Schema, prim string) { emitBound(s, "exclusiveMaximum", d, 0, prim) },
+	"lte": func(d *ast.Decorator, s *openapi3.Schema, prim string) { emitBound(s, "maximum", d, 0, prim) },
+	"range": func(d *ast.Decorator, s *openapi3.Schema, prim string) {
+		emitBound(s, "minimum", d, 0, prim)
+		emitBound(s, "maximum", d, 1, prim)
 	},
-	"positive": func(_ *ast.Decorator, s *openapi3.Schema) { tightenBound(s, "exclusiveMinimum", new(big.Rat)) },
-	"negative": func(_ *ast.Decorator, s *openapi3.Schema) { tightenBound(s, "exclusiveMaximum", new(big.Rat)) },
-	"multipleOf": func(d *ast.Decorator, s *openapi3.Schema) {
+	"positive": func(_ *ast.Decorator, s *openapi3.Schema, _ string) {
+		tightenBound(s, "exclusiveMinimum", new(big.Rat))
+	},
+	"negative": func(_ *ast.Decorator, s *openapi3.Schema, _ string) {
+		tightenBound(s, "exclusiveMaximum", new(big.Rat))
+	},
+	"multipleOf": func(d *ast.Decorator, s *openapi3.Schema, _ string) {
 		if v, ok := numberArg(d, 0); ok && v.Sign() != 0 {
 			setNumber(s, "multipleOf", v)
 		}
 	},
-	"minItems": func(d *ast.Decorator, s *openapi3.Schema) {
+	"minItems": func(d *ast.Decorator, s *openapi3.Schema, _ string) {
 		itemCountKeyword(s, d, func(u uint64) { s.MinItems = u }, func(u uint64) { s.MinProps = u })
 	},
-	"maxItems": func(d *ast.Decorator, s *openapi3.Schema) {
+	"maxItems": func(d *ast.Decorator, s *openapi3.Schema, _ string) {
 		itemCountKeyword(s, d, func(u uint64) { s.MaxItems = &u }, func(u uint64) { s.MaxProps = &u })
 	},
-	"uniqueItems": func(_ *ast.Decorator, s *openapi3.Schema) {
+	"uniqueItems": func(_ *ast.Decorator, s *openapi3.Schema, _ string) {
 		if s.Type != nil && s.Type.Includes("array") {
 			s.UniqueItems = true
 		}
@@ -96,14 +101,14 @@ var schemaKeywords = map[string]schemaKeyword{
 }
 
 // applyFieldConstraints stamps the keyword of every constraint in ds that
-// has a schema form onto s.
-func applyFieldConstraints(ds []*ast.Decorator, s *openapi3.Schema) {
-	applyConstraintFamilies(ds, s, semantic.ConstraintSchema)
+// has a schema form onto s, the schema of a value of DSL primitive prim.
+func applyFieldConstraints(ds []*ast.Decorator, s *openapi3.Schema, prim string) {
+	applyConstraintFamilies(ds, s, semantic.ConstraintSchema, prim)
 }
 
-// applyConstraintFamilies stamps onto s the keywords of the decorators in
-// ds whose family is in fams.
-func applyConstraintFamilies(ds []*ast.Decorator, s *openapi3.Schema, fams semantic.ConstraintFamily) {
+// applyConstraintFamilies stamps onto s, the schema of a value of DSL
+// primitive prim, the keywords of the decorators in ds whose family is in fams.
+func applyConstraintFamilies(ds []*ast.Decorator, s *openapi3.Schema, fams semantic.ConstraintFamily, prim string) {
 	if s == nil {
 		return
 	}
@@ -112,7 +117,7 @@ func applyConstraintFamilies(ds []*ast.Decorator, s *openapi3.Schema, fams seman
 			continue
 		}
 		if kw := schemaKeywords[d.Name]; kw != nil && semantic.ConstraintOf(d.Name)&fams != 0 {
-			kw(d, s)
+			kw(d, s, prim)
 		}
 	}
 }
