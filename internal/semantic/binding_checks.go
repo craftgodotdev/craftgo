@@ -80,17 +80,17 @@ func (a *analyzer) checkTypeParamWireBindings() {
 	for _, svcName := range a.pkg.ServiceNames() {
 		for _, m := range a.pkg.Services[svcName].Methods {
 			if m.Request != nil {
-				a.checkInstanceWireBindings(m.Request, m.Request.Pos)
+				a.checkInstanceWireBindings(m.Request, m.Request.Pos, false)
 			}
 			if m.Response != nil {
-				a.checkInstanceWireBindings(m.Response.Type, m.Response.Pos)
+				a.checkInstanceWireBindings(m.Response.Type, m.Response.Pos, true)
 			}
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(a.pkg.Errors)) {
 		for _, member := range a.pkg.Errors[name].Body {
 			if mx, ok := member.(*ast.Mixin); ok {
-				a.checkInstanceWireBindings(mx.Ref, mx.Pos)
+				a.checkInstanceWireBindings(mx.Ref, mx.Pos, true)
 			}
 		}
 	}
@@ -98,8 +98,10 @@ func (a *analyzer) checkTypeParamWireBindings() {
 
 // checkInstanceWireBindings reports at pos each @header or @cookie field of
 // the type ref names, typed by a type parameter, whose argument cannot ride
-// the binding.
-func (a *analyzer) checkInstanceWireBindings(ref *ast.NamedTypeRef, pos lexer.Position) {
+// the binding. An argument naming no type is left to the reference check,
+// and one holding a `file` to [analyzer.checkFilePosition] when fileReported
+// says it reports every `file` at pos.
+func (a *analyzer) checkInstanceWireBindings(ref *ast.NamedTypeRef, pos lexer.Position, fileReported bool) {
 	view, fields, ok := a.instanceFields(ref)
 	if !ok {
 		return
@@ -107,6 +109,9 @@ func (a *analyzer) checkInstanceWireBindings(ref *ast.NamedTypeRef, pos lexer.Po
 	for _, ff := range fields {
 		kind, _ := wire.BindingKind(ff.Field.Decorators)
 		if !ff.paramTyped || (kind != wire.BindHeader && kind != wire.BindCookie) {
+			continue
+		}
+		if a.proj.namesNoType(view, ff.Field.Type) || (fileReported && holdsFile(ff.Field.Type)) {
 			continue
 		}
 		msg := a.proj.wireTypeFault(ref.String(), view, ff.Field, kind)
@@ -155,6 +160,22 @@ func (p *Project) formBindable(home string, t *ast.TypeRef) bool {
 		return t.ArrayDepth <= 1
 	}
 	return p.wireBindable(home, t)
+}
+
+// namesNoType reports whether t, as package home spells it, names a type
+// that neither a built-in nor a declaration provides, through map keys and
+// values and generic arguments.
+func (p *Project) namesNoType(home string, t *ast.TypeRef) bool {
+	missing := false
+	t.WalkNamedRefs(func(n *ast.NamedTypeRef) {
+		if n.Name == nil || prims.Is(n.Name.String()) {
+			return
+		}
+		if pkg, sym := p.resolve(home, n.Name); pkg == nil || pkg.Decl(sym, TypeRefDecls) == nil {
+			missing = true
+		}
+	})
+	return missing
 }
 
 // elemFacts resolves t in home, or the element of t when t is an array.

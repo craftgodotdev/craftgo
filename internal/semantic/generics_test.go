@@ -278,6 +278,25 @@ service S { get A /a { request Box<string[]>  response Resp } }`, CodeBindingTyp
 	expectMessage(t, d, "Box.a", "optional type parameter over an array")
 }
 
+// An argument another rule reports - an unknown type, a `file` in a response
+// or an error - gets no header diagnostic of its own; a request's `file`
+// header does.
+func TestTypeParamWireBindingLeavesOtherRulesAlone(t *testing.T) {
+	const decls = "package app\ntype Resp { ok bool }\ntype Paged<T> { count T @header(\"X-Count\")  items T[] }\ntype Req<T> { h T @header(\"X-H\")  id string }\n"
+	for label, c := range map[string]struct{ src, other string }{
+		"unknown":     {`service S { get A /a { response Paged<Nope> } }`, CodeRefUnknownSymbol},
+		"file":        {`service S { get A /a { response Paged<file> } }`, CodeFilePosition},
+		"error mixin": {`error Conflict E { Paged<file> }`, CodeFilePosition},
+	} {
+		t.Run(label, func(t *testing.T) {
+			expectCodeCount(t, decls+c.src, CodeBindingType, 0)
+			expectCodeCount(t, decls+c.src, c.other, 1)
+		})
+	}
+	d := expectError(t, decls+`service S { post A /a { request Req<file>  response Resp } }`, CodeBindingType)
+	expectMessage(t, d, "field Req<file>.h: @header requires")
+}
+
 // A type parameter spelled like a declaration is the parameter: the rules a
 // type parameter breaks are enforced although the declaration would pass them.
 func TestTypeParamShadowsDeclaration(t *testing.T) {
