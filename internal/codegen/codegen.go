@@ -23,28 +23,25 @@ type Inputs struct {
 	Protos *protodesign.Set
 }
 
-// LangTarget is one language's row in the target catalogue.
-type LangTarget struct {
-	// Lang is the `events.targets[].lang` value that selects the row.
-	Lang string
-	// Generate writes the event artefacts into outDir, relative to projectRoot.
-	Generate func(proj *semantic.Project, cfg *config.Config, projectRoot, outDir string) error
-	// OutputNotes reports what the language's output holds that the run
-	// cannot account for.
-	OutputNotes func(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string
+// langTarget is one language's row in the target catalogue.
+type langTarget struct {
+	// lang is the `events.targets[].lang` value that selects the row.
+	lang string
+	// generate writes the event artefacts into outDir, relative to projectRoot.
+	generate func(proj *semantic.Project, cfg *config.Config, projectRoot, outDir string) error
 }
 
-// LangTargets holds one row per language in [config.SupportedLangs].
-var LangTargets = []LangTarget{
-	{Lang: config.LangGo, Generate: golang.GenerateEventTarget, OutputNotes: golang.EventOutputNotes},
+// langTargets holds one row per language in [config.SupportedLangs].
+var langTargets = []langTarget{
+	{lang: config.LangGo, generate: golang.GenerateEventTarget},
 }
 
-// TargetDocs is the `--target` name of the OpenAPI document.
-const TargetDocs = "docs"
+// targetDocs is the `--target` name of the OpenAPI document.
+const targetDocs = "docs"
 
 // SelectableTargets is everything `--target` accepts, in run order.
 func SelectableTargets() []string {
-	return append(append([]string{}, config.SupportedLangs...), TargetDocs)
+	return append(append([]string{}, config.SupportedLangs...), targetDocs)
 }
 
 // Generate runs a pass for in under projectRoot: Go, the event targets, then
@@ -73,9 +70,9 @@ func emit(in Inputs, cfg *config.Config, projectRoot string, sel map[string]bool
 	if err := generateEventTargets(in.Design, cfg, projectRoot, sel); err != nil {
 		return err
 	}
-	if sel[TargetDocs] {
-		if err := GenerateDocuments(in.Design, cfg, projectRoot); err != nil {
-			return err
+	if sel[targetDocs] {
+		if err := docs.GenerateOpenAPI(in.Design, cfg, projectRoot); err != nil {
+			return fmt.Errorf("openapi: %w", err)
 		}
 	}
 	return nil
@@ -113,50 +110,25 @@ func validate(in Inputs, cfg *config.Config) error {
 	return golang.ValidateProtoOutputs(in.Design, in.Protos, cfg)
 }
 
-// GenerateDocuments writes the OpenAPI document.
-func GenerateDocuments(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
-	if err := docs.GenerateOpenAPI(proj, cfg, projectRoot); err != nil {
-		return fmt.Errorf("openapi: %w", err)
-	}
-	return nil
-}
-
-// GenerateEventTargets runs every enabled event language target, then
-// sweeps their directories. A design with no event generates nothing.
-func GenerateEventTargets(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
-	sel, _ := selection(nil)
-	if err := generateEventTargets(proj, cfg, projectRoot, sel); err != nil {
-		return err
-	}
-	return prune(eventOutputDirs(cfg, projectRoot, sel), regeneratedFiles(Inputs{Design: proj}, cfg, projectRoot))
-}
-
-// generateEventTargets runs the selected, enabled event language targets.
+// generateEventTargets runs the selected, enabled event language targets; a
+// design with no event generates nothing.
 func generateEventTargets(proj *semantic.Project, cfg *config.Config, projectRoot string, sel map[string]bool) error {
-	for _, target := range LangTargets {
-		if !sel[target.Lang] {
+	for _, target := range langTargets {
+		if !sel[target.lang] {
 			continue
 		}
-		cfgTarget, ok := cfg.Events.TargetFor(target.Lang)
+		cfgTarget, ok := cfg.Events.TargetFor(target.lang)
 		if !ok || !cfgTarget.Enabled() {
 			continue
 		}
-		if err := target.Generate(proj, cfg, projectRoot, cfgTarget.Out); err != nil {
-			return fmt.Errorf("events(%s): %w", target.Lang, err)
+		if err := target.generate(proj, cfg, projectRoot, cfgTarget.Out); err != nil {
+			return fmt.Errorf("events(%s): %w", target.lang, err)
 		}
 	}
 	return nil
 }
 
-// OutputNotes reports what each language target finds in its output and
-// cannot account for.
+// OutputNotes reports what the Go output holds that the run cannot account for.
 func OutputNotes(in Inputs, cfg *config.Config, projectRoot string) []string {
-	var out []string
-	for _, target := range LangTargets {
-		if target.OutputNotes == nil {
-			continue
-		}
-		out = append(out, target.OutputNotes(in.Design, in.Protos, cfg, projectRoot)...)
-	}
-	return out
+	return golang.OutputNotes(in.Design, in.Protos, cfg, projectRoot)
 }

@@ -71,7 +71,8 @@ service S {
 	get Read /r { response P }
 }`)
 	dir := t.TempDir()
-	if err := GenerateEventTargets(proj, eventsConfig(), dir); err != nil {
+	sel, _ := selection(nil)
+	if err := generateEventTargets(proj, eventsConfig(), dir, sel); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
 	entries, err := os.ReadDir(dir)
@@ -89,7 +90,8 @@ func TestDisabledTargetIsSkipped(t *testing.T) {
 	cfg := eventsConfig()
 	cfg.Events.Targets = []config.EventTarget{{Lang: config.LangGo, Out: "-"}}
 	dir := t.TempDir()
-	if err := GenerateEventTargets(proj, cfg, dir); err != nil {
+	sel, _ := selection(nil)
+	if err := generateEventTargets(proj, cfg, dir, sel); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "internal", "events")); !os.IsNotExist(err) {
@@ -97,14 +99,14 @@ func TestDisabledTargetIsSkipped(t *testing.T) {
 	}
 }
 
-// LangTargets has exactly one row per language the manifest accepts.
+// langTargets has exactly one row per language the manifest accepts.
 func TestCatalogueMatchesSupportedLangs(t *testing.T) {
 	inCatalogue := map[string]bool{}
-	for _, target := range LangTargets {
-		if inCatalogue[target.Lang] {
-			t.Errorf("%q has two rows in the catalogue", target.Lang)
+	for _, target := range langTargets {
+		if inCatalogue[target.lang] {
+			t.Errorf("%q has two rows in the catalogue", target.lang)
 		}
-		inCatalogue[target.Lang] = true
+		inCatalogue[target.lang] = true
 	}
 	for _, lang := range config.SupportedLangs {
 		if !inCatalogue[lang] {
@@ -151,7 +153,7 @@ func TestTargetSelectionLeavesOtherOutputAlone(t *testing.T) {
 		}
 	}
 	// Regenerate only the document; the Go output survives.
-	if err := Generate(Inputs{Design: proj}, cfg, dir, TargetDocs); err != nil {
+	if err := Generate(Inputs{Design: proj}, cfg, dir, targetDocs); err != nil {
 		t.Fatalf("generate docs: %v", err)
 	}
 	if _, err := os.Stat(goFile); err != nil {
@@ -214,7 +216,7 @@ func TestContractsProjectNamesLeftoverApplicationOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	notes := notesMatching(golang.EventOutputNotes(analyzeProject(t, alphaSrc), nil, cfg, root), "output.kind is contracts")
+	notes := notesMatching(OutputNotes(Inputs{Design: analyzeProject(t, alphaSrc)}, cfg, root), "output.kind is contracts")
 	if len(notes) != 1 || !strings.Contains(notes[0], cfg.Output.Transport) {
 		t.Errorf("leftover application output must be named: %v", notes)
 	}
@@ -231,8 +233,8 @@ func TestRuntimeDisabledNamesTheMissingContainer(t *testing.T) {
 	cfg.Output.Main = "-"
 	proj := analyzeProject(t, alphaSrc)
 
-	if notes := notesMatching(golang.EventOutputNotes(proj, nil, cfg, root), "yours to write"); len(notes) != 1 {
-		t.Errorf("a project with no container must be told: %v", golang.EventOutputNotes(proj, nil, cfg, root))
+	if notes := notesMatching(OutputNotes(Inputs{Design: proj}, cfg, root), "yours to write"); len(notes) != 1 {
+		t.Errorf("a project with no container must be told: %v", OutputNotes(Inputs{Design: proj}, cfg, root))
 	}
 
 	// Once the project supplies one, the note goes.
@@ -243,7 +245,7 @@ func TestRuntimeDisabledNamesTheMissingContainer(t *testing.T) {
 	if err := os.WriteFile(dest, []byte("package svccontext\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if notes := notesMatching(golang.EventOutputNotes(proj, nil, cfg, root), "yours to write"); len(notes) != 0 {
+	if notes := notesMatching(OutputNotes(Inputs{Design: proj}, cfg, root), "yours to write"); len(notes) != 0 {
 		t.Errorf("a hand-written container must silence it: %v", notes)
 	}
 }

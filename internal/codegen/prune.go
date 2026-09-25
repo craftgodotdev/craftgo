@@ -50,27 +50,20 @@ func outputDirs(cfg *config.Config, projectRoot string, sel map[string]bool) []s
 			dirs = append(dirs, sweepDir{path: filepath.Join(projectRoot, cfg.Output.PB), headers: protodesign.PluginHeaders})
 		}
 	}
-	dirs = append(dirs, eventOutputDirs(cfg, projectRoot, sel)...)
-	if sel[TargetDocs] {
-		if doc := docs.DocumentPath(cfg, projectRoot); doc != "" {
-			dirs = append(dirs, sweepDir{path: filepath.Dir(doc), headers: generatedHeaders})
-		}
-	}
-	return owned(dirs, projectRoot)
-}
-
-// eventOutputDirs is [outputDirs] for the event language targets alone.
-func eventOutputDirs(cfg *config.Config, projectRoot string, sel map[string]bool) []sweepDir {
-	var dirs []sweepDir
-	for _, target := range LangTargets {
-		if !sel[target.Lang] {
+	for _, target := range langTargets {
+		if !sel[target.lang] {
 			continue
 		}
-		cfgTarget, ok := cfg.Events.TargetFor(target.Lang)
+		cfgTarget, ok := cfg.Events.TargetFor(target.lang)
 		if !ok || !cfgTarget.Enabled() {
 			continue
 		}
 		dirs = append(dirs, sweepDir{path: filepath.Join(projectRoot, cfgTarget.Out), headers: generatedHeaders})
+	}
+	if sel[targetDocs] {
+		if doc := docs.DocumentPath(cfg, projectRoot); doc != "" {
+			dirs = append(dirs, sweepDir{path: filepath.Dir(doc), headers: generatedHeaders})
+		}
 	}
 	return owned(dirs, projectRoot)
 }
@@ -98,12 +91,12 @@ func owned(dirs []sweepDir, projectRoot string) []sweepDir {
 func regeneratedFiles(in Inputs, cfg *config.Config, projectRoot string) map[string]bool {
 	proj := in.Design
 	files := golang.RegeneratedFiles(proj, in.Protos, cfg, projectRoot)
-	for _, target := range LangTargets {
-		cfgTarget, ok := cfg.Events.TargetFor(target.Lang)
+	for _, target := range langTargets {
+		cfgTarget, ok := cfg.Events.TargetFor(target.lang)
 		if !ok || !cfgTarget.Enabled() {
 			continue
 		}
-		if target.Lang == config.LangGo {
+		if target.lang == config.LangGo {
 			files = append(files, golang.RegeneratedEventFiles(proj, projectRoot, cfgTarget.Out)...)
 		}
 	}
