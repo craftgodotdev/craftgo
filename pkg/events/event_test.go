@@ -13,19 +13,6 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 )
 
-// order is a payload type shaped like a generated one, with its own Validate.
-type order struct {
-	ID    string `json:"id"`
-	Count int    `json:"count"`
-}
-
-func (o *order) Validate() error {
-	if o.ID == "" {
-		return errors.New("id is required")
-	}
-	return nil
-}
-
 var (
 	orderPlaced  = events.NewEvent[order]("orders.Placed", (*order).Validate)
 	orderShipped = events.NewEvent[order]("orders.Shipped", nil)

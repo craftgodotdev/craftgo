@@ -15,48 +15,6 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 )
 
-type payload struct {
-	ID    string `json:"id"`
-	Count int    `json:"count"`
-}
-
-// recordingTransport records what it is handed and delivers nothing.
-type recordingTransport struct {
-	mu      sync.Mutex
-	sent    []*events.Message
-	subs    []events.Subscription
-	batches int
-	err     error
-}
-
-func (r *recordingTransport) Publish(_ context.Context, msg *events.Message) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.sent = append(r.sent, msg)
-	return nil
-}
-
-func (r *recordingTransport) Subscribe(_ context.Context, subs []events.Subscription) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.batches++
-	r.subs = append(r.subs, subs...)
-	return r.err
-}
-
-// start registers subs on bus and starts it.
-func start(t *testing.T, ctx context.Context, bus *events.Bus, subs ...events.Subscription) {
-	t.Helper()
-	for _, sub := range subs {
-		if err := bus.Register(sub); err != nil {
-			t.Fatalf("register %s/%s: %v", sub.Event, sub.Consumer, err)
-		}
-	}
-	if err := bus.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-}
-
 func TestBusPublishEncodesWithCodec(t *testing.T) {
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))

@@ -8,30 +8,6 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events"
 )
 
-// tagMW returns a middleware that appends ">tag" to trace before delegating and "<tag"
-// after.
-func tagMW(trace *string, tag string) events.Middleware {
-	return func(_ events.Subscription, next events.Handler) events.Handler {
-		return func(ctx context.Context, msg *events.Message) error {
-			*trace += ">" + tag
-			err := next(ctx, msg)
-			*trace += "<" + tag
-			return err
-		}
-	}
-}
-
-// tracingSub builds one subscription whose handler marks the trace.
-func tracingSub(trace *string, event, consumer string, group events.Group) events.Subscription {
-	return events.Subscription{
-		Event: event, Consumer: consumer, Group: group,
-		Handle: func(context.Context, *events.Message) error {
-			*trace += "|H|"
-			return nil
-		},
-	}
-}
-
 // deliver runs one subscription's handler the way a transport would.
 func deliver(t *testing.T, sub events.Subscription) error {
 	t.Helper()

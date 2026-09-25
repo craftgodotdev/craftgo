@@ -16,13 +16,6 @@ func noop() events.Handler {
 	return func(context.Context, *events.Message) error { return nil }
 }
 
-// busOver builds a bus over a fresh recording transport.
-func busOver(opts ...events.Option) (*events.Bus, *recordingTransport) {
-	tr := &recordingTransport{}
-	opts = append([]events.Option{events.WithTransport(tr), events.WithCodec(codecjson.Codec{})}, opts...)
-	return events.New(opts...), tr
-}
-
 // One Start is one call to the transport, carrying every subscription in
 // group, contract then consumer order.
 func TestStartHandsTheTransportOneSortedBatch(t *testing.T) {
