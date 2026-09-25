@@ -154,11 +154,6 @@ func collectAllDecoratorNames(f *ast.File) map[string]bool {
 	add := func(ds []*ast.Decorator) {
 		for _, d := range ds {
 			out[d.Name] = true
-			for _, a := range d.Args {
-				if a.Nested != nil {
-					out[a.Nested.Name] = true
-				}
-			}
 		}
 	}
 	add(f.Decorators)

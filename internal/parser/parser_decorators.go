@@ -76,15 +76,10 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 	return d
 }
 
-// parseDecoratorArg parses a nested decorator, an object literal, `name: value`
-// or a bare value.
+// parseDecoratorArg parses an object literal, `name: value` or a bare value.
 func (p *Parser) parseDecoratorArg() *ast.DecoratorArg {
 	pos := p.peek().Pos
 	arg := &ast.DecoratorArg{Pos: pos}
-	if p.peek().Kind == lexer.At {
-		arg.Nested = p.parseDecorator()
-		return arg
-	}
 	if p.peek().Kind == lexer.LBrace {
 		arg.Object = p.parseObjectLiteral()
 		return arg

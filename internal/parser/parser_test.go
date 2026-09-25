@@ -649,13 +649,11 @@ type X {}`)
 	}
 }
 
-func TestDecoratorNested(t *testing.T) {
-	// The grammar allows a nested decorator, though no decorator accepts one.
-	f := mustParse(t, `@wrap(@length(1, 20))
-type X {}`)
-	a := f.Decls[0].(*ast.TypeDecl).Decorators[0].Args[0]
-	if a.Nested == nil {
-		t.Error()
+// A decorator is no decorator argument: `@a(@b)` is reported at the inner `@`.
+func TestDecoratorArgumentIsNoDecorator(t *testing.T) {
+	_, msgs := parseWithErrors(t, "package p\n\n@wrap(@length(1, 20))\ntype X {}\n")
+	if want := "expected literal, got @"; len(msgs) == 0 || msgs[0] != want {
+		t.Errorf("diagnostics = %v, want the first to be %q", msgs, want)
 	}
 }
 

@@ -234,9 +234,8 @@ func (a *analyzer) checkNonNegativeInt(d *ast.Decorator) {
 	}
 }
 
-// checkExampleArg rejects an `@example` argument that is an object or a
-// nested decorator, which the parser leaves with a nil Value, and reports
-// whether there is none.
+// checkExampleArg rejects an `@example` argument that is an object, which the
+// parser leaves with a nil Value, and reports whether there is none.
 func (a *analyzer) checkExampleArg(d *ast.Decorator) bool {
 	if d.Name != "example" {
 		return true
@@ -251,8 +250,7 @@ func (a *analyzer) checkExampleArg(d *ast.Decorator) bool {
 	return true
 }
 
-// positionalArgs returns d's unnamed arguments, objects and nested
-// decorators included.
+// positionalArgs returns d's unnamed arguments, objects included.
 func positionalArgs(d *ast.Decorator) []*ast.DecoratorArg {
 	var out []*ast.DecoratorArg
 	for _, ag := range d.Args {

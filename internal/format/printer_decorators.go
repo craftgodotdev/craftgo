@@ -43,8 +43,6 @@ func (p *Printer) DecoratorArg(a *ast.DecoratorArg) {
 		p.write(": ")
 	}
 	switch {
-	case a.Nested != nil:
-		p.Decorator(a.Nested)
 	case a.Object != nil:
 		items := make([]listItem, len(a.Object))
 		for i, f := range a.Object {
@@ -156,8 +154,6 @@ func (p *Printer) list(open, end int, opener string, items []listItem, closer st
 // argLastLine returns the source line a decorator argument ends on.
 func (p *Printer) argLastLine(a *ast.DecoratorArg) int {
 	switch {
-	case a.Nested != nil:
-		return p.src.argsCloseLine(a.Nested)
 	case len(a.Object) > 0:
 		return p.src.closeLine(a.Pos)
 	case a.Value != nil:

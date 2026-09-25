@@ -90,6 +90,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   body field named `marshalJSON` is rejected, like one named after the other
   generated methods.
 
+- **A decorator is no decorator argument.** The grammar took `@a(@b)`,
+  though no decorator reads one; it is now a parse error, `expected
+  literal, got @`.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

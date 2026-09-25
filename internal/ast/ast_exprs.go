@@ -9,14 +9,13 @@ type Decorator struct {
 	HasParens bool
 }
 
-// DecoratorArg is one decorator argument, held in Value, Nested or Object;
-// Named marks the `name: value` form.
+// DecoratorArg is one decorator argument, held in Value or Object; Named marks
+// the `name: value` form.
 type DecoratorArg struct {
 	Pos    Pos
 	Name   string
 	Named  bool
 	Value  Expr
-	Nested *Decorator
 	Object []*ObjectField
 }
 
