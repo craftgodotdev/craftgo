@@ -876,6 +876,23 @@ func TestCompletionDecoratorArgWithNoClosedSetStaysSilent(t *testing.T) {
 	}
 }
 
+// A decorator's argument list takes no decorator: `@` inside one offers
+// nothing, whatever the decorator.
+func TestCompletionNoDecoratorInsideDecoratorArguments(t *testing.T) {
+	for _, args := range []string{"@doc(@|)", "@doc(\"a\", @de| )", "@format(@|)", "@length(1, @|)", "@nope(@| )", "@nope(@de| )", "@example({ s: @| })"} {
+		t.Run(args, func(t *testing.T) {
+			src := typeSlotFixtures + "middleware Auth\n\ntype User {\n\ts string " + args + "\n}\n"
+			if items := mustCompletionsAtCursor(t, "t.craftgo", src); len(items) != 0 {
+				t.Errorf("completion inside %s = %v, want nothing", args, labelSet(items))
+			}
+		})
+	}
+	src := typeSlotFixtures + "middleware Auth\n\nservice S {\n\t@middlewares(@|)\n\tget G /g {}\n}\n"
+	if items := mustCompletionsAtCursor(t, "t.craftgo", src); len(items) != 0 {
+		t.Errorf("completion inside @middlewares(@) = %v, want nothing", labelSet(items))
+	}
+}
+
 // `scalar Name |` offers only the built-ins a scalar can wrap.
 func TestCompletionScalarPrimitiveSlotIsBuiltinsOnly(t *testing.T) {
 	items := mustCompletionsAtCursor(t, "t.craftgo", typeSlotFixtures+"scalar Email |\n")

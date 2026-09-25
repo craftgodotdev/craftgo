@@ -34,16 +34,13 @@ func (r *request) namedSlotCompletions(c cursor) ([]protocol.CompletionItem, boo
 	if isExtendServiceContext(view, c) {
 		return r.serviceNameCompletions(), true
 	}
-	// `@name(|)`: the argument candidates of that decorator.
+	// `@name(|)`: the argument candidates of that decorator. A decorator's
+	// arguments hold no decorator, so a `@` there offers nothing.
 	if name, _, ok := decoratorArgContext(view, c); ok {
-		if items := r.decoratorArgItems(c, name); items != nil {
-			return items, true
-		}
-		// A registered decorator with no closed set takes a free literal, so
-		// nothing is offered; an unregistered name (a stray `(`) falls through.
-		if _, known := semantic.DecoratorSpec(name); known {
+		if (mid != nil && mid.Kind == lexer.At) || (prev != nil && prev.Kind == lexer.At) {
 			return nil, true
 		}
+		return r.decoratorArgItems(c, name), true
 	}
 	// `pkg.|`: the dot is mid right after it is typed, prev once the member is.
 	if mid != nil && mid.Kind == lexer.Dot {

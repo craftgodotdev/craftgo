@@ -559,6 +559,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   an error named like a category, such as `error NotFound Gone`, shows the
   error, where it showed the category.
 
+- **Completion offers no decorator inside a decorator's arguments**, where
+  none is allowed: `@` there offered decorator names, or a closed set of
+  values such as `@format`'s. The arguments of an unknown decorator offer
+  nothing either, where they offered what the enclosing block takes.
+
 - **`@negative` or `@lt(0)` on an array of unsigned integers is reported
   once**, as a decorator on the wrong type; it also drew the unsigned-value
   error meant for a single number.
