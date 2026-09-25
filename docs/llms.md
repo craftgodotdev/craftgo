@@ -62,7 +62,7 @@ A field's decorators may continue on lines of their own below it, up to the next
 | `datetime`       | `time.Time`             | RFC 3339 in JSON; body fields only, no validators |
 | `any`            | `any`                   | arbitrary JSON value, decoded and re-encoded (`object` is rejected as a field type) |
 | `bytes @format(raw)` | `wire.Raw`          | the bytes ARE the value in the message's own encoding; the codec embeds them untouched, so an explicit `null`, an integer past 2^53 and `1.50` all survive (`any` loses all three). Body fields only, no other validator, no `@default`; `?` / `@nullable` stay `wire.Raw` (nil is absence, an explicit `null` is the four bytes `null`), from `github.com/craftgodotdev/craftgo/pkg/wire` (its own stdlib-only module) |
-| `file`           | `*multipart.FileHeader` | only with `@form`                          |
+| `file`           | `*multipart.FileHeader` | a multipart part: a request's top-level field only, never in a response, error body or event payload (`binding/file-position`) |
 | `T?`             | `*T` or nilable as-is   | optional                                   |
 | `T[]`            | `[]T`                   | array                                      |
 | `map<K, V>`      | `map[K]V`               | K must be string / int* / uint* (or a scalar/enum over one); no `?`, bool, float, struct, slice keys |

@@ -483,8 +483,9 @@ type UploadReq {
     avatar file   @form @maxSize(2MB) @mimeTypes("image/png", "image/jpeg")
     doc    file   @form
 }
+type Resp { ok bool }
 service S {
-    post Upload /users/{userId}/avatar { request UploadReq  response UploadReq }
+    post Upload /users/{userId}/avatar { request UploadReq  response Resp }
 }`)
 	mustContainAll(t, body,
 		"multipart/form-data:",
@@ -507,8 +508,9 @@ type UploadReq {
     avatar  file    @form
     caption string? @form
 }
+type Resp { ok bool }
 service S {
-    post Upload /users/{userId}/avatar { request UploadReq  response UploadReq }
+    post Upload /users/{userId}/avatar { request UploadReq  response Resp }
 }`)
 	i := strings.Index(body, "multipart/form-data:")
 	if i < 0 {
@@ -544,8 +546,9 @@ type UploadReq {
     b      string?
     avatar file    @form
 }
+type Resp { ok bool }
 service S {
-    post Upload /upload { request UploadReq  response UploadReq }
+    post Upload /upload { request UploadReq  response Resp }
 }`)
 	i := strings.Index(body, "multipart/form-data:")
 	if i < 0 {

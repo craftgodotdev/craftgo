@@ -33,7 +33,7 @@ type Customer {
 	primaryAddress Address
 	billingAddress Address?
 	contact        Contact
-	avatar         file?             @maxSize(5MB) @mimeTypes("image/png", "image/jpeg", "image/webp")
+	avatarUrl      string?           @format(url)
 	loyaltyPoints  int               @nullable @gte(0) @lte(1000000)
 	bio            string?           @maxLength(500)
 	createdAt      string            @format(datetime)

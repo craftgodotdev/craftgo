@@ -1,6 +1,8 @@
 package semantic
 
 import (
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -253,28 +255,18 @@ func (a *analyzer) autoPathFieldRule(reqName, view string, pathSegs map[string]b
 	}
 }
 
-// checkFilePosition rejects a `file` field below the top level of a request
-// type, which the multipart binder never reaches, and any `file[][]`.
+// checkFilePosition rejects a `file` no generated code carries: below the
+// top level of a request type, which the multipart binder never reaches, or
+// anywhere in a response, an error body or an event payload; and a type's
+// `file[][]` field.
 func (a *analyzer) checkFilePosition() {
 	for _, td := range a.pkg.Types {
 		a.checkFileArrayDepth(td.Name, td.Body)
 	}
-	for _, ed := range a.pkg.Errors {
-		a.checkFileArrayDepth(ed.Name, ed.Body)
-	}
-	reported := map[lexer.Position]bool{}
-	for _, si := range a.pkg.Services {
-		for _, m := range si.Methods {
-			view, fields, ok := a.requestFields(m)
-			if !ok {
-				continue
-			}
-			seen := map[string]bool{}
-			for _, ff := range fields {
-				a.reportNestedFiles(view, ff.Field.Type, m.Request.Name.String()+"."+ff.Field.Name, seen, reported)
-			}
-		}
-	}
+	a.checkRequestFiles()
+	a.checkResponseFiles()
+	a.checkErrorBodyFiles()
+	a.checkPayloadFiles()
 }
 
 // checkFileArrayDepth rejects a `file[][]` field of the body of owner.
@@ -287,10 +279,118 @@ func (a *analyzer) checkFileArrayDepth(owner string, body []ast.TypeMember) {
 	}
 }
 
-// reportNestedFiles reports each `file` field of the struct types t reaches,
-// mixin fields included, and of the structs below them; t is spelled as
-// package view spells it and path names how the request reaches it.
-func (a *analyzer) reportNestedFiles(view string, t *ast.TypeRef, path string, seen map[string]bool, reported map[lexer.Position]bool) {
+// checkRequestFiles reports each field of a request, top-level fields
+// excepted when they are a `file` or a `file[]`, that holds a `file`.
+func (a *analyzer) checkRequestFiles() {
+	reported := map[lexer.Position]bool{}
+	report := func(owner string, f *ast.Field, where string) {
+		if reported[f.Pos] {
+			return
+		}
+		reported[f.Pos] = true
+		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeFilePosition,
+			"field %s.%s holds a `file` the multipart binder never reads%s - it binds only a request's top-level `file` and `file[]` fields; move the `file` there (a mixin may carry it)", owner, f.Name, where)
+	}
+	for _, svcName := range a.pkg.ServiceNames() {
+		for _, m := range a.pkg.Services[svcName].Methods {
+			view, fields, ok := a.requestFields(m)
+			if !ok {
+				continue
+			}
+			reqName := m.Request.Name.String()
+			seen := map[string]bool{}
+			for _, ff := range fields {
+				f := ff.Field
+				switch {
+				case isFileTypeRef(f.Type):
+				case holdsFile(f.Type):
+					report(reqName, f, "")
+				default:
+					a.visitFileHolders(view, f.Type, reqName+"."+f.Name, seen, func(owner string, file *ast.Field, path string) {
+						report(owner, file, " (reached through "+path+")")
+					})
+				}
+			}
+		}
+	}
+}
+
+// checkResponseFiles rejects each response clause whose type holds a `file`.
+func (a *analyzer) checkResponseFiles() {
+	for _, svcName := range a.pkg.ServiceNames() {
+		for _, m := range a.pkg.Services[svcName].Methods {
+			if m.Response == nil || m.Response.Type == nil {
+				continue
+			}
+			resp := m.Response.Type
+			if at := a.fileAt(&ast.TypeRef{Pos: m.Response.Pos, Named: resp}, resp.String()); at != "" {
+				a.diag(m.Response.Pos, m.Response.Pos, lexer.SeverityError, CodeFilePosition,
+					"response %s of %s.%s holds a `file` at %s, but only a request carries an upload - send the content as `bytes`",
+					resp, svcName, m.Name, at)
+			}
+		}
+	}
+}
+
+// checkErrorBodyFiles rejects each field and mixin of an error body that
+// holds a `file`.
+func (a *analyzer) checkErrorBodyFiles() {
+	for _, name := range slices.Sorted(maps.Keys(a.pkg.Errors)) {
+		ed := a.pkg.Errors[name]
+		for _, member := range ed.Body {
+			var at string
+			var pos lexer.Position
+			switch v := member.(type) {
+			case *ast.Field:
+				pos, at = v.Pos, ed.Name+"."+v.Name
+				if !holdsFile(v.Type) {
+					at = a.fileAt(v.Type, at)
+				}
+			case *ast.Mixin:
+				pos, at = v.Pos, a.fileAt(&ast.TypeRef{Pos: v.Pos, Named: v.Ref}, ed.Name)
+			}
+			if at != "" {
+				a.diag(pos, pos, lexer.SeverityError, CodeFilePosition,
+					"error %s holds a `file` at %s, but only a request carries an upload - send the content as `bytes`", ed.Name, at)
+			}
+		}
+	}
+}
+
+// checkPayloadFiles rejects each event payload whose type holds a `file`.
+func (a *analyzer) checkPayloadFiles() {
+	for _, name := range slices.Sorted(maps.Keys(a.pkg.Events)) {
+		d := a.pkg.Events[name]
+		if d.Payload == nil || d.Payload.Type == nil {
+			continue
+		}
+		payload := d.Payload.Type
+		if at := a.fileAt(&ast.TypeRef{Pos: d.Payload.Pos, Named: payload}, payload.String()); at != "" {
+			a.diag(d.Payload.Pos, d.Payload.Pos, lexer.SeverityError, CodeFilePosition,
+				"payload %s of event %s holds a `file` at %s, but only a request carries an upload - send the content as `bytes`",
+				payload, d.Name, at)
+		}
+	}
+}
+
+// fileAt returns the path, from path, to the first field holding a `file`
+// among those of the struct types t reaches and of the structs below them;
+// "" when there is none. t is spelled as the analyser's package spells it.
+func (a *analyzer) fileAt(t *ast.TypeRef, path string) string {
+	at := ""
+	a.visitFileHolders(a.pkg.Name, t, path, map[string]bool{}, func(_ string, f *ast.Field, p string) {
+		if at == "" {
+			at = p + "." + f.Name
+		}
+	})
+	return at
+}
+
+// visitFileHolders calls visit with each field that [holdsFile] among the
+// fields of the struct types t reaches, mixin fields included, and of the
+// structs below them: owner is the struct reached and path how t reaches
+// it. t is spelled as package view spells it.
+func (a *analyzer) visitFileHolders(view string, t *ast.TypeRef, path string, seen map[string]bool, visit func(owner string, f *ast.Field, path string)) {
 	t.WalkNamedRefs(func(n *ast.NamedTypeRef) {
 		pkg, sym := a.proj.resolve(view, n.Name)
 		if pkg == nil || pkg.Types[sym] == nil || seen[pkg.Name+"."+sym] {
@@ -301,18 +401,22 @@ func (a *analyzer) reportNestedFiles(view string, t *ast.TypeRef, path string, s
 		fields, _ := a.proj.flattenFields(view, pkg.Name, td.Body, td.TypeParams, nil, nil)
 		for _, ff := range fields {
 			f := ff.Field
-			if !isFileTypeRef(f.Type) {
-				a.reportNestedFiles(view, f.Type, path+"."+f.Name, seen, reported)
+			if holdsFile(f.Type) {
+				visit(td.Name, f, path)
 				continue
 			}
-			if reported[f.Pos] {
-				continue
-			}
-			reported[f.Pos] = true
-			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeFilePosition,
-				"field %s.%s: a `file` field nested inside a request body (reached through %s) is not bindable - the multipart binder reads only top-level request fields; move the `file` to the top level of the request type (or carry it in via a mixin)", td.Name, f.Name, path)
+			a.visitFileHolders(view, f.Type, path+"."+f.Name, seen, visit)
 		}
 	})
+}
+
+// holdsFile reports whether t is a `file`, optional or in an array, or a map
+// holding one as key or value.
+func holdsFile(t *ast.TypeRef) bool {
+	if t != nil && t.Map != nil {
+		return holdsFile(t.Map.Key) || holdsFile(t.Map.Value)
+	}
+	return isFileTypeRef(t)
 }
 
 // isFileTypeRef reports whether t names `file`, optional or in an array.

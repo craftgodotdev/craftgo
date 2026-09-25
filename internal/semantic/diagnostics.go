@@ -99,7 +99,8 @@ const (
 	CodeBindingType = "binding/type"
 	// CodeBindingVerb fires when `@body` or `@form` sits on a request field of a body-less verb.
 	CodeBindingVerb = "binding/verb"
-	// CodeFilePosition fires when a `file` field sits in a response or below a request's top level.
+	// CodeFilePosition fires when a `file` sits below a request's top level, or in a response, an
+	// error body or an event payload.
 	CodeFilePosition = "binding/file-position"
 	// CodeGroupPackageStraddle fires when services of different DSL packages share an output directory.
 	CodeGroupPackageStraddle = "group/package-straddle"

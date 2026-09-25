@@ -4,6 +4,7 @@ package customers
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"time"
 	"unicode/utf8"
@@ -124,14 +125,9 @@ func (v *Customer) Validate() error {
 	if err := v.Contact.Validate(); err != nil {
 		return err
 	}
-	if v.Avatar != nil && v.Avatar.Size > 5242880 {
-		return fmt.Errorf("avatar: file size exceeds 5242880 bytes")
-	}
-	if v.Avatar != nil {
-		switch v.Avatar.Header.Get("Content-Type") {
-		case "image/png", "image/jpeg", "image/webp":
-		default:
-			return fmt.Errorf("avatar: disallowed content type")
+	if v.AvatarURL != nil {
+		if _u, _err := url.Parse(*v.AvatarURL); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
+			return fmt.Errorf("avatarUrl: not a valid URL")
 		}
 	}
 	if v.LoyaltyPoints != nil && *v.LoyaltyPoints < 0 {

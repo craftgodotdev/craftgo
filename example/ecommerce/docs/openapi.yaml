@@ -361,8 +361,8 @@ components:
       type: string
     Customer:
       properties:
-        avatar:
-          format: binary
+        avatarUrl:
+          format: url
           type:
           - string
           - "null"

@@ -1,11 +1,12 @@
 package semantic
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// A `file` below the request's top level is rejected; top-level, mixin and response files are not.
+// A `file` below the request's top level is rejected; top-level and mixin files are not.
 func TestNestedRequestFileRejected(t *testing.T) {
 	expectError(t, `package design
 type Wrap { data file @form }
@@ -38,10 +39,65 @@ type Bits { f file @form }
 type UploadReq { Bits  name string }
 type Resp { ok bool }
 service S { post Up /up { request UploadReq  response Resp } }`)
-	// A type holding a file may also be the response.
-	mustNoFilePosition("echo", `package design
-type Profile { avatar file @form  name string }
-service S { post Up /up { request Profile  response Profile } }`)
+}
+
+// A `file` in a map is rejected even at the request's top level.
+func TestRequestFileInMapRejected(t *testing.T) {
+	d := expectError(t, `package design
+type UploadReq { f file  byName map<string, file> }
+type Resp { ok bool }
+service S { post Up /up { request UploadReq  response Resp } }`, CodeFilePosition)
+	expectMessage(t, d, "UploadReq.byName")
+}
+
+// A `file` anywhere in a response, an error body or an event payload is
+// rejected at the clause or error field that carries it, naming where it sits.
+func TestFileOutsideRequestRejected(t *testing.T) {
+	for label, c := range map[string]struct{ src, at string }{
+		"response": {`type Resp { f file  ok bool }
+service S { get A /a { response Resp } }`, "Resp.f"},
+		"response nested": {`type Att { data file }
+type Resp { att Att }
+service S { get A /a { response Resp } }`, "Resp.att.data"},
+		"response mixin": {`type Bits { data file }
+type Resp { Bits  ok bool }
+service S { get A /a { response Resp } }`, "Resp.data"},
+		"response array": {`type Resp { files file[] }
+service S { get A /a { response Resp } }`, "Resp.files"},
+		"response map": {`type Resp { byName map<string, file> }
+service S { get A /a { response Resp } }`, "Resp.byName"},
+		"raw response": {`type Resp { f file }
+service S { @rawResponse get A /a { response Resp } }`, "Resp.f"},
+		"echo": {`type Profile { avatar file  name string }
+service S { post Up /up { request Profile  response Profile } }`, "Profile.avatar"},
+		"error body": {`error BadRequest Oops { f file }`, "Oops.f"},
+		"error nested": {`type Att { data file }
+error BadRequest Oops { att Att }`, "Oops.att.data"},
+		"payload": {`type P { f file  id string }
+event Placed { payload P }`, "P.f"},
+		"payload array": {`type Att { data file }
+type P { att Att[] }
+event Placed { payload P[] }`, "P.att.data"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			d := expectError(t, "package design\n"+c.src, CodeFilePosition)
+			expectMessage(t, d, c.at, "only a request")
+		})
+	}
+}
+
+// A response type another package declares is checked at the response
+// clause that names it.
+func TestFileInCrossPackageResponseRejected(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": "package shared\ntype Att { data file }\ntype Resp { att Att }",
+		"api.craftgo":      "package api\nimport \"shared\"\nservice S { get A /a { response shared.Resp } }",
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	d := findCode(diags, CodeFilePosition)
+	if d == nil || d.Pos.Filename != filepath.Join(root, "api.craftgo") || !strings.Contains(d.Msg, "shared.Resp.att.data") {
+		t.Fatalf("want the file reported at api's response clause through shared.Resp.att.data, got %v", diags)
+	}
 }
 
 // A `file` nested in a struct another package declares is rejected too, and

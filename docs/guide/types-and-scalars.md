@@ -41,7 +41,7 @@ type Signup {
 | `float64`  | `float64`  |                                      |
 | `bool`     | `bool`     |                                      |
 | `datetime` | `time.Time` | RFC 3339 string in JSON; body fields only |
-| `file`     | `*multipart.FileHeader` | only valid with `@form` |
+| `file`     | `*multipart.FileHeader` | a multipart part: a request's top-level field only, never in a response, an error body or an event payload |
 
 #### raw encoded values: `bytes @format(raw)`
 

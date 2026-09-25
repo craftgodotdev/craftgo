@@ -677,6 +677,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   not a type`). Each is now an error, `package/name`, at every file's
   `package` clause.
 
+- **A `file` rides only at a request's top level.** A `file` in a response,
+  an error body or an event payload - directly, in an array or a map, or in
+  a struct below them - passed analysis, and the generated code JSON-encoded
+  the upload's `multipart.FileHeader`, which no client reads back as a file;
+  so did a request's `map<string, file>`, which the multipart binder never
+  reads. Each is now `binding/file-position`, at the response or payload
+  clause or at the error's field, naming where the `file` sits.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
