@@ -29,19 +29,19 @@ func (v *ArrayBox[T]) Validate() error {
 	for i0 := range v.Req {
 		if vv, ok := any(&v.Req[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("req: %w", err)
 			}
 		} else if err := validateValue(v.Req[i0]); err != nil {
-			return err
+			return fmt.Errorf("req: %w", err)
 		}
 	}
 	for i0 := range v.Opt {
 		if vv, ok := any(&v.Opt[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("opt: %w", err)
 			}
 		} else if err := validateValue(v.Opt[i0]); err != nil {
-			return err
+			return fmt.Errorf("opt: %w", err)
 		}
 	}
 	return nil
@@ -52,7 +52,7 @@ func (v *ArrayBox[T]) Validate() error {
 func (v *ArrayOfGenericInstance) Validate() error {
 	for i0 := range v.Pages {
 		if err := v.Pages[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("pages: %w", err)
 		}
 	}
 	return nil
@@ -104,7 +104,7 @@ func (v *Audited) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AuditedPage) Validate() error {
 	if err := v.Page.Validate(); err != nil {
-		return err
+		return fmt.Errorf("page: %w", err)
 	}
 	return nil
 }
@@ -130,7 +130,7 @@ func (v *Bag) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *BoxHolder) Validate() error {
 	if err := v.Box.Validate(); err != nil {
-		return err
+		return fmt.Errorf("box: %w", err)
 	}
 	return nil
 }
@@ -139,7 +139,7 @@ func (v *BoxHolder) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CompositeArg) Validate() error {
 	if err := v.Page.Validate(); err != nil {
-		return err
+		return fmt.Errorf("page: %w", err)
 	}
 	return nil
 }
@@ -149,10 +149,10 @@ func (v *CompositeArg) Validate() error {
 func (v *ConstrainedBox[T]) Validate() error {
 	if vv, ok := any(&v.Item).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
-			return err
+			return fmt.Errorf("item: %w", err)
 		}
 	} else if err := validateValue(v.Item); err != nil {
-		return err
+		return fmt.Errorf("item: %w", err)
 	}
 	if v.Count != nil && *v.Count < 1 {
 		return fmt.Errorf("count: below minimum 1")
@@ -173,7 +173,7 @@ func (v *ConstrainedBox[T]) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ConstrainedBoxHost) Validate() error {
 	if err := v.Box.Validate(); err != nil {
-		return err
+		return fmt.Errorf("box: %w", err)
 	}
 	return nil
 }
@@ -182,7 +182,7 @@ func (v *ConstrainedBoxHost) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CreateOrderReq) Validate() error {
 	if err := v.Order.Validate(); err != nil {
-		return err
+		return fmt.Errorf("order: %w", err)
 	}
 	return nil
 }
@@ -191,7 +191,7 @@ func (v *CreateOrderReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *EchoWrappedReq) Validate() error {
 	if err := v.Payload.Validate(); err != nil {
-		return err
+		return fmt.Errorf("payload: %w", err)
 	}
 	return nil
 }
@@ -217,10 +217,10 @@ func (v *EnumKeyedMaps) Validate() error {
 func (v *Envelope[T]) Validate() error {
 	if vv, ok := any(&v.Data).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
-			return err
+			return fmt.Errorf("data: %w", err)
 		}
 	} else if err := validateValue(v.Data); err != nil {
-		return err
+		return fmt.Errorf("data: %w", err)
 	}
 	return nil
 }
@@ -229,10 +229,10 @@ func (v *Envelope[T]) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *EnvelopePages) Validate() error {
 	if err := v.OfList.Validate(); err != nil {
-		return err
+		return fmt.Errorf("ofList: %w", err)
 	}
 	if err := v.ListOf.Validate(); err != nil {
-		return err
+		return fmt.Errorf("listOf: %w", err)
 	}
 	return nil
 }
@@ -250,7 +250,7 @@ func (v *GenericMixinHost) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GenericOverEnum) Validate() error {
 	if err := v.Levels.Validate(); err != nil {
-		return err
+		return fmt.Errorf("levels: %w", err)
 	}
 	return nil
 }
@@ -259,10 +259,10 @@ func (v *GenericOverEnum) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *GenericOverScalar) Validate() error {
 	if err := v.Emails.Validate(); err != nil {
-		return err
+		return fmt.Errorf("emails: %w", err)
 	}
 	if err := v.Amounts.Validate(); err != nil {
-		return err
+		return fmt.Errorf("amounts: %w", err)
 	}
 	return nil
 }
@@ -317,10 +317,10 @@ func (v *Keyed[Key]) Validate() error {
 	if v.Key != nil {
 		if vv, ok := any(v.Key).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("key: %w", err)
 			}
 		} else if err := validateValue(v.Key); err != nil {
-			return err
+			return fmt.Errorf("key: %w", err)
 		}
 	}
 	return nil
@@ -334,18 +334,18 @@ func (v *KeyedPage[Key]) Validate() error {
 	}
 	if vv, ok := any(&v.Key).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
-			return err
+			return fmt.Errorf("X-Key: %w", err)
 		}
 	} else if err := validateValue(v.Key); err != nil {
-		return err
+		return fmt.Errorf("X-Key: %w", err)
 	}
 	for i0 := range v.Items {
 		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("items: %w", err)
 			}
 		} else if err := validateValue(v.Items[i0]); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	return nil
@@ -359,10 +359,10 @@ func (v *KeyedPut[Key]) Validate() error {
 	}
 	if vv, ok := any(&v.Key).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
-			return err
+			return fmt.Errorf("key: %w", err)
 		}
 	} else if err := validateValue(v.Key); err != nil {
-		return err
+		return fmt.Errorf("key: %w", err)
 	}
 	return nil
 }
@@ -393,10 +393,10 @@ func (v *Listing[T]) Validate() error {
 	for i0 := range v.Items {
 		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("items: %w", err)
 			}
 		} else if err := validateValue(v.Items[i0]); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	if v.Total < 0 {
@@ -414,10 +414,10 @@ func (v *Lookup[T]) Validate() error {
 	if v.Level != nil {
 		if vv, ok := any(v.Level).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("level: %w", err)
 			}
 		} else if err := validateValue(v.Level); err != nil {
-			return err
+			return fmt.Errorf("level: %w", err)
 		}
 	}
 	return nil
@@ -427,16 +427,16 @@ func (v *Lookup[T]) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *MapPages) Validate() error {
 	if err := v.ByKey.Validate(); err != nil {
-		return err
+		return fmt.Errorf("byKey: %w", err)
 	}
 	if err := v.ByBatch.Validate(); err != nil {
-		return err
+		return fmt.Errorf("byBatch: %w", err)
 	}
 	if err := v.ByList.Validate(); err != nil {
-		return err
+		return fmt.Errorf("byList: %w", err)
 	}
 	if err := v.ByMaybe.Validate(); err != nil {
-		return err
+		return fmt.Errorf("byMaybe: %w", err)
 	}
 	return nil
 }
@@ -446,7 +446,7 @@ func (v *MapPages) Validate() error {
 func (v *MapValueGeneric) Validate() error {
 	for _, val0 := range v.Bucket {
 		if err := val0.Validate(); err != nil {
-			return err
+			return fmt.Errorf("bucket: %w", err)
 		}
 	}
 	return nil
@@ -458,10 +458,10 @@ func (v *Maybe[T]) Validate() error {
 	if v.Value != nil {
 		if vv, ok := any(v.Value).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("value: %w", err)
 			}
 		} else if err := validateValue(v.Value); err != nil {
-			return err
+			return fmt.Errorf("value: %w", err)
 		}
 	}
 	return nil
@@ -471,7 +471,7 @@ func (v *Maybe[T]) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *MaybeOrder) Validate() error {
 	if err := v.Hit.Validate(); err != nil {
-		return err
+		return fmt.Errorf("hit: %w", err)
 	}
 	return nil
 }
@@ -488,10 +488,10 @@ func (v *MixinPage[T]) Validate() error {
 	for i0 := range v.Items {
 		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("items: %w", err)
 			}
 		} else if err := validateValue(v.Items[i0]); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	if v.Total < 0 {
@@ -547,7 +547,7 @@ func (v *NullableScalars) Validate() error {
 func (v *OptionalPage) Validate() error {
 	if v.MaybePage != nil {
 		if err := v.MaybePage.Validate(); err != nil {
-			return err
+			return fmt.Errorf("maybePage: %w", err)
 		}
 	}
 	return nil
@@ -581,7 +581,7 @@ func (v *Order) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *OrderPage) Validate() error {
 	if err := v.Page.Validate(); err != nil {
-		return err
+		return fmt.Errorf("page: %w", err)
 	}
 	return nil
 }
@@ -592,10 +592,10 @@ func (v *Page[T]) Validate() error {
 	for i0 := range v.Items {
 		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("items: %w", err)
 			}
 		} else if err := validateValue(v.Items[i0]); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	return nil
@@ -605,7 +605,7 @@ func (v *Page[T]) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PageOfPrimitiveHost) Validate() error {
 	if err := v.Rows.Validate(); err != nil {
-		return err
+		return fmt.Errorf("rows: %w", err)
 	}
 	return nil
 }
@@ -619,10 +619,10 @@ func (v *PageWithAudit[T]) Validate() error {
 	for i0 := range v.Items {
 		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("items: %w", err)
 			}
 		} else if err := validateValue(v.Items[i0]); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	return nil
@@ -633,17 +633,17 @@ func (v *PageWithAudit[T]) Validate() error {
 func (v *Pair[A, B]) Validate() error {
 	if vv, ok := any(&v.Left).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
-			return err
+			return fmt.Errorf("left: %w", err)
 		}
 	} else if err := validateValue(v.Left); err != nil {
-		return err
+		return fmt.Errorf("left: %w", err)
 	}
 	if vv, ok := any(&v.Right).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
-			return err
+			return fmt.Errorf("right: %w", err)
 		}
 	} else if err := validateValue(v.Right); err != nil {
-		return err
+		return fmt.Errorf("right: %w", err)
 	}
 	return nil
 }
@@ -652,7 +652,7 @@ func (v *Pair[A, B]) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PairUserOrder) Validate() error {
 	if err := v.Pair.Validate(); err != nil {
-		return err
+		return fmt.Errorf("pair: %w", err)
 	}
 	return nil
 }
@@ -661,7 +661,7 @@ func (v *PairUserOrder) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ProductPage) Validate() error {
 	if err := v.Page.Validate(); err != nil {
-		return err
+		return fmt.Errorf("page: %w", err)
 	}
 	return nil
 }
@@ -693,7 +693,7 @@ func (v *QueryDefaults) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *RecursiveHost) Validate() error {
 	if err := v.Root.Validate(); err != nil {
-		return err
+		return fmt.Errorf("root: %w", err)
 	}
 	return nil
 }
@@ -709,7 +709,7 @@ func (v *RefInner) Validate() error {
 func (v *RefMeta) Validate() error {
 	if v.NulInner != nil {
 		if err := v.NulInner.Validate(); err != nil {
-			return err
+			return fmt.Errorf("nulInner: %w", err)
 		}
 	}
 	if v.NulColor != nil {
@@ -820,18 +820,18 @@ func (v *Shadowed[Blob, Priority]) Validate() error {
 	if v.Payload != nil {
 		if vv, ok := any(v.Payload).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("payload: %w", err)
 			}
 		} else if err := validateValue(v.Payload); err != nil {
-			return err
+			return fmt.Errorf("payload: %w", err)
 		}
 	}
 	if vv, ok := any(&v.Level).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
-			return err
+			return fmt.Errorf("level: %w", err)
 		}
 	} else if err := validateValue(v.Level); err != nil {
-		return err
+		return fmt.Errorf("level: %w", err)
 	}
 	return nil
 }
@@ -840,7 +840,7 @@ func (v *Shadowed[Blob, Priority]) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ShadowedHost) Validate() error {
 	if err := v.S.Validate(); err != nil {
-		return err
+		return fmt.Errorf("s: %w", err)
 	}
 	return nil
 }
@@ -860,10 +860,10 @@ func (v *SkuPage[T]) Validate() error {
 	for i0 := range v.Items {
 		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("items: %w", err)
 			}
 		} else if err := validateValue(v.Items[i0]); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	return nil
@@ -874,18 +874,18 @@ func (v *SkuPage[T]) Validate() error {
 func (v *Tallied[T]) Validate() error {
 	if vv, ok := any(&v.Tally).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
-			return err
+			return fmt.Errorf("X-Tally: %w", err)
 		}
 	} else if err := validateValue(v.Tally); err != nil {
-		return err
+		return fmt.Errorf("X-Tally: %w", err)
 	}
 	for i0 := range v.Items {
 		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("items: %w", err)
 			}
 		} else if err := validateValue(v.Items[i0]); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	return nil
@@ -896,14 +896,14 @@ func (v *Tallied[T]) Validate() error {
 func (v *Tree[T]) Validate() error {
 	if vv, ok := any(&v.Val).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
-			return err
+			return fmt.Errorf("val: %w", err)
 		}
 	} else if err := validateValue(v.Val); err != nil {
-		return err
+		return fmt.Errorf("val: %w", err)
 	}
 	for i0 := range v.Kids {
 		if err := v.Kids[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("kids: %w", err)
 		}
 	}
 	return nil
@@ -922,7 +922,7 @@ func (v *UUIDItem) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Wrapped) Validate() error {
 	if err := v.Results.Validate(); err != nil {
-		return err
+		return fmt.Errorf("results: %w", err)
 	}
 	return nil
 }

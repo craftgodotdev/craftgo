@@ -275,7 +275,7 @@ func (v *Map_ScalarKey) Validate() error {
 			return fmt.Errorf("byUser: %w", err)
 		}
 		if err := val0.Validate(); err != nil {
-			return err
+			return fmt.Errorf("byUser: %w", err)
 		}
 	}
 	return nil
@@ -297,7 +297,7 @@ func (v *Map_ScalarValue) Validate() error {
 func (v *Map_StructAddress) Validate() error {
 	for _, val0 := range v.Addresses {
 		if err := val0.Validate(); err != nil {
-			return err
+			return fmt.Errorf("addresses: %w", err)
 		}
 	}
 	return nil
@@ -308,7 +308,7 @@ func (v *Map_StructAddress) Validate() error {
 func (v *Map_StructValue) Validate() error {
 	for _, val0 := range v.Users {
 		if err := val0.Validate(); err != nil {
-			return err
+			return fmt.Errorf("users: %w", err)
 		}
 	}
 	return nil

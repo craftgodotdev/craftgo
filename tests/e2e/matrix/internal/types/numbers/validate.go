@@ -10,7 +10,7 @@ import (
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *BoundaryReq) Validate() error {
 	if err := v.Body.Validate(); err != nil {
-		return err
+		return fmt.Errorf("body: %w", err)
 	}
 	return nil
 }
@@ -19,7 +19,7 @@ func (v *BoundaryReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *CounterReq) Validate() error {
 	if err := v.Body.Validate(); err != nil {
-		return err
+		return fmt.Errorf("body: %w", err)
 	}
 	return nil
 }
@@ -28,7 +28,7 @@ func (v *CounterReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ExactReq) Validate() error {
 	if err := v.Body.Validate(); err != nil {
-		return err
+		return fmt.Errorf("body: %w", err)
 	}
 	return nil
 }
@@ -37,7 +37,7 @@ func (v *ExactReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *MixedReq) Validate() error {
 	if err := v.Body.Validate(); err != nil {
-		return err
+		return fmt.Errorf("body: %w", err)
 	}
 	return nil
 }
@@ -406,7 +406,7 @@ func (v *NumberUnsigned) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *OptionalReq) Validate() error {
 	if err := v.Body.Validate(); err != nil {
-		return err
+		return fmt.Errorf("body: %w", err)
 	}
 	return nil
 }
@@ -415,7 +415,7 @@ func (v *OptionalReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PriceReq) Validate() error {
 	if err := v.Body.Validate(); err != nil {
-		return err
+		return fmt.Errorf("body: %w", err)
 	}
 	return nil
 }
@@ -424,7 +424,7 @@ func (v *PriceReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *UnsignedReq) Validate() error {
 	if err := v.Body.Validate(); err != nil {
-		return err
+		return fmt.Errorf("body: %w", err)
 	}
 	return nil
 }

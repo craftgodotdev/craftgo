@@ -51,7 +51,7 @@ func (v *CreateProfileReq) Validate() error {
 		return fmt.Errorf("displayName: length out of range [1, 50]")
 	}
 	if err := v.Contacts.Validate(); err != nil {
-		return err
+		return fmt.Errorf("contacts: %w", err)
 	}
 	if len(v.Addresses) < 1 {
 		return fmt.Errorf("addresses: minItems 1")
@@ -61,7 +61,7 @@ func (v *CreateProfileReq) Validate() error {
 	}
 	for i0 := range v.Addresses {
 		if err := v.Addresses[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("addresses: %w", err)
 		}
 	}
 	if len(v.Tags) > 10 {
@@ -81,7 +81,7 @@ func (v *GetProfileReq) Validate() error {
 func (v *ListProfilesResp) Validate() error {
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	return nil
@@ -116,7 +116,7 @@ func (v *PfAddress) Validate() error {
 	}
 	if v.Coords != nil {
 		if err := v.Coords.Validate(); err != nil {
-			return err
+			return fmt.Errorf("coords: %w", err)
 		}
 	}
 	return nil
@@ -129,7 +129,7 @@ func (v *Profile) Validate() error {
 		return fmt.Errorf("displayName: length out of range [1, 50]")
 	}
 	if err := v.Contacts.Validate(); err != nil {
-		return err
+		return fmt.Errorf("contacts: %w", err)
 	}
 	if len(v.Addresses) < 1 {
 		return fmt.Errorf("addresses: minItems 1")
@@ -139,7 +139,7 @@ func (v *Profile) Validate() error {
 	}
 	for i0 := range v.Addresses {
 		if err := v.Addresses[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("addresses: %w", err)
 		}
 	}
 	if len(v.Tags) > 10 {

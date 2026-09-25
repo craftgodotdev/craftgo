@@ -185,7 +185,7 @@ func (v *Item) Validate() error {
 func (v *ItemList) Validate() error {
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	return nil
@@ -593,7 +593,7 @@ func (v *InvalidInputBody) Validate() error {
 func (v *NullableFieldsErrBody) Validate() error {
 	if v.Detail != nil {
 		if err := v.Detail.Validate(); err != nil {
-			return err
+			return fmt.Errorf("detail: %w", err)
 		}
 	}
 	return nil

@@ -12,7 +12,7 @@ import (
 func (v *A) Validate() error {
 	if v.B != nil {
 		if err := v.B.Validate(); err != nil {
-			return err
+			return fmt.Errorf("b: %w", err)
 		}
 	}
 	return nil
@@ -44,7 +44,7 @@ func (v *AuditedHost) Validate() error {
 func (v *B) Validate() error {
 	if v.A != nil {
 		if err := v.A.Validate(); err != nil {
-			return err
+			return fmt.Errorf("a: %w", err)
 		}
 	}
 	return nil
@@ -55,7 +55,7 @@ func (v *B) Validate() error {
 func (v *Catalog) Validate() error {
 	for _, val0 := range v.Users {
 		if err := val0.Validate(); err != nil {
-			return err
+			return fmt.Errorf("users: %w", err)
 		}
 	}
 	return nil
@@ -77,7 +77,7 @@ func (v *Cube) Validate() error {
 		for i1 := range v.Space[i0] {
 			for i2 := range v.Space[i0][i1] {
 				if err := v.Space[i0][i1][i2].Validate(); err != nil {
-					return err
+					return fmt.Errorf("space: %w", err)
 				}
 			}
 		}
@@ -111,7 +111,7 @@ func (v *HeaderedResp) Validate() error {
 func (v *Home) Validate() error {
 	for i0 := range v.Rooms {
 		if err := v.Rooms[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("rooms: %w", err)
 		}
 	}
 	return nil
@@ -122,12 +122,12 @@ func (v *Home) Validate() error {
 func (v *ListPage) Validate() error {
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	if v.Meta != nil {
 		if err := v.Meta.Validate(); err != nil {
-			return err
+			return fmt.Errorf("meta: %w", err)
 		}
 	}
 	return nil
@@ -139,7 +139,7 @@ func (v *Matrix) Validate() error {
 	for i0 := range v.Grid {
 		for i1 := range v.Grid[i0] {
 			if err := v.Grid[i0][i1].Validate(); err != nil {
-				return err
+				return fmt.Errorf("grid: %w", err)
 			}
 		}
 	}
@@ -154,7 +154,7 @@ func (v *Node) Validate() error {
 	}
 	for i0 := range v.Children {
 		if err := v.Children[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("children: %w", err)
 		}
 	}
 	return nil
@@ -174,7 +174,7 @@ func (v *Order) Validate() error {
 func (v *Org) Validate() error {
 	for i0 := range v.Teams {
 		if err := v.Teams[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("teams: %w", err)
 		}
 	}
 	return nil
@@ -184,7 +184,7 @@ func (v *Org) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Person) Validate() error {
 	if err := v.Home.Validate(); err != nil {
-		return err
+		return fmt.Errorf("home: %w", err)
 	}
 	return nil
 }
@@ -218,7 +218,7 @@ func (v *ResponseAudit) Validate() error {
 func (v *Room) Validate() error {
 	for i0 := range v.Furniture {
 		if err := v.Furniture[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("furniture: %w", err)
 		}
 	}
 	return nil
@@ -235,7 +235,7 @@ func (v *Team) Validate() error {
 	}
 	for i0 := range v.Members {
 		if err := v.Members[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("members: %w", err)
 		}
 	}
 	return nil
@@ -245,11 +245,11 @@ func (v *Team) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *User) Validate() error {
 	if err := v.Addr.Validate(); err != nil {
-		return err
+		return fmt.Errorf("addr: %w", err)
 	}
 	if v.Boss != nil {
 		if err := v.Boss.Validate(); err != nil {
-			return err
+			return fmt.Errorf("boss: %w", err)
 		}
 	}
 	if v.Name == nil && v.Alias == nil {

@@ -155,11 +155,11 @@ func (v *ListUsersReq) Validate() error {
 func (v *ListUsersResp) Validate() error {
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	if err := v.Meta.Validate(); err != nil {
-		return err
+		return fmt.Errorf("meta: %w", err)
 	}
 	return nil
 }
@@ -188,7 +188,7 @@ func (v *Project) Validate() error {
 		return fmt.Errorf("name: length less than 1")
 	}
 	if err := v.Owner.Validate(); err != nil {
-		return err
+		return fmt.Errorf("owner: %w", err)
 	}
 	return nil
 }
@@ -198,7 +198,7 @@ func (v *Project) Validate() error {
 func (v *ProjectsResp) Validate() error {
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	return nil

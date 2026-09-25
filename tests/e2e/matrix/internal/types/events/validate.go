@@ -16,10 +16,10 @@ func (v *Envelope[T]) Validate() error {
 	}
 	if vv, ok := any(&v.Body).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
-			return err
+			return fmt.Errorf("body: %w", err)
 		}
 	} else if err := validateValue(v.Body); err != nil {
-		return err
+		return fmt.Errorf("body: %w", err)
 	}
 	return nil
 }

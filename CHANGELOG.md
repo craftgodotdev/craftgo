@@ -200,6 +200,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   tokenUrl`. The configuration guide's oauth2 example, which declared no flow
   and so did not generate, declares one.
 
+- **A failure inside a nested value names its path.** The validator prefixes
+  the error of a nested struct, and of a type parameter's value, with the
+  field that holds it, as it did for a scalar or an enum: `home: rooms:
+  furniture: name: length less than 1` and `boss: requiresOneOf [name
+  alias] - at least one must be set`, which read without their path. A
+  mixin's fields are the type's own and keep their bare names.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

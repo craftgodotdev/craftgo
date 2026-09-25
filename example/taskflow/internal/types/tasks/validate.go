@@ -38,7 +38,7 @@ func (v *BulkCreateReq) Validate() error {
 	}
 	for i0 := range v.Tasks {
 		if err := v.Tasks[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("tasks: %w", err)
 		}
 	}
 	return nil

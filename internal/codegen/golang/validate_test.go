@@ -440,6 +440,34 @@ type User { Audit  id string }`)
 	mustParseGo(t, src)
 }
 
+// A nested value's error names the field that holds it, a struct's too, so a
+// failure deep in a body reads as a path; a mixin's fields are the type's
+// own and stay unprefixed.
+func TestValidateNestedErrorsNameTheirField(t *testing.T) {
+	src := runValidateGen(t, `package design
+@requiresOneOf(email, phone)
+type Contact { email string?  phone string? }
+type Audit { by string @minLength(1) }
+type Page<T> { items T[] }
+type Order {
+    Audit
+    contact Contact
+    backups Contact[]
+    byName  map<string, Contact>
+    boss    Order?
+    page    Page<Contact>
+}`)
+	mustContainAll(t, src,
+		"if err := v.Contact.Validate(); err != nil {\n\t\treturn fmt.Errorf(\"contact: %w\", err)",
+		`return fmt.Errorf("backups: %w", err)`,
+		`return fmt.Errorf("byName: %w", err)`,
+		`return fmt.Errorf("boss: %w", err)`,
+		`return fmt.Errorf("page: %w", err)`,
+		`return fmt.Errorf("items: %w", err)`,
+		"if err := v.Audit.Validate(); err != nil {\n\t\treturn err\n\t}",
+	)
+}
+
 // An error body gets a Validate method enforcing its field decorators.
 func TestValidateErrorBody(t *testing.T) {
 	src := runValidateGen(t, `package design

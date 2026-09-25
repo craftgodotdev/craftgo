@@ -98,16 +98,16 @@ func (v *XEnumScalar) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XGeneric) Validate() error {
 	if err := v.OfLocal.Validate(); err != nil {
-		return err
+		return fmt.Errorf("ofLocal: %w", err)
 	}
 	if err := v.OfXType.Validate(); err != nil {
-		return err
+		return fmt.Errorf("ofXType: %w", err)
 	}
 	if err := v.OfPrim.Validate(); err != nil {
-		return err
+		return fmt.Errorf("ofPrim: %w", err)
 	}
 	if err := v.OfMap.Validate(); err != nil {
-		return err
+		return fmt.Errorf("ofMap: %w", err)
 	}
 	return nil
 }
@@ -140,14 +140,14 @@ func (v *XNestedReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XOwnerPair[XOwner]) Validate() error {
 	if err := v.Owner.Validate(); err != nil {
-		return err
+		return fmt.Errorf("owner: %w", err)
 	}
 	if vv, ok := any(&v.Value).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
-			return err
+			return fmt.Errorf("value: %w", err)
 		}
 	} else if err := validateValue(v.Value); err != nil {
-		return err
+		return fmt.Errorf("value: %w", err)
 	}
 	return nil
 }
@@ -219,7 +219,7 @@ func (v *XSearchReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XStdNames) Validate() error {
 	if err := v.Slot.Validate(); err != nil {
-		return err
+		return fmt.Errorf("slot: %w", err)
 	}
 	{
 		seen := make(map[fmt2.Row]struct{}, len(v.Rows))
@@ -232,7 +232,7 @@ func (v *XStdNames) Validate() error {
 	}
 	for i0 := range v.Rows {
 		if err := v.Rows[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("rows: %w", err)
 		}
 	}
 	{
@@ -251,21 +251,21 @@ func (v *XStdNames) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XTypeFields) Validate() error {
 	if err := v.Flat.Validate(); err != nil {
-		return err
+		return fmt.Errorf("flat: %w", err)
 	}
 	if v.Maybe != nil {
 		if err := v.Maybe.Validate(); err != nil {
-			return err
+			return fmt.Errorf("maybe: %w", err)
 		}
 	}
 	for i0 := range v.Many {
 		if err := v.Many[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("many: %w", err)
 		}
 	}
 	for _, val0 := range v.ByKey {
 		if err := val0.Validate(); err != nil {
-			return err
+			return fmt.Errorf("byKey: %w", err)
 		}
 	}
 	return nil
@@ -314,7 +314,7 @@ func (v *XMixinErrBody) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XStdNamesClashBody) Validate() error {
 	if err := v.Slot.Validate(); err != nil {
-		return err
+		return fmt.Errorf("slot: %w", err)
 	}
 	return nil
 }

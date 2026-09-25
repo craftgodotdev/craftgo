@@ -32,7 +32,7 @@ func (v *CreateOrderReq) Validate() error {
 	}
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	if v.Notes != nil && utf8.RuneCountInString(*v.Notes) > 2000 {
@@ -123,7 +123,7 @@ func (v *GetOrderReq) Validate() error {
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *LineItem) Validate() error {
 	if err := v.Product.Validate(); err != nil {
-		return err
+		return fmt.Errorf("product: %w", err)
 	}
 	if err := v.Sku.Validate(); err != nil {
 		return fmt.Errorf("sku: %w", err)
@@ -178,7 +178,7 @@ func (v *Order) Validate() error {
 		return fmt.Errorf("id: %w", err)
 	}
 	if err := v.Customer.Validate(); err != nil {
-		return err
+		return fmt.Errorf("customer: %w", err)
 	}
 	if len(v.Items) < 1 {
 		return fmt.Errorf("items: minItems 1")
@@ -188,12 +188,12 @@ func (v *Order) Validate() error {
 	}
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	if v.Payment != nil {
 		if err := v.Payment.Validate(); err != nil {
-			return err
+			return fmt.Errorf("payment: %w", err)
 		}
 	}
 	{
@@ -240,7 +240,7 @@ func (v *Order) Validate() error {
 		}
 	}
 	if err := v.CreatedBy.Validate(); err != nil {
-		return err
+		return fmt.Errorf("createdBy: %w", err)
 	}
 	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {
 		return fmt.Errorf("createdAt: not a valid RFC 3339 datetime")
@@ -329,7 +329,7 @@ func (v *PaymentFailedBody) Validate() error {
 		return fmt.Errorf("method: %w", err)
 	}
 	if err := v.ChargedBy.Validate(); err != nil {
-		return err
+		return fmt.Errorf("chargedBy: %w", err)
 	}
 	return nil
 }

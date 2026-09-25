@@ -28,7 +28,7 @@ func (v *Category) Validate() error {
 	}
 	if v.Parent != nil {
 		if err := v.Parent.Validate(); err != nil {
-			return err
+			return fmt.Errorf("parent: %w", err)
 		}
 	}
 	return nil
@@ -140,7 +140,7 @@ func (v *Product) Validate() error {
 		}
 	}
 	if err := v.Category.Validate(); err != nil {
-		return err
+		return fmt.Errorf("category: %w", err)
 	}
 	if len(v.Tags) > 20 {
 		return fmt.Errorf("tags: maxItems 20")

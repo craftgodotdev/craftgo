@@ -42,10 +42,10 @@ func (v *AuditFields) Validate() error {
 func (v *Envelope[T]) Validate() error {
 	if vv, ok := any(&v.Data).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
-			return err
+			return fmt.Errorf("data: %w", err)
 		}
 	} else if err := validateValue(v.Data); err != nil {
-		return err
+		return fmt.Errorf("data: %w", err)
 	}
 	return nil
 }
@@ -62,10 +62,10 @@ func (v *Page[T]) Validate() error {
 	for i0 := range v.Items {
 		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("items: %w", err)
 			}
 		} else if err := validateValue(v.Items[i0]); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	return nil
@@ -89,19 +89,19 @@ func (v *Result[T, E]) Validate() error {
 	if v.Ok != nil {
 		if vv, ok := any(v.Ok).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("ok: %w", err)
 			}
 		} else if err := validateValue(v.Ok); err != nil {
-			return err
+			return fmt.Errorf("ok: %w", err)
 		}
 	}
 	if v.Err != nil {
 		if vv, ok := any(v.Err).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("err: %w", err)
 			}
 		} else if err := validateValue(v.Err); err != nil {
-			return err
+			return fmt.Errorf("err: %w", err)
 		}
 	}
 	return nil

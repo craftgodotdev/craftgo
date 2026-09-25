@@ -78,12 +78,12 @@ func (v *Gallery) Validate() error {
 	}
 	if v.Cover != nil {
 		if err := v.Cover.Validate(); err != nil {
-			return err
+			return fmt.Errorf("cover: %w", err)
 		}
 	}
 	for i0 := range v.Photos {
 		if err := v.Photos[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("photos: %w", err)
 		}
 	}
 	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {

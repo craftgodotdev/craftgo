@@ -46,7 +46,7 @@ func (v *Address) Validate() error {
 	}
 	if v.Geo != nil {
 		if err := v.Geo.Validate(); err != nil {
-			return err
+			return fmt.Errorf("geo: %w", err)
 		}
 	}
 	return nil
@@ -91,10 +91,10 @@ func (v *CreateCustomerReq) Validate() error {
 		return fmt.Errorf("name: length out of range [1, 120]")
 	}
 	if err := v.PrimaryAddress.Validate(); err != nil {
-		return err
+		return fmt.Errorf("primaryAddress: %w", err)
 	}
 	if err := v.Contact.Validate(); err != nil {
-		return err
+		return fmt.Errorf("contact: %w", err)
 	}
 	if v.Bio != nil && utf8.RuneCountInString(*v.Bio) > 500 {
 		return fmt.Errorf("bio: length greater than 500")
@@ -115,15 +115,15 @@ func (v *Customer) Validate() error {
 		return fmt.Errorf("name: length out of range [1, 120]")
 	}
 	if err := v.PrimaryAddress.Validate(); err != nil {
-		return err
+		return fmt.Errorf("primaryAddress: %w", err)
 	}
 	if v.BillingAddress != nil {
 		if err := v.BillingAddress.Validate(); err != nil {
-			return err
+			return fmt.Errorf("billingAddress: %w", err)
 		}
 	}
 	if err := v.Contact.Validate(); err != nil {
-		return err
+		return fmt.Errorf("contact: %w", err)
 	}
 	if v.AvatarURL != nil {
 		if _u, _err := url.Parse(*v.AvatarURL); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {

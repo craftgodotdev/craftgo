@@ -51,7 +51,7 @@ func (v *TenantItem) Validate() error {
 func (v *TenantItemList) Validate() error {
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	return nil

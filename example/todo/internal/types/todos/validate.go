@@ -138,7 +138,7 @@ func (v *Todo) Validate() error {
 func (v *TodoList) Validate() error {
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	if err := v.TookMs.Validate(); err != nil {

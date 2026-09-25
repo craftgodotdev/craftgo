@@ -22,7 +22,7 @@ func validateCalls(t checkTarget, params []string, ctx emitCtx) string {
 type validateWalk struct {
 	ctx     emitCtx
 	params  []string // type parameters, whose values are probed at run time
-	subject string   // wraps the subject-less error of a scalar or an enum
+	subject string   // the field's name, which prefixes each call's error
 }
 
 // walk renders the calls a value of type t held in access needs; depth keeps
@@ -67,17 +67,13 @@ func (w validateWalk) needs(t *ast.TypeRef) bool {
 }
 
 // leaf renders the call on one value of named type n held in access, a pointer
-// to the value when ptr: the value's Validate(), whose error a scalar or an
-// enum leaves without a subject, or the run-time probe of a type parameter's.
+// to the value when ptr: the value's Validate(), or the run-time probe of a
+// type parameter's.
 func (w validateWalk) leaf(n *ast.NamedTypeRef, access string, ptr bool) string {
 	if slices.Contains(w.params, n.Name.String()) {
 		return w.probe(access, ptr)
 	}
-	wrap := ""
-	if namedIsScalarOrEnum(n, w.ctx) {
-		wrap = w.subject
-	}
-	return validateDispatch(access, wrap, w.ctx)
+	return fmt.Sprintf("if err := %s.Validate(); err != nil {\n%s\n}", access, w.returnErr())
 }
 
 // probe renders the run-time check of a type parameter's value held in
@@ -89,36 +85,20 @@ func (w validateWalk) probe(access string, ptr bool) string {
 	if ptr {
 		addr = access
 	}
+	ret := w.returnErr()
 	return fmt.Sprintf(`if vv, ok := any(%s).(interface{ Validate() error }); ok {
 if err := vv.Validate(); err != nil {
-return err
+%s
 }
 } else if err := validateValue(%s); err != nil {
-return err
-}`, addr, access)
+%s
+}`, addr, ret, access, ret)
 }
 
-// namedIsScalarOrEnum reports whether n names a scalar or an enum, whose
-// Validate() error has no subject and so is wrapped with the using field's name.
-func namedIsScalarOrEnum(n *ast.NamedTypeRef, ctx emitCtx) bool {
-	if n == nil || n.Name == nil {
-		return false
-	}
-	name := n.Name.String()
-	if ctx.resolver.LookupType(name) != nil {
-		return false // struct
-	}
-	return ctx.resolver.LookupEnum(name) != nil || ctx.resolver.LookupScalar(name) != nil
-}
-
-// validateDispatch calls elem.Validate(), wrapping its error as `<wrapName>: %w`
-// when wrapName is set.
-func validateDispatch(elem, wrapName string, ctx emitCtx) string {
-	if wrapName != "" {
-		ctx.imports.use("fmt")
-		return fmt.Sprintf("if err := %s.Validate(); err != nil {\nreturn fmt.Errorf(\"%s: %%w\", err)\n}", elem, escapeErrorf(wrapName))
-	}
-	return fmt.Sprintf("if err := %s.Validate(); err != nil {\nreturn err\n}", elem)
+// returnErr renders the return of a call's err, `<subject>: %w`.
+func (w validateWalk) returnErr() string {
+	w.ctx.imports.use("fmt")
+	return fmt.Sprintf("return fmt.Errorf(\"%s: %%w\", err)", escapeErrorf(w.subject))
 }
 
 // typeRefNamedHasValidator reports whether n names a type whose generated

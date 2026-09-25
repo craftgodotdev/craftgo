@@ -28,10 +28,10 @@ func (v *XBag[T]) Validate() error {
 	for i0 := range v.Items {
 		if vv, ok := any(&v.Items[i0]).(interface{ Validate() error }); ok {
 			if err := vv.Validate(); err != nil {
-				return err
+				return fmt.Errorf("items: %w", err)
 			}
 		} else if err := validateValue(v.Items[i0]); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	if v.Cap < 0 {
