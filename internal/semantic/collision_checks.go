@@ -226,13 +226,25 @@ var errorReservedGoNames = map[string]bool{
 }
 
 // checkErrorReservedFieldNames rejects an error body field whose Go field name
-// collides with a generated error method.
+// collides with a generated error method: at the field, or at the mixin that
+// brings it.
 func (a *analyzer) checkErrorReservedFieldNames(ed *ast.ErrorDecl) {
-	for _, f := range ast.Fields(ed.Body) {
-		if gn := idents.GoFieldName(f.Name); errorReservedGoNames[gn] {
-			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeInvalidGoName,
-				"error %s field %q maps to the Go name %q, which collides with the generated error method %s() - the value would be shadowed by the method and produce non-compiling Go. Rename the field.",
-				ed.Name, f.Name, gn, gn)
+	const msg = "error %s field %q%s maps to the Go name %q, which collides with the generated error method %s() - the value would be shadowed by the method and produce non-compiling Go. Rename the field."
+	for _, m := range ed.Body {
+		switch v := m.(type) {
+		case *ast.Field:
+			if gn := idents.GoFieldName(v.Name); errorReservedGoNames[gn] {
+				a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeInvalidGoName, msg, ed.Name, v.Name, "", gn, gn)
+			}
+		case *ast.Mixin:
+			fields, _ := a.proj.flattenFields(a.pkg.Name, a.pkg.Name, []ast.TypeMember{v}, nil, nil, nil)
+			for _, ff := range fields {
+				if gn := idents.GoFieldName(ff.Field.Name); errorReservedGoNames[gn] {
+					d := a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeInvalidGoName, msg,
+						ed.Name, ff.Field.Name, ", from mixin "+v.Ref.String()+",", gn, gn)
+					d.Related = related(ff.Field.Pos, "declared here")
+				}
+			}
 		}
 	}
 }

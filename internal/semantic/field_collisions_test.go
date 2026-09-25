@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -71,6 +72,24 @@ func TestLeadingUnderscoreFieldClean(t *testing.T) {
 func TestErrorReservedFieldNameRejected(t *testing.T) {
 	for _, name := range []string{"errCode", "error", "httpStatus", "marshalJSON"} {
 		expectError(t, "error Internal E { "+name+" string @header(\"X-E\")  detail string }", CodeInvalidGoName)
+	}
+}
+
+// A field a mixin brings into an error, directly or through a nested mixin,
+// is held to the error method names, reported at the error's mixin.
+func TestErrorReservedFieldNameThroughMixinRejected(t *testing.T) {
+	for _, name := range []string{"errCode", "error", "httpStatus", "marshalJSON", "writeResponseHeaders"} {
+		for label, decls := range map[string]string{
+			"mixin":        "type Mx { " + name + " string @header(\"X-M\") }\n",
+			"nested mixin": "type Inner { " + name + " string }\ntype Mx { Inner  n int }\n",
+		} {
+			src := decls + "error Conflict Clash {\n\tMx\n\treason string\n}"
+			d := expectError(t, src, CodeInvalidGoName)
+			expectMessage(t, d, "error Clash field \""+name+"\", from mixin Mx,")
+			if want := strings.Count(decls, "\n") + 2; d.Pos.Line != want {
+				t.Errorf("%s %s: reported at line %d, want the mixin's line %d", label, name, d.Pos.Line, want)
+			}
+		}
 	}
 }
 

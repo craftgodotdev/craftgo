@@ -98,8 +98,8 @@ breaking change to the DSL or the generated layout bumps the major version.
   the body its OpenAPI response declares, where `server.WriteError` answered
   the envelope; it still answers the envelope for an error that encodes to
   `{}` without its own `MarshalJSON`, as those generated before this release
-  do. An error body field named `marshalJSON` is rejected, like one named
-  after the other generated methods.
+  do. An error body field named `marshalJSON`, its own or a mixin's, is
+  rejected, like one named after the other generated methods.
 
 - **A decorator is no decorator argument.** The grammar took `@a(@b)`,
   though no decorator reads one; it is now one parse error at the inner
@@ -878,6 +878,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   generated a handler that did not compile. It is now
   `binding/file-position` at the request clause, as a declared `file[][]` is
   at its field.
+
+- **An error's mixin may not bring a field named after an error method.** A
+  field `errCode`, `error`, `httpStatus` or `writeResponseHeaders` that a
+  mixin gives an error body was hidden behind the generated method of that
+  name, and as a header or a cookie it generated Go that did not compile. It
+  is now `field/invalid-go-name` at the mixin, as the error's own field of
+  that name is.
 
 - **Every multipart form part is checked in analysis.** Beside a `file`, a
   body field no form value carries - a struct, a map, a generic instance,
