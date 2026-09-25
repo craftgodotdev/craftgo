@@ -171,34 +171,83 @@ Per-field docs flow into the schema's property description.
 
 ## Errors
 
-Declared errors with `@errors(...)` populate per-operation responses:
+Each `error` becomes a component named after its Go type (`UserNotFound` →
+`UserNotFoundErr`). Each error a method's `@errors(...)` lists adds a
+response at its category's status, described by the category:
 
 ```craftgo
+type CreateUserReq {
+    name  string
+    email string
+}
+
+type User {
+    id    string
+    name  string
+    email string
+}
+
 error NotFound UserNotFound
 error Conflict EmailTaken { email string }
 
 service UserService {
     @errors(UserNotFound, EmailTaken)
-    post CreateUser /users { ... }
+    post CreateUser /users {
+        request  CreateUserReq
+        response User
+    }
 }
 ```
 
+The operation's `responses` and the two error components:
+
 ```yaml
 responses:
-  '200': { ... }
-  '404':
-    description: Not Found
+  "201":
     content:
       application/json:
         schema:
-          $ref: '#/components/schemas/UserNotFound'
-  '409':
+          $ref: '#/components/schemas/CreateUserRespBody'
+    description: Created
+  "404":
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/UserNotFoundErr'
+    description: NotFound
+  "409":
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/EmailTakenErr'
     description: Conflict
-    content:
-      application/json:
-        schema:
-          $ref: '#/components/schemas/EmailTaken'
 ```
+
+```yaml
+EmailTakenErr:
+  description: Conflict error response (HTTP 409).
+  properties:
+    email:
+      type: string
+  required:
+  - email
+  type: object
+UserNotFoundErr:
+  description: NotFound error response (HTTP 404).
+  properties:
+    code:
+      type: string
+    message:
+      type: string
+  required:
+  - code
+  - message
+  type: object
+```
+
+An error with no field, like `UserNotFound`, is documented as the `code` and
+`message` the server sends for it. Errors whose categories share a status
+share its response, their schemas in a `oneOf`.
 
 ## Security schemes
 
