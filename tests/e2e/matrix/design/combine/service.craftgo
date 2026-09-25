@@ -97,4 +97,10 @@ service CombineService {
 		request  PairsUpload
 		response PairsDoc
 	}
+
+	@doc("Tag a pair. The response sends ETag as a header; its body carries the response type's @mutuallyExclusive and its mixin's @requiresOneOf.")
+	post TagPairs /pairs/tagged {
+		request  PairsDoc
+		response PairsTagged
+	}
 }

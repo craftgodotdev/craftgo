@@ -224,6 +224,27 @@ func (v *PairsStr) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on PairsTagged.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PairsTagged) Validate() error {
+	if err := v.PairsDoc.Validate(); err != nil {
+		return err
+	}
+	{
+		n := 0
+		if v.C != nil {
+			n++
+		}
+		if v.D != nil {
+			n++
+		}
+		if n > 1 {
+			return fmt.Errorf("PairsTagged: mutuallyExclusive [c d] - at most one may be set")
+		}
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on PairsUpload.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PairsUpload) Validate() error {

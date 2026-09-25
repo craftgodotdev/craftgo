@@ -107,3 +107,13 @@ type PairsUpload {
 	PairsDoc
 	doc file
 }
+
+// PairsTagged sends an ETag header beside a body that carries its own
+// @mutuallyExclusive and the @requiresOneOf of its mixin PairsDoc.
+@mutuallyExclusive(c, d)
+type PairsTagged {
+	PairsDoc
+	etag string  @header("ETag")
+	c    string?
+	d    string?
+}

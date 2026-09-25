@@ -810,6 +810,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   declared on a mixin the request embeds, though the server enforces it; both
   now list it beside the request type's own.
 
+- **A response body beside a header keeps its cross-field groups in
+  OpenAPI.** The body of a response that sends a header or cookie left out
+  the `@requiresOneOf` and `@mutuallyExclusive` of the response type and of
+  its mixins; it now lists them.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

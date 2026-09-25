@@ -4240,6 +4240,34 @@ components:
       required:
       - email
       type: object
+    PairsTagged:
+      allOf:
+      - $ref: '#/components/schemas/PairsDoc'
+      - properties:
+          c:
+            type:
+            - string
+            - "null"
+          d:
+            type:
+            - string
+            - "null"
+        type: object
+      - not:
+          properties:
+            c:
+              not:
+                type: "null"
+            d:
+              not:
+                type: "null"
+          required:
+          - c
+          - d
+      description: |-
+        PairsTagged sends an ETag header beside a body that carries its own
+        @mutuallyExclusive and the @requiresOneOf of its mixin PairsDoc.
+      type: object
     PairsUpload:
       allOf:
       - $ref: '#/components/schemas/PairsDoc'
@@ -6760,6 +6788,80 @@ components:
       - vnName
       - jaName
       type: object
+    TagPairsReqBody:
+      allOf:
+      - properties:
+          a:
+            type:
+            - string
+            - "null"
+          b:
+            type:
+            - string
+            - "null"
+        type: object
+      - anyOf:
+        - properties:
+            a:
+              not:
+                type: "null"
+          required:
+          - a
+        - properties:
+            b:
+              not:
+                type: "null"
+          required:
+          - b
+      description: |-
+        PairsDoc has a doc above its decorators and one below them, right above
+        its keyword; the Go doc and the OpenAPI description hold both, in order.
+        Either a or b carries the value.
+      type: object
+    TagPairsRespBody:
+      allOf:
+      - properties:
+          a:
+            type:
+            - string
+            - "null"
+          b:
+            type:
+            - string
+            - "null"
+          c:
+            type:
+            - string
+            - "null"
+          d:
+            type:
+            - string
+            - "null"
+        type: object
+      - anyOf:
+        - properties:
+            a:
+              not:
+                type: "null"
+          required:
+          - a
+        - properties:
+            b:
+              not:
+                type: "null"
+          required:
+          - b
+      - not:
+          properties:
+            c:
+              not:
+                type: "null"
+            d:
+              not:
+                type: "null"
+          required:
+          - c
+          - d
     TagSliceReqBody:
       description: |-
         Arr_TagSlice is the array-of-scalar case. `Tag[]` inherits Tag's
@@ -9355,6 +9457,30 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidateStrRespBody'
           description: Created
+      tags:
+      - combine
+  /combine/pairs/tagged:
+    post:
+      description: Tag a pair. The response sends ETag as a header; its body carries
+        the response type's @mutuallyExclusive and its mixin's @requiresOneOf.
+      operationId: TagPairs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TagPairsReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagPairsRespBody'
+          description: Created
+          headers:
+            ETag:
+              schema:
+                type: string
       tags:
       - combine
   /combine/pairs/upload:

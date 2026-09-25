@@ -107,8 +107,7 @@ func binFields(fields []semantic.ResolvedField) fieldBins {
 }
 
 // requestBodySchema is the `<stem>ReqBody` component of s's JSON body: the
-// whole request type when nothing rides off the body, else the body fields
-// and the type's cross-field fragments.
+// whole request type when nothing rides off the body, else [inlineBody].
 func requestBodySchema(s opShape, pkg *semantic.Package, registry *genericRegistry) *openapi3.SchemaRef {
 	td := s.reqType
 	if len(s.req.path)+len(s.req.query)+len(s.req.header)+len(s.req.cookie) == 0 {
@@ -118,21 +117,27 @@ func requestBodySchema(s opShape, pkg *semantic.Package, registry *genericRegist
 		}
 		return &openapi3.SchemaRef{Value: schemaFromTypeDecl(td, nil, pkg, registry)}
 	}
-	body := schemaFromFields(s.req.body, pkg, registry)
-	if frags := inlineFragments(td, jsonKeys(td, registry), registry); len(frags) > 0 {
-		body = &openapi3.Schema{AllOf: append(openapi3.SchemaRefs{{Value: body}}, frags...)}
-	}
-	return &openapi3.SchemaRef{Value: body}
+	return inlineBody(s.req.body, td, pkg, registry)
 }
 
 // responseBodySchema is the `<stem>RespBody` component: a $ref to the
-// response type, or its body fields inline when it sends headers or cookies.
+// response type, or [inlineBody] when it sends headers or cookies.
 func responseBodySchema(s opShape, pkg *semantic.Package, registry *genericRegistry) *openapi3.SchemaRef {
 	if len(s.resp.header) == 0 && len(s.resp.cookie) == 0 {
 		// A generic response refs its instance: the declaration has no schema.
 		return &openapi3.SchemaRef{Ref: "#/components/schemas/" + registry.refName(s.m.Response.Type)}
 	}
-	return &openapi3.SchemaRef{Value: schemaFromFields(s.resp.body, pkg, registry)}
+	return inlineBody(s.resp.body, s.respType, pkg, registry)
+}
+
+// inlineBody lists fields, the body fields of type td, in place, with the
+// cross-field fragments of td and of the mixins it embeds.
+func inlineBody(fields []semantic.ResolvedField, td *ast.TypeDecl, pkg *semantic.Package, registry *genericRegistry) *openapi3.SchemaRef {
+	body := schemaFromFields(fields, pkg, registry)
+	if frags := inlineFragments(td, jsonKeys(td, registry), registry); len(frags) > 0 {
+		body = &openapi3.Schema{AllOf: append(openapi3.SchemaRefs{{Value: body}}, frags...)}
+	}
+	return &openapi3.SchemaRef{Value: body}
 }
 
 // buildResponseHeaders documents the @header fields as headers and the @cookie

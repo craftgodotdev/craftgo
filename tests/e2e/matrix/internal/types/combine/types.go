@@ -187,6 +187,15 @@ type PairsStr struct {
 	Email string `json:"email"`
 }
 
+// PairsTagged sends an ETag header beside a body that carries its own
+// @mutuallyExclusive and the @requiresOneOf of its mixin PairsDoc.
+type PairsTagged struct {
+	PairsDoc
+	Etag string  `json:"-" header:"ETag"`
+	C    *string `json:"c,omitempty"`
+	D    *string `json:"d,omitempty"`
+}
+
 // PairsUpload sends PairsDoc's fields as multipart parts beside a file: the
 // multipart body carries PairsDoc's @requiresOneOf.
 type PairsUpload struct {

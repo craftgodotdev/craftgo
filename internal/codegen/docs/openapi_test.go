@@ -615,6 +615,45 @@ service S {
 	}
 }
 
+// A response body listed in place beside a header or a cookie carries the
+// cross-field groups of its type and of the mixins it embeds.
+func TestHeaderSplitResponseBodyCarriesGroups(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+@requiresOneOf(email, phone)
+type Contact {
+	email string? @json("e_mail")
+	phone string?
+}
+@mutuallyExclusive(fax, pager)
+type Resp {
+	Contact
+	etag  string  @header("ETag")
+	fax   string?
+	pager string?
+}
+@requiresOneOf(a, b)
+type Box<T> {
+	Contact
+	sess string @cookie("sid")
+	a    T?
+	b    string?
+}
+service S {
+	get R /r { response Resp }
+	get B /b { response Box<int> }
+}`,
+	}, &config.Config{})
+	for name, want := range map[string][]string{
+		"RRespBody": {"e_mail", "fax", "pager", "phone"},
+		"BRespBody": {"a", "b", "e_mail", "phone"},
+	} {
+		if got := fragmentKeys(doc.Components.Schemas[name].Value); !slices.Equal(got, want) {
+			t.Errorf("%s cross-field fragment keys = %v, want %v", name, got, want)
+		}
+	}
+}
+
 // A type with a mixin is an allOf of the mixin's $ref and its own properties.
 func TestGenerateOpenAPIMixinFlatten(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
