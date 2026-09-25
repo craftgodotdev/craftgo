@@ -74,11 +74,13 @@ func httpStatusCompletions() []protocol.CompletionItem {
 }
 
 // decoratorArgContext reports whether the cursor is inside a `@name(...)`
-// argument list, one whose `(` starts before the cursor and whose `)` does
-// not, and returns name and the index of the `(`.
+// argument list, one whose `(` starts before the cursor and whose end, as
+// [snapshotView.argEnd] places it, does not, and returns name and the index
+// of the `(`.
 func decoratorArgContext(view snapshotView, c cursor) (string, int, bool) {
 	depth := 0
-	for i := view.lastBefore(c); i >= 0; i-- {
+	last := view.lastBefore(c)
+	for i := last; i >= 0; i-- {
 		switch view.tokens[i].Kind {
 		case lexer.RParen:
 			depth++
@@ -89,7 +91,7 @@ func decoratorArgContext(view snapshotView, c cursor) (string, int, bool) {
 			}
 			// The unmatched `(`: a decorator when `@` is two tokens back (the
 			// name may be spelt like a keyword).
-			if i >= 2 && view.tokens[i-2].Kind == lexer.At {
+			if i >= 2 && view.tokens[i-2].Kind == lexer.At && last <= view.argEnd(i) {
 				return view.tokens[i-1].Text, i, true
 			}
 			return "", 0, false

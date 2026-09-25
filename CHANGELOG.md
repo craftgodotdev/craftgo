@@ -521,6 +521,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   same-named type of another package where analysis reports `unknown type`.
   A bare middleware or error name still resolves in any package.
 
+- **Hover, references and rename find the declaration go-to-definition
+  finds.** Hover inside `@middlewares(X)` showed a type named X and hover on
+  `b.Name` the file's own `Name`; references and rename took every
+  identifier spelt like the declaration, so renaming a type also renamed a
+  method, a route word or another package's declaration of that name. Rename
+  also works from any use of a declaration, not only in the file that
+  declares it. A decorator's argument list left open while typing ends with
+  its line, so the names and completions below it keep working.
+
 - **`@negative` or `@lt(0)` on an array of unsigned integers is reported
   once**, as a decorator on the wrong type; it also drew the unsigned-value
   error meant for a single number.

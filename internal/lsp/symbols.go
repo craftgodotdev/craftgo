@@ -42,19 +42,11 @@ func (s *server) onWorkspaceSymbol(_ context.Context, params protocol.WorkspaceS
 					URI:   uri.File(p.path),
 					Range: spanRange(p.src, d.DeclPos(), len(name)),
 				},
-				ContainerName: containerNameFromFile(p.file),
+				ContainerName: p.packageName(),
 			})
 		}
 	}
 	return out, nil
-}
-
-// containerNameFromFile returns f's package name.
-func containerNameFromFile(f *ast.File) string {
-	if f == nil || f.Package == nil {
-		return ""
-	}
-	return f.Package.Name
 }
 
 // anyOpenDocument returns the path and text of some open document, or empty

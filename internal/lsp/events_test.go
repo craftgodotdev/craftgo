@@ -160,13 +160,13 @@ type Holder {
 	if typeIdx == 0 {
 		t.Fatal("no MyType token after the field name")
 	}
-	if !isTypeShapePosition(view, typeIdx) {
+	if lookupKindAt(view, typeIdx) != semantic.TypeRefDecls {
 		t.Error("the type of a field named `event` must resolve as a type reference")
 	}
 }
 
-// An event's payload is a type position; the event's own name is not.
-func TestPayloadRefIsATypeShapePosition(t *testing.T) {
+// An event's payload is a type position; the event's own name names the event.
+func TestPayloadRefIsATypePosition(t *testing.T) {
 	view := parseSnapshot("t.craftgo", eventsDSL)
 	at := func(text string, nth int) int {
 		t.Helper()
@@ -183,11 +183,11 @@ func TestPayloadRefIsATypeShapePosition(t *testing.T) {
 		t.Fatalf("token %q #%d not found", text, nth)
 		return 0
 	}
-	if !isTypeShapePosition(view, at("OrderPlacedPayload", 2)) { // the event's payload
+	if lookupKindAt(view, at("OrderPlacedPayload", 2)) != semantic.TypeRefDecls { // the event's payload
 		t.Error("a payload reference must resolve as a type reference")
 	}
-	if isTypeShapePosition(view, at("OrderPlaced", 1)) {
-		t.Error("an event's own name must not resolve as a type reference")
+	if lookupKindAt(view, at("OrderPlaced", 1)) != semantic.EventDecls {
+		t.Error("an event's own name must resolve as the event")
 	}
 }
 

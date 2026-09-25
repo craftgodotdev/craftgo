@@ -131,10 +131,12 @@ const (
 	blockEvent
 )
 
-// declSite is what a declaration keyword opens: the decorator level of the
-// declaration, the level of its body's members (0 when they take none) and
-// the completion block of that body.
+// declSite is what a declaration keyword opens: the kinds of declaration its
+// header names, the decorator level of the declaration, the level of its
+// body's members (0 when they take none) and the completion block of that
+// body.
 type declSite struct {
+	names        semantic.DeclKind
 	self, member semantic.Level
 	block        completionBlock
 	// trailing: decorators after the head, on its line, are the declaration's.
@@ -143,14 +145,14 @@ type declSite struct {
 
 // declSites holds every declaration keyword.
 var declSites = map[lexer.Kind]declSite{
-	lexer.KwType:       {self: semantic.LvlType, member: semantic.LvlField, block: blockType},
-	lexer.KwEnum:       {self: semantic.LvlEnum, member: semantic.LvlEnumValue, block: blockEnum},
-	lexer.KwError:      {self: semantic.LvlError, member: semantic.LvlErrorField, block: blockType},
-	lexer.KwScalar:     {self: semantic.LvlScalar, trailing: true},
-	lexer.KwMiddleware: {self: semantic.LvlMiddleware},
-	lexer.KwService:    {self: semantic.LvlService, member: semantic.LvlMethod, block: blockService},
-	lexer.KwExtend:     {self: semantic.LvlService, member: semantic.LvlMethod, block: blockService},
-	lexer.KwEvent:      {self: semantic.LvlEvent, block: blockEvent},
+	lexer.KwType:       {names: semantic.TypeDecls, self: semantic.LvlType, member: semantic.LvlField, block: blockType},
+	lexer.KwEnum:       {names: semantic.EnumDecls, self: semantic.LvlEnum, member: semantic.LvlEnumValue, block: blockEnum},
+	lexer.KwError:      {names: semantic.ErrorDecls, self: semantic.LvlError, member: semantic.LvlErrorField, block: blockType},
+	lexer.KwScalar:     {names: semantic.ScalarDecls, self: semantic.LvlScalar, trailing: true},
+	lexer.KwMiddleware: {names: semantic.MiddlewareDecls, self: semantic.LvlMiddleware},
+	lexer.KwService:    {names: semantic.ServiceDecls, self: semantic.LvlService, member: semantic.LvlMethod, block: blockService},
+	lexer.KwExtend:     {names: semantic.ServiceDecls, self: semantic.LvlService, member: semantic.LvlMethod, block: blockService},
+	lexer.KwEvent:      {names: semantic.EventDecls, self: semantic.LvlEvent, block: blockEvent},
 }
 
 // isDeclKeyword reports whether k starts a declaration.

@@ -81,64 +81,23 @@ type Hook {
     payload bytes @format(raw)
 }
 `
-	view := parseSnapshot("test.craftgo", src)
-	hov := hoverAtToken(t, view, "raw")
+	hov := mustHoverAt(t, "test.craftgo", src, "raw")
 	if !strings.Contains(hov, "the bytes ARE the value") || !strings.Contains(hov, "wire.Raw") {
 		t.Errorf("hovering `raw` did not explain the shape: %q", hov)
 	}
-	if got := hoverAtToken(t, view, "bytes"); !strings.Contains(got, "@format(raw)") {
+	if got := mustHoverAt(t, "test.craftgo", src, "bytes"); !strings.Contains(got, "@format(raw)") {
 		t.Errorf("hovering `bytes` does not point at the raw form: %q", got)
 	}
 }
 
-// hoverAtToken returns the hover text for the first token spelt text.
-func hoverAtToken(t *testing.T, view snapshotView, text string) string {
-	t.Helper()
-	for _, tok := range view.tokens {
-		if tok.Text != text {
-			continue
-		}
-		idx, at := tokenUnder(view, protocol.Position{Line: uint32(tok.Pos.Line - 1), Character: uint32(tok.Pos.Column - 1)})
-		hov := hoverForToken(view, idx, at)
-		if hov == nil {
-			t.Fatalf("no hover on the token %q", text)
-		}
-		return hov.Contents.Value
-	}
-	t.Fatalf("no token spelt %q in the buffer", text)
-	return ""
-}
-
 // Hovering a type reference shows the declaration line and doc.
 func TestHoverUserType(t *testing.T) {
-	view := parseSnapshot("test.craftgo", testDSL)
-	// The second Greeter is a reference.
-	var hits int
-	var pos protocol.Position
-	for _, tok := range view.tokens {
-		if tok.Text != "Greeter" {
-			continue
-		}
-		hits++
-		if hits == 2 {
-			pos = protocol.Position{Line: uint32(tok.Pos.Line - 1), Character: uint32(tok.Pos.Column - 1)}
-			break
-		}
+	v := hoverAt(t, "", strings.Replace(testDSL, "request  Greeter", "request  Gree"+cursorMark+"ter", 1))
+	if !strings.Contains(v, "type Greeter") {
+		t.Errorf("hover should include `type Greeter`: %q", v)
 	}
-	if hits < 2 {
-		t.Fatalf("expected at least 2 Greeter occurrences, got %d", hits)
-	}
-	idx, tok := tokenUnder(view, pos)
-	hov := hoverForToken(view, idx, tok)
-	if hov == nil {
-		t.Fatal("expected hover for Greeter ref")
-	}
-	v := hov.Contents
-	if !strings.Contains(v.Value, "type Greeter") {
-		t.Errorf("hover should include `type Greeter`: %q", v.Value)
-	}
-	if !strings.Contains(v.Value, "sample type") {
-		t.Errorf("hover should include doc comment: %q", v.Value)
+	if !strings.Contains(v, "sample type") {
+		t.Errorf("hover should include doc comment: %q", v)
 	}
 }
 
@@ -1287,25 +1246,6 @@ func callHandler(t *testing.T, s *server, method string, params any) (any, error
 	return result, replyErr
 }
 
-// definitionAt answers `textDocument/definition` at the cursor mark of
-// marked, written to path and open; an empty path opens it outside any
-// project.
-func definitionAt(t *testing.T, path, marked string) []protocol.Location {
-	t.Helper()
-	src, pos := markCursor(t, marked)
-	u := uri.New("file:///t.craftgo")
-	if path != "" {
-		mustWrite(t, path, src)
-		u = uri.File(path)
-	}
-	res, err := callHandler(t, &server{docs: map[uri.URI]string{u: src}}, protocol.MethodTextDocumentDefinition,
-		protocol.DefinitionParams{TextDocumentPositionParams: docAt(u, pos)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return res.([]protocol.Location)
-}
-
 // A type position names a type, an enum or a scalar; an error's own name
 // still resolves to the error.
 func TestDefinitionTypePositionNamesTypesOnly(t *testing.T) {
@@ -1364,7 +1304,7 @@ service S {
 }
 
 // A type position never resolves to a same-named middleware.
-func TestDefinitionTypeShapePositionExcludesMiddleware(t *testing.T) {
+func TestDefinitionTypePositionExcludesMiddleware(t *testing.T) {
 	src := `package x
 middleware Greeter
 type Greeter { id string }
@@ -1384,7 +1324,7 @@ type Holder { g Greeter }
 			break
 		}
 	}
-	if kind := lookupKindAt(view, view.cursorAt(fieldTypePos)); kind != semantic.TypeRefDecls {
+	if kind := lookupKindAt(view, view.cursorAt(fieldTypePos).at); kind != semantic.TypeRefDecls {
 		t.Errorf("expected the type-reference kinds for a field-type position, got %v", kind)
 	}
 	d := lookupIn(t, "x", "Greeter", semantic.TypeRefDecls, view.file)
@@ -1470,7 +1410,7 @@ extend service Alpha {
 	if count < 2 {
 		t.Fatalf("expected 2 Alpha tokens, got %d", count)
 	}
-	if kind := lookupKindAt(view, view.cursorAt(pos)); kind != semantic.ServiceDecls {
+	if kind := lookupKindAt(view, view.cursorAt(pos).at); kind != semantic.ServiceDecls {
 		t.Fatalf("expected service kinds for an extend header, got %v", kind)
 	}
 	d := lookupIn(t, "x", "Alpha", semantic.ServiceDecls, view.file)
@@ -1505,7 +1445,7 @@ extend service Alpha {
 	if tok.Text != "Alpha" {
 		t.Fatalf("probe landed on %q, not the service name", tok.Text)
 	}
-	if kind := lookupKindAt(view, view.cursorAt(pos)); kind != semantic.ServiceDecls {
+	if kind := lookupKindAt(view, view.cursorAt(pos).at); kind != semantic.ServiceDecls {
 		t.Fatalf("expected service kinds, got %v", kind)
 	}
 	// The extend-only file holds no definition site.
@@ -1527,8 +1467,8 @@ extend service Alpha {
 	}
 }
 
-// A service header's name is not a type position, even after a type declaration.
-func TestDefinitionServiceHeaderIsNotATypeShape(t *testing.T) {
+// A service header's name names a service, even after a type declaration.
+func TestDefinitionServiceHeaderNamesAService(t *testing.T) {
 	src := `package x
 type Thing { id string }
 
@@ -1542,8 +1482,8 @@ extend service Alpha {
 	if tok.Text != "Alpha" {
 		t.Fatalf("probe landed on %q, not the service name", tok.Text)
 	}
-	if isTypeShapePosition(view, idx) {
-		t.Error("a service header name must not classify as a type-shape position")
+	if kind := lookupKindAt(view, idx); kind != semantic.ServiceDecls {
+		t.Errorf("a service header's name resolves among %v, want the services", kind)
 	}
 }
 
@@ -1633,17 +1573,17 @@ func findToken(t *testing.T, view snapshotView, needle string) protocol.Position
 	return protocol.Position{}
 }
 
-// mustHoverAt returns the hover text of the first token spelt needle in src.
+// mustHoverAt returns the hover text of the first token spelt needle in src,
+// open at a URI built from path.
 func mustHoverAt(t *testing.T, path, src, needle string) string {
 	t.Helper()
-	view := parseSnapshot(path, src)
-	pos := findToken(t, view, needle)
-	idx, tok := tokenUnder(view, pos)
-	hov := hoverForToken(view, idx, tok)
-	if hov == nil {
+	u := uri.New("file:///" + path)
+	pos := findToken(t, parseSnapshot(path, src), needle)
+	h := hoverReply(t, &server{docs: map[uri.URI]string{u: src}}, u, pos)
+	if h == nil {
 		t.Fatalf("expected hover at %q", needle)
 	}
-	return hov.Contents.Value
+	return h.Contents.Value
 }
 
 // mustCompletionsAt runs completion at (line, ch) of src, open at a URI built

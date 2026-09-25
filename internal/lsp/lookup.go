@@ -55,6 +55,20 @@ func (v snapshotView) cursorAt(pos protocol.Position) cursor {
 	return c
 }
 
+// cursorOn returns the cursor at the start of token i.
+func (v snapshotView) cursorOn(i int) cursor {
+	t := v.tokens[i]
+	return cursor{off: t.Pos.Offset, line: t.Pos.Line, at: i, prev: i - 1}
+}
+
+// packageName returns the package the file declares, "" for none.
+func (v snapshotView) packageName() string {
+	if v.file == nil || v.file.Package == nil {
+		return ""
+	}
+	return v.file.Package.Name
+}
+
 // token returns the token at index i, or nil for -1.
 func (v snapshotView) token(i int) *lexer.Token {
 	if i < 0 {
@@ -63,31 +77,49 @@ func (v snapshotView) token(i int) *lexer.Token {
 	return &v.tokens[i]
 }
 
-// kind returns the kind of the token at index i, or [lexer.EOF] for -1.
+// kind returns the kind of the token at index i, or [lexer.EOF] outside the
+// tokens.
 func (v snapshotView) kind(i int) lexer.Kind {
-	if i < 0 {
+	if i < 0 || i >= len(v.tokens) {
 		return lexer.EOF
 	}
 	return v.tokens[i].Kind
 }
 
 // outsideParens yields, in order, the indices of the tokens that start after
-// byte offset after, skipping every parenthesised decorator argument list.
+// byte offset after, skipping every decorator argument list and stray `)`.
 func (v snapshotView) outsideParens(after int) iter.Seq[int] {
 	return func(yield func(int) bool) {
-		parens := 0
-		for i, t := range v.tokens {
-			switch {
-			case t.Pos.Offset <= after:
+		for i := 0; i < len(v.tokens); i++ {
+			switch t := v.tokens[i]; {
+			case t.Pos.Offset <= after, t.Kind == lexer.RParen:
 			case t.Kind == lexer.LParen:
-				parens++
-			case t.Kind == lexer.RParen:
-				parens = max(parens-1, 0)
-			case parens == 0 && !yield(i):
+				i = v.argEnd(i)
+			case !yield(i):
 				return
 			}
 		}
 	}
+}
+
+// argEnd returns the index of the `)` that closes the argument list opened at
+// token i or, for one left open, of the last token on the `(`'s line.
+func (v snapshotView) argEnd(i int) int {
+	depth, last := 0, i
+	for j := i; j < len(v.tokens); j++ {
+		switch v.tokens[j].Kind {
+		case lexer.LParen:
+			depth++
+		case lexer.RParen:
+			if depth--; depth == 0 {
+				return j
+			}
+		}
+		if v.tokens[j].Pos.Line == v.tokens[i].Pos.Line {
+			last = j
+		}
+	}
+	return last
 }
 
 // lead returns the number of tokens before the one under c, or before c on
@@ -126,19 +158,6 @@ func fieldAtCursor(view snapshotView, c cursor) *ast.Field {
 		}
 	}
 	return at
-}
-
-// findDecl returns f's first declaration named name, or nil.
-func findDecl(f *ast.File, name string) ast.Decl {
-	if f == nil {
-		return nil
-	}
-	for _, d := range f.Decls {
-		if d.DeclName() == name {
-			return d
-		}
-	}
-	return nil
 }
 
 // declBody returns the members of a type or of an error with a body, and

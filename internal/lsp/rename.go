@@ -6,11 +6,12 @@ import (
 
 	"go.lsp.dev/protocol"
 
+	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 // onPrepareRename answers `textDocument/prepareRename` with the range of an
-// identifier that names a declaration in the buffer, else null.
+// identifier spelt like the declaration it names, else null.
 func (s *server) onPrepareRename(_ context.Context, params protocol.PrepareRenameParams) (any, error) {
 	r, ok := s.open(params.TextDocument.URI)
 	if !ok {
@@ -18,15 +19,15 @@ func (s *server) onPrepareRename(_ context.Context, params protocol.PrepareRenam
 	}
 	view := r.view()
 	c := view.cursorAt(params.Position)
-	if c.at < 0 || view.tokens[c.at].Kind != lexer.Ident || findDecl(view.file, view.tokens[c.at].Text) == nil {
+	if r.renameTarget(c) == nil {
 		return nil, nil
 	}
 	rng := rangeOf(view.src, view.tokens[c.at])
 	return &rng, nil
 }
 
-// onRename answers `textDocument/rename`, rewriting every same-spelt identifier
-// in the project when the cursor names a declaration in the buffer.
+// onRename answers `textDocument/rename`, rewriting every identifier in the
+// project that names the declaration the one at the cursor names.
 func (s *server) onRename(_ context.Context, params protocol.RenameParams) (any, error) {
 	if !lexer.IsIdent(params.NewName) {
 		return nil, fmt.Errorf("invalid rename target %q: not a craftgo identifier", params.NewName)
@@ -35,14 +36,12 @@ func (s *server) onRename(_ context.Context, params protocol.RenameParams) (any,
 	if !ok {
 		return nil, nil
 	}
-	v := r.project()
-	view := r.view()
-	c := view.cursorAt(params.Position)
-	if c.at < 0 || view.tokens[c.at].Kind != lexer.Ident || findDecl(view.file, view.tokens[c.at].Text) == nil {
+	d := r.renameTarget(r.view().cursorAt(params.Position))
+	if d == nil {
 		return nil, nil
 	}
 	changes := map[protocol.DocumentURI][]protocol.TextEdit{}
-	for _, loc := range v.nameMatches(view.tokens[c.at].Text, true, r.uri) {
+	for _, loc := range r.project().references(d, r.uri) {
 		changes[loc.URI] = append(changes[loc.URI], protocol.TextEdit{
 			Range:   loc.Range,
 			NewText: params.NewName,
@@ -53,4 +52,13 @@ func (s *server) onRename(_ context.Context, params protocol.RenameParams) (any,
 		changes[r.uri] = []protocol.TextEdit{}
 	}
 	return &protocol.WorkspaceEdit{Changes: changes}, nil
+}
+
+// renameTarget returns the declaration the identifier at c names, or nil on
+// the package half of `pkg.Name`.
+func (r *request) renameTarget(c cursor) ast.Decl {
+	if c.at < 0 || isQualifier(r.view(), c.at) {
+		return nil
+	}
+	return r.project().symbolAt(r.view(), c.at)
 }

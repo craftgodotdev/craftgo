@@ -109,9 +109,6 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 		if errcat.IsCategory(tok.Text) {
 			return errorCategoryHover(tok.Text, rangeOf(view.src, tok))
 		}
-		if d := findDecl(view.file, tok.Text); d != nil {
-			return userTypeHover(d, rangeOf(view.src, tok))
-		}
 		// A field's own name token shows the field.
 		if f, parent := findFieldAtPos(view.file, tok.Pos); f != nil {
 			return fieldHover(parent, f, rangeOf(view.src, tok))
@@ -194,19 +191,15 @@ func fieldHover(parent string, f *ast.Field, r protocol.Range) *protocol.Hover {
 	}
 }
 
-// hover is [hoverForToken] for token idx with a project-wide declaration
-// lookup as the fallback, so the project loads only when the buffer has no
-// answer.
+// hover is [hoverForToken] for token idx, else the declaration the token
+// names; the project loads only when the buffer has no answer.
 func (r *request) hover(idx int) *protocol.Hover {
 	view := r.view()
 	tok := view.tokens[idx]
 	if h := hoverForToken(view, idx, tok); h != nil {
 		return h
 	}
-	if tok.Kind != lexer.Ident {
-		return nil
-	}
-	if d := r.project().lookup(qualifiedNameAt(view, idx), semantic.AnyDecl); d != nil {
+	if d := r.project().symbolAt(view, idx); d != nil {
 		return userTypeHover(d, rangeOf(view.src, tok))
 	}
 	return nil

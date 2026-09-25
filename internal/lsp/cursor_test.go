@@ -170,3 +170,17 @@ func TestImportPathPrefixAfterNonASCII(t *testing.T) {
 	expectLabels(t, list.Items, "design/caféX")
 	expectNoLabels(t, list.Items, "design/caféY")
 }
+
+// Below an argument list left open, completion answers as if it were closed.
+func TestCompletionBelowAnArgumentListLeftOpen(t *testing.T) {
+	const src = "package a\n\ntype Addr { city string }\n\ntype User {\n\tname string @lenght(1,\n\thome Ad|1\n\twork Addr @|2\n}\n\ntype Other {\n\twhere |3\n}\n"
+	for mark, want := range map[string]string{"|1": "Addr", "|2": "doc", "|3": "Addr"} {
+		marked := src
+		for _, other := range []string{"|1", "|2", "|3"} {
+			if other != mark {
+				marked = strings.Replace(marked, other, "", 1)
+			}
+		}
+		expectLabels(t, mustCompletionsAtCursor(t, "t.craftgo", strings.Replace(marked, mark, cursorMark, 1)), want)
+	}
+}
