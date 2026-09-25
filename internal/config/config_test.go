@@ -12,10 +12,7 @@ import (
 
 // TestLoadDefaults checks that an empty manifest loads with the output defaults.
 func TestLoadDefaults(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, Filename)
-	writeFile(t, path, "")
-	cfg, err := Load(path)
+	cfg, err := loadManifest(t, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,14 +31,11 @@ func TestLoadDefaults(t *testing.T) {
 }
 
 func TestLoadFullOverride(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, Filename)
-	writeFile(t, path, `output:
+	cfg, err := loadManifest(t, `output:
   types: ./gen/types
   main: ./cmd/api/main.go
   svccontext: ./internal/svc/svccontext.go
 `)
-	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,10 +164,7 @@ proto:
 }
 
 func TestLoadBadYAML(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, Filename)
-	writeFile(t, path, "not: valid: yaml: at: all\n  bad")
-	if _, err := Load(path); err == nil {
+	if _, err := loadManifest(t, "not: valid: yaml: at: all\n  bad"); err == nil {
 		t.Error("expected parse error")
 	}
 }
@@ -384,10 +375,7 @@ func TestResolveModulePathQuotedModuleLine(t *testing.T) {
 }
 
 func TestLoadFileCaseDefaultsToSnake(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, Filename)
-	writeFile(t, path, "")
-	cfg, err := Load(path)
+	cfg, err := loadManifest(t, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,10 +386,7 @@ func TestLoadFileCaseDefaultsToSnake(t *testing.T) {
 
 func TestLoadFileCaseAcceptsKnownAndRejectsUnknown(t *testing.T) {
 	for _, v := range []string{idents.FileCaseKebab, idents.FileCaseSnake, idents.FileCaseCamel} {
-		dir := t.TempDir()
-		path := filepath.Join(dir, Filename)
-		writeFile(t, path, "output:\n  fileCase: "+v+"\n")
-		cfg, err := Load(path)
+		cfg, err := loadManifest(t, "output:\n  fileCase: "+v+"\n")
 		if err != nil {
 			t.Fatalf("Load(fileCase=%s): %v", v, err)
 		}
@@ -409,10 +394,7 @@ func TestLoadFileCaseAcceptsKnownAndRejectsUnknown(t *testing.T) {
 			t.Errorf("fileCase = %q, want %q", cfg.Output.FileCase, v)
 		}
 	}
-	dir := t.TempDir()
-	path := filepath.Join(dir, Filename)
-	writeFile(t, path, "output:\n  fileCase: pascal\n")
-	if _, err := Load(path); err == nil {
+	if _, err := loadManifest(t, "output:\n  fileCase: pascal\n"); err == nil {
 		t.Fatal("Load(fileCase=pascal) = nil error, want rejection")
 	}
 }

@@ -8,7 +8,7 @@ import (
 // TestEventsDefaultToASingleGoTarget checks that a manifest without events
 // gets one Go target in ./internal/events.
 func TestEventsDefaultToASingleGoTarget(t *testing.T) {
-	cfg, err := Load(writeManifest(t, "openapi:\n  title: X\n"))
+	cfg, err := loadManifest(t, "openapi:\n  title: X\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,11 +24,11 @@ func TestEventsDefaultToASingleGoTarget(t *testing.T) {
 // TestEventTargetsAreConfigured checks that TargetFor returns a configured
 // target and misses an unconfigured language.
 func TestEventTargetsAreConfigured(t *testing.T) {
-	cfg, err := Load(writeManifest(t, `events:
+	cfg, err := loadManifest(t, `events:
   targets:
     - lang: go
       out: ./gen/events
-`))
+`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestRemovedKeysAreRejected(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := Load(writeManifest(t, c.body))
+			_, err := loadManifest(t, c.body)
 			if err == nil || !strings.HasPrefix(err.Error(), c.want) {
 				t.Errorf("err = %v, want one starting %q", err, c.want)
 			}
@@ -110,7 +110,7 @@ func TestEventTargetValidation(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := Load(writeManifest(t, c.body))
+			_, err := loadManifest(t, c.body)
 			if err == nil || !strings.Contains(err.Error(), c.msg) {
 				t.Fatalf("err = %v, want it to mention %q", err, c.msg)
 			}
