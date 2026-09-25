@@ -281,6 +281,35 @@ service Y {
 	}
 }
 
+// Renumbering skips a number whose body component a declaration names: with
+// `ABC2RespBody` and `ABC3ReqBody` declared, the second ABC takes ABC4.
+func TestOperationBodyRenumberingSkipsDeclaredNames(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+type Req { name string }
+type Resp { ok bool }
+type ABC2RespBody { x int }
+enum ABC3ReqBody { on  off }
+service A {
+	@operationId("renamedBC")
+	post BC /a/bc { request Req  response Resp }
+}
+service AB {
+	post C /ab/c { request Req  response Resp }
+}
+service X {
+	post BC /x/bc { request Req  response Resp }
+	post C /x/c { request Req  response ABC2RespBody }
+}`,
+	}, &config.Config{})
+	for path, stem := range map[string]string{"/ab/c": "ABC", "/a/bc": "ABC4"} {
+		op := doc.Paths.Find(path).Post
+		if got := op.RequestBody.Value.Content.Get(mimeApplicationJSON).Schema.Ref; got != "#/components/schemas/"+stem+"ReqBody" {
+			t.Errorf("%s request body refs %q, want %sReqBody", path, got, stem)
+		}
+	}
+}
+
 // No document is built with a duplicate operationId: the analyser rejects an
 // `@operationId` equal to another method's, in one package or across two.
 func TestDuplicateOperationIDRejectedBeforeTheDocument(t *testing.T) {

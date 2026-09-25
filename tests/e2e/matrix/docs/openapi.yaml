@@ -3244,6 +3244,22 @@ components:
       type: object
     LatestRespBody:
       $ref: '#/components/schemas/RtOrder'
+    LedgerEntryEntryListRespBody:
+      $ref: '#/components/schemas/ReportCards'
+    LedgerEntryList2RespBody:
+      description: |-
+        LedgerEntryList2RespBody is a declared type named like a renumbered body
+        component, so the renumbering passes over 2.
+      properties:
+        total:
+          type: integer
+      required:
+      - total
+      type: object
+    LedgerEntryList3RespBody:
+      $ref: '#/components/schemas/ReportCards'
+    LedgerEntryListRespBody:
+      $ref: '#/components/schemas/LedgerEntryList2RespBody'
     ListKeyedReq:
       allOf:
       - $ref: '#/components/schemas/KeyedOfPriority'
@@ -10604,6 +10620,45 @@ paths:
           description: Accepted
       tags:
       - StatusCodesService
+  /ledger-entry/all:
+    get:
+      description: Lists every ledger entry; its body component is LedgerEntryListRespBody.
+      operationId: LedgerEntryList
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerEntryListRespBody'
+          description: OK
+      tags:
+      - LedgerEntry
+  /ledger-entry/entries:
+    get:
+      description: Lists the entries of a ledger entry.
+      operationId: LedgerEntryEntryList
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerEntryEntryListRespBody'
+          description: OK
+      tags:
+      - LedgerEntry
+  /ledger/entries:
+    get:
+      description: Lists the ledger's entries; its body component is LedgerEntryList3RespBody.
+      operationId: listLedgerEntries
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerEntryList3RespBody'
+          description: OK
+      tags:
+      - Ledger
   /nested/a:
     post:
       description: Mutual recursion entry - request A traverses A → B → A → ...

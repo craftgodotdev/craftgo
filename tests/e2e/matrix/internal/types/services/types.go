@@ -116,6 +116,12 @@ type InventoryListResp struct {
 	Total int         `json:"total"`
 }
 
+// LedgerEntryList2RespBody is a declared type named like a renumbered body
+// component, so the renumbering passes over 2.
+type LedgerEntryList2RespBody struct {
+	Total int `json:"total"`
+}
+
 // ListUsersReq embeds `shared.Pagination` cross-package. The
 // implicit mixin form makes the limit / cursor / total fields land
 // at the request root, and the optional `query` slot adds the free-

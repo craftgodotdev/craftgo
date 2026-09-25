@@ -1013,7 +1013,8 @@ breaking change to the DSL or the generated layout bumps the major version.
   `Report.CardList` and `ReportCard.List` are each named after their service,
   both bodies come to `ReportCardList`, and the OpenAPI target stopped with an
   error blaming a user-declared type. The operation whose operationId is that
-  name keeps it; the other's components take the lowest free number, as
+  name keeps it; the other's components take the lowest number that no other
+  operation and no declared type, enum or scalar holds, as
   `ReportCardList2RespBody`.
 
 - **A run that writes no OpenAPI document is not stopped by it.** With

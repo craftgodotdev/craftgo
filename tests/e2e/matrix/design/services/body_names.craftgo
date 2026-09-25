@@ -39,3 +39,36 @@ service ReportCard {
 		response ReportCards
 	}
 }
+
+// LedgerEntryList2RespBody is a declared type named like a renumbered body
+// component, so the renumbering passes over 2.
+type LedgerEntryList2RespBody {
+	total int
+}
+
+// Ledger.EntryList and LedgerEntry.List both come to LedgerEntryList.
+// LedgerEntry.List, whose operationId it is, keeps LedgerEntryListRespBody;
+// Ledger.EntryList, named listLedgerEntries, answers LedgerEntryList3RespBody,
+// since the declared LedgerEntryList2RespBody holds 2.
+@prefix("/ledger")
+service Ledger {
+	@doc("Lists the ledger's entries; its body component is LedgerEntryList3RespBody.")
+	@operationId("listLedgerEntries")
+	get EntryList /entries {
+		response ReportCards
+	}
+}
+
+// LedgerEntry is the service Ledger's names run into.
+@prefix("/ledger-entry")
+service LedgerEntry {
+	@doc("Lists every ledger entry; its body component is LedgerEntryListRespBody.")
+	get List /all {
+		response LedgerEntryList2RespBody
+	}
+
+	@doc("Lists the entries of a ledger entry.")
+	get EntryList /entries {
+		response ReportCards
+	}
+}

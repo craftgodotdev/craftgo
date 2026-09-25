@@ -135,6 +135,12 @@ func (v *InventoryListResp) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on LedgerEntryList2RespBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *LedgerEntryList2RespBody) Validate() error {
+	return nil
+}
+
 // Validate checks every field-level constraint declared on ListUsersReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ListUsersReq) Validate() error {

@@ -16,12 +16,11 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// addPaths adds an operation per method of pkg, each under its route, and
-// describes each one it leaves out because its path holds an operation of
-// its method already.
+// addPaths adds an operation per method of pkg under its route (doc holds pkg's components) and
+// describes each one it leaves out because its path holds an operation of its method already.
 func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) (shared []string) {
 	held := map[string]string{}
-	for _, op := range operations(pkg) {
+	for _, op := range operations(pkg, doc.Components.Schemas) {
 		s := newOpShape(op.svc, op.m, route.Resolve("", op.svc.Primary, op.m), op.id, op.stem, pkg, registry.resolver)
 		path := route.OpenAPIPath(s.full)
 		verb := strings.ToUpper(op.m.Verb)
@@ -53,9 +52,9 @@ type operation struct {
 // base name, its package first (`ASGet`) when a service of its name in
 // another package has a method of its name. Of operations sharing a stem
 // (`A.BC` and `AB.C` are both ABC), the one whose operationId it is, else the
-// first, keeps it; each other takes it with the lowest number no operation
-// holds (`ABC2`).
-func operations(pkg *semantic.Package) []operation {
+// first, keeps it; each other takes it with the lowest number that no
+// operation holds and that names no body component in declared (`ABC2`).
+func operations(pkg *semantic.Package, declared openapi3.Schemas) []operation {
 	counts := semantic.MethodNameCounts(pkg)
 	owners := map[string]int{}
 	for _, svc := range pkg.Services {
@@ -77,6 +76,11 @@ func operations(pkg *semantic.Package) []operation {
 			ops = append(ops, operation{svc: svc, m: m, id: semantic.OperationID(svc.Decorators(m), base), stem: stem})
 		}
 	}
+	taken := func(name string) bool {
+		_, req := declared[name+"ReqBody"]
+		_, resp := declared[name+"RespBody"]
+		return len(byStem[name]) > 0 || req || resp
+	}
 	for _, stem := range slices.Sorted(maps.Keys(byStem)) {
 		shared := byStem[stem]
 		if len(shared) < 2 {
@@ -94,7 +98,7 @@ func operations(pkg *semantic.Package) []operation {
 			if i == keep {
 				continue
 			}
-			for len(byStem[stem+strconv.Itoa(n)]) > 0 {
+			for taken(stem + strconv.Itoa(n)) {
 				n++
 			}
 			ops[i].stem = stem + strconv.Itoa(n)
