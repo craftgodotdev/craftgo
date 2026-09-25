@@ -20,6 +20,15 @@ func formatDoc(t *testing.T, src string) []protocol.TextEdit {
 	return res.([]protocol.TextEdit)
 }
 
+// The edit of a buffer whose lines end in a lone `\r` replaces all of it.
+func TestFormattingReplacesACarriageReturnBuffer(t *testing.T) {
+	src := "package p\r\rtype A {  x   string }\r"
+	edits := formatDoc(t, src)
+	if len(edits) != 1 || edits[0].Range.End != (protocol.Position{Line: 3}) {
+		t.Errorf("edits = %+v, want one ending past the last line end", edits)
+	}
+}
+
 // A buffer with an error gets no edit; the same layout without it gets one.
 func TestFormattingRefusesBuffersWithErrors(t *testing.T) {
 	if edits := formatDoc(t, "package p\n\ntype A {  x   Missing }\n"); len(edits) != 0 {

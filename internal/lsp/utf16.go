@@ -22,19 +22,46 @@ func utf16Len(s string) int {
 	return n
 }
 
+// nextLine returns the offset of the line after the one holding offset i of
+// s, and false on the last line. A line ends at `\n`, `\r\n` or a lone `\r`,
+// as the lexer ends it.
+func nextLine(s string, i int) (int, bool) {
+	j := strings.IndexAny(s[i:], "\r\n")
+	if j < 0 {
+		return len(s), false
+	}
+	j += i
+	if strings.HasPrefix(s[j:], "\r\n") {
+		return j + 2, true
+	}
+	return j + 1, true
+}
+
+// lastLine returns the number of line ends in s and the offset of its last
+// line.
+func lastLine(s string) (ends, start int) {
+	for {
+		next, ok := nextLine(s, start)
+		if !ok {
+			return ends, start
+		}
+		ends, start = ends+1, next
+	}
+}
+
 // offsetFromLSP converts a 0-based LSP position (character in UTF-16 units) into
 // a byte offset into src, clamped to the line's end and to len(src).
 func offsetFromLSP(src string, line, character uint32) int {
 	off := 0
 	for l := uint32(0); l < line; l++ {
-		nl := strings.IndexByte(src[off:], '\n')
-		if nl < 0 {
+		next, ok := nextLine(src, off)
+		if !ok {
 			return len(src)
 		}
-		off += nl + 1
+		off = next
 	}
 	want, units := int(character), 0
-	for off < len(src) && src[off] != '\n' && units < want {
+	for off < len(src) && src[off] != '\n' && src[off] != '\r' && units < want {
 		r, size := utf8.DecodeRuneInString(src[off:])
 		off += size
 		if r > 0xFFFF {
@@ -71,9 +98,9 @@ func spanRange(src string, p lexer.Position, n int) protocol.Range {
 	from := min(max(p.Offset, 0), len(src))
 	text := src[from:min(from+n, len(src))]
 	end := start
-	if nl := strings.LastIndexByte(text, '\n'); nl >= 0 {
-		end.Line += uint32(strings.Count(text, "\n"))
-		end.Character = uint32(utf16Len(text[nl+1:]))
+	if ends, last := lastLine(text); ends > 0 {
+		end.Line += uint32(ends)
+		end.Character = uint32(utf16Len(text[last:]))
 	} else {
 		end.Character += uint32(utf16Len(text))
 	}
@@ -85,20 +112,20 @@ func rangeOf(src string, t lexer.Token) protocol.Range {
 	return spanRange(src, t.Pos, len(t.Text))
 }
 
-// nthLine returns the text of the 0-indexed line n (without its trailing
-// newline) and whether the line exists in src.
+// nthLine returns the text of the 0-indexed line n, without its line end,
+// and whether the line exists in src.
 func nthLine(src string, n int) (string, bool) {
 	start := 0
 	for i := 0; i < n; i++ {
-		nl := strings.IndexByte(src[start:], '\n')
-		if nl < 0 {
+		next, ok := nextLine(src, start)
+		if !ok {
 			return "", false
 		}
-		start += nl + 1
+		start = next
 	}
 	rest := src[start:]
-	if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
-		return rest[:nl], true
+	if end := strings.IndexAny(rest, "\r\n"); end >= 0 {
+		return rest[:end], true
 	}
 	return rest, true
 }

@@ -538,6 +538,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   closing brace. References with the declaration excluded leave it out,
   where they listed it anyway.
 
+- **The editor ends a line where the lexer does**: at `\n`, `\r\n` or a lone
+  `\r`. In a file whose lines end in a lone `\r`, every range after the
+  first line was misplaced and Format Document replaced only the first line,
+  duplicating the text. Past a token the lexer rejects, such as a string
+  with a bad escape, the cursor no longer counts as on that token for the
+  length of its error message.
+
 - **`@negative` or `@lt(0)` on an array of unsigned integers is reported
   once**, as a decorator on the wrong type; it also drew the unsigned-value
   error meant for a single number.

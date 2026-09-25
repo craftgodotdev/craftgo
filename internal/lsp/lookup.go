@@ -2,6 +2,8 @@ package lsp
 
 import (
 	"iter"
+	"slices"
+	"strings"
 
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
@@ -43,7 +45,7 @@ func (v snapshotView) cursorAt(pos protocol.Position) cursor {
 		if t.Kind == lexer.EOF || t.Pos.Offset > c.off {
 			break
 		}
-		if c.off <= t.Pos.Offset+len(t.Text) {
+		if c.off <= v.end(i) {
 			c.at = i
 		} else {
 			c.prev = i
@@ -53,6 +55,26 @@ func (v snapshotView) cursorAt(pos protocol.Position) cursor {
 		c.prev = c.at - 1
 	}
 	return c
+}
+
+// end returns the offset just past token i in the buffer. An Error token's
+// text is its diagnostic, so it ends where the next token or comment starts,
+// less the blanks before that.
+func (v snapshotView) end(i int) int {
+	t := v.tokens[i]
+	if t.Kind != lexer.Error {
+		return t.Pos.Offset + len(t.Text)
+	}
+	end := len(v.src)
+	if i+1 < len(v.tokens) {
+		end = v.tokens[i+1].Pos.Offset
+	}
+	if v.file != nil {
+		if j := slices.IndexFunc(v.file.Comments, func(c *ast.Comment) bool { return c.Pos.Offset > t.Pos.Offset }); j >= 0 {
+			end = min(end, v.file.Comments[j].Pos.Offset)
+		}
+	}
+	return t.Pos.Offset + len(strings.TrimRight(v.src[t.Pos.Offset:end], " \t\r\n"))
 }
 
 // cursorOn returns the cursor at the start of token i.

@@ -91,6 +91,29 @@ func TestIsUnderDesignRoot(t *testing.T) {
 	}
 }
 
+// A line ends at `\n`, `\r\n` or a lone `\r`, as the lexer ends it: every
+// token's LSP position lands back on its offset, its range covers its text,
+// and the whole document ends on the lexer's last line.
+func TestLineEndsAgreeWithTheLexer(t *testing.T) {
+	src := "package x\r\rtype T {\r\n\tid string // é\n\tn int\r\tx bool @doc(\"😀\")\r}\r\n\n@doc(\"a\")\rscalar S string"
+	toks := lexer.New("t.craftgo", src).Tokenize()
+	for _, tok := range toks[:len(toks)-1] {
+		p := utf16Position(src, tok.Pos)
+		if p.Line != uint32(tok.Pos.Line-1) || offsetFromLSP(src, p.Line, p.Character) != tok.Pos.Offset {
+			t.Errorf("%q at %v: LSP position %v", tok.Text, tok.Pos, p)
+		}
+		if tok.Kind != lexer.Error {
+			if got := rangeText(src, rangeOf(src, tok)); got != tok.Text {
+				t.Errorf("%q at %v: range covers %q", tok.Text, tok.Pos, got)
+			}
+		}
+	}
+	eof := toks[len(toks)-1].Pos
+	if end := wholeDocumentRange(src).End; end.Line != uint32(eof.Line-1) || offsetFromLSP(src, end.Line, end.Character) != len(src) {
+		t.Errorf("whole document ends at %v, the lexer's last line is %d", end, eof.Line)
+	}
+}
+
 func TestWholeDocumentRangeUTF16(t *testing.T) {
 	cases := []struct {
 		src      string

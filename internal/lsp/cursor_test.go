@@ -88,6 +88,21 @@ func TestSignatureHelpActiveParameter(t *testing.T) {
 	}
 }
 
+// A token the lexer rejects spans its source text, not its diagnostic: past
+// the `)` after one the cursor is outside the argument list.
+func TestCursorAfterALexerError(t *testing.T) {
+	src, pos := markCursor(t, "package x\n\ntype T {\n\tid string @doc(\"\\q\")   |\n}\n")
+	u := uri.New("file:///t.craftgo")
+	res, err := callHandler(t, &server{docs: map[uri.URI]string{u: src}}, protocol.MethodTextDocumentSignatureHelp,
+		protocol.SignatureHelpParams{TextDocumentPositionParams: docAt(u, pos)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sh, _ := res.(*protocol.SignatureHelp); sh != nil {
+		t.Errorf("signature help past the `)`: %+v", sh)
+	}
+}
+
 // Every range counts UTF-16 units, so a token after an astral character on
 // its line is covered exactly.
 func TestRangesAfterAnAstralCharacter(t *testing.T) {

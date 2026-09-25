@@ -2,7 +2,6 @@ package lsp
 
 import (
 	"context"
-	"strings"
 
 	"go.lsp.dev/protocol"
 
@@ -34,14 +33,6 @@ func (s *server) onFormatting(_ context.Context, params protocol.DocumentFormatt
 
 // wholeDocumentRange returns the range covering all of src.
 func wholeDocumentRange(src string) protocol.Range {
-	lines := strings.Count(src, "\n")
-	lastLine := src
-	if i := strings.LastIndexByte(src, '\n'); i >= 0 {
-		lastLine = src[i+1:]
-	}
-	// The end character counts UTF-16 units.
-	return protocol.Range{
-		Start: protocol.Position{Line: 0, Character: 0},
-		End:   protocol.Position{Line: uint32(lines), Character: uint32(utf16Len(lastLine))},
-	}
+	ends, last := lastLine(src)
+	return protocol.Range{End: protocol.Position{Line: uint32(ends), Character: uint32(utf16Len(src[last:]))}}
 }
