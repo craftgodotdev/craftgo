@@ -80,6 +80,49 @@ type B { id string }`,
 	}
 }
 
+// A package name the generated Go cannot use is an error at every file's
+// `package` clause, naming why.
+func TestPackageNameGoCannotUse(t *testing.T) {
+	for name, why := range map[string]string{
+		"func":   "Go keyword",
+		"range":  "Go keyword",
+		"int":    "predeclared",
+		"string": "predeclared",
+		"len":    "predeclared",
+		"nil":    "predeclared",
+		"append": "predeclared",
+		"iota":   "predeclared",
+		"main":   "program",
+		"init":   "init",
+		"_":      "blank identifier",
+	} {
+		files := parseFileMap(t, map[string]string{
+			"a.craftgo": "package " + name + "\ntype A { id string }",
+			"b.craftgo": "package " + name + "\ntype B { id string }",
+		})
+		_, diags := AnalyzeProject(files, Options{})
+		var got []string
+		for _, d := range diags {
+			if d.Code != CodePackageName {
+				continue
+			}
+			got = append(got, d.Pos.Filename)
+			if d.Severity != lexer.SeverityError {
+				t.Errorf("%s: severity %v, want error", name, d.Severity)
+			}
+			expectMessage(t, &d, `package name "`+name+`"`, why)
+		}
+		if len(got) != 2 {
+			t.Errorf("%s: want a %s error at each clause, got %v", name, CodePackageName, diags)
+		}
+	}
+	for _, name := range []string{"app", "Shared", "v1", "types"} {
+		files := parseFileMap(t, map[string]string{"a.craftgo": "package " + name + "\ntype A { id string }"})
+		_, diags := AnalyzeProject(files, Options{})
+		expectNoDiags(t, diags)
+	}
+}
+
 // A file that declares nothing needs no `package` clause.
 func TestEmptyFileNeedsNoPackage(t *testing.T) {
 	files := parseFileMap(t, map[string]string{

@@ -142,6 +142,9 @@ const (
 
 	// CodePackageMissing fires when a file declares something without a `package` clause.
 	CodePackageMissing = "package/missing"
+	// CodePackageName fires when a package name is one no generated Go package can take: a Go
+	// keyword or predeclared identifier, `main`, `init` or `_`.
+	CodePackageName = "package/name"
 	// CodeImportUnresolved fires when `import "path"` names no design folder.
 	CodeImportUnresolved = "import/unresolved"
 	// CodeImportEscape fires when an import path is absolute or its first segment is `.` or `..`.

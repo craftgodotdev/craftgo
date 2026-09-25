@@ -3,6 +3,8 @@ package semantic
 import (
 	"cmp"
 	"fmt"
+	"go/token"
+	"go/types"
 	"maps"
 	"os"
 	"path/filepath"
@@ -119,8 +121,9 @@ func comparePos(a, b lexer.Position) int {
 }
 
 // groupFilesByPackage groups files by their `package` name and reports each
-// file that declares something without a `package` clause. A clause whose
-// name did not parse joins no group either; the parser reported it.
+// file that declares something without a `package` clause, or names a
+// package Go cannot use. A clause whose name did not parse joins no group
+// either; the parser reported it.
 func groupFilesByPackage(files []*ast.File) (map[string][]*ast.File, []Diagnostic) {
 	groups := map[string][]*ast.File{}
 	var diags []Diagnostic
@@ -137,10 +140,37 @@ func groupFilesByPackage(files []*ast.File) (map[string][]*ast.File, []Diagnosti
 				})
 			}
 		case f.Package.Name != "":
+			if why := goPackageNameProblem(f.Package.Name); why != "" {
+				diags = append(diags, Diagnostic{
+					Pos:      f.Package.Pos,
+					End:      f.Package.Pos,
+					Severity: lexer.SeverityError,
+					Code:     CodePackageName,
+					Msg:      fmt.Sprintf("package name %q %s - rename the package", f.Package.Name, why),
+				})
+			}
 			groups[f.Package.Name] = append(groups[f.Package.Name], f)
 		}
 	}
 	return groups, diags
+}
+
+// goPackageNameProblem says why no generated Go package can take name, the
+// DSL package's name, or returns "".
+func goPackageNameProblem(name string) string {
+	switch {
+	case token.IsKeyword(name):
+		return "is a Go keyword, which a Go package clause cannot hold"
+	case name == "_":
+		return "is Go's blank identifier, which names no package"
+	case name == "main":
+		return "makes a Go program, which the other generated packages cannot import"
+	case name == "init":
+		return "is reserved for Go's init functions, so no Go file can import a package of that name"
+	case types.Universe.Lookup(name) != nil:
+		return "is predeclared in Go, so a generated file importing the package would lose the built-in " + name
+	}
+	return ""
 }
 
 // firstDeclarationPos returns the position of f's first import or

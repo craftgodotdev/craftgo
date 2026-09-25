@@ -6,7 +6,7 @@ The craftgo DSL is a small file format that describes your API. From it, craftgo
 
 A `.craftgo` file has three things:
 
-1. A `package` line (mandatory: a file without one is rejected as `package/missing`)
+1. A `package` line (mandatory: a file without one is rejected as `package/missing`). The name is also the generated Go package's, so a Go keyword, a predeclared Go identifier such as `int` or `len`, `main`, `init` and `_` are rejected as `package/name`
 2. Declarations: `type`, `enum`, `scalar`, `error`, `service`, `middleware`
 
 Every declaration produces specific generated code. The DSL is the single source of truth: change a field once, every generated artifact updates.

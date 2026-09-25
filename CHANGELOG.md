@@ -668,6 +668,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   name; a lower-case `service` name, which names only directories and
   documents, still warns.
 
+- **A package name is one Go can use.** The DSL package's name is the
+  generated Go package's, yet `package func` passed analysis and crashed gen
+  while formatting `types.go`; `package main` and `package init` generated
+  packages no other package could import, `package _` one that did not
+  compile, and a predeclared name such as `int`, `string` or `len` hid the
+  built-in from every file that imported the package (`int (package name) is
+  not a type`). Each is now an error, `package/name`, at every file's
+  `package` clause.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
