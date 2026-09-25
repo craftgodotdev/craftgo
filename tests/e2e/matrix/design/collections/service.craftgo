@@ -1,7 +1,5 @@
-// service.craftgo wires the array + map types up to a handler
-// surface so the generated routes / OpenAPI emit. Each endpoint
-// returns a representative shape from arrays.craftgo / maps.craftgo
-// - the interesting validation lives on the types, not the routes.
+// Collections takes and returns array and map shapes, so the generated
+// routes and OpenAPI cover them; the validation lives on the types.
 package collections
 
 @prefix("/collections")

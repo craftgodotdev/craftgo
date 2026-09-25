@@ -3,7 +3,6 @@
 // shared with an error.
 package bindings
 
-// EmptyReq is the request of RaiseErrorShapes.
 type EmptyReq {
 }
 
@@ -19,7 +18,6 @@ error Conflict HeaderMixinError {
 	resource string
 }
 
-// NullableDetail is the struct a NullableFieldsErr body may send as null.
 type NullableDetail {
 	name string @minLength(1)
 }
@@ -62,7 +60,6 @@ type HeaderMetadataResp {
 	ok   bool
 }
 
-// CountsPayload is the body of EchoHeaderMetadata and PostSharedStatus.
 type CountsPayload {
 	counts map<string, int?>
 	name   string

@@ -1,5 +1,4 @@
-// Integer bounds and divisors past 2^53, compared as the exact integers
-// they write.
+// Integer bounds and @multipleOf divisors, some past 2^53.
 package numbers
 
 // NumberBigBounds holds bounds past 2^53: OpenAPI writes them exactly, so

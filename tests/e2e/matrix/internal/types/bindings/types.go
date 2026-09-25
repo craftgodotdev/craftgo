@@ -46,7 +46,6 @@ type BodyMixin struct {
 	Note string `json:"note"`
 }
 
-// BodyOnlyMixin brings the whole body of MixinBodyReq.
 type BodyOnlyMixin struct {
 	CreatedAt string `json:"createdAt"`
 }
@@ -64,19 +63,15 @@ type CookieReq struct {
 	Session string `json:"-" cookie:"session_id"`
 }
 
-// CountsPayload is the body of EchoHeaderMetadata and PostSharedStatus.
 type CountsPayload struct {
 	Counts map[string]*int `json:"counts"`
 	Name   string          `json:"name"`
 }
 
-// DoneResp answers PostQueryBesideBody, GetSessionCookie and
-// RaiseErrorShapes.
 type DoneResp struct {
 	Done bool `json:"done"`
 }
 
-// EmptyReq is the request of RaiseErrorShapes.
 type EmptyReq struct {
 }
 
@@ -135,10 +130,8 @@ type Item struct {
 	Price int    `json:"price"`
 }
 
-// ItemList is the SearchItems response envelope. Mirrors the
-// UserList / TaskList shape every other service uses - the parser
-// rejects bare-array response forms in the method body, so list
-// endpoints wrap the slice in a per-service envelope.
+// ItemList wraps the items a list method returns, since a response
+// cannot be a bare array.
 type ItemList struct {
 	Items  []Item  `json:"items"`
 	Cursor *string `json:"cursor,omitempty"`
@@ -160,7 +153,6 @@ type MixinWireBodyReq struct {
 	Name string `json:"name"`
 }
 
-// NullableDetail is the struct a NullableFieldsErr body may send as null.
 type NullableDetail struct {
 	Name string `json:"name"`
 }
@@ -180,7 +172,6 @@ type NullableFormReq struct {
 	Ref  *UUID  `json:"ref,omitempty"`
 }
 
-// OkResp answers FilterTags.
 type OkResp struct {
 	Ok bool `json:"ok"`
 }

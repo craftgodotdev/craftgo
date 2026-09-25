@@ -2,7 +2,6 @@
 
 package collections
 
-// DeepTag is the value scalar of Map_Nested.
 type DeepTag string
 
 // Email is the canonical email-format scalar. Used as a map VALUE in
@@ -10,7 +9,6 @@ type DeepTag string
 // fire on every value during map iteration.
 type Email string
 
-// MapTag is the value scalar of Map_ArrayOfMaps.
 type MapTag string
 
 // MemberID is a numeric map key: its @gte(1) runs at runtime, and
@@ -190,9 +188,8 @@ type Map_ScalarValue struct {
 	Labels map[string]Tag `json:"labels"`
 }
 
-// Map_StructAddress is the second struct-valued map case, with
-// Address as the value. Each entry's `street` / `city` validators fire
-// through the per-entry `val.Validate()` call.
+// Map_StructAddress is the second struct-valued map case, with Address as
+// the value: each entry's street and city are validated.
 type Map_StructAddress struct {
 	Addresses map[string]Address `json:"addresses"`
 }
@@ -203,7 +200,6 @@ type Map_StructValue struct {
 	Users map[string]User `json:"users"`
 }
 
-// MemberTag is the value of Map_ScalarKey.
 type MemberTag struct {
 	Name string `json:"name"`
 }

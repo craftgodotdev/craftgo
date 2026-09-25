@@ -1,11 +1,7 @@
 package bindings
 
-// BindingsService exposes one method per binder-class so the codegen
-// has a real handler to drive for every wire-format path. The
-// per-method request DTOs combine multiple binder kinds (path +
-// query, path + form, etc.) so the generated handler exercises the
-// full extract → cast → validate pipeline rather than the trivial
-// one-binder cases.
+// BindingsService drives the binders, alone and combined in one request,
+// and the error and header shapes its responses carry.
 @prefix("/bindings")
 @tags(bindings)
 service BindingsService {
@@ -314,10 +310,8 @@ type Item {
 	price int    @gte(0)
 }
 
-// ItemList is the SearchItems response envelope. Mirrors the
-// UserList / TaskList shape every other service uses - the parser
-// rejects bare-array response forms in the method body, so list
-// endpoints wrap the slice in a per-service envelope.
+// ItemList wraps the items a list method returns, since a response
+// cannot be a bare array.
 type ItemList {
 	items  Item[]
 	cursor string?

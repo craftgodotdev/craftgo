@@ -33,7 +33,6 @@ type WireDefaults {
 	l Grade? @default(high)
 }
 
-// PayMethod is the element enum of ArrayDefaults.
 enum PayMethod {
 	Card = "card"
 	Bank = "bank"

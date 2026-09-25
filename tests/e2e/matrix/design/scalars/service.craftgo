@@ -1,7 +1,5 @@
-// ScalarsService exposes a small surface that exercises the scalar
-// + generic + mixin types defined in this package. Every endpoint
-// drives at least one scalar-typed or generic-typed payload through
-// the transport / validator / OpenAPI pipeline.
+// ScalarsService drives scalar, enum, generic and mixin types through the
+// generated transports, validators and OpenAPI.
 package scalars
 
 @prefix("/scalars")

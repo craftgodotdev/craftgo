@@ -64,9 +64,8 @@ type Map_Optional {
 	counts map<string, int>?
 }
 
-// Map_StructAddress is the second struct-valued map case, with
-// Address as the value. Each entry's `street` / `city` validators fire
-// through the per-entry `val.Validate()` call.
+// Map_StructAddress is the second struct-valued map case, with Address as
+// the value: each entry's street and city are validated.
 type Map_StructAddress {
 	addresses map<string, Address>
 }

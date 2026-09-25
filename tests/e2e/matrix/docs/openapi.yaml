@@ -950,7 +950,6 @@ components:
       - note
       type: object
     BodyOnlyMixin:
-      description: BodyOnlyMixin brings the whole body of MixinBodyReq.
       properties:
         createdAt:
           minLength: 1
@@ -1331,7 +1330,6 @@ components:
       - body
       type: object
     CountsPayload:
-      description: CountsPayload is the body of EchoHeaderMetadata and PostSharedStatus.
       properties:
         counts:
           additionalProperties:
@@ -1530,7 +1528,6 @@ components:
     DashboardStatsRespBody:
       $ref: '#/components/schemas/ListProfilesResp'
     DeepTag:
-      description: DeepTag is the value scalar of Map_Nested.
       minLength: 1
       type: string
     DefaultsBoundary:
@@ -1676,9 +1673,6 @@ components:
       - standalone
       type: string
     DoneResp:
-      description: |-
-        DoneResp answers PostQueryBesideBody, GetSessionCookie and
-        RaiseErrorShapes.
       properties:
         done:
           type: boolean
@@ -2049,7 +2043,6 @@ components:
     EchoGenericMixinHostRespBody:
       $ref: '#/components/schemas/GenericMixinHost'
     EchoHeaderMetadataReqBody:
-      description: CountsPayload is the body of EchoHeaderMetadata and PostSharedStatus.
       properties:
         counts:
           additionalProperties:
@@ -2094,7 +2087,7 @@ components:
     EchoLengthsReqBody:
       description: |-
         ScalarLengths holds exact and range string lengths and bytes lengths; the
-        validator counts a bytes value in raw bytes, as OpenAPI documents.
+        validator counts a bytes value in raw bytes.
       properties:
         code:
           $ref: '#/components/schemas/PinCode'
@@ -2405,8 +2398,8 @@ components:
       $ref: '#/components/schemas/PresenceMatrix'
     EchoRefMetaReqBody:
       description: |-
-        RefMeta documents a @nullable named ref as a null union, and @default and
-        @deprecated beside the $ref.
+        RefMeta documents a @nullable named ref as anyOf [$ref, null], and
+        @default and @deprecated on the allOf or anyOf that wraps the $ref.
       properties:
         depColor:
           allOf:
@@ -2666,7 +2659,6 @@ components:
       - email
       type: object
     EmptyReq:
-      description: EmptyReq is the request of RaiseErrorShapes.
       type: object
     EnqueueJobReqBody:
       description: |-
@@ -3141,10 +3133,8 @@ components:
       type: object
     ItemList:
       description: |-
-        ItemList is the SearchItems response envelope. Mirrors the
-        UserList / TaskList shape every other service uses - the parser
-        rejects bare-array response forms in the method body, so list
-        endpoints wrap the slice in a per-service envelope.
+        ItemList wraps the items a list method returns, since a response
+        cannot be a bare array.
       properties:
         cursor:
           type:
@@ -3568,9 +3558,8 @@ components:
       type: object
     Map_StructAddress:
       description: |-
-        Map_StructAddress is the second struct-valued map case, with
-        Address as the value. Each entry's `street` / `city` validators fire
-        through the per-entry `val.Validate()` call.
+        Map_StructAddress is the second struct-valued map case, with Address as
+        the value: each entry's street and city are validated.
       properties:
         addresses:
           additionalProperties:
@@ -3645,7 +3634,6 @@ components:
     MapStructRespBody:
       $ref: '#/components/schemas/Map_StructValue'
     MapTag:
-      description: MapTag is the value scalar of Map_ArrayOfMaps.
       maxLength: 20
       minLength: 1
       type: string
@@ -3715,7 +3703,6 @@ components:
       - 2
       type: integer
     MemberTag:
-      description: MemberTag is the value of Map_ScalarKey.
       properties:
         name:
           minLength: 1
@@ -3954,8 +3941,6 @@ components:
       - id
       type: object
     NullableDetail:
-      description: NullableDetail is the struct a NullableFieldsErr body may send
-        as null.
       properties:
         name:
           minLength: 1
@@ -4621,7 +4606,6 @@ components:
       - floorUint64
       type: object
     OkResp:
-      description: OkResp answers FilterTags.
       properties:
         ok:
           type: boolean
@@ -5288,7 +5272,6 @@ components:
         of `/items/{id}`.
       type: object
     PayMethod:
-      description: PayMethod is the element enum of ArrayDefaults.
       enum:
       - card
       - bank
@@ -5433,7 +5416,6 @@ components:
     PostQueryBesideBodyRespBody:
       $ref: '#/components/schemas/DoneResp'
     PostSharedStatusReqBody:
-      description: CountsPayload is the body of EchoHeaderMetadata and PostSharedStatus.
       properties:
         counts:
           additionalProperties:
@@ -5903,8 +5885,8 @@ components:
       type: object
     RefMeta:
       description: |-
-        RefMeta documents a @nullable named ref as a null union, and @default and
-        @deprecated beside the $ref.
+        RefMeta documents a @nullable named ref as anyOf [$ref, null], and
+        @default and @deprecated on the allOf or anyOf that wraps the $ref.
       properties:
         depColor:
           allOf:
@@ -6129,7 +6111,7 @@ components:
     ScalarLengths:
       description: |-
         ScalarLengths holds exact and range string lengths and bytes lengths; the
-        validator counts a bytes value in raw bytes, as OpenAPI documents.
+        validator counts a bytes value in raw bytes.
       properties:
         code:
           $ref: '#/components/schemas/PinCode'

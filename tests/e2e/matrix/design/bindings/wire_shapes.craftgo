@@ -22,7 +22,6 @@ type MixinWireBodyReq {
 	name string
 }
 
-// BodyOnlyMixin brings the whole body of MixinBodyReq.
 type BodyOnlyMixin {
 	createdAt string @minLength(1)
 }
@@ -73,13 +72,10 @@ type RequiredArrayQueryReq {
 	tags string[] @query
 }
 
-// DoneResp answers PostQueryBesideBody, GetSessionCookie and
-// RaiseErrorShapes.
 type DoneResp {
 	done bool
 }
 
-// OkResp answers FilterTags.
 type OkResp {
 	ok bool
 }

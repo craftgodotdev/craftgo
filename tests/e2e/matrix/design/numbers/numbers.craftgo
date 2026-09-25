@@ -1,7 +1,5 @@
-// Package numbers covers every primitive numeric kind (the signed and
-// unsigned int families, float32, float64) against the bound decorators:
-// @gt, @gte, @lt, @lte, @range, @multipleOf, @positive and @negative, with
-// optional, nullable and default presence.
+// Package numbers covers each primitive numeric kind against the bound
+// decorators, with optional, nullable and default presence.
 package numbers
 
 // NumberCounter exercises every standard int* signed type with all

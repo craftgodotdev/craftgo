@@ -46,7 +46,6 @@ const (
 	MemberStatusBanned   MemberStatus = 2
 )
 
-// PayMethod is the element enum of ArrayDefaults.
 type PayMethod string
 
 const (

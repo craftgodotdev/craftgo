@@ -440,8 +440,8 @@ type RefInner struct {
 	ID string `json:"id"`
 }
 
-// RefMeta documents a @nullable named ref as a null union, and @default and
-// @deprecated beside the $ref.
+// RefMeta documents a @nullable named ref as anyOf [$ref, null], and
+// @default and @deprecated on the allOf or anyOf that wraps the $ref.
 type RefMeta struct {
 	NulInner *RefInner `json:"nulInner"`
 	NulColor *Shade    `json:"nulColor"`
@@ -466,7 +466,7 @@ type ScalarFieldOverrides struct {
 }
 
 // ScalarLengths holds exact and range string lengths and bytes lengths; the
-// validator counts a bytes value in raw bytes, as OpenAPI documents.
+// validator counts a bytes value in raw bytes.
 type ScalarLengths struct {
 	Code     PinCode `json:"code"`
 	Inline   string  `json:"inline"`
