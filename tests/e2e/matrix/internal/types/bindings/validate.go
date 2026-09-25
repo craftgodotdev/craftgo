@@ -145,6 +145,24 @@ func (v *NullableFormReq) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on Page.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Page) Validate() error {
+	if v.Page < 1 {
+		return fmt.Errorf("page: below minimum 1")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on PagedReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PagedReq) Validate() error {
+	if err := v.Page.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on PathEnumReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PathEnumReq) Validate() error {

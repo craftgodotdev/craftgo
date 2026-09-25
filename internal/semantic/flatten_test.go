@@ -1,9 +1,11 @@
 package semantic
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 )
 
 // A field promoted through another package's mixin is spelled as the
@@ -99,6 +101,45 @@ type Req { Page<Kind> }`)
 	for name, w := range want {
 		if got[name] != w {
 			t.Errorf("field %s = %q, want %q", name, got[name], w)
+		}
+	}
+}
+
+// goNames names each field of a level as Go does, for the tests.
+func goNames(members []ast.TypeMember) []string {
+	var out []string
+	for _, f := range ast.Fields(members) {
+		out = append(out, idents.GoFieldName(f.Name))
+	}
+	return out
+}
+
+// A promoted field whose Go name an embedded mixin at its depth or above
+// also carries is named by its embed path: Page's `page` is Page.Page from
+// ListReq and Wrap.Page.Page from Deep, and C's `pager`, level with the
+// Pager that A embeds, is C.Pager from Both.
+func TestFlattenNamesShadowedPromotedFieldByItsPath(t *testing.T) {
+	pkg := mustClean(t, `package app
+type Page { page int  size int? }
+type ListReq { Page  q string? }
+type Wrap { Page }
+type Deep { Wrap }
+type Pager { n int }
+type A { Pager }
+type C { pager int? }
+type Both { A  C }`)
+	r := PackageResolver(pkg)
+	for typ, want := range map[string]string{
+		"ListReq": "page=Page.Page size=Size q=Q",
+		"Deep":    "page=Wrap.Page.Page size=Size",
+		"Both":    "n=N pager=C.Pager",
+	} {
+		var got []string
+		for _, ff := range FlattenFields(pkg.Types[typ], "", r, goNames) {
+			got = append(got, ff.Field.Name+"="+ff.Name)
+		}
+		if strings.Join(got, " ") != want {
+			t.Errorf("%s: names = %q, want %q", typ, strings.Join(got, " "), want)
 		}
 	}
 }

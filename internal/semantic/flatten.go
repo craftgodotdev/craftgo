@@ -1,7 +1,9 @@
 package semantic
 
 import (
+	"maps"
 	"slices"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
@@ -77,14 +79,20 @@ func SubstituteTypeRef(t *ast.TypeRef, subst map[string]*ast.TypeRef) *ast.TypeR
 	return t
 }
 
-// FlatField is a field of a type body or one its mixins promote, and the
-// name [LevelNames] gave it in its own struct. Its type is spelled as the
-// flattening's view package spells it, with the generic arguments of the
-// mixin that declares it substituted; Home is the package that declares it.
+// FlatField is a field of a type body or one its mixins promote. Its type is
+// spelled as the flattening's view package spells it, with the generic
+// arguments of the mixin that declares it substituted; Home is the package
+// that declares it.
 type FlatField struct {
 	Field *ast.Field
-	Name  string
-	Home  string
+	// Name is the selector that reaches the field from the flattened type:
+	// the name [LevelNames] gave it in its own struct, behind the Go names of
+	// the mixins embedding it when another member at its depth or above,
+	// such as the mixin `Page` over a field `page`, has that name.
+	Name string
+	Home string
+	// embedPath is the Go names of the mixins that embed the field, outermost first.
+	embedPath []string
 	// sliceBehindPointer reports a field declared `T?` whose argument is an
 	// array: its Go value is a pointer to the slice, which Field's type spells
 	// as an optional array.
@@ -126,8 +134,9 @@ func flattenInstance(td *ast.TypeDecl, prefix string, args []*ast.TypeRef, r *Re
 // type are spelled as package view spells them; nil args leave typeParams
 // unbound. incomplete reports a mixin that names no type.
 func (p *Project) flattenFields(view, home string, body []ast.TypeMember, typeParams []string, args []*ast.TypeRef, names LevelNames) (fields []FlatField, incomplete bool) {
-	w := &fieldWalk{proj: p, view: view, names: names, expanded: map[string]bool{}}
-	fields = w.level(home, body, typeParams, SubstMap(typeParams, args))
+	w := &fieldWalk{proj: p, view: view, names: names, expanded: map[string]bool{}, embedDepths: map[string][]int{}}
+	fields = w.level(home, body, typeParams, SubstMap(typeParams, args), nil)
+	w.nameShadowedByPath(fields)
 	return fields, w.incomplete
 }
 
@@ -138,11 +147,43 @@ type fieldWalk struct {
 	names      LevelNames
 	expanded   map[string]bool // canonical `pkg.Name` of each mixin type expanded
 	incomplete bool
+	// embedDepths maps the Go name of each mixin embedded to the depths it
+	// sits at, the flattened type's own body being depth 0.
+	embedDepths map[string][]int
+}
+
+// nameShadowedByPath gives each promoted field that another member at its
+// depth or above shares a name with its embed path as [FlatField.Name].
+func (w *fieldWalk) nameShadowedByPath(fields []FlatField) {
+	if w.names == nil {
+		return
+	}
+	depths := maps.Clone(w.embedDepths)
+	for _, ff := range fields {
+		depths[ff.Name] = append(depths[ff.Name], len(ff.embedPath))
+	}
+	for i := range fields {
+		ff := &fields[i]
+		depth := len(ff.embedPath)
+		if depth == 0 {
+			continue
+		}
+		above := 0 // the members named ff.Name at its depth or above, itself included
+		for _, d := range depths[ff.Name] {
+			if d <= depth {
+				above++
+			}
+		}
+		if above > 1 {
+			ff.Name = strings.Join(append(slices.Clone(ff.embedPath), ff.Name), ".")
+		}
+	}
 }
 
 // level returns the fields of one struct level declared in package home,
-// its typeParams bound by subst.
-func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []string, subst map[string]*ast.TypeRef) []FlatField {
+// its typeParams bound by subst; embedPath is the Go names of the mixins
+// that embed the level, outermost first.
+func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []string, subst map[string]*ast.TypeRef, embedPath []string) []FlatField {
 	var names []string
 	if w.names != nil {
 		names = w.names(body)
@@ -152,7 +193,7 @@ func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []strin
 	for _, m := range body {
 		switch v := m.(type) {
 		case *ast.Field:
-			ff := FlatField{Field: v, Home: home, sliceBehindPointer: optionalParamOverArray(v.Type, subst)}
+			ff := FlatField{Field: v, Home: home, embedPath: embedPath, sliceBehindPointer: optionalParamOverArray(v.Type, subst)}
 			if i < len(names) {
 				ff.Name = names[i]
 			}
@@ -164,7 +205,7 @@ func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []strin
 			out = append(out, ff)
 			i++
 		case *ast.Mixin:
-			out = append(out, w.mixin(home, v, typeParams, subst)...)
+			out = append(out, w.mixin(home, v, typeParams, subst, embedPath)...)
 		}
 	}
 	return out
@@ -191,9 +232,10 @@ func (w *fieldWalk) spell(t *ast.TypeRef, home string, typeParams []string, subs
 }
 
 // mixin returns the fields mx, written in package home with typeParams in
-// scope and bound by subst, promotes: `Page<Item>` promotes `items T[]` as
-// `items Item[]`. Its arguments bind the mixin's own level alone.
-func (w *fieldWalk) mixin(home string, mx *ast.Mixin, typeParams []string, subst map[string]*ast.TypeRef) []FlatField {
+// scope and bound by subst and embedded behind embedPath, promotes:
+// `Page<Item>` promotes `items T[]` as `items Item[]`. Its arguments bind the
+// mixin's own level alone.
+func (w *fieldWalk) mixin(home string, mx *ast.Mixin, typeParams []string, subst map[string]*ast.TypeRef, embedPath []string) []FlatField {
 	if mx.Ref == nil {
 		return nil
 	}
@@ -202,6 +244,8 @@ func (w *fieldWalk) mixin(home string, mx *ast.Mixin, typeParams []string, subst
 		w.incomplete = true
 		return nil
 	}
+	embed := goEmbedName(mx.Ref.Name)
+	w.embedDepths[embed] = append(w.embedDepths[embed], len(embedPath))
 	key := pkg.Name + "." + sym
 	if w.expanded[key] {
 		return nil
@@ -212,7 +256,7 @@ func (w *fieldWalk) mixin(home string, mx *ast.Mixin, typeParams []string, subst
 	for i, a := range mx.Ref.Args {
 		args[i] = w.spell(a, home, typeParams, subst)
 	}
-	return w.level(pkg.Name, td.Body, td.TypeParams, SubstMap(td.TypeParams, args))
+	return w.level(pkg.Name, td.Body, td.TypeParams, SubstMap(td.TypeParams, args), append(slices.Clip(embedPath), embed))
 }
 
 // requalify spells t, written in package home with typeParams in scope, as

@@ -43,6 +43,12 @@ service BindingsService {
 		response ItemList
 	}
 
+	@doc("List items a page at a time. The `page` query value lands in the field the embedded Page mixin carries under its own name.")
+	get ListPaged /paged {
+		request  PagedReq
+		response ItemList
+	}
+
 	// UploadAvatar exercises the path + form-file combination. The
 	// `id` field auto-binds to the path segment; the `file` field
 	// rides the multipart/form-data body.

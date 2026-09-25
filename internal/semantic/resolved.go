@@ -51,8 +51,8 @@ type ResolvedField struct {
 	// pointer. A raw field's nil means absent; a JSON null arrives as `null` bytes.
 	IsNilable bool
 
-	// Name is the target's identifier for the field, from the [LevelNames]
-	// passed to [ResolveFields]; empty without one.
+	// Name is the target's selector for the field, [FlatField.Name] under the
+	// [LevelNames] passed to [ResolveFields]; empty without them.
 	Name string
 
 	// Binding is where the value rides; [RequestFields] applies auto-binding.

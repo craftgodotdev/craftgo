@@ -10,7 +10,7 @@ import (
 type resolvedField struct {
 	semantic.ResolvedField
 
-	GoName string // exported Go field identifier
+	GoName string // Go selector of the field: its exported name, behind its embed path when shadowed
 	GoType string // final Go type, including any *T nullable wrap
 
 	IsPointer bool // Go type is a pointer: a wrapped optional or @nullable field, or a file

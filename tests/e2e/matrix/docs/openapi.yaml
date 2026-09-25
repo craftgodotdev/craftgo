@@ -643,7 +643,7 @@ components:
       properties:
         pages:
           items:
-            $ref: '#/components/schemas/PageOfScalarsOrder'
+            $ref: '#/components/schemas/ScalarsPageOfScalarsOrder'
           type: array
       required:
       - pages
@@ -828,6 +828,11 @@ components:
       - Green
       - Blue
       type: string
+    BindingsPage:
+      description: |-
+        Page embeds as the Go field Page, the name its own `page` field lowers
+        to, so a host reaches that field as `req.Page.Page`.
+      type: object
     BindingsServiceGetItemRespBody:
       $ref: '#/components/schemas/Item'
     BindingsUUID:
@@ -2474,7 +2479,7 @@ components:
         generated `switch` Validate().
       properties:
         levels:
-          $ref: '#/components/schemas/PageOfPriority'
+          $ref: '#/components/schemas/ScalarsPageOfPriority'
       required:
       - levels
       type: object
@@ -2490,9 +2495,9 @@ components:
         `PageOfCents`) carry the element constraints via the element $ref.
       properties:
         amounts:
-          $ref: '#/components/schemas/PageOfCents'
+          $ref: '#/components/schemas/ScalarsPageOfCents'
         emails:
-          $ref: '#/components/schemas/PageOfScalarsEmail'
+          $ref: '#/components/schemas/ScalarsPageOfScalarsEmail'
       required:
       - emails
       - amounts
@@ -2825,6 +2830,8 @@ components:
       required:
       - items
       type: object
+    ListPagedRespBody:
+      $ref: '#/components/schemas/ItemList'
     ListProfilesResp:
       description: ListProfilesResp pages a slice of profiles back to the client.
       properties:
@@ -3060,7 +3067,7 @@ components:
       properties:
         bucket:
           additionalProperties:
-            $ref: '#/components/schemas/PageOfScalarsOrder'
+            $ref: '#/components/schemas/ScalarsPageOfScalarsOrder'
           type: object
       required:
       - bucket
@@ -3784,7 +3791,7 @@ components:
       properties:
         maybePage:
           anyOf:
-          - $ref: '#/components/schemas/PageOfScalarsOrder'
+          - $ref: '#/components/schemas/ScalarsPageOfScalarsOrder'
           - type: "null"
       type: object
     OptionalReq:
@@ -3803,7 +3810,7 @@ components:
         generic body's loop.
       properties:
         page:
-          $ref: '#/components/schemas/PageOfScalarsOrder'
+          $ref: '#/components/schemas/ScalarsPageOfScalarsOrder'
       required:
       - page
       type: object
@@ -3823,26 +3830,6 @@ components:
           - array
           - "null"
       type: object
-    PageOfCents:
-      description: |-
-        Page<T> is the canonical cursor-pagination envelope. T-typed
-        fields use the runtime-Validate path (interface assertion);
-        non-generic fields emit plain numeric / string validators.
-      properties:
-        cursor:
-          type:
-          - string
-          - "null"
-        items:
-          items:
-            $ref: '#/components/schemas/Cents'
-          type: array
-        total:
-          type: integer
-      required:
-      - items
-      - total
-      type: object
     PageOfPrimitiveHost:
       description: |-
         PageOfPrimitive exercises a non-component arg type: `Page<string>`
@@ -3853,149 +3840,9 @@ components:
         scalar called `String`.
       properties:
         rows:
-          $ref: '#/components/schemas/PageOfString'
+          $ref: '#/components/schemas/ScalarsPageOfString'
       required:
       - rows
-      type: object
-    PageOfPriority:
-      description: |-
-        Page<T> is the canonical cursor-pagination envelope. T-typed
-        fields use the runtime-Validate path (interface assertion);
-        non-generic fields emit plain numeric / string validators.
-      properties:
-        cursor:
-          type:
-          - string
-          - "null"
-        items:
-          items:
-            $ref: '#/components/schemas/Priority'
-          type: array
-        total:
-          type: integer
-      required:
-      - items
-      - total
-      type: object
-    PageOfProductRef:
-      description: |-
-        Page<T> is the canonical cursor-pagination envelope. T-typed
-        fields use the runtime-Validate path (interface assertion);
-        non-generic fields emit plain numeric / string validators.
-      properties:
-        cursor:
-          type:
-          - string
-          - "null"
-        items:
-          items:
-            $ref: '#/components/schemas/ProductRef'
-          type: array
-        total:
-          type: integer
-      required:
-      - items
-      - total
-      type: object
-    PageOfRqItem:
-      description: |-
-        Page<T> is the canonical cursor-pagination envelope. T-typed
-        fields use the runtime-Validate path (interface assertion);
-        non-generic fields emit plain numeric / string validators.
-      properties:
-        cursor:
-          type:
-          - string
-          - "null"
-        items:
-          items:
-            $ref: '#/components/schemas/RqItem'
-          type: array
-        total:
-          type: integer
-      required:
-      - items
-      - total
-      type: object
-    PageOfScalarsEmail:
-      description: |-
-        Page<T> is the canonical cursor-pagination envelope. T-typed
-        fields use the runtime-Validate path (interface assertion);
-        non-generic fields emit plain numeric / string validators.
-      properties:
-        cursor:
-          type:
-          - string
-          - "null"
-        items:
-          items:
-            $ref: '#/components/schemas/ScalarsEmail'
-          type: array
-        total:
-          type: integer
-      required:
-      - items
-      - total
-      type: object
-    PageOfScalarsEnvelopeOfScalarsOrder:
-      description: |-
-        Page<T> is the canonical cursor-pagination envelope. T-typed
-        fields use the runtime-Validate path (interface assertion);
-        non-generic fields emit plain numeric / string validators.
-      properties:
-        cursor:
-          type:
-          - string
-          - "null"
-        items:
-          items:
-            $ref: '#/components/schemas/ScalarsEnvelopeOfScalarsOrder'
-          type: array
-        total:
-          type: integer
-      required:
-      - items
-      - total
-      type: object
-    PageOfScalarsOrder:
-      description: |-
-        Page<T> is the canonical cursor-pagination envelope. T-typed
-        fields use the runtime-Validate path (interface assertion);
-        non-generic fields emit plain numeric / string validators.
-      properties:
-        cursor:
-          type:
-          - string
-          - "null"
-        items:
-          items:
-            $ref: '#/components/schemas/ScalarsOrder'
-          type: array
-        total:
-          type: integer
-      required:
-      - items
-      - total
-      type: object
-    PageOfString:
-      description: |-
-        Page<T> is the canonical cursor-pagination envelope. T-typed
-        fields use the runtime-Validate path (interface assertion);
-        non-generic fields emit plain numeric / string validators.
-      properties:
-        cursor:
-          type:
-          - string
-          - "null"
-        items:
-          items:
-            type: string
-          type: array
-        total:
-          type: integer
-      required:
-      - items
-      - total
       type: object
     PageSize:
       description: |-
@@ -4028,6 +3875,19 @@ components:
         body; the substituted `PageWithAudit<Order>` component lists
         `createdAt` / `updatedAt` (from AuditFields) in addition to its own
         `items` / `total`.
+      type: object
+    PagedReq:
+      allOf:
+      - $ref: '#/components/schemas/BindingsPage'
+      - properties:
+          q:
+            type:
+            - string
+            - "null"
+        type: object
+      description: |-
+        PagedReq binds `page` and `size` from the query string into the Page
+        it embeds.
       type: object
     PaginatedResp:
       description: |-
@@ -4533,7 +4393,7 @@ components:
         clashes in the Validate generator.
       properties:
         page:
-          $ref: '#/components/schemas/PageOfProductRef'
+          $ref: '#/components/schemas/ScalarsPageOfProductRef'
       required:
       - page
       type: object
@@ -5964,7 +5824,7 @@ components:
       - id
       type: object
     RqPageRespBody:
-      $ref: '#/components/schemas/PageOfRqItem'
+      $ref: '#/components/schemas/ScalarsPageOfRqItem'
     RqResp:
       properties:
         accepted:
@@ -6136,6 +5996,166 @@ components:
       - rate
       - tag
       - country
+      type: object
+    ScalarsPageOfCents:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            $ref: '#/components/schemas/Cents'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    ScalarsPageOfPriority:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            $ref: '#/components/schemas/Priority'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    ScalarsPageOfProductRef:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            $ref: '#/components/schemas/ProductRef'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    ScalarsPageOfRqItem:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            $ref: '#/components/schemas/RqItem'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    ScalarsPageOfScalarsEmail:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            $ref: '#/components/schemas/ScalarsEmail'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    ScalarsPageOfScalarsEnvelopeOfScalarsOrder:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            $ref: '#/components/schemas/ScalarsEnvelopeOfScalarsOrder'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    ScalarsPageOfScalarsOrder:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            $ref: '#/components/schemas/ScalarsOrder'
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    ScalarsPageOfString:
+      description: |-
+        Page<T> is the canonical cursor-pagination envelope. T-typed
+        fields use the runtime-Validate path (interface assertion);
+        non-generic fields emit plain numeric / string validators.
+      properties:
+        cursor:
+          type:
+          - string
+          - "null"
+        items:
+          items:
+            type: string
+          type: array
+        total:
+          type: integer
+      required:
+      - items
+      - total
       type: object
     ScalarsTag:
       description: |-
@@ -7146,7 +7166,7 @@ components:
         that is itself a generic instance.
       properties:
         results:
-          $ref: '#/components/schemas/PageOfScalarsEnvelopeOfScalarsOrder'
+          $ref: '#/components/schemas/ScalarsPageOfScalarsEnvelopeOfScalarsOrder'
       required:
       - results
       type: object
@@ -8496,6 +8516,39 @@ paths:
               schema:
                 $ref: '#/components/schemas/NullableFormRespBody'
           description: Created
+      tags:
+      - bindings
+  /bindings/paged:
+    get:
+      description: List items a page at a time. The `page` query value lands in the
+        field the embedded Page mixin carries under its own name.
+      operationId: ListPaged
+      parameters:
+      - in: query
+        name: page
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+      - in: query
+        name: size
+        schema:
+          type:
+          - integer
+          - "null"
+      - in: query
+        name: q
+        schema:
+          type:
+          - string
+          - "null"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListPagedRespBody'
+          description: OK
       tags:
       - bindings
   /bindings/users/{id}/avatar:

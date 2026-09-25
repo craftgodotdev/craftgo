@@ -533,6 +533,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   and the body schema of a request that also binds path or query fields
   substitutes them once, not over the fields a nested mixin brings.
 
+- **A mixin field named like its mixin binds.** With `type Page { page int
+  @query }` embedded in a request, the handler wrote the query value into
+  `req.Page`, the embedded struct, and did not compile; so did a default,
+  a cross-field group or a response header on such a field. The generated
+  code reaches it as `req.Page.Page`: a promoted field that shares its Go
+  name with a member at its depth or above is selected through the mixins
+  that embed it.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

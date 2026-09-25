@@ -105,6 +105,20 @@ type QueryIntRequiredReq {
 	page int @query @gte(1)
 }
 
+// Page embeds as the Go field Page, the name its own `page` field lowers
+// to, so a host reaches that field as `req.Page.Page`.
+type Page {
+	page int  @query @gte(1)
+	size int? @query
+}
+
+// PagedReq binds `page` and `size` from the query string into the Page
+// it embeds.
+type PagedReq {
+	Page
+	q string?
+}
+
 // QueryBoolReq is the optional-bool query path: present → `*bool`,
 // absent / empty → nil.
 type QueryBoolReq {

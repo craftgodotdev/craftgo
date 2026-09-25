@@ -105,6 +105,20 @@ type NullableFormReq struct {
 	Meta *string               `json:"meta"`
 }
 
+// Page embeds as the Go field Page, the name its own `page` field lowers
+// to, so a host reaches that field as `req.Page.Page`.
+type Page struct {
+	Page int  `json:"-" query:"page"`
+	Size *int `json:"-" query:"size"`
+}
+
+// PagedReq binds `page` and `size` from the query string into the Page
+// it embeds.
+type PagedReq struct {
+	Page
+	Q *string `json:"q,omitempty"`
+}
+
 // PathEnumReq drives the enum-typed @path binder. The wire value is
 // a string ("red" / "green" / "blue"); req.Validate() rejects any
 // value outside the enum's declared set.
