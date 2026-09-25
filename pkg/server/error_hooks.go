@@ -61,10 +61,14 @@ func writeStatusError(w http.ResponseWriter, status int) {
 	writeErrorMessage(w, status, strings.ToLower(http.StatusText(status)))
 }
 
-// bodyTooLarge reports whether err is a read past a body cap.
-func bodyTooLarge(err error) bool {
+// bodyTooLarge reports whether err is a read past a body cap, or r's body was read past its cap.
+func bodyTooLarge(r *http.Request, err error) bool {
 	var tooLarge *http.MaxBytesError
-	return errors.As(err, &tooLarge) || errors.Is(err, multipart.ErrMessageTooLarge)
+	if errors.As(err, &tooLarge) || errors.Is(err, multipart.ErrMessageTooLarge) {
+		return true
+	}
+	capped, ok := r.Body.(*cappedBody)
+	return ok && capped.over
 }
 
 // responseCommitted asks the first writer on w's Unwrap chain that has a Committed method.
@@ -94,7 +98,7 @@ func SetDefaultValidationFailed(h ValidationFailedHandler) {
 // WriteValidationError renders err with the [SetDefaultValidationFailed] handler; a read past
 // a body cap is answered 413 {"message":"request entity too large"} without it.
 func WriteValidationError(w http.ResponseWriter, r *http.Request, err error) {
-	if bodyTooLarge(err) && !responseCommitted(w) {
+	if bodyTooLarge(r, err) && !responseCommitted(w) {
 		writeStatusError(w, http.StatusRequestEntityTooLarge)
 		return
 	}

@@ -209,10 +209,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   `ServeMux` lookup, about 100 ns.
 
 - **A body read past its cap answers 413, not 400.** `WriteValidationError`
-  answers an `*http.MaxBytesError` or `multipart.ErrMessageTooLarge` 413
-  `{"message":"request entity too large"}` without calling the
-  `SetDefaultValidationFailed` handler, so a chunked body over `@maxBodySize`
-  gets the answer a declared `Content-Length` over it gets.
+  answers 413 `{"message":"request entity too large"}`, without calling the
+  `SetDefaultValidationFailed` handler, to an `*http.MaxBytesError` or
+  `multipart.ErrMessageTooLarge`, and to any error once the body was read past
+  its `BodyLimit` or `@maxBodySize` cap, as when the cap cuts a multipart part
+  header. A generated handler so answers a chunked body over its cap as it
+  answers a declared `Content-Length` over it; a raw request handler that
+  returns the read error to `WriteError` still gets a 500.
 
 - **A multipart body the parser refuses is a failed validation.** A
   regenerated multipart handler passes a `ParseMultipartForm` error to

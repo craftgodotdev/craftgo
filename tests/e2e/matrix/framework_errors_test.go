@@ -1,7 +1,9 @@
 package matrix
 
 import (
+	"bytes"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"testing"
@@ -44,5 +46,34 @@ func TestFrameworkErrorsThroughGeneratedRoutes(t *testing.T) {
 		if ct := resp.Header.Get("Content-Type"); ct != "application/json; charset=utf-8" {
 			t.Errorf("%s: Content-Type %q, want JSON", tc.name, ct)
 		}
+	}
+}
+
+// A generated upload handler answers 413 to a multipart body its cap cuts inside a part header,
+// where the parser reports a malformed header, as it does to one cut anywhere else.
+func TestMultipartCutInsideAPartHeaderAnswers413(t *testing.T) {
+	var form bytes.Buffer
+	mw := multipart.NewWriter(&form)
+	part, _ := mw.CreateFormFile("files", "a.png")
+	_, _ = part.Write(bytes.Repeat([]byte("x"), 64))
+	_ = mw.WriteField("album", "summer")
+	_ = mw.Close()
+	body := form.Bytes()
+	limit := int64(bytes.LastIndex(body, []byte("Content-Disposition")) + len("Content-Dispos"))
+	ts := bootAll(t, func(srv *server.Server) { srv.SetDefaultMaxBodySize(limit) })
+
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/bindings/batch", io.NopCloser(bytes.NewReader(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusRequestEntityTooLarge || strings.TrimSpace(string(got)) != `{"message":"request entity too large"}` {
+		t.Errorf("cap %d of %d bytes: got %d %q, want the JSON 413", limit, len(body), resp.StatusCode, got)
 	}
 }

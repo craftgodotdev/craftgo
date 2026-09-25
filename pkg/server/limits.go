@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"time"
 )
@@ -70,8 +72,24 @@ func maxBodySizeHandler(h http.Handler, n int64) http.Handler {
 			return
 		}
 		if r.Body != nil {
-			r.Body = http.MaxBytesReader(w, r.Body, n)
+			r.Body = &cappedBody{ReadCloser: http.MaxBytesReader(w, r.Body, n)}
 		}
 		h.ServeHTTP(w, r)
 	})
+}
+
+// cappedBody is a request body behind http.MaxBytesReader that remembers a read past its cap,
+// which a multipart parser can report as a malformed part instead.
+type cappedBody struct {
+	io.ReadCloser
+	over bool
+}
+
+func (b *cappedBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		b.over = true
+	}
+	return n, err
 }

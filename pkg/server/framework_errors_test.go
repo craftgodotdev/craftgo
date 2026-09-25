@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -150,6 +151,46 @@ func TestWriteValidationErrorAnswersBodyTooLarge413(t *testing.T) {
 	WriteValidationError(tw, httptest.NewRequest(http.MethodPost, "/x", nil), &http.MaxBytesError{Limit: 8})
 	if called != 1 || rec.Code != http.StatusOK {
 		t.Errorf("after commit: hook ran %d times, status %d; want the hook once and the 200 kept", called, rec.Code)
+	}
+}
+
+// A multipart body cut by its cap answers 413 without the validation hook wherever the cap
+// falls, a part header included, where the parser reports a malformed header.
+func TestMultipartBodyCutByItsCapAnswers413(t *testing.T) {
+	var form bytes.Buffer
+	mw := multipart.NewWriter(&form)
+	_ = mw.WriteField("caption", "a holiday photo")
+	part, _ := mw.CreateFormFile("file", "a.png")
+	_, _ = part.Write(bytes.Repeat([]byte("x"), 64))
+	_ = mw.WriteField("album", "summer")
+	_ = mw.Close()
+	body := form.Bytes()
+
+	called := 0
+	SetDefaultValidationFailed(func(w http.ResponseWriter, _ *http.Request, _ error) {
+		called++
+		w.WriteHeader(http.StatusTeapot)
+	})
+	t.Cleanup(func() { SetDefaultValidationFailed(nil) })
+	upload := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			WriteValidationError(w, r, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	for limit := int64(1); limit < int64(len(body)); limit++ {
+		req := httptest.NewRequest(http.MethodPost, "/upload", io.NopCloser(bytes.NewReader(body)))
+		req.ContentLength = -1
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		rec := httptest.NewRecorder()
+		WithLimits(upload, Limits{MaxBodySize: limit}).ServeHTTP(rec, req)
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Errorf("cap %d of %d bytes: status %d %q, want 413", limit, len(body), rec.Code, rec.Body.String())
+		}
+	}
+	if called != 0 {
+		t.Errorf("the validation hook ran %d times for a body over its cap", called)
 	}
 }
 
