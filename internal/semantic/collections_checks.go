@@ -122,15 +122,9 @@ func (a *analyzer) structDedupeProblem(t *ast.TypeRef, view, path string, seen m
 	if path == "" {
 		path = t.String()
 	}
-	subst := SubstMap(td.TypeParams, t.Named.Args)
-	fields, _ := a.proj.flattenFields(view, pkg.Name, td.Body, td.TypeParams, nil)
+	fields, _ := a.proj.flattenFields(view, pkg.Name, td.Body, td.TypeParams, t.Named.Args, nil)
 	for _, ff := range fields {
 		m := ff.Field
-		if len(subst) > 0 {
-			mc := *m
-			mc.Type = SubstituteTypeRef(m.Type, subst)
-			m = &mc
-		}
 		member := path + "." + m.Name
 		if ResolveField(m, a.proj.Packages[view], a.proj).GoPointer() {
 			return dedupeSubject(member, m.Type) + " is a pointer the validator compares by address"

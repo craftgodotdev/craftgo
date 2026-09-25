@@ -37,6 +37,12 @@ service ScalarsService {
 		response Audited
 	}
 
+	@doc("List by key. A generic mixin over a nested mixin binds each query field with the type its own level declares.")
+	get ListKeyed /keyed {
+		request  ListKeyedReq
+		response OrderPage
+	}
+
 	@doc("Echo a wrapped/nested generic instance. Probes Page<Envelope<Order>> end-to-end through transport + OpenAPI.")
 	post EchoWrapped /wrapped {
 		request  EchoWrappedReq

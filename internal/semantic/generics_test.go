@@ -229,3 +229,31 @@ type X { byPage map<Page<User, X>, string> }`))
 		t.Fatalf("got %v", codes(diags))
 	}
 }
+
+// The rules read a field a nested mixin brings with its own type: Meta's `t`
+// is the struct T, which a query string cannot carry and whose pointer has a
+// present/absent state for a cross-field group, or the comparable scalar T.
+func TestGenericMixinLeavesNestedMixinFieldsAlone(t *testing.T) {
+	d := expectError(t, `package app
+type T { a int }
+type Meta { t T? }
+type Page<T> { Meta }
+type Req { Page<string> }
+type Resp { ok bool }
+service S { get L /l { request Req  response Resp } }`, CodeBindingType)
+	expectMessage(t, d, "Req.t", "T? can't ride a query string")
+	mustClean(t, `package app
+type T { a int }
+type Meta { t T? }
+type Page<T> { Meta  other string? }
+@requiresOneOf(t, other)
+type Req { Page<string[]> }
+type Resp { ok bool }
+service S { post Make /items { request Req  response Resp } }`)
+	mustClean(t, `package app
+scalar T string
+type Meta { t T }
+type Page<T> { Meta }
+type Row { Page<string[]> }
+type Req { rows Row[] @uniqueItems  pages Page<string[]>[] @uniqueItems }`)
+}

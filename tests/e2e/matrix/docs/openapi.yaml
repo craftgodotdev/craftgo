@@ -2720,6 +2720,31 @@ components:
         - quantity
         type: object
       type: object
+    Key:
+      description: Key is a non-empty lookup key.
+      minLength: 1
+      type: string
+    KeyMeta:
+      description: KeyMeta carries a Key.
+      properties:
+        code:
+          anyOf:
+          - $ref: '#/components/schemas/Key'
+          - type: "null"
+      type: object
+    KeyedOfPriority:
+      allOf:
+      - $ref: '#/components/schemas/KeyMeta'
+      - properties:
+          key:
+            anyOf:
+            - $ref: '#/components/schemas/Priority'
+            - type: "null"
+        type: object
+      description: |-
+        Keyed<Key> spells its type parameter like the Key scalar: the argument
+        binds Keyed's own `key`, while the `code` KeyMeta brings stays a Key.
+      type: object
     KeywordFieldNames:
       description: |-
         KeywordFieldNames names fields after reserved words. Each lowers to an
@@ -2753,6 +2778,16 @@ components:
       type: object
     LatestRespBody:
       $ref: '#/components/schemas/RtOrder'
+    ListKeyedReq:
+      allOf:
+      - $ref: '#/components/schemas/KeyedOfPriority'
+      - type: object
+      description: |-
+        ListKeyedReq binds `code` as the Key scalar and `key` as a Priority,
+        both from the query string.
+      type: object
+    ListKeyedRespBody:
+      $ref: '#/components/schemas/OrderPage'
     ListOrdersReq:
       description: |-
         ListOrdersReq mirrors the canonical cursor-pagination request shape.
@@ -10496,6 +10531,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetAuditedRespBody'
+          description: OK
+      tags:
+      - scalars
+  /scalars/keyed:
+    get:
+      description: List by key. A generic mixin over a nested mixin binds each query
+        field with the type its own level declares.
+      operationId: ListKeyed
+      parameters:
+      - in: query
+        name: code
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/Key'
+          - type: "null"
+      - in: query
+        name: key
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/Priority'
+          - type: "null"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListKeyedRespBody'
           description: OK
       tags:
       - scalars

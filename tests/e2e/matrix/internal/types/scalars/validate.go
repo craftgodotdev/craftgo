@@ -179,6 +179,44 @@ func (v *GetOrderReq) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on KeyMeta.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *KeyMeta) Validate() error {
+	if v.Code != nil {
+		if err := v.Code.Validate(); err != nil {
+			return fmt.Errorf("code: %w", err)
+		}
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Keyed.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Keyed[Key]) Validate() error {
+	if err := v.KeyMeta.Validate(); err != nil {
+		return err
+	}
+	if v.Key != nil {
+		if vv, ok := any(v.Key).(interface{ Validate() error }); ok {
+			if err := vv.Validate(); err != nil {
+				return err
+			}
+		} else if err := validateValue((*v.Key)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on ListKeyedReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *ListKeyedReq) Validate() error {
+	if err := v.Keyed.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on ListOrdersReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *ListOrdersReq) Validate() error {
@@ -480,6 +518,15 @@ func (v ISO3) Validate() error {
 	}
 	if !_pattern0.MatchString(string(v)) {
 		return fmt.Errorf("does not match pattern")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Key.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Key) Validate() error {
+	if utf8.RuneCountInString(string(v)) < 1 {
+		return fmt.Errorf("length less than 1")
 	}
 	return nil
 }

@@ -222,3 +222,24 @@ type GenericOverScalar {
 type GenericOverEnum {
 	levels Page<Priority>
 }
+
+// Key is a non-empty lookup key.
+scalar Key string @minLength(1)
+
+// KeyMeta carries a Key.
+type KeyMeta {
+	code Key?
+}
+
+// Keyed<Key> spells its type parameter like the Key scalar: the argument
+// binds Keyed's own `key`, while the `code` KeyMeta brings stays a Key.
+type Keyed<Key> {
+	KeyMeta
+	key Key?
+}
+
+// ListKeyedReq binds `code` as the Key scalar and `key` as a Priority,
+// both from the query string.
+type ListKeyedReq {
+	Keyed<Priority>
+}

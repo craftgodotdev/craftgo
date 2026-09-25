@@ -133,7 +133,7 @@ type wireKey struct {
 // checkDuplicateWireNames rejects two explicitly bound fields of a body, mixins
 // included, with one binding kind and wire name; header names ignore case.
 func (a *analyzer) checkDuplicateWireNames(parent string, members []ast.TypeMember) {
-	fields, _ := a.proj.flattenFields(a.pkg.Name, a.pkg.Name, members, nil, nil)
+	fields, _ := a.proj.flattenFields(a.pkg.Name, a.pkg.Name, members, nil, nil, nil)
 	seen := map[wireKey]FlatField{}
 	for _, ff := range fields {
 		f := ff.Field
@@ -298,7 +298,7 @@ func (a *analyzer) reportNestedFiles(view string, t *ast.TypeRef, path string, s
 		}
 		seen[pkg.Name+"."+sym] = true
 		td := pkg.Types[sym]
-		fields, _ := a.proj.flattenFields(view, pkg.Name, td.Body, td.TypeParams, nil)
+		fields, _ := a.proj.flattenFields(view, pkg.Name, td.Body, td.TypeParams, nil, nil)
 		for _, ff := range fields {
 			f := ff.Field
 			if !isFileTypeRef(f.Type) {

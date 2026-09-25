@@ -257,7 +257,7 @@ func (a *analyzer) checkJSONKeys(files []*ast.File) {
 // encoding/json keeps only one of them.
 func (a *analyzer) checkJSONKeysIn(parent string, members []ast.TypeMember) {
 	own := ast.Fields(members)
-	fields, _ := a.proj.flattenFields(a.pkg.Name, a.pkg.Name, members, nil, nil)
+	fields, _ := a.proj.flattenFields(a.pkg.Name, a.pkg.Name, members, nil, nil, nil)
 	seen := map[string]*ast.Field{}
 	for _, ff := range fields {
 		f := ff.Field

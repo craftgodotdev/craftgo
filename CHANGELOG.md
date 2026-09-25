@@ -504,6 +504,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   over `file` or `any` is, and the message lists the primitives a scalar
   wraps. Use `datetime` directly.
 
+- **A generic mixin's arguments bind its own fields only.** With `type
+  Meta { t T? }` naming a declared `T`, `type Page<T> { Meta }` instantiated
+  as `Page<string>` gave `t` the argument's type: the handler bound the
+  query value as a string into the `T` field and did not compile, and a
+  `@requiresOneOf` or `@uniqueItems` over such a field was refused for the
+  argument's type. A field keeps the type its own declaration gives it; a
+  nested generic mixin receives the arguments through its own.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

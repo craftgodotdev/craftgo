@@ -42,7 +42,7 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 			return byName
 		}
 		var fields []FlatField
-		fields, incomplete = a.proj.flattenFields(a.pkg.Name, a.pkg.Name, body, nil, nil)
+		fields, incomplete = a.proj.flattenFields(a.pkg.Name, a.pkg.Name, body, nil, nil, nil)
 		byName = map[string]*ast.Field{}
 		for _, ff := range fields {
 			if _, dup := byName[ff.Field.Name]; !dup {

@@ -79,8 +79,8 @@ func SubstituteTypeRef(t *ast.TypeRef, subst map[string]*ast.TypeRef) *ast.TypeR
 
 // FlatField is a field of a type body or one its mixins promote, and the
 // name [LevelNames] gave it in its own struct. Its type is spelled as the
-// flattening's view package spells it, a promoted field's with the mixin's
-// generic arguments substituted; Home is the package that declares it.
+// flattening's view package spells it, with the generic arguments of the
+// mixin that declares it substituted; Home is the package that declares it.
 type FlatField struct {
 	Field *ast.Field
 	Name  string
@@ -106,17 +106,18 @@ func FlattenFields(td *ast.TypeDecl, prefix string, r *Resolver, names LevelName
 	if home == "" {
 		home = view
 	}
-	fields, _ := proj.flattenFields(view, home, td.Body, td.TypeParams, names)
+	fields, _ := proj.flattenFields(view, home, td.Body, td.TypeParams, nil, names)
 	return fields
 }
 
 // flattenFields returns the fields of body, declared in package home with
-// typeParams in scope, and those its mixins promote, recursively in body
-// order, each mixin type once. Every field's type is spelled as package view
-// spells it. incomplete reports a mixin that names no type.
-func (p *Project) flattenFields(view, home string, body []ast.TypeMember, typeParams []string, names LevelNames) (fields []FlatField, incomplete bool) {
+// typeParams in scope and bound to args, and those its mixins promote,
+// recursively in body order, each mixin type once. args and every field's
+// type are spelled as package view spells them; nil args leave typeParams
+// unbound. incomplete reports a mixin that names no type.
+func (p *Project) flattenFields(view, home string, body []ast.TypeMember, typeParams []string, args []*ast.TypeRef, names LevelNames) (fields []FlatField, incomplete bool) {
 	w := &fieldWalk{proj: p, view: view, names: names, expanded: map[string]bool{}}
-	fields = w.level(home, body, typeParams)
+	fields = w.level(home, body, typeParams, SubstMap(typeParams, args))
 	return fields, w.incomplete
 }
 
@@ -129,8 +130,9 @@ type fieldWalk struct {
 	incomplete bool
 }
 
-// level returns the fields of one struct level declared in package home.
-func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []string) []FlatField {
+// level returns the fields of one struct level declared in package home,
+// its typeParams bound by subst.
+func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []string, subst map[string]*ast.TypeRef) []FlatField {
 	var names []string
 	if w.names != nil {
 		names = w.names(body)
@@ -144,7 +146,7 @@ func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []strin
 			if i < len(names) {
 				ff.Name = names[i]
 			}
-			if t := w.proj.requalify(v.Type, home, w.view, typeParams); t != v.Type {
+			if t := w.spell(v.Type, home, typeParams, subst); t != v.Type {
 				fc := *v
 				fc.Type = t
 				ff.Field = &fc
@@ -152,15 +154,26 @@ func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []strin
 			out = append(out, ff)
 			i++
 		case *ast.Mixin:
-			out = append(out, w.mixin(home, v, typeParams)...)
+			out = append(out, w.mixin(home, v, typeParams, subst)...)
 		}
 	}
 	return out
 }
 
-// mixin returns the fields mx, written in package home, promotes: `Page<Item>`
-// promotes `items T[]` as `items Item[]`.
-func (w *fieldWalk) mixin(home string, mx *ast.Mixin, typeParams []string) []FlatField {
+// spell returns t, written in package home with typeParams in scope and
+// bound by subst, as the walk's view package spells it.
+func (w *fieldWalk) spell(t *ast.TypeRef, home string, typeParams []string, subst map[string]*ast.TypeRef) *ast.TypeRef {
+	t = w.proj.requalify(t, home, w.view, typeParams)
+	if len(subst) == 0 {
+		return t
+	}
+	return SubstituteTypeRef(t, subst)
+}
+
+// mixin returns the fields mx, written in package home with typeParams in
+// scope and bound by subst, promotes: `Page<Item>` promotes `items T[]` as
+// `items Item[]`. Its arguments bind the mixin's own level alone.
+func (w *fieldWalk) mixin(home string, mx *ast.Mixin, typeParams []string, subst map[string]*ast.TypeRef) []FlatField {
 	if mx.Ref == nil {
 		return nil
 	}
@@ -175,21 +188,11 @@ func (w *fieldWalk) mixin(home string, mx *ast.Mixin, typeParams []string) []Fla
 	}
 	w.expanded[key] = true
 	td := pkg.Types[sym]
-	fields := w.level(pkg.Name, td.Body, td.TypeParams)
-	if len(mx.Ref.Args) == 0 || len(td.TypeParams) == 0 {
-		return fields
-	}
 	args := make([]*ast.TypeRef, len(mx.Ref.Args))
 	for i, a := range mx.Ref.Args {
-		args[i] = w.proj.requalify(a, home, w.view, typeParams)
+		args[i] = w.spell(a, home, typeParams, subst)
 	}
-	subst := SubstMap(td.TypeParams, args)
-	for i := range fields {
-		fc := *fields[i].Field
-		fc.Type = SubstituteTypeRef(fc.Type, subst)
-		fields[i].Field = &fc
-	}
-	return fields
+	return w.level(pkg.Name, td.Body, td.TypeParams, SubstMap(td.TypeParams, args))
 }
 
 // requalify spells t, written in package home with typeParams in scope, as
@@ -255,6 +258,6 @@ func (a *analyzer) requestFields(m *ast.Method) (view string, fields []FlatField
 		return "", nil, false
 	}
 	td := pkg.Types[sym]
-	fields, _ = a.proj.flattenFields(pkg.Name, pkg.Name, td.Body, td.TypeParams, nil)
+	fields, _ = a.proj.flattenFields(pkg.Name, pkg.Name, td.Body, td.TypeParams, nil, nil)
 	return pkg.Name, fields, true
 }

@@ -11,6 +11,9 @@ type Email string
 // ISO3 is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type ISO3 string
 
+// Key is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Key string
+
 // NonEmpty is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type NonEmpty string
 
@@ -133,6 +136,24 @@ type GenericOverScalar struct {
 // @format(uuid) inherits onto the field-level @path binding.
 type GetOrderReq struct {
 	ID UUID `json:"-" path:"id"`
+}
+
+// KeyMeta carries a Key.
+type KeyMeta struct {
+	Code *Key `json:"code,omitempty"`
+}
+
+// Keyed<Key> spells its type parameter like the Key scalar: the argument
+// binds Keyed's own `key`, while the `code` KeyMeta brings stays a Key.
+type Keyed[Key any] struct {
+	KeyMeta
+	Key *Key `json:"key,omitempty"`
+}
+
+// ListKeyedReq binds `code` as the Key scalar and `key` as a Priority,
+// both from the query string.
+type ListKeyedReq struct {
+	Keyed[Priority]
 }
 
 // ListOrdersReq mirrors the canonical cursor-pagination request shape.

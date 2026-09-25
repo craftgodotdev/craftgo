@@ -79,3 +79,26 @@ func TestFlattenWithNilResolverKeepsOwnFields(t *testing.T) {
 		t.Errorf("fields = %v, want [own]", fields)
 	}
 }
+
+// A generic mixin's arguments bind its own fields and the arguments of the
+// mixins it embeds, never the fields a non-generic mixin brings: Meta's `t`
+// names the declared T although Page's parameter is spelled T too.
+func TestFlattenSubstitutesPerLevel(t *testing.T) {
+	pkg := mustClean(t, `package app
+scalar T string
+enum Kind { a  b }
+type Meta { t T? }
+type Inner<U> { u U }
+type Page<T> { Meta  Inner<T>  k T? }
+type Req { Page<Kind> }`)
+	got := map[string]string{}
+	for _, ff := range FlattenFields(pkg.Types["Req"], "", PackageResolver(pkg), nil) {
+		got[ff.Field.Name] = ff.Field.Type.String()
+	}
+	want := map[string]string{"t": "T?", "u": "Kind", "k": "Kind?"}
+	for name, w := range want {
+		if got[name] != w {
+			t.Errorf("field %s = %q, want %q", name, got[name], w)
+		}
+	}
+}
