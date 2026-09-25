@@ -9,3 +9,19 @@ const (
 	PriorityMedium Priority = "medium"
 	PriorityHigh   Priority = "high"
 )
+
+type Shade string
+
+const (
+	ShadeRed   Shade = "red"
+	ShadeGreen Shade = "green"
+	ShadeBlue  Shade = "blue"
+)
+
+type Urgency int
+
+const (
+	UrgencyLow    Urgency = 1
+	UrgencyMedium Urgency = 5
+	UrgencyHigh   Urgency = 10
+)

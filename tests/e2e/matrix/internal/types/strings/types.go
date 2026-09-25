@@ -95,6 +95,12 @@ type Str_Nullable struct {
 	Tag *string `json:"tag"`
 }
 
+// Str_NullableFormat checks a present email and passes a JSON null: the
+// validator nil-guards the dereference.
+type Str_NullableFormat struct {
+	Email *string `json:"email"`
+}
+
 // Str_Optionals exercises the optional + validator combinations.
 // Each field is `string?` so the generator MUST nil-guard before
 // dereferencing. The interesting case is `pattOpt` - pattern against

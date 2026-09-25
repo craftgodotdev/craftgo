@@ -39,10 +39,50 @@ type BodyExplicitReq struct {
 	Payload string `json:"payload"`
 }
 
+// BodyMixin brings a body field.
+type BodyMixin struct {
+	Note string `json:"note"`
+}
+
+// BodyOnlyMixin brings the whole body of MixinBodyReq.
+type BodyOnlyMixin struct {
+	CreatedAt string `json:"createdAt"`
+}
+
+// CollidingQueryReq binds two query keys whose Go names collide: SortBy and
+// SortBy_2 each read their own key.
+type CollidingQueryReq struct {
+	SortBy   *string `json:"-" query:"sortBy"`
+	SortBy_2 *string `json:"-" query:"sort_by"`
+}
+
 // CookieReq drives the cookie binder with an explicit wire name - the
 // runtime fetches the cookie named `session_id`.
 type CookieReq struct {
 	Session string `json:"-" cookie:"session_id"`
+}
+
+// CountsPayload is the body of EchoHeaderMetadata and PostSharedStatus.
+type CountsPayload struct {
+	Counts map[string]*int `json:"counts"`
+	Name   string          `json:"name"`
+}
+
+// DoneResp answers PostQueryBesideBody, GetSessionCookie and
+// RaiseErrorShapes.
+type DoneResp struct {
+	Done bool `json:"done"`
+}
+
+// EmptyReq is the request of RaiseErrorShapes.
+type EmptyReq struct {
+}
+
+// ErrorHeaderMeta brings a @header field into HeaderMixinError: the error
+// writes it as a response header, and OpenAPI documents it as one.
+type ErrorHeaderMeta struct {
+	Rid  string `json:"-" header:"X-Request-Id"`
+	Note string `json:"note"`
 }
 
 // FormFileReq drives the multipart-form upload path. The `file` type
@@ -59,6 +99,15 @@ type FormFileReq struct {
 // "lookup by id" handle.
 type GetItemReq struct {
 	ID UUID `json:"-" path:"id"`
+}
+
+// HeaderMetadataResp sends an ETag response header that OpenAPI documents as
+// deprecated, with an example.
+type HeaderMetadataResp struct {
+	//
+	// Deprecated: use If-Match
+	Etag string `json:"-" header:"ETag"`
+	Ok   bool   `json:"ok"`
 }
 
 // HeaderOptionalReq exercises a required header bound to an explicit
@@ -94,6 +143,26 @@ type ItemList struct {
 	Total  *int    `json:"total,omitempty"`
 }
 
+// MixinBodyReq takes its whole body from a mixin: the server decodes and
+// validates it, and OpenAPI documents a request body.
+type MixinBodyReq struct {
+	BodyOnlyMixin
+}
+
+// MixinWireBodyReq takes wire fields (traceId, sortBy) and a body field
+// (note) from mixins beside its own body field: the wire fields bind as
+// parameters, the body fields ride the request body.
+type MixinWireBodyReq struct {
+	WireMixin
+	BodyMixin
+	Name string `json:"name"`
+}
+
+// NullableDetail is the struct a NullableFieldsErr body may send as null.
+type NullableDetail struct {
+	Name string `json:"name"`
+}
+
 // NullableFormReq is a multipart request (the `doc` file makes it
 // multipart) carrying a `@nullable` body field. `meta` has no binding
 // decorator, so it auto-binds to the form; `@nullable` makes it `*string`,
@@ -103,6 +172,11 @@ type ItemList struct {
 type NullableFormReq struct {
 	Doc  *multipart.FileHeader `json:"doc"`
 	Meta *string               `json:"meta"`
+}
+
+// OkResp answers FilterTags.
+type OkResp struct {
+	Ok bool `json:"ok"`
 }
 
 // Page embeds as the Go field Page, the name its own `page` field lowers
@@ -181,6 +255,12 @@ type QueryArrayStringReq struct {
 	Tags []string `json:"-" query:"tags"`
 }
 
+// QueryBesideBodyReq keeps its @query field out of the JSON body schema.
+type QueryBesideBodyReq struct {
+	Filter  string `json:"-" query:"filter"`
+	Payload string `json:"payload"`
+}
+
 // QueryBoolReq is the optional-bool query path: present → `*bool`,
 // absent / empty → nil.
 type QueryBoolReq struct {
@@ -221,6 +301,20 @@ type QueryStringReq struct {
 	Q *string `json:"-" query:"q"`
 }
 
+// RequiredArrayQueryReq requires an array query parameter: an absent key
+// answers 400, an empty ?tags= passes.
+type RequiredArrayQueryReq struct {
+	Tags []string `json:"-" query:"tags"`
+}
+
+// RequiredParamsReq holds wire parameters without ? or @default: an absent
+// key answers 400, a present empty value passes.
+type RequiredParamsReq struct {
+	Q     string `json:"-" query:"q"`
+	Limit int    `json:"-" query:"limit"`
+	Tok   string `json:"-" header:"X-Tok"`
+}
+
 // SearchReq mixes every supported @query shape in one struct. Note
 // that the optional cursor stays a `string?` (the query binder
 // supports `*string`), but the optional sort uses an enum (string-
@@ -234,6 +328,19 @@ type SearchReq struct {
 	Active  bool    `json:"-" query:"active"`
 	Offset  *int    `json:"-" query:"offset"`
 	Verbose *bool   `json:"-" query:"verbose"`
+}
+
+// SensitiveQueryReq keeps a @sensitive field off the wire on a GET: only
+// visible binds from the query string and appears in OpenAPI.
+type SensitiveQueryReq struct {
+	Visible string `json:"-" query:"visible"`
+	Secret  string `json:"-"`
+}
+
+// SessionCookieReq requires a cookie: an absent one answers 400, as the
+// required: true in OpenAPI says.
+type SessionCookieReq struct {
+	Sid string `json:"-" cookie:"sid"`
 }
 
 // UploadReq pairs the path-bound id with the form-file upload. The
@@ -259,6 +366,12 @@ type UploadReq struct {
 type UserAvatar struct {
 	URL string `json:"url"`
 	Key string `json:"key"`
+}
+
+// WireMixin brings a header and a defaulted query parameter.
+type WireMixin struct {
+	TraceID string  `json:"-" header:"X-Trace-Id"`
+	SortBy  *string `json:"-" query:"sortBy"`
 }
 
 // WireRenameReq combines explicit-name bindings in all four parameter

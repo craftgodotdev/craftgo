@@ -18,4 +18,5 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/strings/echo", transport.Echo(svcCtx))
 	srv.Handle("POST /api/strings/formats", transport.ValidateAllFormats(svcCtx))
 	srv.Handle("POST /api/strings/combos", transport.CombineConstraints(svcCtx))
+	srv.Handle("POST /api/strings/nullable-format", transport.EchoNullableFormat(svcCtx))
 }

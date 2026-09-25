@@ -6,10 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	bindings "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	collections "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
 	combine "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	matrixfmt "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/fmt"
-	regression "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/regression"
+	numbers "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/numbers"
 	scalars "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	strtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/strings"
 	xrefs "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
@@ -89,49 +90,49 @@ func TestCrossFieldGroups(t *testing.T) {
 	rejects(t, "none of a/b/c violates requiresOneOf", &combine.PairsChoice{})
 }
 
-// A cross-field group can name mixin-promoted fields: Rg3Contact's
-// @requiresOneOf(email, phone) targets fields from Rg3Pair.
+// A cross-field group can name mixin-promoted fields: PromotedContact's
+// @requiresOneOf(email, phone) targets fields from ContactPair.
 func TestCrossFieldOverMixinPromotedField(t *testing.T) {
-	rejects(t, "neither promoted field set", &regression.Rg3Contact{})
+	rejects(t, "neither promoted field set", &combine.PromotedContact{})
 	accepts(t, "a promoted field satisfies the group",
-		&regression.Rg3Contact{Rg3Pair: regression.Rg3Pair{Email: strptr("a@b.com")}})
+		&combine.PromotedContact{ContactPair: combine.ContactPair{Email: strptr("a@b.com")}})
 }
 
 // A @nullable bytes or slice field passes as nil, and its length or items
 // check still rejects a short value.
 func TestNilableNullableNilGuard(t *testing.T) {
-	accepts(t, "all fields null", &regression.Rg5Nilable{})
-	rejects(t, "blob shorter than @minLength(4)", &regression.Rg5Nilable{Blob: []byte("ab")})
-	rejects(t, "ids shorter than @minItems(2)", &regression.Rg5Nilable{Ids: []int{1}})
-	accepts(t, "blob at the @minLength(4) bound", &regression.Rg5Nilable{Blob: []byte("abcd")})
+	accepts(t, "all fields null", &combine.NilableNullable{})
+	rejects(t, "blob shorter than @minLength(4)", &combine.NilableNullable{Blob: []byte("ab")})
+	rejects(t, "ids shorter than @minItems(2)", &combine.NilableNullable{Ids: []int{1}})
+	accepts(t, "blob at the @minLength(4) bound", &combine.NilableNullable{Blob: []byte("abcd")})
 }
 
 // Stacked bounds enforce their intersection: `@gte(10) @lte(90) @range(0,100)`
 // is 10..90, and `@length(5) @minLength(3) @maxLength(10)` is exactly 5.
 func TestStackedBoundsIntersect(t *testing.T) {
-	accepts(t, "b and a within the tightest bounds", &regression.Rg6Stacked{B: 50, A: "abcde"})
-	rejects(t, "b below @gte(10), which @range(0,100) must not loosen", &regression.Rg6Stacked{B: 5, A: "abcde"})
-	rejects(t, "b above @lte(90)", &regression.Rg6Stacked{B: 95, A: "abcde"})
-	rejects(t, "a not exactly @length(5)", &regression.Rg6Stacked{B: 50, A: "abc"})
+	accepts(t, "b and a within the tightest bounds", &combine.PairsStacked{B: 50, A: "abcde"})
+	rejects(t, "b below @gte(10), which @range(0,100) must not loosen", &combine.PairsStacked{B: 5, A: "abcde"})
+	rejects(t, "b above @lte(90)", &combine.PairsStacked{B: 95, A: "abcde"})
+	rejects(t, "a not exactly @length(5)", &combine.PairsStacked{B: 50, A: "abc"})
 }
 
-// A constraint inside a composite generic argument is enforced: Rg5Item.sku
-// is @minLength(2) inside Rg5Page<map<string, Rg5Item>>.
+// A constraint inside a composite generic argument is enforced: SkuItem.sku
+// is @minLength(2) inside SkuPage<map<string, SkuItem>>.
 func TestConstraintThroughCompositeGeneric(t *testing.T) {
-	page := func(sku string) *regression.Rg5Composite {
-		return &regression.Rg5Composite{Page: regression.Rg5Page[map[string]regression.Rg5Item]{
-			Items: []map[string]regression.Rg5Item{{"k": {Sku: sku}}},
+	page := func(sku string) *scalars.CompositeArg {
+		return &scalars.CompositeArg{Page: scalars.SkuPage[map[string]scalars.SkuItem]{
+			Items: []map[string]scalars.SkuItem{{"k": {Sku: sku}}},
 		}}
 	}
 	rejects(t, "sku below @minLength(2) deep inside Page<map<...>>", page("x"))
 	accepts(t, "valid sku inside Page<map<...>>", page("ok"))
 }
 
-// A map validates both its scalar key and its value: Rg5Bag.byUser is
-// map<Rg5UserID, Rg5Tag>, the key @gte(1) and the value's name @minLength(1).
+// A map validates both its scalar key and its value: Map_ScalarKey.byUser is
+// map<MemberID, MemberTag>, the key @gte(1) and the value's name @minLength(1).
 func TestScalarMapKeyAndValueValidated(t *testing.T) {
-	bag := func(id regression.Rg5UserID, name string) *regression.Rg5Bag {
-		return &regression.Rg5Bag{ByUser: map[regression.Rg5UserID]regression.Rg5Tag{id: {Name: name}}}
+	bag := func(id collections.MemberID, name string) *collections.Map_ScalarKey {
+		return &collections.Map_ScalarKey{ByUser: map[collections.MemberID]collections.MemberTag{id: {Name: name}}}
 	}
 	rejects(t, "key 0 below the key's @gte(1)", bag(0, "ok"))
 	rejects(t, "value empty below the value's @minLength(1)", bag(1, ""))
@@ -181,31 +182,31 @@ func TestStdNamedPackagesValidate(t *testing.T) {
 // An integer bound past 2^53 is compared exactly: minId is @gte(2^53 + 1).
 func TestBigIntegerBoundKeepsPrecision(t *testing.T) {
 	const maxInt64 = 9223372036854775807
-	accepts(t, "minId exactly 2^53+1", &regression.Rg2Big{MinID: 9007199254740993, Bigmin: maxInt64, Small: 50})
-	rejects(t, "minId one below the bound", &regression.Rg2Big{MinID: 9007199254740992, Bigmin: maxInt64, Small: 50})
+	accepts(t, "minId exactly 2^53+1", &numbers.NumberBigBounds{MinID: 9007199254740993, Bigmin: maxInt64, Small: 50})
+	rejects(t, "minId one below the bound", &numbers.NumberBigBounds{MinID: 9007199254740992, Bigmin: maxInt64, Small: 50})
 }
 
 // @multipleOf rejects a non-multiple.
 func TestMultipleOfEnforced(t *testing.T) {
-	accepts(t, "qty 15 is a multiple of 5", &regression.Rg3MultipleOf{Qty: 15})
-	rejects(t, "qty 7 is not a multiple of 5", &regression.Rg3MultipleOf{Qty: 7})
+	accepts(t, "qty 15 is a multiple of 5", &numbers.NumberMultipleOf{Qty: 15})
+	rejects(t, "qty 7 is not a multiple of 5", &numbers.NumberMultipleOf{Qty: 7})
 }
 
 // A declared error-body field is validated: code is 3..8 chars matching
 // ^E_[A-Z]+$, message at most 50.
 func TestErrorBodyConstraintsEnforced(t *testing.T) {
-	accepts(t, "valid code and message", &regression.Rg5CodeErrBody{Code: "E_FOO", Message: "ok"})
-	rejects(t, "code shorter than @minLength(3)", &regression.Rg5CodeErrBody{Code: "E_", Message: "ok"})
-	rejects(t, "code violating ^E_[A-Z]+$", &regression.Rg5CodeErrBody{Code: "bad", Message: "ok"})
+	accepts(t, "valid code and message", &bindings.CodeMessageErrBody{Code: "E_FOO", Message: "ok"})
+	rejects(t, "code shorter than @minLength(3)", &bindings.CodeMessageErrBody{Code: "E_", Message: "ok"})
+	rejects(t, "code violating ^E_[A-Z]+$", &bindings.CodeMessageErrBody{Code: "bad", Message: "ok"})
 }
 
-// An error body validates fields promoted from its mixin: Rg5HdrMeta.note is
-// @minLength(1).
+// An error body validates fields promoted from its mixin: ErrorHeaderMeta.note
+// is @minLength(1).
 func TestErrorBodyMixinValidated(t *testing.T) {
 	rejects(t, "promoted note empty below @minLength(1)",
-		&regression.Rg5HdrErrorBody{Rg5HdrMeta: regression.Rg5HdrMeta{Note: ""}})
+		&bindings.HeaderMixinErrorBody{ErrorHeaderMeta: bindings.ErrorHeaderMeta{Note: ""}})
 	accepts(t, "valid promoted note",
-		&regression.Rg5HdrErrorBody{Rg5HdrMeta: regression.Rg5HdrMeta{Note: "ok"}})
+		&bindings.HeaderMixinErrorBody{ErrorHeaderMeta: bindings.ErrorHeaderMeta{Note: "ok"}})
 }
 
 // String length decorators count characters, not bytes: Str_Lengths.exact is

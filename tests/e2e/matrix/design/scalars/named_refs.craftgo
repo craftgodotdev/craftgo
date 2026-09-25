@@ -1,0 +1,92 @@
+// Scalars and enums referenced by name: as nullable, optional and defaulted
+// fields, path and query parameters, map keys and a generic argument.
+package scalars
+
+scalar Count int @gte(0)
+
+scalar PinCode string @length(4) // single-arg exact length
+
+scalar Token bytes @minLength(16) @maxLength(16)
+
+scalar EmailAddress string @format(email)
+
+enum Shade {
+	Red   = "red"
+	Green = "green"
+	Blue  = "blue"
+}
+
+enum Urgency {
+	Low    = 1
+	Medium = 5
+	High   = 10
+}
+
+// NullableScalars puts @nullable beside a field-level constraint: the
+// validator checks the dereferenced value, and OpenAPI documents the bound
+// beside anyOf [$ref, null].
+type NullableScalars {
+	nulCapped  Count        @nullable @lte(100)
+	optCapped  Count?       @lte(50)
+	nulEmail   EmailAddress @nullable
+	plainCents Count        @lte(1000)
+}
+
+type RefInner {
+	id string
+}
+
+// RefMeta documents a @nullable named ref as a null union, and @default and
+// @deprecated beside the $ref.
+type RefMeta {
+	nulInner RefInner @nullable
+	nulColor Shade    @nullable
+	roleReq  Count?   @default(7)
+	depColor Shade    @deprecated("use status")
+}
+
+// ScalarLengths holds exact and range string lengths and bytes lengths; the
+// validator counts a bytes value in raw bytes, as OpenAPI documents.
+type ScalarLengths {
+	code     PinCode
+	inline   string  @length(6)
+	rng      string  @length(2, 8)
+	token    Token
+	nulToken Token?  @minLength(8)
+	raw      bytes   @minLength(4)
+}
+
+// EnumKeyedMaps documents its keys' wire values as propertyNames: "red",
+// "green" and "blue" for the string enum, "1", "5" and "10" for the int enum.
+type EnumKeyedMaps {
+	byColor map<Shade, int>
+	byPrio  map<Urgency, int>
+}
+
+// Listing is a generic whose instances $ref their instance component, not
+// the bare type parameter.
+type Listing<T> {
+	items T[]
+	total int @gte(0)
+}
+
+// ItemPath binds id as an int, uid as an int scalar and kind as a string
+// enum from the path.
+type ItemPath {
+	id   int   @path
+	uid  Count @path
+	kind Shade @path
+}
+
+type ItemView {
+	id    int
+	label string
+}
+
+// QueryDefaults binds query parameters that take their @default when the
+// request omits them.
+type QueryDefaults {
+	sortQ  string? @query @default("asc")
+	colorQ Shade?  @query @default(Green)
+	limitQ int?    @query @default(10)
+}

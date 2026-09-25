@@ -1,0 +1,69 @@
+// Error bodies with a header from a mixin, nullable fields, their own code
+// and message fields, sensitive and optional fields, and a success status
+// shared with an error.
+package bindings
+
+// EmptyReq is the request of RaiseErrorShapes.
+type EmptyReq {
+}
+
+// ErrorHeaderMeta brings a @header field into HeaderMixinError: the error
+// writes it as a response header, and OpenAPI documents it as one.
+type ErrorHeaderMeta {
+	rid  string @header("X-Request-Id")
+	note string @minLength(1)
+}
+
+error Conflict HeaderMixinError {
+	ErrorHeaderMeta
+	resource string
+}
+
+// NullableDetail is the struct a NullableFieldsErr body may send as null.
+type NullableDetail {
+	name string @minLength(1)
+}
+
+// NullableFieldsErr holds @nullable body fields as pointers, so the server
+// can send the explicit null OpenAPI documents.
+error BadRequest NullableFieldsErr {
+	detail NullableDetail @nullable
+	note   string         @nullable
+}
+
+// CodeMessageErr declares its own code and message fields: they are on the
+// wire, validated, and documented with their constraints.
+error NotFound CodeMessageErr {
+	code    string @minLength(3) @maxLength(8) @pattern("^E_[A-Z]+$")
+	message string @maxLength(50)
+	extra   string
+}
+
+// ForbiddenDetails keeps a @sensitive field off the wire, omits an absent
+// optional field, writes a code-named @header field as a response header,
+// and documents an @example.
+error Forbidden ForbiddenDetails {
+	secret string  @sensitive
+	reason string? @example("rate limit hit")
+	code   string  @header("X-Error-Code")
+	note   string
+}
+
+// SharedStatusConflict shares its 409 with the success response of
+// PostSharedStatus: OpenAPI documents both bodies as a oneOf.
+error Conflict SharedStatusConflict {
+	detail string
+}
+
+// HeaderMetadataResp sends an ETag response header that OpenAPI documents as
+// deprecated, with an example.
+type HeaderMetadataResp {
+	etag string @header("ETag") @deprecated("use If-Match") @example("v3")
+	ok   bool
+}
+
+// CountsPayload is the body of EchoHeaderMetadata and PostSharedStatus.
+type CountsPayload {
+	counts map<string, int?>
+	name   string
+}

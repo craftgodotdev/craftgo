@@ -71,6 +71,58 @@ service ScalarsService {
 		request  ListOrdersReq
 		response Page<map<string, Order>[]>
 	}
+
+	post EchoNullableScalars /nullable-scalars {
+		request  NullableScalars
+		response NullableScalars
+	}
+
+	post EchoRefMeta /ref-meta {
+		request  RefMeta
+		response RefMeta
+	}
+
+	post EchoLengths /lengths {
+		request  ScalarLengths
+		response ScalarLengths
+	}
+
+	post EchoEnumMaps /enum-maps {
+		request  EnumKeyedMaps
+		response EnumKeyedMaps
+	}
+
+	post EchoListing /listing {
+		request  Listing<EmailAddress>
+		response Listing<EmailAddress>
+	}
+
+	// id binds as int, uid as an int scalar, kind as a string enum.
+	get GetItemByPath /items/{id}/{uid}/{kind} {
+		request  ItemPath
+		response ItemView
+	}
+
+	// sortQ / colorQ / limitQ fall back to their defaults when absent.
+	get SearchWithDefaults /defaults {
+		request  QueryDefaults
+		response ItemView
+	}
+
+	post EchoGenericMixinHost /generic-mixin-host {
+		request  GenericMixinHost
+		response GenericMixinHost
+	}
+
+	post EchoCompositeArg /composite-arg {
+		request  CompositeArg
+		response CompositeArg
+	}
+
+	post EchoBoxHolder /box-holder {
+		request  BoxHolder
+		response BoxHolder
+	}
 }
 
 // GetOrderReq pins a UUID-typed path parameter. The scalar's

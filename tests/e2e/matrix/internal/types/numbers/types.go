@@ -22,6 +22,20 @@ type MixedReq struct {
 	Body NumberMixed `json:"body"`
 }
 
+// NumberBigBounds holds bounds past 2^53: OpenAPI writes them exactly, so
+// the documented bound is the int64 the validator enforces.
+type NumberBigBounds struct {
+	MinID  int64 `json:"minId"`
+	Bigmin int64 `json:"bigmin"`
+	Small  int   `json:"small"`
+}
+
+// NumberBigMultipleOf carries a @multipleOf divisor past 2^53, written
+// exactly in OpenAPI.
+type NumberBigMultipleOf struct {
+	N int64 `json:"n"`
+}
+
 // NumberBoundary pins bounds at the exact type-capacity edges. The
 // semantic phase rejects bounds beyond a type's representable range;
 // these must all sit AT the boundary and pass clean.
@@ -107,6 +121,12 @@ type NumberMixed struct {
 	NegStrict int `json:"negStrict"`
 	// Asymmetric float
 	FloatGtLte float64 `json:"floatGtLte"`
+}
+
+// NumberMultipleOf carries @multipleOf on an int field, enforced by the
+// validator and documented by OpenAPI.
+type NumberMultipleOf struct {
+	Qty int `json:"qty"`
 }
 
 // NumberOptional exercises the optional / nullable / default axes

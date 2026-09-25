@@ -72,4 +72,18 @@ service NestedService {
 		request  ListPage
 		response ListPage
 	}
+
+	post EchoAuditedHost /audited-host {
+		request  AuditedHost
+		response AuditedHost
+	}
+
+	post EchoHeaderedResp /headered-resp {
+		request  ResponseAudit
+		response HeaderedResp
+	}
+
+	get GetRateResp /rate-resp {
+		response RateResp
+	}
 }

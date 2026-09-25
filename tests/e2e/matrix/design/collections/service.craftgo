@@ -42,4 +42,24 @@ service Collections {
 		request  Map_StructValue
 		response Map_StructValue
 	}
+
+	post EchoArrayOfMaps /array-of-maps {
+		request  Map_ArrayOfMaps
+		response Map_ArrayOfMaps
+	}
+
+	post EchoNestedMaps /nested-maps {
+		request  Map_Nested
+		response Map_Nested
+	}
+
+	post EchoScalarKeyMap /scalar-key-map {
+		request  Map_ScalarKey
+		response Map_ScalarKey
+	}
+
+	post EchoOptionalValues /optional-values {
+		request  Map_OptionalValue
+		response Map_OptionalValue
+	}
 }

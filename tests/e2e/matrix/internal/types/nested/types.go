@@ -24,6 +24,13 @@ type Address struct {
 	City   string `json:"city"`
 }
 
+// AuditedHost takes a body field the server requires and validates from its
+// mixin.
+type AuditedHost struct {
+	CreatedAudit
+	Name string `json:"name"`
+}
+
 type B struct {
 	ID string `json:"id"`
 	A  *A     `json:"a,omitempty"`
@@ -34,6 +41,11 @@ type B struct {
 // are validated.
 type Catalog struct {
 	Users map[string]User `json:"users"`
+}
+
+// CreatedAudit brings a required, validated body field into AuditedHost.
+type CreatedAudit struct {
+	CreatedAt string `json:"createdAt"`
 }
 
 // Cube is the 3-D slice of nested case. Three nested for-loops
@@ -47,6 +59,14 @@ type Cube struct {
 type Furniture struct {
 	Name   string `json:"name"`
 	Weight int    `json:"weight"`
+}
+
+// HeaderedResp sends a @header beside a mixin; its response body schema
+// keeps the mixin's createdAt.
+type HeaderedResp struct {
+	ResponseAudit
+	Etag string `json:"-" header:"ETag"`
+	Name string `json:"name"`
 }
 
 // Home owns a slice of nested Rooms. The slice variant tests that
@@ -98,6 +118,22 @@ type Org struct {
 // cascade carries the deepest violation back to the top.
 type Person struct {
 	Home Home `json:"home"`
+}
+
+// RateMeta brings a response header into RateResp.
+type RateMeta struct {
+	Limit int `json:"-" header:"X-Rate-Limit"`
+}
+
+// RateResp writes the header its mixin brings, as OpenAPI documents it.
+type RateResp struct {
+	RateMeta
+	Data string `json:"data"`
+}
+
+// ResponseAudit brings the body field HeaderedResp keeps beside its header.
+type ResponseAudit struct {
+	CreatedAt string `json:"createdAt"`
 }
 
 // Room owns a slice of Furniture. Two consecutive slice-of-nested

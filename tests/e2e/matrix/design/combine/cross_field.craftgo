@@ -1,0 +1,43 @@
+// Cross-field groups over mixin-promoted fields and over fields whose Go
+// names collide, and the groups a request body schema documents.
+package combine
+
+// ContactPair brings the fields PromotedContact's group names.
+type ContactPair {
+	email string?
+	phone string?
+}
+
+// PromotedContact's @requiresOneOf names the fields its mixin brings.
+@requiresOneOf(email, phone)
+type PromotedContact {
+	ContactPair
+	note string
+}
+
+// CollidingNames holds two fields whose Go names collide: the second
+// becomes UserID_2, and the validator and the body writers read both.
+@requiresOneOf(userId, user_id)
+type CollidingNames {
+	userId  string? @minLength(2)
+	user_id string?
+}
+
+// ContactChannels carries cross-field groups its request body schema
+// documents.
+@requiresOneOf(email, phone)
+@mutuallyExclusive(email, sms)
+type ContactChannels {
+	email string?
+	phone string?
+	sms   string?
+}
+
+// FieldRulesFailed is an error body with field constraints, an optional
+// field and a @deprecated field.
+error UnprocessableEntity FieldRulesFailed {
+	attempts int     @gte(0) @lte(10)
+	field    string  @minLength(1) @maxLength(40)
+	hint     string?
+	legacy   string  @deprecated("removed")
+}

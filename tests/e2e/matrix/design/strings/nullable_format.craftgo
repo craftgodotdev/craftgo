@@ -1,0 +1,8 @@
+// A nullable string that carries @format.
+package strings
+
+// Str_NullableFormat checks a present email and passes a JSON null: the
+// validator nil-guards the dereference.
+type Str_NullableFormat {
+	email string @nullable @format(email)
+}

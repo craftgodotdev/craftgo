@@ -30,6 +30,15 @@ func (v *Address) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on AuditedHost.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *AuditedHost) Validate() error {
+	if err := v.CreatedAudit.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on B.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *B) Validate() error {
@@ -48,6 +57,15 @@ func (v *Catalog) Validate() error {
 		if err := val0.Validate(); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on CreatedAudit.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *CreatedAudit) Validate() error {
+	if utf8.RuneCountInString(v.CreatedAt) < 1 {
+		return fmt.Errorf("createdAt: length less than 1")
 	}
 	return nil
 }
@@ -75,6 +93,15 @@ func (v *Furniture) Validate() error {
 	}
 	if v.Weight < 0 {
 		return fmt.Errorf("weight: below minimum 0")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on HeaderedResp.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *HeaderedResp) Validate() error {
+	if err := v.ResponseAudit.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -158,6 +185,30 @@ func (v *Org) Validate() error {
 func (v *Person) Validate() error {
 	if err := v.Home.Validate(); err != nil {
 		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on RateMeta.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *RateMeta) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on RateResp.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *RateResp) Validate() error {
+	if err := v.RateMeta.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on ResponseAudit.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *ResponseAudit) Validate() error {
+	if utf8.RuneCountInString(v.CreatedAt) < 1 {
+		return fmt.Errorf("createdAt: length less than 1")
 	}
 	return nil
 }

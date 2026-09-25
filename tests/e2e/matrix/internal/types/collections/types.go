@@ -2,8 +2,17 @@
 
 package collections
 
+// DeepTag is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type DeepTag string
+
 // Email is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type Email string
+
+// MapTag is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type MapTag string
+
+// MemberID is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
+type MemberID int
 
 // NonEmptyID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type NonEmptyID string
@@ -100,6 +109,13 @@ type Arr_TagSlice struct {
 	Tags []Tag `json:"tags"`
 }
 
+// Map_ArrayOfMaps holds an array of maps whose value carries a validator;
+// the validator checks each value of each map.
+type Map_ArrayOfMaps struct {
+	M     []map[string]MapTag `json:"m"`
+	Plain map[string]MapTag   `json:"plain"`
+}
+
 // Map_ArrayValue stacks an array INSIDE a map value: each value is a
 // `Tag[]`. The scalar-leaves walk should produce a doubly-nested
 // loop: `for _, val0 := range v.Buckets` then
@@ -130,6 +146,13 @@ type Map_KeyAndValue struct {
 	Index map[NonEmptyID]Email `json:"index"`
 }
 
+// Map_Nested holds a map of maps and a map of arrays of maps whose values
+// carry a validator; the validator checks every inner value.
+type Map_Nested struct {
+	Mm  map[string]map[string]DeepTag   `json:"mm"`
+	Maa map[string][]map[string]DeepTag `json:"maa"`
+}
+
 // Map_Optional is the optional-map case. The field carries no bounds,
 // so its validator reduces to an outer nil-guard around any inner
 // iteration.
@@ -137,11 +160,24 @@ type Map_Optional struct {
 	Counts map[string]int `json:"counts,omitempty"`
 }
 
+// Map_OptionalValue holds optional primitive map values: map[string]*int in
+// Go, additionalProperties [integer, "null"] in OpenAPI.
+type Map_OptionalValue struct {
+	Counts map[string]*int `json:"counts"`
+	Name   string          `json:"name"`
+}
+
 // Map_Plain is the simplest case - no validators, no scalars, no
 // optionality. The generator should emit NO validator block for this
 // field (presence is implicit; len() > 0 is not enforced).
 type Map_Plain struct {
 	Counts map[string]int `json:"counts"`
+}
+
+// Map_ScalarKey validates each key as a MemberID and each value as a
+// MemberTag.
+type Map_ScalarKey struct {
+	ByUser map[MemberID]MemberTag `json:"byUser"`
 }
 
 // Map_ScalarValue uses a scalar value type (Tag). Unlike the struct
@@ -164,6 +200,11 @@ type Map_StructAddress struct {
 // fields are validated, including the `email` scalar's @format(email).
 type Map_StructValue struct {
 	Users map[string]User `json:"users"`
+}
+
+// MemberTag is the value of Map_ScalarKey.
+type MemberTag struct {
+	Name string `json:"name"`
 }
 
 // User is a struct used as a map VALUE in maps.craftgo. The `email`

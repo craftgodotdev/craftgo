@@ -264,6 +264,17 @@ func (v *Str_Nullable) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on Str_NullableFormat.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Str_NullableFormat) Validate() error {
+	if v.Email != nil {
+		if _, _err := mail.ParseAddress(*v.Email); _err != nil {
+			return fmt.Errorf("email: not a valid email")
+		}
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on Str_Optionals.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Str_Optionals) Validate() error {

@@ -78,4 +78,19 @@ service NumbersService {
 		request  BoundaryReq
 		response BoundaryReq
 	}
+
+	post EchoBigBounds /big-bounds {
+		request  NumberBigBounds
+		response NumberBigBounds
+	}
+
+	post EchoMultipleOf /multiple-of {
+		request  NumberMultipleOf
+		response NumberMultipleOf
+	}
+
+	post EchoBigMultipleOf /big-multiple-of {
+		request  NumberBigMultipleOf
+		response NumberBigMultipleOf
+	}
 }

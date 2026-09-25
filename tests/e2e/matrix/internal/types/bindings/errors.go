@@ -4,6 +4,7 @@ package bindings
 
 import (
 	"encoding/json"
+	"net/http"
 )
 
 // ErrCodeAccessDenied is the canonical machine-readable code for AccessDeniedErr.
@@ -75,6 +76,42 @@ func (e *AuthRequiredErr) HTTPStatus() int { return 401 }
 // MarshalJSON encodes the body alone.
 func (e *AuthRequiredErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.AuthRequiredBody) }
 
+// ErrCodeCodeMessageErr is the canonical machine-readable code for CodeMessageErr.
+const ErrCodeCodeMessageErr = "CODE_MESSAGE_ERR"
+
+// CodeMessageErrBody is the wire-shape payload declared at design time for CodeMessageErr.
+// User code instantiates this struct and hands it to NewCodeMessageErr.
+type CodeMessageErrBody struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Extra   string `json:"extra"`
+}
+
+// CodeMessageErr is the typed NotFound error generated for `CodeMessageErr`.
+type CodeMessageErr struct {
+	CodeMessageErrBody
+}
+
+// NewCodeMessageErr constructs CodeMessageErr.
+func NewCodeMessageErr(body CodeMessageErrBody) *CodeMessageErr {
+	return &CodeMessageErr{CodeMessageErrBody: body}
+}
+
+// Error returns the NotFound category's default message.
+func (e *CodeMessageErr) Error() string { return "Not found" }
+
+// ErrCode returns ErrCodeCodeMessageErr. It is named so that it does not shadow a
+// `code` field of the body; rpc.Error puts it on the gRPC status.
+func (e *CodeMessageErr) ErrCode() string { return ErrCodeCodeMessageErr }
+
+// HTTPStatus returns the HTTP status code associated with the NotFound
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
+func (e *CodeMessageErr) HTTPStatus() int { return 404 }
+
+// MarshalJSON encodes the body alone.
+func (e *CodeMessageErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.CodeMessageErrBody) }
+
 // ErrCodeDuplicateKey is the canonical machine-readable code for DuplicateKeyErr.
 const ErrCodeDuplicateKey = "DUPLICATE_KEY"
 
@@ -144,6 +181,94 @@ func (e *EmailTakenErr) HTTPStatus() int { return 409 }
 // MarshalJSON encodes the body alone.
 func (e *EmailTakenErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.EmailTakenBody) }
 
+// ErrCodeForbiddenDetails is the canonical machine-readable code for ForbiddenDetailsErr.
+const ErrCodeForbiddenDetails = "FORBIDDEN_DETAILS"
+
+// ForbiddenDetailsBody is the wire-shape payload declared at design time for ForbiddenDetailsErr.
+// User code instantiates this struct and hands it to NewForbiddenDetailsErr.
+type ForbiddenDetailsBody struct {
+	Secret string  `json:"-"`
+	Reason *string `json:"reason,omitempty"`
+	Code   string  `json:"-" header:"X-Error-Code"`
+	Note   string  `json:"note"`
+}
+
+// ForbiddenDetailsErr is the typed Forbidden error generated for `ForbiddenDetails`.
+type ForbiddenDetailsErr struct {
+	ForbiddenDetailsBody
+}
+
+// NewForbiddenDetailsErr constructs ForbiddenDetailsErr.
+func NewForbiddenDetailsErr(body ForbiddenDetailsBody) *ForbiddenDetailsErr {
+	return &ForbiddenDetailsErr{ForbiddenDetailsBody: body}
+}
+
+// Error returns the Forbidden category's default message.
+func (e *ForbiddenDetailsErr) Error() string { return "Forbidden" }
+
+// ErrCode returns ErrCodeForbiddenDetails. It is named so that it does not shadow a
+// `code` field of the body; rpc.Error puts it on the gRPC status.
+func (e *ForbiddenDetailsErr) ErrCode() string { return ErrCodeForbiddenDetails }
+
+// HTTPStatus returns the HTTP status code associated with the Forbidden
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
+func (e *ForbiddenDetailsErr) HTTPStatus() int { return 403 }
+
+// MarshalJSON encodes the body alone.
+func (e *ForbiddenDetailsErr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(e.ForbiddenDetailsBody)
+}
+
+// WriteResponseHeaders writes the `@header` / `@cookie` fields onto w.
+// Called by the framework's server.WriteError before the JSON body is
+// encoded so values reach the wire in a single response.
+func (e *ForbiddenDetailsErr) WriteResponseHeaders(w http.ResponseWriter) {
+	w.Header().Set("X-Error-Code", e.Code)
+}
+
+// ErrCodeHeaderMixinError is the canonical machine-readable code for HeaderMixinError.
+const ErrCodeHeaderMixinError = "HEADER_MIXIN_ERROR"
+
+// HeaderMixinErrorBody is the wire-shape payload declared at design time for HeaderMixinError.
+// User code instantiates this struct and hands it to NewHeaderMixinError.
+type HeaderMixinErrorBody struct {
+	ErrorHeaderMeta
+	Resource string `json:"resource"`
+}
+
+// HeaderMixinError is the typed Conflict error generated for `HeaderMixinError`.
+type HeaderMixinError struct {
+	HeaderMixinErrorBody
+}
+
+// NewHeaderMixinError constructs HeaderMixinError.
+func NewHeaderMixinError(body HeaderMixinErrorBody) *HeaderMixinError {
+	return &HeaderMixinError{HeaderMixinErrorBody: body}
+}
+
+// Error returns the Conflict category's default message.
+func (e *HeaderMixinError) Error() string { return "Conflict" }
+
+// ErrCode returns ErrCodeHeaderMixinError. It is named so that it does not shadow a
+// `code` field of the body; rpc.Error puts it on the gRPC status.
+func (e *HeaderMixinError) ErrCode() string { return ErrCodeHeaderMixinError }
+
+// HTTPStatus returns the HTTP status code associated with the Conflict
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
+func (e *HeaderMixinError) HTTPStatus() int { return 409 }
+
+// MarshalJSON encodes the body alone.
+func (e *HeaderMixinError) MarshalJSON() ([]byte, error) { return json.Marshal(e.HeaderMixinErrorBody) }
+
+// WriteResponseHeaders writes the `@header` / `@cookie` fields onto w.
+// Called by the framework's server.WriteError before the JSON body is
+// encoded so values reach the wire in a single response.
+func (e *HeaderMixinError) WriteResponseHeaders(w http.ResponseWriter) {
+	w.Header().Set("X-Request-Id", e.Rid)
+}
+
 // ErrCodeInvalidInput is the canonical machine-readable code for InvalidInputErr.
 const ErrCodeInvalidInput = "INVALID_INPUT"
 
@@ -178,6 +303,43 @@ func (e *InvalidInputErr) HTTPStatus() int { return 400 }
 
 // MarshalJSON encodes the body alone.
 func (e *InvalidInputErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.InvalidInputBody) }
+
+// ErrCodeNullableFieldsErr is the canonical machine-readable code for NullableFieldsErr.
+const ErrCodeNullableFieldsErr = "NULLABLE_FIELDS_ERR"
+
+// NullableFieldsErrBody is the wire-shape payload declared at design time for NullableFieldsErr.
+// User code instantiates this struct and hands it to NewNullableFieldsErr.
+type NullableFieldsErrBody struct {
+	Detail *NullableDetail `json:"detail"`
+	Note   *string         `json:"note"`
+}
+
+// NullableFieldsErr is the typed BadRequest error generated for `NullableFieldsErr`.
+type NullableFieldsErr struct {
+	NullableFieldsErrBody
+}
+
+// NewNullableFieldsErr constructs NullableFieldsErr.
+func NewNullableFieldsErr(body NullableFieldsErrBody) *NullableFieldsErr {
+	return &NullableFieldsErr{NullableFieldsErrBody: body}
+}
+
+// Error returns the BadRequest category's default message.
+func (e *NullableFieldsErr) Error() string { return "Bad request" }
+
+// ErrCode returns ErrCodeNullableFieldsErr. It is named so that it does not shadow a
+// `code` field of the body; rpc.Error puts it on the gRPC status.
+func (e *NullableFieldsErr) ErrCode() string { return ErrCodeNullableFieldsErr }
+
+// HTTPStatus returns the HTTP status code associated with the BadRequest
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
+func (e *NullableFieldsErr) HTTPStatus() int { return 400 }
+
+// MarshalJSON encodes the body alone.
+func (e *NullableFieldsErr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(e.NullableFieldsErrBody)
+}
 
 // ErrCodeRateLimitExceeded is the canonical machine-readable code for RateLimitExceededErr.
 const ErrCodeRateLimitExceeded = "RATE_LIMIT_EXCEEDED"
@@ -241,4 +403,40 @@ func (e *RecordNotFoundErr) HTTPStatus() int { return 404 }
 // MarshalJSON encodes the {"code", "message"} envelope.
 func (e *RecordNotFoundErr) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]string{"code": ErrCodeRecordNotFound, "message": e.Error()})
+}
+
+// ErrCodeSharedStatusConflict is the canonical machine-readable code for SharedStatusConflictErr.
+const ErrCodeSharedStatusConflict = "SHARED_STATUS_CONFLICT"
+
+// SharedStatusConflictBody is the wire-shape payload declared at design time for SharedStatusConflictErr.
+// User code instantiates this struct and hands it to NewSharedStatusConflictErr.
+type SharedStatusConflictBody struct {
+	Detail string `json:"detail"`
+}
+
+// SharedStatusConflictErr is the typed Conflict error generated for `SharedStatusConflict`.
+type SharedStatusConflictErr struct {
+	SharedStatusConflictBody
+}
+
+// NewSharedStatusConflictErr constructs SharedStatusConflictErr.
+func NewSharedStatusConflictErr(body SharedStatusConflictBody) *SharedStatusConflictErr {
+	return &SharedStatusConflictErr{SharedStatusConflictBody: body}
+}
+
+// Error returns the Conflict category's default message.
+func (e *SharedStatusConflictErr) Error() string { return "Conflict" }
+
+// ErrCode returns ErrCodeSharedStatusConflict. It is named so that it does not shadow a
+// `code` field of the body; rpc.Error puts it on the gRPC status.
+func (e *SharedStatusConflictErr) ErrCode() string { return ErrCodeSharedStatusConflict }
+
+// HTTPStatus returns the HTTP status code associated with the Conflict
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
+func (e *SharedStatusConflictErr) HTTPStatus() int { return 409 }
+
+// MarshalJSON encodes the body alone.
+func (e *SharedStatusConflictErr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(e.SharedStatusConflictBody)
 }

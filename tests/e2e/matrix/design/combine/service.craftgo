@@ -103,4 +103,45 @@ service CombineService {
 		request  PairsDoc
 		response PairsTagged
 	}
+
+	post EchoZeroMember /enums/zero-member {
+		request  ZeroMember
+		response ZeroMember
+	}
+
+	post EchoWireDefaults /defaults/wire {
+		request  WireDefaults
+		response WireDefaults
+	}
+
+	post ValidatePromoted /pairs/promoted {
+		request  PromotedContact
+		response PromotedContact
+	}
+
+	post EchoCollidingNames /colliding-names {
+		request  CollidingNames
+		response CollidingNames
+	}
+
+	post EchoArrayDefaults /defaults/array {
+		request  ArrayDefaults
+		response ArrayDefaults
+	}
+
+	post EchoNilableNullable /nilable-nullable {
+		request  NilableNullable
+		response NilableNullable
+	}
+
+	post ValidateStacked /pairs/stacked {
+		request  PairsStacked
+		response PairsStacked
+	}
+
+	@errors(FieldRulesFailed)
+	post ValidateChannels /pairs/channels {
+		request  ContactChannels
+		response ContactChannels
+	}
 }

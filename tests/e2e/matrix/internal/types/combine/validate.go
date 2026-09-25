@@ -20,6 +20,56 @@ var (
 	_pattern2 = regexp.MustCompile("^.*@example\\.com$")
 )
 
+// Validate checks every field-level constraint declared on ArrayDefaults.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *ArrayDefaults) Validate() error {
+	for i0 := range v.Methods {
+		if err := v.Methods[i0].Validate(); err != nil {
+			return fmt.Errorf("methods: %w", err)
+		}
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on CollidingNames.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *CollidingNames) Validate() error {
+	if v.UserID != nil && utf8.RuneCountInString(*v.UserID) < 2 {
+		return fmt.Errorf("userId: length less than 2")
+	}
+	if v.UserID == nil && v.UserID_2 == nil {
+		return fmt.Errorf("requiresOneOf [userId user_id] - at least one must be set")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on ContactChannels.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *ContactChannels) Validate() error {
+	if v.Email == nil && v.Phone == nil {
+		return fmt.Errorf("requiresOneOf [email phone] - at least one must be set")
+	}
+	{
+		n := 0
+		if v.Email != nil {
+			n++
+		}
+		if v.Sms != nil {
+			n++
+		}
+		if n > 1 {
+			return fmt.Errorf("mutuallyExclusive [email sms] - at most one may be set")
+		}
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on ContactPair.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *ContactPair) Validate() error {
+	return nil
+}
+
 // Validate checks every field-level constraint declared on DefaultsBoundary.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *DefaultsBoundary) Validate() error {
@@ -77,6 +127,25 @@ func (v *KeywordFieldNames) Validate() error {
 	}
 	if err := v.Kind.Validate(); err != nil {
 		return fmt.Errorf("kind: %w", err)
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on NilableNullable.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *NilableNullable) Validate() error {
+	if v.Blob != nil && len(v.Blob) < 4 {
+		return fmt.Errorf("blob: length less than 4")
+	}
+	if v.Ids != nil {
+		if len(v.Ids) < 2 {
+			return fmt.Errorf("ids: minItems 2")
+		}
+	}
+	if v.Tags != nil {
+		if len(v.Tags) < 1 {
+			return fmt.Errorf("tags: minItems 1")
+		}
 	}
 	return nil
 }
@@ -209,6 +278,30 @@ func (v *PairsRenamedResp) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on PairsStacked.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PairsStacked) Validate() error {
+	if v.B < 10 {
+		return fmt.Errorf("b: below minimum 10")
+	}
+	if v.B > 90 {
+		return fmt.Errorf("b: above maximum 90")
+	}
+	if v.B < 0 || v.B > 100 {
+		return fmt.Errorf("b: out of range [0, 100]")
+	}
+	if utf8.RuneCountInString(v.A) != 5 {
+		return fmt.Errorf("a: length must be 5")
+	}
+	if utf8.RuneCountInString(v.A) < 3 {
+		return fmt.Errorf("a: length less than 3")
+	}
+	if utf8.RuneCountInString(v.A) > 10 {
+		return fmt.Errorf("a: length greater than 10")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on PairsStr.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PairsStr) Validate() error {
@@ -263,6 +356,34 @@ func (v *PresenceMatrix) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on PromotedContact.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PromotedContact) Validate() error {
+	if err := v.ContactPair.Validate(); err != nil {
+		return err
+	}
+	if v.Email == nil && v.Phone == nil {
+		return fmt.Errorf("requiresOneOf [email phone] - at least one must be set")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on WireDefaults.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *WireDefaults) Validate() error {
+	if v.C != nil {
+		if err := v.C.Validate(); err != nil {
+			return fmt.Errorf("c: %w", err)
+		}
+	}
+	if v.L != nil {
+		if err := v.L.Validate(); err != nil {
+			return fmt.Errorf("l: %w", err)
+		}
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on XPkgEnum.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XPkgEnum) Validate() error {
@@ -303,6 +424,15 @@ func (v *XPkgEnum) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on ZeroMember.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *ZeroMember) Validate() error {
+	if err := v.Status.Validate(); err != nil {
+		return fmt.Errorf("status: %w", err)
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on PageSize.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v PageSize) Validate() error {
@@ -333,6 +463,68 @@ func (v DiscKind) Validate() error {
 	case DiscKindType, DiscKindCombo, DiscKindStandalone:
 	default:
 		return fmt.Errorf("must be one of [type combo standalone]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Grade.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Grade) Validate() error {
+	switch v {
+	case GradeLow, GradeHigh:
+	default:
+		return fmt.Errorf("must be one of [1 9]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on Hue.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v Hue) Validate() error {
+	switch v {
+	case HueRed, HueGreen:
+	default:
+		return fmt.Errorf("must be one of [RED GREEN]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on MemberStatus.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v MemberStatus) Validate() error {
+	switch v {
+	case MemberStatusInactive, MemberStatusActive, MemberStatusBanned:
+	default:
+		return fmt.Errorf("must be one of [0 1 2]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on PayMethod.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v PayMethod) Validate() error {
+	switch v {
+	case PayMethodCard, PayMethodBank:
+	default:
+		return fmt.Errorf("must be one of [card bank]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on FieldRulesFailedBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *FieldRulesFailedBody) Validate() error {
+	if v.Attempts < 0 {
+		return fmt.Errorf("attempts: below minimum 0")
+	}
+	if v.Attempts > 10 {
+		return fmt.Errorf("attempts: above maximum 10")
+	}
+	if utf8.RuneCountInString(v.Field) < 1 {
+		return fmt.Errorf("field: length less than 1")
+	}
+	if utf8.RuneCountInString(v.Field) > 40 {
+		return fmt.Errorf("field: length greater than 40")
 	}
 	return nil
 }

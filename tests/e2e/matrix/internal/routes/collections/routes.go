@@ -20,4 +20,8 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/collections/multi-dim", transport.MultiDim(svcCtx))
 	srv.Handle("POST /api/collections/map-key-value", transport.MapKeyValue(svcCtx))
 	srv.Handle("POST /api/collections/map-struct", transport.MapStruct(svcCtx))
+	srv.Handle("POST /api/collections/array-of-maps", transport.EchoArrayOfMaps(svcCtx))
+	srv.Handle("POST /api/collections/nested-maps", transport.EchoNestedMaps(svcCtx))
+	srv.Handle("POST /api/collections/scalar-key-map", transport.EchoScalarKeyMap(svcCtx))
+	srv.Handle("POST /api/collections/optional-values", transport.EchoOptionalValues(svcCtx))
 }

@@ -26,13 +26,6 @@ import (
 	projectserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/project_service"
 	rawmodesserviceRawV1routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/raw/v1"
 	rawmodesserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/raw_modes_service"
-	regressionbatch2routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch2"
-	regressionbatch3routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch3"
-	regressionbatch4routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch4"
-	regressionbatch5routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch5"
-	regressionbatch6routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch6"
-	regressionbatch7routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch7"
-	regressionserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_service"
 	reportroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/report"
 	reportcardroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/report_card"
 	scalarsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/scalars_service"
@@ -73,13 +66,6 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	projectserviceroutes.RegisterRoutes(srv, svcCtx)
 	rawmodesserviceroutes.RegisterRoutes(srv, svcCtx)
 	rawmodesserviceRawV1routes.RegisterRoutes(srv, svcCtx)
-	regressionbatch2routes.RegisterRoutes(srv, svcCtx)
-	regressionbatch3routes.RegisterRoutes(srv, svcCtx)
-	regressionbatch4routes.RegisterRoutes(srv, svcCtx)
-	regressionbatch5routes.RegisterRoutes(srv, svcCtx)
-	regressionbatch6routes.RegisterRoutes(srv, svcCtx)
-	regressionbatch7routes.RegisterRoutes(srv, svcCtx)
-	regressionserviceroutes.RegisterRoutes(srv, svcCtx)
 	reportroutes.RegisterRoutes(srv, svcCtx)
 	reportcardroutes.RegisterRoutes(srv, svcCtx)
 	scalarsserviceroutes.RegisterRoutes(srv, svcCtx)

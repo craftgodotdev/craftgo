@@ -1,0 +1,38 @@
+// Mixins that bring body fields and response headers.
+package nested
+
+// CreatedAudit brings a required, validated body field into AuditedHost.
+type CreatedAudit {
+	createdAt string @minLength(1)
+}
+
+// AuditedHost takes a body field the server requires and validates from its
+// mixin.
+type AuditedHost {
+	CreatedAudit
+	name string
+}
+
+// ResponseAudit brings the body field HeaderedResp keeps beside its header.
+type ResponseAudit {
+	createdAt string @minLength(1)
+}
+
+// HeaderedResp sends a @header beside a mixin; its response body schema
+// keeps the mixin's createdAt.
+type HeaderedResp {
+	ResponseAudit
+	etag string @header("ETag")
+	name string
+}
+
+// RateMeta brings a response header into RateResp.
+type RateMeta {
+	limit int @header("X-Rate-Limit")
+}
+
+// RateResp writes the header its mixin brings, as OpenAPI documents it.
+type RateResp {
+	RateMeta
+	data string
+}

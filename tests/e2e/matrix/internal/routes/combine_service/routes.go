@@ -30,4 +30,12 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/combine/pairs/nested/{id}", transport.ValidateNested(svcCtx))
 	srv.Handle("POST /api/combine/pairs/upload", transport.UploadPairs(svcCtx))
 	srv.Handle("POST /api/combine/pairs/tagged", transport.TagPairs(svcCtx))
+	srv.Handle("POST /api/combine/enums/zero-member", transport.EchoZeroMember(svcCtx))
+	srv.Handle("POST /api/combine/defaults/wire", transport.EchoWireDefaults(svcCtx))
+	srv.Handle("POST /api/combine/pairs/promoted", transport.ValidatePromoted(svcCtx))
+	srv.Handle("POST /api/combine/colliding-names", transport.EchoCollidingNames(svcCtx))
+	srv.Handle("POST /api/combine/defaults/array", transport.EchoArrayDefaults(svcCtx))
+	srv.Handle("POST /api/combine/nilable-nullable", transport.EchoNilableNullable(svcCtx))
+	srv.Handle("POST /api/combine/pairs/stacked", transport.ValidateStacked(svcCtx))
+	srv.Handle("POST /api/combine/pairs/channels", transport.ValidateChannels(svcCtx))
 }

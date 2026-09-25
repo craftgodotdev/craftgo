@@ -633,6 +633,40 @@ components:
       type: object
     ArrayBoundsRespBody:
       $ref: '#/components/schemas/Arr_BoundsBasic'
+    ArrayBoxOfUUIDItem:
+      description: |-
+        ArrayBox validates each element of its optional type-parameter array, as
+        it does those of the required one.
+      properties:
+        opt:
+          items:
+            $ref: '#/components/schemas/UUIDItem'
+          type:
+          - array
+          - "null"
+        req:
+          items:
+            $ref: '#/components/schemas/UUIDItem'
+          type: array
+      required:
+      - req
+      type: object
+    ArrayDefaults:
+      description: |-
+        ArrayDefaults documents an array-of-enum @default as its wire values
+        ([card, bank]) and a @default query parameter as optional; the transport
+        pre-fills both before decoding.
+      properties:
+        methods:
+          default:
+          - card
+          - bank
+          items:
+            $ref: '#/components/schemas/PayMethod'
+          type:
+          - array
+          - "null"
+      type: object
     ArrayOfGenericInstance:
       description: |-
         ArrayOfGenericInstance probes the array wrapper around a generic
@@ -748,6 +782,19 @@ components:
         the generated struct lists `createdAt`, `updatedAt`, AND `id` as
         peer fields, and the Validate() emitter runs the datetime checks
         alongside the UUID check.
+      type: object
+    AuditedHost:
+      allOf:
+      - $ref: '#/components/schemas/CreatedAudit'
+      - properties:
+          name:
+            type: string
+        required:
+        - name
+        type: object
+      description: |-
+        AuditedHost takes a body field the server requires and validates from its
+        mixin.
       type: object
     AuditedPage:
       properties:
@@ -877,6 +924,24 @@ components:
       required:
       - payload
       type: object
+    BodyMixin:
+      description: BodyMixin brings a body field.
+      properties:
+        note:
+          minLength: 1
+          type: string
+      required:
+      - note
+      type: object
+    BodyOnlyMixin:
+      description: BodyOnlyMixin brings the whole body of MixinBodyReq.
+      properties:
+        createdAt:
+          minLength: 1
+          type: string
+      required:
+      - createdAt
+      type: object
     BoundaryReq:
       description: BoundaryReq wraps NumberBoundary (type-capacity edges).
       properties:
@@ -884,6 +949,13 @@ components:
           $ref: '#/components/schemas/NumberBoundary'
       required:
       - body
+      type: object
+    BoxHolder:
+      properties:
+        box:
+          $ref: '#/components/schemas/ArrayBoxOfUUIDItem'
+      required:
+      - box
       type: object
     CancelJobReq:
       description: |-
@@ -926,6 +998,24 @@ components:
       type: string
     Code:
       type: string
+    CodeMessageErr:
+      description: NotFound error response (HTTP 404).
+      properties:
+        code:
+          maxLength: 8
+          minLength: 3
+          pattern: ^E_[A-Z]+$
+          type: string
+        extra:
+          type: string
+        message:
+          maxLength: 50
+          type: string
+      required:
+      - code
+      - message
+      - extra
+      type: object
     CollectionsAddress:
       description: |-
         Address is a struct used as a map VALUE in maps.craftgo. The two
@@ -979,6 +1069,41 @@ components:
       - name
       - email
       type: object
+    CollidingNames:
+      allOf:
+      - properties:
+          user_id:
+            type:
+            - string
+            - "null"
+          userId:
+            minLength: 2
+            type:
+            - string
+            - "null"
+        type: object
+      - anyOf:
+        - properties:
+            userId:
+              not:
+                type: "null"
+          required:
+          - userId
+        - properties:
+            user_id:
+              not:
+                type: "null"
+          required:
+          - user_id
+      description: |-
+        CollidingNames holds two fields whose Go names collide: the second
+        becomes UserID_2, and the validator and the body writers read both.
+      type: object
+    CollidingQueryReq:
+      description: |-
+        CollidingQueryReq binds two query keys whose Go names collide: SortBy and
+        SortBy_2 each read their own key.
+      type: object
     CombineColor:
       description: |-
         Color is a string-valued bare enum used by DefaultEnum below. Bare
@@ -1019,6 +1144,16 @@ components:
       type: object
     CombineConstraintsRespBody:
       $ref: '#/components/schemas/Str_Combos'
+    CompositeArg:
+      description: |-
+        CompositeArg instantiates a generic over the composite argument
+        map<string, SkuItem> and still enforces SkuItem's constraint.
+      properties:
+        page:
+          $ref: '#/components/schemas/SkuPageOfMapOfStringAndSkuItem'
+      required:
+      - page
+      type: object
     ConflictErr:
       description: Conflict error response (HTTP 409).
       properties:
@@ -1072,6 +1207,50 @@ components:
       - label
       - stamp
       type: object
+    ContactChannels:
+      allOf:
+      - properties:
+          email:
+            type:
+            - string
+            - "null"
+          phone:
+            type:
+            - string
+            - "null"
+          sms:
+            type:
+            - string
+            - "null"
+        type: object
+      - anyOf:
+        - properties:
+            email:
+              not:
+                type: "null"
+          required:
+          - email
+        - properties:
+            phone:
+              not:
+                type: "null"
+          required:
+          - phone
+      - not:
+          properties:
+            email:
+              not:
+                type: "null"
+            sms:
+              not:
+                type: "null"
+          required:
+          - email
+          - sms
+      description: |-
+        ContactChannels carries cross-field groups its request body schema
+        documents.
+      type: object
     ContactInfo:
       description: |-
         ContactInfo carries a primary email and optional phone. The email
@@ -1088,6 +1267,18 @@ components:
           - "null"
       required:
       - email
+      type: object
+    ContactPair:
+      description: ContactPair brings the fields PromotedContact's group names.
+      properties:
+        email:
+          type:
+          - string
+          - "null"
+        phone:
+          type:
+          - string
+          - "null"
       type: object
     CookieReq:
       description: |-
@@ -1113,6 +1304,9 @@ components:
       - lat
       - lng
       type: object
+    Count:
+      minimum: 0
+      type: integer
     CounterReq:
       description: CounterReq wraps NumberCounter for the AddCounter POST.
       properties:
@@ -1120,6 +1314,21 @@ components:
           $ref: '#/components/schemas/NumberCounter'
       required:
       - body
+      type: object
+    CountsPayload:
+      description: CountsPayload is the body of EchoHeaderMetadata and PostSharedStatus.
+      properties:
+        counts:
+          additionalProperties:
+            type:
+            - integer
+            - "null"
+          type: object
+        name:
+          type: string
+      required:
+      - counts
+      - name
       type: object
     CreateJobReq:
       description: |-
@@ -1264,6 +1473,15 @@ components:
       type: object
     CreateTenantItemRespBody:
       $ref: '#/components/schemas/TenantItem'
+    CreatedAudit:
+      description: CreatedAudit brings a required, validated body field into AuditedHost.
+      properties:
+        createdAt:
+          minLength: 1
+          type: string
+      required:
+      - createdAt
+      type: object
     Credentials:
       description: |-
         Credentials binds a scalar from the path and an enum with a default from
@@ -1296,6 +1514,10 @@ components:
       type: object
     DashboardStatsRespBody:
       $ref: '#/components/schemas/ListProfilesResp'
+    DeepTag:
+      description: DeepTag is the value scalar of Map_Nested.
+      minLength: 1
+      type: string
     DefaultsBoundary:
       description: |-
         DefaultsBoundary parks each default literal AT or near the validator
@@ -1438,45 +1660,16 @@ components:
       - combo
       - standalone
       type: string
-    DoConflictReqBody:
+    DoneResp:
       description: |-
-        E: an optional primitive map value is nullable in both Go (`map[string]*int`)
-        and OpenAPI (`additionalProperties: { type: [integer, "null"] }`).
+        DoneResp answers PostQueryBesideBody, GetSessionCookie and
+        RaiseErrorShapes.
       properties:
-        counts:
-          additionalProperties:
-            type:
-            - integer
-            - "null"
-          type: object
-        name:
-          type: string
+        done:
+          type: boolean
       required:
-      - counts
-      - name
+      - done
       type: object
-    DoConflictRespBody:
-      $ref: '#/components/schemas/Rg7Maps'
-    DoErrorsRespBody:
-      $ref: '#/components/schemas/Rg5Ok'
-    DoMixedReqBody:
-      properties:
-        name:
-          type: string
-        note:
-          minLength: 1
-          type: string
-      required:
-      - note
-      - name
-      type: object
-    DoOnlyReqBody:
-      allOf:
-      - $ref: '#/components/schemas/Rg2Audit'
-      - type: object
-      type: object
-    DoSearchRespBody:
-      $ref: '#/components/schemas/RgItemView'
     DuplicateEmailErr:
       description: Conflict error response (HTTP 409).
       properties:
@@ -1524,6 +1717,56 @@ components:
       type: object
     EchoARespBody:
       $ref: '#/components/schemas/A'
+    EchoArrayDefaultsReqBody:
+      properties:
+        methods:
+          default:
+          - card
+          - bank
+          items:
+            $ref: '#/components/schemas/PayMethod'
+          type:
+          - array
+          - "null"
+      type: object
+    EchoArrayDefaultsRespBody:
+      $ref: '#/components/schemas/ArrayDefaults'
+    EchoArrayOfMapsReqBody:
+      description: |-
+        Map_ArrayOfMaps holds an array of maps whose value carries a validator;
+        the validator checks each value of each map.
+      properties:
+        m:
+          items:
+            additionalProperties:
+              $ref: '#/components/schemas/MapTag'
+            type: object
+          type: array
+        plain:
+          additionalProperties:
+            $ref: '#/components/schemas/MapTag'
+          type: object
+      required:
+      - m
+      - plain
+      type: object
+    EchoArrayOfMapsRespBody:
+      $ref: '#/components/schemas/Map_ArrayOfMaps'
+    EchoAuditedHostReqBody:
+      allOf:
+      - $ref: '#/components/schemas/CreatedAudit'
+      - properties:
+          name:
+            type: string
+        required:
+        - name
+        type: object
+      description: |-
+        AuditedHost takes a body field the server requires and validates from its
+        mixin.
+      type: object
+    EchoAuditedHostRespBody:
+      $ref: '#/components/schemas/AuditedHost'
     EchoBReqBody:
       properties:
         a:
@@ -1537,36 +1780,10 @@ components:
       type: object
     EchoBRespBody:
       $ref: '#/components/schemas/B'
-    EchoBagReqBody:
-      properties:
-        byUser:
-          additionalProperties:
-            $ref: '#/components/schemas/Rg5Tag'
-          type: object
-      required:
-      - byUser
-      type: object
-    EchoBagRespBody:
-      $ref: '#/components/schemas/Rg5Bag'
-    EchoBigMulReqBody:
+    EchoBigBoundsReqBody:
       description: |-
-        A @multipleOf divisor beyond 2^53 stays exact in OpenAPI (raw json.Number)
-        matching the int64 the validator enforces.
-      properties:
-        "n":
-          format: int64
-          multipleOf: 9007199254740993
-          type: integer
-      required:
-      - "n"
-      type: object
-    EchoBigMulRespBody:
-      $ref: '#/components/schemas/Rg4BigMul'
-    EchoBigReqBody:
-      description: |-
-        Integer bounds beyond 2^53 stay exact in OpenAPI (emitted as a raw
-        json.Number) so the spec bound matches the int64 the validator enforces;
-        small bounds keep the native form.
+        NumberBigBounds holds bounds past 2^53: OpenAPI writes them exactly, so
+        the documented bound is the int64 the validator enforces.
       properties:
         bigmin:
           format: int64
@@ -1585,8 +1802,22 @@ components:
       - bigmin
       - small
       type: object
-    EchoBigRespBody:
-      $ref: '#/components/schemas/Rg2Big'
+    EchoBigBoundsRespBody:
+      $ref: '#/components/schemas/NumberBigBounds'
+    EchoBigMultipleOfReqBody:
+      description: |-
+        NumberBigMultipleOf carries a @multipleOf divisor past 2^53, written
+        exactly in OpenAPI.
+      properties:
+        "n":
+          format: int64
+          multipleOf: 9007199254740993
+          type: integer
+      required:
+      - "n"
+      type: object
+    EchoBigMultipleOfRespBody:
+      $ref: '#/components/schemas/NumberBigMultipleOf'
     EchoBoundaryReqBody:
       description: |-
         DefaultsBoundary parks each default literal AT or near the validator
@@ -1617,6 +1848,15 @@ components:
       type: object
     EchoBoundaryRespBody:
       $ref: '#/components/schemas/DefaultsBoundary'
+    EchoBoxHolderReqBody:
+      properties:
+        box:
+          $ref: '#/components/schemas/ArrayBoxOfUUIDItem'
+      required:
+      - box
+      type: object
+    EchoBoxHolderRespBody:
+      $ref: '#/components/schemas/BoxHolder'
     EchoCatalogReqBody:
       description: |-
         Catalog stores users by string key. The generator walks the map per
@@ -1671,7 +1911,7 @@ components:
       type: object
     EchoCollectionRespBody:
       $ref: '#/components/schemas/DefaultsCollection'
-    EchoCollideReqBody:
+    EchoCollidingNamesReqBody:
       allOf:
       - properties:
           user_id:
@@ -1698,23 +1938,23 @@ components:
           required:
           - user_id
       description: |-
-        Two fields whose Go identifiers collide (`userId` / `user_id` both
-        PascalCase to `UserID`). The struct renderer disambiguates the second to
-        `UserID_2`; the validator (@minLength + the type-level @requiresOneOf) and
-        the body writers must read the SAME dedup-resolved names, not emit
-        `v.UserID` twice and leave `UserID_2` unread.
+        CollidingNames holds two fields whose Go names collide: the second
+        becomes UserID_2, and the validator and the body writers read both.
       type: object
-    EchoCollideRespBody:
-      $ref: '#/components/schemas/Rg4Collide'
-    EchoCompositeReqBody:
+    EchoCollidingNamesRespBody:
+      $ref: '#/components/schemas/CollidingNames'
+    EchoCompositeArgReqBody:
+      description: |-
+        CompositeArg instantiates a generic over the composite argument
+        map<string, SkuItem> and still enforces SkuItem's constraint.
       properties:
         page:
-          $ref: '#/components/schemas/Rg5PageOfMapOfStringAndRg5Item'
+          $ref: '#/components/schemas/SkuPageOfMapOfStringAndSkuItem'
       required:
       - page
       type: object
-    EchoCompositeRespBody:
-      $ref: '#/components/schemas/Rg5Composite'
+    EchoCompositeArgRespBody:
+      $ref: '#/components/schemas/CompositeArg'
     EchoCubeReqBody:
       description: |-
         Cube is the 3-D slice of nested case. Three nested for-loops
@@ -1735,9 +1975,8 @@ components:
       $ref: '#/components/schemas/Cube'
     EchoEnumMapsReqBody:
       description: |-
-        Enum-keyed maps whose propertyNames carry the wire values - "red"/"green"
-        for the string enum, "1"/"5"/"10" for the int enum (JSON object keys are
-        strings).
+        EnumKeyedMaps documents its keys' wire values as propertyNames: "red",
+        "green" and "blue" for the string enum, "1", "5" and "10" for the int enum.
       properties:
         byColor:
           additionalProperties:
@@ -1764,7 +2003,7 @@ components:
       - byPrio
       type: object
     EchoEnumMapsRespBody:
-      $ref: '#/components/schemas/RgEnumMaps'
+      $ref: '#/components/schemas/EnumKeyedMaps'
     EchoEnumReqBody:
       description: |-
         DefaultsEnum uses an enum default (bare ident → Go const). The enum
@@ -1778,25 +2017,24 @@ components:
       type: object
     EchoEnumRespBody:
       $ref: '#/components/schemas/DefaultsEnum'
-    EchoFmtReqBody:
+    EchoGenericMixinHostReqBody:
+      allOf:
+      - $ref: '#/components/schemas/MixinPageOfMixinItem'
+      - properties:
+          name:
+            type: string
+        required:
+        - name
+        type: object
       description: |-
-        A @nullable string carrying @format; the validator nil-guards the deref
-        so a JSON null is handled without dereferencing.
-      properties:
-        email:
-          format: email
-          type:
-          - string
-          - "null"
-      required:
-      - email
+        GenericMixinHost embeds the generic instance MixinPage<MixinItem>: the
+        embed promotes the instance's fields, and OpenAPI allOf-refs the
+        MixinPageOfMixinItem component.
       type: object
-    EchoFmtRespBody:
-      $ref: '#/components/schemas/Rg2Fmt'
-    EchoHeadedReqBody:
-      description: |-
-        E: an optional primitive map value is nullable in both Go (`map[string]*int`)
-        and OpenAPI (`additionalProperties: { type: [integer, "null"] }`).
+    EchoGenericMixinHostRespBody:
+      $ref: '#/components/schemas/GenericMixinHost'
+    EchoHeaderMetadataReqBody:
+      description: CountsPayload is the body of EchoHeaderMetadata and PostSharedStatus.
       properties:
         counts:
           additionalProperties:
@@ -1810,36 +2048,48 @@ components:
       - counts
       - name
       type: object
-    EchoHeadedRespBody:
+    EchoHeaderMetadataRespBody:
       properties:
         ok:
           type: boolean
       required:
       - ok
       type: object
-    EchoHolderReqBody:
+    EchoHeaderedRespReqBody:
+      description: ResponseAudit brings the body field HeaderedResp keeps beside its
+        header.
       properties:
-        box:
-          $ref: '#/components/schemas/Rg7BoxOfRg7Item'
+        createdAt:
+          minLength: 1
+          type: string
       required:
-      - box
+      - createdAt
       type: object
-    EchoHolderRespBody:
-      $ref: '#/components/schemas/Rg7Holder'
+    EchoHeaderedRespRespBody:
+      properties:
+        createdAt:
+          minLength: 1
+          type: string
+        name:
+          type: string
+      required:
+      - createdAt
+      - name
+      type: object
     EchoLengthsReqBody:
       description: |-
-        Exact-length string, range form, and bytes length. The validator counts
-        the raw byte length OpenAPI advertises for the bytes fields.
+        ScalarLengths holds exact and range string lengths and bytes lengths; the
+        validator counts a bytes value in raw bytes, as OpenAPI documents.
       properties:
         code:
-          $ref: '#/components/schemas/RgCode'
+          $ref: '#/components/schemas/PinCode'
         inline:
           maxLength: 6
           minLength: 6
           type: string
         nulToken:
           anyOf:
-          - $ref: '#/components/schemas/RgToken'
+          - $ref: '#/components/schemas/Token'
           - type: "null"
           minLength: 8
         raw:
@@ -1850,7 +2100,7 @@ components:
           minLength: 2
           type: string
         token:
-          $ref: '#/components/schemas/RgToken'
+          $ref: '#/components/schemas/Token'
       required:
       - code
       - inline
@@ -1859,7 +2109,7 @@ components:
       - raw
       type: object
     EchoLengthsRespBody:
-      $ref: '#/components/schemas/RgLengths'
+      $ref: '#/components/schemas/ScalarLengths'
     EchoListPageReqBody:
       description: |-
         ListPage simulates the "page wrapper" pattern: an array of one
@@ -1879,6 +2129,10 @@ components:
       type: object
     EchoListPageRespBody:
       $ref: '#/components/schemas/ListPage'
+    EchoListingReqBody:
+      $ref: '#/components/schemas/ListingOfEmailAddress'
+    EchoListingRespBody:
+      $ref: '#/components/schemas/ListingOfEmailAddress'
     EchoMatrixReqBody:
       description: |-
         Matrix is the 2-D slice of nested case. Codegen emits two nested
@@ -1895,20 +2149,10 @@ components:
       type: object
     EchoMatrixRespBody:
       $ref: '#/components/schemas/Matrix'
-    EchoMixedReqBody:
-      properties:
-        payload:
-          minLength: 1
-          type: string
-      required:
-      - payload
-      type: object
-    EchoMixedRespBody:
-      $ref: '#/components/schemas/Rg5Ok'
     EchoMultipleOfReqBody:
       description: |-
-        A whole-valued float literal `@multipleOf(5.0)` on an int field,
-        enforced by both validate and OpenAPI.
+        NumberMultipleOf carries @multipleOf on an int field, enforced by the
+        validator and documented by OpenAPI.
       properties:
         qty:
           multipleOf: 5
@@ -1917,34 +2161,36 @@ components:
       - qty
       type: object
     EchoMultipleOfRespBody:
-      $ref: '#/components/schemas/Rg3MultipleOf'
-    EchoNestedReqBody:
+      $ref: '#/components/schemas/NumberMultipleOf'
+    EchoNestedMapsReqBody:
+      description: |-
+        Map_Nested holds a map of maps and a map of arrays of maps whose values
+        carry a validator; the validator checks every inner value.
       properties:
         maa:
           additionalProperties:
             items:
               additionalProperties:
-                $ref: '#/components/schemas/Rg3Tag'
+                $ref: '#/components/schemas/DeepTag'
               type: object
             type: array
           type: object
         mm:
           additionalProperties:
             additionalProperties:
-              $ref: '#/components/schemas/Rg3Tag'
+              $ref: '#/components/schemas/DeepTag'
             type: object
           type: object
       required:
       - mm
       - maa
       type: object
-    EchoNestedRespBody:
-      $ref: '#/components/schemas/Rg3NestedMaps'
-    EchoNilableReqBody:
+    EchoNestedMapsRespBody:
+      $ref: '#/components/schemas/Map_Nested'
+    EchoNilableNullableReqBody:
       description: |-
-        On a nilable type (bytes / slice / map), `@nullable` keeps a length /
-        count constraint nil-guarded so an explicit null passes the validator,
-        matching the OpenAPI null-union.
+        NilableNullable nil-guards the length and item checks of its @nullable
+        fields: an explicit null passes, as the null union in OpenAPI says.
       properties:
         blob:
           format: byte
@@ -1970,8 +2216,8 @@ components:
       - ids
       - tags
       type: object
-    EchoNilableRespBody:
-      $ref: '#/components/schemas/Rg5Nilable'
+    EchoNilableNullableRespBody:
+      $ref: '#/components/schemas/NilableNullable'
     EchoNodeReqBody:
       description: |-
         Node is the canonical recursive tree node. `children Node[]` is
@@ -1991,30 +2237,44 @@ components:
       type: object
     EchoNodeRespBody:
       $ref: '#/components/schemas/Node'
+    EchoNullableFormatReqBody:
+      description: |-
+        Str_NullableFormat checks a present email and passes a JSON null: the
+        validator nil-guards the dereference.
+      properties:
+        email:
+          format: email
+          type:
+          - string
+          - "null"
+      required:
+      - email
+      type: object
+    EchoNullableFormatRespBody:
+      $ref: '#/components/schemas/Str_NullableFormat'
     EchoNullableScalarsReqBody:
       description: |-
-        Scalar fields combining @nullable with a field-level constraint. The
-        dereferenced primitive is checked without an extra nil-guard, and the
-        field surfaces in OpenAPI as anyOf:[{$ref}, {type:null}] with the bound
-        as a sibling.
+        NullableScalars puts @nullable beside a field-level constraint: the
+        validator checks the dereferenced value, and OpenAPI documents the bound
+        beside anyOf [$ref, null].
       properties:
         nulCapped:
           anyOf:
-          - $ref: '#/components/schemas/RgCents'
+          - $ref: '#/components/schemas/Count'
           - type: "null"
           maximum: 100
         nulEmail:
           anyOf:
-          - $ref: '#/components/schemas/RgEmail'
+          - $ref: '#/components/schemas/EmailAddress'
           - type: "null"
         optCapped:
           anyOf:
-          - $ref: '#/components/schemas/RgCents'
+          - $ref: '#/components/schemas/Count'
           - type: "null"
           maximum: 50
         plainCents:
           allOf:
-          - $ref: '#/components/schemas/RgCents'
+          - $ref: '#/components/schemas/Count'
           - maximum: 1000
       required:
       - nulCapped
@@ -2022,7 +2282,26 @@ components:
       - plainCents
       type: object
     EchoNullableScalarsRespBody:
-      $ref: '#/components/schemas/RgNullableScalars'
+      $ref: '#/components/schemas/NullableScalars'
+    EchoOptionalValuesReqBody:
+      description: |-
+        Map_OptionalValue holds optional primitive map values: map[string]*int in
+        Go, additionalProperties [integer, "null"] in OpenAPI.
+      properties:
+        counts:
+          additionalProperties:
+            type:
+            - integer
+            - "null"
+          type: object
+        name:
+          type: string
+      required:
+      - counts
+      - name
+      type: object
+    EchoOptionalValuesRespBody:
+      $ref: '#/components/schemas/Map_OptionalValue'
     EchoOrgReqBody:
       description: |-
         Org demonstrates OPTIONAL slice of nested. The Go field is
@@ -2039,10 +2318,6 @@ components:
       type: object
     EchoOrgRespBody:
       $ref: '#/components/schemas/Org'
-    EchoPageReqBody:
-      $ref: '#/components/schemas/RgPageOfRgEmail'
-    EchoPageRespBody:
-      $ref: '#/components/schemas/RgPageOfRgEmail'
     EchoPersonReqBody:
       description: |-
         Person → Home → Room → Furniture chain. Each level adds one
@@ -2115,25 +2390,25 @@ components:
       $ref: '#/components/schemas/PresenceMatrix'
     EchoRefMetaReqBody:
       description: |-
-        @nullable on a named ref emits the null union; @default / @deprecated on
-        a non-optional ref ride a wrapper schema.
+        RefMeta documents a @nullable named ref as a null union, and @default and
+        @deprecated beside the $ref.
       properties:
         depColor:
           allOf:
-          - $ref: '#/components/schemas/RgColor'
+          - $ref: '#/components/schemas/Shade'
           deprecated: true
           description: 'Deprecated: use status'
         nulColor:
           anyOf:
-          - $ref: '#/components/schemas/RgColor'
+          - $ref: '#/components/schemas/Shade'
           - type: "null"
         nulInner:
           anyOf:
-          - $ref: '#/components/schemas/RgInner'
+          - $ref: '#/components/schemas/RefInner'
           - type: "null"
         roleReq:
           anyOf:
-          - $ref: '#/components/schemas/RgCents'
+          - $ref: '#/components/schemas/Count'
           - type: "null"
           default: 7
       required:
@@ -2142,7 +2417,7 @@ components:
       - depColor
       type: object
     EchoRefMetaRespBody:
-      $ref: '#/components/schemas/RgRefMeta'
+      $ref: '#/components/schemas/RefMeta'
     EchoReqBody:
       description: |-
         Str_EchoReq is the request body for the service's echo endpoint -
@@ -2180,28 +2455,20 @@ components:
       type: object
     EchoRespBody:
       $ref: '#/components/schemas/Str_EchoResp'
-    EchoRespReqBody:
+    EchoScalarKeyMapReqBody:
       description: |-
-        A response mixing a mixin and a @header field keeps the mixin's body
-        fields (createdAt) in the per-operation response body schema.
+        Map_ScalarKey validates each key as a MemberID and each value as a
+        MemberTag.
       properties:
-        createdAt:
-          minLength: 1
-          type: string
+        byUser:
+          additionalProperties:
+            $ref: '#/components/schemas/MemberTag'
+          type: object
       required:
-      - createdAt
+      - byUser
       type: object
-    EchoRespRespBody:
-      properties:
-        createdAt:
-          minLength: 1
-          type: string
-        name:
-          type: string
-      required:
-      - createdAt
-      - name
-      type: object
+    EchoScalarKeyMapRespBody:
+      $ref: '#/components/schemas/Map_ScalarKey'
     EchoScalarReqBody:
       description: |-
         DefaultsScalar uses a numeric-scalar default. The literal is a plain
@@ -2217,27 +2484,6 @@ components:
       type: object
     EchoScalarRespBody:
       $ref: '#/components/schemas/DefaultsScalar'
-    EchoStackedReqBody:
-      description: |-
-        Stacked same-family bounds intersect in OpenAPI exactly as the runtime
-        validator enforces them (tightest wins): `@gte(10) @lte(90) @range(0,100)`
-        advertises minimum 10 / maximum 90, and `@length(5) @minLength(3)
-        @maxLength(10)` advertises an exact length of 5.
-      properties:
-        a:
-          maxLength: 5
-          minLength: 5
-          type: string
-        b:
-          maximum: 90
-          minimum: 10
-          type: integer
-      required:
-      - b
-      - a
-      type: object
-    EchoStackedRespBody:
-      $ref: '#/components/schemas/Rg6Stacked'
     EchoTeamReqBody:
       description: |-
         Team gates `members` with both the array-level bound decorators
@@ -2343,6 +2589,24 @@ components:
       type: object
     EchoWidthRespBody:
       $ref: '#/components/schemas/DefaultsWidth'
+    EchoWireDefaultsReqBody:
+      description: |-
+        WireDefaults documents each enum @default as the member's wire value
+        ("RED", 9), not its name.
+      properties:
+        c:
+          anyOf:
+          - $ref: '#/components/schemas/Hue'
+          - type: "null"
+          default: RED
+        l:
+          anyOf:
+          - $ref: '#/components/schemas/Grade'
+          - type: "null"
+          default: 9
+      type: object
+    EchoWireDefaultsRespBody:
+      $ref: '#/components/schemas/WireDefaults'
     EchoWireRespBody:
       $ref: '#/components/schemas/Item'
     EchoWrappedReq:
@@ -2363,15 +2627,20 @@ components:
       type: object
     EchoWrappedRespBody:
       $ref: '#/components/schemas/Wrapped'
-    EchoZeroReqBody:
+    EchoZeroMemberReqBody:
+      description: ZeroMember accepts the zero-valued member in its required enum
+        field.
       properties:
         status:
-          $ref: '#/components/schemas/Rg3Status'
+          $ref: '#/components/schemas/MemberStatus'
       required:
       - status
       type: object
-    EchoZeroRespBody:
-      $ref: '#/components/schemas/Rg3Zero'
+    EchoZeroMemberRespBody:
+      $ref: '#/components/schemas/ZeroMember'
+    EmailAddress:
+      format: email
+      type: string
     EmailTakenErr:
       description: Conflict error response (HTTP 409).
       properties:
@@ -2380,6 +2649,9 @@ components:
           type: string
       required:
       - email
+      type: object
+    EmptyReq:
+      description: EmptyReq is the request of RaiseErrorShapes.
       type: object
     EnqueueJobReqBody:
       description: |-
@@ -2420,6 +2692,46 @@ components:
       required:
       - line
       type: object
+    EnumKeyedMaps:
+      description: |-
+        EnumKeyedMaps documents its keys' wire values as propertyNames: "red",
+        "green" and "blue" for the string enum, "1", "5" and "10" for the int enum.
+      properties:
+        byColor:
+          additionalProperties:
+            type: integer
+          propertyNames:
+            enum:
+            - red
+            - green
+            - blue
+            type: string
+          type: object
+        byPrio:
+          additionalProperties:
+            type: integer
+          propertyNames:
+            enum:
+            - "1"
+            - "5"
+            - "10"
+            type: string
+          type: object
+      required:
+      - byColor
+      - byPrio
+      type: object
+    ErrorHeaderMeta:
+      description: |-
+        ErrorHeaderMeta brings a @header field into HeaderMixinError: the error
+        writes it as a response header, and OpenAPI documents it as one.
+      properties:
+        note:
+          minLength: 1
+          type: string
+      required:
+      - note
+      type: object
     ExactReq:
       description: ExactReq wraps NumberExact (exact-match shapes).
       properties:
@@ -2432,10 +2744,45 @@ components:
       $ref: '#/components/schemas/PtResp'
     FeaturedRespBody:
       $ref: '#/components/schemas/RtItem'
+    FieldRulesFailedErr:
+      description: UnprocessableEntity error response (HTTP 422).
+      properties:
+        attempts:
+          maximum: 10
+          minimum: 0
+          type: integer
+        field:
+          maxLength: 40
+          minLength: 1
+          type: string
+        hint:
+          type:
+          - string
+          - "null"
+        legacy:
+          deprecated: true
+          description: 'Deprecated: removed'
+          type: string
+      required:
+      - attempts
+      - field
+      - legacy
+      type: object
     FilterTagsRespBody:
-      $ref: '#/components/schemas/Rg6Ok'
-    FindSessionRespBody:
-      $ref: '#/components/schemas/Rg5Ok'
+      $ref: '#/components/schemas/OkResp'
+    ForbiddenDetailsErr:
+      description: Forbidden error response (HTTP 403).
+      properties:
+        note:
+          type: string
+        reason:
+          example: rate limit hit
+          type:
+          - string
+          - "null"
+      required:
+      - note
+      type: object
     FormFileReq:
       description: |-
         FormFileReq drives the multipart-form upload path. The `file` type
@@ -2463,6 +2810,20 @@ components:
       required:
       - name
       - weight
+      type: object
+    GenericMixinHost:
+      allOf:
+      - $ref: '#/components/schemas/MixinPageOfMixinItem'
+      - properties:
+          name:
+            type: string
+        required:
+        - name
+        type: object
+      description: |-
+        GenericMixinHost embeds the generic instance MixinPage<MixinItem>: the
+        embed promotes the instance's fields, and OpenAPI allOf-refs the
+        MixinPageOfMixinItem component.
       type: object
     GenericOverEnum:
       description: |-
@@ -2498,6 +2859,8 @@ components:
       $ref: '#/components/schemas/Audited'
     GetByKeyRespBody:
       $ref: '#/components/schemas/XOwner'
+    GetItemByPathRespBody:
+      $ref: '#/components/schemas/ItemView'
     GetItemReq:
       description: |-
         GetItemReq is the path-only DTO reused by GetItem and DeleteItem.
@@ -2529,6 +2892,15 @@ components:
       type: object
     GetProfileRespBody:
       $ref: '#/components/schemas/Profile'
+    GetRateRespRespBody:
+      properties:
+        data:
+          type: string
+      required:
+      - data
+      type: object
+    GetSessionCookieRespBody:
+      $ref: '#/components/schemas/DoneResp'
     GetSharedOwnerRespBody:
       $ref: '#/components/schemas/XOwner'
     GetThirdRespBody:
@@ -2546,6 +2918,12 @@ components:
         `id` field is a local `string @path` that replays shared.ID's length
         cap inline via @length(1, 64).
       type: object
+    Grade:
+      description: Grade is an int enum whose wire values differ from its member names.
+      enum:
+      - 1
+      - 9
+      type: integer
     HeaderEchoServiceListItemsRespBody:
       properties:
         items:
@@ -2554,6 +2932,27 @@ components:
           type: array
       required:
       - items
+      type: object
+    HeaderMetadataResp:
+      description: |-
+        HeaderMetadataResp sends an ETag response header that OpenAPI documents as
+        deprecated, with an example.
+      properties:
+        ok:
+          type: boolean
+      required:
+      - ok
+      type: object
+    HeaderMixinError:
+      allOf:
+      - $ref: '#/components/schemas/ErrorHeaderMeta'
+      - properties:
+          resource:
+            type: string
+        required:
+        - resource
+        type: object
+      description: Conflict error response (HTTP 409).
       type: object
     HeaderOptionalReq:
       description: |-
@@ -2567,6 +2966,19 @@ components:
         `@header("X-API-Key")` argument names the wire-side header so the
         generated handler reads from the canonical HTTP name rather than
         the Go field's PascalCase form (`r.Header.Get("X-API-Key")`).
+      type: object
+    HeaderedResp:
+      allOf:
+      - $ref: '#/components/schemas/ResponseAudit'
+      - properties:
+          name:
+            type: string
+        required:
+        - name
+        type: object
+      description: |-
+        HeaderedResp sends a @header beside a mixin; its response body schema
+        keeps the mixin's createdAt.
       type: object
     HealthResp:
       description: |-
@@ -2593,6 +3005,12 @@ components:
       required:
       - rooms
       type: object
+    Hue:
+      description: Hue is a string enum whose wire values differ from its member names.
+      enum:
+      - RED
+      - GREEN
+      type: string
     ID:
       description: |-
         ID is the cross-package opaque identifier shape. Referenced as
@@ -2711,6 +3129,11 @@ components:
       required:
       - items
       type: object
+    ItemPath:
+      description: |-
+        ItemPath binds id as an int, uid as an int scalar and kind as a string
+        enum from the path.
+      type: object
     ItemStocked:
       allOf:
       - $ref: '#/components/schemas/InventoryHeader'
@@ -2722,6 +3145,16 @@ components:
         required:
         - quantity
         type: object
+      type: object
+    ItemView:
+      properties:
+        id:
+          type: integer
+        label:
+          type: string
+      required:
+      - id
+      - label
       type: object
     Key:
       description: Key is a non-empty lookup key.
@@ -2888,6 +3321,22 @@ components:
       type: object
     ListUsersRespBody:
       $ref: '#/components/schemas/ListUsersResp'
+    ListingOfEmailAddress:
+      description: |-
+        Listing is a generic whose instances $ref their instance component, not
+        the bare type parameter.
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/EmailAddress'
+          type: array
+        total:
+          minimum: 0
+          type: integer
+      required:
+      - items
+      - total
+      type: object
     LoginRespBody:
       $ref: '#/components/schemas/AccountLoginResp'
     LogoutRespBody:
@@ -2896,6 +3345,25 @@ components:
       $ref: '#/components/schemas/XDelegatedEnum'
     LookupOrderRespBody:
       $ref: '#/components/schemas/ScalarsOrder'
+    Map_ArrayOfMaps:
+      description: |-
+        Map_ArrayOfMaps holds an array of maps whose value carries a validator;
+        the validator checks each value of each map.
+      properties:
+        m:
+          items:
+            additionalProperties:
+              $ref: '#/components/schemas/MapTag'
+            type: object
+          type: array
+        plain:
+          additionalProperties:
+            $ref: '#/components/schemas/MapTag'
+          type: object
+      required:
+      - m
+      - plain
+      type: object
     Map_ArrayValue:
       description: |-
         Map_ArrayValue stacks an array INSIDE a map value: each value is a
@@ -2962,6 +3430,29 @@ components:
       required:
       - index
       type: object
+    Map_Nested:
+      description: |-
+        Map_Nested holds a map of maps and a map of arrays of maps whose values
+        carry a validator; the validator checks every inner value.
+      properties:
+        maa:
+          additionalProperties:
+            items:
+              additionalProperties:
+                $ref: '#/components/schemas/DeepTag'
+              type: object
+            type: array
+          type: object
+        mm:
+          additionalProperties:
+            additionalProperties:
+              $ref: '#/components/schemas/DeepTag'
+            type: object
+          type: object
+      required:
+      - mm
+      - maa
+      type: object
     Map_Optional:
       description: |-
         Map_Optional is the optional-map case. The field carries no bounds,
@@ -2975,6 +3466,23 @@ components:
           - object
           - "null"
       type: object
+    Map_OptionalValue:
+      description: |-
+        Map_OptionalValue holds optional primitive map values: map[string]*int in
+        Go, additionalProperties [integer, "null"] in OpenAPI.
+      properties:
+        counts:
+          additionalProperties:
+            type:
+            - integer
+            - "null"
+          type: object
+        name:
+          type: string
+      required:
+      - counts
+      - name
+      type: object
     Map_Plain:
       description: |-
         Map_Plain is the simplest case - no validators, no scalars, no
@@ -2987,6 +3495,18 @@ components:
           type: object
       required:
       - counts
+      type: object
+    Map_ScalarKey:
+      description: |-
+        Map_ScalarKey validates each key as a MemberID and each value as a
+        MemberTag.
+      properties:
+        byUser:
+          additionalProperties:
+            $ref: '#/components/schemas/MemberTag'
+          type: object
+      required:
+      - byUser
       type: object
     Map_ScalarValue:
       description: |-
@@ -3077,6 +3597,11 @@ components:
       type: object
     MapStructRespBody:
       $ref: '#/components/schemas/Map_StructValue'
+    MapTag:
+      description: MapTag is the value scalar of Map_ArrayOfMaps.
+      maxLength: 20
+      minLength: 1
+      type: string
     MapValueGeneric:
       description: |-
         MapValueGeneric verifies that generic instances ride the `map<K, V>`
@@ -3129,6 +3654,28 @@ components:
       type: object
     MeRespBody:
       $ref: '#/components/schemas/AccountProfile'
+    MemberID:
+      description: |-
+        MemberID is a numeric map key: its @gte(1) runs at runtime, and
+        propertyNames leaves it out because JSON object keys are strings.
+      minimum: 1
+      type: integer
+    MemberStatus:
+      description: MemberStatus has 0 as a real member.
+      enum:
+      - 0
+      - 1
+      - 2
+      type: integer
+    MemberTag:
+      description: MemberTag is the value of Map_ScalarKey.
+      properties:
+        name:
+          minLength: 1
+          type: string
+      required:
+      - name
+      type: object
     MixedReq:
       description: MixedReq wraps NumberMixed (mixed strict/inclusive).
       properties:
@@ -3136,6 +3683,49 @@ components:
           $ref: '#/components/schemas/NumberMixed'
       required:
       - body
+      type: object
+    MixinBodyReq:
+      allOf:
+      - $ref: '#/components/schemas/BodyOnlyMixin'
+      - type: object
+      description: |-
+        MixinBodyReq takes its whole body from a mixin: the server decodes and
+        validates it, and OpenAPI documents a request body.
+      type: object
+    MixinItem:
+      properties:
+        id:
+          type: string
+      required:
+      - id
+      type: object
+    MixinPageOfMixinItem:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/MixinItem'
+          type: array
+        total:
+          minimum: 0
+          type: integer
+      required:
+      - items
+      - total
+      type: object
+    MixinWireBodyReq:
+      allOf:
+      - $ref: '#/components/schemas/WireMixin'
+      - $ref: '#/components/schemas/BodyMixin'
+      - properties:
+          name:
+            type: string
+        required:
+        - name
+        type: object
+      description: |-
+        MixinWireBodyReq takes wire fields (traceId, sortBy) and a body field
+        (note) from mixins beside its own body field: the wire fields bind as
+        parameters, the body fields ride the request body.
       type: object
     Money:
       description: |-
@@ -3247,6 +3837,35 @@ components:
         type-level cross-field validators COMPOSE with nested validation
         - the cross-field check runs AFTER every nested Validate() call.
       type: object
+    NilableNullable:
+      description: |-
+        NilableNullable nil-guards the length and item checks of its @nullable
+        fields: an explicit null passes, as the null union in OpenAPI says.
+      properties:
+        blob:
+          format: byte
+          type:
+          - string
+          - "null"
+        ids:
+          items:
+            type: integer
+          minItems: 2
+          type:
+          - array
+          - "null"
+        tags:
+          additionalProperties:
+            type: integer
+          minProperties: 1
+          type:
+          - object
+          - "null"
+      required:
+      - blob
+      - ids
+      - tags
+      type: object
     Node:
       description: |-
         Node is the canonical recursive tree node. `children Node[]` is
@@ -3287,6 +3906,31 @@ components:
       - resource
       - id
       type: object
+    NullableDetail:
+      description: NullableDetail is the struct a NullableFieldsErr body may send
+        as null.
+      properties:
+        name:
+          minLength: 1
+          type: string
+      required:
+      - name
+      type: object
+    NullableFieldsErr:
+      description: BadRequest error response (HTTP 400).
+      properties:
+        detail:
+          anyOf:
+          - $ref: '#/components/schemas/NullableDetail'
+          - type: "null"
+        note:
+          type:
+          - string
+          - "null"
+      required:
+      - detail
+      - note
+      type: object
     NullableFormReq:
       description: |-
         NullableFormReq is a multipart request (the `doc` file makes it
@@ -3310,6 +3954,69 @@ components:
       type: object
     NullableFormRespBody:
       $ref: '#/components/schemas/Item'
+    NullableScalars:
+      description: |-
+        NullableScalars puts @nullable beside a field-level constraint: the
+        validator checks the dereferenced value, and OpenAPI documents the bound
+        beside anyOf [$ref, null].
+      properties:
+        nulCapped:
+          anyOf:
+          - $ref: '#/components/schemas/Count'
+          - type: "null"
+          maximum: 100
+        nulEmail:
+          anyOf:
+          - $ref: '#/components/schemas/EmailAddress'
+          - type: "null"
+        optCapped:
+          anyOf:
+          - $ref: '#/components/schemas/Count'
+          - type: "null"
+          maximum: 50
+        plainCents:
+          allOf:
+          - $ref: '#/components/schemas/Count'
+          - maximum: 1000
+      required:
+      - nulCapped
+      - nulEmail
+      - plainCents
+      type: object
+    NumberBigBounds:
+      description: |-
+        NumberBigBounds holds bounds past 2^53: OpenAPI writes them exactly, so
+        the documented bound is the int64 the validator enforces.
+      properties:
+        bigmin:
+          format: int64
+          minimum: 9223372036854775807
+          type: integer
+        minId:
+          format: int64
+          minimum: 9007199254740993
+          type: integer
+        small:
+          maximum: 100
+          minimum: 5
+          type: integer
+      required:
+      - minId
+      - bigmin
+      - small
+      type: object
+    NumberBigMultipleOf:
+      description: |-
+        NumberBigMultipleOf carries a @multipleOf divisor past 2^53, written
+        exactly in OpenAPI.
+      properties:
+        "n":
+          format: int64
+          multipleOf: 9007199254740993
+          type: integer
+      required:
+      - "n"
+      type: object
     NumberBoundary:
       description: |-
         NumberBoundary pins bounds at the exact type-capacity edges. The
@@ -3566,6 +4273,17 @@ components:
       - negRange
       - negStrict
       - floatGtLte
+      type: object
+    NumberMultipleOf:
+      description: |-
+        NumberMultipleOf carries @multipleOf on an int field, enforced by the
+        validator and documented by OpenAPI.
+      properties:
+        qty:
+          multipleOf: 5
+          type: integer
+      required:
+      - qty
       type: object
     NumberOptional:
       description: |-
@@ -3826,6 +4544,14 @@ components:
       - stepUint64
       - maxUint64
       - floorUint64
+      type: object
+    OkResp:
+      description: OkResp answers FilterTags.
+      properties:
+        ok:
+          type: boolean
+      required:
+      - ok
       type: object
     OptionalPage:
       description: |-
@@ -4249,6 +4975,23 @@ components:
           - string
           - "null"
       type: object
+    PairsStacked:
+      description: |-
+        PairsStacked stacks bounds of one family: OpenAPI documents their
+        intersection, which the validator enforces (10..90; a length of 5).
+      properties:
+        a:
+          maxLength: 5
+          minLength: 5
+          type: string
+        b:
+          maximum: 90
+          minimum: 10
+          type: integer
+      required:
+      - b
+      - a
+      type: object
     PairsStr:
       description: |-
         PairsStr stacks every string validator the generator supports on a
@@ -4382,6 +5125,12 @@ components:
         field that auto-binds (or explicitly binds) to the `{id}` segment
         of `/items/{id}`.
       type: object
+    PayMethod:
+      description: PayMethod is the element enum of ArrayDefaults.
+      enum:
+      - card
+      - bank
+      type: string
     PaymentSettledPayload:
       properties:
         amount:
@@ -4462,6 +5211,10 @@ components:
       required:
       - retry_after
       type: object
+    PinCode:
+      maxLength: 4
+      minLength: 4
+      type: string
     PingInheritRespBody:
       $ref: '#/components/schemas/VerResp'
     PingUptimeRespBody:
@@ -4488,6 +5241,52 @@ components:
       type: object
     PostDefaultRespBody:
       $ref: '#/components/schemas/XOwner'
+    PostMixinBodyReqBody:
+      allOf:
+      - $ref: '#/components/schemas/BodyOnlyMixin'
+      - type: object
+      description: |-
+        MixinBodyReq takes its whole body from a mixin: the server decodes and
+        validates it, and OpenAPI documents a request body.
+      type: object
+    PostMixinWireBodyReqBody:
+      properties:
+        name:
+          type: string
+        note:
+          minLength: 1
+          type: string
+      required:
+      - note
+      - name
+      type: object
+    PostQueryBesideBodyReqBody:
+      properties:
+        payload:
+          minLength: 1
+          type: string
+      required:
+      - payload
+      type: object
+    PostQueryBesideBodyRespBody:
+      $ref: '#/components/schemas/DoneResp'
+    PostSharedStatusReqBody:
+      description: CountsPayload is the body of EchoHeaderMetadata and PostSharedStatus.
+      properties:
+        counts:
+          additionalProperties:
+            type:
+            - integer
+            - "null"
+          type: object
+        name:
+          type: string
+      required:
+      - counts
+      - name
+      type: object
+    PostSharedStatusRespBody:
+      $ref: '#/components/schemas/CountsPayload'
     PresenceMatrix:
       description: |-
         PresenceMatrix is the canonical presence-state matrix.
@@ -4751,6 +5550,30 @@ components:
       $ref: '#/components/schemas/EntitlementsAuditTrail'
     PromoteWireRespBody:
       $ref: '#/components/schemas/XOwner'
+    PromotedContact:
+      allOf:
+      - $ref: '#/components/schemas/ContactPair'
+      - properties:
+          note:
+            type: string
+        required:
+        - note
+        type: object
+      - anyOf:
+        - properties:
+            email:
+              not:
+                type: "null"
+          required:
+          - email
+        - properties:
+            phone:
+              not:
+                type: "null"
+          required:
+          - phone
+      description: PromotedContact's @requiresOneOf names the fields its mixin brings.
+      type: object
     PtBlocksRespBody:
       $ref: '#/components/schemas/PtResp'
     PtReq:
@@ -4800,10 +5623,25 @@ components:
         `?tags=a&tags=b` lands as `["a", "b"]`. CSV (`?tags=a,b`) is NOT
         auto-split.
       type: object
+    QueryBesideBodyReq:
+      description: QueryBesideBodyReq keeps its @query field out of the JSON body
+        schema.
+      properties:
+        payload:
+          minLength: 1
+          type: string
+      required:
+      - payload
+      type: object
     QueryBoolReq:
       description: |-
         QueryBoolReq is the optional-bool query path: present → `*bool`,
         absent / empty → nil.
+      type: object
+    QueryDefaults:
+      description: |-
+        QueryDefaults binds query parameters that take their @default when the
+        request omits them.
       type: object
     QueryEnumReq:
       description: |-
@@ -4834,6 +5672,8 @@ components:
         generator emits a nil-guarded pointer write because Go has a clean
         "absent vs empty" sentinel for `*string`.
       type: object
+    RaiseErrorShapesRespBody:
+      $ref: '#/components/schemas/DoneResp'
     RateLimitExceededErr:
       description: TooManyRequests error response (HTTP 429).
       properties:
@@ -4854,12 +5694,20 @@ components:
       - code
       - message
       type: object
-    RateLimitedRespBody:
-      properties:
-        data:
-          type: string
-      required:
-      - data
+    RateMeta:
+      description: RateMeta brings a response header into RateResp.
+      type: object
+    RateResp:
+      allOf:
+      - $ref: '#/components/schemas/RateMeta'
+      - properties:
+          data:
+            type: string
+        required:
+        - data
+        type: object
+      description: RateResp writes the header its mixin brings, as OpenAPI documents
+        it.
       type: object
     RecordNotFoundErr:
       description: NotFound error response (HTTP 404).
@@ -4879,167 +5727,41 @@ components:
       required:
       - root
       type: object
-    RegressionBatch2EchoMapsReqBody:
+    RefInner:
       properties:
-        m:
-          items:
-            additionalProperties:
-              $ref: '#/components/schemas/Rg2Tag'
-            type: object
-          type: array
-        plain:
-          additionalProperties:
-            $ref: '#/components/schemas/Rg2Tag'
-          type: object
-      required:
-      - m
-      - plain
-      type: object
-    RegressionBatch2EchoMapsRespBody:
-      $ref: '#/components/schemas/Rg2Maps'
-    RegressionBatch3EchoContactReqBody:
-      allOf:
-      - $ref: '#/components/schemas/Rg3Pair'
-      - properties:
-          note:
-            type: string
-        required:
-        - note
-        type: object
-      - anyOf:
-        - properties:
-            email:
-              not:
-                type: "null"
-          required:
-          - email
-        - properties:
-            phone:
-              not:
-                type: "null"
-          required:
-          - phone
-      type: object
-    RegressionBatch3EchoContactRespBody:
-      $ref: '#/components/schemas/Rg3Contact'
-    RegressionBatch3EchoDefaultsReqBody:
-      properties:
-        c:
-          anyOf:
-          - $ref: '#/components/schemas/Rg3Color'
-          - type: "null"
-          default: RED
-        l:
-          anyOf:
-          - $ref: '#/components/schemas/Rg3Level'
-          - type: "null"
-          default: 9
-      type: object
-    RegressionBatch3EchoDefaultsRespBody:
-      $ref: '#/components/schemas/Rg3Defaults'
-    RegressionBatch4EchoHostReqBody:
-      allOf:
-      - $ref: '#/components/schemas/Rg4PageOfRg4Item'
-      - properties:
-          name:
-            type: string
-        required:
-        - name
-        type: object
-      type: object
-    RegressionBatch4EchoHostRespBody:
-      $ref: '#/components/schemas/Rg4Host'
-    RegressionBatch5EchoDefaultsReqBody:
-      properties:
-        methods:
-          default:
-          - card
-          - bank
-          items:
-            $ref: '#/components/schemas/Rg5Method'
-          type:
-          - array
-          - "null"
-      type: object
-    RegressionBatch5EchoDefaultsRespBody:
-      $ref: '#/components/schemas/Rg5Defaults'
-    RegressionBatch7EchoMapsReqBody:
-      description: |-
-        E: an optional primitive map value is nullable in both Go (`map[string]*int`)
-        and OpenAPI (`additionalProperties: { type: [integer, "null"] }`).
-      properties:
-        counts:
-          additionalProperties:
-            type:
-            - integer
-            - "null"
-          type: object
-        name:
+        id:
           type: string
       required:
-      - counts
-      - name
+      - id
       type: object
-    RegressionBatch7EchoMapsRespBody:
-      $ref: '#/components/schemas/Rg7Maps'
-    RegressionServiceEchoContactReqBody:
-      allOf:
-      - properties:
-          email:
-            type:
-            - string
-            - "null"
-          phone:
-            type:
-            - string
-            - "null"
-          sms:
-            type:
-            - string
-            - "null"
-        type: object
-      - anyOf:
-        - properties:
-            email:
-              not:
-                type: "null"
-          required:
-          - email
-        - properties:
-            phone:
-              not:
-                type: "null"
-          required:
-          - phone
-      - not:
-          properties:
-            email:
-              not:
-                type: "null"
-            sms:
-              not:
-                type: "null"
-          required:
-          - email
-          - sms
-      description: Cross-field fragments that surface in the request-body schema.
+    RefMeta:
+      description: |-
+        RefMeta documents a @nullable named ref as a null union, and @default and
+        @deprecated beside the $ref.
+      properties:
+        depColor:
+          allOf:
+          - $ref: '#/components/schemas/Shade'
+          deprecated: true
+          description: 'Deprecated: use status'
+        nulColor:
+          anyOf:
+          - $ref: '#/components/schemas/Shade'
+          - type: "null"
+        nulInner:
+          anyOf:
+          - $ref: '#/components/schemas/RefInner'
+          - type: "null"
+        roleReq:
+          anyOf:
+          - $ref: '#/components/schemas/Count'
+          - type: "null"
+          default: 7
+      required:
+      - nulInner
+      - nulColor
+      - depColor
       type: object
-    RegressionServiceEchoContactRespBody:
-      $ref: '#/components/schemas/RgContact'
-    RegressionServiceEchoHostReqBody:
-      allOf:
-      - $ref: '#/components/schemas/RgAudit'
-      - properties:
-          name:
-            type: string
-        required:
-        - name
-        type: object
-      type: object
-    RegressionServiceEchoHostRespBody:
-      $ref: '#/components/schemas/RgHost'
-    RegressionServiceGetItemRespBody:
-      $ref: '#/components/schemas/RgItemView'
     ReportCardCardListRespBody:
       $ref: '#/components/schemas/ReportCards'
     ReportCardList2RespBody:
@@ -5058,931 +5780,25 @@ components:
       type: object
     ReportListRespBody:
       $ref: '#/components/schemas/ReportCards'
-    Rg2Audit:
+    RequiredArrayQueryReq:
       description: |-
-        A request whose entire body comes from a mixin. The server decodes the
-        body and advertises a requestBody, and the validator enforces the
-        mixin's checks.
+        RequiredArrayQueryReq requires an array query parameter: an absent key
+        answers 400, an empty ?tags= passes.
+      type: object
+    RequiredParamsReq:
+      description: |-
+        RequiredParamsReq holds wire parameters without ? or @default: an absent
+        key answers 400, a present empty value passes.
+      type: object
+    ResponseAudit:
+      description: ResponseAudit brings the body field HeaderedResp keeps beside its
+        header.
       properties:
         createdAt:
           minLength: 1
           type: string
       required:
       - createdAt
-      type: object
-    Rg2Big:
-      description: |-
-        Integer bounds beyond 2^53 stay exact in OpenAPI (emitted as a raw
-        json.Number) so the spec bound matches the int64 the validator enforces;
-        small bounds keep the native form.
-      properties:
-        bigmin:
-          format: int64
-          minimum: 9223372036854775807
-          type: integer
-        minId:
-          format: int64
-          minimum: 9007199254740993
-          type: integer
-        small:
-          maximum: 100
-          minimum: 5
-          type: integer
-      required:
-      - minId
-      - bigmin
-      - small
-      type: object
-    Rg2BodyMix:
-      properties:
-        note:
-          minLength: 1
-          type: string
-      required:
-      - note
-      type: object
-    Rg2Fmt:
-      description: |-
-        A @nullable string carrying @format; the validator nil-guards the deref
-        so a JSON null is handled without dereferencing.
-      properties:
-        email:
-          format: email
-          type:
-          - string
-          - "null"
-      required:
-      - email
-      type: object
-    Rg2Maps:
-      properties:
-        m:
-          items:
-            additionalProperties:
-              $ref: '#/components/schemas/Rg2Tag'
-            type: object
-          type: array
-        plain:
-          additionalProperties:
-            $ref: '#/components/schemas/Rg2Tag'
-          type: object
-      required:
-      - m
-      - plain
-      type: object
-    Rg2Mixed:
-      allOf:
-      - $ref: '#/components/schemas/Rg2WireMix'
-      - $ref: '#/components/schemas/Rg2BodyMix'
-      - properties:
-          name:
-            type: string
-        required:
-        - name
-        type: object
-      type: object
-    Rg2Only:
-      allOf:
-      - $ref: '#/components/schemas/Rg2Audit'
-      - type: object
-      type: object
-    Rg2Required:
-      description: |-
-        Required (non-optional, no-@default) wire parameters; an absent key
-        returns 400, a present-but-empty value passes.
-      type: object
-    Rg2Tag:
-      description: |-
-        An array of maps whose value carries a validator. The validator walks
-        each map's elements, peeling the `[]` dimension before the map range.
-      maxLength: 20
-      minLength: 1
-      type: string
-    Rg2WireMix:
-      description: |-
-        A request mixing wire-bound mixin fields (traceId, sortBy), a body-only
-        mixin field (note), and a direct body field (name). The wire fields bind
-        and surface as OpenAPI parameters; the body fields, including the
-        mixin's, ride the request body schema.
-      type: object
-    Rg3Audit:
-      description: |-
-        A response mixing a mixin and a @header field keeps the mixin's body
-        fields (createdAt) in the per-operation response body schema.
-      properties:
-        createdAt:
-          minLength: 1
-          type: string
-      required:
-      - createdAt
-      type: object
-    Rg3Color:
-      description: |-
-        An enum `@default` resolves to the member's wire value in OpenAPI (the
-        `= "RED"` / `= 9` literal), not the DSL member name.
-      enum:
-      - RED
-      - GREEN
-      type: string
-    Rg3Contact:
-      allOf:
-      - $ref: '#/components/schemas/Rg3Pair'
-      - properties:
-          note:
-            type: string
-        required:
-        - note
-        type: object
-      - anyOf:
-        - properties:
-            email:
-              not:
-                type: "null"
-          required:
-          - email
-        - properties:
-            phone:
-              not:
-                type: "null"
-          required:
-          - phone
-      type: object
-    Rg3Defaults:
-      properties:
-        c:
-          anyOf:
-          - $ref: '#/components/schemas/Rg3Color'
-          - type: "null"
-          default: RED
-        l:
-          anyOf:
-          - $ref: '#/components/schemas/Rg3Level'
-          - type: "null"
-          default: 9
-      type: object
-    Rg3Level:
-      enum:
-      - 1
-      - 9
-      type: integer
-    Rg3MultipleOf:
-      description: |-
-        A whole-valued float literal `@multipleOf(5.0)` on an int field,
-        enforced by both validate and OpenAPI.
-      properties:
-        qty:
-          multipleOf: 5
-          type: integer
-      required:
-      - qty
-      type: object
-    Rg3NestedMaps:
-      properties:
-        maa:
-          additionalProperties:
-            items:
-              additionalProperties:
-                $ref: '#/components/schemas/Rg3Tag'
-              type: object
-            type: array
-          type: object
-        mm:
-          additionalProperties:
-            additionalProperties:
-              $ref: '#/components/schemas/Rg3Tag'
-            type: object
-          type: object
-      required:
-      - mm
-      - maa
-      type: object
-    Rg3Pair:
-      description: |-
-        A cross-field decorator referencing a mixin-promoted field (email /
-        phone come from Rg3Pair).
-      properties:
-        email:
-          type:
-          - string
-          - "null"
-        phone:
-          type:
-          - string
-          - "null"
-      type: object
-    Rg3Resp:
-      allOf:
-      - $ref: '#/components/schemas/Rg3Audit'
-      - properties:
-          name:
-            type: string
-        required:
-        - name
-        type: object
-      type: object
-    Rg3Status:
-      description: |-
-        An int enum that defines 0 as a real member. A required field of it
-        accepts the zero-valued member rather than rejecting it via a `== 0`
-        check.
-      enum:
-      - 0
-      - 1
-      - 2
-      type: integer
-    Rg3Tag:
-      description: |-
-        Map-of-map and map-of-array-of-map with validator-carrying values; the
-        validator walks every inner element.
-      minLength: 1
-      type: string
-    Rg3Zero:
-      properties:
-        status:
-          $ref: '#/components/schemas/Rg3Status'
-      required:
-      - status
-      type: object
-    Rg4BigMul:
-      description: |-
-        A @multipleOf divisor beyond 2^53 stays exact in OpenAPI (raw json.Number)
-        matching the int64 the validator enforces.
-      properties:
-        "n":
-          format: int64
-          multipleOf: 9007199254740993
-          type: integer
-      required:
-      - "n"
-      type: object
-    Rg4Collide:
-      allOf:
-      - properties:
-          user_id:
-            type:
-            - string
-            - "null"
-          userId:
-            minLength: 2
-            type:
-            - string
-            - "null"
-        type: object
-      - anyOf:
-        - properties:
-            userId:
-              not:
-                type: "null"
-          required:
-          - userId
-        - properties:
-            user_id:
-              not:
-                type: "null"
-          required:
-          - user_id
-      description: |-
-        Two fields whose Go identifiers collide (`userId` / `user_id` both
-        PascalCase to `UserID`). The struct renderer disambiguates the second to
-        `UserID_2`; the validator (@minLength + the type-level @requiresOneOf) and
-        the body writers must read the SAME dedup-resolved names, not emit
-        `v.UserID` twice and leave `UserID_2` unread.
-      type: object
-    Rg4CollideQuery:
-      description: |-
-        The same Go-name collision on WIRE-bound fields: the query binder must
-        assign `req.SortBy` and `req.SortBy_2` from their distinct query keys
-        rather than clobbering one.
-      type: object
-    Rg4Host:
-      allOf:
-      - $ref: '#/components/schemas/Rg4PageOfRg4Item'
-      - properties:
-          name:
-            type: string
-        required:
-        - name
-        type: object
-      type: object
-    Rg4Item:
-      description: |-
-        A type embedding an instantiated generic (Rg4Page<Rg4Item>) as a mixin.
-        The embed monomorphises to Rg4Page[Rg4Item] and promotes its fields; the
-        OpenAPI host schema allOf-refs the Rg4PageOfRg4Item component.
-      properties:
-        id:
-          type: string
-      required:
-      - id
-      type: object
-    Rg4PageOfRg4Item:
-      properties:
-        items:
-          items:
-            $ref: '#/components/schemas/Rg4Item'
-          type: array
-        total:
-          minimum: 0
-          type: integer
-      required:
-      - items
-      - total
-      type: object
-    Rg4Secret:
-      description: |-
-        A @sensitive field on a GET request stays off the wire (json:"-",
-        excluded from the OpenAPI params): the binder never reads it from the
-        query string, so only `visible` binds.
-      type: object
-    Rg5Bag:
-      properties:
-        byUser:
-          additionalProperties:
-            $ref: '#/components/schemas/Rg5Tag'
-          type: object
-      required:
-      - byUser
-      type: object
-    Rg5CodeErr:
-      description: NotFound error response (HTTP 404).
-      properties:
-        code:
-          maxLength: 8
-          minLength: 3
-          pattern: ^E_[A-Z]+$
-          type: string
-        extra:
-          type: string
-        message:
-          maxLength: 50
-          type: string
-      required:
-      - code
-      - message
-      - extra
-      type: object
-    Rg5Composite:
-      properties:
-        page:
-          $ref: '#/components/schemas/Rg5PageOfMapOfStringAndRg5Item'
-      required:
-      - page
-      type: object
-    Rg5Defaults:
-      description: |-
-        An array-of-enum @default lands its wire values in the OpenAPI `default`
-        (`[card, bank]`), and a @default query parameter is advertised optional
-        rather than required - the transport pre-fills both before decode.
-      properties:
-        methods:
-          default:
-          - card
-          - bank
-          items:
-            $ref: '#/components/schemas/Rg5Method'
-          type:
-          - array
-          - "null"
-      type: object
-    Rg5Empty:
-      type: object
-    Rg5HdrError:
-      allOf:
-      - $ref: '#/components/schemas/Rg5HdrMeta'
-      - properties:
-          resource:
-            type: string
-        required:
-        - resource
-        type: object
-      description: Conflict error response (HTTP 409).
-      type: object
-    Rg5HdrMeta:
-      description: |-
-        A `@header` field promoted through a mixin into an error writes a
-        response header and is documented as one.
-      properties:
-        note:
-          minLength: 1
-          type: string
-      required:
-      - note
-      type: object
-    Rg5Item:
-      description: |-
-        A generic instantiated over a composite argument (`map<string, Rg5Item>`)
-        still enforces the element's constraint at runtime, matching the schema.
-      properties:
-        sku:
-          minLength: 2
-          type: string
-      required:
-      - sku
-      type: object
-    Rg5Method:
-      enum:
-      - card
-      - bank
-      type: string
-    Rg5Mixed:
-      description: |-
-        A wire-bound field (`@query`) stays out of the JSON body schema even
-        though it shares a type with body fields - it rides the query string.
-      properties:
-        payload:
-          minLength: 1
-          type: string
-      required:
-      - payload
-      type: object
-    Rg5Nilable:
-      description: |-
-        On a nilable type (bytes / slice / map), `@nullable` keeps a length /
-        count constraint nil-guarded so an explicit null passes the validator,
-        matching the OpenAPI null-union.
-      properties:
-        blob:
-          format: byte
-          type:
-          - string
-          - "null"
-        ids:
-          items:
-            type: integer
-          minItems: 2
-          type:
-          - array
-          - "null"
-        tags:
-          additionalProperties:
-            type: integer
-          minProperties: 1
-          type:
-          - object
-          - "null"
-      required:
-      - blob
-      - ids
-      - tags
-      type: object
-    Rg5NullErr:
-      description: BadRequest error response (HTTP 400).
-      properties:
-        detail:
-          anyOf:
-          - $ref: '#/components/schemas/Rg5Tag'
-          - type: "null"
-        note:
-          type:
-          - string
-          - "null"
-      required:
-      - detail
-      - note
-      type: object
-    Rg5Ok:
-      properties:
-        done:
-          type: boolean
-      required:
-      - done
-      type: object
-    Rg5PageOfMapOfStringAndRg5Item:
-      properties:
-        items:
-          items:
-            additionalProperties:
-              $ref: '#/components/schemas/Rg5Item'
-            type: object
-          type: array
-      required:
-      - items
-      type: object
-    Rg5Session:
-      description: |-
-        A required cookie 400s when absent, matching the `required: true` the
-        spec advertises.
-      type: object
-    Rg5Tag:
-      properties:
-        name:
-          minLength: 1
-          type: string
-      required:
-      - name
-      type: object
-    Rg5UserID:
-      description: |-
-        A non-string scalar map key's constraint runs at runtime (key.Validate
-        enforces @gte(1)) but is NOT advertised in `propertyNames`: JSON object keys
-        are strings, so a numeric `type: integer` would be rejected by a 3.1 validator
-        and a numeric bound has no clean string-pattern form. A string scalar key
-        instead surfaces its pattern / length in propertyNames.
-      minimum: 1
-      type: integer
-    Rg6ArrReq:
-      description: |-
-        A required array @query parameter returns 400 when its key is absent,
-        matching the required:true the spec advertises (an empty `?tags=` passes).
-      type: object
-    Rg6Ok:
-      properties:
-        ok:
-          type: boolean
-      required:
-      - ok
-      type: object
-    Rg6RateMeta:
-      description: |-
-        A @header field promoted into a response through a mixin is written on
-        the wire by the handler, matching the response header the spec documents.
-      type: object
-    Rg6Resp:
-      allOf:
-      - $ref: '#/components/schemas/Rg6RateMeta'
-      - properties:
-          data:
-            type: string
-        required:
-        - data
-        type: object
-      type: object
-    Rg6Stacked:
-      description: |-
-        Stacked same-family bounds intersect in OpenAPI exactly as the runtime
-        validator enforces them (tightest wins): `@gte(10) @lte(90) @range(0,100)`
-        advertises minimum 10 / maximum 90, and `@length(5) @minLength(3)
-        @maxLength(10)` advertises an exact length of 5.
-      properties:
-        a:
-          maxLength: 5
-          minLength: 5
-          type: string
-        b:
-          maximum: 90
-          minimum: 10
-          type: integer
-      required:
-      - b
-      - a
-      type: object
-    Rg7BoxOfRg7Item:
-      properties:
-        opt:
-          items:
-            $ref: '#/components/schemas/Rg7Item'
-          type:
-          - array
-          - "null"
-        req:
-          items:
-            $ref: '#/components/schemas/Rg7Item'
-          type: array
-      required:
-      - req
-      type: object
-    Rg7DupErr:
-      description: Conflict error response (HTTP 409).
-      properties:
-        detail:
-          type: string
-      required:
-      - detail
-      type: object
-    Rg7Headed:
-      description: |-
-        G: a response @header carrying @deprecated + @example surfaces both on the
-        OpenAPI Header Object (deprecated flag + schema example), not just a bare
-        description.
-      properties:
-        ok:
-          type: boolean
-      required:
-      - ok
-      type: object
-    Rg7Holder:
-      properties:
-        box:
-          $ref: '#/components/schemas/Rg7BoxOfRg7Item'
-      required:
-      - box
-      type: object
-    Rg7Item:
-      description: |-
-        I: an optional parametric array element (`opt T[]?`) is validated
-        per-element - the generated probe targets `&v.Opt[i]`, not the whole slice.
-      properties:
-        id:
-          format: uuid
-          type: string
-      required:
-      - id
-      type: object
-    Rg7Maps:
-      description: |-
-        E: an optional primitive map value is nullable in both Go (`map[string]*int`)
-        and OpenAPI (`additionalProperties: { type: [integer, "null"] }`).
-      properties:
-        counts:
-          additionalProperties:
-            type:
-            - integer
-            - "null"
-          type: object
-        name:
-          type: string
-      required:
-      - counts
-      - name
-      type: object
-    Rg7SecretErr:
-      description: Forbidden error response (HTTP 403).
-      properties:
-        note:
-          type: string
-        reason:
-          example: rate limit hit
-          type:
-          - string
-          - "null"
-      required:
-      - note
-      type: object
-    RgAudit:
-      description: |-
-        A type whose embedded mixin contributes the body fields the server
-        requires and validates.
-      properties:
-        createdAt:
-          minLength: 1
-          type: string
-      required:
-      - createdAt
-      type: object
-    RgCents:
-      minimum: 0
-      type: integer
-    RgCode:
-      maxLength: 4
-      minLength: 4
-      type: string
-    RgColor:
-      enum:
-      - red
-      - green
-      - blue
-      type: string
-    RgContact:
-      allOf:
-      - properties:
-          email:
-            type:
-            - string
-            - "null"
-          phone:
-            type:
-            - string
-            - "null"
-          sms:
-            type:
-            - string
-            - "null"
-        type: object
-      - anyOf:
-        - properties:
-            email:
-              not:
-                type: "null"
-          required:
-          - email
-        - properties:
-            phone:
-              not:
-                type: "null"
-          required:
-          - phone
-      - not:
-          properties:
-            email:
-              not:
-                type: "null"
-            sms:
-              not:
-                type: "null"
-          required:
-          - email
-          - sms
-      description: Cross-field fragments that surface in the request-body schema.
-      type: object
-    RgEmail:
-      format: email
-      type: string
-    RgEnumMaps:
-      description: |-
-        Enum-keyed maps whose propertyNames carry the wire values - "red"/"green"
-        for the string enum, "1"/"5"/"10" for the int enum (JSON object keys are
-        strings).
-      properties:
-        byColor:
-          additionalProperties:
-            type: integer
-          propertyNames:
-            enum:
-            - red
-            - green
-            - blue
-            type: string
-          type: object
-        byPrio:
-          additionalProperties:
-            type: integer
-          propertyNames:
-            enum:
-            - "1"
-            - "5"
-            - "10"
-            type: string
-          type: object
-      required:
-      - byColor
-      - byPrio
-      type: object
-    RgHost:
-      allOf:
-      - $ref: '#/components/schemas/RgAudit'
-      - properties:
-          name:
-            type: string
-        required:
-        - name
-        type: object
-      type: object
-    RgInner:
-      properties:
-        id:
-          type: string
-      required:
-      - id
-      type: object
-    RgItemPath:
-      description: |-
-        Numeric, scalar, and enum path params: id binds as int, uid as an int
-        scalar (parsed via server.Parse*), kind as a string enum (cast, no
-        parse).
-      type: object
-    RgItemView:
-      properties:
-        id:
-          type: integer
-        label:
-          type: string
-      required:
-      - id
-      - label
-      type: object
-    RgLengths:
-      description: |-
-        Exact-length string, range form, and bytes length. The validator counts
-        the raw byte length OpenAPI advertises for the bytes fields.
-      properties:
-        code:
-          $ref: '#/components/schemas/RgCode'
-        inline:
-          maxLength: 6
-          minLength: 6
-          type: string
-        nulToken:
-          anyOf:
-          - $ref: '#/components/schemas/RgToken'
-          - type: "null"
-          minLength: 8
-        raw:
-          format: byte
-          type: string
-        rng:
-          maxLength: 8
-          minLength: 2
-          type: string
-        token:
-          $ref: '#/components/schemas/RgToken'
-      required:
-      - code
-      - inline
-      - rng
-      - token
-      - raw
-      type: object
-    RgNullableScalars:
-      description: |-
-        Scalar fields combining @nullable with a field-level constraint. The
-        dereferenced primitive is checked without an extra nil-guard, and the
-        field surfaces in OpenAPI as anyOf:[{$ref}, {type:null}] with the bound
-        as a sibling.
-      properties:
-        nulCapped:
-          anyOf:
-          - $ref: '#/components/schemas/RgCents'
-          - type: "null"
-          maximum: 100
-        nulEmail:
-          anyOf:
-          - $ref: '#/components/schemas/RgEmail'
-          - type: "null"
-        optCapped:
-          anyOf:
-          - $ref: '#/components/schemas/RgCents'
-          - type: "null"
-          maximum: 50
-        plainCents:
-          allOf:
-          - $ref: '#/components/schemas/RgCents'
-          - maximum: 1000
-      required:
-      - nulCapped
-      - nulEmail
-      - plainCents
-      type: object
-    RgPageOfRgEmail:
-      description: |-
-        A generic whose instances $ref the monomorphised component rather than
-        the bare type parameter.
-      properties:
-        items:
-          items:
-            $ref: '#/components/schemas/RgEmail'
-          type: array
-        total:
-          minimum: 0
-          type: integer
-      required:
-      - items
-      - total
-      type: object
-    RgPriority:
-      enum:
-      - 1
-      - 5
-      - 10
-      type: integer
-    RgRefMeta:
-      description: |-
-        @nullable on a named ref emits the null union; @default / @deprecated on
-        a non-optional ref ride a wrapper schema.
-      properties:
-        depColor:
-          allOf:
-          - $ref: '#/components/schemas/RgColor'
-          deprecated: true
-          description: 'Deprecated: use status'
-        nulColor:
-          anyOf:
-          - $ref: '#/components/schemas/RgColor'
-          - type: "null"
-        nulInner:
-          anyOf:
-          - $ref: '#/components/schemas/RgInner'
-          - type: "null"
-        roleReq:
-          anyOf:
-          - $ref: '#/components/schemas/RgCents'
-          - type: "null"
-          default: 7
-      required:
-      - nulInner
-      - nulColor
-      - depColor
-      type: object
-    RgSearch:
-      description: |-
-        String-backed wire params with @default; the default applies when the
-        request omits the parameter.
-      type: object
-    RgToken:
-      format: byte
-      type: string
-    RgValidationFailedErr:
-      description: UnprocessableEntity error response (HTTP 422).
-      properties:
-        attempts:
-          maximum: 10
-          minimum: 0
-          type: integer
-        field:
-          maxLength: 40
-          minLength: 1
-          type: string
-        hint:
-          type:
-          - string
-          - "null"
-        legacy:
-          deprecated: true
-          description: 'Deprecated: removed'
-          type: string
-      required:
-      - attempts
-      - field
-      - legacy
       type: object
     Room:
       description: |-
@@ -6139,6 +5955,38 @@ components:
       required:
       - amount
       - code
+      type: object
+    ScalarLengths:
+      description: |-
+        ScalarLengths holds exact and range string lengths and bytes lengths; the
+        validator counts a bytes value in raw bytes, as OpenAPI documents.
+      properties:
+        code:
+          $ref: '#/components/schemas/PinCode'
+        inline:
+          maxLength: 6
+          minLength: 6
+          type: string
+        nulToken:
+          anyOf:
+          - $ref: '#/components/schemas/Token'
+          - type: "null"
+          minLength: 8
+        raw:
+          format: byte
+          type: string
+        rng:
+          maxLength: 8
+          minLength: 2
+          type: string
+        token:
+          $ref: '#/components/schemas/Token'
+      required:
+      - code
+      - inline
+      - rng
+      - token
+      - raw
       type: object
     ScalarsEmail:
       description: |-
@@ -6476,10 +6324,17 @@ components:
       type: object
     SearchRespBody:
       $ref: '#/components/schemas/XOwner'
+    SearchWithDefaultsRespBody:
+      $ref: '#/components/schemas/ItemView'
     SecuredServiceListItemsRespBody:
       $ref: '#/components/schemas/InventoryListResp'
     SecuredServiceResetRespBody:
       $ref: '#/components/schemas/HealthResp'
+    SensitiveQueryReq:
+      description: |-
+        SensitiveQueryReq keeps a @sensitive field off the wire on a GET: only
+        visible binds from the query string and appears in OpenAPI.
+      type: object
     ServicesUser:
       allOf:
       - $ref: '#/components/schemas/Audit'
@@ -6503,6 +6358,11 @@ components:
         createdBy bookkeeping lands at the wire root without a nested
         envelope.
       type: object
+    SessionCookieReq:
+      description: |-
+        SessionCookieReq requires a cookie: an absent one answers 400, as the
+        required: true in OpenAPI says.
+      type: object
     SessionID:
       minLength: 1
       type: string
@@ -6517,6 +6377,12 @@ components:
       - Error
       - Critical
       type: string
+    Shade:
+      enum:
+      - red
+      - green
+      - blue
+      type: string
     SharedEmail:
       description: |-
         Email is the cross-package email shape - capped at the RFC-5321
@@ -6525,6 +6391,14 @@ components:
       format: email
       maxLength: 254
       type: string
+    SharedStatusConflictErr:
+      description: Conflict error response (HTTP 409).
+      properties:
+        detail:
+          type: string
+      required:
+      - detail
+      type: object
     ShipmentDispatched:
       properties:
         carrier:
@@ -6551,6 +6425,25 @@ components:
       $ref: '#/components/schemas/Entry'
     SignupRespBody:
       $ref: '#/components/schemas/ID'
+    SkuItem:
+      properties:
+        sku:
+          minLength: 2
+          type: string
+      required:
+      - sku
+      type: object
+    SkuPageOfMapOfStringAndSkuItem:
+      properties:
+        items:
+          items:
+            additionalProperties:
+              $ref: '#/components/schemas/SkuItem'
+            type: object
+          type: array
+      required:
+      - items
+      type: object
     Slot:
       properties:
         start:
@@ -6777,6 +6670,19 @@ components:
           - "null"
       required:
       - tag
+      type: object
+    Str_NullableFormat:
+      description: |-
+        Str_NullableFormat checks a present email and passes a JSON null: the
+        validator nil-guards the dereference.
+      properties:
+        email:
+          format: email
+          type:
+          - string
+          - "null"
+      required:
+      - email
       type: object
     Str_Optionals:
       description: |-
@@ -7053,6 +6959,9 @@ components:
       - tier
       - memberId
       type: object
+    Token:
+      format: byte
+      type: string
     TreeOfScalarsOrder:
       description: |-
         Tree<T> is the marquee recursive-generic test: the body references
@@ -7076,6 +6985,14 @@ components:
       description: URL carries the @format(url) check for safe-URL fields.
       format: url
       type: string
+    UUIDItem:
+      properties:
+        id:
+          format: uuid
+          type: string
+      required:
+      - id
+      type: object
     UnsignedReq:
       description: UnsignedReq wraps NumberUnsigned.
       properties:
@@ -7138,6 +7055,12 @@ components:
       required:
       - file
       type: object
+    Urgency:
+      enum:
+      - 1
+      - 5
+      - 10
+      type: integer
     UserAvatar:
       description: |-
         UserAvatar is the UploadAvatar response. Carries the resolved URL
@@ -7320,6 +7243,52 @@ components:
       type: object
     ValidateArrRespBody:
       $ref: '#/components/schemas/PairsArr'
+    ValidateChannelsReqBody:
+      allOf:
+      - properties:
+          email:
+            type:
+            - string
+            - "null"
+          phone:
+            type:
+            - string
+            - "null"
+          sms:
+            type:
+            - string
+            - "null"
+        type: object
+      - anyOf:
+        - properties:
+            email:
+              not:
+                type: "null"
+          required:
+          - email
+        - properties:
+            phone:
+              not:
+                type: "null"
+          required:
+          - phone
+      - not:
+          properties:
+            email:
+              not:
+                type: "null"
+            sms:
+              not:
+                type: "null"
+          required:
+          - email
+          - sms
+      description: |-
+        ContactChannels carries cross-field groups its request body schema
+        documents.
+      type: object
+    ValidateChannelsRespBody:
+      $ref: '#/components/schemas/ContactChannels'
     ValidateChoiceReqBody:
       allOf:
       - properties:
@@ -7464,6 +7433,32 @@ components:
       type: object
     ValidateNumRespBody:
       $ref: '#/components/schemas/PairsNum'
+    ValidatePromotedReqBody:
+      allOf:
+      - $ref: '#/components/schemas/ContactPair'
+      - properties:
+          note:
+            type: string
+        required:
+        - note
+        type: object
+      - anyOf:
+        - properties:
+            email:
+              not:
+                type: "null"
+          required:
+          - email
+        - properties:
+            phone:
+              not:
+                type: "null"
+          required:
+          - phone
+      description: PromotedContact's @requiresOneOf names the fields its mixin brings.
+      type: object
+    ValidatePromotedRespBody:
+      $ref: '#/components/schemas/PromotedContact'
     ValidateRenamedReqBody:
       allOf:
       - properties:
@@ -7496,6 +7491,25 @@ components:
           - string
           - "null"
       type: object
+    ValidateStackedReqBody:
+      description: |-
+        PairsStacked stacks bounds of one family: OpenAPI documents their
+        intersection, which the validator enforces (10..90; a length of 5).
+      properties:
+        a:
+          maxLength: 5
+          minLength: 5
+          type: string
+        b:
+          maximum: 90
+          minimum: 10
+          type: integer
+      required:
+      - b
+      - a
+      type: object
+    ValidateStackedRespBody:
+      $ref: '#/components/schemas/PairsStacked'
     ValidateStrReqBody:
       description: |-
         PairsStr stacks every string validator the generator supports on a
@@ -7557,6 +7571,25 @@ components:
       type: object
     WipeRespBody:
       $ref: '#/components/schemas/HealthResp'
+    WireDefaults:
+      description: |-
+        WireDefaults documents each enum @default as the member's wire value
+        ("RED", 9), not its name.
+      properties:
+        c:
+          anyOf:
+          - $ref: '#/components/schemas/Hue'
+          - type: "null"
+          default: RED
+        l:
+          anyOf:
+          - $ref: '#/components/schemas/Grade'
+          - type: "null"
+          default: 9
+      type: object
+    WireMixin:
+      description: WireMixin brings a header and a defaulted query parameter.
+      type: object
     WireRenameReq:
       description: |-
         WireRenameReq combines explicit-name bindings in all four parameter
@@ -8430,6 +8463,15 @@ components:
       type: object
     XsharedXRefsServiceDescribeRespBody:
       $ref: '#/components/schemas/XOwner'
+    ZeroMember:
+      description: ZeroMember accepts the zero-valued member in its required enum
+        field.
+      properties:
+        status:
+          $ref: '#/components/schemas/MemberStatus'
+      required:
+      - status
+      type: object
   securitySchemes:
     AdminBearer:
       scheme: bearer
@@ -8830,6 +8872,117 @@ paths:
           description: OK
       tags:
       - bindings
+  /bindings/colliding-query:
+    get:
+      operationId: GetCollidingQuery
+      parameters:
+      - in: query
+        name: sortBy
+        schema:
+          type:
+          - string
+          - "null"
+      - in: query
+        name: sort_by
+        schema:
+          type:
+          - string
+          - "null"
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - bindings
+  /bindings/error-shapes:
+    post:
+      operationId: RaiseErrorShapes
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RaiseErrorShapesRespBody'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NullableFieldsErr'
+          description: BadRequest
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeMessageErr'
+          description: NotFound
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeaderMixinError'
+          description: Conflict
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+      tags:
+      - bindings
+  /bindings/filter-tags:
+    get:
+      operationId: FilterTags
+      parameters:
+      - in: query
+        name: tags
+        required: true
+        schema:
+          items:
+            type: string
+          type: array
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilterTagsRespBody'
+          description: OK
+      tags:
+      - bindings
+  /bindings/header-metadata:
+    post:
+      operationId: EchoHeaderMetadata
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoHeaderMetadataReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoHeaderMetadataRespBody'
+          description: Created
+          headers:
+            ETag:
+              deprecated: true
+              schema:
+                deprecated: true
+                description: 'Deprecated: use If-Match'
+                example: v3
+                type: string
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenDetailsErr'
+          description: Forbidden
+          headers:
+            X-Error-Code:
+              schema:
+                type: string
+      tags:
+      - bindings
   /bindings/health:
     get:
       description: Health probe. No request, no response - just a 200 OK when the
@@ -8989,6 +9142,47 @@ paths:
           description: OK
       tags:
       - bindings
+  /bindings/mixins/body:
+    post:
+      operationId: PostMixinBody
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostMixinBodyReqBody'
+        required: true
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - bindings
+  /bindings/mixins/wire-body:
+    post:
+      operationId: PostMixinWireBody
+      parameters:
+      - in: query
+        name: sortBy
+        schema:
+          default: name
+          type:
+          - string
+          - "null"
+      - in: header
+        name: X-Trace-Id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostMixinWireBodyReqBody'
+        required: true
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - bindings
   /bindings/nullable-form:
     post:
       description: Upload a doc with optional-null metadata. The @nullable `meta`
@@ -9073,6 +9267,106 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListPagedRespBody'
           description: OK
+      tags:
+      - bindings
+  /bindings/query-beside-body:
+    post:
+      operationId: PostQueryBesideBody
+      parameters:
+      - in: query
+        name: filter
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostQueryBesideBodyReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostQueryBesideBodyRespBody'
+          description: Created
+      tags:
+      - bindings
+  /bindings/required-params:
+    get:
+      operationId: GetRequiredParams
+      parameters:
+      - in: query
+        name: q
+        required: true
+        schema:
+          type: string
+      - in: query
+        name: limit
+        required: true
+        schema:
+          type: integer
+      - in: header
+        name: X-Tok
+        required: true
+        schema:
+          type: string
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - bindings
+  /bindings/sensitive-query:
+    get:
+      operationId: GetSensitiveQuery
+      parameters:
+      - in: query
+        name: visible
+        required: true
+        schema:
+          type: string
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - bindings
+  /bindings/session-cookie:
+    get:
+      operationId: GetSessionCookie
+      parameters:
+      - in: cookie
+        name: sid
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSessionCookieRespBody'
+          description: OK
+      tags:
+      - bindings
+  /bindings/shared-status:
+    post:
+      operationId: PostSharedStatus
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostSharedStatusReqBody'
+        required: true
+      responses:
+        "409":
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/PostSharedStatusRespBody'
+                - $ref: '#/components/schemas/SharedStatusConflictErr'
+          description: Conflict
       tags:
       - bindings
   /bindings/users/{id}/avatar:
@@ -9201,6 +9495,24 @@ paths:
           description: Created
       tags:
       - collections
+  /collections/array-of-maps:
+    post:
+      operationId: EchoArrayOfMaps
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoArrayOfMapsReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoArrayOfMapsRespBody'
+          description: Created
+      tags:
+      - collections
   /collections/map-key-value:
     post:
       description: MapKeyValue is the scalar-on-both-sides map case.
@@ -9263,6 +9575,60 @@ paths:
           description: Created
       tags:
       - collections
+  /collections/nested-maps:
+    post:
+      operationId: EchoNestedMaps
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoNestedMapsReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoNestedMapsRespBody'
+          description: Created
+      tags:
+      - collections
+  /collections/optional-values:
+    post:
+      operationId: EchoOptionalValues
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoOptionalValuesReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoOptionalValuesRespBody'
+          description: Created
+      tags:
+      - collections
+  /collections/scalar-key-map:
+    post:
+      operationId: EchoScalarKeyMap
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoScalarKeyMapReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoScalarKeyMapRespBody'
+          description: Created
+      tags:
+      - collections
   /collections/tag-slice:
     post:
       description: |-
@@ -9285,6 +9651,50 @@ paths:
           description: Created
       tags:
       - collections
+  /combine/colliding-names:
+    post:
+      operationId: EchoCollidingNames
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoCollidingNamesReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoCollidingNamesRespBody'
+          description: Created
+      tags:
+      - combine
+  /combine/defaults/array:
+    post:
+      operationId: EchoArrayDefaults
+      parameters:
+      - in: query
+        name: sortBy
+        schema:
+          default: name
+          type:
+          - string
+          - "null"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoArrayDefaultsReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoArrayDefaultsRespBody'
+          description: Created
+      tags:
+      - combine
   /combine/defaults/boundary:
     post:
       description: Echo the boundary-default matrix. Smoke tests assert that the pre-fill
@@ -9386,6 +9796,60 @@ paths:
           description: Created
       tags:
       - combine
+  /combine/defaults/wire:
+    post:
+      operationId: EchoWireDefaults
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoWireDefaultsReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoWireDefaultsRespBody'
+          description: Created
+      tags:
+      - combine
+  /combine/enums/zero-member:
+    post:
+      operationId: EchoZeroMember
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoZeroMemberReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoZeroMemberRespBody'
+          description: Created
+      tags:
+      - combine
+  /combine/nilable-nullable:
+    post:
+      operationId: EchoNilableNullable
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoNilableNullableReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoNilableNullableRespBody'
+          description: Created
+      tags:
+      - combine
   /combine/pairs/arr:
     post:
       description: Validate stacked array decorators (minItems + maxItems + uniqueItems
@@ -9404,6 +9868,30 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidateArrRespBody'
           description: Created
+      tags:
+      - combine
+  /combine/pairs/channels:
+    post:
+      operationId: ValidateChannels
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateChannelsReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateChannelsRespBody'
+          description: Created
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FieldRulesFailedErr'
+          description: UnprocessableEntity
       tags:
       - combine
   /combine/pairs/choice:
@@ -9494,6 +9982,24 @@ paths:
           description: Created
       tags:
       - combine
+  /combine/pairs/promoted:
+    post:
+      operationId: ValidatePromoted
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidatePromotedReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidatePromotedRespBody'
+          description: Created
+      tags:
+      - combine
   /combine/pairs/renamed/{id}:
     post:
       description: Validate a path id beside a body keyed by @json names. The operation
@@ -9523,6 +10029,24 @@ paths:
             ETag:
               schema:
                 type: string
+      tags:
+      - combine
+  /combine/pairs/stacked:
+    post:
+      operationId: ValidateStacked
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateStackedReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateStackedRespBody'
+          description: Created
       tags:
       - combine
   /combine/pairs/str:
@@ -9767,6 +10291,24 @@ paths:
           description: Created
       tags:
       - nested
+  /nested/audited-host:
+    post:
+      operationId: EchoAuditedHost
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoAuditedHostReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoAuditedHostRespBody'
+          description: Created
+      tags:
+      - nested
   /nested/b:
     post:
       description: Mutual recursion entry - request B traverses B → A → B → ...
@@ -9823,6 +10365,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/EchoCubeRespBody'
           description: Created
+      tags:
+      - nested
+  /nested/headered-resp:
+    post:
+      operationId: EchoHeaderedResp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoHeaderedRespReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoHeaderedRespRespBody'
+          description: Created
+          headers:
+            ETag:
+              schema:
+                type: string
       tags:
       - nested
   /nested/list-page:
@@ -9921,6 +10485,22 @@ paths:
           description: Created
       tags:
       - nested
+  /nested/rate-resp:
+    get:
+      operationId: GetRateResp
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetRateRespRespBody'
+          description: OK
+          headers:
+            X-Rate-Limit:
+              schema:
+                type: integer
+      tags:
+      - nested
   /nested/team:
     post:
       description: Slice of nested with array-level bounds.
@@ -9959,6 +10539,42 @@ paths:
           description: Created
       tags:
       - nested
+  /numbers/big-bounds:
+    post:
+      operationId: EchoBigBounds
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoBigBoundsReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoBigBoundsRespBody'
+          description: Created
+      tags:
+      - NumbersService
+  /numbers/big-multiple-of:
+    post:
+      operationId: EchoBigMultipleOf
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoBigMultipleOfReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoBigMultipleOfRespBody'
+          description: Created
+      tags:
+      - NumbersService
   /numbers/boundary:
     post:
       operationId: AddBoundary
@@ -10028,6 +10644,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AddMixedRespBody'
+          description: Created
+      tags:
+      - NumbersService
+  /numbers/multiple-of:
+    post:
+      operationId: EchoMultipleOf
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoMultipleOfReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoMultipleOfRespBody'
           description: Created
       tags:
       - NumbersService
@@ -10401,824 +11035,6 @@ paths:
           description: OK
       tags:
       - RawModesService
-  /regression/contact:
-    post:
-      operationId: RegressionServiceEchoContact
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegressionServiceEchoContactReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RegressionServiceEchoContactRespBody'
-          description: Created
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RgValidationFailedErr'
-          description: UnprocessableEntity
-      tags:
-      - regression
-  /regression/enum-maps:
-    post:
-      operationId: EchoEnumMaps
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoEnumMapsReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoEnumMapsRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression/host:
-    post:
-      operationId: RegressionServiceEchoHost
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegressionServiceEchoHostReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RegressionServiceEchoHostRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression/items/{id}/{uid}/{kind}:
-    get:
-      description: id binds as int, uid as an int scalar, kind as a string enum.
-      operationId: RegressionServiceGetItem
-      parameters:
-      - in: path
-        name: id
-        required: true
-        schema:
-          type: integer
-      - in: path
-        name: uid
-        required: true
-        schema:
-          $ref: '#/components/schemas/RgCents'
-      - in: path
-        name: kind
-        required: true
-        schema:
-          $ref: '#/components/schemas/RgColor'
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RegressionServiceGetItemRespBody'
-          description: OK
-      tags:
-      - regression
-  /regression/lengths:
-    post:
-      operationId: EchoLengths
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoLengthsReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoLengthsRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression/nullable-scalars:
-    post:
-      operationId: EchoNullableScalars
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoNullableScalarsReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoNullableScalarsRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression/page:
-    post:
-      operationId: EchoPage
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoPageReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoPageRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression/ref-meta:
-    post:
-      operationId: EchoRefMeta
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoRefMetaReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoRefMetaRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression/search:
-    get:
-      description: sortQ / colorQ / limitQ fall back to their defaults when absent.
-      operationId: DoSearch
-      parameters:
-      - in: query
-        name: sortQ
-        schema:
-          default: asc
-          type:
-          - string
-          - "null"
-      - in: query
-        name: colorQ
-        schema:
-          anyOf:
-          - $ref: '#/components/schemas/RgColor'
-          - type: "null"
-          default: green
-      - in: query
-        name: limitQ
-        schema:
-          default: 10
-          type:
-          - integer
-          - "null"
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DoSearchRespBody'
-          description: OK
-      tags:
-      - regression
-  /regression2/big:
-    post:
-      operationId: EchoBig
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoBigReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoBigRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression2/fmt:
-    post:
-      operationId: EchoFmt
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoFmtReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoFmtRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression2/m:
-    post:
-      operationId: DoMixed
-      parameters:
-      - in: query
-        name: sortBy
-        schema:
-          default: name
-          type:
-          - string
-          - "null"
-      - in: header
-        name: X-Trace-Id
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DoMixedReqBody'
-        required: true
-      responses:
-        "204":
-          description: No Content
-      tags:
-      - regression
-  /regression2/maps:
-    post:
-      operationId: RegressionBatch2EchoMaps
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegressionBatch2EchoMapsReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RegressionBatch2EchoMapsRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression2/o:
-    post:
-      operationId: DoOnly
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DoOnlyReqBody'
-        required: true
-      responses:
-        "204":
-          description: No Content
-      tags:
-      - regression
-  /regression2/req:
-    get:
-      operationId: DoReq
-      parameters:
-      - in: query
-        name: q
-        required: true
-        schema:
-          type: string
-      - in: query
-        name: limit
-        required: true
-        schema:
-          type: integer
-      - in: header
-        name: X-Tok
-        required: true
-        schema:
-          type: string
-      responses:
-        "204":
-          description: No Content
-      tags:
-      - regression
-  /regression3/c:
-    post:
-      operationId: RegressionBatch3EchoContact
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegressionBatch3EchoContactReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RegressionBatch3EchoContactRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression3/d:
-    post:
-      operationId: RegressionBatch3EchoDefaults
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegressionBatch3EchoDefaultsReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RegressionBatch3EchoDefaultsRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression3/mo:
-    post:
-      operationId: EchoMultipleOf
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoMultipleOfReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoMultipleOfRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression3/n:
-    post:
-      operationId: EchoNested
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoNestedReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoNestedRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression3/r:
-    post:
-      operationId: EchoResp
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoRespReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoRespRespBody'
-          description: Created
-          headers:
-            ETag:
-              schema:
-                type: string
-      tags:
-      - regression
-  /regression3/z:
-    post:
-      operationId: EchoZero
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoZeroReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoZeroRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression4/b:
-    post:
-      operationId: EchoBigMul
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoBigMulReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoBigMulRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression4/collide:
-    post:
-      operationId: EchoCollide
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoCollideReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoCollideRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression4/collide-q:
-    get:
-      operationId: DoCollideQuery
-      parameters:
-      - in: query
-        name: sortBy
-        schema:
-          type:
-          - string
-          - "null"
-      - in: query
-        name: sort_by
-        schema:
-          type:
-          - string
-          - "null"
-      responses:
-        "204":
-          description: No Content
-      tags:
-      - regression
-  /regression4/h:
-    post:
-      operationId: RegressionBatch4EchoHost
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegressionBatch4EchoHostReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RegressionBatch4EchoHostRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression4/s:
-    get:
-      operationId: DoSecret
-      parameters:
-      - in: query
-        name: visible
-        required: true
-        schema:
-          type: string
-      responses:
-        "204":
-          description: No Content
-      tags:
-      - regression
-  /regression5/bag:
-    post:
-      operationId: EchoBag
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoBagReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoBagRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression5/comp:
-    post:
-      operationId: EchoComposite
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoCompositeReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoCompositeRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression5/d:
-    post:
-      operationId: RegressionBatch5EchoDefaults
-      parameters:
-      - in: query
-        name: sortBy
-        schema:
-          default: name
-          type:
-          - string
-          - "null"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegressionBatch5EchoDefaultsReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RegressionBatch5EchoDefaultsRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression5/errs:
-    post:
-      operationId: DoErrors
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DoErrorsRespBody'
-          description: Created
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Rg5NullErr'
-          description: BadRequest
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Rg5CodeErr'
-          description: NotFound
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Rg5HdrError'
-          description: Conflict
-          headers:
-            X-Request-Id:
-              schema:
-                type: string
-      tags:
-      - regression
-  /regression5/mx:
-    post:
-      operationId: EchoMixed
-      parameters:
-      - in: query
-        name: filter
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoMixedReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoMixedRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression5/nil:
-    post:
-      operationId: EchoNilable
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoNilableReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoNilableRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression5/sess:
-    get:
-      operationId: FindSession
-      parameters:
-      - in: cookie
-        name: sid
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FindSessionRespBody'
-          description: OK
-      tags:
-      - regression
-  /regression6/f:
-    get:
-      operationId: FilterTags
-      parameters:
-      - in: query
-        name: tags
-        required: true
-        schema:
-          items:
-            type: string
-          type: array
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FilterTagsRespBody'
-          description: OK
-      tags:
-      - regression
-  /regression6/r:
-    get:
-      operationId: RateLimited
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RateLimitedRespBody'
-          description: OK
-          headers:
-            X-Rate-Limit:
-              schema:
-                type: integer
-      tags:
-      - regression
-  /regression6/s:
-    post:
-      operationId: EchoStacked
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoStackedReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoStackedRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression7/conflict:
-    post:
-      operationId: DoConflict
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DoConflictReqBody'
-        required: true
-      responses:
-        "409":
-          content:
-            application/json:
-              schema:
-                oneOf:
-                - $ref: '#/components/schemas/DoConflictRespBody'
-                - $ref: '#/components/schemas/Rg7DupErr'
-          description: Conflict
-      tags:
-      - regression
-  /regression7/headed:
-    post:
-      operationId: EchoHeaded
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoHeadedReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoHeadedRespBody'
-          description: Created
-          headers:
-            ETag:
-              deprecated: true
-              schema:
-                deprecated: true
-                description: 'Deprecated: use If-Match'
-                example: v3
-                type: string
-        "403":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Rg7SecretErr'
-          description: Forbidden
-          headers:
-            X-Error-Code:
-              schema:
-                type: string
-      tags:
-      - regression
-  /regression7/holder:
-    post:
-      operationId: EchoHolder
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EchoHolderReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EchoHolderRespBody'
-          description: Created
-      tags:
-      - regression
-  /regression7/maps:
-    post:
-      operationId: RegressionBatch7EchoMaps
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegressionBatch7EchoMapsReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RegressionBatch7EchoMapsRespBody'
-          description: Created
-      tags:
-      - regression
   /report-card/all:
     get:
       description: Lists every report card; its body component is ReportCardListRespBody.
@@ -11288,6 +11104,142 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetAuditedRespBody'
+          description: OK
+      tags:
+      - scalars
+  /scalars/box-holder:
+    post:
+      operationId: EchoBoxHolder
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoBoxHolderReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoBoxHolderRespBody'
+          description: Created
+      tags:
+      - scalars
+  /scalars/composite-arg:
+    post:
+      operationId: EchoCompositeArg
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoCompositeArgReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoCompositeArgRespBody'
+          description: Created
+      tags:
+      - scalars
+  /scalars/defaults:
+    get:
+      description: sortQ / colorQ / limitQ fall back to their defaults when absent.
+      operationId: SearchWithDefaults
+      parameters:
+      - in: query
+        name: sortQ
+        schema:
+          default: asc
+          type:
+          - string
+          - "null"
+      - in: query
+        name: colorQ
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/Shade'
+          - type: "null"
+          default: green
+      - in: query
+        name: limitQ
+        schema:
+          default: 10
+          type:
+          - integer
+          - "null"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchWithDefaultsRespBody'
+          description: OK
+      tags:
+      - scalars
+  /scalars/enum-maps:
+    post:
+      operationId: EchoEnumMaps
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoEnumMapsReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoEnumMapsRespBody'
+          description: Created
+      tags:
+      - scalars
+  /scalars/generic-mixin-host:
+    post:
+      operationId: EchoGenericMixinHost
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoGenericMixinHostReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoGenericMixinHostRespBody'
+          description: Created
+      tags:
+      - scalars
+  /scalars/items/{id}/{uid}/{kind}:
+    get:
+      description: id binds as int, uid as an int scalar, kind as a string enum.
+      operationId: GetItemByPath
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - in: path
+        name: uid
+        required: true
+        schema:
+          $ref: '#/components/schemas/Count'
+      - in: path
+        name: kind
+        required: true
+        schema:
+          $ref: '#/components/schemas/Shade'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetItemByPathRespBody'
           description: OK
       tags:
       - scalars
@@ -11361,6 +11313,42 @@ paths:
                 $ref: '#/components/schemas/Priority'
       tags:
       - scalars
+  /scalars/lengths:
+    post:
+      operationId: EchoLengths
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoLengthsReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoLengthsRespBody'
+          description: Created
+      tags:
+      - scalars
+  /scalars/listing:
+    post:
+      operationId: EchoListing
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoListingReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoListingRespBody'
+          description: Created
+      tags:
+      - scalars
   /scalars/lookup/{id}:
     get:
       description: Look an order up by id. The request is a generic instance, Lookup<Priority>,
@@ -11385,6 +11373,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/LookupOrderRespBody'
           description: OK
+      tags:
+      - scalars
+  /scalars/nullable-scalars:
+    post:
+      operationId: EchoNullableScalars
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoNullableScalarsReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoNullableScalarsRespBody'
+          description: Created
       tags:
       - scalars
   /scalars/order-groups:
@@ -11482,6 +11488,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/GetOrderRespBody'
           description: OK
+      tags:
+      - scalars
+  /scalars/ref-meta:
+    post:
+      operationId: EchoRefMeta
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoRefMetaReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoRefMetaRespBody'
+          description: Created
       tags:
       - scalars
   /scalars/search:
@@ -11677,6 +11701,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ValidateAllFormatsRespBody'
+          description: Created
+      tags:
+      - strings
+  /strings/nullable-format:
+    post:
+      operationId: EchoNullableFormat
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EchoNullableFormatReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EchoNullableFormatRespBody'
           description: Created
       tags:
       - strings

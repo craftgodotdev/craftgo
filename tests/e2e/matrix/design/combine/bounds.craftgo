@@ -1,0 +1,18 @@
+// Stacked bounds, and length bounds on nullable fields whose Go type holds
+// nil.
+package combine
+
+// PairsStacked stacks bounds of one family: OpenAPI documents their
+// intersection, which the validator enforces (10..90; a length of 5).
+type PairsStacked {
+	b int    @gte(10) @lte(90) @range(0, 100)
+	a string @length(5) @minLength(3) @maxLength(10)
+}
+
+// NilableNullable nil-guards the length and item checks of its @nullable
+// fields: an explicit null passes, as the null union in OpenAPI says.
+type NilableNullable {
+	blob bytes            @nullable @minLength(4)
+	ids  int[]            @nullable @minItems(2)
+	tags map<string, int> @nullable @minItems(1)
+}

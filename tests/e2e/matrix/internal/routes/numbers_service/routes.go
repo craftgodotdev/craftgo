@@ -22,4 +22,7 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/numbers/mixed", transport.AddMixed(svcCtx))
 	srv.Handle("POST /api/numbers/exact", transport.AddExact(svcCtx))
 	srv.Handle("POST /api/numbers/boundary", transport.AddBoundary(svcCtx))
+	srv.Handle("POST /api/numbers/big-bounds", transport.EchoBigBounds(svcCtx))
+	srv.Handle("POST /api/numbers/multiple-of", transport.EchoMultipleOf(svcCtx))
+	srv.Handle("POST /api/numbers/big-multiple-of", transport.EchoBigMultipleOf(svcCtx))
 }

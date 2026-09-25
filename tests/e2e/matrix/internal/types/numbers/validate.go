@@ -42,6 +42,33 @@ func (v *MixedReq) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on NumberBigBounds.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *NumberBigBounds) Validate() error {
+	if v.MinID < 9007199254740993 {
+		return fmt.Errorf("minId: below minimum 9007199254740993")
+	}
+	if v.Bigmin < 9223372036854775807 {
+		return fmt.Errorf("bigmin: below minimum 9223372036854775807")
+	}
+	if v.Small < 5 {
+		return fmt.Errorf("small: below minimum 5")
+	}
+	if v.Small > 100 {
+		return fmt.Errorf("small: above maximum 100")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on NumberBigMultipleOf.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *NumberBigMultipleOf) Validate() error {
+	if v.N%9007199254740993 != 0 {
+		return fmt.Errorf("n: must be a multiple of 9007199254740993")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on NumberBoundary.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *NumberBoundary) Validate() error {
@@ -254,6 +281,15 @@ func (v *NumberMixed) Validate() error {
 	}
 	if v.FloatGtLte > 1 {
 		return fmt.Errorf("floatGtLte: above maximum 1")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on NumberMultipleOf.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *NumberMultipleOf) Validate() error {
+	if v.Qty%5 != 0 {
+		return fmt.Errorf("qty: must be a multiple of 5")
 	}
 	return nil
 }

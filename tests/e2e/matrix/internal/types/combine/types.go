@@ -10,6 +10,35 @@ import (
 // PageSize is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
 type PageSize int
 
+// ArrayDefaults documents an array-of-enum @default as its wire values
+// ([card, bank]) and a @default query parameter as optional; the transport
+// pre-fills both before decoding.
+type ArrayDefaults struct {
+	Methods []PayMethod `json:"methods,omitempty"`
+	SortBy  *string     `json:"-" query:"sortBy"`
+}
+
+// CollidingNames holds two fields whose Go names collide: the second
+// becomes UserID_2, and the validator and the body writers read both.
+type CollidingNames struct {
+	UserID   *string `json:"userId,omitempty"`
+	UserID_2 *string `json:"user_id,omitempty"`
+}
+
+// ContactChannels carries cross-field groups its request body schema
+// documents.
+type ContactChannels struct {
+	Email *string `json:"email,omitempty"`
+	Phone *string `json:"phone,omitempty"`
+	Sms   *string `json:"sms,omitempty"`
+}
+
+// ContactPair brings the fields PromotedContact's group names.
+type ContactPair struct {
+	Email *string `json:"email,omitempty"`
+	Phone *string `json:"phone,omitempty"`
+}
+
 // DefaultsBoundary parks each default literal AT or near the validator
 // boundary so the pre-fill / validate ordering is visible.
 //
@@ -89,6 +118,14 @@ type KeywordFieldNames struct {
 	Delete bool           `json:"delete"`
 	Counts map[string]int `json:"counts"`
 	Kind   DiscKind       `json:"kind"`
+}
+
+// NilableNullable nil-guards the length and item checks of its @nullable
+// fields: an explicit null passes, as the null union in OpenAPI says.
+type NilableNullable struct {
+	Blob []byte         `json:"blob"`
+	Ids  []int          `json:"ids"`
+	Tags map[string]int `json:"tags"`
 }
 
 // PairsArr stacks the array-level decorators (@minItems, @maxItems,
@@ -177,6 +214,13 @@ type PairsRenamedResp struct {
 	Primary *string `json:"primary_email,omitempty"`
 }
 
+// PairsStacked stacks bounds of one family: OpenAPI documents their
+// intersection, which the validator enforces (10..90; a length of 5).
+type PairsStacked struct {
+	B int    `json:"b"`
+	A string `json:"a"`
+}
+
 // PairsStr stacks every string validator the generator supports on a
 // single field, plus a separate field for the cheap baseline.
 //
@@ -236,6 +280,19 @@ type PresenceMatrix struct {
 	DefNullable  *string `json:"defNullable,omitempty"`
 }
 
+// PromotedContact's @requiresOneOf names the fields its mixin brings.
+type PromotedContact struct {
+	ContactPair
+	Note string `json:"note"`
+}
+
+// WireDefaults documents each enum @default as the member's wire value
+// ("RED", 9), not its name.
+type WireDefaults struct {
+	C *Hue   `json:"c,omitempty"`
+	L *Grade `json:"l,omitempty"`
+}
+
 // XPkgEnum exercises every shape a CROSS-PACKAGE enum reference can
 // take inside a single field. Resolution routes through the
 // project-wide EnumTable, so every shape emits the switch-case
@@ -254,4 +311,9 @@ type XPkgEnum struct {
 	ByString map[string]shared.Severity          `json:"byString"`
 	ByEnum   map[shared.Severity]string          `json:"byEnum"`
 	BothEnum map[shared.Severity]shared.Severity `json:"bothEnum"`
+}
+
+// ZeroMember accepts the zero-valued member in its required enum field.
+type ZeroMember struct {
+	Status MemberStatus `json:"status"`
 }

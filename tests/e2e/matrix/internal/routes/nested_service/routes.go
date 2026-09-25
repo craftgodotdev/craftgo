@@ -26,4 +26,7 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/nested/a", transport.EchoA(svcCtx))
 	srv.Handle("POST /api/nested/b", transport.EchoB(svcCtx))
 	srv.Handle("POST /api/nested/list-page", transport.EchoListPage(svcCtx))
+	srv.Handle("POST /api/nested/audited-host", transport.EchoAuditedHost(svcCtx))
+	srv.Handle("POST /api/nested/headered-resp", transport.EchoHeaderedResp(svcCtx))
+	srv.Handle("GET /api/nested/rate-resp", transport.GetRateResp(svcCtx))
 }

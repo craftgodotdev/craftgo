@@ -132,6 +132,60 @@ service BindingsService {
 		response ItemList
 	}
 
+	post PostMixinWireBody /mixins/wire-body {
+		request  MixinWireBodyReq
+	}
+
+	post PostMixinBody /mixins/body {
+		request  MixinBodyReq
+	}
+
+	get GetRequiredParams /required-params {
+		request  RequiredParamsReq
+	}
+
+	get GetSensitiveQuery /sensitive-query {
+		request  SensitiveQueryReq
+	}
+
+	get GetCollidingQuery /colliding-query {
+		request  CollidingQueryReq
+	}
+
+	post PostQueryBesideBody /query-beside-body {
+		request  QueryBesideBodyReq
+		response DoneResp
+	}
+
+	get GetSessionCookie /session-cookie {
+		request  SessionCookieReq
+		response DoneResp
+	}
+
+	@errors(HeaderMixinError, NullableFieldsErr, CodeMessageErr)
+	post RaiseErrorShapes /error-shapes {
+		request  EmptyReq
+		response DoneResp
+	}
+
+	get FilterTags /filter-tags {
+		request  RequiredArrayQueryReq
+		response OkResp
+	}
+
+	@errors(ForbiddenDetails)
+	post EchoHeaderMetadata /header-metadata {
+		request  CountsPayload
+		response HeaderMetadataResp
+	}
+
+	@status(409)
+	@errors(SharedStatusConflict)
+	post PostSharedStatus /shared-status {
+		request  CountsPayload
+		response CountsPayload
+	}
+
 	// PathIntProbe is a commented stub: `@path` binds only string-backed
 	// fields, so a numeric path param is rejected at gen time. Uncomment
 	// it together with PathIntReq in bindings.craftgo to reproduce the

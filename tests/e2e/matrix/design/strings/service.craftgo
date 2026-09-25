@@ -30,4 +30,9 @@ service StringsService {
 		request  Str_Combos
 		response Str_Combos
 	}
+
+	post EchoNullableFormat /nullable-format {
+		request  Str_NullableFormat
+		response Str_NullableFormat
+	}
 }

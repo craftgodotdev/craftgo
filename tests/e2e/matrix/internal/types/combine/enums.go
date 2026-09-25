@@ -17,3 +17,32 @@ const (
 	DiscKindCombo      DiscKind = "combo"
 	DiscKindStandalone DiscKind = "standalone"
 )
+
+type Grade int
+
+const (
+	GradeLow  Grade = 1
+	GradeHigh Grade = 9
+)
+
+type Hue string
+
+const (
+	HueRed   Hue = "RED"
+	HueGreen Hue = "GREEN"
+)
+
+type MemberStatus int
+
+const (
+	MemberStatusInactive MemberStatus = 0
+	MemberStatusActive   MemberStatus = 1
+	MemberStatusBanned   MemberStatus = 2
+)
+
+type PayMethod string
+
+const (
+	PayMethodCard PayMethod = "card"
+	PayMethodBank PayMethod = "bank"
+)

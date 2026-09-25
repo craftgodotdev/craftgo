@@ -1,0 +1,44 @@
+// Maps inside arrays and maps, a numeric scalar key, and optional values.
+package collections
+
+// MapTag is the value scalar of Map_ArrayOfMaps.
+scalar MapTag string @minLength(1) @maxLength(20)
+
+// Map_ArrayOfMaps holds an array of maps whose value carries a validator;
+// the validator checks each value of each map.
+type Map_ArrayOfMaps {
+	m     map<string, MapTag>[]
+	plain map<string, MapTag>
+}
+
+// DeepTag is the value scalar of Map_Nested.
+scalar DeepTag string @minLength(1)
+
+// Map_Nested holds a map of maps and a map of arrays of maps whose values
+// carry a validator; the validator checks every inner value.
+type Map_Nested {
+	mm  map<string, map<string, DeepTag>>
+	maa map<string, map<string, DeepTag>[]>
+}
+
+// MemberID is a numeric map key: its @gte(1) runs at runtime, and
+// propertyNames leaves it out because JSON object keys are strings.
+scalar MemberID int @gte(1)
+
+// MemberTag is the value of Map_ScalarKey.
+type MemberTag {
+	name string @minLength(1)
+}
+
+// Map_ScalarKey validates each key as a MemberID and each value as a
+// MemberTag.
+type Map_ScalarKey {
+	byUser map<MemberID, MemberTag>
+}
+
+// Map_OptionalValue holds optional primitive map values: map[string]*int in
+// Go, additionalProperties [integer, "null"] in OpenAPI.
+type Map_OptionalValue {
+	counts map<string, int?>
+	name   string
+}
