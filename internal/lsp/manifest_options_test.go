@@ -12,30 +12,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// manifestProject writes a design root with the given manifest body and
-// one design file, and returns the file's path.
-func manifestProject(t *testing.T, manifest, design string) string {
-	t.Helper()
-	root := t.TempDir()
-	mustWrite(t, filepath.Join(root, "design", "craftgo.design.yaml"), manifest)
-	path := filepath.Join(root, "design", "svc.craftgo")
-	mustWrite(t, path, design)
-	return path
-}
-
-const layoutOnly = `output:
-  types:      ./internal/types
-  transport:  ./internal/transport
-  routes:     ./internal/routes
-  service:    ./internal/service
-  middleware: ./internal/middleware
-  svccontext: ./svccontext/svccontext.go
-  openapi:    ./docs/openapi.yaml
-openapi:
-  title: T
-  version: 1.0.0
-`
-
 // The manifest's basePath moves `/healthz` to `/api/healthz`, clearing the
 // health conflict; without a basePath the conflict is reported.
 func TestABasePathSilencesTheHealthConflictInTheEditorToo(t *testing.T) {

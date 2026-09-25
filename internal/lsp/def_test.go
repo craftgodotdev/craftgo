@@ -15,20 +15,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// openMarked writes marked without its cursor mark to path and returns a
-// server holding it open, its URI and the mark's position; an empty path
-// opens it outside any project.
-func openMarked(t *testing.T, path, marked string) (*server, uri.URI, protocol.Position) {
-	t.Helper()
-	src, pos := markCursor(t, marked)
-	u := uri.New("file:///t.craftgo")
-	if path != "" {
-		mustWrite(t, path, src)
-		u = uri.File(path)
-	}
-	return &server{docs: map[uri.URI]string{u: src}}, u, pos
-}
-
 // definitionAt answers `textDocument/definition` at the cursor mark of
 // marked, as [openMarked] opens it.
 func definitionAt(t *testing.T, path, marked string) []protocol.Location {
@@ -39,28 +25,6 @@ func definitionAt(t *testing.T, path, marked string) []protocol.Location {
 		t.Fatal(err)
 	}
 	return res.([]protocol.Location)
-}
-
-// hoverAt returns the hover text at the cursor mark of marked, as
-// [openMarked] opens it; "" for no hover.
-func hoverAt(t *testing.T, path, marked string) string {
-	t.Helper()
-	s, u, pos := openMarked(t, path, marked)
-	if h := hoverReply(t, s, u, pos); h != nil {
-		return h.Contents.Value
-	}
-	return ""
-}
-
-// hoverReply answers `textDocument/hover` at pos of the open document u.
-func hoverReply(t *testing.T, s *server, u uri.URI, pos protocol.Position) *protocol.Hover {
-	t.Helper()
-	res, err := callHandler(t, s, protocol.MethodTextDocumentHover, protocol.HoverParams{TextDocumentPositionParams: docAt(u, pos)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	h, _ := res.(*protocol.Hover)
-	return h
 }
 
 // A bare name resolves as the analyser resolves it: a type in its own

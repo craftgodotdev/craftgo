@@ -1,26 +1,12 @@
 package lsp
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 )
-
-// newTestServer returns a server with no open documents and no connection.
-func newTestServer() *server {
-	return &server{docs: map[uri.URI]string{}}
-}
-
-// bufferDiagnostics returns the diagnostics of src open outside any project.
-func bufferDiagnostics(src string) []protocol.Diagnostic {
-	u := uri.New("file:///t.craftgo")
-	perFile, _ := newTestServer().buildProjectDiagnostics(u, src)
-	return perFile[uriToPath(string(u))]
-}
 
 // A related location in an untitled buffer points at the buffer.
 func TestRelatedInformationInAnUntitledBuffer(t *testing.T) {
@@ -197,26 +183,6 @@ type Resp {}
 	if len(cleared) != 0 {
 		t.Errorf("expected empty cleared slice, got %d entries", len(cleared))
 	}
-}
-
-// mustWrite writes content to path, creating its parent directories.
-func mustWrite(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func readFileT(t *testing.T, p string) string {
-	t.Helper()
-	data, err := os.ReadFile(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(data)
 }
 
 // An unknown decorator is reported with a decorator/* code.

@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -9,6 +10,8 @@ import (
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 const testDSL = `package design
@@ -163,3 +166,137 @@ func expectNoLabels(t *testing.T, items []protocol.CompletionItem, banned ...str
 		t.Errorf("completion unexpectedly contains %d banned label(s): %v\ngot: %v", len(leaked), leaked, got)
 	}
 }
+
+// markCursor removes the cursor mark from src and returns the text and the
+// mark's LSP position, its character counted in UTF-16 units.
+func markCursor(t *testing.T, src string) (string, protocol.Position) {
+	t.Helper()
+	i := strings.Index(src, cursorMark)
+	if i < 0 {
+		t.Fatalf("fixture carries no %q cursor mark", cursorMark)
+	}
+	head := src[:i]
+	return head + src[i+len(cursorMark):], protocol.Position{
+		Line:      uint32(strings.Count(head, "\n")),
+		Character: uint32(utf16Len(head[strings.LastIndexByte(head, '\n')+1:])),
+	}
+}
+
+// tokenUnder returns the index and token under pos, or -1.
+func tokenUnder(view snapshotView, pos protocol.Position) (int, lexer.Token) {
+	c := view.cursorAt(pos)
+	if c.at < 0 {
+		return -1, lexer.Token{}
+	}
+	return c.at, view.tokens[c.at]
+}
+
+// docAt returns the position params of pos in the document u.
+func docAt(u uri.URI, pos protocol.Position) protocol.TextDocumentPositionParams {
+	return protocol.TextDocumentPositionParams{
+		TextDocument: protocol.TextDocumentIdentifier{URI: protocol.DocumentURI(u)},
+		Position:     pos,
+	}
+}
+
+// rangeText returns the text of src that r covers.
+func rangeText(src string, r protocol.Range) string {
+	start := offsetFromLSP(src, r.Start.Line, r.Start.Character)
+	end := offsetFromLSP(src, r.End.Line, r.End.Character)
+	if start > end {
+		return "<inverted range>"
+	}
+	return src[start:end]
+}
+
+// openMarked writes marked without its cursor mark to path and returns a
+// server holding it open, its URI and the mark's position; an empty path
+// opens it outside any project.
+func openMarked(t *testing.T, path, marked string) (*server, uri.URI, protocol.Position) {
+	t.Helper()
+	src, pos := markCursor(t, marked)
+	u := uri.New("file:///t.craftgo")
+	if path != "" {
+		mustWrite(t, path, src)
+		u = uri.File(path)
+	}
+	return &server{docs: map[uri.URI]string{u: src}}, u, pos
+}
+
+// hoverAt returns the hover text at the cursor mark of marked, as
+// [openMarked] opens it; "" for no hover.
+func hoverAt(t *testing.T, path, marked string) string {
+	t.Helper()
+	s, u, pos := openMarked(t, path, marked)
+	if h := hoverReply(t, s, u, pos); h != nil {
+		return h.Contents.Value
+	}
+	return ""
+}
+
+// hoverReply answers `textDocument/hover` at pos of the open document u.
+func hoverReply(t *testing.T, s *server, u uri.URI, pos protocol.Position) *protocol.Hover {
+	t.Helper()
+	res, err := callHandler(t, s, protocol.MethodTextDocumentHover, protocol.HoverParams{TextDocumentPositionParams: docAt(u, pos)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, _ := res.(*protocol.Hover)
+	return h
+}
+
+// newTestServer returns a server with no open documents and no connection.
+func newTestServer() *server {
+	return &server{docs: map[uri.URI]string{}}
+}
+
+// bufferDiagnostics returns the diagnostics of src open outside any project.
+func bufferDiagnostics(src string) []protocol.Diagnostic {
+	u := uri.New("file:///t.craftgo")
+	perFile, _ := newTestServer().buildProjectDiagnostics(u, src)
+	return perFile[uriToPath(string(u))]
+}
+
+// mustWrite writes content to path, creating its parent directories.
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func readFileT(t *testing.T, p string) string {
+	t.Helper()
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// manifestProject writes a design root with the given manifest body and
+// one design file, and returns the file's path.
+func manifestProject(t *testing.T, manifest, design string) string {
+	t.Helper()
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "design", "craftgo.design.yaml"), manifest)
+	path := filepath.Join(root, "design", "svc.craftgo")
+	mustWrite(t, path, design)
+	return path
+}
+
+const layoutOnly = `output:
+  types:      ./internal/types
+  transport:  ./internal/transport
+  routes:     ./internal/routes
+  service:    ./internal/service
+  middleware: ./internal/middleware
+  svccontext: ./svccontext/svccontext.go
+  openapi:    ./docs/openapi.yaml
+openapi:
+  title: T
+  version: 1.0.0
+`

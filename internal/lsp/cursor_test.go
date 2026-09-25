@@ -7,51 +7,7 @@ import (
 
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
-
-	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
-
-// markCursor removes the cursor mark from src and returns the text and the
-// mark's LSP position, its character counted in UTF-16 units.
-func markCursor(t *testing.T, src string) (string, protocol.Position) {
-	t.Helper()
-	i := strings.Index(src, cursorMark)
-	if i < 0 {
-		t.Fatalf("fixture carries no %q cursor mark", cursorMark)
-	}
-	head := src[:i]
-	return head + src[i+len(cursorMark):], protocol.Position{
-		Line:      uint32(strings.Count(head, "\n")),
-		Character: uint32(utf16Len(head[strings.LastIndexByte(head, '\n')+1:])),
-	}
-}
-
-// tokenUnder returns the index and token under pos, or -1.
-func tokenUnder(view snapshotView, pos protocol.Position) (int, lexer.Token) {
-	c := view.cursorAt(pos)
-	if c.at < 0 {
-		return -1, lexer.Token{}
-	}
-	return c.at, view.tokens[c.at]
-}
-
-// docAt returns the position params of pos in the document u.
-func docAt(u uri.URI, pos protocol.Position) protocol.TextDocumentPositionParams {
-	return protocol.TextDocumentPositionParams{
-		TextDocument: protocol.TextDocumentIdentifier{URI: protocol.DocumentURI(u)},
-		Position:     pos,
-	}
-}
-
-// rangeText returns the text of src that r covers.
-func rangeText(src string, r protocol.Range) string {
-	start := offsetFromLSP(src, r.Start.Line, r.Start.Character)
-	end := offsetFromLSP(src, r.End.Line, r.End.Character)
-	if start > end {
-		return "<inverted range>"
-	}
-	return src[start:end]
-}
 
 // Signature help's active parameter counts the commas before the cursor;
 // outside the parens there is no signature.
