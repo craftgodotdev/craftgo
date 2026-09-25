@@ -8,7 +8,7 @@ GO           ?= go
 GOFLAGS      ?=
 # Extra `go test` flags for every test target, e.g. TESTFLAGS=-race.
 TESTFLAGS    ?=
-# Root packages under `make test`; ./tests/e2e is the orchestrator `make e2e` runs.
+# Root packages under `make test`.
 GO_PKGS      := ./internal/... ./pkg/... ./cmd/...
 # The CLI the gen targets run; `make gen` runs bin/craftgo instead.
 CRAFTGO      ?= $(GO) run ./cmd/craftgo
@@ -87,18 +87,20 @@ cover: ## Run tests with coverage and write coverage.html.
 	$(GO) tool cover -html=coverage.txt -o coverage.html
 	@echo "wrote coverage.html"
 
-.PHONY: e2e
-e2e: ## Run the e2e orchestrator: gen + `go test` the matrix fixture.
-	$(GO) test $(GOFLAGS) $(TESTFLAGS) -count=1 ./tests/e2e/...
+.PHONY: e2e test-submodules
+e2e: ## Run the e2e matrix fixture's tests against its committed output.
+test-submodules: ## Run tests inside every sub-module: the examples, the e2e fixture, the published and test-only modules.
 
-.PHONY: test-submodules
-test-submodules: ## Run tests inside every sub-module: the examples, the e2e fixture, the published modules.
-	@for d in $(SUBMODULES); do \
+# One loop serves both: go test ./... inside each module of TEST_DIRS.
+e2e: TEST_DIRS = $(E2E_DIRS)
+test-submodules: TEST_DIRS = $(SUBMODULES)
+e2e test-submodules:
+	@for d in $(TEST_DIRS); do \
 		echo "→ test $$d"; (cd "$$d" && $(GO) test $(GOFLAGS) $(TESTFLAGS) -count=1 ./...) || exit 1; \
 	done
 
 .PHONY: test-all
-test-all: test e2e test-submodules ## Run every test suite - root, e2e orchestrator, and each sub-module.
+test-all: test test-submodules ## Run every test suite: the root module and each sub-module, the e2e fixture among them.
 
 .PHONY: vet
 vet: ## go vet over all root packages, every published nested module and the test-only modules.
@@ -247,7 +249,7 @@ tag-list: ## Show the four latest tags of each published module (five modules).
 .PHONY: ci
 # override keeps -race when TESTFLAGS is given on the command line.
 ci: override TESTFLAGS += -race
-ci: lint tidy-check test e2e test-submodules gen-diff build-all ## Run the CI gates locally: lint, module tidiness, the root, e2e and sub-module tests with -race (a TESTFLAGS adds to it), codegen drift, every module's build.
+ci: lint tidy-check test test-submodules gen-diff build-all ## Run the CI gates locally: lint, module tidiness, the root and sub-module tests with -race (a TESTFLAGS adds to it), codegen drift, every module's build.
 
 # ---- docs diagrams --------------------------------------------------------
 # Sources are docs/diagrams/*.excalidraw (edit them on excalidraw.com or with

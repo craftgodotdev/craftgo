@@ -15,9 +15,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Lint, module tidiness, vulnerability scan, and the codegen drift gate. All
-  # OS-independent, so they run once on Linux; the cross-OS suite is the `test`
-  # job below.
+  # Lint, module tidiness and the vulnerability scan: OS-independent, so they
+  # run once on Linux. The cross-OS suite, codegen drift gate included, is the
+  # `test` job below.
   check:
     runs-on: ubuntu-latest
     steps:
@@ -78,11 +78,6 @@ jobs:
       - name: build root + submodules
         run: make build-all
 
-      # Regenerate every example and the e2e fixture from current source; any
-      # difference from the committed output is a codegen regression.
-      - name: drift gate (gen output must match committed)
-        run: make gen-diff
-
   # The project ships binaries for Linux, macOS, and Windows, so the suite runs
   # on each - catching path / file / line-ending bugs a Linux-only run misses.
   # The race detector needs a C toolchain the Windows runner lacks, so it is
@@ -109,11 +104,14 @@ jobs:
       - name: build root + submodules
         run: make build-all
 
+      # Regenerate every example and the e2e fixture from current source; any
+      # difference from the committed output is a codegen regression. The
+      # checkout is LF on every OS (.gitattributes), as the generated side is.
+      - name: drift gate (gen output must match committed)
+        run: make gen-diff
+
       - name: test root module
         run: make test TESTFLAGS="${{ matrix.race }}"
-
-      - name: test e2e orchestrator
-        run: make e2e
 
       - name: test submodules
         run: make test-submodules TESTFLAGS="${{ matrix.race }}"
