@@ -81,6 +81,20 @@ func Generate(in Inputs, cfg *config.Config, projectRoot string, targets ...stri
 	return prune(plan(in, cfg, projectRoot, sel))
 }
 
+// Generated reports how many DSL packages [Generate] with targets writes output
+// for, and whether it writes the protos' Go code.
+func Generated(in Inputs, cfg *config.Config, projectRoot string, targets ...string) (packages int, protos bool) {
+	sel, err := selection(targets)
+	if err != nil {
+		return 0, false
+	}
+	_, document := docs.Plan(in.Design, cfg, projectRoot)
+	if sel[config.LangGo] || (sel[targetDocs] && len(document) > 0) {
+		packages = len(in.Design.Packages)
+	}
+	return packages, sel[config.LangGo] && in.Protos != nil
+}
+
 // plan lists the directories the selected targets regenerate into, each with the headers of the
 // files written there, and every file the targets write, selected or not: a target a narrowed run
 // skips still owns its files.

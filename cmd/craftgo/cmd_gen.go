@@ -114,16 +114,18 @@ func runGen(args []string) error {
 	if err := codegen.Generate(in, cfg, projectRoot, a.targets...); err != nil {
 		return err
 	}
-	fmt.Printf("craftgo: generated %d package(s)%s under %s\n", len(proj.Packages), grpcSummary(protos), projectRoot)
+	packages, wroteProtos := codegen.Generated(in, cfg, projectRoot, a.targets...)
+	fmt.Printf("craftgo: generated %d package(s)%s under %s\n", packages, grpcSummary(protos, wroteProtos), projectRoot)
 	for _, note := range codegen.OutputNotes(in, cfg, projectRoot) {
 		fmt.Println("craftgo: " + note)
 	}
 	return nil
 }
 
-// grpcSummary is the gRPC half of the run summary, empty without protos.
-func grpcSummary(protos *protodesign.Set) string {
-	if protos == nil {
+// grpcSummary is the gRPC half of the run summary, empty for a run that
+// writes no proto code.
+func grpcSummary(protos *protodesign.Set, wrote bool) string {
+	if !wrote {
 		return ""
 	}
 	return fmt.Sprintf(", %d gRPC service(s)", len(protos.Services))

@@ -1080,6 +1080,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   `main.go` now embeds the document only when it is on disk as the Go code is
   generated, and a full run writes the document first.
 
+- **The `craftgo gen` summary counts what the run writes.** A run narrowed to
+  `--target docs` reported the design's packages with `output.openapi: "-"`,
+  when it writes nothing, and its gRPC services, whose code it does not
+  write. It now reports `generated 0 package(s)` when it writes nothing, and
+  gRPC services only when it runs the Go target.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

@@ -127,6 +127,33 @@ func TestRunGenMixedProjectCompiles(t *testing.T) {
 	goCheck(t, dir)
 }
 
+// TestGenSummaryCountsWhatTheRunWrites checks that the summary of a narrowed
+// run counts only the packages and gRPC services it writes output for.
+func TestGenSummaryCountsWhatTheRunWrites(t *testing.T) {
+	for _, c := range []struct {
+		manifest, want string
+	}{
+		{"", "craftgo: generated 1 package(s) under "},
+		{protoOnlyManifest, "craftgo: generated 0 package(s) under "},
+	} {
+		dir := t.TempDir()
+		mustWrite(t, dir, "go.mod", "module github.com/test/app\n\ngo 1.24\n")
+		mustWrite(t, dir, "design/craftgo.design.yaml", c.manifest)
+		mustWrite(t, dir, "design/api.craftgo", minimalDesignDSL)
+		mustWrite(t, dir, "design/greet/greet.proto", greetProto)
+		var err error
+		stdout, _ := captureOutput(t, func() {
+			err = runGen([]string{"--target", "docs", "-f", filepath.Join(dir, "design"), "-c", dir})
+		})
+		if err != nil {
+			t.Fatalf("runGen: %v", err)
+		}
+		if !strings.HasPrefix(stdout, c.want) {
+			t.Errorf("manifest %q: summary = %q, want it to start %q", c.manifest, stdout, c.want)
+		}
+	}
+}
+
 // TestRunGenRejectsAnEmptyDesign checks that gen fails on a design folder with
 // no .craftgo or .proto file.
 func TestRunGenRejectsAnEmptyDesign(t *testing.T) {
