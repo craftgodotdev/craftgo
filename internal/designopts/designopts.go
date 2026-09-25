@@ -165,6 +165,26 @@ func ProjectOf(path string) (*config.Config, string) {
 	return cfg, root
 }
 
+// SourcePath returns the Path of the source among srcs that is file on disk,
+// whatever the case or links in either path; ok is false when none is.
+func SourcePath(srcs []Source, file string) (path string, ok bool) {
+	for _, s := range srcs {
+		if s.Path == file {
+			return s.Path, true
+		}
+	}
+	want, err := os.Stat(file)
+	if err != nil {
+		return "", false
+	}
+	for _, s := range srcs {
+		if got, err := os.Stat(s.Path); err == nil && os.SameFile(want, got) {
+			return s.Path, true
+		}
+	}
+	return "", false
+}
+
 // FileErrors returns the error diagnostics among diags that are in file or in
 // no file; a file with any is not formatted.
 func FileErrors(diags []lexer.Diagnostic, file string) []lexer.Diagnostic {

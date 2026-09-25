@@ -140,6 +140,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   as its arguments - where an absolute path refused the file. It also
   reports what the formatter refuses, and exits 1 for either.
 
+- **`craftgo fmt` finds a file's errors whatever the spelling of its
+  path.** A path in another case on a case-insensitive file system, or one
+  through a symbolic link, missed the file in its project's analysis, so a
+  file with errors was formatted. fmt now finds the file on disk, and checks
+  a file its project does not load on its own.
+
 - **`craftgo fmt` reads its flags like `gen` and `init`.** A flag after the
   path - `craftgo fmt design -l`, the order the help text showed - was
   ignored, so the files were rewritten instead of listed; it is now an

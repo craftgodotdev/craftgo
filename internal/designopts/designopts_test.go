@@ -266,6 +266,27 @@ func TestFileErrors(t *testing.T) {
 	}
 }
 
+// SourcePath finds a source by its path or, spelled through a link, by the
+// file on disk, and finds none for another file.
+func TestSourcePath(t *testing.T) {
+	root := tree(t, map[string]string{"app/a.craftgo": "package app\n", "b.craftgo": "package b\n"})
+	loaded := filepath.Join(root, "app", "a.craftgo")
+	srcs := []Source{{Path: loaded}}
+	if got, ok := SourcePath(srcs, loaded); !ok || got != loaded {
+		t.Errorf("SourcePath(own path) = %q, %v", got, ok)
+	}
+	if got, ok := SourcePath(srcs, filepath.Join(root, "b.craftgo")); ok {
+		t.Errorf("SourcePath(another file) = %q, want none", got)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(filepath.Join(root, "app"), link); err != nil {
+		t.Skipf("no symbolic links here: %v", err)
+	}
+	if got, ok := SourcePath(srcs, filepath.Join(link, "a.craftgo")); !ok || got != loaded {
+		t.Errorf("SourcePath(linked path) = %q, %v, want %q", got, ok, loaded)
+	}
+}
+
 func hasCode(diags []lexer.Diagnostic, code string) bool {
 	for _, d := range diags {
 		if d.Code == code {

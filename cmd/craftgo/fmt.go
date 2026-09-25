@@ -36,7 +36,7 @@ func runFmt(args []string) error {
 	if len(files) == 0 {
 		return fmt.Errorf("no .craftgo files found under %q", path)
 	}
-	projects := map[string][]lexer.Diagnostic{}
+	projects := map[string]*project{}
 	var changed []string
 	skipped := 0
 	for _, f := range files {
@@ -80,28 +80,37 @@ func runFmt(args []string) error {
 	return nil
 }
 
+// project is a design project's sources and the diagnostics of their
+// analysis.
+type project struct {
+	srcs  []designopts.Source
+	diags []lexer.Diagnostic
+}
+
 // analysisErrors returns the [designopts.FileErrors] of file, holding src, in
-// the analysis of its project, or of the file alone outside any project.
-// projects caches each project's diagnostics by design root.
-func analysisErrors(file, src string, projects map[string][]lexer.Diagnostic) ([]lexer.Diagnostic, error) {
+// the analysis of the project that loads it, or of the file alone when none
+// does. projects caches each project by design root.
+func analysisErrors(file, src string, projects map[string]*project) ([]lexer.Diagnostic, error) {
 	abs, err := filepath.Abs(file)
 	if err != nil {
 		return nil, err
 	}
-	cfg, root := designopts.ProjectOf(abs)
-	if root == "" {
-		_, _, diags := designopts.Analyze([]designopts.Source{{Path: abs, Text: src}}, "", nil)
-		return designopts.FileErrors(diags, abs), nil
-	}
-	diags, ok := projects[root]
-	if !ok {
-		srcs, err := designopts.Load(root)
-		if err != nil {
-			return nil, err
+	if cfg, root := designopts.ProjectOf(abs); root != "" {
+		p, ok := projects[root]
+		if !ok {
+			srcs, err := designopts.Load(root)
+			if err != nil {
+				return nil, err
+			}
+			_, _, diags := designopts.Analyze(srcs, root, cfg)
+			p = &project{srcs: srcs, diags: diags}
+			projects[root] = p
 		}
-		_, _, diags = designopts.Analyze(srcs, root, cfg)
-		projects[root] = diags
+		if path, ok := designopts.SourcePath(p.srcs, abs); ok {
+			return designopts.FileErrors(p.diags, path), nil
+		}
 	}
+	_, _, diags := designopts.Analyze([]designopts.Source{{Path: abs, Text: src}}, "", nil)
 	return designopts.FileErrors(diags, abs), nil
 }
 

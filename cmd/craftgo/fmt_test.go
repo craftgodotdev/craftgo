@@ -63,6 +63,43 @@ func TestRunFmtRefusesErrorsUnderAnyPath(t *testing.T) {
 	}
 }
 
+// fmt finds a file in its project's analysis by identity, so a path spelled
+// in another case or through a symbolic link still meets the file's errors.
+func TestRunFmtRefusesErrorsUnderAnotherSpelling(t *testing.T) {
+	semanticError := "package app\n\ntype B {  y   Missing }\n"
+	for _, c := range []struct {
+		name  string
+		setup func(t *testing.T, dir string)
+		arg   string
+	}{
+		{"another case", func(t *testing.T, dir string) {
+			if _, err := os.Stat(filepath.Join(dir, "DESIGN", "APP", "APP.CRAFTGO")); err != nil {
+				t.Skip("the file system tells cases apart")
+			}
+		}, "DESIGN/APP/APP.CRAFTGO"},
+		{"linked design folder", func(t *testing.T, dir string) {
+			if err := os.Symlink(filepath.Join(dir, "design"), filepath.Join(dir, "link")); err != nil {
+				t.Skipf("no symbolic links here: %v", err)
+			}
+		}, "link/app/app.craftgo"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			mustWrite(t, dir, "design/craftgo.design.yaml", "")
+			mustWrite(t, dir, "design/app/app.craftgo", semanticError)
+			c.setup(t, dir)
+			t.Chdir(dir)
+			err := runFmt([]string{c.arg})
+			if err == nil || !strings.Contains(err.Error(), "1 file(s) left unformatted") {
+				t.Fatalf("err = %v, want the unformatted-file error", err)
+			}
+			if got, _ := os.ReadFile(filepath.Join(dir, "design", "app", "app.craftgo")); string(got) != semanticError {
+				t.Errorf("file with errors was rewritten:\n%s", got)
+			}
+		})
+	}
+}
+
 // fmt reads its flags and path like gen and init: flags first, one path at
 // most, and `-h` asks for help.
 func TestRunFmtArguments(t *testing.T) {
