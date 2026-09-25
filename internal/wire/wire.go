@@ -222,20 +222,20 @@ func NonBodyBindingKind(f *ast.Field) (Binding, bool) {
 	return BindBody, false
 }
 
-// StatusOverride returns the method's `@status(N)` code, if any; the analyser
-// keeps it within 100..599.
-func StatusOverride(m *ast.Method) (int, bool) {
-	if code, ok := ast.Arg[*ast.IntLit](m.Decorators, "status"); ok {
+// StatusOverride returns the `@status(N)` code of a method with decorators
+// ds, if any; the analyser keeps it within 100..599.
+func StatusOverride(ds []*ast.Decorator) (int, bool) {
+	if code, ok := ast.Arg[*ast.IntLit](ds, "status"); ok {
 		return int(code.Value), true
 	}
 	return 0, false
 }
 
-// SuccessStatus returns the status of a method's successful response:
-// `@status(N)` when set, else 204 with no response body, 201 for a POST with
-// one, and 200 otherwise.
-func SuccessStatus(m *ast.Method) int {
-	if code, ok := StatusOverride(m); ok {
+// SuccessStatus returns the status of m's successful response, ds being the
+// decorators that apply to it: `@status(N)` when set, else 204 with no
+// response body, 201 for a POST with one, and 200 otherwise.
+func SuccessStatus(m *ast.Method, ds []*ast.Decorator) int {
+	if code, ok := StatusOverride(ds); ok {
 		return code
 	}
 	if m.Response == nil || m.Response.Type == nil {

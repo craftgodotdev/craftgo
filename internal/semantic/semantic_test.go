@@ -149,14 +149,12 @@ extend service S { get B /b {} }`))
 	if bMethod == nil {
 		t.Fatal("method B missing")
 	}
-	saw := false
-	for _, d := range bMethod.Decorators {
-		if d.Name == "middlewares" {
-			saw = true
-		}
+	decs := pkg.Services["S"].Decorators(bMethod)
+	if !ast.HasDecorator(decs, "middlewares") {
+		t.Errorf("@middlewares did not propagate to method B: %+v", decs)
 	}
-	if !saw {
-		t.Errorf("@middlewares did not propagate to method B: %+v", bMethod.Decorators)
+	if len(bMethod.Decorators) != 0 {
+		t.Errorf("the block's decorators were written into B's syntax: %+v", bMethod.Decorators)
 	}
 }
 

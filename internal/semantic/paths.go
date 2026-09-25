@@ -34,7 +34,7 @@ func (a *analyzer) checkPathResolution() {
 					"method %s.%s resolves to %s, which is a reserved health path",
 					svcName, m.Name, rt)
 			}
-			a.checkMethodPathParams(svcName, m, rt)
+			a.checkMethodPathParams(svcName, m, si.Decorators(m), rt)
 		}
 	}
 }
@@ -143,11 +143,12 @@ func (a *analyzer) resolveMethodPath(svc *ast.ServiceDecl, m *ast.Method) string
 
 // checkMethodPathParams reports a `{name}` in rt that no request field
 // binds, by `@path` or by its name, and an explicit `@path` field with no
-// segment in rt. A raw request reads its path values itself.
-func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, rt string) {
+// segment in rt; decs are the decorators that apply to m. A raw request
+// reads its path values itself.
+func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, decs []*ast.Decorator, rt string) {
 	pathParams := route.Vars(rt)
 	if m.Request == nil {
-		rawReq, _ := wire.RawSides(m.Decorators)
+		rawReq, _ := wire.RawSides(decs)
 		if len(pathParams) > 0 && !rawReq {
 			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamMissing,
 				"method %s.%s: path declares %v but no request struct - path values won't reach logic. Declare a request struct with a `<name> string @path` (or matching field name) to bind.",

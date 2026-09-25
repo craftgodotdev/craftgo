@@ -31,10 +31,10 @@ func middlewareNames(svc *semantic.ServiceInfo, m *ast.Method) []string {
 }
 
 // buildHandlerCall renders the handler argument of srv.Handle, wrapped in server.WithLimits
-// when m declares @timeout or @maxBodySize.
-func buildHandlerCall(m *ast.Method, transportAlias string) (call string, needsTime bool) {
+// when decs, the decorators that apply to m, hold @timeout or @maxBodySize.
+func buildHandlerCall(m *ast.Method, decs []*ast.Decorator, transportAlias string) (call string, needsTime bool) {
 	core := transportAlias + "." + m.Name + "(svcCtx)"
-	lit, usesTime, ok := methodLimitsLiteral(m)
+	lit, usesTime, ok := methodLimitsLiteral(decs)
 	if ok {
 		core = "server.WithLimits(" + core + ", " + lit + ")"
 	}
@@ -53,15 +53,15 @@ func buildMiddlewareArgs(mws []string) string {
 	return strings.Join(parts, ", ")
 }
 
-// methodLimitsLiteral renders m's @timeout and @maxBodySize as a server.Limits literal; ok is
-// false when m declares neither.
-func methodLimitsLiteral(m *ast.Method) (lit string, usesTime, ok bool) {
+// methodLimitsLiteral renders the @timeout and @maxBodySize among decs as a server.Limits
+// literal; ok is false when decs hold neither.
+func methodLimitsLiteral(decs []*ast.Decorator) (lit string, usesTime, ok bool) {
 	var fields []string
-	if d, ok := semantic.DurationArg(firstArg(m.Decorators, "timeout")); ok {
+	if d, ok := semantic.DurationArg(firstArg(decs, "timeout")); ok {
 		fields = append(fields, "Timeout: "+formatDurationGo(d))
 		usesTime = true
 	}
-	if n, _ := semantic.SizeArg(firstArg(m.Decorators, "maxBodySize")); n > 0 {
+	if n, _ := semantic.SizeArg(firstArg(decs, "maxBodySize")); n > 0 {
 		fields = append(fields, fmt.Sprintf("MaxBodySize: %d", n))
 	}
 	if len(fields) == 0 {
@@ -166,7 +166,7 @@ func generateRoutesForSegment(contribs []segment, cfg *config.Config, projectRoo
 		for m := range c.methods() {
 			full := route.Resolve(cfg.OpenAPI.BasePath, c.svc.Primary, m)
 			mws := middlewareNames(c.svc, m)
-			call, needsTime := buildHandlerCall(m, alias)
+			call, needsTime := buildHandlerCall(m, c.svc.Decorators(m), alias)
 			if needsTime {
 				data.NeedsTime = true
 			}

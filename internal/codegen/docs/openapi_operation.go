@@ -32,15 +32,16 @@ func isMultipartRequest(m *ast.Method, pkg *semantic.Package, r *semantic.Resolv
 }
 
 func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string) *openapi3.Operation {
+	svc := pkg.Services[svcName]
+	decs := svc.Decorators(m)
 	op := &openapi3.Operation{
-		OperationID: operationID(m, base),
+		OperationID: operationID(decs, base),
 		Tags:        operationTags(svcName, m, pkg),
 		// NewResponses would seed a `default` response.
 		Responses:   openapi3.NewResponsesWithCapacity(2),
-		Description: semantic.Description(m.Decorators, m.Doc),
-		Summary:     summaryOf(m.Decorators),
+		Description: semantic.Description(decs, m.Doc),
+		Summary:     summaryOf(decs),
 	}
-	svc := pkg.Services[svcName]
 	// Any one requirement is enough; the service's come first.
 	service, member, _ := svc.InheritedDecorators(m, "security")
 	if sec := securityFromDecorators(slices.Concat(service, member)); sec != nil {
@@ -49,13 +50,13 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 	}
 	// @deprecated on the method or its primary service marks the operation;
 	// the reason joins the description.
-	deprecated := semantic.IsDeprecated(m.Decorators)
+	deprecated := semantic.IsDeprecated(decs)
 	if !deprecated && svc != nil && svc.Primary != nil {
 		deprecated = semantic.IsDeprecated(svc.Primary.Decorators)
 	}
 	if deprecated {
 		op.Deprecated = true
-		reason := semantic.DeprecatedReason(m.Decorators)
+		reason := semantic.DeprecatedReason(decs)
 		if reason == "" && svc != nil && svc.Primary != nil {
 			reason = semantic.DeprecatedReason(svc.Primary.Decorators)
 		}
@@ -65,7 +66,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 	}
 	// A block on a raw side is documented like a typed one; the raw flags
 	// matter only without a block and for a raw response's success status.
-	rawReq, rawResp := wire.RawSides(m.Decorators)
+	rawReq, rawResp := wire.RawSides(decs)
 	isMultipart := isMultipartRequest(m, pkg, registry.resolver)
 	formStrings, formFiles := []semantic.FormField(nil), []semantic.FormField(nil)
 	if isMultipart {
@@ -106,9 +107,9 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 	}
 	switch {
 	case m.Response != nil && m.Response.Type != nil:
-		successCode := strconv.Itoa(wire.SuccessStatus(m))
+		successCode := strconv.Itoa(wire.SuccessStatus(m, decs))
 		if rawResp {
-			successCode = rawResponseStatus(m)
+			successCode = rawResponseStatus(decs)
 		}
 		desc := successDescription(successCode)
 		resp := &openapi3.Response{
@@ -125,7 +126,7 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: resp})
 	case rawResp:
 		// Logic writes a raw response in any format, so it has no schema.
-		successCode := rawResponseStatus(m)
+		successCode := rawResponseStatus(decs)
 		desc := successDescription(successCode)
 		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{
 			Description: &desc,
@@ -134,11 +135,11 @@ func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, regist
 			},
 		}})
 	default:
-		successCode := strconv.Itoa(wire.SuccessStatus(m))
+		successCode := strconv.Itoa(wire.SuccessStatus(m, decs))
 		desc := successDescription(successCode)
 		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{Description: &desc}})
 	}
-	addErrorResponses(op, m, pkg, registry)
+	addErrorResponses(op, decs, pkg, registry)
 	return op
 }
 
@@ -155,19 +156,21 @@ func successDescription(code string) string {
 	return "OK"
 }
 
-// rawResponseStatus is the documented success code of a raw response:
-// `@status(N)`, else 200 whatever the verb, since logic writes the status.
-func rawResponseStatus(m *ast.Method) string {
-	if code, ok := wire.StatusOverride(m); ok {
+// rawResponseStatus is the documented success code of a raw response with
+// decorators decs: `@status(N)`, else 200 whatever the verb, since logic
+// writes the status.
+func rawResponseStatus(decs []*ast.Decorator) string {
+	if code, ok := wire.StatusOverride(decs); ok {
 		return strconv.Itoa(code)
 	}
 	return "200"
 }
 
-// addErrorResponses adds a response per `@errors` error at its category's
-// status, errors sharing a status in one `oneOf`; an unknown name is skipped.
-func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Package, registry *genericRegistry) {
-	names := errorRefsFromDecorators(m.Decorators)
+// addErrorResponses adds a response per error the `@errors` among decs name,
+// at its category's status, errors sharing a status in one `oneOf`; an
+// unknown name is skipped.
+func addErrorResponses(op *openapi3.Operation, decs []*ast.Decorator, pkg *semantic.Package, registry *genericRegistry) {
+	names := errorRefsFromDecorators(decs)
 	if len(names) == 0 {
 		return
 	}
@@ -448,8 +451,8 @@ func setOperation(item *openapi3.PathItem, verb string, op *openapi3.Operation) 
 	}
 }
 
-func operationID(m *ast.Method, base string) string {
-	return semantic.OperationID(m, base)
+func operationID(decs []*ast.Decorator, base string) string {
+	return semantic.OperationID(decs, base)
 }
 
 // operationTags returns the service's `@tags`, its `@group`, then the method's

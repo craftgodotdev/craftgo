@@ -101,16 +101,17 @@ func builtinClauseName(n *ast.NamedTypeRef) string {
 }
 
 // checkNoContentStatusBody rejects a response body on a method whose
-// `@status` is 1xx, 204, 205 or 304, which carry no body (RFC 9110).
-func (a *analyzer) checkNoContentStatusBody(m *ast.Method) {
+// `@status` is 1xx, 204, 205 or 304, which carry no body (RFC 9110); decs
+// are the decorators that apply to m.
+func (a *analyzer) checkNoContentStatusBody(m *ast.Method, decs []*ast.Decorator) {
 	if m.Response == nil || m.Response.Type == nil {
 		return
 	}
-	code, ok := wire.StatusOverride(m)
+	code, ok := wire.StatusOverride(decs)
 	if !ok || !noContentStatus(code) {
 		return
 	}
-	d := ast.FindDecorator(m.Decorators, "status")
+	d := ast.FindDecorator(decs, "status")
 	a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
 		"@status(%d) is a no-content status and cannot carry a response body, but method %s declares one - drop the response, or use a status that allows a body.",
 		code, m.Name)
@@ -122,12 +123,13 @@ func noContentStatus(code int) bool {
 }
 
 // checkRawModeRedundancy warns about a raw flag beside `@passthrough`, and
-// `@rawRequest` with `@rawResponse` written before any `@passthrough`; the
-// later decorator of each pair is reported.
-func (a *analyzer) checkRawModeRedundancy(svcName string, m *ast.Method) {
-	pass := ast.FindDecorator(m.Decorators, wire.DecoratorPassthrough)
-	req := ast.FindDecorator(m.Decorators, wire.DecoratorRawRequest)
-	resp := ast.FindDecorator(m.Decorators, wire.DecoratorRawResponse)
+// `@rawRequest` with `@rawResponse` written before any `@passthrough`, among
+// decs, the decorators that apply to m; the later decorator of each pair is
+// reported.
+func (a *analyzer) checkRawModeRedundancy(svcName string, m *ast.Method, decs []*ast.Decorator) {
+	pass := ast.FindDecorator(decs, wire.DecoratorPassthrough)
+	req := ast.FindDecorator(decs, wire.DecoratorRawRequest)
+	resp := ast.FindDecorator(decs, wire.DecoratorRawResponse)
 	before := func(x, y *ast.Decorator) bool { return comparePos(x.Pos, y.Pos) < 0 }
 	for _, flag := range []struct {
 		d    *ast.Decorator

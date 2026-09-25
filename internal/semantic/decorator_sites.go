@@ -85,14 +85,13 @@ func appendDeclSites(out []decoratorSite, d ast.Decl) []decoratorSite {
 		out = append(out, site(LvlEvent, dd.Name, dd.Decorators))
 	case *ast.ServiceDecl:
 		block := site(LvlService, dd.Name, dd.Decorators)
-		var inherited []*ast.Decorator
 		if dd.Extend {
 			block.label = "extend " + block.label
-			inherited = inheritedFrom(dd)
 		}
 		out = append(out, block)
+		inherited := blockInherited(dd)
 		for _, m := range dd.Methods() {
-			s := site(LvlMethod, dd.Name+"."+m.Name, ownDecorators(m, inherited))
+			s := site(LvlMethod, dd.Name+"."+m.Name, m.Decorators)
 			s.inherited = inherited
 			out = append(out, s)
 		}

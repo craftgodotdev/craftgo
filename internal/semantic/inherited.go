@@ -1,8 +1,6 @@
 package semantic
 
 import (
-	"slices"
-
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
@@ -33,6 +31,33 @@ func inheritedFrom(e *ast.ServiceDecl) []*ast.Decorator {
 	return out
 }
 
+// Decorators returns the decorators that apply to m, a method of svc: those
+// its extend block gives every method it declares, then m's own. The
+// @middlewares, @security and @tags chains combine through
+// [ServiceInfo.InheritedDecorators].
+func (svc *ServiceInfo) Decorators(m *ast.Method) []*ast.Decorator {
+	return blockMethodDecorators(svc.blockOf(m), m)
+}
+
+// blockMethodDecorators is [ServiceInfo.Decorators] for m, a method of block
+// b (nil for none).
+func blockMethodDecorators(b *ast.ServiceDecl, m *ast.Method) []*ast.Decorator {
+	inherited := blockInherited(b)
+	if len(inherited) == 0 {
+		return m.Decorators
+	}
+	return append(inherited, m.Decorators...)
+}
+
+// blockInherited returns what block b gives each method it declares: nothing
+// for a primary service or none, [inheritedFrom] for an extend block.
+func blockInherited(b *ast.ServiceDecl) []*ast.Decorator {
+	if b == nil || !b.Extend {
+		return nil
+	}
+	return inheritedFrom(b)
+}
+
 // InheritedDecorators returns the @middlewares, @security or @tags
 // decorators, as name says, that apply to m, outermost first: service holds
 // the primary service's, member those of m's extend block, then m's own. The
@@ -40,12 +65,8 @@ func inheritedFrom(e *ast.ServiceDecl) []*ast.Decorator {
 // inherited ones and its extend block's drops the primary service's; either
 // sets ignored.
 func (svc *ServiceInfo) InheritedDecorators(m *ast.Method, name string) (service, member []*ast.Decorator, ignored bool) {
-	var inherited []*ast.Decorator
-	if b := svc.blockOf(m); b != nil && b.Extend {
-		inherited = inheritedFrom(b)
-	}
-	own := ownDecorators(m, inherited)
-	ownIgnored := ast.HasDecorator(own, chainIgnores[name])
+	inherited := blockInherited(svc.blockOf(m))
+	ownIgnored := ast.HasDecorator(m.Decorators, chainIgnores[name])
 	ignored = ownIgnored || ast.HasDecorator(inherited, chainIgnores[name])
 	if !ignored && svc.Primary != nil {
 		service = decoratorsNamed(svc.Primary.Decorators, name)
@@ -53,15 +74,7 @@ func (svc *ServiceInfo) InheritedDecorators(m *ast.Method, name string) (service
 	if !ownIgnored {
 		member = decoratorsNamed(inherited, name)
 	}
-	return service, append(member, decoratorsNamed(own, name)...), ignored
-}
-
-// ownDecorators returns the decorators m declares itself: its Decorators
-// without the inherited ones.
-func ownDecorators(m *ast.Method, inherited []*ast.Decorator) []*ast.Decorator {
-	return slices.DeleteFunc(slices.Clone(m.Decorators), func(d *ast.Decorator) bool {
-		return d == nil || slices.Contains(inherited, d)
-	})
+	return service, append(member, decoratorsNamed(m.Decorators, name)...), ignored
 }
 
 // decoratorsNamed returns the decorators of ds called name, in order.

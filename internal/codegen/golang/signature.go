@@ -15,9 +15,9 @@ type methodMode struct {
 	RawResponse bool
 }
 
-// modeOf reads m's blocks and raw-mode decorators.
-func modeOf(m *ast.Method) methodMode {
-	rawReq, rawResp := wire.RawSides(m.Decorators)
+// modeOf reads m's blocks and the raw-mode decorators among decs, those that apply to m.
+func modeOf(m *ast.Method, decs []*ast.Decorator) methodMode {
+	rawReq, rawResp := wire.RawSides(decs)
 	return methodMode{
 		HasRequest:  m.Request != nil,
 		HasResponse: m.Response != nil && m.Response.Type != nil,

@@ -56,7 +56,7 @@ func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic
 	out := outputsOf(cfg)
 	for _, m := range svc.Methods {
 		seg := route.OutputSegment(svcName, semantic.MethodGroupOf(svc, m), cfg.Output.FileCase)
-		data := buildServiceData(pkg.Name, svcName, m, out.segmentImports(pkg.Name, seg), crossPkg)
+		data := buildServiceData(pkg.Name, svcName, m, svc.Decorators(m), out.segmentImports(pkg.Name, seg), crossPkg)
 		if err := writeGoOnce(out.service.sub(seg).at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("service.tmpl"), data); err != nil {
 			return err
 		}
@@ -64,8 +64,8 @@ func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic
 	return nil
 }
 
-func buildServiceData(pkgName, svcName string, m *ast.Method, imps importPaths, crossPkg crossPkg) serviceData {
-	mode := modeOf(m)
+func buildServiceData(pkgName, svcName string, m *ast.Method, decs []*ast.Decorator, imps importPaths, crossPkg crossPkg) serviceData {
+	mode := modeOf(m, decs)
 	imports := newImportSet(crossPkg, goImport{Alias: localAlias, Path: imps.Types}, serviceNames)
 	var reqRef, respRef string
 	if mode.BindRequest() {

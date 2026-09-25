@@ -213,9 +213,16 @@ func rewriteTypeRef(t *ast.TypeRef, srcPkg string, rewrite func(string, *ast.Nam
 }
 
 // cloneServiceInfo copies si with each method's request, response and
-// `@errors` refs renamed by rewrite, type arguments included.
+// `@errors` refs, its extend blocks' `@errors` included, renamed by rewrite,
+// type arguments included.
 func cloneServiceInfo(si *semantic.ServiceInfo, srcPkg string, rewrite func(string, *ast.NamedTypeRef) *ast.NamedTypeRef) *semantic.ServiceInfo {
 	out := *si
+	out.Extends = make([]*ast.ServiceDecl, len(si.Extends))
+	for i, e := range si.Extends {
+		ec := *e
+		ec.Decorators = rewriteErrorDecorators(e.Decorators, srcPkg, rewrite)
+		out.Extends[i] = &ec
+	}
 	out.Methods = make([]*ast.Method, len(si.Methods))
 	for i, m := range si.Methods {
 		cp := *m

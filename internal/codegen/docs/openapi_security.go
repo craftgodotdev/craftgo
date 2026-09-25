@@ -43,7 +43,7 @@ func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package, cfg *config.Conf
 			collect(svc.Primary.Decorators, names)
 		}
 		for _, m := range svc.Methods {
-			collect(m.Decorators, names)
+			collect(svc.Decorators(m), names)
 		}
 	}
 	for n := range names {

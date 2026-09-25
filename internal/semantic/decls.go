@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -100,8 +99,8 @@ func (a *analyzer) registerMember(table map[string]lexer.Position, key string, p
 	return true
 }
 
-// mergeServices fills each service's Methods. The decorators an extend
-// block's methods inherit ([inheritedFrom]) are prepended to each of them.
+// mergeServices fills each service's Methods, the primary's, then each extend
+// block's; [ServiceInfo.Decorators] adds what a block gives its methods.
 func (a *analyzer) mergeServices() {
 	for _, si := range a.pkg.Services {
 		if si.Primary == nil {
@@ -109,13 +108,7 @@ func (a *analyzer) mergeServices() {
 		}
 		si.Methods = append(si.Methods, si.Primary.Methods()...)
 		for _, e := range si.Extends {
-			inherited := inheritedFrom(e)
-			for _, m := range e.Methods() {
-				if len(inherited) > 0 {
-					m.Decorators = append(slices.Clone(inherited), m.Decorators...)
-				}
-				si.Methods = append(si.Methods, m)
-			}
+			si.Methods = append(si.Methods, e.Methods()...)
 		}
 	}
 }

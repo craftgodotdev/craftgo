@@ -32,10 +32,10 @@ func OperationBaseName(svcName string, m *ast.Method, counts map[string]int) str
 	return m.Name
 }
 
-// OperationID returns a method's operationId: an explicit, non-empty
-// `@operationId("...")` override when present, otherwise base.
-func OperationID(m *ast.Method, base string) string {
-	if id, ok := ast.StringArg(m.Decorators, "operationId"); ok && id != "" {
+// OperationID returns the operationId of a method with decorators decs: an
+// explicit, non-empty `@operationId("...")` override when present, otherwise base.
+func OperationID(decs []*ast.Decorator, base string) string {
+	if id, ok := ast.StringArg(decs, "operationId"); ok && id != "" {
 		return id
 	}
 	return base
@@ -65,7 +65,7 @@ func (c *projectChecks) checkProjectOperationIDUniqueness() {
 				continue
 			}
 			for _, m := range si.Methods {
-				id := OperationID(m, OperationBaseName(svcName, m, counts))
+				id := OperationID(si.Decorators(m), OperationBaseName(svcName, m, counts))
 				owners[id] = append(owners[id], owner{ref: svcName + "." + m.Name, pkg: pkgName, pos: m.Pos})
 			}
 		}

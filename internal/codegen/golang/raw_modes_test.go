@@ -295,11 +295,11 @@ func TestParityTransportCallMatchesStubSignature(t *testing.T) {
 	cfg := sampleConfig()
 	for _, m := range svc.Methods {
 		imps := outputsOf(cfg).segmentImports(pkg.Name, route.OutputSegment("DemoService", "", cfg.Output.FileCase))
-		td, err := buildTransportData(m, imps, pkg, resolverFor(pkg, nil))
+		td, err := buildTransportData(m, svc.Decorators(m), imps, pkg, resolverFor(pkg, nil))
 		if err != nil {
 			t.Fatalf("%s: %v", m.Name, err)
 		}
-		sd := buildServiceData(pkg.Name, "DemoService", m, imps, nil)
+		sd := buildServiceData(pkg.Name, "DemoService", m, svc.Decorators(m), imps, nil)
 		if td.Sig != sd.Sig {
 			t.Errorf("%s: transport signature %+v != service signature %+v", m.Name, td.Sig, sd.Sig)
 		}

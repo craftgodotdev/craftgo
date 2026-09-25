@@ -88,7 +88,7 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 	out := outputsOf(cfg)
 	for _, m := range svc.Methods {
 		seg := route.OutputSegment(svcName, semantic.MethodGroupOf(svc, m), cfg.Output.FileCase)
-		data, err := buildTransportData(m, out.segmentImports(pkg.Name, seg), pkg, r)
+		data, err := buildTransportData(m, svc.Decorators(m), out.segmentImports(pkg.Name, seg), pkg, r)
 		if err != nil {
 			return fmt.Errorf("%s.%s: %w", svcName, m.Name, err)
 		}
@@ -99,9 +99,10 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 	return nil
 }
 
-// buildTransportData fails on a field its binding source cannot carry, such as @query on a struct.
-func buildTransportData(m *ast.Method, imps importPaths, pkg *semantic.Package, r *projectResolver) (transportData, error) {
-	mode := modeOf(m)
+// buildTransportData renders m's handler, decs being the decorators that apply to m; it fails on
+// a field its binding source cannot carry, such as @query on a struct.
+func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, pkg *semantic.Package, r *projectResolver) (transportData, error) {
+	mode := modeOf(m, decs)
 	imports := newImportSet(r.CrossPkg, goImport{Alias: localAlias, Path: imps.Types}, transportNames)
 	d := transportData{
 		Package:          pkg.Name,
@@ -137,7 +138,7 @@ func buildTransportData(m *ast.Method, imps importPaths, pkg *semantic.Package, 
 			d.BodyDecode = false
 			const stdlibDefault int64 = 32 << 20
 			d.MultipartMaxMemory = stdlibDefault
-			if n, _ := semantic.SizeArg(firstArg(m.Decorators, "maxBodySize")); n > stdlibDefault {
+			if n, _ := semantic.SizeArg(firstArg(decs, "maxBodySize")); n > stdlibDefault {
 				d.MultipartMaxMemory = n
 			}
 		}
@@ -158,7 +159,7 @@ func buildTransportData(m *ast.Method, imps importPaths, pkg *semantic.Package, 
 	}
 	d.Sig = buildSignature(mode, d.RequestType, respRef)
 	d.Imports = imports.imports()
-	d.SuccessStatus = wire.SuccessStatus(m)
+	d.SuccessStatus = wire.SuccessStatus(m, decs)
 	d.SuccessStatusExpr = statusConstExpr(d.SuccessStatus)
 	return d, nil
 }

@@ -48,8 +48,9 @@ func checkOperationIDUniqueness(pkg *semantic.Package) error {
 	counts := methodNameCounts(pkg)
 	owners := map[string][]string{} // operationId -> ["Service.Method", ...]
 	for _, svcName := range pkg.ServiceNames() {
-		for _, m := range pkg.Services[svcName].Methods {
-			id := operationID(m, operationBaseName(svcName, m, counts))
+		svc := pkg.Services[svcName]
+		for _, m := range svc.Methods {
+			id := operationID(svc.Decorators(m), operationBaseName(svcName, m, counts))
 			owners[id] = append(owners[id], svcName+"."+m.Name)
 		}
 	}

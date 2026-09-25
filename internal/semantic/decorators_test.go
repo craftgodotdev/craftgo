@@ -286,11 +286,11 @@ extend service S { get Priv /priv {} }`))
 	if pub == nil || priv == nil {
 		t.Fatalf("methods missing: pub=%v priv=%v", pub, priv)
 	}
-	if len(pub.Decorators) != 0 {
-		t.Errorf("Pub picked up unexpected decorators: %+v", pub.Decorators)
+	if got := si.Decorators(pub); len(got) != 0 {
+		t.Errorf("Pub picked up unexpected decorators: %+v", got)
 	}
 	var sawMW, sawTags bool
-	for _, d := range priv.Decorators {
+	for _, d := range si.Decorators(priv) {
 		switch d.Name {
 		case "middlewares":
 			sawMW = true
@@ -299,7 +299,10 @@ extend service S { get Priv /priv {} }`))
 		}
 	}
 	if !sawMW || !sawTags {
-		t.Errorf("Priv missing inherited decorators: %+v", priv.Decorators)
+		t.Errorf("Priv missing inherited decorators: %+v", si.Decorators(priv))
+	}
+	if len(priv.Decorators) != 0 {
+		t.Errorf("the block's decorators were written into Priv's syntax: %+v", priv.Decorators)
 	}
 }
 

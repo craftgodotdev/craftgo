@@ -421,7 +421,7 @@ func TestCheckMethodPathParamsNilName(t *testing.T) {
 		Name:    "M",
 		Pos:     lexer.Position{Line: 1},
 		Request: &ast.NamedTypeRef{Name: nil},
-	}, "/users")
+	}, nil, "/users")
 	if len(a.diags) != 0 {
 		t.Errorf("nil request name should not diag, got %v", a.diags)
 	}

@@ -30,7 +30,8 @@ type Package struct {
 }
 
 // ServiceInfo is a primary `service` declaration and its `extend service`
-// blocks. Methods lists the primary's methods, then each block's.
+// blocks. Methods lists the primary's methods, then each block's, as
+// declared; [ServiceInfo.Decorators] adds what a block gives its methods.
 type ServiceInfo struct {
 	Primary *ast.ServiceDecl
 	Extends []*ast.ServiceDecl
@@ -209,16 +210,21 @@ func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMembe
 	}
 }
 
-// checkMethodCombinations runs the method-level rules on m.
+// checkMethodCombinations runs the method-level rules on m, a method of
+// block svc; the block's decorators apply once its service has a primary.
 func (a *analyzer) checkMethodCombinations(svc *ast.ServiceDecl, m *ast.Method) {
 	svcName := svc.Name
-	a.checkRawModeRedundancy(svcName, m)
+	decs := m.Decorators
+	if si := a.pkg.Services[svcName]; si != nil && si.Primary != nil {
+		decs = blockMethodDecorators(svc, m)
+	}
+	a.checkRawModeRedundancy(svcName, m, decs)
 	a.checkBodyBindingVerb(svcName, m)
 	a.checkMultipartTextParts(svcName, m)
 	a.checkDuplicatePathVars(svc, m)
 	a.checkAutoPathField(m)
 	a.checkDuplicateAutoWireNames(m)
-	a.checkNoContentStatusBody(m)
+	a.checkNoContentStatusBody(m, decs)
 	a.checkRequestBodyType(m)
 	a.checkResponseBodyType(m)
 }
