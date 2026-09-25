@@ -154,3 +154,11 @@ func (a *analyzer) checkArity(n *ast.NamedTypeRef, target ast.Decl) {
 			"%s expects %d generic argument(s), got %d", n.Name.String(), want, got)
 	}
 }
+
+// isQualifiedTypeRef reports whether t names a qualified `pkg.Name` symbol.
+func isQualifiedTypeRef(t *ast.TypeRef) bool {
+	if t == nil || t.Named == nil || t.Named.Name == nil {
+		return false
+	}
+	return len(t.Named.Name.Parts) >= 2
+}

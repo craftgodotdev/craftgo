@@ -162,3 +162,141 @@ func (p *Project) Lookup(homePkg, name string, kinds DeclKind) ast.Decl {
 	}
 	return nil
 }
+
+// middlewareDeclared reports whether name, bare or `pkg.Name`, is a declared middleware.
+func (a *analyzer) middlewareDeclared(name string) bool {
+	return a.proj.Lookup(a.pkg.Name, name, MiddlewareDecls) != nil
+}
+
+// errorDeclared reports whether name, bare or `pkg.Name`, is a declared error.
+func (a *analyzer) errorDeclared(name string) bool {
+	return a.proj.Lookup(a.pkg.Name, name, ErrorDecls) != nil
+}
+
+// primaryServiceElsewhere returns the package and declaration of a primary
+// `service name` in another package, or ("", nil).
+func (a *analyzer) primaryServiceElsewhere(name string) (string, *ast.ServiceDecl) {
+	for _, pkgName := range slices.Sorted(maps.Keys(a.proj.Packages)) {
+		pkg := a.proj.Packages[pkgName]
+		if pkg == nil || pkg == a.pkg {
+			continue
+		}
+		if si := pkg.Services[name]; si != nil && si.Primary != nil {
+			return pkgName, si.Primary
+		}
+	}
+	return "", nil
+}
+
+// refDisplay spells (pkgName, name) bare in the analyser's own package and
+// qualified elsewhere.
+func (a *analyzer) refDisplay(pkgName, name string) string {
+	if pkgName == a.pkg.Name {
+		return name
+	}
+	return pkgName + "." + name
+}
+
+// lookupScalarIn returns the scalar n names, a bare name resolving in
+// homePkg, or nil.
+func (a *analyzer) lookupScalarIn(homePkg string, n *ast.NamedTypeRef) *ast.ScalarDecl {
+	if n == nil {
+		return nil
+	}
+	pkg, sym := a.proj.resolve(homePkg, n.Name)
+	if pkg == nil {
+		return nil
+	}
+	return pkg.Scalars[sym]
+}
+
+// lookupScalar is [analyzer.lookupScalarIn] for the analyser's own package.
+func (a *analyzer) lookupScalar(n *ast.NamedTypeRef) *ast.ScalarDecl {
+	return a.lookupScalarIn(a.pkg.Name, n)
+}
+
+// lookupEnumIn is the enum counterpart of [analyzer.lookupScalarIn].
+func (a *analyzer) lookupEnumIn(homePkg string, n *ast.NamedTypeRef) *ast.EnumDecl {
+	if n == nil {
+		return nil
+	}
+	pkg, sym := a.proj.resolve(homePkg, n.Name)
+	if pkg == nil {
+		return nil
+	}
+	return pkg.Enums[sym]
+}
+
+// lookupEnum is [analyzer.lookupEnumIn] for the analyser's own package.
+func (a *analyzer) lookupEnum(n *ast.NamedTypeRef) *ast.EnumDecl {
+	return a.lookupEnumIn(a.pkg.Name, n)
+}
+
+// primOf returns the primitive of the scalar t names, else t's name as
+// spelled; "" when t is not a named type.
+func (a *analyzer) primOf(t *ast.TypeRef) string {
+	if t == nil || t.Named == nil || t.Named.Name == nil {
+		return ""
+	}
+	if sd := a.lookupScalar(t.Named); sd != nil {
+		return sd.Primitive
+	}
+	return t.Named.Name.String()
+}
+
+// Resolver looks up declarations by name as one package spells them: its own
+// bare (`Order`), another package's qualified (`shared.Order`). A nil
+// *Resolver misses every lookup.
+type Resolver struct {
+	proj    *Project
+	current string
+}
+
+// NewResolver returns the resolver of package current in proj; a nil proj
+// misses every lookup.
+func NewResolver(proj *Project, current string) *Resolver {
+	return &Resolver{proj: proj, current: current}
+}
+
+// PackageResolver returns the resolver of pkg in a project holding pkg alone.
+func PackageResolver(pkg *Package) *Resolver {
+	return NewResolver(&Project{Packages: map[string]*Package{pkg.Name: pkg}}, pkg.Name)
+}
+
+// Project returns the analysed project, or nil on a nil receiver.
+func (r *Resolver) Project() *Project {
+	if r == nil {
+		return nil
+	}
+	return r.proj
+}
+
+// LookupType returns the type name spells (bare or `pkg.Name`), or nil.
+func (r *Resolver) LookupType(name string) *ast.TypeDecl {
+	d, _ := r.lookup(name, TypeDecls).(*ast.TypeDecl)
+	return d
+}
+
+// LookupEnum is the enum counterpart of [Resolver.LookupType].
+func (r *Resolver) LookupEnum(name string) *ast.EnumDecl {
+	d, _ := r.lookup(name, EnumDecls).(*ast.EnumDecl)
+	return d
+}
+
+// LookupScalar is the scalar counterpart of [Resolver.LookupType].
+func (r *Resolver) LookupScalar(name string) *ast.ScalarDecl {
+	d, _ := r.lookup(name, ScalarDecls).(*ast.ScalarDecl)
+	return d
+}
+
+// lookup returns the declaration of the selected kinds name spells, or nil.
+func (r *Resolver) lookup(name string, kinds DeclKind) ast.Decl {
+	if r == nil {
+		return nil
+	}
+	pkg, sym := r.proj.resolveName(r.current, name)
+	if pkg == nil {
+		return nil
+	}
+	return pkg.Decl(sym, kinds)
+}

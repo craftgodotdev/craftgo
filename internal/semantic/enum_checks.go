@@ -2,71 +2,8 @@ package semantic
 
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
-
-// checkEnumValueCollisions warns when two values of an enum map to one Go
-// const name.
-func (a *analyzer) checkEnumValueCollisions(files []*ast.File) {
-	for _, f := range files {
-		for _, d := range f.Decls {
-			if ed, ok := d.(*ast.EnumDecl); ok {
-				a.warnEnumValueCollisions(ed)
-			}
-		}
-	}
-}
-
-// warnEnumValueCollisions reports every colliding value of ed but the first.
-func (a *analyzer) warnEnumValueCollisions(ed *ast.EnumDecl) {
-	if ed == nil {
-		return
-	}
-	enumVals := ed.EnumValues()
-	if len(enumVals) < 2 {
-		return
-	}
-	names := make([]string, 0, len(enumVals))
-	for _, v := range enumVals {
-		if v == nil || v.Name == "" {
-			continue
-		}
-		names = append(names, v.Name)
-	}
-	if len(names) < 2 {
-		return
-	}
-	_, collisions := idents.DedupGoFieldNames(names)
-	if len(collisions) == 0 {
-		return
-	}
-	byName := map[string]*ast.EnumValue{}
-	for _, v := range enumVals {
-		if v != nil {
-			byName[v.Name] = v
-		}
-	}
-	for _, c := range collisions {
-		if len(c.DSLNames) < 2 {
-			continue
-		}
-		firstDSL := c.DSLNames[0]
-		first := byName[firstDSL]
-		for rank, dupeName := range c.DSLNames[1:] {
-			anchor := byName[dupeName]
-			if anchor == nil {
-				continue
-			}
-			d := a.diag(anchor.Pos, anchor.Pos, lexer.SeverityWarning, CodeEnumValueCollision,
-				"enum value %q collides with %q in enum %s - both normalise to Go const %q; codegen will emit %q to keep the package compilable, but the wire payloads stay distinct (rename one if this duplication was unintended)",
-				dupeName, firstDSL, ed.Name, ed.Name+c.CanonicalGoName, ed.Name+c.ResolvedGoNames[rank+1])
-			if first != nil {
-				d.Related = related(first.Pos, "first declared here (keeps the canonical const name)")
-			}
-		}
-	}
-}
 
 // checkEnums rejects an empty enum, mixed value kinds, and a repeated value
 // name or literal.

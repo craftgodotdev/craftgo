@@ -9,6 +9,80 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
+// checkValueRules runs the rules on the values decs constrain, of primitive
+// prim, at the field or scalar subject names.
+func (a *analyzer) checkValueRules(prim, subject string, decs []*ast.Decorator) {
+	a.checkPairOrdering(decs)
+	a.checkBoundCapacity(prim, decs)
+	a.checkIntBoundFloatLiteral(prim, subject, decs)
+	a.checkNegativeOnUnsigned(prim, decs)
+}
+
+// valuePrim returns the primitive of f's values - a scalar's, else the type
+// as spelled - or "" for an array or a map.
+func (a *analyzer) valuePrim(f *ast.Field) string {
+	if f.Type == nil || f.Type.Array {
+		return ""
+	}
+	return a.primOf(f.Type)
+}
+
+// checkPairOrdering rejects a lower bound above its upper partner on f, and
+// warns when a pair with a strict bound meets at one value.
+func (a *analyzer) checkPairOrdering(decs []*ast.Decorator) {
+	pairs := []struct {
+		lo, hi   string
+		loStrict bool
+		hiStrict bool
+	}{
+		{lo: "minLength", hi: "maxLength"},
+		{lo: "minItems", hi: "maxItems"},
+		{lo: "gte", hi: "lte"},
+		{lo: "gt", hi: "lt", loStrict: true, hiStrict: true},
+		{lo: "gte", hi: "lt", hiStrict: true},
+		{lo: "gt", hi: "lte", loStrict: true},
+	}
+	for _, p := range pairs {
+		loV, loPos, loOk := singleNumericArg(decs, p.lo)
+		hiV, hiPos, hiOk := singleNumericArg(decs, p.hi)
+		if !loOk || !hiOk {
+			continue
+		}
+		if loV > hiV {
+			diag := a.diag(hiPos, hiPos, lexer.SeverityError, CodeDecoratorRange,
+				"@%s (%g) must be ≥ @%s (%g)", p.hi, hiV, p.lo, loV)
+			diag.Related = related(loPos, "@"+p.lo+" declared here")
+			continue
+		}
+		if loV == hiV && (p.loStrict || p.hiStrict) {
+			diag := a.diag(hiPos, hiPos, lexer.SeverityWarning, CodeBoundEmptyRange,
+				"@%s(%g) combined with @%s(%g) defines an empty range - no value satisfies both",
+				p.hi, hiV, p.lo, loV)
+			diag.Related = related(loPos, "@"+p.lo+" declared here")
+		}
+	}
+}
+
+// singleNumericArg returns the first argument of the first `name` decorator
+// in decs, and its position, when that argument is numeric.
+func singleNumericArg(decs []*ast.Decorator, name string) (float64, lexer.Position, bool) {
+	for _, d := range decs {
+		if d == nil || d.Name != name {
+			continue
+		}
+		pos := positionalArgs(d)
+		if len(pos) == 0 {
+			return 0, lexer.Position{}, false
+		}
+		l, ok := ParseNumericArg(pos[0])
+		if !ok {
+			return 0, lexer.Position{}, false
+		}
+		return l.FloatVal, pos[0].Pos, true
+	}
+	return 0, lexer.Position{}, false
+}
+
 // checkNegativeOnUnsigned rejects `@negative` and `@lt(0)` on an unsigned
 // prim, since no value satisfies them.
 func (a *analyzer) checkNegativeOnUnsigned(prim string, decs []*ast.Decorator) {
@@ -108,5 +182,59 @@ func (a *analyzer) checkValueConstraintOnTypeParam(f *ast.Field, typeParams []st
 				d.Name, name)
 			return
 		}
+	}
+}
+
+// checkBoundOverlap warns when `@length` or `@range` shares a field with one
+// of its one-sided forms.
+func (a *analyzer) checkBoundOverlap(parent string, f *ast.Field) {
+	if f == nil {
+		return
+	}
+	for _, d := range f.Decorators {
+		if d == nil {
+			continue
+		}
+		var partners []string
+		switch d.Name {
+		case "length":
+			partners = []string{"minLength", "maxLength"}
+		case "range":
+			partners = []string{"gt", "gte", "lt", "lte"}
+		default:
+			continue
+		}
+		for _, p := range f.Decorators {
+			if p == nil || p == d {
+				continue
+			}
+			for _, want := range partners {
+				if p.Name != want {
+					continue
+				}
+				a.diag(p.Pos, decoratorEnd(p), lexer.SeverityWarning, CodeDecoratorRedundant,
+					"field %s.%s: @%s overlaps with @%s on the same field; pick one form for clarity",
+					parent, f.Name, p.Name, d.Name)
+			}
+		}
+	}
+}
+
+// checkNullableRedundant warns about `@nullable` on an optional field.
+func (a *analyzer) checkNullableRedundant(f *ast.Field) {
+	var nullableDec *ast.Decorator
+	for _, d := range f.Decorators {
+		if d == nil {
+			continue
+		}
+		if d.Name == "nullable" {
+			nullableDec = d
+		}
+	}
+	if nullableDec != nil && f.Type != nil && f.Type.Optional {
+		a.diag(nullableDec.Pos, decoratorEnd(nullableDec),
+			lexer.SeverityWarning, CodeDecoratorRedundant,
+			"@nullable is redundant on optional field %q (the `?` already allows null)",
+			f.Name)
 	}
 }

@@ -219,3 +219,61 @@ func (a *analyzer) requestPathFields(m *ast.Method, pathParams []string) *pathPa
 	}
 	return out
 }
+
+// checkDuplicatePathVars rejects a path variable repeated in m's route, the
+// service @prefix included.
+func (a *analyzer) checkDuplicatePathVars(svc *ast.ServiceDecl, m *ast.Method) {
+	if m == nil || m.Path == nil {
+		return
+	}
+	svcName := svc.Name
+	// The registered route is the @prefix followed by the method path.
+	seen := map[string]bool{}
+	fromPrefix := map[string]bool{}
+	for _, name := range route.Vars(route.ServicePrefix(svc)) {
+		seen[name] = true
+		fromPrefix[name] = true
+	}
+	for _, seg := range m.Path.Segments {
+		if !seg.Param {
+			continue
+		}
+		if seen[seg.Literal] {
+			if fromPrefix[seg.Literal] {
+				a.diag(seg.Pos, seg.Pos, lexer.SeverityError, CodeDuplicatePathVar,
+					"%s.%s route repeats the path variable {%s} already bound by the service @prefix: the registered route is prefix + method path, so net/http's ServeMux panics on the duplicate wildcard at registration. Drop {%s} from the method path.",
+					svcName, m.Name, seg.Literal, seg.Literal)
+				return
+			}
+			a.diag(seg.Pos, seg.Pos, lexer.SeverityError, CodeDuplicatePathVar,
+				"%s.%s route repeats the path variable {%s}: net/http's ServeMux panics on a duplicate wildcard at registration. Rename one segment.",
+				svcName, m.Name, seg.Literal)
+			return
+		}
+		seen[seg.Literal] = true
+	}
+}
+
+// methodRoutePathVars returns the path variables of m's registered route,
+// @prefix included; services is the package's service table.
+func methodRoutePathVars(m *ast.Method, services map[string]*ServiceInfo) map[string]bool {
+	vars := map[string]bool{}
+	if m == nil {
+		return vars
+	}
+	var owner *ast.ServiceDecl
+	for _, si := range services {
+		if si == nil {
+			continue
+		}
+		for _, sm := range si.Methods {
+			if sm == m {
+				owner = si.Primary
+			}
+		}
+	}
+	for _, name := range route.Vars(route.Resolve("", owner, m)) {
+		vars[name] = true
+	}
+	return vars
+}
