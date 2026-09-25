@@ -84,7 +84,7 @@ func (w validateWalk) leaf(n *ast.NamedTypeRef, access string, ptr bool) string 
 // access, a pointer to it when ptr: its Validate() through a pointer (a
 // struct's has a pointer receiver), else a validateValue walk.
 func (w validateWalk) probe(access string, ptr bool) string {
-	w.ctx.uses["reflect"] = true
+	w.ctx.imports.use("reflect")
 	addr := "&" + access
 	if ptr {
 		addr = access
@@ -115,7 +115,7 @@ func namedIsScalarOrEnum(n *ast.NamedTypeRef, ctx emitCtx) bool {
 // when wrapName is set.
 func validateDispatch(elem, wrapName string, ctx emitCtx) string {
 	if wrapName != "" {
-		ctx.uses["fmt"] = true
+		ctx.imports.use("fmt")
 		return fmt.Sprintf("if err := %s.Validate(); err != nil {\nreturn fmt.Errorf(\"%s: %%w\", err)\n}", elem, escapeErrorf(wrapName))
 	}
 	return fmt.Sprintf("if err := %s.Validate(); err != nil {\nreturn err\n}", elem)

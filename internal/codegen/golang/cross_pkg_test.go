@@ -1,11 +1,11 @@
 package golang
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
-	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -71,90 +71,39 @@ func TestBuildCrossPkgEmptyCurrentReturnsAll(t *testing.T) {
 	}
 }
 
-// importsInto collects imports only for qualified refs, in map values and generic args too.
-func TestImportsInto(t *testing.T) {
-	cross := crossPkg{"shared": "github.com/x/internal/types/shared"}
-
-	mkRef := func(parts ...string) *ast.TypeRef {
-		return &ast.TypeRef{Named: &ast.NamedTypeRef{
-			Name: &ast.QualifiedIdent{Pos: lexer.Position{}, Parts: parts},
-		}}
+// A set with no home, a file of the DSL package's own types, names that package's types bare and
+// imports the package of each qualified ref, through map values, generic arguments and a mixin's
+// builtin argument too.
+func TestHomelessImportSet(t *testing.T) {
+	const shared = "github.com/x/internal/types/shared"
+	named := func(parts ...string) *ast.TypeRef {
+		return &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: parts}}}
 	}
-
-	set := map[string]bool{}
-	(*ast.TypeRef)(nil).WalkNamedRefs(cross.importsInto(set))
-	if len(set) != 0 {
-		t.Errorf("nil should not contribute, got %v", set)
+	cases := []struct {
+		name  string
+		ref   *ast.TypeRef
+		spelt string
+		want  []string
+	}{
+		{"bare", named("User"), "User", nil},
+		{"qualified", named("shared", "User"), "shared.User", []string{shared}},
+		{"map value", &ast.TypeRef{Map: &ast.MapType{Key: named("string"), Value: named("shared", "User")}}, "map[string]shared.User", []string{shared}},
+		{"generic argument", &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"Page"}}, Args: []*ast.TypeRef{named("shared", "User")}}}, "Page[shared.User]", []string{shared}},
+		{"builtin argument", &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "Box"}}, Args: []*ast.TypeRef{named("file")}}}, "shared.Box[*multipart.FileHeader]", []string{shared, "mime/multipart"}},
 	}
-
-	set = map[string]bool{}
-	mkRef("shared", "User").WalkNamedRefs(crossPkg(nil).importsInto(set))
-	if len(set) != 0 {
-		t.Errorf("empty crossPkg should not contribute, got %v", set)
-	}
-
-	set = map[string]bool{}
-	mkRef("User").WalkNamedRefs(cross.importsInto(set))
-	if len(set) != 0 {
-		t.Errorf("unqualified ref should not contribute, got %v", set)
-	}
-
-	set = map[string]bool{}
-	mkRef("shared", "User").WalkNamedRefs(cross.importsInto(set))
-	if !set[cross["shared"]] {
-		t.Errorf("multi-part ref should add import, got %v", set)
-	}
-
-	set = map[string]bool{}
-	(&ast.TypeRef{Map: &ast.MapType{
-		Key:   mkRef("string"),
-		Value: mkRef("shared", "User"),
-	}}).WalkNamedRefs(cross.importsInto(set))
-	if !set[cross["shared"]] {
-		t.Errorf("map value should propagate, got %v", set)
-	}
-
-	set = map[string]bool{}
-	(&ast.TypeRef{Named: &ast.NamedTypeRef{
-		Name: &ast.QualifiedIdent{Parts: []string{"Page"}},
-		Args: []*ast.TypeRef{mkRef("shared", "User")},
-	}}).WalkNamedRefs(cross.importsInto(set))
-	if !set[cross["shared"]] {
-		t.Errorf("generic arg should propagate, got %v", set)
-	}
-}
-
-// crossPkgImportFor returns "" for a nil map or ref, a bare name and an unknown alias.
-func TestCrossPkgImportForGuards(t *testing.T) {
-	if got := crossPkgImportFor(&ast.NamedTypeRef{}, nil); got != "" {
-		t.Error("nil map should return empty")
-	}
-	if got := crossPkgImportFor(nil, crossPkg{"a": "b"}); got != "" {
-		t.Error("nil ref should return empty")
-	}
-	if got := crossPkgImportFor(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"User"}}}, crossPkg{"shared": "x"}); got != "" {
-		t.Error("single-part should return empty")
-	}
-	if got := crossPkgImportFor(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"unknown", "T"}}}, crossPkg{"shared": "x"}); got != "" {
-		t.Error("unknown alias should return empty")
-	}
-}
-
-// A mixin's generic argument contributes its imports, e.g. file → mime/multipart.
-func TestCollectBodyImportsMixinFileArg(t *testing.T) {
-	cross := crossPkg{"m": "github.com/x/internal/types/m"}
-	body := []ast.TypeMember{
-		&ast.Mixin{Ref: &ast.NamedTypeRef{
-			Name: &ast.QualifiedIdent{Parts: []string{"m", "Box"}},
-			Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"file"}}}}},
-		}},
-	}
-	imports := map[string]bool{}
-	collectBodyImports(body, &semantic.Package{}, &projectResolver{CrossPkg: cross}, imports)
-	if !imports["mime/multipart"] {
-		t.Errorf("a mixin with a file generic-arg must import mime/multipart; got %v", imports)
-	}
-	if !imports[cross["m"]] {
-		t.Errorf("the mixin's own package must be imported; got %v", imports)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			set := newImportSet(&projectResolver{CrossPkg: crossPkg{"shared": shared}}, goImport{}, typesNames)
+			if got := set.goType(c.ref); got != c.spelt {
+				t.Errorf("spelt %q, want %q", got, c.spelt)
+			}
+			var got []string
+			for _, imp := range set.imports() {
+				got = append(got, imp.Path)
+			}
+			if !slices.Equal(got, c.want) {
+				t.Errorf("imports %v, want %v", got, c.want)
+			}
+		})
 	}
 }

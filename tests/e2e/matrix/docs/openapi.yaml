@@ -924,6 +924,8 @@ components:
       - Web
       - Mobile
       type: string
+    Code:
+      type: string
     CollectionsAddress:
       description: |-
         Address is a struct used as a map VALUE in maps.craftgo. The two
@@ -6414,6 +6416,14 @@ components:
       $ref: '#/components/schemas/Entry'
     SignupRespBody:
       $ref: '#/components/schemas/ID'
+    Slot:
+      properties:
+        start:
+          format: date-time
+          type: string
+      required:
+      - start
+      type: object
     SnapshotRespBody:
       $ref: '#/components/schemas/ListProfilesResp'
     StaleVersionErr:
@@ -7966,6 +7976,44 @@ components:
       maximum: 100
       minimum: 1
       type: integer
+    XStdNames:
+      description: |-
+        XStdNames names types of packages called like the standard packages its
+        types and validate files import, and like the receiver its Validate binds.
+      properties:
+        at:
+          format: date-time
+          type: string
+        codes:
+          items:
+            $ref: '#/components/schemas/Code'
+          type: array
+          uniqueItems: true
+        rows:
+          items:
+            $ref: '#/components/schemas/Row'
+          type: array
+          uniqueItems: true
+        slot:
+          $ref: '#/components/schemas/Slot'
+      required:
+      - at
+      - slot
+      - rows
+      - codes
+      type: object
+    XStdNamesClashErr:
+      description: Conflict error response (HTTP 409).
+      properties:
+        at:
+          format: date-time
+          type: string
+        slot:
+          $ref: '#/components/schemas/Slot'
+      required:
+      - at
+      - slot
+      type: object
     XThirdReq:
       description: |-
         XThirdReq is used as a QUALIFIED request (`request xshared.XThirdReq`) by

@@ -30,9 +30,8 @@ func uniqueItemsCheck(t checkTarget, ctx emitCtx) string {
 	if t.cat != semantic.CatArray {
 		return ""
 	}
-	elem := goType(t.typ.ElemTypeRef(), ctx.resolver.Resolver, nil)
 	// The element type keys the map and may name another package.
-	t.typ.WalkNamedRefs(ctx.resolver.CrossPkg.importsInto(ctx.uses))
+	elem := ctx.imports.goType(t.typ.ElemTypeRef())
 	return fmt.Sprintf(`{
 seen := make(map[%s]struct{}, len(%s))
 for _, item := range %s {

@@ -4,7 +4,9 @@ package xrefs
 
 import (
 	"encoding/json"
+	time2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/time"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
+	"time"
 )
 
 // ErrCodeXLost is the canonical machine-readable code for XLostErr.
@@ -75,3 +77,38 @@ func (e *XMixinErr) HTTPStatus() int { return 409 }
 
 // MarshalJSON encodes the body alone.
 func (e *XMixinErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.XMixinErrBody) }
+
+// ErrCodeXStdNamesClash is the canonical machine-readable code for XStdNamesClashErr.
+const ErrCodeXStdNamesClash = "X_STD_NAMES_CLASH"
+
+// XStdNamesClashBody is the wire-shape payload declared at design time for XStdNamesClashErr.
+// User code instantiates this struct and hands it to NewXStdNamesClashErr.
+type XStdNamesClashBody struct {
+	At   time.Time  `json:"at"`
+	Slot time2.Slot `json:"slot"`
+}
+
+// XStdNamesClashErr is the typed Conflict error generated for `XStdNamesClash`.
+type XStdNamesClashErr struct {
+	XStdNamesClashBody
+}
+
+// NewXStdNamesClashErr constructs XStdNamesClashErr.
+func NewXStdNamesClashErr(body XStdNamesClashBody) *XStdNamesClashErr {
+	return &XStdNamesClashErr{XStdNamesClashBody: body}
+}
+
+// Error returns the Conflict category's default message.
+func (e *XStdNamesClashErr) Error() string { return "Conflict" }
+
+// ErrCode returns ErrCodeXStdNamesClash. It is named so that it does not shadow a
+// `code` field of the body; rpc.Error puts it on the gRPC status.
+func (e *XStdNamesClashErr) ErrCode() string { return ErrCodeXStdNamesClash }
+
+// HTTPStatus returns the HTTP status code associated with the Conflict
+// category. server.WriteError answers with it, and rpc.Error maps it onto
+// the matching gRPC status code.
+func (e *XStdNamesClashErr) HTTPStatus() int { return 409 }
+
+// MarshalJSON encodes the body alone.
+func (e *XStdNamesClashErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.XStdNamesClashBody) }

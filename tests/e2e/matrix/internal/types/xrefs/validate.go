@@ -4,6 +4,8 @@ package xrefs
 
 import (
 	"fmt"
+	fmt2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/fmt"
+	v2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/v"
 	"unicode/utf8"
 )
 
@@ -196,6 +198,38 @@ func (v *XSearchReq) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on XStdNames.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XStdNames) Validate() error {
+	if err := v.Slot.Validate(); err != nil {
+		return err
+	}
+	{
+		seen := make(map[fmt2.Row]struct{}, len(v.Rows))
+		for _, item := range v.Rows {
+			if _, dup := seen[item]; dup {
+				return fmt.Errorf("rows: items must be unique")
+			}
+			seen[item] = struct{}{}
+		}
+	}
+	for i0 := range v.Rows {
+		if err := v.Rows[i0].Validate(); err != nil {
+			return err
+		}
+	}
+	{
+		seen := make(map[v2.Code]struct{}, len(v.Codes))
+		for _, item := range v.Codes {
+			if _, dup := seen[item]; dup {
+				return fmt.Errorf("codes: items must be unique")
+			}
+			seen[item] = struct{}{}
+		}
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on XTypeFields.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *XTypeFields) Validate() error {
@@ -255,6 +289,15 @@ func (v *XMixinErrBody) Validate() error {
 	}
 	if l := utf8.RuneCountInString(v.Reason); l < 1 || l > 200 {
 		return fmt.Errorf("reason: length out of range [1, 200]")
+	}
+	return nil
+}
+
+// Validate checks every field-level constraint declared on XStdNamesClashBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *XStdNamesClashBody) Validate() error {
+	if err := v.Slot.Validate(); err != nil {
+		return err
 	}
 	return nil
 }

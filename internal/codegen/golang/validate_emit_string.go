@@ -64,7 +64,7 @@ func lengthCount(t checkTarget, ctx emitCtx) string {
 	if t.primIs(prims.Bytes) {
 		return "len(" + t.val() + ")"
 	}
-	ctx.uses["unicode/utf8"] = true
+	ctx.imports.use("unicode/utf8")
 	return "utf8.RuneCountInString(" + t.val() + ")"
 }
 
@@ -77,7 +77,7 @@ func patternCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 	if !ok {
 		return ""
 	}
-	ctx.uses["regexp"] = true
+	ctx.imports.use("regexp")
 	cond := "!" + ctx.regexes.intern(s) + ".MatchString(" + t.val() + ")"
 	return failIf(t.guarded(cond), t.subject, "does not match pattern", ctx)
 }
@@ -97,11 +97,11 @@ func formatCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 		return ""
 	}
 	for _, imp := range sp.Imports {
-		ctx.uses[imp] = true
+		ctx.imports.use(imp)
 	}
 	var cond string
 	if sp.Pattern != "" {
-		ctx.uses["regexp"] = true
+		ctx.imports.use("regexp")
 		cond = "!" + ctx.regexes.intern(sp.Pattern) + ".MatchString(" + t.val() + ")"
 	} else {
 		cond = fmt.Sprintf(sp.Cond, t.val())

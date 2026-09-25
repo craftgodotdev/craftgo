@@ -22,7 +22,7 @@ func escapeErrorf(s string) string {
 // or text alone for the subject-less error of a scalar's or enum's own
 // Validate().
 func errorf(subject, text string, ctx emitCtx) string {
-	ctx.uses["fmt"] = true
+	ctx.imports.use("fmt")
 	if subject != "" {
 		text = subject + ": " + text
 	}

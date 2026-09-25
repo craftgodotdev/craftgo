@@ -38,22 +38,24 @@ func pkgDeclaresTypes(pkg *semantic.Package) bool {
 
 // buildTypesGo returns the unformatted source of pkg's types.go.
 func buildTypesGo(pkg *semantic.Package, r *projectResolver) string {
-	parts := []string{"package " + pkg.Name + "\n"}
-	if imps := collectImports(pkg, r); len(imps) > 0 {
-		parts = append(parts, renderImports(imps))
-	}
-	if scs := renderScalars(pkg); scs != "" {
-		parts = append(parts, scs)
+	imports := newImportSet(r, goImport{}, typesNames)
+	var decls []string
+	if scs := renderScalars(pkg, imports); scs != "" {
+		decls = append(decls, scs)
 	}
 	for _, name := range slices.Sorted(maps.Keys(pkg.Types)) {
-		parts = append(parts, renderType(pkg.Types[name], pkg, r))
+		decls = append(decls, renderType(pkg.Types[name], pkg, r, imports))
 	}
-	return strings.Join(parts, "\n")
+	parts := []string{"package " + pkg.Name + "\n"}
+	if imps := imports.imports(); len(imps) > 0 {
+		parts = append(parts, renderImports(imps))
+	}
+	return strings.Join(append(parts, decls...), "\n")
 }
 
 // renderScalars declares each scalar as a defined type over its Go primitive,
 // so it can carry a Validate() method.
-func renderScalars(pkg *semantic.Package) string {
+func renderScalars(pkg *semantic.Package, imports *importSet) string {
 	if len(pkg.Scalars) == 0 {
 		return ""
 	}
@@ -65,9 +67,11 @@ func renderScalars(pkg *semantic.Package) string {
 	for i, n := range names {
 		sd := pkg.Scalars[n]
 		if semantic.HasRawFormat(sd.Decorators) {
+			imports.use(rawImportPath)
 			parts[i] = fmt.Sprintf(rawTmpl, sd.Name, sd.Name, rawGoType)
 			continue
 		}
+		imports.importBuiltin(sd.Primitive)
 		parts[i] = fmt.Sprintf(tmpl, sd.Name, sd.Primitive, sd.Name, scalarPrimitiveGo(sd.Primitive))
 	}
 	return strings.Join(parts, "")
@@ -80,64 +84,19 @@ func scalarPrimitiveGo(name string) string {
 }
 
 // renderImports returns the `import (...)` block for imps.
-func renderImports(imps []string) string {
+func renderImports(imps []goImport) string {
 	lines := make([]string, len(imps))
 	for i, imp := range imps {
-		lines[i] = "\t" + strconv.Quote(imp)
+		lines[i] = "\t" + imp.Spec()
 	}
 	return fmt.Sprintf("import (\n%s\n)\n", strings.Join(lines, "\n"))
 }
 
-// collectBodyImports adds to imports every Go import the fields and mixins of a
-// type or error body reach, generic arguments included.
-func collectBodyImports(body []ast.TypeMember, pkg *semantic.Package, r *projectResolver, imports map[string]bool) {
-	addCrossPkg := r.CrossPkg.importsInto(imports)
-	visit := func(n *ast.NamedTypeRef) {
-		addBuiltinImport(n, imports)
-		addCrossPkg(n)
-	}
-	for _, m := range body {
-		switch v := m.(type) {
-		case *ast.Field:
-			if isRawBytesField(v, pkg, r) {
-				// The field renders as wire.Raw, so a scalar it names (`shared.RawDoc`) adds no import.
-				imports[rawImportPath] = true
-				continue
-			}
-			v.Type.WalkNamedRefs(visit)
-		case *ast.Mixin:
-			// A generic argument can be a builtin with an import (`Box<file>`).
-			v.Ref.WalkNamedRefs(visit)
-		}
-	}
-}
-
-func collectImports(pkg *semantic.Package, r *projectResolver) []string {
-	imports := map[string]bool{}
-	for _, td := range pkg.Types {
-		collectBodyImports(td.Body, pkg, r, imports)
-	}
-	for _, sd := range pkg.Scalars {
-		if semantic.HasRawFormat(sd.Decorators) {
-			// The scalar itself is an alias for the runtime type.
-			imports[rawImportPath] = true
-		}
-	}
-	return slices.Sorted(maps.Keys(imports))
-}
-
-// addBuiltinImport adds to set the import of the builtin n names, if it has one.
-func addBuiltinImport(n *ast.NamedTypeRef, set map[string]bool) {
-	if sp, ok := prims.Lookup(n.Name.String()); ok && sp.GoImport != "" {
-		set[sp.GoImport] = true
-	}
-}
-
 // renderType returns td's Go struct with its doc and any deprecation notice.
-func renderType(td *ast.TypeDecl, pkg *semantic.Package, r *projectResolver) string {
+func renderType(td *ast.TypeDecl, pkg *semantic.Package, r *projectResolver, imports *importSet) string {
 	doc := renderDoc(td.Doc, "")
 	doc += renderDeprecatedDoc(td.Decorators, "")
-	body := renderTypeBody(td.Body, pkg, r)
+	body := renderTypeBody(td.Body, pkg, r, imports)
 	header := "type " + td.Name + renderTypeParams(td.TypeParams) + " struct {\n" + body + "}\n"
 	return doc + header
 }
@@ -170,17 +129,17 @@ func renderTypeParams(params []string) string {
 
 // renderTypeBody returns the tab-indented fields and mixin embeds of a struct
 // body; colliding Go names get `_2`, `_3` suffixes.
-func renderTypeBody(members []ast.TypeMember, pkg *semantic.Package, r *projectResolver) string {
+func renderTypeBody(members []ast.TypeMember, pkg *semantic.Package, r *projectResolver, imports *importSet) string {
 	resolved := resolvedGoFieldNames(members)
 	parts := make([]string, 0, len(members))
 	fieldIdx := 0
 	for _, m := range members {
 		switch v := m.(type) {
 		case *ast.Field:
-			parts = append(parts, renderField(v, resolved[fieldIdx], pkg, r))
+			parts = append(parts, renderField(v, resolved[fieldIdx], pkg, r, imports))
 			fieldIdx++
 		case *ast.Mixin:
-			parts = append(parts, renderMixin(v, r))
+			parts = append(parts, "\t"+imports.named(v.Ref)+"\n")
 		}
 	}
 	return strings.Join(parts, "")
@@ -198,43 +157,35 @@ func resolvedGoFieldNames(members []ast.TypeMember) []string {
 }
 
 // renderField returns one tab-indented struct field named goName, with its doc.
-func renderField(f *ast.Field, goName string, pkg *semantic.Package, r *projectResolver) string {
+func renderField(f *ast.Field, goName string, pkg *semantic.Package, r *projectResolver, imports *importSet) string {
 	return renderDoc(f.Doc, "\t") +
 		renderDeprecatedDoc(f.Decorators, "\t") +
-		fmt.Sprintf("\t%s %s `%s`\n", goName, goFieldType(f, pkg, r), structTag(f))
+		fmt.Sprintf("\t%s %s `%s`\n", goName, goFieldType(f, pkg, r, imports), structTag(f))
 }
 
-// goFieldType returns f's Go type: wire.Raw for a raw field, and `*T` for an
-// optional or @nullable field whose type does not already hold nil.
-func goFieldType(f *ast.Field, pkg *semantic.Package, r *projectResolver) string {
+// goFieldType returns f's Go type as imports spells it: wire.Raw for a raw
+// field, and `*T` for an optional or @nullable field whose type does not
+// already hold nil.
+func goFieldType(f *ast.Field, pkg *semantic.Package, r *projectResolver, imports *importSet) string {
 	if f == nil || f.Type == nil {
 		return ""
 	}
 	rf := semantic.ResolveField(f, pkg, r.Project())
-	s := rawGoType
-	if rf.Category != semantic.CatRawBytes {
+	var s string
+	if rf.Category == semantic.CatRawBytes {
+		imports.use(rawImportPath)
+		s = rawGoType
+	} else {
 		// The pointer below decides the `*`, so the `?` is dropped here.
 		clone := *f.Type
 		clone.Optional = false
-		s = goType(&clone, r.Resolver, nil)
+		s = imports.goType(&clone)
 	}
 	// A file's Go type spells its pointer already.
 	if rf.GoPointer() && rf.Category != semantic.CatFile {
 		s = "*" + s
 	}
 	return s
-}
-
-// isRawBytesField reports whether f is the raw-bytes shape - `bytes
-// @format(raw)`, or a scalar over one - whose Go type is [rawGoType].
-func isRawBytesField(f *ast.Field, pkg *semantic.Package, r *projectResolver) bool {
-	return semantic.ResolveField(f, pkg, r.Project()).Category == semantic.CatRawBytes
-}
-
-// renderMixin returns the embed line for m with its package qualifier and
-// generic arguments.
-func renderMixin(m *ast.Mixin, r *projectResolver) string {
-	return "\t" + goNamedType(m.Ref, r.Resolver, nil) + "\n"
 }
 
 // goType spells t in Go: a builtin as its Go type, a declared type by its name

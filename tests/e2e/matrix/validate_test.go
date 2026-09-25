@@ -8,9 +8,11 @@ import (
 
 	collections "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
 	combine "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
+	matrixfmt "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/fmt"
 	regression "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/regression"
 	scalars "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	strtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/strings"
+	xrefs "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
 )
 
 func strptr(s string) *string { return &s }
@@ -166,6 +168,14 @@ func TestAutoBoundQueryErrorNamesTheParameter(t *testing.T) {
 	if resp.StatusCode != http.StatusBadRequest || !strings.HasPrefix(string(body), "pageSize: ") {
 		t.Errorf("want 400 naming pageSize, got %d %q", resp.StatusCode, body)
 	}
+}
+
+// A type naming packages called like the standard packages its files import
+// validates through them: XStdNames.rows is fmt.Row[] @uniqueItems.
+func TestStdNamedPackagesValidate(t *testing.T) {
+	row := matrixfmt.Row{Cell: "a"}
+	rejects(t, "repeated rows", &xrefs.XStdNames{Rows: []matrixfmt.Row{row, row}})
+	accepts(t, "distinct rows", &xrefs.XStdNames{Rows: []matrixfmt.Row{row, {Cell: "b"}}})
 }
 
 // An integer bound past 2^53 is compared exactly: minId is @gte(2^53 + 1).

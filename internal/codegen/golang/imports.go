@@ -5,17 +5,28 @@ import (
 	"maps"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/strfmt"
 )
 
 // goImport is one import of a generated file; an empty Alias imports the package under its own name.
 type goImport struct {
 	Alias string
 	Path  string
+}
+
+// Spec returns imp as an import spec: the quoted path, after the alias when the alias is not the
+// package's own name.
+func (imp goImport) Spec() string {
+	if imp.Alias == "" || imp.Alias == path.Base(imp.Path) {
+		return strconv.Quote(imp.Path)
+	}
+	return imp.Alias + " " + strconv.Quote(imp.Path)
 }
 
 // localAlias is the alias a file imports its own DSL package's types under.
@@ -29,7 +40,21 @@ var (
 	grpcMethodNames = []string{"context", "rpc", "grpc", "service"}
 	wiringGRPCNames = []string{"context", "rpc", "svccontext", "ctx", "srv", "svcCtx"}
 	routesNames     = []string{"time", "server", "svccontext", "srv", "svcCtx"}
+	typesNames      = []string{"wire"}
+	errorsNames     = []string{"json", "http", "strconv", "wire", "e", "w"}
+	validateNames   = append([]string{"fmt", "regexp", "utf8", "reflect", "v", "item", "seen"}, formatPackages()...)
 )
+
+// formatPackages returns the names of the packages a @format check imports.
+func formatPackages() []string {
+	var out []string
+	for _, sp := range strfmt.All {
+		for _, imp := range sp.Imports {
+			out = append(out, path.Base(imp))
+		}
+	}
+	return out
+}
 
 // importSet collects the imports of one generated Go file and spells the types the file names:
 // one alias per import path, distinct from the others, from the names the file's template binds
@@ -45,7 +70,8 @@ type importSet struct {
 
 // newImportSet returns an empty set for a file whose template binds names. r resolves the DSL types
 // the file names, nil for a file that names none; home is the package the file names under a fixed
-// alias: the current DSL package's types, or a proto service's messages.
+// alias: the current DSL package's types, or a proto service's messages. A file of the DSL package's
+// own types has no home and names that package's types bare.
 func newImportSet(r *projectResolver, home goImport, names []string) *importSet {
 	s := &importSet{home: home, reserved: map[string]bool{}, byPath: map[string]string{}, taken: map[string]string{}}
 	if r != nil {
@@ -79,6 +105,11 @@ func (s *importSet) add(alias, path string) string {
 	return candidate
 }
 
+// use imports path under its package's own name, which the set's reserved names keep free.
+func (s *importSet) use(path string) {
+	s.byPath[path] = ""
+}
+
 // has reports whether path is imported.
 func (s *importSet) has(path string) bool {
 	_, ok := s.byPath[path]
@@ -105,30 +136,32 @@ func (s *importSet) scratch() *importSet {
 // goType spells t as the file names it, a declared type through [importSet.qualify], and imports
 // every package t reaches.
 func (s *importSet) goType(t *ast.TypeRef) string {
-	t.WalkNamedRefs(s.importBuiltin)
+	t.WalkNamedRefs(func(n *ast.NamedTypeRef) { s.importBuiltin(n.Name.String()) })
 	return goType(t, s.res, s.qualify)
 }
 
 // named is [importSet.goType] for a named type.
 func (s *importSet) named(n *ast.NamedTypeRef) string {
-	n.WalkNamedRefs(s.importBuiltin)
+	n.WalkNamedRefs(func(n *ast.NamedTypeRef) { s.importBuiltin(n.Name.String()) })
 	return goNamedType(n, s.res, s.qualify)
 }
 
-// importBuiltin imports the package whose Go type the builtin n names, under the package's own
-// name, which no other import can take.
-func (s *importSet) importBuiltin(n *ast.NamedTypeRef) {
-	if sp, ok := prims.Lookup(n.Name.String()); ok && sp.GoImport != "" {
-		s.byPath[sp.GoImport] = ""
+// importBuiltin imports the package the Go type of builtin name lives in, if it has one.
+func (s *importSet) importBuiltin(name string) {
+	if sp, ok := prims.Lookup(name); ok && sp.GoImport != "" {
+		s.use(sp.GoImport)
 	}
 }
 
-// qualify spells a declared type's name: a bare name under the home package's alias, a qualified
-// one (`shared.ID`) under the alias its package's import takes. A package the set cannot import
-// keeps the name as written.
+// qualify spells a declared type's name: a bare name under the home package's alias, or bare
+// without a home, a qualified one (`shared.ID`) under the alias its package's import takes. A
+// package the set cannot import keeps the name as written.
 func (s *importSet) qualify(name string) string {
 	pkgName, sym, qualified := strings.Cut(name, ".")
 	if !qualified {
+		if s.home.Path == "" {
+			return name
+		}
 		return s.add(s.home.Alias, s.home.Path) + "." + name
 	}
 	path, ok := s.crossPkg[pkgName]

@@ -1,0 +1,5 @@
+// Package v shares its name with the receiver every Validate method binds:
+// a validate file naming these types imports them under another alias.
+package v
+
+scalar Code string

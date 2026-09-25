@@ -2,7 +2,7 @@ package {{.Package}}
 {{if .Imports}}
 import (
 {{- range .Imports}}
-	"{{.}}"
+	{{.Spec}}
 {{- end}}
 )
 {{- end}}

@@ -27,40 +27,15 @@ func generateErrors(pkg *semantic.Package, outDir string, r *projectResolver) er
 // buildErrorsGo returns the unformatted source of pkg's errors.go, errors in
 // name order.
 func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
-	names := slices.Sorted(maps.Keys(pkg.Errors))
-
-	needsHTTP := false
-	needsStrconv := false
-	for _, name := range names {
-		hs, cs, ns := errorResponseBindings(pkg.Errors[name], pkg, r)
-		if len(hs)+len(cs) > 0 {
-			needsHTTP = true
-		}
-		if ns {
-			needsStrconv = true
-		}
-	}
-
+	imports := newImportSet(r, goImport{}, errorsNames)
 	// Every error type's MarshalJSON encodes through encoding/json.
-	imports := map[string]bool{"encoding/json": true}
-	if needsHTTP {
-		imports["net/http"] = true
+	imports.use("encoding/json")
+	var decls []string
+	for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
+		decls = append(decls, renderError(pkg, pkg.Errors[name], r, imports))
 	}
-	if needsStrconv {
-		imports["strconv"] = true
-	}
-	for _, name := range names {
-		collectBodyImports(pkg.Errors[name].Body, pkg, r, imports)
-	}
-
-	parts := []string{"package " + pkg.Name + "\n"}
-	if len(imports) > 0 {
-		parts = append(parts, renderImports(slices.Sorted(maps.Keys(imports))))
-	}
-	for _, name := range names {
-		parts = append(parts, renderError(pkg, pkg.Errors[name], r))
-	}
-	return strings.Join(parts, "\n")
+	parts := []string{"package " + pkg.Name + "\n", renderImports(imports.imports())}
+	return strings.Join(append(parts, decls...), "\n")
 }
 
 // errorTemplateData is the errors.tmpl input for one error.
@@ -81,9 +56,15 @@ type errorTemplateData struct {
 	Cookies            []paramBinding
 }
 
-// renderError renders errors.tmpl for ed.
-func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver) string {
-	headers, cookies, _ := errorResponseBindings(ed, pkg, r)
+// renderError renders errors.tmpl for ed, adding the packages it names to imports.
+func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver, imports *importSet) string {
+	headers, cookies, needsStrconv := errorResponseBindings(ed, pkg, r)
+	if len(headers)+len(cookies) > 0 {
+		imports.use("net/http")
+	}
+	if needsStrconv {
+		imports.use("strconv")
+	}
 	data := errorTemplateData{
 		TypeName:           idents.ErrorTypeName(ed.Name),
 		BodyName:           idents.ErrorBodyName(ed.Name),
@@ -94,7 +75,7 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver) s
 		Category:           ed.Category,
 		DSLName:            ed.Name,
 		Status:             errcat.Status(ed.Category),
-		BodyInterior:       renderTypeBody(ed.Body, pkg, r),
+		BodyInterior:       renderTypeBody(ed.Body, pkg, r, imports),
 		HasResponseHeaders: len(headers)+len(cookies) > 0,
 		Headers:            headers,
 		Cookies:            cookies,

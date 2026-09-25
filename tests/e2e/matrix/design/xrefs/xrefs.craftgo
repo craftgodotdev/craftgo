@@ -280,3 +280,18 @@ service XRefsService {
 		response xshared.XOwner
 	}
 }
+
+// XStdNames names types of packages called like the standard packages its
+// types and validate files import, and like the receiver its Validate binds.
+type XStdNames {
+	at    datetime
+	slot  time.Slot
+	rows  fmt.Row[] @uniqueItems
+	codes v.Code[]  @uniqueItems
+}
+
+// XStdNamesClash carries a datetime beside a type of package time.
+error Conflict XStdNamesClash {
+	at   datetime
+	slot time.Slot
+}

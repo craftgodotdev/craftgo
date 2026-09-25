@@ -14,7 +14,7 @@ import (
 // validateData is the template input for validate.tmpl.
 type validateData struct {
 	Package string
-	Imports []string
+	Imports []goImport
 	// RegexVars are the package-level compiled regexes, one per distinct pattern.
 	RegexVars []regexVar
 	Types     []validatorType
@@ -71,9 +71,9 @@ func pkgValidates(pkg *semantic.Package) bool {
 func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 	names := slices.Sorted(maps.Keys(pkg.Types))
 
-	uses := map[string]bool{}
+	imports := newImportSet(r, goImport{}, validateNames)
 	regexes := newRegexRegistry()
-	ctx := emitCtx{pkg: pkg, uses: uses, regexes: regexes, resolver: r, autoBound: autoBindings(r.Project())}
+	ctx := emitCtx{pkg: pkg, imports: imports, regexes: regexes, resolver: r, autoBound: autoBindings(r.Project())}
 	var types []validatorType
 	for _, name := range names {
 		td := pkg.Types[name]
@@ -117,14 +117,12 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 		})
 	}
 
-	imps := slices.Sorted(maps.Keys(uses))
-
 	return validateData{
 		Package:            pkg.Name,
-		Imports:            imps,
+		Imports:            imports.imports(),
 		RegexVars:          regexes.entries,
 		Types:              types,
-		NeedsValidateValue: uses["reflect"],
+		NeedsValidateValue: imports.has("reflect"),
 	}
 }
 

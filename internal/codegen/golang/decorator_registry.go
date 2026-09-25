@@ -8,12 +8,12 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// emitCtx is the state the check emitters of one validate.go share: the
-// imports it uses, its regex vars, the package and project lookups, and the
-// fields requests auto-bind ([autoBindings]).
+// emitCtx is the state the check emitters of one validate.go share: its
+// imports, its regex vars, the package and project lookups, and the fields
+// requests auto-bind ([autoBindings]).
 type emitCtx struct {
 	pkg       *semantic.Package
-	uses      map[string]bool
+	imports   *importSet
 	regexes   *regexRegistry
 	resolver  *projectResolver
 	autoBound map[ast.Pos]wire.Binding

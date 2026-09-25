@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // importClashSrc names packages after identifiers the templates bind (`server` in the handler,
@@ -33,6 +35,69 @@ type Out { ok bool }`, `package fmt
 type Item { name string @minLength(1) }`, `package orders
 import "fmt"
 event Batch { payload fmt.Item[] }`}
+
+// typeFilesClashSrc names packages after the packages types.go, errors.go and validate.go import
+// and after the receiver validate.go binds, and names each where its file needs that import.
+var typeFilesClashSrc = []string{`package app
+import "time"
+import "multipart"
+import "wire"
+import "json"
+import "http"
+import "strconv"
+import "fmt"
+import "utf8"
+import "v"
+type X {
+	at    datetime
+	t     time.Item
+	f     file?
+	m     multipart.Item
+	r     bytes @format(raw)
+	w     wire.Item
+	s     string @minLength(1)
+	codes fmt.Code[] @uniqueItems
+	runes utf8.Code[] @uniqueItems
+	vs    v.Code[] @uniqueItems
+}
+error TooManyRequests Slow {
+	after int @header("Retry-After")
+	j     json.Item
+	h     http.Item
+	c     strconv.Item
+}`, `package time
+type Item { n string }`, `package multipart
+type Item { n string }`, `package wire
+type Item { n string }`, `package json
+type Item { n string }`, `package http
+type Item { n string }`, `package strconv
+type Item { n string }`, `package fmt
+scalar Code string`, `package utf8
+scalar Code string`, `package v
+scalar Code string`}
+
+// types.go, errors.go and validate.go import each package they name once, under a name nothing
+// else in the file binds.
+func TestTypeFilesBindEachNameOnce(t *testing.T) {
+	proj := analyzeProject(t, typeFilesClashSrc...)
+	dir := t.TempDir()
+	pkg, r := proj.Packages["app"], buildProjectResolver(proj, sampleConfig(), "app")
+	for _, gen := range []func(*semantic.Package, string, *projectResolver) error{generateTypes, generateErrors, generateValidators} {
+		if err := gen(pkg, dir, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, file := range []string{"types.go", "errors.go", "validate.go"} {
+		body, err := os.ReadFile(filepath.Join(dir, "app", file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Run(file, func(t *testing.T) { mustParseGo(t, string(body)) })
+		if file == "validate.go" {
+			mustContainAll(t, string(body), "map[v2.Code]struct{}")
+		}
+	}
+}
 
 // Every handler, stub and event file imports each package it names once, under a name nothing
 // else in the file binds.

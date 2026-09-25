@@ -1,0 +1,8 @@
+// Package time shares its name with the standard package a datetime field
+// imports: a types, errors or validate file naming these types imports them
+// under another alias.
+package time
+
+type Slot {
+	start datetime
+}

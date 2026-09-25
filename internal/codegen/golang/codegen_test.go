@@ -496,8 +496,9 @@ func TestRenderMixinQualifiedRef(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			m := &ast.Mixin{Ref: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: c.parts}}}
-			if got := renderMixin(m, &projectResolver{}); got != c.want {
-				t.Errorf("renderMixin(%v) = %q, want %q", c.parts, got, c.want)
+			imports := newImportSet(&projectResolver{CrossPkg: crossPkg{"shared": "x/types/shared"}}, goImport{}, typesNames)
+			if got := renderTypeBody([]ast.TypeMember{m}, &semantic.Package{}, &projectResolver{}, imports); got != c.want {
+				t.Errorf("mixin %v renders %q, want %q", c.parts, got, c.want)
 			}
 		})
 	}

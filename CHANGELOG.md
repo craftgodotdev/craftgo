@@ -518,12 +518,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   arrays do not.
 
 - **A package named like an import of the generated code compiles.** A DSL
-  package named `server`, `log`, `context`, `fmt` or another name a handler,
-  logic stub or event file already imports clashed with that import (`server
-  redeclared in this block`); the file now imports the package under a
-  numbered alias such as `server2`. A `datetime` or `file` type argument, as
-  in `payload Page<datetime>`, now brings its `time` or `mime/multipart`
-  import too.
+  package named `server`, `log`, `context`, `fmt`, `time`, `json` or another
+  name a handler, logic stub, event, types, errors or validation file already
+  imports clashed with that import (`server redeclared in this block`), and
+  one named `v` was hidden by the `Validate` receiver (`v.Code is not a
+  type`); the file now imports the package under a numbered alias such as
+  `server2`. A `datetime` or `file` type argument, as in `payload
+  Page<datetime>`, now brings its `time` or `mime/multipart` import too.
 
 - **`config.Path()` names the `config.yaml` under `output.config`.** With
   `output.config: ./internal/config`, gen wrote `config.yaml` there while the
