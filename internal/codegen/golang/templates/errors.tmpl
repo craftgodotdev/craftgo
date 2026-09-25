@@ -33,7 +33,7 @@ func (e *{{.TypeName}}) ErrCode() string { return {{.ConstName}} }
 // category. server.WriteError answers with it, and rpc.Error maps it onto
 // the matching gRPC status code.
 func (e *{{.TypeName}}) HTTPStatus() int { return {{.Status}} }
-{{if .HasBody}}
+{{if .HasJSONMember}}
 // MarshalJSON encodes the body alone.
 func (e *{{.TypeName}}) MarshalJSON() ([]byte, error) { return json.Marshal(e.{{.BodyName}}) }
 {{else}}

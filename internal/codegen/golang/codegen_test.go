@@ -757,6 +757,37 @@ error BadRequest Validation {
 	}
 }
 
+// An error whose fields, a mixin's included, all ride a header, a cookie or
+// nowhere keeps its body struct and marshals the {code, message} envelope.
+func TestGenerateErrorsWithoutJSONMemberMarshalTheEnvelope(t *testing.T) {
+	pkg := analyze(t, `package design
+type Wait { seconds int @header("X-Wait") }
+error TooManyRequests RateLimited { retryAfter int @header("Retry-After") }
+error Unauthorized Expired { session string @cookie("sid") }
+error BadRequest Secretive { internal string @sensitive }
+error ServiceUnavailable Busy { Wait }`)
+	dir := t.TempDir()
+	if err := generateErrors(pkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	norm := strings.Join(strings.Fields(src), " ")
+	for _, name := range []string{"RateLimited", "Expired", "Secretive", "Busy"} {
+		for _, want := range []string{
+			"type " + name + "Body struct",
+			"func New" + name + "Err(body " + name + "Body) *" + name + "Err",
+			"func (e *" + name + "Err) MarshalJSON() ([]byte, error) { " +
+				`return json.Marshal(map[string]string{"code": ErrCode` + name + `, "message": e.Error()})`,
+		} {
+			if !strings.Contains(norm, want) {
+				t.Errorf("missing %q in:\n%s", want, src)
+			}
+		}
+	}
+}
+
 // User-declared code and message become exported body fields; the type holds nothing else.
 func TestGenerateErrorsUserDeclaresCodeAndMessage(t *testing.T) {
 	pkg := analyze(t, `package design

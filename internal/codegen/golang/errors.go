@@ -50,6 +50,7 @@ type errorTemplateData struct {
 	DSLName            string
 	Status             int
 	HasBody            bool
+	HasJSONMember      bool
 	BodyInterior       string
 	HasResponseHeaders bool
 	Headers            []paramBinding
@@ -80,6 +81,7 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver, i
 		Headers:            headers,
 		Cookies:            cookies,
 		HasBody:            len(ast.Members(ed.Body)) > 0,
+		HasJSONMember:      semantic.ErrorHasJSONMember(ed, r.Resolver),
 	}
 	var buf bytes.Buffer
 	if err := errorsTemplate.Execute(&buf, data); err != nil {

@@ -33,13 +33,24 @@ error TooManyRequests RateLimited {
 	retryAfter int @header("Retry-After")
 }
 
+// RetryHint carries a back-off hint on a response header.
+type RetryHint {
+	retryIn int @header("X-Retry-In")
+}
+
+// Overloaded holds only the header field its mixin promotes, so its body is
+// the {code, message} envelope, as RateLimited's is.
+error ServiceUnavailable Overloaded {
+	RetryHint
+}
+
 // HeaderEchoService demonstrates that the JSON body schema and the
 // response.headers map come out of the SAME response struct: split
 // purely by `@header` / `@cookie` decorators on individual fields.
 @prefix("/header-echo")
 service HeaderEchoService {
 	@doc("List items with the total surfaced via response header and the auth cookie refreshed in passing.")
-	@errors(RateLimited)
+	@errors(RateLimited, Overloaded)
 	get ListItems / {
 		response PaginatedResp
 	}

@@ -1,11 +1,14 @@
 package matrix
 
 import (
+	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -49,6 +52,39 @@ func TestGen_ErrorWireShape(t *testing.T) {
 	var zero svctypes.AcctUserNotFoundErr
 	if zero.Error() != "Not found" || zero.ErrCode() != svctypes.ErrCodeAcctUserNotFound {
 		t.Errorf("zero value: Error() = %q, ErrCode() = %q", zero.Error(), zero.ErrCode())
+	}
+}
+
+// An error whose fields all ride headers, its own or a mixin's, writes the
+// {code, message} envelope its OpenAPI schema requires.
+func TestGen_HeaderOnlyErrorWritesItsDocumentedBody(t *testing.T) {
+	schemas := readSchemas(t)
+	for _, c := range []struct {
+		schema, code, message, header, value string
+		status                               int
+		err                                  error
+	}{
+		{"RateLimitedErr", svctypes.ErrCodeRateLimited, "Too many requests", "Retry-After", "30", http.StatusTooManyRequests,
+			svctypes.NewRateLimitedErr(svctypes.RateLimitedBody{RetryAfter: 30})},
+		{"OverloadedErr", svctypes.ErrCodeOverloaded, "Service unavailable", "X-Retry-In", "5", http.StatusServiceUnavailable,
+			svctypes.NewOverloadedErr(svctypes.OverloadedBody{RetryHint: svctypes.RetryHint{RetryIn: 5}})},
+	} {
+		rec := httptest.NewRecorder()
+		server.WriteError(rec, httptest.NewRequest(http.MethodGet, "/", nil), c.err)
+		if rec.Code != c.status || rec.Header().Get(c.header) != c.value {
+			t.Errorf("%s: status %d, %s %q; want %d, %q", c.schema, rec.Code, c.header, rec.Header().Get(c.header), c.status, c.value)
+		}
+		var body map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("%s: body %s: %v", c.schema, rec.Body, err)
+		}
+		if body["code"] != c.code || body["message"] != c.message {
+			t.Errorf("%s: body = %s, want the %s envelope", c.schema, rec.Body, c.code)
+		}
+		documented := schemas[c.schema].Required
+		if got := slices.Sorted(maps.Keys(body)); !slices.Equal(got, slices.Sorted(slices.Values(documented))) {
+			t.Errorf("%s: wire keys %v, the schema requires %v", c.schema, got, documented)
+		}
 	}
 }
 

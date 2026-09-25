@@ -92,13 +92,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   `Error()` and `ErrCode()` return the category message and the `ErrCode<Name>`
   constant, so an error built without its constructor reports them too, and
   a generated `MarshalJSON` writes the `{"code","message"}` envelope for an
-  error without body fields and the body alone otherwise. An error whose body
-  fields are all optional and unset is written as `{}`, the body its OpenAPI
-  response declares, where `server.WriteError` answered the envelope; it
-  still answers the envelope for an error that encodes to `{}` without its
-  own `MarshalJSON`, as those generated before this release do. An error
-  body field named `marshalJSON` is rejected, like one named after the other
-  generated methods.
+  error with no field on its JSON body - none, or only `@header`, `@cookie`
+  and `@sensitive` ones, a mixin's included - and the body alone otherwise.
+  An error whose body fields are all optional and unset is written as `{}`,
+  the body its OpenAPI response declares, where `server.WriteError` answered
+  the envelope; it still answers the envelope for an error that encodes to
+  `{}` without its own `MarshalJSON`, as those generated before this release
+  do. An error body field named `marshalJSON` is rejected, like one named
+  after the other generated methods.
 
 - **A decorator is no decorator argument.** The grammar took `@a(@b)`,
   though no decorator reads one; it is now one parse error at the inner
@@ -908,6 +909,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   document has, such as two component schemas sharing a name or an `oauth2`
   security scheme without flows, stopped the Go code too; it now stops only a
   run that writes the document.
+
+- **An error whose mixin holds only header fields documents its envelope.**
+  `error ServiceUnavailable Busy { Wait }`, with every field of `Wait` a
+  `@header`, `@cookie` or `@sensitive` one, is written as the
+  `{"code","message"}` envelope, while its OpenAPI schema referred to `Wait`,
+  which documents no property; it now documents the envelope.
 
 - **A generic over an array of maps gets its own OpenAPI component.**
   `Page<map<string, Item>[]>` was named like `Page<map<string, Item>>`,

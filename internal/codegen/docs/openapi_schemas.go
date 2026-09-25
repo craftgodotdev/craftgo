@@ -27,40 +27,43 @@ func addSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistr
 func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
 	for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
 		ed := pkg.Errors[name]
-		typeName := idents.ErrorTypeName(ed.Name)
 		s := &openapi3.Schema{
 			Type:       &openapi3.Types{"object"},
 			Properties: openapi3.Schemas{},
 			Description: fmt.Sprintf("%s error response (HTTP %d).",
 				ed.Category, errcat.Status(ed.Category)),
 		}
-		var mixinRefs openapi3.SchemaRefs
-		for _, m := range ed.Body {
-			switch v := m.(type) {
-			case *ast.Field:
-				addBodyProperty(s, semantic.ResolveField(v, pkg, registry.resolver.Project()), v.Type, pkg, registry)
-			case *ast.Mixin:
-				if v == nil || v.Ref == nil || v.Ref.Name == nil {
-					continue
-				}
-				mixinRefs = append(mixinRefs, &openapi3.SchemaRef{
-					Ref: "#/components/schemas/" + registry.refName(v.Ref),
-				})
-			}
-		}
-		// An error with no body field marshals to `{}`, which server.WriteError
-		// replaces with a `{code, message}` envelope.
-		if len(s.Properties) == 0 && len(mixinRefs) == 0 {
-			strProp := func() *openapi3.SchemaRef {
+		if semantic.ErrorHasJSONMember(ed, registry.resolver) {
+			addErrorBody(s, ed, pkg, registry)
+		} else {
+			str := func() *openapi3.SchemaRef {
 				return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
 			}
-			s.Properties["code"] = strProp()
-			s.Properties["message"] = strProp()
+			s.Properties["code"], s.Properties["message"] = str(), str()
 			s.Required = []string{"code", "message"}
 		}
-		wrapAllOfWithHost(s, mixinRefs, nil)
-		names.put(doc, typeName, &openapi3.SchemaRef{Value: s})
+		names.put(doc, idents.ErrorTypeName(ed.Name), &openapi3.SchemaRef{Value: s})
 	}
+}
+
+// addErrorBody puts the JSON fields of ed's body in s and its mixins beside
+// them in an allOf.
+func addErrorBody(s *openapi3.Schema, ed *ast.ErrorDecl, pkg *semantic.Package, registry *genericRegistry) {
+	var mixinRefs openapi3.SchemaRefs
+	for _, m := range ed.Body {
+		switch v := m.(type) {
+		case *ast.Field:
+			addBodyProperty(s, semantic.ResolveField(v, pkg, registry.resolver.Project()), v.Type, pkg, registry)
+		case *ast.Mixin:
+			if v == nil || v.Ref == nil || v.Ref.Name == nil {
+				continue
+			}
+			mixinRefs = append(mixinRefs, &openapi3.SchemaRef{
+				Ref: "#/components/schemas/" + registry.refName(v.Ref),
+			})
+		}
+	}
+	wrapAllOfWithHost(s, mixinRefs, nil)
 }
 
 // addTypeSchemas emits one schema per non-generic type.

@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1972,6 +1973,37 @@ service App {
 	s := doc.Components.Schemas["RecordNotFoundErr"].Value
 	if s.Properties["code"] == nil || s.Properties["message"] == nil {
 		t.Errorf("bodyless error schema missing code/message envelope: %+v", s.Properties)
+	}
+}
+
+// An error whose fields, a mixin's included, all ride a header, a cookie or
+// nowhere documents the `{code, message}` envelope it is written as.
+func TestErrorWithoutJSONMemberEnvelopeSchema(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"app/app.craftgo": `package app
+type Wait { seconds int @header("X-Wait") }
+error TooManyRequests RateLimited { retryAfter int @header("Retry-After") }
+error Unauthorized Expired { session string @cookie("sid") }
+error BadRequest Secretive { internal string @sensitive }
+error ServiceUnavailable Busy { Wait }
+type Req { id string @path }
+type Item { id string }
+service App {
+  @errors(RateLimited, Expired, Secretive, Busy)
+  get One /app/{id} { request Req  response Item }
+}`,
+	}, &config.Config{})
+	for _, name := range []string{"RateLimitedErr", "ExpiredErr", "SecretiveErr", "BusyErr"} {
+		s := doc.Components.Schemas[name].Value
+		if len(s.AllOf) > 0 || s.Properties["code"] == nil || s.Properties["message"] == nil ||
+			!slices.Equal(s.Required, []string{"code", "message"}) {
+			t.Errorf("%s: want the {code, message} envelope, got allOf=%d properties=%v required=%v",
+				name, len(s.AllOf), slices.Sorted(maps.Keys(s.Properties)), s.Required)
+		}
+	}
+	busy := doc.Paths.Find("/app/{id}").Get.Responses.Value("503").Value
+	if busy.Headers["X-Wait"] == nil {
+		t.Errorf("503 response lost the mixin's X-Wait header: %v", slices.Sorted(maps.Keys(busy.Headers)))
 	}
 }
 

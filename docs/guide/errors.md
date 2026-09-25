@@ -20,7 +20,7 @@ return nil, types.NewUserNotFoundErr()
 return nil, types.NewEmailTakenErr(types.EmailTakenBody{Email: req.Email})
 ```
 
-The framework reads the typed error's `HTTPStatus()` and writes the right status code. Errors with body fields emit those fields as the response body; errors without body fields emit a default `{code, message}` envelope.
+The framework reads the typed error's `HTTPStatus()` and writes the right status code. Errors with body fields emit those fields as the response body; errors with no field on the JSON body - none at all, or only `@header`, `@cookie` and `@sensitive` ones - emit a default `{code, message}` envelope.
 
 The rest of this page covers each form, the available categories, and how errors surface in OpenAPI.
 
@@ -173,7 +173,7 @@ error TooManyRequests RateLimited {
 }
 ```
 
-The `@header` and `@cookie` decorators on error fields write to the response writer instead of the JSON body. Body fields ride normally.
+The `@header` and `@cookie` decorators on error fields write to the response writer instead of the JSON body. Body fields ride normally. An error whose every field, a mixin's included, rides a header or a cookie, or is `@sensitive`, has nothing for the JSON body, so its body is the `{"code","message"}` envelope.
 
 ## Declaring per-method
 

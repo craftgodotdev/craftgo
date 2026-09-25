@@ -77,3 +77,28 @@ type T {
 	check("xtone", CatEnum, "string", false) // cross-package enum: backing read from its package
 	check("xtier", CatEnum, "int", false)
 }
+
+// ErrorHasJSONMember counts a field on the JSON body, a mixin's included; a
+// header, cookie or @sensitive field rides elsewhere.
+func TestErrorHasJSONMember(t *testing.T) {
+	pkg := mustClean(t, `package p
+type Wait { seconds int @header("X-Wait") }
+type Hint { hint string }
+error NotFound Bare
+error TooManyRequests Header { retryAfter int @header("Retry-After") }
+error Unauthorized Cookie { session string @cookie("sid") }
+error BadRequest Hidden { internal string @sensitive }
+error ServiceUnavailable HeaderMixin { Wait }
+error Gone BodyMixin { Hint }
+error Unauthorized Optional { code string? }
+error Conflict Mixed { etag string @header("ETag")  reason string? }`)
+	r := PackageResolver(pkg)
+	for name, want := range map[string]bool{
+		"Bare": false, "Header": false, "Cookie": false, "Hidden": false, "HeaderMixin": false,
+		"BodyMixin": true, "Optional": true, "Mixed": true,
+	} {
+		if got := ErrorHasJSONMember(pkg.Errors[name], r); got != want {
+			t.Errorf("%s: ErrorHasJSONMember = %v, want %v", name, got, want)
+		}
+	}
+}

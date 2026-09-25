@@ -184,7 +184,7 @@ Categories (drives HTTP status):
 | `LengthRequired`     | 411    | `UnsupportedMediaType` | 415    |
 | `PreconditionFailed` | 412    |                       |        |
 
-Constructed via `New<TypeName>()` (no body) or `New<TypeName>(<Name>Body{...})`, where `<TypeName>` is the DSL name with `Err` appended unless it already ends in `Err`/`Error` (DSL `EmailTaken` -> `NewEmailTakenErr()`; DSL `RateLimitedErr` -> `NewRateLimitedErr()`) and `<Name>Body` is the DSL name with `Body` appended. Implements `Error() string` (the category's default message), `HTTPStatus() int`, `ErrCode() string` (the machine-readable code) and `MarshalJSON` (the body's fields, or `{"code","message"}` for an error without body fields). Each error type also exports a package-level `const ErrCode<Name>` holding that code string (e.g. `const ErrCodeEmailTaken = "EMAIL_TAKEN"`). No other declaration of the package may take one of these names, an enum value's `<Enum><Value>` constant, or an event's `<Event>Contract` constant: `decl/go-name-collision`.
+Constructed via `New<TypeName>()` (no body) or `New<TypeName>(<Name>Body{...})`, where `<TypeName>` is the DSL name with `Err` appended unless it already ends in `Err`/`Error` (DSL `EmailTaken` -> `NewEmailTakenErr()`; DSL `RateLimitedErr` -> `NewRateLimitedErr()`) and `<Name>Body` is the DSL name with `Body` appended. Implements `Error() string` (the category's default message), `HTTPStatus() int`, `ErrCode() string` (the machine-readable code) and `MarshalJSON` (the body's fields, or `{"code","message"}` for an error with no field on its JSON body: none, or only `@header`, `@cookie` and `@sensitive` ones). Each error type also exports a package-level `const ErrCode<Name>` holding that code string (e.g. `const ErrCodeEmailTaken = "EMAIL_TAKEN"`). No other declaration of the package may take one of these names, an enum value's `<Enum><Value>` constant, or an event's `<Event>Contract` constant: `decl/go-name-collision`.
 
 ## Services and methods
 
@@ -806,7 +806,7 @@ srv.Start(":8080")
 
 The default `server.WriteError`:
 
-- Typed errors that marshal themselves, as every generated one does: their JSON - a declared body's fields, `{}` when every body field is optional and unset, or `{"code":"<CODE>","message":"<text>"}` for an error without body fields. Status from `HTTPStatus()`.
+- Typed errors that marshal themselves, as every generated one does: their JSON - a declared body's fields, `{}` when every body field is optional and unset, or `{"code":"<CODE>","message":"<text>"}` for an error with no field on its JSON body (none, or only `@header`, `@cookie` and `@sensitive` ones). Status from `HTTPStatus()`.
 - Other typed errors whose JSON is `{}`: `{"message":"<text>"}`, plus `"code":"<CODE>"` when the error implements `ErrCode() string`. Status from `HTTPStatus()`.
 - Plain (non-`StatusError`) errors: `{"message":"internal server error"}` - the raw `err.Error()` text is logged with trace context but **never** written to the response (it routinely carries DSNs / file paths). Status 500.
 

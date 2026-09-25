@@ -229,6 +229,18 @@ func ResolveFields(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver, l
 	return resolveFlat(FlattenFields(td, prefix, r, levelNames), pkg, r)
 }
 
+// ErrorHasJSONMember reports whether a field of ed, a mixin's included, rides
+// its JSON body; an error with none is written as the {"code","message"}
+// envelope. ed's names resolve through r.
+func ErrorHasJSONMember(ed *ast.ErrorDecl, r *Resolver) bool {
+	for _, ff := range FlattenFields(&ast.TypeDecl{Body: ed.Body}, "", r, nil) {
+		if _, presence := wire.JSONShape(ff.Field); presence != wire.JSONAbsent {
+			return true
+		}
+	}
+	return false
+}
+
 // resolveFlat resolves each field of flat; a bare type name resolves in pkg.
 func resolveFlat(flat []FlatField, pkg *Package, r *Resolver) []ResolvedField {
 	out := make([]ResolvedField, 0, len(flat))

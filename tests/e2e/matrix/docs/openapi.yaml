@@ -4590,6 +4590,17 @@ components:
           - array
           - "null"
       type: object
+    OverloadedErr:
+      description: ServiceUnavailable error response (HTTP 503).
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - message
+      type: object
     PageKeyedRespBody:
       properties:
         code:
@@ -5787,6 +5798,9 @@ components:
           type: string
       required:
       - createdAt
+      type: object
+    RetryHint:
+      description: RetryHint carries a back-off hint on a response header.
       type: object
     Room:
       description: |-
@@ -10202,6 +10216,16 @@ paths:
           description: TooManyRequests
           headers:
             Retry-After:
+              schema:
+                type: integer
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverloadedErr'
+          description: ServiceUnavailable
+          headers:
+            X-Retry-In:
               schema:
                 type: integer
       tags:

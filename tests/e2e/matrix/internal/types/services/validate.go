@@ -219,6 +219,12 @@ func (v *ReportCards) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on RetryHint.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *RetryHint) Validate() error {
+	return nil
+}
+
 // Validate checks every field-level constraint declared on User.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *User) Validate() error {
@@ -274,6 +280,15 @@ func (v AcctRole) Validate() error {
 // Validate checks every field-level constraint declared on AcctValidationFailedBody.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *AcctValidationFailedBody) Validate() error {
+	return nil
+}
+
+// Validate checks every field-level constraint declared on OverloadedBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *OverloadedBody) Validate() error {
+	if err := v.RetryHint.Validate(); err != nil {
+		return err
+	}
 	return nil
 }
 

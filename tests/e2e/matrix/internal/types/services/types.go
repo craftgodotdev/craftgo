@@ -183,6 +183,11 @@ type ReportCards struct {
 	Names []string `json:"names"`
 }
 
+// RetryHint carries a back-off hint on a response header.
+type RetryHint struct {
+	RetryIn int `json:"-" header:"X-Retry-In"`
+}
+
 // User is the full entity. Embeds `shared.Audit` via the implicit
 // CROSS-PACKAGE MIXIN form (`shared.Audit` alone on a body line is
 // a mixin reference, not a field) so the createdAt / updatedAt /
