@@ -7,15 +7,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// enumSwitchBody renders a switch that returns an error when expr is none of ed's members.
-func enumSwitchBody(ed *ast.EnumDecl, qualifier, expr, label string) string {
-	return fmt.Sprintf(`switch %s {
-case %s:
-default:
-return fmt.Errorf(%s)
-}`, expr, enumCaseList(ed, qualifier), fmt.Sprintf(`"%sinvalid %s value"`, errSubject(label), ed.Name))
-}
-
 // mapRangeLoop ranges access binding only the sides the body uses (`key`,
 // `val`), in the form gofmt -s leaves alone.
 func mapRangeLoop(access string, keyHas, valHas bool, body string) string {
@@ -29,17 +20,6 @@ func mapRangeLoop(access string, keyHas, valHas bool, body string) string {
 	default:
 		return ""
 	}
-}
-
-// enumCaseList lists ed's const names, deduped as enums.go declares them, each
-// prefixed with qualifier.
-func enumCaseList(ed *ast.EnumDecl, qualifier string) string {
-	members := enumMembers(ed)
-	parts := make([]string, 0, len(members))
-	for _, m := range members {
-		parts = append(parts, qualifier+m.ConstName)
-	}
-	return strings.Join(parts, ", ")
 }
 
 // typeParamValidateCall probes a type-parameter field through a pointer (a

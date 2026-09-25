@@ -82,12 +82,9 @@ func enumLiteral(v *ast.EnumValue) string {
 
 // enumMember is one enum member as the Go target renders it.
 type enumMember struct {
-	DSLName    string
-	ConstName  string // enum name + member name, deduped across the enum (`EActive_2`)
-	Kind       ast.EnumValueKind
-	Wire       any    // typed wire value: int64 | string
-	WireString string // JSON-key / propertyNames form (int -> decimal string)
-	Literal    string // Go const right-hand side
+	DSLName   string
+	ConstName string // enum name + member name, deduped across the enum (`EActive_2`)
+	Literal   string // Go const right-hand side
 }
 
 // enumMembers returns ed's members in source order.
@@ -101,12 +98,9 @@ func enumMembers(ed *ast.EnumDecl) []enumMember {
 	out := make([]enumMember, len(vals))
 	for i, v := range vals {
 		out[i] = enumMember{
-			DSLName:    v.Name,
-			ConstName:  consts[i],
-			Kind:       v.Kind,
-			Wire:       semantic.EnumMemberWire(v),
-			WireString: semantic.EnumMemberWireString(v),
-			Literal:    enumLiteral(v),
+			DSLName:   v.Name,
+			ConstName: consts[i],
+			Literal:   enumLiteral(v),
 		}
 	}
 	return out

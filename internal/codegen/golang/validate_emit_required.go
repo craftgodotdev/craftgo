@@ -14,7 +14,7 @@ func requiredKind(f *ast.Field, access string, ctx emitCtx) string {
 	if f.Type == nil {
 		return ""
 	}
-	if f.Type.Optional || goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
+	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
 		return access + " == nil"
 	}
 	if isRawBytesField(f, ctx.pkg, ctx.resolver) {
@@ -42,7 +42,7 @@ func requiredCheck(f *ast.Field, access string, ctx emitCtx) string {
 // requiredCheckEnumAware is [requiredCheck] that also covers a flat enum field,
 // absent at its zero value unless that value is one of the enum's members.
 func requiredCheckEnumAware(f *ast.Field, access string, ctx emitCtx) string {
-	if f != nil && f.Type != nil && !f.Type.Array && !f.Type.Optional && f.Type.Map == nil && f.Type.Named != nil {
+	if f != nil && f.Type != nil && !f.Type.Array && f.Type.Map == nil && f.Type.Named != nil {
 		if ed := ctx.resolver.LookupEnum(f.Type.Named.Name.String()); ed != nil {
 			if semantic.EnumKind(ed) == ast.EnumInt {
 				if enumHasIntValue(ed, 0) {

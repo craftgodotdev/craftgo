@@ -62,12 +62,6 @@ func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
 	return strings.Join(parts, "\n")
 }
 
-// errorBinding is the rendered statement that writes one @header or @cookie
-// error field onto the response.
-type errorBinding struct {
-	Stmt string
-}
-
 // errorTemplateData is the errors.tmpl input for one error.
 type errorTemplateData struct {
 	TypeName           string
@@ -82,8 +76,8 @@ type errorTemplateData struct {
 	HasBody            bool
 	BodyInterior       string
 	HasResponseHeaders bool
-	Headers            []errorBinding
-	Cookies            []errorBinding
+	Headers            []paramBinding
+	Cookies            []paramBinding
 }
 
 // renderError renders errors.tmpl for ed.
@@ -101,8 +95,8 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver) s
 		Status:             errcat.Status(ed.Category),
 		BodyInterior:       renderTypeBody(ed.Body, pkg, r),
 		HasResponseHeaders: len(headers)+len(cookies) > 0,
-		Headers:            toErrorBindings(headers),
-		Cookies:            toErrorBindings(cookies),
+		Headers:            headers,
+		Cookies:            cookies,
 		HasBody:            len(ast.Members(ed.Body)) > 0,
 	}
 	var buf bytes.Buffer
@@ -114,15 +108,6 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver) s
 
 // errorsTemplate is errors.tmpl, parsed once at package init.
 var errorsTemplate = tmpl("errors.tmpl")
-
-// toErrorBindings keeps the write statement ([paramBinding.Bind]) of each binding.
-func toErrorBindings(in []paramBinding) []errorBinding {
-	out := make([]errorBinding, len(in))
-	for i, b := range in {
-		out[i] = errorBinding{Stmt: b.Bind}
-	}
-	return out
-}
 
 // errorResponseBindings returns ed's @header and @cookie fields with their write
 // statements, and whether any of them needs strconv.

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -33,21 +32,20 @@ func crossFieldChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 	return out
 }
 
-// requiresOneOfCheck fails when every named member is absent.
+// requiresOneOfCheck fails when every named member is nil.
 func requiresOneOfCheck(td *ast.TypeDecl, names []string, ctx emitCtx) string {
-	parts := absenceParts(td, names, ctx)
-	cond := strings.Join(parts, " && ")
+	cond := strings.Join(memberNilExprs(td, names, "==", ctx), " && ")
 	msg := fmt.Sprintf(`"%s: requiresOneOf %v - at least one must be set"`, td.Name, names)
 	return ifReturnf(cond, msg, ctx)
 }
 
-// mutuallyExclusiveCheck counts the named members present and fails above one,
+// mutuallyExclusiveCheck counts the named members set and fails above one,
 // inside its own block so each check's `n` stays local.
 func mutuallyExclusiveCheck(td *ast.TypeDecl, names []string, ctx emitCtx) string {
 	ctx.uses["fmt"] = true
-	parts := presenceParts(td, names, ctx)
-	counters := make([]string, len(parts))
-	for i, p := range parts {
+	set := memberNilExprs(td, names, "!=", ctx)
+	counters := make([]string, len(set))
+	for i, p := range set {
 		counters[i] = fmt.Sprintf("if %s {\nn++\n}", p)
 	}
 	return fmt.Sprintf(`{
@@ -59,104 +57,17 @@ return fmt.Errorf("%s: mutuallyExclusive %v - at most one may be set")
 }`, strings.Join(counters, "\n"), td.Name, names)
 }
 
-// presenceParts returns the [presenceExpr] of each named member; a name no field
-// matches renders [unresolvedCrossFieldExpr].
-func presenceParts(td *ast.TypeDecl, names []string, ctx emitCtx) []string {
-	parts := make([]string, 0, len(names))
-	for _, name := range names {
-		f, goName := lookupField(td, name, ctx)
-		if f == nil {
-			parts = append(parts, unresolvedCrossFieldExpr(name))
-			continue
-		}
-		parts = append(parts, presenceExpr(f, goName, ctx))
+// memberNilExprs renders `v.<Member> <op> nil` for each named member of td,
+// mixin-promoted members included; semantic makes every member of a
+// cross-field group a Go value that is nil exactly when absent.
+func memberNilExprs(td *ast.TypeDecl, names []string, op string, ctx emitCtx) []string {
+	goNames := map[string]string{}
+	for _, ff := range semantic.FlattenFields(td, "", ctx.resolver.Resolver, resolvedGoFieldNames) {
+		goNames[ff.Field.Name] = ff.Name
 	}
-	return parts
-}
-
-// unresolvedCrossFieldExpr renders an unknown member as an undefined identifier,
-// so the generated code fails to build naming it.
-func unresolvedCrossFieldExpr(name string) string {
-	return "craftgoUnresolvedCrossFieldMember_" + goFieldName(name)
-}
-
-// lookupField finds td's field by DSL name, mixin-promoted fields included, and
-// returns it with its deduped Go name.
-func lookupField(td *ast.TypeDecl, name string, ctx emitCtx) (*ast.Field, string) {
-	for _, ff := range flattenFieldsWithNames(td, "", ctx.resolver) {
-		if ff.Field.Name == name {
-			return ff.Field, ff.Name
-		}
+	out := make([]string, len(names))
+	for i, name := range names {
+		out[i] = "v." + goNames[name] + " " + op + " nil"
 	}
-	return nil, ""
-}
-
-// presenceExpr returns the condition that the member holds a value: non-nil for
-// a pointer or raw field (an explicit `null` is present), else non-empty or non-zero.
-func presenceExpr(f *ast.Field, goName string, ctx emitCtx) string {
-	access := "v." + goName
-	if f.Type == nil {
-		return "true"
-	}
-	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) || isRawBytesField(f, ctx.pkg, ctx.resolver) {
-		return access + " != nil"
-	}
-	if f.Type.Array || f.Type.Map != nil {
-		return "len(" + access + ") > 0"
-	}
-	if f.Type.Named != nil {
-		switch sp, _ := prims.Lookup(f.Type.Named.Name.String()); sp.Kind {
-		case prims.String:
-			return access + ` != ""`
-		case prims.Int, prims.Uint, prims.Float:
-			return access + " != 0"
-		case prims.Bool:
-			return access
-		case prims.DateTime:
-			return "!" + access + ".IsZero()"
-		}
-	}
-	return "true"
-}
-
-// absenceParts is [presenceParts] negated member by member, so the condition
-// needs no `!(...)` (staticcheck QF1001).
-func absenceParts(td *ast.TypeDecl, names []string, ctx emitCtx) []string {
-	parts := make([]string, 0, len(names))
-	for _, name := range names {
-		f, goName := lookupField(td, name, ctx)
-		if f == nil {
-			parts = append(parts, unresolvedCrossFieldExpr(name))
-			continue
-		}
-		parts = append(parts, absenceExpr(f, goName, ctx))
-	}
-	return parts
-}
-
-// absenceExpr returns the negation of [presenceExpr], each operator flipped.
-func absenceExpr(f *ast.Field, goName string, ctx emitCtx) string {
-	access := "v." + goName
-	if f.Type == nil {
-		return "false"
-	}
-	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) || isRawBytesField(f, ctx.pkg, ctx.resolver) {
-		return access + " == nil"
-	}
-	if f.Type.Array || f.Type.Map != nil {
-		return "len(" + access + ") == 0"
-	}
-	if f.Type.Named != nil {
-		switch sp, _ := prims.Lookup(f.Type.Named.Name.String()); sp.Kind {
-		case prims.String:
-			return access + ` == ""`
-		case prims.Int, prims.Uint, prims.Float:
-			return access + " == 0"
-		case prims.Bool:
-			return "!" + access
-		case prims.DateTime:
-			return access + ".IsZero()"
-		}
-	}
-	return "false"
+	return out
 }

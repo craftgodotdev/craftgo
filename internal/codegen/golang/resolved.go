@@ -2,6 +2,7 @@ package golang
 
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
@@ -35,7 +36,7 @@ func decorate(rf semantic.ResolvedField, pkg *semantic.Package, r *projectResolv
 	f := rf.Field
 	out := resolvedField{ResolvedField: rf, GoName: rf.Name}
 	if out.GoName == "" && f != nil {
-		out.GoName = goFieldName(f.Name)
+		out.GoName = idents.GoFieldName(f.Name)
 	}
 	if f != nil {
 		out.GoType = goFieldType(f, pkg, r)

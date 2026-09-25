@@ -25,7 +25,7 @@ func lengthCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 		}
 		hi = v
 	}
-	val := stringValueExpr(f, access, ctx)
+	val := valueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
 	count := lengthCount(f, val, ctx)
 	// An init statement cannot follow the nil guard, so the guarded form counts twice.
@@ -58,7 +58,7 @@ func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind strin
 	if kind == "max" {
 		op, label = ">", "greater than"
 	}
-	val := stringValueExpr(f, access, ctx)
+	val := valueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
 	cond := fmt.Sprintf("%s%s %s %d", guard, lengthCount(f, val, ctx), op, n)
 	msg := fmt.Sprintf(`"%slength %s %d"`, errSubject(fieldWireName(f)), label, n)
@@ -85,7 +85,7 @@ func patternCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) st
 		return ""
 	}
 	ctx.uses["regexp"] = true
-	val := stringValueExpr(f, access, ctx)
+	val := valueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
 	patVar := ctx.regexes.intern(s)
 	cond := fmt.Sprintf("%s!%s.MatchString(%s)", guard, patVar, val)
@@ -110,7 +110,7 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 	for _, imp := range sp.Imports {
 		ctx.uses[imp] = true
 	}
-	val := stringValueExpr(f, access, ctx)
+	val := valueExpr(f, access, ctx)
 	msg := fmt.Sprintf(`"%snot a valid %s"`, errSubject(fieldWireName(f)), sp.Label)
 	var check string
 	if sp.Pattern != "" {
@@ -121,7 +121,7 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 	}
 	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
 		// Nested: a format condition may carry an init statement, which `&&` cannot guard.
-		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(check))
+		return fmt.Sprintf("if %s != nil {\n%s\n}", access, check)
 	}
 	return check
 }

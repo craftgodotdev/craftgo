@@ -46,11 +46,6 @@ func ifReturnf(cond, msg string, ctx emitCtx) string {
 	return fmt.Sprintf("if %s {\n\treturn fmt.Errorf(%s)\n}", cond, msg)
 }
 
-// indentBlock indents every line of s after the first by one tab.
-func indentBlock(s string) string {
-	return strings.ReplaceAll(s, "\n", "\n\t")
-}
-
 // fieldWireName returns the name f travels under - its binding name or its
 // JSON key - escaped by [escapeErrorfName] for a message literal.
 func fieldWireName(f *ast.Field) string {

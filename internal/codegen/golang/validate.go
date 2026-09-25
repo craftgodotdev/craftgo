@@ -80,7 +80,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 		types = append(types, validatorType{
 			Name:        name,
 			TypeParams:  td.TypeParams,
-			Checks:      collectChecks(td, pkg, r, ctx),
+			Checks:      collectChecks(td, ctx),
 			PtrReceiver: true,
 		})
 	}
@@ -117,7 +117,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 		}
 		types = append(types, validatorType{
 			Name:        body.Name,
-			Checks:      collectChecks(body, pkg, r, ctx),
+			Checks:      collectChecks(body, ctx),
 			PtrReceiver: true,
 		})
 	}
@@ -135,7 +135,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 
 // collectChecks returns td's Validate() statements: per field its constraint
 // checks, then a type-param probe or nested Validate() call.
-func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *projectResolver, ctx emitCtx) []string {
+func collectChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 	var out []string
 	// The struct's own deduped Go names (`UserID`, `UserID_2`).
 	levelNames := resolvedGoFieldNames(td.Body)
@@ -145,7 +145,7 @@ func collectChecks(td *ast.TypeDecl, pkg *semantic.Package, r *projectResolver, 
 		case *ast.Field:
 			goName := levelNames[fieldIdx]
 			fieldIdx++
-			out = append(out, fieldChecksWithScalar(v, goName, pkg, ctx)...)
+			out = append(out, fieldChecksWithScalar(v, goName, ctx)...)
 			if isTypeParamRef(v.Type, td.TypeParams) {
 				if call := typeParamValidateCall(v, goName, ctx); call != "" {
 					out = append(out, call)

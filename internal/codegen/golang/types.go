@@ -73,12 +73,10 @@ func renderScalars(pkg *semantic.Package) string {
 	return strings.Join(parts, "")
 }
 
-// scalarPrimitiveGo returns the Go type of DSL primitive name; other names pass through.
+// scalarPrimitiveGo returns the Go type of DSL primitive name.
 func scalarPrimitiveGo(name string) string {
-	if sp, ok := prims.Lookup(name); ok && sp.Go != "" {
-		return sp.Go
-	}
-	return name
+	sp, _ := prims.Lookup(name)
+	return sp.Go
 }
 
 // renderImports returns the `import (...)` block for imps.
@@ -311,11 +309,6 @@ func goNamedType(n *ast.NamedTypeRef) string {
 		return name + "[" + strings.Join(parts, ", ") + "]"
 	}
 	return name
-}
-
-// goFieldName returns the exported Go identifier for a DSL field name.
-func goFieldName(name string) string {
-	return idents.GoFieldName(name)
 }
 
 // structTag returns f's struct tag: the json key, plus for a path, query,

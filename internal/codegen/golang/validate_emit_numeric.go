@@ -7,13 +7,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func numericValueExpr(f *ast.Field, access string, ctx emitCtx) string {
-	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
-		return "*" + access
-	}
-	return access
-}
-
 // numericBoundCheck renders @gt/@gte/@lt/@lte on a numeric field; op is the
 // relation a valid value satisfies, and the emitted condition negates it.
 func numericBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label string, ctx emitCtx) string {
@@ -34,10 +27,8 @@ func numericBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label 
 		flip = ">"
 	case "<":
 		flip = ">="
-	default:
-		return ""
 	}
-	val := numericValueExpr(f, access, ctx)
+	val := valueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
 	cond := fmt.Sprintf("%s%s %s %s", guard, val, flip, n)
 	msg := fmt.Sprintf(`"%s%s %s"`, errSubject(fieldWireName(f)), label, n)
@@ -54,7 +45,7 @@ func rangeCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) stri
 	if !ok1 || !ok2 {
 		return ""
 	}
-	val := numericValueExpr(f, access, ctx)
+	val := valueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
 	var cond string
 	if guard == "" {
@@ -75,7 +66,7 @@ func signCheck(f *ast.Field, access, kind string, ctx emitCtx) string {
 	if kind == "negative" {
 		op, label = ">=", "must be negative"
 	}
-	val := numericValueExpr(f, access, ctx)
+	val := valueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
 	cond := fmt.Sprintf("%s%s %s 0", guard, val, op)
 	msg := fmt.Sprintf(`"%s%s"`, errSubject(fieldWireName(f)), label)
@@ -96,7 +87,7 @@ func multipleOfCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx)
 	if !whole || n == "0" {
 		return ""
 	}
-	val := numericValueExpr(f, access, ctx)
+	val := valueExpr(f, access, ctx)
 	guard := optionalGuard(f, access)
 	cond := fmt.Sprintf("%s%s%%%s != 0", guard, val, n)
 	msg := fmt.Sprintf(`"%smust be a multiple of %s"`, errSubject(fieldWireName(f)), n)

@@ -31,7 +31,7 @@ func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label st
 	check := ifReturnf(cond, msg, ctx)
 	// Nil is the valid absent/null value of an optional or @nullable collection.
 	if fieldNeedsNilGuard(f) {
-		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(check))
+		return fmt.Sprintf("if %s != nil {\n%s\n}", access, check)
 	}
 	return check
 }
@@ -42,10 +42,7 @@ func uniqueItemsCheck(f *ast.Field, access string, ctx emitCtx) string {
 	if f.Type == nil || !f.Type.Array {
 		return ""
 	}
-	elem := arrayElemType(f.Type)
-	if !isComparableElem(elem) {
-		return ""
-	}
+	elem := goTypeRef(f.Type.ElemTypeRef())
 	ctx.uses["fmt"] = true
 	// The element type keys the map and may name another package.
 	f.Type.WalkNamedRefs(ctx.resolver.CrossPkg.importsInto(ctx.uses))

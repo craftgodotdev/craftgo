@@ -2,7 +2,6 @@ package golang
 
 import (
 	"slices"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/prims"
@@ -69,26 +68,6 @@ func isTypeParamRef(t *ast.TypeRef, params []string) bool {
 	return slices.Contains(params, t.Named.Name.String())
 }
 
-// isComparableElem reports whether Go element type elem can key the dedupe map.
-func isComparableElem(elem string) bool {
-	if elem == "" {
-		return false
-	}
-	if strings.HasPrefix(elem, "[]") || strings.HasPrefix(elem, "map[") || strings.HasPrefix(elem, "func") {
-		return false
-	}
-	return true
-}
-
-// arrayElemType returns the Go type of one element of array t, or "" when t is
-// not an array.
-func arrayElemType(t *ast.TypeRef) string {
-	if t == nil || !t.Array {
-		return ""
-	}
-	return goTypeRef(t.ElemTypeRef())
-}
-
 // optionalGuard returns the `access != nil && ` prefix for an optional or
 // @nullable field, whose nil is the valid absent/null value.
 func optionalGuard(f *ast.Field, access string) string {
@@ -98,9 +77,9 @@ func optionalGuard(f *ast.Field, access string) string {
 	return ""
 }
 
-// stringValueExpr dereferences access when f is a pointer; pair it with
+// valueExpr dereferences access when f is a pointer; pair it with
 // [optionalGuard].
-func stringValueExpr(f *ast.Field, access string, ctx emitCtx) string {
+func valueExpr(f *ast.Field, access string, ctx emitCtx) string {
 	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
 		return "*" + access
 	}

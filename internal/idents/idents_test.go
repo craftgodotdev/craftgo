@@ -8,6 +8,8 @@ import (
 func TestGoFieldNameTable(t *testing.T) {
 	cases := map[string]string{
 		"":            "",
+		"id":          "ID",
+		"firstName":   "FirstName",
 		"name":        "Name",
 		"Name":        "Name",
 		"user_id":     "UserID",

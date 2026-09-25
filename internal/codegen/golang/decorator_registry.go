@@ -45,12 +45,12 @@ func (r *regexRegistry) intern(pattern string) string {
 
 // fieldChecksWithScalar renders f's required check and the constraints declared
 // on f; a scalar- or enum-typed field checks them via [scalarFieldLevelChecks].
-func fieldChecksWithScalar(f *ast.Field, goName string, pkg *semantic.Package, ctx emitCtx) []string {
+func fieldChecksWithScalar(f *ast.Field, goName string, ctx emitCtx) []string {
 	access := "v." + goName
 	var out []string
 
 	// A @nullable field gets no required check: a missing key and `null` both decode to nil.
-	if resolveField(f, pkg, ctx.resolver).RuntimeEnforced {
+	if resolveField(f, ctx.pkg, ctx.resolver).RuntimeEnforced {
 		if s := requiredCheckEnumAware(f, access, ctx); s != "" {
 			out = append(out, s)
 		}
@@ -77,7 +77,3 @@ func fieldChecksWithScalar(f *ast.Field, goName string, pkg *semantic.Package, c
 	}
 	return out
 }
-
-// scalarPrimitiveDSL returns the primitive name the check predicates match: the
-// DSL name, unchanged.
-func scalarPrimitiveDSL(name string) string { return name }

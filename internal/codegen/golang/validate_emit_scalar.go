@@ -18,7 +18,7 @@ func scalarFieldPrimitive(f *ast.Field, ctx emitCtx) string {
 	if sd == nil {
 		return ""
 	}
-	return scalarPrimitiveDSL(sd.Primitive)
+	return sd.Primitive
 }
 
 // enumFieldPrimitive returns "int" or "string" for a flat enum-typed field, or
@@ -97,7 +97,7 @@ func scalarValidateChecks(sd *ast.ScalarDecl, ctx emitCtx) []string {
 		Name: "",
 		Type: &ast.TypeRef{
 			Named: &ast.NamedTypeRef{
-				Name: &ast.QualifiedIdent{Parts: []string{scalarPrimitiveDSL(sd.Primitive)}},
+				Name: &ast.QualifiedIdent{Parts: []string{sd.Primitive}},
 			},
 		},
 	}
@@ -116,11 +116,20 @@ func scalarValidateChecks(sd *ast.ScalarDecl, ctx emitCtx) []string {
 }
 
 // enumValidateChecks renders the body of ed's Validate(): a switch over its
-// members, or nothing for an enum without members.
+// members' consts, or nothing for an enum without members. The error has no
+// subject: the using field wraps it with its name.
 func enumValidateChecks(ed *ast.EnumDecl) []string {
-	if ed == nil || len(ed.EnumValues()) == 0 {
+	members := enumMembers(ed)
+	if len(members) == 0 {
 		return nil
 	}
-	// No label: the using field wraps the error with its name.
-	return []string{enumSwitchBody(ed, "", "v", "")}
+	consts := make([]string, len(members))
+	for i, m := range members {
+		consts[i] = m.ConstName
+	}
+	return []string{fmt.Sprintf(`switch v {
+case %s:
+default:
+return fmt.Errorf("invalid %s value")
+}`, strings.Join(consts, ", "), ed.Name)}
 }

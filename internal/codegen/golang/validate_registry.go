@@ -11,15 +11,15 @@ type goCheck func(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) st
 // goChecks maps every constraint decorator of [semantic.Names] to its Go check.
 var goChecks = map[string]goCheck{
 	// string
-	"length": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return lengthCheck(f, a, d, c) },
+	"length": lengthCheck,
 	"minLength": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
 		return minMaxLengthCheck(f, a, d, "min", c)
 	},
 	"maxLength": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
 		return minMaxLengthCheck(f, a, d, "max", c)
 	},
-	"pattern": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return patternCheck(f, a, d, c) },
-	"format":  func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return formatCheck(f, a, d, c) },
+	"pattern": patternCheck,
+	"format":  formatCheck,
 	// numeric
 	"gt": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
 		return numericBoundCheck(f, a, d, ">", "must be greater than", c)
@@ -33,16 +33,14 @@ var goChecks = map[string]goCheck{
 	"lte": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
 		return numericBoundCheck(f, a, d, "<=", "above maximum", c)
 	},
-	"range": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return rangeCheck(f, a, d, c) },
+	"range": rangeCheck,
 	"positive": func(f *ast.Field, a string, _ *ast.Decorator, c emitCtx) string {
 		return signCheck(f, a, "positive", c)
 	},
 	"negative": func(f *ast.Field, a string, _ *ast.Decorator, c emitCtx) string {
 		return signCheck(f, a, "negative", c)
 	},
-	"multipleOf": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return multipleOfCheck(f, a, d, c)
-	},
+	"multipleOf": multipleOfCheck,
 	// array
 	"minItems": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
 		return itemsBoundCheck(f, a, d, ">=", "minItems", c)
@@ -54,8 +52,6 @@ var goChecks = map[string]goCheck{
 		return uniqueItemsCheck(f, a, c)
 	},
 	// file
-	"maxSize": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string { return maxSizeCheck(f, a, d, c) },
-	"mimeTypes": func(f *ast.Field, a string, d *ast.Decorator, c emitCtx) string {
-		return mimeTypesCheck(f, a, d, c)
-	},
+	"maxSize":   maxSizeCheck,
+	"mimeTypes": mimeTypesCheck,
 }

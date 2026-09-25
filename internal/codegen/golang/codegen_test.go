@@ -960,22 +960,6 @@ type X {}`)
 
 // ---------- helpers ----------
 
-func TestGoFieldName(t *testing.T) {
-	cases := map[string]string{
-		"id":        "ID",
-		"userId":    "UserID",
-		"user_id":   "UserID",
-		"http_url":  "HTTPURL",
-		"firstName": "FirstName",
-		"":          "",
-	}
-	for in, want := range cases {
-		if got := goFieldName(in); got != want {
-			t.Errorf("%q → %q want %q", in, got, want)
-		}
-	}
-}
-
 // An optional field gets a pointer only when its Go type is not already nilable.
 func TestGoTypeRefOptionalNilableBase(t *testing.T) {
 	pkg := analyze(t, `package design
