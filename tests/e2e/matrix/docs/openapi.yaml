@@ -8002,6 +8002,8 @@ components:
       required:
       - id
       type: object
+    XrefsXRefsServiceDescribeRespBody:
+      $ref: '#/components/schemas/XOwner'
     XsharedXLostErr:
       description: NotFound error response (HTTP 404).
       properties:
@@ -8010,6 +8012,24 @@ components:
       required:
       - key
       type: object
+    XsharedXRefsServiceDescribeReqBody:
+      description: |-
+        XOwner is a cross-package type used in field positions, exercising
+        recursive validate dispatch (`v.Owner.Validate()`) when the owner
+        field's type lives in xshared.
+      properties:
+        email:
+          $ref: '#/components/schemas/XEmail'
+        id:
+          maxLength: 64
+          minLength: 1
+          type: string
+      required:
+      - id
+      - email
+      type: object
+    XsharedXRefsServiceDescribeRespBody:
+      $ref: '#/components/schemas/XOwner'
   securitySchemes:
     AdminBearer:
       scheme: bearer
@@ -11527,6 +11547,20 @@ paths:
           description: Created
       tags:
       - XRefsService
+  /xrefs/describe:
+    get:
+      description: 'Shares its method name with xshared''s XRefsService.Describe:
+        its body component is XrefsXRefsServiceDescribeRespBody.'
+      operationId: XRefsServiceDescribe
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XrefsXRefsServiceDescribeRespBody'
+          description: OK
+      tags:
+      - XRefsService
   /xrefs/items:
     get:
       description: Pins cross-package response generic. Component must be `XBagOfXOwner`,
@@ -11942,6 +11976,27 @@ paths:
           description: Created
       tags:
       - XRefsService
+  /xshared/describe:
+    post:
+      description: 'Shares its method name with xrefs'' XRefsService.Describe: its
+        operationId is its own and its body components are XsharedXRefsServiceDescribeReqBody
+        and XsharedXRefsServiceDescribeRespBody.'
+      operationId: DescribeShared
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/XsharedXRefsServiceDescribeReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XsharedXRefsServiceDescribeRespBody'
+          description: Created
+      tags:
+      - xshared
   /xshared/owner:
     get:
       description: 'A method of the xshared XRefsService: documented beside the methods

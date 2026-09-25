@@ -6,6 +6,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
@@ -14,10 +15,23 @@ import (
 // addPaths adds an operation per method of pkg, each under its route.
 func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
 	counts := semantic.MethodNameCounts(pkg)
+	// Services of one name in two packages may share a method name: those
+	// operations' body components take their package first (`ASGetReqBody`).
+	owners := map[string]int{}
+	for _, svc := range pkg.Services {
+		for _, m := range svc.Methods {
+			owners[svc.Primary.Name+"."+m.Name]++
+		}
+	}
 	for _, key := range pkg.ServiceNames() {
 		svc := pkg.Services[key]
 		for _, m := range svc.Methods {
-			s := newOpShape(svc, m, route.Resolve("", svc.Primary, m), semantic.OperationBaseName(svc.Primary.Name, m, counts), pkg, registry.resolver)
+			base := semantic.OperationBaseName(svc.Primary.Name, m, counts)
+			stem := base
+			if owners[svc.Primary.Name+"."+m.Name] >= 2 {
+				stem = idents.PascalCase(servicePackage(key)) + base
+			}
+			s := newOpShape(svc, m, route.Resolve("", svc.Primary, m), semantic.OperationID(svc.Decorators(m), base), stem, pkg, registry.resolver)
 			item := doc.Paths.Value(s.full)
 			if item == nil {
 				item = &openapi3.PathItem{}
@@ -28,22 +42,22 @@ func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry,
 	}
 }
 
-// opShape is a method as its operation documents it: its route, the stem of
-// its body components, and where each request and response field rides.
+// opShape is a method as its operation documents it: its route, operationId
+// and body component stem, and where each request and response field rides.
 type opShape struct {
-	m           *ast.Method
-	decs        []*ast.Decorator // m's decorators, its extend block's first
-	full, base  string
-	req, resp   fieldBins
-	form, files []semantic.FormField // files is non-empty for a multipart request
-	reqType     *ast.TypeDecl
-	respType    *ast.TypeDecl // nil for a scalar or enum response
+	m              *ast.Method
+	decs           []*ast.Decorator // m's decorators, its extend block's first
+	full, id, stem string
+	req, resp      fieldBins
+	form, files    []semantic.FormField // files is non-empty for a multipart request
+	reqType        *ast.TypeDecl
+	respType       *ast.TypeDecl // nil for a scalar or enum response
 }
 
 // newOpShape resolves m's request and response fields once, for its route
-// full and component stem base.
-func newOpShape(svc *semantic.ServiceInfo, m *ast.Method, full, base string, pkg *semantic.Package, r *semantic.Resolver) opShape {
-	s := opShape{m: m, decs: svc.Decorators(m), full: full, base: base}
+// full, operationId id and component stem.
+func newOpShape(svc *semantic.ServiceInfo, m *ast.Method, full, id, stem string, pkg *semantic.Package, r *semantic.Resolver) opShape {
+	s := opShape{m: m, decs: svc.Decorators(m), full: full, id: id, stem: stem}
 	if m.Request != nil {
 		s.reqType = pkg.Types[m.Request.Name.String()]
 		fields := semantic.RequestFields(m, pkg, r, nil)
@@ -85,7 +99,7 @@ func binFields(fields []semantic.ResolvedField) fieldBins {
 	return bins
 }
 
-// requestBodySchema is the `<base>ReqBody` component of s's JSON body: the
+// requestBodySchema is the `<stem>ReqBody` component of s's JSON body: the
 // whole request type when nothing rides off the body, else the body fields
 // and the type's cross-field fragments.
 func requestBodySchema(s opShape, pkg *semantic.Package, registry *genericRegistry) *openapi3.SchemaRef {
@@ -104,7 +118,7 @@ func requestBodySchema(s opShape, pkg *semantic.Package, registry *genericRegist
 	return &openapi3.SchemaRef{Value: body}
 }
 
-// responseBodySchema is the `<base>RespBody` component: a $ref to the
+// responseBodySchema is the `<stem>RespBody` component: a $ref to the
 // response type, or its body fields inline when it sends headers or cookies.
 func responseBodySchema(s opShape, pkg *semantic.Package, registry *genericRegistry) *openapi3.SchemaRef {
 	if len(s.resp.header) == 0 && len(s.resp.cookie) == 0 {

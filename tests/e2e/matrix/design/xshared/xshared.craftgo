@@ -187,6 +187,13 @@ service XRefsService {
 	get GetSharedOwner /owner {
 		response XOwner
 	}
+
+	@doc("Shares its method name with xrefs' XRefsService.Describe: its operationId is its own and its body components are XsharedXRefsServiceDescribeReqBody and XsharedXRefsServiceDescribeRespBody.")
+	@operationId("DescribeShared")
+	post Describe /describe {
+		request  XOwner
+		response XOwner
+	}
 }
 
 // XTier is an INT-valued enum carried cross-package by an event payload

@@ -2,6 +2,7 @@ package docs
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
@@ -98,16 +99,25 @@ func mergeProjectForOpenAPI(proj *semantic.Project) *semantic.Package {
 				out.Errors[cp.Name] = &cp
 			}
 		}
-		// A service goes under its qualified name, `a.S`, so two packages'
-		// services of one name both stay; one without methods is left out.
+		// A service without methods is left out.
 		for name, si := range p.Services {
 			if len(si.Methods) == 0 {
 				continue
 			}
-			out.Services[pkgName+"."+name] = m.service(pkgName, si)
+			out.Services[serviceKey(pkgName, name)] = m.service(pkgName, si)
 		}
 	}
 	return out
+}
+
+// serviceKey is the merged package's key of package pkg's service name: its
+// qualified name, `a.S`, so two packages' services of one name both stay.
+func serviceKey(pkg, name string) string { return pkg + "." + name }
+
+// servicePackage returns the package of the merged service under key.
+func servicePackage(key string) string {
+	pkg, _, _ := strings.Cut(key, ".")
+	return pkg
 }
 
 // ref returns n, written in package home with typeParams in scope, under the

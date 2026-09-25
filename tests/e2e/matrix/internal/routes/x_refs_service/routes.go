@@ -32,4 +32,5 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/xrefs/lost/{id}", transport.GetLost(svcCtx))
 	srv.Handle("POST /api/xrefs/sign-in/{session}", transport.SignIn(svcCtx))
 	srv.Handle("GET /api/xrefs/stamps", transport.Stamps(svcCtx))
+	srv.Handle("GET /api/xrefs/describe", transport.Describe(svcCtx))
 }

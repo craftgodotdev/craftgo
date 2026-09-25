@@ -274,4 +274,9 @@ service XRefsService {
 	get Stamps /stamps {
 		response xshared.XBag<datetime>
 	}
+
+	@doc("Shares its method name with xshared's XRefsService.Describe: its body component is XrefsXRefsServiceDescribeRespBody.")
+	get Describe /describe {
+		response xshared.XOwner
+	}
 }

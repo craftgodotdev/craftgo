@@ -130,6 +130,47 @@ service S { get Two /two { response Q } }`,
 	}
 }
 
+// Same-named services of two packages that share a method name keep their
+// own body components, named after their package; the operationIds stay the
+// analyser's.
+func TestCrossPkgSharedMethodNamesKeepTheirOwnComponents(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+type In { x string }
+type Out { y string }
+@prefix("/a")
+@group("ga")
+service S {
+	@operationId("aGet")
+	post Get /get { request In  response Out }
+}`,
+		"b/b.craftgo": `package b
+type Req { z int }
+type Resp { w int }
+@prefix("/b")
+@group("gb")
+service S { post Get /get { request Req  response Resp } }`,
+	}, &config.Config{})
+	for path, want := range map[string]struct{ id, stem, field string }{
+		"/a/get": {id: "aGet", stem: "ASGet", field: "x"},
+		"/b/get": {id: "SGet", stem: "BSGet", field: "z"},
+	} {
+		op := doc.Paths.Find(path).Post
+		if op.OperationID != want.id {
+			t.Errorf("%s operationId = %q, want %q", path, op.OperationID, want.id)
+		}
+		if got := op.RequestBody.Value.Content.Get("application/json").Schema.Ref; got != "#/components/schemas/"+want.stem+"ReqBody" {
+			t.Errorf("%s request body refs %q, want %sReqBody", path, got, want.stem)
+		}
+		if got := op.Responses.Status(201).Value.Content.Get("application/json").Schema.Ref; got != "#/components/schemas/"+want.stem+"RespBody" {
+			t.Errorf("%s response refs %q, want %sRespBody", path, got, want.stem)
+		}
+		if body := doc.Components.Schemas[want.stem+"ReqBody"]; body == nil || body.Value.Properties[want.field] == nil {
+			t.Errorf("%sReqBody does not hold %s's field %q", want.stem, path, want.field)
+		}
+	}
+}
+
 // A type parameter stays a parameter in the merge, even named like a type
 // two packages declare.
 func TestCrossPkgMergeKeepsTypeParameters(t *testing.T) {

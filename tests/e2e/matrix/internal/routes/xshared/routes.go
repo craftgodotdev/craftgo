@@ -16,4 +16,5 @@ import (
 // lookup is required - the values come pre-wired.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/xshared/owner", transportXshared.GetSharedOwner(svcCtx))
+	srv.Handle("POST /api/xshared/describe", transportXshared.Describe(svcCtx))
 }

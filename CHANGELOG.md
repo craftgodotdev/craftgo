@@ -594,7 +594,8 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **The OpenAPI document lists services of one name from every package.**
   Two packages may each declare a service of the same name under their own
   `@group`; the document kept one of them and silently dropped every
-  operation of the other.
+  operation of the other. When both have a method of one name, each such
+  operation's body components take its package first, as `ASGetReqBody`.
 
 ### Deprecated
 

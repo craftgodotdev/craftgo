@@ -27,7 +27,7 @@ const (
 // it refs.
 func buildOperation(doc *openapi3.T, svc *semantic.ServiceInfo, s opShape, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) *openapi3.Operation {
 	op := &openapi3.Operation{
-		OperationID: semantic.OperationID(s.decs, s.base),
+		OperationID: s.id,
 		Tags:        operationTags(svc, s.m),
 		// NewResponses would seed a `default` response.
 		Responses:   openapi3.NewResponsesWithCapacity(2),
@@ -68,7 +68,7 @@ func markDeprecated(op *openapi3.Operation, svc *semantic.ServiceInfo, decs []*a
 }
 
 // requestSide sets op's parameters and request body, adding the
-// `<base>ReqBody` component a JSON body refs. A block on a raw side is
+// `<stem>ReqBody` component a JSON body refs. A block on a raw side is
 // documented like a typed one; a raw request without one has only its path.
 func requestSide(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
 	if s.m.Request == nil {
@@ -85,19 +85,19 @@ func requestSide(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *semant
 	case len(s.files) > 0:
 		op.RequestBody = multipartRequestBody(s, pkg, registry)
 	case len(s.req.body) > 0:
-		names.put(doc, s.base+"ReqBody", requestBodySchema(s, pkg, registry))
+		names.put(doc, s.stem+"ReqBody", requestBodySchema(s, pkg, registry))
 		op.RequestBody = &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
 			Required: true,
 			Content: openapi3.Content{
 				mimeApplicationJSON: &openapi3.MediaType{
-					Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.base + "ReqBody"},
+					Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.stem + "ReqBody"},
 				},
 			},
 		}}
 	}
 }
 
-// successResponse adds op's success response, and the `<base>RespBody`
+// successResponse adds op's success response, and the `<stem>RespBody`
 // component it refs: a raw response without a block has no schema, since
 // logic writes it in any format.
 func successResponse(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
@@ -110,10 +110,10 @@ func successResponse(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *se
 	resp := &openapi3.Response{Description: &desc}
 	switch {
 	case s.m.Response != nil && s.m.Response.Type != nil:
-		names.put(doc, s.base+"RespBody", responseBodySchema(s, pkg, registry))
+		names.put(doc, s.stem+"RespBody", responseBodySchema(s, pkg, registry))
 		resp.Content = openapi3.Content{
 			mimeApplicationJSON: &openapi3.MediaType{
-				Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.base + "RespBody"},
+				Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.stem + "RespBody"},
 			},
 		}
 		resp.Headers = buildResponseHeaders(s.resp.header, s.resp.cookie, pkg, registry)

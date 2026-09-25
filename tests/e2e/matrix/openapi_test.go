@@ -171,15 +171,25 @@ func TestOpenAPI_EveryPathVariableIsDeclared(t *testing.T) {
 }
 
 // The XRefsService of xrefs and the one of xshared are both documented,
-// each under its own tag.
+// each under its own tag; the method name both declare keeps each
+// operation's body components apart, named after its package.
 func TestOpenAPI_SameNamedServicesAreAllDocumented(t *testing.T) {
 	doc := readOpenAPI(t)
-	for opID, tag := range map[string]string{
-		"XRefsServiceGetItem": "- XRefsService",
-		"GetSharedOwner":      "- xshared",
+	for opID, wants := range map[string][]string{
+		"XRefsServiceGetItem":  {"- XRefsService"},
+		"GetSharedOwner":       {"- xshared"},
+		"XRefsServiceDescribe": {"- XRefsService", "$ref: '#/components/schemas/XrefsXRefsServiceDescribeRespBody'"},
+		"DescribeShared": {
+			"- xshared",
+			"$ref: '#/components/schemas/XsharedXRefsServiceDescribeReqBody'",
+			"$ref: '#/components/schemas/XsharedXRefsServiceDescribeRespBody'",
+		},
 	} {
-		if block := pathBlock(t, doc, opID); !strings.Contains(block, tag) {
-			t.Errorf("%s is not tagged %q:\n%s", opID, tag, block)
+		block := pathBlock(t, doc, opID)
+		for _, want := range wants {
+			if !strings.Contains(block, want) {
+				t.Errorf("%s missing %q:\n%s", opID, want, block)
+			}
 		}
 	}
 }
