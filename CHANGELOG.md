@@ -859,12 +859,15 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 - **A `file` passed to a generic type is found.** A request field `b
   Box<file>`, or a `Box<file>` in a response, an error body or an event
-  payload, passed the `file` placement checks, which read the generic type
-  without its arguments: the request's handler never bound the file, and a
-  response encoded its `multipart.FileHeader` as JSON. Each is now
-  `binding/file-position` at the field naming the instance; a generic request
-  `Up<file>` or a mixin `Box<file>`, which bring the `file` to the request's
-  top level, stay accepted.
+  payload - a field's type, or the response, the payload or an error's mixin
+  itself, as `response Page<file>` - passed the `file` placement checks,
+  which read the generic type without its arguments: the request's handler
+  never bound the file, and a response encoded its `multipart.FileHeader` as
+  JSON. Each is now `binding/file-position` at the field or clause naming
+  the instance, which names the field the argument reaches
+  (`Page<file>.items`); a generic request `Up<file>` or a request mixin
+  `Box<file>`, which bring the `file` to the request's top level, stay
+  accepted.
 
 - **Every multipart form part is checked in analysis.** Beside a `file`, a
   body field no form value carries - a struct, a map, a generic instance,

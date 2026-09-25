@@ -119,6 +119,28 @@ service S { post A /a { request R  response Resp } }`,
 	}
 }
 
+// A `file` a clause's own generic instance takes as an argument is rejected
+// at the field its type parameter types; an argument no field takes is not.
+func TestFileThroughClauseTypeArguments(t *testing.T) {
+	const decls = "package design\ntype Box<T> { v T }\ntype Page<T> { items T[]  n int }\ntype Req { id string }\n"
+	for label, c := range map[string]struct{ src, at string }{
+		"response":          {`service S { get A /a { request Req  response Box<file> } }`, "at Box<file>.v,"},
+		"response array":    {`service S { get A /a { request Req  response Page<file> } }`, "at Page<file>.items,"},
+		"response instance": {`service S { get A /a { request Req  response Page<Box<file>> } }`, "at Page<Box<file>>.items,"},
+		"payload":           {`event Placed { payload Box<file> }`, "at Box<file>.v,"},
+		"error mixin":       {`error Conflict Dup { Box<file> }`, "at Dup.v,"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			d := expectError(t, decls+c.src, CodeFilePosition)
+			expectMessage(t, d, c.at, "only a request")
+		})
+	}
+	expectNoCode(t, `package design
+type Tagged<T> { n int }
+type Req { id string }
+service S { get A /a { request Req  response Tagged<file> } }`, CodeFilePosition)
+}
+
 // A response type another package declares is checked at the response
 // clause that names it.
 func TestFileInCrossPackageResponseRejected(t *testing.T) {
