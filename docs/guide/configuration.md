@@ -372,8 +372,13 @@ Setting `enabled: true` with `exporter: none` produces in-process spans whose ID
 
 For `otlp_grpc`, `endpoint` may be a bare `host:port` (plaintext) or a full URL
 whose scheme selects transport security - `http://…` (plaintext) or `https://…`
-(TLS). `otlp_http` takes the URL form only. `telemetry.Init` refuses any other
-`endpoint` at startup, an empty one included. `exporter: none` installs a silent
+(TLS). `otlp_http` takes the URL form only: under a URL with no path, or `/`, it
+sends to `/v1/traces` and `/v1/metrics`, and any other path is used as it is.
+An empty `endpoint` leaves the collector to the OpenTelemetry exporter:
+`OTEL_EXPORTER_OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` /
+`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`), else its default, `localhost:4317` for
+`otlp_grpc` and `localhost:4318` for `otlp_http`, over TLS. `telemetry.Init`
+refuses any other `endpoint` at startup. `exporter: none` installs a silent
 meter (no scrape, no push).
 
 ### Telemetry identity

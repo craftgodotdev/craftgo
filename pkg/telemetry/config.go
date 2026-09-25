@@ -38,7 +38,10 @@ type OTelConfig struct {
 	Exporter string `yaml:"exporter"`
 	// Endpoint is the OTLP collector: an http:// or https:// URL, whose scheme
 	// picks TLS, or for otlp_grpc also a bare host:port, dialled without TLS.
-	// [Init] fails on one that names no host, and on any other otlp_http one.
+	// otlp_http sends each signal to its own path under a URL with no path or
+	// "/". Empty leaves it to the exporter: the OTEL_EXPORTER_OTLP_*ENDPOINT
+	// variables, else localhost:4317 or localhost:4318. [Init] fails on any
+	// other value.
 	Endpoint string `yaml:"endpoint"`
 }
 

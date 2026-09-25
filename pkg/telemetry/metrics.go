@@ -35,7 +35,7 @@ func resourceFor(serviceName string) *sdkresource.Resource {
 func metricReader(ctx context.Context, c MetricsConfig, reg prom.Registerer) (sdkmetric.Reader, bool, error) {
 	switch c.Exporter {
 	case ExporterOTLPgRPC:
-		endpoint, err := otlpEndpoint(c.Endpoint,
+		endpoint, err := otlpGRPCEndpoint(c.Endpoint,
 			otlpmetricgrpc.WithEndpointURL, otlpmetricgrpc.WithEndpoint, otlpmetricgrpc.WithInsecure)
 		if err != nil {
 			return nil, false, err
@@ -46,10 +46,11 @@ func metricReader(ctx context.Context, c MetricsConfig, reg prom.Registerer) (sd
 		}
 		return sdkmetric.NewPeriodicReader(exp), false, nil
 	case ExporterOTLPHTTP:
-		if err := checkOTLPHTTPEndpoint(c.Endpoint); err != nil {
+		endpoint, err := otlpHTTPEndpoint(c.Endpoint, otlpmetrichttp.WithEndpointURL)
+		if err != nil {
 			return nil, false, err
 		}
-		exp, err := otlpmetrichttp.New(ctx, otlpmetrichttp.WithEndpointURL(c.Endpoint))
+		exp, err := otlpmetrichttp.New(ctx, endpoint...)
 		if err != nil {
 			return nil, false, fmt.Errorf("otlp http metric exporter: %w", err)
 		}

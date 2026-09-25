@@ -96,14 +96,20 @@ breaking change to the DSL or the generated layout bumps the major version.
   on another goroutine.
 
 - **An `otlp_http` endpoint must be a URL.** `telemetry.Init` fails on an
-  `otlp_http` endpoint that is not an `http://` or `https://` URL. A bare
-  `host:port` was accepted, and the exporter then sent to `localhost:4318`
-  or nowhere; `otlp_grpc` still takes `host:port`.
+  `otlp_http` endpoint that is not an `http://` or `https://` URL with a
+  host. A bare `host:port` was accepted, and the exporter then sent to
+  `localhost:4318` or nowhere; `otlp_grpc` still takes `host:port`, and
+  fails on a URL with no host.
 
-- **An `otlp_grpc` exporter needs an endpoint.** `telemetry.Init` fails on
-  an empty `otlp_grpc` endpoint, or a URL with no host. The exporter was
-  built with no address and sent nothing, neither to `localhost:4317` nor
-  to `OTEL_EXPORTER_OTLP_ENDPOINT`.
+- **An `otlp_http` URL ending in `/` sends each signal to its own path**,
+  `/v1/traces` and `/v1/metrics`, as a URL with no path does. It posted
+  both to `/`.
+
+- **An empty OTLP endpoint means the OpenTelemetry default.** With
+  `otlp_grpc` or `otlp_http` and no `endpoint`, the exporter sends to
+  `OTEL_EXPORTER_OTLP_ENDPOINT`, or the signal's own variable, else to
+  `localhost:4317` or `localhost:4318`. It was built with an empty address
+  and sent nothing, whatever the environment said.
 
 - **Formatting leaves a file alone rather than damage it.** `craftgo fmt`
   and the editor's Format Document keep a file unchanged when its formatted
