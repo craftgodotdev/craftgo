@@ -146,13 +146,13 @@ func TestFieldUniquenessError(t *testing.T) {
 	expectMsg(t, "duplicate field", `error BadRequest E { code string  code string }`)
 }
 
-// The duplicate-field check skips a type's mixin members.
+// The duplicate-field check skips a type's mixin members: a field that repeats
+// one a mixin adds is the mixin conflict alone.
 func TestFieldUniquenessSkipsMixin(t *testing.T) {
-	pkg := mustClean(t, `type Profile { id string }
-type X { Profile  name string }`)
-	if pkg.Types["X"] == nil || len(pkg.Types["X"].Body) != 2 {
-		t.Error()
-	}
+	src := `type Profile { id string }
+type X { Profile  id string }`
+	expectError(t, src, CodeMixinConflict)
+	expectNoCode(t, src, CodeDuplicateField)
 }
 
 func TestEnumDuplicateName(t *testing.T) {
