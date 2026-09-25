@@ -37,20 +37,19 @@ The DSL is `error <Category> <Name>`. Generated Go:
 ```go
 const ErrCodeUserNotFound = "USER_NOT_FOUND"
 
-type UserNotFoundErr struct {
-    code    string
-    message string
-}
+type UserNotFoundErr struct{}
 
 func NewUserNotFoundErr() *UserNotFoundErr {
-    return &UserNotFoundErr{
-        code:    ErrCodeUserNotFound,
-        message: "Not Found",
-    }
+    return &UserNotFoundErr{}
 }
 
-func (e *UserNotFoundErr) Error() string    { return e.message }
-func (e *UserNotFoundErr) HTTPStatus() int  { return 404 }
+func (e *UserNotFoundErr) Error() string   { return "Not found" }
+func (e *UserNotFoundErr) ErrCode() string { return ErrCodeUserNotFound }
+func (e *UserNotFoundErr) HTTPStatus() int { return 404 }
+
+func (e *UserNotFoundErr) MarshalJSON() ([]byte, error) {
+    return json.Marshal(map[string]string{"code": ErrCodeUserNotFound, "message": e.Error()})
+}
 ```
 
 The wire response when this error returns:
@@ -59,7 +58,7 @@ The wire response when this error returns:
 HTTP/1.1 404 Not Found
 Content-Type: application/json
 
-{"code":"USER_NOT_FOUND","message":"Not Found"}
+{"code":"USER_NOT_FOUND","message":"Not found"}
 ```
 
 ### Body form
@@ -80,18 +79,14 @@ type EmailTakenBody struct {
 }
 
 type EmailTakenErr struct {
-    code    string
-    message string
     EmailTakenBody
 }
 
 func NewEmailTakenErr(body EmailTakenBody) *EmailTakenErr {
-    return &EmailTakenErr{
-        code:                 ErrCodeEmailTaken,
-        message:              "Conflict",
-        EmailTakenBody:       body,
-    }
+    return &EmailTakenErr{EmailTakenBody: body}
 }
+
+func (e *EmailTakenErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.EmailTakenBody) }
 ```
 
 The wire response carries only the user-declared fields:
@@ -103,7 +98,7 @@ Content-Type: application/json
 {"email":"alice@example.com","existingId":"u-42"}
 ```
 
-The framework's `code` and `message` fields are unexported, so `json.Marshal` omits them. If you want them on the wire, declare them in the body:
+The error's code and message are not fields: `ErrCode()` and `Error()` return them, and `MarshalJSON` writes the body alone - `{}` when every body field is optional and unset. If you want them on the wire, declare them in the body:
 
 ```craftgo
 error Conflict EmailTaken {
@@ -119,27 +114,27 @@ The `<Category>` slot picks the HTTP status. Built-in categories:
 
 | Category              | Status | Default message            |
 | --------------------- | ------ | -------------------------- |
-| `BadRequest`          | 400    | Bad Request                |
+| `BadRequest`          | 400    | Bad request                |
 | `Unauthorized`        | 401    | Unauthorized               |
-| `PaymentRequired`     | 402    | Payment Required           |
+| `PaymentRequired`     | 402    | Payment required           |
 | `Forbidden`           | 403    | Forbidden                  |
-| `NotFound`            | 404    | Not Found                  |
-| `MethodNotAllowed`    | 405    | Method Not Allowed         |
-| `NotAcceptable`       | 406    | Not Acceptable             |
+| `NotFound`            | 404    | Not found                  |
+| `MethodNotAllowed`    | 405    | Method not allowed         |
+| `NotAcceptable`       | 406    | Not acceptable             |
 | `Conflict`            | 409    | Conflict                   |
-| `Gone`                | 410    | Gone                       |
-| `LengthRequired`      | 411    | Length Required            |
-| `PreconditionFailed`  | 412    | Precondition Failed        |
-| `PayloadTooLarge`     | 413    | Payload Too Large          |
-| `UnsupportedMediaType`| 415    | Unsupported Media Type     |
-| `UnprocessableEntity` | 422    | Unprocessable Entity       |
-| `Locked`              | 423    | Locked                     |
-| `TooManyRequests`     | 429    | Too Many Requests          |
-| `Internal`            | 500    | Internal Server Error      |
-| `NotImplemented`      | 501    | Not Implemented            |
-| `BadGateway`          | 502    | Bad Gateway                |
-| `ServiceUnavailable`  | 503    | Service Unavailable        |
-| `GatewayTimeout`      | 504    | Gateway Timeout            |
+| `Gone`                | 410    | Resource gone              |
+| `LengthRequired`      | 411    | Length required            |
+| `PreconditionFailed`  | 412    | Precondition failed        |
+| `PayloadTooLarge`     | 413    | Payload too large          |
+| `UnsupportedMediaType`| 415    | Unsupported media type     |
+| `UnprocessableEntity` | 422    | Unprocessable entity       |
+| `Locked`              | 423    | Resource locked            |
+| `TooManyRequests`     | 429    | Too many requests          |
+| `Internal`            | 500    | Internal server error      |
+| `NotImplemented`      | 501    | Not implemented            |
+| `BadGateway`          | 502    | Bad gateway                |
+| `ServiceUnavailable`  | 503    | Service unavailable        |
+| `GatewayTimeout`      | 504    | Gateway timeout            |
 
 Custom categories are not supported. Pick the closest standard one.
 

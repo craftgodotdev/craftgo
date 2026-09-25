@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -67,7 +68,8 @@ func WriteValidationError(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 // StatusError is an error that carries its HTTP status. [WriteError] writes its JSON encoding,
-// or, when that fails or is {}, its Error text as "message" and any ErrCode() as "code".
+// or, when that fails, or is {} from an error that is no [json.Marshaler], its Error text as
+// "message" and any ErrCode() as "code".
 type StatusError interface {
 	error
 	HTTPStatus() int
@@ -126,7 +128,10 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	w.WriteHeader(se.HTTPStatus())
 	codec := JSON()
 	var buf bytes.Buffer
-	if mErr := codec.Encode(&buf, se); mErr != nil || strings.TrimSpace(buf.String()) == "{}" {
+	mErr := codec.Encode(&buf, se)
+	_, selfMarshaled := se.(json.Marshaler)
+	// Code generated before v1.10 leaves a body-less error's JSON to this {} fallback.
+	if mErr != nil || (!selfMarshaled && strings.TrimSpace(buf.String()) == "{}") {
 		env := map[string]string{"message": se.Error()}
 		var coded interface{ ErrCode() string }
 		if errors.As(err, &coded) {

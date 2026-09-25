@@ -3,6 +3,7 @@
 package orders
 
 import (
+	"encoding/json"
 	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/customers"
 )
 
@@ -10,100 +11,70 @@ import (
 const ErrCodeActionDenied = "ACTION_DENIED"
 
 // ActionDeniedBody is the wire-shape payload declared at design time for ActionDeniedErr.
-// User code instantiates this struct and hands it to NewActionDeniedErr; the
-// framework wraps it with the type-bound code / message metadata.
+// User code instantiates this struct and hands it to NewActionDeniedErr.
 type ActionDeniedBody struct {
 	Code   *string          `json:"code,omitempty"`
 	Reason SuspensionReason `json:"reason"`
 }
 
 // ActionDeniedErr is the typed Forbidden error generated for `ActionDenied`.
-// The unexported `code` and `message` fields hold the type-bound
-// metadata populated by the constructor. Because they are unexported,
-// json.Marshal omits them from the wire payload - clients see only
-// the embedded body shape (or `{}` when no body was declared).
 type ActionDeniedErr struct {
-	code    string
-	message string
 	ActionDeniedBody
 }
 
-// NewActionDeniedErr constructs ActionDeniedErr with the framework metadata baked in.
-// `code` and `message` are bound to the type and not exposed as
-// constructor parameters; only the body struct varies per instance.
+// NewActionDeniedErr constructs ActionDeniedErr.
 func NewActionDeniedErr(body ActionDeniedBody) *ActionDeniedErr {
-	return &ActionDeniedErr{
-		code:             ErrCodeActionDenied,
-		message:          "Forbidden",
-		ActionDeniedBody: body,
-	}
+	return &ActionDeniedErr{ActionDeniedBody: body}
 }
 
-// Error implements the standard error interface and returns the
-// category-default message bound to the type.
-func (e *ActionDeniedErr) Error() string { return e.message }
+// Error returns the Forbidden category's default message.
+func (e *ActionDeniedErr) Error() string { return "Forbidden" }
 
-// ErrCode returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ ErrCode() string }`
-// assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`, and rpc.Error reads it
-// for the ErrorInfo detail it puts on the gRPC status. The accessor is
-// named `ErrCode` (not `Code`) so it does not shadow a user-declared
-// `code <type>` field promoted from the embedded body struct.
-func (e *ActionDeniedErr) ErrCode() string { return e.code }
+// ErrCode returns ErrCodeActionDenied. It is named so that it does not shadow a
+// `code` field of the body; rpc.Error puts it on the gRPC status.
+func (e *ActionDeniedErr) ErrCode() string { return ErrCodeActionDenied }
 
 // HTTPStatus returns the HTTP status code associated with the Forbidden
 // category. server.WriteError answers with it, and rpc.Error maps it onto
 // the matching gRPC status code.
 func (e *ActionDeniedErr) HTTPStatus() int { return 403 }
 
+// MarshalJSON encodes the body alone.
+func (e *ActionDeniedErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.ActionDeniedBody) }
+
 // ErrCodeOrderNotFound is the canonical machine-readable code for OrderNotFoundErr.
 const ErrCodeOrderNotFound = "ORDER_NOT_FOUND"
 
 // OrderNotFoundErr is the typed NotFound error generated for `OrderNotFound`.
-// The unexported `code` and `message` fields hold the type-bound
-// metadata populated by the constructor. Because they are unexported,
-// json.Marshal omits them from the wire payload - clients see only
-// the embedded body shape (or `{}` when no body was declared).
-type OrderNotFoundErr struct {
-	code    string
-	message string
-}
+type OrderNotFoundErr struct{}
 
-// NewOrderNotFoundErr constructs OrderNotFoundErr with the framework metadata baked in.
-// `code` and `message` are bound to the type and not exposed as
-// constructor parameters; only the body struct varies per instance.
+// NewOrderNotFoundErr constructs OrderNotFoundErr.
 func NewOrderNotFoundErr() *OrderNotFoundErr {
-	return &OrderNotFoundErr{
-		code:    ErrCodeOrderNotFound,
-		message: "Not found",
-	}
+	return &OrderNotFoundErr{}
 }
 
-// Error implements the standard error interface and returns the
-// category-default message bound to the type.
-func (e *OrderNotFoundErr) Error() string { return e.message }
+// Error returns the NotFound category's default message.
+func (e *OrderNotFoundErr) Error() string { return "Not found" }
 
-// ErrCode returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ ErrCode() string }`
-// assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`, and rpc.Error reads it
-// for the ErrorInfo detail it puts on the gRPC status. The accessor is
-// named `ErrCode` (not `Code`) so it does not shadow a user-declared
-// `code <type>` field promoted from the embedded body struct.
-func (e *OrderNotFoundErr) ErrCode() string { return e.code }
+// ErrCode returns ErrCodeOrderNotFound. It is named so that it does not shadow a
+// `code` field of the body; rpc.Error puts it on the gRPC status.
+func (e *OrderNotFoundErr) ErrCode() string { return ErrCodeOrderNotFound }
 
 // HTTPStatus returns the HTTP status code associated with the NotFound
 // category. server.WriteError answers with it, and rpc.Error maps it onto
 // the matching gRPC status code.
 func (e *OrderNotFoundErr) HTTPStatus() int { return 404 }
 
+// MarshalJSON encodes the {"code", "message"} envelope.
+func (e *OrderNotFoundErr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]string{"code": ErrCodeOrderNotFound, "message": e.Error()})
+}
+
 // ErrCodePaymentFailed is the canonical machine-readable code for PaymentFailedErr.
 const ErrCodePaymentFailed = "PAYMENT_FAILED"
 
 // PaymentFailedBody is the wire-shape payload declared at design time for PaymentFailedErr.
-// User code instantiates this struct and hands it to NewPaymentFailedErr; the
-// framework wraps it with the type-bound code / message metadata.
+// User code instantiates this struct and hands it to NewPaymentFailedErr.
 type PaymentFailedBody struct {
 	Code      *string               `json:"code,omitempty"`
 	Method    PaymentMethod         `json:"method"`
@@ -111,41 +82,26 @@ type PaymentFailedBody struct {
 }
 
 // PaymentFailedErr is the typed Conflict error generated for `PaymentFailed`.
-// The unexported `code` and `message` fields hold the type-bound
-// metadata populated by the constructor. Because they are unexported,
-// json.Marshal omits them from the wire payload - clients see only
-// the embedded body shape (or `{}` when no body was declared).
 type PaymentFailedErr struct {
-	code    string
-	message string
 	PaymentFailedBody
 }
 
-// NewPaymentFailedErr constructs PaymentFailedErr with the framework metadata baked in.
-// `code` and `message` are bound to the type and not exposed as
-// constructor parameters; only the body struct varies per instance.
+// NewPaymentFailedErr constructs PaymentFailedErr.
 func NewPaymentFailedErr(body PaymentFailedBody) *PaymentFailedErr {
-	return &PaymentFailedErr{
-		code:              ErrCodePaymentFailed,
-		message:           "Conflict",
-		PaymentFailedBody: body,
-	}
+	return &PaymentFailedErr{PaymentFailedBody: body}
 }
 
-// Error implements the standard error interface and returns the
-// category-default message bound to the type.
-func (e *PaymentFailedErr) Error() string { return e.message }
+// Error returns the Conflict category's default message.
+func (e *PaymentFailedErr) Error() string { return "Conflict" }
 
-// ErrCode returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ ErrCode() string }`
-// assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`, and rpc.Error reads it
-// for the ErrorInfo detail it puts on the gRPC status. The accessor is
-// named `ErrCode` (not `Code`) so it does not shadow a user-declared
-// `code <type>` field promoted from the embedded body struct.
-func (e *PaymentFailedErr) ErrCode() string { return e.code }
+// ErrCode returns ErrCodePaymentFailed. It is named so that it does not shadow a
+// `code` field of the body; rpc.Error puts it on the gRPC status.
+func (e *PaymentFailedErr) ErrCode() string { return ErrCodePaymentFailed }
 
 // HTTPStatus returns the HTTP status code associated with the Conflict
 // category. server.WriteError answers with it, and rpc.Error maps it onto
 // the matching gRPC status code.
 func (e *PaymentFailedErr) HTTPStatus() int { return 409 }
+
+// MarshalJSON encodes the body alone.
+func (e *PaymentFailedErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.PaymentFailedBody) }

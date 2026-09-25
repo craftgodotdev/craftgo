@@ -67,9 +67,9 @@ func TestLeadingUnderscoreFieldClean(t *testing.T) {
 	expectNoCode(t, "type R { _foo string  x string }", CodeInvalidGoName)
 }
 
-// An error field whose Go name matches an error method (ErrCode, Error, HTTPStatus) is rejected.
+// An error field whose Go name matches an error method (ErrCode, Error, HTTPStatus, MarshalJSON) is rejected.
 func TestErrorReservedFieldNameRejected(t *testing.T) {
-	for _, name := range []string{"errCode", "error", "httpStatus"} {
+	for _, name := range []string{"errCode", "error", "httpStatus", "marshalJSON"} {
 		expectError(t, "error Internal E { "+name+" string @header(\"X-E\")  detail string }", CodeInvalidGoName)
 	}
 }

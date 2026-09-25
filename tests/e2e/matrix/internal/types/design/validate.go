@@ -177,3 +177,9 @@ func (v *ProfileValidationFailedBody) Validate() error {
 func (v *StaleVersionBody) Validate() error {
 	return nil
 }
+
+// Validate checks every field-level constraint declared on ThrottledBody.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *ThrottledBody) Validate() error {
+	return nil
+}

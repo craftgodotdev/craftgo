@@ -1,12 +1,17 @@
 package matrix
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
+	designtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/design"
 	svctypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
 )
 
@@ -20,6 +25,30 @@ func TestGen_ErrorTypeShape(t *testing.T) {
 	}
 	if err.Error() == "" {
 		t.Error("Error() empty")
+	}
+}
+
+// A generated error writes its own JSON: a body-less one the {code, message}
+// envelope, one with a body its declared fields, {} when every optional field
+// is unset. Its code and message need no constructor.
+func TestGen_ErrorWireShape(t *testing.T) {
+	cases := map[string]struct {
+		err  error
+		want string
+	}{
+		"body-less":           {svctypes.NewAcctUserNotFoundErr(), `{"code":"ACCT_USER_NOT_FOUND","message":"Not found"}`},
+		"optional body unset": {designtypes.NewThrottledErr(designtypes.ThrottledBody{}), `{}`},
+	}
+	for name, c := range cases {
+		rec := httptest.NewRecorder()
+		server.WriteError(rec, httptest.NewRequest(http.MethodGet, "/", nil), c.err)
+		if got := strings.TrimSpace(rec.Body.String()); got != c.want {
+			t.Errorf("%s: body = %s, want %s", name, got, c.want)
+		}
+	}
+	var zero svctypes.AcctUserNotFoundErr
+	if zero.Error() != "Not found" || zero.ErrCode() != svctypes.ErrCodeAcctUserNotFound {
+		t.Errorf("zero value: Error() = %q, ErrCode() = %q", zero.Error(), zero.ErrCode())
 	}
 }
 

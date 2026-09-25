@@ -222,7 +222,7 @@ func (a *analyzer) checkFieldUniqueness() {
 // errorReservedGoNames are the methods generated on an error type; each
 // shadows an embedded body field of the same Go name.
 var errorReservedGoNames = map[string]bool{
-	"Error": true, "ErrCode": true, "HTTPStatus": true, "WriteResponseHeaders": true,
+	"Error": true, "ErrCode": true, "HTTPStatus": true, "WriteResponseHeaders": true, "MarshalJSON": true,
 }
 
 // checkErrorReservedFieldNames rejects an error body field whose Go field name

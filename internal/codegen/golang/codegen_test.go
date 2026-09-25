@@ -703,27 +703,23 @@ error NotFound UserNotFound`)
 	norm := strings.Join(strings.Fields(src), " ")
 	for _, want := range []string{
 		`const ErrCodeUserNotFound = "USER_NOT_FOUND"`,
-		"type UserNotFoundErr struct {",
-		"func NewUserNotFoundErr() *UserNotFoundErr",
-		"code: ErrCodeUserNotFound",
-		`message: "Not found"`,
-		"return e.message",
-		"return e.code", // ErrCode() accessor
-		"func (e *UserNotFoundErr) ErrCode() string",
-		"return 404",
+		"type UserNotFoundErr struct{}",
+		"func NewUserNotFoundErr() *UserNotFoundErr { return &UserNotFoundErr{} }",
+		`func (e *UserNotFoundErr) Error() string { return "Not found" }`,
+		"func (e *UserNotFoundErr) ErrCode() string { return ErrCodeUserNotFound }",
+		"func (e *UserNotFoundErr) HTTPStatus() int { return 404 }",
+		`return json.Marshal(map[string]string{"code": ErrCodeUserNotFound, "message": e.Error()})`,
 	} {
 		if !strings.Contains(norm, want) {
 			t.Errorf("missing %q in:\n%s", want, src)
 		}
 	}
-	// code and message stay unexported and off the wire.
+	// The code and message are constants the methods return, never fields.
 	for _, forbidden := range []string{
-		`Code string`,    // would be exported
-		`Message string`, // would be exported
-		`json:"code"`,
-		`json:"message"`,
-		"WithMessage",
-		"WithCode",
+		"code string",
+		"message string",
+		"e.code",
+		"e.message",
 		"UserNotFoundBody", // no body struct without user fields
 	} {
 		if strings.Contains(norm, forbidden) {
@@ -755,9 +751,12 @@ error BadRequest Validation {
 	if !strings.Contains(src, "func NewValidationErr(body ValidationBody) *ValidationErr") {
 		t.Errorf("constructor must take a body struct:\n%s", src)
 	}
+	if !strings.Contains(norm, "func (e *ValidationErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.ValidationBody) }") {
+		t.Errorf("an error with a body must marshal the body alone:\n%s", src)
+	}
 }
 
-// User-declared code and message become exported body fields beside the unexported metadata.
+// User-declared code and message become exported body fields; the type holds nothing else.
 func TestGenerateErrorsUserDeclaresCodeAndMessage(t *testing.T) {
 	pkg := analyze(t, `package design
 error Internal Boom {
@@ -779,8 +778,8 @@ error Internal Boom {
 	if !strings.Contains(norm, `Message *string `+"`json:\"message,omitempty\"`") {
 		t.Errorf("user `message?` field should appear on body struct as *Message:\n%s", src)
 	}
-	if !strings.Contains(norm, "code string message string") {
-		t.Errorf("err type must keep unexported code/message metadata:\n%s", src)
+	if !strings.Contains(norm, "type BoomErr struct { BoomBody }") {
+		t.Errorf("err type must hold only its body:\n%s", src)
 	}
 	if !strings.Contains(src, "return 500") {
 		t.Errorf("status:\n%s", src)

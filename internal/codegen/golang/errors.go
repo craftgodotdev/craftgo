@@ -41,7 +41,8 @@ func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
 		}
 	}
 
-	imports := map[string]bool{}
+	// Every error type's MarshalJSON encodes through encoding/json.
+	imports := map[string]bool{"encoding/json": true}
 	if needsHTTP {
 		imports["net/http"] = true
 	}

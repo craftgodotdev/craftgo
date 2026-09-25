@@ -38,6 +38,12 @@ error Forbidden InsufficientPermissions {
 	required_role string
 }
 
+// Throttled has only optional body fields: with none set it is written as
+// {}, an instance of its declared body.
+error TooManyRequests Throttled {
+	retryAfter int?
+}
+
 // StaleVersion is the optimistic-concurrency 412 surfaced when a write
 // arrives with a version older than the stored row.
 error PreconditionFailed StaleVersion {

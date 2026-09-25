@@ -6806,6 +6806,14 @@ components:
       required:
       - tenantID
       type: object
+    ThrottledErr:
+      description: TooManyRequests error response (HTTP 429).
+      properties:
+        retryAfter:
+          type:
+          - integer
+          - "null"
+      type: object
     TierPromoted:
       description: |-
         TierPromoted carries an enum declared in ANOTHER package. The backing

@@ -78,6 +78,18 @@ breaking change to the DSL or the generated layout bumps the major version.
   whose header fields keep it inline, and the `<Method>ReqBody` of a request
   with nothing on its body no longer get a component.
 
+- **A generated error decides its own JSON and holds no code or message.**
+  `Error()` and `ErrCode()` return the category message and the `ErrCode<Name>`
+  constant, so an error built without its constructor reports them too, and
+  a generated `MarshalJSON` writes the `{"code","message"}` envelope for an
+  error without body fields and the body alone otherwise. An error whose body
+  fields are all optional and unset is written as `{}`, the body its OpenAPI
+  response declares, where `server.WriteError` answered the envelope; it
+  still answers the envelope for an error that encodes to `{}` without its
+  own `MarshalJSON`, as those generated before this release do. An error
+  body field named `marshalJSON` is rejected, like one named after the other
+  generated methods.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

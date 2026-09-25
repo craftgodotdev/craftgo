@@ -162,6 +162,30 @@ func TestWriteErrorAfterFlushLeavesTheStream(t *testing.T) {
 	}
 }
 
+// emptyBodyError is a StatusError whose own MarshalJSON writes {}.
+type emptyBodyError struct{ fakeStatusError }
+
+func (emptyBodyError) MarshalJSON() ([]byte, error) { return []byte("{}"), nil }
+
+// An error that marshals itself is written as it marshals, {} included; one
+// that encodes to {} without marshaling itself gets the message envelope.
+func TestWriteErrorKeepsASelfMarshaledBody(t *testing.T) {
+	cases := map[string]struct {
+		err  error
+		want string
+	}{
+		"marshals itself":  {emptyBodyError{fakeStatusError{msg: "slow down", status: http.StatusTooManyRequests}}, `{}`},
+		"encodes to empty": {fakeStatusError{msg: "slow down", status: http.StatusTooManyRequests}, `{"message":"slow down"}`},
+	}
+	for name, c := range cases {
+		rec := httptest.NewRecorder()
+		WriteError(rec, httptest.NewRequest(http.MethodGet, "/x", nil), c.err)
+		if got := strings.TrimSpace(rec.Body.String()); got != c.want {
+			t.Errorf("%s: body = %s, want %s", name, got, c.want)
+		}
+	}
+}
+
 // A StatusError wrapped with %w keeps its status and message and is not logged.
 func TestWriteErrorUnwrapsTypedErrors(t *testing.T) {
 	logs := observeLogs(t)
