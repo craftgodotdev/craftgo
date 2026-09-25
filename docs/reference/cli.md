@@ -1,6 +1,6 @@
 # CLI
 
-The `craftgo` binary drives codegen and project commands. Run `craftgo help` for the up-to-date list.
+The `craftgo` binary drives codegen and project commands. Run `craftgo help` for the up-to-date list, or `craftgo <command> -h` for one command's usage. A bad flag or argument is reported once, followed by the command's usage.
 
 ## `craftgo init [path]`
 
@@ -35,7 +35,7 @@ Flags:
 | `--target <name>`         | Generate only the named target (`go`, `docs`); repeatable, default all. A narrowed run leaves the other targets' output untouched. |
 | `-h`, `--help`            | Show help.                                                                            |
 
-Without `-f`, `craftgo gen` walks upward from `<path>` (or cwd) probing direct subdirs at each level for a `craftgo.design.yaml`. The Go module path comes from `go.mod`, walking up from the project root - run `go mod init <module>` first if `go.mod` does not exist yet.
+Without `-f`, `craftgo gen` walks upward from `<path>` (or cwd) probing direct subdirs at each level for a `craftgo.design.yaml`; with `-f`, a path is an error. The Go module path comes from `go.mod`, walking up from the project root - run `go mod init <module>` first if `go.mod` does not exist yet.
 
 ## `craftgo fmt [-l] [-w] [path]`
 
@@ -48,7 +48,7 @@ craftgo fmt -l             # list files that would change (no write)
 craftgo fmt -w design      # explicit write mode
 ```
 
-Flags go before the path; a flag after it, or a second path, is an error.
+Flags go before the path; a flag after it, or a second path, is an error. A design folder without design files, one of protos alone, has nothing to format.
 
 | Flag           | Effect                                                              |
 | -------------- | ------------------------------------------------------------------- |

@@ -45,6 +45,10 @@ func main() {
 	if !errors.Is(err, errFilesDiffer) {
 		fmt.Fprintln(os.Stderr, "craftgo: "+err.Error())
 	}
+	var ue usageError
+	if errors.As(err, &ue) {
+		fmt.Fprintln(os.Stderr, "\nUsage:\n"+ue.usage)
+	}
 	os.Exit(1)
 }
 
@@ -53,14 +57,22 @@ func usage() {
 	fmt.Println(`craftgo - design-first Go API framework
 
 Usage:
-  craftgo init [path]
+` + commandUsage["init"] + "\n\n" + commandUsage["gen"] + "\n\n" + commandUsage["fmt"] + `
+
+  craftgo version         Print the CLI version
+  craftgo help            Show this message`)
+}
+
+// commandUsage holds each command's part of the usage text; `help` prints
+// them all and `<command> -h` its own.
+var commandUsage = map[string]string{
+	"init": `  craftgo init [path]
                           Scaffold a design folder at <path> (default: 'design').
                           The supplied path IS the design folder - the manifest
                           (craftgo.design.yaml) lands flat inside it. The Go
                           module path is read from go.mod at gen time, so init
-                          itself does not need a -package flag.
-
-  craftgo gen [-f <design-folder>] [-c|--context <project-root>] [path]
+                          itself does not need a -package flag.`,
+	"gen": `  craftgo gen [-f <design-folder>] [-c|--context <project-root>] [path]
                           Generate types, handlers, routes, OpenAPI from
                           .craftgo files, and the pb code, gRPC server layer
                           and logic stubs from .proto files in the same
@@ -82,9 +94,8 @@ Usage:
                           name) at each level. The Go module path is read
                           from go.mod, walking up from the project root -
                           run "go mod init <module>" first if it does not
-                          exist yet.
-
-  craftgo fmt [-l] [-w] [path]
+                          exist yet.`,
+	"fmt": `  craftgo fmt [-l] [-w] [path]
                           Canonical-format the design files (.craftgo, .cg)
                           under <path> (default: cwd), or the file it names.
                           A file with an error is reported and left untouched.
@@ -92,8 +103,5 @@ Usage:
                             -l   list the files that differ, write nothing,
                                  and exit 1 if any differ
                             -w   write the result back (the default; with
-                                 -l, list and write)
-
-  craftgo version         Print the CLI version
-  craftgo help            Show this message`)
+                                 -l, list and write)`,
 }

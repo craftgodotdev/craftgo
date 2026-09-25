@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -204,6 +206,81 @@ func TestRunGenMissingGoMod(t *testing.T) {
 	if !strings.Contains(err.Error(), "go mod init") {
 		t.Errorf("error must point at the fix; got: %v", err)
 	}
+}
+
+// Each command reads its arguments alike: `-h` prints the command's whole
+// usage, and a bad flag or argument is one error that main prints once,
+// followed by that usage.
+func TestCommandArguments(t *testing.T) {
+	commands := map[string]func([]string) error{"init": runInit, "gen": runGen, "fmt": runFmt}
+	for name, run := range commands {
+		t.Run(name+" -h", func(t *testing.T) {
+			var err error
+			stdout, stderr := captureOutput(t, func() { err = run([]string{"-h"}) })
+			if err != errHelpRequested || stderr != "" {
+				t.Errorf("err = %v, stderr = %q", err, stderr)
+			}
+			if !strings.Contains(stdout, "craftgo "+name+" [") || !strings.Contains(stdout, commandUsage[name]) {
+				t.Errorf("stdout lacks the %s usage:\n%s", name, stdout)
+			}
+		})
+		t.Run(name+" -x", func(t *testing.T) {
+			var err error
+			stdout, stderr := captureOutput(t, func() { err = run([]string{"-x"}) })
+			if err == nil || !strings.Contains(err.Error(), "flag provided but not defined: -x") {
+				t.Errorf("err = %v", err)
+			}
+			if stdout != "" || stderr != "" {
+				t.Errorf("the command printed: stdout %q, stderr %q", stdout, stderr)
+			}
+			var ue usageError
+			if !errors.As(err, &ue) || ue.usage != commandUsage[name] {
+				t.Errorf("err = %#v, want a usageError with the %s usage", err, name)
+			}
+		})
+	}
+	if err := runGen([]string{"-f", "design", "extra"}); err == nil || !strings.Contains(err.Error(), `"extra"`) {
+		t.Errorf("gen -f design extra: err = %v", err)
+	}
+}
+
+// fmt on a design folder that holds only protos has nothing to format.
+func TestRunFmtProtoOnlyDesign(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "design/craftgo.design.yaml", "")
+	mustWrite(t, dir, "design/greet/greet.proto", "syntax = \"proto3\";\n")
+	t.Chdir(dir)
+	for _, args := range [][]string{nil, {"design"}, {"design/greet"}, {"-l"}} {
+		if err := runFmt(args); err != nil {
+			t.Errorf("fmt %q: %v", args, err)
+		}
+	}
+	mustWrite(t, dir, "elsewhere/notes.txt", "")
+	if err := runFmt([]string{"elsewhere"}); err == nil {
+		t.Error("fmt on a folder outside every design: want the no-files error")
+	}
+}
+
+// captureOutput runs fn and returns what it wrote to stdout and stderr.
+func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
+	t.Helper()
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	errR, errW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prevOut, prevErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = outW, errW
+	fn()
+	os.Stdout, os.Stderr = prevOut, prevErr
+	outW.Close()
+	errW.Close()
+	o, _ := io.ReadAll(outR)
+	e, _ := io.ReadAll(errR)
+	return string(o), string(e)
 }
 
 func TestRunInitRejectsUnknownFlag(t *testing.T) {

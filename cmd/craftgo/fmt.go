@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/designopts"
@@ -34,6 +35,10 @@ func runFmt(args []string) error {
 		return err
 	}
 	if len(files) == 0 {
+		// A design of protos alone has nothing to format.
+		if holdsDesign(path) {
+			return nil
+		}
 		return fmt.Errorf("no .craftgo files found under %q", path)
 	}
 	projects := map[string]*project{}
@@ -112,6 +117,21 @@ func analysisErrors(file, src string, projects map[string]*project) ([]lexer.Dia
 	}
 	_, _, diags := designopts.Analyze([]designopts.Source{{Path: abs, Text: src}}, "", nil)
 	return designopts.FileErrors(diags, abs), nil
+}
+
+// holdsDesign reports whether the directory path is a design folder, lies in
+// one or holds one as a direct subdirectory.
+func holdsDesign(path string) bool {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	_, _, design, err := config.Find(abs)
+	if err != nil {
+		return false
+	}
+	sep := string(filepath.Separator)
+	return abs == design || strings.HasPrefix(abs, design+sep) || strings.HasPrefix(design, abs+sep)
 }
 
 // collectCraftgoFiles returns every design file under target, or target itself

@@ -146,6 +146,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   file with errors was formatted. fmt now finds the file on disk, and checks
   a file its project does not load on its own.
 
+- **A command reports a bad flag or argument once, with its usage.** The
+  error was printed twice, around the flag package's own list, and
+  `init -h` printed only `Usage of init:`; `craftgo <command> -h` now prints
+  the command's part of `craftgo help`. `gen -f design extra` is an error
+  rather than dropping `extra`, and `fmt` on a design folder of protos alone
+  has nothing to format instead of failing.
+
 - **`craftgo fmt` reads its flags like `gen` and `init`.** A flag after the
   path - `craftgo fmt design -l`, the order the help text showed - was
   ignored, so the files were rewritten instead of listed; it is now an

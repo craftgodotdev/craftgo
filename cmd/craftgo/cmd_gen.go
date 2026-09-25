@@ -49,6 +49,9 @@ func parseGenArgs(args []string) (genArgs, error) {
 	if err != nil {
 		return genArgs{}, err
 	}
+	if a.folder != "" && fs.NArg() > 0 {
+		return genArgs{}, badArgs(fs, "path %q given with -f, which names the design folder", path)
+	}
 	a.path = path
 	return a, nil
 }
