@@ -76,6 +76,7 @@ type Str_EchoResp struct {
 //   - separate min/max: @minLength(1) and @maxLength(100) on
 //     distinct fields to confirm the single-bound path.
 //   - zeroMin: @minLength(0) accepts every length, so it emits no check.
+//   - hugeMax: @maxLength at the int64 limit, documented digit for digit.
 type Str_Lengths struct {
 	ZeroLower string `json:"zeroLower"`
 	NonEmpty  string `json:"nonEmpty"`
@@ -83,6 +84,7 @@ type Str_Lengths struct {
 	OnlyMin   string `json:"onlyMin"`
 	OnlyMax   string `json:"onlyMax"`
 	ZeroMin   string `json:"zeroMin"`
+	HugeMax   string `json:"hugeMax"`
 }
 
 // Str_Nullable forces a pointer via @nullable on a non-optional

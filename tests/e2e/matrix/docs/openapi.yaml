@@ -3377,9 +3377,9 @@ components:
             Whole floats at the int64 limits: checked as the exact integers they
             write.
           format: int64
-          maximum: 9223372036854776000
-          minimum: -9.223372036854776e+18
-          multipleOf: 9223372036854776000
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          multipleOf: 9223372036854775807
           type: integer
         gtLtInt:
           exclusiveMaximum: 1000
@@ -3473,6 +3473,12 @@ components:
           format: int64
           multipleOf: 100
           type: integer
+        tightInt64:
+          description: 'Two maxima past 2^53: the document keeps the tighter one.'
+          format: int64
+          maximum: 9223372036854775000
+          minimum: 0
+          type: integer
       required:
       - rangeInt
       - gteLteInt
@@ -3495,6 +3501,7 @@ components:
       - stepInt
       - stepInt64
       - edgeInt64
+      - tightInt64
       type: object
     NumberExact:
       description: |-
@@ -3706,6 +3713,10 @@ components:
         implicit at the type level but we still emit @gte(0) explicitly to
         confirm codegen doesn't emit a dead `v < 0` for unsigned fields.
       properties:
+        floorUint64:
+          description: A floor past 2^53 raises the type's own minimum of 0.
+          minimum: 9007199254740993
+          type: integer
         gtLtUint:
           exclusiveMaximum: 1000
           exclusiveMinimum: 0
@@ -3753,7 +3764,7 @@ components:
           type: integer
         maxUint64:
           minimum: 0
-          multipleOf: 1.8446744073709552e+19
+          multipleOf: 18446744073709551615
           type: integer
         posUint:
           description: |-
@@ -3814,6 +3825,7 @@ components:
       - posUint
       - stepUint64
       - maxUint64
+      - floorUint64
       type: object
     OptionalPage:
       description: |-
@@ -6718,10 +6730,14 @@ components:
           - separate min/max: @minLength(1) and @maxLength(100) on
             distinct fields to confirm the single-bound path.
           - zeroMin: @minLength(0) accepts every length, so it emits no check.
+          - hugeMax: @maxLength at the int64 limit, documented digit for digit.
       properties:
         exact:
           maxLength: 5
           minLength: 5
+          type: string
+        hugeMax:
+          maxLength: 9223372036854775807
           type: string
         nonEmpty:
           maxLength: 100
@@ -6745,6 +6761,7 @@ components:
       - onlyMin
       - onlyMax
       - zeroMin
+      - hugeMax
       type: object
     Str_Nullable:
       description: |-

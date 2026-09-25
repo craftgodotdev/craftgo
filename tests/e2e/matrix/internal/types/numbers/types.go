@@ -78,6 +78,8 @@ type NumberCounter struct {
 	// Whole floats at the int64 limits: checked as the exact integers they
 	// write.
 	EdgeInt64 int64 `json:"edgeInt64"`
+	// Two maxima past 2^53: the document keeps the tighter one.
+	TightInt64 int64 `json:"tightInt64"`
 }
 
 // NumberExact is the boundary case where @gte and @lte share the
@@ -180,6 +182,8 @@ type NumberUnsigned struct {
 	// validator checks it as that integer, up to the uint64 limit.
 	StepUint64 uint64 `json:"stepUint64"`
 	MaxUint64  uint64 `json:"maxUint64"`
+	// A floor past 2^53 raises the type's own minimum of 0.
+	FloorUint64 uint64 `json:"floorUint64"`
 }
 
 // OptionalReq wraps NumberOptional (presence axes).

@@ -1,6 +1,8 @@
 package docs
 
 import (
+	"math/big"
+
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/strfmt"
@@ -21,25 +23,25 @@ var schemaKeywords = map[string]schemaKeyword{
 			return
 		}
 		// `@length(N)` is an exact length, `@length(min, max)` a range.
-		lo, ok := numericArgValue(d, 0)
-		if !ok || lo < 0 {
+		lo, ok := countArg(d, 0)
+		if !ok {
 			return
 		}
 		hi := lo
-		if v, ok := numericArgValue(d, 1); ok && v >= 0 {
+		if v, ok := countArg(d, 1); ok {
 			hi = v
 		}
-		setMinLen(s, uint64(lo))
-		setMaxLen(s, uint64(hi))
+		setMinLen(s, lo)
+		setMaxLen(s, hi)
 	},
 	"minLength": func(d *ast.Decorator, s *openapi3.Schema) {
-		if v, ok := numericArgValue(d, 0); ok && v >= 0 && lengthKeywordsApply(s) {
-			setMinLen(s, uint64(v))
+		if v, ok := countArg(d, 0); ok && lengthKeywordsApply(s) {
+			setMinLen(s, v)
 		}
 	},
 	"maxLength": func(d *ast.Decorator, s *openapi3.Schema) {
-		if v, ok := numericArgValue(d, 0); ok && v >= 0 && lengthKeywordsApply(s) {
-			setMaxLen(s, uint64(v))
+		if v, ok := countArg(d, 0); ok && lengthKeywordsApply(s) {
+			setMaxLen(s, v)
 		}
 	},
 	"pattern": func(d *ast.Decorator, s *openapi3.Schema) {
@@ -65,21 +67,19 @@ var schemaKeywords = map[string]schemaKeyword{
 		}
 		s.Format = strfmt.OpenAPIFormat(name)
 	},
-	"gt":  func(d *ast.Decorator, s *openapi3.Schema) { emitExclusive(s, "exclusiveMinimum", d, 0) },
-	"gte": func(d *ast.Decorator, s *openapi3.Schema) { emitBound(s, "minimum", d, 0, setMin) },
-	"lt":  func(d *ast.Decorator, s *openapi3.Schema) { emitExclusive(s, "exclusiveMaximum", d, 0) },
-	"lte": func(d *ast.Decorator, s *openapi3.Schema) { emitBound(s, "maximum", d, 0, setMax) },
+	"gt":  func(d *ast.Decorator, s *openapi3.Schema) { emitBound(s, "exclusiveMinimum", d, 0) },
+	"gte": func(d *ast.Decorator, s *openapi3.Schema) { emitBound(s, "minimum", d, 0) },
+	"lt":  func(d *ast.Decorator, s *openapi3.Schema) { emitBound(s, "exclusiveMaximum", d, 0) },
+	"lte": func(d *ast.Decorator, s *openapi3.Schema) { emitBound(s, "maximum", d, 0) },
 	"range": func(d *ast.Decorator, s *openapi3.Schema) {
-		emitBound(s, "minimum", d, 0, setMin)
-		emitBound(s, "maximum", d, 1, setMax)
+		emitBound(s, "minimum", d, 0)
+		emitBound(s, "maximum", d, 1)
 	},
-	"positive": func(_ *ast.Decorator, s *openapi3.Schema) { setExclusive(s, "exclusiveMinimum", 0, nil) },
-	"negative": func(_ *ast.Decorator, s *openapi3.Schema) { setExclusive(s, "exclusiveMaximum", 0, nil) },
+	"positive": func(_ *ast.Decorator, s *openapi3.Schema) { tightenBound(s, "exclusiveMinimum", new(big.Rat)) },
+	"negative": func(_ *ast.Decorator, s *openapi3.Schema) { tightenBound(s, "exclusiveMaximum", new(big.Rat)) },
 	"multipleOf": func(d *ast.Decorator, s *openapi3.Schema) {
-		if r, ok := rawIfBigInt(d, 0); ok {
-			schemaExt(s, "multipleOf", r)
-		} else if v, ok := numericArgValue(d, 0); ok && v != 0 {
-			s.MultipleOf = &v
+		if v, ok := numberArg(d, 0); ok && v.Sign() != 0 {
+			setNumber(s, "multipleOf", v)
 		}
 	},
 	"minItems": func(d *ast.Decorator, s *openapi3.Schema) {

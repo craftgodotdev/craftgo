@@ -1929,6 +1929,33 @@ service S { post M /m { request T  response T } }`,
 	}
 }
 
+// An integer bound a float64 cannot hold, written as an integer or a whole
+// float, is documented as that exact integer, the tighter of two such bounds
+// too.
+func TestIntegerBoundsAreExact(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type Limits {
+	a int64  @range(-9223372036854775808.0, 9223372036854775807.0) @multipleOf(9223372036854775807.0)
+	b int64  @gt(-9223372036854775807) @lt(9223372036854775807)
+	c uint64 @multipleOf(18446744073709551615.0) @gte(9007199254740993)
+	d int64  @lte(9223372036854775000) @range(0, 9223372036854775807)
+	e string @maxLength(9223372036854775807)
+}
+service S { post M /m { request Limits  response Limits } }`)
+	mustContainAll(t, body,
+		"minimum: -9223372036854775808",
+		"maximum: 9223372036854775807",
+		"multipleOf: 9223372036854775807",
+		"exclusiveMinimum: -9223372036854775807",
+		"exclusiveMaximum: 9223372036854775807",
+		"multipleOf: 18446744073709551615",
+		"minimum: 9007199254740993",
+		"maximum: 9223372036854775000",
+		"maxLength: 9223372036854775807",
+	)
+	mustContainNone(t, body, "e+18", "e+19", "9223372036854776000", "maxLength: 9223372036854775808")
+}
+
 // A bodyless error's schema is the `{code, message}` envelope the runtime
 // sends.
 func TestBodylessErrorEnvelopeSchema(t *testing.T) {

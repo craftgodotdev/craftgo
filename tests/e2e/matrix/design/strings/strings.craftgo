@@ -14,6 +14,7 @@ package strings
 //   - separate min/max: @minLength(1) and @maxLength(100) on
 //     distinct fields to confirm the single-bound path.
 //   - zeroMin: @minLength(0) accepts every length, so it emits no check.
+//   - hugeMax: @maxLength at the int64 limit, documented digit for digit.
 type Str_Lengths {
 	zeroLower string @length(0, 100)
 	nonEmpty  string @length(1, 100)
@@ -21,6 +22,7 @@ type Str_Lengths {
 	onlyMin   string @minLength(1)
 	onlyMax   string @maxLength(100)
 	zeroMin   string @minLength(0)
+	hugeMax   string @maxLength(9223372036854775807)
 }
 
 // Str_Patterns covers @pattern with Go regex syntax. Four flavours:

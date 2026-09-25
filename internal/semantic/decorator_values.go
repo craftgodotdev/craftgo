@@ -155,7 +155,6 @@ type NumericLit struct {
 	IntVal   int64   // valid when IsInt
 	FloatVal float64 // always set: float64(IntVal) for an IntLit, the value for a FloatLit
 	IsInt    bool    // the literal was an integer
-	IsBigInt bool    // an integer whose magnitude exceeds maxExactInt, so float64 would lose precision
 	written  string  // a FloatLit as written, whose exact value FloatVal may round
 }
 
@@ -164,12 +163,7 @@ type NumericLit struct {
 func ParseNumeric(e ast.Expr) (NumericLit, bool) {
 	switch v := e.(type) {
 	case *ast.IntLit:
-		return NumericLit{
-			IntVal:   v.Value,
-			FloatVal: float64(v.Value),
-			IsInt:    true,
-			IsBigInt: v.Value > maxExactInt || v.Value < -maxExactInt,
-		}, true
+		return NumericLit{IntVal: v.Value, FloatVal: float64(v.Value), IsInt: true}, true
 	case *ast.FloatLit:
 		return NumericLit{FloatVal: v.Value, written: v.Text}, true
 	}
@@ -287,7 +281,3 @@ func sizeBytes(e ast.Expr) (int64, bool) {
 
 // maxDurationSeconds is the most whole seconds a [time.Duration] holds.
 const maxDurationSeconds = math.MaxInt64 / int64(time.Second)
-
-// maxExactInt is 2^53, the magnitude up to which a float64 - and so a JSON
-// number - holds every integer exactly.
-const maxExactInt = int64(1) << 53

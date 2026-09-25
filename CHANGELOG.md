@@ -838,6 +838,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   `PageOfMapOfStringAndItem`, so a design using both stopped with a
   generic-instance collision; the array's is `PageOfMapOfStringAndItemArray`.
 
+- **The OpenAPI document states integer bounds past 2^53 exactly.** A
+  whole-float bound such as `@lte(9223372036854775807.0)` or
+  `@multipleOf(18446744073709551615.0)` read `9223372036854776000` or
+  `1.8446744073709552e+19`, a `@maxLength` or item count that large was
+  rounded, the second of two such maxima won even when looser, and a `@gte`
+  that large on an unsigned field gave way to the type's `minimum: 0`. Each
+  bound is now the exact integer the validator checks, the tighter one of
+  two.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

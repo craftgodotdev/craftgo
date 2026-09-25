@@ -7,23 +7,13 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// ParseNumericArg tells ints from floats and flags ints past 2^53 as big.
+// ParseNumericArg tells ints from floats.
 func TestParseNumericArg(t *testing.T) {
 	mkInt := func(v int64) *ast.DecoratorArg { return &ast.DecoratorArg{Value: &ast.IntLit{Value: v}} }
 	mkFloat := func(v float64) *ast.DecoratorArg { return &ast.DecoratorArg{Value: &ast.FloatLit{Value: v}} }
 
-	if l, ok := ParseNumericArg(mkInt(10)); !ok || !l.IsInt || l.IntVal != 10 || l.FloatVal != 10 || l.IsBigInt {
+	if l, ok := ParseNumericArg(mkInt(10)); !ok || !l.IsInt || l.IntVal != 10 || l.FloatVal != 10 {
 		t.Errorf("int 10: %+v ok=%v", l, ok)
-	}
-	// The threshold is strict: 2^53 stays exact (not big), 2^53+1 is big.
-	if l, _ := ParseNumericArg(mkInt(maxExactInt)); l.IsBigInt {
-		t.Errorf("2^53 must not be flagged big (threshold is strict >)")
-	}
-	if l, ok := ParseNumericArg(mkInt(maxExactInt + 1)); !ok || !l.IsInt || !l.IsBigInt || l.IntVal != maxExactInt+1 {
-		t.Errorf("2^53+1: %+v ok=%v", l, ok)
-	}
-	if l, ok := ParseNumericArg(mkInt(-(maxExactInt + 1))); !ok || !l.IsBigInt {
-		t.Errorf("negative big int: %+v ok=%v", l, ok)
 	}
 	if l, ok := ParseNumericArg(mkFloat(0.5)); !ok || l.IsInt || l.FloatVal != 0.5 {
 		t.Errorf("float 0.5: %+v ok=%v", l, ok)

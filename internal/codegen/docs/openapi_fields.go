@@ -2,7 +2,7 @@ package docs
 
 import (
 	"encoding/json"
-	"strconv"
+	"math/big"
 
 	"github.com/getkin/kin-openapi/openapi3"
 
@@ -10,16 +10,28 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// rawIfBigInt returns argument i as an exact json.Number when it is an
-// integer beyond float64's exact range.
-func rawIfBigInt(d *ast.Decorator, i int) (json.Number, bool) {
+// numberArg returns argument i as the exact value it writes; ok is false for
+// a non-number.
+func numberArg(d *ast.Decorator, i int) (*big.Rat, bool) {
 	if i >= len(d.Args) {
-		return "", false
+		return nil, false
 	}
-	if l, ok := semantic.ParseNumericArg(d.Args[i]); ok && l.IsInt && l.IsBigInt {
-		return json.Number(strconv.FormatInt(l.IntVal, 10)), true
+	l, ok := semantic.ParseNumericArg(d.Args[i])
+	if !ok {
+		return nil, false
 	}
-	return "", false
+	r := l.Rat()
+	return r, r != nil
+}
+
+// countArg returns argument i as a count, a whole number up to the uint64
+// limit.
+func countArg(d *ast.Decorator, i int) (uint64, bool) {
+	r, ok := numberArg(d, i)
+	if !ok || !r.IsInt() || r.Sign() < 0 || !r.Num().IsUint64() {
+		return 0, false
+	}
+	return r.Num().Uint64(), true
 }
 
 // stampDeprecated marks s deprecated when decs carry @deprecated, appending
@@ -142,18 +154,6 @@ func isNullTypeSchema(s *openapi3.Schema) bool {
 	return s != nil && s.Type != nil && s.Type.Is("null")
 }
 
-// numericArgValue returns argument i as a float64, or false when it is not
-// a number.
-func numericArgValue(d *ast.Decorator, i int) (float64, bool) {
-	if i >= len(d.Args) {
-		return 0, false
-	}
-	if l, ok := semantic.ParseNumericArg(d.Args[i]); ok {
-		return l.FloatVal, true
-	}
-	return 0, false
-}
-
 // applyNullable adds "null" to s's type list: OpenAPI 3.1 has no `nullable`.
 // A ref has no type list and takes the [nullableRef] wrapper.
 func applyNullable(s *openapi3.Schema) {
@@ -177,89 +177,87 @@ func appendDescription(existing, note string) string {
 	return existing + "\n\n" + note
 }
 
-// schemaExt sets keyword key through Extensions, which marshal as plain
-// keywords: kin-openapi has no 3.1 exclusive bound and no exact big integer.
-func schemaExt(s *openapi3.Schema, key string, v interface{}) {
-	if s.Extensions == nil {
-		s.Extensions = make(map[string]interface{})
+// numberField returns the kin-openapi field of numeric keyword key, nil for a
+// 3.1 exclusive bound, which has none.
+func numberField(s *openapi3.Schema, key string) **float64 {
+	switch key {
+	case "minimum":
+		return &s.Min
+	case "maximum":
+		return &s.Max
+	case "multipleOf":
+		return &s.MultipleOf
 	}
-	s.Extensions[key] = v
+	return nil
 }
 
-// curExtNumber reads Extensions key as a float64, stored as either a
-// float64 or a json.Number.
-func curExtNumber(s *openapi3.Schema, key string) (float64, bool) {
-	if s.Extensions == nil {
-		return 0, false
-	}
-	switch v := s.Extensions[key].(type) {
-	case float64:
-		return v, true
-	case json.Number:
-		if f, err := v.Float64(); err == nil {
-			return f, true
-		}
-	}
-	return 0, false
-}
-
-// setMin and setMax keep the tighter inclusive bound: the validator runs
-// every decorator, so `@gte(10) @range(0, 100)` enforces a minimum of 10.
-func setMin(s *openapi3.Schema, v float64) {
-	if s.Min == nil || v > *s.Min {
-		s.Min = &v
-	}
-}
-
-func setMax(s *openapi3.Schema, v float64) {
-	if s.Max == nil || v < *s.Max {
-		s.Max = &v
-	}
-}
-
-// emitBound writes argument i as an inclusive bound: a big integer exactly
-// through Extensions, any other number through native.
-func emitBound(s *openapi3.Schema, key string, d *ast.Decorator, i int, native func(*openapi3.Schema, float64)) {
-	if r, ok := rawIfBigInt(d, i); ok {
-		schemaExt(s, key, r)
-		return
-	}
-	if v, ok := numericArgValue(d, i); ok {
-		native(s, v)
-	}
-}
-
-// setExclusive keeps the tighter exclusive bound (the larger minimum, the
-// smaller maximum), writing raw when it is non-nil, else v.
-func setExclusive(s *openapi3.Schema, key string, v float64, raw interface{}) {
-	if cur, ok := curExtNumber(s, key); ok {
-		if key == "exclusiveMinimum" && v <= cur {
-			return
-		}
-		if key == "exclusiveMaximum" && v >= cur {
-			return
-		}
-	}
-	if raw != nil {
-		schemaExt(s, key, raw)
+// schemaNumber returns the value of numeric keyword key on s.
+func schemaNumber(s *openapi3.Schema, key string) (*big.Rat, bool) {
+	var r *big.Rat
+	if f := numberField(s, key); f != nil && *f != nil {
+		r = new(big.Rat).SetFloat64(**f)
 	} else {
-		schemaExt(s, key, v)
+		switch v := s.Extensions[key].(type) {
+		case float64:
+			r = new(big.Rat).SetFloat64(v)
+		case json.Number:
+			r, _ = new(big.Rat).SetString(string(v))
+		}
 	}
+	return r, r != nil
 }
 
-// emitExclusive writes argument i as an exclusive bound: a big integer as an
-// exact json.Number, any other number as a float64.
-func emitExclusive(s *openapi3.Schema, key string, d *ast.Decorator, i int) {
-	if r, ok := rawIfBigInt(d, i); ok {
-		if f, err := r.Float64(); err == nil {
-			setExclusive(s, key, f, r)
-		} else {
-			schemaExt(s, key, r)
-		}
-		return
+// exactFloatInts bounds the integers a float64 holds and prints digit for
+// digit: 2^53.
+var exactFloatInts = new(big.Int).Lsh(big.NewInt(1), 53)
+
+// setNumber writes v as numeric keyword key: an integer beyond 2^53 through
+// Extensions, which marshal as plain keywords, as its exact digits, which a
+// float64 would round; any other number as a float64, in the kin-openapi
+// field for key when there is one.
+func setNumber(s *openapi3.Schema, key string, v *big.Rat) {
+	delete(s.Extensions, key)
+	field := numberField(s, key)
+	if field != nil {
+		*field = nil
 	}
-	if v, ok := numericArgValue(d, i); ok {
-		setExclusive(s, key, v, nil)
+	var value any
+	if v.IsInt() && v.Num().CmpAbs(exactFloatInts) > 0 {
+		value = json.Number(v.Num().String())
+	} else {
+		f, _ := v.Float64()
+		if field != nil {
+			*field = &f
+			return
+		}
+		value = f
+	}
+	if s.Extensions == nil {
+		s.Extensions = map[string]any{}
+	}
+	s.Extensions[key] = value
+}
+
+// tightenBound sets bound key, `minimum`, `maximum` or an exclusive one, to v
+// unless s holds a tighter one: the validator runs every decorator, so
+// `@gte(10) @range(0, 100)` enforces a minimum of 10.
+func tightenBound(s *openapi3.Schema, key string, v *big.Rat) {
+	if cur, ok := schemaNumber(s, key); ok {
+		c := v.Cmp(cur)
+		if key == "minimum" || key == "exclusiveMinimum" {
+			c = -c
+		}
+		if c >= 0 {
+			return
+		}
+	}
+	setNumber(s, key, v)
+}
+
+// emitBound tightens bound key with argument i of d.
+func emitBound(s *openapi3.Schema, key string, d *ast.Decorator, i int) {
+	if v, ok := numberArg(d, i); ok {
+		tightenBound(s, key, v)
 	}
 }
 
@@ -283,11 +281,10 @@ func lengthKeywordsApply(s *openapi3.Schema) bool { return s.Format != "byte" }
 // itemCountKeyword stores an item count through array or object by s's type,
 // matched with Includes so an optional `[array, "null"]` counts as an array.
 func itemCountKeyword(s *openapi3.Schema, d *ast.Decorator, array func(uint64), object func(uint64)) {
-	v, ok := numericArgValue(d, 0)
-	if !ok || v < 0 {
+	u, ok := countArg(d, 0)
+	if !ok {
 		return
 	}
-	u := uint64(v)
 	switch {
 	case s.Type != nil && s.Type.Includes("array"):
 		array(u)
