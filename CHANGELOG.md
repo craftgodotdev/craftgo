@@ -22,10 +22,12 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **Formatting sets every trailing comment off by one space**, where a
   closing brace, a decorator, an import or a scalar took two.
 
-- **Kafka publish errors name the adapter and the contract**, as the NATS
-  adapters' do: `kafka: publish orders.Placed: <cause>`, `kafka: publish
-  batch of N: <cause>`, and `kafka: <cause>` inside a
-  `*PartialPublishError`. `errors.Is` still reaches franz-go's error.
+- **Kafka publish errors name the adapter and the contract**, as
+  `nats.JetStream`'s do: `kafka: publish orders.Placed: <cause>`, `kafka:
+  publish batch of N: <cause>`, and `kafka: <cause>` inside a
+  `*PartialPublishError`. `errors.Is` still reaches franz-go's error. A
+  publish or batch after `Close` opens no producer and returns `kafka: open
+  producer: transport closed`.
 
 - **A bare-integer `@timeout` renders like a duration literal.** The routes
   file writes `@timeout(60)` as `1 * time.Minute`, the largest whole unit, as
@@ -101,9 +103,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   `localhost:4318` or nowhere; `otlp_grpc` still takes `host:port`, and
   fails on a URL with no host.
 
-- **An `otlp_http` URL ending in `/` sends each signal to its own path**,
-  `/v1/traces` and `/v1/metrics`, as a URL with no path does. It posted
-  both to `/`.
+- **An `otlp_http` URL whose path is `/` sends each signal to its own
+  path**, `/v1/traces` and `/v1/metrics`, as a URL with no path does. It
+  posted both to `/`.
 
 - **An empty OTLP endpoint means the OpenTelemetry default.** With
   `otlp_grpc` or `otlp_http` and no `endpoint`, the exporter sends to
@@ -211,7 +213,8 @@ breaking change to the DSL or the generated layout bumps the major version.
   context had ended, or whose durable `nats.ErrConsumerStopped` reported
   deleted, stayed "already subscribed" on its transport for good. The group
   is now free once its running handler has returned, and before that report
-  is made; until then a subscribe is refused as "still stopping".
+  is made; until the handler returns, a group whose context has ended is
+  refused as "still stopping".
 
 - **Concurrent subscribes of one JetStream group let one through.** Two
   `Subscribe` calls naming the same group on one transport could both pass
