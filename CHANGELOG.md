@@ -15,6 +15,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   one installs the logger it writes through at that moment, so
   `grpcSrv.SetLogger(httpSrv.Logger())` keeps the current logger.
 
+- **`server.WithTelemetry(mw)`**, a `server.New` option that installs `mw`
+  outside `Recovery` and every `Use` middleware, the HTTP twin of
+  `rpc.WithStatsHandler`; the health probes bypass it.
+
 ### Changed
 
 - **Both servers log through `log.Default`.** `server.Server` and
@@ -1164,6 +1168,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   else its comment, and an empty `//` line parts it from the lines craftgo
   adds. A logic stub or middleware written once keeps the doc it was
   written with.
+
+- **HTTP panic lines carry the request's trace ids.** `Recovery` ran outside
+  the telemetry wrapper, so a panic was logged before any span existed. A
+  generated `main.go` now builds the server with
+  `server.New(svc, server.WithTelemetry(tel.HTTPMiddleware()))`; in an
+  existing `main.go`, replace `srv.Use(tel.HTTPMiddleware())` with that
+  option, since keeping both records every span and metric twice.
 
 ### Deprecated
 

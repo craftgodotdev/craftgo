@@ -548,6 +548,62 @@ func TestAccessLogRecords499OverAConnection(t *testing.T) {
 	}
 }
 
+// WithTelemetry wraps Recovery and every Use middleware, so it sees the 500 a panic becomes,
+// and the health probes bypass it; nil installs nothing.
+func TestWithTelemetryWrapsRecoveryButNotTheProbes(t *testing.T) {
+	observeLogs(t)
+	var seen []string
+	telemetry := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			seen = append(seen, "telemetry")
+			tw := &trackingWriter{ResponseWriter: w}
+			next.ServeHTTP(tw, r)
+			seen = append(seen, fmt.Sprintf("%s %d", r.URL.Path, tw.Status()))
+		})
+	}
+	s := New(nil, WithTelemetry(telemetry))
+	s.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			seen = append(seen, "use")
+			next.ServeHTTP(w, r)
+		})
+	})
+	s.HandleFunc("GET /boom", func(http.ResponseWriter, *http.Request) { panic("boom") })
+	h := finalize(s)
+	for _, path := range []string{"/boom", DefaultLivenessPath, DefaultReadinessPath} {
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
+	}
+	if got, want := strings.Join(seen, ","), "telemetry,use,/boom 500"; got != want {
+		t.Errorf("saw %s, want %s", got, want)
+	}
+
+	plain := New(nil, WithTelemetry(nil))
+	plain.HandleFunc("GET /ok", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	rec := httptest.NewRecorder()
+	finalize(plain).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ok", nil))
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("WithTelemetry(nil): status %d, want the route's 204", rec.Code)
+	}
+}
+
+// WithTelemetry(nil) installs nothing and keeps what an earlier WithTelemetry installed, as
+// rpc.WithStatsHandler(nil) does.
+func TestWithTelemetryNilKeepsTheEarlierOne(t *testing.T) {
+	seen := 0
+	telemetry := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			seen++
+			next.ServeHTTP(w, r)
+		})
+	}
+	s := New(nil, WithTelemetry(telemetry), WithTelemetry(nil))
+	s.HandleFunc("GET /ok", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	finalize(s).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/ok", nil))
+	if seen != 1 {
+		t.Errorf("the telemetry middleware ran %d times, want 1", seen)
+	}
+}
+
 // No Use middleware sees the health probes, on default or custom paths.
 func TestProbesBypassMiddlewareChain(t *testing.T) {
 	for name, opts := range map[string][]Option{

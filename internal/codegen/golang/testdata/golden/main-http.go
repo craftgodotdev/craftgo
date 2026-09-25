@@ -75,14 +75,9 @@ func main() {
 	// startup with whatever params your impl needs.
 	svc.AuthRequired = middleware.NewAuthRequiredMiddleware()
 
-	// Build the Server and attach runtime globals via Use. Order
-	// matters: OTel opens the span first so AccessLog sees the trace
-	// ids on ctx (via `WithContext`); the same `otelhttp.NewHandler`
-	// invocation records `http.server.duration` / `request.size` /
-	// `response.size` against the configured MeterProvider so no
-	// separate metrics middleware is needed.
-	srv := server.New(svc)
-	srv.Use(tel.HTTPMiddleware())
+	// The telemetry wrapper opens each request's span outside Recovery and every Use
+	// middleware, so the access and panic lines carry its trace ids.
+	srv := server.New(svc, server.WithTelemetry(tel.HTTPMiddleware()))
 	srv.Use(server.AccessLog(srv.Logger()))
 	// Global per-request guards, resolved per route at registration: a
 	// per-method `@timeout` / `@maxBodySize` OVERRIDES the matching default

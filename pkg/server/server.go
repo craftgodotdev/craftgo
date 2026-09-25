@@ -36,7 +36,8 @@ type Server struct {
 
 	registeredMW map[string]Middleware
 
-	notFound http.Handler
+	notFound  http.Handler
+	telemetry Middleware
 }
 
 // Logger is an alias of [log.Logger].
@@ -66,6 +67,17 @@ func New(_ any, opts ...Option) *Server {
 		o(s)
 	}
 	return s
+}
+
+// WithTelemetry installs mw, such as the telemetry stack's HTTPMiddleware, outside [Recovery]
+// and every [Server.Use] middleware, so their log lines carry the span it opens; a panic in mw
+// itself is not recovered. The health probes bypass it; nil installs nothing.
+func WithTelemetry(mw Middleware) Option {
+	return func(s *Server) {
+		if mw != nil {
+			s.telemetry = mw
+		}
+	}
 }
 
 // Mux returns the underlying ServeMux. Routes registered on it directly skip the default
@@ -192,9 +204,9 @@ func (s *Server) Logger() log.Logger { return log.Follow() }
 // Codec returns the codec in effect, the one [JSON] returns.
 func (s *Server) Codec() JSONCodec { return JSON() }
 
-// Handler returns what [Server.Start] serves: [Recovery], logging to [log.Default], then the
-// [Server.Use] middlewares in order, then CORS when set, then the mux. The health probes are
-// answered ahead of that chain, wrapped in Recovery only, so no other middleware sees them.
+// Handler returns what [Server.Start] serves: the [WithTelemetry] middleware, [Recovery] logging
+// to [log.Default], the [Server.Use] middlewares in order, CORS when set, then the mux. The health
+// probes are answered ahead of that chain, wrapped in Recovery only.
 func (s *Server) Handler() http.Handler {
 	s.mu.Lock()
 	chain := NewChain(recovery(log.Default)).Append(s.chain...)
@@ -202,6 +214,9 @@ func (s *Server) Handler() http.Handler {
 		chain = chain.Append(corsMiddleware(*s.cors))
 	}
 	app := chain.Then(s.muxLocked())
+	if s.telemetry != nil {
+		app = s.telemetry(app)
+	}
 	probes := s.probesLocked()
 	s.mu.Unlock()
 	if probes == nil {

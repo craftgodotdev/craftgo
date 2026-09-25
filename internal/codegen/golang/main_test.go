@@ -62,7 +62,7 @@ func TestGenerateMainOrdersTheWiring(t *testing.T) {
 	got := string(out)
 	for _, pair := range []struct{ rule, first, second string }{
 		{"the span must be open before the access line is written",
-			"srv.Use(tel.HTTPMiddleware())", "srv.Use(server.AccessLog("},
+			"server.WithTelemetry(tel.HTTPMiddleware())", "srv.Use(server.AccessLog("},
 		{"the timeout default must be set before routes resolve it",
 			"srv.SetDefaultHandlerTimeout(", "wiring.Register("},
 		{"the body cap must be set before routes resolve it",

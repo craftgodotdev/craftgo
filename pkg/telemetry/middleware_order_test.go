@@ -14,6 +14,39 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/telemetry"
 )
 
+// A panic's log line carries the request's trace ids when HTTPMiddleware is installed with
+// server.WithTelemetry, outside Recovery.
+func TestPanicLineCarriesTraceIDsBehindWithTelemetry(t *testing.T) {
+	tel, err := telemetry.Init(context.Background(), telemetry.Config{
+		ServiceName: "ordering",
+		OTel:        telemetry.OTelConfig{Enabled: true, Exporter: "none"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
+	core, logs := observer.New(zap.InfoLevel)
+	prev := log.Default()
+	log.SetDefault(log.NewZap(zap.New(core)))
+	t.Cleanup(func() { log.SetDefault(prev) })
+
+	srv := server.New(nil, server.WithTelemetry(tel.HTTPMiddleware()))
+	srv.Mux().HandleFunc("GET /boom", func(http.ResponseWriter, *http.Request) { panic("boom") })
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/boom", nil))
+
+	lines := logs.FilterMessage("panic recovered").All()
+	if rec.Code != http.StatusInternalServerError || len(lines) != 1 {
+		t.Fatalf("status %d with %d panic lines, want 500 and one", rec.Code, len(lines))
+	}
+	fields := lines[0].ContextMap()
+	for _, key := range []string{"trace_id", "span_id"} {
+		if id, _ := fields[key].(string); id == "" {
+			t.Errorf("the panic line has no %s: %v", key, fields)
+		}
+	}
+}
+
 // The access line carries trace_id and span_id only when AccessLog runs inside HTTPMiddleware.
 func TestAccessLogReportsTraceIDsOnlyBehindTheWrapper(t *testing.T) {
 	tel, err := telemetry.Init(context.Background(), telemetry.Config{
