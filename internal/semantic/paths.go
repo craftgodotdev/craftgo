@@ -233,15 +233,20 @@ func (si *ServiceInfo) registeredRoute(m *ast.Method) string {
 // checkMethodPathParams reports a `{name}` in rt that no request field
 // binds, by `@path` or by its name, and an explicit `@path` field with no
 // segment in rt; decs are the decorators that apply to m. A raw request
-// reads its path values itself.
+// reads its path values itself. Each variable is reported once, spelled as
+// rt writes it.
 func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, decs []*ast.Decorator, rt string) {
-	pathParams := route.Vars(rt)
+	pathParams, written := routeVariables(rt)
 	if m.Request == nil {
 		rawReq, _ := wire.RawSides(decs)
 		if len(pathParams) > 0 && !rawReq {
+			segs := make([]string, len(pathParams))
+			for i, p := range pathParams {
+				segs[i] = written[p]
+			}
 			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamMissing,
-				"method %s.%s: path declares %v but no request struct - path values won't reach logic. Declare a request struct with a `<name> string @path` (or matching field name) to bind.",
-				svcName, m.Name, pathParams)
+				"method %s.%s: path declares %s but no request struct - path values won't reach logic. Declare a request struct with a `<name> string @path` (or matching field name) to bind.",
+				svcName, m.Name, strings.Join(segs, ", "))
 		}
 		return
 	}
@@ -252,30 +257,41 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, decs []*
 	if reqFields == nil {
 		return // an unresolved request type is reported by the reference checks
 	}
-	// Each unbound variable is reported once: by the report of a
-	// `@path("name...")` that misses it, else by its first segment.
+	// A `@path("name...")` binds no variable; its report names the one it misses.
 	reported := map[string]bool{}
 	for _, name := range reqFields.explicit {
 		if slices.Contains(pathParams, name) {
 			continue
 		}
 		hint := ""
-		if trimmed := strings.TrimSuffix(name, "..."); trimmed != name && slices.Contains(pathParams, trimmed) {
+		if trimmed := strings.TrimSuffix(name, "..."); trimmed != name && written[trimmed] != "" {
 			reported[trimmed] = true
-			hint = fmt.Sprintf(" - the variable {%s} is named %q", name, trimmed)
+			hint = fmt.Sprintf(" - the variable %s is named %q", written[trimmed], trimmed)
 		}
 		a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamOrphan,
 			"method %s.%s: field %q has @path binding but route %s has no {%s} segment%s",
 			svcName, m.Name, name, rt, name, hint)
 	}
-	for _, seg := range route.Segments(rt) {
-		if p, ok := route.WildcardName(seg); ok && !reqFields.has(p) && !reported[p] {
-			reported[p] = true
+	for _, p := range pathParams {
+		if !reqFields.has(p) && !reported[p] {
 			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamMissing,
 				"method %s.%s: path segment %s has no matching field in request type",
-				svcName, m.Name, seg)
+				svcName, m.Name, written[p])
 		}
 	}
+}
+
+// routeVariables returns the names of rt's variables in route order, each
+// once, and the segment that first writes each one: `{id}`, `{rest...}`.
+func routeVariables(rt string) (names []string, written map[string]string) {
+	written = map[string]string{}
+	for _, seg := range route.Segments(rt) {
+		if name, ok := route.WildcardName(seg); ok && written[name] == "" {
+			written[name] = seg
+			names = append(names, name)
+		}
+	}
+	return names, written
 }
 
 // pathParamSet is the segment names a request binds; explicit holds those

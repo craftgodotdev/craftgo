@@ -573,6 +573,24 @@ service S { get Get / { request R  response Resp } }`, CodePathParamMissing)
 	expectMessage(t, d, "path segment {rest...} has no matching field")
 }
 
+// Path-variable messages spell each variable as the route writes it, once.
+func TestPathVariableMessagesSpellTheRoute(t *testing.T) {
+	d := expectError(t, `package app
+type Resp { ok bool }
+type R { p string @path("rest...") }
+service S { get A /a/{rest} { request R  response Resp } }`, CodePathParamOrphan)
+	expectMessage(t, d, `- the variable {rest} is named "rest"`)
+	d = expectError(t, `package app
+type Resp { ok bool }
+@prefix("/files/{rest...}")
+service S { get A / { response Resp } }`, CodePathParamMissing)
+	expectMessage(t, d, "path declares {rest...} but no request struct")
+	_, diags := analyzeWith(parseFiles(t, "package app\nservice S { get A /a/{x} {} }"), Options{BasePath: "/t/{id}/{id}"})
+	if d := findCode(diags, CodePathParamMissing); d == nil || !strings.Contains(d.Msg, "path declares {id}, {x} but no request struct") {
+		t.Errorf("want the variables {id}, {x} each once, got %v", diags)
+	}
+}
+
 // A route variable the basePath repeats is reported unbound once.
 func TestRepeatedPathVariableReportedMissingOnce(t *testing.T) {
 	_, diags := analyzeWith(parseFiles(t, "package app\ntype R { q string }\nservice S { get A /a { request R } }"), Options{BasePath: "/t/{id}/{id}"})
