@@ -171,6 +171,78 @@ func TestOpenAPI_EveryPathVariableIsDeclared(t *testing.T) {
 	}
 }
 
+// No parameter and no response header admits null: each is sent or not, and
+// an optional one is only left out of `required`.
+func TestOpenAPI_ParametersAndHeadersAreNeverNull(t *testing.T) {
+	var doc struct {
+		Paths map[string]map[string]struct {
+			Parameters []struct {
+				In       string `yaml:"in"`
+				Name     string `yaml:"name"`
+				Required bool   `yaml:"required"`
+				Schema   any    `yaml:"schema"`
+			} `yaml:"parameters"`
+			Responses map[string]struct {
+				Headers map[string]struct {
+					Schema any `yaml:"schema"`
+				} `yaml:"headers"`
+			} `yaml:"responses"`
+		} `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal([]byte(readOpenAPI(t)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	var admitsNull func(any) bool
+	admitsNull = func(s any) bool {
+		switch v := s.(type) {
+		case map[string]any:
+			for k, x := range v {
+				if k == "type" && (x == "null" || slices.Contains(toList(x), "null")) || admitsNull(x) {
+					return true
+				}
+			}
+		case []any:
+			return slices.ContainsFunc(v, admitsNull)
+		}
+		return false
+	}
+	optional := map[string]bool{}
+	for path, item := range doc.Paths {
+		for verb, op := range item {
+			for _, p := range op.Parameters {
+				if admitsNull(p.Schema) {
+					t.Errorf("%s %s: %s parameter %s admits null: %v", strings.ToUpper(verb), path, p.In, p.Name, p.Schema)
+				}
+				if path == "/bindings/optional-wire" {
+					optional[p.In+" "+p.Name] = !p.Required
+				}
+			}
+			for code, resp := range op.Responses {
+				for name, h := range resp.Headers {
+					if admitsNull(h.Schema) {
+						t.Errorf("%s %s: response %s header %s admits null: %v", strings.ToUpper(verb), path, code, name, h.Schema)
+					}
+				}
+			}
+		}
+	}
+	if want := map[string]bool{"header X-Trace": true, "cookie theme": true}; !maps.Equal(optional, want) {
+		t.Errorf("GetOptionalWire parameters (optional) = %v, want %v", optional, want)
+	}
+}
+
+// toList returns v as a list of strings, empty for anything else.
+func toList(v any) []string {
+	items, _ := v.([]any)
+	var out []string
+	for _, x := range items {
+		if s, ok := x.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // The XRefsService of xrefs and the one of xshared are both documented,
 // each under its own tag; the method name both declare keeps each
 // operation's body components apart, named after its package.

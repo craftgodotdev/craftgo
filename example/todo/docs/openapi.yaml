@@ -230,9 +230,7 @@ paths:
       - in: query
         name: cursor
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: limit
         required: true
@@ -243,15 +241,12 @@ paths:
       - in: query
         name: status
         schema:
-          anyOf:
-          - $ref: '#/components/schemas/TodoStatus'
-          - type: "null"
+          $ref: '#/components/schemas/TodoStatus'
       - in: query
         name: tag
         schema:
-          anyOf:
+          allOf:
           - $ref: '#/components/schemas/Tag'
-          - type: "null"
           description: |-
             tag is a scalar (Tag) filter bound from the query string. The
             scalar's inherited @length / @pattern run during req.Validate(),

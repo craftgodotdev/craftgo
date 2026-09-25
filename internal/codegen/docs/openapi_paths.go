@@ -298,8 +298,8 @@ func buildResponseHeaders(headers, cookies []semantic.ResolvedField, pkg *semant
 	out := openapi3.Headers{}
 	for _, rf := range headers {
 		f := rf.Field
-		schema := schemaForTypeRef(f.Type, pkg, registry)
-		applyFieldMetadata(f, schema, pkg, semantic.FieldIsOptional(f))
+		schema := schemaForTypeRef(nonNullType(f), pkg, registry)
+		applyFieldMetadata(f, schema, pkg, false)
 		out[wire.WireName(f, wire.BindHeader)] = &openapi3.HeaderRef{Value: &openapi3.Header{
 			Parameter: openapi3.Parameter{
 				Schema:      schema,

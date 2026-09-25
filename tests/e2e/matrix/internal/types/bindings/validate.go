@@ -223,6 +223,16 @@ func (v *OkResp) Validate() error {
 }
 
 // Validate returns the first constraint v violates, or nil.
+func (v *OptionalWireReq) Validate() error {
+	if v.Theme != nil {
+		if err := v.Theme.Validate(); err != nil {
+			return fmt.Errorf("theme: %w", err)
+		}
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *Page) Validate() error {
 	if v.Page < 1 {
 		return fmt.Errorf("page: below minimum 1")
@@ -548,6 +558,11 @@ func (v *RateLimitExceededBody) Validate() error {
 	if v.RetryAfter < 1 {
 		return fmt.Errorf("retryAfter: below minimum 1")
 	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *RetryLaterBody) Validate() error {
 	return nil
 }
 

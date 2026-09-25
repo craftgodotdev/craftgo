@@ -30,6 +30,7 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/bindings/colliding-query", transport.GetCollidingQuery(svcCtx))
 	srv.Handle("POST /api/bindings/query-beside-body", transport.PostQueryBesideBody(svcCtx))
 	srv.Handle("GET /api/bindings/session-cookie", transport.GetSessionCookie(svcCtx))
+	srv.Handle("GET /api/bindings/optional-wire", transport.GetOptionalWire(svcCtx))
 	srv.Handle("POST /api/bindings/error-shapes", transport.RaiseErrorShapes(svcCtx))
 	srv.Handle("GET /api/bindings/filter-tags", transport.FilterTags(svcCtx))
 	srv.Handle("GET /api/bindings/query-float", transport.GetQueryFloat(svcCtx))

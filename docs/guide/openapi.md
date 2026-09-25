@@ -148,6 +148,10 @@ Field-level validators map to OpenAPI keywords:
 | `@example("alice")`            | `example: alice`         |
 | `@deprecated`                  | `deprecated: true`       |
 
+Only a JSON body field admits `null`. A parameter, a response header and a
+multipart part are sent or not: `?` makes one optional, and its schema is the
+type alone.
+
 On a float field the validator compares against the literal's float, and a
 bound judges the literal and that float as the validator does: `@lte(0.1)` on
 a `float32` field is `maximum: 0.10000000149011612`, which both pass, and

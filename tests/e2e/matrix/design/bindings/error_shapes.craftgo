@@ -47,6 +47,12 @@ error Forbidden ForbiddenDetails {
 	note   string
 }
 
+// RetryLater sends Retry-After only when it knows the wait: OpenAPI documents
+// the optional header without null.
+error ServiceUnavailable RetryLater {
+	wait int? @header("Retry-After")
+}
+
 // SharedStatusConflict shares its 409 with the success response of
 // PostSharedStatus: OpenAPI documents both bodies as a oneOf.
 error Conflict SharedStatusConflict {

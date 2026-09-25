@@ -644,6 +644,69 @@ service S { post U /u { request Up  response Ok } }`,
 	}
 }
 
+// An optional parameter or response header is never documented as null: a
+// parameter or a header is sent or not, and `required` carries a parameter's
+// optionality.
+func TestOptionalParametersAndHeadersAreNotNullable(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+enum Level { low  high }
+scalar Code string @minLength(2)
+type Find {
+	q     string?   @maxLength(80)
+	count int?
+	level Level?
+	code  Code?     @maxLength(8)
+	tags  string[]?
+	trace string?   @header("X-Trace")
+	sid   Level?    @cookie("sid")
+}
+type Found {
+	next string? @header("X-Next")
+	ok   bool
+}
+error TooManyRequests Slow { wait int? @header("Retry-After") }
+service S { @errors(Slow) get F /f { request Find  response Found } }`,
+	}, &config.Config{})
+	op := doc.Paths.Find("/f").Get
+	want := map[string]string{
+		"q":       `{"maxLength":80,"type":"string"}`,
+		"count":   `{"type":"integer"}`,
+		"level":   `{"$ref":"#/components/schemas/Level"}`,
+		"code":    `{"allOf":[{"$ref":"#/components/schemas/Code"},{"maxLength":8}]}`,
+		"tags":    `{"items":{"type":"string"},"type":"array"}`,
+		"X-Trace": `{"type":"string"}`,
+		"sid":     `{"$ref":"#/components/schemas/Level"}`,
+	}
+	for _, p := range op.Parameters {
+		raw, err := json.Marshal(p.Value.Schema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(raw) != want[p.Value.Name] {
+			t.Errorf("parameter %s = %s, want %s", p.Value.Name, raw, want[p.Value.Name])
+		}
+		if p.Value.Required {
+			t.Errorf("parameter %s is required", p.Value.Name)
+		}
+	}
+	if len(op.Parameters) != len(want) {
+		t.Errorf("%d parameters, want %d", len(op.Parameters), len(want))
+	}
+	for _, h := range []struct{ code, name, want string }{
+		{"200", "X-Next", `{"type":"string"}`},
+		{"429", "Retry-After", `{"type":"integer"}`},
+	} {
+		raw, err := json.Marshal(op.Responses.Value(h.code).Value.Headers[h.name].Value.Schema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(raw) != h.want {
+			t.Errorf("response %s header %s = %s, want %s", h.code, h.name, raw, h.want)
+		}
+	}
+}
+
 // A multipart request's cross-field constraint wraps its inline schema in an
 // allOf.
 func TestGenerateOpenAPIMultipartCrossField(t *testing.T) {

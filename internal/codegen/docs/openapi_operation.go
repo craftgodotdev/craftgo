@@ -305,7 +305,7 @@ func multipartRequestBody(s opShape, pkg *semantic.Package, registry *genericReg
 	text := map[string]bool{}
 	var required []string
 	for _, f := range s.form {
-		ref := schemaForTypeRef(partType(f), pkg, registry)
+		ref := schemaForTypeRef(nonNullType(f.Field), pkg, registry)
 		applyFieldMetadata(f.Field, ref, pkg, false)
 		props[f.WireName] = ref
 		keys[f.Field.Name] = f.WireName
@@ -316,7 +316,7 @@ func multipartRequestBody(s opShape, pkg *semantic.Package, registry *genericReg
 	}
 	encoding := map[string]*openapi3.Encoding{}
 	for _, f := range s.files {
-		ref := schemaForTypeRef(partType(f), pkg, registry)
+		ref := schemaForTypeRef(nonNullType(f.Field), pkg, registry)
 		if ref.Value != nil {
 			applyConstraintFamilies(f.Field.Decorators, ref.Value, semantic.ConstraintItems, "file")
 		}
@@ -352,10 +352,10 @@ func multipartRequestBody(s opShape, pkg *semantic.Package, registry *genericReg
 	}}
 }
 
-// partType returns the type of form part f without `?`: a part is sent or
-// not, never null, and `required` carries its optionality.
-func partType(f semantic.FormField) *ast.TypeRef {
-	t := *f.Field.Type
+// nonNullType returns f's type without `?`: a parameter, a header or a form
+// part is sent or not, never null, and `required` carries its optionality.
+func nonNullType(f *ast.Field) *ast.TypeRef {
+	t := *f.Type
 	t.Optional = false
 	return &t
 }
@@ -411,8 +411,8 @@ func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegi
 	add := func(in wire.Binding, fields []semantic.ResolvedField, alwaysRequired bool) {
 		for _, rf := range fields {
 			f := rf.Field
-			ref := schemaForTypeRef(f.Type, pkg, registry)
-			applyFieldMetadata(f, ref, pkg, semantic.FieldIsOptional(f))
+			ref := schemaForTypeRef(nonNullType(f), pkg, registry)
+			applyFieldMetadata(f, ref, pkg, false)
 			params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
 				Name:     wire.WireName(f, in),
 				In:       in.String(),

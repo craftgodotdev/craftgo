@@ -1206,6 +1206,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   field kept; both now fail to bind and answer 400, e.g. `ratio: invalid
   float value: strconv.ParseFloat: parsing "NaN": not a finite number`.
 
+- **An optional parameter or response header is never documented as null.**
+  A query, header or cookie parameter, or a response header, declared `T?`
+  read `type: [T, "null"]`, or an `anyOf` with `null` for an enum or scalar,
+  though it is sent or not: a client that sent `?count=null` for an `int?`
+  got a 400. Its schema is now its type alone; `required` still carries a
+  parameter's optionality.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

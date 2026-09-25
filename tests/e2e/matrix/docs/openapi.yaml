@@ -2893,6 +2893,8 @@ components:
       $ref: '#/components/schemas/XOwner'
     GetNestedRespBody:
       $ref: '#/components/schemas/XOwner'
+    GetOptionalWireRespBody:
+      $ref: '#/components/schemas/DoneResp'
     GetOrderReq:
       description: |-
         GetOrderReq pins a UUID-typed path parameter. The scalar's
@@ -4633,6 +4635,11 @@ components:
       required:
       - body
       type: object
+    OptionalWireReq:
+      description: |-
+        OptionalWireReq binds an optional header and an optional enum cookie: each
+        is sent or not, so OpenAPI documents neither as null.
+      type: object
     OrderPage:
       description: |-
         OrderPage instantiates Page<Order>. Codegen substitutes T=Order
@@ -5951,6 +5958,17 @@ components:
       type: object
     RetryHint:
       description: RetryHint carries a back-off hint on a response header.
+      type: object
+    RetryLaterErr:
+      description: ServiceUnavailable error response (HTTP 503).
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - message
       type: object
     Room:
       description: |-
@@ -9153,9 +9171,7 @@ paths:
           - Blue
           items:
             $ref: '#/components/schemas/BindingsColor'
-          type:
-          - array
-          - "null"
+          type: array
       responses:
         "200":
           content:
@@ -9172,15 +9188,11 @@ paths:
       - in: query
         name: sortBy
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: sort_by
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       responses:
         "204":
           description: No Content
@@ -9302,9 +9314,7 @@ paths:
       - in: query
         name: cursor
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: limit
         required: true
@@ -9315,17 +9325,13 @@ paths:
       - in: query
         name: sort
         schema:
-          anyOf:
-          - $ref: '#/components/schemas/BindingsColor'
-          - type: "null"
+          $ref: '#/components/schemas/BindingsColor'
       - in: query
         name: ids
         schema:
           items:
             type: integer
-          type:
-          - array
-          - "null"
+          type: array
       - in: query
         name: active
         required: true
@@ -9335,15 +9341,11 @@ paths:
         name: offset
         schema:
           minimum: 0
-          type:
-          - integer
-          - "null"
+          type: integer
       - in: query
         name: verbose
         schema:
-          type:
-          - boolean
-          - "null"
+          type: boolean
       responses:
         "200":
           content:
@@ -9457,9 +9459,7 @@ paths:
         name: sortBy
         schema:
           default: name
-          type:
-          - string
-          - "null"
+          type: string
       - in: header
         name: X-Trace-Id
         required: true
@@ -9514,6 +9514,37 @@ paths:
           description: Created
       tags:
       - bindings
+  /bindings/optional-wire:
+    get:
+      operationId: GetOptionalWire
+      parameters:
+      - in: header
+        name: X-Trace
+        schema:
+          type: string
+      - in: cookie
+        name: theme
+        schema:
+          $ref: '#/components/schemas/BindingsColor'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOptionalWireRespBody'
+          description: OK
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetryLaterErr'
+          description: ServiceUnavailable
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+      tags:
+      - bindings
   /bindings/page:
     get:
       description: List one page of items. `pageSize` rides the query string; a value
@@ -9550,15 +9581,11 @@ paths:
       - in: query
         name: size
         schema:
-          type:
-          - integer
-          - "null"
+          type: integer
       - in: query
         name: q
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       responses:
         "200":
           content:
@@ -9608,9 +9635,7 @@ paths:
         name: scale
         schema:
           format: float
-          type:
-          - number
-          - "null"
+          type: number
       responses:
         "200":
           content:
@@ -9753,9 +9778,7 @@ paths:
       - in: query
         name: search_q
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       - in: header
         name: X-API-Key
         required: true
@@ -10023,9 +10046,7 @@ paths:
         name: sortBy
         schema:
           default: name
-          type:
-          - string
-          - "null"
+          type: string
       requestBody:
         content:
           application/json:
@@ -10292,15 +10313,11 @@ paths:
       - in: query
         name: byName
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: byId
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       responses:
         "200":
           content:
@@ -10613,9 +10630,7 @@ paths:
                 type: string
             X-Next-Page:
               schema:
-                type:
-                - string
-                - "null"
+                type: string
             X-Total-Count:
               schema:
                 type: integer
@@ -11234,9 +11249,7 @@ paths:
       - in: query
         name: verbose
         schema:
-          type:
-          - boolean
-          - "null"
+          type: boolean
       responses:
         "200":
           content:
@@ -11274,9 +11287,7 @@ paths:
       - in: query
         name: verbose
         schema:
-          type:
-          - boolean
-          - "null"
+          type: boolean
       responses:
         "200":
           content:
@@ -11617,23 +11628,18 @@ paths:
         name: sortQ
         schema:
           default: asc
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: colorQ
         schema:
-          anyOf:
+          allOf:
           - $ref: '#/components/schemas/Shade'
-          - type: "null"
           default: green
       - in: query
         name: limitQ
         schema:
           default: 10
-          type:
-          - integer
-          - "null"
+          type: integer
       responses:
         "200":
           content:
@@ -11717,15 +11723,11 @@ paths:
       - in: query
         name: code
         schema:
-          anyOf:
-          - $ref: '#/components/schemas/Key'
-          - type: "null"
+          $ref: '#/components/schemas/Key'
       - in: query
         name: key
         schema:
-          anyOf:
-          - $ref: '#/components/schemas/Priority'
-          - type: "null"
+          $ref: '#/components/schemas/Priority'
       responses:
         "200":
           content:
@@ -11828,9 +11830,7 @@ paths:
       - in: query
         name: level
         schema:
-          anyOf:
-          - $ref: '#/components/schemas/Priority'
-          - type: "null"
+          $ref: '#/components/schemas/Priority'
       responses:
         "200":
           content:
@@ -11867,15 +11867,12 @@ paths:
       - in: query
         name: cursor
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: limit
         schema:
-          anyOf:
+          allOf:
           - $ref: '#/components/schemas/Cents'
-          - type: "null"
           default: 20
       responses:
         "200":
@@ -11896,15 +11893,12 @@ paths:
       - in: query
         name: cursor
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: limit
         schema:
-          anyOf:
+          allOf:
           - $ref: '#/components/schemas/Cents'
-          - type: "null"
           default: 20
       responses:
         "200":
@@ -12293,27 +12287,19 @@ paths:
           default: 20
           maximum: 100
           minimum: 1
-          type:
-          - integer
-          - "null"
+          type: integer
       - in: query
         name: cursor
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: total
         schema:
-          type:
-          - integer
-          - "null"
+          type: integer
       - in: query
         name: query
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       responses:
         "200":
           content:
@@ -12802,17 +12788,13 @@ paths:
         schema:
           default: 7
           format: int32
-          type:
-          - integer
-          - "null"
+          type: integer
       - in: query
         name: p64
         schema:
           default: 9
           format: int64
-          type:
-          - integer
-          - "null"
+          type: integer
       responses:
         "200":
           content:
@@ -12903,9 +12885,7 @@ paths:
         schema:
           default: 50
           format: int32
-          type:
-          - integer
-          - "null"
+          type: integer
       requestBody:
         content:
           application/json:
@@ -12993,9 +12973,8 @@ paths:
       - in: query
         name: channel
         schema:
-          anyOf:
+          allOf:
           - $ref: '#/components/schemas/Channel'
-          - type: "null"
           default: Web
       requestBody:
         content:

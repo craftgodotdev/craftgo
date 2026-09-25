@@ -5,6 +5,7 @@ package bindings
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 )
 
 // ErrCodeAccessDenied is the canonical machine-readable code for AccessDeniedErr.
@@ -401,6 +402,48 @@ func (e *RecordNotFoundErr) HTTPStatus() int { return 404 }
 // MarshalJSON encodes the {"code", "message"} envelope.
 func (e *RecordNotFoundErr) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]string{"code": ErrCodeRecordNotFound, "message": e.Error()})
+}
+
+// ErrCodeRetryLater is the canonical machine-readable code for RetryLaterErr.
+const ErrCodeRetryLater = "RETRY_LATER"
+
+// RetryLaterBody is the body of RetryLaterErr.
+type RetryLaterBody struct {
+	Wait *int `json:"-" header:"Retry-After"`
+}
+
+// RetryLater sends Retry-After only when it knows the wait: OpenAPI documents
+// the optional header without null.
+//
+// RetryLaterErr is the ServiceUnavailable error RetryLater.
+type RetryLaterErr struct {
+	RetryLaterBody
+}
+
+// NewRetryLaterErr constructs RetryLaterErr.
+func NewRetryLaterErr(body RetryLaterBody) *RetryLaterErr {
+	return &RetryLaterErr{RetryLaterBody: body}
+}
+
+// Error returns the ServiceUnavailable category's default message.
+func (e *RetryLaterErr) Error() string { return "Service unavailable" }
+
+// ErrCode returns ErrCodeRetryLater.
+func (e *RetryLaterErr) ErrCode() string { return ErrCodeRetryLater }
+
+// HTTPStatus returns the ServiceUnavailable status.
+func (e *RetryLaterErr) HTTPStatus() int { return 503 }
+
+// MarshalJSON encodes the {"code", "message"} envelope.
+func (e *RetryLaterErr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]string{"code": ErrCodeRetryLater, "message": e.Error()})
+}
+
+// WriteResponseHeaders sets the @header and @cookie fields on w.
+func (e *RetryLaterErr) WriteResponseHeaders(w http.ResponseWriter) {
+	if e.Wait != nil {
+		w.Header().Set("Retry-After", strconv.Itoa(*e.Wait))
+	}
 }
 
 // ErrCodeSharedStatusConflict is the canonical machine-readable code for SharedStatusConflictErr.

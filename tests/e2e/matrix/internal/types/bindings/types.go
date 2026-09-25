@@ -176,6 +176,13 @@ type OkResp struct {
 	Ok bool `json:"ok"`
 }
 
+// OptionalWireReq binds an optional header and an optional enum cookie: each
+// is sent or not, so OpenAPI documents neither as null.
+type OptionalWireReq struct {
+	TraceID *string `json:"-" header:"X-Trace"`
+	Theme   *Color  `json:"-" cookie:"theme"`
+}
+
 // Page embeds as the Go field Page, the name its own `page` field lowers
 // to, so a host reaches that field as `req.Page.Page`.
 type Page struct {

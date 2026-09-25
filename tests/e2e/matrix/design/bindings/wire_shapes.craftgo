@@ -66,6 +66,13 @@ type SessionCookieReq {
 	sid string @cookie("sid")
 }
 
+// OptionalWireReq binds an optional header and an optional enum cookie: each
+// is sent or not, so OpenAPI documents neither as null.
+type OptionalWireReq {
+	traceId string? @header("X-Trace")
+	theme   Color?  @cookie("theme")
+}
+
 // RequiredArrayQueryReq requires an array query parameter: an absent key
 // answers 400, an empty ?tags= passes.
 type RequiredArrayQueryReq {

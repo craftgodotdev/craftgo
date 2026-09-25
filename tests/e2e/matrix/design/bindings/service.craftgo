@@ -158,6 +158,12 @@ service BindingsService {
 		response DoneResp
 	}
 
+	@errors(RetryLater)
+	get GetOptionalWire /optional-wire {
+		request  OptionalWireReq
+		response DoneResp
+	}
+
 	@errors(HeaderMixinError, NullableFieldsErr, CodeMessageErr)
 	post RaiseErrorShapes /error-shapes {
 		request  EmptyReq
