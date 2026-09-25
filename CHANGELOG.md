@@ -948,7 +948,8 @@ breaking change to the DSL or the generated layout bumps the major version.
   argument's type, and each request, response or error mixin that
   instantiates the type is checked with its argument: `response Paged<Item>`
   is `binding/type` at the response clause, as is a `T?` header whose
-  argument is an array, a pointer to a slice no header reads or writes.
+  argument is an array, a pointer to a slice no generated header binding
+  reads or writes; a raw side, whose headers logic handles, takes it.
 
 - **A mixin's cross-field groups reach every OpenAPI request body.** The
   body of a request that also binds a path, query, header or cookie field,

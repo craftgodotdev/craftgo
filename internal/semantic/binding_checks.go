@@ -78,19 +78,21 @@ func typeParamNamed(t *ast.TypeRef, typeParams []string) bool {
 // of the type's parameters whose argument cannot ride the binding.
 func (a *analyzer) checkTypeParamWireBindings() {
 	for _, svcName := range a.pkg.ServiceNames() {
-		for _, m := range a.pkg.Services[svcName].Methods {
+		si := a.pkg.Services[svcName]
+		for _, m := range si.Methods {
+			rawReq, rawResp := wire.RawSides(si.Decorators(m))
 			if m.Request != nil {
-				a.checkInstanceWireBindings(m.Request, m.Request.Pos, false)
+				a.checkInstanceWireBindings(m.Request, m.Request.Pos, false, rawReq)
 			}
 			if m.Response != nil {
-				a.checkInstanceWireBindings(m.Response.Type, m.Response.Pos, true)
+				a.checkInstanceWireBindings(m.Response.Type, m.Response.Pos, true, rawResp)
 			}
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(a.pkg.Errors)) {
 		for _, member := range a.pkg.Errors[name].Body {
 			if mx, ok := member.(*ast.Mixin); ok {
-				a.checkInstanceWireBindings(mx.Ref, mx.Pos, true)
+				a.checkInstanceWireBindings(mx.Ref, mx.Pos, true, false)
 			}
 		}
 	}
@@ -98,10 +100,11 @@ func (a *analyzer) checkTypeParamWireBindings() {
 
 // checkInstanceWireBindings reports at pos each @header or @cookie field of
 // the type ref names, typed by a type parameter, whose argument cannot ride
-// the binding. An argument naming no type is left to the reference check,
-// and one holding a `file` to [analyzer.checkFilePosition] when fileReported
-// says it reports every `file` at pos.
-func (a *analyzer) checkInstanceWireBindings(ref *ast.NamedTypeRef, pos lexer.Position, fileReported bool) {
+// the binding; raw says logic reads or writes the headers, so no generated
+// binding holds the value. An argument naming no type is left to the
+// reference check, and one holding a `file` to [analyzer.checkFilePosition]
+// when fileReported says it reports every `file` at pos.
+func (a *analyzer) checkInstanceWireBindings(ref *ast.NamedTypeRef, pos lexer.Position, fileReported, raw bool) {
 	view, fields, ok := a.instanceFields(ref)
 	if !ok {
 		return
@@ -115,7 +118,7 @@ func (a *analyzer) checkInstanceWireBindings(ref *ast.NamedTypeRef, pos lexer.Po
 			continue
 		}
 		msg := a.proj.wireTypeFault(ref.String(), view, ff.Field, kind)
-		if msg == "" && ff.sliceBehindPointer {
+		if msg == "" && ff.sliceBehindPointer && !raw {
 			msg = fmt.Sprintf("field %s.%s: @%s rides an optional type parameter over an array, whose Go value is a pointer to a slice no %s binding reads or writes - drop the `?` from the type parameter (an array is already nilable)",
 				ref, ff.Field.Name, kind, kind)
 		}

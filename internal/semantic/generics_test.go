@@ -278,6 +278,18 @@ service S { get A /a { request Box<string[]>  response Resp } }`, CodeBindingTyp
 	expectMessage(t, d, "Box.a", "optional type parameter over an array")
 }
 
+// A raw side, whose header logic writes or reads itself, takes a `T?` header
+// over an array; a type no header carries is still refused there.
+func TestRawSideTakesOptionalHeaderOverArray(t *testing.T) {
+	const decls = "package app\ntype Item { id string }\ntype Req { id string }\ntype OptH<T> { h T? @header(\"X-Opt\")  n int }\n"
+	mustClean(t, decls+`service S {
+	@rawResponse get A /a { response OptH<string[]> }
+	@passthrough get B /b { request Req  response OptH<string[]> }
+	@rawRequest post C /c { request OptH<string[]>  response Item }
+}`)
+	expectError(t, decls+`service S { @rawResponse get A /a { response OptH<Item> } }`, CodeBindingType)
+}
+
 // An argument another rule reports - an unknown type, a `file` in a response
 // or an error - gets no header diagnostic of its own; a request's `file`
 // header does.
