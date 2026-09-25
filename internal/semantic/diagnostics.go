@@ -38,7 +38,8 @@ const (
 	CodeArgPreferIdent = "decorator/arg-prefer-ident"
 	// CodeBoundOverflow fires when a bound or default overflows the field type (`int8 @lte(300)`).
 	CodeBoundOverflow = "decorator/bound-overflow"
-	// CodeBoundEmptyRange warns when a field's comparison bounds admit no value (`@gt(5) @lt(5)`).
+	// CodeBoundEmptyRange fires when two bounds meet at a value a strict one excludes
+	// (`@gt(5) @lt(5)`, `@positive @negative`).
 	CodeBoundEmptyRange = "decorator/empty-range"
 	// CodeMutExSingleField warns when `@mutuallyExclusive` lists fewer than two distinct fields.
 	CodeMutExSingleField = "decorator/single-field-mutex"

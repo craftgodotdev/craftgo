@@ -685,6 +685,16 @@ breaking change to the DSL or the generated layout bumps the major version.
   reads. Each is now `binding/file-position`, at the response or payload
   clause or at the error's field, naming where the `file` sits.
 
+- **Bounds that leave no value are rejected, the sign flags included.**
+  `@positive` and `@negative` took no part in the bound checks, so
+  `@positive @negative`, `@positive @lte(0)` or `@negative @range(1, 5)`
+  passed analysis and the generated validator refused every value. A flag
+  now bounds at 0 and `@range` at each end, and a pair no value satisfies is
+  an error at the upper bound: `@negative contradicts @positive: no value is
+  both > 0 and < 0`. Two bounds meeting at a value one of them excludes, as
+  `@gt(5) @lt(5)`, only warned and are an error too; bounds compare by their
+  exact values, not as float64.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

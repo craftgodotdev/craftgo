@@ -170,11 +170,40 @@ func TestMinItemsExceedsMaxItems(t *testing.T) {
 
 func TestEmptyRangeStrictPair(t *testing.T) {
 	// Equal endpoints with a strict side admit no value.
-	expectDiag(t, `type X { v int @gt(5) @lt(5) }`, CodeBoundEmptyRange)
-	expectDiag(t, `type X { v int @gte(5) @lt(5) }`, CodeBoundEmptyRange)
-	expectDiag(t, `type X { v int @gt(5) @lte(5) }`, CodeBoundEmptyRange)
+	expectError(t, `type X { v int @gt(5) @lt(5) }`, CodeBoundEmptyRange)
+	expectError(t, `type X { v int @gte(5) @lt(5) }`, CodeBoundEmptyRange)
+	expectError(t, `type X { v int @gt(5) @lte(5) }`, CodeBoundEmptyRange)
 	// `@gte(N) @lte(N)` admits exactly N.
 	mustClean(t, `type X { v int @gte(5) @lte(5) }`)
+}
+
+// A sign constraint that another bound contradicts leaves no value, on a
+// field and on a scalar, and is rejected at the upper bound.
+func TestContradictingSignConstraintsRejected(t *testing.T) {
+	for _, c := range []struct{ decs, code, msg string }{
+		{"@positive @negative", CodeBoundEmptyRange, "@negative contradicts @positive: no value is both > 0 and < 0"},
+		{"@positive @lte(0)", CodeBoundEmptyRange, "@lte(0) contradicts @positive"},
+		{"@positive @lt(0)", CodeBoundEmptyRange, "@lt(0) contradicts @positive"},
+		{"@negative @gte(0)", CodeBoundEmptyRange, "@negative contradicts @gte(0)"},
+		{"@negative @gt(0.0)", CodeBoundEmptyRange, "@negative contradicts @gt(0.0)"},
+		{"@positive @lte(-3)", CodeDecoratorRange, "@lte(-3) contradicts @positive: no value is both > 0 and ≤ -3"},
+		{"@negative @gte(2)", CodeDecoratorRange, "@negative contradicts @gte(2)"},
+		{"@negative @range(1, 5)", CodeDecoratorRange, "@negative contradicts @range(1, 5): no value is both ≥ 1 and < 0"},
+		{"@positive @range(-5, -1)", CodeDecoratorRange, "@range(-5, -1) contradicts @positive"},
+	} {
+		for _, src := range []string{"type X { v int " + c.decs + " }", "scalar S int " + c.decs} {
+			d := expectError(t, src, c.code)
+			expectMessage(t, d, c.msg)
+		}
+	}
+	mustClean(t, `type X { v int @positive @lte(10)  w float64 @negative @gte(-0.5) }`)
+}
+
+// Bounds compare by their exact values: past 2^53 two whole floats that
+// share a float64 still differ.
+func TestBoundsCompareExactly(t *testing.T) {
+	mustClean(t, `type X { v int64 @gte(9007199254740992.0) @lt(9007199254740993.0) }`)
+	expectError(t, `type X { v int64 @gte(9007199254740993.0) @lte(9007199254740992.0) }`, CodeDecoratorRange)
 }
 
 func TestMultipleOfNegativeRejected(t *testing.T) {
@@ -280,20 +309,16 @@ func TestScalarAndFieldShareValueRules(t *testing.T) {
 	expectCodeCount(t, "type X { xs uint[] @negative }", CodeDecoratorTypeMismatch, 1)
 }
 
-func TestSingleNumericArgMissing(t *testing.T) {
-	v, _, ok := singleNumericArg([]*ast.Decorator{{Name: "min"}}, "min")
-	if ok {
-		t.Errorf("decorator with no args should return ok=false, got %v", v)
-	}
-	_, _, ok = singleNumericArg([]*ast.Decorator{
-		{Name: "min", Args: []*ast.DecoratorArg{{Value: &ast.StringLit{}}}},
-	}, "min")
-	if ok {
-		t.Error("string arg should return ok=false")
-	}
-	_, _, ok = singleNumericArg([]*ast.Decorator{nil, {Name: "max"}}, "min")
-	if ok {
-		t.Error("absent decorator should return ok=false")
+// A bound decorator whose arguments are missing or not numbers puts no bound.
+func TestDeclaredBoundsSkipUnreadable(t *testing.T) {
+	bs := declaredBounds([]*ast.Decorator{
+		{Name: "gte"},
+		{Name: "lte", Args: []*ast.DecoratorArg{{Value: &ast.StringLit{}}}},
+		{Name: "range", Args: []*ast.DecoratorArg{{Value: &ast.IntLit{Value: 1}}, {Value: &ast.StringLit{}}}},
+		{Name: "positive"},
+	})
+	if len(bs) != 1 || bs[0].dec.Name != "positive" {
+		t.Errorf("want only @positive's bound, got %+v", bs)
 	}
 }
 
@@ -526,7 +551,7 @@ func TestScalarDeclPairOrderingRejected(t *testing.T) {
 		"package p\nscalar Name string @minLength(10) @maxLength(5)\n",
 	} {
 		diags := analyzeOneFile(t, src)
-		if !hasDiagContaining(diags, "must be ≥") && !hasDiagContaining(diags, "must be ≤") {
+		if !hasDiagContaining(diags, "contradicts") {
 			t.Errorf("expected scalar pair-ordering reject for %q, got: %v", strings.TrimSpace(src), diags)
 		}
 	}

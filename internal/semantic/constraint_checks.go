@@ -3,6 +3,8 @@ package semantic
 import (
 	"math"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -27,60 +29,149 @@ func (a *analyzer) valuePrim(f *ast.Field) string {
 	return a.primOf(f.Type)
 }
 
-// checkPairOrdering rejects a lower bound above its upper partner on f, and
-// warns when a pair with a strict bound meets at one value.
+// checkPairOrdering rejects a lower bound in decs above an upper bound on
+// the same quantity, or meeting it where either is strict: no value, length
+// or item count satisfies both.
 func (a *analyzer) checkPairOrdering(decs []*ast.Decorator) {
-	pairs := []struct {
-		lo, hi   string
-		loStrict bool
-		hiStrict bool
-	}{
-		{lo: "minLength", hi: "maxLength"},
-		{lo: "minItems", hi: "maxItems"},
-		{lo: "gte", hi: "lte"},
-		{lo: "gt", hi: "lt", loStrict: true, hiStrict: true},
-		{lo: "gte", hi: "lt", hiStrict: true},
-		{lo: "gt", hi: "lte", loStrict: true},
-	}
-	for _, p := range pairs {
-		loV, loPos, loOk := singleNumericArg(decs, p.lo)
-		hiV, hiPos, hiOk := singleNumericArg(decs, p.hi)
-		if !loOk || !hiOk {
-			continue
-		}
-		if loV > hiV {
-			diag := a.diag(hiPos, hiPos, lexer.SeverityError, CodeDecoratorRange,
-				"@%s (%g) must be ≥ @%s (%g)", p.hi, hiV, p.lo, loV)
-			diag.Related = related(loPos, "@"+p.lo+" declared here")
-			continue
-		}
-		if loV == hiV && (p.loStrict || p.hiStrict) {
-			diag := a.diag(hiPos, hiPos, lexer.SeverityWarning, CodeBoundEmptyRange,
-				"@%s(%g) combined with @%s(%g) defines an empty range - no value satisfies both",
-				p.hi, hiV, p.lo, loV)
-			diag.Related = related(loPos, "@"+p.lo+" declared here")
+	bs := declaredBounds(decs)
+	for _, lo := range bs {
+		for _, hi := range bs {
+			if !lo.lower || hi.lower || lo.dec == hi.dec || lo.limits != hi.limits {
+				continue
+			}
+			code := CodeDecoratorRange
+			switch c := lo.value.Cmp(hi.value); {
+			case c < 0, c == 0 && !lo.strict && !hi.strict:
+				continue
+			case c == 0:
+				code = CodeBoundEmptyRange
+			}
+			diag := a.diag(hi.pos, hi.pos, lexer.SeverityError, code,
+				"%s contradicts %s: no %s is both %s and %s",
+				decoratorCall(hi.dec), decoratorCall(lo.dec), lo.limits, lo.relation(), hi.relation())
+			diag.Related = related(lo.pos, decoratorCall(lo.dec)+" declared here")
 		}
 	}
 }
 
-// singleNumericArg returns the first argument of the first `name` decorator
-// in decs, and its position, when that argument is numeric.
-func singleNumericArg(decs []*ast.Decorator, name string) (float64, lexer.Position, bool) {
+// boundSide is where one argument of a bound decorator puts the limit: below
+// or above the values it admits, and whether it admits the limit itself.
+type boundSide struct {
+	lower, strict bool
+}
+
+// boundDecorators gives each bound decorator what it limits and the side of
+// each argument in order; a flag bounds at 0 on its one side.
+var boundDecorators = map[string]struct {
+	limits string
+	sides  []boundSide
+}{
+	"gt":        {"value", []boundSide{{lower: true, strict: true}}},
+	"gte":       {"value", []boundSide{{lower: true}}},
+	"lt":        {"value", []boundSide{{strict: true}}},
+	"lte":       {"value", []boundSide{{}}},
+	"range":     {"value", []boundSide{{lower: true}, {}}},
+	"positive":  {"value", []boundSide{{lower: true, strict: true}}},
+	"negative":  {"value", []boundSide{{strict: true}}},
+	"minLength": {"length", []boundSide{{lower: true}}},
+	"maxLength": {"length", []boundSide{{}}},
+	"minItems":  {"item count", []boundSide{{lower: true}}},
+	"maxItems":  {"item count", []boundSide{{}}},
+}
+
+// bound is the limit one argument of a bound decorator puts on what it
+// limits: `@gte(5)` a value of at least 5, `@positive` one above 0.
+type bound struct {
+	boundSide
+	dec    *ast.Decorator
+	limits string
+	value  NumericLit
+	// text is the limit as written; pos is the argument's position, the
+	// decorator's for a flag.
+	text string
+	pos  lexer.Position
+}
+
+// relation renders the values b admits, such as `≥ 5`.
+func (b bound) relation() string {
+	switch {
+	case b.lower && b.strict:
+		return "> " + b.text
+	case b.lower:
+		return "≥ " + b.text
+	case b.strict:
+		return "< " + b.text
+	}
+	return "≤ " + b.text
+}
+
+// declaredBounds returns the bounds the first decorator of each bound name
+// in decs puts; one whose arguments do not fit its [Spec] or are not
+// numbers puts none.
+func declaredBounds(decs []*ast.Decorator) []bound {
+	var out []bound
+	seen := map[string]bool{}
 	for _, d := range decs {
-		if d == nil || d.Name != name {
+		spec, ok := boundDecorators[d.Name]
+		if !ok || seen[d.Name] {
 			continue
 		}
-		pos := positionalArgs(d)
-		if len(pos) == 0 {
-			return 0, lexer.Position{}, false
+		seen[d.Name] = true
+		if rs, _ := DecoratorSpec(d.Name); rs.Args.Max == 0 {
+			out = append(out, bound{boundSide: spec.sides[0], dec: d, limits: spec.limits, value: NumericLit{IsInt: true}, text: "0", pos: d.Pos})
+			continue
 		}
-		l, ok := ParseNumericArg(pos[0])
+		args := positionalArgs(d)
+		if len(args) != len(spec.sides) {
+			continue
+		}
+		values := make([]NumericLit, len(args))
+		for i, arg := range args {
+			if values[i], ok = ParseNumericArg(arg); !ok {
+				break
+			}
+		}
 		if !ok {
-			return 0, lexer.Position{}, false
+			continue
 		}
-		return l.FloatVal, pos[0].Pos, true
+		for i, side := range spec.sides {
+			out = append(out, bound{boundSide: side, dec: d, limits: spec.limits, value: values[i], text: literalText(args[i].Value), pos: args[i].Pos})
+		}
 	}
-	return 0, lexer.Position{}, false
+	return out
+}
+
+// decoratorCall renders d with its literal arguments as written: `@gte(5)`,
+// `@range(1, 5)`, `@positive`.
+func decoratorCall(d *ast.Decorator) string {
+	args := positionalArgs(d)
+	if len(args) == 0 {
+		return "@" + d.Name
+	}
+	parts := make([]string, len(args))
+	for i, arg := range args {
+		parts[i] = literalText(arg.Value)
+	}
+	return "@" + d.Name + "(" + strings.Join(parts, ", ") + ")"
+}
+
+// literalText renders literal e as the design writes it.
+func literalText(e ast.Expr) string {
+	switch v := e.(type) {
+	case *ast.StringLit:
+		return strconv.Quote(v.Value)
+	case *ast.IntLit:
+		return strconv.FormatInt(v.Value, 10)
+	case *ast.FloatLit:
+		return v.Text
+	case *ast.BoolLit:
+		return strconv.FormatBool(v.Value)
+	case *ast.IdentExpr:
+		if v.Name != nil {
+			return v.Name.String()
+		}
+	}
+	return exprKind(e)
 }
 
 // checkNegativeOnUnsigned rejects `@negative` and `@lt(0)` on an unsigned

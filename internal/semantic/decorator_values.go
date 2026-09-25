@@ -176,6 +176,24 @@ func ParseNumeric(e ast.Expr) (NumericLit, bool) {
 	return NumericLit{}, false
 }
 
+// Rat returns l's exact value: a float's digits as written, not the nearest
+// float64, which past 2^53 skips integers; nil for a non-finite float without text.
+func (l NumericLit) Rat() *big.Rat {
+	r := new(big.Rat)
+	if l.IsInt {
+		return r.SetInt64(l.IntVal)
+	}
+	if _, ok := r.SetString(l.written); ok {
+		return r
+	}
+	return r.SetFloat64(l.FloatVal)
+}
+
+// Cmp compares the exact values of l and m as [big.Rat.Cmp] does.
+func (l NumericLit) Cmp(m NumericLit) int {
+	return l.Rat().Cmp(m.Rat())
+}
+
 // ParseNumericArg is [ParseNumeric] on a decorator argument; ok is false
 // for a missing one.
 func ParseNumericArg(a *ast.DecoratorArg) (NumericLit, bool) {
@@ -195,20 +213,10 @@ func (l NumericLit) IsWhole() bool {
 // wholeInt returns l's value as written as an exact integer; ok is false when
 // l is not a whole number.
 func (l NumericLit) wholeInt() (*big.Int, bool) {
-	if l.IsInt {
-		return big.NewInt(l.IntVal), true
+	if r := l.Rat(); r != nil && r.IsInt() {
+		return r.Num(), true
 	}
-	r, ok := new(big.Rat).SetString(l.written)
-	if !ok {
-		// A literal with no written text holds FloatVal exactly; nil for a non-finite one.
-		if r = new(big.Rat).SetFloat64(l.FloatVal); r == nil {
-			return nil, false
-		}
-	}
-	if !r.IsInt() {
-		return nil, false
-	}
-	return r.Num(), true
+	return nil, false
 }
 
 // Text renders l as Go literal text: an integer in decimal, a float in its
