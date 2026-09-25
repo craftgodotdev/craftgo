@@ -13,13 +13,6 @@ type (
 	astMethod      = ast.Method
 )
 
-func firstMsg(msgs []string) string {
-	if len(msgs) == 0 {
-		return ""
-	}
-	return msgs[0]
-}
-
 // A token in place of a name is reported and never becomes the name: the
 // declaration is left nameless.
 func TestMismatchedTokenIsNoName(t *testing.T) {

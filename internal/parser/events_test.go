@@ -7,40 +7,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// parseService parses src and returns the first service declaration.
-func parseService(t *testing.T, src string) *ast.ServiceDecl {
-	t.Helper()
-	p := New("test.craftgo", src)
-	f := p.Parse()
-	if diags := p.Diagnostics(); len(diags) > 0 {
-		t.Fatalf("unexpected diagnostics: %v", diags)
-	}
-	for _, d := range f.Decls {
-		if sd, ok := d.(*ast.ServiceDecl); ok {
-			return sd
-		}
-	}
-	t.Fatalf("no service declaration in %q", src)
-	return nil
-}
-
-// parseEvent parses src and returns the first event declaration.
-func parseEvent(t *testing.T, src string) *ast.EventDecl {
-	t.Helper()
-	p := New("test.craftgo", src)
-	f := p.Parse()
-	if diags := p.Diagnostics(); len(diags) > 0 {
-		t.Fatalf("unexpected diagnostics: %v", diags)
-	}
-	for _, d := range f.Decls {
-		if ed, ok := d.(*ast.EventDecl); ok {
-			return ed
-		}
-	}
-	t.Fatalf("no event declaration in %q", src)
-	return nil
-}
-
 func TestParseFileLevelEvent(t *testing.T) {
 	ev := parseEvent(t, `package orders
 

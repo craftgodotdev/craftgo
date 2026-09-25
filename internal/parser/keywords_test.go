@@ -7,17 +7,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// parseSrc parses src and fails the test on any diagnostic.
-func parseSrc(t *testing.T, src string) *ast.File {
-	t.Helper()
-	p := New("k.craftgo", src)
-	f := p.Parse()
-	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("parse errors: %v", d)
-	}
-	return f
-}
-
 func TestParseImportSingleAndAliased(t *testing.T) {
 	f := parseSrc(t, `package design
 
@@ -282,20 +271,4 @@ service S {
 			t.Errorf("expected request Req, got %v", m.Request)
 		}
 	}
-}
-
-// pathStr renders a Path as source text.
-func pathStr(p *ast.Path) string {
-	var sb strings.Builder
-	for _, s := range p.Segments {
-		sb.WriteByte('/')
-		if s.Param {
-			sb.WriteByte('{')
-			sb.WriteString(s.Literal)
-			sb.WriteByte('}')
-		} else {
-			sb.WriteString(s.Literal)
-		}
-	}
-	return sb.String()
 }
