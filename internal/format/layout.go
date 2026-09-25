@@ -229,6 +229,93 @@ func (l *layout) at(line int) string {
 	return best.name
 }
 
+// head is the source lines from and to of words formatting prints on one line:
+// a member's name and type, a clause's keyword and type, or a decorator's `@`
+// and name. what names it in a diagnostic.
+type head struct {
+	from, to int
+	what     string
+}
+
+// heads returns the heads of f, parsed from src, that span lines.
+func heads(f *ast.File, src *source) []head {
+	var out []head
+	add := func(from lexer.Position, to lexer.Token, what string) {
+		if to.Pos.Line > from.Line {
+			out = append(out, head{from.Line, to.Pos.Line, what})
+		}
+	}
+	for i, t := range src.toks {
+		if t.Kind == lexer.At && i+1 < len(src.toks) {
+			add(t.Pos, src.toks[i+1], "@"+src.toks[i+1].Text)
+		}
+	}
+	body := func(members []ast.TypeMember) {
+		for _, m := range members {
+			switch m := m.(type) {
+			case *ast.Field:
+				add(m.Pos, src.typeEnd(m.Type), "field "+m.Name)
+			case *ast.Mixin:
+				add(m.Pos, src.namedEnd(m.Ref), "mixin "+m.Ref.String())
+			}
+		}
+	}
+	for _, d := range f.Decls {
+		switch d := d.(type) {
+		case *ast.TypeDecl:
+			body(d.Body)
+		case *ast.ErrorDecl:
+			body(d.Body)
+		case *ast.EnumDecl:
+			for _, v := range d.EnumValues() {
+				end := src.after(v.Pos, 0)
+				if v.Kind != ast.EnumBare {
+					// `Name = value`, where the value may be `-` and an integer.
+					if end = src.after(v.Pos, 2); end.Kind == lexer.Dash {
+						end = src.after(v.Pos, 3)
+					}
+				}
+				add(v.Pos, end, "enum value "+v.Name)
+			}
+		case *ast.ServiceDecl:
+			for _, m := range d.Methods() {
+				if m.Request != nil {
+					add(src.after(m.Request.Pos, -1).Pos, src.namedEnd(m.Request), "the request of method "+m.Name)
+				}
+				if m.Response != nil {
+					add(src.after(m.Response.Pos, -1).Pos, src.namedEnd(m.Response.Type), "the response of method "+m.Name)
+				}
+			}
+		case *ast.EventDecl:
+			if pl := d.Payload; pl != nil {
+				end := src.namedEnd(pl.Type)
+				if pl.Array {
+					end = src.after(end.Pos, 2)
+				}
+				add(src.after(pl.Pos, -1).Pos, end, "the payload of event "+d.Name)
+			}
+		}
+	}
+	return out
+}
+
+// commentInHead returns the first comment of f, parsed from src, on a line of
+// its own inside a head, and what the head is.
+func commentInHead(f *ast.File, src *source) (*ast.Comment, string) {
+	hs := heads(f, src)
+	for _, c := range f.Comments {
+		if c.Kind != lexer.CommentLeading {
+			continue
+		}
+		for _, h := range hs {
+			if h.from < c.Pos.Line && c.Pos.Line < h.to {
+				return c, h.what
+			}
+		}
+	}
+	return nil, ""
+}
+
 // codeLines returns the source lines that hold a token or a comment, a raw
 // string's every line included.
 func codeLines(toks []lexer.Token, comments []*lexer.Comment) map[int]bool {

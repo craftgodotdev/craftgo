@@ -176,19 +176,19 @@ func TestFormatContinuedDecorators(t *testing.T) {
 	}
 }
 
-// A comment block inside a member's type prints after the member, and the
-// trailing comments of the member's lines stay with the member.
+// The trailing comment of a member's line stays with the member when the
+// member joins its lines.
 func TestFormatKeepsATrailingCommentWithItsMember(t *testing.T) {
 	for _, c := range []struct{ name, src, want string }{
 		{
-			"comment block inside a field's type",
-			"package x\n\ntype T {\n\ta map<string,\n\t\t// c\n\t\tint> // t\n\tb string\n}\n",
-			"package x\n\ntype T {\n\ta map<string, int> // t\n\t// c\n\n\tb string\n}\n",
+			"trailing comment inside a field's type",
+			"package x\n\ntype T {\n\ta map<string, // t\n\t\tint>\n\tb string\n}\n",
+			"package x\n\ntype T {\n\ta map<string, int> // t\n\tb string\n}\n",
 		},
 		{
-			"comment block inside a mixin",
-			"package x\n\ntype U {\n\tPage<\n\t\t// c\n\t\tstring> // t\n\tb string\n}\n",
-			"package x\n\ntype U {\n\tPage<string> // t\n\t// c\n\n\tb string\n}\n",
+			"trailing comment inside a mixin",
+			"package x\n\ntype U {\n\tPage< // t\n\t\tstring>\n\tb string\n}\n",
+			"package x\n\ntype U {\n\tPage<string> // t\n\tb string\n}\n",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })

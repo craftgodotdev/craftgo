@@ -140,6 +140,88 @@ func TestCheckOutputRefusesAMovedComment(t *testing.T) {
 	}
 }
 
+// Format refuses a file with a comment on a line of its own among words it
+// prints on one line, and names the comment and what holds it.
+func TestFormatRefusesACommentItWouldMoveOutOfALine(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{
+			"map arguments",
+			"package x\n\ntype T {\n\ta map<string,\n\t\t// c\n\t\tint> // t\n\tb string\n}\n",
+			`t.craftgo:5:3: formatting would move the comment "c" out of field a`,
+		},
+		{
+			"generic arguments of a mixin",
+			"package x\n\ntype U {\n\tPage<\n\t\t// c\n\t\tstring>\n\tb string\n}\n",
+			`t.craftgo:5:3: formatting would move the comment "c" out of mixin Page<string>`,
+		},
+		{
+			"between a field's name and type",
+			"package x\n\ntype T {\n\ta\n\t// c\n\tstring\n}\n",
+			`t.craftgo:5:2: formatting would move the comment "c" out of field a`,
+		},
+		{
+			"before an array suffix",
+			"package x\n\ntype T {\n\ta string\n\t// c\n\t[]?\n}\n",
+			`t.craftgo:5:2: formatting would move the comment "c" out of field a`,
+		},
+		{
+			"inside a qualified name",
+			"package x\n\nimport \"shared\"\n\ntype T {\n\ta shared.\n\t// c\n\tX\n}\n",
+			`t.craftgo:7:2: formatting would move the comment "c" out of field a`,
+		},
+		{
+			"enum value",
+			"package x\n\nenum E {\n\tA = -\n\t// c\n\t1\n}\n",
+			`t.craftgo:5:2: formatting would move the comment "c" out of enum value A`,
+		},
+		{
+			"request",
+			"package x\n\ntype R { a string }\n\nservice S {\n\tget A /a {\n\t\trequest\n\t\t// c\n\t\tR\n\t}\n}\n",
+			`t.craftgo:8:3: formatting would move the comment "c" out of the request of method A`,
+		},
+		{
+			"response arguments",
+			"package x\n\ntype Box<V> { v V }\n\nservice S {\n\tget A /a {\n\t\tresponse Box<\n\t\t// c\n\t\tint>\n\t}\n}\n",
+			`t.craftgo:8:3: formatting would move the comment "c" out of the response of method A`,
+		},
+		{
+			"payload array",
+			"package x\n\ntype R { a string }\n\nevent E {\n\tpayload R\n\t// c\n\t[]\n}\n",
+			`t.craftgo:7:2: formatting would move the comment "c" out of the payload of event E`,
+		},
+		{
+			"decorator of a field",
+			"package x\n\ntype T {\n\ta string @\n\t// c\n\tdeprecated\n\tb string\n}\n",
+			`t.craftgo:5:2: formatting would move the comment "c" out of @deprecated`,
+		},
+		{
+			"decorator in a chain",
+			"package x\n\ntype T {\n\ta string @\n\t// c\n\tdeprecated @minLength(1)\n}\n",
+			`t.craftgo:5:2: formatting would move the comment "c" out of @deprecated`,
+		},
+		{
+			"decorator with arguments",
+			"package x\n\ntype T {\n\ta string @\n\t// c\n\tminLength(1)\n}\n",
+			`t.craftgo:5:2: formatting would move the comment "c" out of @minLength`,
+		},
+		{
+			"decorator of a declaration",
+			"package x\n\n@\n// c\ndeprecated\ntype T {\n\tb string\n}\n",
+			`t.craftgo:4:1: formatting would move the comment "c" out of @deprecated`,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			out, diags := Format("t.craftgo", c.src)
+			if len(diags) != 1 || diags[0].Error() != c.want {
+				t.Fatalf("diagnostics %v, want [%s]\n%s", diags, c.want, out)
+			}
+			if out != c.src {
+				t.Errorf("the refusal came with changed text:\n%s", out)
+			}
+		})
+	}
+}
+
 // commentTexts returns the text of every comment in src, sorted.
 func commentTexts(src string) []string {
 	p := parser.New("t.craftgo", src)

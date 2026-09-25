@@ -13,8 +13,8 @@ type source struct {
 	toks []lexer.Token
 	// index maps a token's byte offset to its index in toks.
 	index map[int]int
-	// closer maps the index of a `(`, `[` or `{` to the index of the bracket
-	// that closes it.
+	// closer maps the index of a `(`, `[`, `{` or `<` to the index of the
+	// bracket that closes it.
 	closer map[int]int
 	// argLines holds the lines strictly between the `@` and the `)` of a
 	// decorator with arguments.
@@ -27,9 +27,9 @@ func newSource(toks []lexer.Token) *source {
 	for i, t := range toks {
 		s.index[t.Pos.Offset] = i
 		switch t.Kind {
-		case lexer.LParen, lexer.LBracket, lexer.LBrace:
+		case lexer.LParen, lexer.LBracket, lexer.LBrace, lexer.LAngle:
 			open = append(open, i)
-		case lexer.RParen, lexer.RBracket, lexer.RBrace:
+		case lexer.RParen, lexer.RBracket, lexer.RBrace, lexer.RAngle:
 			if n := len(open); n > 0 {
 				s.closer[open[n-1]] = i
 				open = open[:n-1]
@@ -64,13 +64,44 @@ func (s *source) after(pos lexer.Position, n int) lexer.Token {
 
 // closeLine returns the line of the bracket that closes the one at pos.
 func (s *source) closeLine(pos lexer.Position) int {
+	return s.closing(pos).Pos.Line
+}
+
+// closing returns the bracket that closes the one at pos, or a token at pos
+// when there is none.
+func (s *source) closing(pos lexer.Position) lexer.Token {
 	if s == nil {
-		return pos.Line
+		return lexer.Token{Pos: pos}
 	}
 	if c, ok := s.closer[s.index[pos.Offset]]; ok {
-		return s.toks[c].Pos.Line
+		return s.toks[c]
 	}
-	return pos.Line
+	return lexer.Token{Pos: pos}
+}
+
+// typeEnd returns the last token of the type reference t.
+func (s *source) typeEnd(t *ast.TypeRef) lexer.Token {
+	var end lexer.Token
+	if t.Map != nil {
+		end = s.closing(s.after(t.Map.Pos, 1).Pos)
+	} else {
+		end = s.namedEnd(t.Named)
+	}
+	n := 2 * t.ArrayDepth
+	if t.Optional {
+		n++
+	}
+	return s.after(end.Pos, n)
+}
+
+// namedEnd returns the last token of the named type reference t: the last
+// part of its name, or the `>` after its arguments.
+func (s *source) namedEnd(t *ast.NamedTypeRef) lexer.Token {
+	name := s.after(t.Pos, 2*(len(t.Name.Parts)-1))
+	if len(t.Args) == 0 {
+		return name
+	}
+	return s.closing(s.after(name.Pos, 1).Pos)
 }
 
 // argsCloseLine returns the line of the `)` that closes d's arguments, or d's

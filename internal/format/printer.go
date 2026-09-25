@@ -24,8 +24,11 @@ func Format(filename, src string) (string, []lexer.Diagnostic) {
 	if diags := p.Diagnostics(); len(diags) > 0 {
 		return src, diags
 	}
-	var buf bytes.Buffer
 	in := newSource(p.Tokens())
+	if c, what := commentInHead(f, in); c != nil {
+		return src, refusal(c.Pos, "formatting would move the comment %q out of %s", c.Text, what)
+	}
+	var buf bytes.Buffer
 	pr := newPrinter(&buf, f, in)
 	pr.File(f)
 	if c := pr.joined; c[0] != nil {

@@ -331,6 +331,16 @@ breaking change to the DSL or the generated layout bumps the major version.
   result would hold a comment in another place: after another member, as a
   doc, or in another block.
 
+- **Formatting moves no comment out of a field, a clause or a decorator
+  name.** A comment on a line of its own inside a member written over
+  several lines - in a type's arguments, as in `a map<string,` / `// c` /
+  `int>`, between a field's name and type, in an enum value, in a
+  `request`, `response` or `payload` clause, or between a decorator's `@`
+  and its name - moved below the member or clause, above a `request`
+  clause, or among the decorators. Formatting now leaves the file alone and
+  says what holds the comment: `formatting would move the comment "c" out
+  of field a`.
+
 - **An argument list with a comment keeps its lines.** A decorator's
   arguments, an array or an object written over several lines stays on its
   lines when a trailing comment sits on one of them: each line of elements
