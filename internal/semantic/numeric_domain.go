@@ -128,6 +128,27 @@ func nextFloat(f float64, bits int, up bool) float64 {
 	return math.Nextafter(f, to)
 }
 
+// BoundImpliedByType reports whether bound i of those d puts - `@range`'s
+// low end is 0, its high end 1 - holds for every value of primitive prim, or
+// every length or item count, the Go type carries, so its check never
+// fails. A float's bound is never implied: a float parameter can carry NaN
+// or an infinity.
+func BoundImpliedByType(prim string, d *ast.Decorator, i int) bool {
+	bs := declaredBounds([]*ast.Decorator{d})
+	if i < 0 || i >= len(bs) {
+		return false
+	}
+	sc := scaleOf(prim, bs[i].limits)
+	l := limitOn(sc, bs[i], "")
+	switch {
+	case !sc.whole || l.at == nil:
+		return false
+	case l.lower:
+		return l.at.Cmp(sc.lo) <= 0
+	}
+	return l.at.Cmp(sc.hi) >= 0
+}
+
 // siteLimits returns the limits the bounds of sites put on a value of
 // primitive prim.
 func siteLimits(prim string, sites []constraintSite) []limit {

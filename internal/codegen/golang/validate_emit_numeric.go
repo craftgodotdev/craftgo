@@ -2,6 +2,7 @@ package golang
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/prims"
@@ -23,9 +24,9 @@ func boundLiteral(a *ast.DecoratorArg, prim string) (string, bool) {
 }
 
 // numericBoundCheck renders @gt/@gte/@lt/@lte on a numeric value, failing it
-// when `value failOp bound` holds.
+// when `value failOp bound` holds; a bound the type enforces renders nothing.
 func numericBoundCheck(t checkTarget, d *ast.Decorator, failOp, label string, ctx emitCtx) string {
-	if !prims.IsNumeric(t.prim) || len(d.Args) != 1 {
+	if !prims.IsNumeric(t.prim) || len(d.Args) != 1 || semantic.BoundImpliedByType(t.prim, d, 0) {
 		return ""
 	}
 	n, ok := boundLiteral(d.Args[0], t.prim)
@@ -35,7 +36,8 @@ func numericBoundCheck(t checkTarget, d *ast.Decorator, failOp, label string, ct
 	return failIf(t.guarded(t.val()+" "+failOp+" "+n), t.subject, label+" "+n, ctx)
 }
 
-// rangeCheck renders @range(lo, hi) on a numeric value as one inclusive bound check.
+// rangeCheck renders @range(lo, hi) on a numeric value as one inclusive bound
+// check of each end the type does not enforce.
 func rangeCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 	if !prims.IsNumeric(t.prim) || len(d.Args) != 2 {
 		return ""
@@ -45,9 +47,17 @@ func rangeCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 	if !ok1 || !ok2 {
 		return ""
 	}
-	val := t.val()
-	cond := fmt.Sprintf("%s < %s || %s > %s", val, lo, val, hi)
-	return failIf(t.guarded(cond), t.subject, fmt.Sprintf("out of range [%s, %s]", lo, hi), ctx)
+	var fails []string
+	if !semantic.BoundImpliedByType(t.prim, d, 0) {
+		fails = append(fails, t.val()+" < "+lo)
+	}
+	if !semantic.BoundImpliedByType(t.prim, d, 1) {
+		fails = append(fails, t.val()+" > "+hi)
+	}
+	if len(fails) == 0 {
+		return ""
+	}
+	return failIf(t.guarded(strings.Join(fails, " || ")), t.subject, fmt.Sprintf("out of range [%s, %s]", lo, hi), ctx)
 }
 
 // signCheck renders @positive or @negative on a numeric value, failing it when

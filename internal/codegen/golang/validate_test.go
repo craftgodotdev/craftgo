@@ -218,21 +218,73 @@ type X {
 	}
 }
 
-// A whole float bound at an integer primitive's limit is emitted as the exact integer it writes.
+// A whole float bound near an integer primitive's limit is emitted as the exact integer it writes.
 func TestValidateIntegerLimitFloatBounds(t *testing.T) {
 	src := runValidateGen(t, `package design
 type X {
     u  uint64 @multipleOf(18446744073709551615.0)
     i  int64  @multipleOf(9223372036854775807.0)
-    lo int64  @lte(9223372036854775807.0)
-    r  int64  @range(-9223372036854775808.0, 9223372036854775807.0)
+    lo int64  @lte(9223372036854775806.0)
+    r  int64  @range(-9223372036854775807.0, 9223372036854775806.0)
 }`)
 	mustContainAll(t, src,
 		"v.U%18446744073709551615 != 0",
 		"v.I%9223372036854775807 != 0",
-		"v.Lo > 9223372036854775807",
-		"v.R < -9223372036854775808 || v.R > 9223372036854775807",
+		"v.Lo > 9223372036854775806",
+		"v.R < -9223372036854775807 || v.R > 9223372036854775806",
 	)
+}
+
+// A bound the Go type already enforces gets no check: an unsigned value's 0
+// floor, an integer's own range, a count's 0 floor and MaxInt64 ceiling; a
+// @range or @length keeps the end that bites.
+func TestValidateSkipsBoundsTheTypeEnforces(t *testing.T) {
+	src := runValidateGen(t, `package design
+type X {
+    a uint   @gte(0) @lte(1000)
+    b uint   @range(0, 10)
+    c uint8  @range(0, 255)
+    d int8   @gte(-128) @lte(127)
+    e int32  @gte(0) @lte(2147483647)
+    f int64  @range(-9223372036854775808.0, 9223372036854775807.0)
+    g string @minLength(0) @maxLength(9223372036854775807)
+    h int[]  @minItems(0) @maxItems(9223372036854775807)
+    i string @length(3, 9223372036854775807)
+    j uint16 @gt(0) @lt(65535)
+}`)
+	mustContainAll(t, src,
+		"if v.A > 1000 {",
+		"if v.B > 10 {",
+		"if v.E < 0 {",
+		"if utf8.RuneCountInString(v.I) < 3 {",
+		"if v.J <= 0 {",
+		"if v.J >= 65535 {",
+	)
+	mustContainNone(t, src,
+		"v.A < 0", "v.B < 0", "v.C ", "v.D ", "v.E > ", "v.F ", "v.G)", "len(v.H)", "> 9223372036854775807")
+}
+
+// A float bound keeps its check at the type's edge: a float parameter can
+// carry NaN or an infinity.
+func TestValidateKeepsFloatBoundsAtTheEdge(t *testing.T) {
+	src := runValidateGen(t, `package design
+type X { x float32 @gte(-340282346638528859811704183484516925440.0) @lte(340282346638528859811704183484516925440.0) }`)
+	mustContainAll(t, src, "if v.X < -3.4028234663852886e+38 {", "if v.X > 3.4028234663852886e+38 {")
+}
+
+// A scalar whose every check is a bound its type enforces keeps an empty
+// Validate(), which no field calls.
+func TestValidateSkipsScalarWhoseChecksTheTypeEnforces(t *testing.T) {
+	src := runValidateGen(t, `package design
+scalar Byte uint8 @gte(0) @lte(255)
+type X {
+    b  Byte
+    bs Byte[]
+    m  map<string, Byte>
+    p  Byte?
+}`)
+	mustContainAll(t, src, "func (v Byte) Validate() error {\n\treturn nil\n}")
+	mustContainNone(t, src, "Validate(); err != nil", "for ")
 }
 
 // @multipleOf on a float field is rejected, since Go's % is integer-only.

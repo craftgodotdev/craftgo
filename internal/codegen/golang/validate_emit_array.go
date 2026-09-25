@@ -11,13 +11,14 @@ import (
 )
 
 // itemsBoundCheck renders @minItems/@maxItems as a len() bound on an array or
-// map, failing it when `len failOp n` holds.
+// map, failing it when `len failOp n` holds; a bound every count meets
+// renders nothing.
 func itemsBoundCheck(t checkTarget, d *ast.Decorator, failOp, label string, ctx emitCtx) string {
 	if (t.cat != semantic.CatArray && t.cat != semantic.CatMap) || len(d.Args) != 1 {
 		return ""
 	}
 	n, ok := semantic.IntArg(d.Args[0])
-	if !ok || !countCanFail(failOp, n) {
+	if !ok || semantic.BoundImpliedByType(t.prim, d, 0) {
 		return ""
 	}
 	cond := fmt.Sprintf("len(%s) %s %d", t.access, failOp, n)

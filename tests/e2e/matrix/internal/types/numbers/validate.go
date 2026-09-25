@@ -72,48 +72,6 @@ func (v *NumberBigMultipleOf) Validate() error {
 // Validate checks every field-level constraint declared on NumberBoundary.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *NumberBoundary) Validate() error {
-	if v.Int8full < -128 {
-		return fmt.Errorf("int8Full: below minimum -128")
-	}
-	if v.Int8full > 127 {
-		return fmt.Errorf("int8Full: above maximum 127")
-	}
-	if v.Int8range < -128 || v.Int8range > 127 {
-		return fmt.Errorf("int8Range: out of range [-128, 127]")
-	}
-	if v.Int16full < -32768 {
-		return fmt.Errorf("int16Full: below minimum -32768")
-	}
-	if v.Int16full > 32767 {
-		return fmt.Errorf("int16Full: above maximum 32767")
-	}
-	if v.Int32full < -2147483648 {
-		return fmt.Errorf("int32Full: below minimum -2147483648")
-	}
-	if v.Int32full > 2147483647 {
-		return fmt.Errorf("int32Full: above maximum 2147483647")
-	}
-	if v.Uint8range < 0 || v.Uint8range > 255 {
-		return fmt.Errorf("uint8Range: out of range [0, 255]")
-	}
-	if v.Uint8full < 0 {
-		return fmt.Errorf("uint8Full: below minimum 0")
-	}
-	if v.Uint8full > 255 {
-		return fmt.Errorf("uint8Full: above maximum 255")
-	}
-	if v.Uint16full < 0 {
-		return fmt.Errorf("uint16Full: below minimum 0")
-	}
-	if v.Uint16full > 65535 {
-		return fmt.Errorf("uint16Full: above maximum 65535")
-	}
-	if v.Uint32full < 0 {
-		return fmt.Errorf("uint32Full: below minimum 0")
-	}
-	if v.Uint32full > 4294967295 {
-		return fmt.Errorf("uint32Full: above maximum 4294967295")
-	}
 	return nil
 }
 
@@ -171,9 +129,6 @@ func (v *NumberCounter) Validate() error {
 	if v.GteLteInt32 < 0 {
 		return fmt.Errorf("gteLteInt32: below minimum 0")
 	}
-	if v.GteLteInt32 > 2147483647 {
-		return fmt.Errorf("gteLteInt32: above maximum 2147483647")
-	}
 	if v.GtLtInt32 <= -2147483648 {
 		return fmt.Errorf("gtLtInt32: must be greater than -2147483648")
 	}
@@ -210,16 +165,13 @@ func (v *NumberCounter) Validate() error {
 	if v.StepInt64%100 != 0 {
 		return fmt.Errorf("stepInt64: must be a multiple of 100")
 	}
-	if v.EdgeInt64 < -9223372036854775808 || v.EdgeInt64 > 9223372036854775807 {
-		return fmt.Errorf("edgeInt64: out of range [-9223372036854775808, 9223372036854775807]")
-	}
 	if v.EdgeInt64%9223372036854775807 != 0 {
 		return fmt.Errorf("edgeInt64: must be a multiple of 9223372036854775807")
 	}
 	if v.TightInt64 > 9223372036854775000 {
 		return fmt.Errorf("tightInt64: above maximum 9223372036854775000")
 	}
-	if v.TightInt64 < 0 || v.TightInt64 > 9223372036854775807 {
+	if v.TightInt64 < 0 {
 		return fmt.Errorf("tightInt64: out of range [0, 9223372036854775807]")
 	}
 	return nil
@@ -309,7 +261,7 @@ func (v *NumberOptional) Validate() error {
 	if v.OptFloat != nil && *v.OptFloat > 1 {
 		return fmt.Errorf("optFloat: above maximum 1")
 	}
-	if v.OptUint != nil && (*v.OptUint < 0 || *v.OptUint > 1000) {
+	if v.OptUint != nil && *v.OptUint > 1000 {
 		return fmt.Errorf("optUint: out of range [0, 1000]")
 	}
 	if v.NullableInt != nil && (*v.NullableInt < 0 || *v.NullableInt > 100) {
@@ -381,11 +333,8 @@ func (v *NumberPrice) Validate() error {
 // Validate checks every field-level constraint declared on NumberUnsigned.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *NumberUnsigned) Validate() error {
-	if v.RangeUint < 0 || v.RangeUint > 1000 {
+	if v.RangeUint > 1000 {
 		return fmt.Errorf("rangeUint: out of range [0, 1000]")
-	}
-	if v.GteLteUint < 0 {
-		return fmt.Errorf("gteLteUint: below minimum 0")
 	}
 	if v.GteLteUint > 1000 {
 		return fmt.Errorf("gteLteUint: above maximum 1000")
@@ -396,29 +345,11 @@ func (v *NumberUnsigned) Validate() error {
 	if v.GtLtUint >= 1000 {
 		return fmt.Errorf("gtLtUint: must be less than 1000")
 	}
-	if v.RangeUint8 < 0 || v.RangeUint8 > 255 {
-		return fmt.Errorf("rangeUint8: out of range [0, 255]")
-	}
-	if v.GteLteUint8 < 0 {
-		return fmt.Errorf("gteLteUint8: below minimum 0")
-	}
-	if v.GteLteUint8 > 255 {
-		return fmt.Errorf("gteLteUint8: above maximum 255")
-	}
 	if v.GtLtUint8 <= 0 {
 		return fmt.Errorf("gtLtUint8: must be greater than 0")
 	}
 	if v.GtLtUint8 >= 255 {
 		return fmt.Errorf("gtLtUint8: must be less than 255")
-	}
-	if v.RangeUint16 < 0 || v.RangeUint16 > 65535 {
-		return fmt.Errorf("rangeUint16: out of range [0, 65535]")
-	}
-	if v.GteLteUint16 < 0 {
-		return fmt.Errorf("gteLteUint16: below minimum 0")
-	}
-	if v.GteLteUint16 > 65535 {
-		return fmt.Errorf("gteLteUint16: above maximum 65535")
 	}
 	if v.GtLtUint16 <= 0 {
 		return fmt.Errorf("gtLtUint16: must be greater than 0")
@@ -426,26 +357,14 @@ func (v *NumberUnsigned) Validate() error {
 	if v.GtLtUint16 >= 65535 {
 		return fmt.Errorf("gtLtUint16: must be less than 65535")
 	}
-	if v.RangeUint32 < 0 || v.RangeUint32 > 4294967295 {
-		return fmt.Errorf("rangeUint32: out of range [0, 4294967295]")
-	}
-	if v.GteLteUint32 < 0 {
-		return fmt.Errorf("gteLteUint32: below minimum 0")
-	}
-	if v.GteLteUint32 > 4294967295 {
-		return fmt.Errorf("gteLteUint32: above maximum 4294967295")
-	}
 	if v.GtLtUint32 <= 0 {
 		return fmt.Errorf("gtLtUint32: must be greater than 0")
 	}
 	if v.GtLtUint32 >= 4294967295 {
 		return fmt.Errorf("gtLtUint32: must be less than 4294967295")
 	}
-	if v.RangeUint64 < 0 || v.RangeUint64 > 1000000000000 {
+	if v.RangeUint64 > 1000000000000 {
 		return fmt.Errorf("rangeUint64: out of range [0, 1000000000000]")
-	}
-	if v.GteLteUint64 < 0 {
-		return fmt.Errorf("gteLteUint64: below minimum 0")
 	}
 	if v.GteLteUint64 > 1000000000000 {
 		return fmt.Errorf("gteLteUint64: above maximum 1000000000000")

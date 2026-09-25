@@ -26,36 +26,38 @@ func lengthCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 		}
 		hi = v
 	}
+	loImplied, hiImplied := semantic.BoundImpliedByType(t.prim, d, 0), semantic.BoundImpliedByType(t.prim, d, 1)
+	if loImplied && hiImplied {
+		return ""
+	}
 	count := lengthCount(t, ctx)
 	if lo == hi {
 		return failIf(t.guarded(fmt.Sprintf("%s != %d", count, lo)), t.subject, fmt.Sprintf("length must be %d", lo), ctx)
 	}
 	text := fmt.Sprintf("length out of range [%d, %d]", lo, hi)
-	if !countCanFail("<", lo) {
+	switch {
+	case loImplied:
 		return failIf(t.guarded(fmt.Sprintf("%s > %d", count, hi)), t.subject, text, ctx)
+	case hiImplied:
+		return failIf(t.guarded(fmt.Sprintf("%s < %d", count, lo)), t.subject, text, ctx)
 	}
 	// The init statement counts once for both bounds, so a nil guard wraps it.
 	return t.guardBlock(failIf(fmt.Sprintf("l := %s; l < %d || l > %d", count, lo, hi), t.subject, text, ctx))
 }
 
 // minMaxLengthCheck renders @minLength or @maxLength on a string or bytes
-// value, failing it when `length failOp n` holds.
+// value, failing it when `length failOp n` holds; a bound every length meets
+// renders nothing.
 func minMaxLengthCheck(t checkTarget, d *ast.Decorator, failOp, label string, ctx emitCtx) string {
 	if !t.primIs(prims.String, prims.Bytes) || len(d.Args) != 1 {
 		return ""
 	}
 	n, ok := semantic.IntArg(d.Args[0])
-	if !ok || !countCanFail(failOp, n) {
+	if !ok || semantic.BoundImpliedByType(t.prim, d, 0) {
 		return ""
 	}
 	cond := fmt.Sprintf("%s %s %d", lengthCount(t, ctx), failOp, n)
 	return failIf(t.guarded(cond), t.subject, fmt.Sprintf("%s %d", label, n), ctx)
-}
-
-// countCanFail reports whether a count, a length or a number of items, can
-// fail `count failOp n`; no count is below 0.
-func countCanFail(failOp string, n int64) bool {
-	return failOp != "<" || n > 0
 }
 
 // lengthCount measures a string in runes, as OpenAPI minLength/maxLength do,

@@ -1014,6 +1014,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   bound is now the exact integer the validator checks, the tighter one of
   two.
 
+- **No bound check the Go type already enforces.** The validator compared a
+  value with bounds its type cannot break - `@gte(0)` on a `uint`, the ends
+  of `@range(0, 255)` on a `uint8`, an integer type's own limits, a
+  `@minLength(0)` or a `@maxLength(9223372036854775807)` - and the last did
+  not compile for a 32-bit platform. Such a check is no longer emitted, and
+  `@range` or `@length` keeps the end that bites. A scalar whose checks are
+  all such bounds keeps its `Validate()`, which its fields no longer call.
+  Float bounds keep their checks.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

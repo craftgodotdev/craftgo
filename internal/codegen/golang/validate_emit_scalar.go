@@ -39,6 +39,17 @@ func scalarDeclHasValidators(sd *ast.ScalarDecl) bool {
 	return false
 }
 
+// scalarChecksCanFail reports whether sd's Validate() holds a check some
+// value fails, one its primitive does not already enforce; the checks render
+// into a scratch import set.
+func scalarChecksCanFail(sd *ast.ScalarDecl, ctx emitCtx) bool {
+	if !scalarDeclHasValidators(sd) {
+		return false
+	}
+	ctx.imports, ctx.regexes = ctx.imports.scratch(), newRegexRegistry()
+	return len(scalarValidateChecks(sd, ctx)) > 0
+}
+
 // scalarValidateChecks renders the body of sd's Validate(), checking the value
 // receiver converted to its primitive (`string(v)`). The errors have no
 // subject: the using field wraps them with its own.

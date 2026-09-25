@@ -249,9 +249,6 @@ func (v *Str_Lengths) Validate() error {
 	if utf8.RuneCountInString(v.OnlyMax) > 100 {
 		return fmt.Errorf("onlyMax: length greater than 100")
 	}
-	if utf8.RuneCountInString(v.HugeMax) > 9223372036854775807 {
-		return fmt.Errorf("hugeMax: length greater than 9223372036854775807")
-	}
 	return nil
 }
 

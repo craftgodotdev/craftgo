@@ -121,8 +121,9 @@ func validateDispatch(elem, wrapName string, ctx emitCtx) string {
 	return fmt.Sprintf("if err := %s.Validate(); err != nil {\nreturn err\n}", elem)
 }
 
-// typeRefNamedHasValidator reports whether n names a type with a generated
-// Validate(): any struct or enum, or a scalar with validators.
+// typeRefNamedHasValidator reports whether n names a type whose generated
+// Validate() can fail: any struct or enum, or a scalar with a check its
+// primitive does not already enforce.
 func typeRefNamedHasValidator(n *ast.NamedTypeRef, ctx emitCtx) bool {
 	if n == nil || n.Name == nil {
 		return false
@@ -132,7 +133,7 @@ func typeRefNamedHasValidator(n *ast.NamedTypeRef, ctx emitCtx) bool {
 		return true
 	}
 	if sd := ctx.resolver.LookupScalar(name); sd != nil {
-		return scalarDeclHasValidators(sd)
+		return scalarChecksCanFail(sd, ctx)
 	}
 	return false
 }
