@@ -1,6 +1,9 @@
 package semantic
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // @uniqueItems on a map is rejected.
 func TestUniqueItemsOnMapRejected(t *testing.T) {
@@ -39,26 +42,73 @@ type NReq { items dep.XOuter[] @uniqueItems }`,
 	}
 }
 
-// An optional struct field is a comparable pointer, so @uniqueItems accepts its holder.
-func TestUniqueItemsOptionalFieldComparable(t *testing.T) {
-	mustClean(t, `type Inner { id string  tags string[] }
-type Holder { inner Inner? }
-type R { xs Holder[] @uniqueItems }`)
-	// A non-optional field holds Inner by value.
-	expectError(t, `type Inner { id string  tags string[] }
-type Holder { inner Inner }
-type R { xs Holder[] @uniqueItems }`, CodeDecoratorTypeMismatch)
-	// An optional cross-package struct field is a pointer too.
-	root, files := projectFixture(t, map[string]string{
-		"dep/d.craftgo": `package dep
-type XInner { id string  tags string[] }`,
-		"api.craftgo": `package design
-type Holder { inner dep.XInner? }
-type NReq { items Holder[] @uniqueItems }`,
-	})
-	if _, diags := AnalyzeProject(files, Options{DesignRoot: root}); findCode(diags, CodeDecoratorTypeMismatch) != nil {
-		t.Error("optional cross-pkg struct field is a comparable pointer; must not be rejected")
+// @uniqueItems refuses an element holding a pointer, which the dedupe map
+// compares by address: equal elements would pass as distinct.
+func TestUniqueItemsRejectsPointerMembers(t *testing.T) {
+	for _, c := range []struct{ label, src, member string }{
+		{"optional primitive", "type O { val string? }", "O.val (string?)"},
+		{"nullable primitive", "type O { val string @nullable }", "O.val (string)"},
+		{"optional struct", "type Inner { id string }\ntype O { inner Inner? }", "O.inner (Inner?)"},
+		{"optional enum", "enum S { A B }\ntype O { s S? }", "O.s (S?)"},
+		{"file", "type O { upload file }", "O.upload (file)"},
+		{"nested", "type Inner { id int? }\ntype O { inner Inner }", "O.inner.id (int?)"},
+		{"generic argument", "type Pair<T> { val T? }\ntype O { p Pair<string> }", "O.p.val (string?)"},
+	} {
+		t.Run(c.label, func(t *testing.T) {
+			d := expectError(t, c.src+"\ntype R { xs O[] @uniqueItems }", CodeDecoratorTypeMismatch)
+			expectMessage(t, d, c.member+" is a pointer")
+		})
 	}
+	// A pointer element of a generic instance is judged with its argument.
+	expectError(t, `type Pair<T> { val T? }
+type R { xs Pair<string>[] @uniqueItems }`, CodeDecoratorTypeMismatch)
+}
+
+// @uniqueItems refuses an element holding a value Go cannot compare, even
+// behind `?`: bytes and any hold nil themselves, so `?` adds no pointer.
+func TestUniqueItemsRejectsIncomparableMembers(t *testing.T) {
+	for _, src := range []string{
+		"type O { val bytes? }\ntype R { xs O[] @uniqueItems }",
+		"type O { val any? }\ntype R { xs O[] @uniqueItems }",
+		"type O { tags string[]? }\ntype R { xs O[] @uniqueItems }",
+		"type Pair<T> { val T? }\ntype R { xs Pair<bytes>[] @uniqueItems }",
+		"scalar Blob bytes\ntype O { b Blob }\ntype R { xs O[] @uniqueItems }",
+		"type R { xs any[] @uniqueItems }",
+	} {
+		d := expectError(t, src, CodeDecoratorTypeMismatch)
+		expectMessage(t, d, "is not comparable")
+	}
+}
+
+// @uniqueItems accepts an element compared member by member.
+func TestUniqueItemsAcceptsValueMembers(t *testing.T) {
+	mustClean(t, `enum S { A B }
+scalar Email string
+type Inner { id string  n int }
+type O { s S  e Email  inner Inner  at datetime }
+type R { xs O[] @uniqueItems  ys Email[] @uniqueItems  zs S[] @uniqueItems }`)
+}
+
+// A cross-package generic instance is judged with the arguments its referrer gives it.
+func TestUniqueItemsCrossPkgGenericLocalArgument(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"lib/l.craftgo": `package lib
+type Box<T> { value T }`,
+		"api.craftgo": `package design
+import "lib"
+type Item { tags string[] }
+type R { xs lib.Box<Item>[] @uniqueItems }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	d := findCode(diags, CodeDecoratorTypeMismatch)
+	if d == nil || !strings.Contains(d.Msg, "lib.Box.value.tags (string[]) is not comparable") {
+		t.Fatalf("expected the local argument's slice reported, got %v", diags)
+	}
+}
+
+// A map key naming no declared type gets the reference error alone.
+func TestMapKeyUnknownNameLeftToReferenceCheck(t *testing.T) {
+	expectNoCode(t, `type R { m map<Nope, int> }`, CodeMapKeyType)
 }
 
 // @uniqueItems rejects a cross-package generic instance over a non-comparable type argument.

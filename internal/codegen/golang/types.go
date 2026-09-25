@@ -253,28 +253,16 @@ func isRawBytesField(f *ast.Field, pkg *semantic.Package, r *projectResolver) bo
 	return semantic.ResolveField(f, pkg, r.Project()).Category == semantic.CatRawBytes
 }
 
-// goFieldPointerWrap reports whether [goFieldType] prepends `*`: f is optional
-// or @nullable and its resolved type does not already hold nil.
+// goFieldPointerWrap reports whether [goFieldType] prepends `*`: f's Go value
+// is a pointer its type does not spell already, as `file` does.
 func goFieldPointerWrap(f *ast.Field, pkg *semantic.Package, r *projectResolver) bool {
-	if f == nil || f.Type == nil {
-		return false
-	}
-	if !semantic.FieldIsOptional(f) {
-		return false
-	}
-	return !semantic.ResolveField(f, pkg, r.Project()).IsNilable
+	rf := semantic.ResolveField(f, pkg, r.Project())
+	return rf.GoPointer() && rf.Category != semantic.CatFile
 }
 
-// goFieldIsPointer reports whether f's Go type is a pointer: a wrapped optional
-// or @nullable field, or a `file` (`*multipart.FileHeader`).
+// goFieldIsPointer reports whether f's Go value is a pointer.
 func goFieldIsPointer(f *ast.Field, pkg *semantic.Package, r *projectResolver) bool {
-	if f == nil || f.Type == nil {
-		return false
-	}
-	if semantic.ResolveField(f, pkg, r.Project()).Category == semantic.CatFile {
-		return true
-	}
-	return goFieldPointerWrap(f, pkg, r)
+	return semantic.ResolveField(f, pkg, r.Project()).GoPointer()
 }
 
 // renderMixin returns the embed line for m with its package qualifier and

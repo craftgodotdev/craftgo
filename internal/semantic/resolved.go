@@ -75,6 +75,12 @@ type ResolvedField struct {
 	RuntimeEnforced bool
 }
 
+// GoPointer reports whether the field's Go value is a pointer: a `file`, or
+// an optional or @nullable value whose type holds no nil itself.
+func (rf ResolvedField) GoPointer() bool {
+	return rf.Category == CatFile || (rf.NeedsNilGuard && !rf.IsNilable)
+}
+
 // FieldIsOptional reports whether f may be absent: declared `T?` or
 // carrying `@nullable`.
 func FieldIsOptional(f *ast.Field) bool {
@@ -85,7 +91,11 @@ func FieldIsOptional(f *ast.Field) bool {
 // field promoted from another package's mixin needs that package; a
 // qualified `lib.X` resolves through proj.
 func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
-	rf := ResolvedField{Field: f}
+	var rf ResolvedField
+	if f != nil && f.Type != nil {
+		rf = resolveTypeRef(f.Type, HasRawFormat(f.Decorators), pkg, proj)
+	}
+	rf.Field = f
 	if f != nil {
 		rf.DSLName = f.Name
 		dv, hasDV := ResolveDefaultValue(f, pkg)
@@ -99,10 +109,13 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 		rf.SpecRequired = FieldIsRequired(f)
 		rf.RuntimeEnforced = f.Type != nil && !FieldIsOptional(f) && !wire.HasSensitive(f.Decorators)
 	}
-	if f == nil || f.Type == nil {
-		return rf
-	}
-	t := f.Type
+	return rf
+}
+
+// resolveTypeRef returns the type facts of t, resolved as [ResolveField]
+// resolves a field's type; raw says `@format(raw)` sits on the field.
+func resolveTypeRef(t *ast.TypeRef, raw bool, pkg *Package, proj *Project) ResolvedField {
+	var rf ResolvedField
 	if t.Array {
 		rf.Category = CatArray
 		rf.IsNilable = true
@@ -132,7 +145,7 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 	if sp, ok := prims.Lookup(name); ok {
 		switch sp.Kind {
 		case prims.Bytes:
-			if HasRawFormat(f.Decorators) {
+			if raw {
 				rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatRawBytes, name, true, ""
 				return rf
 			}
@@ -151,7 +164,7 @@ func ResolveField(f *ast.Field, pkg *Package, proj *Project) ResolvedField {
 	}
 	if homePkg != nil {
 		if sd, ok := homePkg.Scalars[name]; ok && sd != nil {
-			if sd.Primitive == "bytes" && (HasRawFormat(sd.Decorators) || HasRawFormat(f.Decorators)) {
+			if sd.Primitive == "bytes" && (raw || HasRawFormat(sd.Decorators)) {
 				// A scalar over raw bytes is a raw field.
 				rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg = CatRawBytes, sd.Primitive, true, ""
 				return rf

@@ -326,6 +326,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   `decl/go-name-collision`, naming what each side emits. An error whose body
   holds only a comment no longer counts as emitting a `<Name>Body` struct.
 
+- **`@uniqueItems` refuses elements it cannot compare by value.** An element
+  type with an optional or `@nullable` member passed analysis, and the
+  validator then compared that member's pointer, so two equal elements
+  counted as distinct; one with a `bytes?` member generated Go that did not
+  compile; and a cross-package generic instance such as `lib.Box<Item>[]`
+  was judged without its argument. Each now reports `decorator/typemismatch`
+  naming the member at fault. A map key naming no declared type gets only
+  the reference error.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

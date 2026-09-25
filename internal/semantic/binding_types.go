@@ -122,27 +122,14 @@ func (a *analyzer) isWireBindingType(t *ast.TypeRef) bool {
 // wireBindableIn is [analyzer.isWireBindingType] with bare type names
 // resolved in homePkg - the package of the type that declares the field.
 func (a *analyzer) wireBindableIn(homePkg string, t *ast.TypeRef) bool {
-	if t == nil || t.Map != nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Args) > 0 {
+	if t == nil || t.Named == nil || t.Named.Name == nil || len(t.Named.Args) > 0 || t.ArrayDepth > 1 {
 		return false
 	}
-	if t.ArrayDepth > 1 {
-		return false
-	}
-	// Only a bare name can be a builtin.
-	if len(t.Named.Name.Parts) == 1 {
-		name := t.Named.Name.String()
-		if name == "file" {
-			return false
-		}
-		if prims.IsWireParseable(name) {
-			return true
-		}
-	}
-	if sc := a.lookupScalarIn(homePkg, t.Named); sc != nil {
-		return prims.IsWireParseable(sc.Primitive)
-	}
-	if ed := a.lookupEnumIn(homePkg, t.Named); ed != nil {
-		return enumWireKindOK(ed)
+	switch rt := a.elemFacts(homePkg, t); rt.Category {
+	case CatPrimitive, CatScalar:
+		return prims.IsWireParseable(rt.ResolvedPrim)
+	case CatEnum:
+		return true
 	}
 	return false
 }
@@ -153,10 +140,18 @@ func (a *analyzer) isFormBindingType(t *ast.TypeRef) bool {
 	if t == nil || t.Named == nil {
 		return false
 	}
-	if t.Named.Name.String() == "file" {
-		return t.Map == nil && t.ArrayDepth <= 1
+	if a.elemFacts(a.pkg.Name, t).Category == CatFile {
+		return t.ArrayDepth <= 1
 	}
 	return a.isWireBindingType(t)
+}
+
+// elemFacts resolves t in homePkg, or the element of t when t is an array.
+func (a *analyzer) elemFacts(homePkg string, t *ast.TypeRef) ResolvedField {
+	if t.Array {
+		t = t.ElemTypeRef()
+	}
+	return resolveTypeRef(t, false, a.proj.Packages[homePkg], a.proj)
 }
 
 // describeTypeRef renders t for diagnostics, such as `int[][]` or `string?`;
@@ -209,18 +204,4 @@ func namedTypeRefs(t *ast.TypeRef) []string {
 		}
 	}
 	return out
-}
-
-// enumWireKindOK reports whether ed has a value of a wire-bindable kind:
-// bare, string or int.
-func enumWireKindOK(ed *ast.EnumDecl) bool {
-	for _, m := range ed.Members {
-		if v, ok := m.(*ast.EnumValue); ok {
-			switch v.Kind {
-			case ast.EnumBare, ast.EnumString, ast.EnumInt:
-				return true
-			}
-		}
-	}
-	return false
 }

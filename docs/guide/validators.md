@@ -119,6 +119,8 @@ type Post {
 }
 ```
 
+`@uniqueItems` compares elements by value, so each element must be a primitive, an enum, a scalar or a type whose members all are. An element holding an optional or `@nullable` member, a `file`, `bytes`, `any`, an array or a map is rejected with `decorator/typemismatch`.
+
 ### Cross-field
 
 | Decorator                          | Effect                                              |
