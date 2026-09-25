@@ -355,8 +355,8 @@ func fileExists(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
-// Load reads, validates and defaults the manifest at path. A key no field
-// declares is ignored and named in [Config.Warnings].
+// Load reads, validates and defaults the manifest at path. A removed key is an
+// error; any other key no field declares is ignored and named in [Config.Warnings].
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -371,7 +371,10 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	for _, key := range undeclaredKeys(&doc, reflect.TypeFor[Config](), "") {
-		cfg.Warnings = append(cfg.Warnings, ignoredKeyWarning(key))
+		if note, ok := removedKeys[listIndex.ReplaceAllString(key, "[]")]; ok {
+			return nil, fmt.Errorf("%s is no longer a manifest key - %s; drop it", key, note)
+		}
+		cfg.Warnings = append(cfg.Warnings, key+" is not a manifest key and is ignored")
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -399,14 +402,6 @@ var removedKeys = map[string]string{
 
 // listIndex matches the index of a list item in a key path.
 var listIndex = regexp.MustCompile(`\[\d+\]`)
-
-// ignoredKeyWarning is the warning for key, a path [undeclaredKeys] returned.
-func ignoredKeyWarning(key string) string {
-	if note, ok := removedKeys[listIndex.ReplaceAllString(key, "[]")]; ok {
-		return fmt.Sprintf("%s is no longer a manifest key and is ignored - %s", key, note)
-	}
-	return fmt.Sprintf("%s is not a manifest key and is ignored", key)
-}
 
 // undeclaredKeys returns, in document order, the path of every mapping key
 // under node that t, the type node decodes into, declares no field for. A path

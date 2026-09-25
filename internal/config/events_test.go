@@ -53,33 +53,30 @@ func TestEventTargetsAreConfigured(t *testing.T) {
 	}
 }
 
-// TestRemovedKeysWarnWithWhatReplacedThem checks that a removed key loads with
-// one warning naming the key and what took its place.
-func TestRemovedKeysWarnWithWhatReplacedThem(t *testing.T) {
+// TestRemovedKeysAreRejected checks that a removed key fails the load, naming
+// the key and what took its place.
+func TestRemovedKeysAreRejected(t *testing.T) {
 	cases := []struct {
 		name string
 		body string
 		want string
 	}{
 		{"design source", "design:\n  from: ../contracts\n  root: ..\n",
-			"design is no longer a manifest key and is ignored - a manifest holds its own design folder"},
+			"design is no longer a manifest key - a manifest holds its own design folder"},
 		{"service selection", "output:\n  services: [shop.Orders]\n",
-			"output.services is no longer a manifest key and is ignored - a project generates every service"},
+			"output.services is no longer a manifest key - a project generates every service"},
 		{"consume middleware", "output:\n  consumeMiddleware: ./internal/consume\n",
-			"output.consumeMiddleware is no longer a manifest key and is ignored - middleware is installed on the bus"},
+			"output.consumeMiddleware is no longer a manifest key - middleware is installed on the bus"},
 		{"asyncapi", "events:\n  asyncapi: ./docs/asyncapi.yaml\n",
-			"events.asyncapi is no longer a manifest key and is ignored - craftgo writes no asyncapi document"},
+			"events.asyncapi is no longer a manifest key - craftgo writes no asyncapi document"},
 		{"target layout", "events:\n  targets:\n    - lang: go\n      out: ./internal/events\n      layout:\n        types: ./gen/types\n",
-			"events.targets[0].layout is no longer a manifest key and is ignored - the go target places its artefacts"},
+			"events.targets[0].layout is no longer a manifest key - the go target places its artefacts"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			cfg, err := Load(writeManifest(t, c.body))
-			if err != nil {
-				t.Fatalf("Load: %v", err)
-			}
-			if len(cfg.Warnings) != 1 || !strings.HasPrefix(cfg.Warnings[0], c.want) {
-				t.Errorf("warnings = %q, want one starting %q", cfg.Warnings, c.want)
+			_, err := Load(writeManifest(t, c.body))
+			if err == nil || !strings.HasPrefix(err.Error(), c.want) {
+				t.Errorf("err = %v, want one starting %q", err, c.want)
 			}
 		})
 	}

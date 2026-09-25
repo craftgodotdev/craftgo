@@ -37,11 +37,10 @@ Flags:
 
 Without `-f`, `craftgo gen` walks upward from `<path>` (or cwd) probing direct subdirs at each level for a `craftgo.design.yaml`; with `-f`, a path is an error. The Go module path comes from `go.mod`, walking up from the project root - run `go mod init <module>` first if `go.mod` does not exist yet.
 
-A key the manifest does not declare - a misspelling, or a key craftgo no longer reads - is ignored, and `craftgo gen` names it on stderr before generating:
+A key the manifest does not declare - a misspelling, say - is ignored, and `craftgo gen` names it on stderr before generating:
 
 ```
 craftgo: warning: output.typs is not a manifest key and is ignored
-craftgo: warning: events.asyncapi is no longer a manifest key and is ignored - craftgo writes no asyncapi document
 ```
 
 ## `craftgo fmt [-l] [-w] [path]`
