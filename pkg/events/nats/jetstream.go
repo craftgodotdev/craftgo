@@ -51,10 +51,24 @@ type JetStream struct {
 	closeOnce sync.Once
 
 	mu        sync.Mutex
-	consuming []jetstream.ConsumeContext
-	groups    map[events.Group]bool
+	groups    map[events.Group]*registration
 	accountOK bool
 	streamFor map[string]string
+}
+
+// registration is one Subscribe's hold on a group, consuming through cc once it starts.
+type registration struct {
+	group events.Group
+	ctx   context.Context
+	cc    jetstream.ConsumeContext
+}
+
+// refusal is the error a Subscribe of r's group gets while r holds it.
+func (r *registration) refusal() error {
+	if r.ctx.Err() != nil {
+		return fmt.Errorf("nats: consumer group %q is still stopping on this transport - its context has ended, and it can subscribe again once its running handler returns", r.group)
+	}
+	return fmt.Errorf("nats: consumer group %q is already subscribed on this transport - hand every consumer of a group to one Subscribe", r.group)
 }
 
 // JetStreamOption configures a [JetStream].
@@ -207,7 +221,7 @@ func NewJetStream(conn *nats.Conn, opts ...JetStreamOption) (*JetStream, error) 
 		maxInFlight:   1,
 		maxDeliveries: 5,
 		perGroup:      map[events.Group]*groupConfig{},
-		groups:        map[events.Group]bool{},
+		groups:        map[events.Group]*registration{},
 		streamFor:     map[string]string{},
 		closing:       make(chan struct{}),
 	}
@@ -352,12 +366,45 @@ func (j *JetStream) Subscribe(ctx context.Context, subs []events.Subscription) e
 	if err != nil {
 		return err
 	}
-	for _, g := range groups {
-		if err := j.consumeGroup(ctx, g); err != nil {
+	regs, err := j.reserve(ctx, groups)
+	if err != nil {
+		return err
+	}
+	for i, g := range groups {
+		if err := j.consumeGroup(ctx, g, regs[i]); err != nil {
+			j.release(regs[i:]...)
 			return err
 		}
 	}
 	return nil
+}
+
+// reserve holds every group of groups for a Subscribe on ctx, or none when one is held.
+func (j *JetStream) reserve(ctx context.Context, groups []*groupPlan) ([]*registration, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	for _, g := range groups {
+		if held := j.groups[g.name]; held != nil {
+			return nil, held.refusal()
+		}
+	}
+	regs := make([]*registration, len(groups))
+	for i, g := range groups {
+		regs[i] = &registration{group: g.name, ctx: ctx}
+		j.groups[g.name] = regs[i]
+	}
+	return regs, nil
+}
+
+// release frees the groups regs hold; a group another registration holds stays held.
+func (j *JetStream) release(regs ...*registration) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	for _, r := range regs {
+		if j.groups[r.group] == r {
+			delete(j.groups, r.group)
+		}
+	}
 }
 
 // groupPlan is one group's durable and the consumer behind each subject.
@@ -376,9 +423,6 @@ func (j *JetStream) plan(ctx context.Context, subs []events.Subscription) ([]*gr
 		group := sub.Group
 		if err := checkGroup(group); err != nil {
 			return nil, err
-		}
-		if j.subscribed(group) {
-			return nil, fmt.Errorf("nats: consumer group %q is already subscribed on this transport - hand every consumer of a group to one Subscribe", group)
 		}
 		subject := j.subject(sub.Event)
 		stream, err := j.streamCovering(ctx, subject)
@@ -425,19 +469,13 @@ func (j *JetStream) configFor(group events.Group) groupConfig {
 	return cfg
 }
 
-func (j *JetStream) subscribed(group events.Group) bool {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	return j.groups[group]
-}
-
 // ErrConsumerStopped reports, through [WithJetStreamErrorHandler], a group
 // whose durable or its stream was deleted after boot. Nothing recreates the
 // durable; an application that wants the group back matches this error and
 // subscribes the group again.
 var ErrConsumerStopped = errors.New("nats: consumer stopped consuming")
 
-func (j *JetStream) consumeGroup(ctx context.Context, g *groupPlan) error {
+func (j *JetStream) consumeGroup(ctx context.Context, g *groupPlan, reg *registration) error {
 	consumer, ackWait, err := j.durable(ctx, g)
 	if err != nil {
 		return err
@@ -473,34 +511,24 @@ func (j *JetStream) consumeGroup(ctx context.Context, g *groupPlan) error {
 		cc.Stop()
 		return fmt.Errorf("nats: consume %q on stream %q: %w", g.name, g.stream, ErrClosed)
 	}
-	j.consuming = append(j.consuming, cc)
-	j.groups[g.name] = true
+	reg.cc = cc
 	j.mu.Unlock()
 
 	go func() {
 		select {
 		case <-cc.Closed():
-			j.release(g.name, cc)
+			j.release(reg)
 			if ctx.Err() == nil && !j.isClosing() {
 				j.report(whole, nil, fmt.Errorf("%w: %q on stream %q - it was deleted, or the stream was", ErrConsumerStopped, g.name, g.stream))
 			}
 		case <-ctx.Done():
 			cc.Stop()
 			<-cc.Closed()
-			j.release(g.name, cc)
+			j.release(reg)
 		case <-j.closing:
 		}
 	}()
 	return nil
-}
-
-// release forgets group and its consume context cc once cc has closed, so the group can
-// subscribe again.
-func (j *JetStream) release(group events.Group, cc jetstream.ConsumeContext) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	delete(j.groups, group)
-	j.consuming = slices.DeleteFunc(j.consuming, func(c jetstream.ConsumeContext) bool { return c == cc })
 }
 
 func (j *JetStream) isClosing() bool {
@@ -809,8 +837,13 @@ func (j *JetStream) Close() error {
 	defer j.closeStop()
 
 	j.mu.Lock()
-	consuming := j.consuming
-	j.consuming = nil
+	var consuming []jetstream.ConsumeContext
+	for _, r := range j.groups {
+		if r.cc != nil {
+			consuming = append(consuming, r.cc)
+		}
+	}
+	clear(j.groups)
 	j.mu.Unlock()
 
 	for _, cc := range consuming {

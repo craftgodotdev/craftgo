@@ -247,17 +247,158 @@ func TestAGroupWhoseContextEndedCanSubscribeAgain(t *testing.T) {
 	got := &deliveries{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	deadline := time.Now().Add(10 * time.Second)
-	for err := tr.Subscribe(ctx, subs(got)); err != nil; err = tr.Subscribe(ctx, subs(got)) {
-		if time.Now().After(deadline) {
-			t.Fatalf("the group is still refused 10s after its context ended: %v", err)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	subscribeWhenFree(t, ctx, tr, subs(got))
 	if err := tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Key: "o-1", Payload: []byte(`{}`)}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	got.waitFor(t, 1, 15*time.Second)
+}
+
+// subscribeWhenFree retries Subscribe until the groups of subs are free, for up to 10s.
+func subscribeWhenFree(t *testing.T, ctx context.Context, tr *craftnats.JetStream, subs []events.Subscription) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for err := tr.Subscribe(ctx, subs); err != nil; err = tr.Subscribe(ctx, subs) {
+		if time.Now().After(deadline) {
+			t.Fatalf("still refused after 10s: %v", err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// Of concurrent Subscribes of one group, one holds it and the others are refused; ending a
+// refused one's context leaves the group held.
+func TestConcurrentSubscribesOfAGroupLetOneThrough(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn)
+	subs := []events.Subscription{{Event: "orders.Placed", Consumer: "C", Group: "g", Handle: recording(&deliveries{})}}
+
+	const n = 8
+	errs := make([]error, n)
+	ends := make([]context.CancelFunc, n)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range n {
+		ctx, end := context.WithCancel(context.Background())
+		ends[i] = end
+		t.Cleanup(end)
+		wg.Go(func() {
+			<-start
+			errs[i] = tr.Subscribe(ctx, subs)
+		})
+	}
+	close(start)
+	wg.Wait()
+
+	holder := -1
+	for i, err := range errs {
+		switch {
+		case err != nil:
+			if !strings.Contains(err.Error(), "already subscribed") {
+				t.Errorf("Subscribe %d: err = %v, want an already-subscribed refusal", i, err)
+			}
+		case holder >= 0:
+			t.Fatalf("Subscribes %d and %d both hold group g", holder, i)
+		default:
+			holder = i
+		}
+	}
+	if holder < 0 {
+		t.Fatal("no Subscribe holds group g")
+	}
+	for i, end := range ends {
+		if i != holder {
+			end()
+		}
+	}
+	time.Sleep(200 * time.Millisecond)
+	if err := tr.Subscribe(context.Background(), subs); err == nil || !strings.Contains(err.Error(), "already subscribed") {
+		t.Errorf("err = %v, want group g still held by Subscribe %d", err, holder)
+	}
+}
+
+// A group whose context has ended is refused as still stopping until its running handler
+// returns; then it subscribes again.
+func TestAGroupStillStoppingIsRefusedUntilItsHandlerReturns(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn)
+
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	releaseHandler := sync.OnceFunc(func() { close(release) })
+	t.Cleanup(releaseHandler)
+	first, endFirst := context.WithCancel(context.Background())
+	defer endFirst()
+	if err := tr.Subscribe(first, []events.Subscription{{
+		Event: "orders.Placed", Consumer: "C", Group: "g",
+		Handle: func(context.Context, *events.Message) error {
+			select {
+			case entered <- struct{}{}:
+			default:
+			}
+			<-release
+			return nil
+		},
+	}}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	if err := tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Key: "o-1", Payload: []byte(`{}`)}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(15 * time.Second):
+		t.Fatal("the handler never ran")
+	}
+	endFirst()
+
+	got := &deliveries{}
+	subs := []events.Subscription{{Event: "orders.Placed", Consumer: "C", Group: "g", Handle: recording(got)}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Subscribe(ctx, subs); err == nil || !strings.Contains(err.Error(), "still stopping") {
+		t.Fatalf("err = %v, want a refusal saying group g is still stopping", err)
+	}
+	releaseHandler()
+	subscribeWhenFree(t, ctx, tr, subs)
+	if err := tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Key: "o-2", Payload: []byte(`{}`)}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	got.waitFor(t, 1, 15*time.Second)
+}
+
+// A Subscribe refused partway keeps the groups it started and frees the ones it did not.
+func TestARefusedSubscribeFreesTheGroupsItDidNotStart(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	createConsumer(t, conn, "ORDERS", jetstream.ConsumerConfig{
+		Durable: "wide", Name: "wide", FilterSubjects: []string{"orders.Placed", "orders.Shipped"},
+		AckPolicy: jetstream.AckExplicitPolicy,
+	})
+	tr := jsTransport(t, conn)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sub := func(event string, group events.Group) events.Subscription {
+		return events.Subscription{Event: event, Consumer: "C", Group: group, Handle: recording(&deliveries{})}
+	}
+
+	err := tr.Subscribe(ctx, []events.Subscription{
+		sub("orders.Placed", "first"), sub("orders.Placed", "wide"), sub("orders.Placed", "last"),
+	})
+	if err == nil || !strings.Contains(err.Error(), `"wide"`) {
+		t.Fatalf("err = %v, want the refusal to narrow group wide", err)
+	}
+	if err := tr.Subscribe(ctx, []events.Subscription{sub("orders.Placed", "first")}); err == nil || !strings.Contains(err.Error(), "already subscribed") {
+		t.Errorf("group first: err = %v, want it held by the Subscribe that started it", err)
+	}
+	if err := tr.Subscribe(ctx, []events.Subscription{sub("orders.Placed", "wide"), sub("orders.Shipped", "wide")}); err != nil {
+		t.Errorf("group wide: %v", err)
+	}
+	if err := tr.Subscribe(ctx, []events.Subscription{sub("orders.Placed", "last")}); err != nil {
+		t.Errorf("group last: %v", err)
+	}
 }
 
 func TestAGroupSubscribingOneSubjectTwiceIsRefused(t *testing.T) {

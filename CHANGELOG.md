@@ -187,7 +187,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   context had ended, or whose durable `nats.ErrConsumerStopped` reported
   deleted, stayed "already subscribed" on its transport for good. The group
   is now free once its running handler has returned, and before that report
-  is made.
+  is made; until then a subscribe is refused as "still stopping".
+
+- **Concurrent subscribes of one JetStream group let one through.** Two
+  `Subscribe` calls naming the same group on one transport could both pass
+  the "already subscribed" check and consume side by side; the later one is
+  now refused.
 
 - **A core NATS subscription on a context that never ends parks no
   goroutine.** Each one left a goroutine waiting for ever on `ctx.Done()`.
