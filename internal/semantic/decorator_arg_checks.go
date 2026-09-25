@@ -13,7 +13,7 @@ import (
 // against its [Spec], then, when the shape holds, the values it takes.
 func (a *analyzer) checkDecoratorArgs(s decoratorSite) {
 	for _, d := range s.decs {
-		spec, ok := Lookup(d.Name)
+		spec, ok := DecoratorSpec(d.Name)
 		if !ok {
 			continue
 		}

@@ -36,7 +36,7 @@ func (r *request) decoratorArgItems(c cursor, name string) []protocol.Completion
 			return items
 		}
 	}
-	if spec, ok := semantic.Lookup(name); ok && len(spec.Args.Kinds) > 0 {
+	if spec, ok := semantic.DecoratorSpec(name); ok && len(spec.Args.Kinds) > 0 {
 		switch spec.Args.Kinds[0] {
 		case semantic.ArgDuration:
 			return durationCompletions(r.view(), c)
@@ -101,7 +101,7 @@ func decoratorArgContext(view snapshotView, c cursor) (string, int, bool) {
 // decoratorArgCompletions offers the registry's argument values of @name (the
 // formats of @format, for one), or nil when it declares none.
 func decoratorArgCompletions(name string) []protocol.CompletionItem {
-	spec, ok := semantic.Lookup(name)
+	spec, ok := semantic.DecoratorSpec(name)
 	if !ok {
 		return nil
 	}
@@ -132,7 +132,7 @@ func (r *request) decoratorCompletions(c cursor, prefix string) []protocol.Compl
 	extendSite := level == semantic.LvlService && nextTopLevelKeyword(view, c) == lexer.KwExtend
 	var out []protocol.CompletionItem
 	for _, name := range semantic.Names() {
-		spec, _ := semantic.Lookup(name)
+		spec, _ := semantic.DecoratorSpec(name)
 		allowed := spec.Levels&level != 0
 		if extendSite {
 			allowed = semantic.ExtendAllows(name)

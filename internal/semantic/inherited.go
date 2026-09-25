@@ -15,7 +15,7 @@ var chainIgnores = map[string]string{
 // ExtendAllows reports whether decorator name may sit on an `extend service`
 // block: @group, or a decorator every method of the block inherits.
 func ExtendAllows(name string) bool {
-	spec, ok := Lookup(name)
+	spec, ok := DecoratorSpec(name)
 	return ok && (name == "group" || spec.Levels&LvlMethod != 0)
 }
 

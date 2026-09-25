@@ -23,7 +23,7 @@ func (s *server) onSignatureHelp(_ context.Context, params protocol.SignatureHel
 	if !ok {
 		return nil, nil
 	}
-	spec, ok := semantic.Lookup(name)
+	spec, ok := semantic.DecoratorSpec(name)
 	if !ok {
 		return nil, nil
 	}

@@ -57,7 +57,7 @@ func TestDeclSitesMatchSemanticPlacement(t *testing.T) {
 			kinds[fmt.Sprintf("%T", bare.file.Decls[0])] = true
 			for _, name := range semantic.Names() {
 				got := parseDesign(t, strings.Replace(c.fixture, "@D", "@"+name, 1)).misplaced
-				spec, _ := semantic.Lookup(name)
+				spec, _ := semantic.DecoratorSpec(name)
 				want := spec.Levels&c.level == 0
 				if got != want {
 					t.Errorf("%s at level %q: @%s misplaced = %v, want %v", kw, c.level, name, got, want)
@@ -116,7 +116,7 @@ func TestFieldDecoratorCompletionMatchesSemanticTypes(t *testing.T) {
 		const decls = "scalar Email string\nscalar Flag bool\nscalar Raw bytes @format(raw)\n"
 		offered := labelSet(mustCompletionsAtCursor(t, "t.craftgo", "package x\n"+decls+"type T {\n\tv "+typ+" @|\n}\n"))
 		for _, name := range semantic.Names() {
-			spec, _ := semantic.Lookup(name)
+			spec, _ := semantic.DecoratorSpec(name)
 			if spec.AppliesTo == 0 || spec.Levels&semantic.LvlField == 0 {
 				continue
 			}

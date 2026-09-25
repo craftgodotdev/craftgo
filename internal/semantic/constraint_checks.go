@@ -137,7 +137,7 @@ func (a *analyzer) checkCapacity(prim string, l NumericLit, pos lexer.Position, 
 // count fits its [Spec]: the bound of @gt, @gte, @lt and @lte, the ends of
 // @range, the divisor of @multipleOf; nil for any other decorator.
 func numericArgs(d *ast.Decorator) []*ast.DecoratorArg {
-	spec, ok := Lookup(d.Name)
+	spec, ok := DecoratorSpec(d.Name)
 	if !ok || spec.Constraint != ConstraintNumeric {
 		return nil
 	}

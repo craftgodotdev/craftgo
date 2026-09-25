@@ -294,7 +294,7 @@ func isFormatRaw(d *ast.Decorator) bool {
 var formatValues = append(strfmt.Names(), FormatRaw)
 
 // registry is the closed set of decorators craftgo recognises; any other
-// `@name` is an error. [Lookup] and [Names] read it.
+// `@name` is an error. [DecoratorSpec] and [Names] read it.
 var registry = map[string]Spec{
 	// ---- Universal documentation / lifecycle ----
 	"doc": {
@@ -566,8 +566,8 @@ var registry = map[string]Spec{
 	"maxBodySize": {Name: "maxBodySize", Levels: LvlMethod, Doc: "Cap the request body size in bytes. Two enforcement points fire: Content-Length pre-check returns 413 immediately when the declared size exceeds the cap, and MaxBytesReader wraps r.Body so reads past the cap surface as a 400 Read error. Multipart parsers also lift their in-memory budget to this value.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgSize}}},
 }
 
-// Lookup returns the [Spec] registered under name, and whether there is one.
-func Lookup(name string) (Spec, bool) {
+// DecoratorSpec returns the [Spec] registered under name, and whether there is one.
+func DecoratorSpec(name string) (Spec, bool) {
 	s, ok := registry[name]
 	return s, ok
 }
@@ -597,7 +597,7 @@ func RemovedDecorator(name string) (string, bool) {
 // ConstraintOf returns the decorator's constraint classification, or zero
 // when the name is unknown or the decorator is not a constraint.
 func ConstraintOf(name string) ConstraintFamily {
-	spec, ok := Lookup(name)
+	spec, ok := DecoratorSpec(name)
 	if !ok {
 		return 0
 	}

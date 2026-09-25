@@ -41,7 +41,7 @@ func (r *request) namedSlotCompletions(c cursor) ([]protocol.CompletionItem, boo
 		}
 		// A registered decorator with no closed set takes a free literal, so
 		// nothing is offered; an unregistered name (a stray `(`) falls through.
-		if _, known := semantic.Lookup(name); known {
+		if _, known := semantic.DecoratorSpec(name); known {
 			return nil, true
 		}
 	}

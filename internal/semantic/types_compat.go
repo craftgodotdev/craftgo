@@ -31,7 +31,7 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 			if a.formatArgMismatch(d, actual, parent+"."+f.Name, f.Type.String()) {
 				continue
 			}
-			spec, ok := Lookup(d.Name)
+			spec, ok := DecoratorSpec(d.Name)
 			if !ok || spec.AppliesTo == 0 {
 				continue
 			}
@@ -71,7 +71,7 @@ func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 		if a.formatArgMismatch(d, actual, "scalar "+sd.Name, sd.Primitive) {
 			continue
 		}
-		spec, ok := Lookup(d.Name)
+		spec, ok := DecoratorSpec(d.Name)
 		if !ok || spec.AppliesTo == 0 {
 			continue
 		}

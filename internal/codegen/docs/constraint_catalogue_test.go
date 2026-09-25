@@ -11,7 +11,7 @@ import (
 func constraintNames() map[string]bool {
 	out := map[string]bool{}
 	for _, name := range semantic.Names() {
-		spec, _ := semantic.Lookup(name)
+		spec, _ := semantic.DecoratorSpec(name)
 		if spec.Constraint == 0 || spec.Constraint == semantic.ConstraintRuntime {
 			continue
 		}

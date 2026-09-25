@@ -10,7 +10,7 @@ import (
 func constraintNames(schemaOnly bool) map[string]bool {
 	out := map[string]bool{}
 	for _, name := range semantic.Names() {
-		spec, _ := semantic.Lookup(name)
+		spec, _ := semantic.DecoratorSpec(name)
 		if spec.Constraint == 0 {
 			continue
 		}
@@ -41,7 +41,7 @@ func TestGoChecksCoverConstraints(t *testing.T) {
 func TestRuntimeOnlyConstraints(t *testing.T) {
 	want := map[string]bool{"maxSize": true, "mimeTypes": true}
 	for _, name := range semantic.Names() {
-		spec, _ := semantic.Lookup(name)
+		spec, _ := semantic.DecoratorSpec(name)
 		if spec.Constraint != semantic.ConstraintRuntime {
 			continue
 		}

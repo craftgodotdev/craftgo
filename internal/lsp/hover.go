@@ -215,7 +215,7 @@ func (r *request) hover(idx int) *protocol.Hover {
 // decoratorHover renders `@name` from its registry entry, or says the name is
 // removed or unknown.
 func decoratorHover(name string, r protocol.Range) *protocol.Hover {
-	spec, ok := semantic.Lookup(name)
+	spec, ok := semantic.DecoratorSpec(name)
 	if !ok {
 		if note, gone := semantic.RemovedDecorator(name); gone {
 			return &protocol.Hover{

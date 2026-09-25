@@ -26,7 +26,7 @@ func (p *Printer) Decorator(d *ast.Decorator) {
 // an identifier prints bare as the first positional argument of a decorator
 // whose first argument names one of a closed set (`@format(email)`).
 func (p *Printer) decoratorArgInContext(decoratorName string, idx int, a *ast.DecoratorArg) {
-	if spec, known := semantic.Lookup(decoratorName); known && len(spec.Args.Enum) > 0 && idx == 0 && !a.Named {
+	if spec, known := semantic.DecoratorSpec(decoratorName); known && len(spec.Args.Enum) > 0 && idx == 0 && !a.Named {
 		if s, ok := a.Value.(*ast.StringLit); ok && lexer.IsIdent(s.Value) {
 			p.write(s.Value)
 			return

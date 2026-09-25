@@ -36,7 +36,7 @@ func (s decoratorSite) allows(name string) bool {
 	if s.extendBlock() {
 		return ExtendAllows(name)
 	}
-	spec, ok := Lookup(name)
+	spec, ok := DecoratorSpec(name)
 	return ok && spec.Levels&s.level != 0
 }
 
@@ -119,7 +119,7 @@ func (a *analyzer) checkDecoratorSites(files []*ast.File) {
 // allowed there.
 func (a *analyzer) checkPlacement(s decoratorSite) {
 	for _, d := range s.decs {
-		spec, known := Lookup(d.Name)
+		spec, known := DecoratorSpec(d.Name)
 		switch {
 		case !known:
 			if note, gone := RemovedDecorator(d.Name); gone {
@@ -150,7 +150,7 @@ func (a *analyzer) checkDecoratorDuplicates(s decoratorSite) {
 		}
 	}
 	for _, d := range s.decs {
-		if spec, _ := Lookup(d.Name); spec.Repeatable {
+		if spec, _ := DecoratorSpec(d.Name); spec.Repeatable {
 			continue
 		}
 		if prev, ok := seen[d.Name]; ok {
@@ -174,7 +174,7 @@ func (a *analyzer) checkSensitiveConflicts(f *ast.Field) {
 		if d.Name == "sensitive" {
 			continue
 		}
-		spec, ok := Lookup(d.Name)
+		spec, ok := DecoratorSpec(d.Name)
 		if !ok || spec.Metadata || spec.Levels&(LvlField|LvlErrorField) == 0 {
 			continue
 		}

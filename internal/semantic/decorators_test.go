@@ -44,11 +44,11 @@ func TestLevelString(t *testing.T) {
 	}
 }
 
-func TestRegistryLookup(t *testing.T) {
-	if _, ok := Lookup("doc"); !ok {
+func TestDecoratorSpec(t *testing.T) {
+	if _, ok := DecoratorSpec("doc"); !ok {
 		t.Error("@doc should be registered")
 	}
-	if _, ok := Lookup("nope"); ok {
+	if _, ok := DecoratorSpec("nope"); ok {
 		t.Error("@nope must not be registered")
 	}
 }
@@ -71,7 +71,7 @@ func TestRegistrySpecLevels(t *testing.T) {
 		{"format", LvlField | LvlScalar},
 	}
 	for _, c := range cases {
-		s, ok := Lookup(c.name)
+		s, ok := DecoratorSpec(c.name)
 		if !ok {
 			t.Errorf("@%s missing from registry", c.name)
 			continue
