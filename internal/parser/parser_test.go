@@ -3,6 +3,7 @@ package parser
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -197,11 +198,11 @@ func TestParseTypeShapes(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			td := mustParseTypeDecl(t, c.src)
+			td := firstDecl[*ast.TypeDecl](t, c.src)
 			if td.Name != c.wantName {
 				t.Errorf("name = %q, want %q", td.Name, c.wantName)
 			}
-			if !stringsEqual(td.TypeParams, c.wantParams) {
+			if !slices.Equal(td.TypeParams, c.wantParams) {
 				t.Errorf("type params = %v, want %v", td.TypeParams, c.wantParams)
 			}
 			if !ast.MembersEqual(td.Body, c.wantBody) {
@@ -215,7 +216,7 @@ func TestParseTypeShapes(t *testing.T) {
 // TestParseTypeFieldDecorators pins that a field keeps its trailing
 // decorators in order.
 func TestParseTypeFieldDecorators(t *testing.T) {
-	field := mustParseTypeDecl(t, `type X { name string @doc("the name") @length(1, 100) }`).
+	field := firstDecl[*ast.TypeDecl](t, `type X { name string @doc("the name") @length(1, 100) }`).
 		Body[0].(*ast.Field)
 	if got, want := len(field.Decorators), 2; got != want {
 		t.Errorf("decorator count = %d, want %d", got, want)
@@ -234,7 +235,7 @@ func TestTypeMemberNonIdent(t *testing.T) {
 }
 
 func TestKeywordFieldNames(t *testing.T) {
-	td := mustParseTypeDecl(t, `type X {
+	td := firstDecl[*ast.TypeDecl](t, `type X {
 		type   string
 		error  string
 		map    string
@@ -377,14 +378,9 @@ func TestMiddlewareNoParams(t *testing.T) {
 // TestMiddlewareRejectsParams pins that a middleware declaration with
 // parameters is an error.
 func TestMiddlewareRejectsParams(t *testing.T) {
-	p := New("t.craftgo", `middleware RateLimit(rps: int = 100)`)
-	p.Parse()
-	if len(p.Diagnostics()) == 0 {
-		t.Fatal("expected a diagnostic for middleware with params")
-	}
-	got := p.Diagnostics()[0].Msg
-	if !strings.Contains(got, "no parameters") {
-		t.Errorf("expected 'no parameters' diagnostic, got %q", got)
+	_, msgs := parseWithErrors(t, `middleware RateLimit(rps: int = 100)`)
+	if !strings.Contains(firstMsg(msgs), "no parameters") {
+		t.Errorf("diagnostics = %v, want the first to say a middleware takes no parameters", msgs)
 	}
 }
 
@@ -883,11 +879,7 @@ func TestGoldenSample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := New("sample.craftgo", string(src))
-	f := p.Parse()
-	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("diagnostics: %v", d)
-	}
+	f := mustParse(t, string(src))
 	if f.Package == nil {
 		t.Error("package missing")
 	}
@@ -901,13 +893,8 @@ func TestGoldenSample(t *testing.T) {
 
 // TestParseNestedArrayLiteral pins that an array literal may hold arrays.
 func TestParseNestedArrayLiteral(t *testing.T) {
-	p := New("test", `package design
+	td := firstDecl[*ast.TypeDecl](t, `package design
 type X { f string @example([["a", "b"], ["c"]]) }`)
-	file := p.Parse()
-	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("nested array literal should parse cleanly, got: %v", d)
-	}
-	td := file.Decls[0].(*ast.TypeDecl)
 	fld := td.Body[0].(*ast.Field)
 	outer, ok := fld.Decorators[0].Args[0].Value.(*ast.ArrayLit)
 	if !ok {

@@ -5,10 +5,11 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
 func TestParseImportSingleAndAliased(t *testing.T) {
-	f := parseSrc(t, `package design
+	f := mustParse(t, `package design
 
 import "shared/types"
 import v1 "v1/api"
@@ -100,7 +101,7 @@ extend service S {
     }
 }
 `
-	f := parseSrc(t, src)
+	f := mustParse(t, src)
 	if f.Package == nil || f.Package.Name != "design" {
 		t.Errorf("package name lost: %+v", f.Package)
 	}
@@ -164,14 +165,14 @@ service S {
     }
 }
 `
-	f := parseSrc(t, src)
+	f := mustParse(t, src)
 	if f == nil {
 		t.Fatal("expected file")
 	}
 }
 
 func TestParseHyphenatedPathSegments(t *testing.T) {
-	f := parseSrc(t, `package design
+	f := mustParse(t, `package design
 type Req { id string }
 type Resp {}
 service S {
@@ -185,7 +186,7 @@ service S {
 			if s.Methods()[0].Path == nil {
 				t.Fatal("path nil")
 			}
-			path := pathStr(s.Methods()[0].Path)
+			path := route.PathString(s.Methods()[0].Path)
 			if !strings.Contains(path, "api-v1") || !strings.Contains(path, "users-list") {
 				t.Errorf("hyphenated segments lost: %q", path)
 			}
@@ -219,7 +220,7 @@ service S {
         response Resp
     }
 }`
-			f := parseSrc(t, src)
+			f := mustParse(t, src)
 			if f == nil {
 				t.Fatal("expected file")
 			}
@@ -229,7 +230,7 @@ service S {
 					if s.Methods()[0].Path == nil {
 						t.Fatal("path nil")
 					}
-					got = pathStr(s.Methods()[0].Path)
+					got = route.PathString(s.Methods()[0].Path)
 				}
 			}
 			if got != c.want {
@@ -251,7 +252,7 @@ service S {
         response Resp
     }
 }`
-	f := parseSrc(t, src)
+	f := mustParse(t, src)
 	if f == nil {
 		t.Fatal("expected file")
 	}

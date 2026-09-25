@@ -6,11 +6,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
-)
-
-type (
-	astServiceDecl = ast.ServiceDecl
-	astMethod      = ast.Method
+	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
 // A token in place of a name is reported and never becomes the name: the
@@ -82,7 +78,7 @@ func TestPathSlashes(t *testing.T) {
 	if len(msgs) != 1 || !strings.Contains(msgs[0], "path ends with '/'") {
 		t.Errorf("trailing slash: diagnostics = %v", msgs)
 	}
-	if got := pathStr(f.Decls[0].(*astServiceDecl).Members[0].(*astMethod).Path); got != "/items" {
+	if got := route.PathString(f.Decls[0].(*ast.ServiceDecl).Methods()[0].Path); got != "/items" {
 		t.Errorf("trailing slash: path = %q, want /items", got)
 	}
 	_, msgs = parseWithErrors(t, "package p\nservice S {\n\tget X /a/ /b { response A }\n}\n")
@@ -93,7 +89,7 @@ func TestPathSlashes(t *testing.T) {
 	if len(msgs) != 0 {
 		t.Fatalf("root path: unexpected diagnostics %v", msgs)
 	}
-	if got := pathStr(f.Decls[0].(*astServiceDecl).Members[0].(*astMethod).Path); got != "/" {
+	if got := route.PathString(f.Decls[0].(*ast.ServiceDecl).Methods()[0].Path); got != "/" {
 		t.Errorf("root path = %q, want /", got)
 	}
 }

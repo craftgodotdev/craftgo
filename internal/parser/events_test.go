@@ -8,7 +8,7 @@ import (
 )
 
 func TestParseFileLevelEvent(t *testing.T) {
-	ev := parseEvent(t, `package orders
+	ev := firstDecl[*ast.EventDecl](t, `package orders
 
 // Emitted once an order is accepted.
 @contract("order.placed.v2")
@@ -36,60 +36,52 @@ service OrderService {
 // TestParseConsumeInServiceBodyIsRejected pins the dedicated diagnostic for
 // `consume` in a service body.
 func TestParseConsumeInServiceBodyIsRejected(t *testing.T) {
-	p := New("test.craftgo", `package p
+	_, msgs := parseWithErrors(t, `package p
 service S {
 	consume SendReceipt {
 		event shared.OrderPlaced
 	}
 }`)
-	p.Parse()
-	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "a service has no `consume` member") {
-		t.Fatalf("want the consume diagnostic, got %v", diags)
+	if !strings.Contains(firstMsg(msgs), "a service has no `consume` member") {
+		t.Fatalf("want the consume diagnostic, got %v", msgs)
 	}
 }
 
 // TestParseEventInServiceBodyIsRejected pins that an `event` in a service body
 // is told to move to file level.
 func TestParseEventInServiceBodyIsRejected(t *testing.T) {
-	p := New("test.craftgo", `package p
+	_, msgs := parseWithErrors(t, `package p
 service S {
 	event E { payload P }
 }`)
-	p.Parse()
-	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "`event` is a file-level declaration") {
-		t.Fatalf("want a file-level-event diagnostic, got %v", diags)
+	if !strings.Contains(firstMsg(msgs), "`event` is a file-level declaration") {
+		t.Fatalf("want a file-level-event diagnostic, got %v", msgs)
 	}
 }
 
 func TestParseEventRejectsUnknownClause(t *testing.T) {
-	p := New("test.craftgo", `package p
+	_, msgs := parseWithErrors(t, `package p
 event E { response R }`)
-	p.Parse()
-	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "payload in event body") {
-		t.Fatalf("want a payload-clause diagnostic, got %v", diags)
+	if !strings.Contains(firstMsg(msgs), "payload in event body") {
+		t.Fatalf("want a payload-clause diagnostic, got %v", msgs)
 	}
 }
 
 func TestParseEventRejectsDuplicatePayload(t *testing.T) {
-	p := New("test.craftgo", `package p
+	_, msgs := parseWithErrors(t, `package p
 event E {
 	payload A
 	payload B
 }`)
-	p.Parse()
-	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "duplicate payload clause") {
-		t.Fatalf("want a duplicate-payload diagnostic, got %v", diags)
+	if !strings.Contains(firstMsg(msgs), "duplicate payload clause") {
+		t.Fatalf("want a duplicate-payload diagnostic, got %v", msgs)
 	}
 }
 
 // TestParseEventAcceptsAnArrayPayload pins that `payload Order[]` parses with
 // Array set.
 func TestParseEventAcceptsAnArrayPayload(t *testing.T) {
-	e := parseEvent(t, `package p
+	e := firstDecl[*ast.EventDecl](t, `package p
 event E { payload Order[] }`)
 	if e.Payload == nil || e.Payload.Type == nil {
 		t.Fatalf("payload did not parse: %+v", e)
@@ -104,53 +96,42 @@ event E { payload Order[] }`)
 
 // TestParseEventRejectsMapPayload pins that a map payload is an error.
 func TestParseEventRejectsMapPayload(t *testing.T) {
-	p := New("test.craftgo", `package p
+	_, msgs := parseWithErrors(t, `package p
 event E { payload map<string, int> }`)
-	p.Parse()
-	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "expected Ident") {
-		t.Fatalf("want a payload-type diagnostic, got %v", diags)
+	if !strings.Contains(firstMsg(msgs), "expected Ident") {
+		t.Fatalf("want a payload-type diagnostic, got %v", msgs)
 	}
 }
 
 // TestParseEventRejectsNestedArrayPayload pins that `payload Order[][]` is an
 // error.
 func TestParseEventRejectsNestedArrayPayload(t *testing.T) {
-	p := New("test.craftgo", `package p
+	_, msgs := parseWithErrors(t, `package p
 event E { payload Order[][] }`)
-	p.Parse()
-	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "payload type cannot be a nested array") {
-		t.Fatalf("want a nested-array diagnostic, got %v", diags)
+	if !strings.Contains(firstMsg(msgs), "payload type cannot be a nested array") {
+		t.Fatalf("want a nested-array diagnostic, got %v", msgs)
 	}
 }
 
 // TestParseEventRejectsOptionalArrayPayload pins that `payload Order[]?` is an
 // error.
 func TestParseEventRejectsOptionalArrayPayload(t *testing.T) {
-	p := New("test.craftgo", `package p
+	_, msgs := parseWithErrors(t, `package p
 event E { payload Order[]? }`)
-	p.Parse()
-	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "payload type cannot be optional") {
-		t.Fatalf("want an optional-marker diagnostic, got %v", diags)
+	if !strings.Contains(firstMsg(msgs), "payload type cannot be optional") {
+		t.Fatalf("want an optional-marker diagnostic, got %v", msgs)
 	}
 }
 
 // TestNewKeywordsStillWorkAsFieldNames pins that `event`, `consume` and
 // `payload` are legal field names.
 func TestNewKeywordsStillWorkAsFieldNames(t *testing.T) {
-	p := New("test.craftgo", `package p
+	td := firstDecl[*ast.TypeDecl](t, `package p
 type T {
 	event   string
 	consume string
 	payload string
 }`)
-	f := p.Parse()
-	if diags := p.Diagnostics(); len(diags) > 0 {
-		t.Fatalf("unexpected diagnostics: %v", diags)
-	}
-	td := f.Decls[0].(*ast.TypeDecl)
 	var names []string
 	for _, fl := range ast.Fields(td.Body) {
 		names = append(names, fl.Name)
@@ -166,17 +147,12 @@ type T {
 // TestKeywordSpellingsWorkAsDecoratorArguments pins that a reserved word in a
 // decorator argument is an identifier.
 func TestKeywordSpellingsWorkAsDecoratorArguments(t *testing.T) {
-	p := New("test.craftgo", `package p
+	td := firstDecl[*ast.TypeDecl](t, `package p
 @requiresOneOf(payload, event)
 type T {
 	payload string?
 	event   string?
 }`)
-	f := p.Parse()
-	if diags := p.Diagnostics(); len(diags) > 0 {
-		t.Fatalf("unexpected diagnostics: %v", diags)
-	}
-	td := f.Decls[0].(*ast.TypeDecl)
 	args := td.Decorators[0].Args
 	if len(args) != 2 {
 		t.Fatalf("args = %d, want 2", len(args))
@@ -192,7 +168,7 @@ type T {
 // TestNewKeywordsStillWorkInPaths pins that reserved words work as path
 // segments and parameter names.
 func TestNewKeywordsStillWorkInPaths(t *testing.T) {
-	sd := parseService(t, `package p
+	sd := firstDecl[*ast.ServiceDecl](t, `package p
 service S {
 	get Read /event/{payload} {}
 }`)

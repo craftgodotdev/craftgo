@@ -126,11 +126,7 @@ event Placed {
     payload T
 }
 `
-	p := New("decorators.craftgo", src)
-	f := p.Parse()
-	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("decorators failed to parse: %v", d)
-	}
+	f := mustParse(t, src)
 	if len(f.Decorators) < 3 {
 		t.Errorf("file decorators count = %d, want >= 3", len(f.Decorators))
 	}
@@ -192,7 +188,7 @@ func collectAllDecoratorNames(f *ast.File) map[string]bool {
 // TestParseMultiLineDecoratorChain pins that a field's trailing decorators may
 // span several lines.
 func TestParseMultiLineDecoratorChain(t *testing.T) {
-	f := parseSrc(t, `package design
+	f := mustParse(t, `package design
 type T {
     name string
         @doc("the name")
@@ -215,7 +211,7 @@ type T {
 // TestParseScalarDoesNotStealNextDecorator pins that a scalar takes only the
 // decorators on its own line.
 func TestParseScalarDoesNotStealNextDecorator(t *testing.T) {
-	f := parseSrc(t, `package design
+	f := mustParse(t, `package design
 scalar Email string
 @requiresOneOf(primary, fallback)
 type Pair { primary string?  fallback string? }`)
@@ -228,7 +224,7 @@ type Pair { primary string?  fallback string? }`)
 		t.Fatalf("type Pair should carry @requiresOneOf, got %v", td.Decorators)
 	}
 	// A same-line trailing decorator still belongs to the scalar.
-	f2 := parseSrc(t, `package design
+	f2 := mustParse(t, `package design
 scalar Email string @format("email")`)
 	sd2 := f2.Decls[0].(*ast.ScalarDecl)
 	if len(sd2.Decorators) != 1 || sd2.Decorators[0].Name != "format" {
