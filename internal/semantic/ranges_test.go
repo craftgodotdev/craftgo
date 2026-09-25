@@ -286,8 +286,10 @@ func TestMinMaxOnlyOneSide(t *testing.T) {
 	mustClean(t, `type X { name string @maxLength(50) }`)
 }
 
+// @nullable on a `T?` field warns as redundant.
 func TestNullableOnOptionalIsWarning(t *testing.T) {
-	expectWarning(t, `type X { name string? @nullable }`, CodeDecoratorRedundant)
+	d := expectWarning(t, `type X { name string? @nullable }`, CodeDecoratorRedundant)
+	expectMessage(t, d, "redundant")
 }
 
 func TestNullableOnNonOptionalOK(t *testing.T) {

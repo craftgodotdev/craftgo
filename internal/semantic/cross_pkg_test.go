@@ -444,19 +444,6 @@ middleware X`,
 	}
 }
 
-// @nullable on a `T?` field warns as redundant.
-func TestNullableOnOptionalStillWarns(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package x
-type T { name string? @nullable }`))
-	d := findCode(diags, CodeDecoratorRedundant)
-	if d == nil {
-		t.Fatalf("expected %s for `?` + @nullable, got %v", CodeDecoratorRedundant, diags)
-	}
-	if !strings.Contains(d.Msg, "redundant") {
-		t.Errorf("expected redundancy hint, got %q", d.Msg)
-	}
-}
-
 // Local scalars and enums resolve as field types.
 func TestLocalSymbolEveryTypePositionKind(t *testing.T) {
 	mustClean(t, `package x

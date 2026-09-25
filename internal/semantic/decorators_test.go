@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
 func TestLevelName(t *testing.T) {
@@ -96,14 +95,19 @@ func TestRegistrySpecsHaveDocs(t *testing.T) {
 	}
 }
 
+// An unknown decorator is an error spanning `@nope`.
 func TestPlacementUnknownDecorator(t *testing.T) {
-	d := expectDiag(t, `type X { name string @nope }`, CodeDecoratorUnknown)
+	d := expectError(t, `type X { name string @nope }`, CodeDecoratorUnknown)
 	expectMessage(t, d, "unknown decorator @nope")
+	if d.End.Line != d.Pos.Line || d.End.Column-d.Pos.Column != 5 {
+		t.Errorf("range %v-%v does not cover @nope", d.Pos, d.End)
+	}
 }
 
+// A decorator at the wrong level is refused, naming the levels it belongs to.
 func TestPlacementPrefixOnField(t *testing.T) {
 	d := expectDiag(t, `type X { name string @prefix("/x") }`, CodeDecoratorPlacement)
-	expectMessage(t, d, "@prefix is not allowed on field")
+	expectMessage(t, d, "@prefix is not allowed on field", "service")
 }
 
 func TestPlacementBindingOnMethod(t *testing.T) {
@@ -184,81 +188,8 @@ middleware Auth
 scalar Email string`)
 }
 
-func TestPlacementEmitsEndPosition(t *testing.T) {
-	src := `type X { name string @nope }`
-	_, diags := Analyze(parseFiles(t, src))
-	d := findCode(diags, CodeDecoratorUnknown)
-	if d == nil {
-		t.Fatalf("expected unknown-decorator diag, got %v", diags)
-	}
-	// `@nope` is 5 columns wide.
-	if d.End.Line != d.Pos.Line {
-		t.Errorf("End line %d != Pos line %d", d.End.Line, d.Pos.Line)
-	}
-	if d.End.Column-d.Pos.Column != 5 {
-		t.Errorf("End-Pos column delta = %d, want 5 (covers @nope)", d.End.Column-d.Pos.Column)
-	}
-	if d.Severity != lexer.SeverityError {
-		t.Errorf("severity = %v, want error", d.Severity)
-	}
-}
-
-func TestPlacementListsValidSitesInMessage(t *testing.T) {
-	d := expectDiag(t, `type X { name string @prefix("/x") }`, CodeDecoratorPlacement)
-	expectMessage(t, d, "service")
-}
-
-func TestCodeOnDuplicateDecl(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X {}
-type X {}`))
-	d := findCode(diags, CodeDuplicateDecl)
-	if d == nil {
-		t.Fatalf("missing %s code, got %v", CodeDuplicateDecl, codes(diags))
-	}
-	if len(d.Related) != 1 || d.Related[0].Msg != "first declared here" {
-		t.Errorf("related = %+v", d.Related)
-	}
-}
-
-func TestCodeOnDuplicateField(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string  name int }`))
-	d := findCode(diags, CodeDuplicateField)
-	if d == nil || len(d.Related) != 1 {
-		t.Fatalf("want field/duplicate with related; got %v", diags)
-	}
-}
-
-func TestCodeOnEnumDuplicateName(t *testing.T) {
-	expectDiag(t, `enum X { A  A }`, CodeEnumDuplicateName)
-}
-
-func TestCodeOnEnumMixedTypes(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `enum X { A  B = 1 }`))
-	d := findCode(diags, CodeEnumMixedTypes)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-	if len(d.Related) != 1 {
-		t.Errorf("expected related to first value, got %+v", d.Related)
-	}
-}
-
-func TestCodeOnEnumDuplicateLiteral(t *testing.T) {
-	expectDiag(t, `enum X { A = 1  B = 1 }`, CodeEnumDuplicateLiteral)
-	expectDiag(t, `enum Y { A = "x"  B = "x" }`, CodeEnumDuplicateLiteral)
-}
-
 func TestCodeOnEnumEmpty(t *testing.T) {
 	expectDiag(t, `enum Empty {}`, CodeEnumEmpty)
-}
-
-func TestCodeOnDuplicateService(t *testing.T) {
-	expectDiag(t, `service S {}
-service S {}`, CodeServiceDuplicate)
-}
-
-func TestCodeOnExtendOrphan(t *testing.T) {
-	expectDiag(t, `extend service S { get Op /x {} }`, CodeServiceExtendOrphan)
 }
 
 // Decorators on an `extend service` block apply only to that block's methods.
@@ -303,35 +234,6 @@ extend service S { get Priv /priv {} }`))
 	}
 	if len(priv.Decorators) != 0 {
 		t.Errorf("the block's decorators were written into Priv's syntax: %+v", priv.Decorators)
-	}
-}
-
-func TestCodeOnDuplicateMethod(t *testing.T) {
-	expectDiag(t, `service S { get A /a {} }
-extend service S { post A /b {} }`, CodeServiceDuplicateMethod)
-}
-
-func TestCodeOnDuplicateRoute(t *testing.T) {
-	expectDiag(t, `service S { get A /x {}  get B /x {} }`, CodeServiceDuplicateRoute)
-}
-
-func TestCodeOnDuplicateDecorator(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { name string @doc("a") @doc("b") }`))
-	d := findCode(diags, CodeDecoratorDuplicate)
-	if d == nil || len(d.Related) != 1 {
-		t.Fatalf("want decorator/duplicate with related; got %v", diags)
-	}
-}
-
-func TestCodeOnQualifiedRef(t *testing.T) {
-	expectDiag(t, `type X { user shared.User }`, CodeRefUnknownPackage)
-}
-
-func TestCodeOnBindingConflict(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `type X { id string @path @query }`))
-	d := findCode(diags, CodeBindingConflict)
-	if d == nil || len(d.Related) != 1 {
-		t.Fatalf("want binding/conflict with related; got %v", diags)
 	}
 }
 
@@ -726,11 +628,9 @@ type User { name string? @default(["x"]) }`, CodeDecoratorArgType)
 func TestDefaultWithoutOptionalWarns(t *testing.T) {
 	expectWarning(t, `package design
 type ListReq { page int @default(1) }`, CodeDefaultNeedsOptional)
-	// With the `?` already present, nothing warns.
-	mustClean(t, `package design
-type ListReq { page int? @default(1) }`)
 }
 
+// A @default on an optional field is clean.
 func TestDefaultOnOptionalFieldClean(t *testing.T) {
 	mustClean(t, `package design
 type ListReq { page int? @default(1) }`)

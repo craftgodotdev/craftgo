@@ -90,6 +90,7 @@ service S { get GetUser /u {} }`)
 }
 
 // Types, enums, scalars and errors share one namespace.
+// A second declaration of a top-level name is reported and related to the first.
 func TestDuplicateDecl(t *testing.T) {
 	cases := []string{
 		`type X {}
@@ -102,7 +103,11 @@ error NotFound X`,
 scalar X string`,
 	}
 	for _, src := range cases {
-		expectMsg(t, "duplicate top-level", src)
+		d := expectDiag(t, src, CodeDuplicateDecl)
+		expectMessage(t, d, "duplicate top-level")
+		if len(d.Related) != 1 || d.Related[0].Msg != "first declared here" {
+			t.Errorf("%q: related = %+v", src, d.Related)
+		}
 	}
 }
 
@@ -116,12 +121,14 @@ middleware Foo`)
 }
 
 func TestServicePrimaryDuplicate(t *testing.T) {
-	expectMsg(t, "duplicate primary service", `service S {}
-service S {}`)
+	d := expectDiag(t, `service S {}
+service S {}`, CodeServiceDuplicate)
+	expectMessage(t, d, "duplicate primary service")
 }
 
 func TestServiceExtendWithoutPrimary(t *testing.T) {
-	expectMsg(t, "no primary declaration", `extend service S { get Op /x {} }`)
+	d := expectDiag(t, `extend service S { get Op /x {} }`, CodeServiceExtendOrphan)
+	expectMessage(t, d, "no primary declaration")
 }
 
 // A service-only decorator such as @prefix is rejected on an `extend service` block.
@@ -167,16 +174,23 @@ extend service S { post B /b {} }`)
 }
 
 func TestDuplicateMethodAcrossExtends(t *testing.T) {
-	expectMsg(t, "duplicate method", `service S { get A /a {} }
-extend service S { post A /b {} }`)
+	d := expectDiag(t, `service S { get A /a {} }
+extend service S { post A /b {} }`, CodeServiceDuplicateMethod)
+	expectMessage(t, d, "duplicate method")
 }
 
 func TestDuplicateRoute(t *testing.T) {
-	expectMsg(t, "duplicate route", `service S { get A /x {} get B /x {} }`)
+	d := expectDiag(t, `service S { get A /x {} get B /x {} }`, CodeServiceDuplicateRoute)
+	expectMessage(t, d, "duplicate route")
 }
 
+// A repeated field name is reported and related to the first.
 func TestFieldUniquenessType(t *testing.T) {
-	expectMsg(t, "duplicate field", `type X { name string  name int }`)
+	d := expectDiag(t, `type X { name string  name int }`, CodeDuplicateField)
+	expectMessage(t, d, "duplicate field")
+	if len(d.Related) != 1 {
+		t.Errorf("related = %+v, want the first field", d.Related)
+	}
 }
 
 func TestFieldUniquenessError(t *testing.T) {
@@ -193,19 +207,27 @@ type X { Profile  name string }`)
 }
 
 func TestEnumDuplicateName(t *testing.T) {
-	expectMsg(t, "duplicate enum value name", `enum X { A  A }`)
+	d := expectDiag(t, `enum X { A  A }`, CodeEnumDuplicateName)
+	expectMessage(t, d, "duplicate enum value name")
 }
 
+// Bare and valued members in one enum are reported and related to the first value.
 func TestEnumMixedTypes(t *testing.T) {
-	expectMsg(t, "mixed value types", `enum X { A  B = 1 }`)
+	d := expectDiag(t, `enum X { A  B = 1 }`, CodeEnumMixedTypes)
+	expectMessage(t, d, "mixed value types")
+	if len(d.Related) != 1 {
+		t.Errorf("related = %+v, want the first value", d.Related)
+	}
 }
 
 func TestEnumDuplicateInt(t *testing.T) {
-	expectMsg(t, "duplicate int value", `enum X { A = 1  B = 1 }`)
+	d := expectDiag(t, `enum X { A = 1  B = 1 }`, CodeEnumDuplicateLiteral)
+	expectMessage(t, d, "duplicate int value")
 }
 
 func TestEnumDuplicateString(t *testing.T) {
-	expectMsg(t, "duplicate string value", `enum X { A = "x"  B = "x" }`)
+	d := expectDiag(t, `enum X { A = "x"  B = "x" }`, CodeEnumDuplicateLiteral)
+	expectMessage(t, d, "duplicate string value")
 }
 
 // Every repeat of an enum value name or literal relates to its first use.
@@ -232,8 +254,13 @@ func TestEnumDuplicatesRelateToTheFirst(t *testing.T) {
 	}
 }
 
+// A repeated decorator is reported and related to the first.
 func TestDuplicateDecoratorOnField(t *testing.T) {
-	expectMsg(t, "duplicate decorator", `type X { name string @doc("a") @doc("b") }`)
+	d := expectDiag(t, `type X { name string @doc("a") @doc("b") }`, CodeDecoratorDuplicate)
+	expectMessage(t, d, "duplicate decorator")
+	if len(d.Related) != 1 {
+		t.Errorf("related = %+v, want the first @doc", d.Related)
+	}
 }
 
 func TestDuplicateDecoratorOnType(t *testing.T) {
@@ -292,7 +319,8 @@ type X { name string @length(1, 10) @pattern("^[a-z]+$") }`)
 }
 
 func TestQualifiedRefInField(t *testing.T) {
-	expectMsg(t, "is not declared anywhere in the project", `type X { user shared.User }`)
+	d := expectDiag(t, `type X { user shared.User }`, CodeRefUnknownPackage)
+	expectMessage(t, d, "is not declared anywhere in the project")
 }
 
 func TestQualifiedRefInMethodResponse(t *testing.T) {
@@ -308,8 +336,13 @@ func TestUnqualifiedRefAccepted(t *testing.T) {
 type X { items Page }`)
 }
 
+// Two bindings on one field are reported and related to the first.
 func TestCombinationMultipleBindings(t *testing.T) {
-	expectMsg(t, "@query conflicts with @path", `type X { id string @path @query }`)
+	d := expectDiag(t, `type X { id string @path @query }`, CodeBindingConflict)
+	expectMessage(t, d, "@query conflicts with @path")
+	if len(d.Related) != 1 {
+		t.Errorf("related = %+v, want the first binding", d.Related)
+	}
 }
 
 func TestCombinationBodyAndForm(t *testing.T) {

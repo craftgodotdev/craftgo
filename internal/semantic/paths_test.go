@@ -203,16 +203,6 @@ func TestPathlessMethodsNoFalseCollision(t *testing.T) {
 }`)
 }
 
-func TestSameServiceRouteCollisionStillFlagged(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `service S {
-	get A /users {}
-	get B /users {}
-}`))
-	if findCode(diags, CodeServiceDuplicateRoute) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-}
-
 func TestPathSameServiceDuplicateHandledByOtherCheck(t *testing.T) {
 	// A same-service duplicate is reported as a duplicate route only.
 	_, diags := Analyze(parseFiles(t, `service S {
