@@ -98,6 +98,12 @@ type FlatField struct {
 // Field types are spelled as r's current package spells them; a nil r
 // expands no mixin.
 func FlattenFields(td *ast.TypeDecl, prefix string, r *Resolver, names LevelNames) []FlatField {
+	return flattenInstance(td, prefix, nil, r, names)
+}
+
+// flattenInstance is [FlattenFields] with td's type parameters bound to
+// args, which r's current package spells.
+func flattenInstance(td *ast.TypeDecl, prefix string, args []*ast.TypeRef, r *Resolver, names LevelNames) []FlatField {
 	if td == nil {
 		return nil
 	}
@@ -110,7 +116,7 @@ func FlattenFields(td *ast.TypeDecl, prefix string, r *Resolver, names LevelName
 	if home == "" {
 		home = view
 	}
-	fields, _ := proj.flattenFields(view, home, td.Body, td.TypeParams, nil, names)
+	fields, _ := proj.flattenFields(view, home, td.Body, td.TypeParams, args, names)
 	return fields
 }
 
@@ -260,9 +266,9 @@ func (p *Project) requalify(t *ast.TypeRef, home, view string, typeParams []stri
 	return &clone
 }
 
-// requestFields returns the fields of m's request type, mixins included,
-// spelled as view, the package declaring the type, spells them; ok is false
-// when m has no request or it names no type.
+// requestFields returns the fields of m's request type, mixins included and
+// its generic arguments substituted, spelled as view, the package declaring
+// the type, spells them; ok is false when m has no request or it names no type.
 func (a *analyzer) requestFields(m *ast.Method) (view string, fields []FlatField, ok bool) {
 	if m == nil || m.Request == nil {
 		return "", nil, false
@@ -272,6 +278,10 @@ func (a *analyzer) requestFields(m *ast.Method) (view string, fields []FlatField
 		return "", nil, false
 	}
 	td := pkg.Types[sym]
-	fields, _ = a.proj.flattenFields(pkg.Name, pkg.Name, td.Body, td.TypeParams, nil, nil)
+	args := make([]*ast.TypeRef, len(m.Request.Args))
+	for i, arg := range m.Request.Args {
+		args[i] = a.proj.requalify(arg, a.pkg.Name, pkg.Name, nil)
+	}
+	fields, _ = a.proj.flattenFields(pkg.Name, pkg.Name, td.Body, td.TypeParams, args, nil)
 	return pkg.Name, fields, true
 }

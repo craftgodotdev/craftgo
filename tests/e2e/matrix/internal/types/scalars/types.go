@@ -166,6 +166,13 @@ type ListOrdersReq struct {
 	Limit  *Cents  `json:"limit,omitempty"`
 }
 
+// Lookup<T> is a generic request type: `Lookup<Priority>` binds `id` from
+// the route's {id} and `level` as a Priority from the query string.
+type Lookup[T any] struct {
+	ID    UUID `json:"id"`
+	Level *T   `json:"level,omitempty"`
+}
+
 // MapValueGeneric verifies that generic instances ride the `map<K, V>`
 // builtin without losing their synthetic name: the value branch goes
 // through schemaForTypeRef recursively, so `Page<Order>` is registered

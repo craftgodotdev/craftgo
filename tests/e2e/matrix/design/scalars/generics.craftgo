@@ -243,3 +243,10 @@ type Keyed<Key> {
 type ListKeyedReq {
 	Keyed<Priority>
 }
+
+// Lookup<T> is a generic request type: `Lookup<Priority>` binds `id` from
+// the route's {id} and `level` as a Priority from the query string.
+type Lookup<T> {
+	id    UUID
+	level T?
+}

@@ -2883,6 +2883,22 @@ components:
       $ref: '#/components/schemas/AccountLoginResp'
     LogoutRespBody:
       $ref: '#/components/schemas/ID'
+    LookupOfPriority:
+      description: |-
+        Lookup<T> is a generic request type: `Lookup<Priority>` binds `id` from
+        the route's {id} and `level` as a Priority from the query string.
+      properties:
+        id:
+          $ref: '#/components/schemas/ScalarsUUID'
+        level:
+          anyOf:
+          - $ref: '#/components/schemas/Priority'
+          - type: "null"
+      required:
+      - id
+      type: object
+    LookupOrderRespBody:
+      $ref: '#/components/schemas/ScalarsOrder'
     Map_ArrayValue:
       description: |-
         Map_ArrayValue stacks an array INSIDE a map value: each value is a
@@ -10560,6 +10576,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListKeyedRespBody'
+          description: OK
+      tags:
+      - scalars
+  /scalars/lookup/{id}:
+    get:
+      description: Look an order up by id. The request is a generic instance, Lookup<Priority>,
+        bound from the path and the query string.
+      operationId: LookupOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/ScalarsUUID'
+      - in: query
+        name: level
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/Priority'
+          - type: "null"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LookupOrderRespBody'
           description: OK
       tags:
       - scalars

@@ -228,6 +228,24 @@ func (v *ListOrdersReq) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on Lookup.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *Lookup[T]) Validate() error {
+	if err := v.ID.Validate(); err != nil {
+		return fmt.Errorf("id: %w", err)
+	}
+	if v.Level != nil {
+		if vv, ok := any(v.Level).(interface{ Validate() error }); ok {
+			if err := vv.Validate(); err != nil {
+				return err
+			}
+		} else if err := validateValue((*v.Level)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on MapValueGeneric.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *MapValueGeneric) Validate() error {

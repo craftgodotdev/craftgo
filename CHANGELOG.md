@@ -525,6 +525,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   chain is dropped, and the block's own `@middlewares`, `@security` or
   `@tags` start it afresh.
 
+- **A generic request type binds with its type arguments.** `get Get
+  /things/{id} { request IdHolder<string> }` was refused (`{id}` requires a
+  string, `got T`), as was a `filter T?` of `Paged<Status>` on a GET: the
+  request's fields were checked without the arguments. The checks, the
+  handler's binder and the OpenAPI parameters read the fields substituted,
+  and the body schema of a request that also binds path or query fields
+  substitutes them once, not over the fields a nested mixin brings.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

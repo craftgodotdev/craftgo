@@ -257,3 +257,23 @@ type Page<T> { Meta }
 type Row { Page<string[]> }
 type Req { rows Row[] @uniqueItems  pages Page<string[]>[] @uniqueItems }`)
 }
+
+// A generic request type binds with its arguments substituted: `id T` on
+// `IdHolder<string>` fills the route's {id}, `filter T?` on `Paged<Status>`
+// rides the query string, and `T?` over an array is still refused there.
+func TestGenericRequestTypeBindsWithItsArguments(t *testing.T) {
+	mustClean(t, `package app
+type IdHolder<T> { id T }
+type Resp { ok bool }
+service S { get Get /things/{id} { request IdHolder<string>  response Resp } }`)
+	mustClean(t, `package app
+enum Status { active  inactive }
+type Paged<T> { page int  filter T? }
+type Resp { ok bool }
+service S { get L /l { request Paged<Status>  response Resp } }`)
+	d := expectError(t, `package app
+type Box<T> { a T? }
+type Resp { ok bool }
+service S { get A /a { request Box<string[]>  response Resp } }`, CodeBindingType)
+	expectMessage(t, d, "Box.a", "optional type parameter over an array")
+}

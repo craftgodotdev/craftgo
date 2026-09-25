@@ -43,6 +43,12 @@ service ScalarsService {
 		response OrderPage
 	}
 
+	@doc("Look an order up by id. The request is a generic instance, Lookup<Priority>, bound from the path and the query string.")
+	get LookupOrder /lookup/{id} {
+		request  Lookup<Priority>
+		response Order
+	}
+
 	@doc("Echo a wrapped/nested generic instance. Probes Page<Envelope<Order>> end-to-end through transport + OpenAPI.")
 	post EchoWrapped /wrapped {
 		request  EchoWrappedReq

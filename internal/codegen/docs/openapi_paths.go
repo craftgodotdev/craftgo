@@ -125,7 +125,7 @@ func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package,
 	// A mixed request's body schema holds its body fields, the ones mixins
 	// bring included, and the cross-field fragments.
 	if len(bins.body) > 0 {
-		s := schemaFromFields(substituteGenericFields(bins.body, td, m.Request.Args), pkg, registry)
+		s := schemaFromFields(bins.body, pkg, registry)
 		if frags := crossFieldSchemaFragments(td.Decorators, td.Body); len(frags) > 0 {
 			s = &openapi3.Schema{
 				AllOf: append(openapi3.SchemaRefs{{Value: s}}, frags...),

@@ -226,7 +226,11 @@ func LookupMethodType(ref *ast.NamedTypeRef, r *Resolver) (*ast.TypeDecl, string
 // ResolveFields resolves every field [FlattenFields] returns for td, prefix,
 // r and levelNames; a bare type name resolves in pkg.
 func ResolveFields(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver, levelNames LevelNames) []ResolvedField {
-	flat := FlattenFields(td, prefix, r, levelNames)
+	return resolveFlat(FlattenFields(td, prefix, r, levelNames), pkg, r)
+}
+
+// resolveFlat resolves each field of flat; a bare type name resolves in pkg.
+func resolveFlat(flat []FlatField, pkg *Package, r *Resolver) []ResolvedField {
 	out := make([]ResolvedField, 0, len(flat))
 	for _, ff := range flat {
 		rf := ResolveField(ff.Field, pkg, r.Project())
@@ -236,9 +240,10 @@ func ResolveFields(td *ast.TypeDecl, prefix string, pkg *Package, r *Resolver, l
 	return out
 }
 
-// RequestFields resolves m's request fields and auto-binds each one with no
-// binding decorator and no @sensitive: to @path when its name is a route
-// variable (@prefix included), else to @query on a body-less verb.
+// RequestFields resolves m's request fields, the request type's generic
+// arguments substituted, and auto-binds each one with no binding decorator
+// and no @sensitive: to @path when its name is a route variable (@prefix
+// included), else to @query on a body-less verb.
 func RequestFields(m *ast.Method, pkg *Package, r *Resolver, levelNames LevelNames) []ResolvedField {
 	if m == nil || m.Request == nil {
 		return nil
@@ -249,7 +254,7 @@ func RequestFields(m *ast.Method, pkg *Package, r *Resolver, levelNames LevelNam
 	}
 	pathNames := methodRoutePathVars(m, pkg.Services)
 	bodyVerb := wire.IsBodyVerb(m.Verb)
-	fields := ResolveFields(td, prefix, pkg, r, levelNames)
+	fields := resolveFlat(flattenInstance(td, prefix, m.Request.Args, r, levelNames), pkg, r)
 	for i := range fields {
 		rf := &fields[i]
 		// An explicit @body also reads as BindBody.
