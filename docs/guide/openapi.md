@@ -7,7 +7,7 @@ craftgo emits OpenAPI 3.1 from the same DSL that drives the handlers. The spec i
 Every `craftgo gen` produces `docs/openapi.yaml` with:
 
 - Every method as a `paths` entry
-- Every type, enum, and error as a `components.schemas` entry
+- Every non-generic type, enum, scalar and error as a `components.schemas` entry
 - Every validator decorator mapped to its OpenAPI keyword (`minLength`, `pattern`, `enum`, ...)
 - Doc comments flowing into descriptions
 - Security schemes from your config
@@ -26,11 +26,13 @@ The rest of this page walks through what's emitted and how to render or publish 
 
 Every `craftgo gen` writes `docs/openapi.yaml` covering:
 
-- `paths` - one entry per `service` method
-- `components.schemas` - every `type`, `enum`, and `error` with full structure
-- `components.parameters` - path, query, header, cookie params per operation
-- `components.requestBodies` - body, multipart, and other content types
-- `components.responses` - success and declared error responses
+- `paths` - one entry per route, an operation per `service` method with its
+  path, query, header and cookie parameters, request body and responses
+  written in place
+- `components.schemas` - every non-generic `type`, `enum`, `scalar` and
+  `error` with full structure, each generic instance a schema or an operation
+  refers to (`PageOfUser`), and the `<Method>ReqBody` / `<Method>RespBody` of
+  each JSON body
 - `components.securitySchemes` - when `openapi.securitySchemes` is in your config
 
 ## Validity
@@ -41,7 +43,7 @@ The output is consumed cleanly by:
 - [`openapi-generator`](https://openapi-generator.tech/) and similar client generators.
 - [oasdiff](https://github.com/oasdiff/oasdiff) - breaking-change detection between versions.
 
-Strict structural linters ([Spectral](https://stoplight.io/open-source/spectral), [Redocly CLI](https://redocly.com/redocly-cli/)) currently report `nullable`-related findings under their default 3.1 ruleset - see the warning above. Aside from the `nullable` idiom, the structure (paths, schemas, parameters, `oneOf`/`anyOf` for cross-field constraints, `propertyNames` for map keys) is valid 3.1.
+The structure (paths, schemas, parameters, `anyOf` and `not` for cross-field constraints, `oneOf` for errors sharing a status, `propertyNames` for map keys) is valid 3.1: [Redocly CLI](https://redocly.com/redocly-cli/)'s structural rules and [openapi-spec-validator](https://github.com/python-openapi/openapi-spec-validator) accept it, given security schemes that carry the fields their type requires. Their style rules may still warn, about an operation without a `summary`, say.
 
 ## Renders
 
@@ -132,7 +134,7 @@ Field-level validators map to OpenAPI keywords:
 | Decorator / shape              | OpenAPI                  |
 | ------------------------------ | ------------------------ |
 | Non-optional field (no `?`)    | listed in `required: [...]` |
-| `name string?`                 | omitted from `required: [...]` |
+| `name string?`                 | omitted from `required: [...]`, `type: [T, "null"]` |
 | `@nullable`                    | `type: [T, "null"]` (or `anyOf: [{$ref}, {type: "null"}]`) |
 | `@default(v)`                  | `default: v`             |
 | `@length(1, 80)`               | `minLength: 1, maxLength: 80` |
@@ -140,19 +142,26 @@ Field-level validators map to OpenAPI keywords:
 | `@pattern("...")`              | `pattern: ...`           |
 | `@format(email)`               | `format: email`          |
 | `@gte(0)`, `@lte(100)`         | `minimum: 0, maximum: 100` |
-| `@gt(0)`, `@lt(100)`           | `minimum: 0, exclusiveMinimum: true` / `maximum: 100, exclusiveMaximum: true` |
+| `@gt(0)`, `@lt(100)`           | `exclusiveMinimum: 0` / `exclusiveMaximum: 100` |
 | `@minItems(1)`, `@maxItems(10)` | `minItems: 1, maxItems: 10` |
 | `@uniqueItems`                 | `uniqueItems: true`      |
 | `@example("alice")`            | `example: alice`         |
 | `@deprecated`                  | `deprecated: true`       |
 
+On a float field the validator compares against the literal's float, and a
+bound judges the literal and that float as the validator does: `@lte(0.1)` on
+a `float32` field is `maximum: 0.10000000149011612`, which both pass, and
+`@gt(0.1)` is `exclusiveMinimum: 0.10000000149011612`, which both fail.
+
 ## Documentation flows through
 
-DSL doc comments become OpenAPI descriptions:
+DSL doc comments become OpenAPI descriptions; `@summary("...")` sets an
+operation's `summary`:
 
 ```craftgo
 // Create a new user. The server fills the id and timestamps;
 // the client supplies name and email.
+@summary("Create a user")
 post CreateUser /users {
     request  CreateUserReq
     response User
@@ -163,8 +172,10 @@ post CreateUser /users {
 paths:
   /v1/users:
     post:
-      summary: Create a new user. The server fills...
-      description: ...
+      description: |-
+        Create a new user. The server fills the id and timestamps;
+        the client supplies name and email.
+      summary: Create a user
 ```
 
 Per-field docs flow into the schema's property description.
@@ -246,8 +257,8 @@ UserNotFoundErr:
 ```
 
 An error with no field, like `UserNotFound`, is documented as the `code` and
-`message` the server sends for it. Errors whose categories share a status
-share its response, their schemas in a `oneOf`.
+`message` the server sends for it. Errors of one category share its response,
+their schemas in a `oneOf`.
 
 ## Security schemes
 
