@@ -165,7 +165,7 @@ func (k CommentKind) String() string {
 // Comment is one `//` comment.
 type Comment struct {
 	Pos  Position    // the first '/'
-	Text string      // without the `//`, one following space and a CRLF's '\r'
+	Text string      // without the `//` and one following space
 	Kind CommentKind // leading or trailing
 }
 

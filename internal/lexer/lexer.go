@@ -152,7 +152,7 @@ func (l *Lexer) consumeTrailingComment() {
 	saveOffset, saveLine, saveCol := l.offset, l.line, l.column
 	for l.offset < len(l.src) {
 		r := l.peek()
-		if r != ' ' && r != '\t' && r != '\r' {
+		if r != ' ' && r != '\t' {
 			break
 		}
 		l.advance()
@@ -170,15 +170,15 @@ func (l *Lexer) atLineComment() bool {
 }
 
 // lineComment consumes the `//` comment at the cursor up to the end of its
-// line, records it as kind and returns its text: without the slashes, one
-// space after them and a CRLF's '\r'.
+// line, records it as kind and returns its text: without the slashes and one
+// space after them.
 func (l *Lexer) lineComment(kind CommentKind) string {
 	pos := l.pos()
 	start := l.offset + len("//")
-	for l.offset < len(l.src) && l.src[l.offset] != '\n' {
+	for l.offset < len(l.src) && l.src[l.offset] != '\n' && l.src[l.offset] != '\r' {
 		l.advance()
 	}
-	text := strings.TrimPrefix(strings.TrimSuffix(l.src[start:l.offset], "\r"), " ")
+	text := strings.TrimPrefix(l.src[start:l.offset], " ")
 	l.allComments = append(l.allComments, &Comment{Pos: pos, Text: text, Kind: kind})
 	return text
 }
@@ -276,7 +276,7 @@ func (l *Lexer) lexString(pos Position) Token {
 			return l.errorf(pos, "unterminated string literal")
 		}
 		switch l.peek() {
-		case '\n':
+		case '\n', '\r':
 			return l.errorf(pos, "newline in string literal")
 		case '"':
 			l.advance()
@@ -288,7 +288,7 @@ func (l *Lexer) lexString(pos Position) Token {
 		case '\\':
 			// The escaped rune, a quote included, never ends the literal.
 			l.advance()
-			if l.offset < len(l.src) && l.peek() != '\n' {
+			if r := l.peek(); l.offset < len(l.src) && r != '\n' && r != '\r' {
 				l.advance()
 			}
 		default:
@@ -374,7 +374,7 @@ func (l *Lexer) skipWhitespaceAndComments() {
 	for l.offset < len(l.src) {
 		r := l.peek()
 		switch {
-		case r == '\n':
+		case l.atLineEnd():
 			consecutiveNewlines++
 			if consecutiveNewlines >= 2 {
 				// A blank line detaches the comments above from the next token.
@@ -407,14 +407,22 @@ func (l *Lexer) peek() rune {
 // advance consumes one rune and updates line and column; the caller ensures a
 // rune remains.
 func (l *Lexer) advance() {
-	r, size := utf8.DecodeRuneInString(l.src[l.offset:])
+	end := l.atLineEnd()
+	_, size := utf8.DecodeRuneInString(l.src[l.offset:])
 	l.offset += size
-	if r == '\n' {
+	if end {
 		l.line++
 		l.column = 1
 	} else {
 		l.column++
 	}
+}
+
+// atLineEnd reports whether the rune at the cursor ends a line: '\n', or a
+// '\r' that no '\n' follows.
+func (l *Lexer) atLineEnd() bool {
+	rest := l.src[l.offset:]
+	return strings.HasPrefix(rest, "\n") || strings.HasPrefix(rest, "\r") && !strings.HasPrefix(rest, "\r\n")
 }
 
 // pos returns the cursor's Position.

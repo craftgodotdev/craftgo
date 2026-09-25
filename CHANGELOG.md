@@ -183,6 +183,11 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **A `type` needs a body.** `type T` with no `{ … }` is a parse error; it
   parsed as an empty type, and formatting wrote `type T {}`.
 
+- **A lone carriage return ends a line**, as `\n` and `\r\n` do. In a file
+  with CR-only line ends, or with a CR among LF ones, a `//` comment ran on
+  to the next `\n` and swallowed the declarations after it, which gen then
+  left out without an error.
+
 - **Formatting a CRLF file writes LF line ends throughout.** A line with a
   trailing comment kept its `\r`.
 

@@ -1,6 +1,7 @@
 package lexer
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -497,7 +498,7 @@ func TestLineCommentStripsCarriageReturn(t *testing.T) {
 }
 
 // A comment after a token is recorded as trailing without a CRLF's '\r', in
-// order with the leading ones.
+// order with the leading ones; a lone '\r' ends the line before a comment.
 func TestTrailingCommentStripsCarriageReturn(t *testing.T) {
 	l := New("", "foo // one\r\n// two\r\nbar \r// three\r\n")
 	toks := l.Tokenize()
@@ -508,7 +509,47 @@ func TestTrailingCommentStripsCarriageReturn(t *testing.T) {
 	for _, c := range l.Comments() {
 		got = append(got, c.Kind.String()+":"+c.Text)
 	}
-	if want := "trailing:one leading:two trailing:three"; strings.Join(got, " ") != want {
+	if want := "trailing:one leading:two leading:three"; strings.Join(got, " ") != want {
 		t.Errorf("comments = %q, want %q", got, want)
 	}
+}
+
+// A lone '\r' ends a line as '\n' and "\r\n" do: a source with any of the
+// three line ends lexes into the same tokens, docs and comments, at the same
+// lines and columns.
+func TestLoneCarriageReturnEndsALine(t *testing.T) {
+	lf := "package demo\ntype T {\n\tid string // why\n}\n// note\ntype U {\n\tname string\n}\n\n// detached\n\n// doc\ntype V {\n\tpath string @pattern(`a\nb`)\n}\n"
+	want := lexed(lf)
+	for name, src := range map[string]string{
+		"CR":    strings.ReplaceAll(lf, "\n", "\r"),
+		"CRLF":  strings.ReplaceAll(lf, "\n", "\r\n"),
+		"mixed": strings.Replace(strings.ReplaceAll(lf, "\n", "\r"), "\r", "\n", 3),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := lexed(src); got != want {
+				t.Errorf("lexed:\n%s\nwant:\n%s", got, want)
+			}
+		})
+	}
+	if tok := first(t, "\"a\rb\""); tok.Kind != Error || tok.Text != "newline in string literal" {
+		t.Errorf("a string across a lone CR: %v", tok)
+	}
+}
+
+// lexed renders the tokens of src with their lines, columns and docs, then its
+// comments; a line end inside a token reads as "\n".
+func lexed(src string) string {
+	l := New("", src)
+	lineEnds := strings.NewReplacer("\r\n", "\n", "\r", "\n")
+	var b strings.Builder
+	for _, tok := range l.Tokenize() {
+		fmt.Fprintf(&b, "%s %q %d:%d %q\n", tok.Kind, lineEnds.Replace(tok.Text), tok.Pos.Line, tok.Pos.Column, tok.Doc)
+	}
+	for _, c := range l.Comments() {
+		fmt.Fprintf(&b, "%s %q %d:%d\n", c.Kind, c.Text, c.Pos.Line, c.Pos.Column)
+	}
+	for _, d := range l.Diagnostics() {
+		fmt.Fprintf(&b, "diagnostic %s\n", d.Error())
+	}
+	return b.String()
 }
