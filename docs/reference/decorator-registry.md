@@ -28,7 +28,7 @@ A decorator's **level** is where it may be written. Applying one at the wrong le
 
 ## Field validation - string
 
-All apply at field, scalar, and error-field level. They target `string`-typed values.
+All apply at field, scalar, and error-field level. They target `string`-typed values; the three length decorators also bound the length of a `bytes` value.
 
 | Decorator | Args | Effect |
 |---|---|---|
@@ -51,7 +51,7 @@ Field, scalar, error-field level. Target numeric (`int*`, `uint*`, `float*`) val
 | `@range(min, max)` | `(number, number)` | Inclusive `[min, max]`. |
 | `@positive` | - | `x > 0` (flag form, sugar for `@gt(0)`). |
 | `@negative` | - | `x < 0` (flag form, sugar for `@lt(0)`). |
-| `@multipleOf(n)` | `(number)` | `x % n == 0`. |
+| `@multipleOf(n)` | `(number)` | `x % n == 0`, on integers only; `n` is a whole number. |
 
 ::: tip Coming from JSON Schema, Zod, or class-validator?
 craftgo spells numeric bounds `@gte` / `@lte` (inclusive) and `@gt` / `@lt` (strict) - there is no `@min` / `@max`. The split mirrors the strict-vs-inclusive distinction and reads consistently with `@range(min, max)`.

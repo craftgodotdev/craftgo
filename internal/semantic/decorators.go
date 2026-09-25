@@ -151,17 +151,23 @@ type ArgsRule struct {
 }
 
 // Prims is a bitmask of the primitive type categories a decorator applies to.
-type Prims uint8
+type Prims uint16
 
 const (
-	// PrimString covers `string` and `bytes`, and scalars over them.
+	// PrimString covers `string`, and scalars over it.
 	PrimString Prims = 1 << iota
-	// PrimNumber covers integers and floats.
-	PrimNumber
+	// PrimBytes covers `bytes`, and scalars over it.
+	PrimBytes
+	// PrimInteger covers the signed and unsigned integers.
+	PrimInteger
+	// PrimFloat covers `float32` and `float64`.
+	PrimFloat
 	// PrimBool covers `bool`.
 	PrimBool
-	// PrimArray covers arrays and maps.
+	// PrimArray covers arrays.
 	PrimArray
+	// PrimMap covers maps.
+	PrimMap
 	// PrimFile covers the `file` primitive (multipart upload).
 	PrimFile
 	// PrimDateTime covers `datetime`, which no validator targets.
@@ -171,7 +177,28 @@ const (
 	PrimRawBytes
 	// PrimAny matches any field type.
 	PrimAny Prims = 0
+	// PrimNumber covers integers and floats.
+	PrimNumber = PrimInteger | PrimFloat
 )
+
+// primNames labels each category, in the order [Prims.String] lists them;
+// [PrimNumber] reads as one.
+var primNames = []struct {
+	cats Prims
+	name string
+}{
+	{PrimString, "string"},
+	{PrimBytes, "bytes"},
+	{PrimNumber, "number"},
+	{PrimInteger, "integer"},
+	{PrimFloat, "float"},
+	{PrimBool, "bool"},
+	{PrimArray, "array"},
+	{PrimMap, "map"},
+	{PrimFile, "file"},
+	{PrimDateTime, "datetime"},
+	{PrimRawBytes, "bytes @format(raw)"},
+}
 
 // String joins the category names with ", ", or returns "any" for zero.
 func (p Prims) String() string {
@@ -179,26 +206,11 @@ func (p Prims) String() string {
 		return "any"
 	}
 	var parts []string
-	if p&PrimString != 0 {
-		parts = append(parts, "string")
-	}
-	if p&PrimNumber != 0 {
-		parts = append(parts, "number")
-	}
-	if p&PrimBool != 0 {
-		parts = append(parts, "bool")
-	}
-	if p&PrimArray != 0 {
-		parts = append(parts, "array")
-	}
-	if p&PrimFile != 0 {
-		parts = append(parts, "file")
-	}
-	if p&PrimDateTime != 0 {
-		parts = append(parts, "datetime")
-	}
-	if p&PrimRawBytes != 0 {
-		parts = append(parts, "bytes @format(raw)")
+	for _, e := range primNames {
+		if p&e.cats == e.cats {
+			parts = append(parts, e.name)
+			p &^= e.cats
+		}
 	}
 	return strings.Join(parts, ", ")
 }
@@ -338,21 +350,21 @@ var Registry = map[string]Spec{
 		Name: "length", Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:        "Exact or [min,max] length for strings.",
 		Args:       ArgsRule{Min: 1, Max: 2, Kinds: []ArgKind{ArgInt, ArgInt}},
-		AppliesTo:  PrimString,
+		AppliesTo:  PrimString | PrimBytes,
 		Constraint: ConstraintLength,
 	},
 	"minLength": {
 		Name: "minLength", Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:        "Minimum string length.",
 		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
-		AppliesTo:  PrimString,
+		AppliesTo:  PrimString | PrimBytes,
 		Constraint: ConstraintLength,
 	},
 	"maxLength": {
 		Name: "maxLength", Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:        "Maximum string length.",
 		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
-		AppliesTo:  PrimString,
+		AppliesTo:  PrimString | PrimBytes,
 		Constraint: ConstraintLength,
 	},
 	"pattern": {
@@ -371,7 +383,7 @@ var Registry = map[string]Spec{
 			Kinds: []ArgKind{ArgStringOrIdent},
 			Enum:  formatValues,
 		},
-		AppliesTo:  PrimString | PrimRawBytes,
+		AppliesTo:  PrimString | PrimBytes | PrimRawBytes,
 		Constraint: ConstraintText,
 	},
 
@@ -417,7 +429,7 @@ var Registry = map[string]Spec{
 		Name: "multipleOf", Levels: LvlField | LvlScalar | LvlErrorField,
 		Doc:        "Value must be a multiple of N.",
 		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgNumber}},
-		AppliesTo:  PrimNumber,
+		AppliesTo:  PrimInteger,
 		Constraint: ConstraintNumeric,
 	},
 
@@ -426,14 +438,14 @@ var Registry = map[string]Spec{
 		Name: "minItems", Levels: LvlField | LvlErrorField,
 		Doc:        "Minimum array / map length.",
 		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
-		AppliesTo:  PrimArray,
+		AppliesTo:  PrimArray | PrimMap,
 		Constraint: ConstraintItems,
 	},
 	"maxItems": {
 		Name: "maxItems", Levels: LvlField | LvlErrorField,
 		Doc:        "Maximum array / map length.",
 		Args:       ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgInt}},
-		AppliesTo:  PrimArray,
+		AppliesTo:  PrimArray | PrimMap,
 		Constraint: ConstraintItems,
 	},
 	"uniqueItems": {Name: "uniqueItems", Levels: LvlField | LvlErrorField, Doc: "Array elements must be unique.", AppliesTo: PrimArray, Flag: true, Constraint: ConstraintItems},

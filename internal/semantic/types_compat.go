@@ -24,12 +24,12 @@ func (a *analyzer) checkFieldTypeCompat() {
 // error body.
 func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) {
 	for _, f := range ast.Fields(members) {
-		actual := a.fieldPrimOf(f)
+		actual := ResolveField(f, a.pkg, a.proj).Prims()
 		for _, d := range f.Decorators {
 			if d == nil {
 				continue
 			}
-			if a.formatRawMismatch(d, actual, parent+"."+f.Name, describeTypeRef(f.Type)) {
+			if a.formatArgMismatch(d, actual, parent+"."+f.Name, describeTypeRef(f.Type)) {
 				continue
 			}
 			spec, ok := Lookup(d.Name)
@@ -52,22 +52,18 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 // checkScalarTypeCompat checks that a scalar wraps a built-in primitive,
 // then checks its decorators against that primitive.
 func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
-	actual := PrimFromName(sd.Primitive)
-	if sd.Primitive == "bytes" && HasRawFormat(sd.Decorators) {
-		actual = PrimRawBytes
-	}
-	if actual == 0 || actual == PrimFile {
-		// `file` is an upload keyword, not a type a scalar can wrap.
+	if !ScalarWraps(sd.Primitive) {
 		a.diag(sd.Pos, sd.Pos, lexer.SeverityError, CodeScalarBadPrimitive,
 			"scalar %q primitive must be a built-in (got %q; expected one of string, bool, bytes, int, int8..int64, uint, uint8..uint64, float32, float64)",
 			sd.Name, sd.Primitive)
 		return
 	}
+	actual := ScalarPrims(sd)
 	for _, d := range sd.Decorators {
 		if d == nil {
 			continue
 		}
-		if a.formatRawMismatch(d, actual, "scalar "+sd.Name, sd.Primitive) {
+		if a.formatArgMismatch(d, actual, "scalar "+sd.Name, sd.Primitive) {
 			continue
 		}
 		spec, ok := Lookup(d.Name)
@@ -83,52 +79,30 @@ func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
 	}
 }
 
-// formatRawMismatch reports `@format(raw)` on anything but raw bytes, which
-// AppliesTo cannot catch because `raw` is an argument, and returns whether
-// it did. subject names the decorated site and actualDesc its type.
-func (a *analyzer) formatRawMismatch(d *ast.Decorator, actual Prims, subject, actualDesc string) bool {
-	if !isFormatRaw(d) || actual == PrimRawBytes {
+// formatArgMismatch reports a `@format` whose argument does not fit the
+// decorated type - `raw` on anything but bytes, any other format on bytes -
+// which AppliesTo cannot catch, and returns whether it did. subject names
+// the decorated site and actualDesc its type.
+func (a *analyzer) formatArgMismatch(d *ast.Decorator, actual Prims, subject, actualDesc string) bool {
+	if d.Name != "format" || len(d.Args) == 0 {
 		return false
 	}
-	a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-		"@format(raw) applies to bytes, but %s is %s - `raw` says the bytes already are the value in the message's own encoding, which only `bytes` carries",
-		subject, actualDesc)
+	name, ok := ast.TextValue(d.Args[0].Value)
+	switch {
+	case !ok:
+		return false
+	case name == FormatRaw && actual != PrimRawBytes:
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+			"@format(raw) applies to bytes, but %s is %s - `raw` says the bytes already are the value in the message's own encoding, which only `bytes` carries",
+			subject, actualDesc)
+	case name != FormatRaw && actual&(PrimBytes|PrimRawBytes) != 0:
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
+			"@format(%s) applies to string, but %s is %s - a binary value has no text format; `raw` is the only format bytes take",
+			name, subject, actualDesc)
+	default:
+		return false
+	}
 	return true
-}
-
-// fieldPrimOf is [analyzer.fieldPrim] for a whole field: a bytes field is
-// [PrimRawBytes] when `@format(raw)` sits on it or on its scalar.
-func (a *analyzer) fieldPrimOf(f *ast.Field) Prims {
-	if f == nil {
-		return 0
-	}
-	if ResolveField(f, a.pkg, a.proj).Category == CatRawBytes {
-		return PrimRawBytes
-	}
-	return a.fieldPrim(f.Type)
-}
-
-// fieldPrim returns t's primitive category: [PrimArray] for an array or
-// map, the category of a built-in or of a scalar's primitive, else 0.
-func (a *analyzer) fieldPrim(t *ast.TypeRef) Prims {
-	if t == nil {
-		return 0
-	}
-	if t.Array || t.Map != nil {
-		return PrimArray
-	}
-	if t.Named == nil || t.Named.Name == nil {
-		return 0
-	}
-	if len(t.Named.Name.Parts) == 1 {
-		if p := PrimFromName(t.Named.Name.Parts[0]); p != 0 {
-			return p
-		}
-	}
-	if sd := a.lookupScalar(t.Named); sd != nil {
-		return PrimFromName(sd.Primitive)
-	}
-	return 0
 }
 
 // PrimFromName returns the [Prims] category of a built-in primitive name;
@@ -139,10 +113,14 @@ func PrimFromName(name string) Prims {
 		return 0
 	}
 	switch sp.Kind {
-	case prims.String, prims.Bytes:
+	case prims.String:
 		return PrimString
-	case prims.Int, prims.Uint, prims.Float:
-		return PrimNumber
+	case prims.Bytes:
+		return PrimBytes
+	case prims.Int, prims.Uint:
+		return PrimInteger
+	case prims.Float:
+		return PrimFloat
 	case prims.Bool:
 		return PrimBool
 	case prims.File:
@@ -151,4 +129,21 @@ func PrimFromName(name string) Prims {
 		return PrimDateTime
 	}
 	return 0
+}
+
+// ScalarWraps reports whether a scalar may wrap built-in name: any
+// classified primitive but `file`, an upload rather than a value.
+func ScalarWraps(name string) bool {
+	p := PrimFromName(name)
+	return p != 0 && p != PrimFile
+}
+
+// ScalarPrims returns the category of scalar sd's values: [PrimRawBytes]
+// for bytes carrying `@format(raw)`, else its primitive's.
+func ScalarPrims(sd *ast.ScalarDecl) Prims {
+	p := PrimFromName(sd.Primitive)
+	if p == PrimBytes && HasRawFormat(sd.Decorators) {
+		return PrimRawBytes
+	}
+	return p
 }

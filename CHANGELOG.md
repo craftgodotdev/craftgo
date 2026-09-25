@@ -33,6 +33,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   file writes `@timeout(60)` as `1 * time.Minute`, the largest whole unit, as
   it always wrote `@timeout(60s)`; the value is unchanged.
 
+- **A decorator on the wrong kind of value reads the same everywhere.**
+  `@pattern` on `bytes`, `@multipleOf` on a float and `@uniqueItems` on a
+  map report `@X applies to <kinds> fields, but <field> is <kind>`, as every
+  other decorator on the wrong type does; a fractional `@multipleOf` divisor
+  on an integer reads like a fractional bound, and a `@format` other than
+  `raw` on `bytes` reads `@format(email) applies to string, but …`. The codes
+  are unchanged.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw
@@ -342,6 +350,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   the exact integer. A `@default` is held to the same range rule as a bound:
   one beyond `float32` is rejected too, and an out-of-range one reads
   `@default 200 exceeds int8 range [-128, 127]`.
+
+- **The editor offers a field the decorators its type takes.** On a field
+  typed with a scalar declared in another file or package, `@` offered
+  every validator - `@gt` on a string scalar; it now resolves the scalar in
+  the project. `@pattern` on `bytes`, `@multipleOf` on a float and
+  `@uniqueItems` on a map are no longer offered, and an error's fields are
+  filtered like a type's.
 
 ### Deprecated
 

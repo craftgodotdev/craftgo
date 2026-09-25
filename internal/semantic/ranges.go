@@ -6,7 +6,6 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
-	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
 // checkRangesAndExtras runs the field rules over every type and error body
@@ -38,32 +37,6 @@ func (a *analyzer) checkDeclRanges(d ast.Decl) {
 		a.checkBoundCapacity(scalarAsField)
 		a.checkNegativeOnUnsigned(scalarAsField)
 		a.checkPairOrdering(scalarAsField)
-		if dd.Primitive == "bytes" && !HasRawFormat(dd.Decorators) {
-			for _, d := range dd.Decorators {
-				if d != nil && (d.Name == "pattern" || d.Name == "format") {
-					a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-						"@%s applies to text, not a `bytes` scalar - a binary value has no string pattern / format. Use a `string` scalar, or drop the decorator.",
-						d.Name)
-				}
-			}
-		}
-		isFloat := dd.Primitive == "float32" || dd.Primitive == "float64"
-		for _, d := range dd.Decorators {
-			if d == nil || d.Name != "multipleOf" {
-				continue
-			}
-			if isFloat {
-				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-					"@multipleOf does not support float scalars - Go's modulus operator is integer-only. Use an integer scalar, or add a tolerance check in your handler.")
-				continue
-			}
-			if prims.IsInteger(dd.Primitive) && len(d.Args) == 1 {
-				if l, ok := ParseNumericArg(d.Args[0]); ok && !l.IsWhole() {
-					a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-						"@multipleOf on an integer scalar needs a whole-number divisor - Go's modulus is integer-only, so a fractional divisor can't be enforced (the OpenAPI would advertise a bound the validator drops). Use a whole number.")
-				}
-			}
-		}
 	}
 }
 
@@ -74,11 +47,9 @@ func (a *analyzer) checkBodyRanges(members []ast.TypeMember, typeParams []string
 		a.checkNullableRedundant(f)
 		a.checkBoundCapacity(f)
 		a.checkBoundLiteralKind(f)
-		a.checkMultipleOfTarget(f)
 		a.checkNegativeOnUnsigned(f)
 		a.checkUniqueItemsComparable(f, typeParams)
 		a.checkValueConstraintOnTypeParam(f, typeParams)
-		a.checkPatternFormatOnBytes(f)
 		a.checkMapKeyComparable(f, typeParams)
 	}
 }

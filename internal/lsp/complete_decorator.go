@@ -124,17 +124,12 @@ func decoratorArgCompletions(name string) []protocol.CompletionItem {
 
 // decoratorCompletions offers the registered decorators legal at the site
 // level of the cursor whose name starts with prefix.
-func decoratorCompletions(view snapshotView, c cursor, prefix string) []protocol.CompletionItem {
+func (r *request) decoratorCompletions(c cursor, prefix string) []protocol.CompletionItem {
+	view := r.view()
 	level := guessLevel(view, c)
 	// On a field or scalar, the type's primitive category must meet the
 	// decorator's AppliesTo; 0 on either side means no filter.
-	var fieldPrim semantic.Prims
-	switch level {
-	case semantic.LvlField:
-		fieldPrim = fieldPrimAt(view, c)
-	case semantic.LvlScalar:
-		fieldPrim = scalarPrimAt(view, c)
-	}
+	fieldPrim := r.primsAt(level, c)
 	extendSite := level == semantic.LvlService && nextTopLevelKeyword(view, c) == lexer.KwExtend
 	names := make([]string, 0, len(semantic.Registry))
 	for name := range semantic.Registry {

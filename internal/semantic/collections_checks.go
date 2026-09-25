@@ -67,20 +67,11 @@ func (a *analyzer) keyMarshalable(key *ast.TypeRef, typeParams []string) bool {
 	return false
 }
 
-// checkUniqueItemsComparable rejects `@uniqueItems` on a map, and on an
-// array whose elements the validator cannot dedupe by value.
+// checkUniqueItemsComparable rejects `@uniqueItems` on an array whose
+// elements the validator cannot dedupe by value.
 func (a *analyzer) checkUniqueItemsComparable(f *ast.Field, typeParams []string) {
 	d := ast.FindDecorator(f.Decorators, "uniqueItems")
-	if d == nil || f.Type == nil {
-		return
-	}
-	// A map passes the PrimArray gate but has no @uniqueItems form.
-	if f.Type.Map != nil {
-		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-			"@uniqueItems applies to array fields, not maps (field %q): a map's keys are already unique and there is no object-uniqueness form. Drop @uniqueItems.", f.Name)
-		return
-	}
-	if !f.Type.Array {
+	if d == nil || f.Type == nil || !f.Type.Array {
 		return
 	}
 	elem := f.Type.ElemTypeRef()

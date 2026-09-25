@@ -81,6 +81,25 @@ func (rf ResolvedField) GoPointer() bool {
 	return rf.Category == CatFile || (rf.NeedsNilGuard && !rf.IsNilable)
 }
 
+// Prims returns the category the field offers type-bound decorators: that
+// of its built-in or scalar primitive, [PrimArray], [PrimMap] or
+// [PrimRawBytes]; 0 for an enum, a struct, `any` or an unresolved type.
+func (rf ResolvedField) Prims() Prims {
+	switch rf.Category {
+	case CatArray:
+		return PrimArray
+	case CatMap:
+		return PrimMap
+	case CatRawBytes:
+		return PrimRawBytes
+	case CatFile:
+		return PrimFile
+	case CatPrimitive, CatScalar, CatBytes:
+		return PrimFromName(rf.ResolvedPrim)
+	}
+	return 0
+}
+
 // FieldIsOptional reports whether f may be absent: declared `T?` or
 // carrying `@nullable`.
 func FieldIsOptional(f *ast.Field) bool {

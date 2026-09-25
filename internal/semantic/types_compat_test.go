@@ -15,9 +15,12 @@ func TestPrimsString(t *testing.T) {
 		{0, "any"},
 		{PrimString, "string"},
 		{PrimNumber, "number"},
+		{PrimInteger, "integer"},
+		{PrimFloat, "float"},
 		{PrimBool, "bool"},
-		{PrimArray, "array"},
+		{PrimArray | PrimMap, "array, map"},
 		{PrimFile, "file"},
+		{PrimString | PrimBytes, "string, bytes"},
 		{PrimString | PrimNumber, "string, number"},
 	}
 	for _, c := range cases {
@@ -33,19 +36,66 @@ func TestPrimFromName(t *testing.T) {
 		want Prims
 	}{
 		{"string", PrimString},
-		{"bytes", PrimString},
-		{"int", PrimNumber},
-		{"int64", PrimNumber},
-		{"uint8", PrimNumber},
-		{"float32", PrimNumber},
+		{"bytes", PrimBytes},
+		{"int", PrimInteger},
+		{"int64", PrimInteger},
+		{"uint8", PrimInteger},
+		{"float32", PrimFloat},
 		{"bool", PrimBool},
 		{"file", PrimFile},
+		{"datetime", PrimDateTime},
 		{"any", 0}, // not classified at this layer
 		{"User", 0},
 	}
 	for _, c := range cases {
 		if got := PrimFromName(c.in); got != c.want {
 			t.Errorf("PrimFromName(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
+
+// Each rule a category split carries is decided by AppliesTo alone, once.
+func TestAppliesToDecidesSplitCategories(t *testing.T) {
+	for _, c := range []struct{ src, msg string }{
+		{`type X { b bytes @pattern("^a$") }`, "@pattern applies to string fields, but X.b is bytes"},
+		{`type X { b bytes @format(email) }`, "@format(email) applies to string, but X.b is bytes"},
+		{"scalar Blob bytes @format(raw)\ntype X { b Blob @format(email) }", "@format(email) applies to string, but X.b is Blob"},
+		{`scalar B bytes @format(email)`, "@format(email) applies to string, but scalar B is bytes"},
+		{`type X { r float64 @multipleOf(2) }`, "@multipleOf applies to integer fields, but X.r is float"},
+		{`type X { m map<string, int> @uniqueItems }`, "@uniqueItems applies to array fields, but X.m is map"},
+		{`scalar B bytes @pattern("^a$")`, "@pattern applies to string, but scalar B is bytes"},
+		{`scalar R float32 @multipleOf(2)`, "@multipleOf applies to integer, but scalar R is float"},
+	} {
+		d := expectError(t, c.src, CodeDecoratorTypeMismatch)
+		expectMessage(t, d, c.msg)
+		expectCodeCount(t, c.src, CodeDecoratorTypeMismatch, 1)
+	}
+	mustClean(t, `type X { b bytes @minLength(1) @maxLength(9)  m map<string, int> @minItems(1) @maxItems(3)  n int @multipleOf(2) }`)
+}
+
+// A field's category follows its resolved type, through scalars and raw bytes.
+func TestResolvedFieldPrims(t *testing.T) {
+	pkg := mustClean(t, `scalar Email string
+scalar Blob bytes @format(raw)
+enum S { A }
+type X {
+	s string
+	b bytes
+	r bytes @format(raw)
+	e Email
+	blob Blob
+	n int
+	f float32
+	xs int[]
+	m map<string, int>
+	en S
+	a any
+}`)
+	want := map[string]Prims{"s": PrimString, "b": PrimBytes, "r": PrimRawBytes, "e": PrimString, "blob": PrimRawBytes,
+		"n": PrimInteger, "f": PrimFloat, "xs": PrimArray, "m": PrimMap, "en": 0, "a": 0}
+	for _, f := range ast.Fields(pkg.Types["X"].Body) {
+		if got := ResolveField(f, pkg, nil).Prims(); got != want[f.Name] {
+			t.Errorf("%s: Prims = %v, want %v", f.Name, got, want[f.Name])
 		}
 	}
 }
@@ -158,13 +208,6 @@ func TestQualifiedFieldTypeSkipsCompat(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `type X { user shared.User @length(1, 5) }`))
 	if findCode(diags, CodeDecoratorTypeMismatch) != nil {
 		t.Errorf("type-compat should not stack on unknown qualified ref, got %v", codes(diags))
-	}
-}
-
-func TestFieldPrimNil(t *testing.T) {
-	a := newTestAnalyzer(&Package{})
-	if got := a.fieldPrim(nil); got != 0 {
-		t.Errorf("nil TypeRef should resolve to 0, got %v", got)
 	}
 }
 

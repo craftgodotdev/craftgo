@@ -9,21 +9,28 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// fieldPrimAt returns the primitive category of the field on the cursor's
-// line, or 0 off a field row.
-func fieldPrimAt(view snapshotView, c cursor) semantic.Prims {
-	f := fieldAtCursor(view, c)
-	if f == nil {
-		return 0
+// primsAt returns the primitive category of the field or scalar the cursor
+// decorates at level, the field's type resolved in the loaded project; else 0.
+func (r *request) primsAt(level semantic.Level, c cursor) semantic.Prims {
+	switch level {
+	case semantic.LvlField, semantic.LvlErrorField:
+		if f := fieldAtCursor(r.view(), c); f != nil {
+			v := r.project()
+			return semantic.ResolveField(f, v.proj.Packages[v.currentPackage()], v.proj).Prims()
+		}
+	case semantic.LvlScalar:
+		if sd := scalarAt(r.view(), c); sd != nil {
+			return semantic.ScalarPrims(sd)
+		}
 	}
-	return primOfTypeRef(f.Type, f.Decorators, view.file)
+	return 0
 }
 
-// scalarPrimAt returns the primitive category of the scalar on the cursor's
-// line, or of the first one below the cursor's decorator lines; else 0.
-func scalarPrimAt(view snapshotView, c cursor) semantic.Prims {
+// scalarAt returns the scalar on the cursor's line, or the first one below
+// the cursor's decorator lines; else nil.
+func scalarAt(view snapshotView, c cursor) *ast.ScalarDecl {
 	if view.file == nil {
-		return 0
+		return nil
 	}
 	for _, d := range view.file.Decls {
 		sd, ok := d.(*ast.ScalarDecl)
@@ -31,54 +38,10 @@ func scalarPrimAt(view snapshotView, c cursor) semantic.Prims {
 			continue
 		}
 		if sd.Pos.Line == c.line || (sd.Pos.Line >= c.line && noDeclBetween(view.file, c.line, sd.Pos.Line)) {
-			return primFromIdent(sd.Primitive, sd.Decorators)
+			return sd
 		}
 	}
-	return 0
-}
-
-// primFromIdent returns the category of a built-in name; `bytes` with
-// `@format(raw)` among decs is [semantic.PrimRawBytes].
-func primFromIdent(name string, decs []*ast.Decorator) semantic.Prims {
-	if name == "bytes" && semantic.HasRawFormat(decs) {
-		return semantic.PrimRawBytes
-	}
-	return semantic.PrimFromName(name)
-}
-
-// primOfTypeRef returns the category of a field type: [semantic.PrimArray] for
-// an array or map, else that of its built-in or of a scalar declared in file.
-func primOfTypeRef(t *ast.TypeRef, decs []*ast.Decorator, file *ast.File) semantic.Prims {
-	if t == nil {
-		return 0
-	}
-	if t.Array || t.Map != nil {
-		return semantic.PrimArray
-	}
-	if t.Named == nil {
-		return 0
-	}
-	name := t.Named.Name.String()
-	// `any` and `object` stay unclassified.
-	if p := primFromIdent(name, decs); p != 0 {
-		return p
-	}
-	if name == "any" || name == "object" {
-		return 0
-	}
-	if file != nil {
-		for _, d := range file.Decls {
-			if sd, ok := d.(*ast.ScalarDecl); ok && sd.Name == name {
-				inner := &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{sd.Primitive}}}}
-				if semantic.HasRawFormat(sd.Decorators) {
-					// The scalar's `@format(raw)` covers every field typed with it.
-					decs = sd.Decorators
-				}
-				return primOfTypeRef(inner, decs, file)
-			}
-		}
-	}
-	return 0
+	return nil
 }
 
 // declInfo is how the editor shows a declaration: its declaration line (e.g.

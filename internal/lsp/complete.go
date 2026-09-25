@@ -58,10 +58,10 @@ func (r *request) namedSlotCompletions(c cursor) ([]protocol.CompletionItem, boo
 	}
 	// `@|` or `@na|`: decorator names.
 	if mid != nil && mid.Kind == lexer.At {
-		return decoratorCompletions(view, c, ""), true
+		return r.decoratorCompletions(c, ""), true
 	}
 	if mid != nil && mid.Kind == lexer.Ident && prev != nil && prev.Kind == lexer.At {
-		return decoratorCompletions(view, c, mid.Text), true
+		return r.decoratorCompletions(c, mid.Text), true
 	}
 	// `error |`: the error categories.
 	if prev != nil && prev.Kind == lexer.KwError && (mid == nil || mid.Kind == lexer.Ident) {

@@ -95,7 +95,7 @@ event OrderPlaced {
 	pos := findToken(t, view, "@")
 	pos.Character++
 	have := map[string]bool{}
-	for _, item := range decoratorCompletions(view, view.cursorAt(pos), "") {
+	for _, item := range (&request{parsed: &view}).decoratorCompletions(view.cursorAt(pos), "") {
 		have[item.Label] = true
 	}
 	for _, want := range []string{"contract", "doc"} {

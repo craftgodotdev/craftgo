@@ -3,9 +3,12 @@ package lsp
 import (
 	"fmt"
 	"maps"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -77,6 +80,55 @@ func TestExtendSiteCompletionMatchesSemantic(t *testing.T) {
 		accepted := !parseDesign(t, strings.Replace(fixture, "@D", "@"+name, 1)).misplaced
 		if offered[name] != accepted {
 			t.Errorf("@%s above an extend: offered = %v, accepted by analysis = %v", name, offered[name], accepted)
+		}
+	}
+}
+
+// On a field typed with a scalar another file or package declares, `@` offers
+// the decorators of the scalar's primitive.
+func TestDecoratorsFollowAScalarDeclaredElsewhere(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "craftgo.design.yaml"), "package: example.com/m\noutput:\n  types: ./types\n")
+	mustWrite(t, filepath.Join(root, "design", "app", "scalars.craftgo"), "package app\n\nscalar Email string\n")
+	mustWrite(t, filepath.Join(root, "design", "shared", "s.craftgo"), "package shared\n\nscalar Code int\n")
+	for _, c := range []struct {
+		src          string
+		want, banned []string
+	}{
+		{"package app\n\ntype U {\n\te Email @|\n}\n", []string{"minLength", "pattern"}, []string{"gt", "multipleOf"}},
+		{"package app\n\nimport \"shared\"\n\ntype U {\n\tc shared.Code @|\n}\n", []string{"gt", "multipleOf"}, []string{"minLength", "pattern"}},
+	} {
+		src, pos := markCursor(t, c.src)
+		path := filepath.Join(root, "design", "app", "u.craftgo")
+		mustWrite(t, path, src)
+		u := uri.File(path)
+		items := completionItems(t, &server{docs: map[uri.URI]string{u: src}}, u, pos)
+		expectLabels(t, items, c.want...)
+		expectNoLabels(t, items, c.banned...)
+	}
+}
+
+// Decorator completion on a field offers a type-bound decorator exactly when
+// analysis accepts that decorator's category on the field's type.
+func TestFieldDecoratorCompletionMatchesSemanticTypes(t *testing.T) {
+	for _, typ := range []string{"string", "bytes", "int", "float64", "bool", "datetime", "string[]", "map<string, int>", "Email", "Flag", "Raw"} {
+		const decls = "scalar Email string\nscalar Flag bool\nscalar Raw bytes @format(raw)\n"
+		offered := labelSet(mustCompletionsAtCursor(t, "t.craftgo", "package x\n"+decls+"type T {\n\tv "+typ+" @|\n}\n"))
+		for _, name := range slices.Sorted(maps.Keys(semantic.Registry)) {
+			spec := semantic.Registry[name]
+			if spec.AppliesTo == 0 || spec.Levels&semantic.LvlField == 0 {
+				continue
+			}
+			_, diags := semantic.Analyze([]*ast.File{parser.New("t.craftgo", "package x\n"+decls+"type T { v "+typ+" @"+name+" }\n").Parse()})
+			accepted := true
+			for _, d := range diags {
+				if d.Code == semantic.CodeDecoratorTypeMismatch {
+					accepted = false
+				}
+			}
+			if offered[name] != accepted {
+				t.Errorf("@%s on %s: offered = %v, accepted by analysis = %v", name, typ, offered[name], accepted)
+			}
 		}
 	}
 }
