@@ -101,8 +101,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   generated methods.
 
 - **A decorator is no decorator argument.** The grammar took `@a(@b)`,
-  though no decorator reads one; it is now a parse error, `expected
-  literal, got @`.
+  though no decorator reads one; it is now one parse error at the inner
+  `@`, `a decorator cannot be an argument of @a`, however deep the
+  arguments it carries.
 
 - **A `@default` must pass its field's constraints.** A default that broke a
   validator of its field or of the field's scalar - `@default("")` beside

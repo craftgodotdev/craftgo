@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -375,12 +376,15 @@ func TestMiddlewareNoParams(t *testing.T) {
 	}
 }
 
-// TestMiddlewareRejectsParams pins that a middleware declaration with
-// parameters is an error.
+// A middleware's parameter list is one error, and the declaration after it
+// still parses.
 func TestMiddlewareRejectsParams(t *testing.T) {
-	_, msgs := parseWithErrors(t, `middleware RateLimit(rps: int = 100)`)
-	if !strings.Contains(firstMsg(msgs), "no parameters") {
-		t.Errorf("diagnostics = %v, want the first to say a middleware takes no parameters", msgs)
+	f, msgs := parseWithErrors(t, "middleware RateLimit(rps: int = (100))\ntype T { a string }")
+	if len(msgs) != 1 || !strings.Contains(msgs[0], "no parameters") {
+		t.Fatalf("diagnostics = %v, want one saying a middleware takes no parameters", msgs)
+	}
+	if len(f.Decls) != 2 || f.Decls[1].DeclName() != "T" {
+		t.Errorf("declarations = %v, want the middleware and type T", f.Decls)
 	}
 }
 
@@ -568,11 +572,104 @@ type X {}`)
 	}
 }
 
-// A decorator is no decorator argument: `@a(@b)` is reported at the inner `@`.
+// A decorator in a decorator's arguments, arguments and all, is one error at
+// its `@` that names the decorator it is in; what follows it still parses.
 func TestDecoratorArgumentIsNoDecorator(t *testing.T) {
-	_, msgs := parseWithErrors(t, "package p\n\n@wrap(@length(1, 20))\ntype X {}\n")
-	if want := "expected literal, got @"; len(msgs) == 0 || msgs[0] != want {
-		t.Errorf("diagnostics = %v, want the first to be %q", msgs, want)
+	for _, c := range []struct{ src, want string }{
+		{"@doc(@x)\ntype X {}", "3:6: a decorator cannot be an argument of @doc"},
+		{"@wrap(@length(1, 20))\ntype X {}", "3:7: a decorator cannot be an argument of @wrap"},
+		{"@doc(@a(@b(\"c\")))\ntype X {}", "3:6: a decorator cannot be an argument of @doc"},
+		{"type X {\n\ta string @minLength(@x(1), 2)\n\tb int\n}", "4:22: a decorator cannot be an argument of @minLength"},
+		{"@doc(text: @x)\ntype X {}", "3:12: a decorator cannot be an argument of @doc"},
+		{"@errors([A, @x(B)])\ntype X {}", "3:13: a decorator cannot be an argument of @errors"},
+		{"@example({k: @x({v: 1})})\ntype X {}", "3:14: a decorator cannot be an argument of @example"},
+		{"@doc(@)\ntype X {}", "3:6: a decorator cannot be an argument of @doc"},
+	} {
+		p := New("t.craftgo", "package p\n\n"+c.src+"\n")
+		f := p.Parse()
+		var got []string
+		for _, d := range p.Diagnostics() {
+			got = append(got, fmt.Sprintf("%d:%d: %s", d.Pos.Line, d.Pos.Column, d.Msg))
+		}
+		if len(got) != 1 || got[0] != c.want {
+			t.Errorf("%q: diagnostics = %q, want [%q]", c.src, got, c.want)
+		}
+		if len(f.Decls) != 1 || f.Decls[0].DeclName() != "X" {
+			t.Errorf("%q: declarations = %v, want the one type X", c.src, f.Decls)
+		}
+	}
+}
+
+// The arguments around a decorator argument keep their places.
+func TestDecoratorArgumentKeepsItsNeighbours(t *testing.T) {
+	f, _ := parseWithErrors(t, "package p\n\ntype X {\n\ta string @minLength(@x(1), 2)\n\tb int\n}\n")
+	td := f.Decls[0].(*ast.TypeDecl)
+	if got := renderMembers(td.Body); got != "[a string; b int]" {
+		t.Fatalf("members = %s, want [a string; b int]", got)
+	}
+	args := td.Body[0].(*ast.Field).Decorators[0].Args
+	if len(args) != 2 {
+		t.Fatalf("got %d arguments, want 2", len(args))
+	}
+	if n, ok := args[1].Value.(*ast.IntLit); !ok || n.Value != 2 {
+		t.Errorf("second argument = %#v, want 2", args[1].Value)
+	}
+}
+
+// An argument list left open ends at an inner decorator's `)` that ends its
+// line, or at the body's `}`, so the declarations below still parse.
+func TestUnclosedArgumentsCloseAtAnInnerDecorator(t *testing.T) {
+	for _, c := range []struct {
+		src   string
+		want  []string
+		decls []string
+	}{
+		{
+			"type User {\n\t@doc(\n\temail string @format(email)\n\tname  string\n}\n\ntype Other {\n\tid string\n}\n",
+			[]string{"5:8: expected ',' or ')' after decorator argument, got Ident", "5:15: expected ',' or ')' after decorator argument, got @"},
+			[]string{"User", "Other"},
+		},
+		{
+			"scalar Email string @format(email) @maxLength(@x(254)\n\nscalar Other string\n\ntype T {\n\te Email\n}\n",
+			[]string{"3:47: a decorator cannot be an argument of @maxLength"},
+			[]string{"Email", "Other", "T"},
+		},
+		{
+			"type User {\n\tname string\n\t@doc(\n\temail string\n}\n\ntype Other {\n\tid string\n}\n",
+			[]string{"6:8: expected ',' or ')' after decorator argument, got Ident", "7:1: expected ',' or ')' after decorator argument, got }"},
+			[]string{"User", "Other"},
+		},
+		{
+			"type User {\n\t@doc(@example(\n\temail string @format(email)\n\tname  string\n}\n\ntype Other {\n\tid string\n}\n",
+			[]string{"4:7: a decorator cannot be an argument of @doc", "7:1: expected ',' or ')' after decorator argument, got }"},
+			[]string{"User", "Other"},
+		},
+		{
+			"type T {\n\ta string @length(@x(1) 5)\n}\n",
+			[]string{"4:19: a decorator cannot be an argument of @length", "4:25: expected ',' or ')' after decorator argument, got Int"},
+			[]string{"T"},
+		},
+		{
+			"@errors([@x(1) Nf])\ntype X {}\n",
+			[]string{"3:10: a decorator cannot be an argument of @errors", "3:16: expected ',' or ']' after array element, got Ident"},
+			[]string{"X"},
+		},
+	} {
+		p := New("t.craftgo", "package p\n\n"+c.src)
+		f := p.Parse()
+		var got, decls []string
+		for _, d := range p.Diagnostics() {
+			got = append(got, fmt.Sprintf("%d:%d: %s", d.Pos.Line, d.Pos.Column, d.Msg))
+		}
+		for _, d := range f.Decls {
+			decls = append(decls, d.DeclName())
+		}
+		if !slices.Equal(got, c.want) {
+			t.Errorf("%q: diagnostics = %q, want %q", c.src, got, c.want)
+		}
+		if !slices.Equal(decls, c.decls) {
+			t.Errorf("%q: declarations = %q, want %q", c.src, decls, c.decls)
+		}
 	}
 }
 

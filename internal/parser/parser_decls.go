@@ -181,23 +181,7 @@ func (p *Parser) parseMiddlewareDecl(decs []*ast.Decorator, doc []string) *ast.M
 	md := &ast.MiddlewareDecl{Pos: pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Name: name.Text}
 	if p.peek().Kind == lexer.LParen {
 		p.errorf(p.peek().Pos, "middleware declaration takes no parameters - configuration lives in the generated impl file, not the DSL")
-		depth := 0
-		for {
-			t := p.peek()
-			if t.Kind == lexer.EOF {
-				break
-			}
-			if t.Kind == lexer.LParen {
-				depth++
-			} else if t.Kind == lexer.RParen {
-				depth--
-				if depth == 0 {
-					p.advance()
-					break
-				}
-			}
-			p.advance()
-		}
+		p.skipParens()
 	}
 	return md
 }

@@ -167,6 +167,33 @@ func (p *Parser) braced(member func()) (lbrace, rbrace lexer.Token) {
 	return lbrace, rbrace
 }
 
+// skipParens consumes from the current `(` through its matching `)`, and
+// reports whether it got there; EOF or a `}` it did not open stops it first.
+func (p *Parser) skipParens() bool {
+	parens, braces := 0, 0
+	for !p.peekIs(lexer.EOF) {
+		switch p.peek().Kind {
+		case lexer.LParen:
+			parens++
+		case lexer.RParen:
+			parens--
+			if parens == 0 {
+				p.advance()
+				return true
+			}
+		case lexer.LBrace:
+			braces++
+		case lexer.RBrace:
+			if braces == 0 {
+				return false
+			}
+			braces--
+		}
+		p.advance()
+	}
+	return false
+}
+
 // listSep consumes the `,` after a list element. Before closer or EOF it
 // consumes nothing; any other token is reported.
 func (p *Parser) listSep(closer lexer.Kind, element string) {

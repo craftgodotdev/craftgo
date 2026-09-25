@@ -66,8 +66,9 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 	if p.peek().Kind == lexer.LParen {
 		p.advance()
 		d.HasParens = true
-		for p.peek().Kind != lexer.RParen && p.peek().Kind != lexer.EOF {
-			d.Args = append(d.Args, p.parseDecoratorArg())
+		// A `}` ends the arguments too: it closes the body they were left open in.
+		for !p.peekIs(lexer.RParen) && !p.peekIs(lexer.RBrace) && !p.peekIs(lexer.EOF) {
+			d.Args = append(d.Args, p.parseDecoratorArg(d.Name))
 			p.listSep(lexer.RParen, "decorator argument")
 		}
 		rparen, _ := p.expect(lexer.RParen)
@@ -76,12 +77,13 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 	return d
 }
 
-// parseDecoratorArg parses an object literal, `name: value` or a bare value.
-func (p *Parser) parseDecoratorArg() *ast.DecoratorArg {
+// parseDecoratorArg parses an argument of the decorator named dec: an object
+// literal, `name: value` or a bare value.
+func (p *Parser) parseDecoratorArg(dec string) *ast.DecoratorArg {
 	pos := p.peek().Pos
 	arg := &ast.DecoratorArg{Pos: pos}
 	if p.peek().Kind == lexer.LBrace {
-		arg.Object = p.parseObjectLiteral()
+		arg.Object = p.parseObjectLiteral(dec)
 		return arg
 	}
 	if p.peek().Kind == lexer.Ident && p.peekAt(1).Kind == lexer.Colon {
@@ -89,22 +91,23 @@ func (p *Parser) parseDecoratorArg() *ast.DecoratorArg {
 		p.advance()
 		arg.Name = name
 		arg.Named = true
-		arg.Value = p.parseValueOrArray()
+		arg.Value = p.parseValueOrArray(dec, lexer.RParen)
 		return arg
 	}
-	arg.Value = p.parseValueOrArray()
+	arg.Value = p.parseValueOrArray(dec, lexer.RParen)
 	return arg
 }
 
-// parseObjectLiteral parses `{ key: value, ... }`.
-func (p *Parser) parseObjectLiteral() []*ast.ObjectField {
+// parseObjectLiteral parses `{ key: value, ... }` in the arguments of the
+// decorator named dec.
+func (p *Parser) parseObjectLiteral(dec string) []*ast.ObjectField {
 	p.expect(lexer.LBrace)
 	var fields []*ast.ObjectField
 	for p.peek().Kind != lexer.RBrace && p.peek().Kind != lexer.EOF {
 		fpos := p.peek().Pos
 		name := p.expectFieldKey()
 		p.expect(lexer.Colon)
-		val := p.parseValueOrArray()
+		val := p.parseValueOrArray(dec, lexer.RBrace)
 		fields = append(fields, &ast.ObjectField{Pos: fpos, Name: name, Value: val})
 		p.listSep(lexer.RBrace, "object field")
 	}
@@ -124,31 +127,37 @@ func (p *Parser) expectFieldKey() string {
 	return ""
 }
 
-// parseValueOrArray parses an array literal or a single value.
-func (p *Parser) parseValueOrArray() ast.Expr {
+// parseValueOrArray parses an array literal or a single value in the arguments
+// of the decorator named dec, in a list that closer closes.
+func (p *Parser) parseValueOrArray(dec string, closer lexer.Kind) ast.Expr {
 	if p.peek().Kind == lexer.LBracket {
-		return p.parseArray()
+		return p.parseArray(dec)
 	}
-	return p.parseValue()
+	return p.parseValue(dec, closer)
 }
 
-// parseArray parses `[a, b, ...]`, whose elements may be arrays.
-func (p *Parser) parseArray() ast.Expr {
+// parseArray parses `[a, b, ...]`, whose elements may be arrays, in the
+// arguments of the decorator named dec.
+func (p *Parser) parseArray(dec string) ast.Expr {
 	pos := p.advance().Pos
 	arr := &ast.ArrayLit{Pos: pos}
 	for p.peek().Kind != lexer.RBracket && p.peek().Kind != lexer.EOF {
-		arr.Elements = append(arr.Elements, p.parseValueOrArray())
+		arr.Elements = append(arr.Elements, p.parseValueOrArray(dec, lexer.RBracket))
 		p.listSep(lexer.RBracket, "array element")
 	}
 	p.expect(lexer.RBracket)
 	return arr
 }
 
-// parseValue parses one literal or qualified identifier. Other input is
-// reported and skipped, and yields a NullLit rather than nil.
-func (p *Parser) parseValue() ast.Expr {
+// parseValue parses a literal or a qualified name in a list of @dec's arguments
+// that closer closes; other input is reported, skipped and read as null.
+func (p *Parser) parseValue(dec string, closer lexer.Kind) ast.Expr {
 	t := p.peek()
 	switch t.Kind {
+	case lexer.At:
+		p.errorf(t.Pos, "a decorator cannot be an argument of @%s", dec)
+		p.skipDecorator(closer == lexer.RParen)
+		return &ast.NullLit{Pos: t.Pos}
 	case lexer.String, lexer.RawString:
 		p.advance()
 		return &ast.StringLit{Pos: t.Pos, Value: unquote(t), Text: t.Text}
@@ -202,6 +211,22 @@ func (p *Parser) parseValue() ast.Expr {
 	p.errorf(t.Pos, "expected literal, got %s", t.Kind)
 	p.advance()
 	return &ast.NullLit{Pos: t.Pos}
+}
+
+// skipDecorator consumes the decorator at the current `@` and its arguments;
+// with mayClose, a `)` that ends its line, no `,` or `)` next, closes the list.
+func (p *Parser) skipDecorator(mayClose bool) {
+	p.advance()
+	if t := p.peek(); t.Kind != lexer.Ident && !t.Kind.IsKeyword() {
+		return
+	}
+	p.advance()
+	if !p.peekIs(lexer.LParen) || !p.skipParens() || !mayClose {
+		return
+	}
+	if next := p.peek(); next.Pos.Line > p.tokens[p.pos-1].Pos.Line && next.Kind != lexer.Comma && next.Kind != lexer.RParen {
+		p.pos--
+	}
 }
 
 // signedInt returns the value of the Int token tok, negated when neg, and
