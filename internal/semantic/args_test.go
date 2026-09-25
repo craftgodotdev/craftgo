@@ -569,4 +569,6 @@ func TestDefaultConstraintMessageWording(t *testing.T) {
 	}
 	d = expectError(t, "package app\ntype R { s string? @maxLength(1) @default(\"a\\u{301}\") }", CodeDecoratorConflict)
 	expectMessage(t, d, `@default("a\u{301}") violates @maxLength(1): its length is 2`)
+	d = expectError(t, "package app\ntype R {\n  s string? @maxLength(1) @default(`a\nb`)\n}", CodeDecoratorConflict)
+	expectMessage(t, d, `@default("a\nb") violates @maxLength(1): its length is 3`)
 }

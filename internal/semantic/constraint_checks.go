@@ -394,11 +394,12 @@ func decoratorCall(d *ast.Decorator) string {
 	return "@" + d.Name + "(" + strings.Join(parts, ", ") + ")"
 }
 
-// literalText renders literal e as the design writes it.
+// literalText renders literal e as the design writes it; a string written
+// over several lines is quoted onto one.
 func literalText(e ast.Expr) string {
 	switch v := e.(type) {
 	case *ast.StringLit:
-		if v.Text != "" {
+		if v.Text != "" && !strings.ContainsAny(v.Text, "\r\n") {
 			return v.Text
 		}
 		return strconv.Quote(v.Value)
