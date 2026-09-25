@@ -653,3 +653,31 @@ func lookupIn(t *testing.T, homePkg, name string, kinds semantic.DeclKind, files
 	proj, _ := semantic.AnalyzeProject(files, semantic.Options{})
 	return proj.Lookup(homePkg, name, kinds)
 }
+
+// A field typed by a type parameter spelled like an enum takes none of the
+// enum's values: `@default(|)` offers none and a value names nothing.
+func TestTypeParamShadowingAnEnumOffersNoValues(t *testing.T) {
+	const decls = "package x\n\nenum Color { Red  Green }\n\n"
+	if items := mustCompletionsAtCursor(t, decls+"type Box<Color> {\n\tc Color? @default(|)\n}\n"); len(items) != 0 {
+		t.Errorf("completions = %v, want none", labelSet(items))
+	}
+	if locs := definitionAt(t, "", decls+"type Box<Color> {\n\tc Color? @default(R|ed)\n}\n"); len(locs) != 0 {
+		t.Errorf("definition = %+v, want none", locs)
+	}
+	if items := mustCompletionsAtCursor(t, decls+"type Box<T> {\n\tc Color? @default(|)\n}\n"); len(items) != 2 {
+		t.Errorf("completions = %v, want Red and Green", labelSet(items))
+	}
+}
+
+// Decorator completion on an array of a type parameter offers the array
+// decorators, whatever the parameter's spelling.
+func TestDecoratorCompletionOnTypeParamArray(t *testing.T) {
+	for _, src := range []string{
+		"package x\n\ntype Box<T> {\n\tc T[] @|\n}\n",
+		"package x\n\nenum Color { Red  Green }\n\ntype Box<Color> {\n\tc Color[] @|\n}\n",
+	} {
+		items := mustCompletionsAtCursor(t, src)
+		expectLabels(t, items, "minItems", "uniqueItems")
+		expectNoLabels(t, items, "minLength", "pattern", "gt")
+	}
+}

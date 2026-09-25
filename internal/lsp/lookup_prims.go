@@ -14,7 +14,9 @@ import (
 func (r *request) primsAt(level semantic.Level, c cursor) semantic.Prims {
 	switch level {
 	case semantic.LvlField, semantic.LvlErrorField:
-		if f := fieldAtCursor(r.view(), c); f != nil {
+		// An array keeps its decorators whatever its element; a bare type
+		// parameter has no primitive.
+		if f := fieldAtCursor(r.view(), c); f != nil && f.Type != nil && (f.Type.Array || !typedByTypeParam(r.view(), f)) {
 			v := r.project()
 			return semantic.ResolveField(f, v.proj.Packages[v.currentPackage()], v.proj).Prims()
 		}

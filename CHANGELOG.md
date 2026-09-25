@@ -936,7 +936,8 @@ breaking change to the DSL or the generated layout bumps the major version.
   the optional `v` got no pointer, the validator compared the values with
   `nil` and `""`, and the generated code did not compile; a `@default(Red)`
   or a `@query` on such a field passed the declaration's checks. Inside its
-  type's body the parameter now hides the declaration, as it does in Go.
+  type's body the parameter now hides the declaration, as it does in Go, and
+  the editor offers no value of the declaration in its `@default(...)`.
 
 - **A header typed by a type parameter is written as the argument.** A
   `@header` or `@cookie` on a field typed `T` passed analysis only when a

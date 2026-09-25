@@ -43,7 +43,7 @@ func (r *request) enumValueDefinition(c cursor) (protocol.Location, bool) {
 		return protocol.Location{}, false
 	}
 	f := fieldAtCursor(view, c)
-	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
+	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil || typedByTypeParam(view, f) {
 		return protocol.Location{}, false
 	}
 	v := r.project()

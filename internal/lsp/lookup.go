@@ -181,6 +181,21 @@ func fieldAtCursor(view snapshotView, c cursor) *ast.Field {
 	return at
 }
 
+// typedByTypeParam reports whether f, a field of view's file, is typed by a
+// type parameter of the type declaring it, which hides any declaration of
+// that name.
+func typedByTypeParam(view snapshotView, f *ast.Field) bool {
+	if view.file == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
+		return false
+	}
+	for _, d := range view.file.Decls {
+		if td, ok := d.(*ast.TypeDecl); ok && slices.Contains(ast.Fields(td.Body), f) {
+			return slices.Contains(td.TypeParams, f.Type.Named.Name.String())
+		}
+	}
+	return false
+}
+
 // declBody returns the members of a type or of an error with a body, and
 // whether d has one.
 func declBody(d ast.Decl) ([]ast.TypeMember, bool) {

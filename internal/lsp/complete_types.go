@@ -20,7 +20,8 @@ import (
 // enum's values, or true and false for a bool or a scalar over one; else nil.
 func (r *request) defaultValueCompletions(c cursor) []protocol.CompletionItem {
 	f := fieldAtCursor(r.view(), c)
-	if f == nil || f.Type == nil || f.Type.Map != nil || f.Type.Array || f.Type.Named == nil || f.Type.Named.Name == nil {
+	if f == nil || f.Type == nil || f.Type.Map != nil || f.Type.Array || f.Type.Named == nil || f.Type.Named.Name == nil ||
+		typedByTypeParam(r.view(), f) {
 		return nil
 	}
 	name := f.Type.Named.Name.String()
