@@ -22,8 +22,12 @@ E2E_DIRS     := tests/e2e/matrix
 # reach them, so vet and golangci run in each.
 PUBLISHED    := pkg/events pkg/events/nats pkg/events/kafka pkg/wire
 
+# Modules that hold only tests: the nats adapter's embedded-server suite, which
+# keeps nats-server out of the adapter's go.mod. vet and golangci run in each.
+TEST_MODULES := pkg/events/nats/internal/integration
+
 # Every module with its own go.mod besides the root.
-SUBMODULES   := $(EXAMPLE_PROJECTS) $(E2E_DIRS) $(PUBLISHED)
+SUBMODULES   := $(EXAMPLE_PROJECTS) $(E2E_DIRS) $(PUBLISHED) $(TEST_MODULES)
 
 # ---- meta ----------------------------------------------------------------
 .PHONY: help
@@ -97,9 +101,9 @@ test-submodules: ## Run tests inside every sub-module: the examples, the e2e fix
 test-all: test e2e test-submodules ## Run every test suite - root, e2e orchestrator, and each sub-module.
 
 .PHONY: vet
-vet: ## go vet over all root packages and every published nested module.
+vet: ## go vet over all root packages, every published nested module and the test-only modules.
 	$(GO) vet ./...
-	@for d in $(PUBLISHED); do \
+	@for d in $(PUBLISHED) $(TEST_MODULES); do \
 		(cd "$$d" && $(GO) vet ./...) || exit 1; \
 	done
 
@@ -121,7 +125,7 @@ lint: vet fmt-check golangci ## vet + fmt-check + golangci-lint.
 golangci: ## golangci-lint (.golangci.yml); skipped when the binary is not installed.
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run ./... || exit 1; \
-		for d in $(PUBLISHED); do \
+		for d in $(PUBLISHED) $(TEST_MODULES); do \
 			(cd "$$d" && golangci-lint run ./...) || exit 1; \
 		done; \
 	else echo "golangci-lint not installed - skipping"; fi

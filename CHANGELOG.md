@@ -54,6 +54,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   rejected: a declaration may now take the name, while a field typed `object`
   still gets the hint to use `any` or `map<string, V>`.
 
+- **`pkg/events/nats` needs Go 1.25, not 1.26.** Its tests against an
+  embedded nats-server live in a module of their own, so the adapter no
+  longer requires `nats-server`, whose Go 1.26 floor it inherited.
+
 ### Fixed
 
 - **A flushed response counts as committed.** A panic, or an error a raw

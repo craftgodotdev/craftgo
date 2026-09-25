@@ -41,8 +41,9 @@ jobs:
         with:
           version: v2.12.2
 
-      # The event runtime, its adapters and the pass-through wire type are
-      # their own modules, so the root run does not reach them.
+      # The event runtime, its adapters, the nats adapter's embedded-server
+      # tests and the pass-through wire type are their own modules, so the
+      # root run does not reach them.
       - name: golangci-lint (event runtime module)
         uses: golangci/golangci-lint-action@v8
         with:
@@ -53,6 +54,11 @@ jobs:
         with:
           version: v2.12.2
           working-directory: pkg/events/nats
+      - name: golangci-lint (nats embedded-server test module)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+          working-directory: pkg/events/nats/internal/integration
       - name: golangci-lint (kafka adapter module)
         uses: golangci/golangci-lint-action@v8
         with:
