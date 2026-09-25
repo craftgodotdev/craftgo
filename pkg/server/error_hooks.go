@@ -31,7 +31,11 @@ func init() {
 // the response is committed.
 func defaultValidationFailed(w http.ResponseWriter, r *http.Request, err error) {
 	if responseCommitted(w) {
-		log.Default().WithContext(r.Context()).Error(
+		ctx := context.Background()
+		if r != nil {
+			ctx = r.Context()
+		}
+		log.Default().WithContext(ctx).Error(
 			"validation error after response committed; not rewriting",
 			log.Err(err),
 		)
@@ -66,6 +70,9 @@ func bodyTooLarge(r *http.Request, err error) bool {
 	var tooLarge *http.MaxBytesError
 	if errors.As(err, &tooLarge) || errors.Is(err, multipart.ErrMessageTooLarge) {
 		return true
+	}
+	if r == nil {
+		return false
 	}
 	capped, ok := r.Body.(*cappedBody)
 	return ok && capped.over

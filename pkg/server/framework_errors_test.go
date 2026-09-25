@@ -194,6 +194,24 @@ func TestMultipartBodyCutByItsCapAnswers413(t *testing.T) {
 	}
 }
 
+// WriteValidationError with a nil request answers as it does with one, and once the response
+// is committed leaves it as it is.
+func TestWriteValidationErrorTakesANilRequest(t *testing.T) {
+	rec := httptest.NewRecorder()
+	WriteValidationError(rec, nil, errors.New("bad"))
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != `{"message":"bad"}`+"\n" {
+		t.Errorf("got %d %q, want the JSON 400", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	tw := &trackingWriter{ResponseWriter: rec}
+	tw.WriteHeader(http.StatusOK)
+	WriteValidationError(tw, nil, errors.New("bad"))
+	if rec.Code != http.StatusOK || rec.Body.Len() != 0 {
+		t.Errorf("after commit: got %d %q, want the 200 kept", rec.Code, rec.Body.String())
+	}
+}
+
 // An error response drops a Content-Length set for another body.
 func TestErrorResponsesDropAStaleContentLength(t *testing.T) {
 	for name, write := range map[string]func(http.ResponseWriter, *http.Request){
