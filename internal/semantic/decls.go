@@ -45,6 +45,9 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 	}
 	for _, f := range files {
 		for _, d := range f.Decls {
+			if d.DeclName() == "" {
+				continue // the parser reported the missing name
+			}
 			switch dd := d.(type) {
 			case *ast.TypeDecl:
 				if registerIn(seen, dd.Name, dd.Pos, true) {

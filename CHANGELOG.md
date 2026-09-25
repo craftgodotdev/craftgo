@@ -397,6 +397,18 @@ breaking change to the DSL or the generated layout bumps the major version.
   regular expression, and `@group("..", "x")` its path; a decorator's values
   are now checked only once its arguments fit.
 
+- **A declaration the parser left without a name gets the parse error
+  alone.** Two `type {}` lines also reported `duplicate top-level
+  declaration ""`, a nameless `enum {}` `enum "" has no values`, and a
+  `scalar S` missing its primitive `primitive must be a built-in (got "")`.
+
+- **Diagnostics state the rules they apply.** A scalar over an unknown
+  primitive lists every built-in it may wrap, `datetime` included; a
+  `@group` segment of `.` or `..` says the group's directory takes the place
+  of the service's own, where it said the group nests under it; and a
+  `@form` on the wrong type says a single-level array binds, `file[]`
+  included, where it said file arrays do not.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

@@ -12,7 +12,7 @@ const (
 	msgBindPath        = "field %s.%s: @path requires a non-optional, non-array string/bool/int*/uint*/float* field (or a scalar/enum wrapping one) - got %s"
 	msgBindWire        = "field %s.%s: @%s requires string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or generic instantiations) - got %s"
 	msgBindCookieArray = "field %s.%s: @cookie cannot bind to an array - cookies carry a single value per name"
-	msgBindForm        = "field %s.%s: @form requires `file` or string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or an array of those (no maps, structs, or file arrays) - got %s"
+	msgBindForm        = "field %s.%s: @form requires `file` or string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or a single-level array of those, `file[]` included (no maps, structs, or nested arrays) - got %s"
 )
 
 // checkBindingFieldType rejects a wire binding whose field type the binder

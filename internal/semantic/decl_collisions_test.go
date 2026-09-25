@@ -85,6 +85,17 @@ func TestDeclCollisionFirstAcrossFiles(t *testing.T) {
 	}
 }
 
+// A declaration the parser left without a name or a primitive, after its
+// parse error, draws no semantic diagnostic of its own.
+func TestNamelessDeclsAfterAParseError(t *testing.T) {
+	for _, src := range []string{"package x\ntype {}\ntype {}\n", "package x\nscalar\nscalar\n", "package x\nenum {}\nerror {\n", "package x\nscalar S\n"} {
+		f := parser.New("t.craftgo", src).Parse()
+		if _, diags := Analyze([]*ast.File{f}); len(diags) != 0 {
+			t.Errorf("%q: want no semantic diagnostic, got %v", src, diags)
+		}
+	}
+}
+
 // Distinct declaration names produce no collision.
 func TestDeclCollisionNoFalsePositive(t *testing.T) {
 	expectClean(t, `package x

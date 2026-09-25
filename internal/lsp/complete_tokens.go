@@ -7,6 +7,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // identBefore returns the text of the token before token i when it is an
@@ -98,7 +99,7 @@ func keywordCompletions(want ...string) []protocol.CompletionItem {
 		{"type", "type ${1:Name} {\n\t$0\n}"},
 		{"enum", "enum ${1:Name} {\n\t$0\n}"},
 		{"error", "error ${1|" + strings.Join(categories, ",") + "|} ${2:Name}"},
-		{"scalar", "scalar ${1:Name} ${2|" + strings.Join(scalarPrimitives(), ",") + "|}"},
+		{"scalar", "scalar ${1:Name} ${2|" + strings.Join(semantic.ScalarPrimitives(), ",") + "|}"},
 		{"service", "service ${1:Name} {\n\t$0\n}"},
 		{"extend", "extend service ${1:Name} {\n\t$0\n}"},
 		{"middleware", "middleware ${1:Name}"},

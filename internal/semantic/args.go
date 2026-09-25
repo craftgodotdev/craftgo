@@ -69,7 +69,7 @@ func (a *analyzer) checkGroupArg(d *ast.Decorator) {
 		hasSegment = true
 		if seg == "." || seg == ".." {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgValue,
-				"@group segment %q is not allowed - @group nests generated files under the service directory and must be a plain relative path like \"admin\" or \"admin/ops\"", seg)
+				"@group segment %q is not allowed - @group names the directory the block's generated files go to, in place of the service's own, and must be a plain relative path like \"admin\" or \"admin/ops\"", seg)
 			return
 		}
 		if !isPlainPathSegment(seg) {

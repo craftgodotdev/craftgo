@@ -272,21 +272,11 @@ func primitiveCompletions() []protocol.CompletionItem {
 	return items
 }
 
-// scalarPrimitives returns the built-ins a scalar can wrap.
-func scalarPrimitives() []string {
-	var out []string
-	for _, sp := range prims.All() {
-		if semantic.ScalarWraps(sp.Name) {
-			out = append(out, sp.Name)
-		}
-	}
-	return out
-}
-
-// scalarPrimitiveCompletions offers [scalarPrimitives] for `scalar Name |`.
+// scalarPrimitiveCompletions offers [semantic.ScalarPrimitives] for
+// `scalar Name |`.
 func scalarPrimitiveCompletions() []protocol.CompletionItem {
 	var out []protocol.CompletionItem
-	for _, name := range scalarPrimitives() {
+	for _, name := range semantic.ScalarPrimitives() {
 		out = append(out, protocol.CompletionItem{
 			Label:  name,
 			Kind:   protocol.CompletionItemKindKeyword,

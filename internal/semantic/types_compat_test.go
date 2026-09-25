@@ -196,6 +196,18 @@ func TestScalarTypeMismatch(t *testing.T) {
 func TestScalarUnknownPrimitiveRejected(t *testing.T) {
 	d := expectDiag(t, `scalar Weird unknownPrim`, CodeScalarBadPrimitive)
 	expectMessage(t, d, "Weird", "unknownPrim")
+	// The message lists every primitive a scalar may wrap.
+	expectMessage(t, d, "expected one of "+strings.Join(ScalarPrimitives(), ", "), "datetime")
+}
+
+// The diagnostics state the rules analysis applies: a `@group` replaces the
+// service's directory, and `@form` binds a single-level `file[]`.
+func TestDiagnosticsStateTheRules(t *testing.T) {
+	d := expectError(t, "@group(\"..\")\nservice S { get A /a {} }", CodeDecoratorArgValue)
+	expectMessage(t, d, "in place of the service's own")
+	d = expectError(t, "type R { m map<string, int> @form }", CodeBindingType)
+	expectMessage(t, d, "a single-level array of those, `file[]` included")
+	mustClean(t, "type R { files file[] @form }")
 }
 
 func TestScalarSelfReferenceRejected(t *testing.T) {

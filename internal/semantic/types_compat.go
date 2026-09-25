@@ -1,6 +1,8 @@
 package semantic
 
 import (
+	"strings"
+
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/prims"
@@ -49,10 +51,13 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 // checkScalarTypeCompat checks that a scalar wraps a built-in primitive,
 // then checks its decorators against that primitive.
 func (a *analyzer) checkScalarTypeCompat(sd *ast.ScalarDecl) {
+	if sd.Primitive == "" {
+		return // the parser reported the missing primitive
+	}
 	if !ScalarWraps(sd.Primitive) {
 		a.diag(sd.Pos, sd.Pos, lexer.SeverityError, CodeScalarBadPrimitive,
-			"scalar %q primitive must be a built-in (got %q; expected one of string, bool, bytes, int, int8..int64, uint, uint8..uint64, float32, float64)",
-			sd.Name, sd.Primitive)
+			"scalar %q primitive must be a built-in (got %q; expected one of %s)",
+			sd.Name, sd.Primitive, strings.Join(ScalarPrimitives(), ", "))
 		return
 	}
 	actual := ScalarPrims(sd)
@@ -130,6 +135,18 @@ func PrimFromName(name string) Prims {
 func ScalarWraps(name string) bool {
 	p := PrimFromName(name)
 	return p != 0 && p != PrimFile
+}
+
+// ScalarPrimitives returns the built-ins a scalar may wrap, in catalogue
+// order.
+func ScalarPrimitives() []string {
+	var out []string
+	for _, sp := range prims.All() {
+		if ScalarWraps(sp.Name) {
+			out = append(out, sp.Name)
+		}
+	}
+	return out
 }
 
 // ScalarPrims returns the category of scalar sd's values: [PrimRawBytes]
