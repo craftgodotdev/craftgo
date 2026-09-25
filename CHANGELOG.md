@@ -348,7 +348,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   declaration or method; it is now reported, like one after a mixin. A
   decorator goes before what it decorates, so when the next declaration or
   method starts on the same line, as in `} @doc("b") type B { … }`, the
-  decorator is its own.
+  decorator is its own. A decorator whose arguments run over lines is on the
+  line they end: in `} @tags(` / `"x") type B { … }` it is `B`'s, and in
+  `scalar S string @minLength(` / `1) @maxLength(9)` both are the scalar's;
+  the second was an error, or went to a declaration starting on its line.
 
 - **A decorator above the first enum value is one error.** It was read as
   a value named after the decorator, with an `expected enum value name`

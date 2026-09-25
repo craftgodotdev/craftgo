@@ -180,8 +180,8 @@ func (p *Parser) parseScalarDecl(decs []*ast.Decorator, doc []string) *ast.Scala
 	name, _ := p.expect(lexer.Ident)
 	prim, _ := p.expect(lexer.Ident)
 	sd := &ast.ScalarDecl{Pos: pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Name: name.Text, Primitive: prim.Text}
-	// Only decorators on the primitive's line trail the scalar; one on a later
-	// line starts the next declaration's chain.
+	// The decorators on the primitive's line trail the scalar; one on a line of
+	// its own starts the next declaration's chain.
 	sd.Decorators = append(sd.Decorators, p.decoratorsOnLine(prim.Pos.Line)...)
 	return sd
 }

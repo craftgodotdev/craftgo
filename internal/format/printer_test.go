@@ -383,6 +383,30 @@ type Foo {
 	}
 }
 
+// Decorators whose arguments run over lines stay with the declaration that
+// starts where they end, and with a scalar whose line they continue.
+func TestFormatDecoratorArgumentsOverLines(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{
+			"before a declaration",
+			"package x\n\ntype A { a string } @doc(\n\t\"b\") @deprecated type B { b string }\n",
+			"package x\n\ntype A {\n\ta string\n}\n\n@doc(\"b\")\n@deprecated\ntype B {\n\tb string\n}\n",
+		},
+		{
+			"before a method",
+			"package x\n\nservice S {\n\tget A /a {} @doc(\n\t\t\"b\") get B /b {}\n}\n",
+			"package x\n\nservice S {\n\tget A /a {}\n\t@doc(\"b\")\n\tget B /b {}\n}\n",
+		},
+		{
+			"after a scalar",
+			"package x\n\nscalar S string @minLength(\n\t1) @maxLength(5)\n",
+			"package x\n\nscalar S string @minLength(1) @maxLength(5)\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
+	}
+}
+
 // TestFormatStripsEmptyParens pins that a decorator written with empty `()`
 // prints without them.
 func TestFormatStripsEmptyParens(t *testing.T) {

@@ -26,24 +26,23 @@ func (p *Parser) parseDecorators() []*ast.Decorator {
 	return decs
 }
 
-// decoratorsOnLine parses the decorators that start on line.
+// decoratorsOnLine parses the decorators that start on line, each one after
+// the first starting on the line where the one before it ends.
 func (p *Parser) decoratorsOnLine(line int) []*ast.Decorator {
 	var decs []*ast.Decorator
 	for p.peek().Kind == lexer.At && p.peek().Pos.Line == line {
 		decs = append(decs, p.parseDecorator())
+		line = p.tokens[p.pos-1].Pos.Line
 	}
 	return decs
 }
 
-// rejectDecoratorsAfter reports and consumes the decorators on the line where
-// the construct just parsed, what, ends. When a token for which starts holds
-// follows them on that line, they stay unconsumed for the construct it starts,
-// whose parse of them reports nothing a second time.
+// rejectDecoratorsAfter reports and consumes the decorators on the last line
+// of the construct what, unless starts holds for the next token on their line.
 func (p *Parser) rejectDecoratorsAfter(what string, starts func(lexer.Kind) bool) {
-	line := p.tokens[p.pos-1].Pos.Line
 	pos := p.pos
-	decs := p.decoratorsOnLine(line)
-	if next := p.peek(); len(decs) > 0 && next.Pos.Line == line && starts(next.Kind) {
+	decs := p.decoratorsOnLine(p.tokens[p.pos-1].Pos.Line)
+	if next := p.peek(); len(decs) > 0 && next.Pos.Line == p.tokens[p.pos-1].Pos.Line && starts(next.Kind) {
 		p.pos = pos
 		return
 	}

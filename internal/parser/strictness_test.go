@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -224,6 +225,68 @@ func TestDecoratorBeforeTheNextDeclarationOnItsLine(t *testing.T) {
 	}
 }
 
+// Decorators whose arguments run onto a later line are on the line the last of
+// them ends: what starts there takes them all, and what starts below takes none.
+func TestDecoratorArgumentsOverLinesBeforeTheNextDeclaration(t *testing.T) {
+	const pkg = "package p\n\n"
+	for name, c := range map[string]struct {
+		src   string
+		diags int
+		// decs are the decorator names of each declaration, and of each method
+		// of a service.
+		decs []string
+	}{
+		"closing brace":  {pkg + "type A { a string } @doc(\n\t\"b\") type B { b string }\n", 0, []string{"", "doc"}},
+		"chain":          {pkg + "type A { a string } @doc(\n\t\"b\") @deprecated type B { b string }\n", 0, []string{"", "doc deprecated"}},
+		"chain end":      {pkg + "type A { a string } @deprecated @doc(\n\t\"b\") type B { b string }\n", 0, []string{"", "deprecated doc"}},
+		"package clause": {"package p @doc(\n\t\"p\") @deprecated type B { b string }\n", 0, []string{"doc deprecated"}},
+		"import":         {pkg + "import \"a\" @doc(\n\t\"b\") type B { b string }\n", 0, []string{"doc"}},
+		"method":         {pkg + "service S {\n\tget A /a {} @doc(\n\t\t\"b\") get B /b {}\n}\n", 0, []string{"", "doc"}},
+		"scalar":         {pkg + "scalar A string @minLength(\n\t1) @maxLength(5)\ntype B { b A }\n", 0, []string{"minLength maxLength", ""}},
+		"below":          {pkg + "type A { a string } @doc(\n\t\"b\")\ntype B { b string }\n", 1, []string{"", ""}},
+		"chain below":    {pkg + "type A { a string } @doc(\n\t\"b\") @deprecated\ntype B { b string }\n", 2, []string{"", ""}},
+		"method below":   {pkg + "service S {\n\tget A /a {} @doc(\n\t\t\"b\")\n\tget B /b {}\n}\n", 1, []string{"", ""}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, msgs := parseWithErrors(t, c.src)
+			if len(msgs) != c.diags {
+				t.Errorf("diagnostics = %v, want %d", msgs, c.diags)
+			}
+			for _, m := range msgs {
+				if !strings.Contains(m, "goes before what it decorates") {
+					t.Errorf("diagnostic %q, want one saying the decorator goes before what it decorates", m)
+				}
+			}
+			var got []string
+			for _, d := range f.Decls {
+				if sd, ok := d.(*ast.ServiceDecl); ok {
+					for _, m := range sd.Methods() {
+						got = append(got, decoratorNames(m.Decorators))
+					}
+					continue
+				}
+				got = append(got, decoratorNames(declDecorators(d)))
+			}
+			if !slices.Equal(got, c.decs) {
+				t.Errorf("decorators = %q, want %q", got, c.decs)
+			}
+		})
+	}
+	_, msgs := parseWithErrors(t, "package p\n\ntype M { m string }\n\ntype T {\n\tM @doc(\n\t\"x\") @deprecated\n\ta string\n}\n")
+	if len(msgs) != 2 {
+		t.Errorf("mixin: diagnostics = %v, want one for each of its decorators", msgs)
+	}
+}
+
+// decoratorNames returns the names of decs, separated by spaces.
+func decoratorNames(decs []*ast.Decorator) string {
+	names := make([]string, len(decs))
+	for i, d := range decs {
+		names[i] = d.Name
+	}
+	return strings.Join(names, " ")
+}
+
 // startsDecl holds for exactly the reserved words a top-level declaration is
 // parsed from.
 func TestStartsDeclMatchesTheDeclarations(t *testing.T) {
@@ -236,17 +299,22 @@ func TestStartsDeclMatchesTheDeclarations(t *testing.T) {
 	}
 }
 
-// declDecorators returns the decorators of a type, error, middleware or
-// service declaration.
+// declDecorators returns the decorators of d.
 func declDecorators(d ast.Decl) []*ast.Decorator {
 	switch d := d.(type) {
 	case *ast.TypeDecl:
 		return d.Decorators
+	case *ast.EnumDecl:
+		return d.Decorators
 	case *ast.ErrorDecl:
+		return d.Decorators
+	case *ast.ScalarDecl:
 		return d.Decorators
 	case *ast.MiddlewareDecl:
 		return d.Decorators
 	case *ast.ServiceDecl:
+		return d.Decorators
+	case *ast.EventDecl:
 		return d.Decorators
 	}
 	return nil
