@@ -10,14 +10,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/idents"
 )
 
-// writeFile writes content to path, failing the test on error.
-func writeFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // TestLoadDefaults checks that an empty manifest loads with the output defaults.
 func TestLoadDefaults(t *testing.T) {
 	dir := t.TempDir()
@@ -458,13 +450,6 @@ func TestEventTargetOutMustStayInsideProject(t *testing.T) {
 	if err := cfg.validate(); err == nil {
 		t.Error("events.targets out escaping the project was accepted")
 	}
-}
-
-func loadManifest(t *testing.T, body string) (*Config, error) {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), Filename)
-	writeFile(t, path, body)
-	return Load(path)
 }
 
 func TestLoadProtoDefaults(t *testing.T) {
