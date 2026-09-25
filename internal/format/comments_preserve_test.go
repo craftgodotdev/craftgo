@@ -123,7 +123,6 @@ func TestFormatMovesACommentWithItsCode(t *testing.T) {
 		{"after a joined argument list", "package x\n\ntype T {\n\ta string @example({\n\t\tx: 1,\n\t\ty: 2\n\t}) // c\n}\n", "package x\n\ntype T {\n\ta string @example({x: 1, y: 2}) // c\n}\n"},
 		{"path before the brace", "package x\n\nservice S {\n\tget A /a // c\n\t{\n\t\tresponse T\n\t}\n}\n", "package x\n\nservice S {\n\tget A /a { // c\n\t\tresponse T\n\t}\n}\n"},
 		{"CRLF", "package x\r\n\r\ntype T { // c\r\n\ta string // d\r\n}\r\n", "package x\n\ntype T { // c\n\ta string // d\n}\n"},
-		{"after a split extend", "package x\n\nservice S {\n\tget A /a {}\n}\n\nextend // c\nservice S {\n\tget B /b {}\n}\n", "package x\n\nservice S {\n\tget A /a {}\n}\n\nextend service S { // c\n\tget B /b {}\n}\n"},
 		{"doc above the keyword of a one-line body", "package x\n\n@deprecated\n// c\ntype T { a string }\n", "package x\n\n@deprecated\n// c\ntype T {\n\ta string\n}\n"},
 		{"doc above the keyword of a one-line service", "package x\n\n@deprecated\n// c\nservice S { get A /a {} }\n", "package x\n\n@deprecated\n// c\nservice S {\n\tget A /a {}\n}\n"},
 	} {
@@ -328,6 +327,75 @@ func TestFormatKeepsAHeaderCommentOfABodilessDeclaration(t *testing.T) {
 			"package after file decorators",
 			"@version(\"1\")\npackage // c\n x // d\n",
 			"@version(\"1\")\npackage // c\n\tx // d\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
+	}
+}
+
+// A trailing comment between the words of a declaration's or a method's
+// header stays there, the words after it one level deeper.
+func TestFormatKeepsATrailingCommentInABodiedHeader(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{
+			"type",
+			"package x\n\ntype // c1\n X { // c2\n\ta string\n}\n",
+			"package x\n\ntype // c1\n\tX { // c2\n\ta string\n}\n",
+		},
+		{
+			"generic type",
+			"package x\n\ntype // c1\n Page<T, U> {\n\ta T\n\tb U\n}\n",
+			"package x\n\ntype // c1\n\tPage<T, U> {\n\ta T\n\tb U\n}\n",
+		},
+		{
+			"enum",
+			"package x\n\nenum // c1\n E { // c2\n\tA\n}\n",
+			"package x\n\nenum // c1\n\tE { // c2\n\tA\n}\n",
+		},
+		{
+			"error",
+			"package x\n\nerror NotFound // c1\n E { // c2\n\ta string\n}\n",
+			"package x\n\nerror NotFound // c1\n\tE { // c2\n\ta string\n}\n",
+		},
+		{
+			"service",
+			"package x\n\nservice // c1\n S { // c2\n\tget A /a {}\n}\n",
+			"package x\n\nservice // c1\n\tS { // c2\n\tget A /a {}\n}\n",
+		},
+		{
+			"extend block",
+			"package x\n\nextend // c1\n service S { // c2\n\tget A /a {}\n}\n",
+			"package x\n\nextend // c1\n\tservice S { // c2\n\tget A /a {}\n}\n",
+		},
+		{
+			"extend block after its service",
+			"package x\n\nservice S {\n\tget A /a {}\n}\n\nextend // c\nservice S {\n\tget B /b {}\n}\n",
+			"package x\n\nservice S {\n\tget A /a {}\n}\n\nextend // c\n\tservice S {\n\tget B /b {}\n}\n",
+		},
+		{
+			"event",
+			"package x\n\nevent // c1\n E { // c2\n\tpayload R\n}\n",
+			"package x\n\nevent // c1\n\tE { // c2\n\tpayload R\n}\n",
+		},
+		{
+			"method",
+			"package x\n\nservice S {\n\tget // c1\n\t A /a { // c2\n\t\tresponse R\n\t}\n}\n",
+			"package x\n\nservice S {\n\tget // c1\n\t\tA /a { // c2\n\t\tresponse R\n\t}\n}\n",
+		},
+		{
+			"method path",
+			"package x\n\nservice S {\n\tget A // c1\n\t /a/{id} {} // c2\n}\n",
+			"package x\n\nservice S {\n\tget A // c1\n\t\t/a/{id} {} // c2\n}\n",
+		},
+		{
+			"method with an empty body",
+			"package x\n\nservice S {\n\tget // c1\n\t A /a { // c2\n\t}\n}\n",
+			"package x\n\nservice S {\n\tget // c1\n\t\tA /a { // c2\n\t}\n}\n",
+		},
+		{
+			"event with an empty body",
+			"package x\n\nevent E { // c\n}\n",
+			"package x\n\nevent E { // c\n}\n",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })

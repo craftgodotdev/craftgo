@@ -150,10 +150,8 @@ func (p *Printer) inPlace(src int, lines []string) {
 	}
 }
 
-// header writes words, the rest of a header whose keyword is at kw, on the
-// keyword's line. A comment the source holds between two of them, after the
-// first on its line or on lines of its own, stays there, and the words below
-// it continue one level deeper.
+// header writes words, word i starting i+1 tokens after the keyword at kw, on
+// its line; a comment between two stays there, the words below it one deeper.
 func (p *Printer) header(kw lexer.Position, words ...string) {
 	deeper := false
 	prev := kw.Line

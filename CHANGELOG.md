@@ -389,6 +389,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   comment after `extend` moved to the declaration above; both stay with the
   block.
 
+- **A comment after a word of a declaration's header stays there.** In
+  `type // c` / `X {`, and after the words of an `enum`, a bodied `error`, a
+  `service`, an `extend service`, an `event` or a method, the comment moved
+  to the end of the line with the `{`, and with a second comment after the
+  `{` formatting refused the file. It now stays where it is, the words after
+  it one level deeper, as in a header without a body. A method or event
+  body holding only a comment after its `{` keeps its two lines, where
+  formatting refused the file.
+
 - **`kafka.WithTLS(nil)` dials over TLS.** franz-go reads a nil config as
   "no TLS", so the brokers were dialed in plaintext and `WithSASLPlain`
   sent the password in clear. A nil config now dials with an empty one,

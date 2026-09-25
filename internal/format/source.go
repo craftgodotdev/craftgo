@@ -119,13 +119,13 @@ func (s *source) inArguments(line int) bool {
 	return s != nil && s.argLines[line]
 }
 
-// keywordLine returns the line of d's first keyword: `extend` for an extend
+// keyword returns the position of d's first keyword: `extend` for an extend
 // block, which the AST places at its `service`.
-func (s *source) keywordLine(d ast.Decl) int {
+func (s *source) keyword(d ast.Decl) lexer.Position {
 	if sd, ok := d.(*ast.ServiceDecl); ok && sd.Extend {
-		return s.after(sd.Pos, -1).Pos.Line
+		return s.after(sd.Pos, -1).Pos
 	}
-	return d.DeclPos().Line
+	return d.DeclPos()
 }
 
 // firstLine returns the line of d's first decorator, or of its keyword.
@@ -147,5 +147,5 @@ func (s *source) firstLine(d ast.Decl) int {
 	case *ast.EventDecl:
 		decs = v.Decorators
 	}
-	return memberStartLine(s.keywordLine(d), decs, 0)
+	return memberStartLine(s.keyword(d).Line, decs, 0)
 }

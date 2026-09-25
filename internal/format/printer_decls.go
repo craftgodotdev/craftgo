@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -12,18 +13,12 @@ func (p *Printer) TypeDecl(d *ast.TypeDecl) {
 	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
 	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.line(d.Pos.Line)
-	p.write("type ")
-	p.write(d.Name)
+	p.write("type")
+	name := d.Name
 	if len(d.TypeParams) > 0 {
-		p.write("<")
-		for i, tp := range d.TypeParams {
-			if i > 0 {
-				p.write(", ")
-			}
-			p.write(tp)
-		}
-		p.write(">")
+		name += "<" + strings.Join(d.TypeParams, ", ") + ">"
 	}
+	p.header(d.Pos, name)
 	p.write(" {")
 	p.endCode()
 	p.depth++
@@ -140,8 +135,8 @@ func (p *Printer) EnumDecl(d *ast.EnumDecl) {
 	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
 	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.line(d.Pos.Line)
-	p.write("enum ")
-	p.write(d.Name)
+	p.write("enum")
+	p.header(d.Pos, d.Name)
 	p.write(" {")
 	p.endCode()
 	p.depth++
@@ -193,12 +188,12 @@ func (p *Printer) ErrorDecl(d *ast.ErrorDecl) {
 	p.declDecorators(d.Decorators, d.Pos.Line)
 	p.line(d.Pos.Line)
 	p.write("error")
+	p.header(d.Pos, d.Category, d.Name)
 	if !d.HasBody {
-		p.header(d.Pos, d.Category, d.Name)
 		p.endCode()
 		return
 	}
-	p.write(" " + d.Category + " " + d.Name + " {")
+	p.write(" {")
 	p.endCode()
 	p.depth++
 	p.printTypeBody(d.Body)
@@ -236,16 +231,17 @@ func (p *Printer) MiddlewareDecl(d *ast.MiddlewareDecl) {
 }
 
 func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
-	kw := p.src.keywordLine(d)
-	p.comments(memberStartLine(kw, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, kw))
-	p.declDecorators(d.Decorators, kw)
-	p.line(kw)
+	kw := p.src.keyword(d)
+	p.comments(memberStartLine(kw.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, kw.Line))
+	p.declDecorators(d.Decorators, kw.Line)
+	p.line(kw.Line)
 	if d.Extend {
-		p.write("extend service ")
+		p.write("extend")
+		p.header(kw, "service", d.Name)
 	} else {
-		p.write("service ")
+		p.write("service")
+		p.header(kw, d.Name)
 	}
-	p.write(d.Name)
 	p.write(" {")
 	p.endCode()
 	p.depth++
@@ -300,9 +296,9 @@ type memberClause struct {
 
 // memberBody prints a method or event body closed on source line end: clauses
 // and free comments in source order, then the closing brace; an empty body
-// prints as `{}`.
+// prints as `{}` unless a comment trails one of its lines above the `}`.
 func (p *Printer) memberBody(clauses []memberClause, comments []*ast.FreeComment, end int) {
-	if len(clauses) == 0 && len(comments) == 0 {
+	if len(clauses) == 0 && len(comments) == 0 && !p.trailingBefore(0, end) {
 		p.write(" {}")
 		p.endCode()
 		return
@@ -342,12 +338,11 @@ func (p *Printer) Method(m *ast.Method) {
 	p.declDecorators(m.Decorators, m.Pos.Line)
 	p.line(m.Pos.Line)
 	p.write(m.Verb)
-	p.write(" ")
-	p.write(m.Name)
+	words := []string{m.Name}
 	if m.Path != nil {
-		p.write(" ")
-		p.Path(m.Path)
+		words = append(words, route.PathString(m.Path))
 	}
+	p.header(m.Pos, words...)
 	var clauses []memberClause
 	if m.Request != nil {
 		clauses = append(clauses, memberClause{keyword: "request  ", line: m.Request.Pos.Line, ref: m.Request})
@@ -362,33 +357,11 @@ func (p *Printer) EventDecl(e *ast.EventDecl) {
 	p.comments(memberStartLine(e.Pos.Line, e.Decorators, 0), p.docAboveDecorators(e.Doc, e.Decorators, e.Pos.Line))
 	p.declDecorators(e.Decorators, e.Pos.Line)
 	p.line(e.Pos.Line)
-	p.write("event ")
-	p.write(e.Name)
+	p.write("event")
+	p.header(e.Pos, e.Name)
 	var clauses []memberClause
 	if e.Payload != nil {
 		clauses = append(clauses, memberClause{keyword: "payload ", line: e.Payload.Pos.Line, ref: e.Payload.Type, array: e.Payload.Array})
 	}
 	p.memberBody(clauses, e.BodyComments, e.EndPos.Line)
-}
-
-func (p *Printer) Path(path *ast.Path) {
-	p.write("/")
-	first := true
-	for _, seg := range path.Segments {
-		if seg.Param {
-			if !first {
-				p.write("/")
-			}
-			p.write("{")
-			p.write(seg.Literal)
-			p.write("}")
-			first = false
-		} else if seg.Literal != "" {
-			if !first {
-				p.write("/")
-			}
-			p.write(seg.Literal)
-			first = false
-		}
-	}
 }
