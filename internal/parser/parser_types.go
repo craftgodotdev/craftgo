@@ -107,10 +107,7 @@ func (p *Parser) parseField(doc []string, decs []*ast.Decorator) *ast.Field {
 // rejectMixinTrailingDecorators reports and consumes decorators on the mixin's
 // line, which would otherwise attach to the next member.
 func (p *Parser) rejectMixinTrailingDecorators(pos lexer.Position) {
-	if p.peek().Kind != lexer.At || p.peek().Pos.Line != p.tokens[p.pos-1].Pos.Line {
-		return
-	}
-	p.rejectMixinDecorators(pos, p.parseDecorators())
+	p.rejectMixinDecorators(pos, p.decoratorsOnLine(p.tokens[p.pos-1].Pos.Line))
 }
 
 // isFieldFollower reports whether next is a primitive or `map` on line

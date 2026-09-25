@@ -53,7 +53,7 @@ The decorator set is closed - an unknown decorator fires `decorator/unknown`. If
 | `scalar`       | After a `scalar` declaration                               |
 | `service`      | Above a `service` declaration                              |
 | `method`       | Above an HTTP method inside a service body                 |
-| `middleware`   | After a `middleware` declaration                           |
+| `middleware`   | Above a `middleware` declaration                           |
 
 ## Documentation and lifecycle
 

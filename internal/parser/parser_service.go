@@ -87,7 +87,9 @@ func (p *Parser) parseServiceMember() ast.ServiceMember {
 		return nil
 	}
 	p.claimChain(decs, t.Pos.Line)
-	return p.parseMethod(decs, doc)
+	m := p.parseMethod(decs, doc)
+	p.rejectDecoratorsAfter("method")
+	return m
 }
 
 // serviceMemberError is the diagnostic for a service member that is not a

@@ -26,6 +26,24 @@ func (p *Parser) parseDecorators() []*ast.Decorator {
 	return decs
 }
 
+// decoratorsOnLine parses the decorators that start on line.
+func (p *Parser) decoratorsOnLine(line int) []*ast.Decorator {
+	var decs []*ast.Decorator
+	for p.peek().Kind == lexer.At && p.peek().Pos.Line == line {
+		decs = append(decs, p.parseDecorator())
+	}
+	return decs
+}
+
+// rejectDecoratorsAfter reports and consumes the decorators on the line where
+// the construct just parsed, what, ends; the next construct would otherwise
+// take them.
+func (p *Parser) rejectDecoratorsAfter(what string) {
+	for _, d := range p.decoratorsOnLine(p.tokens[p.pos-1].Pos.Line) {
+		p.errorf(d.Pos, "decorator @%s follows a %s on its line; a decorator goes before what it decorates", d.Name, what)
+	}
+}
+
 // parseDecorator parses `@name` or `@name(args)`; the name may be a reserved
 // word.
 func (p *Parser) parseDecorator() *ast.Decorator {

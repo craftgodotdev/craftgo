@@ -206,6 +206,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   result would hold a comment in another place: after another member, as a
   doc, or in another block.
 
+- **A decorator after a declaration on its line is an error.** In
+  `middleware M @doc("m")`, `error NotFound E @doc("e")`, `} @doc("t")` and
+  a method's `} @deprecated`, the decorator went silently to the next
+  declaration or method; it is now reported, like one after a mixin. A
+  decorator goes before what it decorates.
+
 - **A comment in a declaration's header stays in the declaration.** A
   comment block between the keyword of a type, enum, error, service, event
   or method and its `{` moved below the whole declaration; formatting now

@@ -111,3 +111,49 @@ func TestMissingCommaReported(t *testing.T) {
 		}
 	}
 }
+
+// A decorator on the line where a declaration or a method ends is reported,
+// and the declaration or method below takes no decorator.
+func TestDecoratorAfterADeclarationOnItsLine(t *testing.T) {
+	for name, src := range map[string]string{
+		"middleware":      "package p\n\nmiddleware M @doc(\"x\")\n\ntype T {\n\tid string\n}\n",
+		"bodiless error":  "package p\n\nerror NotFound E @doc(\"x\")\n\ntype T {\n\tid string\n}\n",
+		"closing brace":   "package p\n\ntype A {\n\tid string\n} @doc(\"x\")\n\ntype T {\n\tid string\n}\n",
+		"next middleware": "package p\n\nmiddleware M1 @doc(\"x\")\nmiddleware T\n",
+		"package clause":  "package p @doc(\"x\")\n\ntype T {\n\tid string\n}\n",
+		"import":          "package p\n\nimport \"a\" @doc(\"x\")\nimport \"b\"\n\ntype T {\n\tid string\n}\n",
+		"method":          "package p\n\nservice S {\n\tget A /a {\n\t\tresponse R\n\t} @doc(\"x\")\n\n\tget T /t {\n\t\tresponse R\n\t}\n}\n",
+		"last method":     "package p\n\nservice S {\n\tget A /a {} @doc(\"x\")\n}\n\ntype T {\n\tid string\n}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, msgs := parseWithErrors(t, src)
+			if len(msgs) != 1 || !strings.Contains(msgs[0], "@doc") {
+				t.Errorf("diagnostics = %v, want one naming @doc", msgs)
+			}
+			last := f.Decls[len(f.Decls)-1]
+			var decs []*ast.Decorator
+			switch d := last.(type) {
+			case *ast.TypeDecl:
+				decs = d.Decorators
+			case *ast.MiddlewareDecl:
+				decs = d.Decorators
+			case *ast.ServiceDecl:
+				ms := d.Methods()
+				decs = ms[len(ms)-1].Decorators
+			}
+			if len(decs) != 0 {
+				t.Errorf("the declaration below took %d decorator(s)", len(decs))
+			}
+		})
+	}
+	for _, src := range []string{
+		"package p\n\nservice S { @doc(\"a\") get A /a {} }\n",
+		"package p\n\n@doc(\"t\") type T { id string } type U { id string }\n",
+		"package p\n\nscalar S string @minLength(1)\n@doc(\"t\")\ntype T { id string }\n",
+		"package p\n\nenum E { A @doc(\"a\") B }\n",
+	} {
+		if _, msgs := parseWithErrors(t, src); len(msgs) != 0 {
+			t.Errorf("%q: unexpected diagnostics %v", src, msgs)
+		}
+	}
+}
