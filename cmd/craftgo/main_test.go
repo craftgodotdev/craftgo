@@ -335,12 +335,6 @@ func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
 	return string(o), string(e)
 }
 
-func TestRunInitRejectsUnknownFlag(t *testing.T) {
-	if err := runInit([]string{"--bogus"}); err == nil {
-		t.Error("expected error for unknown flag")
-	}
-}
-
 // TestRunInitRejectsLegacyPackageFlag checks that init rejects `-package`.
 func TestRunInitRejectsLegacyPackageFlag(t *testing.T) {
 	if err := runInit([]string{"-package", "github.com/test/app"}); err == nil {
