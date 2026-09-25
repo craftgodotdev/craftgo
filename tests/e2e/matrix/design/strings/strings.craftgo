@@ -13,12 +13,14 @@ package strings
 //   - exact: @length(5, 5) - lo == hi, "exactly 5 chars".
 //   - separate min/max: @minLength(1) and @maxLength(100) on
 //     distinct fields to confirm the single-bound path.
+//   - zeroMin: @minLength(0) accepts every length, so it emits no check.
 type Str_Lengths {
 	zeroLower string @length(0, 100)
 	nonEmpty  string @length(1, 100)
 	exact     string @length(5, 5)
 	onlyMin   string @minLength(1)
 	onlyMax   string @maxLength(100)
+	zeroMin   string @minLength(0)
 }
 
 // Str_Patterns covers @pattern with Go regex syntax. Four flavours:

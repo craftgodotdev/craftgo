@@ -26,41 +26,36 @@ func lengthCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 		}
 		hi = v
 	}
-	guard := t.guard()
 	count := lengthCount(t, ctx)
-	// An init statement cannot follow the nil guard, so the guarded form counts twice.
-	var cond string
-	if guard == "" {
-		cond = fmt.Sprintf("l := %s; l < %d || l > %d", count, lo, hi)
-	} else {
-		cond = fmt.Sprintf("%s(%s < %d || %s > %d)", guard, count, lo, count, hi)
-	}
-	var msg string
 	if lo == hi {
-		msg = fmt.Sprintf(`"%slength must be %d"`, errSubject(t.subject), lo)
-	} else {
-		msg = fmt.Sprintf(`"%slength out of range [%d, %d]"`, errSubject(t.subject), lo, hi)
+		return failIf(t.guarded(fmt.Sprintf("%s != %d", count, lo)), t.subject, fmt.Sprintf("length must be %d", lo), ctx)
 	}
-	return ifReturnf(cond, msg, ctx)
+	text := fmt.Sprintf("length out of range [%d, %d]", lo, hi)
+	if !countCanFail("<", lo) {
+		return failIf(t.guarded(fmt.Sprintf("%s > %d", count, hi)), t.subject, text, ctx)
+	}
+	// The init statement counts once for both bounds, so a nil guard wraps it.
+	return t.guardBlock(failIf(fmt.Sprintf("l := %s; l < %d || l > %d", count, lo, hi), t.subject, text, ctx))
 }
 
-// minMaxLengthCheck renders @minLength or @maxLength (kind "min" or "max") on a
-// string or bytes value.
-func minMaxLengthCheck(t checkTarget, d *ast.Decorator, kind string, ctx emitCtx) string {
+// minMaxLengthCheck renders @minLength or @maxLength on a string or bytes
+// value, failing it when `length failOp n` holds.
+func minMaxLengthCheck(t checkTarget, d *ast.Decorator, failOp, label string, ctx emitCtx) string {
 	if !t.primIs(prims.String, prims.Bytes) || len(d.Args) != 1 {
 		return ""
 	}
 	n, ok := semantic.IntArg(d.Args[0])
-	if !ok {
+	if !ok || !countCanFail(failOp, n) {
 		return ""
 	}
-	op, label := "<", "less than"
-	if kind == "max" {
-		op, label = ">", "greater than"
-	}
-	cond := fmt.Sprintf("%s%s %s %d", t.guard(), lengthCount(t, ctx), op, n)
-	msg := fmt.Sprintf(`"%slength %s %d"`, errSubject(t.subject), label, n)
-	return ifReturnf(cond, msg, ctx)
+	cond := fmt.Sprintf("%s %s %d", lengthCount(t, ctx), failOp, n)
+	return failIf(t.guarded(cond), t.subject, fmt.Sprintf("%s %d", label, n), ctx)
+}
+
+// countCanFail reports whether a count, a length or a number of items, can
+// fail `count failOp n`; no count is below 0.
+func countCanFail(failOp string, n int64) bool {
+	return failOp != "<" || n > 0
 }
 
 // lengthCount measures a string in runes, as OpenAPI minLength/maxLength do,
@@ -83,10 +78,8 @@ func patternCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 		return ""
 	}
 	ctx.uses["regexp"] = true
-	patVar := ctx.regexes.intern(s)
-	cond := fmt.Sprintf("%s!%s.MatchString(%s)", t.guard(), patVar, t.val())
-	msg := fmt.Sprintf(`"%sdoes not match pattern"`, errSubject(t.subject))
-	return ifReturnf(cond, msg, ctx)
+	cond := "!" + ctx.regexes.intern(s) + ".MatchString(" + t.val() + ")"
+	return failIf(t.guarded(cond), t.subject, "does not match pattern", ctx)
 }
 
 // formatCheck renders @format on a string value from its [strfmt] entry, a regex
@@ -106,17 +99,13 @@ func formatCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 	for _, imp := range sp.Imports {
 		ctx.uses[imp] = true
 	}
-	msg := fmt.Sprintf(`"%snot a valid %s"`, errSubject(t.subject), sp.Label)
-	var check string
+	var cond string
 	if sp.Pattern != "" {
 		ctx.uses["regexp"] = true
-		check = ifReturnf("!"+ctx.regexes.intern(sp.Pattern)+".MatchString("+t.val()+")", msg, ctx)
+		cond = "!" + ctx.regexes.intern(sp.Pattern) + ".MatchString(" + t.val() + ")"
 	} else {
-		check = ifReturnf(fmt.Sprintf(sp.Cond, t.val()), msg, ctx)
+		cond = fmt.Sprintf(sp.Cond, t.val())
 	}
-	if t.pointer {
-		// Nested: a format condition may carry an init statement, which `&&` cannot guard.
-		return fmt.Sprintf("if %s != nil {\n%s\n}", t.access, check)
-	}
-	return check
+	// A format condition may carry an init statement, which only a block can guard.
+	return t.guardBlock(failIf(cond, t.subject, "not a valid "+sp.Label, ctx))
 }

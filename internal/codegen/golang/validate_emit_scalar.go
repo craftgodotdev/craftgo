@@ -12,21 +12,16 @@ import (
 // field rf, held in t, against its value converted to its primitive in a local `_sv`.
 func primValueChecks(rf semantic.ResolvedField, t checkTarget, ctx emitCtx) string {
 	const local = "_sv"
-	checks := decoratorChecks(primTarget(local, rf.ResolvedPrim, escapeErrorfName(rf.Field.Name)), rf.Field.Decorators, ctx)
+	checks := decoratorChecks(primTarget(local, rf.ResolvedPrim, rf.Field.Name), rf.Field.Decorators, ctx)
 	if len(checks) == 0 {
 		return ""
 	}
-	body := strings.Join(checks, "\n")
-	primGo := scalarPrimitiveGo(rf.ResolvedPrim)
-	switch {
-	case t.pointer:
-		return fmt.Sprintf("if %s != nil {\n%s := %s(*%s)\n%s\n}", t.access, local, primGo, t.access, body)
-	case t.nilGuard:
-		// Not a pointer (a scalar over bytes), but nil is still the absent value.
-		return fmt.Sprintf("if %s != nil {\n%s := %s(%s)\n%s\n}", t.access, local, primGo, t.access, body)
-	default:
-		return fmt.Sprintf("{\n%s := %s(%s)\n%s\n}", local, primGo, t.access, body)
+	body := fmt.Sprintf("%s := %s(%s)\n%s", local, scalarPrimitiveGo(rf.ResolvedPrim), t.val(), strings.Join(checks, "\n"))
+	if !t.mayBeNil() {
+		// A block keeps `_sv` local to this field.
+		return "{\n" + body + "\n}"
 	}
+	return t.guardBlock(body)
 }
 
 // scalarDeclHasValidators reports whether sd gets a Validate() method: it
@@ -54,7 +49,7 @@ func scalarValidateChecks(sd *ast.ScalarDecl, ctx emitCtx) []string {
 // enumValidateChecks renders the body of ed's Validate(): a switch over its
 // members' consts, or nothing for an enum without members. The error has no
 // subject: the using field wraps it with its name.
-func enumValidateChecks(ed *ast.EnumDecl) []string {
+func enumValidateChecks(ed *ast.EnumDecl, ctx emitCtx) []string {
 	members := enumMembers(ed)
 	if len(members) == 0 {
 		return nil
@@ -66,6 +61,6 @@ func enumValidateChecks(ed *ast.EnumDecl) []string {
 	return []string{fmt.Sprintf(`switch v {
 case %s:
 default:
-return fmt.Errorf("invalid %s value")
-}`, strings.Join(consts, ", "), ed.Name)}
+return %s
+}`, strings.Join(consts, ", "), errorf("", "invalid "+ed.Name+" value", ctx))}
 }

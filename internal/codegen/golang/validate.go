@@ -97,14 +97,9 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 		})
 	}
 	for _, name := range slices.Sorted(maps.Keys(pkg.Enums)) {
-		ed := pkg.Enums[name]
-		checks := enumValidateChecks(ed)
-		if len(checks) > 0 {
-			uses["fmt"] = true
-		}
 		types = append(types, validatorType{
 			Name:        name,
-			Checks:      checks,
+			Checks:      enumValidateChecks(pkg.Enums[name], ctx),
 			PtrReceiver: false,
 		})
 	}

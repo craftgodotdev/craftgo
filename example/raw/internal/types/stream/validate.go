@@ -71,8 +71,10 @@ func (v *Snapshot) Validate() error {
 // Validate checks every field-level constraint declared on SnapshotReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *SnapshotReq) Validate() error {
-	if v.Region != nil && (utf8.RuneCountInString(*v.Region) < 2 || utf8.RuneCountInString(*v.Region) > 8) {
-		return fmt.Errorf("region: length out of range [2, 8]")
+	if v.Region != nil {
+		if l := utf8.RuneCountInString(*v.Region); l < 2 || l > 8 {
+			return fmt.Errorf("region: length out of range [2, 8]")
+		}
 	}
 	return nil
 }

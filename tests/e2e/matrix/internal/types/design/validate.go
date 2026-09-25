@@ -111,7 +111,7 @@ func (v *PfAddress) Validate() error {
 	if l := utf8.RuneCountInString(v.City); l < 1 || l > 100 {
 		return fmt.Errorf("city: length out of range [1, 100]")
 	}
-	if l := utf8.RuneCountInString(v.Country); l < 2 || l > 2 {
+	if utf8.RuneCountInString(v.Country) != 2 {
 		return fmt.Errorf("country: length must be 2")
 	}
 	if v.Coords != nil {

@@ -102,8 +102,10 @@ func (v *FilterOrdersReq) Validate() error {
 	if v.Limit > 100 {
 		return fmt.Errorf("limit: above maximum 100")
 	}
-	if v.IdemKey != nil && (utf8.RuneCountInString(*v.IdemKey) < 1 || utf8.RuneCountInString(*v.IdemKey) > 128) {
-		return fmt.Errorf("idemKey: length out of range [1, 128]")
+	if v.IdemKey != nil {
+		if l := utf8.RuneCountInString(*v.IdemKey); l < 1 || l > 128 {
+			return fmt.Errorf("idemKey: length out of range [1, 128]")
+		}
 	}
 	return nil
 }
@@ -255,7 +257,7 @@ func (v *Payment) Validate() error {
 	if err := v.Method.Validate(); err != nil {
 		return fmt.Errorf("method: %w", err)
 	}
-	if v.CardLast4 != nil && (utf8.RuneCountInString(*v.CardLast4) < 4 || utf8.RuneCountInString(*v.CardLast4) > 4) {
+	if v.CardLast4 != nil && utf8.RuneCountInString(*v.CardLast4) != 4 {
 		return fmt.Errorf("cardLast4: length must be 4")
 	}
 	if v.CardLast4 != nil && !_pattern0.MatchString(*v.CardLast4) {

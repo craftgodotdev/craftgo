@@ -104,7 +104,7 @@ func (v *GalleryPhoto) Validate() error {
 	if v.SizeBytes < 0 {
 		return fmt.Errorf("sizeBytes: below minimum 0")
 	}
-	if l := utf8.RuneCountInString(v.Sha256); l < 64 || l > 64 {
+	if utf8.RuneCountInString(v.Sha256) != 64 {
 		return fmt.Errorf("sha256: length must be 64")
 	}
 	if l := utf8.RuneCountInString(v.MimeType); l < 1 || l > 128 {
@@ -212,7 +212,7 @@ func (v *UploadResult) Validate() error {
 	if v.SizeBytes < 0 {
 		return fmt.Errorf("sizeBytes: below minimum 0")
 	}
-	if l := utf8.RuneCountInString(v.Sha256); l < 64 || l > 64 {
+	if utf8.RuneCountInString(v.Sha256) != 64 {
 		return fmt.Errorf("sha256: length must be 64")
 	}
 	if l := utf8.RuneCountInString(v.MimeType); l < 1 || l > 128 {

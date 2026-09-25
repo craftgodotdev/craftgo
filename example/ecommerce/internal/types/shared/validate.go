@@ -119,7 +119,7 @@ func (v Cents) Validate() error {
 // Validate checks every field-level constraint declared on CountryCode.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v CountryCode) Validate() error {
-	if l := utf8.RuneCountInString(string(v)); l < 2 || l > 2 {
+	if utf8.RuneCountInString(string(v)) != 2 {
 		return fmt.Errorf("length must be 2")
 	}
 	if !_pattern0.MatchString(string(v)) {
@@ -131,7 +131,7 @@ func (v CountryCode) Validate() error {
 // Validate checks every field-level constraint declared on CurrencyCode.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v CurrencyCode) Validate() error {
-	if l := utf8.RuneCountInString(string(v)); l < 3 || l > 3 {
+	if utf8.RuneCountInString(string(v)) != 3 {
 		return fmt.Errorf("length must be 3")
 	}
 	if !_pattern1.MatchString(string(v)) {

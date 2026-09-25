@@ -8,9 +8,9 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// numericBoundCheck renders @gt/@gte/@lt/@lte on a numeric value; op is the
-// relation a valid value satisfies, and the emitted condition negates it.
-func numericBoundCheck(t checkTarget, d *ast.Decorator, op, label string, ctx emitCtx) string {
+// numericBoundCheck renders @gt/@gte/@lt/@lte on a numeric value, failing it
+// when `value failOp bound` holds.
+func numericBoundCheck(t checkTarget, d *ast.Decorator, failOp, label string, ctx emitCtx) string {
 	if !prims.IsNumeric(t.prim) || len(d.Args) != 1 {
 		return ""
 	}
@@ -18,20 +18,7 @@ func numericBoundCheck(t checkTarget, d *ast.Decorator, op, label string, ctx em
 	if !ok {
 		return ""
 	}
-	var flip string
-	switch op {
-	case ">=":
-		flip = "<"
-	case ">":
-		flip = "<="
-	case "<=":
-		flip = ">"
-	case "<":
-		flip = ">="
-	}
-	cond := fmt.Sprintf("%s%s %s %s", t.guard(), t.val(), flip, n)
-	msg := fmt.Sprintf(`"%s%s %s"`, errSubject(t.subject), label, n)
-	return ifReturnf(cond, msg, ctx)
+	return failIf(t.guarded(t.val()+" "+failOp+" "+n), t.subject, label+" "+n, ctx)
 }
 
 // rangeCheck renders @range(lo, hi) on a numeric value as one inclusive bound check.
@@ -44,29 +31,18 @@ func rangeCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 	if !ok1 || !ok2 {
 		return ""
 	}
-	val, guard := t.val(), t.guard()
-	var cond string
-	if guard == "" {
-		cond = fmt.Sprintf("%s < %s || %s > %s", val, lo, val, hi)
-	} else {
-		cond = fmt.Sprintf("%s(%s < %s || %s > %s)", guard, val, lo, val, hi)
-	}
-	msg := fmt.Sprintf(`"%sout of range [%s, %s]"`, errSubject(t.subject), lo, hi)
-	return ifReturnf(cond, msg, ctx)
+	val := t.val()
+	cond := fmt.Sprintf("%s < %s || %s > %s", val, lo, val, hi)
+	return failIf(t.guarded(cond), t.subject, fmt.Sprintf("out of range [%s, %s]", lo, hi), ctx)
 }
 
-// signCheck renders @positive or @negative (kind) on a numeric value.
-func signCheck(t checkTarget, kind string, ctx emitCtx) string {
+// signCheck renders @positive or @negative on a numeric value, failing it when
+// `value failOp 0` holds.
+func signCheck(t checkTarget, failOp, label string, ctx emitCtx) string {
 	if !prims.IsNumeric(t.prim) {
 		return ""
 	}
-	op, label := "<=", "must be positive"
-	if kind == "negative" {
-		op, label = ">=", "must be negative"
-	}
-	cond := fmt.Sprintf("%s%s %s 0", t.guard(), t.val(), op)
-	msg := fmt.Sprintf(`"%s%s"`, errSubject(t.subject), label)
-	return ifReturnf(cond, msg, ctx)
+	return failIf(t.guarded(t.val()+" "+failOp+" 0"), t.subject, label, ctx)
 }
 
 // multipleOfCheck renders @multipleOf on an integer value; a whole float
@@ -83,7 +59,5 @@ func multipleOfCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 	if !whole || n == "0" {
 		return ""
 	}
-	cond := fmt.Sprintf("%s%s%%%s != 0", t.guard(), t.val(), n)
-	msg := fmt.Sprintf(`"%smust be a multiple of %s"`, errSubject(t.subject), n)
-	return ifReturnf(cond, msg, ctx)
+	return failIf(t.guarded(t.val()+"%"+n+" != 0"), t.subject, "must be a multiple of "+n, ctx)
 }

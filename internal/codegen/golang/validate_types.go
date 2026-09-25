@@ -2,6 +2,7 @@ package golang
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/prims"
@@ -17,7 +18,7 @@ type checkTarget struct {
 	cat      semantic.FieldCategory // a field's category; 0 for a primitive value
 	prim     string                 // the DSL primitive a flat value is checked as
 	typ      *ast.TypeRef           // a field's type
-	subject  string                 // the message subject, escaped for a format literal; "" for none
+	subject  string                 // the name its errors carry; "" for none
 }
 
 // fieldTarget is the check target of field rf held in access.
@@ -46,13 +47,30 @@ func (t checkTarget) val() string {
 	return t.access
 }
 
-// guard returns the `access != nil && ` prefix of a check on a value whose
-// nil is its valid absent state, else "".
-func (t checkTarget) guard() string {
-	if t.nilGuard {
-		return t.access + " != nil && "
+// mayBeNil reports whether t's access can be nil: a pointer, or a value whose
+// nil is its valid absent state.
+func (t checkTarget) mayBeNil() bool {
+	return t.pointer || t.nilGuard
+}
+
+// guarded returns cond behind t's `access != nil && ` guard when the access
+// may be nil; a disjunction is parenthesised.
+func (t checkTarget) guarded(cond string) string {
+	if !t.mayBeNil() {
+		return cond
 	}
-	return ""
+	if strings.Contains(cond, "||") {
+		cond = "(" + cond + ")"
+	}
+	return t.access + " != nil && " + cond
+}
+
+// guardBlock returns body inside a [guardBlock] on t's access when it may be nil.
+func (t checkTarget) guardBlock(body string) string {
+	if !t.mayBeNil() {
+		return body
+	}
+	return guardBlock(t.access, body)
 }
 
 // primIs reports whether t is a flat value of one of kinds.

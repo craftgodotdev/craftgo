@@ -49,7 +49,7 @@ func (w validateWalk) walk(t *ast.TypeRef, access string, depth int) string {
 	case t.Optional:
 		// The Go value is a pointer unless its type holds nil itself.
 		ptr := !w.ctx.resolver.ResolveTypeRef(t).IsNilable
-		return fmt.Sprintf("if %s != nil {\n%s\n}", access, w.leaf(t.Named, access, ptr))
+		return guardBlock(access, w.leaf(t.Named, access, ptr))
 	}
 	return w.leaf(t.Named, access, false)
 }
@@ -116,7 +116,7 @@ func namedIsScalarOrEnum(n *ast.NamedTypeRef, ctx emitCtx) bool {
 func validateDispatch(elem, wrapName string, ctx emitCtx) string {
 	if wrapName != "" {
 		ctx.uses["fmt"] = true
-		return fmt.Sprintf("if err := %s.Validate(); err != nil {\nreturn fmt.Errorf(\"%s: %%w\", err)\n}", elem, wrapName)
+		return fmt.Sprintf("if err := %s.Validate(); err != nil {\nreturn fmt.Errorf(\"%s: %%w\", err)\n}", elem, escapeErrorf(wrapName))
 	}
 	return fmt.Sprintf("if err := %s.Validate(); err != nil {\nreturn err\n}", elem)
 }

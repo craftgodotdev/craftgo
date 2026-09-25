@@ -36,7 +36,7 @@ func (v *Money) Validate() error {
 	if v.Amount < 0 {
 		return fmt.Errorf("amount: below minimum 0")
 	}
-	if l := utf8.RuneCountInString(v.Currency); l < 3 || l > 3 {
+	if utf8.RuneCountInString(v.Currency) != 3 {
 		return fmt.Errorf("currency: length must be 3")
 	}
 	return nil

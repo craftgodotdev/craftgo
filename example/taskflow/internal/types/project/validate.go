@@ -168,8 +168,10 @@ func (v *UpdateProjectReq) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
 	}
-	if v.Name != nil && (utf8.RuneCountInString(*v.Name) < 1 || utf8.RuneCountInString(*v.Name) > 80) {
-		return fmt.Errorf("name: length out of range [1, 80]")
+	if v.Name != nil {
+		if l := utf8.RuneCountInString(*v.Name); l < 1 || l > 80 {
+			return fmt.Errorf("name: length out of range [1, 80]")
+		}
 	}
 	if v.Color != nil {
 		if err := v.Color.Validate(); err != nil {

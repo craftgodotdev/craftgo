@@ -41,7 +41,7 @@ func (v *ApiToken) Validate() error {
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 80 {
 		return fmt.Errorf("name: length out of range [1, 80]")
 	}
-	if l := utf8.RuneCountInString(v.Last4); l < 4 || l > 4 {
+	if utf8.RuneCountInString(v.Last4) != 4 {
 		return fmt.Errorf("last4: length must be 4")
 	}
 	if err := v.Timestamps.Validate(); err != nil {

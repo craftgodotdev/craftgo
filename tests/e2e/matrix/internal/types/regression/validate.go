@@ -437,7 +437,7 @@ func (v *Rg6Stacked) Validate() error {
 	if v.B < 0 || v.B > 100 {
 		return fmt.Errorf("b: out of range [0, 100]")
 	}
-	if l := utf8.RuneCountInString(v.A); l < 5 || l > 5 {
+	if utf8.RuneCountInString(v.A) != 5 {
 		return fmt.Errorf("a: length must be 5")
 	}
 	if utf8.RuneCountInString(v.A) < 3 {
@@ -591,7 +591,7 @@ func (v *RgLengths) Validate() error {
 	if err := v.Code.Validate(); err != nil {
 		return fmt.Errorf("code: %w", err)
 	}
-	if l := utf8.RuneCountInString(v.Inline); l < 6 || l > 6 {
+	if utf8.RuneCountInString(v.Inline) != 6 {
 		return fmt.Errorf("inline: length must be 6")
 	}
 	if l := utf8.RuneCountInString(v.Rng); l < 2 || l > 8 {
@@ -757,7 +757,7 @@ func (v RgCents) Validate() error {
 // Validate checks every field-level constraint declared on RgCode.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v RgCode) Validate() error {
-	if l := utf8.RuneCountInString(string(v)); l < 4 || l > 4 {
+	if utf8.RuneCountInString(string(v)) != 4 {
 		return fmt.Errorf("length must be 4")
 	}
 	return nil

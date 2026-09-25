@@ -1,8 +1,6 @@
 package golang
 
 import (
-	"fmt"
-
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -31,7 +29,7 @@ func requiredCheck(rf semantic.ResolvedField, t checkTarget, ctx emitCtx) string
 	if cond == "" {
 		return ""
 	}
-	return ifReturnf(cond, fmt.Sprintf(`"%s: required"`, t.subject), ctx)
+	return failIf(cond, t.subject, "required", ctx)
 }
 
 // enumHasZeroMember reports whether one of ed's members has its kind's zero

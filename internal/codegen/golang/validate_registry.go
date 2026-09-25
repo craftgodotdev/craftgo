@@ -13,40 +13,40 @@ var goChecks = map[string]goCheck{
 	// string
 	"length": lengthCheck,
 	"minLength": func(t checkTarget, d *ast.Decorator, c emitCtx) string {
-		return minMaxLengthCheck(t, d, "min", c)
+		return minMaxLengthCheck(t, d, "<", "length less than", c)
 	},
 	"maxLength": func(t checkTarget, d *ast.Decorator, c emitCtx) string {
-		return minMaxLengthCheck(t, d, "max", c)
+		return minMaxLengthCheck(t, d, ">", "length greater than", c)
 	},
 	"pattern": patternCheck,
 	"format":  formatCheck,
 	// numeric
 	"gt": func(t checkTarget, d *ast.Decorator, c emitCtx) string {
-		return numericBoundCheck(t, d, ">", "must be greater than", c)
+		return numericBoundCheck(t, d, "<=", "must be greater than", c)
 	},
 	"gte": func(t checkTarget, d *ast.Decorator, c emitCtx) string {
-		return numericBoundCheck(t, d, ">=", "below minimum", c)
+		return numericBoundCheck(t, d, "<", "below minimum", c)
 	},
 	"lt": func(t checkTarget, d *ast.Decorator, c emitCtx) string {
-		return numericBoundCheck(t, d, "<", "must be less than", c)
+		return numericBoundCheck(t, d, ">=", "must be less than", c)
 	},
 	"lte": func(t checkTarget, d *ast.Decorator, c emitCtx) string {
-		return numericBoundCheck(t, d, "<=", "above maximum", c)
+		return numericBoundCheck(t, d, ">", "above maximum", c)
 	},
 	"range": rangeCheck,
 	"positive": func(t checkTarget, _ *ast.Decorator, c emitCtx) string {
-		return signCheck(t, "positive", c)
+		return signCheck(t, "<=", "must be positive", c)
 	},
 	"negative": func(t checkTarget, _ *ast.Decorator, c emitCtx) string {
-		return signCheck(t, "negative", c)
+		return signCheck(t, ">=", "must be negative", c)
 	},
 	"multipleOf": multipleOfCheck,
 	// array
 	"minItems": func(t checkTarget, d *ast.Decorator, c emitCtx) string {
-		return itemsBoundCheck(t, d, ">=", "minItems", c)
+		return itemsBoundCheck(t, d, "<", "minItems", c)
 	},
 	"maxItems": func(t checkTarget, d *ast.Decorator, c emitCtx) string {
-		return itemsBoundCheck(t, d, "<=", "maxItems", c)
+		return itemsBoundCheck(t, d, ">", "maxItems", c)
 	},
 	"uniqueItems": func(t checkTarget, _ *ast.Decorator, c emitCtx) string {
 		return uniqueItemsCheck(t, c)

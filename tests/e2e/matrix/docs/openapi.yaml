@@ -6571,6 +6571,7 @@ components:
           - exact: @length(5, 5) - lo == hi, "exactly 5 chars".
           - separate min/max: @minLength(1) and @maxLength(100) on
             distinct fields to confirm the single-bound path.
+          - zeroMin: @minLength(0) accepts every length, so it emits no check.
       properties:
         exact:
           maxLength: 5
@@ -6589,12 +6590,15 @@ components:
         zeroLower:
           maxLength: 100
           type: string
+        zeroMin:
+          type: string
       required:
       - zeroLower
       - nonEmpty
       - exact
       - onlyMin
       - onlyMax
+      - zeroMin
       type: object
     Str_Nullable:
       description: |-

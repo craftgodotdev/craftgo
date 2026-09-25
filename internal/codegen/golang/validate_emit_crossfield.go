@@ -35,26 +35,19 @@ func crossFieldChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 // requiresOneOfCheck fails when every named member is nil.
 func requiresOneOfCheck(td *ast.TypeDecl, names []string, ctx emitCtx) string {
 	cond := strings.Join(memberNilExprs(td, names, "==", ctx), " && ")
-	msg := fmt.Sprintf(`"%s: requiresOneOf %v - at least one must be set"`, td.Name, names)
-	return ifReturnf(cond, msg, ctx)
+	return failIf(cond, td.Name, fmt.Sprintf("requiresOneOf %v - at least one must be set", names), ctx)
 }
 
 // mutuallyExclusiveCheck counts the named members set and fails above one,
 // inside its own block so each check's `n` stays local.
 func mutuallyExclusiveCheck(td *ast.TypeDecl, names []string, ctx emitCtx) string {
-	ctx.uses["fmt"] = true
 	set := memberNilExprs(td, names, "!=", ctx)
 	counters := make([]string, len(set))
 	for i, p := range set {
 		counters[i] = fmt.Sprintf("if %s {\nn++\n}", p)
 	}
-	return fmt.Sprintf(`{
-n := 0
-%s
-if n > 1 {
-return fmt.Errorf("%s: mutuallyExclusive %v - at most one may be set")
-}
-}`, strings.Join(counters, "\n"), td.Name, names)
+	fail := failIf("n > 1", td.Name, fmt.Sprintf("mutuallyExclusive %v - at most one may be set", names), ctx)
+	return fmt.Sprintf("{\nn := 0\n%s\n%s\n}", strings.Join(counters, "\n"), fail)
 }
 
 // memberNilExprs renders `v.<Member> <op> nil` for each named member of td,

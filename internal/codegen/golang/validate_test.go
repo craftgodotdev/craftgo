@@ -89,6 +89,28 @@ type X {
 	)
 }
 
+// A length is counted once: an exact one compares with !=, an optional range counts inside
+// its nil guard; a zero minimum, which no length fails, emits no check.
+func TestValidateLengthShapes(t *testing.T) {
+	src := runValidateGen(t, `package design
+type X {
+    exact    string  @length(3)
+    optExact string? @length(3)
+    span     string? @length(2, 5)
+    zeroLow  string  @length(0, 9)
+    zeroMin  string  @minLength(0)
+    bin      bytes?  @length(4, 8)
+}`)
+	mustContainAll(t, src,
+		"if utf8.RuneCountInString(v.Exact) != 3 {",
+		"if v.OptExact != nil && utf8.RuneCountInString(*v.OptExact) != 3 {",
+		"if v.Span != nil {\n\t\tif l := utf8.RuneCountInString(*v.Span); l < 2 || l > 5 {",
+		"if utf8.RuneCountInString(v.ZeroLow) > 9 {",
+		"if v.Bin != nil {\n\t\tif l := len(v.Bin); l < 4 || l > 8 {",
+	)
+	mustContainNone(t, src, "v.ZeroMin", "< 0")
+}
+
 func TestValidateNumericBounds(t *testing.T) {
 	src := runValidateGen(t, `package design
 type X {

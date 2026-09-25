@@ -10,31 +10,18 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// itemsBoundCheck renders @minItems/@maxItems as a len() bound on an array or map.
-func itemsBoundCheck(t checkTarget, d *ast.Decorator, op, label string, ctx emitCtx) string {
+// itemsBoundCheck renders @minItems/@maxItems as a len() bound on an array or
+// map, failing it when `len failOp n` holds.
+func itemsBoundCheck(t checkTarget, d *ast.Decorator, failOp, label string, ctx emitCtx) string {
 	if (t.cat != semantic.CatArray && t.cat != semantic.CatMap) || len(d.Args) != 1 {
 		return ""
 	}
 	n, ok := semantic.IntArg(d.Args[0])
-	if !ok {
+	if !ok || !countCanFail(failOp, n) {
 		return ""
 	}
-	// `@minItems(0)` accepts every length.
-	if op == ">=" && n == 0 {
-		return ""
-	}
-	flip := "<"
-	if op == "<=" {
-		flip = ">"
-	}
-	cond := fmt.Sprintf("len(%s) %s %d", t.access, flip, n)
-	msg := fmt.Sprintf(`"%s: %s %d"`, t.subject, label, n)
-	check := ifReturnf(cond, msg, ctx)
-	// Nil is the valid absent/null value of an optional or @nullable collection.
-	if t.nilGuard {
-		return fmt.Sprintf("if %s != nil {\n%s\n}", t.access, check)
-	}
-	return check
+	cond := fmt.Sprintf("len(%s) %s %d", t.access, failOp, n)
+	return t.guardBlock(failIf(cond, t.subject, fmt.Sprintf("%s %d", label, n), ctx))
 }
 
 // uniqueItemsCheck renders @uniqueItems on an array as a dedupe map keyed by
@@ -44,18 +31,17 @@ func uniqueItemsCheck(t checkTarget, ctx emitCtx) string {
 		return ""
 	}
 	elem := goType(t.typ.ElemTypeRef(), ctx.resolver.Resolver, nil)
-	ctx.uses["fmt"] = true
 	// The element type keys the map and may name another package.
 	t.typ.WalkNamedRefs(ctx.resolver.CrossPkg.importsInto(ctx.uses))
 	return fmt.Sprintf(`{
 seen := make(map[%s]struct{}, len(%s))
 for _, item := range %s {
 if _, dup := seen[item]; dup {
-return fmt.Errorf("%s: items must be unique")
+return %s
 }
 seen[item] = struct{}{}
 }
-}`, elem, t.access, t.access, t.subject)
+}`, elem, t.access, t.access, errorf(t.subject, "items must be unique", ctx))
 }
 
 // maxSizeCheck renders @maxSize on a file as a nil-guarded bound on its Size.
@@ -67,9 +53,8 @@ func maxSizeCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 	if !ok || bytes <= 0 {
 		return ""
 	}
-	cond := fmt.Sprintf("%s != nil && %s.Size > %d", t.access, t.access, bytes)
-	msg := fmt.Sprintf(`"%s: file size exceeds %d bytes"`, t.subject, bytes)
-	return ifReturnf(cond, msg, ctx)
+	cond := fmt.Sprintf("%s.Size > %d", t.access, bytes)
+	return failIf(t.guarded(cond), t.subject, fmt.Sprintf("file size exceeds %d bytes", bytes), ctx)
 }
 
 // mimeTypesCheck renders @mimeTypes on a file as a switch over the upload's
@@ -85,12 +70,9 @@ func mimeTypesCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 	if len(cases) == 0 {
 		return ""
 	}
-	ctx.uses["fmt"] = true
-	return fmt.Sprintf(`if %s != nil {
-switch %s.Header.Get("Content-Type") {
+	return t.guardBlock(fmt.Sprintf(`switch %s.Header.Get("Content-Type") {
 case %s:
 default:
-return fmt.Errorf("%s: disallowed content type")
-}
-}`, t.access, t.access, strings.Join(cases, ", "), t.subject)
+return %s
+}`, t.access, strings.Join(cases, ", "), errorf(t.subject, "disallowed content type", ctx)))
 }

@@ -56,7 +56,7 @@ func (v *AllFormats) Validate() error {
 	if !_pattern0.MatchString(v.Uuid) {
 		return fmt.Errorf("uuid: not a valid UUID")
 	}
-	if l := utf8.RuneCountInString(v.Uuid); l < 36 || l > 36 {
+	if utf8.RuneCountInString(v.Uuid) != 36 {
 		return fmt.Errorf("uuid: length must be 36")
 	}
 	if _, _err := time.Parse(time.RFC3339, v.Datetime); _err != nil {
@@ -68,13 +68,13 @@ func (v *AllFormats) Validate() error {
 	if _, _err := time.Parse(time.DateOnly, v.Date); _err != nil {
 		return fmt.Errorf("date: not a valid date")
 	}
-	if l := utf8.RuneCountInString(v.Date); l < 10 || l > 10 {
+	if utf8.RuneCountInString(v.Date) != 10 {
 		return fmt.Errorf("date: length must be 10")
 	}
 	if _, _err := time.Parse(time.TimeOnly, v.TimeField); _err != nil {
 		return fmt.Errorf("timeField: not a valid time")
 	}
-	if l := utf8.RuneCountInString(v.TimeField); l < 8 || l > 8 {
+	if utf8.RuneCountInString(v.TimeField) != 8 {
 		return fmt.Errorf("timeField: length must be 8")
 	}
 	if !_pattern1.MatchString(v.Phone) {
@@ -173,8 +173,10 @@ func (v *Str_Combos) Validate() error {
 // Validate checks every field-level constraint declared on Str_Default.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Str_Default) Validate() error {
-	if v.Greeting != nil && (utf8.RuneCountInString(*v.Greeting) < 1 || utf8.RuneCountInString(*v.Greeting) > 100) {
-		return fmt.Errorf("greeting: length out of range [1, 100]")
+	if v.Greeting != nil {
+		if l := utf8.RuneCountInString(*v.Greeting); l < 1 || l > 100 {
+			return fmt.Errorf("greeting: length out of range [1, 100]")
+		}
 	}
 	return nil
 }
@@ -197,8 +199,10 @@ func (v *Str_EchoReq) Validate() error {
 	if v.Bio != nil && utf8.RuneCountInString(*v.Bio) > 500 {
 		return fmt.Errorf("bio: length greater than 500")
 	}
-	if v.Greeting != nil && (utf8.RuneCountInString(*v.Greeting) < 1 || utf8.RuneCountInString(*v.Greeting) > 100) {
-		return fmt.Errorf("greeting: length out of range [1, 100]")
+	if v.Greeting != nil {
+		if l := utf8.RuneCountInString(*v.Greeting); l < 1 || l > 100 {
+			return fmt.Errorf("greeting: length out of range [1, 100]")
+		}
 	}
 	return nil
 }
@@ -230,13 +234,13 @@ func (v *Str_EchoResp) Validate() error {
 // Validate checks every field-level constraint declared on Str_Lengths.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Str_Lengths) Validate() error {
-	if l := utf8.RuneCountInString(v.ZeroLower); l < 0 || l > 100 {
+	if utf8.RuneCountInString(v.ZeroLower) > 100 {
 		return fmt.Errorf("zeroLower: length out of range [0, 100]")
 	}
 	if l := utf8.RuneCountInString(v.NonEmpty); l < 1 || l > 100 {
 		return fmt.Errorf("nonEmpty: length out of range [1, 100]")
 	}
-	if l := utf8.RuneCountInString(v.Exact); l < 5 || l > 5 {
+	if utf8.RuneCountInString(v.Exact) != 5 {
 		return fmt.Errorf("exact: length must be 5")
 	}
 	if utf8.RuneCountInString(v.OnlyMin) < 1 {
@@ -260,8 +264,10 @@ func (v *Str_Nullable) Validate() error {
 // Validate checks every field-level constraint declared on Str_Optionals.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *Str_Optionals) Validate() error {
-	if v.LenOpt != nil && (utf8.RuneCountInString(*v.LenOpt) < 1 || utf8.RuneCountInString(*v.LenOpt) > 100) {
-		return fmt.Errorf("lenOpt: length out of range [1, 100]")
+	if v.LenOpt != nil {
+		if l := utf8.RuneCountInString(*v.LenOpt); l < 1 || l > 100 {
+			return fmt.Errorf("lenOpt: length out of range [1, 100]")
+		}
 	}
 	if v.MailOpt != nil {
 		if _, _err := mail.ParseAddress(*v.MailOpt); _err != nil {
@@ -271,8 +277,10 @@ func (v *Str_Optionals) Validate() error {
 	if v.PattOpt != nil && !_pattern6.MatchString(*v.PattOpt) {
 		return fmt.Errorf("pattOpt: does not match pattern")
 	}
-	if v.BothOpt != nil && (utf8.RuneCountInString(*v.BothOpt) < 1 || utf8.RuneCountInString(*v.BothOpt) > 80) {
-		return fmt.Errorf("bothOpt: length out of range [1, 80]")
+	if v.BothOpt != nil {
+		if l := utf8.RuneCountInString(*v.BothOpt); l < 1 || l > 80 {
+			return fmt.Errorf("bothOpt: length out of range [1, 80]")
+		}
 	}
 	if v.BothOpt != nil {
 		if _, _err := mail.ParseAddress(*v.BothOpt); _err != nil {

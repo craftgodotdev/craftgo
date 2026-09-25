@@ -558,7 +558,7 @@ func (v Email) Validate() error {
 // Validate checks every field-level constraint declared on ISO3.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v ISO3) Validate() error {
-	if l := utf8.RuneCountInString(string(v)); l < 3 || l > 3 {
+	if utf8.RuneCountInString(string(v)) != 3 {
 		return fmt.Errorf("length must be 3")
 	}
 	if !_pattern0.MatchString(string(v)) {

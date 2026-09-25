@@ -153,8 +153,10 @@ func (v *UpdateTodoReq) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
 	}
-	if v.Title != nil && (utf8.RuneCountInString(*v.Title) < 1 || utf8.RuneCountInString(*v.Title) > 200) {
-		return fmt.Errorf("title: length out of range [1, 200]")
+	if v.Title != nil {
+		if l := utf8.RuneCountInString(*v.Title); l < 1 || l > 200 {
+			return fmt.Errorf("title: length out of range [1, 200]")
+		}
 	}
 	if v.Notes != nil && utf8.RuneCountInString(*v.Notes) > 2000 {
 		return fmt.Errorf("notes: length greater than 2000")
