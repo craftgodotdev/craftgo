@@ -2,6 +2,8 @@ package semantic
 
 import (
 	"testing"
+
+	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
 // Two field names with one Go name warn, naming both spellings and the suffixed Go name.
@@ -44,14 +46,12 @@ type User {
 }`)
 }
 
-// warnFieldCollisions reports nothing for an empty member list.
+// A nameless field, as a parse error leaves it, takes part in no collision.
 func TestFieldCollisionEmptyNameSkipped(t *testing.T) {
 	a := newTestAnalyzer(&Package{})
-	a.warnFieldCollisions("type Foo", nil)
-	for _, d := range a.diags {
-		if d.Code == CodeFieldNameCollision {
-			t.Errorf("empty member list must not produce collision warning; got %q", d.Msg)
-		}
+	a.warnFieldCollisions("type Foo", []ast.TypeMember{&ast.Field{}, &ast.Field{}})
+	if d := findCode(a.diags, CodeFieldNameCollision); d != nil {
+		t.Errorf("two nameless fields collide: %q", d.Msg)
 	}
 }
 
