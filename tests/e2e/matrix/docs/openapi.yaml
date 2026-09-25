@@ -2860,6 +2860,8 @@ components:
       required:
       - items
       type: object
+    ListPageRespBody:
+      $ref: '#/components/schemas/ItemList'
     ListPagedRespBody:
       $ref: '#/components/schemas/ItemList'
     ListProfilesResp:
@@ -3877,6 +3879,17 @@ components:
           $ref: '#/components/schemas/ScalarsPageOfString'
       required:
       - rows
+      type: object
+    PageReq:
+      description: |-
+        PageReq holds a GET request field that carries @json: it auto-binds to
+        the query string as `pageSize`, the name its validation errors carry.
+      properties:
+        page_size:
+          minimum: 1
+          type: integer
+      required:
+      - page_size
       type: object
     PageSize:
       description: |-
@@ -8689,6 +8702,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/NullableFormRespBody'
           description: Created
+      tags:
+      - bindings
+  /bindings/page:
+    get:
+      description: List one page of items. `pageSize` rides the query string; a value
+        below its bound is reported as pageSize.
+      operationId: ListPage
+      parameters:
+      - in: query
+        name: pageSize
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListPageRespBody'
+          description: OK
       tags:
       - bindings
   /bindings/paged:

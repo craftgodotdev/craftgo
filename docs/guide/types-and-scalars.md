@@ -217,7 +217,7 @@ type OrderCaptured {
 }
 ```
 
-The Go tag, the OpenAPI document and validation messages all carry the `@json` key. It applies to body fields only; a field bound with `@path`, `@query`, `@header`, `@cookie` or `@form` names its wire location in that decorator.
+The Go tag, the OpenAPI document and validation messages all carry the `@json` key. It applies to body fields only; a field bound with `@path`, `@query`, `@header`, `@cookie` or `@form` names its wire location in that decorator. A field without a binding decorator that a request reads from a path variable, or from the query string of a `get`, `delete`, `head` or `options` method, is read under its own name, which its validation messages carry when no JSON value holds the field.
 
 The recommended style is to keep field names lowercase (`createdAt string`) and reserve PascalCase for mixin references. Mixing the two on adjacent lines works, but a PascalCase field declared with a custom (non-builtin) type - e.g. `CreatedAt MyTimestamp` on its own line - is read as a mixin reference to `CreatedAt` followed by a field named `MyTimestamp`. When in doubt, write the field on its own line with a builtin or scalar-backed type.
 

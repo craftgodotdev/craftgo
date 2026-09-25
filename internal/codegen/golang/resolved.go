@@ -4,7 +4,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
-	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 // resolvedField is a [semantic.ResolvedField] with its Go rendering.
@@ -14,15 +13,6 @@ type resolvedField struct {
 	GoName string // Go selector of the field: its exported name, behind its embed path when shadowed
 
 	IsPointer bool // Go type is a pointer: a wrapped optional or @nullable field, or a file
-}
-
-// WireName returns the field's name in its path, query, header, cookie or form
-// binding, or "" for a body or sensitive field.
-func (rf resolvedField) WireName() string {
-	if rf.Binding.IsParam() {
-		return wire.WireName(rf.Field, rf.Binding)
-	}
-	return ""
 }
 
 // decorate wraps one resolved field with its Go rendering.

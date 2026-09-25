@@ -154,6 +154,15 @@ func (v *Page) Validate() error {
 	return nil
 }
 
+// Validate checks every field-level constraint declared on PageReq.
+// Returns the first violation; nil when the value satisfies the contract.
+func (v *PageReq) Validate() error {
+	if v.PageSize < 1 {
+		return fmt.Errorf("pageSize: below minimum 1")
+	}
+	return nil
+}
+
 // Validate checks every field-level constraint declared on PagedReq.
 // Returns the first violation; nil when the value satisfies the contract.
 func (v *PagedReq) Validate() error {

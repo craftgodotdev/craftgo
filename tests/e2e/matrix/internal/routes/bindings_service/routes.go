@@ -26,4 +26,5 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/bindings/health", transport.Health(svcCtx))
 	srv.Handle("DELETE /api/bindings/items/{id}", transport.DeleteItem(svcCtx))
 	srv.Handle("GET /api/bindings/wire/{user_id}", transport.EchoWire(svcCtx))
+	srv.Handle("GET /api/bindings/page", transport.ListPage(svcCtx))
 }

@@ -611,6 +611,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   and a bad value as `byCode: ...`; both now name `by_code`, through nested
   maps and arrays too.
 
+- **A validation error names the field as the request carries it.** A GET
+  request field `pageSize int @json("page_size") @gte(1)` binds `?pageSize`,
+  but a bad value was reported as `page_size: ...`; a field that every request
+  auto-binds to the query string or a path variable, and no JSON value carries,
+  is now reported under that parameter's name. A constraint on a scalar- or
+  enum-typed field named the field itself (`code`) while its other errors
+  named its JSON key or parameter (`c`); all of them now name the same.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

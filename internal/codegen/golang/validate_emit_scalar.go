@@ -12,7 +12,7 @@ import (
 // field rf, held in t, against its value converted to its primitive in a local `_sv`.
 func primValueChecks(rf semantic.ResolvedField, t checkTarget, ctx emitCtx) string {
 	const local = "_sv"
-	checks := decoratorChecks(primTarget(local, rf.ResolvedPrim, rf.Field.Name), rf.Field.Decorators, ctx)
+	checks := decoratorChecks(primTarget(local, rf.ResolvedPrim, t.subject), rf.Field.Decorators, ctx)
 	if len(checks) == 0 {
 		return ""
 	}

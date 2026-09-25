@@ -138,11 +138,10 @@ type Req {
 		}
 	}
 
-	if wn := byName["createdAt"].WireName(); wn != "X-Created" {
-		t.Errorf("createdAt WireName = %q, want X-Created", wn)
-	}
-	if wn := byName["token"].WireName(); wn != "t" {
-		t.Errorf("token WireName = %q, want t", wn)
+	for name, want := range map[string]string{"createdAt": "X-Created", "token": "t"} {
+		if rf := byName[name]; wireName(rf.Field, rf.Binding) != want {
+			t.Errorf("%s wire name = %q, want %q", name, wireName(rf.Field, rf.Binding), want)
+		}
 	}
 	if dv := byName["sort"].DefaultWire; dv != "asc" {
 		t.Errorf("sort DefaultWire = %v, want asc", dv)

@@ -164,14 +164,15 @@ func collectBindings(m *ast.Method, fields []resolvedField, pkg *semantic.Packag
 			}
 			return nil, fmt.Errorf("%s.%s: @path requires a non-optional, non-array field - got %s", reqName, f.Name, f.Type)
 		}
-		line, err := renderWireBindLine(rf, rf.Binding, rf.WireName(), pkg, r, imports)
+		name := wireName(f, rf.Binding)
+		line, err := renderWireBindLine(rf, rf.Binding, name, pkg, r, imports)
 		if err != nil {
 			if autoPath {
 				continue
 			}
 			return nil, bindError(m, f, err)
 		}
-		binds[rf.Binding] = append(binds[rf.Binding], paramBinding{DSLName: rf.WireName(), GoName: rf.GoName, Bind: line})
+		binds[rf.Binding] = append(binds[rf.Binding], paramBinding{DSLName: name, GoName: rf.GoName, Bind: line})
 	}
 	return binds, nil
 }

@@ -112,6 +112,12 @@ type Page struct {
 	Size *int `json:"-" query:"size"`
 }
 
+// PageReq holds a GET request field that carries @json: it auto-binds to
+// the query string as `pageSize`, the name its validation errors carry.
+type PageReq struct {
+	PageSize int `json:"page_size"`
+}
+
 // PagedReq binds `page` and `size` from the query string into the Page
 // it embeds.
 type PagedReq struct {

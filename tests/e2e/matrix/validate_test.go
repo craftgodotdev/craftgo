@@ -1,6 +1,8 @@
 package matrix
 
 import (
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -148,6 +150,22 @@ func TestMapErrorsNameTheJSONKey(t *testing.T) {
 	}
 	accepts(t, "valid key and value",
 		&collections.Map_JSONKey{Index: map[collections.NonEmptyID]collections.Email{"id": "a@b.co"}})
+}
+
+// A query parameter that fails validation is reported under the name the
+// request carried it: PageReq.pageSize auto-binds to `?pageSize` although it
+// carries @json("page_size").
+func TestAutoBoundQueryErrorNamesTheParameter(t *testing.T) {
+	ts := bootAll(t)
+	resp, err := ts.Client().Get(ts.URL + "/api/bindings/page?pageSize=0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusBadRequest || !strings.HasPrefix(string(body), "pageSize: ") {
+		t.Errorf("want 400 naming pageSize, got %d %q", resp.StatusCode, body)
+	}
 }
 
 // An integer bound past 2^53 is compared exactly: minId is @gte(2^53 + 1).

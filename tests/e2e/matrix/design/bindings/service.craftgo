@@ -123,6 +123,15 @@ service BindingsService {
 		response Item
 	}
 
+	// ListPage auto-binds a field that carries @json to the query string:
+	// the binder reads `?pageSize`, and a value below its bound is
+	// reported under that name.
+	@doc("List one page of items. `pageSize` rides the query string; a value below its bound is reported as pageSize.")
+	get ListPage /page {
+		request  PageReq
+		response ItemList
+	}
+
 	// PathIntProbe is a commented stub: `@path` binds only string-backed
 	// fields, so a numeric path param is rejected at gen time. Uncomment
 	// it together with PathIntReq in bindings.craftgo to reproduce the
@@ -222,6 +231,12 @@ type WireRenameReq {
 	apiKey  string  @header("X-API-Key")
 	session string  @cookie("session_id")
 	q       string? @query("search_q")
+}
+
+// PageReq holds a GET request field that carries @json: it auto-binds to
+// the query string as `pageSize`, the name its validation errors carry.
+type PageReq {
+	pageSize int @json("page_size") @gte(1)
 }
 
 // ---------------------------------------------------------------

@@ -290,6 +290,34 @@ type Catalog {
 	mustParseGo(t, src)
 }
 
+// A message names a field as the request reads it: an auto-bound query or path parameter
+// by its parameter name, a field any request reads from JSON by its JSON key.
+func TestValidateNamesTheBoundParameter(t *testing.T) {
+	src := runValidateGen(t, `package design
+scalar Code string
+type Page { pageSize int @json("page_size") @gte(1) }
+type ListReq { Page  limit int @json("max") @lte(9) }
+type PathReq { id string @json("ident") @minLength(2) }
+type BodyReq { size int @json("the_size") @gte(1)  code Code @json("c") @maxLength(5) }
+type Both { n int @json("n_json") @gte(1) }
+type Resp { ok bool }
+service S {
+    get  List /items    { request ListReq  response Resp }
+    get  One  /one/{id} { request PathReq  response Resp }
+    post Make /items    { request BodyReq  response Resp }
+    get  Read /both     { request Both     response Resp }
+    post Save /both     { request Both     response Resp }
+}`)
+	mustContainAll(t, src,
+		`"pageSize: below minimum 1"`,
+		`"limit: above maximum 9"`,
+		`"id: length less than 2"`,
+		`"the_size: below minimum 1"`,
+		`"c: length greater than 5"`,
+		`"n_json: below minimum 1"`,
+	)
+}
+
 // A map's key and value errors name the field's JSON key alike, at any nesting.
 func TestValidateMapKeyAndValueNameOneSubject(t *testing.T) {
 	src := runValidateGen(t, `package design

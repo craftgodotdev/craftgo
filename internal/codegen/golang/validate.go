@@ -73,7 +73,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 
 	uses := map[string]bool{}
 	regexes := newRegexRegistry()
-	ctx := emitCtx{pkg: pkg, uses: uses, regexes: regexes, resolver: r}
+	ctx := emitCtx{pkg: pkg, uses: uses, regexes: regexes, resolver: r, autoBound: autoBindings(r.Project())}
 	var types []validatorType
 	for _, name := range names {
 		td := pkg.Types[name]
@@ -139,7 +139,7 @@ func collectChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 		switch v := m.(type) {
 		case *ast.Field:
 			rf := semantic.ResolveField(v, ctx.pkg, ctx.resolver.Project())
-			t := fieldTarget(rf, "v."+levelNames[fieldIdx], fieldWireName(v))
+			t := fieldTarget(rf, "v."+levelNames[fieldIdx], ctx.subject(v))
 			fieldIdx++
 			out = append(out, fieldChecks(rf, t, ctx)...)
 			if calls := validateCalls(t, td.TypeParams, ctx); calls != "" {
