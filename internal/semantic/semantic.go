@@ -36,6 +36,8 @@ type ServiceInfo struct {
 	Primary *ast.ServiceDecl
 	Extends []*ast.ServiceDecl
 	Methods []*ast.Method
+	// basePath is [Options.BasePath], which every route of the service starts with.
+	basePath string
 }
 
 // Options carries the manifest settings the analysis checks against.

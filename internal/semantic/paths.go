@@ -28,7 +28,7 @@ func (a *analyzer) checkPathResolution() {
 	for _, svcName := range slices.Sorted(maps.Keys(a.pkg.Services)) {
 		si := a.pkg.Services[svcName]
 		for _, m := range si.Methods {
-			rt := a.resolveMethodPath(si.Primary, m)
+			rt := si.registeredRoute(m)
 			if healthSet[rt] {
 				a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathHealthConflict,
 					"method %s.%s resolves to %s, which is a reserved health path",
@@ -61,7 +61,7 @@ func (c *projectChecks) checkProjectPathCollision() {
 				continue
 			}
 			for _, m := range si.Methods {
-				rt := route.Resolve(c.basePath, si.Primary, m)
+				rt := si.registeredRoute(m)
 				entries = append(entries, routeEntry{
 					verb: strings.ToUpper(m.Verb), route: rt, shape: route.Shape(rt),
 					pos: m.Pos, pkg: pkgName, service: svcName, method: m.Name,
@@ -136,9 +136,10 @@ func (c *projectChecks) checkBasePathFormat() {
 		bp, bad)
 }
 
-// resolveMethodPath is [route.Resolve] with the configured basePath.
-func (a *analyzer) resolveMethodPath(svc *ast.ServiceDecl, m *ast.Method) string {
-	return route.Resolve(a.opts.BasePath, svc, m)
+// registeredRoute returns the route m, a method of the service, registers:
+// the basePath, the service's @prefix, then m's path.
+func (si *ServiceInfo) registeredRoute(m *ast.Method) string {
+	return route.Resolve(si.basePath, si.Primary, m)
 }
 
 // checkMethodPathParams reports a `{name}` in rt that no request field
@@ -256,24 +257,20 @@ func (a *analyzer) checkDuplicatePathVars(svc *ast.ServiceDecl, m *ast.Method) {
 }
 
 // methodRoutePathVars returns the path variables of m's registered route,
-// @prefix included; services is the package's service table.
+// the basePath's and @prefix's included; services is the package's service
+// table.
 func methodRoutePathVars(m *ast.Method, services map[string]*ServiceInfo) map[string]bool {
 	vars := map[string]bool{}
 	if m == nil {
 		return vars
 	}
-	var owner *ast.ServiceDecl
+	owner := &ServiceInfo{}
 	for _, si := range services {
-		if si == nil {
-			continue
-		}
-		for _, sm := range si.Methods {
-			if sm == m {
-				owner = si.Primary
-			}
+		if si != nil && slices.Contains(si.Methods, m) {
+			owner = si
 		}
 	}
-	for _, name := range route.Vars(route.Resolve("", owner, m)) {
+	for _, name := range route.Vars(owner.registeredRoute(m)) {
 		vars[name] = true
 	}
 	return vars

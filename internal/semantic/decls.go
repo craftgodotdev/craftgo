@@ -66,7 +66,7 @@ func (a *analyzer) collectDecls(files []*ast.File) {
 			case *ast.ServiceDecl:
 				si, ok := a.pkg.Services[dd.Name]
 				if !ok {
-					si = &ServiceInfo{}
+					si = &ServiceInfo{basePath: a.opts.BasePath}
 					a.pkg.Services[dd.Name] = si
 				}
 				if dd.Extend {

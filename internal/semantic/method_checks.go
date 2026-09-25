@@ -25,7 +25,7 @@ func (a *analyzer) checkServiceMethods() {
 			}
 			// Methods collide on verb plus resolved route shape, parameter
 			// names erased; a pathless method routes by its kebab-cased name.
-			rt := a.resolveMethodPath(si.Primary, m)
+			rt := si.registeredRoute(m)
 			key := m.Verb + " " + route.Shape(rt)
 			if prev, ok := seenRoute[key]; ok {
 				d := a.diag(m.Pos, m.Pos, lexer.SeverityError, CodeServiceDuplicateRoute,

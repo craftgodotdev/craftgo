@@ -7,12 +7,12 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 // A pathless method routes to its name split by idents (`ListV2Items` → `/list-v2items`).
-func TestResolveMethodPathPathlessUsesIdentsKebab(t *testing.T) {
-	a := &analyzer{}
-	svc := &ast.ServiceDecl{}
+func TestRegisteredRoutePathlessUsesIdentsKebab(t *testing.T) {
+	si := &ServiceInfo{Primary: &ast.ServiceDecl{}}
 	cases := map[string]string{
 		"ListV2Items":  "/list-v2items",
 		"OAuth2Login":  "/o-auth2login",
@@ -21,9 +21,9 @@ func TestResolveMethodPathPathlessUsesIdentsKebab(t *testing.T) {
 		"ListTodos":    "/list-todos",
 	}
 	for name, want := range cases {
-		got := a.resolveMethodPath(svc, &ast.Method{Name: name})
+		got := si.registeredRoute(&ast.Method{Name: name})
 		if got != want {
-			t.Errorf("resolveMethodPath pathless %q = %q, want %q (idents canonical)", name, got, want)
+			t.Errorf("registeredRoute pathless %q = %q, want %q (idents canonical)", name, got, want)
 		}
 	}
 }
@@ -106,6 +106,29 @@ service B { get B /users {} }`),
 		Options{BasePath: "/api"})
 	if findCode(diags, CodePathCollision) == nil {
 		t.Fatalf("got %v", codes(diags))
+	}
+}
+
+// A basePath variable is a variable of every route, bound once: a request
+// field of its name binds to the path both in the checks and in the fields
+// a target binds.
+func TestBasePathVariableBindsThePath(t *testing.T) {
+	opts := Options{BasePath: "/t/{tenant}"}
+	pkg, diags := analyzeWith(parseFiles(t, `package app
+type Req { tenant string  q string? }
+service S { get A /a { request Req } }`), opts)
+	expectNoDiags(t, diags)
+	m := pkg.Services["S"].Methods[0]
+	for _, rf := range RequestFields(m, pkg, PackageResolver(pkg), nil) {
+		if rf.Field.Name == "tenant" && rf.Binding != wire.BindPath {
+			t.Errorf("tenant binds to %s, want path", rf.Binding)
+		}
+	}
+	_, diags = analyzeWith(parseFiles(t, `package app
+type Req { tenant string? }
+service S { get A /a { request Req } }`), opts)
+	if d := findCode(diags, CodeDecoratorConflict); d == nil || !strings.Contains(d.Msg, "auto-binds to the path segment {tenant}") {
+		t.Errorf("want an optional basePath variable refused as a path segment, got %v", diags)
 	}
 }
 
@@ -300,15 +323,15 @@ func TestHealthConflictNonHealthPath(t *testing.T) {
 }`)
 }
 
-func TestResolveMethodPathFallbackName(t *testing.T) {
-	a := newTestAnalyzer(&Package{})
-	got := a.resolveMethodPath(nil, &ast.Method{Name: "Ping"})
+// No basePath, no prefix and no path route a method to `/<kebab name>`.
+func TestRegisteredRouteFallbackName(t *testing.T) {
+	got := (&ServiceInfo{}).registeredRoute(&ast.Method{Name: "Ping"})
 	if got != "/ping" {
 		t.Errorf("got %q, want %q", got, "/ping")
 	}
 }
 
-func TestResolveMethodPathIgnoresGroup(t *testing.T) {
+func TestRegisteredRouteIgnoresGroup(t *testing.T) {
 	// @group shapes the output folders, not the route.
 	pkg, diags := analyzeWith(parseFiles(t, `@prefix("/v1")
 @group("admin")
@@ -316,20 +339,10 @@ service S { get GetUser /users {} }`), Options{})
 	if len(diags) > 0 {
 		t.Fatalf("unexpected diags: %v", diags)
 	}
-	a := newTestAnalyzer(pkg)
 	si := pkg.Services["S"]
-	got := a.resolveMethodPath(si.Primary, si.Methods[0])
+	got := si.registeredRoute(si.Methods[0])
 	if got != "/v1/users" {
 		t.Errorf("got %q, want %q", got, "/v1/users")
-	}
-}
-
-func TestResolveMethodPathEmptyParts(t *testing.T) {
-	// No basePath, no prefix, no inline path → defaults to /<kebab>.
-	a := newTestAnalyzer(&Package{})
-	got := a.resolveMethodPath(nil, &ast.Method{Name: "Ping"})
-	if got != "/ping" {
-		t.Errorf("got %q, want %q", got, "/ping")
 	}
 }
 
@@ -361,11 +374,9 @@ service S {
 }`)
 }
 
-// resolveMethodPath adds the leading slash a basePath lacks.
-func TestResolveMethodPathBasePathMissingSlash(t *testing.T) {
-	a := newTestAnalyzer(&Package{})
-	a.opts.BasePath = "v1"
-	got := a.resolveMethodPath(nil, &ast.Method{Name: "Ping"})
+// registeredRoute adds the leading slash a basePath lacks.
+func TestRegisteredRouteBasePathMissingSlash(t *testing.T) {
+	got := (&ServiceInfo{basePath: "v1"}).registeredRoute(&ast.Method{Name: "Ping"})
 	if got != "/v1/ping" {
 		t.Errorf("got %q, want %q", got, "/v1/ping")
 	}

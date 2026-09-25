@@ -695,6 +695,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@gt(5) @lt(5)`, only warned and are an error too; bounds compare by their
   exact values, not as float64.
 
+- **A basePath variable binds from the path.** With `openapi.basePath:
+  /t/{tenant}`, a request field named `tenant` passed the check that every
+  route variable is bound, while the handler read it from the query string,
+  or from the JSON body on a POST, so a request to `/t/acme/...` failed for a
+  missing `tenant`. Every rule now takes a method's route variables from the
+  one route it registers, the basePath's included: the field binds to the path
+  segment, and the OpenAPI document lists it as a path parameter.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
