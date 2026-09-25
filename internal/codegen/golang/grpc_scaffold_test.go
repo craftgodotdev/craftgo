@@ -119,14 +119,11 @@ func TestWiringGRPCIsWrittenOnlyWithServices(t *testing.T) {
 	if pbAliasFor("greet") != "greetpb" || pbAliasFor("greetpb") != "greetpb" {
 		t.Error("a package named with a pb suffix keeps it once")
 	}
-	imports := newGRPCImportSet()
-	imports.add(extraImport{Alias: "greetpb", Path: "x/a"})
-	imports.add(extraImport{Alias: "greetpb", Path: "x/b"})
-	imports.add(extraImport{Alias: "rpc", Path: "x/c"})
-	if a, b := imports.aliasFor("x/a"), imports.aliasFor("x/b"); a != "greetpb" || b != "greetpb2" {
+	imports := newImportSet(nil, goImport{}, wiringGRPCNames)
+	if a, b := imports.add("greetpb", "x/a"), imports.add("greetpb", "x/b"); a != "greetpb" || b != "greetpb2" {
 		t.Errorf("aliases = %s, %s", a, b)
 	}
-	if got := imports.aliasFor("x/c"); got != "rpc2" {
+	if got := imports.add("rpc", "x/c"); got != "rpc2" {
 		t.Errorf("a reserved name must be avoided, got %s", got)
 	}
 }

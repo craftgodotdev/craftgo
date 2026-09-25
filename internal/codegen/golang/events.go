@@ -14,7 +14,7 @@ import (
 // eventsData is the template input for one package's events.go.
 type eventsData struct {
 	Package string
-	Imports []extraImport
+	Imports []goImport
 	Events  []eventDescriptor
 	// UsesFmt is set when the file declares an element validator, which formats its error.
 	UsesFmt bool
@@ -41,15 +41,14 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 		return fmt.Errorf("package has no name")
 	}
 	r = resolverFor(pkg, r)
-	imports := newImportSet(r.CrossPkg)
-	typesImport := typesImportRoot(cfg) + "/" + pkg.Name
+	imports := newImportSet(r.CrossPkg, goImport{Alias: localAlias, Path: typesImportRoot(cfg) + "/" + pkg.Name}, eventsNames)
 	data := eventsData{Package: pkg.Name}
 	for _, name := range slices.Sorted(maps.Keys(pkg.Events)) {
 		ev, ok := r.Project().LookupEvent(pkg.Name, name)
 		if !ok {
 			continue
 		}
-		payload := imports.payloadRefType(ev.PayloadRef, typesImport)
+		payload := imports.named(ev.PayloadRef)
 		if ev.PayloadArray {
 			payload = "[]" + payload
 		}
@@ -69,7 +68,7 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 	if len(data.Events) == 0 {
 		return nil
 	}
-	data.Imports = imports.sorted()
+	data.Imports = imports.imports()
 	return writeGo(filepath.Join(projectRoot, outDir, pkg.Name, "events.go"), tmpl("events.tmpl"), data)
 }
 

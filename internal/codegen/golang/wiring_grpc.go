@@ -12,7 +12,7 @@ import (
 type wiringGRPCData struct {
 	SvccontextImport string
 	// Imports lists every pb and server package once, sorted by path.
-	Imports []extraImport
+	Imports []goImport
 	// Services is one registration line per proto service.
 	Services []wiringGRPCService
 }
@@ -36,19 +36,17 @@ func generateWiringGRPC(protos *protodesign.Set, cfg *config.Config, projectRoot
 // buildWiringGRPCData imports each pb package as `<name>pb` and each server package as
 // `<dir>grpc`; the import set numbers a clashing alias.
 func buildWiringGRPCData(protos *protodesign.Set, cfg *config.Config) wiringGRPCData {
-	imports := newGRPCImportSet()
+	imports := newImportSet(nil, goImport{}, wiringGRPCNames)
 	d := wiringGRPCData{SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext))}
 	for _, svc := range protos.Services {
 		serverImport := goImportFromRel(cfg.Package, cfg.Output.GRPC) + "/" + svc.Dir
-		imports.add(extraImport{Alias: pbAliasFor(svc.Package), Path: svc.PBImport})
-		imports.add(extraImport{Alias: strings.NewReplacer("_", "", "-", "").Replace(svc.Dir) + "grpc", Path: serverImport})
 		d.Services = append(d.Services, wiringGRPCService{
 			Service:     svc.Name,
-			PBAlias:     imports.aliasFor(svc.PBImport),
-			ServerAlias: imports.aliasFor(serverImport),
+			PBAlias:     imports.add(pbAliasFor(svc.Package), svc.PBImport),
+			ServerAlias: imports.add(strings.NewReplacer("_", "", "-", "").Replace(svc.Dir)+"grpc", serverImport),
 		})
 	}
-	d.Imports = imports.sorted()
+	d.Imports = imports.imports()
 	return d
 }
 

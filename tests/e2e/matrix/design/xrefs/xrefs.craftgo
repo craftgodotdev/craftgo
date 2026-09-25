@@ -250,4 +250,15 @@ service XRefsService {
 		request  xshared.XThirdReq
 		response xshared.XOwner
 	}
+
+	@doc("A request from package server and a response from package log, each named like a package the handler or the stub imports: both files import them under another alias.")
+	post SignIn /sign-in/{session} {
+		request  server.Credentials
+		response log.Entry
+	}
+
+	@doc("A generic response over datetime: the stub imports time for the type argument.")
+	get Stamps /stamps {
+		response xshared.XBag<datetime>
+	}
 }

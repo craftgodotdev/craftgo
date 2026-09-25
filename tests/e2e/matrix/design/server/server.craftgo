@@ -1,0 +1,18 @@
+// Package server shares its name with the runtime package every handler
+// imports: a handler naming these types imports them under another alias.
+package server
+
+scalar SessionID string @minLength(1)
+
+enum Channel {
+	Web
+	Mobile
+}
+
+// Credentials binds a scalar from the path and an enum with a default from
+// the query, so the handler spells both under the alias.
+type Credentials {
+	session SessionID
+	channel Channel?  @query @default(Web)
+	user    string    @minLength(1)
+}

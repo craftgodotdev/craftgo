@@ -26,6 +26,8 @@ type Spec struct {
 	Bits int
 	// Go is the Go type the name lowers to; "" when it has none.
 	Go string
+	// GoImport is the package Go's type is declared in; "" for a predeclared type.
+	GoImport string
 	// Parser is the strconv function that parses the kind from a wire string;
 	// "" for `string` and for kinds with no wire form.
 	Parser string
@@ -55,8 +57,8 @@ var specs = []Spec{
 	{Name: "float64", Kind: Float, Bits: 64, Go: "float64", Parser: "strconv.ParseFloat", OASType: "number", OASFormat: "double", Doc: "**`float64`** - 64-bit IEEE-754 float."},
 	{Name: "bytes", Kind: Bytes, Go: "[]byte", OASType: "string", OASFormat: "byte", Doc: "**`bytes`** - raw byte buffer.\n\nGenerates `[]byte` in Go, base64 on the wire. Add `@format(raw)` when the bytes already ARE the value in the message's own encoding and the codec must embed them untouched."},
 	{Name: "any", Kind: Any, Go: "any", Doc: "**`any`** - opaque JSON value.\n\nGenerates `any` in Go."},
-	{Name: "datetime", Kind: DateTime, Go: "time.Time", OASType: "string", OASFormat: "date-time", Doc: "**`datetime`** - an RFC 3339 timestamp.\n\nGenerates `time.Time` in Go and travels as an RFC 3339 string in JSON. A body field only: it cannot be bound from a query, header, cookie or form value."},
-	{Name: "file", Kind: File, Go: "*multipart.FileHeader", OASType: "string", OASFormat: "binary", Doc: "**`file`** - multipart file upload (request only, must be paired with `@form`).\n\nGenerates `*multipart.FileHeader`."},
+	{Name: "datetime", Kind: DateTime, Go: "time.Time", GoImport: "time", OASType: "string", OASFormat: "date-time", Doc: "**`datetime`** - an RFC 3339 timestamp.\n\nGenerates `time.Time` in Go and travels as an RFC 3339 string in JSON. A body field only: it cannot be bound from a query, header, cookie or form value."},
+	{Name: "file", Kind: File, Go: "*multipart.FileHeader", GoImport: "mime/multipart", OASType: "string", OASFormat: "binary", Doc: "**`file`** - multipart file upload (request only, must be paired with `@form`).\n\nGenerates `*multipart.FileHeader`."},
 	{Name: "object", Kind: Object},
 }
 

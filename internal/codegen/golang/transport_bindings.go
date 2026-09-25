@@ -145,7 +145,7 @@ func formatToString(prim, declName, access string) (expr string, needsStrconv bo
 }
 
 // collectFormBindings returns the [semantic.FormFields] parts, each text part with its bind statement.
-func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *projectResolver) (text, files []paramBinding, err error) {
+func collectFormBindings(m *ast.Method, pkg *semantic.Package, imports *importSet, r *projectResolver) (text, files []paramBinding, err error) {
 	nText, nFiles := semantic.FormFields(m, pkg, r.Resolver, resolvedGoFieldNames)
 	if len(nFiles) == 0 {
 		return nil, nil, nil
@@ -161,7 +161,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 		})
 	}
 	for _, ff := range nText {
-		line, lerr := renderWireBindLine(ff.Field, pkg, r, pkgAlias, ff.WireName, ff.Name, formSource())
+		line, lerr := renderWireBindLine(ff.Field, pkg, r, imports, ff.WireName, ff.Name, formSource())
 		if lerr != nil {
 			return nil, nil, fmt.Errorf("%s.%s on %s %s: %w",
 				m.Request.Name.String(), ff.Field.Name, httpVerb(m.Verb), route.PathString(m.Path), lerr)
@@ -179,7 +179,7 @@ func collectFormBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, 
 
 // collectBindings renders the path, query, header and cookie bindings of m's request fields,
 // failing on a field its binding source cannot carry.
-func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *projectResolver) (path, query, header, cookie []paramBinding, err error) {
+func collectBindings(m *ast.Method, pkg *semantic.Package, imports *importSet, r *projectResolver) (path, query, header, cookie []paramBinding, err error) {
 	if m.Request == nil {
 		return
 	}
@@ -201,7 +201,7 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *p
 				err = fmt.Errorf("%s.%s: @path requires a non-optional, non-array field - got %s", reqName, f.Name, f.Type)
 				return
 			}
-			line, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, pathSource())
+			line, lerr := renderWireBindLine(f, pkg, r, imports, wireName, rf.GoName, pathSource())
 			if lerr != nil {
 				if rf.AutoBound {
 					continue
@@ -215,21 +215,21 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *p
 				Bind:    line,
 			})
 		case wire.BindQuery:
-			line, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, querySource())
+			line, lerr := renderWireBindLine(f, pkg, r, imports, wireName, rf.GoName, querySource())
 			if lerr != nil {
 				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), route.PathString(m.Path), lerr)
 				return
 			}
 			query = append(query, paramBinding{DSLName: wireName, GoName: rf.GoName, Bind: line})
 		case wire.BindHeader:
-			line, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, headerSource())
+			line, lerr := renderWireBindLine(f, pkg, r, imports, wireName, rf.GoName, headerSource())
 			if lerr != nil {
 				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), route.PathString(m.Path), lerr)
 				return
 			}
 			header = append(header, paramBinding{DSLName: wireName, GoName: rf.GoName, Bind: line})
 		case wire.BindCookie:
-			line, lerr := renderWireBindLine(f, pkg, r, pkgAlias, wireName, rf.GoName, cookieSource())
+			line, lerr := renderWireBindLine(f, pkg, r, imports, wireName, rf.GoName, cookieSource())
 			if lerr != nil {
 				err = fmt.Errorf("%s.%s on %s %s: %w", reqName, f.Name, httpVerb(m.Verb), route.PathString(m.Path), lerr)
 				return
@@ -238,57 +238,6 @@ func collectBindings(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *p
 		}
 	}
 	return
-}
-
-// collectRequestFieldImports maps alias to import path for the packages that m's wire-bound
-// request fields, and its cross-package @default pre-fills, reference.
-func collectRequestFieldImports(m *ast.Method, pkg *semantic.Package, r *projectResolver) map[string]string {
-	out := map[string]string{}
-	if m == nil || m.Request == nil || pkg == nil || len(r.CrossPkg) == 0 {
-		return out
-	}
-	if td, _ := semantic.LookupMethodType(m.Request, r.Resolver); td == nil {
-		return out
-	}
-	set := map[string]bool{}
-	addImports := r.CrossPkg.importsInto(set)
-	for _, rf := range resolveRequestFields(m, pkg, r) {
-		if rf.Binding.IsParam() {
-			rf.Field.Type.WalkNamedRefs(addImports)
-		}
-		// A pre-fill names the foreign package: `xshared.XColorRed`, `shared.Code("USD")`.
-		if isQualifiedNamedWithDefault(rf.Field, r.CrossPkg) {
-			rf.Field.Type.WalkNamedRefs(addImports)
-		}
-	}
-	for pkgName, path := range r.CrossPkg {
-		if !set[path] {
-			continue
-		}
-		out[pkgName] = path
-	}
-	return out
-}
-
-// isQualifiedNamedWithDefault reports whether f is a cross-package `pkg.Name` field carrying @default.
-func isQualifiedNamedWithDefault(f *ast.Field, crossPkg crossPkg) bool {
-	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
-		return false
-	}
-	parts := f.Type.Named.Name.Parts
-	if len(parts) != 2 {
-		return false
-	}
-	if _, ok := crossPkg[parts[0]]; !ok {
-		return false
-	}
-	for _, d := range f.Decorators {
-		if d == nil || d.Name != "default" || len(d.Args) != 1 {
-			continue
-		}
-		return true
-	}
-	return false
 }
 
 // hasUnboundField reports whether any request field binds to the body or a form part.

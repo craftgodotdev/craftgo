@@ -131,14 +131,10 @@ func collectImports(pkg *semantic.Package, r *projectResolver) []string {
 	return slices.Sorted(maps.Keys(imports))
 }
 
-// addBuiltinImport adds to set the stdlib import of the builtin n names, if it
-// has one (`file`, `datetime`).
+// addBuiltinImport adds to set the import of the builtin n names, if it has one.
 func addBuiltinImport(n *ast.NamedTypeRef, set map[string]bool) {
-	switch n.Name.String() {
-	case "file":
-		set["mime/multipart"] = true
-	case "datetime":
-		set["time"] = true
+	if sp, ok := prims.Lookup(n.Name.String()); ok && sp.GoImport != "" {
+		set[sp.GoImport] = true
 	}
 }
 

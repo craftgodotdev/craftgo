@@ -42,10 +42,9 @@ type grpcMethodData struct {
 	ServiceName   string
 	Doc           []string
 	Sig           grpcSignature
-	NeedsPB       bool
-	PBImport      string
 	ServiceImport string
-	ExtraImports  []extraImport
+	// Imports are the pb packages of the RPC's messages.
+	Imports []goImport
 }
 
 func grpcImportsFor(cfg *config.Config, svc *protodesign.Service) grpcImports {
@@ -94,19 +93,17 @@ func buildGRPCServerData(svc *protodesign.Service, imps grpcImports) grpcServerD
 }
 
 func buildGRPCMethodData(svc *protodesign.Service, m *protodesign.Method, imps grpcImports) grpcMethodData {
-	refs := newTypeRefs(svc)
-	d := grpcMethodData{
+	set := grpcImportSet(svc, grpcMethodNames)
+	return grpcMethodData{
 		Package:       svc.Package,
 		Method:        m.Name,
 		FullMethod:    m.FullMethod,
 		ServiceName:   logicTypeName(m.Name),
 		Doc:           m.Doc,
-		Sig:           buildGRPCSignature(m, refs.render(m.In), refs.render(m.Out)),
-		PBImport:      imps.PB,
+		Sig:           buildGRPCSignature(m, set.protoType(m.In), set.protoType(m.Out)),
 		ServiceImport: imps.Service,
+		Imports:       set.imports(),
 	}
-	d.NeedsPB, d.ExtraImports = refs.usedOwn, refs.imports.sorted()
-	return d
 }
 
 // generateGRPCServices writes each RPC's gen-once logic scaffold, rendered from service.tmpl.
@@ -125,9 +122,9 @@ func generateGRPCServices(protos *protodesign.Set, cfg *config.Config, projectRo
 
 // buildGRPCServiceData leaves every HTTP-only field zero, so service.tmpl renders the plain entry point.
 func buildGRPCServiceData(svc *protodesign.Service, m *protodesign.Method, imps grpcImports) serviceData {
-	refs := newTypeRefs(svc)
-	sig := buildGRPCSignature(m, refs.render(m.In), refs.render(m.Out))
-	d := serviceData{
+	set := grpcImportSet(svc, serviceNames)
+	sig := buildGRPCSignature(m, set.protoType(m.In), set.protoType(m.Out))
+	return serviceData{
 		Package:          svc.Package,
 		Service:          svc.Name,
 		Method:           m.Name,
@@ -136,34 +133,24 @@ func buildGRPCServiceData(svc *protodesign.Service, m *protodesign.Method, imps 
 		Notes:            streamNotes(m.Kind),
 		Sig:              sig.Logic,
 		SvccontextImport: imps.Svccontext,
+		PBImports:        set.imports(),
 	}
-	if refs.usedOwn {
-		d.PBImports = append(d.PBImports, extraImport{Alias: pbAlias, Path: imps.PB})
-	}
-	d.PBImports = append(d.PBImports, refs.imports.sorted()...)
-	return d
 }
 
-// typeRefs renders message types for one file: the service's own under [pbAlias], every other
-// under its package name.
-type typeRefs struct {
-	own     string
-	imports *importSet
-	usedOwn bool
+// grpcImportSet returns the set of a file of svc whose template binds names: svc's own messages
+// under [pbAlias].
+func grpcImportSet(svc *protodesign.Service, names []string) *importSet {
+	return newImportSet(nil, goImport{Alias: pbAlias, Path: svc.PBImport}, names)
 }
 
-func newTypeRefs(svc *protodesign.Service) *typeRefs {
-	return &typeRefs{own: svc.PBImport, imports: newGRPCImportSet()}
-}
-
-// render spells ref as `<alias>.<Name>`.
-func (r *typeRefs) render(ref protodesign.TypeRef) string {
-	if ref.ImportPath == r.own {
-		r.usedOwn = true
-		return pbAlias + "." + ref.Name
+// protoType spells a message as `<alias>.<Name>`, importing its package: the set's own messages
+// under their fixed alias, another package's under its Go package name.
+func (s *importSet) protoType(ref protodesign.TypeRef) string {
+	alias := ref.Package
+	if ref.ImportPath == s.home.Path {
+		alias = s.home.Alias
 	}
-	r.imports.add(extraImport{Alias: ref.Package, Path: ref.ImportPath})
-	return r.imports.aliasFor(ref.ImportPath) + "." + ref.Name
+	return s.add(alias, ref.ImportPath) + "." + ref.Name
 }
 
 // ValidateProtoOutputs rejects gRPC output that would collide: an RPC file named like the server

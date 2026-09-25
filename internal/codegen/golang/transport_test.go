@@ -337,31 +337,6 @@ service S {
 	}
 }
 
-// collectRequestFieldImports collects the import of a cross-package request field type.
-func TestCollectRequestFieldImports(t *testing.T) {
-	method := &ast.Method{
-		Request: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"UserRef"}}},
-	}
-	pkg := &semantic.Package{
-		Name: "services",
-		Types: map[string]*ast.TypeDecl{
-			"UserRef": {
-				Name: "UserRef",
-				Body: []ast.TypeMember{
-					&ast.Field{Name: "id", Type: &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "ID"}}}}},
-				},
-			},
-		},
-	}
-	cross := crossPkg{"shared": "github.com/example/svc/internal/types/shared"}
-	r := resolverFor(pkg, nil)
-	r.CrossPkg = cross
-	got := collectRequestFieldImports(method, pkg, r)
-	if got["shared"] != "github.com/example/svc/internal/types/shared" {
-		t.Errorf("expected `shared` import in collected map, got %v", got)
-	}
-}
-
 // A binding decorator's name argument is the wire key the handler reads.
 func TestGenerateTransportNamedBindingArg(t *testing.T) {
 	src := `package design

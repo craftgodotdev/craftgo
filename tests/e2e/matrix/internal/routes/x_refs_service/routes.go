@@ -29,4 +29,6 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/xrefs/wrap-foreign", transport.WrapForeign(svcCtx))
 	srv.Handle("GET /api/xrefs/traced/{id}", transport.GetTraced(svcCtx))
 	srv.Handle("GET /api/xrefs/third/{id}", transport.GetThird(svcCtx))
+	srv.Handle("POST /api/xrefs/sign-in/{session}", transport.SignIn(svcCtx))
+	srv.Handle("GET /api/xrefs/stamps", transport.Stamps(svcCtx))
 }

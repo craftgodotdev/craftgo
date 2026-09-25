@@ -97,16 +97,10 @@ type routeEntry struct {
 type routesData struct {
 	Package          string
 	Service          string
-	TransportImports []transportImport
+	Imports          []goImport
 	SvccontextImport string
 	Routes           []routeEntry
 	NeedsTime        bool
-}
-
-// transportImport is one aliased transport-package import in a routes file.
-type transportImport struct {
-	Alias string
-	Path  string
 }
 
 // generateRoutes writes one output.routes/<segment>/routes.go per segment pkg's services occupy;
@@ -179,35 +173,21 @@ func generateProjectRoutesUmbrella(proj *semantic.Project, cfg *config.Config, p
 	data := routesAllData{
 		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
 	}
-	// Services sharing a segment share its RegisterRoutes, so it is called once.
-	seen := map[string]bool{}
+	imports := newImportSet(nil, goImport{}, routesNames)
 	for _, e := range entries {
-		if seen[e.seg] {
+		path := goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + e.seg
+		// Services sharing a segment share its RegisterRoutes, so it is called once.
+		if imports.has(path) {
 			continue
 		}
-		seen[e.seg] = true
-		data.Imports = append(data.Imports, makeRoutesAllImport(cfg, e.name, e.group, e.seg))
+		data.Imports = append(data.Imports, goImport{Alias: imports.add(servicePackage(e.name)+groupAliasSuffix(e.group)+"routes", path), Path: path})
 	}
 	return writeGo(filepath.Join(projectRoot, cfg.Output.Routes, "routes.go"), tmpl("routes-all.tmpl"), data)
 }
 
-// routesAllImport is one aliased routes-package import of the umbrella routes.go.
-type routesAllImport struct {
-	Alias string
-	Path  string
-}
-
-// makeRoutesAllImport builds the umbrella's import of one segment's routes package.
-func makeRoutesAllImport(cfg *config.Config, name, group, seg string) routesAllImport {
-	return routesAllImport{
-		Alias: servicePackage(name) + groupAliasSuffix(group) + "routes",
-		Path:  goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + seg,
-	}
-}
-
-// routesAllData is the template input for `routes-all.tmpl`.
+// routesAllData is the template input for `routes-all.tmpl`; Imports are in call order.
 type routesAllData struct {
-	Imports          []routesAllImport
+	Imports          []goImport
 	SvccontextImport string
 }
 
@@ -218,15 +198,13 @@ func generateRoutesForSegment(seg string, contribs []segContribution, pkg *seman
 		return nil
 	}
 	lead := contribs[0]
-	alias := transportAlias(lead.group)
+	imports := newImportSet(nil, goImport{}, routesNames)
+	alias := imports.add(transportAlias(lead.group), importPathsForGroup(cfg, pkg, lead.svcName, lead.group).Transport)
 	data := routesData{
 		Package:          servicePkgName(pkg.Name, lead.svcName),
 		Service:          contributorLabel(contribs),
 		SvccontextImport: importPathsForGroup(cfg, pkg, lead.svcName, "").Svccontext,
-		TransportImports: []transportImport{{
-			Alias: alias,
-			Path:  importPathsForGroup(cfg, pkg, lead.svcName, lead.group).Transport,
-		}},
+		Imports:          imports.imports(),
 	}
 	for _, c := range contribs {
 		for _, m := range c.svc.Methods {

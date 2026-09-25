@@ -9,11 +9,8 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "{{.ServiceImport}}"
-{{- if .NeedsTypes}}
-	types "{{.TypesImport}}"
-{{- end}}
-{{- range .ExtraTypesImports}}
-	{{.Alias}} "{{.Path}}"
+{{- range .Imports}}
+	{{if .Alias}}{{.Alias}} {{end}}"{{.Path}}"
 {{- end}}
 	"{{.SvccontextImport}}"
 )
@@ -55,7 +52,7 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 {{- end}}
 {{- if .BindRequest}}
-		var req {{.RequestPkgAlias}}.{{.RequestType}}
+		var req {{.RequestType}}
 {{- range .Defaults}}
 {{- if .Ptr}}
 		{

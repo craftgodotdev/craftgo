@@ -118,6 +118,16 @@ event Enveloped {
 	payload Envelope<ItemStocked>
 }
 
+@doc("A generic payload over datetime: the event file imports time for the type argument.")
+event Stamped {
+	payload Envelope<datetime>
+}
+
+@doc("An array payload from package fmt, named like the package the element validator imports.")
+event RowsImported {
+	payload fmt.Row[]
+}
+
 @prefix("/events")
 service InventoryService {
 	@doc("Kept so the fixture exercises a package that both serves HTTP and declares events.")

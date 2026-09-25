@@ -97,7 +97,7 @@ func formSource() wireSource {
 
 // renderWireBindLine renders the statement binding field f from src into req.goName, or an error
 // for a shape src cannot carry (a map, a struct, an array on a single-value source).
-func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *projectResolver, pkgAlias, wireName, goName string, src wireSource) (string, error) {
+func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *projectResolver, imports *importSet, wireName, goName string, src wireSource) (string, error) {
 	if f.Type == nil {
 		return "", fmt.Errorf("field %q has no resolved type", f.Name)
 	}
@@ -117,7 +117,7 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *projectResolver,
 	prim, ok := wirePrim(declName)
 	cast := ""
 	if !ok {
-		// A scalar or enum casts to its declared name, already qualified when cross-package.
+		// A scalar or enum casts to its declared type.
 		if sc := r.LookupScalar(declName); sc != nil {
 			if p2, pOk := wirePrim(sc.Primitive); pOk {
 				prim = p2
@@ -136,9 +136,8 @@ func renderWireBindLine(f *ast.Field, pkg *semantic.Package, r *projectResolver,
 	if !ok {
 		return "", fmt.Errorf("field %q: type %s cannot bind to @%s - only string/bool/int*/uint*/float*, scalars/enums, and arrays of those (struct/[]struct must ride the body via a body verb instead)", f.Name, f.Type, src.kind)
 	}
-	// A local cast gets the request package's alias.
-	if cast != "" && pkgAlias != "" && !strings.Contains(cast, ".") {
-		cast = pkgAlias + "." + cast
+	if cast != "" {
+		cast = imports.qualify(cast)
 	}
 	wrap := func(s string) string {
 		if cast == "" {

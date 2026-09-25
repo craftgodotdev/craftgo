@@ -5,7 +5,7 @@ import (
 	"time"
 
 {{end -}}
-{{- range .TransportImports}}
+{{- range .Imports}}
 	{{.Alias}} "{{.Path}}"
 {{- end}}
 	"github.com/craftgodotdev/craftgo/pkg/server"

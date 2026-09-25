@@ -890,6 +890,11 @@ components:
       maximum: 1000000000
       minimum: 0
       type: integer
+    Channel:
+      enum:
+      - Web
+      - Mobile
+      type: string
     CollectionsAddress:
       description: |-
         Address is a struct used as a map VALUE in maps.craftgo. The two
@@ -1228,6 +1233,20 @@ components:
       type: object
     CreateTenantItemRespBody:
       $ref: '#/components/schemas/TenantItem'
+    Credentials:
+      description: |-
+        Credentials binds a scalar from the path and an enum with a default from
+        the query, so the handler spells both under the alias.
+      properties:
+        session:
+          $ref: '#/components/schemas/SessionID'
+        user:
+          minLength: 1
+          type: string
+      required:
+      - session
+      - user
+      type: object
     Cube:
       description: |-
         Cube is the 3-D slice of nested case. Three nested for-loops
@@ -2396,6 +2415,13 @@ components:
       required:
       - actor
       - action
+      type: object
+    Entry:
+      properties:
+        line:
+          type: string
+      required:
+      - line
       type: object
     ExactReq:
       description: ExactReq wraps NumberExact (exact-match shapes).
@@ -5855,6 +5881,14 @@ components:
       required:
       - furniture
       type: object
+    Row:
+      properties:
+        cell:
+          minLength: 1
+          type: string
+      required:
+      - cell
+      type: object
     RqDocsReqRespBody:
       $ref: '#/components/schemas/RqResp'
     RqFileReq:
@@ -6147,6 +6181,9 @@ components:
         createdBy bookkeeping lands at the wire root without a nested
         envelope.
       type: object
+    SessionID:
+      minLength: 1
+      type: string
     Severity:
       description: |-
         Severity classifies a log/event line. The four levels follow the
@@ -6180,6 +6217,16 @@ components:
     ShipmentID:
       minLength: 1
       type: string
+    SignInReqBody:
+      properties:
+        user:
+          minLength: 1
+          type: string
+      required:
+      - user
+      type: object
+    SignInRespBody:
+      $ref: '#/components/schemas/Entry'
     SignupRespBody:
       $ref: '#/components/schemas/ID'
     SnapshotRespBody:
@@ -6200,6 +6247,8 @@ components:
       - expected_version
       - actual_version
       type: object
+    StampsRespBody:
+      $ref: '#/components/schemas/XBagOfDatetime'
     StocktakeStarted:
       description: An event may carry a payload of its own name - separate namespaces.
       properties:
@@ -7063,6 +7112,25 @@ components:
       required:
       - createdAt
       - updatedAt
+      type: object
+    XBagOfDatetime:
+      description: |-
+        XBag is a cross-package generic. xrefs instantiates it as
+        `xshared.XBag<X>` for various X - local types, primitives, and
+        xshared types - covering the qualified-generic codegen path.
+      properties:
+        cap:
+          maximum: 1000
+          minimum: 0
+          type: integer
+        items:
+          items:
+            format: date-time
+            type: string
+          type: array
+      required:
+      - items
+      - cap
       type: object
     XBagOfMapOfStringAndXColor:
       description: |-
@@ -11349,6 +11417,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SearchRespBody'
+          description: OK
+      tags:
+      - XRefsService
+  /xrefs/sign-in/{session}:
+    post:
+      description: 'A request from package server and a response from package log,
+        each named like a package the handler or the stub imports: both files import
+        them under another alias.'
+      operationId: SignIn
+      parameters:
+      - in: path
+        name: session
+        required: true
+        schema:
+          $ref: '#/components/schemas/SessionID'
+      - in: query
+        name: channel
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/Channel'
+          - type: "null"
+          default: Web
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignInReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignInRespBody'
+          description: Created
+      tags:
+      - XRefsService
+  /xrefs/stamps:
+    get:
+      description: 'A generic response over datetime: the stub imports time for the
+        type argument.'
+      operationId: Stamps
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StampsRespBody'
           description: OK
       tags:
       - XRefsService

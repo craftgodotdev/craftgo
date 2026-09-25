@@ -465,6 +465,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@form` on the wrong type says a single-level array binds, `file[]`
   included, where it said file arrays do not.
 
+- **A package named like an import of the generated code compiles.** A DSL
+  package named `server`, `log`, `context`, `fmt` or another name a handler,
+  logic stub or event file already imports clashed with that import (`server
+  redeclared in this block`); the file now imports the package under a
+  numbered alias such as `server2`. A `datetime` or `file` type argument, as
+  in `payload Page<datetime>`, now brings its `time` or `mime/multipart`
+  import too.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

@@ -9,7 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func collectDefaults(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *projectResolver) []defaultBinding {
+func collectDefaults(m *ast.Method, pkg *semantic.Package, imports *importSet, r *projectResolver) []defaultBinding {
 	if m.Request == nil {
 		return nil
 	}
@@ -23,7 +23,7 @@ func collectDefaults(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *p
 		if f.Type == nil || f.Type.Map != nil {
 			continue
 		}
-		lit := defaultLiteral(f, pkg, r, pkgAlias)
+		lit := defaultLiteral(f, r, imports)
 		if lit == "" {
 			continue
 		}
@@ -37,19 +37,18 @@ func collectDefaults(m *ast.Method, pkg *semantic.Package, pkgAlias string, r *p
 }
 
 // defaultLiteral renders f's @default as Go source, or "" when it is absent or unrenderable.
-func defaultLiteral(f *ast.Field, pkg *semantic.Package, r *projectResolver, pkgAlias string) string {
+func defaultLiteral(f *ast.Field, r *projectResolver, imports *importSet) string {
 	for _, d := range f.Decorators {
 		if d.Name != "default" || len(d.Args) != 1 {
 			continue
 		}
-		return renderDefault(f.Type, d.Args[0].Value, pkg, r, pkgAlias)
+		return renderDefault(f.Type, d.Args[0].Value, r, imports)
 	}
 	return ""
 }
 
-// renderDefault renders v as a Go value of type t, qualifying a local enum or scalar with
-// pkgAlias, or returns "" when it cannot.
-func renderDefault(t *ast.TypeRef, v ast.Expr, pkg *semantic.Package, r *projectResolver, pkgAlias string) string {
+// renderDefault renders v as a Go value of type t, or returns "" when it cannot.
+func renderDefault(t *ast.TypeRef, v ast.Expr, r *projectResolver, imports *importSet) string {
 	if t == nil {
 		return ""
 	}
@@ -59,13 +58,13 @@ func renderDefault(t *ast.TypeRef, v ast.Expr, pkg *semantic.Package, r *project
 			return ""
 		}
 		elemT := t.ElemTypeRef()
-		elemGo := qualifyNamed(goTypeRef(elemT), elemT, pkg, pkgAlias)
+		elemGo := imports.goType(elemT)
 		if elemGo == "" {
 			return ""
 		}
 		parts := make([]string, 0, len(arr.Elements))
 		for _, e := range arr.Elements {
-			p := renderDefault(elemT, e, pkg, r, pkgAlias)
+			p := renderDefault(elemT, e, r, imports)
 			if p == "" {
 				return ""
 			}
@@ -89,12 +88,12 @@ func renderDefault(t *ast.TypeRef, v ast.Expr, pkg *semantic.Package, r *project
 		}
 	case *ast.IdentExpr:
 		// An enum constant is already typed.
-		return enumDefaultConst(t, pkg, r, lit, pkgAlias)
+		return enumDefaultConst(t, r, lit, imports)
 	default:
 		return ""
 	}
 	// The cast gives the pointer pre-fill's temp (`__d := PageSize(20)`) the field's type.
-	if name := scalarDefaultGoName(t, pkg, r, pkgAlias); name != "" {
+	if name := scalarDefaultGoName(t, r, imports); name != "" {
 		return name + "(" + s + ")"
 	}
 	if cast := primitiveDefaultCast(t, v); cast != "" {
@@ -140,77 +139,38 @@ func primitiveDefaultCast(t *ast.TypeRef, v ast.Expr) string {
 
 // scalarDefaultGoName returns the qualified value type of scalar t (`types.PageSize` for
 // `PageSize?`), or "" when t is not a scalar.
-func scalarDefaultGoName(t *ast.TypeRef, pkg *semantic.Package, r *projectResolver, pkgAlias string) string {
+func scalarDefaultGoName(t *ast.TypeRef, r *projectResolver, imports *importSet) string {
 	if t == nil || t.Array || t.Map != nil || t.Named == nil || t.Named.Name == nil {
 		return ""
 	}
-	name := t.Named.Name.String()
-	if r.LookupScalar(name) == nil {
+	if r.LookupScalar(t.Named.Name.String()) == nil {
 		return ""
 	}
 	base := *t
 	base.Optional = false
-	return qualifyNamed(goTypeRef(&base), &base, pkg, pkgAlias)
-}
-
-// qualifyNamed prefixes goName with pkgAlias when t is a local enum or scalar; primitives and
-// qualified references pass through.
-func qualifyNamed(goName string, t *ast.TypeRef, pkg *semantic.Package, pkgAlias string) string {
-	if goName == "" {
-		return goName
-	}
-	if t == nil || t.Named == nil || t.Named.Name == nil {
-		return goName
-	}
-	parts := t.Named.Name.Parts
-	if len(parts) == 2 {
-		return goName
-	}
-	if pkgAlias == "" || len(parts) != 1 {
-		return goName
-	}
-	name := parts[0]
-	if _, ok := pkg.Enums[name]; ok {
-		return pkgAlias + "." + goName
-	}
-	if _, ok := pkg.Scalars[name]; ok {
-		return pkgAlias + "." + goName
-	}
-	return goName
+	return imports.goType(&base)
 }
 
 // enumDefaultConst resolves `@default(Member)` to the member's Go constant, qualified for the handler.
-func enumDefaultConst(t *ast.TypeRef, pkg *semantic.Package, r *projectResolver, v *ast.IdentExpr, pkgAlias string) string {
+func enumDefaultConst(t *ast.TypeRef, r *projectResolver, v *ast.IdentExpr, imports *importSet) string {
 	if t == nil || t.Named == nil || t.Named.Name == nil {
 		return ""
 	}
 	if v.Name == nil || len(v.Name.Parts) != 1 {
 		return ""
 	}
-	parts := t.Named.Name.Parts
-	var ed *ast.EnumDecl
-	var qualifier string
-	switch len(parts) {
-	case 1:
-		ed = r.LookupEnum(parts[0])
-		qualifier = pkgAlias
-	case 2:
-		ed = r.LookupEnum(t.Named.Name.String())
-		// A cross-package enum's constants live in its own package.
-		qualifier = parts[0]
-	default:
-		return ""
-	}
+	ed := r.LookupEnum(t.Named.Name.String())
 	if ed == nil {
 		return ""
 	}
 	valueName := v.Name.Parts[0]
 	for _, m := range enumMembers(ed) {
 		if m.DSLName == valueName {
-			if qualifier != "" {
-				return qualifier + "." + m.ConstName
+			// A cross-package enum's constants live in its own package.
+			if parts := t.Named.Name.Parts; len(parts) == 2 {
+				return imports.qualify(parts[0] + "." + m.ConstName)
 			}
-			return m.ConstName
+			return imports.qualify(m.ConstName)
 		}
 	}
 	return ""

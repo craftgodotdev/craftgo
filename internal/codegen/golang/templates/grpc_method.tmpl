@@ -10,10 +10,7 @@ import (
 {{- end}}
 
 	service "{{.ServiceImport}}"
-{{- if .NeedsPB}}
-	pb "{{.PBImport}}"
-{{- end}}
-{{- range .ExtraImports}}
+{{- range .Imports}}
 	{{.Alias}} "{{.Path}}"
 {{- end}}
 )

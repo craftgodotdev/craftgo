@@ -7,11 +7,9 @@ import (
 	"net/http"
 {{- end}}
 {{- if .NeedsTypes}}
-
-	types "{{.TypesImport}}"
-{{- end}}
-{{- range .ExtraTypesImports}}
-	{{.Alias}} "{{.Path}}"
+{{end}}
+{{- range .Imports}}
+	{{if .Alias}}{{.Alias}} {{end}}"{{.Path}}"
 {{- end}}
 {{- if .PBImports}}
 {{range .PBImports}}

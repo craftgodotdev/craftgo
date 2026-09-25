@@ -3,9 +3,13 @@
 package events
 
 import (
+	"fmt"
+
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
+	fmt2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/fmt"
+	"time"
 )
 
 // EnvelopedContract is the wire identity of Enveloped.
@@ -52,6 +56,29 @@ const ReconciledContract = "legacy.inventory.reconciled.v2"
 // Reconciled.Subscribe(bus, group, fn) on its own bus.
 var Reconciled = craftevents.NewEvent[types.ItemStocked](ReconciledContract, (*types.ItemStocked).Validate)
 
+// RowsImportedContract is the wire identity of RowsImported.
+// Publisher and listener both address the contract by this value.
+const RowsImportedContract = "events.RowsImported"
+
+// An array payload from package fmt, named like the package the element validator imports.
+//
+// RowsImported is the events.RowsImported contract.
+// RowsImported.Publish(ctx, bus, payload) sends one; a listener registers
+// RowsImported.Subscribe(bus, group, fn) on its own bus.
+var RowsImported = craftevents.NewEvent[[]fmt2.Row](RowsImportedContract, validateRowsImported)
+
+// validateRowsImported validates every element the payload carries. The failing
+// element names its index, and the descriptor turns the error into a
+// *craftevents.PayloadError exactly as it does for a single payload.
+func validateRowsImported(items *[]fmt2.Row) error {
+	for i := range *items {
+		if err := (*items)[i].Validate(); err != nil {
+			return fmt.Errorf("item %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
 // ShipmentDispatchedContract is the wire identity of ShipmentDispatched.
 // Publisher and listener both address the contract by this value.
 const ShipmentDispatchedContract = "events.ShipmentDispatched"
@@ -62,6 +89,17 @@ const ShipmentDispatchedContract = "events.ShipmentDispatched"
 // ShipmentDispatched.Publish(ctx, bus, payload) sends one; a listener registers
 // ShipmentDispatched.Subscribe(bus, group, fn) on its own bus.
 var ShipmentDispatched = craftevents.NewEvent[types.ShipmentDispatched](ShipmentDispatchedContract, (*types.ShipmentDispatched).Validate)
+
+// StampedContract is the wire identity of Stamped.
+// Publisher and listener both address the contract by this value.
+const StampedContract = "events.Stamped"
+
+// A generic payload over datetime: the event file imports time for the type argument.
+//
+// Stamped is the events.Stamped contract.
+// Stamped.Publish(ctx, bus, payload) sends one; a listener registers
+// Stamped.Subscribe(bus, group, fn) on its own bus.
+var Stamped = craftevents.NewEvent[types.Envelope[time.Time]](StampedContract, (*types.Envelope[time.Time]).Validate)
 
 // StocktakeStartedContract is the wire identity of StocktakeStarted.
 // Publisher and listener both address the contract by this value.

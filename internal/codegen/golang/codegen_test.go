@@ -7,6 +7,7 @@ import (
 	"os"
 	gopath "path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -74,21 +75,27 @@ var stdlibQualifiers = map[string]string{
 	"maps":      "maps",
 }
 
-// mustImportsMatchUsage asserts file imports exactly the stdlibQualifiers packages it uses.
+// mustImportsMatchUsage asserts file imports exactly the stdlibQualifiers packages it uses, binds
+// each import name once and uses every package it imports under an alias.
 func mustImportsMatchUsage(t *testing.T, file *goast.File, src string) {
 	t.Helper()
 
 	imported := map[string]bool{}
+	aliased := map[string]bool{}
 	for _, spec := range file.Imports {
 		path, err := strconv.Unquote(spec.Path.Value)
 		if err != nil {
 			continue
 		}
+		name := gopath.Base(path)
 		if spec.Name != nil {
-			imported[spec.Name.Name] = true
-			continue
+			name = spec.Name.Name
+			aliased[name] = true
 		}
-		imported[gopath.Base(path)] = true
+		if imported[name] {
+			t.Errorf("generated Go imports two packages as %s\n--- source ---\n%s", name, src)
+		}
+		imported[name] = true
 	}
 
 	used := map[string]bool{}
@@ -113,7 +120,7 @@ func mustImportsMatchUsage(t *testing.T, file *goast.File, src string) {
 		if name == "_" || name == "." {
 			continue
 		}
-		if _, std := stdlibQualifiers[name]; std && !used[name] {
+		if _, std := stdlibQualifiers[name]; (std || aliased[name]) && !used[name] {
 			t.Errorf("generated Go imports %q but never uses it\n--- source ---\n%s", name, src)
 		}
 	}
@@ -381,70 +388,43 @@ type UserOrgPair { p Pair<User, Org> }`)
 	}
 }
 
-// resolveTypeRef renders generic arguments, each qualified by its own package.
-func TestResolveTypeRefGenericArgs(t *testing.T) {
+// The import set spells generic arguments, each under its own package's alias.
+func TestImportSetSpellsGenericArgs(t *testing.T) {
 	cross := crossPkg{"shared": "github.com/x/internal/types/shared"}
+	named := func(parts ...string) *ast.NamedTypeRef {
+		return &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: parts}}
+	}
+	generic := func(outer *ast.NamedTypeRef, args ...*ast.NamedTypeRef) *ast.NamedTypeRef {
+		for _, a := range args {
+			outer.Args = append(outer.Args, &ast.TypeRef{Named: a})
+		}
+		return outer
+	}
 	cases := []struct {
-		name      string
-		ref       *ast.NamedTypeRef
-		wantAlias string
-		wantBare  string
+		name string
+		ref  *ast.NamedTypeRef
+		want string
 	}{
-		{
-			name:      "local generic local arg",
-			ref:       &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"Page"}}, Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"User"}}}}}},
-			wantAlias: "types",
-			wantBare:  "Page[types.User]",
-		},
-		{
-			name:      "local generic cross-pkg arg",
-			ref:       &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"Page"}}, Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "User"}}}}}},
-			wantAlias: "types",
-			wantBare:  "Page[shared.User]",
-		},
-		{
-			name:      "cross-pkg generic local arg",
-			ref:       &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "Page"}}, Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"User"}}}}}},
-			wantAlias: "shared",
-			wantBare:  "Page[types.User]",
-		},
-		{
-			name: "nested generic local",
-			ref: &ast.NamedTypeRef{
-				Name: &ast.QualifiedIdent{Parts: []string{"Page"}},
-				Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{
-					Name: &ast.QualifiedIdent{Parts: []string{"Envelope"}},
-					Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"User"}}}}},
-				}}},
-			},
-			wantAlias: "types",
-			wantBare:  "Page[types.Envelope[types.User]]",
-		},
-		{
-			name: "multi-arg generic",
-			ref: &ast.NamedTypeRef{
-				Name: &ast.QualifiedIdent{Parts: []string{"Pair"}},
-				Args: []*ast.TypeRef{
-					{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"User"}}}},
-					{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"shared", "Email"}}}},
-				},
-			},
-			wantAlias: "types",
-			wantBare:  "Pair[types.User, shared.Email]",
-		},
+		{"local generic local arg", generic(named("Page"), named("User")), "types.Page[types.User]"},
+		{"local generic cross-pkg arg", generic(named("Page"), named("shared", "User")), "types.Page[shared.User]"},
+		{"cross-pkg generic local arg", generic(named("shared", "Page"), named("User")), "shared.Page[types.User]"},
+		{"nested generic local", generic(named("Page"), generic(named("Envelope"), named("User"))), "types.Page[types.Envelope[types.User]]"},
+		{"multi-arg generic", generic(named("Pair"), named("User"), named("shared", "Email")), "types.Pair[types.User, shared.Email]"},
+		{"builtin arg", generic(named("Page"), named("datetime")), "types.Page[time.Time]"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			alias, bare, _, _ := resolveTypeRef(c.ref, cross)
-			if alias != c.wantAlias || bare != c.wantBare {
-				t.Errorf("got (alias=%q, bare=%q), want (alias=%q, bare=%q)", alias, bare, c.wantAlias, c.wantBare)
+			set := newImportSet(cross, goImport{Alias: localAlias, Path: "github.com/x/internal/types/app"}, nil)
+			if got := set.named(c.ref); got != c.want {
+				t.Errorf("got %q, want %q", got, c.want)
 			}
 		})
 	}
 }
 
-// resolveTypeRef reports LocalTypes only when the reference reaches the local types package.
-func TestResolveTypeRefReportsLocalUse(t *testing.T) {
+// The import set imports exactly the packages a spelled reference reaches.
+func TestImportSetImportsWhatItSpells(t *testing.T) {
+	const local = "example.com/app/internal/types/app"
 	cross := crossPkg{
 		"shared":   "example.com/app/internal/types/shared",
 		"paytypes": "example.com/app/internal/types/paytypes",
@@ -462,24 +442,44 @@ func TestResolveTypeRefReportsLocalUse(t *testing.T) {
 	cases := []struct {
 		name string
 		ref  *ast.NamedTypeRef
-		want bool
+		want []string
 	}{
-		{"local type", named("User"), true},
-		{"cross-pkg type", named("shared", "User"), false},
-		{"cross-pkg generic, local arg", generic(named("shared", "Page"), named("User")), true},
-		{"cross-pkg generic, cross-pkg arg", generic(named("shared", "Page"), named("shared", "User")), false},
-		{"cross-pkg generic over a package named ...types", generic(named("genpkg", "GBox"), named("paytypes", "PItem")), false},
-		{"local generic over a package named ...types", generic(named("Page"), named("paytypes", "PItem")), true},
-		{"nested generic reaching a local arg", generic(named("genpkg", "GBox"), generic(named("shared", "Page"), named("User"))), true},
-		{"nil ref", nil, false},
+		{"local type", named("User"), []string{local}},
+		{"cross-pkg type", named("shared", "User"), []string{cross["shared"]}},
+		{"cross-pkg generic, local arg", generic(named("shared", "Page"), named("User")), []string{local, cross["shared"]}},
+		{"cross-pkg generic, cross-pkg arg", generic(named("shared", "Page"), named("shared", "User")), []string{cross["shared"]}},
+		{"cross-pkg generic over a package named ...types", generic(named("genpkg", "GBox"), named("paytypes", "PItem")), []string{cross["genpkg"], cross["paytypes"]}},
+		{"nested generic reaching a local arg", generic(named("genpkg", "GBox"), generic(named("shared", "Page"), named("User"))), []string{local, cross["genpkg"], cross["shared"]}},
+		{"builtin arg", generic(named("Page"), named("file")), []string{local, "mime/multipart"}},
+		{"nil ref", nil, nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, bare, _, use := resolveTypeRef(c.ref, cross)
-			if use.LocalTypes != c.want {
-				t.Errorf("rendered %q: LocalTypes = %v, want %v", bare, use.LocalTypes, c.want)
+			set := newImportSet(cross, goImport{Alias: localAlias, Path: local}, nil)
+			spelled := set.named(c.ref)
+			var got []string
+			for _, imp := range set.imports() {
+				got = append(got, imp.Path)
+			}
+			if !slices.Equal(got, slices.Sorted(slices.Values(c.want))) {
+				t.Errorf("spelling %q imports %v, want %v", spelled, got, c.want)
 			}
 		})
+	}
+}
+
+// A package named like a name the template binds, or like another import, takes a numbered alias.
+func TestImportSetAvoidsBoundNames(t *testing.T) {
+	cross := crossPkg{"server": "example.com/app/internal/types/server", "types": "example.com/app/internal/types/types"}
+	set := newImportSet(cross, goImport{Alias: localAlias, Path: "example.com/app/internal/types/app"}, transportNames)
+	if got := set.named(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"server", "Cred"}}}); got != "server2.Cred" {
+		t.Errorf("a package named like a template import: got %q", got)
+	}
+	if got := set.named(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"types", "Page"}}, Args: []*ast.TypeRef{{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"User"}}}}}}); got != "types2.Page[types.User]" {
+		t.Errorf("a package named like the file's own types: got %q", got)
+	}
+	if got := set.named(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"datetime"}}}); got != "time.Time" {
+		t.Errorf("a builtin keeps its package's own name: got %q", got)
 	}
 }
 

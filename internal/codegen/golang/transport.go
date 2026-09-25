@@ -2,10 +2,8 @@ package golang
 
 import (
 	"fmt"
-	"maps"
 	"net/http"
 	"path/filepath"
-	"slices"
 	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -17,18 +15,16 @@ import (
 
 // transportData is the template input for transport.tmpl, one value per method.
 type transportData struct {
-	Package     string
-	Method      string
-	Verb        string
+	Package string
+	Method  string
+	Verb    string
+	// RequestType is the Go type the handler binds the request into.
 	RequestType string
-	// RequestPkgAlias is `types` for a local request type, else the request package's alias.
-	RequestPkgAlias string
-	Doc             []string
-	HasRequest      bool
-	HasResponse     bool
-	BodyVerb        bool
-	BodyDecode      bool
-	NeedsTypes      bool
+	Doc         []string
+	HasRequest  bool
+	HasResponse bool
+	BodyVerb    bool
+	BodyDecode  bool
 	// RawRequest and RawResponse report the transport sides logic owns ([wire.RawSides]).
 	RawRequest    bool
 	RawResponse   bool
@@ -55,16 +51,9 @@ type transportData struct {
 	SuccessStatus     int
 	SuccessStatusExpr string
 	ServiceImport     string
-	TypesImport       string
 	SvccontextImport  string
-	// ExtraTypesImports are the other packages the request's type and bindings reference.
-	ExtraTypesImports []extraImport
-}
-
-// extraImport is one aliased import of a generated file.
-type extraImport struct {
-	Alias string
-	Path  string
+	// Imports are the packages the request's type, bindings and defaults name.
+	Imports []goImport
 }
 
 // defaultBinding pre-fills field GoName with the Go expression Literal, through a temp when Ptr.
@@ -120,9 +109,8 @@ func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semant
 
 // buildTransportData fails on a field its binding source cannot carry, such as @query on a struct.
 func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *semantic.Package, r *projectResolver) (transportData, error) {
-	crossPkg := r.CrossPkg
 	mode := modeOf(m)
-	// The handler names a type only in `var req`, so only a bound request needs the types import.
+	imports := newImportSet(r.CrossPkg, goImport{Alias: localAlias, Path: imps.Types}, transportNames)
 	d := transportData{
 		Package:          servicePkgName(pkg.Name, svcName),
 		Method:           m.Name,
@@ -135,55 +123,18 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 		RawResponse:      mode.RawResponse,
 		BindRequest:      mode.BindRequest(),
 		WriteResponse:    mode.WriteResponse(),
-		NeedsTypes:       mode.BindRequest(),
 		ServiceImport:    imps.Service,
-		TypesImport:      imps.Types,
 		SvccontextImport: imps.Svccontext,
 	}
-	var reqRef, respRef string
 	if d.BindRequest {
-		alias, bare, extra, use := resolveTypeRef(m.Request, crossPkg)
-		d.RequestPkgAlias = alias
-		d.RequestType = bare
-		reqRef = alias + "." + bare
-		extraSeen := map[string]bool{}
-		addExtra := func(e extraImport) {
-			if e.Path == "" || extraSeen[e.Path] {
-				return
-			}
-			extraSeen[e.Path] = true
-			d.ExtraTypesImports = append(d.ExtraTypesImports, e)
-		}
-		// A cross-package request drops the types import unless a local type argument needs it;
-		// a request package named `types` takes that alias, so then the import is always dropped.
-		if extra.Path != "" {
-			if alias == "types" || !use.LocalTypes {
-				d.NeedsTypes = false
-			}
-			addExtra(extra)
-		}
-		// The request type's generic arguments can reach further packages.
-		argSet := map[string]bool{}
-		m.Request.WalkNamedRefs(crossPkg.importsInto(argSet))
-		pathAlias := map[string]string{}
-		for a, p := range crossPkg {
-			pathAlias[p] = a
-		}
-		for path := range argSet {
-			addExtra(extraImport{Alias: pathAlias[path], Path: path})
-		}
-		// Binders cast cross-package scalars (`shared.ID(r.PathValue("id"))`).
-		fieldImports := collectRequestFieldImports(m, pkg, r)
-		for _, alias := range slices.Sorted(maps.Keys(fieldImports)) {
-			addExtra(extraImport{Alias: alias, Path: fieldImports[alias]})
-		}
+		d.RequestType = imports.named(m.Request)
 		var err error
-		d.PathParams, d.QueryParams, d.HeaderParams, d.CookieParams, err = collectBindings(m, pkg, d.RequestPkgAlias, r)
+		d.PathParams, d.QueryParams, d.HeaderParams, d.CookieParams, err = collectBindings(m, pkg, imports, r)
 		if err != nil {
 			return transportData{}, err
 		}
 		d.BodyDecode = wire.IsBodyVerb(m.Verb) && hasUnboundField(m, pkg, r)
-		forms, files, ferr := collectFormBindings(m, pkg, d.RequestPkgAlias, r)
+		forms, files, ferr := collectFormBindings(m, pkg, imports, r)
 		if ferr != nil {
 			return d, ferr
 		}
@@ -199,7 +150,7 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 				d.MultipartMaxMemory = n
 			}
 		}
-		d.Defaults = collectDefaults(m, pkg, d.RequestPkgAlias, r)
+		d.Defaults = collectDefaults(m, pkg, imports, r)
 	}
 	// On a raw response side logic writes its own headers.
 	if d.WriteResponse && mode.HasResponse {
@@ -209,12 +160,13 @@ func buildTransportData(svcName string, m *ast.Method, imps importPaths, pkg *se
 			d.NeedsStrconv = true
 		}
 	}
+	var respRef string
 	if mode.StubReturnsResp() {
-		// The handler infers resp's type, so respRef only feeds the signature and adds no import.
-		alias, bare, _, _ := resolveTypeRef(m.Response.Type, crossPkg)
-		respRef = alias + "." + bare
+		// The handler infers resp's type, so the signature names it without importing it.
+		respRef = imports.scratch().named(m.Response.Type)
 	}
-	d.Sig = buildSignature(mode, reqRef, respRef)
+	d.Sig = buildSignature(mode, d.RequestType, respRef)
+	d.Imports = imports.imports()
 	d.SuccessStatus = wire.SuccessStatus(m)
 	d.SuccessStatusExpr = statusConstExpr(d.SuccessStatus)
 	return d, nil
