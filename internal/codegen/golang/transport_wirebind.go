@@ -58,7 +58,7 @@ var wireSources = map[wire.Binding]wireSource{
 		cookie:  true,
 	},
 	wire.BindForm: {
-		single: func(n string) string { return fmt.Sprintf("r.FormValue(%q)", n) },
+		single: func(n string) string { return fmt.Sprintf("r.PostFormValue(%q)", n) },
 		array:  func(n string) string { return fmt.Sprintf("r.MultipartForm.Value[%q]", n) },
 	},
 }

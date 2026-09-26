@@ -26,7 +26,7 @@ func UploadAttachment(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		var req types.UploadAttachmentReq
 		req.ProjectID = shared.ID(r.PathValue("projectId"))
 		req.TaskID = shared.ID(r.PathValue("taskId"))
-		if _v := r.FormValue("caption"); _v != "" {
+		if _v := r.PostFormValue("caption"); _v != "" {
 			req.Caption = &_v
 		}
 		if _, header, err := r.FormFile("file"); err == nil {

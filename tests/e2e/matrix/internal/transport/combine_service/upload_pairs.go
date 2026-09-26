@@ -23,10 +23,10 @@ func UploadPairs(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.PairsUpload
-		if _v := r.FormValue("a"); _v != "" {
+		if _v := r.PostFormValue("a"); _v != "" {
 			req.A = &_v
 		}
-		if _v := r.FormValue("b"); _v != "" {
+		if _v := r.PostFormValue("b"); _v != "" {
 			req.B = &_v
 		}
 		if _, header, err := r.FormFile("doc"); err == nil {

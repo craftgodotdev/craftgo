@@ -23,14 +23,14 @@ func NullableForm(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.NullableFormReq
-		if _v := r.FormValue("meta"); _v != "" {
+		if _v := r.PostFormValue("meta"); _v != "" {
 			req.Meta = &_v
 		}
-		if _v := r.FormValue("tint"); _v != "" {
+		if _v := r.PostFormValue("tint"); _v != "" {
 			_w := types.Color(_v)
 			req.Tint = &_w
 		}
-		if _v := r.FormValue("ref"); _v != "" {
+		if _v := r.PostFormValue("ref"); _v != "" {
 			_w := types.UUID(_v)
 			req.Ref = &_w
 		}

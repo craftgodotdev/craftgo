@@ -201,7 +201,7 @@ func TestGenerateRawResponseOverMultipart(t *testing.T) {
 	mustContainAll(t, h,
 		"r.ParseMultipartForm(",
 		"defer func() { _ = r.MultipartForm.RemoveAll() }()",
-		`r.FormValue("note")`,
+		`r.PostFormValue("note")`,
 		`r.FormFile("avatar")`,
 		"if err := req.Validate(); err != nil {",
 		"if err := l.Upload(w, r, &req); err != nil {",

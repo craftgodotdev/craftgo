@@ -1297,6 +1297,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   header line whole, so `1,2` answered 400. It now reads the list through
   `server.HeaderList`: every line, split at commas.
 
+- **A multipart text part ignores the query.** The handler read a text
+  part with `r.FormValue`, so `?note=x` beat the `note` part and stood in for
+  a missing one. It now reads `r.PostFormValue`, the multipart body alone.
 
 ## [1.9.0] - 2026-09-22 [UTC+7]
 

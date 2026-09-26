@@ -23,7 +23,7 @@ func RrMultipart(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.RrUploadReq
-		req.Note = r.FormValue("note")
+		req.Note = r.PostFormValue("note")
 		if _, header, err := r.FormFile("doc"); err == nil {
 			req.Doc = header
 		}

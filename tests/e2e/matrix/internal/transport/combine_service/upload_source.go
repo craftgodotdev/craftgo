@@ -23,10 +23,10 @@ func UploadSource(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.PairsSource
-		if _v := r.FormValue("url"); _v != "" {
+		if _v := r.PostFormValue("url"); _v != "" {
 			req.URL = &_v
 		}
-		req.Title = r.FormValue("title")
+		req.Title = r.PostFormValue("title")
 		if _, header, err := r.FormFile("doc"); err == nil {
 			req.Doc = header
 		}

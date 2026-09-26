@@ -426,16 +426,17 @@ service S {
 		`server.BindValue(w, r, "cTier", "int", c.Value, &req.CTier, server.ParseSigned[types.Priority])`,
 		`if c, err := r.Cookie("cAge"); err == nil {`,
 		`server.BindValue(w, r, "cAge", "int", c.Value, &req.CAge, server.ParseSigned[types.Cents])`,
-		`server.BindValue(w, r, "fQty", "int", r.FormValue("fQty"), &req.FQty, server.ParseSigned[int])`,
-		`server.BindValue(w, r, "fFlag", "bool", r.FormValue("fFlag"), &req.FFlag, server.ParseBool[bool])`,
+		`server.BindValue(w, r, "fQty", "int", r.PostFormValue("fQty"), &req.FQty, server.ParseSigned[int])`,
+		`server.BindValue(w, r, "fFlag", "bool", r.PostFormValue("fFlag"), &req.FFlag, server.ParseBool[bool])`,
 		`r.FormFile("upload")`,
 	)
 	// Parsing lives in the server helpers, so the handler imports no strconv.
 	mustContainNone(t, got, `"strconv"`)
 }
 
-// An array header reads every element of the list header, lines and commas alike.
-func TestGenerateTransportHeaderList(t *testing.T) {
+// An array header reads every element of the list header, lines and commas alike, and a text
+// form part reads the multipart body only, never a query value of the same name.
+func TestGenerateTransportHeaderListAndFormPart(t *testing.T) {
 	src := `package design
 type Req {
     ids  int[]  @header("X-Ids")
@@ -458,8 +459,8 @@ service S {
 	}
 	got := string(body)
 	mustParseGo(t, got)
-	mustContainAll(t, got, `server.HeaderList(r, "X-Ids")`)
-	mustContainNone(t, got, `r.Header.Values("X-Ids"), &req`)
+	mustContainAll(t, got, `server.HeaderList(r, "X-Ids")`, `r.PostFormValue("note")`)
+	mustContainNone(t, got, `r.Header.Values("X-Ids"), &req`, `r.FormValue(`)
 }
 
 // An optional header or cookie field is nil when empty, else points at the value cast to its type.
@@ -874,7 +875,7 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 		"r.ParseMultipartForm(32 << 20)",
 		// Handler-scoped cleanup frees temp files before the flush and on panic paths.
 		"defer func() { _ = r.MultipartForm.RemoveAll() }()",
-		`r.FormValue("note")`,
+		`r.PostFormValue("note")`,
 		`r.FormFile("avatar")`,
 		"req.Avatar = header",
 	)
@@ -953,10 +954,10 @@ service UploadService {
 	handler, _ := os.ReadFile(filepath.Join(root, "internal/transport/upload-service/upload.go"))
 	mustParseGo(t, string(handler))
 	mustContainAll(t, string(handler),
-		`r.FormValue("note_text")`,
+		`r.PostFormValue("note_text")`,
 		`r.FormFile("avatar_file")`,
 	)
-	if strings.Contains(string(handler), `r.FormValue("caption")`) || strings.Contains(string(handler), `r.FormFile("pic")`) {
+	if strings.Contains(string(handler), `r.PostFormValue("caption")`) || strings.Contains(string(handler), `r.FormFile("pic")`) {
 		t.Errorf("explicit @form name ignored - form key fell back to the field name:\n%s", handler)
 	}
 }

@@ -21,13 +21,13 @@ func UploadNotify(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.NotifyUpload
-		if _v := r.FormValue("email"); _v != "" {
+		if _v := r.PostFormValue("email"); _v != "" {
 			req.Email = &_v
 		}
-		if _v := r.FormValue("sms"); _v != "" {
+		if _v := r.PostFormValue("sms"); _v != "" {
 			req.Sms = &_v
 		}
-		if _v := r.FormValue("push"); _v != "" {
+		if _v := r.PostFormValue("push"); _v != "" {
 			req.Push = &_v
 		}
 		if _, header, err := r.FormFile("doc"); err == nil {

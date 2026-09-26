@@ -23,8 +23,8 @@ func UploadDocument(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.UploadDocumentReq
-		req.Title = r.FormValue("title")
-		if _v := r.FormValue("notes"); _v != "" {
+		req.Title = r.PostFormValue("title")
+		if _v := r.PostFormValue("notes"); _v != "" {
 			req.Notes = &_v
 		}
 		if _, header, err := r.FormFile("pdf"); err == nil {
