@@ -19,16 +19,9 @@ type FormField struct {
 	IsArray bool
 }
 
-// FormFields splits m's body and form fields into multipart text and file
-// parts; both are nil when none is a file.
-func FormFields(m *ast.Method, pkg *Package, r *Resolver, levelNames LevelNames) (text, files []FormField) {
-	if m == nil || m.Request == nil {
-		return nil, nil
-	}
-	return FormParts(RequestFields(m, pkg, r, levelNames))
-}
-
-// FormParts is [FormFields] over a request's resolved fields.
+// FormParts splits the body and form fields among a request's resolved
+// fields into multipart text and file parts; both are nil when none is a
+// file.
 func FormParts(fields []ResolvedField) (text, files []FormField) {
 	for _, rf := range fields {
 		switch rf.Binding {
