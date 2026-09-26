@@ -3,6 +3,7 @@ package golang
 import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -21,9 +22,6 @@ type serviceData struct {
 	Sig         methodSignature
 	ImportDecl  string
 }
-
-// logicTypeName is the name of a method's or an RPC's logic struct.
-func logicTypeName(method string) string { return method + "Service" }
 
 // generateService writes each method's gen-once logic scaffold to
 // output.service/<segment>/<method>.go. A nil r resolves local names only.
@@ -74,7 +72,7 @@ func buildServiceData(pkgName, svcName string, m *ast.Method, decs []*ast.Decora
 		Package:     pkgName,
 		Service:     svcName,
 		Method:      m.Name,
-		ServiceName: logicTypeName(m.Name),
+		ServiceName: idents.LogicTypeName(m.Name),
 		Doc:         docHead(semantic.DescriptionLines(decs, m.Doc)),
 		Entry:       stubEntry(svcName, m.Name, mode, sig, reqContract, respContract),
 		RawResponse: mode.RawResponse,

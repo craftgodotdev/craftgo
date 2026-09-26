@@ -181,3 +181,73 @@ service Beta { get B /b { response R } }`,
 		t.Errorf("method-less block emits nothing and must not straddle, got %v", codes(diags))
 	}
 }
+
+// Methods `X` and `NewX` in one output directory are reported at both, as
+// X's logic constructor and NewX's logic type are both NewXService, and so
+// are methods writing one file; a method named `Logger` is reported, as
+// every logic type embeds log.Logger.
+func TestMethodLogicGoNames(t *testing.T) {
+	for label, c := range map[string]struct {
+		src   string
+		sites int
+		want  string
+	}{
+		"one service": {`package shop
+type R { ok bool }
+service Orders {
+    get Order /o { response R }
+    post NewOrder /o { response R }
+}`, 2, "NewOrderService"},
+		"shared group": {`package shop
+type R { ok bool }
+@group("orders")
+service Read { get Order /o { response R } }
+@group("orders")
+service Write { post NewOrder /o { response R } }`, 2, "NewOrderService"},
+		"extend block": {`package shop
+type R { ok bool }
+service Orders { get Order /o { response R } }
+extend service Orders { post NewOrder /o { response R } }`, 2, "NewOrderService"},
+		"logger": {`package shop
+type R { ok bool }
+service Admin { get Logger /loggers { response R } }`, 1, "log.Logger"},
+		"one file": {`package shop
+type R { ok bool }
+service Links {
+    get GetURL /a { response R }
+    get GetUrl /b { response R }
+}`, 2, "get_url.go"},
+		"one file across a group": {`package shop
+type R { ok bool }
+@group("links")
+service A { get GetURL /a { response R } }
+@group("links")
+service B { get GetUrl /b { response R } }`, 2, "get_url.go"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			root, files := projectFixture(t, map[string]string{"shop.craftgo": c.src})
+			_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+			hits := 0
+			for _, d := range diags {
+				if d.Code == CodeMethodNameClash {
+					hits++
+					if !strings.Contains(d.Msg, c.want) {
+						t.Errorf("message should name %s: %q", c.want, d.Msg)
+					}
+				}
+			}
+			if hits != c.sites {
+				t.Errorf("want %d %s, got %v", c.sites, CodeMethodNameClash, diags)
+			}
+		})
+	}
+	// Separate directories hold separate Go packages.
+	root, files := projectFixture(t, map[string]string{"shop.craftgo": `package shop
+type R { ok bool }
+service Read { get Order /o { response R } }
+service Write { post NewOrder /o { response R } }`})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if d := findCode(diags, CodeMethodNameClash); d != nil {
+		t.Errorf("separate directories must not clash: %s", d.Msg)
+	}
+}

@@ -95,6 +95,7 @@ func TestValidateProtoOutputsRejectsCollidingRPCNames(t *testing.T) {
 	for proto, want := range map[string]string{
 		"syntax = \"proto3\";\npackage x;\nservice S { rpc Server(R) returns (R); }\nmessage R {}\n":                         "rpc Server would generate file server.go",
 		"syntax = \"proto3\";\npackage x;\nservice S { rpc Get(R) returns (R); rpc NewGet(R) returns (R); }\nmessage R {}\n": "generate a logic constructor and a logic type of one name, NewGetService",
+		"syntax = \"proto3\";\npackage x;\nservice S { rpc Logger(R) returns (R); }\nmessage R {}\n":                         "rpc Logger is named like the log.Logger",
 	} {
 		err := ValidateProtoOutputs(nil, protoSet(t, cfg, proto), cfg)
 		if err == nil || !strings.Contains(err.Error(), want) {

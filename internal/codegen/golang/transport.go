@@ -7,6 +7,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
@@ -100,7 +101,7 @@ func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, 
 	d := transportData{
 		Package:       pkg.Name,
 		Method:        m.Name,
-		ServiceName:   logicTypeName(m.Name),
+		ServiceName:   idents.LogicTypeName(m.Name),
 		Verb:          strings.ToUpper(m.Verb),
 		Doc:           docHead(semantic.DescriptionLines(decs, m.Doc)),
 		BindRequest:   mode.BindRequest(),

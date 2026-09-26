@@ -5,8 +5,11 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/route"
 )
@@ -99,6 +102,7 @@ func (c *projectChecks) checkProjectGroupChecks() {
 			}
 			return occs[i].svc < occs[j].svc
 		})
+		c.reportMethodNameClashes(seg, occs)
 		if len(occs) < 2 {
 			continue
 		}
@@ -164,6 +168,63 @@ func (c *projectChecks) reportGroupMemberCollisions(seg string, occs []segClaim)
 			}
 		}
 		c.reportEverySite(CodeGroupMethodCollision, reports)
+	}
+}
+
+// reportMethodNameClashes reports, among the methods scaffolded into seg,
+// one Go package, a method named like the log.Logger each logic type embeds
+// and, at every site, methods of distinct names that write one file, and
+// each pair whose logic constructor and logic type share a name. A name
+// declared twice is left to the duplicate-method and group rules.
+func (c *projectChecks) reportMethodNameClashes(seg string, occs []segClaim) {
+	type owner struct {
+		svc    string
+		member segMember
+	}
+	byName := map[string]owner{}
+	byFile := map[string][]owner{}
+	var firsts []owner
+	for _, o := range occs {
+		for _, m := range o.members {
+			if _, dup := byName[m.name]; dup {
+				continue
+			}
+			ow := owner{svc: o.svc, member: m}
+			byName[m.name] = ow
+			firsts = append(firsts, ow)
+			file := idents.FileName(m.name, c.fileCase) + ".go"
+			byFile[file] = append(byFile[file], ow)
+		}
+	}
+	report := func(owners []owner, msg string) {
+		reports := make([]siteReport, len(owners))
+		for i, o := range owners {
+			reports[i] = siteReport{pos: o.member.pos, msg: msg,
+				note: fmt.Sprintf("method %q of service %q", o.member.name, o.svc)}
+		}
+		c.reportEverySite(CodeMethodNameClash, reports)
+	}
+	for _, file := range slices.Sorted(maps.Keys(byFile)) {
+		if owners := byFile[file]; len(owners) > 1 {
+			names := make([]string, len(owners))
+			for i, o := range owners {
+				names[i] = strconv.Quote(o.member.name)
+			}
+			report(owners, fmt.Sprintf("methods %s all write %s in output directory %q - rename all but one",
+				strings.Join(names, ", "), file, seg))
+		}
+	}
+	for _, o := range firsts {
+		name := o.member.name
+		if name == idents.LogicEmbed {
+			c.diag(o.member.pos, lexer.SeverityError, CodeMethodNameClash,
+				"method %q of service %q is named like the log.Logger its logic type %s embeds - rename it",
+				name, o.svc, idents.LogicTypeName(name))
+		}
+		if rival, ok := byName[idents.LogicRival(name)]; ok {
+			report([]owner{o, rival}, fmt.Sprintf("methods %q and %q both generate %s in output directory %q: the constructor of %s and the logic type of %s - rename one",
+				name, rival.member.name, idents.LogicConstructorName(name), seg, idents.LogicTypeName(name), rival.member.name))
+		}
 	}
 }
 

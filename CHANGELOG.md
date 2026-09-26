@@ -444,6 +444,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@form("n")` went nowhere. It is now `binding/form-without-file` at the
   decorator; drop `@form` and the field rides the JSON body as before.
 
+- **Method names that clash in generated Go are refused.** Methods `X` and
+  `NewX` in one service directory both declared `NewXService`; `GetURL` and
+  `GetUrl` both wrote `get_url.go`; a method named `Logger` clashed with the
+  `log.Logger` its logic type embeds. Each generated a project that did not
+  compile, and is now `service/method-name-clash`, across the services
+  sharing a `@group` too. The gRPC path refuses an RPC named `Logger`.
+
 - **An event payload takes no wire binding.** A payload field bound to
   `@path`, `@query`, `@header` or `@cookie` was tagged `json:"-"`, so it never
   reached a consumer, and one with a validator failed every message there;

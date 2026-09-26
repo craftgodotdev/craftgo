@@ -97,6 +97,10 @@ const (
 	CodeExtendDecoratorNotMethod = "service/extend-decorator-not-method"
 	// CodeServiceDuplicateMethod fires when one service declares two methods of the same name.
 	CodeServiceDuplicateMethod = "service/duplicate-method"
+	// CodeMethodNameClash fires when methods scaffolded into one output directory write one file
+	// (`GetURL` beside `GetUrl`) or declare one Go name (`X` beside `NewX`), or a method is named
+	// `Logger`.
+	CodeMethodNameClash = "service/method-name-clash"
 	// CodeServiceDuplicateRoute fires when one service declares two methods of one verb and route shape.
 	CodeServiceDuplicateRoute = "service/duplicate-route"
 

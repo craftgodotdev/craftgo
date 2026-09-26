@@ -40,6 +40,7 @@ Each of these generated a project that built and ran under 1.9. Fix the design a
 - An optional array or map as a map value, as in `map<string, int[]?>`: `type/map-value`. Drop the `?`; an absent entry reads as empty.
 - `@path("rest...")` for a `{rest...}` variable: an error. The variable is `rest`.
 - `@form` on a field of a request with no `file`: `binding/form-without-file`. Drop `@form`; the field rides the JSON body, as it did.
+- Methods of one service directory writing one file, as `GetURL` beside `GetUrl`, or one Go name, as `Order` beside `NewOrder`, or a method named `Logger`, which generated code that did not compile: `service/method-name-clash`. Rename the method, and move its logic stub to the new file name.
 - An event payload reaching a field bound to `@path`, `@query`, `@header`, `@cookie` or `@form`, which never reached a consumer: `event/payload-binding`. Drop the binding, or give the event a type without it.
 
 A decorator as another decorator's argument, `@a(@b)`, is out of the grammar: one parse error at the inner `@`.

@@ -225,6 +225,22 @@ func ErrorCodeName(name string) string { return "ErrCode" + name }
 // plus its [ErrorTypeName].
 func ErrorConstructorName(name string) string { return "New" + ErrorTypeName(name) }
 
+// LogicTypeName returns the Go name of a method's or an RPC's logic struct:
+// the name plus `Service`.
+func LogicTypeName(method string) string { return method + "Service" }
+
+// LogicConstructorName returns the Go name of the constructor of a method's
+// or an RPC's logic struct: `New` plus its [LogicTypeName].
+func LogicConstructorName(method string) string { return "New" + LogicTypeName(method) }
+
+// LogicRival returns the method whose [LogicTypeName] is method's
+// [LogicConstructorName], `NewX` for `X`; the two cannot share a Go package.
+func LogicRival(method string) string { return "New" + method }
+
+// LogicEmbed is the field every logic struct embeds, its `log.Logger`; a
+// method of that name cannot be declared on the struct.
+const LogicEmbed = "Logger"
+
 // EventContractName returns the Go name of the constant holding an event's
 // wire identity: the event name plus `Contract`.
 func EventContractName(event string) string { return event + "Contract" }

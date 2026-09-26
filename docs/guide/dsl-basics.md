@@ -155,6 +155,8 @@ service UserService {
 
 Method form: `<verb> <Name> [<path>] { request <Type>  response <Type> }`; both clauses are optional, and without a path the route is the method name in kebab case (`get NoPath { ... }` serves `/no-path`).
 
+Each method writes `<name>.go` holding `<Name>Service` and its constructor `New<Name>Service` into its service's directory, so the methods of one directory may not write one file (`GetURL` beside `GetUrl`) or one Go name (`Order` beside `NewOrder`), and no method is named `Logger`, the `log.Logger` every logic type embeds: `service/method-name-clash`.
+
 Verbs: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. `trace` and `connect` are not supported.
 
 **A `request` names a `type`** (a generic instantiation such as `Page<Order>` included); **a `response` names a `type`, an enum or a scalar.** Bare arrays (`response Order[]`), optional markers (`response User?`) and built-in primitives (`response string`) are rejected in both clauses - wrap the shape in a type (`type Items { items Order[] }`) and reference that instead.

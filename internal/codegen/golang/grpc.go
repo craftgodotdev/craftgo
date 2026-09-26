@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -96,7 +97,7 @@ func buildGRPCMethodData(svc *protodesign.Service, m *protodesign.Method, imps g
 		Package:     svc.Package,
 		Method:      m.Name,
 		FullMethod:  m.FullMethod,
-		ServiceName: logicTypeName(m.Name),
+		ServiceName: idents.LogicTypeName(m.Name),
 		Doc:         docHead(m.Doc),
 		Sig:         sig,
 		ImportDecl:  set.decl(),
@@ -126,7 +127,7 @@ func buildGRPCServiceData(svc *protodesign.Service, m *protodesign.Method, imps 
 		Package:     svc.Package,
 		Service:     svc.Name,
 		Method:      m.Name,
-		ServiceName: logicTypeName(m.Name),
+		ServiceName: idents.LogicTypeName(m.Name),
 		Doc:         docHead(m.Doc),
 		Entry:       []string{grpcEntry(svc.Name, m)},
 		Sig:         sig.Logic,
@@ -151,23 +152,27 @@ func (s *importSet) protoType(ref protodesign.TypeRef) string {
 }
 
 // ValidateProtoOutputs rejects gRPC output that would collide: an RPC file named like the server
-// struct's, a logic type named like another RPC's constructor (`X` beside `NewX`), or a proto
-// service writing into a DSL service's output.service directory.
+// struct's, a logic type named like another RPC's constructor (`X` beside `NewX`), an RPC named
+// like the log.Logger its logic type embeds, or a proto service writing into a DSL service's
+// output.service directory.
 func ValidateProtoOutputs(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config) error {
 	if protos == nil {
 		return nil
 	}
 	for _, svc := range protos.Services {
-		types := map[string]string{}
+		rpcs := map[string]bool{}
 		for _, m := range svc.Methods {
 			if m.File == grpcServerFile {
 				return fmt.Errorf("%s: rpc %s would generate file %s.go, which holds the server struct - rename it", svc.FullName, m.Name, grpcServerFile)
 			}
-			types[logicTypeName(m.Name)] = m.Name
+			if m.Name == idents.LogicEmbed {
+				return fmt.Errorf("%s: rpc %s is named like the log.Logger its logic type embeds - rename it", svc.FullName, m.Name)
+			}
+			rpcs[m.Name] = true
 		}
 		for _, m := range svc.Methods {
-			if other, ok := types["New"+logicTypeName(m.Name)]; ok {
-				return fmt.Errorf("%s: rpcs %s and %s generate a logic constructor and a logic type of one name, New%s - rename one", svc.FullName, m.Name, other, logicTypeName(m.Name))
+			if rival := idents.LogicRival(m.Name); rpcs[rival] {
+				return fmt.Errorf("%s: rpcs %s and %s generate a logic constructor and a logic type of one name, %s - rename one", svc.FullName, m.Name, rival, idents.LogicConstructorName(m.Name))
 			}
 		}
 	}
