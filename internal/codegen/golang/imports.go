@@ -51,7 +51,7 @@ var (
 	routesNames     = []string{"time", "server", "svccontext", "srv", "svcCtx"}
 	typesNames      = []string{"wire"}
 	errorsNames     = []string{"json", "http", "strconv", "wire", "e", "w"}
-	validateNames   = append([]string{"fmt", "regexp", "utf8", "reflect", "mime", "strings", "v", "item", "seen", "_mt"}, formatPackages()...)
+	validateNames   = append([]string{"fmt", "regexp", "utf8", "reflect", "mime", "strings", "v", "item", "seen", "_mt", "multipart"}, formatPackages()...)
 )
 
 // formatPackages returns the names of the packages a @format check imports.

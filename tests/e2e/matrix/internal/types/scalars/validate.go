@@ -4,6 +4,7 @@ package scalars
 
 import (
 	"fmt"
+	"mime/multipart"
 	"net/mail"
 	"net/url"
 	"reflect"
@@ -133,6 +134,9 @@ func (v *CompositeArg) Validate() error {
 
 // Validate returns the first constraint v violates, or nil.
 func (v *ConstrainedBox[T]) Validate() error {
+	if absentValue(&v.Item) {
+		return fmt.Errorf("item: required")
+	}
 	if vv, ok := any(&v.Item).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
 			return fmt.Errorf("item: %w", err)
@@ -196,6 +200,9 @@ func (v *EnumKeyedMaps) Validate() error {
 
 // Validate returns the first constraint v violates, or nil.
 func (v *Envelope[T]) Validate() error {
+	if absentValue(&v.Data) {
+		return fmt.Errorf("data: required")
+	}
 	if vv, ok := any(&v.Data).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
 			return fmt.Errorf("data: %w", err)
@@ -303,6 +310,9 @@ func (v *KeyedPage[Key]) Validate() error {
 	if err := v.KeyMeta.Validate(); err != nil {
 		return err
 	}
+	if absentValue(&v.Key) {
+		return fmt.Errorf("X-Key: required")
+	}
 	if vv, ok := any(&v.Key).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
 			return fmt.Errorf("X-Key: %w", err)
@@ -326,6 +336,9 @@ func (v *KeyedPage[Key]) Validate() error {
 func (v *KeyedPut[Key]) Validate() error {
 	if err := v.KeyMeta.Validate(); err != nil {
 		return err
+	}
+	if absentValue(&v.Key) {
+		return fmt.Errorf("key: required")
 	}
 	if vv, ok := any(&v.Key).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
@@ -583,12 +596,18 @@ func (v *PageWithAudit[T]) Validate() error {
 
 // Validate returns the first constraint v violates, or nil.
 func (v *Pair[A, B]) Validate() error {
+	if absentValue(&v.Left) {
+		return fmt.Errorf("left: required")
+	}
 	if vv, ok := any(&v.Left).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
 			return fmt.Errorf("left: %w", err)
 		}
 	} else if err := validateValue(v.Left); err != nil {
 		return fmt.Errorf("left: %w", err)
+	}
+	if absentValue(&v.Right) {
+		return fmt.Errorf("right: required")
 	}
 	if vv, ok := any(&v.Right).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
@@ -767,6 +786,9 @@ func (v *Shadowed[Blob, Priority]) Validate() error {
 			return fmt.Errorf("payload: %w", err)
 		}
 	}
+	if absentValue(&v.Level) {
+		return fmt.Errorf("level: required")
+	}
 	if vv, ok := any(&v.Level).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
 			return fmt.Errorf("level: %w", err)
@@ -809,6 +831,9 @@ func (v *SkuPage[T]) Validate() error {
 
 // Validate returns the first constraint v violates, or nil.
 func (v *Tallied[T]) Validate() error {
+	if absentValue(&v.Tally) {
+		return fmt.Errorf("X-Tally: required")
+	}
 	if vv, ok := any(&v.Tally).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
 			return fmt.Errorf("X-Tally: %w", err)
@@ -830,6 +855,9 @@ func (v *Tallied[T]) Validate() error {
 
 // Validate returns the first constraint v violates, or nil.
 func (v *Tree[T]) Validate() error {
+	if absentValue(&v.Val) {
+		return fmt.Errorf("val: required")
+	}
 	if vv, ok := any(&v.Val).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
 			return fmt.Errorf("val: %w", err)
@@ -1022,6 +1050,18 @@ func (v Urgency) Validate() error {
 		return fmt.Errorf("must be one of [1 5 10]")
 	}
 	return nil
+}
+
+// absentValue reports whether the type-parameter value p points to is a
+// missing `file` or `any`: a nil header or interface.
+func absentValue(p any) bool {
+	switch p := p.(type) {
+	case **multipart.FileHeader:
+		return *p == nil
+	case *any:
+		return *p == nil
+	}
+	return false
 }
 
 // validateValue validates each element of a composite type-parameter value.

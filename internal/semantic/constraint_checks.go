@@ -5,7 +5,6 @@ import (
 	"math"
 	"math/big"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -457,13 +456,10 @@ func (a *analyzer) checkIntBoundFloatLiteral(prim, target string, decs []*ast.De
 // checkValueConstraintOnTypeParam rejects a constraint on a bare
 // type-parameter field, which the generic validator sees as `any`.
 func (a *analyzer) checkValueConstraintOnTypeParam(f *ast.Field, typeParams []string) {
-	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
+	if f == nil || !TypeParamValue(f.Type, typeParams) {
 		return
 	}
 	name := f.Type.Named.Name.String()
-	if !slices.Contains(typeParams, name) {
-		return
-	}
 	for _, d := range f.Decorators {
 		if ConstraintOf(d.Name) != 0 {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,

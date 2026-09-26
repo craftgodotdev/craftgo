@@ -4,6 +4,7 @@ package shared
 
 import (
 	"fmt"
+	"mime/multipart"
 	"net/mail"
 	"net/url"
 	"reflect"
@@ -34,6 +35,9 @@ func (v *AuditFields) Validate() error {
 
 // Validate returns the first constraint v violates, or nil.
 func (v *Envelope[T]) Validate() error {
+	if absentValue(&v.Data) {
+		return fmt.Errorf("data: required")
+	}
 	if vv, ok := any(&v.Data).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
 			return fmt.Errorf("data: %w", err)
@@ -256,6 +260,18 @@ func (v *RateLimitedErrBody) Validate() error {
 // Validate returns the first constraint v violates, or nil.
 func (v *UnauthorizedErrBody) Validate() error {
 	return nil
+}
+
+// absentValue reports whether the type-parameter value p points to is a
+// missing `file` or `any`: a nil header or interface.
+func absentValue(p any) bool {
+	switch p := p.(type) {
+	case **multipart.FileHeader:
+		return *p == nil
+	case *any:
+		return *p == nil
+	}
+	return false
 }
 
 // validateValue validates each element of a composite type-parameter value.

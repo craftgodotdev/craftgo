@@ -49,6 +49,7 @@ A decorator as another decorator's argument, `@a(@b)`, is out of the grammar: on
 ### What the server answers
 
 - Every error the framework writes is JSON `{"message": "..."}` with `Content-Type: application/json; charset=utf-8` and `X-Content-Type-Options: nosniff`: the 404, the 405 (with `Allow`), a 413, a panic's 500 and the default validation 400 were `text/plain`. None of them is in the OpenAPI document.
+- A request missing a required `file` or `any` that a type parameter types, as in a `FilePart<file>` mixin, answers 400 `<field>: required`; 1.9 passed the service nil.
 - A body read past its cap answers 413 `{"message":"request entity too large"}`, where 1.9 answered 400.
 - A multipart body the parser refuses answers 400 through `SetDefaultValidationFailed`, where 1.9 answered 413 (a regenerated handler).
 - A handler that returns a deadline's error answers 504 `{"message":"gateway timeout"}`, and a context error after the client has gone writes nothing, the access log recording 499; 1.9 answered 500 and logged `unhandled service error`. `SetHandleUnknownError` no longer receives these errors.

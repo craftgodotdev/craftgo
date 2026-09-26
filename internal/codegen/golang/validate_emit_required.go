@@ -32,6 +32,15 @@ func requiredCheck(rf semantic.ResolvedField, t checkTarget, ctx emitCtx) string
 	return failIf(cond, t.subject, "required", ctx)
 }
 
+// typeParamPresence renders the presence check of a required type-parameter
+// value held in t, through the absentValue helper: a `file` or `any`
+// argument is absent at nil.
+func typeParamPresence(t checkTarget, ctx emitCtx) string {
+	ctx.imports.use("mime/multipart")
+	ctx.helpers.absentValue = true
+	return failIf("absentValue(&"+t.access+")", t.subject, "required", ctx)
+}
+
 // enumHasZeroMember reports whether one of ed's members has its kind's zero
 // wire value, 0 or "".
 func enumHasZeroMember(ed *ast.EnumDecl) bool {

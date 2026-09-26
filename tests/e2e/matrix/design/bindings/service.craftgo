@@ -66,6 +66,14 @@ service BindingsService {
 		response Item
 	}
 
+	// AttachDoc takes its file through a generic mixin: `doc` is required,
+	// so a request without the part is refused before the service runs.
+	@doc("Attach a document. The file rides a generic mixin, FilePart<file>, and is required.")
+	post AttachDoc /attach {
+		request  AttachReq
+		response Item
+	}
+
 	// NullableForm pins that a `@nullable` body field in a multipart
 	// request (form-bound because the sibling `doc file` makes the
 	// request multipart) binds as `*string` with a present-guard. The
@@ -290,6 +298,17 @@ type BatchUploadReq {
 	cover file?
 	tags  string[] @form
 	album string   @form @length(1, 100)
+}
+
+// FilePart carries one required part of type T.
+type FilePart<T> {
+	doc T
+}
+
+// AttachReq is a multipart request whose file a generic mixin supplies.
+type AttachReq {
+	FilePart<file>
+	title string @form
 }
 
 // AddItemReq is the canonical JSON body for the POST /items

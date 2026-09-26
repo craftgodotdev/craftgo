@@ -5,8 +5,10 @@ package bindings
 import (
 	"fmt"
 	"mime"
+	"mime/multipart"
 	"net/mail"
 	"net/url"
+	"reflect"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -31,6 +33,14 @@ func (v *AddItemReq) Validate() error {
 	}
 	if v.Notes != nil && utf8.RuneCountInString(*v.Notes) > 2000 {
 		return fmt.Errorf("notes: length greater than 2000")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *AttachReq) Validate() error {
+	if err := v.FilePart.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -99,6 +109,21 @@ func (v *EmptyReq) Validate() error {
 func (v *ErrorHeaderMeta) Validate() error {
 	if utf8.RuneCountInString(v.Note) < 1 {
 		return fmt.Errorf("note: length less than 1")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *FilePart[T]) Validate() error {
+	if absentValue(&v.Doc) {
+		return fmt.Errorf("doc: required")
+	}
+	if vv, ok := any(&v.Doc).(interface{ Validate() error }); ok {
+		if err := vv.Validate(); err != nil {
+			return fmt.Errorf("doc: %w", err)
+		}
+	} else if err := validateValue(v.Doc); err != nil {
+		return fmt.Errorf("doc: %w", err)
 	}
 	return nil
 }
@@ -590,5 +615,72 @@ func (v *RetryLaterBody) Validate() error {
 
 // Validate returns the first constraint v violates, or nil.
 func (v *SharedStatusConflictBody) Validate() error {
+	return nil
+}
+
+// absentValue reports whether the type-parameter value p points to is a
+// missing `file` or `any`: a nil header or interface.
+func absentValue(p any) bool {
+	switch p := p.(type) {
+	case **multipart.FileHeader:
+		return *p == nil
+	case *any:
+		return *p == nil
+	}
+	return false
+}
+
+// validateValue validates each element of a composite type-parameter value.
+func validateValue(v any) error {
+	return validateReflect(reflect.ValueOf(v))
+}
+
+// validateReflect validates rv, else each element of a slice, array or map rv.
+func validateReflect(rv reflect.Value) error {
+	if !rv.IsValid() {
+		return nil
+	}
+	if rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			return nil
+		}
+		if vv, ok := rv.Interface().(interface{ Validate() error }); ok {
+			return vv.Validate()
+		}
+		return validateReflect(rv.Elem())
+	}
+	// A pointer-receiver Validate needs an addressable value, so a map value is copied.
+	if vv, ok := rv.Interface().(interface{ Validate() error }); ok {
+		return vv.Validate()
+	}
+	if rv.CanAddr() {
+		if vv, ok := rv.Addr().Interface().(interface{ Validate() error }); ok {
+			return vv.Validate()
+		}
+	} else {
+		cp := reflect.New(rv.Type())
+		cp.Elem().Set(rv)
+		if vv, ok := cp.Interface().(interface{ Validate() error }); ok {
+			return vv.Validate()
+		}
+	}
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < rv.Len(); i++ {
+			if err := validateReflect(rv.Index(i)); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		iter := rv.MapRange()
+		for iter.Next() {
+			if err := validateReflect(iter.Value()); err != nil {
+				return err
+			}
+			if err := validateReflect(iter.Key()); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }

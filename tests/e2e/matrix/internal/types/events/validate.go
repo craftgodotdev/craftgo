@@ -4,6 +4,7 @@ package events
 
 import (
 	"fmt"
+	"mime/multipart"
 	"reflect"
 	"unicode/utf8"
 )
@@ -12,6 +13,9 @@ import (
 func (v *Envelope[T]) Validate() error {
 	if utf8.RuneCountInString(v.TraceID) < 1 {
 		return fmt.Errorf("traceId: length less than 1")
+	}
+	if absentValue(&v.Body) {
+		return fmt.Errorf("body: required")
 	}
 	if vv, ok := any(&v.Body).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
@@ -105,6 +109,18 @@ func (v Warehouse) Validate() error {
 		return fmt.Errorf("must be one of [1 2]")
 	}
 	return nil
+}
+
+// absentValue reports whether the type-parameter value p points to is a
+// missing `file` or `any`: a nil header or interface.
+func absentValue(p any) bool {
+	switch p := p.(type) {
+	case **multipart.FileHeader:
+		return *p == nil
+	case *any:
+		return *p == nil
+	}
+	return false
 }
 
 // validateValue validates each element of a composite type-parameter value.

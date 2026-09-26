@@ -479,6 +479,12 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Fixed
 
+- **A required type-parameter field is required.** A `file` or `any`
+  argument missing from a request reached the service as nil, as with a
+  `FilePart<file>` mixin in a multipart request, where the stub's first
+  use of the header panicked. The generated `Validate` now answers
+  `<field>: required`, as it does for a `file` or `any` field.
+
 - **A flushed response counts as committed.** A panic, or an error a raw
   handler returns, after a `Flush` is logged and never written into the
   stream: `Recovery` no longer appends a 500 body to it and `WriteError` no

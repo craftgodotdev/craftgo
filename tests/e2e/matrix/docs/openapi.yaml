@@ -695,6 +695,19 @@ components:
       - jobId
       - queued
       type: object
+    AttachDocRespBody:
+      $ref: '#/components/schemas/Item'
+    AttachReq:
+      allOf:
+      - $ref: '#/components/schemas/FilePartOfFile'
+      - properties:
+          title:
+            type: string
+        required:
+        - title
+        type: object
+      description: AttachReq is a multipart request whose file a generic mixin supplies.
+      type: object
     Attachments:
       description: |-
         Attachments holds an optional Blob as a field and as a map value; both
@@ -2789,6 +2802,15 @@ components:
       - attempts
       - field
       - legacy
+      type: object
+    FilePartOfFile:
+      description: FilePart carries one required part of type T.
+      properties:
+        doc:
+          format: binary
+          type: string
+      required:
+      - doc
       type: object
     FilterTagsRespBody:
       $ref: '#/components/schemas/OkResp'
@@ -9265,6 +9287,35 @@ paths:
           description: OK
       tags:
       - admin/v3
+  /bindings/attach:
+    post:
+      description: Attach a document. The file rides a generic mixin, FilePart<file>,
+        and is required.
+      operationId: AttachDoc
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                doc:
+                  format: binary
+                  type: string
+                title:
+                  type: string
+              required:
+              - title
+              - doc
+              type: object
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachDocRespBody'
+          description: Created
+      tags:
+      - bindings
   /bindings/batch:
     post:
       description: Batch upload. files[] rides as repeated multipart parts ([]*multipart.FileHeader,

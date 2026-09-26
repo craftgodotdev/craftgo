@@ -66,6 +66,12 @@ func (p *Project) wireTypeFault(parent, home string, f *ast.Field, kind wire.Bin
 	return ""
 }
 
+// TypeParamValue reports whether t is a bare value of one of typeParams,
+// `T` or `T?`: no array or map of it.
+func TypeParamValue(t *ast.TypeRef, typeParams []string) bool {
+	return t != nil && !t.Array && typeParamNamed(t, typeParams)
+}
+
 // typeParamNamed reports whether t names one of typeParams, whatever its
 // suffixes.
 func typeParamNamed(t *ast.TypeRef, typeParams []string) bool {

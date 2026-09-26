@@ -4,6 +4,7 @@ package xrefs
 
 import (
 	"fmt"
+	"mime/multipart"
 	"reflect"
 	"unicode/utf8"
 
@@ -131,6 +132,9 @@ func (v *XNestedReq) Validate() error {
 func (v *XOwnerPair[XOwner]) Validate() error {
 	if err := v.Owner.Validate(); err != nil {
 		return fmt.Errorf("owner: %w", err)
+	}
+	if absentValue(&v.Value) {
+		return fmt.Errorf("value: required")
 	}
 	if vv, ok := any(&v.Value).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
@@ -297,6 +301,18 @@ func (v *XStdNamesClashBody) Validate() error {
 		return fmt.Errorf("slot: %w", err)
 	}
 	return nil
+}
+
+// absentValue reports whether the type-parameter value p points to is a
+// missing `file` or `any`: a nil header or interface.
+func absentValue(p any) bool {
+	switch p := p.(type) {
+	case **multipart.FileHeader:
+		return *p == nil
+	case *any:
+		return *p == nil
+	}
+	return false
 }
 
 // validateValue validates each element of a composite type-parameter value.

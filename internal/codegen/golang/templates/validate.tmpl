@@ -19,6 +19,19 @@ func (v {{if .PtrReceiver}}*{{end}}{{.Name}}{{if .TypeParams}}[{{range $i, $p :=
 	return nil
 }
 {{end}}
+{{- if .NeedsAbsentValue}}
+// absentValue reports whether the type-parameter value p points to is a
+// missing `file` or `any`: a nil header or interface.
+func absentValue(p any) bool {
+	switch p := p.(type) {
+	case **multipart.FileHeader:
+		return *p == nil
+	case *any:
+		return *p == nil
+	}
+	return false
+}
+{{ end}}
 {{- if .NeedsValidateValue}}
 // validateValue validates each element of a composite type-parameter value.
 func validateValue(v any) error {

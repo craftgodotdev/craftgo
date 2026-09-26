@@ -21,6 +21,12 @@ type AddItemReq struct {
 	Notes *string `json:"notes,omitempty"`
 }
 
+// AttachReq is a multipart request whose file a generic mixin supplies.
+type AttachReq struct {
+	FilePart[*multipart.FileHeader]
+	Title string `json:"title"`
+}
+
 // BatchUploadReq pins the file[] multipart shape: a 1-D `file[]` binds from
 // `r.MultipartForm.File[name]` (each repeated part is one element), bounded
 // by `@minItems`/`@maxItems`; an optional single `cover` and a repeated
@@ -80,6 +86,11 @@ type EmptyReq struct {
 type ErrorHeaderMeta struct {
 	Rid  string `json:"-" header:"X-Request-Id"`
 	Note string `json:"note"`
+}
+
+// FilePart carries one required part of type T.
+type FilePart[T any] struct {
+	Doc T `json:"doc"`
 }
 
 // FormFileReq drives the multipart-form upload path. The `file` type

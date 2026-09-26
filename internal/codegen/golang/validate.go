@@ -21,6 +21,9 @@ type validateData struct {
 	// NeedsValidateValue emits the reflective validateValue helper that a
 	// type-parameter probe falls back to for a composite argument.
 	NeedsValidateValue bool
+	// NeedsAbsentValue emits the absentValue helper of a required
+	// type-parameter value's presence check.
+	NeedsAbsentValue bool
 }
 
 // regexVar binds a pattern to its package-level Go identifier.
@@ -73,7 +76,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 
 	imports := newImportSet(r.Module, r, goImport{}, validateNames)
 	regexes := newRegexRegistry()
-	ctx := emitCtx{pkg: pkg, imports: imports, regexes: regexes, resolver: r, autoBound: autoBindings(r.Project())}
+	ctx := emitCtx{pkg: pkg, imports: imports, regexes: regexes, resolver: r, autoBound: autoBindings(r.Project()), helpers: &validateHelpers{}}
 	var types []validatorType
 	for _, name := range names {
 		td := pkg.Types[name]
@@ -123,6 +126,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 		RegexVars:          regexes.entries,
 		Types:              types,
 		NeedsValidateValue: imports.has("reflect"),
+		NeedsAbsentValue:   ctx.helpers.absentValue,
 	}
 }
 
@@ -140,6 +144,9 @@ func collectChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 			t := fieldTarget(rf, "v."+levelNames[fieldIdx], ctx.subject(v))
 			fieldIdx++
 			out = append(out, fieldChecks(rf, t, ctx)...)
+			if rf.RuntimeEnforced && semantic.TypeParamValue(v.Type, td.TypeParams) {
+				out = append(out, typeParamPresence(t, ctx))
+			}
 			if calls := validateCalls(t, td.TypeParams, ctx); calls != "" {
 				out = append(out, calls)
 			}

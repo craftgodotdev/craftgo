@@ -884,6 +884,29 @@ type Box<T> {
 	)
 }
 
+// A required bare type-parameter field is absent at a nil pointer or
+// interface, as a missing `file` or `any` argument is; an optional,
+// @nullable or collection one gets no presence check.
+func TestValidateTypeParamPresence(t *testing.T) {
+	src := runValidateGen(t, `package design
+type Box<T> {
+    one  T
+    opt  T?
+    null T @nullable
+    many T[]
+}`)
+	mustContainAll(t, src,
+		"if absentValue(&v.One) {",
+		`fmt.Errorf("one: required")`,
+		"case **multipart.FileHeader:",
+	)
+	for _, absent := range []string{"absentValue(&v.Opt)", "absentValue(&v.Null)", "absentValue(&v.Many)", `"many: required"`} {
+		if strings.Contains(src, absent) {
+			t.Errorf("unexpected presence check %s:\n%s", absent, src)
+		}
+	}
+}
+
 // Constraint decorators on a generic type's fields emit their usual checks.
 func TestValidateGenericPropagatesPrimitiveDecorators(t *testing.T) {
 	src := runValidateGen(t, `package design

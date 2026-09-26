@@ -17,6 +17,12 @@ type emitCtx struct {
 	regexes   *regexRegistry
 	resolver  *projectResolver
 	autoBound map[ast.Pos]wire.Binding
+	helpers   *validateHelpers
+}
+
+// validateHelpers records the package-level helpers the rendered checks call.
+type validateHelpers struct {
+	absentValue bool
 }
 
 // regexRegistry interns regex patterns as package-level vars (`_pattern0`,
