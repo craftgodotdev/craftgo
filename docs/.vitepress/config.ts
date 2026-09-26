@@ -14,7 +14,7 @@ const SITE_DESCRIPTION =
 
 // The released version the nav shows. `scripts/release.sh` bumps this line
 // alongside the two Go version vars, so the site moves with every release.
-const VERSION = "1.9.0";
+const VERSION = "1.10.0";
 
 export default defineConfig({
   title: SITE_TITLE,

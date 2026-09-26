@@ -10,7 +10,7 @@ import (
 
 // version is the reported version; release builds set it with
 // `-ldflags="-X main.version=<tag>"`, which needs a var, not a const.
-var version = "1.9.0"
+var version = "1.10.0"
 
 func main() {
 	if len(os.Args) < 2 {

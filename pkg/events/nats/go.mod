@@ -5,7 +5,7 @@ module github.com/craftgodotdev/craftgo/pkg/events/nats
 go 1.25.0
 
 require (
-	github.com/craftgodotdev/craftgo/pkg/events v1.9.0
+	github.com/craftgodotdev/craftgo/pkg/events v1.10.0
 	github.com/nats-io/nats.go v1.53.1
 )
 

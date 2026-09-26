@@ -5,7 +5,7 @@ module github.com/craftgodotdev/craftgo/pkg/events/kafka
 go 1.25.0
 
 require (
-	github.com/craftgodotdev/craftgo/pkg/events v1.9.0
+	github.com/craftgodotdev/craftgo/pkg/events v1.10.0
 	github.com/twmb/franz-go v1.21.6
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20260914031441-1623827d1042
 	github.com/twmb/franz-go/pkg/kmsg v1.13.1

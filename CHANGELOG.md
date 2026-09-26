@@ -7,6 +7,8 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-09-26 [UTC+7]
+
 ### Added
 
 - **`log.Follow()`**, a `Logger` that writes each line through `log.Default`
