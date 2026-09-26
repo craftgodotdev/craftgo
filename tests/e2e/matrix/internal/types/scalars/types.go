@@ -2,29 +2,58 @@
 
 package scalars
 
-// Cents is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
+// Blob is a bytes scalar: its Go type holds nil itself, so an optional
+// Blob takes no pointer, as a field or as a map value.
+type Blob []byte
+
+// Cents is the canonical money scalar - non-negative integer with a
+// per-request ceiling. Bound stacking (@gte + @lte) demonstrates that
+// numeric scalars accept both lower and upper bounds.
 type Cents int
 
-// Email is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Count int
+
+// Email centralises the canonical email-shape contract. Every field
+// of type Email inherits @format(email) and @maxLength(254) so the
+// per-field decorator chain stays empty.
 type Email string
 
-// ISO3 is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type EmailAddress string
+
+// ISO3 stacks @length + @pattern. @length(3, 3) pins the string to
+// exactly three characters; the @pattern enforces the alphabet.
 type ISO3 string
 
-// NonEmpty is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+// Key is a non-empty lookup key.
+type Key string
+
+// NonEmpty is the "must be at least one character" string scalar.
 type NonEmpty string
 
-// Percent is a DSL scalar over float64; its declared validators live on its Validate() method and are inherited by every field of this type.
+// Percent is a 0-1 ratio. @gte/@lte on a float64 scalar exercises
+// the numeric-bound emitter on a non-integer primitive.
 type Percent float64
 
-// Tag is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type PinCode string
+
+// Tag stacks @minLength + @maxLength + @pattern so a SINGLE scalar
+// reference brings in three element-level validators.
 type Tag string
 
-// URL is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type Token []byte
+
+// URL carries the @format(url) check for safe-URL fields.
 type URL string
 
-// UUID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+// UUID carries the @format(uuid) check.
 type UUID string
+
+// ArrayBox validates each element of its optional type-parameter array, as
+// it does those of the required one.
+type ArrayBox[T any] struct {
+	Req []T `json:"req"`
+	Opt []T `json:"opt,omitempty"`
+}
 
 // ArrayOfGenericInstance probes the array wrapper around a generic
 // instance: `Page<Order>[]` must render `items: { $ref: PageOfOrder }`,
@@ -33,6 +62,13 @@ type UUID string
 // is just an OpenAPI `type: array, items: ...` shape.
 type ArrayOfGenericInstance struct {
 	Pages []Page[Order] `json:"pages"`
+}
+
+// Attachments holds an optional Blob as a field and as a map value; both
+// render as Blob, whose nil is the absent value.
+type Attachments struct {
+	Cover Blob            `json:"cover,omitempty"`
+	Files map[string]Blob `json:"files"`
 }
 
 // AuditFields is the mixin source - two timestamp fields with
@@ -64,6 +100,16 @@ type Bag struct {
 	Tags []Tag `json:"tags"`
 }
 
+type BoxHolder struct {
+	Box ArrayBox[UUIDItem] `json:"box"`
+}
+
+// CompositeArg instantiates a generic over the composite argument
+// map<string, SkuItem> and still enforces SkuItem's constraint.
+type CompositeArg struct {
+	Page SkuPage[map[string]SkuItem] `json:"page"`
+}
+
 // ConstrainedBox<T> exercises field metadata on a generic body. Unlike
 // the other generics above (whose own body fields carry no validator
 // decorators), every non-parametric field here is decorated:
@@ -90,8 +136,8 @@ type ConstrainedBoxHost struct {
 }
 
 // CreateOrderReq is a full-shape POST body that drives every Order
-// field through the validator. Note: id is supplied client-side so
-// the cornercase fixture can keep the request DTO simple.
+// field through the validator; the client supplies the id, which keeps
+// the request DTO simple.
 type CreateOrderReq struct {
 	Order Order `json:"order"`
 }
@@ -101,12 +147,34 @@ type EchoWrappedReq struct {
 	Payload Wrapped `json:"payload"`
 }
 
+// EnumKeyedMaps documents its keys' wire values as propertyNames: "red",
+// "green" and "blue" for the string enum, "1", "5" and "10" for the int enum.
+type EnumKeyedMaps struct {
+	ByColor map[Shade]int   `json:"byColor"`
+	ByPrio  map[Urgency]int `json:"byPrio"`
+}
+
 // Envelope<T> wraps a single value plus an optional meta string.
 // Exercises generic decl WITHOUT an array field - codegen still
 // emits a parametric Validate() receiver for it.
 type Envelope[T any] struct {
 	Data T       `json:"data"`
 	Meta *string `json:"meta,omitempty"`
+}
+
+// EnvelopePages instantiates Page over an Envelope of an array and over an
+// array of Envelopes: `[]` on the Envelope leads its name as `ArrayOf`.
+type EnvelopePages struct {
+	OfList Page[Envelope[[]Order]] `json:"ofList"`
+	ListOf Page[[]Envelope[Order]] `json:"listOf"`
+}
+
+// GenericMixinHost embeds the generic instance MixinPage<MixinItem>: the
+// embed promotes the instance's fields, and OpenAPI allOf-refs the
+// MixinPageOfMixinItem component.
+type GenericMixinHost struct {
+	MixinPage[MixinItem]
+	Name string `json:"name"`
 }
 
 // GenericOverEnum is the enum counterpart: `Page<Priority>` rejects
@@ -135,20 +203,86 @@ type GetOrderReq struct {
 	ID UUID `json:"-" path:"id"`
 }
 
+// ItemPath binds id as an int, uid as an int scalar and kind as a string
+// enum from the path.
+type ItemPath struct {
+	ID   int   `json:"-" path:"id"`
+	Uid  Count `json:"-" path:"uid"`
+	Kind Shade `json:"-" path:"kind"`
+}
+
+type ItemView struct {
+	ID    int    `json:"id"`
+	Label string `json:"label"`
+}
+
+// KeyMeta carries a Key.
+type KeyMeta struct {
+	Code *Key `json:"code,omitempty"`
+}
+
+// Keyed<Key> spells its type parameter like the Key scalar: the argument
+// binds Keyed's own `key`, while the `code` KeyMeta brings stays a Key.
+type Keyed[Key any] struct {
+	KeyMeta
+	Key *Key `json:"key,omitempty"`
+}
+
+// KeyedPage<Key> answers its Key-spelled parameter in a header beside the
+// body: `KeyedPage<Priority>` sends `key` and `items` as Priority values while
+// the `code` KeyMeta brings stays a Key.
+type KeyedPage[Key any] struct {
+	KeyMeta
+	Key   Key   `json:"-" header:"X-Key"`
+	Items []Key `json:"items"`
+}
+
+// KeyedPut<Key> is a request body a header splits: `KeyedPut<Priority>` reads
+// `key` as a Priority while the `code` KeyMeta brings stays a Key.
+type KeyedPut[Key any] struct {
+	KeyMeta
+	Trace string `json:"-" header:"X-Trace"`
+	Key   Key    `json:"key"`
+}
+
+// ListKeyedReq binds `code` as the Key scalar and `key` as a Priority,
+// both from the query string.
+type ListKeyedReq struct {
+	Keyed[Priority]
+}
+
 // ListOrdersReq mirrors the canonical cursor-pagination request shape.
 // The limit field uses the Cents scalar to exercise a NUMERIC SCALAR
 // inside @query - codegen parses the wire string as int then casts
-// up to the alias.
-//
-// NOTE: limit cannot be `Cents?` because optional numeric primitives
-// cannot bind to query - the transport pass rejects them since
-// `*int` from a query string needs a tri-state (absent / empty /
-// parsed) that the framework has no clean idiom for. The bare-int
-// form uses 0 as the absent sentinel, with @default providing the
-// canonical fallback the handler sees after pre-fill.
+// up to the alias. An absent limit takes its @default, pre-filled
+// before the query binds.
 type ListOrdersReq struct {
 	Cursor *string `json:"cursor,omitempty"`
-	Limit  Cents   `json:"limit"`
+	Limit  *Cents  `json:"limit,omitempty"`
+}
+
+// Listing is a generic whose instances $ref their instance component, not
+// the bare type parameter.
+type Listing[T any] struct {
+	Items []T `json:"items"`
+	Total int `json:"total"`
+}
+
+// Lookup<T> is a generic request type: `Lookup<Priority>` binds `id` from
+// the route's {id} and `level` as a Priority from the query string.
+type Lookup[T any] struct {
+	ID    UUID `json:"id"`
+	Level *T   `json:"level,omitempty"`
+}
+
+// MapPages instantiates Page over a map, an array of those maps, a map of
+// arrays and a map of optional values: four components. `[]` on the map leads
+// its name as `ArrayOf`; on the map's value, a leaf, it ends it as `Array`.
+type MapPages struct {
+	ByKey   Page[map[string]Order]   `json:"byKey"`
+	ByBatch Page[[]map[string]Order] `json:"byBatch"`
+	ByList  Page[map[string][]Order] `json:"byList"`
+	ByMaybe Page[map[string]*Order]  `json:"byMaybe"`
 }
 
 // MapValueGeneric verifies that generic instances ride the `map<K, V>`
@@ -171,6 +305,25 @@ type Maybe[T any] struct {
 // substitution.
 type MaybeOrder struct {
 	Hit Maybe[Order] `json:"hit"`
+}
+
+type MixinItem struct {
+	ID string `json:"id"`
+}
+
+type MixinPage[T any] struct {
+	Items []T `json:"items"`
+	Total int `json:"total"`
+}
+
+// NullableScalars puts @nullable beside a field-level constraint: the
+// validator checks the dereferenced value, and OpenAPI documents the bound
+// beside anyOf [$ref, null].
+type NullableScalars struct {
+	NulCapped  *Count        `json:"nulCapped"`
+	OptCapped  *Count        `json:"optCapped,omitempty"`
+	NulEmail   *EmailAddress `json:"nulEmail"`
+	PlainCents Count         `json:"plainCents"`
 }
 
 // OptionalPage probes the OUTER `?` on a generic instance: the
@@ -271,8 +424,31 @@ type ProductRef struct {
 	Price Cents `json:"price"`
 }
 
+// QueryDefaults binds query parameters that take their @default when the
+// request omits them.
+type QueryDefaults struct {
+	SortQ  *string `json:"-" query:"sortQ"`
+	ColorQ *Shade  `json:"-" query:"colorQ"`
+	LimitQ *int    `json:"-" query:"limitQ"`
+}
+
 type RecursiveHost struct {
 	Root Tree[Order] `json:"root"`
+}
+
+type RefInner struct {
+	ID string `json:"id"`
+}
+
+// RefMeta documents a @nullable named ref as anyOf [$ref, null], and
+// @default and @deprecated on the allOf or anyOf that wraps the $ref.
+type RefMeta struct {
+	NulInner *RefInner `json:"nulInner"`
+	NulColor *Shade    `json:"nulColor"`
+	RoleReq  *Count    `json:"roleReq,omitempty"`
+	//
+	// Deprecated: use status
+	DepColor Shade `json:"depColor"`
 }
 
 // ScalarFieldOverrides exercises a field-level decorator STACKED on a
@@ -289,6 +465,17 @@ type ScalarFieldOverrides struct {
 	Code     Tag    `json:"code"`
 }
 
+// ScalarLengths holds exact and range string lengths and bytes lengths; the
+// validator counts a bytes value in raw bytes.
+type ScalarLengths struct {
+	Code     PinCode `json:"code"`
+	Inline   string  `json:"inline"`
+	Rng      string  `json:"rng"`
+	Token    Token   `json:"token"`
+	NulToken Token   `json:"nulToken,omitempty"`
+	Raw      []byte  `json:"raw"`
+}
+
 // Search mixes OPTIONAL array-of-scalar with OPTIONAL scalar + default.
 // The keywords field is `Tag[]?` so the wire may omit it entirely; when
 // present every element runs Tag's @pattern check. The limit field
@@ -297,6 +484,34 @@ type ScalarFieldOverrides struct {
 type Search struct {
 	Keywords []Tag  `json:"keywords,omitempty"`
 	Limit    *Cents `json:"limit,omitempty"`
+}
+
+// Shadowed<Blob, Priority> spells its type parameters like the Blob scalar
+// and the Priority enum: each field takes its argument's type, the optional
+// `payload` behind a pointer, and neither is checked as the declaration.
+type Shadowed[Blob any, Priority any] struct {
+	Payload *Blob    `json:"payload,omitempty"`
+	Level   Priority `json:"level"`
+}
+
+// ShadowedHost instantiates Shadowed over an int and a string.
+type ShadowedHost struct {
+	S Shadowed[int, string] `json:"s"`
+}
+
+type SkuItem struct {
+	Sku string `json:"sku"`
+}
+
+type SkuPage[T any] struct {
+	Items []T `json:"items"`
+}
+
+// Tallied<T> sends a field of its argument's type in a header:
+// `Tallied<int>` writes `tally` as a decimal integer.
+type Tallied[T any] struct {
+	Tally T   `json:"-" header:"X-Tally"`
+	Items []T `json:"items"`
 }
 
 // Tree<T> is the marquee recursive-generic test: the body references
@@ -308,6 +523,10 @@ type Search struct {
 type Tree[T any] struct {
 	Val  T         `json:"val"`
 	Kids []Tree[T] `json:"kids"`
+}
+
+type UUIDItem struct {
+	ID string `json:"id"`
 }
 
 // Wrapped nests two generic instantiations: outer Page<…> over inner

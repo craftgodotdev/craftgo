@@ -172,9 +172,7 @@ paths:
         schema:
           maxLength: 8
           minLength: 2
-          type:
-          - string
-          - "null"
+          type: string
       responses:
         "200":
           content:

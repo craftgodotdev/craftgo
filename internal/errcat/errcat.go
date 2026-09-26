@@ -1,21 +1,15 @@
-// Package errcat holds the canonical catalogue of reserved HTTP error
-// categories. It is a leaf below the parser (which rejects an unknown
-// category), codegen (which emits each category's HTTP status + default
-// message), and the LSP (which validates and offers them as completions), so a
-// new category is added in exactly ONE place instead of four. Source: the
-// project README §"Error categories".
+// Package errcat is the catalogue of reserved HTTP error categories: each
+// category's DSL name, HTTP status and default message.
 package errcat
 
-// Category is one reserved error category: its DSL name, HTTP status code, and
-// the default human-readable message codegen uses for the runtime Message.
+// Category is one reserved error category.
 type Category struct {
 	Name    string
 	Status  int
 	Message string
 }
 
-// Categories is the canonical catalogue in status order. The LSP renders
-// `error <cursor>` completions in this order.
+// Categories lists every category in ascending status order.
 var Categories = []Category{
 	{"BadRequest", 400, "Bad request"},
 	{"Unauthorized", 401, "Unauthorized"},
@@ -57,6 +51,5 @@ func IsCategory(name string) bool {
 // Status returns the HTTP status code for a category, or 0 if unknown.
 func Status(name string) int { return byName[name].Status }
 
-// Message returns the default human-readable message for a category, or "" if
-// unknown.
+// Message returns the default message for a category, or "" if unknown.
 func Message(name string) string { return byName[name].Message }

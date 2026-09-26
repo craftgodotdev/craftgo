@@ -3,8 +3,8 @@ package customers
 type Geocode {
 	lat        shared.Latitude
 	lng        shared.Longitude
-	altitude   float64?    @gte(-500) @lte(9000)
-	capturedAt string      @format(datetime)
+	altitude   float64?         @gte(-500) @lte(9000)
+	capturedAt string           @format(datetime)
 }
 
 type Address {
@@ -29,17 +29,17 @@ type Contact {
 type Customer {
 	id             shared.NonEmptyID
 	email          shared.Email
-	name           string             @length(1, 120)
+	name           string            @length(1, 120)
 	primaryAddress Address
 	billingAddress Address?
 	contact        Contact
-	avatar         file?              @maxSize(5MB) @mimeTypes("image/png", "image/jpeg", "image/webp")
-	loyaltyPoints  int                @nullable @gte(0) @lte(1000000)
-	bio            string?            @maxLength(500)
-	createdAt      string             @format(datetime)
+	avatarUrl      string?           @format(url)
+	loyaltyPoints  int               @nullable @gte(0) @lte(1000000)
+	bio            string?           @maxLength(500)
+	createdAt      string            @format(datetime)
 }
 
 type CustomerRef {
 	id   shared.NonEmptyID
-	name string @length(1, 120)
+	name string            @length(1, 120)
 }

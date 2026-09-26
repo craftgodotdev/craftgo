@@ -1,19 +1,20 @@
-// Event rules: payload shape, `@contract` format, and contract-name
-// uniqueness.
 package semantic
 
 import (
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/prims"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 // checkEvents runs the per-package event rules. Contract uniqueness runs
-// at project level (see [refResolver.checkProjectEvents]).
+// at project level (see [projectChecks.checkProjectEvents]).
 func (a *analyzer) checkEvents() {
-	for _, name := range sortedNames(a.pkg.Events) {
+	for _, name := range slices.Sorted(maps.Keys(a.pkg.Events)) {
 		a.checkEvent(a.pkg.Events[name])
 	}
 }
@@ -28,16 +29,17 @@ func (a *analyzer) checkEvent(d *ast.EventDecl) {
 	}
 	a.checkContractArg(d)
 	a.checkPayloadKind(d)
+	a.checkPayloadBindings(d)
 }
 
 // checkContractArg rejects an `@contract` value that is empty or carries
 // whitespace.
 func (a *analyzer) checkContractArg(d *ast.EventDecl) {
 	for _, dec := range d.Decorators {
-		if dec == nil || dec.Name != DecoratorContract {
+		if dec == nil || dec.Name != decoratorContract {
 			continue
 		}
-		name, ok := DecoratorStringArg([]*ast.Decorator{dec}, DecoratorContract)
+		name, ok := ast.StringArg([]*ast.Decorator{dec}, decoratorContract)
 		if !ok {
 			continue
 		}
@@ -48,39 +50,38 @@ func (a *analyzer) checkContractArg(d *ast.EventDecl) {
 	}
 }
 
-// checkPayloadKind reports an event payload that resolves to something
-// other than a struct type. An array payload (`payload T[]`) resolves
-// its ELEMENT here, exactly as a scalar one resolves: an array of a
-// declared type is a contract, an array of anything else is not.
-// Cross-package refs whose package is unknown, and names nothing
-// declares, are left to the reference pass.
+// checkPayloadKind reports a payload, or array payload element, that names
+// a built-in, an enum or a scalar; other names that are no type are left to
+// the reference check.
 func (a *analyzer) checkPayloadKind(d *ast.EventDecl) {
 	ref := d.Payload.Type.Name.String()
 	if prims.Is(ref) {
-		// A primitive names no declaration, so neither the lookup below
-		// nor the reference pass (which knows the primitive) would say
-		// anything - and the contract would carry an unnamed, unvalidated
-		// body.
+		// A primitive names no declaration, so the lookups below miss it.
 		a.payloadKindDiag(d, ref)
 		return
 	}
-	pkgName, name := splitQualified(ref, a.pkg.Name)
-	home := a.pkg
-	if pkgName != a.pkg.Name {
-		if a.proj == nil {
-			return
-		}
-		home = a.proj.Packages[pkgName]
-	}
-	if home == nil {
-		return
-	}
-	if _, ok := home.Types[name]; ok {
-		return
-	}
-	if _, isOther := lookupNonType(home, name); isOther {
+	home, name := a.proj.resolve(a.pkg.Name, d.Payload.Type.Name)
+	if home != nil && home.Decl(name, EnumDecls|ScalarDecls) != nil {
 		a.payloadKindDiag(d, ref)
 	}
+}
+
+// checkPayloadBindings rejects a payload that reaches a field bound to
+// @path, @query, @header, @cookie or @form: the payload is one JSON message,
+// which the Go type leaves such a field out of or names differently.
+func (a *analyzer) checkPayloadBindings(d *ast.EventDecl) {
+	payload := d.Payload.Type
+	f, at := a.firstFieldWhere(&ast.TypeRef{Pos: d.Payload.Pos, Named: payload}, payload.String(), func(f *ast.Field) bool {
+		kind, _ := wire.BindingKind(f.Decorators)
+		return kind.IsParam()
+	})
+	if f == nil {
+		return
+	}
+	kind, _ := wire.BindingKind(f.Decorators)
+	a.diag(d.Payload.Pos, d.Payload.Pos, lexer.SeverityError, CodeEventPayloadBinding,
+		"payload %s of event %s binds %s with @%s, but a payload is one JSON message with no path, query, header, cookie or form part - drop the binding, or give the event a type without it",
+		payload, d.Name, at, kind)
 }
 
 // payloadKindDiag reports a payload that is not a struct type.
@@ -89,31 +90,16 @@ func (a *analyzer) payloadKindDiag(d *ast.EventDecl, ref string) {
 		"event %q payload %q is not a struct type - a payload must name a `type` declaration so the contract has named fields", d.Name, ref)
 }
 
-// lookupNonType reports whether name resolves in pkg to a declaration
-// that is not a struct type.
-func lookupNonType(pkg *Package, name string) (ast.Decl, bool) {
-	if d, ok := pkg.Enums[name]; ok {
-		return d, true
-	}
-	if d, ok := pkg.Scalars[name]; ok {
-		return d, true
-	}
-	if d, ok := pkg.Errors[name]; ok {
-		return d, true
-	}
-	return nil, false
-}
-
 // checkProjectEvents rejects two events that would share one contract
 // name.
-func (r *refResolver) checkProjectEvents() {
+func (c *projectChecks) checkProjectEvents() {
 	byContract := map[string]lexer.Position{}
-	for _, ev := range r.proj.Events() {
+	for _, ev := range c.proj.events() {
 		if ev.Contract == "" {
 			continue
 		}
 		if prev, dup := byContract[ev.Contract]; dup {
-			d := r.diag(ev.Decl.Pos, lexer.SeverityError, CodeEventContractCollision,
+			d := c.diag(ev.Decl.Pos, lexer.SeverityError, CodeEventContractCollision,
 				"contract %q is declared twice - a listener cannot tell the two apart; rename one or set @contract", ev.Contract)
 			d.Related = related(prev, "first declared here")
 			continue

@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoPresenceService carries the per-request state for the
-// EchoPresence endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoPresenceService runs CombineService.EchoPresence for one request.
 type EchoPresenceService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoPresenceService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoPresenceService binds EchoPresenceService to ctx; its Logger carries ctx's trace ids.
 func NewEchoPresenceService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoPresenceService {
 	return &EchoPresenceService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewEchoPresenceService(ctx context.Context, svcCtx *svccontext.ServiceConte
 	}
 }
 
-// EchoPresence is the service entry point. Replace the
-// TODO with the real implementation.
+// Echo the presence-state matrix. Smoke tests assert that plain is in required[], optional / nullable / bothNullable produce a 'type: [string, null]' (OpenAPI 3.1 null), and the default rows surface a default key in OpenAPI.
+//
+// EchoPresence implements CombineService.EchoPresence.
 func (l *EchoPresenceService) EchoPresence(req *types.PresenceMatrix) (*types.PresenceMatrix, error) {
 	// TODO: implement
 	return nil, nil

@@ -8,57 +8,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/craftgodotdev/craftgo/pkg/events"
 	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 )
-
-type payload struct {
-	ID    string `json:"id"`
-	Count int    `json:"count"`
-}
-
-// recordingTransport is a second, independent transport implementation.
-// Its existence is the test that the transport boundary is real: nothing
-// in the Bus, the generated call shape, or the codec knows which one is
-// installed.
-type recordingTransport struct {
-	mu      sync.Mutex
-	sent    []*events.Message
-	subs    []events.Subscription
-	batches int
-	err     error
-}
-
-func (r *recordingTransport) Publish(_ context.Context, msg *events.Message) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.sent = append(r.sent, msg)
-	return nil
-}
-
-func (r *recordingTransport) Subscribe(_ context.Context, subs []events.Subscription) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.batches++
-	r.subs = append(r.subs, subs...)
-	return r.err
-}
-
-// start registers subs on bus and starts it, which is the two-step every
-// consumer registration takes now.
-func start(t *testing.T, ctx context.Context, bus *events.Bus, subs ...events.Subscription) {
-	t.Helper()
-	for _, sub := range subs {
-		if err := bus.Register(sub); err != nil {
-			t.Fatalf("register %s/%s: %v", sub.Event, sub.Consumer, err)
-		}
-	}
-	if err := bus.Start(ctx); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-}
 
 func TestBusPublishEncodesWithCodec(t *testing.T) {
 	tr := &recordingTransport{}
@@ -106,8 +61,26 @@ func TestBusPublishWithoutPublisher(t *testing.T) {
 	}
 }
 
-// mismatchCodec is a second codec whose Name differs, used to prove the
-// consumer refuses bytes it was not configured to read.
+// WithPublisher and WithSubscriber each install one half of a transport.
+func TestEachHalfOfTheTransportInstallsAlone(t *testing.T) {
+	pub, sub := &recordingTransport{}, &recordingTransport{}
+	bus := events.New(events.WithPublisher(pub), events.WithSubscriber(sub), events.WithCodec(codecjson.Codec{}))
+	start(t, context.Background(), bus, events.Subscription{
+		Event: "x.Y", Consumer: "C", Group: "g",
+		Handle: func(context.Context, *events.Message) error { return nil },
+	})
+	if err := bus.Publish(context.Background(), "x.Y", payload{}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if len(pub.sent) != 1 || pub.batches != 0 {
+		t.Errorf("publisher saw %d messages and %d batches, want 1 and 0", len(pub.sent), pub.batches)
+	}
+	if len(sub.sent) != 0 || sub.batches != 1 {
+		t.Errorf("subscriber saw %d messages and %d batches, want 0 and 1", len(sub.sent), sub.batches)
+	}
+}
+
+// mismatchCodec wraps a codec under the name "protobuf".
 type mismatchCodec struct{ events.Codec }
 
 func (mismatchCodec) Name() string { return "protobuf" }
@@ -174,10 +147,8 @@ func TestMemoryTransportRoundTrip(t *testing.T) {
 	}
 }
 
-// Two replicas of one group divide the messages between them; a second
-// group gets its own copy. A replica is a second process, so it is a
-// second bus over the one transport - one bus refuses the same contract
-// under the same group twice.
+// Two replicas of one group, each on its own bus, divide the messages between them, and
+// a second group gets its own copy.
 func TestMemoryTransportCompetingConsumers(t *testing.T) {
 	tr := memory.New()
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -185,8 +156,7 @@ func TestMemoryTransportCompetingConsumers(t *testing.T) {
 	var mu sync.Mutex
 	hits := map[int]int{}
 	for i := 0; i < 2; i++ {
-		// Shadowed so each handler captures its own index regardless of
-		// the module's loop-variable semantics.
+		// A per-iteration copy: this module's go version shares loop variables.
 		i := i
 		replica := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
 		start(t, context.Background(), replica, events.Subscription{
@@ -259,46 +229,49 @@ func TestMemoryTransportErrorHandler(t *testing.T) {
 	}
 }
 
+// A subscription whose context is cancelled stops receiving.
 func TestMemoryTransportStopsOnContextCancel(t *testing.T) {
 	tr := memory.New()
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
 	ctx, cancel := context.WithCancel(context.Background())
-	var mu sync.Mutex
-	delivered := 0
+	var delivered atomic.Int64
 	start(t, ctx, bus, events.Subscription{
-		Event:    "x.Y",
-		Consumer: "C",
-		Group:    "g",
+		Event: "x.Y", Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error {
-			mu.Lock()
-			delivered++
-			mu.Unlock()
+			delivered.Add(1)
 			return nil
 		},
 	})
-	if err := bus.Publish(ctx, "x.Y", payload{}); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-	tr.Drain()
-	cancel()
-	// Cancellation is observed on its own goroutine; publishing until the
-	// count stops rising would race, so wait for the unsubscribe to land.
-	for i := 0; i < 100; i++ {
+	publish := func() {
+		t.Helper()
 		if err := bus.Publish(context.Background(), "x.Y", payload{}); err != nil {
 			t.Fatalf("publish: %v", err)
 		}
 		tr.Drain()
-		mu.Lock()
-		n := delivered
-		mu.Unlock()
-		if n == 1 {
+	}
+	publish()
+	if n := delivered.Load(); n != 1 {
+		t.Fatalf("delivered %d before the cancel, want 1", n)
+	}
+
+	cancel()
+	// The subscription leaves its group asynchronously: wait for the first publish it misses.
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) {
+		before := delivered.Load()
+		publish()
+		if delivered.Load() == before {
 			break
 		}
+		if time.Now().After(deadline) {
+			t.Fatal("the subscription still receives after its context was cancelled")
+		}
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	if delivered < 1 {
-		t.Fatalf("expected the pre-cancel delivery, got %d", delivered)
+	stopped := delivered.Load()
+	for i := 0; i < 10; i++ {
+		publish()
+	}
+	if n := delivered.Load() - stopped; n != 0 {
+		t.Errorf("%d deliveries after the subscription stopped, want none", n)
 	}
 }
 
@@ -318,8 +291,8 @@ func (r *batchRecorder) PublishBatch(_ context.Context, msgs []*events.Message) 
 	return nil
 }
 
-// A transport that can take a batch gets one call carrying every message,
-// each encoded with the codec its own contract resolves to.
+// A transport that can take a batch gets one call carrying every message, each encoded
+// with its own contract's codec.
 func TestPublishAllUsesTheBatchUpgrade(t *testing.T) {
 	rec := &batchRecorder{}
 	bus := events.New(events.WithPublisher(rec), events.WithCodec(codecjson.Codec{}))
@@ -353,7 +326,7 @@ func (r *plainRecorder) Publish(_ context.Context, msg *events.Message) error {
 	return nil
 }
 
-// A transport without the upgrade still works: the bus sends in order.
+// A transport without the batch upgrade is sent one message at a time, in order.
 func TestPublishAllFallsBackToOneAtATime(t *testing.T) {
 	rec := &plainRecorder{}
 	bus := events.New(events.WithPublisher(rec), events.WithCodec(codecjson.Codec{}))
@@ -368,8 +341,7 @@ func TestPublishAllFallsBackToOneAtATime(t *testing.T) {
 	}
 }
 
-// Encoding happens before anything is sent, so an unencodable payload
-// fails without a partial publish.
+// An unencodable payload fails the batch before anything is sent.
 func TestPublishAllEncodesBeforeSending(t *testing.T) {
 	rec := &plainRecorder{}
 	bus := events.New(events.WithPublisher(rec), events.WithCodec(codecjson.Codec{}))
@@ -399,8 +371,7 @@ func (f *failAfter) Publish(_ context.Context, msg *events.Message) error {
 	return nil
 }
 
-// A batch that stops partway must say where, so a caller retries the tail
-// instead of replaying what was already delivered.
+// A one-at-a-time batch that stops partway reports the unsent tail.
 func TestPublishAllReportsProgressOnPartialFailure(t *testing.T) {
 	rec := &failAfter{n: 2}
 	bus := events.New(events.WithPublisher(rec), events.WithCodec(codecjson.Codec{}))
@@ -424,18 +395,15 @@ func TestPublishAllReportsProgressOnPartialFailure(t *testing.T) {
 	if partial.Event != "c.Three" {
 		t.Errorf("failed on %q, want c.Three", partial.Event)
 	}
-	if !strings.Contains(err.Error(), "2 already sent") {
+	if !strings.Contains(err.Error(), "first unsent at index 2") {
 		t.Errorf("error does not say how far it got: %v", err)
 	}
-	// The fallback stops at the first failure, so its unsent set is the
-	// contiguous tail - a prefix reported through the same field.
 	if got := partial.Unsent; len(got) != 2 || got[0] != 2 || got[1] != 3 {
 		t.Errorf("Unsent = %v, want [2 3]", got)
 	}
 }
 
-// The memory transport keys its competing-consumer sets on the group, so
-// two differently named consumers sharing one group split the stream.
+// Two differently named consumers sharing one group split the stream.
 func TestMemoryTransportGroupsOnTheGroupName(t *testing.T) {
 	tr := memory.New()
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -444,8 +412,7 @@ func TestMemoryTransportGroupsOnTheGroupName(t *testing.T) {
 	hits := map[string]int{}
 	for _, consumer := range []string{"SendReceipt", "RecordReceipt"} {
 		consumer := consumer
-		// One contract under one group is one registration per bus, so the
-		// two differently named consumers are two of them.
+		// One bus takes one registration per contract and group.
 		replica := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
 		start(t, context.Background(), replica, events.Subscription{
 			Event:    "orders.OrderPlaced",
@@ -473,8 +440,8 @@ func TestMemoryTransportGroupsOnTheGroupName(t *testing.T) {
 	}
 }
 
-// deliverOne runs one message through handle on the in-process transport
-// and returns what the transport's error handler saw.
+// deliverOne runs one message through handle on the in-process transport and returns
+// what the transport's error handler saw.
 func deliverOne(t *testing.T, handle func(context.Context, *events.Message) error) error {
 	t.Helper()
 	var mu sync.Mutex
@@ -497,9 +464,8 @@ func deliverOne(t *testing.T, handle func(context.Context, *events.Message) erro
 	return seen
 }
 
-// A panicking handler must not end the process. The panic runs on the
-// goroutine the transport delivers on, so the recover has to be on the
-// handler - which is where the Bus puts it, for every transport at once.
+// A panicking handler reaches the transport's error handler as a *PanicError, and
+// delivery continues.
 func TestPanicInAHandlerReachesTheErrorHandler(t *testing.T) {
 	var mu sync.Mutex
 	var seen []error
@@ -599,9 +565,7 @@ func TestAPanicErrorUnwrapsToThePanicValueWhenItIsAnError(t *testing.T) {
 	}
 }
 
-// The wrapper is installed before the subscription reaches the transport,
-// so every adapter inherits it - the ones craftgo ships and any written
-// elsewhere, whose delivery goroutine nothing here can see.
+// The transport is handed a handler already wrapped in a recover.
 func TestTheTransportIsHandedAGuardedHandler(t *testing.T) {
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -638,8 +602,6 @@ func TestCallerMetadataReachesTheConsumer(t *testing.T) {
 		},
 	})
 
-	// A single message with metadata is a one-envelope batch; there is no
-	// second way to attach it.
 	if err := bus.PublishAll(context.Background(), []events.Envelope{{
 		Event:    "orders.OrderPlaced",
 		Key:      "o-1",
@@ -686,8 +648,7 @@ func TestTheCodecStampWinsACollision(t *testing.T) {
 	}
 }
 
-// A transport's own headers are the transport's; a caller's entry under
-// one of those names never reaches the wire.
+// A caller's metadata under a reserved key never reaches the transport.
 func TestReservedMetadataIsDroppedBeforeTheTransport(t *testing.T) {
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -715,9 +676,8 @@ func TestReservedMetadataIsDroppedBeforeTheTransport(t *testing.T) {
 	}
 }
 
-// IsReservedMeta names the runtime's key and every adapter header in one
-// place, so a caller can ask instead of discovering a collision at
-// runtime.
+// IsReservedMeta accepts the codec key and the adapter prefix, ignoring case, and
+// nothing else.
 func TestIsReservedMetaNamesTheRuntimeAndAdapterKeys(t *testing.T) {
 	reserved := []string{
 		events.MetaCodec, "Content-Codec", "CONTENT-CODEC",
@@ -736,8 +696,7 @@ func TestIsReservedMetaNamesTheRuntimeAndAdapterKeys(t *testing.T) {
 	}
 }
 
-// An envelope with no metadata produces exactly the message it always
-// did - nil, empty and absent alike.
+// Nil metadata, empty metadata and Bus.Publish all produce the same message.
 func TestAnEnvelopeWithoutMetadataEncodesAsBefore(t *testing.T) {
 	body, err := codecjson.Codec{}.Marshal(payload{ID: "o-1", Count: 2})
 	if err != nil {
@@ -763,7 +722,6 @@ func TestAnEnvelopeWithoutMetadataEncodesAsBefore(t *testing.T) {
 		}
 	}
 
-	// Bus.Publish takes no metadata and must land on the same message.
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
 	if err := bus.Publish(context.Background(), "orders.OrderPlaced", payload{ID: "o-1", Count: 2}, events.WithKey("o-1")); err != nil {
@@ -793,8 +751,7 @@ func TestMetadataIsPerEnvelope(t *testing.T) {
 	}
 }
 
-// batchTransport is a BatchPublisher whose report the test dictates, so
-// the bus's validation can be exercised without a broker.
+// batchTransport is a BatchPublisher whose report the test dictates.
 type batchTransport struct {
 	recordingTransport
 	report func(msgs []*events.Message) error
@@ -817,9 +774,7 @@ func fourEnvelopes() []events.Envelope {
 	}
 }
 
-// THE NON-CONTIGUOUS CASE. A batch of [a,b,a,b] where the b topic fails
-// leaves gaps: indices 1 and 3 did not go out while 0 and 2 did. A count
-// cannot say that, which is why the contract is a set.
+// A partial report with gaps passes through naming exactly the unsent indices.
 func TestAPartialBatchNamesExactlyTheUnsentIndices(t *testing.T) {
 	tr := &batchTransport{report: func(msgs []*events.Message) error {
 		return &events.PartialPublishError{
@@ -836,14 +791,12 @@ func TestAPartialBatchNamesExactlyTheUnsentIndices(t *testing.T) {
 	if len(partial.Unsent) != 2 || partial.Unsent[0] != 1 || partial.Unsent[1] != 3 {
 		t.Fatalf("Unsent = %v, want [1 3] - the sent ones are not a prefix", partial.Unsent)
 	}
-	// Sent is the leading published run, which is Unsent[0].
 	if partial.Sent != partial.Unsent[0] {
 		t.Errorf("Sent = %d, want %d (Unsent[0])", partial.Sent, partial.Unsent[0])
 	}
 	if partial.Event != "b.Two" {
 		t.Errorf("Event = %q, want the first unsent envelope's contract", partial.Event)
 	}
-	// Retrying exactly Unsent sends nothing twice, which is the promise.
 	envs := fourEnvelopes()
 	var retry []string
 	for _, i := range partial.Unsent {
@@ -854,8 +807,7 @@ func TestAPartialBatchNamesExactlyTheUnsentIndices(t *testing.T) {
 	}
 }
 
-// Sent is derived from Unsent on the way out, so an adapter that reports
-// a stale or optimistic count is corrected rather than believed.
+// An adapter's overstated Sent is corrected to Unsent[0].
 func TestAnOverstatedSentIsCorrectedFromUnsent(t *testing.T) {
 	tr := &batchTransport{report: func(msgs []*events.Message) error {
 		return &events.PartialPublishError{
@@ -873,9 +825,8 @@ func TestAnOverstatedSentIsCorrectedFromUnsent(t *testing.T) {
 	}
 }
 
-// A report that cannot be true is replaced with one that is, and the
-// error names the adapter. An understated Unsent loses the messages it
-// calls delivered, and nothing downstream can tell that happened.
+// An impossible partial report becomes the whole batch unsent, and the error names the
+// adapter.
 func TestAnImpossiblePartialReportIsNormalisedAndTheAdapterNamed(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -915,8 +866,7 @@ func TestAnImpossiblePartialReportIsNormalisedAndTheAdapterNamed(t *testing.T) {
 	}
 }
 
-// A bare error from a batch transport means "nothing arrived" and is
-// passed through untouched - the validator only inspects a partial claim.
+// A bare error from a batch transport passes through untouched.
 func TestABareBatchErrorIsNotTreatedAsPartial(t *testing.T) {
 	boom := errors.New("connection refused")
 	tr := &batchTransport{report: func([]*events.Message) error { return boom }}
@@ -930,9 +880,7 @@ func TestABareBatchErrorIsNotTreatedAsPartial(t *testing.T) {
 	}
 }
 
-// The two constructors carry the SHAPE of the failure, and an adapter
-// cannot reach for the wrong one by accident: a scattered set of indices
-// does not fit UnsentFrom's int.
+// UnsentFrom reports every index from i onward, with Sent and Event from the first.
 func TestUnsentFromReportsTheContiguousTail(t *testing.T) {
 	msgs := []*events.Message{
 		{Event: "a.One"}, {Event: "b.Two"}, {Event: "a.Three"}, {Event: "b.Four"},
@@ -949,9 +897,7 @@ func TestUnsentFromReportsTheContiguousTail(t *testing.T) {
 	}
 }
 
-// The scattered shape, which is what a transport publishing to several
-// partitions at once produces. Reporting this as a tail would claim the
-// messages in the gaps went out.
+// UnsentAt sorts scattered indices and derives Sent and Event from the lowest.
 func TestUnsentAtReportsScatteredIndicesAndSortsThem(t *testing.T) {
 	msgs := []*events.Message{
 		{Event: "a.One"}, {Event: "b.Two"}, {Event: "a.Three"}, {Event: "b.Four"},
@@ -965,8 +911,19 @@ func TestUnsentAtReportsScatteredIndicesAndSortsThem(t *testing.T) {
 	}
 }
 
-// The caller's slice is not written to: an adapter that keeps its own
-// index list must not find it reordered underneath.
+// The message names the first unsent index, which counts nothing sent when failures scatter.
+func TestAPartialErrorNamesTheFirstUnsentIndex(t *testing.T) {
+	msgs := []*events.Message{{Event: "a.One"}, {Event: "b.Two"}, {Event: "c.Three"}, {Event: "d.Four"}, {Event: "e.Five"}}
+	text := events.UnsentAt([]int{1, 3}, msgs, errors.New("partition leader moved")).Error()
+	if want := "2 of the batch unsent, first unsent at index 1"; !strings.Contains(text, want) {
+		t.Errorf("error = %q, want it to say %q", text, want)
+	}
+	if strings.Contains(text, "already sent") {
+		t.Errorf("error = %q counts index 1 as the envelopes sent, but 3 went out", text)
+	}
+}
+
+// UnsentAt leaves the caller's slice unsorted.
 func TestUnsentAtLeavesTheCallersSliceAlone(t *testing.T) {
 	msgs := []*events.Message{{Event: "a"}, {Event: "b"}, {Event: "c"}, {Event: "d"}}
 	mine := []int{3, 1}
@@ -976,9 +933,8 @@ func TestUnsentAtLeavesTheCallersSliceAlone(t *testing.T) {
 	}
 }
 
-// Both constructors satisfy the contract's invariants by construction,
-// which is the reason for an adapter to use them rather than build the
-// struct: Sent == Unsent[0], and Event is that envelope's contract.
+// Both constructors give Sent == Unsent[0], an ascending Unsent, and the first unsent
+// envelope's Event.
 func TestTheConstructorsSatisfyTheInvariants(t *testing.T) {
 	msgs := []*events.Message{{Event: "a"}, {Event: "b"}, {Event: "c"}, {Event: "d"}}
 	for name, got := range map[string]*events.PartialPublishError{
@@ -1002,9 +958,7 @@ func TestTheConstructorsSatisfyTheInvariants(t *testing.T) {
 	}
 }
 
-// An index outside the batch does not panic the constructor - a panic
-// while building an error report is worse than an imperfect report, and
-// PublishAll's validation catches the report itself.
+// A constructor given an index outside the batch does not panic.
 func TestAConstructorWithAnOutOfRangeIndexDoesNotPanic(t *testing.T) {
 	msgs := []*events.Message{{Event: "a"}}
 	if got := events.UnsentAt([]int{9}, msgs, errors.New("x")); got.Event != "" {
@@ -1015,8 +969,7 @@ func TestAConstructorWithAnOutOfRangeIndexDoesNotPanic(t *testing.T) {
 	}
 }
 
-// ctxDeafPublisher is a transport that ignores ctx entirely, the way an
-// in-process one reasonably can.
+// ctxDeafPublisher ignores ctx.
 type ctxDeafPublisher struct {
 	published int
 	batched   int
@@ -1032,13 +985,8 @@ func (p *ctxDeafPublisher) PublishBatch(_ context.Context, msgs []*events.Messag
 	return nil
 }
 
-// A context already cancelled publishes nothing, on the batch upgrade and
-// on the one-at-a-time fallback alike.
-//
-// The check is the bus's so that a transport free to ignore ctx cannot
-// answer differently: one that publishes the batch anyway then reports
-// messages it has just sent as unsent, and the caller retrying those
-// publishes all of them twice.
+// PublishAll with a cancelled context publishes nothing, on the batch and one-at-a-time
+// paths alike.
 func TestPublishAllRefusesAnAlreadyCancelledContext(t *testing.T) {
 	envs := []events.Envelope{
 		{Event: "orders.OrderPlaced", Payload: map[string]string{"id": "o-1"}},
@@ -1087,8 +1035,7 @@ func (p *publisherOnly) Publish(ctx context.Context, msg *events.Message) error 
 	return p.inner.Publish(ctx, msg)
 }
 
-// A live context still reaches the transport - the check refuses a
-// cancelled one, it does not stand between the bus and every batch.
+// PublishAll on a live context reaches the transport.
 func TestPublishAllStillPublishesOnALiveContext(t *testing.T) {
 	p := &ctxDeafPublisher{}
 	bus := events.New(events.WithPublisher(p), events.WithCodec(codecjson.Codec{}))
@@ -1103,13 +1050,8 @@ func TestPublishAllStillPublishesOnALiveContext(t *testing.T) {
 	}
 }
 
-// A context already cancelled publishes nothing through the single
-// Publish either, which is the bus's answer and not the transport's.
-//
-// The in-process transport is the one that would otherwise deliver: its
-// Publish takes ctx as `_` and hands the message to every matching
-// subscriber regardless. A rule left to each adapter is not one a caller
-// can rely on, so it is enforced here and the same on both methods.
+// Publish with a cancelled context publishes nothing, even on a transport that ignores
+// ctx.
 func TestPublishRefusesAnAlreadyCancelledContext(t *testing.T) {
 	tr := memory.New()
 	var delivered atomic.Int64
@@ -1137,8 +1079,7 @@ func TestPublishRefusesAnAlreadyCancelledContext(t *testing.T) {
 	}
 }
 
-// A live context still reaches the transport - the check refuses a
-// cancelled one, it does not stand between the bus and every publish.
+// Publish on a live context reaches the transport.
 func TestPublishStillPublishesOnALiveContext(t *testing.T) {
 	tr := memory.New()
 	var delivered atomic.Int64

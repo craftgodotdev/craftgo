@@ -6,22 +6,18 @@ import (
 	"context"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PingService carries the per-request state for the
-// Ping endpoint of AccountUserService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// PingService runs AccountUserService.Ping for one request.
 type PingService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPingService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewPingService binds PingService to ctx; its Logger carries ctx's trace ids.
 func NewPingService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PingService {
 	return &PingService{
 		Logger: log.Default().WithContext(ctx),
@@ -31,8 +27,8 @@ func NewPingService(ctx context.Context, svcCtx *svccontext.ServiceContext) *Pin
 }
 
 // Ping is a liveness-style endpoint with no body.
-// Ping is the service entry point. Replace the
-// TODO with the real implementation.
+//
+// Ping implements AccountUserService.Ping.
 func (l *PingService) Ping() error {
 	return nil
 }

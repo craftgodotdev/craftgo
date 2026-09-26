@@ -3,14 +3,13 @@
 package routes
 
 import (
-	streamserviceroutes "github.com/craftgodotdev/craftgo/example/raw/internal/routes/stream_service"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
+	streamserviceroutes "github.com/craftgodotdev/craftgo/example/raw/internal/routes/stream_service"
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 
-// RegisterAll wires every service's routes onto srv with one call.
-// Generated from the DSL service set; always overwritten.
+// RegisterAll registers every service's routes on srv.
 func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	streamserviceroutes.RegisterRoutes(srv, svcCtx)
 }

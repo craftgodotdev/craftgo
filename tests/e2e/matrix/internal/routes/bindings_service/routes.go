@@ -4,25 +4,41 @@ package bindings
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/bindings_service"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RegisterRoutes wires every BindingsService endpoint onto srv. Patterns
-// use the Go 1.22 method-prefixed form so VERB and path match together;
-// service prefix and OpenAPI basePath are baked in. Methods declaring
-// `@middlewares(...)` are wrapped via the corresponding fields on
-// ServiceContext (embedded Middlewares struct), so no runtime name
-// lookup is required - the values come pre-wired.
+// RegisterRoutes registers the BindingsService routes on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/bindings/items/{id}", transport.GetItem(svcCtx))
 	srv.Handle("GET /api/bindings/items", transport.SearchItems(svcCtx))
 	srv.Handle("GET /api/bindings/by-color", transport.SearchByColor(svcCtx))
+	srv.Handle("GET /api/bindings/paged", transport.ListPaged(svcCtx))
 	srv.Handle("POST /api/bindings/users/{id}/avatar", transport.UploadAvatar(svcCtx))
 	srv.Handle("POST /api/bindings/batch", transport.BatchUpload(svcCtx))
+	srv.Handle("POST /api/bindings/paged-search", transport.PagedSearch(svcCtx))
+	srv.Handle("GET /api/bindings/.well-known/v1.0/2fa/{kid}/keys.json", transport.WellKnown(svcCtx))
+	srv.Handle("POST /api/bindings/attach", transport.AttachDoc(svcCtx))
 	srv.Handle("POST /api/bindings/nullable-form", transport.NullableForm(svcCtx))
 	srv.Handle("POST /api/bindings/items", transport.AddItem(svcCtx))
 	srv.Handle("GET /api/bindings/health", transport.Health(svcCtx))
 	srv.Handle("DELETE /api/bindings/items/{id}", transport.DeleteItem(svcCtx))
 	srv.Handle("GET /api/bindings/wire/{user_id}", transport.EchoWire(svcCtx))
+	srv.Handle("GET /api/bindings/page", transport.ListPage(svcCtx))
+	srv.Handle("POST /api/bindings/mixins/wire-body", transport.PostMixinWireBody(svcCtx))
+	srv.Handle("POST /api/bindings/mixins/body", transport.PostMixinBody(svcCtx))
+	srv.Handle("GET /api/bindings/required-params", transport.GetRequiredParams(svcCtx))
+	srv.Handle("GET /api/bindings/sensitive-query", transport.GetSensitiveQuery(svcCtx))
+	srv.Handle("GET /api/bindings/colliding-query", transport.GetCollidingQuery(svcCtx))
+	srv.Handle("POST /api/bindings/query-beside-body", transport.PostQueryBesideBody(svcCtx))
+	srv.Handle("GET /api/bindings/session-cookie", transport.GetSessionCookie(svcCtx))
+	srv.Handle("GET /api/bindings/optional-wire", transport.GetOptionalWire(svcCtx))
+	srv.Handle("GET /api/bindings/service-status", transport.GetServiceStatus(svcCtx))
+	srv.Handle("POST /api/bindings/error-shapes", transport.RaiseErrorShapes(svcCtx))
+	srv.Handle("GET /api/bindings/filter-tags", transport.FilterTags(svcCtx))
+	srv.Handle("GET /api/bindings/query-float", transport.GetQueryFloat(svcCtx))
+	srv.Handle("POST /api/bindings/header-metadata", transport.EchoHeaderMetadata(svcCtx))
+	srv.Handle("POST /api/bindings/shared-status", transport.PostSharedStatus(svcCtx))
+	srv.Handle("GET /api/bindings/ids", transport.CountIds(svcCtx))
 }

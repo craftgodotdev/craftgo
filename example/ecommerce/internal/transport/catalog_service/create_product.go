@@ -9,12 +9,13 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/example/ecommerce/internal/service/catalog_service"
 	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/catalog"
-	shared "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// CreateProduct returns the http.HandlerFunc for the
-// POST CreateProduct endpoint.
+// Create a product (admin only).
+//
+// CreateProduct returns the POST CreateProduct handler.
 func CreateProduct(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateProductReq
@@ -36,8 +37,6 @@ func CreateProduct(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

@@ -9,12 +9,13 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/example/ecommerce/internal/service/order_service"
 	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
-	shared "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// Defaults returns the http.HandlerFunc for the
-// POST Defaults endpoint.
+// Echo every @default form.
+//
+// Defaults returns the POST Defaults handler.
 func Defaults(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.DefaultsShowcaseReq
@@ -55,8 +56,6 @@ func Defaults(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

@@ -8,12 +8,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Timeout bounds every unary call to d: the handler's context carries the
-// deadline, and a shorter client deadline still wins. A handler that
-// returns after the deadline has its response dropped for DeadlineExceeded,
-// so a late success is never delivered. Streams are not bounded - a
-// long-lived stream is the point of one. d <= 0 installs nothing, so
-// main.go can pass the configured default unconditionally.
+// Timeout bounds every unary call's context to d (a shorter client deadline
+// still wins) and answers DeadlineExceeded for a success that returns late.
+// Streams are not bounded; d <= 0 installs nothing.
 func Timeout(d time.Duration) Interceptor {
 	if d <= 0 {
 		return Interceptor{}

@@ -1,39 +1,24 @@
 package parser
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// TestParseCornercaseFixtures walks every `.craftgo` file under the
-// cornercase e2e fixture tree and asserts the parser accepts it
-// without diagnostics. The cornercase corpus is the project's
-// authoritative collection of "every shape the DSL ever supported";
-// the codegen drift guard runs against it, so a parser regression
-// would surface there sooner or later - but the smoke test in this
-// file fires earlier (parse-time) with a focused failure label and
-// no codegen overhead.
-//
-// Adding a new fixture under `tests/e2e/cornercase/design/` → new
-// subtest automatically. No edit to this file needed.
-func TestParseCornercaseFixtures(t *testing.T) {
-	root := filepath.Join("..", "..", "tests", "e2e", "cornercase", "design")
-	if _, err := os.Stat(root); os.IsNotExist(err) {
-		t.Skipf("cornercase fixtures not present at %s", root)
-	}
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil || d.IsDir() || filepath.Ext(path) != ".craftgo" {
-			return walkErr
-		}
-		rel, _ := filepath.Rel(root, path)
-		t.Run(rel, func(t *testing.T) {
-			src, err := os.ReadFile(path)
+// TestParseDesignCorpus pins that every committed design file, in the examples
+// and the e2e matrix, parses without diagnostics.
+func TestParseDesignCorpus(t *testing.T) {
+	repo, files := designCorpus(t)
+	for _, name := range files {
+		t.Run(name, func(t *testing.T) {
+			src, err := fs.ReadFile(repo, name)
 			if err != nil {
 				t.Fatal(err)
 			}
-			p := New(path, string(src))
+			p := New(name, string(src))
 			p.Parse()
 			if diags := p.Diagnostics(); len(diags) > 0 {
 				var msgs []string
@@ -43,9 +28,29 @@ func TestParseCornercaseFixtures(t *testing.T) {
 				t.Errorf("parse diagnostics:\n  - %s", strings.Join(msgs, "\n  - "))
 			}
 		})
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
+}
+
+// designCorpus returns the repository and the path of every .craftgo file under
+// example/ and tests/e2e/matrix/design in it; a missing or empty root is fatal.
+func designCorpus(t *testing.T) (fs.FS, []string) {
+	t.Helper()
+	repo := os.DirFS(filepath.Join("..", ".."))
+	var files []string
+	for _, root := range []string{"example", "tests/e2e/matrix/design"} {
+		n := len(files)
+		err := fs.WalkDir(repo, root, func(name string, d fs.DirEntry, err error) error {
+			if err == nil && !d.IsDir() && strings.HasSuffix(name, ".craftgo") {
+				files = append(files, name)
+			}
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(files) == n {
+			t.Fatalf("no .craftgo files under %s", root)
+		}
+	}
+	return repo, files
 }

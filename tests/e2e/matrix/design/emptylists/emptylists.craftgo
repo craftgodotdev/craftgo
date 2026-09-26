@@ -1,0 +1,86 @@
+// Package `emptylists` pins what a response holding nil lists and maps puts
+// on the wire: a required one goes out as [] or {}, however deep it sits, an
+// optional one is left out and a @nullable one stays null.
+package emptylists
+
+// Leaf holds a required list and a required map.
+type Leaf {
+	tags string[]
+	meta map<string, string>
+}
+
+// Node reaches itself by value through a list and by pointer.
+type Node {
+	name string
+	kids Node[]
+	next Node?
+}
+
+// Box holds a value and a list of its type parameter.
+type Box<T> {
+	v  T
+	vs T[]
+}
+
+// Shapes holds a nil list or map in every position a response can.
+type Shapes {
+	leaf     Leaf
+	leafOpt  Leaf?
+	leaves   Leaf[]
+	byName   map<string, Leaf>
+	groups   map<string, Leaf[]>
+	grid     string[][]
+	maybe    string[]?
+	nulls    string[]            @nullable
+	blob     bytes
+	boxed    Box<Leaf>
+	boxedOpt Box<Leaf>?
+	tree     Node
+	hdr      string[]            @header("X-Hdr")
+}
+
+// Chain reaches deep through its first node ahead of its own required lists.
+type Chain {
+	first  Node
+	labels string[]
+	votes  map<string, int>
+}
+
+// Clash is an error whose body holds a required list, its own and a mixin's.
+error Conflict Clash {
+	items string[]
+	Leaf
+}
+
+@prefix("/empty-lists")
+service EmptyLists {
+	@doc("Answers a Shapes whose lists and maps the logic leaves nil.")
+	get GetShapes /shapes {
+		response Shapes
+	}
+
+	@doc("Answers the Clash error with a body the logic leaves empty.")
+	get GetClash /clash {
+		response Shapes
+	}
+
+	@doc("Answers a Node whose kids hold themselves: no JSON value, so a 500.")
+	get GetCycle /cycle {
+		response Node
+	}
+
+	@doc("Answers a Chain whose first node nests 1500 deep, with no cycle.")
+	get GetDeep /deep {
+		response Chain
+	}
+
+	@doc("Answers no Leaf at all: the logic returns nil.")
+	get GetNothing /nothing {
+		response Leaf
+	}
+
+	@doc("Answers one Shapes value every request shares.")
+	get GetShared /shared {
+		response Shapes
+	}
+}

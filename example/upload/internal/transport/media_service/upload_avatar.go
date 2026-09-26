@@ -12,21 +12,15 @@ import (
 	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 )
 
-// UploadAvatar returns the http.HandlerFunc for the
-// POST UploadAvatar multipart endpoint. The handler parses
-// `multipart/form-data` bodies, binds every form field declared on
-// the request type, and populates `*multipart.FileHeader` fields
-// for any DSL-typed `file` declarations.
+// Upload a user avatar (PNG/JPEG/WebP, ≤5MB).
+//
+// UploadAvatar returns the POST UploadAvatar handler.
 func UploadAvatar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(33554432); err != nil {
-			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			server.WriteValidationError(w, r, err)
 			return
 		}
-		// Remove the temp files the parser spilled to disk as soon as the
-		// handler returns. net/http sweeps them again at end-of-response, but
-		// the explicit cleanup releases disk before the response flush and
-		// still runs on panic paths that bypass that sweep.
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.UploadAvatarReq
 		req.UserID = r.PathValue("userId")
@@ -43,8 +37,6 @@ func UploadAvatar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

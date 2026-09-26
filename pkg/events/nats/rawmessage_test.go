@@ -6,11 +6,10 @@ import (
 	"testing"
 
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
-// A middleware reaching for what events.Message does not carry - the
-// reply subject, the subject a wildcard matched, an unmapped header -
-// gets the message the delivery came from.
+// MsgFrom returns the message a delivery context carries.
 func TestTheMessageIsReachableFromADelivery(t *testing.T) {
 	m := &nats.Msg{Subject: "orders.Placed", Reply: "_INBOX.1", Data: []byte("body"), Header: nats.Header{}}
 	m.Header.Set("x-unmapped", "kept")
@@ -27,9 +26,7 @@ func TestTheMessageIsReachableFromADelivery(t *testing.T) {
 	}
 }
 
-// The barrier is structural: the key type is unexported and distinct per
-// adapter, so a NATS-typed read on a context that is not a NATS delivery
-// cannot find anything.
+// MsgFrom finds nothing on a plain context or another adapter's.
 func TestAMessageReadOnAForeignContextFindsNothing(t *testing.T) {
 	if _, ok := MsgFrom(context.Background()); ok {
 		t.Error("a plain context yielded a message")
@@ -41,8 +38,7 @@ func TestAMessageReadOnAForeignContextFindsNothing(t *testing.T) {
 	}
 }
 
-// MustMsg turns a cross-transport install into a panic, which the bus
-// recovers into a *PanicError naming the subscription.
+// MustMsg panics, naming the cause, on a context with no message.
 func TestMustMsgPanicsOnAForeignDelivery(t *testing.T) {
 	defer func() {
 		r := recover()
@@ -54,4 +50,29 @@ func TestMustMsgPanicsOnAForeignDelivery(t *testing.T) {
 		}
 	}()
 	MustMsg(context.Background())
+}
+
+// jetStreamDelivery stands in for a JetStream message; only its identity matters.
+type jetStreamDelivery struct{ jetstream.Msg }
+
+// MustJetStreamMsg returns the message a JetStream delivery carries.
+func TestMustJetStreamMsgReturnsTheDeliveredMessage(t *testing.T) {
+	m := &jetStreamDelivery{}
+	if got := MustJetStreamMsg(withJetStreamMsg(context.Background(), m)); got != m {
+		t.Errorf("MustJetStreamMsg = %v, want the delivered message", got)
+	}
+}
+
+// MustJetStreamMsg panics, naming the cause, on a core NATS delivery.
+func TestMustJetStreamMsgPanicsOnACoreDelivery(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("MustJetStreamMsg returned on a context with no JetStream message")
+		}
+		if msg, _ := r.(string); !strings.Contains(msg, "not JetStream") {
+			t.Errorf("panic does not say what is wrong: %v", r)
+		}
+	}()
+	MustJetStreamMsg(withMsg(context.Background(), &nats.Msg{Subject: "orders.Placed"}))
 }

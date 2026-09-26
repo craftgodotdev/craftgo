@@ -1,42 +1,28 @@
-// craftgo init subcommand: scaffold a design folder + manifest.
 package main
 
 import (
+	_ "embed"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/protodesign"
 )
 
-// runInit scaffolds a fresh design folder at args[0]. The path argument IS the
-// design folder - `craftgo init contracts/v1` creates
-// `contracts/v1/craftgo.design.yaml` directly inside that directory, no
-// intermediate `design/` wrapper. With no path the default is `design` (a
-// `design/` subdir of cwd), so `mkdir myapp && cd myapp && craftgo init`
-// produces the conventional layout.
+// initManifest is the starter manifest init writes.
 //
-// The command refuses to overwrite an existing manifest, so re-running on a
-// populated folder is a silent no-op. There is no `-package` flag - the Go
-// module path is read from `go.mod` at gen time, so the only manifest-side
-// configuration is the optional output paths and OpenAPI metadata. init owns
-// only the manifest scaffolding; the runtime artefacts (config/, svccontext/,
-// main.go) are scaffolded by `craftgo gen` under the same gen-once policy.
-func runInit(args []string) error {
-	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	if perr := fs.Parse(args); perr != nil {
-		return parseFlagError("init", perr)
-	}
-	rest := fs.Args()
-	target := "design"
-	switch len(rest) {
-	case 0:
-		// keep default
-	case 1:
-		target = rest[0]
-	default:
-		return fmt.Errorf("init: too many positional arguments (got %d, want at most 1)", len(rest))
-	}
+//go:embed templates/craftgo.design.yaml.tmpl
+var initManifest []byte
 
+// runInit writes a starter craftgo.design.yaml into the design folder args[0]
+// (default `design`), creating the folder, and leaves an existing manifest alone.
+func runInit(args []string) error {
+	target, err := parseArgs(flag.NewFlagSet("init", flag.ContinueOnError), args, "design")
+	if err != nil {
+		return err
+	}
 	designDir, err := filepath.Abs(target)
 	if err != nil {
 		return err
@@ -45,14 +31,12 @@ func runInit(args []string) error {
 		return err
 	}
 
-	// Skip silently when the manifest already exists so re-running
-	// init on a populated folder is a no-op.
-	dest := filepath.Join(designDir, "craftgo.design.yaml")
+	dest := filepath.Join(designDir, config.Filename)
 	if _, err := os.Stat(dest); err == nil {
 		fmt.Printf("craftgo: %s already exists, nothing to do\n", dest)
 		return nil
 	}
-	if err := os.WriteFile(dest, []byte(initManifest()), 0o644); err != nil {
+	if err := os.WriteFile(dest, initManifest, 0o644); err != nil {
 		return err
 	}
 	fmt.Printf("craftgo: wrote %s\n", dest)
@@ -60,19 +44,7 @@ func runInit(args []string) error {
 	fmt.Printf("  1. ensure `go.mod` exists at your project root (`go mod init <module>`)\n")
 	fmt.Printf("  2. add at least one .craftgo file in %s declaring `package X` (types, services),\n", target)
 	fmt.Printf("     or a .proto declaring a gRPC service (then pin the plugins once with\n")
-	fmt.Printf("     `go get -tool google.golang.org/protobuf/cmd/protoc-gen-go@latest google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest`)\n")
+	fmt.Printf("     `%s`)\n", protodesign.PluginInstall)
 	fmt.Printf("  3. run `craftgo gen -f %s` to generate types, handlers, routes, openapi, and the gRPC layer\n", target)
 	return nil
-}
-
-// initManifest renders the starter craftgo.design.yaml. The body has
-// no template variables - every value is either a default that 90%
-// of projects keep or a commented hint at an optional knob. The
-// Go module path is read from go.mod at gen time, so the manifest
-// itself carries no `package:` field.
-//
-// The body lives in `templates/craftgo.design.yaml.tmpl`; edit that
-// file rather than hand-rolling the YAML in Go source.
-func initManifest() string {
-	return renderInitTemplate("craftgo.design.yaml.tmpl", nil)
 }

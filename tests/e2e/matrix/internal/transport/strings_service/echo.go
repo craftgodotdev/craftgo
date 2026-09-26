@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Echo returns the http.HandlerFunc for the
-// POST Echo endpoint.
+// Echo a request that carries one field per interesting validator shape (length, pattern, format, optional, default). Logic just returns the payload after Validate() so smoke tests can assert the round-trip preserves wire fidelity.
+//
+// Echo returns the POST Echo handler.
 func Echo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Str_EchoReq
@@ -35,8 +36,6 @@ func Echo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

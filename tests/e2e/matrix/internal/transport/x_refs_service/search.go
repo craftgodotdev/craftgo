@@ -9,12 +9,13 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/x_refs_service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Search returns the http.HandlerFunc for the
-// GET Search endpoint.
+// Pins cross-package scalar BINDING casts. Handler must emit `req.Q = xshared.XEmail(r.URL.Query().Get("q"))` (qualified cast) - bare strings fail to compile against the *xshared.XEmail field type.
+//
+// Search returns the GET Search handler.
 func Search(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XSearchReq
@@ -49,7 +50,6 @@ func Search(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

@@ -1,8 +1,10 @@
-// Top-level component schemas: types, enums, scalars, errors.
 package docs
 
 import (
+	"cmp"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/getkin/kin-openapi/openapi3"
 
@@ -20,119 +22,65 @@ func addSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistr
 	addErrorSchemas(doc, pkg, registry, names)
 }
 
-// addErrorSchemas emits one components.schemas entry per ErrorDecl so
-// `@errors(Name)` references on methods can $ref a stable target. The
-// shape mirrors the wire JSON the runtime emits: `code` (string),
-// `message` (string), plus any user-declared custom field. The
-// resulting schema name uses the smart-suffix rule (`UserNotFound` →
-// `UserNotFoundErr`), matching the Go type name in errors.go.
+// addErrorSchemas emits one schema per error, under its type name
+// (`UserNotFound` → `UserNotFoundErr`).
 func addErrorSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
-	for _, name := range sortedKeys(pkg.Errors) {
+	for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
 		ed := pkg.Errors[name]
-		typeName := idents.ErrorTypeName(ed.Name)
 		s := &openapi3.Schema{
 			Type:       &openapi3.Types{"object"},
 			Properties: openapi3.Schemas{},
 			Description: fmt.Sprintf("%s error response (HTTP %d).",
 				ed.Category, errcat.Status(ed.Category)),
 		}
-		// A user-declared `code` / `message` body field is an exported Go
-		// field that the error struct marshals and the validator enforces
-		// (errorCustomFields keeps them), so it belongs in the schema like
-		// any other property. Fields tagged `@header` / `@cookie` ride on
-		// the response writer (see [errorResponseBindings]) and
-		// `@sensitive` fields are server-only, so both are excluded.
-		var mixinRefs openapi3.SchemaRefs
-		for _, m := range ed.Body {
-			switch v := m.(type) {
-			case *ast.Field:
-				rf := semantic.ResolveField(v, pkg, registry.resolver.Project())
-				// Same OnWireBody decision the type-schema walk uses, so error
-				// and entity schemas agree on which fields ride the body (a
-				// @header/@cookie field rides the response writer, a @sensitive
-				// field is server-only).
-				if !rf.OnWireBody {
-					continue
-				}
-				// Carry the field's own metadata - field-level constraints
-				// (@gte/@maxLength/…), @default, @deprecated, and @nullable -
-				// onto the property, exactly as the type-schema walk does.
-				// Without this a client consuming the error response sees
-				// every field as a bare, unconstrained, non-null value.
-				ref := schemaForTypeRef(v.Type, pkg, registry)
-				applyFieldMetadata(v, ref, pkg)
-				s.Properties[wire.JSONName(v)] = ref
-				// Non-optional error fields belong in required[] - same
-				// model as type schemas. Without this a generated client
-				// types every error field as optional even though the
-				// runtime always emits it.
-				if rf.SpecRequired {
-					s.Required = append(s.Required, wire.JSONName(v))
-				}
-			case *ast.Mixin:
-				// Embedded mixin: same `allOf: [$ref]` shape that
-				// `schemaForType` uses for TypeDecl, so error schemas
-				// stay consistent with type schemas when a shared
-				// mixin (`Timestamps`, audit fields, ...) is embedded.
-				if v == nil || v.Ref == nil || v.Ref.Name == nil {
-					continue
-				}
-				mixinRefs = append(mixinRefs, &openapi3.SchemaRef{
-					Ref: "#/components/schemas/" + mixinRefName(v.Ref, pkg, registry),
-				})
-			}
-		}
-		// A bodyless error (no declared fields) or a header/cookie-only
-		// error marshals its body to `{}`. The framework's server.WriteError
-		// detects that empty marshal and substitutes a `{code, message}`
-		// envelope, so advertise the same shape - otherwise the spec
-		// promises an empty object the server never actually sends.
-		if len(s.Properties) == 0 && len(mixinRefs) == 0 {
-			strProp := func() *openapi3.SchemaRef {
+		if semantic.ErrorHasJSONMember(ed, registry.resolver) {
+			addErrorBody(s, ed, pkg, registry)
+		} else {
+			str := func() *openapi3.SchemaRef {
 				return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
 			}
-			s.Properties["code"] = strProp()
-			s.Properties["message"] = strProp()
+			s.Properties["code"], s.Properties["message"] = str(), str()
 			s.Required = []string{"code", "message"}
 		}
-		wrapAllOfWithHost(s, mixinRefs, nil)
-		names.put(doc, typeName, &openapi3.SchemaRef{Value: s})
+		names.put(doc, idents.ErrorTypeName(ed.Name), &openapi3.SchemaRef{Value: s})
 	}
 }
 
-// mixinRefName returns the component name an embedded mixin $refs. A
-// generic-instance mixin (`Page<Item>`) registers and refs its
-// monomorphised component (`PageOfItem`) - the same one a field of that
-// type would produce - instead of the bare, never-emitted generic decl
-// name. A plain mixin refs its own name.
-func mixinRefName(ref *ast.NamedTypeRef, pkg *semantic.Package, registry *genericRegistry) string {
-	name := ref.Name.String()
-	if len(ref.Args) > 0 && pkg != nil && registry != nil {
-		if decl, ok := pkg.Types[name]; ok && len(decl.TypeParams) > 0 {
-			return registry.register(decl, ref.Args)
+// addErrorBody puts the JSON fields of ed's body in s and its mixins beside
+// them in an allOf.
+func addErrorBody(s *openapi3.Schema, ed *ast.ErrorDecl, pkg *semantic.Package, registry *genericRegistry) {
+	var mixinRefs openapi3.SchemaRefs
+	for _, m := range ed.Body {
+		switch v := m.(type) {
+		case *ast.Field:
+			addBodyProperty(s, semantic.ResolveField(v, pkg, registry.resolver.Project()), v.Type, pkg, registry)
+		case *ast.Mixin:
+			if v == nil || v.Ref == nil || v.Ref.Name == nil {
+				continue
+			}
+			mixinRefs = append(mixinRefs, &openapi3.SchemaRef{
+				Ref: "#/components/schemas/" + registry.refName(v.Ref),
+			})
 		}
 	}
-	return name
+	wrapAllOfWithHost(s, mixinRefs, nil)
 }
 
-// addTypeSchemas emits one schema per concrete (non-generic) TypeDecl.
+// addTypeSchemas emits one schema per non-generic type.
 func addTypeSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
-	for _, name := range sortedKeys(pkg.Types) {
+	for _, name := range slices.Sorted(maps.Keys(pkg.Types)) {
 		td := pkg.Types[name]
 		if len(td.TypeParams) > 0 {
 			continue
 		}
-		names.put(doc, name, &openapi3.SchemaRef{Value: schemaForType(td, pkg, registry)})
+		names.put(doc, name, &openapi3.SchemaRef{Value: schemaFromTypeDecl(td, nil, pkg, registry)})
 	}
 }
 
-// addEnumSchemas emits one schema per EnumDecl. The schema's base type
-// is `string` for bare and string-valued enums, `integer` for int-valued.
-// The OpenAPI `enum` array enumerates the wire values: bare values use
-// the value name, string values use the literal, int values use the
-// integer.
+// addEnumSchemas emits one schema per enum listing its wire values: an
+// `integer` for an int enum, else a `string`.
 func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames) {
-	for _, name := range sortedKeys(pkg.Enums) {
+	for _, name := range slices.Sorted(maps.Keys(pkg.Enums)) {
 		ed := pkg.Enums[name]
 		s := &openapi3.Schema{Type: &openapi3.Types{"string"}}
 		if semantic.EnumKind(ed) == ast.EnumInt {
@@ -148,63 +96,26 @@ func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames) 
 	}
 }
 
-// addScalarSchemas emits one schema per ScalarDecl. The schema is
-// the underlying primitive enriched with every decorator the scalar
-// carries so OpenAPI consumers see the full contract:
-//
-//   - `@format(email)` → `format: email`
-//   - `@length(1, 80)` / `@minLength(1)` / `@maxLength(80)` → minLength/maxLength
-//   - `@pattern("...")` → pattern
-//   - `@gte(0)` / `@lte(100)` / `@gt` / `@lt` / `@range(lo, hi)` → minimum/maximum (+exclusiveMin/Max)
-//   - `@positive` / `@negative` → strict bound at 0
-//   - `@multipleOf(N)` → multipleOf
-//
-// Carrying these keeps the spec from collapsing every scalar back to
-// its bare primitive, so generated TS clients see the same
-// `string` / `number` constraints the runtime validator enforces
-// rather than values the server would reject.
+// addScalarSchemas emits one schema per scalar: its primitive with its
+// constraint keywords.
 func addScalarSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames) {
-	for _, name := range sortedKeys(pkg.Scalars) {
+	for _, name := range slices.Sorted(maps.Keys(pkg.Scalars)) {
 		sc := pkg.Scalars[name]
 		base := primitiveSchema(sc.Primitive)
 		if base == nil {
 			base = &openapi3.Schema{Type: &openapi3.Types{"string"}}
 		}
-		applyFieldConstraints(sc.Decorators, base)
+		applyFieldConstraints(sc.Decorators, base, sc.Primitive)
 		if desc := semantic.Description(sc.Decorators, sc.Doc); desc != "" {
-			// Ahead of, not over: a raw scalar's schema already carries
-			// the line that says what its emptiness means.
+			// The doc goes ahead of the note `@format(raw)` may have set.
 			base.Description = appendDescription(desc, base.Description)
 		}
 		names.put(doc, name, &openapi3.SchemaRef{Value: base})
 	}
 }
 
-// schemaForType builds the openapi3.Schema for one top-level TypeDecl.
-// It is the no-substitution entry point onto [schemaFromTypeDecl]; the
-// generic-instance path ([instantiateGeneric]) shares the exact same
-// body-walk with a populated substitution map.
-//
-// `@deprecated` propagates to OpenAPI in two places: type-level marks
-// the entire schema as deprecated; field-level marks only that
-// property. Tools like Swagger UI render deprecated entries with a
-// strikethrough so consumers can spot them at a glance.
-func schemaForType(td *ast.TypeDecl, pkg *semantic.Package, registry *genericRegistry) *openapi3.Schema {
-	return schemaFromTypeDecl(td, nil, pkg, registry)
-}
-
-// schemaFromTypeDecl walks a TypeDecl body into an object schema. When
-// subst is nil the field types are emitted verbatim (the top-level
-// [schemaForType] case); when subst maps each of the decl's type-params
-// to a concrete argument every field type is run through
-// [semantic.SubstituteTypeRef] first (the concrete generic-instance case driven
-// by [instantiateGeneric]). Routing both through one walk guarantees a
-// `Page<Order>` instance inherits the SAME field-level metadata
-// (@gte/@default/@format/@example/@nullable/@deprecated…), type-level
-// description, @deprecated flag, @header/@cookie exclusion, mixin
-// allOf-flattening, and @requiresOneOf/@mutuallyExclusive fragments that
-// a non-generic type of the same shape carries - otherwise generic
-// instances silently ship to clients as unconstrained objects.
+// schemaFromTypeDecl builds td's object schema, substituting subst into its
+// field types; subst is nil for a non-generic type.
 func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *semantic.Package, registry *genericRegistry) *openapi3.Schema {
 	s := &openapi3.Schema{
 		Type:       &openapi3.Types{"object"},
@@ -218,41 +129,18 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 	for _, m := range td.Body {
 		switch v := m.(type) {
 		case *ast.Field:
-			rf := semantic.ResolveField(v, pkg, registry.resolver.Project())
-			// Wire-bound (`@path`/`@query`/`@header`/`@cookie`) and
-			// `@sensitive` fields carry `json:"-"` and never appear in the
-			// JSON body - OnWireBody is the resolved decision (same one the
-			// struct/binder use), so this can't drift from them.
-			if !rf.OnWireBody {
-				continue
-			}
 			ft := v.Type
 			if subst != nil {
 				ft = semantic.SubstituteTypeRef(v.Type, subst)
 			}
-			ref := schemaForTypeRef(ft, pkg, registry)
-			applyFieldMetadata(v, ref, pkg)
-			s.Properties[wire.JSONName(v)] = ref
-			if rf.SpecRequired {
-				s.Required = append(s.Required, wire.JSONName(v))
-			}
+			addBodyProperty(s, semantic.ResolveField(v, pkg, registry.resolver.Project()), ft, pkg, registry)
 		case *ast.Mixin:
-			// Embedded mixin: OpenAPI 3.0 expresses Go's field-
-			// promotion via `allOf: [$ref]` so the host schema
-			// inherits every property of the referenced type.
-			// Skipping the mixin would leave generated TS clients
-			// without the embedded fields (`createdAt`/`updatedAt`,
-			// ...) and runtime requests carrying them would fail
-			// spec validation.
 			if v == nil || v.Ref == nil || v.Ref.Name == nil {
 				continue
 			}
 			ref := v.Ref
-			// A generic host (`Box<T>` embedding `Tree<T>`) instantiated
-			// as `Box<Leaf>` must substitute its type-params into the
-			// mixin's own generic args, or mixinRefName registers a
-			// phantom `TreeOfT` whose element `$ref` dangles at `T`. The
-			// sibling Field branch already substitutes via semantic.SubstituteTypeRef.
+			// A generic host substitutes into the mixin's arguments too:
+			// `Box<Leaf>` embedding `Tree<T>` refs `TreeOfLeaf`.
 			if subst != nil && len(ref.Args) > 0 {
 				cp := *ref
 				cp.Args = make([]*ast.TypeRef, len(ref.Args))
@@ -262,35 +150,19 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 				ref = &cp
 			}
 			mixinRefs = append(mixinRefs, &openapi3.SchemaRef{
-				Ref: "#/components/schemas/" + mixinRefName(ref, pkg, registry),
+				Ref: "#/components/schemas/" + registry.refName(ref),
 			})
 		}
 	}
-	// Cross-field type-level constraints render as schema-level
-	// `anyOf` (`@requiresOneOf`) and `not.required` (`@mutuallyExclusive`)
-	// fragments. These complement the runtime validator (which fires
-	// inside Validate()) by making the same contract visible to spec-
-	// driven consumers - generated TS / Java SDKs, Swagger UI, schema
-	// fuzzers. Without this emit, the API doc claims every listed
-	// field is independent but the server quietly rejects "all-absent"
-	// or "both-present" payloads.
-	crossFragments := crossFieldSchemaFragments(td.Decorators, td.Body)
+	crossFragments := typeFragments(td, registry)
 
-	// Apply allOf with the mixin refs PLUS the host's own properties
-	// when at least one mixin contributed. Without mixins we keep the
-	// flat object shape so simple cases stay readable in YAML output.
 	if len(mixinRefs) > 0 {
 		wrapAllOfWithHost(s, mixinRefs, crossFragments)
 		return s
 	}
 	if len(crossFragments) > 0 {
-		// No mixin to host an allOf wrapper; promote the existing
-		// properties into one and append the cross-field fragments
-		// so the schema reads as "host shape AND constraint AND
-		// constraint…". This keeps the per-property metadata
-		// (descriptions, formats) intact instead of inlining them
-		// at the allOf level where it would lose the host's `type:
-		// object` marker.
+		// Without a mixin the own properties still become the first
+		// allOf member, ahead of the fragments.
 		host := &openapi3.Schema{
 			Type:       &openapi3.Types{"object"},
 			Properties: s.Properties,
@@ -303,28 +175,69 @@ func schemaFromTypeDecl(td *ast.TypeDecl, subst map[string]*ast.TypeRef, pkg *se
 	return s
 }
 
-// crossFieldSchemaFragments returns one schema-level fragment per
-// `@requiresOneOf` / `@mutuallyExclusive` on the type, ready to drop
-// into an `allOf` chain. Empty result means no cross-field
-// constraints - the caller keeps the flat object shape.
-//
-// Encoding:
-//
-//	@requiresOneOf(a, b, c) → `anyOf: [{required:[a]}, {required:[b]}, {required:[c]}]`
-//	    JSON Schema `anyOf` requires ≥1 branch to match; each branch
-//	    asserts ONE listed field is present → at least one of the
-//	    listed fields must be present.
-//
-//	@mutuallyExclusive(a, b) → `not: { required: [a, b] }`
-//	    JSON Schema `required` is conjunctive: `required:[a,b]` =
-//	    "both must be present". Negating → "must NOT have BOTH" =
-//	    at most one of a/b present.
-//
-// Both decorators may appear together on the same type (e.g. "at
-// least one of these AND no two of these"); each fragment lands
-// independently in the allOf chain so the constraints compose.
-func crossFieldSchemaFragments(decs []*ast.Decorator, members []ast.TypeMember) openapi3.SchemaRefs {
-	keys := jsonKeys(members)
+// addBodyProperty puts rf's field, typed ft, in s under its JSON name,
+// required when rf.SpecRequired; a field off the body is left out.
+func addBodyProperty(s *openapi3.Schema, rf semantic.ResolvedField, ft *ast.TypeRef, pkg *semantic.Package, registry *genericRegistry) {
+	if !rf.OnWireBody {
+		return
+	}
+	ref := schemaForTypeRef(ft, pkg, registry)
+	applyFieldMetadata(rf.Field, ref, pkg, semantic.FieldIsOptional(rf.Field))
+	key := wire.JSONName(rf.Field)
+	s.Properties[key] = ref
+	if rf.SpecRequired {
+		s.Required = append(s.Required, key)
+	}
+}
+
+// typeFragments returns the cross-field fragments of td's own decorators,
+// each member under its JSON key; the schema's mixin refs carry theirs.
+func typeFragments(td *ast.TypeDecl, registry *genericRegistry) openapi3.SchemaRefs {
+	return crossFieldSchemaFragments(td.Decorators, jsonKeys(td, registry), presentNonNull)
+}
+
+// inlineFragments returns the fragments of [inlineDecorators] for a body listing
+// td's fields in place, each member under its keys entry, present per present.
+func inlineFragments(td *ast.TypeDecl, keys map[string]string, present presence, registry *genericRegistry) openapi3.SchemaRefs {
+	return crossFieldSchemaFragments(inlineDecorators(td, registry), keys, present)
+}
+
+// inlineDecorators returns the decorators of td's mixins, recursively and each
+// type once, then td's own: the groups a value listing td's fields runs.
+func inlineDecorators(td *ast.TypeDecl, registry *genericRegistry) []*ast.Decorator {
+	var decs []*ast.Decorator
+	seen := map[*ast.TypeDecl]bool{}
+	var walk func(*ast.TypeDecl)
+	walk = func(td *ast.TypeDecl) {
+		if td == nil || seen[td] {
+			return
+		}
+		seen[td] = true
+		for _, m := range td.Body {
+			if mx, ok := m.(*ast.Mixin); ok && mx.Ref != nil && mx.Ref.Name != nil {
+				walk(registry.resolver.LookupType(mx.Ref.Name.String()))
+			}
+		}
+		decs = append(decs, td.Decorators...)
+	}
+	walk(td)
+	return decs
+}
+
+// presence returns the schema matching a body in which every named member is
+// present.
+type presence func(names []string) *openapi3.Schema
+
+// crossFieldSchemaFragments returns `@requiresOneOf` as an `anyOf` of "x present" branches and
+// `@mutuallyExclusive` as a `not` of "two present", each member under its keys entry, else its name.
+func crossFieldSchemaFragments(decs []*ast.Decorator, keys map[string]string, present presence) openapi3.SchemaRefs {
+	memberKeys := func(d *ast.Decorator) []string {
+		names := semantic.CrossFieldNames(d)
+		for i, n := range names {
+			names[i] = cmp.Or(keys[n], n)
+		}
+		return names
+	}
 	var out openapi3.SchemaRefs
 	for _, d := range decs {
 		if d == nil {
@@ -332,58 +245,59 @@ func crossFieldSchemaFragments(decs []*ast.Decorator, members []ast.TypeMember) 
 		}
 		switch d.Name {
 		case "requiresOneOf":
-			names := keys(dedupeStrings(semantic.StringArrayDecoratorArg(d)))
+			names := memberKeys(d)
 			if len(names) == 0 {
 				continue
 			}
 			branches := make(openapi3.SchemaRefs, 0, len(names))
 			for _, n := range names {
-				branches = append(branches, &openapi3.SchemaRef{Value: presentNonNull([]string{n})})
+				branches = append(branches, &openapi3.SchemaRef{Value: present([]string{n})})
 			}
 			out = append(out, &openapi3.SchemaRef{Value: &openapi3.Schema{
 				AnyOf: branches,
 			}})
 		case "mutuallyExclusive":
-			names := keys(dedupeStrings(semantic.StringArrayDecoratorArg(d)))
+			names := memberKeys(d)
 			if len(names) < 2 {
 				continue
 			}
 			out = append(out, &openapi3.SchemaRef{Value: &openapi3.Schema{
-				Not: &openapi3.SchemaRef{Value: presentNonNull(names)},
+				Not: anyTwoPresent(names, present),
 			}})
 		}
 	}
 	return out
 }
 
-// jsonKeys maps the DSL field names a cross-field decorator lists onto
-// the JSON keys the document carries, which differ under @json.
-func jsonKeys(members []ast.TypeMember) func([]string) []string {
-	byField := map[string]string{}
-	for _, m := range members {
-		if f, ok := m.(*ast.Field); ok && f.Name != "" {
-			byField[f.Name] = wire.JSONName(f)
+// anyTwoPresent matches a body with two or more of names present: the one
+// pair's presence, else an `anyOf` of every pair's.
+func anyTwoPresent(names []string, present presence) *openapi3.SchemaRef {
+	var pairs openapi3.SchemaRefs
+	for i, a := range names {
+		for _, b := range names[i+1:] {
+			pairs = append(pairs, &openapi3.SchemaRef{Value: present([]string{a, b})})
 		}
 	}
-	return func(names []string) []string {
-		out := make([]string, len(names))
-		for i, n := range names {
-			if key, ok := byField[n]; ok {
-				n = key
-			}
-			out[i] = n
-		}
-		return out
+	if len(pairs) == 1 {
+		return pairs[0]
 	}
+	return &openapi3.SchemaRef{Value: &openapi3.Schema{AnyOf: pairs}}
 }
 
-// presentNonNull builds a schema that matches a body where every named
-// field is present AND not JSON null - the exact meaning the runtime
-// cross-field check uses (a pointer field is "present" only when `!= nil`,
-// so an explicit `null` does NOT count). Plain JSON-Schema `required` is
-// key-presence only and would treat `{"x": null}` as present, diverging
-// from the validator; the `properties: {x: {not: {type: null}}}` clause
-// closes that gap.
+// jsonKeys maps the name of each field of td, mixins included, to its JSON
+// key; of two fields sharing a name, the first counts.
+func jsonKeys(td *ast.TypeDecl, registry *genericRegistry) map[string]string {
+	keys := map[string]string{}
+	for _, ff := range semantic.FlattenFields(td, "", registry.resolver, nil) {
+		if _, dup := keys[ff.Field.Name]; !dup {
+			keys[ff.Field.Name] = wire.JSONName(ff.Field)
+		}
+	}
+	return keys
+}
+
+// presentNonNull matches a JSON body with every named field present and not
+// null, as the runtime counts presence; `required` alone accepts `{"x": null}`.
 func presentNonNull(names []string) *openapi3.Schema {
 	props := openapi3.Schemas{}
 	for _, n := range names {
@@ -397,14 +311,26 @@ func presentNonNull(names []string) *openapi3.Schema {
 	}
 }
 
-// wrapAllOfWithHost folds a schema's own properties into an allOf alongside the
-// embedded mixin refs (and any extra fragments such as cross-field
-// constraints). The host's properties become one allOf member, so a
-// mixin-embedding type or error renders as
-// `allOf: [<mixin refs>, {host props}, <extra>]`. Mutates s in place: clears
-// its Properties / Required and sets AllOf. No-op when no mixin contributed
-// (a flat object shape stays readable in YAML). Shared by the type-schema and
-// error-schema emitters so the two can't drift on the wrapping shape.
+// presentParts matches a multipart body with every named part sent, one in
+// text non-empty: the handler binds an empty text part as absent.
+func presentParts(text map[string]bool) presence {
+	return func(names []string) *openapi3.Schema {
+		s := &openapi3.Schema{Required: append([]string(nil), names...)}
+		for _, n := range names {
+			if !text[n] {
+				continue
+			}
+			if s.Properties == nil {
+				s.Properties = openapi3.Schemas{}
+			}
+			s.Properties[n] = &openapi3.SchemaRef{Value: &openapi3.Schema{MinLength: 1}}
+		}
+		return s
+	}
+}
+
+// wrapAllOfWithHost turns s into `allOf: [<mixin refs>, {s's properties},
+// <extra>]`, leaving s as it is when there is no mixin ref.
 func wrapAllOfWithHost(s *openapi3.Schema, mixinRefs, extra openapi3.SchemaRefs) {
 	if len(mixinRefs) == 0 {
 		return

@@ -1,7 +1,5 @@
-// Service surface for the numbers package. One POST per major case
-// so transport + openapi codegen exercises every numeric shape end-
-// to-end. Each request type wraps the matching showcase type so
-// both directions (decode + validate, encode + serialise) emit.
+// Service surface for the numbers package: one POST per case, so the
+// transport and OpenAPI codegen exercise every numeric shape end to end.
 package numbers
 
 // CounterReq wraps NumberCounter for the AddCounter POST.
@@ -39,9 +37,9 @@ type BoundaryReq {
 	body NumberBoundary
 }
 
-// NumbersService exposes one POST per showcase type. Request and
-// response share the wrapper so the codegen exercises both decode
-// and encode paths against every numeric validator chain.
+// NumbersService exposes one POST per showcase type. Request and response
+// share one type, so the codegen exercises both decode and encode paths
+// against every numeric validator chain.
 @prefix("/numbers")
 service NumbersService {
 	post AddCounter /counter {
@@ -77,5 +75,20 @@ service NumbersService {
 	post AddBoundary /boundary {
 		request  BoundaryReq
 		response BoundaryReq
+	}
+
+	post EchoBigBounds /big-bounds {
+		request  NumberBigBounds
+		response NumberBigBounds
+	}
+
+	post EchoMultipleOf /multiple-of {
+		request  NumberMultipleOf
+		response NumberMultipleOf
+	}
+
+	post EchoBigMultipleOf /big-multiple-of {
+		request  NumberBigMultipleOf
+		response NumberBigMultipleOf
 	}
 }

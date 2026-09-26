@@ -12,31 +12,27 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// NullableForm pins that a `@nullable` body field in a multipart
-// request (form-bound because the sibling `doc file` makes the
-// request multipart) binds as `*string` with a present-guard. The
-// transport's pointer decision uses the same predicate as the type
-// emitter, so `types.go` (`*string`) and the binder agree - a bare
-// direct assign against a pointer field would not compile.
-// NullableForm returns the http.HandlerFunc for the
-// POST NullableForm multipart endpoint. The handler parses
-// `multipart/form-data` bodies, binds every form field declared on
-// the request type, and populates `*multipart.FileHeader` fields
-// for any DSL-typed `file` declarations.
+// Upload a doc with optional-null metadata. The @nullable `meta` body field form-binds as *string (nil when the form value is absent).
+//
+// NullableForm returns the POST NullableForm handler.
 func NullableForm(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(33554432); err != nil {
-			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			server.WriteValidationError(w, r, err)
 			return
 		}
-		// Remove the temp files the parser spilled to disk as soon as the
-		// handler returns. net/http sweeps them again at end-of-response, but
-		// the explicit cleanup releases disk before the response flush and
-		// still runs on panic paths that bypass that sweep.
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.NullableFormReq
-		if _v := r.FormValue("meta"); _v != "" {
+		if _v := r.PostFormValue("meta"); _v != "" {
 			req.Meta = &_v
+		}
+		if _v := r.PostFormValue("tint"); _v != "" {
+			_w := types.Color(_v)
+			req.Tint = &_w
+		}
+		if _v := r.PostFormValue("ref"); _v != "" {
+			_w := types.UUID(_v)
+			req.Ref = &_w
 		}
 		if _, header, err := r.FormFile("doc"); err == nil {
 			req.Doc = header
@@ -51,8 +47,6 @@ func NullableForm(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

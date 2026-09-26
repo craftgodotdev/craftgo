@@ -73,9 +73,8 @@ output:
                                     # On-disk names only; URL routes and Go
                                     # package names are unchanged.
 
-# Event targets. Uncomment when your design declares `event` contracts
-# or `consume` declarations; a design with neither generates nothing
-# either way. Go is a row in the list rather than an implied default, so
+# Event targets. Uncomment when your design declares `event` contracts;
+# a design without events generates nothing either way. Go is a row in the list rather than an implied default, so
 # `out: "-"` turns it off without deleting the block. Transport and codec
 # are NOT here - they are runtime wiring chosen in main.go.
 # events:
@@ -117,10 +116,16 @@ openapi:
   #     type: http
   #     scheme: bearer
   #     bearerFormat: JWT
-  #   # OAuth2 with scopes - reference via
-  #   # `@security(oauth2, scopes: ["users:write"])` on the method.
+  #   # OAuth2 - reference via `@security(oauth2)`; a scheme an
+  #   # operation names needs at least one flow with its URLs.
   #   oauth2:
   #     type: oauth2
+  #     flows:
+  #       authorizationCode:
+  #         authorizationUrl: https://auth.example.com/authorize
+  #         tokenUrl: https://auth.example.com/token
+  #         scopes:
+  #           users:write: Create and update users
   #   # API-key in a header / query / cookie - reference via
   #   # `@security(apiKey)`.
   #   apiKey:

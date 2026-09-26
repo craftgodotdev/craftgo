@@ -14,8 +14,8 @@ import (
 // AdminListProfiles is auth-gated. The `@middlewares` decorator
 // wraps the handler with ProfileAuth at gen time; unauthenticated
 // callers get a 401 from the middleware before the handler runs.
-// AdminListProfiles returns the http.HandlerFunc for the
-// GET AdminListProfiles endpoint.
+//
+// AdminListProfiles returns the GET AdminListProfiles handler.
 func AdminListProfiles(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewAdminListProfilesService(r.Context(), svcCtx)
@@ -24,7 +24,6 @@ func AdminListProfiles(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

@@ -3,14 +3,13 @@
 package routes
 
 import (
-	mediaserviceroutes "github.com/craftgodotdev/craftgo/example/upload/internal/routes/media_service"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
+	mediaserviceroutes "github.com/craftgodotdev/craftgo/example/upload/internal/routes/media_service"
 	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 )
 
-// RegisterAll wires every service's routes onto srv with one call.
-// Generated from the DSL service set; always overwritten.
+// RegisterAll registers every service's routes on srv.
 func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	mediaserviceroutes.RegisterRoutes(srv, svcCtx)
 }

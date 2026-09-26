@@ -8,60 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
-	craftparser "github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
-
-// goEventsOut is the Go target's destination in [eventsConfig].
-const goEventsOut = "./internal/events"
-
-// eventsConfig is a manifest with the Go event target enabled.
-func eventsConfig() *config.Config {
-	return &config.Config{
-		Package: "example.com/app",
-		Output: config.Output{
-			Types:      "./internal/types",
-			Transport:  "./internal/transport",
-			Routes:     "./internal/routes",
-			Service:    "./internal/service",
-			Svccontext: "./svccontext/svccontext.go",
-			Wiring:     "./internal/wiring",
-			Middleware: "./internal/middleware",
-			Config:     "./config",
-			OpenAPI:    "./docs/openapi.yaml",
-			Main:       "-",
-			FileCase:   config.FileCaseSnake,
-		},
-		OpenAPI: config.OpenAPI{Title: "Events", Version: "1.0.0"},
-		Events: config.Events{
-			Targets: []config.EventTarget{{Lang: config.LangGo, Out: goEventsOut}},
-		},
-	}
-}
-
-// analyzeProject parses each source, analyses them as one project, and
-// fails on any error-severity diagnostic.
-func analyzeProject(t *testing.T, sources ...string) *semantic.Project {
-	t.Helper()
-	files := make([]*ast.File, 0, len(sources))
-	for i, src := range sources {
-		p := craftparser.New("test.craftgo", src)
-		f := p.Parse()
-		if d := p.Diagnostics(); len(d) > 0 {
-			t.Fatalf("parse errors in source %d: %v", i, d)
-		}
-		files = append(files, f)
-	}
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{})
-	for _, d := range diags {
-		if d.Severity == 0 {
-			t.Fatalf("semantic errors: %v", diags)
-		}
-	}
-	return proj
-}
 
 // genEvents runs the Go event target into a temp dir and returns the dir.
 func genEvents(t *testing.T, proj *semantic.Project, cfg *config.Config) string {
@@ -71,15 +20,6 @@ func genEvents(t *testing.T, proj *semantic.Project, cfg *config.Config) string 
 		t.Fatalf("generate events: %v", err)
 	}
 	return dir
-}
-
-func readGen(t *testing.T, dir, rel string) string {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
-	if err != nil {
-		t.Fatalf("read %s: %v", rel, err)
-	}
-	return string(b)
 }
 
 const ordersSrc = `package orders
@@ -116,23 +56,17 @@ import (
 )
 
 // OrderPlacedContract is the wire identity of OrderPlaced.
-// Publisher and listener both address the contract by this value.
 const OrderPlacedContract = "orders.OrderPlaced"
 
-// OrderPlaced is the orders.OrderPlaced contract.
-// OrderPlaced.Publish(ctx, bus, payload) sends one; a listener registers
-// OrderPlaced.Subscribe(bus, group, fn) on its own bus.
+// OrderPlaced is the orders.OrderPlaced event contract.
 var OrderPlaced = craftevents.NewEvent[types.OrderPlacedPayload](OrderPlacedContract, (*types.OrderPlacedPayload).Validate)
 
 // ShippedContract is the wire identity of Shipped.
-// Publisher and listener both address the contract by this value.
 const ShippedContract = "order.shipped.v2"
 
 // Shipped is published by the warehouse, not by this design.
 //
-// Shipped is the order.shipped.v2 contract.
-// Shipped.Publish(ctx, bus, payload) sends one; a listener registers
-// Shipped.Subscribe(bus, group, fn) on its own bus.
+// Shipped is the order.shipped.v2 event contract.
 var Shipped = craftevents.NewEvent[types.ShipmentPayload](ShippedContract, (*types.ShipmentPayload).Validate)
 `
 	if got != want {
@@ -140,9 +74,7 @@ var Shipped = craftevents.NewEvent[types.ShipmentPayload](ShippedContract, (*typ
 	}
 }
 
-// `@doc("...")` is the author's override for the generated comment: it
-// reaches the descriptor in place of the leading `//` block, and a
-// file-level event puts nothing else in events.go.
+// @doc replaces the event's leading comment on the generated descriptor.
 func TestDocDecoratorDocumentsTheDescriptor(t *testing.T) {
 	proj := analyzeProject(t, `package themes
 type ThemePayload { id string }
@@ -162,14 +94,11 @@ import (
 )
 
 // ThemeCreatedContract is the wire identity of ThemeCreated.
-// Publisher and listener both address the contract by this value.
 const ThemeCreatedContract = "theme.created.v1"
 
 // Fires when a theme is created.
 //
-// ThemeCreated is the theme.created.v1 contract.
-// ThemeCreated.Publish(ctx, bus, payload) sends one; a listener registers
-// ThemeCreated.Subscribe(bus, group, fn) on its own bus.
+// ThemeCreated is the theme.created.v1 event contract.
 var ThemeCreated = craftevents.NewEvent[types.ThemePayload](ThemeCreatedContract, (*types.ThemePayload).Validate)
 `
 	if got != want {
@@ -180,10 +109,7 @@ var ThemeCreated = craftevents.NewEvent[types.ThemePayload](ThemeCreatedContract
 	}
 }
 
-// A `payload T[]` contract types the descriptor on the slice, and the
-// slice has no Validate of its own - so the file carries the loop that
-// runs the element type's, naming the element that failed. The contract
-// constant and the doc block are the same as any other contract's.
+// A `payload T[]` descriptor is typed on the slice and validates each element in a generated loop.
 func TestArrayPayloadTypesTheDescriptorOnASlice(t *testing.T) {
 	proj := analyzeProject(t, `package orders
 type AbandonedOrderData {
@@ -206,19 +132,14 @@ import (
 )
 
 // AbandonedCreatedContract is the wire identity of AbandonedCreated.
-// Publisher and listener both address the contract by this value.
 const AbandonedCreatedContract = "orders.AbandonedCreated"
 
 // Emitted once a sweep finds abandoned orders.
 //
-// AbandonedCreated is the orders.AbandonedCreated contract.
-// AbandonedCreated.Publish(ctx, bus, payload) sends one; a listener registers
-// AbandonedCreated.Subscribe(bus, group, fn) on its own bus.
+// AbandonedCreated is the orders.AbandonedCreated event contract.
 var AbandonedCreated = craftevents.NewEvent[[]types.AbandonedOrderData](AbandonedCreatedContract, validateAbandonedCreated)
 
-// validateAbandonedCreated validates every element the payload carries. The failing
-// element names its index, and the descriptor turns the error into a
-// *craftevents.PayloadError exactly as it does for a single payload.
+// validateAbandonedCreated validates each element of a AbandonedCreated payload.
 func validateAbandonedCreated(items *[]types.AbandonedOrderData) error {
 	for i := range *items {
 		if err := (*items)[i].Validate(); err != nil {
@@ -233,9 +154,7 @@ func validateAbandonedCreated(items *[]types.AbandonedOrderData) error {
 	}
 }
 
-// An array payload whose element type carries no generated Validate takes
-// nil like any other: there is nothing to loop over the elements with, so
-// the file declares no validator and imports no fmt.
+// An array payload whose element type has no generated Validate takes nil.
 func TestArrayPayloadWithoutValidationTakesNil(t *testing.T) {
 	proj := analyzeProject(t, `package shared
 type Envelope { id string }`, `package orders
@@ -254,15 +173,14 @@ event Batch { payload shared.Envelope[] }`)
 	}
 }
 
-// A payload declared in another design package is imported from that
-// package rather than through the event's own types alias.
+// A payload declared in another design package is imported from that package.
 func TestDescriptorImportsACrossPackagePayload(t *testing.T) {
 	proj := analyzeProject(t, `package shared
 type Envelope { id string }`, `package orders
 event Wrapped { payload shared.Envelope }`)
 	got := readGen(t, genEvents(t, proj, eventsConfig()), "internal/events/orders/events.go")
 	for _, want := range []string{
-		`shared "example.com/app/internal/types/shared"`,
+		"\t\"example.com/app/internal/types/shared\"\n",
 		"craftevents.NewEvent[shared.Envelope](WrappedContract, (*shared.Envelope).Validate)",
 	} {
 		if !strings.Contains(got, want) {
@@ -271,8 +189,7 @@ event Wrapped { payload shared.Envelope }`)
 	}
 }
 
-// A package with no event leaves no directory: there is nothing for the
-// library to hold.
+// A package with no event gets no events directory.
 func TestPackageWithoutEventsGetsNoDirectory(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc, `package web
 type Page { url string }
@@ -285,9 +202,7 @@ service Docs {
 	}
 }
 
-// The descriptor validates what the payload type declares. A payload
-// whose type carries no generated Validate takes nil, so the library
-// still compiles against the types the run wrote.
+// The descriptor passes the payload type's Validate, or nil when the type has none.
 func TestDescriptorPassesNilWithoutAValidateMethod(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)
 	ev, ok := proj.LookupEvent("orders", "OrderPlaced")
@@ -327,7 +242,8 @@ func TestEventLibraryIsValidGoAndFullyPlanned(t *testing.T) {
 		t.Fatalf("wrote %d files, want one events.go per declaring package: %v", len(written), written)
 	}
 	planned := map[string]bool{}
-	for _, f := range RegeneratedEventFiles(proj, dir, goEventsOut) {
+	_, files := EventPlan(proj, dir, goEventsOut)
+	for _, f := range files {
 		planned[f] = true
 	}
 	for f := range written {
@@ -342,8 +258,7 @@ func TestEventLibraryIsValidGoAndFullyPlanned(t *testing.T) {
 	}
 }
 
-// A DSL package named after an identifier the template binds is imported
-// under a different alias, or the generated file shadows the name.
+// A DSL package named like an identifier the template binds is imported under an escaped alias.
 func TestEventAliasesEscapeReservedIdentifiers(t *testing.T) {
 	proj := analyzeProject(t, `package craftevents
 type Boom { id string }`, `package watch
@@ -357,8 +272,7 @@ event Exploded { payload craftevents.Boom }`)
 	}
 }
 
-// A contracts project generates the library and nothing else - no
-// transport, no wiring, no main.
+// A contracts project generates only the event library.
 func TestContractsProjectGeneratesOnlyTheLibrary(t *testing.T) {
 	cfg := eventsConfig()
 	cfg.Output.Kind = config.KindContracts

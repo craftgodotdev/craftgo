@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 )
 
-// DeleteMedia returns the http.HandlerFunc for the
-// DELETE DeleteMedia endpoint.
+// Delete media. Idempotent.
+//
+// DeleteMedia returns the DELETE DeleteMedia handler.
 func DeleteMedia(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetMediaReq
@@ -28,7 +29,6 @@ func DeleteMedia(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

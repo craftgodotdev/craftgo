@@ -2,19 +2,18 @@
 
 package shared
 
-// Email is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type Email string
 
-// HexColor is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+// A hex colour for project/label theming.
 type HexColor string
 
-// ID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+// A URL-safe opaque identifier (used for every resource id).
 type ID string
 
-// Points is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
+// Story points estimate: a small whole number.
 type Points int
 
-// Slug is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+// A lowercase URL slug, e.g. a project key.
 type Slug string
 
 // Health is returned by the readiness probe with per-dependency status.

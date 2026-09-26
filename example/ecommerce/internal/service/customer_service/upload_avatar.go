@@ -5,25 +5,20 @@ package customers
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/customers"
-
-	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/customers"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// UploadAvatarService carries the per-request state for the
-// UploadAvatar endpoint of CustomerService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// UploadAvatarService runs CustomerService.UploadAvatar for one request.
 type UploadAvatarService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewUploadAvatarService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewUploadAvatarService binds UploadAvatarService to ctx; its Logger carries ctx's trace ids.
 func NewUploadAvatarService(ctx context.Context, svcCtx *svccontext.ServiceContext) *UploadAvatarService {
 	return &UploadAvatarService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewUploadAvatarService(ctx context.Context, svcCtx *svccontext.ServiceConte
 	}
 }
 
-// UploadAvatar is the service entry point. Replace the
-// TODO with the real implementation.
+// Upload customer avatar (multipart, ≤5MB).
+//
+// UploadAvatar implements CustomerService.UploadAvatar.
 func (l *UploadAvatarService) UploadAvatar(req *types.UploadAvatarReq) (*types.Customer, error) {
 	// TODO: implement
 	return nil, nil

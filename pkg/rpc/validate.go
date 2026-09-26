@@ -5,11 +5,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Validate runs the request message's own `Validate() error` - the method
-// protoc-gen-validate generates - and turns a failure into
-// InvalidArgument, the way the HTTP handler answers 400 from the generated
-// Validate. A message without the method passes; a validator without one
-// (protovalidate) is installed as an interceptor with Use.
+// Validate calls msg's `Validate() error`, as protoc-gen-validate generates it,
+// and returns a failure as InvalidArgument; a message without one passes.
 func Validate(msg any) error {
 	v, ok := msg.(interface{ Validate() error })
 	if !ok {

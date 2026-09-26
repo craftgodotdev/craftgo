@@ -2,11 +2,9 @@ package lsp
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
-	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -16,26 +14,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func isErrorCategory(s string) bool { return errcat.IsCategory(s) }
-
-// isVerbToken reports whether t is a lexer-recognised HTTP verb
-// keyword. Used by [hoverForToken] to gate the verb-doc dispatch so
-// arbitrary idents that happen to be spelt "get" never surface the
-// verb popup.
-func isVerbToken(t lexer.Token) bool {
-	switch t.Kind {
-	case lexer.VerbGet, lexer.VerbPost, lexer.VerbPut, lexer.VerbPatch,
-		lexer.VerbDelete, lexer.VerbHead, lexer.VerbOptions:
-		return true
-	}
-	return false
-}
-
-// verbDocs documents the HTTP verb keywords so a hover on `get` /
-// `post` / ... explains the semantic the framework attaches to it.
-// Surfaced for keyword tokens that are recognised verbs - the same
-// markdown a user would read in the language reference, scoped to
-// the spot where they are about to commit a route to it.
+// verbDocs is the hover text of each HTTP verb keyword.
 var verbDocs = map[string]string{
 	"get":     "**`get`** - safe, idempotent retrieval. The handler reads no body (the JSON decoder is skipped at codegen time).",
 	"post":    "**`post`** - resource creation or non-idempotent action. JSON body decoded into the request struct.",
@@ -46,18 +25,14 @@ var verbDocs = map[string]string{
 	"options": "**`options`** - capability discovery (CORS preflight handler). The handler may return a custom Allow header set.",
 }
 
-// keywordDoc is one construct's hover text together with the declaration
-// keyword it is written under - `payload` inside an `event`, `request`
-// inside a `service`. The site is what keeps a field spelled `payload`
-// in a type body silent.
+// keywordDoc is a clause keyword's hover text and the declaration keyword it
+// must sit under, so a field named `payload` gets none.
 type keywordDoc struct {
 	site lexer.Kind
 	doc  string
 }
 
-// memberKeywordDocs documents the `event` declaration, its `payload`
-// clause and the method clause keywords, so a hover explains the
-// construct the cursor sits on.
+// memberKeywordDocs documents `event`, `payload`, `request` and `response`.
 var memberKeywordDocs = map[lexer.Kind]keywordDoc{
 	lexer.KwEvent:    {lexer.KwEvent, "**`event Name { payload Type }`** - a contract this design declares, at file level: a service publishes HTTP, never events. Codegen emits one descriptor for it - publish and subscribe both go through that; transport, codec and which deployable listens are runtime wiring, not part of the contract."},
 	lexer.KwPayload:  {lexer.KwEvent, "**`payload Type`** - the type an event contract carries. Must name a `type` declaration."},
@@ -65,15 +40,15 @@ var memberKeywordDocs = map[lexer.Kind]keywordDoc{
 	lexer.KwResponse: {lexer.KwService, "**`response Type`** - the type a method returns; the framework encodes it."},
 }
 
-// memberKeywordHover renders a clause keyword's doc when the cursor sits
-// inside the declaration that keyword belongs to. An `extend service`
-// body counts as a service body.
+// memberKeywordHover renders a clause keyword's doc when it sits in its own
+// declaration; an `extend service` counts as a service.
 func memberKeywordHover(view snapshotView, idx int, tok lexer.Token) *protocol.Hover {
 	kd, ok := memberKeywordDocs[tok.Kind]
 	if !ok {
 		return nil
 	}
-	site, _ := enclosingDeclKeyword(view, idx+1)
+	kw, _ := enclosingDecl(view, idx+1)
+	site := view.kind(kw)
 	if site == lexer.KwExtend {
 		site = lexer.KwService
 	}
@@ -82,98 +57,68 @@ func memberKeywordHover(view snapshotView, idx int, tok lexer.Token) *protocol.H
 	}
 	return &protocol.Hover{
 		Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: kd.doc},
-		Range:    rangePtr(rangeOf(tok)),
+		Range:    rangePtr(rangeOf(view.src, tok)),
 	}
 }
 
-// onHover answers `textDocument/hover`. It tokenises the buffer, finds
-// the token under the cursor, and dispatches to a kind-specific renderer
-// (decorator, builtin type, user type). Cursors that fall on whitespace,
-// punctuation, or anywhere we have nothing to say return a nil result
-// (LSP-spec for "no hover available here").
-func (s *Server) onHover(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.HoverParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
+// onHover answers `textDocument/hover`, with null where there is nothing to show.
+func (s *server) onHover(_ context.Context, params protocol.HoverParams) (any, error) {
+	r, ok := s.open(params.TextDocument.URI)
+	if !ok {
+		return nil, nil
 	}
-	src := s.snapshot(params.TextDocument.URI)
-	if src == "" {
-		return reply(ctx, nil, nil)
+	c := r.view().cursorAt(params.Position)
+	if c.at < 0 {
+		return nil, nil
 	}
-	view := parseSnapshot(string(params.TextDocument.URI), src)
-	idx, tok := view.tokenAt(params.Position.Line, params.Position.Character)
-	if idx < 0 {
-		return reply(ctx, nil, nil)
-	}
-	hov := s.hoverWithProject(view, idx, tok, string(params.TextDocument.URI), src)
-	return reply(ctx, hov, nil)
+	return r.hover(c.at), nil
 }
 
-// hoverForToken classifies the token at idx and returns the hover popup
-// or nil when nothing useful applies. It is exported as an internal
-// helper so unit tests can exercise the formatting without spinning up
-// a JSON-RPC stack.
+// hoverForToken returns the hover for token idx from the buffer alone, or nil.
 func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover {
-	// `@name` decorators: the @ token sits at idx-1 (or idx itself when
-	// the cursor lands on @). Inspect both.
+	// `@name`: the cursor is on the `@` or on the name.
 	if tok.Kind == lexer.At && idx+1 < len(view.tokens) {
 		next := view.tokens[idx+1]
 		if next.Kind == lexer.Ident && view.tokens[idx+1].Pos.Line == tok.Pos.Line {
-			return decoratorHover(next.Text, joinedRange(tok, next))
+			return decoratorHover(next.Text, joinedRange(view.src, tok, next))
 		}
 	}
 	if tok.Kind == lexer.Ident && idx > 0 && view.tokens[idx-1].Kind == lexer.At {
-		return decoratorHover(tok.Text, joinedRange(view.tokens[idx-1], tok))
+		return decoratorHover(tok.Text, joinedRange(view.src, view.tokens[idx-1], tok))
 	}
 	if h := formatRawArgHover(view, idx, tok); h != nil {
 		return h
 	}
-	// HTTP verb keywords (`get`, `post`, ...) - the lexer assigns
-	// these distinct Kw* token kinds, so dispatch by token text via
-	// the verbDocs table.
-	if doc, ok := verbDocs[tok.Text]; ok && isVerbToken(tok) {
+	// A field's own name token shows the field, whatever word it is spelt as.
+	if f, parent := findFieldAtPos(view.file, tok.Pos); f != nil {
+		return fieldHover(parent, f, rangeOf(view.src, tok))
+	}
+	if doc, ok := verbDocs[tok.Text]; ok && tok.Kind.IsVerb() {
 		return &protocol.Hover{
 			Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: doc},
-			Range:    rangePtr(rangeOf(tok)),
+			Range:    rangePtr(rangeOf(view.src, tok)),
 		}
 	}
 	if h := memberKeywordHover(view, idx, tok); h != nil {
 		return h
 	}
-	// Built-in types - only when the token spelling matches AND the
-	// surrounding context is a type position (right after `request`,
-	// `response`, `:`, a field name, etc.). The cheap heuristic: if it
-	// is a bare Ident and the spelling is a known builtin, render it.
+	// Any identifier spelt like a built-in gets its doc.
 	if tok.Kind == lexer.Ident {
-		if sp, ok := prims.Lookup(tok.Text); ok && sp.Doc != "" {
+		if sp, ok := prims.Lookup(tok.Text); ok {
 			return &protocol.Hover{
 				Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: sp.Doc},
-				Range:    rangePtr(rangeOf(tok)),
+				Range:    rangePtr(rangeOf(view.src, tok)),
 			}
 		}
-		if isErrorCategory(tok.Text) {
-			return errorCategoryHover(tok)
-		}
-		if d := findDecl(view.file, tok.Text); d != nil {
-			return userTypeHover(d, rangeOf(tok))
-		}
-		// Field-name hover: when the ident is a field declared in
-		// some type / error body, render its type + decorator chain so
-		// the user can audit a field's contract without jumping to
-		// the decl. Looked up by position so we only fire on the
-		// definition site (not every occurrence of the same word).
-		if f, parent := findFieldAtPos(view.file, tok.Pos); f != nil {
-			return fieldHover(parent, f, rangeOf(tok))
+		if view.kind(idx-1) == lexer.KwError && errcat.IsCategory(tok.Text) {
+			return errorCategoryHover(tok.Text, rangeOf(view.src, tok))
 		}
 	}
 	return nil
 }
 
-// formatRawArgHover renders the popup for the `raw` ident inside
-// `@format(raw)`. Every other `@format` value names a check the
-// reference page lists and the hover on `@format` itself covers; `raw`
-// changes the field's Go type and how its value travels, so it answers
-// for itself where the author is typing it.
+// formatRawArgHover renders the hover for `raw` in `@format(raw)`, the @format
+// value that changes the field's Go type.
 func formatRawArgHover(view snapshotView, idx int, tok lexer.Token) *protocol.Hover {
 	if tok.Kind != lexer.Ident || tok.Text != semantic.FormatRaw || idx < 3 {
 		return nil
@@ -185,15 +130,12 @@ func formatRawArgHover(view snapshotView, idx int, tok lexer.Token) *protocol.Ho
 	}
 	return &protocol.Hover{
 		Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: semantic.FormatRawDoc},
-		Range:    rangePtr(rangeOf(tok)),
+		Range:    rangePtr(rangeOf(view.src, tok)),
 	}
 }
 
-// findFieldAtPos walks every type / error body looking for a field
-// whose declared name token starts at pos. Returns the field and the
-// parent type / error name (for the hover header). Linear over body
-// members - small bodies, infrequent calls; the cost is well within
-// the LSP responsiveness budget.
+// findFieldAtPos returns the field whose name token starts at pos, with the
+// name of its type or error.
 func findFieldAtPos(f *ast.File, pos lexer.Position) (*ast.Field, string) {
 	if f == nil {
 		return nil, ""
@@ -205,17 +147,14 @@ func findFieldAtPos(f *ast.File, pos lexer.Position) (*ast.Field, string) {
 		}
 		for _, m := range body {
 			if fd, ok := m.(*ast.Field); ok && fd.Pos == pos {
-				return fd, declName(d)
+				return fd, d.DeclName()
 			}
 		}
 	}
 	return nil, ""
 }
 
-// fieldHover renders the markdown popup for a field declaration: the
-// owning type, the field's spelt-out type with optional / array
-// markers, plus the decorator chain (one per line) so a reader scans
-// the contract without leaving the cursor.
+// fieldHover renders a field's owner, type, decorators and doc.
 func fieldHover(parent string, f *ast.Field, r protocol.Range) *protocol.Hover {
 	var sb strings.Builder
 	if parent != "" {
@@ -232,7 +171,7 @@ func fieldHover(parent string, f *ast.Field, r protocol.Range) *protocol.Hover {
 	sb.WriteString("```craftgo\n")
 	sb.WriteString(f.Name)
 	sb.WriteByte(' ')
-	sb.WriteString(typeRefString(f.Type))
+	sb.WriteString(f.Type.String())
 	sb.WriteString("\n```\n")
 	if len(f.Decorators) > 0 {
 		sb.WriteString("\n**Decorators**\n")
@@ -252,67 +191,24 @@ func fieldHover(parent string, f *ast.Field, r protocol.Range) *protocol.Hover {
 	}
 }
 
-// typeRefString prints a TypeRef in source-style for hover output:
-// `string`, `User[]`, `Page<User>?`, `map<string, int>`.
-func typeRefString(t *ast.TypeRef) string {
-	if t == nil {
-		return "?"
-	}
-	var sb strings.Builder
-	if t.Map != nil {
-		sb.WriteString("map<")
-		sb.WriteString(typeRefString(t.Map.Key))
-		sb.WriteString(", ")
-		sb.WriteString(typeRefString(t.Map.Value))
-		sb.WriteByte('>')
-	} else if t.Named != nil {
-		sb.WriteString(t.Named.Name.String())
-		if len(t.Named.Args) > 0 {
-			sb.WriteByte('<')
-			for i, a := range t.Named.Args {
-				if i > 0 {
-					sb.WriteString(", ")
-				}
-				sb.WriteString(typeRefString(a))
-			}
-			sb.WriteByte('>')
-		}
-	}
-	if t.Array {
-		sb.WriteString("[]")
-	}
-	for i := 1; i < t.ArrayDepth; i++ {
-		sb.WriteString("[]")
-	}
-	if t.Optional {
-		sb.WriteByte('?')
-	}
-	return sb.String()
-}
-
-// hoverWithProject extends [hoverForToken] with a project-wide lookup, so
-// the project is only loaded for hovers that did not resolve in the
-// current file.
-func (s *Server) hoverWithProject(view snapshotView, idx int, tok lexer.Token, currentURI string, currentSrc string) *protocol.Hover {
+// hover is [hoverForToken] for token idx, else the declaration the token
+// names; the project loads only when the buffer has no answer.
+func (r *request) hover(idx int) *protocol.Hover {
+	view := r.view()
+	tok := view.tokens[idx]
 	if h := hoverForToken(view, idx, tok); h != nil {
 		return h
 	}
-	if tok.Kind != lexer.Ident {
-		return nil
-	}
-	v := s.loadProject(uriToPath(currentURI), currentSrc)
-	if d := v.lookup(qualifiedNameAt(view, idx), semantic.AnyDecl); d != nil {
-		return userTypeHover(d, rangeOf(tok))
+	if d := r.project().symbolAt(view, idx); d != nil {
+		return userTypeHover(d, rangeOf(view.src, tok))
 	}
 	return nil
 }
 
-// decoratorHover renders the popup for `@name`. The body lists the
-// allowed levels and the argument shape registered with the semantic
-// analyser so editor and `craftgo lint` agree on what the decorator
-// expects.
+// decoratorHover renders `@name` from its registry entry, or says the name is
+// removed or unknown.
 func decoratorHover(name string, r protocol.Range) *protocol.Hover {
-	spec, ok := semantic.Registry[name]
+	spec, ok := semantic.DecoratorSpec(name)
 	if !ok {
 		if note, gone := semantic.RemovedDecorator(name); gone {
 			return &protocol.Hover{
@@ -348,8 +244,8 @@ func decoratorHover(name string, r protocol.Range) *protocol.Hover {
 	}
 }
 
-// argsRuleSummary turns the Min/Max/Kinds shape into a human-readable
-// "1 string", "0..n", "1 ident or string" line for hover popups.
+// argsRuleSummary renders an argument rule as "1 (string)", "0..n arg" or
+// "1..2 (int, int)".
 func argsRuleSummary(r semantic.ArgsRule) string {
 	var arity string
 	switch {
@@ -373,14 +269,11 @@ func argsRuleSummary(r semantic.ArgsRule) string {
 	return arity + " (" + strings.Join(parts, ", ") + ")"
 }
 
-// userTypeHover formats the popup for a reference to a declared type,
-// enum, error, scalar, middleware, or service. The signature line
-// summarises the declaration; any doc comment follows below.
+// userTypeHover renders d's declaration line and doc.
 func userTypeHover(d ast.Decl, r protocol.Range) *protocol.Hover {
-	header := declSummary(d)
-	doc := strings.Join(declDoc(d), "\n")
-	body := "```craftgo\n" + header + "\n```"
-	if doc != "" {
+	info := infoOf(d)
+	body := "```craftgo\n" + info.summary + "\n```"
+	if doc := strings.Join(info.doc, "\n"); doc != "" {
 		body += "\n\n" + doc
 	}
 	return &protocol.Hover{
@@ -389,24 +282,18 @@ func userTypeHover(d ast.Decl, r protocol.Range) *protocol.Hover {
 	}
 }
 
-// errorCategoryHover documents one of the reserved HTTP-status category
-// names (BadRequest, NotFound, ...). The body is short - these are the
-// well-known categories from the README.
-func errorCategoryHover(tok lexer.Token) *protocol.Hover {
-	body := fmt.Sprintf("**`%s`** - built-in error category.\n\nReserved name; use as `error %s YourErrorName` to declare an error of this kind.", tok.Text, tok.Text)
+// errorCategoryHover renders the hover of the error category name at r.
+func errorCategoryHover(name string, r protocol.Range) *protocol.Hover {
+	body := fmt.Sprintf("**`%s`** - built-in error category.\n\nReserved name; use as `error %s YourErrorName` to declare an error of this kind.", name, name)
 	return &protocol.Hover{
 		Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: body},
-		Range:    rangePtr(rangeOf(tok)),
+		Range:    rangePtr(r),
 	}
 }
 
-// joinedRange returns the LSP range covering the source span from a's
-// first character through b's last character. Both tokens must be on
-// the same line - used for `@name` (At + Ident).
-func joinedRange(a, b lexer.Token) protocol.Range {
-	end := b.Pos
-	end.Column += len(b.Text)
-	return protocol.Range{Start: lspPos(a.Pos), End: lspPos(end)}
+// joinedRange returns the range from a's start to b's end, tokens of src.
+func joinedRange(src string, a, b lexer.Token) protocol.Range {
+	return protocol.Range{Start: rangeOf(src, a).Start, End: rangeOf(src, b).End}
 }
 
 func rangePtr(r protocol.Range) *protocol.Range { return &r }

@@ -7,16 +7,21 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// TestResolveRequestFields pins the method-context auto-binding the IR
-// centralises: an un-decorated field auto-binds to @path (name matches a
-// segment), @query (body-less verb), or @body (body verb); an explicit
-// binding wins. This is the single source for "where does each request
-// field ride" - the per-stage walks read it instead of re-deriving.
+// resolveTypeFields resolves td's fields, mixins flattened, with their Go rendering.
+func resolveTypeFields(td *ast.TypeDecl, pkg *semantic.Package) []resolvedField {
+	var out []resolvedField
+	for _, rf := range semantic.ResolveFields(td, "", pkg, resolverFor(pkg, nil).Resolver, resolvedGoFieldNames) {
+		out = append(out, decorate(rf))
+	}
+	return out
+}
+
+// An undecorated request field binds to @path when a segment matches it, else to @query on a
+// body-less verb or the body on a body verb; an explicit binding wins.
 func TestResolveRequestFields(t *testing.T) {
 	pkg := analyze(t, `package design
 type GetReq { id string  q string?  hdr string @header("H") }
@@ -39,7 +44,7 @@ service S {
 	bind := func(m *ast.Method) map[string]wire.Binding {
 		out := map[string]wire.Binding{}
 		for _, rf := range resolveRequestFields(m, pkg, resolverFor(pkg, nil)) {
-			out[rf.DSLName] = rf.Binding
+			out[rf.Field.Name] = rf.Binding
 		}
 		return out
 	}
@@ -64,10 +69,7 @@ service S {
 	}
 }
 
-// TestResolveFields pins the resolved IR: one flattened, fully-resolved
-// view of a type's fields that every stage reads instead of re-deriving.
-// Each field's expected facts are asserted explicitly, so a drift in any
-// underlying helper (or a stage migrating onto the IR) is caught here.
+// resolveFields flattens mixins and resolves each field's wire and presence facts.
 func TestResolveFields(t *testing.T) {
 	pkg := analyze(t, `package design
 type Audit { createdAt string @header("X-Created") }
@@ -84,14 +86,12 @@ type Req {
 	if td == nil {
 		t.Fatal("Req not found")
 	}
-	got := resolveFields(td, pkg, resolverFor(pkg, nil))
+	got := resolveTypeFields(td, pkg)
 	byName := map[string]resolvedField{}
 	for _, rf := range got {
-		byName[rf.DSLName] = rf
+		byName[rf.Field.Name] = rf
 	}
 
-	// The mixin-promoted field is flattened in - a stage reading the IR
-	// can't miss it the way the per-stage td.Body walks used to.
 	if _, ok := byName["createdAt"]; !ok {
 		t.Fatalf("mixin field createdAt not flattened in: %v", names(got))
 	}
@@ -100,21 +100,19 @@ type Req {
 		name string
 		want resolvedField
 	}{
-		// createdAt: @header via mixin - off the body; a non-optional header
-		// is a required parameter, so SpecRequired (= semantic.FieldIsRequired) is true.
+		// createdAt: @header via mixin; a non-optional header is a required parameter.
 		{"createdAt", resolvedField{ResolvedField: semantic.ResolvedField{Binding: wire.BindHeader, OnWireBody: false, SpecRequired: true}}},
 		// name: plain required body field.
 		{"name", resolvedField{ResolvedField: semantic.ResolvedField{Binding: wire.BindBody, OnWireBody: true, SpecRequired: true}, IsPointer: false}},
 		// sort: optional (`?`) → pointer + nil-guard; @default → never required.
-		{"sort", resolvedField{ResolvedField: semantic.ResolvedField{Binding: wire.BindBody, OnWireBody: true, NeedsNilGuard: true, HasDefault: true, SpecRequired: false}, IsPointer: true}},
-		// bio: @nullable non-optional → pointer + nil-guard, still required (must send key, may be null).
+		{"sort", resolvedField{ResolvedField: semantic.ResolvedField{Binding: wire.BindBody, OnWireBody: true, NeedsNilGuard: true, HasDefValue: true, SpecRequired: false}, IsPointer: true}},
+		// bio: @nullable → pointer + nil-guard, still required (the key is sent, maybe as null).
 		{"bio", resolvedField{ResolvedField: semantic.ResolvedField{Binding: wire.BindBody, OnWireBody: true, NeedsNilGuard: true, SpecRequired: true}, IsPointer: true}},
 		// token: @query - off the body, wire name from the arg.
 		{"token", resolvedField{ResolvedField: semantic.ResolvedField{Binding: wire.BindQuery, OnWireBody: false, SpecRequired: true}}},
-		// secret: @sensitive - server-only, off the body everywhere. SpecRequired
-		// is the raw semantic.FieldIsRequired (true here); the schema skips it before use.
+		// secret: @sensitive - off the body; SpecRequired stays true, the schema skips the field.
 		{"secret", resolvedField{ResolvedField: semantic.ResolvedField{Binding: wire.BindSensitive, OnWireBody: false, SpecRequired: true}}},
-		// tags: @nullable nilable slice → nil-guarded but NOT a pointer.
+		// tags: @nullable nilable slice → nil-guarded but not a pointer.
 		{"tags", resolvedField{ResolvedField: semantic.ResolvedField{Binding: wire.BindBody, OnWireBody: true, NeedsNilGuard: true, SpecRequired: true}, IsPointer: false}},
 	}
 	for _, c := range cases {
@@ -131,37 +129,27 @@ type Req {
 		if rf.NeedsNilGuard != c.want.NeedsNilGuard {
 			t.Errorf("%s: NeedsNilGuard = %v, want %v", c.name, rf.NeedsNilGuard, c.want.NeedsNilGuard)
 		}
-		if rf.HasDefault != c.want.HasDefault {
-			t.Errorf("%s: HasDefault = %v, want %v", c.name, rf.HasDefault, c.want.HasDefault)
+		if rf.HasDefValue != c.want.HasDefValue {
+			t.Errorf("%s: HasDefValue = %v, want %v", c.name, rf.HasDefValue, c.want.HasDefValue)
 		}
 		if rf.SpecRequired != c.want.SpecRequired {
 			t.Errorf("%s: SpecRequired = %v, want %v", c.name, rf.SpecRequired, c.want.SpecRequired)
 		}
 	}
 
-	if wn := byName["createdAt"].WireName(); wn != "X-Created" {
-		t.Errorf("createdAt WireName = %q, want X-Created", wn)
+	for name, want := range map[string]string{"createdAt": "X-Created", "token": "t"} {
+		if rf := byName[name]; wireName(rf.Field, rf.Binding) != want {
+			t.Errorf("%s wire name = %q, want %q", name, wireName(rf.Field, rf.Binding), want)
+		}
 	}
-	if wn := byName["token"].WireName(); wn != "t" {
-		t.Errorf("token WireName = %q, want t", wn)
-	}
-	if dv := byName["sort"].DefaultWire; dv != "asc" {
-		t.Errorf("sort DefaultWire = %v, want asc", dv)
-	}
-
-	// @sensitive opts out of the runtime presence check: the field is
-	// json:"-" (off the wire), so a presence gate could never be satisfied
-	// and would 400 every request (acute for `any @sensitive`, which emits
-	// a presence expression where a plain string @sensitive does not).
+	// A @sensitive field is off the wire, so it gets no runtime presence check.
 	if byName["secret"].RuntimeEnforced {
 		t.Errorf("secret (@sensitive): RuntimeEnforced = true, want false (off-wire, presence check unsatisfiable)")
 	}
 }
 
-// TestResolveFieldsInvariant asserts the cross-stage invariant the IR
-// exists to guarantee: a field in the OpenAPI required[] (SpecRequired) is
-// never optional and never defaulted - the two facts that used to be
-// re-derived by separate stages and drift.
+// A SpecRequired field is never optional or defaulted, and differs from RuntimeEnforced only by
+// @default or @nullable.
 func TestResolveFieldsInvariant(t *testing.T) {
 	pkg := analyze(t, `package design
 type T {
@@ -171,30 +159,28 @@ type T {
 	d string? @default("x")
 	e string  @nullable
 }`)
-	for _, rf := range resolveFields(pkg.Types["T"], pkg, resolverFor(pkg, nil)) {
+	for _, rf := range resolveTypeFields(pkg.Types["T"], pkg) {
+		name := rf.Field.Name
 		optional := rf.Field.Type != nil && rf.Field.Type.Optional
-		nullable := hasNullableDecorator(rf.Field.Decorators)
-		if rf.SpecRequired && (optional || rf.HasDefault) {
-			t.Errorf("%s: SpecRequired but optional=%v hasDefault=%v - required[] must exclude both",
-				rf.DSLName, optional, rf.HasDefault)
+		nullable := ast.HasDecorator(rf.Field.Decorators, "nullable")
+		defaulted := ast.HasDecorator(rf.Field.Decorators, "default")
+		if rf.SpecRequired && (optional || defaulted) {
+			t.Errorf("%s: SpecRequired but optional=%v defaulted=%v - required[] must exclude both",
+				name, optional, defaulted)
 		}
-		if !rf.SpecRequired && !optional && !rf.HasDefault {
-			t.Errorf("%s: not SpecRequired yet neither optional nor defaulted", rf.DSLName)
+		if !rf.SpecRequired && !optional && !defaulted {
+			t.Errorf("%s: not SpecRequired yet neither optional nor defaulted", name)
 		}
-		// RuntimeEnforced (validator presence check) excludes optional and
-		// @nullable; it does NOT exclude @default. So the two facts diverge
-		// exactly on @default (spec-optional but runtime-checked) and
-		// @nullable (runtime-skipped but spec-required) - pin that the
-		// divergence is only ever for one of those reasons.
+		// RuntimeEnforced excludes optional and @nullable fields but not defaulted ones.
 		if rf.RuntimeEnforced != (!optional && !nullable) {
-			t.Errorf("%s: RuntimeEnforced=%v, want %v", rf.DSLName, rf.RuntimeEnforced, !optional && !nullable)
+			t.Errorf("%s: RuntimeEnforced=%v, want %v", name, rf.RuntimeEnforced, !optional && !nullable)
 		}
 		if rf.SpecRequired != rf.RuntimeEnforced {
-			divergeByDefault := rf.HasDefault && !optional && !nullable
-			divergeByNullable := nullable && !optional && !rf.HasDefault
+			divergeByDefault := defaulted && !optional && !nullable
+			divergeByNullable := nullable && !optional && !defaulted
 			if !divergeByDefault && !divergeByNullable {
 				t.Errorf("%s: SpecRequired(%v) != RuntimeEnforced(%v) for an unexpected reason (default=%v nullable=%v)",
-					rf.DSLName, rf.SpecRequired, rf.RuntimeEnforced, rf.HasDefault, nullable)
+					name, rf.SpecRequired, rf.RuntimeEnforced, defaulted, nullable)
 			}
 		}
 	}
@@ -203,19 +189,14 @@ type T {
 func names(fs []resolvedField) []string {
 	out := make([]string, len(fs))
 	for i, f := range fs {
-		out[i] = f.DSLName
+		out[i] = f.Field.Name
 	}
 	return out
 }
 
-// Two fields whose DSL names collide to the same Go identifier (`userId` /
-// `user_id` → `UserID`) get dedup-resolved (`UserID`, `UserID_2`) in the
-// struct. Every consumer - the validator (@minLength + the cross-field
-// @requiresOneOf) and the wire binder - must read the SAME resolved names, so
-// the binder assigns both fields and the validator checks both, rather than
-// `v.UserID` twice with `UserID_2` left unread.
+// Fields colliding on one Go name keep their deduplicated names in the binder and the validator.
 func TestCollidingGoFieldNamesDedupAcrossConsumers(t *testing.T) {
-	root, files := projectFiles(t, map[string]string{
+	proj := analyzeFiles(t, map[string]string{
 		"m/m.craftgo": `package m
 @requiresOneOf(userId, user_id)
 type R {
@@ -229,14 +210,6 @@ service S {
   post Echo /e { request R  response Resp }
 }`,
 	})
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
-	// The collision raises a WARNING (codegen handles it via the `_2` suffix);
-	// only an error should fail the test.
-	for _, d := range diags {
-		if d.Severity == lexer.SeverityError {
-			t.Fatalf("semantic error: %v", d)
-		}
-	}
 	dir := t.TempDir()
 	mPkg := proj.Packages["m"]
 	r := buildProjectResolver(proj, newFixtureConfig(), "m")
@@ -247,8 +220,6 @@ service S {
 		t.Fatal(err)
 	}
 
-	// The wire binder reads the resolved IR: each colliding field carries the
-	// dedup-resolved Go identifier, so the query assigns both, not one twice.
 	var goNames []string
 	for _, rf := range resolveRequestFields(mPkg.Services["S"].Methods[0], mPkg, r) {
 		goNames = append(goNames, rf.GoName)
@@ -258,8 +229,7 @@ service S {
 	val, _ := os.ReadFile(filepath.Join(dir, "m", "validate.go"))
 	mustParseGo(t, string(val))
 	vs := string(val)
-	// @minLength fires on the first field (UserID); the cross-field group
-	// reads BOTH resolved names - not `v.UserID == nil && v.UserID == nil`.
+	// The cross-field group reads both deduplicated names.
 	mustContainAll(t, vs,
 		"v.UserID != nil",
 		"v.UserID == nil && v.UserID_2 == nil",

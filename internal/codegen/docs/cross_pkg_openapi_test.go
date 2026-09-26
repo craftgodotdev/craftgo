@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -8,9 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// When two packages declare an error of the same name, the OpenAPI merge
-// renames both; the method's @errors decorator must follow the rename so
-// its error response is not silently dropped from the spec.
+// `@errors` follows the merge's rename of an error two packages declare.
 func TestCrossPkgErrorNameCollisionFollowsRename(t *testing.T) {
 	root, files := projectFiles(t, map[string]string{
 		"a/a.craftgo": `package a
@@ -36,8 +35,7 @@ type MkB { name string }`,
 	if len(diags) > 0 {
 		t.Fatalf("semantic: %v", diags)
 	}
-	merged := mergeProjectForOpenAPI(proj)
-	doc, err := buildOpenAPIDoc(merged, &config.Config{})
+	doc, err := buildProjectDocument(proj, &config.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,4 +60,183 @@ type MkB { name string }`,
 	check("/a", "ADupErr") // a's own Dup, renamed
 	check("/b", "BDupErr") // b's own Dup (bare), renamed
 	check("/c", "ADupErr") // b -> a.Dup (qualified), follows a's rename
+}
+
+// `@errors` names the error semantic resolves, in its array form too: a bare
+// name declared in two other packages is the first package's.
+func TestCrossPkgErrorRefsResolveLikeSemantic(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+error NotFound Dup { id string }
+type Out { ok bool }
+service S {
+  @errors([Dup])
+  get Own /own { response Out }
+  @errors([b.Dup])
+  get Qualified /qualified { response Out }
+  @errors(Gone)
+  get Elsewhere /elsewhere { response Out }
+}`,
+		"b/b.craftgo": `package b
+error NotFound Dup { reason string }
+error NotFound Gone { b string }`,
+		"c/c.craftgo": `package c
+error NotFound Gone { c string }`,
+	}, &config.Config{})
+	for path, want := range map[string]string{
+		"/own":       "#/components/schemas/ADupErr",
+		"/qualified": "#/components/schemas/BDupErr",
+		"/elsewhere": "#/components/schemas/BGoneErr",
+	} {
+		r404 := doc.Paths.Find(path).Get.Responses.Status(404)
+		if r404 == nil || r404.Value == nil {
+			t.Errorf("%s: the @errors 404 response is missing", path)
+			continue
+		}
+		if got := r404.Value.Content.Get("application/json").Schema.Ref; got != want {
+			t.Errorf("%s: 404 refs %q, want %q", path, got, want)
+		}
+	}
+}
+
+// Services two packages name alike are each documented with their own
+// prefix, tags and group.
+func TestCrossPkgSameNamedServicesAreAllDocumented(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+type R { ok bool }
+@prefix("/pa")
+@tags(alpha)
+@group("x")
+service S { get One /one { response R } }`,
+		"b/b.craftgo": `package b
+type Q { n int }
+@tags(beta)
+@group("y")
+service S { get Two /two { response Q } }`,
+	}, &config.Config{})
+	for path, want := range map[string][]string{
+		"/pa/one": {"alpha", "x"},
+		"/two":    {"beta", "y"},
+	} {
+		item := doc.Paths.Find(path)
+		if item == nil || item.Get == nil {
+			t.Errorf("GET %s is not documented", path)
+			continue
+		}
+		if !slices.Equal(item.Get.Tags, want) {
+			t.Errorf("GET %s tags = %v, want %v", path, item.Get.Tags, want)
+		}
+	}
+}
+
+// Same-named services of two packages that share a method name keep their
+// own body components, named after their package; the operationIds stay the
+// analyser's.
+func TestCrossPkgSharedMethodNamesKeepTheirOwnComponents(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+type In { x string }
+type Out { y string }
+@prefix("/a")
+@group("ga")
+service S {
+	@operationId("aGet")
+	post Get /get { request In  response Out }
+}`,
+		"b/b.craftgo": `package b
+type Req { z int }
+type Resp { w int }
+@prefix("/b")
+@group("gb")
+service S { post Get /get { request Req  response Resp } }`,
+	}, &config.Config{})
+	for path, want := range map[string]struct{ id, stem, field string }{
+		"/a/get": {id: "aGet", stem: "ASGet", field: "x"},
+		"/b/get": {id: "SGet", stem: "BSGet", field: "z"},
+	} {
+		op := doc.Paths.Find(path).Post
+		if op.OperationID != want.id {
+			t.Errorf("%s operationId = %q, want %q", path, op.OperationID, want.id)
+		}
+		if got := op.RequestBody.Value.Content.Get("application/json").Schema.Ref; got != "#/components/schemas/"+want.stem+"ReqBody" {
+			t.Errorf("%s request body refs %q, want %sReqBody", path, got, want.stem)
+		}
+		if got := op.Responses.Status(201).Value.Content.Get("application/json").Schema.Ref; got != "#/components/schemas/"+want.stem+"RespBody" {
+			t.Errorf("%s response refs %q, want %sRespBody", path, got, want.stem)
+		}
+		if body := doc.Components.Schemas[want.stem+"ReqBody"]; body == nil || body.Value.Properties[want.field] == nil {
+			t.Errorf("%sReqBody does not hold %s's field %q", want.stem, path, want.field)
+		}
+	}
+}
+
+// A type parameter stays a parameter in the merge, even named like a type
+// two packages declare.
+func TestCrossPkgMergeKeepsTypeParameters(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+type T { x int }
+type Item { id string }
+type Box<T> { inner T }
+type Holder { box Box<Item> }
+service S { get L /l { response Holder } }`,
+		"b/b.craftgo": `package b
+type T { y string }`,
+	}, &config.Config{})
+	inst := doc.Components.Schemas["BoxOfItem"]
+	if inst == nil || inst.Value == nil {
+		t.Fatal("no BoxOfItem component")
+	}
+	if got := inst.Value.Properties["inner"].Ref; got != "#/components/schemas/Item" {
+		t.Errorf("BoxOfItem.inner refs %q, want the type argument Item", got)
+	}
+}
+
+// A reference the merge names like a type parameter in scope still names its
+// declaration: `w Dup` in `Box<ADup>` is a's Dup, merged as ADup, and `o b.Item`
+// in `Pair<Item>` is b's Item, merged as Item.
+func TestCrossPkgMergeNeverRenamesOntoTypeParameters(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+import "b"
+type Dup { x int }
+type Box<ADup> {
+	w   Dup
+	val ADup
+}
+type Pair<Item> {
+	o b.Item
+	v Item
+}
+type Holder {
+	box  Box<string>
+	pair Pair<string>
+}
+service S { get L /l { response Holder } }`,
+		"b/b.craftgo": `package b
+type Dup { y string }
+type Item { id string }`,
+	}, &config.Config{})
+	for _, c := range []struct{ inst, field, ref string }{
+		{"BoxOfString", "w", "ADup"},
+		{"BoxOfString", "val", ""},
+		{"PairOfString", "o", "Item"},
+		{"PairOfString", "v", ""},
+	} {
+		s := doc.Components.Schemas[c.inst]
+		if s == nil || s.Value == nil {
+			t.Fatalf("no %s component", c.inst)
+		}
+		prop := s.Value.Properties[c.field]
+		if c.ref != "" {
+			if got := prop.Ref; got != "#/components/schemas/"+c.ref {
+				t.Errorf("%s.%s refs %q, want the declaration merged as %s", c.inst, c.field, got, c.ref)
+			}
+			continue
+		}
+		if prop.Value == nil || !prop.Value.Type.Is("string") {
+			t.Errorf("%s.%s is not the type argument string", c.inst, c.field)
+		}
+	}
 }

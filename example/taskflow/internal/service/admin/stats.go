@@ -5,25 +5,20 @@ package admin
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/admin"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/admin"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// StatsService carries the per-request state for the
-// Stats endpoint of AdminService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// StatsService runs AdminService.Stats for one request.
 type StatsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewStatsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewStatsService binds StatsService to ctx; its Logger carries ctx's trace ids.
 func NewStatsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *StatsService {
 	return &StatsService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewStatsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *St
 	}
 }
 
-// Stats is the service entry point. Replace the
-// TODO with the real implementation.
+// Server + storage counters for the admin dashboard. Public within the admin surface.
+//
+// Stats implements AdminService.Stats.
 func (l *StatsService) Stats() (*types.AdminStats, error) {
 	st := l.svcCtx.Store.Stats()
 	return &st, nil

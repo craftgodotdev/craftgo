@@ -1,10 +1,6 @@
-// Package parser turns a craftgo source buffer into an [ast.File].
-//
-// The implementation is a hand-rolled recursive-descent parser. It runs the
-// [lexer] on construction (in [New]) so callers do not interact with tokens
-// directly. Errors are accumulated as [lexer.Diagnostic] entries; the parser
-// always returns a (possibly partial) AST so that LSP / formatters / linting
-// can keep working in the presence of mistakes.
+// Package parser builds an [ast.File] from craftgo source by recursive
+// descent. It always returns a tree, partial when the source has errors, and
+// reports problems as [lexer.Diagnostic] values.
 package parser
 
 import (
@@ -15,115 +11,92 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// Parser holds the token stream and accumulates diagnostics. Use [New] to
-// construct one and call [Parser.Parse] to drive parsing. Parsers are not
-// safe for concurrent use; create one per file.
+// Parser parses one file. It is not safe for concurrent use.
 type Parser struct {
 	tokens []lexer.Token
 	pos    int
 	diags  []lexer.Diagnostic
-	// pendingDoc carries the leading `//` comments captured from the
-	// first token of the next declaration / member / method. The parser
-	// snapshots it at known sites and `takeDoc()` clears it after the
-	// AST node has claimed the slice.
-	pendingDoc []string
-	// allComments is the snapshot of every `//` comment seen by the
-	// lexer, kept so the parser can populate `*ast.File.Comments` and
-	// (in body parsing) scan for free-floating section headers.
+	// reported holds the position of every diagnostic in diags.
+	reported map[lexer.Position]bool
+	// allComments is every comment in the file.
 	allComments []*lexer.Comment
-	// claimed marks the source lines of comments already owned by an AST
-	// Doc field or the formatter's inter-decorator recovery; body
-	// harvesting turns the unclaimed remainder into [ast.FreeComment]s.
+	// claimed holds the lines of comments a node owns, which
+	// harvestFreeComments skips.
 	claimed map[int]bool
+	// chainComments becomes the file's [ast.File.ChainComments].
+	chainComments map[int][]string
 }
 
-// takeDoc returns the buffered doc-comment slice and clears it so the
-// next AST node sees an empty buffer until the lexer fills one again.
-func (p *Parser) takeDoc() []string {
-	d := p.pendingDoc
-	p.pendingDoc = nil
-	return d
+// docAbove claims the comment lines directly above the current token and
+// returns them.
+func (p *Parser) docAbove() []string {
+	t := p.peek()
+	p.claimDoc(t)
+	return t.Doc
 }
 
-// captureDoc snapshots the doc attached to the current peek token onto
-// the parser's pendingDoc buffer and claims its comment lines. Safe to
-// call multiple times - it overwrites any previous buffer because the
-// freshest peek dominates.
-func (p *Parser) captureDoc() {
-	if len(p.peek().Doc) > 0 {
-		p.pendingDoc = p.peek().Doc
-		p.claimDoc(p.peek())
-	}
-}
-
-// New tokenises src (with filename used for diagnostics) and returns a Parser
-// ready to call [Parser.Parse]. Lexer-level errors are propagated into the
-// parser's diagnostics so callers only need to inspect one slice.
+// New lexes src and returns a Parser whose diagnostics start with the lexer's.
 func New(filename, src string) *Parser {
 	l := lexer.New(filename, src)
 	toks := l.Tokenize()
+	reported := map[lexer.Position]bool{}
+	for _, d := range l.Diagnostics() {
+		reported[d.Pos] = true
+	}
 	return &Parser{
-		tokens:      toks,
-		diags:       l.Diagnostics(),
-		allComments: l.Comments(),
-		claimed:     map[int]bool{},
+		tokens:        toks,
+		diags:         l.Diagnostics(),
+		reported:      reported,
+		allComments:   l.Comments(),
+		claimed:       map[int]bool{},
+		chainComments: map[int][]string{},
 	}
 }
 
-// Diagnostics returns all errors collected during lexing and parsing.
+// Diagnostics returns the lexer and parser diagnostics.
 func (p *Parser) Diagnostics() []lexer.Diagnostic { return p.diags }
 
 // Tokens returns the token stream the parser consumes.
 func (p *Parser) Tokens() []lexer.Token { return p.tokens }
 
-// Parse consumes the entire token stream and returns an [*ast.File]. The
-// returned file is non-nil even when diagnostics were recorded, so callers
-// can offer best-effort downstream behaviour.
-//
-// File-level decorators (those that appear BEFORE `package`) are attached to
-// `f.Decorators`; decorators with no following `package` keyword are passed
-// to the first declaration instead.
+// Parse returns the file's AST, never nil even with diagnostics. Decorators
+// before `package` are the file's; without a package clause they go to the
+// first declaration.
 func (p *Parser) Parse() *ast.File {
 	f := &ast.File{}
-	// Capture the file-header `//` block when it would otherwise be
-	// dropped: a decorator-led file (`@version(...) ... package x`)
-	// lets the lexer attach the comment to the first `@` token, but
-	// [ast.Decorator] has no Doc field, so without this snapshot the
-	// comment vanishes through the parser/format round trip.
+	// The comment above a leading decorator is the file's LeadingDoc.
 	if p.peek().Kind == lexer.At {
-		f.LeadingDoc = p.peek().Doc
-		p.claimDoc(p.peek())
+		f.LeadingDoc = p.docAbove()
 	}
 	leading := p.parseDecorators()
 	if p.peek().Kind == lexer.KwPackage {
+		// The comment directly above `package` is its Doc.
+		if n := len(leading); n > 0 {
+			p.claimChain(leading, leading[n-1].Pos.Line)
+		}
 		f.Decorators = leading
 		leading = nil
 		f.Package = p.parsePackage()
+		p.rejectDecoratorsAfter("declaration", startsDecl)
 	}
 	for p.peek().Kind == lexer.KwImport {
 		f.Imports = append(f.Imports, p.parseImport())
+		p.rejectDecoratorsAfter("declaration", startsDecl)
 	}
-	for p.peek().Kind != lexer.EOF {
-		startPos := p.pos
+	p.each(lexer.EOF, func() {
 		d := p.parseTopLevelWith(leading)
 		leading = nil
 		if d != nil {
 			f.Decls = append(f.Decls, d)
+			p.rejectDecoratorsAfter("declaration", startsDecl)
 		}
-		// Recovery: if no token was consumed, advance one to avoid an
-		// infinite loop on unexpected input.
-		if p.pos == startPos {
-			p.advance()
-		}
-	}
+	})
 	if len(leading) > 0 {
-		// The file ended before a declaration could take the decorators.
 		p.errorf(leading[0].Pos, "decorators without a declaration to attach to")
 	}
 	f.Comments = p.allComments
-	// Whatever leading comment no Doc field or body harvest claimed is a
-	// file-scope free-floating block (between declarations, above the
-	// package line, or trailing the last declaration).
+	f.ChainComments = p.chainComments
+	// The comments still unclaimed are file-scope blocks.
 	f.FreeComments = p.harvestFreeComments(0, int(^uint(0)>>1))
 	return f
 }
@@ -131,9 +104,7 @@ func (p *Parser) Parse() *ast.File {
 // peek returns the current token without consuming it.
 func (p *Parser) peek() lexer.Token { return p.tokens[p.pos] }
 
-// peekAt returns the token n positions ahead. Out-of-range indices clamp to
-// the last token in the stream (always the EOF sentinel) so disambiguation
-// look-aheads do not need bounds checks.
+// peekAt returns the token n ahead, clamped to the final EOF token.
 func (p *Parser) peekAt(n int) lexer.Token {
 	idx := p.pos + n
 	if idx >= len(p.tokens) {
@@ -142,8 +113,7 @@ func (p *Parser) peekAt(n int) lexer.Token {
 	return p.tokens[idx]
 }
 
-// advance consumes and returns the current token. The cursor stops at the
-// final EOF token so repeated calls past the end are idempotent.
+// advance returns the current token and moves past it, stopping at EOF.
 func (p *Parser) advance() lexer.Token {
 	t := p.tokens[p.pos]
 	if p.pos < len(p.tokens)-1 {
@@ -152,35 +122,91 @@ func (p *Parser) advance() lexer.Token {
 	return t
 }
 
-// expect consumes the current token if its kind matches; otherwise records a
-// diagnostic and returns ok=false WITHOUT advancing. The caller is then free
-// to decide between aborting the current production or attempting recovery.
+// expect consumes a token of kind k. On a mismatch it reports the error,
+// consumes nothing and returns ok=false with an empty token at the current
+// position.
 func (p *Parser) expect(k lexer.Kind) (lexer.Token, bool) {
 	if p.peek().Kind == k {
 		return p.advance(), true
 	}
 	p.errorf(p.peek().Pos, "expected %s, got %s", k, p.peek().Kind)
-	return p.peek(), false
+	return lexer.Token{Pos: p.peek().Pos}, false
 }
 
-// errorf records a diagnostic at pos. Used by every error-reporting path so
-// formatting stays uniform across productions.
+// errorf records an error diagnostic at pos unless the lexer or the parser
+// already reported one there, which a second one would only follow from.
 func (p *Parser) errorf(pos lexer.Position, format string, args ...any) {
+	if p.reported[pos] {
+		return
+	}
+	p.reported[pos] = true
 	p.diags = append(p.diags, lexer.Diagnostic{Pos: pos, Msg: fmt.Sprintf(format, args...)})
 }
 
 // peekIs reports whether the current token has kind k.
 func (p *Parser) peekIs(k lexer.Kind) bool { return p.peek().Kind == k }
 
-// isKeywordKind reports whether k is a reserved keyword token (including
-// HTTP verbs). Used to allow keyword spellings as decorator names.
-func isKeywordKind(k lexer.Kind) bool {
-	return k >= lexer.KwPackage && k <= lexer.VerbOptions
+// each calls member at every token before closer or EOF, and skips the token
+// when member consumes none.
+func (p *Parser) each(closer lexer.Kind, member func()) {
+	for !p.peekIs(closer) && !p.peekIs(lexer.EOF) {
+		start := p.pos
+		member()
+		if p.pos == start {
+			p.advance()
+		}
+	}
 }
 
-// isUpperFirst reports whether the first rune of s is an uppercase letter.
-// Used by [parseTypeMember] to bias mixin vs field disambiguation toward Go
-// naming conventions (PascalCase types, lowercase-first field names).
+// braced parses `{`, [Parser.each] member up to `}`, and `}`, and returns the
+// two braces; a missing one is reported and comes back empty.
+func (p *Parser) braced(member func()) (lbrace, rbrace lexer.Token) {
+	lbrace, _ = p.expect(lexer.LBrace)
+	p.each(lexer.RBrace, member)
+	rbrace, _ = p.expect(lexer.RBrace)
+	return lbrace, rbrace
+}
+
+// skipParens consumes from the current `(` through its matching `)`, and
+// reports whether it got there; EOF or a `}` it did not open stops it first.
+func (p *Parser) skipParens() bool {
+	parens, braces := 0, 0
+	for !p.peekIs(lexer.EOF) {
+		switch p.peek().Kind {
+		case lexer.LParen:
+			parens++
+		case lexer.RParen:
+			parens--
+			if parens == 0 {
+				p.advance()
+				return true
+			}
+		case lexer.LBrace:
+			braces++
+		case lexer.RBrace:
+			if braces == 0 {
+				return false
+			}
+			braces--
+		}
+		p.advance()
+	}
+	return false
+}
+
+// listSep consumes the `,` after a list element. Before closer or EOF it
+// consumes nothing; any other token is reported.
+func (p *Parser) listSep(closer lexer.Kind, element string) {
+	switch p.peek().Kind {
+	case lexer.Comma:
+		p.advance()
+	case closer, lexer.EOF:
+	default:
+		p.errorf(p.peek().Pos, "expected ',' or '%s' after %s, got %s", closer, element, p.peek().Kind)
+	}
+}
+
+// isUpperFirst reports whether s starts with an upper-case letter.
 func isUpperFirst(s string) bool {
 	if s == "" {
 		return false

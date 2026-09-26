@@ -8,17 +8,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// NewRateLimitMiddleware constructs the RateLimit middleware.
-//
-// craftgo never overwrites this file after the first generation, so
-// add wiring (token store, logger, rate-limit budget, ...) or change
-// the param types freely.
-//
-// Wire it from main.go:
-//
-//	svc := svccontext.NewServiceContext()
-//	svc.RateLimit = middleware.NewRateLimitMiddleware(/* args */)
-//	routes.RegisterRoutes(srv, svc)
+// NewRateLimitMiddleware returns the RateLimit middleware, which ServiceContext's RateLimit field holds.
 func NewRateLimitMiddleware() server.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

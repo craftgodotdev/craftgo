@@ -1,24 +1,20 @@
-// The number-suffix vocabulary: which suffixes a numeric literal may carry,
-// and what a size suffix is worth in bytes.
 package lexer
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// SizeUnit pairs a size suffix with its byte multiplier. The multiplier
-// travels with the suffix because every consumer of a size literal needs
-// both: a suffix that lexes but has no factor produces a byte count of
-// zero, and the emitters read zero as "no cap" and emit no check at all.
+// SizeUnit is a size suffix and its byte multiplier.
 type SizeUnit struct {
 	Suffix string
 	Bytes  int64
 }
 
-// SizeUnits is the size vocabulary, longest suffix first so a suffix match
-// picks "MB" before "B".
+// SizeUnits lists the size suffixes, longest first so a suffix match tries "MB"
+// before "B".
 var SizeUnits = []SizeUnit{
 	{"GB", 1 << 30},
 	{"MB", 1 << 20},
@@ -26,12 +22,11 @@ var SizeUnits = []SizeUnit{
 	{"B", 1},
 }
 
-// DurationUnits is the duration vocabulary. Every entry is a suffix
-// [time.ParseDuration] accepts, which is what [ParseDuration] converts
-// with (TestDurationUnitsParse pins the two lists to each other).
+// DurationUnits lists the duration suffixes, each one [time.ParseDuration]
+// accepts.
 var DurationUnits = []string{"ns", "us", "µs", "ms", "s", "m", "h"}
 
-// SizeSuffixes returns the size suffixes alone, in [SizeUnits] order.
+// SizeSuffixes returns the size suffixes in [SizeUnits] order.
 func SizeSuffixes() []string {
 	out := make([]string, len(SizeUnits))
 	for i, u := range SizeUnits {
@@ -40,14 +35,9 @@ func SizeSuffixes() []string {
 	return out
 }
 
-// IsDurationSuffix reports whether s is a legal duration suffix.
+// IsDurationSuffix reports whether s is a duration suffix.
 func IsDurationSuffix(s string) bool {
-	for _, u := range DurationUnits {
-		if u == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(DurationUnits, s)
 }
 
 // SizeMultiplier returns the byte multiplier for size suffix s.
@@ -60,9 +50,8 @@ func SizeMultiplier(s string) (int64, bool) {
 	return 0, false
 }
 
-// ParseDuration converts the source text of a duration literal (`30s`,
-// `1.5h`) into a time.Duration. Returns ok=false for a suffix outside
-// [DurationUnits] and for a value that overflows the duration range.
+// ParseDuration converts a duration literal's text (`30s`, `1.5h`) with
+// [time.ParseDuration]; ok is false when that fails.
 func ParseDuration(text string) (time.Duration, bool) {
 	d, err := time.ParseDuration(strings.TrimSpace(text))
 	if err != nil {
@@ -71,10 +60,8 @@ func ParseDuration(text string) (time.Duration, bool) {
 	return d, true
 }
 
-// ParseSize converts the source text of a size literal (`5MB`, `1.5GB`,
-// `1024B`) into a byte count. A bare number is bytes, matching the DSL's
-// "bare number → bytes" rule. Returns ok=false for an unknown suffix, a
-// missing or malformed number, and a value that does not fit an int64.
+// ParseSize converts a size literal's text (`5MB`, `1.5GB`, or a bare byte
+// count) into bytes; ok is false when it is malformed or overflows int64.
 func ParseSize(text string) (int64, bool) {
 	t := strings.TrimSpace(text)
 	if t == "" {
@@ -89,11 +76,8 @@ func ParseSize(text string) (int64, bool) {
 	return scaleSize(t, 1)
 }
 
-// scaleSize multiplies a literal's numeric part by a unit's byte factor.
-// Integers multiply exactly; a fractional part goes through float64 and
-// truncates. A product outside the int64 range reports ok=false rather than
-// wrapping or saturating, so the caller diagnoses the literal instead of
-// enforcing a cap nobody wrote.
+// scaleSize multiplies num by mult, exactly for an integer and truncating for a
+// fraction; ok is false outside the int64 range.
 func scaleSize(num string, mult int64) (int64, bool) {
 	if num == "" {
 		return 0, false
@@ -109,10 +93,9 @@ func scaleSize(num string, mult int64) (int64, bool) {
 	if err != nil {
 		return 0, false
 	}
-	// 2^63 is the first magnitude an int64 cannot hold. NaN fails both
-	// comparisons and so is rejected by the same guard.
 	const outOfRange = float64(1 << 63)
 	scaled := f * float64(mult)
+	// NaN fails both comparisons, so the guard rejects it too.
 	if !(scaled > -outOfRange && scaled < outOfRange) {
 		return 0, false
 	}

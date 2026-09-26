@@ -5,25 +5,20 @@ package collections
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ArrayBoundsService carries the per-request state for the
-// ArrayBounds endpoint of Collections. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ArrayBoundsService runs Collections.ArrayBounds for one request.
 type ArrayBoundsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewArrayBoundsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewArrayBoundsService binds ArrayBoundsService to ctx; its Logger carries ctx's trace ids.
 func NewArrayBoundsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ArrayBoundsService {
 	return &ArrayBoundsService{
 		Logger: log.Default().WithContext(ctx),
@@ -34,8 +29,8 @@ func NewArrayBoundsService(ctx context.Context, svcCtx *svccontext.ServiceContex
 
 // ArrayBounds echoes the canonical @minItems + @maxItems +
 // @uniqueItems combo from Arr_BoundsBasic.
-// ArrayBounds is the service entry point. Replace the
-// TODO with the real implementation.
+//
+// ArrayBounds implements Collections.ArrayBounds.
 func (l *ArrayBoundsService) ArrayBounds(req *types.Arr_BoundsBasic) (*types.Arr_BoundsBasic, error) {
 	// TODO: implement
 	return nil, nil

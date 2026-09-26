@@ -13,26 +13,10 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 )
 
-// order is a payload type of the shape codegen produces: fields, and a
-// Validate the descriptor is handed as a method expression.
-type order struct {
-	ID    string `json:"id"`
-	Count int    `json:"count"`
-}
-
-func (o *order) Validate() error {
-	if o.ID == "" {
-		return errors.New("id is required")
-	}
-	return nil
-}
-
 var (
 	orderPlaced  = events.NewEvent[order]("orders.Placed", (*order).Validate)
 	orderShipped = events.NewEvent[order]("orders.Shipped", nil)
-	// orderBatch is a `payload Order[]` contract as codegen writes it:
-	// the descriptor is typed on the slice, and the validator beside it
-	// is the generated loop over the element type's own Validate.
+	// orderBatch is an array-payload contract as codegen writes it, validating each element.
 	orderBatch = events.NewEvent[[]order]("orders.Batch", validateOrderBatch)
 )
 
@@ -51,8 +35,7 @@ func TestTheDescriptorCarriesItsContract(t *testing.T) {
 	}
 }
 
-// The descriptor is the typed way round the untyped bus: publish a *T,
-// consume a *T, with the encoding in between nobody's business.
+// A descriptor round-trips its payload through the bus.
 func TestADescriptorRoundTripsItsPayload(t *testing.T) {
 	tr := memory.New()
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -79,8 +62,7 @@ func TestADescriptorRoundTripsItsPayload(t *testing.T) {
 	}
 }
 
-// The descriptor's publish is the bus's publish under the contract name,
-// byte for byte: a consumer cannot tell which one sent the message.
+// A descriptor publishes the same message Bus.Publish does.
 func TestADescriptorPublishesWhatTheBusWouldHave(t *testing.T) {
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -100,9 +82,7 @@ func TestADescriptorPublishesWhatTheBusWouldHave(t *testing.T) {
 	}
 }
 
-// A payload that does not validate is refused where it is broken, and
-// nothing goes out - the same failure a consumer would have reported once
-// per subscriber.
+// A payload that does not validate is a *PayloadError and is not published.
 func TestAnInvalidPayloadIsNotPublished(t *testing.T) {
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -137,8 +117,7 @@ func TestPublishingNoPayloadIsAPayloadError(t *testing.T) {
 	}
 }
 
-// A descriptor without validation publishes whatever it is given: the
-// generated one is nil for a payload type with no Validate.
+// A descriptor with no validator publishes any payload.
 func TestADescriptorWithoutValidationPublishesAnything(t *testing.T) {
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -151,9 +130,7 @@ func TestADescriptorWithoutValidationPublishesAnything(t *testing.T) {
 	}
 }
 
-// A payload that is an array of a type needs nothing of the runtime that
-// a single one does not: T is the slice, the body on the wire is a JSON
-// array, and the descriptor round-trips it whole.
+// A descriptor typed on a slice round-trips an array payload whole.
 func TestADescriptorRoundTripsAnArrayPayload(t *testing.T) {
 	tr := memory.New()
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -180,9 +157,7 @@ func TestADescriptorRoundTripsAnArrayPayload(t *testing.T) {
 	}
 }
 
-// One bad element fails the whole publish, the way one bad field does:
-// the generated per-element validator is the descriptor's validation, so
-// its error arrives as a *PayloadError naming the element that broke it.
+// One invalid element fails the whole publish with a *PayloadError naming its index.
 func TestAnInvalidElementIsAPayloadError(t *testing.T) {
 	tr := &recordingTransport{}
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
@@ -203,8 +178,7 @@ func TestAnInvalidElementIsAPayloadError(t *testing.T) {
 	}
 }
 
-// The consuming side validates per element too: a JSON array carrying one
-// broken member is a poison payload, and the typed handler never sees it.
+// An array with one invalid element never reaches the typed handler.
 func TestAnInvalidElementNeverReachesTheHandler(t *testing.T) {
 	bus := events.New(events.WithCodec(codecjson.Codec{}))
 	ran := false
@@ -243,8 +217,7 @@ func deliverTo(t *testing.T, msg *events.Message) (bool, error) {
 	return ran, err
 }
 
-// The control for the three tests below: a payload that decodes and
-// validates does reach the typed handler.
+// A payload that decodes and validates reaches the typed handler.
 func TestAGoodPayloadReachesTheHandler(t *testing.T) {
 	ran, err := deliverTo(t, &events.Message{Event: "orders.Placed", Payload: []byte(`{"id":"o-1"}`)})
 	if err != nil {
@@ -255,8 +228,7 @@ func TestAGoodPayloadReachesTheHandler(t *testing.T) {
 	}
 }
 
-// The same bytes fail the same way on every delivery, so a chain can pick
-// a poison payload out and give the message up rather than retry it.
+// An undecodable payload is a *PayloadError and never reaches the typed handler.
 func TestAnUndecodablePayloadIsAPayloadError(t *testing.T) {
 	ran, err := deliverTo(t, &events.Message{Event: "orders.Placed", Payload: []byte("{")})
 	var payloadErr *events.PayloadError
@@ -282,8 +254,7 @@ func TestAPayloadThatFailsValidationNeverReachesTheHandler(t *testing.T) {
 	}
 }
 
-// A message stamped with another codec is a configuration mistake, not a
-// poison payload: the same bytes decode once the two sides agree.
+// A message stamped with another codec is ErrCodecMismatch, not a *PayloadError.
 func TestAForeignCodecIsNotAPayloadError(t *testing.T) {
 	ran, err := deliverTo(t, &events.Message{
 		Event:    "orders.Placed",
@@ -302,7 +273,7 @@ func TestAForeignCodecIsNotAPayloadError(t *testing.T) {
 	}
 }
 
-// A handler's own error is the handler's: nothing here dresses it up.
+// The typed handler's own error passes through unwrapped.
 func TestTheTypedHandlersErrorIsPassedThrough(t *testing.T) {
 	bus := events.New(events.WithCodec(codecjson.Codec{}))
 	boom := errors.New("downstream unavailable")
@@ -318,9 +289,7 @@ func TestTheTypedHandlersErrorIsPassedThrough(t *testing.T) {
 	}
 }
 
-// Nothing declares a consumer any more, so the descriptor names one after
-// the contract - what [Bus.Plan] and a *PanicError then show - and leaves
-// the chain to the bus.
+// A descriptor's subscription names its consumer after the contract and carries no chain.
 func TestASubscriptionDefaultsItsConsumerToTheContract(t *testing.T) {
 	bus, _ := busOver()
 	sub := orderPlaced.Subscription(bus, "receipts", func(context.Context, *order) error { return nil })
@@ -343,8 +312,7 @@ func TestASubscriptionDefaultsItsConsumerToTheContract(t *testing.T) {
 	}
 }
 
-// A caller who needs another consumer name, or a chain around this one
-// handler, sets the field on the value the descriptor built.
+// A Consumer and Chain set on a descriptor's subscription take effect.
 func TestADescriptorBuildsTheSubscription(t *testing.T) {
 	bus, tr := busOver()
 	var trace string

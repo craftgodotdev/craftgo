@@ -13,9 +13,8 @@ import (
 	"google.golang.org/protobuf/types/pluginpb"
 )
 
-// workspaceProject is a fresh project whose go.work names this repo, so
-// `go tool` resolves the plugins the root go.mod pins - the way a
-// project's own `tool` directives would.
+// workspaceProject returns a fresh project whose go.work uses this repo, so
+// `go tool` finds the plugins the root go.mod pins.
 func workspaceProject(t *testing.T) string {
 	t.Helper()
 	dir, err := filepath.EvalSymlinks(t.TempDir())
@@ -28,9 +27,9 @@ func workspaceProject(t *testing.T) string {
 		t.Fatal(err)
 	}
 	version := "1.26"
-	for _, line := range strings.Split(string(goMod), "\n") {
-		if strings.HasPrefix(line, "go ") {
-			version = strings.TrimSpace(strings.TrimPrefix(line, "go "))
+	for line := range strings.SplitSeq(string(goMod), "\n") {
+		if after, ok := strings.CutPrefix(line, "go "); ok {
+			version = strings.TrimSpace(after)
 		}
 	}
 	for name, body := range map[string]string{
@@ -79,7 +78,7 @@ func TestRunPluginsWritesThePredictedFiles(t *testing.T) {
 	if err := RunPlugins(set, project); err != nil {
 		t.Fatal(err)
 	}
-	pbRoot := set.PBRoot(project)
+	pbRoot := set.pbRoot(project)
 	var written []string
 	_ = filepath.WalkDir(pbRoot, func(path string, d os.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
@@ -145,7 +144,7 @@ func TestResolvePluginNamesBothRoutesWhenUnpinned(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(project, "go.mod"), []byte("module example.com/bare\n\ngo 1.26\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := resolvePlugin(project, Plugin{Name: "protoc-gen-go"})
+	_, err := resolvePlugin(project, pluginCmd{Name: "protoc-gen-go"})
 	if err == nil {
 		t.Fatal("an unpinned tool resolved")
 	}
@@ -154,10 +153,10 @@ func TestResolvePluginNamesBothRoutesWhenUnpinned(t *testing.T) {
 			t.Errorf("error lacks %q:\n%s", want, err)
 		}
 	}
-	if _, err := resolvePlugin(project, Plugin{Name: "protoc-gen-go", Command: "definitely-not-on-path-xyz"}); err == nil || !strings.Contains(err.Error(), "proto.plugins names") {
+	if _, err := resolvePlugin(project, pluginCmd{Name: "protoc-gen-go", Command: "definitely-not-on-path-xyz"}); err == nil || !strings.Contains(err.Error(), "proto.plugins names") {
 		t.Errorf("a missing command must be reported: %v", err)
 	}
-	argv, err := resolvePlugin(project, Plugin{Name: "protoc-gen-go", Command: filepath.Join("bin", "protoc-gen-go")})
+	argv, err := resolvePlugin(project, pluginCmd{Name: "protoc-gen-go", Command: filepath.Join("bin", "protoc-gen-go")})
 	if err != nil || len(argv) != 1 || argv[0] != filepath.Join("bin", "protoc-gen-go") {
 		t.Errorf("a path is run as given: %v %v", argv, err)
 	}
@@ -176,8 +175,8 @@ func responseWith(name string) *pluginpb.CodeGeneratorResponse {
 	return &pluginpb.CodeGeneratorResponse{File: []*pluginpb.CodeGeneratorResponse_File{{Name: proto.String(name), Content: proto.String("x")}}}
 }
 
-// The path is the last line `go tool -n` prints: a cold module cache
-// writes `go: downloading` lines first, and they must not become argv[0].
+// TestToolPathIsTheLastLine checks that lines printed before the path, such as
+// `go: downloading`, never become argv[0].
 func TestToolPathIsTheLastLine(t *testing.T) {
 	for in, want := range map[string]string{
 		"/cache/protoc-gen-go\n": "/cache/protoc-gen-go",

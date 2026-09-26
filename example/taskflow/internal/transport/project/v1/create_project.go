@@ -9,12 +9,13 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/example/taskflow/internal/service/project/v1"
 	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/project"
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// CreateProject returns the http.HandlerFunc for the
-// POST CreateProject endpoint.
+// Create a project (v1).
+//
+// CreateProject returns the POST CreateProject handler.
 func CreateProject(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateProjectReq
@@ -36,8 +37,6 @@ func CreateProject(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

@@ -11,10 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RrNoReq returns the http.HandlerFunc for the
-// GET RrNoReq raw-response endpoint. The handler binds and
-// validates the request, then hands the http.ResponseWriter and
-// *http.Request to logic, which writes the response directly.
+// Raw response, no request: `(w, r) error`, serves a pre-gzipped body.
+//
+// RrNoReq returns the GET RrNoReq handler.
 func RrNoReq(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewRrNoReqService(r.Context(), svcCtx)

@@ -2,10 +2,23 @@
 
 package bindings
 
+// Color is a string-backed enum (bare-ident form, default string
+// values are the ident text). Exercised across path, query, and the
+// cookie binders so every wire-format binder gets the enum cast +
+// validate path.
 type Color string
 
 const (
 	ColorRed   Color = "Red"
 	ColorGreen Color = "Green"
 	ColorBlue  Color = "Blue"
+)
+
+// SensitiveRole has no member at its zero value, so its own Validate refuses
+// one left unset.
+type SensitiveRole string
+
+const (
+	SensitiveRoleAdmin  SensitiveRole = "Admin"
+	SensitiveRoleMember SensitiveRole = "Member"
 )

@@ -17,8 +17,7 @@ import (
 	events "github.com/craftgodotdev/craftgo/pkg/events"
 )
 
-// cluster starts an in-memory broker serving at most the given Kafka
-// release, so a test can say what the broker is capable of.
+// cluster starts an in-memory broker serving at most the given Kafka release.
 func cluster(t *testing.T, topic string, max *kversion.Versions) []string {
 	t.Helper()
 	c, err := kfake.NewCluster(
@@ -33,9 +32,7 @@ func cluster(t *testing.T, topic string, max *kversion.Versions) []string {
 	return c.ListenAddrs()
 }
 
-// shareFromEarliest opts the group into reading what is already on the
-// topic. A share group defaults to "latest", so without this a test that
-// produces before subscribing sees nothing.
+// shareFromEarliest makes group read the records already on the topic.
 func shareFromEarliest(t *testing.T, addrs []string, group string) {
 	t.Helper()
 	cl, err := kgo.NewClient(kgo.SeedBrokers(addrs...))
@@ -65,8 +62,7 @@ func shareFromEarliest(t *testing.T, addrs []string, group string) {
 	}
 }
 
-// deliveries collects what a subscription was handed, so a test can wait
-// for a count rather than sleep for a duration.
+// deliveries collects what a subscription was handed.
 type deliveries struct {
 	mu   sync.Mutex
 	got  []*events.Message
@@ -106,8 +102,7 @@ func (d *deliveries) waitFor(t *testing.T, n int) {
 	}
 }
 
-// quiet asserts no further delivery arrives, which is how "the loop
-// ended" is proved.
+// quiet waits within, then asserts the count is still want.
 func (d *deliveries) quiet(t *testing.T, within time.Duration, want int) {
 	t.Helper()
 	time.Sleep(within)
@@ -126,10 +121,6 @@ func publish(t *testing.T, tr *Transport, contract, key string, body []byte) {
 	}
 }
 
-// The probe is the difference between a refusal at startup and a
-// deployable that boots, serves HTTP, passes readiness and consumes
-// nothing. franz-go reports a missing share API on the first poll, which
-// happens on a goroutine nobody is waiting on.
 func TestSubscribeRefusesAShareGroupTheBrokerCannotServe(t *testing.T) {
 	const contract = "orders.Placed"
 	cases := []struct {
@@ -147,16 +138,14 @@ func TestSubscribeRefusesAShareGroupTheBrokerCannotServe(t *testing.T) {
 			tr := New(cluster(t, contract, c.max), WithShareGroup())
 			defer func() { _ = tr.Close() }()
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 			err := tr.Subscribe(ctx, []events.Subscription{{
 				Event: contract, Consumer: "C", Group: events.Group("g-" + c.release),
 				Handle: func(context.Context, *events.Message) error { return nil },
 			}})
 
 			if c.serves {
-				// 4.1 serves every share key; what it cannot do is renew a
-				// lock, which is asserted separately.
+				// 4.1 serves share groups but cannot renew a lock, tested apart.
 				if err != nil && !strings.Contains(err.Error(), "WithLockRenewInterval") {
 					t.Fatalf("Kafka %s serves the share APIs: %v", c.release, err)
 				}
@@ -174,8 +163,6 @@ func TestSubscribeRefusesAShareGroupTheBrokerCannotServe(t *testing.T) {
 	}
 }
 
-// A refused subscription must not leave its claim behind, or the group
-// would be unusable for anything else afterwards.
 func TestARefusedSubscriptionReleasesItsClaim(t *testing.T) {
 	const contract = "orders.Placed"
 	tr := New(cluster(t, contract, kversion.V3_9_0()), WithShareGroup())
@@ -193,8 +180,6 @@ func TestARefusedSubscriptionReleasesItsClaim(t *testing.T) {
 	}
 }
 
-// Release hands the same record back; reject gives it up. This is the
-// whole reason the share mode exists.
 func TestReleaseRedeliversAndRejectGivesUp(t *testing.T) {
 	const (
 		contract = "orders.Placed"
@@ -208,14 +193,12 @@ func TestReleaseRedeliversAndRejectGivesUp(t *testing.T) {
 	publish(t, tr, contract, "o-1", []byte(`{"id":1}`))
 
 	got := newDeliveries()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {
 			got.add(msg)
-			// Ask for it back once, then give it up: the broker must
-			// produce the same record both times and nothing after.
+			// Ask for it back once, then give it up.
 			if msg.Deliveries() <= 1 {
 				msg.Redeliver()
 			} else {
@@ -243,8 +226,6 @@ func TestReleaseRedeliversAndRejectGivesUp(t *testing.T) {
 	}
 }
 
-// A middleware that keeps asking for a record nothing can handle is a
-// loop, and the cap is what ends it.
 func TestMaxDeliveriesTerminatesARedeliveryLoop(t *testing.T) {
 	const (
 		contract = "orders.Placed"
@@ -259,8 +240,7 @@ func TestMaxDeliveriesTerminatesARedeliveryLoop(t *testing.T) {
 	publish(t, tr, contract, "o-1", []byte(`{}`))
 
 	got := newDeliveries()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {
@@ -276,10 +256,7 @@ func TestMaxDeliveriesTerminatesARedeliveryLoop(t *testing.T) {
 	got.quiet(t, 3*time.Second, cap)
 }
 
-// The runtime clears a disposition a panicking frame asked for, and the
-// adapter has to read cleared as "take it". Without both halves a
-// middleware that asked for redelivery and then panicked would be
-// redelivered for ever with nothing left to stop it.
+// A handler panic clears an earlier Redeliver, so the record is accepted.
 func TestAPanicAfterAskingForRedeliveryDoesNotLoop(t *testing.T) {
 	const (
 		contract = "orders.Placed"
@@ -293,11 +270,9 @@ func TestAPanicAfterAskingForRedeliveryDoesNotLoop(t *testing.T) {
 	publish(t, tr, contract, "o-1", []byte(`{}`))
 
 	got := newDeliveries()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
-	// The bus supplies the recover that clears the flag, which is the
-	// half under test on the runtime's side.
+	// The bus supplies the recover that clears the disposition.
 	bus := events.New(
 		events.WithTransport(tr),
 		events.WithCodec(rawCodec{}),
@@ -325,9 +300,7 @@ func TestAPanicAfterAskingForRedeliveryDoesNotLoop(t *testing.T) {
 	got.quiet(t, 3*time.Second, 1)
 }
 
-// A chain that needs redelivery must not be wired onto a classic group,
-// where Redeliver silently settles. The refusal is at registration,
-// before anything is handed to the broker.
+// Register refuses a required Redeliver on a classic group.
 func TestARequiredDispositionFailsOnAClassicGroup(t *testing.T) {
 	const contract = "orders.Placed"
 	addrs := cluster(t, contract, kversion.V4_2_0())
@@ -348,8 +321,7 @@ func TestARequiredDispositionFailsOnAClassicGroup(t *testing.T) {
 	}
 }
 
-// rawCodec is the identity codec: these tests care about delivery, not
-// encoding, and a payload that is not JSON must still reach a handler.
+// rawCodec is an identity codec for []byte payloads.
 type rawCodec struct{}
 
 func (rawCodec) Name() string { return "raw" }
@@ -363,8 +335,7 @@ func (rawCodec) Marshal(v any) ([]byte, error) {
 
 func (rawCodec) Unmarshal([]byte, any) error { return nil }
 
-// The classic mode is the default and has to keep working: a record
-// reaches the handler and the group's offset advances past it.
+// A classic group delivers a record, with no delivery count.
 func TestAClassicGroupDelivers(t *testing.T) {
 	const (
 		contract = "orders.Placed"
@@ -376,8 +347,7 @@ func TestAClassicGroupDelivers(t *testing.T) {
 	defer func() { _ = tr.Close() }()
 
 	got := newDeliveries()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {
@@ -395,15 +365,11 @@ func TestAClassicGroupDelivers(t *testing.T) {
 	if got.got[0].Key != "o-1" {
 		t.Errorf("delivered %+v", got.got[0])
 	}
-	// A classic group has no per-record delivery count to report.
 	if n := got.got[0].Deliveries(); n != 0 {
 		t.Errorf("deliveries = %d, want 0 - a classic group does not count", n)
 	}
 }
 
-// A batch is registered whole. One Subscribe call carrying two
-// subscriptions leaves both reading - each joins its own group, so the
-// record reaches both rather than being divided between them.
 func TestOneSubscribeCallRegistersEverySubscriptionInTheBatch(t *testing.T) {
 	const contract = "orders.Placed"
 	tr := New(cluster(t, contract, kversion.V4_2_0()))
@@ -416,8 +382,7 @@ func TestOneSubscribeCallRegistersEverySubscriptionInTheBatch(t *testing.T) {
 			return nil
 		}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{
 		{Event: contract, Consumer: "A", Group: "batch-a", Handle: handle(reader["batch-a"])},
 		{Event: contract, Consumer: "B", Group: "batch-b", Handle: handle(reader["batch-b"])},
@@ -436,9 +401,6 @@ func TestOneSubscribeCallRegistersEverySubscriptionInTheBatch(t *testing.T) {
 	}
 }
 
-// A topic carrying a contract this subscription does not consume is a
-// mapping mistake, and it used to be taken as done in silence with the
-// error handler called zero times. It is reported now.
 func TestAForeignContractOnTheTopicIsReported(t *testing.T) {
 	const (
 		mine   = "orders.Placed"
@@ -462,8 +424,7 @@ func TestAForeignContractOnTheTopicIsReported(t *testing.T) {
 	defer func() { _ = tr.Close() }()
 
 	got := newDeliveries()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: mine, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {
@@ -495,9 +456,7 @@ func TestAForeignContractOnTheTopicIsReported(t *testing.T) {
 	}
 }
 
-// A middleware reaching for what events.Message does not carry - the
-// partition, the offset, the record timestamp - gets the record the
-// delivery came from.
+// RecordFrom returns the record a delivery came from.
 func TestTheRecordIsReachableFromADelivery(t *testing.T) {
 	const contract = "orders.Placed"
 	addrs := cluster(t, contract, kversion.V4_2_0())
@@ -516,8 +475,7 @@ func TestTheRecordIsReachableFromADelivery(t *testing.T) {
 		got seen
 	)
 	done := make(chan struct{})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: "raw",
 		Handle: func(hctx context.Context, _ *events.Message) error {
@@ -552,12 +510,7 @@ func TestTheRecordIsReachableFromADelivery(t *testing.T) {
 	}
 }
 
-// A caller option that would change what a client IS must fail
-// construction, at EVERY site - not just the consumer. A producer or a
-// probe that quietly joined a consumer group would be a second member
-// splitting the stream, outside the claim guard that exists to stop
-// exactly that, and a probe joining for a moment rebalances the live
-// group.
+// A group or topic client option fails both the producer and the share probe.
 func TestAGroupOptionFromAClientOptionIsRefusedAtEverySite(t *testing.T) {
 	const contract = "orders.Placed"
 	addrs := cluster(t, contract, kversion.V4_2_0())
@@ -588,8 +541,7 @@ func TestAGroupOptionFromAClientOptionIsRefusedAtEverySite(t *testing.T) {
 			// And neither must the share-API probe.
 			share := New(addrs, WithShareGroup(), WithClientOptions(c.opt))
 			defer func() { _ = share.Close() }()
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 			if err := share.Subscribe(ctx, []events.Subscription{{
 				Event: contract, Consumer: "C", Group: "real",
 				Handle: func(context.Context, *events.Message) error { return nil },
@@ -600,16 +552,13 @@ func TestAGroupOptionFromAClientOptionIsRefusedAtEverySite(t *testing.T) {
 	}
 }
 
-// The legitimate consumer passes its OWN group and is checked against it
-// rather than excused from the check, which is what stops a fourth
-// construction site inheriting no check at all.
+// A consumer joining its own group passes the identity check.
 func TestTheRealConsumerPassesTheSameGuard(t *testing.T) {
 	const contract = "orders.Placed"
 	tr := New(cluster(t, contract, kversion.V4_2_0()))
 	defer func() { _ = tr.Close() }()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: "real",
 		Handle: func(context.Context, *events.Message) error { return nil },
@@ -618,8 +567,6 @@ func TestTheRealConsumerPassesTheSameGuard(t *testing.T) {
 	}
 }
 
-// A client option that does NOT touch the consuming identity is passed
-// through, which is the point of the option.
 func TestAnOrdinaryClientOptionIsPassedThrough(t *testing.T) {
 	const contract = "orders.Placed"
 	tr := New(cluster(t, contract, kversion.V4_2_0()), WithClientOptions(kgo.ClientID("mine")))
@@ -632,12 +579,7 @@ func TestAnOrdinaryClientOptionIsPassedThrough(t *testing.T) {
 	}
 }
 
-// Kafka 4.1 serves every share key, so a presence check lets it through -
-// but renewal rides on ShareAcknowledge v2, and franz-go sets the renew
-// flag whatever the negotiated version is. On 4.1 the flag is simply not
-// on the wire, so the lock lapses under a slow handler and nothing
-// reports it. The floor is asserted on the VERSION, and only when
-// renewal is on.
+// With renewal on, Subscribe refuses a broker below ShareAcknowledge v2.
 func TestSubscribeRefusesABrokerThatCannotRenewTheLock(t *testing.T) {
 	const contract = "orders.Placed"
 	addrs := cluster(t, contract, kversion.V4_1_0())
@@ -658,9 +600,6 @@ func TestSubscribeRefusesABrokerThatCannotRenewTheLock(t *testing.T) {
 	}
 }
 
-// The refusal is the renewal's, not share mode's: 4.1 serves share groups
-// and honours release and reject, which are v1 ack types. A deployment
-// that turns renewal off gets them.
 func TestABrokerWithoutRenewalStillServesShareModeWithoutIt(t *testing.T) {
 	const contract = "orders.Placed"
 	addrs := cluster(t, contract, kversion.V4_1_0())
@@ -671,8 +610,7 @@ func TestABrokerWithoutRenewalStillServesShareModeWithoutIt(t *testing.T) {
 	publish(t, tr, contract, "o-1", []byte(`{}`))
 
 	got := newDeliveries()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: "no-renew",
 		Handle: func(_ context.Context, msg *events.Message) error {

@@ -11,9 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RqNoResp returns the http.HandlerFunc for the
-// GET RqNoResp raw-request endpoint. The handler hands the
-// *http.Request to logic unread and encodes the returned response.
+// Raw request, no response: `(r) error`, 204 on success.
+//
+// RqNoResp returns the GET RqNoResp handler.
 func RqNoResp(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewRqNoRespService(r.Context(), svcCtx)

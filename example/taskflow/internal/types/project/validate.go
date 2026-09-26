@@ -7,8 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-// Validate checks every field-level constraint declared on CreateProjectReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CreateProjectReq) Validate() error {
 	if err := v.Key.Validate(); err != nil {
 		return fmt.Errorf("key: %w", err)
@@ -24,8 +23,7 @@ func (v *CreateProjectReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CreateProjectV2Req.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CreateProjectV2Req) Validate() error {
 	if err := v.Key.Validate(); err != nil {
 		return fmt.Errorf("key: %w", err)
@@ -47,8 +45,7 @@ func (v *CreateProjectV2Req) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GetProjectReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GetProjectReq) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -56,8 +53,7 @@ func (v *GetProjectReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ListProjectsReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ListProjectsReq) Validate() error {
 	if err := v.PageParams.Validate(); err != nil {
 		return err
@@ -73,8 +69,7 @@ func (v *ListProjectsReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ListProjectsV2Req.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ListProjectsV2Req) Validate() error {
 	if err := v.PageParams.Validate(); err != nil {
 		return err
@@ -92,8 +87,7 @@ func (v *ListProjectsV2Req) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Project.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Project) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -124,8 +118,7 @@ func (v *Project) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ProjectV2.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ProjectV2) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -162,14 +155,15 @@ func (v *ProjectV2) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UpdateProjectReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UpdateProjectReq) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
 	}
-	if v.Name != nil && (utf8.RuneCountInString(*v.Name) < 1 || utf8.RuneCountInString(*v.Name) > 80) {
-		return fmt.Errorf("name: length out of range [1, 80]")
+	if v.Name != nil {
+		if l := utf8.RuneCountInString(*v.Name); l < 1 || l > 80 {
+			return fmt.Errorf("name: length out of range [1, 80]")
+		}
 	}
 	if v.Color != nil {
 		if err := v.Color.Validate(); err != nil {
@@ -179,13 +173,12 @@ func (v *UpdateProjectReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ProjectStatus.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v ProjectStatus) Validate() error {
 	switch v {
 	case ProjectStatusActive, ProjectStatusArchived:
 	default:
-		return fmt.Errorf("invalid ProjectStatus value")
+		return fmt.Errorf("must be one of [active archived]")
 	}
 	return nil
 }

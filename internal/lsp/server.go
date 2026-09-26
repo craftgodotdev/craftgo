@@ -1,26 +1,6 @@
-// Package lsp implements the CraftGo Language Server Protocol surface.
-//
-// The server speaks LSP over stdio (a [jsonrpc2.Stream] wrapped around the
-// caller's [io.Reader] / [io.Writer]) and forwards each open document
-// through the existing parser + semantic analyser. Diagnostics published by
-// the server are exactly the diagnostics the CLI would emit for the same
-// source, so editor and CLI behaviour stay aligned by construction.
-//
-// Currently supported:
-//
-//   - initialize / initialized / shutdown / exit lifecycle
-//   - textDocument/didOpen / didChange / didSave / didClose
-//   - textDocument/publishDiagnostics on every successful parse pass
-//   - textDocument/hover (decorator, type ref, builtin docs)
-//   - textDocument/completion (decorators, types, fields)
-//   - textDocument/definition (cross-file decl resolution)
-//   - textDocument/references (find all uses)
-//   - textDocument/documentSymbol (outline)
-//   - textDocument/formatting (canonical re-print via internal/format)
-//   - textDocument/rename (declarations + every reference)
-//
-// Any other request returns [jsonrpc2.ErrMethodNotFound], which clients
-// treat as "feature unsupported".
+// Package lsp implements the craftgo language server over a stdio stream.
+// It keeps only the open buffers: every request parses what it needs again
+// and reads the rest of the design project from disk.
 package lsp
 
 import (
@@ -29,6 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -37,32 +20,23 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/designopts"
 )
 
-// Version is the server's reported version, surfaced via Initialize so
-// clients can include it in trace logs. The source value is the fallback for
-// `go install`; release builds inject the git tag via
-// `-ldflags="-X ...internal/lsp.Version=<tag>"` (see .goreleaser.yaml), so it
-// must be a var - `-X` cannot write a const.
-var Version = "1.9.0"
+// errExitWithoutShutdown reports an `exit` that arrived before `shutdown`;
+// LSP requires a non-zero exit status then.
+var errExitWithoutShutdown = errors.New("exit notification without prior shutdown")
 
-// ErrExitWithoutShutdown reports an `exit` notification that arrived before
-// `shutdown`. LSP requires the server process to terminate with a non-zero
-// status in that case.
-var ErrExitWithoutShutdown = errors.New("exit notification without prior shutdown")
-
-// Serve runs the LSP loop on the supplied stdio streams. It blocks until the
-// client sends `exit`, the peer closes the connection, or the context is
-// cancelled, and returns the terminating error (nil on a clean shutdown,
-// [ErrExitWithoutShutdown] when `exit` arrived without a preceding
-// `shutdown`).
-func Serve(ctx context.Context, in io.Reader, out io.Writer) error {
+// Serve speaks LSP over in and out until `exit` or the end of the connection,
+// reporting version on initialize; an `exit` without `shutdown` is an error.
+func Serve(ctx context.Context, in io.Reader, out io.Writer, version string) error {
 	stream := jsonrpc2.NewStream(&stdioRWC{in: in, out: out})
 	conn := jsonrpc2.NewConn(stream)
-	srv := &Server{
-		conn: conn,
-		docs: make(map[uri.URI]*document),
-		exit: make(chan struct{}),
+	srv := &server{
+		conn:    conn,
+		version: version,
+		docs:    make(map[uri.URI]string),
+		exit:    make(chan struct{}),
 	}
 	conn.Go(ctx, srv.handler)
 	select {
@@ -70,7 +44,7 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		if srv.shutdownRequested() {
 			return nil
 		}
-		return ErrExitWithoutShutdown
+		return errExitWithoutShutdown
 	case <-conn.Done():
 		if err := conn.Err(); err != nil && !errors.Is(err, io.EOF) {
 			return err
@@ -79,45 +53,36 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	}
 }
 
-// Server holds the server-side state. The zero value is not useful - call
-// [Serve] which constructs and wires one for the duration of the session.
-type Server struct {
-	conn     jsonrpc2.Conn
-	mu       sync.Mutex
-	docs     map[uri.URI]*document
-	exit     chan struct{}
-	exitOnce sync.Once
-	shutdown bool
+// server is the state of one LSP session; [Serve] builds it.
+type server struct {
+	conn      jsonrpc2.Conn
+	version   string
+	mu        sync.Mutex         // guards docs, manifests and shutdown
+	docs      map[uri.URI]string // the full text of each open file (full sync)
+	manifests map[string]bool    // the manifests whose diagnostics were published
+	exit      chan struct{}
+	exitOnce  sync.Once
+	shutdown  bool
 }
 
-func (s *Server) signalExit() {
+func (s *server) signalExit() {
 	s.exitOnce.Do(func() { close(s.exit) })
 }
 
-func (s *Server) requestShutdown() {
+func (s *server) requestShutdown() {
 	s.mu.Lock()
 	s.shutdown = true
 	s.mu.Unlock()
 }
 
-func (s *Server) shutdownRequested() bool {
+func (s *server) shutdownRequested() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.shutdown
 }
 
-// document caches the latest content of an open file. The version is the
-// LSP-supplied counter the editor uses to keep us in sync; we accept full
-// syncs only (TextDocumentSyncKindFull), so each didChange replaces text
-// wholesale rather than applying incremental edits.
-type document struct {
-	text    string
-	version int32
-}
-
-// stdioRWC adapts a separate [io.Reader] and [io.Writer] into the
-// [io.ReadWriteCloser] that jsonrpc2 expects. Close is a no-op because
-// stdio descriptors are owned by the parent process.
+// stdioRWC joins in and out into the [io.ReadWriteCloser] jsonrpc2 needs.
+// Close is a no-op: the caller owns both streams.
 type stdioRWC struct {
 	in  io.Reader
 	out io.Writer
@@ -127,15 +92,15 @@ func (r *stdioRWC) Read(p []byte) (int, error)  { return r.in.Read(p) }
 func (r *stdioRWC) Write(p []byte) (int, error) { return r.out.Write(p) }
 func (r *stdioRWC) Close() error                { return nil }
 
-// handler is the single entry point the jsonrpc2 layer calls for every
-// inbound message. It dispatches by method name; each case decodes the
-// concrete params struct, performs the work, and replies.
-func (s *Server) handler(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+// handler dispatches every inbound message by method; an unknown method
+// gets [jsonrpc2.ErrMethodNotFound].
+func (s *server) handler(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	switch req.Method() {
 	case protocol.MethodInitialize:
-		return s.onInitialize(ctx, reply, req)
+		return handle(ctx, reply, req, s.onInitialize)
 	case protocol.MethodInitialized:
-		return s.onInitialized(ctx, reply, req)
+		s.onInitialized(ctx)
+		return reply(ctx, nil, nil)
 	case protocol.MethodShutdown:
 		s.requestShutdown()
 		return reply(ctx, nil, nil)
@@ -144,55 +109,99 @@ func (s *Server) handler(ctx context.Context, reply jsonrpc2.Replier, req jsonrp
 		s.signalExit()
 		return err
 	case protocol.MethodTextDocumentDidOpen:
-		return s.onDidOpen(ctx, reply, req)
+		return handle(ctx, reply, req, s.onDidOpen)
 	case protocol.MethodTextDocumentDidChange:
-		return s.onDidChange(ctx, reply, req)
+		return handle(ctx, reply, req, s.onDidChange)
 	case protocol.MethodTextDocumentDidClose:
-		return s.onDidClose(ctx, reply, req)
+		return handle(ctx, reply, req, s.onDidClose)
 	case protocol.MethodTextDocumentDidSave:
-		// Re-validate on save in case the editor sent a "save without
-		// change" event (e.g. external formatter rewrote the file).
-		return s.onDidSave(ctx, reply, req)
+		return handle(ctx, reply, req, s.onDidSave)
 	case protocol.MethodWorkspaceDidChangeWatchedFiles:
-		// A `.craftgo` file was created / deleted / changed on disk (possibly
-		// outside the editor, or a file the user never opened). Cross-package
-		// resolution re-reads the disk per request, but the diagnostics on
-		// already-open files are only refreshed when those files are edited -
-		// so re-run them now against the new project state.
-		return s.onDidChangeWatchedFiles(ctx, reply, req)
+		s.onDidChangeWatchedFiles(ctx)
+		return reply(ctx, nil, nil)
 	case protocol.MethodTextDocumentHover:
-		return s.onHover(ctx, reply, req)
+		return handle(ctx, reply, req, s.onHover)
 	case protocol.MethodTextDocumentCompletion:
-		return s.onCompletion(ctx, reply, req)
+		return handle(ctx, reply, req, s.onCompletion)
 	case protocol.MethodTextDocumentDefinition:
-		return s.onDefinition(ctx, reply, req)
+		return handle(ctx, reply, req, s.onDefinition)
 	case protocol.MethodTextDocumentReferences:
-		return s.onReferences(ctx, reply, req)
+		return handle(ctx, reply, req, s.onReferences)
 	case protocol.MethodTextDocumentDocumentSymbol:
-		return s.onDocumentSymbol(ctx, reply, req)
+		return handle(ctx, reply, req, s.onDocumentSymbol)
 	case protocol.MethodTextDocumentFormatting:
-		return s.onFormatting(ctx, reply, req)
+		return handle(ctx, reply, req, s.onFormatting)
 	case protocol.MethodTextDocumentPrepareRename:
-		return s.onPrepareRename(ctx, reply, req)
+		return handle(ctx, reply, req, s.onPrepareRename)
 	case protocol.MethodTextDocumentRename:
-		return s.onRename(ctx, reply, req)
+		return handle(ctx, reply, req, s.onRename)
 	case protocol.MethodTextDocumentDocumentHighlight:
-		return s.onDocumentHighlight(ctx, reply, req)
+		return handle(ctx, reply, req, s.onDocumentHighlight)
 	case protocol.MethodTextDocumentSignatureHelp:
-		return s.onSignatureHelp(ctx, reply, req)
+		return handle(ctx, reply, req, s.onSignatureHelp)
 	case protocol.MethodWorkspaceSymbol:
-		return s.onWorkspaceSymbol(ctx, reply, req)
+		return handle(ctx, reply, req, s.onWorkspaceSymbol)
 	default:
 		return reply(ctx, nil, fmt.Errorf("%q: %w", req.Method(), jsonrpc2.ErrMethodNotFound))
 	}
 }
 
-func (s *Server) onInitialize(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.InitializeParams
+// handle decodes the params of req into P, runs fn on them and replies with
+// its result; params that do not decode are the reply's error.
+func handle[P any](ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request, fn func(context.Context, P) (any, error)) error {
+	var params P
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
 		return reply(ctx, nil, err)
 	}
-	return reply(ctx, &protocol.InitializeResult{
+	result, err := fn(ctx, params)
+	return reply(ctx, result, err)
+}
+
+// request is one request on an open buffer. The buffer is parsed once: by
+// the project when [request.project] runs first, else on its own.
+type request struct {
+	s      *server
+	uri    protocol.DocumentURI
+	path   string // "" for a buffer with no file
+	src    string
+	parsed *snapshotView
+	proj   *projectView
+}
+
+// open returns the request on the buffer at u, or false when u is not open.
+func (s *server) open(u protocol.DocumentURI) (*request, bool) {
+	src, ok := s.snapshot(u)
+	if !ok {
+		return nil, false
+	}
+	return &request{s: s, uri: u, path: uriToPath(string(u)), src: src}, true
+}
+
+// view returns the parsed buffer.
+func (r *request) view() snapshotView {
+	if r.parsed == nil {
+		var v snapshotView
+		if r.proj != nil {
+			v = r.proj.buffer()
+		} else {
+			v = parseSnapshot(r.path, r.src)
+		}
+		r.parsed = &v
+	}
+	return *r.parsed
+}
+
+// project returns the analysed project of the buffer, loaded on first use.
+func (r *request) project() projectView {
+	if r.proj == nil {
+		v := r.s.loadProject(r.path, r.src)
+		r.proj = &v
+	}
+	return *r.proj
+}
+
+func (s *server) onInitialize(_ context.Context, _ protocol.InitializeParams) (any, error) {
+	return &protocol.InitializeResult{
 		Capabilities: protocol.ServerCapabilities{
 			TextDocumentSync:           protocol.TextDocumentSyncKindFull,
 			HoverProvider:              true,
@@ -203,126 +212,95 @@ func (s *Server) onInitialize(ctx context.Context, reply jsonrpc2.Replier, req j
 			DocumentHighlightProvider:  true,
 			DocumentFormattingProvider: true,
 			SignatureHelpProvider: &protocol.SignatureHelpOptions{
-				// `(` opens a decorator-argument list, `,` advances to
-				// the next parameter slot - both should re-fetch
-				// signature help so the active parameter highlight
-				// follows the cursor.
 				TriggerCharacters:   []string{"(", ","},
 				RetriggerCharacters: []string{","},
 			},
 			RenameProvider: &protocol.RenameOptions{PrepareProvider: true},
 			CompletionProvider: &protocol.CompletionOptions{
-				// Generous trigger set so completion auto-fires at
-				// every transition the user is likely to want help
-				// at: decorator start (`@`), token boundary
-				// (space, comma), qualified ref (`.`), path segment
-				// (`/`), brace open (`{`), and string open (`"`)
-				// for `import "..."` paths. Identifier-letter
-				// triggering is delegated to VSCode's
-				// `editor.quickSuggestions.other` (set in the
-				// extension's configurationDefaults).
 				TriggerCharacters: []string{"@", " ", ",", ".", "/", "{", "\""},
 			},
 		},
 		ServerInfo: &protocol.ServerInfo{
 			Name:    "craftgo-lsp",
-			Version: Version,
+			Version: s.version,
 		},
-	}, nil)
+	}, nil
 }
 
-// snapshot returns the cached text for u (and an empty string when the
-// document has not been opened). All feature handlers go through this so
-// they can short-circuit when the editor has already closed the file.
-func (s *Server) snapshot(u uri.URI) string {
+// snapshot returns the open text of u and whether u is open.
+func (s *server) snapshot(u uri.URI) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if d, ok := s.docs[u]; ok {
-		return d.text
-	}
-	return ""
+	text, ok := s.docs[u]
+	return text, ok
 }
 
-func (s *Server) onDidOpen(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.DidOpenTextDocumentParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
-	}
-	s.storeDoc(params.TextDocument.URI, params.TextDocument.Text, params.TextDocument.Version)
+func (s *server) onDidOpen(ctx context.Context, params protocol.DidOpenTextDocumentParams) (any, error) {
+	s.storeDoc(params.TextDocument.URI, params.TextDocument.Text)
 	s.publishDiagnostics(ctx, params.TextDocument.URI, params.TextDocument.Text)
-	return reply(ctx, nil, nil)
+	return nil, nil
 }
 
-func (s *Server) onDidChange(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.DidChangeTextDocumentParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
-	}
+func (s *server) onDidChange(ctx context.Context, params protocol.DidChangeTextDocumentParams) (any, error) {
 	if len(params.ContentChanges) == 0 {
-		return reply(ctx, nil, nil)
+		return nil, nil
 	}
-	// Full-sync mode - the editor sends one change containing the entire
-	// new buffer. The last change wins if multiple are batched (defensive).
+	// Full sync: the last change carries the whole buffer.
 	text := params.ContentChanges[len(params.ContentChanges)-1].Text
-	s.storeDoc(params.TextDocument.URI, text, params.TextDocument.Version)
+	s.storeDoc(params.TextDocument.URI, text)
 	s.publishDiagnostics(ctx, params.TextDocument.URI, text)
-	return reply(ctx, nil, nil)
+	return nil, nil
 }
 
-func (s *Server) onDidSave(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.DidSaveTextDocumentParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
-	}
-	// If the save event includes the post-save text, refresh the cache
-	// before re-validating; otherwise re-use whatever we already have.
+func (s *server) onDidSave(ctx context.Context, params protocol.DidSaveTextDocumentParams) (any, error) {
+	// A save without text re-checks the open buffer.
 	text := params.Text
 	if text == "" {
-		s.mu.Lock()
-		if d, ok := s.docs[params.TextDocument.URI]; ok {
-			text = d.text
+		cached, ok := s.snapshot(params.TextDocument.URI)
+		if !ok {
+			return nil, nil
 		}
-		s.mu.Unlock()
+		text = cached
 	} else {
-		s.storeDoc(params.TextDocument.URI, text, 0)
+		s.storeDoc(params.TextDocument.URI, text)
 	}
-	if text != "" {
-		s.publishDiagnostics(ctx, params.TextDocument.URI, text)
-	}
-	return reply(ctx, nil, nil)
+	s.publishDiagnostics(ctx, params.TextDocument.URI, text)
+	return nil, nil
 }
 
-func (s *Server) onDidClose(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.DidCloseTextDocumentParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
-	}
+// onDidClose drops the buffer of the closed file and clears its diagnostics,
+// then re-checks the open files of its design root, which were analysed with
+// that buffer: an unsaved edit no longer counts.
+func (s *server) onDidClose(ctx context.Context, params protocol.DidCloseTextDocumentParams) (any, error) {
+	closed := params.TextDocument.URI
 	s.mu.Lock()
-	delete(s.docs, params.TextDocument.URI)
+	delete(s.docs, closed)
 	s.mu.Unlock()
-	// Clear diagnostics so the editor doesn't keep stale squigglies on a
-	// file we are no longer tracking.
-	_ = s.conn.Notify(ctx, protocol.MethodTextDocumentPublishDiagnostics, &protocol.PublishDiagnosticsParams{
-		URI:         params.TextDocument.URI,
-		Diagnostics: []protocol.Diagnostic{},
-	})
-	return reply(ctx, nil, nil)
+	// An empty list clears the closed file's diagnostics.
+	s.publish(ctx, closed, []protocol.Diagnostic{})
+	_, root := designopts.ProjectOf(uriToPath(string(closed)))
+	if root == "" {
+		return nil, nil
+	}
+	// One publishDiagnostics covers every open file under the root.
+	for u, src := range s.openDocs() {
+		if _, r := designopts.ProjectOf(uriToPath(string(u))); r == root {
+			s.publishDiagnostics(ctx, u, src)
+			return nil, nil
+		}
+	}
+	if m := manifestPath(root); slices.Contains(s.publishedManifests(), m) {
+		s.publishManifest(ctx, m, nil)
+	}
+	return nil, nil
 }
 
-// onInitialized registers a workspace file watcher for `**/*.craftgo` so the
-// client forwards create / change / delete events for every design file -
-// including files the user has not opened and changes made outside the editor.
-// Registration is best-effort: a client without dynamic-registration support
-// rejects it, and on-demand features re-walk the disk regardless, so a failure
-// is non-fatal. The `client/registerCapability` request is sent from a
-// goroutine because the jsonrpc2 read loop is single-threaded - blocking the
-// handler on the client's reply here would deadlock the connection.
-func (s *Server) onInitialized(ctx context.Context, reply jsonrpc2.Replier, _ jsonrpc2.Request) error {
+// onInitialized asks the client to watch the design files and the manifest; a
+// refusal is ignored. The call runs in a goroutine: the jsonrpc2 read loop is
+// single-threaded, so waiting for the reply in the handler would deadlock.
+func (s *server) onInitialized(ctx context.Context) {
 	go func() {
-		// ctx is the connection-scoped handler context; derive a child that
-		// also unblocks the Call when the connection itself tears down (a
-		// client EOF cancels conn.Done() but not necessarily ctx), so the
-		// goroutine can never outlive the session waiting on a reply.
+		// A closed connection cancels the call, so the goroutine never outlives it.
 		callCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		go func() {
@@ -334,12 +312,9 @@ func (s *Server) onInitialized(ctx context.Context, reply jsonrpc2.Replier, _ js
 		}()
 		_, _ = s.conn.Call(callCtx, protocol.MethodClientRegisterCapability, watchedFilesRegistration(), nil)
 	}()
-	return reply(ctx, nil, nil)
 }
 
-// watchedFilesGlob builds the workspace file-watch pattern from the canonical
-// source extensions - e.g. `**/*.{craftgo,cg}`. Brace groups are part of the
-// LSP glob syntax, so a single watcher covers every accepted extension.
+// watchedFilesGlob matches every design-file extension, e.g. `**/*.{craftgo,cg}`.
 func watchedFilesGlob() string {
 	bare := make([]string, len(config.DesignFileExtensions))
 	for i, e := range config.DesignFileExtensions {
@@ -348,20 +323,13 @@ func watchedFilesGlob() string {
 	return "**/*.{" + strings.Join(bare, ",") + "}"
 }
 
-// manifestGlob watches craftgo.design.yaml. The manifest is an input to
-// the analysis - it supplies the security schemes, the base path and the
-// file case - so a design that is wrong only because the manifest is
-// stale has to re-check when the manifest is saved. Without it adding a
-// scheme leaves the squiggle on screen until the user happens to type in
-// a design file.
+// manifestGlob matches the manifest, which is an input to the analysis.
 func manifestGlob() string {
 	return "**/" + config.Filename
 }
 
-// watchedFilesRegistration is the `client/registerCapability` payload that
-// subscribes the server to create / change / delete events for every craftgo
-// source file and for the manifest (Kind omitted → the client watches all
-// three).
+// watchedFilesRegistration subscribes to create, change and delete events (an
+// omitted Kind means all three) for the design files and the manifest.
 func watchedFilesRegistration() protocol.RegistrationParams {
 	return protocol.RegistrationParams{
 		Registrations: []protocol.Registration{{
@@ -377,23 +345,13 @@ func watchedFilesRegistration() protocol.RegistrationParams {
 	}
 }
 
-// onDidChangeWatchedFiles refreshes diagnostics for every open document after a
-// `.craftgo` file changed on disk. The fresh pass re-walks the project, so a
-// deleted type stops resolving (and a re-added one resolves again) in the
-// squigglies of dependent open files without the user touching them.
-func (s *Server) onDidChangeWatchedFiles(ctx context.Context, reply jsonrpc2.Replier, _ jsonrpc2.Request) error {
-	// publishDiagnostics already re-analyses the whole project and re-publishes
-	// every OTHER open file under the trigger's design root, so calling it once
-	// per distinct root (not once per open doc) refreshes everything while
-	// avoiding an N-times disk re-walk and N*N notifications. Docs with no
-	// resolvable root fall through to publishDiagnostics's single-file path.
+// onDidChangeWatchedFiles re-publishes the diagnostics of every open document
+// and every manifest published before, after a watched file changes on disk.
+func (s *server) onDidChangeWatchedFiles(ctx context.Context) {
+	// One publishDiagnostics per design root covers every open file under it.
 	seenRoots := map[string]bool{}
-	for u := range s.openDocURIs() {
-		src := s.snapshot(u)
-		if src == "" {
-			continue
-		}
-		if _, root := designProjectOf(uriToPath(string(u))); root != "" {
+	for u, src := range s.openDocs() {
+		if _, root := designopts.ProjectOf(uriToPath(string(u))); root != "" {
 			if seenRoots[root] {
 				continue
 			}
@@ -401,63 +359,87 @@ func (s *Server) onDidChangeWatchedFiles(ctx context.Context, reply jsonrpc2.Rep
 		}
 		s.publishDiagnostics(ctx, u, src)
 	}
-	return reply(ctx, nil, nil)
+	for _, m := range s.publishedManifests() {
+		if !seenRoots[filepath.Dir(m)] {
+			s.publishManifest(ctx, m, nil)
+		}
+	}
 }
 
-// storeDoc replaces the cached entry for u with the given text+version. It
-// is safe to call from any handler; it acquires the document mutex briefly.
-func (s *Server) storeDoc(u uri.URI, text string, version int32) {
+// storeDoc records text as the open content of u.
+func (s *server) storeDoc(u uri.URI, text string) {
 	s.mu.Lock()
-	s.docs[u] = &document{text: text, version: version}
+	s.docs[u] = text
 	s.mu.Unlock()
 }
 
-// publishDiagnostics parses src and pushes the resulting diagnostics back
-// to the client as a textDocument/publishDiagnostics notification. It does
-// not return an error - diagnostic publishing is best-effort, and a
-// failed notify is logged via the connection's done channel.
-//
-// In project mode the edit may have (in)validated diagnostics in OTHER
-// open files (e.g. adding a field to a request type clears the
-// "path segment has no matching field" error in the service file that
-// references it). To avoid stale squigglies, the resulting per-file
-// diagnostics are pushed for every open file in the same project, not
-// just the triggering URI. Single-file mode pushes only for u.
-func (s *Server) publishDiagnostics(ctx context.Context, u uri.URI, src string) {
+// publishDiagnostics analyses the project of u holding src and publishes the
+// diagnostics of u, of the other open files under its design root and of the
+// root's manifest, or, outside a project, of the manifests published above u.
+func (s *server) publishDiagnostics(ctx context.Context, u uri.URI, src string) {
 	perFile, designRoot := s.buildProjectDiagnostics(u, src)
-	if designRoot == "" {
-		// Single-file fallback - the project analyser didn't run.
-		_ = s.conn.Notify(ctx, protocol.MethodTextDocumentPublishDiagnostics, &protocol.PublishDiagnosticsParams{
-			URI:         u,
-			Diagnostics: diagsFor(perFile, uriToPath(string(u))),
-		})
-		return
-	}
-	// Always push for u (handles the "edit cleared all diags" case).
-	pushed := map[string]bool{uriToPath(string(u)): true}
-	_ = s.conn.Notify(ctx, protocol.MethodTextDocumentPublishDiagnostics, &protocol.PublishDiagnosticsParams{
-		URI:         u,
-		Diagnostics: diagsFor(perFile, uriToPath(string(u))),
-	})
-	// Republish every OTHER open file that lives under the same design
-	// root. Empty payloads clear stale squigglies in dependent files.
-	for openURI := range s.openDocURIs() {
+	path := uriToPath(string(u))
+	s.publish(ctx, u, diagsFor(perFile, path))
+	pushed := map[string]bool{path: true}
+	for openURI := range s.openDocs() {
 		op := uriToPath(string(openURI))
 		if op == "" || pushed[op] || !isUnderDesignRoot(op, designRoot) {
 			continue
 		}
 		pushed[op] = true
-		_ = s.conn.Notify(ctx, protocol.MethodTextDocumentPublishDiagnostics, &protocol.PublishDiagnosticsParams{
-			URI:         openURI,
-			Diagnostics: diagsFor(perFile, op),
-		})
+		s.publish(ctx, openURI, diagsFor(perFile, op))
+	}
+	if designRoot != "" {
+		manifest := manifestPath(designRoot)
+		s.publishManifest(ctx, manifest, perFile[manifest])
+		return
+	}
+	for _, m := range s.publishedManifests() {
+		if isUnderDesignRoot(path, filepath.Dir(m)) {
+			s.publishManifest(ctx, m, nil)
+		}
 	}
 }
 
-// diagsFor looks up a per-file partition and ALWAYS returns a non-nil
-// slice. nil JSON-marshals to `null`, which several LSP clients treat as
-// "ignore" rather than "clear diagnostics for this file" - so we have to
-// hand them an explicit `[]` to clear stale squigglies.
+// publishManifest publishes the diagnostics of the manifest at path, those
+// the design's analysis reports on its values after its own, and forgets it
+// once it is gone.
+func (s *server) publishManifest(ctx context.Context, path string, analysis []protocol.Diagnostic) {
+	diags, ok := manifestDiagnostics(path)
+	if ok {
+		diags = append(diags, analysis...)
+	}
+	s.mu.Lock()
+	if s.manifests == nil {
+		s.manifests = map[string]bool{}
+	}
+	if ok {
+		s.manifests[path] = true
+	} else {
+		delete(s.manifests, path)
+	}
+	s.mu.Unlock()
+	s.publish(ctx, uri.File(path), diags)
+}
+
+// publishedManifests returns the manifests whose diagnostics were published,
+// sorted.
+func (s *server) publishedManifests() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Sorted(maps.Keys(s.manifests))
+}
+
+// publish sends the diagnostics of u to the client.
+func (s *server) publish(ctx context.Context, u uri.URI, diags []protocol.Diagnostic) {
+	_ = s.conn.Notify(ctx, protocol.MethodTextDocumentPublishDiagnostics, &protocol.PublishDiagnosticsParams{
+		URI:         u,
+		Diagnostics: diags,
+	})
+}
+
+// diagsFor returns the diagnostics of key, never nil: clients ignore a null
+// list but clear a file on `[]`.
 func diagsFor(perFile map[string][]protocol.Diagnostic, key string) []protocol.Diagnostic {
 	if d := perFile[key]; d != nil {
 		return d
@@ -465,15 +447,21 @@ func diagsFor(perFile map[string][]protocol.Diagnostic, key string) []protocol.D
 	return []protocol.Diagnostic{}
 }
 
-// openDocURIs returns a snapshot of every currently-open document URI.
-// Used by publishDiagnostics to know which sibling files need their
-// diagnostics refreshed after a cross-file edit.
-func (s *Server) openDocURIs() map[uri.URI]struct{} {
+// openDocs returns the text of each open document by URI.
+func (s *server) openDocs() map[uri.URI]string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make(map[uri.URI]struct{}, len(s.docs))
-	for k := range s.docs {
-		out[k] = struct{}{}
+	return maps.Clone(s.docs)
+}
+
+// openFiles returns the text of each open document by file path, whatever
+// the escaping of its URI; a buffer with no file is left out.
+func (s *server) openFiles() map[string]string {
+	out := map[string]string{}
+	for u, text := range s.openDocs() {
+		if p := uriToPath(string(u)); p != "" {
+			out[p] = text
+		}
 	}
 	return out
 }

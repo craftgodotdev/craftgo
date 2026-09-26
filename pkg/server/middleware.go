@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"runtime/debug"
 	"time"
@@ -8,82 +10,99 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// contentTypeJSON is the Content-Type the framework's JSON responses (health,
-// error envelopes, served OpenAPI spec) set.
-const contentTypeJSON = "application/json; charset=utf-8"
-
-// committedResponseWriter wraps http.ResponseWriter to remember whether
-// the response status / body has already been flushed. Recovery uses it
-// to decide whether a 500 can still be written or whether the response
-// is already half-sent (in which case the recovery message would be
-// silently dropped by net/http and the client would see a corrupted
-// body). The wrapper preserves http.Hijacker / http.Flusher / http.Pusher
-// so downstream middleware that depends on them keeps working.
-type committedResponseWriter struct {
+// trackingWriter records the status of the response written through it. The response is
+// committed once a WriteHeader with a final status, a Write or a Flush has fixed its head.
+type trackingWriter struct {
 	http.ResponseWriter
-	committed bool
+	status int
 }
 
-func (w *committedResponseWriter) WriteHeader(code int) {
-	w.committed = true
+// commit records status unless an earlier call committed the response.
+func (w *trackingWriter) commit(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+}
+
+// finalStatus reports whether code ends the response head: 101, or 200 to 999. net/http sends
+// another 1xx at once and keeps the head open, and panics on a code outside 100 to 999.
+func finalStatus(code int) bool {
+	return code == http.StatusSwitchingProtocols || code >= 200 && code <= 999
+}
+
+// WriteHeader commits on a final status.
+func (w *trackingWriter) WriteHeader(code int) {
+	if finalStatus(code) {
+		w.commit(code)
+	}
 	w.ResponseWriter.WriteHeader(code)
 }
 
-func (w *committedResponseWriter) Write(p []byte) (int, error) {
-	w.committed = true
+func (w *trackingWriter) Write(p []byte) (int, error) {
+	w.commit(http.StatusOK)
 	return w.ResponseWriter.Write(p)
 }
 
-func (w *committedResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
-
-// Flush forwards to the underlying writer's Flusher when available so streaming
-// handlers keep working through the Recovery wrapper (mirrors statusRecorder).
-func (w *committedResponseWriter) Flush() {
+func (w *trackingWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		w.commit(http.StatusOK)
 		f.Flush()
 	}
 }
 
-// Committed reports whether the response status / body has already
-// been flushed. Generated handlers and the validation-error hook use
-// it (via a type assertion against `interface{ Committed() bool }`)
-// to skip late writes that net/http would silently drop.
-func (w *committedResponseWriter) Committed() bool { return w.committed }
+func (w *trackingWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
-// Recovery converts panics inside downstream handlers into a 500 response
-// while logging a stack trace. Always installed by Server.Start as the
-// outermost middleware. When the panic fires AFTER the handler has
-// already committed to a status (called WriteHeader or Write), the 500
-// cannot be written - net/http silently drops the second WriteHeader and
-// the body bytes would corrupt the in-flight response. In that case the
-// middleware logs the panic loudly and lets the connection terminate; the
-// client sees the truncated original response and the server operator
-// sees the stack trace.
+func (w *trackingWriter) Committed() bool { return w.status != 0 }
+
+// Status returns the committed status, or 200, what net/http sends for a handler that writes
+// nothing.
+func (w *trackingWriter) Status() int {
+	if w.status == 0 {
+		return http.StatusOK
+	}
+	return w.status
+}
+
+// Recovery logs a panic in next with its stack to logger and answers 500
+// {"message":"internal server error"}, or aborts the connection once the response is committed; a
+// panic with [http.ErrAbortHandler] aborts it unlogged.
 func Recovery(logger log.Logger) Middleware {
+	return recovery(func() log.Logger { return logger })
+}
+
+// recovery is [Recovery] with the logger looked up when a panic is recovered.
+func recovery(logger func() log.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			cw := &committedResponseWriter{ResponseWriter: w}
+			tw := &trackingWriter{ResponseWriter: w}
 			defer func() {
 				if rec := recover(); rec != nil {
-					l := logger.WithContext(r.Context())
-					if cw.committed {
+					if rec == http.ErrAbortHandler {
+						panic(rec)
+					}
+					l := logger().WithContext(r.Context())
+					if tw.Committed() {
 						l.Error("panic recovered after response committed; client receives truncated body",
 							log.Any("panic", rec),
 							log.String("stack", string(debug.Stack())),
 						)
-						return
+						panic(http.ErrAbortHandler)
 					}
 					l.Error("panic recovered",
 						log.Any("panic", rec),
 						log.String("stack", string(debug.Stack())),
 					)
-					http.Error(cw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					writeStatusError(tw, http.StatusInternalServerError)
 				}
 			}()
-			next.ServeHTTP(cw, r)
+			next.ServeHTTP(tw, r)
 		})
 	}
 }
+
+// statusClientClosed is the status the access log records for a request whose client left
+// before anything was written, as nginx does.
+const statusClientClosed = 499
 
 // AccessLogOption configures [AccessLog].
 type AccessLogOption func(*accessLogConfig)
@@ -93,18 +112,13 @@ type accessLogConfig struct {
 	fields func(*http.Request) []log.Field
 }
 
-// AccessLogFields appends the fields fn derives from the request to every
-// `http access` line - the client address, the user agent, the matched
-// route (`r.Pattern`). fn runs after the handler, so it sees the route the
-// mux matched.
+// AccessLogFields adds the fields fn returns to every access line. fn runs after the
+// handler, so r.Pattern holds the matched route.
 func AccessLogFields(fn func(r *http.Request) []log.Field) AccessLogOption {
 	return func(c *accessLogConfig) { c.fields = fn }
 }
 
-// AccessLogSkipPaths keeps requests whose `r.URL.Path` equals one of paths
-// out of the log - a `/metrics` scrape served on the API port, for example.
-// The health probes need no entry here: they never reach the middleware
-// chain (see [Server.Handler]).
+// AccessLogSkipPaths keeps requests whose URL path equals one of paths out of the log.
 func AccessLogSkipPaths(paths ...string) AccessLogOption {
 	return func(c *accessLogConfig) {
 		for _, p := range paths {
@@ -113,14 +127,9 @@ func AccessLogSkipPaths(paths ...string) AccessLogOption {
 	}
 }
 
-// AccessLog logs one line per request after the response has been written:
-// message `http access` with `method`, `path`, `status` and `latency`, plus
-// the `trace_id` / `span_id` the request context carries (see
-// [log.Logger.WithContext]). Wire the telemetry HTTP middleware before
-// AccessLog so those ids are on the context.
-//
-// Every request that reaches the middleware logs; [AccessLogSkipPaths]
-// keeps chosen routes out and [AccessLogFields] adds fields of your own.
+// AccessLog logs "http access" at Info after each request with method, path, status and
+// latency, plus what [log.Logger.WithContext] adds (trace ids need an outer tracing middleware).
+// The status is 499 for a client that left before anything was written.
 func AccessLog(logger log.Logger, opts ...AccessLogOption) Middleware {
 	cfg := &accessLogConfig{skip: map[string]bool{}}
 	for _, o := range opts {
@@ -133,12 +142,16 @@ func AccessLog(logger log.Logger, opts ...AccessLogOption) Middleware {
 				return
 			}
 			start := time.Now()
-			rw := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-			next.ServeHTTP(rw, r)
+			tw := &trackingWriter{ResponseWriter: w}
+			next.ServeHTTP(tw, r)
+			status := tw.Status()
+			if !tw.Committed() && errors.Is(r.Context().Err(), context.Canceled) {
+				status = statusClientClosed
+			}
 			fields := []log.Field{
 				log.String("method", r.Method),
 				log.String("path", r.URL.Path),
-				log.Int("status", rw.status),
+				log.Int("status", status),
 				log.Duration("latency", time.Since(start)),
 			}
 			if cfg.fields != nil {
@@ -149,55 +162,21 @@ func AccessLog(logger log.Logger, opts ...AccessLogOption) Middleware {
 	}
 }
 
-// BodyLimit returns a middleware that caps the request body at maxBytes for
-// every route it wraps. A request whose declared Content-Length already
-// exceeds the cap is rejected with 413 before the handler runs; a
-// chunked/unknown-length body is capped on read via http.MaxBytesReader
-// (surfaced by the downstream handler, typically as 400). It shares its
-// implementation with the per-method @maxBodySize guard ([maxBodySizeHandler])
-// so the global and per-method limits never drift.
+// BodyLimit caps request bodies at maxBytes: a declared Content-Length above it is answered
+// 413 {"message":"request entity too large"} before next runs, and a read past it fails with
+// an [*http.MaxBytesError], which [WriteValidationError] answers 413 too.
 func BodyLimit(maxBytes int64) Middleware {
 	return func(next http.Handler) http.Handler {
 		return maxBodySizeHandler(next, maxBytes)
 	}
 }
 
-// Timeout enforces an upper bound on handler execution. Streaming methods
-// should not use this - they need write-side per-message idle limits which
-// belong to the streaming codec, not the request lifecycle.
+// Timeout runs next under [http.TimeoutHandler]: past d the client gets 503 "request
+// timeout". The response is buffered, so next can neither flush nor hijack.
+//
+// Deprecated: use [Server.SetDefaultHandlerTimeout] for every route or [WithLimits] for one.
 func Timeout(d time.Duration) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.TimeoutHandler(next, d, "request timeout")
 	}
 }
-
-// statusRecorder is a tiny ResponseWriter wrapper that captures the
-// status code so AccessLog can log it. Flush() is forwarded explicitly
-// because Go's interface satisfaction does not promote methods from
-// embedded interfaces beyond the interface itself - without this
-// passthrough, SSE / NDJSON / chunked-encoding handlers downstream
-// would lose access to http.Flusher.
-type statusRecorder struct {
-	http.ResponseWriter
-	status int
-}
-
-// WriteHeader records the status code before delegating.
-func (s *statusRecorder) WriteHeader(c int) {
-	s.status = c
-	s.ResponseWriter.WriteHeader(c)
-}
-
-// Flush forwards to the underlying writer's Flusher when available so
-// streaming handlers keep working.
-func (s *statusRecorder) Flush() {
-	if f, ok := s.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
-	}
-}
-
-// Unwrap exposes the wrapped writer so http.ResponseController (and net/http's
-// hijack path) can walk past this layer to reach the underlying Hijacker /
-// ReaderFrom - without it a WebSocket upgrade or raw Hijack under AccessLog
-// fails with "feature not supported".
-func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }

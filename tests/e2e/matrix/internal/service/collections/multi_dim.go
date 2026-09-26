@@ -5,25 +5,20 @@ package collections
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// MultiDimService carries the per-request state for the
-// MultiDim endpoint of Collections. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// MultiDimService runs Collections.MultiDim for one request.
 type MultiDimService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewMultiDimService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewMultiDimService binds MultiDimService to ctx; its Logger carries ctx's trace ids.
 func NewMultiDimService(ctx context.Context, svcCtx *svccontext.ServiceContext) *MultiDimService {
 	return &MultiDimService{
 		Logger: log.Default().WithContext(ctx),
@@ -34,8 +29,8 @@ func NewMultiDimService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 
 // MultiDim drives a 2D array of scalars through the request
 // body so the doubly-nested loop emits on the wire boundary.
-// MultiDim is the service entry point. Replace the
-// TODO with the real implementation.
+//
+// MultiDim implements Collections.MultiDim.
 func (l *MultiDimService) MultiDim(req *types.Arr_Tag2D) (*types.Arr_Tag2D, error) {
 	// TODO: implement
 	return nil, nil

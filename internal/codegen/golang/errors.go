@@ -3,9 +3,9 @@ package golang
 import (
 	"bytes"
 	"fmt"
-	"go/format"
-	"os"
+	"maps"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -15,141 +15,90 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// generateErrors emits a single `errors.go` file under outDir/<pkg.Name>/
-// declaring one struct + constructor + Error()/HTTPStatus() methods +
-// SCREAMING_SNAKE error-code constant for every [ast.ErrorDecl] in pkg.
-// When pkg has no errors the function is a no-op.
-//
-// r supplies the cross-package import paths for body fields (an error in
-// `tasks` whose body carries a `users.UserRef`) and the scalar / enum
-// resolution needed to format a non-string `@header` / `@cookie` error
-// field (`cost shared.Cents`). A nil resolver resolves local names only.
+// generateErrors writes outDir/<pkg>/errors.go, an error type with its code
+// const and methods per error; a package without errors writes nothing.
 func generateErrors(pkg *semantic.Package, outDir string, r *projectResolver) error {
-	if pkg.Name == "" {
-		return fmt.Errorf("package has no name")
-	}
+	return generateErrorsFilling(pkg, outDir, r, nil)
+}
+
+// generateErrorsFilling is [generateErrors] given the project's fill set; nil
+// weighs the project anew.
+func generateErrorsFilling(pkg *semantic.Package, outDir string, r *projectResolver, fills *fillSet) error {
 	if len(pkg.Errors) == 0 {
 		return nil
 	}
 	r = resolverFor(pkg, r)
-	pkgDir := filepath.Join(outDir, pkg.Name)
-	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
-		return err
+	if fills == nil {
+		fills = fillSetOf(r.Project())
 	}
-	src := buildErrorsGo(pkg, r)
-	formatted, err := format.Source([]byte(src))
-	if err != nil {
-		return fmt.Errorf("format errors.go: %w\n--- source ---\n%s", err, src)
-	}
-	return os.WriteFile(filepath.Join(pkgDir, "errors.go"), formatted, 0o644)
+	return writeGoSource(filepath.Join(outDir, pkg.Name, "errors.go"), buildErrorsGo(pkg, r, fills))
 }
 
-// buildErrorsGo assembles errors.go in alphabetical name order. The
-// import block is built from two sources: `net/http` lands when any
-// error declares `@header` / `@cookie` response bindings (the
-// generated `WriteResponseHeaders` method needs `http.ResponseWriter`
-// and `http.Cookie`); cross-package types referenced by body fields
-// surface their `<module>/<typesDir>/<pkg>` Go import paths via the
-// shared [collectImports] machinery. The result is returned
-// pre-formatting; the caller runs `go/format` to normalise whitespace.
-func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
-	names := sortedKeys(pkg.Errors)
-
-	needsHTTP := false
-	needsStrconv := false
-	for _, name := range names {
-		hs, cs, ns := errorResponseBindings(pkg.Errors[name], pkg, r)
-		if len(hs)+len(cs) > 0 {
-			needsHTTP = true
-		}
-		if ns {
-			needsStrconv = true
-		}
+// buildErrorsGo returns the unformatted source of pkg's errors.go, errors in
+// name order.
+func buildErrorsGo(pkg *semantic.Package, r *projectResolver, fills *fillSet) string {
+	imports := newImportSet(r.Module, r, goImport{}, errorsNames)
+	// Every error type's MarshalJSON encodes through encoding/json.
+	imports.use("encoding/json")
+	var decls []string
+	for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
+		decls = append(decls, renderError(pkg, pkg.Errors[name], r, imports, fills))
 	}
-
-	imports := map[string]bool{}
-	if needsHTTP {
-		imports["net/http"] = true
-	}
-	if needsStrconv {
-		// Non-string @header / @cookie error fields format their value
-		// via strconv before writing it to the wire.
-		imports["strconv"] = true
-	}
-	for _, name := range names {
-		collectBodyImports(pkg.Errors[name].Body, pkg, r, imports)
-	}
-
-	parts := []string{
-		generatedHeader + "\n",
-		"package " + pkg.Name + "\n",
-	}
-	if len(imports) > 0 {
-		parts = append(parts, renderImports(sortedKeys(imports)))
-	}
-	for _, name := range names {
-		parts = append(parts, renderError(pkg, pkg.Errors[name], r))
-	}
-	return strings.Join(parts, "\n")
+	parts := []string{"package " + pkg.Name + "\n", imports.decl()}
+	return strings.Join(append(parts, decls...), "\n")
 }
 
-// errorBinding holds the fully-rendered Go statement that writes one
-// `@header` / `@cookie` error field onto the response (header/cookie
-// name + value formatting already baked in). The template drops Stmt
-// verbatim inside WriteResponseHeaders.
-type errorBinding struct {
-	Stmt string
-}
-
-// errorTemplateData is the full payload handed to errors.tmpl per error.
-// Field naming mirrors the template placeholders so the mapping stays
-// obvious at the call site.
+// errorTemplateData is the errors.tmpl input for one error.
 type errorTemplateData struct {
-	TypeName           string
-	BodyName           string
-	ConstName          string
-	QuotedCode         string
-	QuotedMessage      string
-	Category           string
-	DSLName            string
-	Status             int
-	HasBody            bool
+	// Doc heads the error type's doc comment ([docHead]).
+	Doc           []string
+	TypeName      string
+	BodyName      string
+	ConstName     string
+	CtorName      string
+	QuotedCode    string
+	QuotedMessage string
+	Category      string
+	DSLName       string
+	Status        int
+	HasBody       bool
+	HasJSONMember bool
+	// FillsBody says the body's FillEmpty has work, which MarshalJSON runs first.
+	FillsBody          bool
 	BodyInterior       string
 	HasResponseHeaders bool
-	Headers            []errorBinding
-	Cookies            []errorBinding
+	Headers            []paramBinding
+	Cookies            []paramBinding
 }
 
-// renderError executes errors.tmpl for one [ast.ErrorDecl]. The
-// template emits, in order: the SCREAMING_SNAKE error-code const, the
-// (optional) body struct, the typed error struct with its unexported
-// code / message metadata, the constructor, Error() / ErrCode() /
-// HTTPStatus() methods, and the optional WriteResponseHeaders method
-// when the error declares any `@header` / `@cookie` fields. The
-// constructor takes a body-struct argument iff the DSL declares ≥1
-// custom field.
-func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver) string {
-	headers, cookies, _ := errorResponseBindings(ed, pkg, r)
-	data := errorTemplateData{
-		TypeName:      idents.ErrorTypeName(ed.Name),
-		BodyName:      ed.Name + "Body",
-		ConstName:     "ErrCode" + ed.Name,
-		QuotedCode:    strconv.Quote(screamingSnake(ed.Name)),
-		QuotedMessage: strconv.Quote(errcat.Message(ed.Category)),
-		Category:      ed.Category,
-		DSLName:       ed.Name,
-		Status:        errcat.Status(ed.Category),
-		// The error Body struct renders through the SAME walk regular type
-		// structs use (renderTypeBody), so an error body's fields carry their
-		// docs, @deprecated comments, dedup-resolved Go names, and source-order
-		// interleaving with embedded mixins - instead of the bare,
-		// mixins-first shape the dedicated error emitter once produced.
-		BodyInterior:       renderTypeBody(ed.Body, pkg, r),
-		HasResponseHeaders: len(headers)+len(cookies) > 0,
-		Headers:            toErrorBindings(headers),
-		Cookies:            toErrorBindings(cookies),
+// renderError renders errors.tmpl for ed, adding the packages it names to imports.
+func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver, imports *importSet, fills *fillSet) string {
+	headers, cookies, needsStrconv := errorResponseBindings(ed, pkg, r)
+	if len(headers)+len(cookies) > 0 {
+		imports.use("net/http")
 	}
-	data.HasBody = errorBodyHasMembers(ed)
+	if needsStrconv {
+		imports.use("strconv")
+	}
+	data := errorTemplateData{
+		Doc:                docHead(semantic.DescriptionLines(ed.Decorators, ed.Doc)),
+		TypeName:           idents.ErrorTypeName(ed.Name),
+		BodyName:           idents.ErrorBodyName(ed.Name),
+		ConstName:          idents.ErrorCodeName(ed.Name),
+		CtorName:           idents.ErrorConstructorName(ed.Name),
+		QuotedCode:         strconv.Quote(screamingSnake(ed.Name)),
+		QuotedMessage:      strconv.Quote(errcat.Message(ed.Category)),
+		Category:           ed.Category,
+		DSLName:            ed.Name,
+		Status:             errcat.Status(ed.Category),
+		BodyInterior:       renderTypeBody(ed.Body, pkg, r, imports),
+		HasResponseHeaders: len(headers)+len(cookies) > 0,
+		Headers:            headers,
+		Cookies:            cookies,
+		HasBody:            len(ast.Members(ed.Body)) > 0,
+		HasJSONMember:      semantic.ErrorHasJSONMember(ed, r.Resolver),
+		FillsBody:          fills.errs[ed],
+	}
 	var buf bytes.Buffer
 	if err := errorsTemplate.Execute(&buf, data); err != nil {
 		panic(fmt.Sprintf("codegen: render error %s: %v", ed.Name, err))
@@ -157,55 +106,19 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver) s
 	return buf.String()
 }
 
-// errorsTemplate is parsed once and reused for every error decl. The
-// tmpl helper panics on parse failure so a malformed template fails the
-// process at the first generation attempt.
+// errorsTemplate is errors.tmpl, parsed once at package init.
 var errorsTemplate = tmpl("errors.tmpl")
 
-// toErrorBindings adapts the shared paramBinding shape into the
-// template's view: each binding's pre-rendered write statement lives in
-// [paramBinding.Bind].
-func toErrorBindings(in []paramBinding) []errorBinding {
-	out := make([]errorBinding, len(in))
-	for i, b := range in {
-		out[i] = errorBinding{Stmt: b.Bind}
-	}
-	return out
-}
-
-// errorBodyHasMembers reports whether the error declares any body field or
-// embedded mixin - the condition under which a `<Name>Body` struct is emitted
-// and the constructor takes a body argument.
-func errorBodyHasMembers(ed *ast.ErrorDecl) bool {
-	for _, m := range ed.Body {
-		switch m.(type) {
-		case *ast.Field, *ast.Mixin:
-			return true
-		}
-	}
-	return false
-}
-
-// errorResponseBindings walks the error body and returns the
-// `@header` / `@cookie` fields whose value is written onto the response
-// writer instead of the JSON body. Each entry's [paramBinding.Bind]
-// holds the fully-rendered write statement (value formatting included);
-// needsStrconv is true when any non-string field needs the strconv
-// import. The resolver `r` resolves cross-package scalars / enums to
-// their wire primitive so `cost shared.Cents @header` formats the same
-// as on the success-response path.
+// errorResponseBindings returns ed's @header and @cookie fields with their write
+// statements, and whether any of them needs strconv.
 func errorResponseBindings(ed *ast.ErrorDecl, pkg *semantic.Package, r *projectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
-	// The error struct embeds its mixins, so a promoted @header / @cookie
-	// field is reachable as `e.X`; a `code` / `message` field that is wire-
-	// bound rides its header/cookie (not the body envelope). Shares the
-	// success-path writer so the two can't drift.
-	return responseBindingsFor(&ast.TypeDecl{Body: ed.Body}, "", "e", pkg, r)
+	// A field promoted from a mixin is reachable as `e.X`.
+	fields := semantic.ResolveFields(&ast.TypeDecl{Body: ed.Body}, "", pkg, r.Resolver, resolvedGoFieldNames)
+	return responseBindingsFor(fields, "e", pkg, r)
 }
 
-// screamingSnake converts a PascalCase / camelCase identifier to
-// SCREAMING_SNAKE_CASE for use as a default error-code constant. Common
-// initialisms ("HTTP", "ID") collapse to their upper form, e.g.
-// `UserNotFound` → `USER_NOT_FOUND` and `DBLockedErr` → `DB_LOCKED_ERR`.
+// screamingSnake converts an identifier to SCREAMING_SNAKE_CASE, keeping
+// initialisms whole (`DBLockedErr` is `DB_LOCKED_ERR`).
 func screamingSnake(s string) string {
 	parts := idents.SplitFieldName(s)
 	for i, p := range parts {

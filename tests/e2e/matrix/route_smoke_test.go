@@ -17,12 +17,10 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// bootAll stands up EVERY service in the matrix on one httptest server via the
-// generated umbrella RegisterAll - the same wiring main.go performs - with all
-// declared middlewares assigned. The per-feature harness (boot) registers only
-// the services its roundtrip tests implement; this one exists so the route
-// smoke below exercises the full registered surface.
-func bootAll(t *testing.T) *httptest.Server {
+// bootAll serves every service through the generated routes.RegisterAll,
+// with every declared middleware assigned; each configure runs on the server
+// before the routes are registered.
+func bootAll(t *testing.T, configure ...func(*server.Server)) *httptest.Server {
 	t.Helper()
 	svc := svccontext.NewServiceContext()
 	svc.Audit = middleware.NewAuditMiddleware()
@@ -33,15 +31,17 @@ func bootAll(t *testing.T) *httptest.Server {
 	svc.RequestStamp = middleware.NewRequestStampMiddleware()
 	svc.Timing = middleware.NewTimingMiddleware()
 	srv := server.New(svc, server.WithoutDefaultHealth())
+	for _, c := range configure {
+		c(srv)
+	}
 	routes.RegisterAll(srv, svc)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return ts
 }
 
-// specOperations reads every (method, path) pair from the committed OpenAPI
-// document - the spec is the contract, so walking it keeps the smoke in
-// lock-step with the design without a hand-maintained route list.
+// specOperations returns every (method, path) in docs/openapi.yaml, sorted
+// by path, then method.
 func specOperations(t *testing.T) [][2]string {
 	t.Helper()
 	raw, err := os.ReadFile("docs/openapi.yaml")
@@ -72,10 +72,8 @@ func specOperations(t *testing.T) [][2]string {
 	return ops
 }
 
-// smokeURL maps a spec path to a request URL: the manifest basePath is
-// prepended (spec paths omit it) and every {param} is filled with a literal -
-// @path params are string-backed by the binding rules, so "x" always binds
-// (validators may still 400, which the smoke counts as a live handler).
+// smokeURL turns a spec path into a request path: the /api basePath first,
+// every {param} filled with "x".
 func smokeURL(specPath string) string {
 	p := specPath
 	for {
@@ -96,14 +94,7 @@ func smokeURL(specPath string) string {
 	return full
 }
 
-// TestEveryRouteRegisteredAndHandled walks every operation in the OpenAPI
-// document against the fully-registered server. A 404 means the route never
-// registered (the spec advertises an endpoint the server doesn't mount); a
-// 405 means it registered under the wrong verb. Any other status - 2xx from
-// a handler, 400/413 from the binder/validator rejecting the probe input -
-// proves the route is live and its parse→validate chain runs. This is the
-// net for registration-time regressions that compile fine and only fail at
-// boot or first request.
+// Every operation in docs/openapi.yaml is mounted under its own verb.
 func TestEveryRouteRegisteredAndHandled(t *testing.T) {
 	ts := bootAll(t)
 	ops := specOperations(t)
@@ -125,10 +116,9 @@ func TestEveryRouteRegisteredAndHandled(t *testing.T) {
 		}
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64))
 		resp.Body.Close()
-		// An app-level 404 (a typed NotFound error for the probe's fake id)
-		// proves the handler ran; only the mux's own "404 page not found"
-		// text means the route never registered.
-		muxMiss := resp.StatusCode == http.StatusNotFound && strings.TrimSpace(string(body)) == "404 page not found"
+		// Only the framework's own 404 body means unmounted; a typed NotFound
+		// means the handler ran.
+		muxMiss := resp.StatusCode == http.StatusNotFound && strings.TrimSpace(string(body)) == `{"message":"not found"}`
 		if muxMiss || resp.StatusCode == http.StatusMethodNotAllowed {
 			miss = append(miss, verb+" "+specPath+" → "+resp.Status)
 		}

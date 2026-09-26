@@ -5,25 +5,20 @@ package xdelegate
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xdelegate"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xdelegate"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// StoreService carries the per-request state for the
-// Store endpoint of XDelegateService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// StoreService runs XDelegateService.Store for one request.
 type StoreService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewStoreService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewStoreService binds StoreService to ctx; its Logger carries ctx's trace ids.
 func NewStoreService(ctx context.Context, svcCtx *svccontext.ServiceContext) *StoreService {
 	return &StoreService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewStoreService(ctx context.Context, svcCtx *svccontext.ServiceContext) *St
 	}
 }
 
-// Store is the service entry point. Replace the
-// TODO with the real implementation.
+// Round-trips the delegating types so the handler path compiles too.
+//
+// Store implements XDelegateService.Store.
 func (l *StoreService) Store(req *types.XDelegatedScalars) (*types.XDelegatedShapes, error) {
 	// TODO: implement
 	return nil, nil

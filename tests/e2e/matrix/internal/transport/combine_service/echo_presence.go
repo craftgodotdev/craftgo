@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoPresence returns the http.HandlerFunc for the
-// POST EchoPresence endpoint.
+// Echo the presence-state matrix. Smoke tests assert that plain is in required[], optional / nullable / bothNullable produce a 'type: [string, null]' (OpenAPI 3.1 null), and the default rows surface a default key in OpenAPI.
+//
+// EchoPresence returns the POST EchoPresence handler.
 func EchoPresence(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PresenceMatrix
@@ -39,8 +40,6 @@ func EchoPresence(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

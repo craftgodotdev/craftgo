@@ -1,6 +1,6 @@
 # CLI
 
-The `craftgo` binary drives codegen and project commands. Run `craftgo help` for the up-to-date list.
+The `craftgo` binary drives codegen and project commands. Run `craftgo help` for the up-to-date list, or `craftgo <command> -h` for one command's usage. A bad flag or argument is reported once, followed by the command's usage.
 
 ## `craftgo init [path]`
 
@@ -31,41 +31,48 @@ Flags:
 | Flag                      | Effect                                                                                |
 | ------------------------- | ------------------------------------------------------------------------------------- |
 | `-f`, `--folder <path>`   | Path to the folder holding `craftgo.design.yaml`. Skips the walk-up.                  |
-| `-c`, `--context <path>`  | Project root the `output.*` paths resolve against. Defaults to cwd when `-f` is given, otherwise to the parent of the manifest dir. |
+| `-c`, `--context <path>`  | Project root the `output.*` paths resolve against. Defaults to the parent of the design folder. |
 | `--target <name>`         | Generate only the named target (`go`, `docs`); repeatable, default all. A narrowed run leaves the other targets' output untouched. |
 | `-h`, `--help`            | Show help.                                                                            |
 
-Without `-f`, `craftgo gen` walks upward from `<path>` (or cwd) probing direct subdirs at each level for a `craftgo.design.yaml`. The Go module path comes from `go.mod`, walking up from the project root - run `go mod init <module>` first if `go.mod` does not exist yet.
+Without `-f`, `craftgo gen` walks upward from `<path>` (or cwd) probing direct subdirs at each level for a `craftgo.design.yaml`; with `-f`, a path is an error. The Go module path comes from `go.mod`, walking up from the project root - run `go mod init <module>` first if `go.mod` does not exist yet.
 
-## `craftgo fmt [path] [-l] [-w]`
+A key the manifest does not declare - a misspelling, say - is ignored, and `craftgo gen` names it on stderr before generating:
 
-Canonical-format `.craftgo` files. Default action: write back in place.
+```
+craftgo: warning: output.typs is not a manifest key and is ignored
+```
+
+## `craftgo fmt [-l] [-w] [path]`
+
+Canonical-format design files (`.craftgo`, `.cg`): every one under a directory, or the one file the path names. Default action: write back in place.
 
 ```bash
-craftgo fmt                # format all .craftgo files under cwd
+craftgo fmt                # format every design file under cwd
 craftgo fmt design         # format files under design/
 craftgo fmt -l             # list files that would change (no write)
 craftgo fmt -w design      # explicit write mode
 ```
 
-Flags:
+Flags go before the path; a flag after it, or a second path, is an error. A design folder without design files, one of protos alone, has nothing to format.
 
-| Flag    | Effect                                                       |
-| ------- | ------------------------------------------------------------ |
-| `-l`    | List files that need formatting; do not modify.              |
-| `-w`    | Write the formatted result back (default).                   |
+| Flag           | Effect                                                              |
+| -------------- | ------------------------------------------------------------------- |
+| `-l`           | List files that need formatting; do not modify. Exits 1 if any do.  |
+| `-w`           | Write the formatted result back (default; with `-l`, list and write). |
+| `-h`, `--help` | Show help.                                                          |
 
 Use `-l` in CI to fail when files are not formatted. Use the default in local pre-commit hooks.
 
-A file is formatted only when it has no errors, parse or semantic: a mistake the parser tolerates (a stray word read as a mixin, for example) must never be rearranged into something else. Such a file is reported on stderr with its diagnostics and left untouched, and the command exits 1. A file inside a project is checked with its whole project, so cross-package references resolve.
+A file is formatted only when it has no errors, parse or semantic: a mistake the parser tolerates (a stray word read as a mixin, for example) must never be rearranged into something else. Such a file is reported on stderr with its diagnostics and left untouched, and the command exits 1. A file inside a design folder is checked with its whole project, so cross-package references resolve; any other file is checked on its own. A file whose formatted text would not parse, or would drop, duplicate, add or move a comment, is reported and left untouched the same way.
 
 ## `craftgo version`
 
-Prints the CLI version.
+Prints the CLI version alone, without a leading `v`. `--version` and `-v` do the same.
 
 ```bash
 craftgo version
-craftgo 0.x.x
+1.9.0
 ```
 
 ## `craftgo help`
@@ -77,7 +84,7 @@ Top-level help. Same content as running `craftgo` with no arguments.
 | Code | Meaning                                      |
 | ---- | -------------------------------------------- |
 | 0    | Success                                      |
-| 1    | Any failure: parse or semantic errors, a generation error, or `fmt` left a file with errors unformatted |
+| 1    | Any failure: parse or semantic errors, a generation error, `fmt` left a file with errors unformatted, `fmt -l` listed a file, or a bad flag or argument to a command (printed with the command's usage) |
 | 2    | Usage error: no command, or an unknown one   |
 
 CI scripts can rely on these to fail builds.
@@ -87,7 +94,7 @@ CI scripts can rely on these to fail builds.
 `craftgo gen` expects:
 
 - A `craftgo.design.yaml` somewhere (walked up from cwd, or provided via `-f`)
-- A `go.mod` at the project root (so the Go module path can be resolved)
+- A `go.mod` at or above the project root (so the Go module path can be resolved)
 - `.craftgo` files under the design folder
 
-Output paths are configured in `craftgo.design.yaml` and resolved against the project root (the directory containing `go.mod`, unless overridden with `-c`).
+Output paths are configured in `craftgo.design.yaml` and resolved against the project root: the parent of the design folder, unless overridden with `-c`.

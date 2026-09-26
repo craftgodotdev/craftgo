@@ -5,25 +5,20 @@ package prefixvar
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/prefixvar"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/prefixvar"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// CreateTenantItemService carries the per-request state for the
-// CreateTenantItem endpoint of TenantService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// CreateTenantItemService runs TenantService.CreateTenantItem for one request.
 type CreateTenantItemService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewCreateTenantItemService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewCreateTenantItemService binds CreateTenantItemService to ctx; its Logger carries ctx's trace ids.
 func NewCreateTenantItemService(ctx context.Context, svcCtx *svccontext.ServiceContext) *CreateTenantItemService {
 	return &CreateTenantItemService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,10 +27,9 @@ func NewCreateTenantItemService(ctx context.Context, svcCtx *svccontext.ServiceC
 	}
 }
 
-// POST: the same un-decorated `tenantID` still binds from the path (not
-// the JSON body) - the body carries only `name`.
-// CreateTenantItem is the service entry point. Replace the
-// TODO with the real implementation.
+// Create an item under a tenant. tenantID binds from the path; the JSON body carries only name.
+//
+// CreateTenantItem implements TenantService.CreateTenantItem.
 func (l *CreateTenantItemService) CreateTenantItem(req *types.TenantCreateReq) (*types.TenantItem, error) {
 	// TODO: implement
 	return nil, nil

@@ -9,17 +9,15 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// docsConfig points the document at docs/openapi.yaml, the default.
+// docsConfig puts the document at docs/openapi.yaml.
 func docsConfig() *config.Config {
 	cfg := &config.Config{}
 	cfg.Output.OpenAPI = "./docs/openapi.yaml"
 	return cfg
 }
 
-// A design of protos alone has no DSL package, so the document would
-// carry an empty `paths` and an empty `components` and nothing would
-// serve it. None is written, and the directory is still swept so one an
-// earlier run left behind goes with the package that seeded it.
+// A design without a DSL package gets no document, and the plan still names
+// the document for the sweep.
 func TestNoDocumentWithoutADSLPackage(t *testing.T) {
 	dir := t.TempDir()
 	cfg := docsConfig()
@@ -31,13 +29,14 @@ func TestNoDocumentWithoutADSLPackage(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "docs", "openapi.yaml")); !os.IsNotExist(err) {
 		t.Errorf("a project with no DSL package got a document: %v", err)
 	}
-	if got := RegeneratedFile(empty, cfg, dir); got != "" {
-		t.Errorf("plan names %q, but nothing writes it", got)
+	paths, files := Plan(empty, cfg, dir)
+	if len(files) != 0 {
+		t.Errorf("plan names %v, but nothing writes them", files)
 	}
-	if got := OutputDir(cfg, dir); got != filepath.Join(dir, "docs", "openapi.yaml") {
-		t.Errorf("the sweep must still reach the directory, got %q", got)
+	if _, ok := paths[filepath.Join(dir, "docs", "openapi.yaml")]; !ok || len(paths) != 1 {
+		t.Errorf("the sweep must reach the document and nothing else, got %v", paths)
 	}
-	if got := OutputDir(&config.Config{}, dir); got != "" {
-		t.Errorf("a disabled document has no directory, got %q", got)
+	if paths, files := Plan(empty, &config.Config{}, dir); paths != nil || files != nil {
+		t.Errorf("a disabled document has no sweep path, got %v and %v", paths, files)
 	}
 }

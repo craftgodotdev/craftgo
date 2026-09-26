@@ -1,27 +1,14 @@
 package config
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func writeManifest(t *testing.T, body string) string {
-	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, Filename)
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
-// A manifest that says nothing about events gets one Go target, so an
-// existing project keeps working and a new event lands in the
-// conventional place without configuration.
+// TestEventsDefaultToASingleGoTarget checks that a manifest without events
+// gets one Go target in ./internal/events.
 func TestEventsDefaultToASingleGoTarget(t *testing.T) {
-	cfg, err := Load(writeManifest(t, "openapi:\n  title: X\n"))
+	cfg, err := loadManifest(t, "openapi:\n  title: X\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,14 +21,14 @@ func TestEventsDefaultToASingleGoTarget(t *testing.T) {
 	}
 }
 
-// Go is a row in the target list, not a privileged default: a manifest
-// states where it lands, and may leave it out entirely.
+// TestEventTargetsAreConfigured checks that TargetFor returns a configured
+// target and misses an unconfigured language.
 func TestEventTargetsAreConfigured(t *testing.T) {
-	cfg, err := Load(writeManifest(t, `events:
+	cfg, err := loadManifest(t, `events:
   targets:
     - lang: go
       out: ./gen/events
-`))
+`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,48 +41,32 @@ func TestEventTargetsAreConfigured(t *testing.T) {
 	}
 }
 
-// A manifest naming a key craftgo has removed is told what happened: an
-// unknown key is otherwise ignored, so the project would generate
-// something other than what the manifest says.
+// TestRemovedKeysAreRejected checks that a removed key fails the load, naming
+// the key and what took its place.
 func TestRemovedKeysAreRejected(t *testing.T) {
 	cases := []struct {
 		name string
 		body string
-		key  string
+		want string
 	}{
-		{"design source", "design:\n  from: ../contracts\n  root: ..\n", "design"},
-		{"service selection", "output:\n  services: [shop.Orders]\n", "output.services"},
-		{"consume middleware", "output:\n  consumeMiddleware: ./internal/consume\n", "output.consumeMiddleware"},
-		{"asyncapi", "events:\n  asyncapi: ./docs/asyncapi.yaml\n", "events.asyncapi"},
+		{"design source", "design:\n  from: ../contracts\n  root: ..\n",
+			"design is no longer a manifest key - a manifest holds its own design folder"},
+		{"service selection", "output:\n  services: [shop.Orders]\n",
+			"output.services is no longer a manifest key - a project generates every service"},
+		{"consume middleware", "output:\n  consumeMiddleware: ./internal/consume\n",
+			"output.consumeMiddleware is no longer a manifest key - middleware is installed on the bus"},
+		{"asyncapi", "events:\n  asyncapi: ./docs/asyncapi.yaml\n",
+			"events.asyncapi is no longer a manifest key - craftgo writes no asyncapi document"},
+		{"target layout", "events:\n  targets:\n    - lang: go\n      out: ./internal/events\n      layout:\n        types: ./gen/types\n",
+			"events.targets[0].layout is no longer a manifest key - the go target places its artefacts"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := Load(writeManifest(t, c.body))
-			if err == nil {
-				t.Fatalf("%s was accepted", c.key)
-			}
-			if !strings.Contains(err.Error(), c.key) {
-				t.Errorf("error does not name the key: %v", err)
+			_, err := loadManifest(t, c.body)
+			if err == nil || !strings.HasPrefix(err.Error(), c.want) {
+				t.Errorf("err = %v, want one starting %q", err, c.want)
 			}
 		})
-	}
-}
-
-// No target reads a `layout:`, so the key is rejected rather than
-// silently ignored.
-func TestTargetLayoutIsRejected(t *testing.T) {
-	_, err := Load(writeManifest(t, `events:
-  targets:
-    - lang: go
-      out: ./internal/events
-      layout:
-        types: ./gen/types
-`))
-	if err == nil {
-		t.Fatal("a layout on a target that reads none must be rejected")
-	}
-	if !strings.Contains(err.Error(), "layout") {
-		t.Errorf("error does not name the key: %v", err)
 	}
 }
 
@@ -139,7 +110,7 @@ func TestEventTargetValidation(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := Load(writeManifest(t, c.body))
+			_, err := loadManifest(t, c.body)
 			if err == nil || !strings.Contains(err.Error(), c.msg) {
 				t.Fatalf("err = %v, want it to mention %q", err, c.msg)
 			}

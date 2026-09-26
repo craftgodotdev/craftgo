@@ -8,16 +8,11 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// NewTimingMiddleware constructs the Timing middleware. Declare
-// whatever params your real implementation needs (token store, logger,
-// rate-limit budget, etc.) - craftgo never overwrites this file after
-// the first generation, so the signature is yours.
+// Timing emits a structured warn-log entry whenever a handler exceeds
+// the user-configured threshold. Threshold value, log level, and
+// reporter are wired up in the impl file.
 //
-// Wire it from main.go:
-//
-//	svc := svccontext.NewServiceContext()
-//	svc.Timing = middleware.NewTimingMiddleware(/* your params */)
-//	routes.RegisterRoutes(srv, svc)
+// NewTimingMiddleware returns the Timing middleware, which ServiceContext's Timing field holds.
 func NewTimingMiddleware() server.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

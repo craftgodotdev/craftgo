@@ -9,46 +9,35 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/rpc"
 )
 
-// GRPCServerHandler instruments every call against this stack's
-// providers, never the global slots: one otelgrpc stats handler emits the
-// span and the `rpc.server.call.duration` instrument, the gRPC twin of
-// [Telemetry.HTTPMiddleware]. It runs in the transport, so the span is on
-// the context before any interceptor - the access log included - reads
-// it, and a traced stack adopts the caller's W3C trace context from the
-// request metadata. Health and reflection calls are left out, as the
-// HTTP probes bypass the middleware chain. With both signals off the
-// handler does nothing; it is never nil, which grpc would refuse.
+// GRPCServerHandler returns the stats handler for [rpc.WithStatsHandler]: it
+// records a span, continuing the caller's trace, and `rpc.server.call.duration`
+// for every call except health and reflection.
 func (t *Telemetry) GRPCServerHandler() stats.Handler {
 	if !t.instrumented() {
 		return noopStats{}
 	}
-	return otelgrpc.NewServerHandler(
-		otelgrpc.WithTracerProvider(t.TracerProvider()),
-		otelgrpc.WithMeterProvider(t.MeterProvider()),
-		otelgrpc.WithPropagators(t.propagator()),
-		otelgrpc.WithFilter(func(info *stats.RPCTagInfo) bool { return !rpc.IsInfrastructureMethod(info.FullMethodName) }),
-	)
+	return otelgrpc.NewServerHandler(t.otelgrpcOptions()...)
 }
 
-// GRPCClientHandler instruments every call this process MAKES against
-// this stack's providers: the client span and the
-// `rpc.client.call.duration` instrument, and - the reason a caller needs
-// it at all - the W3C trace context written into the request metadata,
-// so the server it calls continues the trace instead of starting one.
-// Without it a gRPC client sends no `traceparent` and the two halves of
-// a request land in separate traces. [rpc.Dial] installs what is passed
-// to it. Health and reflection calls are left out, and with both signals
-// off the handler does nothing.
+// GRPCClientHandler returns the stats handler for [rpc.WithClientStatsHandler]:
+// it records a span and `rpc.client.call.duration` for every call except health
+// and reflection, and writes the trace context into the request metadata.
 func (t *Telemetry) GRPCClientHandler() stats.Handler {
 	if !t.instrumented() {
 		return noopStats{}
 	}
-	return otelgrpc.NewClientHandler(
+	return otelgrpc.NewClientHandler(t.otelgrpcOptions()...)
+}
+
+// otelgrpcOptions binds a gRPC handler to the stack's providers and propagator
+// and leaves health and reflection calls out.
+func (t *Telemetry) otelgrpcOptions() []otelgrpc.Option {
+	return []otelgrpc.Option{
 		otelgrpc.WithTracerProvider(t.TracerProvider()),
 		otelgrpc.WithMeterProvider(t.MeterProvider()),
 		otelgrpc.WithPropagators(t.propagator()),
 		otelgrpc.WithFilter(func(info *stats.RPCTagInfo) bool { return !rpc.IsInfrastructureMethod(info.FullMethodName) }),
-	)
+	}
 }
 
 // noopStats is the handler of an unconfigured stack.

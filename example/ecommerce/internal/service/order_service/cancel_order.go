@@ -5,26 +5,21 @@ package orders
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
-	shared "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
-
-	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// CancelOrderService carries the per-request state for the
-// CancelOrder endpoint of OrderService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// CancelOrderService runs OrderService.CancelOrder for one request.
 type CancelOrderService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewCancelOrderService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewCancelOrderService binds CancelOrderService to ctx; its Logger carries ctx's trace ids.
 func NewCancelOrderService(ctx context.Context, svcCtx *svccontext.ServiceContext) *CancelOrderService {
 	return &CancelOrderService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewCancelOrderService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// CancelOrder is the service entry point. Replace the
-// TODO with the real implementation.
+// Admin cancellation. Idempotent.
+//
+// CancelOrder implements OrderService.CancelOrder.
 func (l *CancelOrderService) CancelOrder(req *types.GetOrderReq) (*shared.OkResp, error) {
 	// TODO: implement
 	return nil, nil

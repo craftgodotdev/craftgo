@@ -1,12 +1,3 @@
-// UTF-16 ↔ internal position conversion. The LSP protocol measures
-// Position.Character in UTF-16 code units, whereas craftgo's lexer counts
-// runes (Position.Column) and bytes (Position.Offset). A character in the
-// Basic Multilingual Plane (<= U+FFFF) is one UTF-16 unit; a supplementary
-// character (emoji, rare CJK, ...) is a surrogate PAIR - two units. Every
-// crossing between an editor position and an internal position therefore
-// has to go through these helpers, or columns drift on any line that
-// carries multi-byte UTF-8 (byte ≠ rune) or supplementary runes
-// (rune ≠ UTF-16).
 package lsp
 
 import (
@@ -31,22 +22,46 @@ func utf16Len(s string) int {
 	return n
 }
 
-// offsetFromLSP converts a 0-indexed LSP (line, character) - character in
-// UTF-16 code units - into a byte offset into src. It walks to the start
-// of `line`, then consumes UTF-16 units until `character` is reached or
-// the line ends. A line past EOF returns len(src); a character past the
-// line's end clamps to the newline (or EOF).
+// nextLine returns the offset of the line after the one holding offset i of
+// s, and false on the last line. A line ends at `\n`, `\r\n` or a lone `\r`,
+// as the lexer ends it.
+func nextLine(s string, i int) (int, bool) {
+	j := strings.IndexAny(s[i:], "\r\n")
+	if j < 0 {
+		return len(s), false
+	}
+	j += i
+	if strings.HasPrefix(s[j:], "\r\n") {
+		return j + 2, true
+	}
+	return j + 1, true
+}
+
+// lastLine returns the number of line ends in s and the offset of its last
+// line.
+func lastLine(s string) (ends, start int) {
+	for {
+		next, ok := nextLine(s, start)
+		if !ok {
+			return ends, start
+		}
+		ends, start = ends+1, next
+	}
+}
+
+// offsetFromLSP converts a 0-based LSP position (character in UTF-16 units) into
+// a byte offset into src, clamped to the line's end and to len(src).
 func offsetFromLSP(src string, line, character uint32) int {
 	off := 0
-	for l := uint32(0); l < line; l++ {
-		nl := strings.IndexByte(src[off:], '\n')
-		if nl < 0 {
+	for range line {
+		next, ok := nextLine(src, off)
+		if !ok {
 			return len(src)
 		}
-		off += nl + 1
+		off = next
 	}
 	want, units := int(character), 0
-	for off < len(src) && src[off] != '\n' && units < want {
+	for off < len(src) && src[off] != '\n' && src[off] != '\r' && units < want {
 		r, size := utf8.DecodeRuneInString(src[off:])
 		off += size
 		if r > 0xFFFF {
@@ -58,21 +73,11 @@ func offsetFromLSP(src string, line, character uint32) int {
 	return off
 }
 
-// utf16Position converts a lexer Position (1-indexed line, 1-indexed RUNE
-// column) into an LSP Position (0-indexed line, 0-indexed UTF-16
-// character) using the file's source text. When src is empty or does not
-// reach the line, it falls back to copying the rune column straight onto
-// the UTF-16 character - correct for the BMP, off only for supplementary
-// runes on a line we could not read.
+// utf16Position converts a lexer position (1-based line, rune column) into an
+// LSP one over src; a line src lacks keeps the rune column as the character.
 func utf16Position(src string, p lexer.Position) protocol.Position {
-	line := p.Line - 1
-	if line < 0 {
-		line = 0
-	}
-	col := p.Column - 1
-	if col < 0 {
-		col = 0
-	}
+	line := max(p.Line-1, 0)
+	col := max(p.Column-1, 0)
 	lineText, ok := nthLine(src, line)
 	if !ok {
 		return protocol.Position{Line: uint32(line), Character: uint32(col)}
@@ -80,27 +85,47 @@ func utf16Position(src string, p lexer.Position) protocol.Position {
 	return protocol.Position{Line: uint32(line), Character: uint32(runeColToUTF16(lineText, col))}
 }
 
-// nthLine returns the text of the 0-indexed line n (without its trailing
-// newline) and whether the line exists in src.
+// spanRange returns the LSP range of the n bytes of src that start at p, a
+// position in src.
+func spanRange(src string, p lexer.Position, n int) protocol.Range {
+	start := utf16Position(src, p)
+	from := min(max(p.Offset, 0), len(src))
+	text := src[from:min(from+n, len(src))]
+	end := start
+	if ends, last := lastLine(text); ends > 0 {
+		end.Line += uint32(ends)
+		end.Character = uint32(utf16Len(text[last:]))
+	} else {
+		end.Character += uint32(utf16Len(text))
+	}
+	return protocol.Range{Start: start, End: end}
+}
+
+// rangeOf returns the LSP range of t, a token lexed from src.
+func rangeOf(src string, t lexer.Token) protocol.Range {
+	return spanRange(src, t.Pos, len(t.Text))
+}
+
+// nthLine returns the text of the 0-indexed line n, without its line end,
+// and whether the line exists in src.
 func nthLine(src string, n int) (string, bool) {
 	start := 0
-	for i := 0; i < n; i++ {
-		nl := strings.IndexByte(src[start:], '\n')
-		if nl < 0 {
+	for range n {
+		next, ok := nextLine(src, start)
+		if !ok {
 			return "", false
 		}
-		start += nl + 1
+		start = next
 	}
 	rest := src[start:]
-	if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
-		return rest[:nl], true
+	if end := strings.IndexAny(rest, "\r\n"); end >= 0 {
+		return rest[:end], true
 	}
 	return rest, true
 }
 
-// runeColToUTF16 returns the UTF-16 code-unit width of the first runeCol
-// runes of line. A runeCol past the line's rune count clamps to the
-// whole line's width.
+// runeColToUTF16 returns the UTF-16 width of the first runeCol runes of line,
+// or of the whole line when it is shorter.
 func runeColToUTF16(line string, runeCol int) int {
 	units, runes := 0, 0
 	for _, r := range line {

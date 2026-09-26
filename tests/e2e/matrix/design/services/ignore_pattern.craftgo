@@ -70,3 +70,18 @@ service SecuredService {
 		response HealthResp
 	}
 }
+
+// A block of public endpoints: the @ignore* decorators on the extend block
+// drop the service's chain for every method inside, as if each method wrote
+// them, and the block's own @middlewares and @tags start the chain afresh.
+@ignoreMiddleware
+@ignoreSecurity
+@ignoreTags
+@middlewares(Audit)
+@tags("public")
+extend service SecuredService {
+	@doc("Public status page - no auth or rate limit, only the block's Audit.")
+	get Status /status {
+		response HealthResp
+	}
+}

@@ -5,25 +5,20 @@ package attachments
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/attachments"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/attachments"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// UploadAttachmentService carries the per-request state for the
-// UploadAttachment endpoint of AttachmentService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// UploadAttachmentService runs AttachmentService.UploadAttachment for one request.
 type UploadAttachmentService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewUploadAttachmentService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewUploadAttachmentService binds UploadAttachmentService to ctx; its Logger carries ctx's trace ids.
 func NewUploadAttachmentService(ctx context.Context, svcCtx *svccontext.ServiceContext) *UploadAttachmentService {
 	return &UploadAttachmentService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewUploadAttachmentService(ctx context.Context, svcCtx *svccontext.ServiceC
 	}
 }
 
-// UploadAttachment is the service entry point. Replace the
-// TODO with the real implementation.
+// Upload a file attachment to a task (image, PDF or text; ≤10MB).
+//
+// UploadAttachment implements AttachmentService.UploadAttachment.
 func (l *UploadAttachmentService) UploadAttachment(req *types.UploadAttachmentReq) (*types.Attachment, error) {
 	a := types.Attachment{
 		Filename: req.File.Filename,

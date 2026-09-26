@@ -6,8 +6,7 @@ import (
 	"fmt"
 )
 
-// Validate checks every field-level constraint declared on RtItem.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RtItem) Validate() error {
 	if v.Price < 0 {
 		return fmt.Errorf("price: below minimum 0")
@@ -15,14 +14,12 @@ func (v *RtItem) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RtOrder.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RtOrder) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RtPong.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RtPong) Validate() error {
 	return nil
 }

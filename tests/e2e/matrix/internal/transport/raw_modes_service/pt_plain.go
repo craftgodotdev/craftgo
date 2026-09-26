@@ -11,10 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PtPlain returns the http.HandlerFunc for the
-// GET PtPlain passthrough endpoint. The framework stays
-// out of the way: logic receives the raw http.ResponseWriter and
-// *http.Request and writes the response directly.
+// Bare passthrough: no contract, `*/*` in OpenAPI, `(w, r) error` stub.
+//
+// PtPlain returns the GET PtPlain handler.
 func PtPlain(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewPtPlainService(r.Context(), svcCtx)

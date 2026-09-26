@@ -8,12 +8,13 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/x_refs_service"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PromoteHolder returns the http.HandlerFunc for the
-// POST PromoteHolder endpoint.
+// Pins a QUALIFIED request type whose fields come from a bare nested mixin (xshared.XHolder embeds xshared.XHolderSub). The handler must bind `q` from @query and decode `bod` from the body - without threading xshared as the flatten prefix both silently drop while the validator still enforces them.
+//
+// PromoteHolder returns the POST PromoteHolder handler.
 func PromoteHolder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req xshared.XHolder
@@ -44,8 +45,6 @@ func PromoteHolder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

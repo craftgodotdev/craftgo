@@ -7,11 +7,13 @@ linters:
     - unused
     - gocyclo
     - dupl
+    - unparam
+    - copyloopvar
   settings:
     gocyclo:
-      min-complexity: 45
+      min-complexity: 30
     dupl:
-      threshold: 120
+      threshold: 100
   exclusions:
     paths:
       - testdata

@@ -1,19 +1,15 @@
 package golang
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 )
 
-// wiringGRPCData is the template input for `wiring_grpc.tmpl`.
+// wiringGRPCData is the template input for wiring_grpc.tmpl.
 type wiringGRPCData struct {
-	SvccontextImport string
-	// Imports lists every pb and server package once, sorted by path.
-	Imports []extraImport
+	ImportDecl string
 	// Services is one registration line per proto service.
 	Services []wiringGRPCService
 }
@@ -25,39 +21,33 @@ type wiringGRPCService struct {
 	ServerAlias string
 }
 
-// generateWiringGRPC writes `grpc.go` beside wiring.go: the RegisterGRPC
-// call attaching every proto service. It is written only when a proto
-// declares a service, and swept with the wiring directory otherwise,
-// so an HTTP-only project's wiring package never imports the gRPC
-// runtime.
+// generateWiringGRPC writes output.wiring/grpc.go, whose RegisterGRPC attaches every proto
+// service; with no proto service there is no file, and the sweep removes an old one.
 func generateWiringGRPC(protos *protodesign.Set, cfg *config.Config, projectRoot string) error {
 	if !protos.HasServices() {
 		return nil
 	}
-	dir := filepath.Join(projectRoot, cfg.Output.Wiring)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	return writeRendered(dir, "grpc.go", "wiring_grpc.tmpl", buildWiringGRPCData(protos, cfg))
+	return writeGo(outputsOf(cfg).wiring.at(projectRoot, wiringGRPCFile), tmpl("wiring_grpc.tmpl"), buildWiringGRPCData(protos, cfg))
 }
 
-// buildWiringGRPCData gives every pb package one alias (`<name>pb`) and
-// every server package one (`<dir>grpc`) through the file's import set,
-// so two packages of one name coexist in the file.
+// buildWiringGRPCData imports each pb package as `<name>pb` and each server package as
+// `<dir>grpc`; the import set numbers a clashing alias.
 func buildWiringGRPCData(protos *protodesign.Set, cfg *config.Config) wiringGRPCData {
-	imports := newGRPCImportSet()
-	d := wiringGRPCData{SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext))}
+	out := outputsOf(cfg)
+	imports := newImportSet(cfg.Package, nil, goImport{}, wiringGRPCNames)
+	imports.use("context")
+	imports.use(rpcImport)
+	imports.use(out.svccontext.pkg)
+	var d wiringGRPCData
 	for _, svc := range protos.Services {
-		serverImport := goImportFromRel(cfg.Package, cfg.Output.GRPC) + "/" + svc.Dir
-		imports.add(extraImport{Alias: pbAliasFor(svc.Package), Path: svc.PBImport})
-		imports.add(extraImport{Alias: strings.NewReplacer("_", "", "-", "").Replace(svc.Dir) + "grpc", Path: serverImport})
+		server := out.grpc.sub(svc.Dir).pkg
 		d.Services = append(d.Services, wiringGRPCService{
 			Service:     svc.Name,
-			PBAlias:     imports.aliasFor(svc.PBImport),
-			ServerAlias: imports.aliasFor(serverImport),
+			PBAlias:     imports.add(pbAliasFor(svc.Package), svc.PBImport),
+			ServerAlias: imports.add(strings.NewReplacer("_", "", "-", "").Replace(svc.Dir)+"grpc", server),
 		})
 	}
-	d.Imports = imports.sorted()
+	d.ImportDecl = imports.decl()
 	return d
 }
 

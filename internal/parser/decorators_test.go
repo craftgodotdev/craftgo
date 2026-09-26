@@ -4,12 +4,11 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// TestParseEveryDocumentedDecorator pins the parser's coverage of every
-// decorator listed in the README's "Decorators by level" table. The DSL
-// below exercises each decorator at least once; if any of them ever
-// stops parsing, this test fails loudly so the regression is obvious.
+// TestParseEveryDocumentedDecorator pins that every built-in decorator parses
+// at the level it belongs to.
 func TestParseEveryDocumentedDecorator(t *testing.T) {
 	src := `@version("1.0.0")
 @doc("file-level doc")
@@ -29,7 +28,7 @@ type T {
     @maxLength(100)
     @pattern("^[a-z]+$")
     @format("email")
-    @enum("a", "b")
+    @json("full_name")
     @example("alice")
     @doc("field doc")
     @default("d")
@@ -66,6 +65,7 @@ type T {
     headerField  string
 
     @cookie
+    @sensitive
     cookieField  string
 
     @body
@@ -104,6 +104,8 @@ service S {
     @errors(MyErr)
     @status(200)
     @ignoreSecurity
+    @ignoreMiddleware
+    @ignoreTags
     @deprecated
     @passthrough
     @timeout(5s)
@@ -118,52 +120,31 @@ service S {
 
 middleware Auth
 middleware RateLimit
+
+@contract("design.placed.v1")
+event Placed {
+    payload T
+}
 `
-	p := New("decorators.craftgo", src)
-	f := p.Parse()
-	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("decorators failed to parse: %v", d)
-	}
-	// Spot-check that high-level decorators landed where expected.
+	f := mustParse(t, src)
 	if len(f.Decorators) < 3 {
 		t.Errorf("file decorators count = %d, want >= 3", len(f.Decorators))
 	}
 
-	want := []string{
-		"version", "doc", "deprecated",
-		"example", "requiresOneOf", "mutuallyExclusive",
-		"length", "minLength", "maxLength", "pattern", "format", "enum",
-		"gt", "gte", "lt", "lte", "range", "positive", "negative", "multipleOf",
-		"minItems", "maxItems", "uniqueItems", "maxSize", "mimeTypes",
-		"default", "nullable",
-		"path", "query", "body", "header", "cookie", "form",
-		"prefix", "middlewares", "group", "tags", "security",
-		"ignoreSecurity",
-		"summary", "operationId", "errors", "status",
-		"passthrough", "rawRequest", "rawResponse",
-		"timeout", "maxBodySize",
-	}
 	seen := collectAllDecoratorNames(f)
-	for _, w := range want {
+	for _, w := range semantic.Names() {
 		if !seen[w] {
 			t.Errorf("expected decorator %q to be parsed somewhere", w)
 		}
 	}
 }
 
-// collectAllDecoratorNames walks every node carrying a Decorators slice
-// and returns the set of decorator names seen. The walker is hand-coded
-// instead of using a visitor because the AST is small and stable.
+// collectAllDecoratorNames returns the names of the decorators in f.
 func collectAllDecoratorNames(f *ast.File) map[string]bool {
 	out := map[string]bool{}
 	add := func(ds []*ast.Decorator) {
 		for _, d := range ds {
 			out[d.Name] = true
-			for _, a := range d.Args {
-				if a.Nested != nil {
-					out[a.Nested.Name] = true
-				}
-			}
 		}
 	}
 	add(f.Decorators)
@@ -197,16 +178,17 @@ func collectAllDecoratorNames(f *ast.File) map[string]bool {
 			for _, mtd := range v.Methods() {
 				add(mtd.Decorators)
 			}
+		case *ast.EventDecl:
+			add(v.Decorators)
 		}
 	}
 	return out
 }
 
-// TestParseMultiLineDecoratorChain exercises the readability convention
-// where a long decorator chain is split across many lines. The parser
-// must accept arbitrary newlines between decorators on the same field.
+// TestParseMultiLineDecoratorChain pins that a field's trailing decorators may
+// span several lines.
 func TestParseMultiLineDecoratorChain(t *testing.T) {
-	f := parseSrc(t, `package design
+	f := mustParse(t, `package design
 type T {
     name string
         @doc("the name")
@@ -219,9 +201,6 @@ type T {
 	if len(field.Decorators) != len(want) {
 		t.Fatalf("expected %d trailing decorators, got %d", len(want), len(field.Decorators))
 	}
-	// Per-position assertion: a parser that accidentally reverses the
-	// slice would still produce the same comma-joined string after a
-	// sort, so check each slot explicitly.
 	for i, w := range want {
 		if got := field.Decorators[i].Name; got != w {
 			t.Errorf("decorator[%d] = %q, want %q", i, got, w)
@@ -229,12 +208,10 @@ type T {
 	}
 }
 
-// TestParseScalarDoesNotStealNextDecorator pins that a scalar declaration
-// only consumes decorators on its own line: a decorator on the following
-// line is the leading decorator of the next declaration, not a trailing
-// decorator of the scalar.
+// TestParseScalarDoesNotStealNextDecorator pins that a scalar takes only the
+// decorators on its own line.
 func TestParseScalarDoesNotStealNextDecorator(t *testing.T) {
-	f := parseSrc(t, `package design
+	f := mustParse(t, `package design
 scalar Email string
 @requiresOneOf(primary, fallback)
 type Pair { primary string?  fallback string? }`)
@@ -247,7 +224,7 @@ type Pair { primary string?  fallback string? }`)
 		t.Fatalf("type Pair should carry @requiresOneOf, got %v", td.Decorators)
 	}
 	// A same-line trailing decorator still belongs to the scalar.
-	f2 := parseSrc(t, `package design
+	f2 := mustParse(t, `package design
 scalar Email string @format("email")`)
 	sd2 := f2.Decls[0].(*ast.ScalarDecl)
 	if len(sd2.Decorators) != 1 || sd2.Decorators[0].Name != "format" {

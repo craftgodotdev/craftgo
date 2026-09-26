@@ -5,25 +5,20 @@ package prefixvar
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/prefixvar"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/prefixvar"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ListTenantItemsService carries the per-request state for the
-// ListTenantItems endpoint of TenantService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ListTenantItemsService runs TenantService.ListTenantItems for one request.
 type ListTenantItemsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewListTenantItemsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewListTenantItemsService binds ListTenantItemsService to ctx; its Logger carries ctx's trace ids.
 func NewListTenantItemsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ListTenantItemsService {
 	return &ListTenantItemsService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,10 +27,9 @@ func NewListTenantItemsService(ctx context.Context, svcCtx *svccontext.ServiceCo
 	}
 }
 
-// GET: `tenantID` (no @path) auto-binds to the @prefix segment and
-// reads from r.PathValue; `limit` is a plain @query.
-// ListTenantItems is the service entry point. Replace the
-// TODO with the real implementation.
+// List a tenant's items. tenantID auto-binds to the @prefix path segment; without the prefix-aware rule it would read from the query string instead.
+//
+// ListTenantItems implements TenantService.ListTenantItems.
 func (l *ListTenantItemsService) ListTenantItems(req *types.TenantListReq) (*types.TenantItemList, error) {
 	// TODO: implement
 	return nil, nil

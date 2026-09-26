@@ -96,6 +96,14 @@ type XLocalItem {
 	id string
 }
 
+// XOwnerPair<XOwner> spells its type parameter like the xshared XOwner its
+// `owner` field names: the OpenAPI instance keeps `owner` an XOwner and
+// gives `value` the argument.
+type XOwnerPair<XOwner> {
+	owner xshared.XOwner
+	value XOwner
+}
+
 // XMixinErr is an error whose body embeds a CROSS-PACKAGE mixin
 // (xshared.XOwner). The error emitter's import walk must collect the xshared
 // import - the generated errors.go embeds `xshared.XOwner`, so without the
@@ -103,6 +111,12 @@ type XLocalItem {
 error Conflict XMixinErr {
 	xshared.XOwner
 	reason string @length(1, 200)
+}
+
+// XLost shares its name with xshared.XLost, so the merged OpenAPI document
+// names this one XrefsXLostErr.
+error NotFound XLost {
+	id string
 }
 
 // ----- ERROR + service matrix -----
@@ -208,6 +222,11 @@ service XRefsService {
 		response xshared.XBag<xshared.XOwner>
 	}
 
+	@doc("A generic response whose type parameter is spelled like the xshared type its field names: XOwnerPairOfString refs XOwner for `owner` and types `value` a string.")
+	get GetOwnerPair /owner-pair {
+		response XOwnerPair<string>
+	}
+
 	@doc("Pins cross-package scalar BINDING casts. Handler must emit `req.Q = xshared.XEmail(r.URL.Query().Get(\"q\"))` (qualified cast) - bare strings fail to compile against the *xshared.XEmail field type.")
 	get Search /search {
 		request  XSearchReq
@@ -250,4 +269,42 @@ service XRefsService {
 		request  xshared.XThirdReq
 		response xshared.XOwner
 	}
+
+	@doc("Pins @errors in its array form over an error two packages declare: the 404 is an anyOf of this package's XLost (XrefsXLostErr) and xshared's (XsharedXLostErr).")
+	@errors([XLost, xshared.XLost])
+	get GetLost /lost/{id} {
+		request  XGetReq
+		response xshared.XOwner
+	}
+
+	@doc("A request from package server and a response from package log, each named like a package the handler or the stub imports: both files import them under another alias.")
+	post SignIn /sign-in/{session} {
+		request  server.Credentials
+		response log.Entry
+	}
+
+	@doc("A generic response over datetime: the stub imports time for the type argument.")
+	get Stamps /stamps {
+		response xshared.XBag<datetime>
+	}
+
+	@doc("Shares its method name with xshared's XRefsService.Describe: its body component is XrefsXRefsServiceDescribeRespBody.")
+	get Describe /describe {
+		response xshared.XOwner
+	}
+}
+
+// XStdNames names types of packages called like the standard packages its
+// types and validate files import, and like the receiver its Validate binds.
+type XStdNames {
+	at    datetime
+	slot  time.Slot
+	rows  fmt.Row[] @uniqueItems
+	codes v.Code[]  @uniqueItems
+}
+
+// XStdNamesClash carries a datetime beside a type of package time.
+error Conflict XStdNamesClash {
+	at   datetime
+	slot time.Slot
 }

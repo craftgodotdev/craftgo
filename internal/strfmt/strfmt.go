@@ -1,99 +1,111 @@
-// Package strfmt is the catalogue of named string formats `@format`
-// accepts: for each, the OpenAPI `format` keyword, the Go imports the
-// generated check needs and the check itself. It is a leaf below the
-// analyser (which accepts exactly these names), codegen (which emits the
-// check and the keyword) and the LSP (which offers the names), so a
-// format is defined in exactly one place.
-//
-// (Named `strfmt`, not `formats`, to stay clearly distinct from the
-// `internal/format` printer package that renders DSL source.)
+// Package strfmt is the catalogue of named string formats `@format` accepts:
+// each one's OpenAPI `format` keyword and the Go check generated for it.
 package strfmt
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"net"
+	"net/mail"
+	"net/url"
+	"regexp"
+	"time"
+)
 
 // Spec is one named string format.
 type Spec struct {
 	Name  string // the `@format` argument
-	Label string // the human label of the validation message: "not a valid <Label>"
+	Label string // fills the validation message "not a valid <Label>"
 	OAS   string // the OpenAPI `format` keyword when it differs from Name
 	// Imports are the Go packages the generated check needs.
 	Imports []string
-	// Cond is a Go condition template that is true when the value is
-	// INVALID, with one %s for the value expression. It may open with an
-	// init statement (`_, _err := f(%s); _err != nil`), which slots into
-	// Go's `if init; cond` form. Empty for a regex-backed format.
+	// Cond is a Go condition, true when the value is invalid, with one %s for
+	// the value; it may open with an `if` init statement.
 	Cond string
-	// Pattern is the regular expression the value must match; the
-	// generated validator compiles it once per file. Empty for a
-	// stdlib-backed format.
+	// Pattern is the regular expression the value must match when Cond is empty.
 	Pattern string
+	// valid is Cond as a function: it accepts what Cond does not reject.
+	valid func(string) bool
 }
 
-// All lists every format in documentation order (README §"Decorators by
-// level").
+// Valid reports whether v passes the check generated for s: its Pattern, or
+// its Cond.
+func (s Spec) Valid(v string) bool {
+	if s.Pattern != "" {
+		return regexp.MustCompile(s.Pattern).MatchString(v)
+	}
+	return s.valid(v)
+}
+
+// All lists every format.
 var All = []Spec{
-	// RFC 5322 email: net/mail.ParseAddress accepts the full address-spec
-	// grammar, so common forms ("a@b.com", "a+tag@b.co.uk") pass while
-	// malformed ones are rejected.
+	// RFC 5322 address, parsed by net/mail.
 	{Name: "email", Label: "email", Imports: []string{"net/mail"},
-		Cond: `_, _err := mail.ParseAddress(%s); _err != nil`},
-	// HTTP/HTTPS URL: net/url.Parse is permissive (it accepts `mailto:`,
-	// `data:`, ...), so the scheme is checked as well.
+		Cond:  `_, _err := mail.ParseAddress(%s); _err != nil`,
+		valid: func(v string) bool { _, err := mail.ParseAddress(v); return err == nil }},
+	// HTTP or HTTPS URL: url.Parse also accepts other schemes, so the scheme is checked.
 	{Name: "url", Label: "URL", Imports: []string{"net/url"},
-		Cond: `_u, _err := url.Parse(%s); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https")`},
-	// RFC 3986 generic URI: any non-empty scheme.
+		Cond: `_u, _err := url.Parse(%s); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https")`,
+		valid: func(v string) bool {
+			u, err := url.Parse(v)
+			return err == nil && (u.Scheme == "http" || u.Scheme == "https")
+		}},
+	// RFC 3986 URI with any non-empty scheme.
 	{Name: "uri", Label: "URI", Imports: []string{"net/url"},
-		Cond: `_u, _err := url.Parse(%s); _err != nil || _u.Scheme == ""`},
-	// RFC 4122 UUID, format only: the version digit is not enforced, a
-	// @pattern on top makes it strict.
+		Cond:  `_u, _err := url.Parse(%s); _err != nil || _u.Scheme == ""`,
+		valid: func(v string) bool { u, err := url.Parse(v); return err == nil && u.Scheme != "" }},
+	// RFC 4122 UUID layout; the version digit is not checked.
 	{Name: "uuid", Label: "UUID",
 		Pattern: `^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`},
-	// RFC 3339 date-time, spelled `datetime` in the DSL and `date-time` in
-	// OpenAPI. time.Parse handles fractional seconds and offsets and
-	// rejects impossible dates (Feb 30), which a regex cannot.
+	// RFC 3339 date-time, spelled `date-time` in OpenAPI.
 	{Name: "datetime", Label: "RFC 3339 datetime", OAS: "date-time", Imports: []string{"time"},
-		Cond: `_, _err := time.Parse(time.RFC3339, %s); _err != nil`},
+		Cond:  `_, _err := time.Parse(time.RFC3339, %s); _err != nil`,
+		valid: func(v string) bool { _, err := time.Parse(time.RFC3339, v); return err == nil }},
 	// RFC 3339 full-date.
 	{Name: "date", Label: "date", Imports: []string{"time"},
-		Cond: `_, _err := time.Parse(time.DateOnly, %s); _err != nil`},
+		Cond:  `_, _err := time.Parse(time.DateOnly, %s); _err != nil`,
+		valid: func(v string) bool { _, err := time.Parse(time.DateOnly, v); return err == nil }},
 	// RFC 3339 partial-time: `15:04:05`, no offset.
 	{Name: "time", Label: "time", Imports: []string{"time"},
-		Cond: `_, _err := time.Parse(time.TimeOnly, %s); _err != nil`},
-	// E.164-ish phone with human-friendly separators; `@pattern("^\\+\\d{1,15}$")`
-	// for the strict form.
+		Cond:  `_, _err := time.Parse(time.TimeOnly, %s); _err != nil`,
+		valid: func(v string) bool { _, err := time.Parse(time.TimeOnly, v); return err == nil }},
+	// E.164-like phone number with separators allowed.
 	{Name: "phone", Label: "phone", Pattern: `^\+?[0-9 ()-]{6,20}$`},
-	// RFC 791 IPv4: net.ParseIP + To4 tells it apart from the IPv6 form
-	// ParseIP also accepts.
+	// RFC 791 IPv4; To4 rejects the IPv6 forms ParseIP also accepts.
 	{Name: "ipv4", Label: "IPv4", Imports: []string{"net"},
-		Cond: `_ip := net.ParseIP(%s); _ip == nil || _ip.To4() == nil`},
-	// RFC 4291 IPv6: parses and is not a v4 address. Covers `::`, zone ids,
-	// IPv4-mapped and shortened forms - every shape a regex would miss.
+		Cond:  `_ip := net.ParseIP(%s); _ip == nil || _ip.To4() == nil`,
+		valid: func(v string) bool { ip := net.ParseIP(v); return ip != nil && ip.To4() != nil }},
+	// RFC 4291 IPv6: any address ParseIP accepts that is not IPv4.
 	{Name: "ipv6", Label: "IPv6", Imports: []string{"net"},
-		Cond: `_ip := net.ParseIP(%s); _ip == nil || _ip.To4() != nil`},
-	// RFC 4632 / RFC 4291 CIDR: v4 and v6 with mask-range and octet-bound
-	// validation.
+		Cond:  `_ip := net.ParseIP(%s); _ip == nil || _ip.To4() != nil`,
+		valid: func(v string) bool { ip := net.ParseIP(v); return ip != nil && ip.To4() == nil }},
+	// RFC 4632 / RFC 4291 CIDR, IPv4 or IPv6.
 	{Name: "cidr", Label: "CIDR", Imports: []string{"net"},
-		Cond: `_, _, _err := net.ParseCIDR(%s); _err != nil`},
-	// MAC-48 / EUI-64 / 20-octet InfiniBand: `:`, `-` and dot separated
-	// forms across all three lengths.
+		Cond:  `_, _, _err := net.ParseCIDR(%s); _err != nil`,
+		valid: func(v string) bool { _, _, err := net.ParseCIDR(v); return err == nil }},
+	// MAC-48, EUI-64 or 20-octet InfiniBand address.
 	{Name: "mac", Label: "MAC address", Imports: []string{"net"},
-		Cond: `_, _err := net.ParseMAC(%s); _err != nil`},
-	// Length-only credit card number sanity; a Luhn checksum needs a loop,
-	// so it stays in hand-written logic.
+		Cond:  `_, _err := net.ParseMAC(%s); _err != nil`,
+		valid: func(v string) bool { _, err := net.ParseMAC(v); return err == nil }},
+	// Card number length only; no Luhn checksum.
 	{Name: "creditcard", Label: "credit card number", Pattern: `^[0-9]{12,19}$`},
 	// RFC 4648 §4 standard base64 (`+/=`).
 	{Name: "base64", Label: "base64", Imports: []string{"encoding/base64"},
-		Cond: `_, _err := base64.StdEncoding.DecodeString(%s); _err != nil`},
+		Cond:  `_, _err := base64.StdEncoding.DecodeString(%s); _err != nil`,
+		valid: func(v string) bool { _, err := base64.StdEncoding.DecodeString(v); return err == nil }},
 	// RFC 4648 §5 URL-safe base64 (`-_=`).
 	{Name: "base64url", Label: "base64url", Imports: []string{"encoding/base64"},
-		Cond: `_, _err := base64.URLEncoding.DecodeString(%s); _err != nil`},
+		Cond:  `_, _err := base64.URLEncoding.DecodeString(%s); _err != nil`,
+		valid: func(v string) bool { _, err := base64.URLEncoding.DecodeString(v); return err == nil }},
 	// CSS hex color: 3 or 6 hex digits, optional `#`.
 	{Name: "hexcolor", Label: "hex color", Pattern: `^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$`},
-	// RFC 8259 JSON: json.Valid does a full structural parse, so bad
-	// escapes and unbalanced brackets are caught.
+	// RFC 8259 JSON text.
 	{Name: "json", Label: "JSON", Imports: []string{"encoding/json"},
-		Cond: `!json.Valid([]byte(%s))`},
+		Cond:  `!json.Valid([]byte(%s))`,
+		valid: func(v string) bool { return json.Valid([]byte(v)) }},
 }
 
-// Names returns every format name in documentation order.
+// Names returns every format name, in [All] order.
 func Names() []string {
 	out := make([]string, len(All))
 	for i, s := range All {
@@ -112,9 +124,8 @@ func Lookup(name string) (Spec, bool) {
 	return Spec{}, false
 }
 
-// OpenAPIFormat returns the OpenAPI `format` keyword for name: the
-// catalogue's keyword where it differs from the DSL spelling, the name
-// itself otherwise.
+// OpenAPIFormat returns the OpenAPI `format` keyword for name: the spec's OAS
+// when set, else name itself.
 func OpenAPIFormat(name string) string {
 	if s, ok := Lookup(name); ok && s.OAS != "" {
 		return s.OAS

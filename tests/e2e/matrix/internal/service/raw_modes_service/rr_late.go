@@ -4,11 +4,11 @@ package rawmodes
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
-	"errors"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -21,7 +21,7 @@ type RrLateService struct {
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewRrLateService constructs a fresh service instance bound to ctx.
+// NewRrLateService binds RrLateService to ctx; its Logger carries ctx's trace ids.
 func NewRrLateService(ctx context.Context, svcCtx *svccontext.ServiceContext) *RrLateService {
 	return &RrLateService{
 		Logger: log.Default().WithContext(ctx),

@@ -11,12 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Public liveness probe sits inside an otherwise-authenticated
-// service. The three @ignore* decorators clear inherited middlewares,
-// security, and tags so monitoring tools can poll without credentials
-// and the endpoint is grouped separately from the admin surface.
-// Healthz returns the http.HandlerFunc for the
-// GET Healthz endpoint.
+// Liveness probe - public on purpose.
+//
+// Healthz returns the GET Healthz handler.
 func Healthz(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewHealthzService(r.Context(), svcCtx)
@@ -25,7 +22,6 @@ func Healthz(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

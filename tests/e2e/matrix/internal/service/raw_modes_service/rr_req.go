@@ -6,10 +6,10 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/craftgodotdev/craftgo/pkg/server"
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/rawmodes"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/rawmodes"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -22,7 +22,7 @@ type RrReqService struct {
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewRrReqService constructs a fresh service instance bound to ctx.
+// NewRrReqService binds RrReqService to ctx; its Logger carries ctx's trace ids.
 func NewRrReqService(ctx context.Context, svcCtx *svccontext.ServiceContext) *RrReqService {
 	return &RrReqService{
 		Logger: log.Default().WithContext(ctx),

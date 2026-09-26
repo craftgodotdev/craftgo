@@ -5,25 +5,20 @@ package todos
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/todo/internal/types/todos"
-
-	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/todo/internal/types/todos"
+	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 )
 
-// DeleteTodoService carries the per-request state for the
-// DeleteTodo endpoint of TodoService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// DeleteTodoService runs TodoService.DeleteTodo for one request.
 type DeleteTodoService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewDeleteTodoService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewDeleteTodoService binds DeleteTodoService to ctx; its Logger carries ctx's trace ids.
 func NewDeleteTodoService(ctx context.Context, svcCtx *svccontext.ServiceContext) *DeleteTodoService {
 	return &DeleteTodoService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewDeleteTodoService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// DeleteTodo is the service entry point. Replace the
-// TODO with the real implementation.
+// Delete a todo. Idempotent.
+//
+// DeleteTodo implements TodoService.DeleteTodo.
 func (l *DeleteTodoService) DeleteTodo(req *types.GetTodoReq) (*types.OkResp, error) {
 	// TODO: implement
 	return nil, nil

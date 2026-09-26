@@ -5,25 +5,20 @@ package scalars
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// SearchProductsService carries the per-request state for the
-// SearchProducts endpoint of ScalarsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// SearchProductsService runs ScalarsService.SearchProducts for one request.
 type SearchProductsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewSearchProductsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewSearchProductsService binds SearchProductsService to ctx; its Logger carries ctx's trace ids.
 func NewSearchProductsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *SearchProductsService {
 	return &SearchProductsService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewSearchProductsService(ctx context.Context, svcCtx *svccontext.ServiceCon
 	}
 }
 
-// SearchProducts is the service entry point. Replace the
-// TODO with the real implementation.
+// Search by tag. Demonstrates ARRAY-of-scalar (Tag[]) on a request DTO - per-element @pattern fires once per item.
+//
+// SearchProducts implements ScalarsService.SearchProducts.
 func (l *SearchProductsService) SearchProducts(req *types.Search) (*types.ProductPage, error) {
 	// TODO: implement
 	return nil, nil

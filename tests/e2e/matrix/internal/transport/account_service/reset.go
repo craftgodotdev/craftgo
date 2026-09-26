@@ -11,13 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Reset endpoint shows the reset-and-replace pattern inside an
-// extend block: drop the inherited chain entirely (RateLimit
-// from primary + BasicAuth + Audit from this extend), then
-// declare the method's own minimal chain. Final chain: [Audit]
-// only - both inherited layers cleared.
-// Reset returns the http.HandlerFunc for the
-// POST Reset endpoint.
+// Hard reset - bypasses BasicAuth, uses its own minimal chain.
+//
+// Reset returns the POST Reset handler.
 func Reset(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewResetService(r.Context(), svcCtx)
@@ -26,8 +22,6 @@ func Reset(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

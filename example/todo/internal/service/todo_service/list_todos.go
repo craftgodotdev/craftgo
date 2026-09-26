@@ -6,25 +6,20 @@ import (
 	"context"
 	"slices"
 
-	types "github.com/craftgodotdev/craftgo/example/todo/internal/types/todos"
-
-	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/todo/internal/types/todos"
+	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 )
 
-// ListTodosService carries the per-request state for the
-// ListTodos endpoint of TodoService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ListTodosService runs TodoService.ListTodos for one request.
 type ListTodosService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewListTodosService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewListTodosService binds ListTodosService to ctx; its Logger carries ctx's trace ids.
 func NewListTodosService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ListTodosService {
 	return &ListTodosService{
 		Logger: log.Default().WithContext(ctx),

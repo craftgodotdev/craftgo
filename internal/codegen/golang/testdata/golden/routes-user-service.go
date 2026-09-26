@@ -4,16 +4,12 @@ package design
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/example/app/internal/transport/user-service"
 	"github.com/example/app/svccontext"
 )
 
-// RegisterRoutes wires every UserService endpoint onto srv. Patterns
-// use the Go 1.22 method-prefixed form so VERB and path match together;
-// service prefix and OpenAPI basePath are baked in. Methods declaring
-// `@middlewares(...)` are wrapped via the corresponding fields on
-// ServiceContext (embedded Middlewares struct), so no runtime name
-// lookup is required - the values come pre-wired.
+// RegisterRoutes registers the UserService routes on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /v1/api/v1/users/{id}", transport.GetUser(svcCtx))
 	srv.Handle("POST /v1/api/v1/users/{id}", transport.UpdateUser(svcCtx))

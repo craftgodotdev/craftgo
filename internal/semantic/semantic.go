@@ -1,30 +1,7 @@
-// Package semantic performs whole-package validation on parsed [ast.File]
-// values and produces a merged, name-indexed [Package] for downstream tools.
-//
-// Responsibilities:
-//
-//   - Package-name consistency across files.
-//   - Symbol tables for types, enums, errors, scalars, middlewares,
-//     events.
-//   - Primary / `extend service` merge.
-//   - Duplicate names (top-level, fields, methods, routes) and
-//     uniform enum value kinds.
-//   - Decorator placement, arity, argument literal types, value-set
-//     enums, cross-references (errors / middlewares / security
-//     schemes / requiresOneOf field idents), and value-range checks.
-//   - Field-type compatibility for validator decorators (string
-//     validators only on strings, etc.).
-//   - Mixin field expansion: cycle, conflict, and generic-arity
-//     detection.
-//   - Generic instantiation: arg arity, non-generic-with-args, and
-//     type-parameter scoping.
-//
-// [AnalyzeProject] groups files by their `package X` declaration and
-// resolves cross-package qualified refs against the project's package
-// set; [Analyze] is the single-package convenience over it. Diagnostics carry stable
-// [lexer.Diagnostic.Code] identifiers (`decorator/arity`,
-// `mixin/conflict`, `generic/arity`, …) so the LSP and docs site can
-// reference each rule individually.
+// Package semantic analyses parsed design files: [AnalyzeProject] groups
+// them into packages, builds each package's symbol tables and reports
+// every rule violation as a [Diagnostic] with a stable code. It also
+// resolves the target-independent facts about fields, events and enums.
 package semantic
 
 import (
@@ -34,136 +11,100 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// Diagnostic re-exports [lexer.Diagnostic] so semantic-layer callers do not
-// need to import the lexer package directly.
+// Diagnostic is [lexer.Diagnostic].
 type Diagnostic = lexer.Diagnostic
 
-// Package is the merged result of analysing one or more [ast.File] from the
-// same logical package. The maps are keyed by the unqualified declaration
-// name; cross-package references are resolved by [AnalyzeProject].
+// Package is the merged result of analysing the files of one DSL package.
+// Every map is keyed by the unqualified declaration name.
 type Package struct {
-	// Name is the package name agreed on by every file with a `package`
-	// declaration. Empty when no file has one.
-	Name string
-	// Types maps `type Name { ... }` declarations by name.
-	Types map[string]*ast.TypeDecl
-	// Enums maps `enum Name { ... }` declarations by name.
-	Enums map[string]*ast.EnumDecl
-	// Errors maps `error Cat Name [{ ... }]` declarations by name.
-	Errors map[string]*ast.ErrorDecl
-	// Scalars maps `scalar Name Primitive` declarations by name.
-	Scalars map[string]*ast.ScalarDecl
-	// Middlewares maps `middleware Name` declarations by name.
+	// Name is the name the package's files declare.
+	Name        string
+	Types       map[string]*ast.TypeDecl
+	Enums       map[string]*ast.EnumDecl
+	Errors      map[string]*ast.ErrorDecl
+	Scalars     map[string]*ast.ScalarDecl
 	Middlewares map[string]*ast.MiddlewareDecl
-	// Services maps service names to the merged primary + extends bundle.
-	Services map[string]*ServiceInfo
-	// Events maps `event Name { ... }` declarations by name. Events have
-	// their own namespace, so an event and its payload type may share a
-	// name.
+	Services    map[string]*ServiceInfo
+	// Events is its own namespace, so an event may share its payload type's name.
 	Events map[string]*ast.EventDecl
 }
 
-// ServiceInfo bundles the primary `service` declaration with every `extend
-// service` continuation that targets the same name. Methods is the merged
-// list in source order.
+// ServiceInfo is a primary `service` declaration and its `extend service`
+// blocks. Methods lists the primary's methods, then each block's, as
+// declared; [ServiceInfo.Decorators] adds what a block gives its methods.
 type ServiceInfo struct {
 	Primary *ast.ServiceDecl
 	Extends []*ast.ServiceDecl
 	Methods []*ast.Method
+	// basePath is [Options.BasePath], which every route of the service starts with.
+	basePath string
 }
 
-// Options configure the analyser's optional cross-reference checks.
-// Pass an empty Options for the default (no truth source for security
-// schemes); the corresponding refs are then silently allowed.
+// Options carries the manifest settings the analysis checks against.
 type Options struct {
-	// SecuritySchemes lists names declared in the OpenAPI manifest
-	// (`craftgo.design.yaml` openapi.securitySchemes). When nil the
-	// `@security(name)` reference check is skipped - there is no
-	// authoritative list to compare against. When non-nil, every
-	// scheme name must appear here or produce a [CodeDecoratorRef]
-	// diagnostic. To opt out of inherited security on a public
-	// endpoint use `@ignoreSecurity` (not a sentinel scheme name).
+	// SecuritySchemes lists the manifest's openapi.securitySchemes names;
+	// nil skips the @security reference check.
 	SecuritySchemes []string
 
-	// BasePath is the project's `openapi.basePath` from the manifest.
-	// Used by the path-resolution pass to compute final routes for
-	// cross-service collision detection and to surface `path/format`
-	// warnings on a malformed value. Empty disables basePath checks
-	// (as if no basePath were declared).
+	// BasePath is the manifest's openapi.basePath, the prefix of every route.
 	BasePath string
 
-	// HealthPaths overrides the default `/healthz`, `/readyz` reserved
-	// path set. Empty slice = default; nil also = default. A
-	// user-declared method matching one of these paths produces a
-	// `path/health-conflict` diagnostic.
+	// HealthPaths replaces the reserved health routes (/healthz, /readyz)
+	// when non-empty.
 	HealthPaths []string
 
-	// DesignRoot is the absolute filesystem path of the project's
-	// design folder, used to check `import "path"` declarations against
-	// the filesystem. When empty the import paths are not checked.
+	// DesignRoot is the design folder `import "path"` resolves against;
+	// empty skips the import path check.
 	DesignRoot string
 
-	// FileCase is the project's `output.fileCase` from the manifest -
-	// "kebab", "snake" or "camel". It decides the directory name an
-	// UNGROUPED service occupies, which the group-collision check
-	// compares against every declared `@group`. Empty means the config
-	// default (snake), matching the value craftgo.design.yaml resolves to
-	// before codegen runs, so the analyser and the emitters agree on the
-	// layout.
+	// FileCase is the manifest's output.fileCase ("kebab", "snake" or
+	// "camel"), which names an ungrouped service's directory; empty means snake.
 	FileCase string
 }
 
-// Analyze validates files as a project and returns the package they
-// declare together with every diagnostic found. The Package value is
-// always non-nil even when diagnostics were reported, so callers
-// (codegen, LSP) can do best-effort downstream work.
-//
-// Equivalent to AnalyzeWith(files, [Options]{}).
+// Analyze runs [AnalyzeProject] with zero [Options] and returns the
+// project's first package by name, or an empty package when it has none.
 func Analyze(files []*ast.File) (*Package, []Diagnostic) {
-	return AnalyzeWith(files, Options{})
+	return analyzeWith(files, Options{})
 }
 
-// AnalyzeWith is the [Analyze] variant that accepts cross-reference
-// truth sources. It runs [AnalyzeProject] and returns the project's
-// single package - the named package when exactly one is declared, the
-// unnamed bucket otherwise.
-func AnalyzeWith(files []*ast.File, opts Options) (*Package, []Diagnostic) {
+// analyzeWith is [Analyze] with opts.
+func analyzeWith(files []*ast.File, opts Options) (*Package, []Diagnostic) {
 	proj, diags := AnalyzeProject(files, opts)
-	return proj.singlePackage(), diags
+	if names := proj.PackageNames(); len(names) > 0 {
+		return proj.Packages[names[0]], diags
+	}
+	return newPackage(""), diags
 }
 
-// newAnalyzer returns an analyzer with empty symbol tables for one package.
-func newAnalyzer(proj *Project, opts Options) *analyzer {
-	return &analyzer{
-		pkg: &Package{
-			Types:       map[string]*ast.TypeDecl{},
-			Enums:       map[string]*ast.EnumDecl{},
-			Errors:      map[string]*ast.ErrorDecl{},
-			Scalars:     map[string]*ast.ScalarDecl{},
-			Middlewares: map[string]*ast.MiddlewareDecl{},
-			Services:    map[string]*ServiceInfo{},
-			Events:      map[string]*ast.EventDecl{},
-		},
-		proj: proj,
-		opts: opts,
+// newPackage returns package name with empty symbol tables.
+func newPackage(name string) *Package {
+	return &Package{
+		Name:        name,
+		Types:       map[string]*ast.TypeDecl{},
+		Enums:       map[string]*ast.EnumDecl{},
+		Errors:      map[string]*ast.ErrorDecl{},
+		Scalars:     map[string]*ast.ScalarDecl{},
+		Middlewares: map[string]*ast.MiddlewareDecl{},
+		Services:    map[string]*ServiceInfo{},
+		Events:      map[string]*ast.EventDecl{},
 	}
 }
 
-// runDeclPhase parses the AST into the package symbol tables and
-// merges service primaries with their `extend` blocks. Every later
-// phase reads the resulting tables, so this MUST run first.
+// newAnalyzer returns an analyzer with empty symbol tables for package name.
+func newAnalyzer(proj *Project, name string, opts Options) *analyzer {
+	return &analyzer{pkg: newPackage(name), proj: proj, opts: opts}
+}
+
+// runDeclPhase builds the symbol tables and merges services; every other
+// phase reads them, so it runs first for every package.
 func (a *analyzer) runDeclPhase(files []*ast.File) {
-	a.setPackageName(files)
 	a.collectDecls(files)
 	a.mergeServices()
 }
 
-// runNamingPhase enforces naming conventions and detects collisions
-// before any decorator / shape pass runs. Lower-case decl names,
-// case-flip field collisions, enum-value collisions, and
-// suffix-mangled cross-decl Go-name collisions all surface here.
-// Order: decl-name case before any field/enum collision so the
-// IDE squiggle highlights the spelling that needs fixing first.
+// runNamingPhase checks orphan extend blocks, declaration-name case and
+// Go-name collisions.
 func (a *analyzer) runNamingPhase(files []*ast.File) {
 	a.checkExtendOrphans()
 	a.checkDeclNameCase(files)
@@ -172,46 +113,128 @@ func (a *analyzer) runNamingPhase(files []*ast.File) {
 	a.checkDeclGoNameCollisions(files)
 }
 
-// runDecoratorPhase covers every decorator-level rule: duplicates on
-// the same site, placement against the registry, argument arity /
-// type / value enums, and reference resolution to declared
-// middlewares / errors / security schemes / fields.
+// runDecoratorPhase checks the decorators at every site and the JSON keys
+// they give each body.
 func (a *analyzer) runDecoratorPhase(files []*ast.File) {
-	a.checkDecoratorDuplicates(files)
-	a.checkDecoratorPlacement(files)
-	a.checkDecoratorArgs(files)
-	a.checkDecoratorConflicts(files)
-	a.checkJSONNames(files)
-	a.checkLocalDecoratorRefs(files)
-	a.checkDecoratorRefs(files)
+	a.checkDecoratorSites(files)
+	a.checkJSONKeys(files)
 }
 
-// runShapePhase covers the structural rules - uniqueness, enum
-// shape, service-method shape, field-type compatibility, range
-// ordering, mixin expansion, generic instantiation, path
-// resolution. These rules consume the symbol tables built in
-// [runDeclPhase] and the decorator metadata validated in
-// [runDecoratorPhase], so they run after both.
+// runShapePhase checks the structural rules: field, enum, method, mixin,
+// route and event shapes.
 func (a *analyzer) runShapePhase(files []*ast.File) {
 	a.checkFieldUniqueness()
 	a.checkEnums()
 	a.checkServiceMethods()
 	a.checkFieldTypeCompat()
 	a.checkRangesAndExtras(files)
+	a.checkOptionalMapValues(files)
 	a.checkMixins()
-	a.checkGenerics()
 	a.checkPathResolution()
 	a.checkCombinationRules(files)
+	a.checkTypeParamWireBindings()
 	a.checkFilePosition()
 	a.checkEvents()
 }
 
-// runRefPhase validates file-local imports and resolves every
-// single-segment type name against the package's symbol table;
-// qualified `pkg.Type` references resolve in the project pass.
+// runRefPhase checks each file's imports and every type reference.
 func (a *analyzer) runRefPhase(files []*ast.File) {
 	a.checkImports(files)
-	a.checkLocalTypeRefs(files)
+	a.checkTypeRefs(files)
+}
+
+// checkRangesAndExtras runs the field rules over every type and error body
+// and the matching rules over every scalar.
+func (a *analyzer) checkRangesAndExtras(files []*ast.File) {
+	for _, f := range files {
+		for _, d := range f.Decls {
+			a.checkDeclRanges(d)
+		}
+	}
+}
+
+// checkDeclRanges runs the range rules for one declaration.
+func (a *analyzer) checkDeclRanges(d ast.Decl) {
+	switch dd := d.(type) {
+	case *ast.TypeDecl:
+		a.checkBodyRanges(dd.Body, dd.TypeParams)
+	case *ast.ErrorDecl:
+		a.checkBodyRanges(dd.Body, nil)
+	case *ast.ScalarDecl:
+		// Every field of the scalar's type inherits its constraints.
+		a.checkValueRules(dd.Primitive, fmt.Sprintf("scalar %q", dd.Name), []constraintSite{{decs: dd.Decorators}})
+	}
+}
+
+// checkBodyRanges runs the value rules and the field rules on each field of
+// a body; a field's value rules see its scalar's constraints too.
+func (a *analyzer) checkBodyRanges(members []ast.TypeMember, typeParams []string) {
+	for _, f := range ast.Fields(members) {
+		prim, sites := a.valuePrim(f), []constraintSite{{decs: f.Decorators}}
+		if prim != "" {
+			sites = a.valueConstraintSites(f.Type, f.Decorators)
+		}
+		a.checkValueRules(prim, fmt.Sprintf("field %q", f.Name), sites)
+		a.checkNullableRedundant(f)
+		a.checkUniqueItemsComparable(f, typeParams)
+		a.checkValueConstraintOnTypeParam(f, typeParams)
+		a.checkMapKeyComparable(f, typeParams)
+	}
+}
+
+// checkCombinationRules runs the field and method combination rules over
+// every declaration.
+func (a *analyzer) checkCombinationRules(files []*ast.File) {
+	for _, f := range files {
+		for _, d := range f.Decls {
+			a.checkDeclCombinations(d)
+		}
+	}
+}
+
+// checkDeclCombinations runs the field rules on a type or error body and the
+// method rules on each method of a service.
+func (a *analyzer) checkDeclCombinations(d ast.Decl) {
+	switch dd := d.(type) {
+	case *ast.TypeDecl:
+		a.checkFieldCombinations(dd.Name, dd.Body, dd.TypeParams)
+		a.checkDuplicateWireNames(dd.Name, dd.Body)
+	case *ast.ErrorDecl:
+		a.checkFieldCombinations(dd.Name, dd.Body, nil)
+		a.checkDuplicateWireNames(dd.Name, dd.Body)
+	case *ast.ServiceDecl:
+		for _, m := range dd.Methods() {
+			a.checkMethodCombinations(dd, m)
+		}
+	}
+}
+
+// checkFieldCombinations checks every field of a type or error body, the
+// type's parameters being typeParams.
+func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMember, typeParams []string) {
+	for _, f := range ast.Fields(members) {
+		a.checkSingleBinding(parent, f)
+		a.checkBindingFieldType(parent, f, typeParams)
+		a.checkBoundOverlap(parent, f)
+	}
+}
+
+// checkMethodCombinations runs the method-level rules on m, a method of
+// block svc; the block's decorators apply once its service has a primary.
+func (a *analyzer) checkMethodCombinations(svc *ast.ServiceDecl, m *ast.Method) {
+	svcName := svc.Name
+	decs := m.Decorators
+	if si := a.pkg.Services[svcName]; si != nil && si.Primary != nil {
+		decs = blockMethodDecorators(svc, m)
+	}
+	a.checkRawModeRedundancy(svcName, m, decs)
+	a.checkBodyBindingVerb(svcName, m)
+	a.checkMultipartParts(svcName, m, decs)
+	a.checkAutoPathField(m)
+	a.checkDuplicateAutoWireNames(m)
+	a.checkNoContentStatusBody(m, decs)
+	a.checkRequestBodyType(m)
+	a.checkResponseBodyType(m)
 }
 
 type analyzer struct {
@@ -221,11 +244,8 @@ type analyzer struct {
 	diags []Diagnostic
 }
 
-// diag appends a fully-structured diagnostic. End may be equal to pos
-// when only the start point is known - the LSP layer renders that as a
-// single-column underline. The returned pointer aliases the slot inside
-// a.diags so the caller can attach Related links inline; do not retain
-// the pointer past the next a.diag call (slice growth invalidates it).
+// diag appends a diagnostic and returns a pointer into a.diags for setting
+// Related; the pointer is invalid after the next append.
 func (a *analyzer) diag(pos, end lexer.Position, sev lexer.Severity, code, format string, args ...any) *Diagnostic {
 	a.diags = append(a.diags, Diagnostic{
 		Pos:      pos,

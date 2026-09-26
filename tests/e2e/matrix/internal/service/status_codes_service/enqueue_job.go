@@ -5,25 +5,20 @@ package services
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EnqueueJobService carries the per-request state for the
-// EnqueueJob endpoint of StatusCodesService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EnqueueJobService runs StatusCodesService.EnqueueJob for one request.
 type EnqueueJobService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEnqueueJobService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEnqueueJobService binds EnqueueJobService to ctx; its Logger carries ctx's trace ids.
 func NewEnqueueJobService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EnqueueJobService {
 	return &EnqueueJobService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewEnqueueJobService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// EnqueueJob is the service entry point. Replace the
-// TODO with the real implementation.
+// Enqueue a job for async processing; returns once accepted by the queue.
+//
+// EnqueueJob implements StatusCodesService.EnqueueJob.
 func (l *EnqueueJobService) EnqueueJob(req *types.CreateJobReq) (*types.AsyncJobResp, error) {
 	// TODO: implement
 	return nil, nil

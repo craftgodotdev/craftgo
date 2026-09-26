@@ -8,6 +8,8 @@ import (
 func TestGoFieldNameTable(t *testing.T) {
 	cases := map[string]string{
 		"":            "",
+		"id":          "ID",
+		"firstName":   "FirstName",
 		"name":        "Name",
 		"Name":        "Name",
 		"user_id":     "UserID",
@@ -37,10 +39,8 @@ func TestDedupNoCollision(t *testing.T) {
 	}
 }
 
-// TestDedupUserIdVsUserID pins the canonical example: `user_id` and
-// `userId` both map to `UserID`. The first occurrence keeps the bare
-// Go name; the second is suffixed `_2` so the struct compiles. The
-// collision record carries both DSL spellings so callers can warn.
+// TestDedupUserIdVsUserID checks that `user_id` and `userId` collide on
+// `UserID` and the second becomes `UserID_2`.
 func TestDedupUserIdVsUserID(t *testing.T) {
 	resolved, collisions := DedupGoFieldNames([]string{"user_id", "userId"})
 	want := []string{"UserID", "UserID_2"}
@@ -62,13 +62,8 @@ func TestDedupUserIdVsUserID(t *testing.T) {
 	}
 }
 
-// TestDedupThreeWayCollision pins the suffix sequencing - second
-// duplicate gets `_2`, third gets `_3`, etc. The bare canonical is
-// reserved for the first occurrence regardless of which DSL spelling
-// appeared first in source. All three of `user_id`, `userId`, and
-// `USER_ID` normalise to `UserID` under [GoFieldName] (the title-case
-// + initialism rules collapse case differences in the input parts),
-// so the trio collides as a single group.
+// TestDedupThreeWayCollision checks that three names mapping to `UserID` form
+// one group, suffixed `_2` and `_3`.
 func TestDedupThreeWayCollision(t *testing.T) {
 	resolved, collisions := DedupGoFieldNames([]string{"user_id", "userId", "USER_ID"})
 	want := []string{"UserID", "UserID_2", "UserID_3"}
@@ -83,11 +78,8 @@ func TestDedupThreeWayCollision(t *testing.T) {
 	}
 }
 
-// TestDedupOrderStability pins the rule that the FIRST occurrence
-// keeps the bare canonical Go name even when the user later adds a
-// duplicate. Generated code remains stable for already-published
-// struct shapes - adding a colliding alias does not retroactively
-// rename the original field.
+// TestDedupOrderStability checks that the first occurrence keeps the bare
+// name whichever spelling it uses.
 func TestDedupOrderStability(t *testing.T) {
 	resolved, _ := DedupGoFieldNames([]string{"userId", "user_id"})
 	if resolved[0] != "UserID" {
@@ -106,25 +98,27 @@ func TestFileName(t *testing.T) {
 		{"ping", "ping", "ping", "ping"},
 	}
 	for _, c := range cases {
-		if got := FileName(c.name, "kebab"); got != c.kebab {
+		if got := FileName(c.name, FileCaseKebab); got != c.kebab {
 			t.Errorf("FileName(%q, kebab) = %q, want %q", c.name, got, c.kebab)
 		}
-		if got := FileName(c.name, "snake"); got != c.snake {
+		if got := FileName(c.name, FileCaseSnake); got != c.snake {
 			t.Errorf("FileName(%q, snake) = %q, want %q", c.name, got, c.snake)
 		}
-		if got := FileName(c.name, "camel"); got != c.camel {
+		if got := FileName(c.name, FileCaseCamel); got != c.camel {
 			t.Errorf("FileName(%q, camel) = %q, want %q", c.name, got, c.camel)
 		}
-		// An empty/unknown style falls back to kebab, byte-identical to KebabCase.
-		if got := FileName(c.name, ""); got != KebabCase(c.name) {
-			t.Errorf("FileName(%q, \"\") = %q, want KebabCase %q", c.name, got, KebabCase(c.name))
+		// An empty style is the default case.
+		if got := FileName(c.name, ""); got != FileName(c.name, DefaultFileCase) {
+			t.Errorf("FileName(%q, \"\") = %q, want %q", c.name, got, FileName(c.name, DefaultFileCase))
+		}
+		if got := KebabCase(c.name); got != c.kebab {
+			t.Errorf("KebabCase(%q) = %q, want %q", c.name, got, c.kebab)
 		}
 	}
 }
 
 func TestFileNameWordsSuffix(t *testing.T) {
-	// The middleware file appends a literal "middleware" word so the separator
-	// between the name and the suffix follows the chosen case.
+	// An appended literal word takes the case's separator.
 	words := append(SplitFieldName("AuthRequired"), "middleware")
 	want := map[string]string{
 		"kebab": "auth-required-middleware",
@@ -158,6 +152,57 @@ func TestPascalCase(t *testing.T) {
 	for _, c := range cases {
 		if got := PascalCase(c.in); got != c.want {
 			t.Errorf("PascalCase(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestErrorNames(t *testing.T) {
+	cases := []struct{ dsl, typeName, bodyName, codeName, ctorName string }{
+		{"UserGone", "UserGoneErr", "UserGoneBody", "ErrCodeUserGone", "NewUserGoneErr"},
+		{"QuotaErr", "QuotaErr", "QuotaErrBody", "ErrCodeQuotaErr", "NewQuotaErr"},
+		{"AuthError", "AuthError", "AuthErrorBody", "ErrCodeAuthError", "NewAuthError"},
+	}
+	for _, c := range cases {
+		if got := ErrorTypeName(c.dsl); got != c.typeName {
+			t.Errorf("ErrorTypeName(%q) = %q, want %q", c.dsl, got, c.typeName)
+		}
+		if got := ErrorBodyName(c.dsl); got != c.bodyName {
+			t.Errorf("ErrorBodyName(%q) = %q, want %q", c.dsl, got, c.bodyName)
+		}
+		if got := ErrorCodeName(c.dsl); got != c.codeName {
+			t.Errorf("ErrorCodeName(%q) = %q, want %q", c.dsl, got, c.codeName)
+		}
+		if got := ErrorConstructorName(c.dsl); got != c.ctorName {
+			t.Errorf("ErrorConstructorName(%q) = %q, want %q", c.dsl, got, c.ctorName)
+		}
+	}
+}
+
+func TestEnumConstNames(t *testing.T) {
+	got := EnumConstNames("Status", []string{"Active", "active", "on_hold"})
+	want := []string{"StatusActive", "StatusActive_2", "StatusOnHold"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("EnumConstNames = %v, want %v", got, want)
+	}
+}
+
+func TestEventContractName(t *testing.T) {
+	if got := EventContractName("OrderPlaced"); got != "OrderPlacedContract" {
+		t.Errorf("EventContractName = %q, want OrderPlacedContract", got)
+	}
+}
+
+// A file name the go command ignores, or builds only for tests or one
+// system, is named; others are not.
+func TestGoFileProblem(t *testing.T) {
+	for _, base := range []string{"run_test", "create_ab_test", "list_windows", "move_arm", "get_linux_amd64", "list_windows_test", "_hidden", ".dot"} {
+		if GoFileProblem(base) == "" {
+			t.Errorf("%s: want a problem", base)
+		}
+	}
+	for _, base := range []string{"windows", "test", "get_unix", "run-test", "runTest", "list_items", "get_testing", "attest"} {
+		if why := GoFileProblem(base); why != "" {
+			t.Errorf("%s: unexpected problem %q", base, why)
 		}
 	}
 }

@@ -4,26 +4,22 @@ package xrefs
 
 import (
 	"context"
-	paytypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/paytypes"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/paytypes"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// WrapForeignService carries the per-request state for the
-// WrapForeign endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// WrapForeignService runs XRefsService.WrapForeign for one request.
 type WrapForeignService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewWrapForeignService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewWrapForeignService binds WrapForeignService to ctx; its Logger carries ctx's trace ids.
 func NewWrapForeignService(ctx context.Context, svcCtx *svccontext.ServiceContext) *WrapForeignService {
 	return &WrapForeignService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +28,9 @@ func NewWrapForeignService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// WrapForeign is the service entry point. Replace the
-// TODO with the real implementation.
+// Pins a QUALIFIED GENERIC request whose type-arg comes from a THIRD package named paytypes, with a cross-package response too. Nothing on either side is local, so the handler and the scaffold must both drop the canonical `types` import - deciding that by searching the rendered text for `types.` keeps it, and the file fails to build with `imported as types and not used`.
+//
+// WrapForeign implements XRefsService.WrapForeign.
 func (l *WrapForeignService) WrapForeign(req *xshared.XWrapInBag[paytypes.XPayItem]) (*xshared.XOwner, error) {
 	// TODO: implement
 	return nil, nil

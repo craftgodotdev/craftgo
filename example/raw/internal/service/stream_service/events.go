@@ -9,24 +9,21 @@ import (
 	"net/http"
 	"time"
 
-	types "github.com/craftgodotdev/craftgo/example/raw/internal/types/stream"
-
+	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
+	types "github.com/craftgodotdev/craftgo/example/raw/internal/types/stream"
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
-	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// EventsService carries the per-request state for the Events endpoint of
-// StreamService. The embedded log.Logger is pre-bound to the request
-// context so logging surfaces trace_id / span_id.
+// EventsService runs StreamService.Events for one request.
 type EventsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEventsService constructs a fresh service instance bound to ctx.
+// NewEventsService binds EventsService to ctx; its Logger carries ctx's trace ids.
 func NewEventsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EventsService {
 	return &EventsService{
 		Logger: log.Default().WithContext(ctx),

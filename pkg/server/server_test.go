@@ -2,101 +2,269 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
+
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// newTestServer builds a Server, runs handler at "GET /ping", and returns
-// the wired http.Handler. We bypass Start so each test owns its own
-// httptest.NewServer.
-func newTestServer(t *testing.T) *Server {
-	t.Helper()
-	return New(nil)
-}
-
-// finalize returns the server's real request handler, exercising the exact
-// chain Start binds to a listener (Recovery -> user chain -> CORS -> mux with
-// notFound). It delegates to [Server.Handler] so tests can't drift from the
-// production chain.
-func finalize(s *Server) http.Handler {
-	return s.Handler()
-}
-
-func TestServerHandleFuncAndDefaults(t *testing.T) {
-	s := newTestServer(t)
+// HandleFunc registers a handler that Handler serves.
+func TestServerHandleFunc(t *testing.T) {
+	s := New(nil)
 	s.HandleFunc("GET /ping", func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("pong"))
 	})
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ping", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ping", nil))
 	if rec.Body.String() != "pong" {
 		t.Errorf("body = %q", rec.Body.String())
 	}
 }
 
-func TestServerRecoveryConvertsPanic(t *testing.T) {
-	s := newTestServer(t)
-	s.HandleFunc("GET /boom", func(_ http.ResponseWriter, _ *http.Request) {
-		panic("kaboom")
-	})
-	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/boom", nil))
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", rec.Code)
+// The Recovery a Server installs logs to log.Default as it is when the panic happens.
+func TestServerRecoveryLogsToTheCurrentDefault(t *testing.T) {
+	s := New(nil)
+	s.HandleFunc("GET /boom", func(http.ResponseWriter, *http.Request) { panic("boom") })
+	h := s.Handler()
+	logs := observeLogs(t)
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/boom", nil))
+	if n := logs.FilterMessage("panic recovered").Len(); n != 1 {
+		t.Errorf("want the panic on the current default logger, got %d lines", n)
 	}
 }
 
-// TestServerRecoveryAfterWriteKeepsOriginalStatus pins the post-write
-// panic behaviour: once the handler has committed to a status (called
-// WriteHeader or Write), Recovery cannot rewrite to 500 - net/http
-// silently drops a second WriteHeader and would otherwise smear the
-// recovery body across the in-flight response. The middleware must
-// leave the committed status intact and log loudly instead.
-func TestServerRecoveryAfterWriteKeepsOriginalStatus(t *testing.T) {
-	s := newTestServer(t)
-	s.HandleFunc("GET /half", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"partial":true`)) // intentional truncation
+// An access log built from log.Follow writes to the logger a later SetLogger installs.
+func TestAccessLogFollowsSetLogger(t *testing.T) {
+	observeLogs(t)
+	s := New(nil)
+	s.Use(AccessLog(log.Follow()))
+	s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	h := s.Handler()
+	core, logs := observer.New(zapcore.InfoLevel)
+	s.SetLogger(log.NewZap(zap.New(core)))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/a", nil))
+	if n := logs.FilterMessage("http access").Len(); n != 1 {
+		t.Errorf("access lines on the logger SetLogger installed = %d, want 1", n)
+	}
+}
+
+// Logger returns the logger of the call, so a wrapper around it can be the logger SetLogger
+// installs: its lines reach the wrapped logger and the wrapper's own sink once each.
+func TestSetLoggerTakesAWrapperOfLogger(t *testing.T) {
+	before := observeLogs(t)
+	s := New(nil)
+	core, extra := observer.New(zapcore.InfoLevel)
+	s.SetLogger(tee{s.Logger(), log.NewZap(zap.New(core))})
+	s.Logger().Info("line")
+	log.Follow().Info("followed")
+	for name, logs := range map[string]*observer.ObservedLogs{"wrapped": before, "extra": extra} {
+		if got := logs.All(); len(got) != 2 || got[0].Message != "line" || got[1].Message != "followed" {
+			t.Errorf("%s logger lines = %v, want line then followed", name, got)
+		}
+	}
+}
+
+// tee writes each line to every logger it holds.
+type tee []log.Logger
+
+func (t tee) Debug(m string, fs ...log.Field) {
+	for _, l := range t {
+		l.Debug(m, fs...)
+	}
+}
+
+func (t tee) Info(m string, fs ...log.Field) {
+	for _, l := range t {
+		l.Info(m, fs...)
+	}
+}
+
+func (t tee) Warn(m string, fs ...log.Field) {
+	for _, l := range t {
+		l.Warn(m, fs...)
+	}
+}
+
+func (t tee) Error(m string, fs ...log.Field) {
+	for _, l := range t {
+		l.Error(m, fs...)
+	}
+}
+
+func (t tee) With(fs ...log.Field) log.Logger {
+	out := make(tee, len(t))
+	for i, l := range t {
+		out[i] = l.With(fs...)
+	}
+	return out
+}
+
+func (t tee) WithContext(ctx context.Context) log.Logger {
+	out := make(tee, len(t))
+	for i, l := range t {
+		out[i] = l.WithContext(ctx)
+	}
+	return out
+}
+
+func (t tee) Enabled(l log.Level) bool { return t[0].Enabled(l) }
+
+// The logger Logger returns compares equal to another, and its access lines name AccessLog's
+// own code as their caller.
+func TestLoggerComparesAndKeepsTheCaller(t *testing.T) {
+	observeLogs(t)
+	s := New(nil)
+	func() {
+		defer func() {
+			if p := recover(); p != nil {
+				t.Errorf("comparing Logger() results panics: %v", p)
+			}
+		}()
+		if s.Logger() != s.Logger() {
+			t.Error("Logger() != Logger()")
+		}
+	}()
+	core, logs := observer.New(zapcore.InfoLevel)
+	s.SetLogger(log.NewZap(zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))))
+	s.Use(AccessLog(s.Logger()))
+	s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	s.Handler().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/a", nil))
+	lines := logs.FilterMessage("http access").All()
+	if len(lines) != 1 || !strings.HasSuffix(lines[0].Caller.File, "server/middleware.go") {
+		t.Errorf("access lines %v, want one whose caller is server/middleware.go", lines)
+	}
+}
+
+// A panic after the response is committed is logged and aborts the connection, so the client
+// never reads a clean end: a buffered body is dropped and a flushed stream is cut off.
+func TestServerRecoveryAfterCommitAbortsTheConnection(t *testing.T) {
+	logs := observeLogs(t)
+	s := New(nil)
+	s.HandleFunc("GET /written", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"partial":true`))
 		panic("after write")
 	})
-	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/half", nil))
-	if rec.Code != http.StatusOK {
-		t.Errorf("post-write panic must not rewrite status, got %d", rec.Code)
+	s.HandleFunc("GET /flushed", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: 1\n\n"))
+		w.(http.Flusher).Flush()
+		panic("after flush")
+	})
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+
+	if resp, err := client.Get(srv.URL + "/written"); err == nil {
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err == nil {
+			t.Errorf("GET /written read %d %q to a clean end, want the connection aborted", resp.StatusCode, body)
+		}
 	}
-	if !strings.Contains(rec.Body.String(), `"partial":true`) {
-		t.Errorf("expected partial body intact, got %q", rec.Body.String())
+	resp, err := client.Get(srv.URL + "/flushed")
+	if err != nil {
+		t.Fatalf("GET /flushed: %v", err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(body) != "data: 1\n\n" || err == nil {
+		t.Errorf("GET /flushed: %d %q, read error %v; want 200 and the flushed event, then the cut", resp.StatusCode, body, err)
+	}
+	if n := logs.FilterMessageSnippet("after response committed").Len(); n != 2 {
+		t.Errorf("want each panic logged as after-commit once, got %d lines", n)
 	}
 }
 
-// TestWriteValidationErrorSkipsPostCommit pins the post-commit guard:
-// when the response writer is already committed (some middleware wrote
-// headers before the handler reached req.Validate()),
-// WriteValidationError must NOT smear a 400 into the in-flight body -
-// net/http would drop the WriteHeader and append the error text to
-// whatever was already sent, producing a corrupted response. The hook
-// logs the dropped validation and leaves the wire alone.
+// A handler that panics with http.ErrAbortHandler has its connection aborted, before or
+// after the response is committed, and is not logged as a crash.
+func TestServerRecoveryLetsAnAbortedHandlerAbortTheConnection(t *testing.T) {
+	logs := observeLogs(t)
+	s := New(nil)
+	s.HandleFunc("GET /abort", func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) })
+	s.HandleFunc("GET /abort-mid-stream", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("partial"))
+		w.(http.Flusher).Flush()
+		panic(http.ErrAbortHandler)
+	})
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+
+	if resp, err := srv.Client().Get(srv.URL + "/abort"); err == nil {
+		_ = resp.Body.Close()
+		t.Errorf("GET /abort answered %d, want the connection aborted", resp.StatusCode)
+	}
+	resp, err := srv.Client().Get(srv.URL + "/abort-mid-stream")
+	if err != nil {
+		t.Fatalf("GET /abort-mid-stream: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if body, err := io.ReadAll(resp.Body); err == nil {
+		t.Errorf("GET /abort-mid-stream read %q to its end, want the body cut off", body)
+	}
+	if n := logs.FilterMessageSnippet("panic recovered").Len(); n != 0 {
+		t.Errorf("an aborted handler was logged as a panic %d time(s)", n)
+	}
+}
+
+// A status net/http rejects commits nothing, so Recovery answers 500, through AccessLog and
+// Compress too.
+func TestAnInvalidStatusIsAnswered500(t *testing.T) {
+	observeLogs(t)
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	for _, code := range []int{0, 99, 1000} {
+		for name, chain := range map[string][]Middleware{
+			"default chain":           nil,
+			"access log and compress": {AccessLog(log.Default()), Compress()},
+		} {
+			t.Run(fmt.Sprintf("%s/%d", name, code), func(t *testing.T) {
+				s := New(nil)
+				for _, mw := range chain {
+					s.Use(mw)
+				}
+				s.HandleFunc("GET /x", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(code) })
+				srv := httptest.NewServer(s.Handler())
+				defer srv.Close()
+				req, err := http.NewRequest(http.MethodGet, srv.URL+"/x", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				req.Header.Set("Accept-Encoding", "gzip")
+				resp, err := client.Do(req)
+				if err != nil {
+					t.Fatalf("WriteHeader(%d): %v, want a 500", code, err)
+				}
+				_ = resp.Body.Close()
+				if resp.StatusCode != http.StatusInternalServerError {
+					t.Errorf("WriteHeader(%d): status %d, want 500", code, resp.StatusCode)
+				}
+			})
+		}
+	}
+}
+
+// WriteValidationError leaves a committed response untouched.
 func TestWriteValidationErrorSkipsPostCommit(t *testing.T) {
-	s := newTestServer(t)
+	s := New(nil)
 	s.HandleFunc("GET /v", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true}`))
 		WriteValidationError(w, r, errBadField)
 	})
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v", nil))
-	if rec.Code != http.StatusOK {
-		t.Errorf("post-commit validation must not rewrite status, got %d", rec.Code)
-	}
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v", nil))
 	if !strings.Contains(rec.Body.String(), `"ok":true`) {
 		t.Errorf("expected partial body intact, got %q", rec.Body.String())
 	}
@@ -105,28 +273,20 @@ func TestWriteValidationErrorSkipsPostCommit(t *testing.T) {
 	}
 }
 
-// errBadField is a stand-in validator error used by the post-commit
-// guard test - any concrete error value works; the wire output is what
-// the test asserts on.
+// errBadField is a stand-in validation error.
 var errBadField = stringError("bad field")
 
 type stringError string
 
 func (e stringError) Error() string { return string(e) }
 
-// TestWithLimitsTimeoutPanicReachesRecovery pins the timeout/panic
-// contract: a panic inside a `@timeout`-wrapped handler propagates to
-// the outer Recovery middleware rather than being swallowed by
-// goroutine isolation (as [http.TimeoutHandler] does). The handler
-// panics immediately - well before the deadline - so the 500 must
-// reach the client and the panic must be logged.
+// A panic under a WithLimits timeout reaches Recovery.
 func TestWithLimitsTimeoutPanicReachesRecovery(t *testing.T) {
-	logger := newTestServer(t).logger
 	core := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		panic("inside timeout")
 	})
 	guarded := WithLimits(core, Limits{Timeout: 100 * time.Millisecond})
-	chain := Recovery(logger)(guarded)
+	chain := Recovery(log.Discard())(guarded)
 	rec := httptest.NewRecorder()
 	chain.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
 	if rec.Code != http.StatusInternalServerError {
@@ -134,10 +294,7 @@ func TestWithLimitsTimeoutPanicReachesRecovery(t *testing.T) {
 	}
 }
 
-// TestWithLimitsTimeoutContextCancellation verifies that a handler
-// honouring ctx.Done() returns early when the deadline elapses. The
-// handler waits on the context and writes a deterministic body so the
-// assertion can confirm the cancel signal arrived.
+// A WithLimits timeout cancels the request context.
 func TestWithLimitsTimeoutContextCancellation(t *testing.T) {
 	core := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
@@ -151,13 +308,7 @@ func TestWithLimitsTimeoutContextCancellation(t *testing.T) {
 	}
 }
 
-// TestWithLimitsContentLengthPreCheck pins the upfront body-size
-// guard: a client whose
-// Content-Length already exceeds MaxBodySize gets 413 even when the
-// downstream handler never reads r.Body. http.MaxBytesReader alone
-// would only fire on the first read past the cap, so a request
-// rejected by an early validation step (e.g. a content-type guard)
-// would otherwise slip past the body guard.
+// WithLimits answers 413 to an oversized Content-Length the handler never reads.
 func TestWithLimitsContentLengthPreCheck(t *testing.T) {
 	core := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -173,13 +324,13 @@ func TestWithLimitsContentLengthPreCheck(t *testing.T) {
 }
 
 func TestServerHealthEndpoints(t *testing.T) {
-	s := newTestServer(t)
+	s := New(nil)
 	called := int32(0)
 	s.RegisterHealthCheck("db", time.Second, func(_ context.Context) error {
 		atomic.AddInt32(&called, 1)
 		return nil
 	})
-	h := finalize(s)
+	h := s.Handler()
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if rec.Code != http.StatusOK {
@@ -192,57 +343,137 @@ func TestServerHealthEndpoints(t *testing.T) {
 	}
 }
 
-func TestServerHealthCheckFailure(t *testing.T) {
-	s := newTestServer(t)
-	s.RegisterHealthCheck("bad", 50*time.Millisecond, func(_ context.Context) error {
-		return errors.New("down")
-	})
+// A check that returns an error fails readiness whatever the error's text.
+func TestServerHealthCheckErrorTextIsNeverHealthy(t *testing.T) {
+	s := New(nil)
+	s.RegisterHealthCheck("cache", time.Second, func(context.Context) error { return errors.New("ok") })
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Errorf("expected 503, got %d body=%s", rec.Code, rec.Body.String())
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"not_ready"`) {
+		t.Errorf("status %d, body %s; want 503 not_ready", rec.Code, rec.Body.String())
+	}
+}
+
+// A check that panics fails readiness, and the panic is logged under the check's name.
+func TestServerHealthCheckPanicFailsTheProbe(t *testing.T) {
+	logs := observeLogs(t)
+	s := New(nil)
+	s.RegisterHealthCheck("db", time.Second, func(context.Context) error { return nil })
+	s.RegisterHealthCheck("cache", time.Second, func(context.Context) error { panic("cache client is nil") })
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+
+	var body struct {
+		Status string            `json:"status"`
+		Checks map[string]string `json:"checks"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body %q: %v", rec.Body.String(), err)
+	}
+	if rec.Code != http.StatusServiceUnavailable || body.Status != "not_ready" {
+		t.Errorf("status %d, body %s; want 503 not_ready", rec.Code, rec.Body.String())
+	}
+	if got, want := body.Checks["cache"], "panic: cache client is nil"; got != want {
+		t.Errorf("cache check = %q, want %q", got, want)
+	}
+	if got := body.Checks["db"]; got != "ok" {
+		t.Errorf("db check = %q, want ok", got)
+	}
+	entries := logs.FilterMessage("panic recovered in readiness check").AllUntimed()
+	if len(entries) != 1 {
+		t.Fatalf("want the panic logged once, got %d lines", len(entries))
+	}
+	if fields := entries[0].ContextMap(); fields["check"] != "cache" || fields["stack"] == "" {
+		t.Errorf("log fields %v, want the check's name and the stack", fields)
 	}
 }
 
 func TestServerWithoutDefaultHealth(t *testing.T) {
 	s := New(nil, WithoutDefaultHealth())
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected 404 when health disabled, got %d", rec.Code)
+	}
+}
+
+// A custom not-found handler answers what the mux answers 404; a method mismatch keeps its
+// 405 with Allow, and an unclean path its redirect.
+func TestSetHandleNotFoundTakesOnlyThe404s(t *testing.T) {
+	s := New(nil)
+	s.HandleFunc("GET /only-get", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	s.SetHandleNotFound(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"no such route"}`))
+	}))
+	h := s.Handler()
+	for _, tc := range []struct {
+		method, path string
+		status       int
+		header, want string
+	}{
+		{http.MethodGet, "/only-get", http.StatusOK, "", ""},
+		{http.MethodPost, "/only-get", http.StatusMethodNotAllowed, "Allow", "GET"},
+		{http.MethodGet, "/missing", http.StatusNotFound, "", ""},
+		{http.MethodGet, "/a/../missing", http.StatusTemporaryRedirect, "Location", "/missing"},
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+		if rec.Code != tc.status {
+			t.Errorf("%s %s: status %d, want %d", tc.method, tc.path, rec.Code, tc.status)
+		}
+		if tc.header != "" && !strings.Contains(rec.Header().Get(tc.header), tc.want) {
+			t.Errorf("%s %s: %s = %q, want it to hold %q", tc.method, tc.path, tc.header, rec.Header().Get(tc.header), tc.want)
+		}
+		if custom := strings.Contains(rec.Body.String(), "no such route"); custom != (tc.status == http.StatusNotFound) {
+			t.Errorf("%s %s: custom handler answered = %v", tc.method, tc.path, custom)
+		}
+	}
+}
+
+// SetHandleNotFound(nil) restores the default 404.
+func TestSetHandleNotFoundNilRestoresTheDefault(t *testing.T) {
+	s := New(nil)
+	s.SetHandleNotFound(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	s.SetHandleNotFound(nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/missing", nil))
+	if rec.Code != http.StatusNotFound || rec.Body.String() != `{"message":"not found"}`+"\n" {
+		t.Errorf("status %d, body %q; want the default JSON 404", rec.Code, rec.Body.String())
 	}
 }
 
 func TestServerWithCustomHealthPaths(t *testing.T) {
 	s := New(nil, WithHealthPaths(HealthPaths{Liveness: "/live", Readiness: "/ready"}))
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/live", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/live", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200 on /live, got %d", rec.Code)
 	}
 }
 
 func TestAccessLogMiddleware(t *testing.T) {
-	s := newTestServer(t).Use(AccessLog(s_logger(t)))
+	s := New(nil).Use(AccessLog(log.Discard()))
 	s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	})
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/a", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/a", nil))
 	if rec.Code != http.StatusTeapot {
 		t.Errorf("status = %d", rec.Code)
 	}
 }
 
-// Every request that reaches AccessLog is logged with its method, path and
-// status; AccessLogSkipPaths keeps the named routes out.
+// AccessLog logs every request's method, path and status except the skipped paths.
 func TestAccessLogSkipPaths(t *testing.T) {
 	logs := observeLogs(t)
-	s := newTestServer(t).Use(AccessLog(log.Default(), AccessLogSkipPaths("/metrics")))
+	s := New(nil).Use(AccessLog(log.Default(), AccessLogSkipPaths("/metrics")))
 	ok := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }
 	s.HandleFunc("GET /metrics", ok)
 	s.HandleFunc("GET /a", ok)
-	h := finalize(s)
+	h := s.Handler()
 	for _, path := range []string{"/metrics", "/a", "/missing"} {
 		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
 	}
@@ -257,15 +488,160 @@ func TestAccessLogSkipPaths(t *testing.T) {
 	}
 }
 
-// The health probes are answered before the middleware chain: no `Use`
-// middleware sees them, on the default routes or on custom ones.
-func TestProbesBypassMiddlewareChain(t *testing.T) {
-	for name, opts := range map[string][]Option{
-		"default paths": nil,
-		"custom paths":  {WithHealthPaths(HealthPaths{Liveness: "/live", Readiness: "/ready"})},
+// AccessLog records the status the client receives: the first final status written, 200 when
+// a Flush or nothing sends the head.
+func TestAccessLogRecordsTheFirstFinalStatus(t *testing.T) {
+	for name, tc := range map[string]struct {
+		handler http.HandlerFunc
+		want    int64
+	}{
+		"superfluous status": {func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusCreated)
+			w.WriteHeader(http.StatusInternalServerError)
+		}, http.StatusCreated},
+		"early hints first": {func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusEarlyHints)
+			w.WriteHeader(http.StatusNoContent)
+		}, http.StatusNoContent},
+		"flush first": {func(w http.ResponseWriter, _ *http.Request) {
+			w.(http.Flusher).Flush()
+			w.WriteHeader(http.StatusInternalServerError)
+		}, http.StatusOK},
+		"nothing written": {func(http.ResponseWriter, *http.Request) {}, http.StatusOK},
 	} {
 		t.Run(name, func(t *testing.T) {
-			s := New(nil, opts...)
+			logs := observeLogs(t)
+			AccessLog(log.Default())(tc.handler).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/x", nil))
+			entries := logs.FilterMessage("http access").All()
+			if len(entries) != 1 {
+				t.Fatalf("want 1 access line, got %d", len(entries))
+			}
+			if got := entries[0].ContextMap()["status"]; got != tc.want {
+				t.Errorf("status = %v, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// A client that left before anything was written is logged with status 499; one that left
+// after the head was written keeps that status.
+func TestAccessLogRecords499ForAGoneClient(t *testing.T) {
+	for name, tc := range map[string]struct {
+		handler http.HandlerFunc
+		want    int64
+	}{
+		"nothing written": {func(w http.ResponseWriter, r *http.Request) { WriteError(w, r, r.Context().Err()) }, 499},
+		"head written":    {func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusCreated) }, http.StatusCreated},
+	} {
+		t.Run(name, func(t *testing.T) {
+			logs := observeLogs(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			req := httptest.NewRequest(http.MethodGet, "/x", nil).WithContext(ctx)
+			AccessLog(log.Default())(tc.handler).ServeHTTP(httptest.NewRecorder(), req)
+			entries := logs.FilterMessage("http access").All()
+			if len(entries) != 1 || entries[0].ContextMap()["status"] != tc.want {
+				t.Errorf("access lines %v, want one with status %d", entries, tc.want)
+			}
+		})
+	}
+}
+
+// A client that disconnects while its handler waits is logged with status 499.
+func TestAccessLogRecords499OverAConnection(t *testing.T) {
+	logs := observeLogs(t)
+	s := New(nil).Use(AccessLog(log.Default()))
+	s.HandleFunc("GET /wait", func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+		WriteError(w, r, r.Context().Err())
+	})
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/wait", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.AfterFunc(20*time.Millisecond, cancel)
+	if _, err := ts.Client().Do(req); err == nil {
+		t.Fatal("the request outlived its canceled context")
+	}
+	for wait := time.Now().Add(5 * time.Second); logs.FilterMessage("http access").Len() == 0 && time.Now().Before(wait); {
+		time.Sleep(5 * time.Millisecond)
+	}
+	entries := logs.FilterMessage("http access").All()
+	if len(entries) != 1 || entries[0].ContextMap()["status"] != int64(499) {
+		t.Errorf("access lines %v, want one with status 499", entries)
+	}
+}
+
+// WithTelemetry wraps Recovery and every Use middleware, so it sees the 500 a panic becomes,
+// and the health probes bypass it; nil installs nothing.
+func TestWithTelemetryWrapsRecoveryButNotTheProbes(t *testing.T) {
+	observeLogs(t)
+	var seen []string
+	telemetry := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			seen = append(seen, "telemetry")
+			tw := &trackingWriter{ResponseWriter: w}
+			next.ServeHTTP(tw, r)
+			seen = append(seen, fmt.Sprintf("%s %d", r.URL.Path, tw.Status()))
+		})
+	}
+	s := New(nil, WithTelemetry(telemetry))
+	s.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			seen = append(seen, "use")
+			next.ServeHTTP(w, r)
+		})
+	})
+	s.HandleFunc("GET /boom", func(http.ResponseWriter, *http.Request) { panic("boom") })
+	h := s.Handler()
+	for _, path := range []string{"/boom", DefaultLivenessPath, DefaultReadinessPath} {
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
+	}
+	if got, want := strings.Join(seen, ","), "telemetry,use,/boom 500"; got != want {
+		t.Errorf("saw %s, want %s", got, want)
+	}
+
+	plain := New(nil, WithTelemetry(nil))
+	plain.HandleFunc("GET /ok", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	rec := httptest.NewRecorder()
+	plain.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ok", nil))
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("WithTelemetry(nil): status %d, want the route's 204", rec.Code)
+	}
+}
+
+// WithTelemetry(nil) installs nothing and keeps what an earlier WithTelemetry installed, as
+// rpc.WithStatsHandler(nil) does.
+func TestWithTelemetryNilKeepsTheEarlierOne(t *testing.T) {
+	seen := 0
+	telemetry := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			seen++
+			next.ServeHTTP(w, r)
+		})
+	}
+	s := New(nil, WithTelemetry(telemetry), WithTelemetry(nil))
+	s.HandleFunc("GET /ok", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	s.Handler().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/ok", nil))
+	if seen != 1 {
+		t.Errorf("the telemetry middleware ran %d times, want 1", seen)
+	}
+}
+
+// No Use middleware sees the health probes, on default or custom paths.
+func TestProbesBypassMiddlewareChain(t *testing.T) {
+	for name, c := range map[string]struct {
+		opts  []Option
+		paths []string
+	}{
+		"default paths": {nil, []string{"/healthz", "/readyz"}},
+		"custom paths":  {[]Option{WithHealthPaths(HealthPaths{Liveness: "/live", Readiness: "/ready"})}, []string{"/live", "/ready"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := New(nil, c.opts...)
 			var seen []string
 			s.Use(func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -274,8 +650,8 @@ func TestProbesBypassMiddlewareChain(t *testing.T) {
 				})
 			})
 			s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-			h := finalize(s)
-			for _, path := range []string{s.healthPaths.Liveness, s.healthPaths.Readiness, "/a"} {
+			h := s.Handler()
+			for _, path := range append(c.paths, "/a") {
 				rec := httptest.NewRecorder()
 				h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 				if rec.Code != http.StatusOK {
@@ -289,107 +665,97 @@ func TestProbesBypassMiddlewareChain(t *testing.T) {
 	}
 }
 
-func TestBodyLimitMiddleware(t *testing.T) {
-	s := newTestServer(t).Use(BodyLimit(4))
-	s.HandleFunc("POST /b", func(w http.ResponseWriter, r *http.Request) {
-		_, err := io.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-	})
-	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/b", strings.NewReader("toolong")))
-	if rec.Code != http.StatusRequestEntityTooLarge {
-		t.Errorf("expected 413, got %d", rec.Code)
-	}
-}
-
 func TestTimeoutMiddleware(t *testing.T) {
-	s := newTestServer(t).Use(Timeout(10 * time.Millisecond))
+	s := New(nil).Use(Timeout(10 * time.Millisecond))
 	s.HandleFunc("GET /slow", func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(50 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
 	})
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/slow", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/slow", nil))
 	if rec.Code != http.StatusServiceUnavailable {
-		// http.TimeoutHandler returns 503 by default
 		t.Errorf("expected 503 from timeout, got %d", rec.Code)
 	}
 }
 
-func TestServerSetters(t *testing.T) {
-	s := newTestServer(t)
-	s.SetDefaultReadTimeout(time.Second).
-		SetDefaultWriteTimeout(2*time.Second).
-		SetDefaultMaxBodySize(1024).
-		SetDefaultMaxHeaderSize(8).
-		SetLogger(s.Logger()).
-		RegisterMiddleware("auth", func(h http.Handler) http.Handler { return h })
-	if err := s.SetJSONCodec(defaultCodec{}); err != nil {
-		t.Fatal(err)
-	}
-	if s.Codec() == nil || s.Logger() == nil {
-		t.Error("codec/logger should be non-nil")
-	}
-	if s.Mux() == nil {
-		t.Error("mux should be non-nil")
-	}
+// Setters may run on another goroutine than route registration and Handler.
+func TestServerConfigurationAcrossGoroutines(t *testing.T) {
+	s := New(nil)
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		s.SetDefaultReadTimeout(time.Second).
+			SetDefaultWriteTimeout(time.Second).
+			SetDefaultHandlerTimeout(time.Second).
+			SetDefaultMaxBodySize(1 << 20).
+			SetDefaultMaxHeaderSize(16).
+			SetCORS(CORSPermissive()).
+			SetLogger(log.Default())
+	})
+	wg.Go(func() {
+		s.HandleFunc("GET /a", func(http.ResponseWriter, *http.Request) {})
+		s.Handle("GET /b", http.NotFoundHandler())
+		_ = s.Handler()
+	})
+	wg.Wait()
 }
 
+// Each CORSOptions field reaches the response: the origin, credentials and exposed headers on
+// every answer to an allowed origin, the methods, headers, max age and private-network grant on
+// a preflight too; a disallowed origin gets none of them.
 func TestCORSMiddleware(t *testing.T) {
-	s := newTestServer(t).SetCORS(CORSOptions{
-		AllowedOrigins:   []string{"https://app.example.com", "https://*.partner.com"},
-		AllowedMethods:   []string{"GET", "POST"},
-		AllowedHeaders:   []string{"Content-Type"},
-		ExposedHeaders:   []string{"X-Trace-Id"},
-		AllowCredentials: true,
-		MaxAge:           time.Hour,
+	s := New(nil).SetCORS(CORSOptions{
+		AllowedOrigins:      []string{"https://app.example.com", "https://*.partner.com"},
+		AllowedMethods:      []string{"GET", "POST"},
+		AllowedHeaders:      []string{"Content-Type", "X-Request"},
+		ExposedHeaders:      []string{"X-Trace-Id", "X-Rate"},
+		AllowCredentials:    true,
+		MaxAge:              time.Hour,
+		AllowPrivateNetwork: true,
 	})
 	s.HandleFunc("GET /c", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	h := finalize(s)
-
-	// Allowed origin → header echoed.
-	req := httptest.NewRequest(http.MethodGet, "/c", nil)
-	req.Header.Set("Origin", "https://app.example.com")
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Header().Get("Access-Control-Allow-Origin") != "https://app.example.com" {
-		t.Errorf("origin header = %q", rec.Header().Get("Access-Control-Allow-Origin"))
+	h := s.Handler()
+	check := func(name, method, origin string, wantStatus int, want map[string]string) {
+		t.Helper()
+		req := httptest.NewRequest(method, "/c", nil)
+		req.Header.Set("Origin", origin)
+		if method == http.MethodOptions {
+			req.Header.Set("Access-Control-Request-Method", "POST")
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != wantStatus {
+			t.Errorf("%s: status %d, want %d", name, rec.Code, wantStatus)
+		}
+		for key, value := range want {
+			if got := rec.Header().Get(key); got != value {
+				t.Errorf("%s: %s = %q, want %q", name, key, got, value)
+			}
+		}
 	}
 
-	// Wildcard match.
-	req = httptest.NewRequest(http.MethodGet, "/c", nil)
-	req.Header.Set("Origin", "https://x.partner.com")
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Header().Get("Access-Control-Allow-Origin") != "https://x.partner.com" {
-		t.Errorf("wildcard origin header = %q", rec.Header().Get("Access-Control-Allow-Origin"))
-	}
-
-	// Preflight: a genuine CORS preflight carries Access-Control-Request-Method.
-	req = httptest.NewRequest(http.MethodOptions, "/c", nil)
-	req.Header.Set("Origin", "https://app.example.com")
-	req.Header.Set("Access-Control-Request-Method", "POST")
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("preflight status = %d", rec.Code)
-	}
-	if rec.Header().Get("Access-Control-Allow-Methods") == "" {
-		t.Error("missing allow-methods on preflight")
-	}
-
-	// Disallowed origin → no header.
-	req = httptest.NewRequest(http.MethodGet, "/c", nil)
-	req.Header.Set("Origin", "https://evil.com")
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Header().Get("Access-Control-Allow-Origin") != "" {
-		t.Errorf("expected empty origin header, got %q", rec.Header().Get("Access-Control-Allow-Origin"))
-	}
+	check("an allowed origin", http.MethodGet, "https://app.example.com", http.StatusOK, map[string]string{
+		"Access-Control-Allow-Origin":      "https://app.example.com",
+		"Vary":                             "Origin",
+		"Access-Control-Allow-Credentials": "true",
+		"Access-Control-Expose-Headers":    "X-Trace-Id, X-Rate",
+		"Access-Control-Allow-Methods":     "",
+	})
+	check("a wildcard origin", http.MethodGet, "https://x.partner.com", http.StatusOK, map[string]string{
+		"Access-Control-Allow-Origin": "https://x.partner.com",
+	})
+	check("a preflight", http.MethodOptions, "https://app.example.com", http.StatusNoContent, map[string]string{
+		"Access-Control-Allow-Origin":          "https://app.example.com",
+		"Access-Control-Allow-Credentials":     "true",
+		"Access-Control-Allow-Methods":         "GET, POST",
+		"Access-Control-Allow-Headers":         "Content-Type, X-Request",
+		"Access-Control-Max-Age":               "3600",
+		"Access-Control-Allow-Private-Network": "true",
+	})
+	check("a disallowed origin", http.MethodGet, "https://evil.com", http.StatusOK, map[string]string{
+		"Access-Control-Allow-Origin":      "",
+		"Access-Control-Allow-Credentials": "",
+		"Access-Control-Expose-Headers":    "",
+	})
 }
 
 func TestCORSPresets(t *testing.T) {
@@ -429,9 +795,7 @@ func TestCodecRoundTrip(t *testing.T) {
 	}
 }
 
-// markerCodec wraps the default codec but tags every encoded byte
-// stream with a prefix so tests can prove the swap actually reaches
-// generated handlers (or any caller that goes through [JSON]).
+// markerCodec prefixes every encoding with /*MARK*/.
 type markerCodec struct{ defaultCodec }
 
 func (markerCodec) Encode(w io.Writer, v any) error {
@@ -442,7 +806,7 @@ func (markerCodec) Encode(w io.Writer, v any) error {
 }
 
 func TestGlobalJSONCodecSwapTakesEffect(t *testing.T) {
-	t.Cleanup(func() { _ = SetGlobalJSONCodec(defaultCodec{}) })
+	resetCodec(t)
 	if err := SetGlobalJSONCodec(markerCodec{}); err != nil {
 		t.Fatal(err)
 	}
@@ -456,12 +820,30 @@ func TestGlobalJSONCodecSwapTakesEffect(t *testing.T) {
 }
 
 func TestServerSetJSONCodecPropagatesToGlobal(t *testing.T) {
-	t.Cleanup(func() { SetGlobalJSONCodec(defaultCodec{}) })
+	resetCodec(t)
 	New(nil).SetJSONCodec(markerCodec{})
 	var buf strings.Builder
 	_ = JSON().Encode(&buf, map[string]int{"b": 2})
 	if !strings.HasPrefix(buf.String(), "/*MARK*/") {
 		t.Errorf("Server.SetJSONCodec must update the global codec; got %q", buf.String())
+	}
+}
+
+// Codec reports the codec JSON returns, after a process-wide swap and under strict JSON.
+func TestServerCodecIsTheCodecInUse(t *testing.T) {
+	resetCodec(t)
+	s := New(nil)
+	if err := SetGlobalJSONCodec(markerCodec{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := fmt.Sprintf("%T", s.Codec()); got != "server.markerCodec" {
+		t.Errorf("after SetGlobalJSONCodec: Codec() is %s", got)
+	}
+	if err := s.SetStrictJSON(true); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := fmt.Sprintf("%T", s.Codec()), fmt.Sprintf("%T", JSON()); got != want {
+		t.Errorf("under strict JSON: Codec() is %s, JSON() is %s", got, want)
 	}
 }
 
@@ -471,33 +853,63 @@ func TestServerStopBeforeStart(t *testing.T) {
 	}
 }
 
-func TestServerStartAndStop(t *testing.T) {
-	s := New(nil)
-	s.HandleFunc("GET /smoke", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	go func() { _ = s.Start("127.0.0.1:0") }()
-	time.Sleep(20 * time.Millisecond)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	_ = s.Stop(ctx)
+// Start serves Handler until Stop and then returns nil, on an http.Server with the read and write
+// timeouts and the header cap the setters chose: 30s, none and 32 KB by default.
+func TestServerStartServesUntilStop(t *testing.T) {
+	for _, c := range []struct {
+		name        string
+		configure   func(*Server)
+		read, write time.Duration
+		headerBytes int
+	}{
+		{"defaults", func(*Server) {}, 30 * time.Second, 0, 32 << 10},
+		{"setters", func(s *Server) {
+			s.SetDefaultReadTimeout(time.Second).SetDefaultWriteTimeout(2 * time.Second).SetDefaultMaxHeaderSize(8)
+		}, time.Second, 2 * time.Second, 8 << 10},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := New(nil)
+			c.configure(s)
+			s.HandleFunc("GET /smoke", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+			addr := freeAddr(t)
+			done := make(chan error, 1)
+			go func() { done <- s.Start(addr) }()
+			waitForStatus(t, "http://"+addr+"/smoke", http.StatusTeapot)
+
+			s.mu.Lock()
+			srv := s.httpSrv
+			s.mu.Unlock()
+			if srv.ReadTimeout != c.read || srv.WriteTimeout != c.write || srv.MaxHeaderBytes != c.headerBytes {
+				t.Errorf("http.Server read timeout %v, write timeout %v, header cap %d bytes; want %v, %v, %d",
+					srv.ReadTimeout, srv.WriteTimeout, srv.MaxHeaderBytes, c.read, c.write, c.headerBytes)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := s.Stop(ctx); err != nil {
+				t.Fatalf("Stop: %v", err)
+			}
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Errorf("Start returned %v after Stop, want nil", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("Start did not return after Stop")
+			}
+		})
+	}
 }
 
-// s_logger returns a fresh Logger reused by middleware tests.
-func s_logger(t *testing.T) Logger {
-	t.Helper()
-	return newTestServer(t).Logger()
-}
-
-// AccessLogFields appends request-derived fields to the access line, after
-// the handler ran, so the matched route pattern is available.
+// AccessLogFields adds its fields after the handler ran, so the matched route is available.
 func TestAccessLogFields(t *testing.T) {
 	logs := observeLogs(t)
-	s := newTestServer(t).Use(AccessLog(log.Default(), AccessLogFields(func(r *http.Request) []log.Field {
+	s := New(nil).Use(AccessLog(log.Default(), AccessLogFields(func(r *http.Request) []log.Field {
 		return []log.Field{log.String("route", r.Pattern), log.String("ua", r.UserAgent())}
 	})))
 	s.HandleFunc("GET /items/{id}", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	req := httptest.NewRequest(http.MethodGet, "/items/7", nil)
 	req.Header.Set("User-Agent", "probe/1")
-	finalize(s).ServeHTTP(httptest.NewRecorder(), req)
+	s.Handler().ServeHTTP(httptest.NewRecorder(), req)
 	entries := logs.FilterMessage("http access").All()
 	if len(entries) != 1 {
 		t.Fatalf("want 1 access line, got %d", len(entries))

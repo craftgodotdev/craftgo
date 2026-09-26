@@ -1,57 +1,23 @@
 // Package kafka adapts craftgo's event runtime to Kafka.
 //
-// # Topics
+// A contract maps onto a topic, the contract name unchanged by default, and
+// travels in the [HeaderEvent] header. The ordering key becomes the record
+// key, so Kafka orders one entity's messages within one contract; nothing
+// orders messages across contracts. The deduplication ID travels in
+// [HeaderDedupID].
 //
-// The default maps one contract to one topic. A message's ordering key -
-// [events.WithKey] at the publish call - becomes the Kafka record key, so
-// one entity's messages land in one partition and Kafka orders them,
-// within that one contract.
+// A subscription's group is a classic consumer group, which takes every
+// delivery as done, or with [WithShareGroup] a share group, which can also
+// redeliver and reject.
 //
-// [WithTopic] replaces the mapping when the broker's naming is not yours
-// to choose:
-//
-//	kafka.New(brokers, kafka.WithTopic(func(c string) string { return "app." + c }))
-//
-// The contract always travels in the [HeaderEvent] header, so a topic
-// carrying several contracts stays self-describing.
-//
-// # Two modes
-//
-// The default is a classic consumer group: the client owns partitions,
-// offsets advance as a high-water mark, and a delivery can only be taken
-// as done. [WithShareGroup] switches to a KIP-932 share group, where the
-// broker tracks each record and a consumer can hand one back for
-// redelivery or give it up as poison - which is what makes
-// [events.Message.Redeliver] and [events.Message.Reject] mean anything
-// here.
-//
-// The mode is never detected. A delivery guarantee that depended on which
-// broker answered would change under a failover with nothing to see it,
-// so a share group is asked for and, if the broker cannot serve one,
-// [Transport.Subscribe] refuses rather than quietly consuming as a
-// classic group. Share groups need Kafka 4.1 or newer; renewing a
-// record's acquisition lock needs 4.2, and [WithLockRenewInterval] says
-// what happens without it.
-//
-// # Ordering across contracts is not supported
-//
-// Two contracts about one entity have no order between them, and no
-// configuration of this adapter gives them one. Collapsing them onto one
-// topic does not: [Transport.Subscribe] refuses one group reading two
-// different contracts on one topic, because the members would divide that
-// topic between them and each skip the other's contract. Separate groups
-// on one topic are separate readers, so they are not ordered either. Use a
-// group for scale and for failure isolation; do not use one expecting
-// cross-contract order.
-//
-// A subscription's group is the Kafka group - consumer or share - so
-// replicas sharing one share the work and a different group gets its own
-// copy.
+// [RecordFrom] exposes the record behind a delivery. Decide through
+// [events.Message]; do not ack the record or keep it past the handler.
 package kafka
 
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"regexp"
 	"sync"
@@ -66,54 +32,36 @@ import (
 	events "github.com/craftgodotdev/craftgo/pkg/events"
 )
 
-// HeaderEvent carries the contract name, so a topic holding several
-// contracts remains self-describing.
+// HeaderEvent carries the contract name.
 const HeaderEvent = "craftgo-event"
 
-// HeaderKey carries the ordering key for consumers that want it without
-// decoding the payload. The same value is the record key.
+// HeaderKey carries the ordering key, which is also the record key.
 const HeaderKey = "craftgo-key"
 
-// HeaderDedupID carries [events.Message.DedupID]. Kafka does not
-// deduplicate on it, and neither does this adapter: carrying it lets a
-// CONSUMER recognise a repeat for itself, which destroying it made
-// impossible.
-//
-// The producer's idempotence is not that feature and does not stand in
-// for it. It covers a request this client reissued after a transient
-// network failure, keyed on a producer ID and a sequence number that
-// craftgo never sets - two separate Publish calls carrying one dedup ID
-// are two records through one client, not one.
-//
-// It sits under [events.MetaPrefix], so a caller cannot forge one through
-// [events.WithHeader]: the runtime drops a metadata entry under that name
-// before the message reaches this adapter.
+// HeaderDedupID carries [events.Message.DedupID], under [events.MetaPrefix]
+// so [events.WithHeader] cannot forge it. Neither Kafka nor this adapter
+// deduplicates on it; a consumer can.
 const HeaderDedupID = "craftgo-dedup-id"
 
-// Adapter is the name [events.WithAdapterOption] addresses this adapter
-// by.
+// Adapter is the name [events.WithAdapterOption] addresses this adapter by.
 const Adapter = "kafka"
 
-// OptionTimestamp sets one record's Kafka timestamp, as a [time.Time]:
-//
-//	craftevents.WithAdapterOption(kafka.Adapter, kafka.OptionTimestamp, occurred)
-//
-// The broker stamps its own arrival time otherwise, which is what a
-// message replayed from an outbox does not want.
+// OptionTimestamp is the [events.WithAdapterOption] key that sets a record's
+// timestamp; its value must be a [time.Time]. Without it the record carries
+// the time it was produced.
 const OptionTimestamp = "timestamp"
 
-// The share-group API keys this adapter needs, probed before a share
-// subscription is registered. Named because the refusal quotes them.
+// ErrClosed is what a publish or subscribe returns after [Transport.Close], and a publish
+// that Close cuts off.
+var ErrClosed = errors.New("transport closed")
+
+// Share-group API keys, probed before a share subscription starts.
 const (
 	apiShareGroupHeartbeat = 76
 	apiShareFetch          = 78
 	apiShareAcknowledge    = 79
 )
 
-// A Transport is a full transport: it publishes, subscribes, takes a
-// batch in one call, names itself to the per-message option check, and
-// says which dispositions it can honour. Asserted here so a change to the
-// runtime interfaces fails this package rather than a user's wiring.
 var (
 	_ events.Publisher      = (*Transport)(nil)
 	_ events.Subscriber     = (*Transport)(nil)
@@ -131,29 +79,23 @@ type Transport struct {
 	share         bool
 	maxDeliveries int
 	lockRenew     time.Duration
-	// dial carries the connection settings every client this transport
-	// opens is built with - TLS, SASL.
+	// dial is applied to every client: TLS, SASL and WithClientOptions.
 	dial []kgo.Opt
 
 	mu       sync.Mutex
+	closed   bool
 	producer *kgo.Client
 	clients  []*kgo.Client
-	// held records what each (group, topic) pair is being read for, so a
-	// second reader asking for a DIFFERENT contract is refused rather
-	// than silently splitting the topic with the first.
+	// held is the contract each group reads each topic for.
 	held map[groupTopic]*topicClaim
-	// shareOK caches a successful share-API probe. Only success is
-	// cached: a probe that failed on a network blip must be retried, and
-	// one that failed because the broker is too old will fail again.
+	// shareOK caches a successful share-API probe; a failed one is retried.
 	shareOK bool
 }
 
 // groupTopic is one consumer group's claim on one topic.
 type groupTopic struct{ group, topic string }
 
-// topicClaim is what a group is reading one topic for, and how many live
-// readers hold it. Replicas of one subscription share a claim, so the
-// count decides when it is free again.
+// topicClaim is the contract a group reads a topic for, and its live readers.
 type topicClaim struct {
 	contract string
 	readers  int
@@ -162,104 +104,65 @@ type topicClaim struct {
 // Option configures a Transport.
 type Option func(*Transport)
 
-// WithTopic replaces the contract-to-topic mapping. The default is the
-// contract name unchanged; see the package doc for when to change it.
+// WithTopic replaces the contract-to-topic mapping; the default is the
+// contract name unchanged. [Transport.Subscribe] refuses one group reading
+// two contracts mapped onto one topic.
 func WithTopic(fn func(contract string) string) Option {
 	return func(t *Transport) { t.topic = fn }
 }
 
 // WithAutoCreateTopics lets the broker create a missing topic on first
-// publish. Off by default: a production topic is provisioned with a
-// partition count and replication factor worth choosing deliberately, and
-// a typo in a contract name should fail rather than silently open a new
-// topic. Convenient for local development.
+// publish. Off by default.
 func WithAutoCreateTopics(on bool) Option {
 	return func(t *Transport) { t.autoTopic = on }
 }
 
-// WithErrorHandler installs a callback for a handler that returns an
-// error, and for the failures a read loop meets on its own. In a classic
-// group the message is taken as done either way, so this callback is the
-// only record that it arrived.
+// WithErrorHandler installs a callback for handler errors and read-loop
+// failures. A classic group takes a failed message as done, so this is its
+// only record.
 func WithErrorHandler(fn func(sub events.Subscription, msg *events.Message, err error)) Option {
 	return func(t *Transport) { t.onError = fn }
 }
 
-// WithShareGroup consumes through a Kafka share group (KIP-932) instead
-// of a classic consumer group. The broker tracks each record, so a
-// middleware calling [events.Message.Redeliver] gets the record back and
-// one calling [events.Message.Reject] gives it up.
-//
-// Requires a broker serving ShareGroupHeartbeat, ShareFetch and
-// ShareAcknowledge - Kafka 4.1 or newer. [Transport.Subscribe] probes for
-// all three and refuses rather than consuming as a classic group, because
-// a delivery guarantee that changed with the broker would change under a
-// failover with nothing to see it. Off by default.
-//
-// [WithLockRenewInterval] needs more: renewal rides on ShareAcknowledge
-// v2, which is Kafka 4.2.
-//
-// A share group starts at the END of the topic unless the group config
-// share.auto.offset.reset says otherwise, so a group joining a topic that
-// already holds records sees none of them until it is set.
+// WithShareGroup consumes through a KIP-932 share group, which can redeliver
+// and reject. It needs Kafka 4.2, or 4.1 with [WithLockRenewInterval] zero.
+// A new share group starts at the end of the topic (share.auto.offset.reset).
 func WithShareGroup() Option {
 	return func(t *Transport) { t.share = true }
 }
 
-// WithMaxDeliveries caps how many times the broker may hand one record
-// over before this adapter gives it up rather than asking for it again.
-// It bounds a redelivery loop: a middleware that keeps calling
-// [events.Message.Redeliver] on a record nothing can handle stops being
-// obeyed once the count is reached, and the record is rejected. A
-// delivery that SUCCEEDS on the last attempt is still taken as done.
-//
-// Default 5. Zero is unbounded and has to be chosen. Share mode only -
-// a classic group has no delivery count to read.
+// WithMaxDeliveries caps the deliveries of one record: at the cap, a
+// Redeliver the chain asked for becomes a reported reject. Default 5; zero
+// is unbounded. Share mode only.
 func WithMaxDeliveries(n int) Option {
 	return func(t *Transport) { t.maxDeliveries = n }
 }
 
-// WithLockRenewInterval is how often this adapter extends the broker's
-// acquisition lock on a record while its handler runs. Default 10s; zero
-// stops renewing.
-//
-// Without it a handler slower than the broker's lock loses the record
-// mid-flight: the broker hands the same record to another member while
-// this one is still working, and does it again every lock period, so one
-// message is processed several times and every copy of the work is
-// wasted. The lock is the broker's, not craftgo's - it is
-// `group.share.record.lock.duration.ms`, 30s by default - so this has to
-// be told rather than derived, and it has to be shorter than the lock.
-//
-// Share mode only; a classic group holds no per-record lock.
+// WithLockRenewInterval sets how often a share-group record's lock is renewed
+// while its handler runs. Default 10s, under the broker's 30s lock; zero stops
+// renewing. Renewal needs Kafka 4.2, which [Transport.Subscribe] checks.
 func WithLockRenewInterval(d time.Duration) Option {
 	return func(t *Transport) { t.lockRenew = d }
 }
 
-// WithClientOptions passes options straight to every franz-go client this
-// transport opens - a compression codec, a client ID, a request timeout,
-// anything construction-time that craftgo does not wrap.
-//
-// It is the same shape as [WithTLS] and the SASL options, which are each
-// one kgo.Opt appended to the same list; this is the general form of them.
-//
-// craftgo's own options are applied AFTER these, so an option that would
-// change what a client IS - the group it joins, the topics it consumes -
-// does not take effect and fails construction instead. Use the transport's
-// own options for those: the adapter refuses one group reading two
-// contracts on a topic, and a client that joined a group behind its back
-// would be outside that guard.
+// WithClientOptions passes opts to every franz-go client the transport
+// opens, before craftgo's group and topic options. A client whose group or
+// topics still differ from the transport's fails to open.
 func WithClientOptions(opts ...kgo.Opt) Option {
 	return func(t *Transport) { t.dial = append(t.dial, opts...) }
 }
 
-// WithTLS dials the brokers over TLS. A nil config uses the system roots.
+// WithTLS dials the brokers over TLS using cfg; a nil or empty cfg verifies
+// the brokers against the system roots.
 func WithTLS(cfg *tls.Config) Option {
+	if cfg == nil {
+		cfg = new(tls.Config)
+	}
 	return func(t *Transport) { t.dial = append(t.dial, kgo.DialTLSConfig(cfg)) }
 }
 
-// WithSASLPlain authenticates with SASL/PLAIN. Pair it with [WithTLS]:
-// PLAIN sends the password where anything on the path can read it.
+// WithSASLPlain authenticates with SASL/PLAIN, which sends the password in
+// clear text; pair it with [WithTLS].
 func WithSASLPlain(user, pass string) Option {
 	return func(t *Transport) {
 		t.dial = append(t.dial, kgo.SASL(plain.Auth{User: user, Pass: pass}.AsMechanism()))
@@ -298,15 +201,12 @@ func New(brokers []string, opts ...Option) *Transport {
 // AdapterName implements [events.OptionAware].
 func (t *Transport) AdapterName() string { return Adapter }
 
-// KnownOptions implements [events.OptionAware]: the per-message options
-// this adapter reads. Anything else addressed to `kafka` fails the
-// publish rather than being dropped.
+// KnownOptions implements [events.OptionAware]: this adapter reads
+// [OptionTimestamp], and any other option addressed to it fails the publish.
 func (t *Transport) KnownOptions() []string { return []string{OptionTimestamp} }
 
 // CanDisposition implements [events.Dispositioner]. Redeliver and reject
-// need the broker to be tracking each record, which is what a share group
-// does and a classic consumer group does not - so the answer depends on
-// how THIS transport was built, and is fixed once it is.
+// need [WithShareGroup].
 func (t *Transport) CanDisposition(d events.Disposition) bool {
 	switch d {
 	case events.DispositionSettle:
@@ -317,22 +217,8 @@ func (t *Transport) CanDisposition(d events.Disposition) bool {
 	return false
 }
 
-// newClient opens a client and refuses one whose consuming identity is not
-// what this transport meant it to be.
-//
-// wantGroup is the group the client is supposed to join, empty for a
-// client that must not consume at all - the producer and the share-API
-// probe. Caller options arrive through [WithClientOptions] and craftgo's
-// own are applied after them, so a group opt from a caller never takes
-// effect; this turns "did not take effect" into a construction failure,
-// because a producer that quietly joined a consumer group would be a
-// second member splitting the stream, outside the claim guard that exists
-// to prevent exactly that. Even the probe matters: joining a group for a
-// moment rebalances the live one.
-//
-// Every client goes through here, including the legitimate consumer - it
-// passes its own group and is checked against it rather than excused, so
-// a fourth construction site cannot inherit no check at all.
+// newClient opens a client and refuses one whose group or topics are not the
+// transport's; wantGroup is "" for a client that must not consume.
 func (t *Transport) newClient(wantGroup string, extra ...kgo.Opt) (*kgo.Client, error) {
 	cl, err := kgo.NewClient(t.clientOpts(extra...)...)
 	if err != nil {
@@ -345,9 +231,7 @@ func (t *Transport) newClient(wantGroup string, extra ...kgo.Opt) (*kgo.Client, 
 	return cl, nil
 }
 
-// unexpectedIdentity names how a client's consuming identity differs from
-// wantGroup, or "" when it matches. A client joins at most one kind of
-// group, so the one it joined is the one that must match.
+// unexpectedIdentity names how cl's group or topics differ from wantGroup.
 func unexpectedIdentity(cl *kgo.Client, wantGroup string) string {
 	consumer, _ := cl.OptValue(kgo.ConsumerGroup).(string)
 	share, _ := cl.OptValue(kgo.ShareGroup).(string)
@@ -367,12 +251,8 @@ func unexpectedIdentity(cl *kgo.Client, wantGroup string) string {
 	return ""
 }
 
-// consumesAnything reports whether the client was told to consume topics.
-//
-// An unrecognised shape counts as YES. franz-go's own OptValues doc says
-// this option reads back as a []string and the field behind it is a map,
-// so a type switch that fell through to "no" is how this check silently
-// passed the first time it was written.
+// consumesAnything reports whether cl was told to consume topics. An unknown
+// value type counts as yes: franz-go documents a []string but returns a map.
 func consumesAnything(cl *kgo.Client) bool {
 	switch v := cl.OptValue(kgo.ConsumeTopics).(type) {
 	case nil:
@@ -386,7 +266,7 @@ func consumesAnything(cl *kgo.Client) bool {
 	}
 }
 
-// clientOpts returns the options every client this transport opens shares.
+// clientOpts returns the shared client options followed by extra.
 func (t *Transport) clientOpts(extra ...kgo.Opt) []kgo.Opt {
 	opts := make([]kgo.Opt, 0, len(t.dial)+len(extra)+2)
 	opts = append(opts, kgo.SeedBrokers(t.brokers...))
@@ -397,7 +277,7 @@ func (t *Transport) clientOpts(extra ...kgo.Opt) []kgo.Opt {
 	return append(opts, extra...)
 }
 
-// Publish sends one message.
+// Publish sends one message and waits for the broker to acknowledge it.
 func (t *Transport) Publish(ctx context.Context, msg *events.Message) error {
 	rec, err := t.encode(msg)
 	if err != nil {
@@ -407,19 +287,24 @@ func (t *Transport) Publish(ctx context.Context, msg *events.Message) error {
 	if err != nil {
 		return err
 	}
-	return cl.ProduceSync(ctx, rec).FirstErr()
+	if err := cl.ProduceSync(ctx, rec).FirstErr(); err != nil {
+		return fmt.Errorf("kafka: publish %s: %w", msg.Event, produceErr(err))
+	}
+	return nil
 }
 
-// PublishBatch hands the whole batch to one ProduceSync, which is what
-// lets the client batch them on the wire. Every record is built first, so
-// a message this adapter cannot encode fails the batch before anything is
-// sent.
-//
-// A failure partway names exactly which messages did not go out. They are
-// not a tail: franz-go produces to every partition at once and reports in
-// completion order, so a batch mixing two topics can fail on one and
-// deliver the other, leaving gaps. Each result carries the record it is
-// for, which is what makes the indices recoverable.
+// produceErr wraps err in [ErrClosed] as well when [Transport.Close] shut the producer
+// under the publish.
+func produceErr(err error) error {
+	if errors.Is(err, kgo.ErrClientClosed) {
+		return fmt.Errorf("%w: %w", ErrClosed, err)
+	}
+	return err
+}
+
+// PublishBatch produces the whole batch in one call. A message it cannot
+// encode fails the batch before anything is sent; a failure after that
+// names each unsent message, which need not be a tail.
 func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) error {
 	recs := make([]*kgo.Record, 0, len(msgs))
 	index := make(map[*kgo.Record]int, len(msgs))
@@ -444,7 +329,7 @@ func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) er
 			continue
 		}
 		if firstErr == nil {
-			firstErr = r.Err
+			firstErr = produceErr(r.Err)
 		}
 		if i, ok := index[r.Record]; ok {
 			unsent = append(unsent, i)
@@ -454,24 +339,14 @@ func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) er
 		return nil
 	}
 	if len(unsent) == 0 {
-		// Every result failed to name its record - nothing is known to
-		// have landed, so say so rather than claiming a partial send.
-		return firstErr
+		// No failure named a record of this batch, so no index is known.
+		return fmt.Errorf("kafka: publish batch of %d: %w", len(msgs), firstErr)
 	}
-	// UnsentAt and not UnsentFrom: these indices have gaps in them.
-	return events.UnsentAt(unsent, msgs, firstErr)
+	return events.UnsentAt(unsent, msgs, fmt.Errorf("kafka: %w", firstErr))
 }
 
-// encode maps a craftgo message onto a Kafka record. Metadata becomes
-// headers beside the contract and the key, which keep their own.
-//
-// [HeaderEvent], [HeaderKey] and [HeaderDedupID] are this adapter's, so a
-// metadata entry under any of their names is skipped rather than written
-// a second time: decode reads the last header of a name, so a duplicate
-// would rename the message, move it to another entity, or give it another
-// message's deduplication identity. The runtime drops those keys before a
-// message gets here; a hand-built [events.Message] does not go through
-// it.
+// encode maps msg onto a Kafka record. Metadata never overrides the adapter's
+// own headers, since decode reads the last header of a name.
 func (t *Transport) encode(msg *events.Message) (*kgo.Record, error) {
 	headers := []kgo.RecordHeader{{Key: HeaderEvent, Value: []byte(msg.Event)}}
 	if msg.Key != "" {
@@ -486,9 +361,8 @@ func (t *Transport) encode(msg *events.Message) (*kgo.Record, error) {
 		}
 		headers = append(headers, kgo.RecordHeader{Key: k, Value: []byte(v)})
 	}
-	// A keyless message must carry a nil Key, not an empty one. The
-	// default partitioner keys on `r.Key != nil`, so []byte("") counts as
-	// a key and hashes every keyless record onto one partition.
+	// A keyless record needs a nil Key: the default partitioner hashes any
+	// non-nil key, []byte("") included, onto one partition.
 	var key []byte
 	if msg.Key != "" {
 		key = []byte(msg.Key)
@@ -504,11 +378,13 @@ func (t *Transport) encode(msg *events.Message) (*kgo.Record, error) {
 	return rec, nil
 }
 
-// producerClient returns the transport's producer, opening it once. One
-// client serves every topic: a record carries its own.
+// producerClient returns the producer, opening it on first use.
 func (t *Transport) producerClient() (*kgo.Client, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.closed {
+		return nil, fmt.Errorf("kafka: open producer: %w", ErrClosed)
+	}
 	if t.producer != nil {
 		return t.producer, nil
 	}
@@ -520,15 +396,9 @@ func (t *Transport) producerClient() (*kgo.Client, error) {
 	return cl, nil
 }
 
-// Subscribe registers every subscription in the batch and returns, each
-// reading on its own loop until ctx is cancelled. A Kafka group is joined
-// one topic at a time, so the batch has no identity to establish as a
-// whole and this is a loop over it.
-//
-// The first failure stops the run and is what Subscribe returns. The
-// subscriptions registered before it stay live until ctx is cancelled,
-// and the ones after it are never registered - a caller that cannot run
-// without the whole batch cancels ctx.
+// Subscribe starts a read loop per subscription, each running until ctx is
+// cancelled. The first failure stops registration and is returned; loops
+// already started stay live.
 func (t *Transport) Subscribe(ctx context.Context, subs []events.Subscription) error {
 	for _, sub := range subs {
 		if err := t.subscribeOne(ctx, sub); err != nil {
@@ -538,27 +408,7 @@ func (t *Transport) Subscribe(ctx context.Context, subs []events.Subscription) e
 	return nil
 }
 
-// subscribeOne joins the group named by sub.Group and reads until ctx is
-// cancelled.
-//
-// One group may read several contracts, but not two of them on one topic:
-// the two readers would be two members of the group, dividing that topic
-// between them while each skips the contract the other asked for, so both
-// lose messages. That pair is refused. It is reachable only through a
-// [WithTopic] mapping that puts two contracts on one topic; under the
-// default mapping the check never fires.
-//
-// Replicas are not that case. Two readers in one group on one topic for
-// the SAME contract are ordinary members dividing the work, which is what
-// the in-process transport does with two identical subscriptions, so they
-// are allowed.
-//
-// In share mode the broker is probed for the share APIs first, and
-// Subscribe returns an error if it does not serve them. The probe is the
-// only thing standing between an old broker and a deployable that boots,
-// serves HTTP, passes readiness and consumes nothing: franz-go reports
-// the lack on the first poll, which happens on a goroutine nobody is
-// waiting on.
+// subscribeOne claims sub's topic for its group and reads until ctx ends.
 func (t *Transport) subscribeOne(ctx context.Context, sub events.Subscription) error {
 	group, topic := string(sub.Group), t.topic(sub.Event)
 	if err := t.claim(group, topic, sub.Event); err != nil {
@@ -576,9 +426,12 @@ func (t *Transport) subscribeOne(ctx context.Context, sub events.Subscription) e
 	return nil
 }
 
-// openConsumer probes for the share APIs when they are needed and returns
-// the client for one subscription.
+// openConsumer opens one subscription's client, probing share support first;
+// after [Transport.Close] it opens nothing.
 func (t *Transport) openConsumer(ctx context.Context, group, topic string) (*kgo.Client, error) {
+	if t.isClosed() {
+		return nil, fmt.Errorf("kafka: open consumer for %q: %w", topic, ErrClosed)
+	}
 	mode := kgo.ConsumerGroup(group)
 	if t.share {
 		if err := t.probeShareAPIs(ctx); err != nil {
@@ -590,15 +443,32 @@ func (t *Transport) openConsumer(ctx context.Context, group, topic string) (*kgo
 	if err != nil {
 		return nil, fmt.Errorf("kafka: open consumer for %q: %w", topic, err)
 	}
-	t.mu.Lock()
-	t.clients = append(t.clients, cl)
-	t.mu.Unlock()
+	if !t.track(cl) {
+		cl.Close()
+		return nil, fmt.Errorf("kafka: open consumer for %q: %w", topic, ErrClosed)
+	}
 	return cl, nil
 }
 
-// probeShareAPIs asks the broker what it serves and refuses a share
-// subscription it could not honour. It runs before the subscription is
-// registered, so the refusal reaches the caller rather than a read loop.
+func (t *Transport) isClosed() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.closed
+}
+
+// track records cl for [Transport.Close], or reports false when Close ran while cl opened.
+func (t *Transport) track(cl *kgo.Client) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed {
+		return false
+	}
+	t.clients = append(t.clients, cl)
+	return true
+}
+
+// probeShareAPIs refuses, before any read loop starts, a broker that cannot
+// serve a share subscription. Only success is cached.
 func (t *Transport) probeShareAPIs(ctx context.Context) error {
 	t.mu.Lock()
 	ok := t.shareOK
@@ -636,9 +506,8 @@ func (t *Transport) probeShareAPIs(ctx context.Context) error {
 		}
 	}
 
-	// Renewal rides on ShareAcknowledge v2: the renew flag is a v2 field,
-	// so a v1 broker never receives it and the lock lapses under a slow
-	// handler with nothing to see. Kafka 4.1 serves every share key at v1.
+	// The renew flag is a ShareAcknowledge v2 field; Kafka 4.1 serves v1,
+	// which drops the flag and lets the lock lapse unreported.
 	if t.lockRenew > 0 {
 		if v, _ := served.LookupMaxKeyVersion(apiShareAcknowledge); v < 2 {
 			return fmt.Errorf("kafka: WithLockRenewInterval needs ShareAcknowledge v2 (API key %d), and this broker serves v%d - renewing a record's acquisition lock is Kafka 4.2 and newer, and on an older one a handler slower than the lock is delivered again with nothing reporting it; pass WithLockRenewInterval(0) to consume without renewal",
@@ -652,9 +521,8 @@ func (t *Transport) probeShareAPIs(ctx context.Context) error {
 	return nil
 }
 
-// claim records that group reads topic for contract. A second reader of
-// the same contract joins the claim; one asking for a different contract
-// is refused.
+// claim records that group reads topic for contract. Another reader of the
+// same contract joins the claim; one for a different contract is refused.
 func (t *Transport) claim(group, topic, contract string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -672,8 +540,7 @@ func (t *Transport) claim(group, topic, contract string) error {
 	return nil
 }
 
-// release drops one reader's hold when its read loop ends, freeing the
-// claim once the last replica is gone.
+// release drops one reader from the claim, freeing it after the last.
 func (t *Transport) release(group, topic string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -687,18 +554,8 @@ func (t *Transport) release(group, topic string) {
 	}
 }
 
-// consume is the per-subscription read loop.
-//
-// In a classic group every record is taken as done - handled, failed, or
-// addressed to another contract. Leaving one uncommitted would not hold
-// it: a group offset is a per-partition high-water mark, so the next
-// record that succeeds on that partition commits past the failure anyway.
-// Install [WithErrorHandler]; it is the only record that the message
-// arrived.
-//
-// In a share group the broker holds each record until this loop answers
-// for it, so what a middleware asked for through [events.Message] is what
-// the record gets.
+// consume is one subscription's read loop. A classic group commits every
+// polled record, failed or not: its offset is a per-partition high-water mark.
 func (t *Transport) consume(ctx context.Context, cl *kgo.Client, sub events.Subscription) {
 	defer t.releaseClient(cl)
 	for {
@@ -707,10 +564,9 @@ func (t *Transport) consume(ctx context.Context, cl *kgo.Client, sub events.Subs
 			return
 		}
 		fetches.EachError(func(topic string, _ int32, err error) {
-			if ctx.Err() != nil || t.onError == nil {
-				return
+			if ctx.Err() == nil {
+				t.report(sub, nil, fmt.Errorf("kafka: fetch %s: %w", topic, err))
 			}
-			t.onError(sub, nil, fmt.Errorf("kafka: fetch %s: %w", topic, err))
 		})
 
 		var polled []*kgo.Record
@@ -719,8 +575,8 @@ func (t *Transport) consume(ctx context.Context, cl *kgo.Client, sub events.Subs
 			t.deliver(ctx, cl, sub, rec)
 		})
 		if !t.share && len(polled) > 0 {
-			if err := cl.CommitRecords(ctx, polled...); err != nil && t.onError != nil && ctx.Err() == nil {
-				t.onError(sub, nil, fmt.Errorf("kafka: commit: %w", err))
+			if err := cl.CommitRecords(ctx, polled...); err != nil && ctx.Err() == nil {
+				t.report(sub, nil, fmt.Errorf("kafka: commit: %w", err))
 			}
 		}
 	}
@@ -731,14 +587,9 @@ func (t *Transport) deliver(ctx context.Context, cl *kgo.Client, sub events.Subs
 	msg := decode(sub.Event, rec)
 	msg.SetDeliveries(int(rec.DeliveryCount()))
 
-	// A topic may carry several contracts; a record this subscription did
-	// not ask for is not handed to a handler that would decode it as the
-	// wrong type. It is reported rather than passed over in silence -
-	// being sent one is a mapping mistake somebody has to hear about.
+	// A record of another contract on this topic is reported and skipped.
 	if msg.Event != sub.Event {
-		if t.onError != nil {
-			t.onError(sub, msg, fmt.Errorf("kafka: topic %s carried %s, which %s does not consume - skipped", rec.Topic, msg.Event, sub.Consumer))
-		}
+		t.report(sub, msg, fmt.Errorf("kafka: topic %s carried %s, which %s does not consume - skipped", rec.Topic, msg.Event, sub.Consumer))
 		if t.share {
 			rec.Ack(kgo.AckAccept)
 		}
@@ -749,29 +600,26 @@ func (t *Transport) deliver(ctx context.Context, cl *kgo.Client, sub events.Subs
 	err := sub.Handle(withRecord(ctx, rec), msg)
 	stop()
 
-	if err != nil && t.onError != nil {
-		t.onError(sub, msg, err)
+	if err != nil {
+		t.report(sub, msg, err)
 	}
 	if t.share {
-		// A capped Redeliver is answered with a reject, which the chain
-		// that asked for it never sees.
-		if t.capped(msg) && t.onError != nil {
-			t.onError(sub, msg, fmt.Errorf("kafka: giving up on %s after %d deliveries - the chain asked for another and WithMaxDeliveries is %d", sub.Event, msg.Deliveries(), t.maxDeliveries))
+		// The chain never sees the cap turn its Redeliver into a reject.
+		if t.capped(msg) {
+			t.report(sub, msg, fmt.Errorf("kafka: giving up on %s after %d deliveries - the chain asked for another and WithMaxDeliveries is %d", sub.Event, msg.Deliveries(), t.maxDeliveries))
 		}
 		rec.Ack(t.ackFor(msg))
 	}
 }
 
-// holdOpen extends the broker's acquisition lock on rec while the handler
-// runs, and returns the function that stops doing so.
-//
-// A renew is queued like any other ack, so it is flushed rather than left
-// for the background pass - a renewal that arrives after the lock it was
-// meant to extend is no renewal. Renewing while a renew is in flight is a
-// no-op in the client, so the ticker cannot outrun the broker.
-//
-// Only a share group has a lock to hold. A classic group's offset does
-// not expire, and a slow handler there stalls its partition instead.
+func (t *Transport) report(sub events.Subscription, msg *events.Message, err error) {
+	if t.onError != nil {
+		t.onError(sub, msg, err)
+	}
+}
+
+// holdOpen renews rec's acquisition lock until the returned func is called,
+// flushing each renewal at once so it arrives before the lock lapses.
 func (t *Transport) holdOpen(ctx context.Context, cl *kgo.Client, rec *kgo.Record) func() {
 	if !t.share || t.lockRenew <= 0 {
 		return func() {}
@@ -795,17 +643,13 @@ func (t *Transport) holdOpen(ctx context.Context, cl *kgo.Client, rec *kgo.Recor
 	return func() { close(done); <-stopped }
 }
 
-// capped reports whether [WithMaxDeliveries] overrides a redelivery the
-// chain asked for. It is the one place the cap is read, so the answer the
-// broker gets and the report the subscriber gets cannot disagree.
+// capped reports whether [WithMaxDeliveries] overrides the chain's Redeliver.
 func (t *Transport) capped(msg *events.Message) bool {
 	return msg.Disposition() == events.DispositionRedeliver &&
 		t.maxDeliveries > 0 && msg.Deliveries() >= t.maxDeliveries
 }
 
-// ackFor turns what the chain asked for into the broker's answer. An
-// unset disposition settles: a middleware that decided nothing is not
-// asking for the record back.
+// ackFor maps the chain's disposition to an ack status; unset accepts.
 func (t *Transport) ackFor(msg *events.Message) kgo.AckStatus {
 	switch msg.Disposition() {
 	case events.DispositionRedeliver:
@@ -819,9 +663,8 @@ func (t *Transport) ackFor(msg *events.Message) kgo.AckStatus {
 	return kgo.AckAccept
 }
 
-// decode rebuilds a craftgo message from a Kafka record. The contract
-// comes from the header, falling back to the subscription's own contract
-// for a record written by something that does not set it.
+// decode rebuilds a message from rec. The contract comes from [HeaderEvent],
+// or from the subscription for a record without one.
 func decode(contract string, rec *kgo.Record) *events.Message {
 	out := &events.Message{Event: contract, Key: string(rec.Key), Payload: rec.Value, Metadata: map[string]string{}}
 	for _, h := range rec.Headers {
@@ -839,9 +682,11 @@ func decode(contract string, rec *kgo.Record) *events.Message {
 	return out
 }
 
-// Close shuts every client this transport opened.
+// Close shuts every client this transport opened and drops its group claims;
+// a publish it cuts off, and a publish or subscribe after it, returns [ErrClosed].
 func (t *Transport) Close() error {
 	t.mu.Lock()
+	t.closed = true
 	producer, clients := t.producer, t.clients
 	t.producer, t.clients = nil, nil
 	t.held = map[groupTopic]*topicClaim{}
@@ -856,11 +701,8 @@ func (t *Transport) Close() error {
 	return nil
 }
 
-// releaseClient closes cl if this transport still holds it, and does
-// nothing if [Transport.Close] has already taken it. A client reaches
-// here from two places - a read loop whose context was cancelled, and
-// Close itself - and kgo.Client.Close has no guard of its own, so which
-// one of them closes it has to be decided here.
+// releaseClient closes cl unless [Transport.Close] already took it;
+// kgo.Client.Close has no guard against a second call.
 func (t *Transport) releaseClient(cl *kgo.Client) {
 	t.mu.Lock()
 	held := false

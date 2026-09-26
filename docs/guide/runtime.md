@@ -1,6 +1,6 @@
 # Runtime
 
-The craftgo runtime is a thin wrapper around `net/http`. There is no custom router, no custom middleware shape, no service container. This page is the HTTP half; the event half is `pkg/events`, covered in [Events](/guide/events). [Architecture](/guide/architecture) shows where both sit.
+The craftgo runtime is a thin wrapper around `net/http`. There is no custom router, no custom middleware shape, and no reflection-driven dependency injection. This page is the HTTP half; the event half is `pkg/events`, covered in [Events](/guide/events). [Architecture](/guide/architecture) shows where both sit.
 
 ## At a glance
 
@@ -15,7 +15,7 @@ Three things matter:
 
 1. `Server` wraps the standard library mux and accepts the standard middleware shape
 2. Generated routes register through `srv.Handle("VERB /path", handlerFn, mws...)` using Go 1.22+ pattern syntax
-3. Logic, validation, and JSON live in plain Go - no framework runtime in the hot path
+3. Binding and validation are generated Go, JSON is `encoding/json` behind a swappable codec, and the logic is yours - no reflection-driven dispatch in the hot path
 
 If you can name a `net/http` concept, the craftgo equivalent uses it directly.
 
@@ -26,7 +26,7 @@ import "github.com/craftgodotdev/craftgo/pkg/server"
 
 srv := server.New(svcCtx)
 srv.Use(loggingMiddleware)
-srv.Handle("GET /healthz", healthHandler)
+srv.Handle("GET /ping", pingHandler)
 srv.Start(":8080")
 ```
 
@@ -36,7 +36,7 @@ srv.Start(":8080")
 
 ```go
 chain := server.NewChain(server.BodyLimit(1 << 20), server.AccessLog(logger))
-srv.Handle("GET /healthz", chain.Then(healthHandler))
+srv.Handle("GET /ping", chain.Then(pingHandler))
 ```
 
 `NewChain(...).Append(...)` returns a new chain (value semantics, safe to share a base), and `.Then(h)` / `.ThenFunc(fn)` produce the wrapped handler. Nil entries are skipped, so an optional middleware can drop into the slice without a guard.
@@ -45,18 +45,18 @@ srv.Handle("GET /healthz", chain.Then(healthHandler))
 
 Out of the box:
 
-- `Recovery(logger)` - converts panics to 500 responses with structured logging
-- `AccessLog(logger)` - one `http access` line per request (method, path, status, latency, plus the trace ids on the context); `AccessLogSkipPaths(...)` keeps chosen routes out, `AccessLogFields(...)` adds fields of your own
-- `BodyLimit(maxBytes)` - caps request bodies
-- `Timeout(d)` - hard deadline on handler execution
+- `Recovery(logger)` - converts a panic to 500 `{"message":"internal server error"}` and logs it with its stack; `Handler()` installs it itself, inside the `WithTelemetry` middleware and outside every `srv.Use` middleware
+- `AccessLog(logger)` - one `http access` line per request (method, path, status - 499 for a client that left before anything was written - latency, plus the trace ids on the context); a request whose handler panics gets none. `AccessLogSkipPaths(...)` keeps chosen routes out, `AccessLogFields(...)` adds fields of your own
+- `BodyLimit(maxBytes)` - caps request bodies; a body over the cap answers 413 `{"message":"request entity too large"}`
+- `Timeout(d)` - deprecated; use `srv.SetDefaultHandlerTimeout(d)` or `@timeout`, which put the deadline on the request context
 - `CORSPermissive()` / `CORSStrict(origin)` - build a `CORSOptions` preset, then attach with `srv.SetCORS(opts)` - preflight + headers
 - `Compress(opts)` - gzip / deflate response compression
 
 You wire them in `main.go`:
 
 ```go
-srv := server.New(svcCtx)
-srv.Use(server.AccessLog(logger))
+srv := server.New(svcCtx, server.WithTelemetry(tel.HTTPMiddleware()))
+srv.Use(server.AccessLog(log.Follow()))
 srv.Use(server.BodyLimit(1 << 20))
 ```
 
@@ -81,26 +81,26 @@ No adapter, no shim. craftgo handlers are `http.HandlerFunc`.
 Generated handlers look like this:
 
 ```go
+// CreateUser returns the POST CreateUser handler.
 func CreateUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        var req types.CreateUserReq
-        if err := server.JSON().Decode(r.Body, &req); err != nil {
-            server.WriteValidationError(w, r, err)
-            return
-        }
-        if err := req.Validate(); err != nil {
-            server.WriteValidationError(w, r, err)
-            return
-        }
-        l := service.NewCreateUserService(r.Context(), svcCtx)
-        resp, err := l.CreateUser(&req)
-        if err != nil {
-            server.WriteError(w, r, err)
-            return
-        }
-        w.Header().Set("Content-Type", "application/json; charset=utf-8")
-        _ = server.JSON().Encode(w, resp)
-    }
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req types.CreateUserReq
+		if err := server.JSON().Decode(r.Body, &req); err != nil {
+			server.WriteValidationError(w, r, err)
+			return
+		}
+		if err := req.Validate(); err != nil {
+			server.WriteValidationError(w, r, err)
+			return
+		}
+		l := service.NewCreateUserService(r.Context(), svcCtx)
+		resp, err := l.CreateUser(&req)
+		if err != nil {
+			server.WriteError(w, r, err)
+			return
+		}
+		server.WriteResponse(w, r, http.StatusCreated, resp)
+	}
 }
 ```
 
@@ -108,8 +108,6 @@ This is exactly what you would write by hand: one `http.HandlerFunc`, stdlib sta
 
 - **`server.JSON()`** is the swappable codec accessor - it defaults to `encoding/json` but lets you drop in `sonic`/`jsoniter` process-wide (see [Runtime API](/reference/runtime-api#json-codec)). The decode/encode shape is otherwise standard.
 - **The logic call is `l.CreateUser(&req)`** - the request context is captured when the per-method service is constructed (`service.NewCreateUserService(r.Context(), svcCtx)`), so it isn't threaded through the method call.
-
-No framework runtime in the hot path.
 
 ### Raw sides
 
@@ -142,9 +140,7 @@ func Ingest(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
             server.WriteError(w, r, err)
             return
         }
-        w.Header().Set("Content-Type", "application/json; charset=utf-8")
-        w.WriteHeader(http.StatusCreated)
-        _ = server.JSON().Encode(w, resp)
+        server.WriteResponse(w, r, http.StatusCreated, resp)
     }
 }
 ```
@@ -161,7 +157,7 @@ srv.RegisterHealthCheck("db", 2*time.Second, func(ctx context.Context) error {
 })
 ```
 
-The second argument is a per-check timeout - the check fails if it runs longer.
+The second argument is a per-check timeout: each run gets a context that expires after it, so a check that honours its context fails with `context deadline exceeded`, while one that ignores its context runs to completion and is judged by what it returns.
 
 The probes are answered before the middleware chain: they are not access-logged, traced or counted in the HTTP metrics, and no `srv.Use` middleware (CORS, auth, rate limits) runs for them. Disable them with `server.WithoutDefaultHealth()` and register your own route when you want observed probes.
 
@@ -178,11 +174,14 @@ docs:
   specPath: /openapi.yaml  # raw OpenAPI document
 ```
 
-`main.go` embeds the generated `openapi.yaml` and wires it via
-`server.ServeDocs(...)`. To add it to a hand-written server (or an existing
-project whose gen-once `main.go` predates the feature):
+`main.go` embeds the generated `openapi.yaml` and wires it with
+`srv.ServeDocs(...)` when the design has HTTP routes and, as `main.go` is first
+written, the document is on disk in or below `main.go`'s directory. To add it to
+a hand-written server, or to a gen-once `main.go` that does not serve it:
 
 ```go
+import _ "embed"
+
 //go:embed docs/openapi.yaml
 var openapiSpec []byte
 
@@ -213,9 +212,9 @@ srv.Stop(ctx)
 `pkg/log` provides a small structured logger. Generated logic carries a logger pre-bound to the request context:
 
 ```go
-func (l *GetUserLogic) GetUser(req *pb.GetUserReq) (*pb.User, error) {
-    l.Info("fetching user", log.String("id", req.Id))
-    // ...
+func (l *GetUserService) GetUser(req *types.GetUserReq) (*types.User, error) {
+	l.Info("fetching user", log.String("id", req.ID))
+	// ...
 }
 ```
 
@@ -232,7 +231,7 @@ log.SetContextFields(func(ctx context.Context) []log.Field {
 
 ### Log level
 
-The level is process-wide, not per-logger. `srv.SetLogger` mirrors one logger into both the server and `log.Default()`, and `New`/`NewConsole` build that logger over a shared `zap.AtomicLevel`, so a single call retunes the server and the generated logic layer together:
+The level is process-wide, not per-logger. The server and the generated logic both write through `log.Default()`, which `srv.SetLogger` installs, and `New`/`NewConsole` build that logger over a shared `zap.AtomicLevel`, so a single call retunes the server and the generated logic layer together:
 
 ```go
 log.SetLevel(log.LevelDebug)   // LevelDebug / LevelInfo / LevelWarn / LevelError
@@ -248,16 +247,16 @@ Both signals are set up by one call, and the middleware that emits them is a met
 ```go
 tel, err := telemetry.Init(ctx, cfg.Config)
 defer tel.Shutdown(ctx)
-srv.Use(tel.HTTPMiddleware())
+srv := server.New(svc, server.WithTelemetry(tel.HTTPMiddleware()))
 ```
 
-`tel` owns everything: both providers, the Prometheus registry, and the scrape listener. `Shutdown` closes the listener and flushes any pending OTLP push batch, so `main.go` has one teardown line rather than three that must stay in step.
+`tel` owns everything: both providers, the Prometheus registry, and the scrape listener. `Shutdown` closes the listener and flushes any pending OTLP push batch, so `main.go` has one teardown line rather than three that must stay in step. `server.WithTelemetry` installs the middleware outside `Recovery` and every `srv.Use` middleware, so the access and panic lines carry its trace ids; adding it with `srv.Use` as well records every request twice.
 
 The middleware records spans for every request and stamps trace IDs onto the context. Metrics ride the same wrapper, which is why `otel.enabled: false` stops the spans but not the `http.server.*` series - those follow `metrics.enabled`.
 
 ### What gets emitted
 
-craftgo follows OTel semantic conventions, so the instruments are the semconv ones - not the names other Go frameworks use. Three instruments, plus whatever your own code records:
+craftgo follows OTel semantic conventions, so the instruments are the semconv ones - not the names other Go frameworks use. Three HTTP instruments; the Prometheus scrape also carries the Go runtime and process collectors (`go_*`, `process_*`) and `target_info`, plus whatever your own code records:
 
 | OTel instrument | Prometheus family | Unit |
 | --- | --- | --- |
@@ -267,7 +266,7 @@ craftgo follows OTel semantic conventions, so the instruments are the semconv on
 
 Each carries `http_request_method`, `http_response_status_code`, `http_route`, `network_protocol_name`, `network_protocol_version`, `server_address`, `url_scheme`, plus the `otel_scope_*` identity labels. `service.name` rides on `target_info`, not on the series.
 
-`http_route` is the **route pattern**, not the request path - `/api/todos/{id}`, never `/api/todos/42` - so grouping by it cannot blow up cardinality. It comes from the pattern Go's `ServeMux` records on the matched request, which is exactly what generated routes register.
+`http_route` is the **route pattern**, not the request path - `/api/todos/{id}`, never `/api/todos/42` - so grouping by it cannot blow up cardinality. It comes from the pattern Go's `ServeMux` records on the matched request, which is exactly what generated routes register - as long as no `srv.Use` middleware hands `next` a copy of the request (`r.WithContext(…)`): the mux then records the pattern on the copy, and the series carry no `http_route`.
 
 A p95-by-route panel therefore reads:
 
@@ -284,7 +283,7 @@ See [Configuration](/guide/configuration) for the YAML knobs.
 
 ## ServiceContext
 
-`ServiceContext` is the dependency container. Generated by craftgo as a struct with one field per declared middleware plus whatever you add:
+`ServiceContext` is the dependency container. craftgo writes it once as a struct holding the loaded config and, embedded, one field per declared middleware; you add the rest:
 
 ```go
 type ServiceContext struct {
@@ -296,18 +295,18 @@ type ServiceContext struct {
 }
 ```
 
-Pass it once to `server.New(svc)`. Every handler and logic layer receives it.
+`wiring.Register(ctx, srv, svc)` hands it to every generated handler, and each handler to its logic (`service.NewCreateUserService(r.Context(), svcCtx)`); `server.New` ignores the argument it takes.
 
 ### Concurrency
 
-`ServiceContext` is shared across every concurrent request - craftgo does NOT auto-lock its fields. Long-lived dependencies (DB pools, Redis clients, gRPC channels, …) handle their own locking internally and are safe to keep as bare fields. Mutable in-process state (maps, slices, counters) is your responsibility: either guard it with `sync.Mutex` / `sync.RWMutex` / `sync.Map`, use atomic types, or make the state per-request and pass it through `context.Context`. The example app embeds a `sync.Mutex` on `ServiceContext` and exposes `Lock()` / `Unlock()` helpers so handlers can wrap a multi-step map mutation in one critical section.
+`ServiceContext` is shared across every concurrent request - craftgo does NOT auto-lock its fields. Long-lived dependencies (DB pools, Redis clients, gRPC channels, …) handle their own locking internally and are safe to keep as bare fields. Mutable in-process state (maps, slices, counters) is your responsibility: either guard it with `sync.Mutex` / `sync.RWMutex` / `sync.Map`, use atomic types, or make the state per-request and pass it through `context.Context`. The upload example keeps its state in a `MediaStore` (`svccontext/store.go`) whose methods take a `sync.RWMutex` themselves, so handlers call them without locking.
 
 ## What is not in craftgo
 
 - No DI container with reflection
-- No struct tag based binding for body fields
+- No struct-tag binding or validation: parameters bind and values validate in generated code
 - No custom HTTP method dispatcher
 - No interceptor chain that hides the request lifecycle
-- No global state
+- No process-wide state beyond what a setter names: the JSON codec, the error hooks, the default logger and its level
 
 If you can name a `net/http` concept, the craftgo equivalent uses it directly.

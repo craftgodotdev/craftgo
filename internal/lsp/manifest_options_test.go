@@ -1,46 +1,19 @@
 package lsp
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/craftgodotdev/craftgo/internal/designopts"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// manifestProject writes a design root with the given manifest body and
-// one design file, and returns the file's path.
-func manifestProject(t *testing.T, manifest, design string) string {
-	t.Helper()
-	root := t.TempDir()
-	mustWrite(t, filepath.Join(root, "design", "craftgo.design.yaml"), manifest)
-	path := filepath.Join(root, "design", "svc.craftgo")
-	mustWrite(t, path, design)
-	return path
-}
-
-const layoutOnly = `output:
-  types:      ./internal/types
-  transport:  ./internal/transport
-  routes:     ./internal/routes
-  service:    ./internal/service
-  middleware: ./internal/middleware
-  svccontext: ./svccontext/svccontext.go
-  openapi:    ./docs/openapi.yaml
-openapi:
-  title: T
-  version: 1.0.0
-`
-
-// THE FALSE POSITIVE. `/healthz` is a reserved path only where it ends up
-// reserved: with a basePath the route resolves to `/api/healthz` and
-// nothing collides. The CLI reads basePath from the manifest and stays
-// silent; the editor used to analyse with an empty one and report an
-// error for a rule that does not apply.
-//
-// It is the worse half of the divergence because `onFormatting` returns
-// no edits for a buffer with any error, so the phantom error made
-// format-on-save do nothing at all, silently and for as long as the
-// method existed.
+// The manifest's basePath moves `/healthz` to `/api/healthz`, clearing the
+// health conflict; without a basePath the conflict is reported.
 func TestABasePathSilencesTheHealthConflictInTheEditorToo(t *testing.T) {
 	const design = `package svc
 type R {}
@@ -56,12 +29,11 @@ service S {
 			t.Errorf("basePath /api moves the route to /api/healthz, so there is no conflict: %s", d.Msg)
 		}
 	}
-	if v.hasErrors() {
-		t.Errorf("a clean design must not block formatting: %+v", v.diags)
+	if errs := designopts.FileErrors(v.diags, v.current); len(errs) > 0 {
+		t.Errorf("a clean design must not block formatting: %+v", errs)
 	}
 
-	// Without a basePath the route really is /healthz, and the editor must
-	// still say so - the fix is to read the manifest, not to drop the rule.
+	// Without a basePath the route is /healthz.
 	noBase := manifestProject(t, layoutOnly, design)
 	v = s.loadProject(noBase, readFileT(t, noBase))
 	found := false
@@ -75,9 +47,7 @@ service S {
 	}
 }
 
-// The editor checks `@security(name)` against the manifest's declared
-// schemes, the way the CLI does. It used to pass a nil list, which
-// disables the check.
+// `@security(name)` is checked against the manifest's declared schemes.
 func TestTheEditorChecksSecuritySchemesAgainstTheManifest(t *testing.T) {
 	manifest := layoutOnly + `  securitySchemes:
     bearerAuth:
@@ -107,18 +77,13 @@ service S {
 	if msg == "" {
 		t.Fatalf("an undeclared scheme must be reported in the editor: %+v", v.diags)
 	}
-	// The known-list is rendered into the message, so its order is
-	// user-visible and must not depend on a map walk.
+	// The message lists the known schemes sorted.
 	if !strings.Contains(msg, `"apiKeyAuth", "bearerAuth"`) {
 		t.Errorf("known schemes are not sorted: %s", msg)
 	}
 }
 
-// The nil-guard is deliberate: a buffer under no project has no
-// authoritative scheme list, so the check stays quiet rather than
-// reporting every name as undeclared. config.Find reports every failure
-// as (nil, "", "", err), so "no manifest" and "root unknown" are one
-// state and this cannot drift apart.
+// Outside a project `@security(name)` is not checked: there is no scheme list.
 func TestASchemeReferenceOutsideAProjectIsNotReported(t *testing.T) {
 	s := newTestServer()
 	v := s.loadProject("", `package svc
@@ -135,62 +100,50 @@ service S {
 	}
 }
 
-// A file that declares no package belongs to the project's only named
-// package - the analyser's rule. The editor used to name it after its
-// folder first, which made it a SECOND package and broke every reference
-// into it that the CLI resolves.
-func TestAPackagelessFileJoinsTheOnlyNamedPackage(t *testing.T) {
+// A file that declares no package is reported, as the CLI reports it, and
+// joins no package.
+func TestAPackagelessFileIsReported(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "design", "craftgo.design.yaml"), layoutOnly)
 	named := filepath.Join(root, "design", "orders.craftgo")
 	mustWrite(t, named, `package orders
-type Order { id string  extra Extra }
+type Order { id string }
 `)
-	mustWrite(t, filepath.Join(root, "design", "extra.craftgo"), `type Extra { note string }
+	extra := filepath.Join(root, "design", "extra.craftgo")
+	mustWrite(t, extra, `type Extra { note string }
 `)
 
 	s := newTestServer()
 	v := s.loadProject(named, readFileT(t, named))
+	var missing []string
 	for _, d := range v.diags {
-		if d.IsError() {
-			t.Errorf("the package-less file's type must resolve, as it does for the CLI: %s at %s", d.Msg, d.Pos)
+		if d.Code == semantic.CodePackageMissing {
+			missing = append(missing, d.Pos.Filename)
 		}
 	}
-	if _, ok := v.proj.Packages["orders"]; !ok {
-		t.Fatalf("packages = %v, want the one named package", sortedKeys(v.proj.Packages))
+	if len(missing) != 1 || missing[0] != extra {
+		t.Errorf("package/missing reported in %v, want [%s]", missing, extra)
 	}
-	if len(v.proj.Packages) != 1 {
-		t.Errorf("packages = %v, want exactly one - naming a package-less file after its folder splits the project",
-			sortedKeys(v.proj.Packages))
-	}
-}
-
-// The design a buffer belongs to is discovered once and the manifest
-// travels with it, so a caller cannot get the root without the options
-// that go with it.
-func TestDesignProjectOfReturnsTheManifestWithTheRoot(t *testing.T) {
-	path := manifestProject(t, layoutOnly+"  basePath: /api\n", "package svc\ntype R {}\n")
-
-	cfg, root := designProjectOf(path)
-	if root == "" || cfg == nil {
-		t.Fatalf("designProjectOf(%s) = %v, %q", path, cfg, root)
-	}
-	if cfg.OpenAPI.BasePath != "/api" {
-		t.Errorf("basePath = %q, want /api", cfg.OpenAPI.BasePath)
-	}
-
-	// Every failure path of config.Find reports (nil, "", "", err), so the
-	// two always travel together.
-	if cfg, root := designProjectOf(""); cfg != nil || root != "" {
-		t.Errorf("an untitled buffer = %v, %q; want nil and empty", cfg, root)
+	if got := slices.Sorted(maps.Keys(v.proj.Packages)); len(got) != 1 || got[0] != "orders" {
+		t.Errorf("packages = %v, want [orders]", got)
 	}
 }
 
-// The verifier's repro, at the level the symptom appeared. An unreadable
-// directory between two readable ones used to truncate the walk, so the
-// editor analysed a project missing `ccc` and reported the type it
-// declares as unknown - an error the CLI never produces and that no edit
-// by the user could clear.
+// A file beside a design folder is analysed on its own, as `craftgo fmt`
+// analyses it: the folder's declarations do not resolve in it.
+func TestAFileOutsideTheDesignRootIsAnalysedAlone(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "design", "craftgo.design.yaml"), layoutOnly)
+	mustWrite(t, filepath.Join(root, "design", "app.craftgo"), "package app\n\ntype A { x string }\n")
+	stray := filepath.Join(root, "stray.craftgo")
+	mustWrite(t, stray, "package app\n\ntype B { a A }\n")
+	v := newTestServer().loadProject(stray, readFileT(t, stray))
+	if v.root != "" || len(v.files) != 1 {
+		t.Errorf("root %q with %d file(s), want the file alone", v.root, len(v.files))
+	}
+}
+
+// An unreadable directory does not hide the design files after it.
 func TestAnUnreadableDirectoryDoesNotInventUnknownSymbols(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "design", "craftgo.design.yaml"), layoutOnly)

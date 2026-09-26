@@ -3,16 +3,15 @@
 package rawmodes
 
 import (
-	"context"
-	"net/http"
-
 	"bytes"
 	"compress/gzip"
+	"context"
 	"io"
-
-	"github.com/craftgodotdev/craftgo/pkg/server"
+	"net/http"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -25,7 +24,7 @@ type RrNoReqService struct {
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewRrNoReqService constructs a fresh service instance bound to ctx.
+// NewRrNoReqService binds RrNoReqService to ctx; its Logger carries ctx's trace ids.
 func NewRrNoReqService(ctx context.Context, svcCtx *svccontext.ServiceContext) *RrNoReqService {
 	return &RrNoReqService{
 		Logger: log.Default().WithContext(ctx),

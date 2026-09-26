@@ -7,8 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-// Validate checks every field-level constraint declared on PtReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PtReq) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 32 {
 		return fmt.Errorf("id: length out of range [1, 32]")
@@ -16,14 +15,12 @@ func (v *PtReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PtResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PtResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RqFileReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RqFileReq) Validate() error {
 	if v.Doc == nil {
 		return fmt.Errorf("doc: required")
@@ -31,20 +28,17 @@ func (v *RqFileReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RqItem.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RqItem) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RqResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RqResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RrReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RrReq) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 32 {
 		return fmt.Errorf("id: length out of range [1, 32]")
@@ -55,14 +49,12 @@ func (v *RrReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RrResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RrResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RrUploadReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RrUploadReq) Validate() error {
 	if utf8.RuneCountInString(v.Note) < 1 {
 		return fmt.Errorf("note: length less than 1")

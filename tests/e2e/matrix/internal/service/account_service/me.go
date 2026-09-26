@@ -5,25 +5,20 @@ package services
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// MeService carries the per-request state for the
-// Me endpoint of AccountService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// MeService runs AccountService.Me for one request.
 type MeService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewMeService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewMeService binds MeService to ctx; its Logger carries ctx's trace ids.
 func NewMeService(ctx context.Context, svcCtx *svccontext.ServiceContext) *MeService {
 	return &MeService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewMeService(ctx context.Context, svcCtx *svccontext.ServiceContext) *MeSer
 	}
 }
 
-// Me is the service entry point. Replace the
-// TODO with the real implementation.
+// Get the current user - inherits RateLimit + AuthRequired.
+//
+// Me implements AccountService.Me.
 func (l *MeService) Me() (*types.AccountProfile, error) {
 	// TODO: implement
 	return nil, nil

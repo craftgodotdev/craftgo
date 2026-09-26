@@ -6,11 +6,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// ---------- raw modes: @rawRequest / @rawResponse / @passthrough ----------
-
-// Every cell of the request × response matrix analyses clean, with and
-// without blocks: a block on a raw side is a docs-only contract, not an
-// error.
+// Every raw mode is accepted with and without request and response blocks.
 func TestRawModesAnalyseClean(t *testing.T) {
 	mustClean(t, `package x
 type Req { id string @path  q string? @query }
@@ -82,9 +78,7 @@ service S {
 }`, CodeDecoratorRedundant, 1)
 }
 
-// A `@passthrough` on an `extend service` header is cloned onto every
-// method before the method's own decorators, so a method-level flag is
-// the later spelling and carries the warning.
+// Under a @passthrough extend block, a method's own raw flag is the one reported redundant.
 func TestRawModeRedundancyPropagatedFromExtend(t *testing.T) {
 	d := expectWarning(t, `package x
 service S {
@@ -101,9 +95,7 @@ extend service S {
 	}
 }
 
-// A raw-request method reads path values off the *http.Request, so the
-// path/param-missing warning is suppressed only when there is no request
-// block; a declared block must still cover every path segment.
+// A @rawRequest method without a request block needs no field for its path segment.
 func TestRawRequestPathParamNoBlockIsClean(t *testing.T) {
 	mustClean(t, `package x
 service S {
@@ -122,18 +114,16 @@ service S {
 	expectMessage(t, d, "{id} has no matching field")
 }
 
-// @rawResponse alone leaves the request side framework-bound, so a path
-// segment with no request struct still warns.
-func TestRawResponsePathParamStillWarns(t *testing.T) {
-	expectDiag(t, `package x
+// Under @rawResponse alone, a path segment without a request type is still reported.
+func TestRawResponsePathParamStillMissing(t *testing.T) {
+	expectError(t, `package x
 service S {
     @rawResponse
     get A /users/{id} {}
 }`, CodePathParamMissing)
 }
 
-// The docs-only response block still obeys the status rules: a
-// no-content status cannot advertise a body.
+// A @rawResponse method with @status(204) cannot declare a response block.
 func TestRawResponseNoContentStatusConflict(t *testing.T) {
 	expectError(t, `package x
 type Resp { ok bool }
@@ -162,9 +152,7 @@ service S {}`, CodeDecoratorPlacement)
 	expectMessage(t, d, "@rawRequest is not allowed on service")
 }
 
-// All three raw-mode decorators on one method are accepted in any order:
-// only redundancy warnings fire (one per superfluous decorator), never an
-// error, and the method still analyses like a plain @passthrough.
+// All three raw-mode decorators on one method only warn, in any order.
 func TestRawModeAllThreeFlagsWarnOnly(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -188,8 +176,7 @@ func TestRawModeAllThreeFlagsWarnOnly(t *testing.T) {
 	}
 }
 
-// Raw modes combine with every other method-level decorator without a
-// diagnostic (the only raw-specific rule is the redundancy warning).
+// Raw modes combine with every other method decorator without a diagnostic.
 func TestRawModesMixWithMethodDecoratorsClean(t *testing.T) {
 	mustClean(t, `package x
 middleware Auth

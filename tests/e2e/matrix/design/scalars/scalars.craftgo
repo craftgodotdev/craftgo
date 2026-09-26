@@ -12,8 +12,9 @@
 //   NonEmpty     string + @minLength(1)               → minLength alone
 //   Tag          string + @minLength + @maxLength + @pattern  → triple stack
 //   ISO3         string + @length + @pattern          → length + pattern
+//   Blob         bytes + @maxLength                   → nilable scalar
 //
-// Cornercase probes (commented out where the framework rejects them):
+// Probes the framework rejects, kept commented out:
 //
 //   OptionalEmail    `scalar X string? @format(email)` - the parser
 //                    grammar requires the primitive token to be an
@@ -57,6 +58,10 @@ scalar Tag string @minLength(1) @maxLength(20) @pattern("^[a-z-]+$")
 // ISO3 stacks @length + @pattern. @length(3, 3) pins the string to
 // exactly three characters; the @pattern enforces the alphabet.
 scalar ISO3 string @length(3, 3) @pattern("^[A-Z]{3}$")
+
+// Blob is a bytes scalar: its Go type holds nil itself, so an optional
+// Blob takes no pointer, as a field or as a map value.
+scalar Blob bytes @maxLength(1024)
 
 // OptionalEmail probes whether the scalar declaration itself can be
 // marked optional. The parser grammar accepts only `Ident Ident` for

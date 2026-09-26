@@ -1,21 +1,13 @@
-// Decorator and literal-expression parsing: @name(args), object/array/value
-// literals, and string unquoting.
 package parser
 
 import (
 	"strconv"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// rejectMixinDecorators fires a parser diagnostic for every decorator
-// the user attached to a mixin reference. The AST [ast.Mixin] has no
-// decorator slot - mixins are pure embedding - so silently dropping
-// them would surface as "my @deprecated note disappeared" later. Fire
-// at design time at the mixin reference position so the editor can
-// underline the right span.
+// rejectMixinDecorators reports every decorator in decs: a mixin takes none.
 func (p *Parser) rejectMixinDecorators(mixinPos lexer.Position, decs []*ast.Decorator) {
 	for _, d := range decs {
 		if d == nil {
@@ -25,7 +17,7 @@ func (p *Parser) rejectMixinDecorators(mixinPos lexer.Position, decs []*ast.Deco
 	}
 }
 
-// parseDecorators reads zero or more leading `@name(...)` decorators.
+// parseDecorators parses zero or more decorators.
 func (p *Parser) parseDecorators() []*ast.Decorator {
 	var decs []*ast.Decorator
 	for p.peek().Kind == lexer.At {
@@ -34,55 +26,68 @@ func (p *Parser) parseDecorators() []*ast.Decorator {
 	return decs
 }
 
-// parseDecorator reads a single `@Name [(args...)]`. The name token may be
-// any [lexer.Ident] or any keyword spelling - this lets users name decorators
-// after reserved words (e.g. `@true`) without clashing with keyword usage
-// elsewhere in the grammar.
+// decoratorsOnLine parses the decorators that start on line, each one after
+// the first starting on the line where the one before it ends.
+func (p *Parser) decoratorsOnLine(line int) []*ast.Decorator {
+	var decs []*ast.Decorator
+	for p.peek().Kind == lexer.At && p.peek().Pos.Line == line {
+		decs = append(decs, p.parseDecorator())
+		line = p.tokens[p.pos-1].Pos.Line
+	}
+	return decs
+}
+
+// rejectDecoratorsAfter reports and consumes the decorators on the last line
+// of the construct what, unless starts holds for the next token on their line.
+func (p *Parser) rejectDecoratorsAfter(what string, starts func(lexer.Kind) bool) {
+	pos := p.pos
+	decs := p.decoratorsOnLine(p.tokens[p.pos-1].Pos.Line)
+	if next := p.peek(); len(decs) > 0 && next.Pos.Line == p.tokens[p.pos-1].Pos.Line && starts(next.Kind) {
+		p.pos = pos
+		return
+	}
+	for _, d := range decs {
+		p.errorf(d.Pos, "decorator @%s follows a %s on its line; a decorator goes before what it decorates", d.Name, what)
+	}
+}
+
+// parseDecorator parses `@name` or `@name(args)`; the name may be a reserved
+// word. An argument list with a parse error holds an [ast.BadExpr]: in place
+// of the argument it could not read, else at its end.
 func (p *Parser) parseDecorator() *ast.Decorator {
 	at := p.advance()
 	nameTok := p.peek()
-	if nameTok.Kind != lexer.Ident && !isKeywordKind(nameTok.Kind) {
+	if nameTok.Kind != lexer.Ident && !nameTok.Kind.IsKeyword() {
 		p.errorf(nameTok.Pos, "expected decorator name, got %s", nameTok.Kind)
 		return &ast.Decorator{Pos: at.Pos}
 	}
 	p.advance()
 	d := &ast.Decorator{Pos: at.Pos, Name: nameTok.Text}
-	// lastTok tracks the decorator's final token so we can capture its
-	// Trailing into d.TrailingDoc. For a bare `@deprecated` the last
-	// token is the name Ident; for `@length(1, 80)` it is the closing
-	// `)`.
-	lastTok := nameTok
 	if p.peek().Kind == lexer.LParen {
 		p.advance()
 		d.HasParens = true
-		for p.peek().Kind != lexer.RParen && p.peek().Kind != lexer.EOF {
-			d.Args = append(d.Args, p.parseDecoratorArg())
-			switch p.peek().Kind {
-			case lexer.Comma:
-				p.advance()
-			case lexer.RParen, lexer.EOF:
-			default:
-				p.errorf(p.peek().Pos, "expected ',' or ')' after decorator argument, got %s", p.peek().Kind)
-			}
+		errs := len(p.diags)
+		// A `}` ends the arguments too: it closes the body they were left open in.
+		for !p.peekIs(lexer.RParen) && !p.peekIs(lexer.RBrace) && !p.peekIs(lexer.EOF) {
+			d.Args = append(d.Args, p.parseDecoratorArg(d.Name))
+			p.listSep(lexer.RParen, "decorator argument")
 		}
-		rparen, _ := p.expect(lexer.RParen)
-		lastTok = rparen
+		rparen, closed := p.expect(lexer.RParen)
+		if (!closed || len(p.diags) > errs) && !d.HoldsBadExpr() {
+			d.Args = append(d.Args, &ast.DecoratorArg{Pos: rparen.Pos, Value: &ast.BadExpr{Pos: rparen.Pos}})
+		}
+		p.claimInside(at.Pos.Line, rparen.Pos.Line)
 	}
-	d.TrailingDoc = lastTok.Trailing
 	return d
 }
 
-// parseDecoratorArg dispatches between the four DecoratorArg shapes:
-// nested decorator, object literal, named `name: value`, or bare value.
-func (p *Parser) parseDecoratorArg() *ast.DecoratorArg {
+// parseDecoratorArg parses an argument of the decorator named dec: an object
+// literal, `name: value` or a bare value.
+func (p *Parser) parseDecoratorArg(dec string) *ast.DecoratorArg {
 	pos := p.peek().Pos
 	arg := &ast.DecoratorArg{Pos: pos}
-	if p.peek().Kind == lexer.At {
-		arg.Nested = p.parseDecorator()
-		return arg
-	}
 	if p.peek().Kind == lexer.LBrace {
-		arg.Object = p.parseObjectLiteral()
+		arg.Object = p.parseObjectLiteral(dec)
 		return arg
 	}
 	if p.peek().Kind == lexer.Ident && p.peekAt(1).Kind == lexer.Colon {
@@ -90,41 +95,35 @@ func (p *Parser) parseDecoratorArg() *ast.DecoratorArg {
 		p.advance()
 		arg.Name = name
 		arg.Named = true
-		arg.Value = p.parseValueOrArray()
+		arg.Value = p.parseValueOrArray(dec, lexer.RParen)
 		return arg
 	}
-	arg.Value = p.parseValueOrArray()
+	arg.Value = p.parseValueOrArray(dec, lexer.RParen)
 	return arg
 }
 
-// parseObjectLiteral reads a `{ k: v, ... }` decorator argument body.
-func (p *Parser) parseObjectLiteral() []*ast.ObjectField {
+// parseObjectLiteral parses `{ key: value, ... }` in the arguments of the
+// decorator named dec.
+func (p *Parser) parseObjectLiteral(dec string) []*ast.ObjectField {
 	p.expect(lexer.LBrace)
 	var fields []*ast.ObjectField
 	for p.peek().Kind != lexer.RBrace && p.peek().Kind != lexer.EOF {
 		fpos := p.peek().Pos
 		name := p.expectFieldKey()
 		p.expect(lexer.Colon)
-		val := p.parseValueOrArray()
+		val := p.parseValueOrArray(dec, lexer.RBrace)
 		fields = append(fields, &ast.ObjectField{Pos: fpos, Name: name, Value: val})
-		switch p.peek().Kind {
-		case lexer.Comma:
-			p.advance()
-		case lexer.RBrace, lexer.EOF:
-		default:
-			p.errorf(p.peek().Pos, "expected ',' or '}' after object field, got %s", p.peek().Kind)
-		}
+		p.listSep(lexer.RBrace, "object field")
 	}
 	p.expect(lexer.RBrace)
 	return fields
 }
 
-// expectFieldKey reads an object-literal key. A key names a field, and a
-// field may be spelled with a reserved word (see parseTypeMember), so a
-// keyword here is the key's text.
+// expectFieldKey parses an object-literal key, which like a field name may be a
+// reserved word.
 func (p *Parser) expectFieldKey() string {
 	t := p.peek()
-	if t.Kind == lexer.Ident || isKeywordKind(t.Kind) {
+	if t.Kind == lexer.Ident || t.Kind.IsKeyword() {
 		p.advance()
 		return t.Text
 	}
@@ -132,64 +131,48 @@ func (p *Parser) expectFieldKey() string {
 	return ""
 }
 
-// parseValueOrArray dispatches between scalar and array literal forms.
-func (p *Parser) parseValueOrArray() ast.Expr {
+// parseValueOrArray parses an array literal or a single value in the arguments
+// of the decorator named dec, in a list that closer closes.
+func (p *Parser) parseValueOrArray(dec string, closer lexer.Kind) ast.Expr {
 	if p.peek().Kind == lexer.LBracket {
-		return p.parseArray()
+		return p.parseArray(dec)
 	}
-	return p.parseValue()
+	return p.parseValue(dec, closer)
 }
 
-// parseArray reads `[v1, v2, ...]` literals.
-func (p *Parser) parseArray() ast.Expr {
+// parseArray parses `[a, b, ...]`, whose elements may be arrays, in the
+// arguments of the decorator named dec.
+func (p *Parser) parseArray(dec string) ast.Expr {
 	pos := p.advance().Pos
 	arr := &ast.ArrayLit{Pos: pos}
 	for p.peek().Kind != lexer.RBracket && p.peek().Kind != lexer.EOF {
-		// parseValueOrArray (not parseValue) so a NESTED array literal
-		// like `[["a", "b"], ["c"]]` parses - parseValue has no `[` case
-		// and would record a diagnostic on the inner bracket.
-		arr.Elements = append(arr.Elements, p.parseValueOrArray())
-		switch p.peek().Kind {
-		case lexer.Comma:
-			p.advance()
-		case lexer.RBracket, lexer.EOF:
-		default:
-			p.errorf(p.peek().Pos, "expected ',' or ']' after array element, got %s", p.peek().Kind)
-		}
+		arr.Elements = append(arr.Elements, p.parseValueOrArray(dec, lexer.RBracket))
+		p.listSep(lexer.RBracket, "array element")
 	}
 	p.expect(lexer.RBracket)
 	return arr
 }
 
-// parseValue reads a single literal expression: string, number (signed),
-// boolean, null, duration, size, or qualified identifier. On unrecognised
-// input it records a diagnostic, advances one token, and returns a [ast.NullLit]
-// so downstream code does not see a nil [ast.Expr].
-func (p *Parser) parseValue() ast.Expr {
+// parseValue parses a literal or a qualified name in a list of @dec's arguments
+// that closer closes; other input is reported, skipped and read as an
+// [ast.BadExpr].
+func (p *Parser) parseValue(dec string, closer lexer.Kind) ast.Expr {
 	t := p.peek()
 	switch t.Kind {
-	case lexer.String:
+	case lexer.At:
+		p.errorf(t.Pos, "a decorator cannot be an argument of @%s", dec)
+		p.skipDecorator(closer == lexer.RParen)
+		return &ast.BadExpr{Pos: t.Pos}
+	case lexer.String, lexer.RawString:
 		p.advance()
-		return &ast.StringLit{Pos: t.Pos, Value: unquoteString(t.Text)}
-	case lexer.RawString:
-		p.advance()
-		return &ast.StringLit{Pos: t.Pos, Value: unquoteRaw(t.Text)}
+		return &ast.StringLit{Pos: t.Pos, Value: unquote(t), Text: t.Text}
 	case lexer.Int:
 		p.advance()
-		n, err := strconv.ParseInt(t.Text, 10, 64)
-		if err != nil {
-			// strconv clamps an out-of-range literal to MaxInt64 with an
-			// ErrRange; emitting the clamped value would silently corrupt a
-			// bound (e.g. a uint64 @lte above MaxInt64). Reject instead - the
-			// IntLit's int64 storage can't represent values beyond the signed
-			// 64-bit range yet.
-			p.errorf(t.Pos, "integer literal %s is out of range - values beyond the signed 64-bit range (max %s) aren't supported yet", t.Text, "9223372036854775807")
-		}
-		return &ast.IntLit{Pos: t.Pos, Value: n}
+		return &ast.IntLit{Pos: t.Pos, Value: p.signedInt(t.Pos, t, false)}
 	case lexer.Float:
 		p.advance()
 		f, _ := strconv.ParseFloat(t.Text, 64)
-		return &ast.FloatLit{Pos: t.Pos, Value: f}
+		return &ast.FloatLit{Pos: t.Pos, Value: f, Text: t.Text}
 	case lexer.KwTrue:
 		p.advance()
 		return &ast.BoolLit{Pos: t.Pos, Value: true}
@@ -211,92 +194,63 @@ func (p *Parser) parseValue() ast.Expr {
 		next := p.peek()
 		if next.Kind == lexer.Int {
 			p.advance()
-			n, err := strconv.ParseInt("-"+next.Text, 10, 64)
-			if err != nil {
-				p.errorf(t.Pos, "integer literal -%s is out of range - values beyond the signed 64-bit range (min %s) aren't supported yet", next.Text, "-9223372036854775808")
-			}
-			return &ast.IntLit{Pos: t.Pos, Value: n}
+			return &ast.IntLit{Pos: t.Pos, Value: p.signedInt(t.Pos, next, true)}
 		}
 		if next.Kind == lexer.Float {
 			p.advance()
 			f, _ := strconv.ParseFloat("-"+next.Text, 64)
-			return &ast.FloatLit{Pos: t.Pos, Value: f}
+			return &ast.FloatLit{Pos: t.Pos, Value: f, Text: "-" + next.Text}
 		}
 		p.errorf(t.Pos, "expected number after '-'")
-		return &ast.IntLit{Pos: t.Pos, Value: 0}
+		return &ast.BadExpr{Pos: t.Pos}
 	case lexer.Ident:
 		qi := p.parseQualifiedIdent()
 		return &ast.IdentExpr{Pos: qi.Pos, Name: qi}
 	}
-	// A reserved word in an argument slot is an identifier argument: the
-	// literal keywords matched above, so the only reading left is a name.
-	// Field names may be spelled with a reserved word (see
-	// parseTypeMember), so `@requiresOneOf(payload, name)` must work.
-	if isKeywordKind(t.Kind) {
+	// Any other reserved word is a name, such as the field in
+	// `@requiresOneOf(payload, name)`.
+	if t.Kind.IsKeyword() {
 		p.advance()
 		return &ast.IdentExpr{Pos: t.Pos, Name: &ast.QualifiedIdent{Pos: t.Pos, Parts: []string{t.Text}}}
 	}
 	p.errorf(t.Pos, "expected literal, got %s", t.Kind)
 	p.advance()
-	return &ast.NullLit{Pos: t.Pos}
+	return &ast.BadExpr{Pos: t.Pos}
 }
 
-// unquoteString unescapes a `"..."` literal, supporting `\n \t \r \" \\`
-// and `\u{HEX}` Unicode escapes. Unknown escapes pass through verbatim
-// (without the leading `\`) so partially-malformed input still produces
-// useful values for IDE autocomplete.
-func unquoteString(s string) string {
-	if len(s) < 2 {
-		return s
+// skipDecorator consumes the decorator at the current `@` and its arguments;
+// with mayClose, a `)` that ends its line, no `,` or `)` next, closes the list.
+func (p *Parser) skipDecorator(mayClose bool) {
+	p.advance()
+	if t := p.peek(); t.Kind != lexer.Ident && !t.Kind.IsKeyword() {
+		return
 	}
-	inner := s[1 : len(s)-1]
-	// Hot path: byte-by-byte escape decoding. Builder is the right
-	// tool - concatenation would allocate on every byte.
-	var sb strings.Builder
-	for i := 0; i < len(inner); i++ {
-		c := inner[i]
-		if c != '\\' || i+1 >= len(inner) {
-			sb.WriteByte(c)
-			continue
-		}
-		i++
-		switch inner[i] {
-		case 'n':
-			sb.WriteByte('\n')
-		case 't':
-			sb.WriteByte('\t')
-		case 'r':
-			sb.WriteByte('\r')
-		case '"':
-			sb.WriteByte('"')
-		case '\\':
-			sb.WriteByte('\\')
-		case 'u':
-			if i+1 < len(inner) && inner[i+1] == '{' {
-				end := strings.Index(inner[i+2:], "}")
-				if end >= 0 {
-					hex := inner[i+2 : i+2+end]
-					if n, err := strconv.ParseInt(hex, 16, 32); err == nil {
-						sb.WriteRune(rune(n))
-						i = i + 2 + end
-						continue
-					}
-				}
-			}
-			sb.WriteByte(inner[i])
-		default:
-			sb.WriteByte(inner[i])
-		}
+	p.advance()
+	if !p.peekIs(lexer.LParen) || !p.skipParens() || !mayClose {
+		return
 	}
-	return sb.String()
+	if next := p.peek(); next.Pos.Line > p.tokens[p.pos-1].Pos.Line && next.Kind != lexer.Comma && next.Kind != lexer.RParen {
+		p.pos--
+	}
 }
 
-// unquoteRaw strips the surrounding backticks from a raw string literal.
-// No further processing is performed - that is the whole point of raw
-// strings in the DSL.
-func unquoteRaw(s string) string {
-	if len(s) < 2 {
-		return s
+// signedInt returns the value of the Int token tok, negated when neg, and
+// reports at pos a value outside the int64 range.
+func (p *Parser) signedInt(pos lexer.Position, tok lexer.Token, neg bool) int64 {
+	text, bound := tok.Text, "max 9223372036854775807"
+	if neg {
+		text, bound = "-"+tok.Text, "min -9223372036854775808"
 	}
-	return s[1 : len(s)-1]
+	n, err := strconv.ParseInt(text, 10, 64)
+	if err != nil {
+		p.errorf(pos, "integer literal %s is outside the signed 64-bit range (%s)", text, bound)
+	}
+	return n
+}
+
+// unquote returns the value of a String or RawString token; the lexer emits
+// one only when [lexer.Unquote] accepts its text.
+func unquote(t lexer.Token) string {
+	v, _ := lexer.Unquote(t.Text)
+	return v
 }

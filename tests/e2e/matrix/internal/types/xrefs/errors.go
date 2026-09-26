@@ -3,56 +3,111 @@
 package xrefs
 
 import (
+	"encoding/json"
+	"time"
+
+	time2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/time"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 )
+
+// ErrCodeXLost is the canonical machine-readable code for XLostErr.
+const ErrCodeXLost = "X_LOST"
+
+// XLostBody is the body of XLostErr.
+type XLostBody struct {
+	ID string `json:"id"`
+}
+
+// XLost shares its name with xshared.XLost, so the merged OpenAPI document
+// names this one XrefsXLostErr.
+//
+// XLostErr is the NotFound error XLost.
+type XLostErr struct {
+	XLostBody
+}
+
+// NewXLostErr constructs XLostErr.
+func NewXLostErr(body XLostBody) *XLostErr {
+	return &XLostErr{XLostBody: body}
+}
+
+// Error returns the NotFound category's default message.
+func (e *XLostErr) Error() string { return "Not found" }
+
+// ErrCode returns ErrCodeXLost.
+func (e *XLostErr) ErrCode() string { return ErrCodeXLost }
+
+// HTTPStatus returns the NotFound status.
+func (e *XLostErr) HTTPStatus() int { return 404 }
+
+// MarshalJSON encodes the body alone.
+func (e *XLostErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.XLostBody) }
 
 // ErrCodeXMixinErr is the canonical machine-readable code for XMixinErr.
 const ErrCodeXMixinErr = "X_MIXIN_ERR"
 
-// XMixinErrBody is the wire-shape payload declared at design time for XMixinErr.
-// User code instantiates this struct and hands it to NewXMixinErr; the
-// framework wraps it with the type-bound code / message metadata.
+// XMixinErrBody is the body of XMixinErr.
 type XMixinErrBody struct {
 	xshared.XOwner
 	Reason string `json:"reason"`
 }
 
-// XMixinErr is the typed Conflict error generated for `XMixinErr`.
-// The unexported `code` and `message` fields hold the type-bound
-// metadata populated by the constructor. Because they are unexported,
-// json.Marshal omits them from the wire payload - clients see only
-// the embedded body shape (or `{}` when no body was declared).
+// XMixinErr is an error whose body embeds a CROSS-PACKAGE mixin
+// (xshared.XOwner). The error emitter's import walk must collect the xshared
+// import - the generated errors.go embeds `xshared.XOwner`, so without the
+// mixin branch in the import walk it references an undefined package.
+//
+// XMixinErr is the Conflict error XMixinErr.
 type XMixinErr struct {
-	code    string
-	message string
 	XMixinErrBody
 }
 
-// NewXMixinErr constructs XMixinErr with the framework metadata baked in.
-// `code` and `message` are bound to the type and not exposed as
-// constructor parameters; only the body struct varies per instance.
+// NewXMixinErr constructs XMixinErr.
 func NewXMixinErr(body XMixinErrBody) *XMixinErr {
-	return &XMixinErr{
-		code:          ErrCodeXMixinErr,
-		message:       "Conflict",
-		XMixinErrBody: body,
-	}
+	return &XMixinErr{XMixinErrBody: body}
 }
 
-// Error implements the standard error interface and returns the
-// category-default message bound to the type.
-func (e *XMixinErr) Error() string { return e.message }
+// Error returns the Conflict category's default message.
+func (e *XMixinErr) Error() string { return "Conflict" }
 
-// ErrCode returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ ErrCode() string }`
-// assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`, and rpc.Error reads it
-// for the ErrorInfo detail it puts on the gRPC status. The accessor is
-// named `ErrCode` (not `Code`) so it does not shadow a user-declared
-// `code <type>` field promoted from the embedded body struct.
-func (e *XMixinErr) ErrCode() string { return e.code }
+// ErrCode returns ErrCodeXMixinErr.
+func (e *XMixinErr) ErrCode() string { return ErrCodeXMixinErr }
 
-// HTTPStatus returns the HTTP status code associated with the Conflict
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the Conflict status.
 func (e *XMixinErr) HTTPStatus() int { return 409 }
+
+// MarshalJSON encodes the body alone.
+func (e *XMixinErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.XMixinErrBody) }
+
+// ErrCodeXStdNamesClash is the canonical machine-readable code for XStdNamesClashErr.
+const ErrCodeXStdNamesClash = "X_STD_NAMES_CLASH"
+
+// XStdNamesClashBody is the body of XStdNamesClashErr.
+type XStdNamesClashBody struct {
+	At   time.Time  `json:"at"`
+	Slot time2.Slot `json:"slot"`
+}
+
+// XStdNamesClash carries a datetime beside a type of package time.
+//
+// XStdNamesClashErr is the Conflict error XStdNamesClash.
+type XStdNamesClashErr struct {
+	XStdNamesClashBody
+}
+
+// NewXStdNamesClashErr constructs XStdNamesClashErr.
+func NewXStdNamesClashErr(body XStdNamesClashBody) *XStdNamesClashErr {
+	return &XStdNamesClashErr{XStdNamesClashBody: body}
+}
+
+// Error returns the Conflict category's default message.
+func (e *XStdNamesClashErr) Error() string { return "Conflict" }
+
+// ErrCode returns ErrCodeXStdNamesClash.
+func (e *XStdNamesClashErr) ErrCode() string { return ErrCodeXStdNamesClash }
+
+// HTTPStatus returns the Conflict status.
+func (e *XStdNamesClashErr) HTTPStatus() int { return 409 }
+
+// MarshalJSON encodes the body alone.
+func (e *XStdNamesClashErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.XStdNamesClashBody) }

@@ -9,6 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/codegen/golang"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
@@ -29,7 +30,7 @@ func eventsConfig() *config.Config {
 			Config:     "./config",
 			OpenAPI:    "./docs/openapi.yaml",
 			Main:       "-",
-			FileCase:   config.FileCaseSnake,
+			FileCase:   idents.FileCaseSnake,
 		},
 		OpenAPI: config.OpenAPI{Title: "Events", Version: "1.0.0"},
 		Events: config.Events{
@@ -62,8 +63,7 @@ const ordersSrc = `package orders
 type OrderPlacedPayload { orderId string }
 event OrderPlaced { payload OrderPlacedPayload }`
 
-// A project with no event generates nothing, so adding the feature costs
-// existing projects no output.
+// A design with no event makes the event targets write nothing.
 func TestNoEventsGeneratesNothing(t *testing.T) {
 	proj := analyzeProject(t, `package p
 type P { id string }
@@ -71,7 +71,8 @@ service S {
 	get Read /r { response P }
 }`)
 	dir := t.TempDir()
-	if err := GenerateEventTargets(proj, eventsConfig(), dir); err != nil {
+	sel, _ := selection(nil)
+	if err := generateEventTargets(proj, eventsConfig(), dir, sel); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
 	entries, err := os.ReadDir(dir)
@@ -83,13 +84,14 @@ service S {
 	}
 }
 
-// A disabled target is skipped without disabling the rest.
+// A target whose out is "-" writes nothing.
 func TestDisabledTargetIsSkipped(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)
 	cfg := eventsConfig()
 	cfg.Events.Targets = []config.EventTarget{{Lang: config.LangGo, Out: "-"}}
 	dir := t.TempDir()
-	if err := GenerateEventTargets(proj, cfg, dir); err != nil {
+	sel, _ := selection(nil)
+	if err := generateEventTargets(proj, cfg, dir, sel); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "internal", "events")); !os.IsNotExist(err) {
@@ -97,16 +99,14 @@ func TestDisabledTargetIsSkipped(t *testing.T) {
 	}
 }
 
-// The catalogue and the set of languages the manifest accepts must match
-// exactly. A language the manifest accepts with no row generates nothing;
-// a row for a language the manifest rejects can never run.
+// langTargets has exactly one row per language the manifest accepts.
 func TestCatalogueMatchesSupportedLangs(t *testing.T) {
 	inCatalogue := map[string]bool{}
-	for _, target := range LangTargets {
-		if inCatalogue[target.Lang] {
-			t.Errorf("%q has two rows in the catalogue", target.Lang)
+	for _, target := range langTargets {
+		if inCatalogue[target.lang] {
+			t.Errorf("%q has two rows in the catalogue", target.lang)
 		}
-		inCatalogue[target.Lang] = true
+		inCatalogue[target.lang] = true
 	}
 	for _, lang := range config.SupportedLangs {
 		if !inCatalogue[lang] {
@@ -119,8 +119,8 @@ func TestCatalogueMatchesSupportedLangs(t *testing.T) {
 	}
 }
 
-// Every target writes into its own configured directory, so one run can
-// feed a Go service and the documents that describe it.
+// One pass writes the Go event library and the OpenAPI document, each where
+// it is configured.
 func TestEveryEnabledTargetWritesItsOwnOutput(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)
 	dir := t.TempDir()
@@ -137,9 +137,7 @@ func TestEveryEnabledTargetWritesItsOwnOutput(t *testing.T) {
 	}
 }
 
-// A narrowed run must not touch another target's output. Every target
-// prunes what it owns, so running one while another is selected out would
-// otherwise delete the unselected target's files.
+// A run narrowed to one target leaves the other targets' output in place.
 func TestTargetSelectionLeavesOtherOutputAlone(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)
 	cfg := eventsConfig()
@@ -154,8 +152,8 @@ func TestTargetSelectionLeavesOtherOutputAlone(t *testing.T) {
 			t.Fatalf("first pass missing %s: %v", f, err)
 		}
 	}
-	// Regenerate only the documents; the Go output must survive.
-	if err := Generate(Inputs{Design: proj}, cfg, dir, TargetDocs); err != nil {
+	// Regenerate only the document; the Go output survives.
+	if err := Generate(Inputs{Design: proj}, cfg, dir, targetDocs); err != nil {
 		t.Fatalf("generate docs: %v", err)
 	}
 	if _, err := os.Stat(goFile); err != nil {
@@ -163,7 +161,7 @@ func TestTargetSelectionLeavesOtherOutputAlone(t *testing.T) {
 	}
 }
 
-// An unknown target name fails rather than silently generating less.
+// An unknown target name fails the run with the list of valid ones.
 func TestUnknownTargetIsRejected(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)
 	err := Generate(Inputs{Design: proj}, eventsConfig(), t.TempDir(), "rust")
@@ -177,7 +175,91 @@ func TestUnknownTargetIsRejected(t *testing.T) {
 	}
 }
 
-// Every selectable name must be one the run actually understands.
+// What only the OpenAPI document gets wrong, a component name collision or a
+// security scheme an `@security` names without a field its type requires,
+// stops a run that writes the document and no other: `--target go` and
+// `output.openapi: "-"` write the Go output.
+func TestDocumentOnlyErrorsStopOnlyTheDocument(t *testing.T) {
+	const securedSrc = `package p
+type P { id string }
+@security(auth)
+service S { get Read /r { response P } }`
+	for label, c := range map[string]struct {
+		src   string
+		setup func(*config.Config)
+	}{
+		"component name collision": {src: `package p
+type Order { id string }
+type PageOfOrder { hijacked string }
+type Page<T> { items T[] }
+type Resp { real Page<Order>  fake PageOfOrder }
+service S { get Get /g { response Resp } }`, setup: func(*config.Config) {}},
+		"oauth2 scheme without flows": {src: securedSrc, setup: func(cfg *config.Config) {
+			cfg.OpenAPI.SecuritySchemes = map[string]config.SecurityScheme{"auth": {Type: "oauth2"}}
+		}},
+		"http scheme without a scheme": {src: securedSrc, setup: func(cfg *config.Config) {
+			cfg.OpenAPI.SecuritySchemes = map[string]config.SecurityScheme{"auth": {Type: "http"}}
+		}},
+	} {
+		proj := analyzeProject(t, c.src)
+		cfg := eventsConfig()
+		c.setup(cfg)
+		if err := Generate(Inputs{Design: proj}, cfg, t.TempDir()); err == nil {
+			t.Errorf("%s: the run writing the document succeeds", label)
+		}
+		if err := Generate(Inputs{Design: proj}, cfg, t.TempDir(), config.LangGo); err != nil {
+			t.Errorf("%s: --target go fails: %v", label, err)
+		}
+		cfg.Output.OpenAPI = config.Disabled
+		if err := Generate(Inputs{Design: proj}, cfg, t.TempDir()); err != nil {
+			t.Errorf("%s: output.openapi %q fails: %v", label, config.Disabled, err)
+		}
+	}
+}
+
+// A new main.go embeds the OpenAPI document when the run writes it or finds
+// it on disk, and only then: `--target go` on a fresh project embeds none.
+func TestMainEmbedsTheDocumentOnlyWhenOneExists(t *testing.T) {
+	proj := analyzeProject(t, `package p
+type P { id string }
+service S { get Read /r { response P } }`)
+	cfg := eventsConfig()
+	cfg.Output.Main = "./main.go"
+	embeds := func(dir string) bool {
+		t.Helper()
+		src, err := os.ReadFile(filepath.Join(dir, "main.go"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Contains(string(src), "//go:embed docs/openapi.yaml")
+	}
+	fresh := t.TempDir()
+	if err := Generate(Inputs{Design: proj}, cfg, fresh, config.LangGo); err != nil {
+		t.Fatal(err)
+	}
+	if embeds(fresh) {
+		t.Error("--target go on a fresh project embeds a document the run never writes")
+	}
+	full := t.TempDir()
+	if err := Generate(Inputs{Design: proj}, cfg, full); err != nil {
+		t.Fatal(err)
+	}
+	if !embeds(full) {
+		t.Error("a full run does not embed the document it writes")
+	}
+	onDisk := t.TempDir()
+	if err := Generate(Inputs{Design: proj}, cfg, onDisk, targetDocs); err != nil {
+		t.Fatal(err)
+	}
+	if err := Generate(Inputs{Design: proj}, cfg, onDisk, config.LangGo); err != nil {
+		t.Fatal(err)
+	}
+	if !embeds(onDisk) {
+		t.Error("--target go does not embed the document it finds on disk")
+	}
+}
+
+// Every name SelectableTargets offers runs.
 func TestSelectableTargetsAreKnown(t *testing.T) {
 	proj := analyzeProject(t, ordersSrc)
 	for _, name := range SelectableTargets() {
@@ -187,16 +269,11 @@ func TestSelectableTargetsAreKnown(t *testing.T) {
 	}
 }
 
-// generatedHeader opens every file craftgo rewrites on each run; the
-// scaffolds carry a different first line.
-const generatedHeader = "// Code generated by craftgo. DO NOT EDIT."
-
 const alphaSrc = `package x
 type Placed { id string @minLength(1) }
 event Placed { payload Placed }`
 
-// notesMatching picks the notes a test means out of the whole set, so
-// adding an unrelated note does not fail it.
+// notesMatching returns the notes that contain needle.
 func notesMatching(notes []string, needle string) []string {
 	var out []string
 	for _, n := range notes {
@@ -207,10 +284,8 @@ func notesMatching(notes []string, needle string) []string {
 	return out
 }
 
-// A contracts project writes none of the application half, so it sweeps
-// none of those directories either. The leftovers of a project that used
-// to be an application ship with the library unless someone deletes them,
-// so they are named.
+// A contracts project names leftover application output and does not
+// delete it.
 func TestContractsProjectNamesLeftoverApplicationOutput(t *testing.T) {
 	root := t.TempDir()
 	cfg := eventsConfig()
@@ -221,11 +296,11 @@ func TestContractsProjectNamesLeftoverApplicationOutput(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(stale, []byte(generatedHeader+"\n\npackage svc\n"), 0o644); err != nil {
+	if err := os.WriteFile(stale, []byte(golang.GeneratedHeader+"\n\npackage svc\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	notes := notesMatching(golang.EventOutputNotes(analyzeProject(t, alphaSrc), nil, cfg, root), "output.kind is contracts")
+	notes := notesMatching(OutputNotes(Inputs{Design: analyzeProject(t, alphaSrc)}, cfg, root), "output.kind is contracts")
 	if len(notes) != 1 || !strings.Contains(notes[0], cfg.Output.Transport) {
 		t.Errorf("leftover application output must be named: %v", notes)
 	}
@@ -234,17 +309,16 @@ func TestContractsProjectNamesLeftoverApplicationOutput(t *testing.T) {
 	}
 }
 
-// `output.main: "-"` skips the ServiceContext scaffold while the handlers,
-// logic stubs and wiring are all written against it. A project that has
-// not written its own is told so.
+// With `output.main: "-"` a note asks for the ServiceContext until the
+// project writes one.
 func TestRuntimeDisabledNamesTheMissingContainer(t *testing.T) {
 	root := t.TempDir()
 	cfg := eventsConfig()
 	cfg.Output.Main = "-"
 	proj := analyzeProject(t, alphaSrc)
 
-	if notes := notesMatching(golang.EventOutputNotes(proj, nil, cfg, root), "yours to write"); len(notes) != 1 {
-		t.Errorf("a project with no container must be told: %v", golang.EventOutputNotes(proj, nil, cfg, root))
+	if notes := notesMatching(OutputNotes(Inputs{Design: proj}, cfg, root), "yours to write"); len(notes) != 1 {
+		t.Errorf("a project with no container must be told: %v", OutputNotes(Inputs{Design: proj}, cfg, root))
 	}
 
 	// Once the project supplies one, the note goes.
@@ -255,7 +329,7 @@ func TestRuntimeDisabledNamesTheMissingContainer(t *testing.T) {
 	if err := os.WriteFile(dest, []byte("package svccontext\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if notes := notesMatching(golang.EventOutputNotes(proj, nil, cfg, root), "yours to write"); len(notes) != 0 {
+	if notes := notesMatching(OutputNotes(Inputs{Design: proj}, cfg, root), "yours to write"); len(notes) != 0 {
 		t.Errorf("a hand-written container must silence it: %v", notes)
 	}
 }

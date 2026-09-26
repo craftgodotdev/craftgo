@@ -1,0 +1,8 @@
+// Package fmt shares its name with the standard package an event file
+// imports to validate an array payload: that file imports these types under
+// another alias.
+package fmt
+
+type Row {
+	cell string @minLength(1)
+}

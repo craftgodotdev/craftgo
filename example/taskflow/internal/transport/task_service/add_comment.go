@@ -8,13 +8,14 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/example/taskflow/internal/service/task_service"
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// AddComment returns the http.HandlerFunc for the
-// POST AddComment endpoint.
+// Add a comment to a task.
+//
+// AddComment returns the POST AddComment handler.
 func AddComment(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.AddCommentReq
@@ -34,8 +35,6 @@ func AddComment(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

@@ -2,5 +2,5 @@ package shared
 
 type AuditFields {
 	auditedBy NonEmptyID
-	auditedAt string @format(datetime)
+	auditedAt string     @format(datetime)
 }

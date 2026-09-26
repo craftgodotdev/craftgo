@@ -1,370 +1,365 @@
-// Path + per-operation request/response schemas + response headers.
 package docs
 
 import (
+	"cmp"
 	"fmt"
+	"maps"
+	"net/http"
+	"reflect"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
-	counts := methodNameCounts(pkg)
-	for _, svcName := range sortedServices(pkg) {
-		svc := pkg.Services[svcName]
+// addPaths adds pkg's operations to doc (which holds pkg's components), each with its basePath-bound
+// fields; shared describes each left out because its path already holds an operation of its method.
+func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) (ops []boundOperation, shared []string) {
+	held := map[string]string{}
+	for _, o := range operations(pkg, doc.Components.Schemas) {
+		s := newOpShape(o.svc, o.m, route.Resolve("", o.svc.Primary, o.m), o.id, o.stem, pkg, registry.resolver)
+		path := route.OpenAPIPath(s.full)
+		verb := strings.ToUpper(o.m.Verb)
+		this := fmt.Sprintf("%s.%s (%s %s)", o.svc.Primary.Name, o.m.Name, verb, s.full)
+		if first, taken := held[verb+" "+path]; taken {
+			shared = append(shared, fmt.Sprintf("OpenAPI path %s %s holds two operations: %s and %s", verb, path, first, this))
+			continue
+		}
+		held[verb+" "+path] = this
+		item := doc.Paths.Value(path)
+		if item == nil {
+			item = &openapi3.PathItem{}
+			doc.Paths.Set(path, item)
+		}
+		op := buildOperation(doc, o.svc, s, pkg, registry, names)
+		setOperation(item, o.m.Verb, op)
+		ops = append(ops, boundOperation{op: op, fields: s.server})
+	}
+	return ops, shared
+}
+
+// boundOperation is an operation and its request fields bound to a variable
+// of the basePath.
+type boundOperation struct {
+	op     *openapi3.Operation
+	fields []semantic.ResolvedField
+}
+
+// basePathServer returns the server at basePath, each variable as every
+// operation describes it, bare for one binding it to no field; an operation
+// describing it otherwise gets a server of its own.
+func basePathServer(basePath string, ops []boundOperation, pkg *semantic.Package) *openapi3.Server {
+	own := make([]*openapi3.Server, len(ops))
+	for i, o := range ops {
+		own[i] = describedServer(basePath, o.fields, pkg)
+	}
+	root := describedServer(basePath, nil, pkg)
+	for name := range root.Variables {
+		if len(own) > 0 && !slices.ContainsFunc(own[1:], func(s *openapi3.Server) bool {
+			return !reflect.DeepEqual(s.Variables[name], own[0].Variables[name])
+		}) {
+			root.Variables[name] = own[0].Variables[name]
+		}
+	}
+	for i, o := range ops {
+		if !reflect.DeepEqual(own[i], root) {
+			o.op.Servers = &openapi3.Servers{own[i]}
+		}
+	}
+	return root
+}
+
+// describedServer returns the server at basePath, each `{name}` segment a
+// variable the one of fields bound to it describes.
+func describedServer(basePath string, fields []semantic.ResolvedField, pkg *semantic.Package) *openapi3.Server {
+	server := &openapi3.Server{URL: basePath, Variables: map[string]*openapi3.ServerVariable{}}
+	for _, name := range route.Vars(basePath) {
+		v := &openapi3.ServerVariable{Default: name}
+		for _, rf := range fields {
+			if wire.WireName(rf.Field, wire.BindPath) == name {
+				v = serverVariable(name, rf, pkg)
+				break
+			}
+		}
+		server.Variables[name] = v
+	}
+	return server
+}
+
+// serverVariable describes basePath variable name from rf, the request field
+// bound to it: its doc, its enum's values and a default its type takes.
+func serverVariable(name string, rf semantic.ResolvedField, pkg *semantic.Package) *openapi3.ServerVariable {
+	v := &openapi3.ServerVariable{Default: name, Description: semantic.Description(rf.Field.Decorators, rf.Field.Doc)}
+	sp, _ := prims.Lookup(rf.ResolvedPrim)
+	switch {
+	case rf.Category == semantic.CatEnum:
+		if ed := pkg.Enums[rf.Field.Type.Named.Name.String()]; ed != nil && len(ed.EnumValues()) > 0 {
+			v.Enum = enumWireStrings(ed)
+			v.Default = v.Enum[0]
+		}
+	case sp.Kind == prims.Int || sp.Kind == prims.Uint || sp.Kind == prims.Float:
+		v.Default = "0"
+	case sp.Kind == prims.Bool:
+		v.Default = "false"
+	}
+	if ex, ok := semantic.ExampleValue(rf.Field, pkg); ok {
+		v.Default = fmt.Sprint(ex)
+	}
+	return v
+}
+
+// operation is a method of a service of the merged package, with its
+// operationId and the stem of its body component names.
+type operation struct {
+	svc      *semantic.ServiceInfo
+	m        *ast.Method
+	id, stem string
+}
+
+// operations returns pkg's methods in document order. A stem is the method's
+// base name, its package first (`ASGet`) when a service of its name in
+// another package has a method of its name. Of operations sharing a stem
+// (`A.BC` and `AB.C` are both ABC), the one whose operationId it is, else the
+// first, keeps it; each other takes it with the lowest number that no
+// operation holds and that names no body component in declared (`ABC2`).
+func operations(pkg *semantic.Package, declared openapi3.Schemas) []operation {
+	counts := semantic.MethodNameCounts(pkg)
+	owners := map[string]int{}
+	for _, svc := range pkg.Services {
 		for _, m := range svc.Methods {
-			full := route.Resolve("", svc.Primary, m)
-			base := operationBaseName(svcName, m, counts)
-			addRequestBodySchema(doc, m, pkg, registry, base, names)
-			addPerOperationResponseSchema(doc, m, pkg, registry, base, names)
-			item := doc.Paths.Value(full)
-			if item == nil {
-				item = &openapi3.PathItem{}
-				doc.Paths.Set(full, item)
+			owners[svc.Primary.Name+"."+m.Name]++
+		}
+	}
+	var ops []operation
+	byStem := map[string][]int{}
+	for _, key := range pkg.ServiceNames() {
+		svc := pkg.Services[key]
+		for _, m := range svc.Methods {
+			base := semantic.OperationBaseName(svc.Primary.Name, m, counts)
+			stem := base
+			if owners[svc.Primary.Name+"."+m.Name] >= 2 {
+				stem = idents.PascalCase(servicePackage(key)) + base
 			}
-			op := buildOperation(svcName, m, pkg, registry, base)
-			setOperation(item, m.Verb, op)
+			byStem[stem] = append(byStem[stem], len(ops))
+			ops = append(ops, operation{svc: svc, m: m, id: semantic.OperationID(svc.Decorators(m), base), stem: stem})
 		}
 	}
-}
-
-// methodNameCounts tallies how many methods across ALL services in the
-// (already project-merged) package share each bare method name. Two
-// services with a method of the same name (`ListItems`, `Ping`, ...)
-// would otherwise emit a duplicate operationId and overwrite each
-// other's `<Method>ReqBody` / `<Method>RespBody` component schemas -
-// last-writer-wins, leaving one operation pointing at the other's shape.
-func methodNameCounts(pkg *semantic.Package) map[string]int {
-	return semantic.MethodNameCounts(pkg)
-}
-
-// operationBaseName is the collision-free base for a method's component
-// schema names (`<base>ReqBody`, `<base>RespBody`, ...) and its default
-// operationId. A method name that is unique project-wide stays bare
-// (`ListOrders`); one shared by two or more services is prefixed with
-// the service name (`HeaderEchoServiceListItems`) so every emitted name
-// is globally unique. An explicit `@operationId` still overrides the
-// operationId itself (see [operationID]); the component names always
-// follow this base so they never collide regardless of the override.
-func operationBaseName(svcName string, m *ast.Method, counts map[string]int) string {
-	return semantic.OperationBaseName(svcName, m, counts)
-}
-
-// checkOperationIDUniqueness reports an error when two methods would emit
-// the same operationId. The auto-prefixing in [operationBaseName] removes
-// every same-method-name collision on its own, so a duplicate that
-// survives here can only come from an explicit `@operationId("...")` -
-// either two methods pinned to the same value, or an override that
-// happens to equal another method's auto-generated id. Those are the
-// user's to resolve, so codegen fails with an actionable message rather
-// than emitting an invalid (duplicate-operationId) spec.
-func checkOperationIDUniqueness(pkg *semantic.Package) error {
-	counts := methodNameCounts(pkg)
-	owners := map[string][]string{} // operationId -> ["Service.Method", ...]
-	for _, svcName := range sortedServices(pkg) {
-		for _, m := range pkg.Services[svcName].Methods {
-			id := operationID(m, operationBaseName(svcName, m, counts))
-			owners[id] = append(owners[id], svcName+"."+m.Name)
+	taken := func(name string) bool {
+		_, req := declared[name+"ReqBody"]
+		_, resp := declared[name+"RespBody"]
+		return len(byStem[name]) > 0 || req || resp
+	}
+	for _, stem := range slices.Sorted(maps.Keys(byStem)) {
+		shared := byStem[stem]
+		if len(shared) < 2 {
+			continue
+		}
+		keep := shared[0]
+		for _, i := range shared {
+			if ops[i].id == stem {
+				keep = i
+				break
+			}
+		}
+		n := 2
+		for _, i := range shared {
+			if i == keep {
+				continue
+			}
+			for taken(stem + strconv.Itoa(n)) {
+				n++
+			}
+			ops[i].stem = stem + strconv.Itoa(n)
+			byStem[ops[i].stem] = []int{i}
 		}
 	}
-	var dups []string
-	for _, id := range sortedKeys(owners) {
-		if who := owners[id]; len(who) >= 2 {
-			dups = append(dups, fmt.Sprintf("%q (from %s)", id, strings.Join(who, ", ")))
-		}
-	}
-	if len(dups) > 0 {
-		return fmt.Errorf("duplicate operationId %s - give each method a distinct @operationId(...)", strings.Join(dups, "; "))
-	}
-	return nil
+	return ops
 }
 
-// fieldBins splits a request type's fields by binding kind. Empty slices
-// are returned for kinds that have no contributors.
+// opShape is a method as its operation documents it: its route, operationId
+// and body component stem, and where each request and response field rides.
+type opShape struct {
+	m              *ast.Method
+	decs           []*ast.Decorator // m's decorators, its extend block's first
+	full, id, stem string
+	req, resp      fieldBins
+	server         []semantic.ResolvedField // request fields bound to a basePath variable
+	form, files    []semantic.FormField     // files is non-empty for a multipart request
+	reqType        *ast.TypeDecl
+	respType       *ast.TypeDecl // nil for a scalar or enum response
+}
+
+// newOpShape resolves m's request and response fields once, for its route
+// full, operationId id and component stem.
+func newOpShape(svc *semantic.ServiceInfo, m *ast.Method, full, id, stem string, pkg *semantic.Package, r *semantic.Resolver) opShape {
+	s := opShape{m: m, decs: svc.Decorators(m), full: full, id: id, stem: stem}
+	if m.Request != nil {
+		s.reqType = pkg.Types[m.Request.Name.String()]
+		fields := semantic.RequestFields(m, pkg, r, nil)
+		s.req = binFields(fields)
+		s.req.path, s.server = splitServerBound(s.req.path, full)
+		s.form, s.files = semantic.FormParts(fields)
+	}
+	if m.Response != nil && m.Response.Type != nil {
+		if s.respType = pkg.Types[m.Response.Type.Name.String()]; s.respType != nil {
+			s.resp = binFields(semantic.ResponseFields(m, pkg, r, nil))
+		}
+	}
+	return s
+}
+
+// splitServerBound splits path-bound fields into those of route full's
+// variables and those of the basePath's, which full leaves to the server.
+func splitServerBound(path []semantic.ResolvedField, full string) (routed, server []semantic.ResolvedField) {
+	vars := route.Vars(full)
+	for _, rf := range path {
+		if slices.Contains(vars, wire.WireName(rf.Field, wire.BindPath)) {
+			routed = append(routed, rf)
+		} else {
+			server = append(server, rf)
+		}
+	}
+	return routed, server
+}
+
+// fieldBins holds resolved fields by where they ride, @sensitive ones left
+// out; a @form field rides the body.
 type fieldBins struct {
-	body, query, header, cookie, path []*ast.Field
+	body, query, header, cookie, path []semantic.ResolvedField
 }
 
-// binRequestFields walks the method's request type and partitions every
-// field into the matching bin. The rules mirror runtime binding:
-//   - Explicit @path / @query / @header / @cookie / @body / @form wins.
-//   - A field whose name matches a `{param}` segment in the method path
-//     is bound to `path`.
-//   - Body verbs (POST/PUT/PATCH) keep unmarked fields in `body`.
-//   - Non-body verbs (GET/DELETE/HEAD/OPTIONS) keep unmarked fields in
-//     `query`.
-func binRequestFields(m *ast.Method, pkg *semantic.Package, r *semantic.Resolver) fieldBins {
+// binFields sorts fields into bins by their binding.
+func binFields(fields []semantic.ResolvedField) fieldBins {
 	var bins fieldBins
-	// Read the resolved IR: the full binding (explicit + auto-@path/@query)
-	// is computed once in resolveRequestFields, so this categorisation can't
-	// drift from the transport binder's view of where each field rides.
-	for _, rf := range semantic.RequestFields(m, pkg, r, nil) {
+	for _, rf := range fields {
 		switch rf.Binding {
 		case wire.BindSensitive:
-			continue
 		case wire.BindPath:
-			bins.path = append(bins.path, rf.Field)
+			bins.path = append(bins.path, rf)
 		case wire.BindQuery:
-			bins.query = append(bins.query, rf.Field)
+			bins.query = append(bins.query, rf)
 		case wire.BindHeader:
-			bins.header = append(bins.header, rf.Field)
+			bins.header = append(bins.header, rf)
 		case wire.BindCookie:
-			bins.cookie = append(bins.cookie, rf.Field)
-		default: // BindBody, BindForm - both ride (or document) the request body
-			bins.body = append(bins.body, rf.Field)
+			bins.cookie = append(bins.cookie, rf)
+		default: // BindBody, BindForm
+			bins.body = append(bins.body, rf)
 		}
 	}
 	return bins
 }
 
-// addRequestBodySchema emits the `<base>ReqBody` schema referenced by the
-// operation's requestBody. Only body-bound fields land here; path/query/
-// header/cookie params are emitted inline by [paramsFromBins], so no
-// `<base>Req{Query,Header,Cookie,Path}` components are registered (they
-// would be orphaned - never $ref'd - and only bloat the spec).
-func addRequestBodySchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string, names *schemaNames) {
-	if m.Request == nil {
-		return
-	}
-	td, ok := pkg.Types[m.Request.Name.String()]
-	if !ok {
-		return
-	}
-	// A multipart request renders its body schema INLINE on the operation
-	// (buildOperation -> multipartRequestBody); it never $refs a `<base>ReqBody`
-	// component, so emitting one here would only orphan it - the same reasoning
-	// as the wire-param components above. Both sites read isMultipartRequest.
-	if isMultipartRequest(m, pkg, registry.resolver) {
-		return
-	}
-	bins := binRequestFields(m, pkg, registry.resolver)
-	wireBound := len(bins.path)+len(bins.query)+len(bins.header)+len(bins.cookie) > 0
-	if !wireBound {
-		// Pure-body request: the JSON body IS the whole request type, so
-		// the schema must carry everything the server decodes and
-		// Validate()s - embedded mixin fields, generic type-argument
-		// substitution, and type-level @requiresOneOf / @mutuallyExclusive
-		// fragments. schemaFromFields renders only the loose *ast.Field
-		// list and silently drops all three, so reuse the full type-decl
-		// walk (the same one that builds the type's own component schema).
-		if len(m.Request.Args) > 0 && len(td.TypeParams) > 0 {
-			// Generic instance: $ref the registered monomorphised component
-			// (PageOfEmail) - the bare generic decl is never emitted as a
-			// schema and its fields are typed in the type-parameter T, so
-			// an inline render would dangle a $ref to T.
-			inst := registry.register(td, m.Request.Args)
-			names.put(doc, base+"ReqBody", &openapi3.SchemaRef{Ref: "#/components/schemas/" + inst})
-			return
+// requestBodySchema is the `<stem>ReqBody` component of s's JSON body: the
+// whole request type when nothing rides off the body, else [inlineBody].
+func requestBodySchema(s opShape, pkg *semantic.Package, registry *genericRegistry) *openapi3.SchemaRef {
+	td := s.reqType
+	if len(s.req.path)+len(s.server)+len(s.req.query)+len(s.req.header)+len(s.req.cookie) == 0 {
+		if len(td.TypeParams) > 0 {
+			// A generic declaration has no schema of its own.
+			return &openapi3.SchemaRef{Ref: "#/components/schemas/" + registry.refName(s.m.Request)}
 		}
-		if requestHasBodyContent(m, pkg, registry.resolver) {
-			names.put(doc, base+"ReqBody", &openapi3.SchemaRef{Value: schemaFromTypeDecl(td, nil, pkg, registry)})
-		}
-		return
+		return &openapi3.SchemaRef{Value: schemaFromTypeDecl(td, nil, pkg, registry)}
 	}
-	// Mixed request (body + path/query/header/cookie): inline only the
-	// body subset so wire-bound fields don't leak into the body schema.
-	// Embedded mixin body fields ARE included (binRequestFields expands
-	// mixins). Type-level @requiresOneOf / @mutuallyExclusive fragments
-	// are carried too so the cross-field contract the server enforces
-	// stays visible to the spec; a fragment naming a wire-bound field is a
-	// design edge the body schema can't express, but cross-field over body
-	// fields round-trips.
-	if len(bins.body) > 0 {
-		s := schemaFromFields(substituteGenericFields(bins.body, td, m.Request.Args), pkg, registry)
-		if frags := crossFieldSchemaFragments(td.Decorators, td.Body); len(frags) > 0 {
-			s = &openapi3.Schema{
-				AllOf: append(openapi3.SchemaRefs{{Value: s}}, frags...),
-			}
-		}
-		names.put(doc, base+"ReqBody", &openapi3.SchemaRef{Value: s})
-	}
+	return inlineBody(s.req.body, td, pkg, registry)
 }
 
-// requestHasBodyContent reports whether m's request contributes anything
-// to a JSON request body - any resolved field that rides the body
-// (OnWireBody). A request whose fields are all @sensitive / @header /
-// @cookie / wire-bound (even through a mixin) has no body schema to emit.
-func requestHasBodyContent(m *ast.Method, pkg *semantic.Package, r *semantic.Resolver) bool {
-	// Read the resolved IR so this body-presence test uses the SAME
-	// verb-aware, mixin-flattened binding the handler decode-block
-	// (hasUnboundField) and the param categorisation (binRequestFields)
-	// use - a mixin of only @header/@cookie fields contributes no body.
-	for _, rf := range semantic.RequestFields(m, pkg, r, nil) {
-		if rf.OnWireBody {
-			return true
-		}
+// responseBodySchema is the `<stem>RespBody` component: a $ref to the
+// response type, or [inlineBody] when it sends headers or cookies.
+func responseBodySchema(s opShape, pkg *semantic.Package, registry *genericRegistry) *openapi3.SchemaRef {
+	if len(s.resp.header) == 0 && len(s.resp.cookie) == 0 {
+		// A generic response refs its instance: the declaration has no schema.
+		return &openapi3.SchemaRef{Ref: "#/components/schemas/" + registry.refName(s.m.Response.Type)}
 	}
-	return false
+	return inlineBody(s.resp.body, s.respType, pkg, registry)
 }
 
-// addPerOperationResponseSchema emits `<Method>RespBody` carrying the
-// response shape consumers see in JSON. When the response type has no
-// `@header` / `@cookie` bindings the schema is a thin alias of the type
-// itself; when it does, header/cookie fields are stripped and only the
-// JSON-body fields end up in the schema (the wire form the runtime
-// serialises). The matching response.headers map is emitted by
-// buildOperation.
-func addPerOperationResponseSchema(doc *openapi3.T, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string, names *schemaNames) {
-	if m.Response == nil || m.Response.Type == nil {
-		return
+// inlineBody lists fields, the body fields of type td, in place, with the
+// cross-field fragments of td and of the mixins it embeds.
+func inlineBody(fields []semantic.ResolvedField, td *ast.TypeDecl, pkg *semantic.Package, registry *genericRegistry) *openapi3.SchemaRef {
+	body := schemaFromFields(fields, pkg, registry)
+	if frags := inlineFragments(td, jsonKeys(td, registry), presentNonNull, registry); len(frags) > 0 {
+		body = &openapi3.Schema{AllOf: append(openapi3.SchemaRefs{{Value: body}}, frags...)}
 	}
-	bins := binResponseFields(m, pkg, registry.resolver)
-	if len(bins.header) == 0 && len(bins.cookie) == 0 {
-		// Generic response (e.g. `response Envelope<Order>`) must
-		// $ref the synthetic instance name, NOT the bare generic
-		// decl name - the generic decl is never emitted as a
-		// component since it has no concrete schema, so a bare
-		// `Envelope` $ref would dangle.
-		respName := m.Response.Type.Name.String()
-		if len(m.Response.Type.Args) > 0 {
-			if decl, ok := pkg.Types[respName]; ok && len(decl.TypeParams) > 0 {
-				respName = registry.register(decl, m.Response.Type.Args)
-			}
-		}
-		names.put(doc, base+"RespBody", &openapi3.SchemaRef{
-			Ref: "#/components/schemas/" + respName,
-		})
-		return
-	}
-	respBody := bins.body
-	if len(m.Response.Type.Args) > 0 {
-		if decl, ok := pkg.Types[m.Response.Type.Name.String()]; ok {
-			respBody = substituteGenericFields(bins.body, decl, m.Response.Type.Args)
-		}
-	}
-	names.put(doc, base+"RespBody", &openapi3.SchemaRef{
-		Value: schemaFromFields(respBody, pkg, registry),
-	})
+	return &openapi3.SchemaRef{Value: body}
 }
 
-// substituteGenericFields substitutes a generic instance's type-args into a
-// field list's types (`data T` → `data Item`) so a per-operation body schema
-// built from a wire-bound generic request/response $refs the concrete arg
-// instead of dangling a `$ref` to the type-parameter `T`. A no-op for a
-// non-generic type or when no args are supplied.
-func substituteGenericFields(fields []*ast.Field, td *ast.TypeDecl, args []*ast.TypeRef) []*ast.Field {
-	if td == nil || len(td.TypeParams) == 0 || len(args) == 0 {
-		return fields
-	}
-	subst := semantic.SubstMap(td.TypeParams, args)
-	out := make([]*ast.Field, len(fields))
-	for i, f := range fields {
-		fc := *f
-		fc.Type = semantic.SubstituteTypeRef(f.Type, subst)
-		out[i] = &fc
-	}
-	return out
-}
-
-// binResponseFields partitions the response type's fields the same way
-// [binRequestFields] does on the request side. Fields without an
-// explicit response-side binding decorator default to `body` (the JSON
-// payload), so adding @header / @cookie to a couple of fields does not
-// silently drop the rest.
-func binResponseFields(m *ast.Method, pkg *semantic.Package, r *semantic.Resolver) fieldBins {
-	var bins fieldBins
-	if m.Response == nil || m.Response.Type == nil {
-		return bins
-	}
-	td, ok := pkg.Types[m.Response.Type.Name.String()]
-	if !ok {
-		return bins
-	}
-	// Read the resolved IR instead of re-deriving binding/sensitivity from
-	// the AST: the same flattened field list + binding classification every
-	// other stage sees, so this categorisation can't drift from theirs.
-	for _, rf := range semantic.ResolveFields(td, pkg, r, nil) {
-		switch rf.Binding {
-		case wire.BindSensitive:
-			continue
-		case wire.BindHeader:
-			bins.header = append(bins.header, rf.Field)
-		case wire.BindCookie:
-			bins.cookie = append(bins.cookie, rf.Field)
-		default:
-			bins.body = append(bins.body, rf.Field)
-		}
-	}
-	return bins
-}
-
-// buildResponseHeaders converts response-side @header / @cookie fields
-// into the OpenAPI `response.headers` map. Cookie fields collapse into
-// a single `Set-Cookie` entry because OpenAPI 3.x has no first-class
-// cookie response slot - listing the cookie names there documents what
-// the runtime writes via http.SetCookie even when the spec format has
-// to round-trip through Set-Cookie.
-func buildResponseHeaders(headers, cookies []*ast.Field, pkg *semantic.Package, registry *genericRegistry) openapi3.Headers {
+// buildResponseHeaders documents the @header fields as headers and the @cookie
+// ones in one `Set-Cookie` header: OpenAPI has no response cookies. Fields
+// sharing a header name in any letter case, which responses sharing a status
+// may send, make one header, spelled as the first, whose schema admits each
+// field's type; its description is the first one given, and it is deprecated
+// when every field is.
+func buildResponseHeaders(headers, cookies []semantic.ResolvedField, pkg *semantic.Package, registry *genericRegistry) openapi3.Headers {
 	if len(headers) == 0 && len(cookies) == 0 {
 		return nil
 	}
 	out := openapi3.Headers{}
-	for _, f := range headers {
-		name := wire.WireName(f, wire.BindingHeader)
-		schema := schemaForTypeRef(f.Type, pkg, registry)
-		// Carry @example / @deprecated / field constraints onto the header
-		// schema, and @deprecated onto the Header Object itself - the same
-		// metadata every other field-emit site applies (paramsFromBins,
-		// schemaFromFields), so a documented response header isn't silently
-		// stripped of it.
-		applyFieldMetadata(f, schema, pkg)
-		hdr := &openapi3.Header{
-			Parameter: openapi3.Parameter{
-				Schema:      schema,
-				Description: semantic.Description(f.Decorators, f.Doc),
-				Deprecated:  semantic.IsDeprecated(f.Decorators),
-			},
+	alternatives := map[string]openapi3.SchemaRefs{}
+	spelled := map[string]string{}
+	for _, rf := range headers {
+		f := rf.Field
+		name := wire.WireName(f, wire.BindHeader)
+		key := http.CanonicalHeaderKey(name)
+		if first, seen := spelled[key]; seen {
+			name = first
+		} else {
+			spelled[key] = name
 		}
-		out[name] = &openapi3.HeaderRef{Value: hdr}
+		schema := schemaForTypeRef(nonNullType(f), pkg, registry)
+		applyFieldMetadata(f, schema, pkg, false)
+		if !slices.ContainsFunc(alternatives[name], func(s *openapi3.SchemaRef) bool { return reflect.DeepEqual(s, schema) }) {
+			alternatives[name] = append(alternatives[name], schema)
+		}
+		desc, deprecated := semantic.Description(f.Decorators, f.Doc), semantic.IsDeprecated(f.Decorators)
+		if h, seen := out[name]; seen {
+			h.Value.Description = cmp.Or(h.Value.Description, desc)
+			h.Value.Deprecated = h.Value.Deprecated && deprecated
+			continue
+		}
+		out[name] = &openapi3.HeaderRef{Value: &openapi3.Header{
+			Parameter: openapi3.Parameter{Description: desc, Deprecated: deprecated},
+		}}
+	}
+	for name, schemas := range alternatives {
+		out[name].Value.Schema = schemas[0]
+		if len(schemas) > 1 {
+			out[name].Value.Schema = &openapi3.SchemaRef{Value: &openapi3.Schema{AnyOf: schemas}}
+		}
 	}
 	if len(cookies) > 0 {
-		names := make([]string, 0, len(cookies))
-		for _, f := range cookies {
-			names = append(names, wire.WireName(f, wire.BindingCookie))
+		var names []string
+		for _, rf := range cookies {
+			if name := wire.WireName(rf.Field, wire.BindCookie); !slices.Contains(names, name) {
+				names = append(names, name)
+			}
 		}
-		desc := "Sets cookies: " + strings.Join(names, ", ")
 		out["Set-Cookie"] = &openapi3.HeaderRef{Value: &openapi3.Header{
 			Parameter: openapi3.Parameter{
 				Schema:      &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}},
-				Description: desc,
+				Description: "Sets cookies: " + strings.Join(names, ", "),
 			},
 		}}
 	}
 	return out
 }
 
-// schemaFromFields builds an inline object schema covering the supplied
-// fields. Required[] lists every non-optional field (required-by-default
-// model - the inverse of the `?` suffix); nested types follow
-// schemaForTypeRef. Per-field decorator effects (@default, @example,
-// @nullable, @deprecated, @doc) are applied via [applyFieldMetadata] so
-// per-operation `<Method>Req<Kind>` schemas carry the same metadata
-// the top-level type schemas do.
-func schemaFromFields(fields []*ast.Field, pkg *semantic.Package, registry *genericRegistry) *openapi3.Schema {
+// schemaFromFields builds an inline object schema of the fields that ride
+// the body.
+func schemaFromFields(fields []semantic.ResolvedField, pkg *semantic.Package, registry *genericRegistry) *openapi3.Schema {
 	s := &openapi3.Schema{
 		Type:       &openapi3.Types{"object"},
 		Properties: openapi3.Schemas{},
 	}
-	for _, f := range fields {
-		// Read on-wire-body and spec-required from the resolved-field IR (the
-		// same source addErrorSchemas uses) so the body-schema walk can't drift
-		// from the error-schema walk on which fields ride the body and which are
-		// required. nil resolver: the OpenAPI path runs on the merged package.
-		rf := semantic.ResolveField(f, pkg, registry.resolver.Project())
-		if !rf.OnWireBody {
-			continue
-		}
-		ref := schemaForTypeRef(f.Type, pkg, registry)
-		applyFieldMetadata(f, ref, pkg)
-		s.Properties[f.Name] = ref
-		if rf.SpecRequired {
-			s.Required = append(s.Required, f.Name)
-		}
+	for _, rf := range fields {
+		addBodyProperty(s, rf, rf.Field.Type, pkg, registry)
 	}
 	return s
 }

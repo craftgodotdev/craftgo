@@ -12,31 +12,19 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// BatchUpload pins the `file[]` (repeated multipart parts) shape:
-// `files` binds from `r.MultipartForm.File["files"]` as
-// `[]*multipart.FileHeader`, with `@minItems`/`@maxItems` validating
-// the slice length; a single optional `cover file?` and a repeated
-// `string[] @form` value ride the same request. The OpenAPI multipart
-// schema renders `files` as `{type: array, items: {format: binary}}`.
-// BatchUpload returns the http.HandlerFunc for the
-// POST BatchUpload multipart endpoint. The handler parses
-// `multipart/form-data` bodies, binds every form field declared on
-// the request type, and populates `*multipart.FileHeader` fields
-// for any DSL-typed `file` declarations.
+// Batch upload. files[] rides as repeated multipart parts ([]*multipart.FileHeader, @minItems/@maxItems); cover is one optional file; tags is a repeated form value.
+//
+// BatchUpload returns the POST BatchUpload handler.
 func BatchUpload(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(33554432); err != nil {
-			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			server.WriteValidationError(w, r, err)
 			return
 		}
-		// Remove the temp files the parser spilled to disk as soon as the
-		// handler returns. net/http sweeps them again at end-of-response, but
-		// the explicit cleanup releases disk before the response flush and
-		// still runs on panic paths that bypass that sweep.
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.BatchUploadReq
 		req.Tags = r.MultipartForm.Value["tags"]
-		req.Album = r.FormValue("album")
+		req.Album = r.PostFormValue("album")
 		req.Files = r.MultipartForm.File["files"]
 		if _, header, err := r.FormFile("cover"); err == nil {
 			req.Cover = header
@@ -51,8 +39,6 @@ func BatchUpload(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

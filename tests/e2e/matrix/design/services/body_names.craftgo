@@ -1,0 +1,74 @@
+// body_names.craftgo exercises the names of the per-operation body
+// components when two services' names run into their method names.
+package services
+
+// ReportCards is the page Report and ReportCard answer.
+type ReportCards {
+	names string[]
+}
+
+// Report and ReportCard both declare CardList and List, so each method is
+// named after its service, and Report.CardList and ReportCard.List both come
+// to ReportCardList. ReportCard.List, whose operationId it is, keeps
+// ReportCardListRespBody; Report.CardList, named listReportCards, answers
+// ReportCardList2RespBody.
+@prefix("/report")
+service Report {
+	@doc("Lists the report's cards; its body component is ReportCardList2RespBody.")
+	@operationId("listReportCards")
+	get CardList /cards {
+		response ReportCards
+	}
+
+	@doc("Lists every report.")
+	get List /all {
+		response ReportCards
+	}
+}
+
+// ReportCard is the service Report's names run into.
+@prefix("/report-card")
+service ReportCard {
+	@doc("Lists every report card; its body component is ReportCardListRespBody.")
+	get List /all {
+		response ReportCards
+	}
+
+	@doc("Lists the cards of a report card.")
+	get CardList /cards {
+		response ReportCards
+	}
+}
+
+// LedgerEntryList2RespBody is a declared type named like a renumbered body
+// component, so the renumbering passes over 2.
+type LedgerEntryList2RespBody {
+	total int
+}
+
+// Ledger.EntryList and LedgerEntry.List both come to LedgerEntryList.
+// LedgerEntry.List, whose operationId it is, keeps LedgerEntryListRespBody;
+// Ledger.EntryList, named listLedgerEntries, answers LedgerEntryList3RespBody,
+// since the declared LedgerEntryList2RespBody holds 2.
+@prefix("/ledger")
+service Ledger {
+	@doc("Lists the ledger's entries; its body component is LedgerEntryList3RespBody.")
+	@operationId("listLedgerEntries")
+	get EntryList /entries {
+		response ReportCards
+	}
+}
+
+// LedgerEntry is the service Ledger's names run into.
+@prefix("/ledger-entry")
+service LedgerEntry {
+	@doc("Lists every ledger entry; its body component is LedgerEntryListRespBody.")
+	get List /all {
+		response LedgerEntryList2RespBody
+	}
+
+	@doc("Lists the entries of a ledger entry.")
+	get EntryList /entries {
+		response ReportCards
+	}
+}

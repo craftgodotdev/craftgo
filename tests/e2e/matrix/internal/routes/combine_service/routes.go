@@ -4,16 +4,12 @@ package combine
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/combine_service"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RegisterRoutes wires every CombineService endpoint onto srv. Patterns
-// use the Go 1.22 method-prefixed form so VERB and path match together;
-// service prefix and OpenAPI basePath are baked in. Methods declaring
-// `@middlewares(...)` are wrapped via the corresponding fields on
-// ServiceContext (embedded Middlewares struct), so no runtime name
-// lookup is required - the values come pre-wired.
+// RegisterRoutes registers the CombineService routes on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/combine/presence", transport.EchoPresence(svcCtx))
 	srv.Handle("POST /api/combine/pairs/str", transport.ValidateStr(svcCtx))
@@ -22,9 +18,24 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/combine/pairs/contact", transport.ValidateContact(svcCtx))
 	srv.Handle("POST /api/combine/pairs/choice", transport.ValidateChoice(svcCtx))
 	srv.Handle("POST /api/combine/defaults/boundary", transport.EchoBoundary(svcCtx))
-	srv.Handle("POST /api/combine/defaults/conflict", transport.EchoConflict(svcCtx))
 	srv.Handle("POST /api/combine/defaults/collection", transport.EchoCollection(svcCtx))
 	srv.Handle("POST /api/combine/defaults/enum", transport.EchoEnum(svcCtx))
 	srv.Handle("POST /api/combine/defaults/scalar", transport.EchoScalar(svcCtx))
 	srv.Handle("POST /api/combine/defaults/width", transport.EchoWidth(svcCtx))
+	srv.Handle("POST /api/combine/pairs/renamed/{id}", transport.ValidateRenamed(svcCtx))
+	srv.Handle("POST /api/combine/pairs/nested/{id}", transport.ValidateNested(svcCtx))
+	srv.Handle("POST /api/combine/pairs/upload", transport.UploadPairs(svcCtx))
+	srv.Handle("POST /api/combine/pairs/source", transport.UploadSource(svcCtx))
+	srv.Handle("GET /api/combine/pairs/lookup", transport.LookupPair(svcCtx))
+	srv.Handle("POST /api/combine/pairs/tagged", transport.TagPairs(svcCtx))
+	srv.Handle("POST /api/combine/enums/zero-member", transport.EchoZeroMember(svcCtx))
+	srv.Handle("POST /api/combine/defaults/wire", transport.EchoWireDefaults(svcCtx))
+	srv.Handle("POST /api/combine/pairs/promoted", transport.ValidatePromoted(svcCtx))
+	srv.Handle("POST /api/combine/colliding-names", transport.EchoCollidingNames(svcCtx))
+	srv.Handle("POST /api/combine/defaults/array", transport.EchoArrayDefaults(svcCtx))
+	srv.Handle("POST /api/combine/nilable-nullable", transport.EchoNilableNullable(svcCtx))
+	srv.Handle("POST /api/combine/pairs/stacked", transport.ValidateStacked(svcCtx))
+	srv.Handle("POST /api/combine/pairs/channels", transport.ValidateChannels(svcCtx))
+	srv.Handle("POST /api/combine/pairs/notify", transport.ValidateNotify(svcCtx))
+	srv.Handle("POST /api/combine/pairs/notify/upload", transport.UploadNotify(svcCtx))
 }

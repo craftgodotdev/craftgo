@@ -2,43 +2,33 @@
 
 package media
 
+import (
+	"encoding/json"
+)
+
 // ErrCodeMediaNotFound is the canonical machine-readable code for MediaNotFoundErr.
 const ErrCodeMediaNotFound = "MEDIA_NOT_FOUND"
 
-// MediaNotFoundErr is the typed NotFound error generated for `MediaNotFound`.
-// The unexported `code` and `message` fields hold the type-bound
-// metadata populated by the constructor. Because they are unexported,
-// json.Marshal omits them from the wire payload - clients see only
-// the embedded body shape (or `{}` when no body was declared).
-type MediaNotFoundErr struct {
-	code    string
-	message string
-}
+// MediaNotFound is returned by GetMedia for an unknown id - maps to HTTP 404.
+//
+// MediaNotFoundErr is the NotFound error MediaNotFound.
+type MediaNotFoundErr struct{}
 
-// NewMediaNotFoundErr constructs MediaNotFoundErr with the framework metadata baked in.
-// `code` and `message` are bound to the type and not exposed as
-// constructor parameters; only the body struct varies per instance.
+// NewMediaNotFoundErr constructs MediaNotFoundErr.
 func NewMediaNotFoundErr() *MediaNotFoundErr {
-	return &MediaNotFoundErr{
-		code:    ErrCodeMediaNotFound,
-		message: "Not found",
-	}
+	return &MediaNotFoundErr{}
 }
 
-// Error implements the standard error interface and returns the
-// category-default message bound to the type.
-func (e *MediaNotFoundErr) Error() string { return e.message }
+// Error returns the NotFound category's default message.
+func (e *MediaNotFoundErr) Error() string { return "Not found" }
 
-// ErrCode returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ ErrCode() string }`
-// assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`, and rpc.Error reads it
-// for the ErrorInfo detail it puts on the gRPC status. The accessor is
-// named `ErrCode` (not `Code`) so it does not shadow a user-declared
-// `code <type>` field promoted from the embedded body struct.
-func (e *MediaNotFoundErr) ErrCode() string { return e.code }
+// ErrCode returns ErrCodeMediaNotFound.
+func (e *MediaNotFoundErr) ErrCode() string { return ErrCodeMediaNotFound }
 
-// HTTPStatus returns the HTTP status code associated with the NotFound
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the NotFound status.
 func (e *MediaNotFoundErr) HTTPStatus() int { return 404 }
+
+// MarshalJSON encodes the {"code", "message"} envelope.
+func (e *MediaNotFoundErr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]string{"code": ErrCodeMediaNotFound, "message": e.Error()})
+}

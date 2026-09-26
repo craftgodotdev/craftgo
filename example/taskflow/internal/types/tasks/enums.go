@@ -2,6 +2,7 @@
 
 package tasks
 
+// Int-valued enum: the wire + Go const carry the numeric weight.
 type Priority int
 
 const (

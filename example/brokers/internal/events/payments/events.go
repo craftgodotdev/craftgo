@@ -9,12 +9,9 @@ import (
 )
 
 // SettledContract is the wire identity of Settled.
-// Publisher and listener both address the contract by this value.
 const SettledContract = "payments.settled.v1"
 
 // A payment cleared upstream.
 //
-// Settled is the payments.settled.v1 contract.
-// Settled.Publish(ctx, bus, payload) sends one; a listener registers
-// Settled.Subscribe(bus, group, fn) on its own bus.
+// Settled is the payments.settled.v1 event contract.
 var Settled = craftevents.NewEvent[types.Settlement](SettledContract, (*types.Settlement).Validate)

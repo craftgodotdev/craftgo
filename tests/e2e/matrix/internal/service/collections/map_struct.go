@@ -5,25 +5,20 @@ package collections
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// MapStructService carries the per-request state for the
-// MapStruct endpoint of Collections. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// MapStructService runs Collections.MapStruct for one request.
 type MapStructService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewMapStructService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewMapStructService binds MapStructService to ctx; its Logger carries ctx's trace ids.
 func NewMapStructService(ctx context.Context, svcCtx *svccontext.ServiceContext) *MapStructService {
 	return &MapStructService{
 		Logger: log.Default().WithContext(ctx),
@@ -35,8 +30,8 @@ func NewMapStructService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 // MapStruct exposes the struct-valued map so the generated
 // validate.go for Map_StructValue is visible in the e2e
 // snapshot.
-// MapStruct is the service entry point. Replace the
-// TODO with the real implementation.
+//
+// MapStruct implements Collections.MapStruct.
 func (l *MapStructService) MapStruct(req *types.Map_StructValue) (*types.Map_StructValue, error) {
 	// TODO: implement
 	return nil, nil

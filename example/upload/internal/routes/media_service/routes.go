@@ -3,17 +3,13 @@
 package media
 
 import (
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/example/upload/internal/transport/media_service"
 	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
-	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// RegisterRoutes wires every MediaService endpoint onto srv. Patterns
-// use the Go 1.22 method-prefixed form so VERB and path match together;
-// service prefix and OpenAPI basePath are baked in. Methods declaring
-// `@middlewares(...)` are wrapped via the corresponding fields on
-// ServiceContext (embedded Middlewares struct), so no runtime name
-// lookup is required - the values come pre-wired.
+// RegisterRoutes registers the MediaService routes on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/media/users/{userId}/avatar", transport.UploadAvatar(svcCtx))
 	srv.Handle("POST /api/media/documents", transport.UploadDocument(svcCtx))

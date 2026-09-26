@@ -9,10 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/wire"
 )
 
-// The shape a raw field is for: a message with a few fields of its own
-// plus one document it carries but does not own. The document is ~2 KB,
-// the size of a webhook body or a jsonb column - big enough that what a
-// codec does with it dominates, small enough to be realistic.
+// rawEnvelope is a message carrying a ~2 KB document as a Raw.
 type rawEnvelope struct {
 	ID      string   `json:"id"`
 	Kind    string   `json:"kind"`
@@ -27,9 +24,8 @@ type anyEnvelope struct {
 	Details any    `json:"details"`
 }
 
-// benchDocument builds a ~2 KB JSON object, deliberately carrying the
-// three values a decode into `any` cannot give back: an explicit null,
-// an integer past 2^53, and a trailing zero.
+// benchDocument builds a ~2 KB JSON object with an explicit null, an integer
+// past 2^53 and a trailing zero.
 func benchDocument() string {
 	var b strings.Builder
 	b.WriteString(`{"explicit":null,"big":12345678901234567890,"trailing":1.50,"rows":[`)
@@ -51,9 +47,8 @@ func benchEnvelope() []byte {
 	return []byte(`{"id":"evt-1","kind":"warehouse.closed","attempt":2,"details":` + benchDocument() + `}`)
 }
 
-// BenchmarkDecodeEncodeRaw is the cost of carrying the document: one
-// copy on decode, and on encode the compaction encoding/json runs over
-// any Marshaler's output.
+// BenchmarkDecodeEncodeRaw decodes and re-encodes a message carrying the
+// document as a Raw.
 func BenchmarkDecodeEncodeRaw(b *testing.B) {
 	in := benchEnvelope()
 	b.SetBytes(int64(len(in)))
@@ -69,10 +64,8 @@ func BenchmarkDecodeEncodeRaw(b *testing.B) {
 	}
 }
 
-// BenchmarkDecodeEncodeAny is the same message with the document
-// declared `any`: a full parse into map[string]any on the way in and a
-// full re-encode on the way out - which is also where the explicit null,
-// the big integer and the trailing zero are lost.
+// BenchmarkDecodeEncodeAny is BenchmarkDecodeEncodeRaw with the document
+// declared `any`.
 func BenchmarkDecodeEncodeAny(b *testing.B) {
 	in := benchEnvelope()
 	b.SetBytes(int64(len(in)))
@@ -88,8 +81,7 @@ func BenchmarkDecodeEncodeAny(b *testing.B) {
 	}
 }
 
-// BenchmarkUnmarshalRaw isolates the decode half: the one copy
-// [wire.Raw.UnmarshalJSON] makes of the bytes handed to it.
+// BenchmarkUnmarshalRaw measures [wire.Raw.UnmarshalJSON] alone.
 func BenchmarkUnmarshalRaw(b *testing.B) {
 	doc := []byte(benchDocument())
 	b.SetBytes(int64(len(doc)))
@@ -102,9 +94,7 @@ func BenchmarkUnmarshalRaw(b *testing.B) {
 	}
 }
 
-// TestUnmarshalIntoAReusedRawMakesNoAllocation pins the claim the
-// benchmark rests on: decoding copies, and a Raw whose capacity already
-// covers the incoming bytes copies into it rather than allocating again.
+// Decoding into a Raw whose capacity covers the input does not allocate.
 func TestUnmarshalIntoAReusedRawMakesNoAllocation(t *testing.T) {
 	doc := []byte(benchDocument())
 	r := make(wire.Raw, 0, len(doc))

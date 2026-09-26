@@ -1,26 +1,7 @@
 package semantic
 
-// Path resolution validation. Runs after services are merged, so we
-// have the final method list per service and can compute each method's
-// final route by joining (basePath, @prefix, @group, methodPath). The
-// pass surfaces five distinct issues:
-//
-//   - [CodePathBaseFormat]     - basePath malformed (warning).
-//   - [CodePathCollision]      - two methods resolve to the same
-//     VERB + path across services or packages
-//     ([refResolver.checkProjectPathCollision]).
-//   - [CodePathParamMissing]   - `{name}` in path but no matching
-//     field binding in the request type.
-//   - [CodePathParamOrphan]    - `@path` field with no corresponding
-//     `{name}` segment.
-//   - [CodePathHealthConflict] - declared route equals a reserved
-//     health path.
-//
-// [route.Resolve] is the single route-computation authority for the
-// whole pipeline: codegen's routes / OpenAPI / route-conflict emitters call
-// it too, so the analyzer and the generated server cannot disagree on a route.
-
 import (
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -31,18 +12,12 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// defaultHealthPaths is the runtime's auto-registered set, mirrored here so
-// the analyser can flag collisions without importing the runtime package.
-// TestHealthPathsMatchRuntime asserts these equal pkg/server's
-// DefaultLivenessPath / DefaultReadinessPath, so the mirror cannot drift.
+// defaultHealthPaths are the health routes pkg/server registers by default.
 var defaultHealthPaths = []string{"/healthz", "/readyz"}
 
-// checkPathResolution runs the basePath format warning, the reserved
-// health-path check, and the `{param}` ↔ field check for every method.
-// The pass is idempotent and stateless beyond [analyzer.diags].
+// checkPathResolution checks each service's @prefix, and each method's route
+// against net/http's ServeMux, the health paths and its request fields.
 func (a *analyzer) checkPathResolution() {
-	a.checkBasePathFormat()
-
 	healths := a.opts.HealthPaths
 	if len(healths) == 0 {
 		healths = defaultHealthPaths
@@ -53,36 +28,110 @@ func (a *analyzer) checkPathResolution() {
 	}
 	for _, svcName := range slices.Sorted(maps.Keys(a.pkg.Services)) {
 		si := a.pkg.Services[svcName]
+		a.checkPrefixPattern(si)
 		for _, m := range si.Methods {
-			rt := a.resolveMethodPath(si.Primary, m)
+			rt := si.registeredRoute(m)
 			if healthSet[rt] {
 				a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathHealthConflict,
 					"method %s.%s resolves to %s, which is a reserved health path",
 					svcName, m.Name, rt)
 			}
-			a.checkMethodPathParams(svcName, m, rt)
+			a.checkRouteEnd(svcName, m, rt)
+			a.checkMethodPathSegments(svcName, m)
+			a.checkDuplicatePathVars(si, svcName, m)
+			a.checkMethodPathParams(svcName, m, si.Decorators(m), rt)
 		}
 	}
 }
 
-// checkProjectPathCollision reports every pair of methods, across all
-// services and packages, that net/http's ServeMux would refuse to register
-// together: two routes of one verb with the same shape (`/u/{id}` and
-// `/u/{uid}` are one pattern), or two that overlap with neither more
-// specific (`/orders/{id}/track` and `/orders/by-status/{status}` both
-// match `/orders/by-status/track`). Either panics at server boot; both are
-// diagnosed here at design time. A same-service duplicate shape is left to
-// [analyzer.checkServiceMethods]. Packages and services iterate in sorted
-// order so "first declared here" is deterministic.
-func (r *refResolver) checkProjectPathCollision() {
+// checkPrefixPattern rejects a segment of si's @prefix that net/http's
+// ServeMux refuses, and a path variable it repeats or the basePath has.
+func (a *analyzer) checkPrefixPattern(si *ServiceInfo) {
+	if si.Primary == nil {
+		return
+	}
+	d := ast.FindDecorator(si.Primary.Decorators, "prefix")
+	prefix := route.ServicePrefix(si.Primary)
+	if d == nil || prefix == "" {
+		return
+	}
+	boundBy := wildcardOrigins(si.basePath, "the basePath")
+	for _, seg := range route.Segments(prefix) {
+		if why := route.SegmentProblem(seg); why != "" {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeRoutePattern,
+				"@prefix %q: net/http's ServeMux refuses the segment %q - %s", prefix, seg, why)
+			continue
+		}
+		name, ok := route.WildcardName(seg)
+		if !ok {
+			continue
+		}
+		if where, dup := boundBy[name]; dup {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDuplicatePathVar,
+				"@prefix %q repeats the path variable {%s}, already bound by %s: net/http's ServeMux panics on a duplicate wildcard at registration. Rename one.",
+				prefix, name, where)
+			continue
+		}
+		boundBy[name] = "an earlier segment of the @prefix"
+	}
+}
+
+// checkRouteEnd rejects a `{name...}` or `{$}` wildcard before the last
+// segment of rt, m's registered route; a segment net/http refuses outright
+// is reported where it is written.
+func (a *analyzer) checkRouteEnd(svcName string, m *ast.Method, rt string) {
+	segs := route.Segments(rt)
+	for _, seg := range segs[:max(len(segs)-1, 0)] {
+		if route.EndsRoute(seg) && route.SegmentProblem(seg) == "" {
+			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodeRoutePattern,
+				"method %s.%s resolves to %s, where %s is not the last segment: net/http's ServeMux takes `{name...}` and `{$}` only at the end of a route, so registering it panics",
+				svcName, m.Name, rt, seg)
+		}
+	}
+}
+
+// checkMethodPathSegments rejects a literal segment of m's own path that
+// net/http's ServeMux refuses, `.` or `..`, where it is written.
+func (a *analyzer) checkMethodPathSegments(svcName string, m *ast.Method) {
+	if m.Path == nil {
+		return
+	}
+	for _, seg := range m.Path.Segments {
+		if seg.Param {
+			continue
+		}
+		if why := route.SegmentProblem(seg.Literal); why != "" {
+			a.diag(seg.Pos, seg.Pos, lexer.SeverityError, CodeRoutePattern,
+				"method %s.%s: net/http's ServeMux refuses the segment %q - %s", svcName, m.Name, seg.Literal, why)
+		}
+	}
+}
+
+// wildcardOrigins maps each path variable of path, a route or part of one,
+// to where.
+func wildcardOrigins(path, where string) map[string]string {
+	out := map[string]string{}
+	for _, seg := range route.Segments(path) {
+		if name, ok := route.WildcardName(seg); ok {
+			out[name] = where
+		}
+	}
+	return out
+}
+
+// checkProjectPathCollision reports method pairs that net/http's ServeMux
+// refuses to register together: one verb with the same route shape, or
+// overlapping shapes with neither more specific. A same-shape pair within
+// one service is left to [analyzer.checkServiceMethods].
+func (c *projectChecks) checkProjectPathCollision() {
 	type routeEntry struct {
 		verb, route, shape   string
 		pos                  lexer.Position
 		pkg, service, method string
 	}
 	var entries []routeEntry
-	for _, pkgName := range slices.Sorted(maps.Keys(r.proj.Packages)) {
-		pkg := r.proj.Packages[pkgName]
+	for _, pkgName := range slices.Sorted(maps.Keys(c.proj.Packages)) {
+		pkg := c.proj.Packages[pkgName]
 		if pkg == nil {
 			continue
 		}
@@ -92,7 +141,7 @@ func (r *refResolver) checkProjectPathCollision() {
 				continue
 			}
 			for _, m := range si.Methods {
-				rt := route.Resolve(r.basePath, si.Primary, m)
+				rt := si.registeredRoute(m)
 				entries = append(entries, routeEntry{
 					verb: strings.ToUpper(m.Verb), route: rt, shape: route.Shape(rt),
 					pos: m.Pos, pkg: pkgName, service: svcName, method: m.Name,
@@ -100,7 +149,7 @@ func (r *refResolver) checkProjectPathCollision() {
 			}
 		}
 	}
-	// Same shape: the later declaration collides with the first one seen.
+	// Same shape: each later declaration is reported against the first.
 	type routeKey struct{ verb, shape string }
 	first := map[routeKey]routeEntry{}
 	for _, e := range entries {
@@ -113,20 +162,19 @@ func (r *refResolver) checkProjectPathCollision() {
 		if prev.pkg == e.pkg && prev.service == e.service {
 			continue
 		}
-		d := r.diag(e.pos, lexer.SeverityError, CodePathCollision,
+		d := c.diag(e.pos, lexer.SeverityError, CodePathCollision,
 			"method %s.%s resolves to %s %s, which already binds %s.%s%s",
 			e.service, e.method, e.verb, e.route, prev.service, prev.method, packageNote(prev.pkg, e.pkg))
 		d.Related = related(prev.pos, "first declared here")
 	}
-	// Different shapes that overlap: one diagnostic per pair, at the later
-	// declaration.
+	// Overlapping shapes: one diagnostic per pair, at the later declaration.
 	for i := 1; i < len(entries); i++ {
 		for j := 0; j < i; j++ {
 			a, b := entries[i], entries[j]
 			if a.verb != b.verb || a.shape == b.shape || !route.PatternsConflict(a.route, b.route) {
 				continue
 			}
-			d := r.diag(a.pos, lexer.SeverityError, CodePathCollision,
+			d := c.diag(a.pos, lexer.SeverityError, CodePathCollision,
 				"method %s.%s resolves to %s %s, which overlaps %s %s of %s.%s%s: both match the same paths and neither is more specific, so net/http rejects the pair at startup; give one route a distinct literal segment or move the variable to @query",
 				a.service, a.method, a.verb, a.route, b.verb, b.route, b.service, b.method, packageNote(b.pkg, a.pkg))
 			d.Related = related(b.pos, "overlaps this route")
@@ -143,12 +191,37 @@ func packageNote(other, own string) string {
 	return " (package " + other + ")"
 }
 
-// checkBasePathFormat emits a warning when the configured basePath
-// doesn't match the canonical shape: empty, OR starts with `/`, no
-// trailing slash, no `//`. Codegen normalises in either direction so
-// this is informational rather than blocking.
-func (a *analyzer) checkBasePathFormat() {
-	bp := a.opts.BasePath
+// checkBasePathPattern rejects, once each, a segment of the basePath that
+// net/http's ServeMux refuses and a path variable it repeats.
+func (c *projectChecks) checkBasePathPattern() {
+	refused, repeated, seen := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for _, seg := range route.Segments(c.basePath) {
+		if why := route.SegmentProblem(seg); why != "" {
+			if !refused[seg] {
+				c.diag(c.manifest, lexer.SeverityError, CodeRoutePattern,
+					"openapi.basePath %q: net/http's ServeMux refuses the segment %q - %s", c.basePath, seg, why)
+			}
+			refused[seg] = true
+			continue
+		}
+		name, ok := route.WildcardName(seg)
+		if !ok {
+			continue
+		}
+		if seen[name] && !repeated[name] {
+			repeated[name] = true
+			c.diag(c.manifest, lexer.SeverityError, CodeDuplicatePathVar,
+				"openapi.basePath %q repeats the path variable {%s}: net/http's ServeMux panics on a duplicate wildcard at registration. Rename one.",
+				c.basePath, name)
+		}
+		seen[name] = true
+	}
+}
+
+// checkBasePathFormat warns when a non-empty basePath lacks the leading
+// `/`, ends with `/` or contains `//`.
+func (c *projectChecks) checkBasePathFormat() {
+	bp := c.basePath
 	if bp == "" {
 		return
 	}
@@ -164,58 +237,34 @@ func (a *analyzer) checkBasePathFormat() {
 	if bad == "" {
 		return
 	}
-	// We don't have a position for the manifest value (it's parsed by
-	// the config loader, not the DSL parser), so use the zero
-	// position. The IDE renders this as a project-level diagnostic.
-	a.diag(lexer.Position{}, lexer.Position{}, lexer.SeverityWarning,
-		CodePathBaseFormat,
-		"basePath %q is malformed: %s - codegen will normalise but please fix the manifest",
+	c.diag(c.manifest, lexer.SeverityWarning, CodePathBaseFormat,
+		"openapi.basePath %q is malformed: %s - codegen will normalise but please fix the manifest",
 		bp, bad)
 }
 
-// resolveMethodPath is the analyzer-bound shorthand for [route.Resolve] with
-// the configured basePath applied.
-func (a *analyzer) resolveMethodPath(svc *ast.ServiceDecl, m *ast.Method) string {
-	return route.Resolve(a.opts.BasePath, svc, m)
+// registeredRoute returns the route m, a method of the service, registers:
+// the basePath, the service's @prefix, then m's path.
+func (si *ServiceInfo) registeredRoute(m *ast.Method) string {
+	return route.Resolve(si.basePath, si.Primary, m)
 }
 
-// checkMethodPathParams validates that `{name}` segments in route
-// match field bindings in the method's request type. Two issues fire:
-//
-//   - missing: a path segment with no field to bind to;
-//   - orphan:  a `@path` / `@path("x")` field with no `{x}` in route.
-//
-// Two rules govern the matching, mirroring the codegen's auto-bind
-// logic in `internal/codegen/golang.collectBindings`:
-//
-//  1. An explicit `@path` decorator binds the field. Custom name
-//     `@path("custom")` wins over the field's identifier.
-//  2. A field whose NAME matches a path segment auto-binds, even
-//     without `@path`. (`type GetUserReq { id string }` paired with
-//     `/users/{id}` is the canonical example.)
-//
-// Auto-bound fields are NOT subject to the orphan check - only
-// explicitly-decorated ones, since a bare-named field that happens
-// to not match the path is just a regular query/body field.
-//
-// The request type and its mixins resolve across packages exactly as the
-// codegen binder does, so `type Req { shared.IdHolder }` binds its `@path`
-// field the same way.
-func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, rt string) {
-	pathParams := route.Vars(rt)
-	// A method with no request struct generates a bare `func() error`
-	// logic signature, so any `{param}` the route declares has nowhere
-	// to land.
+// checkMethodPathParams reports a `{name}` in rt that no request field
+// binds, by `@path` or by its name, and an explicit `@path` field with no
+// segment in rt; decs are the decorators that apply to m. A raw request
+// reads its path values itself. Each variable is reported once, spelled as
+// rt writes it.
+func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, decs []*ast.Decorator, rt string) {
+	pathParams, written := routeVariables(rt)
 	if m.Request == nil {
-		// A raw-request method (`@rawRequest` / `@passthrough`) reads
-		// path values straight off the *http.Request via `r.PathValue`,
-		// so no struct binding is needed and the diagnostic would be
-		// spurious for it.
-		rawReq, _ := wire.RawSides(m.Decorators)
+		rawReq, _ := wire.RawSides(decs)
 		if len(pathParams) > 0 && !rawReq {
+			segs := make([]string, len(pathParams))
+			for i, p := range pathParams {
+				segs[i] = written[p]
+			}
 			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamMissing,
-				"method %s.%s: path declares %v but no request struct - path values won't reach logic. Declare a request struct with a `<name> string @path` (or matching field name) to bind.",
-				svcName, m.Name, pathParams)
+				"method %s.%s: path declares %s but no request struct - path values won't reach logic. Declare a request struct with a `<name> string @path` (or matching field name) to bind.",
+				svcName, m.Name, strings.Join(segs, ", "))
 		}
 		return
 	}
@@ -224,36 +273,47 @@ func (a *analyzer) checkMethodPathParams(svcName string, m *ast.Method, rt strin
 	}
 	reqFields := a.requestPathFields(m, pathParams)
 	if reqFields == nil {
-		// Unknown / cross-package request type - placement / qualified-ref
-		// pass owns the diagnostic; we silently skip rather than emit a
-		// confusing missing-field error on a name we couldn't resolve.
-		return
+		return // an unresolved request type is reported by the reference checks
 	}
-	// Missing: route param has no field.
-	for _, p := range pathParams {
-		if !reqFields.has(p) {
-			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamMissing,
-				"method %s.%s: path segment {%s} has no matching field in request type",
-				svcName, m.Name, p)
-		}
-	}
-	// Orphan: field claims @path explicitly but route lacks the segment.
-	// Auto-bound fields don't fire orphan - they're just a regular field
-	// that happens not to coincide with any path segment.
+	// A `@path("name...")` binds no variable; its report names the one it misses.
+	reported := map[string]bool{}
 	for _, name := range reqFields.explicit {
-		if !inSet(name, pathParams) {
-			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamOrphan,
-				"method %s.%s: field %q has @path binding but route %s has no {%s} segment",
-				svcName, m.Name, name, rt, name)
+		if slices.Contains(pathParams, name) {
+			continue
+		}
+		hint := ""
+		if trimmed := strings.TrimSuffix(name, "..."); trimmed != name && written[trimmed] != "" {
+			reported[trimmed] = true
+			hint = fmt.Sprintf(" - the variable %s is named %q", written[trimmed], trimmed)
+		}
+		a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamOrphan,
+			"method %s.%s: field %q has @path binding but route %s has no {%s} segment%s",
+			svcName, m.Name, name, rt, name, hint)
+	}
+	for _, p := range pathParams {
+		if !reqFields.has(p) && !reported[p] {
+			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodePathParamMissing,
+				"method %s.%s: path segment %s has no matching field in request type",
+				svcName, m.Name, written[p])
 		}
 	}
 }
 
-// pathParamSet is the set of names that the request type advertises
-// as path-bindable, plus the subset that did so via an explicit
-// `@path` decorator. The orphan check uses `explicit` so an auto-
-// bound field that doesn't actually appear in the path doesn't
-// false-positive.
+// routeVariables returns the names of rt's variables in route order, each
+// once, and the segment that first writes each one: `{id}`, `{rest...}`.
+func routeVariables(rt string) (names []string, written map[string]string) {
+	written = map[string]string{}
+	for _, seg := range route.Segments(rt) {
+		if name, ok := route.WildcardName(seg); ok && written[name] == "" {
+			written[name] = seg
+			names = append(names, name)
+		}
+	}
+	return names, written
+}
+
+// pathParamSet is the segment names a request binds; explicit holds those
+// bound by `@path`.
 type pathParamSet struct {
 	all      map[string]bool
 	explicit []string
@@ -267,79 +327,83 @@ func (s *pathParamSet) has(name string) bool {
 	return s.all[name]
 }
 
-// requestPathFields classifies the fields of m's request type against
-// pathParams. Mixin members are expanded so `type Req { Base  name string }`
-// exposes Base's fields for path binding - the same view the codegen
-// handler binder gets, including mixins pulled from a sibling package.
-//
-// Returns nil when the request type can't be resolved (unknown name) so
-// the caller can skip path-param checks rather than emit a confusing
-// missing-field error.
+// requestPathFields collects the segment names m's request fields bind,
+// mixin fields included; nil when the request type does not resolve.
 func (a *analyzer) requestPathFields(m *ast.Method, pathParams []string) *pathParamSet {
-	td, fields := a.requestFields(m)
-	if td == nil {
+	_, fields, ok := a.instanceFields(m.Request)
+	if !ok {
 		return nil
 	}
 	paramSet := map[string]bool{}
 	for _, p := range pathParams {
 		paramSet[p] = true
 	}
+	bodyVerb := wire.IsBodyVerb(m.Verb)
 	out := &pathParamSet{all: map[string]bool{}}
-	for _, pf := range fields {
-		f := pf.Field
-		name, hasExplicit := pathBindingName(f)
-		if hasExplicit {
-			out.all[name] = true
-			out.explicit = append(out.explicit, name)
+	for _, ff := range fields {
+		b, auto := wire.RequestFieldBinding(ff.Field, paramSet, bodyVerb)
+		if b != wire.BindPath {
 			continue
 		}
-		// A field auto-binds to a same-named segment ONLY when no other
-		// wire decorator diverts it. `id string @query` on `/u/{id}`
-		// rides the query string, so it does NOT cover the {id} segment
-		// - mirror RequestFieldBinding (auto=false here) or the
-		// path-coverage check passes while {id} stays unbound and the
-		// emitted OpenAPI has no `in: path` parameter for it.
-		if paramSet[f.Name] && !hasDivertingWireBinding(f.Decorators) {
-			out.all[f.Name] = true
+		name := wire.WireName(ff.Field, wire.BindPath)
+		out.all[name] = true
+		if !auto {
+			out.explicit = append(out.explicit, name)
 		}
 	}
 	return out
 }
 
-// hasDivertingWireBinding reports whether a field carries a wire binding
-// that routes it away from the path segment its name would otherwise
-// auto-bind to (mirrors RequestFieldBinding returning auto=false). @path
-// is handled by pathBindingName, so only the diverting bindings matter here.
-func hasDivertingWireBinding(ds []*ast.Decorator) bool {
-	for _, d := range ds {
-		if d == nil {
-			continue
-		}
-		switch d.Name {
-		case wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingBody, wire.BindingForm:
-			return true
+// checkDuplicatePathVars rejects a path variable m's path repeats, or one
+// the basePath or the service @prefix, which its registered route starts
+// with, already has; si is m's service.
+func (a *analyzer) checkDuplicatePathVars(si *ServiceInfo, svcName string, m *ast.Method) {
+	if m.Path == nil {
+		return
+	}
+	boundBy := wildcardOrigins(si.basePath, "the basePath")
+	for name := range wildcardOrigins(route.ServicePrefix(si.Primary), "the service @prefix") {
+		if _, dup := boundBy[name]; !dup {
+			boundBy[name] = "the service @prefix"
 		}
 	}
-	return false
+	seen := map[string]bool{}
+	for _, seg := range m.Path.Segments {
+		if !seg.Param {
+			continue
+		}
+		if where, dup := boundBy[seg.Literal]; dup {
+			a.diag(seg.Pos, seg.Pos, lexer.SeverityError, CodeDuplicatePathVar,
+				"%s.%s route repeats the path variable {%s} already bound by %s: the registered route is basePath + @prefix + method path, so net/http's ServeMux panics on the duplicate wildcard at registration. Drop {%s} from the method path.",
+				svcName, m.Name, seg.Literal, where, seg.Literal)
+			return
+		}
+		if seen[seg.Literal] {
+			a.diag(seg.Pos, seg.Pos, lexer.SeverityError, CodeDuplicatePathVar,
+				"%s.%s route repeats the path variable {%s}: net/http's ServeMux panics on a duplicate wildcard at registration. Rename one segment.",
+				svcName, m.Name, seg.Literal)
+			return
+		}
+		seen[seg.Literal] = true
+	}
 }
 
-// pathBindingName returns the path-segment name a field claims via
-// `@path` and whether the field has the decorator at all. The custom
-// override `@path("custom-name")` wins over the field's own identifier.
-func pathBindingName(f *ast.Field) (string, bool) {
-	for _, d := range f.Decorators {
-		if d == nil || d.Name != wire.BindingPath {
-			continue
-		}
-		if len(d.Args) > 0 {
-			// An empty wire-name arg (`@path("")`) falls back to the field
-			// name, mirroring WireName so the path-param check and the
-			// binder agree on the segment a field claims.
-			if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
-				return s.Value, true
-			}
-		}
-		return f.Name, true
+// methodRoutePathVars returns the path variables of m's registered route,
+// the basePath's and @prefix's included; services is the package's service
+// table.
+func methodRoutePathVars(m *ast.Method, services map[string]*ServiceInfo) map[string]bool {
+	vars := map[string]bool{}
+	if m == nil {
+		return vars
 	}
-	return "", false
+	owner := &ServiceInfo{}
+	for _, si := range services {
+		if si != nil && slices.Contains(si.Methods, m) {
+			owner = si
+		}
+	}
+	for _, name := range route.Vars(owner.registeredRoute(m)) {
+		vars[name] = true
+	}
+	return vars
 }

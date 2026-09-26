@@ -119,6 +119,23 @@ type MapValueGeneric {
 	bucket map<string, Page<Order>>
 }
 
+// MapPages instantiates Page over a map, an array of those maps, a map of
+// arrays and a map of optional values: four components. `[]` on the map leads
+// its name as `ArrayOf`; on the map's value, a leaf, it ends it as `Array`.
+type MapPages {
+	byKey   Page<map<string, Order>>
+	byBatch Page<map<string, Order>[]>
+	byList  Page<map<string, Order[]>>
+	byMaybe Page<map<string, Order?>>
+}
+
+// EnvelopePages instantiates Page over an Envelope of an array and over an
+// array of Envelopes: `[]` on the Envelope leads its name as `ArrayOf`.
+type EnvelopePages {
+	ofList Page<Envelope<Order[]>>
+	listOf Page<Envelope<Order>[]>
+}
+
 // PageOfPrimitive exercises a non-component arg type: `Page<string>`
 // must emit a component `PageOfString` whose items field is
 // `{ type: string }` (primitive inline), not `$ref:String`. The
@@ -221,4 +238,69 @@ type GenericOverScalar {
 // generated `switch` Validate().
 type GenericOverEnum {
 	levels Page<Priority>
+}
+
+// Key is a non-empty lookup key.
+scalar Key string @minLength(1)
+
+// KeyMeta carries a Key.
+type KeyMeta {
+	code Key?
+}
+
+// Keyed<Key> spells its type parameter like the Key scalar: the argument
+// binds Keyed's own `key`, while the `code` KeyMeta brings stays a Key.
+type Keyed<Key> {
+	KeyMeta
+	key Key?
+}
+
+// ListKeyedReq binds `code` as the Key scalar and `key` as a Priority,
+// both from the query string.
+type ListKeyedReq {
+	Keyed<Priority>
+}
+
+// KeyedPage<Key> answers its Key-spelled parameter in a header beside the
+// body: `KeyedPage<Priority>` sends `key` and `items` as Priority values while
+// the `code` KeyMeta brings stays a Key.
+type KeyedPage<Key> {
+	KeyMeta
+	key   Key   @header("X-Key")
+	items Key[]
+}
+
+// Shadowed<Blob, Priority> spells its type parameters like the Blob scalar
+// and the Priority enum: each field takes its argument's type, the optional
+// `payload` behind a pointer, and neither is checked as the declaration.
+type Shadowed<Blob, Priority> {
+	payload Blob?
+	level   Priority
+}
+
+// ShadowedHost instantiates Shadowed over an int and a string.
+type ShadowedHost {
+	s Shadowed<int, string>
+}
+
+// Tallied<T> sends a field of its argument's type in a header:
+// `Tallied<int>` writes `tally` as a decimal integer.
+type Tallied<T> {
+	tally T   @header("X-Tally")
+	items T[]
+}
+
+// KeyedPut<Key> is a request body a header splits: `KeyedPut<Priority>` reads
+// `key` as a Priority while the `code` KeyMeta brings stays a Key.
+type KeyedPut<Key> {
+	KeyMeta
+	trace string @header("X-Trace")
+	key   Key
+}
+
+// Lookup<T> is a generic request type: `Lookup<Priority>` binds `id` from
+// the route's {id} and `level` as a Priority from the query string.
+type Lookup<T> {
+	id    UUID
+	level T?
 }

@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoCollection returns the http.HandlerFunc for the
-// POST EchoCollection endpoint.
+// Echo the array / map default shapes. The map<,>?-with-object-default field is expected to be rejected at codegen time.
+//
+// EchoCollection returns the POST EchoCollection handler.
 func EchoCollection(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.DefaultsCollection
@@ -32,8 +33,6 @@ func EchoCollection(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

@@ -7,26 +7,21 @@ import (
 	"errors"
 	"io"
 
-	pb "github.com/craftgodotdev/craftgo/example/grpc/internal/pb/greet"
-
-	"github.com/craftgodotdev/craftgo/example/grpc/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
 	"google.golang.org/grpc"
+
+	pb "github.com/craftgodotdev/craftgo/example/grpc/internal/pb/greet"
+	"github.com/craftgodotdev/craftgo/example/grpc/svccontext"
 )
 
-// ChatService carries the per-request state for the
-// Chat endpoint of Greeter. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ChatService runs Greeter.Chat for one request.
 type ChatService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewChatService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewChatService binds ChatService to ctx; its Logger carries ctx's trace ids.
 func NewChatService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ChatService {
 	return &ChatService{
 		Logger: log.Default().WithContext(ctx),
@@ -36,10 +31,8 @@ func NewChatService(ctx context.Context, svcCtx *svccontext.ServiceContext) *Cha
 }
 
 // Chat echoes greetings for as long as the client keeps sending.
-// Read requests with stream.Recv and answer with stream.Send;
-// returning ends the stream.
-// Chat is the service entry point. Replace the
-// TODO with the real implementation.
+//
+// Chat reads requests with stream.Recv and answers with stream.Send; returning ends the stream.
 func (l *ChatService) Chat(stream grpc.BidiStreamingServer[pb.HelloRequest, pb.HelloReply]) error {
 	for {
 		req, err := stream.Recv()

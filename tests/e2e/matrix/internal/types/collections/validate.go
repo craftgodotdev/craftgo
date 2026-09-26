@@ -9,17 +9,12 @@ import (
 	"unicode/utf8"
 )
 
-// Pattern regexes compile ONCE at package init so Validate() calls
-// reference the precompiled var instead of recompiling per request.
-// The pattern is rendered via %q (Go-quoted) rather than a raw-string
-// literal so regexes containing a backtick, backslash, or quote still
-// produce compilable Go - a raw `...` literal would break on a backtick.
+// The regexes of the @pattern and @format checks, compiled once.
 var (
 	_pattern0 = regexp.MustCompile("^[a-z-]+$")
 )
 
-// Validate checks every field-level constraint declared on Address.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Address) Validate() error {
 	if l := utf8.RuneCountInString(v.Street); l < 1 || l > 200 {
 		return fmt.Errorf("street: length out of range [1, 200]")
@@ -30,8 +25,7 @@ func (v *Address) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Arr_BoundsBasic.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Arr_BoundsBasic) Validate() error {
 	if len(v.Tags) < 1 {
 		return fmt.Errorf("tags: minItems 1")
@@ -51,8 +45,7 @@ func (v *Arr_BoundsBasic) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Arr_EmptyExact.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Arr_EmptyExact) Validate() error {
 	if len(v.AlwaysEmpty) > 0 {
 		return fmt.Errorf("always_empty: maxItems 0")
@@ -60,14 +53,12 @@ func (v *Arr_EmptyExact) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Arr_MinZero.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Arr_MinZero) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Arr_OptionalBound.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Arr_OptionalBound) Validate() error {
 	if v.Tags != nil {
 		if len(v.Tags) < 1 {
@@ -77,20 +68,17 @@ func (v *Arr_OptionalBound) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Arr_PlainInts.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Arr_PlainInts) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Arr_PlainStrings.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Arr_PlainStrings) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Arr_Tag2D.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Arr_Tag2D) Validate() error {
 	for i0 := range v.Grid {
 		for i1 := range v.Grid[i0] {
@@ -102,8 +90,7 @@ func (v *Arr_Tag2D) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Arr_Tag2DOptional.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Arr_Tag2DOptional) Validate() error {
 	for i0 := range v.Grid {
 		for i1 := range v.Grid[i0] {
@@ -115,8 +102,7 @@ func (v *Arr_Tag2DOptional) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Arr_Tag3D.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Arr_Tag3D) Validate() error {
 	for i0 := range v.Cube {
 		for i1 := range v.Cube[i0] {
@@ -130,8 +116,7 @@ func (v *Arr_Tag3D) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Arr_TagSlice.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Arr_TagSlice) Validate() error {
 	if len(v.Tags) < 1 {
 		return fmt.Errorf("tags: minItems 1")
@@ -156,12 +141,28 @@ func (v *Arr_TagSlice) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Map_ArrayValue.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *Map_ArrayOfMaps) Validate() error {
+	for i0 := range v.M {
+		for _, val1 := range v.M[i0] {
+			if err := val1.Validate(); err != nil {
+				return fmt.Errorf("m: %w", err)
+			}
+		}
+	}
+	for _, val0 := range v.Plain {
+		if err := val0.Validate(); err != nil {
+			return fmt.Errorf("plain: %w", err)
+		}
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *Map_ArrayValue) Validate() error {
-	for _, val := range v.Buckets {
-		for i0 := range val {
-			if err := val[i0].Validate(); err != nil {
+	for _, val0 := range v.Buckets {
+		for i1 := range val0 {
+			if err := val0[i1].Validate(); err != nil {
 				return fmt.Errorf("buckets: %w", err)
 			}
 		}
@@ -169,8 +170,7 @@ func (v *Map_ArrayValue) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Map_Bounds.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Map_Bounds) Validate() error {
 	if len(v.Counts) < 1 {
 		return fmt.Errorf("counts: minItems 1")
@@ -181,67 +181,120 @@ func (v *Map_Bounds) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Map_KeyAndValue.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *Map_JSONKey) Validate() error {
+	for key0, val0 := range v.Index {
+		if err := key0.Validate(); err != nil {
+			return fmt.Errorf("by_id: %w", err)
+		}
+		if err := val0.Validate(); err != nil {
+			return fmt.Errorf("by_id: %w", err)
+		}
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *Map_KeyAndValue) Validate() error {
-	for key, val := range v.Index {
-		if err := key.Validate(); err != nil {
+	for key0, val0 := range v.Index {
+		if err := key0.Validate(); err != nil {
 			return fmt.Errorf("index: %w", err)
 		}
-		if err := val.Validate(); err != nil {
+		if err := val0.Validate(); err != nil {
 			return fmt.Errorf("index: %w", err)
 		}
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Map_Optional.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *Map_Nested) Validate() error {
+	for _, val0 := range v.Mm {
+		for _, val1 := range val0 {
+			if err := val1.Validate(); err != nil {
+				return fmt.Errorf("mm: %w", err)
+			}
+		}
+	}
+	for _, val0 := range v.Maa {
+		for i1 := range val0 {
+			for _, val2 := range val0[i1] {
+				if err := val2.Validate(); err != nil {
+					return fmt.Errorf("maa: %w", err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *Map_Optional) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Map_Plain.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *Map_OptionalValue) Validate() error {
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *Map_Plain) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Map_ScalarValue.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *Map_ScalarKey) Validate() error {
+	for key0, val0 := range v.ByUser {
+		if err := key0.Validate(); err != nil {
+			return fmt.Errorf("byUser: %w", err)
+		}
+		if err := val0.Validate(); err != nil {
+			return fmt.Errorf("byUser: %w", err)
+		}
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *Map_ScalarValue) Validate() error {
-	for _, val := range v.Labels {
-		if err := val.Validate(); err != nil {
+	for _, val0 := range v.Labels {
+		if err := val0.Validate(); err != nil {
 			return fmt.Errorf("labels: %w", err)
 		}
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Map_StructAddress.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Map_StructAddress) Validate() error {
-	for _, val := range v.Addresses {
-		if err := val.Validate(); err != nil {
-			return err
+	for _, val0 := range v.Addresses {
+		if err := val0.Validate(); err != nil {
+			return fmt.Errorf("addresses: %w", err)
 		}
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Map_StructValue.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Map_StructValue) Validate() error {
-	for _, val := range v.Users {
-		if err := val.Validate(); err != nil {
-			return err
+	for _, val0 := range v.Users {
+		if err := val0.Validate(); err != nil {
+			return fmt.Errorf("users: %w", err)
 		}
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on User.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *MemberTag) Validate() error {
+	if utf8.RuneCountInString(v.Name) < 1 {
+		return fmt.Errorf("name: length less than 1")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *User) Validate() error {
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 80 {
 		return fmt.Errorf("name: length out of range [1, 80]")
@@ -252,8 +305,15 @@ func (v *User) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Email.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v DeepTag) Validate() error {
+	if utf8.RuneCountInString(string(v)) < 1 {
+		return fmt.Errorf("length less than 1")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v Email) Validate() error {
 	if _, _err := mail.ParseAddress(string(v)); _err != nil {
 		return fmt.Errorf("not a valid email")
@@ -264,8 +324,26 @@ func (v Email) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on NonEmptyID.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v MapTag) Validate() error {
+	if utf8.RuneCountInString(string(v)) < 1 {
+		return fmt.Errorf("length less than 1")
+	}
+	if utf8.RuneCountInString(string(v)) > 20 {
+		return fmt.Errorf("length greater than 20")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v MemberID) Validate() error {
+	if int(v) < 1 {
+		return fmt.Errorf("below minimum 1")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v NonEmptyID) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("length less than 1")
@@ -276,8 +354,7 @@ func (v NonEmptyID) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Tag.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Tag) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("length less than 1")

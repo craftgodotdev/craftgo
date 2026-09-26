@@ -8,17 +8,12 @@ import (
 	"unicode/utf8"
 )
 
-// Pattern regexes compile ONCE at package init so Validate() calls
-// reference the precompiled var instead of recompiling per request.
-// The pattern is rendered via %q (Go-quoted) rather than a raw-string
-// literal so regexes containing a backtick, backslash, or quote still
-// produce compilable Go - a raw `...` literal would break on a backtick.
+// The regexes of the @pattern and @format checks, compiled once.
 var (
 	_pattern0 = regexp.MustCompile("^(read|write|admin)$")
 )
 
-// Validate checks every field-level constraint declared on AdminStats.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *AdminStats) Validate() error {
 	if v.Projects < 0 {
 		return fmt.Errorf("projects: below minimum 0")
@@ -32,8 +27,7 @@ func (v *AdminStats) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ApiToken.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ApiToken) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -41,7 +35,7 @@ func (v *ApiToken) Validate() error {
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 80 {
 		return fmt.Errorf("name: length out of range [1, 80]")
 	}
-	if l := utf8.RuneCountInString(v.Last4); l < 4 || l > 4 {
+	if utf8.RuneCountInString(v.Last4) != 4 {
 		return fmt.Errorf("last4: length must be 4")
 	}
 	if err := v.Timestamps.Validate(); err != nil {
@@ -50,8 +44,7 @@ func (v *ApiToken) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ApiTokenSecret.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ApiTokenSecret) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -59,8 +52,7 @@ func (v *ApiTokenSecret) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CreateTokenReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CreateTokenReq) Validate() error {
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 80 {
 		return fmt.Errorf("name: length out of range [1, 80]")
@@ -71,8 +63,7 @@ func (v *CreateTokenReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on RevokeTokenReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *RevokeTokenReq) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)

@@ -11,10 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PtBlocks returns the http.HandlerFunc for the
-// GET PtBlocks passthrough endpoint. The framework stays
-// out of the way: logic receives the raw http.ResponseWriter and
-// *http.Request and writes the response directly.
+// Passthrough with a docs-only contract: typed OpenAPI, still `(w, r) error`.
+//
+// PtBlocks returns the GET PtBlocks handler.
 func PtBlocks(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewPtBlocksService(r.Context(), svcCtx)

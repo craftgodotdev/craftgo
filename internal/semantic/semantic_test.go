@@ -1,59 +1,11 @@
 package semantic
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/route"
 )
-
-func parseFiles(t *testing.T, sources ...string) []*ast.File {
-	t.Helper()
-	var files []*ast.File
-	for i, src := range sources {
-		p := parser.New("test"+itoa(i)+".craftgo", src)
-		f := p.Parse()
-		if d := p.Diagnostics(); len(d) > 0 {
-			t.Fatalf("parse error in source %d: %v", i, d)
-		}
-		files = append(files, f)
-	}
-	return files
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	const digits = "0123456789"
-	var sb strings.Builder
-	if n < 0 {
-		sb.WriteByte('-')
-		n = -n
-	}
-	var stack []byte
-	for n > 0 {
-		stack = append(stack, digits[n%10])
-		n /= 10
-	}
-	for i := len(stack) - 1; i >= 0; i-- {
-		sb.WriteByte(stack[i])
-	}
-	return sb.String()
-}
-
-func mustClean(t *testing.T, sources ...string) *Package {
-	t.Helper()
-	pkg, diags := Analyze(parseFiles(t, sources...))
-	if len(diags) > 0 {
-		t.Fatalf("unexpected diagnostics: %v", diags)
-	}
-	return pkg
-}
-
-// ---------- happy path ----------
 
 func TestAnalyzeBasic(t *testing.T) {
 	pkg := mustClean(t, `package design
@@ -86,22 +38,8 @@ service S { get GetUser /u {} }`)
 	}
 }
 
-// ---------- package name ----------
-
-func TestPackageNameMissing(t *testing.T) {
-	pkg := mustClean(t, `type X {}`)
-	if pkg.Name != "" {
-		t.Error("expected empty name")
-	}
-}
-
-// ---------- duplicate decls ----------
-
-// TestDuplicateDecl pins the type/enum/scalar/error shared namespace -
-// they all emit into the same Go types package, so a DSL-name match
-// across kinds is a hard collision. Middleware lives in its own Go
-// package (svccontext aliases) and uses a separate seen map; see
-// [TestMiddlewareSeparateNamespace] for the parity expectation.
+// Types, enums, scalars and errors share one namespace.
+// A second declaration of a top-level name is reported and related to the first.
 func TestDuplicateDecl(t *testing.T) {
 	cases := []string{
 		`type X {}
@@ -114,50 +52,42 @@ error NotFound X`,
 scalar X string`,
 	}
 	for _, src := range cases {
-		expectMsg(t, "duplicate top-level", src)
+		d := expectDiag(t, src, CodeDuplicateDecl)
+		expectMessage(t, d, "duplicate top-level")
+		if len(d.Related) != 1 || d.Related[0].Msg != "first declared here" {
+			t.Errorf("%q: related = %+v", src, d.Related)
+		}
 	}
 }
 
-// TestMiddlewareSeparateNamespace pins the namespace split: a
-// middleware named the same as a type does NOT clash, because their
-// codegen output lives in different Go packages (types vs svccontext).
-// Middleware-vs-middleware duplicates still error.
+// A middleware may share a type's name, but not another middleware's.
 func TestMiddlewareSeparateNamespace(t *testing.T) {
-	// type Foo + middleware Foo - no collision.
 	mustClean(t, `type Foo {}
 middleware Foo`)
 
-	// middleware Foo + middleware Foo - duplicate within the
-	// middleware namespace.
 	expectMsg(t, "duplicate top-level", `middleware Foo
 middleware Foo`)
 }
 
-// ---------- service merge ----------
-
 func TestServicePrimaryDuplicate(t *testing.T) {
-	expectMsg(t, "duplicate primary service", `service S {}
-service S {}`)
+	d := expectDiag(t, `service S {}
+service S {}`, CodeServiceDuplicate)
+	expectMessage(t, d, "duplicate primary service")
 }
 
 func TestServiceExtendWithoutPrimary(t *testing.T) {
-	expectMsg(t, "no primary declaration", `extend service S { get Op /x {} }`)
+	d := expectDiag(t, `extend service S { get Op /x {} }`, CodeServiceExtendOrphan)
+	expectMessage(t, d, "no primary declaration")
 }
 
-// TestServiceExtendWithServiceOnlyDecorator pins the validation that
-// a service-only decorator like `@prefix` is rejected when it lands on
-// an `extend service` block - those blocks propagate decorators to
-// methods inside them, so a decorator with no method-level form has
-// nothing meaningful to do.
+// A service-only decorator such as @prefix is rejected on an `extend service` block.
 func TestServiceExtendWithServiceOnlyDecorator(t *testing.T) {
 	expectMsg(t, "not valid on a method", `service S {}
 @prefix("/x")
 extend service S { get Op /x {} }`)
 }
 
-// TestServiceExtendDecoratorPropagatesToMethods is the happy path:
-// a method-level-applicable decorator on the extend block reaches
-// every method inside.
+// A decorator on an `extend service` block reaches every method inside it.
 func TestServiceExtendDecoratorPropagatesToMethods(t *testing.T) {
 	pkg, diags := Analyze(parseFiles(t, `middleware Auth
 service S { get A /a {} }
@@ -175,14 +105,12 @@ extend service S { get B /b {} }`))
 	if bMethod == nil {
 		t.Fatal("method B missing")
 	}
-	saw := false
-	for _, d := range bMethod.Decorators {
-		if d.Name == "middlewares" {
-			saw = true
-		}
+	decs := pkg.Services["S"].Decorators(bMethod)
+	if !ast.HasDecorator(decs, "middlewares") {
+		t.Errorf("@middlewares did not propagate to method B: %+v", decs)
 	}
-	if !saw {
-		t.Errorf("@middlewares did not propagate to method B: %+v", bMethod.Decorators)
+	if len(bMethod.Decorators) != 0 {
+		t.Errorf("the block's decorators were written into B's syntax: %+v", bMethod.Decorators)
 	}
 }
 
@@ -195,71 +123,93 @@ extend service S { post B /b {} }`)
 }
 
 func TestDuplicateMethodAcrossExtends(t *testing.T) {
-	expectMsg(t, "duplicate method", `service S { get A /a {} }
-extend service S { post A /b {} }`)
+	d := expectDiag(t, `service S { get A /a {} }
+extend service S { post A /b {} }`, CodeServiceDuplicateMethod)
+	expectMessage(t, d, "duplicate method")
 }
 
 func TestDuplicateRoute(t *testing.T) {
-	expectMsg(t, "duplicate route", `service S { get A /x {} get B /x {} }`)
+	d := expectDiag(t, `service S { get A /x {} get B /x {} }`, CodeServiceDuplicateRoute)
+	expectMessage(t, d, "duplicate route")
 }
 
-// ---------- field uniqueness ----------
-
+// A repeated field name is reported and related to the first.
 func TestFieldUniquenessType(t *testing.T) {
-	expectMsg(t, "duplicate field", `type X { name string  name int }`)
+	d := expectDiag(t, `type X { name string  name int }`, CodeDuplicateField)
+	expectMessage(t, d, "duplicate field")
+	if len(d.Related) != 1 {
+		t.Errorf("related = %+v, want the first field", d.Related)
+	}
 }
 
 func TestFieldUniquenessError(t *testing.T) {
 	expectMsg(t, "duplicate field", `error BadRequest E { code string  code string }`)
 }
 
+// The duplicate-field check skips a type's mixin members: a field that repeats
+// one a mixin adds is the mixin conflict alone.
 func TestFieldUniquenessSkipsMixin(t *testing.T) {
-	// Type with a mixin + field - exercises the `if !ok { continue }` branch.
-	// Profile is declared so the mixin pass resolves it cleanly; the
-	// uniqueness pass under test is the `if !ok { continue }` skip on
-	// the embedded reference, independent of mixin resolution.
-	pkg := mustClean(t, `type Profile { id string }
-type X { Profile  name string }`)
-	if pkg.Types["X"] == nil || len(pkg.Types["X"].Body) != 2 {
-		t.Error()
-	}
+	src := `type Profile { id string }
+type X { Profile  id string }`
+	expectError(t, src, CodeMixinConflict)
+	expectNoCode(t, src, CodeDuplicateField)
 }
-
-// ---------- enum validation ----------
 
 func TestEnumDuplicateName(t *testing.T) {
-	expectMsg(t, "duplicate enum value name", `enum X { A  A }`)
+	d := expectDiag(t, `enum X { A  A }`, CodeEnumDuplicateName)
+	expectMessage(t, d, "duplicate enum value name")
 }
 
+// Bare and valued members in one enum are reported and related to the first value.
 func TestEnumMixedTypes(t *testing.T) {
-	expectMsg(t, "mixed value types", `enum X { A  B = 1 }`)
+	d := expectDiag(t, `enum X { A  B = 1 }`, CodeEnumMixedTypes)
+	expectMessage(t, d, "mixed value types")
+	if len(d.Related) != 1 {
+		t.Errorf("related = %+v, want the first value", d.Related)
+	}
 }
 
 func TestEnumDuplicateInt(t *testing.T) {
-	expectMsg(t, "duplicate int value", `enum X { A = 1  B = 1 }`)
+	d := expectDiag(t, `enum X { A = 1  B = 1 }`, CodeEnumDuplicateLiteral)
+	expectMessage(t, d, "duplicate int value")
 }
 
 func TestEnumDuplicateString(t *testing.T) {
-	expectMsg(t, "duplicate string value", `enum X { A = "x"  B = "x" }`)
+	d := expectDiag(t, `enum X { A = "x"  B = "x" }`, CodeEnumDuplicateLiteral)
+	expectMessage(t, d, "duplicate string value")
 }
 
-// TestCheckDecoratorScopeNilEntry exercises the defensive nil-decorator
-// branch of [analyzer.checkDecoratorScope]. The parser doesn't produce
-// nil entries today, so the only way to reach the branch is via a
-// hand-built decorator slice - kept defensive so a future parser
-// regression doesn't crash the analyser.
-func TestCheckDecoratorScopeNilEntry(t *testing.T) {
-	a := newTestAnalyzer(&Package{})
-	a.checkDecoratorScope("test", []*ast.Decorator{nil, {Name: "doc"}, nil})
-	if len(a.diags) != 0 {
-		t.Errorf("expected no diags from nil-only chain, got %v", a.diags)
+// Every repeat of an enum value name or literal relates to its first use.
+func TestEnumDuplicatesRelateToTheFirst(t *testing.T) {
+	for _, src := range []string{
+		"enum X {\n A\n A\n A\n}",
+		"enum X {\n A = 1\n B = 1\n C = 1\n}",
+		"enum X {\n A = \"x\"\n B = \"x\"\n C = \"x\"\n}",
+	} {
+		_, diags := Analyze(parseFiles(t, src))
+		n := 0
+		for _, d := range diags {
+			if d.Code != CodeEnumDuplicateName && d.Code != CodeEnumDuplicateLiteral {
+				continue
+			}
+			n++
+			if len(d.Related) != 1 || d.Related[0].Pos.Line != 2 {
+				t.Errorf("%q: %s at line %d relates to %v, want line 2", src, d.Code, d.Pos.Line, d.Related)
+			}
+		}
+		if n != 2 {
+			t.Errorf("%q: want 2 duplicate diagnostics, got %v", src, diags)
+		}
 	}
 }
 
-// ---------- duplicate decorators ----------
-
+// A repeated decorator is reported and related to the first.
 func TestDuplicateDecoratorOnField(t *testing.T) {
-	expectMsg(t, "duplicate decorator", `type X { name string @doc("a") @doc("b") }`)
+	d := expectDiag(t, `type X { name string @doc("a") @doc("b") }`, CodeDecoratorDuplicate)
+	expectMessage(t, d, "duplicate decorator")
+	if len(d.Related) != 1 {
+		t.Errorf("related = %+v, want the first @doc", d.Related)
+	}
 }
 
 func TestDuplicateDecoratorOnType(t *testing.T) {
@@ -268,9 +218,7 @@ func TestDuplicateDecoratorOnType(t *testing.T) {
 type X { name string }`)
 }
 
-// TestDuplicateDecoratorOnMethod uses `@deprecated` (single-value,
-// idempotent) to pin the duplicate check, because `@tags` is part of
-// the repeatable set (multiple @tags decorators concat their values).
+// A non-repeatable decorator given twice on a method is a duplicate.
 func TestDuplicateDecoratorOnMethod(t *testing.T) {
 	expectMsg(t, "duplicate decorator @deprecated on method S.GetUser", `service S {
 		@deprecated
@@ -279,9 +227,7 @@ func TestDuplicateDecoratorOnMethod(t *testing.T) {
 	}`)
 }
 
-// TestRepeatableDecoratorAllowedOnMethod pins that multiple `@tags`
-// decorators on the same method are valid - each contributes its
-// arguments to the aggregate the codegen layer reads.
+// A repeatable decorator such as @tags may appear more than once on a method.
 func TestRepeatableDecoratorAllowedOnMethod(t *testing.T) {
 	expectNoMsg(t, "duplicate decorator @tags", `service S {
 		@tags("a")
@@ -307,11 +253,11 @@ error NotFound UserNotFound`)
 }
 
 func TestDuplicateDecoratorOnErrorField(t *testing.T) {
-	expectMsg(t, "duplicate decorator @doc on field E.code", `error BadRequest E { code string @doc("a") @doc("b") }`)
+	expectMsg(t, "duplicate decorator @doc on error field E.code", `error BadRequest E { code string @doc("a") @doc("b") }`)
 }
 
 func TestDuplicateDecoratorPreservesFirst(t *testing.T) {
-	// First decorator stays in the AST untouched; only the second is reported.
+	// Only the second @doc is reported.
 	expectCodeCount(t, `type X { name string @doc("a") @doc("b") @length(1, 10) }`, CodeDecoratorDuplicate, 1)
 }
 
@@ -321,10 +267,9 @@ func TestDecoratorUnique_NoFalsePositive(t *testing.T) {
 type X { name string @length(1, 10) @pattern("^[a-z]+$") }`)
 }
 
-// ---------- qualified refs ----------
-
 func TestQualifiedRefInField(t *testing.T) {
-	expectMsg(t, "is not declared anywhere in the project", `type X { user shared.User }`)
+	d := expectDiag(t, `type X { user shared.User }`, CodeRefUnknownPackage)
+	expectMessage(t, d, "is not declared anywhere in the project")
 }
 
 func TestQualifiedRefInMethodResponse(t *testing.T) {
@@ -340,10 +285,13 @@ func TestUnqualifiedRefAccepted(t *testing.T) {
 type X { items Page }`)
 }
 
-// ---------- combination rules ----------
-
+// Two bindings on one field are reported and related to the first.
 func TestCombinationMultipleBindings(t *testing.T) {
-	expectMsg(t, "@query conflicts with @path", `type X { id string @path @query }`)
+	d := expectDiag(t, `type X { id string @path @query }`, CodeBindingConflict)
+	expectMessage(t, d, "@query conflicts with @path")
+	if len(d.Related) != 1 {
+		t.Errorf("related = %+v, want the first binding", d.Related)
+	}
 }
 
 func TestCombinationBodyAndForm(t *testing.T) {
@@ -357,8 +305,6 @@ func TestCombinationPassthroughAccepted(t *testing.T) {
 	}`)
 }
 
-// ---------- PathString ----------
-
 func TestPathString(t *testing.T) {
 	if route.PathString(nil) != "" {
 		t.Error("nil path")
@@ -371,24 +317,14 @@ service S { get A /users/{id}/posts { request R } }`)
 	}
 }
 
-// TestDeclNamedAfterBuiltinRejected: a type/enum/scalar/error named after a
-// built-in spelling shadows the built-in in generated Go and won't compile, so
-// it is rejected. Middleware names live in a separate Go namespace (exempt).
+// A type, enum, scalar or error named after a built-in type is rejected; a middleware is not.
 func TestDeclNamedAfterBuiltinRejected(t *testing.T) {
 	expectError(t, `scalar int string`, CodeDeclBuiltinName)
 	expectError(t, `type string { a int }`, CodeDeclBuiltinName)
 	expectError(t, `enum bool { X Y }`, CodeDeclBuiltinName)
 	expectError(t, `error NotFound any`, CodeDeclBuiltinName)
-	// Middleware lives in a separate Go namespace, so a builtin name is NOT a
-	// collision error (it may still warn about the lowercase name).
-	if _, diags := AnalyzeWith(parseFiles(t, `middleware int`), Options{}); findCode(diags, CodeDeclBuiltinName) != nil {
+	if _, diags := analyzeWith(parseFiles(t, `middleware int`), Options{}); findCode(diags, CodeDeclBuiltinName) != nil {
 		t.Error("middleware named after a builtin should not be a builtin-collision error")
 	}
 	mustClean(t, `scalar Email string  scalar UserID string`)
-}
-
-// newTestAnalyzer returns an analyser over pkg whose project holds pkg
-// alone, for tests that drive a single check directly.
-func newTestAnalyzer(pkg *Package) *analyzer {
-	return &analyzer{pkg: pkg, proj: &Project{Packages: map[string]*Package{pkg.Name: pkg}}}
 }

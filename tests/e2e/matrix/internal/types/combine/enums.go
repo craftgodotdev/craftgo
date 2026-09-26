@@ -2,6 +2,8 @@
 
 package combine
 
+// Color is a bare string enum used by DefaultsEnum below: a value without
+// `= "..."` goes on the wire as its name (Red).
 type Color string
 
 const (
@@ -10,10 +12,43 @@ const (
 	ColorBlue  Color = "Blue"
 )
 
+// DiscKind is an enum whose first value reuses the `type` keyword.
 type DiscKind string
 
 const (
 	DiscKindType       DiscKind = "type"
 	DiscKindCombo      DiscKind = "combo"
 	DiscKindStandalone DiscKind = "standalone"
+)
+
+// Grade is an int enum whose wire values differ from its member names.
+type Grade int
+
+const (
+	GradeLow  Grade = 1
+	GradeHigh Grade = 9
+)
+
+// Hue is a string enum whose wire values differ from its member names.
+type Hue string
+
+const (
+	HueRed   Hue = "RED"
+	HueGreen Hue = "GREEN"
+)
+
+// MemberStatus has 0 as a real member.
+type MemberStatus int
+
+const (
+	MemberStatusInactive MemberStatus = 0
+	MemberStatusActive   MemberStatus = 1
+	MemberStatusBanned   MemberStatus = 2
+)
+
+type PayMethod string
+
+const (
+	PayMethodCard PayMethod = "card"
+	PayMethodBank PayMethod = "bank"
 )

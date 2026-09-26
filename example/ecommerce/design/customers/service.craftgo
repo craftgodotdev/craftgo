@@ -46,10 +46,10 @@ type GetCustomerReq {
 
 type CreateCustomerReq {
 	email          shared.Email
-	name           string  @length(1, 120)
+	name           string       @length(1, 120)
 	primaryAddress Address
 	contact        Contact
-	bio            string? @maxLength(500)
+	bio            string?      @maxLength(500)
 }
 
 type UploadAvatarReq {

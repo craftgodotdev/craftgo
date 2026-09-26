@@ -115,9 +115,9 @@ The Go field type is the enum's Go type:
 
 ```go
 type Task struct {
-    Title    string   `json:"title"`
-    Status   Status   `json:"status"`
-    Priority *Priority `json:"priority,omitempty"`
+	Title    string    `json:"title"`
+	Status   Status    `json:"status"`
+	Priority *Priority `json:"priority,omitempty"`
 }
 ```
 
@@ -127,28 +127,31 @@ Use the bare identifier in `@default(...)`:
 
 ```craftgo
 type Task {
-    status Status @default(Pending)
+    status Status? @default(Pending)
 }
 ```
 
 The handler pre-fills the field with the matching Go constant:
 
 ```go
-req.Status = StatusPending
+{
+	__d := types.StatusPending
+	req.Status = &__d
+}
 ```
 
-You cannot use the wire form (`@default("pending")`) - the canonical form is the identifier so the binding stays stable even if you change the wire payload later.
+Without the `?` the handler assigns `req.Status = types.StatusPending` directly, and the analyzer warns (`decorator/default-needs-optional`) until the field carries it. You cannot use the wire form (`@default("Pending")`) - the canonical form is the identifier so the binding stays stable even if you change the wire payload later.
 
 ## Enums in arrays
 
 ```craftgo
 type Workflow {
-    allowed Status[] @default([Active, Pending])
+    allowed Status[]? @default([Active, Pending])
 }
 ```
 
 ```go
-req.Allowed = []Status{StatusActive, StatusPending}
+req.Allowed = []types.Status{types.StatusActive, types.StatusPending}
 ```
 
 ## OpenAPI emission
@@ -158,12 +161,18 @@ Each enum becomes a schema entry with the values listed:
 ```yaml
 components:
   schemas:
-    Status:
-      type: string
-      enum: [Active, Inactive, Pending]
     Priority:
+      enum:
+      - 1
+      - 2
+      - 3
       type: integer
-      enum: [1, 2, 3]
+    Status:
+      enum:
+      - Active
+      - Inactive
+      - Pending
+      type: string
 ```
 
 Field references use `$ref` to the schema:
@@ -189,8 +198,9 @@ The doc surfaces in:
 
 - Hover popups in the LSP
 - The OpenAPI schema's `description` field
+- The Go doc comment of the type in `enums.go`
 
-Per-value docs work too:
+Per-value docs (`@doc`, or a comment above the value) become the Go doc comment of the value's constant in `enums.go`; the LSP hover and the OpenAPI schema do not carry them:
 
 ```craftgo
 enum Status {
@@ -198,6 +208,17 @@ enum Status {
     Inactive @doc("Paused or archived.")
     Pending  @doc("Not yet started.")
 }
+```
+
+```go
+const (
+	// Currently being worked on.
+	StatusActive Status = "Active"
+	// Paused or archived.
+	StatusInactive Status = "Inactive"
+	// Not yet started.
+	StatusPending Status = "Pending"
+)
 ```
 
 ## Marshaling
@@ -208,8 +229,8 @@ If you need custom marshaling (e.g., always emit lowercase regardless of the con
 
 ## Restrictions
 
-- Enum values cannot share a Go-side identifier (`Active` and `active` would both produce `StatusActive`); the analyzer flags collisions
-- Enum names follow Go's exported convention - lower-case names produce unexported types and are flagged with a warning
+- Two values that map to one Go constant (`Active` and `active` both give `StatusActive`) draw the `enum/value-collision` warning; codegen names the second `StatusActive_2`, and the wire payloads stay distinct
+- Enum names start with an uppercase letter - a lower-case name would give an unexported Go type, so the analyzer rejects it
 - Empty enums are not allowed
 
 ## When to prefer scalars
@@ -222,4 +243,4 @@ Scalars and enums look similar from a distance but solve different problems:
 | Fixed at design time | Free-form value matching a pattern |
 | Wire payload is a label  | Wire payload is the value itself |
 
-`Color { Red, Green, Blue }` is an enum. `HexColor` (any string matching `^#[0-9A-Fa-f]{6}$`) is a scalar.
+`enum Color { Red Green Blue }` is an enum. `HexColor` (any string matching `^#[0-9A-Fa-f]{6}$`) is a scalar.

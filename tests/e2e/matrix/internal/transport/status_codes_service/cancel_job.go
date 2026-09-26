@@ -9,12 +9,13 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/status_codes_service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-	shared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// CancelJob returns the http.HandlerFunc for the
-// DELETE CancelJob endpoint.
+// Cancel a queued job. No body on success - 204 keeps the wire silent.
+//
+// CancelJob returns the DELETE CancelJob handler.
 func CancelJob(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CancelJobReq

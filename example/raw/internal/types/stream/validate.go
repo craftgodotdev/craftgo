@@ -8,17 +8,12 @@ import (
 	"unicode/utf8"
 )
 
-// Pattern regexes compile ONCE at package init so Validate() calls
-// reference the precompiled var instead of recompiling per request.
-// The pattern is rendered via %q (Go-quoted) rather than a raw-string
-// literal so regexes containing a backtick, backslash, or quote still
-// produce compilable Go - a raw `...` literal would break on a backtick.
+// The regexes of the @pattern and @format checks, compiled once.
 var (
 	_pattern0 = regexp.MustCompile("^[a-z0-9._-]+$")
 )
 
-// Validate checks every field-level constraint declared on DownloadReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *DownloadReq) Validate() error {
 	if !_pattern0.MatchString(v.File) {
 		return fmt.Errorf("file: does not match pattern")
@@ -29,20 +24,17 @@ func (v *DownloadReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Event.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Event) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on HealthReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *HealthReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on HealthResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *HealthResp) Validate() error {
 	if l := utf8.RuneCountInString(v.Status); l < 1 || l > 16 {
 		return fmt.Errorf("status: length out of range [1, 16]")
@@ -53,8 +45,7 @@ func (v *HealthResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on IngestResult.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *IngestResult) Validate() error {
 	if v.Bytes < 0 {
 		return fmt.Errorf("bytes: below minimum 0")
@@ -62,17 +53,17 @@ func (v *IngestResult) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Snapshot.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Snapshot) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on SnapshotReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *SnapshotReq) Validate() error {
-	if v.Region != nil && (utf8.RuneCountInString(*v.Region) < 2 || utf8.RuneCountInString(*v.Region) > 8) {
-		return fmt.Errorf("region: length out of range [2, 8]")
+	if v.Region != nil {
+		if l := utf8.RuneCountInString(*v.Region); l < 2 || l > 8 {
+			return fmt.Errorf("region: length out of range [2, 8]")
+		}
 	}
 	return nil
 }

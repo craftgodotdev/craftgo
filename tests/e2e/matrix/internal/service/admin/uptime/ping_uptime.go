@@ -5,25 +5,20 @@ package adminapi
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/adminapi"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/adminapi"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PingUptimeService carries the per-request state for the
-// PingUptime endpoint of AdminApi. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// PingUptimeService runs AdminApi.PingUptime for one request.
 type PingUptimeService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPingUptimeService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewPingUptimeService binds PingUptimeService to ctx; its Logger carries ctx's trace ids.
 func NewPingUptimeService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PingUptimeService {
 	return &PingUptimeService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewPingUptimeService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// PingUptime is the service entry point. Replace the
-// TODO with the real implementation.
+// PingUptime implements AdminApi.PingUptime.
 func (l *PingUptimeService) PingUptime() (*types.VerResp, error) {
 	// TODO: implement
 	return nil, nil

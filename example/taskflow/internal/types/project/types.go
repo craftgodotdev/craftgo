@@ -28,7 +28,8 @@ type GetProjectReq struct {
 type ListProjectsReq struct {
 	shared.PageParams
 	Status *ProjectStatus `json:"-" query:"status"`
-	Q      *string        `json:"-" query:"q"`
+	// Case-insensitive name search.
+	Q *string `json:"-" query:"q"`
 }
 
 type ListProjectsV2Req struct {

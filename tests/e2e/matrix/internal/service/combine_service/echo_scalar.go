@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoScalarService carries the per-request state for the
-// EchoScalar endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoScalarService runs CombineService.EchoScalar for one request.
 type EchoScalarService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoScalarService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoScalarService binds EchoScalarService to ctx; its Logger carries ctx's trace ids.
 func NewEchoScalarService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoScalarService {
 	return &EchoScalarService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewEchoScalarService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// EchoScalar is the service entry point. Replace the
-// TODO with the real implementation.
+// Echo the scalar default. Missing size on the wire results in size=20 after pre-fill, and the scalar's @gte/@lte bounds still apply.
+//
+// EchoScalar implements CombineService.EchoScalar.
 func (l *EchoScalarService) EchoScalar(req *types.DefaultsScalar) (*types.DefaultsScalar, error) {
 	// TODO: implement
 	return nil, nil

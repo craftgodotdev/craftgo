@@ -7,14 +7,9 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/config"
 )
 
-// Parity tests assert that a rule behaves IDENTICALLY across the "sibling
-// axes" where the same logical input can be spelled two ways. They are the
-// net for the decide-once refactor: a future change that handles one
-// spelling but not its twin fails here instead of waiting for a scan.
-
-// Axis: variadic `@x(A, B)` vs array-shortcut `@x([A, B])`. Every
-// AllowArrayShortcut decorator now flattens through ast.DecoratorArgValues,
-// so the two spellings must produce byte-identical operation output.
+// `@tags`, `@security` and `@errors` document an operation the same way in
+// the variadic `@x(A, B)` and the array `@x([A, B])` form, an error the merge
+// renames included.
 func TestParityDecoratorArrayShortcut(t *testing.T) {
 	src := func(tagForm, secForm, errForm string) map[string]string {
 		return map[string]string{
@@ -28,6 +23,8 @@ service S {
   @errors(` + errForm + `)
   get M /m { response Out }
 }`,
+			"t/t.craftgo": `package t
+error NotFound E1 { z string }`,
 		}
 	}
 	variadic := genDoc(t, src("alpha, beta", "Bearer, Admin", "E1, E2"), &config.Config{})
@@ -42,11 +39,14 @@ service S {
 	if !reflect.DeepEqual(opV.Security, opA.Security) {
 		t.Errorf("@security parity broken: variadic %v vs array %v", opV.Security, opA.Security)
 	}
-	// Error responses: the same status codes must be present in both.
+	// Both forms document the same error responses.
 	for _, code := range []int{404, 409} {
-		if (opV.Responses.Status(code) == nil) != (opA.Responses.Status(code) == nil) {
-			t.Errorf("@errors parity broken at %d: variadic present=%v vs array present=%v",
-				code, opV.Responses.Status(code) != nil, opA.Responses.Status(code) != nil)
+		v, a := opV.Responses.Status(code), opA.Responses.Status(code)
+		if v == nil {
+			t.Fatalf("@errors(E1, E2) documents no %d response", code)
+		}
+		if !reflect.DeepEqual(v, a) {
+			t.Errorf("@errors parity broken at %d: variadic %+v vs array %+v", code, v, a)
 		}
 	}
 }

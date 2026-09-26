@@ -12,10 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// No method-level middleware; inherits only the parent chain
-// (RequestID, RateLimit, CORS, AuthRequired).
-// Replay returns the http.HandlerFunc for the
-// POST Replay endpoint.
+// Admin replay (parent chain only).
+//
+// Replay returns the POST Replay handler.
 func Replay(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetOrderReq
@@ -30,8 +29,6 @@ func Replay(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

@@ -11,10 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 
-// Metrics returns the http.HandlerFunc for the
-// GET Metrics passthrough endpoint. The framework stays
-// out of the way: logic receives the raw http.ResponseWriter and
-// *http.Request and writes the response directly.
+// Prometheus scrape endpoint (text/plain).
+//
+// Metrics returns the GET Metrics handler.
 func Metrics(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewMetricsService(r.Context(), svcCtx)

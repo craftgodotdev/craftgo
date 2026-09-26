@@ -12,17 +12,21 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ListOrders returns the http.HandlerFunc for the
-// GET ListOrders endpoint.
+// List orders with cursor pagination. Demonstrates a generic-instance response (Page<Order>) - codegen emits the parametric struct and substitutes T=Order at the concrete site.
+//
+// ListOrders returns the GET ListOrders handler.
 func ListOrders(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListOrdersReq
-		req.Limit = types.Cents(20)
+		{
+			__d := types.Cents(20)
+			req.Limit = &__d
+		}
 		_q := r.URL.Query()
 		if _v := _q.Get("cursor"); _v != "" {
 			req.Cursor = &_v
 		}
-		if !server.BindValue(w, r, "limit", "int", _q.Get("limit"), &req.Limit, server.ParseSigned[types.Cents]) {
+		if !server.BindValuePtr(w, r, "limit", "int", _q.Get("limit"), &req.Limit, server.ParseSigned[types.Cents]) {
 			return
 		}
 		if err := req.Validate(); err != nil {
@@ -35,7 +39,6 @@ func ListOrders(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

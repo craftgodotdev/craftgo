@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PromoteBag returns the http.HandlerFunc for the
-// POST PromoteBag endpoint.
+// Pins generic-mixin OpenAPI substitution: xshared.XWrapInBag<XOwner> must register XBagOfXOwner, no phantom XBagOfT / dangling $ref.
+//
+// PromoteBag returns the POST PromoteBag handler.
 func PromoteBag(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XBagPromoteReq
@@ -31,8 +32,6 @@ func PromoteBag(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

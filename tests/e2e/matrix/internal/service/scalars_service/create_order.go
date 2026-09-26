@@ -5,25 +5,20 @@ package scalars
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// CreateOrderService carries the per-request state for the
-// CreateOrder endpoint of ScalarsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// CreateOrderService runs ScalarsService.CreateOrder for one request.
 type CreateOrderService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewCreateOrderService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewCreateOrderService binds CreateOrderService to ctx; its Logger carries ctx's trace ids.
 func NewCreateOrderService(ctx context.Context, svcCtx *svccontext.ServiceContext) *CreateOrderService {
 	return &CreateOrderService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewCreateOrderService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// CreateOrder is the service entry point. Replace the
-// TODO with the real implementation.
+// Create an order from a full payload. Every scalar-typed field on Order runs its inherited validators.
+//
+// CreateOrder implements ScalarsService.CreateOrder.
 func (l *CreateOrderService) CreateOrder(req *types.CreateOrderReq) (*types.Envelope[types.Order], error) {
 	// TODO: implement
 	return nil, nil

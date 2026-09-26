@@ -4,21 +4,33 @@ package scalars
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/scalars_service"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RegisterRoutes wires every ScalarsService endpoint onto srv. Patterns
-// use the Go 1.22 method-prefixed form so VERB and path match together;
-// service prefix and OpenAPI basePath are baked in. Methods declaring
-// `@middlewares(...)` are wrapped via the corresponding fields on
-// ServiceContext (embedded Middlewares struct), so no runtime name
-// lookup is required - the values come pre-wired.
+// RegisterRoutes registers the ScalarsService routes on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/scalars/orders/{id}", transport.GetOrder(svcCtx))
 	srv.Handle("GET /api/scalars/orders", transport.ListOrders(svcCtx))
 	srv.Handle("POST /api/scalars/orders", transport.CreateOrder(svcCtx))
 	srv.Handle("POST /api/scalars/search", transport.SearchProducts(svcCtx))
 	srv.Handle("GET /api/scalars/audited/{id}", transport.GetAudited(svcCtx))
+	srv.Handle("GET /api/scalars/keyed", transport.ListKeyed(svcCtx))
+	srv.Handle("GET /api/scalars/keyed/page", transport.PageKeyed(svcCtx))
+	srv.Handle("GET /api/scalars/tally", transport.TallyInts(svcCtx))
+	srv.Handle("PUT /api/scalars/keyed", transport.PutKeyed(svcCtx))
+	srv.Handle("GET /api/scalars/lookup/{id}", transport.LookupOrder(svcCtx))
 	srv.Handle("POST /api/scalars/wrapped", transport.EchoWrapped(svcCtx))
+	srv.Handle("GET /api/scalars/order-groups", transport.ListOrderGroups(svcCtx))
+	srv.Handle("POST /api/scalars/nullable-scalars", transport.EchoNullableScalars(svcCtx))
+	srv.Handle("POST /api/scalars/ref-meta", transport.EchoRefMeta(svcCtx))
+	srv.Handle("POST /api/scalars/lengths", transport.EchoLengths(svcCtx))
+	srv.Handle("POST /api/scalars/enum-maps", transport.EchoEnumMaps(svcCtx))
+	srv.Handle("POST /api/scalars/listing", transport.EchoListing(svcCtx))
+	srv.Handle("GET /api/scalars/items/{id}/{uid}/{kind}", transport.GetItemByPath(svcCtx))
+	srv.Handle("GET /api/scalars/defaults", transport.SearchWithDefaults(svcCtx))
+	srv.Handle("POST /api/scalars/generic-mixin-host", transport.EchoGenericMixinHost(svcCtx))
+	srv.Handle("POST /api/scalars/composite-arg", transport.EchoCompositeArg(svcCtx))
+	srv.Handle("POST /api/scalars/box-holder", transport.EchoBoxHolder(svcCtx))
 }

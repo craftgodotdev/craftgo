@@ -1,18 +1,13 @@
 package format
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
-	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/parser"
 )
 
-// TestFormatRoundTrip parses, formats, parses again, and reformats. The two
-// formatted outputs must match - once the source is in canonical form,
-// re-running the formatter is a no-op (idempotency). It also checks that
-// the formatted text parses without diagnostics.
+// TestFormatRoundTrip pins that formatted output parses cleanly and formats to itself.
 func TestFormatRoundTrip(t *testing.T) {
 	cases := []struct {
 		name string
@@ -85,11 +80,7 @@ scalar Cents int @gte(0) @multipleOf(1)
 `,
 		},
 		{
-			// A scalar / enum value / field carrying BOTH a decorator
-			// AND a line-trailing `// comment` must not duplicate the
-			// comment. The lexer stores it on the last decorator's
-			// TrailingDoc AND the source line map, so the printer keeps
-			// exactly one copy across format passes (idempotency).
+			// A comment after a decorator must not double across passes.
 			name: "decorated trailing comments",
 			src: `package x
 
@@ -178,28 +169,12 @@ service S {
 		},
 	}
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			out1, diags := Format("test.craftgo", c.src)
-			if len(diags) > 0 {
-				t.Fatalf("first parse had diagnostics: %v", diags)
-			}
-			out2, diags := Format("test.craftgo", out1)
-			if len(diags) > 0 {
-				t.Fatalf("formatted output failed to parse: %v\nformatted:\n%s", diags, out1)
-			}
-			if out1 != out2 {
-				t.Errorf("not idempotent.\n--- first ---\n%s\n--- second ---\n%s", out1, out2)
-			}
-		})
+		t.Run(c.name, func(t *testing.T) { formatStable(t, c.src) })
 	}
 }
 
-// TestFormatDecoratedTrailingCommentSingle checks that a SINGLE format
-// pass over a scalar / enum value that carries both a decorator and a
-// line-trailing comment keeps exactly one copy of the comment. The
-// idempotency table catches a doubling across passes indirectly; this
-// guards the stronger invariant that even the first format does not
-// duplicate.
+// TestFormatDecoratedTrailingCommentSingle pins that one format pass writes
+// the comment after a scalar's or enum value's decorator once.
 func TestFormatDecoratedTrailingCommentSingle(t *testing.T) {
 	src := `package x
 
@@ -209,10 +184,7 @@ enum Color {
 	Red = 1 @deprecated // legacy red
 }
 `
-	out, diags := Format("t.craftgo", src)
-	if len(diags) > 0 {
-		t.Fatalf("diagnostics: %v", diags)
-	}
+	out := formatStable(t, src)
 	if got := strings.Count(out, "// a tag"); got != 1 {
 		t.Errorf("scalar trailing comment must appear exactly once, got %d:\n%s", got, out)
 	}
@@ -221,11 +193,8 @@ enum Color {
 	}
 }
 
-// TestFormatPreservesComments pins that `craftgo fmt` never silently
-// drops user comments: a trailing comment on a non-last decorator in a
-// multi-line chain (which must NOT swallow the following decorators), an
-// end-of-file comment block, and a blank-line-isolated separator comment
-// inside a type body. Each was lost or corrupted before the fix.
+// TestFormatPreservesComments pins that a comment in each of these positions
+// survives formatting.
 func TestFormatPreservesComments(t *testing.T) {
 	cases := []struct {
 		name string
@@ -241,8 +210,7 @@ type T {
            @maxLength(5)
 }
 `,
-			// Both constraints survive and the comment is kept once.
-			want: []string{"@minLength(1)", "@maxLength(5)", "// note"},
+			want: []string{"\tx string @minLength(1) // note\n\t\t@maxLength(5)\n"},
 		},
 		{
 			name: "end-of-file comment block",
@@ -344,37 +312,20 @@ enum Status {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			out, diags := Format("t.craftgo", c.src)
-			if len(diags) > 0 {
-				t.Fatalf("diagnostics: %v", diags)
-			}
+			out := formatStable(t, c.src)
 			for _, w := range c.want {
 				if !strings.Contains(out, w) {
 					t.Errorf("formatted output dropped %q:\n%s", w, out)
 				}
 			}
-			// The constraint must remain a real decorator, not become
-			// comment text - re-parse and re-format must be idempotent.
-			out2, diags := Format("t.craftgo", out)
-			if len(diags) > 0 {
-				t.Fatalf("formatted output failed to re-parse: %v\n%s", diags, out)
-			}
-			if out != out2 {
-				t.Errorf("not idempotent.\n--- first ---\n%s\n--- second ---\n%s", out, out2)
-			}
 		})
 	}
 }
 
-// TestFormatCommentOnlyFilePreserved pins that a file with only comments (no
-// package, no declarations) is not silently blanked by fmt - the comments have
-// no anchor, so they are collected under the EOF key and re-emitted.
+// TestFormatCommentOnlyFilePreserved pins that a file holding only comments keeps them.
 func TestFormatCommentOnlyFilePreserved(t *testing.T) {
 	src := "// just a note\n// another line\n"
-	out, diags := Format("c.craftgo", src)
-	if len(diags) > 0 {
-		t.Fatalf("diags: %v", diags)
-	}
+	out := formatStable(t, src)
 	if strings.TrimSpace(out) == "" {
 		t.Fatalf("comment-only file was blanked: %q", out)
 	}
@@ -383,16 +334,10 @@ func TestFormatCommentOnlyFilePreserved(t *testing.T) {
 			t.Errorf("dropped %q:\n%q", w, out)
 		}
 	}
-	if out2, _ := Format("c.craftgo", out); out != out2 {
-		t.Errorf("not idempotent:\n%q\n%q", out, out2)
-	}
 }
 
-// TestFormatAddsOptionalToDefault pins that `craftgo fmt` makes a
-// `@default` field's optionality explicit by adding `?` (the default fires
-// on an absent / null value, so the field is optional). A `@path` field is
-// exempt - a path segment is always present - and an already-optional
-// field is left unchanged (idempotent).
+// TestFormatAddsOptionalToDefault pins that fmt adds `?` to a @default field
+// unless it is already optional or a @path field.
 func TestFormatAddsOptionalToDefault(t *testing.T) {
 	src := `package p
 
@@ -402,10 +347,7 @@ type T {
 	id string @path @default("x")
 }
 `
-	out, diags := Format("t.craftgo", src)
-	if len(diags) > 0 {
-		t.Fatalf("diagnostics: %v", diags)
-	}
+	out := formatStable(t, src)
 	if !strings.Contains(out, "flag bool?") {
 		t.Errorf("fmt should add ? to a @default field:\n%s", out)
 	}
@@ -415,15 +357,10 @@ type T {
 	if !strings.Contains(out, "id   string  @path") {
 		t.Errorf("@path @default field must NOT get ? (path is always present):\n%s", out)
 	}
-	out2, _ := Format("t.craftgo", out)
-	if out != out2 {
-		t.Errorf("not idempotent:\n--- first ---\n%s\n--- second ---\n%s", out, out2)
-	}
 }
 
-// TestFormatPreservesParse formats a file with a file-level decorator
-// and asserts the output re-parses with the same package name and the
-// decorator intact.
+// TestFormatPreservesParse pins that formatted output re-parses with its
+// package name and file-level decorator intact.
 func TestFormatPreservesParse(t *testing.T) {
 	src := `@version("1.0")
 package design
@@ -432,7 +369,7 @@ type Foo {
 	x string
 }
 `
-	formatted, _ := Format("t.craftgo", src)
+	formatted := formatStable(t, src)
 	p := parser.New("t.craftgo", formatted)
 	f := p.Parse()
 	if len(p.Diagnostics()) > 0 {
@@ -446,11 +383,32 @@ type Foo {
 	}
 }
 
-// TestFormatStripsEmptyParens: empty `()` is canonicalised away
-// - `@positive()` → `@positive`, `@nullable()` → `@nullable`,
-// `@deprecated()` → `@deprecated`. Applies to Flag decorators
-// (which never take args) AND non-Flag decorators authored with
-// no args.
+// Decorators whose arguments run over lines stay with the declaration that
+// starts where they end, and with a scalar whose line they continue.
+func TestFormatDecoratorArgumentsOverLines(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{
+			"before a declaration",
+			"package x\n\ntype A { a string } @doc(\n\t\"b\") @deprecated type B { b string }\n",
+			"package x\n\ntype A {\n\ta string\n}\n\n@doc(\"b\")\n@deprecated\ntype B {\n\tb string\n}\n",
+		},
+		{
+			"before a method",
+			"package x\n\nservice S {\n\tget A /a {} @doc(\n\t\t\"b\") get B /b {}\n}\n",
+			"package x\n\nservice S {\n\tget A /a {}\n\t@doc(\"b\")\n\tget B /b {}\n}\n",
+		},
+		{
+			"after a scalar",
+			"package x\n\nscalar S string @minLength(\n\t1) @maxLength(5)\n",
+			"package x\n\nscalar S string @minLength(1) @maxLength(5)\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
+	}
+}
+
+// TestFormatStripsEmptyParens pins that a decorator written with empty `()`
+// prints without them.
 func TestFormatStripsEmptyParens(t *testing.T) {
 	src := `package design
 
@@ -460,7 +418,7 @@ type X {
 	nick string @nullable()
 }
 `
-	formatted, _ := Format("t.craftgo", src)
+	formatted := formatStable(t, src)
 	for _, bad := range []string{"@positive()", "@uniqueItems()", "@nullable()"} {
 		if strings.Contains(formatted, bad) {
 			t.Errorf("empty parens not stripped: %q remained\nformatted:\n%s", bad, formatted)
@@ -473,12 +431,8 @@ type X {
 	}
 }
 
-// TestFormatRewritesFormatStringToIdent: `@format("email")` is
-// rewritten to `@format(email)` on save. Rule - when a decorator
-// argument names a registered identifier (format name, security
-// scheme, ...), bare ident is canonical. Strings with non-ident
-// characters (hyphens, dots) stay quoted so the rewrite doesn't
-// produce un-parseable output.
+// TestFormatRewritesFormatStringToIdent pins that `@format("email")` prints as
+// `@format(email)`.
 func TestFormatRewritesFormatStringToIdent(t *testing.T) {
 	src := `package design
 
@@ -488,7 +442,7 @@ type X {
 	uid   string @format(uuid)
 }
 `
-	formatted, _ := Format("t.craftgo", src)
+	formatted := formatStable(t, src)
 	if !strings.Contains(formatted, "@format(email)") || strings.Contains(formatted, `@format("email")`) {
 		t.Errorf(`@format("email") not rewritten to @format(email):`+"\n%s", formatted)
 	}
@@ -498,19 +452,17 @@ type X {
 	if !strings.Contains(formatted, "@format(uuid)") {
 		t.Errorf("bare-ident form should stay as-is:\n%s", formatted)
 	}
-	// Idempotent.
-	formatted2, _ := Format("t.craftgo", formatted)
-	if formatted != formatted2 {
-		t.Errorf("not idempotent:\n--first--\n%s\n--second--\n%s", formatted, formatted2)
-	}
 }
 
-// TestClosingNoteInBody verifies that a `// note` sitting on its own
-// line right above the closing `}` of a body stays inside the body
-// after format - it must not drift to the next decl as a loose
-// comment. The parser captures `}.Doc` into a [*ast.FreeComment]
-// body member; the loose builder then suppresses the same comment
-// to avoid double-emission.
+// A `@format` string spelled like a reserved word stays quoted: bare, it would
+// read as that word's literal.
+func TestFormatKeepsAReservedWordFormatQuoted(t *testing.T) {
+	src := "package design\n\ntype X {\n\ta string @format(\"null\")\n\tb string @format(\"true\")\n\tc string @format(\"service\")\n}\n"
+	formatExact(t, src, src)
+}
+
+// TestClosingNoteInBody pins that a comment above a closing brace stays inside
+// the body.
 func TestClosingNoteInBody(t *testing.T) {
 	src := `package x
 
@@ -524,34 +476,27 @@ type Other {
 	id string
 }
 `
-	formatted, _ := Format("close.craftgo", src)
+	formatted := formatStable(t, src)
 	if !strings.Contains(formatted, "\t// todo: add reason field\n}") {
 		t.Errorf("// todo should sit inside body before }, got:\n%s", formatted)
 	}
 	if strings.Contains(formatted, "// todo: add reason field\ntype Other") {
 		t.Errorf("// todo must not drift above next decl, got:\n%s", formatted)
 	}
-	formatted2, _ := Format("close.craftgo", formatted)
-	if formatted != formatted2 {
-		t.Errorf("not idempotent\n--first--\n%s\n--second--\n%s", formatted, formatted2)
-	}
 }
 
-// TestImportAndDecoratorComments: leading and trailing comments on
-// `import` lines and trailing comments on decorators round-trip
-// through Format intact.
+// TestImportAndDecoratorComments pins that import docs and the trailing
+// comments of imports and decorators format to themselves.
 func TestImportAndDecoratorComments(t *testing.T) {
 	src := `package users
 
 // shared types for cross-package nesting
 import "shared"
-
 // internal-only utils
 import "util"
+import "auth" // for AuthRequired middleware
 
-import "auth"  // for AuthRequired middleware
-
-@deprecated  // remove in v2 release
+@deprecated // remove in v2 release
 @doc("legacy")
 service AdminAPI {
 	get Health {
@@ -559,42 +504,11 @@ service AdminAPI {
 	}
 }
 `
-	p := parser.New("imports.craftgo", src)
-	f := p.Parse()
-	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("parse: %v", d)
-	}
-	if got := strings.Join(f.Imports[0].Doc, ""); got != "shared types for cross-package nesting" {
-		t.Errorf("Imports[0].Doc = %q", got)
-	}
-	if got := f.Imports[2].TrailingDoc; got != "for AuthRequired middleware" {
-		t.Errorf("Imports[2].TrailingDoc = %q", got)
-	}
-	sd := f.Decls[0].(*ast.ServiceDecl)
-	if got := sd.Decorators[0].TrailingDoc; got != "remove in v2 release" {
-		t.Errorf("Decorators[0].TrailingDoc = %q", got)
-	}
-	formatted, _ := Format("imports.craftgo", src)
-	for _, want := range []string{
-		"// shared types for cross-package nesting\nimport \"shared\"",
-		"// internal-only utils\nimport \"util\"",
-		"import \"auth\"  // for AuthRequired middleware",
-		"@deprecated  // remove in v2 release",
-	} {
-		if !strings.Contains(formatted, want) {
-			t.Errorf("formatted output missing %q:\n%s", want, formatted)
-		}
-	}
-	formatted2, _ := Format("imports.craftgo", formatted)
-	if formatted != formatted2 {
-		t.Errorf("not idempotent\n--first--\n%s\n--second--\n%s", formatted, formatted2)
-	}
+	formatExact(t, src, src)
 }
 
-// TestCloseBraceTrailing verifies that `// note` on the same line as a
-// decl's closing `}` survives the parse → format round-trip via
-// TypeDecl.TrailingDoc / EnumDecl.TrailingDoc / ServiceDecl.TrailingDoc /
-// Method.TrailingDoc populated by the parser from Token.Trailing.
+// TestCloseBraceTrailing pins that the comment after a closing brace formats
+// to itself.
 func TestCloseBraceTrailing(t *testing.T) {
 	src := `package x
 
@@ -613,92 +527,37 @@ service Svc {
 	} // health-check returns 200 always
 } // public surface
 `
-	p := parser.New("trailing.craftgo", src)
-	f := p.Parse()
-	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("parse: %v", d)
-	}
-	td := f.Decls[0].(*ast.TypeDecl)
-	if got := strings.Join(td.TrailingDoc, ""); got != "end of User" {
-		t.Errorf("TypeDecl.TrailingDoc = %q, want %q", got, "end of User")
-	}
-	ed := f.Decls[1].(*ast.EnumDecl)
-	if got := strings.Join(ed.TrailingDoc, ""); got != "closed set" {
-		t.Errorf("EnumDecl.TrailingDoc = %q, want %q", got, "closed set")
-	}
-	sd := f.Decls[2].(*ast.ServiceDecl)
-	if got := strings.Join(sd.TrailingDoc, ""); got != "public surface" {
-		t.Errorf("ServiceDecl.TrailingDoc = %q, want %q", got, "public surface")
-	}
-	method := sd.Methods()[0]
-	if got := strings.Join(method.TrailingDoc, ""); got != "health-check returns 200 always" {
-		t.Errorf("Method.TrailingDoc = %q, want %q", got, "health-check returns 200 always")
-	}
-	formatted, _ := Format("trailing.craftgo", src)
-	for _, want := range []string{
-		"}  // end of User",
-		"}  // closed set",
-		"}  // public surface",
-		"}  // health-check returns 200 always",
-	} {
-		if !strings.Contains(formatted, want) {
-			t.Errorf("formatted output missing %q:\n%s", want, formatted)
-		}
-	}
-	// Idempotency: format twice = same.
-	formatted2, _ := Format("trailing.craftgo", formatted)
-	if formatted != formatted2 {
-		t.Errorf("not idempotent\nfirst:\n%s\nsecond:\n%s", formatted, formatted2)
-	}
+	formatExact(t, src, src)
 }
 
-// TestFreeCommentRender verifies the printer handles [*ast.FreeComment]
-// members inside type, enum, and service bodies. The parser does not
-// populate FreeComment members yet (per-comment-line position tracking
-// would be needed), so the AST is built directly here to exercise the
-// body-iteration code paths.
+// TestFreeCommentRender pins that the comment blocks between the members of a
+// type, an enum and a service body format to themselves.
 func TestFreeCommentRender(t *testing.T) {
-	file := &ast.File{
-		Package: &ast.PackageDecl{Name: "x"},
-		Decls: []ast.Decl{
-			&ast.TypeDecl{
-				Name: "User",
-				Body: []ast.TypeMember{
-					&ast.Field{Name: "id", Type: &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"string"}}}}},
-					&ast.FreeComment{Text: []string{"section: contact info"}},
-					&ast.Field{Name: "email", Type: &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"string"}}}}},
-				},
-			},
-			&ast.EnumDecl{
-				Name: "Status",
-				Members: []ast.EnumMember{
-					&ast.EnumValue{Name: "Active", Kind: ast.EnumBare},
-					&ast.FreeComment{Text: []string{"deprecated values below"}},
-					&ast.EnumValue{Name: "Inactive", Kind: ast.EnumBare},
-				},
-			},
-			&ast.ServiceDecl{
-				Name: "Svc",
-				Members: []ast.ServiceMember{
-					&ast.Method{Verb: "get", Name: "Health"},
-					&ast.FreeComment{Text: []string{"admin endpoints"}},
-					&ast.Method{Verb: "delete", Name: "Purge"},
-				},
-			},
-		},
-	}
-	var buf bytes.Buffer
-	if err := Print(&buf, file); err != nil {
-		t.Fatalf("Print: %v", err)
-	}
-	out := buf.String()
-	for _, want := range []string{
-		"// section: contact info",
-		"// deprecated values below",
-		"// admin endpoints",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("expected output to contain %q, got:\n%s", want, out)
-		}
-	}
+	canonical := `package x
+
+type User {
+	id    string
+
+	// section: contact info
+
+	email string
+}
+
+enum Status {
+	Active
+
+	// deprecated values below
+
+	Inactive
+}
+
+service Svc {
+	get Health /health {}
+
+	// admin endpoints
+
+	delete Purge /purge {}
+}
+`
+	formatExact(t, canonical, canonical)
 }

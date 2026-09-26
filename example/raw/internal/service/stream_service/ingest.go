@@ -7,22 +7,20 @@ import (
 	"io"
 	"net/http"
 
-	types "github.com/craftgodotdev/craftgo/example/raw/internal/types/stream"
-
-	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/raw/internal/types/stream"
+	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 
-// IngestService carries the per-request state for the Ingest endpoint of
-// StreamService. The embedded log.Logger is pre-bound to the request
-// context so logging surfaces trace_id / span_id.
+// IngestService runs StreamService.Ingest for one request.
 type IngestService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewIngestService constructs a fresh service instance bound to ctx.
+// NewIngestService binds IngestService to ctx; its Logger carries ctx's trace ids.
 func NewIngestService(ctx context.Context, svcCtx *svccontext.ServiceContext) *IngestService {
 	return &IngestService{
 		Logger: log.Default().WithContext(ctx),

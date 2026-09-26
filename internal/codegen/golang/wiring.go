@@ -1,71 +1,54 @@
-// Wiring umbrella: the one call main.go makes to attach the design.
 package golang
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
+	"maps"
+	"slices"
 	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// wiringData is the template input for `wiring.tmpl`.
+// wiringData is the template input for wiring.tmpl.
 type wiringData struct {
-	RoutesImport     string
-	SvccontextImport string
-	HasRoutes        bool
-	// Guards is one startup check per HTTP middleware the design APPLIES.
-	// A declared-but-unapplied middleware is a dead wire the design layer
-	// already reports, so guarding it here would complain twice about one
-	// mistake.
+	ImportDecl string
+	HasRoutes  bool
+	// Guards has one startup check per middleware a method runs.
 	Guards []middlewareGuard
 }
 
-// middlewareGuard is one nil check in Register: the field main.go has to
-// assign, and the message naming the line that assigns it.
+// middlewareGuard is one nil check in Register and the error naming the assignment to add.
 type middlewareGuard struct {
 	Field     string
 	QuotedMsg string
 }
 
-// generateWiring writes the wiring package: one `Register` call attaching
-// every HTTP route the design declares.
-//
-// It is emitted for every project, including one declaring none, because
-// main.go is written once and calls it unconditionally.
+// generateWiring writes output.wiring/wiring.go, whose Register attaches every HTTP route. It is
+// written even for a design without routes, since a gen-once main.go may still call Register.
 func generateWiring(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
+	out := outputsOf(cfg)
 	data := wiringData{
-		SvccontextImport: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
-		HasRoutes:        projectHasRoutes(proj),
-		Guards:           middlewareGuards(proj, cfg.Output.RuntimeDisabled()),
+		HasRoutes: projectHasRoutes(proj),
+		Guards:    middlewareGuards(proj, cfg.Output.RuntimeDisabled()),
 	}
+	imports := newImportSet(cfg.Package, nil, goImport{}, nil)
+	imports.use("context")
+	if len(data.Guards) > 0 {
+		imports.use("errors")
+	}
+	imports.use(serverImport)
 	if data.HasRoutes {
-		data.RoutesImport = goImportFromRel(cfg.Package, cfg.Output.Routes)
+		imports.use(out.routes.pkg)
 	}
-	dir := filepath.Join(projectRoot, cfg.Output.Wiring)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	return writeRendered(dir, "wiring.go", "wiring.tmpl", data)
+	imports.use(out.svccontext.pkg)
+	data.ImportDecl = imports.decl()
+	return writeGo(out.wiring.at(projectRoot, wiringFile), tmpl("wiring.tmpl"), data)
 }
 
-// middlewareGuards collects a startup check for every middleware a method
-// actually runs.
-//
-// The suggested line carries `/* args */` rather than `()`: the impl is a
-// gen-once scaffold whose parameters are the author's to change, so
-// naming a signature would be a guess. This is the spelling
-// middleware.tmpl's own wiring example uses.
-//
-// A nil entry is skipped by the chain rather than called, so without the
-// check a middleware the design states and main.go forgets is simply
-// absent at runtime: no error, no log line, and the guarantee the design
-// makes is not kept.
+// middlewareGuards returns a nil check for every middleware a method runs; the chain silently
+// skips a nil middleware.
 func middlewareGuards(proj *semantic.Project, handWired bool) []middlewareGuard {
-	// A `main: "-"` project has no generated main.go to point at: its
-	// container is built by hand, and that is where the assignment goes.
 	where := "in main.go"
 	if handWired {
 		where = "where you build the ServiceContext"
@@ -74,18 +57,18 @@ func middlewareGuards(proj *semantic.Project, handWired bool) []middlewareGuard 
 		decl, member, ctor string
 	}
 	seen := map[string]applied{}
-	for _, pkgName := range sortedKeys(proj.Packages) {
+	for _, pkgName := range proj.PackageNames() {
 		pkg := proj.Packages[pkgName]
-		if pkg == nil || pkgName == "" {
+		if pkg == nil {
 			continue
 		}
-		for _, svcName := range sortedServices(pkg) {
+		for _, svcName := range pkg.ServiceNames() {
 			svc := pkg.Services[svcName]
 			if svc == nil {
 				continue
 			}
 			for _, m := range svc.Methods {
-				for _, n := range middlewareNames(m, svc.Primary) {
+				for _, n := range middlewareNames(svc, m) {
 					if _, ok := seen[n]; !ok {
 						seen[n] = applied{
 							decl:   "middleware " + n,
@@ -98,7 +81,7 @@ func middlewareGuards(proj *semantic.Project, handWired bool) []middlewareGuard 
 		}
 	}
 	var guards []middlewareGuard
-	for _, n := range sortedKeys(seen) {
+	for _, n := range slices.Sorted(maps.Keys(seen)) {
 		a := seen[n]
 		guards = append(guards, middlewareGuard{
 			Field: "svcCtx." + n,

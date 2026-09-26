@@ -5,25 +5,20 @@ package bindings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// SearchByColorService carries the per-request state for the
-// SearchByColor endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// SearchByColorService runs BindingsService.SearchByColor for one request.
 type SearchByColorService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewSearchByColorService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewSearchByColorService binds SearchByColorService to ctx; its Logger carries ctx's trace ids.
 func NewSearchByColorService(ctx context.Context, svcCtx *svccontext.ServiceContext) *SearchByColorService {
 	return &SearchByColorService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,13 +27,9 @@ func NewSearchByColorService(ctx context.Context, svcCtx *svccontext.ServiceCont
 	}
 }
 
-// SearchByColor drives the enum-array @query @default binder. An
-// absent `colors` keeps the [Red, Blue] pre-fill; a present
-// `?colors=green` REPLACES it (the binder clears the slice before
-// appending) so the result is exactly the requested set, never the
-// pre-fill concatenated with the query values.
-// SearchByColor is the service entry point. Replace the
-// TODO with the real implementation.
+// Search by colors with an enum-array @query default. An absent `colors` keeps the [Red, Blue] pre-fill; a present `?colors=green` REPLACES it (not appends), so the result is exactly the requested set.
+//
+// SearchByColor implements BindingsService.SearchByColor.
 func (l *SearchByColorService) SearchByColor(req *types.QueryArrayEnumDefaultReq) (*types.ItemList, error) {
 	// TODO: implement
 	return nil, nil

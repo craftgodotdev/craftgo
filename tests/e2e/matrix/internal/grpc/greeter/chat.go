@@ -10,9 +10,7 @@ import (
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/greeter"
 )
 
-// Chat serves the bidi-streaming RPC /grpcmatrix.Greeter/Chat: it hands the
-// call context to the logic and maps the error it returns onto a status,
-// as the HTTP handler does with WriteError.
+// Chat serves the bidi-streaming RPC /grpcmatrix.Greeter/Chat.
 func (s *Server) Chat(stream grpc.BidiStreamingServer[pb.HelloRequest, pb.HelloReply]) error {
 	ctx := stream.Context()
 	l := service.NewChatService(ctx, s.svcCtx)

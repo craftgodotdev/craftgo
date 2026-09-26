@@ -7,7 +7,7 @@ craftgo emits OpenAPI 3.1 from the same DSL that drives the handlers. The spec i
 Every `craftgo gen` produces `docs/openapi.yaml` with:
 
 - Every method as a `paths` entry
-- Every type, enum, and error as a `components.schemas` entry
+- Every non-generic type, enum, scalar and error as a `components.schemas` entry
 - Every validator decorator mapped to its OpenAPI keyword (`minLength`, `pattern`, `enum`, ...)
 - Doc comments flowing into descriptions
 - Security schemes from your config
@@ -26,11 +26,13 @@ The rest of this page walks through what's emitted and how to render or publish 
 
 Every `craftgo gen` writes `docs/openapi.yaml` covering:
 
-- `paths` - one entry per `service` method
-- `components.schemas` - every `type`, `enum`, and `error` with full structure
-- `components.parameters` - path, query, header, cookie params per operation
-- `components.requestBodies` - body, multipart, and other content types
-- `components.responses` - success and declared error responses
+- `paths` - one entry per route, an operation per `service` method with its
+  path, query, header and cookie parameters, request body and responses
+  written in place
+- `components.schemas` - every non-generic `type`, `enum`, `scalar` and
+  `error` with full structure, each generic instance a schema or an operation
+  refers to (`PageOfUser`), and the `<Method>ReqBody` / `<Method>RespBody` of
+  each JSON body
 - `components.securitySchemes` - when `openapi.securitySchemes` is in your config
 
 ## Validity
@@ -41,7 +43,7 @@ The output is consumed cleanly by:
 - [`openapi-generator`](https://openapi-generator.tech/) and similar client generators.
 - [oasdiff](https://github.com/oasdiff/oasdiff) - breaking-change detection between versions.
 
-Strict structural linters ([Spectral](https://stoplight.io/open-source/spectral), [Redocly CLI](https://redocly.com/redocly-cli/)) currently report `nullable`-related findings under their default 3.1 ruleset - see the warning above. Aside from the `nullable` idiom, the structure (paths, schemas, parameters, `oneOf`/`anyOf` for cross-field constraints, `propertyNames` for map keys) is valid 3.1.
+The structure (paths, schemas, parameters, `anyOf` and `not` for cross-field constraints, `anyOf` for responses sharing a status, `propertyNames` for map keys) is valid 3.1: [Redocly CLI](https://redocly.com/redocly-cli/)'s structural rules and [openapi-spec-validator](https://github.com/python-openapi/openapi-spec-validator) accept it, given security schemes that set no field of another type, such as a `bearerFormat` on a `basic` scheme; `craftgo gen` stops on a scheme an `@security` names that misses a field its type requires. Their style rules may still warn, about an operation without a `summary`, say.
 
 ## Renders
 
@@ -132,7 +134,7 @@ Field-level validators map to OpenAPI keywords:
 | Decorator / shape              | OpenAPI                  |
 | ------------------------------ | ------------------------ |
 | Non-optional field (no `?`)    | listed in `required: [...]` |
-| `name string?`                 | omitted from `required: [...]` |
+| `name string?`                 | omitted from `required: [...]`, `type: [T, "null"]` |
 | `@nullable`                    | `type: [T, "null"]` (or `anyOf: [{$ref}, {type: "null"}]`) |
 | `@default(v)`                  | `default: v`             |
 | `@length(1, 80)`               | `minLength: 1, maxLength: 80` |
@@ -140,19 +142,30 @@ Field-level validators map to OpenAPI keywords:
 | `@pattern("...")`              | `pattern: ...`           |
 | `@format(email)`               | `format: email`          |
 | `@gte(0)`, `@lte(100)`         | `minimum: 0, maximum: 100` |
-| `@gt(0)`, `@lt(100)`           | `minimum: 0, exclusiveMinimum: true` / `maximum: 100, exclusiveMaximum: true` |
+| `@gt(0)`, `@lt(100)`           | `exclusiveMinimum: 0` / `exclusiveMaximum: 100` |
 | `@minItems(1)`, `@maxItems(10)` | `minItems: 1, maxItems: 10` |
 | `@uniqueItems`                 | `uniqueItems: true`      |
 | `@example("alice")`            | `example: alice`         |
 | `@deprecated`                  | `deprecated: true`       |
 
+Only a JSON body field admits `null`. A parameter, a response header and a
+multipart part are sent or not: `?` makes one optional, and its schema is the
+type alone.
+
+On a float field the validator compares against the literal's float, and a
+bound judges the literal and that float as the validator does: `@lte(0.1)` on
+a `float32` field is `maximum: 0.10000000149011612`, which both pass, and
+`@gt(0.1)` is `exclusiveMinimum: 0.10000000149011612`, which both fail.
+
 ## Documentation flows through
 
-DSL doc comments become OpenAPI descriptions:
+DSL doc comments become OpenAPI descriptions; `@summary("...")` sets an
+operation's `summary`:
 
 ```craftgo
 // Create a new user. The server fills the id and timestamps;
 // the client supplies name and email.
+@summary("Create a user")
 post CreateUser /users {
     request  CreateUserReq
     response User
@@ -163,42 +176,101 @@ post CreateUser /users {
 paths:
   /v1/users:
     post:
-      summary: Create a new user. The server fills...
-      description: ...
+      description: |-
+        Create a new user. The server fills the id and timestamps;
+        the client supplies name and email.
+      summary: Create a user
 ```
 
 Per-field docs flow into the schema's property description.
 
 ## Errors
 
-Declared errors with `@errors(...)` populate per-operation responses:
+Each `error` becomes a component named after its Go type (`UserNotFound` →
+`UserNotFoundErr`). Each error a method's `@errors(...)` lists adds a
+response at its category's status, described by the category:
 
 ```craftgo
+type CreateUserReq {
+    name  string
+    email string
+}
+
+type User {
+    id    string
+    name  string
+    email string
+}
+
 error NotFound UserNotFound
 error Conflict EmailTaken { email string }
 
 service UserService {
     @errors(UserNotFound, EmailTaken)
-    post CreateUser /users { ... }
+    post CreateUser /users {
+        request  CreateUserReq
+        response User
+    }
 }
 ```
 
+The operation's `responses` and the two error components:
+
 ```yaml
 responses:
-  '200': { ... }
-  '404':
-    description: Not Found
+  "201":
     content:
       application/json:
         schema:
-          $ref: '#/components/schemas/UserNotFound'
-  '409':
+          $ref: '#/components/schemas/CreateUserRespBody'
+    description: Created
+  "404":
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/UserNotFoundErr'
+    description: NotFound
+  "409":
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/EmailTakenErr'
     description: Conflict
-    content:
-      application/json:
-        schema:
-          $ref: '#/components/schemas/EmailTaken'
 ```
+
+```yaml
+EmailTakenErr:
+  description: Conflict error response (HTTP 409).
+  properties:
+    email:
+      type: string
+  required:
+  - email
+  type: object
+UserNotFoundErr:
+  description: NotFound error response (HTTP 404).
+  properties:
+    code:
+      type: string
+    message:
+      type: string
+  required:
+  - code
+  - message
+  type: object
+```
+
+An error with no field, like `UserNotFound`, is documented as the `code` and
+`message` the server sends for it. Errors of one category share its response,
+their schemas in an `anyOf`, as does a success `@status` with that code: two
+errors may send bodies both schemas admit, such as two `{code, message}`
+envelopes. A header they send under one name admits each one's type.
+
+The errors the framework writes itself - 400 for a request that fails decoding,
+binding or validation, 404, 405, 413 for a body over its cap, 500 for a panic or
+an untyped error, 504 for a deadline - are JSON `{"message": "..."}` at their
+status and are not in the document, which lists each operation's success
+response and its `@errors` only.
 
 ## Security schemes
 
@@ -242,3 +314,12 @@ By default `docs/openapi.yaml`. Change with `output.openapi` in `craftgo.design.
 output:
   openapi: ./api/openapi.yaml
 ```
+
+`output.openapi: "-"` writes no document. What only the document gets wrong,
+such as two component schemas sharing a name or an `oauth2` security scheme
+without flows, stops a run that writes it, and no other: with `"-"`, or with
+`craftgo gen --target go`, the Go code is generated. A new `main.go` embeds
+and serves the document only when it is on disk as the Go code is generated,
+so a project first generated with `--target go` gets a `main.go` without it;
+add the [embed](/guide/runtime#api-reference-docs) once the document exists.
+Until then, each `craftgo gen` names that `main.go` and the embed it lacks.

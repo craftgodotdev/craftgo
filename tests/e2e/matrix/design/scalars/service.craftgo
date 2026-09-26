@@ -1,7 +1,5 @@
-// ScalarsService exposes a small surface that exercises the scalar
-// + generic + mixin types defined in this package. Every endpoint
-// drives at least one scalar-typed or generic-typed payload through
-// the transport / validator / OpenAPI pipeline.
+// ScalarsService drives scalar, enum, generic and mixin types through the
+// generated transports, validators and OpenAPI.
 package scalars
 
 @prefix("/scalars")
@@ -37,10 +35,96 @@ service ScalarsService {
 		response Audited
 	}
 
+	@doc("List by key. A generic mixin over a nested mixin binds each query field with the type its own level declares.")
+	get ListKeyed /keyed {
+		request  ListKeyedReq
+		response OrderPage
+	}
+
+	@doc("Page keys. A generic response sends its argument-typed field in a header, and the body keeps the field a nested mixin brings as declared.")
+	get PageKeyed /keyed/page {
+		response KeyedPage<Priority>
+	}
+
+	@doc("Tally integers. A generic response writes its argument-typed header as the argument's type.")
+	get TallyInts /tally {
+		response Tallied<int>
+	}
+
+	@doc("Put a key. A generic request split by a header reads its argument-typed field from the body beside the field a nested mixin brings.")
+	put PutKeyed /keyed {
+		request  KeyedPut<Priority>
+		response Order
+	}
+
+	@doc("Look an order up by id. The request is a generic instance, Lookup<Priority>, bound from the path and the query string.")
+	get LookupOrder /lookup/{id} {
+		request  Lookup<Priority>
+		response Order
+	}
+
 	@doc("Echo a wrapped/nested generic instance. Probes Page<Envelope<Order>> end-to-end through transport + OpenAPI.")
 	post EchoWrapped /wrapped {
 		request  EchoWrappedReq
 		response Wrapped
+	}
+
+	@doc("List orders grouped by region. The response is a generic instance over an array of maps, Page<map<string, Order>[]>.")
+	get ListOrderGroups /order-groups {
+		request  ListOrdersReq
+		response Page<map<string, Order>[]>
+	}
+
+	post EchoNullableScalars /nullable-scalars {
+		request  NullableScalars
+		response NullableScalars
+	}
+
+	post EchoRefMeta /ref-meta {
+		request  RefMeta
+		response RefMeta
+	}
+
+	post EchoLengths /lengths {
+		request  ScalarLengths
+		response ScalarLengths
+	}
+
+	post EchoEnumMaps /enum-maps {
+		request  EnumKeyedMaps
+		response EnumKeyedMaps
+	}
+
+	post EchoListing /listing {
+		request  Listing<EmailAddress>
+		response Listing<EmailAddress>
+	}
+
+	// id binds as int, uid as an int scalar, kind as a string enum.
+	get GetItemByPath /items/{id}/{uid}/{kind} {
+		request  ItemPath
+		response ItemView
+	}
+
+	// sortQ / colorQ / limitQ fall back to their defaults when absent.
+	get SearchWithDefaults /defaults {
+		request  QueryDefaults
+		response ItemView
+	}
+
+	post EchoGenericMixinHost /generic-mixin-host {
+		request  GenericMixinHost
+		response GenericMixinHost
+	}
+
+	post EchoCompositeArg /composite-arg {
+		request  CompositeArg
+		response CompositeArg
+	}
+
+	post EchoBoxHolder /box-holder {
+		request  BoxHolder
+		response BoxHolder
 	}
 }
 
@@ -53,22 +137,16 @@ type GetOrderReq {
 // ListOrdersReq mirrors the canonical cursor-pagination request shape.
 // The limit field uses the Cents scalar to exercise a NUMERIC SCALAR
 // inside @query - codegen parses the wire string as int then casts
-// up to the alias.
-//
-// NOTE: limit cannot be `Cents?` because optional numeric primitives
-// cannot bind to query - the transport pass rejects them since
-// `*int` from a query string needs a tri-state (absent / empty /
-// parsed) that the framework has no clean idiom for. The bare-int
-// form uses 0 as the absent sentinel, with @default providing the
-// canonical fallback the handler sees after pre-fill.
+// up to the alias. An absent limit takes its @default, pre-filled
+// before the query binds.
 type ListOrdersReq {
 	cursor string?
-	limit  Cents   @default(20)
+	limit  Cents?  @default(20)
 }
 
 // CreateOrderReq is a full-shape POST body that drives every Order
-// field through the validator. Note: id is supplied client-side so
-// the cornercase fixture can keep the request DTO simple.
+// field through the validator; the client supplies the id, which keeps
+// the request DTO simple.
 type CreateOrderReq {
 	order Order
 }

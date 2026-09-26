@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ValidateArrService carries the per-request state for the
-// ValidateArr endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ValidateArrService runs CombineService.ValidateArr for one request.
 type ValidateArrService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewValidateArrService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewValidateArrService binds ValidateArrService to ctx; its Logger carries ctx's trace ids.
 func NewValidateArrService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ValidateArrService {
 	return &ValidateArrService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewValidateArrService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// ValidateArr is the service entry point. Replace the
-// TODO with the real implementation.
+// Validate stacked array decorators (minItems + maxItems + uniqueItems + each(@length)). Outer bounds plus per-element check.
+//
+// ValidateArr implements CombineService.ValidateArr.
 func (l *ValidateArrService) ValidateArr(req *types.PairsArr) (*types.PairsArr, error) {
 	// TODO: implement
 	return nil, nil

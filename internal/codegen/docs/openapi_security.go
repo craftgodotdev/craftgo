@@ -1,8 +1,9 @@
-// OpenAPI security scheme components emission + manifest scheme validation.
 package docs
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -13,22 +14,35 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// forEachSecurityScheme calls fn with every scheme name referenced by an
-// `@security(...)` decorator in ds (bare `@security(A)` and the array shortcut
-// `@security([A, B])` both flatten through DecoratorArgValues).
+// forEachSecurityScheme calls fn with each scheme an `@security` in ds names,
+// the `@security([A, B])` form included.
 func forEachSecurityScheme(ds []*ast.Decorator, fn func(name string)) {
 	for _, d := range ds {
 		if d == nil || d.Name != "security" {
 			continue
 		}
-		for _, a := range d.Args {
-			for _, v := range ast.DecoratorArgValues(a) {
-				if id, ok := v.(*ast.IdentExpr); ok {
-					fn(id.Name.String())
-				}
-			}
+		for _, n := range ast.ArgNames(d) {
+			fn(n.Value)
 		}
 	}
+}
+
+// usedSecuritySchemes returns the name of each scheme an `@security` of pkg's
+// services and methods lists: the schemes its document writes.
+func usedSecuritySchemes(pkg *semantic.Package) map[string]bool {
+	names := map[string]bool{}
+	collect := func(ds []*ast.Decorator) {
+		forEachSecurityScheme(ds, func(name string) { names[name] = true })
+	}
+	for _, svc := range pkg.Services {
+		if svc.Primary != nil {
+			collect(svc.Primary.Decorators)
+		}
+		for _, m := range svc.Methods {
+			collect(svc.Decorators(m))
+		}
+	}
+	return names
 }
 
 func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package, cfg *config.Config) {
@@ -38,19 +52,7 @@ func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package, cfg *config.Conf
 	if doc.Components.SecuritySchemes == nil {
 		doc.Components.SecuritySchemes = openapi3.SecuritySchemes{}
 	}
-	collect := func(ds []*ast.Decorator, into map[string]bool) {
-		forEachSecurityScheme(ds, func(name string) { into[name] = true })
-	}
-	names := map[string]bool{}
-	for _, svc := range pkg.Services {
-		if svc.Primary != nil {
-			collect(svc.Primary.Decorators, names)
-		}
-		for _, m := range svc.Methods {
-			collect(m.Decorators, names)
-		}
-	}
-	for n := range names {
+	for n := range usedSecuritySchemes(pkg) {
 		if _, exists := doc.Components.SecuritySchemes[n]; exists {
 			continue
 		}
@@ -58,14 +60,8 @@ func addSecuritySchemes(doc *openapi3.T, pkg *semantic.Package, cfg *config.Conf
 	}
 }
 
-// securitySchemeFor builds the OpenAPI security scheme for a referenced
-// scheme name from the manifest's `openapi.securitySchemes` declaration
-// (type / scheme / bearerFormat / in / name / openIdConnectUrl). It falls
-// back to the legacy http/bearer/JWT default only when the manifest
-// declares no schemes at all - in that mode ValidateSecurityRefs skips
-// reference validation, so every referenced scheme uses the default. When
-// schemes ARE declared, a referenced-but-undeclared name is already
-// rejected by ValidateSecurityRefs before emission.
+// securitySchemeFor returns the manifest's scheme called name, or http bearer
+// JWT for an undeclared name, which the analyser allows only with no schemes.
 func securitySchemeFor(name string, cfg *config.Config) *openapi3.SecurityScheme {
 	if cfg != nil {
 		if sc, ok := cfg.OpenAPI.SecuritySchemes[name]; ok {
@@ -83,8 +79,7 @@ func securitySchemeFor(name string, cfg *config.Config) *openapi3.SecurityScheme
 	return &openapi3.SecurityScheme{Type: "http", Scheme: "bearer", BearerFormat: "JWT"}
 }
 
-// oauthFlowsFor maps the manifest's OAuth2 flow config to the kin-openapi
-// model. Returns nil when no flows are configured (non-oauth2 schemes).
+// oauthFlowsFor converts the manifest's OAuth2 flows, nil when there are none.
 func oauthFlowsFor(f *config.OAuthFlows) *openapi3.OAuthFlows {
 	if f == nil {
 		return nil
@@ -112,30 +107,90 @@ func oauthFlowsFor(f *config.OAuthFlows) *openapi3.OAuthFlows {
 	}
 }
 
-// ValidateSecuritySchemes checks the manifest's declared
-// `openapi.securitySchemes` definitions. An oauth2 scheme without a
-// `flows` object (with at least one flow) emits an OpenAPI document that
-// violates the spec and crashes downstream client generators, so it is
-// rejected with a clear message. `@security(...)` references are resolved
-// against the same declared set by the semantic analyser.
-func ValidateSecuritySchemes(cfg *config.Config) []string {
-	if cfg == nil {
-		return nil
-	}
+// securitySchemeTypes are the scheme types OpenAPI defines.
+const securitySchemeTypes = "apiKey, http, mutualTLS, oauth2 or openIdConnect"
+
+// validateSecuritySchemes returns, of the manifest schemes named in used, a
+// message per scheme without a type OpenAPI defines, per field its type
+// requires that it lacks or holds a value the type does not admit, and per URL
+// an oauth2 flow's grant requires that it lacks.
+func validateSecuritySchemes(cfg *config.Config, used map[string]bool) []string {
 	var out []string
-	for _, name := range sortedKeys(cfg.OpenAPI.SecuritySchemes) {
-		if sc := cfg.OpenAPI.SecuritySchemes[name]; sc.Type == "oauth2" && !sc.Flows.HasFlow() {
-			out = append(out, fmt.Sprintf("securityScheme %q is type oauth2 but declares no flows: add an openapi.securitySchemes.%s.flows entry (implicit / password / clientCredentials / authorizationCode) - an oauth2 scheme without flows is invalid OpenAPI", name, name))
+	for _, name := range slices.Sorted(maps.Keys(used)) {
+		sc, declared := cfg.OpenAPI.SecuritySchemes[name]
+		if !declared {
+			continue
+		}
+		missing := func(field, hint string) {
+			out = append(out, fmt.Sprintf("securityScheme %q is type %s but has no %s: add openapi.securitySchemes.%s.%s%s - OpenAPI requires it of an %s scheme", name, sc.Type, field, name, field, hint, sc.Type))
+		}
+		switch sc.Type {
+		case "":
+			out = append(out, fmt.Sprintf("securityScheme %q has no type: set openapi.securitySchemes.%s.type to %s", name, name, securitySchemeTypes))
+		case "http":
+			if sc.Scheme == "" {
+				missing("scheme", ", the HTTP authentication scheme (bearer, basic, ...)")
+			}
+		case "apiKey":
+			switch sc.In {
+			case "":
+				missing("in", ", where the key rides (header, query or cookie)")
+			case "header", "query", "cookie":
+			default:
+				out = append(out, fmt.Sprintf("securityScheme %q: in %q is not header, query or cookie - set openapi.securitySchemes.%s.in to where the key rides", name, sc.In, name))
+			}
+			if sc.Name == "" {
+				missing("name", ", the header, query or cookie name that carries the key")
+			}
+		case "openIdConnect":
+			if sc.OpenIDConnectURL == "" {
+				missing("openIdConnectUrl", ", its OpenID Connect discovery URL")
+			}
+		case "oauth2":
+			out = append(out, oauth2FlowErrors(name, sc.Flows)...)
+		case "mutualTLS":
+		default:
+			out = append(out, fmt.Sprintf("securityScheme %q: type %q is not an OpenAPI security scheme type - use %s", name, sc.Type, securitySchemeTypes))
 		}
 	}
 	return out
 }
 
-// dedupSecurity removes duplicate security requirements (identical
-// scheme→scopes sets) that arise when a method repeats a requirement its
-// service already declares. Each requirement is an OR-alternative, so two
-// identical entries are redundant; mirrors the tag dedup so the spec
-// carries one entry per distinct alternative.
+// oauth2FlowErrors returns a message when the oauth2 scheme name declares no
+// flow, else one per URL OpenAPI requires of a flow's grant that it lacks.
+func oauth2FlowErrors(name string, flows *config.OAuthFlows) []string {
+	if !flows.HasFlow() {
+		return []string{fmt.Sprintf("securityScheme %q is type oauth2 but declares no flows: add an openapi.securitySchemes.%s.flows entry (implicit / password / clientCredentials / authorizationCode) - an oauth2 scheme without flows is invalid OpenAPI", name, name)}
+	}
+	var out []string
+	for _, grant := range []struct {
+		flow                                 string
+		f                                    *config.OAuthFlow
+		needsAuthorizationURL, needsTokenURL bool
+	}{
+		{"implicit", flows.Implicit, true, false},
+		{"password", flows.Password, false, true},
+		{"clientCredentials", flows.ClientCredentials, false, true},
+		{"authorizationCode", flows.AuthorizationCode, true, true},
+	} {
+		if grant.f == nil {
+			continue
+		}
+		missing := func(key string) {
+			out = append(out, fmt.Sprintf("securityScheme %q: flow %s has no %s: add openapi.securitySchemes.%s.flows.%s.%s - OpenAPI requires it of the %s flow", name, grant.flow, key, name, grant.flow, key, grant.flow))
+		}
+		if grant.needsAuthorizationURL && grant.f.AuthorizationURL == "" {
+			missing("authorizationUrl")
+		}
+		if grant.needsTokenURL && grant.f.TokenURL == "" {
+			missing("tokenUrl")
+		}
+	}
+	return out
+}
+
+// dedupSecurity drops each requirement equal to an earlier one, such as a
+// method repeating its service's.
 func dedupSecurity(reqs openapi3.SecurityRequirements) openapi3.SecurityRequirements {
 	seen := map[string]bool{}
 	out := make(openapi3.SecurityRequirements, 0, len(reqs))
@@ -155,15 +210,8 @@ func dedupSecurity(reqs openapi3.SecurityRequirements) openapi3.SecurityRequirem
 	return out
 }
 
-// securityFromDecorators turns `@security(SchemeA, SchemeB)` declarations
-// on a method or service into the OpenAPI `security` slice. Each
-// decorator argument that is an identifier becomes one entry whose value
-// is an empty scopes list - multi-scheme arguments inside a single
-// decorator are AND-combined; multiple `@security(...)` decorators are
-// OR-combined per the OpenAPI spec semantics. The array-shortcut form
-// `@security([A, B])` is treated as equivalent to `@security(A, B)`. To
-// opt out of inherited service-level security, use `@ignoreSecurity` at
-// the method level instead of a sentinel scheme name.
+// securityFromDecorators returns one requirement per `@security` in ds, or nil:
+// a requirement needs all its schemes, and any one requirement is enough.
 func securityFromDecorators(ds []*ast.Decorator) *openapi3.SecurityRequirements {
 	var reqs openapi3.SecurityRequirements
 	for _, d := range ds {
@@ -171,12 +219,8 @@ func securityFromDecorators(ds []*ast.Decorator) *openapi3.SecurityRequirements 
 			continue
 		}
 		req := openapi3.SecurityRequirement{}
-		for _, a := range d.Args {
-			for _, v := range ast.DecoratorArgValues(a) {
-				if id, ok := v.(*ast.IdentExpr); ok {
-					req[id.Name.String()] = []string{}
-				}
-			}
+		for _, n := range ast.ArgNames(d) {
+			req[n.Value] = []string{}
 		}
 		reqs = append(reqs, req)
 	}

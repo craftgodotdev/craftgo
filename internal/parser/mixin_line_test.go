@@ -7,9 +7,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// A decorator written after a mixin on the mixin's line is reported, not
-// handed to the field below: `user string S @default("")` must not give
-// `name` the default.
+// TestMixinTrailingDecoratorIsReported pins that a decorator on a mixin's line
+// is reported rather than given to the field below.
 func TestMixinTrailingDecoratorIsReported(t *testing.T) {
 	f, msgs := parseWithErrors(t, "package p\ntype A {\n\tuser string S @default(\"\")\n\tname string\n}\n")
 	if len(msgs) != 1 || !strings.Contains(msgs[0], "mixin") {
@@ -25,8 +24,7 @@ func TestMixinTrailingDecoratorIsReported(t *testing.T) {
 	}
 }
 
-// The compact one-line forms stay valid: a mixin followed by fields, and
-// several fields on one line.
+// TestCompactMembersStillParse pins that several members may share a line.
 func TestCompactMembersStillParse(t *testing.T) {
 	for _, src := range []string{
 		"package p\ntype A { Profile  name string  age int? }\n",

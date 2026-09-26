@@ -5,15 +5,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"text/template"
 
 	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// The gen-once scaffolds of a project with gRPC services, pinned like the
-// HTTP-only ones: a proto-only project boots the gRPC listener alone, a
-// mixed one boots both under one signal wait.
+// The scaffolds and gRPC wiring of a proto-only and a mixed project match their goldens.
 func TestGRPCScaffoldsArePinned(t *testing.T) {
 	cfg := scaffoldConfig(t)
 	set := loadProtos(t, cfg)
@@ -26,36 +25,29 @@ func TestGRPCScaffoldsArePinned(t *testing.T) {
 		{"main-grpc.go", empty},
 		{"main-mixed.go", analyzeProject(t, httpScaffoldSrc)},
 	} {
-		mainGo, err := renderGo(tmpl("main.tmpl"), buildProjectMainData(tc.proj, set, cfg))
+		mainGo, err := renderScaffold(tmpl("main.tmpl"), buildProjectMainData(tc.proj, set, cfg))
 		if err != nil {
 			t.Fatalf("%s: %v", tc.golden, err)
 		}
 		expectGolden(t, tc.golden, string(mainGo))
 	}
 
-	// A gRPC-only project configures no HTTP listener; a mixed one
-	// configures both.
+	// A gRPC-only project configures no HTTP listener; a mixed one configures both.
 	for _, shape := range []struct {
-		hasHTTP bool
-		suffix  string
-	}{{false, "grpc"}, {true, "mixed"}} {
-		data := runtimeData{
-			Package:       cfg.Package,
-			OperationName: operationNameFor(cfg.Package),
-			ConfigImport:  goImportFromRel(cfg.Package, cfg.Output.Config),
-			HasGRPC:       true,
-			HasHTTP:       shape.hasHTTP,
-		}
+		proj   *semantic.Project
+		suffix string
+	}{{empty, "grpc"}, {analyzeProject(t, httpScaffoldSrc), "mixed"}} {
+		data := buildRuntimeData(shape.proj, set, cfg)
 		for _, f := range []struct {
 			template string
-			formatGo bool
+			render   func(*template.Template, any) ([]byte, error)
 			golden   string
 		}{
-			{"config.go.tmpl", true, "config-" + shape.suffix + ".go"},
-			{"config.yaml.tmpl", false, "config-" + shape.suffix + ".yaml"},
-			{"example.config.yaml.tmpl", false, "example-config-" + shape.suffix + ".yaml"},
+			{"config.go.tmpl", renderScaffold, "config-" + shape.suffix + ".go"},
+			{"config.yaml.tmpl", execute, "config-" + shape.suffix + ".yaml"},
+			{"example.config.yaml.tmpl", execute, "example-config-" + shape.suffix + ".yaml"},
 		} {
-			body, err := renderRuntimeTemplate(f.template, data, f.formatGo)
+			body, err := f.render(tmpl(f.template), data)
 			if err != nil {
 				t.Fatalf("%s: %v", f.template, err)
 			}
@@ -121,14 +113,11 @@ func TestWiringGRPCIsWrittenOnlyWithServices(t *testing.T) {
 	if pbAliasFor("greet") != "greetpb" || pbAliasFor("greetpb") != "greetpb" {
 		t.Error("a package named with a pb suffix keeps it once")
 	}
-	imports := newGRPCImportSet()
-	imports.add(extraImport{Alias: "greetpb", Path: "x/a"})
-	imports.add(extraImport{Alias: "greetpb", Path: "x/b"})
-	imports.add(extraImport{Alias: "rpc", Path: "x/c"})
-	if a, b := imports.aliasFor("x/a"), imports.aliasFor("x/b"); a != "greetpb" || b != "greetpb2" {
+	imports := newImportSet("", nil, goImport{}, wiringGRPCNames)
+	if a, b := imports.add("greetpb", "x/a"), imports.add("greetpb", "x/b"); a != "greetpb" || b != "greetpb2" {
 		t.Errorf("aliases = %s, %s", a, b)
 	}
-	if got := imports.aliasFor("x/c"); got != "rpc2" {
+	if got := imports.add("rpc", "x/c"); got != "rpc2" {
 		t.Errorf("a reserved name must be avoided, got %s", got)
 	}
 }
@@ -180,7 +169,7 @@ func TestScaffoldGapNotes(t *testing.T) {
 	if notes := scaffoldGapNotes(proj, set, cfg, fresh); len(notes) != 0 {
 		t.Errorf("fresh scaffolds noted: %v", notes)
 	}
-	// Plugins disabled and no pb code yet.
+	// Plugins disabled and no pb code generated.
 	external := *cfg
 	external.Output.PB = "-"
 	if _, err := protodesign.Load(t.Context(), filepath.Join("testdata", "proto"), designopts.ProtoOptions(&external, ".")); err == nil {

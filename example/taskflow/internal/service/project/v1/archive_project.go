@@ -5,26 +5,21 @@ package project
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/project"
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/project"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// ArchiveProjectService carries the per-request state for the
-// ArchiveProject endpoint of ProjectService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ArchiveProjectService runs ProjectService.ArchiveProject for one request.
 type ArchiveProjectService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewArchiveProjectService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewArchiveProjectService binds ArchiveProjectService to ctx; its Logger carries ctx's trace ids.
 func NewArchiveProjectService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ArchiveProjectService {
 	return &ArchiveProjectService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewArchiveProjectService(ctx context.Context, svcCtx *svccontext.ServiceCon
 	}
 }
 
-// ArchiveProject is the service entry point. Replace the
-// TODO with the real implementation.
+// Archive a project (v1). Idempotent.
+//
+// ArchiveProject implements ProjectService.ArchiveProject.
 func (l *ArchiveProjectService) ArchiveProject(req *types.GetProjectReq) (*shared.OkResp, error) {
 	if err := l.svcCtx.Store.ArchiveProject(req.ID); err != nil {
 		return nil, err

@@ -9,15 +9,10 @@ import (
 
 	greetergrpc "example.com/app/internal/grpc/greeter"
 	greetpb "example.com/app/internal/pb/greet"
-
 	"example.com/app/svccontext"
 )
 
-// RegisterGRPC attaches the design to srv: every gRPC service the protos
-// declare. The body varies with the design; this signature does not, so
-// main.go - written once - never needs editing.
-//
-// The returned shutdown runs beside srv.Stop.
+// RegisterGRPC registers the protos' gRPC services on srv.
 func RegisterGRPC(ctx context.Context, srv *rpc.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error) {
 	greetpb.RegisterGreeterServer(srv, greetergrpc.NewServer(svcCtx))
 	return func(context.Context) error { return nil }, nil

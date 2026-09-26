@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ValidateContact returns the http.HandlerFunc for the
-// POST ValidateContact endpoint.
+// Validate per-field decorators under a type-level @requiresOneOf. Sending neither field fails the cross-field check; sending one passes.
+//
+// ValidateContact returns the POST ValidateContact handler.
 func ValidateContact(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PairsContact
@@ -31,8 +32,6 @@ func ValidateContact(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

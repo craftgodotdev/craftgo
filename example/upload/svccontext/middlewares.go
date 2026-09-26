@@ -2,17 +2,6 @@
 
 package svccontext
 
-// Middlewares carries the runtime middleware values the project wired
-// up at startup. Each `middleware Name` declaration in the DSL becomes
-// one typed field here; main.go assigns each field to a value built by
-// the matching `New<Name>Middleware` constructor in the project's
-// middleware package.
-//
-// Embed this in ServiceContext:
-//
-//	type ServiceContext struct {
-//	    Middlewares
-//	    // ... your own fields ...
-//	}
+// Middlewares holds one field per middleware the design declares.
 type Middlewares struct {
 }

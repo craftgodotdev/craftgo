@@ -37,7 +37,7 @@ go get github.com/craftgodotdev/craftgo
 craftgo init design
 ```
 
-This creates `design/craftgo.design.yaml` with default settings. Now write a `.craftgo` file:
+This creates `design/craftgo.design.yaml` with default settings. Then write a `.craftgo` file:
 
 `design/users/service.craftgo`:
 
@@ -80,9 +80,10 @@ hello/
 
 ```bash
 craftgo gen design
+go mod tidy
 ```
 
-The CLI walks up from the given path looking for `craftgo.design.yaml`, reads `go.mod` for the Go module path, then writes:
+The CLI walks up from the given path looking for `craftgo.design.yaml`, reads `go.mod` for the Go module path, then writes the files below; `go mod tidy` then adds the modules the generated code imports:
 
 ```
 hello/
@@ -90,8 +91,7 @@ hello/
 ├── internal/
 │   ├── types/design/                           generated structs + Validate()
 │   │   ├── types.go
-│   │   ├── validate.go
-│   │   └── errors.go
+│   │   └── validate.go
 │   ├── transport/user_service/                 generated HTTP handlers
 │   │   └── create_user.go
 │   ├── service/user_service/                   gen-once business logic stubs
@@ -99,9 +99,10 @@ hello/
 │   ├── routes/                                 generated routing
 │   │   ├── routes.go
 │   │   └── user_service/routes.go
-│   ├── wiring/wiring.go                        the one call main.go makes
-│   └── middleware/                             gen-once middleware stubs
-├── svccontext/svccontext.go                    gen-once dependency container
+│   └── wiring/wiring.go                        the one call main.go makes
+├── svccontext/
+│   ├── svccontext.go                           gen-once dependency container
+│   └── middlewares.go                          generated middleware fields
 ├── config/                                     gen-once runtime config
 │   ├── config.go
 │   ├── config.yaml
@@ -134,7 +135,8 @@ go run .
 ```
 
 ```
-listening on :8080 (api)
+{"level":"info","ts":…,"caller":"hello/main.go:48","msg":"metrics scrape listening","url":"[::]:9090/metrics"}
+{"level":"info","ts":…,"caller":"hello/main.go:98","msg":"listening","addr":":8080"}
 ```
 
 In another terminal:
@@ -146,7 +148,7 @@ curl -X POST http://localhost:8080/api/v1/users \
 ```
 
 ```json
-{ "id": "u1", "name": "alice", "email": "alice@example.com" }
+{"id":"u1","name":"alice","email":"alice@example.com"}
 ```
 
 (`/api` comes from `openapi.basePath: /api` in `craftgo.design.yaml`; `/v1` from `@prefix("/v1")` in the DSL.)
@@ -159,17 +161,17 @@ curl -X POST http://localhost:8080/api/v1/users \
   -d '{"name":"","email":"not-an-email"}'
 ```
 
-```
-name: length out of range [1, 80]
+```json
+{"message":"name: length out of range [1, 80]"}
 ```
 
-`Validate()` is fail-fast - it returns the first violation (here `name`), so fixing one surfaces the next. The validators ran without you writing any code.
+The status is 400. `Validate()` is fail-fast - it returns the first violation (here `name`), so fixing one surfaces the next. The validators run without you writing any code.
 
 ## What just happened
 
-One DSL file became typed structs, an HTTP handler, a logic stub, route registration and an OpenAPI spec; you filled the stub, and the handler decoded, validated, dispatched and encoded around it.
+One DSL file gives typed structs, an HTTP handler, a logic stub, route registration and an OpenAPI spec; you fill the stub, and the handler decodes, validates, dispatches and encodes around it.
 
-No reflection. No struct tags. No middleware boilerplate. The handler is a plain `http.HandlerFunc` registered on `*http.ServeMux`.
+No reflection-based binding or validation, no struct tags to write, no middleware boilerplate. The handler is a plain `http.HandlerFunc` registered on `*http.ServeMux`.
 
 ## Designing with an LLM?
 

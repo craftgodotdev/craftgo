@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -10,20 +11,9 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-// helper builders for TypeRef AST so the table-driven tests below stay
-// readable. The tests would otherwise drown in 4-line literal struct
-// initialisers and the actual assertion intent would be lost.
-
 func tRef(name string, args ...*ast.TypeRef) *ast.TypeRef {
 	return &ast.TypeRef{Named: &ast.NamedTypeRef{
 		Name: &ast.QualifiedIdent{Parts: []string{name}},
-		Args: args,
-	}}
-}
-
-func tQualifiedRef(pkg, name string, args ...*ast.TypeRef) *ast.TypeRef {
-	return &ast.TypeRef{Named: &ast.NamedTypeRef{
-		Name: &ast.QualifiedIdent{Parts: []string{pkg, name}},
 		Args: args,
 	}}
 }
@@ -45,13 +35,8 @@ func tMap(key, value *ast.TypeRef) *ast.TypeRef {
 	return &ast.TypeRef{Map: &ast.MapType{Key: key, Value: value}}
 }
 
-// TestGenericComponentName exercises the naming function across every
-// shape the registry produces: single-param, multi-param, primitive
-// arg, cross-pkg arg, nested generic arg, optional arg, array arg,
-// map arg. The expected strings are the wire-level contract that
-// downstream client codegen (TypeScript / Python / etc.) reads off
-// the OpenAPI spec; renaming any of them is a breaking change for
-// every consumer.
+// Instance component names follow `<Decl>Of<Arg>And<Arg>` for every
+// argument shape.
 func TestGenericComponentName(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -90,12 +75,6 @@ func TestGenericComponentName(t *testing.T) {
 			want:     "PageOfUserOfTest",
 		},
 		{
-			name:     "cross-pkg arg",
-			declName: "Page",
-			args:     []*ast.TypeRef{tQualifiedRef("users", "User")},
-			want:     "PageOfUsersUser",
-		},
-		{
 			name:     "optional arg propagates suffix",
 			declName: "Page",
 			args:     []*ast.TypeRef{tOptional(tRef("User"))},
@@ -112,6 +91,66 @@ func TestGenericComponentName(t *testing.T) {
 			declName: "Envelope",
 			args:     []*ast.TypeRef{tMap(tRef("string"), tRef("User"))},
 			want:     "EnvelopeOfMapOfStringAndUser",
+		},
+		{
+			name:     "array of maps leads with ArrayOf",
+			declName: "Envelope",
+			args:     []*ast.TypeRef{tArray(tMap(tRef("string"), tRef("User")))},
+			want:     "EnvelopeOfArrayOfMapOfStringAndUser",
+		},
+		{
+			name:     "2-D array of maps",
+			declName: "Envelope",
+			args:     []*ast.TypeRef{{Map: &ast.MapType{Key: tRef("string"), Value: tRef("User")}, Array: true, ArrayDepth: 2}},
+			want:     "EnvelopeOfArrayOfArrayOfMapOfStringAndUser",
+		},
+		{
+			name:     "map of arrays ends with Array",
+			declName: "Envelope",
+			args:     []*ast.TypeRef{tMap(tRef("string"), tArray(tRef("User")))},
+			want:     "EnvelopeOfMapOfStringAndUserArray",
+		},
+		{
+			name:     "optional map value ends with OrNull",
+			declName: "Envelope",
+			args:     []*ast.TypeRef{tMap(tRef("string"), tOptional(tRef("User")))},
+			want:     "EnvelopeOfMapOfStringAndUserOrNull",
+		},
+		{
+			name:     "optional array map value",
+			declName: "Envelope",
+			args:     []*ast.TypeRef{tMap(tRef("string"), tOptional(tArray(tRef("User"))))},
+			want:     "EnvelopeOfMapOfStringAndUserArrayOrNull",
+		},
+		{
+			name:     "optional map map value leads with NullOr",
+			declName: "Envelope",
+			args:     []*ast.TypeRef{tMap(tRef("string"), tOptional(tMap(tRef("string"), tRef("User"))))},
+			want:     "EnvelopeOfMapOfStringAndNullOrMapOfStringAndUser",
+		},
+		{
+			name:     "nested instance over an array ends with Array",
+			declName: "Page",
+			args:     []*ast.TypeRef{tRef("Box", tArray(tRef("Item")))},
+			want:     "PageOfBoxOfItemArray",
+		},
+		{
+			name:     "array of a nested instance leads with ArrayOf",
+			declName: "Page",
+			args:     []*ast.TypeRef{tArray(tRef("Box", tRef("Item")))},
+			want:     "PageOfArrayOfBoxOfItem",
+		},
+		{
+			name:     "a nested pair ends its leaves with Array",
+			declName: "Page",
+			args:     []*ast.TypeRef{tRef("Pair", tRef("string"), tArray(tRef("Item")))},
+			want:     "PageOfPairOfStringAndItemArray",
+		},
+		{
+			name:     "every leaf argument keeps its suffix",
+			declName: "Pair",
+			args:     []*ast.TypeRef{tArray(tRef("Item")), tArray(tRef("Item"))},
+			want:     "PairOfItemArrayAndItemArray",
 		},
 		{
 			name:     "deep recursion stays linear in tokens",
@@ -131,11 +170,8 @@ func TestGenericComponentName(t *testing.T) {
 	}
 }
 
-// TestGenericRegistryDedup pins the dedup contract: registering the
-// same (decl, args) tuple twice returns the same component name AND
-// does NOT inflate the pending list. Without this guarantee, the
-// emitter would walk the same body twice and write duplicate schemas
-// to `components.schemas`.
+// Registering an instance twice returns one name and leaves one pending
+// entry.
 func TestGenericRegistryDedup(t *testing.T) {
 	r := newGenericRegistry()
 	pageDecl := &ast.TypeDecl{Name: "Page"}
@@ -150,9 +186,7 @@ func TestGenericRegistryDedup(t *testing.T) {
 	}
 }
 
-// TestGenericRegistryMarkEmittedSkips checks the emission loop's exit
-// condition: once a name is marked emitted, `pending` must not return
-// it again, otherwise the emit loop would never terminate.
+// pending leaves out an instance once it is marked emitted.
 func TestGenericRegistryMarkEmittedSkips(t *testing.T) {
 	r := newGenericRegistry()
 	r.register(&ast.TypeDecl{Name: "Page"}, []*ast.TypeRef{tRef("User")})
@@ -166,53 +200,7 @@ func TestGenericRegistryMarkEmittedSkips(t *testing.T) {
 	}
 }
 
-// TestPascalQualified covers the cross-pkg name fragment generation.
-// Single-segment names pass through with first-rune uppercased;
-// qualified `pkg.Name` names join segments PascalCase-style so the
-// final synthetic component name is collision-safe inside the flat
-// OpenAPI `components.schemas` namespace.
-func TestPascalQualified(t *testing.T) {
-	cases := map[string]string{
-		"":           "",
-		"x":          "X",
-		"User":       "User",
-		"users.User": "UsersUser",
-		"a.b.c":      "ABC",
-		"my_pkg.Foo": "My_pkgFoo", // underscores in segments stay (PascalCase per-segment only)
-		"my-pkg.Foo": "My-pkgFoo",
-	}
-	for in, want := range cases {
-		got := pascalQualified(in)
-		if got != want {
-			t.Errorf("pascalQualified(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
-// TestIsPrimitiveName ensures the primitive set matches the DSL's
-// builtin types verbatim. A missing entry would let a user-declared
-// type silently shadow a primitive name in the synthetic component
-// naming, leading to surprising `$ref`s in client code.
-func TestIsPrimitiveName(t *testing.T) {
-	prim := []string{"string", "bool", "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"float32", "float64", "bytes", "any", "file"}
-	for _, p := range prim {
-		if !isPrimitiveName(p) {
-			t.Errorf("%q should be primitive", p)
-		}
-	}
-	for _, p := range []string{"User", "string1", "STRING", "Float64", ""} {
-		if isPrimitiveName(p) {
-			t.Errorf("%q should NOT be primitive", p)
-		}
-	}
-}
-
-// TestGenericRegistryOrderIsStable pins the iteration order to
-// registration order. OpenAPI YAML serialisation depends on a stable
-// component ordering for deterministic builds - any drift in pending()
-// ordering would surface as noisy diffs after every regen.
+// pending returns instances in registration order.
 func TestGenericRegistryOrderIsStable(t *testing.T) {
 	r := newGenericRegistry()
 	want := []string{
@@ -229,15 +217,103 @@ func TestGenericRegistryOrderIsStable(t *testing.T) {
 	}
 }
 
-// #4 (M6): two structurally distinct generic instances that collapse to the
-// same component name (Page<IntArray> and Page<int[]> both -> PageOfIntArray)
-// are rejected; structurally distinct args that DON'T collide stay clean.
+// A generic request or response split by a header binds its arguments to its
+// own fields and headers alone: the `t` the non-generic Meta brings stays the
+// scalar T although both generics spell their parameter T.
+func TestSplitGenericBodiesSubstituteOnTheirOwnLevel(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+scalar T string
+enum Prio { low  high }
+type Meta { t T? }
+type Paged<T> {
+	Meta
+	count T @header("X-Count")
+	data  T
+}
+type Put<T> {
+	Meta
+	trace string @header("X-Trace")
+	data  T
+}
+type Item { id string }
+service S {
+	get L /l { response Paged<Prio> }
+	post P /p { request Put<int>  response Item }
+}`,
+	}, &config.Config{})
+	nullableT := `{"anyOf":[{"$ref":"#/components/schemas/T"},{"type":"null"}]}`
+	for name, c := range map[string]struct {
+		got  *openapi3.SchemaRef
+		want string
+	}{
+		"LRespBody.t":    {doc.Components.Schemas["LRespBody"].Value.Properties["t"], nullableT},
+		"LRespBody.data": {doc.Components.Schemas["LRespBody"].Value.Properties["data"], `{"$ref":"#/components/schemas/Prio"}`},
+		"PReqBody.t":     {doc.Components.Schemas["PReqBody"].Value.Properties["t"], nullableT},
+		"PReqBody.data":  {doc.Components.Schemas["PReqBody"].Value.Properties["data"], `{"type":"integer"}`},
+		"X-Count":        {doc.Paths.Find("/l").Get.Responses.Status(200).Value.Headers["X-Count"].Value.Schema, `{"$ref":"#/components/schemas/Prio"}`},
+	} {
+		got, err := json.Marshal(c.got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != c.want {
+			t.Errorf("%s = %s, want %s", name, got, c.want)
+		}
+	}
+}
+
+// A type parameter spelled like a declaration is documented as its argument.
+func TestGenericTypeParamShadowsDeclaration(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+scalar Blob bytes
+enum Color { Red  Green }
+type Box<Blob, Color> { v Blob?  c Color }
+type Host { b Box<int, string> }
+service S { get L /l { response Host } }`,
+	}, &config.Config{})
+	box := doc.Components.Schemas["BoxOfIntAndString"].Value
+	for field, want := range map[string]string{"v": `{"type":["integer","null"]}`, "c": `{"type":"string"}`} {
+		got, err := json.Marshal(box.Properties[field])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != want {
+			t.Errorf("%s = %s, want %s", field, got, want)
+		}
+	}
+}
+
+// A response header typed by a type parameter is documented as the
+// instance's argument.
+func TestGenericResponseHeaderTakesItsArgument(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+type Tallied<T> { tally T @header("X-Tally")  items T[] }
+service S { get L /l { response Tallied<int> } }`,
+	}, &config.Config{})
+	got, err := json.Marshal(doc.Paths.Find("/l").Get.Responses.Status(200).Value.Headers["X-Tally"].Value.Schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != `{"type":"integer"}` {
+		t.Errorf("X-Tally = %s, want an integer", got)
+	}
+}
+
+// A declared type named like another instance's argument, `IntArray` or
+// `String`, is rejected; instances that differ in shape never share a name.
 func TestGenericInstanceNameCollisionRejected(t *testing.T) {
 	mk := func(respFields string) (*openapi3.T, error) {
 		root, files := projectFiles(t, map[string]string{
 			"app/app.craftgo": `package app
 type Page<T> { items T[] }
+type Box<T> { v T }
+type Pair<A, B> { a A  b B }
 type IntArray { whatever int }
+type String { whatever int }
+type Item { id string }
 type Req { id string }
 type Resp { ` + respFields + ` }
 service S { post G /g { request Req  response Resp } }`,
@@ -246,12 +322,34 @@ service S { post G /g { request Req  response Resp } }`,
 		if len(diags) > 0 {
 			t.Fatalf("semantic: %v", diags)
 		}
-		return buildOpenAPIDoc(mergeProjectForOpenAPI(proj), &config.Config{})
+		return buildProjectDocument(proj, &config.Config{})
 	}
-	if _, err := mk("real Page<IntArray>  prim Page<int[]>"); err == nil || !strings.Contains(err.Error(), "structurally distinct generic") {
-		t.Errorf("expected generic-instance collision error, got: %v", err)
+	for fields, clash := range map[string]string{
+		"real Page<IntArray>  prim Page<int[]>": "PageOfIntArray",
+		"real Page<String>  prim Page<string>":  "PageOfString",
+	} {
+		_, err := mk(fields)
+		if err == nil || !strings.Contains(err.Error(), "structurally distinct generic") || !strings.Contains(err.Error(), clash) {
+			t.Errorf("%s: expected a generic-instance collision on %s, got: %v", fields, clash, err)
+			continue
+		}
+		if strings.Contains(err.Error(), "struct of") {
+			t.Errorf("%s: hint names a struct: %v", fields, err)
+		}
 	}
-	if _, err := mk("a Page<int>  b Page<string>"); err != nil {
-		t.Errorf("distinct generic instances wrongly rejected: %v", err)
+	for _, fields := range []string{
+		"a Page<int>  b Page<string>",
+		"a Page<map<string, int>>  b Page<map<string, int>[]>",
+		"a Page<map<string, Item[]>>  b Page<map<string, Item>[]>",
+		"a Page<map<string, Item[]>[]>  b Page<map<string, Item[][]>>  c Page<map<string, Item>[][]>",
+		"a Page<map<string, map<string, int>[]>>  b Page<map<string, map<string, int[]>>>",
+		"a Page<map<string, Box<int>?>>  b Page<map<string, Box<int>>>",
+		"a Page<Box<Item[]>>  b Page<Box<Item>[]>",
+		"a Page<Pair<string, Item[]>>  b Page<Pair<string, Item>[]>",
+		"a Pair<map<string, Item[]>, int>  b Pair<map<string, Item>[], int>",
+	} {
+		if _, err := mk(fields); err != nil {
+			t.Errorf("distinct generic instances %s wrongly rejected: %v", fields, err)
+		}
 	}
 }

@@ -1,4 +1,3 @@
-// TypeRef -> SchemaRef conversion + generic instantiation.
 package docs
 
 import (
@@ -14,13 +13,8 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 		return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"object"}}}
 	}
 	if t.Array {
-		// Peel ONE bracket per recursion so multi-array types
-		// (`Tag[][]`) emit nested OpenAPI `array` schemas. The
-		// inner schemaForTypeRef call sees `Tag[]`, then `Tag`.
-		// Clear Optional on the inner - `Tag[]?` means "the slice
-		// may be absent", not "each element may be null"; leaving
-		// the flag set would propagate `nullable: true` into the
-		// items schema.
+		// One bracket per level (`Tag[][]` nests two arrays); the element
+		// drops the `?`, since `Tag[]?` is an optional slice.
 		inner := t.ElemTypeRef()
 		return &openapi3.SchemaRef{Value: &openapi3.Schema{
 			Type:  &openapi3.Types{"array"},
@@ -32,59 +26,25 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 			Type:                 &openapi3.Types{"object"},
 			AdditionalProperties: openapi3.AdditionalProperties{Schema: schemaForTypeRef(t.Map.Value, pkg, registry)},
 		}
-		// OpenAPI 3.1's `propertyNames` constrains the object keys.
-		// JSON keys are always strings on the wire, so plain
-		// string keys carry no extra constraint - but an enum key
-		// implies a closed value-set and a scalar key carries the
-		// scalar's own validators (length / pattern / format). Without
-		// this emit `map<Color, V>` and `map<EmailID, V>` flatten to
-		// untyped string keys and the generated TS / Java client SDK
-		// accepts garbage keys.
-		//
-		// kin-openapi v0.124 doesn't model `propertyNames` natively
-		// (it's primarily an OpenAPI 3.0 library; craftgo emits the
-		// 3.1 version string and uses 3.1-only fields via Extensions).
-		// The Extensions map marshals as top-level YAML keys so the
-		// rendered output reads identically to a native field.
+		// kin-openapi has no `propertyNames` field; Extensions marshal as
+		// plain keywords.
 		if pn := propertyNamesForMapKey(t.Map.Key, pkg); pn != nil {
 			if s.Extensions == nil {
-				s.Extensions = make(map[string]interface{})
+				s.Extensions = make(map[string]any)
 			}
 			s.Extensions["propertyNames"] = pn
 		}
 		return &openapi3.SchemaRef{Value: s}
 	}
 	if t.Named != nil {
-		name := t.Named.Name.String()
-		if prim := primitiveSchema(name); prim != nil {
-			// An optional primitive used as a composite value (`map<K, int?>`,
-			// an array element) is nullable: extend the 3.1 type list to
-			// include "null" so the spec matches the `*T` Go field. Field-level
-			// optionals are stamped separately in openapi_fields.go; this
-			// branch is the only place a value-position optional primitive is
-			// rendered. (applyNullable is nil-safe, so bare `any` is untouched.)
+		if prim := primitiveSchema(t.Named.Name.String()); prim != nil {
+			// An optional primitive value (`map<K, int?>`) may be null.
 			if t.Optional {
 				applyNullable(prim)
 			}
 			return &openapi3.SchemaRef{Value: prim}
 		}
-		if len(t.Named.Args) > 0 {
-			if generic, ok := pkg.Types[name]; ok && len(generic.TypeParams) > 0 {
-				if registry != nil {
-					componentName := registry.register(generic, t.Named.Args)
-					// Optional generic instance composes with the 3.1
-					// null type exactly like a plain named ref.
-					if t.Optional {
-						return nullableRef(componentName)
-					}
-					return &openapi3.SchemaRef{Ref: "#/components/schemas/" + componentName}
-				}
-				// No registry: fall through to legacy inline form.
-				// Only the legacy unit-test path hits this branch.
-				return &openapi3.SchemaRef{Value: instantiateGeneric(generic, t.Named.Args, pkg, nil)}
-			}
-		}
-		// Optional named ref → 3.1 "ref OR null" wrapper (see nullableRef).
+		name := registry.refName(t.Named)
 		if t.Optional {
 			return nullableRef(name)
 		}
@@ -93,21 +53,14 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 	return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"object"}}}
 }
 
-// nullSchemaRef is the OpenAPI 3.1 `{type: "null"}` sentinel - the null branch
-// of a nullable anyOf wrapper, or the `not` of a never-null guard. Built in one
-// place so the 3.1 null shape is spelled once.
+// nullSchemaRef is `{type: "null"}`: the null branch of a nullable anyOf, or
+// the `not` of a never-null guard.
 func nullSchemaRef() *openapi3.SchemaRef {
 	return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"null"}}}
 }
 
-// nullableRef builds the OpenAPI 3.1 "ref OR null" wrapper -
-// `anyOf: [{$ref}, {type: null}]` - for an optional named-type or
-// generic-instance field. A bare `$ref` can not portably carry a
-// nullable marker (3.1 removed the `nullable` keyword), so an optional
-// struct field (`boss User?`) must compose the ref with the null type;
-// without it TS client generators type the field as required `User` and
-// refuse the `null` the server may send. [isNullableRefWrapper] is the
-// matching recogniser used when stamping field-level metadata.
+// nullableRef is the 3.1 "ref or null" schema, `anyOf: [{$ref}, {type: null}]`:
+// 3.1 has no `nullable`, and a bare $ref takes no sibling keyword.
 func nullableRef(refName string) *openapi3.SchemaRef {
 	return &openapi3.SchemaRef{Value: &openapi3.Schema{
 		AnyOf: openapi3.SchemaRefs{
@@ -117,25 +70,8 @@ func nullableRef(refName string) *openapi3.SchemaRef {
 	}}
 }
 
-// propertyNamesForMapKey returns the OpenAPI 3.1 `propertyNames`
-// schema constraint for a map key TypeRef, or nil when the key
-// carries no constraint beyond "must be a JSON string".
-//
-// Coverage:
-//   - enum key  → `enum: [values...]` (closed set)
-//   - scalar key with string primitive → inherits scalar's
-//     `minLength` / `maxLength` / `pattern` / `format`
-//   - bare `string` key → nil (no extra constraint)
-//   - non-string scalar key → nil (the wire serialisation would
-//     stringify, but expressing the underlying numeric constraint
-//     via propertyNames is unsupported by every common client SDK
-//     generator - emitting nothing is safer than emitting a
-//     misleading constraint)
-//
-// Resolves through the merged package (OpenAPI generation runs after
-// [mergeProjectForOpenAPI], which rewrites cross-package qualified
-// refs to bare names) so cross-pkg keys land here without a
-// project-resolver detour.
+// propertyNamesForMapKey returns the `propertyNames` schema of a map key: an
+// enum's wire values or a string scalar's constraints; nil for any other key.
 func propertyNamesForMapKey(t *ast.TypeRef, pkg *semantic.Package) *openapi3.Schema {
 	if t == nil || t.Named == nil || t.Named.Name == nil {
 		return nil
@@ -148,13 +84,10 @@ func propertyNamesForMapKey(t *ast.TypeRef, pkg *semantic.Package) *openapi3.Sch
 		return nil
 	}
 	if ed, ok := pkg.Enums[name]; ok && ed != nil {
-		values := ed.EnumValues()
-		out := make([]any, 0, len(values))
-		for _, v := range values {
-			// JSON object keys are always strings, so emit each member's
-			// wire value in its JSON-key form (an int-enum key surfaces as
-			// its decimal string "1", "5", ...).
-			out = append(out, semantic.EnumMemberWireString(v))
+		values := enumWireStrings(ed)
+		out := make([]any, len(values))
+		for i, v := range values {
+			out[i] = v
 		}
 		return &openapi3.Schema{
 			Type: &openapi3.Types{"string"},
@@ -162,62 +95,37 @@ func propertyNamesForMapKey(t *ast.TypeRef, pkg *semantic.Package) *openapi3.Sch
 		}
 	}
 	if sc, ok := pkg.Scalars[name]; ok && sc != nil && sc.Primitive == "string" {
-		// Only a string scalar contributes a key constraint: JSON object keys
-		// are strings, so its length / pattern / format apply directly. A
-		// non-string scalar key has no consumable propertyNames form - a
-		// numeric `type: integer` is rejected by a conformant 3.1 validator
-		// (the key is a string), and a numeric bound (`@gte(1)`) has no clean
-		// string-pattern equivalent - so its key constraint is left to the
-		// runtime rather than advertised in a shape clients can't validate.
+		// A numeric scalar's bounds have no form that holds for a string key.
 		base := &openapi3.Schema{Type: &openapi3.Types{"string"}}
-		applyConstraintFamilies(sc.Decorators, base, semantic.ConstraintLength|semantic.ConstraintText)
+		applyConstraintFamilies(sc.Decorators, base, semantic.ConstraintLength|semantic.ConstraintText, sc.Primitive)
 		return base
 	}
 	return nil
 }
 
-// instantiateGeneric builds the schema body for one generic instance
-// (`Page<Order>`, `Result<User, Error>`, ...) by substituting each
-// type-param name with the matching concrete arg and walking the
-// decl's body fields + embedded mixins.
-//
-// Mixin expansion mirrors [schemaForType]: when the body has at least
-// one mixin reference, the host schema flips to an `allOf` composition
-// whose first entries are `$ref`s to each mixin's component and whose
-// last entry is an inline object carrying the host's own (substituted)
-// fields. Without this expansion, mixin members would be silently
-// dropped during instantiation - a `Page<Order>` whose body mixed in
-// `AuditFields` would land on the wire missing the audit timestamps
-// it inherited at the DSL level.
-//
-// The registry is passed through so any nested generic encountered
-// during substitution (e.g. `Page<Envelope<Order>>` recurses into
-// `Envelope<Order>`) registers transitively. A nil registry falls
-// back to inline emission for the nested level - kept for the no-
-// registry test path that does not exercise nesting.
+// enumWireStrings returns ed's wire values as strings, the form a map key or
+// a URL takes: an int enum lists "1", "5", ...
+func enumWireStrings(ed *ast.EnumDecl) []string {
+	values := ed.EnumValues()
+	out := make([]string, len(values))
+	for i, v := range values {
+		out[i] = semantic.EnumMemberWireString(v)
+	}
+	return out
+}
+
+// instantiateGeneric builds the schema of decl with args substituted for its
+// type parameters.
 func instantiateGeneric(decl *ast.TypeDecl, args []*ast.TypeRef, pkg *semantic.Package, registry *genericRegistry) *openapi3.Schema {
 	subst := semantic.SubstMap(decl.TypeParams, args)
-	// Delegate to the shared body-walk with a populated substitution
-	// map. This is the ONLY behavioural difference from a top-level
-	// type: every field type is substituted (T -> the concrete arg)
-	// before emission. Everything else - per-field validator metadata,
-	// the type-level description / @deprecated flag, @header/@cookie
-	// exclusion, mixin allOf-flattening, and cross-field fragments - is
-	// applied identically, so a `Page<Order>` instance carries the same
-	// constraints the `Page<T>` decl declared. (Mixin names are never
-	// substituted: only TypeRef args participate; a mixin named after a
-	// type-param is disallowed at the DSL level.)
 	return schemaFromTypeDecl(decl, subst, pkg, registry)
 }
 
-// primitiveSchema returns the OpenAPI schema for a built-in type, or nil
-// for a name that is not one. Only int32 / int64 have a registered
-// integer format, so the other widths emit a bare integer; an unsigned
-// width is conveyed via `minimum: 0` (a user @gte tightens it via setMin,
-// which keeps the largest, never loosens).
+// primitiveSchema returns the schema of a built-in type, or nil for any other
+// name. An unsigned type gets `minimum: 0`.
 func primitiveSchema(name string) *openapi3.Schema {
 	sp, ok := prims.Lookup(name)
-	if !ok || sp.Kind == prims.Object {
+	if !ok {
 		return nil
 	}
 	if sp.OASType == "" {

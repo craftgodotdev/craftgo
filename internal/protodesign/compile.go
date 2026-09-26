@@ -20,7 +20,7 @@ import (
 // Load compiles every proto under designRoot and returns the set, or nil
 // when the design has no proto at all.
 func Load(ctx context.Context, designRoot string, opts Options) (*Set, error) {
-	names, err := Discover(designRoot)
+	names, err := discover(designRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -34,12 +34,12 @@ func Load(ctx context.Context, designRoot string, opts Options) (*Set, error) {
 	req := buildRequest(files, names, parameter(names, opts))
 	plugin, err := protogen.Options{}.New(req)
 	if err != nil {
-		if !opts.PBEnabled() {
+		if !opts.pbEnabled() {
 			return nil, fmt.Errorf("output.pb is \"-\", so every design proto needs `option go_package`: %w", err)
 		}
 		return nil, fmt.Errorf("a proto under proto.includes needs `option go_package` (the design's own protos are placed under output.pb): %w", err)
 	}
-	set := &Set{Options: opts, Root: designRoot, Names: names, Plugin: plugin, Request: req}
+	set := &Set{opts: opts, names: names, plugin: plugin, request: req}
 	for _, f := range plugin.Files {
 		if !f.Generate {
 			continue
@@ -55,10 +55,8 @@ func Load(ctx context.Context, designRoot string, opts Options) (*Set, error) {
 	return set, nil
 }
 
-// compile runs protocompile over names with designRoot as the first
-// import root. Every error is collected, so a design with three mistakes
-// reports three, and each one carries the file path the way the DSL
-// diagnostics do.
+// compile runs protocompile over names with designRoot as the first import
+// root, reporting every error with its file path.
 func compile(ctx context.Context, designRoot string, names, includes []string) (linker.Files, error) {
 	var errs []string
 	rep := reporter.NewReporter(func(e reporter.ErrorWithPos) error {
@@ -96,13 +94,13 @@ func newService(f *protogen.File, svc *protogen.Service, plugin *protogen.Plugin
 	}
 	for _, m := range svc.Methods {
 		s.Methods = append(s.Methods, &Method{
-			Desc: m,
-			Name: m.GoName,
-			File: idents.FileName(m.GoName, fileCase),
-			Kind: kindOf(m.Desc),
-			In:   typeRef(m.Input, plugin),
-			Out:  typeRef(m.Output, plugin),
-			Doc:  docLines(m.Comments.Leading),
+			FullMethod: "/" + s.FullName + "/" + string(m.Desc.Name()),
+			Name:       m.GoName,
+			File:       idents.FileName(m.GoName, fileCase),
+			Kind:       kindOf(m.Desc),
+			In:         typeRef(m.Input, plugin),
+			Out:        typeRef(m.Output, plugin),
+			Doc:        docLines(m.Comments.Leading),
 		})
 	}
 	return s
@@ -128,12 +126,11 @@ func typeRef(m *protogen.Message, plugin *protogen.Plugin) TypeRef {
 	return ref
 }
 
-// docLines splits a leading comment into the lines the scaffold renders,
-// dropping the blank lines at either end and the one space protoc keeps
-// after `//`.
+// docLines splits a leading comment into lines, dropping blank lines at either
+// end and the space protoc keeps after `//`.
 func docLines(c protogen.Comments) []string {
 	var out []string
-	for _, line := range strings.Split(strings.TrimRight(string(c), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(c), "\n"), "\n") {
 		out = append(out, strings.TrimRight(strings.TrimPrefix(line, " "), " \t"))
 	}
 	for len(out) > 0 && out[0] == "" {

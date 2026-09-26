@@ -5,26 +5,21 @@ package customers
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/customers"
-	shared "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
-
-	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/customers"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// DeleteCustomerService carries the per-request state for the
-// DeleteCustomer endpoint of CustomerService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// DeleteCustomerService runs CustomerService.DeleteCustomer for one request.
 type DeleteCustomerService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewDeleteCustomerService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewDeleteCustomerService binds DeleteCustomerService to ctx; its Logger carries ctx's trace ids.
 func NewDeleteCustomerService(ctx context.Context, svcCtx *svccontext.ServiceContext) *DeleteCustomerService {
 	return &DeleteCustomerService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewDeleteCustomerService(ctx context.Context, svcCtx *svccontext.ServiceCon
 	}
 }
 
-// DeleteCustomer is the service entry point. Replace the
-// TODO with the real implementation.
+// Delete a customer. Idempotent.
+//
+// DeleteCustomer implements CustomerService.DeleteCustomer.
 func (l *DeleteCustomerService) DeleteCustomer(req *types.GetCustomerReq) (*shared.OkResp, error) {
 	// TODO: implement
 	return nil, nil

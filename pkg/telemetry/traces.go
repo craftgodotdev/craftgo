@@ -10,10 +10,8 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-// newTracerProvider builds the tracer c selects: the resource
-// [resourceFor] stamps plus, when c names an exporter, one batch
-// processor feeding it. Without an exporter spans get valid ids (for log
-// correlation) but go nowhere.
+// newTracerProvider builds the tracer c selects; without an exporter, spans get
+// valid ids for log correlation but are not exported.
 func newTracerProvider(ctx context.Context, c OTelConfig) (*sdktrace.TracerProvider, error) {
 	opts := []sdktrace.TracerProviderOption{sdktrace.WithResource(resourceFor(c.ServiceName))}
 	exp, err := traceExporter(ctx, c)
@@ -26,8 +24,7 @@ func newTracerProvider(ctx context.Context, c OTelConfig) (*sdktrace.TracerProvi
 	return sdktrace.NewTracerProvider(opts...), nil
 }
 
-// traceExporter returns the span exporter c.Exporter names, or nil for
-// "none" and any other value.
+// traceExporter returns the exporter c.Exporter names, or nil for any other value.
 func traceExporter(ctx context.Context, c OTelConfig) (sdktrace.SpanExporter, error) {
 	switch c.Exporter {
 	case ExporterStdout:
@@ -37,14 +34,22 @@ func traceExporter(ctx context.Context, c OTelConfig) (sdktrace.SpanExporter, er
 		}
 		return exp, nil
 	case ExporterOTLPgRPC:
-		exp, err := otlptracegrpc.New(ctx, otlpEndpoint(c.Endpoint,
-			otlptracegrpc.WithEndpointURL, otlptracegrpc.WithEndpoint, otlptracegrpc.WithInsecure)...)
+		endpoint, err := otlpGRPCEndpoint(c.Endpoint,
+			otlptracegrpc.WithEndpointURL, otlptracegrpc.WithEndpoint, otlptracegrpc.WithInsecure)
+		if err != nil {
+			return nil, err
+		}
+		exp, err := otlptracegrpc.New(ctx, endpoint...)
 		if err != nil {
 			return nil, fmt.Errorf("otlp grpc trace exporter: %w", err)
 		}
 		return exp, nil
 	case ExporterOTLPHTTP:
-		exp, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(c.Endpoint))
+		endpoint, err := otlpHTTPEndpoint(c.Endpoint, otlptracehttp.WithEndpointURL)
+		if err != nil {
+			return nil, err
+		}
+		exp, err := otlptracehttp.New(ctx, endpoint...)
 		if err != nil {
 			return nil, fmt.Errorf("otlp http trace exporter: %w", err)
 		}

@@ -1,5 +1,3 @@
-// Method-level combination checks: request and response body types,
-// body-verb rules, @status(204) bodies, and raw-mode redundancy.
 package semantic
 
 import (
@@ -8,30 +6,44 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/prims"
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// methodLabel renders the diagnostic phrase for one method, e.g.
-// "method Users.Create".
-func methodLabel(svc string, m *ast.Method) string {
-	return "method " + svc + "." + m.Name
+func (a *analyzer) checkServiceMethods() {
+	for _, si := range a.pkg.Services {
+		seenName := map[string]lexer.Position{}
+		seenRoute := map[string]lexer.Position{}
+		for _, m := range si.Methods {
+			if prev, ok := seenName[m.Name]; ok {
+				d := a.diag(m.Pos, m.Pos, lexer.SeverityError, CodeServiceDuplicateMethod,
+					"duplicate method %q", m.Name)
+				d.Related = related(prev, "first declared here")
+			} else {
+				seenName[m.Name] = m.Pos
+			}
+			// Methods collide on verb plus resolved route shape, parameter
+			// names erased; a pathless method routes by its kebab-cased name.
+			rt := si.registeredRoute(m)
+			key := m.Verb + " " + route.Shape(rt)
+			if prev, ok := seenRoute[key]; ok {
+				d := a.diag(m.Pos, m.Pos, lexer.SeverityError, CodeServiceDuplicateRoute,
+					"duplicate route %q", m.Verb+" "+rt)
+				d.Related = related(prev, "first declared here")
+			} else {
+				seenRoute[key] = m.Pos
+			}
+		}
+	}
 }
 
-// checkRequestBodyType rejects a request type that is a built-in
-// primitive, a scalar or an enum - all fieldless. The request
-// binder/decoder drives off the type's FIELDS, so a fieldless type
-// yields no decode and no parameters - the client payload is silently
-// dropped and the OpenAPI operation loses its `requestBody` - and the
-// Go it emits does not compile: the handler declares `var req
-// types.<name>` and calls a `Validate()` neither a primitive nor a
-// constraint-free scalar has. Wrap the value in a `type { value <T> }`.
-// Mirrors the existing bare-array request reject, which is likewise
-// unconditional.
+// checkRequestBodyType rejects a request type that is a builtin primitive, a
+// scalar or an enum, none of which has fields to bind.
 func (a *analyzer) checkRequestBodyType(m *ast.Method) {
 	if m == nil || m.Request == nil || m.Request.Name == nil {
 		return
 	}
-	pkg, sym := a.resolveNamed(a.pkg.Name, m.Request)
+	pkg, sym := a.proj.resolve(a.pkg.Name, m.Request.Name)
 	kind := bareRequestKind(pkg, m.Request, sym)
 	if kind == "" {
 		return
@@ -42,21 +54,8 @@ func (a *analyzer) checkRequestBodyType(m *ast.Method) {
 		name, kind, name)
 }
 
-// checkResponseBodyType rejects a response type that is a built-in
-// primitive. The clause names the Go type the stub returns
-// (`(*types.<name>, error)`) and the schema the OpenAPI response body
-// $refs; a built-in supplies neither, so the tree names a type the
-// generated types package never declares and the document carries a
-// dangling `#/components/schemas/<name>`.
-//
-// A scalar or an enum stays accepted: unlike the request side nothing
-// binds a response, and both generate a real named Go type and $ref a
-// schema that IS emitted.
-//
-// Raw sides are rejected too. `@rawResponse` / `@passthrough` make the
-// block docs-only for the transport, but the OpenAPI document is still
-// emitted from it - so the dangling $ref survives the raw flag, exactly
-// as the bare-array reject does.
+// checkResponseBodyType rejects a builtin primitive as a response type, raw
+// or not: no Go type or schema is generated for it.
 func (a *analyzer) checkResponseBodyType(m *ast.Method) {
 	if m == nil || m.Response == nil || m.Response.Type == nil {
 		return
@@ -70,9 +69,8 @@ func (a *analyzer) checkResponseBodyType(m *ast.Method) {
 		name, name)
 }
 
-// bareRequestKind names the fieldless thing a request clause refers to -
-// "built-in primitive", "scalar" or "enum" - or "" when it names a
-// message. sym is the symbol n resolves to in pkg.
+// bareRequestKind names the fieldless kind a request clause refers to, or
+// returns "" for a message; sym is n resolved in pkg.
 func bareRequestKind(pkg *Package, n *ast.NamedTypeRef, sym string) string {
 	if builtinClauseName(n) != "" {
 		return "built-in primitive"
@@ -89,11 +87,8 @@ func bareRequestKind(pkg *Package, n *ast.NamedTypeRef, sym string) string {
 	return ""
 }
 
-// builtinClauseName returns the built-in primitive a `request` /
-// `response` clause names, or "" when it names a declaration. Only a
-// BARE name can be a built-in: a qualified reference always names a
-// declaration, and [CodeDeclBuiltinName] keeps a declaration from taking
-// a built-in's spelling.
+// builtinClauseName returns the builtin primitive a request or response
+// clause names, or ""; [CodeDeclBuiltinName] keeps decls off builtin names.
 func builtinClauseName(n *ast.NamedTypeRef) string {
 	if n == nil || n.Name == nil || len(n.Name.Parts) != 1 {
 		return ""
@@ -104,108 +99,72 @@ func builtinClauseName(n *ast.NamedTypeRef) string {
 	return ""
 }
 
-// checkNoContentStatusBody rejects a no-content success status (204, 304,
-// or any 1xx) on a method that declares a response body. Per RFC 9110
-// those statuses carry no body, but both the OpenAPI emitter and the
-// transport template select their body-emitting branch on response-body
-// presence alone - never the status - so the pairing would advertise a
-// `application/json` body under a status that forbids one and write a body
-// the client never receives.
-func (a *analyzer) checkNoContentStatusBody(m *ast.Method) {
-	if m == nil || m.Response == nil || m.Response.Type == nil {
+// checkNoContentStatusBody rejects a response body on a method whose
+// `@status` is 1xx, 204, 205 or 304, which carry no body (RFC 9110); decs
+// are the decorators that apply to m.
+func (a *analyzer) checkNoContentStatusBody(m *ast.Method, decs []*ast.Decorator) {
+	if m.Response == nil || m.Response.Type == nil {
 		return
 	}
-	for _, d := range m.Decorators {
-		if d == nil || d.Name != "status" || len(d.Args) != 1 {
-			continue
+	code, ok := wire.StatusOverride(decs)
+	if !ok || !noContentStatus(code) {
+		return
+	}
+	d := ast.FindDecorator(decs, "status")
+	a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
+		"@status(%d) is a no-content status and cannot carry a response body, but method %s declares one - drop the response, or use a status that allows a body.",
+		code, m.Name)
+}
+
+// noContentStatus reports whether HTTP status code carries no body.
+func noContentStatus(code int) bool {
+	return code == 204 || code == 205 || code == 304 || (code >= 100 && code < 200)
+}
+
+// checkRawModeRedundancy warns about a raw flag beside `@passthrough`, and
+// `@rawRequest` with `@rawResponse` written before any `@passthrough`, among
+// decs, the decorators that apply to m; the later decorator of each pair is
+// reported.
+func (a *analyzer) checkRawModeRedundancy(svcName string, m *ast.Method, decs []*ast.Decorator) {
+	pass := ast.FindDecorator(decs, wire.DecoratorPassthrough)
+	req := ast.FindDecorator(decs, wire.DecoratorRawRequest)
+	resp := ast.FindDecorator(decs, wire.DecoratorRawResponse)
+	before := func(x, y *ast.Decorator) bool { return comparePos(x.Pos, y.Pos) < 0 }
+	for _, flag := range []struct {
+		d    *ast.Decorator
+		side string
+	}{{req, "request"}, {resp, "response"}} {
+		switch {
+		case pass == nil || flag.d == nil:
+		case before(flag.d, pass):
+			diag := a.diag(pass.Pos, decoratorEnd(pass), lexer.SeverityWarning, CodeDecoratorRedundant,
+				"@passthrough on method %s.%s already covers @%s - drop the flag",
+				svcName, m.Name, flag.d.Name)
+			diag.Related = related(flag.d.Pos, "@"+flag.d.Name+" declared here")
+		default:
+			diag := a.diag(flag.d.Pos, decoratorEnd(flag.d), lexer.SeverityWarning, CodeDecoratorRedundant,
+				"@%s is redundant on method %s.%s: @passthrough already makes the %s side raw",
+				flag.d.Name, svcName, m.Name, flag.side)
+			diag.Related = related(pass.Pos, "@passthrough declared here")
 		}
-		il, ok := d.Args[0].Value.(*ast.IntLit)
-		if !ok {
-			continue
-		}
-		code := il.Value
-		if code == 204 || code == 205 || code == 304 || (code >= 100 && code < 200) {
-			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
-				"@status(%d) is a no-content status and cannot carry a response body, but method %s declares one - drop the response, or use a status that allows a body.",
-				code, m.Name)
-			return
-		}
+	}
+	if req == nil || resp == nil {
+		return
+	}
+	first, second := req, resp
+	if before(resp, req) {
+		first, second = resp, req
+	}
+	if pass == nil || before(second, pass) {
+		diag := a.diag(second.Pos, decoratorEnd(second), lexer.SeverityWarning, CodeDecoratorRedundant,
+			"@rawRequest together with @rawResponse is exactly @passthrough on method %s.%s - write @passthrough instead",
+			svcName, m.Name)
+		diag.Related = related(first.Pos, "@"+first.Name+" declared here")
 	}
 }
 
-// checkRawModeRedundancy warns when a method spells a raw side twice.
-// `@passthrough` already hands both sides to logic, so `@rawRequest` /
-// `@rawResponse` next to it add nothing; and `@rawRequest @rawResponse`
-// together is exactly `@passthrough`. Codegen reads the modes through
-// wire.RawSides, so the output is identical either way - the diagnostic
-// is a warning, anchored on the later decorator with the earlier one as
-// related context (the same "second occurrence is the offender" rule
-// the other combination checks follow). Decorators propagated from an
-// `extend service` header sit before the method's own, so a method-level
-// flag that repeats a header-level `@passthrough` is anchored on the
-// method's line.
-func (a *analyzer) checkRawModeRedundancy(svcName string, m *ast.Method) {
-	if m == nil {
-		return
-	}
-	var passthrough, rawReq, rawResp *ast.Decorator
-	for _, d := range m.Decorators {
-		if d == nil {
-			continue
-		}
-		switch d.Name {
-		case wire.DecoratorPassthrough:
-			for _, flag := range []*ast.Decorator{rawReq, rawResp} {
-				if flag == nil {
-					continue
-				}
-				diag := a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeDecoratorRedundant,
-					"@passthrough on method %s.%s already covers @%s - drop the flag",
-					svcName, m.Name, flag.Name)
-				diag.Related = related(flag.Pos, "@"+flag.Name+" declared here")
-			}
-			if passthrough == nil {
-				passthrough = d
-			}
-		case wire.DecoratorRawRequest, wire.DecoratorRawResponse:
-			side, other := "request", rawResp
-			if d.Name == wire.DecoratorRawResponse {
-				side, other = "response", rawReq
-			}
-			switch {
-			case passthrough != nil:
-				diag := a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeDecoratorRedundant,
-					"@%s is redundant on method %s.%s: @passthrough already makes the %s side raw",
-					d.Name, svcName, m.Name, side)
-				diag.Related = related(passthrough.Pos, "@passthrough declared here")
-			case other != nil:
-				diag := a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodeDecoratorRedundant,
-					"@rawRequest together with @rawResponse is exactly @passthrough on method %s.%s - write @passthrough instead",
-					svcName, m.Name)
-				diag.Related = related(other.Pos, "@"+other.Name+" declared here")
-			}
-			if d.Name == wire.DecoratorRawRequest {
-				if rawReq == nil {
-					rawReq = d
-				}
-			} else if rawResp == nil {
-				rawResp = d
-			}
-		}
-	}
-}
-
-// checkBodyBindingVerb rejects `@body` / `@form` request fields on a
-// non-body verb (GET / HEAD / DELETE / OPTIONS). Those handlers never
-// decode a request body, so the binder's switch falls through and the
-// field is left zero with no error - silent data loss. The OpenAPI side
-// likewise omits the requestBody for non-body verbs, so the contract and
-// the runtime agree only by both dropping the field. Reject up front.
-//
-// The request type is flattened so a field a request inherits through a
-// mixin is checked too - mirroring the codegen request flatten. Body verbs
-// route `@body` through the JSON decoder and `@form` through the multipart
-// handler, so the check only fires for the non-body set.
+// checkBodyBindingVerb checks every request field, mixins included, of a
+// method whose verb has no body.
 func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	if m == nil || m.Request == nil {
 		return
@@ -213,27 +172,83 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	if wire.IsBodyVerb(m.Verb) {
 		return // body-bearing verbs decode @body / @form normally
 	}
-	td, fields := a.requestFields(m)
-	if td == nil {
+	view, fields, ok := a.instanceFields(m.Request)
+	if !ok {
 		return
 	}
 	verb := strings.ToUpper(m.Verb)
 	reqName := m.Request.Name.String()
-	pathSegs := MethodRoutePathVars(m, a.pkg.Services)
-	for _, pf := range fields {
-		a.bodyBindingVerbRules(reqName, verb, svcName, pathSegs, pf)
+	pathSegs := methodRoutePathVars(m, a.pkg.Services)
+	for _, ff := range fields {
+		a.bodyBindingVerbRules(reqName, verb, svcName, view, pathSegs, ff)
 	}
 }
 
-// bodyBindingVerbRules checks one request field of a NON-body-verb method:
-// `@body` / `@form` require a body-bearing verb (the handler decodes no body,
-// so the field would be silently dropped); an un-decorated field auto-binds
-// to @query, where `@nullable` is meaningless (a query string has no
-// JSON-null form, and the pointer it lowers to can't take the binder's plain
-// string - non-compiling); and a type that cannot ride a query string is
-// rejected. The field's type resolves in the package that declares it.
-func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName string, pathSegs map[string]bool, pf promotedField) {
-	f := pf.Field
+// checkMultipartParts rejects `@form` on m's request when no body or form field, mixins
+// included, is a `file`, and otherwise a part the form binder cannot fill: an optional type
+// parameter over a `file` or an array, whose Go value is a pointer to the file or the slice, or a
+// text part of a type no form value carries; decs are the decorators that apply to m. A raw
+// request is not bound, and an explicit @form or a field holding a `file` below the top level
+// is reported where it is declared.
+func (a *analyzer) checkMultipartParts(svcName string, m *ast.Method, decs []*ast.Decorator) {
+	if m == nil || m.Request == nil || !wire.IsBodyVerb(m.Verb) {
+		return
+	}
+	view, fields, ok := a.instanceFields(m.Request)
+	if !ok {
+		return
+	}
+	pathSegs := methodRoutePathVars(m, a.pkg.Services)
+	var parts []FlatField
+	multipart := false
+	for _, ff := range fields {
+		if b, _ := wire.RequestFieldBinding(ff.Field, pathSegs, true); b == wire.BindBody || b == wire.BindForm {
+			parts = append(parts, ff)
+			multipart = multipart || isFileTypeRef(ff.Field.Type)
+		}
+	}
+	verb, reqName := strings.ToUpper(m.Verb), m.Request.Name.String()
+	if !multipart {
+		for _, ff := range parts {
+			if d := ast.FindDecorator(ff.Field.Decorators, wire.BindingForm); d != nil {
+				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingFormWithoutFile,
+					"field %s.%s: @form is a multipart part and needs a `file` in the request, but on the %s %s handler the request has no `file` - drop @form so the field rides the JSON body",
+					reqName, ff.Field.Name, verb, svcName)
+			}
+		}
+		return
+	}
+	if rawReq, _ := wire.RawSides(decs); rawReq {
+		return
+	}
+	for _, ff := range parts {
+		f := ff.Field
+		switch {
+		case ff.optionalParam && isFileTypeRef(f.Type):
+			arg := *f.Type
+			arg.Optional = false
+			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
+				"field %s.%s: on the %s %s handler this rides a multipart file part, but it is an optional type parameter over a file (%s), whose Go value is a pointer the multipart binder cannot fill - drop the `?` from the type parameter (a file is already nilable)",
+				reqName, f.Name, verb, svcName, arg.String())
+		case ast.HasDecorator(f.Decorators, wire.BindingForm):
+		case holdsFile(f.Type):
+		case ff.sliceBehindPointer():
+			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
+				"field %s.%s: on the %s %s handler this rides a multipart form part (the request carries a file), but it is an optional type parameter over an array, whose Go value is a pointer to a slice the form binder cannot fill - drop the `?` from the type parameter (an array is already nilable)",
+				reqName, f.Name, verb, svcName)
+		case !a.proj.wireBindable(view, f.Type):
+			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
+				"field %s.%s: on the %s %s handler this rides a multipart form part (the request carries a file), but %s is no form value - a part carries string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or a single-level array of those (no maps, structs, generic instantiations or nested arrays); split it into such fields, or send it in a request without a file",
+				reqName, f.Name, verb, svcName, f.Type.String())
+		}
+	}
+}
+
+// bodyBindingVerbRules rejects `@body` and `@form` on a body-less method's
+// field, and `@nullable` or an unbindable type when it auto-binds to @query;
+// the field's type resolves in package view.
+func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName, view string, pathSegs map[string]bool, ff FlatField) {
+	f := ff.Field
 	if f == nil {
 		return
 	}
@@ -249,7 +264,7 @@ func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName string, pathSegs 
 	if f.Type == nil {
 		return
 	}
-	if kind, auto := wire.RequestFieldBinding(f, pathSegs, false); kind != wire.BindingQuery || !auto {
+	if b, auto := wire.RequestFieldBinding(f, pathSegs, false); b != wire.BindQuery || !auto {
 		return
 	}
 	if ast.HasDecorator(f.Decorators, "nullable") {
@@ -258,9 +273,15 @@ func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName string, pathSegs 
 			reqName, f.Name, verb, svcName)
 		return
 	}
-	if !a.wireBindableIn(pf.Pkg, f.Type) {
+	if ff.sliceBehindPointer() {
+		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
+			"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but it is an optional type parameter over an array, whose Go value is a pointer to a slice the query binder cannot fill - drop the `?` from the type parameter (an array is already nilable), or switch to a body verb (POST/PUT/PATCH)",
+			reqName, f.Name, verb, svcName)
+		return
+	}
+	if !a.proj.wireBindable(view, f.Type) {
 		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
 			"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but %s can't ride a query string - switch to a body verb (POST/PUT/PATCH) so it rides @body, give it an explicit binding, or change the type",
-			reqName, f.Name, verb, svcName, describeTypeRef(f.Type))
+			reqName, f.Name, verb, svcName, f.Type.String())
 	}
 }

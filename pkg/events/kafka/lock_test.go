@@ -12,9 +12,7 @@ import (
 	events "github.com/craftgodotdev/craftgo/pkg/events"
 )
 
-// lockCluster is [cluster] with a short acquisition lock, so a handler
-// slower than the lock is reached in seconds rather than in the half
-// minute a real broker's default would take.
+// lockCluster is cluster with a one-second share-record lock.
 func lockCluster(t *testing.T, topic string) []string {
 	t.Helper()
 	c, err := kfake.NewCluster(
@@ -33,9 +31,7 @@ func lockCluster(t *testing.T, topic string) []string {
 	return c.ListenAddrs()
 }
 
-// deliveriesOfOneSlowMessage publishes one record, hands it to a handler
-// that takes work to run and always succeeds, and reports the delivery
-// count of every delivery the broker made.
+// deliveriesOfOneSlowMessage returns the delivery counts of one slow record.
 func deliveriesOfOneSlowMessage(t *testing.T, group string, work time.Duration, opts ...Option) []int {
 	t.Helper()
 	const contract = "orders.Placed"
@@ -69,15 +65,7 @@ func deliveriesOfOneSlowMessage(t *testing.T, group string, work time.Duration, 
 	return append([]int(nil), counts...)
 }
 
-// A share group holds each record under an acquisition lock, and a
-// handler slower than that lock loses the record mid-flight: the broker
-// hands the same one out again while this consumer is still working, and
-// again every lock period after that. The work is done several times and
-// every copy but one is wasted.
-//
-// Renewing the lock while the handler runs is what stops it. Measured
-// against a one-second lock with a four-second handler: three deliveries
-// of one record without renewal, one with.
+// Lock renewal keeps a handler slower than the lock from losing its record.
 func TestASlowHandlerKeepsItsRecord(t *testing.T) {
 	got := deliveriesOfOneSlowMessage(t, "renewed", 4*time.Second, WithLockRenewInterval(300*time.Millisecond))
 	if len(got) != 1 {
@@ -85,16 +73,7 @@ func TestASlowHandlerKeepsItsRecord(t *testing.T) {
 	}
 }
 
-// WithMaxDeliveries does NOT bound this, and it is not meant to. It caps
-// redelivery a middleware ASKED for, and a lock that lapses under a slow
-// handler is not that: the chain decided nothing, the disposition is
-// unset, and every delivery is accepted. Capping a success instead would
-// throw away work that had just succeeded without preventing a single one
-// of the duplicate runs, which all happen before any ack.
-//
-// This test is why the cap was left where it is. It goes red if someone
-// moves it, by showing the cap making no difference to the loop it
-// supposedly bounds.
+// The delivery cap does not bound the redeliveries of a lapsed lock.
 func TestTheDeliveryCapDoesNotBoundALockThatLapses(t *testing.T) {
 	got := deliveriesOfOneSlowMessage(t, "capped", 4*time.Second,
 		WithMaxDeliveries(2), WithLockRenewInterval(0))
@@ -103,10 +82,7 @@ func TestTheDeliveryCapDoesNotBoundALockThatLapses(t *testing.T) {
 	}
 }
 
-// Both guards apply without being asked for, which is the whole of what
-// makes them guards: a middleware author who never reaches for either
-// still gets them. Neither is reachable from a test that passes its own
-// value, so the defaults are pinned here.
+// The delivery cap defaults to 5 and lock renewal to every 10s.
 func TestTheGuardDefaultsApplyWithoutBeingAskedFor(t *testing.T) {
 	tr := New(nil, WithShareGroup())
 	if tr.maxDeliveries != 5 {

@@ -1,11 +1,10 @@
 package semantic
 
 import (
-	"strings"
 	"testing"
 )
 
-// A no-content success status on a body-returning method must be rejected.
+// A @status(204) method with a response body is rejected.
 func TestNoContentStatusWithBodyRejected(t *testing.T) {
 	src := `package p
 type Out { ok bool }
@@ -14,31 +13,20 @@ service S {
   @status(204)
   get G /things/{id} { request Req  response Out }
 }`
-	diags := analyzeOneFile(t, src)
-	if !hasDiagContaining(diags, "no-content status and cannot carry a response body") {
-		t.Errorf("expected @status(204)+body reject, got: %v", diags)
-	}
+	expectMsg(t, "no-content status and cannot carry a response body", src)
 }
 
-// A bare scalar/enum request type has no fields to bind/decode - reject it.
+// A bare scalar or enum request type is rejected.
 func TestBareScalarEnumRequestRejected(t *testing.T) {
 	for _, src := range []string{
 		"package p\nscalar Token string\nservice S { post Do /do { request Token  response Token } }",
 		"package p\nenum Color { red green }\nservice S { post Do /do { request Color  response Color } }",
 	} {
-		diags := analyzeOneFile(t, src)
-		if !hasDiagContaining(diags, "has no fields to bind or decode") {
-			t.Errorf("expected bare scalar/enum request reject for %q, got: %v", strings.TrimSpace(src), diags)
-		}
+		expectMsg(t, "has no fields to bind or decode", src)
 	}
 }
 
-// A built-in primitive in `request` or `response` names no generated
-// type: the transport would declare `var req types.string` and call a
-// Validate() nothing emits, the stub would return `(*types.string,
-// error)`, and the OpenAPI body would $ref a `#/components/schemas/
-// string` the document never declares. Every primitive spelling is
-// rejected in both clauses.
+// A built-in primitive as the request or response type is rejected.
 func TestBuiltinPrimitiveClauseRejected(t *testing.T) {
 	for _, prim := range []string{"string", "int", "int64", "float64", "bool", "bytes", "any", "datetime", "file"} {
 		t.Run("request "+prim, func(t *testing.T) {
@@ -58,10 +46,7 @@ func TestBuiltinPrimitiveClauseRejected(t *testing.T) {
 	}
 }
 
-// A raw side makes the clause docs-only for the TRANSPORT, but the
-// OpenAPI document is still emitted from it - so a primitive there still
-// produces a dangling `$ref` and is still rejected, exactly as the
-// parser's bare-array reject fires under the same flags.
+// A built-in primitive clause is rejected on a raw side too; the OpenAPI still documents it.
 func TestBuiltinPrimitiveClauseRejectedOnRawSides(t *testing.T) {
 	for _, c := range []struct{ label, src string }{
 		{"@rawRequest request", "package p\ntype Ok { v string }\nservice S { @rawRequest post Do /do { request string  response Ok } }"},
@@ -75,31 +60,22 @@ func TestBuiltinPrimitiveClauseRejectedOnRawSides(t *testing.T) {
 	}
 }
 
-// The response side takes a scalar and an enum. Nothing binds a
-// response, and both generate a real named Go type whose OpenAPI schema
-// IS emitted - so the reject that covers them on the request side must
-// not reach across.
+// A scalar or enum response type is accepted.
 func TestScalarAndEnumResponseAccepted(t *testing.T) {
 	for _, c := range []struct{ label, src string }{
 		{"scalar", "package p\nscalar Token string\ntype Req { v string }\nservice S { post Do /do { request Req  response Token } }"},
 		{"enum", "package p\nenum Color { red green }\ntype Req { v string }\nservice S { post Do /do { request Req  response Color } }"},
 	} {
 		t.Run(c.label, func(t *testing.T) {
-			expectNoDiags(t, analyzeOneFile(t, c.src))
+			mustClean(t, c.src)
 		})
 	}
 }
 
-// A QUALIFIED reference never names a built-in, so the primitive reject
-// must not fire on one whose final segment happens to be spelled like a
-// primitive - that is an unresolved-symbol case for the reference pass.
+// A qualified clause type spelt like a primitive (`other.string`) is not a built-in.
 func TestQualifiedClauseRefIsNotABuiltin(t *testing.T) {
 	src := "package p\ntype Ok { v string }\nservice S { post Do /do { request other.string  response Ok } }"
-	for _, d := range analyzeOneFile(t, src) {
-		if d.Code == CodeBindingType {
-			t.Errorf("qualified ref reported as a built-in primitive: %v", d)
-		}
-	}
+	expectNoCode(t, src, CodeBindingType)
 }
 
 // @status(205) (Reset Content) with a response body is rejected.
@@ -111,8 +87,5 @@ service S {
   @status(205)
   post M /m { request Req  response Resp }
 }`
-	diags := analyzeOneFile(t, src)
-	if !hasDiagContaining(diags, "no-content status and cannot carry a response body") {
-		t.Errorf("expected @status(205)+body reject, got: %v", diags)
-	}
+	expectMsg(t, "no-content status and cannot carry a response body", src)
 }

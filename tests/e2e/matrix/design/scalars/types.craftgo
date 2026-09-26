@@ -61,3 +61,10 @@ type ScalarFieldOverrides {
 	discount Cents? @lte(100)
 	code     Tag    @maxLength(5)
 }
+
+// Attachments holds an optional Blob as a field and as a map value; both
+// render as Blob, whose nil is the absent value.
+type Attachments {
+	cover Blob?
+	files map<string, Blob?>
+}

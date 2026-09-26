@@ -1,15 +1,16 @@
 package telemetry
 
-// Config is the telemetry block of a project's config.yaml. ServiceName
-// sits above both signals and fills in for an empty per-signal name.
+// Config describes the stack [Init] builds. ServiceName is the `service.name`
+// of each signal that sets none; with neither set the SDK's
+// `unknown_service:<binary>` applies.
 type Config struct {
 	ServiceName string        `yaml:"serviceName"`
 	OTel        OTelConfig    `yaml:"otel"`
 	Metrics     MetricsConfig `yaml:"metrics"`
 }
 
-// Exporter selector values for [OTelConfig.Exporter] and
-// [MetricsConfig.Exporter]. Stdout is traces-only, Prometheus metrics-only.
+// Exporter values for [OTelConfig.Exporter] and [MetricsConfig.Exporter];
+// stdout is traces-only, prometheus metrics-only.
 const (
 	ExporterNone       = "none"
 	ExporterStdout     = "stdout"
@@ -18,68 +19,46 @@ const (
 	ExporterOTLPHTTP   = "otlp_http"
 )
 
-// DefaultAdminAddr is the conventional Prometheus scrape port;
-// DefaultMetricsPath is the route the listener serves when
-// [MetricsConfig.Path] is empty.
+// DefaultAdminAddr is the conventional scrape listener address; an empty
+// [MetricsConfig.AdminAddr] still starts no listener. DefaultMetricsPath is
+// the scrape route when [MetricsConfig.Path] is empty.
 const (
 	DefaultAdminAddr   = ":9090"
 	DefaultMetricsPath = "/metrics"
 )
 
-// OTelConfig is the `otel:` block: whether traces are on and where spans go.
+// OTelConfig configures traces.
 type OTelConfig struct {
-	// Enabled installs the tracer and the trace side of the HTTP wrapper.
-	// False is a complete no-op.
+	// Enabled turns traces on; false installs nothing.
 	Enabled bool `yaml:"enabled"`
-	// ServiceName is the `service.name` stamped on every span. Empty
-	// inherits the top-level serviceName; set it only to report spans
-	// under a different identity from metrics. With both empty the SDK
-	// default `unknown_service:<binary>` applies.
+	// ServiceName overrides [Config.ServiceName] for spans.
 	ServiceName string `yaml:"serviceName"`
-	// Exporter selects the destination for spans:
-	//   - "none" / "" - in-process spans only (ids in logs, no export)
-	//   - "stdout"    - JSON spans on stdout (debugging)
-	//   - "otlp_grpc" - push to an OTLP collector via gRPC
-	//   - "otlp_http" - push to an OTLP collector via HTTP/protobuf
+	// Exporter is "stdout", "otlp_grpc" or "otlp_http"; any other value keeps
+	// spans in process, with valid ids for logs but no export.
 	Exporter string `yaml:"exporter"`
-	// Endpoint is the collector address for the OTLP exporters, ignored
-	// for "none" / "stdout":
-	//   - otlp_http: a full URL WITH scheme - the scheme picks transport
-	//     security: `http://collector:4318` (plaintext) or
-	//     `https://collector.example.com` (TLS).
-	//   - otlp_grpc: a bare `host:port` (e.g. `collector:4317`, plaintext)
-	//     OR a full URL whose scheme picks security
-	//     (`https://collector:4317` for TLS).
+	// Endpoint is the OTLP collector: an http:// or https:// URL, whose scheme
+	// picks TLS, or for otlp_grpc also a bare host:port, dialled without TLS.
+	// otlp_http sends each signal to its own path under a URL with no path or
+	// "/". Empty leaves it to the exporter: the OTEL_EXPORTER_OTLP_*ENDPOINT
+	// variables, else localhost:4317 or localhost:4318. [Init] fails on any
+	// other value.
 	Endpoint string `yaml:"endpoint"`
 }
 
-// MetricsConfig is the `metrics:` block: whether metrics are on, where
-// they go, and the scrape listener for the Prometheus path.
+// MetricsConfig configures metrics and the Prometheus scrape listener.
 type MetricsConfig struct {
-	// Enabled installs the meter, the metrics side of the HTTP wrapper
-	// and, for the prometheus exporter, the scrape listener. False is a
-	// complete no-op.
+	// Enabled turns metrics on; false installs nothing.
 	Enabled bool `yaml:"enabled"`
-	// Exporter selects the data path:
-	//   - "prometheus" / "" - pull on AdminAddr (the default; any unknown
-	//     value scrapes too, so a typo never silently turns metrics off)
-	//   - "otlp_grpc"  - push via OTLP gRPC
-	//   - "otlp_http"  - push via OTLP HTTP/protobuf
-	//   - "none"       - meter installed without exporter (testing)
+	// Exporter is "otlp_grpc", "otlp_http" or "none" (a meter with no export);
+	// any other value, "" included, serves the Prometheus scrape.
 	Exporter string `yaml:"exporter"`
-	// Endpoint is the collector address for the OTLP exporters, in the
-	// same forms as [OTelConfig.Endpoint]. Ignored for "prometheus" / "none".
+	// Endpoint is the OTLP collector, in the forms [OTelConfig.Endpoint] takes.
 	Endpoint string `yaml:"endpoint"`
-	// ServiceName is the `service.name` stamped on every metric. Empty
-	// inherits the top-level serviceName; set it only to report metrics
-	// under a different identity from traces.
+	// ServiceName overrides [Config.ServiceName] for metrics.
 	ServiceName string `yaml:"serviceName"`
-	// AdminAddr is the bind address of the Prometheus scrape listener
-	// (`:9090`, `127.0.0.1:9090`, ...). Empty starts no listener - serve
-	// [Telemetry.ScrapeHandler] on a route of the public server instead.
-	// Ignored unless the exporter scrapes.
+	// AdminAddr is the scrape listener's bind address; empty starts no
+	// listener, leaving the scrape to [Telemetry.ScrapeHandler].
 	AdminAddr string `yaml:"adminAddr"`
-	// Path is the scrape route, [DefaultMetricsPath] when empty. Override
-	// when a reverse proxy already claims that path.
+	// Path is the scrape route, [DefaultMetricsPath] when empty.
 	Path string `yaml:"path"`
 }

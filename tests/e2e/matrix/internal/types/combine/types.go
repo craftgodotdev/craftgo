@@ -3,11 +3,46 @@
 package combine
 
 import (
+	"mime/multipart"
+
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
 )
 
-// PageSize is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
+// PageSize is a numeric scalar - every field of this type inherits
+// the @gte/@lte bounds, carried on PageSize.Validate(). Used in
+// DefaultScalar below to verify that the @default literal threads
+// through the scalar's defined type without losing the inherited
+// validators.
 type PageSize int
+
+// ArrayDefaults documents an array-of-enum @default as its wire values
+// ([card, bank]) and a @default query parameter as optional; the transport
+// pre-fills both before decoding.
+type ArrayDefaults struct {
+	Methods []PayMethod `json:"methods,omitempty"`
+	SortBy  *string     `json:"-" query:"sortBy"`
+}
+
+// CollidingNames holds two fields whose Go names collide: the second
+// becomes UserID_2, and the validator and the body writers read both.
+type CollidingNames struct {
+	UserID   *string `json:"userId,omitempty"`
+	UserID_2 *string `json:"user_id,omitempty"`
+}
+
+// ContactChannels carries cross-field groups its request body schema
+// documents.
+type ContactChannels struct {
+	Email *string `json:"email,omitempty"`
+	Phone *string `json:"phone,omitempty"`
+	Sms   *string `json:"sms,omitempty"`
+}
+
+// ContactPair brings the fields PromotedContact's group names.
+type ContactPair struct {
+	Email *string `json:"email,omitempty"`
+	Phone *string `json:"phone,omitempty"`
+}
 
 // DefaultsBoundary parks each default literal AT or near the validator
 // boundary so the pre-fill / validate ordering is visible.
@@ -51,15 +86,6 @@ type DefaultsCollection struct {
 	Arr []int `json:"arr,omitempty"`
 }
 
-// DefaultsConflict exercises a default literal that fails the per-field
-// validator. Codegen accepts the design: the generated code emits the
-// default and then rejects the pre-filled value at req.Validate().
-type DefaultsConflict struct {
-	// Empty string default + @minLength(1). The pre-fill IS the
-	// validator's failure case.
-	Empty *string `json:"empty,omitempty"`
-}
-
 // DefaultsEnum uses an enum default (bare ident → Go const). The enum
 // value reference resolves through the enum decl above.
 type DefaultsEnum struct {
@@ -99,6 +125,28 @@ type KeywordFieldNames struct {
 	Kind   DiscKind       `json:"kind"`
 }
 
+// NilableNullable nil-guards the length and item checks of its @nullable
+// fields: an explicit null passes, as the null union in OpenAPI says.
+type NilableNullable struct {
+	Blob []byte         `json:"blob"`
+	Ids  []int          `json:"ids"`
+	Tags map[string]int `json:"tags"`
+}
+
+// NotifyChannels admits at most one of three channels: any two fail the
+// validator, and the body schemas that document the group.
+type NotifyChannels struct {
+	Email *string `json:"email,omitempty"`
+	Sms   *string `json:"sms,omitempty"`
+	Push  *string `json:"push,omitempty"`
+}
+
+// NotifyUpload sends the channels as multipart parts beside a file.
+type NotifyUpload struct {
+	NotifyChannels
+	Doc *multipart.FileHeader `json:"doc"`
+}
+
 // PairsArr stacks the array-level decorators (@minItems, @maxItems,
 // @uniqueItems). Per-element constraints belong on a scalar: declare
 // the element type as a named scalar and the validator walker emits
@@ -136,12 +184,77 @@ type PairsContact struct {
 	Phone *string `json:"phone,omitempty"`
 }
 
+// PairsDoc has a doc above its decorators and one below them, right above
+// its keyword; the Go doc and the OpenAPI description hold both, in order.
+// Either a or b carries the value.
+type PairsDoc struct {
+	A *string `json:"a,omitempty"`
+	B *string `json:"b,omitempty"`
+}
+
+// PairsKeyed promotes a field under its @json name.
+type PairsKeyed struct {
+	Primary *string `json:"primary_email,omitempty"`
+}
+
+// PairsLookup is a GET request, so both fields ride the query string: the
+// operation's description names its @requiresOneOf, which each parameter's
+// own schema cannot express.
+type PairsLookup struct {
+	ByName *string `json:"by_name,omitempty"`
+	ByID   *string `json:"by_id,omitempty"`
+}
+
+// PairsNested puts a path id beside a body whose @requiresOneOf a nested
+// mixin declares: the operation body carries the group the validator runs.
+type PairsNested struct {
+	PairsReach
+	ID   string `json:"-" path:"id"`
+	Note string `json:"note"`
+}
+
 // PairsNum stacks @range (lo,hi pair) with @multipleOf and the
 // strict-bound @gt / @lte. Both the soft and strict bounds are present
 // so the validator firing order is visible in the generated code:
 // each decorator should emit one comparison.
 type PairsNum struct {
 	Score int `json:"score"`
+}
+
+// PairsReach embeds PairsDoc, and its @requiresOneOf, one level down.
+type PairsReach struct {
+	PairsDoc
+}
+
+// PairsRenamed puts a path id beside a body keyed by @json names: the
+// operation body and the @requiresOneOf over the promoted member name the
+// JSON keys.
+type PairsRenamed struct {
+	PairsKeyed
+	ID     string  `json:"-" path:"id"`
+	Backup *string `json:"backup_email,omitempty"`
+}
+
+// PairsRenamedResp splits a header off a body keyed by a @json name.
+type PairsRenamedResp struct {
+	Etag    string  `json:"-" header:"ETag"`
+	Primary *string `json:"primary_email,omitempty"`
+}
+
+// PairsSource sends a file or a link as multipart parts, exactly one: the
+// multipart body counts the url part present only when it is non-empty, as
+// the handler binds it, and the file part when it is sent.
+type PairsSource struct {
+	Doc   *multipart.FileHeader `json:"doc,omitempty"`
+	URL   *string               `json:"url,omitempty"`
+	Title string                `json:"title"`
+}
+
+// PairsStacked stacks bounds of one family: OpenAPI documents their
+// intersection, which the validator enforces (10..90; a length of 5).
+type PairsStacked struct {
+	B int    `json:"b"`
+	A string `json:"a"`
 }
 
 // PairsStr stacks every string validator the generator supports on a
@@ -152,6 +265,22 @@ type PairsNum struct {
 //     on top of the format check.
 type PairsStr struct {
 	Email string `json:"email"`
+}
+
+// PairsTagged sends an ETag header beside a body that carries its own
+// @mutuallyExclusive and the @requiresOneOf of its mixin PairsDoc.
+type PairsTagged struct {
+	PairsDoc
+	Etag string  `json:"-" header:"ETag"`
+	C    *string `json:"c,omitempty"`
+	D    *string `json:"d,omitempty"`
+}
+
+// PairsUpload sends PairsDoc's fields as multipart parts beside a file: the
+// multipart body carries PairsDoc's @requiresOneOf.
+type PairsUpload struct {
+	PairsDoc
+	Doc *multipart.FileHeader `json:"doc"`
 }
 
 // PresenceMatrix is the canonical presence-state matrix.
@@ -187,6 +316,19 @@ type PresenceMatrix struct {
 	DefNullable  *string `json:"defNullable,omitempty"`
 }
 
+// PromotedContact's @requiresOneOf names the fields its mixin brings.
+type PromotedContact struct {
+	ContactPair
+	Note string `json:"note"`
+}
+
+// WireDefaults documents each enum @default as the member's wire value
+// ("RED", 9), not its name.
+type WireDefaults struct {
+	C *Hue   `json:"c,omitempty"`
+	L *Grade `json:"l,omitempty"`
+}
+
 // XPkgEnum exercises every shape a CROSS-PACKAGE enum reference can
 // take inside a single field. Resolution routes through the
 // project-wide EnumTable, so every shape emits the switch-case
@@ -205,4 +347,9 @@ type XPkgEnum struct {
 	ByString map[string]shared.Severity          `json:"byString"`
 	ByEnum   map[shared.Severity]string          `json:"byEnum"`
 	BothEnum map[shared.Severity]shared.Severity `json:"bothEnum"`
+}
+
+// ZeroMember accepts the zero-valued member in its required enum field.
+type ZeroMember struct {
+	Status MemberStatus `json:"status"`
 }

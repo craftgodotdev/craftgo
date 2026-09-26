@@ -4,16 +4,12 @@ package xrefs
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/x_refs_service"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RegisterRoutes wires every XRefsService endpoint onto srv. Patterns
-// use the Go 1.22 method-prefixed form so VERB and path match together;
-// service prefix and OpenAPI basePath are baked in. Methods declaring
-// `@middlewares(...)` are wrapped via the corresponding fields on
-// ServiceContext (embedded Middlewares struct), so no runtime name
-// lookup is required - the values come pre-wired.
+// RegisterRoutes registers the XRefsService routes on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/xrefs/items/{id}", transport.GetItem(svcCtx))
 	srv.Handle("GET /api/xrefs/by-key/{key}", transport.GetByKey(svcCtx))
@@ -22,6 +18,7 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/xrefs/promote-bag", transport.PromoteBag(svcCtx))
 	srv.Handle("GET /api/xrefs/nested/{gKey}", transport.GetNested(svcCtx))
 	srv.Handle("GET /api/xrefs/items", transport.ListItems(svcCtx))
+	srv.Handle("GET /api/xrefs/owner-pair", transport.GetOwnerPair(svcCtx))
 	srv.Handle("GET /api/xrefs/search", transport.Search(svcCtx))
 	srv.Handle("POST /api/xrefs/defaults", transport.PostDefault(svcCtx))
 	srv.Handle("POST /api/xrefs/promote-holder/{id}", transport.PromoteHolder(svcCtx))
@@ -29,4 +26,8 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/xrefs/wrap-foreign", transport.WrapForeign(svcCtx))
 	srv.Handle("GET /api/xrefs/traced/{id}", transport.GetTraced(svcCtx))
 	srv.Handle("GET /api/xrefs/third/{id}", transport.GetThird(svcCtx))
+	srv.Handle("GET /api/xrefs/lost/{id}", transport.GetLost(svcCtx))
+	srv.Handle("POST /api/xrefs/sign-in/{session}", transport.SignIn(svcCtx))
+	srv.Handle("GET /api/xrefs/stamps", transport.Stamps(svcCtx))
+	srv.Handle("GET /api/xrefs/describe", transport.Describe(svcCtx))
 }

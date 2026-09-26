@@ -1,17 +1,14 @@
-// Tests for free-floating comment harvesting: every leading comment inside
-// a body that no Doc field claims must surface as a position-accurate
-// [ast.FreeComment], and claimed comments must never be harvested twice.
 package parser
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// TestFreeCommentHarvestTypeBody pins mid-body section dividers and closing
-// notes inside a type body: each becomes a FreeComment member at its source
-// slot, carrying the position of its first `//` line.
+// TestFreeCommentHarvestTypeBody pins that comment blocks in a type body
+// become FreeComment members at their source lines.
 func TestFreeCommentHarvestTypeBody(t *testing.T) {
 	f := mustParse(t, `package p
 
@@ -58,8 +55,8 @@ type User {
 	}
 }
 
-// TestFreeCommentFieldDocNotHarvested pins that a comment block claimed as a
-// field's Doc stays a Doc - it must not double as a FreeComment member.
+// TestFreeCommentFieldDocNotHarvested pins that a field's Doc is not also a
+// FreeComment.
 func TestFreeCommentFieldDocNotHarvested(t *testing.T) {
 	f := mustParse(t, `package p
 
@@ -104,9 +101,8 @@ enum Status {
 	}
 }
 
-// TestFreeCommentHarvestService pins service-level blocks between methods
-// plus method-body comments (above request / above the closing brace),
-// and that Method.EndPos records the body's closing brace.
+// TestFreeCommentHarvestService pins comment blocks between methods and inside
+// a method body, and that Method.EndPos is the body's closing brace.
 func TestFreeCommentHarvestService(t *testing.T) {
 	f := mustParse(t, `package p
 
@@ -155,10 +151,8 @@ service Things {
 	}
 }
 
-// TestFreeCommentMethodChainNotHarvested pins that a comment inside a
-// method's decorator chain is claimed for the formatter's inter-decorator
-// recovery - it must not surface as a service member or body comment (that
-// would print it twice).
+// TestFreeCommentMethodChainNotHarvested pins that a comment inside a method's
+// decorator chain is neither a service member nor a body comment.
 func TestFreeCommentMethodChainNotHarvested(t *testing.T) {
 	f := mustParse(t, `package p
 
@@ -181,9 +175,8 @@ service Things {
 	}
 }
 
-// TestFreeCommentHarvestFileScope pins file-scope blocks: detached from the
-// package line, between declarations, and after the last declaration - all
-// land on File.FreeComments with real positions, never on a Doc field.
+// TestFreeCommentHarvestFileScope pins that blocks above the package line,
+// between declarations and at the end land on File.FreeComments.
 func TestFreeCommentHarvestFileScope(t *testing.T) {
 	f := mustParse(t, `// above package, detached
 
@@ -217,8 +210,7 @@ type B {
 }
 
 // TestFreeCommentDeclChainNotHarvested pins that a comment inside a
-// top-level declaration's decorator chain stays with the formatter's
-// inter-decorator recovery - it must not also surface on File.FreeComments.
+// declaration's decorator chain is not a file-scope FreeComment.
 func TestFreeCommentDeclChainNotHarvested(t *testing.T) {
 	f := mustParse(t, `package p
 
@@ -233,8 +225,148 @@ type Name {
 	}
 }
 
-// TestMixinDocCaptured pins that a `//` block above a mixin reference is
-// retained on the Mixin node instead of being dropped.
+// The comments inside a decorator chain are recorded under the line of the
+// decorator, name or keyword below them, for file, declaration, method and
+// field chains alike, and none is a free comment.
+func TestChainCommentsRecorded(t *testing.T) {
+	f := mustParse(t, `@version("1")
+// file chain
+@doc("d")
+package p
+
+@minLength(1)
+// type chain
+
+// after a blank line
+type Name {
+	@minLength(1)
+	// field chain
+	v string
+}
+
+service S {
+	@doc("m")
+	// method chain
+	get A /a {}
+}
+`)
+	want := map[int][]string{
+		3:  {"file chain"},
+		10: {"type chain", "after a blank line"},
+		13: {"field chain"},
+		19: {"method chain"},
+	}
+	if !reflect.DeepEqual(f.ChainComments, want) {
+		t.Errorf("ChainComments = %v, want %v", f.ChainComments, want)
+	}
+	if len(f.FreeComments) != 0 || len(f.Decls[0].(*ast.TypeDecl).Body) != 1 {
+		t.Errorf("a chain comment became free: file %#v, type body %#v", f.FreeComments, f.Decls[0].(*ast.TypeDecl).Body)
+	}
+}
+
+// The comments among the decorators after a field or an enum value are
+// recorded under the line of the decorator below them, and none is a free
+// comment.
+func TestTrailingChainCommentsRecorded(t *testing.T) {
+	f := mustParse(t, `package p
+
+type T {
+	x string @minLength(1)
+	// field chain
+		@maxLength(5)
+	y string
+		// before the first
+		@minLength(2)
+}
+
+enum E {
+	A = 1 @doc("a")
+	// value chain
+		@deprecated
+	B = 2
+}
+`)
+	want := map[int][]string{
+		6:  {"field chain"},
+		9:  {"before the first"},
+		15: {"value chain"},
+	}
+	if !reflect.DeepEqual(f.ChainComments, want) {
+		t.Errorf("ChainComments = %v, want %v", f.ChainComments, want)
+	}
+	if body, members := f.Decls[0].(*ast.TypeDecl).Body, f.Decls[1].(*ast.EnumDecl).Members; len(body) != 2 || len(members) != 2 {
+		t.Errorf("a chain comment became free: type body %#v, enum members %#v", body, members)
+	}
+}
+
+// A comment inside a decorator with arguments, from its `@` to its `)`,
+// belongs to its arguments: it is neither a chain comment nor a free comment.
+func TestArgumentCommentsAreNotChainOrFree(t *testing.T) {
+	f := mustParse(t, `package p
+
+@tags(
+	// lead
+	"a",
+	// tail
+)
+// chain
+@deprecated
+type T {
+	x string @minLength(
+		// in the field's
+		1)
+	y string @maxLength
+		// before the parenthesis
+		(5)
+}
+`)
+	want := map[int][]string{9: {"chain"}}
+	if !reflect.DeepEqual(f.ChainComments, want) {
+		t.Errorf("ChainComments = %v, want %v", f.ChainComments, want)
+	}
+	if body := f.Decls[0].(*ast.TypeDecl).Body; len(f.FreeComments) != 0 || len(body) != 2 {
+		t.Errorf("an argument comment became free: file %#v, type body %#v", f.FreeComments, body)
+	}
+}
+
+// The comment lines right above a declaration's keyword, below its decorators,
+// are its doc, after the doc above the decorators; they stay in the chain,
+// where they print. One set off by a blank line, or between two decorators,
+// is no doc.
+func TestCommentAboveTheKeywordIsTheDoc(t *testing.T) {
+	for _, c := range []struct {
+		name, src string
+		doc       []string
+		chain     []string
+	}{
+		{"own decorators", "package p\n\n@deprecated\n// Order is the order.\ntype Order {\n\tid string\n}\n", []string{"Order is the order."}, []string{"Order is the order."}},
+		{"doc above the decorators too", "package p\n\n// Order doc.\n@deprecated\n// More on it.\ntype Order {\n\tid string\n}\n", []string{"Order doc.", "More on it."}, []string{"More on it."}},
+		{"set off by a blank line", "package p\n\n@deprecated\n// apart\n\ntype Order {\n\tid string\n}\n", nil, []string{"apart"}},
+		{"between decorators", "package p\n\n@deprecated\n// between\n@doc(\"d\")\ntype Order {\n\tid string\n}\n", nil, nil},
+		{"under forwarded decorators", "// file doc\n@doc(\"t\")\n// Order is the order.\ntype Order {\n\tid string\n}\n", []string{"Order is the order."}, []string{"Order is the order."}},
+		{"scalar", "package p\n\n@minLength(1)\n// Code is a code.\nscalar Code string\n", []string{"Code is a code."}, []string{"Code is a code."}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := mustParse(t, c.src)
+			d := f.Decls[0]
+			var doc []string
+			switch v := d.(type) {
+			case *ast.TypeDecl:
+				doc = v.Doc
+			case *ast.ScalarDecl:
+				doc = v.Doc
+			}
+			if !reflect.DeepEqual(doc, c.doc) {
+				t.Errorf("Doc = %q, want %q", doc, c.doc)
+			}
+			if got := f.ChainComments[d.DeclPos().Line]; !reflect.DeepEqual(got, c.chain) {
+				t.Errorf("chain above the keyword = %q, want %q", got, c.chain)
+			}
+		})
+	}
+}
+
+// TestMixinDocCaptured pins that the comment above a mixin is its Doc.
 func TestMixinDocCaptured(t *testing.T) {
 	f := mustParse(t, `package p
 
@@ -252,4 +384,69 @@ type User {
 	if len(mx.Doc) != 1 || mx.Doc[0] != "audit fields shared by all entities" {
 		t.Errorf("mixin doc not captured: %#v", mx.Doc)
 	}
+}
+
+// A comment block inside a declaration's or a method's header, before its
+// opening brace, is a free comment at the top of its body.
+func TestHeaderCommentOpensTheBody(t *testing.T) {
+	f := mustParse(t, `package p
+
+type
+// in type
+T {
+	a string
+}
+
+enum E
+// in enum
+{
+	A
+}
+
+error NotFound
+// in error
+Gone {
+	b string
+}
+
+extend
+// in extend
+service S {
+	get A
+	// in method
+	/a {
+		response T
+	}
+}
+
+event
+// in event
+Ev {
+	payload T
+}
+`)
+	if len(f.FreeComments) != 0 {
+		t.Fatalf("a header comment stayed at file scope: %#v", f.FreeComments)
+	}
+	svc := f.Decls[3].(*ast.ServiceDecl)
+	for want, got := range map[string]any{
+		"in type":   f.Decls[0].(*ast.TypeDecl).Body[0],
+		"in enum":   f.Decls[1].(*ast.EnumDecl).Members[0],
+		"in error":  f.Decls[2].(*ast.ErrorDecl).Body[0],
+		"in extend": svc.Members[0],
+		"in method": firstComment(svc.Methods()[0].BodyComments),
+		"in event":  firstComment(f.Decls[4].(*ast.EventDecl).BodyComments),
+	} {
+		if fc, ok := got.(*ast.FreeComment); !ok || !reflect.DeepEqual(fc.Text, []string{want}) {
+			t.Errorf("first member %#v, want the free comment %q", got, want)
+		}
+	}
+}
+
+// firstComment returns the first of fcs, or nil.
+func firstComment(fcs []*ast.FreeComment) any {
+	if len(fcs) == 0 {
+		return nil
+	}
+	return fcs[0]
 }

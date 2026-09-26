@@ -1,17 +1,34 @@
 package semantic
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
 
-// ---------- qualified generic arity (cross-package) ----------
+// A bare name resolves in its own package; a middleware or an error name
+// declared elsewhere resolves in the other packages, as the reference checks
+// resolve it.
+func TestLookupOfABareName(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"a/a.craftgo": "package a\ntype H { x string }\n",
+		"b/b.craftgo": "package b\ntype Foo { y int }\nmiddleware Auth\nerror NotFound Gone\n",
+	})
+	proj, _ := AnalyzeProject(files, Options{DesignRoot: root})
+	if d := proj.Lookup("a", "Foo", AnyDecl); d != nil {
+		t.Errorf("bare Foo in package a resolves to %s's %T", d.DeclPos().Filename, d)
+	}
+	for _, c := range []struct {
+		name  string
+		kinds DeclKind
+	}{{"Auth", MiddlewareDecls}, {"Gone", ErrorDecls}, {"Auth", AnyDecl}, {"b.Foo", TypeDecls}} {
+		if d := proj.Lookup("a", c.name, c.kinds); d == nil || !strings.HasSuffix(c.name, d.DeclName()) {
+			t.Errorf("Lookup(a, %s) = %v, want the declaration of package b", c.name, d)
+		}
+	}
+}
 
-// TestQualifiedGenericRefMissingArgs pins that a qualified reference
-// to a generic type without `<…>` fires a generic-arity diagnostic.
-// checkGenerics skips qualified refs (the project resolver owns them),
-// so the project resolver is the single site that checks arity for a
-// qualified generic ref.
+// A qualified reference to a generic type without type arguments reports its arity.
 func TestQualifiedGenericRefMissingArgs(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/types.craftgo": `package shared
@@ -78,11 +95,7 @@ type Catalog { page shared.Page<Product> }`,
 	}
 }
 
-// ---------- service collision (cross-package duplicate primary) ----------
-
-// A service name is unique within its package, not across the project.
-// Two HTTP services of one name still collide, but on the output
-// directory their handlers share rather than on the name itself.
+// HTTP services of one name in two packages collide on their output directory, at both declarations.
 func TestHTTPServiceOfOneNameInTwoPackagesCollidesOnItsDirectory(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"a/svc.craftgo": `package a
@@ -100,7 +113,6 @@ service Foo { get Y /y { response R } }`,
 	if !strings.Contains(d.Msg, "output directory") {
 		t.Errorf("message missing collision hint: %q", d.Msg)
 	}
-	// Both sites must fire so the IDE underlines each declaration.
 	hits := 0
 	for _, dd := range diags {
 		if dd.Code == CodeGroupPackageStraddle {
@@ -112,8 +124,7 @@ service Foo { get Y /y { response R } }`,
 	}
 }
 
-// A service with no method scaffolds no per-member file, so it claims no
-// output directory and two packages may each declare one of a name.
+// Method-less services of one name in two packages claim no directory and do not collide.
 func TestMethodlessServiceOfOneNameInTwoPackagesIsFine(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"a/svc.craftgo": `package a
@@ -146,8 +157,6 @@ service Foo { get B /b { response R } }`,
 	}
 }
 
-// ---------- middleware collision (global names) ----------
-
 func TestMiddlewareCollisionAcrossPackages(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"a/mw.craftgo": `package a
@@ -161,11 +170,8 @@ middleware AuthRequired`,
 	}
 }
 
-// ---------- middleware refs cross-package ----------
-
+// A bare middleware name resolves across packages without an import.
 func TestMiddlewareRefBareCrossPackage(t *testing.T) {
-	// Bare reference resolves through the global union - no `import`
-	// is required for middleware refs (unlike type refs).
 	root, files := projectFixture(t, map[string]string{
 		"shared/mw.craftgo": `package shared
 middleware AuthRequired`,
@@ -225,8 +231,6 @@ service U { get A /a { response R } }`,
 	}
 }
 
-// ---------- extend orphan: cross-package primary ----------
-
 func TestExtendOrphanCrossPackageHint(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"a/svc.craftgo": `package a
@@ -265,8 +269,6 @@ extend service Ghost { get Y /y { response R } }`,
 	}
 }
 
-// ---------- import duplicate / alias conflict ----------
-
 func TestImportDuplicate(t *testing.T) {
 	pkg, diags := Analyze(parseFiles(t, `package x
 import "shared"
@@ -298,11 +300,7 @@ type T { id string }`))
 	}
 }
 
-// ---------- @passthrough blocks ----------
-
-// A request / response block on a @passthrough method is a docs-only
-// contract (OpenAPI + generated types); the analyser accepts it and the
-// usual block rules (path-param coverage, body-verb bindings) still run.
+// A @passthrough method may declare request and response blocks.
 func TestPassthroughAcceptsBlocks(t *testing.T) {
 	mustClean(t, `package x
 type Req { id string @path  name string }
@@ -323,8 +321,6 @@ service S {
     @passthrough get UserTail /users/{id}/tail {}
 }`)
 }
-
-// ---------- local type ref unknown ----------
 
 func TestLocalTypeRefUnknown(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `package x
@@ -351,26 +347,19 @@ type T { user shared }`))
 	}
 }
 
+// A type parameter inside a generic body is a known type.
 func TestLocalTypeRefGenericParam(t *testing.T) {
-	// Type parameter `T` inside a generic body must NOT be flagged as
-	// unknown - the analyser recognises it via the params set.
 	mustClean(t, `package x
 type Page<T> { items T[] cursor string? }`)
 }
 
+// A scalar over an unknown primitive is reported at the scalar declaration.
 func TestLocalTypeRefScalarPrimitiveRejected(t *testing.T) {
-	// Scalar primitives must be built-ins - see
-	// [TestScalarUnknownPrimitiveRejected]. Verifying here that the
-	// local-ref pass surfaces the diagnostic at the scalar's
-	// declaration site (not on every downstream usage).
 	expectDiag(t, `package x
 scalar Weird unknownPrim`, CodeScalarBadPrimitive)
 }
 
-// ---------- isLocalSymbol coverage paths ----------
-
-// TestMiddlewareRefAtMethodLevel exercises the @middlewares walker
-// against per-method decorators, not just service-level ones.
+// A method-level @middlewares resolves a middleware from another package.
 func TestMiddlewareRefAtMethodLevel(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/mw.craftgo": `package shared
@@ -388,9 +377,7 @@ service U {
 	}
 }
 
-// TestMiddlewareDecoratorsIgnoresNonMiddleware verifies the project
-// walker doesn't mistakenly probe non-middleware decorators in its
-// inner loop.
+// The middleware reference check ignores other service decorators.
 func TestMiddlewareDecoratorsIgnoresNonMiddleware(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"users/svc.craftgo": `package users
@@ -405,8 +392,7 @@ service U { get A /a { response R } }`,
 	}
 }
 
-// TestImportsWithAliasAndImplicit exercises the alias-set builder for
-// both explicit and implicit aliases in the same file.
+// A file may mix aliased and unaliased imports.
 func TestImportsWithAliasAndImplicit(t *testing.T) {
 	mustClean(t, `package x
 import alias "shared"
@@ -414,9 +400,7 @@ import "users"
 type T { id string }`)
 }
 
-// TestLocalNamedRefMultiPartSkipped covers the early-return path for
-// qualified `pkg.Name` references - the cross-package resolver owns
-// those, the local-ref pass passes through.
+// A qualified reference to another package's type is not reported as unknown.
 func TestLocalNamedRefMultiPartSkipped(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/u.craftgo": `package shared
@@ -431,8 +415,7 @@ type T { user shared.User }`,
 	}
 }
 
-// TestLocalTypeRefMapTypeRecurses ensures the map-type recursion walks
-// both key and value through the unknown-symbol check.
+// An unknown map value type is reported.
 func TestLocalTypeRefMapTypeRecurses(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `package x
 type T { kv map<string, mistype> }`))
@@ -441,9 +424,7 @@ type T { kv map<string, mistype> }`))
 	}
 }
 
-// TestMiddlewareCollisionTouchesAllSites verifies every decl that
-// participates in the collision is reported (so editors can underline
-// each of them, not just one).
+// A middleware name collision is reported at every declaration.
 func TestMiddlewareCollisionTouchesAllSites(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"a/m.craftgo": `package a
@@ -463,27 +444,8 @@ middleware X`,
 	}
 }
 
-// TestNullableOnOptionalStillWarns confirms `@nullable` on a `T?`
-// field produces the redundancy warning.
-func TestNullableOnOptionalStillWarns(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package x
-type T { name string? @nullable }`))
-	d := findCode(diags, CodeDecoratorRedundant)
-	if d == nil {
-		t.Fatalf("expected %s for `?` + @nullable, got %v", CodeDecoratorRedundant, diags)
-	}
-	if !strings.Contains(d.Msg, "redundant") {
-		t.Errorf("expected redundancy hint, got %q", d.Msg)
-	}
-}
-
-// TestLocalSymbolEveryTypePositionKind pins the type-position resolver:
-// scalars and enums declared in the same package resolve as field types
-// without error; an error declaration name is rejected with a dedicated
-// diagnostic pointing the user at `@errors(...)` rather than the generic
-// "unknown type" branch.
+// Local scalars and enums resolve as field types.
 func TestLocalSymbolEveryTypePositionKind(t *testing.T) {
-	// Scalar + enum resolve cleanly.
 	mustClean(t, `package x
 scalar ID string
 enum Color { Red Blue }
@@ -493,10 +455,7 @@ type T {
 }`)
 }
 
-// TestErrorNameRejectedAsFieldType pins that declaring a field whose
-// type is an `error` name (e.g. `field ref MissingErr` where
-// `error NotFound MissingErr` lives in the same package) raises a
-// diagnostic - errors are reserved for `@errors(...)`.
+// An error name used as a field type is rejected with a hint at @errors.
 func TestErrorNameRejectedAsFieldType(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `package x
 error NotFound MissingErr
@@ -509,5 +468,91 @@ type T {
 	}
 	if !strings.Contains(d.Msg, "@errors") {
 		t.Errorf("diagnostic must hint at @errors as the correct usage, got %q", d.Msg)
+	}
+}
+
+// A qualified error name in a type position gets the bare name's hint.
+func TestQualifiedErrorNameRejectedAsFieldType(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": `package shared
+error NotFound Gone`,
+		"app/a.craftgo": `package app
+type T { remote shared.Gone }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	d := findCode(diags, CodeRefUnknownSymbol)
+	if d == nil {
+		t.Fatalf("expected %s for an error used as a field type, got %v", CodeRefUnknownSymbol, codes(diags))
+	}
+	expectMessage(t, d, "shared.Gone", "error declaration", "@errors")
+}
+
+// A qualified generic mixin with the wrong arity reports one mixin diagnostic.
+func TestQualifiedMixinArityReportedOnce(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/types.craftgo": `package shared
+type Page<T> { items T[] }`,
+		"app/types.craftgo": `package app
+type List { shared.Page  total int }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if got := codes(diags); !slices.Equal(got, []string{CodeMixinArity}) {
+		t.Errorf("want one %s, got %v", CodeMixinArity, diags)
+	}
+}
+
+// A qualified enum takes no generic arguments.
+func TestQualifiedArgsOnEnum(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"shared/types.craftgo": `package shared
+enum Color { Red Blue }`,
+		"app/types.craftgo": `package app
+type T { c shared.Color<int> }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	d := findCode(diags, CodeGenericNonGeneric)
+	if d == nil {
+		t.Fatalf("want %s, got %v", CodeGenericNonGeneric, diags)
+	}
+	expectMessage(t, d, "shared.Color")
+}
+
+// Naming a reference's own package is a self-qualification.
+func TestSelfQualifiedRef(t *testing.T) {
+	files := parseFiles(t, `package app
+type A { id string }`, `package app
+type B { a app.A }`)
+	_, diags := AnalyzeProject(files, Options{})
+	d := findCode(diags, CodeQualifiedRef)
+	if d == nil {
+		t.Fatalf("want %s, got %v", CodeQualifiedRef, diags)
+	}
+	expectMessage(t, d, "redundant self-qualification")
+}
+
+// Two middlewares whose scaffolds share one file are reported at both, in one
+// package or across two; names apart under the file case are not.
+func TestMiddlewareScaffoldFileCollision(t *testing.T) {
+	for label, src := range map[string]map[string]string{
+		"one package":  {"a/a.craftgo": "package a\nmiddleware APIKey\nmiddleware ApiKey"},
+		"two packages": {"a/a.craftgo": "package a\nmiddleware APIKey", "b/b.craftgo": "package b\nmiddleware ApiKey"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			root, files := projectFixture(t, src)
+			_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+			hits := 0
+			for _, d := range diags {
+				if d.Code == CodeMiddlewareCollision && strings.Contains(d.Msg, "api_key_middleware.go") {
+					hits++
+				}
+			}
+			if hits != 2 {
+				t.Errorf("want 2 file collisions, got %v", diags)
+			}
+		})
+	}
+	root, files := projectFixture(t, map[string]string{"a/a.craftgo": "package a\nmiddleware APIKey\nmiddleware Auth"})
+	if _, diags := AnalyzeProject(files, Options{DesignRoot: root}); len(diags) != 0 {
+		t.Errorf("distinct files: unexpected %v", diags)
 	}
 }

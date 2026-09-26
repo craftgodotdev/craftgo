@@ -997,18 +997,14 @@ paths:
         name: cursor
         schema:
           maxLength: 256
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: limit
         schema:
           default: 20
           maximum: 100
           minimum: 1
-          type:
-          - integer
-          - "null"
+          type: integer
       responses:
         "200":
           content:
@@ -1082,32 +1078,24 @@ paths:
         name: cursor
         schema:
           maxLength: 256
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: limit
         schema:
           default: 20
           maximum: 100
           minimum: 1
-          type:
-          - integer
-          - "null"
+          type: integer
       - in: query
         name: status
         schema:
-          anyOf:
-          - $ref: '#/components/schemas/ProjectStatus'
-          - type: "null"
+          $ref: '#/components/schemas/ProjectStatus'
       - in: query
         name: q
         schema:
           description: Case-insensitive name search.
           maxLength: 100
-          type:
-          - string
-          - "null"
+          type: string
       responses:
         "200":
           content:
@@ -1274,36 +1262,26 @@ paths:
         name: cursor
         schema:
           maxLength: 256
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: limit
         schema:
           default: 20
           maximum: 100
           minimum: 1
-          type:
-          - integer
-          - "null"
+          type: integer
       - in: query
         name: status
         schema:
-          anyOf:
-          - $ref: '#/components/schemas/TaskStatus'
-          - type: "null"
+          $ref: '#/components/schemas/TaskStatus'
       - in: query
         name: priority
         schema:
-          anyOf:
-          - $ref: '#/components/schemas/Priority'
-          - type: "null"
+          $ref: '#/components/schemas/Priority'
       - in: query
         name: assignee
         schema:
-          anyOf:
-          - $ref: '#/components/schemas/ID'
-          - type: "null"
+          $ref: '#/components/schemas/ID'
       responses:
         "200":
           content:
@@ -1554,18 +1532,14 @@ paths:
         name: cursor
         schema:
           maxLength: 256
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: limit
         schema:
           default: 20
           maximum: 100
           minimum: 1
-          type:
-          - integer
-          - "null"
+          type: integer
       responses:
         "200":
           content:
@@ -1607,9 +1581,7 @@ paths:
               properties:
                 caption:
                   maxLength: 200
-                  type:
-                  - string
-                  - "null"
+                  type: string
                 file:
                   format: binary
                   type: string
@@ -1699,30 +1671,22 @@ paths:
         name: cursor
         schema:
           maxLength: 256
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: limit
         schema:
           default: 20
           maximum: 100
           minimum: 1
-          type:
-          - integer
-          - "null"
+          type: integer
       - in: query
         name: ownerId
         schema:
-          anyOf:
-          - $ref: '#/components/schemas/ID'
-          - type: "null"
+          $ref: '#/components/schemas/ID'
       - in: query
         name: status
         schema:
-          anyOf:
-          - $ref: '#/components/schemas/ProjectStatus'
-          - type: "null"
+          $ref: '#/components/schemas/ProjectStatus'
       responses:
         "200":
           content:

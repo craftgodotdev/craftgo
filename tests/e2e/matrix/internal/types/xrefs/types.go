@@ -3,6 +3,11 @@
 package xrefs
 
 import (
+	"time"
+
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/fmt"
+	time2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/time"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/v"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 )
 
@@ -82,6 +87,14 @@ type XNestedReq struct {
 	xshared.XParent
 }
 
+// XOwnerPair<XOwner> spells its type parameter like the xshared XOwner its
+// `owner` field names: the OpenAPI instance keeps `owner` an XOwner and
+// gives `value` the argument.
+type XOwnerPair[XOwner any] struct {
+	Owner xshared.XOwner `json:"owner"`
+	Value XOwner         `json:"value"`
+}
+
 // XScalarBindings exercises scalar refs at wire binding sites. The
 // transport handler emits qualified casts:
 //   - `req.Path = xshared.XEmail(r.PathValue("path"))`
@@ -114,6 +127,15 @@ type XSearchReq struct {
 	Hdr xshared.XEmail  `json:"-" header:"hdr"`
 	Ck  xshared.XEmail  `json:"-" cookie:"ck"`
 	Num xshared.XNodeID `json:"-" query:"num"`
+}
+
+// XStdNames names types of packages called like the standard packages its
+// types and validate files import, and like the receiver its Validate binds.
+type XStdNames struct {
+	At    time.Time  `json:"at"`
+	Slot  time2.Slot `json:"slot"`
+	Rows  []fmt.Row  `json:"rows"`
+	Codes []v.Code   `json:"codes"`
 }
 
 // XTypeFields exercises cross-pkg type refs in every shape. Each field

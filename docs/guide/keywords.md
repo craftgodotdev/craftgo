@@ -7,7 +7,7 @@ The DSL has 17 keywords plus the seven HTTP verbs. They are reserved - identifie
 | Keyword      | Position    | Purpose                                                       |
 | ------------ | ----------- | ------------------------------------------------------------- |
 | `package`    | first line  | The package every declaration in this file belongs to         |
-| `import`     | header area | Legacy/optional - cross-package refs resolve without it       |
+| `import`     | after `package` | Optional - a qualified reference resolves without it      |
 | `type`       | top level   | Declare a request / response struct                           |
 | `enum`       | top level   | Declare a closed value set                                    |
 | `error`      | top level   | Declare a typed error with HTTP status mapping                |
@@ -47,8 +47,9 @@ to is Go code, written where its bus is built. See [Events](/guide/events).
 
 A reserved word is still legal wherever the grammar leaves no ambiguity: as a
 field name in a type body, as an enum value name, as a decorator argument naming
-a field, and as a path segment or path-parameter name. `type Msg { event string
-payload bytes }` and `@requiresOneOf(payload, event)` both parse.
+a field, and as a path segment or path-parameter name. `type Msg { event string?
+payload string? }` with `@requiresOneOf(payload, event)` above it is a valid
+design.
 
 ## HTTP verbs
 
@@ -66,19 +67,19 @@ These behave like keywords inside a service body. They are also legal as identif
 
 ## `package`
 
-The first non-comment statement in every `.craftgo` file:
+The first statement of every `.craftgo` file that declares anything - only comments and the file-level decorators `@doc`, `@deprecated` and `@version` may come before it. A file without one is rejected as `package/missing` at its first import or declaration:
 
 ```craftgo
 package design
 ```
 
-All files in the same directory must share the same `package` name. The directory itself is the unit of cross-file resolution: declarations in `design/users/service.craftgo` and `design/users/errors.craftgo` see each other directly because they share `package design` and live in the same folder.
+Files that declare the same `package` name form one package, whatever folder they sit in: declarations in `design/users/service.craftgo` and `design/users/errors.craftgo` see each other directly because both declare `package design`. The folder plays no part - two files in one folder that declare different names are two packages.
 
 The package name does not need to match the folder name (though doing so reads cleaner).
 
 ## Cross-package references
 
-Reach a declaration from a different design subfolder by qualifying it with that package's name - no import statement is needed:
+Reach a declaration from a different package by qualifying it with that package's name - no import statement is needed:
 
 ```craftgo
 package design
@@ -90,7 +91,7 @@ type User {
 
 craftgo resolves `<pkg>.<Type>` against every package in the project (the `package X` declaration is the name) and wires the matching Go import in the generated code automatically. Middleware names are global across the project; type / enum / error / scalar names live in their declaring package and must be qualified at the call site (`shared.Audit`, `users.User`).
 
-> **Note:** an explicit `import "<subfolder>"` line is still accepted for backward compatibility but is **no longer required and will be removed** in a future release - qualified references resolve on their own.
+> **Note:** an `import "<subfolder>"` line is optional and changes no reference: `<pkg>.<Type>` always names a package, never an import alias. When present, its path must name a folder under the design root that holds design files (`import/unresolved` otherwise).
 
 ## `type`
 
@@ -152,7 +153,7 @@ error Conflict EmailTaken {                    // body fields, 409
 }
 ```
 
-The first identifier after `error` is the HTTP category (one of 21 reserved names like `BadRequest`, `NotFound`, `Conflict`, `Internal`). The second is the Go type name. Optional body block carries fields that ride on the wire.
+The first identifier after `error` is the HTTP category (one of 21 reserved names like `BadRequest`, `NotFound`, `Conflict`, `Internal`). The second is the error's name; its Go type is that name plus `Err` (`UserNotFoundErr`) unless it already ends in `Err` or `Error`, and a body block becomes the embedded `<Name>Body` struct. The optional body block carries fields that ride on the wire.
 
 See [Errors](/guide/errors).
 
@@ -173,7 +174,7 @@ service UserService {
 }
 ```
 
-The body holds zero or more method declarations. Method form: `<verb> <Name> <path> { request <Type>  response <Type> }`. The `request` and `response` lines are optional (a method may have neither, only request, or only response).
+The body holds zero or more method declarations. Method form: `<verb> <Name> [<path>] { request <Type>  response <Type> }`. The `request` and `response` lines are optional (a method may have neither, only request, or only response), and so is the path: without one, the route is the method name in kebab case.
 
 See [DSL Basics](/guide/dsl-basics) for path parameters, decorators, and the full method shape.
 
@@ -193,7 +194,7 @@ extend service UserService {
 }
 ```
 
-`extend` blocks may carry method-level-applicable decorators (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@doc`) - those propagate to every method inside - plus `@group`, which nests that block's methods under their own folder. `@prefix` is primary-only. The extended service must already exist in the same package.
+`extend` blocks may carry method-level-applicable decorators - any decorator a method takes, such as `@middlewares`, `@security`, `@tags` or `@timeout` - which propagate to every method inside, plus `@group`, which moves that block's methods into the group's directory. `@prefix` is primary-only, and `@operationId` belongs on each method. The extended service must already exist in the same package.
 
 Used to split a large service across files, separate authenticated endpoints from public ones (the 50/50 pattern: primary holds public methods, an extend block holds the authenticated chain), or organise admin endpoints under a different middleware chain than the default. See [DSL Basics](/guide/dsl-basics#extending-a-service-across-files) for the full pattern.
 
@@ -263,18 +264,21 @@ The first generic argument is the key type and the second is the value type (any
 
 ## Reserved names you cannot use as identifiers
 
-Avoid using any keyword above as a type, field, enum value, or service name. The lexer emits a syntax error if you try. For valid Go-side identifiers that happen to match keywords (e.g. naming a field `type`), pick a different name.
+A reserved word cannot name a declaration: `type event { ... }` is a parse error (`expected Ident, got event`). In the positions under [Contextual use](#contextual-use) it is fine: a field named `type` becomes the Go field `Type` with JSON key `type`.
 
 ## File grammar in one shape
 
 ```
+[@doc|@deprecated|@version]*
 package <ident>
+
+[import [<alias>] "<path>"]*
 
 [<decl>]*
 
 where <decl> is one of:
   [@decorator]* type Name { fields... }
-  [@decorator]* type Name<TypeParam any, ...> { fields... }
+  [@decorator]* type Name<T, U, ...> { fields... }    // upper-case parameter names, no constraint
   [@decorator]* enum Name { values... }
   [@decorator]* error Category Name [{ fields... }]
   [@decorator]* scalar Name <Primitive> [@validators...]
@@ -282,4 +286,7 @@ where <decl> is one of:
   [@decorator]* extend service Name { methods... }
   [@decorator]* middleware Name
   [@decorator]* event Name { payload Type }        // or `payload Type[]` for an array body
+
+and a method is:
+  [@decorator]* <verb> Name [/path] { [request Type] [response Type] }
 ```

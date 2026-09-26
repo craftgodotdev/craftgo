@@ -9,12 +9,13 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/example/taskflow/internal/service/attachment_service"
 	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/attachments"
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// ListAttachments returns the http.HandlerFunc for the
-// GET ListAttachments endpoint.
+// List a task's attachments.
+//
+// ListAttachments returns the GET ListAttachments handler.
 func ListAttachments(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListAttachmentsReq
@@ -41,7 +42,6 @@ func ListAttachments(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

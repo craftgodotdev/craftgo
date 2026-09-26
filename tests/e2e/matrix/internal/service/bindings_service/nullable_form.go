@@ -5,25 +5,20 @@ package bindings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// NullableFormService carries the per-request state for the
-// NullableForm endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// NullableFormService runs BindingsService.NullableForm for one request.
 type NullableFormService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewNullableFormService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewNullableFormService binds NullableFormService to ctx; its Logger carries ctx's trace ids.
 func NewNullableFormService(ctx context.Context, svcCtx *svccontext.ServiceContext) *NullableFormService {
 	return &NullableFormService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,14 +27,9 @@ func NewNullableFormService(ctx context.Context, svcCtx *svccontext.ServiceConte
 	}
 }
 
-// NullableForm pins that a `@nullable` body field in a multipart
-// request (form-bound because the sibling `doc file` makes the
-// request multipart) binds as `*string` with a present-guard. The
-// transport's pointer decision uses the same predicate as the type
-// emitter, so `types.go` (`*string`) and the binder agree - a bare
-// direct assign against a pointer field would not compile.
-// NullableForm is the service entry point. Replace the
-// TODO with the real implementation.
+// Upload a doc with optional-null metadata. The @nullable `meta` body field form-binds as *string (nil when the form value is absent).
+//
+// NullableForm implements BindingsService.NullableForm.
 func (l *NullableFormService) NullableForm(req *types.NullableFormReq) (*types.Item, error) {
 	// TODO: implement
 	return nil, nil

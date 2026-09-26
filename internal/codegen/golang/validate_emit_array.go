@@ -1,4 +1,3 @@
-// Array / file validators: @minItems/@maxItems/@uniqueItems/@maxSize/@mimeTypes.
 package golang
 
 import (
@@ -7,139 +6,85 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func itemsBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label string, ctx emitCtx) string {
-	// Applies to arrays (element count) and maps (entry count) - both
-	// answer to len(). Anything else has no countable size, so the check
-	// is a no-op (the OpenAPI side likewise emits min/maxProperties only
-	// for the map shape).
-	if f.Type == nil || len(d.Args) != 1 || (!f.Type.Array && f.Type.Map == nil) {
+// itemsBoundCheck renders @minItems/@maxItems as a len() bound on an array or
+// map, failing it by its side's comparison of the count with n; a bound every
+// count meets renders nothing.
+func itemsBoundCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	sides, _ := semantic.BoundSides(d.Name)
+	args := semantic.BoundArgs(d)
+	if (t.cat != semantic.CatArray && t.cat != semantic.CatMap) || len(args) != 1 {
 		return ""
 	}
-	n, ok := semantic.IntArg(d.Args[0])
-	if !ok {
+	n, ok := semantic.IntArg(args[0])
+	if !ok || semantic.BoundImpliedByType(t.prim, d, 0) {
 		return ""
 	}
-	// `@minItems(0)` would emit `if len(...) < 0` - a tautology that
-	// the compiler still has to evaluate at runtime. Drop the check
-	// entirely; Go's `len()` is never negative and an absent slice
-	// is already the zero-element case the user is asking us to
-	// allow.
-	if op == ">=" && n == 0 {
-		return ""
-	}
-	flip := "<"
-	if op == "<=" {
-		flip = ">"
-	}
-	cond := fmt.Sprintf("len(%s) %s %d", access, flip, n)
-	msg := fmt.Sprintf(`"%s: %s %d"`, fieldWireName(f), label, n)
-	check := ifReturnf(cond, msg, ctx)
-	// A nil slice / map at an optional or `@nullable` field is the valid
-	// "absent / null" state the OpenAPI null-union advertises, so skip the
-	// count check rather than reject it (`len(nil)` is 0). The collection
-	// nilability is syntactic, so no scalar resolver is needed.
-	if fieldNeedsNilGuard(f) {
-		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(check))
-	}
-	return check
+	cond := fmt.Sprintf("len(%s) %s %d", t.access, sides[0].FailOp(), n)
+	return t.guardBlock(failIf(cond, t.subject, fmt.Sprintf("%s %d", d.Name, n), ctx))
 }
 
-// uniqueItemsCheck handles `@uniqueItems` on array fields. The emitted
-// loop scans for duplicates with a map keyed on the element value;
-// that works for any comparable element type - primitives, strings,
-// fixed-size structs.
-//
-// `json.RawMessage` (the Go type for `any`) is a `[]byte` named slice,
-// which is NOT comparable as a map key. We special-case it to use
-// `string(item)` for the key so a `tags any[] @uniqueItems` chain
-// still emits compile-clean dedupe code without pulling extra
-// imports - `string([]byte)` is a built-in conversion.
-//
-// Other slice / map / func element types stay un-checked because the
-// generated code would not compile.
-//
-// A bare block scopes `seen` to this check so multiple @uniqueItems
-// validators on the same struct don't shadow each other; `return` still
-// escapes back to the enclosing Validate() method.
-func uniqueItemsCheck(f *ast.Field, access string, ctx emitCtx) string {
-	if f.Type == nil || !f.Type.Array {
+// uniqueItemsCheck renders @uniqueItems on an array as a dedupe map keyed by
+// element, inside its own block so each check's `seen` stays local.
+func uniqueItemsCheck(t checkTarget, ctx emitCtx) string {
+	if t.cat != semantic.CatArray {
 		return ""
 	}
-	elem := arrayElemType(f.Type)
-	if !isComparableElem(elem) {
-		// `any` (Go: `interface{}`) IS comparable in the
-		// language sense - but only when its dynamic type is
-		// itself comparable. The runtime `==` over interfaces
-		// panics for slices / maps / funcs. Skip the
-		// auto-emitted dedupe loop for those element types and
-		// let logic deduplicate by-shape if it matters.
-		return ""
-	}
-	ctx.uses["fmt"] = true
-	// The dedupe map keys on the element type; a cross-package element
-	// (`make(map[shared.Name]struct{})`) references that package, so its
-	// import must be registered or the validator won't compile.
-	walkCrossPkgImports(f.Type, ctx.resolver.CrossPkg, ctx.uses)
+	// The element type keys the map and may name another package.
+	elem := ctx.imports.goType(t.typ.ElemTypeRef())
 	return fmt.Sprintf(`{
 seen := make(map[%s]struct{}, len(%s))
 for _, item := range %s {
 if _, dup := seen[item]; dup {
-return fmt.Errorf("%s: items must be unique")
+return %s
 }
 seen[item] = struct{}{}
 }
-}`, elem, access, access, fieldWireName(f))
+}`, elem, t.access, t.access, errorf(t.subject, "items must be unique", ctx))
 }
 
-// ----- file --------------------------------------------------------------
-
-// maxSizeCheck handles `@maxSize(<size>)` on `file` fields. The argument
-// may be a Size literal (`5MB`, `2KB`, `1024B`) or a bare integer count
-// of bytes. Emits a nil-guarded comparison against `*multipart.FileHeader.Size`.
-// On non-file fields the decorator is silently skipped.
-func maxSizeCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	if !isFileField(f) || len(d.Args) != 1 {
+// maxSizeCheck renders @maxSize on a file as a nil-guarded bound on its Size.
+func maxSizeCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	if !t.primIs(prims.File) || len(d.Args) != 1 {
 		return ""
 	}
 	bytes, ok := semantic.SizeArg(d.Args[0])
 	if !ok || bytes <= 0 {
 		return ""
 	}
-	cond := fmt.Sprintf("%s != nil && %s.Size > %d", access, access, bytes)
-	msg := fmt.Sprintf(`"%s: file size exceeds %d bytes"`, fieldWireName(f), bytes)
-	return ifReturnf(cond, msg, ctx)
+	cond := fmt.Sprintf("%s.Size > %d", t.access, bytes)
+	return failIf(t.guarded(cond), t.subject, fmt.Sprintf("file size exceeds %d bytes", bytes), ctx)
 }
 
-// mimeTypesCheck handles `@mimeTypes(["a/b", "c/d"])` on `file` fields.
-// Emits a switch on the upload's Content-Type header rejecting any value
-// outside the allowlist. The check is nil-guarded so a missing optional
-// upload is allowed by this decorator; drop the `?` suffix on the field
-// type to force presence (required-by-default).
-func mimeTypesCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	if !isFileField(f) || len(d.Args) == 0 {
+// mimeTypesCheck renders @mimeTypes on a file as a match of the upload's media type, its
+// parameters and case aside, against each type or `type/*` range; an absent upload passes.
+func mimeTypesCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	if !t.primIs(prims.File) {
 		return ""
 	}
-	// Accept BOTH `@mimeTypes(["a","b"])` (array literal) and the
-	// variadic `@mimeTypes("a","b","c")` form.
-	// semantic.StringArrayDecoratorArg handles both shapes, matching the
-	// transport binder.
-	mimes := semantic.StringArrayDecoratorArg(d)
-	if len(mimes) == 0 {
+	var conds []string
+	for _, arg := range ast.ArgNames(d) {
+		mt := strings.ToLower(arg.Value)
+		switch {
+		case mt == "*/*":
+			return ""
+		case strings.HasSuffix(mt, "/*"):
+			ctx.imports.use("strings")
+			conds = append(conds, "strings.HasPrefix(_mt, "+strconv.Quote(strings.TrimSuffix(mt, "*"))+")")
+		default:
+			conds = append(conds, "_mt == "+strconv.Quote(mt))
+		}
+	}
+	if len(conds) == 0 {
 		return ""
 	}
-	ctx.uses["fmt"] = true
-	cases := make([]string, len(mimes))
-	for i, m := range mimes {
-		cases[i] = strconv.Quote(m)
-	}
-	return fmt.Sprintf(`if %s != nil {
-switch %s.Header.Get("Content-Type") {
+	ctx.imports.use("mime")
+	return t.guardBlock(fmt.Sprintf(`switch _mt, _, _ := mime.ParseMediaType(%s.Header.Get("Content-Type")); {
 case %s:
 default:
-return fmt.Errorf("%s: disallowed content type")
-}
-}`, access, access, strings.Join(cases, ", "), fieldWireName(f))
+return %s
+}`, t.access, strings.Join(conds, ", "), errorf(t.subject, "disallowed content type", ctx)))
 }

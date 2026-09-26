@@ -5,25 +5,20 @@ package nested
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/nested"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/nested"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoCubeService carries the per-request state for the
-// EchoCube endpoint of NestedService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoCubeService runs NestedService.EchoCube for one request.
 type EchoCubeService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoCubeService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoCubeService binds EchoCubeService to ctx; its Logger carries ctx's trace ids.
 func NewEchoCubeService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoCubeService {
 	return &EchoCubeService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewEchoCubeService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// EchoCube is the service entry point. Replace the
-// TODO with the real implementation.
+// 3-D slice of nested.
+//
+// EchoCube implements NestedService.EchoCube.
 func (l *EchoCubeService) EchoCube(req *types.Cube) (*types.Cube, error) {
 	// TODO: implement
 	return nil, nil

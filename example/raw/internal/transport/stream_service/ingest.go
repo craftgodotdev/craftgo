@@ -11,9 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 
-// Ingest returns the http.HandlerFunc for the
-// POST Ingest raw-request endpoint. The handler hands the
-// *http.Request to logic unread and encodes the returned response.
+// Accept raw bytes (any content-type); the framework encodes the typed result.
+//
+// Ingest returns the POST Ingest handler.
 func Ingest(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewIngestService(r.Context(), svcCtx)
@@ -22,8 +22,6 @@ func Ingest(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

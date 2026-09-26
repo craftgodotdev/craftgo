@@ -9,12 +9,13 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/example/taskflow/internal/service/project/v1"
 	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/project"
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// GetProject returns the http.HandlerFunc for the
-// GET GetProject endpoint.
+// Fetch one project (v1).
+//
+// GetProject returns the GET GetProject handler.
 func GetProject(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetProjectReq
@@ -29,7 +30,6 @@ func GetProject(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

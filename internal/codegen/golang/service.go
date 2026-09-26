@@ -1,178 +1,112 @@
 package golang
 
 import (
-	"fmt"
-	"path/filepath"
-
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// serviceData is the template input for `service.tmpl` and
-// `service-passthrough.tmpl`. One value is built per DSL method.
+// serviceData is the template input for service.tmpl, one value per method or RPC.
 type serviceData struct {
 	Package     string
 	Service     string
 	Method      string
 	ServiceName string
-	// RequestType / RequestPkgAlias rendered together by the
-	// template as `*<alias>.<Type>`. Local types use alias `types`;
-	// cross-package types use the target package's name and pull
-	// the matching Go import in via [ExtraTypesImports].
-	RequestType      string
-	RequestPkgAlias  string
-	ResponseType     string
-	ResponsePkgAlias string
-	Doc              []string
-	// Notes follow Doc as comment lines on the entry point: the usage
-	// hint of a streaming RPC. Empty for HTTP.
-	Notes       []string
-	HasRequest  bool
-	HasResponse bool
-	NeedsTypes  bool
-	// RawRequest / RawResponse report which transport sides logic owns
-	// (see wire.RawSides); IsPassthrough is both at once and only selects
-	// the stub's doc text. Sig is the declaration's parameter and result
-	// lists, computed by buildSignature together with the transport call
-	// site. RequestContract / ResponseContract are the rendered Go types a
-	// raw side documents (OpenAPI + generated types); the stub comment
-	// points logic at the shape it must honour, without importing it.
-	RawRequest       bool
-	RawResponse      bool
-	IsPassthrough    bool
-	Sig              methodSignature
-	RequestContract  string
-	ResponseContract string
-	TypesImport      string
-	SvccontextImport string
-	// ExtraTypesImports lists Go imports for cross-package request
-	// or response types. Empty when both live in the service's own
-	// package.
-	ExtraTypesImports []extraImport
-	// PBImports lists the pb packages a gRPC scaffold's request and
-	// response types come from. Empty for HTTP.
-	PBImports []extraImport
+	// Doc heads the entry point's doc comment ([docHead]); Entry is the rest.
+	Doc   []string
+	Entry []string
+	// RawResponse reports that logic writes the response ([wire.RawSides]).
+	RawResponse bool
+	Sig         methodSignature
+	ImportDecl  string
 }
 
-// generateService scaffolds one `<method>.go` per method per service
-// under `<output.service>/<servicePackage>/`. Unlike the other generators
-// this one runs in **scaffold** mode: existing files are left untouched so
-// user-written business logic is never overwritten. r lets the scaffold
-// render `*foo.Cred` for a cross-package request/response type; a nil
-// resolver resolves local names only.
+// generateService writes each method's gen-once logic scaffold to
+// output.service/<segment>/<method>.go. A nil r resolves local names only.
 func generateService(pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
-	if pkg.Name == "" {
-		return fmt.Errorf("package has no name")
-	}
 	r = resolverFor(pkg, r)
-	crossPkg := r.CrossPkg
-	for _, svcName := range sortedServices(pkg) {
-		svc := pkg.Services[svcName]
-		if err := generateServiceFor(svcName, svc, pkg, cfg, projectRoot, crossPkg); err != nil {
-			return err
-		}
-	}
-	return nil
+	out := outputsOf(cfg)
+	return eachSegmentMethod(pkg, cfg.Output.FileCase, func(s segment, m *ast.Method) error {
+		data := buildServiceData(pkg.Name, s.name, m, s.svc.Decorators(m), out.segmentImports(pkg.Name, s.dir), r)
+		return writeGoOnce(out.service.sub(s.dir).at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("service.tmpl"), data)
+	})
 }
 
-// generateServiceFor emits all per-method service scaffold files for a single
-// service, skipping any that already exist on disk.
-func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, crossPkg crossPkg) error {
-	groups := methodGroups(svc)
-	for _, m := range svc.Methods {
-		group := groups[m.Name]
-		imps := importPathsForGroup(cfg, pkg, svcName, group)
-		dir := serviceOutputDir(projectRoot, cfg.Output.Service, svcName, group, cfg.Output.FileCase)
-		filename := idents.FileName(m.Name, cfg.Output.FileCase) + ".go"
-		if err := writeScaffoldOnce(filepath.Join(dir, filename), "service.tmpl", buildServiceData(pkg.Name, svcName, m, imps, crossPkg)); err != nil {
-			return err
-		}
+func buildServiceData(pkgName, svcName string, m *ast.Method, decs []*ast.Decorator, imps importPaths, r *projectResolver) serviceData {
+	mode := modeOf(m, decs)
+	imports := newImportSet(r.Module, r, goImport{Alias: localAlias, Path: imps.Types}, serviceNames)
+	var reqRef, respRef string
+	if mode.BindRequest() {
+		reqRef = imports.named(m.Request)
 	}
-	return nil
-}
-
-// buildServiceData populates the serviceData struct for one DSL method.
-func buildServiceData(pkgName, svcName string, m *ast.Method, imps importPaths, crossPkg crossPkg) serviceData {
-	mode := modeOf(m)
-	takesReq, returnsResp := mode.StubTakesReq(), mode.StubReturnsResp()
-	d := serviceData{
-		Package:          servicePkgName(pkgName, svcName),
-		Service:          svcName,
-		Method:           m.Name,
-		ServiceName:      m.Name + "Service",
-		Doc:              m.Doc,
-		HasRequest:       mode.HasRequest,
-		HasResponse:      mode.HasResponse,
-		RawRequest:       mode.RawRequest,
-		RawResponse:      mode.RawResponse,
-		IsPassthrough:    mode.RawRequest && mode.RawResponse,
-		TypesImport:      imps.Types,
-		SvccontextImport: imps.Svccontext,
+	if mode.StubReturnsResp() {
+		respRef = imports.named(m.Response.Type)
 	}
-	// Track which Go imports we've already pinned via [TypesImport]
-	// or an extra entry - duplicates would surface as "duplicate
-	// import" Go errors otherwise.
-	extraSeen := map[string]bool{}
-	addExtra := func(extra extraImport) {
-		if extra.Path == "" || extraSeen[extra.Path] {
-			return
-		}
-		extraSeen[extra.Path] = true
-		d.ExtraTypesImports = append(d.ExtraTypesImports, extra)
-	}
-	// resolveTypeRef returns only the OUTER ref's import; a generic instance's
-	// type-args reach further packages (`genpkg.Box<argpkg.Owner>` →
-	// `genpkg.Box[argpkg.Owner]`), so walk the whole ref and add every
-	// cross-package import - otherwise the scaffold references `argpkg.Owner`
-	// with no import (`undefined: argpkg`). The other emitters already do this
-	// via walkCrossPkgImports.
-	pathAlias := map[string]string{}
-	for alias, path := range crossPkg {
-		pathAlias[path] = alias
-	}
-	addRefExtras := func(ref *ast.NamedTypeRef) {
-		set := map[string]bool{}
-		walkCrossPkgImports(&ast.TypeRef{Named: ref}, crossPkg, set)
-		for path := range set {
-			addExtra(extraImport{Alias: pathAlias[path], Path: path})
-		}
-	}
-	// A docs-only contract (the block on a raw side) is rendered for the
-	// stub comment but never imported: the stub does not reference it,
-	// and an unused import would fail `go build`.
+	sig := buildSignature(mode, reqRef, respRef)
+	// A contract appears only in the stub's doc, so it adds no import.
+	doc := imports.scratch()
+	var reqContract, respContract string
 	if mode.HasRequest {
-		alias, bare, _, _ := resolveTypeRef(m.Request, crossPkg)
-		d.RequestContract = alias + "." + bare
+		reqContract = doc.named(m.Request)
 	}
 	if mode.HasResponse {
-		alias, bare, _, _ := resolveTypeRef(m.Response.Type, crossPkg)
-		d.ResponseContract = alias + "." + bare
+		respContract = doc.named(m.Response.Type)
 	}
-	var reqUse, respUse typeRefUse
-	if takesReq {
-		alias, bare, extra, use := resolveTypeRef(m.Request, crossPkg)
-		d.RequestPkgAlias = alias
-		d.RequestType = bare
-		reqUse = use
-		addExtra(extra)
-		addRefExtras(m.Request)
+	return serviceData{
+		Package:     pkgName,
+		Service:     svcName,
+		Method:      m.Name,
+		ServiceName: idents.LogicTypeName(m.Name),
+		Doc:         docHead(semantic.DescriptionLines(decs, m.Doc)),
+		Entry:       stubEntry(svcName, m.Name, mode, sig, reqContract, respContract),
+		RawResponse: mode.RawResponse,
+		Sig:         sig,
+		ImportDecl:  stubImportDecl(imports, sig, imps.Svccontext),
 	}
-	if returnsResp {
-		alias, bare, extra, use := resolveTypeRef(m.Response.Type, crossPkg)
-		d.ResponsePkgAlias = alias
-		d.ResponseType = bare
-		respUse = use
-		addExtra(extra)
-		addRefExtras(m.Response.Type)
+}
+
+// stubEntry returns the generated doc lines of an HTTP method's logic entry point: what it does
+// in mode, then the type its design documents on a raw side, reqContract or respContract.
+func stubEntry(svc, method string, mode methodMode, sig methodSignature, reqContract, respContract string) []string {
+	var does string
+	switch {
+	case mode.RawRequest && mode.RawResponse:
+		does = method + " reads r and writes the response to w; a returned error goes to server.WriteError."
+	case mode.RawResponse:
+		does = method + " writes the response to w; a returned error goes to server.WriteError."
+	case mode.RawRequest && sig.HasResult:
+		does = method + " reads the request from r; craftgo encodes the response it returns."
+	case mode.RawRequest:
+		does = method + " reads the request from r."
+	default:
+		return []string{method + " implements " + svc + "." + method + "."}
 	}
-	// The canonical `types` import is needed only when a side the stub
-	// names lives in the local package - directly (alias `types`) or as
-	// the local type-arg of a cross-package generic (`shared.Page<Order>`
-	// renders as `*shared.Page[types.Order]`). Both sides cross-package →
-	// drop it so the scaffold compiles.
-	d.NeedsTypes = (takesReq && reqUse.LocalTypes) || (returnsResp && respUse.LocalTypes)
-	d.Sig = buildSignature(mode, d.RequestPkgAlias+"."+d.RequestType, d.ResponsePkgAlias+"."+d.ResponseType)
-	return d
+	var contract string
+	switch req, resp := mode.RawRequest && mode.HasRequest, mode.RawResponse && mode.HasResponse; {
+	case req && resp:
+		contract = "Its request is documented as " + reqContract + " and its response as " + respContract + "."
+	case req:
+		contract = "Its request is documented as " + reqContract + ", whose Validate checks it."
+	case resp:
+		contract = "Its response is documented as " + respContract + "."
+	default:
+		return []string{does}
+	}
+	return []string{does, contract}
+}
+
+// stubImportDecl renders a logic stub's imports: those its signature names, already in imports,
+// and the packages service.tmpl writes.
+func stubImportDecl(imports *importSet, sig methodSignature, svccontext string) string {
+	imports.use("context")
+	if sig.NeedsHTTP {
+		imports.use("net/http")
+	}
+	imports.use(logImport)
+	if sig.NeedsGRPC {
+		imports.use(grpcImport)
+	}
+	imports.use(svccontext)
+	return imports.decl()
 }

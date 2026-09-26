@@ -9,8 +9,6 @@ import (
 	runtimetypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/runtime"
 )
 
-// ---- multi-service: two services coexist on one server ----
-
 func TestServer_OrdersPing(t *testing.T) {
 	ts, _ := boot(t)
 	var p runtimetypes.RtPong
@@ -55,6 +53,33 @@ func TestServer_CatalogFeaturedSeeded(t *testing.T) {
 	}
 }
 
+// A generic response writes its type-parameter header as its argument's
+// type: `Tallied<int>` sends X-Tally as a decimal integer.
+func TestServer_GenericResponseHeaderTakesItsArgument(t *testing.T) {
+	ts := bootAll(t)
+	var body struct{ Items []int }
+	resp, err := ts.Client().Get(ts.URL + "/api/scalars/tally")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("X-Tally") != "3" || len(body.Items) != 3 {
+		t.Errorf("status %d, X-Tally %q, items %v; want 200, \"3\", [4 5 6]", resp.StatusCode, resp.Header.Get("X-Tally"), body.Items)
+	}
+}
+
+// A trailing {key...} variable binds the rest of the path to the field key.
+func TestServer_RestVariableBindsItsField(t *testing.T) {
+	ts := bootAll(t)
+	var blob struct{ Key string }
+	if s := getJSON(t, ts, "/api/blobs/a/b/c.txt", &blob); s != http.StatusOK || blob.Key != "a/b/c.txt" {
+		t.Errorf("status %d, key %q; want 200, \"a/b/c.txt\"", s, blob.Key)
+	}
+}
+
 func TestServer_NoCrossServiceCollision(t *testing.T) {
 	ts, _ := boot(t)
 	var p runtimetypes.RtPong
@@ -68,8 +93,6 @@ func TestServer_NoCrossServiceCollision(t *testing.T) {
 		t.Errorf("catalog /ping leaked: %q", p.Name)
 	}
 }
-
-// ---- account-user service: CRUD + stateful store + validation ----
 
 func TestServer_AccountCreateAndGet(t *testing.T) {
 	ts, _ := boot(t)
@@ -149,7 +172,7 @@ func TestServer_AccountValidationRejects(t *testing.T) {
 	if s, _ := reqJSON(t, ts, http.MethodPost, "/api/account-users/users", map[string]any{"name": "", "tags": []string{}, "meta": map[string]string{}}); s != http.StatusBadRequest {
 		t.Errorf("empty name should 400, got %d", s)
 	}
-	// malformed JSON
+	// a JSON string where an object belongs
 	if s, _ := reqJSON(t, ts, http.MethodPost, "/api/account-users/users", "not-json"); s == http.StatusOK {
 		t.Errorf("bad JSON should not 2xx, got %d", s)
 	}
@@ -167,13 +190,8 @@ type runtimeUser struct {
 	Name string `json:"name"`
 }
 
-// TestServer_AdminApiNestedGroups exercises one service (AdminApi) whose
-// methods are split across three NESTED @group folders - admin/v1 (primary),
-// admin/v2 and admin/v3 (extend blocks). Each group emits its own routes file
-// (routes/admin/v1, /v2, /v3) registered separately in boot(), mirroring the
-// per-group transport + service split. @group never touches the URL: the paths
-// come from @prefix("/adminapi") + each method path, independent of the on-disk
-// group folder.
+// TestServer_AdminApiNestedGroups serves AdminApi's methods, spread over
+// nested @group folders, under @prefix("/adminapi") whatever the group.
 func TestServer_AdminApiNestedGroups(t *testing.T) {
 	ts, _ := boot(t)
 	for _, c := range []struct {
@@ -182,8 +200,7 @@ func TestServer_AdminApiNestedGroups(t *testing.T) {
 		{"/api/adminapi/v1/ping", "v1"},
 		{"/api/adminapi/v2/ping", "v2"},
 		{"/api/adminapi/v3/ping", "v3"},
-		// PingInherit is on an extend block with NO @group; it inherits the
-		// primary's @group("admin/v1"), so it serves through the same v1 hub.
+		// PingInherit's extend block has no @group, so it joins admin/v1.
 		{"/api/adminapi/inherit/ping", "inherit"},
 	} {
 		var r adminapitypes.VerResp

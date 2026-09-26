@@ -55,11 +55,7 @@ func deliver(t *testing.T, msg *events.Message) *events.Message {
 	return got.only(t)
 }
 
-// The in-process transport does not ORDER on a key - its own package doc
-// says two messages with the same key are not ordered, because each
-// delivery runs on its own goroutine. But it CARRIES the key through to
-// the consumer, which is the difference between a feature it has not got
-// and a value it destroys: a consumer handed the key can act on it.
+// The key reaches the consumer.
 func TestTheKeyIsCarriedToTheConsumer(t *testing.T) {
 	got := deliver(t, &events.Message{
 		Event: "orders.Placed", Key: "order-1", Payload: []byte(`{}`),
@@ -69,8 +65,7 @@ func TestTheKeyIsCarriedToTheConsumer(t *testing.T) {
 	}
 }
 
-// Same for the deduplication ID: nothing here deduplicates, and the ID
-// still reaches the consumer.
+// The deduplication ID reaches the consumer.
 func TestTheDeduplicationIDIsCarriedToTheConsumer(t *testing.T) {
 	got := deliver(t, &events.Message{
 		Event: "orders.Placed", DedupID: "attempt-7", Payload: []byte(`{}`),
@@ -80,10 +75,7 @@ func TestTheDeduplicationIDIsCarriedToTheConsumer(t *testing.T) {
 	}
 }
 
-// Nothing deduplicates: two publishes sharing one ID are two deliveries.
-// The row in the PublishOption table says so, and a transport that
-// quietly started deduplicating would change delivery counts under every
-// application that uses this for tests.
+// Two publishes sharing a deduplication ID are two deliveries.
 func TestTwoPublishesSharingADedupIDAreBothDelivered(t *testing.T) {
 	tr := memory.New()
 	got := &delivered{}
@@ -114,8 +106,7 @@ func TestTwoPublishesSharingADedupIDAreBothDelivered(t *testing.T) {
 	}
 }
 
-// A handler mutating what it was given must not be visible to the next
-// subscriber, which is why each delivery gets its own copy.
+// Each subscriber gets its own copy of the message's metadata.
 func TestEachSubscriberGetsItsOwnCopy(t *testing.T) {
 	tr := memory.New()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -124,9 +115,7 @@ func TestEachSubscriberGetsItsOwnCopy(t *testing.T) {
 	var mu sync.Mutex
 	seen := map[string]string{}
 	for _, group := range []string{"a", "b"} {
-		// pkg/events declares go 1.21, so a loop variable is shared
-		// across iterations: bind it per subscription or both closures
-		// see the last value.
+		// A per-iteration copy: this module's go version shares loop variables.
 		group := group
 		if err := tr.Subscribe(ctx, []events.Subscription{{
 			Event: "orders.Placed", Consumer: group, Group: events.Group(group),
@@ -156,9 +145,7 @@ func TestEachSubscriberGetsItsOwnCopy(t *testing.T) {
 	}
 }
 
-// The adapter names itself to the per-message option check and reads no
-// options of its own, so an option addressed to `memory` is a mistake
-// rather than something silently dropped.
+// The adapter names itself memory.Adapter and reads no options.
 func TestTheAdapterNamesItselfAndReadsNoOptions(t *testing.T) {
 	tr := memory.New()
 	if tr.AdapterName() != memory.Adapter {
@@ -169,20 +156,7 @@ func TestTheAdapterNamesItselfAndReadsNoOptions(t *testing.T) {
 	}
 }
 
-// Drain runs on a goroutine of its own while a request is still
-// publishing, which is how a single-binary deployment shuts down and
-// what the runtime reference points at. That used to be a panic: the
-// counter was a sync.WaitGroup, Publish counted a delivery on the
-// caller's goroutine, and a WaitGroup forbids exactly that.
-//
-// Two panics came out of it. One fires inside Wait, on the goroutine that
-// called Drain, which a caller could at least recover. The other fires in
-// Done, on the goroutine Publish spawned, where nothing can - it takes
-// the process down.
-//
-// The loop is what makes this deterministic. Measured on the broken
-// version: 100 iterations killed 34 processes in 40, and 250 killed all
-// 40. Two thousand is well past that and costs seven milliseconds.
+// Drain is safe while another goroutine publishes; the loop makes a race likely.
 func TestDrainIsSafeWhileAnotherGoroutinePublishes(t *testing.T) {
 	const rounds = 2000
 
@@ -213,10 +187,7 @@ func TestDrainIsSafeWhileAnotherGoroutinePublishes(t *testing.T) {
 	}
 }
 
-// Drain still joins: every delivery it was told about has run by the time
-// it returns, including one a handler started itself - which is the
-// dead-letter sink's shape, a chain publishing through a second bus on
-// the same transport.
+// Drain waits for a delivery that a handler started.
 func TestDrainWaitsForADeliveryAHandlerStarted(t *testing.T) {
 	tr := memory.New()
 	ctx, cancel := context.WithCancel(context.Background())

@@ -1,13 +1,12 @@
 package semantic
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
-
-// ---------- Prims rendering ----------
 
 func TestPrimsString(t *testing.T) {
 	cases := []struct {
@@ -17,9 +16,12 @@ func TestPrimsString(t *testing.T) {
 		{0, "any"},
 		{PrimString, "string"},
 		{PrimNumber, "number"},
+		{PrimInteger, "integer"},
+		{PrimFloat, "float"},
 		{PrimBool, "bool"},
-		{PrimArray, "array"},
+		{PrimArray | PrimMap, "array, map"},
 		{PrimFile, "file"},
+		{PrimString | PrimBytes, "string, bytes"},
 		{PrimString | PrimNumber, "string, number"},
 	}
 	for _, c := range cases {
@@ -35,13 +37,14 @@ func TestPrimFromName(t *testing.T) {
 		want Prims
 	}{
 		{"string", PrimString},
-		{"bytes", PrimString},
-		{"int", PrimNumber},
-		{"int64", PrimNumber},
-		{"uint8", PrimNumber},
-		{"float32", PrimNumber},
+		{"bytes", PrimBytes},
+		{"int", PrimInteger},
+		{"int64", PrimInteger},
+		{"uint8", PrimInteger},
+		{"float32", PrimFloat},
 		{"bool", PrimBool},
 		{"file", PrimFile},
+		{"datetime", PrimDateTime},
 		{"any", 0}, // not classified at this layer
 		{"User", 0},
 	}
@@ -52,7 +55,51 @@ func TestPrimFromName(t *testing.T) {
 	}
 }
 
-// ---------- String validators ----------
+// Each rule a category split carries is decided by AppliesTo alone, once.
+func TestAppliesToDecidesSplitCategories(t *testing.T) {
+	for _, c := range []struct{ src, msg string }{
+		{`type X { b bytes @pattern("^a$") }`, "@pattern applies to string fields, but X.b is bytes"},
+		{`type X { b bytes @format(email) }`, "@format(email) applies to string, but X.b is bytes"},
+		{"scalar Blob bytes @format(raw)\ntype X { b Blob @format(email) }", "@format(email) applies to string, but X.b is Blob"},
+		{`scalar B bytes @format(email)`, "@format(email) applies to string, but scalar B is bytes"},
+		{`type X { r float64 @multipleOf(2) }`, "@multipleOf applies to integer fields, but X.r is float"},
+		{`type X { m map<string, int> @uniqueItems }`, "@uniqueItems applies to array fields, but X.m is map"},
+		{`scalar B bytes @pattern("^a$")`, "@pattern applies to string, but scalar B is bytes"},
+		{`scalar R float32 @multipleOf(2)`, "@multipleOf applies to integer, but scalar R is float"},
+	} {
+		d := expectError(t, c.src, CodeDecoratorTypeMismatch)
+		expectMessage(t, d, c.msg)
+		expectCodeCount(t, c.src, CodeDecoratorTypeMismatch, 1)
+	}
+	mustClean(t, `type X { b bytes @minLength(1) @maxLength(9)  m map<string, int> @minItems(1) @maxItems(3)  n int @multipleOf(2) }`)
+}
+
+// A field's category follows its resolved type, through scalars, enums and raw bytes.
+func TestResolvedFieldPrims(t *testing.T) {
+	pkg := mustClean(t, `scalar Email string
+scalar Blob bytes @format(raw)
+enum S { A }
+type X {
+	s string
+	b bytes
+	r bytes @format(raw)
+	e Email
+	blob Blob
+	n int
+	f float32
+	xs int[]
+	m map<string, int>
+	en S
+	a any
+}`)
+	want := map[string]Prims{"s": PrimString, "b": PrimBytes, "r": PrimRawBytes, "e": PrimString, "blob": PrimRawBytes,
+		"n": PrimInteger, "f": PrimFloat, "xs": PrimArray, "m": PrimMap, "en": PrimString, "a": PrimDynamic}
+	for _, f := range ast.Fields(pkg.Types["X"].Body) {
+		if got := ResolveField(f, pkg, nil).Prims(); got != want[f.Name] {
+			t.Errorf("%s: Prims = %v, want %v", f.Name, got, want[f.Name])
+		}
+	}
+}
 
 func TestStringValidatorsOnString(t *testing.T) {
 	mustClean(t, `type X { name string @length(1, 20) @pattern("^[a-z]+$") }`)
@@ -76,8 +123,6 @@ func TestPatternOnBoolRejected(t *testing.T) {
 	}
 }
 
-// ---------- Number validators ----------
-
 func TestNumberValidatorsOnInt(t *testing.T) {
 	mustClean(t, `type X { age int @gte(0) @lte(120) @multipleOf(1) }`)
 }
@@ -93,8 +138,6 @@ func TestPositiveOnFloat(t *testing.T) {
 	mustClean(t, `type X { ratio float64 @positive }`)
 }
 
-// ---------- Array validators ----------
-
 func TestArrayValidatorsOnArray(t *testing.T) {
 	mustClean(t, `type X { tags string[] @minItems(1) @maxItems(10) @uniqueItems }`)
 }
@@ -107,11 +150,9 @@ func TestArrayValidatorOnStringRejected(t *testing.T) {
 }
 
 func TestArrayValidatorOnMap(t *testing.T) {
-	// Maps share the array category.
+	// The item-count validators take a map too.
 	mustClean(t, `type X { meta map<string, string> @maxItems(50) }`)
 }
-
-// ---------- File validators ----------
 
 func TestFileValidatorsOnFile(t *testing.T) {
 	mustClean(t, `type X { avatar file @maxSize(5MB) @mimeTypes(["image/png"]) }`)
@@ -123,8 +164,6 @@ func TestFileValidatorOnStringRejected(t *testing.T) {
 		t.Fatalf("got %v", codes(diags))
 	}
 }
-
-// ---------- Scalar resolution ----------
 
 func TestStringValidatorOnStringScalar(t *testing.T) {
 	mustClean(t, `scalar Email string @format(email)
@@ -144,8 +183,6 @@ type X { who Age @length(1, 5) }`))
 	}
 }
 
-// ---------- Scalar declarations themselves ----------
-
 func TestScalarTypeMismatch(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `scalar Bad int @length(1, 5)`))
 	d := findCode(diags, CodeDecoratorTypeMismatch)
@@ -158,49 +195,49 @@ func TestScalarTypeMismatch(t *testing.T) {
 }
 
 func TestScalarUnknownPrimitiveRejected(t *testing.T) {
-	// A scalar's primitive slot must hold a built-in identifier.
-	// Typos like `scalar Weird unknownPrim` or self-references like
-	// `scalar Check Check` are flagged at design time: without the
-	// check the generated Go compiles but the inherited validators
-	// vanish.
 	d := expectDiag(t, `scalar Weird unknownPrim`, CodeScalarBadPrimitive)
 	expectMessage(t, d, "Weird", "unknownPrim")
+	// The message lists every primitive a scalar may wrap.
+	expectMessage(t, d, "expected one of "+strings.Join(ScalarPrimitives(), ", "))
+}
+
+// A scalar cannot wrap `datetime`, `file` or `any`; the message names the
+// built-in and lists the primitives a scalar wraps.
+func TestScalarOverUnwrappableBuiltinRejected(t *testing.T) {
+	for _, prim := range []string{"datetime", "file", "any"} {
+		d := expectError(t, "scalar When "+prim, CodeScalarBadPrimitive)
+		expectMessage(t, d, `scalar "When" cannot wrap `+prim, "expected one of string, bool, int,", "bytes")
+		if slices.Contains(ScalarPrimitives(), prim) {
+			t.Errorf("ScalarPrimitives lists %s", prim)
+		}
+	}
+}
+
+// The diagnostics state the rules analysis applies: a `@group` replaces the
+// service's directory, and `@form` binds a single-level `file[]`.
+func TestDiagnosticsStateTheRules(t *testing.T) {
+	d := expectError(t, "@group(\"..\")\nservice S { get A /a {} }", CodeDecoratorArgValue)
+	expectMessage(t, d, "in place of the service's own")
+	d = expectError(t, "type R { m map<string, int> @form }", CodeBindingType)
+	expectMessage(t, d, "a single-level array of those, `file[]` included")
+	mustClean(t, "type R { files file[] @form }")
 }
 
 func TestScalarSelfReferenceRejected(t *testing.T) {
-	// `scalar Name Name` declares a scalar that aliases itself -
-	// syntactically a noun in the primitive slot, but semantically
-	// meaningless (infinite recursion if the codegen ever tried to
-	// resolve the underlying primitive).
 	d := expectDiag(t, `scalar Check Check`, CodeScalarBadPrimitive)
 	expectMessage(t, d, "Check")
 }
 
-// ---------- Unresolved type silently skipped ----------
-
+// The type-compat check skips a field whose qualified type does not resolve.
 func TestQualifiedFieldTypeSkipsCompat(t *testing.T) {
-	// The qualified-ref pass already flags shared.User; the type-compat
-	// check should silently skip (nil primitive) so the user only sees
-	// one diagnostic per source location.
 	_, diags := Analyze(parseFiles(t, `type X { user shared.User @length(1, 5) }`))
 	if findCode(diags, CodeDecoratorTypeMismatch) != nil {
 		t.Errorf("type-compat should not stack on unknown qualified ref, got %v", codes(diags))
 	}
 }
 
-// ---------- nil-shape defensive ----------
-
-func TestFieldPrimNil(t *testing.T) {
-	a := newTestAnalyzer(&Package{})
-	if got := a.fieldPrim(nil); got != 0 {
-		t.Errorf("nil TypeRef should resolve to 0, got %v", got)
-	}
-}
-
-// TestTypeCompatNilDecoratorTolerated covers the defensive nil-entry
-// guards in checkBodyTypeCompat / checkScalarTypeCompat. Parser doesn't
-// emit nil entries today, so we hand-build the scopes.
-func TestTypeCompatNilDecoratorTolerated(t *testing.T) {
+// The type-compat checks skip unknown decorators on fields and scalars.
+func TestTypeCompatSkipsUnknownDecorators(t *testing.T) {
 	a := newTestAnalyzer(&Package{
 		Scalars: map[string]*ast.ScalarDecl{},
 	})
@@ -208,48 +245,34 @@ func TestTypeCompatNilDecoratorTolerated(t *testing.T) {
 		Name: "name",
 		Type: &ast.TypeRef{Named: &ast.NamedTypeRef{Name: &ast.QualifiedIdent{Parts: []string{"string"}}}},
 		Decorators: []*ast.Decorator{
-			nil,
-			// Unknown decorator - placement pass would flag, type-compat skips.
 			{Name: "unknownDecorator"},
-			// Known decorator with AppliesTo == 0 (PrimAny) - no-op.
+			// @doc applies to any primitive.
 			{Name: "doc", Args: []*ast.DecoratorArg{{Value: &ast.StringLit{Value: "x"}}}},
 		},
 	}
 	a.checkBodyTypeCompat("X", []ast.TypeMember{field})
 
-	// Same for the scalar walker.
 	a.checkScalarTypeCompat(&ast.ScalarDecl{
 		Name: "S", Primitive: "string",
-		Decorators: []*ast.Decorator{
-			nil,
-			{Name: "unknownDecorator"},
-		},
+		Decorators: []*ast.Decorator{{Name: "unknownDecorator"}},
 	})
 	if len(a.diags) != 0 {
-		t.Errorf("nil/unknown decorators should not diag, got %v", a.diags)
+		t.Errorf("unknown decorators should not diag, got %v", a.diags)
 	}
 }
 
-// `file` is a multipart-upload wire keyword, not a Go type, so a scalar may
-// not wrap it (`scalar X file` would emit non-compiling `type X file`) - reject
-// it like `any`, which is already rejected.
+// A scalar over `file` is rejected.
 func TestScalarOverFileRejected(t *testing.T) {
 	expectError(t, `scalar FileScalar file
 type R { f FileScalar }`, CodeScalarBadPrimitive)
 }
 
-// ---------- `bytes @format(raw)` ----------
-
-// The three shapes of a raw field analyse clean: the value carried as
-// it stands, absent, and explicitly null.
+// Required, optional and @nullable `bytes @format(raw)` fields are accepted.
 func TestRawFormatOnBytes(t *testing.T) {
 	mustClean(t, `type X { payload bytes @format(raw)  meta bytes? @format(raw)  trace bytes @format(raw) @nullable }`)
 }
 
-// `raw` is an argument, not a decorator name, so the AppliesTo table
-// cannot refuse it on its own: `@format` applies to every string-shaped
-// field, and the enum / declared-type / `any` cases resolve to no
-// category at all. Each one names the type it was written on.
+// @format(raw) on anything but bytes is rejected, naming the field's type.
 func TestRawFormatOffBytesRejected(t *testing.T) {
 	cases := []struct {
 		name, src, spelt string
@@ -275,27 +298,20 @@ func TestRawFormatOffBytesRejected(t *testing.T) {
 	}
 }
 
-// A format applies to one value, so an array of them is refused exactly
-// as `string[] @format(email)` is - the decorator has no per-element
-// form to fall back on.
+// @format(raw) on a bytes array is rejected, as `string[] @format(email)` is.
 func TestRawFormatOnBytesArrayRejected(t *testing.T) {
 	d := expectError(t, `type X { blobs bytes[] @format(raw) }`, CodeDecoratorTypeMismatch)
 	expectMessage(t, d, "@format(raw) applies to bytes", "is bytes[]")
-	// The precedent: the same shape one type over.
 	expectError(t, `type X { emails string[] @format(email) }`, CodeDecoratorTypeMismatch)
 }
 
-// A scalar is the design's name for the raw shape, and a field may
-// repeat the scalar's own format the way a string scalar's field may.
+// A raw bytes scalar is accepted, and a field of it may repeat @format(raw).
 func TestRawFormatScalar(t *testing.T) {
 	mustClean(t, `scalar RawDoc bytes @format(raw)
 type X { photos RawDoc?  notes RawDoc @format(raw) }`)
 }
 
-// Nothing else validates a raw value: reading it is the one thing the
-// shape exists not to do. A string-shaped and a number-shaped validator
-// are both refused, so what is rejected is the field's category rather
-// than one validator's argument kind.
+// A raw bytes field or scalar takes no other validator.
 func TestRawBytesTakesNoOtherValidator(t *testing.T) {
 	for _, src := range []string{
 		`type X { payload bytes @format(raw) @minLength(1) }`,
@@ -308,13 +324,53 @@ func TestRawBytesTakesNoOtherValidator(t *testing.T) {
 	}
 }
 
-// A raw member is the one bytes-shaped field a cross-field group may
-// reference: a wire.Raw is nil only when the key was absent, so its
-// presence is the clean `!= nil` the group's OpenAPI means. A plain
-// `bytes?` member, checked by emptiness, is still refused.
+// A cross-field group accepts a raw bytes member (nil only when absent) but not a plain `bytes?`.
 func TestCrossFieldAcceptsARawBytesMember(t *testing.T) {
 	mustClean(t, `@requiresOneOf(left, right)
 type Choice { left bytes? @format(raw)  right string? }`)
 	expectError(t, `@requiresOneOf(left, right)
 type Choice { left bytes?  right string? }`, CodeCrossFieldNotOptional)
+}
+
+// A constraint decorator on a struct-typed field is a type mismatch; an enum
+// field keeps its backing type's constraints.
+func TestConstraintOnStructFieldRejected(t *testing.T) {
+	const src = `package p
+type Addr { city string }
+type Page<T> { items T[] }
+enum Tier { Gold = "gold" }
+type Req {
+	a Addr @gt(3)
+	b Addr @minLength(2)
+	c Addr @uniqueItems
+	d Page<Addr> @maxItems(3)
+	e Tier @minLength(2)
+}
+`
+	expectCodeCount(t, src, CodeDecoratorTypeMismatch, 4)
+	expectMessage(t, expectDiag(t, src, CodeDecoratorTypeMismatch), "is struct")
+}
+
+// A @mimeTypes entry is a media type or a `type/*` range, without parameters.
+func TestMimeTypesArgIsAMediaType(t *testing.T) {
+	for _, arg := range []string{`"image"`, `"image/png; q=1"`, `"/png"`, `"image/"`, `""`} {
+		expectError(t, "package p\ntype U { f file @mimeTypes("+arg+") }\n", CodeDecoratorArgValue)
+	}
+	expectNoCode(t, "package p\ntype U { f file @mimeTypes(\"image/*\", \"*/*\", \"Application/PDF\", \"application/vnd.api+json\") }\n", CodeDecoratorArgValue)
+}
+
+// An enum field takes the constraints of its backing type and an `any` field none.
+func TestConstraintOnEnumOrAnyField(t *testing.T) {
+	const src = `package p
+enum Tier { Gold = "gold" }
+enum Level { Low = 1  High = 9 }
+type Req {
+	a Tier @minLength(2)
+	b Level @range(1, 9)
+	c Tier @multipleOf(2)
+	d Level @minLength(1)
+	e any @multipleOf(2)
+}
+`
+	expectCodeCount(t, src, CodeDecoratorTypeMismatch, 3)
 }

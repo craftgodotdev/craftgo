@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ValidateContactService carries the per-request state for the
-// ValidateContact endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ValidateContactService runs CombineService.ValidateContact for one request.
 type ValidateContactService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewValidateContactService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewValidateContactService binds ValidateContactService to ctx; its Logger carries ctx's trace ids.
 func NewValidateContactService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ValidateContactService {
 	return &ValidateContactService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewValidateContactService(ctx context.Context, svcCtx *svccontext.ServiceCo
 	}
 }
 
-// ValidateContact is the service entry point. Replace the
-// TODO with the real implementation.
+// Validate per-field decorators under a type-level @requiresOneOf. Sending neither field fails the cross-field check; sending one passes.
+//
+// ValidateContact implements CombineService.ValidateContact.
 func (l *ValidateContactService) ValidateContact(req *types.PairsContact) (*types.PairsContact, error) {
 	// TODO: implement
 	return nil, nil

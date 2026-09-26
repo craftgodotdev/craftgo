@@ -11,11 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Reset endpoint shows the "reset + replace" middleware pattern:
-// inherited Auth/RateLimit cleared, then the method-level chain
-// (BasicAuth + Audit only) becomes the entire chain.
-// Reset returns the http.HandlerFunc for the
-// POST Reset endpoint.
+// Admin-only reset; uses its own middleware chain instead of the service default.
+//
+// Reset returns the POST Reset handler.
 func Reset(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewResetService(r.Context(), svcCtx)
@@ -24,8 +22,6 @@ func Reset(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

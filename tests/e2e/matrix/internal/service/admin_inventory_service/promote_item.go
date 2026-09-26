@@ -5,25 +5,20 @@ package services
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PromoteItemService carries the per-request state for the
-// PromoteItem endpoint of AdminInventoryService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// PromoteItemService runs AdminInventoryService.PromoteItem for one request.
 type PromoteItemService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPromoteItemService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewPromoteItemService binds PromoteItemService to ctx; its Logger carries ctx's trace ids.
 func NewPromoteItemService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PromoteItemService {
 	return &PromoteItemService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewPromoteItemService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// PromoteItem is the service entry point. Replace the
-// TODO with the real implementation.
+// Promote an item to the featured slot. Inherits the same auth chain plus a method-level admin scope.
+//
+// PromoteItem implements AdminInventoryService.PromoteItem.
 func (l *PromoteItemService) PromoteItem(req *types.PromoteItemReq) (*types.EntitlementsAuditTrail, error) {
 	// TODO: implement
 	return nil, nil

@@ -17,12 +17,12 @@ type Nested { a string }
 event OrderPlaced { payload OrderPlacedPayload }`
 
 func TestEventResolvesContractAndPayload(t *testing.T) {
-	pkg := expectClean(t, ordersDesign)
+	pkg := mustClean(t, ordersDesign)
 	if len(pkg.Events) != 1 {
 		t.Fatalf("events = %d, want 1", len(pkg.Events))
 	}
 	proj, _ := AnalyzeProject(parseFiles(t, ordersDesign), Options{})
-	events := proj.Events()
+	events := proj.events()
 	if len(events) != 1 {
 		t.Fatalf("project events = %d, want 1", len(events))
 	}
@@ -30,16 +30,12 @@ func TestEventResolvesContractAndPayload(t *testing.T) {
 	if ev.Contract != "orders.OrderPlaced" {
 		t.Errorf("contract = %q, want orders.OrderPlaced", ev.Contract)
 	}
-	if ev.Package != "orders" {
-		t.Errorf("home = %s", ev.Package)
-	}
-	if ev.PayloadPkg != "orders" || ev.PayloadName != "OrderPlacedPayload" || ev.Payload == nil {
-		t.Errorf("payload = %s.%s (%v)", ev.PayloadPkg, ev.PayloadName, ev.Payload)
+	if ev.PayloadPkg != "orders" || ev.Payload == nil || ev.Payload.Name != "OrderPlacedPayload" {
+		t.Errorf("payload = %s (%v)", ev.PayloadPkg, ev.Payload)
 	}
 }
 
-// A payload declared in another package resolves to that package, which
-// is what a target needs to import the type from the right place.
+// An event payload declared in another package resolves to that package.
 func TestEventPayloadResolvesAcrossPackages(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -53,8 +49,8 @@ event OrderPlaced { payload shared.Envelope }`,
 	if !ok {
 		t.Fatal("event did not resolve")
 	}
-	if ev.PayloadPkg != "shared" || ev.PayloadName != "Envelope" || ev.Payload == nil {
-		t.Errorf("payload = %s.%s (%v)", ev.PayloadPkg, ev.PayloadName, ev.Payload)
+	if ev.PayloadPkg != "shared" || ev.Payload == nil || ev.Payload.Name != "Envelope" {
+		t.Errorf("payload = %s (%v)", ev.PayloadPkg, ev.Payload)
 	}
 }
 
@@ -63,9 +59,9 @@ func TestContractDecoratorOverridesTheDerivedName(t *testing.T) {
 type P { id string }
 @contract("order.placed.v2")
 event OrderPlaced { payload P }`
-	expectClean(t, src)
+	mustClean(t, src)
 	proj, _ := AnalyzeProject(parseFiles(t, src), Options{})
-	if got := proj.Events()[0].Contract; got != "order.placed.v2" {
+	if got := proj.events()[0].Contract; got != "order.placed.v2" {
 		t.Errorf("contract = %q", got)
 	}
 }
@@ -90,9 +86,6 @@ func TestEventRules(t *testing.T) {
 			msg:  "not a struct type",
 		},
 		{
-			// An array payload resolves its element exactly as a scalar
-			// one does, so an array of an enum is refused for the same
-			// reason the enum itself is.
 			name: "array payload of a non-struct",
 			src:  "package p\nenum E1 { A }\nevent E { payload E1[] }",
 			code: CodeEventPayloadKind,
@@ -136,15 +129,12 @@ event E { payload P }`,
 	}
 }
 
-// A contract may carry an array of a declared type: the body on the wire
-// is a JSON array, and everything else about the payload - which package
-// the type lives in, which declaration it is - resolves exactly as a
-// single one does.
+// An event payload may be an array of a declared type.
 func TestEventPayloadMayBeAnArrayOfAType(t *testing.T) {
 	src := `package orders
 type OrderPlacedPayload { orderId string }
 event BatchPlaced { payload OrderPlacedPayload[] }`
-	expectClean(t, src)
+	mustClean(t, src)
 	proj, _ := AnalyzeProject(parseFiles(t, src), Options{})
 	ev, ok := proj.LookupEvent("orders", "BatchPlaced")
 	if !ok {
@@ -153,13 +143,12 @@ event BatchPlaced { payload OrderPlacedPayload[] }`
 	if !ev.PayloadArray {
 		t.Error("PayloadArray is false - the contract reads as a single payload")
 	}
-	if ev.PayloadPkg != "orders" || ev.PayloadName != "OrderPlacedPayload" || ev.Payload == nil {
-		t.Errorf("element = %s.%s (%v), want the declared type", ev.PayloadPkg, ev.PayloadName, ev.Payload)
+	if ev.PayloadPkg != "orders" || ev.Payload == nil || ev.Payload.Name != "OrderPlacedPayload" {
+		t.Errorf("element = %s (%v), want the declared type", ev.PayloadPkg, ev.Payload)
 	}
 }
 
-// The element of an array payload resolves across packages too - the
-// array suffix says nothing about where the type lives.
+// The element of an array payload resolves across packages.
 func TestArrayPayloadResolvesAcrossPackages(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -173,23 +162,19 @@ event Batch { payload shared.Envelope[] }`,
 	if !ok {
 		t.Fatal("event did not resolve")
 	}
-	if !ev.PayloadArray || ev.PayloadPkg != "shared" || ev.PayloadName != "Envelope" || ev.Payload == nil {
-		t.Errorf("payload = []%s.%s (%v, array=%v)", ev.PayloadPkg, ev.PayloadName, ev.Payload, ev.PayloadArray)
+	if !ev.PayloadArray || ev.PayloadPkg != "shared" || ev.Payload == nil || ev.Payload.Name != "Envelope" {
+		t.Errorf("payload = []%s (%v, array=%v)", ev.PayloadPkg, ev.Payload, ev.PayloadArray)
 	}
 }
 
-// An event and its payload may share a name: they live in separate
-// namespaces, and naming the contract after the shape it carries is the
-// common case.
+// An event and a type may share a name.
 func TestEventAndTypeShareANamespaceFreely(t *testing.T) {
-	expectClean(t, `package p
+	mustClean(t, `package p
 type OrderPlaced { id string }
 event OrderPlaced { payload OrderPlaced }`)
 }
 
-// Two events in different packages may resolve to one contract name only
-// through `@contract`; a listener could not tell them apart on the wire,
-// so it is rejected.
+// Two events in different packages with one @contract name collide.
 func TestContractCollisionAcrossPackages(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"a/a.craftgo": `package a
@@ -207,9 +192,7 @@ event Two { payload Q }`,
 	}
 }
 
-// Decorator placement is registry-driven: a method decorator on an event
-// (or the reverse) is rejected by the same pass that guards every other
-// site.
+// An event decorator on a method, and a method decorator on an event, are misplaced.
 func TestEventDecoratorPlacement(t *testing.T) {
 	d := expectDiag(t, `package p
 type P { id string }
@@ -229,8 +212,8 @@ event E { payload P }`, CodeDecoratorPlacement)
 	}
 }
 
-func TestEventNameCaseWarning(t *testing.T) {
-	d := expectWarning(t, `package p
+func TestEventNameCaseError(t *testing.T) {
+	d := expectError(t, `package p
 type P { id string }
 event lowered { payload P }`, CodeDeclNameCase)
 	if !strings.Contains(d.Msg, "event name") {
@@ -238,8 +221,7 @@ event lowered { payload P }`, CodeDeclNameCase)
 	}
 }
 
-// An event is a declaration kind the lookup can yield - otherwise
-// completion and go-to-definition cannot reach a contract.
+// Decl lookups return events under EventDecls, never under TypeRefDecls.
 func TestEventsAreALookupKind(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"upstream/upstream.craftgo": `package upstream
@@ -263,10 +245,9 @@ event Shipped { payload P }`,
 			t.Errorf("Decls(EventDecls) missing %q: %v", want, names)
 		}
 	}
-	// An event is a contract, never a type shape.
-	for _, d := range pkg.Decls(TypeShapeDecls) {
+	for _, d := range pkg.Decls(TypeRefDecls) {
 		if d.DeclName() == "PaymentSettled" {
-			t.Error("an event is offered in a type-shape position")
+			t.Error("an event is offered in a type position")
 		}
 	}
 	if d := pkg.Decl("PaymentSettled", EventDecls); d == nil {
@@ -274,9 +255,7 @@ event Shipped { payload P }`,
 	}
 }
 
-// The decorators that named a broker group and a consume chain are gone.
-// A design still carrying one is told what replaced it rather than that
-// the name was never a decorator.
+// @consumerGroup and @consumeMiddlewares are rejected with their replacements.
 func TestRemovedEventDecoratorsAreRejectedWithTheirMigration(t *testing.T) {
 	cases := []struct {
 		name string
@@ -308,9 +287,7 @@ event Placed { payload P }`,
 	}
 }
 
-// A design still carrying `@key` is told what replaced it. "Unknown
-// decorator" would be true and useless: the author has to learn that the
-// key moved to the publish call, and the diagnostic is where they look.
+// @key is rejected with its replacement, WithKey on the publish call.
 func TestAKeyDecoratorIsRejectedWithItsMigration(t *testing.T) {
 	d := expectDiag(t, `package p
 type P { id string }
@@ -323,8 +300,7 @@ event E { payload P }`, CodeDecoratorRemoved)
 	}
 }
 
-// A decorator that never existed keeps the message it had: the removed
-// set is not a catch-all for typos.
+// A misspelt decorator is still reported as unknown.
 func TestAnUnrelatedUnknownDecoratorIsStillUnknown(t *testing.T) {
 	d := expectDiag(t, `package p
 type P { id string }
@@ -333,4 +309,67 @@ event E { payload P }`, CodeDecoratorUnknown)
 	if !strings.Contains(d.Msg, "unknown decorator @keyy") {
 		t.Errorf("msg = %q", d.Msg)
 	}
+}
+
+// An event payload's generic arguments are checked like a field type's.
+func TestEventPayloadGenericArgsChecked(t *testing.T) {
+	const decls = `package app
+type Page<T> { items T[] }
+type Item { id string }
+`
+	d := expectError(t, decls+`event Listed { payload Page<string, int> }`, CodeGenericArity)
+	expectMessage(t, d, "Page expects 1")
+	expectError(t, decls+`event Listed { payload Item<string> }`, CodeGenericNonGeneric)
+	expectError(t, decls+`event Listed { payload Page<Item?> }`, CodeGenericOptionalArg)
+}
+
+// A payload naming an error gets the reference diagnostic alone, bare or
+// qualified.
+func TestEventPayloadErrorReportedOnce(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, "package p\nerror NotFound Gone\nevent E { payload Gone }"))
+	if got := codes(diags); !slices.Equal(got, []string{CodeRefUnknownSymbol}) {
+		t.Errorf("bare: want one %s, got %v", CodeRefUnknownSymbol, diags)
+	}
+	root, files := projectFixture(t, map[string]string{
+		"shared/s.craftgo": "package shared\nerror NotFound Gone",
+		"app/a.craftgo":    "package app\nevent E { payload shared.Gone }",
+	})
+	_, diags = AnalyzeProject(files, Options{DesignRoot: root})
+	if got := codes(diags); !slices.Equal(got, []string{CodeRefUnknownSymbol}) {
+		t.Errorf("qualified: want one %s, got %v", CodeRefUnknownSymbol, diags)
+	}
+}
+
+// A field bound to @path, @query, @header, @cookie or @form anywhere in a
+// payload is rejected at the payload clause, naming where it sits; a
+// @sensitive field is not.
+func TestEventPayloadBindingRejected(t *testing.T) {
+	for label, c := range map[string]struct{ src, at string }{
+		"header": {`type P { id string  loc string @header("Location") }
+event E { payload P }`, "P.loc"},
+		"cookie": {`type P { id string  sid string @cookie }
+event E { payload P }`, "P.sid"},
+		"query": {`type P { id string  page int @query }
+event E { payload P }`, "P.page"},
+		"path": {`type P { id string @path }
+event E { payload P }`, "P.id"},
+		"form": {`type P { id string  note string @form }
+event E { payload P }`, "P.note"},
+		"mixin": {`type Loc { loc string @header("Location") }
+type P { Loc  id string }
+event E { payload P }`, "P.loc"},
+		"nested": {`type Meta { page int @query }
+type P { m Meta }
+event E { payload P[] }`, "P.m.page"},
+		"generic": {`type Box<T> { v T  tag string @header("X-Tag") }
+event E { payload Box<string> }`, "Box<string>.tag"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			d := expectError(t, "package app\n"+c.src, CodeEventPayloadBinding)
+			expectMessage(t, d, c.at, "one JSON message")
+		})
+	}
+	expectNoCode(t, `package app
+type P { id string  secret string @sensitive }
+event E { payload P }`, CodeEventPayloadBinding)
 }

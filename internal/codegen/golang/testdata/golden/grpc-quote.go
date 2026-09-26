@@ -7,14 +7,12 @@ import (
 
 	"github.com/craftgodotdev/craftgo/pkg/rpc"
 
-	common "example.com/app/internal/pb/common"
+	"example.com/app/internal/pb/common"
 	pb "example.com/app/internal/pb/greet"
 	service "example.com/app/internal/service/greeter"
 )
 
-// Quote serves the unary RPC /greet.Greeter/Quote: it hands the
-// call context to the logic and maps the error it returns onto a status,
-// as the HTTP handler does with WriteError.
+// Quote serves the unary RPC /greet.Greeter/Quote.
 func (s *Server) Quote(ctx context.Context, req *common.Money) (*pb.HelloReply, error) {
 	if err := rpc.Validate(req); err != nil {
 		return nil, err

@@ -8,17 +8,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// NewTimeoutMiddleware constructs the Timeout middleware.
-//
-// craftgo never overwrites this file after the first generation, so
-// add wiring (token store, logger, rate-limit budget, ...) or change
-// the param types freely.
-//
-// Wire it from main.go:
-//
-//	svc := svccontext.NewServiceContext()
-//	svc.Timeout = middleware.NewTimeoutMiddleware(/* args */)
-//	routes.RegisterRoutes(srv, svc)
+// NewTimeoutMiddleware returns the Timeout middleware, which ServiceContext's Timeout field holds.
 func NewTimeoutMiddleware() server.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

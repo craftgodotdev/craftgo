@@ -60,7 +60,7 @@ message HelloReply {
 }
 ```
 
-`option go_package` is not needed. craftgo places every design proto's Go package under `output.pb` (default `./internal/pb`), mirroring the proto's directory: `design/greet/greet.proto` becomes `internal/pb/greet`, import path `<module>/internal/pb/greet`, Go package `greet`. A `go_package` you do write keeps its `;name` suffix for the package name; its path is ignored. Two protos in one directory must declare one package, as Go would demand of the directory, and a proto directly in the design root lands in `output.pb` itself as package `pb` - give it a directory. An RPC may not be named `Server` (the server struct's file), and two RPCs may not be named `X` and `NewX` (the logic type and its constructor); both are refused before anything is written.
+`option go_package` is not needed. craftgo places every design proto's Go package under `output.pb` (default `./internal/pb`), mirroring the proto's directory: `design/greet/greet.proto` becomes `internal/pb/greet`, import path `<module>/internal/pb/greet`, Go package `greet`. A `go_package` you do write keeps its `;name` suffix for the package name; its path is ignored. Two protos in one directory must declare one package, as Go would demand of the directory, and a proto directly in the design root lands in `output.pb` itself as package `pb` - give it a directory. An RPC may not be named `Server` (the server struct's file), `Logger` (the `log.Logger` its logic type embeds) or so that its file is one the go command builds only for tests or one system (`RunTest` → `run_test.go`), and two RPCs may not be named `X` and `NewX` (the logic type and its constructor); each is refused before anything is written.
 
 A design with protos alone - no `.craftgo` at all - is a plain gRPC service; a design with both boots both listeners from one `main.go`. A gRPC-only project needs no manifest key of its own: its config carries no `server:` or `docs:` block, and no OpenAPI document is written, because the document describes the `.craftgo` half and there is none.
 
@@ -94,14 +94,10 @@ package greet
 
 import (
 	pb "github.com/craftgodotdev/craftgo/example/grpc/internal/pb/greet"
-
 	"github.com/craftgodotdev/craftgo/example/grpc/svccontext"
 )
 
-// Server implements pb.GreeterServer (greet.Greeter): one method per
-// RPC, each in its own file beside this one. The embedded
-// UnimplementedGreeterServer answers Unimplemented for an RPC the
-// proto gains before the next gen.
+// Server implements pb.GreeterServer (greet.Greeter).
 type Server struct {
 	pb.UnimplementedGreeterServer
 	svcCtx *svccontext.ServiceContext
@@ -113,13 +109,12 @@ func NewServer(svcCtx *svccontext.ServiceContext) *Server {
 }
 ```
 
-One file per RPC does what the HTTP handler does: validate, hand the call context to the logic, map its error onto a status:
+The methods live one file per RPC beside it, and the embedded `UnimplementedGreeterServer` answers `Unimplemented` for an RPC the proto gains before the next gen. Each file does what the HTTP handler does: validate, hand the call context to the logic, map its error onto a status:
 
 ```go
 // SayHello answers one greeting.
-// SayHello serves the unary RPC /greet.Greeter/SayHello: it hands the
-// call context to the logic and maps the error it returns onto a status,
-// as the HTTP handler does with WriteError.
+//
+// SayHello serves the unary RPC /greet.Greeter/SayHello.
 func (s *Server) SayHello(ctx context.Context, req *pb.HelloRequest) (*pb.HelloReply, error) {
 	if err := rpc.Validate(req); err != nil {
 		return nil, err
@@ -138,21 +133,19 @@ func (s *Server) SayHello(ctx context.Context, req *pb.HelloRequest) (*pb.HelloR
 The logic stub lands under `output.service`, from the same template the HTTP stubs use, and is yours once written:
 
 ```go
-// SayHelloService carries the per-request state for the
-// SayHello endpoint of Greeter. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// SayHelloService runs Greeter.SayHello for one request.
 type SayHelloService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
+// NewSayHelloService binds SayHelloService to ctx; its Logger carries ctx's trace ids.
 func NewSayHelloService(ctx context.Context, svcCtx *svccontext.ServiceContext) *SayHelloService
 
 // SayHello answers one greeting.
-// SayHello is the service entry point. Replace the
-// TODO with the real implementation.
+//
+// SayHello implements Greeter.SayHello.
 func (l *SayHelloService) SayHello(req *pb.HelloRequest) (*pb.HelloReply, error) {
 	// TODO: implement
 	return nil, nil
@@ -190,9 +183,8 @@ grpcSrv := rpc.New(svc,
 	rpc.WithStatsHandler(tel.GRPCServerHandler()),
 	rpc.WithReflection(cfg.GRPC.Reflection),
 )
-grpcSrv.Use(rpc.AccessLog(grpcSrv.Logger()))
-// The default deadline for unary calls; a shorter client deadline
-// still wins, and streams are not bounded.
+grpcSrv.Use(rpc.AccessLog(log.Follow()))
+// The unary deadline; a shorter client deadline wins, and streams are not bounded.
 grpcSrv.Use(rpc.Timeout(cfg.GRPC.HandlerTimeout))
 
 shutdownGRPC, err := wiring.RegisterGRPC(ctx, grpcSrv, svc)
@@ -285,7 +277,7 @@ craftgo: ./main.go predates the gRPC services and never calls wiring.RegisterGRP
 craftgo: ./config/config.go predates the gRPC services and has no GRPCConfig - it is generated once, so add the `grpc:` block by hand (docs/guide/grpc.md shows it)
 ```
 
-Add the `GRPCConfig` struct and its default to `config.go`, the `grpc:` block to `config.yaml`, and the listener block above to `main.go`; the wiring, the server layer and the stubs are already there. The reverse holds for a gRPC project that gains its first route, and for one that drops its last proto: `wiring/grpc.go` is swept, and `craftgo gen` names the `main.go` that still calls `RegisterGRPC`.
+Add the `GRPCConfig` struct and its default to `config.go`, the `grpc:` block to `config.yaml`, and the listener block above to `main.go`; the wiring, the server layer and the stubs are already there. The reverse holds for a gRPC project that gains its first route, and for one that drops its last proto: `wiring/grpc.go` is swept, and `craftgo gen` names the `main.go` that still calls `RegisterGRPC`. The pb code of that last proto stays under `internal/pb/`, which a design with no proto leaves alone; delete it by hand.
 
 The protos are compiled on every run, `--target docs` included: a proto that does not compile fails the run before anything is written, the way a design error does. Only the plugins are skipped when the Go target is not selected.
 
@@ -294,9 +286,9 @@ The protos are compiled on every run, `--target docs` included: a proto that doe
 | Layer | Owner |
 |---|---|
 | `design/**/*.proto` | you - the design |
-| `internal/pb/` | the protoc plugins, run by `craftgo gen`; swept when a proto goes |
+| `internal/pb/` | the protoc plugins, run by `craftgo gen`; a proto's code is swept when the proto goes and its directory keeps another design proto |
 | `internal/grpc/<svc>/` | craftgo, regenerated on every run |
-| `internal/service/<svc>/<rpc>.go` | you, from the first `craftgo gen` on - a renamed or dropped service leaves its stubs where they are, importing a pb package that is gone, so move or delete them by hand |
+| `internal/service/<svc>/<rpc>.go` | you, from the first `craftgo gen` on - a renamed or dropped service leaves its stubs where they are and `craftgo gen` names their directory, so move or delete them by hand |
 | `internal/wiring/grpc.go` | craftgo, regenerated; present while a proto declares a service |
 | `config/`, `svccontext/`, `main.go` | you, seeded once by `craftgo gen` |
 

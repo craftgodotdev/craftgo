@@ -1,0 +1,49 @@
+// Generic instances used as a mixin, over a composite argument, and with an
+// optional array of the type parameter.
+package scalars
+
+type MixinItem {
+	id string
+}
+
+type MixinPage<T> {
+	items T[]
+	total int @gte(0)
+}
+
+// GenericMixinHost embeds the generic instance MixinPage<MixinItem>: the
+// embed promotes the instance's fields, and OpenAPI allOf-refs the
+// MixinPageOfMixinItem component.
+type GenericMixinHost {
+	MixinPage<MixinItem>
+	name string
+}
+
+type SkuItem {
+	sku string @minLength(2)
+}
+
+type SkuPage<T> {
+	items T[]
+}
+
+// CompositeArg instantiates a generic over the composite argument
+// map<string, SkuItem> and still enforces SkuItem's constraint.
+type CompositeArg {
+	page SkuPage<map<string, SkuItem>>
+}
+
+type UUIDItem {
+	id string @format(uuid)
+}
+
+// ArrayBox validates each element of its optional type-parameter array, as
+// it does those of the required one.
+type ArrayBox<T> {
+	req T[]
+	opt T[]?
+}
+
+type BoxHolder {
+	box ArrayBox<UUIDItem>
+}

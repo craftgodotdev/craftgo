@@ -1,0 +1,97 @@
+// Requests that bind through mixins, required parameters and cookies, a
+// @sensitive field, and query keys whose Go names collide.
+package bindings
+
+// WireMixin brings a header and a defaulted query parameter.
+type WireMixin {
+	traceId string  @header("X-Trace-Id")
+	sortBy  string? @query @default("name")
+}
+
+// BodyMixin brings a body field.
+type BodyMixin {
+	note string @minLength(1)
+}
+
+// MixinWireBodyReq takes wire fields (traceId, sortBy) and a body field
+// (note) from mixins beside its own body field: the wire fields bind as
+// parameters, the body fields ride the request body.
+type MixinWireBodyReq {
+	WireMixin
+	BodyMixin
+	name string
+}
+
+type BodyOnlyMixin {
+	createdAt string @minLength(1)
+}
+
+// MixinBodyReq takes its whole body from a mixin: the server decodes and
+// validates it, and OpenAPI documents a request body.
+type MixinBodyReq {
+	BodyOnlyMixin
+}
+
+// RequiredParamsReq holds wire parameters without ? or @default: an absent
+// key answers 400, a present empty value passes.
+type RequiredParamsReq {
+	q     string @query
+	limit int    @query
+	tok   string @header("X-Tok")
+}
+
+// SensitiveRole has no member at its zero value, so its own Validate refuses
+// one left unset.
+enum SensitiveRole {
+	Admin
+	Member
+}
+
+// SensitiveQueryReq keeps @sensitive fields off the wire on a GET: only
+// visible binds from the query string and appears in OpenAPI, and role, which
+// no request sets, is not validated.
+type SensitiveQueryReq {
+	visible string        @query
+	secret  string        @sensitive
+	role    SensitiveRole @sensitive
+}
+
+// CollidingQueryReq binds two query keys whose Go names collide: SortBy and
+// SortBy_2 each read their own key.
+type CollidingQueryReq {
+	sortBy  string? @query("sortBy")
+	sort_by string? @query("sort_by")
+}
+
+// QueryBesideBodyReq keeps its @query field out of the JSON body schema.
+type QueryBesideBodyReq {
+	filter  string @query
+	payload string @minLength(1)
+}
+
+// SessionCookieReq requires a cookie: an absent one answers 400, as the
+// required: true in OpenAPI says.
+type SessionCookieReq {
+	sid string @cookie("sid")
+}
+
+// OptionalWireReq binds an optional header and an optional enum cookie: each
+// is sent or not, so OpenAPI documents neither as null.
+type OptionalWireReq {
+	traceId string? @header("X-Trace")
+	theme   Color?  @cookie("theme")
+}
+
+// RequiredArrayQueryReq requires an array query parameter: an absent key
+// answers 400, an empty ?tags= passes.
+type RequiredArrayQueryReq {
+	tags string[] @query
+}
+
+type DoneResp {
+	done bool
+}
+
+type OkResp {
+	ok bool
+}

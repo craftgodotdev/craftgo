@@ -8,17 +8,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// NewCORSMiddleware constructs the CORS middleware.
-//
-// craftgo never overwrites this file after the first generation, so
-// add wiring (token store, logger, rate-limit budget, ...) or change
-// the param types freely.
-//
-// Wire it from main.go:
-//
-//	svc := svccontext.NewServiceContext()
-//	svc.CORS = middleware.NewCORSMiddleware(/* args */)
-//	routes.RegisterRoutes(srv, svc)
+// NewCORSMiddleware returns the CORS middleware, which ServiceContext's CORS field holds.
 func NewCORSMiddleware() server.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

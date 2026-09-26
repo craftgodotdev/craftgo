@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoWidthService carries the per-request state for the
-// EchoWidth endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoWidthService runs CombineService.EchoWidth for one request.
 type EchoWidthService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoWidthService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoWidthService binds EchoWidthService to ctx; its Logger carries ctx's trace ids.
 func NewEchoWidthService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoWidthService {
 	return &EchoWidthService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewEchoWidthService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 	}
 }
 
-// EchoWidth is the service entry point. Replace the
-// TODO with the real implementation.
+// Echo the narrow-width default matrix. The pre-fill casts each literal to the field primitive so the *T pointer assignment compiles (int32 / int64 / uint16 / float32).
+//
+// EchoWidth implements CombineService.EchoWidth.
 func (l *EchoWidthService) EchoWidth(req *types.DefaultsWidth) (*types.DefaultsWidth, error) {
 	// TODO: implement
 	return nil, nil

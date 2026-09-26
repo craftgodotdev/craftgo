@@ -9,19 +9,60 @@ import (
 	"unicode/utf8"
 )
 
-// Pattern regexes compile ONCE at package init so Validate() calls
-// reference the precompiled var instead of recompiling per request.
-// The pattern is rendered via %q (Go-quoted) rather than a raw-string
-// literal so regexes containing a backtick, backslash, or quote still
-// produce compilable Go - a raw `...` literal would break on a backtick.
+// The regexes of the @pattern and @format checks, compiled once.
 var (
 	_pattern0 = regexp.MustCompile("^(cross_sell|up_sell|combo)$")
 	_pattern1 = regexp.MustCompile("^\\+\\d+$")
 	_pattern2 = regexp.MustCompile("^.*@example\\.com$")
 )
 
-// Validate checks every field-level constraint declared on DefaultsBoundary.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *ArrayDefaults) Validate() error {
+	for i0 := range v.Methods {
+		if err := v.Methods[i0].Validate(); err != nil {
+			return fmt.Errorf("methods: %w", err)
+		}
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *CollidingNames) Validate() error {
+	if v.UserID != nil && utf8.RuneCountInString(*v.UserID) < 2 {
+		return fmt.Errorf("userId: length less than 2")
+	}
+	if v.UserID == nil && v.UserID_2 == nil {
+		return fmt.Errorf("requiresOneOf [userId user_id] - at least one must be set")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *ContactChannels) Validate() error {
+	if v.Email == nil && v.Phone == nil {
+		return fmt.Errorf("requiresOneOf [email phone] - at least one must be set")
+	}
+	{
+		n := 0
+		if v.Email != nil {
+			n++
+		}
+		if v.Sms != nil {
+			n++
+		}
+		if n > 1 {
+			return fmt.Errorf("mutuallyExclusive [email sms] - at most one may be set")
+		}
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *ContactPair) Validate() error {
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *DefaultsBoundary) Validate() error {
 	if v.Zero != nil && *v.Zero < 0 {
 		return fmt.Errorf("zero: below minimum 0")
@@ -32,23 +73,12 @@ func (v *DefaultsBoundary) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on DefaultsCollection.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *DefaultsCollection) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on DefaultsConflict.
-// Returns the first violation; nil when the value satisfies the contract.
-func (v *DefaultsConflict) Validate() error {
-	if v.Empty != nil && utf8.RuneCountInString(*v.Empty) < 1 {
-		return fmt.Errorf("empty: length less than 1")
-	}
-	return nil
-}
-
-// Validate checks every field-level constraint declared on DefaultsEnum.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *DefaultsEnum) Validate() error {
 	if v.C != nil {
 		if err := v.C.Validate(); err != nil {
@@ -58,8 +88,7 @@ func (v *DefaultsEnum) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on DefaultsScalar.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *DefaultsScalar) Validate() error {
 	if v.Size != nil {
 		if err := v.Size.Validate(); err != nil {
@@ -69,14 +98,12 @@ func (v *DefaultsScalar) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on DefaultsWidth.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *DefaultsWidth) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on KeywordFieldNames.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *KeywordFieldNames) Validate() error {
 	if !_pattern0.MatchString(v.Type) {
 		return fmt.Errorf("type: does not match pattern")
@@ -90,8 +117,56 @@ func (v *KeywordFieldNames) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PairsArr.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *NilableNullable) Validate() error {
+	if v.Blob != nil && len(v.Blob) < 4 {
+		return fmt.Errorf("blob: length less than 4")
+	}
+	if v.Ids != nil {
+		if len(v.Ids) < 2 {
+			return fmt.Errorf("ids: minItems 2")
+		}
+	}
+	if v.Tags != nil {
+		if len(v.Tags) < 1 {
+			return fmt.Errorf("tags: minItems 1")
+		}
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *NotifyChannels) Validate() error {
+	{
+		n := 0
+		if v.Email != nil {
+			n++
+		}
+		if v.Sms != nil {
+			n++
+		}
+		if v.Push != nil {
+			n++
+		}
+		if n > 1 {
+			return fmt.Errorf("mutuallyExclusive [email sms push] - at most one may be set")
+		}
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *NotifyUpload) Validate() error {
+	if err := v.NotifyChannels.Validate(); err != nil {
+		return err
+	}
+	if v.Doc == nil {
+		return fmt.Errorf("doc: required")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *PairsArr) Validate() error {
 	if len(v.Tags) < 1 {
 		return fmt.Errorf("tags: minItems 1")
@@ -111,8 +186,7 @@ func (v *PairsArr) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PairsChoice.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PairsChoice) Validate() error {
 	{
 		n := 0
@@ -123,17 +197,16 @@ func (v *PairsChoice) Validate() error {
 			n++
 		}
 		if n > 1 {
-			return fmt.Errorf("PairsChoice: mutuallyExclusive [a b] - at most one may be set")
+			return fmt.Errorf("mutuallyExclusive [a b] - at most one may be set")
 		}
 	}
 	if v.A == nil && v.B == nil && v.C == nil {
-		return fmt.Errorf("PairsChoice: requiresOneOf [a b c] - at least one must be set")
+		return fmt.Errorf("requiresOneOf [a b c] - at least one must be set")
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PairsContact.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PairsContact) Validate() error {
 	if v.Email != nil {
 		if _, _err := mail.ParseAddress(*v.Email); _err != nil {
@@ -144,13 +217,41 @@ func (v *PairsContact) Validate() error {
 		return fmt.Errorf("phone: does not match pattern")
 	}
 	if v.Email == nil && v.Phone == nil {
-		return fmt.Errorf("PairsContact: requiresOneOf [email phone] - at least one must be set")
+		return fmt.Errorf("requiresOneOf [email phone] - at least one must be set")
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PairsNum.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *PairsDoc) Validate() error {
+	if v.A == nil && v.B == nil {
+		return fmt.Errorf("requiresOneOf [a b] - at least one must be set")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *PairsKeyed) Validate() error {
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *PairsLookup) Validate() error {
+	if v.ByName == nil && v.ByID == nil {
+		return fmt.Errorf("requiresOneOf [byName byId] - at least one must be set")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *PairsNested) Validate() error {
+	if err := v.PairsReach.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *PairsNum) Validate() error {
 	if v.Score < 0 || v.Score > 100 {
 		return fmt.Errorf("score: out of range [0, 100]")
@@ -167,8 +268,74 @@ func (v *PairsNum) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PairsStr.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *PairsReach) Validate() error {
+	if err := v.PairsDoc.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *PairsRenamed) Validate() error {
+	if err := v.PairsKeyed.Validate(); err != nil {
+		return err
+	}
+	if v.Primary == nil && v.Backup == nil {
+		return fmt.Errorf("requiresOneOf [primary_email backup_email] - at least one must be set")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *PairsRenamedResp) Validate() error {
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *PairsSource) Validate() error {
+	{
+		n := 0
+		if v.Doc != nil {
+			n++
+		}
+		if v.URL != nil {
+			n++
+		}
+		if n > 1 {
+			return fmt.Errorf("mutuallyExclusive [doc url] - at most one may be set")
+		}
+	}
+	if v.Doc == nil && v.URL == nil {
+		return fmt.Errorf("requiresOneOf [doc url] - at least one must be set")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *PairsStacked) Validate() error {
+	if v.B < 10 {
+		return fmt.Errorf("b: below minimum 10")
+	}
+	if v.B > 90 {
+		return fmt.Errorf("b: above maximum 90")
+	}
+	if v.B < 0 || v.B > 100 {
+		return fmt.Errorf("b: out of range [0, 100]")
+	}
+	if utf8.RuneCountInString(v.A) != 5 {
+		return fmt.Errorf("a: length must be 5")
+	}
+	if utf8.RuneCountInString(v.A) < 3 {
+		return fmt.Errorf("a: length less than 3")
+	}
+	if utf8.RuneCountInString(v.A) > 10 {
+		return fmt.Errorf("a: length greater than 10")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *PairsStr) Validate() error {
 	if l := utf8.RuneCountInString(v.Email); l < 3 || l > 254 {
 		return fmt.Errorf("email: length out of range [3, 254]")
@@ -182,14 +349,69 @@ func (v *PairsStr) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PresenceMatrix.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *PairsTagged) Validate() error {
+	if err := v.PairsDoc.Validate(); err != nil {
+		return err
+	}
+	{
+		n := 0
+		if v.C != nil {
+			n++
+		}
+		if v.D != nil {
+			n++
+		}
+		if n > 1 {
+			return fmt.Errorf("mutuallyExclusive [c d] - at most one may be set")
+		}
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *PairsUpload) Validate() error {
+	if err := v.PairsDoc.Validate(); err != nil {
+		return err
+	}
+	if v.Doc == nil {
+		return fmt.Errorf("doc: required")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *PresenceMatrix) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XPkgEnum.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *PromotedContact) Validate() error {
+	if err := v.ContactPair.Validate(); err != nil {
+		return err
+	}
+	if v.Email == nil && v.Phone == nil {
+		return fmt.Errorf("requiresOneOf [email phone] - at least one must be set")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *WireDefaults) Validate() error {
+	if v.C != nil {
+		if err := v.C.Validate(); err != nil {
+			return fmt.Errorf("c: %w", err)
+		}
+	}
+	if v.L != nil {
+		if err := v.L.Validate(); err != nil {
+			return fmt.Errorf("l: %w", err)
+		}
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *XPkgEnum) Validate() error {
 	if v.Flat == "" {
 		return fmt.Errorf("flat: required")
@@ -207,29 +429,36 @@ func (v *XPkgEnum) Validate() error {
 			return fmt.Errorf("maybe: %w", err)
 		}
 	}
-	for _, val := range v.ByString {
-		if err := val.Validate(); err != nil {
+	for _, val0 := range v.ByString {
+		if err := val0.Validate(); err != nil {
 			return fmt.Errorf("byString: %w", err)
 		}
 	}
-	for key := range v.ByEnum {
-		if err := key.Validate(); err != nil {
+	for key0 := range v.ByEnum {
+		if err := key0.Validate(); err != nil {
 			return fmt.Errorf("byEnum: %w", err)
 		}
 	}
-	for key, val := range v.BothEnum {
-		if err := key.Validate(); err != nil {
+	for key0, val0 := range v.BothEnum {
+		if err := key0.Validate(); err != nil {
 			return fmt.Errorf("bothEnum: %w", err)
 		}
-		if err := val.Validate(); err != nil {
+		if err := val0.Validate(); err != nil {
 			return fmt.Errorf("bothEnum: %w", err)
 		}
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PageSize.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *ZeroMember) Validate() error {
+	if err := v.Status.Validate(); err != nil {
+		return fmt.Errorf("status: %w", err)
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v PageSize) Validate() error {
 	if int(v) < 1 {
 		return fmt.Errorf("below minimum 1")
@@ -240,24 +469,79 @@ func (v PageSize) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Color.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Color) Validate() error {
 	switch v {
 	case ColorRed, ColorGreen, ColorBlue:
 	default:
-		return fmt.Errorf("invalid Color value")
+		return fmt.Errorf("must be one of [Red Green Blue]")
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on DiscKind.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v DiscKind) Validate() error {
 	switch v {
 	case DiscKindType, DiscKindCombo, DiscKindStandalone:
 	default:
-		return fmt.Errorf("invalid DiscKind value")
+		return fmt.Errorf("must be one of [type combo standalone]")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v Grade) Validate() error {
+	switch v {
+	case GradeLow, GradeHigh:
+	default:
+		return fmt.Errorf("must be one of [1 9]")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v Hue) Validate() error {
+	switch v {
+	case HueRed, HueGreen:
+	default:
+		return fmt.Errorf("must be one of [RED GREEN]")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v MemberStatus) Validate() error {
+	switch v {
+	case MemberStatusInactive, MemberStatusActive, MemberStatusBanned:
+	default:
+		return fmt.Errorf("must be one of [0 1 2]")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v PayMethod) Validate() error {
+	switch v {
+	case PayMethodCard, PayMethodBank:
+	default:
+		return fmt.Errorf("must be one of [card bank]")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *FieldRulesFailedBody) Validate() error {
+	if v.Attempts < 0 {
+		return fmt.Errorf("attempts: below minimum 0")
+	}
+	if v.Attempts > 10 {
+		return fmt.Errorf("attempts: above maximum 10")
+	}
+	if utf8.RuneCountInString(v.Field) < 1 {
+		return fmt.Errorf("field: length less than 1")
+	}
+	if utf8.RuneCountInString(v.Field) > 40 {
+		return fmt.Errorf("field: length greater than 40")
 	}
 	return nil
 }

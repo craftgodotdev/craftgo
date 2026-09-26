@@ -9,9 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// With strict JSON on, a body carrying a field the request type does not
-// declare is rejected with the field name; lenient mode accepts the same
-// body and ignores the field.
+// Strict JSON rejects an undeclared field by name; lenient mode ignores it.
 func TestStrictJSONRejectsUnknownFields(t *testing.T) {
 	ts, _ := boot(t)
 	withExtra := func(name string) map[string]any {

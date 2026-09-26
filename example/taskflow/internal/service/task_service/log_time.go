@@ -5,25 +5,20 @@ package shared
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// LogTimeService carries the per-request state for the
-// LogTime endpoint of TaskService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// LogTimeService runs TaskService.LogTime for one request.
 type LogTimeService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewLogTimeService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewLogTimeService binds LogTimeService to ctx; its Logger carries ctx's trace ids.
 func NewLogTimeService(ctx context.Context, svcCtx *svccontext.ServiceContext) *LogTimeService {
 	return &LogTimeService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewLogTimeService(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 	}
 }
 
-// LogTime is the service entry point. Replace the
-// TODO with the real implementation.
+// Log time against a task, in 5-minute increments.
+//
+// LogTime implements TaskService.LogTime.
 func (l *LogTimeService) LogTime(req *types.LogTimeReq) (*types.Task, error) {
 	return l.svcCtx.Store.LogTime(req.ProjectID, req.ID, req.Minutes)
 }

@@ -4,20 +4,17 @@ package services
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/secured_service"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RegisterRoutes wires every SecuredService endpoint onto srv. Patterns
-// use the Go 1.22 method-prefixed form so VERB and path match together;
-// service prefix and OpenAPI basePath are baked in. Methods declaring
-// `@middlewares(...)` are wrapped via the corresponding fields on
-// ServiceContext (embedded Middlewares struct), so no runtime name
-// lookup is required - the values come pre-wired.
+// RegisterRoutes registers the SecuredService routes on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/secured", transport.ListItems(svcCtx), svcCtx.AuthRequired, svcCtx.RateLimit)
 	srv.Handle("GET /api/secured/healthz", transport.Healthz(svcCtx))
 	srv.Handle("POST /api/secured/reset", transport.Reset(svcCtx), svcCtx.BasicAuth, svcCtx.Audit)
 	srv.Handle("POST /api/secured/wipe", transport.Wipe(svcCtx), svcCtx.AuthRequired, svcCtx.RateLimit)
 	srv.Handle("POST /api/secured/quarantine", transport.Quarantine(svcCtx), svcCtx.AuthRequired, svcCtx.RateLimit)
+	srv.Handle("GET /api/secured/status", transport.Status(svcCtx), svcCtx.Audit)
 }

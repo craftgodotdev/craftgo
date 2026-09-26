@@ -6,22 +6,18 @@ import (
 	"context"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// LegacyPingService carries the per-request state for the
-// LegacyPing endpoint of AdminService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// LegacyPingService runs AdminService.LegacyPing for one request.
 type LegacyPingService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewLegacyPingService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewLegacyPingService binds LegacyPingService to ctx; its Logger carries ctx's trace ids.
 func NewLegacyPingService(ctx context.Context, svcCtx *svccontext.ServiceContext) *LegacyPingService {
 	return &LegacyPingService{
 		Logger: log.Default().WithContext(ctx),
@@ -30,8 +26,7 @@ func NewLegacyPingService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// LegacyPing is the service entry point. Replace the
-// TODO with the real implementation.
+// LegacyPing implements AdminService.LegacyPing.
 func (l *LegacyPingService) LegacyPing() error {
 	// TODO: implement
 	return nil

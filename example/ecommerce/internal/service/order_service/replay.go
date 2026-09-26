@@ -5,25 +5,20 @@ package orders
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
-
-	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// ReplayService carries the per-request state for the
-// Replay endpoint of OrderService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ReplayService runs OrderService.Replay for one request.
 type ReplayService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewReplayService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewReplayService binds ReplayService to ctx; its Logger carries ctx's trace ids.
 func NewReplayService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ReplayService {
 	return &ReplayService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,10 +27,9 @@ func NewReplayService(ctx context.Context, svcCtx *svccontext.ServiceContext) *R
 	}
 }
 
-// No method-level middleware; should inherit ONLY the parent
-// chain (RequestID, RateLimit, CORS, AuthRequired).
-// Replay is the service entry point. Replace the
-// TODO with the real implementation.
+// Admin replay (parent chain only).
+//
+// Replay implements OrderService.Replay.
 func (l *ReplayService) Replay(req *types.GetOrderReq) (*types.Order, error) {
 	// TODO: implement
 	return nil, nil

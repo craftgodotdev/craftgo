@@ -8,13 +8,14 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/example/taskflow/internal/service/task_service"
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// ListTasks returns the http.HandlerFunc for the
-// GET ListTasks endpoint.
+// List tasks in a project, filterable by status / priority / assignee.
+//
+// ListTasks returns the GET ListTasks handler.
 func ListTasks(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListTasksReq
@@ -51,7 +52,6 @@ func ListTasks(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

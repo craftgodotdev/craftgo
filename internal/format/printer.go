@@ -1,104 +1,159 @@
-// Package format renders an [ast.File] back to canonical CraftGo source.
-//
-// The printer is round-trip safe for every well-formed input: parsing the
-// printer's output produces an AST equal to its input, and a second
-// formatting pass is a no-op (idempotency).
-//
-// Comment placement is owned by the parser: free-floating blocks arrive as
-// position-accurate [ast.FreeComment] nodes (body members, method
-// BodyComments, File.FreeComments) and attached docs live on each node's
-// Doc field. The printer only derives two lookup maps from `f.Comments`
-// (trailing `// note` text and inter-decorator blocks) via
-// [buildTrailingFromComments] / [buildInterDecoratorComments]; no
-// source-bytes scan is needed. As a result [Format] (which has the source)
-// and [Print] (AST only) produce the same output.
-//
-// Two entry points are provided:
-//
-//   - [Format] takes a source buffer, parses it, and returns formatted text
-//     plus any diagnostics. Suitable for `craftgo fmt` and editor integration.
-//   - [Print] takes an [ast.File] and writes formatted text to an [io.Writer].
-//     Suitable for callers that already have an AST in hand. Comment
-//     recovery works as long as the file's `Comments` slice was populated
-//     (which the parser always does).
-//
-// Output conventions:
-//
-//   - Tabs for indentation (Go-ecosystem convention; editors render the
-//     visual width via their own settings).
-//   - Field rows inside a type body are column-aligned by name and type
-//     so decorator chains line up.
-//   - The `request` / `response` lines inside a method body share a
-//     two-space alignment so the type column matches.
+// Package format renders an [ast.File] back to canonical CraftGo source:
+// tab indentation, aligned field and enum-value columns, and runs of blank
+// lines collapsed to one.
 package format
 
 import (
 	"bytes"
+	"fmt"
 	"io"
-	"strconv"
+	"math"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/parser"
 )
 
-// Format parses src (filename used only for diagnostics) and returns the
-// canonical-formatted text alongside any parser diagnostics. The returned
-// text is always non-empty because the parser is error-tolerant - callers
-// that want to reject formatting on errors should check len(diags) == 0.
+// Format parses src (filename only labels diagnostics) and returns its canonical
+// text. With diagnostics it returns src unchanged: src does not parse, or its
+// canonical text would not parse or would not hold the same comments in the
+// same places.
 func Format(filename, src string) (string, []lexer.Diagnostic) {
 	p := parser.New(filename, src)
 	f := p.Parse()
-	var buf bytes.Buffer
-	pr := newPrinter(&buf, f)
-	pr.File(f)
-	return buf.String(), p.Diagnostics()
-}
-
-// Print writes a canonical render of f to w. Comment recovery is driven
-// from `f.Comments` (populated by the parser) so loose blocks and trailing
-// notes survive even when the caller has no source buffer in hand.
-func Print(w io.Writer, f *ast.File) error {
-	pr := newPrinter(w, f)
-	pr.File(f)
-	return pr.err
-}
-
-// newPrinter builds a Printer with trailing / inter-decorator comment
-// lookup maps derived from `f.Comments`. Centralising construction keeps
-// both [Format] and [Print] paths identical so the two entry points
-// produce the same output - the only difference is whether the caller
-// already has an AST in hand.
-func newPrinter(w io.Writer, f *ast.File) *Printer {
-	return &Printer{
-		w:        w,
-		trailing: buildTrailingFromComments(f),
-		interDec: buildInterDecoratorComments(f),
+	if diags := p.Diagnostics(); len(diags) > 0 {
+		return src, diags
 	}
+	in := newSource(p.Tokens())
+	if c, what := commentInHead(f, in); c != nil {
+		return src, refusal(c.Pos, "formatting would move the comment %q out of %s", c.Text, what)
+	}
+	var buf bytes.Buffer
+	pr := newPrinter(&buf, f, in)
+	pr.File(f)
+	if c := pr.joined; c[0] != nil {
+		return src, refusal(c[1].Pos, "formatting would put the comments %q and %q on one line", c[0].Text, c[1].Text)
+	}
+	out := buf.String()
+	if diags := checkOutput(filename, f, in, out); len(diags) > 0 {
+		return src, diags
+	}
+	return out, nil
 }
 
-// Printer is the internal state for one render pass. The zero value is
-// useful as long as w is set; the trailing / inter-decorator maps are
-// populated by [newPrinter] from the file's `Comments` slice (callers
-// constructing a Printer directly via struct literal will simply lose
-// comment recovery). Free-floating comment blocks need no lookup map -
-// the parser owns them as [ast.FreeComment] nodes (body members, method
-// BodyComments, and File.FreeComments) printed in source order.
+// checkOutput reports why out, the canonical text of in, cannot replace the
+// source in was parsed from, whose tokens are inSrc: out does not parse, or
+// its comments differ or sit elsewhere.
+func checkOutput(filename string, in *ast.File, inSrc *source, out string) []lexer.Diagnostic {
+	fileStart := lexer.Position{Filename: filename, Line: 1, Column: 1}
+	p := parser.New(filename, out)
+	outFile := p.Parse()
+	if diags := p.Diagnostics(); len(diags) > 0 {
+		return refusal(fileStart, "the formatted text would not parse (%s on its line %d)", diags[0].Msg, diags[0].Pos.Line)
+	}
+	extra := map[string]int{}
+	for _, c := range outFile.Comments {
+		extra[c.Text]++
+	}
+	for _, c := range in.Comments {
+		extra[c.Text]--
+	}
+	for _, c := range in.Comments {
+		switch {
+		case extra[c.Text] < 0:
+			return refusal(c.Pos, "formatting would drop the comment %q", c.Text)
+		case extra[c.Text] > 0:
+			return refusal(c.Pos, "formatting would duplicate the comment %q", c.Text)
+		}
+	}
+	for _, c := range outFile.Comments {
+		if extra[c.Text] > 0 {
+			return refusal(fileStart, "formatting would add the comment %q", c.Text)
+		}
+	}
+	return movedComment(in, fileLayout(in, inSrc), fileLayout(outFile, newSource(p.Tokens())))
+}
+
+// movedComment reports a comment of f, laid out as in, that out holds in
+// another place: after another construct, as another construct's doc, or in
+// another scope.
+func movedComment(f *ast.File, in, out *layout) []lexer.Diagnostic {
+	left := map[placedComment]int{}
+	for _, c := range out.comments {
+		left[c]++
+	}
+	moved := map[string]bool{}
+	for _, c := range in.comments {
+		if left[c] > 0 {
+			left[c]--
+			continue
+		}
+		moved[c.text] = true
+	}
+	for c, n := range left {
+		if n > 0 {
+			moved[c.text] = true
+		}
+	}
+	for _, c := range f.Comments {
+		if moved[c.Text] {
+			return refusal(c.Pos, "formatting would move the comment %q", c.Text)
+		}
+	}
+	return nil
+}
+
+// refusal is the single error diagnostic of a Format that returns src unchanged.
+func refusal(pos lexer.Position, format string, args ...any) []lexer.Diagnostic {
+	return []lexer.Diagnostic{{Pos: pos, Msg: fmt.Sprintf(format, args...)}}
+}
+
+// newPrinter builds a Printer over the comments of f, parsed from src.
+func newPrinter(w io.Writer, f *ast.File, src *source) *Printer {
+	p := &Printer{w: w, src: src, chain: f.ChainComments, codeAfter: fileLayout(f, src).codeAfterFreeComments(), code: codeLines(src.toks, f.Comments), ownLine: map[int]string{}}
+	for _, c := range f.Comments {
+		if c.Kind == lexer.CommentTrailing {
+			p.trailing = append(p.trailing, c)
+		} else {
+			p.ownLine[c.Pos.Line] = c.Text
+		}
+	}
+	return p
+}
+
+// Printer holds the state of one render pass; built without newPrinter it
+// prints no trailing or in-chain comments.
 type Printer struct {
 	w     io.Writer
 	err   error
 	depth int
-	// trailing maps 1-indexed source line numbers to the text of any
-	// `// note` comment found on that line after non-whitespace code.
-	// A line with no trailing comment is absent from the map.
-	trailing map[int]string
-	// interDec holds `//` blocks written inside a declaration's
-	// decorator chain - between two decorators, or between the last
-	// decorator and the keyword. No AST node owns them, so the key is
-	// the 1-indexed source line of the decorator (or keyword) the block
-	// immediately precedes; declDecorators flushes the block just before
-	// emitting that token.
-	interDec map[int][]string
+	src   *source
+	// trailing holds the comments that follow code on their line, in source
+	// order; the first emitted of them are printed.
+	trailing []*ast.Comment
+	emitted  int
+	// open is set while a code line waits for its newline, so the trailing
+	// comments of the source lines it covers can still join it.
+	open bool
+	// chain maps a source line to the comments above the decorator, name or
+	// keyword on it inside a decorator chain.
+	chain map[int][]string
+	// codeAfter maps the first line of a free comment block to the first
+	// line of the construct below it.
+	codeAfter map[int]int
+	// joined holds the first two trailing comments that fell on one line.
+	joined [2]*ast.Comment
+	// code holds the source lines with a token or a comment; the others are
+	// blank.
+	code map[int]bool
+	// ownLine maps the source lines that hold a comment and no code to the
+	// comment's text.
+	ownLine map[int]string
+	// free holds the file-scope comment blocks still to print.
+	free []*ast.FreeComment
+	// freeEnd is the last source line of the free comment block printed last,
+	// or 0 once code follows it.
+	freeEnd int
 }
 
 func (p *Printer) write(s string) {
@@ -114,119 +169,92 @@ func (p *Printer) indent() {
 	}
 }
 
-func (p *Printer) nl() { p.write("\n") }
-
-// File renders the entire source file: file-level decorators, the package
-// line, imports, and every top-level declaration in source order. A blank
-// line separates each major section so the output reads like the canonical
-// hand-written form. File-scope free-floating comment blocks
-// (f.FreeComments, harvested by the parser) are interleaved by source line,
-// each separated from its neighbours by one blank line.
+// File renders f in source order: one blank line between top-level
+// declarations, file-scope comment blocks placed by source line.
 func (p *Printer) File(f *ast.File) {
-	fcs := f.FreeComments
-	// wroteAny gates the single-blank separator so the file never starts
-	// with a stray blank line (e.g. a comment-only file).
+	p.free = f.FreeComments
 	wroteAny := false
-	// flushBefore emits every pending free comment block that starts
-	// before the given source line; line 0 means "all remaining" (used
-	// for end-of-file blocks). Reports whether anything was flushed so
-	// call sites can keep the block detached from what follows.
+	// flushBefore prints the file-scope comment blocks that start before line
+	// and reports whether it printed any.
 	flushBefore := func(line int) bool {
-		flushed := false
-		for len(fcs) > 0 && (line == 0 || fcs[0].Pos.Line < line) {
+		blocks := p.freeBefore(line)
+		for _, c := range blocks {
 			if wroteAny {
-				p.nl()
+				p.blank(c.Pos.Line)
 			}
-			p.printFreeComment(fcs[0])
+			p.printFreeComment(c)
 			wroteAny = true
-			flushed = true
-			fcs = fcs[1:]
 		}
-		return flushed
-	}
-	if len(f.LeadingDoc) > 0 {
-		p.Doc(f.LeadingDoc)
-		wroteAny = true
-	}
-	for _, d := range f.Decorators {
-		p.Decorator(d)
-		p.nl()
-		wroteAny = true
+		return len(blocks) > 0
 	}
 	if f.Package != nil {
-		if flushBefore(f.Package.Pos.Line - len(f.Package.Doc)) {
-			p.nl()
+		kw := p.src.after(f.Package.Pos, -1).Pos
+		start := memberStartLine(kw.Line, f.Decorators, len(f.LeadingDoc))
+		if flushBefore(start) {
+			p.blank(start)
 		}
-		p.Doc(f.Package.Doc)
-		p.write("package ")
-		p.write(f.Package.Name)
-		p.nl()
+		p.comments(start, f.LeadingDoc)
+		p.declDecorators(f.Decorators, kw.Line)
+		if flushBefore(kw.Line - len(f.Package.Doc)) {
+			p.blank(kw.Line)
+		}
+		p.comments(kw.Line, f.Package.Doc)
+		p.line(kw.Line)
+		p.write("package")
+		p.header(kw, f.Package.Name)
+		p.endCode()
 		wroteAny = true
 	}
-	if len(f.Imports) > 0 {
-		p.nl()
-		for _, imp := range f.Imports {
-			flushBefore(imp.Pos.Line - len(imp.Doc))
-			p.Import(imp)
-			p.nl()
-			wroteAny = true
+	for i, imp := range f.Imports {
+		// A comment block between imports keeps the blank lines around it.
+		if flushBefore(imp.Pos.Line-len(imp.Doc)) || i == 0 {
+			p.blank(imp.Pos.Line)
 		}
+		p.Import(imp)
+		wroteAny = true
 	}
-	for _, d := range f.Decls {
-		flushBefore(declFirstSourceLine(d))
-		if wroteAny {
-			p.nl()
+	for i, d := range f.Decls {
+		// Without a package, the file's leading decorators and the comment
+		// above them go to the first declaration.
+		var doc []string
+		if i == 0 && f.Package == nil {
+			doc = f.LeadingDoc
 		}
+		start := p.src.firstLine(d) - len(doc)
+		flushBefore(start)
+		if wroteAny {
+			p.blank(start)
+		}
+		p.comments(start, doc)
 		p.Decl(d)
 		wroteAny = true
 	}
-	// End-of-file blocks (after the last decl) - and, for a file with no
-	// declarations at all, every comment the source contained.
-	flushBefore(0)
+	flushBefore(math.MaxInt)
+	p.at(math.MaxInt)
 }
 
-// declFirstSourceLine returns the 1-indexed source line where this
-// declaration first appears - the line of its first decorator if it has
-// any, otherwise the line of the keyword itself. Used as the anchor key
-// for loose comment lookup so a `// section header` block above a
-// decorated type lands above the decorator chain, not between decorators
-// and the keyword.
-func declFirstSourceLine(d ast.Decl) int {
-	var decs []*ast.Decorator
-	switch v := d.(type) {
-	case *ast.TypeDecl:
-		decs = v.Decorators
-	case *ast.EnumDecl:
-		decs = v.Decorators
-	case *ast.ErrorDecl:
-		decs = v.Decorators
-	case *ast.ScalarDecl:
-		decs = v.Decorators
-	case *ast.MiddlewareDecl:
-		decs = v.Decorators
-	case *ast.ServiceDecl:
-		decs = v.Decorators
-	case *ast.EventDecl:
-		decs = v.Decorators
+// freeBefore removes and returns the file-scope comment blocks still to print
+// that start before line.
+func (p *Printer) freeBefore(line int) []*ast.FreeComment {
+	n := 0
+	for n < len(p.free) && p.free[n].Pos.Line < line {
+		n++
 	}
-	if len(decs) > 0 {
-		return decs[0].Pos.Line
-	}
-	return d.DeclPos().Line
+	blocks := p.free[:n]
+	p.free = p.free[n:]
+	return blocks
 }
 
 func (p *Printer) Import(imp *ast.Import) {
-	p.Doc(imp.Doc)
-	p.write("import ")
+	p.comments(imp.Pos.Line, imp.Doc)
+	p.line(imp.Pos.Line)
+	p.write("import")
+	words := []string{imp.PathText}
 	if imp.Alias != "" {
-		p.write(imp.Alias)
-		p.write(" ")
+		words = []string{imp.Alias, imp.PathText}
 	}
-	p.write(strconv.Quote(imp.Path))
-	if imp.TrailingDoc != "" {
-		p.write("  // ")
-		p.write(imp.TrailingDoc)
-	}
+	p.header(imp.Pos, words...)
+	p.endCode()
 }
 
 // Decl dispatches to the concrete printer for each top-level declaration.
@@ -246,18 +274,5 @@ func (p *Printer) Decl(d ast.Decl) {
 		p.ServiceDecl(v)
 	case *ast.EventDecl:
 		p.EventDecl(v)
-	}
-}
-
-func (p *Printer) Doc(lines []string) {
-	for _, line := range lines {
-		p.indent()
-		if line == "" {
-			p.write("//")
-		} else {
-			p.write("// ")
-			p.write(line)
-		}
-		p.nl()
 	}
 }

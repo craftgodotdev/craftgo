@@ -1,9 +1,5 @@
-// Package numbers is the cornercase showcase for numeric types and
-// bound decorators. Exercises every primitive numeric kind (signed +
-// unsigned int families, float32, float64) against the full bound
-// surface: @gt / @gte / @lt / @lte, @range, @multipleOf, the
-// @positive / @negative flag pair, plus the orthogonal axes of
-// optional / nullable / default presence.
+// Package numbers covers each primitive numeric kind against the bound
+// decorators, with optional, nullable and default presence.
 package numbers
 
 // NumberCounter exercises every standard int* signed type with all
@@ -39,11 +35,15 @@ type NumberCounter {
 	// @multipleOf on int.
 	stepInt     int   @multipleOf(5)
 	stepInt64   int64 @multipleOf(100)
+	// Whole floats at the int64 limits, read as the exact integers they
+	// write.
+	edgeInt64   int64 @range(-9223372036854775808.0, 9223372036854775807.0) @multipleOf(9223372036854775807.0)
+	// Two maxima past 2^53: the document keeps the tighter one.
+	tightInt64  int64 @lte(9223372036854775000) @range(0, 9223372036854775807)
 }
 
-// NumberUnsigned covers the full uint family. Lower bound 0 is
-// implicit at the type level but we still emit @gte(0) explicitly to
-// confirm codegen doesn't emit a dead `v < 0` for unsigned fields.
+// NumberUnsigned covers the uint family; its @gte(0) and full-capacity
+// bounds are the ones the type already implies.
 type NumberUnsigned {
 	// uint
 	rangeUint    uint   @range(0, 1000)
@@ -69,6 +69,12 @@ type NumberUnsigned {
 	// unsigned domain makes @negative semantically vacuous (it is
 	// still accepted at the decorator layer, so we don't test that).
 	posUint      uint   @positive
+	// A divisor past int64 can only be written as a whole float; the
+	// validator checks it as that integer, up to the uint64 limit.
+	stepUint64   uint64 @multipleOf(10000000000000000000.0)
+	maxUint64    uint64 @multipleOf(18446744073709551615.0)
+	// A floor past 2^53 raises the type's own minimum of 0.
+	floorUint64  uint64 @gte(9007199254740993)
 }
 
 // NumberPrice exercises float32 + float64 with float literal bounds.
@@ -87,6 +93,15 @@ type NumberPrice {
 	posFloat  float64 @positive
 	negFloat  float64 @negative
 	posF32    float32 @positive
+	// Bounds a float64 cannot hold are documented as the float64 the
+	// validator compares against: 2^53 and 2^63.
+	wideF64   float64 @gte(9007199254740993.0) @lte(9223372036854775807.0)
+	// A float32's bounds judge the literal and the float32 the validator
+	// compares against alike: 0.1 and float32(0.1) fail, 16777217 and 2^24 pass.
+	wideF32   float32 @gt(0.1) @lte(16777217)
+	// A number the document writes in exponent form carries a dot (1.0e-07,
+	// 1.0e+20), which YAML 1.1 readers take for a number, not a string.
+	tinyF64   float64 @gte(0.0000001) @lte(100000000000000000000.0) @example(0.0000005)
 	// @multipleOf on float is rejected at semantic time - Go's
 	// modulus operator is integer-only.
 	// stepFloat float64 @multipleOf(0.5)

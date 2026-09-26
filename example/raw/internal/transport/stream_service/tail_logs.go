@@ -11,10 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 
-// TailLogs returns the http.HandlerFunc for the
-// GET TailLogs passthrough endpoint. The framework stays
-// out of the way: logic receives the raw http.ResponseWriter and
-// *http.Request and writes the response directly.
+// Tail logs for a named service.
+//
+// TailLogs returns the GET TailLogs handler.
 func TailLogs(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewTailLogsService(r.Context(), svcCtx)

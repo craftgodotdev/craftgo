@@ -5,26 +5,21 @@ package xrefs
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PostDefaultService carries the per-request state for the
-// PostDefault endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// PostDefaultService runs XRefsService.PostDefault for one request.
 type PostDefaultService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPostDefaultService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewPostDefaultService binds PostDefaultService to ctx; its Logger carries ctx's trace ids.
 func NewPostDefaultService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PostDefaultService {
 	return &PostDefaultService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewPostDefaultService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// PostDefault is the service entry point. Replace the
-// TODO with the real implementation.
+// Pins cross-package enum `@default` pre-fill in transport. Body decode must seed `req.Color = &__d` with `__d := xshared.XColorRed` before JSON.Decode runs; without resolver the default literal silently drops because the local pkg.Enums miss.
+//
+// PostDefault implements XRefsService.PostDefault.
 func (l *PostDefaultService) PostDefault(req *types.XEnumDefault) (*xshared.XOwner, error) {
 	// TODO: implement
 	return nil, nil

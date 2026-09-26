@@ -5,31 +5,39 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
-// Which `@group` a service member belongs to. The group decides where a
-// member's artefacts land and how a document tags it, so both answers come
-// from here.
-
-// MethodGroupOf returns the @group of the block that declared m (primary or an
-// extend), or "" when ungrouped / not found. The map-free form for callers
-// that need one method's group without building the whole table.
+// MethodGroupOf returns the @group of the block that declares m (an extend
+// block without one inherits the primary's), or "" when none applies.
 func MethodGroupOf(svc *ServiceInfo, m *ast.Method) string {
 	if svc == nil || m == nil {
 		return ""
 	}
-	primaryGroup := route.ServiceGroup(svc.Primary)
-	if svc.Primary != nil {
-		for _, pm := range svc.Primary.Methods() {
-			if pm.Name == m.Name {
-				return primaryGroup
+	block := svc.blockOf(m)
+	if block == nil {
+		return ""
+	}
+	return svc.blockGroup(block)
+}
+
+// blocks returns svc's declarations: the primary, then its extend blocks.
+func (svc *ServiceInfo) blocks() []*ast.ServiceDecl {
+	return append([]*ast.ServiceDecl{svc.Primary}, svc.Extends...)
+}
+
+// blockOf returns the declaration of svc that declares a method named like
+// m, the primary before its extend blocks, or nil.
+func (svc *ServiceInfo) blockOf(m *ast.Method) *ast.ServiceDecl {
+	for _, b := range svc.blocks() {
+		for _, bm := range b.Methods() {
+			if bm.Name == m.Name {
+				return b
 			}
 		}
 	}
-	for _, e := range svc.Extends {
-		for _, em := range e.Methods() {
-			if em.Name == m.Name {
-				return route.EffectiveGroup(e, primaryGroup)
-			}
-		}
-	}
-	return ""
+	return nil
+}
+
+// blockGroup returns the @group of b, a declaration of svc: its own, else
+// the primary's.
+func (svc *ServiceInfo) blockGroup(b *ast.ServiceDecl) string {
+	return route.EffectiveGroup(b, route.ServiceGroup(svc.Primary))
 }

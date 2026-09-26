@@ -10,9 +10,7 @@ import (
 	service "example.com/app/internal/service/greeter"
 )
 
-// RecordHellos serves the client-streaming RPC /greet.Greeter/RecordHellos: it hands the
-// call context to the logic and maps the error it returns onto a status,
-// as the HTTP handler does with WriteError.
+// RecordHellos serves the client-streaming RPC /greet.Greeter/RecordHellos.
 func (s *Server) RecordHellos(stream grpc.ClientStreamingServer[pb.HelloRequest, pb.HelloReply]) error {
 	ctx := stream.Context()
 	l := service.NewRecordHellosService(ctx, s.svcCtx)

@@ -1,11 +1,23 @@
 package matrix
 
 import (
+	"encoding/json"
+	"maps"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
+
+	bindings "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
+	combine "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 )
 
 func readOpenAPI(t *testing.T) string {
@@ -24,8 +36,8 @@ func TestOpenAPI_DocumentShape(t *testing.T) {
 		"openapi: 3.1.0",
 		"AcctUser:",
 		"AcctCreateUserReq:",
-		// GetUser/CreateUser collide with cornercase's UserService, so the
-		// operationId is service-prefixed.
+		// GetUser/CreateUser collide with UserService's, so the operationId
+		// is service-prefixed.
 		"operationId: AccountUserServiceGetUser",
 		"operationId: AccountUserServiceCreateUser",
 	} {
@@ -36,8 +48,7 @@ func TestOpenAPI_DocumentShape(t *testing.T) {
 }
 
 func TestOpenAPI_MultiServiceOperationIDDisambiguation(t *testing.T) {
-	// OrdersService and CatalogService both declare `Ping`; the operationIds
-	// disambiguate by service.
+	// OrdersService and CatalogService both declare Ping.
 	doc := readOpenAPI(t)
 	for _, want := range []string{
 		"operationId: OrdersServicePing",
@@ -59,9 +70,8 @@ func TestOpenAPI_SecuritySchemeEmitted(t *testing.T) {
 	}
 }
 
-// pathBlock returns the YAML block of the path item that carries opID (each
-// raw-modes path declares a single operation, so the path block is the
-// operation block).
+// pathBlock returns the YAML block of the path item holding operation opID;
+// each raw-modes path holds one operation.
 func pathBlock(t *testing.T, doc, opID string) string {
 	t.Helper()
 	for _, block := range strings.Split(doc, "\n  /") {
@@ -73,9 +83,8 @@ func pathBlock(t *testing.T, doc, opID string) string {
 	return ""
 }
 
-// The raw modes: a request / response block on a raw side is the documented
-// contract, emitted exactly like a typed one; no block keeps the untyped
-// fallbacks; a raw response documents 200 unless @status says otherwise.
+// A block on a raw side is documented like a typed one, a raw side without
+// one stays */*, and a raw response documents 200 unless @status sets it.
 func TestOpenAPI_RawModesContracts(t *testing.T) {
 	doc := readOpenAPI(t)
 
@@ -123,5 +132,417 @@ func TestOpenAPI_RawModesContracts(t *testing.T) {
 
 	if !strings.Contains(doc, "PageOfRqItem:") {
 		t.Errorf("cross-package generic response on a raw request must register its instance component")
+	}
+}
+
+// Every operation declares each variable of its path, and only those, as a
+// path parameter: a raw request's route, @prefix included, too.
+func TestOpenAPI_EveryPathVariableIsDeclared(t *testing.T) {
+	var doc struct {
+		Paths map[string]map[string]struct {
+			Parameters []struct {
+				In   string `yaml:"in"`
+				Name string `yaml:"name"`
+			} `yaml:"parameters"`
+		} `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal([]byte(readOpenAPI(t)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := doc.Paths["/tenant/{tenantID}/export/{format}"]["get"]; !ok {
+		t.Fatal("the raw ExportTenantItems operation is missing")
+	}
+	vars := regexp.MustCompile(`\{([^}]+)\}`)
+	for path, item := range doc.Paths {
+		var want []string
+		for _, m := range vars.FindAllStringSubmatch(path, -1) {
+			want = append(want, m[1])
+		}
+		slices.Sort(want)
+		for verb, op := range item {
+			var got []string
+			for _, p := range op.Parameters {
+				if p.In == "path" {
+					got = append(got, p.Name)
+				}
+			}
+			slices.Sort(got)
+			if !slices.Equal(got, want) {
+				t.Errorf("%s %s declares path parameters %v, want %v", strings.ToUpper(verb), path, got, want)
+			}
+		}
+	}
+}
+
+// No parameter and no response header admits null: each is sent or not, and
+// an optional one is only left out of `required`.
+func TestOpenAPI_ParametersAndHeadersAreNeverNull(t *testing.T) {
+	var doc struct {
+		Paths map[string]map[string]struct {
+			Parameters []struct {
+				In       string `yaml:"in"`
+				Name     string `yaml:"name"`
+				Required bool   `yaml:"required"`
+				Schema   any    `yaml:"schema"`
+			} `yaml:"parameters"`
+			Responses map[string]struct {
+				Headers map[string]struct {
+					Schema any `yaml:"schema"`
+				} `yaml:"headers"`
+			} `yaml:"responses"`
+		} `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal([]byte(readOpenAPI(t)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	var admitsNull func(any) bool
+	admitsNull = func(s any) bool {
+		switch v := s.(type) {
+		case map[string]any:
+			for k, x := range v {
+				if k == "type" && (x == "null" || slices.Contains(toList(x), "null")) || admitsNull(x) {
+					return true
+				}
+			}
+		case []any:
+			return slices.ContainsFunc(v, admitsNull)
+		}
+		return false
+	}
+	optional := map[string]bool{}
+	for path, item := range doc.Paths {
+		for verb, op := range item {
+			for _, p := range op.Parameters {
+				if admitsNull(p.Schema) {
+					t.Errorf("%s %s: %s parameter %s admits null: %v", strings.ToUpper(verb), path, p.In, p.Name, p.Schema)
+				}
+				if path == "/bindings/optional-wire" {
+					optional[p.In+" "+p.Name] = !p.Required
+				}
+			}
+			for code, resp := range op.Responses {
+				for name, h := range resp.Headers {
+					if admitsNull(h.Schema) {
+						t.Errorf("%s %s: response %s header %s admits null: %v", strings.ToUpper(verb), path, code, name, h.Schema)
+					}
+				}
+			}
+		}
+	}
+	if want := map[string]bool{"header X-Trace": true, "cookie theme": true}; !maps.Equal(optional, want) {
+		t.Errorf("GetOptionalWire parameters (optional) = %v, want %v", optional, want)
+	}
+}
+
+// toList returns v as a list of strings, empty for anything else.
+func toList(v any) []string {
+	items, _ := v.([]any)
+	var out []string
+	for _, x := range items {
+		if s, ok := x.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// The XRefsService of xrefs and the one of xshared are both documented,
+// each under its own tag; the method name both declare keeps each
+// operation's body components apart, named after its package.
+func TestOpenAPI_SameNamedServicesAreAllDocumented(t *testing.T) {
+	doc := readOpenAPI(t)
+	for opID, wants := range map[string][]string{
+		"XRefsServiceGetItem":  {"- XRefsService"},
+		"GetSharedOwner":       {"- xshared"},
+		"XRefsServiceDescribe": {"- XRefsService", "$ref: '#/components/schemas/XrefsXRefsServiceDescribeRespBody'"},
+		"DescribeShared": {
+			"- xshared",
+			"$ref: '#/components/schemas/XsharedXRefsServiceDescribeReqBody'",
+			"$ref: '#/components/schemas/XsharedXRefsServiceDescribeRespBody'",
+		},
+	} {
+		block := pathBlock(t, doc, opID)
+		for _, want := range wants {
+			if !strings.Contains(block, want) {
+				t.Errorf("%s missing %q:\n%s", opID, want, block)
+			}
+		}
+	}
+}
+
+// An @errors name two packages declare documents the error the analyser
+// resolves it to, in the array form and from a package declaring neither.
+func TestOpenAPI_ErrorsFollowTheMergedNames(t *testing.T) {
+	doc := readOpenAPI(t)
+	for opID, wants := range map[string][]string{
+		"GetLost":    {"- $ref: '#/components/schemas/XrefsXLostErr'", "- $ref: '#/components/schemas/XsharedXLostErr'"},
+		"LookupLost": {"$ref: '#/components/schemas/XrefsXLostErr'"},
+	} {
+		block := pathBlock(t, doc, opID)
+		for _, want := range append(wants, `"404":`) {
+			if !strings.Contains(block, want) {
+				t.Errorf("%s missing %q:\n%s", opID, want, block)
+			}
+		}
+	}
+}
+
+// Bodies sharing a status are documented as an anyOf, never a oneOf:
+// RetryLater and Maintenance both send the {code, message} envelope, which
+// would match both schemas of a oneOf and so fail it.
+func TestOpenAPI_ResponsesSharingAStatusAreAnAnyOf(t *testing.T) {
+	var doc struct {
+		Paths map[string]map[string]struct {
+			Responses map[string]struct {
+				Content map[string]struct {
+					Schema struct {
+						OneOf []any `yaml:"oneOf"`
+						AnyOf []struct {
+							Ref string `yaml:"$ref"`
+						} `yaml:"anyOf"`
+					} `yaml:"schema"`
+				} `yaml:"content"`
+			} `yaml:"responses"`
+		} `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal([]byte(readOpenAPI(t)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	for path, item := range doc.Paths {
+		for verb, op := range item {
+			for code, resp := range op.Responses {
+				if len(resp.Content["application/json"].Schema.OneOf) > 0 {
+					t.Errorf("%s %s: response %s is a oneOf", strings.ToUpper(verb), path, code)
+				}
+			}
+		}
+	}
+	var refs []string
+	for _, branch := range doc.Paths["/bindings/service-status"]["get"].Responses["503"].Content["application/json"].Schema.AnyOf {
+		refs = append(refs, branch.Ref)
+	}
+	if want := []string{"#/components/schemas/RetryLaterErr", "#/components/schemas/MaintenanceErr"}; !slices.Equal(refs, want) {
+		t.Errorf("GetServiceStatus 503 anyOf = %v, want %v", refs, want)
+	}
+	for _, err := range []error{bindings.NewRetryLaterErr(bindings.RetryLaterBody{}), bindings.NewMaintenanceErr(bindings.MaintenanceBody{})} {
+		raw, merr := json.Marshal(err)
+		if merr != nil {
+			t.Fatal(merr)
+		}
+		var body map[string]string
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Fatal(err)
+		}
+		if keys := slices.Sorted(maps.Keys(body)); !slices.Equal(keys, []string{"code", "message"}) {
+			t.Errorf("%T sends %s, want the {code, message} envelope", err, raw)
+		}
+	}
+}
+
+// Retry-After, which RetryLater sends as seconds and Maintenance as an HTTP
+// date at one status, is documented as an integer or a string.
+func TestOpenAPI_SharedStatusHeaderKeepsEachType(t *testing.T) {
+	var doc struct {
+		Paths map[string]map[string]struct {
+			Responses map[string]struct {
+				Headers map[string]struct {
+					Schema struct {
+						AnyOf []struct {
+							Type string `yaml:"type"`
+						} `yaml:"anyOf"`
+					} `yaml:"schema"`
+				} `yaml:"headers"`
+			} `yaml:"responses"`
+		} `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal([]byte(readOpenAPI(t)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	var types []string
+	for _, branch := range doc.Paths["/bindings/service-status"]["get"].Responses["503"].Headers["Retry-After"].Schema.AnyOf {
+		types = append(types, branch.Type)
+	}
+	if !slices.Equal(types, []string{"integer", "string"}) {
+		t.Errorf("GetServiceStatus 503 Retry-After types = %v, want [integer string]", types)
+	}
+	wait := 5
+	date := "Wed, 21 Oct 2026 07:28:00 GMT"
+	for want, e := range map[string]interface{ WriteResponseHeaders(http.ResponseWriter) }{
+		"5":  bindings.NewRetryLaterErr(bindings.RetryLaterBody{Wait: &wait}),
+		date: bindings.NewMaintenanceErr(bindings.MaintenanceBody{Until: date}),
+	} {
+		rec := httptest.NewRecorder()
+		e.WriteResponseHeaders(rec)
+		if got := rec.Header().Get("Retry-After"); got != want {
+			t.Errorf("%T sends Retry-After %q, want %q", e, got, want)
+		}
+	}
+}
+
+// No number in the document is an exponent without a dot, which a YAML 1.1
+// reader takes for a string: NumberPrice.tinyF64 reads 1.0e-07 to 1.0e+20.
+func TestOpenAPI_ExponentNumbersCarryADot(t *testing.T) {
+	doc := readOpenAPI(t)
+	var root yaml.Node
+	if err := yaml.Unmarshal([]byte(doc), &root); err != nil {
+		t.Fatal(err)
+	}
+	dotless := regexp.MustCompile(`^[-+]?[0-9]+[eE]`)
+	var walk func(n *yaml.Node)
+	walk = func(n *yaml.Node) {
+		for _, c := range n.Content {
+			walk(c)
+		}
+		if n.Kind == yaml.ScalarNode && n.Tag == "!!float" && dotless.MatchString(n.Value) {
+			t.Errorf("line %d: the number %s has no dot", n.Line, n.Value)
+		}
+	}
+	walk(&root)
+	for _, want := range []string{"minimum: 1.0e-07", "maximum: 1.0e+20", "example: 5.0e-07"} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("openapi.yaml missing %q", want)
+		}
+	}
+}
+
+// schemaDoc is the part of a component schema the body-key checks read.
+type schemaDoc struct {
+	Properties map[string]any `yaml:"properties"`
+	Required   []string       `yaml:"required"`
+	AllOf      []schemaDoc    `yaml:"allOf"`
+	AnyOf      []schemaDoc    `yaml:"anyOf"`
+	Not        *schemaDoc     `yaml:"not"`
+}
+
+// readSchemas returns the component schemas of docs/openapi.yaml.
+func readSchemas(t *testing.T) map[string]schemaDoc {
+	t.Helper()
+	var doc struct {
+		Components struct {
+			Schemas map[string]schemaDoc `yaml:"schemas"`
+		} `yaml:"components"`
+	}
+	if err := yaml.Unmarshal([]byte(readOpenAPI(t)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	return doc.Components.Schemas
+}
+
+// An operation body beside a path id keys its properties and its
+// @requiresOneOf members by their @json names, which the runtime decodes.
+func TestOpenAPI_BodyKeysAreJSONNames(t *testing.T) {
+	schemas := readSchemas(t)
+	want := []string{"backup_email", "primary_email"}
+
+	req := schemas["ValidateRenamedReqBody"]
+	if len(req.AllOf) != 2 {
+		t.Fatalf("ValidateRenamedReqBody: want the body and one cross-field fragment, got %+v", req)
+	}
+	if got := slices.Sorted(maps.Keys(req.AllOf[0].Properties)); !slices.Equal(got, want) {
+		t.Errorf("ValidateRenamedReqBody properties = %v, want %v", got, want)
+	}
+	var members []string
+	for _, branch := range req.AllOf[1].AnyOf {
+		members = append(members, branch.Required...)
+	}
+	slices.Sort(members)
+	if !slices.Equal(members, want) {
+		t.Errorf("ValidateRenamedReqBody @requiresOneOf names %v, want %v", members, want)
+	}
+	for _, key := range members {
+		var body combine.PairsRenamed
+		if err := json.Unmarshal([]byte(`{"`+key+`": "a@b.c"}`), &body); err != nil {
+			t.Fatal(err)
+		}
+		if err := body.Validate(); err != nil {
+			t.Errorf("a body carrying only the documented %q fails the group: %v", key, err)
+		}
+	}
+
+	resp := schemas["ValidateRenamedRespBody"]
+	if got := slices.Sorted(maps.Keys(resp.Properties)); !slices.Equal(got, []string{"primary_email"}) {
+		t.Errorf("ValidateRenamedRespBody properties = %v, want [primary_email]", got)
+	}
+}
+
+// A body listed in place carries the @requiresOneOf of a mixin it embeds,
+// which the validator runs: the JSON body beside a path id and the multipart
+// body beside a file.
+func TestOpenAPI_InlineBodiesCarryMixinGroups(t *testing.T) {
+	var doc struct {
+		Paths map[string]map[string]struct {
+			RequestBody struct {
+				Content map[string]struct {
+					Schema schemaDoc `yaml:"schema"`
+				} `yaml:"content"`
+			} `yaml:"requestBody"`
+		} `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal([]byte(readOpenAPI(t)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]schemaDoc{
+		"ValidateNestedReqBody": readSchemas(t)["ValidateNestedReqBody"],
+		"UploadPairs multipart": doc.Paths["/combine/pairs/upload"]["post"].RequestBody.Content["multipart/form-data"].Schema,
+	} {
+		var members []string
+		for _, part := range body.AllOf {
+			for _, branch := range part.AnyOf {
+				members = append(members, branch.Required...)
+			}
+		}
+		if !slices.Equal(members, []string{"a", "b"}) {
+			t.Errorf("%s @requiresOneOf names %v, want [a b]", name, members)
+		}
+	}
+	if err := (&combine.PairsNested{Note: "n"}).Validate(); err == nil {
+		t.Error("PairsNested without a or b passes validation")
+	}
+	if err := (&combine.PairsUpload{Doc: &multipart.FileHeader{}}).Validate(); err == nil {
+		t.Error("PairsUpload without a or b passes validation")
+	}
+}
+
+// @mutuallyExclusive(email, sms, push) admits at most one channel: the
+// validator rejects any two, and each body schema carrying the group forbids
+// every pair.
+func TestOpenAPI_MutuallyExclusiveForbidsEveryPair(t *testing.T) {
+	var doc struct {
+		Paths map[string]map[string]struct {
+			RequestBody struct {
+				Content map[string]struct {
+					Schema schemaDoc `yaml:"schema"`
+				} `yaml:"content"`
+			} `yaml:"requestBody"`
+		} `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal([]byte(readOpenAPI(t)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{{"email", "sms"}, {"email", "push"}, {"sms", "push"}}
+	for name, body := range map[string]schemaDoc{
+		"NotifyChannels":         readSchemas(t)["NotifyChannels"],
+		"UploadNotify multipart": doc.Paths["/combine/pairs/notify/upload"]["post"].RequestBody.Content["multipart/form-data"].Schema,
+	} {
+		var pairs [][]string
+		for _, part := range body.AllOf {
+			if part.Not != nil {
+				for _, branch := range part.Not.AnyOf {
+					pairs = append(pairs, branch.Required)
+				}
+			}
+		}
+		if !slices.EqualFunc(pairs, want, slices.Equal) {
+			t.Errorf("%s forbids the pairs %v, want %v", name, pairs, want)
+		}
+	}
+	e, s, p := "e", "s", "p"
+	for _, v := range []combine.NotifyChannels{{Email: &e, Sms: &s}, {Email: &e, Push: &p}, {Sms: &s, Push: &p}} {
+		if err := v.Validate(); err == nil {
+			t.Errorf("%+v passes validation", v)
+		}
+	}
+	if err := (&combine.NotifyChannels{Push: &p}).Validate(); err != nil {
+		t.Errorf("one channel fails validation: %v", err)
 	}
 }

@@ -1,42 +1,33 @@
-// Event model: the language-independent view of the contracts a design
-// declares. The resolved type carries every fact a target needs - the
-// contract name, the payload's home package - already resolved.
 package semantic
 
 import (
+	"maps"
+	"slices"
 	"sort"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// DecoratorContract overrides the derived contract name.
-const DecoratorContract = "contract"
+// decoratorContract is the decorator that overrides an event's contract name.
+const decoratorContract = "contract"
 
-// ResolvedEvent is the layer-agnostic view of one event contract.
+// ResolvedEvent is one event contract, resolved against the project.
 type ResolvedEvent struct {
-	Decl    *ast.EventDecl
-	Package string
+	Decl *ast.EventDecl
 	// Name is the DSL identifier.
 	Name string
 	// Contract is the identity on the wire: `<package>.<Name>`, or the
-	// `@contract` argument when one is given. Transports address it
-	// however they like; both sides agree on this string.
+	// `@contract` argument when one is given.
 	Contract string
-	// PayloadPkg and PayloadName name the payload type. PayloadPkg is
-	// the package the type lives in, which is not always the event's own
-	// package - a `payload shared.Envelope` resolves elsewhere.
-	PayloadPkg  string
-	PayloadName string
-	// PayloadRef is the payload reference as written, including any
-	// generic arguments. Targets render from this - PayloadName alone
-	// drops the arguments, which a generic payload needs.
+	// PayloadPkg is the package declaring the payload type, which may differ
+	// from the event's (`payload shared.Envelope`); "" when it does not resolve.
+	PayloadPkg string
+	// PayloadRef is the payload reference as written, generic arguments included.
 	PayloadRef *ast.NamedTypeRef
-	// PayloadArray reports a `payload T[]` contract: the body is an array
-	// of the payload type. PayloadPkg, PayloadName, PayloadRef and Payload
-	// all describe the ELEMENT, resolved exactly as a scalar payload is.
+	// PayloadArray reports a `payload T[]` contract; the other payload
+	// fields then describe the element.
 	PayloadArray bool
-	// Payload is the resolved declaration, nil when the ref did not
-	// resolve (the analyser has already reported that).
+	// Payload is the payload's declaration; nil when it does not resolve.
 	Payload *ast.TypeDecl
 	// Doc is the documentation a target renders above the contract: the
 	// `@doc("...")` argument when one is given, otherwise the leading
@@ -46,17 +37,17 @@ type ResolvedEvent struct {
 
 // Events returns every event declared in the project, ordered by contract
 // name.
-func (p *Project) Events() []ResolvedEvent {
+func (p *Project) events() []ResolvedEvent {
 	if p == nil {
 		return nil
 	}
 	var out []ResolvedEvent
-	for _, pkgName := range sortedNames(p.Packages) {
+	for _, pkgName := range slices.Sorted(maps.Keys(p.Packages)) {
 		pkg := p.Packages[pkgName]
 		if pkg == nil {
 			continue
 		}
-		for _, name := range sortedNames(pkg.Events) {
+		for _, name := range slices.Sorted(maps.Keys(pkg.Events)) {
 			out = append(out, p.resolveEvent(pkg, pkg.Events[name]))
 		}
 	}
@@ -71,8 +62,7 @@ func (p *Project) LookupEvent(homePkg, ref string) (ResolvedEvent, bool) {
 	if p == nil || ref == "" {
 		return ResolvedEvent{}, false
 	}
-	pkgName, name := splitQualified(ref, homePkg)
-	pkg := p.Packages[pkgName]
+	pkg, name := p.resolveName(homePkg, ref)
 	if pkg == nil {
 		return ResolvedEvent{}, false
 	}
@@ -83,49 +73,34 @@ func (p *Project) LookupEvent(homePkg, ref string) (ResolvedEvent, bool) {
 	return p.resolveEvent(pkg, d), true
 }
 
-// resolveEvent computes the layer-agnostic facts for one event.
+// resolveEvent resolves d, declared in pkg.
 func (p *Project) resolveEvent(pkg *Package, d *ast.EventDecl) ResolvedEvent {
 	re := ResolvedEvent{
 		Decl:     d,
-		Package:  pkg.Name,
 		Name:     d.Name,
-		Contract: ContractName(pkg.Name, d),
-		Doc:      descriptionLines(d.Decorators, d.Doc),
+		Contract: contractName(pkg.Name, d),
+		Doc:      DescriptionLines(d.Decorators, d.Doc),
 	}
 	if d.Payload == nil || d.Payload.Type == nil || d.Payload.Type.Name == nil {
 		return re
 	}
 	re.PayloadRef = d.Payload.Type
 	re.PayloadArray = d.Payload.Array
-	re.PayloadPkg, re.PayloadName = splitQualified(d.Payload.Type.Name.String(), pkg.Name)
-	if home := p.Packages[re.PayloadPkg]; home != nil {
-		re.Payload = home.Types[re.PayloadName]
+	if home, name := p.resolve(pkg.Name, d.Payload.Type.Name); home != nil {
+		re.PayloadPkg = home.Name
+		re.Payload = home.Types[name]
 	}
 	return re
 }
 
-// ContractName returns the wire identity of an event declared in pkgName:
+// contractName returns the wire identity of an event declared in pkgName:
 // the `@contract` argument when present, otherwise `<pkgName>.<Name>`.
-func ContractName(pkgName string, d *ast.EventDecl) string {
+func contractName(pkgName string, d *ast.EventDecl) string {
 	if d == nil {
 		return ""
 	}
-	if s, ok := DecoratorStringArg(d.Decorators, DecoratorContract); ok {
+	if s, ok := ast.StringArg(d.Decorators, decoratorContract); ok {
 		return s
 	}
-	if pkgName == "" {
-		return d.Name
-	}
 	return pkgName + "." + d.Name
-}
-
-// splitQualified splits `pkg.Name` into its parts, defaulting the
-// qualifier to fallback for a bare name.
-func splitQualified(ref, fallback string) (pkgName, name string) {
-	for i := len(ref) - 1; i >= 0; i-- {
-		if ref[i] == '.' {
-			return ref[:i], ref[i+1:]
-		}
-	}
-	return fallback, ref
 }

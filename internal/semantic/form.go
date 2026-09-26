@@ -5,13 +5,10 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// FormField is one field of a multipart request: which key it rides under,
-// whether it must be present, and - for a file - what it accepts. The
-// binder and the document both describe the same part from this.
+// FormField is one part of a multipart request.
 type FormField struct {
 	Field *ast.Field
-	// Name is the target's identifier for the field, from the LevelNames
-	// rule passed to [FormFields].
+	// Name is the target's identifier for the field, from [LevelNames].
 	Name string
 	// WireName is the multipart key, honouring an explicit `@form("k")`.
 	WireName string
@@ -22,14 +19,11 @@ type FormField struct {
 	IsArray bool
 }
 
-// FormFields splits m's request into the multipart text and file parts. A
-// request with no file field is not multipart at all, so both results are
-// empty and the fields fall back to the JSON body.
-func FormFields(m *ast.Method, pkg *Package, r *Resolver, levelNames LevelNames) (text, files []FormField) {
-	if m == nil || m.Request == nil {
-		return nil, nil
-	}
-	for _, rf := range RequestFields(m, pkg, r, levelNames) {
+// FormParts splits the body and form fields among a request's resolved
+// fields into multipart text and file parts; both are nil when none is a
+// file.
+func FormParts(fields []ResolvedField) (text, files []FormField) {
+	for _, rf := range fields {
 		switch rf.Binding {
 		case wire.BindPath, wire.BindQuery, wire.BindHeader, wire.BindCookie, wire.BindSensitive:
 			continue
@@ -38,10 +32,10 @@ func FormFields(m *ast.Method, pkg *Package, r *Resolver, levelNames LevelNames)
 		entry := FormField{
 			Field:    f,
 			Name:     rf.Name,
-			WireName: wire.WireName(f, wire.BindingForm),
+			WireName: wire.WireName(f, wire.BindForm),
 			Required: rf.SpecRequired,
 		}
-		if isFileRef(f) {
+		if isFileTypeRef(f.Type) {
 			entry.IsArray = f.Type.Array
 			entry.MimeTypes = mimeTypesOf(f.Decorators)
 			files = append(files, entry)
@@ -55,27 +49,15 @@ func FormFields(m *ast.Method, pkg *Package, r *Resolver, levelNames LevelNames)
 	return text, files
 }
 
-// isFileRef reports whether the field's type is the `file` primitive.
-func isFileRef(f *ast.Field) bool {
-	return f != nil && f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "file"
-}
-
-// mimeTypesOf reads the `@mimeTypes` allowlist, accepting both the array
-// form and repeated string arguments.
+// mimeTypesOf reads the `@mimeTypes` allowlist.
 func mimeTypesOf(ds []*ast.Decorator) []string {
 	var out []string
 	for _, d := range ds {
-		if d == nil || d.Name != "mimeTypes" || len(d.Args) == 0 {
+		if d == nil || d.Name != "mimeTypes" {
 			continue
 		}
-		if mimes, ok := StringArrayArg(d.Args[0]); ok {
-			out = mimes
-			continue
-		}
-		for _, a := range d.Args {
-			if s, ok := a.Value.(*ast.StringLit); ok {
-				out = append(out, s.Value)
-			}
+		for _, n := range ast.ArgNames(d) {
+			out = append(out, n.Value)
 		}
 	}
 	return out

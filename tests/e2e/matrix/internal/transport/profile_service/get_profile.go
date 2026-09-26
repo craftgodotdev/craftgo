@@ -13,8 +13,8 @@ import (
 )
 
 // GetProfile returns the profile with the given id.
-// GetProfile returns the http.HandlerFunc for the
-// GET GetProfile endpoint.
+//
+// GetProfile returns the GET GetProfile handler.
 func GetProfile(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetProfileReq
@@ -29,7 +29,6 @@ func GetProfile(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

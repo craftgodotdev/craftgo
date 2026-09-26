@@ -7,12 +7,15 @@ import (
 	"strings"
 )
 
-// DocsUI selects which API-reference UI [Server.ServeDocs] renders. All three
-// load their assets from a CDN, so the binary stays small and no assets ship
-// with it (the docs page needs outbound network the first time a browser opens
-// it). Unknown values fall back to Redoc.
+// DocsUI names an API-reference UI [Server.ServeDocs] can render; [DocsOptions] takes it
+// as a string.
+//
+// Deprecated: set [DocsOptions.UI] to "redoc", "swagger" or "scalar".
 type DocsUI string
 
+// DocsRedoc, DocsSwagger and DocsScalar are the [DocsUI] values.
+//
+// Deprecated: set [DocsOptions.UI] to the name itself.
 const (
 	DocsRedoc   DocsUI = "redoc"
 	DocsSwagger DocsUI = "swagger"
@@ -21,9 +24,9 @@ const (
 
 // DocsOptions configures [Server.ServeDocs].
 type DocsOptions struct {
-	// Spec is the OpenAPI document served verbatim at SpecPath (YAML or JSON).
+	// Spec is the OpenAPI document, served verbatim: as JSON if it starts with `{`, else as YAML.
 	Spec []byte
-	// UI is "redoc" (default), "swagger", or "scalar".
+	// UI is "redoc" (default), "swagger" or "scalar", in any case; other values mean Redoc.
 	UI string
 	// Path is the route for the HTML docs page (default "/docs").
 	Path string
@@ -33,13 +36,8 @@ type DocsOptions struct {
 	Title string
 }
 
-// ServeDocs registers two GET routes on the server: SpecPath serves the raw
-// OpenAPI document, and Path serves an HTML page that loads the chosen
-// API-reference UI from a CDN, pointed at SpecPath. It is a no-op (returns the
-// server unchanged) when Spec is empty. Returns the server for chaining.
-//
-// Generated projects wire this from main.go behind `config.docs.enabled`; it is
-// also callable directly by hand-written servers.
+// ServeDocs registers GET SpecPath, serving Spec, and GET Path, a page that loads the chosen
+// UI from a CDN; it registers nothing when Spec is empty.
 func (s *Server) ServeDocs(opts DocsOptions) *Server {
 	if len(opts.Spec) == 0 {
 		return s
@@ -72,9 +70,7 @@ func (s *Server) ServeDocs(opts DocsOptions) *Server {
 	return s
 }
 
-// docsHTML renders the single-page HTML host for the chosen UI. specPath is
-// escaped for the attribute / JS context it lands in; the CDN script URLs are
-// fixed constants.
+// docsHTML renders the page for ui, with title and specPath escaped for where they land.
 func docsHTML(ui DocsUI, specPath, title string) string {
 	t := template.HTMLEscapeString(title)
 	attr := template.HTMLEscapeString(specPath) // attribute-context value

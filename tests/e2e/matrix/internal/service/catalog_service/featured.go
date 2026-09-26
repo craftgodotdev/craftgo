@@ -5,25 +5,20 @@ package runtime
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/runtime"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/runtime"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// FeaturedService carries the per-request state for the
-// Featured endpoint of CatalogService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// FeaturedService runs CatalogService.Featured for one request.
 type FeaturedService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewFeaturedService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewFeaturedService binds FeaturedService to ctx; its Logger carries ctx's trace ids.
 func NewFeaturedService(ctx context.Context, svcCtx *svccontext.ServiceContext) *FeaturedService {
 	return &FeaturedService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewFeaturedService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// Featured is the service entry point. Replace the
-// TODO with the real implementation.
+// Featured implements CatalogService.Featured.
 func (l *FeaturedService) Featured() (*types.RtItem, error) {
 	return &types.RtItem{Sku: l.svcCtx.ItemSKU, Price: l.svcCtx.ItemPrice}, nil
 }

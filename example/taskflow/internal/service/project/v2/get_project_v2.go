@@ -5,25 +5,20 @@ package project
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/project"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/project"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// GetProjectV2Service carries the per-request state for the
-// GetProjectV2 endpoint of ProjectService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetProjectV2Service runs ProjectService.GetProjectV2 for one request.
 type GetProjectV2Service struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetProjectV2Service constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetProjectV2Service binds GetProjectV2Service to ctx; its Logger carries ctx's trace ids.
 func NewGetProjectV2Service(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetProjectV2Service {
 	return &GetProjectV2Service{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewGetProjectV2Service(ctx context.Context, svcCtx *svccontext.ServiceConte
 	}
 }
 
-// GetProjectV2 is the service entry point. Replace the
-// TODO with the real implementation.
+// Fetch one project (v2 shape: owner + description).
+//
+// GetProjectV2 implements ProjectService.GetProjectV2.
 func (l *GetProjectV2Service) GetProjectV2(req *types.GetProjectReq) (*types.ProjectV2, error) {
 	return l.svcCtx.Store.GetProjectV2(req.ID)
 }

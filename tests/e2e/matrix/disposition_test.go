@@ -13,9 +13,7 @@ import (
 	eventtypes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
 )
 
-// dispositionProbe is a listener that records whether its logic ran, so a
-// delivery the descriptor's wrapper turned back can be told from one it
-// dispatched.
+// dispositionProbe counts MirrorStock runs.
 type dispositionProbe struct{ ran int }
 
 func (p *dispositionProbe) MirrorStock(context.Context, *eventtypes.ItemStocked) error {
@@ -23,8 +21,7 @@ func (p *dispositionProbe) MirrorStock(context.Context, *eventtypes.ItemStocked)
 	return nil
 }
 
-// notifyProbe stands in for the notification module's logic on the one
-// contract this file exercises.
+// notifyProbe counts NotifyDispatch runs.
 type notifyProbe struct{ ran int }
 
 func (p *notifyProbe) NotifyDispatch(context.Context, *eventtypes.ShipmentDispatched) error {
@@ -32,12 +29,8 @@ func (p *notifyProbe) NotifyDispatch(context.Context, *eventtypes.ShipmentDispat
 	return nil
 }
 
-// deliver runs one registered subscription the way a transport does. The
-// bus is the same one the message was encoded through, and the handler
-// called is the one the TRANSPORT is handed - not the descriptor's own,
-// which is a frame short of what arrives: reaching the handler is marked
-// between the two, so a test that called the inner one would read false
-// on a delivery that dispatched.
+// deliver publishes and registers through one bus, then runs the handler the
+// transport was handed, returning the delivered message and its error.
 func deliver(t *testing.T, subscribe func(*craftevents.Bus) error, publish func(*craftevents.Bus) error) (*craftevents.Message, error) {
 	t.Helper()
 	tr := &handingTransport{}
@@ -61,21 +54,8 @@ func deliver(t *testing.T, subscribe func(*craftevents.Bus) error, publish func(
 	return msg, tr.subs[0].Handle(context.Background(), msg)
 }
 
-// The descriptor's wrapper decodes, validates, then dispatches - and
-// decides nothing about the delivery on the chain's behalf. Both halves
-// matter.
-//
-// Validating first is what keeps a payload that cannot be decoded or
-// cannot satisfy its constraints out of logic that assumes both. Deciding
-// nothing is what leaves the choice where the application puts it: a
-// disposition is a middleware's to write, and a wrapper that settled or
-// rejected on its own would overrule every chain above it with nothing to
-// see it happen - the transport reads the last decision, not the reason.
-//
-// Nothing here is a state the broker can be asked about afterwards: an
-// accepted record and a rejected one are both terminal and both advance
-// the share-group offset. The reading has to be taken off the delivery,
-// before an adapter answers for it.
+// The descriptor's wrapper validates before dispatch and leaves the
+// disposition unset.
 func TestTheDescriptorValidatesBeforeDispatchAndDecidesNothing(t *testing.T) {
 	t.Run("a valid payload dispatches once and is left undecided", func(t *testing.T) {
 		probe := &dispositionProbe{}
@@ -101,10 +81,8 @@ func TestTheDescriptorValidatesBeforeDispatchAndDecidesNothing(t *testing.T) {
 	})
 
 	t.Run("a payload the wrapper turns back never reaches logic and is left undecided", func(t *testing.T) {
-		// carrier is @minLength(1), so an empty one fails Validate and
-		// never reaches NotifyDispatch. The descriptor's Publish would
-		// refuse it, so it goes on the bus untyped - the way a message
-		// from another system arrives.
+		// carrier is @minLength(1). The descriptor's Publish would refuse
+		// an empty one, so it goes through bus.Publish.
 		probe := &notifyProbe{}
 		delivered, err := deliver(t,
 			func(bus *craftevents.Bus) error {

@@ -1,9 +1,10 @@
 package golang
 
 import (
+	"iter"
 	"path"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -13,45 +14,33 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// servicePackage returns the fallback Go package name derived from a service
-// name ("UserService" -> "userservice"), used only when a service's DSL package
-// has no name (a single-file design with no `package` declaration). Kept for
-// the import-alias uniqueness suffix, which must stay per-service.
+// servicePackage lower-cases a service name ("UserService" -> "userservice").
 func servicePackage(svcName string) string { return strings.ToLower(svcName) }
 
-// servicePkgName is the Go package declaration for a service's generated
-// handler / transport / routes files. It reuses the DSL package name, so the
-// handlers land in the same package identifier as their types (`project`
-// service code alongside the `project` types), matching what the author wrote.
-// Multiple services in one DSL package therefore share a package name across
-// their separate directories - legal in Go, and the route hub imports them
-// under distinct per-service aliases. Falls back to the service-derived name
-// for an unnamed (single-file) package.
-func servicePkgName(pkgName, svcName string) string {
-	if pkgName == "" {
-		return servicePackage(svcName)
-	}
-	return pkgName
-}
-
-// goImportFromRel converts a project-relative directory like
-// "./internal/handler" into the Go import path "<modulePath>/internal/handler".
-// Leading "./" is stripped, backslashes are normalised to forward slashes,
-// and a trailing slash is removed.
+// goImportFromRel turns a project-relative directory ("./internal/handler") into its import
+// path under modulePath.
 func goImportFromRel(modulePath, rel string) string {
-	rel = strings.ReplaceAll(rel, "\\", "/")
-	rel = strings.TrimPrefix(rel, "./")
-	rel = strings.TrimPrefix(rel, "/")
-	rel = strings.TrimSuffix(rel, "/")
-	if rel == "" {
-		return modulePath
+	if rel = relDir(rel); rel != "" {
+		return modulePath + "/" + rel
 	}
-	return modulePath + "/" + rel
+	return modulePath
 }
 
-// fileDirRel returns the directory portion of a file path expressed in
-// project-relative form (always forward-slash). Used for `output.svccontext`
-// where the value points at a file rather than a directory.
+// relDir spells a project-relative directory ("./internal/config/") as forward-slash segments
+// ("internal/config"), "" for the project root.
+func relDir(rel string) string {
+	return strings.TrimPrefix(path.Clean("/"+strings.ReplaceAll(rel, "\\", "/")), "/")
+}
+
+// displayDir renders a project-relative directory for generated paths and comments; the root is ".".
+func displayDir(rel string) string {
+	if d := relDir(rel); d != "" {
+		return d
+	}
+	return "."
+}
+
+// fileDirRel returns the forward-slash directory of a project-relative file path, "" for a root file.
 func fileDirRel(filePath string) string {
 	filePath = strings.ReplaceAll(filePath, "\\", "/")
 	dir := path.Dir(filePath)
@@ -61,140 +50,182 @@ func fileDirRel(filePath string) string {
 	return dir
 }
 
-// httpVerb maps DSL verb keywords to canonical HTTP method strings used in
-// `http.ServeMux` patterns ("GET", "POST", ...).
-func httpVerb(verb string) string { return strings.ToUpper(verb) }
+// outputDir is a directory the Go target writes into, relative to the project root as the manifest
+// spells it, and the import path of the package it holds.
+type outputDir struct {
+	rel, pkg string
+}
 
-// importPaths bundles every Go import path used by the transport / routes /
-// service generators for a given project + service. Computed once per service.
+// at is d under projectRoot, joined with elem.
+func (d outputDir) at(projectRoot string, elem ...string) string {
+	return filepath.Join(append([]string{projectRoot, d.rel}, elem...)...)
+}
+
+// sub is the directory seg, in forward slashes, under d.
+func (d outputDir) sub(seg string) outputDir {
+	return outputDir{rel: path.Join(d.rel, seg), pkg: d.pkg + "/" + seg}
+}
+
+// outputs are the Go target's output keys; svccontext is the directory of output.svccontext's file.
+type outputs struct {
+	types, transport, routes, service, grpc, wiring, svccontext, config, middleware outputDir
+}
+
+// outputsOf reads cfg's output keys.
+func outputsOf(cfg *config.Config) outputs {
+	dir := func(rel string) outputDir { return outputDir{rel: rel, pkg: goImportFromRel(cfg.Package, rel)} }
+	return outputs{
+		types:      dir(cfg.Output.Types),
+		transport:  dir(cfg.Output.Transport),
+		routes:     dir(cfg.Output.Routes),
+		service:    dir(cfg.Output.Service),
+		grpc:       dir(cfg.Output.GRPC),
+		wiring:     dir(cfg.Output.Wiring),
+		svccontext: dir(fileDirRel(cfg.Output.Svccontext)),
+		config:     dir(cfg.Output.Config),
+		middleware: dir(cfg.Output.Middleware),
+	}
+}
+
+// outputKey is one output key of the Go target.
+type outputKey struct {
+	dir outputDir
+	// regenerated reports a directory whose files every run rewrites, which the sweep covers.
+	regenerated bool
+	// application reports a directory a contracts project writes nothing into.
+	application bool
+	// files names the only files the target writes in dir, which the sweep then takes alone;
+	// without them it walks dir's whole tree.
+	files []string
+}
+
+// The files the Go target writes in output.wiring and beside output.svccontext's file.
+const (
+	wiringFile      = "wiring.go"
+	wiringGRPCFile  = "grpc.go"
+	middlewaresFile = "middlewares.go"
+)
+
+// keys lists o's output keys.
+func (o outputs) keys() []outputKey {
+	return []outputKey{
+		{dir: o.types, regenerated: true},
+		{dir: o.transport, regenerated: true, application: true},
+		{dir: o.routes, regenerated: true, application: true},
+		{dir: o.service, application: true},
+		{dir: o.grpc, regenerated: true, application: true},
+		{dir: o.wiring, regenerated: true, application: true, files: []string{wiringFile, wiringGRPCFile}},
+		{dir: o.middleware, application: true},
+		{dir: o.config, application: true},
+		{dir: o.svccontext, regenerated: true, application: true, files: []string{middlewaresFile}},
+	}
+}
+
+// importPaths are the import paths the files of one service segment name.
 type importPaths struct {
 	Types      string
-	Transport  string
-	Routes     string
 	Service    string
 	Svccontext string
 }
 
-// outputSegFor returns the path segment, under an output base, that holds a
-// service's methods for the given group - [route.OutputSegment] under codegen's
-// own name. The rule (a non-empty @group REPLACES the service-name segment)
-// lives in the route package so the analyser's group-collision check compares
-// exactly the directory this function hands the emitters; two services claiming
-// one segment is rejected at analysis time as `service/group-collision`.
-func outputSegFor(svcName, group, style string) string {
-	return route.OutputSegment(svcName, group, style)
-}
-
-// serviceOutputDir returns projectRoot/output/<segment>, where the segment is
-// the @group (replacing the service name) or the service directory when
-// ungrouped. The single place per-method output directories are built so
-// transport handlers, the per-group errors helper, and service stubs all land
-// identically.
-func serviceOutputDir(projectRoot, output, svcName, group, style string) string {
-	return filepath.Join(projectRoot, output, filepath.FromSlash(outputSegFor(svcName, group, style)))
-}
-
-// typesImportRoot is the Go import path the generated types tree sits at.
-// Every types import is this root plus the DSL package name, so the rule
-// is decided here once for the per-service import paths, the cross-package
-// table and the event payload imports.
-func typesImportRoot(cfg *config.Config) string {
-	return goImportFromRel(cfg.Package, cfg.Output.Types)
-}
-
-// importPathsForGroup computes the Go import paths for one service+group. A
-// non-empty @group replaces the service-name segment on transport + service +
-// routes alike; pkg.Name drives types. Routes are emitted one file per group
-// (in the group's folder), so this group's routes path is the same segment as
-// its transport and service folders.
-func importPathsForGroup(cfg *config.Config, pkg *semantic.Package, svcName, group string) importPaths {
-	seg := outputSegFor(svcName, group, cfg.Output.FileCase)
+// segmentImports returns the import paths of segment seg of DSL package pkgName.
+func (o outputs) segmentImports(pkgName, seg string) importPaths {
 	return importPaths{
-		Types:      typesImportRoot(cfg) + "/" + pkg.Name,
-		Transport:  goImportFromRel(cfg.Package, cfg.Output.Transport) + "/" + seg,
-		Routes:     goImportFromRel(cfg.Package, cfg.Output.Routes) + "/" + seg,
-		Service:    goImportFromRel(cfg.Package, cfg.Output.Service) + "/" + seg,
-		Svccontext: goImportFromRel(cfg.Package, fileDirRel(cfg.Output.Svccontext)),
+		Types:      o.types.sub(pkgName).pkg,
+		Service:    o.service.sub(seg).pkg,
+		Svccontext: o.svccontext.pkg,
 	}
 }
 
-// methodGroups maps each of a service's method names to the @group that applies
-// to it: the primary block's @group for primary methods, and each extend block's
-// own @group for its methods - or, when an extend declares none, the primary's
-// @group (see [effectiveGroup]). "" means ungrouped (files stay at the service
-// root). Keyed by name (unique within a service) rather than pointer because
-// later passes - generic monomorphisation, the OpenAPI builder - hand codegen
-// cloned method values whose pointers no longer match the parsed block members.
-func methodGroups(svc *semantic.ServiceInfo) map[string]string {
-	return memberGroups(svc, func(d *ast.ServiceDecl) []string {
-		out := make([]string, 0, len(d.Members))
-		for _, m := range d.Methods() {
-			out = append(out, m.Name)
-		}
-		return out
-	})
+// methodFile is the file a method's handler and logic stub are written to.
+func methodFile(m *ast.Method, fileCase string) string {
+	return idents.FileName(m.Name, fileCase) + ".go"
 }
 
-// memberGroups maps each member name one block declares to the @group
-// that applies to it. names extracts the member kind's names, so methods
-// and events read the same group rule.
-func memberGroups(svc *semantic.ServiceInfo, names func(*ast.ServiceDecl) []string) map[string]string {
-	out := map[string]string{}
-	if svc == nil {
-		return out
-	}
-	primaryGroup := route.ServiceGroup(svc.Primary)
-	if svc.Primary != nil {
-		for _, n := range names(svc.Primary) {
-			out[n] = primaryGroup
-		}
-	}
-	for _, e := range svc.Extends {
-		g := route.EffectiveGroup(e, primaryGroup)
-		for _, n := range names(e) {
-			out[n] = g
-		}
-	}
-	return out
+// segment is the methods of one service under one @group, and the directory they generate into
+// under output.transport, output.service and output.routes.
+type segment struct {
+	pkg   *semantic.Package
+	name  string
+	svc   *semantic.ServiceInfo
+	group string // "" when ungrouped
+	dir   string
 }
 
-// distinctGroups returns the service's group set in deterministic order, with
-// the empty (ungrouped) group sorted first. Used to know which group folders
-// exist - one transport import + one errors helper per entry.
+// methods yields s's methods in source order.
+func (s segment) methods() iter.Seq[*ast.Method] {
+	return func(yield func(*ast.Method) bool) {
+		for _, m := range s.svc.Methods {
+			if semantic.MethodGroupOf(s.svc, m) == s.group && !yield(m) {
+				return
+			}
+		}
+	}
+}
+
+// segments yields pkg's services once per @group their methods use, in service and group order.
+func segments(pkg *semantic.Package, fileCase string) iter.Seq[segment] {
+	return func(yield func(segment) bool) {
+		for _, name := range pkg.ServiceNames() {
+			svc := pkg.Services[name]
+			for _, group := range distinctGroups(svc) {
+				if !yield(segment{pkg: pkg, name: name, svc: svc, group: group, dir: route.OutputSegment(name, group, fileCase)}) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// eachSegmentMethod calls fn with each method of pkg's services and the
+// segment it generates into, stopping at the first error.
+func eachSegmentMethod(pkg *semantic.Package, fileCase string, fn func(segment, *ast.Method) error) error {
+	for s := range segments(pkg, fileCase) {
+		for m := range s.methods() {
+			if err := fn(s, m); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// projectSegments is [segments] over proj's named packages, in name order.
+func projectSegments(proj *semantic.Project, fileCase string) iter.Seq[segment] {
+	return func(yield func(segment) bool) {
+		if proj == nil {
+			return
+		}
+		for _, name := range proj.PackageNames() {
+			pkg := proj.Packages[name]
+			if pkg == nil {
+				continue
+			}
+			for s := range segments(pkg, fileCase) {
+				if !yield(s) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// distinctGroups returns the @groups the service's methods use, sorted, "" first.
 func distinctGroups(svc *semantic.ServiceInfo) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, g := range methodGroups(svc) {
-		if !seen[g] {
-			seen[g] = true
-			out = append(out, g)
-		}
+	groups := make([]string, 0, len(svc.Methods))
+	for _, m := range svc.Methods {
+		groups = append(groups, semantic.MethodGroupOf(svc, m))
 	}
-	sort.Strings(out)
-	return out
+	slices.Sort(groups)
+	return slices.Compact(groups)
 }
 
-// groupAliasSuffix is the PascalCased join of a @group's path segments
-// ("admin/ops" → "AdminOps"), or "" for the ungrouped case. Import aliases that
-// must stay distinct per group append it to a stable base.
-func groupAliasSuffix(group string) string {
-	return idents.PascalCase(group)
-}
-
-// transportAlias derives the Go import alias a service's routes file uses for
-// one group's transport package. The ungrouped package keeps the bare
-// "transport" name; a grouped package appends the PascalCased group segments
-// ("v2" → "transportV2", "admin/ops" → "transportAdminOps") so several group
-// imports coexist without colliding.
+// transportAlias is a routes file's alias for a group's transport package ("transport", "transportV2").
 func transportAlias(group string) string {
-	return "transport" + groupAliasSuffix(group)
+	return "transport" + idents.PascalCase(group)
 }
 
-// renderDoc returns the user's leading `//` comments verbatim, with the
-// same `//` prefix added back. Each line becomes its own Go-level
-// comment line. `indent` is prepended to every emitted line so
-// field-level comments stay inside the struct body. Returns "" for an
-// empty doc slice so callers can concatenate unconditionally.
+// renderDoc renders doc as indented `//` comment lines, "" for none.
 func renderDoc(doc []string, indent string) string {
 	if len(doc) == 0 {
 		return ""
@@ -204,4 +235,13 @@ func renderDoc(doc []string, indent string) string {
 		lines[i] = indent + "// " + line + "\n"
 	}
 	return strings.Join(lines, "")
+}
+
+// docHead returns the lines that head a doc comment whose generated lines follow: the
+// declaration's description, then an empty line; none for a declaration without one.
+func docHead(desc []string) []string {
+	if len(desc) == 0 {
+		return nil
+	}
+	return slices.Concat(desc, []string{""})
 }

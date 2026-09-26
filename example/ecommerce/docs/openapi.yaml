@@ -361,8 +361,8 @@ components:
       type: string
     Customer:
       properties:
-        avatar:
-          format: binary
+        avatarUrl:
+          format: url
           type:
           - string
           - "null"
@@ -1073,9 +1073,7 @@ paths:
       - in: query
         name: cursor
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: limit
         required: true
@@ -1100,9 +1098,7 @@ paths:
       - in: query
         name: cursor
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: limit
         required: true
@@ -1113,15 +1109,11 @@ paths:
       - in: query
         name: category
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: tag
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       responses:
         "200":
           content:
@@ -1202,9 +1194,7 @@ paths:
       - in: query
         name: cursor
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: limit
         required: true
@@ -1572,9 +1562,7 @@ paths:
         schema:
           maxLength: 128
           minLength: 1
-          type:
-          - string
-          - "null"
+          type: string
       - in: header
         name: retryAfter
         required: true
@@ -1583,9 +1571,7 @@ paths:
       - in: cookie
         name: lastSeen
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       - in: cookie
         name: tier
         required: true
@@ -1632,9 +1618,7 @@ paths:
       - in: query
         name: status
         schema:
-          anyOf:
-          - $ref: '#/components/schemas/OrderStatus'
-          - type: "null"
+          $ref: '#/components/schemas/OrderStatus'
       requestBody:
         content:
           application/json:
@@ -1674,9 +1658,7 @@ paths:
       - in: query
         name: cursor
         schema:
-          type:
-          - string
-          - "null"
+          type: string
       - in: query
         name: limit
         required: true
@@ -1687,9 +1669,7 @@ paths:
       - in: query
         name: status
         schema:
-          anyOf:
-          - $ref: '#/components/schemas/OrderStatus'
-          - type: "null"
+          $ref: '#/components/schemas/OrderStatus'
       responses:
         "200":
           content:

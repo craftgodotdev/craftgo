@@ -1,10 +1,8 @@
 package lsp
 
 import (
-	"context"
 	"testing"
 
-	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 )
@@ -12,33 +10,45 @@ import (
 func formatDoc(t *testing.T, src string) []protocol.TextEdit {
 	t.Helper()
 	u := uri.New("file:///nowhere/t.craftgo")
-	srv := &Server{docs: map[uri.URI]*document{u: {text: src}}}
-	params := protocol.DocumentFormattingParams{TextDocument: protocol.TextDocumentIdentifier{URI: protocol.DocumentURI(u)}}
-	req, err := jsonrpc2.NewCall(jsonrpc2.NewNumberID(1), protocol.MethodTextDocumentFormatting, params)
+	srv := &server{docs: map[uri.URI]string{u: src}}
+	res, err := callHandler(t, srv, protocol.MethodTextDocumentFormatting, protocol.DocumentFormattingParams{
+		TextDocument: protocol.TextDocumentIdentifier{URI: u},
+	})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("handler error: %v", err)
 	}
-	var got []protocol.TextEdit
-	replier := func(_ context.Context, result interface{}, err error) error {
-		if err != nil {
-			t.Fatalf("handler error: %v", err)
-		}
-		got = result.([]protocol.TextEdit)
-		return nil
-	}
-	if err := srv.onFormatting(context.Background(), replier, req); err != nil {
-		t.Fatal(err)
-	}
-	return got
+	return res.([]protocol.TextEdit)
 }
 
-// A buffer the analyser rejects is left alone even when its layout is off;
-// the same layout formats once the error is gone.
+// The edit of a buffer whose lines end in a lone `\r` replaces all of it.
+func TestFormattingReplacesACarriageReturnBuffer(t *testing.T) {
+	src := "package p\r\rtype A {  x   string }\r"
+	edits := formatDoc(t, src)
+	if len(edits) != 1 || edits[0].Range.End != (protocol.Position{Line: 3}) {
+		t.Errorf("edits = %+v, want one ending past the last line end", edits)
+	}
+}
+
+// A buffer with an error gets no edit; the same layout without it gets one.
 func TestFormattingRefusesBuffersWithErrors(t *testing.T) {
 	if edits := formatDoc(t, "package p\n\ntype A {  x   Missing }\n"); len(edits) != 0 {
 		t.Errorf("buffer with a semantic error got %d edit(s)", len(edits))
 	}
 	if edits := formatDoc(t, "package p\n\ntype A {  x   string }\n"); len(edits) != 1 {
 		t.Errorf("clean buffer got %d edit(s), want 1", len(edits))
+	}
+}
+
+// Formatting a clean buffer replaces the whole document with its canonical
+// text.
+func TestFormattingProducesEdit(t *testing.T) {
+	dirty := "package x\n\ntype T {\n  id string\n}\n"
+	clean := "package x\n\ntype T {\n\tid string\n}\n"
+	edits := formatDoc(t, dirty)
+	if len(edits) != 1 {
+		t.Fatalf("edits = %+v, want one", edits)
+	}
+	if edits[0].Range != wholeDocumentRange(dirty) || edits[0].NewText != clean {
+		t.Errorf("edit = %+v, want the whole document replaced by %q", edits[0], clean)
 	}
 }

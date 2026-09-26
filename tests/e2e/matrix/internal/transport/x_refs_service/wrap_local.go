@@ -9,12 +9,13 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/x_refs_service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// WrapLocal returns the http.HandlerFunc for the
-// POST WrapLocal endpoint.
+// Pins a QUALIFIED GENERIC request with a LOCAL type-arg (xshared.XWrapInBag<XLocalItem>). The handler renders `var req xshared.XWrapInBag[types.XLocalItem]`, so it must keep the canonical `types` import for the local arg even though the outer type is cross-package - otherwise `undefined: types`.
+//
+// WrapLocal returns the POST WrapLocal handler.
 func WrapLocal(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req xshared.XWrapInBag[types.XLocalItem]
@@ -32,8 +33,6 @@ func WrapLocal(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

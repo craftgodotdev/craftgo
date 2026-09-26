@@ -10,7 +10,8 @@ import (
 // constraint with a schema form.
 func constraintNames() map[string]bool {
 	out := map[string]bool{}
-	for name, spec := range semantic.Registry {
+	for _, name := range semantic.Names() {
+		spec, _ := semantic.DecoratorSpec(name)
 		if spec.Constraint == 0 || spec.Constraint == semantic.ConstraintRuntime {
 			continue
 		}
@@ -19,9 +20,7 @@ func constraintNames() map[string]bool {
 	return out
 }
 
-// Every constraint with a schema form advertises a keyword. A constraint
-// deliberately absent from the document is classified ConstraintRuntime,
-// so the omission is a stated decision rather than a missing row.
+// schemaKeywords has a row for exactly the constraints with a schema form.
 func TestSchemaKeywordsCoverConstraints(t *testing.T) {
 	want := constraintNames()
 	for name := range want {

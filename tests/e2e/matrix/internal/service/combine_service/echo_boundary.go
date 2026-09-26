@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoBoundaryService carries the per-request state for the
-// EchoBoundary endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoBoundaryService runs CombineService.EchoBoundary for one request.
 type EchoBoundaryService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoBoundaryService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoBoundaryService binds EchoBoundaryService to ctx; its Logger carries ctx's trace ids.
 func NewEchoBoundaryService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoBoundaryService {
 	return &EchoBoundaryService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewEchoBoundaryService(ctx context.Context, svcCtx *svccontext.ServiceConte
 	}
 }
 
-// EchoBoundary is the service entry point. Replace the
-// TODO with the real implementation.
+// Echo the boundary-default matrix. Smoke tests assert that the pre-fill happens before req.Validate() so the defaulted values land in the response.
+//
+// EchoBoundary implements CombineService.EchoBoundary.
 func (l *EchoBoundaryService) EchoBoundary(req *types.DefaultsBoundary) (*types.DefaultsBoundary, error) {
 	// TODO: implement
 	return nil, nil

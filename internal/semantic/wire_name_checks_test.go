@@ -2,11 +2,6 @@ package semantic
 
 import "testing"
 
-// A wire name reused by a field promoted through a CROSS-package mixin
-// collides like a same-package one, matching the codegen binder's
-// cross-package flattening: otherwise the binder reads one wire value into
-// two fields and the OpenAPI carries a duplicate parameter.
-
 // A local @query and a cross-package-mixin @query sharing a wire name collide.
 func TestProjectDuplicateWireNameCrossPkgMixin(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
@@ -28,8 +23,7 @@ service S {
 	}
 }
 
-// Two different cross-package mixins that each bind the same wire name
-// collide even though neither field is visible to the per-package pass.
+// Two cross-package mixins binding one wire name collide.
 func TestProjectDuplicateWireNameTwoCrossPkgMixins(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/opts.craftgo": `package shared
@@ -51,8 +45,7 @@ service S {
 	}
 }
 
-// Header wire names case-fold across packages just like within one, so
-// `X-Trace` and a mixin's `@header("x-trace")` collide.
+// Header names fold case across packages: `X-Trace` and a mixin's `x-trace` collide.
 func TestProjectDuplicateWireNameCrossPkgHeaderCaseFold(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/meta.craftgo": `package shared
@@ -73,8 +66,7 @@ service S {
 	}
 }
 
-// Distinct wire names across the local body and a cross-package mixin do NOT
-// collide - the check must not false-positive on merely co-embedded bindings.
+// Distinct wire names in the host and a cross-package mixin do not collide.
 func TestProjectDuplicateWireNameCrossPkgClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/sort.craftgo": `package shared
@@ -95,8 +87,7 @@ service S {
 	}
 }
 
-// A purely same-package duplicate is reported EXACTLY once - by the
-// per-package pass. The cross-package twin must not double-report it.
+// A same-package duplicate wire name is reported once.
 func TestProjectDuplicateWireNameLocalReportedOnce(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/x.craftgo": `package shared
@@ -122,42 +113,37 @@ service S {
 	}
 }
 
-// An empty `@path("")` wire-name arg falls back to the field name rather
-// than false-rejecting the path-param check.
+// An empty `@path("")` falls back to the field name.
 func TestEmptyPathWireNameClean(t *testing.T) {
 	mustClean(t, `type Req { foo string @path("") }
 service S { get G /users/{foo} { request Req } }`)
 }
 
-// Two fields bound to case-variant HTTP header names (`X-Trace` / `x-trace`)
-// collide - net/http canonicalises both to one header.
+// Header names that differ only in case collide; net/http canonicalises both.
 func TestDuplicateWireNameHeaderCase(t *testing.T) {
 	expectError(t, `type R { a string @header("X-Trace")  b string @header("x-trace") }`, CodeDuplicateWireName)
 }
 
-// A wire binding promoted through a same-package mixin collides with a re-bind
-// of the same name in the host body.
+// A wire name promoted from a same-package mixin collides with the host's re-bind.
 func TestDuplicateWireNameMixin(t *testing.T) {
 	expectError(t, `type Base { a string @query("q") }
 type R { Base  b string @query("q") }`, CodeDuplicateWireName)
 }
 
-// An undecorated field auto-binding to a {segment} path collides with an
-// explicit @path of the same name on a sibling.
+// An auto-@path field collides with a sibling's explicit @path of the same name.
 func TestDuplicateAutoPathWireName(t *testing.T) {
 	expectError(t, `type R { id string  other string @path("id") }
 service S { get G /g/{id} { request R } }`, CodeDuplicateWireName)
 }
 
-// An undecorated field auto-binding to @query (body-less verb) collides with
-// an explicit @query of the same name.
+// An auto-@query field collides with a sibling's explicit @query of the same name.
 func TestDuplicateAutoQueryWireName(t *testing.T) {
 	expectError(t, `type R { sort string  order string @query("sort") }
 type Resp { ok bool }
 service S { get G /g { request R  response Resp } }`, CodeDuplicateWireName)
 }
 
-// Control: distinct wire names are clean.
+// Distinct wire names do not collide.
 func TestDistinctWireNamesClean(t *testing.T) {
 	expectNoCode(t, `type R { sortBy string @query("sortBy")  order string @query("order") }
 type Resp { ok bool }

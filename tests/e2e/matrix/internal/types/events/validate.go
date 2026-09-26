@@ -4,28 +4,30 @@ package events
 
 import (
 	"fmt"
+	"mime/multipart"
 	"reflect"
 	"unicode/utf8"
 )
 
-// Validate checks every field-level constraint declared on Envelope.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Envelope[T]) Validate() error {
 	if utf8.RuneCountInString(v.TraceID) < 1 {
 		return fmt.Errorf("traceId: length less than 1")
 	}
+	if absentValue(&v.Body) {
+		return fmt.Errorf("body: required")
+	}
 	if vv, ok := any(&v.Body).(interface{ Validate() error }); ok {
 		if err := vv.Validate(); err != nil {
-			return err
+			return fmt.Errorf("body: %w", err)
 		}
 	} else if err := validateValue(v.Body); err != nil {
-		return err
+		return fmt.Errorf("body: %w", err)
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on InventoryHeader.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *InventoryHeader) Validate() error {
 	if utf8.RuneCountInString(v.Sku) < 1 {
 		return fmt.Errorf("sku: length less than 1")
@@ -33,8 +35,7 @@ func (v *InventoryHeader) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ItemStocked.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ItemStocked) Validate() error {
 	if err := v.InventoryHeader.Validate(); err != nil {
 		return err
@@ -45,8 +46,7 @@ func (v *ItemStocked) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ShipmentDispatched.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ShipmentDispatched) Validate() error {
 	if err := v.ShipmentID.Validate(); err != nil {
 		return fmt.Errorf("shipmentId: %w", err)
@@ -57,8 +57,7 @@ func (v *ShipmentDispatched) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on StocktakeStarted.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *StocktakeStarted) Validate() error {
 	if v.Warehouse == 0 {
 		return fmt.Errorf("warehouse: required")
@@ -69,8 +68,7 @@ func (v *StocktakeStarted) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on TierPromoted.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *TierPromoted) Validate() error {
 	if v.Tier == 0 {
 		return fmt.Errorf("tier: required")
@@ -84,8 +82,7 @@ func (v *TierPromoted) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on WarehouseClosed.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *WarehouseClosed) Validate() error {
 	if v.Warehouse == 0 {
 		return fmt.Errorf("warehouse: required")
@@ -96,8 +93,7 @@ func (v *WarehouseClosed) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ShipmentID.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v ShipmentID) Validate() error {
 	if utf8.RuneCountInString(string(v)) < 1 {
 		return fmt.Errorf("length less than 1")
@@ -105,27 +101,34 @@ func (v ShipmentID) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Warehouse.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Warehouse) Validate() error {
 	switch v {
 	case WarehouseNorth, WarehouseSouth:
 	default:
-		return fmt.Errorf("invalid Warehouse value")
+		return fmt.Errorf("must be one of [1 2]")
 	}
 	return nil
 }
 
-// validateValue is the fallback for a generic type-parameter field whose
-// argument is a composite type. The direct `any(x).(Validate)` probe finds
-// a Validate() only when the argument type itself has one; when the
-// argument is a slice or map whose ELEMENT carries the constraint, this
-// walks the value and validates each leaf so the runtime enforces what the
-// OpenAPI schema advertises.
+// absentValue reports whether the type-parameter value p points to is a
+// missing `file` or `any`: a nil header or interface.
+func absentValue(p any) bool {
+	switch p := p.(type) {
+	case **multipart.FileHeader:
+		return *p == nil
+	case *any:
+		return *p == nil
+	}
+	return false
+}
+
+// validateValue validates each element of a composite type-parameter value.
 func validateValue(v any) error {
 	return validateReflect(reflect.ValueOf(v))
 }
 
+// validateReflect validates rv, else each element of a slice, array or map rv.
 func validateReflect(rv reflect.Value) error {
 	if !rv.IsValid() {
 		return nil
@@ -139,9 +142,7 @@ func validateReflect(rv reflect.Value) error {
 		}
 		return validateReflect(rv.Elem())
 	}
-	// A non-pointer value: probe the value form, then an addressable copy
-	// so a pointer-receiver Validate() is still found (map values and other
-	// non-addressable elements need the copy).
+	// A pointer-receiver Validate needs an addressable value, so a map value is copied.
 	if vv, ok := rv.Interface().(interface{ Validate() error }); ok {
 		return vv.Validate()
 	}

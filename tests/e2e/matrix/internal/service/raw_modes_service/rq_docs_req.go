@@ -4,14 +4,13 @@ package rawmodes
 
 import (
 	"context"
-	"net/http"
-
 	"errors"
 	"io"
-
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/rawmodes"
+	"net/http"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/rawmodes"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -24,7 +23,7 @@ type RqDocsReqService struct {
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewRqDocsReqService constructs a fresh service instance bound to ctx.
+// NewRqDocsReqService binds RqDocsReqService to ctx; its Logger carries ctx's trace ids.
 func NewRqDocsReqService(ctx context.Context, svcCtx *svccontext.ServiceContext) *RqDocsReqService {
 	return &RqDocsReqService{
 		Logger: log.Default().WithContext(ctx),

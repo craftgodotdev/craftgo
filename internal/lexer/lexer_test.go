@@ -1,13 +1,12 @@
 package lexer
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
-
-// ----- Position -----
 
 func TestPositionString(t *testing.T) {
 	if got := (Position{Filename: "x.craftgo", Line: 2, Column: 3}).String(); got != "x.craftgo:2:3" {
@@ -15,6 +14,9 @@ func TestPositionString(t *testing.T) {
 	}
 	if got := (Position{Line: 1, Column: 1}).String(); got != "1:1" {
 		t.Errorf("without filename: got %q", got)
+	}
+	if got := (Position{Filename: "craftgo.design.yaml"}).String(); got != "craftgo.design.yaml" {
+		t.Errorf("a file without a line: got %q", got)
 	}
 }
 
@@ -26,8 +28,6 @@ func TestPositionIsValid(t *testing.T) {
 		t.Error("expected invalid")
 	}
 }
-
-// ----- Kind -----
 
 func TestKindString(t *testing.T) {
 	if EOF.String() != "EOF" {
@@ -41,8 +41,6 @@ func TestKindString(t *testing.T) {
 	}
 }
 
-// ----- Token -----
-
 func TestTokenString(t *testing.T) {
 	tok := Token{Kind: Ident, Text: "foo", Pos: Position{Line: 1, Column: 1}}
 	s := tok.String()
@@ -50,8 +48,6 @@ func TestTokenString(t *testing.T) {
 		t.Errorf("got %q", s)
 	}
 }
-
-// ----- Diagnostic -----
 
 func TestDiagnosticError(t *testing.T) {
 	d := Diagnostic{Pos: Position{Line: 1, Column: 1}, Msg: "bad"}
@@ -69,7 +65,7 @@ func TestSeverityString(t *testing.T) {
 		{SeverityWarning, "warning"},
 		{SeverityInfo, "info"},
 		{SeverityHint, "hint"},
-		{Severity(99), "error"}, // unknown falls back to error
+		{Severity(99), "error"},
 	}
 	for _, c := range cases {
 		if got := c.s.String(); got != c.want {
@@ -106,14 +102,10 @@ func TestDiagnosticStructuredFields(t *testing.T) {
 	}
 }
 
-// ----- Helpers -----
-
 func first(t *testing.T, src string) Token {
 	t.Helper()
 	return New("", src).Next()
 }
-
-// ----- Basic flow -----
 
 func TestEOF(t *testing.T) {
 	if first(t, "").Kind != EOF {
@@ -141,8 +133,6 @@ func TestLineCommentToEOF(t *testing.T) {
 	}
 }
 
-// ----- Keywords -----
-
 func TestKeywords(t *testing.T) {
 	cases := map[string]Kind{
 		"package": KwPackage, "import": KwImport,
@@ -160,8 +150,6 @@ func TestKeywords(t *testing.T) {
 		}
 	}
 }
-
-// ----- Identifiers -----
 
 func TestIdent(t *testing.T) {
 	tok := first(t, "MyType")
@@ -181,8 +169,6 @@ func TestIdentMixed(t *testing.T) {
 		t.Error()
 	}
 }
-
-// ----- Numbers -----
 
 func TestInt(t *testing.T) {
 	tok := first(t, "42")
@@ -250,8 +236,6 @@ func TestBadNumberSuffix(t *testing.T) {
 	}
 }
 
-// ----- Strings -----
-
 func TestString(t *testing.T) {
 	tok := first(t, `"hello"`)
 	if tok.Kind != String || tok.Text != `"hello"` {
@@ -268,7 +252,7 @@ func TestStringEscapes(t *testing.T) {
 }
 
 func TestStringUnicodeEscape(t *testing.T) {
-	for _, c := range []string{`"\u{1F600}"`, `"\u{a}"`, `"\u{123456}"`} {
+	for _, c := range []string{`"\u{1F600}"`, `"\u{a}"`, `"\u{D7FF}"`, `"\u{E000}"`, `"\u{10FFFF}"`} {
 		if first(t, c).Kind != String {
 			t.Errorf("%q", c)
 		}
@@ -305,6 +289,10 @@ func TestStringBadUnicodeEscape(t *testing.T) {
 		`"\u{}"`,       // empty
 		`"\u{xyz}"`,    // bad hex
 		`"\u{1234567}`, // 7 chars, no closing }
+		`"\u{D800}"`,   // surrogate
+		`"\u{dfff}"`,   // surrogate
+		`"\u{110000}"`, // above U+10FFFF
+		`"\u{123456}"`, // above U+10FFFF
 	}
 	for _, c := range cases {
 		if first(t, c).Kind != Error {
@@ -313,7 +301,100 @@ func TestStringBadUnicodeEscape(t *testing.T) {
 	}
 }
 
-// ----- Raw string -----
+// Each reserved word lexes to its kind, whose String is the word; IsKeyword
+// holds for exactly the reserved words and IsVerb for the seven HTTP verbs.
+func TestKeywordPredicates(t *testing.T) {
+	verbs := 0
+	for k := EOF; k <= Dash; k++ {
+		_, reserved := keywords[k.String()]
+		if k.IsKeyword() != reserved {
+			t.Errorf("%v: IsKeyword = %v, reserved = %v", k, k.IsKeyword(), reserved)
+		}
+		if reserved {
+			if tok := first(t, k.String()); tok.Kind != k || tok.Text != k.String() {
+				t.Errorf("%q lexes as %+v", k.String(), tok)
+			}
+		}
+		if k.IsVerb() {
+			verbs++
+			if !k.IsKeyword() {
+				t.Errorf("verb %v is not a keyword", k)
+			}
+		}
+	}
+	if verbs != 7 {
+		t.Errorf("%d verbs, want 7", verbs)
+	}
+}
+
+// IsIdent accepts exactly what lexes as one Ident token.
+func TestIsIdent(t *testing.T) {
+	for s, want := range map[string]bool{
+		"email": true, "_x9": true, "X": true, "uuid": true,
+		"": false, "9x": false, "a-b": false, "a b": false, "héllo": false,
+		"null": false, "true": false, "service": false, "get": false,
+	} {
+		if got := IsIdent(s); got != want {
+			t.Errorf("IsIdent(%q) = %v, want %v", s, got, want)
+		}
+		toks := New("", s).Tokenize()
+		lexesAsIdent := len(toks) == 2 && toks[0].Kind == Ident && toks[0].Text == s
+		if lexesAsIdent != want {
+			t.Errorf("%q lexes as %v", s, toks)
+		}
+	}
+}
+
+// Unquote decodes the DSL's escapes, keeps a raw literal's content, and names
+// the first escape it rejects.
+func TestUnquote(t *testing.T) {
+	for _, c := range []struct {
+		in, want, err string
+	}{
+		{`""`, "", ""},
+		{`"abc"`, "abc", ""},
+		{`"a\nb\tc\rd"`, "a\nb\tc\rd", ""},
+		{`"a\"b\\c"`, "a\"b\\c", ""},
+		{`"\u{61}\u{7}\u{0}"`, "a\a\x00", ""},
+		{`"\u{1F600}"`, "\U0001F600", ""},
+		{`"\u{D7FF}\u{E000}\u{10FFFF}"`, "\ud7ff\ue000\U0010FFFF", ""},
+		{"\"zero\u200bwidth\"", "zero\u200bwidth", ""},
+		{"`^\\d+$`", `^\d+$`, ""},
+		{"`a\nb`", "a\nb", ""},
+		{`"\zbad"`, "", `invalid escape sequence \z`},
+		{`"\é"`, "", `invalid escape sequence \é`},
+		{`"\u nobrace"`, "", "invalid unicode escape"},
+		{`"\u{nobrace"`, "", "invalid unicode escape"},
+		{`"\u{}"`, "", "invalid unicode escape"},
+		{`"\u{ZZ}"`, "", "invalid unicode escape"},
+		{`"\u{1234567}"`, "", "invalid unicode escape"},
+		{`"\u{D800}"`, "", `unicode escape \u{D800} is outside the valid code points (0-D7FF, E000-10FFFF)`},
+		{`"a\u{dfff}"`, "", `unicode escape \u{dfff} is outside the valid code points (0-D7FF, E000-10FFFF)`},
+		{`"\u{110000}"`, "", `unicode escape \u{110000} is outside the valid code points (0-D7FF, E000-10FFFF)`},
+		{`"a\"`, "", "unterminated escape sequence"},
+		{`"`, "", `"\"" is not a string literal`},
+		{`abc`, "", `"abc" is not a string literal`},
+	} {
+		got, err := Unquote(c.in)
+		if c.err != "" {
+			if err == nil || err.Error() != c.err {
+				t.Errorf("Unquote(%q) error = %v, want %q", c.in, err, c.err)
+			}
+			continue
+		}
+		if err != nil || got != c.want {
+			t.Errorf("Unquote(%q) = %q, %v, want %q", c.in, got, err, c.want)
+		}
+	}
+}
+
+// A String token's text is what Unquote accepts, escapes as written.
+func TestStringTextIsTheSource(t *testing.T) {
+	src := `"a\u{7}\"b"`
+	if tok := first(t, src); tok.Kind != String || tok.Text != src {
+		t.Errorf("got %+v", tok)
+	}
+}
 
 func TestRawString(t *testing.T) {
 	if first(t, "`hello`").Kind != RawString {
@@ -332,8 +413,6 @@ func TestRawStringUnterminated(t *testing.T) {
 		t.Error()
 	}
 }
-
-// ----- Punctuation -----
 
 func TestPunct(t *testing.T) {
 	cases := map[string]Kind{
@@ -359,8 +438,6 @@ func TestUnknownChar(t *testing.T) {
 	}
 }
 
-// ----- Position tracking -----
-
 func TestPositionTracking(t *testing.T) {
 	l := New("test.craftgo", "foo\n  bar")
 	t1 := l.Next()
@@ -375,8 +452,6 @@ func TestPositionTracking(t *testing.T) {
 		t.Error("filename not preserved")
 	}
 }
-
-// ----- Tokenize -----
 
 func TestTokenize(t *testing.T) {
 	toks := New("", "type Foo").Tokenize()
@@ -393,8 +468,6 @@ func TestTokenize(t *testing.T) {
 		t.Error("token[2]")
 	}
 }
-
-// ----- Golden file -----
 
 func TestGoldenSample(t *testing.T) {
 	path, err := filepath.Abs("testdata/sample.craftgo")
@@ -415,9 +488,8 @@ func TestGoldenSample(t *testing.T) {
 	}
 }
 
-// TestLineCommentStripsCarriageReturn pins that a CRLF doc comment
-// does not carry a trailing '\r' into the token Doc (which becomes the
-// OpenAPI description).
+// TestLineCommentStripsCarriageReturn pins that a CRLF comment reaches Doc
+// without its '\r'.
 func TestLineCommentStripsCarriageReturn(t *testing.T) {
 	tok := New("", "// hello\r\nfoo").Next()
 	if tok.Text != "foo" {
@@ -425,5 +497,97 @@ func TestLineCommentStripsCarriageReturn(t *testing.T) {
 	}
 	if len(tok.Doc) != 1 || tok.Doc[0] != "hello" {
 		t.Errorf("CRLF comment must not leave a trailing CR; got Doc %q", tok.Doc)
+	}
+}
+
+// A comment after a token is recorded as trailing without a CRLF's '\r', in
+// order with the leading ones; a lone '\r' ends the line before a comment.
+func TestTrailingCommentStripsCarriageReturn(t *testing.T) {
+	l := New("", "foo // one\r\n// two\r\nbar \r// three\r\n")
+	toks := l.Tokenize()
+	if len(toks[1].Doc) != 1 || toks[1].Doc[0] != "two" {
+		t.Errorf("doc of bar = %q", toks[1].Doc)
+	}
+	var got []string
+	for _, c := range l.Comments() {
+		got = append(got, c.Kind.String()+":"+c.Text)
+	}
+	if want := "trailing:one leading:two leading:three"; strings.Join(got, " ") != want {
+		t.Errorf("comments = %q, want %q", got, want)
+	}
+}
+
+// A lone '\r' ends a line as '\n' and "\r\n" do: a source with any of the
+// three line ends lexes into the same tokens, docs and comments, at the same
+// lines and columns.
+func TestLoneCarriageReturnEndsALine(t *testing.T) {
+	lf := "package demo\ntype T {\n\tid string // why\n}\n// note\ntype U {\n\tname string\n}\n\n// detached\n\n// doc\ntype V {\n\tpath string @pattern(`a\nb`)\n}\n"
+	want := lexed(lf)
+	for name, src := range map[string]string{
+		"CR":    strings.ReplaceAll(lf, "\n", "\r"),
+		"CRLF":  strings.ReplaceAll(lf, "\n", "\r\n"),
+		"mixed": strings.Replace(strings.ReplaceAll(lf, "\n", "\r"), "\r", "\n", 3),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := lexed(src); got != want {
+				t.Errorf("lexed:\n%s\nwant:\n%s", got, want)
+			}
+		})
+	}
+	if tok := first(t, "\"a\rb\""); tok.Kind != Error || tok.Text != "newline in string literal" {
+		t.Errorf("a string across a lone CR: %v", tok)
+	}
+}
+
+// A UTF-8 byte-order mark at the start of the source is skipped: the first
+// token is at line 1, column 1, and nothing is reported. Anywhere else it is
+// an unexpected character.
+func TestByteOrderMarkIsSkipped(t *testing.T) {
+	l := New("", "\ufeff// doc\npackage p")
+	tok := l.Next()
+	if tok.Kind != KwPackage || tok.Pos.Line != 2 || tok.Pos.Column != 1 || len(tok.Doc) != 1 || tok.Doc[0] != "doc" {
+		t.Errorf("first token %+v", tok)
+	}
+	if c := l.Comments()[0]; c.Pos.Line != 1 || c.Pos.Column != 1 || c.Pos.Offset != len("\ufeff") {
+		t.Errorf("comment at %+v", c.Pos)
+	}
+	if d := l.Diagnostics(); len(d) > 0 {
+		t.Errorf("diagnostics: %v", d)
+	}
+	l = New("", "p \ufeff")
+	l.Tokenize()
+	if len(l.Diagnostics()) != 1 {
+		t.Errorf("a mark after the start: diagnostics %v", l.Diagnostics())
+	}
+}
+
+// lexed renders the tokens of src with their lines, columns and docs, then its
+// comments; a line end inside a token reads as "\n".
+func lexed(src string) string {
+	l := New("", src)
+	lineEnds := strings.NewReplacer("\r\n", "\n", "\r", "\n")
+	var b strings.Builder
+	for _, tok := range l.Tokenize() {
+		fmt.Fprintf(&b, "%s %q %d:%d %q\n", tok.Kind, lineEnds.Replace(tok.Text), tok.Pos.Line, tok.Pos.Column, tok.Doc)
+	}
+	for _, c := range l.Comments() {
+		fmt.Fprintf(&b, "%s %q %d:%d\n", c.Kind, c.Text, c.Pos.Line, c.Pos.Column)
+	}
+	for _, d := range l.Diagnostics() {
+		fmt.Fprintf(&b, "diagnostic %s\n", d.Error())
+	}
+	return b.String()
+}
+
+// The run right after a `/` is one PathWord, whatever its digits and dots; a
+// `{` there opens a variable, and a word set off by a space is lexed as usual.
+func TestPathWord(t *testing.T) {
+	var got []string
+	for _, tok := range New("", "/v1.0/2fa/{id}/raw.bin / type").Tokenize() {
+		got = append(got, tok.Kind.String()+":"+tok.Text)
+	}
+	want := []string{"/:/", "PathWord:v1.0", "/:/", "PathWord:2fa", "/:/", "{:{", "Ident:id", "}:}", "/:/", "PathWord:raw.bin", "/:/", "type:type", "EOF:"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("tokens = %v, want %v", got, want)
 	}
 }

@@ -5,25 +5,20 @@ package services
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// UpdateUserService carries the per-request state for the
-// UpdateUser endpoint of AccountUserService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// UpdateUserService runs AccountUserService.UpdateUser for one request.
 type UpdateUserService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewUpdateUserService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewUpdateUserService binds UpdateUserService to ctx; its Logger carries ctx's trace ids.
 func NewUpdateUserService(ctx context.Context, svcCtx *svccontext.ServiceContext) *UpdateUserService {
 	return &UpdateUserService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewUpdateUserService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// UpdateUser is the service entry point. Replace the
-// TODO with the real implementation.
+// UpdateUser implements AccountUserService.UpdateUser.
 func (l *UpdateUserService) UpdateUser(req *types.AcctUpdateUserReq) (*types.AcctUser, error) {
 	l.svcCtx.Lock()
 	defer l.svcCtx.Unlock()

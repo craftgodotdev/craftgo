@@ -12,11 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// Just append: inherits the full parent chain and adds extras.
-// The "admin endpoint needs auth + extras" pattern produces a deep
-// wrap (parent 4 + extra 2 = 6).
-// BulkExport returns the http.HandlerFunc for the
-// POST BulkExport endpoint.
+// Bulk export - admin only, extra body-limit/timeout on top of parent chain.
+//
+// BulkExport returns the POST BulkExport handler.
 func BulkExport(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListOrdersReq
@@ -39,8 +37,6 @@ func BulkExport(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

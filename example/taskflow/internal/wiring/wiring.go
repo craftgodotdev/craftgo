@@ -9,19 +9,13 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	"github.com/craftgodotdev/craftgo/example/taskflow/internal/routes"
-
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// Register attaches every HTTP route the design declares to srv. The
-// body varies with the design; this signature does not, so main.go -
-// written once - never needs editing. main.go calls it while the design
-// has a route, and the returned shutdown then runs beside srv.Stop.
+// Register registers the design's HTTP routes on srv.
 func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.ServiceContext) (func(context.Context) error, error) {
 	routes.RegisterAll(srv, svcCtx)
-	// An HTTP middleware the design applies but nothing wired is skipped
-	// by the chain rather than called, so the guarantee would be missing
-	// with nothing to notice. Fail here instead, naming the line to add.
+	// The chain skips a nil middleware, so an unwired one fails here.
 	if svcCtx.AccessLog == nil {
 		return nil, errors.New("wiring: the design declares `middleware AccessLog` and AdminService.ListTokens runs it, but svcCtx.AccessLog is nil - assign `svc.AccessLog = middleware.NewAccessLogMiddleware(/* args */)` in main.go")
 	}

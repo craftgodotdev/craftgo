@@ -2,6 +2,15 @@
 
 package prefixvar
 
+type BlobInfo struct {
+	Key string `json:"key"`
+}
+
+// BlobReq: key auto-binds to the trailing {key...} variable.
+type BlobReq struct {
+	Key string `json:"key"`
+}
+
 // TenantCreateReq: tenantID again auto-binds to the @prefix path segment;
 // name is the only body field.
 type TenantCreateReq struct {

@@ -6,14 +6,12 @@ import (
 	"context"
 
 	"github.com/craftgodotdev/craftgo/pkg/rpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/greeter"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
-// Ping serves the unary RPC /grpcmatrix.Greeter/Ping: it hands the
-// call context to the logic and maps the error it returns onto a status,
-// as the HTTP handler does with WriteError.
+// Ping serves the unary RPC /grpcmatrix.Greeter/Ping.
 func (s *Server) Ping(ctx context.Context, req *emptypb.Empty) (*emptypb.Empty, error) {
 	if err := rpc.Validate(req); err != nil {
 		return nil, err

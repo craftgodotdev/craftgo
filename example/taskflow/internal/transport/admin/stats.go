@@ -11,8 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// Stats returns the http.HandlerFunc for the
-// GET Stats endpoint.
+// Server + storage counters for the admin dashboard. Public within the admin surface.
+//
+// Stats returns the GET Stats handler.
 func Stats(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewStatsService(r.Context(), svcCtx)
@@ -21,7 +22,6 @@ func Stats(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

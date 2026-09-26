@@ -4,10 +4,12 @@ The craftgo DSL is a small file format that describes your API. From it, craftgo
 
 ## At a glance
 
-A `.craftgo` file has three things:
+A `.craftgo` file has two parts:
 
-1. A `package` line (mandatory)
-2. Declarations: `type`, `enum`, `scalar`, `error`, `service`, `middleware`
+1. A `package` line, first in the file - only comments and the file-level decorators `@doc`, `@deprecated` and `@version` may come before it. A file that imports or declares anything without one is rejected as `package/missing` at its first import or declaration; a file holding only comments needs none. The name is also the generated Go package's, so a Go keyword, a predeclared Go identifier such as `int` or `len`, `main`, `init` and `_` are rejected as `package/name`
+2. Declarations: `type`, `enum`, `scalar`, `error`, `service` (and `extend service`), `middleware`, `event`
+
+Declaration names start with an upper-case letter: a lower-case `type`, `enum`, `scalar`, `error`, `middleware`, `event` or method name is rejected as `decl/name-case` (the Go identifier generated from it would be unexported); a lower-case service name only warns. Type parameter names follow the same rule (`type Page<T>`, not `<t>`).
 
 Every declaration produces specific generated code. The DSL is the single source of truth: change a field once, every generated artifact updates.
 
@@ -17,6 +19,12 @@ package design
 type CreateUserReq {
     name  string @length(1, 80)
     email string @format(email)
+}
+
+type User {
+    id    string
+    name  string
+    email string
 }
 
 @prefix("/v1")
@@ -32,10 +40,11 @@ This page covers the syntax. For per-decorator detail see [Decorators](/guide/de
 
 ## File layout
 
-A craftgo project keeps DSL files under a `design/` folder. Each subfolder is one logical package.
+A craftgo project keeps its DSL files under one design folder - the folder holding `craftgo.design.yaml`, `design/` by default. A package is every file that declares the same `package` name, in any subfolder; one subfolder per package is the usual layout.
 
 ```
 design/
+├── craftgo.design.yaml
 ├── users/
 │   ├── service.craftgo
 │   └── errors.craftgo
@@ -43,7 +52,7 @@ design/
     └── service.craftgo
 ```
 
-Files in the same subfolder share one package and see each other's declarations directly. To use a declaration from another subfolder, just qualify it with that package's name (`shared.Type`) - cross-package references resolve automatically, no import needed.
+Files that declare the same package see each other's declarations directly, whatever their folder. To use a declaration from another package, qualify it with that package's name (`shared.Type`) - cross-package references resolve automatically, no import needed.
 
 ## Seven declaration kinds
 
@@ -66,7 +75,7 @@ type User       { id string  name string }
 enum Status     { Active  Inactive }
 scalar Email    string @format(email)
 error NotFound  UserNotFound
-service UserService { ... }
+service UserService {}
 middleware Auth
 event UserCreated { payload User }
 ```
@@ -89,7 +98,7 @@ type CreateUserReq {
 }
 ```
 
-Field syntax: `name TypeRef [@decorator(...) ...]`. Type references are primitives, arrays (`T[]`), maps (`map<K, V>`), or other declared types. Append `?` to mark optional.
+Field syntax: `name TypeRef [@decorator(...) ...]`. Type references are primitives, arrays (`T[]`), maps (`map<K, V>`), or other declared types. Append `?` to mark optional. A `type` always has a body: `type T` alone is a parse error.
 
 | DSL form           | Go output                |
 | ------------------ | ------------------------ |
@@ -98,7 +107,7 @@ Field syntax: `name TypeRef [@decorator(...) ...]`. Type references are primitiv
 | `float64`          | `float64`                |
 | `bool`             | `bool`                   |
 | `bytes`            | `[]byte`                 |
-| `T?`               | `*T`                     |
+| `T?`               | `*T` (an optional array, map or `bytes` stays `[]T` / `map[K]V` / `[]byte`, nil when absent) |
 | `T[]`              | `[]T`                    |
 | `map<K, V>`        | `map[K]V`                |
 | `Custom`           | `Custom` (your type)     |
@@ -117,7 +126,9 @@ type CreateUserReq {
 }
 ```
 
-50 decorators total, grouped by purpose: validators, bindings, metadata, service-level. Full reference at [Decorators](/guide/decorators).
+52 decorators, grouped by purpose: validators, bindings, metadata, service-level. Full reference at [Decorators](/guide/decorators).
+
+A field's decorators follow its type and may continue on the lines below: every decorator up to the next field name belongs to the field above it, blank lines included - `@doc(...)` written on its own line between fields `a` and `b` decorates `a` (`craftgo fmt` moves it onto `a`'s line). Only the first field of a body takes decorators from the lines above it. Enum values work the same way, except that a decorator above the first value is an error. A declaration's or method's decorators go before its keyword; one after a declaration or method on the same line is a parse error (`decorator @doc follows a declaration on its line; a decorator goes before what it decorates`) unless the next declaration starts on that line. A decorator cannot be another decorator's argument: `@doc(@deprecated)` is a parse error (`a decorator cannot be an argument of @doc`).
 
 ## Services
 
@@ -142,13 +153,15 @@ service UserService {
 }
 ```
 
-Method form: `<verb> <Name> <path> { request <Type>  response <Type> }`.
+Method form: `<verb> <Name> [<path>] { request <Type>  response <Type> }`; both clauses are optional, and without a path the route is the method name in kebab case (`get NoPath { ... }` serves `/no-path`).
+
+Each method writes `<name>.go` holding `<Name>Service` and its constructor `New<Name>Service` into its service's directory, so the methods of one directory may not write one file (`GetURL` beside `GetUrl`) or one Go name (`Order` beside `NewOrder`), and no method is named `Logger`, the `log.Logger` every logic type embeds: `service/method-name-clash`. Nor may the file be one the go command sets apart: under the default `snake` file case `RunTest` writes `run_test.go`, built only for tests, and `ListWindows` writes `list_windows.go`, built only on Windows (`service/method-file-name`).
 
 Verbs: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. `trace` and `connect` are not supported.
 
-**Request and response types are single named structs only.** Generic instantiations such as `response Page<Order>` work; bare-array forms (`response Order[]`) and optional markers (`response User?`) do not - wrap the shape in a struct (`type Items { items Order[] }`) and reference that struct instead.
+**A `request` names a `type`** (a generic instantiation such as `Page<Order>` included); **a `response` names a `type`, an enum or a scalar.** Bare arrays (`response Order[]`), optional markers (`response User?`) and built-in primitives (`response string`) are rejected in both clauses - wrap the shape in a type (`type Items { items Order[] }`) and reference that instead.
 
-Path parameters use `{name}` and bind to fields with `@path`:
+Path parameters use `{name}` and bind to the request field of that name (`@path` makes it explicit, `@path("name")` binds a field named otherwise):
 
 ```craftgo
 type GetUserReq {
@@ -156,7 +169,7 @@ type GetUserReq {
 }
 ```
 
-A path that declares `{name}` segments requires a request struct whose fields cover every segment; otherwise the route would parse the URL but the handler would never see the value, so the semantic phase rejects it with `path/param-missing`. The exception is a raw-request method (`@rawRequest` / `@passthrough`) with no request block: logic receives the raw `*http.Request` and reads the value with `r.PathValue`. A trailing slash (`/users/`) is a parse error: the route is built from segments, and a `net/http` pattern ending in `/` would match a whole subtree.
+A path that declares `{name}` segments requires a request struct whose fields cover every segment; otherwise the route would parse the URL but the handler would never see the value, so the semantic phase rejects it with `path/param-missing`. The exception is a raw-request method (`@rawRequest` / `@passthrough`) with no request block: logic receives the raw `*http.Request` and reads the value with `r.PathValue`. A literal segment holds letters, digits, `-`, `.`, `_` and `~`, so `/.well-known/jwks.json`, `/v1.0/users` and `/reports/2024` are routes as written; a segment of `.` or `..` alone is `route/pattern`, since `net/http` cleans it out of a request path. A trailing slash (`/users/`) is a parse error: the route is built from segments, and a `net/http` pattern ending in `/` would match a whole subtree.
 
 ### Extending a service across files
 
@@ -217,11 +230,11 @@ The extend block's `@middlewares` / `@security` decorators apply to every method
 **Rules** (enforced at gen time with a diagnostic, not silently):
 
 - The primary `service` block declares `@prefix` (the URL prefix is whole-service).
-- `extend service` blocks may carry **method-level-applicable** decorators (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@doc`) plus `@group` (which nests that block's own methods on disk). `@prefix` on an extend raises `service/extend-decorator-not-method`.
-- The extended service must already be declared somewhere in the **same package** (same design subfolder); a cross-package extend raises `service/extend-orphan`.
+- `extend service` blocks may carry **method-level-applicable** decorators (any decorator a method takes, such as `@middlewares`, `@security`, `@tags` or `@timeout`, which every method of the block inherits) plus `@group` (which moves that block's own methods into the group's directory). `@prefix` on an extend raises `service/extend-decorator-not-method`, as does `@operationId`, which names a single operation.
+- The extended service must be declared in the **same package** - a file declaring the same `package` name, in any folder, before or after the extend block; an extend whose primary lives in another package raises `service/extend-orphan`.
 - Multiple `extend` blocks for the same service are allowed (one per file is the typical pattern). Each block contributes its own decorators only to its own methods.
 
-The extended methods inherit every service-level decorator from the primary AND every decorator on the extend block. Method-level decorators of the same kind (`@middlewares`, `@security`, `@tags`) append; use `@ignoreMiddleware` / `@ignoreSecurity` / `@ignoreTags` to drop the inherited chain for one specific method.
+The extended methods inherit every service-level decorator from the primary AND every decorator on the extend block. Method-level decorators of the same kind (`@middlewares`, `@security`, `@tags`) append; use `@ignoreMiddleware` / `@ignoreSecurity` / `@ignoreTags` to drop the inherited chain for one specific method, or on the extend block to drop the primary's chain for every method of the block.
 
 See [Decorators - Service-level decorators and inheritance](/guide/decorators#service-level-decorators-and-inheritance) for the full combine semantics and combinations cheatsheet.
 
@@ -285,14 +298,14 @@ middleware AuthRequired
 middleware RateLimit
 
 @middlewares(AuthRequired, RateLimit)
-service UserService { ... }
+service UserService {}
 ```
 
 See [Middleware](/guide/middleware).
 
 ## Cross-package references
 
-Reference a declaration from another folder by qualifying it with that package's name - no import line needed:
+Reference a declaration from another package by qualifying it with that package's name - no import line needed (the same package in another folder needs no qualifier):
 
 ```craftgo
 package design
@@ -304,17 +317,28 @@ type User {
 
 The codegen wires the matching Go imports automatically.
 
+Each package's types are one Go package, so two packages cannot reference each other's types in a cycle: `design` using `shared.Contact` while `shared` uses a `design` type is rejected as `ref/package-cycle`. An event payload does not count - events are generated outside the types packages.
+
 ## Comments
 
-`//` line comments. Comments above a declaration become its doc string and surface in OpenAPI:
+`//` line comments. Comments above a declaration become its doc string: the OpenAPI description, the Go doc of the generated declaration and the editor hover:
 
 ```craftgo
 // User is the public user entity.
 // Email is the canonical login id.
-type User { ... }
+type User {}
 ```
 
-`//` only - no `/* */`.
+Below a declaration's decorators, the comment right above its keyword joins the doc too, after the one above the decorators:
+
+```craftgo
+// Order is a placed order.
+@deprecated
+// Use Purchase instead.
+type Order {}
+```
+
+A blank line between that comment and the keyword leaves it out of the doc. `//` only - no `/* */`. A line ends at `\n`, `\r\n` or a lone `\r`, and a UTF-8 byte-order mark opening a file is skipped.
 
 ## Next
 

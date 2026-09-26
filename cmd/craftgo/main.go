@@ -1,25 +1,5 @@
-// Command craftgo is the CLI entrypoint that drives the design-first
-// pipeline: locate the project manifest, parse every `.craftgo` source
-// file and compile every `.proto` beside it, run semantic analysis, and
-// dispatch each codegen artefact.
-//
-// Usage:
-//
-//	craftgo init [path]
-//	craftgo gen  [-f <design-folder>] [-c|--context <project-root>] [path]
-//	craftgo fmt  [path] [-l] [-w]
-//
-// `init` scaffolds a fresh design folder at <path> (default `design`).
-// The path argument IS the design folder - the manifest lands flat
-// inside it. An existing manifest is left alone and the command does
-// nothing.
-//
-// `gen` resolves the design folder one of two ways: with `-f` it uses
-// the supplied path directly; without it walks upward from <path> (or
-// cwd) looking for a craftgo.design.yaml, probing direct subdirs of
-// any name at each level. The project root the `output:` paths
-// resolve against is `-c <root>` when given, else cwd in the `-f`
-// flow, else the parent of the manifest folder (legacy compat).
+// Command craftgo scaffolds a design folder (init), generates a Go project and
+// its OpenAPI document from it (gen), and formats its design files (fmt).
 package main
 
 import (
@@ -28,10 +8,8 @@ import (
 	"os"
 )
 
-// version is the CLI's reported version. The source value is the fallback for
-// `go install`; release builds inject the git tag via
-// `-ldflags="-X main.version=<tag>"` (see .goreleaser.yaml), so it must be a
-// var - `-X` cannot write a const.
+// version is the reported version; release builds set it with
+// `-ldflags="-X main.version=<tag>"`, which needs a var, not a const.
 var version = "1.9.0"
 
 func main() {
@@ -61,31 +39,40 @@ func main() {
 	if err == nil {
 		return
 	}
-	// `-h` / `--help` returns this sentinel - flag package already
-	// printed the per-subcommand usage; exit 0 without piling on
-	// our "craftgo: …" prefix.
 	if errors.Is(err, errHelpRequested) {
 		return
 	}
-	fmt.Fprintln(os.Stderr, "craftgo: "+err.Error())
+	if !errors.Is(err, errFilesDiffer) {
+		fmt.Fprintln(os.Stderr, "craftgo: "+err.Error())
+	}
+	var ue usageError
+	if errors.As(err, &ue) {
+		fmt.Fprintln(os.Stderr, "\nUsage:\n"+ue.usage)
+	}
 	os.Exit(1)
 }
 
-// usage prints a short command summary to stdout. Verbose enough to remind
-// returning users of the positional-path convention but not so detailed that
-// it becomes a maintenance burden - full docs live in the README.
+// usage prints the command summary to stdout.
 func usage() {
 	fmt.Println(`craftgo - design-first Go API framework
 
 Usage:
-  craftgo init [path]
+` + commandUsage["init"] + "\n\n" + commandUsage["gen"] + "\n\n" + commandUsage["fmt"] + `
+
+  craftgo version         Print the CLI version
+  craftgo help            Show this message`)
+}
+
+// commandUsage holds each command's part of the usage text; `help` prints
+// them all and `<command> -h` its own.
+var commandUsage = map[string]string{
+	"init": `  craftgo init [path]
                           Scaffold a design folder at <path> (default: 'design').
                           The supplied path IS the design folder - the manifest
                           (craftgo.design.yaml) lands flat inside it. The Go
                           module path is read from go.mod at gen time, so init
-                          itself does not need a -package flag.
-
-  craftgo gen [-f <design-folder>] [-c|--context <project-root>] [path]
+                          itself does not need a -package flag.`,
+	"gen": `  craftgo gen [-f <design-folder>] [-c|--context <project-root>] [path]
                           Generate types, handlers, routes, OpenAPI from
                           .craftgo files, and the pb code, gRPC server layer
                           and logic stubs from .proto files in the same
@@ -100,21 +87,21 @@ Usage:
                                            narrowed run leaves the other
                                            targets' output untouched.
                             -c, --context  project root the output: paths
-                                           resolve against (defaults to cwd
-                                           when -f is given, otherwise to
-                                           the parent of the manifest dir)
+                                           resolve against (default: the
+                                           parent of the design folder)
                           Without -f, walks upward from <path> (or cwd) for
                           craftgo.design.yaml, probing direct subdirs (any
                           name) at each level. The Go module path is read
                           from go.mod, walking up from the project root -
                           run "go mod init <module>" first if it does not
-                          exist yet.
-
-  craftgo fmt [path] [-l] [-w]
-                          Canonical-format .craftgo files (default: write back)
-
-  craftgo version         Print the CLI version
-  craftgo help            Show this message
-
-For 'fmt', path may be a single file or a directory (recursed for *.craftgo).`)
+                          exist yet.`,
+	"fmt": `  craftgo fmt [-l] [-w] [path]
+                          Canonical-format the design files (.craftgo, .cg)
+                          under <path> (default: cwd), or the file it names.
+                          A file with an error is reported and left untouched.
+                          Flags:
+                            -l   list the files that differ, write nothing,
+                                 and exit 1 if any differ
+                            -w   write the result back (the default; with
+                                 -l, list and write)`,
 }

@@ -4,20 +4,20 @@ package collections
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/collections"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RegisterRoutes wires every Collections endpoint onto srv. Patterns
-// use the Go 1.22 method-prefixed form so VERB and path match together;
-// service prefix and OpenAPI basePath are baked in. Methods declaring
-// `@middlewares(...)` are wrapped via the corresponding fields on
-// ServiceContext (embedded Middlewares struct), so no runtime name
-// lookup is required - the values come pre-wired.
+// RegisterRoutes registers the Collections routes on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/collections/array-bounds", transport.ArrayBounds(svcCtx))
 	srv.Handle("POST /api/collections/tag-slice", transport.TagSlice(svcCtx))
 	srv.Handle("POST /api/collections/multi-dim", transport.MultiDim(svcCtx))
 	srv.Handle("POST /api/collections/map-key-value", transport.MapKeyValue(svcCtx))
 	srv.Handle("POST /api/collections/map-struct", transport.MapStruct(svcCtx))
+	srv.Handle("POST /api/collections/array-of-maps", transport.EchoArrayOfMaps(svcCtx))
+	srv.Handle("POST /api/collections/nested-maps", transport.EchoNestedMaps(svcCtx))
+	srv.Handle("POST /api/collections/scalar-key-map", transport.EchoScalarKeyMap(svcCtx))
+	srv.Handle("POST /api/collections/optional-values", transport.EchoOptionalValues(svcCtx))
 }

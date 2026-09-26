@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ValidateAllFormats returns the http.HandlerFunc for the
-// POST ValidateAllFormats endpoint.
+// Validate every @format(name) in the catalogue. The request body is AllFormats - one field per format - so a malformed value in any slot fails the boundary check.
+//
+// ValidateAllFormats returns the POST ValidateAllFormats handler.
 func ValidateAllFormats(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.AllFormats
@@ -31,8 +32,6 @@ func ValidateAllFormats(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

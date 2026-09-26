@@ -10,9 +10,9 @@ package tasks
 type TaskCreated {
 	taskId    shared.ID
 	projectId shared.ID
-	title     string @length(1, 200)
+	title     string    @length(1, 200)
 	priority  Priority
-	createdAt string @format(datetime)
+	createdAt string    @format(datetime)
 }
 
 // TaskStatusChanged reports a transition. Both ends of the move are
@@ -22,7 +22,7 @@ type TaskStatusChanged {
 	projectId shared.ID
 	from      TaskStatus
 	to        TaskStatus
-	changedAt string @format(datetime)
+	changedAt string     @format(datetime)
 }
 
 @doc("A task was created.")

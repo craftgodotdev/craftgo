@@ -5,25 +5,20 @@ package services
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// LoginService carries the per-request state for the
-// Login endpoint of AccountService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// LoginService runs AccountService.Login for one request.
 type LoginService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewLoginService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewLoginService binds LoginService to ctx; its Logger carries ctx's trace ids.
 func NewLoginService(ctx context.Context, svcCtx *svccontext.ServiceContext) *LoginService {
 	return &LoginService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewLoginService(ctx context.Context, svcCtx *svccontext.ServiceContext) *Lo
 	}
 }
 
-// Login is the service entry point. Replace the
-// TODO with the real implementation.
+// Log in - public, only inherits rate limiting.
+//
+// Login implements AccountService.Login.
 func (l *LoginService) Login() (*types.AccountLoginResp, error) {
 	// TODO: implement
 	return nil, nil

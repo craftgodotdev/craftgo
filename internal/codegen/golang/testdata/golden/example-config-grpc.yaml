@@ -3,9 +3,10 @@
 # your environment, and commit the example only (the live file
 # typically lives in `.gitignore` or is rendered from secrets/CI).
 #
-# This file is the single source of truth: per-environment overrides
-# go in `config.yaml` itself (one file per env, mounted by the
-# deployer). No environment variables are read.
+# Per-environment overrides go in `config.yaml` itself (one file per
+# env, mounted by the deployer). craftgo reads no environment variable,
+# but the OpenTelemetry SDK reads its own OTEL_* variables, such as
+# OTEL_EXPORTER_OTLP_HEADERS and OTEL_TRACES_SAMPLER.
 # gRPC listener. The stats handler emits the spans and
 # rpc.server.call.duration against the telemetry stack configured below.
 # handlerTimeout bounds unary calls only; streams are not bounded.
@@ -14,9 +15,9 @@ grpc:
   handlerTimeout: 0s          # default deadline for unary RPCs; 0 = no cap
   reflection: true            # serve grpc.reflection for grpcurl/grpcui; off on public listeners
 
-# Process-wide logger. main.go feeds level to log.SetLevel, which retunes
-# the server and the generated logic layer together. Format (JSON vs
-# console) is chosen in main.go, not here.
+# Process-wide logger: main.go passes level to log.SetLevel, for the
+# server and the generated logic alike. The default logger writes JSON
+# lines; install another with log.SetDefault.
 logging:
   level: info                 # debug | info | warn | error; unknown → info
 
@@ -26,9 +27,9 @@ logging:
 # below, but only do that to report under a different name on purpose.
 serviceName: app
 
-# Distributed tracing via OpenTelemetry. Note that the HTTP middleware
-# emits BOTH signals from one wrapper, so `enabled: false` here stops the
-# SPANS, not the http.server.* metrics - those follow metrics.enabled.
+# Distributed tracing via OpenTelemetry. The server instrumentation emits
+# both signals from one wrapper, so `enabled: false` here stops the spans,
+# not the request metrics - those follow metrics.enabled.
 otel:
   enabled: true               # false → no spans, no traceparent header
   exporter: none              # none | stdout | otlp_grpc | otlp_http
@@ -45,5 +46,5 @@ metrics:
                               # gRPC example: "otel-collector.observability:4317"
                               # HTTP example: "http://collector:4318"
   serviceName: ""             # overrides the top-level serviceName for metrics
-  adminAddr: ":9090"          # bind address for /metrics scrape (prometheus only)
+  adminAddr: ":9090"          # scrape listener address (prometheus only); empty → no listener
   path: /metrics              # route the scrape is exposed on (prometheus only)

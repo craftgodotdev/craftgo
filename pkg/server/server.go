@@ -1,7 +1,6 @@
-// Package server is the thin `net/http` wrapper that craftgo's generated
-// routes register against. It owns a `*http.ServeMux`, a middleware stack,
-// configurable JSON codec / logger, default per-method limits, and the
-// `Start`/`Stop` lifecycle.
+// Package server is craftgo's HTTP runtime: [Server], a ServeMux with middleware, health
+// probes and server-wide limits, plus the JSON codec, error rendering and request-binding
+// helpers that handlers use.
 package server
 
 import (
@@ -14,8 +13,8 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// Server is craftgo's runtime. Methods follow a fluent style so a project
-// `main.go` can chain configuration calls before `Start()`.
+// Server is an HTTP server around a ServeMux; configure it and register routes before
+// [Server.Start]. Its methods are safe for concurrent use.
 type Server struct {
 	mu sync.Mutex
 
@@ -23,9 +22,7 @@ type Server struct {
 	chain   []Middleware
 	httpSrv *http.Server
 
-	logger Logger
-	codec  JSONCodec
-	cors   *CORSOptions
+	cors *CORSOptions
 
 	defaultReadTimeout    time.Duration
 	defaultWriteTimeout   time.Duration
@@ -39,68 +36,31 @@ type Server struct {
 
 	registeredMW map[string]Middleware
 
-	// notFound is the handler invoked when a request reaches the
-	// mux without matching any registered route. nil means "use the
-	// stdlib default" (`404 page not found` plain-text body).
-	notFound http.Handler
+	notFound  http.Handler
+	telemetry Middleware
 }
 
-// Logger aliases the public Logger interface so handler-internal code does
-// not need a second import.
+// Logger is an alias of [log.Logger].
+//
+// Deprecated: use [log.Logger].
 type Logger = log.Logger
 
-// Middleware wraps an http.Handler. Order: outermost first, so the slice is
-// applied in reverse during Start.
+// Middleware wraps an http.Handler.
 type Middleware func(http.Handler) http.Handler
 
 // Option configures a Server at construction time.
 type Option func(*Server)
 
-// DefaultLivenessPath / DefaultReadinessPath are the health routes a fresh
-// [Server] mounts. Exported so other layers (the analyzer's reserved-route
-// check) can reference the same values instead of re-spelling them.
-const (
-	DefaultLivenessPath  = "/healthz"
-	DefaultReadinessPath = "/readyz"
-)
-
-// HealthPaths is the override pair for [DefaultLivenessPath] and
-// [DefaultReadinessPath].
-type HealthPaths struct {
-	Liveness  string
-	Readiness string
-}
-
-// healthCheck pairs a probe function with its timeout.
-type healthCheck struct {
-	timeout time.Duration
-	fn      func(context.Context) error
-}
-
-// WithHealthPaths overrides the default `/healthz` and `/readyz` routes.
-func WithHealthPaths(p HealthPaths) Option {
-	return func(s *Server) { s.healthPaths = p }
-}
-
-// WithoutDefaultHealth disables the auto-registered health endpoints.
-func WithoutDefaultHealth() Option { return func(s *Server) { s.noHealth = true } }
-
-// New returns a Server with sensible defaults: JSON codec, slog logger,
-// `/healthz` + `/readyz` health probes, no rate-limit, no CORS. Pass any
-// number of [Option] values to override.
-//
-// `_` is the project's ServiceContext; it's accepted only to mirror the
-// documented constructor signature - the runtime doesn't introspect it.
+// New returns a Server with the health probes, a 30s read timeout and a 32 KB header cap,
+// then applies opts. The first argument is ignored.
 func New(_ any, opts ...Option) *Server {
 	s := &Server{
 		mux:                http.NewServeMux(),
-		logger:             log.New(),
-		codec:              defaultCodec{},
 		healthChecks:       map[string]healthCheck{},
 		healthPaths:        HealthPaths{Liveness: DefaultLivenessPath, Readiness: DefaultReadinessPath},
 		registeredMW:       map[string]Middleware{},
 		defaultReadTimeout: 30 * time.Second,
-		defaultMaxBodySize: 0, // no global body cap by default; opt in via SetDefaultMaxBodySize
+		defaultMaxBodySize: 0,
 		defaultMaxHeaderKB: 32,
 	}
 	for _, o := range opts {
@@ -109,12 +69,22 @@ func New(_ any, opts ...Option) *Server {
 	return s
 }
 
-// Mux returns the underlying `*http.ServeMux`. Generated routes call
-// HandleFunc directly via the mux to keep the dependency surface small.
+// WithTelemetry installs mw, such as the telemetry stack's HTTPMiddleware, outside [Recovery]
+// and every [Server.Use] middleware, so their log lines carry the span it opens; a panic in mw
+// itself is not recovered. The health probes bypass it; nil installs nothing.
+func WithTelemetry(mw Middleware) Option {
+	return func(s *Server) {
+		if mw != nil {
+			s.telemetry = mw
+		}
+	}
+}
+
+// Mux returns the underlying ServeMux. Routes registered on it directly skip the default
+// body cap and handler timeout that [Server.Handle] applies.
 func (s *Server) Mux() *http.ServeMux { return s.mux }
 
-// Use appends a middleware to the chain. Outer middlewares are added
-// first; the chain is built in reverse at Start.
+// Use appends mw to the middleware chain, the first added outermost; see [Server.Handler].
 func (s *Server) Use(mw Middleware) *Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -122,9 +92,9 @@ func (s *Server) Use(mw Middleware) *Server {
 	return s
 }
 
-// RegisterMiddleware maps a DSL middleware name to its concrete
-// implementation. The codegen layer can later resolve `@middlewares(Name)`
-// against this map.
+// RegisterMiddleware registers mw under name for [Server.With].
+//
+// Deprecated: pass the middleware to [Server.Handle] or [Server.Use].
 func (s *Server) RegisterMiddleware(name string, mw Middleware) *Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -132,64 +102,23 @@ func (s *Server) RegisterMiddleware(name string, mw Middleware) *Server {
 	return s
 }
 
-// HandleFunc registers a custom route on the underlying mux using Go 1.22
-// pattern syntax (`"VERB /path"`). The server-wide default body cap
-// ([SetDefaultMaxBodySize]) and handler timeout ([SetDefaultHandlerTimeout])
-// apply unless the handler carries its own.
+// HandleFunc is [Server.Handle] for a handler function, without middlewares.
 func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) *Server {
-	s.mux.Handle(pattern, s.applyDefaults(h))
-	return s
+	return s.Handle(pattern, h)
 }
 
-// applyDefaults wraps h with the server-wide default guards - the body cap
-// ([SetDefaultMaxBodySize]) and the handler timeout ([SetDefaultHandlerTimeout])
-// - each applied only when h does not already declare its own via `@maxBodySize`
-// / `@timeout`, so a per-method decorator takes priority over the matching
-// default rather than the min of the two. The body cap wraps innermost and the
-// timeout outermost, matching [WithLimits]. Defaults are read at registration
-// time, so set them before registering routes.
-func (s *Server) applyDefaults(h http.Handler) http.Handler {
-	return s.applyDefaultTimeout(s.applyDefaultBodyLimit(h))
-}
-
-func (s *Server) applyDefaultBodyLimit(h http.Handler) http.Handler {
-	if s.defaultMaxBodySize > 0 && !handlerHasBodyLimit(h) {
-		return maxBodySizeHandler(h, s.defaultMaxBodySize)
-	}
-	return h
-}
-
-func (s *Server) applyDefaultTimeout(h http.Handler) http.Handler {
-	if s.defaultHandlerTimeout > 0 && !handlerHasTimeout(h) {
-		return timeoutHandler(h, s.defaultHandlerTimeout)
-	}
-	return h
-}
-
-// Handle registers an http.Handler under the same Go 1.22 pattern
-// syntax HandleFunc uses. Optional variadic middlewares wrap the
-// handler left-to-right so the FIRST entry ends up the outermost
-// frame - the order a reader scans matches the order a request
-// flows through. Order chosen so:
-//
-//	srv.Handle("POST /x", h, Auth, RateLimit, CORS)
-//
-// reads "Auth wraps RateLimit wraps CORS wraps h" - request hits
-// Auth first, response leaves CORS last.
-//
-// The variadic form keeps the route line flat regardless of chain
-// depth, so it scans top-to-bottom in the same outermost-first order
-// the request actually flows through.
+// Handle registers h under a ServeMux pattern, wrapped in mws with the first outermost. The
+// default body cap and handler timeout set at this point also wrap h, each unless h is a
+// [WithLimits] handler that sets its own.
 func (s *Server) Handle(pattern string, h http.Handler, mws ...Middleware) *Server {
 	s.mux.Handle(pattern, NewChain(mws...).Then(s.applyDefaults(h)))
 	return s
 }
 
-// With looks up every middleware name in the registered table and wraps
-// h in the order given (first name = outermost). Unknown names are
-// skipped silently so a route can declare `@middlewares(Optional)` even
-// when the wiring isn't installed yet - the runtime will pick it up the
-// moment RegisterMiddleware adds it.
+// With wraps h in the middlewares registered under names, the first outermost, resolving
+// them when With is called; an unknown name is skipped.
+//
+// Deprecated: pass the middlewares to [Server.Handle], or wrap h in a [Chain].
 func (s *Server) With(names []string, h http.HandlerFunc) http.HandlerFunc {
 	if len(names) == 0 {
 		return h
@@ -205,128 +134,92 @@ func (s *Server) With(names []string, h http.HandlerFunc) http.HandlerFunc {
 	return chain.Then(h).ServeHTTP
 }
 
-// SetDefaultReadTimeout configures the default per-method read timeout.
+// SetDefaultReadTimeout sets the http.Server ReadTimeout [Server.Start] uses; the default is 30s.
 func (s *Server) SetDefaultReadTimeout(d time.Duration) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.defaultReadTimeout = d
 	return s
 }
 
-// SetDefaultHandlerTimeout sets the default per-handler execution deadline
-// applied to every route registered afterwards that does not declare its own
-// `@timeout`. A route WITH `@timeout` overrides this default (used as-is, longer
-// or shorter). It is a soft context deadline the handler must honour via
-// ctx.Done() - not the hard socket-level [Server.SetDefaultWriteTimeout]. The
-// default is 0 (no deadline). Resolved per route at registration time, so call
-// it before registering routes.
+// SetDefaultHandlerTimeout sets the request-context deadline ([Limits.Timeout]) that
+// [Server.Handle] gives routes registered afterwards; 0, the default, sets none.
 func (s *Server) SetDefaultHandlerTimeout(d time.Duration) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.defaultHandlerTimeout = d
 	return s
 }
 
-// SetDefaultWriteTimeout sets the http.Server WriteTimeout - a hard deadline on
-// the entire response write. It defaults to 0 (unbounded) so streaming, SSE,
-// @passthrough, and large/slow downloads are not cut off mid-response; set a
-// ceiling here for a server that only serves bounded JSON and wants socket-level
-// slow-drain protection on top of the per-handler Timeout middleware.
+// SetDefaultWriteTimeout sets the http.Server WriteTimeout, a deadline on writing the whole
+// response; 0, the default, leaves streaming and long downloads uncut.
 func (s *Server) SetDefaultWriteTimeout(d time.Duration) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.defaultWriteTimeout = d
 	return s
 }
 
-// SetDefaultMaxBodySize sets the default request-body size cap (in bytes)
-// applied to every route registered afterwards that does not declare its own
-// `@maxBodySize`. A route WITH `@maxBodySize` overrides this default (it is
-// used as-is, whether larger or smaller), so the default is a fallback, not a
-// ceiling. The default is 0 (no cap). Call it before registering routes; the
-// cap is resolved per route at registration time.
+// SetDefaultMaxBodySize sets the body cap in bytes ([BodyLimit]) that [Server.Handle] gives
+// routes registered afterwards; 0, the default, sets none.
 func (s *Server) SetDefaultMaxBodySize(bytes int64) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.defaultMaxBodySize = bytes
 	return s
 }
 
-// SetDefaultMaxHeaderSize configures the default request header size cap
-// (in kilobytes - Go's http.Server uses a kilobyte unit internally).
+// SetDefaultMaxHeaderSize sets the http.Server header cap in kilobytes; the default is 32.
 func (s *Server) SetDefaultMaxHeaderSize(kb int) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.defaultMaxHeaderKB = kb
 	return s
 }
 
-// SetCORS attaches a CORS middleware configured by opts. Calling SetCORS
-// twice replaces the previous configuration.
+// SetCORS adds CORS handling with opts to the chain; a second call replaces the first.
 func (s *Server) SetCORS(opts CORSOptions) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.cors = &opts
 	return s
 }
 
-// SetJSONCodec swaps the JSON codec used by generated handlers, the
-// access-log middleware, and the health endpoints. The change is
-// process-wide via [SetGlobalJSONCodec]; the per-Server field is kept
-// for callers that want to introspect via [Server.Codec] but the
-// authoritative value lives on the package-level atomic. Fails, keeping
-// the previous codec, when strict JSON is on and c has no DecodeStrict.
-func (s *Server) SetJSONCodec(c JSONCodec) error {
-	if err := SetGlobalJSONCodec(c); err != nil {
-		return err
-	}
-	s.codec = currentCodec().base
-	return nil
-}
+// SetJSONCodec calls the process-wide [SetGlobalJSONCodec].
+func (s *Server) SetJSONCodec(c JSONCodec) error { return SetGlobalJSONCodec(c) }
 
-// SetStrictJSON is [SetStrictJSON]; like the codec, the setting is
-// process-wide.
+// SetStrictJSON calls the process-wide [SetStrictJSON].
 func (s *Server) SetStrictJSON(strict bool) error { return SetStrictJSON(strict) }
 
-// SetLogger replaces the active Logger and mirrors it to the
-// package-level [log.Default] so codegen-emitted logic files reach
-// the same instance via `log.Default().WithContext(ctx)` without
-// receiving a handle through ServiceContext.
-func (s *Server) SetLogger(l Logger) *Server {
-	s.logger = l
+// SetLogger installs l as [log.Default], the logger the server's [Recovery] writes to; nil is
+// ignored.
+func (s *Server) SetLogger(l log.Logger) *Server {
 	log.SetDefault(l)
 	return s
 }
 
-// Logger exposes the active logger for handlers and middleware.
-func (s *Server) Logger() Logger { return s.logger }
+// Logger returns [log.Default] as it is at the call; [log.Follow] returns a logger that
+// follows a later [Server.SetLogger].
+func (s *Server) Logger() log.Logger { return log.Default() }
 
-// Codec exposes the active JSON codec for handlers and tooling.
-func (s *Server) Codec() JSONCodec { return s.codec }
+// Codec returns the codec in effect, the one [JSON] returns.
+func (s *Server) Codec() JSONCodec { return JSON() }
 
-// RegisterHealthCheck adds a named probe to `/readyz`. The function is
-// invoked under a context with the supplied timeout; a non-nil error or
-// timeout flips the readiness response to 503.
-func (s *Server) RegisterHealthCheck(name string, timeout time.Duration, fn func(context.Context) error) *Server {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.healthChecks[name] = healthCheck{timeout: timeout, fn: fn}
-	return s
-}
-
-// Handler returns the fully-wrapped http.Handler: mux + every global
-// middleware registered via [Server.Use] + CORS (when configured) +
-// Recovery (always outermost). The health probes are answered ahead of
-// that chain: a request whose path is exactly the liveness or readiness
-// route goes straight to the probe handler, wrapped in Recovery alone, so
-// probes are never access-logged, traced, measured, CORS-processed or
-// subject to `Use` middleware. [WithoutDefaultHealth] removes them; a
-// project that wants observed probes registers its own route instead.
-//
-// This is the entry point both [Server.Start] and tests use - wrap
-// `httptest.NewServer(srv.Handler())` to exercise the full chain
-// without binding a real listener.
+// Handler returns what [Server.Start] serves: the [WithTelemetry] middleware, [Recovery] logging
+// to [log.Default], CORS when set, the [Server.Use] middlewares in order, then the mux. CORS
+// answers a preflight before any Use middleware sees it. The health probes are answered ahead of
+// that chain, wrapped in Recovery only.
 func (s *Server) Handler() http.Handler {
 	s.mu.Lock()
-	// Build the chain outermost-first: Recovery wraps the user chain
-	// wraps CORS wraps the mux. CORS sits closest to the mux so it
-	// observes the final response headers; Recovery sits outermost so
-	// it catches panics from every other middleware too. The default body
-	// cap is applied per-route in [Server.Handle] (not here) so a
-	// per-method @maxBodySize can override it.
-	chain := NewChain(Recovery(s.logger)).Append(s.chain...)
+	chain := NewChain(recovery(log.Default))
 	if s.cors != nil {
 		chain = chain.Append(corsMiddleware(*s.cors))
 	}
-	app := chain.Then(s.muxWithNotFoundLocked())
+	chain = chain.Append(s.chain...)
+	app := chain.Then(s.muxLocked())
+	if s.telemetry != nil {
+		app = s.telemetry(app)
+	}
 	probes := s.probesLocked()
 	s.mu.Unlock()
 	if probes == nil {
@@ -341,72 +234,77 @@ func (s *Server) Handler() http.Handler {
 	})
 }
 
-// probesLocked returns the health probe handlers by route, each wrapped in
-// Recovery, or nil when [WithoutDefaultHealth] was set. Caller holds s.mu.
-func (s *Server) probesLocked() map[string]http.Handler {
-	if s.noHealth {
-		return nil
-	}
-	guard := Recovery(s.logger)
-	return map[string]http.Handler{
-		s.healthPaths.Liveness:  guard(s.livenessHandler()),
-		s.healthPaths.Readiness: guard(s.readinessHandler()),
-	}
+// SetHandleNotFound sets the handler for the requests the mux answers 404, which otherwise
+// get 404 {"message":"not found"}; a method mismatch keeps its 405. nil restores the default.
+func (s *Server) SetHandleNotFound(h http.Handler) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.notFound = h
+	return s
 }
 
-// muxWithNotFoundLocked returns s.mux, or - if a custom NotFound
-// handler is installed - a thin wrapper that dispatches unmatched
-// requests to it instead of the stdlib default 404.
-//
-// Caller must hold s.mu; reads s.notFound.
-func (s *Server) muxWithNotFoundLocked() http.Handler {
-	if s.notFound == nil {
-		return s.mux
-	}
+// muxLocked returns s.mux answering an unmatched request with the not-found handler, or a JSON 405
+// with its Allow header; a redirect stays the mux's. The caller holds s.mu.
+func (s *Server) muxLocked() http.Handler {
 	notFound := s.notFound
+	if notFound == nil {
+		notFound = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			writeStatusError(w, http.StatusNotFound)
+		})
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, pattern := s.mux.Handler(r); pattern == "" {
-			notFound.ServeHTTP(w, r)
+		h, pattern := s.mux.Handler(r)
+		if pattern != "" {
+			s.mux.ServeHTTP(w, r)
 			return
 		}
-		s.mux.ServeHTTP(w, r)
+		p := &statusProbe{header: http.Header{}}
+		h.ServeHTTP(p, r)
+		switch p.status {
+		case http.StatusNotFound:
+			notFound.ServeHTTP(w, r)
+		case http.StatusMethodNotAllowed:
+			w.Header().Set("Allow", p.header.Get("Allow"))
+			writeStatusError(w, http.StatusMethodNotAllowed)
+		default:
+			s.mux.ServeHTTP(w, r)
+		}
 	})
 }
 
-// Start binds the server to addr and serves until Stop is called. The
-// handler chain is built by [Server.Handler] so the wrapping order is
-// identical between live serving and httptest-driven test runs.
+// statusProbe is a ResponseWriter that discards the body and keeps the status and header.
+type statusProbe struct {
+	header http.Header
+	status int
+}
+
+func (p *statusProbe) Header() http.Header { return p.header }
+
+func (p *statusProbe) WriteHeader(code int) {
+	if p.status == 0 {
+		p.status = code
+	}
+}
+
+func (p *statusProbe) Write(b []byte) (int, error) {
+	p.WriteHeader(http.StatusOK)
+	return len(b), nil
+}
+
+// Start serves [Server.Handler] on addr until [Server.Stop] and returns nil after a graceful
+// stop. Request headers must arrive within 10s, and idle connections close after 120s.
 func (s *Server) Start(addr string) error {
-	// Handler() takes s.mu, so build it BEFORE we take the lock -
-	// otherwise the same goroutine deadlocks on the sync.Mutex.
+	// Handler locks s.mu, so it runs before the lock is taken.
 	handler := s.Handler()
 	s.mu.Lock()
 	s.httpSrv = &http.Server{
-		Addr:    addr,
-		Handler: handler,
-		// ReadHeaderTimeout caps the time a client may spend sending the
-		// request line + headers. Without it a slow-read client (drip-
-		// feeding 1 byte every 30s) can pin a goroutine indefinitely -
-		// the classic Slowloris attack. The full ReadTimeout below also
-		// helps but only after a request line arrives; this knob fires
-		// before the handler ever runs. 10s matches Go's
-		// http.DefaultClient default and is the floor net/http itself
-		// recommends.
+		Addr:              addr,
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       s.defaultReadTimeout,
-		// WriteTimeout is a HARD deadline on the whole response write, so it
-		// defaults to 0 (unbounded) on purpose: a non-zero value would kill
-		// legitimate slow/large downloads and streaming / SSE / @passthrough
-		// handlers mid-response. The per-handler bound is the Timeout
-		// middleware (`@timeout` / config handlerTimeout); set a socket-level
-		// ceiling explicitly with SetDefaultWriteTimeout for plain JSON APIs.
-		WriteTimeout: s.defaultWriteTimeout,
-		// IdleTimeout reaps idle keep-alive connections between requests (it
-		// does NOT touch an in-flight response), so a client that opens
-		// connections and never reuses them can't accumulate goroutines
-		// indefinitely - safe to default without breaking streaming.
-		IdleTimeout:    120 * time.Second,
-		MaxHeaderBytes: s.defaultMaxHeaderKB * 1024,
+		WriteTimeout:      s.defaultWriteTimeout,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    s.defaultMaxHeaderKB * 1024,
 	}
 	srv := s.httpSrv
 	s.mu.Unlock()
@@ -416,8 +314,8 @@ func (s *Server) Start(addr string) error {
 	return nil
 }
 
-// Stop gracefully shuts down the running server. Safe to call before
-// Start (it becomes a no-op).
+// Stop shuts the server down gracefully with [http.Server.Shutdown]; before [Server.Start]
+// it does nothing.
 func (s *Server) Stop(ctx context.Context) error {
 	s.mu.Lock()
 	srv := s.httpSrv

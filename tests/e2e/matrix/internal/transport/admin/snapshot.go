@@ -17,8 +17,8 @@ import (
 // outermost, so unauthenticated callers never reach RequestStamp.
 // Method-level `@tags(snapshot)` adds to the service-level tags
 // list, NOT replacing it - clients see [admin, ops, snapshot].
-// Snapshot returns the http.HandlerFunc for the
-// GET Snapshot endpoint.
+//
+// Snapshot returns the GET Snapshot handler.
 func Snapshot(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewSnapshotService(r.Context(), svcCtx)
@@ -27,7 +27,6 @@ func Snapshot(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

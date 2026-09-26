@@ -12,13 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// SearchByColor drives the enum-array @query @default binder. An
-// absent `colors` keeps the [Red, Blue] pre-fill; a present
-// `?colors=green` REPLACES it (the binder clears the slice before
-// appending) so the result is exactly the requested set, never the
-// pre-fill concatenated with the query values.
-// SearchByColor returns the http.HandlerFunc for the
-// GET SearchByColor endpoint.
+// Search by colors with an enum-array @query default. An absent `colors` keeps the [Red, Blue] pre-fill; a present `?colors=green` REPLACES it (not appends), so the result is exactly the requested set.
+//
+// SearchByColor returns the GET SearchByColor handler.
 func SearchByColor(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.QueryArrayEnumDefaultReq
@@ -40,7 +36,6 @@ func SearchByColor(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

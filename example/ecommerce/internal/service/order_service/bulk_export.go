@@ -5,26 +5,21 @@ package orders
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
-	shared "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
-
-	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// BulkExportService carries the per-request state for the
-// BulkExport endpoint of OrderService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// BulkExportService runs OrderService.BulkExport for one request.
 type BulkExportService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewBulkExportService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewBulkExportService binds BulkExportService to ctx; its Logger carries ctx's trace ids.
 func NewBulkExportService(ctx context.Context, svcCtx *svccontext.ServiceContext) *BulkExportService {
 	return &BulkExportService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,11 +28,9 @@ func NewBulkExportService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// Just append: inherits the full parent chain AND adds extras.
-// This is the canonical "admin endpoint needs auth + extras"
-// pattern that should produce a deep wrap (parent 4 + extra 2 = 6).
-// BulkExport is the service entry point. Replace the
-// TODO with the real implementation.
+// Bulk export - admin only, extra body-limit/timeout on top of parent chain.
+//
+// BulkExport implements OrderService.BulkExport.
 func (l *BulkExportService) BulkExport(req *types.ListOrdersReq) (*shared.OkResp, error) {
 	// TODO: implement
 	return nil, nil

@@ -1,6 +1,7 @@
 package route
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 )
@@ -19,9 +20,28 @@ func TestVars(t *testing.T) {
 		{"/v{1}/x", ""},  // a variable is a whole segment
 		{"/{}/x", ""},    // an empty name is not a variable
 		{"/{open/x", ""}, // unterminated
+		{"/files/{rest...}", "rest"},
+		{"/a/{id}/{rest...}", "id,rest"},
+		{"/root/{$}", ""},
 	} {
 		if got := strings.Join(Vars(c.in), ","); got != c.want {
 			t.Errorf("Vars(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// OpenAPIPath names a trailing `{name...}` as `{name}` and spells `{$}` as the
+// trailing slash it matches.
+func TestOpenAPIPath(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"/users/{id}", "/users/{id}"},
+		{"/files/{rest...}", "/files/{rest}"},
+		{"/a/{id}/{rest...}", "/a/{id}/{rest}"},
+		{"/root/{$}", "/root/"},
+		{"/", "/"},
+	} {
+		if got := OpenAPIPath(c.in); got != c.want {
+			t.Errorf("OpenAPIPath(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }
@@ -68,6 +88,39 @@ func TestPatternsConflict(t *testing.T) {
 		}
 		if got := PatternsConflict(c.b, c.a); got != c.want {
 			t.Errorf("PatternsConflict(%q,%q) [swapped] = %v, want %v", c.b, c.a, got, c.want)
+		}
+	}
+}
+
+// SegmentProblem, EndsRoute and WildcardName read a segment as a real
+// ServeMux does: it refuses a route exactly when a segment has a problem, a
+// segment that must end the route does not, or a wildcard name repeats.
+func TestSegmentRulesMatchServeMux(t *testing.T) {
+	segments := []string{
+		"users", "{id}", "{id...}", "{$}", "{}", "{...}", "{$...}", "{a-b}", "{1x}", "{_x9}",
+		"{ünï}", "org-{org}", "{org}x", "{a}{b}", "x}", ".", "..", "...", "v1.2",
+	}
+	refuses := func(pattern string) (refused bool) {
+		defer func() { refused = recover() != nil }()
+		http.NewServeMux().Handle(pattern, http.NotFoundHandler())
+		return false
+	}
+	for _, seg := range segments {
+		for _, route := range []string{"/a/" + seg, "/a/" + seg + "/b", "/" + seg + "/{id}"} {
+			segs := Segments(route)
+			want := false
+			names := map[string]bool{}
+			for i, s := range segs {
+				name, wild := WildcardName(s)
+				switch {
+				case SegmentProblem(s) != "", EndsRoute(s) && i < len(segs)-1, wild && names[name]:
+					want = true
+				}
+				names[name] = wild
+			}
+			if got := refuses("GET " + route); got != want {
+				t.Errorf("ServeMux refuses %q: %v, the rules say %v", route, got, want)
+			}
 		}
 	}
 }

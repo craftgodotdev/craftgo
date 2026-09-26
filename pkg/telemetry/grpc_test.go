@@ -21,8 +21,7 @@ import (
 
 const pingMethod = "/test.Echo/Ping"
 
-// pinger is the one-method service the tests register, hand-written the
-// way protoc-gen-go-grpc would generate it.
+// pinger is the one-method service the tests register.
 type pinger interface {
 	Ping(context.Context, *wrapperspb.StringValue) (*wrapperspb.StringValue, error)
 }
@@ -55,8 +54,7 @@ var echoDesc = grpc.ServiceDesc{
 	Metadata: "test.proto",
 }
 
-// serveGRPC serves impl behind tel's stats handler on an in-memory
-// listener and returns a client connection.
+// serveGRPC serves impl behind tel's stats handler and returns a client connection.
 func serveGRPC(t *testing.T, tel *telemetry.Telemetry, impl pinger) *grpc.ClientConn {
 	t.Helper()
 	srv := rpc.New(nil, rpc.WithStatsHandler(tel.GRPCServerHandler()))
@@ -78,8 +76,8 @@ func serveGRPC(t *testing.T, tel *telemetry.Telemetry, impl pinger) *grpc.Client
 	return conn
 }
 
-// The stats handler must put the caller's trace on the handler context
-// and record the call against the stack's own meter.
+// The server handler continues the caller's trace and records the call on the
+// stack's own meter, leaving health probes out.
 func TestGRPCServerHandlerEmitsBothSignals(t *testing.T) {
 	tel, err := telemetry.Init(context.Background(), telemetry.Config{
 		ServiceName: "todo",
@@ -108,7 +106,6 @@ func TestGRPCServerHandlerEmitsBothSignals(t *testing.T) {
 	if seen.TraceID().String() != traceID {
 		t.Errorf("trace id = %s, want the caller's", seen.TraceID())
 	}
-	// A probe is not a call worth a span or a series.
 	if _, err := healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{}); err != nil {
 		t.Fatal(err)
 	}
@@ -121,8 +118,7 @@ func TestGRPCServerHandlerEmitsBothSignals(t *testing.T) {
 	}
 }
 
-// With traces off the handler must not adopt a caller's trace, and the
-// metrics must still flow.
+// With traces off the server handler adopts no caller trace and still records metrics.
 func TestGRPCServerHandlerWithTracesOff(t *testing.T) {
 	tel, err := telemetry.Init(context.Background(), telemetry.Config{
 		ServiceName: "todo",
@@ -151,7 +147,7 @@ func TestGRPCServerHandlerWithTracesOff(t *testing.T) {
 	}
 }
 
-// An unconfigured stack, and a nil one, must hand grpc a working handler.
+// An unconfigured or nil stack hands grpc a working server handler.
 func TestGRPCServerHandlerUnconfiguredIsPassThrough(t *testing.T) {
 	tel, err := telemetry.Init(context.Background(), telemetry.Config{ServiceName: "todo"})
 	if err != nil {
@@ -172,8 +168,7 @@ func TestGRPCServerHandlerUnconfiguredIsPassThrough(t *testing.T) {
 	}
 }
 
-// dialerTo serves impl behind tel's stats handler and returns the
-// option that reaches it, so a test can dial it more than one way.
+// dialerTo serves impl behind tel's stats handler and returns the dial option that reaches it.
 func dialerTo(t *testing.T, tel *telemetry.Telemetry, impl pinger) rpc.ClientOption {
 	t.Helper()
 	srv := rpc.New(nil, rpc.WithStatsHandler(tel.GRPCServerHandler()))
@@ -190,10 +185,7 @@ func dialerTo(t *testing.T, tel *telemetry.Telemetry, impl pinger) rpc.ClientOpt
 	}))
 }
 
-// A gRPC client sends no trace context of its own. The handler is what
-// carries the caller's trace to the service it calls, so one request
-// stays one trace across the wire; without it the server opens a trace
-// of its own and the two halves never meet.
+// The client handler carries the caller's trace across the wire.
 func TestGRPCClientHandlerCarriesTheTraceAcrossTheWire(t *testing.T) {
 	tel, err := telemetry.Init(context.Background(), telemetry.Config{
 		ServiceName: "todo",
@@ -211,8 +203,7 @@ func TestGRPCClientHandlerCarriesTheTraceAcrossTheWire(t *testing.T) {
 		return in, nil
 	}))
 
-	// call dials with opts, opens a caller span, and reports the trace
-	// id the caller was on and the one the server saw.
+	// call returns the trace id of a caller span and the one the server saw.
 	call := func(opts ...rpc.ClientOption) (string, string) {
 		t.Helper()
 		conn, err := rpc.Dial("passthrough:///bufconn", append(opts, dialer)...)
@@ -247,8 +238,7 @@ func TestGRPCClientHandlerCarriesTheTraceAcrossTheWire(t *testing.T) {
 	}
 }
 
-// An unconfigured stack, and a nil one, still hand grpc a working
-// client handler.
+// An unconfigured or nil stack hands grpc a working client handler.
 func TestGRPCClientHandlerUnconfiguredIsPassThrough(t *testing.T) {
 	tel, err := telemetry.Init(context.Background(), telemetry.Config{ServiceName: "todo"})
 	if err != nil {

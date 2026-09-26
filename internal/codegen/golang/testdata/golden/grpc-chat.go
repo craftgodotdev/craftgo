@@ -10,9 +10,7 @@ import (
 	service "example.com/app/internal/service/greeter"
 )
 
-// Chat serves the bidi-streaming RPC /greet.Greeter/Chat: it hands the
-// call context to the logic and maps the error it returns onto a status,
-// as the HTTP handler does with WriteError.
+// Chat serves the bidi-streaming RPC /greet.Greeter/Chat.
 func (s *Server) Chat(stream grpc.BidiStreamingServer[pb.HelloRequest, pb.HelloReply]) error {
 	ctx := stream.Context()
 	l := service.NewChatService(ctx, s.svcCtx)

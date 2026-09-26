@@ -8,8 +8,7 @@ import (
 	"unicode/utf8"
 )
 
-// Validate checks every field-level constraint declared on Category.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Category) Validate() error {
 	if err := v.Timestamps.Validate(); err != nil {
 		return err
@@ -28,14 +27,13 @@ func (v *Category) Validate() error {
 	}
 	if v.Parent != nil {
 		if err := v.Parent.Validate(); err != nil {
-			return err
+			return fmt.Errorf("parent: %w", err)
 		}
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CategoryRef.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CategoryRef) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -46,8 +44,7 @@ func (v *CategoryRef) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CreateProductReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CreateProductReq) Validate() error {
 	if err := v.Sku.Validate(); err != nil {
 		return fmt.Errorf("sku: %w", err)
@@ -86,8 +83,7 @@ func (v *CreateProductReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GetProductReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GetProductReq) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -95,8 +91,7 @@ func (v *GetProductReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ListProductsReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ListProductsReq) Validate() error {
 	if v.Limit < 0 {
 		return fmt.Errorf("limit: below minimum 0")
@@ -107,8 +102,7 @@ func (v *ListProductsReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Product.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Product) Validate() error {
 	if err := v.Timestamps.Validate(); err != nil {
 		return err
@@ -140,7 +134,7 @@ func (v *Product) Validate() error {
 		}
 	}
 	if err := v.Category.Validate(); err != nil {
-		return err
+		return fmt.Errorf("category: %w", err)
 	}
 	if len(v.Tags) > 20 {
 		return fmt.Errorf("tags: maxItems 20")
@@ -167,8 +161,7 @@ func (v *Product) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ProductRef.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ProductRef) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -179,8 +172,7 @@ func (v *ProductRef) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Timestamps.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Timestamps) Validate() error {
 	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {
 		return fmt.Errorf("createdAt: not a valid RFC 3339 datetime")

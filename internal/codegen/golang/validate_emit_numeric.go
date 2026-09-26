@@ -1,132 +1,104 @@
-// Numeric validators: @gt/@gte/@lt/@lte/@range/@positive/@negative/@multipleOf.
 package golang
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func numericValueExpr(f *ast.Field, access string, ctx emitCtx) string {
-	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
-		return "*" + access
+// boundLiteral renders a numeric bound for a value of primitive prim: for an
+// integer, the exact whole number it writes (`1e19` as 10000000000000000000),
+// for a float its Go float text.
+func boundLiteral(a *ast.DecoratorArg, prim string) (string, bool) {
+	l, ok := semantic.ParseNumericArg(a)
+	if !ok {
+		return "", false
 	}
-	return access
+	if prims.IsInteger(prim) {
+		return l.WholeText()
+	}
+	return l.Text(), true
 }
 
-// numericBoundCheck handles the 4 comparison decorators
-// `@gt(n)` / `@gte(n)` / `@lt(n)` / `@lte(n)`. `op` is the
-// validity predicate the value must satisfy; the emitted condition is
-// the NEGATION (true when invalid).
-//
-//	@gte(0): valid if x >= 0  → fail if x < 0
-//	@gt(0):  valid if x > 0   → fail if x <= 0
-//	@lte(N): valid if x <= N  → fail if x > N
-//	@lt(N):  valid if x < N   → fail if x >= N
-//
-// Both int and float bound literals are accepted ([semantic.NumericArg] handles
-// the rendering). Float fields with float bounds (`@gte(0.5)` on
-// float64) work the same as int-on-int.
-func numericBoundCheck(f *ast.Field, access string, d *ast.Decorator, op, label string, ctx emitCtx) string {
-	if !isNumericField(f) || len(d.Args) != 1 {
+// valueBoundLabels names what a value on each side of its limit fails.
+var valueBoundLabels = map[semantic.BoundSide]string{
+	{Lower: true, Strict: true}: "must be greater than",
+	{Lower: true}:               "below minimum",
+	{Strict: true}:              "must be less than",
+	{}:                          "above maximum",
+}
+
+// numericBoundCheck renders @gt/@gte/@lt/@lte on a numeric value, failing it
+// by its side's comparison with the bound; a bound the type enforces renders
+// nothing.
+func numericBoundCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	sides, _ := semantic.BoundSides(d.Name)
+	args := semantic.BoundArgs(d)
+	if !prims.IsNumeric(t.prim) || len(args) != 1 || semantic.BoundImpliedByType(t.prim, d, 0) {
 		return ""
 	}
-	n, ok := semantic.NumericArg(d.Args[0])
+	n, ok := boundLiteral(args[0], t.prim)
 	if !ok {
 		return ""
 	}
-	var flip string
-	switch op {
-	case ">=":
-		flip = "<"
-	case ">":
-		flip = "<="
-	case "<=":
-		flip = ">"
-	case "<":
-		flip = ">="
-	default:
-		return ""
-	}
-	val := numericValueExpr(f, access, ctx)
-	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%s%s %s %s", guard, val, flip, n)
-	msg := fmt.Sprintf(`"%s%s %s"`, errSubject(fieldWireName(f)), label, n)
-	return ifReturnf(cond, msg, ctx)
+	return failIf(t.guarded(t.val()+" "+sides[0].FailOp()+" "+n), t.subject, valueBoundLabels[sides[0]]+" "+n, ctx)
 }
 
-// rangeCheck combines @gte and @lte into one bounded comparison.
-// Pointer fields (T? / `T @nullable`) get the same nil-guard +
-// deref treatment as [numericBoundCheck]. Both int and float bound
-// literals accepted.
-func rangeCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	if !isNumericField(f) || len(d.Args) != 2 {
+// rangeCheck renders @range(lo, hi) on a numeric value as one bound check of
+// each end the type does not enforce.
+func rangeCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	sides, _ := semantic.BoundSides(d.Name)
+	args := semantic.BoundArgs(d)
+	if !prims.IsNumeric(t.prim) || len(args) != 2 {
 		return ""
 	}
-	lo, ok1 := semantic.NumericArg(d.Args[0])
-	hi, ok2 := semantic.NumericArg(d.Args[1])
+	lo, ok1 := boundLiteral(args[0], t.prim)
+	hi, ok2 := boundLiteral(args[1], t.prim)
 	if !ok1 || !ok2 {
 		return ""
 	}
-	val := numericValueExpr(f, access, ctx)
-	guard := optionalGuard(f, access)
-	var cond string
-	if guard == "" {
-		cond = fmt.Sprintf("%s < %s || %s > %s", val, lo, val, hi)
-	} else {
-		// Same pattern as the optional-string `lengthCheck`: avoid
-		// `init; cond` syntax inside `&&` by inlining the bounds
-		// twice. Compiler folds the duplicate deref.
-		cond = fmt.Sprintf("%s(%s < %s || %s > %s)", guard, val, lo, val, hi)
-	}
-	msg := fmt.Sprintf(`"%sout of range [%s, %s]"`, errSubject(fieldWireName(f)), lo, hi)
-	return ifReturnf(cond, msg, ctx)
-}
-
-// signCheck handles `@positive` (value > 0) and `@negative` (value < 0)
-// on numeric fields. Both produce a one-line conditional with no decorator
-// arguments - unlike `@min` they don't carry a bound, so the helper is a
-// pure dispatch on the kind string.
-func signCheck(f *ast.Field, access, kind string, ctx emitCtx) string {
-	if !isNumericField(f) {
-		return ""
-	}
-	op, label := "<=", "must be positive"
-	if kind == "negative" {
-		op, label = ">=", "must be negative"
-	}
-	val := numericValueExpr(f, access, ctx)
-	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%s%s %s 0", guard, val, op)
-	msg := fmt.Sprintf(`"%s%s"`, errSubject(fieldWireName(f)), label)
-	return ifReturnf(cond, msg, ctx)
-}
-
-// multipleOfCheck handles `@multipleOf(n)` on integer fields. Floats are
-// excluded because `%` is integer-only in Go and a runtime modulus on a
-// float is rarely what designers intend (rounding error). A future revision
-// can layer a tolerance-based check for floats.
-func multipleOfCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	if !isIntegerField(f) || len(d.Args) != 1 {
-		return ""
-	}
-	n, ok := semantic.IntArg(d.Args[0])
-	if !ok {
-		// Accept a whole-valued float literal (`@multipleOf(5.0)`): the
-		// OpenAPI side already emits it, and `%` needs an integer divisor,
-		// so the two stages would otherwise disagree (spec advertises it,
-		// runtime drops it).
-		if fl, fok := d.Args[0].Value.(*ast.FloatLit); fok && fl.Value == float64(int64(fl.Value)) {
-			n, ok = int64(fl.Value), true
+	var fails []string
+	for i, n := range []string{lo, hi} {
+		if !semantic.BoundImpliedByType(t.prim, d, i) {
+			fails = append(fails, t.val()+" "+sides[i].FailOp()+" "+n)
 		}
 	}
-	if !ok || n == 0 {
+	if len(fails) == 0 {
 		return ""
 	}
-	val := numericValueExpr(f, access, ctx)
-	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%s%s%%%d != 0", guard, val, n)
-	msg := fmt.Sprintf(`"%smust be a multiple of %d"`, errSubject(fieldWireName(f)), n)
-	return ifReturnf(cond, msg, ctx)
+	return failIf(t.guarded(strings.Join(fails, " || ")), t.subject, fmt.Sprintf("out of range [%s, %s]", lo, hi), ctx)
+}
+
+// signCheck renders @positive or @negative on a numeric value, failing it by
+// its side's comparison with 0.
+func signCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	sides, _ := semantic.BoundSides(d.Name)
+	if !prims.IsNumeric(t.prim) || len(sides) != 1 {
+		return ""
+	}
+	label := "must be negative"
+	if sides[0].Lower {
+		label = "must be positive"
+	}
+	return failIf(t.guarded(t.val()+" "+sides[0].FailOp()+" 0"), t.subject, label, ctx)
+}
+
+// multipleOfCheck renders @multipleOf on an integer value; a whole float
+// divisor such as 5.0 is the integer it holds.
+func multipleOfCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	if !prims.IsInteger(t.prim) || len(d.Args) != 1 {
+		return ""
+	}
+	l, ok := semantic.ParseNumericArg(d.Args[0])
+	if !ok {
+		return ""
+	}
+	n, whole := l.WholeText()
+	if !whole || n == "0" {
+		return ""
+	}
+	return failIf(t.guarded(t.val()+"%"+n+" != 0"), t.subject, "must be a multiple of "+n, ctx)
 }

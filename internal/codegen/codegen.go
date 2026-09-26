@@ -1,29 +1,13 @@
-// Package codegen runs a generation pass: it holds the language-target
-// catalogue and calls each target in order.
-//
-// The emitters live one level down, one package per target:
-//
-//	codegen/golang   Go source
-//	codegen/docs     the OpenAPI projection
-//
-// A target reads the analysed [semantic.Project] and writes its own
-// artefacts; no target reads another's code, and nothing here is shared
-// between them. What they have in common sits one layer lower - the
-// language-independent model in [semantic] and the leaf catalogues below
-// it (prims, idents, wire, route, errcat, strfmt) - so a fact two
-// targets must agree on belongs there, not in this package.
-//
-// Adding a language is one row in [LangTargets], one name in
-// [config.SupportedLangs], and one package beside golang. The two lists
-// are asserted to match, so a missing half fails a test rather than
-// silently generating nothing.
-//
-// Go is the only language target; the OpenAPI projection is the other
-// reader of the shared model.
+// Package codegen runs a generation pass over an analysed design: it
+// validates the design, runs the selected targets (codegen/golang, the event
+// language targets, codegen/docs), then deletes every generated file the pass
+// did not write from the directories they regenerate into. A fact two targets
+// share lives in [semantic] or a leaf package, not here.
 package codegen
 
 import (
 	"fmt"
+	"iter"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/codegen/docs"
@@ -34,87 +18,126 @@ import (
 )
 
 // Inputs is what a pass generates from: the analysed design, and the
-// compiled proto set when the design folder holds any `.proto` - nil
-// otherwise.
+// compiled proto set, nil when the design folder holds no `.proto`.
 type Inputs struct {
 	Design *semantic.Project
 	Protos *protodesign.Set
 }
 
-// LangTarget generates the event artefacts for one language.
-type LangTarget struct {
-	// Lang is the value `events.targets[].lang` carries.
-	Lang string
-	// Generate writes the target's artefacts. outDir is the target's
-	// configured destination, relative to projectRoot.
-	Generate func(proj *semantic.Project, cfg *config.Config, projectRoot, outDir string) error
-	// OutputNotes reports what the target found in its output and could
-	// not account for.
-	OutputNotes func(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string
+// langTarget is one language's row in the target catalogue.
+type langTarget struct {
+	// lang is the `events.targets[].lang` value that selects the row.
+	lang string
+	// generate writes the event artefacts into outDir, relative to projectRoot.
+	generate func(proj *semantic.Project, cfg *config.Config, projectRoot, outDir string) error
+	// plan lists the paths the sweep covers for generate, with the headers of its files, and the
+	// files it writes.
+	plan func(proj *semantic.Project, projectRoot, outDir string) (paths map[string][]string, files []string)
 }
 
-// LangTargets is the closed set of supported languages. It must match
-// [config.SupportedLangs].
-var LangTargets = []LangTarget{
-	// The Go target places its artefacts through the project-wide
-	// `output:` block, so it reads no per-target layout.
-	{Lang: config.LangGo, Generate: golang.GenerateEventTarget, OutputNotes: golang.EventOutputNotes},
+// langTargets holds one row per language in [config.SupportedLangs].
+var langTargets = []langTarget{
+	{lang: config.LangGo, generate: golang.GenerateEventTarget, plan: golang.EventPlan},
 }
 
-// TargetDocs selects the document projections. The language targets are
-// named by [config.SupportedLangs].
-const TargetDocs = "docs"
+// eventTargets yields the event language targets the manifest enables, each with the directory
+// it writes under.
+func eventTargets(cfg *config.Config) iter.Seq2[langTarget, string] {
+	return func(yield func(langTarget, string) bool) {
+		for _, target := range langTargets {
+			cfgTarget, ok := cfg.Events.TargetFor(target.lang)
+			if !ok || !cfgTarget.Enabled() {
+				continue
+			}
+			if !yield(target, cfgTarget.Out) {
+				return
+			}
+		}
+	}
+}
 
-// SelectableTargets is everything `--target` accepts, in run order.
+// targetDocs is the `--target` name of the OpenAPI document.
+const targetDocs = "docs"
+
+// SelectableTargets is everything `--target` accepts.
 func SelectableTargets() []string {
-	return append(append([]string{}, config.SupportedLangs...), TargetDocs)
+	return append(append([]string{}, config.SupportedLangs...), targetDocs)
 }
 
-// Generate runs a whole generation pass for in under projectRoot: the
-// Go pipeline, then every configured event language target, then the
-// OpenAPI projection.
-//
-// targets narrows the run to the named ones; empty runs everything. A
-// target that does not run also does not sweep, so a narrowed pass never
-// deletes another target's output.
+// Generate runs OpenAPI, which a new main.go embeds from disk, then Go and the
+// event targets for in under projectRoot; targets narrows the run and its sweep.
 func Generate(in Inputs, cfg *config.Config, projectRoot string, targets ...string) error {
 	sel, err := selection(targets)
 	if err != nil {
 		return err
 	}
-	// The design is validated whatever is being generated: a design that
-	// cannot produce a correct document is not one to emit code from.
-	if err := validate(in, cfg); err != nil {
+	if err := validate(in, cfg, sel); err != nil {
 		return err
 	}
 	if err := emit(in, cfg, projectRoot, sel); err != nil {
 		return err
 	}
-	return prune(outputDirs(cfg, projectRoot, sel), regeneratedFiles(in, cfg, projectRoot))
+	return prune(plan(in, cfg, projectRoot, sel))
 }
 
-// emit runs the selected targets in order. It is the writing half of a
-// pass; the sweep that follows is what makes what it wrote the whole of
-// what the output directories hold.
+// Generated reports how many DSL packages [Generate] with targets writes output
+// for, and whether it writes the protos' Go code.
+func Generated(in Inputs, cfg *config.Config, projectRoot string, targets ...string) (packages int, protos bool) {
+	sel, err := selection(targets)
+	if err != nil {
+		return 0, false
+	}
+	_, document := docs.Plan(in.Design, cfg, projectRoot)
+	if sel[config.LangGo] || (sel[targetDocs] && len(document) > 0) {
+		packages = len(in.Design.Packages)
+	}
+	return packages, sel[config.LangGo] && in.Protos != nil
+}
+
+// plan lists the paths the selected targets regenerate into, each with the headers of the files
+// written there, and every file the targets write, selected or not: a target a narrowed run skips
+// still owns its files.
+func plan(in Inputs, cfg *config.Config, projectRoot string, sel map[string]bool) ([]sweepPath, map[string]bool) {
+	headers := map[string][]string{}
+	written := map[string]bool{}
+	take := func(selected bool, paths map[string][]string, files []string) {
+		if selected {
+			for p, hs := range paths {
+				headers[p] = append(headers[p], hs...)
+			}
+		}
+		for _, file := range files {
+			written[file] = true
+		}
+	}
+	paths, files := golang.Plan(in.Design, in.Protos, cfg, projectRoot)
+	take(sel[config.LangGo], paths, files)
+	for target, outDir := range eventTargets(cfg) {
+		paths, files := target.plan(in.Design, projectRoot, outDir)
+		take(sel[target.lang], paths, files)
+	}
+	paths, files = docs.Plan(in.Design, cfg, projectRoot)
+	take(sel[targetDocs], paths, files)
+	return owned(headers, projectRoot), written
+}
+
+// emit runs the selected targets in order, without the sweep.
 func emit(in Inputs, cfg *config.Config, projectRoot string, sel map[string]bool) error {
+	if sel[targetDocs] {
+		if err := docs.GenerateOpenAPI(in.Design, cfg, projectRoot); err != nil {
+			return fmt.Errorf("openapi: %w", err)
+		}
+	}
 	if sel[config.LangGo] {
 		if err := golang.Generate(in.Design, in.Protos, cfg, projectRoot); err != nil {
 			return err
 		}
 	}
-	if err := generateEventTargets(in.Design, cfg, projectRoot, sel); err != nil {
-		return err
-	}
-	if sel[TargetDocs] {
-		if err := GenerateDocuments(in.Design, cfg, projectRoot); err != nil {
-			return err
-		}
-	}
-	return nil
+	return generateEventTargets(in.Design, cfg, projectRoot, sel)
 }
 
-// selection turns the requested names into a lookup, rejecting anything
-// unknown so a typo never silently generates less than asked.
+// selection turns the requested names into a set, rejecting an unknown
+// name; no name selects every target.
 func selection(targets []string) (map[string]bool, error) {
 	known := map[string]bool{}
 	for _, name := range SelectableTargets() {
@@ -133,69 +156,33 @@ func selection(targets []string) (map[string]bool, error) {
 	return sel, nil
 }
 
-// validate runs the checks that must reject a design before any file is
-// written: malformed security schemes, operationId / component-schema
-// name collisions, and a proto service sharing its output directory
-// with a DSL service.
-func validate(in Inputs, cfg *config.Config) error {
-	if errs := docs.ValidateSecuritySchemes(cfg); len(errs) > 0 {
-		return fmt.Errorf("security scheme errors:\n  %s", strings.Join(errs, "\n  "))
-	}
-	if err := docs.ValidateOpenAPI(in.Design, cfg); err != nil {
-		return err
+// validate rejects, before any file is written, a design whose outputs would
+// overwrite each other or, when the selection writes the document, whose
+// document would be invalid.
+func validate(in Inputs, cfg *config.Config, sel map[string]bool) error {
+	if sel[targetDocs] {
+		if err := docs.ValidateOpenAPI(in.Design, cfg); err != nil {
+			return err
+		}
 	}
 	return golang.ValidateProtoOutputs(in.Design, in.Protos, cfg)
 }
 
-// GenerateDocuments writes the OpenAPI projection, a pure function of the
-// design that reads no generated file.
-func GenerateDocuments(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
-	if err := docs.GenerateOpenAPI(proj, cfg, projectRoot); err != nil {
-		return fmt.Errorf("openapi: %w", err)
-	}
-	return nil
-}
-
-// GenerateEventTargets runs every configured, enabled language target.
-// A project whose design declares no event generates nothing.
-func GenerateEventTargets(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
-	sel, _ := selection(nil)
-	if err := generateEventTargets(proj, cfg, projectRoot, sel); err != nil {
-		return err
-	}
-	return prune(eventOutputDirs(cfg, projectRoot, sel), regeneratedFiles(Inputs{Design: proj}, cfg, projectRoot))
-}
-
-// generateEventTargets is [GenerateEventTargets] narrowed to a selection.
+// generateEventTargets runs the selected, enabled event language targets; a
+// design with no event generates nothing.
 func generateEventTargets(proj *semantic.Project, cfg *config.Config, projectRoot string, sel map[string]bool) error {
-	// A design with no event still runs every target: the artefacts of an
-	// event the design used to declare are exactly what has to go, and a
-	// target that does not run also does not sweep - so nothing would
-	// take the descriptor left on disk for a contract nobody declares.
-	for _, target := range LangTargets {
-		if !sel[target.Lang] {
+	for target, outDir := range eventTargets(cfg) {
+		if !sel[target.lang] {
 			continue
 		}
-		cfgTarget, ok := cfg.Events.TargetFor(target.Lang)
-		if !ok || !cfgTarget.Enabled() {
-			continue
-		}
-		if err := target.Generate(proj, cfg, projectRoot, cfgTarget.Out); err != nil {
-			return fmt.Errorf("events(%s): %w", target.Lang, err)
+		if err := target.generate(proj, cfg, projectRoot, outDir); err != nil {
+			return fmt.Errorf("events(%s): %w", target.lang, err)
 		}
 	}
 	return nil
 }
 
-// OutputNotes reports what every enabled target found in its output and
-// could not account for.
+// OutputNotes reports what the Go output holds that the run cannot account for.
 func OutputNotes(in Inputs, cfg *config.Config, projectRoot string) []string {
-	var out []string
-	for _, target := range LangTargets {
-		if target.OutputNotes == nil {
-			continue
-		}
-		out = append(out, target.OutputNotes(in.Design, in.Protos, cfg, projectRoot)...)
-	}
-	return out
+	return golang.OutputNotes(in.Design, in.Protos, cfg, projectRoot)
 }

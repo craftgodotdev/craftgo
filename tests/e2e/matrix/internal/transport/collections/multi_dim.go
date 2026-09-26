@@ -14,8 +14,8 @@ import (
 
 // MultiDim drives a 2D array of scalars through the request
 // body so the doubly-nested loop emits on the wire boundary.
-// MultiDim returns the http.HandlerFunc for the
-// POST MultiDim endpoint.
+//
+// MultiDim returns the POST MultiDim handler.
 func MultiDim(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Arr_Tag2D
@@ -33,8 +33,6 @@ func MultiDim(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

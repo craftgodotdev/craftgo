@@ -6,22 +6,20 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
-	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// MetricsService carries the per-request state for the Metrics endpoint of
-// StreamService. The embedded log.Logger is pre-bound to the request
-// context so logging surfaces trace_id / span_id.
+// MetricsService runs StreamService.Metrics for one request.
 type MetricsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewMetricsService constructs a fresh service instance bound to ctx.
+// NewMetricsService binds MetricsService to ctx; its Logger carries ctx's trace ids.
 func NewMetricsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *MetricsService {
 	return &MetricsService{
 		Logger: log.Default().WithContext(ctx),

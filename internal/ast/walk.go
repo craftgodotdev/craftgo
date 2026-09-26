@@ -1,19 +1,51 @@
 package ast
 
-// EachField calls fn for every Field directly declared in body, in
-// source order. Mixin members are skipped - they're embedded type
-// references, not fields with their own decorator chain or shape.
-//
-// The callback may return false to stop iteration early (useful for
-// "find first matching field" lookups). Returning true continues.
-func EachField(body []TypeMember, fn func(*Field) bool) {
+// Fields returns the fields of a type or error body in source order; mixins
+// and comments are skipped.
+func Fields(body []TypeMember) []*Field {
+	var out []*Field
 	for _, m := range body {
-		f, ok := m.(*Field)
-		if !ok {
-			continue
-		}
-		if !fn(f) {
-			return
+		if f, ok := m.(*Field); ok {
+			out = append(out, f)
 		}
 	}
+	return out
+}
+
+// Members returns the fields and mixins of a type or error body in source
+// order; comments are skipped.
+func Members(body []TypeMember) []TypeMember {
+	var out []TypeMember
+	for _, m := range body {
+		switch m.(type) {
+		case *Field, *Mixin:
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// WalkNamedRefs calls fn on every named type t reaches, through map keys and
+// values and generic arguments, each after the named types in its arguments.
+func (t *TypeRef) WalkNamedRefs(fn func(*NamedTypeRef)) {
+	if t == nil {
+		return
+	}
+	if t.Map != nil {
+		t.Map.Key.WalkNamedRefs(fn)
+		t.Map.Value.WalkNamedRefs(fn)
+		return
+	}
+	t.Named.WalkNamedRefs(fn)
+}
+
+// WalkNamedRefs is [TypeRef.WalkNamedRefs] from n itself.
+func (n *NamedTypeRef) WalkNamedRefs(fn func(*NamedTypeRef)) {
+	if n == nil {
+		return
+	}
+	for _, a := range n.Args {
+		a.WalkNamedRefs(fn)
+	}
+	fn(n)
 }

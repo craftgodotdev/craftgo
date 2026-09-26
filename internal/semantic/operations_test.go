@@ -6,8 +6,6 @@ import (
 )
 
 func TestOperationIDDuplicateExplicitRejected(t *testing.T) {
-	// Two methods pinned to the same explicit @operationId collide - the spec
-	// would carry a duplicate operationId.
 	_, diags := Analyze(parseFiles(t, `service S {
 	@operationId("doThing")
 	get A /a {}
@@ -24,7 +22,6 @@ func TestOperationIDDuplicateExplicitRejected(t *testing.T) {
 }
 
 func TestOperationIDOverrideEqualsAutoRejected(t *testing.T) {
-	// An override equal to another method's auto operationId also collides.
 	_, diags := Analyze(parseFiles(t, `service S {
 	get ListUsers /u {}
 	@operationId("ListUsers")
@@ -43,10 +40,8 @@ func TestOperationIDUniqueClean(t *testing.T) {
 }`)
 }
 
+// A method name shared by two services gets a service-prefixed operation base (`AList`).
 func TestOperationBaseNameServicePrefixesShared(t *testing.T) {
-	// A method name shared by two services is service-prefixed so the bases
-	// (and thus operationIds / component names) stay unique without an
-	// explicit override.
 	pkg, diags := Analyze(parseFiles(t, `service A { get List /a {} }
 service B { get List /b {} }`))
 	if d := findCode(diags, CodeDuplicateOperation); d != nil {
@@ -58,9 +53,7 @@ service B { get List /b {} }`))
 	}
 }
 
-// Two methods in DIFFERENT packages with the same explicit @operationId clash in
-// the merged OpenAPI document; the project pass reports it with a position the
-// per-package pass (one package at a time) can't.
+// An explicit @operationId repeated across packages is rejected.
 func TestProjectOperationIDCrossPkgExplicitDup(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"alpha/a.craftgo": `package alpha
@@ -82,8 +75,7 @@ service BetaService {
 	}
 }
 
-// Auto ids that share a method name across packages are service-prefixed in the
-// merged document, so they do NOT clash - no false positive.
+// Auto operation ids that share a method name across packages do not collide.
 func TestProjectOperationIDCrossPkgAutoNoFalsePositive(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"alpha/a.craftgo": `package alpha

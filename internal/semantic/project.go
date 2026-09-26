@@ -1,89 +1,49 @@
 package semantic
 
-// Multi-package project analysis. AnalyzeProject groups files by
-// their `package X` declaration - files anywhere under the design
-// root that share an X declaration merge into one logical package,
-// while files declaring different package names form separate
-// packages. This matches the README's §"Imports" intent while also
-// preserving the existing fixtures' "import = pull files in this
-// folder into my package" behaviour: when files in different folders
-// happen to declare the same package name, they merge.
-//
-// Lifecycle:
-//
-//   1. Parse every file (caller's responsibility).
-//   2. Group files by their `f.Package.Name`. Files lacking a
-//      package decl join the only named package, or form a group
-//      keyed "" when there is none or several.
-//   3. Build every package's symbol tables, then run the per-package
-//      rule phases with the whole project in scope.
-//   4. For each file, validate `import "path"` against the design
-//      filesystem (when a root is known).
-//   5. Walk every NamedTypeRef across every file; multi-part names
-//      `pkg.Type` resolve directly to the Package whose pkg.Name ==
-//      `pkg`. The DSL keeps no alias-based indirection - `import
-//      alias "path"` is parsed but the alias is informational only.
-//   6. Run the project-wide rules (cross-package uniqueness, path and
-//      operationId collisions, group layout).
-//
-// Codes specific to this layer:
-//
-//   - [CodeImportUnresolved]      - `import "path"` doesn't exist
-//     under the design root.
-//   - [CodeImportEscape]          - path uses `..` / leading `/`.
-//   - [CodeImportSelf]            - file imports its own folder
-//     while declaring a package name that already covers it.
-//   - [CodeRefUnknownPackage]     - `pkg.Type` references a package
-//     name not declared anywhere in the project.
-//   - [CodeRefUnknownSymbol]      - package resolves but the target
-//     doesn't declare the named type.
-
 import (
+	"cmp"
+	"fmt"
+	"go/token"
+	"go/types"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// Project is the cross-package analysis result. Packages is keyed by
-// the package's `package X` declaration name (the value of
-// [Package.Name]), so files in any folder sharing the same name
-// merge into a single entry.
+// Project is the analysis of a whole design. Packages is keyed by
+// [Package.Name]; files in any folder that declare one name share an entry.
 type Project struct {
-	// Root is the absolute design folder used for filesystem
-	// validation of `import "path"`. Empty when AnalyzeProject was
-	// called without [Options.DesignRoot].
-	Root string
-	// Packages maps `package X` name → analysed [Package].
 	Packages map[string]*Package
+	// typeParams holds each reference to a type parameter in a generic
+	// type's body; [Project.resolve] finds no declaration for one.
+	typeParams map[*ast.QualifiedIdent]bool
+	// endlessFlows are the instantiations that never end, from
+	// [Project.endlessParamFlows].
+	endlessFlows []paramFlow
 }
 
-// AnalyzeProject groups files into packages by their `package X`
+// AnalyzeProject groups files into packages by their `package`
 // declaration, analyses every package with the whole project in scope,
-// and runs the project-wide rules. The returned [Project] is always
-// non-nil; consumers may inspect partial results even when diagnostics
-// are reported.
+// and runs the project-wide rules. A file without a `package` clause joins
+// no package. The Project is never nil.
 func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
-	proj := &Project{
-		Root:     opts.DesignRoot,
-		Packages: map[string]*Package{},
-	}
-	groups := groupFilesByPackage(files)
-	names := make([]string, 0, len(groups))
-	for name := range groups {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	proj := &Project{Packages: map[string]*Package{}}
+	groups, diags := groupFilesByPackage(files)
+	names := slices.Sorted(maps.Keys(groups))
 	analyzers := make(map[string]*analyzer, len(groups))
 	for _, name := range names {
-		a := newAnalyzer(proj, opts)
+		a := newAnalyzer(proj, name, opts)
 		a.runDeclPhase(groups[name])
 		proj.Packages[name] = a.pkg
 		analyzers[name] = a
 	}
-	var diags []Diagnostic
+	proj.typeParams = typeParamRefs(proj.Packages)
+	proj.endlessFlows = proj.endlessParamFlows()
 	for _, name := range names {
 		a := analyzers[name]
 		group := groups[name]
@@ -93,72 +53,156 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 		a.runRefPhase(group)
 		diags = append(diags, a.diags...)
 	}
-	r := &refResolver{proj: proj, diags: diags, basePath: opts.BasePath, fileCase: resolvedFileCase(opts.FileCase)}
-	for _, f := range files {
-		r.processFile(f, opts.DesignRoot)
+	c := &projectChecks{proj: proj, diags: diags, basePath: opts.BasePath, fileCase: opts.FileCase}
+	if opts.DesignRoot != "" {
+		c.manifest = lexer.Position{Filename: filepath.Join(opts.DesignRoot, config.Filename)}
 	}
-	r.checkProjectGroupChecks()
-	r.checkProjectMiddlewareUniqueness()
-	r.checkProjectPathCollision()
-	r.checkProjectOperationIDUniqueness()
-	r.checkProjectEvents()
-	return proj, r.diags
+	c.checkBasePathFormat()
+	c.checkBasePathPattern()
+	c.checkProjectGroupChecks()
+	c.checkProjectMiddlewareUniqueness()
+	c.checkProjectPathCollision()
+	c.checkProjectOperationIDUniqueness()
+	c.checkProjectEvents()
+	c.checkPackageCycles()
+	c.checkInstantiationCycles()
+	sortDiagnostics(c.diags)
+	return proj, c.diags
 }
 
-// singlePackage returns the package a single-package analysis produced:
-// the only named package, or the unnamed bucket when no file declares a
-// package. Falls back to the first package by name.
-func (p *Project) singlePackage() *Package {
-	if len(p.Packages) == 1 {
-		for _, pkg := range p.Packages {
-			return pkg
-		}
-	}
-	if pkg := p.Packages[""]; pkg != nil {
-		return pkg
-	}
-	names := make([]string, 0, len(p.Packages))
-	for name := range p.Packages {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	if len(names) > 0 {
-		return p.Packages[names[0]]
-	}
-	return newAnalyzer(p, Options{}).pkg
+// projectChecks runs the rules that span packages and collects their
+// diagnostics.
+type projectChecks struct {
+	proj     *Project
+	diags    []Diagnostic
+	basePath string // [Options.BasePath]
+	// fileCase is output.fileCase, which names an ungrouped service's directory.
+	fileCase string
+	// manifest is where a diagnostic about a manifest value points: the
+	// manifest file, without a line; the zero position without a design root.
+	manifest lexer.Position
 }
 
-// groupFilesByPackage classifies every file by its `package X`
-// declaration. Files with no decl share the bucket "" - the same
-// loose policy [analyzer.checkPackageName] uses for single-package
-// analysis. Each returned group becomes one [Package] in the
-// resulting [Project].
-func groupFilesByPackage(files []*ast.File) map[string][]*ast.File {
-	groups := map[string][]*ast.File{}
-	for _, f := range files {
-		name := ""
-		if f.Package != nil {
-			name = f.Package.Name
-		}
-		groups[name] = append(groups[name], f)
-	}
-	// Files without a package declaration belong to the project's only
-	// named package when there is exactly one.
-	if unnamed, ok := groups[""]; ok && len(groups) == 2 {
-		for name, group := range groups {
-			if name != "" {
-				groups[name] = append(group, unnamed...)
-				delete(groups, "")
+// diag appends a diagnostic at pos and returns a pointer into c.diags for
+// setting Related; the pointer is invalid after the next append.
+func (c *projectChecks) diag(pos lexer.Position, sev lexer.Severity, code, format string, args ...any) *Diagnostic {
+	c.diags = append(c.diags, Diagnostic{
+		Pos:      pos,
+		End:      pos,
+		Severity: sev,
+		Code:     code,
+		Msg:      fmt.Sprintf(format, args...),
+	})
+	return &c.diags[len(c.diags)-1]
+}
+
+// siteReport is one site of a problem reported at every site: the message
+// there, and the note the other sites relate it by.
+type siteReport struct {
+	pos  lexer.Position
+	msg  string
+	note string
+	// peer groups sites that relate none of their group; "" relates every site.
+	peer string
+}
+
+// reportEverySite reports each site's message under code, relating every
+// other site by its note.
+func (c *projectChecks) reportEverySite(code string, sites []siteReport) {
+	for i, s := range sites {
+		d := c.diag(s.pos, lexer.SeverityError, code, "%s", s.msg)
+		for j, o := range sites {
+			if j == i || (s.peer != "" && o.peer == s.peer) {
+				continue
 			}
+			d.Related = append(d.Related, lexer.Related{Pos: o.pos, Msg: o.note})
 		}
 	}
-	return groups
 }
 
-// folderExists reports whether path (relative to designRoot) maps to
-// a directory containing at least one .craftgo file. Used to validate
-// `import "path"` directives - the import is informational in the
-// new package-name-keyed model, but a typo is still worth flagging.
+// sortDiagnostics orders diags by position, code and message.
+func sortDiagnostics(diags []Diagnostic) {
+	slices.SortStableFunc(diags, func(a, b Diagnostic) int {
+		return cmp.Or(
+			comparePos(a.Pos, b.Pos),
+			cmp.Compare(a.Code, b.Code),
+			cmp.Compare(a.Msg, b.Msg),
+		)
+	})
+}
+
+// comparePos orders positions by file, then offset.
+func comparePos(a, b lexer.Position) int {
+	return cmp.Or(cmp.Compare(a.Filename, b.Filename), cmp.Compare(a.Offset, b.Offset))
+}
+
+// groupFilesByPackage groups files by their `package` name and reports each
+// file that declares something without a `package` clause, or names a
+// package Go cannot use. A clause whose name did not parse joins no group
+// either; the parser reported it.
+func groupFilesByPackage(files []*ast.File) (map[string][]*ast.File, []Diagnostic) {
+	groups := map[string][]*ast.File{}
+	var diags []Diagnostic
+	for _, f := range files {
+		switch {
+		case f.Package == nil:
+			if pos, ok := firstDeclarationPos(f); ok {
+				diags = append(diags, Diagnostic{
+					Pos:      pos,
+					End:      pos,
+					Severity: lexer.SeverityError,
+					Code:     CodePackageMissing,
+					Msg:      "this file has no `package` clause - every design file starts with `package <name>`",
+				})
+			}
+		case f.Package.Name != "":
+			if why := goPackageNameProblem(f.Package.Name); why != "" {
+				diags = append(diags, Diagnostic{
+					Pos:      f.Package.Pos,
+					End:      f.Package.Pos,
+					Severity: lexer.SeverityError,
+					Code:     CodePackageName,
+					Msg:      fmt.Sprintf("package name %q %s - rename the package", f.Package.Name, why),
+				})
+			}
+			groups[f.Package.Name] = append(groups[f.Package.Name], f)
+		}
+	}
+	return groups, diags
+}
+
+// goPackageNameProblem says why no generated Go package can take name, the
+// DSL package's name, or returns "".
+func goPackageNameProblem(name string) string {
+	switch {
+	case token.IsKeyword(name):
+		return "is a Go keyword, which a Go package clause cannot hold"
+	case name == "_":
+		return "is Go's blank identifier, which names no package"
+	case name == "main":
+		return "makes a Go program, which the other generated packages cannot import"
+	case name == "init":
+		return "is reserved for Go's init functions, so no Go file can import a package of that name"
+	case types.Universe.Lookup(name) != nil:
+		return "is predeclared in Go, so a generated file importing the package would lose the built-in " + name
+	}
+	return ""
+}
+
+// firstDeclarationPos returns the position of f's first import or
+// declaration; ok is false when f declares nothing.
+func firstDeclarationPos(f *ast.File) (lexer.Position, bool) {
+	switch {
+	case len(f.Imports) > 0:
+		return f.Imports[0].Pos, true
+	case len(f.Decls) > 0:
+		return f.Decls[0].DeclPos(), true
+	}
+	return lexer.Position{}, false
+}
+
+// folderExists reports whether importPath, relative to designRoot, is a
+// directory holding at least one design file.
 func folderExists(designRoot, importPath string) bool {
 	if designRoot == "" || importPath == "" {
 		return false

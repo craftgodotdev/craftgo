@@ -6,108 +6,156 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// escapeErrorfName makes a wire/field name safe to embed directly inside a
-// generated fmt.Errorf(...) format literal. strconv.Quote escapes a double
-// quote or backslash that would otherwise break the Go string literal (its
-// outer quotes are dropped because callers wrap the whole message in their
-// own), and doubling `%` stops fmt from reading the name as a verb. An
-// ordinary name (letters, digits, `-`, `_`) is returned unchanged, so
-// generated output is identical for every well-formed wire name.
-func escapeErrorfName(name string) string {
-	q := strconv.Quote(name)
+// escapeErrorf makes s safe inside a generated fmt.Errorf format literal: Go
+// string escapes, and `%` doubled.
+func escapeErrorf(s string) string {
+	q := strconv.Quote(s)
 	q = q[1 : len(q)-1]
 	return strings.ReplaceAll(q, "%", "%%")
 }
 
-// errSubject renders the leading "<field>: " of a validation message, or "" when
-// the field has no name. A scalar's / enum's own Validate() body is emitted with
-// an empty name so its message carries only the constraint ("length less than
-// 3"); the field that uses that type restores the subject by wrapping the error
-// with the field name (see nestedValidateCall). Regular struct fields pass their
-// real name and keep the "<field>: " prefix.
-func errSubject(name string) string {
-	if name == "" {
-		return ""
+// errorf renders the fmt.Errorf call of a validation error, "<subject>: text",
+// or text alone for the subject-less error of a scalar's or enum's own
+// Validate().
+func errorf(subject, text string, ctx emitCtx) string {
+	ctx.imports.use("fmt")
+	if subject != "" {
+		text = subject + ": " + text
 	}
-	return name + ": "
+	return `fmt.Errorf("` + escapeErrorf(text) + `")`
 }
 
-// This file collects every function that produces Go source for a
-// validator. Each per-decorator emitter is paired with a comment
-// explaining (a) what type-shapes it accepts and (b) what generated
-// code it produces. Three cross-cutting helpers - [shape],
-// [ifReturnf], and the enum/typeParam/nested call emitters - are
-// shared across multiple validators and live at the top of the file.
+// failIf renders `if cond { return err }`, err the [errorf] of subject and text.
+func failIf(cond, subject, text string, ctx emitCtx) string {
+	return fmt.Sprintf("if %s {\n\treturn %s\n}", cond, errorf(subject, text, ctx))
+}
 
-// shape returns Go source for a field-level check, picking the right
-// per-form scaffold (loop / nil-guard / bare). The body builder is
-// invoked once with an "element expression" that the body can use as
-// the concrete value to inspect:
-//
-//   - array  → `access[i]` inside `for i := range access {}`
-//   - opt    → `*access`   inside `if access != nil {}`
-//   - single → `access`    with no wrapping
-//
-// The body is responsible for any `return ...` it needs; the wrapper
-// merely delivers control to it for each element.
-func shape(f *ast.Field, access string, ctx emitCtx, body func(elem string) string) string {
-	switch {
-	case f.Type != nil && f.Type.Array:
-		return fmt.Sprintf("for i := range %s {\n%s\n}", access, body(access+"[i]"))
-	case goFieldIsPointer(f, ctx.pkg, ctx.resolver):
-		// The Go field is *T - from `?` (optional) OR `@nullable`
-		// (required-but-nullable). Key on the actual pointer-ness, not
-		// just the `?` suffix: a `@nullable` enum/scalar field lowers to
-		// *T too. Nil-guard before the deref (a nil *T would panic), then
-		// deref. Parenthesise the
-		// deref so callers can prefix operators (`len(...)`, `&`, method
-		// calls) without Go precedence surprises - `(*v.Avatar).Validate()`
-		// works; `*v.Avatar.Validate()` parses as `*(v.Avatar.Validate())`.
-		return fmt.Sprintf("if %s != nil {\n%s\n}", access, body("(*"+access+")"))
-	default:
-		return body(access)
+// guardBlock renders body inside `if access != nil { ... }`.
+func guardBlock(access, body string) string {
+	return fmt.Sprintf("if %s != nil {\n%s\n}", access, body)
+}
+
+// wireName returns the name f travels under with binding b: its parameter
+// name off the body, else its JSON key.
+func wireName(f *ast.Field, b wire.Binding) string {
+	if b.IsParam() {
+		return wire.WireName(f, b)
 	}
+	return wire.JSONName(f)
 }
 
-// ifReturnf assembles a single multi-line `if cond { return fmt.Errorf(msg) }`
-// block. Centralised here so every per-decorator emitter has identical
-// output formatting (go/format normalises whitespace afterwards), and so the
-// fmt import is declared by the one place that renders the call.
-func ifReturnf(cond, msg string, ctx emitCtx) string {
-	ctx.uses["fmt"] = true
-	return fmt.Sprintf("if %s {\n\treturn fmt.Errorf(%s)\n}", cond, msg)
-}
-
-// indentBlock prefixes every newline in s with a tab so the rendered
-// snippet aligns one indent level deeper inside an enclosing if/for
-// block. Useful when a per-decorator check produces a multi-line body
-// that has to nest under another statement.
-func indentBlock(s string) string {
-	return strings.ReplaceAll(s, "\n", "\n\t")
-}
-
-// fieldWireName returns the name a client uses for f: the wire alias of a bound
-// field (the `@path`/`@query`/`@header`/`@cookie`/`@form` name argument, e.g.
-// `@header("x-source-domain")`), or f.Name for a body field (whose JSON key is
-// the field name). Validation messages use it so a failure reports what the
-// caller actually sent - `x-source-domain: ...`, not the DSL field name. The
-// scalar synth field (no name, no decorators) maps to "", keeping the shared
-// scalar/enum Validate() message subject-less.
-//
-// The returned name is escaped for direct embedding in a generated
-// fmt.Errorf(...) format literal (see [escapeErrorfName]): a wire alias is a
-// user-controlled string that may contain a double quote, backslash, or `%`.
-// Every caller embeds the result in an error-message literal, never compares it
-// as a raw string, so escaping once here keeps all message sites safe.
-func fieldWireName(f *ast.Field) string {
-	kind := wire.BindingKind(f.Decorators)
-	name := wire.JSONName(f)
-	switch kind {
-	case wire.BindingPath, wire.BindingQuery, wire.BindingHeader, wire.BindingCookie, wire.BindingForm:
-		name = wire.WireName(f, kind)
+// subject returns the name f's validation messages carry: the parameter its
+// auto-binding reads it from, else the name its own binding gives it.
+func (ctx emitCtx) subject(f *ast.Field) string {
+	b, auto := ctx.autoBound[f.Pos]
+	if !auto {
+		b = wire.ExplicitBinding(f)
 	}
-	return escapeErrorfName(name)
+	return wireName(f, b)
+}
+
+// autoBindings returns, by declaration, the binding of each field that every
+// request reading it auto-binds to a path or query parameter and no JSON value
+// carries.
+func autoBindings(proj *semantic.Project) map[ast.Pos]wire.Binding {
+	auto := map[ast.Pos]wire.Binding{}
+	fromJSON := map[ast.Pos]bool{}
+	for _, name := range proj.PackageNames() {
+		pkg, res := proj.Packages[name], semantic.NewResolver(proj, name)
+		for _, svcName := range pkg.ServiceNames() {
+			for _, m := range pkg.Services[svcName].Methods {
+				for _, rf := range semantic.RequestFields(m, pkg, res, nil) {
+					switch {
+					case rf.AutoBound:
+						auto[rf.Field.Pos] = rf.Binding
+					case rf.OnWireBody:
+						fromJSON[rf.Field.Pos] = true
+					}
+				}
+			}
+		}
+	}
+	for td := range jsonTypes(proj) {
+		for _, f := range ast.Fields(td.Body) {
+			fromJSON[f.Pos] = true
+		}
+	}
+	for pos := range fromJSON {
+		delete(auto, pos)
+	}
+	return auto
+}
+
+// jsonTypes returns the declared types whose fields a JSON value carries: the
+// types a field, a generic argument, a response, an event payload or an error
+// body names, and the types those mix in. A method's request type is a JSON
+// value only through such a use.
+func jsonTypes(proj *semantic.Project) map[*ast.TypeDecl]bool {
+	out := map[*ast.TypeDecl]bool{}
+	var add func(home string, n *ast.NamedTypeRef)
+	add = func(home string, n *ast.NamedTypeRef) {
+		pkgName, sym := home, n.Name.String()
+		if parts := n.Name.Parts; len(parts) == 2 {
+			pkgName, sym = parts[0], parts[1]
+		}
+		pkg := proj.Packages[pkgName]
+		if pkg == nil || pkg.Types[sym] == nil || out[pkg.Types[sym]] {
+			return
+		}
+		td := pkg.Types[sym]
+		out[td] = true
+		for _, m := range td.Body {
+			if mx, ok := m.(*ast.Mixin); ok {
+				mx.Ref.WalkNamedRefs(func(n *ast.NamedTypeRef) { add(pkgName, n) })
+			}
+		}
+	}
+	for _, name := range proj.PackageNames() {
+		pkg := proj.Packages[name]
+		value := func(n *ast.NamedTypeRef) { add(name, n) }
+		for _, td := range pkg.Types {
+			for _, m := range td.Body {
+				switch v := m.(type) {
+				case *ast.Field:
+					v.Type.WalkNamedRefs(value)
+				case *ast.Mixin:
+					for _, a := range v.Ref.Args {
+						a.WalkNamedRefs(value)
+					}
+				}
+			}
+		}
+		for _, ed := range pkg.Errors {
+			for _, m := range ed.Body {
+				switch v := m.(type) {
+				case *ast.Field:
+					v.Type.WalkNamedRefs(value)
+				case *ast.Mixin:
+					v.Ref.WalkNamedRefs(value)
+				}
+			}
+		}
+		for _, svcName := range pkg.ServiceNames() {
+			for _, m := range pkg.Services[svcName].Methods {
+				if m.Request != nil {
+					for _, a := range m.Request.Args {
+						a.WalkNamedRefs(value)
+					}
+				}
+				if m.Response != nil {
+					m.Response.Type.WalkNamedRefs(value)
+				}
+			}
+		}
+		for _, ev := range pkg.Events {
+			if ev.Payload != nil {
+				ev.Payload.Type.WalkNamedRefs(value)
+			}
+		}
+	}
+	return out
 }

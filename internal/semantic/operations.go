@@ -1,13 +1,5 @@
 package semantic
 
-// Operation-name resolution. The operationId and the component-schema base
-// name a method emits are LANGUAGE facts (derived from the method name, its
-// service, and an explicit @operationId override) - not OpenAPI rendering - so
-// they are decided here, on the floor both the analyser and codegen read.
-// codegen's emit calls [OperationID] / [OperationBaseName];
-// [refResolver.checkProjectOperationIDUniqueness] flags duplicates at design
-// time so the editor surfaces what would otherwise be a codegen-only error.
-
 import (
 	"maps"
 	"slices"
@@ -17,22 +9,22 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// MethodNameCounts counts how many times each method name appears across every
-// service. A name shared by two services must be service-qualified in the
-// emitted operationId / component names so they stay globally unique.
-func MethodNameCounts(pkg *Package) map[string]int {
+// MethodNameCounts counts each method name across the services of pkgs.
+func MethodNameCounts(pkgs ...*Package) map[string]int {
 	counts := map[string]int{}
-	for _, svc := range pkg.Services {
-		for _, m := range svc.Methods {
-			counts[m.Name]++
+	for _, pkg := range pkgs {
+		for _, svc := range pkg.Services {
+			for _, m := range svc.Methods {
+				counts[m.Name]++
+			}
 		}
 	}
 	return counts
 }
 
-// OperationBaseName is the collision-free base for a method's component schema
-// names (`<base>ReqBody`, `<base>RespBody`) and its default operationId: bare
-// when the method name is unique project-wide, service-prefixed when shared.
+// OperationBaseName is the base of a method's component schema names
+// (`<base>ReqBody`, `<base>RespBody`) and default operationId: the method
+// name, prefixed with svcName when counts has it more than once.
 func OperationBaseName(svcName string, m *ast.Method, counts map[string]int) string {
 	if counts[m.Name] >= 2 {
 		return svcName + m.Name
@@ -40,51 +32,29 @@ func OperationBaseName(svcName string, m *ast.Method, counts map[string]int) str
 	return m.Name
 }
 
-// OperationID returns a method's operationId: an explicit, non-empty
-// `@operationId("...")` override when present, otherwise base.
-func OperationID(m *ast.Method, base string) string {
-	for _, d := range m.Decorators {
-		if d == nil || d.Name != "operationId" || len(d.Args) == 0 {
-			continue
-		}
-		if s, ok := d.Args[0].Value.(*ast.StringLit); ok && s.Value != "" {
-			return s.Value
-		}
+// OperationID returns the operationId of a method with decorators decs: an
+// explicit, non-empty `@operationId("...")` override when present, otherwise base.
+func OperationID(decs []*ast.Decorator, base string) string {
+	if id, ok := ast.StringArg(decs, "operationId"); ok && id != "" {
+		return id
 	}
 	return base
 }
 
-// checkProjectOperationIDUniqueness flags every method whose operationId
-// collides with another's anywhere in the project. The single emitted
-// OpenAPI document merges every package's services, so method-name counts
-// are taken PROJECT-WIDE (matching the merged document): an auto id shared
-// by services in different packages is service-prefixed and does not
-// clash; an explicit @operationId override is taken verbatim and can. Runs
-// after services are merged so it sees the full method set per service.
-func (r *refResolver) checkProjectOperationIDUniqueness() {
-	counts := map[string]int{}
-	for _, pkg := range r.proj.Packages {
-		if pkg == nil {
-			continue
-		}
-		for _, si := range pkg.Services {
-			if si == nil {
-				continue
-			}
-			for _, m := range si.Methods {
-				counts[m.Name]++
-			}
-		}
-	}
+// checkProjectOperationIDUniqueness reports methods that share an
+// operationId. Method names are counted project-wide because one OpenAPI
+// document holds every package's services.
+func (c *projectChecks) checkProjectOperationIDUniqueness() {
+	counts := MethodNameCounts(slices.Collect(maps.Values(c.proj.Packages))...)
 	type owner struct {
 		ref string
 		pkg string
 		pos lexer.Position
 	}
 	owners := map[string][]owner{}
-	pkgNames := slices.Sorted(maps.Keys(r.proj.Packages))
+	pkgNames := slices.Sorted(maps.Keys(c.proj.Packages))
 	for _, pkgName := range pkgNames {
-		pkg := r.proj.Packages[pkgName]
+		pkg := c.proj.Packages[pkgName]
 		if pkg == nil {
 			continue
 		}
@@ -95,7 +65,7 @@ func (r *refResolver) checkProjectOperationIDUniqueness() {
 				continue
 			}
 			for _, m := range si.Methods {
-				id := OperationID(m, OperationBaseName(svcName, m, counts))
+				id := OperationID(si.Decorators(m), OperationBaseName(svcName, m, counts))
 				owners[id] = append(owners[id], owner{ref: svcName + "." + m.Name, pkg: pkgName, pos: m.Pos})
 			}
 		}
@@ -123,7 +93,7 @@ func (r *refResolver) checkProjectOperationIDUniqueness() {
 			msg = "operationId %q is shared across packages by %s - give each method a distinct @operationId(...)"
 		}
 		for _, o := range who {
-			r.diag(o.pos, lexer.SeverityError, CodeDuplicateOperation, msg, id, joined)
+			c.diag(o.pos, lexer.SeverityError, CodeDuplicateOperation, msg, id, joined)
 		}
 	}
 }

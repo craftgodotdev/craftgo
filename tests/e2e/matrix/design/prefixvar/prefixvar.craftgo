@@ -26,6 +26,12 @@ service TenantService {
 		request  TenantCreateReq
 		response TenantItem
 	}
+
+	// A raw request reads its path values itself, and the document still
+	// declares every variable of the route, the @prefix one included.
+	@doc("Export a tenant's items in a format logic picks. Logic reads the raw request; the document declares tenantID and format as path parameters.")
+	@passthrough
+	get ExportTenantItems /export/{format} {}
 }
 
 // TenantListReq: tenantID has no binding decorator. It matches the @prefix
@@ -51,4 +57,25 @@ type TenantItemList {
 	tenant string
 	items  TenantItem[]
 	total  int?
+}
+
+// A @prefix ending with a {name...} variable matches the rest of the path;
+// the field of its name binds it, and OpenAPI documents it as a string.
+@prefix("/blobs/{key...}")
+@tags(prefixvar)
+service BlobService {
+	@doc("Fetch a blob by its slash-separated key. The trailing {key...} variable binds the key field.")
+	get GetBlob / {
+		request  BlobReq
+		response BlobInfo
+	}
+}
+
+// BlobReq: key auto-binds to the trailing {key...} variable.
+type BlobReq {
+	key string @minLength(1)
+}
+
+type BlobInfo {
+	key string
 }

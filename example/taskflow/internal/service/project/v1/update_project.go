@@ -5,25 +5,20 @@ package project
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/project"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/project"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// UpdateProjectService carries the per-request state for the
-// UpdateProject endpoint of ProjectService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// UpdateProjectService runs ProjectService.UpdateProject for one request.
 type UpdateProjectService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewUpdateProjectService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewUpdateProjectService binds UpdateProjectService to ctx; its Logger carries ctx's trace ids.
 func NewUpdateProjectService(ctx context.Context, svcCtx *svccontext.ServiceContext) *UpdateProjectService {
 	return &UpdateProjectService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewUpdateProjectService(ctx context.Context, svcCtx *svccontext.ServiceCont
 	}
 }
 
-// UpdateProject is the service entry point. Replace the
-// TODO with the real implementation.
+// Update a project (v1).
+//
+// UpdateProject implements ProjectService.UpdateProject.
 func (l *UpdateProjectService) UpdateProject(req *types.UpdateProjectReq) (*types.Project, error) {
 	return l.svcCtx.Store.UpdateProject(req)
 }

@@ -2,13 +2,28 @@
 
 package collections
 
-// Email is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type DeepTag string
+
+// Email is the canonical email-format scalar. Used as a map VALUE in
+// maps.craftgo to confirm that scalar @format(email) + @maxLength
+// fire on every value during map iteration.
 type Email string
 
-// NonEmptyID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+type MapTag string
+
+// MemberID is a numeric map key: its @gte(1) runs at runtime, and
+// propertyNames leaves it out because JSON object keys are strings.
+type MemberID int
+
+// NonEmptyID is the canonical id scalar (non-empty, bounded length).
+// Used as a map KEY in maps.craftgo to confirm that key-side scalar
+// decorators emit a key-only iteration loop.
 type NonEmptyID string
 
-// Tag is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+// Tag is the kebab-case label scalar reused across the array and map
+// tests. Per-element validators (@minLength + @maxLength + @pattern)
+// are stacked so each enclosing `for` loop has THREE distinct
+// validators to emit per element.
 type Tag string
 
 // Address is a struct used as a map VALUE in maps.craftgo. The two
@@ -100,10 +115,15 @@ type Arr_TagSlice struct {
 	Tags []Tag `json:"tags"`
 }
 
-// Map_ArrayValue stacks an array INSIDE a map value: each value is a
-// `Tag[]`. The scalar-leaves walk should produce a doubly-nested
-// loop: `for _, val0 := range v.Buckets` then
-// `for i1 := range val0` then Tag's three validators on `val0[i1]`.
+// Map_ArrayOfMaps holds an array of maps whose value carries a validator;
+// the validator checks each value of each map.
+type Map_ArrayOfMaps struct {
+	M     []map[string]MapTag `json:"m"`
+	Plain map[string]MapTag   `json:"plain"`
+}
+
+// Map_ArrayValue holds an array in each map value (Tag[]): every element
+// of every value runs Tag's three validators.
 type Map_ArrayValue struct {
 	Buckets map[string][]Tag `json:"buckets"`
 }
@@ -115,13 +135,24 @@ type Map_Bounds struct {
 	Counts map[string]int `json:"counts"`
 }
 
-// Map_KeyAndValue puts scalars on BOTH sides - NonEmptyID on the key,
-// Email on the value. Generator should emit TWO loops: one for keys
-// (`for k0 := range v.Index`) and one for values
-// (`for _, val0 := range v.Index`), each running the matching
-// scalar's validators.
+// Map_JSONKey renames a map whose keys and values both carry validators:
+// a bad key and a bad value are reported under the JSON key alike.
+type Map_JSONKey struct {
+	Index map[NonEmptyID]Email `json:"by_id"`
+}
+
+// Map_KeyAndValue puts scalars on both sides: each key runs NonEmptyID's
+// validators and each value Email's, and a bad key and a bad value are
+// reported under the field name alike.
 type Map_KeyAndValue struct {
 	Index map[NonEmptyID]Email `json:"index"`
+}
+
+// Map_Nested holds a map of maps and a map of arrays of maps whose values
+// carry a validator; the validator checks every inner value.
+type Map_Nested struct {
+	Mm  map[string]map[string]DeepTag   `json:"mm"`
+	Maa map[string][]map[string]DeepTag `json:"maa"`
 }
 
 // Map_Optional is the optional-map case. The field carries no bounds,
@@ -131,6 +162,13 @@ type Map_Optional struct {
 	Counts map[string]int `json:"counts,omitempty"`
 }
 
+// Map_OptionalValue holds optional primitive map values: map[string]*int in
+// Go, additionalProperties [integer, "null"] in OpenAPI.
+type Map_OptionalValue struct {
+	Counts map[string]*int `json:"counts"`
+	Name   string          `json:"name"`
+}
+
 // Map_Plain is the simplest case - no validators, no scalars, no
 // optionality. The generator should emit NO validator block for this
 // field (presence is implicit; len() > 0 is not enforced).
@@ -138,26 +176,32 @@ type Map_Plain struct {
 	Counts map[string]int `json:"counts"`
 }
 
-// Map_ScalarValue uses a scalar value type (Tag). Unlike the struct
-// case, the scalar-leaves walk DOES descend into the value side here:
-// the generator emits `for _, val0 := range v.Labels` and fires Tag's
-// @minLength + @maxLength + @pattern on `val0`.
+// Map_ScalarKey validates each key as a MemberID and each value as a
+// MemberTag.
+type Map_ScalarKey struct {
+	ByUser map[MemberID]MemberTag `json:"byUser"`
+}
+
+// Map_ScalarValue uses a scalar value type (Tag): each value runs Tag's
+// @minLength, @maxLength and @pattern.
 type Map_ScalarValue struct {
 	Labels map[string]Tag `json:"labels"`
 }
 
-// Map_StructAddress is the second struct-valued map case, with
-// Address as the value. Each entry's `street` / `city` validators fire
-// through the per-entry `val.Validate()` call.
+// Map_StructAddress is the second struct-valued map case, with Address as
+// the value: each entry's street and city are validated.
 type Map_StructAddress struct {
 	Addresses map[string]Address `json:"addresses"`
 }
 
-// Map_StructValue is the struct-valued map. The generator emits a
-// per-entry `val.Validate()` call so each User's `name` / `email`
-// fields are validated, including the `email` scalar's @format(email).
+// Map_StructValue is the struct-valued map: each User value is validated,
+// its email scalar's @format(email) included.
 type Map_StructValue struct {
 	Users map[string]User `json:"users"`
+}
+
+type MemberTag struct {
+	Name string `json:"name"`
 }
 
 // User is a struct used as a map VALUE in maps.craftgo. The `email`

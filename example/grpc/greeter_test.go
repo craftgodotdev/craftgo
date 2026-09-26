@@ -35,7 +35,7 @@ func boot(t *testing.T) pb.GreeterClient {
 	svc := svccontext.NewServiceContext(cfg)
 	srv := rpc.New(svc, rpc.WithReflection(cfg.GRPC.Reflection))
 	srv.SetLogger(log.Discard())
-	srv.Use(rpc.AccessLog(srv.Logger()))
+	srv.Use(rpc.AccessLog(log.Follow()))
 	srv.Use(rpc.Timeout(cfg.GRPC.HandlerTimeout))
 	shutdown, err := wiring.RegisterGRPC(context.Background(), srv, svc)
 	if err != nil {

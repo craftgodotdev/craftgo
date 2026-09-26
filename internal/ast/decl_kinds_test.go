@@ -2,8 +2,8 @@ package ast
 
 import "testing"
 
-// Every kind in the list must actually satisfy the interface and report
-// its own name, which is what the dispatchers key on.
+// TestAllDeclKindsAreUsable pins that AllDeclKinds lists distinct kinds, each
+// with a name.
 func TestAllDeclKindsAreUsable(t *testing.T) {
 	seen := map[string]bool{}
 	for _, d := range AllDeclKinds() {

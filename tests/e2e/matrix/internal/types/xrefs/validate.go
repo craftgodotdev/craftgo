@@ -4,11 +4,15 @@ package xrefs
 
 import (
 	"fmt"
+	"mime/multipart"
+	"reflect"
 	"unicode/utf8"
+
+	fmt2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/fmt"
+	v2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/v"
 )
 
-// Validate checks every field-level constraint declared on XBagPromoteReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XBagPromoteReq) Validate() error {
 	if err := v.XWrapInBag.Validate(); err != nil {
 		return err
@@ -16,8 +20,7 @@ func (v *XBagPromoteReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XBodyPromoteReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XBodyPromoteReq) Validate() error {
 	if err := v.XPromoteBody.Validate(); err != nil {
 		return err
@@ -25,8 +28,7 @@ func (v *XBodyPromoteReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XByKeyReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XByKeyReq) Validate() error {
 	if err := v.XPathKey.Validate(); err != nil {
 		return err
@@ -34,8 +36,7 @@ func (v *XByKeyReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XEnumDefault.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XEnumDefault) Validate() error {
 	if v.Color != nil {
 		if err := v.Color.Validate(); err != nil {
@@ -45,32 +46,30 @@ func (v *XEnumDefault) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XEnumMaps.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XEnumMaps) Validate() error {
-	for _, val := range v.ByString {
-		if err := val.Validate(); err != nil {
+	for _, val0 := range v.ByString {
+		if err := val0.Validate(); err != nil {
 			return fmt.Errorf("byString: %w", err)
 		}
 	}
-	for key := range v.ByEnum {
-		if err := key.Validate(); err != nil {
+	for key0 := range v.ByEnum {
+		if err := key0.Validate(); err != nil {
 			return fmt.Errorf("byEnum: %w", err)
 		}
 	}
-	for key, val := range v.BothEnum {
-		if err := key.Validate(); err != nil {
+	for key0, val0 := range v.BothEnum {
+		if err := key0.Validate(); err != nil {
 			return fmt.Errorf("bothEnum: %w", err)
 		}
-		if err := val.Validate(); err != nil {
+		if err := val0.Validate(); err != nil {
 			return fmt.Errorf("bothEnum: %w", err)
 		}
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XEnumScalar.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XEnumScalar) Validate() error {
 	if v.Flat == "" {
 		return fmt.Errorf("flat: required")
@@ -91,26 +90,24 @@ func (v *XEnumScalar) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XGeneric.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XGeneric) Validate() error {
 	if err := v.OfLocal.Validate(); err != nil {
-		return err
+		return fmt.Errorf("ofLocal: %w", err)
 	}
 	if err := v.OfXType.Validate(); err != nil {
-		return err
+		return fmt.Errorf("ofXType: %w", err)
 	}
 	if err := v.OfPrim.Validate(); err != nil {
-		return err
+		return fmt.Errorf("ofPrim: %w", err)
 	}
 	if err := v.OfMap.Validate(); err != nil {
-		return err
+		return fmt.Errorf("ofMap: %w", err)
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XGetReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XGetReq) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -118,14 +115,12 @@ func (v *XGetReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XLocalItem.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XLocalItem) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XNestedReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XNestedReq) Validate() error {
 	if err := v.XParent.Validate(); err != nil {
 		return err
@@ -133,8 +128,25 @@ func (v *XNestedReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XScalarBindings.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *XOwnerPair[XOwner]) Validate() error {
+	if err := v.Owner.Validate(); err != nil {
+		return fmt.Errorf("owner: %w", err)
+	}
+	if absentValue(&v.Value) {
+		return fmt.Errorf("value: required")
+	}
+	if vv, ok := any(&v.Value).(interface{ Validate() error }); ok {
+		if err := vv.Validate(); err != nil {
+			return fmt.Errorf("value: %w", err)
+		}
+	} else if err := validateValue(v.Value); err != nil {
+		return fmt.Errorf("value: %w", err)
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *XScalarBindings) Validate() error {
 	if err := v.Path.Validate(); err != nil {
 		return fmt.Errorf("path: %w", err)
@@ -154,8 +166,7 @@ func (v *XScalarBindings) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XScalarFields.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XScalarFields) Validate() error {
 	if err := v.Flat.Validate(); err != nil {
 		return fmt.Errorf("flat: %w", err)
@@ -178,8 +189,7 @@ func (v *XScalarFields) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XSearchReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XSearchReq) Validate() error {
 	if err := v.Q.Validate(); err != nil {
 		return fmt.Errorf("q: %w", err)
@@ -196,32 +206,61 @@ func (v *XSearchReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XTypeFields.
-// Returns the first violation; nil when the value satisfies the contract.
-func (v *XTypeFields) Validate() error {
-	if err := v.Flat.Validate(); err != nil {
-		return err
+// Validate returns the first constraint v violates, or nil.
+func (v *XStdNames) Validate() error {
+	if err := v.Slot.Validate(); err != nil {
+		return fmt.Errorf("slot: %w", err)
 	}
-	if v.Maybe != nil {
-		if err := v.Maybe.Validate(); err != nil {
-			return err
+	{
+		seen := make(map[fmt2.Row]struct{}, len(v.Rows))
+		for _, item := range v.Rows {
+			if _, dup := seen[item]; dup {
+				return fmt.Errorf("rows: items must be unique")
+			}
+			seen[item] = struct{}{}
 		}
 	}
-	for i0 := range v.Many {
-		if err := v.Many[i0].Validate(); err != nil {
-			return err
+	for i0 := range v.Rows {
+		if err := v.Rows[i0].Validate(); err != nil {
+			return fmt.Errorf("rows: %w", err)
 		}
 	}
-	for _, val := range v.ByKey {
-		if err := val.Validate(); err != nil {
-			return err
+	{
+		seen := make(map[v2.Code]struct{}, len(v.Codes))
+		for _, item := range v.Codes {
+			if _, dup := seen[item]; dup {
+				return fmt.Errorf("codes: items must be unique")
+			}
+			seen[item] = struct{}{}
 		}
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XTypeMixin.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *XTypeFields) Validate() error {
+	if err := v.Flat.Validate(); err != nil {
+		return fmt.Errorf("flat: %w", err)
+	}
+	if v.Maybe != nil {
+		if err := v.Maybe.Validate(); err != nil {
+			return fmt.Errorf("maybe: %w", err)
+		}
+	}
+	for i0 := range v.Many {
+		if err := v.Many[i0].Validate(); err != nil {
+			return fmt.Errorf("many: %w", err)
+		}
+	}
+	for _, val0 := range v.ByKey {
+		if err := val0.Validate(); err != nil {
+			return fmt.Errorf("byKey: %w", err)
+		}
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *XTypeMixin) Validate() error {
 	if err := v.XAudit.Validate(); err != nil {
 		return err
@@ -232,8 +271,7 @@ func (v *XTypeMixin) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XWirePromoteReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *XWirePromoteReq) Validate() error {
 	if err := v.XPromoteWire.Validate(); err != nil {
 		return err
@@ -241,14 +279,93 @@ func (v *XWirePromoteReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on XMixinErrBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *XLostBody) Validate() error {
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *XMixinErrBody) Validate() error {
 	if err := v.XOwner.Validate(); err != nil {
 		return err
 	}
 	if l := utf8.RuneCountInString(v.Reason); l < 1 || l > 200 {
 		return fmt.Errorf("reason: length out of range [1, 200]")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *XStdNamesClashBody) Validate() error {
+	if err := v.Slot.Validate(); err != nil {
+		return fmt.Errorf("slot: %w", err)
+	}
+	return nil
+}
+
+// absentValue reports whether the type-parameter value p points to is a
+// missing `file` or `any`: a nil header or interface.
+func absentValue(p any) bool {
+	switch p := p.(type) {
+	case **multipart.FileHeader:
+		return *p == nil
+	case *any:
+		return *p == nil
+	}
+	return false
+}
+
+// validateValue validates each element of a composite type-parameter value.
+func validateValue(v any) error {
+	return validateReflect(reflect.ValueOf(v))
+}
+
+// validateReflect validates rv, else each element of a slice, array or map rv.
+func validateReflect(rv reflect.Value) error {
+	if !rv.IsValid() {
+		return nil
+	}
+	if rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			return nil
+		}
+		if vv, ok := rv.Interface().(interface{ Validate() error }); ok {
+			return vv.Validate()
+		}
+		return validateReflect(rv.Elem())
+	}
+	// A pointer-receiver Validate needs an addressable value, so a map value is copied.
+	if vv, ok := rv.Interface().(interface{ Validate() error }); ok {
+		return vv.Validate()
+	}
+	if rv.CanAddr() {
+		if vv, ok := rv.Addr().Interface().(interface{ Validate() error }); ok {
+			return vv.Validate()
+		}
+	} else {
+		cp := reflect.New(rv.Type())
+		cp.Elem().Set(rv)
+		if vv, ok := cp.Interface().(interface{ Validate() error }); ok {
+			return vv.Validate()
+		}
+	}
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < rv.Len(); i++ {
+			if err := validateReflect(rv.Index(i)); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		iter := rv.MapRange()
+		for iter.Next() {
+			if err := validateReflect(iter.Value()); err != nil {
+				return err
+			}
+			if err := validateReflect(iter.Key()); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

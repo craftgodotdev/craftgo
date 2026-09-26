@@ -15,8 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-// listen serves impl on an in-memory listener and returns the dial
-// option that reaches it, so the tests exercise the real [Dial].
+// listen serves impl in memory and returns the dial option that reaches it.
 func listen(t *testing.T, impl echoServer) ClientOption {
 	t.Helper()
 	srv := New(nil).SetLogger(newCapture())
@@ -42,8 +41,7 @@ func invoke(ctx context.Context, conn *grpc.ClientConn, text string) (string, er
 	return out.GetValue(), nil
 }
 
-// A dialed connection talks to the server on the framework defaults
-// alone, and a nil stats handler is dropped rather than handed to grpc.
+// Dial works on its defaults alone and ignores a nil stats handler.
 func TestDialDefaults(t *testing.T) {
 	conn, err := Dial("passthrough:///bufconn", listen(t, &echo{ping: pong}), WithClientStatsHandler(nil))
 	if err != nil {
@@ -57,8 +55,8 @@ func TestDialDefaults(t *testing.T) {
 	}
 }
 
-// The default deadline bounds a call that carries none, and a caller
-// that sets its own keeps it - longer or shorter.
+// The client timeout bounds a call without a deadline; a caller's own deadline
+// wins, even a longer one.
 func TestDialTimeoutOnlyFillsAGap(t *testing.T) {
 	dialer := listen(t, &echo{ping: func(ctx context.Context, in *wrapperspb.StringValue) (*wrapperspb.StringValue, error) {
 		if in.GetValue() == "slow" {
@@ -117,15 +115,13 @@ func TestDialAccessLog(t *testing.T) {
 	}
 }
 
-// The escape hatches reach grpc: transport security replaces the
-// insecure default, and a dial option lands on the connection.
+// Transport credentials and dial options reach the connection.
 func TestDialEscapeHatches(t *testing.T) {
 	dialer := listen(t, &echo{ping: pong})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	// TLS against a plaintext server cannot handshake; the insecure
-	// default can, so the contrast is the option taking effect.
+	// A TLS client cannot handshake with the plaintext server.
 	tlsConn, err := Dial("passthrough:///bufconn", dialer,
 		WithClientTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})))
 	if err != nil {
@@ -136,8 +132,7 @@ func TestDialEscapeHatches(t *testing.T) {
 		t.Error("a TLS client reached a plaintext server, so the credentials were dropped")
 	}
 
-	// A dial option the caller passes is honoured: one byte is not
-	// enough for the reply.
+	// A one-byte receive limit cannot hold the reply.
 	capped, err := Dial("passthrough:///bufconn", dialer, WithDialOptions(grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(1))))
 	if err != nil {
 		t.Fatal(err)
@@ -148,9 +143,7 @@ func TestDialEscapeHatches(t *testing.T) {
 	}
 }
 
-// Dial connects lazily, so an unreachable target is a failed call and
-// not a failed startup - a service may be dialed before the one it
-// calls is up.
+// Dial connects lazily: an unreachable target fails the call, not Dial.
 func TestDialDoesNotConnectEagerly(t *testing.T) {
 	conn, err := Dial("127.0.0.1:1")
 	if err != nil {

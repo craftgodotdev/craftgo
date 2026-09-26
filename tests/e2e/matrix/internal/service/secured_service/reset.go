@@ -5,25 +5,20 @@ package services
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ResetService carries the per-request state for the
-// Reset endpoint of SecuredService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ResetService runs SecuredService.Reset for one request.
 type ResetService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewResetService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewResetService binds ResetService to ctx; its Logger carries ctx's trace ids.
 func NewResetService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ResetService {
 	return &ResetService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,11 +27,9 @@ func NewResetService(ctx context.Context, svcCtx *svccontext.ServiceContext) *Re
 	}
 }
 
-// Reset endpoint shows the "reset + replace" middleware pattern:
-// inherited Auth/RateLimit cleared, then the method-level chain
-// (BasicAuth + Audit only) becomes the entire chain.
-// Reset is the service entry point. Replace the
-// TODO with the real implementation.
+// Admin-only reset; uses its own middleware chain instead of the service default.
+//
+// Reset implements SecuredService.Reset.
 func (l *ResetService) Reset() (*types.HealthResp, error) {
 	// TODO: implement
 	return nil, nil

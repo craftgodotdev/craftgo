@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ListItems returns the http.HandlerFunc for the
-// GET ListItems endpoint.
+// List items with the total surfaced via response header and the auth cookie refreshed in passing.
+//
+// ListItems returns the GET ListItems handler.
 func ListItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewListItemsService(r.Context(), svcCtx)
@@ -29,7 +30,6 @@ func ListItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		http.SetCookie(w, &http.Cookie{Name: "has_more", Value: strconv.FormatBool(resp.HasMore)})
 		http.SetCookie(w, &http.Cookie{Name: "session_id", Value: resp.Session})
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

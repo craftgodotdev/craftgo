@@ -2,53 +2,74 @@
 
 package xshared
 
+import (
+	"encoding/json"
+)
+
+// ErrCodeXLost is the canonical machine-readable code for XLostErr.
+const ErrCodeXLost = "X_LOST"
+
+// XLostBody is the body of XLostErr.
+type XLostBody struct {
+	Key string `json:"key"`
+}
+
+// XLost shares its name with xrefs.XLost, so the merged OpenAPI document
+// names this one XsharedXLostErr.
+//
+// XLostErr is the NotFound error XLost.
+type XLostErr struct {
+	XLostBody
+}
+
+// NewXLostErr constructs XLostErr.
+func NewXLostErr(body XLostBody) *XLostErr {
+	return &XLostErr{XLostBody: body}
+}
+
+// Error returns the NotFound category's default message.
+func (e *XLostErr) Error() string { return "Not found" }
+
+// ErrCode returns ErrCodeXLost.
+func (e *XLostErr) ErrCode() string { return ErrCodeXLost }
+
+// HTTPStatus returns the NotFound status.
+func (e *XLostErr) HTTPStatus() int { return 404 }
+
+// MarshalJSON encodes the body alone.
+func (e *XLostErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.XLostBody) }
+
 // ErrCodeXNotFound is the canonical machine-readable code for XNotFoundErr.
 const ErrCodeXNotFound = "X_NOT_FOUND"
 
-// XNotFoundBody is the wire-shape payload declared at design time for XNotFoundErr.
-// User code instantiates this struct and hands it to NewXNotFoundErr; the
-// framework wraps it with the type-bound code / message metadata.
+// XNotFoundBody is the body of XNotFoundErr.
 type XNotFoundBody struct {
 	Resource string `json:"resource"`
 	ID       string `json:"id"`
 }
 
-// XNotFoundErr is the typed NotFound error generated for `XNotFound`.
-// The unexported `code` and `message` fields hold the type-bound
-// metadata populated by the constructor. Because they are unexported,
-// json.Marshal omits them from the wire payload - clients see only
-// the embedded body shape (or `{}` when no body was declared).
+// XNotFound is a cross-package error. Methods on xrefs' service
+// declare `@errors(xshared.XNotFound)` so the OpenAPI responses list
+// resolves the error schema through the project ErrorTable.
+//
+// XNotFoundErr is the NotFound error XNotFound.
 type XNotFoundErr struct {
-	code    string
-	message string
 	XNotFoundBody
 }
 
-// NewXNotFoundErr constructs XNotFoundErr with the framework metadata baked in.
-// `code` and `message` are bound to the type and not exposed as
-// constructor parameters; only the body struct varies per instance.
+// NewXNotFoundErr constructs XNotFoundErr.
 func NewXNotFoundErr(body XNotFoundBody) *XNotFoundErr {
-	return &XNotFoundErr{
-		code:          ErrCodeXNotFound,
-		message:       "Not found",
-		XNotFoundBody: body,
-	}
+	return &XNotFoundErr{XNotFoundBody: body}
 }
 
-// Error implements the standard error interface and returns the
-// category-default message bound to the type.
-func (e *XNotFoundErr) Error() string { return e.message }
+// Error returns the NotFound category's default message.
+func (e *XNotFoundErr) Error() string { return "Not found" }
 
-// ErrCode returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ ErrCode() string }`
-// assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`, and rpc.Error reads it
-// for the ErrorInfo detail it puts on the gRPC status. The accessor is
-// named `ErrCode` (not `Code`) so it does not shadow a user-declared
-// `code <type>` field promoted from the embedded body struct.
-func (e *XNotFoundErr) ErrCode() string { return e.code }
+// ErrCode returns ErrCodeXNotFound.
+func (e *XNotFoundErr) ErrCode() string { return ErrCodeXNotFound }
 
-// HTTPStatus returns the HTTP status code associated with the NotFound
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the NotFound status.
 func (e *XNotFoundErr) HTTPStatus() int { return 404 }
+
+// MarshalJSON encodes the body alone.
+func (e *XNotFoundErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.XNotFoundBody) }

@@ -7,6 +7,1440 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+### Added
+
+- **`log.Follow()`**, a `Logger` that writes each line through `log.Default`
+  as it is at that line, as do the loggers its `With` and `WithContext`
+  return, so a later `log.SetDefault` reaches them. `log.SetDefault` given
+  one installs the logger it writes through at that moment. A logger that
+  writes through a Follow logger, as a wrapper around one does, cannot be
+  the default: its lines would come back to it.
+
+- **`server.WithTelemetry(mw)`**, a `server.New` option that installs `mw`
+  outside `Recovery` and every `Use` middleware, the HTTP twin of
+  `rpc.WithStatsHandler`; the health probes bypass it.
+
+- **`server.WriteResponse(w, r, status, v)`** encodes `v` before writing and
+  writes a JSON success response; a value the codec cannot encode goes to
+  `WriteError`.
+
+- **`server.HeaderList(r, name)`** returns the elements of a list header:
+  every line, split at commas, trimmed, empty elements dropped.
+
+### Changed
+
+- **A required list or map left nil goes out empty.** It was written as
+  `null`, which the document does not allow. Each generated struct holding a
+  required list, map or `bytes`, directly or below it, has a
+  `FillEmpty(depth int) (changed, stopped bool)` that sets each one left nil
+  to `[]`, `{}` or `""`, optional and `@nullable` ones aside, through
+  elements, map values, nested structs and mixins; it writes to no map,
+  putting a copy in its place. `server.WriteResponse` runs it on the
+  response, in the value itself, and an error type's `MarshalJSON` on a copy
+  of its body's top level, filling the values below in place. Past 10000
+  values deep, as deep as `encoding/json` decodes, it stops at once, so a
+  cycle reaches the encoder, which refuses it. A field named `fillEmpty` is
+  now `field/invalid-go-name`.
+
+- **Both servers log through `log.Default`.** `server.Server` and
+  `rpc.Server` keep no logger of their own: `SetLogger` installs
+  `log.Default`, `Logger()` returns it as it is at the call, and the panic
+  recovery each server installs looks it up when a panic happens, so
+  `log.SetDefault`, or either server's `SetLogger`, reaches both, even after
+  the handler is built. A generated `main.go` installs
+  `AccessLog(log.Follow())`, which follows a later `SetLogger` too.
+
+- **Two parser errors read as facts.** An out-of-range integer reports
+  `integer literal N is outside the signed 64-bit range (max …)`, and
+  `consume` in a service body ``a service has no `consume` member - …``.
+
+- **Formatting sets every trailing comment off by one space**, where a
+  closing brace, a decorator, an import or a scalar took two.
+
+- **Kafka publish errors name the adapter and the contract**: `kafka: publish
+  orders.Placed: <cause>`, `kafka: publish batch of N: <cause>`, and `kafka:
+  <cause>` inside a `*PartialPublishError`. `errors.Is` still reaches
+  franz-go's error.
+
+- **A bare-integer `@timeout` renders like a duration literal.** The routes
+  file writes `@timeout(60)` as `1 * time.Minute`, the largest whole unit, as
+  it always wrote `@timeout(60s)`; the value is unchanged.
+
+- **Sizes render as a shift of their largest whole unit.** The routes file
+  writes `@maxBodySize(12MB)` as `MaxBodySize: 12 << 20` and
+  `@maxBodySize(1024)` as `1 << 10`, and a multipart handler parses with
+  `ParseMultipartForm(32 << 20)`, where both wrote a byte count; a size with
+  no whole unit stays a byte count, and the values are unchanged.
+
+- **Generated imports sit in three groups.** Every Go file craftgo writes
+  lists the standard library, then other modules, then the project's own
+  packages, a blank line between, as `goimports -local` does; the project's
+  packages are recognised by the module path, which need not hold a dot (`go
+  mod init myapp`). An import names an alias only when it differs from the
+  package's name. A file written once keeps the imports it was written with,
+  and the pb code keeps the protoc plugins' own.
+
+- **Generated comments say one line about their symbol.** A handler, a
+  routes or wiring function, a gRPC method and server, an event contract, an
+  error's methods, a validator and a middleware each carry one line about
+  that symbol, where most carried a paragraph; a scalar, an enum and its
+  values carry the design's description alone. A logic stub names what its
+  entry point does in one line, and on a raw side the type the design
+  documents in a second. A file written once keeps the comments it was
+  written with.
+
+- **A decorator on the wrong kind of value reads the same everywhere.**
+  `@pattern` on `bytes`, `@multipleOf` on a float and `@uniqueItems` on a
+  map report `@X applies to <kinds> fields, but <field> is <kind>`, as every
+  other decorator on the wrong type does; a fractional `@multipleOf` divisor
+  on an integer reads like a fractional bound, and a `@format` other than
+  `raw` on `bytes` reads `@format(email) applies to string, but …`. The codes
+  are unchanged.
+
+- **A `@default` on a type it cannot target is reported once, at the
+  decorator.** A default on a `bytes`, `file` or `datetime` array was
+  reported once per element, beside a warning asking for `?`.
+
+- **Diagnostics spell a type as the design does, generic arguments
+  included**: `got Page<User>` where they said `got Page`, and `Point[]`
+  where a generator error said `[]Point`. The editor's hover and
+  completion details use the same spelling.
+
+- **`object` is no longer a built-in type.** It was listed as one only to be
+  rejected; a field typed `object` still gets the hint to use `any` or
+  `map<string, V>`.
+
+- **`pkg/events/nats` needs Go 1.25, not 1.26.** Its tests against an
+  embedded nats-server live in a module of their own, so the adapter no
+  longer requires `nats-server`, whose Go 1.26 floor it inherited.
+
+- **An unknown manifest key is reported instead of dropped in silence.**
+  `craftgo gen` names each key of `craftgo.design.yaml` it does not read in
+  a warning on stderr (`craftgo: warning: output.typs is not a manifest key
+  and is ignored`), then generates. A removed key still stops the run.
+
+- **The editor shows the manifest's warnings.** While a design file is open,
+  each key of its `craftgo.design.yaml` that `craftgo gen` warns about shows
+  as a warning at the top of the manifest, and an edit that stops the
+  manifest from loading, such as a removed key, shows its error there.
+
+- **Every design file declares its `package`.** A file that imports or
+  declares anything without a `package` clause is an error,
+  `package/missing`, at its first import or declaration, and joins no
+  package; it used to merge into the design's only package, or into an
+  unnamed one. A file holding only comments needs no clause.
+
+- **The OpenAPI document holds only the generic instances and request bodies
+  it refers to.** A generic instance named only by a `@sensitive` field, or by
+  a response whose header fields keep it inline, and the `<Method>ReqBody` of
+  a request with nothing on its body no longer get a component.
+
+- **A generated error decides its own JSON and holds no code or message.**
+  `Error()` and `ErrCode()` return the category message and the `ErrCode<Name>`
+  constant, so an error built without its constructor reports them too, and
+  a generated `MarshalJSON` writes the `{"code","message"}` envelope for an
+  error with no field on its JSON body - none, or only `@header`, `@cookie`
+  and `@sensitive` ones, a mixin's included - and the body alone otherwise.
+  An error whose body fields are all optional and unset is written as `{}`,
+  the body its OpenAPI response declares, where `server.WriteError` answered
+  the envelope; it still answers the envelope for an error that encodes to
+  `{}` without its own `MarshalJSON`, as those generated before this release
+  do. An error body field named `marshalJSON`, its own or a mixin's, is
+  rejected, like one named after the other generated methods.
+
+- **A decorator is no decorator argument.** The grammar took `@a(@b)`,
+  though no decorator reads one; it is now one parse error at the inner
+  `@`, `a decorator cannot be an argument of @a`, however deep the
+  arguments it carries.
+
+- **Generic instances that differ in where `[]` or `?` sits get their own
+  OpenAPI components.** `Page<map<string, Item>[]>` was named like
+  `Page<map<string, Item>>`, and `Page<Box<Item>[]>` like
+  `Page<Box<Item[]>>`, so a design using both stopped with a generic-instance
+  collision. `[]` and `?` on a map or a generic instance, or on an array of
+  one, now lead its name as `ArrayOf` and `NullOr`, so these components are
+  renamed: `Page<map<string, Item>[]>` from `PageOfMapOfStringAndItem` to
+  `PageOfArrayOfMapOfStringAndItem`, `Page<Box<Item>[]>` from
+  `PageOfBoxOfItemArray` to `PageOfArrayOfBoxOfItem`, and a map value such as
+  `Box<Item>?` from `BoxOfItemOrNull` to `NullOrBoxOfItem`. On any other type
+  they still end the name, as in `PageOfMapOfStringAndItemArray` and
+  `PageOfBoxOfItemArray` for `Page<map<string, Item[]>>` and
+  `Page<Box<Item[]>>`.
+
+- **A `@default` must pass its field's constraints.** A default that broke a
+  validator of its field or of the field's scalar - `@default("")` beside
+  `@minLength(1)`, `@default(0)` beside `@positive`, `@default("nope")` on an
+  `@format(email)` scalar, an enum member whose wire value breaks one, an
+  array default against `@minItems`, `@maxItems` or `@uniqueItems`, or an
+  element its scalar refuses - generated, and the handler then refused every
+  request that omitted the field, since it validates the pre-filled value.
+  Such a design, which generated before, is now rejected with
+  `decorator/conflict` at the default, naming the constraint and the value as
+  the design writes it: `@default("ab") violates @minLength(3): its length is
+  2`, `@default(Low), whose wire value is 1, violates @range(2, 9): it is not
+  ≥ 2`.
+
+- **Validation messages name what the wire carries, not the design.** A
+  `@requiresOneOf` or `@mutuallyExclusive` failure lists its members by the
+  names their own messages use, the `@json` key or the parameter, and no
+  longer starts with the type's name: `requiresOneOf [primary_email
+  backup_email] - at least one must be set`, where it read `PairsRenamed:
+  requiresOneOf [primary backup] - …`. An enum value outside its set reads
+  `status: must be one of [open in_progress done]`, where it read `status:
+  invalid TodoStatus value`.
+
+- **A body value of the wrong JSON type names its JSON path, not Go's.** The
+  built-in codec answers `{"c": 5}` with `c: expected string, got number`,
+  where encoding/json's `json: cannot unmarshal number into Go struct field
+  DefaultsEnum.c of type combine.Color` reached the client: the path leaves
+  out the embedded structs a mixin makes, `inner.n` names the field `n` of a
+  field `inner`, a number too large for its field reads `300 is out of range`,
+  and a type mismatch at the root is reported under `body`. The
+  `*json.UnmarshalTypeError` stays in the error chain. A `datetime` field
+  still reports `time`'s own error, and a codec installed with
+  `SetGlobalJSONCodec` its own errors.
+
+- **The errors the framework writes are JSON.** A panic `Recovery` catches
+  answers 500 `{"message":"internal server error"}`, the default of
+  `SetDefaultValidationFailed` 400 `{"message":"<error text>"}`, a body over
+  `BodyLimit` or `@maxBodySize` 413 `{"message":"request entity too large"}`,
+  a request no route matches 404 `{"message":"not found"}` (the default of
+  `SetHandleNotFound`, and after `SetHandleNotFound(nil)`), and a method
+  mismatch 405 `{"message":"method not allowed"}` with its `Allow` header,
+  each as `application/json; charset=utf-8` with `X-Content-Type-Options:
+  nosniff`; they were `text/plain`. The message is the status text in lower
+  case, or the validation error's text. A redirect to a cleaned path stays the
+  mux's. Telling a 404 or 405 from a route costs each request a second
+  `ServeMux` lookup: about 120 ns on a static route, up to about 300 ns on one
+  with path wildcards, whose values can allocate.
+
+- **A body read past its cap answers 413, not 400.** `WriteValidationError`
+  answers 413 `{"message":"request entity too large"}`, without calling the
+  `SetDefaultValidationFailed` handler, to an `*http.MaxBytesError` or
+  `multipart.ErrMessageTooLarge`, and to any error once the body was read past
+  its `BodyLimit` or `@maxBodySize` cap, as when the cap cuts a multipart part
+  header; a middleware inside the cap that replaces `r.Body` hides that read.
+  A generated handler so answers a chunked body over its cap as it
+  answers a declared `Content-Length` over it; a raw request handler that
+  returns the read error to `WriteError` still gets a 500.
+
+- **A multipart body the parser refuses is a failed validation.** A
+  regenerated multipart handler passes a `ParseMultipartForm` error to
+  `server.WriteValidationError`: a body that is not `multipart/form-data`
+  answers 400 `{"message":"request Content-Type isn't multipart/form-data"}`
+  and one without its boundary 400 `{"message":"no multipart boundary param in
+  Content-Type"}`, through the `SetDefaultValidationFailed` handler, and a
+  body read past its cap 413 `{"message":"request entity too large"}`. Both
+  answered 413 `text/plain` with the parser's error.
+
+- **Bounds that leave no value are rejected wherever they sit.** Bounds no
+  value of the type meets generated a validator that refused every value, and
+  `@gt(5) @lt(5)` only warned; each is now `decorator/empty-range`: a field's
+  bound against its scalar's (`scalar Pos int @positive` and a field `Pos
+  @negative`, reported at the field), `@positive` beside `@negative` or
+  `@lte(0)` (`@negative contradicts @positive: no value is both > 0 and < 0`),
+  bounds no whole number meets (`int @gt(4) @lt(5)`, `uint @positive @lt(1)`),
+  a strict bound at the type's edge (`uint8 @gt(255)`), float bounds that
+  round to the same `float64` or `float32` (`@gt(0.1)
+  @lt(0.10000000000000001)`), and a `@multipleOf` no value within the bounds
+  meets (`@range(1, 4) @multipleOf(5)`). Bounds past each other as written -
+  `@negative @range(1, 5)`, a field's `@maxLength(3)` on a `@minLength(5)`
+  scalar, `@length(5) @maxLength(3)` - are `decorator/range`. Integer bounds
+  compare by their exact values, not as `float64`.
+
+- **An oauth2 flow must carry the URLs its grant needs.** `clientCredentials`
+  or `password` without `tokenUrl`, `implicit` without `authorizationUrl`,
+  and `authorizationCode` without either generated a document OpenAPI
+  validators reject. A run that writes the document now stops, naming the
+  scheme and the flow: `securityScheme "oauth": flow clientCredentials has no
+  tokenUrl`. The configuration guide's oauth2 example, which declared no flow
+  and so did not generate, declares one.
+
+- **A failure inside a nested value names its path.** The validator prefixes
+  the error of a nested struct, and of a type parameter's value, with the
+  field that holds it, as it did for a scalar or an enum: `home: rooms:
+  furniture: name: length less than 1` and `boss: requiresOneOf [name
+  alias] - at least one must be set`, which read without their path. A
+  mixin's fields are the type's own and keep their bare names.
+
+- **A deadline answers 504, and a client that has gone gets nothing.**
+  `WriteError` answers an error that wraps `context.DeadlineExceeded`, or any
+  context error once the request's own deadline (`@timeout`,
+  `server.handlerTimeout`) has passed, 504 `{"message":"gateway timeout"}`,
+  and writes nothing for a context error once the client has gone; both were
+  500 with an `unhandled service error` line at Error. A dependency's deadline
+  on a live request is logged at Warn as `dependency deadline exceeded`, with
+  the error. The `SetHandleUnknownError` handler no longer receives these
+  errors; a `context.Canceled` on a live request still reaches it. A request
+  context canceled by anything, a middleware of your own included, counts as
+  a client that has gone: nothing is written, so a live client gets an empty
+  200.
+
+- **`AccessLog` records 499 for a client that left before any response**, as
+  nginx does, where it recorded the 200 `net/http` would have sent.
+
+- **A new project's `config.go` defaults only what the runtime cannot.** Its
+  `applyDefaults` fills the listener addresses and `serviceName` and leaves
+  every other blank field to the runtime, whose default is the same value,
+  except `metrics.adminAddr`: left out of `config.yaml`, it starts no scrape
+  listener, as `telemetry` documents; the generated `config.yaml` sets
+  `:9090`. `config.go` is written once, so an existing project keeps its own.
+
+- **An enum value outside the int64 range is an error**, as it is in a
+  decorator argument. `A = 99999999999999999999` parsed silently as
+  9223372036854775807.
+
+- **A `\u{…}` escape must name a character.** A surrogate, `\u{D800}` to
+  `\u{DFFF}`, or a value above `\u{10FFFF}` is an error; it decoded
+  silently to U+FFFD.
+
+- **A `type` needs a body.** `type T` with no `{ … }` is a parse error; it
+  parsed as an empty type, and formatting wrote an empty body.
+
+- **A decorator after a declaration on its line is an error.** In
+  `middleware M @doc("m")`, `error NotFound E @doc("e")`, `} @doc("t")` and
+  a method's `} @deprecated`, the decorator went silently to the next
+  declaration or method; it is now reported, like one after a mixin. A
+  decorator goes before what it decorates, so when the next declaration or
+  method starts on the same line, as in `} @doc("b") type B { … }`, the
+  decorator is its own. A decorator whose arguments run over lines is on the
+  line they end: in `} @tags(` / `"x") type B { … }` it is `B`'s, and in
+  `scalar S string @minLength(` / `1) @maxLength(9)` both are the scalar's;
+  the second was an error, or went to a declaration starting on its line.
+
+- **A `@sensitive` field does not count as binding a path variable.** `get
+  /users/{id}` with a request field `id string @sensitive` passed analysis,
+  then generated a route that never read `{id}` and an OpenAPI path without
+  the parameter. The design is now rejected with `path/param-missing`.
+
+- **An event payload's generic arguments are checked.** `payload Page<string,
+  int>` against `type Page<T>` passed analysis and generated Go that did not
+  compile; a payload now gets the arity and optional-argument checks a field
+  type gets.
+
+- **Generic arguments on an enum, a scalar or a built-in are rejected.**
+  `c Color<int>` passed analysis and generated Go that did not compile, and
+  `s string<int>` silently dropped its argument; both now report
+  `generic/non-generic`.
+
+- **An `extend service` block's decorators are checked once, at the block.**
+  An unknown decorator there passed analysis silently; it now reports
+  `decorator/unknown`. A bad argument or a repeated decorator on the block was
+  reported once per method of the block; it is now reported once. The editor
+  offers above an extend block every decorator analysis accepts there - any
+  decorator a method takes but `@operationId`, plus `@group` - where it left
+  out `@timeout`, `@errors` and the other method-only ones.
+
+- **`@uniqueItems` refuses elements it cannot compare by value.** An element
+  type with an optional or `@nullable` member passed analysis, and the
+  validator then compared that member's pointer, so two equal elements
+  counted as distinct; one with a `bytes?` member generated Go that did not
+  compile; and a cross-package generic instance such as `lib.Box<Item>[]`
+  was judged without its argument. Each now reports `decorator/typemismatch`
+  naming the member at fault. A map key naming no declared type gets only
+  the reference error.
+
+- **`@uniqueItems` refuses a `datetime` element.** Its `time.Time` carries
+  a location, so the validator let two equal instants in different zones
+  through as distinct, and `datetime[] @uniqueItems` generated code without
+  its `time` import. An element that is or holds a `datetime` reports
+  `decorator/typemismatch`.
+
+- **A `@multipleOf` divisor past int64 is enforced.** On a `uint64` field,
+  `@multipleOf(10000000000000000000.0)` - a whole float, the only way to write
+  a divisor that size - passed analysis and reached the OpenAPI document, but
+  the generated validator had no check for it; it now checks the exact
+  integer. A whole float bound is read exactly as written:
+  `@lte(9223372036854775806.0)` on an `int64` generated a constant rounded
+  past the type (`truncated to int64`), and it now compares with
+  9223372036854775806; a bound one past the type's range, such as
+  `@multipleOf(18446744073709551616.0)` on `uint64`, is rejected. A `@default`
+  is held to the same range rule as a bound: one beyond `float32` is rejected
+  too, and an out-of-range one reads `@default 200 exceeds int8 range [-128,
+  127]`.
+
+- **A mixin's fields count toward a body's JSON keys.** `type R { Base
+  identifier string @json("id") }` with `Base { id string }` passed analysis,
+  and the generated struct carried two fields tagged `json:"id"`, one of
+  which encoding/json silently drops; it now reports
+  `field/name-collision` at R's own field, as two local fields sharing a
+  key already did.
+
+- **A `file` nested in another package's type is found.** A request field
+  `att shared.Attachment`, whose type holds a `file`, passed analysis, and
+  the multipart binder never read the file; so did a request type declared
+  in another package. Both now report `binding/file-position`, as a local struct
+  already did.
+
+- **A scalar cannot wrap `datetime`.** `scalar When datetime` generated
+  `type When time.Time`, which has none of `time.Time`'s methods: it encoded
+  as `{}` and never decoded. It is `scalar/bad-primitive` now, as a scalar
+  over `file` or `any` is, and the message lists the primitives a scalar
+  wraps. Use `datetime` directly.
+
+- **An `extend service` block refuses `@operationId`.** Every method of the
+  block took the one id, so a block of two or more methods always failed with
+  `operation/duplicate-id`, and the editor offered the decorator there. It is
+  `service/extend-decorator-not-method` now, on a block of one method too, and
+  no longer offered: an operationId belongs on each method.
+
+- **A declaration name starts with an uppercase letter.** A `type`, `enum`,
+  `scalar`, `error`, `middleware`, `event` or method named in lower case, or
+  with a leading `_`, only warned, and the generated Go declared it
+  unexported: another package's `lib.user` did not compile (`undefined:
+  lib.user`), and a lower-case method or middleware broke its handler or the
+  routes. It is now an error, `decl/name-case`, suggesting the capitalised
+  name; a lower-case `service` name, which names only directories and
+  documents, still warns.
+
+- **A type parameter starts with an uppercase letter.** The generated Go
+  spells a type parameter as the design does, so a lower-case one hid what the
+  code around it uses: `type Box<fmt>` broke `fmt.Errorf`, `<v>` the
+  validator's receiver, and `<time>` or an imported package's name the types
+  it spells, and none of them compiled. Each is now `decl/name-case` at the
+  type's name, as is a lower-case parameter that hid nothing, such as `type
+  Box<t>`, suggesting the capitalised name; a type parameter spelled like a
+  package its type names, `Lib` in `type Box<Lib> { w Lib.Item }`, is
+  `decl/go-name-collision` there.
+
+- **A package name is one Go can use.** The DSL package's name is the
+  generated Go package's, yet `package func` passed analysis and crashed gen
+  while formatting `types.go`; `package main` generated a package no other
+  package could import and `package _` one that did not compile, and `package
+  init` or a predeclared name such as `int`, `string` or `len` broke every
+  other DSL package whose types named it (`int (package name) is not a type`).
+  Each is now an error, `package/name`, at every file's `package` clause.
+
+- **A `file` rides only at a request's top level.** A `file` in a response,
+  an error body or an event payload - directly, in an array or a map, or in
+  a struct below them - passed analysis, and the generated code JSON-encoded
+  the upload's `multipart.FileHeader`, which no client reads back as a file;
+  so did a request's `map<string, file>`, which the multipart binder never
+  reads. Each is now `binding/file-position`, at the response or payload
+  clause or at the error's field, naming where the `file` sits.
+
+- **A `file` passed to a generic type is found.** A request field `b
+  Box<file>`, or a `Box<file>` in a response, an error body or an event
+  payload - a field's type, or the response, the payload or an error's mixin
+  itself, as `response Page<file>` - passed the `file` placement checks,
+  which read the generic type without its arguments: the request's handler
+  never bound the file, and a response encoded its `multipart.FileHeader` as
+  JSON. Each is now `binding/file-position` at the field or clause naming
+  the instance, which names the field the argument reaches
+  (`Page<file>.items`); a generic request `Up<file>` or a request mixin
+  `Box<file>`, which bring the `file` to the request's top level, stay
+  accepted.
+
+- **An error's mixin may not bring a field named after an error method.** A
+  field `errCode`, `error`, `httpStatus` or `writeResponseHeaders` that a
+  mixin gives an error body was hidden behind the generated method of that
+  name, and as a header or a cookie it generated Go that did not compile. It
+  is now `field/invalid-go-name` at the mixin, as the error's own field of
+  that name is.
+
+- **A constraint decorator a field's type cannot carry is refused.** `@gt`,
+  `@minLength`, `@maxItems`, `@uniqueItems` and the other value, length and
+  item constraints on a field typed by a struct, a generic instance or `any`,
+  or one an enum's backing type does not take (`@multipleOf` on a string
+  enum), generated a field the validator never checked; each is now
+  `decorator/typemismatch`, and the editor no longer offers them there.
+
+- **CORS runs ahead of the `Use` middlewares.** `SetCORS` sat inside the
+  `srv.Use` chain, so an auth middleware answered a browser's preflight 401
+  and the browser never sent the request. The order is now Recovery, CORS,
+  then the `Use` middlewares: a preflight is answered before them, and the
+  requests they refuse still carry the CORS headers.
+
+- **`@form` needs a `file` in its request.** On a request with no `file`,
+  `@form` was ignored without a word: the field rode the JSON body under its
+  JSON key, in the handler and in OpenAPI alike, and the part name of
+  `@form("n")` went nowhere. It is now `binding/form-without-file` at the
+  decorator; drop `@form` and the field rides the JSON body as before.
+
+- **Two middlewares may not write one scaffold.** `APIKey` and `ApiKey`
+  both wrote `api_key_middleware.go`, so one constructor went missing and
+  `main.go` did not compile. They are now `middleware/collision`, in one
+  package or across two.
+
+- **A middleware may not be named `Config` or `Middlewares`.** The field
+  of that name `ServiceContext` declares itself hid the middleware's, so the
+  routes did not compile. Either name is now `decl/go-name-collision`.
+
+- **An int enum's field takes whole bounds only.** `@gt(1.5)`,
+  `@multipleOf(2.5)` or `@range(0.5, 9.5)` on a field of an int enum was
+  listed in the OpenAPI document and never checked. It is now
+  `decorator/typemismatch`, as on an `int` field.
+
+- **A type-parameter field takes no constraint.** `@minItems`, `@maxItems`,
+  `@uniqueItems`, `@maxSize` and `@mimeTypes` on a field typed by a type
+  parameter, as in `type Box<T> { v T @maxSize(10) }`, were advertised in
+  each instance's OpenAPI and never checked, an upload's size and media type
+  included. They are now `decorator/typemismatch` at the declaration, as the
+  value constraints were.
+
+- **A method may not write a file the go command sets apart.** Under the
+  default `snake` file case `RunTest` wrote `run_test.go`, built only for
+  tests, and `ListWindows` `list_windows.go`, built only on Windows, so the
+  routes did not compile; a gRPC `rpc RunTest` answered `Unimplemented`.
+  Each is now `service/method-file-name`, or stops gen for an RPC.
+
+- **Method names that clash in generated Go are refused.** Methods `X` and
+  `NewX` in one service directory both declared `NewXService`; `GetURL` and
+  `GetUrl` both wrote `get_url.go`; a method named `Logger` clashed with the
+  `log.Logger` its logic type embeds. Each generated a project that did not
+  compile, and is now `service/method-name-clash`, across the services
+  sharing a `@group` too. The gRPC path refuses an RPC named `Logger`.
+
+- **An event payload takes no wire binding.** A payload field bound to
+  `@path`, `@query`, `@header` or `@cookie` was tagged `json:"-"`, so it never
+  reached a consumer, and one with a validator failed every message there;
+  `@form("n")` named nothing. A payload that reaches such a field, a mixin's
+  or a nested struct's included, is now `event/payload-binding` at the
+  payload clause.
+
+### Deprecated
+
+- **Vestigial `pkg/server` API.** Behaviour is unchanged:
+  - `Server.RegisterMiddleware` and `Server.With`, a middleware registry
+    keyed by name that nothing generated calls: pass the middleware to
+    `Handle` or `Use`, or build a `Chain`.
+  - `server.Timeout`: use `SetDefaultHandlerTimeout`, or `WithLimits` for
+    one route; both put the deadline on the request context.
+  - The `server.Logger` alias: use `log.Logger`.
+  - `server.DocsUI` and its constants: `DocsOptions.UI` takes the name as a
+    string.
+
+### Fixed
+
+- **A `@sensitive` field is not validated.** Off the wire, it was still
+  checked by its type's own validator: an enum field with no member at its
+  zero value, or a struct with a constrained field, failed every request with
+  a 400 the client could not fix, and every event on the consumer.
+
+- **A type-parameter field takes `@query`, `@path` and `@form`.** Each was
+  refused at the declaration, while the same field without a decorator
+  auto-bound and worked, so a generic query-parameter mixin could not serve
+  a POST. They are now checked with each request's argument, as `@header`
+  and `@cookie` are.
+
+- **A Go output sweep keeps copies of the document.** Where `output.types`
+  or another Go output shared the document's directory, the sweep deleted
+  every copy of the document beside or below it, such as
+  `api/openapi.v1-frozen.yaml`, and the document a moved `output.openapi`
+  left there. Both now stay, as they do anywhere else.
+
+- **A method path takes every segment `net/http` serves.** A segment that is
+  a number (`/reports/2024`), opens with a digit (`/2fa`) or holds a dot
+  (`/v1.0`, `/robots.txt`, `/.well-known`) was a parse error, although
+  `@prefix` took it. A literal segment now holds letters, digits, `-`, `.`,
+  `_` and `~`, and one ending in `-` is no longer an error; a segment of `.`
+  or `..` alone, which `net/http` never matches, is `route/pattern`, as in
+  `@prefix`.
+
+- **Closing an unsaved buffer re-checks its design root.** The other open
+  files kept the diagnostics computed with the dropped text, such as an
+  unknown type the unsaved edit had renamed, until the next edit.
+
+- **The module path is read from any `module` directive.** A go.mod whose
+  `module` line carried a comment, as `module example.com/m // Deprecated:
+  …` does, put the comment into every generated import path; a backquoted
+  path kept its quotes, and the block form `module ( … )` gave `(`.
+
+- **A required type-parameter field is required.** A `file` or `any`
+  argument missing from a request reached the service as nil, as with a
+  `FilePart<file>` mixin in a multipart request, where the stub's first
+  use of the header panicked. The generated `Validate` now answers
+  `<field>: required`, as it does for a `file` or `any` field.
+
+- **A flushed response counts as committed.** A panic, or an error a raw
+  handler returns, after a `Flush` is logged and never written into the
+  stream: `Recovery` no longer appends a 500 body to it and `WriteError` no
+  longer writes a JSON envelope into an event stream. The access log records
+  the first final status written, the one the client receives.
+
+- **`Compress` survives a flush before any write.** A handler that flushes
+  before writing, as a server-sent-events stream does, gets a 200 head sent
+  uncompressed instead of a `WriteHeader(0)` panic that lost what it streamed:
+  the client got an empty 200.
+
+- **`Compress` sends an informational status at once.** It held a
+  `103 Early Hints` back as the final status, so the client got 200 in
+  place of the status written after it, and a `WriteError` after it was
+  dropped, leaving an empty 200.
+
+- **A method's own `@timeout` survives the default body cap.** With both
+  `server.handlerTimeout` and `server.maxBodySize` set, a method with a
+  `@timeout` longer than the default and no `@maxBodySize` was cut to the
+  default deadline; its own timeout now applies alone, as documented.
+
+- **A custom not-found handler keeps the 405.** With `SetHandleNotFound` set,
+  a request whose path matches a route under another method got the custom 404
+  instead of 405 with `Allow`, and an unclean path whose cleaned form matched
+  no route got it instead of the redirect to the cleaned one; the handler now
+  receives only what the mux answers 404.
+
+- **`Server.Codec` reports the codec in use.** It returned the codec last
+  passed to `Server.SetJSONCodec`, missing a `SetGlobalJSONCodec` swap and
+  strict JSON; it now returns what `JSON()` returns.
+
+- **A failing readiness check is never healthy.** A check whose error text
+  was `ok` counted as passing; `/readyz` now answers 503 for any check that
+  returns an error.
+
+- **A panicking readiness check fails the probe.** Each check runs on its
+  own goroutine, so a panic in one ended the process; `/readyz` now answers
+  503 with `panic: <value>` for that check and logs the panic with its
+  stack.
+
+- **An aborted handler aborts the connection.** `Recovery` took a
+  `panic(http.ErrAbortHandler)` - what `httputil.ReverseProxy` does when
+  copying a response fails - for a crash: it logged the panic and answered
+  500, or ended a response already under way as if it were complete. The
+  panic now goes on to `net/http`, which aborts the connection, so the
+  client sees the response cut off.
+
+- **A panic after the response started aborts the connection.** `Recovery`
+  logged it and let the handler return, so `net/http` finished the response
+  as if it were complete - a chunked stream got its closing chunk - and the
+  client could not tell the body was cut short. It still logs the panic,
+  then aborts the connection as a `panic(http.ErrAbortHandler)` does.
+
+- **An invalid status is answered 500.** A `WriteHeader` with a code
+  outside 100-999, which `net/http` rejects with a panic, counted as
+  committing the response, so `Recovery` left an empty 200 in place of its
+  500.
+
+- **`server.Server` is safe for concurrent use.** The `SetDefault*`,
+  `SetCORS` and `SetLogger` setters wrote without the lock that route
+  registration and `Handler` read under, a data race when configuration ran
+  on another goroutine.
+
+- **An `otlp_http` endpoint must be a URL.** `telemetry.Init` fails on an
+  `otlp_http` endpoint that is not an `http://` or `https://` URL with a
+  host. A bare `host:port` was accepted, and the exporter then sent to
+  `localhost:4318` or nowhere; `otlp_grpc` still takes `host:port`, and
+  fails on a URL with no host.
+
+- **An `otlp_http` URL whose path is `/` sends each signal to its own
+  path**, `/v1/traces` and `/v1/metrics`, as a URL with no path does. It
+  posted both to `/`.
+
+- **An empty OTLP endpoint means the OpenTelemetry default.** With
+  `otlp_grpc` or `otlp_http` and no `endpoint`, the exporter sends to
+  `OTEL_EXPORTER_OTLP_ENDPOINT`, or the signal's own variable, else to
+  `localhost:4317` or `localhost:4318`. It was built with an empty address
+  and sent nothing, whatever the environment said.
+
+- **Formatting leaves a file alone rather than damage it.** `craftgo fmt`
+  and the editor's Format Document keep a file unchanged when its formatted
+  text would not parse, or would drop, duplicate or add a comment.
+
+- **`craftgo fmt` checks every file for errors, whatever path names it.**
+  Given a relative path, or no path at all, it formatted a file with a
+  parse or semantic error - reading the fields after an unclosed decorator
+  as its arguments - where an absolute path refused the file. It also
+  reports what the formatter refuses, and exits 1 for either.
+
+- **`craftgo fmt` finds a file's errors whatever the spelling of its
+  path.** A path in another case on a case-insensitive file system, or one
+  through a symbolic link, missed the file in its project's analysis, so a
+  file with errors was formatted. fmt now finds the file on disk, and checks
+  a file its project does not load on its own.
+
+- **A command reports a bad flag or argument once, with its usage.** The
+  error was printed twice, around the flag package's own list, and
+  `init -h` printed only `Usage of init:`; `craftgo <command> -h` now prints
+  the command's part of `craftgo help`. `gen -f design extra` is an error
+  rather than dropping `extra`, and `fmt` on a design folder of protos alone
+  has nothing to format instead of failing.
+
+- **`craftgo fmt` reads its flags like `gen` and `init`.** A flag after the
+  path - `craftgo fmt design -l`, the order the help text showed - was
+  ignored, so the files were rewritten instead of listed; it is now an
+  error, as is a second path. The help text reads `craftgo fmt [-l] [-w]
+  [path]`, and `craftgo fmt -h` exits 0.
+
+- **`craftgo fmt` checks a file outside every design folder on its own.** A
+  file beside a design folder was checked against that folder's project,
+  which does not hold it, so its semantic errors went unseen.
+
+- **Formatting prints every literal as it is written.** A float of 1e6 or
+  more or below 1e-4 (`1234567.5`, `0.00001`) came out in an exponent form
+  the DSL does not read, `\u{7}` as Go's `\a`, a character such as U+200B as
+  a `\u200b` escape, and a raw string such as `` `^\d+$` `` lost its
+  backticks. Strings, floats, enum values and import paths now keep their
+  source spelling.
+
+- **`craftgo help` gives the `-c` default `gen` uses: the design folder's
+  parent.** It said the working directory whenever `-f` is given, and the
+  CLI reference said the directory holding `go.mod`.
+
+- **A token where a name belongs is never read as the name.** `type {` or
+  `error {` went on to report `{` as the declaration's name - `unknown error
+  category "{"`, `type name "{" should start with an uppercase letter`; the
+  missing name is now the only error.
+
+- **A file may open with a UTF-8 byte-order mark.** gen and fmt rejected
+  one as an unexpected character U+FEFF; the mark is skipped, and formatting
+  writes the file without it.
+
+- **A lone carriage return ends a line**, as `\n` and `\r\n` do. In a file
+  with CR-only line ends, or with a CR among LF ones, a `//` comment ran on
+  to the next `\n` and swallowed the declarations after it, which gen then
+  left out without an error.
+
+- **Formatting a CRLF file writes LF line ends throughout.** A line with a
+  trailing comment kept its `\r`.
+
+- **Formatting keeps every comment where it was.** A comment after `package`,
+  `middleware`, a bodiless `error`, a mixin, an opening brace or a decorator
+  line above a field, and one inside a scalar's or a field's decorator chain,
+  was dropped, and one between imports moved. Decorators above a field or a
+  scalar keep their own lines when a comment sits among them.
+
+- **A decorator continued on the next line stays with its field.** Formatting
+  joins the decorators after a field or an enum value onto its line without
+  adding a blank line below it, and a comment among them keeps them on their
+  own lines, one level deeper. The comment was moved out below the member, and
+  two trailing comments among them were merged into one.
+
+- **A trailing comment stays with its own member.** With a comment block
+  inside a member's lines, in a decorator's arguments or in a declaration
+  split over lines, formatting dropped the trailing comment of a later line of
+  that member. Formatting also refuses a file whose result would hold a
+  comment in another place: after another member, as a doc, or in another
+  block.
+
+- **Formatting moves no comment out of a field, a clause or a decorator
+  name.** A comment on a line of its own inside a member written over
+  several lines - in a type's arguments, as in `a map<string,` / `// c` /
+  `int>`, between a field's name and type, in an enum value, in a
+  `request`, `response` or `payload` clause, or between a decorator's `@`
+  and its name - moved below the member or clause, above a `request`
+  clause, or among the decorators. Formatting now leaves the file alone and
+  says what holds the comment: `formatting would move the comment "c" out
+  of field a`.
+
+- **An argument list with a comment keeps its lines.** A decorator's arguments
+  or an array written over several lines stays on its lines when a trailing
+  comment sits on one of them: each line of elements one level deeper, the
+  closing bracket on a line of its own. The list was joined onto one line and
+  its trailing comments dropped. A comment on a line of its own inside the
+  list stays there too; it moved out below the member or the decorators. A
+  member written over several lines no longer gains a blank line below it.
+
+- **A member that starts where the one above it ends gains no blank line.**
+  After a field, a mixin, an enum value or a method's `request` whose type,
+  value or decorators ran over lines with a blank line among them, as in
+  `a string @doc(` / (blank) / `"x") b string`, formatting put a blank line
+  before the member that started on its last line.
+
+- **A decorator above the first enum value is one error.** It was read as
+  a value named after the decorator, with an `expected enum value name`
+  error for each token of its arguments; it is now `decorator @doc has no
+  enum value before it; an enum value's decorators follow it`, and the enum
+  gains no value named `doc`.
+
+- **A comment right above a declaration's keyword is its doc.** In
+  `@deprecated` / `// Order is the order.` / `type Order {}`, the comment
+  reached neither the Go doc nor the OpenAPI description; it now follows the
+  doc above the decorators there. One set off from the keyword by a blank
+  line, or between two decorators, is no doc.
+
+- **A comment in a declaration's header stays in the declaration.** A comment
+  block between the keyword of a type, enum, error, service, event or method
+  and its `{` moved below the whole declaration; formatting now prints it at
+  the top of the body. In a `package` or `import` line or a `middleware`,
+  `scalar` or bodiless `error` declaration, which have no body, a comment
+  between the words moved below or above it; it now stays between them, the
+  words after it one level deeper. With `extend` on a line of its own, a
+  comment after it was dropped; it stays with the block.
+
+- **A comment after a word of a declaration's header stays there.** In `type
+  // c` / `X {`, and after the words of an `enum`, a bodied `error`, a
+  `service`, an `extend service`, an `event` or a method, the comment was
+  dropped, as was a second comment after the `{`. It now stays where it is,
+  the words after it one level deeper, as in a header without a body. A method
+  body holding only a comment after its `{` keeps its two lines, where
+  formatting wrote `{}`.
+
+- **`kafka.WithTLS(nil)` dials over TLS.** franz-go reads a nil config as
+  "no TLS", so the brokers were dialed in plaintext and `WithSASLPlain`
+  sent the password in clear. A nil config now dials with an empty one,
+  which verifies the brokers against the system roots.
+
+- **A zero `nats.WithPublishAckTimeout` waits until `JetStream.Close` on
+  both publish paths.** A batch waited for its verdicts until `Close`, but
+  a single `Publish` gave up after the client's own 5s default.
+
+- **The Kafka transport refuses a publish or subscribe after `Close`.** It
+  opened a fresh producer or consumer that nothing closed; both now return an
+  error wrapping the new `kafka.ErrClosed`, like `nats.ErrClosed`: `kafka:
+  open producer: transport closed`.
+
+- **A Kafka publish that `Close` cuts off returns `kafka.ErrClosed`.** A
+  publish or batch still waiting on the broker when `Close` ran surfaced
+  only franz-go's `kgo.ErrClientClosed`, which the error still wraps.
+
+- **`nats.JetStream` refuses a subscribe once `Close` has begun**, with
+  `nats.ErrClosed`. A late subscribe created its durable and consumed with
+  nothing to stop it: neither `Close` nor cancelling its context ended it.
+
+- **The core NATS transport refuses a publish or subscribe after `Close`**,
+  with `nats.ErrClosed`, as `nats.JetStream` and the Kafka transport do. A
+  subscribe registered a queue subscriber that only the end of its context
+  removed, and a publish still went out on the connection, which `Close`
+  leaves open.
+
+- **A finished JetStream group can subscribe again.** A group whose
+  context had ended, or whose durable `nats.ErrConsumerStopped` reported
+  deleted, stayed "already subscribed" on its transport for good. The group
+  is now free once its running handler has returned, and before that report
+  is made; until the handler returns, a group whose context has ended is
+  refused as "still stopping".
+
+- **Concurrent subscribes of one JetStream group let one through.** Two
+  `Subscribe` calls naming the same group on one transport could both pass
+  the "already subscribed" check and consume side by side; the later one is
+  now refused.
+
+- **A core NATS subscription on a context that never ends parks no
+  goroutine.** Each one left a goroutine waiting for ever on `ctx.Done()`.
+
+- **A `*PartialPublishError` message names its first unsent index.** It
+  called that index the number already sent, which a scattered report
+  contradicts: `Unsent` [1 3] of five read "1 already sent" when three
+  went out.
+
+- **The editor's rename refuses a reserved word.** Renaming a declaration to
+  `service`, `get` or any other keyword is an error instead of an edit that
+  breaks every use.
+
+- **Signature help highlights the argument the cursor is in**, on whitespace
+  and right after a comma too, and closes outside the parentheses.
+
+- **`@` inside an event or a method body offers no decorator**: no member of
+  those bodies takes one.
+
+- **An error declaration shows one symbol kind** in the outline and in the
+  workspace symbol search.
+
+- **Editor ranges are exact after an emoji.** Highlights, references, rename
+  and completion edits cover the right text on a line holding a character
+  outside the Basic Multilingual Plane, and import-path completion narrows
+  correctly after a non-ASCII character.
+
+- **Completion on a one-line type body uses the field before the cursor**:
+  `@default(|)` after a body's second field offers that field's values.
+
+- **The editor analyses a file outside every design folder on its own**, as
+  `craftgo fmt` checks it: the folder's declarations do not resolve in it.
+
+- **Diagnostics come out in a stable order.** `craftgo gen` and the editor
+  listed a design's problems in an order that changed from run to run; they
+  are now sorted by file and position.
+
+- **A qualified error name is rejected as a field type.** `x shared.Gone`,
+  where `Gone` is an `error` of package `shared`, passed analysis and
+  generated Go that did not compile (`undefined: shared.Gone`); it now gets
+  the diagnostic the bare `x Gone` gets.
+
+- **Packages that reference each other's types in a cycle are rejected.**
+  `app.Req { b shared.Base }` beside `shared.Base { a app.Audit }` passed
+  analysis and generated Go packages that import each other, which does not
+  compile; each cycle is now reported once, with its path, as
+  `ref/package-cycle`. Event payloads do not count: events are generated
+  outside the types packages.
+
+- **A generic mixin's field can bind a path variable.** `type GetReq {
+  IdHolder<string> }` with `type IdHolder<T> { id T }` on `get /things/{id}`
+  was rejected with `binding/type ... got T`; a promoted field now takes its
+  mixin's type arguments, also when the mixin sits inside another package's
+  mixin.
+
+- **The editor's `@group` hover describes the layout gen writes.** It said a
+  group nests files under `<service>/<group>/`; the group replaces the
+  service's directory, as the decorators guide says.
+
+- **Fewer duplicate diagnostics.** A generic mixin with the wrong number of
+  arguments, or a mixin naming an error or a middleware, got a second
+  diagnostic beside `mixin/arity` or `mixin/non-type`; an event payload
+  naming an error got `event/payload-kind` beside `ref/unknown-symbol`; and a
+  malformed `openapi.basePath` warned once per package. Each is now reported
+  once.
+
+- **`@timeout` rejects bare seconds past a Go duration.** `@timeout(9999999999)`
+  generated routes that did not compile (`constant ... overflows int64`); it
+  now reports `decorator/range`.
+
+- **Every Go name a declaration generates is checked for clashes.** A type
+  named like an error's `ErrCode<Name>` constant or `New<Type>` constructor,
+  like an enum value's `<Enum><Value>` constant, or two events where one is
+  named like the other's `<Event>Contract` constant passed analysis and
+  generated Go that did not compile; each now reports
+  `decl/go-name-collision`, naming what each side emits. An error whose body
+  holds only a comment no longer counts as emitting a `<Name>Body` struct.
+
+- **`@uniqueItems` refuses an element built on a type parameter.** Inside
+  `type Page<T>`, only a bare `T[]` was refused: `items Box<T>[] @uniqueItems`
+  passed analysis and the generic validator keyed a map on `Box[T]`, which
+  does not compile. An element that names a type parameter anywhere, bare or
+  as a type argument, reports `decorator/typemismatch`.
+
+- **The editor filters the decorators it offers a field by the field's
+  resolved type.** On a field typed with a scalar declared in another file or
+  package, `@` offered every validator - `@gt` on a string scalar; it now
+  resolves the scalar in the project. `@pattern` on `bytes`, `@multipleOf` on
+  a float and `@uniqueItems` on a map are no longer offered, and an error's
+  fields are filtered like a type's.
+
+- **The editor offers what analysis accepts in a route variable and a
+  type.** `/{|}` offers the variables the request's fields bind, a mixin's
+  fields included and an `@path("name")` field under that name; it no
+  longer offers a `@nullable`, `@default` or `@sensitive` field, which
+  analysis rejects there. `pkg.|` in a type offers the package's types,
+  enums and scalars only, and go-to-definition on a field type that names a
+  service or an error finds nothing, as analysis finds no type.
+
+- **Go-to-definition and hover resolve a bare name as analysis does.** A
+  bare type name resolves in its own package only; the editor jumped to a
+  same-named type of another package where analysis reports `unknown type`.
+  A bare middleware or error name still resolves in any package.
+
+- **Hover, references and rename find the declaration go-to-definition
+  finds.** Hover inside `@middlewares(X)` showed a type named X and hover on
+  `b.Name` the file's own `Name`; references and rename took every
+  identifier spelt like the declaration, so renaming a type also renamed a
+  method, a route word or another package's declaration of that name. Rename
+  also works from any use of a declaration, not only in the file that
+  declares it. A decorator's argument list left open while typing ends with
+  its line, so the names and completions below it keep working.
+
+- **Editor declaration ranges cover the name.** Go-to-definition, the outline
+  and workspace symbols placed a declaration at its keyword, selecting as many
+  characters of it as the name has (`m` of `middleware A`), and a method's or
+  an event's entry was off when more than one space followed its keyword; each
+  now selects the declared name, and an outline entry spans its declaration to
+  its closing brace. References with the declaration excluded leave it out,
+  where they listed it anyway.
+
+- **The editor ends a line where the lexer does**: at `\n`, `\r\n` or a lone
+  `\r`. In a file whose lines end in a lone `\r`, every range after the
+  first line was misplaced and Format Document replaced only the first line,
+  duplicating the text. Past a token the lexer rejects, such as a string
+  with a bad escape, the cursor no longer counts as on that token for the
+  length of its error message.
+
+- **Editor requests read the buffers the editor holds.** An open buffer
+  holding no text counts as open, so completion answers in it and analysis
+  reads it rather than the disk copy; an open file is read from its buffer
+  whatever escaping the editor gives its URI; workspace symbol search
+  covers the project of every open document, not one picked at random; and
+  a related location in an untitled buffer points at the buffer. Hover on
+  an error named like a category, such as `error NotFound Gone`, shows the
+  error, where it showed the category.
+
+- **Completion offers no decorator inside a decorator's arguments**, where
+  none is allowed: `@` there offered a closed set of values, such as
+  `@format`'s formats or the declared middlewares and errors. The arguments of
+  an unknown decorator offer nothing either, where they offered what the
+  enclosing block takes.
+
+- **`@negative` or `@lt(0)` on an array of unsigned integers is reported
+  once**, as a decorator on the wrong type; it also drew the unsigned-value
+  error meant for a single number.
+
+- **A repeated enum value name or literal points at its first use.** The
+  third `A` of an enum related to the second one as "first declared here".
+
+- **`@ignoreTags()`, `@ignoreMiddleware()` and `@ignoreSecurity()` warn about
+  their empty parentheses** with `decorator/flag-empty-parens`, as every
+  other decorator that takes no argument does and as the decorator
+  reference says; `craftgo fmt` already removed them.
+
+- **A decorator with the wrong number or kind of arguments gets that error
+  alone.** `@pattern("(", "x")` also reported its first argument as a bad
+  regular expression, and `@group("..", "x")` its path; a decorator's values
+  are now checked only once its arguments fit.
+
+- **A declaration the parser left without a name gets the parse error alone.**
+  A `scalar S` missing its primitive also reported `primitive must be a
+  built-in (got "")`.
+
+- **Diagnostics state the rules they apply.** A scalar over an unknown
+  primitive lists every built-in it may wrap; a `@group` segment of `.` or
+  `..` says the group's directory takes the place of the service's own,
+  where it said the group nests under it; and a `@form` on the wrong type
+  says a single-level array binds, `file[]` included, where it said file
+  arrays do not.
+
+- **A package named like an import of the generated code compiles.** A DSL
+  package named `server`, `log`, `context`, `fmt`, `time`, `json` or another
+  name a handler, logic stub, event, types, errors or validation file already
+  imports clashed with that import (`server redeclared in this block`), and
+  one named `v` was hidden by the `Validate` receiver (`v.Code is not a
+  type`); the file now imports the package under a numbered alias such as
+  `server2`. A `datetime` or `file` type argument, as in `payload
+  Page<datetime>`, now brings its `time` or `mime/multipart` import too.
+
+- **`config.Path()` names the `config.yaml` under `output.config`.** With
+  `output.config: ./internal/config`, gen wrote `config.yaml` there while the
+  generated `Path()` returned `config/config.yaml`, so `main.go` silently ran
+  on defaults. A `config.go` generated before keeps the old path, since gen
+  writes it once; edit its `Path()` by hand.
+
+- **`@ignoreMiddleware`, `@ignoreSecurity` and `@ignoreTags` on an `extend
+  service` block take effect.** They were accepted and changed nothing: the
+  block's methods kept the primary service's middlewares, security and tags.
+  They apply to each method of the block as if written on it: the primary's
+  chain is dropped, and the block's own `@middlewares`, `@security` or
+  `@tags` start it afresh.
+
+- **A generic request type binds with its type arguments.** `get Get
+  /things/{id} { request IdHolder<string> }` was refused (`{id}` requires a
+  string, `got T`), as was a `filter T?` of `Paged<Status>` on a GET: the
+  request's fields were checked without the arguments. The checks, the
+  handler's binder and the OpenAPI parameters read the fields substituted, and
+  the body schema of a request that also binds path or query fields
+  substitutes them once, not over the fields a nested mixin brings. An
+  optional type parameter over an array, such as `a T?` of `Box<string[]>` - a
+  `*[]string` no query or form binder fills - is refused with that reason as
+  `binding/type`; a JSON body still carries it.
+
+- **A mixin field named like its mixin binds.** With `type Page { page int
+  @query }` embedded in a request, the handler wrote the query value into
+  `req.Page`, the embedded struct, and did not compile; so did a default,
+  a cross-field group or a response header on such a field. The generated
+  code reaches it as `req.Page.Page`: a promoted field that shares its Go
+  name with a member at its depth or above is selected through the mixins
+  that embed it.
+
+- **An enum value collision points at each colliding value.** In `enum E {
+  A B A A }` both `enum/value-collision` warnings sat on the last `A` and
+  related it to itself; each now sits on its own value and relates to the
+  first `A`.
+
+- **OpenAPI bodies use the `@json` key.** The body of a request that also
+  binds a path, query, header or cookie field, and of a response that sends a
+  header or cookie, listed a `@json` field under its field name; a
+  `@requiresOneOf` or `@mutuallyExclusive` did the same for a member a mixin
+  brings. Both now use the key the server reads and writes.
+
+- **The OpenAPI document keeps every `@errors` response.** An error named
+  in the array form, `@errors([Lost])`, lost its response when two packages
+  declare `Lost`, and so did a bare name two other packages declare; each
+  now documents the error the analyser resolves the name to. A type
+  parameter named like a type two packages declare stays a parameter, where
+  the generic's instance referred to one of those types.
+
+- **A raw request declares its `@prefix` path variables in OpenAPI.** A
+  `@rawRequest` or `@passthrough` method without a `request` block declared
+  only the variables of its own path, so under `@prefix("/orgs/{org}")`
+  `{org}` went undeclared and the document was invalid.
+
+- **The OpenAPI document lists services of one name from every package.**
+  Two packages may each declare a service of the same name under their own
+  `@group`; the document kept one of them and silently dropped every
+  operation of the other. When both have a method of one name, each such
+  operation's body components take its package first, as `ASGetReqBody`.
+
+- **A generic argument that is an array of maps keeps its `[]`.** A method
+  returning `Page<map<string, Item>[]>` got a logic stub returning
+  `*types.Page[map[string]types.Item]`, while `types.go` and the OpenAPI
+  document hold an array of maps; the stub, the handler and an event
+  payload now spell `Page[[]map[string]Item]`. A stub generated before
+  keeps its signature, since gen writes it once; edit it by hand. An
+  optional map value whose type holds nil, as in `map<string, Blob?>` with
+  `scalar Blob bytes`, is now a `Blob`, as a `Blob?` field is, not a `*Blob`.
+
+- **A map's key and value errors name the same field.** With `byCode
+  map<Code, Email> @json("by_code")`, a bad key was reported as `by_code: ...`
+  and a bad value as `byCode: ...`; both now name `by_code`, through nested
+  maps and arrays too.
+
+- **A validation error names the field as the request carries it.** A GET
+  request field `pageSize int @json("page_size") @gte(1)` binds `?pageSize`,
+  but a bad value was reported as `page_size: ...`; a field that every request
+  auto-binds to the query string or a path variable, and no JSON value carries,
+  is now reported under that parameter's name. A constraint on a scalar- or
+  enum-typed field named the field itself (`code`) while its other errors
+  named its JSON key or parameter (`c`); all of them now name the same.
+
+- **A parse error is reported once.** A declaration cut short, as in `error {`
+  or a `scalar` line with nothing after the keyword, reported the same error
+  twice or a second one at the same place, and a string with a bad escape or a
+  number with a bad suffix also reported `expected literal, got Error`;
+  `craftgo gen` reports one diagnostic at each place.
+
+- **A basePath variable binds from the path and is a server variable in
+  OpenAPI.** With `openapi.basePath: /t/{tenant}`, a request field named
+  `tenant` passed the check that every route variable is bound, while the
+  handler read it from the query string, or from the JSON body on a POST, so a
+  request to `/t/acme/...` failed for a missing `tenant`, and the document
+  listed it as a query parameter or a body property. Every rule now takes a
+  method's route variables from the one route it registers, the basePath's
+  included: the field binds to the path segment, and the document declares
+  `tenant` under `servers[0].variables`, described by the request field bound
+  to it: its doc, an enum's values, and a default - the field's `@example`,
+  else the enum's first value, else `0` or `false` for a number or a bool,
+  else the variable's name. The document's server describes it so only when
+  every operation does, and leaves it bare when a raw operation binds it to no
+  field; an operation describing it otherwise gets a server of its own, and no
+  operation lists it as a parameter. A constraint such as `@minLength` has no
+  place in a server variable.
+
+- **A trailing `{name...}` variable binds as `name`.** A route ending with
+  `{rest...}`, which matches the rest of the path, named its variable
+  `rest...`: a request field `rest` never bound it (`path segment {rest...}
+  has no matching field`), and `@path("rest...")` read
+  `r.PathValue("rest...")`, which is always empty. The variable is `rest`, as
+  net/http names it, `@path("rest...")` is an error that says so, and the
+  OpenAPI document lists the path parameter `rest` of a `@prefix` or the
+  basePath in the path `/…/{rest}`. A route ending with `{$}` no longer counts
+  `$` as a variable no field could bind, and its OpenAPI path ends with the
+  slash it matches; a root `/{$}` beside a root `/` of the same method, which
+  the document cannot tell apart, stops a run that writes the document with an
+  error naming both.
+
+- **A route net/http cannot register is rejected.** `@prefix("/org-{org}")`, a
+  `{rest...}` before a route's last segment, a `.` or `..` segment and a
+  variable such as `{a-b}` passed analysis, and the server panicked at startup
+  registering the route; so did a variable repeated by the basePath and a
+  method path, within a `@prefix`, or by an extend block's method path and the
+  primary service's `@prefix`. Each is now an error, `route/pattern` or
+  `route/duplicate-path-var`, at the `@prefix` or the method, or once, on the
+  manifest, for a basePath: `craftgo.design.yaml: openapi.basePath ...`, which
+  the editor shows on the manifest; `craftgo fmt` still formats the design
+  files. A segment or a variable the basePath repeats is reported once, and so
+  is the missing field of a method whose request binds no such variable.
+
+- **A type argument that makes a `file[][]` is rejected.** `request
+  Box<file[]>` with `type Box<T> { v T[] }`, or `request Up<file[][]>`, gave
+  the request a top-level `file[][]`, which has no multipart encoding, and
+  generated a handler that did not compile. It is now
+  `binding/file-position` at the request clause, as a declared `file[][]` is
+  at its field.
+
+- **Every multipart form part is checked in analysis.** Beside a `file`, a
+  body field no form value carries - a struct, a map, a generic instance,
+  `any`, `bytes` or `datetime` - stopped `craftgo gen` only in the Go
+  generator, so the editor never showed it, and a nested array such as
+  `string[][]` generated a handler that did not compile. Each is now
+  `binding/type` at the field; a raw request, which the handler does not
+  bind, is not checked.
+
+- **A generic response's headers take its type arguments in OpenAPI.** For
+  `response Paged<Prio>` with `type Paged<T> { Meta  count T @header("X-Count")
+  data T }`, the `X-Count` header was documented as `T`, and the body gave the
+  `t T?` that `Meta` declares over a type named `T` the argument's type, as
+  did a request body beside a header. Each field now takes the arguments of
+  its own level.
+
+- **A type parameter named like a declaration is the parameter.** In `type
+  Box<Blob> { v Blob? }` beside `scalar Blob bytes`, or `type Tagged<Color>
+  { c Color }` beside `enum Color`, the field was read as the declaration:
+  the optional `v` got no pointer, the validator compared the values with
+  `nil` and `""`, and the generated code did not compile; a `@default(Red)`
+  or a `@query` on such a field passed the declaration's checks. Inside its
+  type's body the parameter now hides the declaration, as it does in Go, and
+  the editor offers no value of the declaration in its `@default(...)`.
+
+- **A header typed by a type parameter is written as the argument.** A
+  `@header` or `@cookie` on a field typed `T` passed analysis only when a
+  declared type was also named `T`, and was then checked as that type: the
+  handler of `response Paged<int>` wrote `string(resp.Count)`, a rune
+  conversion, and `Paged<Item>` generated a handler that did not compile. The
+  field is now legal on any type parameter, the handler formats the
+  argument's type, and each request, response or error mixin that
+  instantiates the type is checked with its argument: `response Paged<Item>`
+  is `binding/type` at the response clause, as is a `T?` header whose
+  argument is an array, a pointer to a slice no generated header binding
+  reads or writes; a raw side, whose headers logic handles, takes it.
+
+- **A mixin's cross-field groups reach every OpenAPI request body.** The
+  body of a request that also binds a path, query, header or cookie field,
+  and a multipart body, left out a `@requiresOneOf` or `@mutuallyExclusive`
+  declared on a mixin the request embeds, though the server enforces it; both
+  now list it beside the request type's own.
+
+- **A multipart group counts an empty text part as absent in OpenAPI, as the
+  handler does.** The document matched a group member as present whenever its
+  part was sent, but the handler binds an empty text part as absent: an empty
+  `email` satisfied `@requiresOneOf(email, phone)` in the document and got a
+  400, and a file beside an empty `url` broke `@mutuallyExclusive(doc, url)`
+  in the document only. A text member now counts when it is non-empty
+  (`minLength: 1`), a file when it is sent, for the request type's groups and
+  its mixins' alike.
+
+- **A group over request parameters is named on the operation.** A
+  `@requiresOneOf` or `@mutuallyExclusive` whose members all ride as
+  parameters, such as the fields of a GET request bound from the query
+  string, was documented nowhere on the operation, though the handler
+  enforces it. Each parameter's schema constrains that parameter alone, so the
+  operation's description names the group: `At least one of the parameters
+  byName, byId must be set.`
+
+- **A multipart text part is never documented as null.** A form part is sent
+  or not, but an optional or `@nullable` part read `type: [string, "null"]`,
+  or an `anyOf` with `null` for an enum or scalar, in the multipart schema. Its
+  schema is now its type alone; `required` still carries its optionality.
+
+- **A response body beside a header keeps its cross-field groups in
+  OpenAPI.** The body of a response that sends a header or cookie left out
+  the `@requiresOneOf` and `@mutuallyExclusive` of the response type and of
+  its mixins; it now lists them.
+
+- **A type a generic names keeps its schema when a type parameter shares its
+  OpenAPI name.** In `type Pair<Item> { o b.Item }`, or `type Box<ADup> { w
+  Dup }` when two packages declare `Dup` (merged as `ADup`), the instance
+  documented the field as the type argument; it now refers to the type.
+
+- **Two operations whose body components share a name both generate.** When
+  `Report.CardList` and `ReportCard.List` are each named after their service,
+  both bodies come to `ReportCardList`, and the OpenAPI target stopped with an
+  error blaming a user-declared type. The operation whose operationId is that
+  name keeps it; the other's components take the lowest number that no other
+  operation and no declared type, enum or scalar holds, as
+  `ReportCardList2RespBody`.
+
+- **A run that writes no OpenAPI document is not stopped by it.** With
+  `output.openapi: "-"`, or `craftgo gen --target go`, an error only the
+  document has, such as two component schemas sharing a name or an `oauth2`
+  security scheme without flows, stopped the Go code too; it now stops only a
+  run that writes the document.
+
+- **An error whose mixin holds only header fields documents its envelope.**
+  `error ServiceUnavailable Busy { Wait }`, with every field of `Wait` a
+  `@header`, `@cookie` or `@sensitive` one, is written as the
+  `{"code","message"}` envelope, while its OpenAPI schema referred to `Wait`,
+  which documents no property; it now documents the envelope.
+
+- **No bound check the Go type already enforces.** The validator compared a
+  value with bounds its type cannot break - `@gte(0)` on a `uint`, the ends
+  of `@range(0, 255)` on a `uint8`, an integer type's own limits, a
+  `@minLength(0)` or a `@maxLength(9223372036854775807)` - and the last did
+  not compile for a 32-bit platform. Such a check is no longer emitted, and
+  `@range` or `@length` keeps the end that bites. A scalar whose checks are
+  all such bounds keeps its `Validate()`, which its fields no longer call.
+  Float bounds keep their checks.
+
+- **The OpenAPI document states each numeric bound as the validator checks
+  it.** On an integer field, a whole-float bound such as
+  `@lte(9223372036854775807.0)` or `@multipleOf(18446744073709551615.0)` read
+  `9223372036854776000` or `1.8446744073709552e+19`, a `@maxLength` or item
+  count that large was rounded, the second of two such maxima won even when
+  looser, and a `@gte` that large read as its rounded float; each is now the
+  exact integer, the tighter one of two. On a float field, where the validator
+  compares against the literal's float, a bound judges the literal and that
+  float as the validator does: `@gte(9007199254740993.0)` on a `float64` is
+  `minimum: 9007199254740992`, `@lte(0.1)` on a `float32` is `maximum:
+  0.10000000149011612`, and `@gte(0.1)` there stays `minimum: 0.1`, so a
+  `@default(0.1)` beside it remains valid.
+
+- **`craftgo gen --target go` on a new project builds.** Its new `main.go`
+  embedded the OpenAPI document, which that run does not write, so `go build`
+  failed with `pattern docs/openapi.yaml: no matching files found`. A new
+  `main.go` now embeds the document only when it is on disk as the Go code is
+  generated, and a full run writes the document first.
+
+- **The `craftgo gen` summary counts what the run writes.** A run narrowed to
+  `--target docs` reported the design's packages with `output.openapi: "-"`,
+  when it writes nothing, and its gRPC services, whose code it does not
+  write. It now reports `generated 0 package(s)` when it writes nothing, and
+  gRPC services only when it runs the Go target.
+
+- **Go docs carry the design's description.** A scalar, an enum and each of
+  its values, an error and a middleware lost the comment the design wrote
+  above them, and a type, field or method with `@doc` kept its comment
+  instead, where the OpenAPI document shows the `@doc`. Each generated
+  declaration the design names now opens its doc with the design's `@doc`,
+  else its comment, and an empty `//` line parts it from the lines craftgo
+  adds. A logic stub or middleware written once keeps the doc it was
+  written with.
+
+- **HTTP panic lines carry the request's trace ids.** `Recovery` ran outside
+  the telemetry wrapper, so a panic was logged before any span existed. A
+  generated `main.go` now builds the server with
+  `server.New(svc, server.WithTelemetry(tel.HTTPMiddleware()))`; in an
+  existing `main.go`, replace `srv.Use(tel.HTTPMiddleware())` with that
+  option, since keeping both records every span and metric twice.
+
+- **A float parameter refuses NaN and the infinities.** `server.ParseFloat`,
+  which the generated binders call for a float query, header, cookie or form
+  value, took `NaN`, which passes every bound, and `Inf`, which an unbounded
+  field kept; both now fail to bind and answer 400, e.g. `ratio: invalid
+  float value: strconv.ParseFloat: parsing "NaN": not a finite number`.
+
+- **A generic that passes its parameter back to itself inside a larger type
+  is rejected.** `type Tree<T> { kids Tree<Tree<T>>[] }`, `Tree<T[]>`, or
+  such a loop through another generic passed analysis; `craftgo gen` then
+  never finished the OpenAPI document and wrote Go that did not compile
+  (`instantiation cycle`). It is now `generic/instantiation-cycle` at the
+  instantiation; `kids Tree<T>[]`, which passes the parameter on unchanged,
+  stays legal.
+
+- **`@json("-")` is rejected.** It tagged the field `json:"-"`, so the field
+  never crossed the wire, while the OpenAPI document listed a property named
+  `-`. It is now `decorator/argvalue`, whose message points to `@sensitive`
+  for a server-only field.
+
+- **An optional type parameter over a file is refused.** In `type O<T> { f
+  T? }` used as the request `O<file>` or `O<file[]>`, `f` is a pointer to the
+  file header or to the slice, which the multipart binder cannot fill, so the
+  handler did not compile. It is now `binding/type`; `f T` binds the upload,
+  and a raw request, which nothing binds, keeps `T?`.
+
+- **An optional array or map as a map value is rejected.** In `map<string,
+  int[]?>` or `map<string, map<string, int>?>`, the Go type and the OpenAPI
+  schema dropped the `?`: a nil slice or map already stands for null. It is
+  now `type/map-value` wherever a map is spelled; `map<string, int?>` and
+  other optional values stay.
+
+- **A decorator's arguments that do not parse draw the parse error alone.**
+  The parser read an argument it could not, such as the `@x` of `@doc(@x)`,
+  as `null`, so analysis added `@doc arg 1: expected string, got null`;
+  `@doc(})` added `@doc expects at least 1 argument(s), got 0`, and
+  `@doc("a" "b")` an argument count. The editor now shows only the parse
+  error until the arguments parse.
+
+- **A `file` in a generic's struct argument is named on its path.** With
+  `type Customer { avatar file }`, `response Page<Customer>` reported the
+  `file` at `Page<Customer>.avatar`; it now names the field the argument
+  rides, `Page<Customer>.items.avatar`, and so does a request's "reached
+  through" path. An argument no field of the generic takes, as in `type
+  Tagged<T> { n int }`, is no longer searched: `Tagged<Customer>` carries no
+  `file`.
+
+- **A field named like a generated method is rejected.** A field `validate`
+  of any type or error body, or a mixin of a type named `Validate`, shared
+  its Go name with the struct's generated `Validate()` method, which Go
+  rejects; an error body field whose Go name is `<Name>Body`, the struct the
+  error type embeds, was hidden behind it, and as a header or a cookie
+  generated Go that did not compile. Each is now `field/invalid-go-name`.
+
+- **An optional parameter or response header is never documented as null.**
+  A query, header or cookie parameter, or a response header, declared `T?`
+  read `type: [T, "null"]`, or an `anyOf` with `null` for an enum or scalar,
+  though it is sent or not: a client that sent `?count=null` for an `int?`
+  got a 400. Its schema is now its type alone; `required` still carries a
+  parameter's optionality.
+
+- **`@mutuallyExclusive` over three or more fields admits at most one in
+  OpenAPI, as the validator does.** `@mutuallyExclusive(email, sms, push)` was
+  documented as "not all three present", so a body sending two of them matched
+  the schema and got a 400. Every body schema carrying the group - the type's,
+  a request body listed in place and a multipart body - now forbids each pair.
+
+- **Responses sharing a status admit each body they send in OpenAPI.** Errors
+  of one category, and a success `@status` sharing its code with an error,
+  were documented as a `oneOf`, which a body matching two of the schemas
+  fails: two errors without a JSON member both send the `{code, message}`
+  envelope, so each body either sent failed the document, and a client
+  generator that counts `oneOf` matches could not decode it. The schemas are
+  now an `anyOf`.
+
+- **A header that responses sharing a status send under one name keeps each
+  type in OpenAPI.** When two errors of one category, or an error and a
+  success `@status` sharing its code, sent a header of one name with
+  different types - `Retry-After` as seconds from one error and as an HTTP
+  date from another - the document kept one of the types, and the other's
+  value failed it; spelled in another letter case, the name was a second
+  header. The header, spelled as first declared, now admits each type, and
+  its `Set-Cookie` names each cookie of the status once.
+
+- **A number the OpenAPI document writes as an exponent reads as a number in
+  YAML 1.1.** A bound, default or example such as `minimum: 1e-07` or
+  `maximum: 1e+20` is a string to a YAML 1.1 reader - PyYAML, and so
+  openapi-spec-validator, rejected the document. Such a number now carries a
+  dot, `1.0e-07`, which YAML 1.1 and 1.2 readers both take for a number; no
+  other number changes its spelling.
+
+- **A security scheme missing a field its type requires stops `craftgo
+  gen`.** An `http` scheme without `scheme`, an `apiKey` scheme without `in`
+  or `name` or with an `in` other than `header`, `query` or `cookie`, an
+  `openIdConnect` scheme without `openIdConnectUrl`, and a scheme whose
+  `type` OpenAPI does not define reached the document when an `@security`
+  named them, and OpenAPI validators then rejected it. A run that writes the
+  document now stops with a message naming the scheme and the field, as it
+  does for an `oauth2` scheme's flows. A scheme no `@security` names stays
+  out of the document and stops no run, an `oauth2` one without flows
+  included.
+
+- **`craftgo gen` names a `main.go` that does not embed the OpenAPI
+  document.** A project first generated with `--target go` gets a `main.go`
+  without the document's embed, which gen never rewrites, so a later run
+  wrote a document nothing served, without a word. Each run now names that
+  `main.go` and the `//go:embed` line it lacks, or suggests deleting it to
+  have gen write it anew. The runtime guide's embed snippet imports `embed`,
+  which `go build` requires.
+
+- **The manifest `craftgo init` writes has examples that generate.** Its
+  commented oauth2 scheme carries the flow a scheme an operation names needs,
+  and is referenced as `@security(oauth2)`; the events note no longer mentions
+  `consume` declarations.
+
+- **`@mimeTypes` matches an upload's media type.** It compared the part's
+  `Content-Type` header as a string, so `image/*` admitted no image and
+  `image/png; name=a` or `IMAGE/PNG` were refused though the OpenAPI document
+  allows them. A range now admits every subtype, parameters and case are
+  ignored, and an entry that is no media type or range is
+  `decorator/argvalue`.
+
+- **A response that cannot be encoded answers 500.** A success response
+  holding a `NaN` or `±Inf` float went out as its success status with an
+  empty body, logged only as a 200 access line. Generated handlers now answer
+  through `server.WriteResponse`, which encodes first and hands an encode
+  error to `WriteError`: 500 `{"message":"internal server error"}` and the
+  `unhandled service error` log line.
+
+- **An array header binds a comma-separated list.** The OpenAPI document
+  describes `ids int[] @header` as `X-Ids: 1,2`, but the handler parsed each
+  header line whole, so `1,2` answered 400. It now reads the list through
+  `server.HeaderList`: every line, split at commas.
+
+- **A multipart text part ignores the query.** The handler read a text
+  part with `r.FormValue`, so `?note=x` beat the `note` part and stood in for
+  a missing one. It now reads `r.PostFormValue`, the multipart body alone.
+
+- **`log.Slog()` keeps the values inside a group.** A `slog.Group` reached
+  the logger as a list whose values were lost, and an empty attribute was
+  written as `"":null`. Group attributes are now flattened under the group's
+  key (`http.status`), an empty-key group is inlined, and an empty attribute
+  or group is dropped, as `log/slog` handlers do.
+
+- **Hover on a field's name shows the field.** A field spelt like a
+  built-in (`file`), an HTTP verb (`delete`) or a keyword (`type`) showed
+  that word's doc, or nothing.
+
+- **`craftgo gen` deletes only the pb code of the design's own protos.** The
+  sweep took every file with a protoc plugin header under `output.pb`: a
+  design with no proto deleted the protoc output a project keeps in
+  `./internal/pb`, and the Go code of a `proto.includes` proto placed there
+  went too, leaving a project that did not build. A file there is now swept
+  only from a directory a design proto writes into, and only when its header
+  names as its source a proto no include root holds; a design with no proto
+  sweeps nothing under `output.pb`.
+
+- **The sweep takes the OpenAPI document alone.** It walked the document's
+  directory and every directory below it, deleting any file with the
+  document's header - a frozen copy kept for a breaking-change diff, a docs
+  site's `public/api.yaml` - and the directories that emptied. It now deletes
+  the document itself, once the run no longer writes it. `wiring.go`,
+  `grpc.go` and `middlewares.go` are swept the same way, as those files
+  alone.
+
+- **An event target needs a directory of its own.** An
+  `events.targets[].out` naming the directory of an output key, such as
+  `output.types`, loaded and generated a package that did not compile; the
+  manifest now stops the run with `output.types and events.targets[go].out
+  both write to "gen"`, as two output keys sharing a directory do.
+
+- **The sweep knows protoc output that opens with a license comment.**
+  protoc-gen-go copies the comment above a proto's `syntax` line, such as a
+  license header, above its `Code generated` line; such a file was not
+  recognised, so renaming its proto left the old `.pb.go` behind and the
+  build failed on duplicate declarations.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added

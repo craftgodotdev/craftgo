@@ -6,28 +6,19 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 )
 
-// grpcSignature is the Go-side shape of one RPC, for the server layer
-// and the logic scaffold. Both render from the same value, so the
-// server's call and the logic's declaration cannot drift - the rule
-// [buildSignature] sets for HTTP. The server method must match the
-// interface protoc-gen-go-grpc generates; the logic drops the context
-// the scaffold already carries.
+// grpcSignature is the Go shape of one RPC: ServerParams match the interface protoc-gen-go-grpc
+// generates, and Logic drops the context the logic struct already carries.
 type grpcSignature struct {
 	// Kind names the streaming shape for the generated comments.
 	Kind string
-	// IsUnary reports a plain request/response call, the one shape whose
-	// server method receives a context parameter.
+	// IsUnary is the one shape whose server method takes a context parameter.
 	IsUnary bool
-	// HasRequest reports that the call starts with one request message
-	// (unary and server-streaming), which the server layer validates.
+	// HasRequest reports a leading request message (unary, server-streaming), which the server validates.
 	HasRequest bool
 	// HasResponse reports that logic returns a response value (unary).
-	HasResponse bool
-	// ServerParams is the server method's parameter list, matching the
-	// generated interface.
+	HasResponse  bool
 	ServerParams string
-	// Logic is the logic scaffold's signature; its CallArgs are what the
-	// server passes.
+	// Logic is the logic scaffold's signature; the server calls it with Logic.CallArgs.
 	Logic methodSignature
 }
 
@@ -73,16 +64,16 @@ func buildGRPCSignature(m *protodesign.Method, in, out string) grpcSignature {
 	return sig
 }
 
-// streamNotes is the usage hint the logic scaffold carries for a
-// streaming RPC, one line per entry.
-func streamNotes(kind protodesign.Kind) []string {
-	switch kind {
+// grpcEntry is the generated doc line of m's logic entry point, a method of proto service svc:
+// how a streaming RPC uses its stream.
+func grpcEntry(svc string, m *protodesign.Method) string {
+	switch m.Kind {
 	case protodesign.ServerStream:
-		return []string{"Send each response with stream.Send; returning ends the stream."}
+		return m.Name + " sends each response with stream.Send; returning ends the stream."
 	case protodesign.ClientStream:
-		return []string{"Read requests with stream.Recv until io.EOF, then answer with", "stream.SendAndClose."}
+		return m.Name + " reads requests with stream.Recv until io.EOF, then answers with stream.SendAndClose."
 	case protodesign.Bidi:
-		return []string{"Read requests with stream.Recv and answer with stream.Send;", "returning ends the stream."}
+		return m.Name + " reads requests with stream.Recv and answers with stream.Send; returning ends the stream."
 	}
-	return nil
+	return m.Name + " implements " + svc + "." + m.Name + "."
 }

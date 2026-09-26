@@ -2,6 +2,10 @@
 
 package xshared
 
+// XColor exercises cross-package enum refs. Used by xrefs in every
+// shape - direct, optional, array, map-key, map-value - so the
+// switch-case validity check, OpenAPI enum schema, and binding casts
+// resolve through the resolver rather than the local pkg.Enums.
 type XColor string
 
 const (
@@ -10,6 +14,10 @@ const (
 	XColorBlue  XColor = "Blue"
 )
 
+// XTier is an INT-valued enum carried cross-package by an event payload
+// (`events.TierPromoted`). Resolving the enum against the consuming
+// package instead of the declaring one finds nothing, falls back to the
+// string default, and emits a rune conversion in Go.
 type XTier int
 
 const (

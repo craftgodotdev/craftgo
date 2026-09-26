@@ -9,17 +9,12 @@ import (
 	"unicode/utf8"
 )
 
-// Pattern regexes compile ONCE at package init so Validate() calls
-// reference the precompiled var instead of recompiling per request.
-// The pattern is rendered via %q (Go-quoted) rather than a raw-string
-// literal so regexes containing a backtick, backslash, or quote still
-// produce compilable Go - a raw `...` literal would break on a backtick.
+// The regexes of the @pattern and @format checks, compiled once.
 var (
 	_pattern0 = regexp.MustCompile("^[0-9]{4}$")
 )
 
-// Validate checks every field-level constraint declared on CreateOrderReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CreateOrderReq) Validate() error {
 	if err := v.CustomerID.Validate(); err != nil {
 		return fmt.Errorf("customerId: %w", err)
@@ -32,7 +27,7 @@ func (v *CreateOrderReq) Validate() error {
 	}
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	if v.Notes != nil && utf8.RuneCountInString(*v.Notes) > 2000 {
@@ -60,8 +55,7 @@ func (v *CreateOrderReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on DefaultsShowcaseReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *DefaultsShowcaseReq) Validate() error {
 	if v.Currency != nil {
 		if err := v.Currency.Validate(); err != nil {
@@ -81,8 +75,7 @@ func (v *DefaultsShowcaseReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on FilterOrdersReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *FilterOrdersReq) Validate() error {
 	if v.Status == "" {
 		return fmt.Errorf("status: required")
@@ -102,14 +95,15 @@ func (v *FilterOrdersReq) Validate() error {
 	if v.Limit > 100 {
 		return fmt.Errorf("limit: above maximum 100")
 	}
-	if v.IdemKey != nil && (utf8.RuneCountInString(*v.IdemKey) < 1 || utf8.RuneCountInString(*v.IdemKey) > 128) {
-		return fmt.Errorf("idemKey: length out of range [1, 128]")
+	if v.IdemKey != nil {
+		if l := utf8.RuneCountInString(*v.IdemKey); l < 1 || l > 128 {
+			return fmt.Errorf("idemKey: length out of range [1, 128]")
+		}
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GetOrderReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GetOrderReq) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -117,11 +111,10 @@ func (v *GetOrderReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on LineItem.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *LineItem) Validate() error {
 	if err := v.Product.Validate(); err != nil {
-		return err
+		return fmt.Errorf("product: %w", err)
 	}
 	if err := v.Sku.Validate(); err != nil {
 		return fmt.Errorf("sku: %w", err)
@@ -152,8 +145,7 @@ func (v *LineItem) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ListOrdersReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ListOrdersReq) Validate() error {
 	if v.Limit < 0 {
 		return fmt.Errorf("limit: below minimum 0")
@@ -169,14 +161,13 @@ func (v *ListOrdersReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Order.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Order) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
 	}
 	if err := v.Customer.Validate(); err != nil {
-		return err
+		return fmt.Errorf("customer: %w", err)
 	}
 	if len(v.Items) < 1 {
 		return fmt.Errorf("items: minItems 1")
@@ -186,12 +177,12 @@ func (v *Order) Validate() error {
 	}
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	if v.Payment != nil {
 		if err := v.Payment.Validate(); err != nil {
-			return err
+			return fmt.Errorf("payment: %w", err)
 		}
 	}
 	{
@@ -238,7 +229,7 @@ func (v *Order) Validate() error {
 		}
 	}
 	if err := v.CreatedBy.Validate(); err != nil {
-		return err
+		return fmt.Errorf("createdBy: %w", err)
 	}
 	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {
 		return fmt.Errorf("createdAt: not a valid RFC 3339 datetime")
@@ -246,8 +237,7 @@ func (v *Order) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Payment.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Payment) Validate() error {
 	if v.Method == "" {
 		return fmt.Errorf("method: required")
@@ -255,7 +245,7 @@ func (v *Payment) Validate() error {
 	if err := v.Method.Validate(); err != nil {
 		return fmt.Errorf("method: %w", err)
 	}
-	if v.CardLast4 != nil && (utf8.RuneCountInString(*v.CardLast4) < 4 || utf8.RuneCountInString(*v.CardLast4) > 4) {
+	if v.CardLast4 != nil && utf8.RuneCountInString(*v.CardLast4) != 4 {
 		return fmt.Errorf("cardLast4: length must be 4")
 	}
 	if v.CardLast4 != nil && !_pattern0.MatchString(*v.CardLast4) {
@@ -272,41 +262,37 @@ func (v *Payment) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on OrderStatus.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v OrderStatus) Validate() error {
 	switch v {
 	case OrderStatusPending, OrderStatusPaid, OrderStatusShipped, OrderStatusDelivered, OrderStatusCancelled:
 	default:
-		return fmt.Errorf("invalid OrderStatus value")
+		return fmt.Errorf("must be one of [pending paid shipped delivered cancelled]")
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PaymentMethod.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v PaymentMethod) Validate() error {
 	switch v {
 	case PaymentMethodCard, PaymentMethodBank, PaymentMethodWallet, PaymentMethodInvoice:
 	default:
-		return fmt.Errorf("invalid PaymentMethod value")
+		return fmt.Errorf("must be one of [card bank wallet invoice]")
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on SuspensionReason.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v SuspensionReason) Validate() error {
 	switch v {
 	case SuspensionReasonPolicyViolation, SuspensionReasonPaymentFailure, SuspensionReasonOperatorAction:
 	default:
-		return fmt.Errorf("invalid SuspensionReason value")
+		return fmt.Errorf("must be one of [PolicyViolation PaymentFailure OperatorAction]")
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ActionDeniedBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ActionDeniedBody) Validate() error {
 	if v.Reason == "" {
 		return fmt.Errorf("reason: required")
@@ -317,8 +303,7 @@ func (v *ActionDeniedBody) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on PaymentFailedBody.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *PaymentFailedBody) Validate() error {
 	if v.Method == "" {
 		return fmt.Errorf("method: required")
@@ -327,7 +312,7 @@ func (v *PaymentFailedBody) Validate() error {
 		return fmt.Errorf("method: %w", err)
 	}
 	if err := v.ChargedBy.Validate(); err != nil {
-		return err
+		return fmt.Errorf("chargedBy: %w", err)
 	}
 	return nil
 }

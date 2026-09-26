@@ -2,10 +2,15 @@
 
 package todos
 
-// Millis is a DSL scalar over int; its declared validators live on its Validate() method and are inherited by every field of this type.
+// Millis is a scalar over int used below for a non-string @header
+// value (X-Response-Time); scalar-typed header fields format through
+// their underlying primitive (strconv.Itoa).
 type Millis int
 
-// Tag is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
+// Tag is a scalar over string used as a request query filter. Its
+// @length / @pattern validators are inherited by any field typed Tag,
+// so a `@query`-bound Tag field is validated during req.Validate() and
+// a malformed ?tag= value is rejected with 400 before the handler runs.
 type Tag string
 
 type CreateTodoReq struct {

@@ -1,23 +1,21 @@
 package server
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 )
 
-// ErrNoDecoder is returned by WritePrecompressed when the client does not
-// accept the stored content-coding and no decode function was supplied,
-// so the body cannot be served in either form. Nothing has been written
-// when it is returned.
+// ErrNoDecoder is returned by [WritePrecompressed], before anything is written, when the
+// client does not accept the stored coding and decode is nil.
 var ErrNoDecoder = errors.New("server: client does not accept the stored content-coding and no decoder was supplied")
 
-// WriteBytes writes a complete response in one go: contentType (when
-// non-empty) and Content-Length are set, the status is written, then
-// body. It is the building block for raw-response handlers that already
-// hold the exact bytes they want on the wire and do not want the JSON
-// encoder in the way.
+// WriteBytes writes status and body with Content-Length set, and Content-Type set to
+// contentType unless it is empty. It returns the body write's error.
 func WriteBytes(w http.ResponseWriter, status int, contentType string, body []byte) error {
 	h := w.Header()
 	if contentType != "" {
@@ -29,20 +27,47 @@ func WriteBytes(w http.ResponseWriter, status int, contentType string, body []by
 	return err
 }
 
-// WritePrecompressed serves a body that is stored already compressed - a
-// cache entry, a pre-built asset - without touching it when it can. When
-// the client's Accept-Encoding lists coding (`"zstd"`, `"gzip"`, `"br"`,
-// ...), the bytes go out verbatim with Content-Encoding set; otherwise
-// decode turns them back into the identity form first. Either way the
-// response carries `Vary: Accept-Encoding` so caches keep the two shapes
-// apart. The framework pulls in no compression library: the caller, who
-// already has one to fill the cache, supplies decode. A nil decode with
-// a client that does not accept coding returns ErrNoDecoder before
-// anything is written.
-//
-// The Compress middleware leaves a response that already carries
-// Content-Encoding untouched, so the verbatim body is never re-encoded;
-// on the decoded path Compress may gzip the identity bytes as usual.
+// emptyFiller is a generated type whose FillEmpty sets its required lists and maps left nil, and
+// those of the values below it, to empty ones.
+type emptyFiller interface {
+	FillEmpty(depth int) (changed, stopped bool)
+}
+
+// WriteResponse writes v as the JSON body of a status response. A generated type's required lists
+// and maps left nil are set empty first, in v itself, so they go out as [] and {}, as the
+// document says. v is encoded before anything is written, so a value the codec cannot encode,
+// such as a NaN float, goes to [WriteError] as an unhandled error rather than out as a success
+// with an empty body.
+func WriteResponse(w http.ResponseWriter, r *http.Request, status int, v any) {
+	if f, ok := v.(emptyFiller); ok {
+		f.FillEmpty(0)
+	}
+	buf := responseBufs.Get().(*bytes.Buffer)
+	defer putResponseBuf(buf)
+	if err := JSON().Encode(buf, v); err != nil {
+		WriteError(w, r, fmt.Errorf("encode response: %w", err))
+		return
+	}
+	w.Header().Set("Content-Type", contentTypeJSON)
+	w.WriteHeader(status)
+	_, _ = w.Write(buf.Bytes())
+}
+
+// responseBufs holds the buffers [WriteResponse] encodes into.
+var responseBufs = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+
+// putResponseBuf returns buf to the pool unless it grew past 64 KiB.
+func putResponseBuf(buf *bytes.Buffer) {
+	if buf.Cap() > 64<<10 {
+		return
+	}
+	buf.Reset()
+	responseBufs.Put(buf)
+}
+
+// WritePrecompressed writes body, stored encoded with coding, as is with Content-Encoding
+// when the client accepts coding, and as decode(body) otherwise; it adds Vary: Accept-Encoding.
+// A nil decode ([ErrNoDecoder]) or decode's error is returned before anything is written.
 func WritePrecompressed(w http.ResponseWriter, r *http.Request, status int, contentType, coding string, body []byte, decode func([]byte) ([]byte, error)) error {
 	h := w.Header()
 	if !headerListsValue(h, "Vary", "Accept-Encoding") {
@@ -62,10 +87,7 @@ func WritePrecompressed(w http.ResponseWriter, r *http.Request, status int, cont
 	return WriteBytes(w, status, contentType, plain)
 }
 
-// headerListsValue reports whether the comma-separated list header key
-// already names value (case-insensitive), across every occurrence of the
-// header. Keeps WritePrecompressed from stacking a second
-// `Vary: Accept-Encoding` on top of the one Compress adds.
+// headerListsValue reports whether any key header lists value, case-insensitively.
 func headerListsValue(h http.Header, key, value string) bool {
 	for _, v := range h.Values(key) {
 		for part := range strings.SplitSeq(v, ",") {

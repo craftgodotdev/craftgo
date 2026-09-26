@@ -13,5 +13,5 @@ type RtOrder {
 
 type RtItem {
 	sku   string
-	price int @gte(0)
+	price int    @gte(0)
 }

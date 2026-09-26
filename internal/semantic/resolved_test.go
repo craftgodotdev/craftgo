@@ -6,9 +6,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// ResolveField resolves a field's layer-agnostic facts - including a
-// CROSS-PACKAGE scalar's nilability, the resolution the per-package checks
-// can't do (the gap behind the cross-pkg-promoted scalar nilability bug).
+// ResolveField reports a field's category, primitive and nilability; a
+// qualified type resolves in its own package.
 func TestResolveField(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/shared.craftgo": `package shared
@@ -53,30 +52,53 @@ type T {
 			byName[f.Name] = f
 		}
 	}
-	check := func(field string, cat FieldCategory, prim string, nilable bool, home string) {
+	check := func(field string, cat FieldCategory, prim string, nilable bool) {
 		t.Helper()
 		rf := ResolveField(byName[field], m, proj)
-		if rf.Category != cat || rf.ResolvedPrim != prim || rf.IsNilable != nilable || rf.HomePkg != home {
-			t.Errorf("%s: got {cat:%d prim:%q nilable:%v home:%q}; want {cat:%d prim:%q nilable:%v home:%q}",
-				field, rf.Category, rf.ResolvedPrim, rf.IsNilable, rf.HomePkg,
-				cat, prim, nilable, home)
+		if rf.Category != cat || rf.ResolvedPrim != prim || rf.IsNilable != nilable {
+			t.Errorf("%s: got {cat:%d prim:%q nilable:%v}; want {cat:%d prim:%q nilable:%v}",
+				field, rf.Category, rf.ResolvedPrim, rf.IsNilable, cat, prim, nilable)
 		}
 	}
-	check("s", CatPrimitive, "string", false, "")
-	check("b", CatBytes, "bytes", true, "")
-	// A raw field is a wire.Raw: nilable like the slice it is, and named
-	// by no package - the scalar spelling lowers to the same type.
-	check("rawdoc", CatRawBytes, "bytes", true, "")
-	check("blob", CatScalar, "bytes", true, "m")    // local scalar over bytes -> nilable
-	check("email", CatScalar, "string", false, "m") // local scalar over value -> not nilable
-	check("c", CatEnum, "string", false, "m")       // enum backing primitive, resolved like a scalar's
-	check("lvl", CatEnum, "int", false, "m")
-	check("inner", CatStruct, "", false, "m")
-	check("arr", CatArray, "", true, "")
-	check("mp", CatMap, "", true, "")
-	check("xblob", CatScalar, "bytes", true, "shared") // CROSS-PKG scalar over bytes -> resolved + nilable
-	check("xraw", CatRawBytes, "bytes", true, "")
-	check("xcents", CatScalar, "int", false, "shared")
-	check("xtone", CatEnum, "string", false, "shared") // CROSS-PKG enum: backing read from the declaring package
-	check("xtier", CatEnum, "int", false, "shared")
+	check("s", CatPrimitive, "string", false)
+	check("b", CatBytes, "bytes", true)
+	// A raw field is a nilable wire.Raw, however it is spelt.
+	check("rawdoc", CatRawBytes, "bytes", true)
+	check("blob", CatScalar, "bytes", true)
+	check("email", CatScalar, "string", false)
+	check("c", CatEnum, "string", false) // enum backing primitive, resolved like a scalar's
+	check("lvl", CatEnum, "int", false)
+	check("inner", CatStruct, "", false)
+	check("arr", CatArray, "", true)
+	check("mp", CatMap, "", true)
+	check("xblob", CatScalar, "bytes", true)
+	check("xraw", CatRawBytes, "bytes", true)
+	check("xcents", CatScalar, "int", false)
+	check("xtone", CatEnum, "string", false) // cross-package enum: backing read from its package
+	check("xtier", CatEnum, "int", false)
+}
+
+// ErrorHasJSONMember counts a field on the JSON body, a mixin's included; a
+// header, cookie or @sensitive field rides elsewhere.
+func TestErrorHasJSONMember(t *testing.T) {
+	pkg := mustClean(t, `package p
+type Wait { seconds int @header("X-Wait") }
+type Hint { hint string }
+error NotFound Bare
+error TooManyRequests Header { retryAfter int @header("Retry-After") }
+error Unauthorized Cookie { session string @cookie("sid") }
+error BadRequest Hidden { internal string @sensitive }
+error ServiceUnavailable HeaderMixin { Wait }
+error Gone BodyMixin { Hint }
+error Unauthorized Optional { code string? }
+error Conflict Mixed { etag string @header("ETag")  reason string? }`)
+	r := PackageResolver(pkg)
+	for name, want := range map[string]bool{
+		"Bare": false, "Header": false, "Cookie": false, "Hidden": false, "HeaderMixin": false,
+		"BodyMixin": true, "Optional": true, "Mixed": true,
+	} {
+		if got := ErrorHasJSONMember(pkg.Errors[name], r); got != want {
+			t.Errorf("%s: ErrorHasJSONMember = %v, want %v", name, got, want)
+		}
+	}
 }

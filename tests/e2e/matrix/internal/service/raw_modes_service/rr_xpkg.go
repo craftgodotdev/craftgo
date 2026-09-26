@@ -6,10 +6,10 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/craftgodotdev/craftgo/pkg/server"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -22,7 +22,7 @@ type RrXpkgService struct {
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewRrXpkgService constructs a fresh service instance bound to ctx.
+// NewRrXpkgService binds RrXpkgService to ctx; its Logger carries ctx's trace ids.
 func NewRrXpkgService(ctx context.Context, svcCtx *svccontext.ServiceContext) *RrXpkgService {
 	return &RrXpkgService{
 		Logger: log.Default().WithContext(ctx),

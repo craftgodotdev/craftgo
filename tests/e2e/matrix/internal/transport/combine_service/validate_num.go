@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ValidateNum returns the http.HandlerFunc for the
-// POST ValidateNum endpoint.
+// Validate stacked numeric decorators (range + multipleOf + gt + lte). All four fire in declaration order.
+//
+// ValidateNum returns the POST ValidateNum handler.
 func ValidateNum(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.PairsNum
@@ -31,8 +32,6 @@ func ValidateNum(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

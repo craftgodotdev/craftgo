@@ -5,25 +5,20 @@ package media
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/upload/internal/types/media"
-
-	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/upload/internal/types/media"
+	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 )
 
-// DeleteMediaService carries the per-request state for the
-// DeleteMedia endpoint of MediaService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// DeleteMediaService runs MediaService.DeleteMedia for one request.
 type DeleteMediaService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewDeleteMediaService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewDeleteMediaService binds DeleteMediaService to ctx; its Logger carries ctx's trace ids.
 func NewDeleteMediaService(ctx context.Context, svcCtx *svccontext.ServiceContext) *DeleteMediaService {
 	return &DeleteMediaService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewDeleteMediaService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// DeleteMedia is the service entry point. Replace the
-// TODO with the real implementation.
+// Delete media. Idempotent.
+//
+// DeleteMedia implements MediaService.DeleteMedia.
 func (l *DeleteMediaService) DeleteMedia(req *types.GetMediaReq) (*types.OkResp, error) {
 	// Idempotent: deleting an unknown id is a no-op success.
 	l.svcCtx.Store.DeleteMedia(req.ID)

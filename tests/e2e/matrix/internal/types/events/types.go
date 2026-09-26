@@ -3,12 +3,13 @@
 package events
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/wire"
-	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"time"
+
+	"github.com/craftgodotdev/craftgo/pkg/wire"
+
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 )
 
-// ShipmentID is a DSL scalar over string; its declared validators live on its Validate() method and are inherited by every field of this type.
 type ShipmentID string
 
 // Envelope is generic: an event payload that instantiates it must reach

@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetItem returns the http.HandlerFunc for the
-// GET GetItem endpoint.
+// Pins cross-package @errors reference. xshared.XNotFound must register as a component schema AND appear in the operation's responses[404].body schema.
+//
+// GetItem returns the GET GetItem handler.
 func GetItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XGetReq
@@ -28,7 +29,6 @@ func GetItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

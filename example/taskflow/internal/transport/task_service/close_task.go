@@ -8,13 +8,14 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/example/taskflow/internal/service/task_service"
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// CloseTask returns the http.HandlerFunc for the
-// POST CloseTask endpoint.
+// Deprecated: use SetTaskStatus with status=done. Kept for older clients.
+//
+// CloseTask returns the POST CloseTask handler.
 func CloseTask(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetTaskReq
@@ -30,8 +31,6 @@ func CloseTask(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

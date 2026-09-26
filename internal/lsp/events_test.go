@@ -47,9 +47,7 @@ func TestHoverOnMemberKeywords(t *testing.T) {
 	}
 }
 
-// A decorator zone belongs to the declaration that follows it, so the
-// completion list offers event decorators above a file-level `event` and
-// method decorators above a verb inside a service body.
+// A decorator zone takes the level of the event or method below it.
 func TestDecoratorSiteLevelFollowsTheDeclaration(t *testing.T) {
 	view := parseSnapshot("t.craftgo", eventsDSL)
 	for _, c := range []struct {
@@ -61,14 +59,13 @@ func TestDecoratorSiteLevelFollowsTheDeclaration(t *testing.T) {
 	} {
 		pos := findToken(t, view, c.needle)
 		above := protocol.Position{Line: pos.Line - 1, Character: 0}
-		if got := guessLevel(view, above); got != c.want {
+		if got := guessLevel(view, view.cursorAt(above)); got != c.want {
 			t.Errorf("level above %q = %s, want %s", c.needle, got.Name(), c.want.Name())
 		}
 	}
 }
 
-// The outline lists a contract beside the services, so a file reads the
-// same in the editor as in the source.
+// The outline lists an event with its payload type, beside the service.
 func TestDocumentSymbolsListContracts(t *testing.T) {
 	view := parseSnapshot("t.craftgo", eventsDSL)
 	details := map[string]string{}
@@ -83,8 +80,7 @@ func TestDocumentSymbolsListContracts(t *testing.T) {
 	}
 }
 
-// `@contract` is event-level, so an event's decorator zone offers it and
-// the method-only ones stay out.
+// An event's decorator zone offers @contract and no method-only decorator.
 func TestEventDecoratorCompletions(t *testing.T) {
 	src := `package orders
 
@@ -99,7 +95,7 @@ event OrderPlaced {
 	pos := findToken(t, view, "@")
 	pos.Character++
 	have := map[string]bool{}
-	for _, item := range decoratorCompletions(view, pos, "") {
+	for _, item := range (&request{parsed: &view}).decoratorCompletions(view.cursorAt(pos), "") {
 		have[item.Label] = true
 	}
 	for _, want := range []string{"contract", "doc"} {
@@ -117,9 +113,23 @@ event OrderPlaced {
 	}
 }
 
-// `event` and `payload` are legal field names, so the keyword docs and
-// the type-shape classifier must both look at which declaration they sit
-// in rather than at the spelling alone.
+// Inside an event body or a method body, whose members take no decorators,
+// `@` offers none.
+func TestNoDecoratorCompletionsInsideABodyOfClauses(t *testing.T) {
+	for label, src := range map[string]string{
+		"event body":  "package x\nevent Created {\n\t@|\n\tpayload P\n}\ntype P { a string }\n",
+		"method body": "package x\ntype P { a string }\nservice S {\n\tget G /g {\n\t\t@|\n\t\trequest P\n\t}\n}\n",
+	} {
+		t.Run(label, func(t *testing.T) {
+			if items := mustCompletionsAtCursor(t, src); len(items) != 0 {
+				t.Errorf("decorators offered: %v", labelSet(items))
+			}
+		})
+	}
+}
+
+// A field named `event` gets no keyword hover, and its type is still a type
+// position.
 func TestMemberKeywordsStayFieldNamesInsideATypeBody(t *testing.T) {
 	src := `package p
 
@@ -134,13 +144,12 @@ type Holder {
 
 	// Hover on the field named `event` must not show the keyword doc.
 	pos := findToken(t, view, "event")
-	idx, tok := view.tokenAt(pos.Line, pos.Character)
+	idx, tok := tokenUnder(view, pos)
 	if hov := hoverForToken(view, idx, tok); hov != nil && strings.Contains(hov.Contents.Value, "a contract this design declares") {
 		t.Errorf("a field named `event` showed the event keyword doc: %q", hov.Contents.Value)
 	}
 
-	// Go-to-definition on that field's type must still classify as a
-	// type-shape position.
+	// The field's type is a type position.
 	var typeIdx int
 	for i, tk := range view.tokens {
 		if tk.Text == "MyType" && i > idx {
@@ -151,14 +160,13 @@ type Holder {
 	if typeIdx == 0 {
 		t.Fatal("no MyType token after the field name")
 	}
-	if !isTypeShapePosition(view, typeIdx) {
+	if lookupKindAt(view, typeIdx) != semantic.TypeRefDecls {
 		t.Error("the type of a field named `event` must resolve as a type reference")
 	}
 }
 
-// An event's payload names a type, so the cursor there resolves like any
-// other type reference - the event's own name does not.
-func TestPayloadRefIsATypeShapePosition(t *testing.T) {
+// An event's payload is a type position; the event's own name names the event.
+func TestPayloadRefIsATypePosition(t *testing.T) {
 	view := parseSnapshot("t.craftgo", eventsDSL)
 	at := func(text string, nth int) int {
 		t.Helper()
@@ -175,17 +183,15 @@ func TestPayloadRefIsATypeShapePosition(t *testing.T) {
 		t.Fatalf("token %q #%d not found", text, nth)
 		return 0
 	}
-	if !isTypeShapePosition(view, at("OrderPlacedPayload", 2)) { // the event's payload
+	if lookupKindAt(view, at("OrderPlacedPayload", 2)) != semantic.TypeRefDecls { // the event's payload
 		t.Error("a payload reference must resolve as a type reference")
 	}
-	if isTypeShapePosition(view, at("OrderPlaced", 1)) {
-		t.Error("an event's own name must not resolve as a type reference")
+	if lookupKindAt(view, at("OrderPlaced", 1)) != semantic.EventDecls {
+		t.Error("an event's own name must resolve as the event")
 	}
 }
 
-// Hovering a decorator craftgo has removed shows the migration note the
-// diagnostic carries, rather than "unknown decorator" - the editor is
-// where an author first meets an unmigrated design.
+// Hovering a removed decorator shows its migration note.
 func TestHoverOnARemovedDecorator(t *testing.T) {
 	src := `package orders
 

@@ -1,21 +1,14 @@
-// Package idents holds the Go-identifier conversion helpers used by
-// both the semantic analyser and the codegen pass. Keeping it here
-// - instead of inside codegen - lets semantic detect "user_id and
-// userId map to the same Go field name" collisions during analysis
-// without pulling in the rest of codegen.
+// Package idents converts DSL names into Go identifiers, generated file
+// names and symbol prefixes.
 package idents
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
 
-// commonInitialisms enumerates abbreviations that should be rendered
-// fully upper-cased when they appear as a word inside a Go identifier
-// (matches `golint`/`staticcheck` conventions). Adding entries here
-// changes the canonical Go name for any DSL field whose word list
-// includes the new initialism - projects must regenerate to pick up
-// the new spelling.
+// commonInitialisms lists the words GoFieldName writes fully upper-cased: `id` → `ID`.
 var commonInitialisms = map[string]bool{
 	"id": true, "url": true, "uri": true, "api": true, "http": true,
 	"https": true, "json": true, "xml": true, "tcp": true, "udp": true,
@@ -27,12 +20,8 @@ var commonInitialisms = map[string]bool{
 	"ascii": true,
 }
 
-// GoFieldName converts a DSL field name (which is allowed to be
-// lowercase, snake_case, or camelCase) into an exported Go
-// identifier applying the common-initialism rule.
-//
-// Hot path (called per field across codegen + collision detection):
-// Builder keeps the per-part append allocation-free.
+// GoFieldName converts a lower, snake or camel case DSL field name into an
+// exported Go identifier with common initialisms upper-cased: `user_id` → `UserID`.
 func GoFieldName(name string) string {
 	parts := SplitFieldName(name)
 	var sb strings.Builder
@@ -50,18 +39,9 @@ func GoFieldName(name string) string {
 	return sb.String()
 }
 
-// SplitFieldName breaks a name into word components on `_`, `-`, and
-// camelCase boundaries. Consecutive uppercase letters are kept
-// together as a single acronym word (so `DBError` → `["DB", "Error"]`
-// and `HTTPRequest` → `["HTTP", "Request"]`); a new word starts
-// whenever an uppercase letter follows a lowercase letter, OR when
-// an uppercase letter sits between two other uppercase letters and
-// is followed by a lowercase letter (the "acronym ends here"
-// boundary).
-//
-// Exported so callers outside this package (codegen path / error
-// helpers) can derive their own kebab / snake forms without
-// duplicating the boundary logic.
+// SplitFieldName splits s into words on `_`, `-` and camelCase boundaries.
+// A run of capitals stays one word until the capital that starts a lowercase
+// word: `HTTPRequest` → `HTTP`, `Request`.
 func SplitFieldName(s string) []string {
 	if s == "" {
 		return nil
@@ -97,44 +77,41 @@ func SplitFieldName(s string) []string {
 	return parts
 }
 
-// KebabCase lowercases each word [SplitFieldName] yields and joins them with
-// `-`. It is the one word-splitting rule for kebab output (route segments,
-// generated file names) so the analyser's pathless-method route and the
-// route codegen registers cannot disagree: `ListV2Items` → `list-v2items`,
-// `GetUser` → `get-user`. A digit→letter boundary is NOT a word break, so
-// `V2Items` stays one word - unlike a hand-rolled camel walker that splits
-// before any uppercase whose next rune is lowercase.
-func KebabCase(s string) string {
-	parts := SplitFieldName(s)
-	for i, p := range parts {
-		parts[i] = strings.ToLower(p)
-	}
-	return strings.Join(parts, "-")
-}
+// KebabCase lowercases the words of [SplitFieldName] and joins them with `-`:
+// `GetUser` → `get-user`. A digit→letter boundary is not a word break:
+// `ListV2Items` → `list-v2items`.
+func KebabCase(s string) string { return FileName(s, FileCaseKebab) }
 
-// FileName renders a DSL identifier as a generated file/directory name in the
-// requested case: "snake" → `create_user`, "camel" → `createUser`, anything
-// else (including "kebab" and "") → `create-user`. It uses the same
-// [SplitFieldName] word-splitting as [KebabCase], so the default stays byte-for-
-// byte identical to KebabCase; only the join changes. Callers pass the value of
-// `output.fileCase`.
+// Values of `output.fileCase`, the case of generated file and directory names.
+const (
+	FileCaseKebab = "kebab"
+	FileCaseSnake = "snake"
+	FileCaseCamel = "camel"
+	// DefaultFileCase applies when output.fileCase is unset.
+	DefaultFileCase = FileCaseSnake
+)
+
+// FileName renders a DSL identifier as a file or directory name in the given
+// `output.fileCase`: "snake" → `create_user`, "camel" → `createUser`, "kebab"
+// → `create-user`; "" is [DefaultFileCase].
 func FileName(name, style string) string {
 	return FileNameWords(style, SplitFieldName(name))
 }
 
-// FileNameWords joins pre-split words into a file/directory name under the given
-// case. It backs [FileName] and lets callers append a literal suffix word (e.g.
-// "middleware") so the separator between it and the name follows the same case:
-// kebab `auth-middleware`, snake `auth_middleware`, camel `authMiddleware`.
+// FileNameWords is [FileName] for pre-split words, so a caller can append a
+// literal word: kebab `auth-middleware`, snake `auth_middleware`, camel `authMiddleware`.
 func FileNameWords(style string, words []string) string {
 	lowered := make([]string, len(words))
 	for i, w := range words {
 		lowered[i] = strings.ToLower(w)
 	}
+	if style == "" {
+		style = DefaultFileCase
+	}
 	switch style {
-	case "snake":
+	case FileCaseSnake:
 		return strings.Join(lowered, "_")
-	case "camel":
+	case FileCaseCamel:
 		var b strings.Builder
 		for i, w := range lowered {
 			if i > 0 && w != "" {
@@ -143,44 +120,25 @@ func FileNameWords(style string, words []string) string {
 			b.WriteString(w)
 		}
 		return b.String()
-	default: // "kebab" and the empty/unknown fallback
+	default:
 		return strings.Join(lowered, "-")
 	}
 }
 
-// Collision records one DSL → Go-identifier mapping inside a group
-// of names that produced the same Go identifier under [GoFieldName].
-// The first occurrence keeps the bare Go name; subsequent ones are
-// suffixed `_2`, `_3`, ... so the resulting struct compiles. Both
-// the original and the resolved Go names are returned so callers
-// (semantic warnings + codegen) stay consistent on what spelling
-// each DSL name maps to in the emitted struct.
+// Collision is a group of DSL field names in one struct that map to the same
+// Go identifier under [GoFieldName].
 type Collision struct {
-	// DSLNames are the DSL spellings, in source order, that all
-	// converted to the same canonical Go identifier.
+	// DSLNames are the colliding DSL spellings, in source order.
 	DSLNames []string
-	// CanonicalGoName is the Go identifier the first DSL name maps
-	// to - the "winner" that keeps its bare spelling.
+	// CanonicalGoName is the shared Go identifier, kept bare by the first name.
 	CanonicalGoName string
-	// ResolvedGoNames pairs each DSLName index with the Go
-	// identifier emitted in the generated struct: index 0 is the
-	// canonical name; indices ≥ 1 carry the `_N` disambiguator.
+	// ResolvedGoNames holds the emitted Go name of each DSLNames entry.
 	ResolvedGoNames []string
 }
 
-// DedupGoFieldNames takes the DSL field names of a single struct in
-// source order and returns:
-//
-//   - resolved: the Go identifiers to emit in the struct, with `_N`
-//     suffixes appended to any duplicate beyond the first occurrence.
-//   - collisions: one [Collision] per group whose size is > 1, in
-//     source-order of the first occurrence. Empty when the struct is
-//     collision-free, which is the overwhelming common case.
-//
-// The dedup keeps the first DSL spelling at its bare Go name so a
-// project that adds a colliding alias later doesn't retroactively
-// rename the original field - generated code stays stable for
-// already-published struct shapes.
+// DedupGoFieldNames returns the Go names for a struct's DSL field names, in
+// source order, and one [Collision] per group mapping to the same name. The
+// first name of a group keeps the bare Go name; later ones get `_2`, `_3`, ...
 func DedupGoFieldNames(dslNames []string) (resolved []string, collisions []Collision) {
 	resolved = make([]string, len(dslNames))
 	groups := map[string][]int{}
@@ -214,10 +172,8 @@ func DedupGoFieldNames(dslNames []string) (resolved []string, collisions []Colli
 	return resolved, collisions
 }
 
-// LastSegment returns the trailing slash-delimited segment of a DSL import
-// path - the piece that becomes the package's referencing identifier
-// (`import "auth/types"` → alias `types`). Returns p unchanged when it has
-// no slash, and "" for an empty or slash-terminated path.
+// LastSegment returns what follows the last `/` of a DSL import path, the
+// name the package is referenced by: `auth/types` → `types`.
 func LastSegment(p string) string {
 	for i := len(p) - 1; i >= 0; i-- {
 		if p[i] == '/' {
@@ -229,9 +185,6 @@ func LastSegment(p string) string {
 
 // PascalCase upper-cases the first letter of each `-`, `_` or `/`
 // separated word and drops the separators: `user_profile` → `UserProfile`.
-// Used wherever a DSL package or path segment has to prefix a generated
-// symbol - an OpenAPI component name, a Go import alias - so the same
-// input spells the same prefix in every target.
 func PascalCase(s string) string {
 	var b []byte
 	upNext := true
@@ -252,12 +205,104 @@ func PascalCase(s string) string {
 	return string(b)
 }
 
-// ErrorTypeName is the name an error's body type is known by: the DSL name
-// with `Err` appended, unless it already reads as an error. The Go type and
-// the OpenAPI component share it so both sides name the same shape alike.
+// ErrorTypeName returns the Go and OpenAPI name of an error's type: the DSL
+// name plus `Err`, unless it already ends in `Err` or `Error`.
 func ErrorTypeName(name string) string {
 	if strings.HasSuffix(name, "Err") || strings.HasSuffix(name, "Error") {
 		return name
 	}
 	return name + "Err"
+}
+
+// ErrorBodyName returns the Go name of the struct an error with fields embeds:
+// the DSL name plus `Body`.
+func ErrorBodyName(name string) string { return name + "Body" }
+
+// ErrorCodeName returns the Go name of the constant holding an error's code:
+// `ErrCode` plus the DSL name.
+func ErrorCodeName(name string) string { return "ErrCode" + name }
+
+// ErrorConstructorName returns the Go name of an error's constructor: `New`
+// plus its [ErrorTypeName].
+func ErrorConstructorName(name string) string { return "New" + ErrorTypeName(name) }
+
+// LogicTypeName returns the Go name of a method's or an RPC's logic struct:
+// the name plus `Service`.
+func LogicTypeName(method string) string { return method + "Service" }
+
+// LogicConstructorName returns the Go name of the constructor of a method's
+// or an RPC's logic struct: `New` plus its [LogicTypeName].
+func LogicConstructorName(method string) string { return "New" + LogicTypeName(method) }
+
+// LogicRival returns the method whose [LogicTypeName] is method's
+// [LogicConstructorName], `NewX` for `X`; the two cannot share a Go package.
+func LogicRival(method string) string { return "New" + method }
+
+// LogicEmbed is the field every logic struct embeds, its `log.Logger`; a
+// method of that name cannot be declared on the struct.
+const LogicEmbed = "Logger"
+
+// MiddlewareFileName returns the name, without `.go`, of the scaffold file a
+// middleware's name writes in the given `output.fileCase`: `auth_middleware`.
+func MiddlewareFileName(name, style string) string {
+	return FileNameWords(style, append(SplitFieldName(name), "middleware"))
+}
+
+// GoFileProblem says why the go command treats a Go file named base, without
+// `.go`, apart from the rest of its package, or returns "": it ignores a
+// name opening with `_` or `.`, and builds one ending in `_test` only for
+// tests and one ending in a GOOS or GOARCH word only for that system.
+func GoFileProblem(base string) string {
+	switch {
+	case strings.HasPrefix(base, "_") || strings.HasPrefix(base, "."):
+		return "the go command ignores a file whose name opens with `_` or `.`"
+	case strings.HasSuffix(base, "_test"):
+		return "the go command builds a `_test.go` file only for tests"
+	}
+	i := strings.Index(base, "_")
+	if i < 0 {
+		return ""
+	}
+	words := strings.Split(base[i+1:], "_")
+	last := words[len(words)-1]
+	if knownOS[last] || knownArch[last] {
+		return fmt.Sprintf("the go command builds a file whose name ends in `_%s` only for that system", last)
+	}
+	return ""
+}
+
+// knownOS and knownArch are the GOOS and GOARCH words a Go file name may end
+// in to build only for that system.
+var (
+	knownOS = map[string]bool{
+		"aix": true, "android": true, "darwin": true, "dragonfly": true, "freebsd": true, "hurd": true,
+		"illumos": true, "ios": true, "js": true, "linux": true, "nacl": true, "netbsd": true,
+		"openbsd": true, "plan9": true, "solaris": true, "wasip1": true, "windows": true, "zos": true,
+	}
+	knownArch = map[string]bool{
+		"386": true, "amd64": true, "amd64p32": true, "arm": true, "armbe": true, "arm64": true,
+		"arm64be": true, "loong64": true, "mips": true, "mipsle": true, "mips64": true, "mips64le": true,
+		"mips64p32": true, "mips64p32le": true, "ppc": true, "ppc64": true, "ppc64le": true,
+		"riscv": true, "riscv64": true, "s390": true, "s390x": true, "sparc": true, "sparc64": true,
+		"wasm": true,
+	}
+)
+
+// ServiceContextFields are the fields a generated ServiceContext declares
+// itself; each hides a middleware field of the same name that its embedded
+// Middlewares promotes.
+var ServiceContextFields = []string{"Config", "Middlewares"}
+
+// EventContractName returns the Go name of the constant holding an event's
+// wire identity: the event name plus `Contract`.
+func EventContractName(event string) string { return event + "Contract" }
+
+// EnumConstNames returns the Go names of an enum's value constants, in the
+// order of values: the enum name plus each value's name from [DedupGoFieldNames].
+func EnumConstNames(enum string, values []string) []string {
+	names, _ := DedupGoFieldNames(values)
+	for i, n := range names {
+		names[i] = enum + n
+	}
+	return names
 }

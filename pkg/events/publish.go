@@ -1,137 +1,53 @@
 package events
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 )
 
-// Envelope is one message to publish, before encoding. The generated
-// publishers and batch builders produce these; [Bus.PublishAll] encodes
-// each with the codec its own contract resolves to.
-//
-// A [PublishOption] is the supported way to fill one in - the generated
-// publisher builds the envelope and applies the caller's options to it.
+// Envelope is one message to publish, before encoding; [Bus.PublishAll] encodes each with
+// its own contract's codec.
 type Envelope struct {
 	// Event is the contract name.
 	Event string
-	// Key identifies the entity the message is about, set by [WithKey].
-	// Transports that preserve per-entity ordering use it to place a
-	// message; the rest ignore it. Empty is a message with no key, which
-	// every transport is free to place where it likes.
+	// Key identifies the entity the message is about; empty keeps a [WithPublishDefaults]
+	// key, else is keyless. See [WithKey].
 	Key string
-	// DedupID lets a broker that de-duplicates recognise a message it has
-	// already taken, set by [WithDedupID]. A transport without the notion
-	// ignores it.
+	// DedupID lets a transport that deduplicates recognise a repeat; see [WithDedupID].
 	DedupID string
 	// Payload is the value to encode.
 	Payload any
-	// Metadata is the caller's side-band values, merged into
-	// [Message.Metadata] on the way out. Optional; nil and empty behave
-	// alike.
-	//
-	// An entry whose key [IsReservedMeta] accepts is dropped: inbound
-	// metadata carries the codec stamp, so forwarding it must not fail.
-	// Everything else is carried untouched.
+	// Metadata is merged into [Message.Metadata]; a key [IsReservedMeta] accepts is
+	// dropped. Nil and empty behave alike.
 	Metadata map[string]string
-	// AdapterOptions carries values one named transport adapter reads,
-	// set by [WithAdapterOption] and keyed adapter name → option key. It
-	// is the escape hatch for a broker feature no other broker has.
-	//
-	// Entries under an adapter OTHER than the configured one are ignored,
-	// so a project that changes broker keeps publishing. An entry under
-	// the configured adapter's OWN name that the adapter does not read
-	// fails the publish - see [OptionAware].
+	// AdapterOptions holds [WithAdapterOption] values, keyed adapter name → option key.
 	AdapterOptions map[string]map[string]any
 }
 
-// PublishOption configures one message before it is published. The
-// generated publishers take them, as do their batch builders and
-// [Bus.Publish]:
-//
-//	svcCtx.Events.OrderService.PublishPlaced(ctx, placed,
-//	    craftevents.WithKey(string(placed.OrderID)))
-//
-// Options apply in order, so the last one setting a given value wins.
-// That is what makes a publisher's defaults defaults: [JoinOptions] puts
-// them first and the per-call options after.
-//
-// # What each shipped transport does with a key and a deduplication ID
-//
-// [WithHeader] and [WithAdapterOption] behave the same everywhere. The
-// two PORTABLE options do not, because what they ask for is a broker
-// feature - so this is the one place that says what each adapter does,
-// rather than a sentence per option that can drift from a sentence per
-// adapter:
-//
-//	           WithKey                    WithDedupID
-//	kafka      partitions on it, so one   carried as a header;
-//	           key is one partition and   nothing deduplicates
-//	           its messages are ordered
-//	           within that contract
-//	nats       carried as a header;       carried as Nats-Msg-Id; core
-//	           routing is by subject, so  NATS does not deduplicate
-//	           nothing is ordered
-//	jetstream  carried as a header;       carried as Nats-Msg-Id, and
-//	           routing is by subject, so  the STREAM deduplicates within
-//	           nothing is ordered         its duplicate window
-//	memory     carried; deliveries run    carried; nothing
-//	           concurrently, so nothing   deduplicates
-//	           is ordered
-//
-// Only Kafka orders on a key, and only a JetStream stream deduplicates -
-// so neither option is a guarantee you may assume without knowing what
-// you are wired to.
-//
-// The JetStream cell is not optional and cannot be switched off: a stream
-// deduplicates on this ID within a window the server always has, so two
-// publishes sharing one become one message there. That is a reason to set
-// the ID deliberately rather than incidentally.
-//
-// Every transport CARRIES both values through to the consumer, which is
-// the difference between a feature one has not got and a value it
-// destroys: a consumer handed the ID can recognise a repeat itself even
-// where the broker will not.
+// PublishOption configures one message before it is published. Options apply in order,
+// so the last one setting a value wins.
 type PublishOption func(*Envelope)
 
-// WithKey sets the key identifying the entity the message is about.
-//
-// A transport that preserves per-entity ordering uses it to place the
-// message, so two messages under one key keep their order within one
-// contract. Nothing orders across contracts, and only some transports
-// order at all - see [PublishOption] for what each one does.
-//
-// A message published without a key is keyless, and a keyless message is
-// placed wherever the transport likes: that is the right default for a
-// contract nothing needs ordered, and the wrong one for a contract that
-// does. Ordering is a property of how a message is published, not of the
-// contract, so it is decided here rather than in the design.
+// WithKey sets the key of the entity the message is about. A transport that orders per
+// entity keeps one key's messages in order within a contract; a message without a key
+// goes wherever the transport places it.
 func WithKey(key string) PublishOption {
 	return func(env *Envelope) { env.Key = key }
 }
 
-// WithDedupID sets the identity a broker that de-duplicates recognises a
-// repeat by: the SQS FIFO deduplication ID, the Azure Service Bus message
-// ID, the NATS `Nats-Msg-Id` header. Publishing the same ID twice inside
-// the broker's own window is one message, which is what makes a retry
-// after an ambiguous failure safe.
-//
-// The window, and whether there is one at all, is the broker's. Of the
-// transports craftgo ships, only a JetStream stream deduplicates - and it
-// always does, within a window that cannot be turned off. Everywhere else
-// the ID is carried to the consumer and acted on by nobody, so a retry is
-// only safe there if the consumer itself is. See [PublishOption] for what
-// each adapter does.
+// WithDedupID sets the ID a transport that deduplicates recognises a repeat by: publishes
+// sharing it within the broker's window are one message.
 func WithDedupID(id string) PublishOption {
 	return func(env *Envelope) { env.DedupID = id }
 }
 
-// WithHeader sets one side-band value carried beside the payload - a
-// trace parent, a tenant, a hop count. Calling it twice with one key
-// keeps the last value.
-//
-// A key [IsReservedMeta] accepts belongs to the runtime or to a transport
-// adapter and is dropped on the way out; see [Envelope.Metadata].
+// WithHeader sets one side-band value carried beside the payload; a later call with the
+// same key replaces it. A key [IsReservedMeta] accepts is dropped.
 func WithHeader(key, value string) PublishOption {
 	return func(env *Envelope) {
 		if env.Metadata == nil {
@@ -141,17 +57,9 @@ func WithHeader(key, value string) PublishOption {
 	}
 }
 
-// WithAdapterOption sets a value that one named transport adapter reads:
-// the escape hatch for a broker feature that does not generalise, such as
-// a per-message Kafka record timestamp.
-//
-//	craftevents.WithAdapterOption("kafka", "timestamp", t)
-//
-// adapter is the adapter's own name ([OptionAware.AdapterName]). An
-// option addressed to an adapter OTHER than the configured one is
-// ignored - a project that swaps broker keeps compiling and keeps
-// publishing. An option addressed to the configured adapter under a key
-// it does not read fails the publish rather than going nowhere.
+// WithAdapterOption sets a value the named adapter reads. On an [OptionAware] transport,
+// an option for another adapter is ignored and one it does not read under its own name
+// fails the publish with an [*UnknownOptionError].
 func WithAdapterOption(adapter, key string, value any) PublishOption {
 	return func(env *Envelope) {
 		if env.AdapterOptions == nil {
@@ -173,13 +81,8 @@ func (env *Envelope) Apply(opts ...PublishOption) {
 	}
 }
 
-// JoinOptions returns defaults followed by opts as one list, so a later
-// option overwrites what an earlier one set and the per-call options win.
-// Neither input is written to.
-//
-// Generated publishers call it to combine the defaults they were built
-// with and the options of one publish; a hand-written wrapper around a
-// publisher wants the same order.
+// JoinOptions returns defaults followed by opts, so the per-call options win. Neither
+// input is written to.
 func JoinOptions(defaults, opts []PublishOption) []PublishOption {
 	if len(defaults) == 0 {
 		return opts
@@ -192,37 +95,20 @@ func JoinOptions(defaults, opts []PublishOption) []PublishOption {
 	return append(out, opts...)
 }
 
-// OptionAware is the optional upgrade for a transport that has a name in
-// [WithAdapterOption]'s namespace. Implementing it buys two things the
-// adapter would otherwise have to enforce itself, once per adapter:
-//
-//   - an option addressed to this adapter under a key it does not read
-//     fails the publish, naming the keys it does read. Silently dropping
-//     a per-message option is how a message goes out configured
-//     differently from how its caller asked;
-//   - an option addressed to another adapter is ignored, so the same
-//     code publishes through whichever broker is wired up.
-//
-// The check runs before anything is encoded, so one bad option in a
-// batch fails the batch with nothing sent.
-//
-// A transport that does not implement it gets neither: nothing can tell
-// an option meant for it from one meant for somebody else.
+// OptionAware is the optional upgrade for a transport with a name in [WithAdapterOption]'s
+// namespace. The bus then fails, before anything is sent, a publish carrying an option
+// under that name the adapter does not read. Without it no adapter option is checked.
 type OptionAware interface {
-	// AdapterName is the namespace [WithAdapterOption] addresses this
-	// adapter by.
+	// AdapterName is the name [WithAdapterOption] addresses this adapter by.
 	AdapterName() string
-	// KnownOptions lists every option key this adapter reads. Nil is an
-	// adapter that reads none, which still earns the check: an option
-	// under its name is then always a mistake.
+	// KnownOptions lists every option key this adapter reads; nil means none.
 	KnownOptions() []string
 }
 
-// UnknownOptionError reports an option addressed to the configured
-// adapter under a key the adapter does not read.
+// UnknownOptionError reports an option addressed to the configured adapter under a key
+// the adapter does not read.
 type UnknownOptionError struct {
-	// Adapter is the adapter the option named, which is the one the bus
-	// publishes through.
+	// Adapter is the configured adapter the option named.
 	Adapter string
 	// Key is the option key the adapter does not read.
 	Key string
@@ -241,9 +127,7 @@ func (e *UnknownOptionError) Error() string {
 		e.Event, e.Adapter, e.Key, known)
 }
 
-// AdapterOption returns the value published for this adapter under key.
-// A transport adapter reads its own options through it, so the shape of
-// [Message.AdapterOptions] is not every adapter's business.
+// AdapterOption returns the value published for adapter under key.
 func (m *Message) AdapterOption(adapter, key string) (any, bool) {
 	if m == nil {
 		return nil, false
@@ -266,9 +150,8 @@ func (b *Bus) checkAdapterOptions(env Envelope) error {
 	if len(opts) == 0 {
 		return nil
 	}
-	// Both lists are copied before sorting: KnownOptions may hand back a
-	// slice the adapter keeps, and sorting the keys makes a message
-	// carrying two bad ones name the same one on every run.
+	// KnownOptions may return the adapter's own slice, so sort a copy; sorted keys make
+	// the reported key the same on every run.
 	known := append([]string(nil), aware.KnownOptions()...)
 	sort.Strings(known)
 	keys := make([]string, 0, len(opts))
@@ -277,19 +160,216 @@ func (b *Bus) checkAdapterOptions(env Envelope) error {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		if !contains(known, key) {
+		if !slices.Contains(known, key) {
 			return &UnknownOptionError{Adapter: name, Key: key, Event: env.Event, Known: known}
 		}
 	}
 	return nil
 }
 
-// contains reports whether list holds v.
-func contains(list []string, v string) bool {
-	for _, s := range list {
-		if s == v {
-			return true
+// Publish encodes payload with the contract's codec and hands it to the transport;
+// [Event.Publish] is the typed form. A context already cancelled when the call starts
+// publishes nothing and returns its error, whatever the transport does with ctx.
+func (b *Bus) Publish(ctx context.Context, event string, payload any, opts ...PublishOption) error {
+	if b == nil || b.pub == nil {
+		return ErrNoPublisher
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	env := Envelope{Event: event, Payload: payload}
+	env.Apply(JoinOptions(b.defaults, opts)...)
+	msg, err := b.encode(env)
+	if err != nil {
+		return err
+	}
+	return b.pub.Publish(ctx, msg)
+}
+
+// PartialPublishError reports a batch that stopped partway. Resending exactly the Unsent
+// envelopes sends none twice.
+type PartialPublishError struct {
+	// Sent is Unsent[0]: every envelope before it was published.
+	Sent int
+	// Unsent holds the ascending indices, into the batch, of the envelopes that did not go out.
+	Unsent []int
+	// Event is the contract of the first unsent envelope.
+	Event string
+	Err   error
+}
+
+func (e *PartialPublishError) Error() string {
+	return fmt.Sprintf("events: publish %s (%d of the batch unsent, first unsent at index %d): %v",
+		e.Event, len(e.Unsent), e.Sent, e.Err)
+}
+
+func (e *PartialPublishError) Unwrap() error { return e.Err }
+
+// UnsentFrom reports a batch that stopped at index i: every message from i onward did not
+// go out. Use [UnsentAt] when the failures are scattered.
+func UnsentFrom(i int, msgs []*Message, err error) *PartialPublishError {
+	indices := make([]int, 0, max(len(msgs)-i, 0))
+	for j := i; j < len(msgs); j++ {
+		indices = append(indices, j)
+	}
+	return UnsentAt(indices, msgs, err)
+}
+
+// UnsentAt reports a batch whose failures are scattered: indices names the messages that
+// did not go out, in any order. It sorts a copy and derives Sent and Event from the lowest.
+func UnsentAt(indices []int, msgs []*Message, err error) *PartialPublishError {
+	sorted := append([]int(nil), indices...)
+	sort.Ints(sorted)
+	out := &PartialPublishError{Unsent: sorted, Err: err}
+	if len(sorted) == 0 {
+		return out
+	}
+	out.Sent = sorted[0]
+	if i := sorted[0]; i >= 0 && i < len(msgs) {
+		out.Event = msgs[i].Event
+	}
+	return out
+}
+
+// PublishAll encodes every envelope, then publishes them in one [BatchPublisher] call or
+// one at a time in order. It is not atomic: a partial failure is a [*PartialPublishError],
+// and a batch report that cannot be true becomes one naming every envelope unsent. A
+// cancelled ctx is refused as on [Bus.Publish].
+func (b *Bus) PublishAll(ctx context.Context, envs []Envelope) error {
+	if len(envs) == 0 {
+		return nil
+	}
+	if b == nil || b.pub == nil {
+		return ErrNoPublisher
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	msgs := make([]*Message, 0, len(envs))
+	for i, env := range envs {
+		if env.Event == "" {
+			return fmt.Errorf("events: envelope %d has no contract name", i)
+		}
+		msg, err := b.encode(b.withDefaults(env))
+		if err != nil {
+			return err
+		}
+		msgs = append(msgs, msg)
+	}
+	if batch, ok := b.pub.(BatchPublisher); ok {
+		return b.checkedBatch(batch.PublishBatch(ctx, msgs), msgs)
+	}
+	for i, msg := range msgs {
+		if err := b.pub.Publish(ctx, msg); err != nil {
+			return UnsentFrom(i, msgs, err)
 		}
 	}
-	return false
+	return nil
+}
+
+// checkedBatch replaces an impossible partial report with one naming the whole batch
+// unsent; any other error passes through.
+func (b *Bus) checkedBatch(err error, msgs []*Message) error {
+	var partial *PartialPublishError
+	if err == nil || !errors.As(err, &partial) {
+		return err
+	}
+	if bad := validateUnsent(partial, len(msgs)); bad != "" {
+		return UnsentFrom(0, msgs, fmt.Errorf("events: transport %s reported an impossible partial publish (%s); treating the whole batch as unsent: %w",
+			adapterLabel(b.pub), bad, partial.Err))
+	}
+	partial.Sent = partial.Unsent[0]
+	return err
+}
+
+// validateUnsent names the way a partial report is impossible, or "" when it holds.
+func validateUnsent(p *PartialPublishError, n int) string {
+	if len(p.Unsent) == 0 {
+		return "it names no unsent envelope, so it is not a partial publish"
+	}
+	prev := -1
+	for _, i := range p.Unsent {
+		if i < 0 || i >= n {
+			return fmt.Sprintf("index %d is outside the batch of %d", i, n)
+		}
+		if i <= prev {
+			return fmt.Sprintf("index %d does not follow %d, so the list is not ascending", i, prev)
+		}
+		prev = i
+	}
+	return ""
+}
+
+// adapterLabel names a transport for a diagnostic: its adapter name, else its Go type.
+func adapterLabel(p Publisher) string {
+	if aware, ok := p.(OptionAware); ok {
+		return strconv.Quote(aware.AdapterName())
+	}
+	return fmt.Sprintf("%T", p)
+}
+
+// withDefaults layers env over [WithPublishDefaults] in a fresh envelope, leaving the
+// caller's metadata map unwritten; a value env carries wins.
+func (b *Bus) withDefaults(env Envelope) Envelope {
+	if len(b.defaults) == 0 {
+		return env
+	}
+	out := Envelope{Event: env.Event, Payload: env.Payload}
+	out.Apply(b.defaults...)
+	if env.Key != "" {
+		out.Key = env.Key
+	}
+	if env.DedupID != "" {
+		out.DedupID = env.DedupID
+	}
+	for k, v := range env.Metadata {
+		if out.Metadata == nil {
+			out.Metadata = make(map[string]string, len(env.Metadata))
+		}
+		out.Metadata[k] = v
+	}
+	for adapter, opts := range env.AdapterOptions {
+		for k, v := range opts {
+			if out.AdapterOptions == nil {
+				out.AdapterOptions = map[string]map[string]any{}
+			}
+			if out.AdapterOptions[adapter] == nil {
+				out.AdapterOptions[adapter] = map[string]any{}
+			}
+			out.AdapterOptions[adapter][k] = v
+		}
+	}
+	return out
+}
+
+// encode resolves the contract's codec and builds the wire message, dropping reserved
+// metadata keys. A bad adapter option fails here, before anything is sent.
+func (b *Bus) encode(env Envelope) (*Message, error) {
+	if err := b.checkAdapterOptions(env); err != nil {
+		return nil, err
+	}
+	codec, err := b.CodecFor(env.Event)
+	if err != nil {
+		return nil, err
+	}
+	data, err := codec.Marshal(env.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("events: encode %s: %w", env.Event, err)
+	}
+	meta := make(map[string]string, len(env.Metadata)+1)
+	for k, v := range env.Metadata {
+		if IsReservedMeta(k) {
+			continue
+		}
+		meta[k] = v
+	}
+	meta[MetaCodec] = codec.Name()
+	return &Message{
+		Event:          env.Event,
+		Key:            env.Key,
+		DedupID:        env.DedupID,
+		Payload:        data,
+		Metadata:       meta,
+		AdapterOptions: env.AdapterOptions,
+	}, nil
 }

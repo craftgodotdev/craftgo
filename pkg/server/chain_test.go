@@ -3,13 +3,10 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
-// tagMW returns a middleware that appends `:tag` to a shared trace
-// before and after delegating, so test assertions can compare the
-// concatenated trace against the expected outermost-first order.
+// tagMW records its entry and exit in trace as >tag and <tag.
 func tagMW(trace *string, tag string) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +30,7 @@ func TestChainThenOrder(t *testing.T) {
 	}
 }
 
+// Then skips a nil middleware and keeps the others in order.
 func TestChainThenSkipsNil(t *testing.T) {
 	var trace string
 	chain := NewChain(tagMW(&trace, "A"), nil, tagMW(&trace, "C"))
@@ -40,32 +38,34 @@ func TestChainThenSkipsNil(t *testing.T) {
 		trace += "|H|"
 	})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
 
-	if strings.Contains(trace, "B") || !strings.Contains(trace, ">A") || !strings.Contains(trace, ">C") {
-		t.Errorf("nil middleware should be skipped silently; got trace %q", trace)
+	if want := ">A>C|H|<C<A"; trace != want {
+		t.Errorf("trace %q, want %q", trace, want)
 	}
 }
 
-// TestChainAppendDoesNotMutateReceiver pins the value-semantics
-// contract: a base chain shared between routes must not pick up
-// extras from one route's Append landing on another route's chain.
+// Append copies, so two chains appended to one base keep their own innermost middleware and
+// the base stays as it was.
 func TestChainAppendDoesNotMutateReceiver(t *testing.T) {
 	var trace string
-	base := NewChain(tagMW(&trace, "A"))
-	derived := base.Append(tagMW(&trace, "B"))
-
-	base.Then(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		trace += "|H|"
-	})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
-	if strings.Contains(trace, "B") {
-		t.Errorf("base chain leaked Append target; trace %q must not contain B", trace)
-	}
-
-	trace = ""
-	derived.Then(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		trace += "|H|"
-	})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
-	if !strings.Contains(trace, ">A>B") {
-		t.Errorf("derived chain missing appended slot; got %q", trace)
+	base := NewChain(tagMW(&trace, "A")).Append(tagMW(&trace, "B")).Append(tagMW(&trace, "C"))
+	x := base.Append(tagMW(&trace, "X"))
+	y := base.Append(tagMW(&trace, "Y"))
+	for _, c := range []struct {
+		name  string
+		chain Chain
+		want  string
+	}{
+		{"base", base, ">A>B>C|H|<C<B<A"},
+		{"x", x, ">A>B>C>X|H|<X<C<B<A"},
+		{"y", y, ">A>B>C>Y|H|<Y<C<B<A"},
+	} {
+		trace = ""
+		c.chain.Then(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			trace += "|H|"
+		})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+		if trace != c.want {
+			t.Errorf("%s: trace %q, want %q", c.name, trace, c.want)
+		}
 	}
 }
 

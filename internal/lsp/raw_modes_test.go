@@ -5,23 +5,17 @@ import (
 	"testing"
 
 	"go.lsp.dev/protocol"
-	"go.lsp.dev/uri"
 )
-
-// The raw-mode decorators reach the editor through the registry alone:
-// completion, hover and diagnostics need no LSP-side knowledge of them.
-// These tests pin that the registry entries are wired the way an editor
-// user sees them.
 
 func TestCompletionRawModeFlagsAtMethodSite(t *testing.T) {
 	src := "package x\n\nservice S {\n\t@\n\tget A /a {}\n}\n"
 	// Cursor right after the `@` on the method line (0-indexed line 3).
-	items := mustCompletionsAt(t, "t.craftgo", src, 3, 2)
+	items := mustCompletionsAt(t, src, 3, 2)
 	expectLabels(t, items, "rawRequest", "rawResponse", "passthrough")
 	for _, it := range items {
 		switch it.Label {
 		case "rawRequest", "rawResponse", "passthrough":
-			// Flags insert bare - no `($0)` snippet to delete.
+			// Flags insert bare.
 			if it.InsertText != it.Label {
 				t.Errorf("@%s must insert without parens, got %q", it.Label, it.InsertText)
 			}
@@ -31,7 +25,7 @@ func TestCompletionRawModeFlagsAtMethodSite(t *testing.T) {
 		}
 	}
 	// Method-level only: the flags must not show up at a field site.
-	fieldItems := mustCompletionsAt(t, "t.craftgo", "package x\n\ntype T {\n\tid string @\n}\n", 3, 12)
+	fieldItems := mustCompletionsAt(t, "package x\n\ntype T {\n\tid string @\n}\n", 3, 12)
 	expectNoLabels(t, fieldItems, "rawRequest", "rawResponse", "passthrough")
 }
 
@@ -47,7 +41,7 @@ func TestHoverRawModeFlags(t *testing.T) {
 
 func TestDiagnosticsRawModeRedundancySurfacesAsWarning(t *testing.T) {
 	src := "package x\nservice S {\n\t@passthrough\n\t@rawRequest\n\tget A /a {}\n}\n"
-	got := newTestServer().buildDiagnostics(uri.New("file:///t.craftgo"), src)
+	got := bufferDiagnostics(src)
 	var found *protocol.Diagnostic
 	for i := range got {
 		if c, _ := got[i].Code.(string); c == "decorator/redundant" {
@@ -70,7 +64,7 @@ func TestDiagnosticsRawModeRedundancySurfacesAsWarning(t *testing.T) {
 
 func TestDiagnosticsRawModeBlocksAreClean(t *testing.T) {
 	src := "package x\ntype Req { id string @path }\ntype Resp { ok bool }\nservice S {\n\t@rawResponse\n\tget A /a/{id} { request Req  response Resp }\n\t@rawRequest\n\tpost B /b { response Resp }\n\t@passthrough\n\tget C /c/{id} { request Req  response Resp }\n}\n"
-	if got := newTestServer().buildDiagnostics(uri.New("file:///t.craftgo"), src); len(got) != 0 {
+	if got := bufferDiagnostics(src); len(got) != 0 {
 		t.Fatalf("blocks on raw sides must not produce diagnostics, got %+v", got)
 	}
 }

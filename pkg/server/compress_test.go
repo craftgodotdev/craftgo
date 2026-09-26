@@ -3,32 +3,20 @@ package server
 import (
 	"bytes"
 	"compress/flate"
-	"compress/gzip"
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
+	"net/textproto"
 	"strings"
 	"testing"
 )
 
-// largeBody returns a deterministic payload comfortably above the
-// default 1 KB MinSize so compression always commits.
+// largeBody returns a payload above the default MinSize.
 func largeBody() []byte {
 	return bytes.Repeat([]byte("hello-craftgo-"), 200) // 2800 bytes
-}
-
-func gunzip(t *testing.T, b []byte) string {
-	t.Helper()
-	r, err := gzip.NewReader(bytes.NewReader(b))
-	if err != nil {
-		t.Fatalf("gzip reader: %v", err)
-	}
-	defer r.Close()
-	out, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatalf("gzip read: %v", err)
-	}
-	return string(out)
 }
 
 func inflate(t *testing.T, b []byte) string {
@@ -188,8 +176,7 @@ func TestCompressMultipleWritesCrossThreshold(t *testing.T) {
 	chunk := bytes.Repeat([]byte("x"), 600)
 	h := Compress()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		// First two writes stay under 1024; third crosses the
-		// threshold and triggers commitCompressed mid-stream.
+		// The third write crosses MinSize.
 		_, _ = w.Write(chunk)
 		_, _ = w.Write(chunk)
 		_, _ = w.Write(chunk)
@@ -212,9 +199,6 @@ func TestCompressFlushBelowThresholdPassthrough(t *testing.T) {
 	h := Compress()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = w.Write(body)
-		// httptest.ResponseRecorder satisfies Flusher via embedded
-		// methods; calling Flush here forces the compressWriter to
-		// commit before the threshold and stay uncompressed.
 		w.(http.Flusher).Flush()
 	}))
 	rec := httptest.NewRecorder()
@@ -230,10 +214,89 @@ func TestCompressFlushBelowThresholdPassthrough(t *testing.T) {
 	}
 }
 
+// A Flush before any write sends a 200 head uncompressed, and the stream after it.
+func TestCompressFlushBeforeWrite(t *testing.T) {
+	h := Compress()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.(http.Flusher).Flush()
+		_, _ = w.Write([]byte("data: hi\n\n"))
+	}))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || !rec.Flushed {
+		t.Fatalf("status = %d, flushed = %v, want a flushed 200", rec.Code, rec.Flushed)
+	}
+	if got := rec.Header().Get("Content-Encoding"); got != "" {
+		t.Errorf("Content-Encoding = %q, want none after an early flush", got)
+	}
+	if got := rec.Body.String(); got != "data: hi\n\n" {
+		t.Errorf("body = %q", got)
+	}
+}
+
+// An informational status goes out at once under Compress, and the final status written after
+// it reaches the client.
+func TestCompressSendsAnInformationalStatusAtOnce(t *testing.T) {
+	observeLogs(t)
+	s := New(nil)
+	s.Use(Compress())
+	s.HandleFunc("GET /created", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Link", "</app.css>; rel=preload")
+		w.WriteHeader(http.StatusEarlyHints)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write(largeBody())
+	})
+	s.HandleFunc("GET /failed", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusEarlyHints)
+		WriteError(w, r, errors.New("boom"))
+	})
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+
+	for _, tc := range []struct {
+		path     string
+		status   int
+		encoding string
+	}{
+		{"/created", http.StatusCreated, "gzip"},
+		{"/failed", http.StatusInternalServerError, ""},
+	} {
+		hints := 0
+		ctx := httptrace.WithClientTrace(context.Background(), &httptrace.ClientTrace{
+			Got1xxResponse: func(code int, _ textproto.MIMEHeader) error {
+				if code == http.StatusEarlyHints {
+					hints++
+				}
+				return nil
+			},
+		})
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+tc.path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Accept-Encoding", "gzip")
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatalf("GET %s: %v", tc.path, err)
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		if got := resp.Header.Get("Content-Encoding"); resp.StatusCode != tc.status || got != tc.encoding || hints != 1 {
+			t.Errorf("GET %s: %d, encoding %q, after %d early hints; want %d, %q, after 1",
+				tc.path, resp.StatusCode, got, hints, tc.status, tc.encoding)
+		}
+	}
+}
+
+// A HEAD response is never compressed, whatever its handler writes.
 func TestCompressHEADBypasses(t *testing.T) {
 	h := Compress()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(largeBody())
 	}))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodHead, "/", nil)
@@ -248,9 +311,10 @@ func TestCompressHEADBypasses(t *testing.T) {
 	}
 }
 
-func TestCompressGzipPreferredOverDeflate(t *testing.T) {
+// The first supported coding listed wins; a list of unsupported ones gets none.
+func TestNegotiateEncodingPicksTheFirstSupportedCoding(t *testing.T) {
 	if got := negotiateEncoding("deflate, gzip"); got != "deflate" {
-		// First-listed wins; explicitly pin the rule.
+		// The first listed wins.
 		t.Fatalf("negotiateEncoding(\"deflate, gzip\") = %q, want deflate (first wins)", got)
 	}
 	if got := negotiateEncoding("gzip, deflate"); got != "gzip" {
@@ -264,8 +328,7 @@ func TestCompressGzipPreferredOverDeflate(t *testing.T) {
 	}
 }
 
-// A client that pins q=0 on gzip explicitly refuses it (RFC 7231 §5.3.1) and
-// must receive an uncompressed response.
+// A q=0 coding is refused (RFC 7231 §5.3.1).
 func TestNegotiateEncodingHonorsQZero(t *testing.T) {
 	cases := map[string]string{
 		"gzip;q=0":                  "",
@@ -284,13 +347,12 @@ func TestNegotiateEncodingHonorsQZero(t *testing.T) {
 	}
 }
 
-// statusRecorder and compressWriter must expose Unwrap so http.ResponseController
-// can reach the underlying writer (Hijack/Flush) through the middleware stack.
+// trackingWriter and compressWriter unwrap to the writer they wrap.
 func TestResponseWritersUnwrap(t *testing.T) {
 	base := httptest.NewRecorder()
-	var sr http.ResponseWriter = &statusRecorder{ResponseWriter: base}
-	if u, ok := sr.(interface{ Unwrap() http.ResponseWriter }); !ok || u.Unwrap() != base {
-		t.Errorf("statusRecorder.Unwrap must return the wrapped writer")
+	var tw http.ResponseWriter = &trackingWriter{ResponseWriter: base}
+	if u, ok := tw.(interface{ Unwrap() http.ResponseWriter }); !ok || u.Unwrap() != base {
+		t.Errorf("trackingWriter.Unwrap must return the wrapped writer")
 	}
 	var cw http.ResponseWriter = &compressWriter{ResponseWriter: base}
 	if u, ok := cw.(interface{ Unwrap() http.ResponseWriter }); !ok || u.Unwrap() != base {

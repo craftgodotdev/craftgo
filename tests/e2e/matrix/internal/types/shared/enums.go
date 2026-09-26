@@ -2,6 +2,9 @@
 
 package shared
 
+// Severity classifies a log/event line. The four levels follow the
+// conventional ordering Info < Warning < Error < Critical so a
+// numeric mapping in logic code can use the enum ordinal directly.
 type Severity string
 
 const (

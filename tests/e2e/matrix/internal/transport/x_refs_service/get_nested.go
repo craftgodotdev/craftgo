@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetNested returns the http.HandlerFunc for the
-// GET GetNested endpoint.
+// Pins a @path + @default nested two mixin levels deep through a cross-package mixin (xshared.XParent embeds xshared.XGrand). The {gKey} segment and g32/p64 defaults must all survive flattening - the bare inner XGrand resolves as xshared.XGrand.
+//
+// GetNested returns the GET GetNested handler.
 func GetNested(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XNestedReq
@@ -43,7 +44,6 @@ func GetNested(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

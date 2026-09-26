@@ -1,0 +1,7 @@
+// Package log shares its name with the runtime logger every logic stub
+// embeds: a stub naming these types imports them under another alias.
+package log
+
+type Entry {
+	line string
+}

@@ -58,4 +58,10 @@ service XDelegateService {
 		request  XDelegatedScalars
 		response XDelegatedShapes
 	}
+
+	@doc("Names XLost, which this package does not declare and xrefs and xshared both do: the 404 is xrefs's (XrefsXLostErr), the package the analyser resolves the bare name in.")
+	@errors(XLost)
+	get LookupLost /xdelegate/lost {
+		response XDelegatedEnum
+	}
 }

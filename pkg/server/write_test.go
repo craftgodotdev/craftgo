@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -181,9 +182,7 @@ func TestWritePrecompressedDoesNotStackVary(t *testing.T) {
 	}
 }
 
-// A pre-gzipped body served through the Compress middleware must reach the
-// client exactly once encoded: the middleware sees Content-Encoding and
-// passes the bytes through untouched.
+// A precompressed body passes through Compress encoded once.
 func TestWritePrecompressedThroughCompressIsNotDoubleEncoded(t *testing.T) {
 	plain := []byte(strings.Repeat(`{"item":"payload"},`, 200))
 	var gz bytes.Buffer
@@ -192,7 +191,7 @@ func TestWritePrecompressedThroughCompressIsNotDoubleEncoded(t *testing.T) {
 	_ = zw.Close()
 	stored := gz.Bytes()
 
-	s := newTestServer(t)
+	s := New(nil)
 	s.Use(Compress())
 	s.HandleFunc("GET /cached", func(w http.ResponseWriter, r *http.Request) {
 		if err := WritePrecompressed(w, r, http.StatusOK, ctJSON, "gzip", stored, func(b []byte) ([]byte, error) {
@@ -205,7 +204,7 @@ func TestWritePrecompressedThroughCompressIsNotDoubleEncoded(t *testing.T) {
 			t.Errorf("WritePrecompressed: %v", err)
 		}
 	})
-	h := finalize(s)
+	h := s.Handler()
 
 	// Client accepts gzip: stored bytes go out verbatim, one gzip layer.
 	rec := httptest.NewRecorder()
@@ -238,9 +237,7 @@ func TestWritePrecompressedThroughCompressIsNotDoubleEncoded(t *testing.T) {
 	}
 }
 
-// A raw-response handler that already wrote part of a response and then
-// returns an error must not have an error envelope spliced into the body,
-// whatever writers sit between it and the Recovery wrapper.
+// WriteError after a commit only logs, whatever writers wrap the response.
 func TestWriteErrorAfterCommitThroughWrappers(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
@@ -256,7 +253,7 @@ func TestWriteErrorAfterCommitThroughWrappers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			logs := observeLogs(t)
 			partial := strings.Repeat("x", tc.partialBytes)
-			s := newTestServer(t)
+			s := New(nil)
 			s.Use(AccessLog(s.Logger()))
 			if tc.useCompress {
 				s.Use(Compress())
@@ -272,7 +269,7 @@ func TestWriteErrorAfterCommitThroughWrappers(t *testing.T) {
 			if tc.acceptGzip {
 				req.Header.Set("Accept-Encoding", "gzip")
 			}
-			finalize(s).ServeHTTP(rec, req)
+			s.Handler().ServeHTTP(rec, req)
 			if rec.Code != http.StatusOK {
 				t.Errorf("status = %d, want the committed 200", rec.Code)
 			}
@@ -300,5 +297,49 @@ func TestWriteErrorAfterCommitThroughWrappers(t *testing.T) {
 				t.Errorf("late error must be logged; got %d log entries", logs.Len())
 			}
 		})
+	}
+}
+
+// WriteResponse writes its value as a JSON body with the status; a value the codec cannot
+// encode answers 500 through WriteError, as JSON, and is logged, rather than a success with
+// an empty body.
+func TestWriteResponse(t *testing.T) {
+	rec := httptest.NewRecorder()
+	WriteResponse(rec, httptest.NewRequest("GET", "/", nil), http.StatusCreated, map[string]int{"n": 1})
+	if rec.Code != http.StatusCreated || rec.Body.String() != "{\"n\":1}\n" || rec.Header().Get("Content-Type") != contentTypeJSON {
+		t.Errorf("got %d %q %q", rec.Code, rec.Body.String(), rec.Header().Get("Content-Type"))
+	}
+
+	logs := observeLogs(t)
+	rec = httptest.NewRecorder()
+	WriteResponse(rec, httptest.NewRequest("GET", "/", nil), http.StatusOK, map[string]float64{"x": math.NaN()})
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"message\":\"internal server error\"}\n" {
+		t.Errorf("NaN: got %d %q, want the 500 JSON", rec.Code, rec.Body.String())
+	}
+	if n := logs.FilterMessage("unhandled service error").Len(); n != 1 {
+		t.Errorf("NaN: %d unhandled-error log lines, want 1", n)
+	}
+}
+
+// filled is a response whose FillEmpty sets its nil list empty, as a
+// generated type's does.
+type filled struct {
+	Tags []string `json:"tags"`
+}
+
+func (v *filled) FillEmpty(int) (changed, stopped bool) {
+	if v.Tags != nil {
+		return false, false
+	}
+	v.Tags = []string{}
+	return true, false
+}
+
+// A value with FillEmpty is filled before it is encoded.
+func TestWriteResponseFillsEmpty(t *testing.T) {
+	rec := httptest.NewRecorder()
+	WriteResponse(rec, httptest.NewRequest("GET", "/", nil), http.StatusOK, &filled{})
+	if got := rec.Body.String(); got != "{\"tags\":[]}\n" {
+		t.Errorf("body = %q, want the list empty", got)
 	}
 }

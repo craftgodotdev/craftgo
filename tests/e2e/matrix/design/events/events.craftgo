@@ -1,5 +1,5 @@
-// events.craftgo is the event-model cornercase fixture. It pins, in one
-// package, every shape the contract → descriptor pipeline has to render:
+// events.craftgo pins, in one package, every shape the contract →
+// descriptor pipeline has to render:
 //
 //   - payload fields of every shape a publish option might be built from
 //     at the call site - a scalar over a string, a local int enum, an int
@@ -53,7 +53,7 @@ type WarehouseClosed {
 	warehouse Warehouse
 	reason    string?
 	closedAt  datetime?
-	details   bytes? @format(raw)
+	details   bytes?    @format(raw)
 }
 
 // An event may carry a payload of its own name - separate namespaces.
@@ -66,7 +66,7 @@ type StocktakeStarted {
 // through xshared rather than through this package.
 type TierPromoted {
 	tier     xshared.XTier
-	memberId string @minLength(1)
+	memberId string        @minLength(1)
 }
 
 // Envelope is generic: an event payload that instantiates it must reach
@@ -116,6 +116,16 @@ event Reconciled {
 @doc("Generic payload: the argument must survive into every target.")
 event Enveloped {
 	payload Envelope<ItemStocked>
+}
+
+@doc("A generic payload over datetime: the event file imports time for the type argument.")
+event Stamped {
+	payload Envelope<datetime>
+}
+
+@doc("An array payload from package fmt, named like the package the element validator imports.")
+event RowsImported {
+	payload fmt.Row[]
 }
 
 @prefix("/events")

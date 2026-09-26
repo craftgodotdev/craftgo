@@ -5,25 +5,20 @@ package nested
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/nested"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/nested"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoBService carries the per-request state for the
-// EchoB endpoint of NestedService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoBService runs NestedService.EchoB for one request.
 type EchoBService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoBService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoBService binds EchoBService to ctx; its Logger carries ctx's trace ids.
 func NewEchoBService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoBService {
 	return &EchoBService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewEchoBService(ctx context.Context, svcCtx *svccontext.ServiceContext) *Ec
 	}
 }
 
-// EchoB is the service entry point. Replace the
-// TODO with the real implementation.
+// Mutual recursion entry - request B traverses B → A → B → ...
+//
+// EchoB implements NestedService.EchoB.
 func (l *EchoBService) EchoB(req *types.B) (*types.B, error) {
 	// TODO: implement
 	return nil, nil

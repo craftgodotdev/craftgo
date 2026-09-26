@@ -21,6 +21,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
 // entry is one captured log line.
@@ -73,10 +74,8 @@ func (c *capture) lines(msg string) []entry {
 	return out
 }
 
-// echoServer is the hand-written service the tests register: what
-// protoc-gen-go-grpc would generate for
-//
-//	service Echo { rpc Ping(StringValue) returns (StringValue); rpc Count(StringValue) returns (stream StringValue); }
+// echoServer is the service the tests register: a unary Ping and a
+// server-streaming Count.
 type echoServer interface {
 	Ping(context.Context, *wrapperspb.StringValue) (*wrapperspb.StringValue, error)
 	Count(*wrapperspb.StringValue, grpc.ServerStream) error
@@ -128,8 +127,7 @@ var echoDesc = grpc.ServiceDesc{
 	Metadata: "test.proto",
 }
 
-// serve registers impl on srv, serves it on an in-memory listener and
-// returns a client connection to it.
+// serve registers impl on srv, serves it in memory and returns a client connection.
 func serve(t *testing.T, srv *Server, impl echoServer) *grpc.ClientConn {
 	t.Helper()
 	srv.RegisterService(&echoDesc, impl)
@@ -215,10 +213,50 @@ func TestUnaryChainLogsRecoversAndOrders(t *testing.T) {
 	if got := logs.lines("panic recovered"); len(got) != 1 || got[0].fields["panic"] != "kaboom" || got[0].fields["stack"] == "" {
 		t.Errorf("recovery log = %+v", got)
 	}
-	// A panic unwinds through the access log, as through the HTTP one:
-	// the recovery line, with the same trace context, is the record.
+	// A panic leaves no access line; the recovery line is the record.
 	if access := logs.lines("grpc access"); len(access) != 1 {
 		t.Errorf("access after panic = %+v", access)
+	}
+}
+
+// The Recovery a Server installs logs to log.Default as it is when the panic happens, which
+// the HTTP server's SetLogger sets too.
+func TestRecoveryLogsToTheCurrentDefault(t *testing.T) {
+	prev := log.Default()
+	t.Cleanup(func() { log.SetDefault(prev) })
+	log.SetDefault(log.Discard())
+	srv := New(nil)
+	conn := serve(t, srv, &echo{ping: func(context.Context, *wrapperspb.StringValue) (*wrapperspb.StringValue, error) {
+		panic("kaboom")
+	}})
+	if _, err := ping(conn, "warm"); status.Code(err) != codes.Internal {
+		t.Fatalf("panic answered %v", err)
+	}
+	logs := newCapture()
+	server.New(nil).SetLogger(logs)
+	if _, err := ping(conn, "x"); status.Code(err) != codes.Internal {
+		t.Fatalf("panic answered %v", err)
+	}
+	if got := logs.lines("panic recovered"); len(got) != 1 {
+		t.Errorf("recovery lines on the current default = %d, want 1", len(got))
+	}
+}
+
+// An access log built from log.Follow writes to the logger a later SetLogger installs.
+func TestAccessLogFollowsSetLogger(t *testing.T) {
+	prev := log.Default()
+	t.Cleanup(func() { log.SetDefault(prev) })
+	log.SetDefault(log.Discard())
+	srv := New(nil)
+	srv.Use(AccessLog(log.Follow()))
+	conn := serve(t, srv, &echo{ping: pong})
+	logs := newCapture()
+	srv.SetLogger(logs)
+	if _, err := ping(conn, "x"); err != nil {
+		t.Fatal(err)
+	}
+	if got := logs.lines("grpc access"); len(got) != 1 {
+		t.Errorf("access lines on the logger SetLogger installed = %d, want 1", len(got))
 	}
 }
 
@@ -243,7 +281,7 @@ func TestErrorMapsServiceErrorsLikeWriteError(t *testing.T) {
 	}
 	wrapped := fmt.Errorf("lookup: %w", &notFoundErr{id: "7"})
 	st := status.Convert(Error(ctx, wrapped))
-	// The message is the typed error's own, as WriteError renders it.
+	// The message is the typed error's own text.
 	if st.Code() != codes.NotFound || st.Message() != "todo 7 not found" {
 		t.Errorf("typed error → %v", st)
 	}
@@ -338,7 +376,7 @@ func TestStreamRecoveryAndAccessLog(t *testing.T) {
 	srv := New(nil).SetLogger(logs)
 	srv.Use(AccessLog(logs))
 	conn := serve(t, srv, &echo{count: func(in *wrapperspb.StringValue, ss grpc.ServerStream) error {
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			if err := ss.SendMsg(wrapperspb.String(fmt.Sprintf("%s-%d", in.GetValue(), i))); err != nil {
 				return err
 			}
@@ -348,8 +386,7 @@ func TestStreamRecoveryAndAccessLog(t *testing.T) {
 		}
 		return status.Error(codes.Aborted, "enough")
 	}})
-	// count opens the server stream, sends the request, and collects every
-	// message until the stream ends, returning the ending status.
+	// count sends text to Count and returns the messages and the final status.
 	count := func(text string) ([]string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -390,6 +427,54 @@ func TestStreamRecoveryAndAccessLog(t *testing.T) {
 	}
 	if access := logs.lines("grpc access"); len(access) != 1 || access[0].fields["method"] != countMethod || access[0].fields["code"] != "Aborted" {
 		t.Errorf("access = %+v", access)
+	}
+}
+
+// AccessLogSkipMethods keeps a unary or streaming method out of the log, and AccessLogFields
+// adds its fields to every other line.
+func TestAccessLogOptions(t *testing.T) {
+	for name, skipped := range map[string]string{"skip unary": pingMethod, "skip stream": countMethod} {
+		t.Run(name, func(t *testing.T) {
+			logs := newCapture()
+			srv := New(nil).SetLogger(logs)
+			srv.Use(AccessLog(logs,
+				AccessLogSkipMethods(skipped),
+				AccessLogFields(func(_ context.Context, fullMethod string) []log.Field {
+					return []log.Field{log.String("route", fullMethod)}
+				}),
+			))
+			conn := serve(t, srv, &echo{
+				ping:  pong,
+				count: func(*wrapperspb.StringValue, grpc.ServerStream) error { return nil },
+			})
+			if _, err := ping(conn, "a"); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			stream, err := conn.NewStream(ctx, &grpc.StreamDesc{StreamName: "Count", ServerStreams: true}, countMethod)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := stream.SendMsg(wrapperspb.String("b")); err != nil {
+				t.Fatal(err)
+			}
+			if err := stream.CloseSend(); err != nil {
+				t.Fatal(err)
+			}
+			if err := stream.RecvMsg(new(wrapperspb.StringValue)); !errors.Is(err, io.EOF) {
+				t.Fatalf("stream ended with %v", err)
+			}
+
+			want := pingMethod
+			if skipped == pingMethod {
+				want = countMethod
+			}
+			access := logs.lines("grpc access")
+			if len(access) != 1 || access[0].fields["method"] != want || access[0].fields["route"] != want {
+				t.Errorf("access = %+v, want one line for %s with its route field", access, want)
+			}
+		})
 	}
 }
 
@@ -492,7 +577,7 @@ func TestStopCutsOffAfterTheDeadline(t *testing.T) {
 	if err := <-inflight; err == nil {
 		t.Error("the hung call must fail once the server is cut off")
 	}
-	// Probes stopped routing traffic here the moment Stop began.
+	// Stop set the health service NOT_SERVING.
 	resp, err := srv.health.Check(context.Background(), &healthpb.HealthCheckRequest{Service: "test.Echo"})
 	if err != nil || resp.GetStatus() != healthpb.HealthCheckResponse_NOT_SERVING {
 		t.Errorf("health after Stop = %v, %v", resp, err)
@@ -515,7 +600,7 @@ func TestRegisterServiceAfterBuild(t *testing.T) {
 	}
 }
 
-// Serve after Stop answers nil, as the HTTP Start does once closed.
+// Serve after Stop returns nil.
 func TestServeAfterStopReturnsNil(t *testing.T) {
 	srv := New(nil).SetLogger(newCapture())
 	if err := srv.Stop(context.Background()); err != nil {

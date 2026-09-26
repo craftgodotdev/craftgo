@@ -17,8 +17,11 @@ adapters require `pkg/events`, and a generated contract package with a `bytes
 both are tagged in phase 1 alongside everything else - by the time a consumer
 resolves an adapter or a contract, every module it can reach is published.
 
-`example/*` and `tests/e2e/matrix` are modules too, but they are never
-published - they exist so the generated code is compiled and tested.
+`example/*`, `tests/e2e/matrix` and `pkg/events/nats/internal/integration`
+are modules too, but they are never published. The first two exist so the
+generated code is compiled and tested; the third holds the nats adapter's
+tests against an embedded nats-server, which keeps the server out of the
+adapter's `go.mod`.
 
 A nested module is tagged with its directory as the prefix. That is not a
 convention this repo invented: it is how the Go module proxy finds a module
@@ -95,7 +98,7 @@ What it does:
    no-op.
 
 2. Bumps every place the version is written down - `var version` in
-   `cmd/craftgo/main.go`, `Version` in `internal/lsp/server.go`, and
+   `cmd/craftgo/main.go` and in `cmd/craftgo-lsp/main.go`, and
    `const VERSION` in `docs/.vitepress/config.ts` - to the bare `X.Y.Z`.
    Release builds overwrite the two Go values through `-ldflags`; the source
    value is the fallback for `go install` from a checkout. The docs constant
@@ -141,8 +144,10 @@ Run `make ci` before you tag. Nothing in `make tag` runs the test suite.
   phase 2 fixes.
 
 Between phase 1 and the push, `make tidy` will fail in `pkg/events/nats` and
-`pkg/events/kafka` for exactly that reason. Everything else - `make ci`,
-`make gen-all`, `go build`, `go test`, golangci-lint - keeps working.
+`pkg/events/kafka` for exactly that reason. `make tidy-check`, and with it
+`make ci` and the CI `check` job, fails there until phase 2 commits the
+checksums. Everything else - `make gen-all`, `go build`, `go test`,
+golangci-lint - keeps working.
 
 ## The push
 
@@ -204,8 +209,8 @@ to `pkg/events/` on disk (and `pkg/wire` likewise), so a change there is
 visible to the adapters, the
 examples and the e2e fixture before it is tagged or pushed.
 
-`example/*` and `tests/e2e/matrix` keep their `replace` lines even though the
-workspace would cover them. `go mod tidy` ignores workspaces, so those
+The modules that are never published keep their `replace` lines even though
+the workspace would cover them. `go mod tidy` ignores workspaces, so those
 replaces are what let `make tidy` resolve their placeholder `v0.0.0` requires
 without a network round-trip. Removing them would break `make tidy`.
 

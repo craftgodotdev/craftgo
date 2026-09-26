@@ -5,7 +5,7 @@ package shared
 type Page<T> {
 	items      T[]
 	nextCursor string?
-	total      int    @gte(0)
+	total      int     @gte(0)
 }
 
 // OkResp is the minimal body for actions that only report success

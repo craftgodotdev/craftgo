@@ -24,8 +24,8 @@ type PairsNum {
 // the inner checks automatically through scalar leaf inheritance -
 // no explicit per-element decorator required.
 //
-//	scalar Tag string @length(1, 20)
-//	type PairsArr { tags Tag[] @minItems(1) @maxItems(10) @uniqueItems }
+// 	scalar Tag string @length(1, 20)
+// 	type PairsArr { tags Tag[] @minItems(1) @maxItems(10) @uniqueItems }
 type PairsArr {
 	tags string[] @minItems(1) @maxItems(10) @uniqueItems
 }
@@ -56,4 +56,84 @@ type PairsChoice {
 	a string?
 	b string?
 	c string?
+}
+
+// PairsDoc has a doc above its decorators and one below them, right above
+// its keyword; the Go doc and the OpenAPI description hold both, in order.
+@requiresOneOf(a, b)
+// Either a or b carries the value.
+type PairsDoc {
+	a string?
+	b string?
+}
+
+// PairsKeyed promotes a field under its @json name.
+type PairsKeyed {
+	primary string? @json("primary_email")
+}
+
+// PairsRenamed puts a path id beside a body keyed by @json names: the
+// operation body and the @requiresOneOf over the promoted member name the
+// JSON keys.
+@requiresOneOf(primary, backup)
+type PairsRenamed {
+	PairsKeyed
+	id     string  @path
+	backup string? @json("backup_email")
+}
+
+// PairsRenamedResp splits a header off a body keyed by a @json name.
+type PairsRenamedResp {
+	etag    string  @header("ETag")
+	primary string? @json("primary_email")
+}
+
+// PairsReach embeds PairsDoc, and its @requiresOneOf, one level down.
+type PairsReach {
+	PairsDoc
+}
+
+// PairsNested puts a path id beside a body whose @requiresOneOf a nested
+// mixin declares: the operation body carries the group the validator runs.
+type PairsNested {
+	PairsReach
+	id   string @path
+	note string
+}
+
+// PairsUpload sends PairsDoc's fields as multipart parts beside a file: the
+// multipart body carries PairsDoc's @requiresOneOf.
+type PairsUpload {
+	PairsDoc
+	doc file
+}
+
+// PairsSource sends a file or a link as multipart parts, exactly one: the
+// multipart body counts the url part present only when it is non-empty, as
+// the handler binds it, and the file part when it is sent.
+@mutuallyExclusive(doc, url)
+@requiresOneOf(doc, url)
+type PairsSource {
+	doc   file?
+	url   string?
+	title string
+}
+
+// PairsLookup is a GET request, so both fields ride the query string: the
+// operation's description names its @requiresOneOf, which each parameter's
+// own schema cannot express.
+@requiresOneOf(byName, byId)
+type PairsLookup {
+	byName string? @json("by_name")
+	byId   string? @json("by_id")
+}
+
+// PairsTagged sends an ETag header beside a body that carries its own
+// @mutuallyExclusive and the @requiresOneOf of its mixin PairsDoc.
+@mutuallyExclusive(c, d)
+type PairsTagged {
+	PairsDoc
+	etag string  @header("ETag")
+	c    string?
+	d    string?
 }

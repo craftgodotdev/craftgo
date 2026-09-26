@@ -11,9 +11,8 @@ import (
 )
 
 // ListHellos streams `count` greetings back.
-// ListHellos serves the server-streaming RPC /greet.Greeter/ListHellos: it hands the
-// call context to the logic and maps the error it returns onto a status,
-// as the HTTP handler does with WriteError.
+//
+// ListHellos serves the server-streaming RPC /greet.Greeter/ListHellos.
 func (s *Server) ListHellos(req *pb.HelloRequest, stream grpc.ServerStreamingServer[pb.HelloReply]) error {
 	ctx := stream.Context()
 	if err := rpc.Validate(req); err != nil {

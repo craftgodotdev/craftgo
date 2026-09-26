@@ -4,14 +4,10 @@ package greet
 
 import (
 	pb "example.com/app/internal/pb/greet"
-
 	"example.com/app/svccontext"
 )
 
-// Server implements pb.GreeterServer (greet.Greeter): one method per
-// RPC, each in its own file beside this one. The embedded
-// UnimplementedGreeterServer answers Unimplemented for an RPC the
-// proto gains before the next gen.
+// Server implements pb.GreeterServer (greet.Greeter).
 type Server struct {
 	pb.UnimplementedGreeterServer
 	svcCtx *svccontext.ServiceContext

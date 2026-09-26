@@ -5,25 +5,20 @@ package shared
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// CloseTaskService carries the per-request state for the
-// CloseTask endpoint of TaskService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// CloseTaskService runs TaskService.CloseTask for one request.
 type CloseTaskService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewCloseTaskService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewCloseTaskService binds CloseTaskService to ctx; its Logger carries ctx's trace ids.
 func NewCloseTaskService(ctx context.Context, svcCtx *svccontext.ServiceContext) *CloseTaskService {
 	return &CloseTaskService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewCloseTaskService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 	}
 }
 
-// CloseTask is the service entry point. Replace the
-// TODO with the real implementation.
+// Deprecated: use SetTaskStatus with status=done. Kept for older clients.
+//
+// CloseTask implements TaskService.CloseTask.
 func (l *CloseTaskService) CloseTask(req *types.GetTaskReq) (*types.Task, error) {
 	return l.svcCtx.Store.SetTaskStatus(req.ProjectID, req.ID, types.TaskStatusDone)
 }

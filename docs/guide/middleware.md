@@ -13,7 +13,7 @@ This page is the **HTTP** side. Event consumers have their own middleware - a di
 
 (For consumers: `bus.Use(...)` is the same idea on the events side - a chain built in ordinary Go where the bus is, covered in the [events guide](/guide/events#middleware).)
 
-Use **runtime middleware** for cross-cutting concerns that apply globally regardless of the API contract: access log, OTel, recovery.
+Use **runtime middleware** for cross-cutting concerns that apply globally regardless of the API contract: access log, compression, request-wide guards of your own. Tracing and metrics go in with `server.WithTelemetry` at `server.New`, and Recovery is built into the server.
 
 Use **declared middleware** when the DSL needs to know about it: which services / methods opt in, which order, how it surfaces in OpenAPI's security section.
 
@@ -24,13 +24,12 @@ The rest of this page covers each in detail.
 For cross-cutting concerns that apply globally regardless of the API contract, use `srv.Use`:
 
 ```go
-srv := server.New(svcCtx)
-srv.Use(tel.HTTPMiddleware()) // traces + metrics; first, so AccessLog sees the trace ids
-srv.Use(server.AccessLog(logger))
+srv := server.New(svcCtx, server.WithTelemetry(tel.HTTPMiddleware())) // traces + metrics, outside Recovery and every Use
+srv.Use(server.AccessLog(log.Follow())) // log.Follow writes through log.Default as it is at each line
 srv.SetDefaultMaxBodySize(1 << 20) // default body cap; a per-method @maxBodySize overrides it
 ```
 
-Order matters. The first `Use` is the outermost frame.
+Order matters. The first `Use` is the outermost frame of the `Use` chain; the `WithTelemetry` middleware and Recovery wrap the whole chain.
 
 ## Declared middleware (DSL-driven)
 
@@ -46,7 +45,7 @@ middleware CORS
 middleware RequestID
 ```
 
-Declarations are global to their package. They do not live inside a service body.
+A middleware name is global to the whole design: any package references it by its bare name (or qualified, `shared.AuthRequired`), and declaring one name in two packages is a `middleware/collision` error. `Config` and `Middlewares` name fields `ServiceContext` declares itself, so neither is a middleware name (`decl/go-name-collision`), and two names whose scaffolds write one file, as `APIKey` and `ApiKey` both write `api_key_middleware.go`, are `middleware/collision`. Declarations do not live inside a service body.
 
 Codegen produces:
 
@@ -99,9 +98,9 @@ Every method in the service runs the listed middlewares:
 @prefix("/users")
 @middlewares(RequestID, RateLimit, CORS, AuthRequired)
 service UserService {
-    get GetUser /{id} { ... }
-    post CreateUser / { ... }
-    delete DeleteUser /{id} { ... }
+    get GetUser /{id} { request GetUserReq  response User }
+    post CreateUser / { request CreateUserReq  response User }
+    delete DeleteUser /{id} { request GetUserReq }
 }
 ```
 
@@ -115,10 +114,10 @@ A method-level `@middlewares` appends additional frames after the service-level 
 @prefix("/users")
 @middlewares(AuthRequired)
 service UserService {
-    get GetUser /{id} { ... }
+    get GetUser /{id} { request GetUserReq  response User }
 
     @middlewares(AdminOnly)
-    delete DeleteUser /{id} { ... }
+    delete DeleteUser /{id} { request GetUserReq }
 }
 ```
 
@@ -155,9 +154,8 @@ When to use `extend`:
 
 - Split a large service across files for readability
 - Keep admin / internal endpoints next to the public ones but easy to find
-- Add methods from a different package that imports the service's package
 
-An `extend` block can also carry its own method-level-applicable decorators (`@middlewares`, `@security`, `@tags`, `@deprecated`) - those propagate to every method inside. Useful for the 50/50 split: primary holds public endpoints, an extend block holds the authenticated chain.
+An `extend` block can also carry any method decorator but `@operationId` (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@timeout`, ...) - those propagate to every method inside. Useful for the 50/50 split: primary holds public endpoints, an extend block holds the authenticated chain.
 
 ```craftgo
 service Users {
@@ -175,8 +173,8 @@ extend service Users {
 Restrictions:
 
 - The extended service must exist somewhere in the same package.
-- `@prefix` lives on the primary `service` block; an extend block carrying it raises `service/extend-decorator-not-method`. `@group` is allowed on an extend block and nests that block's methods on disk.
-- Inside an extend block, individual methods may opt out of the inherited chain via `@ignoreMiddleware` (see [Opt-out: `@ignoreMiddleware`](#opt-out-ignoremiddleware) below).
+- `@prefix` lives on the primary `service` block; an extend block carrying it raises `service/extend-decorator-not-method`. `@group` is allowed on an extend block and moves that block's methods into the group's directory.
+- Inside an extend block, individual methods may opt out of the inherited chain via `@ignoreMiddleware`, and an `@ignoreMiddleware` on the block itself opts out every method of the block (see [Opt-out: `@ignoreMiddleware`](#opt-out-ignoremiddleware) below).
 
 ## Opt-out: `@ignoreMiddleware`
 
@@ -198,24 +196,28 @@ service Secured {
 
 The combine semantic is **clear-then-append**: `@ignoreMiddleware` clears the inherited chain, then any method-level `@middlewares(...)` decorators append to the now-empty chain.
 
-`@ignoreMiddleware` is method-level only, takes no arguments. Pair it with `@ignoreSecurity` / `@ignoreTags` to drop those inherited chains too.
+`@ignoreMiddleware` takes no arguments. Pair it with `@ignoreSecurity` / `@ignoreTags` to drop those inherited chains too. On an `extend service` block it applies to every method of the block, as if each method wrote it: the primary service's chain is dropped, and the block's own `@middlewares(...)` start the chain afresh.
 
 ## Middleware order at runtime
 
 For a request to a method like `DeleteUser` above, the chain executes outermost-first:
 
 ```
-[runtime] Recovery (always outermost)
+[runtime] server.WithTelemetry middleware (traces + metrics), when set
+[runtime] Recovery (installed by the server)
+[runtime] CORS, when srv.SetCORS is set - it answers a preflight here
 [runtime] srv.Use middleware in declaration order
-[runtime] per-route mws passed to srv.Handle(pattern, h, mws...)
-[DSL]     service-level @middlewares in declaration order
-[DSL]     method-level @middlewares appended
+[DSL]     service-level @middlewares in declaration order  } the per-route mws routes.go
+[DSL]     method-level @middlewares appended                } passes to srv.Handle
+[runtime] @timeout / @maxBodySize (server.WithLimits), else the server's default handler timeout and body cap
 [handler] decode body, validate, call logic, encode response
 ```
 
+The health probes are answered ahead of all of it, inside Recovery only.
+
 An HTTP middleware does its work on the way IN, so the first one listed is the first to run and that reads the way it sounds. A consumer [`events.Chain`](/guide/events#middleware) folds the same way - first listed is outermost - so the intuition carries over unchanged.
 
-Recovery sits at the outermost position so a panic in any user middleware still surfaces as a 500 instead of crashing the server. The generated `routes.go` reads the DSL `@middlewares(...)` values as typed fields on `svcCtx` (e.g. `svcCtx.AuthRequired`, `svcCtx.RateLimit`, pre-wired at startup by `main.go`) and passes them as variadic args to `srv.Handle(pattern, h, mws...)`. The service- and method-level chains are merged into one flat, outermost-first list before the call (first entry = first hit on the way in). See the [Runtime API](/reference/runtime-api#chain) for composing your own chains with `server.Chain`.
+Recovery wraps every `srv.Use` and per-route middleware, so a panic in any of them surfaces as 500 `{"message":"internal server error"}` with its stack logged, instead of a connection `net/http` drops. Only the `WithTelemetry` middleware sits outside it, so the panic line carries the trace ids; a panic in that middleware itself is not recovered. The generated `routes.go` reads the DSL `@middlewares(...)` values as typed fields on `svcCtx` (e.g. `svcCtx.AuthRequired`, `svcCtx.RateLimit`, pre-wired at startup by `main.go`) and passes them as variadic args to `srv.Handle(pattern, h, mws...)`. The service- and method-level chains are merged into one flat, outermost-first list before the call (first entry = first hit on the way in). See the [Runtime API](/reference/runtime-api#chain) for composing your own chains with `server.Chain`.
 
 ## Accessing middleware values from logic
 
@@ -226,13 +228,13 @@ A middleware that puts data on the request context is read by your service code:
 ctx := context.WithValue(r.Context(), userKey, principal)
 next.ServeHTTP(w, r.WithContext(ctx))
 
-// in service method
-func (s *Service) GetUser(ctx context.Context, req *types.GetUserReq) (*types.User, error) {
-    p, ok := ctx.Value(userKey).(*Principal)
-    if !ok {
-        return nil, types.NewUnauthorizedErr()
-    }
-    ...
+// in the logic stub
+func (l *GetUserService) GetUser(req *types.GetUserReq) (*types.User, error) {
+	p, ok := l.ctx.Value(userKey).(*Principal)
+	if !ok {
+		return nil, types.NewUnauthorizedErr()
+	}
+	...
 }
 ```
 

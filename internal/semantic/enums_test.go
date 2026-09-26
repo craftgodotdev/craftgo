@@ -6,8 +6,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// Every target renders an enum member from these, so each of the three
-// value kinds is pinned here rather than in one target's golden output.
+// Each enum value kind reads back its wire value, text and int.
 func TestEnumMemberWire(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -39,16 +38,15 @@ func TestEnumMemberWire(t *testing.T) {
 			if got := EnumMemberWireString(&v); got != c.wantText {
 				t.Errorf("EnumMemberWireString = %q, want %q", got, c.wantText)
 			}
-			n, IsInt := EnumMemberInt(&v)
+			n, IsInt := enumMemberInt(&v)
 			if IsInt != c.wantIsInt || n != c.wantInt {
-				t.Errorf("EnumMemberInt = (%d, %v), want (%d, %v)", n, IsInt, c.wantInt, c.wantIsInt)
+				t.Errorf("enumMemberInt = (%d, %v), want (%d, %v)", n, IsInt, c.wantInt, c.wantIsInt)
 			}
 		})
 	}
 }
 
-// EnumPrimitive decides the whole enum from its first member, which is
-// sound because a mixed-kind enum is rejected by CodeEnumMixedTypes.
+// EnumPrimitive takes the enum's primitive from its first member; mixed kinds are rejected earlier.
 func TestEnumPrimitive(t *testing.T) {
 	intEnum := &ast.EnumDecl{Members: []ast.EnumMember{
 		&ast.EnumValue{Name: "A", Kind: ast.EnumInt, IntValue: 1},

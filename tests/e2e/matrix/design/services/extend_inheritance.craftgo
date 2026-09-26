@@ -1,9 +1,9 @@
 // extend_inheritance.craftgo exercises the "extend service decorator
 // propagation" mechanism: one logical service splits into a public
 // primary block and one or more `extend service` blocks that each
-// carry their own method-level-applicable decorators. The merge step
-// prepends the extend block's decorators to every method inside, so a
-// single `@middlewares(Auth)` on the block reaches every method without
+// carry their own method-level-applicable decorators. A block's
+// decorators apply to every method inside it, so a single
+// `@middlewares(Auth)` on the block reaches every method without
 // per-method repetition.
 package services
 

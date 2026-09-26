@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// ListProjects returns the http.HandlerFunc for the
-// GET ListProjects endpoint.
+// List projects (v1).
+//
+// ListProjects returns the GET ListProjects handler.
 func ListProjects(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListProjectsReq
@@ -45,7 +46,6 @@ func ListProjects(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

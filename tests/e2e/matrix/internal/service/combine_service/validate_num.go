@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ValidateNumService carries the per-request state for the
-// ValidateNum endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ValidateNumService runs CombineService.ValidateNum for one request.
 type ValidateNumService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewValidateNumService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewValidateNumService binds ValidateNumService to ctx; its Logger carries ctx's trace ids.
 func NewValidateNumService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ValidateNumService {
 	return &ValidateNumService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewValidateNumService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// ValidateNum is the service entry point. Replace the
-// TODO with the real implementation.
+// Validate stacked numeric decorators (range + multipleOf + gt + lte). All four fire in declaration order.
+//
+// ValidateNum implements CombineService.ValidateNum.
 func (l *ValidateNumService) ValidateNum(req *types.PairsNum) (*types.PairsNum, error) {
 	// TODO: implement
 	return nil, nil

@@ -7,20 +7,15 @@ import (
 	"strings"
 )
 
-// checkCollisions rejects what the file system or the Go compiler would
-// otherwise merge or refuse later, naming both sides:
-//
-//   - two design files in one directory declaring different proto
-//     packages: they would share one Go package directory;
-//   - two services whose Go names map to one output directory;
-//   - two RPCs of one service whose Go names map to one file, where the
-//     gen-once scaffold would silently keep the first.
+// checkCollisions rejects two design files in one directory with different
+// proto packages, two services with one output directory, and two RPCs of a
+// service with one file name.
 func (s *Set) checkCollisions() error {
 	var errs []string
 	pkgByDir := map[string]string{}
 	fileByDir := map[string]string{}
-	for _, name := range s.Names {
-		f := s.Plugin.FilesByPath[name]
+	for _, name := range s.names {
+		f := s.plugin.FilesByPath[name]
 		if f == nil {
 			continue
 		}

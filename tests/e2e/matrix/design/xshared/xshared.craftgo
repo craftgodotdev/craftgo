@@ -24,7 +24,7 @@ type XHeaderResp {
 // the cast compiles to `undefined: shared`.
 type XThirdReq {
 	sev shared.Severity @query
-	id  string           @path @length(1, 64)
+	id  string          @path @length(1, 64)
 }
 
 // XColor exercises cross-package enum refs. Used by xrefs in every
@@ -57,7 +57,7 @@ scalar XTimestamp string @format(datetime)
 // recursive validate dispatch (`v.Owner.Validate()`) when the owner
 // field's type lives in xshared.
 type XOwner {
-	id    string  @length(1, 64)
+	id    string @length(1, 64)
 	email XEmail
 }
 
@@ -66,7 +66,7 @@ type XOwner {
 // xshared types - covering the qualified-generic codegen path.
 type XBag<T> {
 	items T[]
-	cap   int   @gte(0) @lte(1000)
+	cap   int @gte(0) @lte(1000)
 }
 
 // XAudit is a cross-package mixin. xrefs embeds it with bare
@@ -96,7 +96,7 @@ type XPathKey {
 // `xshared.XGrand`, or `gKey`'s @path and `g32`'s @default silently drop.
 type XGrand {
 	gKey string @path @length(1, 40)
-	g32  int32?      @default(7)
+	g32  int32? @default(7)
 }
 
 // XParent embeds XGrand (bare) and adds its own default; consumers embed
@@ -168,8 +168,32 @@ type XHolder {
 // declare `@errors(xshared.XNotFound)` so the OpenAPI responses list
 // resolves the error schema through the project ErrorTable.
 error NotFound XNotFound {
-	resource string  @length(1, 200)
+	resource string @length(1, 200)
 	id       string
+}
+
+// XLost shares its name with xrefs.XLost, so the merged OpenAPI document
+// names this one XsharedXLostErr.
+error NotFound XLost {
+	key string
+}
+
+// XRefsService shares its name with the service of package xrefs; its own
+// @group keeps the generated code apart, and the OpenAPI document lists both.
+@prefix("/xshared")
+@group("xshared")
+service XRefsService {
+	@doc("A method of the xshared XRefsService: documented beside the methods of xrefs' service of the same name.")
+	get GetSharedOwner /owner {
+		response XOwner
+	}
+
+	@doc("Shares its method name with xrefs' XRefsService.Describe: its operationId is its own and its body components are XsharedXRefsServiceDescribeReqBody and XsharedXRefsServiceDescribeRespBody.")
+	@operationId("DescribeShared")
+	post Describe /describe {
+		request  XOwner
+		response XOwner
+	}
 }
 
 // XTier is an INT-valued enum carried cross-package by an event payload

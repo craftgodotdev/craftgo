@@ -1,9 +1,7 @@
 package nested
 
-// NestedService exposes one endpoint per nested-shape category
-// from `nested.craftgo`. Each handler simply echoes the request
-// back; the value of the surface is that codegen has to produce
-// the validate / transport / OpenAPI plumbing for every shape.
+// NestedService carries nested and mixin shapes in its requests and
+// responses, so the generated validators, transports and OpenAPI cover them.
 @prefix("/nested")
 @tags(nested)
 service NestedService {
@@ -71,5 +69,19 @@ service NestedService {
 	post EchoListPage /list-page {
 		request  ListPage
 		response ListPage
+	}
+
+	post EchoAuditedHost /audited-host {
+		request  AuditedHost
+		response AuditedHost
+	}
+
+	post EchoHeaderedResp /headered-resp {
+		request  ResponseAudit
+		response HeaderedResp
+	}
+
+	get GetRateResp /rate-resp {
+		response RateResp
 	}
 }

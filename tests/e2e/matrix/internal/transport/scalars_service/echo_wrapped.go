@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoWrapped returns the http.HandlerFunc for the
-// POST EchoWrapped endpoint.
+// Echo a wrapped/nested generic instance. Probes Page<Envelope<Order>> end-to-end through transport + OpenAPI.
+//
+// EchoWrapped returns the POST EchoWrapped handler.
 func EchoWrapped(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.EchoWrappedReq
@@ -31,8 +32,6 @@ func EchoWrapped(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

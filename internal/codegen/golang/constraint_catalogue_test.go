@@ -6,27 +6,20 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// constraintNames returns every decorator the registry classifies as a
-// constraint, optionally narrowed to those with a schema form.
-func constraintNames(schemaOnly bool) map[string]bool {
+// constraintNames returns the registry's constraint decorators.
+func constraintNames() map[string]bool {
 	out := map[string]bool{}
-	for name, spec := range semantic.Registry {
-		if spec.Constraint == 0 {
-			continue
+	for _, name := range semantic.Names() {
+		if spec, _ := semantic.DecoratorSpec(name); spec.Constraint != 0 {
+			out[name] = true
 		}
-		if schemaOnly && spec.Constraint == semantic.ConstraintRuntime {
-			continue
-		}
-		out[name] = true
 	}
 	return out
 }
 
-// Every constraint decorator compiles to a runtime check. Adding one to
-// the registry without a check here fails rather than silently accepting
-// a decorator that enforces nothing.
+// Every constraint decorator, and nothing else, renders a Go check.
 func TestGoChecksCoverConstraints(t *testing.T) {
-	want := constraintNames(false)
+	want := constraintNames()
 	for name := range want {
 		if goChecks[name] == nil {
 			t.Errorf("@%s is a constraint but renders no Go check", name)
@@ -39,11 +32,11 @@ func TestGoChecksCoverConstraints(t *testing.T) {
 	}
 }
 
-// The runtime-only constraints are the ones a multipart part cannot
-// express as a schema keyword. Pinned so adding a row here is deliberate.
+// The runtime-only constraints are the ones a multipart part cannot express as a schema keyword.
 func TestRuntimeOnlyConstraints(t *testing.T) {
 	want := map[string]bool{"maxSize": true, "mimeTypes": true}
-	for name, spec := range semantic.Registry {
+	for _, name := range semantic.Names() {
+		spec, _ := semantic.DecoratorSpec(name)
 		if spec.Constraint != semantic.ConstraintRuntime {
 			continue
 		}

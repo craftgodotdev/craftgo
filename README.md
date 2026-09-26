@@ -4,13 +4,13 @@
 
 Design-first framework for Go HTTP services and event contracts.
 
-You describe the API once in a small DSL. `craftgo gen` writes the typed structs, the validation, the HTTP handlers, the route wiring and an OpenAPI 3.1 document. The output is plain `net/http`: no custom router, no reflection, no runtime struct tags. You write the business logic and nothing else.
+You describe the API once in a small DSL. `craftgo gen` writes the typed structs, the validation, the HTTP handlers, the route wiring and an OpenAPI 3.1 document. The output is plain `net/http`: no custom router, and binding and validation are generated Go rather than reflection over struct tags (bodies go through `encoding/json`, swappable). You write the business logic and nothing else.
 
 [Documentation](https://craftgodotdev.github.io/craftgo) · [Single-page reference for LLMs](https://craftgodotdev.github.io/craftgo/llms)
 
 ## Quickstart
 
-Requires Go 1.26 or newer.
+Requires Go 1.26.6 or newer.
 
 ```bash
 go install github.com/craftgodotdev/craftgo/cmd/craftgo@latest
@@ -47,10 +47,11 @@ service UserService {
 }
 ```
 
-Generate:
+Generate, then let Go fetch the modules the generated code imports:
 
 ```bash
 craftgo gen design
+go mod tidy
 ```
 
 Fill the one stub it leaves for you:
@@ -72,23 +73,15 @@ go run .
 curl -X POST localhost:8080/api/v1/users \
   -H 'Content-Type: application/json' \
   -d '{"name":"","email":"nope"}'
-# name: length out of range [1, 80]
+# {"message":"name: length out of range [1, 80]"}
 ```
 
-The handler decoded the body, ran `req.Validate()`, called your function and encoded the reply. The `/api` comes from the manifest's `openapi.basePath`, the `/v1` from the service's `@prefix`.
+The handler decodes the body and runs `req.Validate()`: a body that fails is answered 400 before your code runs; one that passes reaches your function, and its reply is encoded. The `/api` comes from the manifest's `openapi.basePath`, the `/v1` from the service's `@prefix`.
 
 ## Events
 
-The same design declares event contracts. Enable the target in the manifest:
-
-```yaml
-events:
-  targets:
-    - lang: go
-      out: ./internal/events
-```
-
-Write `design/orders/events.craftgo`:
+The same design declares event contracts. Their Go code lands under `./internal/events` unless the manifest's
+`events.targets` names another place. Write `design/orders/events.craftgo`:
 
 ```craftgo
 package orders
@@ -109,8 +102,11 @@ event Placed {
 
 ```go
 // internal/events/orders/events.go
+
+// PlacedContract is the wire identity of Placed.
 const PlacedContract = "orders.placed.v1"
 
+// Placed is the orders.placed.v1 event contract.
 var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
 ```
 
@@ -137,7 +133,9 @@ design/*.craftgo  --craftgo gen-->  internal/types/<package>/      structs and V
                                     internal/transport/<service>/  HTTP handlers
                                     internal/routes/               route registration
                                     internal/service/<service>/    your logic (written once)
+                                    internal/middleware/           one scaffold per middleware (written once)
                                     internal/wiring/               one call that attaches the design
+                                    svccontext/                    the dependency container (written once)
                                     config/                        config struct and example file
                                     docs/openapi.yaml              the OpenAPI document
                                     main.go                        entry point
@@ -147,8 +145,8 @@ design/*.proto    --craftgo gen-->  internal/pb/<dir>/             protoc-gen-go
                                     internal/wiring/grpc.go        RegisterGRPC
 ```
 
-Every path is a manifest key, so any of them can move. A design with no service generates the contract half alone,
-which is what a shared events package is.
+Every path is a manifest key, so any of them can move. `output.kind: contracts` generates the contract half alone -
+the payload types and the event descriptors - which is what a shared events package is.
 
 ## Documentation
 

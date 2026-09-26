@@ -75,12 +75,16 @@ type Str_EchoResp struct {
 //   - exact: @length(5, 5) - lo == hi, "exactly 5 chars".
 //   - separate min/max: @minLength(1) and @maxLength(100) on
 //     distinct fields to confirm the single-bound path.
+//   - zeroMin: @minLength(0) accepts every length, so it emits no check.
+//   - hugeMax: @maxLength at the int64 limit, documented digit for digit.
 type Str_Lengths struct {
 	ZeroLower string `json:"zeroLower"`
 	NonEmpty  string `json:"nonEmpty"`
 	Exact     string `json:"exact"`
 	OnlyMin   string `json:"onlyMin"`
 	OnlyMax   string `json:"onlyMax"`
+	ZeroMin   string `json:"zeroMin"`
+	HugeMax   string `json:"hugeMax"`
 }
 
 // Str_Nullable forces a pointer via @nullable on a non-optional
@@ -89,6 +93,12 @@ type Str_Lengths struct {
 // the field is present.
 type Str_Nullable struct {
 	Tag *string `json:"tag"`
+}
+
+// Str_NullableFormat checks a present email and passes a JSON null: the
+// validator nil-guards the dereference.
+type Str_NullableFormat struct {
+	Email *string `json:"email"`
 }
 
 // Str_Optionals exercises the optional + validator combinations.

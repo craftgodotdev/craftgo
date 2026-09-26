@@ -26,20 +26,14 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// bootEvents registers every subscription this fixture runs on an
-// in-process bus and starts it. The transport is the only thing a project
-// swaps to move onto a broker; nothing generated changes with it.
+// bootEvents starts this deployable's consumers on the memory transport.
 func bootEvents(t *testing.T) (*svccontext.ServiceContext, *craftevents.Bus, *memory.Transport) {
 	t.Helper()
 	return bootEventsWith(t, nil, nil)
 }
 
-// bootEventsWith boots the same wiring behind a bus-wide middleware chain
-// and an error handler of the caller's choosing. The chain is installed
-// with [craftevents.Bus.Use] after the bus exists, which is where a
-// deployable builds one out of its own service context - and it covers
-// every subscription registered through the bus, so no registration call
-// knows it is there.
+// bootEventsWith is bootEvents with a bus-wide chain and a transport error
+// handler; a nil onError fails the test on any consumer error.
 func bootEventsWith(t *testing.T, chain craftevents.Chain, onError func(craftevents.Subscription, error)) (*svccontext.ServiceContext, *craftevents.Bus, *memory.Transport) {
 	t.Helper()
 	if onError == nil {
@@ -76,8 +70,7 @@ func TestEventReachesEveryListenerOfTheContract(t *testing.T) {
 	}
 	transport.Drain()
 
-	// The contract has listeners in two modules of this deployable,
-	// under two groups; both receive it.
+	// Two of its four listeners, in different modules and groups.
 	for _, consumer := range []string{"MirrorStock", "SendStockAlert"} {
 		got := svc.DeliveredTo(consumer)
 		if len(got) != 1 {
@@ -90,9 +83,7 @@ func TestEventReachesEveryListenerOfTheContract(t *testing.T) {
 	}
 }
 
-// Every module registered from the one Register call receives, so a
-// contract with a single listener and one with several are wired by the
-// same list of lines.
+// A one-subscription module and a four-subscription module both receive.
 func TestEveryRegisteredModuleReceives(t *testing.T) {
 	svc, bus, transport := bootEvents(t)
 	if err := events.ShipmentDispatched.Publish(context.Background(), bus, &eventtypes.ShipmentDispatched{
@@ -115,10 +106,8 @@ func TestEveryRegisteredModuleReceives(t *testing.T) {
 	}
 }
 
-// One module listens to four contracts under a single group, and each
-// line receives the contract it names: the group is the unit of scaling,
-// not a filter. Two of the four are published here; the other two are
-// the renamed contract and the one every module listens to.
+// A module listening to four contracts under one group receives each on the
+// subscription that names it.
 func TestOneModuleReceivesEveryContractItListensTo(t *testing.T) {
 	svc, bus, transport := bootEvents(t)
 	if err := events.StocktakeStarted.Publish(context.Background(), bus, &eventtypes.StocktakeStarted{
@@ -141,8 +130,7 @@ func TestOneModuleReceivesEveryContractItListensTo(t *testing.T) {
 	}
 }
 
-// `@contract` fixes the wire identity; the listener that reaches the
-// event through its descriptor still receives it.
+// A `@contract` name is the wire identity its listeners subscribe to.
 func TestContractOverrideIsTheWireIdentity(t *testing.T) {
 	svc, bus, transport := bootEvents(t)
 	payload := &eventtypes.ItemStocked{
@@ -159,16 +147,14 @@ func TestContractOverrideIsTheWireIdentity(t *testing.T) {
 	if got := svc.DeliveredTo("AuditReconciliation"); len(got) != 1 {
 		t.Fatalf("renamed contract delivered %d payloads, want 1", len(got))
 	}
-	// The contract the listener subscribed to is the overridden name, not
-	// the derived one.
+	// Reconciled shares ItemStocked's payload type, not its contract.
 	if got := svc.DeliveredTo("SendStockAlert"); len(got) != 0 {
 		t.Errorf("the renamed contract must not reach ItemStocked listeners, got %d", len(got))
 	}
 }
 
-// The message key is a publish-time value: it reaches the transport
-// because the caller passed WithKey, and a publish without one is
-// keyless. Nothing in the design decides it.
+// The key, dedup ID and headers come from publish options; with no WithKey
+// the message is keyless.
 func TestPublishOptionsSetTheMessageKey(t *testing.T) {
 	var seen []*craftevents.Message
 	recorder := recordingTransport{onPublish: func(m *craftevents.Message) { seen = append(seen, m) }}
@@ -179,8 +165,7 @@ func TestPublishOptionsSetTheMessageKey(t *testing.T) {
 	if err := events.ItemStocked.Publish(ctx, bus, stocked, craftevents.WithKey(string(stocked.Sku))); err != nil {
 		t.Fatal(err)
 	}
-	// An int-valued enum has no key form of its own - the caller renders
-	// it however its broker wants it.
+	// An int enum has no key form; the caller renders one.
 	closed := &eventtypes.WarehouseClosed{Warehouse: eventtypes.WarehouseSouth}
 	if err := events.WarehouseClosed.Publish(ctx, bus, closed,
 		craftevents.WithKey(strconv.FormatInt(int64(closed.Warehouse), 10)),
@@ -215,9 +200,8 @@ func TestPublishOptionsSetTheMessageKey(t *testing.T) {
 	}
 }
 
-// A bus-wide publish default is applied to every message sent through it,
-// and a per-call option of the same kind replaces one. A batch carries
-// the same defaults, so the two ways to publish agree.
+// Bus publish defaults reach every message, single or batched, and a
+// per-call option or an envelope's own Key wins over them.
 func TestBusPublishDefaultsApplyAndPerCallOptionsWin(t *testing.T) {
 	var seen []*craftevents.Message
 	recorder := recordingTransport{onPublish: func(m *craftevents.Message) { seen = append(seen, m) }}
@@ -236,9 +220,7 @@ func TestBusPublishDefaultsApplyAndPerCallOptionsWin(t *testing.T) {
 	if err := events.ItemStocked.Publish(ctx, bus, stocked, craftevents.WithKey("sku-2")); err != nil {
 		t.Fatal(err)
 	}
-	// A batch the caller assembles by hand: the entry that names a key
-	// keeps it, the one that does not takes the bus default. The third
-	// entry is a second contract of the same package.
+	// The third entry is a second contract of the same package.
 	if err := bus.PublishAll(ctx, []craftevents.Envelope{
 		{Event: events.ItemStockedContract, Payload: stocked},
 		{Event: events.ItemStockedContract, Key: "sku-3", Payload: stocked},
@@ -261,9 +243,8 @@ func TestBusPublishDefaultsApplyAndPerCallOptionsWin(t *testing.T) {
 	}
 }
 
-// An option addressed to the transport that is actually wired up, under a
-// key it does not read, fails the publish. Dropping it silently is how a
-// message goes out configured differently from how its caller asked.
+// An option under the wired adapter's name, with a key it does not read,
+// fails the publish.
 func TestAnUnknownOptionInTheAdaptersOwnNamespaceFailsThePublish(t *testing.T) {
 	transport := memory.New()
 	bus := craftevents.New(craftevents.WithTransport(transport), craftevents.WithCodec(codecjson.Codec{}))
@@ -279,29 +260,24 @@ func TestAnUnknownOptionInTheAdaptersOwnNamespaceFailsThePublish(t *testing.T) {
 		t.Errorf("error names %s/%s", unknown.Adapter, unknown.Key)
 	}
 
-	// The same option under another adapter's name is that adapter's
-	// business, so this transport lets it by.
 	if err := events.ItemStocked.Publish(context.Background(), bus, stocked,
 		craftevents.WithAdapterOption("kafka", "timestamp", "whenever")); err != nil {
 		t.Errorf("another adapter's option must be ignored, got %v", err)
 	}
 }
 
-// An invalid payload is rejected at the listener, before logic sees it -
-// the event-side counterpart of the HTTP handler's bind-then-validate.
+// A listener rejects an invalid payload before logic sees it.
 func TestListenerValidatesBeforeLogic(t *testing.T) {
 	var mu sync.Mutex
 	var failed error
 	svc, _, transport := bootEventsWith(t, nil, func(_ craftevents.Subscription, err error) {
-		// The contract has listeners in several groups, so the handler
-		// runs on one delivery goroutine per group.
+		// Called from one delivery goroutine per group.
 		mu.Lock()
 		failed = err
 		mu.Unlock()
 	})
-	// carrier is @minLength(1); an empty one must not reach logic. The
-	// publisher validates too, so the message is put on the transport
-	// directly - the way another system's would arrive.
+	// carrier is @minLength(1). The descriptor's Publish would refuse an
+	// empty one, so it goes on the transport directly.
 	body, err := json.Marshal(&eventtypes.ShipmentDispatched{ShipmentID: "shp-2"})
 	if err != nil {
 		t.Fatal(err)
@@ -319,9 +295,6 @@ func TestListenerValidatesBeforeLogic(t *testing.T) {
 	if failed == nil {
 		t.Fatal("expected the listener to reject the invalid payload")
 	}
-	// The error names the contract it arrived on: a generated Validate
-	// reports field-scoped text, which on its own says nothing about
-	// which event an operator is reading about.
 	if !strings.Contains(failed.Error(), "events.ShipmentDispatched") {
 		t.Errorf("validation failure does not name the contract: %v", failed)
 	}
@@ -330,8 +303,8 @@ func TestListenerValidatesBeforeLogic(t *testing.T) {
 	}
 }
 
-// The publisher validates too, so a payload that cannot satisfy its
-// contract is refused where it is broken rather than at every consumer.
+// A descriptor's Publish refuses an invalid payload with a *PayloadError
+// before the transport sees it.
 func TestPublisherValidatesBeforeAnythingIsSent(t *testing.T) {
 	var published int
 	recorder := recordingTransport{onPublish: func(*craftevents.Message) { published++ }}
@@ -351,9 +324,7 @@ func TestPublisherValidatesBeforeAnythingIsSent(t *testing.T) {
 	}
 }
 
-// recordingTransport is a publish-only transport, standing in for a
-// broker adapter: a descriptor needs nothing but the one interface
-// method.
+// recordingTransport is a publish-only transport feeding onPublish.
 type recordingTransport struct {
 	onPublish func(*craftevents.Message)
 }
@@ -363,8 +334,7 @@ func (r *recordingTransport) Publish(_ context.Context, msg *craftevents.Message
 	return nil
 }
 
-// A batch may carry contracts from several services - the shape an outbox
-// drains - and reaches the transport in one call.
+// A batch mixing contracts delivers each entry to its contract's listener.
 func TestEventBatchMixesContracts(t *testing.T) {
 	var mu sync.Mutex
 	var got []string
@@ -419,10 +389,8 @@ func TestEventBatchMixesContracts(t *testing.T) {
 	}
 }
 
-// One group spanning several contracts: Analytics puts two of its lines
-// in one group, and the third in another because its delivery is read on
-// its own elsewhere. All three receive - which group a line joins is
-// written beside it, and nothing about it reaches the design.
+// Analytics receives on all three subscriptions: two share analytics-worker
+// and TrackTier has a group of its own.
 func TestOneGroupSpansSeveralContracts(t *testing.T) {
 	svc, bus, transport := bootEvents(t)
 	if err := events.ItemStocked.Publish(context.Background(), bus, &eventtypes.ItemStocked{
@@ -450,15 +418,7 @@ func TestOneGroupSpansSeveralContracts(t *testing.T) {
 	}
 }
 
-// The groups are the APPLICATION's, and no generated file states what
-// this deployable listens to - so the deployable pins its own shape with
-// a golden plan. A subscription that moved group, a module that stopped
-// being registered, or a contract renamed underneath one all show up
-// here as a diff.
-//
-// Consumer is the contract on every line, because [craftevents.Event.Subscription]
-// defaults it there: what tells four listeners of events.ItemStocked
-// apart in this process is the group each joined.
+// The plan consumers.Register produces matches testdata/plan.json.
 func TestThePlanIsTheDeployablesOwnShape(t *testing.T) {
 	bus := craftevents.New(craftevents.WithTransport(memory.New()), craftevents.WithCodec(codecjson.Codec{}))
 	if err := consumers.Register(bus, svccontext.NewServiceContext()); err != nil {
@@ -485,12 +445,8 @@ func TestThePlanIsTheDeployablesOwnShape(t *testing.T) {
 	}
 }
 
-// A line left without a group is refused at registration, naming the
-// contract it is on: a group is where a listener resumes, so it is the
-// application's to choose rather than something to fall back into.
-//
-// The lines are joined, so the refusal names the line that broke and the
-// lines beside it are registered all the same.
+// A subscription with no group is refused with ErrNoGroup naming its
+// contract, and the subscriptions beside it still register.
 func TestRegisterRefusesASubscriptionWithNoGroup(t *testing.T) {
 	bus := craftevents.New(craftevents.WithTransport(memory.New()), craftevents.WithCodec(codecjson.Codec{}))
 	guarded := consumers.Guarded{SvcCtx: svccontext.NewServiceContext()}
@@ -508,8 +464,6 @@ func TestRegisterRefusesASubscriptionWithNoGroup(t *testing.T) {
 	if !strings.Contains(err.Error(), events.StocktakeStartedContract) {
 		t.Errorf("the refusal does not name the contract of the line that broke: %v", err)
 	}
-	// Only the line that broke was refused: the other two are on the bus,
-	// so what the error reports is the whole of what went wrong.
 	groups := bus.Plan().Groups
 	if len(groups) != 1 {
 		t.Fatalf("the plan holds %d groups, want 1: %+v", len(groups), groups)
@@ -524,9 +478,8 @@ func TestRegisterRefusesASubscriptionWithNoGroup(t *testing.T) {
 	}
 }
 
-// A panicking listener must not take the process down - the API and every
-// other listener run in the same binary. The guard is on the subscription
-// the Bus registers, so every registered handler inherits it.
+// A listener panic fails its delivery with a *PanicError, and the next
+// delivery still runs.
 func TestPanickingListenerDoesNotEndTheProcess(t *testing.T) {
 	var mu sync.Mutex
 	var failed []error
@@ -554,8 +507,7 @@ func TestPanickingListenerDoesNotEndTheProcess(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	// Both messages were delivered: the panic ends one delivery, not the
-	// subscription and not the process.
+	// Each panic ends one delivery, not the subscription.
 	if len(failed) != 2 {
 		t.Fatalf("error handler saw %d failures, want 2: %v", len(failed), failed)
 	}
@@ -563,15 +515,13 @@ func TestPanickingListenerDoesNotEndTheProcess(t *testing.T) {
 	if !errors.As(failed[0], &pe) {
 		t.Fatalf("recovered panic is not a *PanicError: %#v", failed[0])
 	}
-	// Event and Group are the pair that identifies a registration -
-	// Consumer defaults to the contract, so it says the same thing.
+	// Event and Group identify a registration; Consumer defaults to Event.
 	if pe.Event != events.WarehouseClosedContract || pe.Group != consumers.OpsGroup {
 		t.Errorf("panic error does not name the registered subscription: %+v", pe)
 	}
 }
 
-// panickingOps is a listener that panics, standing in for the bug an
-// application ships by accident.
+// panickingOps is a WarehouseClosed listener that panics.
 type panickingOps struct{}
 
 func (panickingOps) RecordClosure(context.Context, *eventtypes.WarehouseClosed) error {
@@ -588,8 +538,7 @@ func TestUndecodablePayloadNeverReachesLogic(t *testing.T) {
 		failed = err
 		mu.Unlock()
 	})
-	// Published by something that is not this design - a truncated body
-	// under a contract craftgo consumes.
+	// A truncated body, put on the transport directly.
 	if err := transport.Publish(context.Background(), &craftevents.Message{
 		Event:    events.WarehouseClosedContract,
 		Payload:  []byte("{"),
@@ -612,9 +561,7 @@ func TestUndecodablePayloadNeverReachesLogic(t *testing.T) {
 	}
 }
 
-// A contract declared `payload T[]` carries a JSON array: the generated
-// descriptor is typed on the slice, the body on the wire is an array, and
-// the whole batch reaches one handler.
+// A `payload T[]` contract delivers the whole slice to one handler call.
 func TestAnArrayPayloadContractRoundTripsABatch(t *testing.T) {
 	transport := memory.New()
 	bus := craftevents.New(
@@ -652,9 +599,8 @@ func TestAnArrayPayloadContractRoundTripsABatch(t *testing.T) {
 	}
 }
 
-// Every element is validated, with the same validators the element type
-// declares: one broken member fails the publish as a *PayloadError naming
-// the element, and nothing goes out.
+// Publish validates every element of a `payload T[]` contract; a broken one
+// fails it with a *PayloadError naming the element.
 func TestAnArrayPayloadValidatesEveryElement(t *testing.T) {
 	bus := craftevents.New(
 		craftevents.WithTransport(memory.New()),
@@ -677,12 +623,8 @@ func TestAnArrayPayloadValidatesEveryElement(t *testing.T) {
 	}
 }
 
-// A `bytes @format(raw)` payload field is bytes the design never reads,
-// so what a consumer gets back has to be what the publisher sent - not
-// what a round trip through map[string]any would leave of it. Each of
-// the three values below is one such loss: an explicit null collapses to
-// Go nil (and encodes as an absent key), an integer past 2^53 comes back
-// as a float64 with different digits, and 1.50 re-encodes as 1.5.
+// A `bytes @format(raw)` payload field reaches the consumer byte for byte:
+// raw's null, past-2^53 integer and 1.50 would each change through `any`.
 func TestARawPayloadFieldReachesTheConsumerUnchanged(t *testing.T) {
 	const raw = `{"explicit":null,"big":12345678901234567890,"trailing":1.50}`
 
@@ -723,8 +665,7 @@ func TestARawPayloadFieldReachesTheConsumerUnchanged(t *testing.T) {
 	}
 }
 
-// An absent raw field stays absent rather than arriving as the four
-// bytes `null`: `?` puts omitempty on the tag, so the key is not written.
+// An unset optional raw field is left out of the JSON, not written as null.
 func TestAnAbsentRawFieldIsNotWritten(t *testing.T) {
 	body, err := json.Marshal(&eventtypes.WarehouseClosed{Warehouse: eventtypes.WarehouseNorth})
 	if err != nil {

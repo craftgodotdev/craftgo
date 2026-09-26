@@ -1,19 +1,14 @@
-// Package protodesign reads the gRPC half of a design: the `.proto` files
-// under the design folder. It compiles them in-process with protocompile,
-// hands the descriptors to protogen - the same library protoc-gen-go is
-// built on - and reports what the Go generator will emit: one [Service]
-// per proto service, its Go name, its package, and each RPC's Go request
-// and response types. Nothing here derives a Go name by hand; every name
-// the scaffolds spell is protogen's, so they agree with the pb code the
-// plugins write from the same request.
-//
-// The package is manifest-blind, like semantic: [Options] carries the
-// few facts it needs, and the caller builds it from the manifest.
+// Package protodesign compiles the `.proto` files under the design folder
+// in-process, reads each service's and RPC's Go names from protogen, and runs
+// the protobuf plugins that write the pb code.
 package protodesign
 
 import (
+	"bufio"
+	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"google.golang.org/protobuf/compiler/protogen"
@@ -24,52 +19,44 @@ import (
 type Options struct {
 	// Module is the Go import prefix of the project root.
 	Module string
-	// PBDir is the plugin output directory, relative to the project root
-	// (`./internal/pb`). Empty disables the plugins: no M mapping is added
-	// and every design file must carry `option go_package`.
+	// PBDir is the plugin output directory relative to the project root. Empty
+	// disables the plugins, and every design file then needs `option go_package`.
 	PBDir string
-	// Includes lists extra import roots, absolute paths. The design root
-	// is always the first import root.
+	// Includes lists extra absolute import roots, after the design root.
 	Includes []string
-	// FileCase is the manifest's `output.fileCase`; it names the per-service
-	// directory and the per-RPC file the scaffolds are written to.
+	// FileCase is `output.fileCase`, applied to service directory and RPC file names.
 	FileCase string
-	// PluginGo and PluginGoGRPC name the plugin commands the manifest
-	// chose under proto.plugins. Empty runs the tool go.mod pins.
+	// PluginGo and PluginGoGRPC are the proto.plugins commands; empty runs the
+	// tool go.mod pins.
 	PluginGo     string
 	PluginGoGRPC string
 }
 
-// PBEnabled reports whether the plugins run for this project.
-func (o Options) PBEnabled() bool { return o.PBDir != "" }
+// pbEnabled reports whether the plugins run for this project.
+func (o Options) pbEnabled() bool { return o.PBDir != "" }
 
-// pbRel is the pb directory as a clean slash path relative to the
-// project root (`internal/pb`).
+// pbRel returns PBDir as a clean slash path, e.g. `internal/pb`.
 func (o Options) pbRel() string { return path.Clean(filepath.ToSlash(o.PBDir)) }
 
-// PBRoot is the pb directory on disk under projectRoot.
-func (s *Set) PBRoot(projectRoot string) string {
-	return filepath.Join(projectRoot, filepath.FromSlash(s.Options.pbRel()))
+// pbRoot returns the pb directory on disk under projectRoot.
+func (s *Set) pbRoot(projectRoot string) string {
+	return filepath.Join(projectRoot, filepath.FromSlash(s.opts.pbRel()))
 }
 
 // Set is one compiled design: every proto under the design root and the
 // services they declare.
 type Set struct {
-	// Options is what the set was compiled with.
-	Options Options
-	// Root is the design root the names are relative to.
-	Root string
-	// Names lists the design files, slash-separated relative to Root, in
-	// sorted order. They are the files the plugins generate for.
-	Names []string
-	// Plugin is the protogen view of the whole graph; the design files are
-	// the ones with Generate set.
-	Plugin *protogen.Plugin
-	// Request is the plugin request, deps first. The plugins receive it
-	// verbatim.
-	Request *pluginpb.CodeGeneratorRequest
-	// Services lists every service the design files declare, sorted by
-	// proto full name.
+	// opts is what the set was compiled with.
+	opts Options
+	// names lists the design files the plugins generate for, as sorted slash
+	// paths relative to the design root.
+	names []string
+	// plugin is the protogen view of the whole graph; the design files have
+	// Generate set.
+	plugin *protogen.Plugin
+	// request is the plugin request, deps first, as the plugins receive it.
+	request *pluginpb.CodeGeneratorRequest
+	// Services lists every service the design files declare, sorted by full name.
 	Services []*Service
 }
 
@@ -79,14 +66,12 @@ type Service struct {
 	Name string
 	// FullName is the proto full name (`greet.Greeter`).
 	FullName string
-	// Package is the Go package name of the file declaring the service.
-	// The server layer and the logic scaffolds declare it, the way the
-	// HTTP layers declare the design package.
+	// Package is the Go package name of the file declaring the service, which
+	// the server and logic scaffolds also declare.
 	Package string
 	// PBImport is the Go import path of the generated pb package.
 	PBImport string
-	// Dir is the per-service output directory name, derived from Name by
-	// the manifest's file case.
+	// Dir is the service's output directory name: Name in the file case.
 	Dir string
 	// Methods lists the RPCs in declaration order.
 	Methods []*Method
@@ -102,7 +87,7 @@ const (
 	Bidi
 )
 
-// String names the kind for the generated comments.
+// String returns the kind as the generated comments spell it.
 func (k Kind) String() string {
 	switch k {
 	case ServerStream:
@@ -117,11 +102,11 @@ func (k Kind) String() string {
 
 // Method is one RPC.
 type Method struct {
-	Desc *protogen.Method
+	// FullMethod is the gRPC method name (`/greet.Greeter/SayHello`).
+	FullMethod string
 	// Name is the Go method name (`SayHello`).
 	Name string
-	// File is the per-RPC file name without extension, derived from Name
-	// by the manifest's file case.
+	// File is the RPC's file name without extension: Name in the file case.
 	File string
 	Kind Kind
 	// In and Out are the request and response message types.
@@ -134,36 +119,117 @@ type Method struct {
 type TypeRef struct {
 	Name       string
 	ImportPath string
-	// Package is the Go package name of the file declaring the message,
-	// the alias generated code imports it under when it is not the
-	// service's own pb package.
+	// Package is the Go package name of the file declaring the message, used
+	// as its import alias outside the service's own pb package.
 	Package string
 }
 
-// HasServices reports whether any design file declares a service. A set
-// of message-only files still has pb code to generate, but nothing for
-// the application layers.
+// HasServices reports whether any design file declares a service.
 func (s *Set) HasServices() bool { return s != nil && len(s.Services) > 0 }
 
-// PBFiles names the files the plugins write under projectRoot for this
-// set: `<prefix>.pb.go` for every design file and `<prefix>_grpc.pb.go`
-// for the ones declaring a service, where the prefix is the file name
-// minus `.proto` (protoc-gen-go's `paths=source_relative` rule). It is
-// what the output sweep keeps, so it is predicted here rather than read
-// back. With the plugins disabled nothing is written, and nothing is
-// listed.
+// PBFiles returns the files the plugins write under projectRoot:
+// `<name>.pb.go` for each design file and `<name>_grpc.pb.go` for one that
+// declares a service; none when the plugins are disabled.
 func (s *Set) PBFiles(projectRoot string) []string {
-	if s == nil || !s.Options.PBEnabled() {
+	if s == nil || !s.opts.pbEnabled() {
 		return nil
 	}
-	root := s.PBRoot(projectRoot)
+	root := s.pbRoot(projectRoot)
 	var out []string
-	for _, name := range s.Names {
+	for _, name := range s.names {
 		prefix := strings.TrimSuffix(name, ".proto")
 		out = append(out, filepath.Join(root, filepath.FromSlash(prefix+".pb.go")))
-		if f := s.Plugin.FilesByPath[name]; f != nil && len(f.Services) > 0 {
+		if f := s.plugin.FilesByPath[name]; f != nil && len(f.Services) > 0 {
 			out = append(out, filepath.Join(root, filepath.FromSlash(prefix+"_grpc.pb.go")))
 		}
 	}
 	return out
+}
+
+// OwnedPBFiles returns the plugin code on disk of design files, present or removed: each file directly
+// in a design file's pb directory, the project root aside, whose plugin header names a proto there no
+// include root holds.
+func (s *Set) OwnedPBFiles(projectRoot string) []string {
+	if s == nil || !s.opts.pbEnabled() {
+		return nil
+	}
+	var out []string
+	for _, dir := range s.designDirs() {
+		abs := filepath.Join(s.pbRoot(projectRoot), filepath.FromSlash(dir))
+		if abs == filepath.Clean(projectRoot) {
+			continue
+		}
+		entries, err := os.ReadDir(abs)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			file := filepath.Join(abs, e.Name())
+			if src, ok := pluginSource(file); ok && path.Dir(src) == dir && !s.included(src) {
+				out = append(out, file)
+			}
+		}
+	}
+	return out
+}
+
+// designDirs lists the directories of the design files, as sorted slash paths relative to the
+// design root.
+func (s *Set) designDirs() []string {
+	dirs := make([]string, 0, len(s.names))
+	for _, name := range s.names {
+		dirs = append(dirs, path.Dir(name))
+	}
+	slices.Sort(dirs)
+	return slices.Compact(dirs)
+}
+
+// included reports whether an include root holds the proto at slash path src.
+func (s *Set) included(src string) bool {
+	for _, root := range s.opts.Includes {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(src))); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// pluginSource returns the proto the plugin code in file was generated from, as its header
+// comment names it; false when no plugin header naming one comes before the file's code.
+func pluginSource(file string) (string, bool) {
+	f, err := os.Open(file)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	lines := bufio.NewScanner(f)
+	// The header may follow a comment block protoc-gen-go copies from above the proto's syntax line.
+	for {
+		if !lines.Scan() {
+			return "", false
+		}
+		t := lines.Text()
+		if slices.Contains(PluginHeaders, t) {
+			break
+		}
+		if t != "" && !strings.HasPrefix(t, "//") {
+			return "", false
+		}
+	}
+	for lines.Scan() {
+		line, ok := strings.CutPrefix(lines.Text(), "// ")
+		if !ok {
+			break
+		}
+		if src, ok := strings.CutPrefix(line, "source: "); ok {
+			return src, true
+		}
+		if src, ok := strings.CutSuffix(line, " is a deprecated file."); ok {
+			return src, true
+		}
+	}
+	return "", false
 }

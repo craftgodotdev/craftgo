@@ -1,46 +1,102 @@
 package parser
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
-type (
-	astServiceDecl = ast.ServiceDecl
-	astMethod      = ast.Method
-)
-
-func firstMsg(msgs []string) string {
-	if len(msgs) == 0 {
-		return ""
+// A token in place of a name is reported and never becomes the name: the
+// declaration is left nameless.
+func TestMismatchedTokenIsNoName(t *testing.T) {
+	for _, src := range []string{
+		"error {\n}\n",
+		"type { a string }\n",
+		"enum { A }\n",
+		"service {\n}\n",
+		"middleware (\n",
+		"event { payload T }\n",
+		"scalar Email {\n",
+	} {
+		f, msgs := parseWithErrors(t, "package p\n\n"+src)
+		if len(msgs) == 0 {
+			t.Errorf("%q: no diagnostic", src)
+		}
+		for _, m := range msgs {
+			if strings.Contains(m, `"{"`) || strings.Contains(m, `"("`) {
+				t.Errorf("%q: diagnostic names the token: %s", src, m)
+			}
+		}
+		for _, d := range f.Decls {
+			if name := d.DeclName(); name == "{" || name == "(" {
+				t.Errorf("%q: declaration named %q", src, name)
+			}
+			if sd, ok := d.(*ast.ScalarDecl); ok && sd.Primitive != "" {
+				t.Errorf("%q: scalar primitive %q", src, sd.Primitive)
+			}
+		}
 	}
-	return msgs[0]
 }
 
-// A slash the route cannot carry is reported instead of being dropped by
-// the formatter or the route builder; the root path `/` stays valid.
+// A position gets one diagnostic: a construct that stops at a token reports it
+// once, and a token the lexer rejected is not reported again.
+func TestOneDiagnosticPerPosition(t *testing.T) {
+	for src, want := range map[string]string{
+		"package p\n\nscalar\nscalar\n":                                    "expected Ident, got scalar",
+		"package p\n\nerror {\n":                                           "expected Ident, got {",
+		"package p\n\ntype\n":                                              "expected Ident, got EOF",
+		"package p\n\nservice S {\n\tget\n}\n":                             "expected Ident, got }",
+		"package p\n\ntype T {\n\ta string @doc(\"\\q\")\n}\n":             `invalid escape sequence \q`,
+		"package p\n\ntype T {\n\ta string @minLength(5x)\n}\n":            `invalid number suffix "x"`,
+		"package p\n\nenum E { A = \"\\q\" }\n":                            `invalid escape sequence \q`,
+		"package p\n\nimport \"\\q\"\n\ntype T {\n\ta string\n}\n":         `invalid escape sequence \q`,
+		"package p\n\ntype A { a string } @doc(1 2) type B { b string }\n": "expected ',' or ')' after decorator argument, got Int",
+	} {
+		p := New("t.craftgo", src)
+		p.Parse()
+		seen := map[lexer.Position]string{}
+		for _, d := range p.Diagnostics() {
+			if prev, ok := seen[d.Pos]; ok {
+				t.Errorf("%q: two diagnostics at %s: %q and %q", src, d.Pos, prev, d.Msg)
+				continue
+			}
+			seen[d.Pos] = d.Msg
+		}
+		if first := p.Diagnostics()[0].Msg; first != want {
+			t.Errorf("%q: first diagnostic %q, want %q", src, first, want)
+		}
+	}
+}
+
+// TestPathSlashes pins that `//` and a trailing `/` are errors, the trailing
+// `/` left out of the path, while the root path `/` is valid.
 func TestPathSlashes(t *testing.T) {
-	_, msgs := parseWithErrors(t, "package p\nservice S {\n\tget X /items/ { response A }\n}\n")
-	if !strings.Contains(firstMsg(msgs), "path ends with '/'") {
+	f, msgs := parseWithErrors(t, "package p\nservice S {\n\tget X /items/ { response A }\n}\n")
+	if len(msgs) != 1 || !strings.Contains(msgs[0], "path ends with '/'") {
 		t.Errorf("trailing slash: diagnostics = %v", msgs)
+	}
+	if got := route.PathString(f.Decls[0].(*ast.ServiceDecl).Methods()[0].Path); got != "/items" {
+		t.Errorf("trailing slash: path = %q, want /items", got)
 	}
 	_, msgs = parseWithErrors(t, "package p\nservice S {\n\tget X /a/ /b { response A }\n}\n")
 	if !strings.Contains(firstMsg(msgs), "empty path segment") {
 		t.Errorf("double slash: diagnostics = %v", msgs)
 	}
-	f, msgs := parseWithErrors(t, "package p\nservice S {\n\tget Root / { response A }\n}\n")
+	f, msgs = parseWithErrors(t, "package p\nservice S {\n\tget Root / { response A }\n}\n")
 	if len(msgs) != 0 {
 		t.Fatalf("root path: unexpected diagnostics %v", msgs)
 	}
-	if got := pathStr(f.Decls[0].(*astServiceDecl).Members[0].(*astMethod).Path); got != "/" {
+	if got := route.PathString(f.Decls[0].(*ast.ServiceDecl).Methods()[0].Path); got != "/" {
 		t.Errorf("root path = %q, want /", got)
 	}
 }
 
-// Decorators with nothing after them are reported, not lost: at the top
-// of a file whose package line is missing, and after the last declaration.
+// TestOrphanDecoratorsReported pins that decorators with no declaration after
+// them are reported.
 func TestOrphanDecoratorsReported(t *testing.T) {
 	for _, src := range []string{
 		"@doc(\"pkg\")\n@version(\"1\")\n// package p\n",
@@ -54,8 +110,7 @@ func TestOrphanDecoratorsReported(t *testing.T) {
 	}
 }
 
-// Every list needs its separators; a missing comma is reported instead of
-// being inserted by the formatter.
+// TestMissingCommaReported pins that a missing list separator is reported.
 func TestMissingCommaReported(t *testing.T) {
 	cases := map[string]string{
 		"package p\ntype A { x string @length(1 2) }\n":          "',' or ')'",
@@ -79,4 +134,188 @@ func TestMissingCommaReported(t *testing.T) {
 			t.Errorf("%q: unexpected diagnostics %v", src, msgs)
 		}
 	}
+}
+
+// A decorator on the line where a declaration or a method ends is reported,
+// and the declaration or method below takes no decorator.
+func TestDecoratorAfterADeclarationOnItsLine(t *testing.T) {
+	for name, src := range map[string]string{
+		"middleware":      "package p\n\nmiddleware M @doc(\"x\")\n\ntype T {\n\tid string\n}\n",
+		"bodiless error":  "package p\n\nerror NotFound E @doc(\"x\")\n\ntype T {\n\tid string\n}\n",
+		"closing brace":   "package p\n\ntype A {\n\tid string\n} @doc(\"x\")\n\ntype T {\n\tid string\n}\n",
+		"next middleware": "package p\n\nmiddleware M1 @doc(\"x\")\nmiddleware T\n",
+		"package clause":  "package p @doc(\"x\")\n\ntype T {\n\tid string\n}\n",
+		"import":          "package p\n\nimport \"a\" @doc(\"x\")\nimport \"b\"\n\ntype T {\n\tid string\n}\n",
+		"method":          "package p\n\nservice S {\n\tget A /a {\n\t\tresponse R\n\t} @doc(\"x\")\n\n\tget T /t {\n\t\tresponse R\n\t}\n}\n",
+		"last method":     "package p\n\nservice S {\n\tget A /a {} @doc(\"x\")\n}\n\ntype T {\n\tid string\n}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, msgs := parseWithErrors(t, src)
+			if len(msgs) != 1 || !strings.Contains(msgs[0], "@doc") {
+				t.Errorf("diagnostics = %v, want one naming @doc", msgs)
+			}
+			last := f.Decls[len(f.Decls)-1]
+			var decs []*ast.Decorator
+			switch d := last.(type) {
+			case *ast.TypeDecl:
+				decs = d.Decorators
+			case *ast.MiddlewareDecl:
+				decs = d.Decorators
+			case *ast.ServiceDecl:
+				ms := d.Methods()
+				decs = ms[len(ms)-1].Decorators
+			}
+			if len(decs) != 0 {
+				t.Errorf("the declaration below took %d decorator(s)", len(decs))
+			}
+		})
+	}
+	for _, src := range []string{
+		"package p\n\nservice S { @doc(\"a\") get A /a {} }\n",
+		"package p\n\n@doc(\"t\") type T { id string } type U { id string }\n",
+		"package p\n\nscalar S string @minLength(1)\n@doc(\"t\")\ntype T { id string }\n",
+		"package p\n\nenum E { A @doc(\"a\") B }\n",
+	} {
+		if _, msgs := parseWithErrors(t, src); len(msgs) != 0 {
+			t.Errorf("%q: unexpected diagnostics %v", src, msgs)
+		}
+	}
+	for name, src := range map[string]string{
+		"import before import": "package p\n\nimport \"a\" @doc(\"x\") import \"b\"\n\ntype T {\n\tid string\n}\n",
+		"method before brace":  "package p\n\nservice S {\n\tget A /a {} @doc(\"x\") }\n\ntype T {\n\tid string\n}\n",
+	} {
+		if _, msgs := parseWithErrors(t, src); len(msgs) != 1 || !strings.Contains(msgs[0], "goes before what it decorates") {
+			t.Errorf("%s: diagnostics = %v, want one saying the decorator goes before what it decorates", name, msgs)
+		}
+	}
+}
+
+// A decorator after a declaration or a method on its line decorates the
+// declaration or method that starts later on that line.
+func TestDecoratorBeforeTheNextDeclarationOnItsLine(t *testing.T) {
+	for name, src := range map[string]string{
+		"closing brace":  "package p\n\ntype A { a string } @doc(\"b\") type B { b string }\n",
+		"middleware":     "package p\n\nmiddleware A @doc(\"b\") middleware B\n",
+		"bodiless error": "package p\n\nerror NotFound A @doc(\"b\") type B { b string }\n",
+		"package clause": "package p @doc(\"b\") type B { b string }\n",
+		"import":         "package p\n\nimport \"a\" @doc(\"b\") type B { b string }\n",
+		"extend":         "package p\n\nservice A {} @doc(\"b\") extend service B {}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, msgs := parseWithErrors(t, src)
+			if len(msgs) != 0 {
+				t.Fatalf("unexpected diagnostics %v", msgs)
+			}
+			n := len(f.Decls)
+			if n == 2 && len(declDecorators(f.Decls[0])) != 0 {
+				t.Errorf("the declaration before took a decorator")
+			}
+			if last := declDecorators(f.Decls[n-1]); len(last) != 1 || last[0].Name != "doc" {
+				t.Errorf("the declaration after has %d decorator(s), want @doc", len(last))
+			}
+		})
+	}
+	f, msgs := parseWithErrors(t, "package p\n\ntype R { ok bool }\n\nservice S {\n\tget A /a { response R } @deprecated @doc(\"b\") get B /b { response R }\n}\n")
+	if len(msgs) != 0 {
+		t.Fatalf("method: unexpected diagnostics %v", msgs)
+	}
+	ms := f.Decls[1].(*ast.ServiceDecl).Methods()
+	if len(ms) != 2 || len(ms[0].Decorators) != 0 || len(ms[1].Decorators) != 2 {
+		t.Errorf("method: want A without decorators and B with @deprecated and @doc, got %d methods", len(ms))
+	}
+}
+
+// Decorators whose arguments run onto a later line are on the line the last of
+// them ends: what starts there takes them all, and what starts below takes none.
+func TestDecoratorArgumentsOverLinesBeforeTheNextDeclaration(t *testing.T) {
+	const pkg = "package p\n\n"
+	for name, c := range map[string]struct {
+		src   string
+		diags int
+		// decs are the decorator names of each declaration, and of each method
+		// of a service.
+		decs []string
+	}{
+		"closing brace":  {pkg + "type A { a string } @doc(\n\t\"b\") type B { b string }\n", 0, []string{"", "doc"}},
+		"chain":          {pkg + "type A { a string } @doc(\n\t\"b\") @deprecated type B { b string }\n", 0, []string{"", "doc deprecated"}},
+		"chain end":      {pkg + "type A { a string } @deprecated @doc(\n\t\"b\") type B { b string }\n", 0, []string{"", "deprecated doc"}},
+		"package clause": {"package p @doc(\n\t\"p\") @deprecated type B { b string }\n", 0, []string{"doc deprecated"}},
+		"import":         {pkg + "import \"a\" @doc(\n\t\"b\") type B { b string }\n", 0, []string{"doc"}},
+		"method":         {pkg + "service S {\n\tget A /a {} @doc(\n\t\t\"b\") get B /b {}\n}\n", 0, []string{"", "doc"}},
+		"scalar":         {pkg + "scalar A string @minLength(\n\t1) @maxLength(5)\ntype B { b A }\n", 0, []string{"minLength maxLength", ""}},
+		"below":          {pkg + "type A { a string } @doc(\n\t\"b\")\ntype B { b string }\n", 1, []string{"", ""}},
+		"chain below":    {pkg + "type A { a string } @doc(\n\t\"b\") @deprecated\ntype B { b string }\n", 2, []string{"", ""}},
+		"method below":   {pkg + "service S {\n\tget A /a {} @doc(\n\t\t\"b\")\n\tget B /b {}\n}\n", 1, []string{"", ""}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, msgs := parseWithErrors(t, c.src)
+			if len(msgs) != c.diags {
+				t.Errorf("diagnostics = %v, want %d", msgs, c.diags)
+			}
+			for _, m := range msgs {
+				if !strings.Contains(m, "goes before what it decorates") {
+					t.Errorf("diagnostic %q, want one saying the decorator goes before what it decorates", m)
+				}
+			}
+			var got []string
+			for _, d := range f.Decls {
+				if sd, ok := d.(*ast.ServiceDecl); ok {
+					for _, m := range sd.Methods() {
+						got = append(got, decoratorNames(m.Decorators))
+					}
+					continue
+				}
+				got = append(got, decoratorNames(declDecorators(d)))
+			}
+			if !slices.Equal(got, c.decs) {
+				t.Errorf("decorators = %q, want %q", got, c.decs)
+			}
+		})
+	}
+	_, msgs := parseWithErrors(t, "package p\n\ntype M { m string }\n\ntype T {\n\tM @doc(\n\t\"x\") @deprecated\n\ta string\n}\n")
+	if len(msgs) != 2 {
+		t.Errorf("mixin: diagnostics = %v, want one for each of its decorators", msgs)
+	}
+}
+
+// decoratorNames returns the names of decs, separated by spaces.
+func decoratorNames(decs []*ast.Decorator) string {
+	names := make([]string, len(decs))
+	for i, d := range decs {
+		names[i] = d.Name
+	}
+	return strings.Join(names, " ")
+}
+
+// startsDecl holds for exactly the reserved words a top-level declaration is
+// parsed from.
+func TestStartsDeclMatchesTheDeclarations(t *testing.T) {
+	for k := lexer.KwPackage; k <= lexer.VerbOptions; k++ {
+		_, msgs := parseWithErrors(t, "package p\n\nmiddleware M\n"+k.String()+" X\n")
+		parsed := !strings.Contains(strings.Join(msgs, "\n"), "expected declaration, got "+k.String())
+		if parsed != startsDecl(k) {
+			t.Errorf("%s: startsDecl = %v, but a declaration parsed = %v (%v)", k, startsDecl(k), parsed, msgs)
+		}
+	}
+}
+
+// declDecorators returns the decorators of d.
+func declDecorators(d ast.Decl) []*ast.Decorator {
+	switch d := d.(type) {
+	case *ast.TypeDecl:
+		return d.Decorators
+	case *ast.EnumDecl:
+		return d.Decorators
+	case *ast.ErrorDecl:
+		return d.Decorators
+	case *ast.ScalarDecl:
+		return d.Decorators
+	case *ast.MiddlewareDecl:
+		return d.Decorators
+	case *ast.ServiceDecl:
+		return d.Decorators
+	case *ast.EventDecl:
+		return d.Decorators
+	}
+	return nil
 }

@@ -6,16 +6,12 @@ import (
 	"time"
 
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/raw_modes_service"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RegisterRoutes wires every RawModesService endpoint onto srv. Patterns
-// use the Go 1.22 method-prefixed form so VERB and path match together;
-// service prefix and OpenAPI basePath are baked in. Methods declaring
-// `@middlewares(...)` are wrapped via the corresponding fields on
-// ServiceContext (embedded Middlewares struct), so no runtime name
-// lookup is required - the values come pre-wired.
+// RegisterRoutes registers the RawModesService routes on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/raw/pt", transport.PtPlain(svcCtx), svcCtx.Timing)
 	srv.Handle("GET /api/raw/pt/items/{id}", transport.PtBlocks(svcCtx), svcCtx.Timing)
@@ -30,5 +26,5 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/raw/rq", transport.RqResp(svcCtx), svcCtx.Timing)
 	srv.Handle("GET /api/raw/rq/page", transport.RqPage(svcCtx), svcCtx.Timing)
 	srv.Handle("POST /api/raw/rq/docs", transport.RqDocsReq(svcCtx), svcCtx.Timing)
-	srv.Handle("POST /api/raw/rq/limits", server.WithLimits(transport.RqLimits(svcCtx), server.Limits{Timeout: 2 * time.Second, MaxBodySize: 1024}), svcCtx.Timing)
+	srv.Handle("POST /api/raw/rq/limits", server.WithLimits(transport.RqLimits(svcCtx), server.Limits{Timeout: 2 * time.Second, MaxBodySize: 1 << 10}), svcCtx.Timing)
 }

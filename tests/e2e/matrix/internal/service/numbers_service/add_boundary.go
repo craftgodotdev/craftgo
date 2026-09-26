@@ -5,25 +5,20 @@ package numbers
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/numbers"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/numbers"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// AddBoundaryService carries the per-request state for the
-// AddBoundary endpoint of NumbersService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// AddBoundaryService runs NumbersService.AddBoundary for one request.
 type AddBoundaryService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewAddBoundaryService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewAddBoundaryService binds AddBoundaryService to ctx; its Logger carries ctx's trace ids.
 func NewAddBoundaryService(ctx context.Context, svcCtx *svccontext.ServiceContext) *AddBoundaryService {
 	return &AddBoundaryService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewAddBoundaryService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// AddBoundary is the service entry point. Replace the
-// TODO with the real implementation.
+// AddBoundary implements NumbersService.AddBoundary.
 func (l *AddBoundaryService) AddBoundary(req *types.BoundaryReq) (*types.BoundaryReq, error) {
 	// TODO: implement
 	return nil, nil

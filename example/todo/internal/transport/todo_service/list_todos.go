@@ -13,8 +13,9 @@ import (
 	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 )
 
-// ListTodos returns the http.HandlerFunc for the
-// GET ListTodos endpoint.
+// List todos with cursor pagination, optional status filter.
+//
+// ListTodos returns the GET ListTodos handler.
 func ListTodos(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.ListTodosReq
@@ -48,7 +49,6 @@ func ListTodos(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		w.Header().Set("X-Total-Count", strconv.Itoa(resp.Total))
 		w.Header().Set("X-Response-Time", strconv.FormatInt(int64(resp.TookMs), 10))
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

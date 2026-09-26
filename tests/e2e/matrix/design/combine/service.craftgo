@@ -1,18 +1,8 @@
 package combine
 
-// CombineService wires the cross-decorator combination types into a
-// real handler so the codegen + transport stack has a body-decode +
-// validate path to drive for each cluster:
-//
-//   - Presence:        round-trips the presence-state matrix.
-//   - Pairs/StrPairs:  stacked string decorators (length+format+pattern).
-//   - Pairs/NumPairs:  stacked numeric decorators (range+multipleOf+gt+lte).
-//   - Pairs/ArrPairs:  stacked array decorators (minItems+maxItems+uniqueItems+each).
-//   - Pairs/Contact:   per-field decorators under a type-level @requiresOneOf.
-//   - Pairs/Choice:    overlapping @mutuallyExclusive + @requiresOneOf.
-//   - Defaults:        every supported default shape (boundary, enum, scalar)
-//     plus the deliberate clash (DefaultsConflict) for the
-//     semantics-layer warning path.
+// CombineService wires the cross-decorator combination types into real
+// handlers: each method gives the codegen and transport stack a body to
+// decode and validate.
 @prefix("/combine")
 @tags(combine)
 service CombineService {
@@ -58,12 +48,6 @@ service CombineService {
 		response DefaultsBoundary
 	}
 
-	@doc("Echo the deliberate default-vs-validator clash. The empty-string default would fail @minLength(1) - if codegen accepts the design, the handler will reject the pre-filled value.")
-	post EchoConflict /defaults/conflict {
-		request  DefaultsConflict
-		response DefaultsConflict
-	}
-
 	@doc("Echo the array / map default shapes. The map<,>?-with-object-default field is expected to be rejected at codegen time.")
 	post EchoCollection /defaults/collection {
 		request  DefaultsCollection
@@ -86,5 +70,92 @@ service CombineService {
 	post EchoWidth /defaults/width {
 		request  DefaultsWidth
 		response DefaultsWidth
+	}
+
+	@doc("Validate a path id beside a body keyed by @json names. The operation body and the @requiresOneOf name primary_email and backup_email; the response sends ETag as a header and primary_email in the body.")
+	post ValidateRenamed /pairs/renamed/{id} {
+		request  PairsRenamed
+		response PairsRenamedResp
+	}
+
+	@doc("Validate a path id beside a body whose @requiresOneOf a nested mixin declares. The operation body carries the group: sending neither a nor b fails.")
+	post ValidateNested /pairs/nested/{id} {
+		request  PairsNested
+		response PairsDoc
+	}
+
+	@doc("Upload a file beside the parts of a mixin with a @requiresOneOf. The multipart body carries the group: sending neither a nor b fails.")
+	post UploadPairs /pairs/upload {
+		request  PairsUpload
+		response PairsDoc
+	}
+
+	@doc("Upload a file or a link, exactly one. The multipart body carries the request type's own groups; an empty url part counts as absent.")
+	post UploadSource /pairs/source {
+		request  PairsSource
+		response PairsDoc
+	}
+
+	@doc("Look a pair up by name or by id from the query string.")
+	get LookupPair /pairs/lookup {
+		request  PairsLookup
+		response PairsDoc
+	}
+
+	@doc("Tag a pair. The response sends ETag as a header; its body carries the response type's @mutuallyExclusive and its mixin's @requiresOneOf.")
+	post TagPairs /pairs/tagged {
+		request  PairsDoc
+		response PairsTagged
+	}
+
+	post EchoZeroMember /enums/zero-member {
+		request  ZeroMember
+		response ZeroMember
+	}
+
+	post EchoWireDefaults /defaults/wire {
+		request  WireDefaults
+		response WireDefaults
+	}
+
+	post ValidatePromoted /pairs/promoted {
+		request  PromotedContact
+		response PromotedContact
+	}
+
+	post EchoCollidingNames /colliding-names {
+		request  CollidingNames
+		response CollidingNames
+	}
+
+	post EchoArrayDefaults /defaults/array {
+		request  ArrayDefaults
+		response ArrayDefaults
+	}
+
+	post EchoNilableNullable /nilable-nullable {
+		request  NilableNullable
+		response NilableNullable
+	}
+
+	post ValidateStacked /pairs/stacked {
+		request  PairsStacked
+		response PairsStacked
+	}
+
+	@errors(FieldRulesFailed)
+	post ValidateChannels /pairs/channels {
+		request  ContactChannels
+		response ContactChannels
+	}
+
+	post ValidateNotify /pairs/notify {
+		request  NotifyChannels
+		response NotifyChannels
+	}
+
+	post UploadNotify /pairs/notify/upload {
+		request  NotifyUpload
+		response NotifyChannels
 	}
 }

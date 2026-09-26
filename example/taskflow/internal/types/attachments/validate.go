@@ -4,11 +4,11 @@ package attachments
 
 import (
 	"fmt"
+	"mime"
 	"unicode/utf8"
 )
 
-// Validate checks every field-level constraint declared on Attachment.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Attachment) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -28,8 +28,7 @@ func (v *Attachment) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ListAttachmentsReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ListAttachmentsReq) Validate() error {
 	if err := v.PageParams.Validate(); err != nil {
 		return err
@@ -43,8 +42,7 @@ func (v *ListAttachmentsReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UploadAttachmentReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UploadAttachmentReq) Validate() error {
 	if err := v.ProjectID.Validate(); err != nil {
 		return fmt.Errorf("projectId: %w", err)
@@ -59,8 +57,8 @@ func (v *UploadAttachmentReq) Validate() error {
 		return fmt.Errorf("file: file size exceeds 10485760 bytes")
 	}
 	if v.File != nil {
-		switch v.File.Header.Get("Content-Type") {
-		case "image/png", "image/jpeg", "application/pdf", "text/plain":
+		switch _mt, _, _ := mime.ParseMediaType(v.File.Header.Get("Content-Type")); {
+		case _mt == "image/png", _mt == "image/jpeg", _mt == "application/pdf", _mt == "text/plain":
 		default:
 			return fmt.Errorf("file: disallowed content type")
 		}

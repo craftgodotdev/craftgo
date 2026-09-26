@@ -8,13 +8,14 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/x_refs_service"
-	shared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetThird returns the http.HandlerFunc for the
-// GET GetThird endpoint.
+// Pins a QUALIFIED request whose field reaches a THIRD package (xshared.XThirdReq.sev is shared.Severity). The xrefs handler casts shared.Severity(...), so the import collector must resolve the qualified request and pull in `shared` - else `undefined: shared`. Also pins an error (XMixinErr) whose body embeds a cross-package mixin, so the error emitter's import walk must collect xshared.
+//
+// GetThird returns the GET GetThird handler.
 func GetThird(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req xshared.XThirdReq
@@ -34,7 +35,6 @@ func GetThird(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

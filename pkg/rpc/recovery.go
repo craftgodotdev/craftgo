@@ -11,13 +11,17 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// Recovery converts a panic inside the handler into codes.Internal with an
-// opaque message while logging the value and the stack with the call's
-// trace context. [Server.GRPCServer] always installs it outermost, so it
-// also covers every interceptor added with Use.
+// Recovery answers a panic with codes.Internal and an opaque message, logging
+// the value and stack, with the call's trace ids, to logger. [Server] installs
+// it outermost.
 func Recovery(logger log.Logger) Interceptor {
+	return recovery(func() log.Logger { return logger })
+}
+
+// recovery is [Recovery] with the logger looked up when a panic is recovered.
+func recovery(logger func() log.Logger) Interceptor {
 	recovered := func(ctx context.Context, rec any) error {
-		logger.WithContext(ctx).Error("panic recovered",
+		logger().WithContext(ctx).Error("panic recovered",
 			log.Any("panic", rec),
 			log.String("stack", string(debug.Stack())),
 		)

@@ -1,14 +1,15 @@
 package main
 
 import (
+	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
 
-// greetProto is the gRPC half of a design: every streaming shape once.
+// greetProto is a proto service with one RPC of each streaming shape.
 const greetProto = `syntax = "proto3";
 
 package greet;
@@ -29,15 +30,13 @@ message HelloReply {
 }
 `
 
-// protoOnlyManifest turns the documents off: a design with no route has
-// no OpenAPI document worth serving.
+// protoOnlyManifest turns the OpenAPI document off.
 const protoOnlyManifest = `output:
   openapi: "-"
 `
 
-// grpcProject is a fresh project whose workspace names this repo and its
-// published modules, so the generated code resolves craftgo out of the
-// tree and `go tool` resolves the plugins the root go.mod pins.
+// grpcProject returns a fresh project whose go.work uses this repo and its
+// nested modules, so the generated code and `go tool` resolve from the tree.
 func grpcProject(t *testing.T) string {
 	t.Helper()
 	root := repoRoot(t)
@@ -47,34 +46,10 @@ func grpcProject(t *testing.T) string {
 	}
 	goVersion := goDirective(t, root)
 	mustWrite(t, dir, "go.mod", "module craftgo.test/grpcapp\n\ngo "+goVersion+"\n")
-	uses := []string{".", root}
-	for _, m := range repoModules {
-		uses = append(uses, filepath.Join(root, filepath.FromSlash(m)))
-	}
-	mustWrite(t, dir, "go.work", "go "+goVersion+"\n\nuse (\n\t"+strings.Join(uses, "\n\t")+"\n)\n")
+	writeWorkspace(t, dir, root, goVersion)
 	t.Setenv("GOWORK", filepath.Join(dir, "go.work"))
 	t.Setenv("GOFLAGS", "")
 	return dir
-}
-
-func genGRPC(t *testing.T, dir string) {
-	t.Helper()
-	if err := runGen([]string{"-f", filepath.Join(dir, "design"), "-c", dir}); err != nil {
-		t.Fatalf("runGen: %v", err)
-	}
-}
-
-// goCheck builds and vets the generated project inside its workspace.
-func goCheck(t *testing.T, dir string) {
-	t.Helper()
-	for _, args := range [][]string{{"build", "./..."}, {"vet", "./..."}} {
-		cmd := exec.Command("go", args...)
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GOWORK="+filepath.Join(dir, "go.work"), "GOFLAGS=")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("go %s: %v\n%s", args[0], err, out)
-		}
-	}
 }
 
 func mustContain(t *testing.T, dir, rel string, needles ...string) string {
@@ -91,14 +66,13 @@ func mustContain(t *testing.T, dir, rel string, needles ...string) string {
 	return string(body)
 }
 
-// A design of protos alone generates a gRPC service that compiles: the pb
-// code, the server layer, the logic stubs, the wiring and a main.go that
-// boots the gRPC listener alone.
+// TestRunGenProtoOnlyProjectCompiles checks that a proto-only design generates
+// a gRPC-only project that builds and regenerates unchanged.
 func TestRunGenProtoOnlyProjectCompiles(t *testing.T) {
 	dir := grpcProject(t)
 	mustWrite(t, dir, "design/craftgo.design.yaml", protoOnlyManifest)
 	mustWrite(t, dir, "design/greet/greet.proto", greetProto)
-	genGRPC(t, dir)
+	genProject(t, dir)
 
 	for _, rel := range []string{
 		"internal/pb/greet/greet.pb.go",
@@ -131,22 +105,21 @@ func TestRunGenProtoOnlyProjectCompiles(t *testing.T) {
 	mustContain(t, dir, "internal/wiring/grpc.go", "greetpb.RegisterGreeterServer(srv, greetergrpc.NewServer(svcCtx))")
 	goCheck(t, dir)
 
-	// A second run changes nothing: the plugins and the emitters are
-	// deterministic, and the scaffolds are left alone.
 	before := treeOf(t, dir)
-	genGRPC(t, dir)
-	if got := treeOf(t, dir); !sameTree(got, before) {
-		t.Errorf("a second run must change nothing:\nbefore %v\nafter  %v", keysOf(before), keysOf(got))
+	genProject(t, dir)
+	if got := treeOf(t, dir); !maps.Equal(got, before) {
+		t.Errorf("a second run must change nothing:\nbefore %v\nafter  %v", slices.Sorted(maps.Keys(before)), slices.Sorted(maps.Keys(got)))
 	}
 }
 
-// Routes and RPCs in one design boot both listeners from one main.go.
+// TestRunGenMixedProjectCompiles checks that a design with routes and RPCs
+// boots both listeners from one main.go and builds.
 func TestRunGenMixedProjectCompiles(t *testing.T) {
 	dir := grpcProject(t)
 	mustWrite(t, dir, "design/craftgo.design.yaml", routesOnlyManifest)
 	mustWrite(t, dir, "design/api.craftgo", routesOnlyDesign)
 	mustWrite(t, dir, "design/greet/greet.proto", greetProto)
-	genGRPC(t, dir)
+	genProject(t, dir)
 	mustContain(t, dir, "main.go", "wiring.Register(ctx, srv, svc)", "wiring.RegisterGRPC(ctx, grpcSrv, svc)", "srv.Start(cfg.Server.Addr)", "grpcSrv.Start(cfg.GRPC.Addr)")
 	if !exists(t, dir, "internal", "routes", "thing_service", "routes.go") || !exists(t, dir, "internal", "grpc", "greeter", "server.go") {
 		t.Error("both halves must be generated")
@@ -154,8 +127,35 @@ func TestRunGenMixedProjectCompiles(t *testing.T) {
 	goCheck(t, dir)
 }
 
-// A design folder with neither a .craftgo nor a .proto is nothing to
-// generate from.
+// TestGenSummaryCountsWhatTheRunWrites checks that the summary of a narrowed
+// run counts only the packages and gRPC services it writes output for.
+func TestGenSummaryCountsWhatTheRunWrites(t *testing.T) {
+	for _, c := range []struct {
+		manifest, want string
+	}{
+		{"", "craftgo: generated 1 package(s) under "},
+		{protoOnlyManifest, "craftgo: generated 0 package(s) under "},
+	} {
+		dir := t.TempDir()
+		mustWrite(t, dir, "go.mod", "module github.com/test/app\n\ngo 1.24\n")
+		mustWrite(t, dir, "design/craftgo.design.yaml", c.manifest)
+		mustWrite(t, dir, "design/api.craftgo", minimalDesignDSL)
+		mustWrite(t, dir, "design/greet/greet.proto", greetProto)
+		var err error
+		stdout, _ := captureOutput(t, func() {
+			err = runGen([]string{"--target", "docs", "-f", filepath.Join(dir, "design"), "-c", dir})
+		})
+		if err != nil {
+			t.Fatalf("runGen: %v", err)
+		}
+		if !strings.HasPrefix(stdout, c.want) {
+			t.Errorf("manifest %q: summary = %q, want it to start %q", c.manifest, stdout, c.want)
+		}
+	}
+}
+
+// TestRunGenRejectsAnEmptyDesign checks that gen fails on a design folder with
+// no .craftgo or .proto file.
 func TestRunGenRejectsAnEmptyDesign(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, dir, "go.mod", "module github.com/test/empty\n\ngo 1.24\n")
@@ -166,26 +166,25 @@ func TestRunGenRejectsAnEmptyDesign(t *testing.T) {
 	}
 }
 
-// Renaming a proto service (and its file) sweeps the server package and
-// the pb code of the old name; the logic stubs, being the user's, stay.
-func TestRenamedProtoServiceLeavesNothingBehind(t *testing.T) {
+// TestRenamedProtoServiceLeavesItsPBCodeAndStubs checks that renaming a proto service into
+// another directory sweeps its old server package; its logic stubs stay, and so does its pb
+// code, in a directory no design proto writes into any more.
+func TestRenamedProtoServiceLeavesItsPBCodeAndStubs(t *testing.T) {
 	dir := grpcProject(t)
 	mustWrite(t, dir, "design/craftgo.design.yaml", protoOnlyManifest)
 	mustWrite(t, dir, "design/greet/greet.proto", greetProto)
-	genGRPC(t, dir)
+	genProject(t, dir)
 
 	if err := os.Remove(filepath.Join(dir, "design", "greet", "greet.proto")); err != nil {
 		t.Fatal(err)
 	}
 	mustWrite(t, dir, "design/hello/hello.proto", strings.NewReplacer("package greet;", "package hello;", "service Greeter", "service Hello").Replace(greetProto))
-	genGRPC(t, dir)
+	genProject(t, dir)
 
-	for _, rel := range []string{"internal/grpc/greeter", "internal/pb/greet"} {
-		if exists(t, dir, filepath.FromSlash(rel)) {
-			t.Errorf("%s of the renamed service survived", rel)
-		}
+	if exists(t, dir, filepath.FromSlash("internal/grpc/greeter")) {
+		t.Error("internal/grpc/greeter of the renamed service survived")
 	}
-	for _, rel := range []string{"internal/grpc/hello/server.go", "internal/pb/hello/hello_grpc.pb.go", "internal/service/greeter/say_hello.go", "internal/service/hello/say_hello.go"} {
+	for _, rel := range []string{"internal/grpc/hello/server.go", "internal/pb/hello/hello_grpc.pb.go", "internal/pb/greet/greet_grpc.pb.go", "internal/service/greeter/say_hello.go", "internal/service/hello/say_hello.go"} {
 		if !exists(t, dir, filepath.FromSlash(rel)) {
 			t.Errorf("missing %s", rel)
 		}

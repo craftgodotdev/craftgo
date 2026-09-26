@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetTraced returns the http.HandlerFunc for the
-// GET GetTraced endpoint.
+// Pins a QUALIFIED cross-package RESPONSE with @header/@cookie (xshared.XHeaderResp). The handler must write w.Header().Set / http.SetCookie even though the response type is cross-package - else the values silently drop (json:"-") while OpenAPI advertises them.
+//
+// GetTraced returns the GET GetTraced handler.
 func GetTraced(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XGetReq
@@ -30,7 +31,6 @@ func GetTraced(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		w.Header().Set("X-Trace-Id", resp.Trace)
 		http.SetCookie(w, &http.Cookie{Name: "xs-session", Value: resp.Sess})
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

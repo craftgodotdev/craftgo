@@ -1,12 +1,13 @@
 package semantic
 
-import "testing"
+import (
+	"testing"
 
-// TestDeclCollisionTypeVsErrorErr pins the canonical case: `type
-// FooErr` competes with the `<Name>Err` struct that codegen emits
-// for `error Conflict Foo`. Both end up emitting `type FooErr` in
-// the same Go package - a hard compile failure caught at the
-// design layer before `go build` discovers it.
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/parser"
+)
+
+// A type named FooErr collides with the struct generated for `error Conflict Foo`.
 func TestDeclCollisionTypeVsErrorErr(t *testing.T) {
 	d := expectError(t, `package x
 type FooErr { code string }
@@ -14,9 +15,7 @@ error Conflict Foo { reason string }`, CodeDeclGoNameCollision)
 	expectMessage(t, d, "FooErr")
 }
 
-// TestDeclCollisionTypeVsErrorBody pins the body-side collision:
-// when an error decl carries a body, codegen also emits `<Name>Body`,
-// so `type FooBody` clashes with `error Conflict Foo { reason string }`.
+// A type named FooBody collides with the body struct of an error Foo that has a body.
 func TestDeclCollisionTypeVsErrorBody(t *testing.T) {
 	d := expectError(t, `package x
 type FooBody { extra string }
@@ -24,31 +23,21 @@ error Conflict Foo { reason string }`, CodeDeclGoNameCollision)
 	expectMessage(t, d, "FooBody")
 }
 
-// TestDeclCollisionMiddlewareSeparatePackage confirms the namespace
-// split: middleware aliases live in svccontext (not the types
-// package), so `type AuthMiddleware` and `middleware Auth` do NOT
-// collide despite the suffix-mangling.
+// A type named AuthMiddleware does not collide with `middleware Auth`.
 func TestDeclCollisionMiddlewareSeparatePackage(t *testing.T) {
-	expectClean(t, `package x
+	mustClean(t, `package x
 type AuthMiddleware { token string }
 middleware Auth`)
 }
 
-// TestDeclCollisionErrorWithoutBodySkipsBodyEmit confirms the body
-// suffix is only counted when the error actually has a body -
-// `error Foo` (bodyless) emits only `FooErr`, so `type FooBody`
-// next to it is benign.
+// A type named FooBody beside a body-less error Foo is accepted.
 func TestDeclCollisionErrorWithoutBodySkipsBodyEmit(t *testing.T) {
-	expectClean(t, `package x
+	mustClean(t, `package x
 type FooBody { extra string }
 error NotFound Foo`)
 }
 
-// TestDeclCollisionEnumScalarSameName pins that two decls with the
-// same DSL name still error - either via [CodeDuplicateDecl] (the
-// older shared-namespace check) or [CodeDeclGoNameCollision] (the
-// suffix-mangled check). Either signal is acceptable for the user;
-// the contract is just "you cannot declare both".
+// A type and an enum of one name are rejected.
 func TestDeclCollisionEnumScalarSameName(t *testing.T) {
 	_, diags := Analyze(parseFiles(t, `package x
 type Foo { id string }
@@ -58,13 +47,71 @@ enum Foo { Red Blue }`))
 	}
 }
 
-// TestDeclCollisionNoFalsePositive confirms a clean project with
-// distinct names produces no collision diagnostic.
+// Every Go identifier an error, an enum value or an event emits collides
+// with a declaration of that name.
+func TestDeclCollisionEmittedNames(t *testing.T) {
+	for _, c := range []struct{ label, src, emitted, role string }{
+		{"error code constant", "error NotFound UserGone\ntype ErrCodeUserGone { a string }", "ErrCodeUserGone", "its code constant"},
+		{"error constructor", "error Conflict Taken\ntype NewTakenErr { a string }", "NewTakenErr", "its constructor"},
+		{"error type named like its suffix", "error Conflict DupError\ntype DupError { a string }", "DupError", "its type"},
+		{"enum value constant", "enum Status { Active = \"a\" }\ntype StatusActive { a string }", "StatusActive", "its constant"},
+		{"deduplicated enum value constant", "enum Status { Active  active }\nscalar StatusActive_2 string", "StatusActive_2", "its constant"},
+		{"event contract constant", "type P { a string }\nevent Foo { payload P }\nevent FooContract { payload P }", "FooContract", "its contract constant"},
+	} {
+		t.Run(c.label, func(t *testing.T) {
+			d := expectError(t, "package x\n"+c.src, CodeDeclGoNameCollision)
+			expectMessage(t, d, `"`+c.emitted+`"`, c.role)
+		})
+	}
+}
+
+// An error whose body holds only a comment emits no body struct.
+func TestDeclCollisionCommentOnlyErrorBody(t *testing.T) {
+	mustClean(t, `package x
+error Conflict Noted {
+    // a note
+}
+type NotedBody { d string }`)
+}
+
+// The first emitter across files is the one declared first by file, then offset.
+func TestDeclCollisionFirstAcrossFiles(t *testing.T) {
+	a := parser.New("a.craftgo", "package x\n\n\n\ntype FooErr { a string }").Parse()
+	b := parser.New("b.craftgo", "package x\nerror Conflict Foo").Parse()
+	_, diags := AnalyzeProject([]*ast.File{b, a}, Options{})
+	d := findCode(diags, CodeDeclGoNameCollision)
+	if d == nil || d.Pos.Filename != "b.craftgo" || len(d.Related) != 1 || d.Related[0].Pos.Filename != "a.craftgo" {
+		t.Fatalf("want the error in b.craftgo reported against the type in a.craftgo, got %v", diags)
+	}
+}
+
+// A declaration the parser left without a name or a primitive, after its
+// parse error, draws no semantic diagnostic of its own.
+func TestNamelessDeclsAfterAParseError(t *testing.T) {
+	for _, src := range []string{"package x\ntype {}\ntype {}\n", "package x\nscalar\nscalar\n", "package x\nenum {}\nerror {\n", "package x\nscalar S\n"} {
+		f := parser.New("t.craftgo", src).Parse()
+		if _, diags := Analyze([]*ast.File{f}); len(diags) != 0 {
+			t.Errorf("%q: want no semantic diagnostic, got %v", src, diags)
+		}
+	}
+}
+
+// Distinct declaration names produce no collision.
 func TestDeclCollisionNoFalsePositive(t *testing.T) {
-	expectClean(t, `package x
+	mustClean(t, `package x
 type User { id string }
 error NotFound UserMissing { reason string }
 enum Role { Admin User_ }
 scalar UserID string
 middleware Auth`)
+}
+
+// A middleware named like a field ServiceContext declares itself is
+// rejected: that field hides the middleware's.
+func TestMiddlewareNamedLikeAServiceContextField(t *testing.T) {
+	for _, name := range []string{"Config", "Middlewares"} {
+		d := expectError(t, "package app\nmiddleware "+name, CodeDeclGoNameCollision)
+		expectMessage(t, d, name, "ServiceContext")
+	}
+	mustClean(t, "package app\nmiddleware Configured\nmiddleware Auth")
 }

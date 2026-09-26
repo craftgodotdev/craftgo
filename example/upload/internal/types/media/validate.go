@@ -4,13 +4,13 @@ package media
 
 import (
 	"fmt"
+	"mime"
 	"net/url"
 	"time"
 	"unicode/utf8"
 )
 
-// Validate checks every field-level constraint declared on CreateGalleryReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CreateGalleryReq) Validate() error {
 	if l := utf8.RuneCountInString(v.AlbumID); l < 1 || l > 64 {
 		return fmt.Errorf("albumId: length out of range [1, 64]")
@@ -25,8 +25,8 @@ func (v *CreateGalleryReq) Validate() error {
 		return fmt.Errorf("cover: file size exceeds 5242880 bytes")
 	}
 	if v.Cover != nil {
-		switch v.Cover.Header.Get("Content-Type") {
-		case "image/png", "image/jpeg", "image/webp":
+		switch _mt, _, _ := mime.ParseMediaType(v.Cover.Header.Get("Content-Type")); {
+		case _mt == "image/png", _mt == "image/jpeg", _mt == "image/webp":
 		default:
 			return fmt.Errorf("cover: disallowed content type")
 		}
@@ -52,8 +52,7 @@ func (v *CreateGalleryReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Gallery.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Gallery) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -78,12 +77,12 @@ func (v *Gallery) Validate() error {
 	}
 	if v.Cover != nil {
 		if err := v.Cover.Validate(); err != nil {
-			return err
+			return fmt.Errorf("cover: %w", err)
 		}
 	}
 	for i0 := range v.Photos {
 		if err := v.Photos[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("photos: %w", err)
 		}
 	}
 	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {
@@ -92,8 +91,7 @@ func (v *Gallery) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GalleryPhoto.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GalleryPhoto) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -104,7 +102,7 @@ func (v *GalleryPhoto) Validate() error {
 	if v.SizeBytes < 0 {
 		return fmt.Errorf("sizeBytes: below minimum 0")
 	}
-	if l := utf8.RuneCountInString(v.Sha256); l < 64 || l > 64 {
+	if utf8.RuneCountInString(v.Sha256) != 64 {
 		return fmt.Errorf("sha256: length must be 64")
 	}
 	if l := utf8.RuneCountInString(v.MimeType); l < 1 || l > 128 {
@@ -113,8 +111,7 @@ func (v *GalleryPhoto) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GetMediaReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GetMediaReq) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -122,14 +119,12 @@ func (v *GetMediaReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on OkResp.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *OkResp) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UploadAttachmentReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UploadAttachmentReq) Validate() error {
 	if l := utf8.RuneCountInString(v.NoteID); l < 1 || l > 64 {
 		return fmt.Errorf("noteId: length out of range [1, 64]")
@@ -141,8 +136,8 @@ func (v *UploadAttachmentReq) Validate() error {
 		return fmt.Errorf("blob: file size exceeds 512000 bytes")
 	}
 	if v.Blob != nil {
-		switch v.Blob.Header.Get("Content-Type") {
-		case "image/png", "text/plain", "application/json":
+		switch _mt, _, _ := mime.ParseMediaType(v.Blob.Header.Get("Content-Type")); {
+		case _mt == "image/png", _mt == "text/plain", _mt == "application/json":
 		default:
 			return fmt.Errorf("blob: disallowed content type")
 		}
@@ -150,8 +145,7 @@ func (v *UploadAttachmentReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UploadAvatarReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UploadAvatarReq) Validate() error {
 	if l := utf8.RuneCountInString(v.UserID); l < 1 || l > 64 {
 		return fmt.Errorf("userId: length out of range [1, 64]")
@@ -163,8 +157,8 @@ func (v *UploadAvatarReq) Validate() error {
 		return fmt.Errorf("image: file size exceeds 5242880 bytes")
 	}
 	if v.Image != nil {
-		switch v.Image.Header.Get("Content-Type") {
-		case "image/png", "image/jpeg", "image/webp":
+		switch _mt, _, _ := mime.ParseMediaType(v.Image.Header.Get("Content-Type")); {
+		case _mt == "image/png", _mt == "image/jpeg", _mt == "image/webp":
 		default:
 			return fmt.Errorf("image: disallowed content type")
 		}
@@ -172,8 +166,7 @@ func (v *UploadAvatarReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UploadDocumentReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UploadDocumentReq) Validate() error {
 	if v.PDF == nil {
 		return fmt.Errorf("pdf: required")
@@ -182,8 +175,8 @@ func (v *UploadDocumentReq) Validate() error {
 		return fmt.Errorf("pdf: file size exceeds 52428800 bytes")
 	}
 	if v.PDF != nil {
-		switch v.PDF.Header.Get("Content-Type") {
-		case "application/pdf":
+		switch _mt, _, _ := mime.ParseMediaType(v.PDF.Header.Get("Content-Type")); {
+		case _mt == "application/pdf":
 		default:
 			return fmt.Errorf("pdf: disallowed content type")
 		}
@@ -197,8 +190,7 @@ func (v *UploadDocumentReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on UploadResult.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *UploadResult) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -212,7 +204,7 @@ func (v *UploadResult) Validate() error {
 	if v.SizeBytes < 0 {
 		return fmt.Errorf("sizeBytes: below minimum 0")
 	}
-	if l := utf8.RuneCountInString(v.Sha256); l < 64 || l > 64 {
+	if utf8.RuneCountInString(v.Sha256) != 64 {
 		return fmt.Errorf("sha256: length must be 64")
 	}
 	if l := utf8.RuneCountInString(v.MimeType); l < 1 || l > 128 {
@@ -224,13 +216,12 @@ func (v *UploadResult) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Visibility.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Visibility) Validate() error {
 	switch v {
 	case VisibilityPrivate, VisibilityUnlisted, VisibilityPublic:
 	default:
-		return fmt.Errorf("invalid Visibility value")
+		return fmt.Errorf("must be one of [private unlisted public]")
 	}
 	return nil
 }

@@ -1,81 +1,41 @@
-// Per-declaration print methods + type-ref rendering.
 package format
 
 import (
-	"bytes"
 	"strconv"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/route"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 func (p *Printer) TypeDecl(d *ast.TypeDecl) {
-	p.Doc(d.Doc)
+	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
 	p.declDecorators(d.Decorators, d.Pos.Line)
-	p.indent()
-	p.write("type ")
-	p.write(d.Name)
+	p.line(d.Pos.Line)
+	p.write("type")
+	name := d.Name
 	if len(d.TypeParams) > 0 {
-		p.write("<")
-		for i, tp := range d.TypeParams {
-			if i > 0 {
-				p.write(", ")
-			}
-			p.write(tp)
-		}
-		p.write(">")
+		name += "<" + strings.Join(d.TypeParams, ", ") + ">"
 	}
+	p.header(d.Pos, name)
 	p.write(" {")
-	p.nl()
+	p.endCode()
 	p.depth++
 	p.printTypeBody(d.Body)
 	p.depth--
-	p.indent()
+	p.closeBrace(d.EndPos.Line)
+}
+
+// closeBrace prints the `}` on source line src.
+func (p *Printer) closeBrace(src int) {
+	p.line(src)
 	p.write("}")
-	p.writeTrailing(d.TrailingDoc)
-	p.nl()
+	p.endCode()
 }
 
-// writeTrailing emits a `// note` after the just-written close brace
-// when the decl carries a trailing doc captured by the parser. The AST
-// holds []string for symmetry with Doc; multiple lines are joined with
-// a single space.
-func (p *Printer) writeTrailing(td []string) {
-	if len(td) == 0 {
-		return
-	}
-	p.write("  // ")
-	p.write(strings.Join(td, " "))
-}
-
-// writeSourceTrailing emits the trailing `// comment` captured from the
-// source line, but ONLY when no decorator on the same line already
-// emitted it via its own TrailingDoc. The lexer attaches a line-trailing
-// comment to BOTH the last decorator's TrailingDoc AND the source line
-// map (p.trailing), so a decl that prints its decorators suppresses the
-// map copy here to keep the comment from being written twice. All three
-// decorated print sites (fields, enum values, scalars) route through
-// here.
-func (p *Printer) writeSourceTrailing(line int, decoratorCarriesTrailing bool) {
-	if decoratorCarriesTrailing {
-		return
-	}
-	if c, ok := p.trailing[line]; ok {
-		p.write(" // ")
-		p.write(c)
-	}
-}
-
-// printTypeBody prints a slice of TypeMember with column-aligned fields.
-// Mixins are printed un-aligned on their own lines. Doc lines that the
-// parser misattributed (i.e. trailing comments on the previous field's
-// source line) are filtered out and re-emitted as trailing comments on
-// the correct field - this avoids losing them and avoids printing them
-// in the wrong place.
-//
-// Blank-line grouping is preserved from the source: a member (or free
-// comment) separated from the previous one by one or more blank lines
-// keeps exactly one blank line in the output.
+// printTypeBody prints body with fields aligned in name and type columns,
+// keeping one blank line wherever the source had blank lines.
 func (p *Printer) printTypeBody(body []ast.TypeMember) {
 	maxName, maxType := 0, 0
 	typeStr := make(map[*ast.Field]string, len(body))
@@ -84,15 +44,8 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 			if n := len(f.Name); n > maxName {
 				maxName = n
 			}
-			ts := p.typeRefString(f.Type)
-			// Auto-fix: a field carrying `@default(...)` is conceptually
-			// optional - the default fires when the value is absent or null.
-			// If the author hasn't typed `?`, the formatter adds it on save so
-			// the source makes the optionality explicit. A `@path` field is
-			// exempt: a path segment is always present, so the semantic gate
-			// rejects an optional `@path`, and adding `?` would rewrite valid
-			// source into source `craftgo gen` refuses.
-			if f.Type != nil && !f.Type.Optional && fieldHasDefault(f) && !ast.HasDecorator(f.Decorators, "path") {
+			ts := f.Type.String()
+			if semantic.DefaultNeedsOptional(f) {
 				ts += "?"
 			}
 			typeStr[f] = ts
@@ -107,14 +60,14 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 		case *ast.Field:
 			p.blankBetween(prevEnd, memberStartLine(v.Pos.Line, v.Decorators, len(v.Doc)))
 			p.alignedField(v, maxName, maxType, typeStr[v])
-			prevEnd = v.Pos.Line
+			prevEnd = p.src.memberEndLine(p.src.typeEnd(v.Type), v.Decorators)
 		case *ast.Mixin:
 			p.blankBetween(prevEnd, v.Pos.Line-len(v.Doc))
-			p.printLeadingDoc(v.Doc, v.Pos.Line)
-			p.indent()
-			p.NamedTypeRef(v.Ref)
-			p.nl()
-			prevEnd = v.Pos.Line
+			p.comments(v.Pos.Line, v.Doc)
+			p.line(v.Pos.Line)
+			p.write(v.Ref.String())
+			p.endCode()
+			prevEnd = p.src.namedEnd(v.Ref).Pos.Line
 		case *ast.FreeComment:
 			p.blankBetween(prevEnd, v.Pos.Line)
 			p.printFreeComment(v)
@@ -123,20 +76,16 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 	}
 }
 
-// blankBetween emits a single blank line when the source had one or more
-// blank lines between a construct ending on line prevEnd and the next one
-// starting on line start. Collapses runs of blanks to one; never emits a
-// blank before the first member (prevEnd == 0) or when position info is
-// missing (hand-built ASTs carry zero positions).
+// blankBetween writes one blank line where [Printer.blankBefore] puts one; a
+// zero line (first member, or no position) writes none.
 func (p *Printer) blankBetween(prevEnd, start int) {
-	if prevEnd > 0 && start > prevEnd+1 {
-		p.nl()
+	if p.blankBefore(prevEnd, start) {
+		p.blank(start)
 	}
 }
 
-// memberStartLine returns the first source line a member visually occupies:
-// its own line, adjusted upward for a leading decorator rendered above it
-// and for its doc block (always directly above the first token).
+// memberStartLine returns the first source line of a member: its first
+// decorator's line when that is above pos, less the doc lines.
 func memberStartLine(pos int, decs []*ast.Decorator, docLen int) int {
 	if len(decs) > 0 && decs[0].Pos.Line > 0 && decs[0].Pos.Line < pos {
 		pos = decs[0].Pos.Line
@@ -144,108 +93,43 @@ func memberStartLine(pos int, decs []*ast.Decorator, docLen int) int {
 	return pos - docLen
 }
 
-// fieldHasDefault reports whether f carries a `@default(...)` decorator.
-// The type-body printer uses it to auto-add `?` to the rendered type when
-// the author hasn't marked the field optional, since `@default` makes the
-// field optional (the default fires on an absent or null value).
-func fieldHasDefault(f *ast.Field) bool {
-	return f != nil && ast.HasDecorator(f.Decorators, "default")
-}
-
-// typeRefString renders a TypeRef to a string by reusing the printer.
-func (p *Printer) typeRefString(t *ast.TypeRef) string {
-	var buf bytes.Buffer
-	sub := &Printer{w: &buf}
-	sub.TypeRef(t)
-	return buf.String()
-}
-
-// alignedField prints a single Field padded to share columns with its
-// siblings. Decorators and the optional trailing comment follow the
-// padded type column.
+// alignedField prints f's doc, then f on one line padded to the maxName and
+// maxType columns. Decorators above or after f join its line unless a comment
+// pins them to their own lines.
 func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
-	p.printFieldDoc(f)
-	p.indent()
+	start := memberStartLine(f.Pos.Line, f.Decorators, 0)
+	p.comments(start, f.Doc)
+	decs := f.Decorators
+	if lead := leadingChain(decs, f.Pos.Line); len(lead) > 0 && p.chainCommented(lead[0].Pos.Line, f.Pos.Line) {
+		p.declDecorators(lead, f.Pos.Line)
+		decs, start = decs[len(lead):], f.Pos.Line
+	}
+	p.line(start)
 	p.write(f.Name)
 	p.write(strings.Repeat(" ", maxName-len(f.Name)+1))
 	p.write(ts)
-	var decTrailing []string
-	if len(f.Decorators) > 0 {
-		p.write(strings.Repeat(" ", maxType-len(ts)+1))
-		for i, dec := range f.Decorators {
-			if i > 0 {
-				p.write(" ")
-			}
-			// Render WITHOUT the inline trailing so a comment on a non-last
-			// decorator does not swallow the decorators that follow it on the
-			// collapsed line; collect it to re-emit at the end instead.
-			p.decoratorCore(dec)
-			if dec.TrailingDoc != "" {
-				decTrailing = append(decTrailing, dec.TrailingDoc)
-			}
-		}
-	}
-	if len(decTrailing) > 0 {
-		p.write("  // ")
-		p.write(strings.Join(decTrailing, " "))
-	} else {
-		p.writeSourceTrailing(f.Pos.Line, false)
-	}
-	p.nl()
+	p.trailingDecorators(decs, f.Pos.Line, strings.Repeat(" ", maxType-len(ts)+1))
+	p.endCode()
 }
 
-// printFieldDoc emits the field's leading doc comments, filtering out
-// any line the lexer actually picked up from the previous field's
-// trailing `//`. The lexer attaches every contiguous `//` block above
-// a token to that token's Doc - so when a field above ends with a
-// trailing comment AND the field below has its own leading block, the
-// trailing line ends up at the FRONT of the field-below's Doc. Without
-// this filter the trailing would be re-emitted as a leading comment on
-// the wrong field.
-//
-// The preceding field's printer pulls its trailing text from
-// p.trailing (built in [buildTrailingFromComments]), so dropping the
-// misattributed entry here does not lose information - it lands on
-// the correct field by way of the trailing map.
-func (p *Printer) printFieldDoc(f *ast.Field) {
-	p.printLeadingDoc(f.Doc, f.Pos.Line)
-}
-
-// printLeadingDoc emits a body member's leading doc comments (a field's or an
-// enum value's), filtering out any line the lexer misattributed from the
-// previous member's trailing `//`. The lexer attaches every contiguous `//`
-// block above a token to that token's Doc, so a trailing comment on the member
-// above lands at the FRONT of this member's Doc; those lines are re-emitted
-// from p.trailing on the correct member, so dropping them here loses nothing.
-// posLine is the member's source line; the Doc lines occupy the |Doc|-many
-// source lines immediately above it.
-func (p *Printer) printLeadingDoc(doc []string, posLine int) {
-	if len(doc) == 0 {
-		return
-	}
-	if p.trailing == nil {
-		p.Doc(doc)
-		return
-	}
-	keep := make([]string, 0, len(doc))
-	for i, line := range doc {
-		srcLine := posLine - len(doc) + i
-		if _, hit := p.trailing[srcLine]; hit {
-			continue
+// inlineDecorators writes decs on the current line, separated by spaces.
+func (p *Printer) inlineDecorators(decs []*ast.Decorator) {
+	for i, d := range decs {
+		if i > 0 {
+			p.write(" ")
 		}
-		keep = append(keep, line)
+		p.Decorator(d)
 	}
-	p.Doc(keep)
 }
 
 func (p *Printer) EnumDecl(d *ast.EnumDecl) {
-	p.Doc(d.Doc)
+	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
 	p.declDecorators(d.Decorators, d.Pos.Line)
-	p.indent()
-	p.write("enum ")
-	p.write(d.Name)
+	p.line(d.Pos.Line)
+	p.write("enum")
+	p.header(d.Pos, d.Name)
 	p.write(" {")
-	p.nl()
+	p.endCode()
 	p.depth++
 	maxName := 0
 	for _, m := range d.Members {
@@ -261,7 +145,7 @@ func (p *Printer) EnumDecl(d *ast.EnumDecl) {
 		case *ast.EnumValue:
 			p.blankBetween(prevEnd, v.Pos.Line-len(v.Doc))
 			p.EnumValue(v, maxName)
-			prevEnd = v.Pos.Line
+			prevEnd = p.src.memberEndLine(p.src.valueEnd(v), v.Decorators)
 		case *ast.FreeComment:
 			p.blankBetween(prevEnd, v.Pos.Line)
 			p.printFreeComment(v)
@@ -269,15 +153,12 @@ func (p *Printer) EnumDecl(d *ast.EnumDecl) {
 		}
 	}
 	p.depth--
-	p.indent()
-	p.write("}")
-	p.writeTrailing(d.TrailingDoc)
-	p.nl()
+	p.closeBrace(d.EndPos.Line)
 }
 
 func (p *Printer) EnumValue(v *ast.EnumValue, maxName int) {
-	p.printLeadingDoc(v.Doc, v.Pos.Line)
-	p.indent()
+	p.comments(v.Pos.Line, v.Doc)
+	p.line(v.Pos.Line)
 	p.write(v.Name)
 	switch v.Kind {
 	case ast.EnumInt:
@@ -287,87 +168,74 @@ func (p *Printer) EnumValue(v *ast.EnumValue, maxName int) {
 	case ast.EnumString:
 		p.write(strings.Repeat(" ", maxName-len(v.Name)+1))
 		p.write("= ")
-		p.write(strconv.Quote(v.StrValue))
+		p.write(v.StrText)
 	}
-	decoratorCarriesTrailing := false
-	for _, dec := range v.Decorators {
-		p.write(" ")
-		p.Decorator(dec)
-		if dec.TrailingDoc != "" {
-			decoratorCarriesTrailing = true
-		}
-	}
-	p.writeSourceTrailing(v.Pos.Line, decoratorCarriesTrailing)
-	p.nl()
+	p.trailingDecorators(v.Decorators, v.Pos.Line, " ")
+	p.endCode()
 }
 
 func (p *Printer) ErrorDecl(d *ast.ErrorDecl) {
-	p.Doc(d.Doc)
+	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
 	p.declDecorators(d.Decorators, d.Pos.Line)
-	p.indent()
-	p.write("error ")
-	p.write(d.Category)
-	p.write(" ")
-	p.write(d.Name)
+	p.line(d.Pos.Line)
+	p.write("error")
+	p.header(d.Pos, d.Category, d.Name)
 	if !d.HasBody {
-		p.nl()
+		p.endCode()
 		return
 	}
 	p.write(" {")
-	p.nl()
+	p.endCode()
 	p.depth++
 	p.printTypeBody(d.Body)
 	p.depth--
-	p.indent()
-	p.write("}")
-	p.writeTrailing(d.TrailingDoc)
-	p.nl()
+	p.closeBrace(d.EndPos.Line)
 }
 
+// ScalarDecl prints `scalar Name primitive` with its decorators on the line;
+// a chain above the keyword keeps its lines when a comment pins it.
 func (p *Printer) ScalarDecl(d *ast.ScalarDecl) {
-	p.Doc(d.Doc)
-	p.indent()
-	p.write("scalar ")
-	p.write(d.Name)
-	p.write(" ")
-	p.write(d.Primitive)
-	decoratorCarriesTrailing := false
-	for _, dec := range d.Decorators {
-		p.write(" ")
-		p.Decorator(dec)
-		if dec.TrailingDoc != "" {
-			decoratorCarriesTrailing = true
-		}
+	start := memberStartLine(d.Pos.Line, d.Decorators, 0)
+	p.comments(start, p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
+	decs := d.Decorators
+	if lead := leadingChain(decs, d.Pos.Line); len(lead) > 0 && p.chainCommented(lead[0].Pos.Line, d.Pos.Line) {
+		p.declDecorators(lead, d.Pos.Line)
+		decs, start = decs[len(lead):], d.Pos.Line
 	}
-	p.writeSourceTrailing(d.Pos.Line, decoratorCarriesTrailing)
-	p.nl()
+	p.line(start)
+	p.write("scalar")
+	p.header(d.Pos, d.Name, d.Primitive)
+	if len(decs) > 0 {
+		p.write(" ")
+		p.inlineDecorators(decs)
+	}
+	p.endCode()
 }
 
 func (p *Printer) MiddlewareDecl(d *ast.MiddlewareDecl) {
-	p.Doc(d.Doc)
+	p.comments(memberStartLine(d.Pos.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
 	p.declDecorators(d.Decorators, d.Pos.Line)
-	p.indent()
-	p.write("middleware ")
-	p.write(d.Name)
-	p.nl()
+	p.line(d.Pos.Line)
+	p.write("middleware")
+	p.header(d.Pos, d.Name)
+	p.endCode()
 }
 
 func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
-	p.Doc(d.Doc)
-	p.declDecorators(d.Decorators, d.Pos.Line)
-	p.indent()
+	kw := p.src.keyword(d)
+	p.comments(memberStartLine(kw.Line, d.Decorators, 0), p.docAboveDecorators(d.Doc, d.Decorators, kw.Line))
+	p.declDecorators(d.Decorators, kw.Line)
+	p.line(kw.Line)
 	if d.Extend {
-		p.write("extend service ")
+		p.write("extend")
+		p.header(kw, "service", d.Name)
 	} else {
-		p.write("service ")
+		p.write("service")
+		p.header(kw, d.Name)
 	}
-	p.write(d.Name)
 	p.write(" {")
-	p.nl()
+	p.endCode()
 	p.depth++
-	// Blank-line policy: preserve the source grouping when positions are
-	// known; hand-built ASTs (zero positions) keep the legacy one-blank-
-	// between-members shape.
 	printedAny := false
 	prevEnd := 0
 	for _, member := range d.Members {
@@ -384,16 +252,11 @@ func (p *Printer) ServiceDecl(d *ast.ServiceDecl) {
 		}
 	}
 	p.depth--
-	p.indent()
-	p.write("}")
-	p.writeTrailing(d.TrailingDoc)
-	p.nl()
+	p.closeBrace(d.EndPos.Line)
 }
 
-// serviceMemberGap emits the blank line between two service-body members.
-// With position info the source grouping wins (one or more blank source
-// lines → exactly one blank); without it (hand-built ASTs) every pair of
-// members keeps the legacy single blank separator.
+// serviceMemberGap separates service members as the source did, or by one
+// blank line when positions are missing.
 func (p *Printer) serviceMemberGap(printedAny bool, prevEnd, start int) {
 	if !printedAny {
 		return
@@ -402,11 +265,10 @@ func (p *Printer) serviceMemberGap(printedAny bool, prevEnd, start int) {
 		p.blankBetween(prevEnd, start)
 		return
 	}
-	p.nl()
+	p.blank(start)
 }
 
-// endOrStart returns end, falling back to start for a hand-built AST that
-// carries no closing-brace position.
+// endOrStart returns end, or start when end is 0 (no closing-brace position).
 func endOrStart(end, start int) int {
 	if end == 0 {
 		return start
@@ -414,32 +276,26 @@ func endOrStart(end, start int) int {
 	return end
 }
 
-// memberClause is one `<keyword> <TypeRef>` line inside a service member
-// body. Keyword carries its own trailing padding so a method's request /
-// response pair stays column-aligned.
+// memberClause is one `<keyword> <type>` line of a method or event body;
+// keyword carries the padding that aligns the type column.
 type memberClause struct {
 	keyword string
 	line    int
 	ref     *ast.NamedTypeRef
-	// array prints the `[]` suffix an event payload may carry. A method
-	// clause never sets it - `request`/`response` refuse the suffix.
-	array bool
+	array   bool // an event payload's `[]` suffix
 }
 
-// memberBody prints the `{ ... }` of a service member: the clause lines
-// with free-floating body comments interleaved by source position, then
-// the closing brace and its trailing note. A body with nothing in it
-// renders as `{}` - the grammar always writes the braces, so round-trip
-// parity needs the empty literal.
-func (p *Printer) memberBody(clauses []memberClause, comments []*ast.FreeComment, trailing []string) {
-	if len(clauses) == 0 && len(comments) == 0 {
+// memberBody prints a method or event body closed on source line end: clauses
+// and free comments in source order, then the closing brace; an empty body
+// prints as `{}` unless a comment trails one of its lines above the `}`.
+func (p *Printer) memberBody(clauses []memberClause, comments []*ast.FreeComment, end int) {
+	if len(clauses) == 0 && len(comments) == 0 && !p.trailingBefore(0, end) {
 		p.write(" {}")
-		p.writeTrailing(trailing)
-		p.nl()
+		p.endCode()
 		return
 	}
 	p.write(" {")
-	p.nl()
+	p.endCode()
 	p.depth++
 	prevEnd := 0
 	flushBefore := func(line int) {
@@ -454,35 +310,30 @@ func (p *Printer) memberBody(clauses []memberClause, comments []*ast.FreeComment
 	for _, cl := range clauses {
 		flushBefore(cl.line)
 		p.blankBetween(prevEnd, cl.line)
-		p.indent()
+		p.line(cl.line)
 		p.write(cl.keyword)
-		p.NamedTypeRef(cl.ref)
+		p.write(cl.ref.String())
 		if cl.array {
 			p.write("[]")
 		}
-		p.writeSourceTrailing(cl.line, false)
-		p.nl()
-		prevEnd = cl.line
+		p.endCode()
+		prevEnd = p.src.clauseEnd(cl.ref, cl.array).Pos.Line
 	}
 	flushBefore(0)
 	p.depth--
-	p.indent()
-	p.write("}")
-	p.writeTrailing(trailing)
-	p.nl()
+	p.closeBrace(end)
 }
 
 func (p *Printer) Method(m *ast.Method) {
-	p.Doc(m.Doc)
+	p.comments(memberStartLine(m.Pos.Line, m.Decorators, 0), m.Doc)
 	p.declDecorators(m.Decorators, m.Pos.Line)
-	p.indent()
+	p.line(m.Pos.Line)
 	p.write(m.Verb)
-	p.write(" ")
-	p.write(m.Name)
+	words := []string{m.Name}
 	if m.Path != nil {
-		p.write(" ")
-		p.Path(m.Path)
+		words = append(words, route.PathString(m.Path))
 	}
+	p.header(m.Pos, words...)
 	var clauses []memberClause
 	if m.Request != nil {
 		clauses = append(clauses, memberClause{keyword: "request  ", line: m.Request.Pos.Line, ref: m.Request})
@@ -490,91 +341,18 @@ func (p *Printer) Method(m *ast.Method) {
 	if m.Response != nil {
 		clauses = append(clauses, memberClause{keyword: "response ", line: m.Response.Pos.Line, ref: m.Response.Type})
 	}
-	p.memberBody(clauses, m.BodyComments, m.TrailingDoc)
+	p.memberBody(clauses, m.BodyComments, m.EndPos.Line)
 }
 
 func (p *Printer) EventDecl(e *ast.EventDecl) {
-	p.Doc(e.Doc)
+	p.comments(memberStartLine(e.Pos.Line, e.Decorators, 0), p.docAboveDecorators(e.Doc, e.Decorators, e.Pos.Line))
 	p.declDecorators(e.Decorators, e.Pos.Line)
-	p.indent()
-	p.write("event ")
-	p.write(e.Name)
+	p.line(e.Pos.Line)
+	p.write("event")
+	p.header(e.Pos, e.Name)
 	var clauses []memberClause
 	if e.Payload != nil {
 		clauses = append(clauses, memberClause{keyword: "payload ", line: e.Payload.Pos.Line, ref: e.Payload.Type, array: e.Payload.Array})
 	}
-	p.memberBody(clauses, e.BodyComments, e.TrailingDoc)
-}
-
-func (p *Printer) Path(path *ast.Path) {
-	p.write("/")
-	first := true
-	for _, seg := range path.Segments {
-		if seg.Param {
-			if !first {
-				p.write("/")
-			}
-			p.write("{")
-			p.write(seg.Literal)
-			p.write("}")
-			first = false
-		} else if seg.Literal != "" {
-			if !first {
-				p.write("/")
-			}
-			p.write(seg.Literal)
-			first = false
-		}
-	}
-}
-
-func (p *Printer) TypeRef(t *ast.TypeRef) {
-	if t.Map != nil {
-		p.write("map<")
-		p.TypeRef(t.Map.Key)
-		p.write(", ")
-		p.TypeRef(t.Map.Value)
-		p.write(">")
-	} else if t.Named != nil {
-		p.NamedTypeRef(t.Named)
-	}
-	for i := 0; i < t.ArrayDepth; i++ {
-		p.write("[]")
-	}
-	if t.Optional {
-		p.write("?")
-	}
-}
-
-func (p *Printer) NamedTypeRef(n *ast.NamedTypeRef) {
-	p.write(n.Name.String())
-	if len(n.Args) > 0 {
-		p.write("<")
-		for i, a := range n.Args {
-			if i > 0 {
-				p.write(", ")
-			}
-			p.TypeRef(a)
-		}
-		p.write(">")
-	}
-}
-
-// declDecorators renders a vertical decorator block, one decorator per line.
-// keywordLine is the source line of the keyword that follows the chain (the
-// `type` / `service` / verb token); it lets the printer re-emit a comment
-// written between the last decorator and the keyword. Comments written between
-// two decorators are flushed just before the decorator they precede.
-func (p *Printer) declDecorators(decs []*ast.Decorator, keywordLine int) {
-	for _, d := range decs {
-		if block, ok := p.interDec[d.Pos.Line]; ok {
-			p.Doc(block)
-		}
-		p.indent()
-		p.Decorator(d)
-		p.nl()
-	}
-	if block, ok := p.interDec[keywordLine]; ok {
-		p.Doc(block)
-	}
+	p.memberBody(clauses, e.BodyComments, e.EndPos.Line)
 }

@@ -12,10 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// POST: the same un-decorated `tenantID` still binds from the path (not
-// the JSON body) - the body carries only `name`.
-// CreateTenantItem returns the http.HandlerFunc for the
-// POST CreateTenantItem endpoint.
+// Create an item under a tenant. tenantID binds from the path; the JSON body carries only name.
+//
+// CreateTenantItem returns the POST CreateTenantItem handler.
 func CreateTenantItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.TenantCreateReq
@@ -34,8 +33,6 @@ func CreateTenantItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

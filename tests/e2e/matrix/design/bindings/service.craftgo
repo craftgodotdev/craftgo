@@ -1,11 +1,7 @@
 package bindings
 
-// BindingsService exposes one method per binder-class so the codegen
-// has a real handler to drive for every wire-format path. The
-// per-method request DTOs combine multiple binder kinds (path +
-// query, path + form, etc.) so the generated handler exercises the
-// full extract → cast → validate pipeline rather than the trivial
-// one-binder cases.
+// BindingsService drives the binders, alone and combined in one request,
+// and the error and header shapes its responses carry.
 @prefix("/bindings")
 @tags(bindings)
 service BindingsService {
@@ -43,6 +39,12 @@ service BindingsService {
 		response ItemList
 	}
 
+	@doc("List items a page at a time. The `page` query value lands in the field the embedded Page mixin carries under its own name.")
+	get ListPaged /paged {
+		request  PagedReq
+		response ItemList
+	}
+
 	// UploadAvatar exercises the path + form-file combination. The
 	// `id` field auto-binds to the path segment; the `file` field
 	// rides the multipart/form-data body.
@@ -61,6 +63,30 @@ service BindingsService {
 	@doc("Batch upload. files[] rides as repeated multipart parts ([]*multipart.FileHeader, @minItems/@maxItems); cover is one optional file; tags is a repeated form value.")
 	post BatchUpload /batch {
 		request  BatchUploadReq
+		response Item
+	}
+
+	// PagedSearch reads its paging from the query through a generic mixin whose
+	// fields carry an explicit @query, beside a JSON body.
+	@doc("Search items. The paging rides the query through a generic mixin; the term rides the body.")
+	post PagedSearch /paged-search {
+		request  PagedSearchReq
+		response Item
+	}
+
+	// WellKnown pins literal segments net/http serves: a name opening with a
+	// dot, a dotted version, a word opening with a digit, a file name.
+	@doc("Serve a key set. The route's literal segments hold dots and digits.")
+	get WellKnown /.well-known/v1.0/2fa/{kid}/keys.json {
+		request  KeySetReq
+		response Item
+	}
+
+	// AttachDoc takes its file through a generic mixin: `doc` is required,
+	// so a request without the part is refused before the service runs.
+	@doc("Attach a document. The file rides a generic mixin, FilePart<file>, and is required.")
+	post AttachDoc /attach {
+		request  AttachReq
 		response Item
 	}
 
@@ -117,6 +143,85 @@ service BindingsService {
 		response Item
 	}
 
+	// ListPage auto-binds a field that carries @json to the query string:
+	// the binder reads `?pageSize`, and a value below its bound is
+	// reported under that name.
+	@doc("List one page of items. `pageSize` rides the query string; a value below its bound is reported as pageSize.")
+	get ListPage /page {
+		request  PageReq
+		response ItemList
+	}
+
+	post PostMixinWireBody /mixins/wire-body {
+		request  MixinWireBodyReq
+	}
+
+	post PostMixinBody /mixins/body {
+		request  MixinBodyReq
+	}
+
+	get GetRequiredParams /required-params {
+		request  RequiredParamsReq
+	}
+
+	get GetSensitiveQuery /sensitive-query {
+		request  SensitiveQueryReq
+	}
+
+	get GetCollidingQuery /colliding-query {
+		request  CollidingQueryReq
+	}
+
+	post PostQueryBesideBody /query-beside-body {
+		request  QueryBesideBodyReq
+		response DoneResp
+	}
+
+	get GetSessionCookie /session-cookie {
+		request  SessionCookieReq
+		response DoneResp
+	}
+
+	@errors(RetryLater)
+	get GetOptionalWire /optional-wire {
+		request  OptionalWireReq
+		response DoneResp
+	}
+
+	@errors(RetryLater, Maintenance)
+	get GetServiceStatus /service-status {
+		response DoneResp
+	}
+
+	@errors(HeaderMixinError, NullableFieldsErr, CodeMessageErr)
+	post RaiseErrorShapes /error-shapes {
+		request  EmptyReq
+		response DoneResp
+	}
+
+	get FilterTags /filter-tags {
+		request  RequiredArrayQueryReq
+		response OkResp
+	}
+
+	get GetQueryFloat /query-float {
+		request  QueryFloatReq
+		response OkResp
+	}
+
+	@errors(ForbiddenDetails)
+	post EchoHeaderMetadata /header-metadata {
+		request  CountsPayload
+		response HeaderMetadataResp
+	}
+
+	@status(409)
+	@errors(SharedStatusConflict)
+	post PostSharedStatus /shared-status {
+		request  CountsPayload
+		response CountsPayload
+	}
+
 	// PathIntProbe is a commented stub: `@path` binds only string-backed
 	// fields, so a numeric path param is rejected at gen time. Uncomment
 	// it together with PathIntReq in bindings.craftgo to reproduce the
@@ -126,6 +231,17 @@ service BindingsService {
 	// 	request  PathIntReq
 	// 	response Item
 	// }
+
+	// CountIds reads a list header: every line of X-Ids, split at commas.
+	get CountIds /ids {
+		request  IdsReq
+		response OkResp
+	}
+}
+
+// IdsReq takes at least two ids from the X-Ids list header.
+type IdsReq {
+	ids int[] @header("X-Ids") @minItems(2)
 }
 
 // ---------------------------------------------------------------
@@ -145,13 +261,13 @@ type GetItemReq {
 // shape on the wire, so the optional binder works just like for
 // plain strings).
 type SearchReq {
-	cursor  string?  @query
-	limit   int      @query @gte(1) @lte(100)
-	sort    Color?   @query
-	ids     int[]?   @query
-	active  bool     @query
-	offset  int?     @query @gte(0)
-	verbose bool?    @query
+	cursor  string? @query
+	limit   int     @query @gte(1) @lte(100)
+	sort    Color?  @query
+	ids     int[]?  @query
+	active  bool    @query
+	offset  int?    @query @gte(0)
+	verbose bool?   @query
 }
 
 // UploadReq pairs the path-bound id with the form-file upload. The
@@ -168,6 +284,7 @@ type SearchReq {
 type UploadReq {
 	id      string  @path @length(1, 64)
 	file    file    @form("avatar_file") @maxSize(5MB) @mimeTypes("image/png", "image/jpeg")
+	thumb   file?   @form("thumb") @mimeTypes("image/*")
 	caption string? @form("note") @maxLength(280)
 }
 
@@ -180,6 +297,10 @@ type UploadReq {
 type NullableFormReq {
 	doc  file   @form
 	meta string @nullable @maxLength(120)
+	// tint and ref are optional enum and scalar parts: each is sent or not,
+	// never null.
+	tint Color?
+	ref  UUID?
 }
 
 // BatchUploadReq pins the file[] multipart shape: a 1-D `file[]` binds from
@@ -193,6 +314,34 @@ type BatchUploadReq {
 	cover file?
 	tags  string[] @form
 	album string   @form @length(1, 100)
+}
+
+// Paging reads a cursor of type T and a limit from the query.
+type Paging<T> {
+	cursor T   @query
+	limit  int @query @gte(1)
+}
+
+// PagedSearchReq pairs query paging with a body term.
+type PagedSearchReq {
+	Paging<string>
+	term string
+}
+
+// KeySetReq names the key set to serve.
+type KeySetReq {
+	kid string @path
+}
+
+// FilePart carries one required part of type T.
+type FilePart<T> {
+	doc T
+}
+
+// AttachReq is a multipart request whose file a generic mixin supplies.
+type AttachReq {
+	FilePart<file>
+	title string @form
 }
 
 // AddItemReq is the canonical JSON body for the POST /items
@@ -218,6 +367,12 @@ type WireRenameReq {
 	q       string? @query("search_q")
 }
 
+// PageReq holds a GET request field that carries @json: it auto-binds to
+// the query string as `pageSize`, the name its validation errors carry.
+type PageReq {
+	pageSize int @json("page_size") @gte(1)
+}
+
 // ---------------------------------------------------------------
 // Response DTOs.
 // ---------------------------------------------------------------
@@ -230,10 +385,8 @@ type Item {
 	price int    @gte(0)
 }
 
-// ItemList is the SearchItems response envelope. Mirrors the
-// UserList / TaskList shape every other service uses - the parser
-// rejects bare-array response forms in the method body, so list
-// endpoints wrap the slice in a per-service envelope.
+// ItemList wraps the items a list method returns, since a response
+// cannot be a bare array.
 type ItemList {
 	items  Item[]
 	cursor string?

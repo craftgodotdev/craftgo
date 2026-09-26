@@ -15,8 +15,8 @@ import (
 // CreateProfile stores a new profile and assigns its id. The handler
 // surfaces every error in the @errors list with the matching HTTP
 // status driven by its category.
-// CreateProfile returns the http.HandlerFunc for the
-// POST CreateProfile endpoint.
+//
+// CreateProfile returns the POST CreateProfile handler.
 func CreateProfile(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateProfileReq
@@ -34,8 +34,6 @@ func CreateProfile(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

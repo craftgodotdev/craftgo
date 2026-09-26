@@ -116,6 +116,12 @@ type InventoryListResp struct {
 	Total int         `json:"total"`
 }
 
+// LedgerEntryList2RespBody is a declared type named like a renumbered body
+// component, so the renumbering passes over 2.
+type LedgerEntryList2RespBody struct {
+	Total int `json:"total"`
+}
+
 // ListUsersReq embeds `shared.Pagination` cross-package. The
 // implicit mixin form makes the limit / cursor / total fields land
 // at the request root, and the optional `query` slot adds the free-
@@ -176,6 +182,16 @@ type ProjectsResp struct {
 type PromoteItemReq struct {
 	ItemID string `json:"itemId"`
 	Slot   int    `json:"slot"`
+}
+
+// ReportCards is the page Report and ReportCard answer.
+type ReportCards struct {
+	Names []string `json:"names"`
+}
+
+// RetryHint carries a back-off hint on a response header.
+type RetryHint struct {
+	RetryIn int `json:"-" header:"X-Retry-In"`
 }
 
 // User is the full entity. Embeds `shared.Audit` via the implicit

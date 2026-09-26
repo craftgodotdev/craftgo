@@ -2,20 +2,19 @@ package protodesign
 
 import (
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/bufbuild/protocompile/linker"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/pluginpb"
 )
 
-// buildRequest is the request protoc would hand a plugin for names:
-// every file they transitively import, deps before dependents, each
-// exactly once, then the design files themselves. compiler_version is
-// left unset, so the pb headers read `protoc (unknown)` on every machine.
+// buildRequest returns the request protoc would hand a plugin for names, with
+// every imported file once, deps first. compiler_version stays unset, so the pb
+// headers read `protoc (unknown)` on every machine.
 func buildRequest(files linker.Files, names []string, parameter string) *pluginpb.CodeGeneratorRequest {
 	req := &pluginpb.CodeGeneratorRequest{FileToGenerate: names}
 	if parameter != "" {
@@ -39,43 +38,32 @@ func buildRequest(files linker.Files, names []string, parameter string) *pluginp
 			visit(f)
 		}
 	}
-	// A plugin reads source-retention options for the generated files from
-	// here; protoc sends the same descriptors, and so does this.
+	// Plugins read the generated files' source-retention options from
+	// SourceFileDescriptors.
 	for _, fdp := range req.ProtoFile {
-		if isGenerated(fdp, names) {
+		if slices.Contains(names, fdp.GetName()) {
 			req.SourceFileDescriptors = append(req.SourceFileDescriptors, fdp)
 		}
 	}
 	return req
 }
 
-func isGenerated(fdp *descriptorpb.FileDescriptorProto, names []string) bool {
-	for _, n := range names {
-		if fdp.GetName() == n {
-			return true
-		}
-	}
-	return false
-}
-
-// parameter is the plugin parameter string. `paths=source_relative` puts
-// `a/b.proto` at `<out>/a/b.pb.go`, and with the plugins enabled every
-// design file gets an M mapping placing its Go package under output.pb -
-// the one rule for where pb code lives, whatever `go_package` says
-// (protogen lets M win the path and keeps go_package's `;name`).
+// parameter returns the plugin parameter: `paths=source_relative` and, with the
+// plugins enabled, an M mapping per design file that puts its Go package under
+// the pb directory; a `;name` suffix on `go_package` still names the package.
 func parameter(names []string, opts Options) string {
 	params := []string{"paths=source_relative"}
-	if !opts.PBEnabled() {
+	if !opts.pbEnabled() {
 		return params[0]
 	}
 	for _, name := range names {
-		params = append(params, "M"+name+"="+pbImportPath(opts.Module, opts.PBDir, name))
+		params = append(params, "M"+name+"="+pbImportPath(opts, name))
 	}
 	return strings.Join(params, ",")
 }
 
-// pbImportPath is the Go import path of the pb package for one design
-// file: the module, the pb output directory, then the file's directory.
-func pbImportPath(module, pbDir, name string) string {
-	return path.Join(module, Options{PBDir: pbDir}.pbRel(), path.Dir(name))
+// pbImportPath returns the Go import path of a design file's pb package: the
+// module, the pb directory, then the file's directory.
+func pbImportPath(opts Options, name string) string {
+	return path.Join(opts.Module, opts.pbRel(), path.Dir(name))
 }

@@ -2,9 +2,8 @@ package lsp
 
 import (
 	"context"
-	"encoding/json"
+	"slices"
 
-	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -12,342 +11,262 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// onDefinition answers `textDocument/definition`. The cursor must sit on
-// an identifier naming a declaration; the name resolves through the
-// semantic project (a qualified `pkg.Name` in that package, a bare name
-// in the buffer's package first and then in any sibling package), and
-// the surrounding syntax narrows the kinds considered so a click inside
-// `@middlewares(X)` never lands on a same-named type. A cursor that
-// names nothing returns an empty list.
-func (s *Server) onDefinition(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.DefinitionParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
+// onDefinition answers `textDocument/definition` with the declaration the
+// identifier at the cursor names.
+func (s *server) onDefinition(_ context.Context, params protocol.DefinitionParams) (any, error) {
+	r, ok := s.open(params.TextDocument.URI)
+	if !ok {
+		return []protocol.Location{}, nil
 	}
-	src := s.snapshot(params.TextDocument.URI)
-	if src == "" {
-		return reply(ctx, []protocol.Location{}, nil)
+	v := r.project()
+	view := r.view()
+	c := view.cursorAt(params.Position)
+	if c.at < 0 || view.tokens[c.at].Kind != lexer.Ident {
+		return []protocol.Location{}, nil
 	}
-	view := parseSnapshot(string(params.TextDocument.URI), src)
-	idx, tok := view.tokenAt(params.Position.Line, params.Position.Character)
-	if idx < 0 || tok.Kind != lexer.Ident {
-		return reply(ctx, []protocol.Location{}, nil)
+	if loc, ok := r.enumValueDefinition(c); ok {
+		return []protocol.Location{loc}, nil
 	}
-	current := params.TextDocument.URI
-	v := s.loadProject(uriToPath(string(current)), src)
-	if loc, ok := enumValueDefinition(v, view, params.Position, tok.Text, current); ok {
-		return reply(ctx, []protocol.Location{loc}, nil)
-	}
-	d := v.lookup(qualifiedNameAt(view, idx), lookupKindAt(view, idx, params.Position))
+	d := v.symbolAt(view, c.at)
 	if d == nil {
-		return reply(ctx, []protocol.Location{}, nil)
+		return []protocol.Location{}, nil
 	}
-	return reply(ctx, []protocol.Location{v.locationOf(d.DeclPos(), len(d.DeclName()), current)}, nil)
+	return []protocol.Location{v.locationOf(d.DeclNamePos(), len(d.DeclName()), r.uri)}, nil
 }
 
-// enumValueDefinition resolves a cursor sitting on an enum-value name inside
-// `@default(...)` / `@example(...)` to that value's declaration. The field's
-// declared type names the enum; the matching value's position inside that
-// enum's body is the target. Returns false when the cursor is not in such a
-// position or the name is not a value of the field's enum type.
-func enumValueDefinition(v projectView, view snapshotView, pos protocol.Position, name string, current protocol.DocumentURI) (protocol.Location, bool) {
-	decName, ok := decoratorArgContext(view, pos)
+// enumValueDefinition resolves a value named in a field's `@default(...)` or
+// `@example(...)` to its declaration in the field's enum type.
+func (r *request) enumValueDefinition(c cursor) (protocol.Location, bool) {
+	view := r.view()
+	decName, _, ok := decoratorArgContext(view, c)
 	if !ok || (decName != "default" && decName != "example") {
 		return protocol.Location{}, false
 	}
-	f := fieldAtCursor(view, pos)
-	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
+	f := fieldAtCursor(view, c)
+	if f == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil || typedByTypeParam(view, f) {
 		return protocol.Location{}, false
 	}
+	v := r.project()
 	e, ok := v.lookup(f.Type.Named.Name.String(), semantic.EnumDecls).(*ast.EnumDecl)
 	if !ok {
 		return protocol.Location{}, false
 	}
 	for _, val := range e.EnumValues() {
-		if val.Name == name {
-			return v.locationOf(val.Pos, len(val.Name), current), true
+		if val.Name == view.tokens[c.at].Text {
+			return v.locationOf(val.Pos, len(val.Name), r.uri), true
 		}
 	}
 	return protocol.Location{}, false
 }
 
-// enclosingDeclKeyword returns the declaration keyword that opened the
-// block the token at idx sits in - [lexer.EOF] when idx is at file
-// level - together with the brace depth at idx. Declarations never
-// nest, so the last keyword seen at brace depth 0 before idx is the
-// enclosing one, and the depth then says HOW deep inside it the token
-// sits: 1 is the declaration's own body, 2 a method body inside a
-// service.
-//
-// The walk is forward rather than backward because every keyword
-// spelling is also a legal field name: `event` inside a type body is a
-// field, and only the brace depth it sits at tells the two apart.
-func enclosingDeclKeyword(view snapshotView, idx int) (lexer.Kind, int) {
-	last := lexer.EOF
-	depth := 0
-	for i := 0; i < idx && i < len(view.tokens); i++ {
-		switch k := view.tokens[i].Kind; k {
-		case lexer.LBrace:
+// enclosingDecl returns the index of the keyword of the declaration holding
+// token idx (-1 at file level) and the brace depth there. The walk is forward:
+// a keyword is also a legal field name, and only its depth tells them apart.
+func enclosingDecl(view snapshotView, idx int) (int, int) {
+	last, depth := -1, 0
+	for i := range view.outsideParens(-1) {
+		if i >= idx {
+			break
+		}
+		switch k := view.tokens[i].Kind; {
+		case k == lexer.LBrace:
 			depth++
-		case lexer.RBrace:
+		case k == lexer.RBrace:
 			if depth > 0 {
 				depth--
 			}
 			if depth == 0 {
-				last = lexer.EOF
+				last = -1
 			}
-		case lexer.KwService, lexer.KwExtend, lexer.KwType, lexer.KwEnum,
-			lexer.KwError, lexer.KwScalar, lexer.KwMiddleware, lexer.KwEvent:
-			if depth == 0 {
-				last = k
-			}
+		case depth == 0 && isDeclKeyword(k):
+			last = i
 		}
 	}
 	return last, depth
 }
 
-// lookupKindAt classifies the cursor's surrounding syntax into the
-// declaration kinds a definition lookup may return:
-//
-//   - inside `@middlewares(...)` / `@errors(...)`: that decorator's kind
-//   - the name in a `service X` / `extend service X` header: the primary
-//     service, so a click on an extend's name lands on the block it
-//     continues
-//   - a type-shape position (mixin, field type, request, response,
-//     generic arg, error category): every kind but middleware
-//   - otherwise: every kind
-//
-// The detection is purely token-based: a small window of tokens around
-// the cursor is inspected for shape markers (`@<ident>(`, `:`, `<`,
-// `request` / `response` / `error` / `type` keywords, ...), which is
-// enough to tell apart the kinds the parser already separated.
-func lookupKindAt(view snapshotView, idx int, pos protocol.Position) semantic.DeclKind {
-	if decName, ok := decoratorArgContext(view, pos); ok {
+// symbolAt returns the declaration the identifier at token idx of sv names,
+// resolved from sv's package as the analyser resolves it; nil when it names
+// none.
+func (v projectView) symbolAt(sv snapshotView, idx int) ast.Decl {
+	if sv.kind(idx) != lexer.Ident {
+		return nil
+	}
+	kinds := lookupKindAt(sv, idx)
+	if kinds == 0 {
+		return nil
+	}
+	return v.proj.Lookup(sv.packageName(), qualifiedNameAt(sv, idx), kinds)
+}
+
+// lookupKindAt returns the kinds of declaration the identifier at token idx
+// names, judged by the tokens around it; 0 when it names none.
+func lookupKindAt(view snapshotView, idx int) semantic.DeclKind {
+	if decName, _, ok := decoratorArgContext(view, view.cursorOn(idx)); ok {
 		switch decName {
 		case "middlewares":
 			return semantic.MiddlewareDecls
 		case "errors":
 			return semantic.ErrorDecls
 		}
-		return semantic.AnyDecl
+		return 0
 	}
-	if isServiceHeaderPosition(view, idx) {
-		return semantic.ServiceDecls
+	if view.kind(idx-1) == lexer.At {
+		return 0 // a decorator's name
 	}
-	if isTypeShapePosition(view, idx) {
-		return semantic.TypeShapeDecls
+	kw, depth := enclosingDecl(view, idx)
+	site := declSites[view.kind(kw)]
+	switch {
+	case kw < 0:
+		return 0 // the package clause, an import, or text outside every declaration
+	case depth == 0 && idx == headerName(view, kw):
+		return site.names
+	case depth == 0:
+		return 0 // a type parameter, an error's category, a scalar's primitive
+	case site.block == blockEnum || isMemberName(view, kw, idx):
+		return 0
 	}
-	return semantic.AnyDecl
+	return semantic.TypeRefDecls
 }
 
-// isServiceHeaderPosition reports whether view.tokens[idx] is the name in
-// a `service X` / `extend service X` header - i.e. the token right after
-// the `service` keyword. Comments are captured off-stream by the lexer,
-// so the preceding token is the previous meaningful one.
-func isServiceHeaderPosition(view snapshotView, idx int) bool {
-	if idx <= 0 || idx >= len(view.tokens) {
-		return false
+// headerName returns the index of the name the header of the declaration at
+// keyword kw declares, or extends for `extend service Name`.
+func headerName(view snapshotView, kw int) int {
+	switch view.kind(kw) {
+	case lexer.KwError, lexer.KwExtend:
+		return kw + 2 // `error Category Name`, `extend service Name`
 	}
-	return view.tokens[idx-1].Kind == lexer.KwService
+	return kw + 1
 }
 
-// isTypeShapePosition reports whether view.tokens[idx] is being used as
-// a type-shape reference - i.e. anywhere a TypeDecl / EnumDecl /
-// ScalarDecl / ErrorDecl can appear by spec. The check is conservative:
-// false negatives fall through to the generic findDecl, which is the
-// existing behaviour.
-func isTypeShapePosition(view snapshotView, idx int) bool {
-	if idx < 0 || idx >= len(view.tokens) {
-		return false
+// isMemberName reports whether identifier idx, in the body of the
+// declaration at keyword kw, names no declaration: a field, a method or a
+// word of its route, or a type parameter of kw's type.
+func isMemberName(view snapshotView, kw, idx int) bool {
+	tok := view.tokens[idx]
+	if f, _ := findFieldAtPos(view.file, tok.Pos); f != nil {
+		return true
 	}
-	// Walk back through whitespace-equivalent tokens to find the previous
-	// meaningful token. Helpful preceding tokens that mark a type-shape
-	// position:
-	//   - `:` (field type after `name:`)
-	//   - `request` / `response` keywords
-	//   - `<` (generic arg list, possibly nested)
-	//   - `[` / `]` (array element type wrapper)
-	//   - the start of a type body where a bare ident is parsed as a
-	//     mixin reference (preceded by `{` or `\n` inside a type body -
-	//     hard to detect token-only without AST help)
-	for i := idx - 1; i >= 0; i-- {
-		t := view.tokens[i]
-		switch t.Kind {
-		case lexer.Colon, lexer.LAngle, lexer.LBracket, lexer.RBracket, lexer.Comma:
+	if declSites[view.kind(kw)].block == blockService && (view.kind(idx-1).IsVerb() || inRoute(view, idx)) {
+		return true
+	}
+	return qualifiedNameAt(view, idx) == tok.Text && slices.Contains(typeParamsAt(view, kw), tok.Text)
+}
+
+// inRoute reports whether identifier idx is a word of a method's route, such
+// as `users` or `id` in `/users/{id}`.
+func inRoute(view snapshotView, idx int) bool {
+	line := view.tokens[idx].Pos.Line
+	for i := idx - 1; i >= 0 && view.tokens[i].Pos.Line == line; i-- {
+		switch k := view.kind(i); {
+		case k == lexer.Slash:
 			return true
-		case lexer.KwRequest, lexer.KwResponse, lexer.KwPayload, lexer.KwError, lexer.KwType, lexer.KwScalar, lexer.KwEnum:
-			return true
-		case lexer.KwEvent:
-			// At file level this names the contract being declared, not a
-			// type. Inside a type body the same word is a field name and
-			// the cursor is on its type.
-			kw, _ := enclosingDeclKeyword(view, idx)
-			return kw != lexer.KwEvent
-		case lexer.KwService, lexer.KwExtend:
-			// A service name, not a type reference. Without this the walk
-			// runs past the header into the previous declaration and the
-			// first Ident it meets there classifies the cursor as "type".
-			return false
-		case lexer.Ident:
-			// `<fieldName> <Type>` is the field syntax (no colon needed
-			// in craftgo). An ident immediately before our cursor's
-			// ident classifies the cursor as the type half of that
-			// pair. Over-classifying here is safe: type-context only
-			// excludes MiddlewareDecl, and middleware never appears
-			// after a bare ident in any valid construct.
-			return true
-		case lexer.At, lexer.LParen, lexer.RParen:
+		case k == lexer.LBrace && !isRouteParam(view, i):
+			return false // the method body's brace
+		case k != lexer.LBrace && k != lexer.RBrace && k != lexer.PathWord && k != lexer.Ident && !k.IsKeyword():
 			return false
 		}
 	}
 	return false
 }
 
-// qualifiedNameAt returns either the bare identifier at idx or the
-// `pkg.Name` form when the surrounding tokens make the cursor sit on a
-// dotted reference. The function inspects up to two tokens on either
-// side so a click anywhere within `users . UserRef` recovers the same
-// fully qualified string.
+// isRouteParam reports whether the `{` at token i opens a route variable:
+// `/{word}`, the only shape the parser takes for one.
+func isRouteParam(view snapshotView, i int) bool {
+	next := view.kind(i + 1)
+	return view.kind(i-1) == lexer.Slash && (next == lexer.Ident || next.IsKeyword()) && view.kind(i+2) == lexer.RBrace
+}
+
+// typeParamsAt returns the type parameters of the type declared at keyword kw.
+func typeParamsAt(view snapshotView, kw int) []string {
+	if view.file == nil {
+		return nil
+	}
+	for _, d := range view.file.Decls {
+		if td, ok := d.(*ast.TypeDecl); ok && td.Pos == view.tokens[kw].Pos {
+			return td.TypeParams
+		}
+	}
+	return nil
+}
+
+// qualifiedNameAt returns the identifier at idx, or `pkg.Name` when it is
+// either half of a dotted reference.
 func qualifiedNameAt(view snapshotView, idx int) string {
 	tok := view.tokens[idx]
-	if tok.Kind != lexer.Ident {
+	switch {
+	case tok.Kind != lexer.Ident:
 		return tok.Text
-	}
-	// Cursor on the right half of `pkg.Name`.
-	if idx >= 2 && view.tokens[idx-1].Kind == lexer.Dot && view.tokens[idx-2].Kind == lexer.Ident {
+	case view.kind(idx-1) == lexer.Dot && view.kind(idx-2) == lexer.Ident:
 		return view.tokens[idx-2].Text + "." + tok.Text
-	}
-	// Cursor on the left half of `pkg.Name`.
-	if idx+2 < len(view.tokens) && view.tokens[idx+1].Kind == lexer.Dot && view.tokens[idx+2].Kind == lexer.Ident {
+	case isQualifier(view, idx):
 		return tok.Text + "." + view.tokens[idx+2].Text
 	}
 	return tok.Text
 }
 
-// onReferences answers `textDocument/references`. The walker visits
-// every `.craftgo` file under the design root so a reference search is
-// project-wide, not buffer-only.
-//
-// Detection is purely token-based: every Ident token whose text
-// matches the symbol's name counts. String literals (decorator args
-// like `@pattern("X")`) are not scanned because their content lives
-// inside a single String token, so literal text never collides with
-// identifier references.
-func (s *Server) onReferences(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.ReferenceParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
-	}
-	src := s.snapshot(params.TextDocument.URI)
-	if src == "" {
-		return reply(ctx, []protocol.Location{}, nil)
-	}
-	view := parseSnapshot(string(params.TextDocument.URI), src)
-	idx, tok := view.tokenAt(params.Position.Line, params.Position.Character)
-	if idx < 0 || tok.Kind != lexer.Ident {
-		return reply(ctx, []protocol.Location{}, nil)
-	}
-	out := s.projectNameMatches(view, params.TextDocument.URI, src, tok.Text, params.Context.IncludeDeclaration)
-	return reply(ctx, out, nil)
+// isQualifier reports whether token idx is the package half of `pkg.Name`.
+func isQualifier(view snapshotView, idx int) bool {
+	return view.kind(idx+1) == lexer.Dot && view.kind(idx+2) == lexer.Ident
 }
 
-// projectNameMatches collects the position of every Ident token whose
-// text equals name across the buffer's project. Outside a project root
-// the current buffer alone is scanned.
-func (s *Server) projectNameMatches(view snapshotView, currentURI protocol.DocumentURI, currentSrc, name string, includeDecl bool) []protocol.Location {
-	v := s.loadProject(uriToPath(string(currentURI)), currentSrc)
-	if v.root == "" {
-		return nameMatches(view, currentURI, name, includeDecl)
+// onReferences answers `textDocument/references` with every identifier in the
+// project that names the declaration the one at the cursor names.
+func (s *server) onReferences(_ context.Context, params protocol.ReferenceParams) (any, error) {
+	r, ok := s.open(params.TextDocument.URI)
+	if !ok {
+		return []protocol.Location{}, nil
 	}
-	// declPos pins the symbol's defining token across whichever file
-	// owns the decl, so includeDecl=false can filter it out even when
-	// the cursor lives in a different file from the declaration.
-	var declPos *lexer.Position
-	var declURI protocol.DocumentURI
-	for _, p := range v.files {
-		if d := findDecl(p.file, name); d != nil {
-			pos := d.DeclPos()
-			declPos = &pos
-			declURI = protocol.DocumentURI(pathToFileURIString(p.path))
-			break
-		}
+	v := r.project()
+	view := r.view()
+	c := view.cursorAt(params.Position)
+	if c.at < 0 {
+		return []protocol.Location{}, nil
 	}
-	var out []protocol.Location
-	for _, p := range v.files {
-		fileURI := protocol.DocumentURI(pathToFileURIString(p.path))
-		for _, t := range p.tokens {
-			if t.Kind != lexer.Ident || t.Text != name {
+	d := v.symbolAt(view, c.at)
+	if d == nil {
+		return []protocol.Location{}, nil
+	}
+	return v.references(d, params.Context.IncludeDeclaration, r.uri), nil
+}
+
+// references returns the location of every identifier in the project that
+// names d; d's own name is left out unless includeDecl.
+func (v projectView) references(d ast.Decl, includeDecl bool, current protocol.DocumentURI) []protocol.Location {
+	out := []protocol.Location{}
+	for _, lf := range v.files {
+		u := v.uriOf(lf.path, current)
+		for i, t := range lf.tokens {
+			if !includeDecl && t.Pos == d.DeclNamePos() {
 				continue
 			}
-			if !includeDecl && declPos != nil && fileURI == declURI && t.Pos == *declPos {
-				continue
+			if t.Kind == lexer.Ident && t.Text == d.DeclName() && !isQualifier(lf.snapshotView, i) && v.symbolAt(lf.snapshotView, i) == d {
+				out = append(out, protocol.Location{URI: u, Range: rangeOf(lf.src, t)})
 			}
-			out = append(out, protocol.Location{URI: fileURI, Range: rangeOf(t)})
 		}
 	}
 	return out
 }
 
-// nameMatches walks tokens for every Ident whose text equals name and
-// returns the corresponding LSP locations. When includeDecl is false the
-// declaration's defining token is filtered out so the editor can render
-// "find usages" without the declaration site cluttering the list.
-func nameMatches(view snapshotView, u protocol.DocumentURI, name string, includeDecl bool) []protocol.Location {
-	var out []protocol.Location
-	declPos := declSitePos(view.file, name)
+// onDocumentHighlight answers `textDocument/documentHighlight` with every
+// identifier in the buffer spelt like the one at the cursor.
+func (s *server) onDocumentHighlight(_ context.Context, params protocol.DocumentHighlightParams) (any, error) {
+	r, ok := s.open(params.TextDocument.URI)
+	if !ok {
+		return []protocol.DocumentHighlight{}, nil
+	}
+	view := r.view()
+	c := view.cursorAt(params.Position)
+	if c.at < 0 || view.tokens[c.at].Kind != lexer.Ident {
+		return []protocol.DocumentHighlight{}, nil
+	}
+	name := view.tokens[c.at].Text
+	out := []protocol.DocumentHighlight{}
 	for _, t := range view.tokens {
 		if t.Kind != lexer.Ident || t.Text != name {
 			continue
 		}
-		if !includeDecl && declPos != nil && t.Pos == *declPos {
-			continue
-		}
-		out = append(out, protocol.Location{URI: u, Range: rangeOf(t)})
+		out = append(out, protocol.DocumentHighlight{Range: rangeOf(view.src, t), Kind: protocol.DocumentHighlightKindText})
 	}
-	return out
-}
-
-func declSitePos(f *ast.File, name string) *lexer.Position {
-	d := findDecl(f, name)
-	if d == nil {
-		return nil
-	}
-	p := d.DeclPos()
-	return &p
-}
-
-// onDocumentHighlight answers `textDocument/documentHighlight`. Returns
-// every occurrence of the symbol under the cursor IN THE CURRENT
-// FILE so the editor can visually highlight all uses. Faster than
-// `textDocument/references` because there is no project walk - the
-// LSP client invokes this on cursor move, so cheapness matters more
-// than completeness (cross-file lookup ships through `references`).
-//
-// Each highlight gets `Kind: Text` - the LSP spec also allows Read /
-// Write kinds, but the DSL has no notion of "writing" an identifier
-// (decls are immutable from the type checker's view), so the
-// simpler Text kind matches actual semantics.
-func (s *Server) onDocumentHighlight(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.DocumentHighlightParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
-	}
-	src := s.snapshot(params.TextDocument.URI)
-	if src == "" {
-		return reply(ctx, []protocol.DocumentHighlight{}, nil)
-	}
-	view := parseSnapshot(string(params.TextDocument.URI), src)
-	idx, tok := view.tokenAt(params.Position.Line, params.Position.Character)
-	if idx < 0 || tok.Kind != lexer.Ident {
-		return reply(ctx, []protocol.DocumentHighlight{}, nil)
-	}
-	out := []protocol.DocumentHighlight{}
-	for _, t := range view.tokens {
-		if t.Kind != lexer.Ident || t.Text != tok.Text {
-			continue
-		}
-		kind := protocol.DocumentHighlightKindText
-		out = append(out, protocol.DocumentHighlight{Range: rangeOf(t), Kind: kind})
-	}
-	return reply(ctx, out, nil)
+	return out, nil
 }

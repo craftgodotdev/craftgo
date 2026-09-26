@@ -5,25 +5,20 @@ package catalog
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/catalog"
-
-	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/catalog"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// CreateProductService carries the per-request state for the
-// CreateProduct endpoint of CatalogService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// CreateProductService runs CatalogService.CreateProduct for one request.
 type CreateProductService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewCreateProductService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewCreateProductService binds CreateProductService to ctx; its Logger carries ctx's trace ids.
 func NewCreateProductService(ctx context.Context, svcCtx *svccontext.ServiceContext) *CreateProductService {
 	return &CreateProductService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewCreateProductService(ctx context.Context, svcCtx *svccontext.ServiceCont
 	}
 }
 
-// CreateProduct is the service entry point. Replace the
-// TODO with the real implementation.
+// Create a product (admin only).
+//
+// CreateProduct implements CatalogService.CreateProduct.
 func (l *CreateProductService) CreateProduct(req *types.CreateProductReq) (*types.Product, error) {
 	// TODO: implement
 	return nil, nil

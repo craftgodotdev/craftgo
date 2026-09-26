@@ -2,19 +2,14 @@ package main
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 )
 
-// fullDesign reaches every gen-once template at once: a service with a
-// route (service.tmpl), a declared middleware (middleware.tmpl), a
-// published contract, and a second service consuming it - which is what
-// puts the generated event library in front of the compiler.
+// fullDesign declares a middleware, an event, a raw bytes field and a routed
+// service.
 const fullDesign = `package gate
 
 middleware Guard
@@ -46,8 +41,7 @@ service ThingService {
 `
 
 // routesOnlyDesign declares no event and no middleware, so the scaffolds
-// render the branches fullDesign leaves out - main.tmpl alone imports a
-// different set for each.
+// render the branches fullDesign skips.
 const routesOnlyDesign = `package gate
 
 type Thing {
@@ -66,10 +60,8 @@ service ThingService {
 }
 `
 
-// fullManifest names every gen-once output explicitly, so a rename in the
-// defaults surfaces here as a missing file rather than as silent coverage
-// loss. The OpenAPI document lands under the project root, which is what
-// puts main.go on its `//go:embed` branch.
+// fullManifest names every gen-once output; its OpenAPI document under the
+// project root puts main.go on its embed branch.
 const fullManifest = `output:
   types:      ./internal/types
   transport:  ./internal/transport
@@ -89,8 +81,7 @@ events:
       out: ./internal/events
 `
 
-// eventsOnlyDesign declares contracts and no route at all, the shape a
-// contract library generates from.
+// eventsOnlyDesign declares an event and no route.
 const eventsOnlyDesign = `package gate
 
 type ThingCreated {
@@ -117,8 +108,8 @@ events:
       out: ./internal/events
 `
 
-// routesOnlyManifest turns off the documents as well, so main.go renders
-// without the embed and without the bus.
+// routesOnlyManifest turns the OpenAPI document off, so main.go renders
+// without the embed.
 const routesOnlyManifest = `output:
   types:      ./internal/types
   transport:  ./internal/transport
@@ -137,18 +128,14 @@ type scaffoldShape struct {
 	name     string
 	manifest string
 	design   string
-	// goScaffolds maps each expected gen-once Go file to the template
-	// that writes it, so a file that stops being emitted reads as lost
-	// coverage rather than as a passing test.
+	// goScaffolds maps each expected gen-once Go file to the template that
+	// writes it.
 	goScaffolds map[string]string
 	// yamlScaffolds are gen-once files no Go toolchain reads.
 	yamlScaffolds map[string]string
-	// link runs `go build` rather than `go vet`: the command a user runs
-	// on a fresh project, at roughly ten times the cost.
+	// link checks with `go build`; otherwise with `go vet`.
 	link bool
-	// typesRoundTrip runs a JSON round trip against the generated types
-	// package, for a design whose fields claim something about the wire
-	// that only the compiler and the codec together can confirm.
+	// typesRoundTrip runs a JSON round trip against the generated types package.
 	typesRoundTrip bool
 }
 
@@ -183,10 +170,7 @@ var scaffoldShapes = []scaffoldShape{
 		},
 	},
 	{
-		// A design with no HTTP method has no server to boot, so no
-		// main.go is scaffolded - the deployable builds its own bus and
-		// registers the descriptors itself. What IS written still has to
-		// compile on its own.
+		// With no HTTP method no main.go is written; the rest must still compile.
 		name:     "events only",
 		manifest: eventsOnlyManifest,
 		design:   eventsOnlyDesign,
@@ -198,35 +182,22 @@ var scaffoldShapes = []scaffoldShape{
 	},
 }
 
-// The gen-once scaffolds - main.go, the runtime config, svccontext, the
-// service and consumer stubs, the middleware implementations - are skipped
-// whenever the file already exists, so every fixture in this repo has held
-// its copy since the day it was created and no later gen re-runs their
-// templates. The one pass that does run them, renderGo, formats with
-// format.Source, which parses rather than type-checks. A scaffold template
-// can therefore emit Go that is syntactically valid and does not compile,
-// with nothing between that and a user's first `craftgo gen`. These cases
-// generate into empty directories, where the scaffolds are written for
-// real, and hand each result to the compiler.
+// TestScaffoldsCompile generates each shape into an empty directory, so the
+// gen-once scaffolds are written, and compiles the result.
 func TestScaffoldsCompile(t *testing.T) {
 	root := repoRoot(t)
 	for _, shape := range scaffoldShapes {
 		t.Run(shape.name, func(t *testing.T) {
 			dir := generateScaffoldProject(t, root, shape)
 
-			check := exec.Command("go", "vet", "./...")
+			verb := "vet"
 			if shape.link {
-				check = exec.Command("go", "build", "./...")
+				verb = "build"
 			}
-			check.Dir = dir
-			check.Env = append(os.Environ(), "GOWORK="+filepath.Join(dir, "go.work"), "GOFLAGS=")
-			if out, err := check.CombinedOutput(); err != nil {
+			if out, err := goIn(dir, verb, "./..."); err != nil {
 				t.Fatalf("the generated project does not compile: %v\n%s", err, out)
 			}
 
-			// The YAML scaffolds reach no compiler, so a parse is what
-			// stands behind them. example.config.yaml stops here: nothing
-			// ever loads it, so its syntax is all that can be checked.
 			for rel, tmpl := range shape.yamlScaffolds {
 				body, err := os.ReadFile(filepath.Join(dir, rel))
 				if err != nil {
@@ -247,13 +218,8 @@ func TestScaffoldsCompile(t *testing.T) {
 	}
 }
 
-// configRoundTripTest decodes the generated config.yaml into the Config
-// the generated config.go declares, refusing a key the struct has no field
-// for. It runs inside the generated module because that is the only place
-// the type exists. KnownFields is the test being stricter than the
-// scaffold on purpose: config.Load unmarshals leniently, so at runtime a
-// key that no longer matches is dropped in silence and the setting it was
-// meant to carry reverts to its zero value.
+// configRoundTripTest decodes the generated config.yaml into the generated
+// Config and fails on any key the struct lacks.
 const configRoundTripTest = `package config
 
 import (
@@ -278,27 +244,17 @@ func TestGeneratedConfigRoundTrips(t *testing.T) {
 }
 `
 
-// assertConfigRoundTrips runs configRoundTripTest against the generated
-// project. Only the shape carrying the YAML scaffolds needs it: neither
-// config template branches on the design - config.go.tmpl has no
-// conditional at all and config.yaml.tmpl substitutes one service name -
-// so a second shape would decode the same pair of files.
+// assertConfigRoundTrips runs configRoundTripTest in the generated project.
 func assertConfigRoundTrips(t *testing.T, dir string) {
 	t.Helper()
 	mustWrite(t, filepath.Join(dir, "config"), "roundtrip_test.go", configRoundTripTest)
-	run := exec.Command("go", "test", "./config/")
-	run.Dir = dir
-	run.Env = append(os.Environ(), "GOWORK="+filepath.Join(dir, "go.work"), "GOFLAGS=")
-	if out, err := run.CombinedOutput(); err != nil {
+	if out, err := goIn(dir, "test", "./config/"); err != nil {
 		t.Errorf("config.yaml.tmpl and config.go.tmpl disagree: %v\n%s", err, out)
 	}
 }
 
-// rawRoundTripTest is what a `bytes @format(raw)` field claims: the
-// bytes in are the bytes out. It runs inside the generated module
-// because that is the only place the type exists, and it is the compiler
-// - not a string check over generated source - that says wire.Raw was
-// really emitted.
+// rawRoundTripTest checks that a `bytes @format(raw)` field re-encodes the
+// exact bytes it decoded.
 const rawRoundTripTest = `package gate
 
 import (
@@ -327,18 +283,12 @@ func TestRawFieldRoundTripsByteForByte(t *testing.T) {
 }
 `
 
-// assertRawFieldRoundTrips runs rawRoundTripTest against the generated
-// types package. A raw field decoded into any and re-encoded would lose
-// the explicit null, the digits past 2^53 and the trailing zero - three
-// failures this test reads back one at a time.
+// assertRawFieldRoundTrips runs rawRoundTripTest in the generated types package.
 func assertRawFieldRoundTrips(t *testing.T, dir string) {
 	t.Helper()
 	pkg := filepath.Join("internal", "types", "gate")
 	mustWrite(t, filepath.Join(dir, pkg), "roundtrip_test.go", rawRoundTripTest)
-	run := exec.Command("go", "test", "./"+filepath.ToSlash(pkg)+"/")
-	run.Dir = dir
-	run.Env = append(os.Environ(), "GOWORK="+filepath.Join(dir, "go.work"), "GOFLAGS=")
-	if out, err := run.CombinedOutput(); err != nil {
+	if out, err := goIn(dir, "test", "./"+filepath.ToSlash(pkg)+"/"); err != nil {
 		t.Errorf("a raw field does not carry its bytes through unchanged: %v\n%s", err, out)
 	}
 }
@@ -347,9 +297,8 @@ func assertRawFieldRoundTrips(t *testing.T, dir string) {
 // returns it, having confirmed every scaffold the shape claims is there.
 func generateScaffoldProject(t *testing.T, root string, shape scaffoldShape) string {
 	t.Helper()
-	// The go command matches a workspace's `use` paths against the
-	// directory it resolved, so both sides have to be the evaluated one -
-	// on macOS t.TempDir() hands back a path under the /var symlink.
+	// go matches workspace `use` paths against the resolved directory, and on
+	// macOS t.TempDir() is under a symlink.
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -361,80 +310,12 @@ func generateScaffoldProject(t *testing.T, root string, shape scaffoldShape) str
 	mustWrite(t, design, "craftgo.design.yaml", shape.manifest)
 	mustWrite(t, design, "api.craftgo", shape.design)
 
-	if err := runGen([]string{"-f", design, "-c", dir}); err != nil {
-		t.Fatalf("runGen: %v", err)
-	}
+	genProject(t, dir)
 	for rel, tmpl := range shape.goScaffolds {
 		if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
 			t.Fatalf("%s wrote no %s, so this test no longer covers it: %v", tmpl, rel, err)
 		}
 	}
-
-	// A workspace rather than requires: the generated module names no
-	// dependency of its own, so the build resolves craftgo out of the repo
-	// and everything else out of the root module's build list. Nothing is
-	// fetched that building this repo has not already fetched. Every
-	// published module a generated project can reach has to be listed -
-	// pkg/events for a consumer, pkg/wire for a `bytes @format(raw)` field -
-	// or its import resolves to nothing.
-	uses := []string{".", root}
-	for _, m := range repoModules {
-		uses = append(uses, filepath.Join(root, filepath.FromSlash(m)))
-	}
-	mustWrite(t, dir, "go.work", "go "+goVersion+"\n\nuse (\n\t"+
-		strings.Join(uses, "\n\t")+"\n)\n")
+	writeWorkspace(t, dir, root, goVersion)
 	return dir
-}
-
-// repoModules are the nested modules of this repo, relative to its root,
-// that a generated project's workspace has to name alongside the root
-// module. Adding a published module here is what keeps the scaffold
-// builds resolving it the way a real project's `go get` would.
-var repoModules = []string{"pkg/events", "pkg/wire"}
-
-// repoRoot walks up to the module holding go.mod and every module in
-// [repoModules] - the set a generated project's workspace has to name.
-func repoRoot(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for {
-		_, mod := os.Stat(filepath.Join(dir, "go.mod"))
-		nested := true
-		for _, m := range repoModules {
-			if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(m), "go.mod")); err != nil {
-				nested = false
-				break
-			}
-		}
-		if mod == nil && nested {
-			real, err := filepath.EvalSymlinks(dir)
-			if err != nil {
-				t.Fatal(err)
-			}
-			return real
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatalf("no craftgo module root above %s", dir)
-		}
-		dir = parent
-	}
-}
-
-// goDirective reads the root module's language version so the generated
-// module and its workspace track it instead of pinning a copy.
-func goDirective(t *testing.T, root string) string {
-	t.Helper()
-	body, err := os.ReadFile(filepath.Join(root, "go.mod"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	m := regexp.MustCompile(`(?m)^go (\S+)$`).FindStringSubmatch(string(body))
-	if m == nil {
-		t.Fatalf("no go directive in %s/go.mod", root)
-	}
-	return strings.TrimSpace(m[1])
 }

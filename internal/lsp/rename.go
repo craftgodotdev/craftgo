@@ -2,101 +2,63 @@ package lsp
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
-	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 
+	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
-// onPrepareRename answers `textDocument/prepareRename`. The editor calls
-// this before showing its rename UI to learn whether the symbol under
-// the cursor is renameable and what range covers it. We accept renames
-// of identifiers that match a top-level declaration in the same file -
-// every other position returns nil (LSP for "not supported here").
-func (s *Server) onPrepareRename(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.PrepareRenameParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
+// onPrepareRename answers `textDocument/prepareRename` with the range of an
+// identifier spelt like the declaration it names, else null.
+func (s *server) onPrepareRename(_ context.Context, params protocol.PrepareRenameParams) (any, error) {
+	r, ok := s.open(params.TextDocument.URI)
+	if !ok {
+		return nil, nil
 	}
-	src := s.snapshot(params.TextDocument.URI)
-	if src == "" {
-		return reply(ctx, nil, nil)
+	view := r.view()
+	c := view.cursorAt(params.Position)
+	if r.renameTarget(c) == nil {
+		return nil, nil
 	}
-	view := parseSnapshot(string(params.TextDocument.URI), src)
-	idx, tok := view.tokenAt(params.Position.Line, params.Position.Character)
-	if idx < 0 || tok.Kind != lexer.Ident {
-		return reply(ctx, nil, nil)
-	}
-	if findDecl(view.file, tok.Text) == nil {
-		return reply(ctx, nil, nil)
-	}
-	r := rangeOf(tok)
-	return reply(ctx, &r, nil)
+	rng := rangeOf(view.src, view.tokens[c.at])
+	return &rng, nil
 }
 
-// onRename answers `textDocument/rename`. Every `.craftgo` file under
-// the design root is scanned for Ident tokens matching the symbol's
-// current name and rewritten in one WorkspaceEdit so a project-wide
-// rename leaves no stale references in sibling files.
-//
-// Precondition: the cursor must sit on an identifier whose decl exists
-// in the current file, so the user renames a thing they own rather than
-// an imported foreign symbol.
-func (s *Server) onRename(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
-	var params protocol.RenameParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
+// onRename answers `textDocument/rename`, rewriting every identifier in the
+// project that names the declaration the one at the cursor names.
+func (s *server) onRename(_ context.Context, params protocol.RenameParams) (any, error) {
+	if !lexer.IsIdent(params.NewName) {
+		return nil, fmt.Errorf("invalid rename target %q: not a craftgo identifier", params.NewName)
 	}
-	if !isValidIdent(params.NewName) {
-		return reply(ctx, nil, fmt.Errorf("invalid rename target %q: not a craftgo identifier", params.NewName))
+	r, ok := s.open(params.TextDocument.URI)
+	if !ok {
+		return nil, nil
 	}
-	src := s.snapshot(params.TextDocument.URI)
-	if src == "" {
-		return reply(ctx, nil, nil)
+	d := r.renameTarget(r.view().cursorAt(params.Position))
+	if d == nil {
+		return nil, nil
 	}
-	view := parseSnapshot(string(params.TextDocument.URI), src)
-	idx, tok := view.tokenAt(params.Position.Line, params.Position.Character)
-	if idx < 0 || tok.Kind != lexer.Ident || findDecl(view.file, tok.Text) == nil {
-		return reply(ctx, nil, nil)
-	}
-	matches := s.projectNameMatches(view, params.TextDocument.URI, src, tok.Text, true)
 	changes := map[protocol.DocumentURI][]protocol.TextEdit{}
-	for _, loc := range matches {
+	for _, loc := range r.project().references(d, true, r.uri) {
 		changes[loc.URI] = append(changes[loc.URI], protocol.TextEdit{
 			Range:   loc.Range,
 			NewText: params.NewName,
 		})
 	}
 	if len(changes) == 0 {
-		// Ensure the current document still appears in the response
-		// so the editor's rename UI does not error out on empty maps.
-		changes[params.TextDocument.URI] = []protocol.TextEdit{}
+		// The buffer is always listed: the rename UI fails on an empty map.
+		changes[r.uri] = []protocol.TextEdit{}
 	}
-	return reply(ctx, &protocol.WorkspaceEdit{Changes: changes}, nil)
+	return &protocol.WorkspaceEdit{Changes: changes}, nil
 }
 
-// isValidIdent enforces the lexer's identifier rule (`[A-Za-z_][A-Za-z0-9_]*`)
-// so the rename result will lex back into a single Ident token. Empty
-// strings, leading digits, and embedded punctuation are rejected.
-func isValidIdent(s string) bool {
-	if s == "" {
-		return false
+// renameTarget returns the declaration the identifier at c names, or nil on
+// the package half of `pkg.Name`.
+func (r *request) renameTarget(c cursor) ast.Decl {
+	if c.at < 0 || isQualifier(r.view(), c.at) {
+		return nil
 	}
-	for i, r := range s {
-		switch {
-		case r == '_':
-		case r >= 'A' && r <= 'Z':
-		case r >= 'a' && r <= 'z':
-		case r >= '0' && r <= '9':
-			if i == 0 {
-				return false
-			}
-		default:
-			return false
-		}
-	}
-	return true
+	return r.project().symbolAt(r.view(), c.at)
 }

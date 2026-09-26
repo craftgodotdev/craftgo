@@ -2,8 +2,8 @@
 
 ## Requirements
 
-- Go 1.26 or later
-- A POSIX shell (macOS, Linux, WSL on Windows)
+- Go 1.26.6 or later
+- macOS, Linux or Windows
 
 ## CLI
 
@@ -41,16 +41,6 @@ Install the **craftgo** extension from the Marketplace - three equivalent ways:
 
 `.craftgo` files immediately get syntax highlighting, completion, hover, and diagnostics. The extension auto-spawns `craftgo-lsp`, so install that too (above) for the language-server features.
 
-::: details Build from source instead
-```bash
-git clone https://github.com/craftgodotdev/craftgo
-cd craftgo/extensions/vscode
-npm install
-npm run package
-code --install-extension craftgo-*.vsix
-```
-:::
-
 ## Runtime library
 
 Add craftgo as a dependency in your project:
@@ -59,11 +49,11 @@ Add craftgo as a dependency in your project:
 go get github.com/craftgodotdev/craftgo
 ```
 
-Generated code imports from `pkg/server`, `pkg/log` and `pkg/telemetry`. You do not import these directly in most cases.
+Generated code imports from `pkg/server`, `pkg/log` and `pkg/telemetry`, plus `pkg/rpc` for proto services, `pkg/events` for events and `pkg/wire` for a `bytes @format(raw)` field. `pkg/events` and `pkg/wire` are modules of their own, which `go get github.com/craftgodotdev/craftgo` does not fetch; run `go mod tidy` after `craftgo gen` to add every module the generated code imports. You do not import these directly in most cases.
 
 ## Other editors
 
-The LSP speaks standard LSP. Configure your editor to spawn `craftgo-lsp` for files with extension `.craftgo`.
+The LSP speaks standard LSP. Configure your editor to spawn `craftgo-lsp` for files with extension `.craftgo` or `.cg`.
 
 Neovim with `nvim-lspconfig`:
 

@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoEnum returns the http.HandlerFunc for the
-// POST EchoEnum endpoint.
+// Echo the enum default. Missing c on the wire results in c=Red after pre-fill.
+//
+// EchoEnum returns the POST EchoEnum handler.
 func EchoEnum(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.DefaultsEnum
@@ -35,8 +36,6 @@ func EchoEnum(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

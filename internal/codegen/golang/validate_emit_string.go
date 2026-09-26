@@ -1,124 +1,98 @@
-// String validators: @length, @minLength, @maxLength, @pattern, @format dispatcher.
 package golang
 
 import (
 	"fmt"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/strfmt"
 )
 
-func lengthCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	// `@length(N)` is the exact-length form (min == max == N); the
-	// two-arg `@length(min, max)` is a range. Both lower to one len()
-	// bounds check.
-	if !isLengthCheckable(f) || len(d.Args) == 0 || len(d.Args) > 2 {
+// lengthCheck renders @length(n) or @length(min, max) on a string or bytes value.
+func lengthCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	sides, _ := semantic.BoundSides(d.Name)
+	args := semantic.BoundArgs(d)
+	if !t.primIs(prims.String, prims.Bytes) || len(args) != 2 {
 		return ""
 	}
-	lo, ok1 := semantic.IntArg(d.Args[0])
-	if !ok1 {
+	lo, ok1 := semantic.IntArg(args[0])
+	hi, ok2 := semantic.IntArg(args[1])
+	if !ok1 || !ok2 {
 		return ""
 	}
-	hi := lo
-	if len(d.Args) == 2 {
-		v, ok2 := semantic.IntArg(d.Args[1])
-		if !ok2 {
-			return ""
-		}
-		hi = v
+	loImplied, hiImplied := semantic.BoundImpliedByType(t.prim, d, 0), semantic.BoundImpliedByType(t.prim, d, 1)
+	if loImplied && hiImplied {
+		return ""
 	}
-	val := stringValueExpr(f, access, ctx)
-	guard := optionalGuard(f, access)
-	count := lengthCount(f, val, ctx)
-	// Avoid the `if X != nil && l := count(*X); ...` form - Go forbids
-	// `:=` inside an `&&` expression. Inline the count twice instead; the
-	// second call is constant-folded by the compiler when the argument is a
-	// simple deref.
-	var cond string
-	if guard == "" {
-		cond = fmt.Sprintf("l := %s; l < %d || l > %d", count, lo, hi)
-	} else {
-		cond = fmt.Sprintf("%s(%s < %d || %s > %d)", guard, count, lo, count, hi)
-	}
-	var msg string
+	count := lengthCount(t, ctx)
 	if lo == hi {
-		msg = fmt.Sprintf(`"%slength must be %d"`, errSubject(fieldWireName(f)), lo)
-	} else {
-		msg = fmt.Sprintf(`"%slength out of range [%d, %d]"`, errSubject(fieldWireName(f)), lo, hi)
+		return failIf(t.guarded(fmt.Sprintf("%s != %d", count, lo)), t.subject, fmt.Sprintf("length must be %d", lo), ctx)
 	}
-	return ifReturnf(cond, msg, ctx)
+	text := fmt.Sprintf("length out of range [%d, %d]", lo, hi)
+	loFails, hiFails := fmt.Sprintf("%s %d", sides[0].FailOp(), lo), fmt.Sprintf("%s %d", sides[1].FailOp(), hi)
+	switch {
+	case loImplied:
+		return failIf(t.guarded(count+" "+hiFails), t.subject, text, ctx)
+	case hiImplied:
+		return failIf(t.guarded(count+" "+loFails), t.subject, text, ctx)
+	}
+	// The init statement counts once for both bounds, so a nil guard wraps it.
+	return t.guardBlock(failIf(fmt.Sprintf("l := %s; l %s || l %s", count, loFails, hiFails), t.subject, text, ctx))
 }
 
-// minMaxLengthCheck handles `@minLength(n)` and `@maxLength(n)`.
-// Optional string fields are handled the same way as `lengthCheck` -
-// nil-guard plus pointer deref.
-func minMaxLengthCheck(f *ast.Field, access string, d *ast.Decorator, kind string, ctx emitCtx) string {
-	if !isLengthCheckable(f) || len(d.Args) != 1 {
+// minMaxLengthCheck renders @minLength or @maxLength on a string or bytes
+// value, failing it by its side's comparison of the length with n; a bound
+// every length meets renders nothing.
+func minMaxLengthCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	sides, _ := semantic.BoundSides(d.Name)
+	args := semantic.BoundArgs(d)
+	if !t.primIs(prims.String, prims.Bytes) || len(args) != 1 {
 		return ""
 	}
-	n, ok := semantic.IntArg(d.Args[0])
+	n, ok := semantic.IntArg(args[0])
+	if !ok || semantic.BoundImpliedByType(t.prim, d, 0) {
+		return ""
+	}
+	label := "length greater than"
+	if sides[0].Lower {
+		label = "length less than"
+	}
+	cond := fmt.Sprintf("%s %s %d", lengthCount(t, ctx), sides[0].FailOp(), n)
+	return failIf(t.guarded(cond), t.subject, fmt.Sprintf("%s %d", label, n), ctx)
+}
+
+// lengthCount measures a string in runes, as OpenAPI minLength/maxLength do,
+// and a bytes value in bytes.
+func lengthCount(t checkTarget, ctx emitCtx) string {
+	if t.primIs(prims.Bytes) {
+		return "len(" + t.val() + ")"
+	}
+	ctx.imports.use("unicode/utf8")
+	return "utf8.RuneCountInString(" + t.val() + ")"
+}
+
+// patternCheck renders @pattern on a string value against a package-level regex.
+func patternCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	if !t.primIs(prims.String) || len(d.Args) != 1 {
+		return ""
+	}
+	s, ok := ast.TextValue(d.Args[0].Value)
 	if !ok {
 		return ""
 	}
-	op, label := "<", "less than"
-	if kind == "max" {
-		op, label = ">", "greater than"
-	}
-	val := stringValueExpr(f, access, ctx)
-	guard := optionalGuard(f, access)
-	cond := fmt.Sprintf("%s%s %s %d", guard, lengthCount(f, val, ctx), op, n)
-	msg := fmt.Sprintf(`"%slength %s %d"`, errSubject(fieldWireName(f)), label, n)
-	return ifReturnf(cond, msg, ctx)
+	ctx.imports.use("regexp")
+	cond := "!" + ctx.regexes.intern(s) + ".MatchString(" + t.val() + ")"
+	return failIf(t.guarded(cond), t.subject, "does not match pattern", ctx)
 }
 
-// lengthCount returns the Go expression for the length a string-family field's
-// `@length` / `@minLength` / `@maxLength` validates: utf8.RuneCountInString for
-// a `string` so the bound counts Unicode characters - matching the OpenAPI
-// `minLength`/`maxLength` keyword and a Postgres `varchar(n)`, both of which
-// count characters, not bytes. A `bytes` field keeps `len()` (raw byte count,
-// the right measure for binary, and not advertised in the OpenAPI schema).
-func lengthCount(f *ast.Field, val string, ctx emitCtx) string {
-	if f != nil && f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "bytes" {
-		return "len(" + val + ")"
-	}
-	ctx.uses["unicode/utf8"] = true
-	return "utf8.RuneCountInString(" + val + ")"
-}
-
-// patternCheck handles `@pattern("regex")`. The regex is interned in
-// the file's [regexRegistry] so the `regexp.MustCompile` call happens
-// ONCE at package init - Validate() references the pre-compiled var
-// instead of recompiling per call.
-func patternCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	if !isStringOrOptString(f) || len(d.Args) != 1 {
+// formatCheck renders @format on a string value from its [strfmt] entry, a regex
+// or a stdlib condition; an unknown format renders nothing.
+func formatCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	if !t.primIs(prims.String) || len(d.Args) != 1 {
 		return ""
 	}
-	s, ok := semantic.StringArg(d.Args[0])
-	if !ok {
-		return ""
-	}
-	ctx.uses["regexp"] = true
-	val := stringValueExpr(f, access, ctx)
-	guard := optionalGuard(f, access)
-	patVar := ctx.regexes.intern(s)
-	cond := fmt.Sprintf("%s!%s.MatchString(%s)", guard, patVar, val)
-	msg := fmt.Sprintf(`"%sdoes not match pattern"`, errSubject(fieldWireName(f)))
-	return ifReturnf(cond, msg, ctx)
-}
-
-// formatCheck handles `@format(name)` for the [strfmt] catalogue: each
-// spec declares the Go imports its check needs and the check itself - a
-// regular expression interned once per file so `MustCompile` runs once,
-// or a stdlib-backed condition (mail / url / time / ...) emitted verbatim.
-// The argument may be either a quoted string (`@format("email")`) or a
-// bare identifier (`@format(email)`) - both accepted. Unknown names skip
-// silently; projects can extend with `@pattern("...")` for niche cases.
-func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) string {
-	if !isStringOrOptString(f) || len(d.Args) != 1 {
-		return ""
-	}
-	name := semantic.StringOrIdentArg(d.Args[0])
+	name, _ := ast.TextValue(d.Args[0].Value)
 	if name == "" {
 		return ""
 	}
@@ -127,25 +101,15 @@ func formatCheck(f *ast.Field, access string, d *ast.Decorator, ctx emitCtx) str
 		return ""
 	}
 	for _, imp := range sp.Imports {
-		ctx.uses[imp] = true
+		ctx.imports.use(imp)
 	}
-	val := stringValueExpr(f, access, ctx)
-	msg := fmt.Sprintf(`"%snot a valid %s"`, errSubject(fieldWireName(f)), sp.Label)
-	var check string
+	var cond string
 	if sp.Pattern != "" {
-		ctx.uses["regexp"] = true
-		check = ifReturnf("!"+ctx.regexes.intern(sp.Pattern)+".MatchString("+val+")", msg, ctx)
+		ctx.imports.use("regexp")
+		cond = "!" + ctx.regexes.intern(sp.Pattern) + ".MatchString(" + t.val() + ")"
 	} else {
-		check = ifReturnf(fmt.Sprintf(sp.Cond, val), msg, ctx)
+		cond = fmt.Sprintf(sp.Cond, t.val())
 	}
-	if goFieldIsPointer(f, ctx.pkg, ctx.resolver) {
-		// Pointer field (`?` optional OR `@nullable`): nest the check
-		// inside a nil-guard so the deref in `val` and the init-stmt forms
-		// (mail.ParseAddress / time.Parse / ...) only run when a value is
-		// present. Keying on Optional alone would miss `@nullable`-without-
-		// `?`, which is still a `*string` - an unguarded deref panics on
-		// `{"field": null}`.
-		return fmt.Sprintf("if %s != nil {\n\t%s\n}", access, indentBlock(check))
-	}
-	return check
+	// A format condition may carry an init statement, which only a block can guard.
+	return t.guardBlock(failIf(cond, t.subject, "not a valid "+sp.Label, ctx))
 }

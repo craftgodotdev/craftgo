@@ -7,20 +7,19 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 
-// TailLogsService carries the per-request state for the TailLogs endpoint of
-// StreamService. The embedded log.Logger is pre-bound to the request
-// context so logging surfaces trace_id / span_id.
+// TailLogsService runs StreamService.TailLogs for one request.
 type TailLogsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewTailLogsService constructs a fresh service instance bound to ctx.
+// NewTailLogsService binds TailLogsService to ctx; its Logger carries ctx's trace ids.
 func NewTailLogsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *TailLogsService {
 	return &TailLogsService{
 		Logger: log.Default().WithContext(ctx),

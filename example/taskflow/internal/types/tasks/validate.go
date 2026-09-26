@@ -4,13 +4,13 @@ package tasks
 
 import (
 	"fmt"
-	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 	"time"
 	"unicode/utf8"
+
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 )
 
-// Validate checks every field-level constraint declared on AddCommentReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *AddCommentReq) Validate() error {
 	if err := v.ProjectID.Validate(); err != nil {
 		return fmt.Errorf("projectId: %w", err)
@@ -24,8 +24,7 @@ func (v *AddCommentReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on BulkCreateReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *BulkCreateReq) Validate() error {
 	if err := v.ProjectID.Validate(); err != nil {
 		return fmt.Errorf("projectId: %w", err)
@@ -38,14 +37,13 @@ func (v *BulkCreateReq) Validate() error {
 	}
 	for i0 := range v.Tasks {
 		if err := v.Tasks[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("tasks: %w", err)
 		}
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Comment.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Comment) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -65,8 +63,7 @@ func (v *Comment) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CreateTaskItem.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CreateTaskItem) Validate() error {
 	if l := utf8.RuneCountInString(v.Title); l < 1 || l > 200 {
 		return fmt.Errorf("title: length out of range [1, 200]")
@@ -79,8 +76,7 @@ func (v *CreateTaskItem) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on CreateTaskReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *CreateTaskReq) Validate() error {
 	if err := v.ProjectID.Validate(); err != nil {
 		return fmt.Errorf("projectId: %w", err)
@@ -142,8 +138,7 @@ func (v *CreateTaskReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on GetTaskReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *GetTaskReq) Validate() error {
 	if err := v.ProjectID.Validate(); err != nil {
 		return fmt.Errorf("projectId: %w", err)
@@ -154,8 +149,7 @@ func (v *GetTaskReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ListTasksReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ListTasksReq) Validate() error {
 	if err := v.PageParams.Validate(); err != nil {
 		return err
@@ -181,8 +175,7 @@ func (v *ListTasksReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on LogTimeReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *LogTimeReq) Validate() error {
 	if err := v.ProjectID.Validate(); err != nil {
 		return fmt.Errorf("projectId: %w", err)
@@ -202,8 +195,7 @@ func (v *LogTimeReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on ReindexReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *ReindexReq) Validate() error {
 	if err := v.ProjectID.Validate(); err != nil {
 		return fmt.Errorf("projectId: %w", err)
@@ -211,8 +203,7 @@ func (v *ReindexReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on SetTaskStatusReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *SetTaskStatusReq) Validate() error {
 	if err := v.ProjectID.Validate(); err != nil {
 		return fmt.Errorf("projectId: %w", err)
@@ -229,8 +220,7 @@ func (v *SetTaskStatusReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Task.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *Task) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)
@@ -304,8 +294,7 @@ func (v *Task) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on TaskCreated.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *TaskCreated) Validate() error {
 	if err := v.TaskID.Validate(); err != nil {
 		return fmt.Errorf("taskId: %w", err)
@@ -328,8 +317,7 @@ func (v *TaskCreated) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on TaskStatusChanged.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *TaskStatusChanged) Validate() error {
 	if err := v.TaskID.Validate(); err != nil {
 		return fmt.Errorf("taskId: %w", err)
@@ -355,24 +343,22 @@ func (v *TaskStatusChanged) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on Priority.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v Priority) Validate() error {
 	switch v {
 	case PriorityLow, PriorityMedium, PriorityHigh, PriorityUrgent:
 	default:
-		return fmt.Errorf("invalid Priority value")
+		return fmt.Errorf("must be one of [1 2 3 4]")
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on TaskStatus.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v TaskStatus) Validate() error {
 	switch v {
 	case TaskStatusTodo, TaskStatusInProgress, TaskStatusDone, TaskStatusBlocked:
 	default:
-		return fmt.Errorf("invalid TaskStatus value")
+		return fmt.Errorf("must be one of [todo in_progress done blocked]")
 	}
 	return nil
 }

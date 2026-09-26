@@ -5,26 +5,21 @@ package admin
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/admin"
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/admin"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// RevokeTokenService carries the per-request state for the
-// RevokeToken endpoint of AdminService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// RevokeTokenService runs AdminService.RevokeToken for one request.
 type RevokeTokenService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewRevokeTokenService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewRevokeTokenService binds RevokeTokenService to ctx; its Logger carries ctx's trace ids.
 func NewRevokeTokenService(ctx context.Context, svcCtx *svccontext.ServiceContext) *RevokeTokenService {
 	return &RevokeTokenService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewRevokeTokenService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// RevokeToken is the service entry point. Replace the
-// TODO with the real implementation.
+// Revoke an API token.
+//
+// RevokeToken implements AdminService.RevokeToken.
 func (l *RevokeTokenService) RevokeToken(req *types.RevokeTokenReq) (*shared.OkResp, error) {
 	if err := l.svcCtx.Store.RevokeToken(req.ID); err != nil {
 		return nil, err

@@ -1,20 +1,16 @@
 package semantic
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
-// @uniqueItems applies to arrays, not maps: a map collapses to PrimArray in the
-// applicability gate but neither codegen stage honours it, so reject rather
-// than silently drop the constraint (matching the int rejection).
+// @uniqueItems on a map is rejected.
 func TestUniqueItemsOnMapRejected(t *testing.T) {
 	expectError(t, `type Req { m map<string, int> @uniqueItems }`, CodeDecoratorTypeMismatch)
 }
 
-// @uniqueItems over a cross-package struct element that is only TRANSITIVELY
-// non-comparable - through a bare member of the foreign struct that itself
-// holds a slice - must be rejected. The comparability walk has to follow the
-// foreign struct's bare member into ITS home package; without threading that
-// package the member resolved to "unknown" and was conservatively accepted,
-// shipping a non-compiling `map[dep.XOuter]struct{}` dedup.
+// @uniqueItems rejects a cross-package element whose nested struct field holds a slice.
 func TestUniqueItemsCrossPkgTransitiveNonComparableRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"dep/d.craftgo": `package dep
@@ -30,8 +26,7 @@ type NReq { items dep.XOuter[] @uniqueItems }`,
 	}
 }
 
-// The same shape but with the foreign nested member comparable (a plain
-// string, not a slice) must NOT be rejected - the control.
+// @uniqueItems accepts a cross-package element whose nested struct is comparable.
 func TestUniqueItemsCrossPkgTransitiveComparableClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"dep/d.craftgo": `package dep
@@ -47,37 +42,128 @@ type NReq { items dep.XOuter[] @uniqueItems }`,
 	}
 }
 
-// @uniqueItems on an array of a struct with an OPTIONAL field whose underlying
-// type is non-comparable (a slice inside it) must NOT be rejected: `?` makes
-// the field a Go pointer (`*T`), which is comparable, so the struct is a valid
-// map key. A non-optional such field stays correctly rejected.
-func TestUniqueItemsOptionalFieldComparable(t *testing.T) {
-	mustClean(t, `type Inner { id string  tags string[] }
-type Holder { inner Inner? }
-type R { xs Holder[] @uniqueItems }`)
-	// The non-optional twin is still rejected (Inner embedded by value).
-	expectError(t, `type Inner { id string  tags string[] }
-type Holder { inner Inner }
-type R { xs Holder[] @uniqueItems }`, CodeDecoratorTypeMismatch)
-	// Cross-package optional field is likewise a comparable pointer.
-	root, files := projectFixture(t, map[string]string{
-		"dep/d.craftgo": `package dep
-type XInner { id string  tags string[] }`,
-		"api.craftgo": `package design
-type Holder { inner dep.XInner? }
-type NReq { items Holder[] @uniqueItems }`,
-	})
-	if _, diags := AnalyzeProject(files, Options{DesignRoot: root}); findCode(diags, CodeDecoratorTypeMismatch) != nil {
-		t.Error("optional cross-pkg struct field is a comparable pointer; must not be rejected")
+// @uniqueItems refuses an element holding a pointer, which the dedupe map
+// compares by address: equal elements would pass as distinct.
+func TestUniqueItemsRejectsPointerMembers(t *testing.T) {
+	for _, c := range []struct{ label, src, member string }{
+		{"optional primitive", "type O { val string? }", "O.val (string?)"},
+		{"nullable primitive", "type O { val string @nullable }", "O.val (string)"},
+		{"optional struct", "type Inner { id string }\ntype O { inner Inner? }", "O.inner (Inner?)"},
+		{"optional enum", "enum S { A B }\ntype O { s S? }", "O.s (S?)"},
+		{"file", "type O { upload file }", "O.upload (file)"},
+		{"nested", "type Inner { id int? }\ntype O { inner Inner }", "O.inner.id (int?)"},
+		{"generic argument", "type Pair<T> { val T? }\ntype O { p Pair<string> }", "O.p.val (string?)"},
+	} {
+		t.Run(c.label, func(t *testing.T) {
+			d := expectError(t, c.src+"\ntype R { xs O[] @uniqueItems }", CodeDecoratorTypeMismatch)
+			expectMessage(t, d, c.member+" is a pointer")
+		})
+	}
+	// A pointer element of a generic instance is judged with its argument.
+	expectError(t, `type Pair<T> { val T? }
+type R { xs Pair<string>[] @uniqueItems }`, CodeDecoratorTypeMismatch)
+}
+
+// @uniqueItems refuses an element holding a value Go cannot compare, even
+// behind `?`: bytes and any hold nil themselves, so `?` adds no pointer.
+func TestUniqueItemsRejectsIncomparableMembers(t *testing.T) {
+	for _, src := range []string{
+		"type O { val bytes? }\ntype R { xs O[] @uniqueItems }",
+		"type O { val any? }\ntype R { xs O[] @uniqueItems }",
+		"type O { tags string[]? }\ntype R { xs O[] @uniqueItems }",
+		"type Pair<T> { val T? }\ntype R { xs Pair<bytes>[] @uniqueItems }",
+		"scalar Blob bytes\ntype O { b Blob }\ntype R { xs O[] @uniqueItems }",
+		"type R { xs any[] @uniqueItems }",
+	} {
+		d := expectError(t, src, CodeDecoratorTypeMismatch)
+		expectMessage(t, d, "is not comparable")
 	}
 }
 
-// @uniqueItems over a cross-package GENERIC instance whose type-arg makes it
-// non-comparable (`shared.Box<shared.User>` where User holds a slice) must be
-// rejected. The comparability walk has to substitute the type-args into the
-// generic decl's fields - mirroring the same-package twin - or the bare `T`
-// resolves to nothing, the instance is conservatively accepted, and codegen
-// emits a non-compiling `map[shared.Box[...]]struct{}`.
+// @uniqueItems accepts an element compared member by member.
+func TestUniqueItemsAcceptsValueMembers(t *testing.T) {
+	mustClean(t, `enum S { A B }
+scalar Email string
+type Inner { id string  n int }
+type O { s S  e Email  inner Inner }
+type R { xs O[] @uniqueItems  ys Email[] @uniqueItems  zs S[] @uniqueItems }`)
+}
+
+// @uniqueItems refuses a datetime element or member: its time.Time carries a
+// location, so the dedupe map keeps two equal instants in different zones apart.
+func TestUniqueItemsRejectsDatetime(t *testing.T) {
+	for _, c := range []struct{ src, subject string }{
+		{"type R { xs datetime[] @uniqueItems }", "datetime is a datetime"},
+		{"type O { at datetime }\ntype R { xs O[] @uniqueItems }", "O.at (datetime) is a datetime"},
+	} {
+		d := expectError(t, c.src, CodeDecoratorTypeMismatch)
+		expectMessage(t, d, c.subject)
+	}
+}
+
+// A cross-package generic instance is judged with the arguments its referrer gives it.
+func TestUniqueItemsCrossPkgGenericLocalArgument(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"lib/l.craftgo": `package lib
+type Box<T> { value T }`,
+		"api.craftgo": `package design
+import "lib"
+type Item { tags string[] }
+type R { xs lib.Box<Item>[] @uniqueItems }`,
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	d := findCode(diags, CodeDecoratorTypeMismatch)
+	if d == nil || !strings.Contains(d.Msg, "lib.Box<Item>.value.tags (string[]) is not comparable") {
+		t.Fatalf("expected the local argument's slice reported, got %v", diags)
+	}
+}
+
+// A map value that is an optional array or map is rejected wherever a map is
+// spelled: a nil slice or map already stands for null, so neither the Go type
+// nor the schema carries the `?`. An optional value of another type is a
+// pointer or holds null itself.
+func TestOptionalCompoundMapValueRejected(t *testing.T) {
+	const decls = "package app\ntype Item { id string }\ntype Box<T> { v T }\n"
+	for label, c := range map[string]struct{ src, value string }{
+		"array":             {"type R { m map<string, int[]?> }", "int[]?"},
+		"map":               {"type R { m map<string, map<string, int>?> }", "map<string, int>?"},
+		"nested map":        {"type R { m map<string, map<string, Item[]?>> }", "Item[]?"},
+		"array of maps":     {"type R { m map<string, int[]?>[] }", "int[]?"},
+		"generic argument":  {"type R { b Box<map<string, Item[]?>> }", "Item[]?"},
+		"mixin argument":    {"type R { Box<map<string, Item[]?>> }", "Item[]?"},
+		"error field":       {"error Conflict E { m map<string, int[]?> }", "int[]?"},
+		"response argument": {"service S { get A /a { response Box<map<string, int[]?>> } }", "int[]?"},
+		"event payload":     {"event Seen { payload Box<map<string, int[]?>> }", "int[]?"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			src := decls + c.src
+			d := expectError(t, src, CodeMapValueType)
+			expectMessage(t, d, c.value, "drop the `?`")
+			expectCodeCount(t, src, CodeMapValueType, 1)
+			if d.Pos.Line != 4 {
+				t.Errorf("reported at line %d, want line 4", d.Pos.Line)
+			}
+		})
+	}
+	mustClean(t, decls+`scalar Blob bytes
+type R {
+	a map<string, int?>
+	b map<string, Item?>
+	c map<string, Blob?>
+	d map<string, bytes?>
+	e map<string, Box<Item>?>
+	f map<string, int[]>
+	g int[]?
+	h map<string, int>?
+}`)
+}
+
+// A map key naming no declared type gets the reference error alone.
+func TestMapKeyUnknownNameLeftToReferenceCheck(t *testing.T) {
+	expectNoCode(t, `type R { m map<Nope, int> }`, CodeMapKeyType)
+}
+
+// @uniqueItems rejects a cross-package generic instance over a non-comparable type argument.
 func TestUniqueItemsCrossPkgGenericNonComparableRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/s.craftgo": `package shared
@@ -93,8 +179,7 @@ type UniqueHost { rows shared.Box<shared.User>[] @uniqueItems }`,
 	}
 }
 
-// A cross-package generic instance with a COMPARABLE type-arg
-// (`shared.Box<string>`) must NOT be rejected - the control.
+// @uniqueItems accepts a cross-package generic instance over a comparable type argument.
 func TestUniqueItemsCrossPkgGenericComparableClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/s.craftgo": `package shared
@@ -109,12 +194,7 @@ type UniqueHost { rows shared.Box<string>[] @uniqueItems }`,
 	}
 }
 
-// A non-marshalable map KEY nested inside a generic type-argument
-// (`Box<map<WithSlice, string>>`) must be rejected - a struct/slice key is a
-// non-compiling Go map key, a bool/float/bytes key panics at json.Marshal.
-// The comparability walk has to descend into the generic's type-args, not
-// only the field's top-level map/array. Covers single-package (struct key)
-// and cross-package (float-scalar key) forms.
+// A non-marshalable map key inside a generic type argument is rejected, locally and across packages.
 func TestMapKeyInGenericArgRejected(t *testing.T) {
 	expectError(t, `type Box<T> { val T }
 type WithSlice { tags string[] }
@@ -134,17 +214,13 @@ type UsesF { b lib.Box<map<lib.FloatKey, string>> }`,
 	}
 }
 
-// A VALID map key inside a generic type-arg (`Box<map<string, int>>`) must
-// NOT be rejected - the control.
+// A valid map key inside a generic type argument is accepted.
 func TestMapKeyInGenericArgValidClean(t *testing.T) {
 	mustClean(t, `type Box<T> { val T }
 type Uses { b Box<map<string, int>> }`)
 }
 
-// TestOptionalMapKeyRejected: an optional `?` map key renders map[*K]V, which
-// encoding/json cannot marshal (pointer object keys fail) - so it is rejected
-// for every underlying key kind (primitive, enum, scalar), local and
-// cross-package. A re-added non-optional key is the control.
+// An optional map key is rejected for every key kind, locally and across packages.
 func TestOptionalMapKeyRejected(t *testing.T) {
 	for _, key := range []string{"string?", "int?", "Color?", "Code?"} {
 		expectError(t, "enum Color { Red Green }\nscalar Code string\ntype T { m map<"+key+", int> }", CodeMapKeyType)
@@ -159,12 +235,7 @@ func TestOptionalMapKeyRejected(t *testing.T) {
 	mustClean(t, "enum Color { Red Green }\ntype T { m map<string, int>  n map<Color, int> }")
 }
 
-// @uniqueItems over a generic instance whose non-comparability arrives via a
-// GENERIC MIXIN of the type-param (`Box<bytes>` where `Box<T>` embeds
-// `Inner<T>` and `Inner{ val T }`) must be rejected. The comparability walk
-// has to substitute the outer type-args into the mixin ref before descending,
-// or the bare `T` inside the mixin escapes and a non-compiling dedupe map
-// (`map[Box[[]byte]]struct{}`) is emitted. Covers single + cross-package.
+// @uniqueItems rejects a generic instance made non-comparable through a generic mixin.
 func TestUniqueItemsGenericMixinNonComparableRejected(t *testing.T) {
 	expectError(t, `type Inner<T> { val T }
 type Box<T> { Inner<T> }
@@ -185,32 +256,23 @@ type Uses { rows shared.Box<shared.User>[] @uniqueItems }`,
 	}
 }
 
-// The same shape with a comparable type-arg (`Box<string>`) must NOT be
-// rejected - the control.
+// @uniqueItems accepts the generic-mixin shape over a comparable type argument.
 func TestUniqueItemsGenericMixinComparableClean(t *testing.T) {
 	mustClean(t, `type Inner<T> { val T }
 type Box<T> { Inner<T> }
 type Uses { rows Box<string>[] @uniqueItems }`)
 }
 
-// Two DIFFERENT instantiations of one generic in the same struct
-// (`Wrap<string>` comparable, `Wrap<bytes>` not) must be judged
-// independently: the comparability back-edge guard is keyed by the
-// instantiated identity, not the bare decl name, so the comparable instance
-// can't poison the guard for the non-comparable one (which would leak a
-// non-compiling `map[Holder]struct{}`). Order-independent: covers both.
+// Two instances of one generic in a struct are judged separately, in either field order.
 func TestUniqueItemsDistinctGenericInstancesRejected(t *testing.T) {
 	expectError(t, `type Wrap<T> { v T }
 type Holder { s Wrap<string>  b Wrap<bytes> }
 type R { items Holder[] @uniqueItems }`, CodeDecoratorTypeMismatch)
-	// reversed order - the non-comparable instance comes first
 	expectError(t, `type Wrap<T> { v T }
 type Holder { b Wrap<bytes>  s Wrap<string> }
 type R { items Holder[] @uniqueItems }`, CodeDecoratorTypeMismatch)
 
-	// Cross-package: the element itself is qualified (`lib.Holder`) so the
-	// project comparability pass resolves it; its two `Wrap` instantiations
-	// must stay distinct in the back-edge guard.
+	// Likewise for a cross-package element.
 	root, files := projectFixture(t, map[string]string{
 		"lib/l.craftgo": `package lib
 type Wrap<T> { v T }
@@ -225,19 +287,14 @@ type R { items lib.Holder[] @uniqueItems }`,
 	}
 }
 
-// Two comparable instantiations (`Wrap<string>`, `Wrap<int>`) must NOT be
-// rejected - the control proving the per-instantiation key doesn't over-reject.
+// @uniqueItems accepts a struct holding two comparable instances of one generic.
 func TestUniqueItemsDistinctGenericInstancesComparableClean(t *testing.T) {
 	mustClean(t, `type Wrap<T> { v T }
 type Holder { s Wrap<string>  b Wrap<int> }
 type R { items Holder[] @uniqueItems }`)
 }
 
-// @uniqueItems over a LOCAL element whose field reaches a cross-package
-// non-comparable generic (`Holder{ b lib.Wrap<bytes> }`, `Holder[]`) must be
-// rejected - neither pass owned this combination before. It must fire exactly
-// once (no double-report with the per-package pass), and a comparable variant
-// and a fully-local non-comparable element must each behave correctly.
+// @uniqueItems rejects, once, a local element with a non-comparable cross-package generic field.
 func TestUniqueItemsLocalElementCrossPkgFieldRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"lib/l.craftgo": `package lib
@@ -259,7 +316,7 @@ type R { items Holder[] @uniqueItems }`,
 	}
 }
 
-// The comparable variant (cross-pkg arg is comparable) must NOT be rejected.
+// @uniqueItems accepts a local element whose cross-package generic fields are comparable.
 func TestUniqueItemsLocalElementCrossPkgFieldComparableClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"lib/l.craftgo": `package lib
@@ -273,4 +330,21 @@ type R { items Holder[] @uniqueItems }`,
 	if d := findCode(diags, CodeDecoratorTypeMismatch); d != nil {
 		t.Errorf("comparable cross-pkg field must not be rejected; got: %s", d.Msg)
 	}
+}
+
+// @uniqueItems refuses an element built on a type parameter, bare or as an
+// argument: the generic validator cannot key a map on a value constrained by
+// `any`. A declared type a nested struct names like the parameter is not it.
+func TestUniqueItemsRejectsTypeParameterElements(t *testing.T) {
+	for _, src := range []string{
+		"type Page<T> { items T[] @uniqueItems }",
+		"type Box<T> { v T }\ntype Page<T> { items Box<T>[] @uniqueItems }",
+		"type Pair<A, B> { a A  b B }\ntype Page<T> { items Pair<string, T>[] @uniqueItems }",
+	} {
+		d := expectError(t, src, CodeDecoratorTypeMismatch)
+		expectMessage(t, d, "the type parameter T")
+	}
+	mustClean(t, `scalar T string
+type Meta { t T }
+type Page<T> { items Meta[] @uniqueItems  other T }`)
 }

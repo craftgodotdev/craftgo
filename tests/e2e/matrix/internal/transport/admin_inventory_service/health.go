@@ -11,8 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Health returns the http.HandlerFunc for the
-// GET Health endpoint.
+// Liveness probe. Public on purpose - operators hit this before secrets are loaded.
+//
+// Health returns the GET Health handler.
 func Health(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewHealthService(r.Context(), svcCtx)
@@ -21,7 +22,6 @@ func Health(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

@@ -5,27 +5,22 @@ package shared
 import (
 	"context"
 
-	taskevents "github.com/craftgodotdev/craftgo/example/taskflow/internal/events/tasks"
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	craftevents "github.com/craftgodotdev/craftgo/pkg/events"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	taskevents "github.com/craftgodotdev/craftgo/example/taskflow/internal/events/tasks"
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// SetTaskStatusService carries the per-request state for the
-// SetTaskStatus endpoint of TaskService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// SetTaskStatusService runs TaskService.SetTaskStatus for one request.
 type SetTaskStatusService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewSetTaskStatusService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewSetTaskStatusService binds SetTaskStatusService to ctx; its Logger carries ctx's trace ids.
 func NewSetTaskStatusService(ctx context.Context, svcCtx *svccontext.ServiceContext) *SetTaskStatusService {
 	return &SetTaskStatusService{
 		Logger: log.Default().WithContext(ctx),

@@ -8,26 +8,21 @@ import (
 	"fmt"
 	"io"
 
-	pb "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/pb/grpc"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
-	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 	"google.golang.org/grpc"
+
+	pb "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/pb/grpc"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RecordHellosService carries the per-request state for the
-// RecordHellos endpoint of Greeter. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// RecordHellosService runs Greeter.RecordHellos for one request.
 type RecordHellosService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewRecordHellosService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewRecordHellosService binds RecordHellosService to ctx; its Logger carries ctx's trace ids.
 func NewRecordHellosService(ctx context.Context, svcCtx *svccontext.ServiceContext) *RecordHellosService {
 	return &RecordHellosService{
 		Logger: log.Default().WithContext(ctx),

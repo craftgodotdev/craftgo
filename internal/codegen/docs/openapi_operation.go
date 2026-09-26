@@ -1,8 +1,10 @@
-// Operation assembly: buildOperation, parameters, errors, tags, security.
 package docs
 
 import (
+	"cmp"
+	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -11,203 +13,119 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/errcat"
 	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// Response / request-body media types the operation builder emits. Kept as
-// named constants so the several store and lookup sites can't drift on a typo.
 const (
 	mimeApplicationJSON   = "application/json"
 	mimeMultipartFormData = "multipart/form-data"
 )
 
-// isMultipartRequest reports whether m's request body is a multipart/form-data
-// upload (it declares at least one file field). A multipart body schema is
-// rendered INLINE on the operation (multipartRequestBody), so - unlike a JSON
-// body - it does NOT $ref a `<base>ReqBody` component. buildOperation (inline vs
-// $ref) and addRequestBodySchema (emit the component or not) both read this one
-// predicate so they can't disagree and leave an orphaned schema in the spec.
-func isMultipartRequest(m *ast.Method, pkg *semantic.Package, r *semantic.Resolver) bool {
-	if m == nil || m.Request == nil {
-		return false
-	}
-	_, files := semantic.FormFields(m, pkg, r, nil)
-	return len(files) > 0
-}
-
-func buildOperation(svcName string, m *ast.Method, pkg *semantic.Package, registry *genericRegistry, base string) *openapi3.Operation {
+// buildOperation builds the operation of s, adding to doc the body components
+// it refs.
+func buildOperation(doc *openapi3.T, svc *semantic.ServiceInfo, s opShape, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) *openapi3.Operation {
 	op := &openapi3.Operation{
-		OperationID: operationID(m, base),
-		Tags:        operationTags(svcName, m, pkg),
-		// NewResponsesWithCapacity (unlike NewResponses) seeds no phantom
-		// `default` catch-all. Every operation Sets at least a success
-		// response below, so the map is never empty.
+		OperationID: s.id,
+		Tags:        operationTags(svc, s.m),
+		// NewResponses would seed a `default` response.
 		Responses:   openapi3.NewResponsesWithCapacity(2),
-		Description: semantic.Description(m.Decorators, m.Doc),
-		Summary:     summaryOf(m.Decorators),
+		Description: semantic.Description(s.decs, s.m.Doc),
+		Summary:     summaryOf(s.decs),
+		Security:    operationSecurity(svc, s.m),
 	}
-	svc := pkg.Services[svcName]
-	// Service-level `@security` is appended to the method-level chain:
-	// each entry in OpenAPI `security[]` is an OR alternative, so
-	// declaring `@security(Bearer)` on the service plus `@security(Admin)`
-	// on a method means "either Bearer alone OR Admin alone unlocks this
-	// op". `@ignoreSecurity` on a method clears the inherited chain so
-	// the method-level (if any) starts from empty - useful for public
-	// endpoints inside an otherwise-authenticated service.
-	ignoreSec := hasOwnDecorator(m.Decorators, "ignoreSecurity")
-	var sec *openapi3.SecurityRequirements
-	if !ignoreSec && svc != nil && svc.Primary != nil {
-		sec = securityFromDecorators(svc.Primary.Decorators)
-	}
-	methodDecs := m.Decorators
-	if ignoreSec {
-		// Drop decorators propagated from the extend block too - those
-		// count as "inherited" alongside the primary's chain, so the
-		// method-level @ignoreSecurity should clear them.
-		filtered := make([]*ast.Decorator, 0, len(m.Decorators))
-		for _, d := range m.Decorators {
-			if d != nil && d.Propagated && d.Name == "security" {
-				continue
-			}
-			filtered = append(filtered, d)
-		}
-		methodDecs = filtered
-	}
-	if methodSec := securityFromDecorators(methodDecs); methodSec != nil {
-		if sec == nil {
-			sec = methodSec
-		} else {
-			combined := append(openapi3.SecurityRequirements{}, *sec...)
-			combined = append(combined, *methodSec...)
-			sec = &combined
-		}
-	}
-	if sec != nil {
-		deduped := dedupSecurity(*sec)
-		op.Security = &deduped
-	}
-	// @deprecated may sit on the method itself or on the primary
-	// service decl; either marks the operation deprecated. The
-	// optional reason becomes a `Deprecated: ...` line in the
-	// description so docs viewers surface it inline.
-	deprecated := semantic.IsDeprecated(m.Decorators)
-	if !deprecated && svc != nil && svc.Primary != nil {
-		deprecated = semantic.IsDeprecated(svc.Primary.Decorators)
-	}
-	if deprecated {
-		op.Deprecated = true
-		reason := semantic.DeprecatedReason(m.Decorators)
-		if reason == "" && svc != nil && svc.Primary != nil {
-			reason = semantic.DeprecatedReason(svc.Primary.Decorators)
-		}
-		if reason != "" {
-			op.Description = appendDescription(op.Description, "Deprecated: "+reason)
-		}
-	}
-	// A request / response block is the documented contract whichever
-	// side owns the wire: a block on a raw side (`@rawRequest` /
-	// `@rawResponse` / `@passthrough`) is emitted exactly like a typed
-	// one. The raw flags only matter where there is NO block - the
-	// request side falls back to bare path params, the response side to
-	// `*/*` - and for the success status of a raw response, which logic
-	// writes itself.
-	rawReq, rawResp := wire.RawSides(m.Decorators)
-	isMultipart := isMultipartRequest(m, pkg, registry.resolver)
-	formStrings, formFiles := []semantic.FormField(nil), []semantic.FormField(nil)
-	if isMultipart {
-		formStrings, formFiles = semantic.FormFields(m, pkg, registry.resolver, nil)
-	}
-	if m.Request != nil {
-		bins := binRequestFields(m, pkg, registry.resolver)
-		// Body-bearing verbs $ref the per-method body schema. The
-		// per-kind schemas live in components.schemas so consumers have
-		// a single canonical reference for each binding kind.
-		if wire.IsBodyVerb(m.Verb) {
-			switch {
-			case isMultipart:
-				// The request type's own decorators carry any type-level
-				// cross-field constraints; pass them so the multipart schema
-				// advertises them like the JSON body schema does.
-				var crossDecs []*ast.Decorator
-				if m.Request != nil && m.Request.Name != nil {
-					if td, ok := pkg.Types[m.Request.Name.String()]; ok {
-						crossDecs = td.Decorators
-					}
-				}
-				op.RequestBody = multipartRequestBody(formStrings, formFiles, crossDecs, pkg, registry)
-			case len(bins.body) > 0:
-				op.RequestBody = &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
-					Required: true,
-					Content: openapi3.Content{
-						mimeApplicationJSON: &openapi3.MediaType{
-							Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + base + "ReqBody"},
-						},
-					},
-				}}
-			}
-		}
-		// Each parameter inlines its field schema directly (a $ref to the
-		// field's component type, or an inline shape) - there is no per-kind
-		// wrapper component. A multipart request still emits its
-		// path/query/header/cookie parameters here; only the @form fields
-		// move out of `parameters[]` and into the multipart body schema.
-		if !isMultipart {
-			op.Parameters = paramsFromBins(bins, pkg, registry)
-		} else {
-			op.Parameters = paramsFromBins(fieldBins{path: bins.path, query: bins.query, header: bins.header, cookie: bins.cookie}, pkg, registry)
-		}
-	}
-	if m.Request == nil && rawReq {
-		op.Parameters = rawPathParams(m)
-	}
-	switch {
-	case m.Response != nil && m.Response.Type != nil:
-		successCode := strconv.Itoa(wire.SuccessStatus(m))
-		if rawResp {
-			successCode = rawResponseStatus(m)
-		}
-		desc := successDescription(successCode)
-		resp := &openapi3.Response{
-			Description: &desc,
-			Content: openapi3.Content{
-				mimeApplicationJSON: &openapi3.MediaType{
-					// Per the request-side convention, the response body
-					// is referenced via `<Method>RespBody` so consumers
-					// have a stable, per-operation $ref target.
-					Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + base + "RespBody"},
-				},
-			},
-		}
-		if respBins := binResponseFields(m, pkg, registry.resolver); len(respBins.header) > 0 || len(respBins.cookie) > 0 {
-			resp.Headers = buildResponseHeaders(respBins.header, respBins.cookie, pkg, registry)
-		}
-		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: resp})
-	case rawResp:
-		// No response block on a raw response side: logic writes whatever
-		// wire format it likes, so there is no schema to publish.
-		successCode := rawResponseStatus(m)
-		desc := successDescription(successCode)
-		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{
-			Description: &desc,
-			Content: openapi3.Content{
-				"*/*": &openapi3.MediaType{},
-			},
-		}})
-	default:
-		successCode := strconv.Itoa(wire.SuccessStatus(m))
-		desc := successDescription(successCode)
-		op.Responses.Set(successCode, &openapi3.ResponseRef{Value: &openapi3.Response{Description: &desc}})
-	}
-	addErrorResponses(op, m, pkg, registry)
+	markDeprecated(op, svc, s.decs)
+	requestSide(doc, op, s, pkg, registry, names)
+	successResponse(doc, op, s, pkg, registry, names)
+	addErrorResponses(op, s, pkg, registry)
 	return op
 }
 
-// successDescription returns the IANA-registered reason phrase for an
-// HTTP status code so OpenAPI clients see `Created` for 201, `No Content`
-// for 204, etc. Falls back to "OK" for unknown codes - a generic but
-// valid placeholder is better than an empty description (which some
-// validators flag as required).
+// operationSecurity returns m's security requirements, the service's first,
+// or nil for none; any one requirement is enough.
+func operationSecurity(svc *semantic.ServiceInfo, m *ast.Method) *openapi3.SecurityRequirements {
+	service, member, _ := svc.InheritedDecorators(m, "security")
+	sec := securityFromDecorators(slices.Concat(service, member))
+	if sec == nil {
+		return nil
+	}
+	deduped := dedupSecurity(*sec)
+	return &deduped
+}
+
+// markDeprecated marks op deprecated when decs, a method's decorators, or its
+// primary service carry @deprecated; the reason, the method's first, joins the description.
+func markDeprecated(op *openapi3.Operation, svc *semantic.ServiceInfo, decs []*ast.Decorator) {
+	service := svc.Primary.Decorators
+	if !semantic.IsDeprecated(decs) && !semantic.IsDeprecated(service) {
+		return
+	}
+	op.Deprecated = true
+	if reason := cmp.Or(semantic.DeprecatedReason(decs), semantic.DeprecatedReason(service)); reason != "" {
+		op.Description = appendDescription(op.Description, "Deprecated: "+reason)
+	}
+}
+
+// requestSide sets op's parameters and request body, adding the
+// `<stem>ReqBody` component a JSON body refs. A block on a raw side is
+// documented like a typed one; a raw request without one has only its path.
+func requestSide(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
+	if s.m.Request == nil {
+		if rawReq, _ := wire.RawSides(s.decs); rawReq {
+			op.Parameters = rawPathParams(s.full)
+		}
+		return
+	}
+	op.Parameters = paramsFromBins(s.req, pkg, registry)
+	op.Description = appendDescription(op.Description, parameterGroups(s, registry))
+	if !wire.IsBodyVerb(s.m.Verb) {
+		return
+	}
+	switch {
+	case len(s.files) > 0:
+		op.RequestBody = multipartRequestBody(s, pkg, registry)
+	case len(s.req.body) > 0:
+		names.put(doc, s.stem+"ReqBody", requestBodySchema(s, pkg, registry))
+		op.RequestBody = &openapi3.RequestBodyRef{Value: &openapi3.RequestBody{
+			Required: true,
+			Content: openapi3.Content{
+				mimeApplicationJSON: &openapi3.MediaType{
+					Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.stem + "ReqBody"},
+				},
+			},
+		}}
+	}
+}
+
+// successResponse adds op's success response, and the `<stem>RespBody`
+// component it refs: a raw response without a block has no schema, since
+// logic writes it in any format.
+func successResponse(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
+	_, rawResp := wire.RawSides(s.decs)
+	code := strconv.Itoa(wire.SuccessStatus(s.m, s.decs))
+	if rawResp {
+		code = rawResponseStatus(s.decs)
+	}
+	desc := successDescription(code)
+	resp := &openapi3.Response{Description: &desc}
+	switch {
+	case s.m.Response != nil && s.m.Response.Type != nil:
+		names.put(doc, s.stem+"RespBody", responseBodySchema(s, pkg, registry))
+		resp.Content = openapi3.Content{
+			mimeApplicationJSON: &openapi3.MediaType{
+				Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.stem + "RespBody"},
+			},
+		}
+		resp.Headers = buildResponseHeaders(s.resp.header, s.resp.cookie, pkg, registry)
+	case rawResp:
+		resp.Content = openapi3.Content{"*/*": &openapi3.MediaType{}}
+	}
+	op.Responses.Set(code, &openapi3.ResponseRef{Value: resp})
+}
+
+// successDescription returns the reason phrase of status code (`Created`), or
+// "OK" when it has none: a response requires a description.
 func successDescription(code string) string {
 	n, err := strconv.Atoi(code)
 	if err != nil {
@@ -219,43 +137,29 @@ func successDescription(code string) string {
 	return "OK"
 }
 
-// rawResponseStatus is the success code documented for an operation
-// whose response side is raw (`@rawResponse` / `@passthrough`). Logic
-// writes the response itself, so codegen cannot know the real status:
-// `@status(N)` documents it explicitly, otherwise we fall back to 200.
-// The verb-aware default is intentionally NOT applied here - a raw POST
-// may write any status, and 201 would frequently be wrong.
-func rawResponseStatus(m *ast.Method) string {
-	if code, ok := wire.StatusOverride(m); ok {
+// rawResponseStatus is the documented success code of a raw response with
+// decorators decs: `@status(N)`, else 200 whatever the verb, since logic
+// writes the status.
+func rawResponseStatus(decs []*ast.Decorator) string {
+	if code, ok := wire.StatusOverride(decs); ok {
 		return strconv.Itoa(code)
 	}
 	return "200"
 }
 
-// addErrorResponses walks `@errors(NameA, NameB)` on the method and
-// adds one OpenAPI response entry per declared error type. The status
-// code comes from the error's category (categoryStatus) and the schema
-// $refs the error type's components.schemas entry. Unknown error names
-// are silently skipped - semantic phase doesn't validate the refs yet,
-// so we treat that as best-effort docs rather than fail codegen.
-//
-// When two or more `@errors(...)` entries share an HTTP status (e.g.
-// both `Conflict EmailTaken` and `Conflict OwnershipConflict` → 409),
-// the schemas merge into a `oneOf` list. Without this merge the second
-// `op.Responses.Set(...)` call would overwrite the first and the lost
-// error would be invisible to OpenAPI consumers.
-func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Package, registry *genericRegistry) {
-	names := errorRefsFromDecorators(m.Decorators)
+// addErrorResponses adds a response per error the `@errors` of s name, at its
+// category's status, errors sharing a status in one `anyOf`, since a body may
+// match more than one of their schemas; an unknown name is skipped.
+func addErrorResponses(op *openapi3.Operation, s opShape, pkg *semantic.Package, registry *genericRegistry) {
+	names := errorRefsFromDecorators(s.decs)
 	if len(names) == 0 {
 		return
 	}
-	// Group declared error refs by HTTP status so multiple errors with
-	// the same category render as a single oneOf response.
 	type byStatus struct {
 		refs       []string
 		categories []string
-		headers    []*ast.Field
-		cookies    []*ast.Field
+		headers    []semantic.ResolvedField
+		cookies    []semantic.ResolvedField
 	}
 	grouped := map[string]*byStatus{}
 	var statusOrder []string
@@ -274,12 +178,9 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 		}
 		entry.refs = append(entry.refs, "#/components/schemas/"+typeName)
 		entry.categories = append(entry.categories, ed.Category)
-		// An error's @header / @cookie body fields are written onto the
-		// response by the generated WriteResponseHeaders, so document
-		// them as response.headers - mirroring the success-response path.
-		hs, cs := errorHeaderCookieFields(ed, pkg, registry.resolver)
-		entry.headers = append(entry.headers, hs...)
-		entry.cookies = append(entry.cookies, cs...)
+		bins := binFields(semantic.ResolveFields(&ast.TypeDecl{Body: ed.Body}, "", pkg, registry.resolver, nil))
+		entry.headers = append(entry.headers, bins.header...)
+		entry.cookies = append(entry.cookies, bins.cookie...)
 	}
 	for _, status := range statusOrder {
 		entry := grouped[status]
@@ -288,50 +189,49 @@ func addErrorResponses(op *openapi3.Operation, m *ast.Method, pkg *semantic.Pack
 		if len(entry.refs) == 1 {
 			schema = &openapi3.SchemaRef{Ref: entry.refs[0]}
 		} else {
-			oneOf := make(openapi3.SchemaRefs, 0, len(entry.refs))
+			anyOf := make(openapi3.SchemaRefs, 0, len(entry.refs))
 			for _, ref := range entry.refs {
-				oneOf = append(oneOf, &openapi3.SchemaRef{Ref: ref})
+				anyOf = append(anyOf, &openapi3.SchemaRef{Ref: ref})
 			}
-			schema = &openapi3.SchemaRef{Value: &openapi3.Schema{OneOf: oneOf}}
+			schema = &openapi3.SchemaRef{Value: &openapi3.Schema{AnyOf: anyOf}}
+		}
+		headers, cookies := entry.headers, entry.cookies
+		// A success `@status` may hold this code already (`@status(409)`);
+		// its headers come first.
+		existing := op.Responses.Value(status)
+		if existing != nil && existing.Value != nil {
+			headers = slices.Concat(s.resp.header, headers)
+			cookies = slices.Concat(s.resp.cookie, cookies)
 		}
 		resp := &openapi3.Response{
 			Description: &desc,
 			Content: openapi3.Content{
 				mimeApplicationJSON: &openapi3.MediaType{Schema: schema},
 			},
+			Headers: buildResponseHeaders(headers, cookies, pkg, registry),
 		}
-		if h := buildResponseHeaders(entry.headers, entry.cookies, pkg, registry); len(h) > 0 {
-			resp.Headers = h
-		}
-		// A success `@status` may already occupy this code (e.g. `@status(409)`
-		// on the method plus a Conflict-category `@errors`): the runtime
-		// returns the success body on the happy path and this error on the
-		// failure path, so merge both into a oneOf rather than letting the
-		// error overwrite - and silently orphan - the success shape.
-		if existing := op.Responses.Value(status); existing != nil && existing.Value != nil {
+		if existing != nil && existing.Value != nil {
 			resp = mergeStatusResponses(existing.Value, resp, schema)
 		}
 		op.Responses.Set(status, &openapi3.ResponseRef{Value: resp})
 	}
 }
 
-// mergeStatusResponses combines a response already registered at a status (the
-// method's success shape) with an error response that lands on the same code.
-// The two body schemas join as a oneOf so neither is dropped; the descriptions
-// are concatenated and the headers unioned. A response with no JSON body (a
-// bare-status success) contributes only its description.
+// mergeStatusResponses joins an error response, which carries every header of
+// its status, onto the success one there: bodies in an anyOf, descriptions
+// with "or".
 func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *openapi3.SchemaRef) *openapi3.Response {
-	var oneOf openapi3.SchemaRefs
+	var anyOf openapi3.SchemaRefs
 	add := func(s *openapi3.SchemaRef) {
 		if s == nil {
 			return
 		}
-		// Flatten an existing oneOf so the merged list stays a single level.
-		if s.Ref == "" && s.Value != nil && len(s.Value.OneOf) > 0 {
-			oneOf = append(oneOf, s.Value.OneOf...)
+		// Flatten the errors' anyOf so the merged list stays a single level.
+		if s.Ref == "" && s.Value != nil && len(s.Value.AnyOf) > 0 {
+			anyOf = append(anyOf, s.Value.AnyOf...)
 			return
 		}
-		oneOf = append(oneOf, s)
+		anyOf = append(anyOf, s)
 	}
 	if mt := existing.Content.Get(mimeApplicationJSON); mt != nil {
 		add(mt.Schema)
@@ -348,98 +248,42 @@ func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *opena
 		}
 		desc += *errResp.Description
 	}
-	merged := &openapi3.Response{Description: &desc}
-	if len(oneOf) == 1 {
-		merged.Content = openapi3.Content{mimeApplicationJSON: &openapi3.MediaType{Schema: oneOf[0]}}
-	} else if len(oneOf) > 1 {
+	merged := &openapi3.Response{Description: &desc, Headers: errResp.Headers}
+	if len(anyOf) == 1 {
+		merged.Content = openapi3.Content{mimeApplicationJSON: &openapi3.MediaType{Schema: anyOf[0]}}
+	} else if len(anyOf) > 1 {
 		merged.Content = openapi3.Content{mimeApplicationJSON: &openapi3.MediaType{
-			Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{OneOf: oneOf}},
+			Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{AnyOf: anyOf}},
 		}}
-	}
-	// Union the response headers (the success set first, then any error
-	// headers the existing set doesn't already carry).
-	if len(existing.Headers) > 0 || len(errResp.Headers) > 0 {
-		merged.Headers = openapi3.Headers{}
-		for k, v := range existing.Headers {
-			merged.Headers[k] = v
-		}
-		for k, v := range errResp.Headers {
-			if _, ok := merged.Headers[k]; !ok {
-				merged.Headers[k] = v
-			}
-		}
 	}
 	return merged
 }
 
-// errorHeaderCookieFields partitions an error declaration's body into
-// its @header and @cookie fields - the ones the runtime writes onto the
-// response via WriteResponseHeaders rather than into the JSON body.
-// Mirrors [binResponseFields] for the error path.
-func errorHeaderCookieFields(ed *ast.ErrorDecl, pkg *semantic.Package, r *semantic.Resolver) (headers, cookies []*ast.Field) {
-	// Flatten so a `@header` / `@cookie` field the error inherits through a
-	// mixin is documented as a response header too - matching the runtime,
-	// which writes the promoted field via WriteResponseHeaders.
-	for _, f := range semantic.FlattenFields(&ast.TypeDecl{Body: ed.Body}, pkg, r, map[string]bool{}) {
-		switch wire.BindingKind(f.Decorators) {
-		case wire.BindingHeader:
-			headers = append(headers, f)
-		case wire.BindingCookie:
-			cookies = append(cookies, f)
-		}
-	}
-	return headers, cookies
-}
-
-// errorRefsFromDecorators flattens every `@errors(NameA, NameB, ...)`
-// chain on the method into a deduplicated list of error declaration
-// names. Both the bare-ident form (`@errors(Foo)`) and the
-// fully-qualified `pkg.Foo` form parse here - qualified refs
-// collapse to the trailing segment because cross-package resolution
-// isn't yet supported.
+// errorRefsFromDecorators returns the distinct error names of every `@errors`
+// in ds, in order.
 func errorRefsFromDecorators(ds []*ast.Decorator) []string {
-	seen := map[string]bool{}
 	var out []string
 	for _, d := range ds {
 		if d == nil || d.Name != "errors" {
 			continue
 		}
-		for _, a := range d.Args {
-			for _, v := range ast.DecoratorArgValues(a) {
-				id, ok := v.(*ast.IdentExpr)
-				if !ok || id.Name == nil {
-					continue
-				}
-				name := id.Name.Parts[len(id.Name.Parts)-1]
-				if seen[name] {
-					continue
-				}
-				seen[name] = true
-				out = append(out, name)
+		for _, n := range ast.ArgNames(d) {
+			if !slices.Contains(out, n.Value) {
+				out = append(out, n.Value)
 			}
 		}
 	}
 	return out
 }
 
-// rawPathParams emits one OpenAPI path-parameter entry per `{name}`
-// segment in the route for a raw-request operation that declares no
-// request block. There is no request type to mine for typed
-// parameters, so the schema is the minimal `string` placeholder -
-// enough to render Swagger UI's "try it" form without lying about the
-// wire shape.
-func rawPathParams(m *ast.Method) openapi3.Parameters {
-	if m.Path == nil {
-		return nil
-	}
+// rawPathParams declares each variable of route full, the service @prefix's
+// included, as a string path parameter.
+func rawPathParams(full string) openapi3.Parameters {
 	var params openapi3.Parameters
-	for _, seg := range m.Path.Segments {
-		if !seg.Param {
-			continue
-		}
+	for _, name := range route.Vars(full) {
 		params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
-			Name:     seg.Literal,
-			In:       wire.BindingPath,
+			Name:     name,
+			In:       wire.BindPath.String(),
 			Required: true,
 			Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{
 				Type: &openapi3.Types{"string"},
@@ -449,65 +293,31 @@ func rawPathParams(m *ast.Method) openapi3.Parameters {
 	return params
 }
 
-// multipartRequestBody renders a `multipart/form-data` schema covering
-// every plain-text form field plus every `file` field declared on the
-// request type. File fields use `format: binary`, which Swagger UI
-// renders as a file picker.
-//
-// Files carrying `@mimeTypes(["a/b", "c/d"])` surface their allowlist
-// under the OpenAPI `encoding[field].contentType` slot - without this
-// the client SDK has no way to see what MIME types the server's
-// runtime validator will accept, so users would upload an arbitrary
-// file and get a 400 from the validator instead of a typed rejection
-// at SDK call time.
-func multipartRequestBody(forms, files []semantic.FormField, crossDecs []*ast.Decorator, pkg *semantic.Package, registry *genericRegistry) *openapi3.RequestBodyRef {
+// multipartRequestBody renders the multipart/form-data body of the form and
+// file fields; a file's `@mimeTypes` becomes its `encoding` contentType.
+func multipartRequestBody(s opShape, pkg *semantic.Package, registry *genericRegistry) *openapi3.RequestBodyRef {
 	props := openapi3.Schemas{}
-	// required lists every non-optional form/file field so a generated
-	// client mirrors the server's validator (a non-`?` `file @form` field
-	// is mandatory). Without it the schema advertises every uploaded
-	// field as optional and the SDK lets the caller omit a file the
-	// handler then rejects with a 400.
+	keys := map[string]string{}
+	text := map[string]bool{}
 	var required []string
-	for _, f := range forms {
-		// Build the field's real schema (type + `@maxLength` /
-		// nullability / ...) the same way the JSON body component does,
-		// instead of a bare `{type: string}` that drops every constraint
-		// from the SERVED schema while the unused `<Name>ReqBody`
-		// component kept them.
-		var ref *openapi3.SchemaRef
-		if f.Field != nil {
-			ref = schemaForTypeRef(f.Field.Type, pkg, registry)
-			applyFieldMetadata(f.Field, ref, pkg)
-		} else {
-			ref = &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
-		}
+	for _, f := range s.form {
+		ref := schemaForTypeRef(nonNullType(f.Field), pkg, registry)
+		applyFieldMetadata(f.Field, ref, pkg, false)
 		props[f.WireName] = ref
+		keys[f.Field.Name] = f.WireName
+		text[f.WireName] = true
 		if f.Required {
 			required = append(required, f.WireName)
 		}
 	}
 	encoding := map[string]*openapi3.Encoding{}
-	for _, f := range files {
-		// A multipart file part is present or absent (its optionality lives in
-		// `required[]`), never JSON null - so build the schema from a
-		// non-optional copy of the type and skip applyFieldMetadata's nullable
-		// union (`type: [string, "null"]` is meaningless for a binary part and
-		// breaks Swagger UI's file picker). schemaForTypeRef maps `file` ->
-		// {type:string, format:binary}; a `file[]` upload therefore becomes
-		// {type:array, items:{binary}}, and applyArrayConstraints adds the
-		// @minItems / @maxItems the validator enforces.
-		var ref *openapi3.SchemaRef
-		if f.Field != nil && f.Field.Type != nil {
-			ft := *f.Field.Type
-			ft.Optional = false
-			ref = schemaForTypeRef(&ft, pkg, registry)
-			if ref.Value != nil {
-				applyConstraintFamilies(f.Field.Decorators, ref.Value, semantic.ConstraintItems)
-			}
-		} else {
-			ref = &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}, Format: "binary"}}
+	for _, f := range s.files {
+		ref := schemaForTypeRef(nonNullType(f.Field), pkg, registry)
+		if ref.Value != nil {
+			applyConstraintFamilies(f.Field.Decorators, ref.Value, semantic.ConstraintItems, "file")
 		}
 		props[f.WireName] = ref
+		keys[f.Field.Name] = f.WireName
 		if f.Required {
 			required = append(required, f.WireName)
 		}
@@ -522,14 +332,7 @@ func multipartRequestBody(forms, files []semantic.FormField, crossDecs []*ast.De
 		Properties: props,
 		Required:   required,
 	}
-	// Type-level cross-field constraints (@mutuallyExclusive / @requiresOneOf)
-	// must ride the SERVED multipart schema too - the runtime validator
-	// enforces them, so the spec has to advertise them or a generated client
-	// believes the form fields are independent. Wrap the object in an allOf
-	// with the same fragments the JSON body schema uses.
-	// Multipart parts are named by their form wire names, not JSON keys, so
-	// the fragments carry the field names as written.
-	if frags := crossFieldSchemaFragments(crossDecs, nil); len(frags) > 0 {
+	if frags := inlineFragments(s.reqType, keys, presentParts(text), registry); len(frags) > 0 {
 		schema = &openapi3.Schema{
 			Type:  &openapi3.Types{"object"},
 			AllOf: append(openapi3.SchemaRefs{{Value: schema}}, frags...),
@@ -545,75 +348,85 @@ func multipartRequestBody(forms, files []semantic.FormField, crossDecs []*ast.De
 	}}
 }
 
-// paramsFromBins flattens the non-body bins into the `parameters[]`
-// slice the OpenAPI spec requires. Path is always required; query /
-// header / cookie required flags follow the field's optionality (the
-// inverse of `?`). Each parameter's schema is emitted inline (by value)
-// rather than `$ref`-ing into the wrapper `<Method>Req<Kind>` schema.
-// Nested `$ref` (into `.../properties/<name>`) is technically valid
-// JSON-Pointer but many TS / Java / Rust client generators (hey-api,
-// openapi-typescript, openapi-generator < 7) fail to derive a stable
-// type name from the property-walk path and emit anonymous placeholders
-// or drop the type entirely. Inlining keeps the spec portable; the
-// wrapper schemas stay in `components.schemas` for tooling that wants
-// to ref the full request shape.
+// nonNullType returns f's type without `?`: a parameter, a header or a form
+// part is sent or not, never null, and `required` carries its optionality.
+func nonNullType(f *ast.Field) *ast.TypeRef {
+	t := *f.Type
+	t.Optional = false
+	return &t
+}
+
+// parameterGroups words, a paragraph each, the cross-field groups of s's request
+// whose members all ride as parameters, which each constrain only themselves.
+func parameterGroups(s opShape, registry *genericRegistry) string {
+	params := map[string]string{}
+	for binding, fields := range map[wire.Binding][]semantic.ResolvedField{
+		wire.BindPath:   slices.Concat(s.req.path, s.server),
+		wire.BindQuery:  s.req.query,
+		wire.BindHeader: s.req.header,
+		wire.BindCookie: s.req.cookie,
+	} {
+		for _, rf := range fields {
+			params[rf.Field.Name] = wire.WireName(rf.Field, binding)
+		}
+	}
+	var notes []string
+	for _, d := range inlineDecorators(s.reqType, registry) {
+		if d == nil {
+			continue
+		}
+		var note string
+		switch d.Name {
+		case "requiresOneOf":
+			note = "At least one of the parameters %s must be set."
+		case "mutuallyExclusive":
+			note = "At most one of the parameters %s may be set."
+		default:
+			continue
+		}
+		names := semantic.CrossFieldNames(d)
+		wires := make([]string, 0, len(names))
+		for _, n := range names {
+			if w, ok := params[n]; ok {
+				wires = append(wires, w)
+			}
+		}
+		// A group with a member on the body is the body schema's.
+		if len(wires) == 0 || len(wires) < len(names) || (d.Name == "mutuallyExclusive" && len(wires) < 2) {
+			continue
+		}
+		notes = append(notes, fmt.Sprintf(note, strings.Join(wires, ", ")))
+	}
+	return strings.Join(notes, "\n\n")
+}
+
+// paramsFromBins turns the path, query, header and cookie bins into
+// parameters with inline schemas; a path parameter is always required.
 func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegistry) openapi3.Parameters {
 	var params openapi3.Parameters
-	add := func(in string, fields []*ast.Field, alwaysRequired bool) {
-		for _, f := range fields {
-			required := alwaysRequired || semantic.FieldIsRequired(f)
-			ref := schemaForTypeRef(f.Type, pkg, registry)
-			applyFieldMetadata(f, ref, pkg)
+	add := func(in wire.Binding, fields []semantic.ResolvedField, alwaysRequired bool) {
+		for _, rf := range fields {
+			f := rf.Field
+			ref := schemaForTypeRef(nonNullType(f), pkg, registry)
+			applyFieldMetadata(f, ref, pkg, false)
 			params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
-				// Wire name, NOT the DSL field name: an explicit
-				// `@header("X-Trace-Id")` / `@cookie("session_id")` /
-				// `@query(..)` / `@path(..)` argument overrides the
-				// field name. The runtime binder reads the same wire
-				// name via [wire.WireName] (r.Header.Get("X-Trace-Id"),
-				// r.PathValue("user_id"), ...), so emitting f.Name here
-				// instead would advertise a parameter the server never
-				// reads - a generated client would send `trace` while
-				// the handler looks for `X-Trace-Id`, and the binding
-				// silently fails.
 				Name:     wire.WireName(f, in),
-				In:       in,
-				Required: required,
-				// A deprecated parameter carries `deprecated` on the
-				// Parameter object itself (what Swagger UI / client codegen
-				// read for params), not only on the inner schema.
+				In:       in.String(),
+				Required: alwaysRequired || rf.SpecRequired,
+				// The Parameter carries `deprecated` too, not only its schema.
 				Deprecated: semantic.IsDeprecated(f.Decorators),
 				Schema:     ref,
 			}})
 		}
 	}
-	add(wire.BindingPath, bins.path, true)
-	add(wire.BindingQuery, bins.query, false)
-	add(wire.BindingHeader, bins.header, false)
-	add(wire.BindingCookie, bins.cookie, false)
+	add(wire.BindPath, bins.path, true)
+	add(wire.BindQuery, bins.query, false)
+	add(wire.BindHeader, bins.header, false)
+	add(wire.BindCookie, bins.cookie, false)
 	return params
 }
 
-// hasOwnDecorator reports whether ds carries a non-propagated decorator
-// with the given name. Used for the bare presence checks that drive
-// decorators copied onto the method from an enclosing scope (currently
-// `extend service` blocks - see [ast.Decorator.Propagated]). The
-// `@ignore*` family must match only decorators the user wrote directly
-// above the method; a propagated `@ignoreMiddleware` would have been
-// rejected at extend-block placement anyway, but the explicit filter
-// keeps the semantic clear.
-func hasOwnDecorator(ds []*ast.Decorator, name string) bool {
-	for _, d := range ds {
-		if d == nil || d.Propagated {
-			continue
-		}
-		if d.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
-// setOperation routes a built operation onto the right verb slot.
+// setOperation puts op in item's slot for verb.
 func setOperation(item *openapi3.PathItem, verb string, op *openapi3.Operation) {
 	switch strings.ToUpper(verb) {
 	case "GET":
@@ -633,92 +446,48 @@ func setOperation(item *openapi3.PathItem, verb string, op *openapi3.Operation) 
 	}
 }
 
-// operationID returns the OpenAPI operationId for a method. A method
-// decorated with `@operationId("createUserProfile")` overrides the
-// default verbatim (so projects can adopt camelCase / kebab-case /
-// whatever convention their tooling expects). Otherwise it falls back
-// to `base` - the collision-free name from [operationBaseName], which is
-// the bare method name when unique and service-prefixed when two
-// services share the method name.
-func operationID(m *ast.Method, base string) string {
-	return semantic.OperationID(m, base)
-}
-
-// operationTags assembles the OpenAPI `tags:` slice for one method.
-// Service-level `@tags(...)` come first (so they sort before method
-// tags in the resulting spec), then the service's `@group` value (which
-// doubles as a tag), then method-level `@tags(...)` are appended.
-// `@ignoreTags` on a method skips the service-level chain - including the
-// group tag - entirely. When neither level declares tags the service name
-// is used as a single default - keeping every operation grouped by service
-// for tools that don't render an empty tag list well.
-func operationTags(svcName string, m *ast.Method, pkg *semantic.Package) []string {
-	seen := map[string]bool{}
+// operationTags returns the service's `@tags`, its `@group`, then the method's
+// `@tags`, each once, else the service name. `@ignoreTags` keeps only the
+// method's own.
+func operationTags(svc *semantic.ServiceInfo, m *ast.Method) []string {
 	var out []string
-	add := func(t string) {
-		if t == "" || seen[t] {
-			return
-		}
-		seen[t] = true
-		out = append(out, t)
-	}
-	ignore := hasOwnDecorator(m.Decorators, "ignoreTags")
-	if !ignore {
-		if svc, ok := pkg.Services[svcName]; ok && svc.Primary != nil {
-			for _, t := range tagsFromDecorators(svc.Primary.Decorators) {
-				add(t)
+	add := func(tags ...string) {
+		for _, t := range tags {
+			if t != "" && !slices.Contains(out, t) {
+				out = append(out, t)
 			}
-			// @group nests files on disk and also doubles as an OpenAPI
-			// tag (the whole value, e.g. "admin/ops"), appended to any
-			// explicit @tags and deduped. The group is per-block, so an
-			// extend block's methods carry that block's @group, not the
-			// primary's.
-			add(semantic.MethodGroupOf(svc, m))
 		}
 	}
-	for _, d := range m.Decorators {
-		if d == nil || d.Name != "tags" {
-			continue
-		}
-		if d.Propagated && ignore {
-			continue
-		}
-		for _, t := range tagsFromDecorators([]*ast.Decorator{d}) {
-			add(t)
-		}
+	service, member, ignored := svc.InheritedDecorators(m, "tags")
+	add(tagsFromDecorators(service)...)
+	if !ignored && svc.Primary != nil {
+		// The group, whole ("admin/ops"), is that of the method's own
+		// block: an extend block's methods carry its @group.
+		add(semantic.MethodGroupOf(svc, m))
 	}
+	add(tagsFromDecorators(member)...)
 	if len(out) == 0 {
-		out = []string{svcName}
+		out = []string{svc.Primary.Name}
 	}
 	return out
 }
 
-// tagsFromDecorators collects every argument from every `@tags(...)`
-// decorator in ds. Arguments may be string literals (`@tags("v1")`) or
-// bare identifiers (`@tags(api, v1)`); both shapes produce the same
-// stringified entry in the resulting slice.
+// tagsFromDecorators returns the tags every `@tags` in ds lists.
 func tagsFromDecorators(ds []*ast.Decorator) []string {
 	var out []string
 	for _, d := range ds {
 		if d == nil || d.Name != "tags" {
 			continue
 		}
-		for _, a := range d.Args {
-			for _, val := range ast.DecoratorArgValues(a) {
-				switch v := val.(type) {
-				case *ast.StringLit:
-					out = append(out, v.Value)
-				case *ast.IdentExpr:
-					out = append(out, v.Name.String())
-				}
-			}
+		for _, n := range ast.ArgNames(d) {
+			out = append(out, n.Value)
 		}
 	}
 	return out
 }
 
-// summaryOf returns the `@summary("...")` text for an operation.
+// summaryOf returns the `@summary` text in ds.
 func summaryOf(ds []*ast.Decorator) string {
-	s, _ := semantic.DecoratorStringArg(ds, "summary")
+	s, _ := ast.StringArg(ds, "summary")
 	return s
 }

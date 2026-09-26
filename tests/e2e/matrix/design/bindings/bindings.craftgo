@@ -105,10 +105,31 @@ type QueryIntRequiredReq {
 	page int @query @gte(1)
 }
 
+// Page embeds as the Go field Page, the name its own `page` field lowers
+// to, so a host reaches that field as `req.Page.Page`.
+type Page {
+	page int  @query @gte(1)
+	size int? @query
+}
+
+// PagedReq binds `page` and `size` from the query string into the Page
+// it embeds.
+type PagedReq {
+	Page
+	q string?
+}
+
 // QueryBoolReq is the optional-bool query path: present → `*bool`,
 // absent / empty → nil.
 type QueryBoolReq {
 	active bool? @query
+}
+
+// QueryFloatReq binds a bounded float64 and an unbounded optional float32
+// from the query string; NaN and infinities fail to bind.
+type QueryFloatReq {
+	ratio float64  @query @range(0, 1)
+	scale float32? @query
 }
 
 // QueryEnumReq drives the enum cast path through @query. Enums are

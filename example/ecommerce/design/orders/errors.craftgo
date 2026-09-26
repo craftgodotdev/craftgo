@@ -9,8 +9,8 @@ enum SuspensionReason {
 error NotFound OrderNotFound
 
 error Conflict PaymentFailed {
-	code     string? @default("PAYMENT_FAILED")
-	method   PaymentMethod
+	code      string?               @default("PAYMENT_FAILED")
+	method    PaymentMethod
 	chargedBy customers.CustomerRef
 }
 

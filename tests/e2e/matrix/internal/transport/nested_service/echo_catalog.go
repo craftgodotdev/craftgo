@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoCatalog returns the http.HandlerFunc for the
-// POST EchoCatalog endpoint.
+// Map of nested - validates map presence but does NOT recurse into values (map-value validators are not yet wired through the codegen walker).
+//
+// EchoCatalog returns the POST EchoCatalog handler.
 func EchoCatalog(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Catalog
@@ -31,8 +32,6 @@ func EchoCatalog(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

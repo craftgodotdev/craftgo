@@ -11,8 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Me returns the http.HandlerFunc for the
-// GET Me endpoint.
+// Get the current user - inherits RateLimit + AuthRequired.
+//
+// Me returns the GET Me handler.
 func Me(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewMeService(r.Context(), svcCtx)
@@ -21,7 +22,6 @@ func Me(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

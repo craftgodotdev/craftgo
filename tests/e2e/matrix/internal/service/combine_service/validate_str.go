@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ValidateStrService carries the per-request state for the
-// ValidateStr endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ValidateStrService runs CombineService.ValidateStr for one request.
 type ValidateStrService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewValidateStrService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewValidateStrService binds ValidateStrService to ctx; its Logger carries ctx's trace ids.
 func NewValidateStrService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ValidateStrService {
 	return &ValidateStrService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewValidateStrService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// ValidateStr is the service entry point. Replace the
-// TODO with the real implementation.
+// Validate stacked string decorators (length + format + pattern). The handler fails any of the three independently.
+//
+// ValidateStr implements CombineService.ValidateStr.
 func (l *ValidateStrService) ValidateStr(req *types.PairsStr) (*types.PairsStr, error) {
 	// TODO: implement
 	return nil, nil

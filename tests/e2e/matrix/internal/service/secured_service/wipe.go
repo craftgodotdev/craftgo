@@ -5,25 +5,20 @@ package services
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// WipeService carries the per-request state for the
-// Wipe endpoint of SecuredService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// WipeService runs SecuredService.Wipe for one request.
 type WipeService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewWipeService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewWipeService binds WipeService to ctx; its Logger carries ctx's trace ids.
 func NewWipeService(ctx context.Context, svcCtx *svccontext.ServiceContext) *WipeService {
 	return &WipeService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,15 +27,9 @@ func NewWipeService(ctx context.Context, svcCtx *svccontext.ServiceContext) *Wip
 	}
 }
 
-// Wipe is the sensitive companion to Reset: the method-level
-// `@security(AdminBearer, MFA)` is the AND form - both schemes
-// must satisfy the request, so MFA-less tokens are rejected even
-// when AdminBearer is otherwise valid. The inherited service-level
-// `@security(AdminBearer)` is APPENDED, so the final OpenAPI
-// security[] has two alternatives: the inherited single-scheme
-// requirement OR the stricter AND pair.
-// Wipe is the service entry point. Replace the
-// TODO with the real implementation.
+// Destructive admin op - requires AdminBearer AND MFA on top of the service-level inheritance.
+//
+// Wipe implements SecuredService.Wipe.
 func (l *WipeService) Wipe() (*types.HealthResp, error) {
 	// TODO: implement
 	return nil, nil

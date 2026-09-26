@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 )
 
-// UpdateTodo returns the http.HandlerFunc for the
-// PATCH UpdateTodo endpoint.
+// Patch a todo. Only supplied fields are updated.
+//
+// UpdateTodo returns the PATCH UpdateTodo handler.
 func UpdateTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.UpdateTodoReq
@@ -32,7 +33,6 @@ func UpdateTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

@@ -5,26 +5,21 @@ package xrefs
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PromoteBagService carries the per-request state for the
-// PromoteBag endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// PromoteBagService runs XRefsService.PromoteBag for one request.
 type PromoteBagService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPromoteBagService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewPromoteBagService binds PromoteBagService to ctx; its Logger carries ctx's trace ids.
 func NewPromoteBagService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PromoteBagService {
 	return &PromoteBagService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewPromoteBagService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// PromoteBag is the service entry point. Replace the
-// TODO with the real implementation.
+// Pins generic-mixin OpenAPI substitution: xshared.XWrapInBag<XOwner> must register XBagOfXOwner, no phantom XBagOfT / dangling $ref.
+//
+// PromoteBag implements XRefsService.PromoteBag.
 func (l *PromoteBagService) PromoteBag(req *types.XBagPromoteReq) (*xshared.XOwner, error) {
 	// TODO: implement
 	return nil, nil

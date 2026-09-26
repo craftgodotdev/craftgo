@@ -1,5 +1,3 @@
-// Type declaration and type-reference parsing: type bodies, fields vs
-// mixins, generics, maps, arrays, and qualified names.
 package parser
 
 import (
@@ -8,24 +6,26 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
-// parseTypeDecl reads `type Name[<TypeParams>] { Body }`.
-func (p *Parser) parseTypeDecl(decs []*ast.Decorator) *ast.TypeDecl {
+// parseTypeDecl parses `type Name { ... }` or `type Name<T, ...> { ... }`; a
+// missing body is reported, and the next declaration starts at the token
+// found instead.
+func (p *Parser) parseTypeDecl(decs []*ast.Decorator, doc []string) *ast.TypeDecl {
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
-	td := &ast.TypeDecl{Pos: pos, Decorators: decs, Doc: p.takeDoc(), Name: name.Text}
+	td := &ast.TypeDecl{Pos: pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Name: name.Text}
 	if p.peek().Kind == lexer.LAngle {
 		td.TypeParams = p.parseTypeParams()
 	}
-	body, rbrace := p.parseTypeBody()
-	td.Body = body
-	if rbrace.Trailing != "" {
-		td.TrailingDoc = []string{rbrace.Trailing}
+	if !p.peekIs(lexer.LBrace) {
+		p.expect(lexer.LBrace)
+		return td
 	}
+	body, rbrace := p.parseTypeBody(pos.Line)
+	td.Body, td.EndPos = body, rbrace.Pos
 	return td
 }
 
-// parseTypeParams reads `<T1, T2, ...>` after a generic type name. An empty
-// `<>` list is reported as an error but parsing recovers gracefully.
+// parseTypeParams parses `<T, U>`, reporting an empty list and repeated names.
 func (p *Parser) parseTypeParams() []string {
 	p.advance()
 	if p.peek().Kind == lexer.RAngle {
@@ -40,137 +40,78 @@ func (p *Parser) parseTypeParams() []string {
 		if !ok {
 			break
 		}
-		// A duplicate type-parameter name lowers to `type X[T any, T any]`,
-		// which the Go compiler rejects ("T redeclared"). Reject it here -
-		// parallel to the empty-list guard above - so the design fails with a
-		// clear diagnostic instead of non-compiling generated Go.
+		// A repeated name would generate Go that does not compile.
 		if seen[t.Text] {
 			p.errorf(t.Pos, "duplicate type parameter %q", t.Text)
 		} else {
 			seen[t.Text] = true
 			params = append(params, t.Text)
 		}
-		switch p.peek().Kind {
-		case lexer.Comma:
-			p.advance()
-		case lexer.RAngle, lexer.EOF:
-		default:
-			p.errorf(p.peek().Pos, "expected ',' or '>' after type parameter, got %s", p.peek().Kind)
-		}
+		p.listSep(lexer.RAngle, "type parameter")
 	}
 	p.expect(lexer.RAngle)
 	return params
 }
 
-// parseTypeBody reads the contents of a `{ ... }` type/error body. Returns
-// the body slice plus the closing `}` token (whose Trailing field carries
-// the `// note` after the brace, captured by the lexer). Callers stash
-// that trailing on the surrounding decl's TrailingDoc so it survives
-// parse → format round-trip.
-//
-// The body slice holds [*Field] and [*Mixin] members plus [*FreeComment]
-// blocks: every leading comment inside the braces that no member's Doc
-// claimed is harvested into a position-accurate FreeComment, so section
-// dividers and closing notes survive parse → format round-trip.
-func (p *Parser) parseTypeBody() ([]ast.TypeMember, lexer.Token) {
-	if !p.peekIs(lexer.LBrace) {
-		return nil, lexer.Token{}
-	}
-	lbrace := p.advance()
+// parseTypeBody parses the type or error body that opens at the current `{`
+// into fields, mixins and free comments, and returns the closing brace token.
+// A comment block below header, the keyword's line, and above the `{` is the
+// body's first free comment.
+func (p *Parser) parseTypeBody(header int) ([]ast.TypeMember, lexer.Token) {
 	var members []ast.TypeMember
-	for p.peek().Kind != lexer.RBrace && p.peek().Kind != lexer.EOF {
-		startPos := p.pos
-		m := p.parseTypeMember()
-		if m != nil {
+	_, rbrace := p.braced(func() {
+		if m := p.parseTypeMember(); m != nil {
 			members = append(members, m)
 		}
-		if p.pos == startPos {
-			p.advance()
-		}
-	}
-	rbrace, _ := p.expect(lexer.RBrace)
-	fcs := p.harvestFreeComments(lbrace.Pos.Line, rbrace.Pos.Line)
+	})
+	fcs := p.harvestFreeComments(header, rbrace.Pos.Line)
 	members = mergeFreeComments(members, fcs, func(fc *ast.FreeComment) ast.TypeMember { return fc })
 	return members, rbrace
 }
 
-// parseTypeMember reads one member of a type body - either a [ast.Field] or a
-// [ast.Mixin]. Disambiguation rules (in priority order):
-//
-//  1. Next token is `.` or `<` → mixin (qualified or generic name,
-//     e.g. `shared.Profile`, `Page<User>`).
-//  2. Next token on the same line is a builtin primitive (`string`,
-//     `int`, ...) or `map` → field. Works for PascalCase names too
-//     (`CreateUser int` is a field with an exported JSON tag).
-//  3. First identifier starts lowercase → field (the canonical form).
-//  4. Otherwise → mixin (PascalCase ident alone, OR followed by a
-//     non-builtin Ident which is the start of the NEXT member in
-//     compact `Profile  name string` form).
-//
-// The "Pascal + builtin → field" carve-out lets users name a field
-// anything they want - including PascalCase JSON keys - without
-// breaking the compact mixin+field-on-one-line form that test
-// fixtures rely on. Rule (4) only kicks in when the next token is
-// an Ident that is NOT a builtin (i.e. another field name in the
-// compact form).
+// parseTypeMember parses a field or a mixin. A mixin is a name followed by `.`
+// or `<`, or an upper-case name not followed on its line by a primitive or `map`.
 func (p *Parser) parseTypeMember() ast.TypeMember {
-	p.captureDoc()
+	doc := p.docAbove()
 	decs := p.parseDecorators()
 	t := p.peek()
-	// A reserved word at the start of a type-body member is a FIELD NAME:
-	// a member is a field or a mixin, a mixin is a named type reference,
-	// and a keyword never spells one - so the keyword can only be the
-	// field's name. Take its spelling as the identifier (contextual
-	// keyword), letting `type`, `error`, `map`, ... be field names.
-	if isKeywordKind(t.Kind) {
-		name := p.advance()
-		tref := p.parseTypeRef()
-		fieldDecs := p.parseDecorators()
-		return &ast.Field{Pos: name.Pos, Doc: p.takeDoc(), Name: name.Text, Type: tref, Decorators: append(decs, fieldDecs...)}
-	}
-	if t.Kind != lexer.Ident {
+	p.claimChain(decs, t.Pos.Line)
+	switch {
+	case t.Kind.IsKeyword():
+		// A reserved word never names a type, so here it is a field name.
+		return p.parseField(doc, decs)
+	case t.Kind != lexer.Ident:
 		p.errorf(t.Pos, "expected field or mixin, got %s", t.Kind)
 		return nil
 	}
 	next := p.peekAt(1)
-	if next.Kind == lexer.Dot || next.Kind == lexer.LAngle {
-		ref := p.parseNamedTypeRef()
-		p.rejectMixinDecorators(t.Pos, decs)
-		p.rejectMixinTrailingDecorators(t.Pos)
-		return &ast.Mixin{Pos: t.Pos, Doc: p.takeDoc(), Ref: ref}
-	}
-	if isFieldFollower(next, t.Pos.Line) || !isUpperFirst(t.Text) {
-		name := p.advance()
-		tref := p.parseTypeRef()
-		fieldDecs := p.parseDecorators()
-		return &ast.Field{Pos: name.Pos, Doc: p.takeDoc(), Name: name.Text, Type: tref, Decorators: append(decs, fieldDecs...)}
+	if next.Kind != lexer.Dot && next.Kind != lexer.LAngle && (isFieldFollower(next, t.Pos.Line) || !isUpperFirst(t.Text)) {
+		return p.parseField(doc, decs)
 	}
 	ref := p.parseNamedTypeRef()
 	p.rejectMixinDecorators(t.Pos, decs)
 	p.rejectMixinTrailingDecorators(t.Pos)
-	return &ast.Mixin{Pos: t.Pos, Doc: p.takeDoc(), Ref: ref}
+	return &ast.Mixin{Pos: t.Pos, Doc: doc, Ref: ref}
 }
 
-// rejectMixinTrailingDecorators reports a decorator chain that starts on
-// the mixin's own line. A mixin takes no decorators, and left alone the
-// chain would attach to the member below: `user string S @default("")`
-// above `name string` would silently give `name` the default. Consuming
-// the chain keeps the member below clean.
+// parseField parses `name Type` and the decorators after it; decs are the
+// ones before it.
+func (p *Parser) parseField(doc []string, decs []*ast.Decorator) *ast.Field {
+	name := p.advance()
+	tref := p.parseTypeRef()
+	trailing := p.parseDecorators()
+	p.claimTrailing(name.Pos.Line, trailing)
+	return &ast.Field{Pos: name.Pos, Doc: doc, Name: name.Text, Type: tref, Decorators: append(decs, trailing...)}
+}
+
+// rejectMixinTrailingDecorators reports and consumes decorators on the mixin's
+// line, which would otherwise attach to the next member.
 func (p *Parser) rejectMixinTrailingDecorators(pos lexer.Position) {
-	if p.peek().Kind != lexer.At || p.peek().Pos.Line != p.tokens[p.pos-1].Pos.Line {
-		return
-	}
-	p.rejectMixinDecorators(pos, p.parseDecorators())
+	p.rejectMixinDecorators(pos, p.decoratorsOnLine(p.tokens[p.pos-1].Pos.Line))
 }
 
-// isFieldFollower reports whether `next` (the token AFTER a leading
-// identifier in a type-body member) is the first token of a TypeRef
-// on the same line - the unambiguous signal that the leading ident
-// is a field NAME and `next` begins its type. Builtin primitives
-// and `map` are the only signals that work without semantic info;
-// arbitrary Idents are ambiguous (could be a custom type, could be
-// the next member's name in compact form) and stay covered by the
-// case-based default.
+// isFieldFollower reports whether next is a primitive or `map` on line
+// sameLine; any other identifier may be a type or the next member's name.
 func isFieldFollower(next lexer.Token, sameLine int) bool {
 	if next.Pos.Line != sameLine {
 		return false
@@ -184,10 +125,8 @@ func isFieldFollower(next lexer.Token, sameLine int) bool {
 	return prims.Is(next.Text)
 }
 
-// parseTypeRef parses TypeRef = (MapType | NamedTypeRef) ArrayMod? OptionalMod?
-//
-// Array (`[]`) and Optional (`?`) are independent suffix flags - `T[]?`
-// produces a TypeRef with both set.
+// parseTypeRef parses `map<K, V>` or a named type, then any `[]` suffixes and
+// an optional `?`.
 func (p *Parser) parseTypeRef() *ast.TypeRef {
 	pos := p.peek().Pos
 	tr := &ast.TypeRef{Pos: pos}
@@ -209,7 +148,7 @@ func (p *Parser) parseTypeRef() *ast.TypeRef {
 	return tr
 }
 
-// parseMapType reads `map<K, V>`.
+// parseMapType parses `map<K, V>`.
 func (p *Parser) parseMapType() *ast.MapType {
 	pos := p.advance().Pos
 	p.expect(lexer.LAngle)
@@ -220,8 +159,8 @@ func (p *Parser) parseMapType() *ast.MapType {
 	return &ast.MapType{Pos: pos, Key: key, Value: val}
 }
 
-// parseNamedTypeRef reads a (possibly-generic, possibly-qualified) type
-// reference such as `User`, `pkg.User`, or `Page<User, Org>`.
+// parseNamedTypeRef parses a type name such as `User`, `pkg.User` or
+// `Page<User, Org>`.
 func (p *Parser) parseNamedTypeRef() *ast.NamedTypeRef {
 	qi := p.parseQualifiedIdent()
 	nt := &ast.NamedTypeRef{Pos: qi.Pos, Name: qi}
@@ -233,16 +172,9 @@ func (p *Parser) parseNamedTypeRef() *ast.NamedTypeRef {
 		for p.peek().Kind != lexer.RAngle && p.peek().Kind != lexer.EOF {
 			start := p.pos
 			nt.Args = append(nt.Args, p.parseTypeRef())
-			switch p.peek().Kind {
-			case lexer.Comma:
-				p.advance()
-			case lexer.RAngle, lexer.EOF:
-			default:
-				p.errorf(p.peek().Pos, "expected ',' or '>' after type argument, got %s", p.peek().Kind)
-			}
+			p.listSep(lexer.RAngle, "type argument")
 			if p.pos == start {
-				// parseTypeRef reported the token and consumed nothing; leave
-				// it to the caller instead of spinning on it.
+				// No progress: parseTypeRef already reported this token.
 				break
 			}
 		}
@@ -251,9 +183,8 @@ func (p *Parser) parseNamedTypeRef() *ast.NamedTypeRef {
 	return nt
 }
 
-// parseQualifiedIdent reads `Ident(.Ident)*` and returns the parts. On any
-// expectation failure it returns the partial result so downstream code can
-// still associate the error with a named-ish entity.
+// parseQualifiedIdent parses `a.b.C`; on an error it returns the parts read so
+// far.
 func (p *Parser) parseQualifiedIdent() *ast.QualifiedIdent {
 	pos := p.peek().Pos
 	qi := &ast.QualifiedIdent{Pos: pos}

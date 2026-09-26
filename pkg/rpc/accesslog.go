@@ -18,16 +18,14 @@ type accessLogConfig struct {
 	fields func(ctx context.Context, fullMethod string) []log.Field
 }
 
-// AccessLogFields appends the fields fn derives from the call to every
-// `grpc access` line - the peer address, a metadata value. fn runs after
-// the handler.
+// AccessLogFields appends fn's fields to every access line; fn runs after the
+// handler.
 func AccessLogFields(fn func(ctx context.Context, fullMethod string) []log.Field) AccessLogOption {
 	return func(c *accessLogConfig) { c.fields = fn }
 }
 
 // AccessLogSkipMethods keeps the named full methods (`/pkg.Service/Method`)
-// out of the log. The health and reflection services need no entry: they
-// never reach the chain.
+// out of the log.
 func AccessLogSkipMethods(methods ...string) AccessLogOption {
 	return func(c *accessLogConfig) {
 		for _, m := range methods {
@@ -36,22 +34,16 @@ func AccessLogSkipMethods(methods ...string) AccessLogOption {
 	}
 }
 
-// AccessLog logs one line per call once it has finished - for a stream,
-// when the stream ends: message `grpc access` with `method`, `code` and
-// `latency`, plus the `trace_id` / `span_id` the context carries (see
-// [log.Logger.WithContext]). Install the telemetry stats handler so those
-// ids are on the context.
+// AccessLog logs a `grpc access` line to logger when each call or stream ends,
+// with `method`, `code`, `latency` and the trace ids that a stats handler
+// installed with [WithStatsHandler] puts on the context.
 func AccessLog(logger log.Logger, opts ...AccessLogOption) Interceptor {
 	cfg := &accessLogConfig{skip: map[string]bool{}}
 	for _, o := range opts {
 		o(cfg)
 	}
 	logLine := func(ctx context.Context, fullMethod string, start time.Time, err error) {
-		fields := []log.Field{
-			log.String("method", fullMethod),
-			log.String("code", status.Code(err).String()),
-			log.Duration("latency", time.Since(start)),
-		}
+		fields := callFields(fullMethod, err, start)
 		if cfg.fields != nil {
 			fields = append(fields, cfg.fields(ctx, fullMethod)...)
 		}
@@ -76,5 +68,14 @@ func AccessLog(logger log.Logger, opts ...AccessLogOption) Interceptor {
 			logLine(ss.Context(), info.FullMethod, start, err)
 			return err
 		},
+	}
+}
+
+// callFields returns the method, code and latency fields a call's log line starts with.
+func callFields(method string, err error, start time.Time) []log.Field {
+	return []log.Field{
+		log.String("method", method),
+		log.String("code", status.Code(err).String()),
+		log.Duration("latency", time.Since(start)),
 	}
 }

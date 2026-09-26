@@ -3,6 +3,7 @@
 package services
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 )
@@ -10,147 +11,140 @@ import (
 // ErrCodeAcctUserNotFound is the canonical machine-readable code for AcctUserNotFoundErr.
 const ErrCodeAcctUserNotFound = "ACCT_USER_NOT_FOUND"
 
-// AcctUserNotFoundErr is the typed NotFound error generated for `AcctUserNotFound`.
-// The unexported `code` and `message` fields hold the type-bound
-// metadata populated by the constructor. Because they are unexported,
-// json.Marshal omits them from the wire payload - clients see only
-// the embedded body shape (or `{}` when no body was declared).
-type AcctUserNotFoundErr struct {
-	code    string
-	message string
-}
+// AcctUserNotFoundErr is the NotFound error AcctUserNotFound.
+type AcctUserNotFoundErr struct{}
 
-// NewAcctUserNotFoundErr constructs AcctUserNotFoundErr with the framework metadata baked in.
-// `code` and `message` are bound to the type and not exposed as
-// constructor parameters; only the body struct varies per instance.
+// NewAcctUserNotFoundErr constructs AcctUserNotFoundErr.
 func NewAcctUserNotFoundErr() *AcctUserNotFoundErr {
-	return &AcctUserNotFoundErr{
-		code:    ErrCodeAcctUserNotFound,
-		message: "Not found",
-	}
+	return &AcctUserNotFoundErr{}
 }
 
-// Error implements the standard error interface and returns the
-// category-default message bound to the type.
-func (e *AcctUserNotFoundErr) Error() string { return e.message }
+// Error returns the NotFound category's default message.
+func (e *AcctUserNotFoundErr) Error() string { return "Not found" }
 
-// ErrCode returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ ErrCode() string }`
-// assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`, and rpc.Error reads it
-// for the ErrorInfo detail it puts on the gRPC status. The accessor is
-// named `ErrCode` (not `Code`) so it does not shadow a user-declared
-// `code <type>` field promoted from the embedded body struct.
-func (e *AcctUserNotFoundErr) ErrCode() string { return e.code }
+// ErrCode returns ErrCodeAcctUserNotFound.
+func (e *AcctUserNotFoundErr) ErrCode() string { return ErrCodeAcctUserNotFound }
 
-// HTTPStatus returns the HTTP status code associated with the NotFound
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the NotFound status.
 func (e *AcctUserNotFoundErr) HTTPStatus() int { return 404 }
+
+// MarshalJSON encodes the {"code", "message"} envelope.
+func (e *AcctUserNotFoundErr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]string{"code": ErrCodeAcctUserNotFound, "message": e.Error()})
+}
 
 // ErrCodeAcctValidationFailed is the canonical machine-readable code for AcctValidationFailedErr.
 const ErrCodeAcctValidationFailed = "ACCT_VALIDATION_FAILED"
 
-// AcctValidationFailedBody is the wire-shape payload declared at design time for AcctValidationFailedErr.
-// User code instantiates this struct and hands it to NewAcctValidationFailedErr; the
-// framework wraps it with the type-bound code / message metadata.
+// AcctValidationFailedBody is the body of AcctValidationFailedErr.
 type AcctValidationFailedBody struct {
 	Fields []string `json:"fields"`
 }
 
-// AcctValidationFailedErr is the typed BadRequest error generated for `AcctValidationFailed`.
-// The unexported `code` and `message` fields hold the type-bound
-// metadata populated by the constructor. Because they are unexported,
-// json.Marshal omits them from the wire payload - clients see only
-// the embedded body shape (or `{}` when no body was declared).
+// AcctValidationFailedErr is the BadRequest error AcctValidationFailed.
 type AcctValidationFailedErr struct {
-	code    string
-	message string
 	AcctValidationFailedBody
 }
 
-// NewAcctValidationFailedErr constructs AcctValidationFailedErr with the framework metadata baked in.
-// `code` and `message` are bound to the type and not exposed as
-// constructor parameters; only the body struct varies per instance.
+// NewAcctValidationFailedErr constructs AcctValidationFailedErr.
 func NewAcctValidationFailedErr(body AcctValidationFailedBody) *AcctValidationFailedErr {
-	return &AcctValidationFailedErr{
-		code:                     ErrCodeAcctValidationFailed,
-		message:                  "Bad request",
-		AcctValidationFailedBody: body,
-	}
+	return &AcctValidationFailedErr{AcctValidationFailedBody: body}
 }
 
-// Error implements the standard error interface and returns the
-// category-default message bound to the type.
-func (e *AcctValidationFailedErr) Error() string { return e.message }
+// Error returns the BadRequest category's default message.
+func (e *AcctValidationFailedErr) Error() string { return "Bad request" }
 
-// ErrCode returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ ErrCode() string }`
-// assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`, and rpc.Error reads it
-// for the ErrorInfo detail it puts on the gRPC status. The accessor is
-// named `ErrCode` (not `Code`) so it does not shadow a user-declared
-// `code <type>` field promoted from the embedded body struct.
-func (e *AcctValidationFailedErr) ErrCode() string { return e.code }
+// ErrCode returns ErrCodeAcctValidationFailed.
+func (e *AcctValidationFailedErr) ErrCode() string { return ErrCodeAcctValidationFailed }
 
-// HTTPStatus returns the HTTP status code associated with the BadRequest
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the BadRequest status.
 func (e *AcctValidationFailedErr) HTTPStatus() int { return 400 }
+
+// MarshalJSON encodes the body alone, from a copy whose nil lists and maps are set empty.
+func (e *AcctValidationFailedErr) MarshalJSON() ([]byte, error) {
+	body := e.AcctValidationFailedBody
+	body.FillEmpty(0)
+	return json.Marshal(body)
+}
+
+// ErrCodeOverloaded is the canonical machine-readable code for OverloadedErr.
+const ErrCodeOverloaded = "OVERLOADED"
+
+// OverloadedBody is the body of OverloadedErr.
+type OverloadedBody struct {
+	RetryHint
+}
+
+// Overloaded holds only the header field its mixin promotes, so its body is
+// the {code, message} envelope, as RateLimited's is.
+//
+// OverloadedErr is the ServiceUnavailable error Overloaded.
+type OverloadedErr struct {
+	OverloadedBody
+}
+
+// NewOverloadedErr constructs OverloadedErr.
+func NewOverloadedErr(body OverloadedBody) *OverloadedErr {
+	return &OverloadedErr{OverloadedBody: body}
+}
+
+// Error returns the ServiceUnavailable category's default message.
+func (e *OverloadedErr) Error() string { return "Service unavailable" }
+
+// ErrCode returns ErrCodeOverloaded.
+func (e *OverloadedErr) ErrCode() string { return ErrCodeOverloaded }
+
+// HTTPStatus returns the ServiceUnavailable status.
+func (e *OverloadedErr) HTTPStatus() int { return 503 }
+
+// MarshalJSON encodes the {"code", "message"} envelope.
+func (e *OverloadedErr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]string{"code": ErrCodeOverloaded, "message": e.Error()})
+}
+
+// WriteResponseHeaders sets the @header and @cookie fields on w.
+func (e *OverloadedErr) WriteResponseHeaders(w http.ResponseWriter) {
+	w.Header().Set("X-Retry-In", strconv.Itoa(e.RetryIn))
+}
 
 // ErrCodeRateLimited is the canonical machine-readable code for RateLimitedErr.
 const ErrCodeRateLimited = "RATE_LIMITED"
 
-// RateLimitedBody is the wire-shape payload declared at design time for RateLimitedErr.
-// User code instantiates this struct and hands it to NewRateLimitedErr; the
-// framework wraps it with the type-bound code / message metadata.
+// RateLimitedBody is the body of RateLimitedErr.
 type RateLimitedBody struct {
 	RetryAfter int `json:"-" header:"Retry-After"`
 }
 
-// RateLimitedErr is the typed TooManyRequests error generated for `RateLimited`.
-// The unexported `code` and `message` fields hold the type-bound
-// metadata populated by the constructor. Because they are unexported,
-// json.Marshal omits them from the wire payload - clients see only
-// the embedded body shape (or `{}` when no body was declared).
+// RateLimited surfaces the back-off hint on a non-string `Retry-After`
+// response header - exercising @header value formatting on the error
+// path (errorResponseBindings) the same way PaginatedResp does for the
+// success path.
+//
+// RateLimitedErr is the TooManyRequests error RateLimited.
 type RateLimitedErr struct {
-	code    string
-	message string
 	RateLimitedBody
 }
 
-// NewRateLimitedErr constructs RateLimitedErr with the framework metadata baked in.
-// `code` and `message` are bound to the type and not exposed as
-// constructor parameters; only the body struct varies per instance.
+// NewRateLimitedErr constructs RateLimitedErr.
 func NewRateLimitedErr(body RateLimitedBody) *RateLimitedErr {
-	return &RateLimitedErr{
-		code:            ErrCodeRateLimited,
-		message:         "Too many requests",
-		RateLimitedBody: body,
-	}
+	return &RateLimitedErr{RateLimitedBody: body}
 }
 
-// Error implements the standard error interface and returns the
-// category-default message bound to the type.
-func (e *RateLimitedErr) Error() string { return e.message }
+// Error returns the TooManyRequests category's default message.
+func (e *RateLimitedErr) Error() string { return "Too many requests" }
 
-// ErrCode returns the machine-readable error code bound to the type.
-// The transport layer reads this via an `interface{ ErrCode() string }`
-// assertion when assembling the fallback JSON envelope for errors
-// whose body would otherwise marshal to `{}`, and rpc.Error reads it
-// for the ErrorInfo detail it puts on the gRPC status. The accessor is
-// named `ErrCode` (not `Code`) so it does not shadow a user-declared
-// `code <type>` field promoted from the embedded body struct.
-func (e *RateLimitedErr) ErrCode() string { return e.code }
+// ErrCode returns ErrCodeRateLimited.
+func (e *RateLimitedErr) ErrCode() string { return ErrCodeRateLimited }
 
-// HTTPStatus returns the HTTP status code associated with the TooManyRequests
-// category. server.WriteError answers with it, and rpc.Error maps it onto
-// the matching gRPC status code.
+// HTTPStatus returns the TooManyRequests status.
 func (e *RateLimitedErr) HTTPStatus() int { return 429 }
 
-// WriteResponseHeaders writes the `@header` / `@cookie` fields onto w.
-// Called by the framework's server.WriteError before the JSON body is
-// encoded so values reach the wire in a single response.
+// MarshalJSON encodes the {"code", "message"} envelope.
+func (e *RateLimitedErr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]string{"code": ErrCodeRateLimited, "message": e.Error()})
+}
+
+// WriteResponseHeaders sets the @header and @cookie fields on w.
 func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter) {
 	w.Header().Set("Retry-After", strconv.Itoa(e.RetryAfter))
 }

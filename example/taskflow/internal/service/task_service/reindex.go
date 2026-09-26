@@ -5,26 +5,21 @@ package shared
 import (
 	"context"
 
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// ReindexService carries the per-request state for the
-// Reindex endpoint of TaskService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ReindexService runs TaskService.Reindex for one request.
 type ReindexService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewReindexService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewReindexService binds ReindexService to ctx; its Logger carries ctx's trace ids.
 func NewReindexService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ReindexService {
 	return &ReindexService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewReindexService(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 	}
 }
 
-// Reindex is the service entry point. Replace the
-// TODO with the real implementation.
+// Rebuild the project's task search index. Long-running; capped at 30s.
+//
+// Reindex implements TaskService.Reindex.
 func (l *ReindexService) Reindex(req *types.ReindexReq) (*shared.OkResp, error) {
 	if _, err := l.svcCtx.Store.GetProject(req.ProjectID); err != nil {
 		return nil, err

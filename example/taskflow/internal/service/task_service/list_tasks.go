@@ -5,26 +5,21 @@ package shared
 import (
 	"context"
 
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// ListTasksService carries the per-request state for the
-// ListTasks endpoint of TaskService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ListTasksService runs TaskService.ListTasks for one request.
 type ListTasksService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewListTasksService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewListTasksService binds ListTasksService to ctx; its Logger carries ctx's trace ids.
 func NewListTasksService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ListTasksService {
 	return &ListTasksService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewListTasksService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 	}
 }
 
-// ListTasks is the service entry point. Replace the
-// TODO with the real implementation.
+// List tasks in a project, filterable by status / priority / assignee.
+//
+// ListTasks implements TaskService.ListTasks.
 func (l *ListTasksService) ListTasks(req *types.ListTasksReq) (*shared.Page[types.Task], error) {
 	return l.svcCtx.Store.ListTasks(req)
 }

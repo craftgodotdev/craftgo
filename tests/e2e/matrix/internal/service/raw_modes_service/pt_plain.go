@@ -6,9 +6,9 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
-	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -21,7 +21,7 @@ type PtPlainService struct {
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPtPlainService constructs a fresh service instance bound to ctx.
+// NewPtPlainService binds PtPlainService to ctx; its Logger carries ctx's trace ids.
 func NewPtPlainService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PtPlainService {
 	return &PtPlainService{
 		Logger: log.Default().WithContext(ctx),

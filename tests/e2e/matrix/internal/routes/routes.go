@@ -4,6 +4,7 @@ package routes
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	accountserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/account_service"
 	accountuserserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/account_user_service"
 	adminserviceAdminroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin"
@@ -14,11 +15,15 @@ import (
 	adminapiAdminV3routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin/v3"
 	admininventoryserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/admin_inventory_service"
 	bindingsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/bindings_service"
+	blobserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/blob_service"
 	catalogserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/catalog_service"
 	collectionsroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/collections"
 	combineserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/combine_service"
+	emptylistsroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/empty_lists"
 	headerechoserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/header_echo_service"
 	inventoryserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/inventory_service"
+	ledgerroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/ledger"
+	ledgerentryroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/ledger_entry"
 	nestedserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/nested_service"
 	numbersserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/numbers_service"
 	ordersserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/orders_service"
@@ -26,13 +31,8 @@ import (
 	projectserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/project_service"
 	rawmodesserviceRawV1routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/raw/v1"
 	rawmodesserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/raw_modes_service"
-	regressionbatch2routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch2"
-	regressionbatch3routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch3"
-	regressionbatch4routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch4"
-	regressionbatch5routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch5"
-	regressionbatch6routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch6"
-	regressionbatch7routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_batch7"
-	regressionserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/regression_service"
+	reportroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/report"
+	reportcardroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/report_card"
 	scalarsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/scalars_service"
 	securedserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/secured_service"
 	statuscodesserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/status_codes_service"
@@ -41,12 +41,11 @@ import (
 	userserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/user_service"
 	xdelegateserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/x_delegate_service"
 	xrefsserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/x_refs_service"
-
+	xrefsserviceXsharedroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RegisterAll wires every service's routes onto srv with one call.
-// Generated from the DSL service set; always overwritten.
+// RegisterAll registers every service's routes on srv.
 func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	accountserviceroutes.RegisterRoutes(srv, svcCtx)
 	accountuserserviceroutes.RegisterRoutes(srv, svcCtx)
@@ -58,11 +57,15 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	adminserviceAdminroutes.RegisterRoutes(srv, svcCtx)
 	adminserviceAdminLegacyroutes.RegisterRoutes(srv, svcCtx)
 	bindingsserviceroutes.RegisterRoutes(srv, svcCtx)
+	blobserviceroutes.RegisterRoutes(srv, svcCtx)
 	catalogserviceroutes.RegisterRoutes(srv, svcCtx)
 	collectionsroutes.RegisterRoutes(srv, svcCtx)
 	combineserviceroutes.RegisterRoutes(srv, svcCtx)
+	emptylistsroutes.RegisterRoutes(srv, svcCtx)
 	headerechoserviceroutes.RegisterRoutes(srv, svcCtx)
 	inventoryserviceroutes.RegisterRoutes(srv, svcCtx)
+	ledgerroutes.RegisterRoutes(srv, svcCtx)
+	ledgerentryroutes.RegisterRoutes(srv, svcCtx)
 	nestedserviceroutes.RegisterRoutes(srv, svcCtx)
 	numbersserviceroutes.RegisterRoutes(srv, svcCtx)
 	ordersserviceroutes.RegisterRoutes(srv, svcCtx)
@@ -70,13 +73,8 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	projectserviceroutes.RegisterRoutes(srv, svcCtx)
 	rawmodesserviceroutes.RegisterRoutes(srv, svcCtx)
 	rawmodesserviceRawV1routes.RegisterRoutes(srv, svcCtx)
-	regressionbatch2routes.RegisterRoutes(srv, svcCtx)
-	regressionbatch3routes.RegisterRoutes(srv, svcCtx)
-	regressionbatch4routes.RegisterRoutes(srv, svcCtx)
-	regressionbatch5routes.RegisterRoutes(srv, svcCtx)
-	regressionbatch6routes.RegisterRoutes(srv, svcCtx)
-	regressionbatch7routes.RegisterRoutes(srv, svcCtx)
-	regressionserviceroutes.RegisterRoutes(srv, svcCtx)
+	reportroutes.RegisterRoutes(srv, svcCtx)
+	reportcardroutes.RegisterRoutes(srv, svcCtx)
 	scalarsserviceroutes.RegisterRoutes(srv, svcCtx)
 	securedserviceroutes.RegisterRoutes(srv, svcCtx)
 	statuscodesserviceroutes.RegisterRoutes(srv, svcCtx)
@@ -85,4 +83,5 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	userserviceroutes.RegisterRoutes(srv, svcCtx)
 	xdelegateserviceroutes.RegisterRoutes(srv, svcCtx)
 	xrefsserviceroutes.RegisterRoutes(srv, svcCtx)
+	xrefsserviceXsharedroutes.RegisterRoutes(srv, svcCtx)
 }

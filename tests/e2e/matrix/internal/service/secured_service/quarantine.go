@@ -5,25 +5,20 @@ package services
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// QuarantineService carries the per-request state for the
-// Quarantine endpoint of SecuredService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// QuarantineService runs SecuredService.Quarantine for one request.
 type QuarantineService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewQuarantineService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewQuarantineService binds QuarantineService to ctx; its Logger carries ctx's trace ids.
 func NewQuarantineService(ctx context.Context, svcCtx *svccontext.ServiceContext) *QuarantineService {
 	return &QuarantineService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,14 +27,9 @@ func NewQuarantineService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// Quarantine exercises the array-shortcut form: `@security([A, B])`
-// is the bracket-wrapped sugar that any variadic decorator accepts.
-// It parses identical to `@security(A, B)`, so the generated
-// OpenAPI security[] entry must look exactly like Wipe's
-// AdminBearer+MFA AND-combination once the inherited service-level
-// `@security(AdminBearer)` is layered in.
-// Quarantine is the service entry point. Replace the
-// TODO with the real implementation.
+// Locks a tenant; array-form security is functionally equal to the comma form.
+//
+// Quarantine implements SecuredService.Quarantine.
 func (l *QuarantineService) Quarantine() (*types.HealthResp, error) {
 	// TODO: implement
 	return nil, nil

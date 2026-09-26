@@ -9,12 +9,13 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/x_refs_service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PostDefault returns the http.HandlerFunc for the
-// POST PostDefault endpoint.
+// Pins cross-package enum `@default` pre-fill in transport. Body decode must seed `req.Color = &__d` with `__d := xshared.XColorRed` before JSON.Decode runs; without resolver the default literal silently drops because the local pkg.Enums miss.
+//
+// PostDefault returns the POST PostDefault handler.
 func PostDefault(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XEnumDefault
@@ -36,8 +37,6 @@ func PostDefault(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

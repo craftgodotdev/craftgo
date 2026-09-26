@@ -11,11 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// Pure ignore: clears every inherited middleware, starting from
-// empty, for a public-facing health probe that requires neither
-// auth nor rate-limit.
-// PublicHealth returns the http.HandlerFunc for the
-// GET PublicHealth endpoint.
+// Public readiness probe - bypasses every parent middleware AND security.
+//
+// PublicHealth returns the GET PublicHealth handler.
 func PublicHealth(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewPublicHealthService(r.Context(), svcCtx)
@@ -24,7 +22,6 @@ func PublicHealth(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

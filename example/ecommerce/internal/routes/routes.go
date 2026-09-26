@@ -3,16 +3,15 @@
 package routes
 
 import (
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	catalogserviceroutes "github.com/craftgodotdev/craftgo/example/ecommerce/internal/routes/catalog_service"
 	customerserviceroutes "github.com/craftgodotdev/craftgo/example/ecommerce/internal/routes/customer_service"
 	orderserviceroutes "github.com/craftgodotdev/craftgo/example/ecommerce/internal/routes/order_service"
-	"github.com/craftgodotdev/craftgo/pkg/server"
-
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// RegisterAll wires every service's routes onto srv with one call.
-// Generated from the DSL service set; always overwritten.
+// RegisterAll registers every service's routes on srv.
 func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	catalogserviceroutes.RegisterRoutes(srv, svcCtx)
 	customerserviceroutes.RegisterRoutes(srv, svcCtx)

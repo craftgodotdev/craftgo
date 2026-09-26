@@ -12,16 +12,12 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 )
 
-// The barrier is structural: the key type is unexported and distinct per
-// adapter, so a Kafka-typed read on a context that is not a Kafka
-// delivery cannot find anything. It is not that the lookup misses - no
-// value of this type was ever stored.
+// RecordFrom finds nothing on a plain context or another adapter's.
 func TestARecordReadOnAForeignContextFindsNothing(t *testing.T) {
 	if _, ok := RecordFrom(context.Background()); ok {
 		t.Error("a plain context yielded a record")
 	}
-	// A value stored under ANOTHER adapter's key shape: same struct{}
-	// layout, different named type, so it cannot be read as this one.
+	// Another adapter's key has the same layout but a different type.
 	type otherAdapterKey struct{}
 	ctx := context.WithValue(context.Background(), otherAdapterKey{}, "a foreign record")
 	if _, ok := RecordFrom(ctx); ok {
@@ -29,9 +25,7 @@ func TestARecordReadOnAForeignContextFindsNothing(t *testing.T) {
 	}
 }
 
-// MustRecord turns a cross-transport install into a panic, which the bus
-// recovers into a *PanicError naming the consumer, the group and the
-// contract - loud on the first message rather than a quiet no-op.
+// MustRecord panics, naming the cause, on a context with no record.
 func TestMustRecordPanicsOnAForeignDelivery(t *testing.T) {
 	defer func() {
 		r := recover()
@@ -46,11 +40,7 @@ func TestMustRecordPanicsOnAForeignDelivery(t *testing.T) {
 	MustRecord(context.Background())
 }
 
-// THE SCENARIO THE BARRIER IS FOR, end to end: a Kafka-only middleware
-// installed on a transport that is not Kafka. MustRecord panics, the
-// bus's recover turns that into a *PanicError naming the consumer, the
-// group and the contract, and the transport's error handler is told - on
-// the FIRST message, not after a quiet week of reading nothing.
+// MustRecord on another transport fails the first message with a PanicError.
 func TestAKafkaMiddlewareOnAnotherTransportFailsLoudlyAtOnce(t *testing.T) {
 	var (
 		mu     sync.Mutex
@@ -73,8 +63,7 @@ func TestAKafkaMiddlewareOnAnotherTransportFailsLoudlyAtOnce(t *testing.T) {
 			}
 		}),
 	)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := bus.Register(events.Subscription{
 		Event: "orders.Placed", Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error {

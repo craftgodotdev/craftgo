@@ -12,34 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 )
 
-// loadProtos compiles the greet fixture the way `craftgo gen` would for
-// a manifest with every default.
-func loadProtos(t *testing.T, cfg *config.Config) *protodesign.Set {
-	t.Helper()
-	set, err := protodesign.Load(context.Background(), filepath.Join("testdata", "proto"), designopts.ProtoOptions(cfg, "."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !set.HasServices() {
-		t.Fatal("fixture declares no service")
-	}
-	return set
-}
-
-func greeter(t *testing.T, set *protodesign.Set) *protodesign.Service {
-	t.Helper()
-	for _, svc := range set.Services {
-		if svc.Name == "Greeter" {
-			return svc
-		}
-	}
-	t.Fatal("no Greeter")
-	return nil
-}
-
-// Every RPC shape the server layer and the logic scaffold can take, one
-// golden each: the four streaming kinds, a call on well-known types
-// only (no pb import), and a request from another proto package.
+// The server layer and each RPC's method and logic scaffold match their goldens.
 func TestGRPCLayersArePinned(t *testing.T) {
 	cfg := scaffoldConfig(t)
 	svc := greeter(t, loadProtos(t, cfg))
@@ -55,7 +28,7 @@ func TestGRPCLayersArePinned(t *testing.T) {
 			t.Fatalf("%s: %v", m.Name, err)
 		}
 		expectGolden(t, "grpc-"+m.File+".go", string(method))
-		logic, err := renderGo(tmpl("service.tmpl"), buildGRPCServiceData(svc, m, imps))
+		logic, err := renderScaffold(tmpl("service.tmpl"), buildGRPCServiceData(svc, m, imps))
 		if err != nil {
 			t.Fatalf("%s logic: %v", m.Name, err)
 		}
@@ -75,8 +48,9 @@ func TestGRPCLogicIsWrittenOnceAndServersAlways(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	logic := filepath.Join(grpcServiceDir(root, cfg, svc), "say_hello.go")
-	server := filepath.Join(grpcServerDir(root, cfg, svc), "say_hello.go")
+	out := outputsOf(cfg)
+	logic := out.service.sub(svc.Dir).at(root, "say_hello.go")
+	server := out.grpc.sub(svc.Dir).at(root, "say_hello.go")
 	for _, p := range []string{logic, server} {
 		if err := os.WriteFile(p, []byte("package greet // edited\n"), 0o644); err != nil {
 			t.Fatal(err)
@@ -93,7 +67,7 @@ func TestGRPCLogicIsWrittenOnceAndServersAlways(t *testing.T) {
 	if body, _ := os.ReadFile(server); strings.Contains(string(body), "// edited") {
 		t.Error("the server layer was not regenerated")
 	}
-	if _, err := os.Stat(filepath.Join(grpcServerDir(root, cfg, svc), "server.go")); err != nil {
+	if _, err := os.Stat(out.grpc.sub(svc.Dir).at(root, "server.go")); err != nil {
 		t.Error("server.go missing")
 	}
 }
@@ -115,14 +89,14 @@ func protoSet(t *testing.T, cfg *config.Config, proto string) *protodesign.Set {
 	return set
 }
 
-// An RPC whose file would take the server struct's, or whose logic type
-// another RPC's constructor is named after, is rejected before the two
-// files overwrite each other or fail to compile.
+// An RPC whose file or logic type collides with another generated name is rejected.
 func TestValidateProtoOutputsRejectsCollidingRPCNames(t *testing.T) {
 	cfg := scaffoldConfig(t)
 	for proto, want := range map[string]string{
 		"syntax = \"proto3\";\npackage x;\nservice S { rpc Server(R) returns (R); }\nmessage R {}\n":                         "rpc Server would generate file server.go",
 		"syntax = \"proto3\";\npackage x;\nservice S { rpc Get(R) returns (R); rpc NewGet(R) returns (R); }\nmessage R {}\n": "generate a logic constructor and a logic type of one name, NewGetService",
+		"syntax = \"proto3\";\npackage x;\nservice S { rpc Logger(R) returns (R); }\nmessage R {}\n":                         "rpc Logger is named like the log.Logger",
+		"syntax = \"proto3\";\npackage x;\nservice S { rpc RunTest(R) returns (R); }\nmessage R {}\n":                        "rpc RunTest would generate file run_test.go, but the go command builds a `_test.go` file only for tests",
 	} {
 		err := ValidateProtoOutputs(nil, protoSet(t, cfg, proto), cfg)
 		if err == nil || !strings.Contains(err.Error(), want) {

@@ -4,13 +4,12 @@ package rawmodes
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
-	"fmt"
-
+	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
-	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -23,7 +22,7 @@ type PtTimeoutService struct {
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPtTimeoutService constructs a fresh service instance bound to ctx.
+// NewPtTimeoutService binds PtTimeoutService to ctx; its Logger carries ctx's trace ids.
 func NewPtTimeoutService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PtTimeoutService {
 	return &PtTimeoutService{
 		Logger: log.Default().WithContext(ctx),

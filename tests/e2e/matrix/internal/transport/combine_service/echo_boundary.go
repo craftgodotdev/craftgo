@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoBoundary returns the http.HandlerFunc for the
-// POST EchoBoundary endpoint.
+// Echo the boundary-default matrix. Smoke tests assert that the pre-fill happens before req.Validate() so the defaulted values land in the response.
+//
+// EchoBoundary returns the POST EchoBoundary handler.
 func EchoBoundary(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.DefaultsBoundary
@@ -43,8 +44,6 @@ func EchoBoundary(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

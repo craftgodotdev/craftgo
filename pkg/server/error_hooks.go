@@ -2,7 +2,10 @@ package server
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -10,54 +13,72 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// ValidationFailedHandler is the function shape every generated
-// handler calls when `req.Validate()` returns a non-nil error. The
-// default implementation mirrors `http.Error` - a 400 with the
-// validator's message - and applications swap it in by calling
-// [SetDefaultValidationFailed] once at startup.
+// ValidationFailedHandler renders a request that failed binding or validation; see
+// [SetDefaultValidationFailed].
 type ValidationFailedHandler func(w http.ResponseWriter, r *http.Request, err error)
 
-// validationFailed and unknownError hold the live error-rendering handlers.
-// atomic.Value keeps reads allocation-free on the hot path; writes happen at
-// most once per process (init, then any Set* call at startup).
 var (
-	validationFailed atomic.Value // ValidationFailedHandler
-	unknownError     atomic.Value // UnknownErrorHandler
+	validationFailed atomic.Pointer[ValidationFailedHandler]
+	unknownError     atomic.Pointer[UnknownErrorHandler]
 )
 
 func init() {
-	validationFailed.Store(ValidationFailedHandler(defaultValidationFailed))
-	unknownError.Store(UnknownErrorHandler(defaultUnknownError))
+	SetDefaultValidationFailed(nil)
+	SetHandleUnknownError(nil)
 }
 
-// defaultValidationFailed writes the validator's message body with a
-// 400 Bad Request status. This is the wire default;
-// [SetDefaultValidationFailed] swaps it.
-//
-// When the response is already committed (some middleware wrote
-// headers before the handler ran) the 400 cannot be written - net/http
-// silently drops a second WriteHeader call. The hook logs the dropped
-// validation error so the operator notices the bad ordering instead of
-// having it vanish, then returns without touching the wire to avoid
-// corrupting the in-flight body.
+// defaultValidationFailed answers 400 with err's text as the message, or only logs err once
+// the response is committed.
 func defaultValidationFailed(w http.ResponseWriter, r *http.Request, err error) {
 	if responseCommitted(w) {
-		log.Default().WithContext(r.Context()).Error(
+		ctx := context.Background()
+		if r != nil {
+			ctx = r.Context()
+		}
+		log.Default().WithContext(ctx).Error(
 			"validation error after response committed; not rewriting",
 			log.Err(err),
 		)
 		return
 	}
-	http.Error(w, err.Error(), http.StatusBadRequest)
+	writeErrorMessage(w, http.StatusBadRequest, err.Error())
 }
 
-// responseCommitted reports whether the response status has already been
-// fixed, so a late error envelope could no longer replace it. The
-// Recovery wrapper (the outermost writer) records the commit and the
-// compression writer records its own buffered commit; handlers usually
-// receive either one wrapped further (access log, tracing), so the check
-// walks the same Unwrap chain net/http's ResponseController follows until
-// a writer answers.
+// writeErrorHead starts an error response with status: a JSON Content-Type, nosniff, and no
+// Content-Length left from another body.
+func writeErrorHead(w http.ResponseWriter, status int) {
+	h := w.Header()
+	h.Del("Content-Length")
+	h.Set("Content-Type", contentTypeJSON)
+	h.Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(status)
+}
+
+// writeErrorMessage answers status with the JSON body {"message": msg}.
+func writeErrorMessage(w http.ResponseWriter, status int, msg string) {
+	writeErrorHead(w, status)
+	_ = JSON().Encode(w, map[string]string{"message": msg})
+}
+
+// writeStatusError answers status with its status text, in lower case, as the message.
+func writeStatusError(w http.ResponseWriter, status int) {
+	writeErrorMessage(w, status, strings.ToLower(http.StatusText(status)))
+}
+
+// bodyTooLarge reports whether err is a read past a body cap, or r's body was read past its cap.
+func bodyTooLarge(r *http.Request, err error) bool {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) || errors.Is(err, multipart.ErrMessageTooLarge) {
+		return true
+	}
+	if r == nil {
+		return false
+	}
+	capped, ok := r.Body.(*cappedBody)
+	return ok && capped.over
+}
+
+// responseCommitted asks the first writer on w's Unwrap chain that has a Committed method.
 func responseCommitted(w http.ResponseWriter) bool {
 	for w != nil {
 		if c, ok := w.(interface{ Committed() bool }); ok {
@@ -72,123 +93,70 @@ func responseCommitted(w http.ResponseWriter) bool {
 	return false
 }
 
-// SetDefaultValidationFailed installs a process-wide handler invoked
-// for every `req.Validate()` failure. Pass nil to revert to the
-// default. The function is safe to call concurrently with handler
-// dispatch; a single-pointer atomic swap keeps the hot path lock-free.
+// SetDefaultValidationFailed installs h, process-wide and safe while serving, as the handler
+// [WriteValidationError] calls. nil restores the default: 400 {"message": err's text}.
 func SetDefaultValidationFailed(h ValidationFailedHandler) {
 	if h == nil {
 		h = defaultValidationFailed
 	}
-	validationFailed.Store(h)
+	validationFailed.Store(&h)
 }
 
-// WriteValidationError is the indirection generated handlers call.
-// Kept exported so the codegen template can name it without
-// reflection; not intended for application use.
+// WriteValidationError renders err with the [SetDefaultValidationFailed] handler, but answers
+// 413 {"message":"request entity too large"} to an *http.MaxBytesError or
+// multipart.ErrMessageTooLarge in err, or any err once r.Body is read past its [BodyLimit].
 func WriteValidationError(w http.ResponseWriter, r *http.Request, err error) {
-	validationFailed.Load().(ValidationFailedHandler)(w, r, err)
+	if bodyTooLarge(r, err) && !responseCommitted(w) {
+		writeStatusError(w, http.StatusRequestEntityTooLarge)
+		return
+	}
+	(*validationFailed.Load())(w, r, err)
 }
 
-// SetHandleNotFound installs a per-server handler invoked for
-// requests whose path does not match any registered route. Replaces
-// the stdlib mux's default `404 page not found` body. Pass nil to
-// fall back to the default.
-//
-// Health endpoints, static handlers, and middleware-rejected requests
-// still bypass this handler - only routes that reach the mux without
-// a match trigger it.
-func (s *Server) SetHandleNotFound(h http.Handler) *Server {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.notFound = h
-	return s
-}
-
-// StatusError is the contract every craftgo-generated typed error satisfies:
-// a standard error that also reports an HTTP status. [WriteError] renders these
-// directly. Application code can implement it on its own error types to have
-// them rendered with a chosen status instead of falling through to the
-// unknown-error handler.
+// StatusError is an error that carries its HTTP status. [WriteError] writes its JSON encoding,
+// or, when that fails, or is {} from an error that is no [json.Marshaler], its Error text as
+// "message" and any ErrCode() as "code".
 type StatusError interface {
 	error
 	HTTPStatus() int
 }
 
-// ResponseHeaderWriter is the optional extension a typed error implements when
-// it declares `@header` / `@cookie` fields. [WriteError] calls it before the
-// status line so those values reach the wire ahead of the JSON body.
+// ResponseHeaderWriter is implemented by an error that sets response headers; [WriteError]
+// calls it before writing a [StatusError]'s status.
 type ResponseHeaderWriter interface {
 	WriteResponseHeaders(http.ResponseWriter)
 }
 
-// UnknownErrorHandler renders an error that is NOT a recognised [StatusError] -
-// a bare errors.New / fmt.Errorf returned by service logic that carries no HTTP
-// status. It receives the request so it can read trace context for logging. The
-// default logs the full error with the request's trace IDs and responds 500 with
-// an opaque `{"message": "internal server error"}` body - the raw error text
-// stays in the log, never on the wire; [SetHandleUnknownError] swaps it
-// process-wide.
+// UnknownErrorHandler renders an error [WriteError] has no answer of its own for; see
+// [SetHandleUnknownError].
 type UnknownErrorHandler func(w http.ResponseWriter, r *http.Request, err error)
 
-// defaultUnknownError is the wire default for errors without an HTTP status. An
-// unknown error is an unhandled failure, so the full error is logged at Error
-// level with the request's trace context (trace_id / span_id ride
-// the line via WithContext) and the client receives only a generic 500 with a
-// static message. The raw err.Error() text - which routinely carries DSNs, file
-// paths, upstream URLs, or other internal detail - is never written to the
-// response. Operators correlate the 500 to the logged cause by trace id;
-// applications that want a richer client envelope install one via
-// [SetHandleUnknownError].
+// defaultUnknownError logs err with the request's trace ids and answers 500
+// {"message":"internal server error"}, keeping err's text off the wire.
 func defaultUnknownError(w http.ResponseWriter, r *http.Request, err error) {
 	log.Default().WithContext(r.Context()).Error("unhandled service error", log.Err(err))
-	w.Header().Set("Content-Type", contentTypeJSON)
-	w.WriteHeader(http.StatusInternalServerError)
-	_ = JSON().Encode(w, map[string]string{"message": "internal server error"})
+	writeStatusError(w, http.StatusInternalServerError)
 }
 
-// SetHandleUnknownError installs a process-wide handler for service errors that
-// are not craftgo typed errors (no HTTPStatus) - use it to map a domain error
-// to a status, redact, or return a uniform envelope. Pass nil to revert to the
-// default (log the full error with trace context + 500 + opaque message). Safe
-// to call concurrently with dispatch; a single-pointer atomic swap keeps the hot
-// path lock-free.
+// SetHandleUnknownError installs h, process-wide and safe while serving, for each error
+// [WriteError] has no answer of its own for. nil restores the default: log err with the
+// request's trace ids and answer 500 {"message":"internal server error"}.
 func SetHandleUnknownError(h UnknownErrorHandler) {
 	if h == nil {
 		h = defaultUnknownError
 	}
-	unknownError.Store(h)
+	unknownError.Store(&h)
 }
 
-// WriteError is the indirection generated handlers call when service logic
-// returns a non-nil error. It splits on whether the error is a recognised
-// craftgo typed error:
-//
-//   - a [StatusError] anywhere in err's chain (found with errors.As, so a
-//     typed error wrapped with `%w` keeps its status) is rendered from its
-//     interface - the declared HTTP status, the optional `@header`/`@cookie`
-//     writes via [ResponseHeaderWriter], then a JSON body: the codec encodes
-//     the typed error's declared body struct, or - when the error declares no
-//     body and would marshal to `{}` - a `{code, message}` envelope built from
-//     its `ErrCode()` / `Error()` so clients can still discriminate the
-//     failure. A typed error is an expected outcome (a declared 4xx/5xx), so
-//     it is NOT logged;
-//   - anything else (a bare errors.New / fmt.Errorf) is delegated to the
-//     [SetHandleUnknownError] handler, whose default logs the error with the
-//     request's trace context and responds 500.
-//
-// Header precedence: WriteResponseHeaders writes user-declared fields FIRST,
-// then the framework stamps `Content-Type: application/json; charset=utf-8`
-// LAST, so a `@header("Content-Type")` field is overridden - intentional, since
-// the body that follows is always JSON. Use a raw-response handler for a
-// different content type.
-//
-// When the response is already committed - a raw-response handler streamed
-// part of a body and then returned an error - the envelope cannot be written:
-// net/http drops the second WriteHeader and the JSON would be spliced into the
-// in-flight body. The error is logged with the request's trace context instead
-// and the wire is left alone.
+// WriteError renders err: a [StatusError] in its chain, unlogged, as its status, headers and
+// JSON body; a context error as nothing once the request is canceled, else a deadline as 504;
+// anything else through the [SetHandleUnknownError] handler, or the log once committed.
 func WriteError(w http.ResponseWriter, r *http.Request, err error) {
+	var se StatusError
+	isStatus := errors.As(err, &se)
+	if !isStatus && writeContextError(w, r, err) {
+		return
+	}
 	if responseCommitted(w) {
 		log.Default().WithContext(r.Context()).Error(
 			"service error after response committed; not rewriting",
@@ -196,20 +164,21 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 		)
 		return
 	}
-	var se StatusError
-	if !errors.As(err, &se) {
-		unknownError.Load().(UnknownErrorHandler)(w, r, err)
+	if !isStatus {
+		(*unknownError.Load())(w, r, err)
 		return
 	}
 	var hw ResponseHeaderWriter
 	if errors.As(err, &hw) {
 		hw.WriteResponseHeaders(w)
 	}
-	w.Header().Set("Content-Type", contentTypeJSON)
-	w.WriteHeader(se.HTTPStatus())
+	writeErrorHead(w, se.HTTPStatus())
 	codec := JSON()
 	var buf bytes.Buffer
-	if mErr := codec.Encode(&buf, se); mErr != nil || strings.TrimSpace(buf.String()) == "{}" {
+	mErr := codec.Encode(&buf, se)
+	_, selfMarshaled := se.(json.Marshaler)
+	// Code generated before v1.10 leaves a body-less error's JSON to this {} fallback.
+	if mErr != nil || (!selfMarshaled && strings.TrimSpace(buf.String()) == "{}") {
 		env := map[string]string{"message": se.Error()}
 		var coded interface{ ErrCode() string }
 		if errors.As(err, &coded) {
@@ -219,4 +188,25 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 	_, _ = w.Write(buf.Bytes())
+}
+
+// writeContextError answers a context error, reporting whether it did: nothing when the request
+// context is canceled, as by a gone client; 504 for a deadline, a dependency's logged at Warn.
+func writeContextError(w http.ResponseWriter, r *http.Request, err error) bool {
+	deadline := errors.Is(err, context.DeadlineExceeded)
+	if !deadline && !errors.Is(err, context.Canceled) {
+		return false
+	}
+	switch reqErr := r.Context().Err(); {
+	case errors.Is(reqErr, context.Canceled):
+		return true
+	case reqErr == nil && !deadline:
+		return false
+	case reqErr == nil:
+		log.Default().WithContext(r.Context()).Warn("dependency deadline exceeded", log.Err(err))
+	}
+	if !responseCommitted(w) {
+		writeStatusError(w, http.StatusGatewayTimeout)
+	}
+	return true
 }

@@ -1,81 +1,54 @@
 // Package config loads and validates `craftgo.design.yaml`, the project
-// manifest read by every CLI command.
-//
-// The manifest lives **inside** the design folder. A repo-relative layout
-// looks like:
-//
-//	myapp/
-//	├── design/
-//	│   ├── craftgo.design.yaml
-//	│   └── api.craftgo
-//	└── internal/...                  (generated)
-//
-// The directory holding the manifest is the **design root**; its parent is
-// the **project root** that every `output:` path is resolved against. This
-// arrangement keeps each design folder fully self-contained, which is the
-// pre-requisite for a single repo to host multiple craftgo modules
-// (monorepo scenario).
+// manifest. The manifest sits in the design folder; the folder's parent is
+// the project root that `output:` paths are relative to.
 package config
 
 import (
-	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/craftgodotdev/craftgo/internal/idents"
 )
 
-// Config is the in-memory shape of `craftgo.design.yaml`. Field tags match
-// the camelCase keys documented in the project README.
+// Config is the decoded `craftgo.design.yaml`.
 type Config struct {
 	Output  Output  `yaml:"output"`
 	OpenAPI OpenAPI `yaml:"openapi"`
 	Events  Events  `yaml:"events"`
 	Proto   Proto   `yaml:"proto"`
 
-	// Package is the Go import path prefix every generated file uses
-	// for its imports - the equivalent of <module>/<relPathFromGoMod>
-	// for the project root. Not loaded from YAML: populated at gen
-	// time by [ResolveModulePath], which walks up from the project
-	// root looking for a go.mod and computes the effective import
-	// path. The manifest carries no module field; go.mod's `module`
-	// line is the sole source of truth.
+	// Package is the Go import path of the project root. Load leaves it
+	// empty; gen sets it from [ResolveModulePath].
 	Package string `yaml:"-"`
-
-	// ManifestDir is the absolute folder this manifest was loaded from.
-	// Not loaded from YAML. It is what a diagnostic names when two
-	// manifests generate the same file - the design they read may be one
-	// and the same, but the file the user edits is this.
-	ManifestDir string `yaml:"-"`
+	// Warnings names each manifest key Load ignored because no field declares
+	// it, with what replaced a removed key.
+	Warnings []string `yaml:"-"`
 }
 
-// Output groups every generated-artefact destination. Directory paths
-// (Types, Transport, Routes, Service) are appended with `/<service>`
-// per service at codegen time. File paths (Main, Svccontext, OpenAPI) point
-// at the exact file that will be written. All paths are relative to the
-// **project root** (the parent of the design folder).
-// Output kinds. A project generates both halves of the design by default;
-// a contracts project generates only the half other projects import.
+// Values of [Output.Kind].
 const (
 	// KindApplication generates the contract library and the application
 	// around it: handlers, logic stubs, the dependency container, main.
 	KindApplication = "application"
 	// KindContracts generates only what other projects import: payload
-	// types, the event library and the documents. Several deployables
-	// share one, each with its own application project.
+	// types, pb code, the event library and the documents.
 	KindContracts = "contracts"
 )
 
+// Output holds the `output:` keys. Paths are relative to the project root;
+// Main, Svccontext and OpenAPI name files, the other paths directories.
 type Output struct {
-	// Kind selects how much of the design this project generates.
-	// Defaults to [KindApplication].
+	// Kind is [KindApplication] or [KindContracts].
 	Kind       string `yaml:"kind"`
 	Types      string `yaml:"types"`
 	Transport  string `yaml:"transport"`
@@ -84,57 +57,80 @@ type Output struct {
 	Main       string `yaml:"main"`
 	Svccontext string `yaml:"svccontext"`
 	OpenAPI    string `yaml:"openapi"`
-	// Middleware is the scaffold-once output dir for middleware
-	// implementation files. The corresponding type declarations live
-	// next to svccontext.go (see GenerateProjectMiddlewares).
+	// Middleware is the scaffold-once directory of the middleware implementations.
 	Middleware string `yaml:"middleware"`
-	// Wiring is the directory holding the generated wiring package: the
-	// one `Register` call main.go makes, whose surface does not change
-	// with the design. Defaults to `./internal/wiring`.
+	// Wiring is the directory of the generated package whose Register main.go calls.
 	Wiring string `yaml:"wiring"`
-	// Config is the scaffold-once directory holding the runtime
-	// configuration package (config.go + config.yaml +
-	// example.config.yaml). main.go reads from `<Config>/config.yaml`
-	// at boot. Defaults to `./config`.
+	// Config is the scaffold-once directory of the runtime configuration package.
 	Config string `yaml:"config"`
-	// PB is the directory the protobuf plugins (protoc-gen-go,
-	// protoc-gen-go-grpc) write into: `<PB>/<proto dir>/<name>.pb.go` for
-	// every `.proto` under the design folder. `-` runs no plugin - a team
-	// generating pb code through its own buf or protoc pipeline - and then
-	// every design proto must carry `option go_package`. Defaults to
-	// `./internal/pb`, or `./gen/pb` for a contracts project.
+	// PB is the directory the protobuf plugins write into. "-" runs no
+	// plugin, and every design proto must then carry `option go_package`.
 	PB string `yaml:"pb"`
-	// GRPC is the directory holding the generated gRPC server layer: one
-	// package per proto service, the server struct and one file per RPC,
-	// each delegating to the logic scaffold under Service. Defaults to
-	// `./internal/grpc`.
+	// GRPC is the directory of the generated gRPC server layer, one package
+	// per proto service.
 	GRPC string `yaml:"grpc"`
-	// FileCase selects the naming convention for GENERATED file and
-	// directory names derived from DSL identifiers - the per-method
-	// handler/service files and the per-service directory. `snake`
-	// (default) yields `create_user.go` / `user_service/`, `kebab`
-	// yields `create-user.go` / `user-service/`, `camel` yields
-	// `createUser.go` / `userService/`. It affects on-disk names only:
-	// URL routes stay kebab-case, and Go package names / identifiers
-	// are unchanged.
+	// FileCase is the case of generated file and directory names derived
+	// from DSL identifiers; routes and Go identifiers keep their own case.
 	FileCase string `yaml:"fileCase"`
 }
 
+// Disabled is the value that turns off an output key or event target that
+// accepts it.
+const Disabled = "-"
+
 // RuntimeDisabled reports whether the project opted out of the generated
 // runtime layer (main.go, config, svccontext) with `output.main: "-"`.
-func (o Output) RuntimeDisabled() bool { return o.Main == "-" }
+func (o Output) RuntimeDisabled() bool { return o.Main == Disabled }
 
 // PBDisabled reports whether the project opted out of running the
 // protobuf plugins with `output.pb: "-"`.
-func (o Output) PBDisabled() bool { return o.PB == "-" }
+func (o Output) PBDisabled() bool { return o.PB == Disabled }
 
-// Proto configures how the `.proto` files under the design folder are
-// compiled. The design folder is always the first import root, so a
-// proto imports a sibling by its path relative to that folder.
+// OpenAPIDisabled reports whether the project writes no OpenAPI document:
+// `output.openapi` is "-" or empty.
+func (o Output) OpenAPIDisabled() bool { return o.OpenAPI == "" || o.OpenAPI == Disabled }
+
+// outputKey is one path key of the `output:` block.
+type outputKey struct {
+	name  string
+	field func(*Output) *string
+	// def is the default; contractsDef, when set, replaces it in a contracts
+	// project, whose packages other modules import from outside internal/.
+	def, contractsDef string
+	// file marks a key naming a file; the directory holding it is what can
+	// collide with another key's.
+	file bool
+	// disableable accepts [Disabled].
+	disableable bool
+	// document marks a key whose file holds no Go code.
+	document bool
+}
+
+// outputKeys lists every path key of the `output:` block, in the order the
+// checks report them.
+var outputKeys = []outputKey{
+	{name: "types", field: func(o *Output) *string { return &o.Types }, def: "./internal/types", contractsDef: "./gen/types"},
+	{name: "transport", field: func(o *Output) *string { return &o.Transport }, def: "./internal/transport"},
+	{name: "routes", field: func(o *Output) *string { return &o.Routes }, def: "./internal/routes"},
+	{name: "wiring", field: func(o *Output) *string { return &o.Wiring }, def: "./internal/wiring"},
+	{name: "service", field: func(o *Output) *string { return &o.Service }, def: "./internal/service"},
+	{name: "middleware", field: func(o *Output) *string { return &o.Middleware }, def: "./internal/middleware"},
+	{name: "config", field: func(o *Output) *string { return &o.Config }, def: "./config"},
+	{name: "pb", field: func(o *Output) *string { return &o.PB }, def: "./internal/pb", contractsDef: "./gen/pb", disableable: true},
+	{name: "grpc", field: func(o *Output) *string { return &o.GRPC }, def: "./internal/grpc"},
+	{name: "svccontext", field: func(o *Output) *string { return &o.Svccontext }, def: "./svccontext/svccontext.go", file: true},
+	{name: "main", field: func(o *Output) *string { return &o.Main }, def: "./main.go", file: true, disableable: true},
+	{name: "openapi", field: func(o *Output) *string { return &o.OpenAPI }, def: "./docs/openapi.yaml", file: true, disableable: true, document: true},
+}
+
+// key returns the manifest spelling of k, `output.<name>`.
+func (k outputKey) key() string { return "output." + k.name }
+
+// Proto configures how the design folder's `.proto` files compile. The design
+// folder is the first import root.
 type Proto struct {
-	// Includes lists extra import roots, relative to the project root, for
-	// protos the design imports but does not own. Each file found there
-	// must carry `option go_package`: its pb code is not generated here.
+	// Includes lists extra import roots, relative to the project root, whose
+	// protos are imported but not generated, so each needs `option go_package`.
 	Includes []string `yaml:"includes"`
 	// Plugins names the plugin executables. Empty runs each one through
 	// `go tool <name>`, pinned by the `tool` directives in go.mod.
@@ -148,22 +144,8 @@ type Plugins struct {
 	GoGRPC string `yaml:"goGrpc"`
 }
 
-// Supported values for [Output.FileCase]. They name the case used for
-// generated file and directory names (not URLs or Go identifiers).
-const (
-	FileCaseKebab = "kebab"
-	FileCaseSnake = "snake"
-	FileCaseCamel = "camel"
-	// DefaultFileCase applies when the manifest leaves fileCase unset.
-	DefaultFileCase = FileCaseSnake
-)
-
-// Events configures the event pipeline: Targets lists the languages the
-// event artefacts are generated for. A manifest omitting the block gets
-// [DefaultEventTargets].
-//
-// Transport and codec are runtime wiring, chosen where the application
-// starts up, and are not part of this.
+// Events lists the languages the event artefacts are generated for; with none,
+// Load sets the go target (`./internal/events`, `./gen/events` for contracts).
 type Events struct {
 	Targets []EventTarget `yaml:"targets"`
 }
@@ -174,10 +156,6 @@ type Events struct {
 type EventTarget struct {
 	Lang string `yaml:"lang"`
 	Out  string `yaml:"out"`
-	// Layout overrides where individual artefacts land. No target reads
-	// one - the Go target places its artefacts through the project-wide
-	// `output:` block - so any value is rejected rather than ignored.
-	Layout map[string]any `yaml:"layout"`
 }
 
 // Language names accepted in [EventTarget.Lang].
@@ -185,25 +163,23 @@ const (
 	LangGo = "go"
 )
 
-// SupportedLangs is the closed set of languages a target may name. The
-// generator's target catalogue is checked against it, so a language
-// listed here without a generator - or the reverse - fails a test rather
-// than silently producing nothing.
+// SupportedLangs lists the languages an event target may name.
 var SupportedLangs = []string{LangGo}
 
-// DefaultEventTargets is the implicit target set for a manifest with no
-// `events.targets` block. A contracts project is imported across modules,
-// where Go forbids an `internal/` path, so its default lands outside.
-func DefaultEventTargets(kind string) []EventTarget {
+// defaultEventTargets returns the targets of a manifest with none. A contracts
+// project's default is outside `internal/`, which other modules cannot import.
+func defaultEventTargets(kind string) []EventTarget {
 	if kind == KindContracts {
 		return []EventTarget{{Lang: LangGo, Out: "./gen/events"}}
 	}
 	return []EventTarget{{Lang: LangGo, Out: "./internal/events"}}
 }
 
-// Enabled reports whether the target should be generated. `-` skips it
-// without removing the row.
-func (t EventTarget) Enabled() bool { return t.Out != "-" && t.Out != "" }
+// Enabled reports whether the target is generated; "-" skips it.
+func (t EventTarget) Enabled() bool { return t.Out != Disabled && t.Out != "" }
+
+// key returns the manifest spelling of t's destination, `events.targets[<lang>].out`.
+func (t EventTarget) key() string { return "events.targets[" + t.Lang + "].out" }
 
 // TargetFor returns the configured target for lang.
 func (e Events) TargetFor(lang string) (EventTarget, bool) {
@@ -215,11 +191,9 @@ func (e Events) TargetFor(lang string) (EventTarget, bool) {
 	return EventTarget{}, false
 }
 
-// OpenAPI carries metadata that surfaces in the generated specification's
-// info / servers blocks. BasePath is also used by the runtime to compute the
-// final route string for each method. SecuritySchemes is a name → scheme
-// map that powers the `@security(name)` cross-check: any DSL reference
-// must resolve to a key here when the map is non-empty.
+// OpenAPI holds the `openapi:` keys. BasePath prefixes every generated route
+// and is the document's server URL; when SecuritySchemes is non-empty, every
+// `@security(name)` must name one of its keys.
 type OpenAPI struct {
 	Title           string                    `yaml:"title"`
 	Version         string                    `yaml:"version"`
@@ -228,15 +202,12 @@ type OpenAPI struct {
 	SecuritySchemes map[string]SecurityScheme `yaml:"securitySchemes"`
 }
 
-// SecurityScheme is the project-side projection of an OpenAPI 3.1
-// security scheme object. Only the fields the codegen needs to
-// validate references and emit OpenAPI components are modelled.
+// SecurityScheme is the part of an OpenAPI 3.1 security scheme object that
+// craftgo models.
 type SecurityScheme struct {
-	// Type is the OpenAPI 3.1 scheme type: "http", "apiKey", "oauth2",
-	// "openIdConnect", or "mutualTLS". Required.
+	// Type is "http", "apiKey", "oauth2", "openIdConnect" or "mutualTLS".
 	Type string `yaml:"type"`
-	// Scheme is the HTTP authentication scheme name (`bearer`, `basic`).
-	// Used only when Type == "http".
+	// Scheme is the HTTP authentication scheme (`bearer`, `basic`) of an "http" type.
 	Scheme string `yaml:"scheme,omitempty"`
 	// BearerFormat hints at the bearer token shape (e.g. "JWT").
 	BearerFormat string `yaml:"bearerFormat,omitempty"`
@@ -246,15 +217,12 @@ type SecurityScheme struct {
 	Name string `yaml:"name,omitempty"`
 	// OpenIDConnectURL is the discovery URL for openIdConnect.
 	OpenIDConnectURL string `yaml:"openIdConnectUrl,omitempty"`
-	// Flows configures the OAuth2 flows. Required (with at least one flow)
-	// when Type == "oauth2" - the OpenAPI spec mandates a `flows` object, and
-	// omitting it produces an invalid document that downstream client
-	// generators (e.g. @hey-api/openapi-ts) reject.
+	// Flows configures the OAuth2 flows; OpenAPI requires at least one for an
+	// "oauth2" type.
 	Flows *OAuthFlows `yaml:"flows,omitempty"`
 }
 
-// OAuthFlows mirrors the OpenAPI `oauthFlows` object: the four standard grant
-// flows, each optional but at least one required for a valid oauth2 scheme.
+// OAuthFlows is the OpenAPI `oauthFlows` object, one optional flow per grant type.
 type OAuthFlows struct {
 	Implicit          *OAuthFlow `yaml:"implicit,omitempty"`
 	Password          *OAuthFlow `yaml:"password,omitempty"`
@@ -262,7 +230,7 @@ type OAuthFlows struct {
 	AuthorizationCode *OAuthFlow `yaml:"authorizationCode,omitempty"`
 }
 
-// OAuthFlow mirrors the OpenAPI `oauthFlow` object for one grant type.
+// OAuthFlow is the OpenAPI `oauthFlow` object of one grant type.
 type OAuthFlow struct {
 	AuthorizationURL string            `yaml:"authorizationUrl,omitempty"`
 	TokenURL         string            `yaml:"tokenUrl,omitempty"`
@@ -270,8 +238,7 @@ type OAuthFlow struct {
 	Scopes           map[string]string `yaml:"scopes,omitempty"`
 }
 
-// flowList returns the non-nil flows in deterministic order, for emission and
-// the "at least one flow" validation.
+// flowList returns the configured flows in a fixed order.
 func (f *OAuthFlows) flowList() []*OAuthFlow {
 	if f == nil {
 		return nil
@@ -288,39 +255,22 @@ func (f *OAuthFlows) flowList() []*OAuthFlow {
 // HasFlow reports whether at least one OAuth2 flow is configured.
 func (f *OAuthFlows) HasFlow() bool { return len(f.flowList()) > 0 }
 
-// Filename is the canonical project manifest file name. Find walks parent
-// directories looking for it, optionally peeking into a child `design/`
-// directory at each level.
+// Filename is the project manifest's file name.
 const Filename = "craftgo.design.yaml"
 
-// DesignFileExtensions are the extensions a craftgo source file may carry.
-// `.craftgo` is canonical; `.cg` is the short alias. Both are accepted
-// everywhere design sources are discovered - `craftgo gen`, `craftgo fmt`,
-// and the language server's project walk and file watcher - and a single
-// project may freely mix the two.
+// DesignFileExtensions are the extensions of a design source file; `.cg` is
+// short for `.craftgo`.
 var DesignFileExtensions = []string{".craftgo", ".cg"}
 
-// IsDesignFile reports whether path names a craftgo source file, matching its
-// extension against [DesignFileExtensions]. path may be a full path or a bare
-// file name.
+// IsDesignFile reports whether path, a full path or a bare file name, has one
+// of the [DesignFileExtensions].
 func IsDesignFile(path string) bool {
 	return slices.Contains(DesignFileExtensions, filepath.Ext(path))
 }
 
-// Find walks upward from `start` until it locates a [Filename]. At every
-// candidate directory two strategies are tried, in order: the directory
-// itself, then any direct subdirectory containing the manifest - so
-// users can invoke `craftgo gen` from either the design folder or its
-// parent regardless of what the design folder is named (`design`,
-// `contracts`, `apis/v1`, ...). When more than one direct subdir
-// holds a manifest the function bails out with an unambiguous error
-// rather than silently picking one - the caller should pass an
-// explicit folder via [FindAt].
-//
-// On success it returns the loaded [*Config], the absolute path of the
-// project root (the parent of the design folder), and the
-// absolute path of the design folder itself. Every `.craftgo` source
-// file lives in the design folder or its descendants.
+// Find walks up from start until a directory, or one of its direct
+// subdirectories, holds a [Filename]; several such subdirectories are an error.
+// It returns the loaded config and the absolute project root and design folder.
 func Find(start string) (*Config, string, string, error) {
 	abs, err := filepath.Abs(start)
 	if err != nil {
@@ -328,7 +278,6 @@ func Find(start string) (*Config, string, string, error) {
 	}
 	dir := abs
 	for {
-		// Direct hit - manifest sits in dir.
 		if path := filepath.Join(dir, Filename); fileExists(path) {
 			cfg, err := Load(path)
 			if err != nil {
@@ -336,9 +285,6 @@ func Find(start string) (*Config, string, string, error) {
 			}
 			return cfg, filepath.Dir(dir), dir, nil
 		}
-		// Probe direct subdirs. Allows the project to use any name
-		// for the design folder (`design`, `contracts`, `dsl`, ...).
-		// Multiple matches → ambiguous; require explicit -f flag.
 		if matches, err := probeDesignSubdirs(dir); err == nil {
 			switch len(matches) {
 			case 1:
@@ -362,15 +308,9 @@ func Find(start string) (*Config, string, string, error) {
 	}
 }
 
-// FindAt loads the manifest at `<designFolder>/craftgo.design.yaml` and
-// returns it alongside the resolved project root. When `projectRoot`
-// is empty the parent of `designFolder` is used, the same root [Find]
-// resolves by walking up; pass an explicit value when the design folder
-// lives outside the project tree - the monorepo case where contracts/
-// and services/ are siblings.
-//
-// All paths in the returned tuple are absolute.
-func FindAt(designFolder, projectRoot string) (*Config, string, string, error) {
+// FindAt loads the manifest in designFolder and returns it with the absolute
+// project root, the design folder's parent, and design folder.
+func FindAt(designFolder string) (*Config, string, string, error) {
 	absDesign, err := filepath.Abs(designFolder)
 	if err != nil {
 		return nil, "", "", err
@@ -383,23 +323,11 @@ func FindAt(designFolder, projectRoot string) (*Config, string, string, error) {
 	if err != nil {
 		return nil, "", "", err
 	}
-	absRoot := projectRoot
-	if absRoot == "" {
-		absRoot = filepath.Dir(absDesign)
-	} else {
-		absRoot, err = filepath.Abs(absRoot)
-		if err != nil {
-			return nil, "", "", err
-		}
-	}
-	return cfg, absRoot, absDesign, nil
+	return cfg, filepath.Dir(absDesign), absDesign, nil
 }
 
-// probeDesignSubdirs returns every direct subdir of `dir` that
-// contains a [Filename]. Hidden dirs (starting with `.`) and common
-// vendor/output dirs are skipped to avoid stumbling into generated
-// `internal/` trees that happen to nest a manifest from a sibling
-// project.
+// probeDesignSubdirs returns the direct subdirectories of dir that hold a
+// [Filename], skipping hidden ones, `vendor` and `node_modules`.
 func probeDesignSubdirs(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -422,39 +350,38 @@ func probeDesignSubdirs(dir string) ([]string, error) {
 	return out, nil
 }
 
-// fileExists is a small wrapper around os.Stat that ignores its error,
-// returning true only when the path resolves to a regular file.
+// fileExists reports whether path exists and is not a directory.
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
 }
 
-// Load parses the manifest at `path`, validates required fields, applies
-// defaults to optional ones, and returns the resulting [*Config].
+// Load reads, validates and defaults the manifest at path. A removed key is an
+// error; any other key no field declares is ignored and named in [Config.Warnings].
 func Load(path string) (*Config, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return nil, err
-	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	if err := checkRemovedKeys(data); err != nil {
-		return nil, err
+	var cfg Config
+	if err := doc.Decode(&cfg); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	cfg.ManifestDir = filepath.Dir(abs)
+	for _, key := range undeclaredKeys(&doc, reflect.TypeFor[Config](), "") {
+		if note, ok := removedKeys[listIndex.ReplaceAllString(key, "[]")]; ok {
+			return nil, fmt.Errorf("%s is no longer a manifest key - %s; drop it", key, note)
+		}
+		cfg.Warnings = append(cfg.Warnings, key+" is not a manifest key and is ignored")
+	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
 	cfg.applyDefaults()
-	// Collisions are checked against final values: an explicit key can
-	// land on another key's default, which is the shape that builds today
-	// and breaks on the next design edit.
+	// Checked after defaults: an explicit key can land on another key's default.
 	if err := cfg.checkOutputUsable(); err != nil {
 		return nil, err
 	}
@@ -464,71 +391,101 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// removedKeys are the manifest keys craftgo used to read, and what became
-// of each. A key the manifest shape does not declare is ignored in
-// silence, so a manifest still naming one of these would generate
-// something other than what it says.
-var removedKeys = []struct{ key, note string }{
-	{"design", "a manifest holds its own design folder - generate each deployable from the design beside it"},
-	{"output.services", "a project generates every service its design declares"},
-	{"output.consumeMiddleware", "middleware is installed on the bus with bus.Use, or on one subscription through Subscription.Chain"},
-	{"events.asyncapi", "craftgo writes no asyncapi document"},
+// removedKeys are the keys the manifest no longer reads, each with what took
+// its place; a list index in a key reads `[]`.
+var removedKeys = map[string]string{
+	"design":                   "a manifest holds its own design folder - generate each deployable from the design beside it",
+	"output.services":          "a project generates every service its design declares",
+	"output.consumeMiddleware": "middleware is installed on the bus with bus.Use, or on one subscription through Subscription.Chain",
+	"events.asyncapi":          "craftgo writes no asyncapi document",
+	"events.targets[].layout":  "the go target places its artefacts through the `output:` block",
 }
 
-// checkRemovedKeys rejects a manifest still naming a key craftgo has
-// removed.
-func checkRemovedKeys(data []byte) error {
-	var doc map[string]any
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil
+// listIndex matches the index of a list item in a key path.
+var listIndex = regexp.MustCompile(`\[\d+\]`)
+
+// undeclaredKeys returns, in document order, the path of every mapping key
+// under node that t, the type node decodes into, declares no field for. A path
+// joins keys with dots and writes a list item as `[i]`: `events.targets[0].out`.
+func undeclaredKeys(node *yaml.Node, t reflect.Type, path string) []string {
+	if node.Kind == yaml.AliasNode {
+		node = node.Alias
 	}
-	for _, removed := range removedKeys {
-		if hasKey(doc, strings.Split(removed.key, ".")) {
-			return fmt.Errorf("%s is no longer a manifest key - %s; drop it", removed.key, removed.note)
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	var out []string
+	switch {
+	case node.Kind == yaml.DocumentNode:
+		for _, n := range node.Content {
+			out = append(out, undeclaredKeys(n, t, path)...)
+		}
+	case node.Kind == yaml.SequenceNode && t.Kind() == reflect.Slice:
+		for i, n := range node.Content {
+			out = append(out, undeclaredKeys(n, t.Elem(), fmt.Sprintf("%s[%d]", path, i))...)
+		}
+	case node.Kind == yaml.MappingNode && (t.Kind() == reflect.Struct || t.Kind() == reflect.Map):
+		var fields map[string]reflect.Type
+		if t.Kind() == reflect.Struct {
+			fields = yamlFields(t)
+		}
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key, val := node.Content[i], node.Content[i+1]
+			if key.Tag == "!!merge" {
+				// `<<: *anchor` or `<<: [*a, *b]` merges the anchored mappings in.
+				merged := []*yaml.Node{val}
+				if val.Kind == yaml.SequenceNode {
+					merged = val.Content
+				}
+				for _, m := range merged {
+					out = append(out, undeclaredKeys(m, t, path)...)
+				}
+				continue
+			}
+			sub := key.Value
+			if path != "" {
+				sub = path + "." + key.Value
+			}
+			switch {
+			case t.Kind() == reflect.Map:
+				out = append(out, undeclaredKeys(val, t.Elem(), sub)...)
+			case fields[key.Value] != nil:
+				out = append(out, undeclaredKeys(val, fields[key.Value], sub)...)
+			default:
+				out = append(out, sub)
+			}
 		}
 	}
-	return nil
+	return out
 }
 
-// hasKey reports whether the decoded manifest holds the nested key path.
-func hasKey(node any, path []string) bool {
-	m, ok := node.(map[string]any)
-	if !ok {
-		return false
+// yamlFields maps each key the struct t declares to its field's type, as
+// yaml.v3 names them: the tag's name, else the lower-cased field name.
+func yamlFields(t reflect.Type) map[string]reflect.Type {
+	fields := map[string]reflect.Type{}
+	for f := range t.Fields() {
+		name, _, _ := strings.Cut(f.Tag.Get("yaml"), ",")
+		if !f.IsExported() || name == "-" {
+			continue
+		}
+		if name == "" {
+			name = strings.ToLower(f.Name)
+		}
+		fields[name] = f.Type
 	}
-	v, ok := m[path[0]]
-	if !ok {
-		return false
-	}
-	return len(path) == 1 || hasKey(v, path[1:])
+	return fields
 }
 
-// validate checks required manifest fields. Every required field has
-// either a default or is populated post-Load (Package via go.mod), so
-// there is nothing to reject; it stays as a hook for future required
-// keys without re-wiring callers.
+// validate checks the manifest as written, before defaults apply.
 func (c *Config) validate() error {
-	for _, out := range []struct{ key, val string }{
-		{"output.types", c.Output.Types},
-		{"output.transport", c.Output.Transport},
-		{"output.routes", c.Output.Routes},
-		{"output.service", c.Output.Service},
-		{"output.main", c.Output.Main},
-		{"output.svccontext", c.Output.Svccontext},
-		{"output.openapi", c.Output.OpenAPI},
-		{"output.middleware", c.Output.Middleware},
-		{"output.config", c.Output.Config},
-		{"output.wiring", c.Output.Wiring},
-		{"output.pb", c.Output.PB},
-		{"output.grpc", c.Output.GRPC},
-	} {
-		if err := checkWithinProject(out.key, out.val); err != nil {
+	for _, k := range outputKeys {
+		if err := checkWithinProject(k.key(), *k.field(&c.Output)); err != nil {
 			return err
 		}
 	}
 	for i, inc := range c.Proto.Includes {
 		key := fmt.Sprintf("proto.includes[%d]", i)
-		if inc == "" || inc == "-" {
+		if inc == "" || inc == Disabled {
 			return fmt.Errorf("%s: an include names a directory", key)
 		}
 		if err := checkWithinProject(key, inc); err != nil {
@@ -536,19 +493,15 @@ func (c *Config) validate() error {
 		}
 	}
 	for _, t := range c.Events.Targets {
-		key := "events.targets[" + t.Lang + "]"
-		if err := checkWithinProject(key+".out", t.Out); err != nil {
+		if err := checkWithinProject(t.key(), t.Out); err != nil {
 			return err
-		}
-		if len(t.Layout) > 0 {
-			return fmt.Errorf("%s.layout: no target reads a `layout:` - the go target places its artefacts through the `output:` block", key)
 		}
 	}
 	switch c.Output.FileCase {
-	case "", FileCaseKebab, FileCaseSnake, FileCaseCamel:
+	case "", idents.FileCaseKebab, idents.FileCaseSnake, idents.FileCaseCamel:
 	default:
 		return fmt.Errorf("output.fileCase %q is not supported - use %q, %q, or %q",
-			c.Output.FileCase, FileCaseKebab, FileCaseSnake, FileCaseCamel)
+			c.Output.FileCase, idents.FileCaseKebab, idents.FileCaseSnake, idents.FileCaseCamel)
 	}
 	seen := map[string]bool{}
 	for _, t := range c.Events.Targets {
@@ -564,91 +517,36 @@ func (c *Config) validate() error {
 		}
 		seen[t.Lang] = true
 		if t.Out == "" {
-			return fmt.Errorf("events.targets entry %q has no `out` - set a directory, or %q to skip the target", t.Lang, "-")
+			return fmt.Errorf("events.targets entry %q has no `out` - set a directory, or %q to skip the target", t.Lang, Disabled)
 		}
 	}
 	return nil
 }
 
-// applyDefaults fills in any blank optional path with the framework's
-// recommended location. Mirrors the README "Configuration" section so
-// projects can run with an empty manifest and inherit every default.
+// applyDefaults fills every unset key with its default.
 func (c *Config) applyDefaults() {
 	if c.Output.Kind == "" {
 		c.Output.Kind = KindApplication
 	}
-	if c.Output.Types == "" {
-		// Same reason as [DefaultEventTargets]: an importer needs the
-		// payload type to build a message, and cannot reach `internal/`
-		// across modules.
-		c.Output.Types = "./internal/types"
-		if c.Output.ContractsOnly() {
-			c.Output.Types = "./gen/types"
+	for _, k := range outputKeys {
+		if val := k.field(&c.Output); *val == "" {
+			*val = k.def
+			if c.Output.ContractsOnly() && k.contractsDef != "" {
+				*val = k.contractsDef
+			}
 		}
-	}
-	if c.Output.Transport == "" {
-		c.Output.Transport = "./internal/transport"
-	}
-	if c.Output.Routes == "" {
-		c.Output.Routes = "./internal/routes"
-	}
-	if c.Output.Service == "" {
-		c.Output.Service = "./internal/service"
-	}
-	if c.Output.Main == "" {
-		c.Output.Main = "./main.go"
-	}
-	if c.Output.Svccontext == "" {
-		c.Output.Svccontext = "./svccontext/svccontext.go"
-	}
-	if c.Output.OpenAPI == "" {
-		c.Output.OpenAPI = "./docs/openapi.yaml"
-	}
-	if c.Output.Middleware == "" {
-		c.Output.Middleware = "./internal/middleware"
-	}
-	if c.Output.Config == "" {
-		c.Output.Config = "./config"
-	}
-	if c.Output.Wiring == "" {
-		c.Output.Wiring = "./internal/wiring"
-	}
-	if c.Output.PB == "" {
-		// The pb messages are contract types other projects import, so
-		// a contracts project keeps them outside internal/ like Types.
-		c.Output.PB = "./internal/pb"
-		if c.Output.ContractsOnly() {
-			c.Output.PB = "./gen/pb"
-		}
-	}
-	if c.Output.GRPC == "" {
-		c.Output.GRPC = "./internal/grpc"
 	}
 	if c.Output.FileCase == "" {
-		c.Output.FileCase = DefaultFileCase
+		c.Output.FileCase = idents.DefaultFileCase
 	}
 	if len(c.Events.Targets) == 0 {
-		c.Events.Targets = DefaultEventTargets(c.Output.Kind)
+		c.Events.Targets = defaultEventTargets(c.Output.Kind)
 	}
 }
 
-// ResolveModulePath walks upward from `projectRoot` looking for a
-// `go.mod`, parses its `module ...` line, and appends the relative
-// path from go.mod's directory to projectRoot. The result is the
-// Go import-path prefix every generated file uses for its imports.
-//
-// Examples:
-//
-//	go.mod at repo/, module "github.com/foo/bar", projectRoot=repo/
-//	  → "github.com/foo/bar"
-//	go.mod at repo/, module "github.com/foo/bar", projectRoot=repo/services/api
-//	  → "github.com/foo/bar/services/api"
-//
-// The walk-up handles both the simple single-module project (go.mod
-// at project root) and the monorepo with one shared go.mod at the
-// repo root and project root inside a sub-tree. Errors when no
-// go.mod is found anywhere upward - gen needs the canonical module
-// path to emit imports the Go compiler can resolve.
+// ResolveModulePath returns the Go import path of projectRoot: the module path
+// of the nearest go.mod at or above it, joined with projectRoot's path below
+// that go.mod.
 func ResolveModulePath(projectRoot string) (string, error) {
 	abs, err := filepath.Abs(projectRoot)
 	if err != nil {
@@ -680,30 +578,44 @@ func ResolveModulePath(projectRoot string) (string, error) {
 	}
 }
 
-// parseModuleLine scans a go.mod body for the first `module <path>`
-// declaration and returns the path. Avoids pulling in
-// `golang.org/x/mod/modfile` for a single line of parsing - go.mod
-// syntax for the module clause is fixed and trivial to scan.
+// parseModuleLine returns the module path a go.mod declares, or "": the
+// argument of its `module` directive, quoted or not, in the line or the block
+// form, without the comments beside it.
 func parseModuleLine(data []byte) string {
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if !strings.HasPrefix(line, "module") {
-			continue
+	inBlock := false
+	for line := range strings.Lines(string(data)) {
+		if i := strings.Index(line, "//"); i >= 0 {
+			line = line[:i]
 		}
-		// Either `module <path>` or `module "<path>"`. Support both
-		// forms - go.mod accepts quoted paths for unusual chars.
-		rest := strings.TrimSpace(strings.TrimPrefix(line, "module"))
-		rest = strings.TrimSuffix(strings.TrimPrefix(rest, `"`), `"`)
-		if rest != "" {
-			return rest
+		fields := strings.Fields(strings.NewReplacer("(", " ( ", ")", " ) ").Replace(line))
+		switch {
+		case len(fields) == 0:
+		case inBlock:
+			if fields[0] == ")" {
+				inBlock = false
+				continue
+			}
+			return unquoteModulePath(fields[0])
+		case fields[0] != "module" || len(fields) == 1:
+		case fields[1] == "(":
+			inBlock = true
+		default:
+			return unquoteModulePath(fields[1])
 		}
 	}
 	return ""
 }
 
-// quotedList renders names as `"a"`, `"a" or "b"`, `"a", "b" or "c"` for
-// an error message that lists the accepted values.
+// unquoteModulePath returns a module path written quoted or backquoted
+// without its quotes.
+func unquoteModulePath(s string) string {
+	if u, err := strconv.Unquote(s); err == nil {
+		return u
+	}
+	return s
+}
+
+// quotedList renders names as `"a"`, `"a" or "b"`, `"a", "b" or "c"`.
 func quotedList(names []string) string {
 	quoted := make([]string, len(names))
 	for i, n := range names {
@@ -718,103 +630,86 @@ func quotedList(names []string) string {
 	return strings.Join(quoted[:len(quoted)-1], ", ") + " or " + quoted[len(quoted)-1]
 }
 
-// checkWithinProject rejects an output path that escapes the project
-// root. Generated Go files import each other by `<module path>/<output
-// dir>`, and a path outside the module has no such spelling - craftgo
-// would write the files and the import would only fail later, at
-// `go build`, as `invalid path element ".."`.
-// checkOutputUsable rejects `-` on a key that has no disabled mode. Only
-// main.go, the documents, the pb plugins and the event targets can be
-// turned off; the rest name a package other generated code imports.
 // ContractsOnly reports whether this project generates only the half other
 // projects import.
 func (o Output) ContractsOnly() bool { return o.Kind == KindContracts }
 
+// checkOutputUsable rejects an unknown output.kind and "-" on a key that
+// cannot be disabled.
 func (c *Config) checkOutputUsable() error {
 	switch c.Output.Kind {
 	case KindApplication, KindContracts:
 	default:
 		return fmt.Errorf("output.kind %q is not one of %q, %q", c.Output.Kind, KindApplication, KindContracts)
 	}
-	for _, out := range []struct{ key, val string }{
-		{"output.types", c.Output.Types},
-		{"output.transport", c.Output.Transport},
-		{"output.routes", c.Output.Routes},
-		{"output.wiring", c.Output.Wiring},
-		{"output.service", c.Output.Service},
-		{"output.svccontext", c.Output.Svccontext},
-		{"output.middleware", c.Output.Middleware},
-		{"output.config", c.Output.Config},
-		{"output.grpc", c.Output.GRPC},
-	} {
-		if out.val == "-" {
-			return fmt.Errorf(`%s cannot be "-" - other generated code imports this package, so there is nothing to disable; "-" is for output.main, output.openapi, output.pb and the event targets`, out.key)
+	var disableable []string
+	for _, k := range outputKeys {
+		if k.disableable {
+			disableable = append(disableable, k.key())
+		}
+	}
+	slices.Sort(disableable)
+	for _, k := range outputKeys {
+		if !k.disableable && *k.field(&c.Output) == Disabled {
+			return fmt.Errorf(`%s cannot be %q - other generated code imports this package, so there is nothing to disable; %q is for %s and the event targets`,
+				k.key(), Disabled, Disabled, strings.Join(disableable, ", "))
 		}
 	}
 	return nil
 }
 
-// checkOutputCollisions rejects two output keys resolving to one directory.
-// Each generated root file has a package clause fixed by its role, so a
-// shared directory holds two of them and never compiles.
-//
-// `output.main` contributes its directory - the module root by default,
-// where any package collides with `package main`.
+// checkOutputCollisions rejects two outputs holding Go code, output keys or event targets, that
+// resolve to one directory; a key naming a file contributes the file's directory.
 func (c *Config) checkOutputCollisions() error {
-	dirs := []struct{ key, dir string }{
-		{"output.types", outputDir(c.Output.Types)},
-		{"output.transport", outputDir(c.Output.Transport)},
-		{"output.routes", outputDir(c.Output.Routes)},
-		{"output.wiring", outputDir(c.Output.Wiring)},
-		{"output.service", outputDir(c.Output.Service)},
-		{"output.middleware", outputDir(c.Output.Middleware)},
-		{"output.config", outputDir(c.Output.Config)},
-		{"output.pb", outputDir(c.Output.PB)},
-		{"output.grpc", outputDir(c.Output.GRPC)},
-		{"output.svccontext", outputFileDir(c.Output.Svccontext)},
-		{"output.main", outputFileDir(c.Output.Main)},
-	}
 	seen := map[string]string{}
-	for _, d := range dirs {
-		if d.dir == "" {
-			continue
+	claim := func(key, dir string) error {
+		if dir == "" {
+			return nil
 		}
-		if first, dup := seen[d.dir]; dup {
-			return fmt.Errorf("%s and %s both write to %q - each generated package needs its own directory, or the two package clauses land in one and nothing compiles", first, d.key, d.dir)
+		if first, dup := seen[dir]; dup {
+			return fmt.Errorf("%s and %s both write to %q - each generated package needs its own directory, or the two package clauses land in one and nothing compiles", first, key, dir)
 		}
-		seen[d.dir] = d.key
-	}
-	return nil
-}
-
-// outputDir normalises an output path for comparison. A disabled key ("-")
-// and an unset one contribute nothing.
-func outputDir(val string) string {
-	if val == "" || val == "-" {
-		return ""
-	}
-	return path.Clean(toSlash(val))
-}
-
-// outputFileDir is [outputDir] for a key naming a FILE rather than a
-// directory (`output.main`, `output.svccontext`): the package it joins is
-// the directory holding it.
-func outputFileDir(val string) string {
-	if val == "" || val == "-" {
-		return ""
-	}
-	return path.Clean(path.Dir(toSlash(val)))
-}
-
-// toSlash rewrites a Windows-style path so comparisons and `path` helpers
-// see the separator they expect.
-func toSlash(val string) string { return strings.ReplaceAll(val, "\\", "/") }
-
-func checkWithinProject(key, val string) error {
-	if val == "" || val == "-" {
+		seen[dir] = key
 		return nil
 	}
-	clean := path.Clean(strings.ReplaceAll(val, "\\", "/"))
+	for _, k := range outputKeys {
+		if k.document {
+			continue
+		}
+		if err := claim(k.key(), k.dir(*k.field(&c.Output))); err != nil {
+			return err
+		}
+	}
+	for _, t := range c.Events.Targets {
+		if err := claim(t.key(), outputKey{}.dir(t.Out)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// dir normalises val, k's value, to the directory it writes to; "" and
+// [Disabled] yield "".
+func (k outputKey) dir(val string) string {
+	if val == "" || val == Disabled {
+		return ""
+	}
+	val = toSlash(val)
+	if k.file {
+		val = path.Dir(val)
+	}
+	return path.Clean(val)
+}
+
+// toSlash replaces every backslash with a slash, whatever the OS.
+func toSlash(val string) string { return strings.ReplaceAll(val, "\\", "/") }
+
+// checkWithinProject rejects a path outside the project root; "" and "-" pass.
+func checkWithinProject(key, val string) error {
+	if val == "" || val == Disabled {
+		return nil
+	}
+	clean := path.Clean(toSlash(val))
 	if clean == ".." || strings.HasPrefix(clean, "../") || path.IsAbs(clean) {
 		return fmt.Errorf("%s %q must stay inside the project - generated code is imported as `<module>/<path>`, which cannot name a directory outside the module", key, val)
 	}

@@ -7,8 +7,20 @@ import (
 	"unicode/utf8"
 )
 
-// Validate checks every field-level constraint declared on TenantCreateReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
+func (v *BlobInfo) Validate() error {
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *BlobReq) Validate() error {
+	if utf8.RuneCountInString(v.Key) < 1 {
+		return fmt.Errorf("key: length less than 1")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *TenantCreateReq) Validate() error {
 	if utf8.RuneCountInString(v.TenantID) < 1 {
 		return fmt.Errorf("tenantID: length less than 1")
@@ -19,8 +31,7 @@ func (v *TenantCreateReq) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on TenantItem.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *TenantItem) Validate() error {
 	if l := utf8.RuneCountInString(v.ID); l < 1 || l > 64 {
 		return fmt.Errorf("id: length out of range [1, 64]")
@@ -31,19 +42,17 @@ func (v *TenantItem) Validate() error {
 	return nil
 }
 
-// Validate checks every field-level constraint declared on TenantItemList.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *TenantItemList) Validate() error {
 	for i0 := range v.Items {
 		if err := v.Items[i0].Validate(); err != nil {
-			return err
+			return fmt.Errorf("items: %w", err)
 		}
 	}
 	return nil
 }
 
-// Validate checks every field-level constraint declared on TenantListReq.
-// Returns the first violation; nil when the value satisfies the contract.
+// Validate returns the first constraint v violates, or nil.
 func (v *TenantListReq) Validate() error {
 	if utf8.RuneCountInString(v.TenantID) < 1 {
 		return fmt.Errorf("tenantID: length less than 1")

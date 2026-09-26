@@ -15,8 +15,8 @@ import (
 // MapStruct exposes the struct-valued map so the generated
 // validate.go for Map_StructValue is visible in the e2e
 // snapshot.
-// MapStruct returns the http.HandlerFunc for the
-// POST MapStruct endpoint.
+//
+// MapStruct returns the POST MapStruct handler.
 func MapStruct(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.Map_StructValue
@@ -34,8 +34,6 @@ func MapStruct(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

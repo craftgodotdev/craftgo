@@ -1,18 +1,18 @@
 package lsp
 
 import (
+	"iter"
+	"slices"
+	"strings"
+
 	"go.lsp.dev/protocol"
-	"go.lsp.dev/uri"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/parser"
 )
 
-// snapshotView is the shared parse view that every feature handler operates
-// on. Re-tokenising and re-parsing on every request keeps the wire model
-// simple and matches what `craftgo lint` would see - no risk of stale
-// AST drift between editor and CLI.
+// snapshotView is one buffer's source, tokens and AST, parsed per request.
 type snapshotView struct {
 	src    string
 	tokens []lexer.Token
@@ -25,94 +25,179 @@ func parseSnapshot(filename, src string) snapshotView {
 	return snapshotView{src: src, tokens: p.Tokens(), file: f}
 }
 
-// tokenAt returns the token whose source span covers the supplied
-// LSP-style (0-indexed) cursor and the index into the token slice. The
-// hit token may be EOF for cursors past the last real token; callers
-// should check Kind to filter that out.
-func (v snapshotView) tokenAt(line, character uint32) (int, lexer.Token) {
-	// Resolve the editor's UTF-16 (line, character) to a byte offset and
-	// match tokens by their byte span. Byte offsets avoid the unit
-	// mismatches a line/column compare carries (the LSP character is
-	// UTF-16 while the lexer column is runes, and `Column + len(Text)`
-	// would mix a rune column with a byte length): every Token carries
-	// Pos.Offset and its byte length is len(Text).
-	off := offsetFromLSP(v.src, line, character)
-	best := -1
+// cursor is an LSP position located in a snapshotView's tokens.
+type cursor struct {
+	off  int // byte offset in the buffer
+	line int // 1-based
+	// at is the token whose span, end included, holds off (the later of two
+	// that touch), or -1 on whitespace.
+	at int
+	// prev is the token before at or, on whitespace, the last token before
+	// off; -1 when there is none.
+	prev int
+}
+
+// cursorAt locates pos in the buffer.
+func (v snapshotView) cursorAt(pos protocol.Position) cursor {
+	c := cursor{off: offsetFromLSP(v.src, pos.Line, pos.Character), line: int(pos.Line) + 1, at: -1, prev: -1}
 	for i, t := range v.tokens {
-		if t.Kind == lexer.EOF {
-			continue
+		if t.Kind == lexer.EOF || t.Pos.Offset > c.off {
+			break
 		}
-		start := t.Pos.Offset
-		end := start + len(t.Text)
-		if start <= off && off <= end {
-			best = i
+		if c.off <= v.end(i) {
+			c.at = i
+		} else {
+			c.prev = i
 		}
 	}
-	if best < 0 {
-		return -1, lexer.Token{}
+	if c.at >= 0 {
+		c.prev = c.at - 1
 	}
-	return best, v.tokens[best]
+	return c
 }
 
-// rangeOf returns the LSP range covering t.
-func rangeOf(t lexer.Token) protocol.Range {
-	start := lspPos(t.Pos)
-	endPos := t.Pos
-	endPos.Column += len(t.Text)
-	return protocol.Range{Start: start, End: lspPos(endPos)}
+// end returns the offset just past token i in the buffer. An Error token's
+// text is its diagnostic, so it ends where the next token or comment starts,
+// less the blanks before that.
+func (v snapshotView) end(i int) int {
+	t := v.tokens[i]
+	if t.Kind != lexer.Error {
+		return t.Pos.Offset + len(t.Text)
+	}
+	end := len(v.src)
+	if i+1 < len(v.tokens) {
+		end = v.tokens[i+1].Pos.Offset
+	}
+	if v.file != nil {
+		if j := slices.IndexFunc(v.file.Comments, func(c *ast.Comment) bool { return c.Pos.Offset > t.Pos.Offset }); j >= 0 {
+			end = min(end, v.file.Comments[j].Pos.Offset)
+		}
+	}
+	return t.Pos.Offset + len(strings.TrimRight(v.src[t.Pos.Offset:end], " \t\r\n"))
 }
 
-// rangeOfPosLen builds a range starting at p with width n columns.
-func rangeOfPosLen(p lexer.Position, n int) protocol.Range {
-	start := lspPos(p)
-	endPos := p
-	endPos.Column += n
-	return protocol.Range{Start: start, End: lspPos(endPos)}
+// cursorOn returns the cursor at the start of token i.
+func (v snapshotView) cursorOn(i int) cursor {
+	t := v.tokens[i]
+	return cursor{off: t.Pos.Offset, line: t.Pos.Line, at: i, prev: i - 1}
 }
 
-// fieldAtCursor returns the field whose row matches the cursor's line
-// when the cursor is inside a type / error body. Returns nil when the
-// cursor is not on a field row.
-func fieldAtCursor(view snapshotView, pos protocol.Position) *ast.Field {
+// packageName returns the package the file declares, "" for none.
+func (v snapshotView) packageName() string {
+	if v.file == nil || v.file.Package == nil {
+		return ""
+	}
+	return v.file.Package.Name
+}
+
+// token returns the token at index i, or nil for -1.
+func (v snapshotView) token(i int) *lexer.Token {
+	if i < 0 {
+		return nil
+	}
+	return &v.tokens[i]
+}
+
+// kind returns the kind of the token at index i, or [lexer.EOF] outside the
+// tokens.
+func (v snapshotView) kind(i int) lexer.Kind {
+	if i < 0 || i >= len(v.tokens) {
+		return lexer.EOF
+	}
+	return v.tokens[i].Kind
+}
+
+// outsideParens yields, in order, the indices of the tokens that start after
+// byte offset after, skipping every decorator argument list and stray `)`.
+func (v snapshotView) outsideParens(after int) iter.Seq[int] {
+	return func(yield func(int) bool) {
+		for i := 0; i < len(v.tokens); i++ {
+			switch t := v.tokens[i]; {
+			case t.Pos.Offset <= after, t.Kind == lexer.RParen:
+			case t.Kind == lexer.LParen:
+				i = v.argEnd(i)
+			case !yield(i):
+				return
+			}
+		}
+	}
+}
+
+// argEnd returns the index of the `)` that closes the argument list opened at
+// token i or, for one left open, of the last token on the `(`'s line.
+func (v snapshotView) argEnd(i int) int {
+	depth, last := 0, i
+	for j := i; j < len(v.tokens); j++ {
+		switch v.tokens[j].Kind {
+		case lexer.LParen:
+			depth++
+		case lexer.RParen:
+			if depth--; depth == 0 {
+				return j
+			}
+		}
+		if v.tokens[j].Pos.Line == v.tokens[i].Pos.Line {
+			last = j
+		}
+	}
+	return last
+}
+
+// lead returns the number of tokens before the one under c, or before c on
+// whitespace.
+func (c cursor) lead() int {
+	if c.at >= 0 {
+		return c.at
+	}
+	return c.prev + 1
+}
+
+// lastBefore returns the last token that starts before c, or -1.
+func (v snapshotView) lastBefore(c cursor) int {
+	if c.at >= 0 && v.tokens[c.at].Pos.Offset < c.off {
+		return c.at
+	}
+	return c.prev
+}
+
+// fieldAtCursor returns the type or error field on the cursor's line: the last
+// one starting before the cursor, else the line's first; nil off a field row.
+func fieldAtCursor(view snapshotView, c cursor) *ast.Field {
 	if view.file == nil {
 		return nil
 	}
-	line := int(pos.Line) + 1
+	var at *ast.Field
 	for _, d := range view.file.Decls {
 		body, ok := declBody(d)
 		if !ok {
 			continue
 		}
 		for _, m := range body {
-			f, ok := m.(*ast.Field)
-			if !ok || f.Pos.Line != line {
-				continue
+			if f, ok := m.(*ast.Field); ok && f.Pos.Line == c.line && (at == nil || f.Pos.Offset < c.off) {
+				at = f
 			}
-			return f
 		}
 	}
-	return nil
+	return at
 }
 
-// findDecl returns the first top-level declaration whose declared name
-// matches. Cross-package lookups are not handled here - the caller can
-// inspect the import list separately if needed.
-func findDecl(f *ast.File, name string) ast.Decl {
-	if f == nil {
-		return nil
+// typedByTypeParam reports whether f, a field of view's file, is typed by a
+// type parameter of the type declaring it, which hides any declaration of
+// that name.
+func typedByTypeParam(view snapshotView, f *ast.Field) bool {
+	if view.file == nil || f.Type == nil || f.Type.Named == nil || f.Type.Named.Name == nil {
+		return false
 	}
-	for _, d := range f.Decls {
-		if d.DeclName() == name {
-			return d
+	for _, d := range view.file.Decls {
+		if td, ok := d.(*ast.TypeDecl); ok && slices.Contains(ast.Fields(td.Body), f) {
+			return slices.Contains(td.TypeParams, f.Type.Named.Name.String())
 		}
 	}
-	return nil
+	return false
 }
 
-// declBody returns a type-body slice for declarations that have one
-// (TypeDecl always; ErrorDecl when HasBody is set). The bool says
-// whether a body exists; nil-body decls return false so callers can
-// short-circuit cleanly.
+// declBody returns the members of a type or of an error with a body, and
+// whether d has one.
 func declBody(d ast.Decl) ([]ast.TypeMember, bool) {
 	switch v := d.(type) {
 	case *ast.TypeDecl:
@@ -125,22 +210,8 @@ func declBody(d ast.Decl) ([]ast.TypeMember, bool) {
 	return nil, false
 }
 
-// declName returns the declared name for the body-bearing decl kinds
-// (TypeDecl / ErrorDecl), used as the parent label alongside [declBody]; ""
-// for decls without a body.
-func declName(d ast.Decl) string {
-	switch v := d.(type) {
-	case *ast.TypeDecl:
-		return v.Name
-	case *ast.ErrorDecl:
-		return v.Name
-	}
-	return ""
-}
-
-// noDeclBetween reports whether the file has zero declarations on
-// lines strictly between `from` (exclusive) and `to` (exclusive). Used
-// by scalarPrimAt to make sure the "above" attribution stays adjacent.
+// noDeclBetween reports whether f declares nothing on the lines strictly
+// between from and to.
 func noDeclBetween(f *ast.File, from, to int) bool {
 	for _, d := range f.Decls {
 		l := d.DeclPos().Line
@@ -149,17 +220,4 @@ func noDeclBetween(f *ast.File, from, to int) bool {
 		}
 	}
 	return true
-}
-
-// pathToFileURIString builds a `file://...` URI string from an absolute
-// filesystem path. Feature handlers feed the result into [uri.New] so
-// the typed URI lines up with what the editor would have sent for a
-// sibling file in the same project.
-func pathToFileURIString(path string) string {
-	if path == "" {
-		return ""
-	}
-	// uri.File handles the Windows drive letter and percent-encoding and
-	// absolutises a relative path, matching what the editor would send.
-	return string(uri.File(path))
 }

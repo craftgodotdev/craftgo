@@ -1,12 +1,13 @@
 package semantic
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/parser"
 )
-
-// ---------- ArgKind rendering ----------
 
 func TestArgKindString(t *testing.T) {
 	cases := []struct {
@@ -22,7 +23,7 @@ func TestArgKindString(t *testing.T) {
 		{ArgSize, "size"},
 		{ArgStringOrIdent, "string or identifier"},
 		{ArgAny, "any"},
-		{ArgKind(99), "any"}, // unknown -> any (the loose default)
+		{ArgKind(99), "any"}, // unknown -> any
 	}
 	for _, c := range cases {
 		if got := c.k.String(); got != c.want {
@@ -30,8 +31,6 @@ func TestArgKindString(t *testing.T) {
 		}
 	}
 }
-
-// ---------- Arity ----------
 
 func TestArityTooFew(t *testing.T) {
 	expectDiag(t, `@doc()
@@ -49,8 +48,6 @@ func TestArityZeroOK(t *testing.T) {
 type X { name string }`)
 }
 
-// ---------- Type ----------
-
 func TestArgTypeStringExpected(t *testing.T) {
 	d := expectDiag(t, `@doc(123)
 type X {}`, CodeDecoratorArgType)
@@ -62,7 +59,7 @@ func TestArgTypeIntExpected(t *testing.T) {
 }
 
 func TestArgTypeDurationAcceptsBareInt(t *testing.T) {
-	// README convention: bare number → seconds for durations, bytes for sizes.
+	// A bare number is seconds for a duration and bytes for a size.
 	mustClean(t, `service S {
 		@timeout(5)
 		get GetUser /u {}
@@ -84,7 +81,7 @@ func TestArgTypeNumberAcceptsBoth(t *testing.T) {
 }
 
 func TestArgTypeArgAnyAcceptsAnything(t *testing.T) {
-	// `@default(value)` uses ArgAny - every literal kind accepted.
+	// @default's argument is ArgAny.
 	mustClean(t, `type X {
 		s string?  @default("a")
 		i int?     @default(0)
@@ -93,27 +90,21 @@ func TestArgTypeArgAnyAcceptsAnything(t *testing.T) {
 	}`)
 }
 
-func TestArgsScopeNilEntry(t *testing.T) {
-	// Defensive: nil decorator entries silently skip.
+// The argument check leaves an unknown decorator to the placement check.
+func TestDecoratorArgsSkipUnknownName(t *testing.T) {
 	a := newTestAnalyzer(&Package{})
-	a.checkArgsScope([]*ast.Decorator{nil})
-	a.checkArgsScope([]*ast.Decorator{{Name: "doesNotExist"}})
+	a.checkDecoratorArgs(decoratorSite{level: LvlField, decs: []*ast.Decorator{{Name: "doesNotExist", HasParens: true}}})
 	if len(a.diags) != 0 {
-		t.Errorf("nil entry / unknown name should not diag, got %v", a.diags)
+		t.Errorf("unknown name should not diag, got %v", a.diags)
 	}
 }
 
-// TestExampleRejectsObject pins that @example only accepts a literal or
-// an array of literals - an object {k: v} arg is rejected. A struct
-// example is composed from each field's own @example; the object form
-// adds only JSON-in-DSL syntax with no emitter effect.
+// An object literal argument to @example is rejected.
 func TestExampleRejectsObject(t *testing.T) {
 	expectError(t, `type X { meta any? @example({a: 1, b: "x"}) }`, CodeDecoratorArgType)
 }
 
 func TestPatternRejectsInvalidRegex(t *testing.T) {
-	// An uncompilable regex would reach regexp.MustCompile in the
-	// generated validator and panic at package init.
 	expectError(t, `type X { bad string @pattern("(unclosed") }`, CodeDecoratorArgType)
 }
 
@@ -122,15 +113,11 @@ func TestPatternAcceptsValidRegex(t *testing.T) {
 }
 
 func TestPatternRejectsEmpty(t *testing.T) {
-	// An empty pattern is a valid RE2 (matches everything) so it survives
-	// regexp.Compile, but it is a meaningless constraint and codegen's regex
-	// interner has no var name for it (crashes the validator emit). Reject it.
+	// An empty pattern compiles but constrains nothing.
 	expectError(t, `type X { bad string @pattern("") }`, CodeDecoratorArgType)
 }
 
-// TestExampleAcceptsLiteralsAndArrays confirms the kept forms: scalar
-// literals and arrays of scalars (the one non-scalar form that stays
-// legal after the object-example rejection).
+// @example accepts scalar literals and arrays of them.
 func TestExampleAcceptsLiteralsAndArrays(t *testing.T) {
 	mustClean(t, `type X {
 		s   string   @example("alice")
@@ -141,13 +128,9 @@ func TestExampleAcceptsLiteralsAndArrays(t *testing.T) {
 	}`)
 }
 
-// ---------- Enum value-set ----------
-
 func TestArgValueFormatAccepted(t *testing.T) {
 	mustClean(t, `type X { email string @format(email) }`)
-	// String spelling is still ACCEPTED (semantic value lookup
-	// works), but the analyzer emits a CodeArgPreferIdent warning
-	// nudging the user toward the bare-ident canonical form.
+	// The string spelling is accepted with a warning that prefers the bare identifier.
 	expectDiag(t, `type Y { email string @format("email") }`, CodeArgPreferIdent)
 }
 
@@ -157,16 +140,11 @@ func TestArgValueFormatRejected(t *testing.T) {
 }
 
 func TestArgValueEnumSkipsWhenWrongShape(t *testing.T) {
-	// @format gets an int arg. The kind check fires; the enum check
-	// must skip silently because identOrStringValue returns false on
-	// non-textual literals (we'd otherwise stack two diags on one
-	// arg).
+	// An int argument reports the kind mismatch only, not an unknown value as well.
 	src := `type X { x string @format(123) }`
 	expectDiag(t, src, CodeDecoratorArgType)
 	expectNoCode(t, src, CodeDecoratorArgValue)
 }
-
-// ---------- Variadic + array shortcut ----------
 
 func TestVariadicAcceptsMultiple(t *testing.T) {
 	mustClean(t, `type Page {
@@ -188,10 +166,7 @@ type Contact { email string? }`, CodeDecoratorArity)
 }
 
 func TestArrayShortcutTooMany(t *testing.T) {
-	// Synthetic - bound an ArgsRule via a custom Spec test by going through
-	// checkArrayShortcut directly. The real registry has no Max-bounded
-	// variadic decorator, so we exercise the branch with a hand-built
-	// rule.
+	// No registered variadic decorator has a Max, so the rule is built by hand.
 	a := newTestAnalyzer(&Package{})
 	a.checkArrayShortcut(
 		&ast.Decorator{Name: "x"},
@@ -206,7 +181,6 @@ func TestArrayShortcutTooMany(t *testing.T) {
 }
 
 func TestArrayShortcutAnyVariadicSkipsKindCheck(t *testing.T) {
-	// ArgAny variadic short-circuits the per-element kind check.
 	a := newTestAnalyzer(&Package{})
 	a.checkArrayShortcut(
 		&ast.Decorator{Name: "x"},
@@ -223,15 +197,11 @@ func TestArrayShortcutWrongElementKind(t *testing.T) {
 	expectMessage(t, d, "array[0]")
 }
 
-// ---------- Bindings with optional name ----------
-
 func TestBindingArgOptional(t *testing.T) {
 	mustClean(t, `type Q { id string @path }`)
 	mustClean(t, `type Q { id string @path("user-id") }`)
 	expectDiag(t, `type Q { id string @path(123) }`, CodeDecoratorArgType)
 }
-
-// ---------- @security ----------
 
 func TestSecuritySingleIdent(t *testing.T) {
 	mustClean(t, `@security(bearerAuth)
@@ -239,8 +209,7 @@ service S {}`)
 }
 
 func TestSecurityMultipleIdents(t *testing.T) {
-	// `@security(A, B)` is the AND form: one requirement that needs both
-	// schemes. Multiple `@security(...)` decorators OR-combine instead.
+	// `@security(A, B)` requires both schemes; separate @security decorators are alternatives.
 	mustClean(t, `@security(bearerAuth, oauth2)
 service S {}`)
 }
@@ -251,25 +220,17 @@ service S {}`, CodeDecoratorArgType)
 }
 
 func TestSecurityRejectsNamedArg(t *testing.T) {
-	// `@security` is a variadic ident list - named args (including the
-	// `scopes: [...]` form) are rejected.
 	expectDiag(t, `@security(oauth2, scopes: ["read"])
 service S {}`, CodeDecoratorArgType)
 }
 
 func TestSecurityArrayShortcut(t *testing.T) {
-	// Symmetric with other variadics: `@security([A, B])` parses the
-	// same as `@security(A, B)`.
+	// `@security([A, B])` is the same as `@security(A, B)`.
 	mustClean(t, `@security([bearerAuth, oauth2])
 service S {}`)
 }
 
 func TestSecurityDuplicateIdentAccepted(t *testing.T) {
-	// `@security(A, A)` is accepted by the semantic phase - the
-	// argument-shape checker only enforces ident-typed positional
-	// args, not uniqueness. Codegen emits `{A: []string{}}` once
-	// because the OpenAPI SecurityRequirement is a map keyed by
-	// scheme name, so the duplicate collapses naturally.
 	mustClean(t, `@security(bearerAuth, bearerAuth)
 service S {}`)
 }
@@ -279,29 +240,24 @@ func TestSecurityArityZero(t *testing.T) {
 service S {}`, CodeDecoratorArity)
 }
 
-// ---------- Flag decorators ----------
-
+// Empty parens on a flag decorator warn; `craftgo fmt` strips them.
 func TestFlagDecoratorEmptyParensWarn(t *testing.T) {
-	// @positive is a Flag decorator (never takes args). Writing `()`
-	// after it emits a warning; `craftgo fmt` strips it on save.
-	expectDiag(t, `type X { age int @positive() }`, CodeFlagEmptyParens)
-	expectDiag(t, `type X { tag string[] @uniqueItems() }`, CodeFlagEmptyParens)
-	expectDiag(t, `type X { nick string @nullable() }`, CodeFlagEmptyParens)
+	expectWarning(t, `type X { age int @positive() }`, CodeFlagEmptyParens)
+	expectWarning(t, `type X { tag string[] @uniqueItems() }`, CodeFlagEmptyParens)
+	expectWarning(t, `type X { nick string @nullable() }`, CodeFlagEmptyParens)
+	for _, name := range []string{"ignoreTags", "ignoreMiddleware", "ignoreSecurity"} {
+		expectWarning(t, "type R { ok bool }\nservice S {\n  @"+name+"()\n  get A /a { response R }\n}", CodeFlagEmptyParens)
+	}
 }
 
 func TestFlagDecoratorBareForm(t *testing.T) {
-	// Bare form (no parens) is canonical and clean.
 	mustClean(t, `type X { age int @positive }`)
 	mustClean(t, `type X { tag string[] @uniqueItems }`)
 	mustClean(t, `type X { nick string @nullable }`)
 }
 
-// ---------- @example ----------
-
 func TestExampleSingleArg(t *testing.T) {
 	mustClean(t, `type X { name string @example("foo") }`)
-	// Object-form @example is rejected (see TestExampleRejectsObject); a
-	// struct example is composed from each field's own @example instead.
 }
 
 func TestExampleArityWrong(t *testing.T) {
@@ -314,13 +270,9 @@ func TestExampleRejectsNamedArg(t *testing.T) {
 }
 
 func TestExampleRejectsTypeLevel(t *testing.T) {
-	// @example is field-only; the codegen never emits anywhere else,
-	// so semantic rejects misplaced uses with a placement diagnostic.
 	expectDiag(t, `@example("X")
 type T {}`, CodeDecoratorPlacement)
 }
-
-// ---------- exprKindName / inSet / joinQuoted ----------
 
 func TestExprKindName(t *testing.T) {
 	cases := []struct {
@@ -340,7 +292,7 @@ func TestExprKindName(t *testing.T) {
 		{"array", &ast.ArrayLit{}, "array"},
 	}
 	for _, c := range cases {
-		if got := exprKindName(c.e); got != c.want {
+		if got := exprKind(c.e); got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
 		}
 	}
@@ -392,31 +344,6 @@ func TestExprMatchesKindMatrix(t *testing.T) {
 	}
 }
 
-func TestIdentOrStringValue(t *testing.T) {
-	if v, ok := identOrStringValue(&ast.IdentExpr{Name: &ast.QualifiedIdent{Parts: []string{"x"}}}); !ok || v != "x" {
-		t.Errorf("ident: %q %v", v, ok)
-	}
-	// Nil Name on IdentExpr returns false (defensive).
-	if _, ok := identOrStringValue(&ast.IdentExpr{Name: nil}); ok {
-		t.Error("nil Name should return ok=false")
-	}
-	if v, ok := identOrStringValue(&ast.StringLit{Value: "y"}); !ok || v != "y" {
-		t.Errorf("string: %q %v", v, ok)
-	}
-	if _, ok := identOrStringValue(&ast.IntLit{}); ok {
-		t.Error("int should return ok=false")
-	}
-}
-
-func TestInSet(t *testing.T) {
-	if !inSet("b", []string{"a", "b", "c"}) {
-		t.Error("hit")
-	}
-	if inSet("z", []string{"a", "b", "c"}) {
-		t.Error("miss")
-	}
-}
-
 func TestJoinQuoted(t *testing.T) {
 	if got := joinQuoted([]string{"a", "b"}); got != `"a", "b"` {
 		t.Errorf("got %q", got)
@@ -426,12 +353,12 @@ func TestJoinQuoted(t *testing.T) {
 	}
 }
 
-// An integer @default outside the field primitive's capacity (negative on
-// unsigned, or out of a narrow int's range) would emit a non-compiling
-// cast (`uint(-5)` / `int8(200)`); rejected at design time.
+// A @default outside the values the field primitive holds is rejected, as a bound is.
 func TestDefaultOutOfRangeRejected(t *testing.T) {
 	expectError(t, `type Req { u uint? @default(-5) }`, CodeBoundOverflow)
-	expectError(t, `type Req { b int8? @default(200) }`, CodeBoundOverflow)
+	d := expectError(t, `type Req { b int8? @default(200) }`, CodeBoundOverflow)
+	expectMessage(t, d, "@default 200 exceeds int8 range [-128, 127]")
+	expectError(t, `type Req { r float32? @default(400000000000000000000000000000000000000.0) }`, CodeBoundOverflow)
 }
 
 // An in-range @default on a narrow int is accepted.
@@ -439,61 +366,85 @@ func TestDefaultInRangeClean(t *testing.T) {
 	mustClean(t, `type Req { b int8? @default(100)  u uint8? @default(0) }`)
 }
 
-// @default on a `bytes` field has no unambiguous literal form (Go []byte vs
-// OpenAPI base64); rejected rather than emitting non-compiling Go.
+// One rule decides what @default may target, reported once at the decorator:
+// a primitive, enum or scalar with a literal form, or a single-level array of one.
+func TestDefaultTargets(t *testing.T) {
+	for _, c := range []struct{ decls, field, msg string }{
+		{"", `b bytes? @default("x")`, "@default is not supported on a `bytes` field"},
+		{"scalar Blob bytes", `b Blob? @default("x")`, "@default is not supported on a `bytes` field"},
+		{"", `at datetime[]? @default(["2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"])`, "@default is not supported on a `datetime` field"},
+		{"", `a any? @default(1)`, "only primitives, enums, scalars"},
+		{"", `m map<string, int>? @default(1)`, "only primitives, enums, scalars"},
+		{"type In { x int }", `s In? @default(1)`, "only primitives, enums, scalars"},
+		{"", `g int[][]? @default([[1]])`, "@default is not supported on a multi-dimensional array"},
+	} {
+		src := c.decls + "\ntype R { " + c.field + " }"
+		d := expectError(t, src, CodeDecoratorConflict)
+		expectMessage(t, d, c.msg)
+		expectCodeCount(t, src, CodeDecoratorConflict, 1)
+	}
+	expectError(t, "type Box<T> { v T? @default(1) }", CodeDecoratorConflict)
+	mustClean(t, "enum C { A B }\nscalar Email string\ntype R { c C? @default(A)  e Email? @default(\"a@b.c\")  xs int[]? @default([1])  cs C[]? @default([A]) }")
+}
+
+// A @default field needs `?` unless @path binds it.
+func TestDefaultNeedsOptional(t *testing.T) {
+	pkg, diags := Analyze(parseFiles(t, `type R { a int @default(1)  b int? @default(1)  c int  d string @path @default("x") }`))
+	want := map[string]bool{"a": true, "b": false, "c": false, "d": false}
+	for _, f := range ast.Fields(pkg.Types["R"].Body) {
+		if got := DefaultNeedsOptional(f); got != want[f.Name] {
+			t.Errorf("%s: DefaultNeedsOptional = %v, want %v", f.Name, got, want[f.Name])
+		}
+	}
+	if n := len(slices.DeleteFunc(diags, func(d Diagnostic) bool { return d.Code != CodeDefaultNeedsOptional })); n != 1 {
+		t.Errorf("want one %s warning, for a; got %d", CodeDefaultNeedsOptional, n)
+	}
+}
+
+// @default on a `bytes` field is rejected.
 func TestBytesDefaultRejected(t *testing.T) {
 	expectError(t, `type Req { p bytes? @default("Ynl0ZXM=") }`, CodeDecoratorConflict)
 	expectError(t, `type Req { ps bytes[]? @default(["YQ=="]) }`, CodeDecoratorConflict)
 }
 
-// A multi-dimensional array @default is rejected: a default may target a
-// primitive / scalar / enum or a single-level array of those, not a nested
-// array. Covers primitive and named (enum) element types.
+// A multi-dimensional array @default is rejected, for primitive and enum elements alike.
 func TestMultiDimArrayDefaultRejected(t *testing.T) {
 	expectError(t, `type Req { grid int[][]? @default([[1, 2], [3, 4]]) }`, CodeDecoratorConflict)
 	expectError(t, `enum Color { Red  Green  Blue }
 type Req { swatch Color[][]? @default([[Red, Green], [Blue]]) }`, CodeDecoratorConflict)
 }
 
-// A single-level array @default is still accepted (the established shape).
+// A 1-D array @default is accepted.
 func TestSingleDimArrayDefaultClean(t *testing.T) {
 	mustClean(t, `type Req { arr int[]? @default([1, 2, 3]) }`)
 }
 
-// A multi-dimensional array @example is rejected with the same structural
-// message @default uses, rather than the per-element walk misreporting the
-// inner array as "expects a single value" (the @default/@example parity twin).
+// A multi-dimensional array @example is rejected as a conflict, like @default.
 func TestMultiDimArrayExampleRejected(t *testing.T) {
 	expectError(t, `type Req { rows int[][] @example([[1, 2], [3, 4]]) }`, CodeDecoratorConflict)
 }
 
-// A single-level array @example is still accepted.
+// A 1-D array @example is accepted.
 func TestSingleDimArrayExampleClean(t *testing.T) {
 	mustClean(t, `type Req { flat int[] @example([1, 2, 3]) }`)
 }
 
-// Explicit `@path @default` must be rejected, mirroring the auto-@path form
-// (a path segment is always supplied, so the default can never apply).
+// An explicit @path field rejects @default; the segment is always present.
 func TestExplicitPathDefaultRejected(t *testing.T) {
 	src := `package p
 type R { id string @path @default("x") }
 type Resp { x string }
 service S { get M /u/{id} { request R  response Resp } }`
-	diags := analyzeOneFile(t, src)
-	if !hasDiagContaining(diags, "@default cannot be combined with @path") {
-		t.Errorf("expected explicit @path @default reject, got: %v", diags)
-	}
+	expectMsg(t, "@default cannot be combined with @path", src)
 }
 
-// @default on a raw field is rejected with the rule `bytes` already
-// carries: craftgo does not read the value, so it has nothing to write
-// either, and no literal spells it.
+// @default on a `@format(raw)` bytes field is rejected, as on any bytes field.
 func TestDefaultOnRawBytesRejected(t *testing.T) {
 	d := expectError(t, `type Req { payload bytes? @format(raw) @default("{}") }`, CodeDecoratorConflict)
 	expectMessage(t, d, "@default is not supported on a `bytes` field")
 }
 
-// @default on a file field is rejected (no literal default form).
+// @default on a datetime field is rejected.
 func TestDefaultOnDateTimeRejected(t *testing.T) {
 	expectError(t, `type Req { at datetime? @default("2026-01-01T00:00:00Z") }`, CodeDecoratorConflict)
 }
@@ -504,44 +455,155 @@ func TestDateTimeTakesNoValidator(t *testing.T) {
 }
 
 func TestDefaultOnFileRejected(t *testing.T) {
-	diags := analyzeOneFile(t, "package p\ntype U { blob file @form @default(\"x\") }\nservice S { post Up /up { request U  response U } }")
-	if !hasDiagContaining(diags, "@default is not supported on a `file`") {
-		t.Errorf("expected @default-on-file reject, got: %v", diags)
-	}
+	expectMsg(t, "@default is not supported on a `file`", "package p\ntype U { blob file @form @default(\"x\") }\nservice S { post Up /up { request U  response U } }")
 }
 
-// W1 (#22): @example is now type-checked against the field like @default -
-// a kind mismatch and a non-member enum example are rejected.
+// @example is type-checked against the field: a kind mismatch or an unknown enum value is rejected.
 func TestExampleTypeChecked(t *testing.T) {
-	cases := map[string]bool{ // src -> expectReject
-		`package p
-type T { count int @example("nope") }`: true,
-		`package p
-enum Color { Red Green }
-type T { c Color @example(Purple) }`: true,
-		`package p
-enum Color { Red Green }
-type T { c Color @example(Green) }`: false,
-		`package p
-type T { name string @example("alice") }`: false,
-	}
-	for src, expectReject := range cases {
-		diags := analyzeOneFile(t, src)
-		got := hasDiagContaining(diags, "requires a") || hasDiagContaining(diags, "not a value of enum") || hasDiagContaining(diags, "must reference an enum")
-		if got != expectReject {
-			t.Errorf("@example type-check: reject=%v want=%v for:\n%s\ndiags: %v", got, expectReject, src, diags)
-		}
+	d := expectError(t, "package p\ntype T { count int @example(\"nope\") }", CodeDecoratorArgType)
+	expectMessage(t, d, "requires a int literal")
+	d = expectError(t, "package p\nenum Color { Red Green }\ntype T { c Color @example(Purple) }", CodeDecoratorArgValue)
+	expectMessage(t, d, "is not a value of enum Color")
+	mustClean(t, "package p\nenum Color { Red Green }\ntype T { c Color @example(Green) }")
+	mustClean(t, "package p\ntype T { name string @example(\"alice\") }")
+}
+
+// @default and @example both reject a string literal on an int field.
+func TestParityDefaultExampleShareTypeCheck(t *testing.T) {
+	for _, dec := range []string{"default", "example"} {
+		d := expectError(t, "package p\ntype T { n int @"+dec+"(\"nope\") }", CodeDecoratorArgType)
+		expectMessage(t, d, "@"+dec+" on field \"n\" (int) requires a int literal")
 	}
 }
 
-// Parity: @default and @example reject the SAME type mismatch - they share
-// checkLiteralType, so a string literal on an int field fails for both.
-func TestParityDefaultExampleShareTypeCheck(t *testing.T) {
-	defDiags := analyzeOneFile(t, "package p\ntype T { n int @default(\"nope\") }")
-	exDiags := analyzeOneFile(t, "package p\ntype T { n int @example(\"nope\") }")
-	defRej := hasDiagContaining(defDiags, "requires a")
-	exRej := hasDiagContaining(exDiags, "requires a")
-	if !defRej || !exRej {
-		t.Errorf("@default/@example type-check parity broken: default rejected=%v, example rejected=%v", defRej, exRej)
+// A @default that breaks a constraint of its field, its scalar's included, is
+// rejected at the argument, naming the constraint and the value; an array
+// default is held to the field's item constraints and each element to its
+// scalar's.
+func TestDefaultBreakingItsConstraintsRejected(t *testing.T) {
+	const head = "package app\nscalar Tag string @minLength(2)\nscalar Port int @range(1, 65535)\nscalar Mail string @format(email)\n"
+	for _, c := range []struct{ field, msg string }{
+		{`name string? @minLength(3) @default("ab")`, `@default("ab") violates @minLength(3)`},
+		{`name string? @maxLength(4) @default("héllo")`, `@default("héllo") violates @maxLength(4)`},
+		{`name string? @length(4) @default("abc")`, `@default("abc") violates @length(4)`},
+		{`name string? @length(1, 2) @default("abc")`, `@default("abc") violates @length(1, 2)`},
+		{`name string? @pattern("^[a-z]+$") @default("a b")`, `@default("a b") violates @pattern("^[a-z]+$")`},
+		{`site string? @format(url) @default("ftp://x.io")`, `@default("ftp://x.io") violates @format(url)`},
+		{`code string? @format(uuid) @default("nope")`, `@default("nope") violates @format(uuid)`},
+		{`n int? @positive @default(0)`, `@default(0) violates @positive`},
+		{`n int? @negative @default(1)`, `@default(1) violates @negative`},
+		{`n int? @gt(5) @default(5)`, `@default(5) violates @gt(5)`},
+		{`n int? @gte(5) @default(4)`, `@default(4) violates @gte(5)`},
+		{`n int? @lt(5) @default(5)`, `@default(5) violates @lt(5)`},
+		{`n int? @lte(5) @default(6)`, `@default(6) violates @lte(5)`},
+		{`n int? @range(1, 10) @default(11)`, `@default(11) violates @range(1, 10)`},
+		{`n int? @multipleOf(5) @default(7)`, `@default(7) violates @multipleOf(5)`},
+		{`r float64? @lte(0.5) @default(0.75)`, `@default(0.75) violates @lte(0.5)`},
+		{`big uint64? @lte(9223372036854775806.0) @default(9223372036854775807)`, `@default(9223372036854775807) violates @lte(9223372036854775806.0)`},
+		{`t Tag? @default("a")`, `@default("a") violates @minLength(2) of scalar Tag`},
+		{`p Port? @default(0)`, `@default(0) violates @range(1, 65535) of scalar Port`},
+		{`m Mail? @default("nope")`, `@default("nope") violates @format(email) of scalar Mail`},
+		{`tags string[]? @minItems(2) @default(["a"])`, `@default(["a"]) violates @minItems(2)`},
+		{`tags string[]? @maxItems(1) @default(["a", "b"])`, `@default(["a", "b"]) violates @maxItems(1)`},
+		{`tags string[]? @uniqueItems @default(["a", "b", "a"])`, `@default(["a", "b", "a"]) violates @uniqueItems`},
+		{`ns float64[]? @uniqueItems @default([1.0, 1.00])`, `violates @uniqueItems`},
+		{`tags Tag[]? @default(["ok", "x"])`, `@default element "x" violates @minLength(2) of scalar Tag`},
+	} {
+		t.Run(c.field, func(t *testing.T) {
+			d := expectError(t, head+"type R { "+c.field+" }", CodeDecoratorConflict)
+			expectMessage(t, d, c.msg)
+		})
+	}
+	mustClean(t, head+`type R {
+	a string? @minLength(2) @default("ab")
+	b int? @range(1, 10) @default(10)
+	c Tag? @default("ok")
+	d string[]? @minItems(1) @uniqueItems @default(["a", "b"])
+	e uint64? @lte(9223372036854775807.0) @default(9223372036854775807)
+	f float32? @lt(0.5) @default(0.25)
+	g string? @format(email) @default("a@b.co")
+	h int? @multipleOf(5) @default(-10)
+	i Port[]? @uniqueItems @default([80, 443])
+	j Mail? @default("ops@example.com")
+}`)
+}
+
+// A @default of the wrong kind gets the type error alone.
+func TestDefaultOfWrongKindSkipsConstraints(t *testing.T) {
+	expectCodeCount(t, `package app
+type R { n int? @gte(5) @default(4.5)  s string? @minLength(3) @default(1) }`, CodeDecoratorConflict, 0)
+}
+
+// An enum @default is checked as its member's wire value, alone or in an
+// array; the message names the member as the design writes it.
+func TestEnumDefaultBreakingItsConstraintsRejected(t *testing.T) {
+	const head = "package app\nenum Code { A = \"a\"  BB = \"bb\" }\nenum Mail { Ok = \"a@b.co\"  Bad = \"nope\" }\nenum Prio { Low = 1  High = 2 }\n"
+	for _, c := range []struct{ field, msg string }{
+		{`c Code? @minLength(2) @default(A)`, `@default(A), whose wire value is "a", violates @minLength(2): its length is 1`},
+		{`c Code? @pattern("^b+$") @default(A)`, `@default(A), whose wire value is "a", violates @pattern("^b+$"): it does not match`},
+		{`m Mail? @format(email) @default(Bad)`, `@default(Bad), whose wire value is "nope", violates @format(email)`},
+		{`p Prio? @range(2, 9) @default(Low)`, `@default(Low), whose wire value is 1, violates @range(2, 9)`},
+		{`p Prio? @gt(1) @default(Low)`, `@default(Low), whose wire value is 1, violates @gt(1)`},
+		{`p Prio? @multipleOf(2) @default(Low)`, `@default(Low), whose wire value is 1, violates @multipleOf(2)`},
+		{`ps Prio[]? @uniqueItems @default([Low, High, Low])`, `@default([Low, High, Low]) violates @uniqueItems: Low repeats`},
+	} {
+		t.Run(c.field, func(t *testing.T) {
+			d := expectError(t, head+"type R { "+c.field+" }", CodeDecoratorConflict)
+			expectMessage(t, d, c.msg)
+		})
+	}
+	mustClean(t, head+`type R {
+	c Code? @minLength(2) @default(BB)
+	m Mail? @format(email) @default(Ok)
+	p Prio? @range(2, 9) @default(High)
+	ps Prio[]? @maxItems(2) @uniqueItems @default([Low, High])
+}`)
+}
+
+// A @default message counts one item in the singular and quotes a string as
+// the design writes it.
+func TestDefaultConstraintMessageWording(t *testing.T) {
+	d := expectError(t, "package app\ntype R { tags string[]? @minItems(2) @default([\"a\"]) }", CodeDecoratorConflict)
+	expectMessage(t, d, `@default(["a"]) violates @minItems(2): it holds 1 item`)
+	if strings.Contains(d.Msg, "1 items") {
+		t.Errorf("message counts one item in the plural: %q", d.Msg)
+	}
+	d = expectError(t, "package app\ntype R { s string? @maxLength(1) @default(\"a\\u{301}\") }", CodeDecoratorConflict)
+	expectMessage(t, d, `@default("a\u{301}") violates @maxLength(1): its length is 2`)
+	d = expectError(t, "package app\ntype R {\n  s string? @maxLength(1) @default(`a\nb`)\n}", CodeDecoratorConflict)
+	expectMessage(t, d, `@default("a\nb") violates @maxLength(1): its length is 3`)
+}
+
+// An argument the parser could not read is its error alone: analysis reads
+// it as no value and reports nothing about the decorator's arguments.
+func TestUnreadableArgumentLeftToTheParser(t *testing.T) {
+	const decls = "package app\nenum Color { Red  Green }\ntype Item { id string }\n"
+	for label, src := range map[string]string{
+		"nested decorator":   "@doc(@x)\ntype T { a string }",
+		"stray token":        "@doc(=)\ntype T { a string }",
+		"dash":               "@doc(-)\ntype T { a string }",
+		"list cut short":     "type T { a string @doc(})",
+		"second argument":    "type T { a int @range(1, @x) }",
+		"length":             "type T { a string @minLength(@x) }",
+		"enum default":       "type T { c Color? @default(@x) }",
+		"array default":      "type T { tags string[]? @uniqueItems @default([@x, @y]) }",
+		"example":            "type T { a int @example(@x) }",
+		"format":             "type T { a string @format(@x) }",
+		"errors":             "error NotFound Gone\nservice S { @errors(@x) get A /a { response Item } }",
+		"timeout":            "service S { @timeout(@x) get A /a { response Item } }",
+		"mutually exclusive": "@mutuallyExclusive(a, @x)\ntype T { a string?  b string? }",
+		"missing comma":      "@doc(\"a\" \"b\")\ntype T { a string }",
+		"array left open":    "type T { tags string[]? @default([\"a\"\n}",
+	} {
+		t.Run(label, func(t *testing.T) {
+			p := parser.New("test.craftgo", decls+src)
+			f := p.Parse()
+			if len(p.Diagnostics()) == 0 {
+				t.Fatal("the parser reported no error")
+			}
+			if _, diags := Analyze([]*ast.File{f}); len(diags) > 0 {
+				t.Errorf("analysis adds %v to the parse errors %v", diags, p.Diagnostics())
+			}
+		})
 	}
 }

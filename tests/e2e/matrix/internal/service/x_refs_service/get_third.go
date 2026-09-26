@@ -4,25 +4,21 @@ package xrefs
 
 import (
 	"context"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetThirdService carries the per-request state for the
-// GetThird endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetThirdService runs XRefsService.GetThird for one request.
 type GetThirdService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetThirdService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetThirdService binds GetThirdService to ctx; its Logger carries ctx's trace ids.
 func NewGetThirdService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetThirdService {
 	return &GetThirdService{
 		Logger: log.Default().WithContext(ctx),
@@ -31,8 +27,9 @@ func NewGetThirdService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// GetThird is the service entry point. Replace the
-// TODO with the real implementation.
+// Pins a QUALIFIED request whose field reaches a THIRD package (xshared.XThirdReq.sev is shared.Severity). The xrefs handler casts shared.Severity(...), so the import collector must resolve the qualified request and pull in `shared` - else `undefined: shared`. Also pins an error (XMixinErr) whose body embeds a cross-package mixin, so the error emitter's import walk must collect xshared.
+//
+// GetThird implements XRefsService.GetThird.
 func (l *GetThirdService) GetThird(req *xshared.XThirdReq) (*xshared.XOwner, error) {
 	// TODO: implement
 	return nil, nil

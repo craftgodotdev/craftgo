@@ -9,12 +9,13 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/account_service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-	shared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// DeleteAccount returns the http.HandlerFunc for the
-// DELETE DeleteAccount endpoint.
+// Delete an account - admin-only. Chain: [RateLimit, BasicAuth, Audit].
+//
+// DeleteAccount returns the DELETE DeleteAccount handler.
 func DeleteAccount(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.DeleteAccountReq
@@ -29,7 +30,6 @@ func DeleteAccount(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

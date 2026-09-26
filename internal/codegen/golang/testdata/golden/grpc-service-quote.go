@@ -5,26 +5,21 @@ package greet
 import (
 	"context"
 
-	common "example.com/app/internal/pb/common"
-	pb "example.com/app/internal/pb/greet"
-
-	"example.com/app/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	"example.com/app/internal/pb/common"
+	pb "example.com/app/internal/pb/greet"
+	"example.com/app/svccontext"
 )
 
-// QuoteService carries the per-request state for the
-// Quote endpoint of Greeter. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// QuoteService runs Greeter.Quote for one request.
 type QuoteService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewQuoteService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewQuoteService binds QuoteService to ctx; its Logger carries ctx's trace ids.
 func NewQuoteService(ctx context.Context, svcCtx *svccontext.ServiceContext) *QuoteService {
 	return &QuoteService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,7 @@ func NewQuoteService(ctx context.Context, svcCtx *svccontext.ServiceContext) *Qu
 	}
 }
 
-// Quote is the service entry point. Replace the
-// TODO with the real implementation.
+// Quote implements Greeter.Quote.
 func (l *QuoteService) Quote(req *common.Money) (*pb.HelloReply, error) {
 	// TODO: implement
 	return nil, nil

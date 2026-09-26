@@ -11,10 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 
-// Events returns the http.HandlerFunc for the
-// GET Events passthrough endpoint. The framework stays
-// out of the way: logic receives the raw http.ResponseWriter and
-// *http.Request and writes the response directly.
+// Server-Sent Events firehose. The response block is a docs-only contract: every `data:` frame carries one Event.
+//
+// Events returns the GET Events handler.
 func Events(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewEventsService(r.Context(), svcCtx)

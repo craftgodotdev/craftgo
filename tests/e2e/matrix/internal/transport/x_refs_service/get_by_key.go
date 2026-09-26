@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetByKey returns the http.HandlerFunc for the
-// GET GetByKey endpoint.
+// Pins cross-package mixin @path binding. The {key} segment binds through xshared.XPathKey's field; the project-level path-param check must resolve the sibling-package mixin or it false-rejects this route.
+//
+// GetByKey returns the GET GetByKey handler.
 func GetByKey(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.XByKeyReq
@@ -28,7 +29,6 @@ func GetByKey(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

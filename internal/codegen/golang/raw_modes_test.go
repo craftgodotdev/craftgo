@@ -9,15 +9,13 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/codegen/docs"
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
 // ---------- raw modes: @rawRequest / @rawResponse / @passthrough ----------
 
-// TestBuildSignatureEveryCell pins the stub declaration and the transport
-// call for every request × response × raw-side cell. The two templates
-// read the same methodSignature, so this table is the single place the
-// public gen-once contract is spelled out.
+// buildSignature yields the stub signature and transport call of every request/response/raw cell.
 func TestBuildSignatureEveryCell(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -97,10 +95,7 @@ service DemoService {
     get Metrics /metrics {}
 }`
 
-// renderGoldenBundle generates the transport handlers and service stubs
-// for pkg into a scratch root and returns every emitted Go file joined
-// into one document, each prefixed by its project-relative path, so a
-// single golden pins the whole surface of one scenario.
+// renderGoldenBundle returns pkg's generated transport and service files, each headed by its path.
 func renderGoldenBundle(t *testing.T, pkg *semantic.Package, r *projectResolver) string {
 	t.Helper()
 	root := t.TempDir()
@@ -173,8 +168,7 @@ func TestGenerateRawResponseBindsThenHandsWriter(t *testing.T) {
 		"if err := l.ListUsers(w, r, &req); err != nil {",
 		"server.WriteError(w, r, err)",
 	)
-	// The response side is logic's: no encode, no status, no response
-	// header plumbing, no strconv for the documented X-Total header.
+	// The response side is logic's: no encode, status, header write or strconv import.
 	mustContainNone(t, h,
 		"server.JSON().Encode",
 		"w.Header().Set(",
@@ -185,7 +179,7 @@ func TestGenerateRawResponseBindsThenHandsWriter(t *testing.T) {
 	mustContainAll(t, s,
 		`"net/http"`,
 		"func (l *ListUsersService) ListUsers(w http.ResponseWriter, r *http.Request, req *types.ListReq) error {",
-		"documented as\n// types.UserList",
+		"// Its response is documented as types.UserList.",
 		`http.Error(w, "not implemented", http.StatusNotImplemented)`,
 	)
 }
@@ -194,8 +188,7 @@ func TestGenerateRawResponseNoRequestSkipsBind(t *testing.T) {
 	read := genRawModes(t)
 	h := read("transport", "snapshot.go")
 	mustContainAll(t, h, "if err := l.Snapshot(w, r); err != nil {")
-	// @status(201) is docs-only on a raw response: the handler must not
-	// write it, and nothing references the types package.
+	// @status is docs-only on a raw response, and nothing references the types package.
 	mustContainNone(t, h, "var req", "w.WriteHeader(", "http.StatusCreated", `types "`)
 	s := read("service", "snapshot.go")
 	mustContainAll(t, s, "func (l *SnapshotService) Snapshot(w http.ResponseWriter, r *http.Request) error {")
@@ -208,7 +201,7 @@ func TestGenerateRawResponseOverMultipart(t *testing.T) {
 	mustContainAll(t, h,
 		"r.ParseMultipartForm(",
 		"defer func() { _ = r.MultipartForm.RemoveAll() }()",
-		`r.FormValue("note")`,
+		`r.PostFormValue("note")`,
 		`r.FormFile("avatar")`,
 		"if err := req.Validate(); err != nil {",
 		"if err := l.Upload(w, r, &req); err != nil {",
@@ -221,16 +214,14 @@ func TestGenerateRawRequestHandsRequestThenEncodes(t *testing.T) {
 	h := read("transport", "ingest.go")
 	mustContainAll(t, h,
 		"resp, err := l.Ingest(r)",
-		`w.Header().Set("Content-Type", "application/json; charset=utf-8")`,
-		"w.WriteHeader(http.StatusCreated)",
-		"_ = server.JSON().Encode(w, resp)",
+		"server.WriteResponse(w, r, http.StatusCreated, resp)",
 	)
-	// The docs-only request block must not be bound, decoded or imported.
+	// The docs-only request block is not bound, decoded or imported.
 	mustContainNone(t, h, "var req", "server.JSON().Decode", "req.Validate()", `types "`)
 	s := read("service", "ingest.go")
 	mustContainAll(t, s,
 		"func (l *IngestService) Ingest(r *http.Request) (*types.IngestResult, error) {",
-		"documented as\n// types.IngestResult",
+		"// Its request is documented as types.IngestResult, whose Validate checks it.",
 		"return nil, nil",
 	)
 }
@@ -253,21 +244,17 @@ func TestGeneratePassthroughWithBlocksKeepsSignature(t *testing.T) {
 	s := read("service", "events.go")
 	mustContainAll(t, s,
 		"func (l *EventsService) Events(w http.ResponseWriter, r *http.Request) error {",
-		"decode the request into types.Item yourself",
-		"write a body matching types.Event",
+		"// Its request is documented as types.Item and its response as types.Event.",
 	)
 	mustContainNone(t, s, `types "`)
-	// A bare passthrough still carries no contract paragraph.
+	// A bare passthrough stub carries no contract line.
 	bare := read("service", "metrics.go")
-	if strings.Contains(bare, "docs-only contract") {
+	if strings.Contains(bare, "documented as") {
 		t.Errorf("bare @passthrough stub must not mention a contract:\n%s", bare)
 	}
 }
 
-// TestParityPassthroughEqualsBothFlags pins that `@passthrough` and
-// `@rawRequest @rawResponse` are one mode: transport, stub and OpenAPI
-// output are byte-identical (the analyser only adds a redundancy warning
-// for the two-flag spelling).
+// @passthrough and `@rawRequest @rawResponse` generate byte-identical Go and OpenAPI.
 func TestParityPassthroughEqualsBothFlags(t *testing.T) {
 	src := func(decorators string) string {
 		return `package design
@@ -295,9 +282,7 @@ service S {
 	}
 }
 
-// TestParityTransportCallMatchesStubSignature pins that the transport
-// call and the stub declaration come from the same methodSignature for
-// every cell - the decide-once guard against the two drifting apart.
+// The transport call and the service stub of every method share one methodSignature.
 func TestParityTransportCallMatchesStubSignature(t *testing.T) {
 	pkg := analyze(t, rawModesSampleDSL)
 	svc := pkg.Services["DemoService"]
@@ -306,12 +291,9 @@ func TestParityTransportCallMatchesStubSignature(t *testing.T) {
 	}
 	cfg := sampleConfig()
 	for _, m := range svc.Methods {
-		imps := importPathsForGroup(cfg, pkg, "DemoService", "")
-		td, err := buildTransportData("DemoService", m, imps, pkg, resolverFor(pkg, nil))
-		if err != nil {
-			t.Fatalf("%s: %v", m.Name, err)
-		}
-		sd := buildServiceData(pkg.Name, "DemoService", m, imps, nil)
+		imps := outputsOf(cfg).segmentImports(pkg.Name, route.OutputSegment("DemoService", "", cfg.Output.FileCase))
+		td := buildTransportData(m, svc.Decorators(m), imps, pkg, resolverFor(pkg, nil))
+		sd := buildServiceData(pkg.Name, "DemoService", m, svc.Decorators(m), imps, resolverFor(pkg, nil))
 		if td.Sig != sd.Sig {
 			t.Errorf("%s: transport signature %+v != service signature %+v", m.Name, td.Sig, sd.Sig)
 		}
@@ -354,19 +336,17 @@ service S {
 	mustContainAll(t, pt, "name: id", "in: path", "name: q", "in: query", "$ref: '#/components/schemas/PtBlocksRespBody'", `"200"`)
 	mustContainNone(t, pt, "'*/*'")
 
-	// No block on a raw side: bare string path params and */* as before.
+	// No block on a raw side: bare string path params and */*.
 	bare := operationBlock(t, spec, "PtBare")
 	mustContainAll(t, bare, "name: id", "in: path", "type: string", "'*/*'")
 	mustContainNone(t, bare, "$ref")
 
-	// Raw response: @status(201) is the documented code and the response
-	// @header field is documented too (both are logic's to write).
+	// Raw response: @status(201) and the response @header are documented; logic writes both.
 	rr := operationBlock(t, spec, "RrStatus")
 	mustContainAll(t, rr, `"201"`, "$ref: '#/components/schemas/RrStatusRespBody'", "Location:")
 	mustContainNone(t, rr, `"200"`)
 
-	// Raw response on POST without @status: 200, not the verb-aware 201 -
-	// logic writes whatever status it wants.
+	// Raw response on POST without @status documents 200, not the verb-aware 201.
 	rrPost := operationBlock(t, spec, "RrPost")
 	mustContainAll(t, rrPost, `"200"`, "$ref: '#/components/schemas/RrPostRespBody'")
 	mustContainNone(t, rrPost, `"201"`)
@@ -375,14 +355,12 @@ service S {
 	rrBare := operationBlock(t, spec, "RrBare")
 	mustContainAll(t, rrBare, "'*/*'")
 
-	// Raw request on POST with a typed response: the framework writes the
-	// response, so the verb-aware 201 default still applies, and the
-	// docs-only request block is a JSON requestBody.
+	// Raw request on POST with a typed response keeps the verb-aware 201, and the docs-only
+	// request block is a JSON requestBody.
 	rq := operationBlock(t, spec, "RqPost")
 	mustContainAll(t, rq, `"201"`, "requestBody:", "application/json", "$ref: '#/components/schemas/RqPostReqBody'")
 
-	// Raw request whose contract has a file field documents multipart even
-	// though the transport never parses it.
+	// A raw request whose contract has a file field documents multipart/form-data.
 	rqFile := operationBlock(t, spec, "RqFile")
 	mustContainAll(t, rqFile, "multipart/form-data", "format: binary")
 
@@ -446,12 +424,8 @@ service MixService {
     get PtRef /ptref/{id} { request Req  response Resp }
 }`
 
-// TestRawModesMixWithMethodDecorators pins that the raw flags compose with
-// every other method-level decorator: limits and middlewares still land in
-// routes.go, the docs-only side still carries @status / @errors / @security /
-// @deprecated / @tags / @summary / @operationId into OpenAPI, the @ignore*
-// family still clears the inherited chains, and all three flags on one
-// method generate exactly what @passthrough generates.
+// The raw flags compose with every other method decorator, and all three flags on one method
+// generate exactly what @passthrough generates.
 func TestRawModesMixWithMethodDecorators(t *testing.T) {
 	pkg := analyze(t, rawModesMixDSL)
 	root := t.TempDir()
@@ -476,7 +450,7 @@ func TestRawModesMixWithMethodDecorators(t *testing.T) {
 
 	routes := read("internal/routes/mix-service/routes.go")
 	mustContainAll(t, routes,
-		"server.WithLimits(transport.RrAll(svcCtx), server.Limits{Timeout: 3 * time.Second, MaxBodySize: 2097152}), svcCtx.Auth, svcCtx.Audit)",
+		"server.WithLimits(transport.RrAll(svcCtx), server.Limits{Timeout: 3 * time.Second, MaxBodySize: 2 << 20}), svcCtx.Auth, svcCtx.Audit)",
 		"transport.RrIgnore(svcCtx))",
 	)
 	mustContainNone(t, routes, "RrIgnore(svcCtx), svcCtx")
@@ -485,8 +459,7 @@ func TestRawModesMixWithMethodDecorators(t *testing.T) {
 	mustContainAll(t, handler, `req.ID = r.PathValue("id")`, "if err := req.Validate(); err != nil {", "if err := l.RrAll(w, r, &req); err != nil {")
 	mustContainNone(t, handler, "w.WriteHeader(", "http.StatusAccepted")
 
-	// All three flags == @passthrough, byte for byte (same doc so the
-	// rendered comments match too).
+	// Triple and PtRef share a @doc, so their renamed output matches byte for byte.
 	rename := func(s string) string {
 		return strings.ReplaceAll(strings.ReplaceAll(s, "Triple", "PtRef"), "triple", "ptref")
 	}
@@ -511,8 +484,7 @@ func TestRawModesMixWithMethodDecorators(t *testing.T) {
 	ign := operationBlock(t, spec, "RrIgnore")
 	mustContainAll(t, ign, "'*/*'")
 	mustContainNone(t, ign, "Bearer", "- mix")
-	// The last path in the document drags the trailing `servers:` key
-	// into its block; trim it so the two operations compare cleanly.
+	// The last path's block runs into the trailing `servers:` key; trim it.
 	opBlock := func(id string) string {
 		b := operationBlock(t, spec, id)
 		if i := strings.Index(b, "\nservers:"); i >= 0 {
@@ -525,10 +497,7 @@ func TestRawModesMixWithMethodDecorators(t *testing.T) {
 	}
 }
 
-// generateOpenAPIToString renders src's OpenAPI document. The raw-mode
-// tests assert the Go handler and the document agree, so they reach across
-// to the document emitter; docs imports nothing from here, so there is no
-// cycle.
+// generateOpenAPIToString renders src's OpenAPI document.
 func generateOpenAPIToString(t *testing.T, src string) string {
 	t.Helper()
 	pkg := analyze(t, src)
@@ -544,23 +513,14 @@ func generateOpenAPIToString(t *testing.T, src string) string {
 	return string(out)
 }
 
-// operationBlock returns the slice of YAML body covering exactly one
-// operation. It walks back from the operationId line to the matching
-// verb line so sibling fields emitted alphabetically before operationId
-// (description, ...) stay inside the block, and trims forward at the
-// next path or end-of-paths so the block terminates before the following
-// operation's header.
+// operationBlock returns the YAML of operation opID, from its verb line to the next verb or path.
 func operationBlock(t *testing.T, body, opID string) string {
 	t.Helper()
 	idx := strings.Index(body, "\n      operationId: "+opID)
 	if idx < 0 {
 		t.Fatalf("operation %q not found in:\n%s", opID, body)
 	}
-	// Walk backward to the nearest verb line above the operationId. The
-	// verb line's trailing newline is the newline the operationId match
-	// starts at, so the search window must include body[idx] or the
-	// operation's own verb is missed and the block starts one operation
-	// too early.
+	// body[:idx+1] keeps the verb line's trailing newline, where the operationId match starts.
 	verbs := []string{"\n    get:\n", "\n    post:\n", "\n    put:\n", "\n    patch:\n", "\n    delete:\n"}
 	start := -1
 	for _, v := range verbs {
@@ -571,10 +531,7 @@ func operationBlock(t *testing.T, body, opID string) string {
 	if start < 0 {
 		start = idx
 	}
-	// Walk forward from PAST the operationId line to find the next
-	// path entry (`  /...:` at two-space indent) or the next verb
-	// (which would belong to a sibling operation on the same path).
-	// Either marks the end of this operation block.
+	// The block ends at the next verb (a sibling operation) or the next path entry.
 	searchFrom := idx + 1
 	end := len(body)
 	for _, v := range verbs {
@@ -582,7 +539,6 @@ func operationBlock(t *testing.T, body, opID string) string {
 			end = searchFrom + s
 		}
 	}
-	// New path entry: line starts with `  /` after a newline.
 	if s := strings.Index(body[searchFrom:], "\n  /"); s >= 0 && searchFrom+s < end {
 		end = searchFrom + s
 	}

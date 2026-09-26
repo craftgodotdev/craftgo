@@ -1,0 +1,22 @@
+// Integer bounds and @multipleOf divisors, some past 2^53.
+package numbers
+
+// NumberBigBounds holds bounds past 2^53: OpenAPI writes them exactly, so
+// the documented bound is the int64 the validator enforces.
+type NumberBigBounds {
+	minId  int64 @gte(9007199254740993)
+	bigmin int64 @gte(9223372036854775807)
+	small  int   @gte(5) @lte(100)
+}
+
+// NumberMultipleOf carries @multipleOf on an int field, enforced by the
+// validator and documented by OpenAPI.
+type NumberMultipleOf {
+	qty int @multipleOf(5)
+}
+
+// NumberBigMultipleOf carries a @multipleOf divisor past 2^53, written
+// exactly in OpenAPI.
+type NumberBigMultipleOf {
+	n int64 @multipleOf(9007199254740993)
+}

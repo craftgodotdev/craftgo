@@ -11,9 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RqResp returns the http.HandlerFunc for the
-// POST RqResp raw-request endpoint. The handler hands the
-// *http.Request to logic unread and encodes the returned response.
+// Raw request with a typed response: the body is handed over unread, the response is JSON-encoded with the verb default 201.
+//
+// RqResp returns the POST RqResp handler.
 func RqResp(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewRqRespService(r.Context(), svcCtx)
@@ -22,8 +22,6 @@ func RqResp(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

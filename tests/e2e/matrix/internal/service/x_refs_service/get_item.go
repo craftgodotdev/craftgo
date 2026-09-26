@@ -5,26 +5,21 @@ package xrefs
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetItemService carries the per-request state for the
-// GetItem endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetItemService runs XRefsService.GetItem for one request.
 type GetItemService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetItemService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetItemService binds GetItemService to ctx; its Logger carries ctx's trace ids.
 func NewGetItemService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetItemService {
 	return &GetItemService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewGetItemService(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 	}
 }
 
-// GetItem is the service entry point. Replace the
-// TODO with the real implementation.
+// Pins cross-package @errors reference. xshared.XNotFound must register as a component schema AND appear in the operation's responses[404].body schema.
+//
+// GetItem implements XRefsService.GetItem.
 func (l *GetItemService) GetItem(req *types.XGetReq) (*xshared.XOwner, error) {
 	// TODO: implement
 	return nil, nil

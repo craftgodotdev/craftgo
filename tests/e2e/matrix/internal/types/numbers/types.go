@@ -22,6 +22,20 @@ type MixedReq struct {
 	Body NumberMixed `json:"body"`
 }
 
+// NumberBigBounds holds bounds past 2^53: OpenAPI writes them exactly, so
+// the documented bound is the int64 the validator enforces.
+type NumberBigBounds struct {
+	MinID  int64 `json:"minId"`
+	Bigmin int64 `json:"bigmin"`
+	Small  int   `json:"small"`
+}
+
+// NumberBigMultipleOf carries a @multipleOf divisor past 2^53, written
+// exactly in OpenAPI.
+type NumberBigMultipleOf struct {
+	N int64 `json:"n"`
+}
+
 // NumberBoundary pins bounds at the exact type-capacity edges. The
 // semantic phase rejects bounds beyond a type's representable range;
 // these must all sit AT the boundary and pass clean.
@@ -75,6 +89,11 @@ type NumberCounter struct {
 	// @multipleOf on int.
 	StepInt   int   `json:"stepInt"`
 	StepInt64 int64 `json:"stepInt64"`
+	// Whole floats at the int64 limits, read as the exact integers they
+	// write.
+	EdgeInt64 int64 `json:"edgeInt64"`
+	// Two maxima past 2^53: the document keeps the tighter one.
+	TightInt64 int64 `json:"tightInt64"`
 }
 
 // NumberExact is the boundary case where @gte and @lte share the
@@ -102,6 +121,12 @@ type NumberMixed struct {
 	NegStrict int `json:"negStrict"`
 	// Asymmetric float
 	FloatGtLte float64 `json:"floatGtLte"`
+}
+
+// NumberMultipleOf carries @multipleOf on an int field, enforced by the
+// validator and documented by OpenAPI.
+type NumberMultipleOf struct {
+	Qty int `json:"qty"`
 }
 
 // NumberOptional exercises the optional / nullable / default axes
@@ -143,11 +168,19 @@ type NumberPrice struct {
 	PosFloat float64 `json:"posFloat"`
 	NegFloat float64 `json:"negFloat"`
 	PosF32   float32 `json:"posF32"`
+	// Bounds a float64 cannot hold are documented as the float64 the
+	// validator compares against: 2^53 and 2^63.
+	WideF64 float64 `json:"wideF64"`
+	// A float32's bounds judge the literal and the float32 the validator
+	// compares against alike: 0.1 and float32(0.1) fail, 16777217 and 2^24 pass.
+	WideF32 float32 `json:"wideF32"`
+	// A number the document writes in exponent form carries a dot (1.0e-07,
+	// 1.0e+20), which YAML 1.1 readers take for a number, not a string.
+	TinyF64 float64 `json:"tinyF64"`
 }
 
-// NumberUnsigned covers the full uint family. Lower bound 0 is
-// implicit at the type level but we still emit @gte(0) explicitly to
-// confirm codegen doesn't emit a dead `v < 0` for unsigned fields.
+// NumberUnsigned covers the uint family; its @gte(0) and full-capacity
+// bounds are the ones the type already implies.
 type NumberUnsigned struct {
 	// uint
 	RangeUint  uint `json:"rangeUint"`
@@ -173,6 +206,12 @@ type NumberUnsigned struct {
 	// unsigned domain makes @negative semantically vacuous (it is
 	// still accepted at the decorator layer, so we don't test that).
 	PosUint uint `json:"posUint"`
+	// A divisor past int64 can only be written as a whole float; the
+	// validator checks it as that integer, up to the uint64 limit.
+	StepUint64 uint64 `json:"stepUint64"`
+	MaxUint64  uint64 `json:"maxUint64"`
+	// A floor past 2^53 raises the type's own minimum of 0.
+	FloorUint64 uint64 `json:"floorUint64"`
 }
 
 // OptionalReq wraps NumberOptional (presence axes).

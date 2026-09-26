@@ -12,8 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 )
 
-// GetTodo returns the http.HandlerFunc for the
-// GET GetTodo endpoint.
+// Fetch one todo by id.
+//
+// GetTodo returns the GET GetTodo handler.
 func GetTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.GetTodoReq
@@ -28,7 +29,6 @@ func GetTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

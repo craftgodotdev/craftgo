@@ -1,0 +1,47 @@
+// Enum fields: an int enum whose zero value is a member, and enum defaults
+// documented as wire values.
+package combine
+
+// MemberStatus has 0 as a real member.
+enum MemberStatus {
+	Inactive = 0
+	Active   = 1
+	Banned   = 2
+}
+
+// ZeroMember accepts the zero-valued member in its required enum field.
+type ZeroMember {
+	status MemberStatus
+}
+
+// Hue is a string enum whose wire values differ from its member names.
+enum Hue {
+	red   = "RED"
+	green = "GREEN"
+}
+
+// Grade is an int enum whose wire values differ from its member names.
+enum Grade {
+	low  = 1
+	high = 9
+}
+
+// WireDefaults documents each enum @default as the member's wire value
+// ("RED", 9), not its name.
+type WireDefaults {
+	c Hue?   @default(red)
+	l Grade? @default(high)
+}
+
+enum PayMethod {
+	Card = "card"
+	Bank = "bank"
+}
+
+// ArrayDefaults documents an array-of-enum @default as its wire values
+// ([card, bank]) and a @default query parameter as optional; the transport
+// pre-fills both before decoding.
+type ArrayDefaults {
+	methods PayMethod[]? @default([Card, Bank])
+	sortBy  string?      @query @default("name")
+}

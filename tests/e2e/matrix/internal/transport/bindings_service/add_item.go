@@ -12,11 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// AddItem carries the typical "create" envelope: a JSON body
-// plus the per-method @errors declaration listing both a Conflict
-// (DuplicateKey) and a BadRequest (InvalidInput).
-// AddItem returns the http.HandlerFunc for the
-// POST AddItem endpoint.
+// Create a new item. Surfaces DuplicateKey (409) on unique-constraint conflict and InvalidInput (400) on validation failure.
+//
+// AddItem returns the POST AddItem handler.
 func AddItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.AddItemReq
@@ -34,8 +32,6 @@ func AddItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

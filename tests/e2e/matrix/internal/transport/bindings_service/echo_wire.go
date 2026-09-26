@@ -12,15 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoWire exercises the explicit-name binder forms across ALL four
-// parameter locations at once. Every field renames its wire
-// identity via the decorator argument, distinct from the Go field
-// name, so the emitted OpenAPI parameter name equals the wire name
-// the runtime binder reads (r.PathValue("user_id"),
-// r.Header.Get("X-API-Key"), r.Cookie("session_id"),
-// r.URL.Query().Get("search_q")) - never the DSL field name.
-// EchoWire returns the http.HandlerFunc for the
-// GET EchoWire endpoint.
+// Echo wire-renamed params. Path, query, header, and cookie each use an explicit @decorator("wire-name") distinct from the Go field name.
+//
+// EchoWire returns the GET EchoWire handler.
 func EchoWire(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.WireRenameReq
@@ -49,7 +43,6 @@ func EchoWire(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

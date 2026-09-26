@@ -8,13 +8,14 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
 	service "github.com/craftgodotdev/craftgo/example/taskflow/internal/service/task_service"
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
 	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// CreateTask returns the http.HandlerFunc for the
-// POST CreateTask endpoint.
+// Create a task.
+//
+// CreateTask returns the POST CreateTask handler.
 func CreateTask(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.CreateTaskReq
@@ -37,8 +38,6 @@ func CreateTask(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

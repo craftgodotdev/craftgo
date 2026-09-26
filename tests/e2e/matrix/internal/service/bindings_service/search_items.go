@@ -5,25 +5,20 @@ package bindings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// SearchItemsService carries the per-request state for the
-// SearchItems endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// SearchItemsService runs BindingsService.SearchItems for one request.
 type SearchItemsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewSearchItemsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewSearchItemsService binds SearchItemsService to ctx; its Logger carries ctx's trace ids.
 func NewSearchItemsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *SearchItemsService {
 	return &SearchItemsService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,16 +27,9 @@ func NewSearchItemsService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// SearchItems is the multi-binder mixer: cursor (optional
-// string), limit (required int), sort enum, ids array, active
-// bool. Covers every query-binder shape in one method.
+// Search items. Demonstrates the full @query matrix - optional string cursor, required int limit, optional enum sort, repeated int ids, required bool active, optional int offset, optional bool verbose.
 //
-// The response is wrapped in a per-service `ItemList` envelope
-// because the parser rejects bare-array response forms (`Item[]`)
-// in the method body - wrapping in a typed list is the idiomatic
-// shape every other service uses.
-// SearchItems is the service entry point. Replace the
-// TODO with the real implementation.
+// SearchItems implements BindingsService.SearchItems.
 func (l *SearchItemsService) SearchItems(req *types.SearchReq) (*types.ItemList, error) {
 	// TODO: implement
 	return nil, nil

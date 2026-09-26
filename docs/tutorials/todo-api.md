@@ -1,6 +1,6 @@
 # Tutorial: Build a TODO API
 
-This tutorial builds a small but realistic CRUD service end to end: list, get, create, update, and delete todos - with enums, validation, pagination, and an OpenAPI spec. By the end you'll understand the full craftgo loop: **write DSL → generate → fill logic → run**.
+This tutorial designs a small but realistic CRUD service - list, get, create, update, and delete todos, with enums, validation, pagination, and an OpenAPI spec - and fills in create and get end to end. By the end you'll understand the full craftgo loop: **write DSL → generate → fill logic → run**.
 
 It assumes you've skimmed [Getting Started](/guide/getting-started). Budget ~15 minutes.
 
@@ -17,8 +17,8 @@ craftgo init design
 
 ```yaml
 openapi:
-  title: Todo API
-  version: 0.1.0
+  title:    My API
+  version:  1.0.0
   basePath: /api
 ```
 
@@ -46,7 +46,7 @@ type Todo {
     title     string       @length(1, 200)
     notes     string?      @maxLength(2000)
     status    TodoStatus
-    priority  TodoPriority @default(Medium)
+    priority  TodoPriority? @default(Medium)
     tags      string[]     @maxItems(10) @uniqueItems
     createdAt string       @format(datetime)
 }
@@ -56,19 +56,19 @@ Things to notice:
 
 - **Enums** are string-valued here (`= "open"`), so they marshal as those strings on the wire and craftgo generates a validity check.
 - `notes string?` - the `?` makes it optional (a Go pointer, omitted from JSON when nil).
-- `@default(Medium)` references an enum value by **bare name**, not a string.
+- `@default(Medium)` references an enum value by **bare name**, not a string. A defaulted field carries `?`: the default fills it when the client leaves it out.
 - `tags string[]` with `@maxItems` + `@uniqueItems` validates the array.
 
 ## 3. Request shapes
 
-Add the request/response types to the same file. Each endpoint gets its own request type - that keeps validation precise per operation.
+Add the request/response types to the same file, and the error `GetTodo` returns for an unknown id. Each request type matches what its endpoint takes - that keeps validation precise per operation (`DeleteTodo` takes the same single `id` as `GetTodo`, so it reuses `GetTodoReq`).
 
 ```craftgo
 type CreateTodoReq {
     title    string       @length(1, 200)
     notes    string?      @maxLength(2000)
     status   TodoStatus
-    priority TodoPriority @default(Medium)
+    priority TodoPriority? @default(Medium)
     tags     string[]?    @maxItems(10) @uniqueItems
 }
 
@@ -98,6 +98,8 @@ type TodoList {
 type OkResp {
     ok bool
 }
+
+error NotFound TodoNotFound
 ```
 
 `@path` binds a field to a URL path parameter; `@query` binds it to the query string. `UpdateTodoReq` is a PATCH shape - every field except `id` is optional, so callers send only what changes.
@@ -150,61 +152,106 @@ service TodoService {
 
 ```bash
 craftgo gen design
+go mod tidy
 ```
 
-Inspect what landed:
+`go mod tidy` adds the modules the generated code imports. Inspect what landed:
 
 ```
 internal/
-├── types/todos/        types.go, validate.go, enums.go, errors.go
-├── transport/todo-service/   list-todos.go, get-todo.go, ... (handlers)
-├── service/todo-service/     list-todos.go, ... (logic stubs)
-└── routes/...
+├── types/todos/            types.go, validate.go, enums.go, errors.go
+├── transport/todo_service/ list_todos.go, get_todo.go, ... (handlers)
+├── service/todo_service/   list_todos.go, ... (logic stubs)
+├── routes/...
+└── wiring/wiring.go
 docs/openapi.yaml
 main.go
 ```
 
-Open `internal/types/todos/validate.go` - every decorator you wrote is now a plain `if`. Open `docs/openapi.yaml` - every endpoint, schema, and enum is there.
+Open `internal/types/todos/validate.go` - every validator you wrote is a plain Go check. Open `docs/openapi.yaml` - every endpoint, schema, and enum is there.
 
 ## 6. Fill the logic
 
-Edit the stubs in `internal/service/todo-service/`. They are gen-once - `craftgo gen` will never overwrite them. A trivial in-memory store:
+Edit the stubs in `internal/service/todo_service/`. They are gen-once - `craftgo gen` will never overwrite them. A trivial in-memory store, in a file of your own beside them:
 
 ```go
-// internal/service/todo-service/create-todo.go
+// internal/service/todo_service/store.go
+package todos
+
+import (
+	"strconv"
+	"sync"
+	"sync/atomic"
+
+	types "example.com/todo/internal/types/todos"
+)
+
+// store is the in-memory todo store every stub shares.
+var store = &memStore{items: map[string]*types.Todo{}}
+
+var lastID atomic.Int64
+
+// newID returns the next todo id.
+func newID() string { return strconv.FormatInt(lastID.Add(1), 10) }
+
+type memStore struct {
+	mu    sync.Mutex
+	items map[string]*types.Todo
+}
+
+func (s *memStore) Put(t *types.Todo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items[t.ID] = t
+}
+
+func (s *memStore) Get(id string) (*types.Todo, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.items[id]
+	return t, ok
+}
+```
+
+```go
+// internal/service/todo_service/create_todo.go
 func (l *CreateTodoService) CreateTodo(req *types.CreateTodoReq) (*types.Todo, error) {
-    t := &types.Todo{
-        ID:        newID(),
-        Title:     req.Title,
-        Notes:     req.Notes,
-        Status:    req.Status,
-        Priority:  req.Priority,   // already defaulted to Medium by the handler
-        Tags:      req.Tags,
-        CreatedAt: time.Now().UTC().Format(time.RFC3339),
-    }
-    store.Put(t)
-    return t, nil
+	t := &types.Todo{
+		ID:        newID(),
+		Title:     req.Title,
+		Notes:     req.Notes,
+		Status:    req.Status,
+		Priority:  req.Priority, // already defaulted to Medium by the handler
+		Tags:      req.Tags,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	store.Put(t)
+	return t, nil
 }
 ```
 
 ```go
-// internal/service/todo-service/get-todo.go
+// internal/service/todo_service/get_todo.go
 func (l *GetTodoService) GetTodo(req *types.GetTodoReq) (*types.Todo, error) {
-    t, ok := store.Get(req.ID)
-    if !ok {
-        return nil, errors.ErrNotFound   // a generated typed error → 404
-    }
-    return t, nil
+	t, ok := store.Get(req.ID)
+	if !ok {
+		return nil, types.NewTodoNotFoundErr() // a generated typed error → 404
+	}
+	return t, nil
 }
 ```
 
-By the time your function runs, the request is decoded, the path/query params are bound, and `req.Validate()` has passed. You only write the domain logic.
+By the time your function runs, the request is decoded, the path/query params are bound, and `req.Validate()` has passed. You only write the domain logic. The other three stubs still return `nil, nil`, which answers 200 `null` until you fill them.
 
 ## 7. Run
 
 ```bash
 go run .
-# listening on :8080 (api)
+```
+
+```
+{"level":"info","ts":…,"caller":"todo/main.go:48","msg":"metrics scrape listening","url":"[::]:9090/metrics"}
+{"level":"info","ts":…,"caller":"todo/main.go:98","msg":"listening","addr":":8080"}
 ```
 
 ```bash
@@ -217,28 +264,30 @@ curl -X POST localhost:8080/api/todos \
 curl -X POST localhost:8080/api/todos \
   -H 'Content-Type: application/json' \
   -d '{"title":"","status":"open"}'
-# title: length out of range [1, 200]
+# {"message":"title: length out of range [1, 200]"}
 
 # Bad enum value
 curl -X POST localhost:8080/api/todos \
   -H 'Content-Type: application/json' \
   -d '{"title":"x","status":"frozen"}'
-# status: invalid TodoStatus value
+# {"message":"status: must be one of [open in_progress done]"}
 ```
+
+Both answer 400.
 
 ## 8. View the API docs
 
-`docs/openapi.yaml` renders in any OpenAPI viewer:
+The running server serves the document: `http://localhost:8080/docs` renders it with Redoc, and `http://localhost:8080/openapi.yaml` is the file itself (the generated `config.yaml` sets `docs.enabled: true`). For a static page:
 
 ```bash
-npx @redocly/cli preview-docs docs/openapi.yaml
-# or drop the file into editor.swagger.io
+npx @redocly/cli build-docs docs/openapi.yaml
+# writes redoc-static.html; or drop the file into editor.swagger.io
 ```
 
 ## What you learned
 
 - **Types + enums + validators** in the DSL, validated at generate time and at runtime as plain Go.
-- **One request type per operation**, with `@path` / `@query` binding and `@default` pre-fill.
+- **A request type per operation shape**, with `@path` / `@query` binding and `@default` pre-fill.
 - **A service block** maps verbs + paths to typed request/response pairs; `@prefix` + `basePath` compose the URL.
 - **The regenerate loop**: transport/types/routes are regenerated; your logic in `internal/service/` is gen-once and safe.
 

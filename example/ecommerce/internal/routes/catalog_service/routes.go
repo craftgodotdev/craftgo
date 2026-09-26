@@ -3,17 +3,13 @@
 package catalog
 
 import (
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/example/ecommerce/internal/transport/catalog_service"
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
-	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// RegisterRoutes wires every CatalogService endpoint onto srv. Patterns
-// use the Go 1.22 method-prefixed form so VERB and path match together;
-// service prefix and OpenAPI basePath are baked in. Methods declaring
-// `@middlewares(...)` are wrapped via the corresponding fields on
-// ServiceContext (embedded Middlewares struct), so no runtime name
-// lookup is required - the values come pre-wired.
+// RegisterRoutes registers the CatalogService routes on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/catalog/products", transport.ListProducts(svcCtx), svcCtx.RequestID, svcCtx.CORS)
 	srv.Handle("GET /api/catalog/products/{id}", transport.GetProduct(svcCtx), svcCtx.RequestID, svcCtx.CORS)

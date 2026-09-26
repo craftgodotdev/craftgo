@@ -14,8 +14,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
 )
 
-// recorder captures what a handler was asked to write, so a test can
-// assert on records rather than on formatted text.
+// recorder is a slog.Handler that keeps every record and the context it came with.
 type recorder struct {
 	mu      sync.Mutex
 	records []slog.Record
@@ -85,8 +84,7 @@ func deliver(t *testing.T, h slog.Handler, handler events.Handler, opts ...loggi
 	tr.Drain()
 }
 
-// One delivery is ONE line. The transport's error handler already logs a
-// failure at Error, so a second line here would report one failure twice.
+// One successful delivery is one line naming the subscription, the key and the duration.
 func TestOneDeliveryIsOneLine(t *testing.T) {
 	rec := &recorder{}
 	deliver(t, rec, func(context.Context, *events.Message) error { return nil })
@@ -111,8 +109,7 @@ func TestOneDeliveryIsOneLine(t *testing.T) {
 	}
 }
 
-// A FAILED delivery is also one line, at the SAME level, carrying the
-// error - not a second line at Error beside the transport's own.
+// A failed delivery is one line at the same level, carrying the error.
 func TestAFailedDeliveryIsOneLineAtTheSameLevel(t *testing.T) {
 	rec := &recorder{}
 	boom := errors.New("mail provider unavailable")
@@ -130,8 +127,7 @@ func TestAFailedDeliveryIsOneLineAtTheSameLevel(t *testing.T) {
 	}
 }
 
-// The handler's error reaches the transport unchanged: a logging
-// middleware observes, it does not decide.
+// The handler's error reaches the transport unchanged.
 func TestTheHandlersErrorIsPassedThrough(t *testing.T) {
 	boom := errors.New("boom")
 	var seen error
@@ -164,10 +160,7 @@ func TestTheHandlersErrorIsPassedThrough(t *testing.T) {
 	}
 }
 
-// THE CONTEXT MUST REACH THE HANDLER. slog's level shortcuts pass a
-// background context of their own, so a line written with Info() would
-// look right and silently carry no trace id. LogAttrs(ctx, ...) is what
-// makes the handler's ctx the delivery's.
+// The delivery's context reaches the slog handler.
 func TestTheDeliveryContextReachesTheHandler(t *testing.T) {
 	type ctxKey struct{}
 	rec := &recorder{}
@@ -175,8 +168,7 @@ func TestTheDeliveryContextReachesTheHandler(t *testing.T) {
 	bus := events.New(
 		events.WithTransport(tr),
 		events.WithCodec(codecjson.Codec{}),
-		// Outside the access log, so the value is on the context the log
-		// is handed.
+		// Outside the access log, so the log is handed this context.
 		events.WithMiddleware(
 			func(_ events.Subscription, next events.Handler) events.Handler {
 				return func(ctx context.Context, msg *events.Message) error {
@@ -212,8 +204,7 @@ func TestTheDeliveryContextReachesTheHandler(t *testing.T) {
 	}
 }
 
-// A skipped contract is not wrapped at all, so it costs nothing rather
-// than costing a check per delivery.
+// A skipped contract is not logged.
 func TestASkippedContractIsNotLogged(t *testing.T) {
 	rec := &recorder{}
 	deliver(t, rec, func(context.Context, *events.Message) error { return nil },
@@ -223,8 +214,7 @@ func TestASkippedContractIsNotLogged(t *testing.T) {
 	}
 }
 
-// The level is configurable, and a line below the running level is not
-// built.
+// AccessLogLevel sets the level lines are written at.
 func TestTheLevelIsConfigurable(t *testing.T) {
 	rec := &recorder{}
 	deliver(t, rec, func(context.Context, *events.Message) error { return nil },
@@ -254,8 +244,7 @@ func TestExtraFieldsReachTheLine(t *testing.T) {
 	}
 }
 
-// A nil logger leaves the chain untouched rather than panicking on the
-// first delivery.
+// A nil logger passes deliveries through unlogged.
 func TestANilLoggerIsAPassThrough(t *testing.T) {
 	ran := false
 	mw := logging.AccessLog(nil)

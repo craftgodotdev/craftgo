@@ -1,14 +1,5 @@
-// The workspace exists because the published nested modules - pkg/events,
-// its nats/kafka adapters and pkg/wire - carry no `replace` directives: a
-// release pins `require github.com/craftgodotdev/craftgo/pkg/events vX.Y.Z`,
-// and a consumer of pkg/events/nats@vX.Y.Z must get that real version, not a
-// local path. Inside this repo the workspace does the resolving instead, so a
-// change to pkg/events or pkg/wire is visible to the adapters (and to the
-// examples and the e2e fixture) before it is tagged or pushed.
-//
-// `go mod tidy` ignores workspaces, so example/ and tests/e2e/matrix keep
-// their `replace` lines: those are what make `make tidy` resolve the
-// placeholder `v0.0.0` requires without a network round-trip.
+// Resolves the published nested modules, which carry no `replace` lines, to this tree.
+// `go mod tidy` ignores workspaces, so the modules that are never published keep their `replace` lines.
 go 1.26.6
 
 use (
@@ -23,6 +14,7 @@ use (
 	./pkg/events
 	./pkg/events/kafka
 	./pkg/events/nats
+	./pkg/events/nats/internal/integration
 	./pkg/wire
 	./tests/e2e/matrix
 )

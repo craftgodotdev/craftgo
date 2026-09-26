@@ -3,8 +3,8 @@ package attachments
 type Attachment {
 	id       shared.ID
 	taskId   shared.ID
-	filename string @length(1, 255)
-	size     int    @gte(0)
+	filename string    @length(1, 255)
+	size     int       @gte(0)
 	mimeType string
 	caption  string?
 	shared.Timestamps

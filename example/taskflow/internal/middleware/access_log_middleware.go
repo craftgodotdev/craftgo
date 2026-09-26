@@ -8,17 +8,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// NewAccessLogMiddleware constructs the AccessLog middleware.
-//
-// craftgo never overwrites this file after the first generation, so
-// add wiring (token store, logger, rate-limit budget, ...) or change
-// the param types freely.
-//
-// Wire it from main.go:
-//
-//	svc := svccontext.NewServiceContext()
-//	svc.AccessLog = middleware.NewAccessLogMiddleware(/* args */)
-//	routes.RegisterRoutes(srv, svc)
+// NewAccessLogMiddleware returns the AccessLog middleware, which ServiceContext's AccessLog field holds.
 func NewAccessLogMiddleware() server.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

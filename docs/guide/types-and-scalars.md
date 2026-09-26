@@ -14,6 +14,21 @@ type CreateUserReq {
 
 Each field is `name type [decorators]`. Types compose from primitives, arrays, maps, and other types.
 
+A field's decorators follow it: on its line, or on lines of their own below it, up to the next member. So a decorator on a line of its own between two fields is the upper field's, even across a blank line or a comment:
+
+```craftgo
+type Signup {
+    email    string @format(email)
+    password string
+        @minLength(12)
+    nickname string?
+}
+```
+
+`@minLength(12)` belongs to `password`, and `craftgo fmt` moves it onto that line. A field takes decorators written above it only as the first member of its body or right below a mixin.
+
+Every type's struct gets a `Validate()` method, so a field whose Go name is `Validate` - `validate`, say - is rejected (`field/invalid-go-name`), as is a mixin of a type named `Validate`.
+
 ### Primitive types
 
 | DSL        | Go         | Notes                                |
@@ -21,14 +36,15 @@ Each field is `name type [decorators]`. Types compose from primitives, arrays, m
 | `string`   | `string`   |                                      |
 | `bytes`    | `[]byte`   | base64-decoded from JSON; see `@format(raw)` below |
 | `int`      | `int`      | platform-sized                       |
-| `int32`    | `int32`    | explicit width                       |
-| `int64`    | `int64`    |                                      |
-| `uint`     | `uint`     |                                      |
+| `int8`, `int16`, `int32`, `int64` | same name | explicit width |
+| `uint`     | `uint`     | platform-sized                       |
+| `uint8`, `uint16`, `uint32`, `uint64` | same name | explicit width |
 | `float32`  | `float32`  |                                      |
 | `float64`  | `float64`  |                                      |
 | `bool`     | `bool`     |                                      |
 | `datetime` | `time.Time` | RFC 3339 string in JSON; body fields only |
-| `file`     | `*multipart.FileHeader` | only valid with `@form` |
+| `file`     | `*multipart.FileHeader` | a multipart part: a request's top-level field only, never in a response, an error body or an event payload |
+| `any`      | `any`      | an opaque JSON value; see the table below |
 
 #### raw encoded values: `bytes @format(raw)`
 
@@ -53,7 +69,7 @@ Three ways to carry a document, and what each costs:
 | --- | --- | --- | --- |
 | `bytes` | `[]byte` | base64 of the bytes | a reader gets a blob, not a document: no consumer can index into it and the payload grows by a third |
 | `bytes @format(raw)` | `wire.Raw` | the value itself, embedded | nothing is checked, because nothing is read |
-| `any` | `any` | the value, decoded and re-encoded | an explicit `null` becomes Go `nil` and encodes as an absent key (a NOT NULL violation further down), an integer past 2^53 loses digits to `float64`, and `1.50` comes back `1.5` |
+| `any` | `any` | the value, decoded and re-encoded | an explicit `null` for an `any?` field becomes Go `nil` and drops the key (a NOT NULL violation further down; a required `any` refuses it: `<field>: required`), an integer past 2^53 loses digits to `float64`, and `1.50` comes back `1.5` |
 
 Those three losses are not hypothetical: a round trip through `map[string]any` is the only thing `any` can do, and each one is a value another system already stored. `bytes @format(raw)` keeps all three, because it never looks.
 
@@ -94,6 +110,8 @@ type UpdateUser struct {
 }
 ```
 
+That holds for a primitive, scalar, enum, struct or `datetime`. An optional array, map, `bytes`, `any` or raw field keeps its Go type, which is nil when absent, and gains `omitempty`.
+
 ### Arrays
 
 ```craftgo
@@ -114,7 +132,7 @@ type Settings {
 }
 ```
 
-Becomes `map[string]bool` and `map[string]int`. Keys must be a non-optional string or integer primitive, a scalar over one of those, or an enum.
+Becomes `map[string]bool` and `map[string]int`. Keys must be a non-optional string or integer primitive, a scalar over one of those, or an enum. A value may be optional (`map<string, int?>` becomes `map[string]*int`), except an array or a map, whose nil already stands for null: `map<string, int[]?>` is `type/map-value`.
 
 ### Nested types
 
@@ -143,9 +161,15 @@ type UserList {
 }
 ```
 
-Generic type parameters are bare identifiers - no constraint or variance syntax. The Go output uses standard Go 1.18+ generics with an implicit `any` constraint; each concrete instantiation also becomes a flat schema in OpenAPI (`Page<User>` emits a component named `PageOfUser`). `extend` only applies to `service` - there is no `extend type` / `extend enum`.
+Generic type parameters are bare identifiers starting with an uppercase letter - no constraint or variance syntax. The Go output uses standard Go 1.18+ generics with an implicit `any` constraint; each concrete instantiation also becomes a flat schema in OpenAPI (`Page<User>` emits a component named `PageOfUser`). Inside the generic's body a type parameter hides any declaration of the same name, as in Go. `extend` only applies to `service` - there is no `extend type` / `extend enum`.
 
 A type **argument** cannot carry a trailing `?` (`Page<User?>` is rejected): the optionality has no well-defined position once the argument is substituted into the decl's body, so the Go type and the OpenAPI schema would disagree. Declare the nullability on a concrete field of the generic instead (`type Box<T> { item T? }`, used as `Box<User>`).
+
+A generic may name itself in its own body with its parameters passed on unchanged (`type Tree<T> { kids Tree<T>[] }`). Passing a parameter back inside a larger type, directly or through another generic (`kids Tree<Tree<T>>[]`, `Tree<T[]>`), is `generic/instantiation-cycle`: every instance would need a larger one, which Go rejects as an instantiation cycle.
+
+A field typed by a type parameter takes no constraint decorator, since one validator serves every argument: `v T @maxLength(5)` or `v T @maxSize(10)` is `decorator/typemismatch`. A collection of the parameter takes the collection's own, as in `items T[] @maxItems(50)`.
+
+A field typed by a type parameter may carry a wire binding, `@header`, `@cookie`, `@query`, `@path` or `@form` (`type Paged<T> { count T @header("X-Count") items T[] }`). Each request, response or error mixin that instantiates the type is checked with its argument: `response Paged<int>` sends `X-Count` as an integer, and `response Paged<User>` is `binding/type` at the response clause. An argument a type's own mixin writes, as in `type UserPage { Paged<User> }`, is reported once, at that mixin.
 
 ### Mixins
 
@@ -202,7 +226,7 @@ type User {
 The parser reads each line in a type body and decides whether the first identifier names a field or a mixin:
 
 1. If the next token is `.` or `<` -> mixin (qualified or generic name).
-2. If the next token is a builtin primitive on the same line (`string`, `int`, `bool`, `bytes`, `float64`, ...) -> field.
+2. If the next token is a builtin primitive or `map` on the same line (`string`, `int`, `bool`, `bytes`, `float64`, `map<string, int>`, ...) -> field.
 3. If the first identifier starts lowercase -> field (the canonical form: `name string`).
 4. Otherwise -> mixin (PascalCase identifier alone, or followed by another PascalCase identifier that is the start of the next member).
 
@@ -217,13 +241,13 @@ type OrderCaptured {
 }
 ```
 
-The Go tag, the OpenAPI document and validation messages all carry the `@json` key. It applies to body fields only; a field bound with `@path`, `@query`, `@header`, `@cookie` or `@form` names its wire location in that decorator.
+The Go tag, the OpenAPI document and validation messages all carry the `@json` key. It applies to body fields only; a field bound with `@path`, `@query`, `@header`, `@cookie` or `@form` names its wire location in that decorator. A field without a binding decorator that a request reads from a path variable, or from the query string of a `get`, `delete`, `head` or `options` method, is read under its own name, which its validation messages carry when no JSON value holds the field.
 
-The recommended style is to keep field names lowercase (`createdAt string`) and reserve PascalCase for mixin references. Mixing the two on adjacent lines works, but a PascalCase field declared with a custom (non-builtin) type - e.g. `CreatedAt MyTimestamp` on its own line - is read as a mixin reference to `CreatedAt` followed by a field named `MyTimestamp`. When in doubt, write the field on its own line with a builtin or scalar-backed type.
+The recommended style is to keep field names lowercase (`createdAt string`) and reserve PascalCase for mixin references. Mixing the two on adjacent lines works, but a PascalCase field declared with a custom (non-builtin) type - e.g. `CreatedAt MyTimestamp` on its own line, even with `MyTimestamp` a scalar - is read as two mixin references, `CreatedAt` and `MyTimestamp`. When in doubt, name the field in lower case and set its key with `@json`: `createdAt MyTimestamp @json("CreatedAt")`.
 
 #### Restrictions
 
-A mixin must reference a `type` declaration. Referencing an `enum`, `error`, `scalar`, or `middleware` raises `mixin/non-type`. An unknown name raises `ref/unknown-symbol`, like any other type reference (`ref/unknown-package` when a `pkg.Type` names a package that does not exist). A mixin takes no decorators: one written before it, or after it on its own line, is an error rather than being attached to the next field.
+A mixin must reference a `type` declaration. Referencing an `enum`, `error`, `scalar`, or `middleware` raises `mixin/non-type`. An unknown name raises `ref/unknown-symbol`, like any other type reference (`ref/unknown-package` when a `pkg.Type` names a package that does not exist). A mixin takes no decorators: one after it on its line is an error. A decorator on a line of its own above a mixin belongs to the field above, when there is one; at the top of the body or below another mixin it is an error. One on a line of its own below a mixin goes to the field below it.
 
 The Go output uses struct embedding:
 
@@ -248,7 +272,7 @@ scalar Cents int @gte(0) @multipleOf(2)
 scalar Latitude float64 @gte(-90) @lte(90)
 ```
 
-The DSL form is `scalar <Name> <PrimitiveType> [@validators...]`. The primitive must be one of the built-in primitives (string, bytes, int variants, float variants, bool).
+The DSL form is `scalar <Name> <PrimitiveType> [@validators...]`. The primitive must be one of `string`, `bool`, `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64`, `float32`, `float64` or `bytes`; a scalar over `datetime`, `file` or `any` is rejected as `scalar/bad-primitive` - use `datetime` directly.
 
 ### Use
 

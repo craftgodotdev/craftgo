@@ -4,16 +4,12 @@ package nested
 
 import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
+
 	transport "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/transport/nested_service"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RegisterRoutes wires every NestedService endpoint onto srv. Patterns
-// use the Go 1.22 method-prefixed form so VERB and path match together;
-// service prefix and OpenAPI basePath are baked in. Methods declaring
-// `@middlewares(...)` are wrapped via the corresponding fields on
-// ServiceContext (embedded Middlewares struct), so no runtime name
-// lookup is required - the values come pre-wired.
+// RegisterRoutes registers the NestedService routes on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/nested/user", transport.EchoUser(svcCtx))
 	srv.Handle("POST /api/nested/person", transport.EchoPerson(svcCtx))
@@ -26,4 +22,7 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/nested/a", transport.EchoA(svcCtx))
 	srv.Handle("POST /api/nested/b", transport.EchoB(svcCtx))
 	srv.Handle("POST /api/nested/list-page", transport.EchoListPage(svcCtx))
+	srv.Handle("POST /api/nested/audited-host", transport.EchoAuditedHost(svcCtx))
+	srv.Handle("POST /api/nested/headered-resp", transport.EchoHeaderedResp(svcCtx))
+	srv.Handle("GET /api/nested/rate-resp", transport.GetRateResp(svcCtx))
 }

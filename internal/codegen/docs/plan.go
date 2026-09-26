@@ -7,31 +7,30 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// RegeneratedFile is the document [GenerateOpenAPI] writes, or "" when
-// it writes none: `output.openapi` is off, or the design holds no DSL
-// package for the document to describe.
-func RegeneratedFile(proj *semantic.Project, cfg *config.Config, projectRoot string) string {
-	if !describable(proj) {
-		return ""
+// Plan lists what [GenerateOpenAPI] writes under projectRoot: the document, as the one path the
+// sweep covers, with its header, and as the file written, which a design with no DSL package does
+// not get. With `output.openapi` off there is neither.
+func Plan(proj *semantic.Project, cfg *config.Config, projectRoot string) (paths map[string][]string, files []string) {
+	doc := documentPath(cfg, projectRoot)
+	if doc == "" {
+		return nil, nil
 	}
-	return OutputDir(cfg, projectRoot)
+	if describable(proj) {
+		files = []string{doc}
+	}
+	return map[string][]string{doc: {GeneratedHeader}}, files
 }
 
-// OutputDir is the directory the document lives in, or "" when
-// `output.openapi` is off. The sweep walks it whether or not this run
-// writes a document, so the one an earlier run left behind for a design
-// that has since lost its last DSL package goes.
-func OutputDir(cfg *config.Config, projectRoot string) string {
-	dest := cfg.Output.OpenAPI
-	if dest == "" || dest == "-" {
+// documentPath is the path of the document, or "" when `output.openapi` is off.
+func documentPath(cfg *config.Config, projectRoot string) string {
+	if cfg.Output.OpenAPIDisabled() {
 		return ""
 	}
-	return filepath.Join(projectRoot, dest)
+	return filepath.Join(projectRoot, cfg.Output.OpenAPI)
 }
 
-// describable reports whether there is a design for the document to
-// describe. A project of protos alone has none: the document would
-// carry an empty `paths` and empty `components`, and nothing serves it.
+// describable reports whether proj has a DSL package to document; a design
+// of protos alone has none.
 func describable(proj *semantic.Project) bool {
 	return proj != nil && len(proj.Packages) > 0
 }

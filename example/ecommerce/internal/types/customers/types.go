@@ -3,8 +3,9 @@
 package customers
 
 import (
-	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
 	"mime/multipart"
+
+	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
 )
 
 type Address struct {
@@ -33,16 +34,16 @@ type CreateCustomerReq struct {
 }
 
 type Customer struct {
-	ID             shared.NonEmptyID     `json:"id"`
-	Email          shared.Email          `json:"email"`
-	Name           string                `json:"name"`
-	PrimaryAddress Address               `json:"primaryAddress"`
-	BillingAddress *Address              `json:"billingAddress,omitempty"`
-	Contact        Contact               `json:"contact"`
-	Avatar         *multipart.FileHeader `json:"avatar,omitempty"`
-	LoyaltyPoints  *int                  `json:"loyaltyPoints"`
-	Bio            *string               `json:"bio,omitempty"`
-	CreatedAt      string                `json:"createdAt"`
+	ID             shared.NonEmptyID `json:"id"`
+	Email          shared.Email      `json:"email"`
+	Name           string            `json:"name"`
+	PrimaryAddress Address           `json:"primaryAddress"`
+	BillingAddress *Address          `json:"billingAddress,omitempty"`
+	Contact        Contact           `json:"contact"`
+	AvatarURL      *string           `json:"avatarUrl,omitempty"`
+	LoyaltyPoints  *int              `json:"loyaltyPoints"`
+	Bio            *string           `json:"bio,omitempty"`
+	CreatedAt      string            `json:"createdAt"`
 }
 
 type CustomerRef struct {

@@ -9,12 +9,11 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/user_service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-	shared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// BanUser returns the http.HandlerFunc for the
-// POST BanUser endpoint.
+// BanUser returns the POST BanUser handler.
 func BanUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.UserRef
@@ -33,8 +32,6 @@ func BanUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

@@ -11,10 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RrLate returns the http.HandlerFunc for the
-// GET RrLate raw-response endpoint. The handler binds and
-// validates the request, then hands the http.ResponseWriter and
-// *http.Request to logic, which writes the response directly.
+// Raw response whose stub writes part of a body and then returns an error: the committed body must stay intact.
+//
+// RrLate returns the GET RrLate handler.
 func RrLate(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewRrLateService(r.Context(), svcCtx)

@@ -11,9 +11,9 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RqDocsReq returns the http.HandlerFunc for the
-// POST RqDocsReq raw-request endpoint. The handler hands the
-// *http.Request to logic unread and encodes the returned response.
+// Raw request whose docs-only contract has a file field: OpenAPI says multipart, the transport parses nothing.
+//
+// RqDocsReq returns the POST RqDocsReq handler.
 func RqDocsReq(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := service.NewRqDocsReqService(r.Context(), svcCtx)
@@ -22,8 +22,6 @@ func RqDocsReq(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

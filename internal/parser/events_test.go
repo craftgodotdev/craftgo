@@ -7,42 +7,8 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
-// parseService parses src and returns the first service declaration.
-func parseService(t *testing.T, src string) *ast.ServiceDecl {
-	t.Helper()
-	p := New("test.craftgo", src)
-	f := p.Parse()
-	if diags := p.Diagnostics(); len(diags) > 0 {
-		t.Fatalf("unexpected diagnostics: %v", diags)
-	}
-	for _, d := range f.Decls {
-		if sd, ok := d.(*ast.ServiceDecl); ok {
-			return sd
-		}
-	}
-	t.Fatalf("no service declaration in %q", src)
-	return nil
-}
-
-// parseEvent parses src and returns the first event declaration.
-func parseEvent(t *testing.T, src string) *ast.EventDecl {
-	t.Helper()
-	p := New("test.craftgo", src)
-	f := p.Parse()
-	if diags := p.Diagnostics(); len(diags) > 0 {
-		t.Fatalf("unexpected diagnostics: %v", diags)
-	}
-	for _, d := range f.Decls {
-		if ed, ok := d.(*ast.EventDecl); ok {
-			return ed
-		}
-	}
-	t.Fatalf("no event declaration in %q", src)
-	return nil
-}
-
 func TestParseFileLevelEvent(t *testing.T) {
-	ev := parseEvent(t, `package orders
+	ev := firstDecl[*ast.EventDecl](t, `package orders
 
 // Emitted once an order is accepted.
 @contract("order.placed.v2")
@@ -67,65 +33,55 @@ service OrderService {
 	}
 }
 
-// `consume` left the reserved-word list with the listener declarations;
-// a design still carrying one is told where the listener went rather
-// than being handed the generic member error.
+// TestParseConsumeInServiceBodyIsRejected pins the dedicated diagnostic for
+// `consume` in a service body.
 func TestParseConsumeInServiceBodyIsRejected(t *testing.T) {
-	p := New("test.craftgo", `package p
+	_, msgs := parseWithErrors(t, `package p
 service S {
 	consume SendReceipt {
 		event shared.OrderPlaced
 	}
 }`)
-	p.Parse()
-	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "`consume` is no longer part of the DSL") {
-		t.Fatalf("want a consume-removed diagnostic, got %v", diags)
+	if !strings.Contains(firstMsg(msgs), "a service has no `consume` member") {
+		t.Fatalf("want the consume diagnostic, got %v", msgs)
 	}
 }
 
-// An `event` inside a service body used to declare the contract that
-// service publishes; the diagnostic says where it belongs now.
+// TestParseEventInServiceBodyIsRejected pins that an `event` in a service body
+// is told to move to file level.
 func TestParseEventInServiceBodyIsRejected(t *testing.T) {
-	p := New("test.craftgo", `package p
+	_, msgs := parseWithErrors(t, `package p
 service S {
 	event E { payload P }
 }`)
-	p.Parse()
-	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "`event` is a file-level declaration") {
-		t.Fatalf("want a file-level-event diagnostic, got %v", diags)
+	if !strings.Contains(firstMsg(msgs), "`event` is a file-level declaration") {
+		t.Fatalf("want a file-level-event diagnostic, got %v", msgs)
 	}
 }
 
 func TestParseEventRejectsUnknownClause(t *testing.T) {
-	p := New("test.craftgo", `package p
+	_, msgs := parseWithErrors(t, `package p
 event E { response R }`)
-	p.Parse()
-	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "payload in event body") {
-		t.Fatalf("want a payload-clause diagnostic, got %v", diags)
+	if !strings.Contains(firstMsg(msgs), "payload in event body") {
+		t.Fatalf("want a payload-clause diagnostic, got %v", msgs)
 	}
 }
 
 func TestParseEventRejectsDuplicatePayload(t *testing.T) {
-	p := New("test.craftgo", `package p
+	_, msgs := parseWithErrors(t, `package p
 event E {
 	payload A
 	payload B
 }`)
-	p.Parse()
-	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "duplicate payload clause") {
-		t.Fatalf("want a duplicate-payload diagnostic, got %v", diags)
+	if !strings.Contains(firstMsg(msgs), "duplicate payload clause") {
+		t.Fatalf("want a duplicate-payload diagnostic, got %v", msgs)
 	}
 }
 
-// A contract may carry an array of a declared type - a JSON array body -
-// so `payload Order[]` parses, with the suffix recorded on the clause
-// rather than dropped.
+// TestParseEventAcceptsAnArrayPayload pins that `payload Order[]` parses with
+// Array set.
 func TestParseEventAcceptsAnArrayPayload(t *testing.T) {
-	e := parseEvent(t, `package p
+	e := firstDecl[*ast.EventDecl](t, `package p
 event E { payload Order[] }`)
 	if e.Payload == nil || e.Payload.Type == nil {
 		t.Fatalf("payload did not parse: %+v", e)
@@ -138,64 +94,48 @@ event E { payload Order[] }`)
 	}
 }
 
-// A map is not a payload at all: a contract names a type so its body has
-// named fields, and `map<...>` names none.
+// TestParseEventRejectsMapPayload pins that a map payload is an error.
 func TestParseEventRejectsMapPayload(t *testing.T) {
-	p := New("test.craftgo", `package p
+	_, msgs := parseWithErrors(t, `package p
 event E { payload map<string, int> }`)
-	p.Parse()
-	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "expected Ident") {
-		t.Fatalf("want a payload-type diagnostic, got %v", diags)
+	if !strings.Contains(firstMsg(msgs), "expected Ident") {
+		t.Fatalf("want a payload-type diagnostic, got %v", msgs)
 	}
 }
 
-// A single dimension is the whole of it: an array of arrays has no
-// declared element type to validate, so it keeps a diagnostic pointing at
-// the wrapper type.
+// TestParseEventRejectsNestedArrayPayload pins that `payload Order[][]` is an
+// error.
 func TestParseEventRejectsNestedArrayPayload(t *testing.T) {
-	p := New("test.craftgo", `package p
+	_, msgs := parseWithErrors(t, `package p
 event E { payload Order[][] }`)
-	p.Parse()
-	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "payload type cannot be a nested array") {
-		t.Fatalf("want a nested-array diagnostic, got %v", diags)
+	if !strings.Contains(firstMsg(msgs), "payload type cannot be a nested array") {
+		t.Fatalf("want a nested-array diagnostic, got %v", msgs)
 	}
 }
 
-// The `?` marker stays refused on every clause, array payload included:
-// a nullable message is a field of the type, not the type.
+// TestParseEventRejectsOptionalArrayPayload pins that `payload Order[]?` is an
+// error.
 func TestParseEventRejectsOptionalArrayPayload(t *testing.T) {
-	p := New("test.craftgo", `package p
+	_, msgs := parseWithErrors(t, `package p
 event E { payload Order[]? }`)
-	p.Parse()
-	diags := p.Diagnostics()
-	if len(diags) == 0 || !strings.Contains(diags[0].Msg, "payload type cannot be optional") {
-		t.Fatalf("want an optional-marker diagnostic, got %v", diags)
+	if !strings.Contains(firstMsg(msgs), "payload type cannot be optional") {
+		t.Fatalf("want an optional-marker diagnostic, got %v", msgs)
 	}
 }
 
-// The event keywords stay contextual where the grammar leaves no
-// ambiguity: a type body member is a field or a mixin, and a keyword
-// never spells a mixin, so `event` / `payload` remain legal field names.
-// `consume` is an ordinary identifier again and needs no such rule.
+// TestNewKeywordsStillWorkAsFieldNames pins that `event`, `consume` and
+// `payload` are legal field names.
 func TestNewKeywordsStillWorkAsFieldNames(t *testing.T) {
-	p := New("test.craftgo", `package p
+	td := firstDecl[*ast.TypeDecl](t, `package p
 type T {
 	event   string
 	consume string
 	payload string
 }`)
-	f := p.Parse()
-	if diags := p.Diagnostics(); len(diags) > 0 {
-		t.Fatalf("unexpected diagnostics: %v", diags)
-	}
-	td := f.Decls[0].(*ast.TypeDecl)
 	var names []string
-	ast.EachField(td.Body, func(fl *ast.Field) bool {
+	for _, fl := range ast.Fields(td.Body) {
 		names = append(names, fl.Name)
-		return true
-	})
+	}
 	want := []string{"event", "consume", "payload"}
 	for i := range want {
 		if i >= len(names) || names[i] != want[i] {
@@ -204,21 +144,15 @@ type T {
 	}
 }
 
-// A reserved word in a decorator argument slot names a field, not a
-// literal - the only reading that leaves `@requiresOneOf(payload, ...)`
-// meaningful once `payload` became a keyword.
+// TestKeywordSpellingsWorkAsDecoratorArguments pins that a reserved word in a
+// decorator argument is an identifier.
 func TestKeywordSpellingsWorkAsDecoratorArguments(t *testing.T) {
-	p := New("test.craftgo", `package p
+	td := firstDecl[*ast.TypeDecl](t, `package p
 @requiresOneOf(payload, event)
 type T {
 	payload string?
 	event   string?
 }`)
-	f := p.Parse()
-	if diags := p.Diagnostics(); len(diags) > 0 {
-		t.Fatalf("unexpected diagnostics: %v", diags)
-	}
-	td := f.Decls[0].(*ast.TypeDecl)
 	args := td.Decorators[0].Args
 	if len(args) != 2 {
 		t.Fatalf("args = %d, want 2", len(args))
@@ -231,10 +165,10 @@ type T {
 	}
 }
 
-// Reserved words are legal path segments and path-parameter names, so a
-// route is unaffected by the keyword table growing.
+// TestNewKeywordsStillWorkInPaths pins that reserved words work as path
+// segments and parameter names.
 func TestNewKeywordsStillWorkInPaths(t *testing.T) {
-	sd := parseService(t, `package p
+	sd := firstDecl[*ast.ServiceDecl](t, `package p
 service S {
 	get Read /event/{payload} {}
 }`)

@@ -1,84 +1,40 @@
-// Decorator + expression printing for decorator argument trees.
 package format
 
 import (
 	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
+// Decorator writes `@name`, or `@name(args)` when it has arguments or a
+// comment inside its parentheses.
 func (p *Printer) Decorator(d *ast.Decorator) {
-	p.decoratorCore(d)
-	if d.TrailingDoc != "" {
-		p.write("  // ")
-		p.write(d.TrailingDoc)
-	}
-}
-
-// decoratorCore writes the `@name(args)` form WITHOUT the trailing
-// comment. A field's decorator chain collapses onto one line, so a
-// comment on a non-last decorator must land at the END of the line (it
-// would otherwise swallow the following decorators into comment text and
-// silently drop their constraints); alignedField renders via this and
-// emits the merged trailing itself.
-func (p *Printer) decoratorCore(d *ast.Decorator) {
 	p.write("@")
-	name := d.Name
-	p.write(name)
-	// Canonical: emit parens only when there are real args. Empty
-	// `()` is stripped on save - both `@positive()` (Flag decorator
-	// authored with parens) and `@deprecated()` (no-arg form) round-
-	// trip to bare `@positive` / `@deprecated`.
-	if len(d.Args) > 0 {
-		p.write("(")
-		for i, a := range d.Args {
-			if i > 0 {
-				p.write(", ")
-			}
-			p.decoratorArgInContext(name, i, a)
-		}
-		p.write(")")
+	p.write(d.Name)
+	end := p.src.argsCloseLine(d)
+	if len(d.Args) == 0 && !p.argCommentBetween(d.Pos.Line, end) {
+		return
 	}
+	items := make([]listItem, len(d.Args))
+	for i, a := range d.Args {
+		items[i] = listItem{first: a.Pos.Line, last: p.argLastLine(a), print: func() { p.decoratorArgInContext(d.Name, i, a) }}
+	}
+	p.list(d.Pos.Line, end, "(", items, ")")
 }
 
-// decoratorArgInContext renders a decorator argument with awareness
-// of the host decorator name + position index. The only context-
-// sensitive rewrite today is the string-to-ident canonicalisation
-// for `@format`: `@format("email")` is rewritten to `@format(email)`.
-// Rule - when the argument names a registered identifier (format
-// name, security scheme, ...), bare ident is canonical; free-form
-// values (regex, paths) stay quoted. Every other decorator falls
-// through to the generic [Printer.DecoratorArg] path unchanged.
+// decoratorArgInContext prints argument idx of decoratorName; a string that is
+// an identifier prints bare as the first positional argument of a decorator
+// whose first argument names one of a closed set (`@format(email)`).
 func (p *Printer) decoratorArgInContext(decoratorName string, idx int, a *ast.DecoratorArg) {
-	if decoratorName == "format" && idx == 0 && !a.Named {
-		if s, ok := a.Value.(*ast.StringLit); ok && isPlainIdent(s.Value) {
+	if spec, known := semantic.DecoratorSpec(decoratorName); known && len(spec.Args.Enum) > 0 && idx == 0 && !a.Named {
+		if s, ok := a.Value.(*ast.StringLit); ok && lexer.IsIdent(s.Value) {
 			p.write(s.Value)
 			return
 		}
 	}
 	p.DecoratorArg(a)
-}
-
-// isPlainIdent reports whether s would parse as a bare identifier in
-// craftgo - leading letter / underscore, followed by letters / digits /
-// underscores. The string→ident format rewrite uses it as a guard so
-// strings with hyphens, dots, or spaces fall back to the quoted form
-// instead of producing an unparseable rewrite.
-func isPlainIdent(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i, r := range s {
-		switch {
-		case r == '_':
-		case r >= 'a' && r <= 'z':
-		case r >= 'A' && r <= 'Z':
-		case i > 0 && r >= '0' && r <= '9':
-		default:
-			return false
-		}
-	}
-	return true
 }
 
 func (p *Printer) DecoratorArg(a *ast.DecoratorArg) {
@@ -87,19 +43,16 @@ func (p *Printer) DecoratorArg(a *ast.DecoratorArg) {
 		p.write(": ")
 	}
 	switch {
-	case a.Nested != nil:
-		p.Decorator(a.Nested)
 	case a.Object != nil:
-		p.write("{")
+		items := make([]listItem, len(a.Object))
 		for i, f := range a.Object {
-			if i > 0 {
-				p.write(", ")
-			}
-			p.write(f.Name)
-			p.write(": ")
-			p.Expr(f.Value)
+			items[i] = listItem{first: f.Pos.Line, last: p.exprLastLine(f.Value), print: func() {
+				p.write(f.Name)
+				p.write(": ")
+				p.Expr(f.Value)
+			}}
 		}
-		p.write("}")
+		p.list(a.Pos.Line, p.src.closeLine(a.Pos), "{", items, "}")
 	default:
 		p.Expr(a.Value)
 	}
@@ -108,11 +61,11 @@ func (p *Printer) DecoratorArg(a *ast.DecoratorArg) {
 func (p *Printer) Expr(e ast.Expr) {
 	switch v := e.(type) {
 	case *ast.StringLit:
-		p.write(strconv.Quote(v.Value))
+		p.write(v.Text)
 	case *ast.IntLit:
 		p.write(strconv.FormatInt(v.Value, 10))
 	case *ast.FloatLit:
-		p.write(strconv.FormatFloat(v.Value, 'g', -1, 64))
+		p.write(v.Text)
 	case *ast.BoolLit:
 		if v.Value {
 			p.write("true")
@@ -128,13 +81,94 @@ func (p *Printer) Expr(e ast.Expr) {
 	case *ast.IdentExpr:
 		p.write(v.Name.String())
 	case *ast.ArrayLit:
-		p.write("[")
+		items := make([]listItem, len(v.Elements))
 		for i, el := range v.Elements {
+			items[i] = listItem{first: el.ExprPos().Line, last: p.exprLastLine(el), print: func() { p.Expr(el) }}
+		}
+		p.list(v.Pos.Line, p.src.closeLine(v.Pos), "[", items, "]")
+	}
+}
+
+// listItem is an element of an argument list, an array or an object: its
+// first and last source lines, and how it prints.
+type listItem struct {
+	first, last int
+	print       func()
+}
+
+// list writes items between opener, on source line open, and closer, on line
+// end: on one line or, when the items continue below line open and a trailing
+// comment sits on their lines, or a comment sits on a line of its own among
+// them, each source line of items on its own line one level deeper under the
+// comments above it, and the closer on a line of its own.
+func (p *Printer) list(open, end int, opener string, items []listItem, closer string) {
+	p.write(opener)
+	var lines [][]listItem
+	for rest := items; len(rest) > 0; {
+		k := 1
+		for k < len(rest) && rest[k].first == rest[0].first {
+			k++
+		}
+		lines, rest = append(lines, rest[:k]), rest[k:]
+	}
+	n := len(items)
+	keep := n > 0 && items[n-1].first > open && p.trailingBefore(open, items[n-1].last+1)
+	prev := open
+	for _, l := range lines {
+		keep = keep || p.argCommentBetween(prev, l[0].first)
+		prev = l[len(l)-1].last
+	}
+	if !keep && !p.argCommentBetween(prev, end) {
+		for i, it := range items {
 			if i > 0 {
 				p.write(", ")
 			}
-			p.Expr(el)
+			it.print()
 		}
-		p.write("]")
+		p.write(closer)
+		return
 	}
+	p.endCode()
+	p.depth++
+	prev = open
+	for _, l := range lines {
+		p.argComments(prev, l[0].first)
+		p.line(l[0].first)
+		for i, it := range l {
+			if i > 0 {
+				p.write(", ")
+			}
+			it.print()
+		}
+		p.write(",")
+		p.endCode()
+		prev = l[len(l)-1].last
+	}
+	p.argComments(prev, end)
+	p.depth--
+	p.endLine(prev + 1)
+	p.indent()
+	p.write(closer)
+}
+
+// argLastLine returns the source line a decorator argument ends on.
+func (p *Printer) argLastLine(a *ast.DecoratorArg) int {
+	switch {
+	case len(a.Object) > 0:
+		return p.src.closeLine(a.Pos)
+	case a.Value != nil:
+		return p.exprLastLine(a.Value)
+	}
+	return a.Pos.Line
+}
+
+// exprLastLine returns the source line e ends on.
+func (p *Printer) exprLastLine(e ast.Expr) int {
+	switch v := e.(type) {
+	case *ast.ArrayLit:
+		return p.src.closeLine(v.Pos)
+	case *ast.StringLit:
+		return v.Pos.Line + lineEnds(v.Text)
+	}
+	return e.ExprPos().Line
 }

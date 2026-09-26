@@ -5,26 +5,21 @@ package xrefs
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetTracedService carries the per-request state for the
-// GetTraced endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetTracedService runs XRefsService.GetTraced for one request.
 type GetTracedService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetTracedService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetTracedService binds GetTracedService to ctx; its Logger carries ctx's trace ids.
 func NewGetTracedService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetTracedService {
 	return &GetTracedService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewGetTracedService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 	}
 }
 
-// GetTraced is the service entry point. Replace the
-// TODO with the real implementation.
+// Pins a QUALIFIED cross-package RESPONSE with @header/@cookie (xshared.XHeaderResp). The handler must write w.Header().Set / http.SetCookie even though the response type is cross-package - else the values silently drop (json:"-") while OpenAPI advertises them.
+//
+// GetTraced implements XRefsService.GetTraced.
 func (l *GetTracedService) GetTraced(req *types.XGetReq) (*xshared.XHeaderResp, error) {
 	// TODO: implement
 	return nil, nil

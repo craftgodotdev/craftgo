@@ -1,0 +1,344 @@
+package format
+
+import (
+	"fmt"
+	"math"
+	"strings"
+
+	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
+)
+
+// anchor is a construct that starts a line of its own in the canonical text:
+// the package clause, an import, a declaration, a member, a method or event
+// clause, or a closing brace. line is its first source line.
+type anchor struct {
+	line int
+	name string
+}
+
+// placedComment is a comment's text and the place it holds in a file.
+type placedComment struct {
+	place string
+	text  string
+}
+
+// layout is where the constructs and comments of a file sit.
+type layout struct {
+	// anchors are in source order, each construct before the ones inside it.
+	anchors []anchor
+	// tops are the first lines of the package clause, imports and declarations.
+	tops []int
+	// frees are the first lines of the free comment blocks.
+	frees    []int
+	comments []placedComment
+}
+
+// fileLayout returns the anchors of f, parsed from src, and the place of every
+// comment in it: the construct a trailing comment follows, the construct a doc,
+// chain or argument comment documents, or the scope of a free comment block
+// with the number of the scope's constructs above it.
+func fileLayout(f *ast.File, src *source) *layout {
+	l := &layout{}
+	l.doc("file", f.LeadingDoc)
+	if f.Package != nil {
+		l.top(f.Package.Pos.Line, "package")
+		l.doc("package", f.Package.Doc)
+	}
+	for i, imp := range f.Imports {
+		name := fmt.Sprintf("import %d", i)
+		l.top(imp.Pos.Line, name)
+		l.doc(name, imp.Doc)
+	}
+	for i, d := range f.Decls {
+		l.decl(fmt.Sprintf("declaration %d", i), d, src.firstLine(d))
+	}
+	for _, c := range f.FreeComments {
+		above := 0
+		for _, line := range l.tops {
+			if line < c.Pos.Line {
+				above++
+			}
+		}
+		l.free("file", above, c)
+	}
+	// A chain comment is recorded under the line of the decorator or keyword
+	// below it, where the members of a body written on that line start too;
+	// the construct whose chain holds it is the last to start above that line.
+	for line, texts := range f.ChainComments {
+		for _, text := range texts {
+			l.comments = append(l.comments, placedComment{"in the decorators of " + l.at(line-1), text})
+		}
+	}
+	for _, c := range f.Comments {
+		switch {
+		case c.Kind == lexer.CommentTrailing:
+			l.comments = append(l.comments, placedComment{"after " + l.at(c.Pos.Line), c.Text})
+		case src.inArguments(c.Pos.Line):
+			l.comments = append(l.comments, placedComment{"in the arguments of " + l.at(c.Pos.Line), c.Text})
+		}
+	}
+	return l
+}
+
+func (l *layout) anchor(line int, name string) {
+	if line > 0 {
+		l.anchors = append(l.anchors, anchor{line, name})
+	}
+}
+
+// top records a top-level construct.
+func (l *layout) top(line int, name string) {
+	l.tops = append(l.tops, line)
+	l.anchor(line, name)
+}
+
+func (l *layout) doc(name string, lines []string) {
+	for _, text := range lines {
+		l.comments = append(l.comments, placedComment{"the doc of " + name, text})
+	}
+}
+
+// free records the free comment block c in scope, below above of the scope's
+// constructs.
+func (l *layout) free(scope string, above int, c *ast.FreeComment) {
+	l.frees = append(l.frees, c.Pos.Line)
+	for _, text := range c.Text {
+		l.comments = append(l.comments, placedComment{fmt.Sprintf("in %s below %d constructs", scope, above), text})
+	}
+}
+
+// decl records d, whose first source line is first.
+func (l *layout) decl(name string, d ast.Decl, first int) {
+	l.top(first, name)
+	switch v := d.(type) {
+	case *ast.TypeDecl:
+		l.doc(name, v.Doc)
+		l.typeBody(name, v.Body, v.EndPos)
+	case *ast.ErrorDecl:
+		l.doc(name, v.Doc)
+		if v.HasBody {
+			l.typeBody(name, v.Body, v.EndPos)
+		}
+	case *ast.EnumDecl:
+		l.doc(name, v.Doc)
+		n := 0
+		for _, m := range v.Members {
+			switch m := m.(type) {
+			case *ast.EnumValue:
+				member := fmt.Sprintf("%s member %d", name, n)
+				l.anchor(m.Pos.Line, member)
+				l.doc(member, m.Doc)
+				n++
+			case *ast.FreeComment:
+				l.free(name, n, m)
+			}
+		}
+		l.anchor(v.EndPos.Line, name+" end")
+	case *ast.ScalarDecl:
+		l.doc(name, v.Doc)
+	case *ast.MiddlewareDecl:
+		l.doc(name, v.Doc)
+	case *ast.ServiceDecl:
+		l.doc(name, v.Doc)
+		n := 0
+		for _, m := range v.Members {
+			switch m := m.(type) {
+			case *ast.Method:
+				l.method(fmt.Sprintf("%s member %d", name, n), m)
+				n++
+			case *ast.FreeComment:
+				l.free(name, n, m)
+			}
+		}
+		l.anchor(v.EndPos.Line, name+" end")
+	case *ast.EventDecl:
+		l.doc(name, v.Doc)
+		var clauses []anchor
+		if v.Payload != nil {
+			clauses = append(clauses, anchor{v.Payload.Pos.Line, name + " payload"})
+		}
+		l.body(name, clauses, v.BodyComments, v.EndPos)
+	}
+}
+
+func (l *layout) typeBody(name string, body []ast.TypeMember, end ast.Pos) {
+	n := 0
+	for _, m := range body {
+		member := fmt.Sprintf("%s member %d", name, n)
+		switch m := m.(type) {
+		case *ast.Field:
+			l.anchor(memberStartLine(m.Pos.Line, m.Decorators, 0), member)
+			l.doc(member, m.Doc)
+			n++
+		case *ast.Mixin:
+			l.anchor(m.Pos.Line, member)
+			l.doc(member, m.Doc)
+			n++
+		case *ast.FreeComment:
+			l.free(name, n, m)
+		}
+	}
+	l.anchor(end.Line, name+" end")
+}
+
+func (l *layout) method(name string, m *ast.Method) {
+	l.anchor(memberStartLine(m.Pos.Line, m.Decorators, 0), name)
+	l.doc(name, m.Doc)
+	var clauses []anchor
+	if m.Request != nil {
+		clauses = append(clauses, anchor{m.Request.Pos.Line, name + " request"})
+	}
+	if m.Response != nil {
+		clauses = append(clauses, anchor{m.Response.Pos.Line, name + " response"})
+	}
+	l.body(name, clauses, m.BodyComments, m.EndPos)
+}
+
+// body records the clauses of a method or event body, its comment blocks
+// below the clauses above them, and its closing brace.
+func (l *layout) body(name string, clauses []anchor, comments []*ast.FreeComment, end ast.Pos) {
+	for _, cl := range clauses {
+		l.anchor(cl.line, cl.name)
+	}
+	for _, c := range comments {
+		above := 0
+		for _, cl := range clauses {
+			if cl.line < c.Pos.Line {
+				above++
+			}
+		}
+		l.free(name, above, c)
+	}
+	l.anchor(end.Line, name+" end")
+}
+
+// at returns the construct a comment on line follows: the last one starting
+// on or above line, or the first when none does, as when the package clause
+// starts above the name it records.
+func (l *layout) at(line int) string {
+	if len(l.anchors) == 0 {
+		return ""
+	}
+	best := l.anchors[0]
+	for _, a := range l.anchors {
+		if a.line <= line && (best.line > line || a.line >= best.line) {
+			best = a
+		}
+	}
+	return best.name
+}
+
+// head is the source lines from and to of a member's name and type, a clause's
+// keyword and type, or a decorator's `@` and name, which print on one line.
+type head struct {
+	from, to int
+	what     string
+}
+
+// heads returns the heads of f, parsed from src, that span lines.
+func heads(f *ast.File, src *source) []head {
+	var out []head
+	add := func(from lexer.Position, to lexer.Token, what string) {
+		if to.Pos.Line > from.Line {
+			out = append(out, head{from.Line, to.Pos.Line, what})
+		}
+	}
+	for i, t := range src.toks {
+		if t.Kind == lexer.At && i+1 < len(src.toks) {
+			add(t.Pos, src.toks[i+1], "@"+src.toks[i+1].Text)
+		}
+	}
+	body := func(members []ast.TypeMember) {
+		for _, m := range members {
+			switch m := m.(type) {
+			case *ast.Field:
+				add(m.Pos, src.typeEnd(m.Type), "field "+m.Name)
+			case *ast.Mixin:
+				add(m.Pos, src.namedEnd(m.Ref), "mixin "+m.Ref.String())
+			}
+		}
+	}
+	for _, d := range f.Decls {
+		switch d := d.(type) {
+		case *ast.TypeDecl:
+			body(d.Body)
+		case *ast.ErrorDecl:
+			body(d.Body)
+		case *ast.EnumDecl:
+			for _, v := range d.EnumValues() {
+				add(v.Pos, src.valueEnd(v), "enum value "+v.Name)
+			}
+		case *ast.ServiceDecl:
+			for _, m := range d.Methods() {
+				if m.Request != nil {
+					add(src.after(m.Request.Pos, -1).Pos, src.namedEnd(m.Request), "the request of method "+m.Name)
+				}
+				if m.Response != nil {
+					add(src.after(m.Response.Pos, -1).Pos, src.namedEnd(m.Response.Type), "the response of method "+m.Name)
+				}
+			}
+		case *ast.EventDecl:
+			if pl := d.Payload; pl != nil {
+				add(src.after(pl.Pos, -1).Pos, src.clauseEnd(pl.Type, pl.Array), "the payload of event "+d.Name)
+			}
+		}
+	}
+	return out
+}
+
+// commentInHead returns the first comment of f, parsed from src, on a line of
+// its own inside a head, and what the head is.
+func commentInHead(f *ast.File, src *source) (*ast.Comment, string) {
+	hs := heads(f, src)
+	for _, c := range f.Comments {
+		if c.Kind != lexer.CommentLeading {
+			continue
+		}
+		for _, h := range hs {
+			if h.from < c.Pos.Line && c.Pos.Line < h.to {
+				return c, h.what
+			}
+		}
+	}
+	return nil, ""
+}
+
+// codeLines returns the source lines that hold a token or a comment, a raw
+// string's every line included.
+func codeLines(toks []lexer.Token, comments []*lexer.Comment) map[int]bool {
+	lines := map[int]bool{}
+	for _, t := range toks {
+		if t.Kind == lexer.EOF {
+			continue
+		}
+		for l := t.Pos.Line; l <= t.Pos.Line+lineEnds(t.Text); l++ {
+			lines[l] = true
+		}
+	}
+	for _, c := range comments {
+		lines[c.Pos.Line] = true
+	}
+	return lines
+}
+
+// lineEnds counts the line ends in s: "\n", "\r\n" and a lone "\r".
+func lineEnds(s string) int {
+	return strings.Count(s, "\n") + strings.Count(s, "\r") - strings.Count(s, "\r\n")
+}
+
+// codeAfterFreeComments maps the first line of each free comment block to the
+// first line of the next construct below it, math.MaxInt at the end of the file.
+func (l *layout) codeAfterFreeComments() map[int]int {
+	out := make(map[int]int, len(l.frees))
+	for _, line := range l.frees {
+		next := math.MaxInt
+		for _, a := range l.anchors {
+			if a.line > line && a.line < next {
+				next = a.line
+			}
+		}
+		out[line] = next
+	}
+	return out
+}

@@ -5,26 +5,21 @@ package xrefs
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetByKeyService carries the per-request state for the
-// GetByKey endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetByKeyService runs XRefsService.GetByKey for one request.
 type GetByKeyService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetByKeyService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetByKeyService binds GetByKeyService to ctx; its Logger carries ctx's trace ids.
 func NewGetByKeyService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetByKeyService {
 	return &GetByKeyService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewGetByKeyService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// GetByKey is the service entry point. Replace the
-// TODO with the real implementation.
+// Pins cross-package mixin @path binding. The {key} segment binds through xshared.XPathKey's field; the project-level path-param check must resolve the sibling-package mixin or it false-rejects this route.
+//
+// GetByKey implements XRefsService.GetByKey.
 func (l *GetByKeyService) GetByKey(req *types.XByKeyReq) (*xshared.XOwner, error) {
 	// TODO: implement
 	return nil, nil
