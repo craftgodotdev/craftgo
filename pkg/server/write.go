@@ -1,10 +1,13 @@
 package server
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // ErrNoDecoder is returned by [WritePrecompressed], before anything is written, when the
@@ -22,6 +25,33 @@ func WriteBytes(w http.ResponseWriter, status int, contentType string, body []by
 	w.WriteHeader(status)
 	_, err := w.Write(body)
 	return err
+}
+
+// WriteResponse writes v as the JSON body of a status response. v is encoded before anything is
+// written, so a value the codec cannot encode, such as a NaN float, goes to [WriteError] as an
+// unhandled error rather than out as a success with an empty body.
+func WriteResponse(w http.ResponseWriter, r *http.Request, status int, v any) {
+	buf := responseBufs.Get().(*bytes.Buffer)
+	defer putResponseBuf(buf)
+	if err := JSON().Encode(buf, v); err != nil {
+		WriteError(w, r, fmt.Errorf("encode response: %w", err))
+		return
+	}
+	w.Header().Set("Content-Type", contentTypeJSON)
+	w.WriteHeader(status)
+	_, _ = w.Write(buf.Bytes())
+}
+
+// responseBufs holds the buffers [WriteResponse] encodes into.
+var responseBufs = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+
+// putResponseBuf returns buf to the pool unless it grew past 64 KiB.
+func putResponseBuf(buf *bytes.Buffer) {
+	if buf.Cap() > 64<<10 {
+		return
+	}
+	buf.Reset()
+	responseBufs.Put(buf)
 }
 
 // WritePrecompressed writes body, stored encoded with coding, as is with Content-Encoding

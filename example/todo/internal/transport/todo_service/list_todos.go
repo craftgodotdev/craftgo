@@ -49,7 +49,6 @@ func ListTodos(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		w.Header().Set("X-Total-Count", strconv.Itoa(resp.Total))
 		w.Header().Set("X-Response-Time", strconv.FormatInt(int64(resp.TookMs), 10))
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

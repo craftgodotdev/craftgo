@@ -30,7 +30,6 @@ func ListItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		http.SetCookie(w, &http.Cookie{Name: "has_more", Value: strconv.FormatBool(resp.HasMore)})
 		http.SetCookie(w, &http.Cookie{Name: "session_id", Value: resp.Session})
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

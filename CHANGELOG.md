@@ -19,6 +19,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   outside `Recovery` and every `Use` middleware, the HTTP twin of
   `rpc.WithStatsHandler`; the health probes bypass it.
 
+- **`server.WriteResponse(w, r, status, v)`** encodes `v` before writing and
+  writes a JSON success response; a value the codec cannot encode goes to
+  `WriteError`.
+
 ### Changed
 
 - **Both servers log through `log.Default`.** `server.Server` and
@@ -1271,6 +1275,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   allows them. A range now admits every subtype, parameters and case are
   ignored, and an entry that is no media type or range is
   `decorator/argvalue`.
+
+- **A response that cannot be encoded answers 500.** A success response
+  holding a `NaN` or `±Inf` float went out as its success status with an
+  empty body, logged only as a 200 access line. Generated handlers now answer
+  through `server.WriteResponse`, which encodes first and hands an encode
+  error to `WriteError`: 500 `{"message":"internal server error"}` and the
+  `unhandled service error` log line.
 
 ## [1.9.0] - 2026-09-22 [UTC+7]
 

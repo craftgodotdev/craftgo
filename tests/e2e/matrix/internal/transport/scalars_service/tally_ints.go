@@ -24,7 +24,6 @@ func TallyInts(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("X-Tally", strconv.Itoa(resp.Tally))
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

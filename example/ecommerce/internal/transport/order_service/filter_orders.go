@@ -71,7 +71,6 @@ func FilterOrders(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }

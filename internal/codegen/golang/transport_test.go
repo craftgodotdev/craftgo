@@ -120,21 +120,17 @@ service S {
 	}
 
 	create := read("create.go")
-	if !strings.Contains(create, "w.WriteHeader(http.StatusCreated)") {
-		t.Errorf("POST should write 201:\n%s", create)
-	}
-	if i, j := strings.Index(create, "WriteHeader(http.StatusCreated)"), strings.Index(create, "Encode(w, resp)"); i < 0 || j < 0 || i > j {
-		t.Errorf("201 must be written before the body encode:\n%s", create)
+	if !strings.Contains(create, "server.WriteResponse(w, r, http.StatusCreated, resp)") {
+		t.Errorf("POST should write 201 with its body:\n%s", create)
 	}
 
 	for _, fn := range []string{"get.go", "replace.go"} {
-		body := read(fn)
-		if strings.Contains(body, "w.WriteHeader(") {
-			t.Errorf("%s should not write an explicit status (implicit 200):\n%s", fn, body)
+		if body := read(fn); !strings.Contains(body, "server.WriteResponse(w, r, http.StatusOK, resp)") {
+			t.Errorf("%s should answer 200 with its body:\n%s", fn, body)
 		}
 	}
 
-	if enqueue := read("enqueue.go"); !strings.Contains(enqueue, "w.WriteHeader(http.StatusAccepted)") {
+	if enqueue := read("enqueue.go"); !strings.Contains(enqueue, "server.WriteResponse(w, r, http.StatusAccepted, resp)") {
 		t.Errorf("@status(202) should write 202:\n%s", enqueue)
 	}
 
@@ -578,15 +574,15 @@ service FilesService {
 	checks := []string{
 		`w.Header().Set("etag", resp.Etag)`,
 		`http.SetCookie(w, &http.Cookie{Name: "sessionID", Value: resp.SessionID})`,
-		`w.Header().Set("Content-Type", "application/json; charset=utf-8")`,
+		"server.WriteResponse(w, r, http.StatusOK, resp)",
 	}
 	for _, want := range checks {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q in handler:\n%s", want, body)
 		}
 	}
-	// Headers are set before the encode, whose first write sends them.
-	encode := strings.Index(body, "server.JSON().Encode")
+	// Headers are set before the response is written.
+	encode := strings.Index(body, "server.WriteResponse")
 	if encode < 0 || !strings.Contains(body[:encode], `w.Header().Set("etag"`) {
 		t.Errorf("the etag header must be set before the body is encoded:\n%s", body)
 	}

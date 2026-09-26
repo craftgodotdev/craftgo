@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -296,5 +297,26 @@ func TestWriteErrorAfterCommitThroughWrappers(t *testing.T) {
 				t.Errorf("late error must be logged; got %d log entries", logs.Len())
 			}
 		})
+	}
+}
+
+// WriteResponse writes its value as a JSON body with the status; a value the codec cannot
+// encode answers 500 through WriteError, as JSON, and is logged, rather than a success with
+// an empty body.
+func TestWriteResponse(t *testing.T) {
+	rec := httptest.NewRecorder()
+	WriteResponse(rec, httptest.NewRequest("GET", "/", nil), http.StatusCreated, map[string]int{"n": 1})
+	if rec.Code != http.StatusCreated || rec.Body.String() != "{\"n\":1}\n" || rec.Header().Get("Content-Type") != contentTypeJSON {
+		t.Errorf("got %d %q %q", rec.Code, rec.Body.String(), rec.Header().Get("Content-Type"))
+	}
+
+	logs := observeLogs(t)
+	rec = httptest.NewRecorder()
+	WriteResponse(rec, httptest.NewRequest("GET", "/", nil), http.StatusOK, map[string]float64{"x": math.NaN()})
+	if rec.Code != http.StatusInternalServerError || rec.Body.String() != "{\"message\":\"internal server error\"}\n" {
+		t.Errorf("NaN: got %d %q, want the 500 JSON", rec.Code, rec.Body.String())
+	}
+	if n := logs.FilterMessage("unhandled service error").Len(); n != 1 {
+		t.Errorf("NaN: %d unhandled-error log lines, want 1", n)
 	}
 }

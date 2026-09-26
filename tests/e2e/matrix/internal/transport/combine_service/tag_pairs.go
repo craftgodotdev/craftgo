@@ -33,8 +33,6 @@ func TagPairs(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("ETag", resp.Etag)
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusCreated)
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp)
 	}
 }

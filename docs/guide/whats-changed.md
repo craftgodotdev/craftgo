@@ -49,6 +49,7 @@ A decorator as another decorator's argument, `@a(@b)`, is out of the grammar: on
 - A multipart body the parser refuses answers 400 through `SetDefaultValidationFailed`, where 1.9 answered 413 (a regenerated handler).
 - A handler that returns a deadline's error answers 504 `{"message":"gateway timeout"}`, and a context error after the client has gone writes nothing, the access log recording 499; 1.9 answered 500 and logged `unhandled service error`. `SetHandleUnknownError` no longer receives these errors.
 - A float query, header, cookie or form value of `NaN` or `±Inf` answers 400.
+- A success response that cannot be encoded, such as one holding a `NaN` float, answers 500 `{"message":"internal server error"}` and logs `unhandled service error`, where 1.9 sent the success status with an empty body (a regenerated handler).
 - Validation texts: a cross-field group lists its members by wire name with no type prefix (`requiresOneOf [primary_email backup_email] - at least one must be set`), an enum value outside its set reads `status: must be one of [open in_progress done]` (was `status: invalid TodoStatus value`), a nested failure carries its path (`home: rooms: furniture: name: length less than 1`), and a body value of the wrong JSON type names its JSON path (`c: expected string, got number`). A client that matches the old text needs the new.
 - An error whose body fields are all optional and unset is written as `{}`, the body its OpenAPI response declares, where 1.9 wrote the `{"code","message"}` envelope.
 

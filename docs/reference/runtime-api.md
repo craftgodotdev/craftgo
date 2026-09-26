@@ -167,6 +167,7 @@ Helpers for `@rawResponse` / `@passthrough` handlers that already hold the bytes
 
 | Function | Description |
 |---|---|
+| `WriteResponse(w, r, status, v)` | Encodes `v` with the installed codec before writing, then sets `Content-Type: application/json; charset=utf-8`, writes the status and the body; a value the codec cannot encode (a `NaN` float) goes to `WriteError` as an unhandled error, a 500. Generated handlers answer through it. |
 | `WriteBytes(w, status, contentType, body) error` | Sets `Content-Type` (when non-empty) and `Content-Length`, writes the status, writes `body`. |
 | `WritePrecompressed(w, r, status, contentType, coding, body, decode) error` | Serves a body stored already compressed (`"gzip"`, `"zstd"`, `"br"`, ...). When the client accepts `coding` the bytes go out verbatim with `Content-Encoding`; otherwise `decode` produces the identity form first. Always adds `Vary: Accept-Encoding`. A nil `decode` with a client that does not accept the coding returns `ErrNoDecoder` before anything is written. |
 | `AcceptsEncoding(r, coding) bool` | Whether the request's `Accept-Encoding` lists `coding` with a non-zero quality (`gzip;q=0` is a refusal). Shares its parser with the `Compress` middleware. |

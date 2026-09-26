@@ -214,9 +214,7 @@ func TestGenerateRawRequestHandsRequestThenEncodes(t *testing.T) {
 	h := read("transport", "ingest.go")
 	mustContainAll(t, h,
 		"resp, err := l.Ingest(r)",
-		`w.Header().Set("Content-Type", "application/json; charset=utf-8")`,
-		"w.WriteHeader(http.StatusCreated)",
-		"_ = server.JSON().Encode(w, resp)",
+		"server.WriteResponse(w, r, http.StatusCreated, resp)",
 	)
 	// The docs-only request block is not bound, decoded or imported.
 	mustContainNone(t, h, "var req", "server.JSON().Decode", "req.Validate()", `types "`)

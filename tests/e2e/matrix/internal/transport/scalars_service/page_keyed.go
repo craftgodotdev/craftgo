@@ -23,7 +23,6 @@ func PageKeyed(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("X-Key", string(resp.Key))
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = server.JSON().Encode(w, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }
