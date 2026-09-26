@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"io"
+	"net"
 	"net/http"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -67,4 +69,41 @@ func readBody(t *testing.T, got *string) http.Handler {
 		}
 		*got = string(b)
 	})
+}
+
+// freeAddr returns a loopback address with a port nothing listens on.
+func freeAddr(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	if err := ln.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return addr
+}
+
+// waitForStatus polls url until it answers want, failing t after 5s.
+func waitForStatus(t *testing.T, url string, want int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var last string
+		resp, err := http.Get(url)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == want {
+				return
+			}
+			last = resp.Status
+		} else {
+			last = err.Error()
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("GET %s never answered %d; last: %s", url, want, last)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

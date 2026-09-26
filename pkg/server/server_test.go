@@ -21,7 +21,8 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-func TestServerHandleFuncAndDefaults(t *testing.T) {
+// HandleFunc registers a handler that Handler serves.
+func TestServerHandleFunc(t *testing.T) {
 	s := New(nil)
 	s.HandleFunc("GET /ping", func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("pong"))
@@ -654,25 +655,6 @@ func TestTimeoutMiddleware(t *testing.T) {
 	}
 }
 
-func TestServerSetters(t *testing.T) {
-	s := New(nil)
-	s.SetDefaultReadTimeout(time.Second).
-		SetDefaultWriteTimeout(2*time.Second).
-		SetDefaultMaxBodySize(1024).
-		SetDefaultMaxHeaderSize(8).
-		SetLogger(s.Logger()).
-		RegisterMiddleware("auth", func(h http.Handler) http.Handler { return h })
-	if err := s.SetJSONCodec(defaultCodec{}); err != nil {
-		t.Fatal(err)
-	}
-	if s.Codec() == nil || s.Logger() == nil {
-		t.Error("codec/logger should be non-nil")
-	}
-	if s.Mux() == nil {
-		t.Error("mux should be non-nil")
-	}
-}
-
 // Setters may run on another goroutine than route registration and Handler.
 func TestServerConfigurationAcrossGoroutines(t *testing.T) {
 	s := New(nil)
@@ -842,14 +824,51 @@ func TestServerStopBeforeStart(t *testing.T) {
 	}
 }
 
-func TestServerStartAndStop(t *testing.T) {
-	s := New(nil)
-	s.HandleFunc("GET /smoke", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	go func() { _ = s.Start("127.0.0.1:0") }()
-	time.Sleep(20 * time.Millisecond)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	_ = s.Stop(ctx)
+// Start serves Handler until Stop and then returns nil, on an http.Server with the read and write
+// timeouts and the header cap the setters chose: 30s, none and 32 KB by default.
+func TestServerStartServesUntilStop(t *testing.T) {
+	for _, c := range []struct {
+		name        string
+		configure   func(*Server)
+		read, write time.Duration
+		headerBytes int
+	}{
+		{"defaults", func(*Server) {}, 30 * time.Second, 0, 32 << 10},
+		{"setters", func(s *Server) {
+			s.SetDefaultReadTimeout(time.Second).SetDefaultWriteTimeout(2 * time.Second).SetDefaultMaxHeaderSize(8)
+		}, time.Second, 2 * time.Second, 8 << 10},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := New(nil)
+			c.configure(s)
+			s.HandleFunc("GET /smoke", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+			addr := freeAddr(t)
+			done := make(chan error, 1)
+			go func() { done <- s.Start(addr) }()
+			waitForStatus(t, "http://"+addr+"/smoke", http.StatusTeapot)
+
+			s.mu.Lock()
+			srv := s.httpSrv
+			s.mu.Unlock()
+			if srv.ReadTimeout != c.read || srv.WriteTimeout != c.write || srv.MaxHeaderBytes != c.headerBytes {
+				t.Errorf("http.Server read timeout %v, write timeout %v, header cap %d bytes; want %v, %v, %d",
+					srv.ReadTimeout, srv.WriteTimeout, srv.MaxHeaderBytes, c.read, c.write, c.headerBytes)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := s.Stop(ctx); err != nil {
+				t.Fatalf("Stop: %v", err)
+			}
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Errorf("Start returned %v after Stop, want nil", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("Start did not return after Stop")
+			}
+		})
+	}
 }
 
 // AccessLogFields adds its fields after the handler ran, so the matched route is available.
