@@ -37,6 +37,7 @@ func (a *analyzer) checkPathResolution() {
 					svcName, m.Name, rt)
 			}
 			a.checkRouteEnd(svcName, m, rt)
+			a.checkMethodPathSegments(svcName, m)
 			a.checkDuplicatePathVars(si, svcName, m)
 			a.checkMethodPathParams(svcName, m, si.Decorators(m), rt)
 		}
@@ -85,6 +86,23 @@ func (a *analyzer) checkRouteEnd(svcName string, m *ast.Method, rt string) {
 			a.diag(m.Pos, m.Pos, lexer.SeverityError, CodeRoutePattern,
 				"method %s.%s resolves to %s, where %s is not the last segment: net/http's ServeMux takes `{name...}` and `{$}` only at the end of a route, so registering it panics",
 				svcName, m.Name, rt, seg)
+		}
+	}
+}
+
+// checkMethodPathSegments rejects a literal segment of m's own path that
+// net/http's ServeMux refuses, `.` or `..`, where it is written.
+func (a *analyzer) checkMethodPathSegments(svcName string, m *ast.Method) {
+	if m.Path == nil {
+		return
+	}
+	for _, seg := range m.Path.Segments {
+		if seg.Param {
+			continue
+		}
+		if why := route.SegmentProblem(seg.Literal); why != "" {
+			a.diag(seg.Pos, seg.Pos, lexer.SeverityError, CodeRoutePattern,
+				"method %s.%s: net/http's ServeMux refuses the segment %q - %s", svcName, m.Name, seg.Literal, why)
 		}
 	}
 }

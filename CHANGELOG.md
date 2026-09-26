@@ -522,7 +522,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   a number (`/reports/2024`), opens with a digit (`/2fa`) or holds a dot
   (`/v1.0`, `/robots.txt`, `/.well-known`) was a parse error, although
   `@prefix` took it. A literal segment now holds letters, digits, `-`, `.`,
-  `_` and `~`, and one ending in `-` is no longer an error.
+  `_` and `~`, and one ending in `-` is no longer an error; a segment of `.`
+  or `..` alone, which `net/http` never matches, is `route/pattern`, as in
+  `@prefix`.
 
 - **Closing an unsaved buffer re-checks its design root.** The other open
   files kept the diagnostics computed with the dropped text, such as an

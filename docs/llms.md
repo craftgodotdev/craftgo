@@ -211,7 +211,7 @@ service UserService {
 }
 ```
 
-Method form: `<verb> <Name> [<path>] { request <Type>  response <Type> }`. `request` and `response` are optional, and so is the path: without one, the route is the kebab-cased method name (`get Ping { ... }` -> `GET /ping`). Verbs: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. Path syntax: `/segments/{paramName}/more`; a literal segment holds letters, digits, `-`, `.`, `_` and `~` (`/.well-known/v1.0/2fa`).
+Method form: `<verb> <Name> [<path>] { request <Type>  response <Type> }`. `request` and `response` are optional, and so is the path: without one, the route is the kebab-cased method name (`get Ping { ... }` -> `GET /ping`). Verbs: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. Path syntax: `/segments/{paramName}/more`; a literal segment holds letters, digits, `-`, `.`, `_` and `~` (`/.well-known/v1.0/2fa`), but not `.` or `..` alone (`route/pattern`).
 
 ### `extend service`
 
