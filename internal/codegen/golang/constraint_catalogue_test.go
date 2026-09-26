@@ -6,25 +6,20 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// constraintNames returns the registry's constraint decorators, or only those with a schema form.
-func constraintNames(schemaOnly bool) map[string]bool {
+// constraintNames returns the registry's constraint decorators.
+func constraintNames() map[string]bool {
 	out := map[string]bool{}
 	for _, name := range semantic.Names() {
-		spec, _ := semantic.DecoratorSpec(name)
-		if spec.Constraint == 0 {
-			continue
+		if spec, _ := semantic.DecoratorSpec(name); spec.Constraint != 0 {
+			out[name] = true
 		}
-		if schemaOnly && spec.Constraint == semantic.ConstraintRuntime {
-			continue
-		}
-		out[name] = true
 	}
 	return out
 }
 
 // Every constraint decorator, and nothing else, renders a Go check.
 func TestGoChecksCoverConstraints(t *testing.T) {
-	want := constraintNames(false)
+	want := constraintNames()
 	for name := range want {
 		if goChecks[name] == nil {
 			t.Errorf("@%s is a constraint but renders no Go check", name)
