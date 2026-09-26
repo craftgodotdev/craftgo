@@ -42,16 +42,8 @@ func (r *request) namedSlotCompletions(c cursor) ([]protocol.CompletionItem, boo
 		}
 		return r.decoratorArgItems(c, name), true
 	}
-	// `pkg.|`: the dot is mid right after it is typed, prev once the member is.
-	if mid != nil && mid.Kind == lexer.Dot {
-		if pkg, ok := identBefore(view, c.at); ok {
-			return r.packageDeclCompletions(pkg), true
-		}
-	}
-	if prev != nil && prev.Kind == lexer.Dot {
-		if pkg, ok := identBefore(view, c.prev); ok {
-			return r.packageDeclCompletions(pkg), true
-		}
+	if items, ok := r.qualifiedNameCompletions(view, c); ok {
+		return items, true
 	}
 	// `@|` or `@na|`: decorator names.
 	if mid != nil && mid.Kind == lexer.At {
@@ -71,6 +63,20 @@ func (r *request) namedSlotCompletions(c cursor) ([]protocol.CompletionItem, boo
 	// `/{|}`: claimed here so the parameter's brace is not read as an opened block.
 	if i, ok := pathParamContext(view, c); ok {
 		return r.pathParamCompletions(i), true
+	}
+	return nil, false
+}
+
+// qualifiedNameCompletions answers `pkg.|`: the dot is the token at the cursor
+// right after it is typed, the token before the cursor once the member is.
+func (r *request) qualifiedNameCompletions(view snapshotView, c cursor) ([]protocol.CompletionItem, bool) {
+	for _, dot := range []int{c.at, c.prev} {
+		if view.kind(dot) != lexer.Dot {
+			continue
+		}
+		if pkg, ok := identBefore(view, dot); ok {
+			return r.packageDeclCompletions(pkg), true
+		}
 	}
 	return nil, false
 }
