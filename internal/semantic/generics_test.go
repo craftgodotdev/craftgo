@@ -266,21 +266,31 @@ type Forest<T> { trees Box<Forest<T>>[]  ints Forest<int>[] }`)
 }
 
 // Analysis ends on an expanding generic that a rule walking the structs an
-// instance reaches meets, as @uniqueItems does over a by-value member.
+// instance reaches meets: @uniqueItems over a by-value member, and the
+// search for a `file` in a response.
 func TestExpandingGenericAnalysisEnds(t *testing.T) {
-	files := parseFiles(t, "type Tree<T> { kid Tree<Tree<T>>  v T }\ntype R { rows Tree<int>[] @uniqueItems }")
-	done := make(chan []Diagnostic, 1)
-	go func() {
-		_, diags := Analyze(files)
-		done <- diags
-	}()
-	select {
-	case diags := <-done:
-		if findCode(diags, CodeGenericInstantiationCycle) == nil {
-			t.Errorf("want %s, got %v", CodeGenericInstantiationCycle, diags)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("analysis did not finish within 10s")
+	for label, src := range map[string]string{
+		"unique items": "type Tree<T> { kid Tree<Tree<T>>  v T }\ntype R { rows Tree<int>[] @uniqueItems }",
+		"file search": `type Customer { avatar file }
+type Tree<T> { kids Tree<Tree<T>>[]  v T }
+service S { get A /a { response Tree<Customer> } }`,
+	} {
+		t.Run(label, func(t *testing.T) {
+			files := parseFiles(t, src)
+			done := make(chan []Diagnostic, 1)
+			go func() {
+				_, diags := Analyze(files)
+				done <- diags
+			}()
+			select {
+			case diags := <-done:
+				if findCode(diags, CodeGenericInstantiationCycle) == nil {
+					t.Errorf("want %s, got %v", CodeGenericInstantiationCycle, diags)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("analysis did not finish within 10s")
+			}
+		})
 	}
 }
 

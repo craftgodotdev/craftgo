@@ -1039,6 +1039,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   `Box<file>`, which bring the `file` to the request's top level, stay
   accepted.
 
+- **A `file` in a generic's struct argument is named on its path.** With
+  `type Customer { avatar file }`, `response Page<Customer>` reported the
+  `file` at `Page<Customer>.avatar`; it now names the field the argument
+  rides, `Page<Customer>.items.avatar`, and so does a request's "reached
+  through" path. An argument no field of the generic takes, as in `type
+  Tagged<T> { n int }`, is no longer searched: `Tagged<Customer>` carries no
+  `file`.
+
 - **A type argument that makes a `file[][]` is rejected.** `request
   Box<file[]>` with `type Box<T> { v T[] }`, or `request Up<file[][]>`, gave
   the request a top-level `file[][]`, which has no multipart encoding, and

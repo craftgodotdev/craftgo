@@ -521,31 +521,21 @@ func (a *analyzer) fileAt(t *ast.TypeRef, path string) string {
 // visitFileHolders calls visit with each field that [holdsFile] among the
 // fields of the struct types t reaches, mixin fields included, and of the
 // structs below them: owner is the struct reached and path how t reaches
-// it. An instance whose type arguments hold a `file` reaches it through the
-// fields its type parameters type. t is spelled as package view spells it.
+// it. An instance is walked with its type arguments substituted, so an
+// argument is reached, and named, through the fields its type parameters
+// type. t is spelled as package view spells it.
 func (a *analyzer) visitFileHolders(view string, t *ast.TypeRef, path string, seen map[string]bool, visit func(owner string, f *ast.Field, path string)) {
-	inFileArgs := map[*ast.NamedTypeRef]bool{}
-	t.WalkNamedRefs(func(n *ast.NamedTypeRef) {
-		if slices.ContainsFunc(n.Args, holdsFile) {
-			for _, arg := range n.Args {
-				arg.WalkNamedRefs(func(m *ast.NamedTypeRef) { inFileArgs[m] = true })
-			}
-		}
-	})
-	t.WalkNamedRefs(func(n *ast.NamedTypeRef) {
+	for _, n := range outerNamedRefs(t) {
 		pkg, sym := a.proj.resolve(view, n.Name)
-		if inFileArgs[n] || pkg == nil || pkg.Types[sym] == nil {
-			return
+		if pkg == nil || pkg.Types[sym] == nil {
+			continue
 		}
-		key, args := pkg.Name+"."+sym, []*ast.TypeRef(nil)
-		if slices.ContainsFunc(n.Args, holdsFile) {
-			key, args = pkg.Name+"."+n.String(), n.Args
-		}
+		td := pkg.Types[sym]
+		args, key := a.proj.walkedInstance(pkg, td, n)
 		if seen[key] {
-			return
+			continue
 		}
 		seen[key] = true
-		td := pkg.Types[sym]
 		fields, _ := a.proj.flattenFields(view, pkg.Name, td.Body, td.TypeParams, args, nil)
 		for _, ff := range fields {
 			f := ff.Field
@@ -555,7 +545,21 @@ func (a *analyzer) visitFileHolders(view string, t *ast.TypeRef, path string, se
 			}
 			a.visitFileHolders(view, f.Type, path+"."+f.Name, seen, visit)
 		}
-	})
+	}
+}
+
+// outerNamedRefs returns the named types t is built of outside generic
+// arguments: t's own, or a map's key's and value's.
+func outerNamedRefs(t *ast.TypeRef) []*ast.NamedTypeRef {
+	switch {
+	case t == nil:
+		return nil
+	case t.Map != nil:
+		return append(outerNamedRefs(t.Map.Key), outerNamedRefs(t.Map.Value)...)
+	case t.Named != nil:
+		return []*ast.NamedTypeRef{t.Named}
+	}
+	return nil
 }
 
 // holdsFile reports whether t names `file` itself, optional or in an array,

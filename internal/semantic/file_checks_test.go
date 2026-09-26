@@ -141,6 +141,26 @@ type Req { id string }
 service S { get A /a { request Req  response Tagged<file> } }`, CodeFilePosition)
 }
 
+// A `file` a struct argument of a generic instance holds is named through the
+// field the instance's type parameter types.
+func TestFileThroughGenericArgumentNamesItsPath(t *testing.T) {
+	const decls = "package design\ntype Customer { avatar file  name string }\ntype Page<T> { items T[]  total int }\ntype Req { id string }\n"
+	for label, c := range map[string]struct{ src, at string }{
+		"response":       {`service S { get A /a { request Req  response Page<Customer> } }`, "at Page<Customer>.items.avatar,"},
+		"response field": {"type Out { page Page<Customer> }\nservice S { get A /a { request Req  response Out } }", "at Out.page.items.avatar,"},
+		"payload":        {`event Listed { payload Page<Customer> }`, "at Page<Customer>.items.avatar,"},
+		"error field":    {`error Conflict Dup { page Page<Customer> }`, "at Dup.page.items.avatar,"},
+		"request field": {"type R { f file  page Page<Customer> }\nservice S { post A /a { request R  response Req } }",
+			"field Customer.avatar holds a `file` the multipart binder never reads (reached through R.page.items)"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			d := expectError(t, decls+c.src, CodeFilePosition)
+			expectMessage(t, d, c.at)
+		})
+	}
+	expectNoCode(t, decls+"type Tagged<T> { n int }\nservice S { get A /a { request Req  response Tagged<Customer> } }", CodeFilePosition)
+}
+
 // A response type another package declares is checked at the response
 // clause that names it.
 func TestFileInCrossPackageResponseRejected(t *testing.T) {
