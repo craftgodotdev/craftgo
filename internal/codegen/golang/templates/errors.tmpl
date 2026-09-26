@@ -30,7 +30,13 @@ func (e *{{.TypeName}}) ErrCode() string { return {{.ConstName}} }
 
 // HTTPStatus returns the {{.Category}} status.
 func (e *{{.TypeName}}) HTTPStatus() int { return {{.Status}} }
-{{if .HasJSONMember}}
+{{if and .HasJSONMember .FillsBody}}
+// MarshalJSON encodes the body alone, its nil lists and maps as empty ones.
+func (e *{{.TypeName}}) MarshalJSON() ([]byte, error) {
+	e.{{.BodyName}}.FillEmpty(0)
+	return json.Marshal(e.{{.BodyName}})
+}
+{{else if .HasJSONMember}}
 // MarshalJSON encodes the body alone.
 func (e *{{.TypeName}}) MarshalJSON() ([]byte, error) { return json.Marshal(e.{{.BodyName}}) }
 {{else}}

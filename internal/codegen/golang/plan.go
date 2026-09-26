@@ -39,6 +39,7 @@ func Plan(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, p
 // regeneratedFiles names every file [Generate] rewrites.
 func regeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string {
 	out := outputsOf(cfg)
+	fills := newFillSet(proj)
 	var files []string
 	for _, name := range proj.PackageNames() {
 		pkg := proj.Packages[name]
@@ -57,6 +58,9 @@ func regeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 		}
 		if len(pkg.Errors) > 0 {
 			files = append(files, dir.at(projectRoot, "errors.go"))
+		}
+		if fills.pkgFills(pkg) {
+			files = append(files, dir.at(projectRoot, "fill.go"))
 		}
 	}
 	files = append(files, protos.PBFiles(projectRoot)...)

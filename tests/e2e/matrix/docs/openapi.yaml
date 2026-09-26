@@ -985,6 +985,19 @@ components:
       required:
       - box
       type: object
+    BoxOfLeaf:
+      description: Box holds a value and a list of its type parameter.
+      properties:
+        v:
+          $ref: '#/components/schemas/Leaf'
+        vs:
+          items:
+            $ref: '#/components/schemas/Leaf'
+          type: array
+      required:
+      - v
+      - vs
+      type: object
     CancelJobReq:
       description: |-
         CancelJobReq is path-only; pairs with the 204 response. The path
@@ -1024,6 +1037,19 @@ components:
       - Web
       - Mobile
       type: string
+    ClashErr:
+      allOf:
+      - $ref: '#/components/schemas/Leaf'
+      - properties:
+          items:
+            items:
+              type: string
+            type: array
+        required:
+        - items
+        type: object
+      description: Conflict error response (HTTP 409).
+      type: object
     Code:
       type: string
     CodeMessageErr:
@@ -1533,7 +1559,7 @@ components:
           items:
             items:
               items:
-                $ref: '#/components/schemas/Node'
+                $ref: '#/components/schemas/NestedNode'
               type: array
             type: array
           type: array
@@ -1988,7 +2014,7 @@ components:
           items:
             items:
               items:
-                $ref: '#/components/schemas/Node'
+                $ref: '#/components/schemas/NestedNode'
               type: array
             type: array
           type: array
@@ -2164,7 +2190,7 @@ components:
         grid:
           items:
             items:
-              $ref: '#/components/schemas/Node'
+              $ref: '#/components/schemas/NestedNode'
             type: array
           type: array
       required:
@@ -2249,7 +2275,7 @@ components:
       properties:
         children:
           items:
-            $ref: '#/components/schemas/Node'
+            $ref: '#/components/schemas/NestedNode'
           type: array
         id:
           minLength: 1
@@ -2259,7 +2285,7 @@ components:
       - children
       type: object
     EchoNodeRespBody:
-      $ref: '#/components/schemas/Node'
+      $ref: '#/components/schemas/NestedNode'
     EchoNullableFormatReqBody:
       description: |-
         Str_NullableFormat checks a present email and passes a JSON null: the
@@ -2675,6 +2701,23 @@ components:
       type: object
     EmptyReq:
       type: object
+    EmptylistsNode:
+      description: Node reaches itself by value through a list and by pointer.
+      properties:
+        kids:
+          items:
+            $ref: '#/components/schemas/EmptylistsNode'
+          type: array
+        name:
+          type: string
+        next:
+          anyOf:
+          - $ref: '#/components/schemas/EmptylistsNode'
+          - type: "null"
+      required:
+      - name
+      - kids
+      type: object
     EnqueueJobReqBody:
       description: |-
         CreateJobReq carries enough metadata for the worker to pick the
@@ -2905,6 +2948,70 @@ components:
       $ref: '#/components/schemas/BlobInfo'
     GetByKeyRespBody:
       $ref: '#/components/schemas/XOwner'
+    GetClashRespBody:
+      properties:
+        blob:
+          format: byte
+          type: string
+        boxed:
+          $ref: '#/components/schemas/BoxOfLeaf'
+        boxedOpt:
+          anyOf:
+          - $ref: '#/components/schemas/BoxOfLeaf'
+          - type: "null"
+        byName:
+          additionalProperties:
+            $ref: '#/components/schemas/Leaf'
+          type: object
+        grid:
+          items:
+            items:
+              type: string
+            type: array
+          type: array
+        groups:
+          additionalProperties:
+            items:
+              $ref: '#/components/schemas/Leaf'
+            type: array
+          type: object
+        leaf:
+          $ref: '#/components/schemas/Leaf'
+        leafOpt:
+          anyOf:
+          - $ref: '#/components/schemas/Leaf'
+          - type: "null"
+        leaves:
+          items:
+            $ref: '#/components/schemas/Leaf'
+          type: array
+        maybe:
+          items:
+            type: string
+          type:
+          - array
+          - "null"
+        nulls:
+          items:
+            type: string
+          type:
+          - array
+          - "null"
+        tree:
+          $ref: '#/components/schemas/EmptylistsNode'
+      required:
+      - leaf
+      - leaves
+      - byName
+      - groups
+      - grid
+      - nulls
+      - blob
+      - boxed
+      - tree
+      type: object
+    GetCycleRespBody:
+      $ref: '#/components/schemas/EmptylistsNode'
     GetItemByPathRespBody:
       $ref: '#/components/schemas/ItemView'
     GetItemReq:
@@ -2953,6 +3060,68 @@ components:
       $ref: '#/components/schemas/DoneResp'
     GetSessionCookieRespBody:
       $ref: '#/components/schemas/DoneResp'
+    GetShapesRespBody:
+      properties:
+        blob:
+          format: byte
+          type: string
+        boxed:
+          $ref: '#/components/schemas/BoxOfLeaf'
+        boxedOpt:
+          anyOf:
+          - $ref: '#/components/schemas/BoxOfLeaf'
+          - type: "null"
+        byName:
+          additionalProperties:
+            $ref: '#/components/schemas/Leaf'
+          type: object
+        grid:
+          items:
+            items:
+              type: string
+            type: array
+          type: array
+        groups:
+          additionalProperties:
+            items:
+              $ref: '#/components/schemas/Leaf'
+            type: array
+          type: object
+        leaf:
+          $ref: '#/components/schemas/Leaf'
+        leafOpt:
+          anyOf:
+          - $ref: '#/components/schemas/Leaf'
+          - type: "null"
+        leaves:
+          items:
+            $ref: '#/components/schemas/Leaf'
+          type: array
+        maybe:
+          items:
+            type: string
+          type:
+          - array
+          - "null"
+        nulls:
+          items:
+            type: string
+          type:
+          - array
+          - "null"
+        tree:
+          $ref: '#/components/schemas/EmptylistsNode'
+      required:
+      - leaf
+      - leaves
+      - byName
+      - groups
+      - grid
+      - nulls
+      - blob
+      - boxed
+      - tree
+      type: object
     GetSharedOwnerRespBody:
       $ref: '#/components/schemas/XOwner'
     GetThirdRespBody:
@@ -3270,6 +3439,21 @@ components:
       type: object
     LatestRespBody:
       $ref: '#/components/schemas/RtOrder'
+    Leaf:
+      description: Leaf holds a required list and a required map.
+      properties:
+        meta:
+          additionalProperties:
+            type: string
+          type: object
+        tags:
+          items:
+            type: string
+          type: array
+      required:
+      - tags
+      - meta
+      type: object
     LedgerEntryEntryListRespBody:
       $ref: '#/components/schemas/ReportCards'
     LedgerEntryList2RespBody:
@@ -3704,7 +3888,7 @@ components:
         grid:
           items:
             items:
-              $ref: '#/components/schemas/Node'
+              $ref: '#/components/schemas/NestedNode'
             type: array
           type: array
       required:
@@ -3858,6 +4042,23 @@ components:
       - street
       - city
       type: object
+    NestedNode:
+      description: |-
+        Node is the canonical recursive tree node. `children Node[]` is
+        the slice-of-self pattern; the codegen emits ONE Validate()
+        function per type so the recursion stays bounded at runtime.
+      properties:
+        children:
+          items:
+            $ref: '#/components/schemas/NestedNode'
+          type: array
+        id:
+          minLength: 1
+          type: string
+      required:
+      - id
+      - children
+      type: object
     NestedOrder:
       description: |-
         Order is a tiny leaf used by ListPage below. Stays minimal so
@@ -3944,23 +4145,6 @@ components:
       - blob
       - ids
       - tags
-      type: object
-    Node:
-      description: |-
-        Node is the canonical recursive tree node. `children Node[]` is
-        the slice-of-self pattern; the codegen emits ONE Validate()
-        function per type so the recursion stays bounded at runtime.
-      properties:
-        children:
-          items:
-            $ref: '#/components/schemas/Node'
-          type: array
-        id:
-          minLength: 1
-          type: string
-      required:
-      - id
-      - children
       type: object
     NonEmpty:
       description: NonEmpty is the "must be at least one character" string scalar.
@@ -6822,6 +7006,69 @@ components:
           - "null"
       required:
       - level
+      type: object
+    Shapes:
+      description: Shapes holds a nil list or map in every position a response can.
+      properties:
+        blob:
+          format: byte
+          type: string
+        boxed:
+          $ref: '#/components/schemas/BoxOfLeaf'
+        boxedOpt:
+          anyOf:
+          - $ref: '#/components/schemas/BoxOfLeaf'
+          - type: "null"
+        byName:
+          additionalProperties:
+            $ref: '#/components/schemas/Leaf'
+          type: object
+        grid:
+          items:
+            items:
+              type: string
+            type: array
+          type: array
+        groups:
+          additionalProperties:
+            items:
+              $ref: '#/components/schemas/Leaf'
+            type: array
+          type: object
+        leaf:
+          $ref: '#/components/schemas/Leaf'
+        leafOpt:
+          anyOf:
+          - $ref: '#/components/schemas/Leaf'
+          - type: "null"
+        leaves:
+          items:
+            $ref: '#/components/schemas/Leaf'
+          type: array
+        maybe:
+          items:
+            type: string
+          type:
+          - array
+          - "null"
+        nulls:
+          items:
+            type: string
+          type:
+          - array
+          - "null"
+        tree:
+          $ref: '#/components/schemas/EmptylistsNode'
+      required:
+      - leaf
+      - leaves
+      - byName
+      - groups
+      - grid
+      - nulls
+      - blob
+      - boxed
+      - tree
       type: object
     SharedEmail:
       description: |-
@@ -11009,6 +11256,57 @@ paths:
           description: Created
       tags:
       - combine
+  /empty-lists/clash:
+    get:
+      description: Answers the Clash error with a body the logic leaves empty.
+      operationId: GetClash
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetClashRespBody'
+          description: OK
+          headers:
+            X-Hdr:
+              schema:
+                items:
+                  type: string
+                type: array
+      tags:
+      - EmptyLists
+  /empty-lists/cycle:
+    get:
+      description: 'Answers a Node whose next is itself: no JSON value, so a 500.'
+      operationId: GetCycle
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCycleRespBody'
+          description: OK
+      tags:
+      - EmptyLists
+  /empty-lists/shapes:
+    get:
+      description: Answers a Shapes whose lists and maps the logic leaves nil.
+      operationId: GetShapes
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetShapesRespBody'
+          description: OK
+          headers:
+            X-Hdr:
+              schema:
+                items:
+                  type: string
+                type: array
+      tags:
+      - EmptyLists
   /events/health:
     get:
       description: Kept so the fixture exercises a package that both serves HTTP and

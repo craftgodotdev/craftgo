@@ -27,10 +27,19 @@ func WriteBytes(w http.ResponseWriter, status int, contentType string, body []by
 	return err
 }
 
-// WriteResponse writes v as the JSON body of a status response. v is encoded before anything is
-// written, so a value the codec cannot encode, such as a NaN float, goes to [WriteError] as an
-// unhandled error rather than out as a success with an empty body.
+// emptyFiller is a generated type whose FillEmpty sets its required lists and maps left nil, and
+// those of the values below it, to empty ones.
+type emptyFiller interface{ FillEmpty(depth int) }
+
+// WriteResponse writes v as the JSON body of a status response. A generated type's required lists
+// and maps left nil are set empty first, in v itself, so they go out as [] and {}, as the
+// document says. v is encoded before anything is written, so a value the codec cannot encode,
+// such as a NaN float, goes to [WriteError] as an unhandled error rather than out as a success
+// with an empty body.
 func WriteResponse(w http.ResponseWriter, r *http.Request, status int, v any) {
+	if f, ok := v.(emptyFiller); ok {
+		f.FillEmpty(0)
+	}
 	buf := responseBufs.Get().(*bytes.Buffer)
 	defer putResponseBuf(buf)
 	if err := JSON().Encode(buf, v); err != nil {

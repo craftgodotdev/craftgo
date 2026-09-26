@@ -20,6 +20,7 @@ internal/
 ├── types/<pkg>/                 REGEN - one folder per DSL package
 │   ├── types.go                 structs for every type
 │   ├── validate.go              Validate() method per type
+│   ├── fill.go                  FillEmpty() per type that can hold a required list or map
 │   ├── enums.go                 enum types and const values
 │   └── errors.go                typed error values
 ├── transport/<svc>/             REGEN - one folder per service
@@ -72,6 +73,10 @@ A Go struct per `type`, with field names mapped to Go conventions (`user_id` →
 ### `types/<pkg>/validate.go` (regen)
 
 A `Validate() error` method per type. Every validator decorator becomes a plain `if` statement, with no runtime struct-tag parsing. Reflection enters only through the generated `validateValue`, which a generic type's `Validate` calls for a type-parameter value whose type has no `Validate` of its own; it walks that value's elements with `reflect`. Regexes (`@pattern`, regex-backed `@format`) compile once into package-level vars. `Validate()` is fail-fast - it returns the first violation. Nested struct fields, generic instances, map values/keys, and embedded mixins all dispatch recursively. Each dispatch wraps the inner error as `<field>: %w`, so the message names the path (`home: rooms: furniture: name: length less than 1`) and `errors.Is` / `errors.As` still reach the inner error; a mixin's fields keep their bare names.
+
+### `types/<pkg>/fill.go` (regen)
+
+A `FillEmpty(depth int)` method per struct - a type or an error's body - that holds a required list, map or `bytes`, directly or in a value below it: each one left nil is set empty, so it encodes as `[]`, `{}` or `""` as the document says. An optional one stays nil, left out; a `@nullable` one stays nil, `null`. It goes through elements, map values, nested and optional structs and mixins; a type-parameter value is reached when its type has the method. `server.WriteResponse` calls it on the response, and an error type's `MarshalJSON` on its body, in the value itself; `depth` stops it past 1000 values deep, where only a cycle goes, which the encoder then refuses. A package with no such struct gets no `fill.go`.
 
 ### `types/<pkg>/enums.go` + `errors.go` (regen)
 

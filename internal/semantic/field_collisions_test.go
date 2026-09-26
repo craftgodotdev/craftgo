@@ -94,12 +94,14 @@ func TestErrorReservedFieldNameThroughMixinRejected(t *testing.T) {
 }
 
 // A field whose Go name a generated member takes is rejected: the Validate
-// method of every struct holding a body, and an error type's body struct.
+// and FillEmpty methods of every struct holding a body, and an error type's
+// body struct.
 func TestGeneratedMemberFieldNameRejected(t *testing.T) {
 	for label, c := range map[string]struct{ src, msg string }{
 		"type":         {"type T { validate string  x int }", `type T field "validate" maps to the Go name "Validate"`},
 		"generic type": {"type Box<T> { validate T  x int }", `type Box field "validate" maps to the Go name "Validate"`},
 		"error body":   {"error Internal E { validate string  x int }", `error E field "validate" maps to the Go name "Validate"`},
+		"fill method":  {"type T { fillEmpty string  x int }", `type T field "fillEmpty" maps to the Go name "FillEmpty"`},
 		"error body struct": {"error Internal Gone { goneBody string  why string }",
 			`error Gone field "goneBody" maps to the Go name "GoneBody"`},
 		"error body struct through a mixin": {"type Mx { goneBody string }\nerror Internal Gone { Mx  why string }",

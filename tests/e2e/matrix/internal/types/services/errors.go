@@ -60,8 +60,9 @@ func (e *AcctValidationFailedErr) ErrCode() string { return ErrCodeAcctValidatio
 // HTTPStatus returns the BadRequest status.
 func (e *AcctValidationFailedErr) HTTPStatus() int { return 400 }
 
-// MarshalJSON encodes the body alone.
+// MarshalJSON encodes the body alone, its nil lists and maps as empty ones.
 func (e *AcctValidationFailedErr) MarshalJSON() ([]byte, error) {
+	e.AcctValidationFailedBody.FillEmpty(0)
 	return json.Marshal(e.AcctValidationFailedBody)
 }
 

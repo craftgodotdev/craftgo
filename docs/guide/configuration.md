@@ -73,7 +73,7 @@ All paths are relative to the **project root** (the parent of the design folder,
 | Key          | Default                              | Kind                | Holds                                                     |
 | ------------ | ------------------------------------ | ------------------- | --------------------------------------------------------- |
 | `kind`       | `application`                        | mode                | `application` (default) or `contracts` - see below |
-| `types`      | `./internal/types`                   | directory           | One subfolder per design package; `types.go`, `validate.go`, `enums.go`, `errors.go` |
+| `types`      | `./internal/types`                   | directory           | One subfolder per design package; `types.go`, `validate.go`, `fill.go`, `enums.go`, `errors.go` |
 | `transport`  | `./internal/transport`               | directory           | One subfolder per service; `<method>.go` per method |
 | `routes`     | `./internal/routes`                  | directory           | Per-service `routes.go` plus an umbrella `routes.go` |
 | `service`    | `./internal/service`                 | directory           | One subfolder per service; `<method>.go` per method (gen-once) |

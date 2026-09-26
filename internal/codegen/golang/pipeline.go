@@ -17,6 +17,7 @@ func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Confi
 		resolvers[name] = buildProjectResolver(proj, cfg, name)
 	}
 	typesDir := outputsOf(cfg).types.at(projectRoot)
+	fills := newFillSet(proj)
 	for _, name := range names {
 		p, r := proj.Packages[name], resolvers[name]
 		if err := runSteps(name, []genStep{
@@ -24,6 +25,7 @@ func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Confi
 			{"enums", func() error { return generateEnums(p, typesDir) }},
 			{"errors", func() error { return generateErrors(p, typesDir, r) }},
 			{"validators", func() error { return generateValidators(p, typesDir, r) }},
+			{"fill", func() error { return generateFill(p, typesDir, fills) }},
 		}); err != nil {
 			return err
 		}

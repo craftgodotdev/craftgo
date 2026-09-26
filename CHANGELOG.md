@@ -29,6 +29,16 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Changed
 
+- **A required list or map left nil goes out empty.** It was written as
+  `null`, which the document does not allow. Each generated struct holding a
+  required list, map or `bytes`, directly or below it, has a
+  `FillEmpty(depth int)` that sets each one left nil to `[]`, `{}` or `""`,
+  optional and `@nullable` ones aside, through elements, map values, nested
+  structs and mixins. `server.WriteResponse` runs it on the response and an
+  error type's `MarshalJSON` on its body, in the value itself; past 1000
+  values deep it stops, so a cycle reaches the encoder, which refuses it. A
+  field named `fillEmpty` is now `field/invalid-go-name`.
+
 - **Both servers log through `log.Default`.** `server.Server` and
   `rpc.Server` keep no logger of their own: `SetLogger` installs
   `log.Default`, `Logger()` returns it as it is at the call, and the panic

@@ -40,6 +40,7 @@ Each of these generated a project that built and ran under 1.9. Fix the design a
 - An optional array or map as a map value, as in `map<string, int[]?>`: `type/map-value`. Drop the `?`; an absent entry reads as empty.
 - `@path("rest...")` for a `{rest...}` variable: an error. The variable is `rest`.
 - `@form` on a field of a request with no `file`: `binding/form-without-file`. Drop `@form`; the field rides the JSON body, as it did.
+- A field named `fillEmpty`, which the generated `FillEmpty` method takes: `field/invalid-go-name`. Rename it, or set its `@json`.
 - A middleware named `Config` or `Middlewares`, whose routes did not compile: `decl/go-name-collision`. Rename it.
 - A fractional bound on a field of an int enum, as `@gt(1.5)` or `@multipleOf(2.5)`, which 1.9 documented and never checked: `decorator/typemismatch`. Use a whole number.
 - `@minItems`, `@maxItems`, `@uniqueItems`, `@maxSize` or `@mimeTypes` on a field typed by a type parameter, as in `type Box<T> { v T @maxSize(10) }`, which 1.9 documented and never checked: `decorator/typemismatch`. Constrain a concrete field, or the collection `T[]`.
@@ -52,6 +53,7 @@ A decorator as another decorator's argument, `@a(@b)`, is out of the grammar: on
 
 - Every error the framework writes is JSON `{"message": "..."}` with `Content-Type: application/json; charset=utf-8` and `X-Content-Type-Options: nosniff`: the 404, the 405 (with `Allow`), a 413, a panic's 500 and the default validation 400 were `text/plain`. None of them is in the OpenAPI document.
 - A request missing a required `file` or `any` that a type parameter types, as in a `FilePart<file>` mixin, answers 400 `<field>: required`; 1.9 passed the service nil.
+- A required list, map or `bytes` the logic leaves nil goes out as `[]`, `{}` or `""`, wherever it sits in a response or an error body, where 1.9 wrote `null`, which the document does not allow. An optional one is still left out and a `@nullable` one is still `null`. The value the logic returns is filled in place, so a response object shared between requests is written to.
 - A body read past its cap answers 413 `{"message":"request entity too large"}`, where 1.9 answered 400.
 - A multipart body the parser refuses answers 400 through `SetDefaultValidationFailed`, where 1.9 answered 413 (a regenerated handler).
 - A handler that returns a deadline's error answers 504 `{"message":"gateway timeout"}`, and a context error after the client has gone writes nothing, the access log recording 499; 1.9 answered 500 and logged `unhandled service error`. `SetHandleUnknownError` no longer receives these errors.

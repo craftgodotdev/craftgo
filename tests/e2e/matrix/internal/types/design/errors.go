@@ -175,8 +175,9 @@ func (e *ProfileValidationFailedErr) ErrCode() string { return ErrCodeProfileVal
 // HTTPStatus returns the UnprocessableEntity status.
 func (e *ProfileValidationFailedErr) HTTPStatus() int { return 422 }
 
-// MarshalJSON encodes the body alone.
+// MarshalJSON encodes the body alone, its nil lists and maps as empty ones.
 func (e *ProfileValidationFailedErr) MarshalJSON() ([]byte, error) {
+	e.ProfileValidationFailedBody.FillEmpty(0)
 	return json.Marshal(e.ProfileValidationFailedBody)
 }
 

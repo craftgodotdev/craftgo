@@ -320,3 +320,24 @@ func TestWriteResponse(t *testing.T) {
 		t.Errorf("NaN: %d unhandled-error log lines, want 1", n)
 	}
 }
+
+// filled is a response whose FillEmpty sets its nil list empty, as a
+// generated type's does.
+type filled struct {
+	Tags []string `json:"tags"`
+}
+
+func (v *filled) FillEmpty(int) {
+	if v.Tags == nil {
+		v.Tags = []string{}
+	}
+}
+
+// A value with FillEmpty is filled before it is encoded.
+func TestWriteResponseFillsEmpty(t *testing.T) {
+	rec := httptest.NewRecorder()
+	WriteResponse(rec, httptest.NewRequest("GET", "/", nil), http.StatusOK, &filled{})
+	if got := rec.Body.String(); got != "{\"tags\":[]}\n" {
+		t.Errorf("body = %q, want the list empty", got)
+	}
+}

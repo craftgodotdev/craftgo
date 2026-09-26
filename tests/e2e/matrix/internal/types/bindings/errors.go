@@ -299,8 +299,11 @@ func (e *InvalidInputErr) ErrCode() string { return ErrCodeInvalidInput }
 // HTTPStatus returns the BadRequest status.
 func (e *InvalidInputErr) HTTPStatus() int { return 400 }
 
-// MarshalJSON encodes the body alone.
-func (e *InvalidInputErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.InvalidInputBody) }
+// MarshalJSON encodes the body alone, its nil lists and maps as empty ones.
+func (e *InvalidInputErr) MarshalJSON() ([]byte, error) {
+	e.InvalidInputBody.FillEmpty(0)
+	return json.Marshal(e.InvalidInputBody)
+}
 
 // ErrCodeMaintenance is the canonical machine-readable code for MaintenanceErr.
 const ErrCodeMaintenance = "MAINTENANCE"

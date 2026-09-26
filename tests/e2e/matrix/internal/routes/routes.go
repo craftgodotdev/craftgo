@@ -19,6 +19,7 @@ import (
 	catalogserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/catalog_service"
 	collectionsroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/collections"
 	combineserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/combine_service"
+	emptylistsroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/empty_lists"
 	headerechoserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/header_echo_service"
 	inventoryserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/inventory_service"
 	ledgerroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/ledger"
@@ -60,6 +61,7 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	catalogserviceroutes.RegisterRoutes(srv, svcCtx)
 	collectionsroutes.RegisterRoutes(srv, svcCtx)
 	combineserviceroutes.RegisterRoutes(srv, svcCtx)
+	emptylistsroutes.RegisterRoutes(srv, svcCtx)
 	headerechoserviceroutes.RegisterRoutes(srv, svcCtx)
 	inventoryserviceroutes.RegisterRoutes(srv, svcCtx)
 	ledgerroutes.RegisterRoutes(srv, svcCtx)

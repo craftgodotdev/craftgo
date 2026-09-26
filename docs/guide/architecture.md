@@ -53,7 +53,10 @@ Four kinds of artefact, each from the same design.
   `output.types`: the structs, their `Validate()` methods, the enum constants
   and the typed errors. A package that declares no type, scalar, enum or error
   gets no folder, and `validate.go` is written for a package that declares a
-  type or an enum, a scalar with validators, or an error with fields.
+  type or an enum, a scalar with validators, or an error with fields;
+  `fill.go`, whose `FillEmpty` sets a required list or map left nil empty
+  before a response or error body is encoded, for a package with a struct
+  that can hold one.
 - **Transport, routes and wiring** - one `http.HandlerFunc` factory per method,
   the per-service route registration, and `wiring.Register`, the single call
   `main.go` makes to attach the design to the server.

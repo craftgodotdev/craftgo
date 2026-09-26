@@ -30,9 +30,10 @@ func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
 	imports := newImportSet(r.Module, r, goImport{}, errorsNames)
 	// Every error type's MarshalJSON encodes through encoding/json.
 	imports.use("encoding/json")
+	fills := newFillSet(r.Project())
 	var decls []string
 	for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
-		decls = append(decls, renderError(pkg, pkg.Errors[name], r, imports))
+		decls = append(decls, renderError(pkg, pkg.Errors[name], r, imports, fills))
 	}
 	parts := []string{"package " + pkg.Name + "\n", imports.decl()}
 	return strings.Join(append(parts, decls...), "\n")
@@ -41,18 +42,20 @@ func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
 // errorTemplateData is the errors.tmpl input for one error.
 type errorTemplateData struct {
 	// Doc heads the error type's doc comment ([docHead]).
-	Doc                []string
-	TypeName           string
-	BodyName           string
-	ConstName          string
-	CtorName           string
-	QuotedCode         string
-	QuotedMessage      string
-	Category           string
-	DSLName            string
-	Status             int
-	HasBody            bool
-	HasJSONMember      bool
+	Doc           []string
+	TypeName      string
+	BodyName      string
+	ConstName     string
+	CtorName      string
+	QuotedCode    string
+	QuotedMessage string
+	Category      string
+	DSLName       string
+	Status        int
+	HasBody       bool
+	HasJSONMember bool
+	// FillsBody says the body's FillEmpty has work, which MarshalJSON runs first.
+	FillsBody          bool
 	BodyInterior       string
 	HasResponseHeaders bool
 	Headers            []paramBinding
@@ -60,7 +63,7 @@ type errorTemplateData struct {
 }
 
 // renderError renders errors.tmpl for ed, adding the packages it names to imports.
-func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver, imports *importSet) string {
+func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver, imports *importSet, fills *fillSet) string {
 	headers, cookies, needsStrconv := errorResponseBindings(ed, pkg, r)
 	if len(headers)+len(cookies) > 0 {
 		imports.use("net/http")
@@ -85,6 +88,7 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver, i
 		Cookies:            cookies,
 		HasBody:            len(ast.Members(ed.Body)) > 0,
 		HasJSONMember:      semantic.ErrorHasJSONMember(ed, r.Resolver),
+		FillsBody:          fills.errs[ed],
 	}
 	var buf bytes.Buffer
 	if err := errorsTemplate.Execute(&buf, data); err != nil {
