@@ -52,7 +52,8 @@ func (p *Parser) rejectDecoratorsAfter(what string, starts func(lexer.Kind) bool
 }
 
 // parseDecorator parses `@name` or `@name(args)`; the name may be a reserved
-// word.
+// word. An argument list with a parse error holds an [ast.BadExpr]: in place
+// of the argument it could not read, else at its end.
 func (p *Parser) parseDecorator() *ast.Decorator {
 	at := p.advance()
 	nameTok := p.peek()
@@ -65,12 +66,16 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 	if p.peek().Kind == lexer.LParen {
 		p.advance()
 		d.HasParens = true
+		errs := len(p.diags)
 		// A `}` ends the arguments too: it closes the body they were left open in.
 		for !p.peekIs(lexer.RParen) && !p.peekIs(lexer.RBrace) && !p.peekIs(lexer.EOF) {
 			d.Args = append(d.Args, p.parseDecoratorArg(d.Name))
 			p.listSep(lexer.RParen, "decorator argument")
 		}
-		rparen, _ := p.expect(lexer.RParen)
+		rparen, closed := p.expect(lexer.RParen)
+		if (!closed || len(p.diags) > errs) && !d.HoldsBadExpr() {
+			d.Args = append(d.Args, &ast.DecoratorArg{Pos: rparen.Pos, Value: &ast.BadExpr{Pos: rparen.Pos}})
+		}
 		p.claimInside(at.Pos.Line, rparen.Pos.Line)
 	}
 	return d
@@ -149,14 +154,15 @@ func (p *Parser) parseArray(dec string) ast.Expr {
 }
 
 // parseValue parses a literal or a qualified name in a list of @dec's arguments
-// that closer closes; other input is reported, skipped and read as null.
+// that closer closes; other input is reported, skipped and read as an
+// [ast.BadExpr].
 func (p *Parser) parseValue(dec string, closer lexer.Kind) ast.Expr {
 	t := p.peek()
 	switch t.Kind {
 	case lexer.At:
 		p.errorf(t.Pos, "a decorator cannot be an argument of @%s", dec)
 		p.skipDecorator(closer == lexer.RParen)
-		return &ast.NullLit{Pos: t.Pos}
+		return &ast.BadExpr{Pos: t.Pos}
 	case lexer.String, lexer.RawString:
 		p.advance()
 		return &ast.StringLit{Pos: t.Pos, Value: unquote(t), Text: t.Text}
@@ -196,7 +202,7 @@ func (p *Parser) parseValue(dec string, closer lexer.Kind) ast.Expr {
 			return &ast.FloatLit{Pos: t.Pos, Value: f, Text: "-" + next.Text}
 		}
 		p.errorf(t.Pos, "expected number after '-'")
-		return &ast.IntLit{Pos: t.Pos, Value: 0}
+		return &ast.BadExpr{Pos: t.Pos}
 	case lexer.Ident:
 		qi := p.parseQualifiedIdent()
 		return &ast.IdentExpr{Pos: qi.Pos, Name: qi}
@@ -209,7 +215,7 @@ func (p *Parser) parseValue(dec string, closer lexer.Kind) ast.Expr {
 	}
 	p.errorf(t.Pos, "expected literal, got %s", t.Kind)
 	p.advance()
-	return &ast.NullLit{Pos: t.Pos}
+	return &ast.BadExpr{Pos: t.Pos}
 }
 
 // skipDecorator consumes the decorator at the current `@` and its arguments;

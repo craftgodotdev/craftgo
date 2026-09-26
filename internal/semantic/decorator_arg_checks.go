@@ -10,11 +10,13 @@ import (
 )
 
 // checkDecoratorArgs checks every known decorator at s: its argument shape
-// against its [Spec], then, when the shape holds, the values it takes.
+// against its [Spec], then, when the shape holds, the values it takes. A
+// decorator with an argument the parser could not read is left to that
+// parse error.
 func (a *analyzer) checkDecoratorArgs(s decoratorSite) {
 	for _, d := range s.decs {
 		spec, ok := DecoratorSpec(d.Name)
-		if !ok {
+		if !ok || d.HoldsBadExpr() {
 			continue
 		}
 		if a.checkDecoratorShape(d, spec) {

@@ -27,7 +27,8 @@ func DefaultNeedsOptional(f *ast.Field) bool {
 }
 
 // checkFieldDefault checks f's `@default`: the type it targets, the `?` it
-// implies, its literal and the constraints its value meets.
+// implies, and, unless the parser could not read it, its literal and the
+// constraints its value meets.
 func (a *analyzer) checkFieldDefault(f *ast.Field) {
 	dec := ast.FindDecorator(f.Decorators, "default")
 	if dec == nil {
@@ -42,7 +43,7 @@ func (a *analyzer) checkFieldDefault(f *ast.Field) {
 			"@default on non-optional field %q: the default fires when the value is absent, so the field is optional - add `?` (or run `craftgo fmt`) so types.go, validate.go, and the OpenAPI agree it is optional",
 			f.Name)
 	}
-	if args := positionalArgs(dec); len(args) == 1 {
+	if args := positionalArgs(dec); len(args) == 1 && !dec.HoldsBadExpr() {
 		a.checkLiteralType("default", f, f.Type, args[0].Value, args[0].Pos)
 		a.checkDefaultConstraints(f, args[0])
 	}
@@ -57,6 +58,9 @@ func (a *analyzer) checkFieldExample(f *ast.Field) {
 	}
 	if problem := a.literalTargetProblem("example", f); problem != "" {
 		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityError, CodeDecoratorConflict, "%s", problem)
+		return
+	}
+	if dec.HoldsBadExpr() {
 		return
 	}
 	for _, ag := range positionalArgs(dec) {

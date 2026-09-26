@@ -10,14 +10,15 @@ import (
 
 // checkDecoratorRefs resolves the names the decorators at s refer to: the
 // fields a type's @requiresOneOf and @mutuallyExclusive list, and the names
-// @errors, @middlewares and @security take where s allows them.
+// @errors, @middlewares and @security take where s allows them. A decorator
+// with an argument the parser could not read is left to that parse error.
 func (a *analyzer) checkDecoratorRefs(s decoratorSite) {
 	if td, ok := s.decl.(*ast.TypeDecl); ok && s.level == LvlType {
 		a.checkFieldGroupRefs(td.Name, s.decs, td.Body)
 		return
 	}
 	for _, d := range s.decs {
-		if !s.allows(d.Name) {
+		if !s.allows(d.Name) || d.HoldsBadExpr() {
 			continue
 		}
 		switch d.Name {
@@ -52,7 +53,7 @@ func (a *analyzer) checkFieldGroupRefs(typeName string, decs []*ast.Decorator, b
 		return byName
 	}
 	for _, d := range decs {
-		if d.Name != "requiresOneOf" && d.Name != "mutuallyExclusive" {
+		if (d.Name != "requiresOneOf" && d.Name != "mutuallyExclusive") || d.HoldsBadExpr() {
 			continue
 		}
 		seen := map[string]bool{}

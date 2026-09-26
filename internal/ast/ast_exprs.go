@@ -116,3 +116,12 @@ type ArrayLit struct {
 
 func (*ArrayLit) exprNode()      { astMarker() }
 func (e *ArrayLit) ExprPos() Pos { return e.Pos }
+
+// BadExpr stands for an argument the parser could not read, and ends an
+// argument list with a parse error; the parser reported why.
+type BadExpr struct {
+	Pos Pos
+}
+
+func (*BadExpr) exprNode()      { astMarker() }
+func (e *BadExpr) ExprPos() Pos { return e.Pos }

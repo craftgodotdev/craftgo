@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/parser"
 )
 
 func TestArgKindString(t *testing.T) {
@@ -571,4 +572,38 @@ func TestDefaultConstraintMessageWording(t *testing.T) {
 	expectMessage(t, d, `@default("a\u{301}") violates @maxLength(1): its length is 2`)
 	d = expectError(t, "package app\ntype R {\n  s string? @maxLength(1) @default(`a\nb`)\n}", CodeDecoratorConflict)
 	expectMessage(t, d, `@default("a\nb") violates @maxLength(1): its length is 3`)
+}
+
+// An argument the parser could not read is its error alone: analysis reads
+// it as no value and reports nothing about the decorator's arguments.
+func TestUnreadableArgumentLeftToTheParser(t *testing.T) {
+	const decls = "package app\nenum Color { Red  Green }\ntype Item { id string }\n"
+	for label, src := range map[string]string{
+		"nested decorator":   "@doc(@x)\ntype T { a string }",
+		"stray token":        "@doc(=)\ntype T { a string }",
+		"dash":               "@doc(-)\ntype T { a string }",
+		"list cut short":     "type T { a string @doc(})",
+		"second argument":    "type T { a int @range(1, @x) }",
+		"length":             "type T { a string @minLength(@x) }",
+		"enum default":       "type T { c Color? @default(@x) }",
+		"array default":      "type T { tags string[]? @uniqueItems @default([@x, @y]) }",
+		"example":            "type T { a int @example(@x) }",
+		"format":             "type T { a string @format(@x) }",
+		"errors":             "error NotFound Gone\nservice S { @errors(@x) get A /a { response Item } }",
+		"timeout":            "service S { @timeout(@x) get A /a { response Item } }",
+		"mutually exclusive": "@mutuallyExclusive(a, @x)\ntype T { a string?  b string? }",
+		"missing comma":      "@doc(\"a\" \"b\")\ntype T { a string }",
+		"array left open":    "type T { tags string[]? @default([\"a\"\n}",
+	} {
+		t.Run(label, func(t *testing.T) {
+			p := parser.New("test.craftgo", decls+src)
+			f := p.Parse()
+			if len(p.Diagnostics()) == 0 {
+				t.Fatal("the parser reported no error")
+			}
+			if _, diags := Analyze([]*ast.File{f}); len(diags) > 0 {
+				t.Errorf("analysis adds %v to the parse errors %v", diags, p.Diagnostics())
+			}
+		})
+	}
 }

@@ -952,6 +952,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   bad escape or a number with a bad suffix also reported `expected literal,
   got Error`; each place in a file now gets one diagnostic.
 
+- **A decorator's arguments that do not parse draw the parse error alone.**
+  The parser read an argument it could not, such as the `@x` of `@doc(@x)`,
+  as `null`, so analysis added `@doc arg 1: expected string, got null`;
+  `@doc(})` added `@doc expects at least 1 argument(s), got 0`, and
+  `@doc("a" "b")` an argument count. The editor now shows only the parse
+  error until the arguments parse.
+
 - **A declaration name starts with an uppercase letter.** A `type`, `enum`,
   `scalar`, `error`, `middleware`, `event` or method named in lower case, or
   with a leading `_`, only warned, and the generated Go declared it

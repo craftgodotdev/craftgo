@@ -649,6 +649,65 @@ func TestDecoratorArgumentKeepsItsNeighbours(t *testing.T) {
 	}
 }
 
+// An argument the parser cannot read is an ast.BadExpr, and an argument list
+// with a parse error ends in one, beside the arguments it read.
+func TestUnreadableArgumentIsABadExpr(t *testing.T) {
+	for _, c := range []struct {
+		src  string
+		want string
+	}{
+		{"@doc(@x)\ntype X {}", "[bad]"},
+		{"@doc(=)\ntype X {}", "[bad]"},
+		{"@doc(-)\ntype X {}", "[bad]"},
+		{"@range(1, @x)\ntype X {}", "[int bad]"},
+		{"@range(@x, 5)\ntype X {}", "[bad int]"},
+		{"@errors([A, @x])\ntype X {}", "[[ident bad]]"},
+		{"type X {\n\ta string @range(1\n}", "[int bad]"},
+		{"@range(1 5)\ntype X {}", "[int int bad]"},
+	} {
+		f, msgs := parseWithErrors(t, "package p\n\n"+c.src+"\n")
+		if len(msgs) == 0 {
+			t.Errorf("%q: no parse error", c.src)
+			continue
+		}
+		var d *ast.Decorator
+		switch x := f.Decls[0].(type) {
+		case *ast.TypeDecl:
+			if len(x.Decorators) > 0 {
+				d = x.Decorators[0]
+			} else {
+				d = x.Body[0].(*ast.Field).Decorators[0]
+			}
+		}
+		var kinds []string
+		for _, a := range d.Args {
+			kinds = append(kinds, argKind(a.Value))
+		}
+		if got := "[" + strings.Join(kinds, " ") + "]"; got != c.want {
+			t.Errorf("%q: arguments = %s, want %s", c.src, got, c.want)
+		}
+	}
+}
+
+// argKind names e's kind for TestUnreadableArgumentIsABadExpr.
+func argKind(e ast.Expr) string {
+	switch v := e.(type) {
+	case *ast.BadExpr:
+		return "bad"
+	case *ast.IntLit:
+		return "int"
+	case *ast.IdentExpr:
+		return "ident"
+	case *ast.ArrayLit:
+		kinds := make([]string, len(v.Elements))
+		for i, el := range v.Elements {
+			kinds[i] = argKind(el)
+		}
+		return "[" + strings.Join(kinds, " ") + "]"
+	}
+	return fmt.Sprintf("%T", e)
+}
+
 // An argument list left open ends at an inner decorator's `)` that ends its
 // line, or at the body's `}`, so the declarations below still parse.
 func TestUnclosedArgumentsCloseAtAnInnerDecorator(t *testing.T) {

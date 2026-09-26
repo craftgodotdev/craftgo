@@ -77,6 +77,7 @@ func TestExprMarkers(t *testing.T) {
 		{"SizeLit", &SizeLit{Pos: nodePos, Text: "5MB"}},
 		{"IdentExpr", &IdentExpr{Pos: nodePos, Name: &QualifiedIdent{Parts: []string{"Name"}}}},
 		{"ArrayLit", &ArrayLit{Pos: nodePos}},
+		{"BadExpr", &BadExpr{Pos: nodePos}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

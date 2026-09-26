@@ -1,5 +1,7 @@
 package ast
 
+import "slices"
+
 // FindDecorator returns the first decorator in decs named name, or nil; nil
 // entries are skipped.
 func FindDecorator(decs []*Decorator, name string) *Decorator {
@@ -14,6 +16,31 @@ func FindDecorator(decs []*Decorator, name string) *Decorator {
 // HasDecorator reports whether decs has a decorator named name.
 func HasDecorator(decs []*Decorator, name string) bool {
 	return FindDecorator(decs, name) != nil
+}
+
+// HoldsBadExpr reports whether an argument of d, an array element or an
+// object field value included, is a [BadExpr].
+func (d *Decorator) HoldsBadExpr() bool {
+	for _, a := range d.Args {
+		if a == nil {
+			continue
+		}
+		if isBad(a.Value) || slices.ContainsFunc(a.Object, func(f *ObjectField) bool { return isBad(f.Value) }) {
+			return true
+		}
+	}
+	return false
+}
+
+// isBad reports whether e is a [BadExpr] or an array holding one.
+func isBad(e Expr) bool {
+	switch v := e.(type) {
+	case *BadExpr:
+		return true
+	case *ArrayLit:
+		return slices.ContainsFunc(v.Elements, isBad)
+	}
+	return false
 }
 
 // DecoratorArgValues returns a's value, or the elements of an array value, so
