@@ -434,7 +434,7 @@ type T {
 	}
 }
 
-// A package with no type or scalar writes neither types.go nor its directory.
+// A package with no type or scalar writes neither types.go, validate.go nor its directory.
 func TestGenerateTypesServiceOnlyPackageWritesNothing(t *testing.T) {
 	pkg := analyze(t, `package design
 service Health {
@@ -468,24 +468,6 @@ scalar Email string @format(email)`)
 	mustParseGo(t, src)
 	if !strings.Contains(src, "type Email string") {
 		t.Errorf("expected the scalar defined type in:\n%s", src)
-	}
-}
-
-// A package without types writes neither types.go nor validate.go.
-func TestGenerateTypesWritesNothingWithoutTypes(t *testing.T) {
-	pkg := analyze(t, `package design
-service Health {
-	get Ping /ping {}
-}`)
-	dir := t.TempDir()
-	if err := generateTypes(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := generateValidators(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "design")); !os.IsNotExist(err) {
-		t.Errorf("the package directory must be left uncreated, stat returned %v", err)
 	}
 }
 
