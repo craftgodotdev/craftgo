@@ -331,3 +331,22 @@ type Choice { left bytes? @format(raw)  right string? }`)
 	expectError(t, `@requiresOneOf(left, right)
 type Choice { left bytes?  right string? }`, CodeCrossFieldNotOptional)
 }
+
+// A constraint decorator on a struct-typed field is a type mismatch; an enum
+// field keeps its backing type's constraints.
+func TestConstraintOnStructFieldRejected(t *testing.T) {
+	const src = `package p
+type Addr { city string }
+type Page<T> { items T[] }
+enum Tier { Gold = "gold" }
+type Req {
+	a Addr @gt(3)
+	b Addr @minLength(2)
+	c Addr @uniqueItems
+	d Page<Addr> @maxItems(3)
+	e Tier @minLength(2)
+}
+`
+	expectCodeCount(t, src, CodeDecoratorTypeMismatch, 4)
+	expectMessage(t, expectDiag(t, src, CodeDecoratorTypeMismatch), "is struct")
+}

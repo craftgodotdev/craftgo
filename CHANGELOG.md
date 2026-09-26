@@ -418,6 +418,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   is now `field/invalid-go-name` at the mixin, as the error's own field of
   that name is.
 
+- **A constraint decorator on a struct field is refused.** `@gt`,
+  `@minLength`, `@maxItems`, `@uniqueItems` and the other value, length and
+  item constraints on a field typed by a struct or a generic instance
+  generated a field the validator never checked; each is now
+  `decorator/typemismatch`, and the editor no longer offers them there.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

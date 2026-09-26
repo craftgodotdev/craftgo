@@ -34,7 +34,10 @@ Each of these generated a project that built and ran under 1.9. Fix the design a
 - A generic argument on a built-in, as in `s string<int>`: `generic/non-generic`. Drop it.
 - `payload Page<string?>`: `generic/optional-arg`, as on a field. Put the `?` on a field inside the generic.
 - A bound past the field type's range, as `@multipleOf(18446744073709551616.0)` on a `uint64`, or a `@default` past `float32` on a `float32` field: `decorator/bound-overflow`.
-- An `oauth2` security scheme whose flow lacks the URL its grant needs: a run that writes the OpenAPI document stops, naming the scheme and the flow. Add the URL.
+- A security scheme an operation names that lacks a field its type needs - an `oauth2` flow without the URL its grant needs, `http` without `scheme`, `apiKey` without `in` or `name`, `openIdConnect` without its URL: a run that writes the OpenAPI document stops, naming the scheme and the field. Add it.
+- A constraint decorator on a struct or generic-instance field, such as `a Addr @gt(3)` or `p Page<Item> @maxItems(3)`, which 1.9 ignored: `decorator/typemismatch`. Drop it, or constrain the fields inside.
+- `@json("-")`: `decorator/argvalue`. Use `@sensitive` to keep a field off the wire.
+- An optional array or map as a map value, as in `map<string, int[]?>`: `type/map-value`. Drop the `?`; an absent entry reads as empty.
 - `@path("rest...")` for a `{rest...}` variable: an error. The variable is `rest`.
 
 A decorator as another decorator's argument, `@a(@b)`, is out of the grammar: one parse error at the inner `@`.

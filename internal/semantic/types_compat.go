@@ -36,7 +36,7 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 				continue
 			}
 			if actual == 0 {
-				continue // not a primitive or scalar field
+				continue // an enum, any or type-parameter field
 			}
 			if spec.AppliesTo&actual == 0 {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError,

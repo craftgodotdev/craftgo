@@ -178,6 +178,8 @@ const (
 	// PrimRawBytes covers a `bytes @format(raw)` field, which only that
 	// `@format` targets.
 	PrimRawBytes
+	// PrimStruct covers a struct type, which no validator targets.
+	PrimStruct
 	// PrimAny matches any field type.
 	PrimAny Prims = 0
 	// PrimNumber covers integers and floats.
@@ -201,6 +203,7 @@ var primNames = []struct {
 	{PrimFile, "file"},
 	{PrimDateTime, "datetime"},
 	{PrimRawBytes, "bytes @format(raw)"},
+	{PrimStruct, "struct"},
 }
 
 // String joins the category names with ", ", or returns "any" for zero.
