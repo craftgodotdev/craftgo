@@ -154,6 +154,9 @@ func TestSetDefaultTakesAFollowLogger(t *testing.T) {
 // A Follow line allocates at most once more than the same line through Default, and a chain
 // of With calls costs a line what one With of all their fields costs.
 func TestFollowLinesCostAboutWhatDefaultLinesCost(t *testing.T) {
+	if raceEnabled {
+		t.Skip("allocation counts vary between runs under the race detector")
+	}
 	enc := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
 	swapDefault(t, NewZap(zap.New(zapcore.NewCore(enc, zapcore.AddSync(io.Discard), zap.DebugLevel), zap.AddCaller())))
 	sc := trace.NewSpanContext(trace.SpanContextConfig{
