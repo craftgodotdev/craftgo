@@ -40,6 +40,7 @@ Each of these generated a project that built and ran under 1.9. Fix the design a
 - An optional array or map as a map value, as in `map<string, int[]?>`: `type/map-value`. Drop the `?`; an absent entry reads as empty.
 - `@path("rest...")` for a `{rest...}` variable: an error. The variable is `rest`.
 - `@form` on a field of a request with no `file`: `binding/form-without-file`. Drop `@form`; the field rides the JSON body, as it did.
+- A fractional bound on a field of an int enum, as `@gt(1.5)` or `@multipleOf(2.5)`, which 1.9 documented and never checked: `decorator/typemismatch`. Use a whole number.
 - `@minItems`, `@maxItems`, `@uniqueItems`, `@maxSize` or `@mimeTypes` on a field typed by a type parameter, as in `type Box<T> { v T @maxSize(10) }`, which 1.9 documented and never checked: `decorator/typemismatch`. Constrain a concrete field, or the collection `T[]`.
 - Methods of one service directory writing one file, as `GetURL` beside `GetUrl`, or one Go name, as `Order` beside `NewOrder`, or a method named `Logger`, which generated code that did not compile: `service/method-name-clash`. Rename the method, and move its logic stub to the new file name.
 - An event payload reaching a field bound to `@path`, `@query`, `@header`, `@cookie` or `@form`, which never reached a consumer: `event/payload-binding`. Drop the binding, or give the event a type without it.

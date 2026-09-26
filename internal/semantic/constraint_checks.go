@@ -25,13 +25,14 @@ func (a *analyzer) checkValueRules(prim, subject string, sites []constraintSite)
 	a.checkValueDomain(prim, sites)
 }
 
-// valuePrim returns the primitive of f's values - a scalar's, else the type
-// as spelled - or "" for an array or a map.
+// valuePrim returns the primitive f's values are checked as - an enum's wire
+// primitive, a scalar's, else the type as spelled - or "" for an array or a
+// map.
 func (a *analyzer) valuePrim(f *ast.Field) string {
 	if f.Type == nil || f.Type.Array {
 		return ""
 	}
-	return a.primOf(f.Type)
+	return a.checkedPrim(f.Type)
 }
 
 // boundSide is where one argument of a bound decorator puts the limit: below

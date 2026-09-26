@@ -444,6 +444,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@form("n")` went nowhere. It is now `binding/form-without-file` at the
   decorator; drop `@form` and the field rides the JSON body as before.
 
+- **An int enum's field takes whole bounds only.** `@gt(1.5)`,
+  `@multipleOf(2.5)` or `@range(0.5, 9.5)` on a field of an int enum was
+  listed in the OpenAPI document and never checked. It is now
+  `decorator/typemismatch`, as on an `int` field.
+
 - **A type-parameter field takes no constraint.** `@minItems`, `@maxItems`,
   `@uniqueItems`, `@maxSize` and `@mimeTypes` on a field typed by a type
   parameter, as in `type Box<T> { v T @maxSize(10) }`, were advertised in

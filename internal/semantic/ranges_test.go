@@ -237,6 +237,17 @@ func TestBoundOverflowInt8(t *testing.T) {
 	mustClean(t, `type X { u uint8 @range(0, 255) }`)
 }
 
+// An int enum's field takes whole bounds only, as an int field does; a string
+// enum's takes no numeric bound at all.
+func TestFractionalBoundOnIntEnumRejected(t *testing.T) {
+	const level = "enum Level { Low = 1  High = 9 }\n"
+	for _, dec := range []string{"@gt(1.5)", "@multipleOf(2.5)", "@range(0.5, 9.5)", "@lte(8.5)"} {
+		d := expectDiag(t, level+"type X { lvl Level "+dec+" }", CodeDecoratorTypeMismatch)
+		expectMessage(t, d, "whole number", "lvl")
+	}
+	mustClean(t, level+"type X { lvl Level @gt(1) @multipleOf(3) }")
+}
+
 func TestMinExceedsMax(t *testing.T) {
 	expectDiag(t, `type X { score int @gte(100) @lte(10) }`, CodeDecoratorRange)
 }
