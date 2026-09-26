@@ -1,5 +1,5 @@
-github.com/craftgodotdev/craftgo/pkg/events v1.8.2 h1:/3SR3UNbsG4wU0ACl0S2C6mjmwA3HAcuW7vD1FseptY=
-github.com/craftgodotdev/craftgo/pkg/events v1.8.2/go.mod h1:5HwAOL8ggw9IPuhjLmLSJZJjm0eVNhxFNpKqoZRJr/I=
+github.com/craftgodotdev/craftgo/pkg/events v1.9.0 h1:ucUE2mrceSvqNs2GA2H21b5qPIf6KZOREgcE21HZIH0=
+github.com/craftgodotdev/craftgo/pkg/events v1.9.0/go.mod h1:5HwAOL8ggw9IPuhjLmLSJZJjm0eVNhxFNpKqoZRJr/I=
 github.com/klauspost/compress v1.19.2 h1:hMRETovs/pu/dVWN7zIT1PGG8t509MwT6bO7XSi26R8=
 github.com/klauspost/compress v1.19.2/go.mod h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=
 github.com/nats-io/nats.go v1.53.1 h1:Otsq3uLc/kLdjmkNHkXH0jBqwUquwdKFoe3fq6/3/Xo=
