@@ -25,7 +25,7 @@ srv := server.New(svcCtx, opts...)
 | `Use(mw Middleware) *Server` | Append a global middleware. Outermost-added wraps first. |
 | `Handle(pattern, h http.Handler, mws ...Middleware) *Server` | Register a route. Optional per-route middlewares wrap the handler **outermost-first** (first arg = outermost frame). |
 | `HandleFunc(pattern, fn http.HandlerFunc) *Server` | Register a route from a bare function. |
-| `Handler() http.Handler` | Build the fully-wrapped handler (the `WithTelemetry` middleware → Recovery → global chain → CORS → mux; the health probes are answered ahead of it, wrapped in Recovery only). Use it with `httptest.NewServer(srv.Handler())` to exercise the full stack without binding a port. |
+| `Handler() http.Handler` | Build the fully-wrapped handler (the `WithTelemetry` middleware → Recovery → CORS → global chain → mux, so a preflight never reaches a `Use` middleware; the health probes are answered ahead of it, wrapped in Recovery only). Use it with `httptest.NewServer(srv.Handler())` to exercise the full stack without binding a port. |
 | `Start(addr string) error` | Bind and serve until `Stop`; returns nil after a graceful `Stop`. Request headers must arrive within 10s, and idle connections close after 120s. |
 | `Stop(ctx context.Context) error` | Graceful shutdown; no-op if `Start` never ran. |
 | `Mux() *http.ServeMux` | The underlying mux, if you need raw access. Routes registered on it directly skip the default body cap and handler timeout that `Handle` applies. |

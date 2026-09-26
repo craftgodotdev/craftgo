@@ -205,14 +205,16 @@ func (s *Server) Logger() log.Logger { return log.Follow() }
 func (s *Server) Codec() JSONCodec { return JSON() }
 
 // Handler returns what [Server.Start] serves: the [WithTelemetry] middleware, [Recovery] logging
-// to [log.Default], the [Server.Use] middlewares in order, CORS when set, then the mux. The health
-// probes are answered ahead of that chain, wrapped in Recovery only.
+// to [log.Default], CORS when set, the [Server.Use] middlewares in order, then the mux. CORS
+// answers a preflight before any Use middleware sees it. The health probes are answered ahead of
+// that chain, wrapped in Recovery only.
 func (s *Server) Handler() http.Handler {
 	s.mu.Lock()
-	chain := NewChain(recovery(log.Default)).Append(s.chain...)
+	chain := NewChain(recovery(log.Default))
 	if s.cors != nil {
 		chain = chain.Append(corsMiddleware(*s.cors))
 	}
+	chain = chain.Append(s.chain...)
 	app := chain.Then(s.muxLocked())
 	if s.telemetry != nil {
 		app = s.telemetry(app)

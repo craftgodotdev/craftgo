@@ -428,6 +428,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   generated a field the validator never checked; each is now
   `decorator/typemismatch`, and the editor no longer offers them there.
 
+- **CORS runs ahead of the `Use` middlewares.** `SetCORS` sat inside the
+  `srv.Use` chain, so an auth middleware answered a browser's preflight 401
+  and the browser never sent the request. The order is now Recovery, CORS,
+  then the `Use` middlewares: a preflight is answered before them, and the
+  requests they refuse still carry the CORS headers.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

@@ -96,3 +96,39 @@ func TestCORSDisallowedOriginPreflightFallsThrough(t *testing.T) {
 		t.Errorf("disallowed origin must get no Allow-Origin, got %q", got)
 	}
 }
+
+// SetCORS answers a preflight ahead of the Use middlewares, so an auth middleware that refuses
+// requests without credentials cannot refuse the browser's preflight; the actual request still
+// passes through them with the CORS headers set.
+func TestSetCORSRunsBeforeUseMiddlewares(t *testing.T) {
+	srv := New(nil)
+	srv.SetCORS(CORSStrict("https://app.example.com"))
+	srv.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") == "" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
+	srv.Handle("POST /x", corsOK())
+	h := srv.Handler()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodOptions, "/x", nil)
+	req.Header.Set("Origin", "https://app.example.com")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent || rec.Header().Get("Access-Control-Allow-Origin") != "https://app.example.com" {
+		t.Errorf("preflight: got %d, Allow-Origin %q; want 204 from CORS", rec.Code, rec.Header().Get("Access-Control-Allow-Origin"))
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/x", nil)
+	req.Header.Set("Origin", "https://app.example.com")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized || rec.Header().Get("Access-Control-Allow-Origin") != "https://app.example.com" {
+		t.Errorf("request without credentials: got %d, Allow-Origin %q; want the middleware's 401 with CORS headers", rec.Code, rec.Header().Get("Access-Control-Allow-Origin"))
+	}
+}

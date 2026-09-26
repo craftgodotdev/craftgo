@@ -205,8 +205,8 @@ For a request to a method like `DeleteUser` above, the chain executes outermost-
 ```
 [runtime] server.WithTelemetry middleware (traces + metrics), when set
 [runtime] Recovery (installed by the server)
+[runtime] CORS, when srv.SetCORS is set - it answers a preflight here
 [runtime] srv.Use middleware in declaration order
-[runtime] CORS, when srv.SetCORS is set
 [DSL]     service-level @middlewares in declaration order  } the per-route mws routes.go
 [DSL]     method-level @middlewares appended                } passes to srv.Handle
 [runtime] @timeout / @maxBodySize (server.WithLimits), else the server's default handler timeout and body cap
