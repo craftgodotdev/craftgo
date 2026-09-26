@@ -21,6 +21,8 @@ type fillData struct {
 	Types      []fillType
 	EmptySlice bool
 	EmptyMap   bool
+	// Maps says a map is copied, which imports maps.
+	Maps bool
 }
 
 // fillType is one struct's FillEmpty: its name, type parameters and body.
@@ -204,8 +206,11 @@ type fillEmitter struct {
 	typeParams []string
 }
 
+// fillCall is the method a probe finds on a type-parameter value.
+const fillCall = "interface{ FillEmpty(int) (bool, bool) }"
+
 // body renders the statements filling the fields and mixins of a struct held
-// in v.
+// in v; a value v holds itself sets `changed`.
 func (e *fillEmitter) body(members []ast.TypeMember) []string {
 	var out []string
 	names := resolvedGoFieldNames(members)
@@ -221,72 +226,123 @@ func (e *fillEmitter) body(members []ast.TypeMember) []string {
 			}
 			rf := semantic.ResolveField(v, e.pkg, e.res.Project())
 			required := presence == wire.JSONRequired && !semantic.HasRawFormat(v.Decorators)
-			out = append(out, e.value(v.Type, access, required, rf.GoPointer() && rf.Category != semantic.CatFile, 0)...)
+			stmts, _ := e.value(v.Type, access, required, rf.GoPointer() && rf.Category != semantic.CatFile, 0, "changed")
+			out = append(out, stmts...)
 		case *ast.Mixin:
 			if v.Ref == nil || v.Ref.Name == nil || len(v.Ref.Name.Parts) == 0 {
 				continue
 			}
 			if td := e.res.LookupType(v.Ref.Name.String()); td != nil && e.set.types[td] {
-				out = append(out, fmt.Sprintf("v.%s.FillEmpty(depth + 1)", v.Ref.Name.Parts[len(v.Ref.Name.Parts)-1]))
+				out = append(out, fillInto("v."+v.Ref.Name.Parts[len(v.Ref.Name.Parts)-1]+".FillEmpty(depth + 1)", "changed"))
 			}
 		}
 	}
 	return out
 }
 
-// value renders the statements filling a value of type t held in the
-// addressable access: a nil list or map set empty when required, then what
-// each element, map value or struct below holds. ptr says the Go value is a
-// pointer; lvl keeps the variables of nested loops apart.
-func (e *fillEmitter) value(t *ast.TypeRef, access string, required, ptr bool, lvl int) []string {
+// value renders the statements filling a value of type t held in access: a
+// nil list or map set empty when required, then what each element, map value
+// or struct below holds. A change to the value access holds itself sets
+// flag, "" when none matters: an element or a pointer's target is shared, so
+// a copy holding it needs no write-back. A map is never written: a copy
+// holding the changed values takes its place. ptr says the Go value is a
+// pointer; lvl keeps the variables of nested loops apart. It also reports
+// whether a statement sets flag.
+func (e *fillEmitter) value(t *ast.TypeRef, access string, required, ptr bool, lvl int, flag string) ([]string, bool) {
 	var out []string
+	sets := false
 	switch {
 	case t == nil:
 	case t.Array:
 		if required {
-			out = append(out, "emptySlice(&"+access+")")
+			out = append(out, setFlag("emptySlice(&"+access+")", flag))
+			sets = flag != ""
 			e.data.EmptySlice = true
 		}
 		i, elem := fmt.Sprintf("i%d", lvl), t.ElemTypeRef()
-		if inner := e.value(elem, access+"["+i+"]", !elem.Optional, e.nested(elem), lvl+1); len(inner) > 0 {
+		if inner, _ := e.value(elem, access+"["+i+"]", !elem.Optional, e.nested(elem), lvl+1, ""); len(inner) > 0 {
 			out = append(out, fmt.Sprintf("for %s := range %s {\n%s\n}", i, access, strings.Join(inner, "\n")))
 		}
 	case t.Map != nil:
 		if required {
-			out = append(out, "emptyMap(&"+access+")")
+			out = append(out, setFlag("emptyMap(&"+access+")", flag))
+			sets = flag != ""
 			e.data.EmptyMap = true
 		}
-		k, v := fmt.Sprintf("k%d", lvl), fmt.Sprintf("e%d", lvl)
-		if inner := e.value(t.Map.Value, v, !t.Map.Value.Optional, e.nested(t.Map.Value), lvl+1); len(inner) > 0 {
-			out = append(out, fmt.Sprintf("for %s, %s := range %s {\n%s\n%s[%s] = %s\n}", k, v, access, strings.Join(inner, "\n"), access, k, v))
+		n := lvl
+		inner, innerSets := e.value(t.Map.Value, fmt.Sprintf("e%d", n), !t.Map.Value.Optional, e.nested(t.Map.Value), lvl+1, fmt.Sprintf("c%d", n))
+		switch {
+		case len(inner) == 0:
+		case !innerSets:
+			out = append(out, fmt.Sprintf("for _, e%d := range %s {\n%s\n}", n, access, strings.Join(inner, "\n")))
+		default:
+			e.data.Maps = true
+			done := fmt.Sprintf("%s = m%d", access, n)
+			if flag != "" {
+				done += "\n" + flag + " = true"
+				sets = true
+			}
+			out = append(out, fmt.Sprintf(`{
+m%[1]d, cloned%[1]d := %[2]s, false
+for k%[1]d, e%[1]d := range %[2]s {
+c%[1]d := false
+%[3]s
+if c%[1]d {
+if !cloned%[1]d {
+m%[1]d, cloned%[1]d = maps.Clone(%[2]s), true
+}
+m%[1]d[k%[1]d] = e%[1]d
+}
+}
+if cloned%[1]d {
+%[4]s
+}
+}`, n, access, strings.Join(inner, "\n"), done))
 		}
 	case t.Named == nil || t.Named.Name == nil:
 	case slices.Contains(e.typeParams, t.Named.Name.String()):
-		probe := "&" + access
 		if ptr {
-			probe = access
+			out = append(out, guardBlock(access, fmt.Sprintf("if f, ok := any(%s).(%s); ok {\n%s\n}", access, fillCall, fillInto("f.FillEmpty(depth + 1)", ""))))
+		} else {
+			out = append(out, fmt.Sprintf("if f, ok := any(&%s).(%s); ok {\n%s\n}", access, fillCall, fillInto("f.FillEmpty(depth + 1)", flag)))
+			sets = flag != ""
 		}
-		call := fmt.Sprintf("if f, ok := any(%s).(interface{ FillEmpty(int) }); ok {\nf.FillEmpty(depth + 1)\n}", probe)
-		if ptr {
-			call = guardBlock(access, call)
-		}
-		out = append(out, call)
 	default:
 		if td := e.res.LookupType(t.Named.Name.String()); td != nil {
 			if !e.set.types[td] {
-				return nil
+				return nil, false
 			}
-			call := access + ".FillEmpty(depth + 1)"
 			if ptr {
-				call = guardBlock(access, call)
+				out = append(out, guardBlock(access, fillInto(access+".FillEmpty(depth + 1)", "")))
+			} else {
+				out = append(out, fillInto(access+".FillEmpty(depth + 1)", flag))
+				sets = flag != ""
 			}
-			out = append(out, call)
 		} else if required && fillsBytes(e.res.ResolveTypeRef(t)) {
-			out = append(out, "emptySlice(&"+access+")")
+			out = append(out, setFlag("emptySlice(&"+access+")", flag))
+			sets = flag != ""
 			e.data.EmptySlice = true
 		}
 	}
-	return out
+	return out, sets
+}
+
+// setFlag renders call, a helper reporting whether it set a value, setting
+// flag when it did; "" drops the report.
+func setFlag(call, flag string) string {
+	if flag == "" {
+		return call
+	}
+	return fmt.Sprintf("if %s {\n%s = true\n}", call, flag)
+}
+
+// fillInto renders call, a FillEmpty call, returning at once when it stopped
+// and setting flag when it changed the value; "" drops the change.
+func fillInto(call, flag string) string {
+	if flag == "" {
+		return fmt.Sprintf("if _, s := %s; s {\nreturn changed, true\n}", call)
+	}
+	return fmt.Sprintf("if c, s := %s; s {\nreturn changed, true\n} else if c {\n%s = true\n}", call, flag)
 }
 
 // nested reports whether an element or map value of type t is a pointer in

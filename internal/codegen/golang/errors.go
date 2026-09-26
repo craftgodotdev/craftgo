@@ -18,19 +18,28 @@ import (
 // generateErrors writes outDir/<pkg>/errors.go, an error type with its code
 // const and methods per error; a package without errors writes nothing.
 func generateErrors(pkg *semantic.Package, outDir string, r *projectResolver) error {
+	return generateErrorsFilling(pkg, outDir, r, nil)
+}
+
+// generateErrorsFilling is [generateErrors] given the project's fill set; nil
+// weighs the project anew.
+func generateErrorsFilling(pkg *semantic.Package, outDir string, r *projectResolver, fills *fillSet) error {
 	if len(pkg.Errors) == 0 {
 		return nil
 	}
-	return writeGoSource(filepath.Join(outDir, pkg.Name, "errors.go"), buildErrorsGo(pkg, resolverFor(pkg, r)))
+	r = resolverFor(pkg, r)
+	if fills == nil {
+		fills = newFillSet(r.Project())
+	}
+	return writeGoSource(filepath.Join(outDir, pkg.Name, "errors.go"), buildErrorsGo(pkg, r, fills))
 }
 
 // buildErrorsGo returns the unformatted source of pkg's errors.go, errors in
 // name order.
-func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
+func buildErrorsGo(pkg *semantic.Package, r *projectResolver, fills *fillSet) string {
 	imports := newImportSet(r.Module, r, goImport{}, errorsNames)
 	// Every error type's MarshalJSON encodes through encoding/json.
 	imports.use("encoding/json")
-	fills := newFillSet(r.Project())
 	var decls []string
 	for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
 		decls = append(decls, renderError(pkg, pkg.Errors[name], r, imports, fills))

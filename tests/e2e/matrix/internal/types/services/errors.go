@@ -60,10 +60,11 @@ func (e *AcctValidationFailedErr) ErrCode() string { return ErrCodeAcctValidatio
 // HTTPStatus returns the BadRequest status.
 func (e *AcctValidationFailedErr) HTTPStatus() int { return 400 }
 
-// MarshalJSON encodes the body alone, its nil lists and maps as empty ones.
+// MarshalJSON encodes the body alone, from a copy whose nil lists and maps are set empty.
 func (e *AcctValidationFailedErr) MarshalJSON() ([]byte, error) {
-	e.AcctValidationFailedBody.FillEmpty(0)
-	return json.Marshal(e.AcctValidationFailedBody)
+	body := e.AcctValidationFailedBody
+	body.FillEmpty(0)
+	return json.Marshal(body)
 }
 
 // ErrCodeOverloaded is the canonical machine-readable code for OverloadedErr.

@@ -57,8 +57,18 @@ service EmptyLists {
 		response Shapes
 	}
 
-	@doc("Answers a Node whose next is itself: no JSON value, so a 500.")
+	@doc("Answers a Node whose kids hold themselves: no JSON value, so a 500.")
 	get GetCycle /cycle {
 		response Node
+	}
+
+	@doc("Answers no Leaf at all: the logic returns nil.")
+	get GetNothing /nothing {
+		response Leaf
+	}
+
+	@doc("Answers one Shapes value every request shares.")
+	get GetShared /shared {
+		response Shapes
 	}
 }

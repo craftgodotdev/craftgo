@@ -327,10 +327,12 @@ type filled struct {
 	Tags []string `json:"tags"`
 }
 
-func (v *filled) FillEmpty(int) {
-	if v.Tags == nil {
-		v.Tags = []string{}
+func (v *filled) FillEmpty(int) (changed, stopped bool) {
+	if v.Tags != nil {
+		return false, false
 	}
+	v.Tags = []string{}
+	return true, false
 }
 
 // A value with FillEmpty is filled before it is encoded.

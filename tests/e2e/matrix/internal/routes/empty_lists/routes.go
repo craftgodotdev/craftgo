@@ -14,4 +14,6 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/empty-lists/shapes", transport.GetShapes(svcCtx))
 	srv.Handle("GET /api/empty-lists/clash", transport.GetClash(svcCtx))
 	srv.Handle("GET /api/empty-lists/cycle", transport.GetCycle(svcCtx))
+	srv.Handle("GET /api/empty-lists/nothing", transport.GetNothing(svcCtx))
+	srv.Handle("GET /api/empty-lists/shared", transport.GetShared(svcCtx))
 }

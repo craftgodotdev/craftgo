@@ -11,16 +11,19 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Answers a Node whose kids hold themselves: no JSON value, so a 500.
+// Answers one Shapes value every request shares.
 //
-// GetCycle returns the GET GetCycle handler.
-func GetCycle(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
+// GetShared returns the GET GetShared handler.
+func GetShared(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		l := service.NewGetCycleService(r.Context(), svcCtx)
-		resp, err := l.GetCycle()
+		l := service.NewGetSharedService(r.Context(), svcCtx)
+		resp, err := l.GetShared()
 		if err != nil {
 			server.WriteError(w, r, err)
 			return
+		}
+		for _, _v := range resp.Hdr {
+			w.Header().Add("X-Hdr", _v)
 		}
 		server.WriteResponse(w, r, http.StatusOK, resp)
 	}

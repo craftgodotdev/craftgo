@@ -11,13 +11,13 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Answers a Node whose kids hold themselves: no JSON value, so a 500.
+// Answers no Leaf at all: the logic returns nil.
 //
-// GetCycle returns the GET GetCycle handler.
-func GetCycle(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
+// GetNothing returns the GET GetNothing handler.
+func GetNothing(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		l := service.NewGetCycleService(r.Context(), svcCtx)
-		resp, err := l.GetCycle()
+		l := service.NewGetNothingService(r.Context(), svcCtx)
+		resp, err := l.GetNothing()
 		if err != nil {
 			server.WriteError(w, r, err)
 			return

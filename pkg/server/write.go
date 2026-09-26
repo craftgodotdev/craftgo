@@ -29,7 +29,9 @@ func WriteBytes(w http.ResponseWriter, status int, contentType string, body []by
 
 // emptyFiller is a generated type whose FillEmpty sets its required lists and maps left nil, and
 // those of the values below it, to empty ones.
-type emptyFiller interface{ FillEmpty(depth int) }
+type emptyFiller interface {
+	FillEmpty(depth int) (changed, stopped bool)
+}
 
 // WriteResponse writes v as the JSON body of a status response. A generated type's required lists
 // and maps left nil are set empty first, in v itself, so they go out as [] and {}, as the

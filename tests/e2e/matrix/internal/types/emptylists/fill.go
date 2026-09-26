@@ -2,110 +2,233 @@
 
 package emptylists
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Box[T]) FillEmpty(depth int) {
+import "maps"
+
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Box[T]) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
 	if depth > fillDepth {
-		return
+		return false, true
 	}
-	if f, ok := any(&v.V).(interface{ FillEmpty(int) }); ok {
-		f.FillEmpty(depth + 1)
-	}
-	emptySlice(&v.Vs)
-	for i0 := range v.Vs {
-		if f, ok := any(&v.Vs[i0]).(interface{ FillEmpty(int) }); ok {
-			f.FillEmpty(depth + 1)
+	if f, ok := any(&v.V).(interface{ FillEmpty(int) (bool, bool) }); ok {
+		if c, s := f.FillEmpty(depth + 1); s {
+			return changed, true
+		} else if c {
+			changed = true
 		}
 	}
+	if emptySlice(&v.Vs) {
+		changed = true
+	}
+	for i0 := range v.Vs {
+		if f, ok := any(&v.Vs[i0]).(interface{ FillEmpty(int) (bool, bool) }); ok {
+			if _, s := f.FillEmpty(depth + 1); s {
+				return changed, true
+			}
+		}
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Leaf) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Leaf) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
 	}
-	emptySlice(&v.Tags)
-	emptyMap(&v.Meta)
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptySlice(&v.Tags) {
+		changed = true
+	}
+	if emptyMap(&v.Meta) {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Node) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Node) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
 	}
-	emptySlice(&v.Kids)
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptySlice(&v.Kids) {
+		changed = true
+	}
 	for i0 := range v.Kids {
-		v.Kids[i0].FillEmpty(depth + 1)
+		if _, s := v.Kids[i0].FillEmpty(depth + 1); s {
+			return changed, true
+		}
 	}
 	if v.Next != nil {
-		v.Next.FillEmpty(depth + 1)
+		if _, s := v.Next.FillEmpty(depth + 1); s {
+			return changed, true
+		}
 	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Shapes) FillEmpty(depth int) {
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Shapes) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
 	if depth > fillDepth {
-		return
+		return false, true
 	}
-	v.Leaf.FillEmpty(depth + 1)
+	if c, s := v.Leaf.FillEmpty(depth + 1); s {
+		return changed, true
+	} else if c {
+		changed = true
+	}
 	if v.LeafOpt != nil {
-		v.LeafOpt.FillEmpty(depth + 1)
-	}
-	emptySlice(&v.Leaves)
-	for i0 := range v.Leaves {
-		v.Leaves[i0].FillEmpty(depth + 1)
-	}
-	emptyMap(&v.ByName)
-	for k0, e0 := range v.ByName {
-		e0.FillEmpty(depth + 1)
-		v.ByName[k0] = e0
-	}
-	emptyMap(&v.Groups)
-	for k0, e0 := range v.Groups {
-		emptySlice(&e0)
-		for i1 := range e0 {
-			e0[i1].FillEmpty(depth + 1)
+		if _, s := v.LeafOpt.FillEmpty(depth + 1); s {
+			return changed, true
 		}
-		v.Groups[k0] = e0
 	}
-	emptySlice(&v.Grid)
+	if emptySlice(&v.Leaves) {
+		changed = true
+	}
+	for i0 := range v.Leaves {
+		if _, s := v.Leaves[i0].FillEmpty(depth + 1); s {
+			return changed, true
+		}
+	}
+	if emptyMap(&v.ByName) {
+		changed = true
+	}
+	{
+		m0, cloned0 := v.ByName, false
+		for k0, e0 := range v.ByName {
+			c0 := false
+			if c, s := e0.FillEmpty(depth + 1); s {
+				return changed, true
+			} else if c {
+				c0 = true
+			}
+			if c0 {
+				if !cloned0 {
+					m0, cloned0 = maps.Clone(v.ByName), true
+				}
+				m0[k0] = e0
+			}
+		}
+		if cloned0 {
+			v.ByName = m0
+			changed = true
+		}
+	}
+	if emptyMap(&v.Groups) {
+		changed = true
+	}
+	{
+		m0, cloned0 := v.Groups, false
+		for k0, e0 := range v.Groups {
+			c0 := false
+			if emptySlice(&e0) {
+				c0 = true
+			}
+			for i1 := range e0 {
+				if _, s := e0[i1].FillEmpty(depth + 1); s {
+					return changed, true
+				}
+			}
+			if c0 {
+				if !cloned0 {
+					m0, cloned0 = maps.Clone(v.Groups), true
+				}
+				m0[k0] = e0
+			}
+		}
+		if cloned0 {
+			v.Groups = m0
+			changed = true
+		}
+	}
+	if emptySlice(&v.Grid) {
+		changed = true
+	}
 	for i0 := range v.Grid {
 		emptySlice(&v.Grid[i0])
 	}
-	emptySlice(&v.Blob)
-	v.Boxed.FillEmpty(depth + 1)
+	if emptySlice(&v.Blob) {
+		changed = true
+	}
+	if c, s := v.Boxed.FillEmpty(depth + 1); s {
+		return changed, true
+	} else if c {
+		changed = true
+	}
 	if v.BoxedOpt != nil {
-		v.BoxedOpt.FillEmpty(depth + 1)
+		if _, s := v.BoxedOpt.FillEmpty(depth + 1); s {
+			return changed, true
+		}
 	}
-	v.Tree.FillEmpty(depth + 1)
+	if c, s := v.Tree.FillEmpty(depth + 1); s {
+		return changed, true
+	} else if c {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *ClashBody) FillEmpty(depth int) {
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *ClashBody) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
 	if depth > fillDepth {
-		return
+		return false, true
 	}
-	emptySlice(&v.Items)
-	v.Leaf.FillEmpty(depth + 1)
+	if emptySlice(&v.Items) {
+		changed = true
+	}
+	if c, s := v.Leaf.FillEmpty(depth + 1); s {
+		return changed, true
+	} else if c {
+		changed = true
+	}
+	return changed, false
 }
 
-// fillDepth is how deep FillEmpty enters nested values: a value cycle has no end.
+// fillDepth is how deep FillEmpty enters nested values: only a cycle, or data nested that
+// deep, goes further.
 const fillDepth = 1000
 
-// emptySlice sets *s to an empty slice when it is nil.
-func emptySlice[S ~[]E, E any](s *S) {
-	if *s == nil {
-		*s = S{}
+// emptySlice sets *s to an empty slice when it is nil, and reports whether it did.
+func emptySlice[S ~[]E, E any](s *S) bool {
+	if *s != nil {
+		return false
 	}
+	*s = S{}
+	return true
 }
 
-// emptyMap sets *m to an empty map when it is nil.
-func emptyMap[M ~map[K]V, K comparable, V any](m *M) {
-	if *m == nil {
-		*m = M{}
+// emptyMap sets *m to an empty map when it is nil, and reports whether it did.
+func emptyMap[M ~map[K]V, K comparable, V any](m *M) bool {
+	if *m != nil {
+		return false
 	}
+	*m = M{}
+	return true
 }

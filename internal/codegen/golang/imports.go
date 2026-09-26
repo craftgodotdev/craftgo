@@ -50,7 +50,7 @@ var (
 	wiringGRPCNames = []string{"context", "rpc", "svccontext", "ctx", "srv", "svcCtx"}
 	routesNames     = []string{"time", "server", "svccontext", "srv", "svcCtx"}
 	typesNames      = []string{"wire"}
-	errorsNames     = []string{"json", "http", "strconv", "wire", "e", "w"}
+	errorsNames     = []string{"json", "http", "strconv", "wire", "e", "w", "body"}
 	validateNames   = append([]string{"fmt", "regexp", "utf8", "reflect", "mime", "strings", "v", "item", "seen", "_mt", "multipart"}, formatPackages()...)
 )
 

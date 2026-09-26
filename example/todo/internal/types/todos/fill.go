@@ -2,33 +2,54 @@
 
 package todos
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Todo) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Todo) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
 	}
-	emptySlice(&v.Tags)
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptySlice(&v.Tags) {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *TodoList) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *TodoList) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
 	}
-	emptySlice(&v.Items)
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptySlice(&v.Items) {
+		changed = true
+	}
 	for i0 := range v.Items {
-		v.Items[i0].FillEmpty(depth + 1)
+		if _, s := v.Items[i0].FillEmpty(depth + 1); s {
+			return changed, true
+		}
 	}
+	return changed, false
 }
 
-// fillDepth is how deep FillEmpty enters nested values: a value cycle has no end.
+// fillDepth is how deep FillEmpty enters nested values: only a cycle, or data nested that
+// deep, goes further.
 const fillDepth = 1000
 
-// emptySlice sets *s to an empty slice when it is nil.
-func emptySlice[S ~[]E, E any](s *S) {
-	if *s == nil {
-		*s = S{}
+// emptySlice sets *s to an empty slice when it is nil, and reports whether it did.
+func emptySlice[S ~[]E, E any](s *S) bool {
+	if *s != nil {
+		return false
 	}
+	*s = S{}
+	return true
 }

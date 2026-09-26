@@ -2,239 +2,461 @@
 
 package collections
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Arr_BoundsBasic) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
+import "maps"
+
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Arr_BoundsBasic) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
 	}
-	emptySlice(&v.Tags)
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptySlice(&v.Tags) {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Arr_EmptyExact) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Arr_EmptyExact) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
 	}
-	emptySlice(&v.AlwaysEmpty)
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptySlice(&v.AlwaysEmpty) {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Arr_MinZero) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Arr_MinZero) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
 	}
-	emptySlice(&v.Items)
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptySlice(&v.Items) {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Arr_PlainInts) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Arr_PlainInts) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
 	}
-	emptySlice(&v.Scores)
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptySlice(&v.Scores) {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Arr_PlainStrings) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Arr_PlainStrings) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
 	}
-	emptySlice(&v.Codes)
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptySlice(&v.Codes) {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Arr_Tag2D) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Arr_Tag2D) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
 	}
-	emptySlice(&v.Grid)
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptySlice(&v.Grid) {
+		changed = true
+	}
 	for i0 := range v.Grid {
 		emptySlice(&v.Grid[i0])
 	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Arr_Tag2DOptional) FillEmpty(depth int) {
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Arr_Tag2DOptional) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
 	if depth > fillDepth {
-		return
+		return false, true
 	}
 	for i0 := range v.Grid {
 		emptySlice(&v.Grid[i0])
 	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Arr_Tag3D) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Arr_Tag3D) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
 	}
-	emptySlice(&v.Cube)
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptySlice(&v.Cube) {
+		changed = true
+	}
 	for i0 := range v.Cube {
 		emptySlice(&v.Cube[i0])
 		for i1 := range v.Cube[i0] {
 			emptySlice(&v.Cube[i0][i1])
 		}
 	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Arr_TagSlice) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Arr_TagSlice) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
 	}
-	emptySlice(&v.Tags)
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptySlice(&v.Tags) {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Map_ArrayOfMaps) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Map_ArrayOfMaps) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
 	}
-	emptySlice(&v.M)
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptySlice(&v.M) {
+		changed = true
+	}
 	for i0 := range v.M {
 		emptyMap(&v.M[i0])
 	}
-	emptyMap(&v.Plain)
+	if emptyMap(&v.Plain) {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Map_ArrayValue) FillEmpty(depth int) {
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Map_ArrayValue) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
 	if depth > fillDepth {
-		return
+		return false, true
 	}
-	emptyMap(&v.Buckets)
-	for k0, e0 := range v.Buckets {
-		emptySlice(&e0)
-		v.Buckets[k0] = e0
+	if emptyMap(&v.Buckets) {
+		changed = true
 	}
-}
-
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Map_Bounds) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
-	}
-	emptyMap(&v.Counts)
-}
-
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Map_JSONKey) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
-	}
-	emptyMap(&v.Index)
-}
-
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Map_KeyAndValue) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
-	}
-	emptyMap(&v.Index)
-}
-
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Map_Nested) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
-	}
-	emptyMap(&v.Mm)
-	for k0, e0 := range v.Mm {
-		emptyMap(&e0)
-		v.Mm[k0] = e0
-	}
-	emptyMap(&v.Maa)
-	for k0, e0 := range v.Maa {
-		emptySlice(&e0)
-		for i1 := range e0 {
-			emptyMap(&e0[i1])
+	{
+		m0, cloned0 := v.Buckets, false
+		for k0, e0 := range v.Buckets {
+			c0 := false
+			if emptySlice(&e0) {
+				c0 = true
+			}
+			if c0 {
+				if !cloned0 {
+					m0, cloned0 = maps.Clone(v.Buckets), true
+				}
+				m0[k0] = e0
+			}
 		}
-		v.Maa[k0] = e0
+		if cloned0 {
+			v.Buckets = m0
+			changed = true
+		}
 	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Map_OptionalValue) FillEmpty(depth int) {
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Map_Bounds) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
 	if depth > fillDepth {
-		return
+		return false, true
 	}
-	emptyMap(&v.Counts)
+	if emptyMap(&v.Counts) {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Map_Plain) FillEmpty(depth int) {
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Map_JSONKey) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
 	if depth > fillDepth {
-		return
+		return false, true
 	}
-	emptyMap(&v.Counts)
+	if emptyMap(&v.Index) {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Map_ScalarKey) FillEmpty(depth int) {
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Map_KeyAndValue) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
 	if depth > fillDepth {
-		return
+		return false, true
 	}
-	emptyMap(&v.ByUser)
+	if emptyMap(&v.Index) {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Map_ScalarValue) FillEmpty(depth int) {
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Map_Nested) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
 	if depth > fillDepth {
-		return
+		return false, true
 	}
-	emptyMap(&v.Labels)
+	if emptyMap(&v.Mm) {
+		changed = true
+	}
+	{
+		m0, cloned0 := v.Mm, false
+		for k0, e0 := range v.Mm {
+			c0 := false
+			if emptyMap(&e0) {
+				c0 = true
+			}
+			if c0 {
+				if !cloned0 {
+					m0, cloned0 = maps.Clone(v.Mm), true
+				}
+				m0[k0] = e0
+			}
+		}
+		if cloned0 {
+			v.Mm = m0
+			changed = true
+		}
+	}
+	if emptyMap(&v.Maa) {
+		changed = true
+	}
+	{
+		m0, cloned0 := v.Maa, false
+		for k0, e0 := range v.Maa {
+			c0 := false
+			if emptySlice(&e0) {
+				c0 = true
+			}
+			for i1 := range e0 {
+				emptyMap(&e0[i1])
+			}
+			if c0 {
+				if !cloned0 {
+					m0, cloned0 = maps.Clone(v.Maa), true
+				}
+				m0[k0] = e0
+			}
+		}
+		if cloned0 {
+			v.Maa = m0
+			changed = true
+		}
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Map_StructAddress) FillEmpty(depth int) {
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Map_OptionalValue) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
 	if depth > fillDepth {
-		return
+		return false, true
 	}
-	emptyMap(&v.Addresses)
+	if emptyMap(&v.Counts) {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Map_StructValue) FillEmpty(depth int) {
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Map_Plain) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
 	if depth > fillDepth {
-		return
+		return false, true
 	}
-	emptyMap(&v.Users)
+	if emptyMap(&v.Counts) {
+		changed = true
+	}
+	return changed, false
 }
 
-// fillDepth is how deep FillEmpty enters nested values: a value cycle has no end.
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Map_ScalarKey) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptyMap(&v.ByUser) {
+		changed = true
+	}
+	return changed, false
+}
+
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Map_ScalarValue) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptyMap(&v.Labels) {
+		changed = true
+	}
+	return changed, false
+}
+
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Map_StructAddress) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptyMap(&v.Addresses) {
+		changed = true
+	}
+	return changed, false
+}
+
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Map_StructValue) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptyMap(&v.Users) {
+		changed = true
+	}
+	return changed, false
+}
+
+// fillDepth is how deep FillEmpty enters nested values: only a cycle, or data nested that
+// deep, goes further.
 const fillDepth = 1000
 
-// emptySlice sets *s to an empty slice when it is nil.
-func emptySlice[S ~[]E, E any](s *S) {
-	if *s == nil {
-		*s = S{}
+// emptySlice sets *s to an empty slice when it is nil, and reports whether it did.
+func emptySlice[S ~[]E, E any](s *S) bool {
+	if *s != nil {
+		return false
 	}
+	*s = S{}
+	return true
 }
 
-// emptyMap sets *m to an empty map when it is nil.
-func emptyMap[M ~map[K]V, K comparable, V any](m *M) {
-	if *m == nil {
-		*m = M{}
+// emptyMap sets *m to an empty map when it is nil, and reports whether it did.
+func emptyMap[M ~map[K]V, K comparable, V any](m *M) bool {
+	if *m != nil {
+		return false
 	}
+	*m = M{}
+	return true
 }

@@ -23,7 +23,7 @@ func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Confi
 		if err := runSteps(name, []genStep{
 			{"types", func() error { return generateTypes(p, typesDir, r) }},
 			{"enums", func() error { return generateEnums(p, typesDir) }},
-			{"errors", func() error { return generateErrors(p, typesDir, r) }},
+			{"errors", func() error { return generateErrorsFilling(p, typesDir, r, fills) }},
 			{"validators", func() error { return generateValidators(p, typesDir, r) }},
 			{"fill", func() error { return generateFill(p, typesDir, fills) }},
 		}); err != nil {

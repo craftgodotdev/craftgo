@@ -2,62 +2,109 @@
 
 package design
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *CreateProfileReq) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *CreateProfileReq) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
 	}
-	emptySlice(&v.Addresses)
-	emptySlice(&v.Tags)
-	emptyMap(&v.Meta)
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptySlice(&v.Addresses) {
+		changed = true
+	}
+	if emptySlice(&v.Tags) {
+		changed = true
+	}
+	if emptyMap(&v.Meta) {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *ListProfilesResp) FillEmpty(depth int) {
-	if depth > fillDepth {
-		return
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *ListProfilesResp) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
 	}
-	emptySlice(&v.Items)
+	if depth > fillDepth {
+		return false, true
+	}
+	if emptySlice(&v.Items) {
+		changed = true
+	}
 	for i0 := range v.Items {
-		v.Items[i0].FillEmpty(depth + 1)
+		if _, s := v.Items[i0].FillEmpty(depth + 1); s {
+			return changed, true
+		}
 	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *Profile) FillEmpty(depth int) {
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *Profile) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
 	if depth > fillDepth {
-		return
+		return false, true
 	}
-	emptySlice(&v.Addresses)
-	emptySlice(&v.Tags)
-	emptyMap(&v.Meta)
+	if emptySlice(&v.Addresses) {
+		changed = true
+	}
+	if emptySlice(&v.Tags) {
+		changed = true
+	}
+	if emptyMap(&v.Meta) {
+		changed = true
+	}
+	return changed, false
 }
 
-// FillEmpty sets each required list, map or bytes value below v that is nil to an empty one,
-// so v encodes as [] or {} there; depth counts the values entered to reach v.
-func (v *ProfileValidationFailedBody) FillEmpty(depth int) {
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
+func (v *ProfileValidationFailedBody) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
 	if depth > fillDepth {
-		return
+		return false, true
 	}
-	emptySlice(&v.Fields)
+	if emptySlice(&v.Fields) {
+		changed = true
+	}
+	return changed, false
 }
 
-// fillDepth is how deep FillEmpty enters nested values: a value cycle has no end.
+// fillDepth is how deep FillEmpty enters nested values: only a cycle, or data nested that
+// deep, goes further.
 const fillDepth = 1000
 
-// emptySlice sets *s to an empty slice when it is nil.
-func emptySlice[S ~[]E, E any](s *S) {
-	if *s == nil {
-		*s = S{}
+// emptySlice sets *s to an empty slice when it is nil, and reports whether it did.
+func emptySlice[S ~[]E, E any](s *S) bool {
+	if *s != nil {
+		return false
 	}
+	*s = S{}
+	return true
 }
 
-// emptyMap sets *m to an empty map when it is nil.
-func emptyMap[M ~map[K]V, K comparable, V any](m *M) {
-	if *m == nil {
-		*m = M{}
+// emptyMap sets *m to an empty map when it is nil, and reports whether it did.
+func emptyMap[M ~map[K]V, K comparable, V any](m *M) bool {
+	if *m != nil {
+		return false
 	}
+	*m = M{}
+	return true
 }

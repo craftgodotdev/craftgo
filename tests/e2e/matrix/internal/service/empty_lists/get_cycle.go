@@ -31,7 +31,9 @@ func NewGetCycleService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 //
 // GetCycle implements EmptyLists.GetCycle.
 func (l *GetCycleService) GetCycle() (*types.Node, error) {
-	n := &types.Node{Name: "loop"}
+	n := &types.Node{Name: "loop", Kids: make([]types.Node, 2)}
+	n.Kids[0].Kids = n.Kids
+	n.Kids[1].Kids = n.Kids
 	n.Next = n
 	return n, nil
 }

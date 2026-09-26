@@ -3024,6 +3024,8 @@ components:
       $ref: '#/components/schemas/XOwner'
     GetNestedRespBody:
       $ref: '#/components/schemas/XOwner'
+    GetNothingRespBody:
+      $ref: '#/components/schemas/Leaf'
     GetOptionalWireRespBody:
       $ref: '#/components/schemas/DoneResp'
     GetOrderReq:
@@ -3124,6 +3126,68 @@ components:
       type: object
     GetSharedOwnerRespBody:
       $ref: '#/components/schemas/XOwner'
+    GetSharedRespBody:
+      properties:
+        blob:
+          format: byte
+          type: string
+        boxed:
+          $ref: '#/components/schemas/BoxOfLeaf'
+        boxedOpt:
+          anyOf:
+          - $ref: '#/components/schemas/BoxOfLeaf'
+          - type: "null"
+        byName:
+          additionalProperties:
+            $ref: '#/components/schemas/Leaf'
+          type: object
+        grid:
+          items:
+            items:
+              type: string
+            type: array
+          type: array
+        groups:
+          additionalProperties:
+            items:
+              $ref: '#/components/schemas/Leaf'
+            type: array
+          type: object
+        leaf:
+          $ref: '#/components/schemas/Leaf'
+        leafOpt:
+          anyOf:
+          - $ref: '#/components/schemas/Leaf'
+          - type: "null"
+        leaves:
+          items:
+            $ref: '#/components/schemas/Leaf'
+          type: array
+        maybe:
+          items:
+            type: string
+          type:
+          - array
+          - "null"
+        nulls:
+          items:
+            type: string
+          type:
+          - array
+          - "null"
+        tree:
+          $ref: '#/components/schemas/EmptylistsNode'
+      required:
+      - leaf
+      - leaves
+      - byName
+      - groups
+      - grid
+      - nulls
+      - blob
+      - boxed
+      - tree
+      type: object
     GetThirdRespBody:
       $ref: '#/components/schemas/XOwner'
     GetTracedRespBody:
@@ -11277,7 +11341,8 @@ paths:
       - EmptyLists
   /empty-lists/cycle:
     get:
-      description: 'Answers a Node whose next is itself: no JSON value, so a 500.'
+      description: 'Answers a Node whose kids hold themselves: no JSON value, so a
+        500.'
       operationId: GetCycle
       responses:
         "200":
@@ -11285,6 +11350,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetCycleRespBody'
+          description: OK
+      tags:
+      - EmptyLists
+  /empty-lists/nothing:
+    get:
+      description: 'Answers no Leaf at all: the logic returns nil.'
+      operationId: GetNothing
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetNothingRespBody'
           description: OK
       tags:
       - EmptyLists
@@ -11298,6 +11376,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetShapesRespBody'
+          description: OK
+          headers:
+            X-Hdr:
+              schema:
+                items:
+                  type: string
+                type: array
+      tags:
+      - EmptyLists
+  /empty-lists/shared:
+    get:
+      description: Answers one Shapes value every request shares.
+      operationId: GetShared
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSharedRespBody'
           description: OK
           headers:
             X-Hdr:
