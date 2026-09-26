@@ -300,7 +300,7 @@ var registry = map[string]Spec{
 	"doc": {
 		Name:     "doc",
 		Levels:   LvlFile | LvlType | LvlField | LvlService | LvlMethod | LvlEnum | LvlEnumValue | LvlError | LvlScalar | LvlMiddleware | LvlEvent | LvlErrorField,
-		Doc:      "Free-form documentation surfaced in OpenAPI and IDE hover.",
+		Doc:      "Free-form documentation: the OpenAPI description and the generated Go doc comment, in place of the // comment block.",
 		Args:     ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgString}},
 		Metadata: true,
 	},
@@ -563,7 +563,7 @@ var registry = map[string]Spec{
 
 	// ---- Method limits ----
 	"timeout":     {Name: "timeout", Levels: LvlMethod, Doc: "Cap the handler's execution time: the request context is cancelled when the deadline elapses (no status is written automatically). Overrides the global handlerTimeout for this route.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgDuration}}},
-	"maxBodySize": {Name: "maxBodySize", Levels: LvlMethod, Doc: "Cap the request body size in bytes. Two enforcement points fire: Content-Length pre-check returns 413 immediately when the declared size exceeds the cap, and MaxBytesReader wraps r.Body so reads past the cap surface as a 400 Read error. Multipart parsers also lift their in-memory budget to this value.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgSize}}},
+	"maxBodySize": {Name: "maxBodySize", Levels: LvlMethod, Doc: "Cap the request body size in bytes: a declared Content-Length over the cap and a read past it both answer 413. Multipart parsers also lift their in-memory budget to this value.", Args: ArgsRule{Min: 1, Max: 1, Kinds: []ArgKind{ArgSize}}},
 }
 
 // DecoratorSpec returns the [Spec] registered under name, and whether there is one.
