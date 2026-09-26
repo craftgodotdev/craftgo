@@ -1612,7 +1612,7 @@ service UploadService {
 }
 
 // semantic.FlattenFields collects a field from a mixin nested inside a cross-package mixin.
-func TestRequestFieldsNestedCrossPkgMixin(t *testing.T) {
+func TestFlattenFieldsNestedCrossPkgMixin(t *testing.T) {
 	proj := analyzeFiles(t, map[string]string{
 		"shared/types.craftgo": `package shared
 type Inner { deep int32? @default(7) }
@@ -1636,7 +1636,7 @@ type Req { shared.Outer  own string }`,
 	// own = direct, mid = one cross-pkg level, deep = two levels (nested).
 	for _, want := range []string{"own", "mid", "deep"} {
 		if !got[want] {
-			t.Errorf("semantic.RequestFieldList dropped %q (nested cross-pkg mixin field); collected %v", want, names)
+			t.Errorf("semantic.FlattenFields dropped %q (nested cross-pkg mixin field); collected %v", want, names)
 		}
 	}
 }
