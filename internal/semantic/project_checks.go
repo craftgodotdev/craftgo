@@ -21,7 +21,8 @@ type declSite struct {
 }
 
 // checkProjectMiddlewareUniqueness rejects a middleware name declared in
-// more than one package; a bare reference resolves project-wide.
+// more than one package, as a bare reference resolves project-wide, and
+// middlewares of distinct names whose scaffolds write one file.
 func (c *projectChecks) checkProjectMiddlewareUniqueness() {
 	sites := map[string][]declSite{}
 	for pkgName, pkg := range c.proj.Packages {
@@ -34,6 +35,38 @@ func (c *projectChecks) checkProjectMiddlewareUniqueness() {
 	}
 	c.reportCrossPackageDuplicates(sites, CodeMiddlewareCollision,
 		"middleware %q is declared in multiple packages - names are global; rename or qualify references")
+	byFile := map[string][]string{}
+	for name := range sites {
+		file := idents.MiddlewareFileName(name, c.fileCase) + ".go"
+		byFile[file] = append(byFile[file], name)
+	}
+	for _, file := range slices.Sorted(maps.Keys(byFile)) {
+		names := byFile[file]
+		if len(names) < 2 {
+			continue
+		}
+		slices.Sort(names)
+		var reports []siteReport
+		for _, name := range names {
+			for _, s := range sites[name] {
+				reports = append(reports, siteReport{
+					pos:  s.pos,
+					msg:  fmt.Sprintf("middlewares %s all write the scaffold %s - rename all but one", quotedNames(names), file),
+					note: fmt.Sprintf("middleware %q in package %q", name, s.pkg),
+				})
+			}
+		}
+		c.reportEverySite(CodeMiddlewareCollision, reports)
+	}
+}
+
+// quotedNames renders names quoted and comma-separated.
+func quotedNames(names []string) string {
+	quoted := make([]string, len(names))
+	for i, n := range names {
+		quoted[i] = strconv.Quote(n)
+	}
+	return strings.Join(quoted, ", ")
 }
 
 // reportCrossPackageDuplicates reports every site of a name declared in more
@@ -213,10 +246,10 @@ func (c *projectChecks) reportMethodNameClashes(seg string, occs []segClaim) {
 		if owners := byFile[file]; len(owners) > 1 {
 			names := make([]string, len(owners))
 			for i, o := range owners {
-				names[i] = strconv.Quote(o.member.name)
+				names[i] = o.member.name
 			}
 			report(owners, fmt.Sprintf("methods %s all write %s in output directory %q - rename all but one",
-				strings.Join(names, ", "), file, seg))
+				quotedNames(names), file, seg))
 		}
 	}
 	for _, o := range firsts {

@@ -529,3 +529,30 @@ type B { a app.A }`)
 	}
 	expectMessage(t, d, "redundant self-qualification")
 }
+
+// Two middlewares whose scaffolds share one file are reported at both, in one
+// package or across two; names apart under the file case are not.
+func TestMiddlewareScaffoldFileCollision(t *testing.T) {
+	for label, src := range map[string]map[string]string{
+		"one package":  {"a/a.craftgo": "package a\nmiddleware APIKey\nmiddleware ApiKey"},
+		"two packages": {"a/a.craftgo": "package a\nmiddleware APIKey", "b/b.craftgo": "package b\nmiddleware ApiKey"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			root, files := projectFixture(t, src)
+			_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+			hits := 0
+			for _, d := range diags {
+				if d.Code == CodeMiddlewareCollision && strings.Contains(d.Msg, "api_key_middleware.go") {
+					hits++
+				}
+			}
+			if hits != 2 {
+				t.Errorf("want 2 file collisions, got %v", diags)
+			}
+		})
+	}
+	root, files := projectFixture(t, map[string]string{"a/a.craftgo": "package a\nmiddleware APIKey\nmiddleware Auth"})
+	if _, diags := AnalyzeProject(files, Options{DesignRoot: root}); len(diags) != 0 {
+		t.Errorf("distinct files: unexpected %v", diags)
+	}
+}

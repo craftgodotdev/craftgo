@@ -122,7 +122,8 @@ const (
 	CodeGroupPackageStraddle = "group/package-straddle"
 	// CodeGroupMethodCollision fires when services sharing an output directory declare one method name.
 	CodeGroupMethodCollision = "group/method-collision"
-	// CodeMiddlewareCollision fires when two packages declare a middleware of the same name.
+	// CodeMiddlewareCollision fires when two packages declare a middleware of the same name, or
+	// two middlewares write one scaffold file (`APIKey` beside `ApiKey`).
 	CodeMiddlewareCollision = "middleware/collision"
 
 	// CodeQualifiedRef fires when a reference has two qualifiers or qualifies its own package.

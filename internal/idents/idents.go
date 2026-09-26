@@ -242,6 +242,12 @@ func LogicRival(method string) string { return "New" + method }
 // method of that name cannot be declared on the struct.
 const LogicEmbed = "Logger"
 
+// MiddlewareFileName returns the name, without `.go`, of the scaffold file a
+// middleware's name writes in the given `output.fileCase`: `auth_middleware`.
+func MiddlewareFileName(name, style string) string {
+	return FileNameWords(style, append(SplitFieldName(name), "middleware"))
+}
+
 // GoFileProblem says why the go command treats a Go file named base, without
 // `.go`, apart from the rest of its package, or returns "": it ignores a
 // name opening with `_` or `.`, and builds one ending in `_test` only for

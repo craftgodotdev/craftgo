@@ -55,7 +55,7 @@ func projectMiddlewares(proj *semantic.Project) []middlewareData {
 func writeProjectMiddlewareImpls(cfg *config.Config, projectRoot string, mws []middlewareData) error {
 	dir := outputsOf(cfg).middleware
 	for _, mw := range mws {
-		filename := idents.FileNameWords(cfg.Output.FileCase, append(idents.SplitFieldName(mw.Name), "middleware")) + ".go"
+		filename := idents.MiddlewareFileName(mw.Name, cfg.Output.FileCase) + ".go"
 		if err := writeGoOnce(dir.at(projectRoot, filename), tmpl("middleware.tmpl"), mw); err != nil {
 			return err
 		}

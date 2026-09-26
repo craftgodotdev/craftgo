@@ -456,6 +456,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@form("n")` went nowhere. It is now `binding/form-without-file` at the
   decorator; drop `@form` and the field rides the JSON body as before.
 
+- **Two middlewares may not write one scaffold.** `APIKey` and `ApiKey`
+  both wrote `api_key_middleware.go`, so one constructor went missing and
+  `main.go` did not compile. They are now `middleware/collision`, in one
+  package or across two.
+
 - **A middleware may not be named `Config` or `Middlewares`.** The field
   of that name `ServiceContext` declares itself hid the middleware's, so the
   routes did not compile. Either name is now `decl/go-name-collision`.

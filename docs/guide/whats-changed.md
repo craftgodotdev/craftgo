@@ -41,6 +41,7 @@ Each of these generated a project that built and ran under 1.9. Fix the design a
 - `@path("rest...")` for a `{rest...}` variable: an error. The variable is `rest`.
 - `@form` on a field of a request with no `file`: `binding/form-without-file`. Drop `@form`; the field rides the JSON body, as it did.
 - A field named `fillEmpty`, which the generated `FillEmpty` method takes: `field/invalid-go-name`. Rename it.
+- Two middlewares whose scaffolds write one file, as `APIKey` and `ApiKey`: `middleware/collision`. Rename one.
 - A middleware named `Config` or `Middlewares`, whose routes did not compile: `decl/go-name-collision`. Rename it.
 - A fractional bound on a field of an int enum, as `@gt(1.5)` or `@multipleOf(2.5)`, which 1.9 documented and never checked: `decorator/typemismatch`. Use a whole number.
 - `@minItems`, `@maxItems`, `@uniqueItems`, `@maxSize` or `@mimeTypes` on a field typed by a type parameter, as in `type Box<T> { v T @maxSize(10) }`, which 1.9 documented and never checked: `decorator/typemismatch`. Constrain a concrete field, or the collection `T[]`.
