@@ -21,10 +21,10 @@ A decorator's **level** is where it may be written. Applying one at the wrong le
 
 | Decorator | Levels | Args | Effect |
 |---|---|---|---|
-| `@doc("...")` | everywhere | `(string)` | Free-form docs; surfaces in the OpenAPI `description` and IDE hover. |
-| `@deprecated` / `@deprecated("why")` | file, type, field, service, method, enum-value, middleware, event, error-field | `(string?)` | Marks the construct deprecated; OpenAPI emits the `deprecated` flag. |
-| `@example(v)` | field | `(literal \| {k: v})` | Example value rendered in the field's OpenAPI schema. |
-| `@version("1.2.3")` | file | `(string)` | OpenAPI document version (overrides `openapi.version` in the manifest). |
+| `@doc("...")` | everywhere | `(string)` | Free-form docs: the Go doc comment of the generated declaration, and the OpenAPI `description` of a file, type, field, error field, scalar, enum or method. The editor hover shows a declaration's `//` comment, not `@doc`. |
+| `@deprecated` / `@deprecated("why")` | file, type, field, service, method, enum-value, middleware, event, error-field | `(string?)` | Marks the construct deprecated: OpenAPI's `deprecated` flag on a type, field or operation (a service's marks each of its operations), and a Go `// Deprecated:` paragraph on a type or field. No generated effect on a file, enum value, middleware or event. |
+| `@example(v)` | field, error-field | `(literal \| [literals])` | Example value rendered in the field's OpenAPI schema; an object literal is refused. |
+| `@version("1.2.3")` | file | `(string)` | OpenAPI document version (overrides `openapi.version` in the manifest); the first file in path order that carries one wins. |
 
 ## Field validation - string
 
@@ -91,15 +91,15 @@ Field level (a few also apply at error-field level for response writing).
 
 | Decorator | Args | Effect |
 |---|---|---|
-| `@default(v)` | `(literal)` | Value applied when the field is absent on the wire. Field must be optional (`?`). |
+| `@default(v)` | `(literal \| enum value \| array)` | Value the handler pre-fills before binding, kept when the field is absent on the wire. On a field without `?` it still pre-fills, with a `decorator/default-needs-optional` warning (`craftgo fmt` adds the `?`). Refused beside `@path`. |
 | `@nullable` | - | The field accepts an explicit JSON `null` (flag form). |
 | `@json("key")` | `(string)` | The JSON key of a body field when it is not the field name - a contract another system owns, or a key such as `OrderItem` that the parser would read as a mixin. Used by the Go tag, the documents and validation messages. Not combinable with an off-body binding. |
-| `@sensitive` | - | Server-only field - tagged `json:"-"`, skipped from OpenAPI. Cannot combine with any validator, binding, `@default`, or `@nullable`. |
+| `@sensitive` | - | Server-only field - tagged `json:"-"`, skipped from OpenAPI. Cannot combine with any validator, binding, `@json`, `@default`, or `@nullable`. |
 | `@path` / `@path("name")` | `(string?)` | Bind from a URL path parameter. |
 | `@query` / `@query("name")` | `(string?)` | Bind from the URL query string. |
-| `@header` / `@header("Name")` | `(string?)` | Bind from a request header (request fields) or write a response header (error fields). |
-| `@cookie` / `@cookie("name")` | `(string?)` | Bind from a cookie (request) or set one (error fields). |
-| `@body` / `@body("name")` | `(string?)` | Bind from the request body (the default for body verbs). |
+| `@header` / `@header("Name")` | `(string?)` | Bind from a request header (request fields) or write a response header (response and error fields). |
+| `@cookie` / `@cookie("name")` | `(string?)` | Bind from a cookie (request) or set one (response and error fields). |
+| `@body` | - | Bind from the request body (the default for body verbs). A name argument is accepted and has no effect; `@json` sets the key. |
 | `@form` / `@form("name")` | `(string?)` | Bind from a multipart form field. |
 
 See [Types & Scalars](/guide/types-and-scalars) for how binding interacts with field types.
@@ -109,7 +109,7 @@ See [Types & Scalars](/guide/types-and-scalars) for how binding interacts with f
 | Decorator | Args | Effect |
 |---|---|---|
 | `@prefix("/v1")` | `(string)` | Path prefix prepended to every method route. |
-| `@group("admin/ops")` | `(string)` | **Replaces** the service-name segment on disk, so handlers, service stubs and `routes.go` land under `<output>/<group>/` instead of `<output>/<service>/`, and adds its value as an OpenAPI tag. Does not affect the route or OpenAPI path. Services may share a group: they merge into one folder with a single `routes.go`. Contributors from different DSL packages raise `group/package-straddle`; two contributors declaring the same method name raise `group/method-collision`. |
+| `@group("admin/ops")` | `(string)` | **Replaces** the service-name segment on disk, so handlers, service stubs and `routes.go` land under `<output>/<group>/` instead of `<output>/<service>/`, and adds its value as an OpenAPI tag. Does not affect the route or OpenAPI path. Services may share a group: they merge into one folder with a single `routes.go`. Contributors from different DSL packages raise `group/package-straddle`; two contributors declaring the same method name raise `group/method-collision`. On an `extend service` block it groups only that block's methods. |
 | `@middlewares(A, B)` | variadic idents / array | Apply named middlewares (also valid at method level - see below). |
 | `@tags(a, b)` | variadic idents/strings / array | OpenAPI tags (also method level). |
 | `@security(scheme)` | variadic idents / array | Security-scheme requirements (also method level). Within one decorator schemes AND-combine; multiple `@security(...)` OR-combine. |
@@ -122,16 +122,16 @@ Method-level `@middlewares` / `@tags` / `@security` **append** to the service-le
 |---|---|---|
 | `@summary("...")` | `(string)` | One-line OpenAPI operation summary. |
 | `@operationId("...")` | `(string)` | Override the OpenAPI `operationId`. |
-| `@errors(NotFound, Conflict)` | variadic error idents / array | Declared error responses (drives OpenAPI `responses`). |
+| `@errors(UserNotFound, EmailTaken)` | variadic error idents / array | Declared error responses, by error name (drives OpenAPI `responses`). |
 | `@status(201)` | `(int)` | Override the default success status code. |
-| `@timeout(3s)` | `(duration)` | Cap handler execution; overrides the global `server.handlerTimeout` (used as-is). Cancels the request context on the deadline — no status is written automatically; the response is whatever the handler produces after cancellation. |
-| `@maxBodySize(1MB)` | `(size)` | Cap request body - 413 on Content-Length pre-check, 400 on overflow read. |
+| `@timeout(3s)` | `(duration)` | Cap handler execution; overrides the global `server.handlerTimeout` (used as-is). Cancels the request context on the deadline; nothing is written then, and a handler that returns the context's error (or one wrapping it) gets 504 `{"message":"gateway timeout"}`. |
+| `@maxBodySize(1MB)` | `(size)` | Cap the request body (replaces the global `server.maxBodySize`): 413 `{"message":"request entity too large"}` on a declared Content-Length over the cap and on a read past it, a multipart body cut mid-part included. |
 | `@rawResponse` | - | Logic writes the response to `http.ResponseWriter`; the request is still bound + validated. A `response` block is a docs-only contract. Stub: `(w, r, req *types.Req) error` (flag form). |
 | `@rawRequest` | - | Logic reads the raw `*http.Request`; the response is still JSON-encoded. A `request` block is a docs-only contract. Stub: `(r *http.Request) (*types.Resp, error)` (flag form). |
 | `@passthrough` | - | Both sides raw - exactly `@rawRequest @rawResponse`. Stub: `(w, r) error`. Optional blocks document the contract (flag form). |
 | `@ignoreMiddleware` | - | Clear the inherited `@middlewares` chain on this method - the method's own decorator then starts from empty instead of appending to the service-level chain. On an `extend service` block, each of its methods drops the primary's chain. |
-| `@ignoreSecurity` | - | Clear the inherited `@security` chain (e.g. a public endpoint in an authed service). |
-| `@ignoreTags` | - | Clear the inherited `@tags` list. |
+| `@ignoreSecurity` | - | Clear the inherited `@security` chain (e.g. a public endpoint in an authed service); on an `extend service` block, for each of its methods. |
+| `@ignoreTags` | - | Clear the inherited `@tags` list; on an `extend service` block, for each of its methods. |
 
 ## Event level
 
@@ -143,15 +143,15 @@ See the [Events guide](/guide/events) for the full picture.
 
 `@doc` and `@deprecated` also apply at event level; nothing else does.
 
-`@key`, along with the decorators that named a consumer's broker group and its middleware chain, has been removed - as has the listener declaration they sat on. All of it is the deployable's to decide rather than the shared design's: the ordering key is an argument to the publish call (`orders.Placed.Publish(ctx, bus, payload, craftevents.WithKey(id))`), the group is an argument to `orders.Placed.Subscribe(bus, group, fn)`, and the chain is `bus.Use(...)` where the bus is built. A design still carrying one of them gets that migration note from the compiler and on LSP hover rather than a bare `decorator/unknown`. See [Groups](/guide/events#groups) and [Middleware](/guide/events#middleware).
+`@key`, `@consumerGroup` and `@consumeMiddlewares` are not decorators: the deployable decides all three, not the shared design - the ordering key is an argument to the publish call (`orders.Placed.Publish(ctx, bus, payload, craftevents.WithKey(id))`), the group an argument to `orders.Placed.Subscribe(bus, group, fn)`, and the chain `bus.Use(...)` where the bus is built. Writing one draws `decorator/removed` with that note, also on LSP hover. See [Groups](/guide/events#groups) and [Middleware](/guide/events#middleware).
 
 ## Not supported
 
-`@consumes`, `@produces`, `@accepts` are intentionally **absent**. craftgo's transport hardcodes `application/json` for request decode and response encode (plus `multipart/form-data` when a `file` field is present), so a content-negotiation decorator would parse but have no effect. They return when a real multi-codec dispatch path lands. To emit or accept another format today, hand that side to logic with `@rawResponse` / `@rawRequest`; the block on that side stays the documented contract.
+`@consumes`, `@produces`, `@accepts` are intentionally **absent**. craftgo's transport hardcodes `application/json` for request decode and response encode (plus `multipart/form-data` when a `file` field is present), so a content-negotiation decorator would parse but have no effect. To emit or accept another format, hand that side to logic with `@rawResponse` / `@rawRequest`; the block on that side stays the documented contract.
 
 ## Argument forms
 
 - **Flag** (`@positive`, `@uniqueItems`, `@nullable`, `@sensitive`, `@passthrough`, `@rawRequest`, `@rawResponse`, `@ignore*`) take no parentheses. Writing empty `()` raises `decorator/flag-empty-parens`.
-- **Variadic** decorators (`@middlewares`, `@tags`, `@security`, `@errors`, `@mimeTypes`, `@requiresOneOf`, `@mutuallyExclusive`) accept either a comma list `(A, B, C)` or a single array literal `(["A", "B", "C"])`.
-- **Durations** (`@timeout`) take Go duration syntax: `3s`, `500ms`, `1h30m`.
-- **Sizes** (`@maxSize`, `@maxBodySize`) take `KB` / `MB` / `GB` suffixes or bare bytes.
+- **Variadic** decorators (`@middlewares`, `@tags`, `@security`, `@errors`, `@mimeTypes`, `@requiresOneOf`, `@mutuallyExclusive`) accept either a comma list `(A, B, C)` or a single array literal. The array's elements follow each decorator's kind: `@middlewares`, `@security` and `@errors` take identifiers (`([A, B, C])`), `@tags`, `@requiresOneOf` and `@mutuallyExclusive` identifiers or strings, and `@mimeTypes` strings.
+- **Durations** (`@timeout`) take one number with one unit - `ns`, `us`/`µs`, `ms`, `s`, `m` or `h`, a fraction allowed (`1.5h`) - or a bare integer read as seconds. `1h30m` is a parse error; write `90m`.
+- **Sizes** (`@maxSize`, `@maxBodySize`) take `B` / `KB` / `MB` / `GB` suffixes, a fraction allowed (`1.5MB`), or bare bytes.

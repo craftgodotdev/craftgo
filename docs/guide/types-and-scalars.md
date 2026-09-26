@@ -36,14 +36,15 @@ Every type's struct gets a `Validate()` method, so a field whose Go name is `Val
 | `string`   | `string`   |                                      |
 | `bytes`    | `[]byte`   | base64-decoded from JSON; see `@format(raw)` below |
 | `int`      | `int`      | platform-sized                       |
-| `int32`    | `int32`    | explicit width                       |
-| `int64`    | `int64`    |                                      |
-| `uint`     | `uint`     |                                      |
+| `int8`, `int16`, `int32`, `int64` | same name | explicit width |
+| `uint`     | `uint`     | platform-sized                       |
+| `uint8`, `uint16`, `uint32`, `uint64` | same name | explicit width |
 | `float32`  | `float32`  |                                      |
 | `float64`  | `float64`  |                                      |
 | `bool`     | `bool`     |                                      |
 | `datetime` | `time.Time` | RFC 3339 string in JSON; body fields only |
 | `file`     | `*multipart.FileHeader` | a multipart part: a request's top-level field only, never in a response, an error body or an event payload |
+| `any`      | `any`      | an opaque JSON value; see the table below |
 
 #### raw encoded values: `bytes @format(raw)`
 
@@ -68,7 +69,7 @@ Three ways to carry a document, and what each costs:
 | --- | --- | --- | --- |
 | `bytes` | `[]byte` | base64 of the bytes | a reader gets a blob, not a document: no consumer can index into it and the payload grows by a third |
 | `bytes @format(raw)` | `wire.Raw` | the value itself, embedded | nothing is checked, because nothing is read |
-| `any` | `any` | the value, decoded and re-encoded | an explicit `null` becomes Go `nil` and encodes as an absent key (a NOT NULL violation further down), an integer past 2^53 loses digits to `float64`, and `1.50` comes back `1.5` |
+| `any` | `any` | the value, decoded and re-encoded | an explicit `null` for an `any?` field becomes Go `nil` and drops the key (a NOT NULL violation further down; a required `any` refuses it: `<field>: required`), an integer past 2^53 loses digits to `float64`, and `1.50` comes back `1.5` |
 
 Those three losses are not hypothetical: a round trip through `map[string]any` is the only thing `any` can do, and each one is a value another system already stored. `bytes @format(raw)` keeps all three, because it never looks.
 
@@ -108,6 +109,8 @@ type UpdateUser struct {
     Name *string `json:"name,omitempty"`
 }
 ```
+
+That holds for a primitive, scalar, enum, struct or `datetime`. An optional array, map, `bytes`, `any` or raw field keeps its Go type, which is nil when absent, and gains `omitempty`.
 
 ### Arrays
 
@@ -221,7 +224,7 @@ type User {
 The parser reads each line in a type body and decides whether the first identifier names a field or a mixin:
 
 1. If the next token is `.` or `<` -> mixin (qualified or generic name).
-2. If the next token is a builtin primitive on the same line (`string`, `int`, `bool`, `bytes`, `float64`, ...) -> field.
+2. If the next token is a builtin primitive or `map` on the same line (`string`, `int`, `bool`, `bytes`, `float64`, `map<string, int>`, ...) -> field.
 3. If the first identifier starts lowercase -> field (the canonical form: `name string`).
 4. Otherwise -> mixin (PascalCase identifier alone, or followed by another PascalCase identifier that is the start of the next member).
 
@@ -238,7 +241,7 @@ type OrderCaptured {
 
 The Go tag, the OpenAPI document and validation messages all carry the `@json` key. It applies to body fields only; a field bound with `@path`, `@query`, `@header`, `@cookie` or `@form` names its wire location in that decorator. A field without a binding decorator that a request reads from a path variable, or from the query string of a `get`, `delete`, `head` or `options` method, is read under its own name, which its validation messages carry when no JSON value holds the field.
 
-The recommended style is to keep field names lowercase (`createdAt string`) and reserve PascalCase for mixin references. Mixing the two on adjacent lines works, but a PascalCase field declared with a custom (non-builtin) type - e.g. `CreatedAt MyTimestamp` on its own line - is read as a mixin reference to `CreatedAt` followed by a field named `MyTimestamp`. When in doubt, write the field on its own line with a builtin or scalar-backed type.
+The recommended style is to keep field names lowercase (`createdAt string`) and reserve PascalCase for mixin references. Mixing the two on adjacent lines works, but a PascalCase field declared with a custom (non-builtin) type - e.g. `CreatedAt MyTimestamp` on its own line, even with `MyTimestamp` a scalar - is read as two mixin references, `CreatedAt` and `MyTimestamp`. When in doubt, name the field in lower case and set its key with `@json`: `createdAt MyTimestamp @json("CreatedAt")`.
 
 #### Restrictions
 
@@ -267,7 +270,7 @@ scalar Cents int @gte(0) @multipleOf(2)
 scalar Latitude float64 @gte(-90) @lte(90)
 ```
 
-The DSL form is `scalar <Name> <PrimitiveType> [@validators...]`. The primitive must be one of the built-in primitives (string, bytes, int variants, float variants, bool); a scalar over `datetime`, `file` or `any` is rejected as `scalar/bad-primitive`.
+The DSL form is `scalar <Name> <PrimitiveType> [@validators...]`. The primitive must be one of `string`, `bool`, `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64`, `float32`, `float64` or `bytes`; a scalar over `datetime`, `file` or `any` is rejected as `scalar/bad-primitive` - use `datetime` directly.
 
 ### Use
 
