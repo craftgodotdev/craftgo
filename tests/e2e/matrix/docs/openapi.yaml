@@ -2925,6 +2925,8 @@ components:
       required:
       - data
       type: object
+    GetServiceStatusRespBody:
+      $ref: '#/components/schemas/DoneResp'
     GetSessionCookieRespBody:
       $ref: '#/components/schemas/DoneResp'
     GetSharedOwnerRespBody:
@@ -3387,6 +3389,17 @@ components:
       $ref: '#/components/schemas/ScalarsOrder'
     LookupPairRespBody:
       $ref: '#/components/schemas/PairsDoc'
+    MaintenanceErr:
+      description: ServiceUnavailable error response (HTTP 503).
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - message
+      type: object
     Map_ArrayOfMaps:
       description: |-
         Map_ArrayOfMaps holds an array of maps whose value carries a validator;
@@ -9803,6 +9816,30 @@ paths:
           description: No Content
       tags:
       - bindings
+  /bindings/service-status:
+    get:
+      operationId: GetServiceStatus
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetServiceStatusRespBody'
+          description: OK
+        "503":
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/RetryLaterErr'
+                - $ref: '#/components/schemas/MaintenanceErr'
+          description: ServiceUnavailable
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+      tags:
+      - bindings
   /bindings/session-cookie:
     get:
       operationId: GetSessionCookie
@@ -9835,7 +9872,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                 - $ref: '#/components/schemas/PostSharedStatusRespBody'
                 - $ref: '#/components/schemas/SharedStatusConflictErr'
           description: Conflict
@@ -12936,7 +12973,7 @@ paths:
   /xrefs/lost/{id}:
     get:
       description: 'Pins @errors in its array form over an error two packages declare:
-        the 404 is a oneOf of this package''s XLost (XrefsXLostErr) and xshared''s
+        the 404 is an anyOf of this package''s XLost (XrefsXLostErr) and xshared''s
         (XsharedXLostErr).'
       operationId: GetLost
       parameters:
@@ -12958,7 +12995,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                 - $ref: '#/components/schemas/XrefsXLostErr'
                 - $ref: '#/components/schemas/XsharedXLostErr'
           description: NotFound

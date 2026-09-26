@@ -416,7 +416,7 @@ service S {
 	}
 }
 
-// Two errors with one status share a `oneOf` response.
+// Two errors with one status share an `anyOf` response.
 func TestGenerateOpenAPISameStatusErrorsMerge(t *testing.T) {
 	src := `package design
 error Conflict EmailTaken { email string }
@@ -434,25 +434,73 @@ service S {
 	}
 	out, _ := os.ReadFile(filepath.Join(root, "docs/openapi.yaml"))
 	body := string(out)
-	if !strings.Contains(body, "oneOf:") {
-		t.Errorf("expected oneOf for same-status errors:\n%s", body)
+	if !strings.Contains(body, "anyOf:") {
+		t.Errorf("expected anyOf for same-status errors:\n%s", body)
 	}
-	// The oneOf lists each error exactly once.
-	oneOfIdx := strings.Index(body, "oneOf:")
-	if oneOfIdx < 0 {
-		t.Fatalf("oneOf block missing:\n%s", body)
+	// The anyOf lists each error exactly once.
+	anyOfIdx := strings.Index(body, "anyOf:")
+	if anyOfIdx < 0 {
+		t.Fatalf("anyOf block missing:\n%s", body)
 	}
-	tail := body[oneOfIdx:]
+	tail := body[anyOfIdx:]
 	if end := strings.Index(tail, "\n            description:"); end > 0 {
 		tail = tail[:end]
 	}
 	refCount := strings.Count(tail, "$ref:")
 	if refCount != 2 {
-		t.Errorf("oneOf must list exactly 2 $refs (one per declared error), got %d:\n%s", refCount, tail)
+		t.Errorf("anyOf must list exactly 2 $refs (one per declared error), got %d:\n%s", refCount, tail)
 	}
 	mustContainAll(t, body,
 		"EmailTakenErr",
 	)
+}
+
+// Each body an error sends matches the schema of its status, where errors of
+// one category, or an error and a success `@status`, may send bodies more than
+// one of their schemas admits: two `{code, message}` envelopes, or an envelope
+// and a body of optional fields.
+func TestResponsesSharingAStatusAdmitEachBody(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+error ServiceUnavailable Busy
+error ServiceUnavailable Down
+error ServiceUnavailable Later { hint string? }
+error Conflict Taken
+type Maybe { note string? }
+service S {
+	@errors(Busy, Down, Later)
+	get G /g { response Maybe }
+	@status(409)
+	@errors(Taken)
+	post P /p { response Maybe }
+}`,
+	}, &config.Config{})
+	if err := openapi3.NewLoader().ResolveRefsIn(doc, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		path, status, body string
+	}{
+		{"/g", "503", `{"code":"BUSY","message":"Service unavailable"}`},
+		{"/g", "503", `{"code":"DOWN","message":"Service unavailable"}`},
+		{"/g", "503", `{"hint":"retry"}`},
+		{"/p", "409", `{"code":"TAKEN","message":"Conflict"}`},
+		{"/p", "409", `{"note":"n"}`},
+	} {
+		item := doc.Paths.Find(c.path)
+		op := item.Get
+		if op == nil {
+			op = item.Post
+		}
+		schema := op.Responses.Value(c.status).Value.Content.Get(mimeApplicationJSON).Schema.Value
+		var v any
+		if err := json.Unmarshal([]byte(c.body), &v); err != nil {
+			t.Fatal(err)
+		}
+		if err := schema.VisitJSON(v); err != nil {
+			t.Errorf("%s %s: body %s fails the schema: %v", c.path, c.status, c.body, err)
+		}
+	}
 }
 
 // `@doc` and a leading comment become descriptions, `@summary` the

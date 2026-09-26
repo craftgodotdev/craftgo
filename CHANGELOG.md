@@ -1219,6 +1219,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   the schema and got a 400. Every body schema carrying the group - the type's,
   a request body listed in place and a multipart body - now forbids each pair.
 
+- **Responses sharing a status admit each body they send in OpenAPI.** Errors
+  of one category, and a success `@status` sharing its code with an error,
+  were documented as a `oneOf`, which a body matching two of the schemas
+  fails: two errors without a JSON member both send the `{code, message}`
+  envelope, so each body either sent failed the document, and a client
+  generator that counts `oneOf` matches could not decode it. The schemas are
+  now an `anyOf`.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

@@ -164,6 +164,11 @@ service BindingsService {
 		response DoneResp
 	}
 
+	@errors(RetryLater, Maintenance)
+	get GetServiceStatus /service-status {
+		response DoneResp
+	}
+
 	@errors(HeaderMixinError, NullableFieldsErr, CodeMessageErr)
 	post RaiseErrorShapes /error-shapes {
 		request  EmptyReq

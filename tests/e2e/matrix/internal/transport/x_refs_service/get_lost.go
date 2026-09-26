@@ -12,7 +12,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Pins @errors in its array form over an error two packages declare: the 404 is a oneOf of this package's XLost (XrefsXLostErr) and xshared's (XsharedXLostErr).
+// Pins @errors in its array form over an error two packages declare: the 404 is an anyOf of this package's XLost (XrefsXLostErr) and xshared's (XsharedXLostErr).
 //
 // GetLost returns the GET GetLost handler.
 func GetLost(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

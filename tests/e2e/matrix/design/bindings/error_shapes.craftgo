@@ -53,8 +53,13 @@ error ServiceUnavailable RetryLater {
 	wait int? @header("Retry-After")
 }
 
+// Maintenance and RetryLater both answer 503 with the {code, message}
+// envelope: OpenAPI documents the status as an anyOf of the two, which
+// either body matches.
+error ServiceUnavailable Maintenance
+
 // SharedStatusConflict shares its 409 with the success response of
-// PostSharedStatus: OpenAPI documents both bodies as a oneOf.
+// PostSharedStatus: OpenAPI documents both bodies as an anyOf.
 error Conflict SharedStatusConflict {
 	detail string
 }

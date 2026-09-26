@@ -270,7 +270,7 @@ service XRefsService {
 		response xshared.XOwner
 	}
 
-	@doc("Pins @errors in its array form over an error two packages declare: the 404 is a oneOf of this package's XLost (XrefsXLostErr) and xshared's (XsharedXLostErr).")
+	@doc("Pins @errors in its array form over an error two packages declare: the 404 is an anyOf of this package's XLost (XrefsXLostErr) and xshared's (XsharedXLostErr).")
 	@errors([XLost, xshared.XLost])
 	get GetLost /lost/{id} {
 		request  XGetReq

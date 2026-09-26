@@ -14,6 +14,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	bindings "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	combine "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 )
 
@@ -280,6 +281,58 @@ func TestOpenAPI_ErrorsFollowTheMergedNames(t *testing.T) {
 			if !strings.Contains(block, want) {
 				t.Errorf("%s missing %q:\n%s", opID, want, block)
 			}
+		}
+	}
+}
+
+// Bodies sharing a status are documented as an anyOf, never a oneOf:
+// RetryLater and Maintenance both send the {code, message} envelope, which
+// would match both schemas of a oneOf and so fail it.
+func TestOpenAPI_ResponsesSharingAStatusAreAnAnyOf(t *testing.T) {
+	var doc struct {
+		Paths map[string]map[string]struct {
+			Responses map[string]struct {
+				Content map[string]struct {
+					Schema struct {
+						OneOf []any `yaml:"oneOf"`
+						AnyOf []struct {
+							Ref string `yaml:"$ref"`
+						} `yaml:"anyOf"`
+					} `yaml:"schema"`
+				} `yaml:"content"`
+			} `yaml:"responses"`
+		} `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal([]byte(readOpenAPI(t)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	for path, item := range doc.Paths {
+		for verb, op := range item {
+			for code, resp := range op.Responses {
+				if len(resp.Content["application/json"].Schema.OneOf) > 0 {
+					t.Errorf("%s %s: response %s is a oneOf", strings.ToUpper(verb), path, code)
+				}
+			}
+		}
+	}
+	var refs []string
+	for _, branch := range doc.Paths["/bindings/service-status"]["get"].Responses["503"].Content["application/json"].Schema.AnyOf {
+		refs = append(refs, branch.Ref)
+	}
+	if want := []string{"#/components/schemas/RetryLaterErr", "#/components/schemas/MaintenanceErr"}; !slices.Equal(refs, want) {
+		t.Errorf("GetServiceStatus 503 anyOf = %v, want %v", refs, want)
+	}
+	for _, err := range []error{bindings.NewRetryLaterErr(bindings.RetryLaterBody{}), bindings.NewMaintenanceErr()} {
+		raw, merr := json.Marshal(err)
+		if merr != nil {
+			t.Fatal(merr)
+		}
+		var body map[string]string
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Fatal(err)
+		}
+		if keys := slices.Sorted(maps.Keys(body)); !slices.Equal(keys, []string{"code", "message"}) {
+			t.Errorf("%T sends %s, want the {code, message} envelope", err, raw)
 		}
 	}
 }

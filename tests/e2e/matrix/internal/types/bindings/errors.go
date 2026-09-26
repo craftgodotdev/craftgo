@@ -302,6 +302,35 @@ func (e *InvalidInputErr) HTTPStatus() int { return 400 }
 // MarshalJSON encodes the body alone.
 func (e *InvalidInputErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.InvalidInputBody) }
 
+// ErrCodeMaintenance is the canonical machine-readable code for MaintenanceErr.
+const ErrCodeMaintenance = "MAINTENANCE"
+
+// Maintenance and RetryLater both answer 503 with the {code, message}
+// envelope: OpenAPI documents the status as an anyOf of the two, which
+// either body matches.
+//
+// MaintenanceErr is the ServiceUnavailable error Maintenance.
+type MaintenanceErr struct{}
+
+// NewMaintenanceErr constructs MaintenanceErr.
+func NewMaintenanceErr() *MaintenanceErr {
+	return &MaintenanceErr{}
+}
+
+// Error returns the ServiceUnavailable category's default message.
+func (e *MaintenanceErr) Error() string { return "Service unavailable" }
+
+// ErrCode returns ErrCodeMaintenance.
+func (e *MaintenanceErr) ErrCode() string { return ErrCodeMaintenance }
+
+// HTTPStatus returns the ServiceUnavailable status.
+func (e *MaintenanceErr) HTTPStatus() int { return 503 }
+
+// MarshalJSON encodes the {"code", "message"} envelope.
+func (e *MaintenanceErr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]string{"code": ErrCodeMaintenance, "message": e.Error()})
+}
+
 // ErrCodeNullableFieldsErr is the canonical machine-readable code for NullableFieldsErr.
 const ErrCodeNullableFieldsErr = "NULLABLE_FIELDS_ERR"
 
@@ -455,7 +484,7 @@ type SharedStatusConflictBody struct {
 }
 
 // SharedStatusConflict shares its 409 with the success response of
-// PostSharedStatus: OpenAPI documents both bodies as a oneOf.
+// PostSharedStatus: OpenAPI documents both bodies as an anyOf.
 //
 // SharedStatusConflictErr is the Conflict error SharedStatusConflict.
 type SharedStatusConflictErr struct {

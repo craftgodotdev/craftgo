@@ -149,8 +149,8 @@ func rawResponseStatus(decs []*ast.Decorator) string {
 }
 
 // addErrorResponses adds a response per error the `@errors` among decs name,
-// at its category's status, errors sharing a status in one `oneOf`; an
-// unknown name is skipped.
+// at its category's status, errors sharing a status in one `anyOf`, since a
+// body may match more than one of their schemas; an unknown name is skipped.
 func addErrorResponses(op *openapi3.Operation, decs []*ast.Decorator, pkg *semantic.Package, registry *genericRegistry) {
 	names := errorRefsFromDecorators(decs)
 	if len(names) == 0 {
@@ -190,11 +190,11 @@ func addErrorResponses(op *openapi3.Operation, decs []*ast.Decorator, pkg *seman
 		if len(entry.refs) == 1 {
 			schema = &openapi3.SchemaRef{Ref: entry.refs[0]}
 		} else {
-			oneOf := make(openapi3.SchemaRefs, 0, len(entry.refs))
+			anyOf := make(openapi3.SchemaRefs, 0, len(entry.refs))
 			for _, ref := range entry.refs {
-				oneOf = append(oneOf, &openapi3.SchemaRef{Ref: ref})
+				anyOf = append(anyOf, &openapi3.SchemaRef{Ref: ref})
 			}
-			schema = &openapi3.SchemaRef{Value: &openapi3.Schema{OneOf: oneOf}}
+			schema = &openapi3.SchemaRef{Value: &openapi3.Schema{AnyOf: anyOf}}
 		}
 		resp := &openapi3.Response{
 			Description: &desc,
@@ -214,19 +214,19 @@ func addErrorResponses(op *openapi3.Operation, decs []*ast.Decorator, pkg *seman
 }
 
 // mergeStatusResponses joins an error response onto the success one at its
-// status: bodies in a oneOf, descriptions with "or", success headers first.
+// status: bodies in an anyOf, descriptions with "or", success headers first.
 func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *openapi3.SchemaRef) *openapi3.Response {
-	var oneOf openapi3.SchemaRefs
+	var anyOf openapi3.SchemaRefs
 	add := func(s *openapi3.SchemaRef) {
 		if s == nil {
 			return
 		}
-		// Flatten an existing oneOf so the merged list stays a single level.
-		if s.Ref == "" && s.Value != nil && len(s.Value.OneOf) > 0 {
-			oneOf = append(oneOf, s.Value.OneOf...)
+		// Flatten the errors' anyOf so the merged list stays a single level.
+		if s.Ref == "" && s.Value != nil && len(s.Value.AnyOf) > 0 {
+			anyOf = append(anyOf, s.Value.AnyOf...)
 			return
 		}
-		oneOf = append(oneOf, s)
+		anyOf = append(anyOf, s)
 	}
 	if mt := existing.Content.Get(mimeApplicationJSON); mt != nil {
 		add(mt.Schema)
@@ -244,11 +244,11 @@ func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *opena
 		desc += *errResp.Description
 	}
 	merged := &openapi3.Response{Description: &desc}
-	if len(oneOf) == 1 {
-		merged.Content = openapi3.Content{mimeApplicationJSON: &openapi3.MediaType{Schema: oneOf[0]}}
-	} else if len(oneOf) > 1 {
+	if len(anyOf) == 1 {
+		merged.Content = openapi3.Content{mimeApplicationJSON: &openapi3.MediaType{Schema: anyOf[0]}}
+	} else if len(anyOf) > 1 {
 		merged.Content = openapi3.Content{mimeApplicationJSON: &openapi3.MediaType{
-			Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{OneOf: oneOf}},
+			Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{AnyOf: anyOf}},
 		}}
 	}
 	if len(existing.Headers) > 0 || len(errResp.Headers) > 0 {
