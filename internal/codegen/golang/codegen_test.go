@@ -28,7 +28,7 @@ type User { id string  internal string @sensitive }`)
 	}
 	src := string(out)
 	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
+	norm := collapseSpace(src)
 	if !strings.Contains(norm, `Internal string `+"`"+`json:"-"`+"`") {
 		t.Errorf("expected Internal string `json:\"-\"`, got:\n%s", src)
 	}
@@ -62,7 +62,7 @@ service Lookups {
 	}
 	src := string(out)
 	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
+	norm := collapseSpace(src)
 	for _, want := range []string{
 		`ID string ` + "`json:\"-\" path:\"id\"`",              // no override → field name
 		`Page int ` + "`json:\"-\" query:\"page_num\"`",        // override wins
@@ -89,8 +89,7 @@ type User { id string  name string  age int? }`)
 	}
 	src := string(out)
 	mustParseGo(t, src)
-	// gofmt aligns fields and tags; collapse whitespace before matching.
-	norm := strings.Join(strings.Fields(src), " ")
+	norm := collapseSpace(src)
 	if !strings.Contains(norm, "type User struct") {
 		t.Error("missing User")
 	}
@@ -112,7 +111,7 @@ type X { tags string[]  meta map<string, string> }`)
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
+	norm := collapseSpace(src)
 	if !strings.Contains(norm, "Tags []string") {
 		t.Errorf("missing Tags []string in:\n%s", src)
 	}
@@ -371,7 +370,7 @@ type User { Profile  name string }`)
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
+	norm := collapseSpace(src)
 	if !strings.Contains(norm, "type User struct { Profile Name") {
 		t.Errorf("mixin embed not emitted:\n%s", src)
 	}
@@ -422,15 +421,15 @@ type T {
 	src := string(out)
 	mustParseGo(t, src)
 
-	want := []struct{ ident, typ, tag string }{
-		{"Plain", "string", `json:"plain"`},
-		{"NullStr", "*string", `json:"nullStr"`},           // @nullable only → no omitempty
-		{"NullBlob", "[]byte", `json:"nullBlob"`},          // already nilable + no omitempty
-		{"OptNull", "*string", `json:"optNull,omitempty"`}, // `?` dominates → omitempty
-	}
-	for _, w := range want {
-		if !lineHasField(src, w.ident, w.typ) || !lineHasField(src, w.ident, w.tag) {
-			t.Errorf("expected %s %s with tag %s in:\n%s", w.ident, w.typ, w.tag, src)
+	norm := collapseSpace(src)
+	for _, want := range []string{
+		"Plain string `json:\"plain\"`",
+		"NullStr *string `json:\"nullStr\"`",           // @nullable only → no omitempty
+		"NullBlob []byte `json:\"nullBlob\"`",          // already nilable + no omitempty
+		"OptNull *string `json:\"optNull,omitempty\"`", // `?` dominates → omitempty
+	} {
+		if !strings.Contains(norm, want) {
+			t.Errorf("missing %s in:\n%s", want, src)
 		}
 	}
 }
@@ -556,8 +555,7 @@ error NotFound UserNotFound`)
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	// gofmt aligns fields and tags; collapse whitespace before matching.
-	norm := strings.Join(strings.Fields(src), " ")
+	norm := collapseSpace(src)
 	for _, want := range []string{
 		`const ErrCodeUserNotFound = "USER_NOT_FOUND"`,
 		"type UserNotFoundErr struct{}",
@@ -597,8 +595,7 @@ error BadRequest Validation {
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	// gofmt aligns fields and tags; collapse whitespace before matching.
-	norm := strings.Join(strings.Fields(src), " ")
+	norm := collapseSpace(src)
 	if !strings.Contains(norm, "type ValidationBody struct") {
 		t.Errorf("missing body struct:\n%s", src)
 	}
@@ -629,7 +626,7 @@ error ServiceUnavailable Busy { Wait }`)
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
+	norm := collapseSpace(src)
 	for _, name := range []string{"RateLimited", "Expired", "Secretive", "Busy"} {
 		for _, want := range []string{
 			"type " + name + "Body struct",
@@ -658,7 +655,7 @@ error Internal Boom {
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
+	norm := collapseSpace(src)
 
 	if !strings.Contains(norm, `Code *string `+"`json:\"code,omitempty\"`") {
 		t.Errorf("user `code?` field should appear on body struct as *Code:\n%s", src)
@@ -707,7 +704,7 @@ error TooManyRequests RateLimited {
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
+	norm := collapseSpace(src)
 
 	if !strings.Contains(norm, `RetryAfter string `+"`json:\"-\" header:\"retryAfter\"`") {
 		t.Errorf("retryAfter should be json:\"-\" header:\"retryAfter\":\n%s", src)
@@ -740,7 +737,7 @@ error Forbidden Boom {
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
+	norm := collapseSpace(src)
 	if !strings.Contains(norm, `Secret string `+"`json:\"-\"`") {
 		t.Errorf("@sensitive error field must be json:\"-\" (server-only), not leaked:\n%s", src)
 	}
@@ -778,7 +775,7 @@ error TooManyRequests RateLimited {
 
 // A cross-package int scalar header on an error formats with strconv.FormatInt.
 func TestGenerateErrorsCrossPkgScalarHeader(t *testing.T) {
-	root, files := projectFiles(t, map[string]string{
+	proj := analyzeFiles(t, map[string]string{
 		"shared/types.craftgo": `package shared
 scalar Cents int @gte(0)`,
 		"app/errors.craftgo": `package app
@@ -787,10 +784,6 @@ error TooManyRequests RateLimited {
     cost shared.Cents @header("X-Cost")
 }`,
 	})
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
-	if len(diags) > 0 {
-		t.Fatalf("semantic: %v", diags)
-	}
 	appPkg := proj.Packages["app"]
 	if appPkg == nil {
 		t.Fatal("app package missing from project")
@@ -868,21 +861,19 @@ type T {
 	src := string(out)
 	mustParseGo(t, src)
 
-	want := []struct {
-		ident, tag string
-	}{
-		{"BytesOpt", "[]byte"},
-		{"FileOpt", "*multipart.FileHeader"},
-		{"AnyOpt", "any"},
-		{"ArrayOpt", "[]string"},
-		{"MapOpt", "map[string]int"},
+	norm := collapseSpace(src)
+	for _, want := range []string{
+		"BytesOpt []byte `",
+		"FileOpt *multipart.FileHeader `",
+		"AnyOpt any `",
+		"ArrayOpt []string `",
+		"MapOpt map[string]int `",
 		// Value types still get a pointer.
-		{"StringOpt", "*string"},
-		{"StructOpt", "*User"},
-	}
-	for _, w := range want {
-		if !lineHasField(src, w.ident, w.tag) {
-			t.Errorf("expected field %s with type %q in:\n%s", w.ident, w.tag, src)
+		"StringOpt *string `",
+		"StructOpt *User `",
+	} {
+		if !strings.Contains(norm, want) {
+			t.Errorf("missing %s in:\n%s", want, src)
 		}
 	}
 	mustContainNone(t, src,
@@ -909,30 +900,18 @@ type Holder {
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	for _, w := range []struct{ ident, typ string }{
-		{"Field", "Blob"},
-		{"Values", "map[string]Blob"},
-		{"Nested", "map[string]map[string]Blob"},
-		{"Boxed", "Box[map[string]Blob]"},
-		{"Counts", "map[string]*int"},
+	norm := collapseSpace(src)
+	for _, want := range []string{
+		"Field Blob `",
+		"Values map[string]Blob `",
+		"Nested map[string]map[string]Blob `",
+		"Boxed Box[map[string]Blob] `",
+		"Counts map[string]*int `",
 	} {
-		if !lineHasField(src, w.ident, w.typ) {
-			t.Errorf("expected field %s with type %q in:\n%s", w.ident, w.typ, src)
+		if !strings.Contains(norm, want) {
+			t.Errorf("missing %s in:\n%s", want, src)
 		}
 	}
-}
-
-// lineHasField reports whether a line of src holds both ident and typ, but not *typ.
-func lineHasField(src, ident, typ string) bool {
-	for _, line := range strings.Split(src, "\n") {
-		if strings.Contains(line, ident) && strings.Contains(line, typ) {
-			if strings.Contains(line, "*"+typ) {
-				continue
-			}
-			return true
-		}
-	}
-	return false
 }
 
 func TestGoTypeNil(t *testing.T) {
@@ -981,7 +960,7 @@ error Forbidden Denied {
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	norm := strings.Join(strings.Fields(src), " ")
+	norm := collapseSpace(src)
 	if !strings.Contains(norm, "type DeniedBody struct { Audit") {
 		t.Errorf("error body must embed the Audit mixin:\n%s", src)
 	}
@@ -989,7 +968,7 @@ error Forbidden Denied {
 
 // An optional or @nullable scalar-over-bytes field has no pointer; its validator nil-guards it.
 func TestScalarOverBytesNullableRendersWithoutPointer(t *testing.T) {
-	root, files := projectFiles(t, map[string]string{
+	proj := analyzeFiles(t, map[string]string{
 		"m/m.craftgo": `package m
 scalar Blob bytes @minLength(4)
 type Doc {
@@ -998,10 +977,6 @@ type Doc {
   optBlob Blob?
 }`,
 	})
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
-	if len(diags) > 0 {
-		t.Fatalf("semantic: %v", diags)
-	}
 	dir := t.TempDir()
 	mPkg := proj.Packages["m"]
 	if err := generateTypes(mPkg, dir, nil); err != nil {

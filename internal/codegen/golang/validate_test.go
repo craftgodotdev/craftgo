@@ -3,11 +3,11 @@ package golang
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	craftparser "github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -488,7 +488,7 @@ func TestValidateFormatExpandedPatterns(t *testing.T) {
 	}
 	var fields []string
 	for i, c := range cases {
-		fields = append(fields, "f"+itoaSimple(i)+" string @format("+c.format+")")
+		fields = append(fields, "f"+strconv.Itoa(i)+" string @format("+c.format+")")
 	}
 	src := runValidateGen(t, "package design\ntype X { "+strings.Join(fields, "  ")+" }")
 	for _, c := range cases {
@@ -503,7 +503,7 @@ func TestValidateFormatExpandedPatterns(t *testing.T) {
 
 // A field of a cross-package generic instance calls the instance's Validate.
 func TestValidateEmitsQualifiedGenericCall(t *testing.T) {
-	root, files := projectFiles(t, map[string]string{
+	proj := analyzeFiles(t, map[string]string{
 		"shared/types.craftgo": `package shared
 type Page<T> { items T[]  cursor string? }`,
 		"app/types.craftgo": `package app
@@ -514,10 +514,6 @@ type Product {
     page shared.Page<ProductRef>
 }`,
 	})
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
-	if len(diags) > 0 {
-		t.Fatalf("semantic: %v", diags)
-	}
 	appPkg := proj.Packages["app"]
 	if appPkg == nil {
 		t.Fatal("app package missing from project")
@@ -539,7 +535,7 @@ type Product {
 
 // Every shape of a cross-package enum field calls the enum's own Validate.
 func TestValidateEmitsCrossPkgEnumAllShapes(t *testing.T) {
-	root, files := projectFiles(t, map[string]string{
+	proj := analyzeFiles(t, map[string]string{
 		"shared/e.craftgo": `package shared
 enum Color { Red  Green  Blue }`,
 		"app/t.craftgo": `package app
@@ -553,12 +549,6 @@ type Pick {
     both    map<shared.Color, shared.Color>
 }`,
 	})
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{
-		DesignRoot: root,
-	})
-	if len(diags) > 0 {
-		t.Fatalf("semantic: %v", diags)
-	}
 	appPkg := proj.Packages["app"]
 	cross := crossPkg{"shared": "github.com/test/m/internal/types/shared"}
 	dir := t.TempDir()
@@ -592,17 +582,13 @@ type Pick {
 
 // A map keyed by a cross-package scalar walks its keys and calls key.Validate().
 func TestValidateWalksMapKeyUserType(t *testing.T) {
-	root, files := projectFiles(t, map[string]string{
+	proj := analyzeFiles(t, map[string]string{
 		"shared/t.craftgo": `package shared
 scalar Email string @format(email) @length(1, 64)`,
 		"app/t.craftgo": `package app
 import "shared"
 type Bag { byEmail map<shared.Email, string> }`,
 	})
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
-	if len(diags) > 0 {
-		t.Fatalf("semantic: %v", diags)
-	}
 	appPkg := proj.Packages["app"]
 	dir := t.TempDir()
 	if err := generateValidators(appPkg, dir, &projectResolver{Resolver: semantic.NewResolver(proj, "app")}); err != nil {
@@ -931,10 +917,8 @@ type Upload { avatar file @maxSize(1024) }`)
 
 // @maxSize on a non-file field is a semantic error.
 func TestValidateMaxSizeRejectsNonFile(t *testing.T) {
-	p := craftparser.New("test.craftgo", `package design
-type X { name string @maxSize(1024) }`)
-	f := p.Parse()
-	_, diags := semantic.Analyze([]*ast.File{f})
+	_, diags := semantic.Analyze([]*ast.File{parseDesign(t, "test.craftgo", `package design
+type X { name string @maxSize(1024) }`)})
 	found := false
 	for _, d := range diags {
 		if strings.Contains(d.Msg, "@maxSize applies to file") {
@@ -974,27 +958,6 @@ type Upload {
 	}
 }
 
-// itoaSimple returns n in decimal.
-func itoaSimple(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var sb strings.Builder
-	if n < 0 {
-		sb.WriteByte('-')
-		n = -n
-	}
-	var stack []byte
-	for n > 0 {
-		stack = append(stack, byte('0'+n%10))
-		n /= 10
-	}
-	for i := len(stack) - 1; i >= 0; i-- {
-		sb.WriteByte(stack[i])
-	}
-	return sb.String()
-}
-
 // @minItems and @maxItems on a map check its entry count.
 func TestValidateMapItemsBound(t *testing.T) {
 	src := runValidateGen(t, `package design
@@ -1027,17 +990,13 @@ type Host {
 
 // @uniqueItems over a cross-package element imports that package for its dedupe map.
 func TestUniqueItemsCrossPkgElementImport(t *testing.T) {
-	root, files := projectFiles(t, map[string]string{
+	proj := analyzeFiles(t, map[string]string{
 		"shared/s.craftgo": `package shared
 scalar Name string @minLength(1)`,
 		"app/t.craftgo": `package app
 import "shared"
 type U { names shared.Name[] @uniqueItems }`,
 	})
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
-	if len(diags) > 0 {
-		t.Fatalf("semantic: %v", diags)
-	}
 	cross := crossPkg{"shared": "github.com/test/m/internal/types/shared"}
 	dir := t.TempDir()
 	if err := generateValidators(proj.Packages["app"], dir, &projectResolver{Resolver: semantic.NewResolver(proj, "app"), CrossPkg: cross}); err != nil {
@@ -1107,16 +1066,12 @@ type Pick {
 
 // A required any[] field gets no nil presence check, like any other required slice.
 func TestRequiredAnyArrayNoPresenceCheck(t *testing.T) {
-	root, files := projectFiles(t, map[string]string{
+	proj := analyzeFiles(t, map[string]string{
 		"m/m.craftgo": `package m
 type Body { reqStrArr string[]  reqAnyArr any[] }
 type Resp { ok bool }
 service S { post Op /x { request Body  response Resp } }`,
 	})
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
-	if len(diags) > 0 {
-		t.Fatalf("semantic: %v", diags)
-	}
 	dir := t.TempDir()
 	mPkg := proj.Packages["m"]
 	if err := generateValidators(mPkg, dir, &projectResolver{Resolver: semantic.NewResolver(proj, "m")}); err != nil {
@@ -1169,7 +1124,7 @@ type Tagged<Color> { c Color }`)
 	validate, _ := os.ReadFile(filepath.Join(dir, "design", "validate.go"))
 	mustParseGo(t, string(types))
 	mustParseGo(t, string(validate))
-	if norm := strings.Join(strings.Fields(string(types)), " "); !strings.Contains(norm, "V *Blob `json:\"v,omitempty\"`") {
+	if norm := collapseSpace(string(types)); !strings.Contains(norm, "V *Blob `json:\"v,omitempty\"`") {
 		t.Errorf("an optional type parameter must be a pointer:\n%s", types)
 	}
 	if !strings.Contains(string(validate), "any(v.V).(interface{ Validate() error })") || strings.Contains(string(validate), "v.C ==") {

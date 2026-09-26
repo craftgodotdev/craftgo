@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
@@ -197,7 +196,7 @@ func names(fs []resolvedField) []string {
 
 // Fields colliding on one Go name keep their deduplicated names in the binder and the validator.
 func TestCollidingGoFieldNamesDedupAcrossConsumers(t *testing.T) {
-	root, files := projectFiles(t, map[string]string{
+	proj := analyzeFiles(t, map[string]string{
 		"m/m.craftgo": `package m
 @requiresOneOf(userId, user_id)
 type R {
@@ -211,13 +210,6 @@ service S {
   post Echo /e { request R  response Resp }
 }`,
 	})
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
-	// The collision is a warning; only errors fail the test.
-	for _, d := range diags {
-		if d.Severity == lexer.SeverityError {
-			t.Fatalf("semantic error: %v", d)
-		}
-	}
 	dir := t.TempDir()
 	mPkg := proj.Packages["m"]
 	r := buildProjectResolver(proj, newFixtureConfig(), "m")

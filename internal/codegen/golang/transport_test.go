@@ -757,24 +757,18 @@ type Req {
 	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
 	src := string(out)
 	mustParseGo(t, src)
-	for _, ident := range []string{"ID", "Q", "Auth", "Sess"} {
-		if !lineHas(src, ident, `json:"-"`) {
-			t.Errorf("expected %q with json:\"-\" tag:\n%s", ident, src)
+	norm := collapseSpace(src)
+	for _, want := range []string{
+		"ID string `json:\"-\" path:\"id\"`",
+		"Q string `json:\"-\" query:\"q\"`",
+		"Auth string `json:\"-\" header:\"auth\"`",
+		"Sess string `json:\"-\" cookie:\"sess\"`",
+		"Payload string `json:\"payload\"`",
+	} {
+		if !strings.Contains(norm, want) {
+			t.Errorf("missing %s in:\n%s", want, src)
 		}
 	}
-	if !lineHas(src, "Payload", `json:"payload"`) {
-		t.Errorf("expected payload field to keep its JSON tag:\n%s", src)
-	}
-}
-
-// lineHas reports whether a line of src holds both ident and tag.
-func lineHas(src, ident, tag string) bool {
-	for _, line := range strings.Split(src, "\n") {
-		if strings.Contains(line, ident) && strings.Contains(line, tag) {
-			return true
-		}
-	}
-	return false
 }
 
 // ---------- routes ----------
@@ -1629,7 +1623,7 @@ service UploadService {
 
 // semantic.FlattenFields collects a field from a mixin nested inside a cross-package mixin.
 func TestRequestFieldsNestedCrossPkgMixin(t *testing.T) {
-	root, files := projectFiles(t, map[string]string{
+	proj := analyzeFiles(t, map[string]string{
 		"shared/types.craftgo": `package shared
 type Inner { deep int32? @default(7) }
 type Outer { Inner  mid int64? @default(9) }`,
@@ -1637,10 +1631,6 @@ type Outer { Inner  mid int64? @default(9) }`,
 import "shared"
 type Req { shared.Outer  own string }`,
 	})
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
-	if len(diags) > 0 {
-		t.Fatalf("semantic: %v", diags)
-	}
 	appPkg := proj.Packages["app"]
 	if appPkg == nil {
 		t.Fatal("app package missing")
@@ -1663,7 +1653,7 @@ type Req { shared.Outer  own string }`,
 
 // A qualified request type's bare nested mixin resolves in the request's package and binds.
 func TestResolveRequestFieldsQualifiedRequestNestedMixin(t *testing.T) {
-	root, files := projectFiles(t, map[string]string{
+	proj := analyzeFiles(t, map[string]string{
 		"shared/types.craftgo": `package shared
 type Sub { q string @query @length(2, 5)  bod string @length(1, 10) }
 type Holder { Sub  id string @path }`,
@@ -1672,10 +1662,6 @@ import "shared"
 type Resp { ok bool }
 service S { post DoIt /h/{id} { request shared.Holder  response Resp } }`,
 	})
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
-	if len(diags) > 0 {
-		t.Fatalf("semantic: %v", diags)
-	}
 	appPkg := proj.Packages["app"]
 	if appPkg == nil {
 		t.Fatal("app package missing")

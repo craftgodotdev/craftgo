@@ -17,55 +17,63 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/idents"
-	"github.com/craftgodotdev/craftgo/internal/lexer"
 	craftparser "github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-func analyze(t *testing.T, src string) *semantic.Package {
+// parseDesign parses src as the design file name and fails on any parse diagnostic.
+func parseDesign(t *testing.T, name, src string) *ast.File {
 	t.Helper()
-	p := craftparser.New("test.craftgo", src)
+	p := craftparser.New(name, src)
 	f := p.Parse()
 	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("parse errors: %v", d)
+		t.Fatalf("parse %s: %v", name, d)
 	}
-	pkg, diags := semantic.Analyze([]*ast.File{f})
-	// A warning still generates valid code, so only errors fail the test.
-	var fatal []semantic.Diagnostic
-	for _, d := range diags {
-		if d.Severity == lexer.SeverityError {
-			fatal = append(fatal, d)
-		}
-	}
-	if len(fatal) > 0 {
-		t.Fatalf("semantic errors: %v", fatal)
-	}
-	return pkg
+	return f
 }
 
-// analyzeProject analyses sources as one project and fails on any error diagnostic.
-func analyzeProject(t *testing.T, sources ...string) *semantic.Project {
+// failOnErrors fails on any error among diags; a warning still generates valid code.
+func failOnErrors(t *testing.T, diags []semantic.Diagnostic) {
 	t.Helper()
-	files := make([]*ast.File, 0, len(sources))
-	for i, src := range sources {
-		p := craftparser.New("test.craftgo", src)
-		f := p.Parse()
-		if d := p.Diagnostics(); len(d) > 0 {
-			t.Fatalf("parse errors in source %d: %v", i, d)
-		}
-		files = append(files, f)
-	}
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{})
 	for _, d := range diags {
-		if d.Severity == 0 {
+		if d.IsError() {
 			t.Fatalf("semantic errors: %v", diags)
 		}
 	}
+}
+
+// analyze analyses src as a one-file package.
+func analyze(t *testing.T, src string) *semantic.Package {
+	t.Helper()
+	pkg, diags := semantic.Analyze([]*ast.File{parseDesign(t, "test.craftgo", src)})
+	failOnErrors(t, diags)
+	return pkg
+}
+
+// analyzeProject analyses sources as one project.
+func analyzeProject(t *testing.T, sources ...string) *semantic.Project {
+	t.Helper()
+	files := make([]*ast.File, 0, len(sources))
+	for _, src := range sources {
+		files = append(files, parseDesign(t, "test.craftgo", src))
+	}
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{})
+	failOnErrors(t, diags)
 	return proj
 }
 
-// projectFiles writes src under a temp root and returns the root and the parsed files.
+// analyzeFiles analyses src, laid out under the design root projectFiles makes, as one project.
+func analyzeFiles(t *testing.T, src map[string]string) *semantic.Project {
+	t.Helper()
+	root, files := projectFiles(t, src)
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	failOnErrors(t, diags)
+	return proj
+}
+
+// projectFiles writes src (path → source) under a temp design root and returns the root and
+// the parsed files.
 func projectFiles(t *testing.T, src map[string]string) (string, []*ast.File) {
 	t.Helper()
 	root := t.TempDir()
@@ -78,16 +86,12 @@ func projectFiles(t *testing.T, src map[string]string) (string, []*ast.File) {
 		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		p := craftparser.New(full, content)
-		f := p.Parse()
-		if d := p.Diagnostics(); len(d) > 0 {
-			t.Fatalf("parse %s: %v", rel, d)
-		}
-		files = append(files, f)
+		files = append(files, parseDesign(t, full, content))
 	}
 	return root, files
 }
 
+// sampleConfig is a manifest with kebab-case output folders and the /v1 base path.
 func sampleConfig() *config.Config {
 	return &config.Config{
 		Package: "github.com/example/app",
@@ -105,6 +109,7 @@ func sampleConfig() *config.Config {
 	}
 }
 
+// newFixtureConfig is a manifest that sets only the module path and the types folder.
 func newFixtureConfig() *config.Config {
 	return &config.Config{
 		Package: "github.com/test/m",
@@ -181,6 +186,7 @@ func genRoutes(t *testing.T, pkg *semantic.Package, cfg *config.Config, root str
 	return generateProjectRoutesUmbrella(proj, cfg, root)
 }
 
+// readGen returns the generated file rel under dir.
 func readGen(t *testing.T, dir, rel string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
@@ -203,6 +209,7 @@ func loadProtos(t *testing.T, cfg *config.Config) *protodesign.Set {
 	return set
 }
 
+// greeter returns set's Greeter service.
 func greeter(t *testing.T, set *protodesign.Set) *protodesign.Service {
 	t.Helper()
 	for _, svc := range set.Services {
@@ -214,6 +221,7 @@ func greeter(t *testing.T, set *protodesign.Set) *protodesign.Service {
 	return nil
 }
 
+// mustParseGo asserts src parses as Go and imports exactly what it uses.
 func mustParseGo(t *testing.T, src string) {
 	t.Helper()
 	file, err := parser.ParseFile(gotoken.NewFileSet(), "out.go", src, parser.AllErrors)
@@ -330,6 +338,10 @@ func mustContainNone(t *testing.T, got string, unwanted ...string) {
 	}
 }
 
+// collapseSpace turns each run of white space in src into one space, so a match ignores
+// gofmt's column alignment.
+func collapseSpace(src string) string { return strings.Join(strings.Fields(src), " ") }
+
 // updateGolden (-update) makes expectGolden rewrite the testdata/golden files.
 var updateGolden = flag.Bool("update", false, "rewrite golden snapshot files instead of comparing")
 
@@ -364,16 +376,10 @@ func expectGolden(t *testing.T, name, actual string) {
 
 // firstDiff returns the want and got lines around their first difference.
 func firstDiff(want, got string) string {
-	wantLines := strings.SplitSeq(want, "\n")
-	gotLines := strings.SplitSeq(got, "\n")
-	wIter, gIter := wantLines, gotLines
-	wantSlice := stringsCollect(wIter)
-	gotSlice := stringsCollect(gIter)
-	max := len(wantSlice)
-	if len(gotSlice) > max {
-		max = len(gotSlice)
-	}
-	for i := 0; i < max; i++ {
+	wantSlice := strings.Split(want, "\n")
+	gotSlice := strings.Split(got, "\n")
+	n := max(len(wantSlice), len(gotSlice))
+	for i := range n {
 		w, g := "", ""
 		if i < len(wantSlice) {
 			w = wantSlice[i]
@@ -382,14 +388,8 @@ func firstDiff(want, got string) string {
 			g = gotSlice[i]
 		}
 		if w != g {
-			start := i - 2
-			if start < 0 {
-				start = 0
-			}
-			end := i + 4
-			if end > max {
-				end = max
-			}
+			start := max(i-2, 0)
+			end := min(i+4, n)
 			var sb strings.Builder
 			for j := start; j < end; j++ {
 				marker := "  "
@@ -416,14 +416,4 @@ func firstDiff(want, got string) string {
 		}
 	}
 	return "(strings differ in length but match line-by-line up to the shorter end)"
-}
-
-// stringsCollect drains a strings.SplitSeq iterator into a slice.
-func stringsCollect(it func(yield func(string) bool)) []string {
-	var out []string
-	it(func(s string) bool {
-		out = append(out, s)
-		return true
-	})
-	return out
 }
