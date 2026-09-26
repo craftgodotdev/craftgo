@@ -39,6 +39,7 @@ Each of these generated a project that built and ran under 1.9. Fix the design a
 - `@json("-")`: `decorator/argvalue`. Use `@sensitive` to keep a field off the wire.
 - An optional array or map as a map value, as in `map<string, int[]?>`: `type/map-value`. Drop the `?`; an absent entry reads as empty.
 - `@path("rest...")` for a `{rest...}` variable: an error. The variable is `rest`.
+- `@form` on a field of a request with no `file`: `binding/form-without-file`. Drop `@form`; the field rides the JSON body, as it did.
 
 A decorator as another decorator's argument, `@a(@b)`, is out of the grammar: one parse error at the inner `@`.
 

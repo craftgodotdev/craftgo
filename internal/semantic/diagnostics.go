@@ -106,6 +106,8 @@ const (
 	CodeBindingType = "binding/type"
 	// CodeBindingVerb fires when `@body` or `@form` sits on a request field of a body-less verb.
 	CodeBindingVerb = "binding/verb"
+	// CodeBindingFormWithoutFile fires when `@form` sits on a field of a request that carries no `file`.
+	CodeBindingFormWithoutFile = "binding/form-without-file"
 	// CodeFilePosition fires when a `file` sits below a request's top level, or in a response, an
 	// error body or an event payload.
 	CodeFilePosition = "binding/file-position"

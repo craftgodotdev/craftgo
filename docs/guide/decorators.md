@@ -416,7 +416,7 @@ A field with no binding decorator whose name matches a `{name}` variable of the 
 - `body` for body verbs (POST / PUT / PATCH)
 - `query` for non-body verbs (GET / DELETE / HEAD / OPTIONS)
 
-When the request carries a `file`, its body becomes `multipart/form-data` and every body or `@form` field rides a form part, which holds a string, a bool, a number, a scalar or enum over one, or a single-level array of those; a struct, a map, a generic instance or a nested array there is `binding/type`.
+When the request carries a `file`, its body becomes `multipart/form-data` and every body or `@form` field rides a form part, which holds a string, a bool, a number, a scalar or enum over one, or a single-level array of those; a struct, a map, a generic instance or a nested array there is `binding/type`. A request with no `file` has no form parts, so `@form` there is `binding/form-without-file`: drop it and the field rides the JSON body.
 
 **Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / `http.SetCookie(...)` instead of the JSON body - the JSON tag is automatically `json:"-"` (with a `header:` / `cookie:` binding key alongside) so the same field doesn't double up. Non-string values (`int`, `bool`, `float`, scalars and enums of those) are formatted to their wire string via `strconv`, just like the request-side binder parses them; an optional (`T?`) header is written only when non-nil, and a `string[]` header emits one value per element. The explicit-name argument applies here too:
 

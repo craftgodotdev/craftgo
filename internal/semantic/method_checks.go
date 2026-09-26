@@ -184,18 +184,14 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	}
 }
 
-// checkMultipartParts rejects a part of m's multipart request - a body or
-// form field, mixins included, beside a `file` - that the form binder cannot
-// fill: an optional type parameter over a `file` or an array, whose Go value
-// is a pointer to the file or the slice, or a text part of a type no form
-// value carries; decs are the decorators that apply to m. A raw request is not
-// bound, and an explicit @form or a field holding a `file` below the top level
+// checkMultipartParts rejects `@form` on m's request when no body or form field, mixins
+// included, is a `file`, and otherwise a part the form binder cannot fill: an optional type
+// parameter over a `file` or an array, whose Go value is a pointer to the file or the slice, or a
+// text part of a type no form value carries; decs are the decorators that apply to m. A raw
+// request is not bound, and an explicit @form or a field holding a `file` below the top level
 // is reported where it is declared.
 func (a *analyzer) checkMultipartParts(svcName string, m *ast.Method, decs []*ast.Decorator) {
 	if m == nil || m.Request == nil || !wire.IsBodyVerb(m.Verb) {
-		return
-	}
-	if rawReq, _ := wire.RawSides(decs); rawReq {
 		return
 	}
 	view, fields, ok := a.instanceFields(m.Request)
@@ -211,10 +207,20 @@ func (a *analyzer) checkMultipartParts(svcName string, m *ast.Method, decs []*as
 			multipart = multipart || isFileTypeRef(ff.Field.Type)
 		}
 	}
+	verb, reqName := strings.ToUpper(m.Verb), m.Request.Name.String()
 	if !multipart {
+		for _, ff := range parts {
+			if d := ast.FindDecorator(ff.Field.Decorators, wire.BindingForm); d != nil {
+				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingFormWithoutFile,
+					"field %s.%s: @form is a multipart part and needs a `file` in the request, but on the %s %s handler the request has no `file` - drop @form so the field rides the JSON body",
+					reqName, ff.Field.Name, verb, svcName)
+			}
+		}
 		return
 	}
-	verb, reqName := strings.ToUpper(m.Verb), m.Request.Name.String()
+	if rawReq, _ := wire.RawSides(decs); rawReq {
+		return
+	}
 	for _, ff := range parts {
 		f := ff.Field
 		switch {

@@ -100,7 +100,7 @@ Field level (a few also apply at error-field level for response writing).
 | `@header` / `@header("Name")` | `(string?)` | Bind from a request header (request fields) or write a response header (response and error fields). |
 | `@cookie` / `@cookie("name")` | `(string?)` | Bind from a cookie (request) or set one (response and error fields). |
 | `@body` | - | Bind from the request body (the default for body verbs). A name argument is accepted and has no effect; `@json` sets the key. |
-| `@form` / `@form("name")` | `(string?)` | Bind from a multipart form field. |
+| `@form` / `@form("name")` | `(string?)` | Bind from a multipart form field; the request needs a `file`. |
 
 See [Types & Scalars](/guide/types-and-scalars) for how binding interacts with field types.
 

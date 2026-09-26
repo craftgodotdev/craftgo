@@ -42,7 +42,7 @@ func FormParts(fields []ResolvedField) (text, files []FormField) {
 			WireName: wire.WireName(f, wire.BindForm),
 			Required: rf.SpecRequired,
 		}
-		if isFileRef(f) {
+		if isFileTypeRef(f.Type) {
 			entry.IsArray = f.Type.Array
 			entry.MimeTypes = mimeTypesOf(f.Decorators)
 			files = append(files, entry)
@@ -54,11 +54,6 @@ func FormParts(fields []ResolvedField) (text, files []FormField) {
 		return nil, nil
 	}
 	return text, files
-}
-
-// isFileRef reports whether the field's type is the `file` primitive.
-func isFileRef(f *ast.Field) bool {
-	return f != nil && f.Type != nil && f.Type.Named != nil && f.Type.Named.Name.String() == "file"
 }
 
 // mimeTypesOf reads the `@mimeTypes` allowlist.

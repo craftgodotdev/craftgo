@@ -438,6 +438,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   then the `Use` middlewares: a preflight is answered before them, and the
   requests they refuse still carry the CORS headers.
 
+- **`@form` needs a `file` in its request.** On a request with no `file`,
+  `@form` was ignored without a word: the field rode the JSON body under its
+  JSON key, in the handler and in OpenAPI alike, and the part name of
+  `@form("n")` went nowhere. It is now `binding/form-without-file` at the
+  decorator; drop `@form` and the field rides the JSON body as before.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

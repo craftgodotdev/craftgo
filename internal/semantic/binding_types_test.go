@@ -154,6 +154,30 @@ service S { post A /a { request R  response Resp } }`)
 service S { @rawRequest post A /a { request R  response Resp } }`)
 }
 
+// @form makes a field a multipart part, so a body request with no `file`, raw or not, rejects it
+// at the decorator, once per @form; beside a file it binds.
+func TestFormNeedsAFileInItsRequest(t *testing.T) {
+	const head = "package app\ntype Resp { ok bool }\n"
+	for label, src := range map[string]string{
+		"named part": `type R { name string @form("n")  age int }
+service S { post Up /up { request R  response Resp } }`,
+		"mixin": `type Meta { title string @form }
+type R { Meta  n int }
+service S { put Up /up { request R  response Resp } }`,
+		"raw request": `type R { name string @form }
+service S { @rawRequest patch Up /up { request R  response Resp } }`,
+	} {
+		t.Run(label, func(t *testing.T) {
+			d := expectError(t, head+src, CodeBindingFormWithoutFile)
+			expectMessage(t, d, "@form", "multipart part", "no `file`", "drop @form so the field rides the JSON body")
+		})
+	}
+	expectCodeCount(t, head+`type R { name string @form("n")  age int @form  note string }
+service S { post Up /up { request R  response Resp } }`, CodeBindingFormWithoutFile, 2)
+	mustClean(t, head+`type R { f file  name string @form("n")  age int }
+service S { post Up /up { request R  response Resp } }`)
+}
+
 // An optional type parameter instantiated with an array is a pointer to a
 // slice, which neither the query nor the multipart form binder can fill; a
 // JSON body carries it, and a non-optional parameter binds as the slice.
