@@ -291,10 +291,12 @@ func TestCompressSendsAnInformationalStatusAtOnce(t *testing.T) {
 	}
 }
 
+// A HEAD response is never compressed, whatever its handler writes.
 func TestCompressHEADBypasses(t *testing.T) {
 	h := Compress()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(largeBody())
 	}))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodHead, "/", nil)
@@ -309,7 +311,8 @@ func TestCompressHEADBypasses(t *testing.T) {
 	}
 }
 
-func TestCompressGzipPreferredOverDeflate(t *testing.T) {
+// The first supported coding listed wins; a list of unsupported ones gets none.
+func TestNegotiateEncodingPicksTheFirstSupportedCoding(t *testing.T) {
 	if got := negotiateEncoding("deflate, gzip"); got != "deflate" {
 		// The first listed wins.
 		t.Fatalf("negotiateEncoding(\"deflate, gzip\") = %q, want deflate (first wins)", got)

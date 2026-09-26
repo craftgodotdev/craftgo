@@ -442,7 +442,10 @@ func TestAccessLogRecordsTheFirstFinalStatus(t *testing.T) {
 			w.WriteHeader(http.StatusEarlyHints)
 			w.WriteHeader(http.StatusNoContent)
 		}, http.StatusNoContent},
-		"flush only":      {func(w http.ResponseWriter, _ *http.Request) { w.(http.Flusher).Flush() }, http.StatusOK},
+		"flush first": {func(w http.ResponseWriter, _ *http.Request) {
+			w.(http.Flusher).Flush()
+			w.WriteHeader(http.StatusInternalServerError)
+		}, http.StatusOK},
 		"nothing written": {func(http.ResponseWriter, *http.Request) {}, http.StatusOK},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -569,12 +572,15 @@ func TestWithTelemetryNilKeepsTheEarlierOne(t *testing.T) {
 
 // No Use middleware sees the health probes, on default or custom paths.
 func TestProbesBypassMiddlewareChain(t *testing.T) {
-	for name, opts := range map[string][]Option{
-		"default paths": nil,
-		"custom paths":  {WithHealthPaths(HealthPaths{Liveness: "/live", Readiness: "/ready"})},
+	for name, c := range map[string]struct {
+		opts  []Option
+		paths []string
+	}{
+		"default paths": {nil, []string{"/healthz", "/readyz"}},
+		"custom paths":  {[]Option{WithHealthPaths(HealthPaths{Liveness: "/live", Readiness: "/ready"})}, []string{"/live", "/ready"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			s := New(nil, opts...)
+			s := New(nil, c.opts...)
 			var seen []string
 			s.Use(func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -584,7 +590,7 @@ func TestProbesBypassMiddlewareChain(t *testing.T) {
 			})
 			s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 			h := s.Handler()
-			for _, path := range []string{s.healthPaths.Liveness, s.healthPaths.Readiness, "/a"} {
+			for _, path := range append(c.paths, "/a") {
 				rec := httptest.NewRecorder()
 				h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 				if rec.Code != http.StatusOK {
