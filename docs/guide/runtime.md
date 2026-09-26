@@ -185,6 +185,8 @@ gen-once `main.go` predates the feature or was generated without the
 document):
 
 ```go
+import _ "embed"
+
 //go:embed docs/openapi.yaml
 var openapiSpec []byte
 

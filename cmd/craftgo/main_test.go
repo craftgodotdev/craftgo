@@ -292,6 +292,53 @@ openapi:
 	}
 }
 
+// TestGenNotesAMainWithoutTheDocsEmbed checks that a run after `--target go`
+// names the gen-once main.go that does not embed the OpenAPI document now on
+// disk, and that a main.go written beside the document, or serving one another
+// file of its package embeds, gets no note.
+func TestGenNotesAMainWithoutTheDocsEmbed(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "go.mod", "module github.com/test/app\n\ngo 1.24\n")
+	mustWrite(t, dir, "design/craftgo.design.yaml", "")
+	mustWrite(t, dir, "design/api.craftgo", minimalDesignDSL)
+	gen := func(args ...string) string {
+		t.Helper()
+		var err error
+		stdout, _ := captureOutput(t, func() {
+			err = runGen(append(args, "-f", filepath.Join(dir, "design"), "-c", dir))
+		})
+		if err != nil {
+			t.Fatalf("runGen %v: %v", args, err)
+		}
+		return stdout
+	}
+	gen("--target", "go")
+	const note = "craftgo: ./main.go does not embed ./docs/openapi.yaml"
+	if out := gen(); strings.Count(out, note) != 1 {
+		t.Errorf("a full run after --target go does not note the main.go once:\n%s", out)
+	}
+	if err := os.Remove(filepath.Join(dir, "main.go")); err != nil {
+		t.Fatal(err)
+	}
+	if out := gen(); strings.Contains(out, "does not embed") {
+		t.Errorf("a main.go written beside the document gets the note:\n%s", out)
+	}
+	mainPath := filepath.Join(dir, "main.go")
+	src, err := os.ReadFile(mainPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	embed := "//go:embed docs/openapi.yaml\nvar openapiSpec []byte\n"
+	if !strings.Contains(string(src), embed) {
+		t.Fatalf("main.go does not embed the document:\n%s", src)
+	}
+	mustWrite(t, dir, "main.go", strings.Replace(string(src), embed, "", 1))
+	mustWrite(t, dir, "docs.go", "package main\n\nimport _ \"embed\"\n\n"+embed)
+	if out := gen(); strings.Contains(out, "does not embed") {
+		t.Errorf("a main.go serving the document docs.go embeds gets the note:\n%s", out)
+	}
+}
+
 // fmt on a design folder that holds only protos has nothing to format.
 func TestRunFmtProtoOnlyDesign(t *testing.T) {
 	dir := t.TempDir()

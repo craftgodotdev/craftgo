@@ -10,6 +10,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/codegen"
+	"github.com/craftgodotdev/craftgo/internal/codegen/docs"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
@@ -116,10 +117,41 @@ func runGen(args []string) error {
 	}
 	packages, wroteProtos := codegen.Generated(in, cfg, projectRoot, a.targets...)
 	fmt.Printf("craftgo: generated %d package(s)%s under %s\n", packages, grpcSummary(protos, wroteProtos), projectRoot)
-	for _, note := range codegen.OutputNotes(in, cfg, projectRoot) {
+	notes := codegen.OutputNotes(in, cfg, projectRoot)
+	if note := docsEmbedNote(proj, cfg, projectRoot); note != "" {
+		notes = append(notes, note)
+	}
+	for _, note := range notes {
 		fmt.Println("craftgo: " + note)
 	}
 	return nil
+}
+
+// docsEmbedNote names a gen-once main.go that serves HTTP routes but neither
+// embeds nor serves the OpenAPI document on disk, which go:embed reaches from
+// its directory: a main.go written by a `--target go` run before the document
+// existed. It is "" otherwise.
+func docsEmbedNote(proj *semantic.Project, cfg *config.Config, projectRoot string) string {
+	_, document := docs.Plan(proj, cfg, projectRoot)
+	if len(document) == 0 || cfg.Output.RuntimeDisabled() || cfg.Output.ContractsOnly() {
+		return ""
+	}
+	mainPath := filepath.Join(projectRoot, cfg.Output.Main)
+	rel, err := filepath.Rel(filepath.Dir(mainPath), document[0])
+	if err != nil || !filepath.IsLocal(rel) {
+		return ""
+	}
+	if _, err := os.Stat(document[0]); err != nil {
+		return ""
+	}
+	embed := "//go:embed " + filepath.ToSlash(rel)
+	src, err := os.ReadFile(mainPath)
+	if err != nil || !strings.Contains(string(src), "wiring.Register(") ||
+		strings.Contains(string(src), embed) || strings.Contains(string(src), "ServeDocs(") {
+		return ""
+	}
+	return cfg.Output.Main + " does not embed " + cfg.Output.OpenAPI + " - it is generated once, so add the `" + embed +
+		"` block and its srv.ServeDocs call by hand (docs/guide/runtime.md shows them), or delete it to have gen write it anew"
 }
 
 // grpcSummary is the gRPC half of the run summary, empty for a run that

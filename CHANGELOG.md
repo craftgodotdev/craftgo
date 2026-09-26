@@ -1254,6 +1254,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   out of the document and stops no run, an `oauth2` one without flows
   included.
 
+- **`craftgo gen` names a `main.go` that does not embed the OpenAPI
+  document.** A project first generated with `--target go` gets a `main.go`
+  without the document's embed, which gen never rewrites, so a later run
+  wrote a document nothing served, without a word. Each run now names that
+  `main.go` and the `//go:embed` line it lacks, or suggests deleting it to
+  have gen write it anew. The runtime guide's embed snippet imports `embed`,
+  which `go build` requires.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

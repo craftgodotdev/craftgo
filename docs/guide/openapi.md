@@ -316,3 +316,4 @@ without flows, stops a run that writes it, and no other: with `"-"`, or with
 and serves the document only when it is on disk as the Go code is generated,
 so a project first generated with `--target go` gets a `main.go` without it;
 add the [embed](/guide/runtime#api-reference-docs) once the document exists.
+Until then, each `craftgo gen` names that `main.go` and the embed it lacks.
