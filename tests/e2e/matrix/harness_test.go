@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
@@ -109,25 +110,28 @@ func reqJSON(t *testing.T, ts *httptest.Server, method, path string, body any) (
 	return resp.StatusCode, out
 }
 
-// TestServer_HealthEndpoints mounts its own /healthz on Mux(), which the
-// default probes leave free.
+// The handler Start serves answers the default probes beside the generated
+// routes; readiness runs the registered check.
 func TestServer_HealthEndpoints(t *testing.T) {
 	svc := svccontext.NewServiceContext()
 	srv := server.New(svc)
 	accountroutes.RegisterRoutes(srv, svc)
-	srv.RegisterHealthCheck("ok", 0, func(context.Context) error { return nil })
-	mux := srv.Mux()
-	mux.Handle("/healthz", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	ts := httptest.NewServer(mux)
-	defer ts.Close()
-	resp, err := ts.Client().Get(ts.URL + "/healthz")
-	if err != nil {
-		t.Fatal(err)
+	srv.RegisterHealthCheck("db", time.Second, func(context.Context) error { return nil })
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	var live struct{ Status string }
+	if st := getJSON(t, ts, server.DefaultLivenessPath, &live); st != http.StatusOK || live.Status != "ok" {
+		t.Errorf("liveness answered %d %+v, want 200 with status ok", st, live)
 	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("healthz status %d", resp.StatusCode)
+	var ready struct {
+		Status string
+		Checks map[string]string
+	}
+	if st := getJSON(t, ts, server.DefaultReadinessPath, &ready); st != http.StatusOK || ready.Status != "ready" || ready.Checks["db"] != "ok" {
+		t.Errorf("readiness answered %d %+v, want 200 ready with check db ok", st, ready)
+	}
+	if st := getJSON(t, ts, "/api/account-users/ping", nil); st != http.StatusNoContent {
+		t.Errorf("a generated route answered %d beside the probes, want 204", st)
 	}
 }
