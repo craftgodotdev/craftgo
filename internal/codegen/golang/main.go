@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
@@ -92,17 +91,21 @@ func buildProjectMainData(proj *semantic.Project, protos *protodesign.Set, cfg *
 		}
 	}
 
-	if spec := cfg.Output.OpenAPI; d.HasRoutes && !cfg.Output.OpenAPIDisabled() {
-		mainDir := filepath.Dir(filepath.Clean(cfg.Output.Main))
-		if rel, err := filepath.Rel(mainDir, filepath.Clean(spec)); err == nil {
-			rel = filepath.ToSlash(rel)
-			if !strings.HasPrefix(rel, "../") {
-				d.HasDocs = true
-				d.OpenAPIEmbed = rel
-			}
-		}
+	if d.HasRoutes && !cfg.Output.OpenAPIDisabled() {
+		d.OpenAPIEmbed, d.HasDocs = DocsEmbed(cfg)
 	}
 	return d
+}
+
+// DocsEmbed returns the path of the OpenAPI document relative to output.main's
+// directory, as main.go's go:embed names it, and false when go:embed cannot
+// reach the document from there.
+func DocsEmbed(cfg *config.Config) (string, bool) {
+	rel, err := filepath.Rel(filepath.Dir(filepath.Clean(cfg.Output.Main)), filepath.Clean(cfg.Output.OpenAPI))
+	if err != nil || !filepath.IsLocal(rel) {
+		return "", false
+	}
+	return filepath.ToSlash(rel), true
 }
 
 // operationNameFor is the config's default serviceName: the module path's last segment

@@ -11,6 +11,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/codegen"
 	"github.com/craftgodotdev/craftgo/internal/codegen/docs"
+	"github.com/craftgodotdev/craftgo/internal/codegen/golang"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
@@ -136,16 +137,15 @@ func docsEmbedNote(proj *semantic.Project, cfg *config.Config, projectRoot strin
 	if len(document) == 0 || cfg.Output.RuntimeDisabled() || cfg.Output.ContractsOnly() {
 		return ""
 	}
-	mainPath := filepath.Join(projectRoot, cfg.Output.Main)
-	rel, err := filepath.Rel(filepath.Dir(mainPath), document[0])
-	if err != nil || !filepath.IsLocal(rel) {
+	rel, ok := golang.DocsEmbed(cfg)
+	if !ok {
 		return ""
 	}
 	if _, err := os.Stat(document[0]); err != nil {
 		return ""
 	}
-	embed := "//go:embed " + filepath.ToSlash(rel)
-	src, err := os.ReadFile(mainPath)
+	embed := "//go:embed " + rel
+	src, err := os.ReadFile(filepath.Join(projectRoot, cfg.Output.Main))
 	if err != nil || !strings.Contains(string(src), "wiring.Register(") ||
 		strings.Contains(string(src), embed) || strings.Contains(string(src), "ServeDocs(") {
 		return ""
