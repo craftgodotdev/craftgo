@@ -74,7 +74,7 @@ func TestAppliesToDecidesSplitCategories(t *testing.T) {
 	mustClean(t, `type X { b bytes @minLength(1) @maxLength(9)  m map<string, int> @minItems(1) @maxItems(3)  n int @multipleOf(2) }`)
 }
 
-// A field's category follows its resolved type, through scalars and raw bytes.
+// A field's category follows its resolved type, through scalars, enums and raw bytes.
 func TestResolvedFieldPrims(t *testing.T) {
 	pkg := mustClean(t, `scalar Email string
 scalar Blob bytes @format(raw)
@@ -93,7 +93,7 @@ type X {
 	a any
 }`)
 	want := map[string]Prims{"s": PrimString, "b": PrimBytes, "r": PrimRawBytes, "e": PrimString, "blob": PrimRawBytes,
-		"n": PrimInteger, "f": PrimFloat, "xs": PrimArray, "m": PrimMap, "en": 0, "a": 0}
+		"n": PrimInteger, "f": PrimFloat, "xs": PrimArray, "m": PrimMap, "en": PrimString, "a": PrimDynamic}
 	for _, f := range ast.Fields(pkg.Types["X"].Body) {
 		if got := ResolveField(f, pkg, nil).Prims(); got != want[f.Name] {
 			t.Errorf("%s: Prims = %v, want %v", f.Name, got, want[f.Name])
@@ -357,4 +357,20 @@ func TestMimeTypesArgIsAMediaType(t *testing.T) {
 		expectError(t, "package p\ntype U { f file @mimeTypes("+arg+") }\n", CodeDecoratorArgValue)
 	}
 	expectNoCode(t, "package p\ntype U { f file @mimeTypes(\"image/*\", \"*/*\", \"Application/PDF\", \"application/vnd.api+json\") }\n", CodeDecoratorArgValue)
+}
+
+// An enum field takes the constraints of its backing type and an `any` field none.
+func TestConstraintOnEnumOrAnyField(t *testing.T) {
+	const src = `package p
+enum Tier { Gold = "gold" }
+enum Level { Low = 1  High = 9 }
+type Req {
+	a Tier @minLength(2)
+	b Level @range(1, 9)
+	c Tier @multipleOf(2)
+	d Level @minLength(1)
+	e any @multipleOf(2)
+}
+`
+	expectCodeCount(t, src, CodeDecoratorTypeMismatch, 3)
 }

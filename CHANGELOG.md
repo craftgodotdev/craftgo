@@ -425,10 +425,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   is now `field/invalid-go-name` at the mixin, as the error's own field of
   that name is.
 
-- **A constraint decorator on a struct field is refused.** `@gt`,
+- **A constraint decorator a field's type cannot carry is refused.** `@gt`,
   `@minLength`, `@maxItems`, `@uniqueItems` and the other value, length and
-  item constraints on a field typed by a struct or a generic instance
-  generated a field the validator never checked; each is now
+  item constraints on a field typed by a struct, a generic instance or `any`,
+  or one an enum's backing type does not take (`@multipleOf` on a string
+  enum), generated a field the validator never checked; each is now
   `decorator/typemismatch`, and the editor no longer offers them there.
 
 - **CORS runs ahead of the `Use` middlewares.** `SetCORS` sat inside the

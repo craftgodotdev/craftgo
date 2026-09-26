@@ -88,7 +88,9 @@ func (rf ResolvedField) Prims() Prims {
 		return PrimFile
 	case CatStruct:
 		return PrimStruct
-	case CatPrimitive, CatScalar, CatBytes:
+	case CatAny:
+		return PrimDynamic
+	case CatPrimitive, CatScalar, CatBytes, CatEnum:
 		return PrimFromName(rf.ResolvedPrim)
 	}
 	return 0
