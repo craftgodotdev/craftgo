@@ -4,7 +4,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/idents"
-	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -27,25 +26,11 @@ type serviceData struct {
 // output.service/<segment>/<method>.go. A nil r resolves local names only.
 func generateService(pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
 	r = resolverFor(pkg, r)
-	for _, svcName := range pkg.ServiceNames() {
-		svc := pkg.Services[svcName]
-		if err := generateServiceFor(svcName, svc, pkg, cfg, projectRoot, r); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func generateServiceFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
 	out := outputsOf(cfg)
-	for _, m := range svc.Methods {
-		seg := route.OutputSegment(svcName, semantic.MethodGroupOf(svc, m), cfg.Output.FileCase)
-		data := buildServiceData(pkg.Name, svcName, m, svc.Decorators(m), out.segmentImports(pkg.Name, seg), r)
-		if err := writeGoOnce(out.service.sub(seg).at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("service.tmpl"), data); err != nil {
-			return err
-		}
-	}
-	return nil
+	return eachSegmentMethod(pkg, cfg.Output.FileCase, func(s segment, m *ast.Method) error {
+		data := buildServiceData(pkg.Name, s.name, m, s.svc.Decorators(m), out.segmentImports(pkg.Name, s.dir), r)
+		return writeGoOnce(out.service.sub(s.dir).at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("service.tmpl"), data)
+	})
 }
 
 func buildServiceData(pkgName, svcName string, m *ast.Method, decs []*ast.Decorator, imps importPaths, r *projectResolver) serviceData {

@@ -8,7 +8,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/idents"
-	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
@@ -69,25 +68,11 @@ type paramBinding struct {
 // the segment being the @group or the service directory. A nil r resolves local names only.
 func generateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
 	r = resolverFor(pkg, r)
-	for _, svcName := range pkg.ServiceNames() {
-		svc := pkg.Services[svcName]
-		if err := generateTransportFor(svcName, svc, pkg, cfg, projectRoot, r); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func generateTransportFor(svcName string, svc *semantic.ServiceInfo, pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
 	out := outputsOf(cfg)
-	for _, m := range svc.Methods {
-		seg := route.OutputSegment(svcName, semantic.MethodGroupOf(svc, m), cfg.Output.FileCase)
-		data := buildTransportData(m, svc.Decorators(m), out.segmentImports(pkg.Name, seg), pkg, r)
-		if err := writeGo(out.transport.sub(seg).at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("transport.tmpl"), data); err != nil {
-			return err
-		}
-	}
-	return nil
+	return eachSegmentMethod(pkg, cfg.Output.FileCase, func(s segment, m *ast.Method) error {
+		data := buildTransportData(m, s.svc.Decorators(m), out.segmentImports(pkg.Name, s.dir), pkg, r)
+		return writeGo(out.transport.sub(s.dir).at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("transport.tmpl"), data)
+	})
 }
 
 // buildTransportData renders m's handler, decs being the decorators that apply to m.

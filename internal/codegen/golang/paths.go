@@ -177,6 +177,19 @@ func segments(pkg *semantic.Package, fileCase string) iter.Seq[segment] {
 	}
 }
 
+// eachSegmentMethod calls fn with each method of pkg's services and the
+// segment it generates into, stopping at the first error.
+func eachSegmentMethod(pkg *semantic.Package, fileCase string, fn func(segment, *ast.Method) error) error {
+	for s := range segments(pkg, fileCase) {
+		for m := range s.methods() {
+			if err := fn(s, m); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // projectSegments is [segments] over proj's named packages, in name order.
 func projectSegments(proj *semantic.Project, fileCase string) iter.Seq[segment] {
 	return func(yield func(segment) bool) {
