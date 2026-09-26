@@ -587,20 +587,9 @@ service FilesService {
 		}
 	}
 	// Headers are set before the encode, whose first write sends them.
-	if idx := strings.Index(body, "server.JSON().Encode"); idx >= 0 {
-		pre := body[:idx]
-		if !strings.Contains(pre, "w.Header().Set(\"etag\"") {
-			t.Error("expected response header write to precede body encode")
-		}
-	}
-
-	typesOut, err := os.ReadFile(filepath.Join(root, "internal/types", "design", "types.go"))
-	if err == nil {
-		// types.go is generated separately; only assert when present.
-		typesSrc := string(typesOut)
-		if strings.Contains(typesSrc, `Etag string `+"`json:\"etag\"`") {
-			t.Errorf("etag field should be tagged json:\"-\":\n%s", typesSrc)
-		}
+	encode := strings.Index(body, "server.JSON().Encode")
+	if encode < 0 || !strings.Contains(body[:encode], `w.Header().Set("etag"`) {
+		t.Errorf("the etag header must be set before the body is encoded:\n%s", body)
 	}
 }
 

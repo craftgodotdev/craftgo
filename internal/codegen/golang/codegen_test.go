@@ -723,7 +723,7 @@ error Forbidden Boom {
 	if !strings.Contains(norm, `Secret string `+"`json:\"-\"`") {
 		t.Errorf("@sensitive error field must be json:\"-\" (server-only), not leaked:\n%s", src)
 	}
-	if strings.Contains(norm, `json:\"secret\"`) {
+	if strings.Contains(norm, `json:"secret`) {
 		t.Errorf("@sensitive error field secret leaked onto the wire:\n%s", src)
 	}
 }
