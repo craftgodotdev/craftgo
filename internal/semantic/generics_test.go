@@ -422,7 +422,6 @@ service S {
 		"nested array": {`service S { get A /a { response Paged<int[][]> } }`, "field Paged<int[][]>.count: @header cannot bind to a multi-dimensional array"},
 		"cookie array": {`service S { get A /a { response Tagged<int[]> } }`, "field Tagged<int[]>.tag: @cookie cannot bind to an array"},
 		"request":      {`service S { post A /a { request Req<Item>  response Item } }`, "field Req<Item>.h: @header requires"},
-		"mixin":        {`service S { get A /a { response Wrap } }`, "field Wrap.count: @header requires"},
 		"error mixin":  {`error Conflict E { Paged<Item> }`, "field Paged<Item>.count: @header requires"},
 		"optional over an array": {`type OptH<T> { h T? @header("X-Opt")  n int }
 service S { get A /a { response OptH<string[]> } }`, "field OptH<string[]>.h: @header rides an optional type parameter over an array"},
@@ -440,4 +439,55 @@ error Conflict E { OptH<int[]> }`, "field OptH<int[]>.h: @header rides an option
 			}
 		})
 	}
+}
+
+// A concrete mixin fixes its generic arguments where the design writes it: a
+// @header or @cookie field its arguments cannot carry is reported once, at
+// that mixin, however many clauses reach it; a mixin passing its host's type
+// parameter is checked at each clause instantiating the host.
+func TestConcreteMixinWireBindingReportedOnce(t *testing.T) {
+	const decls = `package app
+type Item { id string }
+type Paged<T> { count T @header("X-Count")  items T[] }
+type OptH<T> { h T? @header("X-Opt")  n int }
+type Wrap { Paged<Item> }
+type Outer { Wrap  n int }
+type Keep<T> { Paged<Item>  v T }
+type Pass<T> { Paged<T> }
+type Opt { OptH<string[]> }
+`
+	for label, c := range map[string]struct {
+		src, msg string
+		line     int
+	}{
+		"used thrice": {`service S {
+	get A /a { response Wrap }
+	get B /b { response Wrap }
+	get C /c { response Outer }
+}`, "field Paged<Item>.count: @header requires", 5},
+		"in a generic host": {`service S {
+	get A /a { response Keep<int> }
+	get B /b { response Keep<bool> }
+}`, "field Paged<Item>.count: @header requires", 7},
+		"optional over an array": {`service S {
+	@rawResponse get A /a { response Opt }
+	get B /b { response Opt }
+	get C /c { response Opt }
+}`, "field OptH<string[]>.h: @header rides an optional type parameter over an array", 9},
+	} {
+		t.Run(label, func(t *testing.T) {
+			src := decls + c.src
+			d := expectError(t, src, CodeBindingType)
+			expectMessage(t, d, c.msg)
+			if d.Pos.Line != c.line {
+				t.Errorf("reported at line %d, want the mixin's line %d", d.Pos.Line, c.line)
+			}
+			expectCodeCount(t, src, CodeBindingType, 1)
+		})
+	}
+	expectCodeCount(t, decls+`service S {
+	get A /a { response Pass<Item> }
+	get B /b { response Pass<Item> }
+}`, CodeBindingType, 2)
+	mustClean(t, decls+`service S { @rawResponse get A /a { response Opt } }`)
 }

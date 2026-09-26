@@ -1109,7 +1109,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   instantiates the type is checked with its argument: `response Paged<Item>`
   is `binding/type` at the response clause, as is a `T?` header whose
   argument is an array, a pointer to a slice no generated header binding
-  reads or writes; a raw side, whose headers logic handles, takes it.
+  reads or writes; a raw side, whose headers logic handles, takes it. An
+  argument a type's own mixin writes, as in `type Wrap { Paged<Item> }`, is
+  reported once, at that mixin, however many clauses use the type.
 
 - **A mixin's cross-field groups reach every OpenAPI request body.** The
   body of a request that also binds a path, query, header or cookie field,

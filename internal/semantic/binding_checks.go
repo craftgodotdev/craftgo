@@ -75,36 +75,41 @@ func typeParamNamed(t *ast.TypeRef, typeParams []string) bool {
 
 // checkTypeParamWireBindings rejects, at each request, response or error
 // mixin that instantiates a type, a @header or @cookie field typed by one
-// of the type's parameters whose argument cannot ride the binding.
+// of the type's parameters whose argument cannot ride the binding. An
+// argument a mixin of this package's design writes is reported once, at
+// that mixin.
 func (a *analyzer) checkTypeParamWireBindings() {
+	reported := map[string]bool{}
 	for _, svcName := range a.pkg.ServiceNames() {
 		si := a.pkg.Services[svcName]
 		for _, m := range si.Methods {
 			rawReq, rawResp := wire.RawSides(si.Decorators(m))
 			if m.Request != nil {
-				a.checkInstanceWireBindings(m.Request, m.Request.Pos, false, rawReq)
+				a.checkInstanceWireBindings(m.Request, m.Request.Pos, false, rawReq, reported)
 			}
 			if m.Response != nil {
-				a.checkInstanceWireBindings(m.Response.Type, m.Response.Pos, true, rawResp)
+				a.checkInstanceWireBindings(m.Response.Type, m.Response.Pos, true, rawResp, reported)
 			}
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(a.pkg.Errors)) {
 		for _, member := range a.pkg.Errors[name].Body {
 			if mx, ok := member.(*ast.Mixin); ok {
-				a.checkInstanceWireBindings(mx.Ref, mx.Pos, true, false)
+				a.checkInstanceWireBindings(mx.Ref, mx.Pos, true, false, reported)
 			}
 		}
 	}
 }
 
-// checkInstanceWireBindings reports at pos each @header or @cookie field of
-// the type ref names, typed by a type parameter, whose argument cannot ride
-// the binding; raw says logic reads or writes the headers, so no generated
-// binding holds the value. An argument naming no type is left to the
-// reference check, and one holding a `file` to [analyzer.checkFilePosition]
-// when fileReported says it reports every `file` at pos.
-func (a *analyzer) checkInstanceWireBindings(ref *ast.NamedTypeRef, pos lexer.Position, fileReported, raw bool) {
+// checkInstanceWireBindings reports each @header or @cookie field of the
+// type ref names, typed by a type parameter, whose argument cannot ride the
+// binding: at pos, or at the mixin of this package that fixes the argument,
+// unless reported holds the same diagnostic. raw says logic reads or writes
+// the headers, so no generated binding holds the value. An argument naming no
+// type is left to the reference check, and one holding a `file` to
+// [analyzer.checkFilePosition] when fileReported says it reports every `file`
+// at pos.
+func (a *analyzer) checkInstanceWireBindings(ref *ast.NamedTypeRef, pos lexer.Position, fileReported, raw bool, reported map[string]bool) {
 	view, fields, ok := a.instanceFields(ref)
 	if !ok {
 		return
@@ -117,13 +122,18 @@ func (a *analyzer) checkInstanceWireBindings(ref *ast.NamedTypeRef, pos lexer.Po
 		if a.proj.namesNoType(view, ff.Field.Type) || (fileReported && holdsFile(ff.Field.Type)) {
 			continue
 		}
-		msg := a.proj.wireTypeFault(ref.String(), view, ff.Field, kind)
+		instance, at := ref.String(), pos
+		if o := ff.origin; o != nil && o.home == a.pkg.Name {
+			instance, at = o.mixin.Ref.String(), o.mixin.Pos
+		}
+		msg := a.proj.wireTypeFault(instance, view, ff.Field, kind)
 		if msg == "" && ff.sliceBehindPointer() && !raw {
 			msg = fmt.Sprintf("field %s.%s: @%s rides an optional type parameter over an array, whose Go value is a pointer to a slice no %s binding reads or writes - drop the `?` from the type parameter (an array is already nilable)",
-				ref, ff.Field.Name, kind, kind)
+				instance, ff.Field.Name, kind, kind)
 		}
-		if msg != "" {
-			a.diag(pos, pos, lexer.SeverityError, CodeBindingType, "%s", msg)
+		if key := at.String() + " " + msg; msg != "" && !reported[key] {
+			reported[key] = true
+			a.diag(at, at, lexer.SeverityError, CodeBindingType, "%s", msg)
 		}
 	}
 }

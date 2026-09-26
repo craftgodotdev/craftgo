@@ -100,6 +100,16 @@ type FlatField struct {
 	// paramTyped reports a field declared as a type parameter the flattening
 	// binds, `T` or `T[]`: its type is spelled from the argument.
 	paramTyped bool
+	// origin is, for a paramTyped field, the mixin whose written arguments
+	// fix its parameter's argument; nil when the flattened type's own
+	// arguments do.
+	origin *mixinSite
+}
+
+// mixinSite is a mixin and the package declaring the body it sits in.
+type mixinSite struct {
+	mixin *ast.Mixin
+	home  string
 }
 
 // sliceBehindPointer reports whether ff's Go value is a pointer to a slice:
@@ -144,7 +154,7 @@ func flattenInstance(td *ast.TypeDecl, prefix string, args []*ast.TypeRef, r *Re
 // unbound. incomplete reports a mixin that names no type.
 func (p *Project) flattenFields(view, home string, body []ast.TypeMember, typeParams []string, args []*ast.TypeRef, names LevelNames) (fields []FlatField, incomplete bool) {
 	w := &fieldWalk{proj: p, view: view, names: names, expanded: map[string]bool{}, embedDepths: map[string][]int{}}
-	fields = w.level(home, body, typeParams, SubstMap(typeParams, args), nil)
+	fields = w.level(home, body, typeParams, SubstMap(typeParams, args), nil, nil)
 	w.nameShadowedByPath(fields)
 	return fields, w.incomplete
 }
@@ -196,9 +206,10 @@ func (w *fieldWalk) nameShadowedByPath(fields []FlatField) {
 }
 
 // level returns the fields of one struct level declared in package home,
-// its typeParams bound by subst; embedPath is the Go names of the mixins
+// its typeParams bound by subst, each argument fixed by origins' mixin (nil
+// for the flattened type's own); embedPath is the Go names of the mixins
 // that embed the level, outermost first.
-func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []string, subst map[string]*ast.TypeRef, embedPath []string) []FlatField {
+func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []string, subst map[string]*ast.TypeRef, origins map[string]*mixinSite, embedPath []string) []FlatField {
 	var names []string
 	if w.names != nil {
 		names = w.names(body)
@@ -210,6 +221,9 @@ func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []strin
 		case *ast.Field:
 			ff := FlatField{Field: v, Home: home, embedPath: embedPath,
 				optionalParam: optionalParam(v.Type, subst), paramTyped: boundParam(v.Type, subst) != nil}
+			if ff.paramTyped {
+				ff.origin = origins[v.Type.Named.Name.Parts[0]]
+			}
 			if i < len(names) {
 				ff.Name = names[i]
 			}
@@ -221,10 +235,32 @@ func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []strin
 			out = append(out, ff)
 			i++
 		case *ast.Mixin:
-			out = append(out, w.mixin(home, v, typeParams, subst, embedPath)...)
+			out = append(out, w.mixin(home, v, typeParams, subst, origins, embedPath)...)
 		}
 	}
 	return out
+}
+
+// argOrigin returns the mixin that fixes arg, an argument of the mixin at
+// site written with the host level's typeParams in scope: site itself when
+// arg names none of them, else the origin of those it names; nil when one of
+// them takes the flattened type's own argument.
+func argOrigin(arg *ast.TypeRef, typeParams []string, origins map[string]*mixinSite, site *mixinSite) *mixinSite {
+	var named []string
+	for _, p := range typeParams {
+		if mentionsTypeParam(arg, p) {
+			named = append(named, p)
+		}
+	}
+	if len(named) == 0 {
+		return site
+	}
+	for _, p := range named {
+		if origins[p] == nil {
+			return nil
+		}
+	}
+	return origins[named[0]]
 }
 
 // optionalParam reports whether t is `T?` for a type parameter T that subst
@@ -253,10 +289,10 @@ func (w *fieldWalk) spell(t *ast.TypeRef, home string, typeParams []string, subs
 }
 
 // mixin returns the fields mx, written in package home with typeParams in
-// scope and bound by subst and embedded behind embedPath, promotes:
-// `Page<Item>` promotes `items T[]` as `items Item[]`. Its arguments bind the
-// mixin's own level alone.
-func (w *fieldWalk) mixin(home string, mx *ast.Mixin, typeParams []string, subst map[string]*ast.TypeRef, embedPath []string) []FlatField {
+// scope, bound by subst and fixed by origins, and embedded behind embedPath,
+// promotes: `Page<Item>` promotes `items T[]` as `items Item[]`. Its
+// arguments bind the mixin's own level alone.
+func (w *fieldWalk) mixin(home string, mx *ast.Mixin, typeParams []string, subst map[string]*ast.TypeRef, origins map[string]*mixinSite, embedPath []string) []FlatField {
 	if mx.Ref == nil {
 		return nil
 	}
@@ -274,10 +310,15 @@ func (w *fieldWalk) mixin(home string, mx *ast.Mixin, typeParams []string, subst
 	w.expanded[key] = true
 	td := pkg.Types[sym]
 	args := make([]*ast.TypeRef, len(mx.Ref.Args))
+	argOrigins := make(map[string]*mixinSite, len(td.TypeParams))
+	site := &mixinSite{mixin: mx, home: home}
 	for i, a := range mx.Ref.Args {
 		args[i] = w.spell(a, home, typeParams, subst)
+		if i < len(td.TypeParams) {
+			argOrigins[td.TypeParams[i]] = argOrigin(a, typeParams, origins, site)
+		}
 	}
-	return w.level(pkg.Name, td.Body, td.TypeParams, SubstMap(td.TypeParams, args), append(slices.Clip(embedPath), embed))
+	return w.level(pkg.Name, td.Body, td.TypeParams, SubstMap(td.TypeParams, args), argOrigins, append(slices.Clip(embedPath), embed))
 }
 
 // requalify spells t, written in package home with typeParams in scope, as
