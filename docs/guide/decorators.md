@@ -285,7 +285,7 @@ Run on `file` fields (a request that holds one is `multipart/form-data`, with or
 | Decorator           | Args                | Effect                                |
 | ------------------- | ------------------- | ------------------------------------- |
 | `@maxSize(bytes)`   | `(size)`            | Cap upload size. Accepts `2MB`, `8KB`, etc. |
-| `@mimeTypes([...])` | string array        | Allowed Content-Type list             |
+| `@mimeTypes([...])` | string array        | Allowed media types or `type/*` ranges |
 
 ```craftgo
 type AvatarReq {

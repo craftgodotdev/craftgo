@@ -460,7 +460,7 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 | `@maxItems(n)`      | array, map | `(int)`           | At most `n` elements          |
 | `@uniqueItems`      | array     | `()`               | All elements distinct         |
 | `@maxSize(N)`       | file      | `(size)`           | Multipart upload size cap     |
-| `@mimeTypes([...])` | file      | strings or string array | Multipart MIME allow-list |
+| `@mimeTypes([...])` | file      | strings or string array | Multipart media types or `type/*` ranges; parameters and case of the part's Content-Type are ignored |
 
 **`@format` values**: `email`, `url`, `uri`, `uuid`, `datetime`, `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json` - all on string-shaped fields - plus `raw`, which is not a check and is valid ONLY on `bytes` (see the type table).
 

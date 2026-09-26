@@ -4,6 +4,7 @@ package customers
 
 import (
 	"fmt"
+	"mime"
 	"net/url"
 	"regexp"
 	"time"
@@ -188,8 +189,8 @@ func (v *UploadAvatarReq) Validate() error {
 		return fmt.Errorf("image: file size exceeds 5242880 bytes")
 	}
 	if v.Image != nil {
-		switch v.Image.Header.Get("Content-Type") {
-		case "image/png", "image/jpeg", "image/webp":
+		switch _mt, _, _ := mime.ParseMediaType(v.Image.Header.Get("Content-Type")); {
+		case _mt == "image/png", _mt == "image/jpeg", _mt == "image/webp":
 		default:
 			return fmt.Errorf("image: disallowed content type")
 		}

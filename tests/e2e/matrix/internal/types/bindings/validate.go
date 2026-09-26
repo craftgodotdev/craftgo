@@ -4,9 +4,11 @@ package bindings
 
 import (
 	"fmt"
+	"mime"
 	"net/mail"
 	"net/url"
 	"regexp"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -113,8 +115,8 @@ func (v *FormFileReq) Validate() error {
 		return fmt.Errorf("file: file size exceeds 5242880 bytes")
 	}
 	if v.File != nil {
-		switch v.File.Header.Get("Content-Type") {
-		case "image/png", "image/jpeg":
+		switch _mt, _, _ := mime.ParseMediaType(v.File.Header.Get("Content-Type")); {
+		case _mt == "image/png", _mt == "image/jpeg":
 		default:
 			return fmt.Errorf("file: disallowed content type")
 		}
@@ -425,10 +427,17 @@ func (v *UploadReq) Validate() error {
 		return fmt.Errorf("avatar_file: file size exceeds 5242880 bytes")
 	}
 	if v.File != nil {
-		switch v.File.Header.Get("Content-Type") {
-		case "image/png", "image/jpeg":
+		switch _mt, _, _ := mime.ParseMediaType(v.File.Header.Get("Content-Type")); {
+		case _mt == "image/png", _mt == "image/jpeg":
 		default:
 			return fmt.Errorf("avatar_file: disallowed content type")
+		}
+	}
+	if v.Thumb != nil {
+		switch _mt, _, _ := mime.ParseMediaType(v.Thumb.Header.Get("Content-Type")); {
+		case strings.HasPrefix(_mt, "image/"):
+		default:
+			return fmt.Errorf("thumb: disallowed content type")
 		}
 	}
 	if v.Caption != nil && utf8.RuneCountInString(*v.Caption) > 280 {

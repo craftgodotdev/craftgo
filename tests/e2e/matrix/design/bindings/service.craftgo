@@ -249,6 +249,7 @@ type SearchReq {
 type UploadReq {
 	id      string  @path @length(1, 64)
 	file    file    @form("avatar_file") @maxSize(5MB) @mimeTypes("image/png", "image/jpeg")
+	thumb   file?   @form("thumb") @mimeTypes("image/*")
 	caption string? @form("note") @maxLength(280)
 }
 

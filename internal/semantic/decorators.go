@@ -464,7 +464,7 @@ var registry = map[string]Spec{
 	},
 	"mimeTypes": {
 		Name: "mimeTypes", Levels: LvlField,
-		Doc:        "Allowed Content-Type list for uploads. Args: variadic strings or a single array literal.",
+		Doc:        "Media types or type/* ranges an upload's Content-Type must match, its parameters and case aside. Args: variadic strings or a single array literal.",
 		Args:       ArgsRule{Min: 1, Max: -1, Variadic: ArgString, AllowArrayShortcut: true},
 		AppliesTo:  PrimFile,
 		Constraint: ConstraintRuntime,

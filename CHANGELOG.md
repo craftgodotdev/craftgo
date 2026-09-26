@@ -1265,6 +1265,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   and is referenced as `@security(oauth2)`; the events note no longer mentions
   `consume` declarations.
 
+- **`@mimeTypes` matches an upload's media type.** It compared the part's
+  `Content-Type` header as a string, so `image/*` admitted no image and
+  `image/png; name=a` or `IMAGE/PNG` were refused though the OpenAPI document
+  allows them. A range now admits every subtype, parameters and case are
+  ignored, and an entry that is no media type or range is
+  `decorator/argvalue`.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added

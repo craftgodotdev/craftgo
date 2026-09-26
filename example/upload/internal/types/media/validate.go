@@ -4,6 +4,7 @@ package media
 
 import (
 	"fmt"
+	"mime"
 	"net/url"
 	"time"
 	"unicode/utf8"
@@ -24,8 +25,8 @@ func (v *CreateGalleryReq) Validate() error {
 		return fmt.Errorf("cover: file size exceeds 5242880 bytes")
 	}
 	if v.Cover != nil {
-		switch v.Cover.Header.Get("Content-Type") {
-		case "image/png", "image/jpeg", "image/webp":
+		switch _mt, _, _ := mime.ParseMediaType(v.Cover.Header.Get("Content-Type")); {
+		case _mt == "image/png", _mt == "image/jpeg", _mt == "image/webp":
 		default:
 			return fmt.Errorf("cover: disallowed content type")
 		}
@@ -135,8 +136,8 @@ func (v *UploadAttachmentReq) Validate() error {
 		return fmt.Errorf("blob: file size exceeds 512000 bytes")
 	}
 	if v.Blob != nil {
-		switch v.Blob.Header.Get("Content-Type") {
-		case "image/png", "text/plain", "application/json":
+		switch _mt, _, _ := mime.ParseMediaType(v.Blob.Header.Get("Content-Type")); {
+		case _mt == "image/png", _mt == "text/plain", _mt == "application/json":
 		default:
 			return fmt.Errorf("blob: disallowed content type")
 		}
@@ -156,8 +157,8 @@ func (v *UploadAvatarReq) Validate() error {
 		return fmt.Errorf("image: file size exceeds 5242880 bytes")
 	}
 	if v.Image != nil {
-		switch v.Image.Header.Get("Content-Type") {
-		case "image/png", "image/jpeg", "image/webp":
+		switch _mt, _, _ := mime.ParseMediaType(v.Image.Header.Get("Content-Type")); {
+		case _mt == "image/png", _mt == "image/jpeg", _mt == "image/webp":
 		default:
 			return fmt.Errorf("image: disallowed content type")
 		}
@@ -174,8 +175,8 @@ func (v *UploadDocumentReq) Validate() error {
 		return fmt.Errorf("pdf: file size exceeds 52428800 bytes")
 	}
 	if v.PDF != nil {
-		switch v.PDF.Header.Get("Content-Type") {
-		case "application/pdf":
+		switch _mt, _, _ := mime.ParseMediaType(v.PDF.Header.Get("Content-Type")); {
+		case _mt == "application/pdf":
 		default:
 			return fmt.Errorf("pdf: disallowed content type")
 		}

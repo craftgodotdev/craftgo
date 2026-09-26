@@ -7450,6 +7450,11 @@ components:
         file:
           format: binary
           type: string
+        thumb:
+          format: binary
+          type:
+          - string
+          - "null"
       required:
       - file
       type: object
@@ -9910,6 +9915,8 @@ paths:
             encoding:
               avatar_file:
                 contentType: image/png, image/jpeg
+              thumb:
+                contentType: image/*
             schema:
               properties:
                 avatar_file:
@@ -9917,6 +9924,9 @@ paths:
                   type: string
                 note:
                   maxLength: 280
+                  type: string
+                thumb:
+                  format: binary
                   type: string
               required:
               - avatar_file

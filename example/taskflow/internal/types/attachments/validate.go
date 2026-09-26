@@ -4,6 +4,7 @@ package attachments
 
 import (
 	"fmt"
+	"mime"
 	"unicode/utf8"
 )
 
@@ -56,8 +57,8 @@ func (v *UploadAttachmentReq) Validate() error {
 		return fmt.Errorf("file: file size exceeds 10485760 bytes")
 	}
 	if v.File != nil {
-		switch v.File.Header.Get("Content-Type") {
-		case "image/png", "image/jpeg", "application/pdf", "text/plain":
+		switch _mt, _, _ := mime.ParseMediaType(v.File.Header.Get("Content-Type")); {
+		case _mt == "image/png", _mt == "image/jpeg", _mt == "application/pdf", _mt == "text/plain":
 		default:
 			return fmt.Errorf("file: disallowed content type")
 		}

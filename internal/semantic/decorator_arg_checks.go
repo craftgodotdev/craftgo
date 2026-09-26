@@ -58,6 +58,21 @@ func (a *analyzer) checkDecoratorValue(d *ast.Decorator) {
 		a.checkPositiveSize(d)
 	case "minLength", "maxLength", "minItems", "maxItems":
 		a.checkNonNegativeInt(d)
+	case "mimeTypes":
+		a.checkMediaTypes(d)
+	}
+}
+
+// mediaRange matches a media type or a `type/*` or `*/*` range, without parameters.
+var mediaRange = regexp.MustCompile(`^(\*/\*|[A-Za-z0-9!#$&^_.+-]+/(\*|[A-Za-z0-9!#$&^_.+-]+))$`)
+
+// checkMediaTypes rejects a `@mimeTypes` entry that is not a media type or range.
+func (a *analyzer) checkMediaTypes(d *ast.Decorator) {
+	for _, n := range ast.ArgNames(d) {
+		if !mediaRange.MatchString(n.Value) {
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgValue,
+				"@mimeTypes takes media types such as \"image/png\" or ranges such as \"image/*\", without parameters - got %q", n.Value)
+		}
 	}
 }
 

@@ -30,6 +30,9 @@ func UploadAvatar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if _, header, err := r.FormFile("avatar_file"); err == nil {
 			req.File = header
 		}
+		if _, header, err := r.FormFile("thumb"); err == nil {
+			req.Thumb = header
+		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)
 			return

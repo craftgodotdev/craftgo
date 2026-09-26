@@ -368,6 +368,7 @@ type SessionCookieReq struct {
 type UploadReq struct {
 	ID      string                `json:"-" path:"id"`
 	File    *multipart.FileHeader `json:"file"`
+	Thumb   *multipart.FileHeader `json:"thumb,omitempty"`
 	Caption *string               `json:"caption,omitempty"`
 }
 

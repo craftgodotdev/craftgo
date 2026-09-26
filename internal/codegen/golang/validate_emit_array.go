@@ -57,22 +57,32 @@ func maxSizeCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 	return failIf(t.guarded(cond), t.subject, fmt.Sprintf("file size exceeds %d bytes", bytes), ctx)
 }
 
-// mimeTypesCheck renders @mimeTypes on a file as a switch over the upload's
-// Content-Type; an absent upload passes.
+// mimeTypesCheck renders @mimeTypes on a file as a match of the upload's media type, its
+// parameters and case aside, against each type or `type/*` range; an absent upload passes.
 func mimeTypesCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 	if !t.primIs(prims.File) {
 		return ""
 	}
-	var cases []string
-	for _, mime := range ast.ArgNames(d) {
-		cases = append(cases, strconv.Quote(mime.Value))
+	var conds []string
+	for _, arg := range ast.ArgNames(d) {
+		mt := strings.ToLower(arg.Value)
+		switch {
+		case mt == "*/*":
+			return ""
+		case strings.HasSuffix(mt, "/*"):
+			ctx.imports.use("strings")
+			conds = append(conds, "strings.HasPrefix(_mt, "+strconv.Quote(strings.TrimSuffix(mt, "*"))+")")
+		default:
+			conds = append(conds, "_mt == "+strconv.Quote(mt))
+		}
 	}
-	if len(cases) == 0 {
+	if len(conds) == 0 {
 		return ""
 	}
-	return t.guardBlock(fmt.Sprintf(`switch %s.Header.Get("Content-Type") {
+	ctx.imports.use("mime")
+	return t.guardBlock(fmt.Sprintf(`switch _mt, _, _ := mime.ParseMediaType(%s.Header.Get("Content-Type")); {
 case %s:
 default:
 return %s
-}`, t.access, strings.Join(cases, ", "), errorf(t.subject, "disallowed content type", ctx)))
+}`, t.access, strings.Join(conds, ", "), errorf(t.subject, "disallowed content type", ctx)))
 }

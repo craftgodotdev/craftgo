@@ -74,7 +74,7 @@ Field level only. Target `file`-typed fields on a multipart request.
 | Decorator | Args | Effect |
 |---|---|---|
 | `@maxSize(n)` | `(size)` | Upload size cap - `2MB`, `500KB`, `1GB`, or bare bytes. |
-| `@mimeTypes("a", "b")` | variadic strings / array | Allowed `Content-Type` list for the upload. |
+| `@mimeTypes("a", "b")` | variadic strings / array | Media types or `type/*` ranges the upload's `Content-Type` must match, its parameters and case aside. |
 
 ## Cross-field - type level
 

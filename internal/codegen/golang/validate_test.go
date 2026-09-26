@@ -947,17 +947,31 @@ type X { name string @maxSize(1024) }`)})
 	}
 }
 
+// @mimeTypes matches the part's media type, parameters and case aside: an
+// exact type, or a `type/*` range by its prefix.
 func TestValidateMimeTypes(t *testing.T) {
 	src := runValidateGen(t, `package design
 type Upload {
-    avatar file @mimeTypes(["image/png", "image/jpeg"])
+    avatar file @mimeTypes(["image/*", "Application/PDF"])
 }`)
 	mustContainAll(t, src,
 		"v.Avatar != nil",
-		`v.Avatar.Header.Get("Content-Type")`,
-		`"image/png", "image/jpeg"`,
+		`mime.ParseMediaType(v.Avatar.Header.Get("Content-Type"))`,
+		`strings.HasPrefix(_mt, "image/")`,
+		`_mt == "application/pdf"`,
 		"disallowed content type",
 	)
+}
+
+// `*/*` admits every upload, so no check is emitted.
+func TestValidateMimeTypesAnyEmitsNothing(t *testing.T) {
+	src := runValidateGen(t, `package design
+type Upload {
+    avatar file @mimeTypes("*/*", "image/png")
+}`)
+	if strings.Contains(src, "disallowed content type") {
+		t.Errorf("*/* still checks the content type:\n%s", src)
+	}
 }
 
 // @maxSize and @mimeTypes on one file field emit both checks.
@@ -969,7 +983,7 @@ type Upload {
 	if !strings.Contains(src, "v.Avatar.Size > 2097152") {
 		t.Errorf("missing maxSize check:\n%s", src)
 	}
-	if !strings.Contains(src, `"image/png"`) {
+	if !strings.Contains(src, `_mt == "image/png"`) {
 		t.Errorf("missing mimeTypes check:\n%s", src)
 	}
 }

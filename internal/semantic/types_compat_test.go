@@ -350,3 +350,11 @@ type Req {
 	expectCodeCount(t, src, CodeDecoratorTypeMismatch, 4)
 	expectMessage(t, expectDiag(t, src, CodeDecoratorTypeMismatch), "is struct")
 }
+
+// A @mimeTypes entry is a media type or a `type/*` range, without parameters.
+func TestMimeTypesArgIsAMediaType(t *testing.T) {
+	for _, arg := range []string{`"image"`, `"image/png; q=1"`, `"/png"`, `"image/"`, `""`} {
+		expectError(t, "package p\ntype U { f file @mimeTypes("+arg+") }\n", CodeDecoratorArgValue)
+	}
+	expectNoCode(t, "package p\ntype U { f file @mimeTypes(\"image/*\", \"*/*\", \"Application/PDF\", \"application/vnd.api+json\") }\n", CodeDecoratorArgValue)
+}
