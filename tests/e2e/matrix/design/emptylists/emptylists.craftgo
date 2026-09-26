@@ -39,6 +39,13 @@ type Shapes {
 	hdr      string[]            @header("X-Hdr")
 }
 
+// Chain reaches deep through its first node ahead of its own required lists.
+type Chain {
+	first  Node
+	labels string[]
+	votes  map<string, int>
+}
+
 // Clash is an error whose body holds a required list, its own and a mixin's.
 error Conflict Clash {
 	items string[]
@@ -60,6 +67,11 @@ service EmptyLists {
 	@doc("Answers a Node whose kids hold themselves: no JSON value, so a 500.")
 	get GetCycle /cycle {
 		response Node
+	}
+
+	@doc("Answers a Chain whose first node nests 1500 deep, with no cycle.")
+	get GetDeep /deep {
+		response Chain
 	}
 
 	@doc("Answers no Leaf at all: the logic returns nil.")

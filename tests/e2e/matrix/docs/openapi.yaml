@@ -1032,6 +1032,25 @@ components:
       maximum: 1000000000
       minimum: 0
       type: integer
+    Chain:
+      description: Chain reaches deep through its first node ahead of its own required
+        lists.
+      properties:
+        first:
+          $ref: '#/components/schemas/EmptylistsNode'
+        labels:
+          items:
+            type: string
+          type: array
+        votes:
+          additionalProperties:
+            type: integer
+          type: object
+      required:
+      - first
+      - labels
+      - votes
+      type: object
     Channel:
       enum:
       - Web
@@ -3012,6 +3031,8 @@ components:
       type: object
     GetCycleRespBody:
       $ref: '#/components/schemas/EmptylistsNode'
+    GetDeepRespBody:
+      $ref: '#/components/schemas/Chain'
     GetItemByPathRespBody:
       $ref: '#/components/schemas/ItemView'
     GetItemReq:
@@ -11359,6 +11380,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetCycleRespBody'
+          description: OK
+      tags:
+      - EmptyLists
+  /empty-lists/deep:
+    get:
+      description: Answers a Chain whose first node nests 1500 deep, with no cycle.
+      operationId: GetDeep
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetDeepRespBody'
           description: OK
       tags:
       - EmptyLists

@@ -20,9 +20,9 @@ func (v *{{.Name}}{{if .TypeParams}}[{{range $i, $p := .TypeParams}}{{if $i}}, {
 	return changed, false
 }
 {{end}}
-// fillDepth is how deep FillEmpty enters nested values: only a cycle, or data nested that
-// deep, goes further.
-const fillDepth = 1000
+// fillDepth is how deep FillEmpty enters nested values, as deep as encoding/json decodes: only
+// a cycle, or data no Go client could decode, goes further.
+const fillDepth = 10000
 {{- if .EmptySlice}}
 
 // emptySlice sets *s to an empty slice when it is nil, and reports whether it did.

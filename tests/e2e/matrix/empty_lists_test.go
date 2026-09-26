@@ -61,6 +61,22 @@ func TestNilListsGoOutEmpty(t *testing.T) {
 	}
 }
 
+// A value nested 1500 deep with no cycle is filled throughout, the lists
+// visited after its deepest branch included.
+func TestNilListsDeepValue(t *testing.T) {
+	ts := bootAll(t)
+	resp, err := http.Get(ts.URL + "/api/empty-lists/deep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	body := string(raw)
+	if resp.StatusCode != http.StatusOK || !strings.HasSuffix(strings.TrimSpace(body), `"labels":[],"votes":{}}`) || strings.Contains(body, "null") {
+		t.Errorf("deep: got %d ...%s", resp.StatusCode, body[max(len(body)-80, 0):])
+	}
+}
+
 // A value holding itself, through its kids twice over and its next, stops
 // the fill at once and answers 500, as the encoder refuses it.
 func TestNilListsCycleAnswers500(t *testing.T) {

@@ -8,6 +8,13 @@ type Box[T any] struct {
 	Vs []T `json:"vs"`
 }
 
+// Chain reaches deep through its first node ahead of its own required lists.
+type Chain struct {
+	First  Node           `json:"first"`
+	Labels []string       `json:"labels"`
+	Votes  map[string]int `json:"votes"`
+}
+
 // Leaf holds a required list and a required map.
 type Leaf struct {
 	Tags []string          `json:"tags"`

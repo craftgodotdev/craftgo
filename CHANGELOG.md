@@ -37,9 +37,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   elements, map values, nested structs and mixins; it writes to no map,
   putting a copy in its place. `server.WriteResponse` runs it on the
   response, in the value itself, and an error type's `MarshalJSON` on a copy
-  of its body. Past 1000 values deep it stops at once, so a cycle reaches the
-  encoder, which refuses it. A field named `fillEmpty` is now
-  `field/invalid-go-name`.
+  of its body. Past 10000
+  values deep, as deep as `encoding/json` decodes, it stops at once, so a
+  cycle reaches the encoder, which refuses it. A field named `fillEmpty` is
+  now `field/invalid-go-name`.
 
 - **Both servers log through `log.Default`.** `server.Server` and
   `rpc.Server` keep no logger of their own: `SetLogger` installs

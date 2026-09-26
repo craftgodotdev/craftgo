@@ -33,6 +33,14 @@ func (v *Box[T]) Validate() error {
 }
 
 // Validate returns the first constraint v violates, or nil.
+func (v *Chain) Validate() error {
+	if err := v.First.Validate(); err != nil {
+		return fmt.Errorf("first: %w", err)
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *Leaf) Validate() error {
 	return nil
 }

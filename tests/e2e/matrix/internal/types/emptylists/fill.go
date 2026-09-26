@@ -39,6 +39,31 @@ func (v *Box[T]) FillEmpty(depth int) (changed, stopped bool) {
 // v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
 // no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
 // it stops at once, reporting stopped.
+func (v *Chain) FillEmpty(depth int) (changed, stopped bool) {
+	if v == nil {
+		return false, false
+	}
+	if depth > fillDepth {
+		return false, true
+	}
+	if c, s := v.First.FillEmpty(depth + 1); s {
+		return changed, true
+	} else if c {
+		changed = true
+	}
+	if emptySlice(&v.Labels) {
+		changed = true
+	}
+	if emptyMap(&v.Votes) {
+		changed = true
+	}
+	return changed, false
+}
+
+// FillEmpty sets each required list, map or bytes value below v left nil to an empty one, so
+// v encodes as [] or {} there, and reports whether it set a value v holds itself. It writes to
+// no map: a copy holding the changed values takes the map's place. Past fillDepth values deep
+// it stops at once, reporting stopped.
 func (v *Leaf) FillEmpty(depth int) (changed, stopped bool) {
 	if v == nil {
 		return false, false
@@ -211,9 +236,9 @@ func (v *ClashBody) FillEmpty(depth int) (changed, stopped bool) {
 	return changed, false
 }
 
-// fillDepth is how deep FillEmpty enters nested values: only a cycle, or data nested that
-// deep, goes further.
-const fillDepth = 1000
+// fillDepth is how deep FillEmpty enters nested values, as deep as encoding/json decodes: only
+// a cycle, or data no Go client could decode, goes further.
+const fillDepth = 10000
 
 // emptySlice sets *s to an empty slice when it is nil, and reports whether it did.
 func emptySlice[S ~[]E, E any](s *S) bool {

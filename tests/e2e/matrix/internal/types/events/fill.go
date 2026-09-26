@@ -23,6 +23,6 @@ func (v *Envelope[T]) FillEmpty(depth int) (changed, stopped bool) {
 	return changed, false
 }
 
-// fillDepth is how deep FillEmpty enters nested values: only a cycle, or data nested that
-// deep, goes further.
-const fillDepth = 1000
+// fillDepth is how deep FillEmpty enters nested values, as deep as encoding/json decodes: only
+// a cycle, or data no Go client could decode, goes further.
+const fillDepth = 10000
