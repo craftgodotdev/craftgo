@@ -180,6 +180,9 @@ const (
 	CodeEventPayloadMissing = "event/payload-missing"
 	// CodeEventPayloadKind fires when an event's payload names a built-in, an enum or a scalar.
 	CodeEventPayloadKind = "event/payload-kind"
+	// CodeEventPayloadBinding fires when an event's payload reaches a field bound to `@path`, `@query`,
+	// `@header`, `@cookie` or `@form`.
+	CodeEventPayloadBinding = "event/payload-binding"
 	// CodeEventContractCollision fires when two events resolve to one contract name.
 	CodeEventContractCollision = "event/contract-collision"
 	// CodeEventContractFormat fires when an `@contract` argument is empty or contains whitespace.

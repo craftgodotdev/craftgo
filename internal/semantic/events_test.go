@@ -339,3 +339,37 @@ func TestEventPayloadErrorReportedOnce(t *testing.T) {
 		t.Errorf("qualified: want one %s, got %v", CodeRefUnknownSymbol, diags)
 	}
 }
+
+// A field bound to @path, @query, @header, @cookie or @form anywhere in a
+// payload is rejected at the payload clause, naming where it sits; a
+// @sensitive field is not.
+func TestEventPayloadBindingRejected(t *testing.T) {
+	for label, c := range map[string]struct{ src, at string }{
+		"header": {`type P { id string  loc string @header("Location") }
+event E { payload P }`, "P.loc"},
+		"cookie": {`type P { id string  sid string @cookie }
+event E { payload P }`, "P.sid"},
+		"query": {`type P { id string  page int @query }
+event E { payload P }`, "P.page"},
+		"path": {`type P { id string @path }
+event E { payload P }`, "P.id"},
+		"form": {`type P { id string  note string @form }
+event E { payload P }`, "P.note"},
+		"mixin": {`type Loc { loc string @header("Location") }
+type P { Loc  id string }
+event E { payload P }`, "P.loc"},
+		"nested": {`type Meta { page int @query }
+type P { m Meta }
+event E { payload P[] }`, "P.m.page"},
+		"generic": {`type Box<T> { v T  tag string @header("X-Tag") }
+event E { payload Box<string> }`, "Box<string>.tag"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			d := expectError(t, "package app\n"+c.src, CodeEventPayloadBinding)
+			expectMessage(t, d, c.at, "one JSON message")
+		})
+	}
+	expectNoCode(t, `package app
+type P { id string  secret string @sensitive }
+event E { payload P }`, CodeEventPayloadBinding)
+}

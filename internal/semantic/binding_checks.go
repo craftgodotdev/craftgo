@@ -519,22 +519,39 @@ func (a *analyzer) checkPayloadFiles() {
 // among those of the struct types t reaches and of the structs below them;
 // "" when there is none. t is spelled as the analyser's package spells it.
 func (a *analyzer) fileAt(t *ast.TypeRef, path string) string {
-	at := ""
-	a.visitFileHolders(a.pkg.Name, t, path, map[string]bool{}, func(_ string, f *ast.Field, p string) {
-		if at == "" {
-			at = p + "." + f.Name
-		}
-	})
+	_, at := a.firstFieldWhere(t, path, fieldHoldsFile)
 	return at
 }
 
+// firstFieldWhere returns the first field hit accepts among those of the
+// struct types t reaches and of the structs below them, and its path from
+// path; nil and "" when there is none. t is spelled as the analyser's
+// package spells it.
+func (a *analyzer) firstFieldWhere(t *ast.TypeRef, path string, hit func(*ast.Field) bool) (*ast.Field, string) {
+	var first *ast.Field
+	at := ""
+	a.visitFieldsWhere(a.pkg.Name, t, path, map[string]bool{}, hit, func(_ string, f *ast.Field, p string) {
+		if first == nil {
+			first, at = f, p+"."+f.Name
+		}
+	})
+	return first, at
+}
+
 // visitFileHolders calls visit with each field that [holdsFile] among the
-// fields of the struct types t reaches, mixin fields included, and of the
-// structs below them: owner is the struct reached and path how t reaches
-// it. An instance is walked with its type arguments substituted, so an
-// argument is reached, and named, through the fields its type parameters
-// type. t is spelled as package view spells it.
+// fields of the struct types t reaches and of the structs below them; see
+// [analyzer.visitFieldsWhere].
 func (a *analyzer) visitFileHolders(view string, t *ast.TypeRef, path string, seen map[string]bool, visit func(owner string, f *ast.Field, path string)) {
+	a.visitFieldsWhere(view, t, path, seen, fieldHoldsFile, visit)
+}
+
+// visitFieldsWhere calls visit with each field hit accepts among the fields
+// of the struct types t reaches, mixin fields included, and of the structs
+// below the fields it refuses: owner is the struct reached and path how t
+// reaches it. An instance is walked with its type arguments substituted, so
+// an argument is reached, and named, through the fields its type
+// parameters type. t is spelled as package view spells it.
+func (a *analyzer) visitFieldsWhere(view string, t *ast.TypeRef, path string, seen map[string]bool, hit func(*ast.Field) bool, visit func(owner string, f *ast.Field, path string)) {
 	for _, n := range outerNamedRefs(t) {
 		pkg, sym := a.proj.resolve(view, n.Name)
 		if pkg == nil || pkg.Types[sym] == nil {
@@ -549,11 +566,11 @@ func (a *analyzer) visitFileHolders(view string, t *ast.TypeRef, path string, se
 		fields, _ := a.proj.flattenFields(view, pkg.Name, td.Body, td.TypeParams, args, nil)
 		for _, ff := range fields {
 			f := ff.Field
-			if holdsFile(f.Type) {
+			if hit(f) {
 				visit(td.Name, f, path)
 				continue
 			}
-			a.visitFileHolders(view, f.Type, path+"."+f.Name, seen, visit)
+			a.visitFieldsWhere(view, f.Type, path+"."+f.Name, seen, hit, visit)
 		}
 	}
 }
@@ -581,6 +598,9 @@ func holdsFile(t *ast.TypeRef) bool {
 	})
 	return found
 }
+
+// fieldHoldsFile reports whether f's type [holdsFile].
+func fieldHoldsFile(f *ast.Field) bool { return holdsFile(f.Type) }
 
 // isFileTypeRef reports whether t names `file`, optional or in an array.
 func isFileTypeRef(t *ast.TypeRef) bool {

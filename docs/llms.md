@@ -279,6 +279,8 @@ event Shipped { payload OrderShipped }
   unknown name); a missing `payload` is `event/payload-missing`, a duplicate
   event name `event/duplicate-name`. An `event` inside a `service` body is a syntax error naming
   the move.
+- A payload is one JSON message: a field it reaches may not carry `@path`, `@query`, `@header`,
+  `@cookie` or `@form` (`event/payload-binding`), nor hold a `file` (`binding/file-position`).
 - `payload Type[]` is a contract whose body is a JSON array of that type: the descriptor is
   typed on the slice (`NewEvent[[]types.Type]`) and the generated validator runs each element's
   own `Validate`. One dimension only - a nested array, a `?`, a map or a primitive payload is

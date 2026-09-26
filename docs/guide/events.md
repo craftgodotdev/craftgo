@@ -42,7 +42,7 @@ event Placed {
 }
 ```
 
-`payload` must name a `type`, so every contract has named fields and its own `Validate()`. Events have their own namespace, so `type OrderPlaced` and `event OrderPlaced` coexist. A payload may also be an **array** of a declared type - a JSON array on the wire, typed on the slice and validated element by element:
+`payload` must name a `type`, so every contract has named fields and its own `Validate()`. The payload is one JSON message, so a field it reaches may not carry `@path`, `@query`, `@header`, `@cookie` or `@form`, nor hold a `file`. Events have their own namespace, so `type OrderPlaced` and `event OrderPlaced` coexist. A payload may also be an **array** of a declared type - a JSON array on the wire, typed on the slice and validated element by element:
 
 ```craftgo
 event BatchPlaced {

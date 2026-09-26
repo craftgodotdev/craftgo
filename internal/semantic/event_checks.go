@@ -8,6 +8,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/prims"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 // checkEvents runs the per-package event rules. Contract uniqueness runs
@@ -28,6 +29,7 @@ func (a *analyzer) checkEvent(d *ast.EventDecl) {
 	}
 	a.checkContractArg(d)
 	a.checkPayloadKind(d)
+	a.checkPayloadBindings(d)
 }
 
 // checkContractArg rejects an `@contract` value that is empty or carries
@@ -62,6 +64,24 @@ func (a *analyzer) checkPayloadKind(d *ast.EventDecl) {
 	if home != nil && home.Decl(name, EnumDecls|ScalarDecls) != nil {
 		a.payloadKindDiag(d, ref)
 	}
+}
+
+// checkPayloadBindings rejects a payload that reaches a field bound to
+// @path, @query, @header, @cookie or @form: the payload is one JSON message,
+// which the Go type leaves such a field out of or names differently.
+func (a *analyzer) checkPayloadBindings(d *ast.EventDecl) {
+	payload := d.Payload.Type
+	f, at := a.firstFieldWhere(&ast.TypeRef{Pos: d.Payload.Pos, Named: payload}, payload.String(), func(f *ast.Field) bool {
+		kind, _ := wire.BindingKind(f.Decorators)
+		return kind.IsParam()
+	})
+	if f == nil {
+		return
+	}
+	kind, _ := wire.BindingKind(f.Decorators)
+	a.diag(d.Payload.Pos, d.Payload.Pos, lexer.SeverityError, CodeEventPayloadBinding,
+		"payload %s of event %s binds %s with @%s, but a payload is one JSON message with no path, query, header, cookie or form part - drop the binding, or give the event a type without it",
+		payload, d.Name, at, kind)
 }
 
 // payloadKindDiag reports a payload that is not a struct type.

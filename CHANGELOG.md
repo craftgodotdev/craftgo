@@ -444,6 +444,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@form("n")` went nowhere. It is now `binding/form-without-file` at the
   decorator; drop `@form` and the field rides the JSON body as before.
 
+- **An event payload takes no wire binding.** A payload field bound to
+  `@path`, `@query`, `@header` or `@cookie` was tagged `json:"-"`, so it never
+  reached a consumer, and one with a validator failed every message there;
+  `@form("n")` named nothing. A payload that reaches such a field, a mixin's
+  or a nested struct's included, is now `event/payload-binding` at the
+  payload clause.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
