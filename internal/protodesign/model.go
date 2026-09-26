@@ -198,7 +198,7 @@ func (s *Set) included(src string) bool {
 }
 
 // pluginSource returns the proto the plugin code in file was generated from, as its header
-// comment names it; false when file does not open with a plugin header naming one.
+// comment names it; false when no plugin header naming one comes before the file's code.
 func pluginSource(file string) (string, bool) {
 	f, err := os.Open(file)
 	if err != nil {
@@ -206,8 +206,18 @@ func pluginSource(file string) (string, bool) {
 	}
 	defer f.Close()
 	lines := bufio.NewScanner(f)
-	if !lines.Scan() || !slices.Contains(PluginHeaders, lines.Text()) {
-		return "", false
+	// The header may follow a comment block protoc-gen-go copies from above the proto's syntax line.
+	for {
+		if !lines.Scan() {
+			return "", false
+		}
+		t := lines.Text()
+		if slices.Contains(PluginHeaders, t) {
+			break
+		}
+		if t != "" && !strings.HasPrefix(t, "//") {
+			return "", false
+		}
 	}
 	for lines.Scan() {
 		line, ok := strings.CutPrefix(lines.Text(), "// ")

@@ -1347,6 +1347,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   manifest now stops the run with `output.types and events.targets[go].out
   both write to "gen"`, as two output keys sharing a directory do.
 
+- **The sweep knows protoc output that opens with a license comment.**
+  protoc-gen-go copies the comment above a proto's `syntax` line, such as a
+  license header, above its `Code generated` line; such a file was not
+  recognised, so renaming its proto left the old `.pb.go` behind and the
+  build failed on duplicate declarations.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added

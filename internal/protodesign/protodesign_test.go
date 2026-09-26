@@ -407,3 +407,26 @@ message R {}
 		})
 	}
 }
+
+// A plugin file's source is read past the comment block protoc-gen-go copies from above the
+// proto's `syntax` line, such as a license header; a file whose first code comes before the
+// plugin header is not a plugin file.
+func TestPluginSourceReadsPastALeadingComment(t *testing.T) {
+	dir := t.TempDir()
+	for name, c := range map[string]struct {
+		body, want string
+		ok         bool
+	}{
+		"plain":   {PluginHeaders[0] + "\n// versions:\n// source: greet/greet.proto\n\npackage greet\n", "greet/greet.proto", true},
+		"license": {"// Copyright 2026 Example.\n// SPDX-License-Identifier: MIT\n\n" + PluginHeaders[1] + "\n// source: greet/greet.proto\n\npackage greet\n", "greet/greet.proto", true},
+		"code":    {"package greet\n\n" + PluginHeaders[0] + "\n// source: greet/greet.proto\n", "", false},
+	} {
+		path := filepath.Join(dir, name+".pb.go")
+		if err := os.WriteFile(path, []byte(c.body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := pluginSource(path); got != c.want || ok != c.ok {
+			t.Errorf("%s: pluginSource = %q, %v; want %q, %v", name, got, ok, c.want, c.ok)
+		}
+	}
+}
