@@ -1254,6 +1254,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   have gen write it anew. The runtime guide's embed snippet imports `embed`,
   which `go build` requires.
 
+- **The manifest `craftgo init` writes has examples that generate.** Its
+  commented oauth2 scheme carries the flow a scheme an operation names needs,
+  and is referenced as `@security(oauth2)`; the events note no longer mentions
+  `consume` declarations.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added
