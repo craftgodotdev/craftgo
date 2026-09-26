@@ -109,6 +109,12 @@ vet: ## go vet over all root packages, every published nested module and the tes
 		(cd "$$d" && $(GO) vet ./...) || exit 1; \
 	done
 
+.PHONY: vet-32bit
+vet-32bit: ## go vet the e2e fixture for linux/386, where int is 32 bits wide.
+	@for d in $(E2E_DIRS); do \
+		echo "→ vet linux/386 $$d"; (cd "$$d" && GOOS=linux GOARCH=386 $(GO) vet ./...) || exit 1; \
+	done
+
 .PHONY: fmt
 fmt: ## gofmt -w on the entire tree.
 	gofmt -w -s .
@@ -230,7 +236,7 @@ tag-list: ## Show the four latest tags of each published module (five modules).
 .PHONY: ci
 # override keeps -race when TESTFLAGS is given on the command line.
 ci: override TESTFLAGS += -race
-ci: lint tidy-check test test-submodules gen-diff build-all ## Run the CI gates locally: lint, module tidiness, the root and sub-module tests with -race (a TESTFLAGS adds to it), codegen drift, every module's build.
+ci: lint tidy-check test test-submodules gen-diff vet-32bit build-all ## Run the CI gates locally: lint, module tidiness, the root and sub-module tests with -race (a TESTFLAGS adds to it), codegen drift, the e2e fixture's 32-bit vet, every module's build.
 
 # ---- docs diagrams --------------------------------------------------------
 # Sources are docs/diagrams/*.excalidraw (edit them on excalidraw.com or with

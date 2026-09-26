@@ -10,7 +10,7 @@ Be respectful and assume good faith - we follow the [Contributor Covenant](https
 
 1. Fork the repo, then branch off `main`.
 2. Make your change.
-3. Run `make ci` - lint, the module tidy check, every test suite with `-race`, the codegen drift check, and a build of every module in one shot.
+3. Run `make ci` - lint, the module tidy check, every test suite with `-race`, the codegen drift check, a 32-bit vet of the e2e matrix, and a build of every module in one shot.
 4. Open a pull request against [`craftgodotdev/craftgo`](https://github.com/craftgodotdev/craftgo).
 
 New here? Issues tagged [good first issue](https://github.com/craftgodotdev/craftgo/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) and [help wanted](https://github.com/craftgodotdev/craftgo/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22) are the easy on-ramps - comment to claim one. Found a bug or have an idea? [Open an issue](https://github.com/craftgodotdev/craftgo/issues/new/choose); a clear report is worth as much as a patch.

@@ -110,6 +110,11 @@ jobs:
       - name: drift gate (gen output must match committed)
         run: make gen-diff
 
+      # The vet cross-compiles for linux/386, so one runner covers every OS.
+      - name: vet the e2e matrix for 32-bit
+        if: runner.os == 'Linux'
+        run: make vet-32bit
+
       - name: test root module
         run: make test TESTFLAGS="${{ matrix.race }}"
 
