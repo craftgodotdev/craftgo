@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/prims"
 )
@@ -49,6 +50,10 @@ func (a *analyzer) checkOneDeclNameCase(d ast.Decl) {
 		}
 	case *ast.MiddlewareDecl:
 		a.checkExportedName("middleware", dd.Name, dd.Pos)
+		if slices.Contains(idents.ServiceContextFields, dd.Name) {
+			a.diag(dd.Pos, dd.Pos, lexer.SeverityError, CodeDeclGoNameCollision,
+				"middleware %q is named like the field ServiceContext declares itself, which hides the middleware's field - rename it", dd.Name)
+		}
 	case *ast.EventDecl:
 		a.checkExportedName("event", dd.Name, dd.Pos)
 	}

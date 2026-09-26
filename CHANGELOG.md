@@ -444,6 +444,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@form("n")` went nowhere. It is now `binding/form-without-file` at the
   decorator; drop `@form` and the field rides the JSON body as before.
 
+- **A middleware may not be named `Config` or `Middlewares`.** The field
+  of that name `ServiceContext` declares itself hid the middleware's, so the
+  routes did not compile. Either name is now `decl/go-name-collision`.
+
 - **An int enum's field takes whole bounds only.** `@gt(1.5)`,
   `@multipleOf(2.5)` or `@range(0.5, 9.5)` on a field of an int enum was
   listed in the OpenAPI document and never checked. It is now

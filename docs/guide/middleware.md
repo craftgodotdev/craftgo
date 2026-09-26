@@ -45,7 +45,7 @@ middleware CORS
 middleware RequestID
 ```
 
-A middleware name is global to the whole design: any package references it by its bare name (or qualified, `shared.AuthRequired`), and declaring one name in two packages is a `middleware/collision` error. Declarations do not live inside a service body.
+A middleware name is global to the whole design: any package references it by its bare name (or qualified, `shared.AuthRequired`), and declaring one name in two packages is a `middleware/collision` error. `Config` and `Middlewares` name fields `ServiceContext` declares itself, so neither is a middleware name (`decl/go-name-collision`). Declarations do not live inside a service body.
 
 Codegen produces:
 

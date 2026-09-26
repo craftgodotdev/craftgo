@@ -241,6 +241,11 @@ func LogicRival(method string) string { return "New" + method }
 // method of that name cannot be declared on the struct.
 const LogicEmbed = "Logger"
 
+// ServiceContextFields are the fields a generated ServiceContext declares
+// itself; each hides a middleware field of the same name that its embedded
+// Middlewares promotes.
+var ServiceContextFields = []string{"Config", "Middlewares"}
+
 // EventContractName returns the Go name of the constant holding an event's
 // wire identity: the event name plus `Contract`.
 func EventContractName(event string) string { return event + "Contract" }

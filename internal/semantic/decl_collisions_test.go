@@ -105,3 +105,13 @@ enum Role { Admin User_ }
 scalar UserID string
 middleware Auth`)
 }
+
+// A middleware named like a field ServiceContext declares itself is
+// rejected: that field hides the middleware's.
+func TestMiddlewareNamedLikeAServiceContextField(t *testing.T) {
+	for _, name := range []string{"Config", "Middlewares"} {
+		d := expectError(t, "package app\nmiddleware "+name, CodeDeclGoNameCollision)
+		expectMessage(t, d, name, "ServiceContext")
+	}
+	mustClean(t, "package app\nmiddleware Configured\nmiddleware Auth")
+}
