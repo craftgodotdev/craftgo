@@ -229,7 +229,7 @@ func inlineDecorators(td *ast.TypeDecl, registry *genericRegistry) []*ast.Decora
 type presence func(names []string) *openapi3.Schema
 
 // crossFieldSchemaFragments returns `@requiresOneOf` as an `anyOf` of "x present" branches and
-// `@mutuallyExclusive` as a `not` of "all present", each member under its keys entry, else its name.
+// `@mutuallyExclusive` as a `not` of "two present", each member under its keys entry, else its name.
 func crossFieldSchemaFragments(decs []*ast.Decorator, keys map[string]string, present presence) openapi3.SchemaRefs {
 	memberKeys := func(d *ast.Decorator) []string {
 		names := semantic.CrossFieldNames(d)
@@ -262,11 +262,26 @@ func crossFieldSchemaFragments(decs []*ast.Decorator, keys map[string]string, pr
 				continue
 			}
 			out = append(out, &openapi3.SchemaRef{Value: &openapi3.Schema{
-				Not: &openapi3.SchemaRef{Value: present(names)},
+				Not: anyTwoPresent(names, present),
 			}})
 		}
 	}
 	return out
+}
+
+// anyTwoPresent matches a body with two or more of names present: the one
+// pair's presence, else an `anyOf` of every pair's.
+func anyTwoPresent(names []string, present presence) *openapi3.SchemaRef {
+	var pairs openapi3.SchemaRefs
+	for i, a := range names {
+		for _, b := range names[i+1:] {
+			pairs = append(pairs, &openapi3.SchemaRef{Value: present([]string{a, b})})
+		}
+	}
+	if len(pairs) == 1 {
+		return pairs[0]
+	}
+	return &openapi3.SchemaRef{Value: &openapi3.Schema{AnyOf: pairs}}
 }
 
 // jsonKeys maps the name of each field of td, mixins included, to its JSON

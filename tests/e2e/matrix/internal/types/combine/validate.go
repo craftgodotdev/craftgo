@@ -136,6 +136,37 @@ func (v *NilableNullable) Validate() error {
 }
 
 // Validate returns the first constraint v violates, or nil.
+func (v *NotifyChannels) Validate() error {
+	{
+		n := 0
+		if v.Email != nil {
+			n++
+		}
+		if v.Sms != nil {
+			n++
+		}
+		if v.Push != nil {
+			n++
+		}
+		if n > 1 {
+			return fmt.Errorf("mutuallyExclusive [email sms push] - at most one may be set")
+		}
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *NotifyUpload) Validate() error {
+	if err := v.NotifyChannels.Validate(); err != nil {
+		return err
+	}
+	if v.Doc == nil {
+		return fmt.Errorf("doc: required")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *PairsArr) Validate() error {
 	if len(v.Tags) < 1 {
 		return fmt.Errorf("tags: minItems 1")

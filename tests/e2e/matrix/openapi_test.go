@@ -290,6 +290,7 @@ type schemaDoc struct {
 	Required   []string       `yaml:"required"`
 	AllOf      []schemaDoc    `yaml:"allOf"`
 	AnyOf      []schemaDoc    `yaml:"anyOf"`
+	Not        *schemaDoc     `yaml:"not"`
 }
 
 // readSchemas returns the component schemas of docs/openapi.yaml.
@@ -378,5 +379,49 @@ func TestOpenAPI_InlineBodiesCarryMixinGroups(t *testing.T) {
 	}
 	if err := (&combine.PairsUpload{Doc: &multipart.FileHeader{}}).Validate(); err == nil {
 		t.Error("PairsUpload without a or b passes validation")
+	}
+}
+
+// @mutuallyExclusive(email, sms, push) admits at most one channel: the
+// validator rejects any two, and each body schema carrying the group forbids
+// every pair.
+func TestOpenAPI_MutuallyExclusiveForbidsEveryPair(t *testing.T) {
+	var doc struct {
+		Paths map[string]map[string]struct {
+			RequestBody struct {
+				Content map[string]struct {
+					Schema schemaDoc `yaml:"schema"`
+				} `yaml:"content"`
+			} `yaml:"requestBody"`
+		} `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal([]byte(readOpenAPI(t)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{{"email", "sms"}, {"email", "push"}, {"sms", "push"}}
+	for name, body := range map[string]schemaDoc{
+		"NotifyChannels":         readSchemas(t)["NotifyChannels"],
+		"UploadNotify multipart": doc.Paths["/combine/pairs/notify/upload"]["post"].RequestBody.Content["multipart/form-data"].Schema,
+	} {
+		var pairs [][]string
+		for _, part := range body.AllOf {
+			if part.Not != nil {
+				for _, branch := range part.Not.AnyOf {
+					pairs = append(pairs, branch.Required)
+				}
+			}
+		}
+		if !slices.EqualFunc(pairs, want, slices.Equal) {
+			t.Errorf("%s forbids the pairs %v, want %v", name, pairs, want)
+		}
+	}
+	e, s, p := "e", "s", "p"
+	for _, v := range []combine.NotifyChannels{{Email: &e, Sms: &s}, {Email: &e, Push: &p}, {Sms: &s, Push: &p}} {
+		if err := v.Validate(); err == nil {
+			t.Errorf("%+v passes validation", v)
+		}
+	}
+	if err := (&combine.NotifyChannels{Push: &p}).Validate(); err != nil {
+		t.Errorf("one channel fails validation: %v", err)
 	}
 }

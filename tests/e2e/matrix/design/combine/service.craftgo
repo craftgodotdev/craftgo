@@ -148,4 +148,14 @@ service CombineService {
 		request  ContactChannels
 		response ContactChannels
 	}
+
+	post ValidateNotify /pairs/notify {
+		request  NotifyChannels
+		response NotifyChannels
+	}
+
+	post UploadNotify /pairs/notify/upload {
+		request  NotifyUpload
+		response NotifyChannels
+	}
 }

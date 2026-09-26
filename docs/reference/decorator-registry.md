@@ -83,7 +83,7 @@ Written on the `type` declaration; reference its field names.
 | Decorator | Args | Effect |
 |---|---|---|
 | `@requiresOneOf(a, b, c)` | variadic idents/strings or one array | At least one of the listed fields must be present. Emits `anyOf` in OpenAPI. |
-| `@mutuallyExclusive(a, b)` | variadic idents/strings or one array | At most one may be present. Emits `not: { required: [...] }` in OpenAPI. |
+| `@mutuallyExclusive(a, b)` | variadic idents/strings or one array | At most one may be present. Emits `not: { required: [a, b] }` in OpenAPI, and for more fields a `not` of an `anyOf` over every pair. |
 
 ## Field shaping & binding
 

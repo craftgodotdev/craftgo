@@ -826,6 +826,65 @@ service S { post U /u { request Up  response Ok } }`,
 	}
 }
 
+// @mutuallyExclusive admits at most one of its members, as the validator
+// enforces: any two of three fail the type's schema, a JSON body listed in
+// place and a multipart body alike.
+func TestMutuallyExclusiveAdmitsAtMostOneMember(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+@mutuallyExclusive(email, sms, push)
+type Notify {
+	email string?
+	sms   string?
+	push  string?
+}
+type ByID {
+	Notify
+	id string @path
+}
+type Upload {
+	Notify
+	doc file
+}
+type Ok { ok bool }
+service S {
+	post N /n { request Notify  response Ok }
+	post I /i/{id} { request ByID  response Ok }
+	post U /u { request Upload  response Ok }
+}`,
+	}, &config.Config{})
+	schemas := map[string]*openapi3.Schema{
+		"Notify":      doc.Components.Schemas["Notify"].Value,
+		"IReqBody":    doc.Components.Schemas["IReqBody"].Value,
+		"U multipart": doc.Paths.Find("/u").Post.RequestBody.Value.Content.Get(mimeMultipartFormData).Schema.Value,
+	}
+	bodies := map[string]bool{
+		`{"email":"e"}`:                      true,
+		`{"email":"e","sms":null}`:           true,
+		`{"email":"e","sms":"s"}`:            false,
+		`{"sms":"s","push":"p"}`:             false,
+		`{"email":"e","push":"p"}`:           false,
+		`{"email":"e","sms":"s","push":"p"}`: false,
+	}
+	for name, schema := range schemas {
+		for body, valid := range bodies {
+			var v map[string]any
+			if err := json.Unmarshal([]byte(body), &v); err != nil {
+				t.Fatal(err)
+			}
+			if name == "U multipart" {
+				if v["sms"] == nil {
+					delete(v, "sms")
+				}
+				v["doc"] = "d"
+			}
+			if err := schema.VisitJSON(v); (err == nil) != valid {
+				t.Errorf("%s with %s: valid = %v, want %v (%v)", name, body, err == nil, valid, err)
+			}
+		}
+	}
+}
+
 // A cross-field group whose members all ride as parameters, the type's own or
 // a mixin's, is named in the operation's description.
 func TestParameterGroupsAreNamedOnTheOperation(t *testing.T) {

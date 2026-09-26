@@ -36,4 +36,6 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("POST /api/combine/nilable-nullable", transport.EchoNilableNullable(svcCtx))
 	srv.Handle("POST /api/combine/pairs/stacked", transport.ValidateStacked(svcCtx))
 	srv.Handle("POST /api/combine/pairs/channels", transport.ValidateChannels(svcCtx))
+	srv.Handle("POST /api/combine/pairs/notify", transport.ValidateNotify(svcCtx))
+	srv.Handle("POST /api/combine/pairs/notify/upload", transport.UploadNotify(svcCtx))
 }

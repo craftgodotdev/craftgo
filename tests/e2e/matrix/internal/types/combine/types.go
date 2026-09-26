@@ -133,6 +133,20 @@ type NilableNullable struct {
 	Tags map[string]int `json:"tags"`
 }
 
+// NotifyChannels admits at most one of three channels: any two fail the
+// validator, and the body schemas that document the group.
+type NotifyChannels struct {
+	Email *string `json:"email,omitempty"`
+	Sms   *string `json:"sms,omitempty"`
+	Push  *string `json:"push,omitempty"`
+}
+
+// NotifyUpload sends the channels as multipart parts beside a file.
+type NotifyUpload struct {
+	NotifyChannels
+	Doc *multipart.FileHeader `json:"doc"`
+}
+
 // PairsArr stacks the array-level decorators (@minItems, @maxItems,
 // @uniqueItems). Per-element constraints belong on a scalar: declare
 // the element type as a named scalar and the validator walker emits

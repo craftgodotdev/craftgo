@@ -3942,6 +3942,70 @@ components:
       - resource
       - id
       type: object
+    NotifyChannels:
+      allOf:
+      - properties:
+          email:
+            type:
+            - string
+            - "null"
+          push:
+            type:
+            - string
+            - "null"
+          sms:
+            type:
+            - string
+            - "null"
+        type: object
+      - not:
+          anyOf:
+          - properties:
+              email:
+                not:
+                  type: "null"
+              sms:
+                not:
+                  type: "null"
+            required:
+            - email
+            - sms
+          - properties:
+              email:
+                not:
+                  type: "null"
+              push:
+                not:
+                  type: "null"
+            required:
+            - email
+            - push
+          - properties:
+              push:
+                not:
+                  type: "null"
+              sms:
+                not:
+                  type: "null"
+            required:
+            - sms
+            - push
+      description: |-
+        NotifyChannels admits at most one of three channels: any two fail the
+        validator, and the body schemas that document the group.
+      type: object
+    NotifyUpload:
+      allOf:
+      - $ref: '#/components/schemas/NotifyChannels'
+      - properties:
+          doc:
+            format: binary
+            type: string
+        required:
+        - doc
+        type: object
+      description: NotifyUpload sends the channels as multipart parts beside a file.
+      type: object
     NullableDetail:
       properties:
         name:
@@ -7337,6 +7401,8 @@ components:
       $ref: '#/components/schemas/AcctUser'
     UploadAvatarRespBody:
       $ref: '#/components/schemas/UserAvatar'
+    UploadNotifyRespBody:
+      $ref: '#/components/schemas/NotifyChannels'
     UploadPairsRespBody:
       $ref: '#/components/schemas/PairsDoc'
     UploadReq:
@@ -7726,6 +7792,60 @@ components:
           - b
     ValidateNestedRespBody:
       $ref: '#/components/schemas/PairsDoc'
+    ValidateNotifyReqBody:
+      allOf:
+      - properties:
+          email:
+            type:
+            - string
+            - "null"
+          push:
+            type:
+            - string
+            - "null"
+          sms:
+            type:
+            - string
+            - "null"
+        type: object
+      - not:
+          anyOf:
+          - properties:
+              email:
+                not:
+                  type: "null"
+              sms:
+                not:
+                  type: "null"
+            required:
+            - email
+            - sms
+          - properties:
+              email:
+                not:
+                  type: "null"
+              push:
+                not:
+                  type: "null"
+            required:
+            - email
+            - push
+          - properties:
+              push:
+                not:
+                  type: "null"
+              sms:
+                not:
+                  type: "null"
+            required:
+            - sms
+            - push
+      description: |-
+        NotifyChannels admits at most one of three channels: any two fail the
+        validator, and the body schemas that document the group.
+      type: object
+    ValidateNotifyRespBody:
+      $ref: '#/components/schemas/NotifyChannels'
     ValidateNumReqBody:
       description: |-
         PairsNum stacks @range (lo,hi pair) with @multipleOf and the
@@ -10351,6 +10471,82 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ValidateNestedRespBody'
+          description: Created
+      tags:
+      - combine
+  /combine/pairs/notify:
+    post:
+      operationId: ValidateNotify
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateNotifyReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateNotifyRespBody'
+          description: Created
+      tags:
+      - combine
+  /combine/pairs/notify/upload:
+    post:
+      operationId: UploadNotify
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              allOf:
+              - properties:
+                  doc:
+                    format: binary
+                    type: string
+                  email:
+                    type: string
+                  push:
+                    type: string
+                  sms:
+                    type: string
+                required:
+                - doc
+                type: object
+              - not:
+                  anyOf:
+                  - properties:
+                      email:
+                        minLength: 1
+                      sms:
+                        minLength: 1
+                    required:
+                    - email
+                    - sms
+                  - properties:
+                      email:
+                        minLength: 1
+                      push:
+                        minLength: 1
+                    required:
+                    - email
+                    - push
+                  - properties:
+                      push:
+                        minLength: 1
+                      sms:
+                        minLength: 1
+                    required:
+                    - sms
+                    - push
+              type: object
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadNotifyRespBody'
           description: Created
       tags:
       - combine

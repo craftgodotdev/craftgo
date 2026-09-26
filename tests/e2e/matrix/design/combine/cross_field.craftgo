@@ -33,6 +33,21 @@ type ContactChannels {
 	sms   string?
 }
 
+// NotifyChannels admits at most one of three channels: any two fail the
+// validator, and the body schemas that document the group.
+@mutuallyExclusive(email, sms, push)
+type NotifyChannels {
+	email string?
+	sms   string?
+	push  string?
+}
+
+// NotifyUpload sends the channels as multipart parts beside a file.
+type NotifyUpload {
+	NotifyChannels
+	doc file
+}
+
 // FieldRulesFailed is an error body with field constraints, an optional
 // field and a @deprecated field.
 error UnprocessableEntity FieldRulesFailed {

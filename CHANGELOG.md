@@ -1213,6 +1213,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   got a 400. Its schema is now its type alone; `required` still carries a
   parameter's optionality.
 
+- **`@mutuallyExclusive` over three or more fields admits at most one in
+  OpenAPI, as the validator does.** `@mutuallyExclusive(email, sms, push)` was
+  documented as "not all three present", so a body sending two of them matched
+  the schema and got a 400. Every body schema carrying the group - the type's,
+  a request body listed in place and a multipart body - now forbids each pair.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
