@@ -23,7 +23,7 @@ The generated output - handlers, types, OpenAPI specs under `example/` and `test
 make gen-all && git add -A
 ```
 
-CI runs `make gen-diff` and fails if the committed output doesn't match what your code produces. It's the project's best review signal: a behavior change shows up as a diff in the generated files. And every fix should add a small case that exercises exactly what you changed, in the matching topic package under `tests/e2e/matrix/design/` (`numbers/`, `bindings/`, `events/`, ...). The matrix has to generate, so a design your fix now rejects gets a test in `internal/semantic` instead. Committed design files stay in canonical form: run `go run ./cmd/craftgo fmt` on the design folder you edit, or `make test` fails.
+CI runs `make gen-diff` and fails if the committed output doesn't match what your code produces. It's the project's best review signal: a behavior change shows up as a diff in the generated files. And every fix should add a small case that exercises exactly what you changed, in the matching topic package under `tests/e2e/matrix/design/` (`numbers/`, `bindings/`, `events/`, ...). The matrix has to generate, so a design your fix rejects gets a test in `internal/semantic` instead. Committed design files stay in canonical form: run `go run ./cmd/craftgo fmt` on the design folder you edit, or `make test` fails.
 
 ## Opening a PR
 
@@ -34,6 +34,6 @@ CI runs `make gen-diff` and fails if the committed output doesn't match what you
 
 ## Cutting a release
 
-Maintainers only, and it is its own procedure: four modules are published from this repo at one version, and the two broker adapters have to swap a local `replace` for a real `pkg/events` version before they are tagged. [RELEASING.md](./RELEASING.md) walks through it; `make tag VERSION=vX.Y.Z DRY_RUN=1` prints the plan without touching anything.
+Maintainers only, and it is its own procedure: five modules are published from this repo at one version - the root module, `pkg/events`, `pkg/wire` and the two broker adapters - and `make tag` moves the adapters' `pkg/events` requirement to the new version before tagging. [RELEASING.md](./RELEASING.md) walks through it; `make tag VERSION=vX.Y.Z DRY_RUN=1` prints the plan without touching anything.
 
 Not sure about an approach? Open an issue first - aligning early beats a big rework. Welcome aboard. 🛠

@@ -1,6 +1,6 @@
 ---
 layout: home
-description: "Design-first Go framework on net/http: write your API once in a small DSL and generate typed structs, validators, net/http handlers, and an OpenAPI 3.1 spec - no reflection, no framework in the hot path."
+description: "Design-first Go framework on net/http: write your API once in a small DSL and generate typed structs, validators, net/http handlers, and an OpenAPI 3.1 spec - binding and validation as generated Go, on net/http."
 
 hero:
   name: craftgo
@@ -25,7 +25,7 @@ features:
     details: Emitted from the same source. Renders in Swagger UI and ReDoc, feeds openapi-generator for clients in any language.
 
   - title: Built-in validation
-    details: Declarative validators in the DSL. Generated as plain Go if statements. No reflection, no struct tags at runtime.
+    details: Declarative validators in the DSL. Generated as plain Go if statements; no struct tags are read to validate.
 
   - title: No overhead
     details: Generated code looks like what you would write by hand. Stdlib mux, stdlib JSON, stdlib middleware shape.
@@ -69,35 +69,37 @@ service UserService {
 
 ```bash
 $ craftgo gen design
-craftgo: generated 1 package(s) under .
+craftgo: generated 1 package(s) under /path/to/hello
 ```
 
-Four files generated, one folder structure to fill in:
+Among the files it writes:
 
-- `internal/types/design/types.go` - Go structs with `Validate()` methods
-- `internal/transport/user-service/create-user.go` - HTTP handler wired to your logic
-- `internal/service/user-service/create-user.go` - business logic stub for you to fill
+- `internal/types/design/types.go` and `validate.go` - Go structs and their `Validate()` methods
+- `internal/transport/user_service/create_user.go` - HTTP handler wired to your logic
+- `internal/service/user_service/create_user.go` - business logic stub for you to fill
 - `docs/openapi.yaml` - OpenAPI 3.1 spec
 
-You write the business logic. Everything else is generated.
+plus the routes, the wiring, `svccontext/`, `config/` and `main.go`. You write the business logic. Everything else is generated.
 
 ## Quick example
 
 ```go
-// internal/service/user-service/create-user.go
-func (s *Service) CreateUser(ctx context.Context, req *types.CreateUserReq) (*types.User, error) {
-    user := types.User{
-        ID:    uuid.NewString(),
-        Name:  req.Name,
-        Email: req.Email,
-        Age:   req.Age,
-    }
-    if err := s.svcCtx.UserStore.Save(ctx, &user); err != nil {
-        return nil, err
-    }
-    return &user, nil
+// internal/service/user_service/create_user.go
+func (l *CreateUserService) CreateUser(req *types.CreateUserReq) (*types.User, error) {
+	user := types.User{
+		ID:    uuid.NewString(),
+		Name:  req.Name,
+		Email: req.Email,
+		Age:   req.Age,
+	}
+	if err := l.svcCtx.UserStore.Save(l.ctx, &user); err != nil {
+		return nil, err
+	}
+	return &user, nil
 }
 ```
+
+`UserStore` is a field you add to `svccontext.ServiceContext`.
 
 That is it. The handler decodes JSON, runs the validators, calls your code, encodes the response. Re-run `craftgo gen` after any DSL change. Logic files are scaffold-once and stay yours.
 
