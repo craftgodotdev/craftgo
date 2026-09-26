@@ -94,14 +94,10 @@ package greet
 
 import (
 	pb "github.com/craftgodotdev/craftgo/example/grpc/internal/pb/greet"
-
 	"github.com/craftgodotdev/craftgo/example/grpc/svccontext"
 )
 
-// Server implements pb.GreeterServer (greet.Greeter): one method per
-// RPC, each in its own file beside this one. The embedded
-// UnimplementedGreeterServer answers Unimplemented for an RPC the
-// proto gains before the next gen.
+// Server implements pb.GreeterServer (greet.Greeter).
 type Server struct {
 	pb.UnimplementedGreeterServer
 	svcCtx *svccontext.ServiceContext
@@ -113,13 +109,12 @@ func NewServer(svcCtx *svccontext.ServiceContext) *Server {
 }
 ```
 
-One file per RPC does what the HTTP handler does: validate, hand the call context to the logic, map its error onto a status:
+The methods live one file per RPC beside it, and the embedded `UnimplementedGreeterServer` answers `Unimplemented` for an RPC the proto gains before the next gen. Each file does what the HTTP handler does: validate, hand the call context to the logic, map its error onto a status:
 
 ```go
 // SayHello answers one greeting.
-// SayHello serves the unary RPC /greet.Greeter/SayHello: it hands the
-// call context to the logic and maps the error it returns onto a status,
-// as the HTTP handler does with WriteError.
+//
+// SayHello serves the unary RPC /greet.Greeter/SayHello.
 func (s *Server) SayHello(ctx context.Context, req *pb.HelloRequest) (*pb.HelloReply, error) {
 	if err := rpc.Validate(req); err != nil {
 		return nil, err
@@ -138,21 +133,19 @@ func (s *Server) SayHello(ctx context.Context, req *pb.HelloRequest) (*pb.HelloR
 The logic stub lands under `output.service`, from the same template the HTTP stubs use, and is yours once written:
 
 ```go
-// SayHelloService carries the per-request state for the
-// SayHello endpoint of Greeter. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// SayHelloService runs Greeter.SayHello for one request.
 type SayHelloService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
+// NewSayHelloService binds SayHelloService to ctx; its Logger carries ctx's trace ids.
 func NewSayHelloService(ctx context.Context, svcCtx *svccontext.ServiceContext) *SayHelloService
 
 // SayHello answers one greeting.
-// SayHello is the service entry point. Replace the
-// TODO with the real implementation.
+//
+// SayHello implements Greeter.SayHello.
 func (l *SayHelloService) SayHello(req *pb.HelloRequest) (*pb.HelloReply, error) {
 	// TODO: implement
 	return nil, nil
@@ -191,8 +184,7 @@ grpcSrv := rpc.New(svc,
 	rpc.WithReflection(cfg.GRPC.Reflection),
 )
 grpcSrv.Use(rpc.AccessLog(grpcSrv.Logger()))
-// The default deadline for unary calls; a shorter client deadline
-// still wins, and streams are not bounded.
+// The unary deadline; a shorter client deadline wins, and streams are not bounded.
 grpcSrv.Use(rpc.Timeout(cfg.GRPC.HandlerTimeout))
 
 shutdownGRPC, err := wiring.RegisterGRPC(ctx, grpcSrv, svc)
@@ -296,7 +288,7 @@ The protos are compiled on every run, `--target docs` included: a proto that doe
 | `design/**/*.proto` | you - the design |
 | `internal/pb/` | the protoc plugins, run by `craftgo gen`; swept when a proto goes |
 | `internal/grpc/<svc>/` | craftgo, regenerated on every run |
-| `internal/service/<svc>/<rpc>.go` | you, from the first `craftgo gen` on - a renamed or dropped service leaves its stubs where they are, importing a pb package that is gone, so move or delete them by hand |
+| `internal/service/<svc>/<rpc>.go` | you, from the first `craftgo gen` on - a renamed or dropped service leaves its stubs where they are and `craftgo gen` names their directory, so move or delete them by hand |
 | `internal/wiring/grpc.go` | craftgo, regenerated; present while a proto declares a service |
 | `config/`, `svccontext/`, `main.go` | you, seeded once by `craftgo gen` |
 

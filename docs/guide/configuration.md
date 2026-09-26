@@ -13,7 +13,7 @@ The first is read once when you run `craftgo gen`. The second is read every time
 
 ## Codegen config (`craftgo.design.yaml`)
 
-Lives **inside** the design folder. The directory containing this file is the **design root**; its parent is the **project root** (the directory that holds `go.mod`).
+Lives **inside** the design folder. The directory containing this file is the **design root**; its parent is the **project root** (its `go.mod` may sit there or in a parent directory).
 
 ```
 myproject/
@@ -24,7 +24,7 @@ myproject/
 └── internal/                        generated, sits at project root
 ```
 
-`craftgo init` creates a starter file. Default content matches every key's default, so an empty manifest works:
+`craftgo init` writes a commented starter file. An empty manifest works too: every `output:` key takes its default, the document's title is the design's first package name (alphabetically), its version is `0.1.0`, and there is no basePath. The keys, with the `output:` defaults and example `openapi:` values:
 
 ```yaml
 output:
@@ -64,11 +64,11 @@ openapi:
       bearerFormat: JWT
 ```
 
-A key the manifest does not declare - a misspelling, say - is ignored, and `craftgo gen` names it in a warning on stderr; the editor shows the same warning on `craftgo.design.yaml`. A key craftgo no longer reads is an error naming what replaced it.
+A key the manifest does not declare - a misspelling, say - is ignored, and `craftgo gen` names it in a warning on stderr (`craftgo: warning: output.typs is not a manifest key and is ignored`); the editor shows the same warning on `craftgo.design.yaml`. A removed key - `design`, `output.services`, `output.consumeMiddleware`, `events.asyncapi` or `events.targets[].layout` - is an error that names what replaced it.
 
 ### `output.*` paths
 
-All paths are relative to the **project root** (the parent of the design folder, the directory holding `go.mod`). Override any of them to relocate the corresponding artifact.
+All paths are relative to the **project root** (the parent of the design folder, or `-c`). Override any of them to relocate the corresponding artifact.
 
 | Key          | Default                              | Kind                | Holds                                                     |
 | ------------ | ------------------------------------ | ------------------- | --------------------------------------------------------- |
@@ -84,15 +84,16 @@ All paths are relative to the **project root** (the parent of the design folder,
 | `svccontext` | `./svccontext/svccontext.go`         | **file path**       | Single Go file with the dependency container (gen-once); `middlewares.go` lands beside it |
 | `openapi`    | `./docs/openapi.yaml`                | **file path**       | The generated OpenAPI 3.1 spec. It describes the `.craftgo` design, so a project whose design holds only `.proto` files writes none |
 | `config`     | `./config`                           | directory           | `config.go`, `config.yaml`, `example.config.yaml` (all gen-once) |
-| `main`       | `./main.go`                          | **file path**       | The project entry point (gen-once) |
+| `main`       | `./main.go`                          | **file path**       | The project entry point (gen-once), written when the design declares an HTTP route or a proto service |
 
-The four "file path" entries point at exact files. The other path keys are directories where craftgo writes one subfolder per package or service. `kind` is not a path at all - it says how much of the design this project generates.
+The three "file path" entries point at exact files. The other path keys are directories where craftgo writes one subfolder per package or service. `kind` is not a path at all - it says how much of the design this project generates.
 
 ### `events.*`
 
 Configures the event output. `targets` lists the languages the event artefacts
-are generated for - Go is a row in the list, not a privileged default, so the
-manifest states where its artefacts land.
+are generated for - Go is a row in the list: a manifest that writes `targets`
+names every target it wants, and one that omits the block gets the Go target
+below.
 
 | Key                | Default                   | Holds                                                       |
 | ------------------ | ------------------------- | ----------------------------------------------------------- |
@@ -165,18 +166,18 @@ output:
   openapi: ./api/openapi.yaml
 ```
 
-Or skip generating an artifact entirely with `-`:
+Or skip an artifact with `"-"`. `output.main`, `output.openapi` and `output.pb` accept it, and so does an event target's `out`; any other key set to it is an error. Quote it, because a bare `-` is YAML's list marker:
 
 ```yaml
 output:
-  main: -          # do not generate main.go
+  main: "-"          # do not generate main.go
 ```
 
-When `main: -` is set, craftgo also skips `config/` and the `svccontext.go` scaffold, since those exist to support `main.go` - the container type is then yours to write, and `svccontext/middlewares.go` and the middleware scaffolds are still generated against it. Useful for projects that import the generated types as a library and run their own server.
+When `main: "-"` is set, craftgo also skips `config/` and the `svccontext.go` scaffold, since those exist to support `main.go` - the container type is then yours to write, and `svccontext/middlewares.go` and the middleware scaffolds are still generated against it. Useful for projects that import the generated types as a library and run their own server.
 
 ### Module path is auto-resolved
 
-The `craftgo.design.yaml` does **not** carry a Go module / package field. craftgo reads `module <path>` from `go.mod` (walking up from the project root) at gen time and uses that for every Go import in generated files.
+The `craftgo.design.yaml` does **not** carry a Go module / package field. craftgo reads `module <path>` from the nearest `go.mod` at or above the project root at gen time, adds the project root's path below that file, and uses the result for every Go import in generated files.
 
 If `go.mod` is missing, `craftgo gen` fails with a clear error. Run `go mod init <module>` first.
 
@@ -184,7 +185,7 @@ If `go.mod` is missing, `craftgo gen` fails with a clear error. Run `go mod init
 
 `application` - the default - generates both halves of the design: the contract half (payload types, the event library, the documents) and the application around it (transport handlers, routes, service stubs, middleware, wiring, config, `svccontext` and `main.go`).
 
-`contracts` generates only the half **other projects import** - the payload types, the event library, the pb code of any proto, and the documents - and stops there. Nothing under `output.transport`, `output.routes`, `output.service`, `output.middleware`, `output.wiring`, `output.config`, `output.svccontext` or `output.main` is written.
+`contracts` generates only the half **other projects import** - the payload types, the event library, the pb code of any proto, and the documents - and stops there. Nothing under `output.transport`, `output.routes`, `output.service`, `output.middleware`, `output.wiring`, `output.grpc`, `output.config`, `output.svccontext` or `output.main` is written.
 
 Its two defaults move out of `internal/`, because Go forbids importing that path across modules and being imported is the whole point of the project:
 
@@ -208,19 +209,19 @@ events:
 
 Each deployable around it holds its own design folder and its own manifest, generates its own application half, and imports the contracts project for the payload types and the event descriptors - see [Events layout](/guide/project-structure#events-layout) for the shape on disk. A deployable that serves no HTTP wants no OpenAPI document of its own - turn it off with `output.openapi: "-"`.
 
-Switching an existing project to `kind: contracts` leaves whatever it generated as an application exactly where it was. A contracts project names no `output.transport`, `output.routes`, `output.service`, `output.wiring` or `output.middleware`, so nothing walks those directories any more. craftgo reports it - naming every path that still holds generated files - but deletes nothing: the directory may be one you now use for something else.
+Switching an existing project to `kind: contracts` leaves whatever it generated as an application exactly where it was. A contracts project names no `output.transport`, `output.routes`, `output.service`, `output.wiring` or `output.middleware`, so the sweep walks none of those directories. craftgo reports it - naming the application paths that still hold generated files - but deletes nothing: the directory may hold something else of yours. The old `./internal/types`, left behind when `output.types` moves to `./gen/types`, is neither swept nor named.
 
 ### Stale output is pruned
 
 Every file craftgo REGENERATES opens with a generated header - `// Code generated by craftgo. DO NOT EDIT.` in Go, `# Generated by craftgo. DO NOT EDIT.` in the YAML documents. That header is the whole record: at the end of a run, craftgo walks the output directories the manifest names and **deletes every file carrying it that this run did not write**, then removes the directories that leaves empty. Nothing is stored on the side and nothing extra is committed.
 
-It covers every output the run regenerates, not just the event contracts: the transport handlers, the routes, `wiring.go`, `svccontext/middlewares.go`, the event library, the `output.types` folder of a DSL package that is gone, the OpenAPI document, the gRPC server packages and - by the plugins' own headers, under `output.pb` only - the pb code of a proto that is gone. Rename a service and its old files go with its name; delete an `event` and its descriptor goes with it. Nothing else could know: the design that dropped them no longer says what they were called.
+It covers every output the run regenerates, not just the event contracts: the transport handlers, the routes, `wiring.go`, `svccontext/middlewares.go`, the event library, the `output.types` folder of a DSL package that is gone, the OpenAPI document, the gRPC server packages and - by the plugins' own headers, under `output.pb` only - the pb code of a proto that is gone. Rename a service and its old files go with its name; delete an `event` and its descriptor goes with it. Nothing else could know: the current design does not name them.
 
 Three rules follow, and all three are load-bearing:
 
 - **An output directory belongs to exactly one design.** Point a second design's manifest at a directory the first one writes into and the first run to finish deletes the other's output. Give each design its own `output.*` paths - or, when several deployables share contracts, generate those from one contracts project and import them (see [`output.kind`](#a-contract-library-or-a-whole-application-output-kind)). Two manifests generating the *same* design into one directory stay fine: they write the same files, so neither sweep finds anything to delete.
 - **Gen-once territory is never walked.** `output.service`, `output.middleware`, `output.config` and `main.go` are written only when missing, so the sweep never enters those directories and your own code in them is never a question it has to answer. The project root is never swept either, whatever else the repository keeps there.
-- **The header is the only thing the sweep reads.** Strip it from a generated file and the sweep stops seeing that file, so it survives a design that no longer produces it - but it is not protected: if the design still names that path, the next run rewrites the file, header and all.
+- **The header is the only thing the sweep reads.** Strip it from a generated file and the sweep stops seeing that file, so it survives a design that does not produce it - but it is not protected: if the design still names that path, the next run rewrites the file, header and all.
 
 
 ### `openapi.*` block
@@ -229,14 +230,15 @@ Metadata that flows into the generated `openapi.yaml`.
 
 | Key                | Type          | Effect                                                |
 | ------------------ | ------------- | ----------------------------------------------------- |
-| `title`            | string        | OpenAPI document title                                |
-| `version`          | string        | OpenAPI document version                              |
+| `title`            | string        | OpenAPI document title; the design's first package name when unset |
+| `version`          | string        | OpenAPI document version; `0.1.0` when unset          |
+| `description`      | string        | OpenAPI document description (`info.description`)     |
 | `basePath`         | string        | Path prefix prepended to every operation path         |
 | `securitySchemes`  | map           | Named OpenAPI security schemes (see below)            |
 
-`version` can also be set per-file via `@version("...")` - file-level decorator wins when present. `title` is manifest-only.
+`version` and `description` can also be set by a file-level `@version("...")` or `@doc("...")` - the decorator wins when present. `title` is manifest-only.
 
-`basePath` rides into the `servers[0].url` field of the generated spec. A `{name}` segment of it is a server variable, not an operation's path parameter, described by the request field bound to it: its doc, an enum's values, and a default - the field's `@example`, else the enum's first value, else `0` or `false` for a number or a bool, else the variable's name. The document's server describes a variable so only when every operation does, and leaves it bare when a raw operation binds it to no field; an operation describing it otherwise gets a server of its own. A constraint such as `@minLength` has no place in a server variable. If you need multiple servers or richer descriptions, edit the generated `openapi.yaml` after gen (it is committed; craftgo regenerates it on every run).
+`basePath` rides into the `servers[0].url` field of the generated spec. A `{name}` segment of it is a server variable, not an operation's path parameter, described by the request field bound to it: its doc, an enum's values, and a default - the field's `@example`, else the enum's first value, else `0` or `false` for a number or a bool, else the variable's name. The document's server describes a variable so only when every operation does, and leaves it bare when a raw operation binds it to no field; an operation describing it otherwise gets a server of its own. A constraint such as `@minLength` has no place in a server variable. The document is regenerated on every run, so multiple servers or richer descriptions belong in a step of your build that post-processes it.
 
 ### `openapi.securitySchemes`
 
@@ -278,16 +280,16 @@ Supported `type` values: `http`, `apiKey`, `oauth2`, `openIdConnect`, `mutualTLS
 - `openIdConnect`: `openIdConnectUrl`
 - `mutualTLS`: no other field
 
-The semantic analyzer cross-checks every `@security(<name>)` reference against this map. Unknown names fail at gen time, not at deploy.
+When `openapi.securitySchemes` declares any scheme, the semantic analyzer checks every `@security(<name>)` against it, and an unknown name fails at gen time, not at deploy. With no scheme declared, any name passes and is documented as an HTTP bearer (JWT) scheme.
 
 ## Runtime config (`config/config.yaml`)
 
 Generated by `craftgo gen` on first run alongside `config.go`. Read by `main.go` via `config.Load()`. Default content:
 
-The blocks a project gets follow its design: `server:` and `docs:` are absent from a project whose design declares gRPC services and no HTTP route, and `grpc:` is present only when a proto declares a service. A project whose `main.go` is its own (`output.main: "-"` writes none) keeps every block, since what it serves is not the design's to know.
+The blocks a project gets follow its design: `server:` and `docs:` are absent from a project whose design declares gRPC services and no HTTP route, and `grpc:` is present only when a proto declares a service.
 
 ```yaml
-server:                # present when the design declares an HTTP route
+server:                # absent when the design's only services are gRPC ones
   addr: ":8080"
   handlerTimeout: 0s
   maxBodySize: 0
@@ -319,23 +321,25 @@ metrics:
   adminAddr: ":9090"
   path: /metrics
 
-docs:                  # present when the design declares an HTTP route
+docs:                  # absent when the design's only services are gRPC ones
   enabled: true
   ui: redoc
   path: /docs
   specPath: /openapi.yaml
 ```
 
+A key left out of `config.yaml` takes a default. `config.go`'s `applyDefaults` fills `server.addr` (`":8080"`), `grpc.addr` (`":9000"`) and `serviceName` (the last segment of the project's import path). Every other key falls to the runtime: the switches (`otel.enabled`, `metrics.enabled`, `docs.enabled`, `strictJSON`, `compression.enabled`, `grpc.reflection`) are off; an empty `otel.exporter` keeps spans in process; an empty `metrics.exporter` serves the Prometheus scrape, with no listener unless `adminAddr` is set; the scrape path is `/metrics`; the docs use `redoc` at `/docs` and `/openapi.yaml`; logging is `info`.
+
 ### `server`
 
-Present when the design declares an HTTP route.
+Absent only from a project whose design declares gRPC services and no HTTP route.
 
 | Key                          | Type      | Effect                                                                  |
 | ---------------------------- | --------- | ----------------------------------------------------------------------- |
 | `addr`                       | string    | Listen address. `":8080"`, `"127.0.0.1:8080"`, etc.                     |
 | `handlerTimeout`             | duration  | Global per-handler deadline. `0s` = no global cap; per-method `@timeout` overrides. |
 | `maxBodySize`                | int       | Global request body cap in bytes. `0` = no cap.                         |
-| `strictJSON`                 | bool      | Reject a JSON body with an unknown field (`400 <field>: unknown field`) or data after the JSON value. `false` ignores both, as `encoding/json` does. |
+| `strictJSON`                 | bool      | Reject a JSON body with an unknown field (400 `{"message":"<field>: unknown field"}`) or data after the JSON value (400 `{"message":"body: unexpected data after the JSON value"}`). `false` ignores both, as `encoding/json` does. |
 | `compression.enabled`        | bool      | Toggle gzip / deflate response compression.                             |
 | `compression.minSize`        | int       | Skip compression when body is smaller. `0` falls back to 1024.          |
 | `compression.level`          | int       | Compression level (1-9). `0` falls back to default.                     |
@@ -373,11 +377,11 @@ Setting `enabled: true` with `exporter: none` produces in-process spans whose ID
 
 | Key          | Effect                                                                 |
 | ------------ | ---------------------------------------------------------------------- |
-| `enabled`    | Toggle the meter provider and admin scrape listener.                   |
+| `enabled`    | Toggle the meter provider; with the Prometheus exporter and an `adminAddr` it also starts the scrape listener. |
 | `exporter`   | `prometheus` / `otlp_grpc` / `otlp_http` / `none`.                      |
 | `endpoint`   | OTLP collector address (ignored for prometheus / none).                |
 | `serviceName`| Overrides the top-level `serviceName` for metrics.                      |
-| `adminAddr`  | Listen address for `/metrics` scrape (prometheus only).                |
+| `adminAddr`  | Listen address of the Prometheus scrape (prometheus only). Empty starts no listener: mount `Telemetry.ScrapeHandler()` on a server of your own. The generated `config.yaml` sets `":9090"`. |
 | `path`       | URL path for the scrape (default `/metrics`).                          |
 
 For `otlp_grpc`, `endpoint` may be a bare `host:port` (plaintext) or a full URL
@@ -396,10 +400,12 @@ meter (no scrape, no push).
 The top-level `serviceName` is the `service.name` both signals report under -
 what a backend keys on to tell one service's telemetry from another's. Each
 block can override it, but only do that to report under a different name on
-purpose. With none of the three set, the SDK falls back to
-`unknown_service:<binary>`: survivable for a Prometheus scrape, where the
-target labels already identify the process, but under OTLP push every service
-in the fleet arrives at the collector under that one name.
+purpose. The generated `config.go` fills a blank `serviceName` with the last
+segment of the project's import path, so a generated project always reports a
+name; a `telemetry.Config` built without it, and with none of the three set,
+falls back to the SDK's `unknown_service:<binary>`: survivable for a Prometheus
+scrape, where the target labels already identify the process, but under OTLP
+push every service in the fleet arrives at the collector under that one name.
 
 The two `enabled` switches are independent. One `otelhttp` wrapper emits both
 signals, so `otel.enabled: false` stops the spans while `http.server.*` keeps
@@ -407,11 +413,11 @@ flowing as long as `metrics.enabled` is true.
 
 ### `docs`
 
-Present when the design declares an HTTP route: the docs page is served on the HTTP listener, and a project with no route starts none.
+Absent only from a project whose design declares gRPC services and no HTTP route. The docs page is served on the HTTP listener, by a `main.go` that embeds the document: one written when the design has HTTP routes and the document sits in or below `main.go`'s directory.
 
 | Key        | Effect                                                                 |
 | ---------- | ---------------------------------------------------------------------- |
-| `enabled`  | Serve the OpenAPI document + a rendered docs page (on by default).     |
+| `enabled`  | Serve the OpenAPI document + a rendered docs page (off unless set; the generated `config.yaml` sets `true`). |
 | `ui`       | `redoc` / `swagger` / `scalar` - the renderer (assets load from a CDN). |
 | `path`     | HTML docs page route (default `/docs`).                                |
 | `specPath` | Raw OpenAPI document route (default `/openapi.yaml`).                   |
@@ -424,17 +430,18 @@ Edit `config/config.go` (gen-once - your edits stick):
 
 ```go
 type Config struct {
-    Server  ServerConfig  `yaml:"server"`
-    Logging LogConfig     `yaml:"logging"`
-    OTel    OTelConfig    `yaml:"otel"`
-    Metrics MetricsConfig `yaml:"metrics"`
-    Docs    DocsConfig    `yaml:"docs"`
+	Server           ServerConfig `yaml:"server"`
+	Logging          LogConfig    `yaml:"logging"`
+	telemetry.Config `yaml:",inline"`
+	Docs             DocsConfig `yaml:"docs"`
 
-    DB struct {
-        DSN string `yaml:"dsn"`
-    } `yaml:"db"`
+	DB struct {
+		DSN string `yaml:"dsn"`
+	} `yaml:"db"`
 }
 ```
+
+A project with proto services also has `GRPC GRPCConfig`, and a gRPC-only one has no `Server` or `Docs`.
 
 Then add the matching block to `config.yaml`:
 
@@ -453,7 +460,7 @@ Read from your service via `svcCtx.Config.DB.DSN`.
 cfg, err := config.Load("/etc/myapp/config.yaml")
 ```
 
-craftgo does not read environment variables. The YAML file is the single source of runtime configuration. Mount the right file per environment:
+craftgo reads no environment variable, but the OpenTelemetry SDK behind `telemetry.Init` reads its own `OTEL_*` variables: `OTEL_EXPORTER_OTLP_ENDPOINT` (and the per-signal `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`) when `endpoint` is empty, and `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_COMPRESSION`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_TRACES_SAMPLER` whatever the YAML says. Everything else comes from the file. Mount the right file per environment:
 
 ```
 deploy/
@@ -462,4 +469,4 @@ deploy/
 └── config.production.yaml
 ```
 
-CI / your deployer copies the right file to `config/config.yaml` before the binary starts.
+CI / your deployer copies the right file to `config/config.yaml` before the binary starts. `config.Load` treats a missing file as empty, so a binary started without one runs on the defaults above with no error.

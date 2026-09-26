@@ -1,6 +1,6 @@
 # Performance
 
-craftgo's design goal is "no overhead": generated code does the same work as what you would write by hand against `net/http`, with no reflection in the hot path.
+craftgo's design goal is "no overhead": generated code does the same work as what you would write by hand against `net/http` - routing, parameter binding and validation are generated Go, and bodies go through `encoding/json` as a hand-written handler's would.
 
 ## What "no overhead" means
 
@@ -13,7 +13,7 @@ A craftgo handler at runtime does:
 5. Encode response via `encoding/json`
 6. Write headers and body via `http.ResponseWriter`
 
-There is no reflection-based field binding, no struct tag parsing at request time, no custom router with regex compilation, no hidden interceptor chain, and no DI container.
+Path, query, header, cookie and form values bind through generated code, with no reflection and no struct tags read; the JSON body is `encoding/json`'s, as in a hand-written handler. There is no custom router with regex compilation, no hidden interceptor chain, and no DI container.
 
 ## Why generated code wins
 
@@ -29,7 +29,7 @@ Side benefits:
 
 Things craftgo touches but does not optimize:
 
-- **JSON parsing** uses stdlib `encoding/json`. Swap to `goccy/go-json` or `bytedance/sonic` via `srv.SetJSONCodec(...)` if you need faster JSON.
+- **JSON parsing** uses stdlib `encoding/json`. Swap to `goccy/go-json` or `bytedance/sonic` via `srv.SetJSONCodec(...)` if you need faster JSON: the codec implements `server.JSONCodec`, and `server.StrictDecoder` too while `server.strictJSON` is on, as the generated `config.yaml` sets it - see [Runtime API](/reference/runtime-api#json-codec).
 - **Database calls, external HTTP, business logic** are your code.
 - **OTel tracing** when enabled adds the cost of `otelhttp.NewHandler`. This cost is not specific to craftgo.
 
@@ -39,6 +39,6 @@ For end-to-end numbers, point `wrk`, `bombardier`, or `oha` at your service and 
 
 ## The eject test
 
-If you regenerate the example and copy `internal/transport/`, `internal/types/`, and `internal/routes/` into a fresh project that uses `net/http` directly, the code still compiles and runs once you replace the `pkg/server` calls with `http.NewServeMux` and the `pkg/log` calls with your logger of choice.
+If you regenerate the example and copy `internal/types/`, `internal/transport/`, `internal/service/` and `svccontext/` into a project on plain `net/http`, the code compiles once you supply the `pkg/server` helpers the handlers call (`JSON`, `WriteValidationError`, `WriteError`, the `Bind*` / `Parse*` binders) and register the handlers on an `http.ServeMux`.
 
 The generated code is plain Go. craftgo's runtime additions are convenient, not architectural.

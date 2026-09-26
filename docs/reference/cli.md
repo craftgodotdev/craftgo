@@ -84,7 +84,7 @@ Top-level help. Same content as running `craftgo` with no arguments.
 | Code | Meaning                                      |
 | ---- | -------------------------------------------- |
 | 0    | Success                                      |
-| 1    | Any failure: parse or semantic errors, a generation error, `fmt` left a file with errors unformatted, or `fmt -l` listed a file |
+| 1    | Any failure: parse or semantic errors, a generation error, `fmt` left a file with errors unformatted, `fmt -l` listed a file, or a bad flag or argument to a command (printed with the command's usage) |
 | 2    | Usage error: no command, or an unknown one   |
 
 CI scripts can rely on these to fail builds.

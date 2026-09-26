@@ -68,24 +68,21 @@ import (
 )
 
 // PlacedContract is the wire identity of Placed.
-// Publisher and listener both address the contract by this value.
 const PlacedContract = "orders.Placed"
 
 // An order was accepted.
 //
-// Placed is the orders.Placed contract.
-// Placed.Publish(ctx, bus, payload) sends one; a listener registers
-// Placed.Subscribe(bus, group, fn) on its own bus.
+// Placed is the orders.Placed event contract.
 var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
 ```
 
-`@doc` replaces the descriptor's leading comment; the validator argument is `nil` when the payload package emits no `validate.go`. A descriptor holds no bus - the bus is a parameter at the call - so one contract package serves every deployable that imports it.
+`@doc`, or the comment above the event when it has none, heads the descriptor's comment, an empty `//` line above the line craftgo writes. The validator is the payload's `Validate`, or for an array payload a generated function that validates each element. A descriptor holds no bus - the bus is a parameter at the call - so one contract package serves every deployable that imports it.
 
 There is no handler interface, no registration function, no publisher type and no transport adapter. Where the file lands is `events.targets[].out`; see [Configuration](/guide/configuration#events).
 
 ## Publishing
 
-![A publish runs validate, then encode with the JSON codec, then the bus, then a Publisher - JetStream, core NATS, Kafka, memory, or your own outbox.](/diagrams/publish-path.svg)
+![A publish runs validate, then encode with the bus's codec, then the bus, then a Publisher - JetStream, core NATS, Kafka, memory, or your own outbox.](/diagrams/publish-path.svg)
 
 The descriptor validates and encodes; the transport under the bus decides where the bytes go.
 
@@ -94,7 +91,7 @@ err := orders.Placed.Publish(ctx, bus, &types.OrderPlaced{OrderID: order.ID, Tot
 	craftevents.WithKey(string(order.ID)))
 ```
 
-`Publish` validates first: a payload that does not validate is a `*PayloadError` and nothing goes on the wire. The options fill in everything beside the payload - `WithKey` (the entity the message is about, used by a transport that orders per entity), `WithDedupID`, `WithHeader`, `WithAdapterOption`. `bus.PublishAll(ctx, envs)` publishes a batch and reports a partial failure as a `*PartialPublishError` naming the indices that did not go out.
+`Publish` validates first: a payload that does not validate is a `*PayloadError` and nothing goes on the wire. The options fill in everything beside the payload - `WithKey` (the entity the message is about, used by a transport that orders per entity), `WithDedupID` (JetStream drops a repeat within its stream's duplicate window; Kafka, core NATS and memory carry the ID to the consumer and act on nothing), `WithHeader`, `WithAdapterOption`. `bus.PublishAll(ctx, envs)` publishes a batch and reports a partial failure as a `*PartialPublishError` naming the indices that did not go out.
 
 A transport adapter is anything implementing one method:
 
@@ -104,11 +101,11 @@ type Publisher interface {
 }
 ```
 
-An outbox is that method writing the encoded message to a table in the same transaction as the business write. A drainer then reads the table and calls `bus.PublishAll` against a bus wired to the real broker. Nothing generated changes, because nothing generated names a broker.
+An outbox is that method writing the encoded message to a table in the same transaction as the business write. A drainer then reads the table and calls `bus.PublishAll` against a bus wired to the real broker, each stored payload a `wire.Raw` so the codec carries its bytes through without encoding them again. Nothing generated changes, because nothing generated names a broker.
 
 ## Consuming
 
-![A delivery travels broker, transport, panic recovery, the bus chain installed with bus.Use, the subscription chain, decode and validate, then your method; the returned error becomes the disposition the transport acks or naks on.](/diagrams/consume-path.svg)
+![A delivery travels broker, transport, panic recovery, the bus chain installed with bus.Use, the subscription chain, decode and validate, then your method; the transport then acks, naks or terminates the delivery as the chain asked through the message, and acks it when nothing was asked.](/diagrams/consume-path.svg)
 
 Everything between the broker and your method is the same for every subscription on the bus.
 
@@ -159,7 +156,7 @@ A consumer middleware is ordinary Go, never a declaration:
 type Middleware func(sub craftevents.Subscription, next craftevents.Handler) craftevents.Handler
 ```
 
-`sub` carries the contract, the consumer and the group being wrapped, so one chain can behave differently per group. Chains compose **outermost first**: `Use(A, B, C)` wraps a handler as `A(B(C(h)))`. The chain belongs to the bus, the only thing every subscription passes through - `WithMiddleware` installs it at construction, `bus.Use` appends afterwards, and `Use` after `Start` panics. One subscription that needs its own wrap sets `Subscription.Chain`, applied inside the bus chain. A failed decode or validation reaches the chain as `*PayloadError`, a message stamped with another codec as `ErrCodecMismatch`, a panicking handler as `*PanicError`.
+`sub` carries the contract, the consumer and the group being wrapped, so one chain can behave differently per group. Chains compose **outermost first**: `Use(A, B, C)` wraps a handler as `A(B(C(h)))`. The chain belongs to the bus, the only thing every subscription passes through - `WithMiddleware` installs it at construction, `bus.Use` appends afterwards, and `Use` after `Start` panics. One subscription that needs its own wrap is built with the descriptor's `Subscription(bus, group, fn)`, given a `Chain`, applied inside the bus chain, and handed to `bus.Register`. A failed decode or validation reaches the chain as `*PayloadError`, a message stamped with another codec as `ErrCodecMismatch`, a panicking handler as `*PanicError`.
 
 ### Dispositions
 
@@ -192,7 +189,7 @@ A rename, a lost listener or a group that drifted between two deployables then f
 
 A group is a durable name, and the durable's filter set is the plan this process registered.
 
-`nats.NewJetStream(conn, opts...)` reads from a stream, and is what makes `Redeliver` and `Reject` mean something on NATS. A durable reads one stream, so a group whose subjects span two is refused at start-up. At `Start` an existing durable is verified, not reshaped:
+`nats.NewJetStream(conn, opts...)` reads from a stream, and is what makes `Redeliver` and `Reject` mean something on NATS. It creates no stream: `Start` refuses a subject no stream carries. A durable reads one stream, so a group whose subjects span two is refused at start-up. At `Start` an existing durable is verified, not reshaped:
 
 | carried filter vs plan | what happens |
 | --- | --- |
@@ -212,7 +209,7 @@ js, err := nats.NewJetStream(conn,
 		nats.MaxInFlight(8), nats.AckWait(2*time.Minute)))
 ```
 
-`MaxInFlight`, `AckWait`, `DeliverPolicy`, `ConsumerConfig` and `AllowNarrow` are the group options, and repeated calls for one group accumulate. The last three apply when the durable is **created**; `WithMaxInFlight` and `WithAckWait` are the transport-wide defaults.
+`MaxInFlight`, `AckWait`, `DeliverPolicy`, `ConsumerConfig` and `AllowNarrow` are the group options, and repeated calls for one group accumulate. `AckWait`, `DeliverPolicy` and `ConsumerConfig` apply when the durable is **created**, and `AllowNarrow` when `Start` checks an existing one; `WithMaxInFlight` and `WithAckWait` are the transport-wide defaults.
 
 `MaxInFlight` is how many messages one durable's pull keeps buffered here, and the default is 1 deliberately: a buffered message waits for every handler ahead of it with the server's `AckWait` clock already running. **Raise it only where `n` × the slowest handler stays under `AckWait`**, or a message is redelivered while it still sits in the buffer. `WithMaxDeliveries` (default 5) caps a redelivery loop and `WithRedeliverBackoff(fn)` delays each redelivery by `fn(deliveries)`.
 
@@ -236,4 +233,4 @@ The design is the contract two deployables share; everything operational is the 
 
 The **design** holds the `event` declaration and its `@contract` name, the payload types and their validators, one folder per version, and the HTTP services beside them. The **application** holds which events this deployable listens to, the group per subscription, the middleware on `bus.Use`, and its own folder layout, retries and transport settings.
 
-Nothing in between is declarable: no listener declaration, no group decorator, no middleware declaration for listeners, no projection. A group or a chain in the design would tie a shared contract to one deployable's operations. See [What changed](/guide/whats-changed) if you are coming from an earlier layout.
+Nothing in between is declarable: no listener declaration, no group decorator, no middleware declaration for listeners, no projection. A group or a chain in the design would tie a shared contract to one deployable's operations.
