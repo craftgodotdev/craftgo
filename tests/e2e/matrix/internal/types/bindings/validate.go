@@ -544,6 +544,11 @@ func (v *InvalidInputBody) Validate() error {
 }
 
 // Validate returns the first constraint v violates, or nil.
+func (v *MaintenanceBody) Validate() error {
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *NullableFieldsErrBody) Validate() error {
 	if v.Detail != nil {
 		if err := v.Detail.Validate(); err != nil {

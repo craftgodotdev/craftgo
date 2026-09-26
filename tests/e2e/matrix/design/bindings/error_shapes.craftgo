@@ -55,8 +55,12 @@ error ServiceUnavailable RetryLater {
 
 // Maintenance and RetryLater both answer 503 with the {code, message}
 // envelope: OpenAPI documents the status as an anyOf of the two, which
-// either body matches.
-error ServiceUnavailable Maintenance
+// either body matches. Maintenance sends retry-after, the same header spelled
+// in lower case, as an HTTP date where RetryLater sends seconds, so the one
+// Retry-After header admits a string or an integer.
+error ServiceUnavailable Maintenance {
+	until string @header("retry-after")
+}
 
 // SharedStatusConflict shares its 409 with the success response of
 // PostSharedStatus: OpenAPI documents both bodies as an anyOf.

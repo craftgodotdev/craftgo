@@ -9837,7 +9837,9 @@ paths:
           headers:
             Retry-After:
               schema:
-                type: integer
+                anyOf:
+                - type: integer
+                - type: string
       tags:
       - bindings
   /bindings/session-cookie:

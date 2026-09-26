@@ -1,8 +1,10 @@
 package docs
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
+	"net/http"
 	"reflect"
 	"slices"
 	"strconv"
@@ -290,28 +292,54 @@ func inlineBody(fields []semantic.ResolvedField, td *ast.TypeDecl, pkg *semantic
 }
 
 // buildResponseHeaders documents the @header fields as headers and the @cookie
-// ones in one `Set-Cookie` header: OpenAPI has no response cookies.
+// ones in one `Set-Cookie` header: OpenAPI has no response cookies. Fields
+// sharing a header name in any letter case, which responses sharing a status
+// may send, make one header, spelled as the first, whose schema admits each
+// field's type; its description is the first one given, and it is deprecated
+// when every field is.
 func buildResponseHeaders(headers, cookies []semantic.ResolvedField, pkg *semantic.Package, registry *genericRegistry) openapi3.Headers {
 	if len(headers) == 0 && len(cookies) == 0 {
 		return nil
 	}
 	out := openapi3.Headers{}
+	alternatives := map[string]openapi3.SchemaRefs{}
+	spelled := map[string]string{}
 	for _, rf := range headers {
 		f := rf.Field
+		name := wire.WireName(f, wire.BindHeader)
+		key := http.CanonicalHeaderKey(name)
+		if first, seen := spelled[key]; seen {
+			name = first
+		} else {
+			spelled[key] = name
+		}
 		schema := schemaForTypeRef(nonNullType(f), pkg, registry)
 		applyFieldMetadata(f, schema, pkg, false)
-		out[wire.WireName(f, wire.BindHeader)] = &openapi3.HeaderRef{Value: &openapi3.Header{
-			Parameter: openapi3.Parameter{
-				Schema:      schema,
-				Description: semantic.Description(f.Decorators, f.Doc),
-				Deprecated:  semantic.IsDeprecated(f.Decorators),
-			},
+		if !slices.ContainsFunc(alternatives[name], func(s *openapi3.SchemaRef) bool { return reflect.DeepEqual(s, schema) }) {
+			alternatives[name] = append(alternatives[name], schema)
+		}
+		desc, deprecated := semantic.Description(f.Decorators, f.Doc), semantic.IsDeprecated(f.Decorators)
+		if h, seen := out[name]; seen {
+			h.Value.Description = cmp.Or(h.Value.Description, desc)
+			h.Value.Deprecated = h.Value.Deprecated && deprecated
+			continue
+		}
+		out[name] = &openapi3.HeaderRef{Value: &openapi3.Header{
+			Parameter: openapi3.Parameter{Description: desc, Deprecated: deprecated},
 		}}
 	}
+	for name, schemas := range alternatives {
+		out[name].Value.Schema = schemas[0]
+		if len(schemas) > 1 {
+			out[name].Value.Schema = &openapi3.SchemaRef{Value: &openapi3.Schema{AnyOf: schemas}}
+		}
+	}
 	if len(cookies) > 0 {
-		names := make([]string, 0, len(cookies))
+		var names []string
 		for _, rf := range cookies {
-			names = append(names, wire.WireName(rf.Field, wire.BindCookie))
+			if name := wire.WireName(rf.Field, wire.BindCookie); !slices.Contains(names, name) {
+				names = append(names, name)
+			}
 		}
 		out["Set-Cookie"] = &openapi3.HeaderRef{Value: &openapi3.Header{
 			Parameter: openapi3.Parameter{

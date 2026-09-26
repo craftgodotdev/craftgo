@@ -3,7 +3,6 @@ package docs
 import (
 	"cmp"
 	"fmt"
-	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -39,7 +38,7 @@ func buildOperation(doc *openapi3.T, svc *semantic.ServiceInfo, s opShape, pkg *
 	markDeprecated(op, svc, s.decs)
 	requestSide(doc, op, s, pkg, registry, names)
 	successResponse(doc, op, s, pkg, registry, names)
-	addErrorResponses(op, s.decs, pkg, registry)
+	addErrorResponses(op, s, pkg, registry)
 	return op
 }
 
@@ -148,11 +147,11 @@ func rawResponseStatus(decs []*ast.Decorator) string {
 	return "200"
 }
 
-// addErrorResponses adds a response per error the `@errors` among decs name,
-// at its category's status, errors sharing a status in one `anyOf`, since a
-// body may match more than one of their schemas; an unknown name is skipped.
-func addErrorResponses(op *openapi3.Operation, decs []*ast.Decorator, pkg *semantic.Package, registry *genericRegistry) {
-	names := errorRefsFromDecorators(decs)
+// addErrorResponses adds a response per error the `@errors` of s name, at its
+// category's status, errors sharing a status in one `anyOf`, since a body may
+// match more than one of their schemas; an unknown name is skipped.
+func addErrorResponses(op *openapi3.Operation, s opShape, pkg *semantic.Package, registry *genericRegistry) {
+	names := errorRefsFromDecorators(s.decs)
 	if len(names) == 0 {
 		return
 	}
@@ -196,25 +195,31 @@ func addErrorResponses(op *openapi3.Operation, decs []*ast.Decorator, pkg *seman
 			}
 			schema = &openapi3.SchemaRef{Value: &openapi3.Schema{AnyOf: anyOf}}
 		}
+		headers, cookies := entry.headers, entry.cookies
+		// A success `@status` may hold this code already (`@status(409)`);
+		// its headers come first.
+		existing := op.Responses.Value(status)
+		if existing != nil && existing.Value != nil {
+			headers = slices.Concat(s.resp.header, headers)
+			cookies = slices.Concat(s.resp.cookie, cookies)
+		}
 		resp := &openapi3.Response{
 			Description: &desc,
 			Content: openapi3.Content{
 				mimeApplicationJSON: &openapi3.MediaType{Schema: schema},
 			},
+			Headers: buildResponseHeaders(headers, cookies, pkg, registry),
 		}
-		if h := buildResponseHeaders(entry.headers, entry.cookies, pkg, registry); len(h) > 0 {
-			resp.Headers = h
-		}
-		// A success `@status` may hold this code already (`@status(409)`).
-		if existing := op.Responses.Value(status); existing != nil && existing.Value != nil {
+		if existing != nil && existing.Value != nil {
 			resp = mergeStatusResponses(existing.Value, resp, schema)
 		}
 		op.Responses.Set(status, &openapi3.ResponseRef{Value: resp})
 	}
 }
 
-// mergeStatusResponses joins an error response onto the success one at its
-// status: bodies in an anyOf, descriptions with "or", success headers first.
+// mergeStatusResponses joins an error response, which carries every header of
+// its status, onto the success one there: bodies in an anyOf, descriptions
+// with "or".
 func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *openapi3.SchemaRef) *openapi3.Response {
 	var anyOf openapi3.SchemaRefs
 	add := func(s *openapi3.SchemaRef) {
@@ -243,22 +248,13 @@ func mergeStatusResponses(existing, errResp *openapi3.Response, errSchema *opena
 		}
 		desc += *errResp.Description
 	}
-	merged := &openapi3.Response{Description: &desc}
+	merged := &openapi3.Response{Description: &desc, Headers: errResp.Headers}
 	if len(anyOf) == 1 {
 		merged.Content = openapi3.Content{mimeApplicationJSON: &openapi3.MediaType{Schema: anyOf[0]}}
 	} else if len(anyOf) > 1 {
 		merged.Content = openapi3.Content{mimeApplicationJSON: &openapi3.MediaType{
 			Schema: &openapi3.SchemaRef{Value: &openapi3.Schema{AnyOf: anyOf}},
 		}}
-	}
-	if len(existing.Headers) > 0 || len(errResp.Headers) > 0 {
-		merged.Headers = openapi3.Headers{}
-		maps.Copy(merged.Headers, existing.Headers)
-		for k, v := range errResp.Headers {
-			if _, ok := merged.Headers[k]; !ok {
-				merged.Headers[k] = v
-			}
-		}
 	}
 	return merged
 }

@@ -1227,6 +1227,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   generator that counts `oneOf` matches could not decode it. The schemas are
   now an `anyOf`.
 
+- **A header that responses sharing a status send under one name keeps each
+  type in OpenAPI.** When two errors of one category, or an error and a
+  success `@status` sharing its code, sent a header of one name with
+  different types - `Retry-After` as seconds from one error and as an HTTP
+  date from another - the document kept one of the types, and the other's
+  value failed it; spelled in another letter case, the name was a second
+  header. The header, spelled as first declared, now admits each type, and
+  its `Set-Cookie` names each cookie of the status once.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:

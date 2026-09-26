@@ -305,16 +305,25 @@ func (e *InvalidInputErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.
 // ErrCodeMaintenance is the canonical machine-readable code for MaintenanceErr.
 const ErrCodeMaintenance = "MAINTENANCE"
 
+// MaintenanceBody is the body of MaintenanceErr.
+type MaintenanceBody struct {
+	Until string `json:"-" header:"retry-after"`
+}
+
 // Maintenance and RetryLater both answer 503 with the {code, message}
 // envelope: OpenAPI documents the status as an anyOf of the two, which
-// either body matches.
+// either body matches. Maintenance sends retry-after, the same header spelled
+// in lower case, as an HTTP date where RetryLater sends seconds, so the one
+// Retry-After header admits a string or an integer.
 //
 // MaintenanceErr is the ServiceUnavailable error Maintenance.
-type MaintenanceErr struct{}
+type MaintenanceErr struct {
+	MaintenanceBody
+}
 
 // NewMaintenanceErr constructs MaintenanceErr.
-func NewMaintenanceErr() *MaintenanceErr {
-	return &MaintenanceErr{}
+func NewMaintenanceErr(body MaintenanceBody) *MaintenanceErr {
+	return &MaintenanceErr{MaintenanceBody: body}
 }
 
 // Error returns the ServiceUnavailable category's default message.
@@ -329,6 +338,11 @@ func (e *MaintenanceErr) HTTPStatus() int { return 503 }
 // MarshalJSON encodes the {"code", "message"} envelope.
 func (e *MaintenanceErr) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]string{"code": ErrCodeMaintenance, "message": e.Error()})
+}
+
+// WriteResponseHeaders sets the @header and @cookie fields on w.
+func (e *MaintenanceErr) WriteResponseHeaders(w http.ResponseWriter) {
+	w.Header().Set("retry-after", e.Until)
 }
 
 // ErrCodeNullableFieldsErr is the canonical machine-readable code for NullableFieldsErr.

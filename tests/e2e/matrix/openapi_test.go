@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"maps"
 	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -322,7 +324,7 @@ func TestOpenAPI_ResponsesSharingAStatusAreAnAnyOf(t *testing.T) {
 	if want := []string{"#/components/schemas/RetryLaterErr", "#/components/schemas/MaintenanceErr"}; !slices.Equal(refs, want) {
 		t.Errorf("GetServiceStatus 503 anyOf = %v, want %v", refs, want)
 	}
-	for _, err := range []error{bindings.NewRetryLaterErr(bindings.RetryLaterBody{}), bindings.NewMaintenanceErr()} {
+	for _, err := range []error{bindings.NewRetryLaterErr(bindings.RetryLaterBody{}), bindings.NewMaintenanceErr(bindings.MaintenanceBody{})} {
 		raw, merr := json.Marshal(err)
 		if merr != nil {
 			t.Fatal(merr)
@@ -333,6 +335,46 @@ func TestOpenAPI_ResponsesSharingAStatusAreAnAnyOf(t *testing.T) {
 		}
 		if keys := slices.Sorted(maps.Keys(body)); !slices.Equal(keys, []string{"code", "message"}) {
 			t.Errorf("%T sends %s, want the {code, message} envelope", err, raw)
+		}
+	}
+}
+
+// Retry-After, which RetryLater sends as seconds and Maintenance as an HTTP
+// date at one status, is documented as an integer or a string.
+func TestOpenAPI_SharedStatusHeaderKeepsEachType(t *testing.T) {
+	var doc struct {
+		Paths map[string]map[string]struct {
+			Responses map[string]struct {
+				Headers map[string]struct {
+					Schema struct {
+						AnyOf []struct {
+							Type string `yaml:"type"`
+						} `yaml:"anyOf"`
+					} `yaml:"schema"`
+				} `yaml:"headers"`
+			} `yaml:"responses"`
+		} `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal([]byte(readOpenAPI(t)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	var types []string
+	for _, branch := range doc.Paths["/bindings/service-status"]["get"].Responses["503"].Headers["Retry-After"].Schema.AnyOf {
+		types = append(types, branch.Type)
+	}
+	if !slices.Equal(types, []string{"integer", "string"}) {
+		t.Errorf("GetServiceStatus 503 Retry-After types = %v, want [integer string]", types)
+	}
+	wait := 5
+	date := "Wed, 21 Oct 2026 07:28:00 GMT"
+	for want, e := range map[string]interface{ WriteResponseHeaders(http.ResponseWriter) }{
+		"5":  bindings.NewRetryLaterErr(bindings.RetryLaterBody{Wait: &wait}),
+		date: bindings.NewMaintenanceErr(bindings.MaintenanceBody{Until: date}),
+	} {
+		rec := httptest.NewRecorder()
+		e.WriteResponseHeaders(rec)
+		if got := rec.Header().Get("Retry-After"); got != want {
+			t.Errorf("%T sends Retry-After %q, want %q", e, got, want)
 		}
 	}
 }

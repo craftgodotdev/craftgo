@@ -264,7 +264,7 @@ An error with no field, like `UserNotFound`, is documented as the `code` and
 `message` the server sends for it. Errors of one category share its response,
 their schemas in an `anyOf`, as does a success `@status` with that code: two
 errors may send bodies both schemas admit, such as two `{code, message}`
-envelopes.
+envelopes. A header they send under one name admits each one's type.
 
 ## Security schemes
 

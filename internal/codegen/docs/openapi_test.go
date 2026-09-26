@@ -503,6 +503,69 @@ service S {
 	}
 }
 
+// A header the responses at one status send under one name, in any letter
+// case, keeps each one's type, and its Set-Cookie names each cookie once:
+// errors of one category and a success `@status` sharing its code alike.
+func TestSharedStatusHeadersKeepEachType(t *testing.T) {
+	doc := genDoc(t, map[string]string{
+		"a/a.craftgo": `package a
+error ServiceUnavailable E1 { a string @header("X-Same")  s string @cookie("sid") }
+error ServiceUnavailable E2 { b int @header("X-Same") }
+error ServiceUnavailable E3 { c bool @header("x-same")  s string @cookie("sid") }
+error ServiceUnavailable E4 { d string @header("X-SAME") }
+error Conflict Taken { at string @header("X-At")  s string @cookie("sid") }
+type Stamped {
+	at   int    @header("X-At")
+	sess string @cookie("sess")
+	note string?
+}
+service S {
+	@errors(E1, E2, E3, E4)
+	get G /g { response Stamped }
+	@status(409)
+	@errors(Taken)
+	post P /p { response Stamped }
+}`,
+	}, &config.Config{})
+	if got := slices.Sorted(maps.Keys(doc.Paths.Find("/g").Get.Responses.Value("503").Value.Headers)); !slices.Equal(got, []string{"Set-Cookie", "X-Same"}) {
+		t.Errorf("/g 503 headers = %v, want [Set-Cookie X-Same]", got)
+	}
+	for _, c := range []struct {
+		path, status, header, want string
+	}{
+		{"/g", "503", "X-Same", `{"anyOf":[{"type":"string"},{"type":"integer"},{"type":"boolean"}]}`},
+		{"/p", "409", "X-At", `{"anyOf":[{"type":"integer"},{"type":"string"}]}`},
+	} {
+		item := doc.Paths.Find(c.path)
+		op := item.Get
+		if op == nil {
+			op = item.Post
+		}
+		raw, err := json.Marshal(op.Responses.Value(c.status).Value.Headers[c.header].Value.Schema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(raw) != c.want {
+			t.Errorf("%s %s header %s = %s, want %s", c.path, c.status, c.header, raw, c.want)
+		}
+	}
+	for path, want := range map[string]string{"/g": "Sets cookies: sid", "/p": "Sets cookies: sess, sid"} {
+		item := doc.Paths.Find(path)
+		op := item.Get
+		if op == nil {
+			op = item.Post
+		}
+		for code, resp := range op.Responses.Map() {
+			if code == "200" {
+				continue
+			}
+			if got := resp.Value.Headers["Set-Cookie"].Value.Description; got != want {
+				t.Errorf("%s %s Set-Cookie = %q, want %q", path, code, got, want)
+			}
+		}
+	}
+}
+
 // `@doc` and a leading comment become descriptions, `@summary` the
 // operation's summary.
 func TestGenerateOpenAPIDocSummaryDescription(t *testing.T) {
