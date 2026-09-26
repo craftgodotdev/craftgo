@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"compress/flate"
-	"compress/gzip"
 	"context"
 	"errors"
 	"io"
@@ -18,20 +17,6 @@ import (
 // largeBody returns a payload above the default MinSize.
 func largeBody() []byte {
 	return bytes.Repeat([]byte("hello-craftgo-"), 200) // 2800 bytes
-}
-
-func gunzip(t *testing.T, b []byte) string {
-	t.Helper()
-	r, err := gzip.NewReader(bytes.NewReader(b))
-	if err != nil {
-		t.Fatalf("gzip reader: %v", err)
-	}
-	defer r.Close()
-	out, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatalf("gzip read: %v", err)
-	}
-	return string(out)
 }
 
 func inflate(t *testing.T, b []byte) string {

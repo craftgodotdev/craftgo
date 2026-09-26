@@ -12,31 +12,8 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"go.uber.org/zap/zaptest/observer"
-
-	"github.com/craftgodotdev/craftgo/pkg/log"
 )
-
-// fakeStatusError is a StatusError with a fixed message and status.
-type fakeStatusError struct {
-	msg    string
-	status int
-}
-
-func (e fakeStatusError) Error() string   { return e.msg }
-func (e fakeStatusError) HTTPStatus() int { return e.status }
-
-// observeLogs points log.Default at an observer until the test ends.
-func observeLogs(t *testing.T) *observer.ObservedLogs {
-	t.Helper()
-	core, logs := observer.New(zapcore.InfoLevel)
-	prev := log.Default()
-	log.SetDefault(log.NewZap(zap.New(core)))
-	t.Cleanup(func() { log.SetDefault(prev) })
-	return logs
-}
 
 // reqWithTrace returns a request whose context carries a valid span.
 func reqWithTrace() *http.Request {
