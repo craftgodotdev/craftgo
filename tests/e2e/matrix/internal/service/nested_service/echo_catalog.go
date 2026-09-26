@@ -5,25 +5,20 @@ package nested
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/nested"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/nested"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoCatalogService carries the per-request state for the
-// EchoCatalog endpoint of NestedService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoCatalogService runs NestedService.EchoCatalog for one request.
 type EchoCatalogService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoCatalogService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoCatalogService binds EchoCatalogService to ctx; its Logger carries ctx's trace ids.
 func NewEchoCatalogService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoCatalogService {
 	return &EchoCatalogService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewEchoCatalogService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// EchoCatalog is the service entry point. Replace the
-// TODO with the real implementation.
+// Map of nested - validates map presence but does NOT recurse into values (map-value validators are not yet wired through the codegen walker).
+//
+// EchoCatalog implements NestedService.EchoCatalog.
 func (l *EchoCatalogService) EchoCatalog(req *types.Catalog) (*types.Catalog, error) {
 	// TODO: implement
 	return nil, nil

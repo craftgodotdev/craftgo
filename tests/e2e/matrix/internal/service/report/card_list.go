@@ -5,25 +5,20 @@ package services
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// CardListService carries the per-request state for the
-// CardList endpoint of Report. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// CardListService runs Report.CardList for one request.
 type CardListService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewCardListService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewCardListService binds CardListService to ctx; its Logger carries ctx's trace ids.
 func NewCardListService(ctx context.Context, svcCtx *svccontext.ServiceContext) *CardListService {
 	return &CardListService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewCardListService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// CardList is the service entry point. Replace the
-// TODO with the real implementation.
+// Lists the report's cards; its body component is ReportCardList2RespBody.
+//
+// CardList implements Report.CardList.
 func (l *CardListService) CardList() (*types.ReportCards, error) {
 	// TODO: implement
 	return nil, nil

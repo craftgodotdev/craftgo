@@ -8,17 +8,13 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// NewBasicAuthMiddleware constructs the BasicAuth middleware.
+// BasicAuth is an alternative auth strategy used by the
+// `@ignoreMiddleware + @middlewares(...)` reset-and-replace pattern
+// in `services/ignore_pattern.craftgo`. Body of the middleware is
+// scaffolded; behaviour (Authorization header parse, credential
+// lookup, ...) lives in the generated impl file.
 //
-// craftgo never overwrites this file after the first generation, so
-// add wiring (token store, logger, rate-limit budget, ...) or change
-// the param types freely.
-//
-// Wire it from main.go:
-//
-//	svc := svccontext.NewServiceContext()
-//	svc.BasicAuth = middleware.NewBasicAuthMiddleware(/* args */)
-//	routes.RegisterRoutes(srv, svc)
+// NewBasicAuthMiddleware returns the BasicAuth middleware, which ServiceContext's BasicAuth field holds.
 func NewBasicAuthMiddleware() server.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

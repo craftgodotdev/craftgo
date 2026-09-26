@@ -5,25 +5,20 @@ package scalars
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoLengthsService carries the per-request state for the
-// EchoLengths endpoint of ScalarsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoLengthsService runs ScalarsService.EchoLengths for one request.
 type EchoLengthsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoLengthsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoLengthsService binds EchoLengthsService to ctx; its Logger carries ctx's trace ids.
 func NewEchoLengthsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoLengthsService {
 	return &EchoLengthsService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewEchoLengthsService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// EchoLengths is the service entry point. Replace the
-// TODO with the real implementation.
+// EchoLengths implements ScalarsService.EchoLengths.
 func (l *EchoLengthsService) EchoLengths(req *types.ScalarLengths) (*types.ScalarLengths, error) {
 	// TODO: implement
 	return nil, nil

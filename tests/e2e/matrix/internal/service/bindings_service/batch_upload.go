@@ -5,25 +5,20 @@ package bindings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// BatchUploadService carries the per-request state for the
-// BatchUpload endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// BatchUploadService runs BindingsService.BatchUpload for one request.
 type BatchUploadService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewBatchUploadService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewBatchUploadService binds BatchUploadService to ctx; its Logger carries ctx's trace ids.
 func NewBatchUploadService(ctx context.Context, svcCtx *svccontext.ServiceContext) *BatchUploadService {
 	return &BatchUploadService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,14 +27,9 @@ func NewBatchUploadService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// BatchUpload pins the `file[]` (repeated multipart parts) shape:
-// `files` binds from `r.MultipartForm.File["files"]` as
-// `[]*multipart.FileHeader`, with `@minItems`/`@maxItems` validating
-// the slice length; a single optional `cover file?` and a repeated
-// `string[] @form` value ride the same request. The OpenAPI multipart
-// schema renders `files` as `{type: array, items: {format: binary}}`.
-// BatchUpload is the service entry point. Replace the
-// TODO with the real implementation.
+// Batch upload. files[] rides as repeated multipart parts ([]*multipart.FileHeader, @minItems/@maxItems); cover is one optional file; tags is a repeated form value.
+//
+// BatchUpload implements BindingsService.BatchUpload.
 func (l *BatchUploadService) BatchUpload(req *types.BatchUploadReq) (*types.Item, error) {
 	// TODO: implement
 	return nil, nil

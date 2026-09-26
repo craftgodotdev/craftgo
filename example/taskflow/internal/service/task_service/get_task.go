@@ -5,25 +5,20 @@ package shared
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// GetTaskService carries the per-request state for the
-// GetTask endpoint of TaskService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetTaskService runs TaskService.GetTask for one request.
 type GetTaskService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetTaskService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetTaskService binds GetTaskService to ctx; its Logger carries ctx's trace ids.
 func NewGetTaskService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetTaskService {
 	return &GetTaskService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewGetTaskService(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 	}
 }
 
-// GetTask is the service entry point. Replace the
-// TODO with the real implementation.
+// Fetch one task.
+//
+// GetTask implements TaskService.GetTask.
 func (l *GetTaskService) GetTask(req *types.GetTaskReq) (*types.Task, error) {
 	return l.svcCtx.Store.GetTask(req.ProjectID, req.ID)
 }

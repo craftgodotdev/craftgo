@@ -5,25 +5,20 @@ package collections
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// TagSliceService carries the per-request state for the
-// TagSlice endpoint of Collections. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// TagSliceService runs Collections.TagSlice for one request.
 type TagSliceService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewTagSliceService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewTagSliceService binds TagSliceService to ctx; its Logger carries ctx's trace ids.
 func NewTagSliceService(ctx context.Context, svcCtx *svccontext.ServiceContext) *TagSliceService {
 	return &TagSliceService{
 		Logger: log.Default().WithContext(ctx),
@@ -35,8 +30,8 @@ func NewTagSliceService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 // TagSlice exercises the scalar-array case - per-element Tag
 // validators (minLength + maxLength + pattern) fire on every
 // element via the scalar-leaves walk.
-// TagSlice is the service entry point. Replace the
-// TODO with the real implementation.
+//
+// TagSlice implements Collections.TagSlice.
 func (l *TagSliceService) TagSlice(req *types.Arr_TagSlice) (*types.Arr_TagSlice, error) {
 	// TODO: implement
 	return nil, nil

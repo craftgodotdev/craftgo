@@ -5,25 +5,20 @@ package media
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/upload/internal/types/media"
-
-	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/upload/internal/types/media"
+	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 )
 
-// GetMediaService carries the per-request state for the
-// GetMedia endpoint of MediaService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetMediaService runs MediaService.GetMedia for one request.
 type GetMediaService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetMediaService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetMediaService binds GetMediaService to ctx; its Logger carries ctx's trace ids.
 func NewGetMediaService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetMediaService {
 	return &GetMediaService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewGetMediaService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// GetMedia is the service entry point. Replace the
-// TODO with the real implementation.
+// Get media metadata.
+//
+// GetMedia implements MediaService.GetMedia.
 func (l *GetMediaService) GetMedia(req *types.GetMediaReq) (*types.UploadResult, error) {
 	if m, ok := l.svcCtx.Store.GetMedia(req.ID); ok {
 		return m, nil

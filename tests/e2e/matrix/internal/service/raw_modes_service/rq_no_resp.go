@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -19,7 +20,7 @@ type RqNoRespService struct {
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewRqNoRespService constructs a fresh service instance bound to ctx.
+// NewRqNoRespService binds RqNoRespService to ctx; its Logger carries ctx's trace ids.
 func NewRqNoRespService(ctx context.Context, svcCtx *svccontext.ServiceContext) *RqNoRespService {
 	return &RqNoRespService{
 		Logger: log.Default().WithContext(ctx),

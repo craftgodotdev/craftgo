@@ -5,25 +5,20 @@ package scalars
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetOrderService carries the per-request state for the
-// GetOrder endpoint of ScalarsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetOrderService runs ScalarsService.GetOrder for one request.
 type GetOrderService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetOrderService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetOrderService binds GetOrderService to ctx; its Logger carries ctx's trace ids.
 func NewGetOrderService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetOrderService {
 	return &GetOrderService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewGetOrderService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// GetOrder is the service entry point. Replace the
-// TODO with the real implementation.
+// Fetch one order by id. Path-bound id is a UUID scalar so the per-field decorator chain reduces to @path; the inherited @format(uuid) check runs in req.Validate().
+//
+// GetOrder implements ScalarsService.GetOrder.
 func (l *GetOrderService) GetOrder(req *types.GetOrderReq) (*types.Order, error) {
 	// TODO: implement
 	return nil, nil

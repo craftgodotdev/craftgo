@@ -5,25 +5,20 @@ package services
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetUserService carries the per-request state for the
-// GetUser endpoint of AccountUserService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetUserService runs AccountUserService.GetUser for one request.
 type GetUserService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetUserService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetUserService binds GetUserService to ctx; its Logger carries ctx's trace ids.
 func NewGetUserService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetUserService {
 	return &GetUserService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,8 @@ func NewGetUserService(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 }
 
 // GetUser returns the user identified by req.ID.
-// GetUser is the service entry point. Replace the
-// TODO with the real implementation.
+//
+// GetUser implements AccountUserService.GetUser.
 func (l *GetUserService) GetUser(req *types.AcctGetUserReq) (*types.AcctUser, error) {
 	l.svcCtx.Lock()
 	defer l.svcCtx.Unlock()

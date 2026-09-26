@@ -7,20 +7,18 @@ import (
 	"net/http"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ExportTenantItemsService carries the per-request state for the
-// ExportTenantItems passthrough endpoint of TenantService. The embedded
-// log.Logger is pre-bound to the request context so logging
-// surfaces trace_id / span_id.
+// ExportTenantItemsService runs TenantService.ExportTenantItems for one request.
 type ExportTenantItemsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewExportTenantItemsService constructs a fresh service instance bound to ctx.
+// NewExportTenantItemsService binds ExportTenantItemsService to ctx; its Logger carries ctx's trace ids.
 func NewExportTenantItemsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ExportTenantItemsService {
 	return &ExportTenantItemsService{
 		Logger: log.Default().WithContext(ctx),
@@ -29,13 +27,9 @@ func NewExportTenantItemsService(ctx context.Context, svcCtx *svccontext.Service
 	}
 }
 
-// A raw request reads its path values itself, and the document still
-// declares every variable of the route, the @prefix one included.
-// ExportTenantItems is the passthrough service entry point. The
-// framework hands you the raw http.ResponseWriter and *http.Request
-// - read path parameters via r.PathValue, write headers/body to w
-// directly, and return any error to surface it through the
-// framework's error writer.
+// Export a tenant's items in a format logic picks. Logic reads the raw request; the document declares tenantID and format as path parameters.
+//
+// ExportTenantItems reads r and writes the response to w; a returned error goes to server.WriteError.
 func (l *ExportTenantItemsService) ExportTenantItems(w http.ResponseWriter, r *http.Request) error {
 	// TODO: implement
 	http.Error(w, "not implemented", http.StatusNotImplemented)

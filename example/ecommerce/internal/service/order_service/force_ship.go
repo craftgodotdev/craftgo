@@ -5,25 +5,20 @@ package orders
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
-
-	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// ForceShipService carries the per-request state for the
-// ForceShip endpoint of OrderService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ForceShipService runs OrderService.ForceShip for one request.
 type ForceShipService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewForceShipService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewForceShipService binds ForceShipService to ctx; its Logger carries ctx's trace ids.
 func NewForceShipService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ForceShipService {
 	return &ForceShipService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewForceShipService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 	}
 }
 
-// ForceShip is the service entry point. Replace the
-// TODO with the real implementation.
+// Admin force-ship. Idempotent.
+//
+// ForceShip implements OrderService.ForceShip.
 func (l *ForceShipService) ForceShip(req *types.GetOrderReq) (*types.Order, error) {
 	// TODO: implement
 	return nil, nil

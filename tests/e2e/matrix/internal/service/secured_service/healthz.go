@@ -5,25 +5,20 @@ package services
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// HealthzService carries the per-request state for the
-// Healthz endpoint of SecuredService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// HealthzService runs SecuredService.Healthz for one request.
 type HealthzService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewHealthzService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewHealthzService binds HealthzService to ctx; its Logger carries ctx's trace ids.
 func NewHealthzService(ctx context.Context, svcCtx *svccontext.ServiceContext) *HealthzService {
 	return &HealthzService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,12 +27,9 @@ func NewHealthzService(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 	}
 }
 
-// Public liveness probe sits inside an otherwise-authenticated
-// service. The three @ignore* decorators clear inherited middlewares,
-// security, and tags so monitoring tools can poll without credentials
-// and the endpoint is grouped separately from the admin surface.
-// Healthz is the service entry point. Replace the
-// TODO with the real implementation.
+// Liveness probe - public on purpose.
+//
+// Healthz implements SecuredService.Healthz.
 func (l *HealthzService) Healthz() (*types.HealthResp, error) {
 	// TODO: implement
 	return nil, nil

@@ -6,10 +6,10 @@ import (
 	"context"
 	"net/http"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/rawmodes"
-	scalars "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/rawmodes"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -22,7 +22,7 @@ type RqPageService struct {
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewRqPageService constructs a fresh service instance bound to ctx.
+// NewRqPageService binds RqPageService to ctx; its Logger carries ctx's trace ids.
 func NewRqPageService(ctx context.Context, svcCtx *svccontext.ServiceContext) *RqPageService {
 	return &RqPageService{
 		Logger: log.Default().WithContext(ctx),

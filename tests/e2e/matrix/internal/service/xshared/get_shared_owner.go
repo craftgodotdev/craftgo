@@ -5,25 +5,20 @@ package xshared
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetSharedOwnerService carries the per-request state for the
-// GetSharedOwner endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetSharedOwnerService runs XRefsService.GetSharedOwner for one request.
 type GetSharedOwnerService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetSharedOwnerService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetSharedOwnerService binds GetSharedOwnerService to ctx; its Logger carries ctx's trace ids.
 func NewGetSharedOwnerService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetSharedOwnerService {
 	return &GetSharedOwnerService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewGetSharedOwnerService(ctx context.Context, svcCtx *svccontext.ServiceCon
 	}
 }
 
-// GetSharedOwner is the service entry point. Replace the
-// TODO with the real implementation.
+// A method of the xshared XRefsService: documented beside the methods of xrefs' service of the same name.
+//
+// GetSharedOwner implements XRefsService.GetSharedOwner.
 func (l *GetSharedOwnerService) GetSharedOwner() (*types.XOwner, error) {
 	// TODO: implement
 	return nil, nil

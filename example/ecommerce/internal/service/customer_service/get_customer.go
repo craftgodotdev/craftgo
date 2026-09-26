@@ -5,25 +5,20 @@ package customers
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/customers"
-
-	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/customers"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// GetCustomerService carries the per-request state for the
-// GetCustomer endpoint of CustomerService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetCustomerService runs CustomerService.GetCustomer for one request.
 type GetCustomerService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetCustomerService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetCustomerService binds GetCustomerService to ctx; its Logger carries ctx's trace ids.
 func NewGetCustomerService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetCustomerService {
 	return &GetCustomerService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewGetCustomerService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// GetCustomer is the service entry point. Replace the
-// TODO with the real implementation.
+// Fetch one customer.
+//
+// GetCustomer implements CustomerService.GetCustomer.
 func (l *GetCustomerService) GetCustomer(req *types.GetCustomerReq) (*types.Customer, error) {
 	// TODO: implement
 	return nil, nil

@@ -5,25 +5,20 @@ package nested
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/nested"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/nested"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoHeaderedRespService carries the per-request state for the
-// EchoHeaderedResp endpoint of NestedService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoHeaderedRespService runs NestedService.EchoHeaderedResp for one request.
 type EchoHeaderedRespService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoHeaderedRespService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoHeaderedRespService binds EchoHeaderedRespService to ctx; its Logger carries ctx's trace ids.
 func NewEchoHeaderedRespService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoHeaderedRespService {
 	return &EchoHeaderedRespService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewEchoHeaderedRespService(ctx context.Context, svcCtx *svccontext.ServiceC
 	}
 }
 
-// EchoHeaderedResp is the service entry point. Replace the
-// TODO with the real implementation.
+// EchoHeaderedResp implements NestedService.EchoHeaderedResp.
 func (l *EchoHeaderedRespService) EchoHeaderedResp(req *types.ResponseAudit) (*types.HeaderedResp, error) {
 	// TODO: implement
 	return nil, nil

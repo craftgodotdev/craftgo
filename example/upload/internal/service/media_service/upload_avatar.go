@@ -5,25 +5,20 @@ package media
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/upload/internal/types/media"
-
-	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/upload/internal/types/media"
+	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 )
 
-// UploadAvatarService carries the per-request state for the
-// UploadAvatar endpoint of MediaService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// UploadAvatarService runs MediaService.UploadAvatar for one request.
 type UploadAvatarService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewUploadAvatarService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewUploadAvatarService binds UploadAvatarService to ctx; its Logger carries ctx's trace ids.
 func NewUploadAvatarService(ctx context.Context, svcCtx *svccontext.ServiceContext) *UploadAvatarService {
 	return &UploadAvatarService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewUploadAvatarService(ctx context.Context, svcCtx *svccontext.ServiceConte
 	}
 }
 
-// UploadAvatar is the service entry point. Replace the
-// TODO with the real implementation.
+// Upload a user avatar (PNG/JPEG/WebP, ≤5MB).
+//
+// UploadAvatar implements MediaService.UploadAvatar.
 func (l *UploadAvatarService) UploadAvatar(req *types.UploadAvatarReq) (*types.UploadResult, error) {
 	return storeUpload(l.svcCtx.Store, req.Image)
 }

@@ -4,25 +4,21 @@ package orders
 
 import (
 	"context"
-	shared "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
 
-	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// PublicHealthService carries the per-request state for the
-// PublicHealth endpoint of OrderService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// PublicHealthService runs OrderService.PublicHealth for one request.
 type PublicHealthService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPublicHealthService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewPublicHealthService binds PublicHealthService to ctx; its Logger carries ctx's trace ids.
 func NewPublicHealthService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PublicHealthService {
 	return &PublicHealthService{
 		Logger: log.Default().WithContext(ctx),
@@ -31,11 +27,9 @@ func NewPublicHealthService(ctx context.Context, svcCtx *svccontext.ServiceConte
 	}
 }
 
-// Pure ignore: clears EVERY inherited middleware, starts from
-// empty. Used for the public-facing health probe that must NOT
-// require auth or rate-limit.
-// PublicHealth is the service entry point. Replace the
-// TODO with the real implementation.
+// Public readiness probe - bypasses every parent middleware AND security.
+//
+// PublicHealth implements OrderService.PublicHealth.
 func (l *PublicHealthService) PublicHealth() (*shared.OkResp, error) {
 	// TODO: implement
 	return nil, nil

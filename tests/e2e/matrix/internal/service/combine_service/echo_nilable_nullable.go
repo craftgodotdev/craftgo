@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoNilableNullableService carries the per-request state for the
-// EchoNilableNullable endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoNilableNullableService runs CombineService.EchoNilableNullable for one request.
 type EchoNilableNullableService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoNilableNullableService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoNilableNullableService binds EchoNilableNullableService to ctx; its Logger carries ctx's trace ids.
 func NewEchoNilableNullableService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoNilableNullableService {
 	return &EchoNilableNullableService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewEchoNilableNullableService(ctx context.Context, svcCtx *svccontext.Servi
 	}
 }
 
-// EchoNilableNullable is the service entry point. Replace the
-// TODO with the real implementation.
+// EchoNilableNullable implements CombineService.EchoNilableNullable.
 func (l *EchoNilableNullableService) EchoNilableNullable(req *types.NilableNullable) (*types.NilableNullable, error) {
 	// TODO: implement
 	return nil, nil

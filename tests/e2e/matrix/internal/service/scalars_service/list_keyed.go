@@ -5,25 +5,20 @@ package scalars
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ListKeyedService carries the per-request state for the
-// ListKeyed endpoint of ScalarsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ListKeyedService runs ScalarsService.ListKeyed for one request.
 type ListKeyedService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewListKeyedService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewListKeyedService binds ListKeyedService to ctx; its Logger carries ctx's trace ids.
 func NewListKeyedService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ListKeyedService {
 	return &ListKeyedService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewListKeyedService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 	}
 }
 
-// ListKeyed is the service entry point. Replace the
-// TODO with the real implementation.
+// List by key. A generic mixin over a nested mixin binds each query field with the type its own level declares.
+//
+// ListKeyed implements ScalarsService.ListKeyed.
 func (l *ListKeyedService) ListKeyed(req *types.ListKeyedReq) (*types.OrderPage, error) {
 	// TODO: implement
 	return nil, nil

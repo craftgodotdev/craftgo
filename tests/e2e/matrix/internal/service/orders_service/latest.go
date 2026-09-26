@@ -5,25 +5,20 @@ package runtime
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/runtime"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/runtime"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// LatestService carries the per-request state for the
-// Latest endpoint of OrdersService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// LatestService runs OrdersService.Latest for one request.
 type LatestService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewLatestService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewLatestService binds LatestService to ctx; its Logger carries ctx's trace ids.
 func NewLatestService(ctx context.Context, svcCtx *svccontext.ServiceContext) *LatestService {
 	return &LatestService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewLatestService(ctx context.Context, svcCtx *svccontext.ServiceContext) *L
 	}
 }
 
-// Latest is the service entry point. Replace the
-// TODO with the real implementation.
+// Latest implements OrdersService.Latest.
 func (l *LatestService) Latest() (*types.RtOrder, error) {
 	return &types.RtOrder{ID: l.svcCtx.OrderID, Total: l.svcCtx.OrderTotal}, nil
 }

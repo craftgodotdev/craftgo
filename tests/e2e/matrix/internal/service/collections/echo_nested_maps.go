@@ -5,25 +5,20 @@ package collections
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoNestedMapsService carries the per-request state for the
-// EchoNestedMaps endpoint of Collections. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoNestedMapsService runs Collections.EchoNestedMaps for one request.
 type EchoNestedMapsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoNestedMapsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoNestedMapsService binds EchoNestedMapsService to ctx; its Logger carries ctx's trace ids.
 func NewEchoNestedMapsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoNestedMapsService {
 	return &EchoNestedMapsService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewEchoNestedMapsService(ctx context.Context, svcCtx *svccontext.ServiceCon
 	}
 }
 
-// EchoNestedMaps is the service entry point. Replace the
-// TODO with the real implementation.
+// EchoNestedMaps implements Collections.EchoNestedMaps.
 func (l *EchoNestedMapsService) EchoNestedMaps(req *types.Map_Nested) (*types.Map_Nested, error) {
 	// TODO: implement
 	return nil, nil

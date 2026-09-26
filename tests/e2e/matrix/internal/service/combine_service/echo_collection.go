@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoCollectionService carries the per-request state for the
-// EchoCollection endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoCollectionService runs CombineService.EchoCollection for one request.
 type EchoCollectionService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoCollectionService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoCollectionService binds EchoCollectionService to ctx; its Logger carries ctx's trace ids.
 func NewEchoCollectionService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoCollectionService {
 	return &EchoCollectionService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewEchoCollectionService(ctx context.Context, svcCtx *svccontext.ServiceCon
 	}
 }
 
-// EchoCollection is the service entry point. Replace the
-// TODO with the real implementation.
+// Echo the array / map default shapes. The map<,>?-with-object-default field is expected to be rejected at codegen time.
+//
+// EchoCollection implements CombineService.EchoCollection.
 func (l *EchoCollectionService) EchoCollection(req *types.DefaultsCollection) (*types.DefaultsCollection, error) {
 	// TODO: implement
 	return nil, nil

@@ -5,25 +5,20 @@ package scalars
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PageKeyedService carries the per-request state for the
-// PageKeyed endpoint of ScalarsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// PageKeyedService runs ScalarsService.PageKeyed for one request.
 type PageKeyedService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPageKeyedService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewPageKeyedService binds PageKeyedService to ctx; its Logger carries ctx's trace ids.
 func NewPageKeyedService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PageKeyedService {
 	return &PageKeyedService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewPageKeyedService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 	}
 }
 
-// PageKeyed is the service entry point. Replace the
-// TODO with the real implementation.
+// Page keys. A generic response sends its argument-typed field in a header, and the body keeps the field a nested mixin brings as declared.
+//
+// PageKeyed implements ScalarsService.PageKeyed.
 func (l *PageKeyedService) PageKeyed() (*types.KeyedPage[types.Priority], error) {
 	// TODO: implement
 	return nil, nil

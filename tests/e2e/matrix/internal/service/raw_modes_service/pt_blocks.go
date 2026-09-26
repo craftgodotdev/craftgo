@@ -6,10 +6,10 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/craftgodotdev/craftgo/pkg/server"
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/rawmodes"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/rawmodes"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -22,7 +22,7 @@ type PtBlocksService struct {
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPtBlocksService constructs a fresh service instance bound to ctx.
+// NewPtBlocksService binds PtBlocksService to ctx; its Logger carries ctx's trace ids.
 func NewPtBlocksService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PtBlocksService {
 	return &PtBlocksService{
 		Logger: log.Default().WithContext(ctx),

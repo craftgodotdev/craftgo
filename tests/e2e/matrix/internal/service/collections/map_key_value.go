@@ -5,25 +5,20 @@ package collections
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// MapKeyValueService carries the per-request state for the
-// MapKeyValue endpoint of Collections. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// MapKeyValueService runs Collections.MapKeyValue for one request.
 type MapKeyValueService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewMapKeyValueService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewMapKeyValueService binds MapKeyValueService to ctx; its Logger carries ctx's trace ids.
 func NewMapKeyValueService(ctx context.Context, svcCtx *svccontext.ServiceContext) *MapKeyValueService {
 	return &MapKeyValueService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,8 @@ func NewMapKeyValueService(ctx context.Context, svcCtx *svccontext.ServiceContex
 }
 
 // MapKeyValue is the scalar-on-both-sides map case.
-// MapKeyValue is the service entry point. Replace the
-// TODO with the real implementation.
+//
+// MapKeyValue implements Collections.MapKeyValue.
 func (l *MapKeyValueService) MapKeyValue(req *types.Map_KeyAndValue) (*types.Map_KeyAndValue, error) {
 	// TODO: implement
 	return nil, nil

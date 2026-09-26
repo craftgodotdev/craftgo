@@ -5,25 +5,20 @@ package services
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ListItemsService carries the per-request state for the
-// ListItems endpoint of HeaderEchoService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ListItemsService runs HeaderEchoService.ListItems for one request.
 type ListItemsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewListItemsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewListItemsService binds ListItemsService to ctx; its Logger carries ctx's trace ids.
 func NewListItemsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ListItemsService {
 	return &ListItemsService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewListItemsService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 	}
 }
 
-// ListItems is the service entry point. Replace the
-// TODO with the real implementation.
+// List items with the total surfaced via response header and the auth cookie refreshed in passing.
+//
+// ListItems implements HeaderEchoService.ListItems.
 func (l *ListItemsService) ListItems() (*types.PaginatedResp, error) {
 	// TODO: implement
 	return nil, nil

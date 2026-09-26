@@ -4,26 +4,22 @@ package xrefs
 
 import (
 	"context"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"time"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// StampsService carries the per-request state for the
-// Stamps endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// StampsService runs XRefsService.Stamps for one request.
 type StampsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewStampsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewStampsService binds StampsService to ctx; its Logger carries ctx's trace ids.
 func NewStampsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *StampsService {
 	return &StampsService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +28,9 @@ func NewStampsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *S
 	}
 }
 
-// Stamps is the service entry point. Replace the
-// TODO with the real implementation.
+// A generic response over datetime: the stub imports time for the type argument.
+//
+// Stamps implements XRefsService.Stamps.
 func (l *StampsService) Stamps() (*xshared.XBag[time.Time], error) {
 	// TODO: implement
 	return nil, nil

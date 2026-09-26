@@ -5,25 +5,20 @@ package catalog
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/catalog"
-
-	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/catalog"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// GetProductService carries the per-request state for the
-// GetProduct endpoint of CatalogService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetProductService runs CatalogService.GetProduct for one request.
 type GetProductService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetProductService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetProductService binds GetProductService to ctx; its Logger carries ctx's trace ids.
 func NewGetProductService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetProductService {
 	return &GetProductService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewGetProductService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// GetProduct is the service entry point. Replace the
-// TODO with the real implementation.
+// Fetch one product by id.
+//
+// GetProduct implements CatalogService.GetProduct.
 func (l *GetProductService) GetProduct(req *types.GetProductReq) (*types.Product, error) {
 	// TODO: implement
 	return nil, nil

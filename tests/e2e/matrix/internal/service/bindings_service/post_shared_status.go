@@ -5,25 +5,20 @@ package bindings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PostSharedStatusService carries the per-request state for the
-// PostSharedStatus endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// PostSharedStatusService runs BindingsService.PostSharedStatus for one request.
 type PostSharedStatusService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPostSharedStatusService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewPostSharedStatusService binds PostSharedStatusService to ctx; its Logger carries ctx's trace ids.
 func NewPostSharedStatusService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PostSharedStatusService {
 	return &PostSharedStatusService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewPostSharedStatusService(ctx context.Context, svcCtx *svccontext.ServiceC
 	}
 }
 
-// PostSharedStatus is the service entry point. Replace the
-// TODO with the real implementation.
+// PostSharedStatus implements BindingsService.PostSharedStatus.
 func (l *PostSharedStatusService) PostSharedStatus(req *types.CountsPayload) (*types.CountsPayload, error) {
 	// TODO: implement
 	return nil, nil

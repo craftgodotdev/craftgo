@@ -5,25 +5,20 @@ package prefixvar
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/prefixvar"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/prefixvar"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetBlobService carries the per-request state for the
-// GetBlob endpoint of BlobService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetBlobService runs BlobService.GetBlob for one request.
 type GetBlobService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetBlobService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetBlobService binds GetBlobService to ctx; its Logger carries ctx's trace ids.
 func NewGetBlobService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetBlobService {
 	return &GetBlobService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewGetBlobService(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 	}
 }
 
-// GetBlob is the service entry point. Replace the
-// TODO with the real implementation.
+// Fetch a blob by its slash-separated key. The trailing {key...} variable binds the key field.
+//
+// GetBlob implements BlobService.GetBlob.
 func (l *GetBlobService) GetBlob(req *types.BlobReq) (*types.BlobInfo, error) {
 	return &types.BlobInfo{Key: req.Key}, nil
 }

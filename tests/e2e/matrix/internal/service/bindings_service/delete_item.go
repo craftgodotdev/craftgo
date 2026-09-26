@@ -5,25 +5,20 @@ package bindings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// DeleteItemService carries the per-request state for the
-// DeleteItem endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// DeleteItemService runs BindingsService.DeleteItem for one request.
 type DeleteItemService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewDeleteItemService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewDeleteItemService binds DeleteItemService to ctx; its Logger carries ctx's trace ids.
 func NewDeleteItemService(ctx context.Context, svcCtx *svccontext.ServiceContext) *DeleteItemService {
 	return &DeleteItemService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,12 +27,9 @@ func NewDeleteItemService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// DeleteItem reuses GetItemReq (path-only DTO) and pins two
-// errors: a 404 (RecordNotFound, bodyless) and a 403
-// (AccessDenied, typed body). Idempotent - repeated deletes
-// surface the same response.
-// DeleteItem is the service entry point. Replace the
-// TODO with the real implementation.
+// Delete an item. Idempotent. Surfaces RecordNotFound (404) for unknown ids and AccessDenied (403) when the caller lacks permission.
+//
+// DeleteItem implements BindingsService.DeleteItem.
 func (l *DeleteItemService) DeleteItem(req *types.GetItemReq) (*types.Item, error) {
 	// TODO: implement
 	return nil, nil

@@ -5,26 +5,21 @@ package orders
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
-	shared "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
-
-	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// TrackPublicService carries the per-request state for the
-// TrackPublic endpoint of OrderService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// TrackPublicService runs OrderService.TrackPublic for one request.
 type TrackPublicService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewTrackPublicService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewTrackPublicService binds TrackPublicService to ctx; its Logger carries ctx's trace ids.
 func NewTrackPublicService(ctx context.Context, svcCtx *svccontext.ServiceContext) *TrackPublicService {
 	return &TrackPublicService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,12 +28,9 @@ func NewTrackPublicService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// Ignore + replace: clears inherited chain THEN appends fresh
-// middleware. Useful when a public endpoint still needs SOME
-// cross-cutting concerns (CORS for browser callers) but none of
-// the auth/rate-limit chain.
-// TrackPublic is the service entry point. Replace the
-// TODO with the real implementation.
+// Public order tracking by id - CORS only, no auth.
+//
+// TrackPublic implements OrderService.TrackPublic.
 func (l *TrackPublicService) TrackPublic(req *types.GetOrderReq) (*shared.OkResp, error) {
 	// TODO: implement
 	return nil, nil

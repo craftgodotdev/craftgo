@@ -5,25 +5,20 @@ package numbers
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/numbers"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/numbers"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// AddMixedService carries the per-request state for the
-// AddMixed endpoint of NumbersService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// AddMixedService runs NumbersService.AddMixed for one request.
 type AddMixedService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewAddMixedService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewAddMixedService binds AddMixedService to ctx; its Logger carries ctx's trace ids.
 func NewAddMixedService(ctx context.Context, svcCtx *svccontext.ServiceContext) *AddMixedService {
 	return &AddMixedService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewAddMixedService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// AddMixed is the service entry point. Replace the
-// TODO with the real implementation.
+// AddMixed implements NumbersService.AddMixed.
 func (l *AddMixedService) AddMixed(req *types.MixedReq) (*types.MixedReq, error) {
 	// TODO: implement
 	return nil, nil

@@ -5,25 +5,20 @@ package adminapi
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/adminapi"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/adminapi"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PingV2Service carries the per-request state for the
-// PingV2 endpoint of AdminApi. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// PingV2Service runs AdminApi.PingV2 for one request.
 type PingV2Service struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPingV2Service constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewPingV2Service binds PingV2Service to ctx; its Logger carries ctx's trace ids.
 func NewPingV2Service(ctx context.Context, svcCtx *svccontext.ServiceContext) *PingV2Service {
 	return &PingV2Service{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewPingV2Service(ctx context.Context, svcCtx *svccontext.ServiceContext) *P
 	}
 }
 
-// PingV2 is the service entry point. Replace the
-// TODO with the real implementation.
+// PingV2 implements AdminApi.PingV2.
 func (l *PingV2Service) PingV2() (*types.VerResp, error) {
 	return &types.VerResp{Version: "v2", Ok: true}, nil
 }

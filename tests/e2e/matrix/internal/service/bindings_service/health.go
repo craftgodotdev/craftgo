@@ -6,22 +6,18 @@ import (
 	"context"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// HealthService carries the per-request state for the
-// Health endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// HealthService runs BindingsService.Health for one request.
 type HealthService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewHealthService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewHealthService binds HealthService to ctx; its Logger carries ctx's trace ids.
 func NewHealthService(ctx context.Context, svcCtx *svccontext.ServiceContext) *HealthService {
 	return &HealthService{
 		Logger: log.Default().WithContext(ctx),
@@ -30,11 +26,9 @@ func NewHealthService(ctx context.Context, svcCtx *svccontext.ServiceContext) *H
 	}
 }
 
-// Health is the bodyless probe - no request type, no response
-// type. Only the @errors declaration rides on the method line so
-// the OpenAPI doc still lists the rate-limit envelope.
-// Health is the service entry point. Replace the
-// TODO with the real implementation.
+// Health probe. No request, no response - just a 200 OK when the service is reachable, plus the rate-limit 429 envelope.
+//
+// Health implements BindingsService.Health.
 func (l *HealthService) Health() error {
 	// TODO: implement
 	return nil

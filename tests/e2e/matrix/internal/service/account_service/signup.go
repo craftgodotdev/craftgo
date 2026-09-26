@@ -4,25 +4,21 @@ package services
 
 import (
 	"context"
-	shared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// SignupService carries the per-request state for the
-// Signup endpoint of AccountService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// SignupService runs AccountService.Signup for one request.
 type SignupService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewSignupService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewSignupService binds SignupService to ctx; its Logger carries ctx's trace ids.
 func NewSignupService(ctx context.Context, svcCtx *svccontext.ServiceContext) *SignupService {
 	return &SignupService{
 		Logger: log.Default().WithContext(ctx),
@@ -31,8 +27,9 @@ func NewSignupService(ctx context.Context, svcCtx *svccontext.ServiceContext) *S
 	}
 }
 
-// Signup is the service entry point. Replace the
-// TODO with the real implementation.
+// Sign up - public, only inherits rate limiting.
+//
+// Signup implements AccountService.Signup.
 func (l *SignupService) Signup() (*shared.ID, error) {
 	// TODO: implement
 	return nil, nil

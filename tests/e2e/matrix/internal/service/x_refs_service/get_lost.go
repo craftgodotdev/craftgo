@@ -5,26 +5,21 @@ package xrefs
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetLostService carries the per-request state for the
-// GetLost endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetLostService runs XRefsService.GetLost for one request.
 type GetLostService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetLostService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetLostService binds GetLostService to ctx; its Logger carries ctx's trace ids.
 func NewGetLostService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetLostService {
 	return &GetLostService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewGetLostService(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 	}
 }
 
-// GetLost is the service entry point. Replace the
-// TODO with the real implementation.
+// Pins @errors in its array form over an error two packages declare: the 404 is a oneOf of this package's XLost (XrefsXLostErr) and xshared's (XsharedXLostErr).
+//
+// GetLost implements XRefsService.GetLost.
 func (l *GetLostService) GetLost(req *types.XGetReq) (*xshared.XOwner, error) {
 	// TODO: implement
 	return nil, nil

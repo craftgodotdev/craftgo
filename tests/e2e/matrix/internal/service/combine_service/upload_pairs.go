@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// UploadPairsService carries the per-request state for the
-// UploadPairs endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// UploadPairsService runs CombineService.UploadPairs for one request.
 type UploadPairsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewUploadPairsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewUploadPairsService binds UploadPairsService to ctx; its Logger carries ctx's trace ids.
 func NewUploadPairsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *UploadPairsService {
 	return &UploadPairsService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewUploadPairsService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// UploadPairs is the service entry point. Replace the
-// TODO with the real implementation.
+// Upload a file beside the parts of a mixin with a @requiresOneOf. The multipart body carries the group: sending neither a nor b fails.
+//
+// UploadPairs implements CombineService.UploadPairs.
 func (l *UploadPairsService) UploadPairs(req *types.PairsUpload) (*types.PairsDoc, error) {
 	// TODO: implement
 	return nil, nil

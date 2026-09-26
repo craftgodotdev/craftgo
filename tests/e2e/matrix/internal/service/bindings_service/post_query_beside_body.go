@@ -5,25 +5,20 @@ package bindings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PostQueryBesideBodyService carries the per-request state for the
-// PostQueryBesideBody endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// PostQueryBesideBodyService runs BindingsService.PostQueryBesideBody for one request.
 type PostQueryBesideBodyService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPostQueryBesideBodyService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewPostQueryBesideBodyService binds PostQueryBesideBodyService to ctx; its Logger carries ctx's trace ids.
 func NewPostQueryBesideBodyService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PostQueryBesideBodyService {
 	return &PostQueryBesideBodyService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewPostQueryBesideBodyService(ctx context.Context, svcCtx *svccontext.Servi
 	}
 }
 
-// PostQueryBesideBody is the service entry point. Replace the
-// TODO with the real implementation.
+// PostQueryBesideBody implements BindingsService.PostQueryBesideBody.
 func (l *PostQueryBesideBodyService) PostQueryBesideBody(req *types.QueryBesideBodyReq) (*types.DoneResp, error) {
 	// TODO: implement
 	return nil, nil

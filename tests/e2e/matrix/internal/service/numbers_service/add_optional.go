@@ -5,25 +5,20 @@ package numbers
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/numbers"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/numbers"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// AddOptionalService carries the per-request state for the
-// AddOptional endpoint of NumbersService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// AddOptionalService runs NumbersService.AddOptional for one request.
 type AddOptionalService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewAddOptionalService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewAddOptionalService binds AddOptionalService to ctx; its Logger carries ctx's trace ids.
 func NewAddOptionalService(ctx context.Context, svcCtx *svccontext.ServiceContext) *AddOptionalService {
 	return &AddOptionalService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewAddOptionalService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// AddOptional is the service entry point. Replace the
-// TODO with the real implementation.
+// AddOptional implements NumbersService.AddOptional.
 func (l *AddOptionalService) AddOptional(req *types.OptionalReq) (*types.OptionalReq, error) {
 	// TODO: implement
 	return nil, nil

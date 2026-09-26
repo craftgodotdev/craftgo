@@ -5,26 +5,21 @@ package services
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-	shared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// DeleteAccountService carries the per-request state for the
-// DeleteAccount endpoint of AccountService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// DeleteAccountService runs AccountService.DeleteAccount for one request.
 type DeleteAccountService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewDeleteAccountService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewDeleteAccountService binds DeleteAccountService to ctx; its Logger carries ctx's trace ids.
 func NewDeleteAccountService(ctx context.Context, svcCtx *svccontext.ServiceContext) *DeleteAccountService {
 	return &DeleteAccountService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewDeleteAccountService(ctx context.Context, svcCtx *svccontext.ServiceCont
 	}
 }
 
-// DeleteAccount is the service entry point. Replace the
-// TODO with the real implementation.
+// Delete an account - admin-only. Chain: [RateLimit, BasicAuth, Audit].
+//
+// DeleteAccount implements AccountService.DeleteAccount.
 func (l *DeleteAccountService) DeleteAccount(req *types.DeleteAccountReq) (*shared.ID, error) {
 	// TODO: implement
 	return nil, nil

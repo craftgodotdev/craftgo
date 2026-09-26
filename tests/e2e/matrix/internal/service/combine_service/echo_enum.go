@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoEnumService carries the per-request state for the
-// EchoEnum endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoEnumService runs CombineService.EchoEnum for one request.
 type EchoEnumService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoEnumService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoEnumService binds EchoEnumService to ctx; its Logger carries ctx's trace ids.
 func NewEchoEnumService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoEnumService {
 	return &EchoEnumService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewEchoEnumService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// EchoEnum is the service entry point. Replace the
-// TODO with the real implementation.
+// Echo the enum default. Missing c on the wire results in c=Red after pre-fill.
+//
+// EchoEnum implements CombineService.EchoEnum.
 func (l *EchoEnumService) EchoEnum(req *types.DefaultsEnum) (*types.DefaultsEnum, error) {
 	// TODO: implement
 	return nil, nil

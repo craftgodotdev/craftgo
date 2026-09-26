@@ -5,25 +5,20 @@ package bindings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ListPageService carries the per-request state for the
-// ListPage endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ListPageService runs BindingsService.ListPage for one request.
 type ListPageService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewListPageService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewListPageService binds ListPageService to ctx; its Logger carries ctx's trace ids.
 func NewListPageService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ListPageService {
 	return &ListPageService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,11 +27,9 @@ func NewListPageService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// ListPage auto-binds a field that carries @json to the query string:
-// the binder reads `?pageSize`, and a value below its bound is
-// reported under that name.
-// ListPage is the service entry point. Replace the
-// TODO with the real implementation.
+// List one page of items. `pageSize` rides the query string; a value below its bound is reported as pageSize.
+//
+// ListPage implements BindingsService.ListPage.
 func (l *ListPageService) ListPage(req *types.PageReq) (*types.ItemList, error) {
 	// TODO: implement
 	return nil, nil

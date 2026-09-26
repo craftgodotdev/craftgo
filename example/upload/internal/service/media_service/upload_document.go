@@ -5,25 +5,20 @@ package media
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/upload/internal/types/media"
-
-	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/upload/internal/types/media"
+	"github.com/craftgodotdev/craftgo/example/upload/svccontext"
 )
 
-// UploadDocumentService carries the per-request state for the
-// UploadDocument endpoint of MediaService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// UploadDocumentService runs MediaService.UploadDocument for one request.
 type UploadDocumentService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewUploadDocumentService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewUploadDocumentService binds UploadDocumentService to ctx; its Logger carries ctx's trace ids.
 func NewUploadDocumentService(ctx context.Context, svcCtx *svccontext.ServiceContext) *UploadDocumentService {
 	return &UploadDocumentService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewUploadDocumentService(ctx context.Context, svcCtx *svccontext.ServiceCon
 	}
 }
 
-// UploadDocument is the service entry point. Replace the
-// TODO with the real implementation.
+// Upload a PDF document with title + optional notes.
+//
+// UploadDocument implements MediaService.UploadDocument.
 func (l *UploadDocumentService) UploadDocument(req *types.UploadDocumentReq) (*types.UploadResult, error) {
 	// title / notes are validated form fields; a real service would persist
 	// them alongside the blob. Here we store the file and echo its metadata.

@@ -5,25 +5,20 @@ package collections
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoOptionalValuesService carries the per-request state for the
-// EchoOptionalValues endpoint of Collections. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoOptionalValuesService runs Collections.EchoOptionalValues for one request.
 type EchoOptionalValuesService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoOptionalValuesService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoOptionalValuesService binds EchoOptionalValuesService to ctx; its Logger carries ctx's trace ids.
 func NewEchoOptionalValuesService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoOptionalValuesService {
 	return &EchoOptionalValuesService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewEchoOptionalValuesService(ctx context.Context, svcCtx *svccontext.Servic
 	}
 }
 
-// EchoOptionalValues is the service entry point. Replace the
-// TODO with the real implementation.
+// EchoOptionalValues implements Collections.EchoOptionalValues.
 func (l *EchoOptionalValuesService) EchoOptionalValues(req *types.Map_OptionalValue) (*types.Map_OptionalValue, error) {
 	// TODO: implement
 	return nil, nil

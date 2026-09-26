@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// UploadSourceService carries the per-request state for the
-// UploadSource endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// UploadSourceService runs CombineService.UploadSource for one request.
 type UploadSourceService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewUploadSourceService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewUploadSourceService binds UploadSourceService to ctx; its Logger carries ctx's trace ids.
 func NewUploadSourceService(ctx context.Context, svcCtx *svccontext.ServiceContext) *UploadSourceService {
 	return &UploadSourceService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewUploadSourceService(ctx context.Context, svcCtx *svccontext.ServiceConte
 	}
 }
 
-// UploadSource is the service entry point. Replace the
-// TODO with the real implementation.
+// Upload a file or a link, exactly one. The multipart body carries the request type's own groups; an empty url part counts as absent.
+//
+// UploadSource implements CombineService.UploadSource.
 func (l *UploadSourceService) UploadSource(req *types.PairsSource) (*types.PairsDoc, error) {
 	// TODO: implement
 	return nil, nil

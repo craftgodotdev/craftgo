@@ -5,25 +5,20 @@ package xshared
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// DescribeService carries the per-request state for the
-// Describe endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// DescribeService runs XRefsService.Describe for one request.
 type DescribeService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewDescribeService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewDescribeService binds DescribeService to ctx; its Logger carries ctx's trace ids.
 func NewDescribeService(ctx context.Context, svcCtx *svccontext.ServiceContext) *DescribeService {
 	return &DescribeService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewDescribeService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// Describe is the service entry point. Replace the
-// TODO with the real implementation.
+// Shares its method name with xrefs' XRefsService.Describe: its operationId is its own and its body components are XsharedXRefsServiceDescribeReqBody and XsharedXRefsServiceDescribeRespBody.
+//
+// Describe implements XRefsService.Describe.
 func (l *DescribeService) Describe(req *types.XOwner) (*types.XOwner, error) {
 	// TODO: implement
 	return nil, nil

@@ -7,26 +7,21 @@ import (
 	"errors"
 	"io"
 
-	pb "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/pb/grpc"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
-	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 	"google.golang.org/grpc"
+
+	pb "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/pb/grpc"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ChatService carries the per-request state for the
-// Chat endpoint of Greeter. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ChatService runs Greeter.Chat for one request.
 type ChatService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewChatService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewChatService binds ChatService to ctx; its Logger carries ctx's trace ids.
 func NewChatService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ChatService {
 	return &ChatService{
 		Logger: log.Default().WithContext(ctx),

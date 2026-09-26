@@ -5,25 +5,20 @@ package scalars
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// TallyIntsService carries the per-request state for the
-// TallyInts endpoint of ScalarsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// TallyIntsService runs ScalarsService.TallyInts for one request.
 type TallyIntsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewTallyIntsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewTallyIntsService binds TallyIntsService to ctx; its Logger carries ctx's trace ids.
 func NewTallyIntsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *TallyIntsService {
 	return &TallyIntsService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewTallyIntsService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 	}
 }
 
-// TallyInts is the service entry point. Replace the
-// TODO with the real implementation.
+// Tally integers. A generic response writes its argument-typed header as the argument's type.
+//
+// TallyInts implements ScalarsService.TallyInts.
 func (l *TallyIntsService) TallyInts() (*types.Tallied[int], error) {
 	return &types.Tallied[int]{Tally: 3, Items: []int{4, 5, 6}}, nil
 }

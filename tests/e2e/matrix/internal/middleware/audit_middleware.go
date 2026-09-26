@@ -8,17 +8,13 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// NewAuditMiddleware constructs the Audit middleware.
+// Audit records the actor + action of every request that flows
+// through it. Paired with BasicAuth in the admin-reset endpoint of
+// SecuredService - that's the only endpoint that intentionally
+// drops the service-wide AuthRequired/RateLimit pair in favour of
+// its own chain.
 //
-// craftgo never overwrites this file after the first generation, so
-// add wiring (token store, logger, rate-limit budget, ...) or change
-// the param types freely.
-//
-// Wire it from main.go:
-//
-//	svc := svccontext.NewServiceContext()
-//	svc.Audit = middleware.NewAuditMiddleware(/* args */)
-//	routes.RegisterRoutes(srv, svc)
+// NewAuditMiddleware returns the Audit middleware, which ServiceContext's Audit field holds.
 func NewAuditMiddleware() server.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

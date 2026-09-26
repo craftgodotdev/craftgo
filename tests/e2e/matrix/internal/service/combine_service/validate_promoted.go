@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ValidatePromotedService carries the per-request state for the
-// ValidatePromoted endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ValidatePromotedService runs CombineService.ValidatePromoted for one request.
 type ValidatePromotedService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewValidatePromotedService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewValidatePromotedService binds ValidatePromotedService to ctx; its Logger carries ctx's trace ids.
 func NewValidatePromotedService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ValidatePromotedService {
 	return &ValidatePromotedService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewValidatePromotedService(ctx context.Context, svcCtx *svccontext.ServiceC
 	}
 }
 
-// ValidatePromoted is the service entry point. Replace the
-// TODO with the real implementation.
+// ValidatePromoted implements CombineService.ValidatePromoted.
 func (l *ValidatePromotedService) ValidatePromoted(req *types.PromotedContact) (*types.PromotedContact, error) {
 	// TODO: implement
 	return nil, nil

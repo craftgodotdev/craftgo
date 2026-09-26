@@ -4,25 +4,21 @@ package services
 
 import (
 	"context"
-	shared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ResetService carries the per-request state for the
-// Reset endpoint of AccountService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ResetService runs AccountService.Reset for one request.
 type ResetService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewResetService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewResetService binds ResetService to ctx; its Logger carries ctx's trace ids.
 func NewResetService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ResetService {
 	return &ResetService{
 		Logger: log.Default().WithContext(ctx),
@@ -31,13 +27,9 @@ func NewResetService(ctx context.Context, svcCtx *svccontext.ServiceContext) *Re
 	}
 }
 
-// Reset endpoint shows the reset-and-replace pattern inside an
-// extend block: drop the inherited chain entirely (RateLimit
-// from primary + BasicAuth + Audit from this extend), then
-// declare the method's own minimal chain. Final chain: [Audit]
-// only - both inherited layers cleared.
-// Reset is the service entry point. Replace the
-// TODO with the real implementation.
+// Hard reset - bypasses BasicAuth, uses its own minimal chain.
+//
+// Reset implements AccountService.Reset.
 func (l *ResetService) Reset() (*shared.ID, error) {
 	// TODO: implement
 	return nil, nil

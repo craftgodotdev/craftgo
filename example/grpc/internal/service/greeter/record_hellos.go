@@ -8,26 +8,21 @@ import (
 	"fmt"
 	"io"
 
-	pb "github.com/craftgodotdev/craftgo/example/grpc/internal/pb/greet"
-
-	"github.com/craftgodotdev/craftgo/example/grpc/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
 	"google.golang.org/grpc"
+
+	pb "github.com/craftgodotdev/craftgo/example/grpc/internal/pb/greet"
+	"github.com/craftgodotdev/craftgo/example/grpc/svccontext"
 )
 
-// RecordHellosService carries the per-request state for the
-// RecordHellos endpoint of Greeter. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// RecordHellosService runs Greeter.RecordHellos for one request.
 type RecordHellosService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewRecordHellosService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewRecordHellosService binds RecordHellosService to ctx; its Logger carries ctx's trace ids.
 func NewRecordHellosService(ctx context.Context, svcCtx *svccontext.ServiceContext) *RecordHellosService {
 	return &RecordHellosService{
 		Logger: log.Default().WithContext(ctx),
@@ -37,10 +32,8 @@ func NewRecordHellosService(ctx context.Context, svcCtx *svccontext.ServiceConte
 }
 
 // RecordHellos counts the greetings the client streams in.
-// Read requests with stream.Recv until io.EOF, then answer with
-// stream.SendAndClose.
-// RecordHellos is the service entry point. Replace the
-// TODO with the real implementation.
+//
+// RecordHellos reads requests with stream.Recv until io.EOF, then answers with stream.SendAndClose.
 func (l *RecordHellosService) RecordHellos(stream grpc.ClientStreamingServer[pb.HelloRequest, pb.HelloReply]) error {
 	n := 0
 	for {

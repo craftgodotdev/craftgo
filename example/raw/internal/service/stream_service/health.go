@@ -6,24 +6,22 @@ import (
 	"context"
 	"time"
 
-	types "github.com/craftgodotdev/craftgo/example/raw/internal/types/stream"
-
-	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/raw/internal/types/stream"
+	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
 )
 
 var started = time.Now()
 
-// HealthService carries the per-request state for the Health endpoint of
-// StreamService. The embedded log.Logger is pre-bound to the request
-// context so logging surfaces trace_id / span_id.
+// HealthService runs StreamService.Health for one request.
 type HealthService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewHealthService constructs a fresh service instance bound to ctx.
+// NewHealthService binds HealthService to ctx; its Logger carries ctx's trace ids.
 func NewHealthService(ctx context.Context, svcCtx *svccontext.ServiceContext) *HealthService {
 	return &HealthService{
 		Logger: log.Default().WithContext(ctx),

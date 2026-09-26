@@ -5,25 +5,20 @@ package bindings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ListPagedService carries the per-request state for the
-// ListPaged endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ListPagedService runs BindingsService.ListPaged for one request.
 type ListPagedService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewListPagedService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewListPagedService binds ListPagedService to ctx; its Logger carries ctx's trace ids.
 func NewListPagedService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ListPagedService {
 	return &ListPagedService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewListPagedService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 	}
 }
 
-// ListPaged is the service entry point. Replace the
-// TODO with the real implementation.
+// List items a page at a time. The `page` query value lands in the field the embedded Page mixin carries under its own name.
+//
+// ListPaged implements BindingsService.ListPaged.
 func (l *ListPagedService) ListPaged(req *types.PagedReq) (*types.ItemList, error) {
 	// TODO: implement
 	return nil, nil

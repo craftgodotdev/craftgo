@@ -5,25 +5,20 @@ package scalars
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetAuditedService carries the per-request state for the
-// GetAudited endpoint of ScalarsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetAuditedService runs ScalarsService.GetAudited for one request.
 type GetAuditedService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetAuditedService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetAuditedService binds GetAuditedService to ctx; its Logger carries ctx's trace ids.
 func NewGetAuditedService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetAuditedService {
 	return &GetAuditedService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewGetAuditedService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// GetAudited is the service entry point. Replace the
-// TODO with the real implementation.
+// Read audited record. Response type uses the mixin pattern (AuditFields embedded into Audited).
+//
+// GetAudited implements ScalarsService.GetAudited.
 func (l *GetAuditedService) GetAudited(req *types.GetOrderReq) (*types.Audited, error) {
 	// TODO: implement
 	return nil, nil

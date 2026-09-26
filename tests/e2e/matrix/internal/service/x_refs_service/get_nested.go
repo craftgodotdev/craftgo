@@ -5,26 +5,21 @@ package xrefs
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetNestedService carries the per-request state for the
-// GetNested endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetNestedService runs XRefsService.GetNested for one request.
 type GetNestedService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetNestedService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetNestedService binds GetNestedService to ctx; its Logger carries ctx's trace ids.
 func NewGetNestedService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetNestedService {
 	return &GetNestedService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewGetNestedService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 	}
 }
 
-// GetNested is the service entry point. Replace the
-// TODO with the real implementation.
+// Pins a @path + @default nested two mixin levels deep through a cross-package mixin (xshared.XParent embeds xshared.XGrand). The {gKey} segment and g32/p64 defaults must all survive flattening - the bare inner XGrand resolves as xshared.XGrand.
+//
+// GetNested implements XRefsService.GetNested.
 func (l *GetNestedService) GetNested(req *types.XNestedReq) (*xshared.XOwner, error) {
 	// TODO: implement
 	return nil, nil

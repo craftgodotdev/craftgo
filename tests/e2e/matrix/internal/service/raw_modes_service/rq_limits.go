@@ -4,12 +4,12 @@ package rawmodes
 
 import (
 	"context"
-	"net/http"
-
 	"errors"
 	"io"
+	"net/http"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -22,7 +22,7 @@ type RqLimitsService struct {
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewRqLimitsService constructs a fresh service instance bound to ctx.
+// NewRqLimitsService binds RqLimitsService to ctx; its Logger carries ctx's trace ids.
 func NewRqLimitsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *RqLimitsService {
 	return &RqLimitsService{
 		Logger: log.Default().WithContext(ctx),

@@ -4,26 +4,22 @@ package xrefs
 
 import (
 	"context"
-	log2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/log"
-	server "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/server"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	log2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/log"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/server"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// SignInService carries the per-request state for the
-// SignIn endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// SignInService runs XRefsService.SignIn for one request.
 type SignInService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewSignInService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewSignInService binds SignInService to ctx; its Logger carries ctx's trace ids.
 func NewSignInService(ctx context.Context, svcCtx *svccontext.ServiceContext) *SignInService {
 	return &SignInService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +28,9 @@ func NewSignInService(ctx context.Context, svcCtx *svccontext.ServiceContext) *S
 	}
 }
 
-// SignIn is the service entry point. Replace the
-// TODO with the real implementation.
+// A request from package server and a response from package log, each named like a package the handler or the stub imports: both files import them under another alias.
+//
+// SignIn implements XRefsService.SignIn.
 func (l *SignInService) SignIn(req *server.Credentials) (*log2.Entry, error) {
 	// TODO: implement
 	return nil, nil

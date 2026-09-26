@@ -10,24 +10,21 @@ import (
 	"net/http"
 	"time"
 
-	types "github.com/craftgodotdev/craftgo/example/raw/internal/types/stream"
-
+	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
+	types "github.com/craftgodotdev/craftgo/example/raw/internal/types/stream"
 	"github.com/craftgodotdev/craftgo/example/raw/svccontext"
-	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// SnapshotService carries the per-request state for the Snapshot endpoint of
-// StreamService. The embedded log.Logger is pre-bound to the request
-// context so logging surfaces trace_id / span_id.
+// SnapshotService runs StreamService.Snapshot for one request.
 type SnapshotService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewSnapshotService constructs a fresh service instance bound to ctx.
+// NewSnapshotService binds SnapshotService to ctx; its Logger carries ctx's trace ids.
 func NewSnapshotService(ctx context.Context, svcCtx *svccontext.ServiceContext) *SnapshotService {
 	return &SnapshotService{
 		Logger: log.Default().WithContext(ctx),

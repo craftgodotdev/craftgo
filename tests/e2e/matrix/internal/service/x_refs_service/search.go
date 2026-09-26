@@ -5,26 +5,21 @@ package xrefs
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// SearchService carries the per-request state for the
-// Search endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// SearchService runs XRefsService.Search for one request.
 type SearchService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewSearchService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewSearchService binds SearchService to ctx; its Logger carries ctx's trace ids.
 func NewSearchService(ctx context.Context, svcCtx *svccontext.ServiceContext) *SearchService {
 	return &SearchService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewSearchService(ctx context.Context, svcCtx *svccontext.ServiceContext) *S
 	}
 }
 
-// Search is the service entry point. Replace the
-// TODO with the real implementation.
+// Pins cross-package scalar BINDING casts. Handler must emit `req.Q = xshared.XEmail(r.URL.Query().Get("q"))` (qualified cast) - bare strings fail to compile against the *xshared.XEmail field type.
+//
+// Search implements XRefsService.Search.
 func (l *SearchService) Search(req *types.XSearchReq) (*xshared.XOwner, error) {
 	// TODO: implement
 	return nil, nil

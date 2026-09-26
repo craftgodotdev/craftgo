@@ -5,25 +5,20 @@ package bindings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// AddItemService carries the per-request state for the
-// AddItem endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// AddItemService runs BindingsService.AddItem for one request.
 type AddItemService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewAddItemService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewAddItemService binds AddItemService to ctx; its Logger carries ctx's trace ids.
 func NewAddItemService(ctx context.Context, svcCtx *svccontext.ServiceContext) *AddItemService {
 	return &AddItemService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,11 +27,9 @@ func NewAddItemService(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 	}
 }
 
-// AddItem carries the typical "create" envelope: a JSON body
-// plus the per-method @errors declaration listing both a Conflict
-// (DuplicateKey) and a BadRequest (InvalidInput).
-// AddItem is the service entry point. Replace the
-// TODO with the real implementation.
+// Create a new item. Surfaces DuplicateKey (409) on unique-constraint conflict and InvalidInput (400) on validation failure.
+//
+// AddItem implements BindingsService.AddItem.
 func (l *AddItemService) AddItem(req *types.AddItemReq) (*types.Item, error) {
 	// TODO: implement
 	return nil, nil

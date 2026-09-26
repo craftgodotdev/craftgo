@@ -5,26 +5,21 @@ package attachments
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/attachments"
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/attachments"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// ListAttachmentsService carries the per-request state for the
-// ListAttachments endpoint of AttachmentService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ListAttachmentsService runs AttachmentService.ListAttachments for one request.
 type ListAttachmentsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewListAttachmentsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewListAttachmentsService binds ListAttachmentsService to ctx; its Logger carries ctx's trace ids.
 func NewListAttachmentsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ListAttachmentsService {
 	return &ListAttachmentsService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewListAttachmentsService(ctx context.Context, svcCtx *svccontext.ServiceCo
 	}
 }
 
-// ListAttachments is the service entry point. Replace the
-// TODO with the real implementation.
+// List a task's attachments.
+//
+// ListAttachments implements AttachmentService.ListAttachments.
 func (l *ListAttachmentsService) ListAttachments(req *types.ListAttachmentsReq) (*shared.Page[types.Attachment], error) {
 	return l.svcCtx.Store.ListAttachments(req)
 }

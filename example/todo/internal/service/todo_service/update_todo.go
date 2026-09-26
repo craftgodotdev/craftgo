@@ -5,25 +5,20 @@ package todos
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/todo/internal/types/todos"
-
-	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/todo/internal/types/todos"
+	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 )
 
-// UpdateTodoService carries the per-request state for the
-// UpdateTodo endpoint of TodoService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// UpdateTodoService runs TodoService.UpdateTodo for one request.
 type UpdateTodoService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewUpdateTodoService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewUpdateTodoService binds UpdateTodoService to ctx; its Logger carries ctx's trace ids.
 func NewUpdateTodoService(ctx context.Context, svcCtx *svccontext.ServiceContext) *UpdateTodoService {
 	return &UpdateTodoService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewUpdateTodoService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// UpdateTodo is the service entry point. Replace the
-// TODO with the real implementation.
+// Patch a todo. Only supplied fields are updated.
+//
+// UpdateTodo implements TodoService.UpdateTodo.
 func (l *UpdateTodoService) UpdateTodo(req *types.UpdateTodoReq) (*types.Todo, error) {
 	// TODO: implement
 	return nil, nil

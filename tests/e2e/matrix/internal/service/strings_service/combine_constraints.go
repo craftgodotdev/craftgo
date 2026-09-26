@@ -5,25 +5,20 @@ package strings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/strings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/strings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// CombineConstraintsService carries the per-request state for the
-// CombineConstraints endpoint of StringsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// CombineConstraintsService runs StringsService.CombineConstraints for one request.
 type CombineConstraintsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewCombineConstraintsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewCombineConstraintsService binds CombineConstraintsService to ctx; its Logger carries ctx's trace ids.
 func NewCombineConstraintsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *CombineConstraintsService {
 	return &CombineConstraintsService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewCombineConstraintsService(ctx context.Context, svcCtx *svccontext.Servic
 	}
 }
 
-// CombineConstraints is the service entry point. Replace the
-// TODO with the real implementation.
+// Exercise stacked length + pattern + format decorators on a single field. The request body's three lines each layer the full validator menu.
+//
+// CombineConstraints implements StringsService.CombineConstraints.
 func (l *CombineConstraintsService) CombineConstraints(req *types.Str_Combos) (*types.Str_Combos, error) {
 	// TODO: implement
 	return nil, nil

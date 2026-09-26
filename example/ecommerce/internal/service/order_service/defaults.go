@@ -5,25 +5,20 @@ package orders
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
-
-	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// DefaultsService carries the per-request state for the
-// Defaults endpoint of OrderService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// DefaultsService runs OrderService.Defaults for one request.
 type DefaultsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewDefaultsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewDefaultsService binds DefaultsService to ctx; its Logger carries ctx's trace ids.
 func NewDefaultsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *DefaultsService {
 	return &DefaultsService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewDefaultsService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// Defaults is the service entry point. Replace the
-// TODO with the real implementation.
+// Echo every @default form.
+//
+// Defaults implements OrderService.Defaults.
 func (l *DefaultsService) Defaults(req *types.DefaultsShowcaseReq) (*types.DefaultsShowcaseReq, error) {
 	// TODO: implement
 	return nil, nil

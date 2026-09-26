@@ -4,14 +4,13 @@ package rawmodes
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
-	"fmt"
-
-	"github.com/craftgodotdev/craftgo/pkg/server"
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/rawmodes"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/rawmodes"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -24,7 +23,7 @@ type RrMultipartService struct {
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewRrMultipartService constructs a fresh service instance bound to ctx.
+// NewRrMultipartService binds RrMultipartService to ctx; its Logger carries ctx's trace ids.
 func NewRrMultipartService(ctx context.Context, svcCtx *svccontext.ServiceContext) *RrMultipartService {
 	return &RrMultipartService{
 		Logger: log.Default().WithContext(ctx),

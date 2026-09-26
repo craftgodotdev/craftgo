@@ -5,25 +5,20 @@ package services
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// CreateJobService carries the per-request state for the
-// CreateJob endpoint of StatusCodesService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// CreateJobService runs StatusCodesService.CreateJob for one request.
 type CreateJobService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewCreateJobService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewCreateJobService binds CreateJobService to ctx; its Logger carries ctx's trace ids.
 func NewCreateJobService(ctx context.Context, svcCtx *svccontext.ServiceContext) *CreateJobService {
 	return &CreateJobService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewCreateJobService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 	}
 }
 
-// CreateJob is the service entry point. Replace the
-// TODO with the real implementation.
+// Create a job; the row is persisted before the response returns.
+//
+// CreateJob implements StatusCodesService.CreateJob.
 func (l *CreateJobService) CreateJob(req *types.CreateJobReq) (*types.AsyncJobResp, error) {
 	// TODO: implement
 	return nil, nil

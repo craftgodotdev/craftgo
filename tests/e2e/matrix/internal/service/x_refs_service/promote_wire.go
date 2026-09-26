@@ -5,26 +5,21 @@ package xrefs
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PromoteWireService carries the per-request state for the
-// PromoteWire endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// PromoteWireService runs XRefsService.PromoteWire for one request.
 type PromoteWireService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPromoteWireService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewPromoteWireService binds PromoteWireService to ctx; its Logger carries ctx's trace ids.
 func NewPromoteWireService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PromoteWireService {
 	return &PromoteWireService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewPromoteWireService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// PromoteWire is the service entry point. Replace the
-// TODO with the real implementation.
+// Pins cross-package scalar @query promotion: the GET handler casts xshared.XEmail and imports xshared, both needing the promoted field's type re-qualified.
+//
+// PromoteWire implements XRefsService.PromoteWire.
 func (l *PromoteWireService) PromoteWire(req *types.XWirePromoteReq) (*xshared.XOwner, error) {
 	// TODO: implement
 	return nil, nil

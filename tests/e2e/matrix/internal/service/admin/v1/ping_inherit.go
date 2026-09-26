@@ -5,25 +5,20 @@ package adminapi
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/adminapi"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/adminapi"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PingInheritService carries the per-request state for the
-// PingInherit endpoint of AdminApi. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// PingInheritService runs AdminApi.PingInherit for one request.
 type PingInheritService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPingInheritService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewPingInheritService binds PingInheritService to ctx; its Logger carries ctx's trace ids.
 func NewPingInheritService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PingInheritService {
 	return &PingInheritService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewPingInheritService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// PingInherit is the service entry point. Replace the
-// TODO with the real implementation.
+// PingInherit implements AdminApi.PingInherit.
 func (l *PingInheritService) PingInherit() (*types.VerResp, error) {
 	return &types.VerResp{Version: "inherit", Ok: true}, nil
 }

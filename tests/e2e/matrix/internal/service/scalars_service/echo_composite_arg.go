@@ -5,25 +5,20 @@ package scalars
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoCompositeArgService carries the per-request state for the
-// EchoCompositeArg endpoint of ScalarsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoCompositeArgService runs ScalarsService.EchoCompositeArg for one request.
 type EchoCompositeArgService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoCompositeArgService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoCompositeArgService binds EchoCompositeArgService to ctx; its Logger carries ctx's trace ids.
 func NewEchoCompositeArgService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoCompositeArgService {
 	return &EchoCompositeArgService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewEchoCompositeArgService(ctx context.Context, svcCtx *svccontext.ServiceC
 	}
 }
 
-// EchoCompositeArg is the service entry point. Replace the
-// TODO with the real implementation.
+// EchoCompositeArg implements ScalarsService.EchoCompositeArg.
 func (l *EchoCompositeArgService) EchoCompositeArg(req *types.CompositeArg) (*types.CompositeArg, error) {
 	// TODO: implement
 	return nil, nil

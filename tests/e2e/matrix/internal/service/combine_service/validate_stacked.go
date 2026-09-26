@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ValidateStackedService carries the per-request state for the
-// ValidateStacked endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ValidateStackedService runs CombineService.ValidateStacked for one request.
 type ValidateStackedService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewValidateStackedService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewValidateStackedService binds ValidateStackedService to ctx; its Logger carries ctx's trace ids.
 func NewValidateStackedService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ValidateStackedService {
 	return &ValidateStackedService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewValidateStackedService(ctx context.Context, svcCtx *svccontext.ServiceCo
 	}
 }
 
-// ValidateStacked is the service entry point. Replace the
-// TODO with the real implementation.
+// ValidateStacked implements CombineService.ValidateStacked.
 func (l *ValidateStackedService) ValidateStacked(req *types.PairsStacked) (*types.PairsStacked, error) {
 	// TODO: implement
 	return nil, nil

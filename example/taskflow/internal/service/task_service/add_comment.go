@@ -5,25 +5,20 @@ package shared
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// AddCommentService carries the per-request state for the
-// AddComment endpoint of TaskService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// AddCommentService runs TaskService.AddComment for one request.
 type AddCommentService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewAddCommentService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewAddCommentService binds AddCommentService to ctx; its Logger carries ctx's trace ids.
 func NewAddCommentService(ctx context.Context, svcCtx *svccontext.ServiceContext) *AddCommentService {
 	return &AddCommentService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewAddCommentService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// AddComment is the service entry point. Replace the
-// TODO with the real implementation.
+// Add a comment to a task.
+//
+// AddComment implements TaskService.AddComment.
 func (l *AddCommentService) AddComment(req *types.AddCommentReq) (*types.Comment, error) {
 	return l.svcCtx.Store.AddComment(req.ProjectID, req.ID, "current-user", req.Body)
 }

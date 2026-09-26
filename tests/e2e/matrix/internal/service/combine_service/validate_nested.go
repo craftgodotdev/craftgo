@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ValidateNestedService carries the per-request state for the
-// ValidateNested endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ValidateNestedService runs CombineService.ValidateNested for one request.
 type ValidateNestedService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewValidateNestedService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewValidateNestedService binds ValidateNestedService to ctx; its Logger carries ctx's trace ids.
 func NewValidateNestedService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ValidateNestedService {
 	return &ValidateNestedService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewValidateNestedService(ctx context.Context, svcCtx *svccontext.ServiceCon
 	}
 }
 
-// ValidateNested is the service entry point. Replace the
-// TODO with the real implementation.
+// Validate a path id beside a body whose @requiresOneOf a nested mixin declares. The operation body carries the group: sending neither a nor b fails.
+//
+// ValidateNested implements CombineService.ValidateNested.
 func (l *ValidateNestedService) ValidateNested(req *types.PairsNested) (*types.PairsDoc, error) {
 	// TODO: implement
 	return nil, nil

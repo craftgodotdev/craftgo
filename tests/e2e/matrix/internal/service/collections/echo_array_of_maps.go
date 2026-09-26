@@ -5,25 +5,20 @@ package collections
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoArrayOfMapsService carries the per-request state for the
-// EchoArrayOfMaps endpoint of Collections. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoArrayOfMapsService runs Collections.EchoArrayOfMaps for one request.
 type EchoArrayOfMapsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoArrayOfMapsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoArrayOfMapsService binds EchoArrayOfMapsService to ctx; its Logger carries ctx's trace ids.
 func NewEchoArrayOfMapsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoArrayOfMapsService {
 	return &EchoArrayOfMapsService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewEchoArrayOfMapsService(ctx context.Context, svcCtx *svccontext.ServiceCo
 	}
 }
 
-// EchoArrayOfMaps is the service entry point. Replace the
-// TODO with the real implementation.
+// EchoArrayOfMaps implements Collections.EchoArrayOfMaps.
 func (l *EchoArrayOfMapsService) EchoArrayOfMaps(req *types.Map_ArrayOfMaps) (*types.Map_ArrayOfMaps, error) {
 	// TODO: implement
 	return nil, nil

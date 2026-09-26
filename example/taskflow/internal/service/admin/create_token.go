@@ -5,25 +5,20 @@ package admin
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/admin"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/admin"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// CreateTokenService carries the per-request state for the
-// CreateToken endpoint of AdminService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// CreateTokenService runs AdminService.CreateToken for one request.
 type CreateTokenService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewCreateTokenService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewCreateTokenService binds CreateTokenService to ctx; its Logger carries ctx's trace ids.
 func NewCreateTokenService(ctx context.Context, svcCtx *svccontext.ServiceContext) *CreateTokenService {
 	return &CreateTokenService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewCreateTokenService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// CreateToken is the service entry point. Replace the
-// TODO with the real implementation.
+// Issue a new API token. The secret is returned once.
+//
+// CreateToken implements AdminService.CreateToken.
 func (l *CreateTokenService) CreateToken(req *types.CreateTokenReq) (*types.ApiTokenSecret, error) {
 	return l.svcCtx.Store.IssueToken(req.Name, req.Scope), nil
 }

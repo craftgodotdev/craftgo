@@ -5,25 +5,20 @@ package bindings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// FilterTagsService carries the per-request state for the
-// FilterTags endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// FilterTagsService runs BindingsService.FilterTags for one request.
 type FilterTagsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewFilterTagsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewFilterTagsService binds FilterTagsService to ctx; its Logger carries ctx's trace ids.
 func NewFilterTagsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *FilterTagsService {
 	return &FilterTagsService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewFilterTagsService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// FilterTags is the service entry point. Replace the
-// TODO with the real implementation.
+// FilterTags implements BindingsService.FilterTags.
 func (l *FilterTagsService) FilterTags(req *types.RequiredArrayQueryReq) (*types.OkResp, error) {
 	// TODO: implement
 	return nil, nil

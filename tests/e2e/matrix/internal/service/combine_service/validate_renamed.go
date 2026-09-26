@@ -5,25 +5,20 @@ package combine
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/combine"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ValidateRenamedService carries the per-request state for the
-// ValidateRenamed endpoint of CombineService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ValidateRenamedService runs CombineService.ValidateRenamed for one request.
 type ValidateRenamedService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewValidateRenamedService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewValidateRenamedService binds ValidateRenamedService to ctx; its Logger carries ctx's trace ids.
 func NewValidateRenamedService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ValidateRenamedService {
 	return &ValidateRenamedService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewValidateRenamedService(ctx context.Context, svcCtx *svccontext.ServiceCo
 	}
 }
 
-// ValidateRenamed is the service entry point. Replace the
-// TODO with the real implementation.
+// Validate a path id beside a body keyed by @json names. The operation body and the @requiresOneOf name primary_email and backup_email; the response sends ETag as a header and primary_email in the body.
+//
+// ValidateRenamed implements CombineService.ValidateRenamed.
 func (l *ValidateRenamedService) ValidateRenamed(req *types.PairsRenamed) (*types.PairsRenamedResp, error) {
 	// TODO: implement
 	return nil, nil

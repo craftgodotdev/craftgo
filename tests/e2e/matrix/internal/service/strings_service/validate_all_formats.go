@@ -5,25 +5,20 @@ package strings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/strings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/strings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// ValidateAllFormatsService carries the per-request state for the
-// ValidateAllFormats endpoint of StringsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ValidateAllFormatsService runs StringsService.ValidateAllFormats for one request.
 type ValidateAllFormatsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewValidateAllFormatsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewValidateAllFormatsService binds ValidateAllFormatsService to ctx; its Logger carries ctx's trace ids.
 func NewValidateAllFormatsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ValidateAllFormatsService {
 	return &ValidateAllFormatsService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewValidateAllFormatsService(ctx context.Context, svcCtx *svccontext.Servic
 	}
 }
 
-// ValidateAllFormats is the service entry point. Replace the
-// TODO with the real implementation.
+// Validate every @format(name) in the catalogue. The request body is AllFormats - one field per format - so a malformed value in any slot fails the boundary check.
+//
+// ValidateAllFormats implements StringsService.ValidateAllFormats.
 func (l *ValidateAllFormatsService) ValidateAllFormats(req *types.AllFormats) (*types.AllFormats, error) {
 	// TODO: implement
 	return nil, nil

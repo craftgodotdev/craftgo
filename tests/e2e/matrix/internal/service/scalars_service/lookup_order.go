@@ -5,25 +5,20 @@ package scalars
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// LookupOrderService carries the per-request state for the
-// LookupOrder endpoint of ScalarsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// LookupOrderService runs ScalarsService.LookupOrder for one request.
 type LookupOrderService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewLookupOrderService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewLookupOrderService binds LookupOrderService to ctx; its Logger carries ctx's trace ids.
 func NewLookupOrderService(ctx context.Context, svcCtx *svccontext.ServiceContext) *LookupOrderService {
 	return &LookupOrderService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewLookupOrderService(ctx context.Context, svcCtx *svccontext.ServiceContex
 	}
 }
 
-// LookupOrder is the service entry point. Replace the
-// TODO with the real implementation.
+// Look an order up by id. The request is a generic instance, Lookup<Priority>, bound from the path and the query string.
+//
+// LookupOrder implements ScalarsService.LookupOrder.
 func (l *LookupOrderService) LookupOrder(req *types.Lookup[types.Priority]) (*types.Order, error) {
 	// TODO: implement
 	return nil, nil

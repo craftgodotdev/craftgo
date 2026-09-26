@@ -5,25 +5,20 @@ package bindings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// RaiseErrorShapesService carries the per-request state for the
-// RaiseErrorShapes endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// RaiseErrorShapesService runs BindingsService.RaiseErrorShapes for one request.
 type RaiseErrorShapesService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewRaiseErrorShapesService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewRaiseErrorShapesService binds RaiseErrorShapesService to ctx; its Logger carries ctx's trace ids.
 func NewRaiseErrorShapesService(ctx context.Context, svcCtx *svccontext.ServiceContext) *RaiseErrorShapesService {
 	return &RaiseErrorShapesService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewRaiseErrorShapesService(ctx context.Context, svcCtx *svccontext.ServiceC
 	}
 }
 
-// RaiseErrorShapes is the service entry point. Replace the
-// TODO with the real implementation.
+// RaiseErrorShapes implements BindingsService.RaiseErrorShapes.
 func (l *RaiseErrorShapesService) RaiseErrorShapes(req *types.EmptyReq) (*types.DoneResp, error) {
 	// TODO: implement
 	return nil, nil

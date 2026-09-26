@@ -5,25 +5,20 @@ package project
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/project"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/project"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// CreateProjectService carries the per-request state for the
-// CreateProject endpoint of ProjectService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// CreateProjectService runs ProjectService.CreateProject for one request.
 type CreateProjectService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewCreateProjectService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewCreateProjectService binds CreateProjectService to ctx; its Logger carries ctx's trace ids.
 func NewCreateProjectService(ctx context.Context, svcCtx *svccontext.ServiceContext) *CreateProjectService {
 	return &CreateProjectService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewCreateProjectService(ctx context.Context, svcCtx *svccontext.ServiceCont
 	}
 }
 
-// CreateProject is the service entry point. Replace the
-// TODO with the real implementation.
+// Create a project (v1).
+//
+// CreateProject implements ProjectService.CreateProject.
 func (l *CreateProjectService) CreateProject(req *types.CreateProjectReq) (*types.Project, error) {
 	return l.svcCtx.Store.CreateProject(req)
 }

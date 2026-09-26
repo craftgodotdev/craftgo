@@ -5,25 +5,20 @@ package bindings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PostMixinWireBodyService carries the per-request state for the
-// PostMixinWireBody endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// PostMixinWireBodyService runs BindingsService.PostMixinWireBody for one request.
 type PostMixinWireBodyService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPostMixinWireBodyService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewPostMixinWireBodyService binds PostMixinWireBodyService to ctx; its Logger carries ctx's trace ids.
 func NewPostMixinWireBodyService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PostMixinWireBodyService {
 	return &PostMixinWireBodyService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewPostMixinWireBodyService(ctx context.Context, svcCtx *svccontext.Service
 	}
 }
 
-// PostMixinWireBody is the service entry point. Replace the
-// TODO with the real implementation.
+// PostMixinWireBody implements BindingsService.PostMixinWireBody.
 func (l *PostMixinWireBodyService) PostMixinWireBody(req *types.MixinWireBodyReq) error {
 	// TODO: implement
 	return nil

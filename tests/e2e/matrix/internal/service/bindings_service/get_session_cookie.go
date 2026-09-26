@@ -5,25 +5,20 @@ package bindings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// GetSessionCookieService carries the per-request state for the
-// GetSessionCookie endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// GetSessionCookieService runs BindingsService.GetSessionCookie for one request.
 type GetSessionCookieService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewGetSessionCookieService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewGetSessionCookieService binds GetSessionCookieService to ctx; its Logger carries ctx's trace ids.
 func NewGetSessionCookieService(ctx context.Context, svcCtx *svccontext.ServiceContext) *GetSessionCookieService {
 	return &GetSessionCookieService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewGetSessionCookieService(ctx context.Context, svcCtx *svccontext.ServiceC
 	}
 }
 
-// GetSessionCookie is the service entry point. Replace the
-// TODO with the real implementation.
+// GetSessionCookie implements BindingsService.GetSessionCookie.
 func (l *GetSessionCookieService) GetSessionCookie(req *types.SessionCookieReq) (*types.DoneResp, error) {
 	// TODO: implement
 	return nil, nil

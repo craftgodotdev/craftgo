@@ -5,26 +5,21 @@ package shared
 import (
 	"context"
 
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// BulkCreateTasksService carries the per-request state for the
-// BulkCreateTasks endpoint of TaskService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// BulkCreateTasksService runs TaskService.BulkCreateTasks for one request.
 type BulkCreateTasksService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewBulkCreateTasksService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewBulkCreateTasksService binds BulkCreateTasksService to ctx; its Logger carries ctx's trace ids.
 func NewBulkCreateTasksService(ctx context.Context, svcCtx *svccontext.ServiceContext) *BulkCreateTasksService {
 	return &BulkCreateTasksService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewBulkCreateTasksService(ctx context.Context, svcCtx *svccontext.ServiceCo
 	}
 }
 
-// BulkCreateTasks is the service entry point. Replace the
-// TODO with the real implementation.
+// Bulk-create up to 100 tasks in one request. Larger body budget than the default.
+//
+// BulkCreateTasks implements TaskService.BulkCreateTasks.
 func (l *BulkCreateTasksService) BulkCreateTasks(req *types.BulkCreateReq) (*shared.Page[types.Task], error) {
 	return l.svcCtx.Store.BulkCreateTasks(req)
 }

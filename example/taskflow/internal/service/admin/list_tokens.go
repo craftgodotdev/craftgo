@@ -5,26 +5,21 @@ package admin
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/admin"
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/admin"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// ListTokensService carries the per-request state for the
-// ListTokens endpoint of AdminService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ListTokensService runs AdminService.ListTokens for one request.
 type ListTokensService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewListTokensService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewListTokensService binds ListTokensService to ctx; its Logger carries ctx's trace ids.
 func NewListTokensService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ListTokensService {
 	return &ListTokensService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewListTokensService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// ListTokens is the service entry point. Replace the
-// TODO with the real implementation.
+// List issued API tokens (secrets are never returned here).
+//
+// ListTokens implements AdminService.ListTokens.
 func (l *ListTokensService) ListTokens(req *shared.PageParams) (*shared.Page[types.ApiToken], error) {
 	return l.svcCtx.Store.ListTokens(req.Limit), nil
 }

@@ -5,25 +5,20 @@ package bindings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/bindings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoHeaderMetadataService carries the per-request state for the
-// EchoHeaderMetadata endpoint of BindingsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoHeaderMetadataService runs BindingsService.EchoHeaderMetadata for one request.
 type EchoHeaderMetadataService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoHeaderMetadataService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoHeaderMetadataService binds EchoHeaderMetadataService to ctx; its Logger carries ctx's trace ids.
 func NewEchoHeaderMetadataService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoHeaderMetadataService {
 	return &EchoHeaderMetadataService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewEchoHeaderMetadataService(ctx context.Context, svcCtx *svccontext.Servic
 	}
 }
 
-// EchoHeaderMetadata is the service entry point. Replace the
-// TODO with the real implementation.
+// EchoHeaderMetadata implements BindingsService.EchoHeaderMetadata.
 func (l *EchoHeaderMetadataService) EchoHeaderMetadata(req *types.CountsPayload) (*types.HeaderMetadataResp, error) {
 	// TODO: implement
 	return nil, nil

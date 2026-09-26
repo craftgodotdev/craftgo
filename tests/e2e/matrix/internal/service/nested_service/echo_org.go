@@ -5,25 +5,20 @@ package nested
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/nested"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/nested"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoOrgService carries the per-request state for the
-// EchoOrg endpoint of NestedService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoOrgService runs NestedService.EchoOrg for one request.
 type EchoOrgService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoOrgService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoOrgService binds EchoOrgService to ctx; its Logger carries ctx's trace ids.
 func NewEchoOrgService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoOrgService {
 	return &EchoOrgService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewEchoOrgService(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 	}
 }
 
-// EchoOrg is the service entry point. Replace the
-// TODO with the real implementation.
+// Optional slice of nested.
+//
+// EchoOrg implements NestedService.EchoOrg.
 func (l *EchoOrgService) EchoOrg(req *types.Org) (*types.Org, error) {
 	// TODO: implement
 	return nil, nil

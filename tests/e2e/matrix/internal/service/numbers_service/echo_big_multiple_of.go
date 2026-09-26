@@ -5,25 +5,20 @@ package numbers
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/numbers"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/numbers"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoBigMultipleOfService carries the per-request state for the
-// EchoBigMultipleOf endpoint of NumbersService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoBigMultipleOfService runs NumbersService.EchoBigMultipleOf for one request.
 type EchoBigMultipleOfService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoBigMultipleOfService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoBigMultipleOfService binds EchoBigMultipleOfService to ctx; its Logger carries ctx's trace ids.
 func NewEchoBigMultipleOfService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoBigMultipleOfService {
 	return &EchoBigMultipleOfService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewEchoBigMultipleOfService(ctx context.Context, svcCtx *svccontext.Service
 	}
 }
 
-// EchoBigMultipleOf is the service entry point. Replace the
-// TODO with the real implementation.
+// EchoBigMultipleOf implements NumbersService.EchoBigMultipleOf.
 func (l *EchoBigMultipleOfService) EchoBigMultipleOf(req *types.NumberBigMultipleOf) (*types.NumberBigMultipleOf, error) {
 	// TODO: implement
 	return nil, nil

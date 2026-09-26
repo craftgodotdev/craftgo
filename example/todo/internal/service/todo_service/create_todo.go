@@ -5,25 +5,20 @@ package todos
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/todo/internal/types/todos"
-
-	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/todo/internal/types/todos"
+	"github.com/craftgodotdev/craftgo/example/todo/svccontext"
 )
 
-// CreateTodoService carries the per-request state for the
-// CreateTodo endpoint of TodoService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// CreateTodoService runs TodoService.CreateTodo for one request.
 type CreateTodoService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewCreateTodoService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewCreateTodoService binds CreateTodoService to ctx; its Logger carries ctx's trace ids.
 func NewCreateTodoService(ctx context.Context, svcCtx *svccontext.ServiceContext) *CreateTodoService {
 	return &CreateTodoService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewCreateTodoService(ctx context.Context, svcCtx *svccontext.ServiceContext
 	}
 }
 
-// CreateTodo is the service entry point. Replace the
-// TODO with the real implementation.
+// Create a new todo.
+//
+// CreateTodo implements TodoService.CreateTodo.
 func (l *CreateTodoService) CreateTodo(req *types.CreateTodoReq) (*types.Todo, error) {
 	// TODO: implement
 	return nil, nil

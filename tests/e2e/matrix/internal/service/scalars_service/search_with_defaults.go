@@ -5,25 +5,20 @@ package scalars
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// SearchWithDefaultsService carries the per-request state for the
-// SearchWithDefaults endpoint of ScalarsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// SearchWithDefaultsService runs ScalarsService.SearchWithDefaults for one request.
 type SearchWithDefaultsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewSearchWithDefaultsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewSearchWithDefaultsService binds SearchWithDefaultsService to ctx; its Logger carries ctx's trace ids.
 func NewSearchWithDefaultsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *SearchWithDefaultsService {
 	return &SearchWithDefaultsService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,8 @@ func NewSearchWithDefaultsService(ctx context.Context, svcCtx *svccontext.Servic
 }
 
 // sortQ / colorQ / limitQ fall back to their defaults when absent.
-// SearchWithDefaults is the service entry point. Replace the
-// TODO with the real implementation.
+//
+// SearchWithDefaults implements ScalarsService.SearchWithDefaults.
 func (l *SearchWithDefaultsService) SearchWithDefaults(req *types.QueryDefaults) (*types.ItemView, error) {
 	// TODO: implement
 	return nil, nil

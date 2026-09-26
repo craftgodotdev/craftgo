@@ -5,25 +5,20 @@ package scalars
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PutKeyedService carries the per-request state for the
-// PutKeyed endpoint of ScalarsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// PutKeyedService runs ScalarsService.PutKeyed for one request.
 type PutKeyedService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPutKeyedService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewPutKeyedService binds PutKeyedService to ctx; its Logger carries ctx's trace ids.
 func NewPutKeyedService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PutKeyedService {
 	return &PutKeyedService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewPutKeyedService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// PutKeyed is the service entry point. Replace the
-// TODO with the real implementation.
+// Put a key. A generic request split by a header reads its argument-typed field from the body beside the field a nested mixin brings.
+//
+// PutKeyed implements ScalarsService.PutKeyed.
 func (l *PutKeyedService) PutKeyed(req *types.KeyedPut[types.Priority]) (*types.Order, error) {
 	// TODO: implement
 	return nil, nil

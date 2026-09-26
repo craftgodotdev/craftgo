@@ -8,16 +8,12 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// NewAuthRequiredMiddleware constructs the AuthRequired middleware. Declare
-// whatever params your real implementation needs (token store, logger,
-// rate-limit budget, etc.) - craftgo never overwrites this file after
-// the first generation, so the signature is yours.
+// AuthRequired enforces a Bearer token on every request flowing
+// through it. The canonical no-arg middleware: behaviour is fixed,
+// configuration (token lifetime, issuer, audience) lives in
+// svccontext / config, not in the DSL contract.
 //
-// Wire it from main.go:
-//
-//	svc := svccontext.NewServiceContext()
-//	svc.AuthRequired = middleware.NewAuthRequiredMiddleware(/* your params */)
-//	routes.RegisterRoutes(srv, svc)
+// NewAuthRequiredMiddleware returns the AuthRequired middleware, which ServiceContext's AuthRequired field holds.
 func NewAuthRequiredMiddleware() server.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

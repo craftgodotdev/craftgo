@@ -5,26 +5,21 @@ package orders
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
-	shared "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
-
-	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// FilterOrdersService carries the per-request state for the
-// FilterOrders endpoint of OrderService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// FilterOrdersService runs OrderService.FilterOrders for one request.
 type FilterOrdersService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewFilterOrdersService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewFilterOrdersService binds FilterOrdersService to ctx; its Logger carries ctx's trace ids.
 func NewFilterOrdersService(ctx context.Context, svcCtx *svccontext.ServiceContext) *FilterOrdersService {
 	return &FilterOrdersService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewFilterOrdersService(ctx context.Context, svcCtx *svccontext.ServiceConte
 	}
 }
 
-// FilterOrders is the service entry point. Replace the
-// TODO with the real implementation.
+// Filter orders by status - showcases @query/@header/@cookie on one DTO. Status is a @query filter (a literal sub-path keeps it from colliding with /{id}/... actions on the ServeMux).
+//
+// FilterOrders implements OrderService.FilterOrders.
 func (l *FilterOrdersService) FilterOrders(req *types.FilterOrdersReq) (*shared.Page[types.Order], error) {
 	// TODO: implement
 	return nil, nil

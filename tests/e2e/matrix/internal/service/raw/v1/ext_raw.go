@@ -6,9 +6,9 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/pkg/server"
 
-	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -21,7 +21,7 @@ type ExtRawService struct {
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewExtRawService constructs a fresh service instance bound to ctx.
+// NewExtRawService binds ExtRawService to ctx; its Logger carries ctx's trace ids.
 func NewExtRawService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ExtRawService {
 	return &ExtRawService{
 		Logger: log.Default().WithContext(ctx),

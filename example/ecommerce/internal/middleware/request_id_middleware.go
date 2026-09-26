@@ -8,17 +8,7 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// NewRequestIDMiddleware constructs the RequestID middleware.
-//
-// craftgo never overwrites this file after the first generation, so
-// add wiring (token store, logger, rate-limit budget, ...) or change
-// the param types freely.
-//
-// Wire it from main.go:
-//
-//	svc := svccontext.NewServiceContext()
-//	svc.RequestID = middleware.NewRequestIDMiddleware(/* args */)
-//	routes.RegisterRoutes(srv, svc)
+// NewRequestIDMiddleware returns the RequestID middleware, which ServiceContext's RequestID field holds.
 func NewRequestIDMiddleware() server.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

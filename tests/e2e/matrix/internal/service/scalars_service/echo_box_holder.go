@@ -5,25 +5,20 @@ package scalars
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoBoxHolderService carries the per-request state for the
-// EchoBoxHolder endpoint of ScalarsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoBoxHolderService runs ScalarsService.EchoBoxHolder for one request.
 type EchoBoxHolderService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoBoxHolderService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoBoxHolderService binds EchoBoxHolderService to ctx; its Logger carries ctx's trace ids.
 func NewEchoBoxHolderService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoBoxHolderService {
 	return &EchoBoxHolderService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewEchoBoxHolderService(ctx context.Context, svcCtx *svccontext.ServiceCont
 	}
 }
 
-// EchoBoxHolder is the service entry point. Replace the
-// TODO with the real implementation.
+// EchoBoxHolder implements ScalarsService.EchoBoxHolder.
 func (l *EchoBoxHolderService) EchoBoxHolder(req *types.BoxHolder) (*types.BoxHolder, error) {
 	// TODO: implement
 	return nil, nil

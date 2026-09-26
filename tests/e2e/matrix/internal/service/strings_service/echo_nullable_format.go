@@ -5,25 +5,20 @@ package strings
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/strings"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/strings"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoNullableFormatService carries the per-request state for the
-// EchoNullableFormat endpoint of StringsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoNullableFormatService runs StringsService.EchoNullableFormat for one request.
 type EchoNullableFormatService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoNullableFormatService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoNullableFormatService binds EchoNullableFormatService to ctx; its Logger carries ctx's trace ids.
 func NewEchoNullableFormatService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoNullableFormatService {
 	return &EchoNullableFormatService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewEchoNullableFormatService(ctx context.Context, svcCtx *svccontext.Servic
 	}
 }
 
-// EchoNullableFormat is the service entry point. Replace the
-// TODO with the real implementation.
+// EchoNullableFormat implements StringsService.EchoNullableFormat.
 func (l *EchoNullableFormatService) EchoNullableFormat(req *types.Str_NullableFormat) (*types.Str_NullableFormat, error) {
 	// TODO: implement
 	return nil, nil

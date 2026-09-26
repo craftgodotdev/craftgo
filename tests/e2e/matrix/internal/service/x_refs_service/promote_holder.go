@@ -4,25 +4,21 @@ package xrefs
 
 import (
 	"context"
-	xshared "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// PromoteHolderService carries the per-request state for the
-// PromoteHolder endpoint of XRefsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// PromoteHolderService runs XRefsService.PromoteHolder for one request.
 type PromoteHolderService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewPromoteHolderService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewPromoteHolderService binds PromoteHolderService to ctx; its Logger carries ctx's trace ids.
 func NewPromoteHolderService(ctx context.Context, svcCtx *svccontext.ServiceContext) *PromoteHolderService {
 	return &PromoteHolderService{
 		Logger: log.Default().WithContext(ctx),
@@ -31,8 +27,9 @@ func NewPromoteHolderService(ctx context.Context, svcCtx *svccontext.ServiceCont
 	}
 }
 
-// PromoteHolder is the service entry point. Replace the
-// TODO with the real implementation.
+// Pins a QUALIFIED request type whose fields come from a bare nested mixin (xshared.XHolder embeds xshared.XHolderSub). The handler must bind `q` from @query and decode `bod` from the body - without threading xshared as the flatten prefix both silently drop while the validator still enforces them.
+//
+// PromoteHolder implements XRefsService.PromoteHolder.
 func (l *PromoteHolderService) PromoteHolder(req *xshared.XHolder) (*xshared.XOwner, error) {
 	// TODO: implement
 	return nil, nil

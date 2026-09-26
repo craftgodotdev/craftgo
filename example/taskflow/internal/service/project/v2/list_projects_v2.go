@@ -5,26 +5,21 @@ package project
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/project"
-	shared "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
-
-	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/project"
+	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/taskflow/svccontext"
 )
 
-// ListProjectsV2Service carries the per-request state for the
-// ListProjectsV2 endpoint of ProjectService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ListProjectsV2Service runs ProjectService.ListProjectsV2 for one request.
 type ListProjectsV2Service struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewListProjectsV2Service constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewListProjectsV2Service binds ListProjectsV2Service to ctx; its Logger carries ctx's trace ids.
 func NewListProjectsV2Service(ctx context.Context, svcCtx *svccontext.ServiceContext) *ListProjectsV2Service {
 	return &ListProjectsV2Service{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewListProjectsV2Service(ctx context.Context, svcCtx *svccontext.ServiceCon
 	}
 }
 
-// ListProjectsV2 is the service entry point. Replace the
-// TODO with the real implementation.
+// List projects (v2: owner + status filters, richer resource).
+//
+// ListProjectsV2 implements ProjectService.ListProjectsV2.
 func (l *ListProjectsV2Service) ListProjectsV2(req *types.ListProjectsV2Req) (*shared.Page[types.ProjectV2], error) {
 	return l.svcCtx.Store.ListProjectsV2(req), nil
 }

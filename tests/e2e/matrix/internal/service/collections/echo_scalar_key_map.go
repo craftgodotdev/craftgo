@@ -5,25 +5,20 @@ package collections
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/collections"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoScalarKeyMapService carries the per-request state for the
-// EchoScalarKeyMap endpoint of Collections. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoScalarKeyMapService runs Collections.EchoScalarKeyMap for one request.
 type EchoScalarKeyMapService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoScalarKeyMapService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoScalarKeyMapService binds EchoScalarKeyMapService to ctx; its Logger carries ctx's trace ids.
 func NewEchoScalarKeyMapService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoScalarKeyMapService {
 	return &EchoScalarKeyMapService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewEchoScalarKeyMapService(ctx context.Context, svcCtx *svccontext.ServiceC
 	}
 }
 
-// EchoScalarKeyMap is the service entry point. Replace the
-// TODO with the real implementation.
+// EchoScalarKeyMap implements Collections.EchoScalarKeyMap.
 func (l *EchoScalarKeyMapService) EchoScalarKeyMap(req *types.Map_ScalarKey) (*types.Map_ScalarKey, error) {
 	// TODO: implement
 	return nil, nil

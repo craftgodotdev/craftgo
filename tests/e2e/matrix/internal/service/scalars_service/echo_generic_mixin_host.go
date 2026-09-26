@@ -5,25 +5,20 @@ package scalars
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/scalars"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// EchoGenericMixinHostService carries the per-request state for the
-// EchoGenericMixinHost endpoint of ScalarsService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// EchoGenericMixinHostService runs ScalarsService.EchoGenericMixinHost for one request.
 type EchoGenericMixinHostService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewEchoGenericMixinHostService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewEchoGenericMixinHostService binds EchoGenericMixinHostService to ctx; its Logger carries ctx's trace ids.
 func NewEchoGenericMixinHostService(ctx context.Context, svcCtx *svccontext.ServiceContext) *EchoGenericMixinHostService {
 	return &EchoGenericMixinHostService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,7 @@ func NewEchoGenericMixinHostService(ctx context.Context, svcCtx *svccontext.Serv
 	}
 }
 
-// EchoGenericMixinHost is the service entry point. Replace the
-// TODO with the real implementation.
+// EchoGenericMixinHost implements ScalarsService.EchoGenericMixinHost.
 func (l *EchoGenericMixinHostService) EchoGenericMixinHost(req *types.GenericMixinHost) (*types.GenericMixinHost, error) {
 	// TODO: implement
 	return nil, nil

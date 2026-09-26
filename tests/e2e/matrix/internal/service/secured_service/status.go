@@ -5,25 +5,20 @@ package services
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/services"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// StatusService carries the per-request state for the
-// Status endpoint of SecuredService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// StatusService runs SecuredService.Status for one request.
 type StatusService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewStatusService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewStatusService binds StatusService to ctx; its Logger carries ctx's trace ids.
 func NewStatusService(ctx context.Context, svcCtx *svccontext.ServiceContext) *StatusService {
 	return &StatusService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewStatusService(ctx context.Context, svcCtx *svccontext.ServiceContext) *S
 	}
 }
 
-// Status is the service entry point. Replace the
-// TODO with the real implementation.
+// Public status page - no auth or rate limit, only the block's Audit.
+//
+// Status implements SecuredService.Status.
 func (l *StatusService) Status() (*types.HealthResp, error) {
 	// TODO: implement
 	return nil, nil

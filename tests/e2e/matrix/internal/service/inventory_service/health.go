@@ -5,25 +5,20 @@ package events
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/events"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// HealthService carries the per-request state for the
-// Health endpoint of InventoryService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// HealthService runs InventoryService.Health for one request.
 type HealthService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewHealthService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewHealthService binds HealthService to ctx; its Logger carries ctx's trace ids.
 func NewHealthService(ctx context.Context, svcCtx *svccontext.ServiceContext) *HealthService {
 	return &HealthService{
 		Logger: log.Default().WithContext(ctx),
@@ -32,8 +27,9 @@ func NewHealthService(ctx context.Context, svcCtx *svccontext.ServiceContext) *H
 	}
 }
 
-// Health is the service entry point. Replace the
-// TODO with the real implementation.
+// Kept so the fixture exercises a package that both serves HTTP and declares events.
+//
+// Health implements InventoryService.Health.
 func (l *HealthService) Health() (*types.ItemStocked, error) {
 	// TODO: implement
 	return nil, nil

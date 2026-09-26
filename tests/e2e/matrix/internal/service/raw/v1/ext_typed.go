@@ -6,10 +6,10 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/craftgodotdev/craftgo/pkg/server"
-	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/rawmodes"
-
 	"github.com/craftgodotdev/craftgo/pkg/log"
+	"github.com/craftgodotdev/craftgo/pkg/server"
+
+	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/rawmodes"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -22,7 +22,7 @@ type ExtTypedService struct {
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewExtTypedService constructs a fresh service instance bound to ctx.
+// NewExtTypedService binds ExtTypedService to ctx; its Logger carries ctx's trace ids.
 func NewExtTypedService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ExtTypedService {
 	return &ExtTypedService{
 		Logger: log.Default().WithContext(ctx),

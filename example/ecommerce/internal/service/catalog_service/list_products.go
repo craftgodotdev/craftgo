@@ -5,26 +5,21 @@ package catalog
 import (
 	"context"
 
-	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/catalog"
-	shared "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
-
-	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 	"github.com/craftgodotdev/craftgo/pkg/log"
+
+	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/catalog"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
+	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
-// ListProductsService carries the per-request state for the
-// ListProducts endpoint of CatalogService. The embedded log.Logger is
-// pre-bound to the request context (trace_id / span_id),
-// so handlers can call l.Info(...) / l.Error(...) directly.
+// ListProductsService runs CatalogService.ListProducts for one request.
 type ListProductsService struct {
 	log.Logger
 	ctx    context.Context
 	svcCtx *svccontext.ServiceContext
 }
 
-// NewListProductsService constructs a fresh service instance bound to ctx.
-// The Logger is pulled from log.Default() (set by Server.SetLogger)
-// and seeded with WithContext(ctx) so OTel trace IDs ride every line.
+// NewListProductsService binds ListProductsService to ctx; its Logger carries ctx's trace ids.
 func NewListProductsService(ctx context.Context, svcCtx *svccontext.ServiceContext) *ListProductsService {
 	return &ListProductsService{
 		Logger: log.Default().WithContext(ctx),
@@ -33,8 +28,9 @@ func NewListProductsService(ctx context.Context, svcCtx *svccontext.ServiceConte
 	}
 }
 
-// ListProducts is the service entry point. Replace the
-// TODO with the real implementation.
+// List products with cursor pagination.
+//
+// ListProducts implements CatalogService.ListProducts.
 func (l *ListProductsService) ListProducts(req *types.ListProductsReq) (*shared.Page[types.Product], error) {
 	// TODO: implement
 	return nil, nil
