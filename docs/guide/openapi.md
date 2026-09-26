@@ -266,6 +266,12 @@ their schemas in an `anyOf`, as does a success `@status` with that code: two
 errors may send bodies both schemas admit, such as two `{code, message}`
 envelopes. A header they send under one name admits each one's type.
 
+The errors the framework writes itself - 400 for a request that fails decoding,
+binding or validation, 404, 405, 413 for a body over its cap, 500 for a panic or
+an untyped error, 504 for a deadline - are JSON `{"message": "..."}` at their
+status and are not in the document, which lists each operation's success
+response and its `@errors` only.
+
 ## Security schemes
 
 Define schemes in `craftgo.design.yaml`:

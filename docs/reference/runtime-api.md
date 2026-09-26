@@ -1,8 +1,8 @@
 # Runtime API
 
-The generated code runs on `github.com/craftgodotdev/craftgo/pkg/server` - a thin wrapper over `net/http`. This page is the API reference for that package. You rarely call most of it directly: the generated `main.go` wires `server.New`, `RegisterRoutes`, and `Start`. You reach for this when adding middleware, swapping the JSON codec, customizing health checks, or shaping error responses.
+The generated code runs on `github.com/craftgodotdev/craftgo/pkg/server` - a thin wrapper over `net/http`. This page is the API reference for that package. You rarely call most of it directly: the generated `main.go` wires `server.New`, `wiring.Register` (which calls each service's `RegisterRoutes`), and `Start`. You reach for this when adding middleware, swapping the JSON codec, customizing health checks, or shaping error responses.
 
-Everything here is plain standard-library shape - `http.Handler`, `http.HandlerFunc`, `func(http.Handler) http.Handler`. There is no custom router and no reflection.
+Everything here is plain standard-library shape - `http.Handler`, `http.HandlerFunc`, `func(http.Handler) http.Handler`. There is no custom router: routes go on `http.ServeMux`, request binding is generated code, and JSON goes through `encoding/json` unless you install another codec.
 
 ## Server
 
@@ -16,6 +16,7 @@ srv := server.New(svcCtx, opts...)
 |---|---|
 | `WithHealthPaths(HealthPaths{Liveness, Readiness})` | Override the default `/healthz` + `/readyz` paths. |
 | `WithoutDefaultHealth()` | Disable the auto-registered health endpoints entirely. |
+| `WithTelemetry(mw Middleware)` | Install `mw` - `tel.HTTPMiddleware()` - outside `Recovery` and every `Use` middleware, so their log lines carry the span it opens. The health probes bypass it, a panic in `mw` itself is not recovered, and `WithTelemetry(nil)` installs nothing and keeps an earlier one. |
 
 ### Lifecycle
 
@@ -24,10 +25,10 @@ srv := server.New(svcCtx, opts...)
 | `Use(mw Middleware) *Server` | Append a global middleware. Outermost-added wraps first. |
 | `Handle(pattern, h http.Handler, mws ...Middleware) *Server` | Register a route. Optional per-route middlewares wrap the handler **outermost-first** (first arg = outermost frame). |
 | `HandleFunc(pattern, fn http.HandlerFunc) *Server` | Register a route from a bare function. |
-| `Handler() http.Handler` | Build the fully-wrapped handler (Recovery → global chain → CORS → mux). Use it with `httptest.NewServer(srv.Handler())` to exercise the full stack without binding a port. |
-| `Start(addr string) error` | Bind and serve until `Stop`. |
+| `Handler() http.Handler` | Build the fully-wrapped handler (the `WithTelemetry` middleware → Recovery → global chain → CORS → mux; the health probes are answered ahead of it, wrapped in Recovery only). Use it with `httptest.NewServer(srv.Handler())` to exercise the full stack without binding a port. |
+| `Start(addr string) error` | Bind and serve until `Stop`; returns nil after a graceful `Stop`. Request headers must arrive within 10s, and idle connections close after 120s. |
 | `Stop(ctx context.Context) error` | Graceful shutdown; no-op if `Start` never ran. |
-| `Mux() *http.ServeMux` | The underlying mux, if you need raw access. |
+| `Mux() *http.ServeMux` | The underlying mux, if you need raw access. Routes registered on it directly skip the default body cap and handler timeout that `Handle` applies. |
 
 `pattern` is Go 1.22+ syntax: `"GET /users/{id}"`.
 
@@ -37,11 +38,11 @@ Each setter returns `*Server` for chaining, except `SetJSONCodec` and `SetStrict
 
 | Method | Description |
 |---|---|
-| `SetLogger(l log.Logger)` / `Logger() log.Logger` | Install or read `log.Default()`, the logger the server's `Recovery` and the generated logic write to; the server keeps none of its own. |
+| `SetLogger(l log.Logger)` / `Logger() log.Logger` | `SetLogger` installs `l` as `log.Default()` (nil is ignored), the logger the server's `Recovery` and the generated logic write to; the server keeps none of its own. `Logger` returns a `log.Follow()` logger, which writes each line - and each line of the loggers its `With` and `WithContext` return - through the `log.Default()` of that moment, so `AccessLog(srv.Logger())` follows a later `SetLogger`. |
 | `SetJSONCodec(c JSONCodec) error` / `Codec() JSONCodec` | Swap or read the process-wide codec handlers and health endpoints use: `SetJSONCodec` delegates to `SetGlobalJSONCodec`, `Codec` returns what `JSON()` returns. `SetJSONCodec` fails, keeping the previous codec, when strict JSON is on and `c` has no `DecodeStrict`. |
-| `SetStrictJSON(strict bool) error` | Reject a JSON body with an unknown field (`400 <field>: unknown field`) or data after the JSON value; `server.strictJSON` in `config.yaml` drives it. Fails, keeping the previous setting, when the installed codec has no `DecodeStrict`. |
+| `SetStrictJSON(strict bool) error` | Reject a JSON body with an unknown field (400 `{"message":"<field>: unknown field"}`) or data after the JSON value (400 `{"message":"body: unexpected data after the JSON value"}`); off by default. `server.strictJSON` in `config.yaml` drives it, and the generated `config.yaml` sets it `true`. Fails, keeping the previous setting, when the installed codec has no `DecodeStrict`. |
 | `SetCORS(opts CORSOptions)` | Install CORS. Calling twice replaces the previous config. |
-| `SetHandleNotFound(h http.Handler)` | Customize 404 responses - receives every request the mux would answer 404; a method mismatch keeps its 405 with `Allow`. |
+| `SetHandleNotFound(h http.Handler)` | Answer the requests the mux would answer 404, which otherwise get 404 `{"message":"not found"}`; nil restores that default. A method mismatch keeps its 405 `{"message":"method not allowed"}` with `Allow`. |
 | `SetDefaultReadTimeout(d)` / `SetDefaultWriteTimeout(d)` | The `*http.Server`'s deadlines for reading a whole request, 30s by default, and for writing a whole response, none (0) by default so streaming and long downloads are not cut. |
 | `SetDefaultMaxBodySize(bytes)` | Body cap for each route `Handle` registers afterwards, unless its `WithLimits` sets one (a method's `@maxBodySize`). 0, the default, sets none. |
 | `SetDefaultHandlerTimeout(d)` | Request-context deadline for each route `Handle` registers afterwards, unless its `WithLimits` sets one (a method's `@timeout`). 0, the default, sets none. |
@@ -55,7 +56,7 @@ srv.RegisterHealthCheck("db", 2*time.Second, func(ctx context.Context) error {
 })
 ```
 
-`RegisterHealthCheck(name, timeout, fn)` adds a probe to `/readyz`. The timeout is mandatory - each probe runs under `context.WithTimeout` and counts as a failure on deadline. A check that panics fails too, reported as `panic: <value>` under `checks` in the response, and the panic is logged with its stack. `/healthz` (liveness) always returns 200 once the process is up.
+`RegisterHealthCheck(name, timeout, fn)` adds, or replaces, the probe `name` on `/readyz`. Each run calls `fn` under `context.WithTimeout`: a check that returns the context's error on expiry fails (`context deadline exceeded` under `checks`), while one that ignores its context is waited for and judged by what it returns. A check that panics fails too, reported as `panic: <value>` under `checks`, and the panic is logged with its stack. A failure answers 503 `{"checks":{…},"status":"not_ready"}`. `/healthz` (liveness) always returns 200 once the process is up.
 
 Both probes are answered ahead of the middleware chain (only `Recovery` wraps them): they are never access-logged, traced, counted in the HTTP metrics or CORS-processed, and no `srv.Use` middleware runs for them. `WithoutDefaultHealth()` removes them; register your own route for observed probes.
 
@@ -71,9 +72,9 @@ type Middleware func(http.Handler) http.Handler
 
 | Constructor | Purpose |
 |---|---|
-| `Recovery(logger)` | Converts a panic into a 500 and logs it with its stack. Once the response has started it logs the panic and aborts the connection instead, so the client sees the response cut off. A panic with `http.ErrAbortHandler` goes on to `net/http`, which aborts the connection without logging it. Always outermost in the generated chain. |
-| `AccessLog(logger, opts...)` | One `http access` line per request: `method`, `path`, `status`, `latency`, plus the `trace_id` / `span_id` on the context. `AccessLogSkipPaths(paths...)` keeps chosen routes out; `AccessLogFields(fn)` appends fields `fn` derives from the request (client address, user agent, the matched `r.Pattern`). |
-| `BodyLimit(maxBytes)` | Wraps `r.Body` in `http.MaxBytesReader`. |
+| `Recovery(logger)` | Converts a panic into 500 `{"message":"internal server error"}` and logs it (`panic recovered`) with its stack. Once the response has started it logs the panic and aborts the connection instead, so the client sees the response cut off. A panic with `http.ErrAbortHandler` goes on to `net/http`, which aborts the connection without logging it. `Handler()` installs it itself, logging to `log.Default()`: outside every `Use` middleware and inside the `WithTelemetry` middleware, so the panic line carries the request's trace ids. |
+| `AccessLog(logger, opts...)` | One `http access` line at Info per request: `method`, `path`, `status` (499 for a client that left before anything was written), `latency`, plus the `trace_id` / `span_id` an outer tracing middleware (`WithTelemetry`) put on the context. A request whose handler panics gets no line; `Recovery` logs the panic instead. `AccessLogSkipPaths(paths...)` keeps chosen routes out; `AccessLogFields(fn)` appends fields `fn` derives from the request (client address, user agent, the matched `r.Pattern`). |
+| `BodyLimit(maxBytes)` | Caps request bodies at `maxBytes`: a declared `Content-Length` above it is answered 413 `{"message":"request entity too large"}` before the handler runs, and a read past it fails with an `*http.MaxBytesError`, which `WriteValidationError` answers 413 the same way without calling the validation hook. |
 | `Timeout(d)` | Deprecated: use `srv.SetDefaultHandlerTimeout(d)`, or `WithLimits` for one route. Runs the handler under `http.TimeoutHandler`: 503 on deadline, and a buffered response that cannot flush. |
 
 `WithLimits(h, Limits{...})` applies timeout + body limits to a single handler - this is what `@timeout` / `@maxBodySize` compile to.
@@ -121,6 +122,8 @@ server.JSON().Encode(w, payload) // every generated handler reads through this a
 
 `Server.SetJSONCodec(c)` delegates to `SetGlobalJSONCodec`. Both fail, keeping the previous codec, when strict JSON is on and `c` has no `DecodeStrict`; `SetStrictJSON(true)` fails the same way when the installed codec has none, so `config.yaml` can never claim a strictness the server does not enforce. The swap is atomic, so it is safe while requests are served.
 
+The built-in codec names a body value of the wrong JSON type by its JSON path: `name: expected string, got number`, `home.name: expected string, got number`, `age: expected integer, got number 1.5`, `age: 300 is out of range`, `m: "x" is not an integer` (a map key), and `body: expected object, got array` at the root. Each answers 400 `{"message": …}` through the validation hook. A codec installed with `SetGlobalJSONCodec` reports its own errors.
+
 A wrapper for another JSON library adds `DecodeStrict` with that library's own unknown-field switch and finishes with `server.TrailingData`, the shared check every codec uses to report leftover data the same way. With sonic:
 
 ```go
@@ -129,7 +132,7 @@ type Sonic struct{}
 func (Sonic) Encode(w io.Writer, v any) error { return sonic.ConfigDefault.NewEncoder(w).Encode(v) }
 func (Sonic) Decode(r io.Reader, v any) error { return sonic.ConfigDefault.NewDecoder(r).Decode(v) }
 
-var strictAPI = sonic.Config{DisallowUnknownStructFields: true}.Froze()
+var strictAPI = sonic.Config{DisallowUnknownFields: true}.Froze()
 
 func (Sonic) DecodeStrict(r io.Reader, v any) error {
     dec := strictAPI.NewDecoder(r)
@@ -156,7 +159,7 @@ server.SetDefaultValidationFailed(func(w http.ResponseWriter, r *http.Request, e
 })
 ```
 
-The handler calls `server.WriteValidationError(w, r, err)` on a validation failure; it dispatches to your installed hook (or a sensible default). The hook is post-commit safe - if the response already started, it logs the dropped validation rather than smearing a 400 into a half-sent body.
+The handler calls `server.WriteValidationError(w, r, err)` on a decode, binding or validation failure; it dispatches to your installed hook, or to the default: 400 `{"message":"<err text>"}`. A body read past its cap is answered 413 `{"message":"request entity too large"}` without the hook. The default is post-commit safe - if the response already started, it logs the dropped validation rather than smearing a 400 into a half-sent body; a hook you install is called even after the response started.
 
 ## Raw responses
 
@@ -185,12 +188,12 @@ func (l *SnapshotService) Snapshot(w http.ResponseWriter, r *http.Request, req *
 
 The framework pulls in no compression library: you supply `decode`, using the library that filled the cache. `Compress` leaves a response that already carries `Content-Encoding` untouched, so a verbatim body is never re-encoded.
 
-`server.WriteError` and `server.WriteValidationError` are post-commit safe: when a raw handler has already written a status or body, or flushed, and then returns an error, the error is logged with the request's trace context and the wire is left alone rather than splicing an envelope into the body.
+`server.WriteError`, and `server.WriteValidationError` with the default hook, are post-commit safe: when a raw handler has already written a status or body, or flushed, and then returns an error, the error is logged with the request's trace context and the wire is left alone rather than splicing an envelope into the body. A context error is dropped without a line, except a dependency's deadline on a live request, logged at Warn.
 
 ## CORS
 
 ```go
-srv.SetCORS(server.CORSPermissive())          // dev: reflect any origin
+srv.SetCORS(server.CORSPermissive())          // dev: any origin (Access-Control-Allow-Origin: *)
 srv.SetCORS(server.CORSStrict("https://app")) // prod: one allowed origin
 ```
 
@@ -234,7 +237,7 @@ type Group string // the broker identity: Kafka group, NATS queue group, JetStre
 
 type Subscription struct {
 	Event    string // the contract, matching Message.Event
-	Consumer string // names the handler in diagnostics and Plan; defaults to the contract
+	Consumer string // names the handler in diagnostics and Plan; Event[T].Subscription sets it to the contract
 	Group    Group  // the broker identity; Register refuses an empty one
 	Chain    Chain  // this subscription's own middleware, applied inside the bus chain
 	Handle   Handler
@@ -375,7 +378,7 @@ func (p Plan) MarshalJSON() ([]byte, error)
 name, consumers within a group by contract then consumer, so two runs of the same
 wiring produce the same plan. `MarshalJSON` renders that order rather than the one
 the plan was built in, so a golden file compares a plan and not a map iteration.
-No generated file states a deployable's consumption any more - the groups are the
+No generated file states a deployable's consumption - the groups are the
 application's - so a project that wants it stated pins this in a test.
 
 ### Publishing
@@ -660,13 +663,13 @@ grpcSrv := rpc.New(svcCtx, opts...)
 
 | Method | Description |
 |---|---|
-| `Use(i Interceptor) *Server` | Append an interceptor to the chain, outermost first. Recovery is always ahead of the chain, and health and reflection calls bypass it. |
-| `SetLogger(l log.Logger)` / `Logger() log.Logger` | Install or read `log.Default()`, the logger the server's `Recovery` and `Error` write to; the server keeps none of its own. |
+| `Use(i Interceptor) *Server` | Append an interceptor to the chain, outermost first. Recovery is always ahead of the chain, and health and reflection calls bypass it. A `Use` after the server is built has no effect. |
+| `SetLogger(l log.Logger)` / `Logger() log.Logger` | `SetLogger` installs `l` as `log.Default()` (nil is ignored), the logger the server's `Recovery` and `Error` write to; `Logger` returns a `log.Follow()` logger, so `rpc.AccessLog(grpcSrv.Logger())` follows a later `SetLogger`. The server keeps none of its own. |
 | `RegisterService(desc *grpc.ServiceDesc, impl any)` | `grpc.ServiceRegistrar`, so `pb.RegisterXServer(srv, impl)` takes the server directly. |
 | `GRPCServer() *grpc.Server` | Build the underlying server once and return it. |
 | `Start(addr string) error` | Listen and serve until `Stop`; returns nil once stopped. |
 | `Serve(lis net.Listener) error` | Serve on a listener you own - a `bufconn` in tests. |
-| `Stop(ctx context.Context) error` | Health flips to `NOT_SERVING`, in-flight RPCs finish, and when `ctx` expires first the rest are cut off and `ctx.Err()` is returned. No-op before `Start`. |
+| `Stop(ctx context.Context) error` | Health flips to `NOT_SERVING`, in-flight RPCs finish, and when `ctx` expires first the rest are cut off and `ctx.Err()` is returned. No-op on a server never built (by `GRPCServer`, `Serve` or `Start`). |
 
 `Interceptor` pairs the two shapes gRPC needs, `Unary grpc.UnaryServerInterceptor` and `Stream grpc.StreamServerInterceptor`; `rpc.Unary(f)` and `rpc.Stream(f)` wrap one side.
 
@@ -680,7 +683,7 @@ grpcSrv := rpc.New(svcCtx, opts...)
 | `Validate(msg any) error` | Run the message's own `Validate() error` (protoc-gen-validate) and answer `InvalidArgument`. |
 | `IsInfrastructureMethod(fullMethod string) bool` | Whether a full method belongs to the health or reflection services. |
 
-`telemetry.GRPCServerHandler()` is the stats handler the generated `main.go` installs: one `otelgrpc` handler emitting the span and the `rpc.server.call.duration` histogram against the stack's providers, adopting the caller's W3C trace context from the request metadata, and leaving the health and reflection calls out.
+`tel.GRPCServerHandler()`, a method of the `*telemetry.Telemetry` that `telemetry.Init` returns, is the stats handler the generated `main.go` installs: one `otelgrpc` handler emitting the span and the `rpc.server.call.duration` histogram against the stack's providers, adopting the caller's W3C trace context from the request metadata, and leaving the health and reflection calls out.
 
 ### Calling another service
 
@@ -698,9 +701,9 @@ conn, err := rpc.Dial(addr, rpc.WithClientStatsHandler(tel.GRPCClientHandler()))
 | `WithClientTransportCredentials(c)` | Transport security; the default is insecure. |
 | `WithDialOptions(opts ...grpc.DialOption)` | Straight to `grpc.NewClient`. |
 
-`telemetry.GRPCClientHandler()` is the caller-side twin of `GRPCServerHandler()`. Without it a gRPC client sends no `traceparent`, so the service it calls starts a trace of its own.
+`tel.GRPCClientHandler()` is the caller-side twin of `GRPCServerHandler()`. Without it a gRPC client sends no `traceparent`, so the service it calls starts a trace of its own.
 
 ## Related packages
 
-- `pkg/log` - the structured `Logger` interface and default zap-backed implementation. `log.SetLevel(level)` / `log.GetLevel()` retune the process-wide level (shared by the server and generated logic); `log.SetDefault` / `log.Default` swap or read the package-level logger.
-- `pkg/telemetry` - traces and metrics as one stack. `telemetry.Init(ctx, cfg)` builds the providers the `otel:` / `metrics:` blocks of `config.yaml` select (spans: `none` / `stdout` / `otlp_grpc` / `otlp_http`; metrics: `prometheus` / `otlp_grpc` / `otlp_http` / `none`), `HTTPMiddleware()` instruments every HTTP request, `GRPCServerHandler()` every RPC served and `GRPCClientHandler()` every RPC made, `ScrapeURL()` names the Prometheus listener and `ScrapeHandler()` serves the same scrape on a route of your own, `Shutdown` flushes both signals. Generated `main.go` wires all of this.
+- `pkg/log` - the structured `Logger` interface and default zap-backed implementation. `log.SetLevel(level)` / `log.GetLevel()` retune the process-wide level (shared by the server and generated logic); `log.SetDefault` / `log.Default` swap or read the package-level logger. `log.Follow()` returns a logger that writes each line - and each line of the loggers its `With` and `WithContext` return - through the `log.Default()` of that moment; `srv.Logger()` hands one out. `log.SetDefault` given a `Follow` logger installs the logger it writes through at that call, its `With` fields and context included.
+- `pkg/telemetry` - traces and metrics as one stack. `telemetry.Init(ctx, cfg)` builds the providers the `otel:` / `metrics:` blocks of `config.yaml` select (spans: `none` / `stdout` / `otlp_grpc` / `otlp_http`; metrics: `prometheus` / `otlp_grpc` / `otlp_http` / `none`) and returns a `*Telemetry`, whose `HTTPMiddleware()` instruments every HTTP request, `GRPCServerHandler()` every RPC served and `GRPCClientHandler()` every RPC made, `ScrapeURL()` names the Prometheus listener and `ScrapeHandler()` serves the same scrape on a route of your own, and `Shutdown` flushes both signals. Generated `main.go` wires `Init`, `HTTPMiddleware` through `server.WithTelemetry` (or `GRPCServerHandler` through `rpc.WithStatsHandler`), `ScrapeURL` and `Shutdown`; `GRPCClientHandler` goes to the `rpc.Dial` calls you write, and `ScrapeHandler` to a route of yours.
