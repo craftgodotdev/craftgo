@@ -39,7 +39,7 @@ func Plan(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, p
 // regeneratedFiles names every file [Generate] rewrites.
 func regeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string {
 	out := outputsOf(cfg)
-	fills := newFillSet(proj)
+	fills := fillSetOf(proj)
 	var files []string
 	for _, name := range proj.PackageNames() {
 		pkg := proj.Packages[name]

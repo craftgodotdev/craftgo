@@ -17,7 +17,7 @@ func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Confi
 		resolvers[name] = buildProjectResolver(proj, cfg, name)
 	}
 	typesDir := outputsOf(cfg).types.at(projectRoot)
-	fills := newFillSet(proj)
+	fills := fillSetOf(proj)
 	for _, name := range names {
 		p, r := proj.Packages[name], resolvers[name]
 		if err := runSteps(name, []genStep{

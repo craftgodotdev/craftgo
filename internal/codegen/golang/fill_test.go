@@ -48,3 +48,17 @@ error Conflict P { n int }`,
 		t.Errorf("fill work = %v, want %v", got, want)
 	}
 }
+
+// A project is weighed once however many times a run asks, and another
+// project anew.
+func TestFillSetWeighedOncePerProject(t *testing.T) {
+	a := analyzeProject(t, "package app\ntype T { xs string[] }")
+	b := analyzeProject(t, "package app\ntype T { xs string[] }")
+	first := fillSetOf(a)
+	if again := fillSetOf(a); again != first {
+		t.Error("a second ask weighed the project again")
+	}
+	if fillSetOf(b).proj != b || fillSetOf(a).proj != a {
+		t.Error("another project must get its own fill set")
+	}
+}

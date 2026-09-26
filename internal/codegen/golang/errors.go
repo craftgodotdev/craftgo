@@ -29,7 +29,7 @@ func generateErrorsFilling(pkg *semantic.Package, outDir string, r *projectResol
 	}
 	r = resolverFor(pkg, r)
 	if fills == nil {
-		fills = newFillSet(r.Project())
+		fills = fillSetOf(r.Project())
 	}
 	return writeGoSource(filepath.Join(outDir, pkg.Name, "errors.go"), buildErrorsGo(pkg, r, fills))
 }

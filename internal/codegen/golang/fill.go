@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
@@ -47,6 +48,21 @@ type fillStruct struct {
 	home       string
 	body       []ast.TypeMember
 	typeParams []string
+}
+
+// lastFillSet holds the fill set of the project weighed last: a run plans its
+// files, then generates them, from one project.
+var lastFillSet atomic.Pointer[fillSet]
+
+// fillSetOf returns proj's fill set, weighing proj only when it is not the
+// project weighed last.
+func fillSetOf(proj *semantic.Project) *fillSet {
+	if s := lastFillSet.Load(); s != nil && s.proj == proj {
+		return s
+	}
+	s := newFillSet(proj)
+	lastFillSet.Store(s)
+	return s
 }
 
 // newFillSet weighs every struct of proj: one with work of its own, then, to
