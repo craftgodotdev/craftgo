@@ -11,7 +11,7 @@ This page lives at `/llms` so AI tooling can fetch one URL and ingest the full s
 3. Fill in business logic at `internal/service/<service>/<method>.go` (gen-once - your edits stick). Generated file/dir names are snake_case by default (e.g. `internal/service/user_service/get_user.go`); see `output.fileCase`.
 4. Run with `go run .`. The framework wraps `net/http` directly.
 
-DSL is the contract. Generated code is plain Go. No reflection at runtime.
+DSL is the contract. Generated code is plain Go; the one reflective piece is the `validateValue` helper a generic type's `Validate()` falls back to for a type-parameter value without a `Validate()` of its own.
 
 ## File grammar
 
@@ -32,10 +32,10 @@ package <ident>
   [@decorator]* event Name { payload Type }      // or `payload Type[]`
 
 <service member> is one of:
-  [@decorator]* <verb> Name [path] { request Type?  response Type? }
+  [@decorator]* <verb> Name [path] { [request Type] [response Type] }
 ```
 
-Every file starts with its `package` line; a file without one is rejected (`package/missing`). The name is also the generated Go package's: a Go keyword, a predeclared Go identifier (`int`, `len`, `nil`, ...), `main`, `init` or `_` is rejected (`package/name`). Files in the same directory share `package` and see each other's declarations. Cross-directory references qualify with the target package's name (`shared.Type`); no import statement is needed (an `import "<sibling-dir>"` line is still accepted but deprecated). Packages whose type or error declarations reference each other in a cycle are rejected (`ref/package-cycle`); event payloads do not count.
+Every file that imports or declares anything starts with its `package` line; a file without one is rejected (`package/missing`), and a comment-only file needs none. File-level decorators (`@version`, `@doc`, `@deprecated`) go above the `package` line; below it they attach to the first declaration (`decorator/placement`). The name is also the generated Go package's: a Go keyword, a predeclared Go identifier (`int`, `len`, `nil`, ...), `main`, `init` or `_` is rejected (`package/name`). Files that declare the same `package` form one package wherever they sit under the design root (a folder per package is the convention) and see each other's declarations; another package's declaration is referenced as `pkg.Type`, with no import statement needed. An `import "<dir>"` line is accepted and changes nothing: a missing folder is `import/unresolved`, importing your own folder an `import/self` warning. Type, enum, scalar, error, middleware, event and method names start with an uppercase letter (`decl/name-case`: the generated Go identifiers must be exported); a lower-case service name is a warning. Packages whose type or error declarations reference each other in a cycle are rejected (`ref/package-cycle`); event payloads do not count.
 
 ## Keywords (17)
 
@@ -65,7 +65,7 @@ A field's decorators may continue on lines of their own below it, up to the next
 | `file`           | `*multipart.FileHeader` | a multipart part: a request's top-level field only, never in a response, error body or event payload (`binding/file-position`) |
 | `T?`             | `*T` or nilable as-is   | optional                                   |
 | `T[]`            | `[]T`                   | array                                      |
-| `map<K, V>`      | `map[K]V`               | K must be string / int* / uint* (or a scalar/enum over one); no `?`, bool, float, struct, slice keys. V takes no `?` when it is an array or a map (`type/map-value`) |
+| `map<K, V>`      | `map[K]V`               | K must be string / int* / uint* (or a scalar/enum over one); no `?`, bool, float, struct, slice, map, bytes or type-parameter keys. V takes no `?` when it is an array or a map (`type/map-value`) |
 | `Custom`         | `Custom`                | references a declared type / scalar / enum |
 
 ### Mixins
@@ -106,7 +106,7 @@ type User { shared.Auditable  name string }
 Disambiguation rules (parser, in priority order):
 
 1. Next token is `.` or `<` -> mixin (qualified or generic name)
-2. Next token is a builtin (`string`, `int`, ...) on the same line -> field
+2. Next token is a builtin (`string`, `int`, ...) or `map` on the same line -> field
 3. First identifier starts with lowercase -> field
 4. Otherwise -> mixin (PascalCase ident alone, or followed by another non-builtin ident)
 
@@ -145,7 +145,7 @@ enum Color {
 }
 ```
 
-Generated Go: `type <Enum><base>` plus one constant per value named `<Enum><Value>` (e.g. `StatusActive`), and a `Validate() error` method that rejects any value outside the declared set.
+Generated Go: `type <Enum> <base>` (`type Status string`) plus one constant per value named `<Enum><Value>` (e.g. `StatusActive`), and a `Validate() error` method that rejects any value outside the declared set.
 
 ## Scalars
 
@@ -155,7 +155,7 @@ scalar OrderID   string  @length(8, 64) @pattern("^ord_[A-Z0-9]+$")
 scalar Cents     int     @gte(0) @multipleOf(2)
 ```
 
-Wraps a primitive: `string`, `bytes`, an integer, a float or `bool` - never `datetime`, `file` or `any` (`scalar/bad-primitive`). Validators inherit to every field of the scalar's type. Generated as a Go **defined type** (`type Email string`, not an alias) so it can carry a `Validate()` method; callers convert raw primitives (`Email("a@b.com")`).
+Wraps a primitive: `string`, `bytes`, an integer, a float or `bool` - never `datetime`, `file` or `any` (`scalar/bad-primitive`). Validators inherit to every field of the scalar's type. Generated as a Go **defined type** (`type Email string`, not an alias) so it can carry a `Validate()` method; callers convert raw primitives (`Email("a@b.com")`). A `bytes @format(raw)` scalar is the exception: it generates the alias `type Raw = wire.Raw`.
 
 ## Errors
 
@@ -184,7 +184,7 @@ Categories (drives HTTP status):
 | `LengthRequired`     | 411    | `UnsupportedMediaType` | 415    |
 | `PreconditionFailed` | 412    |                       |        |
 
-Constructed via `New<TypeName>()` (no body) or `New<TypeName>(<Name>Body{...})`, where `<TypeName>` is the DSL name with `Err` appended unless it already ends in `Err`/`Error` (DSL `EmailTaken` -> `NewEmailTakenErr()`; DSL `RateLimitedErr` -> `NewRateLimitedErr()`) and `<Name>Body` is the DSL name with `Body` appended. Implements `Error() string` (the category's default message), `HTTPStatus() int`, `ErrCode() string` (the machine-readable code) and `MarshalJSON` (the body's fields, or `{"code","message"}` for an error with no field on its JSON body: none, or only `@header`, `@cookie` and `@sensitive` ones). Each error type also exports a package-level `const ErrCode<Name>` holding that code string (e.g. `const ErrCodeEmailTaken = "EMAIL_TAKEN"`). No other declaration of the package may take one of these names, an enum value's `<Enum><Value>` constant, or an event's `<Event>Contract` constant: `decl/go-name-collision`. A body field, a mixin's included, whose Go name is one of these methods, `WriteResponseHeaders` or `<Name>Body` is `field/invalid-go-name`, as is a field of any type or error body whose Go name is `Validate`, or a mixin of a type named `Validate`.
+Constructed via `New<TypeName>()` (no body) or `New<TypeName>(<Name>Body{...})`, where `<TypeName>` is the DSL name with `Err` appended unless it already ends in `Err`/`Error` (DSL `EmailTaken` -> `NewEmailTakenErr()`; DSL `RateLimitedErr` -> `NewRateLimitedErr()`) and `<Name>Body` is the DSL name with `Body` appended. Implements `Error() string` (the category's default message), `HTTPStatus() int`, `ErrCode() string` (the machine-readable code) and `MarshalJSON` (the body's fields, or `{"code","message"}` for an error with no field on its JSON body: none, or only `@header`, `@cookie` and `@sensitive` ones). Each error type also exports a package-level `const ErrCode<Name>` holding that code string (e.g. `const ErrCodeEmailTaken = "EMAIL_TAKEN"`). No other type, scalar, enum or error of the package may take one of these names or an enum value's `<Enum><Value>` constant, and no event may take another event's `<Event>Contract` name: `decl/go-name-collision`. A body field, a mixin's included, whose Go name is one of these methods, `WriteResponseHeaders` or `<Name>Body` is `field/invalid-go-name`, as is a field of any type or error body whose Go name is `Validate`, or a mixin of a type named `Validate`.
 
 ## Services and methods
 
@@ -211,11 +211,11 @@ service UserService {
 }
 ```
 
-Method form: `<verb> <Name> <path> { request <Type>  response <Type> }`. `request` and `response` are optional. Verbs: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. Path syntax: `/segments/{paramName}/more`.
+Method form: `<verb> <Name> [<path>] { request <Type>  response <Type> }`. `request` and `response` are optional, and so is the path: without one, the route is the kebab-cased method name (`get Ping { ... }` -> `GET /ping`). Verbs: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. Path syntax: `/segments/{paramName}/more`.
 
 ### `extend service`
 
-Add methods to an existing service from a different file. The extend block can carry its own **method-level-applicable** decorators (`@middlewares`, `@security`, `@tags`, `@deprecated`, `@doc`) that propagate to every method inside:
+Add methods to an existing service from a different file. The extend block takes `@group` and every method decorator except `@operationId` (`@middlewares`, `@security`, `@tags`, `@errors`, `@deprecated`, `@doc`, `@summary`, `@status`, `@timeout`, `@maxBodySize`, the raw modes, the `@ignore*` flags); each method of the block inherits all of them but `@group`. `@middlewares`, `@security`, `@tags` and `@errors` append to the method's own; a method that repeats any other one is `decorator/duplicate`:
 
 ```craftgo
 service Users {
@@ -224,14 +224,14 @@ service Users {
 }
 
 @middlewares(AuthRequired)
-@security(Bearer)
+@security(bearer)
 extend service Users {
     get    List /users      { response UserList }              // inherits AuthRequired + Bearer
     delete Del  /users/{id} { request GetUserReq response OkResp }
 }
 ```
 
-`@prefix` belongs on the **primary** `service` block - putting it on extend raises `service/extend-decorator-not-method`. `@group` is allowed on an extend block, where it moves only that block's methods into the group's directory (per-block grouping) and adds the group value as an OpenAPI tag on those methods. `@group` REPLACES the service-name segment rather than nesting under it, so several services may deliberately share one output directory; their methods merge into that directory's single `routes.go` and the umbrella calls it once. A shared directory must not straddle DSL packages (`group/package-straddle`, since generated files take their Go package from the DSL package) and its contributors must not repeat a method name (`group/method-collision`, since handlers are one file per method). Multiple `extend` blocks for the same service are allowed (one per file is the typical pattern). The extended service's primary must be in the same package or `service/extend-orphan` fires.
+`@prefix` belongs on the **primary** `service` block and `@operationId` on each method - putting either on extend raises `service/extend-decorator-not-method`. `@group` is allowed on an extend block, where it moves only that block's methods into the group's directory (per-block grouping) and adds the group value as an OpenAPI tag on those methods. `@group` REPLACES the service-name segment rather than nesting under it, so several services may deliberately share one output directory; their methods merge into that directory's single `routes.go` and the umbrella calls it once. A shared directory must not straddle DSL packages (`group/package-straddle`, since generated files take their Go package from the DSL package) and its contributors must not repeat a method name (`group/method-collision`, since handlers are one file per method). Multiple `extend` blocks for the same service are allowed (one per file is the typical pattern). The extended service's primary must be in the same package or `service/extend-orphan` fires.
 
 ### Inheritance and opt-outs
 
@@ -288,31 +288,27 @@ event Shipped { payload OrderShipped }
   `event/contract-collision`.
 - Events have their own namespace (`type OrderPlaced` and `event OrderPlaced` coexist) and take
   `@contract`, `@doc` and `@deprecated` - nothing else. `@group` is HTTP-only.
-- Removed, each rejected with `decorator/removed` and a migration note: `@key`, the decorator that
-  named a consumer's broker group, the one that named its middleware, and the standalone
-  consumer-middleware declaration. The listener declaration they sat on went with them, and a
-  service body still holding one is a syntax error saying where the listener lives now.
+- `@key`, `@consumerGroup` and `@consumeMiddlewares` are `decorator/removed`, each with a note naming
+  where the choice is made (the publish call's `WithKey`, the group passed to `Subscribe`, `bus.Use` /
+  `Subscription.Chain`). A `consume` line in a service body is a syntax error saying listeners are Go
+  code written where the bus is built; a top-level `consume middleware Name` is a syntax error.
 
-Generated per DSL package that declares an event, under an `events.targets[].out`, and nothing
-else - no handler interface, no `Groups`, no `Register<Svc>Handler`, no publisher, no consumer
-stub, no event field on `svccontext`, no `internal/transport/events.go`:
+Generated per DSL package that declares an event, under an `events.targets[].out`: one `events.go`
+with a contract constant and a descriptor per event, and nothing else:
 
 ```go
 // <out>/orders/events.go - GEN every run, the only event file
 // PlacedContract is the wire identity of Placed.
-// Publisher and listener both address the contract by this value.
 const PlacedContract = "orders.Placed"
 
-// Emitted once an order is accepted.       <- @doc replaces the generated comment
+// Emitted once an order is accepted.       <- @doc, above the generated line
 //
-// Placed is the orders.Placed contract.
-// Placed.Publish(ctx, bus, payload) sends one; a listener registers
-// Placed.Subscribe(bus, group, fn) on its own bus.
+// Placed is the orders.Placed event contract.
 var Placed = craftevents.NewEvent[types.OrderPlaced](PlacedContract, (*types.OrderPlaced).Validate)
 ```
 
 A descriptor holds no bus - it is a parameter at every call, so one contract package serves every
-deployable, and `wiring.Register` / `svccontext` / `main.go` keep only their HTTP duties. The
+deployable, and `wiring.Register` / `svccontext` / `main.go` hold nothing for events. The
 listener half is hand-written Go, one line per event:
 
 ```go
@@ -359,7 +355,7 @@ type Subscriber interface{ Subscribe(ctx context.Context, subs []Subscription) e
 ```
 
 `Group` is a named type with no fallback - declare the groups as values beside the registrations.
-`Consumer` defaults to the contract and names the handler in `Plan` and in a `*PanicError` only;
+`Consumer` defaults to the contract and names the handler in `Plan`, a `*PanicError`, a `*RegisterError` and the `logging.AccessLog` lines;
 when two subscriptions of one contract need telling apart, take the value from `Subscription`, set
 the field and hand it to `bus.Register` - the exception `Subscribe` leaves room for.
 `Subscription.Chain` is the same kind of exception, for one registration that needs a wrap the rest
@@ -369,8 +365,8 @@ of the deployable does not; it is applied inside the bus chain.
 no codec, a disposition the transport cannot honour, and a duplicate `(Event, Group)`; whether the
 BROKER accepts the set is `Start`'s answer. A second `Start` or a later `Register` is `ErrStarted`,
 even after one that failed. `Plan()` works either side of `Start` and marshals in stable order -
-pin it in a golden file (`memory.New()` + the module's `Register` in a test) and it is the listener map no
-generated file states any more.
+pin it in a golden file (`memory.New()` + the module's `Register` in a test): it is the listener map, which no
+generated file states.
 
 The ordering key is a publish option, not a design decision; without one a publish is keyless.
 `WithDedupID`, `WithHeader(k, v)` and `WithAdapterOption(adapter, k, v)` are the rest;
@@ -378,8 +374,8 @@ The ordering key is a publish option, not a design decision; without one a publi
 knows no broker and no encoding: `pkg/events/memory` is an in-process transport, `codecjson` a JSON
 codec, `logging` the shipped consumer middleware, `kafka` and `nats` broker adapters (own modules).
 
-Metadata is the publisher's to set, on `Envelope.Metadata`, so a message carrying any is a
-one-envelope `Bus.PublishAll` (`Bus.Publish` takes none). `events.IsReservedMeta` names the keys
+Metadata is the publisher's to set: `WithHeader(k, v)` on any publish, or `Envelope.Metadata` with
+`Bus.PublishAll`. `events.IsReservedMeta` names the keys
 that are not a caller's - `MetaCodec` (`content-codec`) and anything under `MetaPrefix` (`craftgo-`);
 an entry under one is dropped silently. A handler is given the decoded payload, so metadata is read
 in a middleware or a hand-written `Subscription`.
@@ -391,7 +387,8 @@ appends to the same chain afterwards (for a chain built out of a service context
 handler.
 
 A codec must pass a `wire.Raw` through as the bytes of that value in its own encoding; the conformance
-suite `pkg/wire/codectest` (`codectest.Run(t, c)`) is how one proves it.
+suite `pkg/wire/codectest` (`codectest.Run(t, c)` for a JSON codec, `RunWith` and `RunNull` for another
+format) is how one proves it.
 
 `Bus.Start` wraps every handler in a recover, so a panicking consumer reaches the transport's error
 handler as a `*events.PanicError` and delivery continues. A panicking handler leaves the disposition
@@ -418,15 +415,15 @@ Guide: [model](/guide/events#the-model) - [declaring](/guide/events#declaring-ev
 
 ## Decorator registry
 
-Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `duration` (`5s` / `100ms`), `size` (`1MB` / `8KB`), `array literal`. All arguments are positional - named args are not accepted.
+Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `duration` (`5s` / `100ms`, or a bare int in seconds), `size` (`1MB` / `8KB`, or a bare int in bytes), `array literal`. All arguments are positional - named args are not accepted. A decorator is never an argument: `@doc(@minLength(1))` is a parse error (`a decorator cannot be an argument of @doc`).
 
 ### File-level
 
 | Decorator                            | Args               | Effect                   |
 | ------------------------------------ | ------------------ | ------------------------ |
 | `@version("...")`                    | `(string)`         | OpenAPI document version |
-| `@deprecated` / `@deprecated("...")` | `()` or `(string)` | Mark file deprecated     |
-| `@doc("...")`                        | `(string)`         | File description         |
+| `@deprecated` / `@deprecated("...")` | `()` or `(string)` | Accepted; no generated effect |
+| `@doc("...")`                        | `(string)`         | OpenAPI `info.description` |
 
 ### Type / error / enum / scalar / middleware level
 
@@ -434,9 +431,9 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 | ---------------------------- | ------------------------------------------------------------ | ------------------------- |
 | `@doc("...")`                | any level (file, type, field, service, method, enum, error, scalar, middleware, event, enumValue, errorField) | `(string)` |
 | `@deprecated`                | file, type, field, service, method, enumValue, middleware, event, errorField | `()` or `(string)`        |
-| `@example(value)`            | field, errorField                                            | literal (string/int/float/bool/null) or array - **not** an object |
-| `@requiresOneOf(a, b, ...)`  | type                                                         | idents (or array literal) |
-| `@mutuallyExclusive(a, ...)` | type                                                         | idents (or array literal) |
+| `@example(value)`            | field, errorField                                            | literal (string/int/float/bool; `null` only on an `any`, struct or map field) or array - **not** an object |
+| `@requiresOneOf(a, b, ...)`  | type                                                         | idents or strings (or array literal) |
+| `@mutuallyExclusive(a, ...)` | type                                                         | idents or strings (or array literal) |
 
 ### Field validators
 
@@ -446,9 +443,9 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 
 | Decorator           | AppliesTo | Args               | Effect                        |
 | ------------------- | --------- | ------------------ | ----------------------------- |
-| `@length(n)` / `@length(min, max)` | string | `(int)` or `(int, int)` | Exact length (1 arg) or inclusive [min, max] (2 args) |
-| `@minLength(n)`     | string    | `(int)`            | Length `>= n`                 |
-| `@maxLength(n)`     | string    | `(int)`            | Length `<= n`                 |
+| `@length(n)` / `@length(min, max)` | string, bytes | `(int)` or `(int, int)` | Exact length (1 arg) or inclusive [min, max] (2 args); bytes count bytes |
+| `@minLength(n)`     | string, bytes | `(int)`        | Length `>= n`                 |
+| `@maxLength(n)`     | string, bytes | `(int)`        | Length `<= n`                 |
 | `@pattern("regex")` | string    | `(string)`         | RE2 regex match               |
 | `@format(name)`     | string    | ident or string    | Named format (see list below) |
 | `@gte(n)`           | number    | `(number)`         | Value `>= n` (inclusive)      |
@@ -458,42 +455,42 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 | `@range(min, max)`  | number    | `(number, number)` | Both bounds, inclusive        |
 | `@positive`         | number    | `()`               | Value `> 0` (= `@gt(0)`)      |
 | `@negative`         | number    | `()`               | Value `< 0` (= `@lt(0)`)      |
-| `@multipleOf(n)`    | number    | `(number)`         | Divisible by `n` (int only)   |
-| `@minItems(n)`      | array     | `(int)`            | At least `n` elements         |
-| `@maxItems(n)`      | array     | `(int)`            | At most `n` elements          |
+| `@multipleOf(n)`    | integer   | `(number)`         | Divisible by `n`              |
+| `@minItems(n)`      | array, map | `(int)`           | At least `n` elements         |
+| `@maxItems(n)`      | array, map | `(int)`           | At most `n` elements          |
 | `@uniqueItems`      | array     | `()`               | All elements distinct         |
 | `@maxSize(N)`       | file      | `(size)`           | Multipart upload size cap     |
-| `@mimeTypes([...])` | file      | string array       | Multipart MIME allow-list     |
+| `@mimeTypes([...])` | file      | strings or string array | Multipart MIME allow-list |
 
 **`@format` values**: `email`, `url`, `uri`, `uuid`, `datetime`, `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json` - all on string-shaped fields - plus `raw`, which is not a check and is valid ONLY on `bytes` (see the type table).
 
-Validators on `errorField` are emitted as OpenAPI schema constraints only (no runtime check on server-emitted error bodies). Every string/number validator above may also sit directly on a `scalar` declaration to bake the constraint into the scalar type (`scalar Email string @format(email) @maxLength(254)`).
+Validators on `errorField` are emitted as OpenAPI schema constraints and a `<Name>Body.Validate()` that nothing calls (no runtime check on server-emitted error bodies). Every string/number validator above may also sit directly on a `scalar` declaration to bake the constraint into the scalar type (`scalar Email string @format(email) @maxLength(254)`).
 
 ### Field bindings (mutually exclusive)
 
 | Decorator | Sites             | Args               | Reads from / writes to                     |
 | --------- | ----------------- | ------------------ | ------------------------------------------ |
-| `@body`   | field             | `()` or `(string)` | Request body                               |
+| `@body`   | field             | `()`               | Request body (a name argument is accepted and ignored; `@json` sets the key) |
 | `@path`   | field             | `()` or `(string)` | URL path parameter `{name}`                |
 | `@query`  | field             | `()` or `(string)` | URL query string                           |
-| `@header` | field, errorField | `()` or `(string)` | Request header / response header on errors |
-| `@cookie` | field, errorField | `()` or `(string)` | Request cookie / response cookie on errors |
+| `@header` | field, errorField | `()` or `(string)` | Request header / response header on responses and errors |
+| `@cookie` | field, errorField | `()` or `(string)` | Request cookie / response cookie on responses and errors |
 | `@form`   | field             | `()` or `(string)` | Multipart form field                       |
 
 The optional string is the explicit wire name. Without it, the wire name is the DSL field name verbatim.
 
-A field with no binding decorator falls back to `body` for body verbs (POST/PUT/PATCH) and `query` for non-body verbs (GET/DELETE/HEAD/OPTIONS).
+A field with no binding decorator whose name matches a `{name}` in the route (or in `openapi.basePath`) binds to the path on every verb; any other falls back to `body` for body verbs (POST/PUT/PATCH) and `query` for non-body verbs (GET/DELETE/HEAD/OPTIONS).
 
 ### Field metadata
 
 | Decorator         | Sites             | Effect                                                                                           |
 | ----------------- | ----------------- | ------------------------------------------------------------------------------------------------ |
 | `@nullable`       | field, errorField | Accept JSON `null` as a legal value (Go: pointer wrap if base is not already nilable)            |
-| `@default(value)` | field, errorField | Pre-fill before JSON decode. Works on primitive, scalar, enum, optional / array of those.        |
-| `@sensitive`      | field, errorField | Server-only. `json:"-"`, omitted from OpenAPI. No validators, bindings, `@nullable`, `@default`. |
+| `@default(value)` | field, errorField | Pre-fill before JSON decode (on an error field: the OpenAPI `default:` only; `New<Name>Err` fills nothing). Works on string, bool and number primitives, scalars over them, enums, and single-level arrays of those; `bytes`, `datetime`, `file`, `any` and nested arrays are `decorator/conflict`. |
+| `@sensitive`      | field, errorField | Server-only. `json:"-"`, omitted from OpenAPI. No validators, bindings, `@json`, `@nullable`, `@default`. |
 | `@json("key")`    | field, errorField | JSON key when it is not the field name (a foreign contract, or a PascalCase key the parser reads as a mixin). Not with an off-body binding. |
 
-`@default` requires the field be optional (`?`). The formatter auto-adds `?` on save when missing, and the semantic analyzer warns until you do. For enum fields, the value is the bare ident (`@default(Active)`), checked as its wire value. The default must pass the field's validators and its scalar's (an array default: `@minItems` / `@maxItems` / `@uniqueItems`, and each element its scalar's); one that breaks them is `decorator/conflict`.
+`@default` belongs on an optional field (`?`): on a non-optional one it still pre-fills - the handler assigns the default before decoding - and `decorator/default-needs-optional` warns until you add `?` (the formatter adds it on save), so `types.go`, `validate.go` and the OpenAPI agree the field is optional. `craftgo gen` prints only errors; the editor shows the warning. For enum fields, the value is the bare ident (`@default(Active)`), checked as its wire value. The default must pass the field's validators and its scalar's (an array default: `@minItems` / `@maxItems` / `@uniqueItems`, and each element its scalar's); one that breaks them is `decorator/conflict`.
 
 ### Service / method
 
@@ -533,23 +530,24 @@ Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decora
 | Decorator          | Sites    | Args                  | Effect                                                                                     |
 | ------------------ | -------- | --------------------- | ------------------------------------------------------------------------------------------ |
 | `@contract("...")` | event    | `(string)`            | Override the wire identity. Default `<package>.<Event>`.                                     |
-| `@doc` / `@deprecated` | event | see above         | `@doc` replaces the descriptor's generated comment. Nothing else applies at event level.     |
+| `@doc` / `@deprecated` | event | see above         | `@doc` (else the comment above the event) heads the descriptor's comment, an empty `//` above the generated line; `@deprecated` changes no output. Nothing else applies at event level. |
 
 ## CLI
 
 | Command                          | Description                                                                         |
 | -------------------------------- | ----------------------------------------------------------------------------------- |
 | `craftgo init [path]`            | Scaffold a design folder with starter `craftgo.design.yaml`. Default path `design`. |
-| `craftgo gen [path]`             | Walk up from `path` (or cwd) looking for `craftgo.design.yaml`, then generate.      |
+| `craftgo gen [path]`             | Walk up from `path` (or cwd) looking for `craftgo.design.yaml`, checking the direct subdirectories at each level (not hidden ones, `vendor` or `node_modules`; two matches at one level ask for `-f`), then generate. |
 | `craftgo gen -f <design-folder>` | Skip walk-up; use the manifest at that folder.                                      |
 | `craftgo gen -c <project-root>`  | Resolve `output.*` paths against this root.                                         |
+| `craftgo gen --target <go\|docs>` | Generate only the named target (repeatable; default all); the other targets' output is left untouched. An unknown name exits 1. |
 | `craftgo fmt [path]`             | Canonical-format `.craftgo` files. Defaults to writing in place.                    |
-| `craftgo fmt -l`                 | List files that would change (no write).                                            |
+| `craftgo fmt -l`                 | List files that would change (no write); exit 1 when any differs.                   |
 | `craftgo fmt -w`                 | Write the formatted result back (default).                                          |
 | `craftgo version`                | Print CLI version.                                                                  |
 | `craftgo help`                   | Show top-level help.                                                                |
 
-Exit codes: 0 (success), 1 (any error during gen/fmt/init, including semantic errors), 2 (bad usage - missing subcommand or unknown command). The Go module path is read from `go.mod` walking up from the project root - run `go mod init <module>` before `craftgo gen` if `go.mod` is missing.
+Exit codes: 0 (success), 1 (any error during gen/fmt/init, including semantic errors, a file `fmt -l` lists, and a bad flag or argument, printed with the command's usage), 2 (a missing or unknown command). The Go module path is read from `go.mod` walking up from the project root - run `go mod init <module>` before `craftgo gen` if `go.mod` is missing.
 
 `craftgo-lsp` is a separate binary. Install with `go install github.com/craftgodotdev/craftgo/cmd/craftgo-lsp@latest`. Officially supported editor integration: VS Code only.
 
@@ -565,17 +563,25 @@ output:
   routes: ./internal/routes # directory
   service: ./internal/service # directory
   middleware: ./internal/middleware # directory
-  wiring: ./internal/wiring # directory; holds the one Register call main.go makes
+  wiring: ./internal/wiring # directory; Register (HTTP) and, with protos, RegisterGRPC
   svccontext: ./svccontext/svccontext.go # FILE PATH (single file)
   openapi: ./docs/openapi.yaml # FILE PATH (single file)
   config: ./config # directory
   main: ./main.go # FILE PATH (single file)
+  pb: ./internal/pb # directory; protoc plugins' output; "-" runs no plugin
+  grpc: ./internal/grpc # directory; one package per proto service
   fileCase: snake # snake (default) | kebab | camel - generated file/dir names only; URL routes and Go identifiers unaffected
 
 events: # optional; a design with no event generates nothing either way
-  targets: # one row per language; Go is a row, not a privileged default
+  targets: # one row per language; omitted, a design with events gets this Go row
     - lang: go
       out: ./internal/events # "-" skips the target
+
+proto: # read only when the design folder holds .proto files
+  includes: [] # extra import roots for protos you import but do not own
+  plugins:
+    go: "" # empty: `go tool protoc-gen-go`
+    goGrpc: "" # empty: `go tool protoc-gen-go-grpc`
 
 openapi:
   title: My API
@@ -589,21 +595,21 @@ openapi:
       bearerFormat: JWT
 ```
 
-All `output.*` paths resolve against the **project root** (the directory holding `go.mod`, the parent of the design folder). Override any of them to relocate the corresponding artifact. Set any path to `-` to skip generation. Setting `main: -` also skips `config/` and `svccontext` (middleware scaffolds are still generated).
+All `output.*` paths resolve against the **project root** (the design folder's parent, or `-c`; the module path comes from the nearest `go.mod` at or above it). Override any of them to relocate the corresponding artifact. `"-"` turns off `output.main`, `output.openapi` and `output.pb` (and an event target's `out`); on any other key it is an error: `craftgo: output.types cannot be "-" - other generated code imports this package, so there is nothing to disable; "-" is for output.main, output.openapi, output.pb and the event targets`. Quote it, as a bare `-` is YAML's list marker. Setting `main: "-"` also skips `config/` and `svccontext/svccontext.go`, which gen notes is yours to write; the middleware scaffolds and `svccontext/middlewares.go` are still generated.
 
 The Go module path is **not** in this file. craftgo reads it from `go.mod` at gen time.
 
-A key the manifest does not declare is ignored: `craftgo gen` names it on stderr (`craftgo: warning: output.typs is not a manifest key and is ignored`) and generates, and the editor shows the warning on the manifest. A removed key (`design`, `output.services`, `output.consumeMiddleware`, `events.asyncapi`, an event target's `layout`) is an error naming what replaced it.
+A key the manifest does not declare is ignored: `craftgo gen` names it on stderr (`craftgo: warning: output.typs is not a manifest key and is ignored`) and generates, and the editor shows the warning on the manifest. Each removed key (`design`, `output.services`, `output.consumeMiddleware`, `events.asyncapi`, an event target's `layout`) is an error that says what to do instead.
 
 `output.kind: contracts` generates only what other projects import - payload types, the event library and the documents - and stops before the application half. Its defaults move out of `internal/`, which Go forbids importing across modules: `output.types: ./gen/types` and `events.targets[].out: ./gen/events`.
 
 ### Stale output is pruned
 
-A generated header - `// Code generated by craftgo. DO NOT EDIT.` in Go, `# Generated by craftgo. DO NOT EDIT.` in the YAML documents - is the whole record. At the end of a run craftgo walks the output directories the manifest names, deletes every file carrying that header the run did not write, and removes the directories that leaves empty. It covers transport, routes, wiring, `svccontext/middlewares.go`, the event packages, a removed DSL package's `output.types` folder and the OpenAPI document. Nothing is stored on the side.
+A generated header - `// Code generated by craftgo. DO NOT EDIT.` in Go, `# Generated by craftgo. DO NOT EDIT.` in the YAML documents - is the whole record. At the end of a run craftgo walks the output directories the manifest names, deletes every file carrying that header the run did not write, and removes the directories that leaves empty. It covers transport, routes, wiring, `svccontext/middlewares.go`, the event packages, the `output.types` folder of a DSL package the design drops, the OpenAPI document, `output.grpc`, and `output.pb` (unless it is `"-"`), where the plugins' own headers mark the files. Nothing is stored on the side.
 
 - An output directory belongs to **exactly one design**. Two different designs writing into one directory delete each other's output; share contracts through an `output.kind: contracts` project the deployables import. (Two manifests generating the *same* design into one directory is fine - they write the same files.)
 - Gen-once territory is never walked: `output.service`, `output.middleware`, `output.config` and `main.go` are written only when missing, and neither those directories nor the project root is swept.
-- Strip the header and the sweep stops seeing the file - it survives a design that no longer produces it, but the next run still overwrites it if the design names that path.
+- Strip the header and the sweep stops seeing the file - it survives when the design stops producing it, but the next run still overwrites it if the design names that path.
 
 ### `openapi.basePath`
 
@@ -617,7 +623,7 @@ openapi:
 ```craftgo
 @prefix("/v1")
 service UserService {
-    get GetUser /users/{id} { ... }
+    get GetUser /users/{id} { request GetUserReq  response User }
     // -> /api/v1/users/{id} on the wire
 }
 ```
@@ -630,14 +636,14 @@ Each key is the name referenced via `@security(<key>)`. Supported `type` values:
 
 - `http`: `scheme` (`bearer`, `basic`), optional `bearerFormat`
 - `apiKey`: `in` (`header` / `query` / `cookie`), `name`
-- `oauth2`: a `flows` object (e.g. `authorizationCode` with `authorizationUrl`, `tokenUrl`, and a `scopes` map)
+- `oauth2`: a `flows` object (e.g. `authorizationCode` with `authorizationUrl`, `tokenUrl`, and a `scopes` map); a run that writes the document stops on an oauth2 scheme with no flow, or a flow missing a URL its grant needs (`securityScheme "oauth2": flow authorizationCode has no tokenUrl: ...`)
 - `openIdConnect`: `openIdConnectUrl`
 
-The semantic analyzer cross-checks every `@security(<key>)` reference against this map - unknown keys fail at gen time.
+No other scheme type is checked: the entry is copied into the document as written. When the map declares any scheme, the semantic analyzer checks every `@security(<key>)` reference against it - unknown keys fail at gen time; with no scheme declared, any name passes and is documented as an `http` bearer JWT scheme.
 
 ## `config/config.yaml` (runtime config)
 
-Read by generated `main.go` via `config.Load()`. Default content (shown annotated as in the generated `example.config.yaml`; the working `config.yaml` carries the same values without the inline comments):
+Read by generated `main.go` via `config.Load()`. Default content (the generated `config.yaml`, comments added; `example.config.yaml` documents every key, and also lists `otel.serviceName` and `metrics.serviceName`, empty, as per-signal overrides of the top-level `serviceName`):
 
 ```yaml
 server:
@@ -653,9 +659,10 @@ server:
 logging:
   level: info # debug | info | warn | error
 
+serviceName: my-app # go.mod module path's last element
+
 otel:
   enabled: true
-  serviceName: my-app
   exporter: none # none | stdout | otlp_grpc | otlp_http
   endpoint: ""
 
@@ -673,7 +680,7 @@ docs:
   specPath: /openapi.yaml
 ```
 
-craftgo does not read environment variables. The YAML file is the single source of runtime configuration. Edit `config/config.go` (gen-once) to add custom fields.
+With protos, `grpc: {addr: ":9000", handlerTimeout: 0s, reflection: true}` is added; a design whose only services are gRPC ones has no `server:` or `docs:`. craftgo reads no environment variable, but the OpenTelemetry SDK behind `telemetry.Init` reads its own `OTEL_*` variables: `OTEL_EXPORTER_OTLP_*ENDPOINT` when `endpoint` is empty, and `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_COMPRESSION`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_TRACES_SAMPLER` even when it is set. Everything else comes from the YAML file. Edit `config/config.go` (gen-once) to add custom fields.
 
 ## Generated layout
 
@@ -710,7 +717,7 @@ project/
 └── go.sum
 ```
 
-`GEN every run` files start with `// Code generated by craftgo. DO NOT EDIT.` and are overwritten on every `craftgo gen`. `GEN ONCE` files are written when missing and never touched again.
+`GEN every run` Go files start with `// Code generated by craftgo. DO NOT EDIT.` (`docs/openapi.yaml` with `# Generated by craftgo. DO NOT EDIT.`) and are overwritten on every `craftgo gen`; `GEN ONCE` Go files start with `// Scaffold generated by craftgo. Safe to edit; will not be overwritten.` and are written when missing and never touched again.
 
 Default paths come from `applyDefaults()` in `internal/config/config.go`. Override any of them in `craftgo.design.yaml`.
 
@@ -746,7 +753,7 @@ func <Method>(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 }
 ```
 
-Plain Go. No reflection. JSON goes through `server.JSON()` - the swappable codec (defaults to `encoding/json`). Handlers register on `*http.ServeMux` via `srv.Handle("VERB /path", <Method>(svc), mws...)`.
+Plain Go. JSON goes through `server.JSON()` - the swappable codec (defaults to `encoding/json`, which reflects over the generated structs). Handlers register on `*http.ServeMux` via `srv.Handle("VERB /path", <Method>(svc), mws...)`.
 
 ## Generated logic shape
 
@@ -784,9 +791,8 @@ import (
 )
 
 tel, err := telemetry.Init(ctx, cfg.Config) // traces + metrics as configured in config.yaml
-srv := server.New(svcCtx)
-srv.Use(tel.HTTPMiddleware()) // opens the span first, so AccessLog sees the trace ids
-srv.Use(server.AccessLog(logger))
+srv := server.New(svcCtx, server.WithTelemetry(tel.HTTPMiddleware())) // span opens outside Recovery and every Use middleware
+srv.Use(server.AccessLog(srv.Logger()))
 wiring.Register(ctx, srv, svcCtx)
 srv.Start(":8080")
 ```
@@ -797,9 +803,9 @@ srv.Start(":8080")
 
 | Constructor                  | Effect                                                   |
 | ---------------------------- | -------------------------------------------------------- |
-| `server.Recovery(logger)`    | Panic -> 500 + structured log, or log + aborted connection once the response started (auto-installed outermost); `http.ErrAbortHandler` aborts it unlogged |
+| `server.Recovery(logger)`    | Panic -> 500 `{"message":"internal server error"}` + structured log, or log + aborted connection once the response started; auto-installed, outermost except for the `server.WithTelemetry` middleware, which wraps it so the panic line carries trace ids (health probes get Recovery only); `http.ErrAbortHandler` aborts it unlogged |
 | `server.AccessLog(logger)`   | One `http access` line per request (health probes never reach it) |
-| `server.BodyLimit(maxBytes)` | Cap request body size                                    |
+| `server.BodyLimit(maxBytes)` | Cap request body size; over it, 413 `{"message":"request entity too large"}` |
 | `server.Timeout(d)`          | Deprecated: use `srv.SetDefaultHandlerTimeout(d)` / `@timeout` |
 | `srv.SetCORS(opts)`          | CORS headers + genuine-preflight short-circuit (opts via `server.CORSPermissive()` / `server.CORSStrict(origin)`; a Server method, not a `srv.Use` middleware) |
 | `server.Compress(opts...)`   | gzip / deflate response compression (`opts` optional)    |
@@ -811,10 +817,11 @@ The default `server.WriteError`:
 - Typed errors that marshal themselves, as every generated one does: their JSON - a declared body's fields, `{}` when every body field is optional and unset, or `{"code":"<CODE>","message":"<text>"}` for an error with no field on its JSON body (none, or only `@header`, `@cookie` and `@sensitive` ones). Status from `HTTPStatus()`.
 - Other typed errors whose JSON is `{}`: `{"message":"<text>"}`, plus `"code":"<CODE>"` when the error implements `ErrCode() string`. Status from `HTTPStatus()`.
 - Plain (non-`StatusError`) errors: `{"message":"internal server error"}` - the raw `err.Error()` text is logged with trace context but **never** written to the response (it routinely carries DSNs / file paths). Status 500.
+- Context errors are the exception: an error wrapping `context.DeadlineExceeded`, or any context error after the request's own deadline passed, answers 504 `{"message":"gateway timeout"}`, unlogged (a dependency's deadline on a live request is logged at Warn, `dependency deadline exceeded`); once the client has gone, a context error writes nothing and logs nothing; a `context.Canceled` on a live request is an ordinary logged 500.
 
-`Content-Type` is `application/json; charset=utf-8` for all `WriteError` paths. Panic responses from the `Recovery` middleware use `http.Error`, which writes `text/plain; charset=utf-8`.
+Every error the framework writes - `WriteError`, `WriteValidationError` (400, or 413 `{"message":"request entity too large"}` past the body cap), the mux's 404 `{"message":"not found"}` and 405 `{"message":"method not allowed"}`, and a panic `Recovery` catches (500 `{"message":"internal server error"}`) - is `application/json; charset=utf-8` with `X-Content-Type-Options: nosniff`. The deprecated `server.Timeout` middleware alone answers a plain-text 503. None of these framework-written errors is in the OpenAPI document, which lists each operation's success response and its `@errors` only.
 
-To customise the envelope: `server.SetHandleUnknownError(fn)` overrides the 500 for untyped errors, and `server.SetDefaultValidationFailed(fn)` overrides the 4xx validation body. `server.WriteError(w, r, err)` / `server.WriteValidationError(w, r, err)` are the entry points the generated handlers call.
+To customise the envelope: `server.SetHandleUnknownError(fn)` overrides the 500 for untyped errors (it never sees a deadline or a gone client's context error), and `server.SetDefaultValidationFailed(fn)` overrides the 400 (default `{"message": <err text>}`); a body read past its cap answers 413 without calling it. `server.WriteError(w, r, err)` / `server.WriteValidationError(w, r, err)` are the entry points the generated handlers call.
 
 ## Common patterns
 
@@ -894,9 +901,7 @@ Beside a `file`, every body or `@form` field rides a form part: a string, bool, 
 
 ```craftgo
 error TooManyRequests RateLimited {
-    code       string @default("RATE_LIMITED")
-    message    string @default("Slow down")
-    retryAfter int    @header("Retry-After")
+    retryAfter int @header("Retry-After")
 }
 
 service UserService {
@@ -910,6 +915,8 @@ In service code:
 ```go
 return nil, types.NewRateLimitedErr(types.RateLimitedBody{RetryAfter: 30})
 ```
+
+The client gets 429, `Retry-After: 30` and `{"code":"RATE_LIMITED","message":"Too many requests"}`: every field rides a header, so the body is the envelope. A body field is the caller's to fill - `New<Name>Err` applies no `@default`, which reaches only the OpenAPI schema.
 
 ### Server-only field
 
@@ -926,6 +933,9 @@ type Order {
 ```craftgo
 // design/users/service.craftgo
 package users
+
+middleware AuthRequired
+middleware AdminOnly
 
 @prefix("/users")
 @middlewares(AuthRequired)
@@ -961,7 +971,7 @@ internal/wiring/grpc.go                              REGEN: RegisterGRPC(ctx, sr
 config/ (grpc: addr/handlerTimeout/reflection), main.go (rpc.New + interceptors + RegisterGRPC)   GEN-ONCE
 ```
 
-Logic signatures: unary `X(req *pb.Req) (*pb.Resp, error)`; server stream `X(req *pb.Req, stream grpc.ServerStreamingServer[pb.Resp]) error`; client stream `X(stream grpc.ClientStreamingServer[pb.Req, pb.Resp]) error`; bidi `X(stream grpc.BidiStreamingServer[pb.Req, pb.Resp]) error`. The server layer calls `rpc.Validate(req)` (a `Validate() error` on the message → `InvalidArgument`) and `rpc.Error(ctx, err)` (status errors pass through; craftgo typed errors map HTTP status → code with an `ErrorInfo{Reason: ErrCode()}` detail; unknown errors log and answer `Internal`).
+Logic signatures: unary `X(req *pb.Req) (*pb.Resp, error)`; server stream `X(req *pb.Req, stream grpc.ServerStreamingServer[pb.Resp]) error`; client stream `X(stream grpc.ClientStreamingServer[pb.Req, pb.Resp]) error`; bidi `X(stream grpc.BidiStreamingServer[pb.Req, pb.Resp]) error`. The server layer calls `rpc.Validate(req)` (a `Validate() error` on the message → `InvalidArgument`) and `rpc.Error(ctx, err)` (status errors pass through; craftgo typed errors map HTTP status → code with an `ErrorInfo{Reason: ErrCode()}` detail; a context error becomes `Canceled` or `DeadlineExceeded`, unlogged; unknown errors log and answer `Internal`).
 
 Runtime `pkg/rpc`: `rpc.New(svc, rpc.WithStatsHandler(tel.GRPCServerHandler()), rpc.WithReflection(bool))`, `Use(rpc.AccessLog(l))`, `Use(rpc.Timeout(d))` (unary only), Recovery always outermost, `grpc.health.v1` registered, `Start(addr)` / `Stop(ctx)`. `tel.GRPCServerHandler()` emits spans + `rpc.server.call.duration`. A design of protos alone boots gRPC only; routes + protos boot both listeners.
 
@@ -975,14 +985,14 @@ Calling one: the pb client is generated (`pb.NewGreeterClient(cc)`), and the con
 - Multi-language client gen - emit OpenAPI and run a generator over it; Go is craftgo's only source-code target
 - Broker adapters in the core module - `pkg/events` defines the transport interfaces and depends on nothing; the Kafka and NATS adapters ship as their own modules under `pkg/events/`, and anything else (RabbitMQ, SQS) is an external `Publisher` / `Subscriber`
 - Custom routers - uses Go 1.22+ stdlib `*http.ServeMux`
-- Environment-variable config - YAML file is the single source of runtime values
+- Environment-variable config - craftgo reads no environment variable (the OpenTelemetry SDK still reads its own `OTEL_*` ones)
 
 ## Things craftgo guarantees
 
 - Generated code compiles
 - `craftgo gen` is deterministic (same input -> same output)
 - Logic stubs (`internal/service/...`) are never touched after first creation
-- The generated OpenAPI is structurally valid OAS 3.1 and renders cleanly in Swagger UI, ReDoc, and openapi-generator (Spectral / Redocly may flag nullable-union representations under their default 3.1 rulesets)
+- The generated OpenAPI is structurally valid OAS 3.1 and renders cleanly in Swagger UI, ReDoc, and openapi-generator (Spectral / Redocly may flag nullable-union representations under their default 3.1 rulesets), given security schemes that carry the fields their type requires: only an oauth2 scheme's flows are checked, and the other types are copied as written
 - The runtime is `net/http` only - no fork, no patch, no parallel runtime
 - The DSL is a closed set: unknown decorators fire `decorator/unknown` at gen time, never silently ignored
 - The event model carries no broker or codec concept: transports, codecs, groups and consumer middleware are the application's runtime wiring, never the design's
