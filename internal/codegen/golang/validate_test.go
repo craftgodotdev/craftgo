@@ -603,19 +603,35 @@ type Bag { byEmail map<shared.Email, string> }`,
 	)
 }
 
-// Without a resolver, a primitive field gets no nested Validate call.
-func TestValidateOmitsCallWhenNoTypeTable(t *testing.T) {
-	pkg := analyze(t, `package app
-type Product { id string }`)
-	dir := t.TempDir()
-	if err := generateValidators(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := os.ReadFile(filepath.Join(dir, "app", "validate.go"))
-	src := string(out)
-	mustParseGo(t, src)
-	if strings.Contains(src, "v.Id.Validate()") || strings.Contains(src, "v.ID.Validate()") {
-		t.Errorf("primitive field must not get a recursive validate call:\n%s", src)
+// A field typed in another package gets its Validate call only through the project resolver:
+// the package alone cannot see that type.
+func TestValidateCallsACrossPackageTypeOnlyThroughTheResolver(t *testing.T) {
+	proj := analyzeFiles(t, map[string]string{
+		"shared/types.craftgo": `package shared
+type Owner { name string @minLength(1) }`,
+		"app/types.craftgo": `package app
+import "shared"
+type Product { id string  owner shared.Owner }`,
+	})
+	for _, c := range []struct {
+		name     string
+		resolver *projectResolver
+		call     bool
+	}{
+		{"package alone", nil, false},
+		{"project resolver", &projectResolver{Resolver: semantic.NewResolver(proj, "app")}, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := generateValidators(proj.Packages["app"], dir, c.resolver); err != nil {
+				t.Fatal(err)
+			}
+			src := readGen(t, dir, "app/validate.go")
+			mustParseGo(t, src)
+			if got := strings.Contains(src, "v.Owner.Validate()"); got != c.call {
+				t.Errorf("v.Owner.Validate() emitted = %v, want %v:\n%s", got, c.call, src)
+			}
+		})
 	}
 }
 
