@@ -190,7 +190,7 @@ func TestWritePrecompressedThroughCompressIsNotDoubleEncoded(t *testing.T) {
 	_ = zw.Close()
 	stored := gz.Bytes()
 
-	s := newTestServer(t)
+	s := New(nil)
 	s.Use(Compress())
 	s.HandleFunc("GET /cached", func(w http.ResponseWriter, r *http.Request) {
 		if err := WritePrecompressed(w, r, http.StatusOK, ctJSON, "gzip", stored, func(b []byte) ([]byte, error) {
@@ -203,7 +203,7 @@ func TestWritePrecompressedThroughCompressIsNotDoubleEncoded(t *testing.T) {
 			t.Errorf("WritePrecompressed: %v", err)
 		}
 	})
-	h := finalize(s)
+	h := s.Handler()
 
 	// Client accepts gzip: stored bytes go out verbatim, one gzip layer.
 	rec := httptest.NewRecorder()
@@ -252,7 +252,7 @@ func TestWriteErrorAfterCommitThroughWrappers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			logs := observeLogs(t)
 			partial := strings.Repeat("x", tc.partialBytes)
-			s := newTestServer(t)
+			s := New(nil)
 			s.Use(AccessLog(s.Logger()))
 			if tc.useCompress {
 				s.Use(Compress())
@@ -268,7 +268,7 @@ func TestWriteErrorAfterCommitThroughWrappers(t *testing.T) {
 			if tc.acceptGzip {
 				req.Header.Set("Accept-Encoding", "gzip")
 			}
-			finalize(s).ServeHTTP(rec, req)
+			s.Handler().ServeHTTP(rec, req)
 			if rec.Code != http.StatusOK {
 				t.Errorf("status = %d, want the committed 200", rec.Code)
 			}

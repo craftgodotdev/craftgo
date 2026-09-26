@@ -32,6 +32,7 @@ type fakeStatusError struct {
 func (e fakeStatusError) Error() string   { return e.msg }
 func (e fakeStatusError) HTTPStatus() int { return e.status }
 
+// gunzip returns b gzip-decoded.
 func gunzip(t *testing.T, b []byte) string {
 	t.Helper()
 	r, err := gzip.NewReader(bytes.NewReader(b))
@@ -44,4 +45,13 @@ func gunzip(t *testing.T, b []byte) string {
 		t.Fatalf("gzip read: %v", err)
 	}
 	return string(out)
+}
+
+// resetCodec restores the default codec and lenient decoding when the test ends.
+func resetCodec(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		_ = SetStrictJSON(false)
+		_ = SetGlobalJSONCodec(nil)
+	})
 }

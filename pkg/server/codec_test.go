@@ -49,14 +49,6 @@ func (spyCodec) Encode(io.Writer, any) error         { return nil }
 func (c spyCodec) Decode(io.Reader, any) error       { *c.lenient++; return nil }
 func (c spyCodec) DecodeStrict(io.Reader, any) error { *c.strict++; return nil }
 
-func resetCodec(t *testing.T) {
-	t.Helper()
-	t.Cleanup(func() {
-		_ = SetStrictJSON(false)
-		_ = SetGlobalJSONCodec(nil)
-	})
-}
-
 // With strict on, JSON() decodes through DecodeStrict; off, through Decode.
 func TestStrictJSONRoutesThroughDecodeStrict(t *testing.T) {
 	resetCodec(t)

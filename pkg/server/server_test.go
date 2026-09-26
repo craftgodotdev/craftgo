@@ -21,36 +21,25 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/log"
 )
 
-// newTestServer returns a Server with the defaults.
-func newTestServer(t *testing.T) *Server {
-	t.Helper()
-	return New(nil)
-}
-
-// finalize returns the handler Start serves.
-func finalize(s *Server) http.Handler {
-	return s.Handler()
-}
-
 func TestServerHandleFuncAndDefaults(t *testing.T) {
-	s := newTestServer(t)
+	s := New(nil)
 	s.HandleFunc("GET /ping", func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("pong"))
 	})
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ping", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ping", nil))
 	if rec.Body.String() != "pong" {
 		t.Errorf("body = %q", rec.Body.String())
 	}
 }
 
 func TestServerRecoveryConvertsPanic(t *testing.T) {
-	s := newTestServer(t)
+	s := New(nil)
 	s.HandleFunc("GET /boom", func(_ http.ResponseWriter, _ *http.Request) {
 		panic("kaboom")
 	})
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/boom", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/boom", nil))
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", rec.Code)
 	}
@@ -58,9 +47,9 @@ func TestServerRecoveryConvertsPanic(t *testing.T) {
 
 // The Recovery a Server installs logs to log.Default as it is when the panic happens.
 func TestServerRecoveryLogsToTheCurrentDefault(t *testing.T) {
-	s := newTestServer(t)
+	s := New(nil)
 	s.HandleFunc("GET /boom", func(http.ResponseWriter, *http.Request) { panic("boom") })
-	h := finalize(s)
+	h := s.Handler()
 	logs := observeLogs(t)
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/boom", nil))
 	if n := logs.FilterMessage("panic recovered").Len(); n != 1 {
@@ -71,10 +60,10 @@ func TestServerRecoveryLogsToTheCurrentDefault(t *testing.T) {
 // An access log built from Logger writes to the logger a later SetLogger installs.
 func TestAccessLogFollowsSetLogger(t *testing.T) {
 	observeLogs(t)
-	s := newTestServer(t)
+	s := New(nil)
 	s.Use(AccessLog(s.Logger()))
 	s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	h := finalize(s)
+	h := s.Handler()
 	core, logs := observer.New(zapcore.InfoLevel)
 	s.SetLogger(log.NewZap(zap.New(core)))
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/a", nil))
@@ -87,7 +76,7 @@ func TestAccessLogFollowsSetLogger(t *testing.T) {
 // own code as their caller.
 func TestLoggerComparesAndKeepsTheCaller(t *testing.T) {
 	observeLogs(t)
-	s := newTestServer(t)
+	s := New(nil)
 	func() {
 		defer func() {
 			if p := recover(); p != nil {
@@ -102,7 +91,7 @@ func TestLoggerComparesAndKeepsTheCaller(t *testing.T) {
 	s.SetLogger(log.NewZap(zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))))
 	s.Use(AccessLog(s.Logger()))
 	s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	finalize(s).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/a", nil))
+	s.Handler().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/a", nil))
 	lines := logs.FilterMessage("http access").All()
 	if len(lines) != 1 || !strings.HasSuffix(lines[0].Caller.File, "server/middleware.go") {
 		t.Errorf("access lines %v, want one whose caller is server/middleware.go", lines)
@@ -113,7 +102,7 @@ func TestLoggerComparesAndKeepsTheCaller(t *testing.T) {
 // never reads a clean end: a buffered body is dropped and a flushed stream is cut off.
 func TestServerRecoveryAfterCommitAbortsTheConnection(t *testing.T) {
 	logs := observeLogs(t)
-	s := newTestServer(t)
+	s := New(nil)
 	s.HandleFunc("GET /written", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"partial":true`))
 		panic("after write")
@@ -124,7 +113,7 @@ func TestServerRecoveryAfterCommitAbortsTheConnection(t *testing.T) {
 		w.(http.Flusher).Flush()
 		panic("after flush")
 	})
-	srv := httptest.NewServer(finalize(s))
+	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
 	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
 
@@ -153,14 +142,14 @@ func TestServerRecoveryAfterCommitAbortsTheConnection(t *testing.T) {
 // after the response is committed, and is not logged as a crash.
 func TestServerRecoveryLetsAnAbortedHandlerAbortTheConnection(t *testing.T) {
 	logs := observeLogs(t)
-	s := newTestServer(t)
+	s := New(nil)
 	s.HandleFunc("GET /abort", func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) })
 	s.HandleFunc("GET /abort-mid-stream", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("partial"))
 		w.(http.Flusher).Flush()
 		panic(http.ErrAbortHandler)
 	})
-	srv := httptest.NewServer(finalize(s))
+	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
 
 	if resp, err := srv.Client().Get(srv.URL + "/abort"); err == nil {
@@ -191,12 +180,12 @@ func TestAnInvalidStatusIsAnswered500(t *testing.T) {
 			"access log and compress": {AccessLog(log.Default()), Compress()},
 		} {
 			t.Run(fmt.Sprintf("%s/%d", name, code), func(t *testing.T) {
-				s := newTestServer(t)
+				s := New(nil)
 				for _, mw := range chain {
 					s.Use(mw)
 				}
 				s.HandleFunc("GET /x", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(code) })
-				srv := httptest.NewServer(finalize(s))
+				srv := httptest.NewServer(s.Handler())
 				defer srv.Close()
 				req, err := http.NewRequest(http.MethodGet, srv.URL+"/x", nil)
 				if err != nil {
@@ -218,14 +207,14 @@ func TestAnInvalidStatusIsAnswered500(t *testing.T) {
 
 // WriteValidationError leaves a committed response untouched.
 func TestWriteValidationErrorSkipsPostCommit(t *testing.T) {
-	s := newTestServer(t)
+	s := New(nil)
 	s.HandleFunc("GET /v", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true}`))
 		WriteValidationError(w, r, errBadField)
 	})
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("post-commit validation must not rewrite status, got %d", rec.Code)
 	}
@@ -288,13 +277,13 @@ func TestWithLimitsContentLengthPreCheck(t *testing.T) {
 }
 
 func TestServerHealthEndpoints(t *testing.T) {
-	s := newTestServer(t)
+	s := New(nil)
 	called := int32(0)
 	s.RegisterHealthCheck("db", time.Second, func(_ context.Context) error {
 		atomic.AddInt32(&called, 1)
 		return nil
 	})
-	h := finalize(s)
+	h := s.Handler()
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if rec.Code != http.StatusOK {
@@ -308,12 +297,12 @@ func TestServerHealthEndpoints(t *testing.T) {
 }
 
 func TestServerHealthCheckFailure(t *testing.T) {
-	s := newTestServer(t)
+	s := New(nil)
 	s.RegisterHealthCheck("bad", 50*time.Millisecond, func(_ context.Context) error {
 		return errors.New("down")
 	})
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("expected 503, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -321,10 +310,10 @@ func TestServerHealthCheckFailure(t *testing.T) {
 
 // A check that returns an error fails readiness whatever the error's text.
 func TestServerHealthCheckErrorTextIsNeverHealthy(t *testing.T) {
-	s := newTestServer(t)
+	s := New(nil)
 	s.RegisterHealthCheck("cache", time.Second, func(context.Context) error { return errors.New("ok") })
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"not_ready"`) {
 		t.Errorf("status %d, body %s; want 503 not_ready", rec.Code, rec.Body.String())
 	}
@@ -333,11 +322,11 @@ func TestServerHealthCheckErrorTextIsNeverHealthy(t *testing.T) {
 // A check that panics fails readiness, and the panic is logged under the check's name.
 func TestServerHealthCheckPanicFailsTheProbe(t *testing.T) {
 	logs := observeLogs(t)
-	s := newTestServer(t)
+	s := New(nil)
 	s.RegisterHealthCheck("db", time.Second, func(context.Context) error { return nil })
 	s.RegisterHealthCheck("cache", time.Second, func(context.Context) error { panic("cache client is nil") })
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 
 	var body struct {
 		Status string            `json:"status"`
@@ -367,7 +356,7 @@ func TestServerHealthCheckPanicFailsTheProbe(t *testing.T) {
 func TestServerWithoutDefaultHealth(t *testing.T) {
 	s := New(nil, WithoutDefaultHealth())
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected 404 when health disabled, got %d", rec.Code)
 	}
@@ -376,13 +365,13 @@ func TestServerWithoutDefaultHealth(t *testing.T) {
 // A custom not-found handler answers what the mux answers 404; a method mismatch keeps its
 // 405 with Allow, and an unclean path its redirect.
 func TestSetHandleNotFoundTakesOnlyThe404s(t *testing.T) {
-	s := newTestServer(t)
+	s := New(nil)
 	s.HandleFunc("GET /only-get", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	s.SetHandleNotFound(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`{"message":"no such route"}`))
 	}))
-	h := finalize(s)
+	h := s.Handler()
 	for _, tc := range []struct {
 		method, path string
 		status       int
@@ -409,13 +398,13 @@ func TestSetHandleNotFoundTakesOnlyThe404s(t *testing.T) {
 
 // SetHandleNotFound(nil) restores the default 404.
 func TestSetHandleNotFoundNilRestoresTheDefault(t *testing.T) {
-	s := newTestServer(t)
+	s := New(nil)
 	s.SetHandleNotFound(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 	s.SetHandleNotFound(nil)
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/missing", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/missing", nil))
 	if rec.Code != http.StatusNotFound || rec.Body.String() != `{"message":"not found"}`+"\n" {
 		t.Errorf("status %d, body %q; want the default JSON 404", rec.Code, rec.Body.String())
 	}
@@ -424,19 +413,19 @@ func TestSetHandleNotFoundNilRestoresTheDefault(t *testing.T) {
 func TestServerWithCustomHealthPaths(t *testing.T) {
 	s := New(nil, WithHealthPaths(HealthPaths{Liveness: "/live", Readiness: "/ready"}))
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/live", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/live", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200 on /live, got %d", rec.Code)
 	}
 }
 
 func TestAccessLogMiddleware(t *testing.T) {
-	s := newTestServer(t).Use(AccessLog(log.Discard()))
+	s := New(nil).Use(AccessLog(log.Discard()))
 	s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	})
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/a", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/a", nil))
 	if rec.Code != http.StatusTeapot {
 		t.Errorf("status = %d", rec.Code)
 	}
@@ -445,11 +434,11 @@ func TestAccessLogMiddleware(t *testing.T) {
 // AccessLog logs every request's method, path and status except the skipped paths.
 func TestAccessLogSkipPaths(t *testing.T) {
 	logs := observeLogs(t)
-	s := newTestServer(t).Use(AccessLog(log.Default(), AccessLogSkipPaths("/metrics")))
+	s := New(nil).Use(AccessLog(log.Default(), AccessLogSkipPaths("/metrics")))
 	ok := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }
 	s.HandleFunc("GET /metrics", ok)
 	s.HandleFunc("GET /a", ok)
-	h := finalize(s)
+	h := s.Handler()
 	for _, path := range []string{"/metrics", "/a", "/missing"} {
 		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
 	}
@@ -523,12 +512,12 @@ func TestAccessLogRecords499ForAGoneClient(t *testing.T) {
 // A client that disconnects while its handler waits is logged with status 499.
 func TestAccessLogRecords499OverAConnection(t *testing.T) {
 	logs := observeLogs(t)
-	s := newTestServer(t).Use(AccessLog(log.Default()))
+	s := New(nil).Use(AccessLog(log.Default()))
 	s.HandleFunc("GET /wait", func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 		WriteError(w, r, r.Context().Err())
 	})
-	ts := httptest.NewServer(finalize(s))
+	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/wait", nil)
@@ -569,7 +558,7 @@ func TestWithTelemetryWrapsRecoveryButNotTheProbes(t *testing.T) {
 		})
 	})
 	s.HandleFunc("GET /boom", func(http.ResponseWriter, *http.Request) { panic("boom") })
-	h := finalize(s)
+	h := s.Handler()
 	for _, path := range []string{"/boom", DefaultLivenessPath, DefaultReadinessPath} {
 		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
 	}
@@ -580,7 +569,7 @@ func TestWithTelemetryWrapsRecoveryButNotTheProbes(t *testing.T) {
 	plain := New(nil, WithTelemetry(nil))
 	plain.HandleFunc("GET /ok", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	rec := httptest.NewRecorder()
-	finalize(plain).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ok", nil))
+	plain.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ok", nil))
 	if rec.Code != http.StatusNoContent {
 		t.Errorf("WithTelemetry(nil): status %d, want the route's 204", rec.Code)
 	}
@@ -598,7 +587,7 @@ func TestWithTelemetryNilKeepsTheEarlierOne(t *testing.T) {
 	}
 	s := New(nil, WithTelemetry(telemetry), WithTelemetry(nil))
 	s.HandleFunc("GET /ok", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	finalize(s).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/ok", nil))
+	s.Handler().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/ok", nil))
 	if seen != 1 {
 		t.Errorf("the telemetry middleware ran %d times, want 1", seen)
 	}
@@ -620,7 +609,7 @@ func TestProbesBypassMiddlewareChain(t *testing.T) {
 				})
 			})
 			s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-			h := finalize(s)
+			h := s.Handler()
 			for _, path := range []string{s.healthPaths.Liveness, s.healthPaths.Readiness, "/a"} {
 				rec := httptest.NewRecorder()
 				h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
@@ -636,7 +625,7 @@ func TestProbesBypassMiddlewareChain(t *testing.T) {
 }
 
 func TestBodyLimitMiddleware(t *testing.T) {
-	s := newTestServer(t).Use(BodyLimit(4))
+	s := New(nil).Use(BodyLimit(4))
 	s.HandleFunc("POST /b", func(w http.ResponseWriter, r *http.Request) {
 		_, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -646,27 +635,27 @@ func TestBodyLimitMiddleware(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/b", strings.NewReader("toolong")))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/b", strings.NewReader("toolong")))
 	if rec.Code != http.StatusRequestEntityTooLarge {
 		t.Errorf("expected 413, got %d", rec.Code)
 	}
 }
 
 func TestTimeoutMiddleware(t *testing.T) {
-	s := newTestServer(t).Use(Timeout(10 * time.Millisecond))
+	s := New(nil).Use(Timeout(10 * time.Millisecond))
 	s.HandleFunc("GET /slow", func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(50 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
 	})
 	rec := httptest.NewRecorder()
-	finalize(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/slow", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/slow", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("expected 503 from timeout, got %d", rec.Code)
 	}
 }
 
 func TestServerSetters(t *testing.T) {
-	s := newTestServer(t)
+	s := New(nil)
 	s.SetDefaultReadTimeout(time.Second).
 		SetDefaultWriteTimeout(2*time.Second).
 		SetDefaultMaxBodySize(1024).
@@ -686,7 +675,7 @@ func TestServerSetters(t *testing.T) {
 
 // Setters may run on another goroutine than route registration and Handler.
 func TestServerConfigurationAcrossGoroutines(t *testing.T) {
-	s := newTestServer(t)
+	s := New(nil)
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		s.SetDefaultReadTimeout(time.Second).
@@ -706,7 +695,7 @@ func TestServerConfigurationAcrossGoroutines(t *testing.T) {
 }
 
 func TestCORSMiddleware(t *testing.T) {
-	s := newTestServer(t).SetCORS(CORSOptions{
+	s := New(nil).SetCORS(CORSOptions{
 		AllowedOrigins:   []string{"https://app.example.com", "https://*.partner.com"},
 		AllowedMethods:   []string{"GET", "POST"},
 		AllowedHeaders:   []string{"Content-Type"},
@@ -715,7 +704,7 @@ func TestCORSMiddleware(t *testing.T) {
 		MaxAge:           time.Hour,
 	})
 	s.HandleFunc("GET /c", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	h := finalize(s)
+	h := s.Handler()
 
 	// Allowed origin → header echoed.
 	req := httptest.NewRequest(http.MethodGet, "/c", nil)
@@ -806,7 +795,7 @@ func (markerCodec) Encode(w io.Writer, v any) error {
 }
 
 func TestGlobalJSONCodecSwapTakesEffect(t *testing.T) {
-	t.Cleanup(func() { _ = SetGlobalJSONCodec(defaultCodec{}) })
+	resetCodec(t)
 	if err := SetGlobalJSONCodec(markerCodec{}); err != nil {
 		t.Fatal(err)
 	}
@@ -820,7 +809,7 @@ func TestGlobalJSONCodecSwapTakesEffect(t *testing.T) {
 }
 
 func TestServerSetJSONCodecPropagatesToGlobal(t *testing.T) {
-	t.Cleanup(func() { SetGlobalJSONCodec(defaultCodec{}) })
+	resetCodec(t)
 	New(nil).SetJSONCodec(markerCodec{})
 	var buf strings.Builder
 	_ = JSON().Encode(&buf, map[string]int{"b": 2})
@@ -831,10 +820,7 @@ func TestServerSetJSONCodecPropagatesToGlobal(t *testing.T) {
 
 // Codec reports the codec JSON returns, after a process-wide swap and under strict JSON.
 func TestServerCodecIsTheCodecInUse(t *testing.T) {
-	t.Cleanup(func() {
-		_ = SetStrictJSON(false)
-		_ = SetGlobalJSONCodec(nil)
-	})
+	resetCodec(t)
 	s := New(nil)
 	if err := SetGlobalJSONCodec(markerCodec{}); err != nil {
 		t.Fatal(err)
@@ -869,13 +855,13 @@ func TestServerStartAndStop(t *testing.T) {
 // AccessLogFields adds its fields after the handler ran, so the matched route is available.
 func TestAccessLogFields(t *testing.T) {
 	logs := observeLogs(t)
-	s := newTestServer(t).Use(AccessLog(log.Default(), AccessLogFields(func(r *http.Request) []log.Field {
+	s := New(nil).Use(AccessLog(log.Default(), AccessLogFields(func(r *http.Request) []log.Field {
 		return []log.Field{log.String("route", r.Pattern), log.String("ua", r.UserAgent())}
 	})))
 	s.HandleFunc("GET /items/{id}", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	req := httptest.NewRequest(http.MethodGet, "/items/7", nil)
 	req.Header.Set("User-Agent", "probe/1")
-	finalize(s).ServeHTTP(httptest.NewRecorder(), req)
+	s.Handler().ServeHTTP(httptest.NewRecorder(), req)
 	entries := logs.FilterMessage("http access").All()
 	if len(entries) != 1 {
 		t.Fatalf("want 1 access line, got %d", len(entries))
