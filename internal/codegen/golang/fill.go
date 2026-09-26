@@ -107,46 +107,18 @@ func (s *fillSet) has(key any) bool {
 }
 
 // weigh reports whether st has work of its own, and returns the struct types
-// its fields and mixins name.
+// its fields and mixins name, walking st as the emitter does with no struct
+// counted as having work yet.
 func (s *fillSet) weigh(st fillStruct) (direct bool, reached []*ast.TypeDecl) {
-	res := semantic.NewResolver(s.proj, st.home)
-	var visit func(t *ast.TypeRef, required bool)
-	visit = func(t *ast.TypeRef, required bool) {
-		switch {
-		case t == nil:
-		case t.Array:
-			direct = direct || required
-			elem := t.ElemTypeRef()
-			visit(elem, !elem.Optional)
-		case t.Map != nil:
-			direct = direct || required
-			visit(t.Map.Value, !t.Map.Value.Optional)
-		case t.Named == nil || t.Named.Name == nil:
-		case slices.Contains(st.typeParams, t.Named.Name.String()):
-			direct = true
-		default:
-			if td := res.LookupType(t.Named.Name.String()); td != nil {
-				reached = append(reached, td)
-			} else if required && fillsBytes(res.ResolveTypeRef(t)) {
-				direct = true
-			}
-		}
+	e := &fillEmitter{
+		res:        semantic.NewResolver(s.proj, st.home),
+		pkg:        s.proj.Packages[st.home],
+		set:        &fillSet{proj: s.proj, types: map[*ast.TypeDecl]bool{}, errs: map[*ast.ErrorDecl]bool{}},
+		data:       &fillData{},
+		typeParams: st.typeParams,
+		reached:    &reached,
 	}
-	for _, m := range st.body {
-		switch v := m.(type) {
-		case *ast.Field:
-			if _, presence := wire.JSONShape(v); presence != wire.JSONAbsent {
-				visit(v.Type, presence == wire.JSONRequired && !semantic.HasRawFormat(v.Decorators))
-			}
-		case *ast.Mixin:
-			if v.Ref != nil && v.Ref.Name != nil {
-				if td := res.LookupType(v.Ref.Name.String()); td != nil {
-					reached = append(reached, td)
-				}
-			}
-		}
-	}
-	return direct, reached
+	return len(e.body(st.body)) > 0, reached
 }
 
 // fillsBytes reports whether a value of type rf is a byte slice that encodes
@@ -197,13 +169,24 @@ func (s *fillSet) data(pkg *semantic.Package) fillData {
 	return out
 }
 
-// fillEmitter renders the FillEmpty statements of one package's structs.
+// fillEmitter renders the FillEmpty statements of one package's structs;
+// reached, when set, collects every struct type a field or mixin names.
 type fillEmitter struct {
 	res        *semantic.Resolver
 	pkg        *semantic.Package
 	set        *fillSet
 	data       *fillData
 	typeParams []string
+	reached    *[]*ast.TypeDecl
+}
+
+// structType returns the struct type n names, noting it in reached, or nil.
+func (e *fillEmitter) structType(n *ast.NamedTypeRef) *ast.TypeDecl {
+	td := e.res.LookupType(n.Name.String())
+	if td != nil && e.reached != nil {
+		*e.reached = append(*e.reached, td)
+	}
+	return td
 }
 
 // fillCall is the method a probe finds on a type-parameter value.
@@ -232,7 +215,7 @@ func (e *fillEmitter) body(members []ast.TypeMember) []string {
 			if v.Ref == nil || v.Ref.Name == nil || len(v.Ref.Name.Parts) == 0 {
 				continue
 			}
-			if td := e.res.LookupType(v.Ref.Name.String()); td != nil && e.set.types[td] {
+			if td := e.structType(v.Ref); td != nil && e.set.types[td] {
 				out = append(out, fillInto("v."+v.Ref.Name.Parts[len(v.Ref.Name.Parts)-1]+".FillEmpty(depth + 1)", "changed"))
 			}
 		}
@@ -308,7 +291,7 @@ if cloned%[1]d {
 			sets = flag != ""
 		}
 	default:
-		if td := e.res.LookupType(t.Named.Name.String()); td != nil {
+		if td := e.structType(t.Named); td != nil {
 			if !e.set.types[td] {
 				return nil, false
 			}
