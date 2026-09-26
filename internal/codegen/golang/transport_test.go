@@ -1366,11 +1366,11 @@ service S {
 	}
 }
 
+// A service stub that already exists is left as it is.
 func TestGenerateServiceSkipsExisting(t *testing.T) {
 	pkg := analyze(t, handlerSampleDSL)
 	root := t.TempDir()
-	cfg := sampleConfig()
-	dir := filepath.Join(root, cfg.Output.Service, "userservice")
+	dir := filepath.Join(root, "internal/service/user-service")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1379,13 +1379,14 @@ func TestGenerateServiceSkipsExisting(t *testing.T) {
 	if err := os.WriteFile(existing, custom, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := generateService(pkg, cfg, root, nil); err != nil {
+	if err := generateService(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
-	out, _ := os.ReadFile(existing)
-	if string(out) != string(custom) {
+	if out := readGen(t, dir, "get-user.go"); out != string(custom) {
 		t.Errorf("scaffold overwrote user file:\n%s", out)
 	}
+	// The other stubs land beside it, so dir is where gen writes.
+	readGen(t, dir, "update-user.go")
 }
 
 // ---------- paths ----------
