@@ -189,7 +189,7 @@ func (a *analyzer) checkSensitiveConflicts(f *ast.Field) {
 }
 
 // checkJSONDecorator rejects `@json` off the body, and a `@json` key that is
-// empty or holds whitespace, a quote, a comma or a backslash.
+// empty, `-` or holds whitespace, a quote, a comma or a backslash.
 func (a *analyzer) checkJSONDecorator(f *ast.Field) {
 	for _, d := range f.Decorators {
 		if d.Name != wire.DecoratorJSON {
@@ -206,9 +206,13 @@ func (a *analyzer) checkJSONDecorator(f *ast.Field) {
 		if !ok {
 			continue
 		}
-		if s.Value == "" || strings.ContainsAny(s.Value, " \t\n\",\\") {
+		switch {
+		case s.Value == "" || strings.ContainsAny(s.Value, " \t\n\",\\"):
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgValue,
 				"@json on field %q must be a non-empty key without whitespace, quotes, commas or backslashes", f.Name)
+		case s.Value == "-":
+			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgValue,
+				"@json(\"-\") on field %q names no key: the Go tag `json:\"-\"` keeps the field off the JSON body, while the OpenAPI document would list a key \"-\" - mark a server-only field @sensitive instead", f.Name)
 		}
 	}
 }

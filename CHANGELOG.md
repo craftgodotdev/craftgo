@@ -783,6 +783,11 @@ breaking change to the DSL or the generated layout bumps the major version.
   `field/name-collision` at R's own field, as two local fields sharing a
   key already did.
 
+- **`@json("-")` is rejected.** It tagged the field `json:"-"`, so the field
+  never crossed the wire, while the OpenAPI document listed a property named
+  `-`. It is now `decorator/argvalue`, whose message points to `@sensitive`
+  for a server-only field.
+
 - **A repeated enum value name or literal points at its first use.** The
   third `A` of an enum related to the second one as "first declared here".
 

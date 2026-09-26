@@ -39,6 +39,16 @@ func TestJSONKeyMustBeAPlainKey(t *testing.T) {
 	expectError(t, `type Order { a string @json("has space") }`, CodeDecoratorArgValue)
 }
 
+// `@json("-")` would tag the field `json:"-"`, which encoding/json skips,
+// while the documents list a key "-"; a server-only field is @sensitive.
+func TestJSONKeyIsNotADash(t *testing.T) {
+	const src = `type Order { a string @json("-")  b string }`
+	d := expectError(t, src, CodeDecoratorArgValue)
+	expectMessage(t, d, `@json("-")`, "@sensitive")
+	expectCodeCount(t, src, CodeDecoratorArgValue, 1)
+	mustClean(t, `type Order { a string @json("-a")  b string @json("b-")  c string @json("--") }`)
+}
+
 func TestJSONDoesNotCombineWithAnOffBodyBinding(t *testing.T) {
 	expectError(t, `type Req { page int? @query @json("p") }
 service S { post Do /do { request Req } }`, CodeDecoratorConflict)
