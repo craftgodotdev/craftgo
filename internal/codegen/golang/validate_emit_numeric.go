@@ -23,36 +23,48 @@ func boundLiteral(a *ast.DecoratorArg, prim string) (string, bool) {
 	return l.Text(), true
 }
 
+// valueBoundLabels names what a value on each side of its limit fails.
+var valueBoundLabels = map[semantic.BoundSide]string{
+	{Lower: true, Strict: true}: "must be greater than",
+	{Lower: true}:               "below minimum",
+	{Strict: true}:              "must be less than",
+	{}:                          "above maximum",
+}
+
 // numericBoundCheck renders @gt/@gte/@lt/@lte on a numeric value, failing it
-// when `value failOp bound` holds; a bound the type enforces renders nothing.
-func numericBoundCheck(t checkTarget, d *ast.Decorator, failOp, label string, ctx emitCtx) string {
-	if !prims.IsNumeric(t.prim) || len(d.Args) != 1 || semantic.BoundImpliedByType(t.prim, d, 0) {
+// by its side's comparison with the bound; a bound the type enforces renders
+// nothing.
+func numericBoundCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	sides, _ := semantic.BoundSides(d.Name)
+	args := semantic.BoundArgs(d)
+	if !prims.IsNumeric(t.prim) || len(args) != 1 || semantic.BoundImpliedByType(t.prim, d, 0) {
 		return ""
 	}
-	n, ok := boundLiteral(d.Args[0], t.prim)
+	n, ok := boundLiteral(args[0], t.prim)
 	if !ok {
 		return ""
 	}
-	return failIf(t.guarded(t.val()+" "+failOp+" "+n), t.subject, label+" "+n, ctx)
+	return failIf(t.guarded(t.val()+" "+sides[0].FailOp()+" "+n), t.subject, valueBoundLabels[sides[0]]+" "+n, ctx)
 }
 
-// rangeCheck renders @range(lo, hi) on a numeric value as one inclusive bound
-// check of each end the type does not enforce.
+// rangeCheck renders @range(lo, hi) on a numeric value as one bound check of
+// each end the type does not enforce.
 func rangeCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
-	if !prims.IsNumeric(t.prim) || len(d.Args) != 2 {
+	sides, _ := semantic.BoundSides(d.Name)
+	args := semantic.BoundArgs(d)
+	if !prims.IsNumeric(t.prim) || len(args) != 2 {
 		return ""
 	}
-	lo, ok1 := boundLiteral(d.Args[0], t.prim)
-	hi, ok2 := boundLiteral(d.Args[1], t.prim)
+	lo, ok1 := boundLiteral(args[0], t.prim)
+	hi, ok2 := boundLiteral(args[1], t.prim)
 	if !ok1 || !ok2 {
 		return ""
 	}
 	var fails []string
-	if !semantic.BoundImpliedByType(t.prim, d, 0) {
-		fails = append(fails, t.val()+" < "+lo)
-	}
-	if !semantic.BoundImpliedByType(t.prim, d, 1) {
-		fails = append(fails, t.val()+" > "+hi)
+	for i, n := range []string{lo, hi} {
+		if !semantic.BoundImpliedByType(t.prim, d, i) {
+			fails = append(fails, t.val()+" "+sides[i].FailOp()+" "+n)
+		}
 	}
 	if len(fails) == 0 {
 		return ""
@@ -60,13 +72,18 @@ func rangeCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 	return failIf(t.guarded(strings.Join(fails, " || ")), t.subject, fmt.Sprintf("out of range [%s, %s]", lo, hi), ctx)
 }
 
-// signCheck renders @positive or @negative on a numeric value, failing it when
-// `value failOp 0` holds.
-func signCheck(t checkTarget, failOp, label string, ctx emitCtx) string {
-	if !prims.IsNumeric(t.prim) {
+// signCheck renders @positive or @negative on a numeric value, failing it by
+// its side's comparison with 0.
+func signCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	sides, _ := semantic.BoundSides(d.Name)
+	if !prims.IsNumeric(t.prim) || len(sides) != 1 {
 		return ""
 	}
-	return failIf(t.guarded(t.val()+" "+failOp+" 0"), t.subject, label, ctx)
+	label := "must be negative"
+	if sides[0].Lower {
+		label = "must be positive"
+	}
+	return failIf(t.guarded(t.val()+" "+sides[0].FailOp()+" 0"), t.subject, label, ctx)
 }
 
 // multipleOfCheck renders @multipleOf on an integer value; a whole float

@@ -11,18 +11,20 @@ import (
 )
 
 // itemsBoundCheck renders @minItems/@maxItems as a len() bound on an array or
-// map, failing it when `len failOp n` holds; a bound every count meets
-// renders nothing.
-func itemsBoundCheck(t checkTarget, d *ast.Decorator, failOp, label string, ctx emitCtx) string {
-	if (t.cat != semantic.CatArray && t.cat != semantic.CatMap) || len(d.Args) != 1 {
+// map, failing it by its side's comparison of the count with n; a bound every
+// count meets renders nothing.
+func itemsBoundCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	sides, _ := semantic.BoundSides(d.Name)
+	args := semantic.BoundArgs(d)
+	if (t.cat != semantic.CatArray && t.cat != semantic.CatMap) || len(args) != 1 {
 		return ""
 	}
-	n, ok := semantic.IntArg(d.Args[0])
+	n, ok := semantic.IntArg(args[0])
 	if !ok || semantic.BoundImpliedByType(t.prim, d, 0) {
 		return ""
 	}
-	cond := fmt.Sprintf("len(%s) %s %d", t.access, failOp, n)
-	return t.guardBlock(failIf(cond, t.subject, fmt.Sprintf("%s %d", label, n), ctx))
+	cond := fmt.Sprintf("len(%s) %s %d", t.access, sides[0].FailOp(), n)
+	return t.guardBlock(failIf(cond, t.subject, fmt.Sprintf("%s %d", d.Name, n), ctx))
 }
 
 // uniqueItemsCheck renders @uniqueItems on an array as a dedupe map keyed by

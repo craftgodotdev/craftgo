@@ -17,7 +17,12 @@ func numberArg(d *ast.Decorator, i int) (*big.Rat, bool) {
 	if i >= len(d.Args) {
 		return nil, false
 	}
-	l, ok := semantic.ParseNumericArg(d.Args[i])
+	return numberValue(d.Args[i])
+}
+
+// numberValue returns argument a as an exact number.
+func numberValue(a *ast.DecoratorArg) (*big.Rat, bool) {
+	l, ok := semantic.ParseNumericArg(a)
 	if !ok {
 		return nil, false
 	}
@@ -25,10 +30,10 @@ func numberArg(d *ast.Decorator, i int) (*big.Rat, bool) {
 	return r, r != nil
 }
 
-// countArg returns argument i as a count, a whole number up to the uint64
+// countValue returns argument a as a count, a whole number up to the uint64
 // limit.
-func countArg(d *ast.Decorator, i int) (uint64, bool) {
-	r, ok := numberArg(d, i)
+func countValue(a *ast.DecoratorArg) (uint64, bool) {
+	r, ok := numberValue(a)
 	if !ok || !r.IsInt() || r.Sign() < 0 || !r.Num().IsUint64() {
 		return 0, false
 	}
@@ -257,22 +262,23 @@ func tightenBound(s *openapi3.Schema, key string, v *big.Rat) {
 	setNumber(s, key, v)
 }
 
-// emitBound tightens bound key with argument i of d, a bound on a value of
+// emitBound tightens the bound on side of argument a, a bound on a value of
 // DSL primitive prim.
-func emitBound(s *openapi3.Schema, key string, d *ast.Decorator, i int, prim string) {
-	v, ok := numberArg(d, i)
+func emitBound(s *openapi3.Schema, side semantic.BoundSide, a *ast.DecoratorArg, prim string) {
+	v, ok := numberValue(a)
 	if !ok {
 		return
 	}
 	if sp, _ := prims.Lookup(prim); sp.Kind == prims.Float {
-		v = floatBound(key, v, d.Args[i], sp.Bits)
+		v = floatBound(side, v, a, sp.Bits)
 	}
-	tightenBound(s, key, v)
+	tightenBound(s, boundKeyword(side), v)
 }
 
-// floatBound returns bound key for literal, argument a on a float of width bits,
-// judging the literal and the float the validator checks as the validator does.
-func floatBound(key string, literal *big.Rat, a *ast.DecoratorArg, bits int) *big.Rat {
+// floatBound returns the bound on side for literal, argument a on a float of
+// width bits, judging the literal and the float the validator checks as the
+// validator does.
+func floatBound(side semantic.BoundSide, literal *big.Rat, a *ast.DecoratorArg, bits int) *big.Rat {
 	l, _ := semantic.ParseNumericArg(a)
 	constant, ok := new(big.Rat).SetString(l.Text())
 	if !ok {
@@ -282,9 +288,9 @@ func floatBound(key string, literal *big.Rat, a *ast.DecoratorArg, bits int) *bi
 	if checked == nil || sent == nil {
 		return literal
 	}
-	lower := key == "minimum" || key == "exclusiveMinimum"
+	lower := side.Lower
 	c := sent.Cmp(checked)
-	admitsLiteral := c == 0 && (key == "minimum" || key == "maximum") || c > 0 && lower || c < 0 && !lower
+	admitsLiteral := c == 0 && !side.Strict || c > 0 && lower || c < 0 && !lower
 	literalLooser := (literal.Cmp(checked) < 0) == lower
 	if admitsLiteral == literalLooser {
 		return literal
@@ -322,8 +328,8 @@ func lengthKeywordsApply(s *openapi3.Schema) bool { return s.Format != "byte" }
 
 // itemCountKeyword stores an item count through array or object by s's type,
 // matched with Includes so an optional `[array, "null"]` counts as an array.
-func itemCountKeyword(s *openapi3.Schema, d *ast.Decorator, array func(uint64), object func(uint64)) {
-	u, ok := countArg(d, 0)
+func itemCountKeyword(s *openapi3.Schema, a *ast.DecoratorArg, array func(uint64), object func(uint64)) {
+	u, ok := countValue(a)
 	if !ok {
 		return
 	}

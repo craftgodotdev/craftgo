@@ -86,9 +86,9 @@ func limitOn(sc scale, b bound, of string) limit {
 			return l
 		}
 		n := new(big.Int).Set(v.Num())
-		if b.strict && b.lower {
+		if b.Strict && b.Lower {
 			n.Add(n, big.NewInt(1))
-		} else if b.strict {
+		} else if b.Strict {
 			n.Sub(n, big.NewInt(1))
 		}
 		at = new(big.Rat).SetInt(n)
@@ -97,8 +97,8 @@ func limitOn(sc scale, b bound, of string) limit {
 		if !ok {
 			return l
 		}
-		if b.strict {
-			f = nextFloat(f, sc.bits, b.lower)
+		if b.Strict {
+			f = nextFloat(f, sc.bits, b.Lower)
 		}
 		if math.IsInf(f, 0) {
 			l.none = true
@@ -108,7 +108,7 @@ func limitOn(sc scale, b bound, of string) limit {
 	default:
 		return l
 	}
-	if b.lower && at.Cmp(sc.hi) > 0 || !b.lower && at.Cmp(sc.lo) < 0 {
+	if b.Lower && at.Cmp(sc.hi) > 0 || !b.Lower && at.Cmp(sc.lo) < 0 {
 		l.none = true
 		return l
 	}
@@ -143,7 +143,7 @@ func BoundImpliedByType(prim string, d *ast.Decorator, i int) bool {
 	switch {
 	case !sc.whole || l.at == nil:
 		return false
-	case l.lower:
+	case l.Lower:
 		return l.at.Cmp(sc.lo) <= 0
 	}
 	return l.at.Cmp(sc.hi) >= 0
@@ -182,7 +182,7 @@ func (a *analyzer) reportContradictingPairs(ls []limit) bool {
 	reported := false
 	for _, lo := range ls {
 		for _, hi := range ls {
-			if !lo.lower || hi.lower || lo.dec == hi.dec || lo.limits != hi.limits || lo.of != "" && hi.of != "" {
+			if !lo.Lower || hi.Lower || lo.dec == hi.dec || lo.limits != hi.limits || lo.of != "" && hi.of != "" {
 				continue
 			}
 			code, noun, ok := contradiction(lo, hi)
@@ -211,7 +211,7 @@ func contradiction(lo, hi limit) (code, noun string, ok bool) {
 	switch c := lo.value.Cmp(hi.value); {
 	case c > 0:
 		return CodeDecoratorRange, lo.limits, true
-	case c == 0 && (lo.strict || hi.strict):
+	case c == 0 && (lo.Strict || hi.Strict):
 		return CodeBoundEmptyRange, lo.limits, true
 	}
 	if lo.at != nil && hi.at != nil && lo.at.Cmp(hi.at) > 0 {
@@ -229,7 +229,7 @@ func (a *analyzer) reportLimitsPastScale(prim string, ls []limit) bool {
 			continue
 		}
 		reported = true
-		if !l.lower && prims.IsUnsigned(prim) {
+		if !l.Lower && prims.IsUnsigned(prim) {
 			fix := "a positive bound"
 			if l.dec.Name == "negative" {
 				fix = "drop @negative"
@@ -286,9 +286,9 @@ func (a *analyzer) reportNoMultiple(prim string, sites []constraintSite, ls []li
 	for i := range ls {
 		switch l := &ls[i]; {
 		case l.limits != "value" || l.at == nil:
-		case l.lower && (lo == nil || l.at.Cmp(lo.at) > 0):
+		case l.Lower && (lo == nil || l.at.Cmp(lo.at) > 0):
 			lo = l
-		case !l.lower && (hi == nil || l.at.Cmp(hi.at) < 0):
+		case !l.Lower && (hi == nil || l.at.Cmp(hi.at) < 0):
 			hi = l
 		}
 	}

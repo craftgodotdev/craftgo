@@ -19,32 +19,9 @@ type schemaKeyword func(d *ast.Decorator, s *openapi3.Schema, prim string)
 // schemaKeywords maps each constraint decorator of [semantic.Names] with a
 // schema form to its keyword; a ConstraintRuntime decorator has no row.
 var schemaKeywords = map[string]schemaKeyword{
-	"length": func(d *ast.Decorator, s *openapi3.Schema, _ string) {
-		if !lengthKeywordsApply(s) {
-			return
-		}
-		// `@length(N)` is an exact length, `@length(min, max)` a range.
-		lo, ok := countArg(d, 0)
-		if !ok {
-			return
-		}
-		hi := lo
-		if v, ok := countArg(d, 1); ok {
-			hi = v
-		}
-		setMinLen(s, lo)
-		setMaxLen(s, hi)
-	},
-	"minLength": func(d *ast.Decorator, s *openapi3.Schema, _ string) {
-		if v, ok := countArg(d, 0); ok && lengthKeywordsApply(s) {
-			setMinLen(s, v)
-		}
-	},
-	"maxLength": func(d *ast.Decorator, s *openapi3.Schema, _ string) {
-		if v, ok := countArg(d, 0); ok && lengthKeywordsApply(s) {
-			setMaxLen(s, v)
-		}
-	},
+	"length":    lengthKeywords,
+	"minLength": lengthKeywords,
+	"maxLength": lengthKeywords,
 	"pattern": func(d *ast.Decorator, s *openapi3.Schema, _ string) {
 		if len(d.Args) == 1 {
 			if sl, ok := d.Args[0].Value.(*ast.StringLit); ok {
@@ -68,36 +45,90 @@ var schemaKeywords = map[string]schemaKeyword{
 		}
 		s.Format = strfmt.OpenAPIFormat(name)
 	},
-	"gt":  func(d *ast.Decorator, s *openapi3.Schema, prim string) { emitBound(s, "exclusiveMinimum", d, 0, prim) },
-	"gte": func(d *ast.Decorator, s *openapi3.Schema, prim string) { emitBound(s, "minimum", d, 0, prim) },
-	"lt":  func(d *ast.Decorator, s *openapi3.Schema, prim string) { emitBound(s, "exclusiveMaximum", d, 0, prim) },
-	"lte": func(d *ast.Decorator, s *openapi3.Schema, prim string) { emitBound(s, "maximum", d, 0, prim) },
-	"range": func(d *ast.Decorator, s *openapi3.Schema, prim string) {
-		emitBound(s, "minimum", d, 0, prim)
-		emitBound(s, "maximum", d, 1, prim)
-	},
-	"positive": func(_ *ast.Decorator, s *openapi3.Schema, _ string) {
-		tightenBound(s, "exclusiveMinimum", new(big.Rat))
-	},
-	"negative": func(_ *ast.Decorator, s *openapi3.Schema, _ string) {
-		tightenBound(s, "exclusiveMaximum", new(big.Rat))
-	},
+	"gt":       valueKeywords,
+	"gte":      valueKeywords,
+	"lt":       valueKeywords,
+	"lte":      valueKeywords,
+	"range":    valueKeywords,
+	"positive": valueKeywords,
+	"negative": valueKeywords,
 	"multipleOf": func(d *ast.Decorator, s *openapi3.Schema, _ string) {
 		if v, ok := numberArg(d, 0); ok && v.Sign() != 0 {
 			setNumber(s, "multipleOf", v)
 		}
 	},
-	"minItems": func(d *ast.Decorator, s *openapi3.Schema, _ string) {
-		itemCountKeyword(s, d, func(u uint64) { s.MinItems = u }, func(u uint64) { s.MinProps = u })
-	},
-	"maxItems": func(d *ast.Decorator, s *openapi3.Schema, _ string) {
-		itemCountKeyword(s, d, func(u uint64) { s.MaxItems = &u }, func(u uint64) { s.MaxProps = &u })
-	},
+	"minItems": itemCountKeywords,
+	"maxItems": itemCountKeywords,
 	"uniqueItems": func(_ *ast.Decorator, s *openapi3.Schema, _ string) {
 		if s.Type != nil && s.Type.Includes("array") {
 			s.UniqueItems = true
 		}
 	},
+}
+
+// valueKeywords stamps a bound on a value of DSL primitive prim: the minimum
+// or maximum, exclusive for a strict side, of each side of d, at 0 for a flag.
+func valueKeywords(d *ast.Decorator, s *openapi3.Schema, prim string) {
+	sides, _ := semantic.BoundSides(d.Name)
+	args := semantic.BoundArgs(d)
+	if args == nil {
+		for _, side := range sides {
+			tightenBound(s, boundKeyword(side), new(big.Rat))
+		}
+		return
+	}
+	for i, side := range sides {
+		emitBound(s, side, args[i], prim)
+	}
+}
+
+// boundKeyword returns the keyword of a numeric bound on side s.
+func boundKeyword(s semantic.BoundSide) string {
+	switch {
+	case s.Lower && s.Strict:
+		return "exclusiveMinimum"
+	case s.Lower:
+		return "minimum"
+	case s.Strict:
+		return "exclusiveMaximum"
+	}
+	return "maximum"
+}
+
+// lengthKeywords stamps the minLength or maxLength of each side of d, a
+// length bound; `@length(N)` sets both to N.
+func lengthKeywords(d *ast.Decorator, s *openapi3.Schema, _ string) {
+	sides, _ := semantic.BoundSides(d.Name)
+	args := semantic.BoundArgs(d)
+	if args == nil || !lengthKeywordsApply(s) {
+		return
+	}
+	for i, side := range sides {
+		v, ok := countValue(args[i])
+		switch {
+		case !ok:
+			return
+		case side.Lower:
+			setMinLen(s, v)
+		default:
+			setMaxLen(s, v)
+		}
+	}
+}
+
+// itemCountKeywords stamps d, an item-count bound, as minItems or maxItems on
+// an array, minProperties or maxProperties on a map.
+func itemCountKeywords(d *ast.Decorator, s *openapi3.Schema, _ string) {
+	sides, _ := semantic.BoundSides(d.Name)
+	args := semantic.BoundArgs(d)
+	if len(args) != 1 {
+		return
+	}
+	if sides[0].Lower {
+		itemCountKeyword(s, args[0], func(u uint64) { s.MinItems = u }, func(u uint64) { s.MinProps = u })
+		return
+	}
+	itemCountKeyword(s, args[0], func(u uint64) { s.MaxItems = &u }, func(u uint64) { s.MaxProps = &u })
 }
 
 // applyFieldConstraints stamps the keyword of every constraint in ds that

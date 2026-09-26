@@ -11,20 +11,15 @@ import (
 
 // lengthCheck renders @length(n) or @length(min, max) on a string or bytes value.
 func lengthCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
-	if !t.primIs(prims.String, prims.Bytes) || len(d.Args) == 0 || len(d.Args) > 2 {
+	sides, _ := semantic.BoundSides(d.Name)
+	args := semantic.BoundArgs(d)
+	if !t.primIs(prims.String, prims.Bytes) || len(args) != 2 {
 		return ""
 	}
-	lo, ok1 := semantic.IntArg(d.Args[0])
-	if !ok1 {
+	lo, ok1 := semantic.IntArg(args[0])
+	hi, ok2 := semantic.IntArg(args[1])
+	if !ok1 || !ok2 {
 		return ""
-	}
-	hi := lo
-	if len(d.Args) == 2 {
-		v, ok2 := semantic.IntArg(d.Args[1])
-		if !ok2 {
-			return ""
-		}
-		hi = v
 	}
 	loImplied, hiImplied := semantic.BoundImpliedByType(t.prim, d, 0), semantic.BoundImpliedByType(t.prim, d, 1)
 	if loImplied && hiImplied {
@@ -35,28 +30,35 @@ func lengthCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 		return failIf(t.guarded(fmt.Sprintf("%s != %d", count, lo)), t.subject, fmt.Sprintf("length must be %d", lo), ctx)
 	}
 	text := fmt.Sprintf("length out of range [%d, %d]", lo, hi)
+	loFails, hiFails := fmt.Sprintf("%s %d", sides[0].FailOp(), lo), fmt.Sprintf("%s %d", sides[1].FailOp(), hi)
 	switch {
 	case loImplied:
-		return failIf(t.guarded(fmt.Sprintf("%s > %d", count, hi)), t.subject, text, ctx)
+		return failIf(t.guarded(count+" "+hiFails), t.subject, text, ctx)
 	case hiImplied:
-		return failIf(t.guarded(fmt.Sprintf("%s < %d", count, lo)), t.subject, text, ctx)
+		return failIf(t.guarded(count+" "+loFails), t.subject, text, ctx)
 	}
 	// The init statement counts once for both bounds, so a nil guard wraps it.
-	return t.guardBlock(failIf(fmt.Sprintf("l := %s; l < %d || l > %d", count, lo, hi), t.subject, text, ctx))
+	return t.guardBlock(failIf(fmt.Sprintf("l := %s; l %s || l %s", count, loFails, hiFails), t.subject, text, ctx))
 }
 
 // minMaxLengthCheck renders @minLength or @maxLength on a string or bytes
-// value, failing it when `length failOp n` holds; a bound every length meets
-// renders nothing.
-func minMaxLengthCheck(t checkTarget, d *ast.Decorator, failOp, label string, ctx emitCtx) string {
-	if !t.primIs(prims.String, prims.Bytes) || len(d.Args) != 1 {
+// value, failing it by its side's comparison of the length with n; a bound
+// every length meets renders nothing.
+func minMaxLengthCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
+	sides, _ := semantic.BoundSides(d.Name)
+	args := semantic.BoundArgs(d)
+	if !t.primIs(prims.String, prims.Bytes) || len(args) != 1 {
 		return ""
 	}
-	n, ok := semantic.IntArg(d.Args[0])
+	n, ok := semantic.IntArg(args[0])
 	if !ok || semantic.BoundImpliedByType(t.prim, d, 0) {
 		return ""
 	}
-	cond := fmt.Sprintf("%s %s %d", lengthCount(t, ctx), failOp, n)
+	label := "length greater than"
+	if sides[0].Lower {
+		label = "length less than"
+	}
+	cond := fmt.Sprintf("%s %s %d", lengthCount(t, ctx), sides[0].FailOp(), n)
 	return failIf(t.guarded(cond), t.subject, fmt.Sprintf("%s %d", label, n), ctx)
 }
 

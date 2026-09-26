@@ -35,10 +35,50 @@ func (a *analyzer) valuePrim(f *ast.Field) string {
 	return a.checkedPrim(f.Type)
 }
 
-// boundSide is where one argument of a bound decorator puts the limit: below
+// BoundSide is where one argument of a bound decorator puts the limit: below
 // or above the values it admits, and whether it admits the limit itself.
-type boundSide struct {
-	lower, strict bool
+type BoundSide struct {
+	Lower, Strict bool
+}
+
+// FailOp returns the comparison a quantity fails the limit of side s by:
+// `<=` under a strict lower limit, `<` under a lower one, `>=` and `>` above.
+func (s BoundSide) FailOp() string {
+	switch {
+	case s.Lower && s.Strict:
+		return "<="
+	case s.Lower:
+		return "<"
+	case s.Strict:
+		return ">="
+	}
+	return ">"
+}
+
+// BoundSides returns the side of each argument of bound decorator name in
+// order, a flag's one side at 0, and false for a decorator that bounds
+// nothing.
+func BoundSides(name string) ([]BoundSide, bool) {
+	spec, ok := boundDecorators[name]
+	return spec.sides, ok
+}
+
+// BoundArgs returns the argument of bound decorator d that sets each of its
+// sides, in order - a one-argument `@length` sets both - or nil for a flag,
+// a decorator that bounds nothing, or arguments that do not fit its sides.
+func BoundArgs(d *ast.Decorator) []*ast.DecoratorArg {
+	spec, ok := boundDecorators[d.Name]
+	if !ok {
+		return nil
+	}
+	args := positionalArgs(d)
+	if d.Name == "length" && len(args) == 1 {
+		args = []*ast.DecoratorArg{args[0], args[0]}
+	}
+	if len(args) != len(spec.sides) {
+		return nil
+	}
+	return args
 }
 
 // boundDecorators gives each bound decorator what it limits and the side of
@@ -46,26 +86,26 @@ type boundSide struct {
 // one-argument `@length` bounds the length on both sides.
 var boundDecorators = map[string]struct {
 	limits string
-	sides  []boundSide
+	sides  []BoundSide
 }{
-	"gt":        {"value", []boundSide{{lower: true, strict: true}}},
-	"gte":       {"value", []boundSide{{lower: true}}},
-	"lt":        {"value", []boundSide{{strict: true}}},
-	"lte":       {"value", []boundSide{{}}},
-	"range":     {"value", []boundSide{{lower: true}, {}}},
-	"positive":  {"value", []boundSide{{lower: true, strict: true}}},
-	"negative":  {"value", []boundSide{{strict: true}}},
-	"length":    {"length", []boundSide{{lower: true}, {}}},
-	"minLength": {"length", []boundSide{{lower: true}}},
-	"maxLength": {"length", []boundSide{{}}},
-	"minItems":  {"item count", []boundSide{{lower: true}}},
-	"maxItems":  {"item count", []boundSide{{}}},
+	"gt":        {"value", []BoundSide{{Lower: true, Strict: true}}},
+	"gte":       {"value", []BoundSide{{Lower: true}}},
+	"lt":        {"value", []BoundSide{{Strict: true}}},
+	"lte":       {"value", []BoundSide{{}}},
+	"range":     {"value", []BoundSide{{Lower: true}, {}}},
+	"positive":  {"value", []BoundSide{{Lower: true, Strict: true}}},
+	"negative":  {"value", []BoundSide{{Strict: true}}},
+	"length":    {"length", []BoundSide{{Lower: true}, {}}},
+	"minLength": {"length", []BoundSide{{Lower: true}}},
+	"maxLength": {"length", []BoundSide{{}}},
+	"minItems":  {"item count", []BoundSide{{Lower: true}}},
+	"maxItems":  {"item count", []BoundSide{{}}},
 }
 
 // bound is the limit one argument of a bound decorator puts on what it
 // limits: `@gte(5)` a value of at least 5, `@positive` one above 0.
 type bound struct {
-	boundSide
+	BoundSide
 	dec    *ast.Decorator
 	limits string
 	value  NumericLit
@@ -78,11 +118,11 @@ type bound struct {
 // relation renders the values b admits, such as `≥ 5`.
 func (b bound) relation() string {
 	switch {
-	case b.lower && b.strict:
+	case b.Lower && b.Strict:
 		return "> " + b.text
-	case b.lower:
+	case b.Lower:
 		return "≥ " + b.text
-	case b.strict:
+	case b.Strict:
 		return "< " + b.text
 	}
 	return "≤ " + b.text
@@ -101,14 +141,11 @@ func declaredBounds(decs []*ast.Decorator) []bound {
 		}
 		seen[d.Name] = true
 		if rs, _ := DecoratorSpec(d.Name); rs.Args.Max == 0 {
-			out = append(out, bound{boundSide: spec.sides[0], dec: d, limits: spec.limits, value: NumericLit{IsInt: true}, text: "0", pos: d.Pos})
+			out = append(out, bound{BoundSide: spec.sides[0], dec: d, limits: spec.limits, value: NumericLit{IsInt: true}, text: "0", pos: d.Pos})
 			continue
 		}
-		args := positionalArgs(d)
-		if d.Name == "length" && len(args) == 1 {
-			args = []*ast.DecoratorArg{args[0], args[0]}
-		}
-		if len(args) != len(spec.sides) {
+		args := BoundArgs(d)
+		if args == nil {
 			continue
 		}
 		values := make([]NumericLit, len(args))
@@ -121,7 +158,7 @@ func declaredBounds(decs []*ast.Decorator) []bound {
 			continue
 		}
 		for i, side := range spec.sides {
-			out = append(out, bound{boundSide: side, dec: d, limits: spec.limits, value: values[i], text: literalText(args[i].Value), pos: args[i].Pos})
+			out = append(out, bound{BoundSide: side, dec: d, limits: spec.limits, value: values[i], text: literalText(args[i].Value), pos: args[i].Pos})
 		}
 	}
 	return out
@@ -132,11 +169,11 @@ func declaredBounds(decs []*ast.Decorator) []bound {
 func (b bound) admits(prim string, q NumericLit) bool {
 	c := scaleOf(prim, b.limits).cmp(q, b.value)
 	switch {
-	case b.lower && b.strict:
+	case b.Lower && b.Strict:
 		return c > 0
-	case b.lower:
+	case b.Lower:
 		return c >= 0
-	case b.strict:
+	case b.Strict:
 		return c < 0
 	}
 	return c <= 0
