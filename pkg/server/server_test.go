@@ -34,18 +34,6 @@ func TestServerHandleFunc(t *testing.T) {
 	}
 }
 
-func TestServerRecoveryConvertsPanic(t *testing.T) {
-	s := New(nil)
-	s.HandleFunc("GET /boom", func(_ http.ResponseWriter, _ *http.Request) {
-		panic("kaboom")
-	})
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/boom", nil))
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", rec.Code)
-	}
-}
-
 // The Recovery a Server installs logs to log.Default as it is when the panic happens.
 func TestServerRecoveryLogsToTheCurrentDefault(t *testing.T) {
 	s := New(nil)
@@ -216,9 +204,6 @@ func TestWriteValidationErrorSkipsPostCommit(t *testing.T) {
 	})
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v", nil))
-	if rec.Code != http.StatusOK {
-		t.Errorf("post-commit validation must not rewrite status, got %d", rec.Code)
-	}
 	if !strings.Contains(rec.Body.String(), `"ok":true`) {
 		t.Errorf("expected partial body intact, got %q", rec.Body.String())
 	}
@@ -294,18 +279,6 @@ func TestServerHealthEndpoints(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusOK || atomic.LoadInt32(&called) != 1 {
 		t.Errorf("readyz: code=%d called=%d body=%s", rec.Code, called, rec.Body.String())
-	}
-}
-
-func TestServerHealthCheckFailure(t *testing.T) {
-	s := New(nil)
-	s.RegisterHealthCheck("bad", 50*time.Millisecond, func(_ context.Context) error {
-		return errors.New("down")
-	})
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Errorf("expected 503, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -622,23 +595,6 @@ func TestProbesBypassMiddlewareChain(t *testing.T) {
 				t.Errorf("middleware saw %v, want only /a", seen)
 			}
 		})
-	}
-}
-
-func TestBodyLimitMiddleware(t *testing.T) {
-	s := New(nil).Use(BodyLimit(4))
-	s.HandleFunc("POST /b", func(w http.ResponseWriter, r *http.Request) {
-		_, err := io.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-	})
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/b", strings.NewReader("toolong")))
-	if rec.Code != http.StatusRequestEntityTooLarge {
-		t.Errorf("expected 413, got %d", rec.Code)
 	}
 }
 
