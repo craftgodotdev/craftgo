@@ -484,6 +484,12 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Fixed
 
+- **A type-parameter field takes `@query`, `@path` and `@form`.** Each was
+  refused at the declaration, while the same field without a decorator
+  auto-bound and worked, so a generic query-parameter mixin could not serve
+  a POST. They are now checked with each request's argument, as `@header`
+  and `@cookie` are.
+
 - **A Go output sweep keeps copies of the document.** Where `output.types`
   or another Go output shared the document's directory, the sweep deleted
   every copy of the document beside or below it, such as

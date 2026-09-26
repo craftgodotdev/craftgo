@@ -44,3 +44,21 @@ func TestGenericMixinFileIsRequired(t *testing.T) {
 		t.Errorf("with doc: got %d %s, want 201 naming report.pdf", code, body)
 	}
 }
+
+// A generic mixin's explicit @query fields bind from the query of a POST
+// whose body carries the rest.
+func TestGenericMixinQueryOnAPost(t *testing.T) {
+	ts := bootAll(t)
+	resp, err := http.Post(ts.URL+"/api/bindings/paged-search?cursor=c1&limit=5", "application/json", strings.NewReader(`{"term":"t"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var item struct {
+		Name  string
+		Price int
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&item); resp.StatusCode != http.StatusCreated || err != nil || item.Name != "c1:t" || item.Price != 5 {
+		t.Errorf("got %d %+v (%v), want 201 c1:t 5", resp.StatusCode, item, err)
+	}
+}

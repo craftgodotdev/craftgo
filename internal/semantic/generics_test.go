@@ -389,7 +389,7 @@ func TestTypeParamShadowsDeclaration(t *testing.T) {
 	for label, c := range map[string]struct{ src, code string }{
 		"enum default":   {"enum Color { Red  Green }\ntype Box<Color> { c Color? @default(Red) }", CodeDecoratorConflict},
 		"scalar default": {"scalar Blob string\ntype Box<Blob> { v Blob? @default(\"x\") }", CodeDecoratorConflict},
-		"query":          {"scalar Key string\ntype Q<Key> { k Key @query }", CodeBindingType},
+		"query":          {"scalar Key string\ntype Item { id string }\ntype Q<Key> { k Key @query }\nservice S { post A /a { request Q<Item>  response Item } }", CodeBindingType},
 	} {
 		t.Run(label, func(t *testing.T) {
 			expectError(t, "package app\n"+c.src, c.code)
@@ -437,6 +437,33 @@ error Conflict E { OptH<int[]> }`, "field OptH<int[]>.h: @header rides an option
 			if want := strings.Count(src, "\n") + 1; d.Pos.Line != want {
 				t.Errorf("reported at line %d, want the instantiating line %d", d.Pos.Line, want)
 			}
+		})
+	}
+}
+
+// An explicit @query, @path or @form on a type-parameter field is checked
+// with each request's argument, as an auto-bound one is.
+func TestTypeParamParamBindingCheckedPerInstance(t *testing.T) {
+	const decls = `package app
+type Item { id string }
+type Page<T> { cursor T @query  size int @query }
+type ById<T> { id T @path }
+type Up<T> { note T @form  f file }
+`
+	mustClean(t, decls+`type ReqA { ById<string>  Page<int> }
+service S {
+	post A /a/{id} { request ReqA  response Item }
+	put P /p { request Page<string>  response Item }
+	post U /u { request Up<string[]>  response Item }
+}`)
+	for label, c := range map[string]struct{ src, msg string }{
+		"query struct": {`service S { post A /a { request Page<Item>  response Item } }`, "field Page<Item>.cursor: @query requires"},
+		"path array":   {`service S { post A /a/{id} { request ById<string[]>  response Item } }`, "field ById<string[]>.id: @path requires"},
+		"form struct":  {`service S { post A /a { request Up<Item>  response Item } }`, "field Up<Item>.note: @form requires"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			d := expectError(t, decls+c.src, CodeBindingType)
+			expectMessage(t, d, c.msg)
 		})
 	}
 }

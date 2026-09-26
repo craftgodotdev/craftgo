@@ -66,6 +66,14 @@ service BindingsService {
 		response Item
 	}
 
+	// PagedSearch reads its paging from the query through a generic mixin whose
+	// fields carry an explicit @query, beside a JSON body.
+	@doc("Search items. The paging rides the query through a generic mixin; the term rides the body.")
+	post PagedSearch /paged-search {
+		request  PagedSearchReq
+		response Item
+	}
+
 	// WellKnown pins literal segments net/http serves: a name opening with a
 	// dot, a dotted version, a word opening with a digit, a file name.
 	@doc("Serve a key set. The route's literal segments hold dots and digits.")
@@ -306,6 +314,18 @@ type BatchUploadReq {
 	cover file?
 	tags  string[] @form
 	album string   @form @length(1, 100)
+}
+
+// Paging reads a cursor of type T and a limit from the query.
+type Paging<T> {
+	cursor T   @query
+	limit  int @query @gte(1)
+}
+
+// PagedSearchReq pairs query paging with a body term.
+type PagedSearchReq {
+	Paging<string>
+	term string
 }
 
 // KeySetReq names the key set to serve.

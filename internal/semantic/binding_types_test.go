@@ -231,6 +231,6 @@ func TestOptionalTypeParamOverFileRefused(t *testing.T) {
 }`)
 	src := "package app\ntype F<T> { f T? @form(\"upload\")  n string }\ntype Resp { ok bool }\nservice S { post A /a { request F<file>  response Resp } }"
 	d := expectError(t, src, CodeBindingType)
-	expectMessage(t, d, "@form requires")
+	expectMessage(t, d, "field F.f:", "optional type parameter over a file (file)")
 	expectCodeCount(t, src, CodeBindingType, 1)
 }

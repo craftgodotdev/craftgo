@@ -22,8 +22,8 @@ const (
 
 // checkBindingFieldType rejects a wire binding whose field type the binder
 // cannot fill, `@nullable` on any wire binding, and `@default` on `@path`.
-// A @header or @cookie field typed by one of typeParams, the declaration's
-// type parameters, is checked where the type is instantiated.
+// A field typed by one of typeParams, the declaration's type parameters, is
+// checked where the type is instantiated.
 func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field, typeParams []string) {
 	kind, _ := wire.BindingKind(f.Decorators)
 	if f.Type == nil || !kind.IsParam() {
@@ -38,7 +38,7 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field, typeParams
 	case kind == wire.BindPath && ast.HasDecorator(f.Decorators, "default"):
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
 			"@default cannot be combined with @path: a path segment is always supplied for a matched route, so the default can never apply - drop it.")
-	case (kind == wire.BindHeader || kind == wire.BindCookie) && typeParamNamed(f.Type, typeParams):
+	case typeParamNamed(f.Type, typeParams):
 	default:
 		if msg := a.proj.wireTypeFault(parent, a.pkg.Name, f, kind); msg != "" {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeBindingType, "%s", msg)
@@ -80,8 +80,8 @@ func typeParamNamed(t *ast.TypeRef, typeParams []string) bool {
 }
 
 // checkTypeParamWireBindings rejects, at each request, response or error
-// mixin that instantiates a type, a @header or @cookie field typed by one
-// of the type's parameters whose argument cannot ride the binding. An
+// mixin that instantiates a type, a wire-bound field typed by one of the
+// type's parameters whose argument cannot ride the binding. An
 // argument a mixin of this package's design writes is reported once, at
 // that mixin.
 func (a *analyzer) checkTypeParamWireBindings() {
@@ -107,9 +107,9 @@ func (a *analyzer) checkTypeParamWireBindings() {
 	}
 }
 
-// checkInstanceWireBindings reports each @header or @cookie field of the
-// type ref names, typed by a type parameter, whose argument cannot ride the
-// binding: at pos, or at the mixin of this package that fixes the argument,
+// checkInstanceWireBindings reports each wire-bound field of the type ref
+// names, typed by a type parameter, whose argument cannot ride the binding:
+// at pos, or at the mixin of this package that fixes the argument,
 // unless reported holds the same diagnostic. raw says logic reads or writes
 // the headers, so no generated binding holds the value. An argument naming no
 // type is left to the reference check, and one holding a `file` to
@@ -122,7 +122,7 @@ func (a *analyzer) checkInstanceWireBindings(ref *ast.NamedTypeRef, pos lexer.Po
 	}
 	for _, ff := range fields {
 		kind, _ := wire.BindingKind(ff.Field.Decorators)
-		if !ff.paramTyped || (kind != wire.BindHeader && kind != wire.BindCookie) {
+		if !ff.paramTyped || !kind.IsParam() {
 			continue
 		}
 		if a.proj.namesNoType(view, ff.Field.Type) || (fileReported && holdsFile(ff.Field.Type)) {

@@ -224,13 +224,13 @@ func (a *analyzer) checkMultipartParts(svcName string, m *ast.Method, decs []*as
 	for _, ff := range parts {
 		f := ff.Field
 		switch {
-		case ast.HasDecorator(f.Decorators, wire.BindingForm):
 		case ff.optionalParam && isFileTypeRef(f.Type):
 			arg := *f.Type
 			arg.Optional = false
 			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
 				"field %s.%s: on the %s %s handler this rides a multipart file part, but it is an optional type parameter over a file (%s), whose Go value is a pointer the multipart binder cannot fill - drop the `?` from the type parameter (a file is already nilable)",
 				reqName, f.Name, verb, svcName, arg.String())
+		case ast.HasDecorator(f.Decorators, wire.BindingForm):
 		case holdsFile(f.Type):
 		case ff.sliceBehindPointer():
 			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,

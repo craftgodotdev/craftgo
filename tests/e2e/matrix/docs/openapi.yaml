@@ -4879,6 +4879,26 @@ components:
         PagedReq binds `page` and `size` from the query string into the Page
         it embeds.
       type: object
+    PagedSearchReq:
+      allOf:
+      - $ref: '#/components/schemas/PagingOfString'
+      - properties:
+          term:
+            type: string
+        required:
+        - term
+        type: object
+      description: PagedSearchReq pairs query paging with a body term.
+      type: object
+    PagedSearchReqBody:
+      properties:
+        term:
+          type: string
+      required:
+      - term
+      type: object
+    PagedSearchRespBody:
+      $ref: '#/components/schemas/Item'
     PaginatedResp:
       description: |-
         PaginatedResp carries a JSON list plus response-only fields:
@@ -4925,6 +4945,9 @@ components:
           type:
           - integer
           - "null"
+      type: object
+    PagingOfString:
+      description: Paging reads a cursor of type T and a limit from the query.
       type: object
     PairOfScalarsOrderAndProductRef:
       description: |-
@@ -9843,6 +9866,38 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListPagedRespBody'
           description: OK
+      tags:
+      - bindings
+  /bindings/paged-search:
+    post:
+      description: Search items. The paging rides the query through a generic mixin;
+        the term rides the body.
+      operationId: PagedSearch
+      parameters:
+      - in: query
+        name: cursor
+        required: true
+        schema:
+          type: string
+      - in: query
+        name: limit
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PagedSearchReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedSearchRespBody'
+          description: Created
       tags:
       - bindings
   /bindings/query-beside-body:

@@ -297,6 +297,32 @@ func (v *PagedReq) Validate() error {
 }
 
 // Validate returns the first constraint v violates, or nil.
+func (v *PagedSearchReq) Validate() error {
+	if err := v.Paging.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *Paging[T]) Validate() error {
+	if absentValue(&v.Cursor) {
+		return fmt.Errorf("cursor: required")
+	}
+	if vv, ok := any(&v.Cursor).(interface{ Validate() error }); ok {
+		if err := vv.Validate(); err != nil {
+			return fmt.Errorf("cursor: %w", err)
+		}
+	} else if err := validateValue(v.Cursor); err != nil {
+		return fmt.Errorf("cursor: %w", err)
+	}
+	if v.Limit < 1 {
+		return fmt.Errorf("limit: below minimum 1")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *PathEnumReq) Validate() error {
 	if v.C == "" {
 		return fmt.Errorf("c: required")

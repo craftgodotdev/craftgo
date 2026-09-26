@@ -224,6 +224,18 @@ type PagedReq struct {
 	Q *string `json:"q,omitempty"`
 }
 
+// PagedSearchReq pairs query paging with a body term.
+type PagedSearchReq struct {
+	Paging[string]
+	Term string `json:"term"`
+}
+
+// Paging reads a cursor of type T and a limit from the query.
+type Paging[T any] struct {
+	Cursor T   `json:"-" query:"cursor"`
+	Limit  int `json:"-" query:"limit"`
+}
+
 // PathEnumReq drives the enum-typed @path binder. The wire value is
 // a string ("red" / "green" / "blue"); req.Validate() rejects any
 // value outside the enum's declared set.
