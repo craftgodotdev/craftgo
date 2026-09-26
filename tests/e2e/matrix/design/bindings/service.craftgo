@@ -207,6 +207,17 @@ service BindingsService {
 	// 	request  PathIntReq
 	// 	response Item
 	// }
+
+	// CountIds reads a list header: every line of X-Ids, split at commas.
+	get CountIds /ids {
+		request  IdsReq
+		response OkResp
+	}
+}
+
+// IdsReq takes at least two ids from the X-Ids list header.
+type IdsReq {
+	ids int[] @header("X-Ids") @minItems(2)
 }
 
 // ---------------------------------------------------------------

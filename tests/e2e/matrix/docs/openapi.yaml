@@ -1321,6 +1321,8 @@ components:
     Count:
       minimum: 0
       type: integer
+    CountIdsRespBody:
+      $ref: '#/components/schemas/OkResp'
     CounterReq:
       description: CounterReq wraps NumberCounter for the AddCounter POST.
       properties:
@@ -3056,6 +3058,9 @@ components:
       minLength: 3
       pattern: ^[A-Z]{3}$
       type: string
+    IdsReq:
+      description: IdsReq takes at least two ids from the X-Ids list header.
+      type: object
     InsufficientPermissionsErr:
       description: Forbidden error response (HTTP 403).
       properties:
@@ -9450,6 +9455,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/RateLimitExceededErr'
           description: TooManyRequests
+      tags:
+      - bindings
+  /bindings/ids:
+    get:
+      description: 'CountIds reads a list header: every line of X-Ids, split at commas.'
+      operationId: CountIds
+      parameters:
+      - in: header
+        name: X-Ids
+        required: true
+        schema:
+          items:
+            type: integer
+          minItems: 2
+          type: array
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CountIdsRespBody'
+          description: OK
       tags:
       - bindings
   /bindings/items:

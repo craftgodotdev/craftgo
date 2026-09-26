@@ -148,6 +148,14 @@ func (v *HeaderReq) Validate() error {
 }
 
 // Validate returns the first constraint v violates, or nil.
+func (v *IdsReq) Validate() error {
+	if len(v.Ids) < 2 {
+		return fmt.Errorf("X-Ids: minItems 2")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *Item) Validate() error {
 	if err := v.ID.Validate(); err != nil {
 		return fmt.Errorf("id: %w", err)

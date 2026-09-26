@@ -23,6 +23,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   writes a JSON success response; a value the codec cannot encode goes to
   `WriteError`.
 
+- **`server.HeaderList(r, name)`** returns the elements of a list header:
+  every line, split at commas, trimmed, empty elements dropped.
+
 ### Changed
 
 - **Both servers log through `log.Default`.** `server.Server` and
@@ -1288,6 +1291,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   through `server.WriteResponse`, which encodes first and hands an encode
   error to `WriteError`: 500 `{"message":"internal server error"}` and the
   `unhandled service error` log line.
+
+- **An array header binds a comma-separated list.** The OpenAPI document
+  describes `ids int[] @header` as `X-Ids: 1,2`, but the handler parsed each
+  header line whole, so `1,2` answered 400. It now reads the list through
+  `server.HeaderList`: every line, split at commas.
+
 
 ## [1.9.0] - 2026-09-22 [UTC+7]
 

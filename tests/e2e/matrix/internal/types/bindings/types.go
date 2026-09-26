@@ -122,6 +122,11 @@ type HeaderReq struct {
 	APIKey string `json:"-" header:"X-API-Key"`
 }
 
+// IdsReq takes at least two ids from the X-Ids list header.
+type IdsReq struct {
+	Ids []int `json:"-" header:"X-Ids"`
+}
+
 // Item is the canonical entity returned by every read / write that
 // resolves to a single item.
 type Item struct {

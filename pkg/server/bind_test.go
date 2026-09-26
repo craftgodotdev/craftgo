@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -101,5 +102,19 @@ func TestCookiePresent(t *testing.T) {
 	without := httptest.NewRequest(http.MethodGet, "/", nil)
 	if CookiePresent(without, "sid") {
 		t.Error("CookiePresent with no cookie = true, want false")
+	}
+}
+
+// HeaderList reads a list header as RFC 9110 writes one: every line, split at commas, each
+// element trimmed, empty elements dropped.
+func TestHeaderList(t *testing.T) {
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Add("X-Ids", "1, 2")
+	r.Header.Add("X-Ids", "3,,\t4 ")
+	if got := HeaderList(r, "X-Ids"); !slices.Equal(got, []string{"1", "2", "3", "4"}) {
+		t.Errorf("HeaderList = %q, want [1 2 3 4]", got)
+	}
+	if got := HeaderList(r, "X-None"); got != nil {
+		t.Errorf("HeaderList of an absent header = %q, want nil", got)
 	}
 }

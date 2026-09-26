@@ -49,7 +49,7 @@ var wireSources = map[wire.Binding]wireSource{
 	},
 	wire.BindHeader: {
 		single:  func(n string) string { return fmt.Sprintf("r.Header.Get(%q)", n) },
-		array:   func(n string) string { return fmt.Sprintf("r.Header.Values(%q)", n) },
+		array:   func(n string) string { return fmt.Sprintf("server.HeaderList(r, %q)", n) },
 		present: func(n string) string { return fmt.Sprintf("len(r.Header.Values(%q)) > 0", n) },
 	},
 	wire.BindCookie: {

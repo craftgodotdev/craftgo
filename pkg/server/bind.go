@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"unsafe"
 )
 
@@ -98,6 +99,20 @@ func RequirePresent(w http.ResponseWriter, r *http.Request, present bool, field,
 		return false
 	}
 	return true
+}
+
+// HeaderList returns the elements of list header name as RFC 9110 writes them: every line of it,
+// split at commas, each element trimmed and empty ones dropped; nil when r carries none.
+func HeaderList(r *http.Request, name string) []string {
+	var out []string
+	for _, line := range r.Header.Values(name) {
+		for part := range strings.SplitSeq(line, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				out = append(out, part)
+			}
+		}
+	}
+	return out
 }
 
 // CookiePresent reports whether r carries the named cookie.

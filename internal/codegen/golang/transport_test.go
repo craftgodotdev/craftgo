@@ -434,6 +434,34 @@ service S {
 	mustContainNone(t, got, `"strconv"`)
 }
 
+// An array header reads every element of the list header, lines and commas alike.
+func TestGenerateTransportHeaderList(t *testing.T) {
+	src := `package design
+type Req {
+    ids  int[]  @header("X-Ids")
+    note string @form
+    pic  file   @form
+}
+service S {
+    post Run /run {
+        request Req
+    }
+}`
+	pkg := analyze(t, src)
+	root := t.TempDir()
+	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/run.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(body)
+	mustParseGo(t, got)
+	mustContainAll(t, got, `server.HeaderList(r, "X-Ids")`)
+	mustContainNone(t, got, `r.Header.Values("X-Ids"), &req`)
+}
+
 // An optional header or cookie field is nil when empty, else points at the value cast to its type.
 func TestGenerateTransportOptionalHeaderCookie(t *testing.T) {
 	src := `package design

@@ -37,4 +37,5 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/bindings/query-float", transport.GetQueryFloat(svcCtx))
 	srv.Handle("POST /api/bindings/header-metadata", transport.EchoHeaderMetadata(svcCtx))
 	srv.Handle("POST /api/bindings/shared-status", transport.PostSharedStatus(svcCtx))
+	srv.Handle("GET /api/bindings/ids", transport.CountIds(svcCtx))
 }
