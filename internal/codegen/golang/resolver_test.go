@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -32,13 +31,6 @@ func newFixtureProject() *semantic.Project {
 				},
 			},
 		},
-	}
-}
-
-func newFixtureConfig() *config.Config {
-	return &config.Config{
-		Package: "github.com/test/m",
-		Output:  config.Output{Types: "./internal/types"},
 	}
 }
 

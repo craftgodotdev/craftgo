@@ -12,30 +12,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 )
 
-// loadProtos compiles the testdata/proto fixture as `craftgo gen` would for cfg.
-func loadProtos(t *testing.T, cfg *config.Config) *protodesign.Set {
-	t.Helper()
-	set, err := protodesign.Load(context.Background(), filepath.Join("testdata", "proto"), designopts.ProtoOptions(cfg, "."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !set.HasServices() {
-		t.Fatal("fixture declares no service")
-	}
-	return set
-}
-
-func greeter(t *testing.T, set *protodesign.Set) *protodesign.Service {
-	t.Helper()
-	for _, svc := range set.Services {
-		if svc.Name == "Greeter" {
-			return svc
-		}
-	}
-	t.Fatal("no Greeter")
-	return nil
-}
-
 // The server layer and each RPC's method and logic scaffold match their goldens.
 func TestGRPCLayersArePinned(t *testing.T) {
 	cfg := scaffoldConfig(t)

@@ -6,25 +6,7 @@ import (
 	"strings"
 	"testing"
 	"text/template"
-
-	"github.com/craftgodotdev/craftgo/internal/config"
 )
-
-// scaffoldConfig is a manifest with every default applied, the way
-// `craftgo gen` sees an empty craftgo.design.yaml.
-func scaffoldConfig(t *testing.T) *config.Config {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), config.Filename)
-	if err := os.WriteFile(path, nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.Package = "example.com/app"
-	return cfg
-}
 
 // httpScaffoldSrc runs one route behind a middleware, so the scaffolds wire it and guard it.
 const httpScaffoldSrc = `package todos

@@ -8,60 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/config"
-	"github.com/craftgodotdev/craftgo/internal/idents"
-	craftparser "github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
-
-// goEventsOut is the Go target's destination in [eventsConfig].
-const goEventsOut = "./internal/events"
-
-// eventsConfig is a manifest with the Go event target enabled.
-func eventsConfig() *config.Config {
-	return &config.Config{
-		Package: "example.com/app",
-		Output: config.Output{
-			Types:      "./internal/types",
-			Transport:  "./internal/transport",
-			Routes:     "./internal/routes",
-			Service:    "./internal/service",
-			Svccontext: "./svccontext/svccontext.go",
-			Wiring:     "./internal/wiring",
-			Middleware: "./internal/middleware",
-			Config:     "./config",
-			OpenAPI:    "./docs/openapi.yaml",
-			Main:       "-",
-			FileCase:   idents.FileCaseSnake,
-		},
-		OpenAPI: config.OpenAPI{Title: "Events", Version: "1.0.0"},
-		Events: config.Events{
-			Targets: []config.EventTarget{{Lang: config.LangGo, Out: goEventsOut}},
-		},
-	}
-}
-
-// analyzeProject analyses sources as one project and fails on any error diagnostic.
-func analyzeProject(t *testing.T, sources ...string) *semantic.Project {
-	t.Helper()
-	files := make([]*ast.File, 0, len(sources))
-	for i, src := range sources {
-		p := craftparser.New("test.craftgo", src)
-		f := p.Parse()
-		if d := p.Diagnostics(); len(d) > 0 {
-			t.Fatalf("parse errors in source %d: %v", i, d)
-		}
-		files = append(files, f)
-	}
-	proj, diags := semantic.AnalyzeProject(files, semantic.Options{})
-	for _, d := range diags {
-		if d.Severity == 0 {
-			t.Fatalf("semantic errors: %v", diags)
-		}
-	}
-	return proj
-}
 
 // genEvents runs the Go event target into a temp dir and returns the dir.
 func genEvents(t *testing.T, proj *semantic.Project, cfg *config.Config) string {
@@ -71,15 +20,6 @@ func genEvents(t *testing.T, proj *semantic.Project, cfg *config.Config) string 
 		t.Fatalf("generate events: %v", err)
 	}
 	return dir
-}
-
-func readGen(t *testing.T, dir, rel string) string {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
-	if err != nil {
-		t.Fatalf("read %s: %v", rel, err)
-	}
-	return string(b)
 }
 
 const ordersSrc = `package orders

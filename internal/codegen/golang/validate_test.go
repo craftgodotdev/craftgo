@@ -11,22 +11,6 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// runValidateGen returns the validate.go generated for src.
-func runValidateGen(t *testing.T, src string) string {
-	t.Helper()
-	pkg := analyze(t, src)
-	dir := t.TempDir()
-	if err := generateValidators(pkg, dir, nil); err != nil {
-		t.Fatal(err)
-	}
-	out, err := os.ReadFile(filepath.Join(dir, "design", "validate.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	mustParseGo(t, string(out))
-	return string(out)
-}
-
 // The enum case list names the deduplicated consts of case-colliding members.
 func TestEnumCaseListDedupsCollidingMembers(t *testing.T) {
 	src := runValidateGen(t, `package design
@@ -588,29 +572,6 @@ type Product {
 	if !strings.Contains(src, "v.Page.Validate()") {
 		t.Errorf("expected `v.Page.Validate()` emitted for qualified generic field; got:\n%s", src)
 	}
-}
-
-// projectFiles writes src under a temp root and returns the root and the parsed files.
-func projectFiles(t *testing.T, src map[string]string) (string, []*ast.File) {
-	t.Helper()
-	root := t.TempDir()
-	var files []*ast.File
-	for rel, content := range src {
-		full := filepath.Join(root, rel)
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		p := craftparser.New(full, content)
-		f := p.Parse()
-		if d := p.Diagnostics(); len(d) > 0 {
-			t.Fatalf("parse %s: %v", rel, d)
-		}
-		files = append(files, f)
-	}
-	return root, files
 }
 
 // Every shape of a cross-package enum field calls the enum's own Validate.

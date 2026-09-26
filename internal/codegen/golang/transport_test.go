@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
-	"github.com/craftgodotdev/craftgo/internal/config"
-	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/craftgodotdev/craftgo/internal/wire"
@@ -41,23 +39,6 @@ extend service UserService {
     get Ping {
     }
 }`
-
-func sampleConfig() *config.Config {
-	return &config.Config{
-		Package: "github.com/example/app",
-		Output: config.Output{
-			Types:      "./internal/types",
-			Transport:  "./internal/transport",
-			Routes:     "./internal/routes",
-			Service:    "./internal/service",
-			Svccontext: "./svccontext/svccontext.go",
-			Wiring:     "./internal/wiring",
-			OpenAPI:    "./docs/openapi.yaml",
-			FileCase:   idents.FileCaseKebab,
-		},
-		OpenAPI: config.OpenAPI{BasePath: "/v1"},
-	}
-}
 
 // ---------- handler ----------
 
@@ -1753,16 +1734,6 @@ service MediaService {
 	if strings.Contains(src, `r.FormFile("files")`) {
 		t.Errorf("file[] must bind from MultipartForm.File, not r.FormFile:\n%s", src)
 	}
-}
-
-// genRoutes writes pkg's routes files and the umbrella as a single-package project.
-func genRoutes(t *testing.T, pkg *semantic.Package, cfg *config.Config, root string) error {
-	t.Helper()
-	if err := generateRoutes(pkg, cfg, root); err != nil {
-		return err
-	}
-	proj := &semantic.Project{Packages: map[string]*semantic.Package{pkg.Name: pkg}}
-	return generateProjectRoutesUmbrella(proj, cfg, root)
 }
 
 // The routes file imports time only for a duration, not for a group name ending in time.

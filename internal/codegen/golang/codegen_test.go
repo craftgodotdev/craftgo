@@ -1,160 +1,16 @@
 package golang
 
 import (
-	goast "go/ast"
-	"go/parser"
-	gotoken "go/token"
 	"os"
-	gopath "path"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
-	"github.com/craftgodotdev/craftgo/internal/lexer"
-	craftparser "github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
-
-func analyze(t *testing.T, src string) *semantic.Package {
-	t.Helper()
-	p := craftparser.New("test.craftgo", src)
-	f := p.Parse()
-	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("parse errors: %v", d)
-	}
-	pkg, diags := semantic.Analyze([]*ast.File{f})
-	// A warning still generates valid code, so only errors fail the test.
-	var fatal []semantic.Diagnostic
-	for _, d := range diags {
-		if d.Severity == lexer.SeverityError {
-			fatal = append(fatal, d)
-		}
-	}
-	if len(fatal) > 0 {
-		t.Fatalf("semantic errors: %v", fatal)
-	}
-	return pkg
-}
-
-func mustParseGo(t *testing.T, src string) {
-	t.Helper()
-	file, err := parser.ParseFile(gotoken.NewFileSet(), "out.go", src, parser.AllErrors)
-	if err != nil {
-		t.Fatalf("generated Go does not parse: %v\n--- source ---\n%s", err, src)
-	}
-	mustImportsMatchUsage(t, file, src)
-}
-
-// stdlibQualifiers maps the standard-library qualifiers the import check covers to their paths.
-var stdlibQualifiers = map[string]string{
-	"fmt":       "fmt",
-	"errors":    "errors",
-	"strconv":   "strconv",
-	"strings":   "strings",
-	"time":      "time",
-	"regexp":    "regexp",
-	"utf8":      "unicode/utf8",
-	"reflect":   "reflect",
-	"json":      "encoding/json",
-	"base64":    "encoding/base64",
-	"http":      "net/http",
-	"url":       "net/url",
-	"io":        "io",
-	"os":        "os",
-	"sort":      "sort",
-	"sync":      "sync",
-	"context":   "context",
-	"multipart": "mime/multipart",
-	"mail":      "net/mail",
-	"netip":     "net/netip",
-	"slices":    "slices",
-	"maps":      "maps",
-}
-
-// mustImportsMatchUsage asserts file imports exactly the stdlibQualifiers packages it uses, binds
-// each import name once and uses every package it imports under an alias.
-func mustImportsMatchUsage(t *testing.T, file *goast.File, src string) {
-	t.Helper()
-
-	imported := map[string]bool{}
-	aliased := map[string]bool{}
-	for _, spec := range file.Imports {
-		path, err := strconv.Unquote(spec.Path.Value)
-		if err != nil {
-			continue
-		}
-		name := gopath.Base(path)
-		if spec.Name != nil {
-			name = spec.Name.Name
-			aliased[name] = true
-		}
-		if imported[name] {
-			t.Errorf("generated Go imports two packages as %s\n--- source ---\n%s", name, src)
-		}
-		imported[name] = true
-	}
-
-	used := map[string]bool{}
-	goast.Inspect(file, func(n goast.Node) bool {
-		sel, ok := n.(*goast.SelectorExpr)
-		if !ok {
-			return true
-		}
-		if ident, ok := sel.X.(*goast.Ident); ok {
-			used[ident.Name] = true
-		}
-		return true
-	})
-
-	for name := range used {
-		path, std := stdlibQualifiers[name]
-		if std && !imported[name] {
-			t.Errorf("generated Go uses %s.* but does not import %q\n--- source ---\n%s", name, path, src)
-		}
-	}
-	for name := range imported {
-		if name == "_" || name == "." {
-			continue
-		}
-		if _, std := stdlibQualifiers[name]; (std || aliased[name]) && !used[name] {
-			t.Errorf("generated Go imports %q but never uses it\n--- source ---\n%s", name, src)
-		}
-	}
-}
-
-// mustContainAll asserts every want substring appears in got, reporting all misses at once.
-func mustContainAll(t *testing.T, got string, wants ...string) {
-	t.Helper()
-	var missing []string
-	for _, w := range wants {
-		if !strings.Contains(got, w) {
-			missing = append(missing, w)
-		}
-	}
-	if len(missing) > 0 {
-		t.Errorf("output missing %d expected substring(s):\n  - %s\n--- got ---\n%s",
-			len(missing), strings.Join(missing, "\n  - "), got)
-	}
-}
-
-// mustContainNone asserts no unwanted substring appears in got.
-func mustContainNone(t *testing.T, got string, unwanted ...string) {
-	t.Helper()
-	var present []string
-	for _, w := range unwanted {
-		if strings.Contains(got, w) {
-			present = append(present, w)
-		}
-	}
-	if len(present) > 0 {
-		t.Errorf("output unexpectedly contains %d forbidden substring(s):\n  - %s\n--- got ---\n%s",
-			len(present), strings.Join(present, "\n  - "), got)
-	}
-}
 
 // ---------- types ----------
 
