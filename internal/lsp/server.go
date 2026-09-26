@@ -268,12 +268,30 @@ func (s *server) onDidSave(ctx context.Context, params protocol.DidSaveTextDocum
 	return nil, nil
 }
 
+// onDidClose drops the buffer of the closed file and clears its diagnostics,
+// then re-checks the open files of its design root, which were analysed with
+// that buffer: an unsaved edit no longer counts.
 func (s *server) onDidClose(ctx context.Context, params protocol.DidCloseTextDocumentParams) (any, error) {
+	closed := params.TextDocument.URI
 	s.mu.Lock()
-	delete(s.docs, params.TextDocument.URI)
+	delete(s.docs, closed)
 	s.mu.Unlock()
 	// An empty list clears the closed file's diagnostics.
-	s.publish(ctx, params.TextDocument.URI, []protocol.Diagnostic{})
+	s.publish(ctx, closed, []protocol.Diagnostic{})
+	_, root := designopts.ProjectOf(uriToPath(string(closed)))
+	if root == "" {
+		return nil, nil
+	}
+	// One publishDiagnostics covers every open file under the root.
+	for u, src := range s.openDocs() {
+		if _, r := designopts.ProjectOf(uriToPath(string(u))); r == root {
+			s.publishDiagnostics(ctx, u, src)
+			return nil, nil
+		}
+	}
+	if m := manifestPath(root); slices.Contains(s.publishedManifests(), m) {
+		s.publishManifest(ctx, m, nil)
+	}
 	return nil, nil
 }
 

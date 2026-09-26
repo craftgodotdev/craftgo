@@ -484,6 +484,10 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Fixed
 
+- **Closing an unsaved buffer re-checks its design root.** The other open
+  files kept the diagnostics computed with the dropped text, such as an
+  unknown type the unsaved edit had renamed, until the next edit.
+
 - **The module path is read from any `module` directive.** A go.mod whose
   `module` line carried a comment, as `module example.com/m // Deprecated:
   …` does, put the comment into every generated import path; a backquoted

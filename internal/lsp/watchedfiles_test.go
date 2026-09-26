@@ -177,6 +177,34 @@ func TestManifestDiagnosticsFollowTheManifest(t *testing.T) {
 	}
 }
 
+// Closing an edited buffer unsaved re-checks the other open files of its root
+// against the file on disk.
+func TestCloseUnsavedBufferRechecksTheRoot(t *testing.T) {
+	aPath := manifestProject(t, layoutOnly, "package svc\ntype User { id string }\n")
+	bPath := filepath.Join(filepath.Dir(aPath), "b.craftgo")
+	mustWrite(t, bPath, "package svc\ntype Team { lead User }\n")
+	aURI, bURI := uri.File(aPath), uri.File(bPath)
+	conn := &recordingConn{}
+	s := &server{docs: map[uri.URI]string{}, conn: conn}
+	ctx := context.Background()
+	s.storeDoc(bURI, readFileT(t, bPath))
+	edited := "package svc\ntype Member { id string }\n"
+	s.storeDoc(aURI, edited)
+	s.publishDiagnostics(ctx, aURI, edited)
+	if got, _ := conn.lastPublished(bURI); len(got) == 0 {
+		t.Fatal("b should report the unknown User while a's buffer renames it")
+	}
+	if _, err := callHandler(t, s, protocol.MethodTextDocumentDidClose, protocol.DidCloseTextDocumentParams{TextDocument: protocol.TextDocumentIdentifier{URI: aURI}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := conn.lastPublished(bURI); got == nil || len(got) != 0 {
+		t.Errorf("b diagnostics after a closed unsaved = %+v, want an empty list", got)
+	}
+	if got, _ := conn.lastPublished(aURI); got == nil || len(got) != 0 {
+		t.Errorf("a diagnostics after close = %+v, want an empty list", got)
+	}
+}
+
 // The registration watches every design-file extension and the manifest.
 func TestWatchedFilesRegistration(t *testing.T) {
 	reg := watchedFilesRegistration()
