@@ -52,3 +52,20 @@ func TestHoverUserType(t *testing.T) {
 		t.Errorf("hover should include doc comment: %q", v)
 	}
 }
+
+// A field's name shows the field even when it is spelt like a built-in, a verb or a keyword.
+func TestHoverFieldNamedLikeAKeyword(t *testing.T) {
+	const src = `package design
+
+type Req {
+	file string
+	delete bool
+	type int
+}
+`
+	for _, name := range []string{"file", "delete", "type"} {
+		if v := hoverAt(t, "", strings.Replace(src, "\t"+name+" ", "\t"+name[:1]+cursorMark+name[1:]+" ", 1)); !strings.Contains(v, "field `Req."+name+"`") {
+			t.Errorf("hover on field %s = %q, want the field", name, v)
+		}
+	}
+}

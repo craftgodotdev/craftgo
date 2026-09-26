@@ -89,6 +89,10 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 	if h := formatRawArgHover(view, idx, tok); h != nil {
 		return h
 	}
+	// A field's own name token shows the field, whatever word it is spelt as.
+	if f, parent := findFieldAtPos(view.file, tok.Pos); f != nil {
+		return fieldHover(parent, f, rangeOf(view.src, tok))
+	}
 	if doc, ok := verbDocs[tok.Text]; ok && tok.Kind.IsVerb() {
 		return &protocol.Hover{
 			Contents: protocol.MarkupContent{Kind: protocol.Markdown, Value: doc},
@@ -108,10 +112,6 @@ func hoverForToken(view snapshotView, idx int, tok lexer.Token) *protocol.Hover 
 		}
 		if view.kind(idx-1) == lexer.KwError && errcat.IsCategory(tok.Text) {
 			return errorCategoryHover(tok.Text, rangeOf(view.src, tok))
-		}
-		// A field's own name token shows the field.
-		if f, parent := findFieldAtPos(view.file, tok.Pos); f != nil {
-			return fieldHover(parent, f, rangeOf(view.src, tok))
 		}
 	}
 	return nil

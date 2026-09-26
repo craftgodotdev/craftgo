@@ -1314,6 +1314,10 @@ breaking change to the DSL or the generated layout bumps the major version.
   `log.Follow` logger, Follow lines reach the logger that was the default
   before it.
 
+- **Hover on a field's name shows the field.** A field spelt like a
+  built-in (`file`), an HTTP verb (`delete`) or a keyword (`type`) showed
+  that word's doc, or nothing.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added
