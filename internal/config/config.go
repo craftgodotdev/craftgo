@@ -4,8 +4,6 @@
 package config
 
 import (
-	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -580,22 +578,41 @@ func ResolveModulePath(projectRoot string) (string, error) {
 	}
 }
 
-// parseModuleLine returns the path of the first `module` line in a go.mod, or "".
+// parseModuleLine returns the module path a go.mod declares, or "": the
+// argument of its `module` directive, quoted or not, in the line or the block
+// form, without the comments beside it.
 func parseModuleLine(data []byte) string {
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if !strings.HasPrefix(line, "module") {
-			continue
+	inBlock := false
+	for line := range strings.Lines(string(data)) {
+		if i := strings.Index(line, "//"); i >= 0 {
+			line = line[:i]
 		}
-		// The path may be quoted.
-		rest := strings.TrimSpace(strings.TrimPrefix(line, "module"))
-		rest = strings.TrimSuffix(strings.TrimPrefix(rest, `"`), `"`)
-		if rest != "" {
-			return rest
+		fields := strings.Fields(strings.NewReplacer("(", " ( ", ")", " ) ").Replace(line))
+		switch {
+		case len(fields) == 0:
+		case inBlock:
+			if fields[0] == ")" {
+				inBlock = false
+				continue
+			}
+			return unquoteModulePath(fields[0])
+		case fields[0] != "module" || len(fields) == 1:
+		case fields[1] == "(":
+			inBlock = true
+		default:
+			return unquoteModulePath(fields[1])
 		}
 	}
 	return ""
+}
+
+// unquoteModulePath returns a module path written quoted or backquoted
+// without its quotes.
+func unquoteModulePath(s string) string {
+	if u, err := strconv.Unquote(s); err == nil {
+		return u
+	}
+	return s
 }
 
 // quotedList renders names as `"a"`, `"a" or "b"`, `"a", "b" or "c"`.

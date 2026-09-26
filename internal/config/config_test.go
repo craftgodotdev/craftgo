@@ -328,6 +328,28 @@ func TestResolveModulePathMonorepo(t *testing.T) {
 	}
 }
 
+// The module path is the `module` directive's argument, quoted or not, in its
+// line or block form, without the comments beside it.
+func TestResolveModulePathForms(t *testing.T) {
+	for label, gomod := range map[string]string{
+		"trailing comment":   "module example.com/m1 // billing service\n",
+		"deprecated comment": "// Deprecated: use example.com/m2\nmodule example.com/m1 // Deprecated: use example.com/m2\n",
+		"quoted":             "module \"example.com/m1\"\n",
+		"backquoted":         "module `example.com/m1`\n",
+		"block":              "module (\n\texample.com/m1 // billing\n)\n\ngo 1.25\n",
+		"after a directive":  "// header\n\nmodule\texample.com/m1\n",
+	} {
+		t.Run(label, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, filepath.Join(root, "go.mod"), gomod)
+			got, err := ResolveModulePath(root)
+			if err != nil || got != "example.com/m1" {
+				t.Errorf("got %q, %v; want example.com/m1", got, err)
+			}
+		})
+	}
+}
+
 // TestResolveModulePathNoGoMod checks that a missing go.mod is an error.
 func TestResolveModulePathNoGoMod(t *testing.T) {
 	root := t.TempDir()

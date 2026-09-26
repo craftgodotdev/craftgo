@@ -484,6 +484,11 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Fixed
 
+- **The module path is read from any `module` directive.** A go.mod whose
+  `module` line carried a comment, as `module example.com/m // Deprecated:
+  …` does, put the comment into every generated import path; a backquoted
+  path kept its quotes, and the block form `module ( … )` gave `(`.
+
 - **A required type-parameter field is required.** A `file` or `any`
   argument missing from a request reached the service as nil, as with a
   `FilePart<file>` mixin in a multipart request, where the stub's first
