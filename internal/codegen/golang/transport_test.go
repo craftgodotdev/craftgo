@@ -197,8 +197,8 @@ service S {
 	if strings.Contains(body, "req.Plain =") {
 		t.Errorf("plain field shouldn't be pre-filled:\n%s", body)
 	}
-	if dec := strings.Index(body, "server.JSON().Decode"); dec >= 0 {
-		if pre := body[:dec]; !strings.Contains(pre, `__d := "anon"`) {
+	if pre, _, ok := strings.Cut(body, "server.JSON().Decode"); ok {
+		if !strings.Contains(pre, `__d := "anon"`) {
 			t.Error("expected default assignments before body decode")
 		}
 	}
@@ -611,8 +611,8 @@ service FilesService {
 		}
 	}
 	// Headers are set before the response is written.
-	encode := strings.Index(body, "server.WriteResponse")
-	if encode < 0 || !strings.Contains(body[:encode], `w.Header().Set("etag"`) {
+	before, _, ok := strings.Cut(body, "server.WriteResponse")
+	if !ok || !strings.Contains(before, `w.Header().Set("etag"`) {
 		t.Errorf("the etag header must be set before the body is encoded:\n%s", body)
 	}
 }

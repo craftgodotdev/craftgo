@@ -376,7 +376,7 @@ func TestStreamRecoveryAndAccessLog(t *testing.T) {
 	srv := New(nil).SetLogger(logs)
 	srv.Use(AccessLog(logs))
 	conn := serve(t, srv, &echo{count: func(in *wrapperspb.StringValue, ss grpc.ServerStream) error {
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			if err := ss.SendMsg(wrapperspb.String(fmt.Sprintf("%s-%d", in.GetValue(), i))); err != nil {
 				return err
 			}

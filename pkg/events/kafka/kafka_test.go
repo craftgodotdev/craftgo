@@ -106,7 +106,7 @@ func TestOneGroupCannotReadTwoContractsOnOneTopic(t *testing.T) {
 func TestOneGroupMayRunReplicasOnOneContract(t *testing.T) {
 	tr := New(nil)
 	topic := tr.topic("orders.Placed")
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if err := tr.claim("worker", topic, "orders.Placed"); err != nil {
 			t.Fatalf("replica %d refused: %v", i, err)
 		}
@@ -128,7 +128,7 @@ func TestOneGroupReadsSeveralTopics(t *testing.T) {
 
 func TestGroupClaimIsReleasedByTheLastReader(t *testing.T) {
 	tr := New(nil)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if err := tr.claim("worker", "orders", "orders.Placed"); err != nil {
 			t.Fatalf("claim %d: %v", i, err)
 		}

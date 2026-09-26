@@ -73,7 +73,7 @@ func TestEveryConsumerClientIsClosedExactlyOnce(t *testing.T) {
 					t.Fatalf("subscribe %s: %v", c, err)
 				}
 			}
-			for i := 0; i < 20; i++ {
+			for range 20 {
 				publish(t, tr, contract, "k", []byte("{}"))
 			}
 			time.Sleep(500 * time.Millisecond)
@@ -152,8 +152,7 @@ func TestPublishAndSubscribeAfterCloseAreRefused(t *testing.T) {
 	if err := tr.PublishBatch(context.Background(), []*events.Message{msg}); !errors.Is(err, ErrClosed) {
 		t.Errorf("PublishBatch after Close: err = %v, want ErrClosed", err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: "late",
 		Handle: func(context.Context, *events.Message) error { return nil },

@@ -63,8 +63,7 @@ func TestAKafkaMiddlewareOnAnotherTransportFailsLoudlyAtOnce(t *testing.T) {
 			}
 		}),
 	)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := bus.Register(events.Subscription{
 		Event: "orders.Placed", Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error {

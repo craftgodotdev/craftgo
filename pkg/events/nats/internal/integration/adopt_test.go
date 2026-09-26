@@ -182,8 +182,7 @@ func TestCreatingADurableIsLoggedWithItsConfig(t *testing.T) {
 	log := &logBuffer{}
 	tr := jsTransport(t, conn, log.logger(), craftnats.WithAckWait(7*time.Second))
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "fresh", Handle: recording(&deliveries{}),
 	}}); err != nil {
@@ -241,8 +240,7 @@ func TestAGroupsSettingsApplyToItsDurableAlone(t *testing.T) {
 				cfg.FilterSubject = "orders.Everything"
 			})))
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{
 		{Event: "orders.Placed", Consumer: "A", Group: "tuned", Handle: recording(&deliveries{})},
 		{Event: "orders.Shipped", Consumer: "B", Group: "plain", Handle: recording(&deliveries{})},

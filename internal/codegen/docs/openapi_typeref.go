@@ -30,7 +30,7 @@ func schemaForTypeRef(t *ast.TypeRef, pkg *semantic.Package, registry *genericRe
 		// plain keywords.
 		if pn := propertyNamesForMapKey(t.Map.Key, pkg); pn != nil {
 			if s.Extensions == nil {
-				s.Extensions = make(map[string]interface{})
+				s.Extensions = make(map[string]any)
 			}
 			s.Extensions["propertyNames"] = pn
 		}

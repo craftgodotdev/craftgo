@@ -148,10 +148,7 @@ func firstDiff(want, got string) string {
 			if start < 0 {
 				start = 0
 			}
-			end := i + 4
-			if end > max {
-				end = max
-			}
+			end := min(i+4, max)
 			var sb strings.Builder
 			for j := start; j < end; j++ {
 				marker := "  "

@@ -146,7 +146,7 @@ func TestUnconfiguredIsPassThrough(t *testing.T) {
 // seriesCount counts the series lines of family, not its # HELP / # TYPE lines.
 func seriesCount(body, family string) int {
 	n := 0
-	for _, l := range strings.Split(body, "\n") {
+	for l := range strings.SplitSeq(body, "\n") {
 		if strings.HasPrefix(l, family) {
 			n++
 		}

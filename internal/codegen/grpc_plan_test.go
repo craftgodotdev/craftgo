@@ -33,9 +33,9 @@ func workspaceProject(t *testing.T) string {
 		t.Fatal(err)
 	}
 	version := "1.26"
-	for _, line := range strings.Split(string(goMod), "\n") {
-		if strings.HasPrefix(line, "go ") {
-			version = strings.TrimSpace(strings.TrimPrefix(line, "go "))
+	for line := range strings.SplitSeq(string(goMod), "\n") {
+		if after, ok := strings.CutPrefix(line, "go "); ok {
+			version = strings.TrimSpace(after)
 		}
 	}
 	for name, body := range map[string]string{

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"runtime/debug"
 	"sync"
@@ -93,9 +94,7 @@ func (s *Server) readinessHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		checks := make(map[string]healthCheck, len(s.healthChecks))
-		for k, v := range s.healthChecks {
-			checks[k] = v
-		}
+		maps.Copy(checks, s.healthChecks)
 		s.mu.Unlock()
 
 		var wg sync.WaitGroup

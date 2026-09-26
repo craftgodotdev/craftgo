@@ -33,7 +33,7 @@ func importGroupsOf(t *testing.T, src string) [][]string {
 	}
 	block, _, _ := strings.Cut(rest, "\n)\n")
 	var groups [][]string
-	for _, g := range strings.Split(block, "\n\n") {
+	for g := range strings.SplitSeq(block, "\n\n") {
 		groups = append(groups, strings.Split(strings.TrimSpace(g), "\n"))
 	}
 	return groups

@@ -11,7 +11,7 @@ import (
 var notAPath = map[string]bool{"Kind": true, "FileCase": true}
 
 func TestEveryOutputPathStaysInsideTheProject(t *testing.T) {
-	typ := reflect.TypeOf(Output{})
+	typ := reflect.TypeFor[Output]()
 	checked := 0
 	for i := 0; i < typ.NumField(); i++ {
 		f := typ.Field(i)

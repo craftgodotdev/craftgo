@@ -1427,8 +1427,7 @@ service S { get List /things { response Resp } }`)
 		idx := strings.Index(body, "ListRespBody:")
 		if idx >= 0 {
 			tail := body[idx:]
-			if end := strings.Index(tail, "type: object"); end >= 0 {
-				snippet := tail[:end]
+			if snippet, _, ok := strings.Cut(tail, "type: object"); ok {
 				if strings.Contains(snippet, "total:") || strings.Contains(snippet, "session:") {
 					t.Errorf("header/cookie field leaked into RespBody:\n%s", snippet)
 				}
@@ -1573,10 +1572,7 @@ service S {
 	if legacyIdx < 0 {
 		t.Fatal("missing LegacyBook schema")
 	}
-	end := legacyIdx + 80
-	if end > len(body) {
-		end = len(body)
-	}
+	end := min(legacyIdx+80, len(body))
 	if !strings.Contains(body[legacyIdx:end], "deprecated: true") {
 		t.Errorf("expected schema-level deprecated near LegacyBook:\n%s", body[legacyIdx:end])
 	}
@@ -2901,7 +2897,7 @@ func TestGenerateOpenAPIScalarAndEnumResponseRefsResolve(t *testing.T) {
 func declaredSchemaNames(body string) map[string]bool {
 	out := map[string]bool{}
 	inSchemas := false
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		switch {
 		case line == "  schemas:":
 			inSchemas = true

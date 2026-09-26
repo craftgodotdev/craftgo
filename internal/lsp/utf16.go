@@ -53,7 +53,7 @@ func lastLine(s string) (ends, start int) {
 // a byte offset into src, clamped to the line's end and to len(src).
 func offsetFromLSP(src string, line, character uint32) int {
 	off := 0
-	for l := uint32(0); l < line; l++ {
+	for range line {
 		next, ok := nextLine(src, off)
 		if !ok {
 			return len(src)
@@ -76,14 +76,8 @@ func offsetFromLSP(src string, line, character uint32) int {
 // utf16Position converts a lexer position (1-based line, rune column) into an
 // LSP one over src; a line src lacks keeps the rune column as the character.
 func utf16Position(src string, p lexer.Position) protocol.Position {
-	line := p.Line - 1
-	if line < 0 {
-		line = 0
-	}
-	col := p.Column - 1
-	if col < 0 {
-		col = 0
-	}
+	line := max(p.Line-1, 0)
+	col := max(p.Column-1, 0)
 	lineText, ok := nthLine(src, line)
 	if !ok {
 		return protocol.Position{Line: uint32(line), Character: uint32(col)}
@@ -116,7 +110,7 @@ func rangeOf(src string, t lexer.Token) protocol.Range {
 // and whether the line exists in src.
 func nthLine(src string, n int) (string, bool) {
 	start := 0
-	for i := 0; i < n; i++ {
+	for range n {
 		next, ok := nextLine(src, start)
 		if !ok {
 			return "", false

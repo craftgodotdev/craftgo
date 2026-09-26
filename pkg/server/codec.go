@@ -192,8 +192,7 @@ func structOf(t reflect.Type) reflect.Type {
 // jsonField returns the type of t's field whose JSON key is name, of the fields encoding/json
 // decodes into.
 func jsonField(t reflect.Type, name string) (reflect.Type, bool) {
-	for i := range t.NumField() {
-		sf := t.Field(i)
+	for sf := range t.Fields() {
 		if isFlattened(sf) || !decodesInto(sf) {
 			continue
 		}
@@ -215,8 +214,8 @@ func decodesInto(sf reflect.StructField) bool {
 
 // embeddedStruct returns the type of t's flattened embedded struct called name.
 func embeddedStruct(t reflect.Type, name string) (reflect.Type, bool) {
-	for i := range t.NumField() {
-		if sf := t.Field(i); sf.Name == name && isFlattened(sf) {
+	for sf := range t.Fields() {
+		if sf.Name == name && isFlattened(sf) {
 			return sf.Type, true
 		}
 	}

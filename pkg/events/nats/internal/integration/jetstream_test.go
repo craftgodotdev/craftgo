@@ -149,8 +149,7 @@ func TestJetStreamRoundTrip(t *testing.T) {
 	tr := jsTransport(t, conn)
 
 	got := make(chan *events.Message, 1)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "receipts",
 		Handle: func(_ context.Context, m *events.Message) error {
@@ -184,8 +183,7 @@ func TestSubscribeRefusesASubjectNoStreamCarries(t *testing.T) {
 	provision(t, conn, "ORDERS", "orders.>")
 	tr := jsTransport(t, conn)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "billing.Invoiced", Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error { return nil },
@@ -204,8 +202,7 @@ func TestSubscribeRefusesAServerWithoutJetStream(t *testing.T) {
 	conn := runServer(t) // the plain server, no JetStream
 	tr := jsTransport(t, conn, craftnats.WithProbeTimeout(2*time.Second))
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "g",
 		Handle: func(context.Context, *events.Message) error { return nil },
@@ -233,8 +230,7 @@ func TestJetStreamRedeliversAndRejects(t *testing.T) {
 		seen []int
 	)
 	done := make(chan struct{})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "redeliver",
 		Handle: func(_ context.Context, m *events.Message) error {
@@ -310,8 +306,7 @@ func TestAPanicInAMiddlewareIsNakkedRatherThanAcked(t *testing.T) {
 		}
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := bus.Register(events.Subscription{
 		Event: "orders.Placed", Consumer: "C", Group: "escaped-panic",
 		Handle: func(context.Context, *events.Message) error { return nil },
@@ -441,8 +436,7 @@ func TestASlowHandlerIsNotRedeliveredBehindItself(t *testing.T) {
 	tr := jsTransport(t, conn, craftnats.WithAckWait(time.Second))
 
 	var deliveries atomic.Int64
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "slow",
 		Handle: func(context.Context, *events.Message) error {
@@ -496,8 +490,7 @@ func TestTheJetStreamMessageIsReachableAndIsNotACoreMessage(t *testing.T) {
 		foundCore bool
 	}
 	got := make(chan seen, 1)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "raw",
 		Handle: func(hctx context.Context, _ *events.Message) error {
@@ -544,8 +537,7 @@ func TestJetStreamPublishBatch(t *testing.T) {
 	tr := jsTransport(t, conn)
 
 	var got atomic.Int64
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "batch",
 		Handle: func(context.Context, *events.Message) error {
@@ -617,8 +609,7 @@ func TestTheDeliveryCapReportsThatItFired(t *testing.T) {
 			}
 		}))
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "capped-report",
 		Handle: func(_ context.Context, m *events.Message) error {
@@ -1060,8 +1051,7 @@ func TestSubscribeAfterCloseIsRefused(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "late",
 		Handle: func(context.Context, *events.Message) error { return nil },
@@ -1103,8 +1093,7 @@ func TestACloseDuringSubscribeLeavesNothingConsuming(t *testing.T) {
 	tr = jsTransport(t, conn, craftnats.WithJetStreamLogger(slog.New(&runOnLog{fn: func() { _ = tr.Close() }})))
 
 	delivered := make(chan struct{}, 1)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "racing",
 		Handle: func(context.Context, *events.Message) error {
@@ -1266,8 +1255,7 @@ func TestAGroupWhoseDurableWasDeletedCanSubscribeAgain(t *testing.T) {
 	deleteUnderAWaitingPull(t, conn, delivered, durable)
 	awaitConsumerStopped(t, reported, 20*time.Second)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "deleted-durable", Handle: signal(delivered),
 	}}); err != nil {

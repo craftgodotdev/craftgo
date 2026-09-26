@@ -64,8 +64,7 @@ func TestRoundTripOverNATS(t *testing.T) {
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
 
 	got := make(chan *events.Message, 1)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	start(t, ctx, bus, events.Subscription{
 		Event: "orders.OrderPlaced", Consumer: "SendReceipt", Group: "receipts",
 		Handle: func(_ context.Context, m *events.Message) error { got <- m; return nil },
@@ -102,8 +101,7 @@ func TestConsumerGroupsOverNATS(t *testing.T) {
 	conn := runServer(t)
 	tr := craftnats.New(conn)
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	var mu sync.Mutex
 	hits := map[string]int{}
@@ -131,7 +129,7 @@ func TestConsumerGroupsOverNATS(t *testing.T) {
 	}
 
 	const n = 6
-	for i := 0; i < n; i++ {
+	for range n {
 		if err := bus.Publish(ctx, "orders.OrderPlaced", payload{OrderID: "x"}, events.WithKey("k")); err != nil {
 			t.Fatalf("publish: %v", err)
 		}
@@ -262,7 +260,7 @@ func parkedOnANilChannel() int {
 	buf := make([]byte, 1<<20)
 	buf = buf[:runtime.Stack(buf, true)]
 	n := 0
-	for _, g := range strings.Split(string(buf), "\n\n") {
+	for g := range strings.SplitSeq(string(buf), "\n\n") {
 		if strings.Contains(g, "[chan receive (nil chan)") && strings.Contains(g, "pkg/events/nats.") {
 			n++
 		}
@@ -274,8 +272,7 @@ func parkedOnANilChannel() int {
 func TestBatchOverNATS(t *testing.T) {
 	conn := runServer(t)
 	bus := events.New(events.WithTransport(craftnats.New(conn)), events.WithCodec(codecjson.Codec{}))
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	seen := make(chan string, 4)
 	var subs []events.Subscription
@@ -297,7 +294,7 @@ func TestBatchOverNATS(t *testing.T) {
 		t.Fatalf("publish batch: %v", err)
 	}
 	got := map[string]bool{}
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case c := <-seen:
 			got[c] = true
@@ -319,8 +316,7 @@ func TestHandlerPanicOverNATS(t *testing.T) {
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
 
 	delivered := make(chan string, 2)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	start(t, ctx, bus, events.Subscription{
 		Event: "orders.OrderPlaced", Consumer: "SendReceipt", Group: "receipts",
 		Handle: func(_ context.Context, m *events.Message) error {
@@ -376,8 +372,7 @@ func TestCallerMetadataOverNATS(t *testing.T) {
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
 
 	got := make(chan *events.Message, 1)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	start(t, ctx, bus, events.Subscription{
 		Event: "orders.OrderPlaced", Consumer: "SendReceipt", Group: "receipts",
 		Handle: func(_ context.Context, m *events.Message) error { got <- m; return nil },
@@ -427,8 +422,7 @@ func TestTheRawMessageIsReachableOverNATS(t *testing.T) {
 		got  seen
 		done = make(chan struct{})
 	)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.OrderPlaced", Consumer: "C", Group: "raw",
 		Handle: func(hctx context.Context, _ *events.Message) error {

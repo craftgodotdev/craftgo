@@ -130,7 +130,7 @@ func typeRef(m *protogen.Message, plugin *protogen.Plugin) TypeRef {
 // end and the space protoc keeps after `//`.
 func docLines(c protogen.Comments) []string {
 	var out []string
-	for _, line := range strings.Split(strings.TrimRight(string(c), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(c), "\n"), "\n") {
 		out = append(out, strings.TrimRight(strings.TrimPrefix(line, " "), " \t"))
 	}
 	for len(out) > 0 && out[0] == "" {

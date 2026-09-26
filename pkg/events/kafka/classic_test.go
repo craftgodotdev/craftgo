@@ -46,8 +46,7 @@ func TestAClassicGroupCommitsPastAFailedRecord(t *testing.T) {
 	second := New(addrs)
 	defer func() { _ = second.Close() }()
 	back := newDeliveries()
-	ctx2, cancel2 := context.WithCancel(context.Background())
-	defer cancel2()
+	ctx2 := t.Context()
 	if err := second.Subscribe(ctx2, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error { back.add(msg); return nil },

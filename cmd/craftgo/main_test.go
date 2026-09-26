@@ -23,7 +23,7 @@ func TestRunInitWritesScaffold(t *testing.T) {
 		t.Errorf("missing manifest: %v", err)
 	}
 	manifest, _ := os.ReadFile(filepath.Join(designFolder, "craftgo.design.yaml"))
-	for _, line := range strings.Split(string(manifest), "\n") {
+	for line := range strings.SplitSeq(string(manifest), "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "package:") {
 			t.Errorf("manifest must NOT carry a `package:` field; module path now lives in go.mod:\n%s", manifest)
 			break

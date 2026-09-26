@@ -116,11 +116,9 @@ func matchOrigin(origin string, allowed []string) string {
 // matchWildcard reports whether origin matches a single-wildcard rule like
 // `https://*.example.com`.
 func matchWildcard(rule, origin string) bool {
-	idx := strings.Index(rule, "*")
-	if idx < 0 {
+	prefix, suffix, ok := strings.Cut(rule, "*")
+	if !ok {
 		return rule == origin
 	}
-	prefix := rule[:idx]
-	suffix := rule[idx+1:]
 	return strings.HasPrefix(origin, prefix) && strings.HasSuffix(origin, suffix) && len(origin) >= len(prefix)+len(suffix)
 }

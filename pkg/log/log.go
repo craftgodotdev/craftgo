@@ -179,8 +179,8 @@ func holdsFollower(v reflect.Value, depth int) bool {
 	case reflect.Interface:
 		return !v.IsNil() && holdsFollower(v.Elem(), depth)
 	case reflect.Struct:
-		for i := range v.NumField() {
-			if holdsFollower(v.Field(i), depth-1) {
+		for _, field := range v.Fields() {
+			if holdsFollower(field, depth-1) {
 				return true
 			}
 		}

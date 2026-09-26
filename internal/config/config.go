@@ -465,8 +465,7 @@ func undeclaredKeys(node *yaml.Node, t reflect.Type, path string) []string {
 // yaml.v3 names them: the tag's name, else the lower-cased field name.
 func yamlFields(t reflect.Type) map[string]reflect.Type {
 	fields := map[string]reflect.Type{}
-	for i := range t.NumField() {
-		f := t.Field(i)
+	for f := range t.Fields() {
 		name, _, _ := strings.Cut(f.Tag.Get("yaml"), ",")
 		if !f.IsExported() || name == "-" {
 			continue

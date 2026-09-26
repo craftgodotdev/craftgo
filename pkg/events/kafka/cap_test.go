@@ -37,8 +37,7 @@ func TestTheDeliveryCapReportsThatItFired(t *testing.T) {
 	defer func() { _ = tr.Close() }()
 	publish(t, tr, contract, "o-1", []byte(`{}`))
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {

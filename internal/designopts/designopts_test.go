@@ -142,7 +142,7 @@ func TestForSortsTheSchemeNames(t *testing.T) {
 		"zeta": {}, "alpha": {}, "mu": {},
 	}
 	want := []string{"alpha", "mu", "zeta"}
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		if got := For("/d", cfg).SecuritySchemes; !reflect.DeepEqual(got, want) {
 			t.Fatalf("SecuritySchemes = %v, want %v", got, want)
 		}

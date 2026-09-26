@@ -88,8 +88,7 @@ func TestOneGroupOverTwoContractsSharesOneDurableInStreamOrder(t *testing.T) {
 	bus := events.New(events.WithTransport(tr), events.WithCodec(codecjson.Codec{}))
 
 	got := &deliveries{}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	for _, sub := range []events.Subscription{
 		{Event: "orders.Shipped", Consumer: "Dispatch", Group: "orders-worker", Handle: recording(got)},
 		{Event: "orders.Placed", Consumer: "Receipt", Group: "orders-worker", Handle: recording(got)},
@@ -139,8 +138,7 @@ func TestAnExistingDurableKeepsItsPositionAndPolicy(t *testing.T) {
 	})
 
 	got := &deliveries{}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	err := tr.Subscribe(ctx, []events.Subscription{
 		{Event: "orders.Placed", Consumer: "A", Group: "late", Handle: recording(got)},
 		{Event: "orders.Shipped", Consumer: "B", Group: "late", Handle: recording(got)},
@@ -212,8 +210,7 @@ func TestAGroupSubscribedTwiceOnOneTransportIsRefused(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
 	tr := jsTransport(t, conn)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	if err := tr.Subscribe(ctx, []events.Subscription{{Event: "orders.Placed", Consumer: "A", Group: "g", Handle: recording(&deliveries{})}}); err != nil {
 		t.Fatal(err)
@@ -245,8 +242,7 @@ func TestAGroupWhoseContextEndedCanSubscribeAgain(t *testing.T) {
 	endFirst()
 
 	got := &deliveries{}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	subscribeWhenFree(t, ctx, tr, subs(got))
 	if err := tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Key: "o-1", Payload: []byte(`{}`)}); err != nil {
 		t.Fatalf("publish: %v", err)
@@ -356,8 +352,7 @@ func TestAGroupStillStoppingIsRefusedUntilItsHandlerReturns(t *testing.T) {
 
 	got := &deliveries{}
 	subs := []events.Subscription{{Event: "orders.Placed", Consumer: "C", Group: "g", Handle: recording(got)}}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, subs); err == nil || !strings.Contains(err.Error(), "still stopping") {
 		t.Fatalf("err = %v, want a refusal saying group g is still stopping", err)
 	}
@@ -378,8 +373,7 @@ func TestARefusedSubscribeFreesTheGroupsItDidNotStart(t *testing.T) {
 		AckPolicy: jetstream.AckExplicitPolicy,
 	})
 	tr := jsTransport(t, conn)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	sub := func(event string, group events.Group) events.Subscription {
 		return events.Subscription{Event: event, Consumer: "C", Group: group, Handle: recording(&deliveries{})}
 	}
@@ -536,8 +530,7 @@ func TestASubjectNothingHereHandlesIsHandedBack(t *testing.T) {
 		}))
 	current := jsTransport(t, conn, craftnats.WithAckWait(time.Second))
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	oldGot, currentGot := &deliveries{}, &deliveries{}
 	if err := old.Subscribe(ctx, []events.Subscription{{Event: "orders.Placed", Consumer: "A", Group: "rolling", Handle: recording(oldGot)}}); err != nil {
 		t.Fatal(err)
@@ -580,8 +573,7 @@ func TestCloseLetsTheHandlerInFlightFinish(t *testing.T) {
 
 	started := make(chan struct{})
 	var finished atomic.Bool
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "draining",
 		Handle: func(context.Context, *events.Message) error {
@@ -618,8 +610,7 @@ func TestCloseGivesUpOnAHungHandler(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	defer close(release)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: "orders.Placed", Consumer: "C", Group: "hung",
 		Handle: func(context.Context, *events.Message) error {

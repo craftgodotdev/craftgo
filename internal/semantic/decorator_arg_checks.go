@@ -102,7 +102,7 @@ func (a *analyzer) checkGroupArg(d *ast.Decorator) {
 		return
 	}
 	hasSegment := false
-	for _, seg := range strings.Split(s.Value, "/") {
+	for seg := range strings.SplitSeq(s.Value, "/") {
 		if seg == "" {
 			continue // tolerated: leading / trailing / doubled slash
 		}

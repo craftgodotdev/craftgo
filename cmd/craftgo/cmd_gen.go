@@ -23,7 +23,7 @@ type targetList []string
 func (t *targetList) String() string { return strings.Join(*t, ",") }
 
 func (t *targetList) Set(v string) error {
-	for _, name := range strings.Split(v, ",") {
+	for name := range strings.SplitSeq(v, ",") {
 		if name = strings.TrimSpace(name); name != "" {
 			*t = append(*t, name)
 		}

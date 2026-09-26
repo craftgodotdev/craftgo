@@ -1,6 +1,7 @@
 package lexer
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -36,12 +37,7 @@ func SizeSuffixes() []string {
 
 // IsDurationSuffix reports whether s is a duration suffix.
 func IsDurationSuffix(s string) bool {
-	for _, u := range DurationUnits {
-		if u == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(DurationUnits, s)
 }
 
 // SizeMultiplier returns the byte multiplier for size suffix s.

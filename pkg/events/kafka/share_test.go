@@ -138,8 +138,7 @@ func TestSubscribeRefusesAShareGroupTheBrokerCannotServe(t *testing.T) {
 			tr := New(cluster(t, contract, c.max), WithShareGroup())
 			defer func() { _ = tr.Close() }()
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 			err := tr.Subscribe(ctx, []events.Subscription{{
 				Event: contract, Consumer: "C", Group: events.Group("g-" + c.release),
 				Handle: func(context.Context, *events.Message) error { return nil },
@@ -194,8 +193,7 @@ func TestReleaseRedeliversAndRejectGivesUp(t *testing.T) {
 	publish(t, tr, contract, "o-1", []byte(`{"id":1}`))
 
 	got := newDeliveries()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {
@@ -242,8 +240,7 @@ func TestMaxDeliveriesTerminatesARedeliveryLoop(t *testing.T) {
 	publish(t, tr, contract, "o-1", []byte(`{}`))
 
 	got := newDeliveries()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {
@@ -273,8 +270,7 @@ func TestAPanicAfterAskingForRedeliveryDoesNotLoop(t *testing.T) {
 	publish(t, tr, contract, "o-1", []byte(`{}`))
 
 	got := newDeliveries()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// The bus supplies the recover that clears the disposition.
 	bus := events.New(
@@ -351,8 +347,7 @@ func TestAClassicGroupDelivers(t *testing.T) {
 	defer func() { _ = tr.Close() }()
 
 	got := newDeliveries()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {
@@ -387,8 +382,7 @@ func TestOneSubscribeCallRegistersEverySubscriptionInTheBatch(t *testing.T) {
 			return nil
 		}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{
 		{Event: contract, Consumer: "A", Group: "batch-a", Handle: handle(reader["batch-a"])},
 		{Event: contract, Consumer: "B", Group: "batch-b", Handle: handle(reader["batch-b"])},
@@ -430,8 +424,7 @@ func TestAForeignContractOnTheTopicIsReported(t *testing.T) {
 	defer func() { _ = tr.Close() }()
 
 	got := newDeliveries()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: mine, Consumer: "C", Group: group,
 		Handle: func(_ context.Context, msg *events.Message) error {
@@ -482,8 +475,7 @@ func TestTheRecordIsReachableFromADelivery(t *testing.T) {
 		got seen
 	)
 	done := make(chan struct{})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: "raw",
 		Handle: func(hctx context.Context, _ *events.Message) error {
@@ -549,8 +541,7 @@ func TestAGroupOptionFromAClientOptionIsRefusedAtEverySite(t *testing.T) {
 			// And neither must the share-API probe.
 			share := New(addrs, WithShareGroup(), WithClientOptions(c.opt))
 			defer func() { _ = share.Close() }()
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 			if err := share.Subscribe(ctx, []events.Subscription{{
 				Event: contract, Consumer: "C", Group: "real",
 				Handle: func(context.Context, *events.Message) error { return nil },
@@ -567,8 +558,7 @@ func TestTheRealConsumerPassesTheSameGuard(t *testing.T) {
 	tr := New(cluster(t, contract, kversion.V4_2_0()))
 	defer func() { _ = tr.Close() }()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: "real",
 		Handle: func(context.Context, *events.Message) error { return nil },
@@ -620,8 +610,7 @@ func TestABrokerWithoutRenewalStillServesShareModeWithoutIt(t *testing.T) {
 	publish(t, tr, contract, "o-1", []byte(`{}`))
 
 	got := newDeliveries()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	if err := tr.Subscribe(ctx, []events.Subscription{{
 		Event: contract, Consumer: "C", Group: "no-renew",
 		Handle: func(_ context.Context, msg *events.Message) error {
