@@ -1770,6 +1770,16 @@ service S {
 	}
 }
 
+// declaredSchemes names every scheme cfg declares, as a design whose
+// `@security` uses each would.
+func declaredSchemes(cfg *config.Config) map[string]bool {
+	names := map[string]bool{}
+	for name := range cfg.OpenAPI.SecuritySchemes {
+		names[name] = true
+	}
+	return names
+}
+
 func TestValidateSecuritySchemesHappyPath(t *testing.T) {
 	cfg := &config.Config{
 		Package: "x/y",
@@ -1779,7 +1789,7 @@ func TestValidateSecuritySchemesHappyPath(t *testing.T) {
 			},
 		},
 	}
-	if errs := validateSecuritySchemes(cfg); len(errs) != 0 {
+	if errs := validateSecuritySchemes(cfg, declaredSchemes(cfg)); len(errs) != 0 {
 		t.Errorf("expected no errors, got: %v", errs)
 	}
 }
@@ -1793,7 +1803,7 @@ func TestValidateSecuritySchemesOAuth2RequiresFlows(t *testing.T) {
 		}}
 	}
 	// No flows → rejected.
-	if errs := validateSecuritySchemes(base(nil)); len(errs) == 0 {
+	if errs := validateSecuritySchemes(base(nil), declaredSchemes(base(nil))); len(errs) == 0 {
 		t.Error("expected an error for an oauth2 scheme with no flows")
 	}
 	// With a flow → accepted.
@@ -1801,7 +1811,7 @@ func TestValidateSecuritySchemesOAuth2RequiresFlows(t *testing.T) {
 		TokenURL: "https://example.com/token",
 		Scopes:   map[string]string{"read": "Read"},
 	}}
-	if errs := validateSecuritySchemes(base(withFlow)); len(errs) != 0 {
+	if errs := validateSecuritySchemes(base(withFlow), declaredSchemes(base(withFlow))); len(errs) != 0 {
 		t.Errorf("oauth2 with a flow should validate, got: %v", errs)
 	}
 	// The emitted scheme carries the flows object.
@@ -1838,7 +1848,7 @@ func TestValidateSecuritySchemesOAuth2FlowURLs(t *testing.T) {
 		`securityScheme "missing": flow authorizationCode has no authorizationUrl`,
 		`securityScheme "missing": flow authorizationCode has no tokenUrl`,
 	}
-	errs := validateSecuritySchemes(cfg)
+	errs := validateSecuritySchemes(cfg, declaredSchemes(cfg))
 	if len(errs) != len(want) {
 		t.Fatalf("got %d messages, want %d:\n%s", len(errs), len(want), strings.Join(errs, "\n"))
 	}
@@ -1846,6 +1856,71 @@ func TestValidateSecuritySchemesOAuth2FlowURLs(t *testing.T) {
 		if !strings.HasPrefix(errs[i], w) {
 			t.Errorf("message %d = %q, want it to start %q", i, errs[i], w)
 		}
+	}
+}
+
+// Each scheme carries the fields OpenAPI requires of its type, with a value
+// the type admits, and a message naming the scheme reports each one missing.
+func TestValidateSecuritySchemesRequiredFields(t *testing.T) {
+	cfg := &config.Config{Package: "x/y", OpenAPI: config.OpenAPI{
+		SecuritySchemes: map[string]config.SecurityScheme{
+			"a-untyped":   {Scheme: "bearer"},
+			"b-typo":      {Type: "bearer"},
+			"c-http":      {Type: "http", BearerFormat: "JWT"},
+			"d-key":       {Type: "apiKey"},
+			"e-key-body":  {Type: "apiKey", In: "body", Name: "k"},
+			"f-oidc":      {Type: "openIdConnect"},
+			"g-basic":     {Type: "http", Scheme: "basic"},
+			"h-key":       {Type: "apiKey", In: "cookie", Name: "sid"},
+			"i-oidc":      {Type: "openIdConnect", OpenIDConnectURL: "https://example.com/.well-known/openid-configuration"},
+			"j-mutualTLS": {Type: "mutualTLS"},
+		},
+	}}
+	want := []string{
+		`securityScheme "a-untyped" has no type`,
+		`securityScheme "b-typo": type "bearer" is not`,
+		`securityScheme "c-http" is type http but has no scheme`,
+		`securityScheme "d-key" is type apiKey but has no in`,
+		`securityScheme "d-key" is type apiKey but has no name`,
+		`securityScheme "e-key-body": in "body" is not`,
+		`securityScheme "f-oidc" is type openIdConnect but has no openIdConnectUrl`,
+	}
+	errs := validateSecuritySchemes(cfg, declaredSchemes(cfg))
+	if len(errs) != len(want) {
+		t.Fatalf("got %d messages, want %d:\n%s", len(errs), len(want), strings.Join(errs, "\n"))
+	}
+	for i, w := range want {
+		if !strings.HasPrefix(errs[i], w) {
+			t.Errorf("message %d = %q, want it to start %q", i, errs[i], w)
+		}
+	}
+}
+
+// Only a scheme an `@security` names reaches the document, so only such a
+// scheme's missing fields stop the run; one no method uses stops none.
+func TestUnusedSecuritySchemesStopNoRun(t *testing.T) {
+	root, files := projectFiles(t, map[string]string{"a/a.craftgo": `package a
+type Ok { ok bool }
+@security(bearer)
+service S { get A /a { response Ok } }`})
+	proj, diags := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root})
+	if len(diags) > 0 {
+		t.Fatalf("semantic: %v", diags)
+	}
+	cfg := &config.Config{
+		Output: config.Output{OpenAPI: "./docs/openapi.yaml"},
+		OpenAPI: config.OpenAPI{SecuritySchemes: map[string]config.SecurityScheme{
+			"bearer":    {Type: "http", Scheme: "bearer"},
+			"legacyKey": {Type: "apiKey", In: "header"},
+			"oldOAuth":  {Type: "oauth2"},
+		}},
+	}
+	if err := ValidateOpenAPI(proj, cfg); err != nil {
+		t.Errorf("schemes no method uses stop the run: %v", err)
+	}
+	cfg.OpenAPI.SecuritySchemes["bearer"] = config.SecurityScheme{Type: "http"}
+	if err := ValidateOpenAPI(proj, cfg); err == nil || !strings.Contains(err.Error(), `securityScheme "bearer" is type http but has no scheme`) {
+		t.Errorf("err = %v, want the used scheme's missing field", err)
 	}
 }
 

@@ -43,7 +43,7 @@ The output is consumed cleanly by:
 - [`openapi-generator`](https://openapi-generator.tech/) and similar client generators.
 - [oasdiff](https://github.com/oasdiff/oasdiff) - breaking-change detection between versions.
 
-The structure (paths, schemas, parameters, `anyOf` and `not` for cross-field constraints, `anyOf` for responses sharing a status, `propertyNames` for map keys) is valid 3.1: [Redocly CLI](https://redocly.com/redocly-cli/)'s structural rules and [openapi-spec-validator](https://github.com/python-openapi/openapi-spec-validator) accept it, given security schemes that carry the fields their type requires. Their style rules may still warn, about an operation without a `summary`, say.
+The structure (paths, schemas, parameters, `anyOf` and `not` for cross-field constraints, `anyOf` for responses sharing a status, `propertyNames` for map keys) is valid 3.1: [Redocly CLI](https://redocly.com/redocly-cli/)'s structural rules and [openapi-spec-validator](https://github.com/python-openapi/openapi-spec-validator) accept it, given security schemes that set no field of another type, such as a `bearerFormat` on a `basic` scheme; `craftgo gen` stops on a scheme an `@security` names that misses a field its type requires. Their style rules may still warn, about an operation without a `summary`, say.
 
 ## Renders
 

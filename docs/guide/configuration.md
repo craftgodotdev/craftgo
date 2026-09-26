@@ -270,12 +270,13 @@ openapi:
       openIdConnectUrl: https://issuer.example.com/.well-known/openid-configuration
 ```
 
-Supported `type` values: `http`, `apiKey`, `oauth2`, `openIdConnect`, `mutualTLS`. Per-type extra fields:
+Supported `type` values: `http`, `apiKey`, `oauth2`, `openIdConnect`, `mutualTLS`. Each type requires its own fields, and a `craftgo gen` run that writes the OpenAPI document stops on a missing one, or on a `type` or `in` outside these values, naming the scheme and the field. Only a scheme an `@security` names reaches the document, so only such a scheme is checked:
 
 - `http`: `scheme` (e.g. `bearer`, `basic`), optional `bearerFormat`
 - `apiKey`: `in` (`header` / `query` / `cookie`), `name`
-- `oauth2`: `flows`, at least one of `implicit` (needs `authorizationUrl`), `password` and `clientCredentials` (each needs `tokenUrl`), and `authorizationCode` (needs both); each flow takes an optional `refreshUrl` and `scopes`, a map of scope name to description. `craftgo gen` stops on a missing flow or URL, naming the scheme and the flow
+- `oauth2`: `flows`, at least one of `implicit` (needs `authorizationUrl`), `password` and `clientCredentials` (each needs `tokenUrl`), and `authorizationCode` (needs both); each flow takes an optional `refreshUrl` and `scopes`, a map of scope name to description. A missing flow or URL is named with the flow
 - `openIdConnect`: `openIdConnectUrl`
+- `mutualTLS`: no other field
 
 The semantic analyzer cross-checks every `@security(<name>)` reference against this map. Unknown names fail at gen time, not at deploy.
 

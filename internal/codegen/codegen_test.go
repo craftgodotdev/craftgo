@@ -175,10 +175,15 @@ func TestUnknownTargetIsRejected(t *testing.T) {
 	}
 }
 
-// What only the OpenAPI document gets wrong, a component name collision or an
-// oauth2 scheme without flows, stops a run that writes the document and no
-// other: `--target go` and `output.openapi: "-"` write the Go output.
+// What only the OpenAPI document gets wrong, a component name collision or a
+// security scheme an `@security` names without a field its type requires,
+// stops a run that writes the document and no other: `--target go` and
+// `output.openapi: "-"` write the Go output.
 func TestDocumentOnlyErrorsStopOnlyTheDocument(t *testing.T) {
+	const securedSrc = `package p
+type P { id string }
+@security(auth)
+service S { get Read /r { response P } }`
 	for label, c := range map[string]struct {
 		src   string
 		setup func(*config.Config)
@@ -189,8 +194,11 @@ type PageOfOrder { hijacked string }
 type Page<T> { items T[] }
 type Resp { real Page<Order>  fake PageOfOrder }
 service S { get Get /g { response Resp } }`, setup: func(*config.Config) {}},
-		"oauth2 scheme without flows": {src: ordersSrc, setup: func(cfg *config.Config) {
-			cfg.OpenAPI.SecuritySchemes = map[string]config.SecurityScheme{"oauth": {Type: "oauth2"}}
+		"oauth2 scheme without flows": {src: securedSrc, setup: func(cfg *config.Config) {
+			cfg.OpenAPI.SecuritySchemes = map[string]config.SecurityScheme{"auth": {Type: "oauth2"}}
+		}},
+		"http scheme without a scheme": {src: securedSrc, setup: func(cfg *config.Config) {
+			cfg.OpenAPI.SecuritySchemes = map[string]config.SecurityScheme{"auth": {Type: "http"}}
 		}},
 	} {
 		proj := analyzeProject(t, c.src)

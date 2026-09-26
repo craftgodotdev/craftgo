@@ -34,14 +34,12 @@ func (s *schemaNames) put(doc *openapi3.T, name string, ref *openapi3.SchemaRef)
 }
 
 // ValidateOpenAPI builds the project's document without writing it and returns
-// what stops it: an oauth2 scheme without flows, or a merge or component name
-// collision. It is nil when [GenerateOpenAPI] writes no document.
+// what stops it: a security scheme an `@security` names without a field its
+// type requires, or a merge or component name collision. It is nil when
+// [GenerateOpenAPI] writes no document.
 func ValidateOpenAPI(proj *semantic.Project, cfg *config.Config) error {
 	if cfg.Output.OpenAPIDisabled() || !describable(proj) {
 		return nil
-	}
-	if errs := validateSecuritySchemes(cfg); len(errs) > 0 {
-		return fmt.Errorf("security scheme errors:\n  %s", strings.Join(errs, "\n  "))
 	}
 	_, err := buildProjectDocument(proj, cfg)
 	return err
@@ -85,6 +83,9 @@ func mergeCollisionError(dups []string) error {
 // buildOpenAPIDoc builds pkg's document; its title, unless the manifest sets
 // one, is the package name, else "design".
 func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, error) {
+	if errs := validateSecuritySchemes(cfg, usedSecuritySchemes(pkg)); len(errs) > 0 {
+		return nil, fmt.Errorf("security scheme errors:\n  %s", strings.Join(errs, "\n  "))
+	}
 	doc := &openapi3.T{
 		OpenAPI: "3.1.0",
 		Info: &openapi3.Info{

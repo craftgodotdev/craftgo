@@ -1243,6 +1243,17 @@ breaking change to the DSL or the generated layout bumps the major version.
   dot, `1.0e-07`, which YAML 1.1 and 1.2 readers both take for a number; no
   other number changes its spelling.
 
+- **A security scheme missing a field its type requires stops `craftgo
+  gen`.** An `http` scheme without `scheme`, an `apiKey` scheme without `in`
+  or `name` or with an `in` other than `header`, `query` or `cookie`, an
+  `openIdConnect` scheme without `openIdConnectUrl`, and a scheme whose
+  `type` OpenAPI does not define reached the document when an `@security`
+  named them, and OpenAPI validators then rejected it. A run that writes the
+  document now stops with a message naming the scheme and the field, as it
+  does for an `oauth2` scheme's flows. A scheme no `@security` names stays
+  out of the document and stops no run, an `oauth2` one without flows
+  included.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
