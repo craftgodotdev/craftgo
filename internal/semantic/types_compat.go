@@ -36,7 +36,7 @@ func (a *analyzer) checkBodyTypeCompat(parent string, members []ast.TypeMember) 
 				continue
 			}
 			if actual == 0 {
-				continue // a type-parameter field, checked where it is instantiated
+				continue // a type-parameter field, which takes no constraint
 			}
 			if spec.AppliesTo&actual == 0 {
 				a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError,

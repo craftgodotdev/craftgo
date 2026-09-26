@@ -454,8 +454,8 @@ func (a *analyzer) checkIntBoundFloatLiteral(prim, target string, decs []*ast.De
 	}
 }
 
-// checkValueConstraintOnTypeParam rejects a numeric or text constraint on a
-// bare type-parameter field, which the generic validator sees as `any`.
+// checkValueConstraintOnTypeParam rejects a constraint on a bare
+// type-parameter field, which the generic validator sees as `any`.
 func (a *analyzer) checkValueConstraintOnTypeParam(f *ast.Field, typeParams []string) {
 	if f == nil || f.Type == nil || f.Type.Array || f.Type.Map != nil || f.Type.Named == nil {
 		return
@@ -465,9 +465,9 @@ func (a *analyzer) checkValueConstraintOnTypeParam(f *ast.Field, typeParams []st
 		return
 	}
 	for _, d := range f.Decorators {
-		if ConstraintOf(d.Name)&ConstraintNarrowing != 0 {
+		if ConstraintOf(d.Name) != 0 {
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorTypeMismatch,
-				"@%s cannot constrain a type-parameter field (%s): the parametric validator sees it as `any` and can't enforce the bound, while the monomorphised OpenAPI would still advertise it. Drop the decorator, or constrain a concrete type the instance supplies.",
+				"@%s cannot constrain a type-parameter field (%s): the parametric validator sees it as `any` and can't enforce it, while the monomorphised OpenAPI would still advertise it. Drop the decorator, or constrain a concrete type the instance supplies.",
 				d.Name, name)
 			return
 		}

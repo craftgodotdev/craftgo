@@ -167,6 +167,8 @@ A type **argument** cannot carry a trailing `?` (`Page<User?>` is rejected): the
 
 A generic may name itself in its own body with its parameters passed on unchanged (`type Tree<T> { kids Tree<T>[] }`). Passing a parameter back inside a larger type, directly or through another generic (`kids Tree<Tree<T>>[]`, `Tree<T[]>`), is `generic/instantiation-cycle`: every instance would need a larger one, which Go rejects as an instantiation cycle.
 
+A field typed by a type parameter takes no constraint decorator, since one validator serves every argument: `v T @maxLength(5)` or `v T @maxSize(10)` is `decorator/typemismatch`. A collection of the parameter takes the collection's own, as in `items T[] @maxItems(50)`.
+
 A field typed by a type parameter may carry `@header` or `@cookie` (`type Paged<T> { count T @header("X-Count") items T[] }`). Each request, response or error mixin that instantiates the type is checked with its argument: `response Paged<int>` sends `X-Count` as an integer, and `response Paged<User>` is `binding/type` at the response clause. An argument a type's own mixin writes, as in `type UserPage { Paged<User> }`, is reported once, at that mixin.
 
 ### Mixins

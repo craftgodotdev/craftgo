@@ -491,3 +491,20 @@ type Opt { OptH<string[]> }
 }`, CodeBindingType, 2)
 	mustClean(t, decls+`service S { @rawResponse get A /a { response Opt } }`)
 }
+
+// Every constraint family on a bare type-parameter field is rejected at the
+// declaration; on a collection of the parameter it constrains the collection.
+func TestConstraintOnTypeParamFieldRejected(t *testing.T) {
+	for _, dec := range []string{
+		"@gt(1)", "@minLength(1)", "@pattern(\"^a\")", "@format(email)",
+		"@minItems(1)", "@maxItems(3)", "@uniqueItems",
+		"@maxSize(10)", "@mimeTypes(\"image/png\")",
+	} {
+		t.Run(dec, func(t *testing.T) {
+			d := expectError(t, "package app\ntype Box<T> { v T "+dec+" }", CodeDecoratorTypeMismatch)
+			expectMessage(t, d, "type-parameter field")
+			expectError(t, "package app\ntype Box<T> { v T? "+dec+" }", CodeDecoratorTypeMismatch)
+		})
+	}
+	mustClean(t, "package app\ntype Box<T> { xs T[] @minItems(1) @maxItems(3)  m map<string, T> @minItems(1) }")
+}

@@ -444,6 +444,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@form("n")` went nowhere. It is now `binding/form-without-file` at the
   decorator; drop `@form` and the field rides the JSON body as before.
 
+- **A type-parameter field takes no constraint.** `@minItems`, `@maxItems`,
+  `@uniqueItems`, `@maxSize` and `@mimeTypes` on a field typed by a type
+  parameter, as in `type Box<T> { v T @maxSize(10) }`, were advertised in
+  each instance's OpenAPI and never checked, an upload's size and media type
+  included. They are now `decorator/typemismatch` at the declaration, as the
+  value constraints were.
+
 - **Method names that clash in generated Go are refused.** Methods `X` and
   `NewX` in one service directory both declared `NewXService`; `GetURL` and
   `GetUrl` both wrote `get_url.go`; a method named `Logger` clashed with the
