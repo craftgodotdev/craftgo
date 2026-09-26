@@ -24,10 +24,10 @@ type follower struct {
 // callerSkipper is a Logger that can name as the caller of its lines the code one frame out.
 type callerSkipper interface{ skipCaller() Logger }
 
-// current returns [Default] with f's steps applied, naming the caller of f's method as the
-// caller of its lines.
+// current returns the logger Follow lines reach with f's steps applied, naming the caller of f's
+// method as the caller of its lines.
 func (f *follower) current() Logger {
-	l := Default()
+	l := followed()
 	if s, ok := l.(callerSkipper); ok {
 		l = s.skipCaller()
 	}
@@ -50,7 +50,7 @@ func (f *follower) Debug(msg string, fs ...Field) { f.current().Debug(msg, fs...
 func (f *follower) Info(msg string, fs ...Field)  { f.current().Info(msg, fs...) }
 func (f *follower) Warn(msg string, fs ...Field)  { f.current().Warn(msg, fs...) }
 func (f *follower) Error(msg string, fs ...Field) { f.current().Error(msg, fs...) }
-func (f *follower) Enabled(l Level) bool          { return Default().Enabled(l) }
+func (f *follower) Enabled(l Level) bool          { return followed().Enabled(l) }
 
 // With folds fs into f's own With step, so a chain of With calls costs one With a line.
 func (f *follower) With(fs ...Field) Logger {

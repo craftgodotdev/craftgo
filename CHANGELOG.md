@@ -1308,6 +1308,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   key (`http.status`), an empty-key group is inlined, and an empty attribute
   or group is dropped, as `log/slog` handlers do.
 
+- **A wrapper around `srv.Logger()` can be the default logger.**
+  `srv.SetLogger(wrapper{srv.Logger()})` sent every line back into the
+  wrapper until the stack overflowed. While the default writes through a
+  `log.Follow` logger, Follow lines reach the logger that was the default
+  before it.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added

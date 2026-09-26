@@ -4,6 +4,7 @@ package log
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -125,11 +126,17 @@ func NewConsole() Logger {
 // NewZap returns a Logger writing to z at z's own level.
 func NewZap(z *zap.Logger) Logger { return &zapLogger{z: z} }
 
-// defaultLogger holds the logger [Default] returns.
-var defaultLogger atomic.Pointer[Logger]
+// defaultLogger holds the logger [Default] returns; beneath, the logger [Follow] lines reach
+// instead while the default itself writes through a Follow logger, nil otherwise.
+var (
+	defaultLogger atomic.Pointer[Logger]
+	beneath       atomic.Pointer[Logger]
+)
 
 // SetDefault makes l the logger [Default] returns; nil is ignored, and a [Follow] logger is
-// replaced by the logger it writes through at the call.
+// replaced by the logger it writes through at the call. When l writes through a Follow logger,
+// as a wrapper around one does, Follow lines keep reaching the logger they reached before the
+// call rather than l, which would send them back into itself.
 func SetDefault(l Logger) {
 	if l == nil {
 		return
@@ -137,7 +144,48 @@ func SetDefault(l Logger) {
 	if f, ok := l.(*follower); ok {
 		l = f.on(Default())
 	}
+	if holdsFollower(reflect.ValueOf(l), 4) {
+		prev := followed()
+		beneath.Store(&prev)
+	} else {
+		beneath.Store(nil)
+	}
 	defaultLogger.Store(&l)
+}
+
+// followed returns the logger [Follow] lines reach: the default, or the logger beneath it.
+func followed() Logger {
+	if b := beneath.Load(); b != nil {
+		return *b
+	}
+	return Default()
+}
+
+// holdsFollower reports whether v, within depth levels of fields, pointers and interfaces, is
+// or holds a [Follow] logger.
+func holdsFollower(v reflect.Value, depth int) bool {
+	if depth < 0 || !v.IsValid() {
+		return false
+	}
+	switch v.Kind() {
+	case reflect.Pointer:
+		if v.IsNil() {
+			return false
+		}
+		if v.Type() == reflect.TypeFor[*follower]() {
+			return true
+		}
+		return holdsFollower(v.Elem(), depth-1)
+	case reflect.Interface:
+		return !v.IsNil() && holdsFollower(v.Elem(), depth)
+	case reflect.Struct:
+		for i := range v.NumField() {
+			if holdsFollower(v.Field(i), depth-1) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Default returns the process-wide logger: a [New] logger until [SetDefault] replaces it.

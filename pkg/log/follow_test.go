@@ -179,3 +179,22 @@ func TestFollowLinesCostAboutWhatDefaultLinesCost(t *testing.T) {
 		t.Errorf("a line through three With calls allocated %.0f times, through one With of their fields %.0f", chained, once)
 	}
 }
+
+// wrapping is a Logger that decorates another, as a user wraps srv.Logger().
+type wrapping struct{ Logger }
+
+// A default that writes through a Follow logger does not send Follow lines back into itself:
+// its own lines and Follow lines both reach the logger beneath it.
+func TestSetDefaultWithAWrappedFollowLogger(t *testing.T) {
+	core, logs := observer.New(zapcore.InfoLevel)
+	swapDefault(t, NewZap(zap.New(core)))
+	SetDefault(wrapping{Follow().With(String("via", "wrapper"))})
+	Default().Info("direct")
+	Follow().Info("followed")
+	if Default().Enabled(LevelDebug) {
+		t.Error("Enabled answers from the logger beneath, which is at info")
+	}
+	if logs.Len() != 2 || logs.All()[0].Message != "direct" || logs.All()[1].Message != "followed" {
+		t.Errorf("lines = %v, want direct then followed", logs.All())
+	}
+}
