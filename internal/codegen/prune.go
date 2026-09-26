@@ -17,16 +17,21 @@ type sweepPath struct {
 	headers []string
 }
 
-// isGenerated reports whether the file at path opens with one of headers;
-// a missing or unreadable file does not.
+// isGenerated reports whether one of headers is a line of the file at path before its first
+// code, after any comment block such as the license header protoc-gen-go copies from a proto;
+// a missing or unreadable file is not generated.
 func isGenerated(path string, headers []string) bool {
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return false
 	}
-	for _, header := range headers {
-		if strings.HasPrefix(string(body), header) {
+	for line := range strings.Lines(string(body)) {
+		line = strings.TrimRight(line, "\r\n")
+		if slices.Contains(headers, line) {
 			return true
+		}
+		if line != "" && !strings.HasPrefix(line, "//") {
+			return false
 		}
 	}
 	return false
