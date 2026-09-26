@@ -8,7 +8,6 @@ package codegen
 import (
 	"fmt"
 	"iter"
-	"slices"
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/codegen/docs"
@@ -119,17 +118,8 @@ func plan(in Inputs, cfg *config.Config, projectRoot string, sel map[string]bool
 	}
 	paths, files = docs.Plan(in.Design, cfg, projectRoot)
 	take(sel[targetDocs], paths, files)
-	for p, hs := range headers {
-		if slices.ContainsFunc(hs, func(h string) bool { return slices.Contains(craftgoHeaders, h) }) {
-			headers[p] = append(hs, craftgoHeaders...)
-		}
-	}
 	return owned(headers, projectRoot), written
 }
-
-// craftgoHeaders open the files craftgo's targets write. A directory one of them regenerates into
-// is craftgo's, so its sweep also takes a stale file another target left there.
-var craftgoHeaders = []string{golang.GeneratedHeader, docs.GeneratedHeader}
 
 // emit runs the selected targets in order, without the sweep.
 func emit(in Inputs, cfg *config.Config, projectRoot string, sel map[string]bool) error {

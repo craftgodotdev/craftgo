@@ -217,7 +217,7 @@ Every file craftgo REGENERATES opens with a generated header - `// Code generate
 
 It covers every output the run regenerates, not just the event contracts: the transport handlers, the routes, `wiring.go`, `svccontext/middlewares.go`, the event library, the `output.types` folder of a DSL package that is gone, the OpenAPI document, the gRPC server packages and, under `output.pb`, the pb code of a design proto that is gone. Rename a service and its old files go with its name; delete an `event` and its descriptor goes with it. Nothing else could know: the current design does not name them.
 
-The OpenAPI document, `wiring.go` and `grpc.go`, and `middlewares.go` are swept as those files alone, never another file beside or below them: a frozen copy of the document or a docs site under `docs/` stays, while a document the run no longer writes, for a design left with no DSL package, goes.
+The OpenAPI document, `wiring.go` and `grpc.go`, and `middlewares.go` are swept as those files alone, never another file beside or below them: a frozen copy of the document or a docs site under `docs/` stays, even in a directory a Go output shares, while a document the run no longer writes, for a design left with no DSL package, goes.
 
 Under `output.pb` a plugin's header is not enough, since your own protoc output may sit there too: the sweep takes a file only from a directory a design proto writes into, and only when its header names as its source a proto no `proto.includes` root holds. A design with no proto sweeps nothing there, so the pb code of a project's last proto stays until you delete it.
 

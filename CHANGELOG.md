@@ -484,6 +484,12 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Fixed
 
+- **A Go output sweep keeps copies of the document.** Where `output.types`
+  or another Go output shared the document's directory, the sweep deleted
+  every copy of the document beside or below it, such as
+  `api/openapi.v1-frozen.yaml`, and the document a moved `output.openapi`
+  left there. Both now stay, as they do anywhere else.
+
 - **A method path takes every segment `net/http` serves.** A segment that is
   a number (`/reports/2024`), opens with a digit (`/2fa`) or holds a dot
   (`/v1.0`, `/robots.txt`, `/.well-known`) was a parse error, although

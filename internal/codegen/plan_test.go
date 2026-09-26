@@ -181,41 +181,39 @@ func TestTheSweepTakesOnlyTheFilesANamedOutputWrites(t *testing.T) {
 	}
 }
 
-// A file one target left in a directory another target regenerates into is swept once the
-// manifest moves the first target's output out of it.
-func TestSweepTakesAnotherTargetsStaleFile(t *testing.T) {
+// Where a Go output shares the document's directory, a copy of the document
+// beside or below it survives, and the document of a moved output.openapi
+// stays, as a renamed one does anywhere.
+func TestTheSweepKeepsDocumentCopiesInAGoDirectory(t *testing.T) {
+	dir := t.TempDir()
+	cfg := planConfig()
+	cfg.Output.OpenAPI = "./internal/types/openapi.yaml"
 	proj := analyzeProject(t, planSrc...)
-	for _, c := range []struct {
-		name   string
-		before func(*config.Config)
-		after  func(*config.Config)
-		stale  string
-	}{
-		{
-			name:   "document under the types",
-			before: func(cfg *config.Config) { cfg.Output.OpenAPI = "./internal/types/openapi.yaml" },
-			after:  func(cfg *config.Config) { cfg.Output.OpenAPI = "./docs/openapi.yaml" },
-			stale:  filepath.Join("internal", "types", "openapi.yaml"),
-		},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			dir := t.TempDir()
-			cfg := planConfig()
-			c.before(cfg)
-			if err := Generate(Inputs{Design: proj}, cfg, dir); err != nil {
-				t.Fatalf("first pass: %v", err)
-			}
-			if _, err := os.Stat(filepath.Join(dir, c.stale)); err != nil {
-				t.Fatalf("the first pass wrote no %s: %v", c.stale, err)
-			}
-			c.after(cfg)
-			if err := Generate(Inputs{Design: proj}, cfg, dir); err != nil {
-				t.Fatalf("second pass: %v", err)
-			}
-			if _, err := os.Stat(filepath.Join(dir, c.stale)); !os.IsNotExist(err) {
-				t.Errorf("%s survived the sweep (%v)", c.stale, err)
-			}
-		})
+	if err := Generate(Inputs{Design: proj}, cfg, dir); err != nil {
+		t.Fatalf("first pass: %v", err)
+	}
+	document, err := os.ReadFile(filepath.Join(dir, "internal", "types", "openapi.yaml"))
+	if err != nil {
+		t.Fatalf("the first pass wrote no document: %v", err)
+	}
+	kept := []string{"internal/types/openapi.v1-frozen.yaml", "internal/types/site/openapi.yaml"}
+	for _, name := range kept {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, document, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg.Output.OpenAPI = "./docs/openapi.yaml"
+	if err := Generate(Inputs{Design: proj}, cfg, dir); err != nil {
+		t.Fatalf("second pass: %v", err)
+	}
+	for _, name := range append(kept, "internal/types/openapi.yaml") {
+		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(name))); err != nil {
+			t.Errorf("%s must survive the sweep: %v", name, err)
+		}
 	}
 }
 
