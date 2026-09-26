@@ -15,10 +15,11 @@ import (
 )
 
 // redeliverTransport delivers the published message, up to max times while
-// the chain asks for it back.
+// the chain asks for it back, and keeps what the last delivery returned.
 type redeliverTransport struct {
-	msg *craftevents.Message
-	max int
+	msg     *craftevents.Message
+	max     int
+	lastErr error
 }
 
 func (t *redeliverTransport) Publish(_ context.Context, m *craftevents.Message) error {
@@ -38,7 +39,7 @@ func (t *redeliverTransport) Subscribe(ctx context.Context, subs []craftevents.S
 		for n := 1; n <= t.max; n++ {
 			t.msg.SetDeliveries(n)
 			t.msg.Settle()
-			_ = sub.Handle(ctx, t.msg)
+			t.lastErr = sub.Handle(ctx, t.msg)
 			if t.msg.Disposition() != craftevents.DispositionRedeliver {
 				break
 			}
@@ -82,12 +83,15 @@ func attempt(budget int, asked *int) craftevents.Middleware {
 	}
 }
 
+// errBoom is the error failingGuarded fails with.
+var errBoom = errors.New("boom")
+
 // failingGuarded fails GuardedStock every time and counts the runs.
 type failingGuarded struct{ ran int }
 
 func (c *failingGuarded) GuardedStock(context.Context, *eventtypes.ItemStocked) error {
 	c.ran++
-	return errors.New("boom")
+	return errBoom
 }
 func (c *failingGuarded) BareStock(context.Context, *eventtypes.StocktakeStarted) error {
 	return nil
@@ -113,8 +117,8 @@ type guardedLogic interface {
 }
 
 // bootGuarded publishes one events.ItemStocked, then starts the guarded
-// module on a redeliverTransport with chain installed bus-wide.
-func bootGuarded(t *testing.T, chain craftevents.Chain, h guardedLogic) {
+// module on the redeliverTransport it returns, with chain installed bus-wide.
+func bootGuarded(t *testing.T, chain craftevents.Chain, h guardedLogic) *redeliverTransport {
 	t.Helper()
 	tr := &redeliverTransport{max: 10}
 	bus := craftevents.New(craftevents.WithTransport(tr), craftevents.WithCodec(codecjson.Codec{}))
@@ -131,6 +135,7 @@ func bootGuarded(t *testing.T, chain craftevents.Chain, h guardedLogic) {
 	if err := bus.Start(context.Background()); err != nil {
 		t.Fatalf("start: %v", err)
 	}
+	return tr
 }
 
 // With settle outermost, a failure is retried to budget before it is parked.
@@ -164,18 +169,17 @@ func TestAReversedChainSilentlyStopsRetrying(t *testing.T) {
 	}
 }
 
-// A bus with no chain neither retries nor parks a failure.
+// A bus with no chain neither retries nor parks a failure: the handler runs
+// once and its error reaches the transport.
 func TestNoChainLeavesTheHandlerBare(t *testing.T) {
-	var asked, parked int
 	h := &failingGuarded{}
-	_, _ = settle(&parked), attempt(3, &asked)
-	bootGuarded(t, nil, h)
+	tr := bootGuarded(t, nil, h)
 
 	if h.ran != 1 {
 		t.Errorf("an unchained handler ran %d time(s), want 1", h.ran)
 	}
-	if parked != 0 || asked != 0 {
-		t.Errorf("an unchained bus ran a chain: parked=%d asked=%d", parked, asked)
+	if !errors.Is(tr.lastErr, errBoom) {
+		t.Errorf("the transport got %v, want the handler's error", tr.lastErr)
 	}
 }
 
