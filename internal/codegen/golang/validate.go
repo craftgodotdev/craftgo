@@ -9,6 +9,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 // validateData is the template input for validate.tmpl.
@@ -132,6 +133,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 
 // collectChecks returns td's Validate() statements: per field its constraint
 // checks, then the Validate() calls and type-parameter probes its value needs.
+// A @sensitive field, off the wire, gets none.
 func collectChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 	var out []string
 	// The struct's own deduped Go names (`UserID`, `UserID_2`).
@@ -140,9 +142,13 @@ func collectChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 	for _, m := range td.Body {
 		switch v := m.(type) {
 		case *ast.Field:
-			rf := semantic.ResolveField(v, ctx.pkg, ctx.resolver.Project())
-			t := fieldTarget(rf, "v."+levelNames[fieldIdx], ctx.subject(v))
+			goName := levelNames[fieldIdx]
 			fieldIdx++
+			if wire.HasSensitive(v.Decorators) {
+				continue
+			}
+			rf := semantic.ResolveField(v, ctx.pkg, ctx.resolver.Project())
+			t := fieldTarget(rf, "v."+goName, ctx.subject(v))
 			out = append(out, fieldChecks(rf, t, ctx)...)
 			if rf.RuntimeEnforced && semantic.TypeParamValue(v.Type, td.TypeParams) {
 				out = append(out, typeParamPresence(t, ctx))

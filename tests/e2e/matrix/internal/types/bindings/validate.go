@@ -556,6 +556,16 @@ func (v Color) Validate() error {
 }
 
 // Validate returns the first constraint v violates, or nil.
+func (v SensitiveRole) Validate() error {
+	switch v {
+	case SensitiveRoleAdmin, SensitiveRoleMember:
+	default:
+		return fmt.Errorf("must be one of [Admin Member]")
+	}
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *AccessDeniedBody) Validate() error {
 	if utf8.RuneCountInString(v.Reason) < 1 {
 		return fmt.Errorf("reason: length less than 1")

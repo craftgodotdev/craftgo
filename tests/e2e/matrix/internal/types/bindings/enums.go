@@ -13,3 +13,12 @@ const (
 	ColorGreen Color = "Green"
 	ColorBlue  Color = "Blue"
 )
+
+// SensitiveRole has no member at its zero value, so its own Validate refuses
+// one left unset.
+type SensitiveRole string
+
+const (
+	SensitiveRoleAdmin  SensitiveRole = "Admin"
+	SensitiveRoleMember SensitiveRole = "Member"
+)

@@ -506,6 +506,11 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Fixed
 
+- **A `@sensitive` field is not validated.** Off the wire, it was still
+  checked by its type's own validator: an enum field with no member at its
+  zero value, or a struct with a constrained field, failed every request with
+  a 400 the client could not fix, and every event on the consumer.
+
 - **A type-parameter field takes `@query`, `@path` and `@form`.** Each was
   refused at the declaration, while the same field without a decorator
   auto-bound and worked, so a generic query-parameter mixin could not serve

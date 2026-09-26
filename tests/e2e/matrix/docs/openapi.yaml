@@ -6997,9 +6997,18 @@ components:
       $ref: '#/components/schemas/HealthResp'
     SensitiveQueryReq:
       description: |-
-        SensitiveQueryReq keeps a @sensitive field off the wire on a GET: only
-        visible binds from the query string and appears in OpenAPI.
+        SensitiveQueryReq keeps @sensitive fields off the wire on a GET: only
+        visible binds from the query string and appears in OpenAPI, and role, which
+        no request sets, is not validated.
       type: object
+    SensitiveRole:
+      description: |-
+        SensitiveRole has no member at its zero value, so its own Validate refuses
+        one left unset.
+      enum:
+      - Admin
+      - Member
+      type: string
     ServicesUser:
       allOf:
       - $ref: '#/components/schemas/Audit'

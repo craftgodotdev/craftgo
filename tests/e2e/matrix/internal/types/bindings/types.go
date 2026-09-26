@@ -374,11 +374,13 @@ type SearchReq struct {
 	Verbose *bool   `json:"-" query:"verbose"`
 }
 
-// SensitiveQueryReq keeps a @sensitive field off the wire on a GET: only
-// visible binds from the query string and appears in OpenAPI.
+// SensitiveQueryReq keeps @sensitive fields off the wire on a GET: only
+// visible binds from the query string and appears in OpenAPI, and role, which
+// no request sets, is not validated.
 type SensitiveQueryReq struct {
-	Visible string `json:"-" query:"visible"`
-	Secret  string `json:"-"`
+	Visible string        `json:"-" query:"visible"`
+	Secret  string        `json:"-"`
+	Role    SensitiveRole `json:"-"`
 }
 
 // SessionCookieReq requires a cookie: an absent one answers 400, as the

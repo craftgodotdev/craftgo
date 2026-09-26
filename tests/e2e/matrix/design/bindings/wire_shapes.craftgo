@@ -40,11 +40,20 @@ type RequiredParamsReq {
 	tok   string @header("X-Tok")
 }
 
-// SensitiveQueryReq keeps a @sensitive field off the wire on a GET: only
-// visible binds from the query string and appears in OpenAPI.
+// SensitiveRole has no member at its zero value, so its own Validate refuses
+// one left unset.
+enum SensitiveRole {
+	Admin
+	Member
+}
+
+// SensitiveQueryReq keeps @sensitive fields off the wire on a GET: only
+// visible binds from the query string and appears in OpenAPI, and role, which
+// no request sets, is not validated.
 type SensitiveQueryReq {
-	visible string @query
-	secret  string @sensitive
+	visible string        @query
+	secret  string        @sensitive
+	role    SensitiveRole @sensitive
 }
 
 // CollidingQueryReq binds two query keys whose Go names collide: SortBy and

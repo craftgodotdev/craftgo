@@ -907,6 +907,27 @@ type Box<T> {
 	}
 }
 
+// A @sensitive field is off the wire, so Validate leaves it alone, the
+// validator of its own type included.
+func TestValidateSkipsSensitiveFields(t *testing.T) {
+	src := runValidateGen(t, `package design
+enum Role { Admin  Member }
+type Inner { n int @gte(1) }
+type R {
+    role  Role  @sensitive
+    inner Inner @sensitive
+    name  string @minLength(1)
+}`)
+	body := src[strings.Index(src, "func (v *R) Validate()"):]
+	body = body[:strings.Index(body, "\n}\n")]
+	if strings.Contains(body, "v.Role") || strings.Contains(body, "v.Inner") {
+		t.Errorf("a @sensitive field must not be validated:\n%s", body)
+	}
+	if !strings.Contains(body, "v.Name") {
+		t.Errorf("the other fields keep their checks:\n%s", body)
+	}
+}
+
 // Constraint decorators on a generic type's fields emit their usual checks.
 func TestValidateGenericPropagatesPrimitiveDecorators(t *testing.T) {
 	src := runValidateGen(t, `package design

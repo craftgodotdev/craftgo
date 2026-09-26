@@ -76,3 +76,18 @@ func TestFormPartIgnoresTheQuery(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// A @sensitive field no request sets is not validated, an enum's own
+// membership check included.
+func TestSensitiveFieldIsNotValidated(t *testing.T) {
+	ts := bootAll(t)
+	resp, err := http.Get(ts.URL + "/api/bindings/sensitive-query?visible=x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		t.Errorf("got %d %s, want success", resp.StatusCode, raw)
+	}
+}

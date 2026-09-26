@@ -357,7 +357,7 @@ type OrderCaptured {
 
 ### `@sensitive`
 
-Server-only field: tagged `json:"-"` so neither the request decoder nor the response encoder touches it. Skipped from OpenAPI entirely.
+Server-only field: tagged `json:"-"` so neither the request decoder nor the response encoder touches it. Skipped from OpenAPI entirely, and from `Validate()`: an enum or a struct type keeps its own checks elsewhere, but not on this field.
 
 | Sites | field, errorField |
 | -------- | -------- |
