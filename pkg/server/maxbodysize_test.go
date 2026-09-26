@@ -1,7 +1,6 @@
 package server
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,32 +24,26 @@ func TestSetDefaultMaxBodySizeEnforced(t *testing.T) {
 
 // A WithLimits body cap replaces the default cap, even when larger.
 func TestPerMethodMaxBodySizeOverridesDefault(t *testing.T) {
+	const body = "twenty bytes of body!!"
+	var got string
 	s := New(nil)
 	s.SetDefaultMaxBodySize(10)
-	route := WithLimits(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.Copy(io.Discard, r.Body)
-		w.WriteHeader(http.StatusOK)
-	}), Limits{MaxBodySize: 1000})
-	s.Handle("POST /up", route)
+	s.Handle("POST /up", WithLimits(readBody(t, &got), Limits{MaxBodySize: 1000}))
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/up", strings.NewReader("twenty bytes of body!!"))
-	s.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("per-method @maxBodySize(1000) must override default(10); 20-byte body should pass, got %d", rec.Code)
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/up", strings.NewReader(body)))
+	if rec.Code != http.StatusOK || got != body {
+		t.Errorf("a 22-byte body under the route's cap of 1000 and the default of 10: status %d, the handler read %q; want 200 and the whole body", rec.Code, got)
 	}
 }
 
 // Without a default cap a large body is accepted.
 func TestDefaultMaxBodySizeUnsetHasNoCap(t *testing.T) {
+	var got string
 	s := New(nil)
-	s.HandleFunc("POST /echo", func(w http.ResponseWriter, r *http.Request) {
-		io.Copy(io.Discard, r.Body)
-		w.WriteHeader(http.StatusOK)
-	})
+	s.Handle("POST /echo", readBody(t, &got))
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/echo", strings.NewReader(strings.Repeat("x", 1<<20)))
-	s.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("no global cap by default: large body should pass, got %d", rec.Code)
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/echo", strings.NewReader(strings.Repeat("x", 1<<20))))
+	if rec.Code != http.StatusOK || len(got) != 1<<20 {
+		t.Errorf("no default cap: status %d, the handler read %d bytes; want 200 and all %d", rec.Code, len(got), 1<<20)
 	}
 }

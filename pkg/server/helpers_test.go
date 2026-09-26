@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"io"
+	"net/http"
 	"testing"
 
 	"go.uber.org/zap"
@@ -53,5 +54,17 @@ func resetCodec(t *testing.T) {
 	t.Cleanup(func() {
 		_ = SetStrictJSON(false)
 		_ = SetGlobalJSONCodec(nil)
+	})
+}
+
+// readBody returns a handler that reads the whole request body into *got and fails t on a read
+// error.
+func readBody(t *testing.T, got *string) http.Handler {
+	return http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read the request body: %v", err)
+		}
+		*got = string(b)
 	})
 }

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -26,17 +25,13 @@ func TestBodyLimitRejectsOversizedContentLength(t *testing.T) {
 	}
 }
 
-// A body within the cap passes through to the handler unchanged.
+// A body within the cap reaches the handler whole.
 func TestBodyLimitAllowsWithinCap(t *testing.T) {
-	h := BodyLimit(1024)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.Copy(io.Discard, r.Body)
-		w.WriteHeader(http.StatusOK)
-	}))
+	var got string
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader("small body"))
-	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("within-cap body should pass, got %d", rec.Code)
+	BodyLimit(1024)(readBody(t, &got)).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/x", strings.NewReader("small body")))
+	if rec.Code != http.StatusOK || got != "small body" {
+		t.Errorf("within-cap body: status %d, the handler read %q; want 200 and the whole body", rec.Code, got)
 	}
 }
 
