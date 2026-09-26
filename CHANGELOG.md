@@ -932,6 +932,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   and a bad value as `byCode: ...`; both now name `by_code`, through nested
   maps and arrays too.
 
+- **An optional array or map as a map value is rejected.** In `map<string,
+  int[]?>` or `map<string, map<string, int>?>`, the Go type and the OpenAPI
+  schema dropped the `?`: a nil slice or map already stands for null. It is
+  now `type/map-value` wherever a map is spelled; `map<string, int?>` and
+  other optional values stay.
+
 - **A validation error names the field as the request carries it.** A GET
   request field `pageSize int @json("page_size") @gte(1)` binds `?pageSize`,
   but a bad value was reported as `page_size: ...`; a field that every request

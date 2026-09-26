@@ -65,7 +65,7 @@ A field's decorators may continue on lines of their own below it, up to the next
 | `file`           | `*multipart.FileHeader` | a multipart part: a request's top-level field only, never in a response, error body or event payload (`binding/file-position`) |
 | `T?`             | `*T` or nilable as-is   | optional                                   |
 | `T[]`            | `[]T`                   | array                                      |
-| `map<K, V>`      | `map[K]V`               | K must be string / int* / uint* (or a scalar/enum over one); no `?`, bool, float, struct, slice keys |
+| `map<K, V>`      | `map[K]V`               | K must be string / int* / uint* (or a scalar/enum over one); no `?`, bool, float, struct, slice keys. V takes no `?` when it is an array or a map (`type/map-value`) |
 | `Custom`         | `Custom`                | references a declared type / scalar / enum |
 
 ### Mixins

@@ -49,6 +49,8 @@ const (
 	CodeCrossFieldNotOptional = "decorator/cross-field-not-optional"
 	// CodeMapKeyType fires when a map key is not a string or integer, or a scalar or enum over one.
 	CodeMapKeyType = "type/map-key"
+	// CodeMapValueType fires when a map value is an optional array or map (`map<string, int[]?>`).
+	CodeMapValueType = "type/map-value"
 	// CodeDuplicatePathVar fires when a route repeats a path variable (`/items/{id}/x/{id}`).
 	CodeDuplicatePathVar = "route/duplicate-path-var"
 	// CodeRoutePattern fires when a route holds a segment net/http's ServeMux refuses to

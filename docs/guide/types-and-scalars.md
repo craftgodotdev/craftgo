@@ -129,7 +129,7 @@ type Settings {
 }
 ```
 
-Becomes `map[string]bool` and `map[string]int`. Keys must be a non-optional string or integer primitive, a scalar over one of those, or an enum.
+Becomes `map[string]bool` and `map[string]int`. Keys must be a non-optional string or integer primitive, a scalar over one of those, or an enum. A value may be optional (`map<string, int?>` becomes `map[string]*int`), except an array or a map, whose nil already stands for null: `map<string, int[]?>` is `type/map-value`.
 
 ### Nested types
 

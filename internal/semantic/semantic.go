@@ -128,6 +128,7 @@ func (a *analyzer) runShapePhase(files []*ast.File) {
 	a.checkServiceMethods()
 	a.checkFieldTypeCompat()
 	a.checkRangesAndExtras(files)
+	a.checkOptionalMapValues(files)
 	a.checkMixins()
 	a.checkPathResolution()
 	a.checkCombinationRules(files)

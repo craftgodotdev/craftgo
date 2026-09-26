@@ -43,6 +43,34 @@ func (a *analyzer) mapKeysComparable(t *ast.TypeRef, f *ast.Field, typeParams []
 	}
 }
 
+// checkOptionalMapValues rejects a map value that is an optional array or
+// map, wherever the files spell a map: a nil slice or map already stands for
+// null, so neither the Go type nor the schema carries the `?`.
+func (a *analyzer) checkOptionalMapValues(files []*ast.File) {
+	for _, f := range files {
+		for _, d := range f.Decls {
+			walkTypeRoots(d, func(t *ast.TypeRef, _ []string, _ *ast.Mixin) {
+				walkMaps(t, func(m *ast.MapType) {
+					v := m.Value
+					if v == nil || !v.Optional || (!v.Array && v.Map == nil) {
+						return
+					}
+					kind := "map"
+					if v.Array {
+						kind = "slice"
+					}
+					present := *v
+					present.Optional = false
+					fixed := &ast.TypeRef{Map: &ast.MapType{Key: m.Key, Value: &present}}
+					a.diag(v.Pos, v.Pos, lexer.SeverityError, CodeMapValueType,
+						"map value %s cannot be optional: a nil %s already stands for null, so neither the Go type nor the OpenAPI schema carries the `?` - drop the `?` (%s)",
+						v, kind, fixed)
+				})
+			})
+		}
+	}
+}
+
 // keyMarshalable reports whether encoding/json accepts key as an object key:
 // a non-optional string or integer, or a scalar or enum over one. A name
 // that resolves to no type is left to the reference check.

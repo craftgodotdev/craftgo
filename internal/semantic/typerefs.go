@@ -22,23 +22,35 @@ func (a *analyzer) checkTypeRefs(files []*ast.File) {
 	}
 }
 
-// walkTypeRefs calls visit on every named type reference d holds: the field
-// types and mixins of a type or error body, an event payload, and each
-// method's request and response, through map keys and values and generic
-// arguments. typeParams are the type parameters in scope; mixin marks the
-// name a mixin embeds.
+// walkTypeRefs calls visit on every named type reference d holds, through
+// map keys and values and generic arguments of each type [walkTypeRoots]
+// gives; mixin marks the name a mixin embeds.
 func walkTypeRefs(d ast.Decl, visit func(n *ast.NamedTypeRef, typeParams []string, mixin bool)) {
+	walkTypeRoots(d, func(t *ast.TypeRef, typeParams []string, mx *ast.Mixin) {
+		t.WalkNamedRefs(func(n *ast.NamedTypeRef) { visit(n, typeParams, mx != nil && n == mx.Ref) })
+	})
+}
+
+// walkTypeRoots calls visit on each type d spells: the field types and
+// mixins of a type or error body, an event payload, and each method's
+// request and response. typeParams are the type parameters in scope; mx is
+// the mixin t embeds, nil for any other type.
+func walkTypeRoots(d ast.Decl, visit func(t *ast.TypeRef, typeParams []string, mx *ast.Mixin)) {
+	named := func(n *ast.NamedTypeRef, typeParams []string, mx *ast.Mixin) {
+		if n != nil {
+			visit(&ast.TypeRef{Pos: n.Pos, Named: n}, typeParams, mx)
+		}
+	}
 	walkBody := func(body []ast.TypeMember, typeParams []string) {
 		for _, m := range body {
 			switch v := m.(type) {
 			case *ast.Field:
-				v.Type.WalkNamedRefs(func(n *ast.NamedTypeRef) { visit(n, typeParams, false) })
+				visit(v.Type, typeParams, nil)
 			case *ast.Mixin:
-				v.Ref.WalkNamedRefs(func(n *ast.NamedTypeRef) { visit(n, typeParams, n == v.Ref) })
+				named(v.Ref, typeParams, v)
 			}
 		}
 	}
-	outside := func(n *ast.NamedTypeRef) { visit(n, nil, false) }
 	switch v := d.(type) {
 	case *ast.TypeDecl:
 		walkBody(v.Body, v.TypeParams)
@@ -46,14 +58,30 @@ func walkTypeRefs(d ast.Decl, visit func(n *ast.NamedTypeRef, typeParams []strin
 		walkBody(v.Body, nil)
 	case *ast.EventDecl:
 		if v.Payload != nil {
-			v.Payload.Type.WalkNamedRefs(outside)
+			named(v.Payload.Type, nil, nil)
 		}
 	case *ast.ServiceDecl:
 		for _, m := range v.Methods() {
-			m.Request.WalkNamedRefs(outside)
+			named(m.Request, nil, nil)
 			if m.Response != nil {
-				m.Response.Type.WalkNamedRefs(outside)
+				named(m.Response.Type, nil, nil)
 			}
+		}
+	}
+}
+
+// walkMaps calls visit on every map t reaches, t itself included, through
+// map keys and values and generic arguments.
+func walkMaps(t *ast.TypeRef, visit func(*ast.MapType)) {
+	switch {
+	case t == nil:
+	case t.Map != nil:
+		visit(t.Map)
+		walkMaps(t.Map.Key, visit)
+		walkMaps(t.Map.Value, visit)
+	case t.Named != nil:
+		for _, arg := range t.Named.Args {
+			walkMaps(arg, visit)
 		}
 	}
 }

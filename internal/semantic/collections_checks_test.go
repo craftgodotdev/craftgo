@@ -118,6 +118,46 @@ type R { xs lib.Box<Item>[] @uniqueItems }`,
 	}
 }
 
+// A map value that is an optional array or map is rejected wherever a map is
+// spelled: a nil slice or map already stands for null, so neither the Go type
+// nor the schema carries the `?`. An optional value of another type is a
+// pointer or holds null itself.
+func TestOptionalCompoundMapValueRejected(t *testing.T) {
+	const decls = "package app\ntype Item { id string }\ntype Box<T> { v T }\n"
+	for label, c := range map[string]struct{ src, value string }{
+		"array":             {"type R { m map<string, int[]?> }", "int[]?"},
+		"map":               {"type R { m map<string, map<string, int>?> }", "map<string, int>?"},
+		"nested map":        {"type R { m map<string, map<string, Item[]?>> }", "Item[]?"},
+		"array of maps":     {"type R { m map<string, int[]?>[] }", "int[]?"},
+		"generic argument":  {"type R { b Box<map<string, Item[]?>> }", "Item[]?"},
+		"mixin argument":    {"type R { Box<map<string, Item[]?>> }", "Item[]?"},
+		"error field":       {"error Conflict E { m map<string, int[]?> }", "int[]?"},
+		"response argument": {"service S { get A /a { response Box<map<string, int[]?>> } }", "int[]?"},
+		"event payload":     {"event Seen { payload Box<map<string, int[]?>> }", "int[]?"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			src := decls + c.src
+			d := expectError(t, src, CodeMapValueType)
+			expectMessage(t, d, c.value, "drop the `?`")
+			expectCodeCount(t, src, CodeMapValueType, 1)
+			if d.Pos.Line != 4 {
+				t.Errorf("reported at line %d, want line 4", d.Pos.Line)
+			}
+		})
+	}
+	mustClean(t, decls+`scalar Blob bytes
+type R {
+	a map<string, int?>
+	b map<string, Item?>
+	c map<string, Blob?>
+	d map<string, bytes?>
+	e map<string, Box<Item>?>
+	f map<string, int[]>
+	g int[]?
+	h map<string, int>?
+}`)
+}
+
 // A map key naming no declared type gets the reference error alone.
 func TestMapKeyUnknownNameLeftToReferenceCheck(t *testing.T) {
 	expectNoCode(t, `type R { m map<Nope, int> }`, CodeMapKeyType)
