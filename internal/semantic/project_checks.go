@@ -173,9 +173,10 @@ func (c *projectChecks) reportGroupMemberCollisions(seg string, occs []segClaim)
 
 // reportMethodNameClashes reports, among the methods scaffolded into seg,
 // one Go package, a method named like the log.Logger each logic type embeds
-// and, at every site, methods of distinct names that write one file, and
-// each pair whose logic constructor and logic type share a name. A name
-// declared twice is left to the duplicate-method and group rules.
+// or writing a file the go command treats apart and, at every site, methods
+// of distinct names that write one file, and each pair whose logic
+// constructor and logic type share a name. A name declared twice is left to
+// the duplicate-method and group rules.
 func (c *projectChecks) reportMethodNameClashes(seg string, occs []segClaim) {
 	type owner struct {
 		svc    string
@@ -192,8 +193,12 @@ func (c *projectChecks) reportMethodNameClashes(seg string, occs []segClaim) {
 			ow := owner{svc: o.svc, member: m}
 			byName[m.name] = ow
 			firsts = append(firsts, ow)
-			file := idents.FileName(m.name, c.fileCase) + ".go"
-			byFile[file] = append(byFile[file], ow)
+			base := idents.FileName(m.name, c.fileCase)
+			if why := idents.GoFileProblem(base); why != "" {
+				c.diag(m.pos, lexer.SeverityError, CodeMethodFileName,
+					"method %q of service %q writes %s.go in output directory %q, but %s - rename the method", m.name, o.svc, base, seg, why)
+			}
+			byFile[base+".go"] = append(byFile[base+".go"], ow)
 		}
 	}
 	report := func(owners []owner, msg string) {

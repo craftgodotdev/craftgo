@@ -152,9 +152,9 @@ func (s *importSet) protoType(ref protodesign.TypeRef) string {
 }
 
 // ValidateProtoOutputs rejects gRPC output that would collide: an RPC file named like the server
-// struct's, a logic type named like another RPC's constructor (`X` beside `NewX`), an RPC named
-// like the log.Logger its logic type embeds, or a proto service writing into a DSL service's
-// output.service directory.
+// struct's or one the go command treats apart, a logic type named like another RPC's constructor
+// (`X` beside `NewX`), an RPC named like the log.Logger its logic type embeds, or a proto service
+// writing into a DSL service's output.service directory.
 func ValidateProtoOutputs(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config) error {
 	if protos == nil {
 		return nil
@@ -167,6 +167,9 @@ func ValidateProtoOutputs(proj *semantic.Project, protos *protodesign.Set, cfg *
 			}
 			if m.Name == idents.LogicEmbed {
 				return fmt.Errorf("%s: rpc %s is named like the log.Logger its logic type embeds - rename it", svc.FullName, m.Name)
+			}
+			if why := idents.GoFileProblem(m.File); why != "" {
+				return fmt.Errorf("%s: rpc %s would generate file %s.go, but %s - rename it", svc.FullName, m.Name, m.File, why)
 			}
 			rpcs[m.Name] = true
 		}

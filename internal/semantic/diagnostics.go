@@ -101,6 +101,9 @@ const (
 	// (`GetURL` beside `GetUrl`) or declare one Go name (`X` beside `NewX`), or a method is named
 	// `Logger`.
 	CodeMethodNameClash = "service/method-name-clash"
+	// CodeMethodFileName fires when a method's file is one the go command ignores or builds only for
+	// tests or one system: `RunTest` writes `run_test.go`, `ListWindows` `list_windows.go`.
+	CodeMethodFileName = "service/method-file-name"
 	// CodeServiceDuplicateRoute fires when one service declares two methods of one verb and route shape.
 	CodeServiceDuplicateRoute = "service/duplicate-route"
 

@@ -191,3 +191,18 @@ func TestEventContractName(t *testing.T) {
 		t.Errorf("EventContractName = %q, want OrderPlacedContract", got)
 	}
 }
+
+// A file name the go command ignores, or builds only for tests or one
+// system, is named; others are not.
+func TestGoFileProblem(t *testing.T) {
+	for _, base := range []string{"run_test", "create_ab_test", "list_windows", "move_arm", "get_linux_amd64", "list_windows_test", "_hidden", ".dot"} {
+		if GoFileProblem(base) == "" {
+			t.Errorf("%s: want a problem", base)
+		}
+	}
+	for _, base := range []string{"windows", "test", "get_unix", "run-test", "runTest", "list_items", "get_testing", "attest"} {
+		if why := GoFileProblem(base); why != "" {
+			t.Errorf("%s: unexpected problem %q", base, why)
+		}
+	}
+}

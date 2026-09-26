@@ -251,3 +251,31 @@ service Write { post NewOrder /o { response R } }`})
 		t.Errorf("separate directories must not clash: %s", d.Msg)
 	}
 }
+
+// A method whose file the go command would build only for tests or one
+// system is reported; under a file case without `_` it is not.
+func TestMethodFileNameGoTreatsSpecially(t *testing.T) {
+	const src = `package shop
+type R { ok bool }
+service Lab {
+	post RunTest /run { response R }
+	get ListWindows /windows { response R }
+	get GetItem /item { response R }
+}`
+	root, files := projectFixture(t, map[string]string{"shop.craftgo": src})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	var got []string
+	for _, d := range diags {
+		if d.Code == CodeMethodFileName {
+			got = append(got, d.Msg)
+		}
+	}
+	if len(got) != 2 || !strings.Contains(got[0]+got[1], "run_test.go") || !strings.Contains(got[0]+got[1], "list_windows.go") {
+		t.Errorf("diagnostics = %v, want run_test.go and list_windows.go", got)
+	}
+	root, files = projectFixture(t, map[string]string{"shop.craftgo": src})
+	_, diags = AnalyzeProject(files, Options{DesignRoot: root, FileCase: "kebab"})
+	if d := findCode(diags, CodeMethodFileName); d != nil {
+		t.Errorf("kebab file case: unexpected %s", d.Msg)
+	}
+}

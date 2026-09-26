@@ -44,6 +44,7 @@ Each of these generated a project that built and ran under 1.9. Fix the design a
 - A middleware named `Config` or `Middlewares`, whose routes did not compile: `decl/go-name-collision`. Rename it.
 - A fractional bound on a field of an int enum, as `@gt(1.5)` or `@multipleOf(2.5)`, which 1.9 documented and never checked: `decorator/typemismatch`. Use a whole number.
 - `@minItems`, `@maxItems`, `@uniqueItems`, `@maxSize` or `@mimeTypes` on a field typed by a type parameter, as in `type Box<T> { v T @maxSize(10) }`, which 1.9 documented and never checked: `decorator/typemismatch`. Constrain a concrete field, or the collection `T[]`.
+- A method whose file the go command builds only for tests or one system under the file case, as `RunTest` (`run_test.go`) or `ListWindows` (`list_windows.go`): `service/method-file-name`. Rename it, or set `output.fileCase` to `kebab` or `camel`.
 - Methods of one service directory writing one file, as `GetURL` beside `GetUrl`, or one Go name, as `Order` beside `NewOrder`, or a method named `Logger`, which generated code that did not compile: `service/method-name-clash`. Rename the method, and move its logic stub to the new file name.
 - An event payload reaching a field bound to `@path`, `@query`, `@header`, `@cookie` or `@form`, which never reached a consumer: `event/payload-binding`. Drop the binding, or give the event a type without it.
 

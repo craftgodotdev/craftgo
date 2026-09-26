@@ -470,6 +470,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   included. They are now `decorator/typemismatch` at the declaration, as the
   value constraints were.
 
+- **A method may not write a file the go command sets apart.** Under the
+  default `snake` file case `RunTest` wrote `run_test.go`, built only for
+  tests, and `ListWindows` `list_windows.go`, built only on Windows, so the
+  routes did not compile; a gRPC `rpc RunTest` answered `Unimplemented`.
+  Each is now `service/method-file-name`, or stops gen for an RPC.
+
 - **Method names that clash in generated Go are refused.** Methods `X` and
   `NewX` in one service directory both declared `NewXService`; `GetURL` and
   `GetUrl` both wrote `get_url.go`; a method named `Logger` clashed with the

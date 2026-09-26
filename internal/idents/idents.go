@@ -3,6 +3,7 @@
 package idents
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -240,6 +241,46 @@ func LogicRival(method string) string { return "New" + method }
 // LogicEmbed is the field every logic struct embeds, its `log.Logger`; a
 // method of that name cannot be declared on the struct.
 const LogicEmbed = "Logger"
+
+// GoFileProblem says why the go command treats a Go file named base, without
+// `.go`, apart from the rest of its package, or returns "": it ignores a
+// name opening with `_` or `.`, and builds one ending in `_test` only for
+// tests and one ending in a GOOS or GOARCH word only for that system.
+func GoFileProblem(base string) string {
+	switch {
+	case strings.HasPrefix(base, "_") || strings.HasPrefix(base, "."):
+		return "the go command ignores a file whose name opens with `_` or `.`"
+	case strings.HasSuffix(base, "_test"):
+		return "the go command builds a `_test.go` file only for tests"
+	}
+	i := strings.Index(base, "_")
+	if i < 0 {
+		return ""
+	}
+	words := strings.Split(base[i+1:], "_")
+	last := words[len(words)-1]
+	if knownOS[last] || knownArch[last] {
+		return fmt.Sprintf("the go command builds a file whose name ends in `_%s` only for that system", last)
+	}
+	return ""
+}
+
+// knownOS and knownArch are the GOOS and GOARCH words a Go file name may end
+// in to build only for that system.
+var (
+	knownOS = map[string]bool{
+		"aix": true, "android": true, "darwin": true, "dragonfly": true, "freebsd": true, "hurd": true,
+		"illumos": true, "ios": true, "js": true, "linux": true, "nacl": true, "netbsd": true,
+		"openbsd": true, "plan9": true, "solaris": true, "wasip1": true, "windows": true, "zos": true,
+	}
+	knownArch = map[string]bool{
+		"386": true, "amd64": true, "amd64p32": true, "arm": true, "armbe": true, "arm64": true,
+		"arm64be": true, "loong64": true, "mips": true, "mipsle": true, "mips64": true, "mips64le": true,
+		"mips64p32": true, "mips64p32le": true, "ppc": true, "ppc64": true, "ppc64le": true,
+		"riscv": true, "riscv64": true, "s390": true, "s390x": true, "sparc": true, "sparc64": true,
+		"wasm": true,
+	}
+)
 
 // ServiceContextFields are the fields a generated ServiceContext declares
 // itself; each hides a middleware field of the same name that its embedded
