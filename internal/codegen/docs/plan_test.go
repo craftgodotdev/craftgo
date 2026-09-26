@@ -17,7 +17,7 @@ func docsConfig() *config.Config {
 }
 
 // A design without a DSL package gets no document, and the plan still names
-// its directory for the sweep.
+// the document for the sweep.
 func TestNoDocumentWithoutADSLPackage(t *testing.T) {
 	dir := t.TempDir()
 	cfg := docsConfig()
@@ -29,14 +29,14 @@ func TestNoDocumentWithoutADSLPackage(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "docs", "openapi.yaml")); !os.IsNotExist(err) {
 		t.Errorf("a project with no DSL package got a document: %v", err)
 	}
-	dirs, files := Plan(empty, cfg, dir)
+	paths, files := Plan(empty, cfg, dir)
 	if len(files) != 0 {
 		t.Errorf("plan names %v, but nothing writes them", files)
 	}
-	if _, ok := dirs[filepath.Join(dir, "docs")]; !ok || len(dirs) != 1 {
-		t.Errorf("the sweep must still reach the directory, got %v", dirs)
+	if _, ok := paths[filepath.Join(dir, "docs", "openapi.yaml")]; !ok || len(paths) != 1 {
+		t.Errorf("the sweep must reach the document and nothing else, got %v", paths)
 	}
-	if dirs, files := Plan(empty, &config.Config{}, dir); dirs != nil || files != nil {
-		t.Errorf("a disabled document has no directory, got %v and %v", dirs, files)
+	if paths, files := Plan(empty, &config.Config{}, dir); paths != nil || files != nil {
+		t.Errorf("a disabled document has no sweep path, got %v and %v", paths, files)
 	}
 }

@@ -66,5 +66,5 @@ func writeProjectMiddlewareImpls(cfg *config.Config, projectRoot string, mws []m
 // writeMiddlewareFields writes middlewares.go even with no middleware, since svccontext.go embeds
 // its Middlewares type.
 func writeMiddlewareFields(cfg *config.Config, projectRoot string, mws []middlewareData) error {
-	return writeGo(outputsOf(cfg).svccontext.at(projectRoot, "middlewares.go"), tmpl("middleware-fields.tmpl"), middlewareFieldsData{Middlewares: mws})
+	return writeGo(outputsOf(cfg).svccontext.at(projectRoot, middlewaresFile), tmpl("middleware-fields.tmpl"), middlewareFieldsData{Middlewares: mws})
 }

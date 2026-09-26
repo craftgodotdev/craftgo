@@ -1,8 +1,10 @@
 package codegen
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -128,6 +130,57 @@ func TestTheProjectRootIsNeverSwept(t *testing.T) {
 	}
 }
 
+// Where a target writes only named files into a directory - the document, wiring.go and grpc.go,
+// middlewares.go - the sweep takes those files and nothing else there or below: a copy of the
+// document, a docs site beside it, or a package under the wiring survives.
+func TestTheSweepTakesOnlyTheFilesANamedOutputWrites(t *testing.T) {
+	dir := t.TempDir()
+	cfg := planConfig()
+	proj := analyzeProject(t, planSrc...)
+	if err := Generate(Inputs{Design: proj}, cfg, dir); err != nil {
+		t.Fatalf("first pass: %v", err)
+	}
+	document, err := os.ReadFile(filepath.Join(dir, "docs", "openapi.yaml"))
+	if err != nil {
+		t.Fatalf("the first pass wrote no document: %v", err)
+	}
+	wiring, err := os.ReadFile(filepath.Join(dir, "internal", "wiring", "wiring.go"))
+	if err != nil {
+		t.Fatalf("the first pass wrote no wiring: %v", err)
+	}
+	kept := map[string][]byte{
+		"docs/openapi.v1-frozen.yaml":      document,
+		"docs/site/public/api.yaml":        document,
+		"docs/site/index.md":               []byte("# notes\n"),
+		"internal/wiring/wiring.go.orig":   wiring,
+		"internal/wiring/v1/wiring.go":     wiring,
+		"svccontext/legacy/middlewares.go": wiring,
+	}
+	for name, body := range kept {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, body, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Generate(Inputs{Design: proj}, cfg, dir); err != nil {
+		t.Fatalf("second pass: %v", err)
+	}
+	for _, name := range slices.Sorted(maps.Keys(kept)) {
+		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(name))); err != nil {
+			t.Errorf("%s is no file craftgo writes and must survive: %v", name, err)
+		}
+	}
+	if err := Generate(Inputs{Design: analyzeProject(t)}, cfg, dir); err != nil {
+		t.Fatalf("pass without a DSL package: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "docs", "openapi.yaml")); !os.IsNotExist(err) {
+		t.Errorf("a document the run no longer writes must be swept: %v", err)
+	}
+}
+
 // A file one target left in a directory another target regenerates into is swept once the
 // manifest moves the first target's output out of it.
 func TestSweepTakesAnotherTargetsStaleFile(t *testing.T) {
@@ -143,12 +196,6 @@ func TestSweepTakesAnotherTargetsStaleFile(t *testing.T) {
 			before: func(cfg *config.Config) { cfg.Output.OpenAPI = "./internal/types/openapi.yaml" },
 			after:  func(cfg *config.Config) { cfg.Output.OpenAPI = "./docs/openapi.yaml" },
 			stale:  filepath.Join("internal", "types", "openapi.yaml"),
-		},
-		{
-			name:   "types under the document",
-			before: func(cfg *config.Config) { cfg.Output.Types = "./docs/types" },
-			after:  func(cfg *config.Config) { cfg.Output.Types = "./internal/types" },
-			stale:  filepath.Join("docs", "types", "shop", "types.go"),
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {

@@ -43,7 +43,7 @@ func generateWiring(proj *semantic.Project, cfg *config.Config, projectRoot stri
 	}
 	imports.use(out.svccontext.pkg)
 	data.ImportDecl = imports.decl()
-	return writeGo(out.wiring.at(projectRoot, "wiring.go"), tmpl("wiring.tmpl"), data)
+	return writeGo(out.wiring.at(projectRoot, wiringFile), tmpl("wiring.tmpl"), data)
 }
 
 // middlewareGuards returns a nil check for every middleware a method runs; the chain silently

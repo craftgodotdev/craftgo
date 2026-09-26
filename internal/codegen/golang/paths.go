@@ -90,24 +90,34 @@ func outputsOf(cfg *config.Config) outputs {
 // outputKey is one output key of the Go target.
 type outputKey struct {
 	dir outputDir
-	// regenerated reports a directory whose files every run rewrites, which the sweep walks.
+	// regenerated reports a directory whose files every run rewrites, which the sweep covers.
 	regenerated bool
 	// application reports a directory a contracts project writes nothing into.
 	application bool
+	// files names the only files the target writes in dir, which the sweep then takes alone;
+	// without them it walks dir's whole tree.
+	files []string
 }
+
+// The files the Go target writes in output.wiring and beside output.svccontext's file.
+const (
+	wiringFile      = "wiring.go"
+	wiringGRPCFile  = "grpc.go"
+	middlewaresFile = "middlewares.go"
+)
 
 // keys lists o's output keys.
 func (o outputs) keys() []outputKey {
 	return []outputKey{
-		{o.types, true, false},
-		{o.transport, true, true},
-		{o.routes, true, true},
-		{o.service, false, true},
-		{o.grpc, true, true},
-		{o.wiring, true, true},
-		{o.middleware, false, true},
-		{o.config, false, true},
-		{o.svccontext, true, true},
+		{dir: o.types, regenerated: true},
+		{dir: o.transport, regenerated: true, application: true},
+		{dir: o.routes, regenerated: true, application: true},
+		{dir: o.service, application: true},
+		{dir: o.grpc, regenerated: true, application: true},
+		{dir: o.wiring, regenerated: true, application: true, files: []string{wiringFile, wiringGRPCFile}},
+		{dir: o.middleware, application: true},
+		{dir: o.config, application: true},
+		{dir: o.svccontext, regenerated: true, application: true, files: []string{middlewaresFile}},
 	}
 }
 

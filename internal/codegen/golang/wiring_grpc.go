@@ -27,7 +27,7 @@ func generateWiringGRPC(protos *protodesign.Set, cfg *config.Config, projectRoot
 	if !protos.HasServices() {
 		return nil
 	}
-	return writeGo(outputsOf(cfg).wiring.at(projectRoot, "grpc.go"), tmpl("wiring_grpc.tmpl"), buildWiringGRPCData(protos, cfg))
+	return writeGo(outputsOf(cfg).wiring.at(projectRoot, wiringGRPCFile), tmpl("wiring_grpc.tmpl"), buildWiringGRPCData(protos, cfg))
 }
 
 // buildWiringGRPCData imports each pb package as `<name>pb` and each server package as

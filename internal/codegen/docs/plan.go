@@ -7,10 +7,10 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
-// Plan lists what [GenerateOpenAPI] writes under projectRoot: the document's directory, with the
-// header of the file written there, and the document, which a design with no DSL package does not
-// get. With `output.openapi` off there is neither.
-func Plan(proj *semantic.Project, cfg *config.Config, projectRoot string) (dirs map[string][]string, files []string) {
+// Plan lists what [GenerateOpenAPI] writes under projectRoot: the document, as the one path the
+// sweep covers, with its header, and as the file written, which a design with no DSL package does
+// not get. With `output.openapi` off there is neither.
+func Plan(proj *semantic.Project, cfg *config.Config, projectRoot string) (paths map[string][]string, files []string) {
 	doc := documentPath(cfg, projectRoot)
 	if doc == "" {
 		return nil, nil
@@ -18,7 +18,7 @@ func Plan(proj *semantic.Project, cfg *config.Config, projectRoot string) (dirs 
 	if describable(proj) {
 		files = []string{doc}
 	}
-	return map[string][]string{filepath.Dir(doc): {GeneratedHeader}}, files
+	return map[string][]string{doc: {GeneratedHeader}}, files
 }
 
 // documentPath is the path of the document, or "" when `output.openapi` is off.

@@ -18,9 +18,16 @@ func Plan(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, p
 	paths = map[string][]string{}
 	contracts := cfg.Output.ContractsOnly()
 	for _, k := range outputsOf(cfg).keys() {
-		if k.regenerated && (!contracts || !k.application) {
+		if !k.regenerated || (contracts && k.application) {
+			continue
+		}
+		if len(k.files) == 0 {
 			dir := k.dir.at(projectRoot)
 			paths[dir] = append(paths[dir], GeneratedHeader)
+		}
+		for _, name := range k.files {
+			file := k.dir.at(projectRoot, name)
+			paths[file] = append(paths[file], GeneratedHeader)
 		}
 	}
 	for _, file := range protos.OwnedPBFiles(projectRoot) {
@@ -77,11 +84,11 @@ func regeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 			}
 		}
 	}
-	files = append(files, out.wiring.at(projectRoot, "wiring.go"))
+	files = append(files, out.wiring.at(projectRoot, wiringFile))
 	if protos.HasServices() {
-		files = append(files, out.wiring.at(projectRoot, "grpc.go"))
+		files = append(files, out.wiring.at(projectRoot, wiringGRPCFile))
 	}
-	return append(files, out.svccontext.at(projectRoot, "middlewares.go"))
+	return append(files, out.svccontext.at(projectRoot, middlewaresFile))
 }
 
 // EventPlan is [Plan] for [GenerateEventTarget] writing under outDir: one events.go per DSL

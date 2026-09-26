@@ -1327,6 +1327,14 @@ breaking change to the DSL or the generated layout bumps the major version.
   names as its source a proto no include root holds; a design with no proto
   sweeps nothing under `output.pb`.
 
+- **The sweep takes the OpenAPI document alone.** It walked the document's
+  directory and every directory below it, deleting any file with the
+  document's header - a frozen copy kept for a breaking-change diff, a docs
+  site's `public/api.yaml` - and the directories that emptied. It now deletes
+  the document itself, once the run no longer writes it. `wiring.go`,
+  `grpc.go` and `middlewares.go` are swept the same way, as those files
+  alone.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added
