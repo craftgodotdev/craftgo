@@ -174,6 +174,9 @@ type NumberPrice struct {
 	// A float32's bounds judge the literal and the float32 the validator
 	// compares against alike: 0.1 and float32(0.1) fail, 16777217 and 2^24 pass.
 	WideF32 float32 `json:"wideF32"`
+	// A number the document writes in exponent form carries a dot (1.0e-07,
+	// 1.0e+20), which YAML 1.1 readers take for a number, not a string.
+	TinyF64 float64 `json:"tinyF64"`
 }
 
 // NumberUnsigned covers the uint family; its @gte(0) and full-capacity

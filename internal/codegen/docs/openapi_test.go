@@ -818,6 +818,28 @@ service S { @errors(Slow) get F /f { request Find  response Found } }`,
 	}
 }
 
+// A float the document writes in exponent form carries a dot, `1.0e-07`, which
+// YAML 1.1 and 1.2 readers both take for a number, where a YAML 1.1 reader
+// takes `1e-07` for a string; no other number changes its spelling.
+func TestExponentFloatsCarryADot(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+type T {
+	a float64   @gte(0.0000001) @lte(100000000000000000000.0)
+	c float64   @lte(0.00000015)
+	d float64   @gte(-0.000001)
+	e int       @lte(1000000)
+	f float64?  @default(0.0000002) @example(0.0000003)
+	k float64   @lte(1234567.5) @gte(-0.0001)
+	m float64[] @example([0.00001, 0.5])
+}
+service S { post C /c { request T  response T } }`)
+	mustContainAll(t, body,
+		"minimum: 1.0e-07", "maximum: 1.0e+20", "maximum: 1.5e-07", "minimum: -1.0e-06",
+		"maximum: 1000000", "default: 2.0e-07", "example: 3.0e-07", "maximum: 1.2345675e+06",
+		"minimum: -0.0001", "- 1.0e-05\n", "- 0.5\n")
+	mustContainNone(t, body, ": 1e-07", ": 1e+20", ": -1e-06", ": 2e-07", ": 3e-07", "- 1e-05")
+}
+
 // A multipart request's cross-field constraint wraps its inline schema in an
 // allOf.
 func TestGenerateOpenAPIMultipartCrossField(t *testing.T) {

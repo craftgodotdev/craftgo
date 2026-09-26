@@ -4536,6 +4536,15 @@ components:
           maximum: 0.9
           minimum: 0.1
           type: number
+        tinyF64:
+          description: |-
+            A number the document writes in exponent form carries a dot (1.0e-07,
+            1.0e+20), which YAML 1.1 readers take for a number, not a string.
+          example: 5.0e-07
+          format: double
+          maximum: 1.0e+20
+          minimum: 1.0e-07
+          type: number
         wideF32:
           description: |-
             A float32's bounds judge the literal and the float32 the validator
@@ -4564,6 +4573,7 @@ components:
       - posF32
       - wideF64
       - wideF32
+      - tinyF64
       type: object
     NumberUnsigned:
       description: |-

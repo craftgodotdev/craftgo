@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"sigs.k8s.io/yaml"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
@@ -59,7 +58,7 @@ func GenerateOpenAPI(proj *semantic.Project, cfg *config.Config, projectRoot str
 	if err != nil {
 		return err
 	}
-	out, err := yaml.Marshal(doc)
+	out, err := marshalDocument(doc)
 	if err != nil {
 		return fmt.Errorf("marshal openapi: %w", err)
 	}

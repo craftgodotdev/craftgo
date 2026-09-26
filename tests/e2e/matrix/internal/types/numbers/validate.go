@@ -326,6 +326,12 @@ func (v *NumberPrice) Validate() error {
 	if v.WideF32 > 16777217 {
 		return fmt.Errorf("wideF32: above maximum 16777217")
 	}
+	if v.TinyF64 < 1e-07 {
+		return fmt.Errorf("tinyF64: below minimum 1e-07")
+	}
+	if v.TinyF64 > 1e+20 {
+		return fmt.Errorf("tinyF64: above maximum 1e+20")
+	}
 	return nil
 }
 

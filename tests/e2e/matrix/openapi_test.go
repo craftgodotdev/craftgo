@@ -379,6 +379,32 @@ func TestOpenAPI_SharedStatusHeaderKeepsEachType(t *testing.T) {
 	}
 }
 
+// No number in the document is an exponent without a dot, which a YAML 1.1
+// reader takes for a string: NumberPrice.tinyF64 reads 1.0e-07 to 1.0e+20.
+func TestOpenAPI_ExponentNumbersCarryADot(t *testing.T) {
+	doc := readOpenAPI(t)
+	var root yaml.Node
+	if err := yaml.Unmarshal([]byte(doc), &root); err != nil {
+		t.Fatal(err)
+	}
+	dotless := regexp.MustCompile(`^[-+]?[0-9]+[eE]`)
+	var walk func(n *yaml.Node)
+	walk = func(n *yaml.Node) {
+		for _, c := range n.Content {
+			walk(c)
+		}
+		if n.Kind == yaml.ScalarNode && n.Tag == "!!float" && dotless.MatchString(n.Value) {
+			t.Errorf("line %d: the number %s has no dot", n.Line, n.Value)
+		}
+	}
+	walk(&root)
+	for _, want := range []string{"minimum: 1.0e-07", "maximum: 1.0e+20", "example: 5.0e-07"} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("openapi.yaml missing %q", want)
+		}
+	}
+}
+
 // schemaDoc is the part of a component schema the body-key checks read.
 type schemaDoc struct {
 	Properties map[string]any `yaml:"properties"`

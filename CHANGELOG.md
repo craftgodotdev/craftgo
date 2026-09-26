@@ -1236,6 +1236,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   header. The header, spelled as first declared, now admits each type, and
   its `Set-Cookie` names each cookie of the status once.
 
+- **A number the OpenAPI document writes as an exponent reads as a number in
+  YAML 1.1.** A bound, default or example such as `minimum: 1e-07` or
+  `maximum: 1e+20` is a string to a YAML 1.1 reader - PyYAML, and so
+  openapi-spec-validator, rejected the document. Such a number now carries a
+  dot, `1.0e-07`, which YAML 1.1 and 1.2 readers both take for a number; no
+  other number changes its spelling.
+
 ### Deprecated
 
 - **Vestigial `pkg/server` API.** Behaviour is unchanged:
