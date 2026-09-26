@@ -25,7 +25,7 @@ For cross-cutting concerns that apply globally regardless of the API contract, u
 
 ```go
 srv := server.New(svcCtx, server.WithTelemetry(tel.HTTPMiddleware())) // traces + metrics, outside Recovery and every Use
-srv.Use(server.AccessLog(srv.Logger()))
+srv.Use(server.AccessLog(log.Follow())) // log.Follow writes through log.Default as it is at each line
 srv.SetDefaultMaxBodySize(1 << 20) // default body cap; a per-method @maxBodySize overrides it
 ```
 

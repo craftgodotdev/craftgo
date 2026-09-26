@@ -60,7 +60,7 @@ func main() {
 	// The telemetry wrapper opens each request's span outside Recovery and every Use
 	// middleware, so the access and panic lines carry its trace ids.
 	srv := server.New(svc, server.WithTelemetry(tel.HTTPMiddleware()))
-	srv.Use(server.AccessLog(srv.Logger()))
+	srv.Use(server.AccessLog(log.Follow()))
 	// A method's @timeout or @maxBodySize overrides these defaults; routes resolve them
 	// when wiring.Register registers them.
 	srv.SetDefaultHandlerTimeout(cfg.Server.HandlerTimeout)

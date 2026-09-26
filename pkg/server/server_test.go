@@ -46,11 +46,11 @@ func TestServerRecoveryLogsToTheCurrentDefault(t *testing.T) {
 	}
 }
 
-// An access log built from Logger writes to the logger a later SetLogger installs.
+// An access log built from log.Follow writes to the logger a later SetLogger installs.
 func TestAccessLogFollowsSetLogger(t *testing.T) {
 	observeLogs(t)
 	s := New(nil)
-	s.Use(AccessLog(s.Logger()))
+	s.Use(AccessLog(log.Follow()))
 	s.HandleFunc("GET /a", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	h := s.Handler()
 	core, logs := observer.New(zapcore.InfoLevel)
@@ -60,6 +60,67 @@ func TestAccessLogFollowsSetLogger(t *testing.T) {
 		t.Errorf("access lines on the logger SetLogger installed = %d, want 1", n)
 	}
 }
+
+// Logger returns the logger of the call, so a wrapper around it can be the logger SetLogger
+// installs: its lines reach the wrapped logger and the wrapper's own sink once each.
+func TestSetLoggerTakesAWrapperOfLogger(t *testing.T) {
+	before := observeLogs(t)
+	s := New(nil)
+	core, extra := observer.New(zapcore.InfoLevel)
+	s.SetLogger(tee{s.Logger(), log.NewZap(zap.New(core))})
+	s.Logger().Info("line")
+	log.Follow().Info("followed")
+	for name, logs := range map[string]*observer.ObservedLogs{"wrapped": before, "extra": extra} {
+		if got := logs.All(); len(got) != 2 || got[0].Message != "line" || got[1].Message != "followed" {
+			t.Errorf("%s logger lines = %v, want line then followed", name, got)
+		}
+	}
+}
+
+// tee writes each line to every logger it holds.
+type tee []log.Logger
+
+func (t tee) Debug(m string, fs ...log.Field) {
+	for _, l := range t {
+		l.Debug(m, fs...)
+	}
+}
+
+func (t tee) Info(m string, fs ...log.Field) {
+	for _, l := range t {
+		l.Info(m, fs...)
+	}
+}
+
+func (t tee) Warn(m string, fs ...log.Field) {
+	for _, l := range t {
+		l.Warn(m, fs...)
+	}
+}
+
+func (t tee) Error(m string, fs ...log.Field) {
+	for _, l := range t {
+		l.Error(m, fs...)
+	}
+}
+
+func (t tee) With(fs ...log.Field) log.Logger {
+	out := make(tee, len(t))
+	for i, l := range t {
+		out[i] = l.With(fs...)
+	}
+	return out
+}
+
+func (t tee) WithContext(ctx context.Context) log.Logger {
+	out := make(tee, len(t))
+	for i, l := range t {
+		out[i] = l.WithContext(ctx)
+	}
+	return out
+}
+
+func (t tee) Enabled(l log.Level) bool { return t[0].Enabled(l) }
 
 // The logger Logger returns compares equal to another, and its access lines name AccessLog's
 // own code as their caller.

@@ -198,8 +198,9 @@ func (s *Server) SetLogger(l log.Logger) *Server {
 	return s
 }
 
-// Logger returns a [log.Follow] logger: each line goes to [log.Default] as it is then.
-func (s *Server) Logger() log.Logger { return log.Follow() }
+// Logger returns [log.Default] as it is at the call; [log.Follow] returns a logger that
+// follows a later [Server.SetLogger].
+func (s *Server) Logger() log.Logger { return log.Default() }
 
 // Codec returns the codec in effect, the one [JSON] returns.
 func (s *Server) Codec() JSONCodec { return JSON() }

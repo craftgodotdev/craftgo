@@ -56,7 +56,7 @@ You wire them in `main.go`:
 
 ```go
 srv := server.New(svcCtx, server.WithTelemetry(tel.HTTPMiddleware()))
-srv.Use(server.AccessLog(srv.Logger()))
+srv.Use(server.AccessLog(log.Follow()))
 srv.Use(server.BodyLimit(1 << 20))
 ```
 

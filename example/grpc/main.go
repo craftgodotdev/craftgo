@@ -57,7 +57,7 @@ func main() {
 		rpc.WithStatsHandler(tel.GRPCServerHandler()),
 		rpc.WithReflection(cfg.GRPC.Reflection),
 	)
-	grpcSrv.Use(rpc.AccessLog(grpcSrv.Logger()))
+	grpcSrv.Use(rpc.AccessLog(log.Follow()))
 	// The unary deadline; a shorter client deadline wins, and streams are not bounded.
 	grpcSrv.Use(rpc.Timeout(cfg.GRPC.HandlerTimeout))
 

@@ -89,7 +89,7 @@ A decorator as another decorator's argument, `@a(@b)`, is out of the grammar: on
 ### Runtime API
 
 - New: `server.WithTelemetry`, `log.Follow`, `kafka.ErrClosed`.
-- `Server.Logger()` returns a `log.Follow()` logger, and `SetLogger` installs `log.Default`, on both `server.Server` and `rpc.Server`.
+- `SetLogger` installs `log.Default` and `Logger()` returns it, on both `server.Server` and `rpc.Server`. The `AccessLog(srv.Logger())` of a 1.9 `main.go` writes to the logger of startup, as it did; `AccessLog(log.Follow())`, which a new `main.go` installs, follows a later `SetLogger`.
 - Deprecated, still working: `Server.RegisterMiddleware`, `Server.With`, `server.Timeout`, the `server.Logger` alias, `server.DocsUI` and its constants.
 - `pkg/events/nats` needs Go 1.25, where it needed 1.26.
 

@@ -787,13 +787,14 @@ The struct embeds `log.Logger` so logic can call `l.Info(...)` directly. Trace I
 
 ```go
 import (
+    "github.com/craftgodotdev/craftgo/pkg/log"
     "github.com/craftgodotdev/craftgo/pkg/server"
     "github.com/craftgodotdev/craftgo/pkg/telemetry"
 )
 
 tel, err := telemetry.Init(ctx, cfg.Config) // traces + metrics as configured in config.yaml
 srv := server.New(svcCtx, server.WithTelemetry(tel.HTTPMiddleware())) // span opens outside Recovery and every Use middleware
-srv.Use(server.AccessLog(srv.Logger()))
+srv.Use(server.AccessLog(log.Follow()))
 wiring.Register(ctx, srv, svcCtx)
 srv.Start(":8080")
 ```

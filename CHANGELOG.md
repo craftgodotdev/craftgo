@@ -12,8 +12,9 @@ breaking change to the DSL or the generated layout bumps the major version.
 - **`log.Follow()`**, a `Logger` that writes each line through `log.Default`
   as it is at that line, as do the loggers its `With` and `WithContext`
   return, so a later `log.SetDefault` reaches them. `log.SetDefault` given
-  one installs the logger it writes through at that moment, so
-  `grpcSrv.SetLogger(httpSrv.Logger())` keeps the current logger.
+  one installs the logger it writes through at that moment. A logger that
+  writes through a Follow logger, as a wrapper around one does, cannot be
+  the default: its lines would come back to it.
 
 - **`server.WithTelemetry(mw)`**, a `server.New` option that installs `mw`
   outside `Recovery` and every `Use` middleware, the HTTP twin of
@@ -30,12 +31,11 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 - **Both servers log through `log.Default`.** `server.Server` and
   `rpc.Server` keep no logger of their own: `SetLogger` installs
-  `log.Default`, `Logger()` returns a `log.Follow()` logger that writes
-  each line through it, and the panic recovery each server installs looks it
-  up when a panic happens, so `log.SetDefault`, or either server's
-  `SetLogger`, reaches both, even after the handler is built. The
-  `AccessLog(srv.Logger())` a generated `main.go` installs at startup now
-  follows a later `SetLogger` too.
+  `log.Default`, `Logger()` returns it as it is at the call, and the panic
+  recovery each server installs looks it up when a panic happens, so
+  `log.SetDefault`, or either server's `SetLogger`, reaches both, even after
+  the handler is built. A generated `main.go` installs
+  `AccessLog(log.Follow())`, which follows a later `SetLogger` too.
 
 - **Two parser errors read as facts.** An out-of-range integer reports
   `integer literal N is outside the signed 64-bit range (max …)`, and
@@ -1340,12 +1340,6 @@ breaking change to the DSL or the generated layout bumps the major version.
   written as `"":null`. Group attributes are now flattened under the group's
   key (`http.status`), an empty-key group is inlined, and an empty attribute
   or group is dropped, as `log/slog` handlers do.
-
-- **A wrapper around `srv.Logger()` can be the default logger.**
-  `srv.SetLogger(wrapper{srv.Logger()})` sent every line back into the
-  wrapper until the stack overflowed. While the default writes through a
-  `log.Follow` logger, Follow lines reach the logger that was the default
-  before it.
 
 - **Hover on a field's name shows the field.** A field spelt like a
   built-in (`file`), an HTTP verb (`delete`) or a keyword (`type`) showed

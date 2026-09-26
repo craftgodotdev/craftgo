@@ -242,13 +242,13 @@ func TestRecoveryLogsToTheCurrentDefault(t *testing.T) {
 	}
 }
 
-// An access log built from Logger writes to the logger a later SetLogger installs.
+// An access log built from log.Follow writes to the logger a later SetLogger installs.
 func TestAccessLogFollowsSetLogger(t *testing.T) {
 	prev := log.Default()
 	t.Cleanup(func() { log.SetDefault(prev) })
 	log.SetDefault(log.Discard())
 	srv := New(nil)
-	srv.Use(AccessLog(srv.Logger()))
+	srv.Use(AccessLog(log.Follow()))
 	conn := serve(t, srv, &echo{ping: pong})
 	logs := newCapture()
 	srv.SetLogger(logs)
