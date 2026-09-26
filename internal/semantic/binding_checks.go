@@ -118,7 +118,7 @@ func (a *analyzer) checkInstanceWireBindings(ref *ast.NamedTypeRef, pos lexer.Po
 			continue
 		}
 		msg := a.proj.wireTypeFault(ref.String(), view, ff.Field, kind)
-		if msg == "" && ff.sliceBehindPointer && !raw {
+		if msg == "" && ff.sliceBehindPointer() && !raw {
 			msg = fmt.Sprintf("field %s.%s: @%s rides an optional type parameter over an array, whose Go value is a pointer to a slice no %s binding reads or writes - drop the `?` from the type parameter (an array is already nilable)",
 				ref, ff.Field.Name, kind, kind)
 		}

@@ -849,6 +849,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   binder can fill, so the handler did not compile. Both are `binding/type`
   now; a JSON body still carries the field, and `a T` binds as the slice.
 
+- **An optional type parameter over a file is refused.** In `type O<T> { f
+  T? }` used as the request `O<file>` or `O<file[]>`, `f` is a pointer to the
+  file header or to the slice, which the multipart binder cannot fill, so the
+  handler did not compile. It is now `binding/type`; `f T` binds the upload,
+  and a raw request, which nothing binds, keeps `T?`.
+
 - **`@ignoreMiddleware`, `@ignoreSecurity` and `@ignoreTags` on an `extend
   service` block take effect.** They were accepted and changed nothing: the
   block's methods kept the primary service's middlewares, security and tags.

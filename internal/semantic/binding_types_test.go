@@ -181,3 +181,32 @@ type R1 { Box<string[]> }
 type Resp { ok bool }
 service S { get A /a { request R1  response Resp } }`)
 }
+
+// An optional type parameter instantiated with a `file` or a `file[]` is a
+// pointer to the file header or to the slice, which the multipart binder
+// cannot fill; a raw request is not bound, and a non-optional parameter
+// binds as the file.
+func TestOptionalTypeParamOverFileRefused(t *testing.T) {
+	const head = "package app\ntype O<T> { f T?  n string }\ntype P<T> { f T  n string }\ntype R { O<file[]>  id string }\ntype Resp { ok bool }\n"
+	for label, c := range map[string]struct{ request, field, arg string }{
+		"file":       {"O<file>", "O.f", "(file)"},
+		"file array": {"O<file[]>", "O.f", "(file[])"},
+		"mixin":      {"R", "R.f", "(file[])"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			src := head + "service S { post A /a { request " + c.request + "  response Resp } }"
+			d := expectError(t, src, CodeBindingType)
+			expectMessage(t, d, "field "+c.field+":", "multipart file part", "optional type parameter over a file "+c.arg, "drop the `?`")
+			expectCodeCount(t, src, CodeBindingType, 1)
+		})
+	}
+	mustClean(t, head+`service S {
+	@rawRequest post A /a { request O<file>  response Resp }
+	post B /b { request P<file>  response Resp }
+	post C /c { request P<file[]>  response Resp }
+}`)
+	src := "package app\ntype F<T> { f T? @form(\"upload\")  n string }\ntype Resp { ok bool }\nservice S { post A /a { request F<file>  response Resp } }"
+	d := expectError(t, src, CodeBindingType)
+	expectMessage(t, d, "@form requires")
+	expectCodeCount(t, src, CodeBindingType, 1)
+}

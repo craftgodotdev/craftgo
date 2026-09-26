@@ -93,13 +93,19 @@ type FlatField struct {
 	Home string
 	// embedPath is the Go names of the mixins that embed the field, outermost first.
 	embedPath []string
-	// sliceBehindPointer reports a field declared `T?` whose argument is an
-	// array: its Go value is a pointer to the slice, which Field's type spells
-	// as an optional array.
-	sliceBehindPointer bool
+	// optionalParam reports a field declared `T?` for a type parameter T the
+	// flattening binds: its Go value is a pointer to the argument's, which
+	// Field's type spells as the argument made optional.
+	optionalParam bool
 	// paramTyped reports a field declared as a type parameter the flattening
 	// binds, `T` or `T[]`: its type is spelled from the argument.
 	paramTyped bool
+}
+
+// sliceBehindPointer reports whether ff's Go value is a pointer to a slice:
+// ff is declared `T?` and its argument is an array.
+func (ff FlatField) sliceBehindPointer() bool {
+	return ff.optionalParam && ff.Field.Type.Array
 }
 
 // FlattenFields returns td's fields with its mixins expanded in body order,
@@ -203,7 +209,7 @@ func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []strin
 		switch v := m.(type) {
 		case *ast.Field:
 			ff := FlatField{Field: v, Home: home, embedPath: embedPath,
-				sliceBehindPointer: optionalParamOverArray(v.Type, subst), paramTyped: boundParam(v.Type, subst) != nil}
+				optionalParam: optionalParam(v.Type, subst), paramTyped: boundParam(v.Type, subst) != nil}
 			if i < len(names) {
 				ff.Name = names[i]
 			}
@@ -221,14 +227,10 @@ func (w *fieldWalk) level(home string, body []ast.TypeMember, typeParams []strin
 	return out
 }
 
-// optionalParamOverArray reports whether t is `T?` for a type parameter T
-// that subst binds to an array.
-func optionalParamOverArray(t *ast.TypeRef, subst map[string]*ast.TypeRef) bool {
-	if t == nil || !t.Optional || t.Array {
-		return false
-	}
-	arg := boundParam(t, subst)
-	return arg != nil && arg.Array
+// optionalParam reports whether t is `T?` for a type parameter T that subst
+// binds.
+func optionalParam(t *ast.TypeRef, subst map[string]*ast.TypeRef) bool {
+	return t != nil && t.Optional && !t.Array && boundParam(t, subst) != nil
 }
 
 // boundParam returns the argument subst binds to the type parameter t names,

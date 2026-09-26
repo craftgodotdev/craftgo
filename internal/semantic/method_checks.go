@@ -184,13 +184,14 @@ func (a *analyzer) checkBodyBindingVerb(svcName string, m *ast.Method) {
 	}
 }
 
-// checkMultipartTextParts rejects a text part of m's multipart request - a
-// body or form field, mixins included, beside a `file` - that the form binder
-// cannot fill: a type no form value carries, or an optional type parameter
-// over an array, whose Go value is a pointer to a slice; decs are the
-// decorators that apply to m. A raw request is not bound, and an explicit
-// @form or a field holding a `file` is reported where it is declared.
-func (a *analyzer) checkMultipartTextParts(svcName string, m *ast.Method, decs []*ast.Decorator) {
+// checkMultipartParts rejects a part of m's multipart request - a body or
+// form field, mixins included, beside a `file` - that the form binder cannot
+// fill: an optional type parameter over a `file` or an array, whose Go value
+// is a pointer to the file or the slice, or a text part of a type no form
+// value carries; decs are the decorators that apply to m. A raw request is not
+// bound, and an explicit @form or a field holding a `file` below the top level
+// is reported where it is declared.
+func (a *analyzer) checkMultipartParts(svcName string, m *ast.Method, decs []*ast.Decorator) {
 	if m == nil || m.Request == nil || !wire.IsBodyVerb(m.Verb) {
 		return
 	}
@@ -217,12 +218,18 @@ func (a *analyzer) checkMultipartTextParts(svcName string, m *ast.Method, decs [
 	for _, ff := range parts {
 		f := ff.Field
 		switch {
+		case ast.HasDecorator(f.Decorators, wire.BindingForm):
+		case ff.optionalParam && isFileTypeRef(f.Type):
+			arg := *f.Type
+			arg.Optional = false
+			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
+				"field %s.%s: on the %s %s handler this rides a multipart file part, but it is an optional type parameter over a file (%s), whose Go value is a pointer the multipart binder cannot fill - drop the `?` from the type parameter (a file is already nilable)",
+				reqName, f.Name, verb, svcName, arg.String())
 		case holdsFile(f.Type):
-		case ff.sliceBehindPointer:
+		case ff.sliceBehindPointer():
 			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
 				"field %s.%s: on the %s %s handler this rides a multipart form part (the request carries a file), but it is an optional type parameter over an array, whose Go value is a pointer to a slice the form binder cannot fill - drop the `?` from the type parameter (an array is already nilable)",
 				reqName, f.Name, verb, svcName)
-		case ast.HasDecorator(f.Decorators, wire.BindingForm):
 		case !a.proj.wireBindable(view, f.Type):
 			a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
 				"field %s.%s: on the %s %s handler this rides a multipart form part (the request carries a file), but %s is no form value - a part carries string/bool/int*/uint*/float*, a scalar/enum wrapping one of those, or a single-level array of those (no maps, structs, generic instantiations or nested arrays); split it into such fields, or send it in a request without a file",
@@ -260,7 +267,7 @@ func (a *analyzer) bodyBindingVerbRules(reqName, verb, svcName, view string, pat
 			reqName, f.Name, verb, svcName)
 		return
 	}
-	if ff.sliceBehindPointer {
+	if ff.sliceBehindPointer() {
 		a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeBindingType,
 			"field %s.%s: on the %s %s handler this auto-binds to @query (there is no request body to decode into), but it is an optional type parameter over an array, whose Go value is a pointer to a slice the query binder cannot fill - drop the `?` from the type parameter (an array is already nilable), or switch to a body verb (POST/PUT/PATCH)",
 			reqName, f.Name, verb, svcName)
