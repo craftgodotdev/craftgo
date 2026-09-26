@@ -206,14 +206,16 @@ breaking change to the DSL or the generated layout bumps the major version.
   nosniff`; they were `text/plain`. The message is the status text in lower
   case, or the validation error's text. A redirect to a cleaned path stays the
   mux's. Telling a 404 or 405 from a route costs each request a second
-  `ServeMux` lookup, about 100 ns.
+  `ServeMux` lookup: about 120 ns on a static route, up to about 300 ns on one
+  with path wildcards, whose values can allocate.
 
 - **A body read past its cap answers 413, not 400.** `WriteValidationError`
   answers 413 `{"message":"request entity too large"}`, without calling the
   `SetDefaultValidationFailed` handler, to an `*http.MaxBytesError` or
   `multipart.ErrMessageTooLarge`, and to any error once the body was read past
   its `BodyLimit` or `@maxBodySize` cap, as when the cap cuts a multipart part
-  header. A generated handler so answers a chunked body over its cap as it
+  header; a middleware inside the cap that replaces `r.Body` hides that read.
+  A generated handler so answers a chunked body over its cap as it
   answers a declared `Content-Length` over it; a raw request handler that
   returns the read error to `WriteError` still gets a 500.
 
@@ -262,7 +264,8 @@ breaking change to the DSL or the generated layout bumps the major version.
   the error. The `SetHandleUnknownError` handler no longer receives these
   errors; a `context.Canceled` on a live request still reaches it. A request
   context canceled by anything, a middleware of your own included, counts as
-  a client that has gone.
+  a client that has gone: nothing is written, so a live client gets an empty
+  200.
 
 - **`AccessLog` records 499 for a client that left before any response**, as
   nginx does, where it recorded the 200 `net/http` would have sent.

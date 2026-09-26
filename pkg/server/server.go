@@ -240,8 +240,7 @@ func (s *Server) SetHandleNotFound(h http.Handler) *Server {
 	return s
 }
 
-// muxLocked returns s.mux with the answers it writes itself to a request no route matches
-// replaced: a 404 by the SetHandleNotFound handler, a 405 by {"message":"method not allowed"}
+// muxLocked returns s.mux answering an unmatched request with the not-found handler, or a JSON 405
 // with its Allow header; a redirect stays the mux's. The caller holds s.mu.
 func (s *Server) muxLocked() http.Handler {
 	notFound := s.notFound

@@ -102,8 +102,9 @@ func SetDefaultValidationFailed(h ValidationFailedHandler) {
 	validationFailed.Store(&h)
 }
 
-// WriteValidationError renders err with the [SetDefaultValidationFailed] handler; a read past
-// a body cap is answered 413 {"message":"request entity too large"} without it.
+// WriteValidationError renders err with the [SetDefaultValidationFailed] handler, but answers
+// 413 {"message":"request entity too large"} to an *http.MaxBytesError or
+// multipart.ErrMessageTooLarge in err, or any err once r.Body is read past its [BodyLimit].
 func WriteValidationError(w http.ResponseWriter, r *http.Request, err error) {
 	if bodyTooLarge(r, err) && !responseCommitted(w) {
 		writeStatusError(w, http.StatusRequestEntityTooLarge)
@@ -148,7 +149,7 @@ func SetHandleUnknownError(h UnknownErrorHandler) {
 }
 
 // WriteError renders err: a [StatusError] in its chain, unlogged, as its status, headers and
-// JSON body; a deadline as 504 {"message":"gateway timeout"}; a canceled request as nothing;
+// JSON body; a context error as nothing once the request is canceled, else a deadline as 504;
 // anything else through the [SetHandleUnknownError] handler, or the log once committed.
 func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	var se StatusError
