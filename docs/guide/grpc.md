@@ -277,7 +277,7 @@ craftgo: ./main.go predates the gRPC services and never calls wiring.RegisterGRP
 craftgo: ./config/config.go predates the gRPC services and has no GRPCConfig - it is generated once, so add the `grpc:` block by hand (docs/guide/grpc.md shows it)
 ```
 
-Add the `GRPCConfig` struct and its default to `config.go`, the `grpc:` block to `config.yaml`, and the listener block above to `main.go`; the wiring, the server layer and the stubs are already there. The reverse holds for a gRPC project that gains its first route, and for one that drops its last proto: `wiring/grpc.go` is swept, and `craftgo gen` names the `main.go` that still calls `RegisterGRPC`.
+Add the `GRPCConfig` struct and its default to `config.go`, the `grpc:` block to `config.yaml`, and the listener block above to `main.go`; the wiring, the server layer and the stubs are already there. The reverse holds for a gRPC project that gains its first route, and for one that drops its last proto: `wiring/grpc.go` is swept, and `craftgo gen` names the `main.go` that still calls `RegisterGRPC`. The pb code of that last proto stays under `internal/pb/`, which a design with no proto leaves alone; delete it by hand.
 
 The protos are compiled on every run, `--target docs` included: a proto that does not compile fails the run before anything is written, the way a design error does. Only the plugins are skipped when the Go target is not selected.
 
@@ -286,7 +286,7 @@ The protos are compiled on every run, `--target docs` included: a proto that doe
 | Layer | Owner |
 |---|---|
 | `design/**/*.proto` | you - the design |
-| `internal/pb/` | the protoc plugins, run by `craftgo gen`; swept when a proto goes |
+| `internal/pb/` | the protoc plugins, run by `craftgo gen`; a proto's code is swept when the proto goes and its directory keeps another design proto |
 | `internal/grpc/<svc>/` | craftgo, regenerated on every run |
 | `internal/service/<svc>/<rpc>.go` | you, from the first `craftgo gen` on - a renamed or dropped service leaves its stubs where they are and `craftgo gen` names their directory, so move or delete them by hand |
 | `internal/wiring/grpc.go` | craftgo, regenerated; present while a proto declares a service |

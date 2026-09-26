@@ -10,8 +10,9 @@ import (
 	"strings"
 )
 
-// sweepDir is a directory the sweep walks and the headers that mark a file in it as regenerated.
-type sweepDir struct {
+// sweepPath is a path the sweep covers, a directory with everything under it or a single file,
+// and the headers that mark a file there as regenerated.
+type sweepPath struct {
 	path    string
 	headers []string
 }
@@ -31,36 +32,36 @@ func isGenerated(path string, headers []string) bool {
 	return false
 }
 
-// owned lists dirs, a directory's headers from every target writing there, in path order,
-// dropping the project root and its ancestors: the root may hold a sibling design's output, so it
-// is never swept.
-func owned(dirs map[string][]string, projectRoot string) []sweepDir {
+// owned lists paths, a path's headers from every target writing there, in path order, dropping
+// the project root and its ancestors: the root may hold a sibling design's output, so it is never
+// swept.
+func owned(paths map[string][]string, projectRoot string) []sweepPath {
 	root := filepath.Clean(projectRoot)
 	merged := map[string][]string{}
-	for dir, headers := range dirs {
-		dir = filepath.Clean(dir)
-		if dir == root || strings.HasPrefix(root, dir+string(filepath.Separator)) {
+	for p, headers := range paths {
+		p = filepath.Clean(p)
+		if p == root || strings.HasPrefix(root, p+string(filepath.Separator)) {
 			continue
 		}
-		merged[dir] = append(merged[dir], headers...)
+		merged[p] = append(merged[p], headers...)
 	}
-	out := make([]sweepDir, 0, len(merged))
-	for _, dir := range slices.Sorted(maps.Keys(merged)) {
-		headers := merged[dir]
+	out := make([]sweepPath, 0, len(merged))
+	for _, p := range slices.Sorted(maps.Keys(merged)) {
+		headers := merged[p]
 		slices.Sort(headers)
-		out = append(out, sweepDir{path: dir, headers: slices.Compact(headers)})
+		out = append(out, sweepPath{path: p, headers: slices.Compact(headers)})
 	}
 	return out
 }
 
-// prune deletes, under each of dirs, the generated files written does not
-// name, then the directories that leaves empty.
-func prune(dirs []sweepDir, written map[string]bool) error {
-	for _, dir := range dirs {
-		root := dir.path
+// prune deletes, at each of paths, the generated files written does not name, then the
+// directories that leaves empty.
+func prune(paths []sweepPath, written map[string]bool) error {
+	for _, sp := range paths {
+		root := sp.path
 		var emptied []string
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() || written[path] || !isGenerated(path, dir.headers) {
+			if err != nil || d.IsDir() || written[path] || !isGenerated(path, sp.headers) {
 				return nil
 			}
 			if rmErr := os.Remove(path); rmErr != nil && !os.IsNotExist(rmErr) {

@@ -31,9 +31,9 @@ type langTarget struct {
 	lang string
 	// generate writes the event artefacts into outDir, relative to projectRoot.
 	generate func(proj *semantic.Project, cfg *config.Config, projectRoot, outDir string) error
-	// plan lists the directories generate writes into, with the headers of its files, and the
+	// plan lists the paths the sweep covers for generate, with the headers of its files, and the
 	// files it writes.
-	plan func(proj *semantic.Project, projectRoot, outDir string) (dirs map[string][]string, files []string)
+	plan func(proj *semantic.Project, projectRoot, outDir string) (paths map[string][]string, files []string)
 }
 
 // langTargets holds one row per language in [config.SupportedLangs].
@@ -95,33 +95,33 @@ func Generated(in Inputs, cfg *config.Config, projectRoot string, targets ...str
 	return packages, sel[config.LangGo] && in.Protos != nil
 }
 
-// plan lists the directories the selected targets regenerate into, each with the headers of the
-// files written there, and every file the targets write, selected or not: a target a narrowed run
-// skips still owns its files.
-func plan(in Inputs, cfg *config.Config, projectRoot string, sel map[string]bool) ([]sweepDir, map[string]bool) {
+// plan lists the paths the selected targets regenerate into, each with the headers of the files
+// written there, and every file the targets write, selected or not: a target a narrowed run skips
+// still owns its files.
+func plan(in Inputs, cfg *config.Config, projectRoot string, sel map[string]bool) ([]sweepPath, map[string]bool) {
 	headers := map[string][]string{}
 	written := map[string]bool{}
-	take := func(selected bool, dirs map[string][]string, files []string) {
+	take := func(selected bool, paths map[string][]string, files []string) {
 		if selected {
-			for dir, hs := range dirs {
-				headers[dir] = append(headers[dir], hs...)
+			for p, hs := range paths {
+				headers[p] = append(headers[p], hs...)
 			}
 		}
 		for _, file := range files {
 			written[file] = true
 		}
 	}
-	dirs, files := golang.Plan(in.Design, in.Protos, cfg, projectRoot)
-	take(sel[config.LangGo], dirs, files)
+	paths, files := golang.Plan(in.Design, in.Protos, cfg, projectRoot)
+	take(sel[config.LangGo], paths, files)
 	for target, outDir := range eventTargets(cfg) {
-		dirs, files := target.plan(in.Design, projectRoot, outDir)
-		take(sel[target.lang], dirs, files)
+		paths, files := target.plan(in.Design, projectRoot, outDir)
+		take(sel[target.lang], paths, files)
 	}
-	dirs, files = docs.Plan(in.Design, cfg, projectRoot)
-	take(sel[targetDocs], dirs, files)
-	for dir, hs := range headers {
+	paths, files = docs.Plan(in.Design, cfg, projectRoot)
+	take(sel[targetDocs], paths, files)
+	for p, hs := range headers {
 		if slices.ContainsFunc(hs, func(h string) bool { return slices.Contains(craftgoHeaders, h) }) {
-			headers[dir] = append(hs, craftgoHeaders...)
+			headers[p] = append(hs, craftgoHeaders...)
 		}
 	}
 	return owned(headers, projectRoot), written

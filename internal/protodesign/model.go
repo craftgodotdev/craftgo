@@ -4,8 +4,11 @@
 package protodesign
 
 import (
+	"bufio"
+	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"google.golang.org/protobuf/compiler/protogen"
@@ -141,4 +144,82 @@ func (s *Set) PBFiles(projectRoot string) []string {
 		}
 	}
 	return out
+}
+
+// OwnedPBFiles returns the plugin code on disk of design files, present or removed: each file directly
+// in a design file's pb directory, the project root aside, whose plugin header names a proto there no
+// include root holds.
+func (s *Set) OwnedPBFiles(projectRoot string) []string {
+	if s == nil || !s.opts.pbEnabled() {
+		return nil
+	}
+	var out []string
+	for _, dir := range s.designDirs() {
+		abs := filepath.Join(s.pbRoot(projectRoot), filepath.FromSlash(dir))
+		if abs == filepath.Clean(projectRoot) {
+			continue
+		}
+		entries, err := os.ReadDir(abs)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			file := filepath.Join(abs, e.Name())
+			if src, ok := pluginSource(file); ok && path.Dir(src) == dir && !s.included(src) {
+				out = append(out, file)
+			}
+		}
+	}
+	return out
+}
+
+// designDirs lists the directories of the design files, as sorted slash paths relative to the
+// design root.
+func (s *Set) designDirs() []string {
+	dirs := make([]string, 0, len(s.names))
+	for _, name := range s.names {
+		dirs = append(dirs, path.Dir(name))
+	}
+	slices.Sort(dirs)
+	return slices.Compact(dirs)
+}
+
+// included reports whether an include root holds the proto at slash path src.
+func (s *Set) included(src string) bool {
+	for _, root := range s.opts.Includes {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(src))); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// pluginSource returns the proto the plugin code in file was generated from, as its header
+// comment names it; false when file does not open with a plugin header naming one.
+func pluginSource(file string) (string, bool) {
+	f, err := os.Open(file)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	lines := bufio.NewScanner(f)
+	if !lines.Scan() || !slices.Contains(PluginHeaders, lines.Text()) {
+		return "", false
+	}
+	for lines.Scan() {
+		line, ok := strings.CutPrefix(lines.Text(), "// ")
+		if !ok {
+			break
+		}
+		if src, ok := strings.CutPrefix(line, "source: "); ok {
+			return src, true
+		}
+		if src, ok := strings.CutSuffix(line, " is a deprecated file."); ok {
+			return src, true
+		}
+	}
+	return "", false
 }

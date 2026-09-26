@@ -78,6 +78,7 @@ A decorator as another decorator's argument, `@a(@b)`, is out of the grammar: on
 ### Manifest, CLI and editor
 
 - An unknown manifest key is a warning on stderr and in the editor; a removed key still stops the run.
+- `craftgo gen` sweeps under `output.pb` only the pb code of the design's own protos, from the directories they write into, and nothing when the design has no proto: the pb code of a proto moved to another directory, or of a project's last proto, stays until you delete it.
 - `craftgo fmt` sets trailing comments off by one space and keeps every literal as written: run it once to settle the design files (`craftgo fmt -l` lists them).
 
 ### Runtime API

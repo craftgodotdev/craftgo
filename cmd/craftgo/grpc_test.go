@@ -166,9 +166,10 @@ func TestRunGenRejectsAnEmptyDesign(t *testing.T) {
 	}
 }
 
-// TestRenamedProtoServiceLeavesNothingBehind checks that renaming a proto
-// service sweeps its old server package and pb code but keeps its logic stubs.
-func TestRenamedProtoServiceLeavesNothingBehind(t *testing.T) {
+// TestRenamedProtoServiceLeavesItsPBCodeAndStubs checks that renaming a proto service into
+// another directory sweeps its old server package; its logic stubs stay, and so does its pb
+// code, in a directory no design proto writes into any more.
+func TestRenamedProtoServiceLeavesItsPBCodeAndStubs(t *testing.T) {
 	dir := grpcProject(t)
 	mustWrite(t, dir, "design/craftgo.design.yaml", protoOnlyManifest)
 	mustWrite(t, dir, "design/greet/greet.proto", greetProto)
@@ -180,12 +181,10 @@ func TestRenamedProtoServiceLeavesNothingBehind(t *testing.T) {
 	mustWrite(t, dir, "design/hello/hello.proto", strings.NewReplacer("package greet;", "package hello;", "service Greeter", "service Hello").Replace(greetProto))
 	genProject(t, dir)
 
-	for _, rel := range []string{"internal/grpc/greeter", "internal/pb/greet"} {
-		if exists(t, dir, filepath.FromSlash(rel)) {
-			t.Errorf("%s of the renamed service survived", rel)
-		}
+	if exists(t, dir, filepath.FromSlash("internal/grpc/greeter")) {
+		t.Error("internal/grpc/greeter of the renamed service survived")
 	}
-	for _, rel := range []string{"internal/grpc/hello/server.go", "internal/pb/hello/hello_grpc.pb.go", "internal/service/greeter/say_hello.go", "internal/service/hello/say_hello.go"} {
+	for _, rel := range []string{"internal/grpc/hello/server.go", "internal/pb/hello/hello_grpc.pb.go", "internal/pb/greet/greet_grpc.pb.go", "internal/service/greeter/say_hello.go", "internal/service/hello/say_hello.go"} {
 		if !exists(t, dir, filepath.FromSlash(rel)) {
 			t.Errorf("missing %s", rel)
 		}

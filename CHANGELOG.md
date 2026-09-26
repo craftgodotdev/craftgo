@@ -1318,6 +1318,15 @@ breaking change to the DSL or the generated layout bumps the major version.
   built-in (`file`), an HTTP verb (`delete`) or a keyword (`type`) showed
   that word's doc, or nothing.
 
+- **`craftgo gen` deletes only the pb code of the design's own protos.** The
+  sweep took every file with a protoc plugin header under `output.pb`: a
+  design with no proto deleted the protoc output a project keeps in
+  `./internal/pb`, and the Go code of a `proto.includes` proto placed there
+  went too, leaving a project that did not build. A file there is now swept
+  only from a directory a design proto writes into, and only when its header
+  names as its source a proto no include root holds; a design with no proto
+  sweeps nothing under `output.pb`.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added
