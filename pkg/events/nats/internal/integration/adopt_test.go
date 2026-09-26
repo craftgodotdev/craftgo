@@ -54,7 +54,7 @@ func adoptWith(t *testing.T, carried, planned []string, opts ...craftnats.JetStr
 		AckPolicy: jetstream.AckExplicitPolicy,
 	}
 	filterFor(&cfg, carried)
-	createConsumer(t, conn, "ORDERS", cfg)
+	createConsumer(t, conn, cfg)
 
 	subs := make([]events.Subscription, 0, len(planned))
 	for i, contract := range planned {
@@ -66,7 +66,7 @@ func adoptWith(t *testing.T, carried, planned []string, opts ...craftnats.JetStr
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	err := jsTransport(t, conn, opts...).Subscribe(ctx, subs)
-	return filtersOf(consumerConfig(t, conn, "ORDERS", string(adoptGroup))), err
+	return filtersOf(consumerConfig(t, conn, string(adoptGroup))), err
 }
 
 // A durable already filtering the plan is adopted unchanged.
@@ -250,7 +250,7 @@ func TestAGroupsSettingsApplyToItsDurableAlone(t *testing.T) {
 		t.Fatalf("subscribe: %v", err)
 	}
 
-	tuned := consumerConfig(t, conn, "ORDERS", "tuned")
+	tuned := consumerConfig(t, conn, "tuned")
 	if tuned.AckWait != 3*time.Second {
 		t.Errorf("ack wait = %s, want the group's own", tuned.AckWait)
 	}
@@ -267,7 +267,7 @@ func TestAGroupsSettingsApplyToItsDurableAlone(t *testing.T) {
 		t.Errorf("filter = %v, want the plan re-asserted over the group's", got)
 	}
 
-	plain := consumerConfig(t, conn, "ORDERS", "plain")
+	plain := consumerConfig(t, conn, "plain")
 	if plain.AckWait != 25*time.Second {
 		t.Errorf("ack wait = %s, want the transport-wide default", plain.AckWait)
 	}

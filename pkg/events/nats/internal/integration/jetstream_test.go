@@ -664,8 +664,8 @@ func TestTheDeliveryCapReportsThatItFired(t *testing.T) {
 	}
 }
 
-// storedIn returns how many messages a stream holds.
-func storedIn(t *testing.T, conn *natsclient.Conn, name string) uint64 {
+// storedInOrders returns how many messages the ORDERS stream holds.
+func storedInOrders(t *testing.T, conn *natsclient.Conn) uint64 {
 	t.Helper()
 	js, err := jetstream.New(conn)
 	if err != nil {
@@ -673,9 +673,9 @@ func storedIn(t *testing.T, conn *natsclient.Conn, name string) uint64 {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	st, err := js.Stream(ctx, name)
+	st, err := js.Stream(ctx, "ORDERS")
 	if err != nil {
-		t.Fatalf("stream %s: %v", name, err)
+		t.Fatalf("stream ORDERS: %v", err)
 	}
 	info, err := st.Info(ctx)
 	if err != nil {
@@ -706,7 +706,7 @@ func TestPublishBatchRefusesAnAlreadyCancelledContext(t *testing.T) {
 		t.Errorf("err is a partial report (%v), but nothing was published", partial)
 	}
 	time.Sleep(300 * time.Millisecond)
-	if n := storedIn(t, conn, "ORDERS"); n != 0 {
+	if n := storedInOrders(t, conn); n != 0 {
 		t.Errorf("stream holds %d messages, want 0 - a refused batch must not reach the wire", n)
 	}
 }
@@ -734,7 +734,7 @@ func TestACancellationAfterThePublishDoesNotAbandonTheAcks(t *testing.T) {
 	if err := tr.PublishBatch(ctx, msgs); err != nil {
 		t.Fatalf("publish batch: %v - the stream stored these, so reporting them unsent duplicates them on retry", err)
 	}
-	if n := storedIn(t, conn, "ORDERS"); n != 3 {
+	if n := storedInOrders(t, conn); n != 3 {
 		t.Errorf("stream holds %d messages, want 3", n)
 	}
 }
@@ -770,7 +770,7 @@ func TestPublishBatchDoesNotClaimAnUnwaitedMessageWasSent(t *testing.T) {
 	if partial.Sent != 0 {
 		t.Errorf("Sent = %d, want 0", partial.Sent)
 	}
-	if n := storedIn(t, conn, "ORDERS"); n != 0 {
+	if n := storedInOrders(t, conn); n != 0 {
 		t.Errorf("stream holds %d messages, want 0", n)
 	}
 }
@@ -798,7 +798,7 @@ func TestAJetStreamBatchFailsOnlyTheMessagesNoStreamCarries(t *testing.T) {
 	if partial.Sent != 1 {
 		t.Errorf("Sent = %d, want 1", partial.Sent)
 	}
-	if n := storedIn(t, conn, "ORDERS"); n != 2 {
+	if n := storedInOrders(t, conn); n != 2 {
 		t.Errorf("stream holds %d messages, want 2", n)
 	}
 }
@@ -806,17 +806,7 @@ func TestAJetStreamBatchFailsOnlyTheMessagesNoStreamCarries(t *testing.T) {
 // A missing ack reports its message unsent once the ack timeout passes.
 func TestPublishBatchGivesUpOnAnAcknowledgementThatNeverComes(t *testing.T) {
 	conn := runJetStreamServer(t)
-	js, err := jetstream.New(conn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if _, err := js.CreateStream(ctx, jetstream.StreamConfig{
-		Name: "QUIET", Subjects: []string{"orders.>"}, NoAck: true,
-	}); err != nil {
-		t.Fatalf("create stream: %v", err)
-	}
+	quietStream(t, conn)
 	tr := jsTransport(t, conn, craftnats.WithPublishAckTimeout(500*time.Millisecond))
 
 	msgs := []*events.Message{{Event: "orders.Placed", Payload: []byte(`{}`)}}
@@ -837,8 +827,9 @@ func TestPublishBatchGivesUpOnAnAcknowledgementThatNeverComes(t *testing.T) {
 	}
 }
 
-// quietStream provisions a stream that stores messages but acks none.
-func quietStream(t *testing.T, conn *natsclient.Conn, name string, subjects ...string) {
+// quietStream provisions QUIET, a stream over orders.> that stores messages but
+// acks none.
+func quietStream(t *testing.T, conn *natsclient.Conn) {
 	t.Helper()
 	js, err := jetstream.New(conn)
 	if err != nil {
@@ -847,7 +838,7 @@ func quietStream(t *testing.T, conn *natsclient.Conn, name string, subjects ...s
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if _, err := js.CreateStream(ctx, jetstream.StreamConfig{
-		Name: name, Subjects: subjects, NoAck: true,
+		Name: "QUIET", Subjects: []string{"orders.>"}, NoAck: true,
 	}); err != nil {
 		t.Fatalf("create stream: %v", err)
 	}
@@ -856,7 +847,7 @@ func quietStream(t *testing.T, conn *natsclient.Conn, name string, subjects ...s
 // Close ends a waiting batch with ErrClosed, reporting its messages unsent.
 func TestCloseEndsAPublishThatIsWaiting(t *testing.T) {
 	conn := runJetStreamServer(t)
-	quietStream(t, conn, "QUIET", "orders.>")
+	quietStream(t, conn)
 	tr := jsTransport(t, conn, craftnats.WithPublishAckTimeout(60*time.Second))
 
 	msgs := []*events.Message{
@@ -909,7 +900,7 @@ func TestPublishBatchAfterCloseSendsNothing(t *testing.T) {
 		t.Fatalf("err = %v, want ErrClosed", err)
 	}
 	time.Sleep(300 * time.Millisecond)
-	if n := storedIn(t, conn, "ORDERS"); n != 0 {
+	if n := storedInOrders(t, conn); n != 0 {
 		t.Errorf("stream holds %d messages, want 0 - a refused batch must not reach the wire", n)
 	}
 }
@@ -929,7 +920,7 @@ func TestANegativePublishAckTimeoutIsRefused(t *testing.T) {
 
 func TestThePublishAckTimeoutBoundsTheSynchronousPublishToo(t *testing.T) {
 	conn := runJetStreamServer(t)
-	quietStream(t, conn, "QUIET", "orders.>")
+	quietStream(t, conn)
 	tr := jsTransport(t, conn, craftnats.WithPublishAckTimeout(700*time.Millisecond))
 
 	started := time.Now()
@@ -947,7 +938,7 @@ func TestThePublishAckTimeoutBoundsTheSynchronousPublishToo(t *testing.T) {
 // A zero ack timeout keeps a publish and a batch waiting past the client's 5s default, until Close.
 func TestAZeroPublishAckTimeoutWaitsUntilCloseOnBothPaths(t *testing.T) {
 	conn := runJetStreamServer(t)
-	quietStream(t, conn, "QUIET", "orders.>")
+	quietStream(t, conn)
 	tr := jsTransport(t, conn, craftnats.WithPublishAckTimeout(0))
 
 	waiting := map[string]chan error{"Publish": make(chan error, 1), "PublishBatch": make(chan error, 1)}
@@ -992,7 +983,7 @@ func TestPublishDoesNotFailAMessageTheStreamStored(t *testing.T) {
 	if err := tr.Publish(ctx, &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)}); err != nil {
 		t.Fatalf("publish: %v - the stream stored this, so reporting it failed has the caller publish it twice", err)
 	}
-	if n := storedIn(t, conn, "ORDERS"); n != 1 {
+	if n := storedInOrders(t, conn); n != 1 {
 		t.Errorf("stream holds %d messages, want 1", n)
 	}
 }
@@ -1009,14 +1000,14 @@ func TestPublishRefusesAnAlreadyCancelledContext(t *testing.T) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 	time.Sleep(300 * time.Millisecond)
-	if n := storedIn(t, conn, "ORDERS"); n != 0 {
+	if n := storedInOrders(t, conn); n != 0 {
 		t.Errorf("stream holds %d messages, want 0", n)
 	}
 }
 
 func TestCloseEndsASinglePublishThatIsWaiting(t *testing.T) {
 	conn := runJetStreamServer(t)
-	quietStream(t, conn, "QUIET", "orders.>")
+	quietStream(t, conn)
 	tr := jsTransport(t, conn, craftnats.WithPublishAckTimeout(60*time.Second))
 
 	done := make(chan error, 1)
@@ -1055,7 +1046,7 @@ func TestPublishAfterCloseSendsNothing(t *testing.T) {
 		t.Fatalf("err = %v, want ErrClosed", err)
 	}
 	time.Sleep(300 * time.Millisecond)
-	if n := storedIn(t, conn, "ORDERS"); n != 0 {
+	if n := storedInOrders(t, conn); n != 0 {
 		t.Errorf("stream holds %d messages, want 0", n)
 	}
 }
@@ -1178,8 +1169,8 @@ func deletedDurableGroup(t *testing.T, conn *natsclient.Conn, handle func(contex
 	return tr, reported, durable
 }
 
-// deleteConsumer deletes a durable from under a running process.
-func deleteConsumer(t *testing.T, conn *natsclient.Conn, stream, name string) {
+// deleteConsumer deletes durable from under a running process.
+func deleteConsumer(t *testing.T, conn *natsclient.Conn, durable jetstream.Consumer) {
 	t.Helper()
 	js, err := jetstream.New(conn)
 	if err != nil {
@@ -1187,8 +1178,9 @@ func deleteConsumer(t *testing.T, conn *natsclient.Conn, stream, name string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := js.DeleteConsumer(ctx, stream, name); err != nil {
-		t.Fatalf("delete consumer %s: %v", name, err)
+	info := durable.CachedInfo()
+	if err := js.DeleteConsumer(ctx, info.Stream, info.Name); err != nil {
+		t.Fatalf("delete consumer %s: %v", info.Name, err)
 	}
 }
 
@@ -1240,7 +1232,7 @@ func deleteUnderAWaitingPull(t *testing.T, conn *natsclient.Conn, delivered <-ch
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	deleteConsumer(t, conn, "ORDERS", "deleted-durable")
+	deleteConsumer(t, conn, durable)
 }
 
 // signal is a handler that reports each delivery on delivered without blocking.
@@ -1315,7 +1307,7 @@ func TestADeletedDurableWithNoPullWaitingIsReportedOnTheNextMissedHeartbeat(t *t
 	if info.NumWaiting != 0 {
 		t.Fatalf("NumWaiting = %d while the handler runs, so the delete would be answered after all", info.NumWaiting)
 	}
-	deleteConsumer(t, conn, "ORDERS", "deleted-durable")
+	deleteConsumer(t, conn, durable)
 	if _, err := durable.Info(ctx); !errors.Is(err, jetstream.ErrConsumerNotFound) {
 		t.Fatalf("info after the delete: err = %v, want ErrConsumerNotFound", err)
 	}

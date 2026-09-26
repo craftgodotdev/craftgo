@@ -16,8 +16,8 @@ import (
 	craftnats "github.com/craftgodotdev/craftgo/pkg/events/nats"
 )
 
-// consumerConfig reads a durable's configuration back from the server.
-func consumerConfig(t *testing.T, conn *natsclient.Conn, stream, name string) jetstream.ConsumerConfig {
+// consumerConfig reads the configuration of a durable on ORDERS back from the server.
+func consumerConfig(t *testing.T, conn *natsclient.Conn, name string) jetstream.ConsumerConfig {
 	t.Helper()
 	js, err := jetstream.New(conn)
 	if err != nil {
@@ -25,15 +25,15 @@ func consumerConfig(t *testing.T, conn *natsclient.Conn, stream, name string) je
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	c, err := js.Consumer(ctx, stream, name)
+	c, err := js.Consumer(ctx, "ORDERS", name)
 	if err != nil {
 		t.Fatalf("consumer %s: %v", name, err)
 	}
 	return c.CachedInfo().Config
 }
 
-// createConsumer provisions a durable by hand, as an operator would.
-func createConsumer(t *testing.T, conn *natsclient.Conn, stream string, cfg jetstream.ConsumerConfig) {
+// createConsumer provisions a durable on ORDERS by hand, as an operator would.
+func createConsumer(t *testing.T, conn *natsclient.Conn, cfg jetstream.ConsumerConfig) {
 	t.Helper()
 	js, err := jetstream.New(conn)
 	if err != nil {
@@ -41,7 +41,7 @@ func createConsumer(t *testing.T, conn *natsclient.Conn, stream string, cfg jets
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, err := js.CreateConsumer(ctx, stream, cfg); err != nil {
+	if _, err := js.CreateConsumer(ctx, "ORDERS", cfg); err != nil {
 		t.Fatalf("create consumer %s: %v", cfg.Durable, err)
 	}
 }
@@ -102,7 +102,7 @@ func TestOneGroupOverTwoContractsSharesOneDurableInStreamOrder(t *testing.T) {
 		t.Fatalf("start: %v", err)
 	}
 
-	cfg := consumerConfig(t, conn, "ORDERS", "orders-worker")
+	cfg := consumerConfig(t, conn, "orders-worker")
 	if cfg.Durable != "orders-worker" {
 		t.Errorf("durable = %q, want the group name", cfg.Durable)
 	}
@@ -133,7 +133,7 @@ func TestAnExistingDurableKeepsItsPositionAndPolicy(t *testing.T) {
 	if err := tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Key: "old", Payload: []byte(`{}`)}); err != nil {
 		t.Fatal(err)
 	}
-	createConsumer(t, conn, "ORDERS", jetstream.ConsumerConfig{
+	createConsumer(t, conn, jetstream.ConsumerConfig{
 		Durable: "late", Name: "late", FilterSubject: "orders.Placed",
 		AckPolicy: jetstream.AckExplicitPolicy, DeliverPolicy: jetstream.DeliverNewPolicy,
 	})
@@ -149,7 +149,7 @@ func TestAnExistingDurableKeepsItsPositionAndPolicy(t *testing.T) {
 		t.Fatalf("adopting a DeliverNew durable failed: %v", err)
 	}
 
-	cfg := consumerConfig(t, conn, "ORDERS", "late")
+	cfg := consumerConfig(t, conn, "late")
 	if cfg.DeliverPolicy != jetstream.DeliverNewPolicy {
 		t.Errorf("deliver policy = %v, want DeliverNew kept", cfg.DeliverPolicy)
 	}
@@ -170,7 +170,7 @@ func TestAnExistingDurableKeepsItsPositionAndPolicy(t *testing.T) {
 func TestADurableThatDoesNotAcknowledgeExplicitlyIsRefused(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
-	createConsumer(t, conn, "ORDERS", jetstream.ConsumerConfig{
+	createConsumer(t, conn, jetstream.ConsumerConfig{
 		Durable: "fire-and-forget", Name: "fire-and-forget", FilterSubject: "orders.Placed",
 		AckPolicy: jetstream.AckNonePolicy,
 	})
@@ -373,7 +373,7 @@ func TestAGroupStillStoppingIsRefusedUntilItsHandlerReturns(t *testing.T) {
 func TestARefusedSubscribeFreesTheGroupsItDidNotStart(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
-	createConsumer(t, conn, "ORDERS", jetstream.ConsumerConfig{
+	createConsumer(t, conn, jetstream.ConsumerConfig{
 		Durable: "wide", Name: "wide", FilterSubjects: []string{"orders.Placed", "orders.Shipped"},
 		AckPolicy: jetstream.AckExplicitPolicy,
 	})
