@@ -129,3 +129,29 @@ func TestSlogQualifiesGroupedKeys(t *testing.T) {
 		t.Errorf("key = %q, want http.status", got)
 	}
 }
+
+// A group attribute is flattened under its key, an empty-key group inlined, and an empty
+// attribute or group dropped, as a slog handler does.
+func TestSlogFlattensGroupAttributes(t *testing.T) {
+	restore := log.Default()
+	t.Cleanup(func() { log.SetDefault(restore) })
+
+	rec := &recorder{}
+	log.SetDefault(rec)
+	log.Slog().WithGroup("req").LogAttrs(context.Background(), slog.LevelInfo, "done",
+		slog.Group("http", slog.Int("status", 200), slog.Group("", slog.String("path", "/x"))),
+		slog.Attr{},
+		slog.Group("empty"),
+	)
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	got := map[string]any{}
+	for _, f := range rec.fields[0] {
+		got[f.Key] = f.Value
+	}
+	want := map[string]any{"req.http.status": int64(200), "req.http.path": "/x"}
+	if len(got) != len(want) || got["req.http.status"] != want["req.http.status"] || got["req.http.path"] != want["req.http.path"] {
+		t.Errorf("fields = %v, want %v", got, want)
+	}
+}

@@ -3,6 +3,7 @@ package log
 import (
 	"context"
 	"log/slog"
+	"strings"
 )
 
 // Slog returns a [log/slog.Logger] that writes through [Default], resolved on every line so
@@ -25,8 +26,9 @@ func (h defaultHandler) Handle(ctx context.Context, r slog.Record) error {
 
 	fields := make([]Field, 0, len(h.attrs)+r.NumAttrs())
 	fields = append(fields, h.attrs...)
+	prefix := h.prefix()
 	r.Attrs(func(a slog.Attr) bool {
-		fields = append(fields, h.field(a))
+		fields = appendAttr(fields, prefix, a)
 		return true
 	})
 
@@ -49,8 +51,9 @@ func (h defaultHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	}
 	out := defaultHandler{attrs: make([]Field, 0, len(h.attrs)+len(attrs)), groups: h.groups}
 	out.attrs = append(out.attrs, h.attrs...)
+	prefix := h.prefix()
 	for _, a := range attrs {
-		out.attrs = append(out.attrs, h.field(a))
+		out.attrs = appendAttr(out.attrs, prefix, a)
 	}
 	return out
 }
@@ -64,16 +67,34 @@ func (h defaultHandler) WithGroup(name string) slog.Handler {
 	return defaultHandler{attrs: h.attrs, groups: append(groups, name)}
 }
 
-// field converts a to a Field, prefixing its key with the open groups ("http.status").
-func (h defaultHandler) field(a slog.Attr) Field {
-	key := a.Key
-	for i := len(h.groups) - 1; i >= 0; i-- {
-		key = h.groups[i] + "." + key
+// prefix is the key prefix of the open groups, "http." under WithGroup("http").
+func (h defaultHandler) prefix() string {
+	if len(h.groups) == 0 {
+		return ""
+	}
+	return strings.Join(h.groups, ".") + "."
+}
+
+// appendAttr appends a to fields under prefix: a group's attributes flattened under its key
+// ("http.status"), an empty-key group inlined, and an empty attribute or group dropped.
+func appendAttr(fields []Field, prefix string, a slog.Attr) []Field {
+	a.Value = a.Value.Resolve()
+	if a.Equal(slog.Attr{}) {
+		return fields
+	}
+	if a.Value.Kind() == slog.KindGroup {
+		if a.Key != "" {
+			prefix += a.Key + "."
+		}
+		for _, ga := range a.Value.Group() {
+			fields = appendAttr(fields, prefix, ga)
+		}
+		return fields
 	}
 	if err, ok := a.Value.Any().(error); ok {
-		return Field{Key: key, Value: err}
+		return append(fields, Field{Key: prefix + a.Key, Value: err})
 	}
-	return Field{Key: key, Value: a.Value.Resolve().Any()}
+	return append(fields, Field{Key: prefix + a.Key, Value: a.Value.Any()})
 }
 
 // fromSlogLevel rounds a slog level down to the nearest Level, at least LevelDebug.

@@ -1302,6 +1302,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   part with `r.FormValue`, so `?note=x` beat the `note` part and stood in for
   a missing one. It now reads `r.PostFormValue`, the multipart body alone.
 
+- **`log.Slog()` keeps the values inside a group.** A `slog.Group` reached
+  the logger as a list whose values were lost, and an empty attribute was
+  written as `"":null`. Group attributes are now flattened under the group's
+  key (`http.status`), an empty-key group is inlined, and an empty attribute
+  or group is dropped, as `log/slog` handlers do.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added
