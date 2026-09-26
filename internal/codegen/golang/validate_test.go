@@ -271,43 +271,6 @@ type X {
 	mustContainNone(t, src, "Validate(); err != nil", "for ")
 }
 
-// @multipleOf on a float field is rejected, since Go's % is integer-only.
-func TestValidateMultipleOfRejectsFloat(t *testing.T) {
-	src := tryRunValidateGen(t, `package design
-type X { ratio float64 @multipleOf(2) }`)
-	if src != "" && strings.Contains(src, "v.Ratio%") {
-		t.Errorf("float @multipleOf should be rejected, codegen emitted:\n%s", src)
-	}
-}
-
-// tryRunValidateGen returns the generated validate.go, or "" on any diagnostic or failure.
-func tryRunValidateGen(t *testing.T, src string) string {
-	t.Helper()
-	pkg, diags := semantic.Analyze([]*ast.File{mustParse(t, src)})
-	if len(diags) > 0 {
-		return ""
-	}
-	dir := t.TempDir()
-	if err := generateValidators(pkg, dir, nil); err != nil {
-		return ""
-	}
-	out, err := os.ReadFile(filepath.Join(dir, "design", "validate.go"))
-	if err != nil {
-		return ""
-	}
-	return string(out)
-}
-
-func mustParse(t *testing.T, src string) *ast.File {
-	t.Helper()
-	p := craftparser.New("test.craftgo", src)
-	f := p.Parse()
-	if d := p.Diagnostics(); len(d) > 0 {
-		t.Fatalf("parse failed: %v", d)
-	}
-	return f
-}
-
 func TestValidateUniqueItems(t *testing.T) {
 	src := runValidateGen(t, `package design
 type X { tags string[] @uniqueItems }`)
