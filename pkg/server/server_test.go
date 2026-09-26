@@ -632,57 +632,63 @@ func TestServerConfigurationAcrossGoroutines(t *testing.T) {
 	wg.Wait()
 }
 
+// Each CORSOptions field reaches the response: the origin, credentials and exposed headers on
+// every answer to an allowed origin, the methods, headers, max age and private-network grant on
+// a preflight too; a disallowed origin gets none of them.
 func TestCORSMiddleware(t *testing.T) {
 	s := New(nil).SetCORS(CORSOptions{
-		AllowedOrigins:   []string{"https://app.example.com", "https://*.partner.com"},
-		AllowedMethods:   []string{"GET", "POST"},
-		AllowedHeaders:   []string{"Content-Type"},
-		ExposedHeaders:   []string{"X-Trace-Id"},
-		AllowCredentials: true,
-		MaxAge:           time.Hour,
+		AllowedOrigins:      []string{"https://app.example.com", "https://*.partner.com"},
+		AllowedMethods:      []string{"GET", "POST"},
+		AllowedHeaders:      []string{"Content-Type", "X-Request"},
+		ExposedHeaders:      []string{"X-Trace-Id", "X-Rate"},
+		AllowCredentials:    true,
+		MaxAge:              time.Hour,
+		AllowPrivateNetwork: true,
 	})
 	s.HandleFunc("GET /c", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	h := s.Handler()
-
-	// Allowed origin → header echoed.
-	req := httptest.NewRequest(http.MethodGet, "/c", nil)
-	req.Header.Set("Origin", "https://app.example.com")
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Header().Get("Access-Control-Allow-Origin") != "https://app.example.com" {
-		t.Errorf("origin header = %q", rec.Header().Get("Access-Control-Allow-Origin"))
+	check := func(name, method, origin string, wantStatus int, want map[string]string) {
+		t.Helper()
+		req := httptest.NewRequest(method, "/c", nil)
+		req.Header.Set("Origin", origin)
+		if method == http.MethodOptions {
+			req.Header.Set("Access-Control-Request-Method", "POST")
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != wantStatus {
+			t.Errorf("%s: status %d, want %d", name, rec.Code, wantStatus)
+		}
+		for key, value := range want {
+			if got := rec.Header().Get(key); got != value {
+				t.Errorf("%s: %s = %q, want %q", name, key, got, value)
+			}
+		}
 	}
 
-	// Wildcard match.
-	req = httptest.NewRequest(http.MethodGet, "/c", nil)
-	req.Header.Set("Origin", "https://x.partner.com")
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Header().Get("Access-Control-Allow-Origin") != "https://x.partner.com" {
-		t.Errorf("wildcard origin header = %q", rec.Header().Get("Access-Control-Allow-Origin"))
-	}
-
-	// Preflight: a genuine CORS preflight carries Access-Control-Request-Method.
-	req = httptest.NewRequest(http.MethodOptions, "/c", nil)
-	req.Header.Set("Origin", "https://app.example.com")
-	req.Header.Set("Access-Control-Request-Method", "POST")
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("preflight status = %d", rec.Code)
-	}
-	if rec.Header().Get("Access-Control-Allow-Methods") == "" {
-		t.Error("missing allow-methods on preflight")
-	}
-
-	// Disallowed origin → no header.
-	req = httptest.NewRequest(http.MethodGet, "/c", nil)
-	req.Header.Set("Origin", "https://evil.com")
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Header().Get("Access-Control-Allow-Origin") != "" {
-		t.Errorf("expected empty origin header, got %q", rec.Header().Get("Access-Control-Allow-Origin"))
-	}
+	check("an allowed origin", http.MethodGet, "https://app.example.com", http.StatusOK, map[string]string{
+		"Access-Control-Allow-Origin":      "https://app.example.com",
+		"Vary":                             "Origin",
+		"Access-Control-Allow-Credentials": "true",
+		"Access-Control-Expose-Headers":    "X-Trace-Id, X-Rate",
+		"Access-Control-Allow-Methods":     "",
+	})
+	check("a wildcard origin", http.MethodGet, "https://x.partner.com", http.StatusOK, map[string]string{
+		"Access-Control-Allow-Origin": "https://x.partner.com",
+	})
+	check("a preflight", http.MethodOptions, "https://app.example.com", http.StatusNoContent, map[string]string{
+		"Access-Control-Allow-Origin":          "https://app.example.com",
+		"Access-Control-Allow-Credentials":     "true",
+		"Access-Control-Allow-Methods":         "GET, POST",
+		"Access-Control-Allow-Headers":         "Content-Type, X-Request",
+		"Access-Control-Max-Age":               "3600",
+		"Access-Control-Allow-Private-Network": "true",
+	})
+	check("a disallowed origin", http.MethodGet, "https://evil.com", http.StatusOK, map[string]string{
+		"Access-Control-Allow-Origin":      "",
+		"Access-Control-Allow-Credentials": "",
+		"Access-Control-Expose-Headers":    "",
+	})
 }
 
 func TestCORSPresets(t *testing.T) {

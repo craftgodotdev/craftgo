@@ -32,8 +32,8 @@ func TestCORSWildcardNoVary(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
 	req.Header.Set("Origin", "https://anything.example.com")
 	h.ServeHTTP(rec, req)
-	if rec.Header().Get("Access-Control-Allow-Origin") != "*" {
-		t.Skipf("permissive did not echo *")
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("Allow-Origin = %q, want *", got)
 	}
 	if got := rec.Header().Get("Vary"); got != "" {
 		t.Errorf("wildcard * must not set Vary, got %q", got)
