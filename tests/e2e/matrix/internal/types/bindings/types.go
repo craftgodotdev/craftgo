@@ -154,6 +154,11 @@ type ItemList struct {
 	Total  *int    `json:"total,omitempty"`
 }
 
+// KeySetReq names the key set to serve.
+type KeySetReq struct {
+	Kid string `json:"-" path:"kid"`
+}
+
 // MixinBodyReq takes its whole body from a mixin: the server decodes and
 // validates it, and OpenAPI documents a request body.
 type MixinBodyReq struct {

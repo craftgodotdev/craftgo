@@ -1,8 +1,6 @@
 package parser
 
 import (
-	"strings"
-
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
@@ -183,8 +181,8 @@ func (p *Parser) parseEventDecl(decs []*ast.Decorator, doc []string) *ast.EventD
 	return e
 }
 
-// parsePath parses a route such as `/api-v1/users/{id}`. A segment is words
-// joined by `-`, or a `{word}` parameter; reserved words count as words.
+// parsePath parses a route such as `/api-v1/users/{id}`. A segment is a
+// PathWord, or a `{word}` parameter whose word may be a reserved word.
 func (p *Parser) parsePath() *ast.Path {
 	pos := p.peek().Pos
 	path := &ast.Path{Pos: pos}
@@ -201,19 +199,8 @@ func (p *Parser) parsePath() *ast.Path {
 			path.Segments = append(path.Segments, &ast.PathSegment{Pos: segPos, Param: true, Literal: nameTok.Text})
 			continue
 		}
-		if isPathWordToken(p.peek().Kind) {
-			var sb strings.Builder
-			sb.WriteString(p.advance().Text)
-			for p.peek().Kind == lexer.Dash {
-				dashPos := p.advance().Pos
-				if !isPathWordToken(p.peek().Kind) {
-					p.errorf(dashPos, "path segment ends in '-'")
-					break
-				}
-				sb.WriteByte('-')
-				sb.WriteString(p.advance().Text)
-			}
-			path.Segments = append(path.Segments, &ast.PathSegment{Pos: segPos, Literal: sb.String()})
+		if p.peek().Kind == lexer.PathWord {
+			path.Segments = append(path.Segments, &ast.PathSegment{Pos: segPos, Literal: p.advance().Text})
 			continue
 		}
 		// `//` and a trailing `/` are errors, since a mux pattern ending in `/`
@@ -232,8 +219,8 @@ func (p *Parser) parsePath() *ast.Path {
 	return path
 }
 
-// isPathWordToken reports whether k spells a path word: an identifier or a
-// reserved word.
+// isPathWordToken reports whether k spells a path parameter's name: an
+// identifier or a reserved word.
 func isPathWordToken(k lexer.Kind) bool {
 	return k == lexer.Ident || k.IsKeyword()
 }

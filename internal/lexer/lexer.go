@@ -133,6 +133,8 @@ func (l *Lexer) Next() Token {
 
 	var tok Token
 	switch {
+	case l.afterSlash() && isPathChar(r):
+		tok = l.lexPathWord(pos)
 	case isIdentStart(r):
 		tok = l.lexIdentOrKeyword(pos)
 	case isDigit(r):
@@ -199,6 +201,21 @@ func (l *Lexer) lexPunct(pos Position, r rune) Token {
 		return l.errorf(pos, "unexpected character %q", r)
 	}
 	return Token{Kind: k, Text: text, Pos: pos}
+}
+
+// afterSlash reports whether a `/` sits right before the cursor, so the
+// cursor starts a route segment.
+func (l *Lexer) afterSlash() bool {
+	return l.offset > 0 && l.src[l.offset-1] == '/'
+}
+
+// lexPathWord lexes a run of [isPathChar] runes as a PathWord.
+func (l *Lexer) lexPathWord(pos Position) Token {
+	start := l.offset
+	for isPathChar(l.peek()) {
+		l.advance()
+	}
+	return Token{Kind: PathWord, Text: l.src[start:l.offset], Pos: pos}
 }
 
 // lexIdentOrKeyword lexes `[A-Za-z_][A-Za-z0-9_]*` as a keyword or an Ident.
@@ -457,6 +474,12 @@ func isLetter(r rune) bool {
 // isIdentStart reports whether r can start an identifier: a letter or `_`.
 func isIdentStart(r rune) bool {
 	return isLetter(r) || r == '_'
+}
+
+// isPathChar reports whether r may stand in a route's literal segment: an
+// unreserved URI character, a letter, digit, `-`, `.`, `_` or `~`.
+func isPathChar(r rune) bool {
+	return isLetter(r) || isDigit(r) || r == '-' || r == '.' || r == '_' || r == '~'
 }
 
 // isDigit reports whether r is an ASCII decimal digit.

@@ -3221,6 +3221,9 @@ components:
           - $ref: '#/components/schemas/Key'
           - type: "null"
       type: object
+    KeySetReq:
+      description: KeySetReq names the key set to serve.
+      type: object
     KeyedOfPriority:
       allOf:
       - $ref: '#/components/schemas/KeyMeta'
@@ -8055,6 +8058,8 @@ components:
       required:
       - warehouse
       type: object
+    WellKnownRespBody:
+      $ref: '#/components/schemas/Item'
     WipeRespBody:
       $ref: '#/components/schemas/HealthResp'
     WireDefaults:
@@ -9287,6 +9292,25 @@ paths:
           description: OK
       tags:
       - admin/v3
+  /bindings/.well-known/v1.0/2fa/{kid}/keys.json:
+    get:
+      description: Serve a key set. The route's literal segments hold dots and digits.
+      operationId: WellKnown
+      parameters:
+      - in: path
+        name: kid
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellKnownRespBody'
+          description: OK
+      tags:
+      - bindings
   /bindings/attach:
     post:
       description: Attach a document. The file rides a generic mixin, FilePart<file>,

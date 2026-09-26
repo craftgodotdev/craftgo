@@ -578,3 +578,16 @@ func lexed(src string) string {
 	}
 	return b.String()
 }
+
+// The run right after a `/` is one PathWord, whatever its digits and dots; a
+// `{` there opens a variable, and a word set off by a space is lexed as usual.
+func TestPathWord(t *testing.T) {
+	var got []string
+	for _, tok := range New("", "/v1.0/2fa/{id}/raw.bin / type").Tokenize() {
+		got = append(got, tok.Kind.String()+":"+tok.Text)
+	}
+	want := []string{"/:/", "PathWord:v1.0", "/:/", "PathWord:2fa", "/:/", "{:{", "Ident:id", "}:}", "/:/", "PathWord:raw.bin", "/:/", "type:type", "EOF:"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("tokens = %v, want %v", got, want)
+	}
+}

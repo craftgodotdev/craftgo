@@ -26,6 +26,9 @@ const (
 	Duration
 	// Size is a number with a [SizeUnits] suffix.
 	Size
+	// PathWord is the literal segment right after a route's `/`: letters,
+	// digits, `-`, `.`, `_` and `~`.
+	PathWord
 
 	// Keywords.
 
@@ -81,7 +84,7 @@ var kindNames = map[Kind]string{
 	EOF: "EOF", Error: "Error",
 	Ident: "Ident", Int: "Int", Float: "Float",
 	String: "String", RawString: "RawString",
-	Duration: "Duration", Size: "Size",
+	Duration: "Duration", Size: "Size", PathWord: "PathWord",
 
 	KwPackage: "package", KwImport: "import", KwType: "type",
 	KwEnum: "enum", KwError: "error", KwScalar: "scalar",

@@ -66,6 +66,14 @@ service BindingsService {
 		response Item
 	}
 
+	// WellKnown pins literal segments net/http serves: a name opening with a
+	// dot, a dotted version, a word opening with a digit, a file name.
+	@doc("Serve a key set. The route's literal segments hold dots and digits.")
+	get WellKnown /.well-known/v1.0/2fa/{kid}/keys.json {
+		request  KeySetReq
+		response Item
+	}
+
 	// AttachDoc takes its file through a generic mixin: `doc` is required,
 	// so a request without the part is refused before the service runs.
 	@doc("Attach a document. The file rides a generic mixin, FilePart<file>, and is required.")
@@ -298,6 +306,11 @@ type BatchUploadReq {
 	cover file?
 	tags  string[] @form
 	album string   @form @length(1, 100)
+}
+
+// KeySetReq names the key set to serve.
+type KeySetReq {
+	kid string @path
 }
 
 // FilePart carries one required part of type T.

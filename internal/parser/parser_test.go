@@ -10,6 +10,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
 // TestCaptureDocPropagatesDoc pins that a declaration takes the comment lines
@@ -492,6 +493,25 @@ func TestMethodPathHyphenated(t *testing.T) {
 	seg := f.Decls[0].(*ast.ServiceDecl).Methods()[0].Path.Segments[0]
 	if seg.Literal != "api-v1" {
 		t.Errorf("got %q", seg.Literal)
+	}
+}
+
+// A literal segment is any run of letters, digits, `-`, `.`, `_` and `~`, as
+// net/http serves it: a number, a word opening with a digit, a dotted name, a
+// reserved word.
+func TestMethodPathLiteralSegments(t *testing.T) {
+	for _, path := range []string{
+		"/reports/2024", "/2fa/verify", "/v1.0/users", "/.well-known/jwks.json",
+		"/robots.txt", "/files/{id}/raw.bin", "/type/list", "/a_b~c/-x-", "/api-v1/users-list",
+	} {
+		f, msgs := parseWithErrors(t, "package p\nservice S {\n\tget X "+path+" { response A }\n}\n")
+		if len(msgs) != 0 {
+			t.Errorf("%s: diagnostics %v", path, msgs)
+			continue
+		}
+		if got := route.PathString(f.Decls[0].(*ast.ServiceDecl).Methods()[0].Path); got != path {
+			t.Errorf("path = %q, want %q", got, path)
+		}
 	}
 }
 
@@ -981,13 +1001,6 @@ func TestMethodDuplicateClause(t *testing.T) {
 	}
 	if _, errs := parseWithErrors(t, `service S { get G /g { request A  response B } }`); len(errs) != 0 {
 		t.Errorf("single request+response should be clean, got %v", errs)
-	}
-}
-
-func TestPathBadDash(t *testing.T) {
-	_, errs := parseWithErrors(t, `service S { get Op /api- {} }`)
-	if len(errs) == 0 {
-		t.Error()
 	}
 }
 

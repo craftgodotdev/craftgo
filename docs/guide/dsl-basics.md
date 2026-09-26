@@ -169,7 +169,7 @@ type GetUserReq {
 }
 ```
 
-A path that declares `{name}` segments requires a request struct whose fields cover every segment; otherwise the route would parse the URL but the handler would never see the value, so the semantic phase rejects it with `path/param-missing`. The exception is a raw-request method (`@rawRequest` / `@passthrough`) with no request block: logic receives the raw `*http.Request` and reads the value with `r.PathValue`. A trailing slash (`/users/`) is a parse error: the route is built from segments, and a `net/http` pattern ending in `/` would match a whole subtree.
+A path that declares `{name}` segments requires a request struct whose fields cover every segment; otherwise the route would parse the URL but the handler would never see the value, so the semantic phase rejects it with `path/param-missing`. The exception is a raw-request method (`@rawRequest` / `@passthrough`) with no request block: logic receives the raw `*http.Request` and reads the value with `r.PathValue`. A literal segment holds letters, digits, `-`, `.`, `_` and `~`, so `/.well-known/jwks.json`, `/v1.0/users` and `/reports/2024` are routes as written. A trailing slash (`/users/`) is a parse error: the route is built from segments, and a `net/http` pattern ending in `/` would match a whole subtree.
 
 ### Extending a service across files
 

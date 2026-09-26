@@ -484,6 +484,12 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ### Fixed
 
+- **A method path takes every segment `net/http` serves.** A segment that is
+  a number (`/reports/2024`), opens with a digit (`/2fa`) or holds a dot
+  (`/v1.0`, `/robots.txt`, `/.well-known`) was a parse error, although
+  `@prefix` took it. A literal segment now holds letters, digits, `-`, `.`,
+  `_` and `~`, and one ending in `-` is no longer an error.
+
 - **Closing an unsaved buffer re-checks its design root.** The other open
   files kept the diagnostics computed with the dropped text, such as an
   unknown type the unsaved edit had renamed, until the next edit.

@@ -205,6 +205,11 @@ func (v *ItemList) Validate() error {
 }
 
 // Validate returns the first constraint v violates, or nil.
+func (v *KeySetReq) Validate() error {
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *MixinBodyReq) Validate() error {
 	if err := v.BodyOnlyMixin.Validate(); err != nil {
 		return err

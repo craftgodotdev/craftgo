@@ -163,7 +163,7 @@ func inRoute(view snapshotView, idx int) bool {
 			return true
 		case k == lexer.LBrace && !isRouteParam(view, i):
 			return false // the method body's brace
-		case k != lexer.LBrace && k != lexer.RBrace && k != lexer.Dash && k != lexer.Ident && !k.IsKeyword():
+		case k != lexer.LBrace && k != lexer.RBrace && k != lexer.PathWord && k != lexer.Ident && !k.IsKeyword():
 			return false
 		}
 	}

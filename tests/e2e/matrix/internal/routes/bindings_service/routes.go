@@ -17,6 +17,7 @@ func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/bindings/paged", transport.ListPaged(svcCtx))
 	srv.Handle("POST /api/bindings/users/{id}/avatar", transport.UploadAvatar(svcCtx))
 	srv.Handle("POST /api/bindings/batch", transport.BatchUpload(svcCtx))
+	srv.Handle("GET /api/bindings/.well-known/v1.0/2fa/{kid}/keys.json", transport.WellKnown(svcCtx))
 	srv.Handle("POST /api/bindings/attach", transport.AttachDoc(svcCtx))
 	srv.Handle("POST /api/bindings/nullable-form", transport.NullableForm(svcCtx))
 	srv.Handle("POST /api/bindings/items", transport.AddItem(svcCtx))
