@@ -90,6 +90,25 @@ func TestOutputDisabledValue(t *testing.T) {
 	}
 }
 
+func TestEventTargetCollidesWithAnOutputKey(t *testing.T) {
+	cases := map[string]string{
+		"output:\n  kind: contracts\n  types: ./gen\nevents:\n  targets:\n    - lang: go\n      out: ./gen\n": `output.types and events.targets[go].out both write to "gen"`,
+		"events:\n  targets:\n    - lang: go\n      out: ./internal/transport/\n":                             `output.transport and events.targets[go].out both write to "internal/transport"`,
+		"output:\n  pb: ./internal/events\n":                                                                  `output.pb and events.targets[go].out both write to "internal/events"`,
+		"output:\n  types: ./internal/events\nevents:\n  targets:\n    - lang: go\n      out: \"-\"\n":        "",
+		"output:\n  openapi: ./internal/events/openapi.yaml\n":                                                "",
+	}
+	for body, want := range cases {
+		_, err := loadManifest(t, body)
+		switch {
+		case want == "" && err != nil:
+			t.Errorf("%q: unexpected error %v", body, err)
+		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
+			t.Errorf("%q: err = %v, want %q", body, err, want)
+		}
+	}
+}
+
 func TestOutputFileKeysCollideByDirectory(t *testing.T) {
 	cases := map[string]string{
 		"output:\n  svccontext: ./internal/types/svccontext.go\n": `output.types and output.svccontext both write to "internal/types"`,

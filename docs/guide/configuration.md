@@ -98,7 +98,7 @@ below.
 | Key                | Default                   | Holds                                                       |
 | ------------------ | ------------------------- | ----------------------------------------------------------- |
 | `targets[].lang`   | -                         | `go` - the only language target                              |
-| `targets[].out`    | -                         | Destination directory, relative to the project root           |
+| `targets[].out`    | -                         | Destination directory, relative to the project root; no `output.*` key may resolve to it |
 
 ```yaml
 events:

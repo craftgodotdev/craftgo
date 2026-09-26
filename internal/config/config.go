@@ -180,6 +180,9 @@ func defaultEventTargets(kind string) []EventTarget {
 // Enabled reports whether the target is generated; "-" skips it.
 func (t EventTarget) Enabled() bool { return t.Out != Disabled && t.Out != "" }
 
+// key returns the manifest spelling of t's destination, `events.targets[<lang>].out`.
+func (t EventTarget) key() string { return "events.targets[" + t.Lang + "].out" }
+
 // TargetFor returns the configured target for lang.
 func (e Events) TargetFor(lang string) (EventTarget, bool) {
 	for _, t := range e.Targets {
@@ -493,7 +496,7 @@ func (c *Config) validate() error {
 		}
 	}
 	for _, t := range c.Events.Targets {
-		if err := checkWithinProject("events.targets["+t.Lang+"].out", t.Out); err != nil {
+		if err := checkWithinProject(t.key(), t.Out); err != nil {
 			return err
 		}
 	}
@@ -639,22 +642,32 @@ func (c *Config) checkOutputUsable() error {
 	return nil
 }
 
-// checkOutputCollisions rejects two output keys holding Go code that resolve
-// to one directory; a key naming a file contributes the file's directory.
+// checkOutputCollisions rejects two outputs holding Go code, output keys or event targets, that
+// resolve to one directory; a key naming a file contributes the file's directory.
 func (c *Config) checkOutputCollisions() error {
 	seen := map[string]string{}
+	claim := func(key, dir string) error {
+		if dir == "" {
+			return nil
+		}
+		if first, dup := seen[dir]; dup {
+			return fmt.Errorf("%s and %s both write to %q - each generated package needs its own directory, or the two package clauses land in one and nothing compiles", first, key, dir)
+		}
+		seen[dir] = key
+		return nil
+	}
 	for _, k := range outputKeys {
 		if k.document {
 			continue
 		}
-		dir := k.dir(*k.field(&c.Output))
-		if dir == "" {
-			continue
+		if err := claim(k.key(), k.dir(*k.field(&c.Output))); err != nil {
+			return err
 		}
-		if first, dup := seen[dir]; dup {
-			return fmt.Errorf("%s and %s both write to %q - each generated package needs its own directory, or the two package clauses land in one and nothing compiles", first, k.key(), dir)
+	}
+	for _, t := range c.Events.Targets {
+		if err := claim(t.key(), outputKey{}.dir(t.Out)); err != nil {
+			return err
 		}
-		seen[dir] = k.key()
 	}
 	return nil
 }

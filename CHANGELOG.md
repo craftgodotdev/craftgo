@@ -1335,6 +1335,12 @@ breaking change to the DSL or the generated layout bumps the major version.
   `grpc.go` and `middlewares.go` are swept the same way, as those files
   alone.
 
+- **An event target needs a directory of its own.** An
+  `events.targets[].out` naming the directory of an output key, such as
+  `output.types`, loaded and generated a package that did not compile; the
+  manifest now stops the run with `output.types and events.targets[go].out
+  both write to "gen"`, as two output keys sharing a directory do.
+
 ## [1.9.0] - 2026-09-22 [UTC+7]
 
 ### Added
