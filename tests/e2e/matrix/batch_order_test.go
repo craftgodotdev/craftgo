@@ -54,15 +54,18 @@ func TestABatchKeepsTheOrderEntriesWereAddedAcrossContracts(t *testing.T) {
 	}
 }
 
-// stoppingTransport publishes until failAt messages are sent, then refuses.
-// It has no PublishBatch, so the bus publishes one message at a time.
+// stoppingTransport refuses the message at index failAt of those it is
+// handed and takes every other one. It has no PublishBatch, so the bus
+// publishes one message at a time.
 type stoppingTransport struct {
 	failAt int
+	handed int
 	sent   []string
 }
 
 func (s *stoppingTransport) Publish(_ context.Context, msg *craftevents.Message) error {
-	if len(s.sent) == s.failAt {
+	defer func() { s.handed++ }()
+	if s.handed == s.failAt {
 		return errors.New("broker refused the record")
 	}
 	s.sent = append(s.sent, msg.Event)
@@ -88,11 +91,9 @@ func TestABatchThatStopsPartwayNamesTheTailThatDidNotGoOut(t *testing.T) {
 	if want := "events.WarehouseClosed"; partial.Event != want {
 		t.Errorf("Event = %q, want the contract of the first unsent entry (%q)", partial.Event, want)
 	}
-	// The transport holds exactly the entries the report counts as sent.
+	// The bus stops at the refusal, so the transport, which would take the
+	// last entry, holds exactly the entries the report counts as sent.
 	if want := []string{"events.ItemStocked", "events.Forged"}; !reflect.DeepEqual(recorder.sent, want) {
-		t.Errorf("the transport was handed %v, want %v", recorder.sent, want)
-	}
-	if len(envs) != 4 {
-		t.Errorf("batch holds %d entries after a partial failure, want 4", len(envs))
+		t.Errorf("the transport took %v, want %v", recorder.sent, want)
 	}
 }

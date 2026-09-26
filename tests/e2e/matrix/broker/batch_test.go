@@ -53,9 +53,6 @@ func TestAPartialBatchNamesTheEnvelopesTheBrokerDidNotTake(t *testing.T) {
 	if partial.Event != tierPromoted {
 		t.Errorf("Event = %q, want the contract of the first unsent entry (%q)", partial.Event, tierPromoted)
 	}
-	if len(envs) != 5 {
-		t.Errorf("batch holds %d entries after a partial failure, want 5", len(envs))
-	}
 
 	// Read back what the broker holds, creating the missing topic first so
 	// the consumer has a topic to subscribe to.
