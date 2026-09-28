@@ -42,8 +42,9 @@ func OperationID(decs []*ast.Decorator, base string) string {
 }
 
 // checkProjectOperationIDUniqueness reports methods that share an
-// operationId. Method names are counted project-wide because one OpenAPI
-// document holds every package's services.
+// operationId, but a `@hidden` one, which the document leaves out. Method
+// names are counted project-wide because one OpenAPI document holds every
+// package's services.
 func (c *projectChecks) checkProjectOperationIDUniqueness() {
 	counts := MethodNameCounts(slices.Collect(maps.Values(c.proj.Packages))...)
 	type owner struct {
@@ -65,6 +66,9 @@ func (c *projectChecks) checkProjectOperationIDUniqueness() {
 				continue
 			}
 			for _, m := range si.Methods {
+				if si.Hidden(m) {
+					continue
+				}
 				id := OperationID(si.Decorators(m), OperationBaseName(svcName, m, counts))
 				owners[id] = append(owners[id], owner{ref: svcName + "." + m.Name, pkg: pkgName, pos: m.Pos})
 			}

@@ -13,7 +13,8 @@ breaking change to the DSL or the generated layout bumps the major version.
   still generated and served. On a method it hides that method, on an
   `extend service` block each method of the block, on a service each method
   of the service. The schemas and security schemes only hidden methods use
-  leave with them; a declared type no method uses stays.
+  leave with them; a declared type no method uses stays. A hidden method may
+  share an OpenAPI path or an `operationId` with a documented one.
 
 ## [1.10.0] - 2026-09-26 [UTC+7]
 

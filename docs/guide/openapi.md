@@ -107,7 +107,9 @@ get GetUser /users/{id} { ... }
 Two methods that resolve to the same `operationId` (two explicit
 `@operationId("...")` sharing a value, or an override that collides with another
 method's auto id) are reported at design time, so the spec never carries a
-duplicate.
+duplicate. A `@hidden` method, which the document leaves out, may share one; its
+name still counts toward the service prefix, so hiding a method changes no other
+method's `operationId`.
 
 ## Schema components
 
