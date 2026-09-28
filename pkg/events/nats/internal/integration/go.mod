@@ -9,7 +9,7 @@ replace github.com/craftgodotdev/craftgo/pkg/events => ../../..
 replace github.com/craftgodotdev/craftgo/pkg/events/nats => ../..
 
 require (
-	github.com/craftgodotdev/craftgo/pkg/events v1.9.0
+	github.com/craftgodotdev/craftgo/pkg/events v1.10.0
 	github.com/craftgodotdev/craftgo/pkg/events/nats v0.0.0-00010101000000-000000000000
 	github.com/nats-io/nats-server/v2 v2.14.6
 	github.com/nats-io/nats.go v1.53.1
