@@ -6,7 +6,7 @@ craftgo emits OpenAPI 3.1 from the same DSL that drives the handlers. The spec i
 
 Every `craftgo gen` produces `docs/openapi.yaml` with:
 
-- Every method as a `paths` entry
+- Every method as a `paths` entry, but a [`@hidden`](#hidden-endpoints) one
 - Every non-generic type, enum, scalar and error as a `components.schemas` entry
 - Every validator decorator mapped to its OpenAPI keyword (`minLength`, `pattern`, `enum`, ...)
 - Doc comments flowing into descriptions
@@ -305,6 +305,23 @@ service Users {
 ```
 
 The spec carries the security requirement; runtime enforcement is your middleware's job.
+
+## Hidden endpoints
+
+`@hidden` on a method, a service or an `extend service` block leaves those methods out of the document, while their routes are still generated and served:
+
+```craftgo
+@prefix("/hidden")
+service HiddenNotes {
+    get Read /note { response Note }           // documented
+
+    @hidden
+    @security(InternalKey)
+    get Peek /peek { request Stash  response Vault<Secret> }
+}
+```
+
+What only hidden methods use leaves with them: `Stash`, the enum it binds, `Secret`, `VaultOfSecret` and the `InternalKey` security scheme are not in `components`, so Swagger UI lists neither the endpoint, its types nor its scheme. `Note`, which `Read` answers, stays, and so does a declared type no method uses.
 
 ## Spec location
 

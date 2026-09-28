@@ -63,6 +63,7 @@ func TestRegistrySpecLevels(t *testing.T) {
 		{"summary", LvlMethod},
 		{"requiresOneOf", LvlType},
 		{"passthrough", LvlMethod},
+		{"hidden", LvlService | LvlMethod},
 		{"rawRequest", LvlMethod},
 		{"rawResponse", LvlMethod},
 		{"path", LvlField},
@@ -773,4 +774,11 @@ service S {
   get X /x { response Resp }
 }`
 	expectNoMsg(t, "duplicate decorator", src)
+}
+
+// @hidden sits on a service, an extend block or a method, not on a type.
+func TestPlacementHidden(t *testing.T) {
+	mustClean(t, "@hidden\nservice S {\n  @hidden\n  get A /a {}\n}\n@hidden\nextend service S {\n  get B /b {}\n}")
+	d := expectDiag(t, "@hidden\ntype X { name string }", CodeDecoratorPlacement)
+	expectMessage(t, d, "@hidden is not allowed on type", "service, method")
 }

@@ -46,6 +46,13 @@ func (svc *ServiceInfo) Decorators(m *ast.Method) []*ast.Decorator {
 	return blockMethodDecorators(svc.blockOf(m), m)
 }
 
+// Hidden reports whether @hidden leaves m, a method of svc, out of the
+// OpenAPI document: m, its extend block or the primary service carries it.
+func (svc *ServiceInfo) Hidden(m *ast.Method) bool {
+	return ast.HasDecorator(svc.Decorators(m), "hidden") ||
+		svc.Primary != nil && ast.HasDecorator(svc.Primary.Decorators, "hidden")
+}
+
 // blockMethodDecorators is [ServiceInfo.Decorators] for m, a method of block
 // b (nil for none).
 func blockMethodDecorators(b *ast.ServiceDecl, m *ast.Method) []*ast.Decorator {

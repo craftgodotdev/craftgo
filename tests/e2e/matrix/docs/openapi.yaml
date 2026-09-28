@@ -4254,6 +4254,14 @@ components:
       - resource
       - id
       type: object
+    Note:
+      description: Note is answered by a documented method and by hidden ones.
+      properties:
+        text:
+          type: string
+      required:
+      - text
+      type: object
     NotifyChannels:
       allOf:
       - properties:
@@ -6274,6 +6282,8 @@ components:
       description: RateResp writes the header its mixin brings, as OpenAPI documents
         it.
       type: object
+    ReadRespBody:
+      $ref: '#/components/schemas/Note'
     RecordNotFoundErr:
       description: NotFound error response (HTTP 404).
       properties:
@@ -11509,6 +11519,19 @@ paths:
                 type: integer
       tags:
       - HeaderEchoService
+  /hidden/note:
+    get:
+      description: Answers a Note; documented.
+      operationId: Read
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadRespBody'
+          description: OK
+      tags:
+      - HiddenNotes
   /jobs:
     post:
       description: Create a job; the row is persisted before the response returns.

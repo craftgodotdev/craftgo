@@ -65,3 +65,38 @@ extend service S {
 		}
 	}
 }
+
+// A method is hidden by its own @hidden, its extend block's or its primary
+// service's.
+func TestServiceInfoHidden(t *testing.T) {
+	pkg := mustClean(t, `package app
+service S {
+    get One /one {}
+    @hidden
+    get Two /two {}
+}
+@hidden
+extend service S {
+    get Three /three {}
+}
+extend service S {
+    get Four /four {}
+}
+@hidden
+service T {
+    get Five /five {}
+}
+@hidden
+extend service T {
+    get Six /six {}
+}`)
+	want := map[string]bool{"One": false, "Two": true, "Three": true, "Four": false, "Five": true, "Six": true}
+	for _, key := range pkg.ServiceNames() {
+		svc := pkg.Services[key]
+		for _, m := range svc.Methods {
+			if got := svc.Hidden(m); got != want[m.Name] {
+				t.Errorf("%s.Hidden() = %v, want %v", m.Name, got, want[m.Name])
+			}
+		}
+	}
+}

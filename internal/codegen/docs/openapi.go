@@ -102,13 +102,16 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	registry.resolver = semantic.PackageResolver(pkg)
 	names := &schemaNames{}
 	addSchemas(doc, pkg, registry, names)
-	ops, shared := addPaths(doc, pkg, registry, names)
+	ops, uses, shared := addPaths(doc, pkg, registry, names)
 	if cfg.OpenAPI.BasePath != "" {
 		doc.Servers = openapi3.Servers{basePathServer(cfg.OpenAPI.BasePath, ops, pkg)}
 	}
 	// Instances go last: schema and path emission register them.
 	emitGenericInstanceComponents(doc, pkg, registry, names)
 	addSecuritySchemes(doc, pkg, cfg)
+	if err := dropHiddenOnly(doc, uses); err != nil {
+		return doc, fmt.Errorf("marshal openapi: %w", err)
+	}
 	if len(shared) > 0 {
 		return doc, fmt.Errorf("%s - a path of the document holds one operation per method, and a route ending in {$} is documented by the slash it matches; give one of them another route", strings.Join(shared, "; "))
 	}

@@ -506,6 +506,7 @@ A field with no binding decorator whose name matches a `{name}` in the route (or
 | `@ignoreMiddleware`         | method          | `()` - clear inherited middleware chain |
 | `@ignoreSecurity`           | method          | `()` - clear inherited security chain   |
 | `@ignoreTags`               | method          | `()` - clear inherited tags             |
+| `@hidden`                   | service, method | none (flag) - leave out of OpenAPI; the route is still served |
 | `@summary("...")`           | method          | `(string)`                             |
 | `@operationId("name")`      | method          | `(string)`                             |
 | `@status(code)`             | method          | `(int)`                                |
@@ -515,6 +516,8 @@ A field with no binding decorator whose name matches a `{name}` in the route (or
 | `@rawResponse`              | method          | none (flag) - logic writes `http.ResponseWriter` |
 | `@timeout(d)`               | method          | `(duration)`                           |
 | `@maxBodySize(n)`           | method          | `(size)`                               |
+
+`@hidden` on a method, a service or an `extend service` block leaves those methods out of the OpenAPI document, with each schema and security scheme only hidden methods use; their routes are still generated and served.
 
 Raw sides: `@rawResponse` keeps request bind + validate and hands `w` to logic (stub `(w, r, req) error`); `@rawRequest` hands `r` over unread and JSON-encodes the returned response (stub `(r) (*Resp, error)`); `@passthrough` is both (stub `(w, r) error`). A `request` / `response` block on a raw side is a docs-only contract: OpenAPI and the generated types describe it, the transport never touches it. `@status` and response `@header` / `@cookie` fields on a raw response side are docs-only too. `@timeout` applies to raw routes (context cancel only). Runtime helpers: `server.WriteBytes`, `server.WritePrecompressed` (negotiates `Accept-Encoding` for a body stored compressed), `server.AcceptsEncoding`.
 

@@ -4,7 +4,7 @@ Decorators attach metadata to declarations and fields. Every decorator starts wi
 
 ## At a glance
 
-52 decorators, grouped by where they apply. Each decorator declares one or more **sites** (file, type, field, service, method, ...) and an **argument shape** (none, string, number, ident, list, ...). Using a decorator at the wrong site or with the wrong arguments fires a diagnostic with the line and column. A decorator is never another decorator's argument: `@doc(@minLength(1))` is a parse error (`a decorator cannot be an argument of @doc`).
+53 decorators, grouped by where they apply. Each decorator declares one or more **sites** (file, type, field, service, method, ...) and an **argument shape** (none, string, number, ident, list, ...). Using a decorator at the wrong site or with the wrong arguments fires a diagnostic with the line and column. A decorator is never another decorator's argument: `@doc(@minLength(1))` is a parse error (`a decorator cannot be an argument of @doc`).
 
 ```craftgo
 @version("1.0.0")              // file
@@ -560,6 +560,46 @@ service UserService {
 
 `@ignoreSecurity` on a method clears the inherited service-level `@security` chain - useful for a single public endpoint (liveness probe, etc.) inside an otherwise-protected service.
 
+### `@hidden`
+
+Leave methods out of the OpenAPI document - an internal or operator endpoint that Swagger UI and the generated clients should not show. The route is still generated, registered and served; only the document changes.
+
+| Sites | service, method |
+| -------- | -------- |
+| Args  | none |
+
+```craftgo
+@prefix("/hidden")
+service HiddenNotes {
+    get Read /note { response Note }           // documented
+
+    @hidden
+    @security(InternalKey)
+    @errors(Sealed)
+    get Peek /peek {                           // served, not documented
+        request  Stash
+        response Vault<Secret>
+    }
+}
+
+@hidden
+extend service HiddenNotes {                   // every method of the block
+    post Rotate /rotate { request Secret  response Note }
+}
+
+@hidden
+@prefix("/hidden-ops")
+service HiddenOps {                            // every method of the service
+    get Ping /ping { response Note }
+}
+```
+
+On a method it hides that method; on an `extend service` block, every method of the block; on a service, every method of the service, those of its `extend service` blocks included. No decorator brings a method of a hidden service back.
+
+The schemas and security schemes only hidden methods use leave with them. Above, `Secret`, `Stash`, its enum `Tier`, `VaultOfSecret`, the `SealedErr` error and the `InternalKey` scheme are gone from the document, while `Note`, which `Read` answers, stays. A declared type no method uses stays, as it does without `@hidden`. A hidden method may share an OpenAPI path with a documented one: the document holds only the documented one.
+
+`@hidden` is a flag: `@hidden()` warns `decorator/flag-empty-parens`, and `craftgo fmt` drops the parentheses.
+
 ### Service-level decorators and inheritance
 
 Service-level decorators (`@prefix`, `@group`, `@tags`, `@security`, service-level `@middlewares`) declared on the primary `service { ... }` block apply to every method inside. Method-level decorators of the same kind **append** to the inherited chain:
@@ -658,6 +698,7 @@ Methods inside an `extend` block inherit the **block's own** decorators in addit
 | Multiple extend blocks targeting the same service    | yes    | Each block's decorators apply only to its own methods  |
 | `@ignoreMiddleware` on a method inside extend        | yes    | Clears extend-block + primary middleware chain        |
 | `@ignoreMiddleware` on an extend block               | yes    | Clears the primary chain for each method of the block |
+| `@hidden` on an extend block                         | yes    | Leaves each method of the block out of OpenAPI        |
 
 ## Method decorators
 
