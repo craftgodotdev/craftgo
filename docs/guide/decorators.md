@@ -596,7 +596,7 @@ service HiddenOps {                            // every method of the service
 
 On a method it hides that method; on an `extend service` block, every method of the block; on a service, every method of the service, those of its `extend service` blocks included. No decorator brings a method of a hidden service back.
 
-The schemas and security schemes only hidden methods use leave with them. Above, `Secret`, `Stash`, its enum `Tier`, `VaultOfSecret`, the `SealedErr` error and the `InternalKey` scheme are gone from the document, while `Note`, which `Read` answers, stays. A declared type no method uses stays, as it does without `@hidden`. A hidden method may share an OpenAPI path or an `operationId` with a documented one: the document holds only the documented one.
+The schemas and security schemes only hidden methods use leave with them. A method uses each type, enum, scalar and error its request, response and `@errors` reach, through fields, mixins, map keys and generic arguments. Above, `Secret`, `Stash`, its enum `Tier`, `VaultOfSecret`, the `SealedErr` error and the `InternalKey` scheme are gone from the document, while `Note`, which `Read` answers, stays. A declared type no method uses stays, as it does without `@hidden`. A hidden method may share an OpenAPI path or an `operationId` with a documented one: the document holds only the documented one.
 
 `@hidden` is a flag: `@hidden()` warns `decorator/flag-empty-parens`, and `craftgo fmt` drops the parentheses.
 

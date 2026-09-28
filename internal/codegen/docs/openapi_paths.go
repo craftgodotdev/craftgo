@@ -30,11 +30,11 @@ func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry,
 	for _, o := range operations(pkg, doc.Components.Schemas) {
 		s := newOpShape(o.svc, o.m, route.Resolve("", o.svc.Primary, o.m), o.id, o.stem, pkg, registry.resolver)
 		if o.svc.Hidden(o.m) {
-			uses.hidden = append(uses.hidden, buildOperation(aside, o.svc, s, pkg, registry, &schemaNames{}))
-			uses.hiddenTypes = append(uses.hiddenTypes, methodTypes(o.m)...)
+			uses.hidden = append(uses.hidden, o)
+			uses.built = append(uses.built, buildOperation(aside, o.svc, s, pkg, registry, &schemaNames{}))
 			continue
 		}
-		uses.shownTypes = append(uses.shownTypes, methodTypes(o.m)...)
+		uses.shown = append(uses.shown, o)
 		path := route.OpenAPIPath(s.full)
 		verb := strings.ToUpper(o.m.Verb)
 		this := fmt.Sprintf("%s.%s (%s %s)", o.svc.Primary.Name, o.m.Name, verb, s.full)

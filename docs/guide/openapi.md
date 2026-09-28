@@ -7,7 +7,7 @@ craftgo emits OpenAPI 3.1 from the same DSL that drives the handlers. The spec i
 Every `craftgo gen` produces `docs/openapi.yaml` with:
 
 - Every method as a `paths` entry, but a [`@hidden`](#hidden-endpoints) one
-- Every non-generic type, enum, scalar and error as a `components.schemas` entry
+- Every non-generic type, enum, scalar and error as a `components.schemas` entry, but one only hidden methods use
 - Every validator decorator mapped to its OpenAPI keyword (`minLength`, `pattern`, `enum`, ...)
 - Doc comments flowing into descriptions
 - Security schemes from your config
@@ -26,11 +26,11 @@ The rest of this page walks through what's emitted and how to render or publish 
 
 Every `craftgo gen` writes `docs/openapi.yaml` covering:
 
-- `paths` - one entry per route, an operation per `service` method with its
-  path, query, header and cookie parameters, request body and responses
-  written in place
+- `paths` - one entry per route, an operation per `service` method but a
+  `@hidden` one, with its path, query, header and cookie parameters, request
+  body and responses written in place
 - `components.schemas` - every non-generic `type`, `enum`, `scalar` and
-  `error` with full structure, each generic instance a schema or an operation
+  `error` but one only hidden methods use, with full structure, each generic instance a schema or an operation
   refers to (`PageOfUser`), and the `<Method>ReqBody` / `<Method>RespBody` of
   each JSON body
 - `components.securitySchemes` - when `openapi.securitySchemes` is in your config
