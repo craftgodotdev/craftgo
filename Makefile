@@ -225,7 +225,7 @@ tag: ## Cut a release locally - VERSION=vX.Y.Z, DRY_RUN=1 to only print the plan
 	@GO="$(GO)" DRY_RUN="$(DRY_RUN)" scripts/release.sh tag "$(VERSION)"
 
 .PHONY: tag-sync
-tag-sync: ## After you push the tags: tidy the adapters against the published pkg/events. VERSION=vX.Y.Z.
+tag-sync: ## After you push the tags: tidy the adapters against the published pkg/events, then each module requiring it. VERSION=vX.Y.Z.
 	@GO="$(GO)" DRY_RUN="$(DRY_RUN)" scripts/release.sh sync "$(VERSION)"
 
 .PHONY: tag-list
