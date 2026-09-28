@@ -21,6 +21,8 @@ import (
 	combineserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/combine_service"
 	emptylistsroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/empty_lists"
 	headerechoserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/header_echo_service"
+	hiddennotesroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/hidden_notes"
+	hiddenopsroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/hidden_ops"
 	inventoryserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/inventory_service"
 	ledgerroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/ledger"
 	ledgerentryroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/ledger_entry"
@@ -63,6 +65,8 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	combineserviceroutes.RegisterRoutes(srv, svcCtx)
 	emptylistsroutes.RegisterRoutes(srv, svcCtx)
 	headerechoserviceroutes.RegisterRoutes(srv, svcCtx)
+	hiddennotesroutes.RegisterRoutes(srv, svcCtx)
+	hiddenopsroutes.RegisterRoutes(srv, svcCtx)
 	inventoryserviceroutes.RegisterRoutes(srv, svcCtx)
 	ledgerroutes.RegisterRoutes(srv, svcCtx)
 	ledgerentryroutes.RegisterRoutes(srv, svcCtx)

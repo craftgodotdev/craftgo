@@ -152,7 +152,7 @@ const (
 	CodePathBaseFormat = "path/base-format"
 	// CodePathCollision fires when two methods' routes cannot both register with net/http's ServeMux.
 	CodePathCollision = "path/collision"
-	// CodeDuplicateOperation fires when two methods resolve to the same OpenAPI operationId.
+	// CodeDuplicateOperation fires when two methods the OpenAPI document holds resolve to the same operationId.
 	CodeDuplicateOperation = "operation/duplicate-id"
 	// CodePathParamMissing fires when a route's `{name}` has no request field to bind it.
 	CodePathParamMissing = "path/param-missing"

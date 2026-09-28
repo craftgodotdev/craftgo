@@ -114,6 +114,7 @@ service S {
     }
     @rawRequest
     @rawResponse
+    @hidden
     get GetY /y {
     }
 }

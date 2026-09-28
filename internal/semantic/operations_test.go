@@ -90,3 +90,20 @@ service BetaService { get GetUser /b/u { response BResp } }`,
 		t.Errorf("auto ids are service-prefixed in the merged doc; must not collide: %s", d.Msg)
 	}
 }
+
+// A hidden method has no operation in the document, so it may share an
+// operationId with a documented one or another hidden one.
+func TestOperationIDSharedWithHiddenClean(t *testing.T) {
+	mustClean(t, `service S {
+	@hidden
+	@operationId("getUser")
+	get GetUserV1 /v1/u {}
+	@operationId("getUser")
+	get GetUser /v2/u {}
+}
+@hidden
+extend service S {
+	@operationId("getUser")
+	get GetUserV0 /v0/u {}
+}`)
+}

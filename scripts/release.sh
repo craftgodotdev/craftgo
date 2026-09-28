@@ -2,7 +2,8 @@
 # release.sh - cut a release of every published module at one version.
 #
 #   tag <version>    write the release commit + the five tags, print the push
-#   sync <version>   after the push: tidy the adapters, commit the checksums
+#   sync <version>   after the push: tidy the adapters and every module that
+#                    requires pkg/events, commit the checksums
 #   list             the four latest tags of each published module
 #
 # Nothing here ever pushes. `tag` leaves a commit and five local tags and
@@ -43,6 +44,22 @@ MODULES=(
 # real version instead: a consumer of an adapter ignores that replace.
 ADAPTERS=(pkg/events/nats pkg/events/kafka)
 EVENTS_MODULE="github.com/craftgodotdev/craftgo/pkg/events"
+
+# events_dependents prints the directory of each module but the adapters whose
+# go.mod requires pkg/events: tidied after the adapters, each moves that
+# requirement to the version they pin.
+events_dependents() {
+	local mod dir adapter
+	git ls-files -- '*go.mod' | while IFS= read -r mod; do
+		dir="$(dirname "$mod")"
+		for adapter in "${ADAPTERS[@]}"; do
+			if [ "$dir" = "$adapter" ]; then continue 2; fi
+		done
+		if grep -qF -- "$EVENTS_MODULE v" "$mod"; then
+			printf '%s\n' "$dir"
+		fi
+	done
+}
 
 # Keep a Changelog, dated in the maintainer's timezone: `tag` turns the
 # Unreleased section into `## [X.Y.Z] - YYYY-MM-DD [UTC+7]`.
@@ -273,10 +290,10 @@ cmd_sync() {
 	local version="${1:-}"
 	require_version "$version" tag-sync
 	local dir tag
-	local -a paths=()
+	local -a modules=() paths=()
 
 	cd_repo_root
-	section "sync adapter checksums for $version"
+	section "sync checksums for $version"
 	if dry; then note "DRY RUN - nothing below is executed or written"; fi
 	require_clean_tree
 
@@ -287,26 +304,34 @@ cmd_sync() {
 	done
 	note "the tags must also be on origin, or the tidy below cannot resolve them"
 
+	modules=("${ADAPTERS[@]}")
+	while IFS= read -r dir; do modules+=("$dir"); done < <(events_dependents)
+
 	section "tidy"
 	note "GOPROXY=direct so the just-pushed tag resolves without waiting for"
 	note "the module proxy; GOFLAGS=-mod=mod because tidy has to write go.sum"
-	for dir in "${ADAPTERS[@]}"; do
+	note "the adapters go first: each other module requiring $EVENTS_MODULE"
+	note "then moves to the version they pin"
+	for dir in "${modules[@]}"; do
 		printf '  + (cd %s && GOFLAGS=-mod=mod GOPROXY=direct %s mod tidy)\n' "$dir" "$GO"
 		dry || ( cd "$dir" && GOFLAGS=-mod=mod GOPROXY=direct "$GO" mod tidy ) || die \
 			"go mod tidy failed in $dir - is $EVENTS_MODULE $version pushed?"
 	done
 
 	section "commit the checksums"
-	for dir in "${ADAPTERS[@]}"; do paths+=("$dir/go.mod" "$dir/go.sum"); done
+	for dir in "${modules[@]}"; do
+		paths+=("$dir/go.mod")
+		if [ -f "$dir/go.sum" ]; then paths+=("$dir/go.sum"); fi
+	done
 	if dry; then
-		note "only if go.sum actually changed:"
+		note "only if a go.mod or go.sum actually changed:"
 		printf '  + %s\n' "$(shq git add -- "${paths[@]}")"
 		printf '  + %s\n' "$(shq git commit -m "release: $version checksums")"
 		printf '\n  (dry run: nothing was written)\n'
 		return 0
 	fi
-	if [ -z "$(git status --porcelain -- "${ADAPTERS[@]}")" ]; then
-		note "go.sum already matches $version - nothing to commit"
+	if [ -z "$(git status --porcelain -- "${modules[@]}")" ]; then
+		note "every go.mod and go.sum already matches $version - nothing to commit"
 		return 0
 	fi
 	run git add -- "${paths[@]}"

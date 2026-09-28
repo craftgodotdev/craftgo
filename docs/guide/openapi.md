@@ -6,8 +6,8 @@ craftgo emits OpenAPI 3.1 from the same DSL that drives the handlers. The spec i
 
 Every `craftgo gen` produces `docs/openapi.yaml` with:
 
-- Every method as a `paths` entry
-- Every non-generic type, enum, scalar and error as a `components.schemas` entry
+- Every method as a `paths` entry, but a [`@hidden`](#hidden-endpoints) one
+- Every non-generic type, enum, scalar and error as a `components.schemas` entry, but one only hidden methods use
 - Every validator decorator mapped to its OpenAPI keyword (`minLength`, `pattern`, `enum`, ...)
 - Doc comments flowing into descriptions
 - Security schemes from your config
@@ -26,11 +26,11 @@ The rest of this page walks through what's emitted and how to render or publish 
 
 Every `craftgo gen` writes `docs/openapi.yaml` covering:
 
-- `paths` - one entry per route, an operation per `service` method with its
-  path, query, header and cookie parameters, request body and responses
-  written in place
+- `paths` - one entry per route, an operation per `service` method but a
+  `@hidden` one, with its path, query, header and cookie parameters, request
+  body and responses written in place
 - `components.schemas` - every non-generic `type`, `enum`, `scalar` and
-  `error` with full structure, each generic instance a schema or an operation
+  `error` but one only hidden methods use, with full structure, each generic instance a schema or an operation
   refers to (`PageOfUser`), and the `<Method>ReqBody` / `<Method>RespBody` of
   each JSON body
 - `components.securitySchemes` - when `openapi.securitySchemes` is in your config
@@ -107,7 +107,9 @@ get GetUser /users/{id} { ... }
 Two methods that resolve to the same `operationId` (two explicit
 `@operationId("...")` sharing a value, or an override that collides with another
 method's auto id) are reported at design time, so the spec never carries a
-duplicate.
+duplicate. A `@hidden` method, which the document leaves out, may share one; its
+name still counts toward the service prefix, so hiding a method changes no other
+method's `operationId`.
 
 ## Schema components
 
@@ -305,6 +307,23 @@ service Users {
 ```
 
 The spec carries the security requirement; runtime enforcement is your middleware's job.
+
+## Hidden endpoints
+
+`@hidden` on a method, a service or an `extend service` block leaves those methods out of the document, while their routes are still generated and served:
+
+```craftgo
+@prefix("/hidden")
+service HiddenNotes {
+    get Read /note { response Note }           // documented
+
+    @hidden
+    @security(InternalKey)
+    get Peek /peek { request Stash  response Vault<Secret> }
+}
+```
+
+What only hidden methods use leaves with them: `Stash`, the enum it binds, `Secret`, `VaultOfSecret` and the `InternalKey` security scheme are not in `components`, so Swagger UI lists neither the endpoint, its types nor its scheme. `Note`, which `Read` answers, stays, and so does a declared type no method uses.
 
 ## Spec location
 

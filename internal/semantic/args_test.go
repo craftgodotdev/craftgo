@@ -245,7 +245,7 @@ func TestFlagDecoratorEmptyParensWarn(t *testing.T) {
 	expectWarning(t, `type X { age int @positive() }`, CodeFlagEmptyParens)
 	expectWarning(t, `type X { tag string[] @uniqueItems() }`, CodeFlagEmptyParens)
 	expectWarning(t, `type X { nick string @nullable() }`, CodeFlagEmptyParens)
-	for _, name := range []string{"ignoreTags", "ignoreMiddleware", "ignoreSecurity"} {
+	for _, name := range []string{"ignoreTags", "ignoreMiddleware", "ignoreSecurity", "hidden"} {
 		expectWarning(t, "type R { ok bool }\nservice S {\n  @"+name+"()\n  get A /a { response R }\n}", CodeFlagEmptyParens)
 	}
 }

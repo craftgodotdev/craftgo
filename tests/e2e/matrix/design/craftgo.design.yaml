@@ -28,3 +28,7 @@ openapi:
     ProfileAuth:
       type: http
       scheme: bearer
+    InternalKey:
+      type: apiKey
+      in: header
+      name: X-Internal-Key

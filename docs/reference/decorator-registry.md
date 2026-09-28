@@ -113,6 +113,7 @@ See [Types & Scalars](/guide/types-and-scalars) for how binding interacts with f
 | `@middlewares(A, B)` | variadic idents / array | Apply named middlewares (also valid at method level - see below). |
 | `@tags(a, b)` | variadic idents/strings / array | OpenAPI tags (also method level). |
 | `@security(scheme)` | variadic idents / array | Security-scheme requirements (also method level). Within one decorator schemes AND-combine; multiple `@security(...)` OR-combine. |
+| `@hidden` | - | Leave the methods out of the OpenAPI document, with each schema and security scheme only hidden methods use; the routes are still served. Also method level; on an `extend service` block, for each of its methods. |
 
 ## Method level
 

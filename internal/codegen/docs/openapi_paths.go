@@ -21,11 +21,20 @@ import (
 )
 
 // addPaths adds pkg's operations to doc (which holds pkg's components), each with its basePath-bound
-// fields; shared describes each left out because its path already holds an operation of its method.
-func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) (ops []boundOperation, shared []string) {
+// fields, but those `@hidden` leaves out, which uses records; shared describes each left out because
+// its path already holds an operation of its method.
+func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) (ops []boundOperation, uses operationUses, shared []string) {
+	aside := &openapi3.T{Components: &openapi3.Components{Schemas: openapi3.Schemas{}}}
+	uses.bodies = aside.Components.Schemas
 	held := map[string]string{}
 	for _, o := range operations(pkg, doc.Components.Schemas) {
 		s := newOpShape(o.svc, o.m, route.Resolve("", o.svc.Primary, o.m), o.id, o.stem, pkg, registry.resolver)
+		if o.svc.Hidden(o.m) {
+			uses.hidden = append(uses.hidden, o)
+			uses.built = append(uses.built, buildOperation(aside, o.svc, s, pkg, registry, &schemaNames{}))
+			continue
+		}
+		uses.shown = append(uses.shown, o)
 		path := route.OpenAPIPath(s.full)
 		verb := strings.ToUpper(o.m.Verb)
 		this := fmt.Sprintf("%s.%s (%s %s)", o.svc.Primary.Name, o.m.Name, verb, s.full)
@@ -43,7 +52,7 @@ func addPaths(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry,
 		setOperation(item, o.m.Verb, op)
 		ops = append(ops, boundOperation{op: op, fields: s.server})
 	}
-	return ops, shared
+	return ops, uses, shared
 }
 
 // boundOperation is an operation and its request fields bound to a variable

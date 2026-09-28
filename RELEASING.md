@@ -146,8 +146,9 @@ Run `make ci` before you tag. Nothing in `make tag` runs the test suite.
 Between phase 1 and the push, `make tidy` will fail in `pkg/events/nats` and
 `pkg/events/kafka` for exactly that reason. `make tidy-check`, and with it
 `make ci` and the CI `check` job, fails there until phase 2 commits the
-checksums. Everything else - `make gen-all`, `go build`, `go test`,
-golangci-lint - keeps working.
+checksums, and in each other module requiring `pkg/events`, whose requirement
+tidy moves to the version the adapters now pin. Everything else -
+`make gen-all`, `go build`, `go test`, golangci-lint - keeps working.
 
 ## The push
 
@@ -192,7 +193,10 @@ GOFLAGS=-mod=mod GOPROXY=direct go mod tidy
 ```
 
 `GOPROXY=direct` reads the tag straight from GitHub rather than waiting for
-`proxy.golang.org` to notice it. If `go.sum` changed it commits
+`proxy.golang.org` to notice it. It then runs the same in every other module
+whose `go.mod` requires `pkg/events` - the brokers and taskflow examples, the
+e2e fixture, the nats integration tests - which moves that requirement to the
+version the adapters pin. If a `go.mod` or `go.sum` changed it commits
 `release: vX.Y.Z checksums`. It does not push and it does not move any tag:
 the published versions already point at the release commit, and a consumer
 verifies the module against its own checksum, not against this repo's

@@ -537,6 +537,11 @@ var registry = map[string]Spec{
 		Args:       ArgsRule{Min: 1, Max: -1, Variadic: ArgIdent, AllowArrayShortcut: true},
 		Repeatable: true,
 	},
+	"hidden": {
+		Name:   "hidden",
+		Levels: LvlService | LvlMethod,
+		Doc:    "Leave the method out of the OpenAPI document, with every schema and security scheme only hidden methods use; the route is still generated and served. On a service or an extend service block, every method of it is hidden.",
+	},
 	"ignoreMiddleware": {
 		Name:   "ignoreMiddleware",
 		Levels: LvlMethod,

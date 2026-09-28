@@ -126,7 +126,7 @@ type CreateUserReq {
 }
 ```
 
-52 decorators, grouped by purpose: validators, bindings, metadata, service-level. Full reference at [Decorators](/guide/decorators).
+53 decorators, grouped by purpose: validators, bindings, metadata, service-level. Full reference at [Decorators](/guide/decorators).
 
 A field's decorators follow its type and may continue on the lines below: every decorator up to the next field name belongs to the field above it, blank lines included - `@doc(...)` written on its own line between fields `a` and `b` decorates `a` (`craftgo fmt` moves it onto `a`'s line). Only the first field of a body takes decorators from the lines above it. Enum values work the same way, except that a decorator above the first value is an error. A declaration's or method's decorators go before its keyword; one after a declaration or method on the same line is a parse error (`decorator @doc follows a declaration on its line; a decorator goes before what it decorates`) unless the next declaration starts on that line. A decorator cannot be another decorator's argument: `@doc(@deprecated)` is a parse error (`a decorator cannot be an argument of @doc`).
 
