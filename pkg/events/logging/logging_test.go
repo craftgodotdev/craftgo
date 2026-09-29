@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/craftgodotdev/craftgo/pkg/events"
 	"github.com/craftgodotdev/craftgo/pkg/events/codecjson"
@@ -257,5 +258,70 @@ func TestANilLoggerIsAPassThrough(t *testing.T) {
 	}
 	if !ran {
 		t.Error("a nil logger dropped the delivery")
+	}
+}
+
+// deliverBatch runs one batch of n messages through a bus carrying the batch access log.
+func deliverBatch(t *testing.T, h slog.Handler, n int, handler events.BatchHandler, opts ...logging.AccessLogOption) {
+	t.Helper()
+	tr := memory.New()
+	bus := events.New(
+		events.WithTransport(tr),
+		events.WithCodec(codecjson.Codec{}),
+		events.WithBatchMiddleware(logging.BatchAccessLog(slog.New(h), opts...)),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := bus.Register(events.Subscription{
+		Event: "orders.Placed", Consumer: "Bulk", Group: "bulk",
+		Batch: &events.Batch{BatchSize: events.BatchSize{Max: n, Wait: time.Minute}, Handle: handler},
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := bus.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	for i := 0; i < n; i++ {
+		if err := tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)}); err != nil {
+			t.Fatalf("publish: %v", err)
+		}
+	}
+	tr.Drain()
+}
+
+// One batch is one line naming the subscription, its size and what the chain asked for.
+func TestOneBatchIsOneLine(t *testing.T) {
+	rec := &recorder{}
+	deliverBatch(t, rec, 3, func(_ context.Context, batch []*events.Message) error {
+		batch[0].Redeliver()
+		batch[1].Reject()
+		return errors.New("partly failed")
+	})
+
+	lines := rec.lines()
+	if len(lines) != 1 {
+		t.Fatalf("wrote %d lines for one batch, want 1", len(lines))
+	}
+	got := attrsOf(lines[0])
+	for k, want := range map[string]string{
+		"event": "orders.Placed", "consumer": "Bulk", "group": "bulk",
+		"size": "3", "redeliver": "1", "reject": "1", "error": "partly failed",
+	} {
+		if got[k] != want {
+			t.Errorf("%s = %q, want %q", k, got[k], want)
+		}
+	}
+	if lines[0].Message != "consumed batch" {
+		t.Errorf("message = %q", lines[0].Message)
+	}
+}
+
+// A skipped contract's batches are not logged.
+func TestASkippedContractsBatchesAreNotLogged(t *testing.T) {
+	rec := &recorder{}
+	deliverBatch(t, rec, 1, func(context.Context, []*events.Message) error { return nil },
+		logging.AccessLogSkipContracts("orders.Placed"))
+	if n := len(rec.lines()); n != 0 {
+		t.Errorf("wrote %d lines for a skipped contract", n)
 	}
 }

@@ -1,4 +1,5 @@
-// Package logging provides an [events.Middleware] that logs each delivery with log/slog.
+// Package logging provides an [events.Middleware] that logs each delivery with log/slog,
+// and an [events.BatchMiddleware] that logs each batch.
 package logging
 
 import (
@@ -50,7 +51,55 @@ func AccessLog(l *slog.Logger, opts ...AccessLogOption) events.Middleware {
 	}
 }
 
-// AccessLogOption configures [AccessLog].
+// BatchAccessLog logs one line per batch: the contract, consumer, group, the batch's size,
+// duration, how many messages the chain asked to redeliver and to reject, and, on failure,
+// an `error` attribute. It takes [AccessLog]'s options; [AccessLogFields], which derives
+// from one delivery, adds nothing to a batch line. A nil logger leaves the chain unchanged.
+func BatchAccessLog(l *slog.Logger, opts ...AccessLogOption) events.BatchMiddleware {
+	cfg := accessLogConfig{level: slog.LevelInfo}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return func(sub events.Subscription, next events.BatchHandler) events.BatchHandler {
+		if l == nil || cfg.skip[sub.Event] {
+			return next
+		}
+		event, consumer, group := sub.Event, sub.Consumer, string(sub.Group)
+		return func(ctx context.Context, batch []*events.Message) error {
+			start := time.Now()
+			err := next(ctx, batch)
+
+			if !l.Enabled(ctx, cfg.level) {
+				return err
+			}
+			var redeliver, reject int
+			for _, msg := range batch {
+				switch msg.Disposition() {
+				case events.DispositionRedeliver:
+					redeliver++
+				case events.DispositionReject:
+					reject++
+				}
+			}
+			attrs := []slog.Attr{
+				slog.String("event", event),
+				slog.String("consumer", consumer),
+				slog.String("group", group),
+				slog.Int("size", len(batch)),
+				slog.Duration("took", time.Since(start)),
+				slog.Int("redeliver", redeliver),
+				slog.Int("reject", reject),
+			}
+			if err != nil {
+				attrs = append(attrs, slog.Any("error", err))
+			}
+			l.LogAttrs(ctx, cfg.level, "consumed batch", attrs...)
+			return err
+		}
+	}
+}
+
+// AccessLogOption configures [AccessLog] and [BatchAccessLog].
 type AccessLogOption func(*accessLogConfig)
 
 type accessLogConfig struct {
