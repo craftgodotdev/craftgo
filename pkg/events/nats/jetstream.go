@@ -626,13 +626,17 @@ func (j *JetStream) createDurable(ctx context.Context, g *groupPlan) (jetstream.
 	if err != nil {
 		return nil, 0, fmt.Errorf("nats: create consumer %q on stream %q: %w", g.name, g.stream, err)
 	}
+	pull := slog.Int("max_in_flight", g.config.maxInFlight)
+	if sub, ok := g.batch(); ok {
+		pull = slog.Int("batch_max", sub.Batch.Max)
+	}
 	j.log.InfoContext(ctx, "nats: created jetstream consumer",
 		slog.String("group", name),
 		slog.String("stream", g.stream),
 		slog.Any("subjects", g.subjects),
 		slog.String("deliver_policy", cfg.DeliverPolicy.String()),
 		slog.Duration("ack_wait", cfg.AckWait),
-		slog.Int("max_in_flight", g.config.maxInFlight))
+		pull)
 	return created, effectiveAckWait(created, g.config.ackWait), nil
 }
 

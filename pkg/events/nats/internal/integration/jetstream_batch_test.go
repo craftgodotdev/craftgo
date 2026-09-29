@@ -3,6 +3,8 @@ package integration_test
 import (
 	"context"
 	"errors"
+	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -312,4 +314,165 @@ func TestJetStreamReportsADeletedBatchDurable(t *testing.T) {
 	}
 	deleteConsumer(t, conn, durable)
 	awaitConsumerStopped(t, reported, 20*time.Second)
+}
+
+// A batch durable deleted while its handler runs, with no pull waiting, is reported as
+// ErrConsumerStopped, and the group can subscribe again.
+func TestJetStreamReportsABatchDurableDeletedMidHandler(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	reported := make(chan error, 64)
+	tr := jsTransport(t, conn, craftnats.WithJetStreamErrorHandler(func(_ events.Subscription, _ *events.Message, err error) {
+		select {
+		case reported <- err:
+		default:
+		}
+	}))
+	inHandler, release := make(chan struct{}), make(chan struct{})
+	publishPlaced(t, tr, "1")
+	subscribeBatch(t, tr, "deleted-durable", events.BatchSize{Max: 1, Wait: 2 * time.Second},
+		func(context.Context, []*events.Message) error {
+			select {
+			case inHandler <- struct{}{}:
+				<-release
+			default:
+			}
+			return nil
+		})
+	select {
+	case <-inHandler:
+	case <-time.After(15 * time.Second):
+		t.Fatal("no batch arrived")
+	}
+
+	js, err := jetstream.New(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	durable, err := js.Consumer(ctx, "ORDERS", "deleted-durable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleteConsumer(t, conn, durable)
+	close(release)
+	awaitConsumerStopped(t, reported, 20*time.Second)
+
+	if err := tr.Subscribe(t.Context(), []events.Subscription{{
+		Event: "orders.Placed", Consumer: "C", Group: "deleted-durable",
+		Batch: &events.Batch{
+			BatchSize: events.BatchSize{Max: 1, Wait: time.Second},
+			Handle:    func(context.Context, []*events.Message) error { return nil },
+		},
+	}}); err != nil {
+		t.Fatalf("subscribe after ErrConsumerStopped: %v", err)
+	}
+}
+
+// With a Wait of a few milliseconds over a bursty stream, no message is redelivered: none
+// goes to a pull the client gave up on.
+func TestJetStreamATinyWaitLosesNoMessage(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	tr := jsTransport(t, conn, craftnats.WithAckWait(2*time.Second))
+
+	const total = 3000
+	var mu sync.Mutex
+	handled := map[string]bool{}
+	redelivered := 0
+	done := make(chan struct{})
+	subscribeBatch(t, tr, "tiny-wait", events.BatchSize{Max: 50, Wait: 2 * time.Millisecond},
+		func(_ context.Context, batch []*events.Message) error {
+			mu.Lock()
+			defer mu.Unlock()
+			for _, m := range batch {
+				handled[string(m.Payload)] = true
+				if m.Deliveries() > 1 {
+					redelivered++
+				}
+			}
+			if len(handled) == total {
+				select {
+				case <-done:
+				default:
+					close(done)
+				}
+			}
+			return nil
+		})
+	js, err := jetstream.New(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < total; i++ {
+		if _, err := js.PublishAsync("orders.Placed", []byte(strconv.Itoa(i))); err != nil {
+			t.Fatal(err)
+		}
+		if i%50 == 0 {
+			time.Sleep(time.Millisecond)
+		}
+	}
+	<-js.PublishAsyncComplete()
+	select {
+	case <-done:
+	case <-time.After(60 * time.Second):
+		mu.Lock()
+		defer mu.Unlock()
+		t.Fatalf("handled %d of %d", len(handled), total)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if redelivered != 0 {
+		t.Errorf("%d deliveries were redeliveries though every message settled - they went to a pull the client abandoned", redelivered)
+	}
+}
+
+// Batch bounds the durable caps or a tiny Wait still consume: a Max beyond anything a pull
+// can ask for, a Max over MaxRequestBatch, a Wait over MaxRequestExpires, a Wait of a
+// microsecond.
+func TestJetStreamBatchBoundsBeyondThePullLimitsStillConsume(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		size      events.BatchSize
+		configure func(*jetstream.ConsumerConfig)
+	}{
+		{"huge max", events.BatchSize{Max: math.MaxInt, Wait: 200 * time.Millisecond}, nil},
+		{"max over MaxRequestBatch", events.BatchSize{Max: 5, Wait: 200 * time.Millisecond},
+			func(cfg *jetstream.ConsumerConfig) { cfg.MaxRequestBatch = 2 }},
+		{"wait over MaxRequestExpires", events.BatchSize{Max: 5, Wait: 2 * time.Second},
+			func(cfg *jetstream.ConsumerConfig) { cfg.MaxRequestExpires = 500 * time.Millisecond }},
+		{"microsecond wait", events.BatchSize{Max: 5, Wait: time.Microsecond}, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			conn := runJetStreamServer(t)
+			provision(t, conn, "ORDERS", "orders.>")
+			var opts []craftnats.JetStreamOption
+			if c.configure != nil {
+				opts = append(opts, craftnats.WithGroupConfig("bounds", craftnats.ConsumerConfig(c.configure)))
+			}
+			tr := jsTransport(t, conn, opts...)
+			seen := newBatchesSeen()
+			publishPlaced(t, tr, "1", "2", "3")
+			subscribeBatch(t, tr, "bounds", c.size, func(_ context.Context, batch []*events.Message) error {
+				seen.record(batch)
+				return nil
+			})
+			deadline := time.After(15 * time.Second)
+			for {
+				n := 0
+				for _, b := range seen.all() {
+					n += len(b)
+				}
+				if n == 3 {
+					return
+				}
+				select {
+				case <-seen.in:
+				case <-deadline:
+					t.Fatalf("consumed %v, want all three", seen.all())
+				}
+			}
+		})
+	}
 }

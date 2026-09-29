@@ -285,7 +285,7 @@ js, err := nats.NewJetStream(conn,
 
 `MaxInFlight` is how many messages one durable's pull keeps buffered here, and the default is 1 deliberately: a buffered message waits for every handler ahead of it with the server's `AckWait` clock already running. **Raise it only where `n` × the slowest handler stays under `AckWait`**, or a message is redelivered while it still sits in the buffer. `WithMaxDeliveries` (default 5) caps a redelivery loop and `WithRedeliverBackoff(fn)` delays each redelivery by `fn(deliveries)`.
 
-A batch subscription's group fetches its durable one batch at a time - up to `Max` messages, for at most `Wait` - and keeps every message of it from redelivery, from its arrival until it is answered, however long the handler takes. `MaxInFlight` does not apply to it.
+A batch subscription's group pulls its durable one batch at a time: one pull waits for the batch's first message, then pulls of at most 500 messages fill it until it holds `Max` or `Wait` has passed since that message, each within the durable's `MaxRequestBatch` and `MaxRequestExpires`. Every message of it is kept from redelivery, from its arrival until it is answered, however long the handler takes. A `Max` above the durable's `MaxAckPending` never fills - the server hands out no more unanswered messages than that - so each batch waits out its `Wait`. `MaxInFlight` does not apply to a batch group.
 
 ### Rolling deploys
 

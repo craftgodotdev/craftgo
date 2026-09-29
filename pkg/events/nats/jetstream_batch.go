@@ -62,20 +62,52 @@ const (
 	batchRetryMax = 5 * time.Second
 )
 
+// The pull requests of a batch group. The one awaiting a batch's first message lasts up to
+// firstPull, heartbeating so a lost durable shows; each one filling the batch asks for at
+// most fillChunk messages and lasts at most fillPull, so Drain and Stop act within it.
+const (
+	firstPull = 30 * time.Second
+	fillChunk = 500
+	fillPull  = time.Second
+)
+
+// pullLimits are a durable's caps on one pull request; zero is none.
+type pullLimits struct {
+	batch   int
+	expires time.Duration
+}
+
+func pullLimitsOf(c jetstream.Consumer) pullLimits {
+	info := c.CachedInfo()
+	if info == nil {
+		return pullLimits{}
+	}
+	return pullLimits{batch: info.Config.MaxRequestBatch, expires: info.Config.MaxRequestExpires}
+}
+
+// expiry bounds d by the durable's longest pull.
+func (l pullLimits) expiry(d time.Duration) time.Duration {
+	if l.expires > 0 {
+		return min(d, l.expires)
+	}
+	return d
+}
+
 // consumeBatches starts fetching g's durable for sub, a batch subscription; each handler
-// gets ctx. A fetch that fails is reported and retried after a growing pause; the loop
-// ends when the durable or its stream is gone.
+// gets ctx. A failed fetch is reported and retried after a growing pause; the loop ends
+// once the durable or its stream is gone.
 func (j *JetStream) consumeBatches(ctx context.Context, g *groupPlan, sub events.Subscription, consumer jetstream.Consumer, ackWait time.Duration) *batchConsumer {
 	fetchCtx, cancel := context.WithCancel(context.Background())
 	b := &batchConsumer{cancel: cancel, closed: make(chan struct{})}
 	whole := events.Subscription{Group: g.name}
+	limits := pullLimitsOf(consumer)
 	go func() {
 		defer close(b.closed)
 		defer cancel()
 		pause := time.Duration(0)
 		for b.current() == batchRunning {
 			hold := holdBatch(ackWait)
-			ms, err := fetchBatch(fetchCtx, consumer, sub.Batch.BatchSize, hold)
+			ms, err := j.gather(fetchCtx, g, sub, consumer, limits, ackWait, hold)
 			if b.current() == batchStopped {
 				hold.release()
 				for _, m := range ms {
@@ -84,7 +116,7 @@ func (j *JetStream) consumeBatches(ctx context.Context, g *groupPlan, sub events
 				return
 			}
 			if len(ms) > 0 {
-				j.deliverBatch(ctx, g, sub, ackWait, ms, hold)
+				j.deliverBatch(ctx, sub, ms, hold)
 			} else {
 				hold.release()
 			}
@@ -106,8 +138,8 @@ func (j *JetStream) consumeBatches(ctx context.Context, g *groupPlan, sub events
 	return b
 }
 
-// consumerGone reports whether err, a failed fetch, means the durable or its stream no
-// longer exists. A missed heartbeat asks the server.
+// consumerGone reports whether err, a failed fetch, comes of the durable or its stream no
+// longer existing, asking the server when err does not say.
 func (j *JetStream) consumerGone(ctx context.Context, consumer jetstream.Consumer, err error) bool {
 	gone := func(err error) bool {
 		return errors.Is(err, jetstream.ErrConsumerDeleted) ||
@@ -117,59 +149,77 @@ func (j *JetStream) consumerGone(ctx context.Context, consumer jetstream.Consume
 	if gone(err) {
 		return true
 	}
-	if !errors.Is(err, jetstream.ErrNoHeartbeat) {
-		return false
-	}
 	probeCtx, cancel := context.WithTimeout(ctx, j.probeTimeout)
 	defer cancel()
 	_, err = consumer.Info(probeCtx)
 	return gone(err)
 }
 
-// fetchBatch fetches up to size.Max messages, for at most size.Wait, adding each to hold
-// as it arrives. Its error is nil for a fetch that ended by running out of time or by ctx.
-func fetchBatch(ctx context.Context, consumer jetstream.Consumer, size events.BatchSize, hold *batchHold) ([]jetstream.Msg, error) {
-	waitCtx, cancel := context.WithTimeout(ctx, size.Wait)
+// gather fetches sub's next batch into hold: one pull waits for its first message, then
+// pulls fill it until it holds Max or Wait has passed since that message. A message of a
+// subject sub does not consume goes back at once, for a replica that does. The error is
+// nil for pulls that ended by running out of time or by ctx.
+func (j *JetStream) gather(ctx context.Context, g *groupPlan, sub events.Subscription, consumer jetstream.Consumer, limits pullLimits, ackWait time.Duration, hold *batchHold) ([]jetstream.Msg, error) {
+	subject := j.subject(sub.Event)
+	var ms []jetstream.Msg
+	take := func(res jetstream.MessageBatch) error {
+		for m := range res.Messages() {
+			if m.Subject() != subject {
+				j.report(events.Subscription{Group: g.name}, nil, fmt.Errorf("nats: durable %q delivered subject %s, which no consumer in this process handles - handed back for a replica that does", g.name, m.Subject()))
+				_ = m.NakWithDelay(ackWait)
+				continue
+			}
+			hold.add(m)
+			ms = append(ms, m)
+		}
+		if err := res.Error(); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		return nil
+	}
+
+	firstCtx, cancel := context.WithTimeout(ctx, limits.expiry(firstPull))
 	defer cancel()
-	res, err := consumer.Fetch(size.Max, jetstream.FetchContext(waitCtx))
+	res, err := consumer.Fetch(1, jetstream.FetchContext(firstCtx))
 	if err != nil {
-		if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
+		if ctx.Err() != nil {
 			return nil, nil
 		}
 		return nil, err
 	}
-	var ms []jetstream.Msg
-	for m := range res.Messages() {
-		hold.add(m)
-		ms = append(ms, m)
-	}
-	if err := res.Error(); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+	if err := take(res); err != nil || len(ms) == 0 {
 		return ms, err
+	}
+
+	size := sub.Batch.BatchSize
+	deadline := time.Now().Add(size.Wait)
+	for len(ms) < size.Max && ctx.Err() == nil {
+		left := time.Until(deadline)
+		if left <= 0 {
+			break
+		}
+		n := min(size.Max-len(ms), fillChunk)
+		if limits.batch > 0 {
+			n = min(n, limits.batch)
+		}
+		res, err := consumer.Fetch(n, jetstream.FetchMaxWait(limits.expiry(min(left, fillPull))))
+		if err != nil {
+			return ms, err
+		}
+		if err := take(res); err != nil {
+			return ms, err
+		}
 	}
 	return ms, nil
 }
 
 // deliverBatch hands ms to sub's batch handler, then answers each message as the chain
-// decided, as [JetStream.deliver] does for one; a message of a subject sub does not
-// consume goes back for a replica that does.
-func (j *JetStream) deliverBatch(ctx context.Context, g *groupPlan, sub events.Subscription, ackWait time.Duration, ms []jetstream.Msg, hold *batchHold) {
-	subject := j.subject(sub.Event)
-	batch := make([]*events.Message, 0, len(ms))
-	mine := make([]jetstream.Msg, 0, len(ms))
-	for _, m := range ms {
-		if m.Subject() != subject {
-			j.report(events.Subscription{Group: g.name}, nil, fmt.Errorf("nats: durable %q delivered subject %s, which no consumer in this process handles - handed back for a replica that does", g.name, m.Subject()))
-			_ = m.NakWithDelay(ackWait)
-			continue
-		}
-		msg := decodeFrom(sub.Event, m.Headers(), m.Data())
-		msg.SetDeliveries(deliveryCount(m))
-		batch = append(batch, msg)
-		mine = append(mine, m)
-	}
-	if len(batch) == 0 {
-		hold.release()
-		return
+// decided, as [JetStream.deliver] does for one.
+func (j *JetStream) deliverBatch(ctx context.Context, sub events.Subscription, ms []jetstream.Msg, hold *batchHold) {
+	batch := make([]*events.Message, len(ms))
+	for i, m := range ms {
+		batch[i] = decodeFrom(sub.Event, m.Headers(), m.Data())
+		batch[i].SetDeliveries(deliveryCount(m))
 	}
 	err := sub.Batch.Handle(ctx, batch)
 	hold.release()
@@ -177,7 +227,7 @@ func (j *JetStream) deliverBatch(ctx context.Context, g *groupPlan, sub events.S
 	if err != nil {
 		j.report(sub, nil, err)
 	}
-	for i, m := range mine {
+	for i, m := range ms {
 		msg := batch[i]
 		if j.capped(msg) {
 			j.report(sub, msg, fmt.Errorf("nats: giving up on %s after %d deliveries - the chain asked for another and WithMaxDeliveries is %d", sub.Event, msg.Deliveries(), j.maxDeliveries))
