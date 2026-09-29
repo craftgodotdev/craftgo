@@ -310,3 +310,56 @@ func TestUseBatchAfterStartPanics(t *testing.T) {
 	}()
 	bus.UseBatch(nil)
 }
+
+// redeliverFailures is the batch middleware of the events guide: each message the batch
+// failed comes back, but one whose payload cannot decode, which fails the same way again.
+func redeliverFailures(_ events.Subscription, next events.BatchHandler) events.BatchHandler {
+	return func(ctx context.Context, batch []*events.Message) error {
+		err := next(ctx, batch)
+		var failed events.ItemErrors
+		if !errors.As(err, &failed) {
+			return err
+		}
+		for i, itemErr := range failed {
+			var bad *events.PayloadError
+			switch {
+			case batch[i].Disposition() != events.DispositionUnset:
+			case errors.As(itemErr, &bad):
+				batch[i].Reject()
+			default:
+				batch[i].Redeliver()
+			}
+		}
+		return err
+	}
+}
+
+// The guide's batch middleware redelivers each failure, rejects an undecodable payload and
+// leaves a message the handler answered alone.
+func TestTheGuidesBatchMiddleware(t *testing.T) {
+	bus, tr := subscriberBus(events.WithBatchMiddleware(redeliverFailures))
+	if err := orderPlaced.SubscribeBatch(bus, "bulk", events.BatchSize{Max: 10, Wait: time.Second},
+		func(_ context.Context, batch []events.Item[order]) error {
+			for _, it := range batch {
+				if it.Payload.ID == "held" {
+					it.Msg.Settle()
+				}
+			}
+			return errors.New("store down")
+		}); err != nil {
+		t.Fatal(err)
+	}
+	start(t, context.Background(), bus)
+	msgs := []*events.Message{
+		{Event: "orders.Placed", Payload: []byte(`{"id":"a"}`)},
+		{Event: "orders.Placed", Payload: []byte(`nope`)},
+		{Event: "orders.Placed", Payload: []byte(`{"id":"held"}`)},
+	}
+	_ = tr.deliver(t, msgs...)
+	want := []events.Disposition{events.DispositionRedeliver, events.DispositionReject, events.DispositionSettle}
+	for i, m := range msgs {
+		if m.Disposition() != want[i] {
+			t.Errorf("message %d disposition = %v, want %v", i, m.Disposition(), want[i])
+		}
+	}
+}

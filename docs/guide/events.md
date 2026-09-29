@@ -183,6 +183,78 @@ got, err := json.MarshalIndent(bus.Plan(), "", "  ")
 
 A rename, a lost listener or a group that drifted between two deployables then fails a test rather than a deploy.
 
+## Consuming in batches
+
+A subscription can take its messages in batches, for work that is cheaper in bulk - one insert of a hundred rows, one call to a bulk API:
+
+```go
+var BulkLedgerGroup = craftevents.Group("order-ledger-bulk")
+
+func RegisterBulk(bus *craftevents.Bus, store *Store) error {
+	return orders.Placed.SubscribeBatch(bus, BulkLedgerGroup,
+		craftevents.BatchSize{Max: 100, Wait: time.Second},
+		func(ctx context.Context, batch []craftevents.Item[types.OrderPlaced]) error {
+			rows := make([]types.OrderPlaced, 0, len(batch))
+			for _, it := range batch {
+				if it.Payload.Total == 0 {
+					it.Msg.Reject() // this message alone
+					continue
+				}
+				rows = append(rows, *it.Payload)
+			}
+			return store.InsertOrders(ctx, rows)
+		})
+}
+```
+
+A batch holds at most `Max` messages, and no message waits longer than `Wait` for its batch to fill; a transport may hand a batch over sooner. Each message is decoded and validated as for `Subscribe`, and one that fails is left out of `batch`. The transport answers every message only once the function has returned, holding them open meanwhile. A broker's transport starts the next batch after that, so its batches keep the order their messages arrived in.
+
+What each message becomes is decided per message:
+
+- asking for nothing settles it, as for one message;
+- `it.Msg.Redeliver()` or `it.Msg.Reject()` answers for that message alone;
+- `it.Fail(err)` gives that item an error of its own;
+- the function's error goes to every item without one.
+
+The handler returns the failures as `craftevents.ItemErrors`, keyed by index into the whole batch: a payload that did not decode or validate as its `*PayloadError`, the others as their own error or the function's. The transport reports that error once, with no message. An error redelivers nothing by itself, here as for one message: the chain decides.
+
+A batch subscription holds its group alone - `Register` refuses it beside another subscription in the group with `ErrBatchGroupShared` - and needs a transport that consumes in batches, which every shipped one does (`ErrBatchUnsupported` otherwise). `BatchSize` with a `Max` below 1 or a `Wait` that is not positive is `ErrInvalidBatch`.
+
+### Batch middleware
+
+The chain installed with `Use` wraps one message and does not run for a batch. Batches have a chain of their own:
+
+```go
+type BatchMiddleware func(sub craftevents.Subscription, next craftevents.BatchHandler) craftevents.BatchHandler
+```
+
+`WithBatchMiddleware` installs it at construction and `bus.UseBatch` appends afterwards; a subscription built with the descriptor's `BatchSubscription(bus, group, size, fn)` takes its own in `Batch.Chain`. The wrap order and the panic rules are those of one message: a panic in a batch middleware asks for every message of the batch to be redelivered, on a transport that can. `logging.BatchAccessLog` writes one line per batch. A retry policy reads the `ItemErrors`:
+
+```go
+// redeliverFailures asks for each message the batch failed to come back, but one whose
+// payload cannot decode, which fails the same way again.
+func redeliverFailures(_ craftevents.Subscription, next craftevents.BatchHandler) craftevents.BatchHandler {
+	return func(ctx context.Context, batch []*craftevents.Message) error {
+		err := next(ctx, batch)
+		var failed craftevents.ItemErrors
+		if !errors.As(err, &failed) {
+			return err
+		}
+		for i, itemErr := range failed {
+			var bad *craftevents.PayloadError
+			switch {
+			case batch[i].Disposition() != craftevents.DispositionUnset:
+			case errors.As(itemErr, &bad):
+				batch[i].Reject()
+			default:
+				batch[i].Redeliver()
+			}
+		}
+		return err
+	}
+}
+```
+
 ## NATS JetStream
 
 ![One durable per group carries that group's FilterSubjects; one process subscribes several groups, and an existing durable is adopted when its filter equals the plan, widened when it is a strict subset, and refused otherwise.](/diagrams/jetstream-groups.svg)
@@ -213,15 +285,17 @@ js, err := nats.NewJetStream(conn,
 
 `MaxInFlight` is how many messages one durable's pull keeps buffered here, and the default is 1 deliberately: a buffered message waits for every handler ahead of it with the server's `AckWait` clock already running. **Raise it only where `n` × the slowest handler stays under `AckWait`**, or a message is redelivered while it still sits in the buffer. `WithMaxDeliveries` (default 5) caps a redelivery loop and `WithRedeliverBackoff(fn)` delays each redelivery by `fn(deliveries)`.
 
+A batch subscription's group fetches its durable one batch at a time - up to `Max` messages, for at most `Wait` - and keeps every message of it from redelivery, from its arrival until it is answered, however long the handler takes. `MaxInFlight` does not apply to it.
+
 ### Rolling deploys
 
 During a rolling deploy two versions of a deployable share a durable. A subject no listener in this process handles is **handed back** - NAK'd with the group's `AckWait` as the delay - so the replica that does handle it gets it, and never terminated. Every hand-back is reported through `WithJetStreamErrorHandler` with only `sub.Group` set.
 
 ## Kafka, core NATS and memory
 
-- `pkg/events/kafka` - one contract per topic, ordering key as the record key; `WithShareGroup` asks for a KIP-932 share group instead of a classic consumer group.
-- `pkg/events/nats` (core) - contract to subject, group to queue group; at most once and no nack, so install `nats.WithErrorHandler` or a failed message is observed by nothing.
-- `pkg/events/memory` - in-process, for tests, single-binary deployments and the plan golden test; `Drain()` waits for in-flight deliveries.
+- `pkg/events/kafka` - one contract per topic, ordering key as the record key; `WithShareGroup` asks for a KIP-932 share group instead of a classic consumer group. A classic group gathers a batch over several fetches and commits it once the handler has returned. A share group hands over one fetch's records, at most `Max`, and does not wait to fill the batch: the client accepts what one fetch left unanswered at the next.
+- `pkg/events/nats` (core) - contract to subject, group to queue group; at most once and no nack, so install `nats.WithErrorHandler` or a failed message is observed by nothing. A batch is gathered from the queue subscription, and is at most once too.
+- `pkg/events/memory` - in-process, for tests, single-binary deployments and the plan golden test; `Drain()` waits for in-flight deliveries, a batch still filling among them. Each batch runs on its own goroutine.
 
 Every option and error type is listed in [Runtime API](/reference/runtime-api#event-runtime).
 
