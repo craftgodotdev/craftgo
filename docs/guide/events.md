@@ -281,11 +281,11 @@ js, err := nats.NewJetStream(conn,
 		nats.MaxInFlight(8), nats.AckWait(2*time.Minute)))
 ```
 
-`MaxInFlight`, `AckWait`, `DeliverPolicy`, `ConsumerConfig` and `AllowNarrow` are the group options, and repeated calls for one group accumulate. `AckWait`, `DeliverPolicy` and `ConsumerConfig` apply when the durable is **created**, and `AllowNarrow` when `Start` checks an existing one; `WithMaxInFlight` and `WithAckWait` are the transport-wide defaults.
+`MaxInFlight`, `FetchSize`, `AckWait`, `DeliverPolicy`, `ConsumerConfig` and `AllowNarrow` are the group options, and repeated calls for one group accumulate. `AckWait`, `DeliverPolicy` and `ConsumerConfig` apply when the durable is **created**, and `AllowNarrow` when `Start` checks an existing one; `WithMaxInFlight`, `WithFetchSize` and `WithAckWait` are the transport-wide defaults.
 
 `MaxInFlight` is how many messages one durable's pull keeps buffered here, and the default is 1 deliberately: a buffered message waits for every handler ahead of it with the server's `AckWait` clock already running. **Raise it only where `n` × the slowest handler stays under `AckWait`**, or a message is redelivered while it still sits in the buffer. `WithMaxDeliveries` (default 5) caps a redelivery loop and `WithRedeliverBackoff(fn)` delays each redelivery by `fn(deliveries)`.
 
-A batch subscription's group pulls its durable one batch at a time: one pull waits for the batch's first message, then pulls of at most 500 messages fill it until it holds `Max` or `Wait` has passed since that message, each within the durable's `MaxRequestBatch` and `MaxRequestExpires`. Every message of it is kept from redelivery, from its arrival until it is answered, however long the handler takes. A `Max` above the durable's `MaxAckPending` never fills - the server hands out no more unanswered messages than that - so each batch waits out its `Wait`. `MaxInFlight` does not apply to a batch group.
+A batch subscription's group pulls its durable one batch at a time: one pull waits for the batch's first message, then pulls of the group's `FetchSize` - 500 unless `WithFetchSize` or the group says otherwise - fill it until it holds `Max` or `Wait` has passed since that message, each within the durable's `MaxRequestBatch` and `MaxRequestExpires`. A pull holds room for its `FetchSize` messages in the client. Every message of it is kept from redelivery, from its arrival until it is answered, however long the handler takes. A `Max` above the durable's `MaxAckPending` never fills - the server hands out no more unanswered messages than that - so each batch waits out its `Wait`. `MaxInFlight` does not apply to a batch group.
 
 ### Rolling deploys
 

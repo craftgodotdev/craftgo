@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"math"
 	"strconv"
@@ -474,5 +475,59 @@ func TestJetStreamBatchBoundsBeyondThePullLimitsStillConsume(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A batch group's first pull asks for one message and each pull filling the batch for the
+// group's FetchSize; the batch still holds Max.
+func TestJetStreamFillPullsAskForTheFetchSize(t *testing.T) {
+	conn := runJetStreamServer(t)
+	provision(t, conn, "ORDERS", "orders.>")
+	pulls, err := conn.SubscribeSync("$JS.API.CONSUMER.MSG.NEXT.ORDERS.fetch-size")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := jsTransport(t, conn, craftnats.WithGroupConfig("fetch-size", craftnats.FetchSize(2)))
+	seen := newBatchesSeen()
+	publishPlaced(t, tr, "1", "2", "3", "4", "5")
+	subscribeBatch(t, tr, "fetch-size", events.BatchSize{Max: 5, Wait: 2 * time.Second},
+		func(_ context.Context, batch []*events.Message) error {
+			seen.record(batch)
+			return nil
+		})
+	seen.await(t, 1, 15*time.Second)
+	if got := seen.all(); len(got) != 1 || len(got[0]) != 5 {
+		t.Fatalf("batches = %v, want one of all five", got)
+	}
+
+	var asked []int
+	for {
+		m, err := pulls.NextMsg(200 * time.Millisecond)
+		if err != nil {
+			break
+		}
+		var req struct {
+			Batch int `json:"batch"`
+		}
+		if err := json.Unmarshal(m.Data, &req); err != nil {
+			t.Fatalf("pull request %s: %v", m.Data, err)
+		}
+		asked = append(asked, req.Batch)
+	}
+	if len(asked) < 3 || asked[0] != 1 || asked[1] != 2 || asked[2] != 2 {
+		t.Errorf("pulls asked for %v, want 1, then 2 and 2 to fill the batch", asked)
+	}
+}
+
+// A FetchSize below 1, transport-wide or for a group, fails construction.
+func TestAFetchSizeBelowOneIsRefused(t *testing.T) {
+	conn := runJetStreamServer(t)
+	for name, opt := range map[string]craftnats.JetStreamOption{
+		"transport": craftnats.WithFetchSize(0),
+		"group":     craftnats.WithGroupConfig("tuned", craftnats.FetchSize(-1)),
+	} {
+		if _, err := craftnats.NewJetStream(conn, opt); err == nil || !strings.Contains(err.Error(), "FetchSize") {
+			t.Errorf("%s: NewJetStream = %v, want the fetch size refused", name, err)
+		}
 	}
 }

@@ -26,7 +26,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   `WithBatchMiddleware`, `Bus.UseBatch` and `Batch.Chain`, with
   `logging.BatchAccessLog` for one line per batch. The memory, core NATS,
   JetStream and Kafka transports consume in batches; another transport
-  opts in through `BatchSubscriber`.
+  opts in through `BatchSubscriber`. On JetStream, `WithFetchSize` and a
+  group's `FetchSize` set how many messages each pull filling a batch asks
+  for, 500 by default.
 
 ## [1.10.0] - 2026-09-26 [UTC+7]
 

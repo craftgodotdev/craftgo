@@ -62,12 +62,12 @@ const (
 	batchRetryMax = 5 * time.Second
 )
 
-// The pull requests of a batch group. The one awaiting a batch's first message lasts up to
-// firstPull, heartbeating so a lost durable shows; each one filling the batch asks for at
-// most fillChunk messages and lasts at most fillPull, so Drain and Stop act within it.
+// The pull requests of a batch group. The one awaiting a batch's first message asks for one
+// and lasts up to firstPull, heartbeating so a lost durable shows; each one filling the
+// batch asks for the group's fetch size and lasts at most fillPull, so Drain and Stop act
+// within it.
 const (
 	firstPull = 30 * time.Second
-	fillChunk = 500
 	fillPull  = time.Second
 )
 
@@ -198,7 +198,7 @@ func (j *JetStream) gather(ctx context.Context, g *groupPlan, sub events.Subscri
 		if left <= 0 {
 			break
 		}
-		n := min(size.Max-len(ms), fillChunk)
+		n := min(size.Max-len(ms), g.config.fetchSize)
 		if limits.batch > 0 {
 			n = min(n, limits.batch)
 		}

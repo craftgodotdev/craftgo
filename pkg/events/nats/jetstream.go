@@ -43,6 +43,7 @@ type JetStream struct {
 	ackTimeout    time.Duration
 	drainTimeout  time.Duration
 	maxInFlight   int
+	fetchSize     int
 	maxDeliveries int
 	perGroup      map[events.Group]*groupConfig
 
@@ -119,6 +120,14 @@ func WithMaxInFlight(n int) JetStreamOption {
 	return func(j *JetStream) { j.maxInFlight = n }
 }
 
+// WithFetchSize sets how many messages each pull of a batch subscription's
+// group asks for once its batch has a first message. Default 500; [FetchSize]
+// overrides it per group, and the durable's MaxRequestBatch caps it. Each
+// pull holds room for that many messages in the client.
+func WithFetchSize(n int) JetStreamOption {
+	return func(j *JetStream) { j.fetchSize = n }
+}
+
 // WithMaxDeliveries caps the deliveries of one message: at the cap, a
 // Redeliver the chain asked for becomes a reported termination. Default 5;
 // zero is unbounded.
@@ -152,6 +161,7 @@ func WithJetStreamLogger(l *slog.Logger) JetStreamOption {
 // groupConfig is one group's settings; a zero field keeps the default.
 type groupConfig struct {
 	maxInFlight int
+	fetchSize   int
 	ackWait     time.Duration
 	deliver     jetstream.DeliverPolicy
 	deliverSet  bool
@@ -183,6 +193,13 @@ func WithGroupConfig(group events.Group, opts ...GroupOption) JetStreamOption {
 // Zero keeps the transport-wide value; a negative one fails [NewJetStream].
 func MaxInFlight(n int) GroupOption {
 	return func(c *groupConfig) { c.maxInFlight = n }
+}
+
+// FetchSize is how many messages each pull of this batch group asks for,
+// overriding [WithFetchSize]. Zero keeps the transport-wide value; a negative
+// one fails [NewJetStream].
+func FetchSize(n int) GroupOption {
+	return func(c *groupConfig) { c.fetchSize = n }
 }
 
 // AckWait is this group's redelivery timer, overriding [WithAckWait] for a
@@ -222,6 +239,7 @@ func NewJetStream(conn *nats.Conn, opts ...JetStreamOption) (*JetStream, error) 
 		ackTimeout:    30 * time.Second,
 		drainTimeout:  30 * time.Second,
 		maxInFlight:   1,
+		fetchSize:     500,
 		maxDeliveries: 5,
 		perGroup:      map[events.Group]*groupConfig{},
 		groups:        map[events.Group]*registration{},
@@ -237,9 +255,15 @@ func NewJetStream(conn *nats.Conn, opts ...JetStreamOption) (*JetStream, error) 
 	if j.maxInFlight < 1 {
 		return nil, fmt.Errorf("nats: WithMaxInFlight(%d) must be at least 1", j.maxInFlight)
 	}
+	if j.fetchSize < 1 {
+		return nil, fmt.Errorf("nats: WithFetchSize(%d) must be at least 1", j.fetchSize)
+	}
 	for _, group := range slices.Sorted(maps.Keys(j.perGroup)) {
 		if n := j.perGroup[group].maxInFlight; n < 0 {
 			return nil, fmt.Errorf("nats: WithGroupConfig(%q, MaxInFlight(%d)) must be at least 1", group, n)
+		}
+		if n := j.perGroup[group].fetchSize; n < 0 {
+			return nil, fmt.Errorf("nats: WithGroupConfig(%q, FetchSize(%d)) must be at least 1", group, n)
 		}
 	}
 
@@ -469,13 +493,16 @@ func (j *JetStream) plan(ctx context.Context, subs []events.Subscription) ([]*gr
 
 // configFor returns group's settings filled in from the transport defaults.
 func (j *JetStream) configFor(group events.Group) groupConfig {
-	cfg := groupConfig{maxInFlight: j.maxInFlight, ackWait: j.ackWait}
+	cfg := groupConfig{maxInFlight: j.maxInFlight, fetchSize: j.fetchSize, ackWait: j.ackWait}
 	g := j.perGroup[group]
 	if g == nil {
 		return cfg
 	}
 	if g.maxInFlight > 0 {
 		cfg.maxInFlight = g.maxInFlight
+	}
+	if g.fetchSize > 0 {
+		cfg.fetchSize = g.fetchSize
 	}
 	if g.ackWait > 0 {
 		cfg.ackWait = g.ackWait
@@ -627,8 +654,8 @@ func (j *JetStream) createDurable(ctx context.Context, g *groupPlan) (jetstream.
 		return nil, 0, fmt.Errorf("nats: create consumer %q on stream %q: %w", g.name, g.stream, err)
 	}
 	pull := slog.Int("max_in_flight", g.config.maxInFlight)
-	if sub, ok := g.batch(); ok {
-		pull = slog.Int("batch_max", sub.Batch.Max)
+	if _, ok := g.batch(); ok {
+		pull = slog.Int("fetch_size", g.config.fetchSize)
 	}
 	j.log.InfoContext(ctx, "nats: created jetstream consumer",
 		slog.String("group", name),

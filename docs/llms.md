@@ -406,7 +406,8 @@ alone through `it.Msg.Redeliver()` / `Reject()`, `it.Fail(err)` gives it its own
 to the rest; the failures come back as `craftevents.ItemErrors` (index into the batch -> error), reported
 once by the transport. A batch subscription holds its group alone (`ErrBatchGroupShared`). Its chain is the
 batch chain - `WithBatchMiddleware`, `bus.UseBatch`, `Batch.Chain`, `logging.BatchAccessLog` - and the
-per-message chain does not run for it. JetStream fetches `Max` per batch on the group's durable; a classic
+per-message chain does not run for it. JetStream waits for a batch's first message, then fills it in pulls of
+`FetchSize` messages (`nats.WithFetchSize`, default 500) on the group's durable; a classic
 Kafka group gathers over several fetches and commits after the handler, a share group hands over one
 fetch's records without waiting to fill; core NATS and memory gather from their subscription.
 
@@ -415,7 +416,7 @@ a group keeps its position under its name. An existing durable is adopted and ve
 filter set is adopted, a strict subset is widened to the plan, anything else - a narrower plan, a
 partial overlap, a durable with no filter - is refused naming both sets unless the group carries
 `AllowNarrow()`. Per-group settings come from `nats.WithGroupConfig(group, MaxInFlight(n),
-AckWait(d), DeliverPolicy(p), ConsumerConfig(fn), AllowNarrow())`. `AckWait`, `DeliverPolicy` and
+FetchSize(n), AckWait(d), DeliverPolicy(p), ConsumerConfig(fn), AllowNarrow())`. `AckWait`, `DeliverPolicy` and
 `ConsumerConfig` apply only when the durable is created; `MaxInFlight` is the prefetch, default 1 -
 raise it only where n x the slowest handler stays under `AckWait`.
 
