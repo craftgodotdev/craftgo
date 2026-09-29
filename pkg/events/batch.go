@@ -63,12 +63,32 @@ type BatchSize struct {
 	Wait time.Duration
 }
 
+// batchSizeJSON is the wire shape of a [BatchSize].
+type batchSizeJSON struct {
+	Max  int    `json:"max"`
+	Wait string `json:"wait"`
+}
+
 // MarshalJSON renders the bounds as {"max":100,"wait":"1s"}.
 func (s BatchSize) MarshalJSON() ([]byte, error) {
-	return json.Marshal(struct {
-		Max  int    `json:"max"`
-		Wait string `json:"wait"`
-	}{s.Max, s.Wait.String()})
+	return json.Marshal(batchSizeJSON{s.Max, s.Wait.String()})
+}
+
+// UnmarshalJSON reads the bounds MarshalJSON renders.
+func (s *BatchSize) UnmarshalJSON(data []byte) error {
+	var raw batchSizeJSON
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	var wait time.Duration
+	if raw.Wait != "" {
+		var err error
+		if wait, err = time.ParseDuration(raw.Wait); err != nil {
+			return fmt.Errorf("events: batch wait: %w", err)
+		}
+	}
+	s.Max, s.Wait = raw.Max, wait
+	return nil
 }
 
 // Batch makes a [Subscription] consume in batches, which only a [BatchSubscriber]
@@ -92,7 +112,8 @@ type BatchSubscriber interface {
 }
 
 // ErrBatchUnsupported is returned by [Bus.Register] for a batch subscription on a
-// transport that does not consume in batches.
+// transport that does not consume in batches; a bus with no subscribe half leaves the
+// refusal to [Bus.Start], as for any subscription.
 var ErrBatchUnsupported = errors.New("events: transport cannot consume in batches")
 
 // ErrBatchGroupShared is returned by [Bus.Register] for a batch subscription in a group

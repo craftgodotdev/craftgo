@@ -363,3 +363,36 @@ func TestTheGuidesBatchMiddleware(t *testing.T) {
 		}
 	}
 }
+
+// A plan holding a batch consumer reads back what it renders.
+func TestAPlanWithABatchReadsBack(t *testing.T) {
+	bus, _ := subscriberBus()
+	sub := batchSub("orders.Placed", "bulk")
+	sub.Batch.BatchSize = events.BatchSize{Max: 100, Wait: 1500 * time.Millisecond}
+	if err := bus.Register(sub); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(bus.Plan())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back events.Plan
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal %s: %v", raw, err)
+	}
+	if got := back.Groups[0].Consumers[0].Batch; got == nil || *got != sub.Batch.BatchSize {
+		t.Errorf("batch read back as %+v, want %+v", got, sub.Batch.BatchSize)
+	}
+}
+
+// A bus with no subscribe half registers a batch subscription, as it does any, and Start
+// refuses it.
+func TestABusWithoutASubscriberRegistersABatch(t *testing.T) {
+	bus := events.New(events.WithCodec(codecjson.Codec{}))
+	if err := bus.Register(batchSub("orders.Placed", "bulk")); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := bus.Start(context.Background()); !errors.Is(err, events.ErrNoSubscriber) {
+		t.Fatalf("start = %v, want ErrNoSubscriber", err)
+	}
+}

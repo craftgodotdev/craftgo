@@ -149,7 +149,7 @@ func (b *Bus) Register(sub Subscription) error {
 	if err := b.requireDispositions(); err != nil {
 		return registerError(sub, err)
 	}
-	if sub.Batch != nil && !canBatch(b.sub) {
+	if sub.Batch != nil && b.sub != nil && !canBatch(b.sub) {
 		return registerError(sub, ErrBatchUnsupported)
 	}
 	if b.claimed == nil {
