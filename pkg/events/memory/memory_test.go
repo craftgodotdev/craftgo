@@ -346,3 +346,31 @@ func TestABatchSubscriptionStopsWithItsContext(t *testing.T) {
 		t.Errorf("batches after cancel = %v, want none", sizes)
 	}
 }
+
+// Cancelling a batch subscription hands its filling batch over at once.
+func TestCancellingABatchSubscriptionHandsItsBatchOver(t *testing.T) {
+	tr := memory.New()
+	got := &batches{}
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := tr.Subscribe(ctx, []events.Subscription{{
+		Event: "a.B", Consumer: "C", Group: "g",
+		Batch: &events.Batch{BatchSize: events.BatchSize{Max: 10, Wait: time.Hour}, Handle: got.handle},
+	}}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	publishN(t, tr, 2)
+	cancel()
+	drained := make(chan struct{})
+	go func() {
+		tr.Drain()
+		close(drained)
+	}()
+	select {
+	case <-drained:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Drain waited out the Wait of a cancelled subscription's batch")
+	}
+	if sizes := got.sizes(); len(sizes) != 1 || sizes[0] != 2 {
+		t.Errorf("batch sizes = %v, want one batch of 2", sizes)
+	}
+}

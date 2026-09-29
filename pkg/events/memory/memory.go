@@ -98,7 +98,7 @@ func (t *Transport) Subscribe(ctx context.Context, subs []events.Subscription) e
 }
 
 // register adds sub to its competing-consumer group and stops delivering to it once ctx
-// is cancelled.
+// is cancelled, handing a batch subscription's filling batch over then.
 func (t *Transport) register(ctx context.Context, sub events.Subscription) {
 	key := groupKey{sub.Event, sub.Group}
 	t.mu.Lock()
@@ -118,8 +118,11 @@ func (t *Transport) register(ctx context.Context, sub events.Subscription) {
 		go func() {
 			<-ctx.Done()
 			t.mu.Lock()
-			defer t.mu.Unlock()
 			m.done = true
+			t.mu.Unlock()
+			if m.batch != nil {
+				m.batch.stop()
+			}
 		}()
 	}
 }
@@ -211,15 +214,17 @@ type batcher struct {
 	mu      sync.Mutex
 	pending []*events.Message
 	timer   *time.Timer
+	stopped bool
 }
 
-// add queues msg. A full batch goes at once; the first message of a batch starts its Wait.
+// add queues msg. A full batch goes at once, as does every message once the subscription
+// stopped; the first message of a batch starts its Wait.
 func (b *batcher) add(msg *events.Message) {
 	b.mu.Lock()
 	b.pending = append(b.pending, msg)
 	var full []*events.Message
 	switch {
-	case len(b.pending) >= b.sub.Batch.Max:
+	case b.stopped || len(b.pending) >= b.sub.Batch.Max:
 		full = b.take()
 	case len(b.pending) == 1:
 		b.timer = time.AfterFunc(b.sub.Batch.Wait, b.expire)
@@ -227,6 +232,17 @@ func (b *batcher) add(msg *events.Message) {
 	b.mu.Unlock()
 	if full != nil {
 		go b.handle(full)
+	}
+}
+
+// stop hands the filling batch over, and every message after it at once.
+func (b *batcher) stop() {
+	b.mu.Lock()
+	b.stopped = true
+	batch := b.take()
+	b.mu.Unlock()
+	if len(batch) > 0 {
+		b.handle(batch)
 	}
 }
 
