@@ -2,8 +2,10 @@ package memory_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/craftgodotdev/craftgo/pkg/events"
 	"github.com/craftgodotdev/craftgo/pkg/events/memory"
@@ -224,5 +226,123 @@ func TestDrainWaitsForADeliveryAHandlerStarted(t *testing.T) {
 	case <-parked:
 	default:
 		t.Fatal("Drain returned before the delivery the handler started")
+	}
+}
+
+// batches collects the batches a subscription was handed.
+type batches struct {
+	mu  sync.Mutex
+	got [][]*events.Message
+}
+
+func (b *batches) handle(_ context.Context, batch []*events.Message) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.got = append(b.got, batch)
+	return nil
+}
+
+func (b *batches) sizes() []int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]int, len(b.got))
+	for i, batch := range b.got {
+		out[i] = len(batch)
+	}
+	return out
+}
+
+// subscribeBatch subscribes handle to a.B in batches of size, until the test ends.
+func subscribeBatch(t *testing.T, tr *memory.Transport, size events.BatchSize, handle events.BatchHandler) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := tr.Subscribe(ctx, []events.Subscription{{
+		Event: "a.B", Consumer: "C", Group: "g",
+		Batch: &events.Batch{BatchSize: size, Handle: handle},
+	}}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+}
+
+// publishN publishes n messages of a.B.
+func publishN(t *testing.T, tr *memory.Transport, n int) {
+	t.Helper()
+	for i := 0; i < n; i++ {
+		if err := tr.Publish(context.Background(), &events.Message{Event: "a.B"}); err != nil {
+			t.Fatalf("publish: %v", err)
+		}
+	}
+}
+
+// A batch goes once it holds Max messages, without waiting out its Wait.
+func TestABatchGoesOnceFull(t *testing.T) {
+	tr := memory.New()
+	got := &batches{}
+	subscribeBatch(t, tr, events.BatchSize{Max: 3, Wait: time.Hour}, got.handle)
+	publishN(t, tr, 3)
+	tr.Drain()
+	if sizes := got.sizes(); len(sizes) != 1 || sizes[0] != 3 {
+		t.Errorf("batch sizes = %v, want one batch of 3", sizes)
+	}
+}
+
+// A short batch goes once its first message has waited Wait.
+func TestAShortBatchGoesAfterItsWait(t *testing.T) {
+	tr := memory.New()
+	got := &batches{}
+	subscribeBatch(t, tr, events.BatchSize{Max: 10, Wait: 100 * time.Millisecond}, got.handle)
+	publishN(t, tr, 2)
+	tr.Drain()
+	if sizes := got.sizes(); len(sizes) != 1 || sizes[0] != 2 {
+		t.Errorf("batch sizes = %v, want one batch of 2", sizes)
+	}
+}
+
+// A batch's error reaches the error handler once, with no message.
+func TestABatchErrorIsReportedOnce(t *testing.T) {
+	var mu sync.Mutex
+	var reported []*events.Message
+	tr := memory.New(memory.WithErrorHandler(func(_ events.Subscription, msg *events.Message, _ error) {
+		mu.Lock()
+		defer mu.Unlock()
+		reported = append(reported, msg)
+	}))
+	subscribeBatch(t, tr, events.BatchSize{Max: 2, Wait: time.Hour}, func(context.Context, []*events.Message) error {
+		return errors.New("store down")
+	})
+	publishN(t, tr, 2)
+	tr.Drain()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(reported) != 1 || reported[0] != nil {
+		t.Errorf("reported %v, want one report without a message", reported)
+	}
+}
+
+// A batch subscription whose context ended gets nothing more.
+func TestABatchSubscriptionStopsWithItsContext(t *testing.T) {
+	tr := memory.New()
+	got := &batches{}
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := tr.Subscribe(ctx, []events.Subscription{{
+		Event: "a.B", Consumer: "C", Group: "g",
+		Batch: &events.Batch{BatchSize: events.BatchSize{Max: 1, Wait: time.Hour}, Handle: got.handle},
+	}}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	cancel()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		publishN(t, tr, 1)
+		tr.Drain()
+		if len(got.sizes()) == 0 {
+			break
+		}
+		got = &batches{}
+		time.Sleep(time.Millisecond)
+	}
+	if sizes := got.sizes(); len(sizes) != 0 {
+		t.Errorf("batches after cancel = %v, want none", sizes)
 	}
 }

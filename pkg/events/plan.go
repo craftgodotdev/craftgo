@@ -20,6 +20,8 @@ type PlanGroup struct {
 type PlanConsumer struct {
 	Event    string `json:"event"`
 	Consumer string `json:"consumer"`
+	// Batch bounds the batches of a batch consumer; nil for one taking a message at a time.
+	Batch *BatchSize `json:"batch,omitempty"`
 }
 
 // Plan reports what is registered, before or after [Bus.Start], in the order Start hands
@@ -32,6 +34,10 @@ func (b *Bus) Plan() Plan {
 	out := Plan{Groups: []PlanGroup{}}
 	for _, sub := range subs {
 		consumer := PlanConsumer{Event: sub.Event, Consumer: sub.Consumer}
+		if sub.Batch != nil {
+			size := sub.Batch.BatchSize
+			consumer.Batch = &size
+		}
 		if last := len(out.Groups) - 1; last >= 0 && out.Groups[last].Name == sub.Group {
 			out.Groups[last].Consumers = append(out.Groups[last].Consumers, consumer)
 			continue

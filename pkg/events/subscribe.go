@@ -46,25 +46,30 @@ func decorated(busChain Chain, sub Subscription, escaped Disposition) Handler {
 // recoverHandler turns a panic in h into a [*PanicError] naming sub and sets the message's
 // disposition to escaped, voiding whatever the panicking frames asked for.
 func recoverHandler(sub Subscription, h Handler, escaped Disposition) Handler {
-	event, consumer, group := sub.Event, sub.Consumer, sub.Group
 	return func(ctx context.Context, msg *Message) (err error) {
 		defer func() {
 			r := recover()
 			if r == nil {
 				return
 			}
-			err = &PanicError{
-				Event:    event,
-				Consumer: consumer,
-				Group:    group,
-				Value:    r,
-				Stack:    debug.Stack(),
-			}
+			err = newPanicError(sub, r)
 			if msg != nil {
 				msg.disposition = escaped
 			}
 		}()
 		return h(ctx, msg)
+	}
+}
+
+// newPanicError is the [*PanicError] for value r recovered in sub's handler or chain,
+// with the stack of the panicking goroutine.
+func newPanicError(sub Subscription, r any) *PanicError {
+	return &PanicError{
+		Event:    sub.Event,
+		Consumer: sub.Consumer,
+		Group:    sub.Group,
+		Value:    r,
+		Stack:    debug.Stack(),
 	}
 }
 
@@ -107,16 +112,32 @@ func (b *Bus) Use(mws ...Middleware) {
 	b.chain = b.chain.Append(mws...)
 }
 
+// UseBatch appends mws to the bus batch chain after construction; see [Bus.Start] for the
+// wrap order. UseBatch after [Bus.Start] panics.
+func (b *Bus) UseBatch(mws ...BatchMiddleware) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.started {
+		panic("events: Bus.UseBatch called after Bus.Start")
+	}
+	b.batchChain = b.batchChain.Append(mws...)
+}
+
 // Register records sub for [Bus.Start]. It refuses with a [*RegisterError] wrapping
-// [ErrStarted], [ErrNoHandler], [ErrNoGroup], [ErrNoCodec], [ErrDispositionUnsupported] or
-// [ErrDuplicateSubscription]; whether the broker accepts the batch is Start's answer.
+// [ErrStarted], [ErrNoHandler], [ErrInvalidBatch], [ErrNoGroup], [ErrNoCodec],
+// [ErrDispositionUnsupported], [ErrBatchUnsupported], [ErrDuplicateSubscription] or
+// [ErrBatchGroupShared]; whether the broker accepts the subscriptions is Start's answer.
 func (b *Bus) Register(sub Subscription) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.started {
 		return registerError(sub, ErrStarted)
 	}
-	if sub.Handle == nil {
+	if sub.Batch != nil {
+		if err := batchProblem(sub); err != nil {
+			return registerError(sub, err)
+		}
+	} else if sub.Handle == nil {
 		return registerError(sub, ErrNoHandler)
 	}
 	if sub.Group == "" {
@@ -128,6 +149,9 @@ func (b *Bus) Register(sub Subscription) error {
 	if err := b.requireDispositions(); err != nil {
 		return registerError(sub, err)
 	}
+	if sub.Batch != nil && !canBatch(b.sub) {
+		return registerError(sub, ErrBatchUnsupported)
+	}
 	if b.claimed == nil {
 		b.claimed = map[registration]bool{}
 	}
@@ -135,9 +159,23 @@ func (b *Bus) Register(sub Subscription) error {
 	if b.claimed[key] {
 		return registerError(sub, ErrDuplicateSubscription)
 	}
+	if b.sharesBatchGroup(sub) {
+		return registerError(sub, ErrBatchGroupShared)
+	}
 	b.claimed[key] = true
 	b.subs = append(b.subs, sub)
 	return nil
+}
+
+// sharesBatchGroup reports whether sub would share its group with a batch subscription,
+// or is one whose group another subscription holds.
+func (b *Bus) sharesBatchGroup(sub Subscription) bool {
+	for _, held := range b.subs {
+		if held.Group == sub.Group && (sub.Batch != nil || held.Batch != nil) {
+			return true
+		}
+	}
+	return false
 }
 
 func registerError(sub Subscription, err error) error {
@@ -146,9 +184,11 @@ func registerError(sub Subscription, err error) error {
 
 // Start hands every registered subscription to the transport in one call, sorted by
 // group, contract then consumer, and wraps each handler as: outer recover → bus chain →
-// subscription chain → inner recover → handler. A panic in the chain asks for
-// [DispositionRedeliver] where the transport can honour it; a panic in the handler leaves
-// the decision to the chain. A second Start is [ErrStarted], even after a failed one.
+// subscription chain → inner recover → handler. A batch subscription's Batch.Handle is
+// wrapped the same way in the bus batch chain and its Batch.Chain; the per-message chains
+// do not run for it. A panic in the chain asks for [DispositionRedeliver], for every
+// message of a batch, where the transport can honour it; a panic in the handler leaves the
+// decision to the chain. A second Start is [ErrStarted], even after a failed one.
 func (b *Bus) Start(ctx context.Context) error {
 	b.mu.Lock()
 	if b.started {
@@ -157,7 +197,7 @@ func (b *Bus) Start(ctx context.Context) error {
 	}
 	b.started = true
 	subs := sortedSubscriptions(b.subs)
-	chain := b.chain
+	chain, batchChain := b.chain, b.batchChain
 	b.mu.Unlock()
 
 	if len(subs) == 0 {
@@ -171,6 +211,12 @@ func (b *Bus) Start(ctx context.Context) error {
 		escaped = DispositionRedeliver
 	}
 	for i := range subs {
+		if subs[i].Batch != nil {
+			batch := *subs[i].Batch
+			batch.Handle = decoratedBatch(batchChain, subs[i], escaped)
+			subs[i].Batch = &batch
+			continue
+		}
 		subs[i].Handle = decorated(chain, subs[i], escaped)
 	}
 	if err := b.sub.Subscribe(ctx, subs); err != nil {

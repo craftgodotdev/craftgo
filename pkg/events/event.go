@@ -69,6 +69,73 @@ func (e Event[T]) Subscription(bus *Bus, group Group, fn func(ctx context.Contex
 	}
 }
 
+// Item is one message of a batch: its payload, decoded and validated, and the delivery,
+// whose Redeliver or Reject answers for this message alone.
+type Item[T any] struct {
+	Payload *T
+	Msg     *Message
+	err     *error
+}
+
+// Fail records err as this item's own failure, which the batch function's error does not
+// replace; nil clears it.
+func (it Item[T]) Fail(err error) {
+	if it.err != nil {
+		*it.err = err
+	}
+}
+
+// BatchHandler adapts fn to a [BatchHandler] that decodes and validates each message as
+// [Event.Handler] does. A message that fails is left out of fn's batch, and fn does not
+// run for a batch with none left; fn's error goes to each item not failed with
+// [Item.Fail]. The failures come back as [ItemErrors], by index into the whole batch.
+func (e Event[T]) BatchHandler(bus *Bus, fn func(ctx context.Context, batch []Item[T]) error) BatchHandler {
+	return func(ctx context.Context, msgs []*Message) error {
+		errs := make([]error, len(msgs))
+		items := make([]Item[T], 0, len(msgs))
+		for i, msg := range msgs {
+			var payload T
+			if err := bus.Decode(msg, &payload); err != nil {
+				errs[i] = err
+				continue
+			}
+			if err := e.validated(&payload); err != nil {
+				errs[i] = err
+				continue
+			}
+			items = append(items, Item[T]{Payload: &payload, Msg: msg, err: &errs[i]})
+		}
+		if len(items) > 0 {
+			if err := fn(ctx, items); err != nil {
+				for _, it := range items {
+					if *it.err == nil {
+						*it.err = err
+					}
+				}
+			}
+		}
+		return itemErrors(errs)
+	}
+}
+
+// SubscribeBatch registers fn for batches of this event, bounded by size, under group;
+// see [Bus.Register]. Nothing is delivered until [Bus.Start].
+func (e Event[T]) SubscribeBatch(bus *Bus, group Group, size BatchSize, fn func(ctx context.Context, batch []Item[T]) error) error {
+	return bus.Register(e.BatchSubscription(bus, group, size, fn))
+}
+
+// BatchSubscription is this event consumed in batches bounded by size by fn under group,
+// as the value [Bus.Register] takes; its Consumer is the contract name and its batch
+// chain is empty.
+func (e Event[T]) BatchSubscription(bus *Bus, group Group, size BatchSize, fn func(ctx context.Context, batch []Item[T]) error) Subscription {
+	return Subscription{
+		Event:    e.contract,
+		Consumer: e.contract,
+		Group:    group,
+		Batch:    &Batch{BatchSize: size, Handle: e.BatchHandler(bus, fn)},
+	}
+}
+
 // validated runs the payload type's own validation, if it has any.
 func (e Event[T]) validated(payload *T) error {
 	if e.validate == nil {
