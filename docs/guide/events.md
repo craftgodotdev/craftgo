@@ -216,9 +216,9 @@ What each message becomes is decided per message:
 - `it.Fail(err)` gives that item an error of its own;
 - the function's error goes to every item without one.
 
-The handler returns the failures as `craftevents.ItemErrors`, keyed by index into the whole batch: a payload that did not decode or validate as its `*PayloadError`, the others as their own error or the function's. The transport reports that error once, with no message. An error redelivers nothing by itself, here as for one message: the chain decides.
+The handler returns the failures as `craftevents.ItemErrors`, keyed by index into the whole batch: a payload that did not decode or validate as its `*PayloadError`, a message stamped with another codec as `ErrCodecMismatch`, the others as their own error or the function's. The transport reports that error once, with no message. An error redelivers nothing by itself, here as for one message: the chain decides.
 
-A batch subscription holds its group alone - `Register` refuses it beside another subscription in the group with `ErrBatchGroupShared` - and needs a transport that consumes in batches, which every shipped one does (`ErrBatchUnsupported` otherwise). `BatchSize` with a `Max` below 1 or a `Wait` that is not positive is `ErrInvalidBatch`.
+A batch subscription holds its group alone - `Register` refuses it beside a subscription of another contract in the group with `ErrBatchGroupShared`, and the same contract twice with `ErrDuplicateSubscription` - and needs a transport that consumes in batches, which every shipped one does (`ErrBatchUnsupported` otherwise). `BatchSize` with a `Max` below 1 or a `Wait` that is not positive is `ErrInvalidBatch`.
 
 ### Batch middleware
 

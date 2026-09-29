@@ -116,9 +116,10 @@ type BatchSubscriber interface {
 // refusal to [Bus.Start], as for any subscription.
 var ErrBatchUnsupported = errors.New("events: transport cannot consume in batches")
 
-// ErrBatchGroupShared is returned by [Bus.Register] for a batch subscription in a group
-// another subscription holds, and for any subscription in a batch subscription's group: a
-// batch subscription holds its group alone.
+// ErrBatchGroupShared is returned by [Bus.Register] for a batch subscription in a group a
+// subscription of another contract holds, and for a subscription of another contract in a
+// batch subscription's group: a batch subscription holds its group alone. The same
+// contract twice in a group is [ErrDuplicateSubscription].
 var ErrBatchGroupShared = errors.New("events: a batch subscription holds its group alone")
 
 // ErrInvalidBatch is returned by [Bus.Register] for a batch subscription whose Max is

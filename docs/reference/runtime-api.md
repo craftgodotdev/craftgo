@@ -401,8 +401,10 @@ A subscription with `Batch` set, in place of `Handle` and `Chain`, consumes in
 batches. `Register` refuses it with `ErrInvalidBatch` for a `Max` below 1, a
 `Wait` that is not positive, or a `Handle` or `Chain` set beside it; with
 `ErrBatchUnsupported` on a transport that is not a `BatchSubscriber` answering
-true (a bus with no subscribe half leaves the refusal to `Start`); and with `ErrBatchGroupShared` when another subscription holds its group,
-as it refuses any subscription in a batch subscription's group.
+true (a bus with no subscribe half leaves the refusal to `Start`); and with
+`ErrBatchGroupShared` when a subscription of another contract holds its group,
+as it refuses one of another contract in a batch subscription's group. The
+same contract twice in a group is `ErrDuplicateSubscription`, as ever.
 
 `Start` wraps `Batch.Handle` as it wraps a `Handle`: a recover outermost, the
 bus batch chain (`WithBatchMiddleware`, `UseBatch`), `Batch.Chain`, and a recover
