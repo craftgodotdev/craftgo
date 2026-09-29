@@ -19,6 +19,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"sync"
 	"time"
@@ -63,11 +64,12 @@ const (
 )
 
 var (
-	_ events.Publisher      = (*Transport)(nil)
-	_ events.Subscriber     = (*Transport)(nil)
-	_ events.BatchPublisher = (*Transport)(nil)
-	_ events.OptionAware    = (*Transport)(nil)
-	_ events.Dispositioner  = (*Transport)(nil)
+	_ events.Publisher       = (*Transport)(nil)
+	_ events.Subscriber      = (*Transport)(nil)
+	_ events.BatchPublisher  = (*Transport)(nil)
+	_ events.BatchSubscriber = (*Transport)(nil)
+	_ events.OptionAware     = (*Transport)(nil)
+	_ events.Dispositioner   = (*Transport)(nil)
 )
 
 // Transport publishes and consumes over Kafka.
@@ -118,8 +120,8 @@ func WithAutoCreateTopics(on bool) Option {
 }
 
 // WithErrorHandler installs a callback for handler errors and read-loop
-// failures. A classic group takes a failed message as done, so this is its
-// only record.
+// failures; a batch handler's error arrives once, with msg nil. A classic
+// group takes a failed message as done, so this is its only record.
 func WithErrorHandler(fn func(sub events.Subscription, msg *events.Message, err error)) Option {
 	return func(t *Transport) { t.onError = fn }
 }
@@ -414,32 +416,45 @@ func (t *Transport) subscribeOne(ctx context.Context, sub events.Subscription) e
 	if err := t.claim(group, topic, sub.Event); err != nil {
 		return err
 	}
-	cl, err := t.openConsumer(ctx, group, topic)
+	cl, err := t.openConsumer(ctx, group, topic, sub.Batch)
 	if err != nil {
 		t.release(group, topic)
 		return err
 	}
 	go func() {
 		defer t.release(group, topic)
+		if sub.Batch != nil {
+			t.consumeBatches(ctx, cl, sub)
+			return
+		}
 		t.consume(ctx, cl, sub)
 	}()
 	return nil
 }
 
 // openConsumer opens one subscription's client, probing share support first;
-// after [Transport.Close] it opens nothing.
-func (t *Transport) openConsumer(ctx context.Context, group, topic string) (*kgo.Client, error) {
+// after [Transport.Close] it opens nothing. A batch subscription's classic
+// client commits only what [Transport.consumeBatches] does, and its share
+// client acquires at most a batch per fetch.
+func (t *Transport) openConsumer(ctx context.Context, group, topic string, batch *events.Batch) (*kgo.Client, error) {
 	if t.isClosed() {
 		return nil, fmt.Errorf("kafka: open consumer for %q: %w", topic, ErrClosed)
 	}
-	mode := kgo.ConsumerGroup(group)
+	opts := []kgo.Opt{kgo.ConsumerGroup(group), kgo.ConsumeTopics(topic)}
 	if t.share {
 		if err := t.probeShareAPIs(ctx); err != nil {
 			return nil, err
 		}
-		mode = kgo.ShareGroup(group)
+		opts[0] = kgo.ShareGroup(group)
 	}
-	cl, err := t.newClient(group, mode, kgo.ConsumeTopics(topic))
+	if batch != nil {
+		if t.share {
+			opts = append(opts, kgo.ShareMaxRecords(int32(min(batch.Max, math.MaxInt32))), kgo.ShareMaxRecordsStrict())
+		} else {
+			opts = append(opts, kgo.DisableAutoCommit())
+		}
+	}
+	cl, err := t.newClient(group, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("kafka: open consumer for %q: %w", topic, err)
 	}
@@ -618,9 +633,9 @@ func (t *Transport) report(sub events.Subscription, msg *events.Message, err err
 	}
 }
 
-// holdOpen renews rec's acquisition lock until the returned func is called,
-// flushing each renewal at once so it arrives before the lock lapses.
-func (t *Transport) holdOpen(ctx context.Context, cl *kgo.Client, rec *kgo.Record) func() {
+// holdOpen renews the acquisition lock of recs until the returned func is
+// called, flushing each renewal at once so it arrives before the lock lapses.
+func (t *Transport) holdOpen(ctx context.Context, cl *kgo.Client, recs ...*kgo.Record) func() {
 	if !t.share || t.lockRenew <= 0 {
 		return func() {}
 	}
@@ -635,7 +650,9 @@ func (t *Transport) holdOpen(ctx context.Context, cl *kgo.Client, rec *kgo.Recor
 			case <-done:
 				return
 			case <-tick.C:
-				rec.Ack(kgo.AckRenew)
+				for _, rec := range recs {
+					rec.Ack(kgo.AckRenew)
+				}
 				_ = cl.FlushAcks(ctx)
 			}
 		}
