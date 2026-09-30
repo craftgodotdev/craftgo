@@ -7,6 +7,8 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-09-30 [UTC+7]
+
 ### Added
 
 - **`@hidden`** leaves methods out of the OpenAPI document; their routes are
