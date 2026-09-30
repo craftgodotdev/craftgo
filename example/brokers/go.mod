@@ -12,7 +12,7 @@ replace github.com/craftgodotdev/craftgo => ../..
 
 require (
 	github.com/craftgodotdev/craftgo v0.0.0-00010101000000-000000000000
-	github.com/craftgodotdev/craftgo/pkg/events v1.10.0
+	github.com/craftgodotdev/craftgo/pkg/events v1.10.1
 	github.com/craftgodotdev/craftgo/pkg/events/kafka v0.0.0-00010101000000-000000000000
 	github.com/craftgodotdev/craftgo/pkg/events/nats v0.0.0-00010101000000-000000000000
 	github.com/nats-io/nats.go v1.53.1
