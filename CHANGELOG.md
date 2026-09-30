@@ -16,6 +16,20 @@ breaking change to the DSL or the generated layout bumps the major version.
   leave with them; a declared type no method uses stays. A hidden method may
   share an OpenAPI path or an `operationId` with a documented one.
 
+- **Batch consumption.** `Event[T].SubscribeBatch(bus, group, BatchSize{Max,
+  Wait}, fn)` hands `fn` up to `Max` messages at once, none waiting longer
+  than `Wait`, each decoded and validated first. An item answers alone
+  through its message, `Item.Fail` gives it its own error, and the
+  failures come back as `ItemErrors`, keyed by index into the batch. The
+  transport answers every message once `fn` returns. A batch subscription
+  holds its group alone and runs behind its own chain:
+  `WithBatchMiddleware`, `Bus.UseBatch` and `Batch.Chain`, with
+  `logging.BatchAccessLog` for one line per batch. The memory, core NATS,
+  JetStream and Kafka transports consume in batches; another transport
+  opts in through `BatchSubscriber`. On JetStream, `WithFetchSize` and a
+  group's `FetchSize` set how many messages each pull filling a batch asks
+  for, 500 by default.
+
 ## [1.10.0] - 2026-09-26 [UTC+7]
 
 ### Added

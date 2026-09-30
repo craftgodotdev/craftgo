@@ -89,6 +89,8 @@ type BatchPublisher interface {
 //   - delivers until ctx is cancelled;
 //   - answers each delivery per [Message.Disposition] once the handler has returned,
 //     settling an unset one.
+//
+// A subscription with [Subscription.Batch] set reaches only a [BatchSubscriber].
 type Subscriber interface {
 	Subscribe(ctx context.Context, subs []Subscription) error
 }
@@ -114,6 +116,8 @@ type Subscription struct {
 	Chain Chain
 	// Handle processes one message; [Bus.Start] wraps it in a recover.
 	Handle Handler
+	// Batch, set in place of Handle and Chain, delivers the messages in batches.
+	Batch *Batch
 }
 
 // Bus binds a transport to a codec. It is assembled until [Bus.Start] and fixed after;
@@ -122,9 +126,10 @@ type Bus struct {
 	pub Publisher
 	sub Subscriber
 
-	chain    Chain
-	required []Disposition
-	defaults []PublishOption
+	chain      Chain
+	batchChain BatchChain
+	required   []Disposition
+	defaults   []PublishOption
 
 	codec    Codec
 	perEvent map[string]Codec
@@ -166,6 +171,12 @@ func WithCodec(c Codec) Option { return func(b *Bus) { b.codec = c } }
 // first; see [Bus.Start] for the full wrap order.
 func WithMiddleware(mws ...Middleware) Option {
 	return func(b *Bus) { b.chain = b.chain.Append(mws...) }
+}
+
+// WithBatchMiddleware appends mws to the bus batch chain that wraps every batch
+// subscription, outermost first; see [Bus.Start] for the full wrap order.
+func WithBatchMiddleware(mws ...BatchMiddleware) Option {
+	return func(b *Bus) { b.batchChain = b.batchChain.Append(mws...) }
 }
 
 // WithCodecFor overrides the codec for one contract.

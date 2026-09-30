@@ -242,6 +242,7 @@ type Subscription struct {
 	Group    Group  // the broker identity; Register refuses an empty one
 	Chain    Chain  // this subscription's own middleware, applied inside the bus chain
 	Handle   Handler
+	Batch    *Batch // in place of Handle and Chain: consume in batches, see Batches
 }
 ```
 
@@ -353,6 +354,75 @@ The bus is a parameter at every call and never a field: a descriptor is a value
 in a contract package and knows nothing about how any deployable is wired, so one
 contract catalogue serves every binary that imports it.
 
+### Batches
+
+```go
+type BatchHandler func(ctx context.Context, batch []*Message) error
+type BatchMiddleware func(sub Subscription, next BatchHandler) BatchHandler
+type BatchChain []BatchMiddleware
+
+func NewBatchChain(mws ...BatchMiddleware) BatchChain
+func (c BatchChain) Append(mws ...BatchMiddleware) BatchChain
+
+type BatchSize struct {
+	Max  int           // at most this many messages; Register refuses below 1
+	Wait time.Duration // no message waits longer for its batch to fill; Register refuses <= 0
+}
+
+type Batch struct {
+	BatchSize
+	Chain  BatchChain   // this subscription's own batch middleware
+	Handle BatchHandler // wrapped in a recover by Start
+}
+
+type BatchSubscriber interface {
+	SubscribesBatches() bool
+}
+
+type ItemErrors map[int]error // index into the batch -> that message's failure
+
+func WithBatchMiddleware(mws ...BatchMiddleware) Option
+func (b *Bus) UseBatch(mws ...BatchMiddleware)
+
+type Item[T any] struct {
+	Payload *T
+	Msg     *Message
+}
+
+func (it Item[T]) Fail(err error)
+func (e Event[T]) BatchHandler(bus *Bus, fn func(ctx context.Context, batch []Item[T]) error) BatchHandler
+func (e Event[T]) SubscribeBatch(bus *Bus, group Group, size BatchSize,
+	fn func(ctx context.Context, batch []Item[T]) error) error
+func (e Event[T]) BatchSubscription(bus *Bus, group Group, size BatchSize,
+	fn func(ctx context.Context, batch []Item[T]) error) Subscription
+```
+
+A subscription with `Batch` set, in place of `Handle` and `Chain`, consumes in
+batches. `Register` refuses it with `ErrInvalidBatch` for a `Max` below 1, a
+`Wait` that is not positive, or a `Handle` or `Chain` set beside it; with
+`ErrBatchUnsupported` on a transport that is not a `BatchSubscriber` answering
+true (a bus with no subscribe half leaves the refusal to `Start`); and with
+`ErrBatchGroupShared` when a subscription of another contract holds its group,
+as it refuses one of another contract in a batch subscription's group. The
+same contract twice in a group is `ErrDuplicateSubscription`, as ever.
+
+`Start` wraps `Batch.Handle` as it wraps a `Handle`: a recover outermost, the
+bus batch chain (`WithBatchMiddleware`, `UseBatch`), `Batch.Chain`, and a recover
+innermost. The per-message chain does not run for a batch. A panic in the batch
+chain asks for every message of the batch to be redelivered where the transport
+can honour it; one in the handler leaves each message undecided.
+
+A `BatchSubscriber` gathers a subscription's messages into batches of its
+`BatchSize`, hands each to `Batch.Handle`, and answers every message of it
+per its disposition once `Handle` returns - the `Subscriber` contract, per
+message. It reports an error `Handle` returns once, with no message.
+
+`BatchHandler` decodes and validates each message as `Handler` does. A message
+that fails is left out of `fn`'s batch, and `fn` does not run when none is left.
+`fn`'s error goes to every item not failed with `Item.Fail`, and the failures
+come back as `ItemErrors`, keyed by index into the whole batch; its `Unwrap`
+lists them in index order, so `errors.Is` and `errors.As` reach each.
+
 ### The plan
 
 ```go
@@ -368,8 +438,9 @@ type PlanGroup struct {
 }
 
 type PlanConsumer struct {
-	Event    string `json:"event"`
-	Consumer string `json:"consumer"`
+	Event    string     `json:"event"`
+	Consumer string     `json:"consumer"`
+	Batch    *BatchSize `json:"batch,omitempty"` // a batch consumer's bounds: {"max":100,"wait":"1s"}
 }
 
 func (p Plan) MarshalJSON() ([]byte, error)
@@ -639,9 +710,13 @@ its innermost end for the same visibility. A bus chain needs it nowhere. See
   there.
 - `pkg/events/codecjson` - a JSON codec.
 - `pkg/events/logging` - `AccessLog(l *slog.Logger, opts ...AccessLogOption)`,
-  one line per delivery. It is a sub-package so `log/slog` stays out of the
-  exported surface of `pkg/events`, which every generated contract package
-  imports.
+  one line per delivery, and `BatchAccessLog` with the same options, one line
+  per batch. It is a sub-package so `log/slog` stays out of the exported surface
+  of `pkg/events`, which every generated contract package imports.
+
+Every transport above is a `BatchSubscriber`; how each gathers a batch is in
+[Kafka, core NATS and memory](/guide/events#kafka-core-nats-and-memory) and
+[NATS JetStream](/guide/events#nats-jetstream).
 
 Any other broker - RabbitMQ, SQS, Pub/Sub, Redis Streams - is an outside package
 implementing `Publisher` and/or `Subscriber`, and those two interfaces are all it

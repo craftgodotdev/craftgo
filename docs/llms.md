@@ -399,12 +399,24 @@ for `Redeliver` where the transport can honour one rather than letting an unset 
 `Validate()` is a `*events.PayloadError` naming the contract; another codec's stamp is
 `events.ErrCodecMismatch`. Beyond that the runtime classifies nothing: what to do is a middleware's.
 
+A subscription consumes in batches with `Placed.SubscribeBatch(bus, group, craftevents.BatchSize{Max: 100,
+Wait: time.Second}, fn)`, `fn` taking `(ctx, []craftevents.Item[T]) error`: at most `Max` messages, none
+waiting longer than `Wait`, each decoded and validated first and left out when it fails. Each item answers
+alone through `it.Msg.Redeliver()` / `Reject()`, `it.Fail(err)` gives it its own error, and `fn`'s error goes
+to the rest; the failures come back as `craftevents.ItemErrors` (index into the batch -> error), reported
+once by the transport. A batch subscription holds its group alone (`ErrBatchGroupShared`). Its chain is the
+batch chain - `WithBatchMiddleware`, `bus.UseBatch`, `Batch.Chain`, `logging.BatchAccessLog` - and the
+per-message chain does not run for it. JetStream waits for a batch's first message, then fills it in pulls of
+`FetchSize` messages (`nats.WithFetchSize`, default 500) on the group's durable; a classic
+Kafka group gathers over several fetches and commits after the handler, a share group hands over one
+fetch's records without waiting to fill; core NATS and memory gather from their subscription.
+
 On JetStream a group is the durable name, carrying one filter subject per contract it consumes, so
 a group keeps its position under its name. An existing durable is adopted and verified: an equal
 filter set is adopted, a strict subset is widened to the plan, anything else - a narrower plan, a
 partial overlap, a durable with no filter - is refused naming both sets unless the group carries
 `AllowNarrow()`. Per-group settings come from `nats.WithGroupConfig(group, MaxInFlight(n),
-AckWait(d), DeliverPolicy(p), ConsumerConfig(fn), AllowNarrow())`. `AckWait`, `DeliverPolicy` and
+FetchSize(n), AckWait(d), DeliverPolicy(p), ConsumerConfig(fn), AllowNarrow())`. `AckWait`, `DeliverPolicy` and
 `ConsumerConfig` apply only when the durable is created; `MaxInFlight` is the prefetch, default 1 -
 raise it only where n x the slowest handler stays under `AckWait`.
 
@@ -412,7 +424,7 @@ Guide: [model](/guide/events#the-model) - [declaring](/guide/events#declaring-ev
 [generated](/guide/events#what-is-generated) - [publishing](/guide/events#publishing) -
 [consuming](/guide/events#consuming) - [groups](/guide/events#groups) -
 [middleware](/guide/events#middleware) - [dispositions](/guide/events#dispositions) -
-[plan](/guide/events#the-plan) -
+[plan](/guide/events#the-plan) - [batches](/guide/events#consuming-in-batches) -
 [JetStream](/guide/events#nats-jetstream) - [transports](/guide/events#kafka-core-nats-and-memory)
 
 ## Decorator registry

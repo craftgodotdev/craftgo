@@ -3,8 +3,8 @@
 //
 // Subscriptions sharing a group on one contract compete: each message reaches one member.
 // Every delivery runs on its own goroutine with a fresh context, so nothing is ordered and
-// the publisher's trace does not continue into the handler. Key and DedupID reach the
-// consumer, and nothing acts on either.
+// the publisher's trace does not continue into the handler; a batch subscription gets a
+// goroutine per batch. Key and DedupID reach the consumer, and nothing acts on either.
 package memory
 
 import (
@@ -12,15 +12,17 @@ import (
 	"maps"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/craftgodotdev/craftgo/pkg/events"
 )
 
 var (
-	_ events.Publisher      = (*Transport)(nil)
-	_ events.Subscriber     = (*Transport)(nil)
-	_ events.BatchPublisher = (*Transport)(nil)
-	_ events.OptionAware    = (*Transport)(nil)
+	_ events.Publisher       = (*Transport)(nil)
+	_ events.Subscriber      = (*Transport)(nil)
+	_ events.BatchPublisher  = (*Transport)(nil)
+	_ events.BatchSubscriber = (*Transport)(nil)
+	_ events.OptionAware     = (*Transport)(nil)
 )
 
 // Transport is an in-process publish/subscribe transport.
@@ -44,8 +46,15 @@ type groupKey struct {
 
 // group is one competing-consumer set.
 type group struct {
-	members []events.Subscription
+	members []*member
 	next    atomic.Uint64
+}
+
+// member is one subscription of a group; batch gathers a batch subscription's messages.
+type member struct {
+	sub   events.Subscription
+	batch *batcher
+	done  bool
 }
 
 // Adapter is the name [events.WithAdapterOption] addresses this adapter by.
@@ -58,11 +67,14 @@ func (t *Transport) AdapterName() string { return Adapter }
 // addressed to it fails the publish.
 func (t *Transport) KnownOptions() []string { return nil }
 
+// SubscribesBatches implements [events.BatchSubscriber].
+func (t *Transport) SubscribesBatches() bool { return true }
+
 // Option configures a Transport.
 type Option func(*Transport)
 
 // WithErrorHandler installs a callback invoked when a handler returns an
-// error.
+// error; a batch handler's error arrives once, with msg nil.
 func WithErrorHandler(fn func(sub events.Subscription, msg *events.Message, err error)) Option {
 	return func(t *Transport) { t.onError = fn }
 }
@@ -86,7 +98,7 @@ func (t *Transport) Subscribe(ctx context.Context, subs []events.Subscription) e
 }
 
 // register adds sub to its competing-consumer group and stops delivering to it once ctx
-// is cancelled.
+// is cancelled, handing a batch subscription's filling batch over then.
 func (t *Transport) register(ctx context.Context, sub events.Subscription) {
 	key := groupKey{sub.Event, sub.Group}
 	t.mu.Lock()
@@ -95,17 +107,21 @@ func (t *Transport) register(ctx context.Context, sub events.Subscription) {
 		g = &group{}
 		t.groups[key] = g
 	}
-	g.members = append(g.members, sub)
-	idx := len(g.members) - 1
+	m := &member{sub: sub}
+	if sub.Batch != nil {
+		m.batch = &batcher{t: t, sub: sub}
+	}
+	g.members = append(g.members, m)
 	t.mu.Unlock()
 
 	if ctx != nil && ctx.Done() != nil {
 		go func() {
 			<-ctx.Done()
 			t.mu.Lock()
-			defer t.mu.Unlock()
-			if g := t.groups[key]; g != nil && idx < len(g.members) {
-				g.members[idx].Handle = nil
+			m.done = true
+			t.mu.Unlock()
+			if m.batch != nil {
+				m.batch.stop()
 			}
 		}()
 	}
@@ -115,28 +131,32 @@ func (t *Transport) register(ctx context.Context, sub events.Subscription) {
 // contract. Delivery is asynchronous; use [Transport.Drain] to join.
 func (t *Transport) Publish(_ context.Context, msg *events.Message) error {
 	t.mu.RLock()
-	var targets []events.Subscription
+	var targets []*member
 	for key, g := range t.groups {
 		if key.event != msg.Event {
 			continue
 		}
-		if sub, ok := g.pick(); ok {
-			targets = append(targets, sub)
+		if m, ok := g.pick(); ok {
+			targets = append(targets, m)
 		}
 	}
 	t.mu.RUnlock()
 
-	for _, sub := range targets {
+	for _, m := range targets {
 		t.begin()
+		// Each delivery gets its own copy, Metadata included.
+		delivered := *msg
+		delivered.Metadata = maps.Clone(msg.Metadata)
+		if m.batch != nil {
+			m.batch.add(&delivered)
+			continue
+		}
 		go func(sub events.Subscription) {
 			defer t.finish()
-			// Each delivery gets its own copy, Metadata included.
-			delivered := *msg
-			delivered.Metadata = maps.Clone(msg.Metadata)
 			if err := sub.Handle(context.Background(), &delivered); err != nil && t.onError != nil {
 				t.onError(sub, &delivered, err)
 			}
-		}(sub)
+		}(m.sub)
 	}
 	return nil
 }
@@ -170,19 +190,93 @@ func (t *Transport) finish() {
 
 // pick returns the next live member of the group, round-robin, skipping one whose
 // context was cancelled.
-func (g *group) pick() (events.Subscription, bool) {
+func (g *group) pick() (*member, bool) {
 	n := len(g.members)
 	if n == 0 {
-		return events.Subscription{}, false
+		return nil, false
 	}
 	start := int(g.next.Add(1)-1) % n
 	for i := 0; i < n; i++ {
-		sub := g.members[(start+i)%n]
-		if sub.Handle != nil {
-			return sub, true
+		m := g.members[(start+i)%n]
+		if !m.done {
+			return m, true
 		}
 	}
-	return events.Subscription{}, false
+	return nil, false
+}
+
+// batcher gathers a batch subscription's messages: a batch goes to the handler once it
+// holds Max messages, or Wait after its first message arrived.
+type batcher struct {
+	t   *Transport
+	sub events.Subscription
+
+	mu      sync.Mutex
+	pending []*events.Message
+	timer   *time.Timer
+	stopped bool
+}
+
+// add queues msg. A full batch goes at once, as does every message once the subscription
+// stopped; the first message of a batch starts its Wait.
+func (b *batcher) add(msg *events.Message) {
+	b.mu.Lock()
+	b.pending = append(b.pending, msg)
+	var full []*events.Message
+	switch {
+	case b.stopped || len(b.pending) >= b.sub.Batch.Max:
+		full = b.take()
+	case len(b.pending) == 1:
+		b.timer = time.AfterFunc(b.sub.Batch.Wait, b.expire)
+	}
+	b.mu.Unlock()
+	if full != nil {
+		go b.handle(full)
+	}
+}
+
+// stop hands the filling batch over, and every message after it at once.
+func (b *batcher) stop() {
+	b.mu.Lock()
+	b.stopped = true
+	batch := b.take()
+	b.mu.Unlock()
+	if len(batch) > 0 {
+		b.handle(batch)
+	}
+}
+
+// expire sends on the batch whose Wait has passed.
+func (b *batcher) expire() {
+	b.mu.Lock()
+	batch := b.take()
+	b.mu.Unlock()
+	if len(batch) > 0 {
+		b.handle(batch)
+	}
+}
+
+// take empties the pending batch and stops its timer; b.mu is held.
+func (b *batcher) take() []*events.Message {
+	if b.timer != nil {
+		b.timer.Stop()
+		b.timer = nil
+	}
+	batch := b.pending
+	b.pending = nil
+	return batch
+}
+
+// handle runs the batch handler, then ends the batch's deliveries.
+func (b *batcher) handle(batch []*events.Message) {
+	defer func() {
+		for range batch {
+			b.t.finish()
+		}
+	}()
+	if err := b.sub.Batch.Handle(context.Background(), batch); err != nil && b.t.onError != nil {
+		b.t.onError(b.sub, nil, err)
+	}
 }
 
 // PublishBatch implements [events.BatchPublisher] by publishing msgs in order.

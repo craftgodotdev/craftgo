@@ -12,6 +12,7 @@ package nats
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -21,10 +22,11 @@ import (
 )
 
 var (
-	_ events.Publisher      = (*Transport)(nil)
-	_ events.Subscriber     = (*Transport)(nil)
-	_ events.BatchPublisher = (*Transport)(nil)
-	_ events.OptionAware    = (*Transport)(nil)
+	_ events.Publisher       = (*Transport)(nil)
+	_ events.Subscriber      = (*Transport)(nil)
+	_ events.BatchPublisher  = (*Transport)(nil)
+	_ events.BatchSubscriber = (*Transport)(nil)
+	_ events.OptionAware     = (*Transport)(nil)
 )
 
 // Adapter is the name [events.WithAdapterOption] addresses this adapter by.
@@ -58,8 +60,10 @@ func WithSubject(fn func(contract string) string) Option {
 	return func(t *Transport) { t.subject = fn }
 }
 
-// WithErrorHandler installs a callback for a handler that returns an error.
-// Core NATS delivers at most once, so it is the only record of the failure.
+// WithErrorHandler installs a callback for a handler that returns an error,
+// and for messages a batch subscription dropped as a slow consumer; a batch
+// handler's error arrives once, with msg nil. Core NATS delivers at most
+// once, so it is the only record of the failure.
 func WithErrorHandler(fn func(sub events.Subscription, msg *events.Message, err error)) Option {
 	return func(t *Transport) { t.onError = fn }
 }
@@ -142,9 +146,10 @@ const HeaderKey = "Craftgo-Key"
 const HeaderDedupID = "Nats-Msg-Id"
 
 // Subscribe registers each subscription as a queue subscriber under its
-// group, delivering until ctx is cancelled. The first failure stops the
-// loop; the subscriptions already made stay live. After [Transport.Close]
-// it returns [ErrClosed].
+// group, delivering until ctx is cancelled; a batch subscription gathers its
+// messages into one batch at a time. The first failure stops the loop; the
+// subscriptions already made stay live. After [Transport.Close] it returns
+// [ErrClosed].
 func (t *Transport) Subscribe(ctx context.Context, subs []events.Subscription) error {
 	for _, sub := range subs {
 		if err := t.subscribeOne(ctx, sub); err != nil {
@@ -161,18 +166,65 @@ func (t *Transport) subscribeOne(ctx context.Context, sub events.Subscription) e
 	if t.closed {
 		return fmt.Errorf("nats: subscribe %s: %w", subject, ErrClosed)
 	}
-	s, err := t.conn.QueueSubscribe(subject, string(sub.Group), func(m *nats.Msg) {
-		msg := decode(sub.Event, m)
-		if err := sub.Handle(withMsg(ctx, m), msg); err != nil && t.onError != nil {
-			t.onError(sub, msg, err)
-		}
-	})
+	var s *nats.Subscription
+	var err error
+	if sub.Batch != nil {
+		s, err = t.conn.QueueSubscribeSync(subject, string(sub.Group))
+	} else {
+		s, err = t.conn.QueueSubscribe(subject, string(sub.Group), func(m *nats.Msg) {
+			msg := decode(sub.Event, m)
+			if err := sub.Handle(withMsg(ctx, m), msg); err != nil && t.onError != nil {
+				t.onError(sub, msg, err)
+			}
+		})
+	}
 	if err != nil {
 		return fmt.Errorf("nats: subscribe %s: %w", subject, err)
 	}
 	t.subs = append(t.subs, s)
 	context.AfterFunc(ctx, func() { _ = s.Unsubscribe() })
+	if sub.Batch != nil {
+		go t.gather(ctx, sub, s)
+	}
 	return nil
+}
+
+// SubscribesBatches implements [events.BatchSubscriber].
+func (t *Transport) SubscribesBatches() bool { return true }
+
+// gather hands the messages of s, a batch subscription's, to its handler one batch at a
+// time, until s is unsubscribed or ctx ends. A batch's Wait runs from its first message.
+func (t *Transport) gather(ctx context.Context, sub events.Subscription, s *nats.Subscription) {
+	next := func(ctx context.Context) (*nats.Msg, error) {
+		for {
+			m, err := s.NextMsgWithContext(ctx)
+			if !errors.Is(err, nats.ErrSlowConsumer) {
+				return m, err
+			}
+			if t.onError != nil {
+				t.onError(sub, nil, fmt.Errorf("nats: %s dropped messages as a slow consumer: %w", sub.Event, err))
+			}
+		}
+	}
+	for {
+		m, err := next(ctx)
+		if err != nil {
+			return
+		}
+		batch := []*events.Message{decode(sub.Event, m)}
+		waitCtx, cancel := context.WithTimeout(ctx, sub.Batch.Wait)
+		for len(batch) < sub.Batch.Max {
+			m, err := next(waitCtx)
+			if err != nil {
+				break
+			}
+			batch = append(batch, decode(sub.Event, m))
+		}
+		cancel()
+		if err := sub.Batch.Handle(ctx, batch); err != nil && t.onError != nil {
+			t.onError(sub, nil, err)
+		}
+	}
 }
 
 // decode takes the contract from the subscription, so a subject mapping
