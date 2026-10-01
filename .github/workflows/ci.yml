@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod # single source of truth for the Go version
           cache: true
@@ -37,7 +37,7 @@ jobs:
         run: make tidy-check
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
 
@@ -45,27 +45,27 @@ jobs:
       # tests and the pass-through wire type are their own modules, so the
       # root run does not reach them.
       - name: golangci-lint (event runtime module)
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
           working-directory: pkg/events
       - name: golangci-lint (nats adapter module)
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
           working-directory: pkg/events/nats
       - name: golangci-lint (nats embedded-server test module)
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
           working-directory: pkg/events/nats/internal/integration
       - name: golangci-lint (kafka adapter module)
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
           working-directory: pkg/events/kafka
       - name: golangci-lint (wire module)
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
           working-directory: pkg/wire
@@ -96,7 +96,7 @@ jobs:
         shell: bash # Git Bash on Windows, so make runs the Makefile's loops in its sh
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
