@@ -1515,6 +1515,43 @@ service S {
 	}
 }
 
+// A parameter carries its field's description, deprecation and example; its
+// schema keeps the type, the constraints and the default.
+func TestParameterDocsSitOnTheParameter(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+enum Sort { asc  desc }
+type Req {
+	// Search text.
+	q     string? @query @maxLength(10) @example("abc")
+	sort  Sort?   @query @doc("Sort order.") @default(asc)
+	trace string? @header("X-Trace") @deprecated("use traceparent")
+}
+type Out { ok bool }
+service S { get L /l { request Req  response Out } }`}, &config.Config{})
+	params := doc.Paths.Find("/l").Get.Parameters
+	q := params.GetByInAndName("query", "q")
+	if q.Description != "Search text." || q.Example != "abc" {
+		t.Errorf("q: description %q, example %v", q.Description, q.Example)
+	}
+	if s := q.Schema.Value; s.Description != "" || s.Example != nil || s.MaxLength == nil || *s.MaxLength != 10 {
+		t.Errorf("q schema: %+v", s)
+	}
+	sort := params.GetByInAndName("query", "sort")
+	if sort.Description != "Sort order." {
+		t.Errorf("sort: description %q", sort.Description)
+	}
+	if s := sort.Schema.Value; s == nil || s.Description != "" || s.Default != "asc" || len(s.AllOf) != 1 {
+		t.Errorf("sort schema: %+v", sort.Schema)
+	}
+	trace := params.GetByInAndName("header", "X-Trace")
+	if !trace.Deprecated || trace.Description != "Deprecated: use traceparent" {
+		t.Errorf("X-Trace: deprecated %v, description %q", trace.Deprecated, trace.Description)
+	}
+	if s := trace.Schema.Value; s.Deprecated || s.Description != "" {
+		t.Errorf("X-Trace schema: %+v", s)
+	}
+}
+
 // An error's mixin reaches its schema as an allOf $ref.
 func TestGenerateOpenAPIErrorMixinFlatten(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design

@@ -404,16 +404,14 @@ func paramsFromBins(bins fieldBins, pkg *semantic.Package, registry *genericRegi
 	add := func(in wire.Binding, fields []semantic.ResolvedField, alwaysRequired bool) {
 		for _, rf := range fields {
 			f := rf.Field
-			ref := schemaForTypeRef(nonNullType(f), pkg, registry)
-			applyFieldMetadata(f, ref, pkg, false)
-			params = append(params, &openapi3.ParameterRef{Value: &openapi3.Parameter{
+			p := &openapi3.Parameter{
 				Name:     wire.WireName(f, in),
 				In:       in.String(),
 				Required: alwaysRequired || rf.SpecRequired,
-				// The Parameter carries `deprecated` too, not only its schema.
-				Deprecated: semantic.IsDeprecated(f.Decorators),
-				Schema:     ref,
-			}})
+				Schema:   paramSchema(f, pkg, registry),
+			}
+			docOf(f, pkg).apply(p)
+			params = append(params, &openapi3.ParameterRef{Value: p})
 		}
 	}
 	add(wire.BindPath, bins.path, true)
