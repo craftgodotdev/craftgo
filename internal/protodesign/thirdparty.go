@@ -33,31 +33,31 @@ func linkedByRuntime(name string) bool {
 	return false
 }
 
-// thirdPartyProblems names each design proto of req that is someone else's, while the
-// plugins run: one whose Go code the runtime links in already, and one whose
-// go_package names a package of another module. Generating either gives the binary a
-// second copy of the proto's Go code, which panics at startup when both register.
-func thirdPartyProblems(req *pluginpb.CodeGeneratorRequest, names []string, opts Options) []string {
+// thirdParty checks the design protos of req while the plugins run. A proto whose Go code
+// the runtime links in already is a problem: generating it again gives the binary a second
+// copy, which panics at startup when both register. A proto whose go_package names a
+// package of another module is generated as before, its path ignored, with a warning, since
+// the same panic follows only when that module is linked in too.
+func thirdParty(req *pluginpb.CodeGeneratorRequest, names []string, opts Options) (problems, warnings []string) {
 	if !opts.pbEnabled() {
-		return nil
+		return nil, nil
 	}
 	byName := map[string]*descriptorpb.FileDescriptorProto{}
 	for _, fd := range req.GetProtoFile() {
 		byName[fd.GetName()] = fd
 	}
-	var out []string
 	for _, name := range names {
 		goPath, _ := splitGoPackage(byName[name].GetOptions().GetGoPackage())
 		switch {
 		case strings.HasPrefix(name, "google/protobuf/"):
-			out = append(out, fmt.Sprintf("%s copies a well-known type, which any proto imports as it is - delete the copy, whose generated Go code would register the file a second time and panic at startup", name))
+			problems = append(problems, fmt.Sprintf("%s copies a well-known type, which any proto imports as it is - delete the copy, whose generated Go code would register the file a second time and panic at startup", name))
 		case linkedByRuntime(name):
-			out = append(out, fmt.Sprintf("%s is a proto whose Go code the craftgo runtime links in already, so generating it again panics at startup - move it under a proto.includes root, whose protos are imported, not generated", name))
+			problems = append(problems, fmt.Sprintf("%s is a proto whose Go code the craftgo runtime links in already, so generating it again panics at startup - move it under a proto.includes root, whose protos are imported, not generated", name))
 		case foreignPackage(goPath, opts.Module):
-			out = append(out, fmt.Sprintf("%s has go_package %s, outside module %s: generating its Go code here makes a second copy, which panics at startup once both are linked - drop the path from go_package to own the proto here, move it under a proto.includes root to import its package, or set output.pb to \"-\" to import what your own protoc pipeline writes", name, goPath, opts.Module))
+			warnings = append(warnings, fmt.Sprintf("%s has go_package %s, a package of another module: its path is ignored and its Go code generated under output.pb, so if that module is linked into the binary too, both copies register the proto and the binary panics at init - move the proto under a proto.includes root to import that package instead", name, goPath))
 		}
 	}
-	return out
+	return problems, warnings
 }
 
 // foreignPackage reports whether import path p names a package of another module than

@@ -347,26 +347,35 @@ func TestGoPackageProblemsNameTheirFiles(t *testing.T) {
 	}
 }
 
-// With the plugins on, a go_package inside the module names the package and its path is ignored.
 func TestPBEnabledKeepsGoPackageName(t *testing.T) {
-	for _, goPackage := range []string{module + "/gen/a;apb", ";apb", "apb;apb", "./a;apb"} {
-		root := write(t, map[string]string{"a/a.proto": `syntax = "proto3";
+	root := write(t, map[string]string{"a/a.proto": `syntax = "proto3";
 package a;
-option go_package = "` + goPackage + `";
+option go_package = "github.com/elsewhere/a;apb";
 service A { rpc Do(R) returns (R); }
 message R {}
 `})
-		set := load(t, root, opts())
-		a := service(t, set, "a.A")
-		if a.PBImport != module+"/internal/pb/a" || a.Package != "apb" {
-			t.Errorf("go_package %q: service = %+v", goPackage, *a)
+	set := load(t, root, opts())
+	a := service(t, set, "a.A")
+	if a.PBImport != module+"/internal/pb/a" || a.Package != "apb" {
+		t.Errorf("service = %+v", *a)
+	}
+	// The path names another module's package, whose code may be linked in beside this copy.
+	if len(set.Warnings) != 1 || !strings.Contains(set.Warnings[0], "a/a.proto has go_package github.com/elsewhere/a, a package of another module") ||
+		!strings.Contains(set.Warnings[0], "proto.includes") {
+		t.Errorf("warnings = %q", set.Warnings)
+	}
+	// A go_package in the module, relative or without a module path warns of nothing.
+	for _, goPackage := range []string{module + "/gen/a;apb", ";apb", "apb;apb", "./a;apb"} {
+		root := write(t, map[string]string{"a/a.proto": "syntax = \"proto3\";\npackage a;\noption go_package = \"" + goPackage + "\";\nmessage R {}\n"})
+		if set := load(t, root, opts()); len(set.Warnings) != 0 {
+			t.Errorf("go_package %q: warnings = %q", goPackage, set.Warnings)
 		}
 	}
 }
 
-// A third-party proto in the design folder is refused while the plugins run: its generated copy
-// would register the file a second time and panic at startup. With output.pb "-" a go_package
-// elsewhere is the design's own pipeline's.
+// A design copy of a proto whose Go code the runtime links in is refused while the plugins run:
+// the binary would register it twice and panic at startup. A go_package of another module is
+// only a warning, and with output.pb "-" not even that, being the design's own pipeline's.
 func TestThirdPartyProtosInTheDesignAreRefused(t *testing.T) {
 	root := write(t, map[string]string{
 		"google/rpc/status.proto": `syntax = "proto3";
@@ -392,22 +401,27 @@ service Jobs { rpc Get(Job) returns (google.protobuf.Empty); }
 	for _, want := range []string{
 		"google/rpc/status.proto is a proto whose Go code the craftgo runtime links in already",
 		"google/protobuf/empty.proto copies a well-known type",
-		"vendor/v.proto has go_package github.com/elsewhere/v, outside module example.com/app",
 		"move it under a proto.includes root",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("missing %q in:\n%s", want, err)
 		}
 	}
-	if strings.Contains(err.Error(), "api/api.proto") {
-		t.Errorf("the design's own proto is refused:\n%s", err)
+	for _, unwanted := range []string{"api/api.proto", "vendor/v.proto"} {
+		if strings.Contains(err.Error(), unwanted) {
+			t.Errorf("%s is refused:\n%s", unwanted, err)
+		}
 	}
 
 	o := opts()
 	o.PBDir = ""
 	foreign := write(t, map[string]string{"vendor/v.proto": "syntax = \"proto3\";\npackage v;\noption go_package = \"github.com/elsewhere/v;v\";\nmessage V {}\n"})
-	if _, err := Load(context.Background(), foreign, o); err != nil {
-		t.Errorf("with output.pb \"-\" a go_package elsewhere is refused: %v", err)
+	set, err := Load(context.Background(), foreign, o)
+	if err != nil {
+		t.Fatalf("with output.pb \"-\" a go_package elsewhere is refused: %v", err)
+	}
+	if len(set.Warnings) != 0 {
+		t.Errorf("with output.pb \"-\" a go_package elsewhere draws warnings %q", set.Warnings)
 	}
 }
 
