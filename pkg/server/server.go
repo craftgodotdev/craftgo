@@ -6,6 +6,7 @@ package server
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -306,7 +307,20 @@ func (s *Server) Start(addr string) error {
 	return nil
 }
 
-// httpServer returns the http.Server that Start runs, or nil once [Server.Stop] ran.
+// Serve is [Server.Start] on lis, a listener the caller bound; it closes lis when it returns.
+func (s *Server) Serve(lis net.Listener) error {
+	srv := s.httpServer(lis.Addr().String())
+	if srv == nil {
+		_ = lis.Close()
+		return nil
+	}
+	if err := srv.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+// httpServer returns the http.Server that Start and Serve run, or nil once [Server.Stop] ran.
 func (s *Server) httpServer(addr string) *http.Server {
 	// Handler locks s.mu, so it runs before the lock is taken.
 	handler := s.Handler()
@@ -328,7 +342,7 @@ func (s *Server) httpServer(addr string) *http.Server {
 }
 
 // Stop shuts the server down gracefully with [http.Server.Shutdown]. A Stop that comes before
-// [Server.Start] makes it return nil at once.
+// [Server.Start] or [Server.Serve] makes them return nil at once.
 func (s *Server) Stop(ctx context.Context) error {
 	s.mu.Lock()
 	s.stopped = true
