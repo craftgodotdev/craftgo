@@ -309,6 +309,44 @@ message R {}
 	}
 }
 
+// A Go package name clash is reported between the files that make it, the same on every run, and
+// a missing go_package is pinned on the proto that lacks it.
+func TestGoPackageProblemsNameTheirFiles(t *testing.T) {
+	clash := write(t, map[string]string{
+		"x/a.proto": "syntax = \"proto3\";\npackage x;\noption go_package = \";alpha\";\nmessage A {}\nservice S { rpc Do(A) returns (A); }\n",
+		"x/b.proto": "syntax = \"proto3\";\npackage x;\nmessage B {}\n",
+	})
+	first := ""
+	for range 5 {
+		_, err := Load(context.Background(), clash, opts())
+		if err == nil {
+			t.Fatal("a clash was accepted")
+		}
+		if first == "" {
+			first = err.Error()
+		} else if err.Error() != first {
+			t.Fatalf("the report changes between runs:\n%s\n%s", first, err)
+		}
+	}
+	for _, want := range []string{`x/a.proto names its Go package example.com/app/internal/pb/x "alpha" but x/b.proto names it "x"`, "the protos of one directory are one Go package"} {
+		if !strings.Contains(first, want) {
+			t.Errorf("missing %q in:\n%s", want, first)
+		}
+	}
+	if strings.Contains(first, "proto.includes") {
+		t.Errorf("a design without includes is pointed at them:\n%s", first)
+	}
+
+	shared := write(t, map[string]string{"shared/id.proto": "syntax = \"proto3\";\npackage shared;\nmessage ID {}\n"})
+	root := write(t, map[string]string{"a/a.proto": "syntax = \"proto3\";\npackage a;\nimport \"shared/id.proto\";\nservice A { rpc Get(shared.ID) returns (shared.ID); }\n"})
+	o := opts()
+	o.Includes = []string{shared}
+	_, err := Load(context.Background(), root, o)
+	if err == nil || !strings.Contains(err.Error(), "shared/id.proto, read from proto.includes, has no `option go_package`") {
+		t.Errorf("err = %v", err)
+	}
+}
+
 func TestPBEnabledKeepsGoPackageName(t *testing.T) {
 	root := write(t, map[string]string{"a/a.proto": `syntax = "proto3";
 package a;

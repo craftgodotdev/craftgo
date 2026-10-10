@@ -37,10 +37,7 @@ func Load(ctx context.Context, designRoot string, opts Options) (*Set, error) {
 	req := buildRequest(files, names, parameter(names, opts))
 	plugin, err := protogen.Options{}.New(req)
 	if err != nil {
-		if !opts.pbEnabled() {
-			return nil, fmt.Errorf("output.pb is \"-\", so every design proto needs `option go_package`: %w", err)
-		}
-		return nil, fmt.Errorf("a proto under proto.includes needs `option go_package` (the design's own protos are placed under output.pb): %w", err)
+		return nil, fmt.Errorf("proto errors:\n  %s", goPackageProblem(req, names, opts, err))
 	}
 	set := &Set{opts: opts, names: names, plugin: plugin, request: req}
 	for _, f := range plugin.Files {
