@@ -76,16 +76,6 @@ func main() {
 		os.Exit(1)
 	}
 	server.SetRequirePresence(cfg.Server.RequirePresence)
-	if err := server.SetCookieOptions(server.CookieOptions{
-		Path:     cfg.Server.Cookies.Path,
-		Domain:   cfg.Server.Cookies.Domain,
-		HTTPOnly: cfg.Server.Cookies.HTTPOnly,
-		Secure:   cfg.Server.Cookies.Secure,
-		SameSite: cfg.Server.Cookies.SameSite,
-	}); err != nil {
-		log.Default().Error("server.cookies", log.Err(err))
-		os.Exit(1)
-	}
 	if cfg.Server.Compression.Enabled {
 		compress := server.CompressOptions{
 			MinSize: cfg.Server.Compression.MinSize,

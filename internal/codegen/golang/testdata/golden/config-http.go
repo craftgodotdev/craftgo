@@ -70,26 +70,8 @@ type ServerConfig struct {
 	// or sends one null without @nullable; true unless config.yaml sets false.
 	RequirePresence bool `yaml:"requirePresence"`
 
-	// Cookies are the attributes of the cookies @cookie fields set.
-	Cookies CookieConfig `yaml:"cookies"`
-
 	// Compression is off by default, for a deployment behind a compressing proxy.
 	Compression CompressionConfig `yaml:"compression"`
-}
-
-// CookieConfig configures the cookies a response's or an error's @cookie fields set; a key left out
-// keeps server.DefaultCookieOptions.
-type CookieConfig struct {
-	// Path scopes each cookie, "/" by default; "" leaves it to the browser.
-	Path string `yaml:"path"`
-	// Domain shares each cookie with the subdomains of one; "" keeps it to the host.
-	Domain string `yaml:"domain"`
-	// HTTPOnly hides each cookie from scripts.
-	HTTPOnly bool `yaml:"httpOnly"`
-	// Secure sends each cookie over HTTPS only.
-	Secure bool `yaml:"secure"`
-	// SameSite is "lax", "strict" or "none"; "" sends none.
-	SameSite string `yaml:"sameSite"`
 }
 
 // CompressionConfig configures gzip and deflate response compression.
@@ -160,12 +142,6 @@ func defaults() *Config {
 			ReadTimeout:     30 * time.Second,
 			MaxBodySize:     10 << 20,
 			RequirePresence: true,
-			Cookies: CookieConfig{
-				Path:     "/",
-				HTTPOnly: true,
-				Secure:   true,
-				SameSite: "lax",
-			},
 		},
 	}
 }

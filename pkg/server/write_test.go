@@ -353,7 +353,7 @@ func TestWriteResponseEncodesTheValueAsItIs(t *testing.T) {
 func TestWriteResponseSetsHeadersAfterTheEncode(t *testing.T) {
 	setHeaders := func(w http.ResponseWriter) {
 		w.Header().Set("Location", "/x")
-		SetCookie(w, "sid", "s")
+		http.SetCookie(w, &http.Cookie{Name: "sid", Value: "s"})
 	}
 	rec := httptest.NewRecorder()
 	WriteResponse(rec, httptest.NewRequest("GET", "/", nil), http.StatusCreated, map[string]int{"n": 1}, setHeaders)
