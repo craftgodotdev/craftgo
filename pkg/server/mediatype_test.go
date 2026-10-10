@@ -1,18 +1,19 @@
 package server
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-// RequireJSONBody takes application/json and +json types, any parameters and case aside, and a
-// body without a Content-Type; any other media type answers 415 as JSON.
+// RequireJSONBody takes a body of application/json or a +json type, any parameters and case
+// aside; a body of any other media type, or of none, answers 415 as JSON.
 func TestRequireJSONBody(t *testing.T) {
 	for ct, want := range map[string]bool{
-		"":                                  true,
-		" ":                                 true,
+		"":                                  false,
+		" ":                                 false,
 		"application/json":                  true,
 		"application/json; charset=utf-8":   true,
 		"APPLICATION/JSON":                  true,
@@ -36,6 +37,28 @@ func TestRequireJSONBody(t *testing.T) {
 		}
 		if !want && (rec.Code != http.StatusUnsupportedMediaType || rec.Body.String() != "{\"message\":\"unsupported media type\"}\n") {
 			t.Errorf("%q: answered %d %q, want 415 as JSON", ct, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// A request without a Content-Type passes only when it has no body, for the decoder to report
+// missing: a body of unknown length counts as one.
+func TestRequireJSONBodyWithoutContentType(t *testing.T) {
+	for name, c := range map[string]struct {
+		body io.Reader
+		want bool
+	}{
+		"no body":      {nil, true},
+		"empty body":   {strings.NewReader(""), true},
+		"body":         {strings.NewReader("{}"), false},
+		"chunked body": {io.MultiReader(strings.NewReader("{}")), false},
+	} {
+		rec := httptest.NewRecorder()
+		if got := RequireJSONBody(rec, httptest.NewRequest(http.MethodPost, "/", c.body)); got != c.want {
+			t.Errorf("%s: got %v, want %v", name, got, c.want)
+		}
+		if !c.want && rec.Code != http.StatusUnsupportedMediaType {
+			t.Errorf("%s: answered %d, want 415", name, rec.Code)
 		}
 	}
 }

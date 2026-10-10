@@ -256,7 +256,7 @@ The errors the framework writes itself are JSON `{"message": "..."}`, with `Cont
 | 404 | no route matches the path | `{"message":"not found"}` |
 | 405 | a route matches the path under another method; `Allow` lists its methods | `{"message":"method not allowed"}` |
 | 413 | the body is over its cap (`@maxBodySize`, `server.maxBodySize`, `BodyLimit`), a raw request's logic returning the error of a read past it included | `{"message":"request entity too large"}` |
-| 415 | a JSON-body route gets a `Content-Type` other than `application/json` or an `application/*+json` type (parameters and case aside; a body without one decodes as JSON), or a form route a body that is no `multipart/form-data`; a `@rawRequest` or `@passthrough` route reads its own body | `{"message":"unsupported media type"}` |
+| 415 | a JSON-body route gets a `Content-Type` other than `application/json` or an `application/*+json` type (parameters and case aside) or a body without one, or a form route a body that is no `multipart/form-data`; a `@rawRequest` or `@passthrough` route reads its own body | `{"message":"unsupported media type"}` |
 | 500 | a panic, or an error that carries no status | `{"message":"internal server error"}` |
 | 501 | a logic stub craftgo wrote that is not filled in yet (`server.ErrNotImplemented`) | `{"message":"not implemented"}` |
 | 504 | a deadline, as above | `{"message":"gateway timeout"}` |
