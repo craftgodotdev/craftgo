@@ -101,7 +101,7 @@ func requestSide(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *semant
 
 // successResponse adds op's success response, and the `<stem>RespBody`
 // component it refs: a raw response without a block has no schema, since
-// logic writes it in any format.
+// logic writes it in any format, and a HEAD response has headers alone.
 func successResponse(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *semantic.Package, registry *genericRegistry, names *schemaNames) {
 	_, rawResp := wire.RawSides(s.decs)
 	code := strconv.Itoa(wire.SuccessStatus(s.m, s.decs))
@@ -110,19 +110,27 @@ func successResponse(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *se
 	}
 	desc := successDescription(code)
 	resp := &openapi3.Response{Description: &desc}
+	head := isHead(s.m)
 	switch {
 	case s.m.Response != nil && s.m.Response.Type != nil:
-		names.put(doc, s.stem+"RespBody", responseBodySchema(s, pkg, registry))
-		resp.Content = openapi3.Content{
-			mimeApplicationJSON: &openapi3.MediaType{
-				Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.stem + "RespBody"},
-			},
-		}
 		resp.Headers = buildResponseHeaders([]headerSet{{s.resp.header, s.resp.cookie}}, pkg, registry)
-	case rawResp:
+		if !head {
+			names.put(doc, s.stem+"RespBody", responseBodySchema(s, pkg, registry))
+			resp.Content = openapi3.Content{
+				mimeApplicationJSON: &openapi3.MediaType{
+					Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.stem + "RespBody"},
+				},
+			}
+		}
+	case rawResp && !head:
 		resp.Content = openapi3.Content{"*/*": &openapi3.MediaType{}}
 	}
 	op.Responses.Set(code, &openapi3.ResponseRef{Value: resp})
+}
+
+// isHead reports whether m answers HEAD, whose responses carry no body.
+func isHead(m *ast.Method) bool {
+	return strings.EqualFold(m.Verb, http.MethodHead)
 }
 
 // successDescription returns the reason phrase of status code (`Created`), or
@@ -150,7 +158,8 @@ func rawResponseStatus(decs []*ast.Decorator) string {
 
 // addErrorResponses adds a response per error the `@errors` of s name, at its
 // category's status, errors sharing a status in one `anyOf`, since a body may
-// match more than one of their schemas; an unknown name is skipped.
+// match more than one of their schemas, none for HEAD; an unknown name is
+// skipped.
 func addErrorResponses(op *openapi3.Operation, s opShape, pkg *semantic.Package, registry *genericRegistry) {
 	names := errorRefsFromDecorators(s.decs)
 	if len(names) == 0 {
@@ -203,10 +212,14 @@ func addErrorResponses(op *openapi3.Operation, s opShape, pkg *semantic.Package,
 		}
 		resp := &openapi3.Response{
 			Description: &desc,
-			Content: openapi3.Content{
+			Headers:     buildResponseHeaders(sets, pkg, registry),
+		}
+		if isHead(s.m) {
+			schema = nil
+		} else {
+			resp.Content = openapi3.Content{
 				mimeApplicationJSON: &openapi3.MediaType{Schema: schema},
-			},
-			Headers: buildResponseHeaders(sets, pkg, registry),
+			}
 		}
 		if existing != nil && existing.Value != nil {
 			resp = mergeStatusResponses(existing.Value, resp, schema)

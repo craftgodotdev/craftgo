@@ -455,6 +455,47 @@ service S {
 	}
 }
 
+// A HEAD operation's responses, its errors' too, carry headers and no
+// content, and it adds no `<stem>RespBody`.
+func TestHeadResponsesHaveNoContent(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+error NotFound Missing { at string @header("X-At") }
+type Meta {
+	size int @header("X-Size")
+	name string
+}
+type Req { id string }
+service S {
+	@errors(Missing)
+	head Probe /files/{id} { request Req  response Meta }
+	@rawResponse
+	head Raw /raw { }
+}`}, &config.Config{})
+	probe := doc.Paths.Find("/files/{id}").Head.Responses
+	raw := doc.Paths.Find("/raw").Head.Responses
+	for name, c := range map[string]struct {
+		resp   *openapi3.ResponseRef
+		header string
+	}{
+		"Probe 200": {probe.Status(200), "X-Size"},
+		"Probe 404": {probe.Status(404), "X-At"},
+		"Raw 200":   {raw.Status(200), ""},
+	} {
+		if c.resp == nil || c.resp.Value == nil {
+			t.Fatalf("%s is missing", name)
+		}
+		if c.resp.Value.Content != nil {
+			t.Errorf("%s has content %v", name, slices.Sorted(maps.Keys(c.resp.Value.Content)))
+		}
+		if c.header != "" && c.resp.Value.Headers[c.header] == nil {
+			t.Errorf("%s lost its %s header", name, c.header)
+		}
+	}
+	if doc.Components.Schemas["ProbeRespBody"] != nil {
+		t.Error("HEAD Probe adds a ProbeRespBody")
+	}
+}
+
 // Two errors with one status share an `anyOf` response.
 func TestGenerateOpenAPISameStatusErrorsMerge(t *testing.T) {
 	src := `package design
