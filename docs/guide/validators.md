@@ -177,7 +177,7 @@ holding an explicit `null` is unset, though its value is the four bytes `null`.
 
 ## Optional fields
 
-A `T?` field becomes `*T` in Go for a primitive, scalar, enum, struct or `datetime`; an optional array, map, `bytes`, `any` or raw field keeps its Go type, nil when absent, and gains `omitempty`. Validators only fire when the value is present:
+A `T?` field becomes `*T` in Go for a primitive, scalar, enum, struct or `datetime`; an optional array, map, `bytes`, `any` or raw field keeps its Go type, nil when absent, and stays out of the JSON only while nil (`omitzero`; `omitempty` for `any` and raw). Validators only fire when the value is present:
 
 ```craftgo
 type UpdateUser {

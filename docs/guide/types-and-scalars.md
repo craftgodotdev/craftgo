@@ -112,7 +112,7 @@ type UpdateUser struct {
 }
 ```
 
-That holds for a primitive, scalar, enum, struct or `datetime`. An optional array, map, `bytes`, `any` or raw field keeps its Go type, which is nil when absent, and gains `omitempty`.
+That holds for a primitive, scalar, enum, struct or `datetime`. An optional array, map, `bytes`, `any` or raw field keeps its Go type, which is nil when absent. An array, map or `bytes` field gains `omitzero`, so it stays out of the JSON only while nil: an empty one the logic sets goes out as `[]`, `{}` or `""`. An `any` or raw field gains `omitempty`.
 
 ### Arrays
 

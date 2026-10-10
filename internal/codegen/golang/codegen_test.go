@@ -120,6 +120,38 @@ type X { tags string[]  meta map<string, string> }`)
 	}
 }
 
+// An optional list, map or bytes field stays out of the body only while nil, so an empty one the
+// logic sets goes out; a pointer, an `any` and a raw field keep omitempty.
+func TestGenerateTypesOptionalOmit(t *testing.T) {
+	pkg := analyze(t, `package design
+scalar Blob bytes
+type X {
+  tags string[]?
+  meta map<string, int>?
+  data bytes?
+  blob Blob?
+  n    int?
+  v    any?
+  r    bytes? @format(raw)
+}`)
+	dir := t.TempDir()
+	if err := generateTypes(pkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	mustContainAll(t, collapseSpace(src),
+		"Tags []string `json:\"tags,omitzero\"`",
+		"Meta map[string]int `json:\"meta,omitzero\"`",
+		"Data []byte `json:\"data,omitzero\"`",
+		"Blob Blob `json:\"blob,omitzero\"`",
+		"N *int `json:\"n,omitempty\"`",
+		"V any `json:\"v,omitempty\"`",
+		"R wire.Raw `json:\"r,omitempty\"`",
+	)
+}
+
 func TestGenerateTypesJSONKeyOverride(t *testing.T) {
 	pkg := analyze(t, `package design
 type Item { id string }
@@ -976,7 +1008,7 @@ type Doc {
 	}
 	mustContainAll(t, ts,
 		"NulBlob Blob `json:\"nulBlob\"`",
-		"OptBlob Blob `json:\"optBlob,omitempty\"`",
+		"OptBlob Blob `json:\"optBlob,omitzero\"`",
 	)
 	mustContainAll(t, string(val),
 		"if v.NulBlob != nil {",
