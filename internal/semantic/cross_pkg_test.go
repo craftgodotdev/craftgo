@@ -249,6 +249,19 @@ extend service Real { get Y /y { response R } }`,
 	}
 }
 
+// An `extend service` in a package other than its primary's is reported as
+// an orphan only: it claims no output directory to clash over.
+func TestExtendOrphanAloneInAnotherPackage(t *testing.T) {
+	root, files := projectFixture(t, map[string]string{
+		"one/a.craftgo": "package one\nservice S { get A /a { } }",
+		"two/b.craftgo": "package two\nextend service S { get B /b { } }",
+	})
+	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
+	if len(diags) != 1 || diags[0].Code != CodeServiceExtendOrphan {
+		t.Errorf("diagnostics = %v, want one %s", diags, CodeServiceExtendOrphan)
+	}
+}
+
 func TestExtendOrphanNoPrimaryAnywhere(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"x/svc.craftgo": `package x

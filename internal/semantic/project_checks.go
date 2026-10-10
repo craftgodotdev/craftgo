@@ -113,7 +113,9 @@ type segClaim struct {
 }
 
 // checkProjectGroupChecks rejects an output directory shared by services of
-// different DSL packages, or by two services declaring one method name.
+// different DSL packages, or by two services declaring one method name. An
+// `extend service` with no primary in its package claims none: it is
+// reported as an orphan.
 func (c *projectChecks) checkProjectGroupChecks() {
 	claims := map[string][]segClaim{}
 	for pkgName, pkg := range c.proj.Packages {
@@ -121,6 +123,9 @@ func (c *projectChecks) checkProjectGroupChecks() {
 			continue
 		}
 		for svcName, si := range pkg.Services {
+			if si == nil || si.Primary == nil {
+				continue
+			}
 			for seg, claim := range serviceSegmentClaims(pkgName, svcName, si, c.fileCase) {
 				claims[seg] = append(claims[seg], claim)
 			}

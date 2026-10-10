@@ -334,6 +334,10 @@ func (a *analyzer) checkJSONKeysIn(parent string, members []ast.TypeMember) {
 			seen[name] = f
 			continue
 		}
+		if prev == f {
+			// A mixin cycle, reported where it closes, brings the body back.
+			continue
+		}
 		at, other := f, prev
 		if !slices.Contains(own, f) && slices.Contains(own, prev) {
 			at, other = prev, f
