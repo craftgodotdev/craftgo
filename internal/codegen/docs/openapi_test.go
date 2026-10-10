@@ -3121,7 +3121,7 @@ service S {
 }
 
 // A `bytes @format(raw)` field has an untyped schema with only the raw note;
-// `any` is untyped without it, and plain `bytes` stays `format: byte`.
+// `any` is untyped without it, and plain `bytes` is base64 text.
 func TestGenerateOpenAPIRawBytesIsUnconstrained(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
 type Req { payload bytes @format(raw)  meta bytes? @format(raw)  raw any  blob bytes }
@@ -3129,10 +3129,10 @@ service S {
     post Make /m { request Req }
 }`)
 	for _, want := range []string{
-		"payload:\n          description: raw encoded value",
-		"meta:\n          description: raw encoded value",
+		"payload:\n          description: raw encoded value\n",
+		"meta:\n          description: raw encoded value\n",
 		"raw: {}",
-		"format: byte",
+		"blob:\n          contentEncoding: base64\n          type: string\n",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the document does not carry %q:\n%s", want, body)
@@ -3141,6 +3141,49 @@ service S {
 	// A raw field has no type.
 	if strings.Contains(body, "raw encoded value\n          type:") {
 		t.Errorf("a raw field must not be given a type:\n%s", body)
+	}
+}
+
+// A bytes value is base64 text, and its length, which minLength and
+// maxLength would count in base64 characters, is described in the bytes it
+// decodes to, after its doc.
+func TestBytesLengthIsDescribed(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+scalar Key bytes @length(32)
+scalar Blob bytes @maxLength(64)
+type T {
+	// The payload.
+	a bytes  @length(1, 80)
+	b bytes  @minLength(1)
+	c bytes? @maxLength(1)
+	d bytes  @minLength(2) @maxLength(16)
+	n Blob?  @doc("A narrower blob.") @maxLength(16)
+	e bytes
+}
+service S { post M /m { request T  response T } }`}, &config.Config{})
+	props := doc.Components.Schemas["T"].Value.Properties
+	for name, c := range map[string]struct {
+		schema *openapi3.Schema
+		want   string
+	}{
+		"a":    {props["a"].Value, "The payload.\n\nDecodes to between 1 and 80 bytes."},
+		"b":    {props["b"].Value, "Decodes to at least 1 byte."},
+		"c":    {props["c"].Value, "Decodes to at most 1 byte."},
+		"d":    {props["d"].Value, "Decodes to between 2 and 16 bytes."},
+		"n":    {props["n"].Value, "A narrower blob.\n\nDecodes to at most 16 bytes."},
+		"e":    {props["e"].Value, ""},
+		"Key":  {doc.Components.Schemas["Key"].Value, "Decodes to exactly 32 bytes."},
+		"Blob": {doc.Components.Schemas["Blob"].Value, "Decodes to at most 64 bytes."},
+	} {
+		if c.schema.Description != c.want {
+			t.Errorf("%s description %q, want %q", name, c.schema.Description, c.want)
+		}
+		if c.schema.MinLength != 0 || c.schema.MaxLength != nil {
+			t.Errorf("%s counts base64 characters: minLength %d, maxLength %v", name, c.schema.MinLength, c.schema.MaxLength)
+		}
+		if name != "n" && (c.schema.Format != "" || c.schema.Extensions["contentEncoding"] != "base64") {
+			t.Errorf("%s is not base64 text: format %q, extensions %v", name, c.schema.Format, c.schema.Extensions)
+		}
 	}
 }
 

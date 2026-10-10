@@ -87,9 +87,8 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 		default:
 			w.AllOf = openapi3.SchemaRefs{{Ref: base}}
 		}
-		if desc != "" {
-			w.Description = desc
-		}
+		// The doc goes ahead of the note a constraint may have set.
+		w.Description = appendDescription(desc, w.Description)
 		if hasDef {
 			w.Default = def
 		}
@@ -409,10 +408,6 @@ func setMaxLen(s *openapi3.Schema, v uint64) {
 		s.MaxLength = &v
 	}
 }
-
-// lengthKeywordsApply reports whether length keywords fit s: on `format: byte`
-// they would count base64 characters, not the raw bytes the validator counts.
-func lengthKeywordsApply(s *openapi3.Schema) bool { return s.Format != "byte" }
 
 // itemCountKeyword stores an item count through array or object by s's type,
 // matched with Includes so an optional `[array, "null"]` counts as an array.

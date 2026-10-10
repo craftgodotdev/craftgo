@@ -133,6 +133,7 @@ func instantiateGeneric(decl *ast.TypeDecl, args []*ast.TypeRef, pkg *semantic.P
 // primitiveSchema returns the schema of a built-in type, or nil for any other
 // name. An integer type narrower than 64 bits or unsigned carries its range,
 // and a float32 the values that parse into one: the decoder refuses the rest.
+// Bytes are a string with the base64 content encoding.
 func primitiveSchema(name string) *openapi3.Schema {
 	sp, ok := prims.Lookup(name)
 	if !ok {
@@ -150,6 +151,8 @@ func primitiveSchema(name string) *openapi3.Schema {
 	case sp.Kind == prims.Float && sp.Bits == 32:
 		setNumber(s, "exclusiveMinimum", new(big.Rat).Neg(float32Overflow))
 		setNumber(s, "exclusiveMaximum", float32Overflow)
+	case sp.Kind == prims.Bytes:
+		s.Extensions = map[string]any{"contentEncoding": "base64"}
 	}
 	return s
 }
