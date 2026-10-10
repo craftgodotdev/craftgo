@@ -157,9 +157,7 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 			p.errorf(p.peek().Pos, "expected int or string for enum value")
 		}
 	}
-	trailing := p.decoratorsOnLine(p.tokens[p.pos-1].Pos.Line)
-	p.claimTrailing(t.Pos.Line, trailing)
-	v.Decorators = append(v.Decorators, trailing...)
+	v.Decorators = append(v.Decorators, p.decoratorsOnLine(p.tokens[p.pos-1].Pos.Line)...)
 	return v
 }
 

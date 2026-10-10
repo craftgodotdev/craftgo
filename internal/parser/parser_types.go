@@ -104,7 +104,6 @@ func (p *Parser) parseField(doc []string, decs []*ast.Decorator) *ast.Field {
 	name := p.advance()
 	tref := p.parseTypeRef()
 	trailing := p.decoratorsOnLine(p.tokens[p.pos-1].Pos.Line)
-	p.claimTrailing(name.Pos.Line, trailing)
 	return &ast.Field{Pos: name.Pos, Doc: doc, Name: name.Text, Type: tref, Decorators: append(decs, trailing...)}
 }
 
