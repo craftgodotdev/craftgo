@@ -155,7 +155,8 @@ and the `types/<package>/` layout - named after the DSL package - is untouched.
 A `@group` directory keeps the exact group string you wrote. Changing it in a
 project that has generated before scaffolds the gen-once stubs anew under the
 new names; gen names each `output.service` directory still holding the old
-ones, with the service it belongs to, for you to move your logic from.
+ones, with the service it belongs to, and each middleware scaffold left under
+its old name, for you to move your code from.
 
 ### Customizing paths
 

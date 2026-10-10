@@ -78,6 +78,7 @@ func OutputNotes(proj *semantic.Project, protos *protodesign.Set, cfg *config.Co
 	out = append(out, staleWiringImport(cfg, projectRoot)...)
 	out = append(out, scaffoldGapNotes(proj, protos, cfg, projectRoot)...)
 	out = append(out, orphanedStubNotes(proj, protos, cfg, projectRoot)...)
+	out = append(out, recasedMiddlewareNotes(proj, cfg, projectRoot)...)
 	return append(out, protoWarnings(protos)...)
 }
 
@@ -89,6 +90,34 @@ func protoWarnings(protos *protodesign.Set) []string {
 	out := make([]string, 0, len(protos.Warnings))
 	for _, w := range protos.Warnings {
 		out = append(out, "warning: "+w)
+	}
+	return out
+}
+
+// fileCases lists every output.fileCase, for the notes on what another one named.
+var fileCases = []string{idents.FileCaseSnake, idents.FileCaseKebab, idents.FileCaseCamel}
+
+// recasedMiddlewareNotes names each middleware scaffold left under the file name another
+// output.fileCase gives it: beside the one scaffolded now, the package declares its constructor
+// twice.
+func recasedMiddlewareNotes(proj *semantic.Project, cfg *config.Config, projectRoot string) []string {
+	if proj == nil || cfg.Output.ContractsOnly() {
+		return nil
+	}
+	dir := outputsOf(cfg).middleware
+	var out []string
+	for _, mw := range projectMiddlewares(proj) {
+		now := idents.MiddlewareFileName(mw.Name, cfg.Output.FileCase) + ".go"
+		seen := map[string]bool{now: true}
+		for _, fileCase := range fileCases {
+			old := idents.MiddlewareFileName(mw.Name, fileCase) + ".go"
+			if seen[old] || !fileHasPrefix(dir.at(projectRoot, old), scaffoldHeader) {
+				continue
+			}
+			seen[old] = true
+			out = append(out, cfg.Output.Middleware+"/"+old+" holds the "+mw.Name+" middleware scaffold under the name output.fileCase used to give it, beside "+
+				now+" - move your code over and delete it, as the package declares New"+mw.Name+"Middleware twice until then")
+		}
 	}
 	return out
 }
@@ -107,7 +136,7 @@ func orphanedStubNotes(proj *semantic.Project, protos *protodesign.Set, cfg *con
 	recased := map[string]place{}
 	own := func(svc, dir string) {
 		owned[dir] = true
-		for _, fileCase := range []string{idents.FileCaseSnake, idents.FileCaseKebab, idents.FileCaseCamel} {
+		for _, fileCase := range fileCases {
 			if old := idents.FileName(svc, fileCase); old != dir {
 				recased[old] = place{svc, dir}
 			}

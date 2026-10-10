@@ -264,6 +264,30 @@ func TestRecasedStubsNameTheirService(t *testing.T) {
 	}
 }
 
+// After an output.fileCase change, the middleware scaffold left under its old file name is named,
+// since the package then declares its constructor twice.
+func TestRecasedMiddlewareScaffoldIsNamed(t *testing.T) {
+	cfg := scaffoldConfig(t)
+	proj := analyzeProject(t, httpScaffoldSrc)
+	dir := t.TempDir()
+	if err := generateProjectMiddlewares(proj, cfg, dir); err != nil {
+		t.Fatal(err)
+	}
+	if notes := recasedMiddlewareNotes(proj, cfg, dir); len(notes) != 0 {
+		t.Errorf("a scaffold under its own name noted: %v", notes)
+	}
+	kebab := *cfg
+	kebab.Output.FileCase = idents.FileCaseKebab
+	if err := generateProjectMiddlewares(proj, &kebab, dir); err != nil {
+		t.Fatal(err)
+	}
+	notes := recasedMiddlewareNotes(proj, &kebab, dir)
+	want := "./internal/middleware/auth_required_middleware.go holds the AuthRequired middleware scaffold under the name output.fileCase used to give it, beside auth-required-middleware.go"
+	if len(notes) != 1 || !strings.HasPrefix(notes[0], want) {
+		t.Errorf("notes = %v, want one starting %q", notes, want)
+	}
+}
+
 func containsNote(notes []string, needle string) bool {
 	for _, n := range notes {
 		if strings.Contains(n, needle) {
