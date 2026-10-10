@@ -77,6 +77,34 @@ func TestDiscoverIsSortedAndSlashRelative(t *testing.T) {
 	}
 }
 
+// Discovery passes over an editor's lock file, a dot or underscore file, and
+// what sits in a hidden directory, vendor or node_modules, and follows a
+// linked directory.
+func TestDiscoverSkipsArtefactsAndFollowsLinks(t *testing.T) {
+	shared := write(t, map[string]string{"billing/billing.proto": "syntax = \"proto3\";\n"})
+	root := write(t, map[string]string{
+		"greet/greet.proto":    "syntax = \"proto3\";\n",
+		"greet/._greet.proto":  "\x00\x05\x16\x07",
+		"greet/_draft.proto":   "syntax = \"proto3\";\n",
+		".cache/x.proto":       "syntax = \"proto3\";\n",
+		"vendor/v/v.proto":     "syntax = \"proto3\";\n",
+		"node_modules/n.proto": "syntax = \"proto3\";\n",
+	})
+	if err := os.Symlink("user@host.4242:1700000000", filepath.Join(root, "greet", ".#greet.proto")); err != nil {
+		t.Skipf("no symbolic links here: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(shared, "billing"), filepath.Join(root, "billing")); err != nil {
+		t.Fatal(err)
+	}
+	names, err := discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"billing/billing.proto", "greet/greet.proto"}; !reflect.DeepEqual(names, want) {
+		t.Fatalf("names = %v, want %v", names, want)
+	}
+}
+
 func TestLoadReturnsNilWithoutProtos(t *testing.T) {
 	set, err := Load(context.Background(), t.TempDir(), opts())
 	if err != nil || set != nil {

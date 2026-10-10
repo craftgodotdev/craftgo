@@ -3,7 +3,6 @@
 package designopts
 
 import (
-	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/parser"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/walk"
 )
 
 // For returns the analyser options cfg sets for the design at designRoot. A nil
@@ -59,15 +59,26 @@ type Source struct {
 	Text string
 }
 
-// Files lists every design file under designRoot in walk order. A directory it
-// cannot read fails the call with nil paths; [FilesBestEffort] skips it instead.
+// Files lists every design file under designRoot in walk order, as a
+// [walk.Design] walk finds them. A directory it cannot read fails the call with
+// nil paths; [FilesBestEffort] skips it instead.
 func Files(designRoot string) ([]string, error) {
+	return designFiles(designRoot, nil)
+}
+
+// FilesBestEffort lists every design file under designRoot it can read, in
+// walk order, skipping unreadable directories.
+func FilesBestEffort(designRoot string) []string {
+	out, _ := designFiles(designRoot, func(string, error) error { return nil })
+	return out
+}
+
+// designFiles lists the design files a [walk.Design] walk of designRoot finds,
+// onErr deciding on an unreadable directory.
+func designFiles(designRoot string, onErr func(path string, err error) error) ([]string, error) {
 	var out []string
-	err := filepath.WalkDir(designRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() && config.IsDesignFile(path) {
+	err := walk.Files(designRoot, walk.Design(onErr), func(path string) error {
+		if config.IsDesignFile(path) {
 			out = append(out, path)
 		}
 		return nil
@@ -76,22 +87,6 @@ func Files(designRoot string) ([]string, error) {
 		return nil, err
 	}
 	return out, nil
-}
-
-// FilesBestEffort lists every design file under designRoot it can read, in
-// walk order, skipping unreadable directories.
-func FilesBestEffort(designRoot string) []string {
-	var out []string
-	_ = filepath.WalkDir(designRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if !d.IsDir() && config.IsDesignFile(path) {
-			out = append(out, path)
-		}
-		return nil
-	})
-	return out
 }
 
 // Load reads every design file under designRoot from disk.

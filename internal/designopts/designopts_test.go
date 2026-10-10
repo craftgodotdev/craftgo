@@ -99,6 +99,45 @@ func TestBothPoliciesAgreeOnAReadableTree(t *testing.T) {
 	}
 }
 
+// A design walk reads a linked package folder, and passes over an editor's
+// lock file, a macOS AppleDouble file, an underscore file and what sits in a
+// hidden directory, vendor or node_modules.
+func TestFilesSkipArtefactsAndFollowLinks(t *testing.T) {
+	shared := tree(t, map[string]string{"users/u.craftgo": "package users\n"})
+	root := tree(t, map[string]string{
+		"orders/o.craftgo":            "package orders\n",
+		"orders/._o.craftgo":          "\x00\x05\x16\x07Mac OS X",
+		"orders/_draft.craftgo":       "package orders\n",
+		".history/orders/o.craftgo":   "package orders\n",
+		"vendor/x/x.craftgo":          "package x\n",
+		"node_modules/y/y.craftgo":    "package y\n",
+		"orders/notes/readme.md":      "",
+		"orders/notes/also.craftgo.x": "",
+	})
+	if err := os.Symlink("user@host.12345:1700000000", filepath.Join(root, "orders", ".#o.craftgo")); err != nil {
+		t.Skipf("no symbolic links here: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(shared, "users"), filepath.Join(root, "users")); err != nil {
+		t.Fatal(err)
+	}
+	for name, got := range map[string][]string{"Files": mustFiles(t, root), "FilesBestEffort": FilesBestEffort(root)} {
+		want := []string{filepath.Join(root, "orders", "o.craftgo"), filepath.Join(root, "users", "u.craftgo")}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s = %v, want %v", name, got, want)
+		}
+	}
+}
+
+// mustFiles is [Files] failing the test on error.
+func mustFiles(t *testing.T, root string) []string {
+	t.Helper()
+	paths, err := Files(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return paths
+}
+
 // TestLoadRefusesAHalfReadableDesign checks that Load fails like Files on an
 // unreadable directory.
 func TestLoadRefusesAHalfReadableDesign(t *testing.T) {
