@@ -98,7 +98,7 @@ Field level (a few also apply at error-field level for response writing).
 | `@path` / `@path("name")` | `(string?)` | Bind from a URL path parameter. |
 | `@query` / `@query("name")` | `(string?)` | Bind from the URL query string. |
 | `@header` / `@header("Name")` | `(string?)` | Bind from a request header (request fields) or write a response header (response and error fields). |
-| `@cookie` / `@cookie("name")` | `(string?)` | Bind from a cookie (request) or set one (response and error fields). |
+| `@cookie` / `@cookie("name")` | `(string?)`, then named `path`, `domain`, `maxAge`, `httpOnly`, `secure`, `sameSite` | Bind from a cookie (request) or set one (response and error fields), with the named attributes: `Path=/`, `HttpOnly`, `Secure` and `SameSite=Lax` for those left out. |
 | `@body` | - | Bind from the request body (the default for body verbs). A name argument is accepted and has no effect; `@json` sets the key. |
 | `@form` / `@form("name")` | `(string?)` | Bind from a multipart form field; the request needs a `file`. |
 

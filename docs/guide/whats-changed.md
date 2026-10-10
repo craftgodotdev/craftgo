@@ -37,6 +37,7 @@ Fix the design and run `craftgo gen` again.
 - A float literal past float64, a duration past 2562047h, a duration with two units (`1h30m`: write `90m`).
 - A binding decorator on a field of a nested type, which bound nothing: `binding/nested`. Bind a field of the request type itself.
 - An `@json` key encoding/json would ignore, and a path, query, header or cookie name holding a backtick.
+- A `@cookie` attribute no browser keeps: a path not starting with `/`, a domain that is no host name, a `maxAge` of no whole second, `sameSite: none` without `secure`.
 - A copy of a well-known type (`google/protobuf/*`) in the design folder: delete it. A copy of a proto the runtime links in (`google/rpc/*`, `google/api/httpbody.proto`, `grpc/health/*`, `grpc/reflection/*`, `grpc/binlog/*`, `opentelemetry/proto/*`, `io/prometheus/client/*`), which panicked at startup: move it under `proto.includes`.
 - Proto directories whose Go packages import one another, which did not compile: the error names the packages and the imports that close the ring.
 - RPC files or service directories whose names differ only in case.
@@ -51,7 +52,7 @@ A design proto whose `go_package` names another module's package is a warning: i
 - A nil list, map or `bytes` the logic returns goes out as `null`, where 1.10 wrote `[]`, `{}` or `""`: return empty ones where the document requires the member. An optional one the logic sets empty goes out as `[]` or `{}`, where 1.10 left it out.
 - `@format` checks follow their RFCs. `email` refuses a display name, a comment or angle brackets (`Ann <ann@example.com>`), `time` needs its offset (`15:04:05Z`, not `15:04:05`), `ipv4` refuses `::ffff:1.2.3.4`, and `url` needs `http` or `https` and a host. A client sending the forms that passed before gets 400, and a bound that only fits the old form, as `@length(8, 8)` on a `time`, needs widening.
 - A body past 10 MiB answers 413 on a route without `@maxBodySize` (a new `config.yaml`; see below).
-- Cookies a `@cookie` field sets carry `Path=/`, `HttpOnly`, `Secure` and `SameSite=Lax`. Set `server.cookies` in `config.yaml` for others, as `secure: false` behind plain HTTP on a host other than `localhost`.
+- Cookies a `@cookie` field sets carry `Path=/`, `HttpOnly`, `Secure` and `SameSite=Lax` unless the `@cookie` names others, as `@cookie("theme", httpOnly: false)` for one scripts read. A cookie whose attributes depend on the request, as a lifetime the user picks or a deletion at logout, is a field typed `cookie`, which the logic sets per response from `New<Type><Field>Cookie(value)`.
 - The root route answers `/` only, where it answered every path no other route took.
 - A new logic stub answers 501, or `Unimplemented` over gRPC, until it is written.
 - A float parameter of `0x1p4`, `1_000`, `Inf` or `NaN` answers 400, and a parameter's parse error names its type: `limit: "abc" is not a valid int8`.
@@ -62,7 +63,7 @@ A design proto whose `go_package` names another module's package is a warning: i
 
 ### `main.go`, `config.go` and the stubs
 
-- A new `config.yaml` sets `readTimeout: 30s`, `maxBodySize: 10485760`, `requirePresence: true` and a `cookies` block, and a new `main.go` applies them, registers the docs with `srv.RegisterDocs` and stops at boot naming a value it cannot use. An existing project keeps its files: its `maxBodySize: 0` still sets no cap, so set `10485760` to take the new default; the required-member check and the cookie attributes apply through their defaults.
+- A new `config.yaml` sets `readTimeout: 30s`, `maxBodySize: 10485760` and `requirePresence: true`, and a new `main.go` applies them, registers the docs with `srv.RegisterDocs` and stops at boot naming a value it cannot use. An existing project keeps its files: its `maxBodySize: 0` still sets no cap, so set `10485760` to take the new default; the required-member check applies through its default.
 - A new `main.go` binds each listener before it logs the address, stops HTTP and gRPC side by side, and calls `server.SetStrictJSON`. An existing one keeps working; switch its deprecated `srv.SetStrictJSON` to `server.SetStrictJSON` when you next edit it.
 - A new logic stub returns `server.ErrNotImplemented` or `status.Error(codes.Unimplemented, …)`. Stubs already written keep what they hold.
 
@@ -94,7 +95,7 @@ A design proto whose `go_package` names another module's package is a warning: i
 
 ### Runtime API
 
-- New: `server.Serve`, `ErrNotImplemented`, `SetRequirePresence`, `RequirePresence`, `MissingMember`, `Nullable`, `RequireJSONBody`, `SetCookieOptions`, `DefaultCookieOptions`, `SetCookie`, `ResponseCookieSetter`, `LimitParts`, `MultipartMemory`, `DefaultMaxBodySize`, `CompressOptions.Validate`, `Server.RegisterDocs`; `rpc.ValidateClientStream`, `rpc.ValidateBidiStream`; `events.EnvelopeError`, `nats.ErrNotCarried`.
+- New: `server.Serve`, `ErrNotImplemented`, `SetRequirePresence`, `RequirePresence`, `MissingMember`, `Nullable`, `RequireJSONBody`, `ResponseCookieSetter`, `LimitParts`, `MultipartMemory`, `DefaultMaxBodySize`, `CompressOptions.Validate`, `Server.RegisterDocs`; `rpc.ValidateClientStream`, `rpc.ValidateBidiStream`; `events.EnvelopeError`, `nats.ErrNotCarried`.
 - Deprecated, still working: `Server.SetJSONCodec`, `Server.SetStrictJSON` and `Server.Codec`. The codec and the strict switch were always the process's; call `server.SetGlobalJSONCodec`, `server.SetStrictJSON` and `server.JSON`.
 - `server.New` caps bodies at 10 MiB until `SetDefaultMaxBodySize` says otherwise. `SetCORS` panics on credentials allowed to `*`, and `Compress` on a level outside -2..9. `Stop` before `Start` makes a later `Start` or `Serve` return nil at once, on both servers. The default logger no longer samples.
 

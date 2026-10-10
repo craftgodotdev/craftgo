@@ -212,7 +212,7 @@ error TooManyRequests RateLimited {
 }
 ```
 
-The `@header` and `@cookie` decorators on error fields write to the response writer instead of the JSON body: the error's `WriteResponseHeaders` sets the headers, and `WriteError` sets the cookies its `ResponseCookies` returns, each with the server's cookie attributes - `Path=/`, `HttpOnly`, `Secure` and `SameSite=Lax` unless `server.cookies` in `config.yaml` sets others. Body fields ride normally. An error whose every field, a mixin's included, rides a header or a cookie, or is `@sensitive`, has nothing for the JSON body, so its body is the `{"code","message"}` envelope.
+The `@header` and `@cookie` decorators on error fields write to the response writer instead of the JSON body: the error's `WriteResponseHeaders` sets the headers, and `WriteError` sets the cookies its `ResponseCookies` returns, each with the attributes its `@cookie` declares, `Path=/`, `HttpOnly`, `Secure` and `SameSite=Lax` for those it leaves out ([Cookie attributes](/guide/decorators#field-bindings)). A `cookie` field's cookie is the one the logic set, as `New<Name>Err<Field>Cookie(value)` builds it. Body fields ride normally. An error whose every field, a mixin's included, rides a header or a cookie, or is `@sensitive`, has nothing for the JSON body, so its body is the `{"code","message"}` envelope.
 
 ## Declaring per-method
 

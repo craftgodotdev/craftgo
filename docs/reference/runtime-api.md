@@ -156,14 +156,11 @@ goccy/go-json (`NewDecoder(r).DisallowUnknownFields()`, the stdlib API) wraps th
 
 ### Cookies
 
-A response's `@cookie` field is set by the handler through `server.SetCookie(w, name, value)`, an error's by `WriteError` from its `ResponseCookies()`; both take the attributes `SetCookieOptions` installed.
+A response's `@cookie` field is set by the generated handler with `http.SetCookie`, an error's by `WriteError` from its `ResponseCookies()`; each cookie carries the attributes its `@cookie` declares ([Cookie attributes](/guide/decorators#field-bindings)), and a `cookie` field's is the one the logic set.
 
-| Function | Description |
+| Type | Description |
 |---|---|
-| `SetCookieOptions(o CookieOptions) error` | Install, process-wide and safe while serving, the `Path`, `Domain`, `HTTPOnly`, `Secure` and `SameSite` (`"lax"`, `"strict"`, `"none"`, or `""` for none) the cookies carry. `server.cookies` in `config.yaml` drives it. Fails, changing nothing, on another `SameSite`, or on `none` without `Secure`. |
-| `DefaultCookieOptions() CookieOptions` | The options in effect until `SetCookieOptions`: `Path: "/"`, `HTTPOnly`, `Secure`, `SameSite: "lax"`. |
-| `SetCookie(w, name, value)` | Add a `Set-Cookie` with the installed attributes. |
-| `ResponseCookieSetter` | `ResponseCookies() []*http.Cookie`: what a generated error with a `@cookie` field implements; `WriteError` sets each cookie with the installed attributes, after `WriteResponseHeaders`. |
+| `ResponseCookieSetter` | `ResponseCookies() []*http.Cookie`: what a generated error with a `@cookie` field implements; `WriteError` sets each cookie as it returns it, after `WriteResponseHeaders`. |
 
 ### Multipart forms
 

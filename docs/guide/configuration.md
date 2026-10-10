@@ -313,12 +313,6 @@ server:                # absent when the design's only services are gRPC ones
   maxBodySize: 10485760
   strictJSON: true
   requirePresence: true
-  cookies:
-    path: /
-    domain: ""
-    httpOnly: true
-    secure: true
-    sameSite: lax
   compression:
     enabled: false
     minSize: 0
@@ -353,7 +347,7 @@ docs:                  # absent when the design's only services are gRPC ones
   specPath: /openapi.yaml
 ```
 
-A key left out of `config.yaml` takes a default. `config.go`'s `defaults` sets `server.readTimeout` (`30s`), `server.maxBodySize` (10 MiB), `server.requirePresence` (`true`) and `server.cookies` (`path: /`, `httpOnly`, `secure`, `sameSite: lax`) before the file is read, so a value in the file wins, a zero included; its `applyDefaults` fills `server.addr` (`":8080"`), `grpc.addr` (`":9000"`) and `serviceName` (the last segment of the project's import path). Every other key falls to the runtime: the switches (`otel.enabled`, `metrics.enabled`, `docs.enabled`, `strictJSON`, `compression.enabled`, `grpc.reflection`) are off; an empty `otel.exporter` keeps spans in process; an empty `metrics.exporter` serves the Prometheus scrape, with no listener unless `adminAddr` is set; the scrape path is `/metrics`; the docs use `redoc` at `/docs` and `/openapi.yaml`; logging is `info`.
+A key left out of `config.yaml` takes a default. `config.go`'s `defaults` sets `server.readTimeout` (`30s`), `server.maxBodySize` (10 MiB) and `server.requirePresence` (`true`) before the file is read, so a value in the file wins, a zero included; its `applyDefaults` fills `server.addr` (`":8080"`), `grpc.addr` (`":9000"`) and `serviceName` (the last segment of the project's import path). Every other key falls to the runtime: the switches (`otel.enabled`, `metrics.enabled`, `docs.enabled`, `strictJSON`, `compression.enabled`, `grpc.reflection`) are off; an empty `otel.exporter` keeps spans in process; an empty `metrics.exporter` serves the Prometheus scrape, with no listener unless `adminAddr` is set; the scrape path is `/metrics`; the docs use `redoc` at `/docs` and `/openapi.yaml`; logging is `info`.
 
 `config.Load` skips a key `Config` has no field for, logging a warning with yaml's `line N: field K not found in type T`, so a misspelt key leaves its setting at the default and says so. A value the runtime cannot use stops `main.go` at boot with an error naming it: an enabled signal's `otel.exporter` or `metrics.exporter` other than those below, a `metrics.path` that does not start with `/`, a `server.compression.level` outside -2 to 9, and a `docs.path` or `docs.specPath` that does not start with `/` or that the other, a health probe or a design route already serves.
 
