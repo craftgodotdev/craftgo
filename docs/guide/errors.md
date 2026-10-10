@@ -254,7 +254,7 @@ The errors the framework writes itself are JSON `{"message": "..."}`, with `Cont
 | 400 | the body does not decode, a required member or parameter is missing, a parameter does not bind, or the request fails `Validate()` | `{"message":"<error text>"}`, e.g. `{"message":"name: length out of range [1, 80]"}`, `{"message":"items.sku: required"}` |
 | 404 | no route matches the path | `{"message":"not found"}` |
 | 405 | a route matches the path under another method; `Allow` lists its methods | `{"message":"method not allowed"}` |
-| 413 | the body is over its cap (`@maxBodySize`, `server.maxBodySize`, `BodyLimit`) | `{"message":"request entity too large"}` |
+| 413 | the body is over its cap (`@maxBodySize`, `server.maxBodySize`, `BodyLimit`), a raw request's logic returning the error of a read past it included | `{"message":"request entity too large"}` |
 | 415 | a JSON-body route gets a `Content-Type` other than `application/json` or an `application/*+json` type (parameters and case aside; a body without one decodes as JSON), or a form route a body that is no `multipart/form-data`; a `@rawRequest` or `@passthrough` route reads its own body | `{"message":"unsupported media type"}` |
 | 500 | a panic, or an error that carries no status | `{"message":"internal server error"}` |
 | 501 | a logic stub craftgo wrote that is not filled in yet (`server.ErrNotImplemented`) | `{"message":"not implemented"}` |
@@ -265,7 +265,7 @@ The errors the framework writes itself are JSON `{"message": "..."}`, with `Cont
 Three swappable hooks shape the error responses the framework writes for you:
 
 - `server.SetDefaultValidationFailed` - input that fails JSON decoding, the required-member check, parameter binding or `Validate()` (default 400 `{"message":"<error text>"}`); a body read past its cap answers 413 `{"message":"request entity too large"}`, and a form body that is no `multipart/form-data` 415, without calling it.
-- `server.SetHandleUnknownError` - a service error that is neither a craftgo typed error (no `HTTPStatus()`) nor a context error the framework answers itself (504 for a deadline, nothing for a canceled request); the default logs it with trace context and responds 500 `{"message":"internal server error"}`. A `context.Canceled` on a request that is still live does reach it. Use it to map a domain error to a status, redact, or return a uniform envelope.
+- `server.SetHandleUnknownError` - a service error that is neither a craftgo typed error (no `HTTPStatus()`) nor one the framework answers itself (504 for a deadline, nothing for a canceled request, 413 for a body read past its cap); the default logs it with trace context and responds 500 `{"message":"internal server error"}`. A `context.Canceled` on a request that is still live does reach it. Use it to map a domain error to a status, redact, or return a uniform envelope.
 - `(*server.Server).SetHandleNotFound` - the requests the mux would answer 404 (default 404 `{"message":"not found"}`, which `SetHandleNotFound(nil)` restores); a method mismatch keeps its 405 `{"message":"method not allowed"}` with `Allow`.
 
 A recognised typed error (one that implements `server.StatusError` - every `error` declaration does) is rendered directly from its interface and is **not** logged: a declared 4xx/5xx is an expected outcome. For full control over a business error's wire shape, give the error a body struct.

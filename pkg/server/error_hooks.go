@@ -180,8 +180,9 @@ func SetHandleUnknownError(h UnknownErrorHandler) {
 }
 
 // WriteError renders err: a [StatusError] in its chain, unlogged, as its status, headers and
-// JSON body; a context error as nothing once the request is canceled, else a deadline as 504;
-// anything else through the [SetHandleUnknownError] handler, or the log once committed.
+// JSON body; a context error as nothing once the request is canceled, else a deadline as 504; a
+// body read past its [BodyLimit], as a raw request's logic may return, unlogged as 413; anything
+// else through the [SetHandleUnknownError] handler, or the log once committed.
 func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	var se StatusError
 	isStatus := errors.As(err, &se)
@@ -196,6 +197,10 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 	if !isStatus {
+		if bodyTooLarge(r, err) {
+			writeStatusError(w, http.StatusRequestEntityTooLarge)
+			return
+		}
 		(*unknownError.Load())(w, r, err)
 		return
 	}
