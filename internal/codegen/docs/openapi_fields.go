@@ -247,16 +247,33 @@ func setNumber(s *openapi3.Schema, key string, v *big.Rat) {
 }
 
 // tightenBound sets bound key, `minimum`, `maximum` or an exclusive one, to v
-// unless s holds a tighter one: the validator runs every decorator, so
-// `@gte(10) @range(0, 100)` enforces a minimum of 10.
+// unless s holds a bound on that side as tight, which it otherwise drops: the
+// validator runs every decorator, so `@gte(10) @range(0, 100)` enforces a
+// minimum of 10, and `@gt(0)` on a uint8 an exclusive minimum of 0 rather
+// than the type's minimum 0.
 func tightenBound(s *openapi3.Schema, key string, v *big.Rat) {
-	if cur, ok := schemaNumber(s, key); ok {
-		c := v.Cmp(cur)
-		if key == "minimum" || key == "exclusiveMinimum" {
+	lower := key == "minimum" || key == "exclusiveMinimum"
+	side := [2]string{"maximum", "exclusiveMaximum"}
+	if lower {
+		side = [2]string{"minimum", "exclusiveMinimum"}
+	}
+	for _, held := range side {
+		cur, ok := schemaNumber(s, held)
+		if !ok {
+			continue
+		}
+		c := cur.Cmp(v)
+		if !lower {
 			c = -c
 		}
-		if c >= 0 {
+		if c > 0 || c == 0 && (held == side[1] || key == side[0]) {
 			return
+		}
+	}
+	for _, held := range side {
+		delete(s.Extensions, held)
+		if f := numberField(s, held); f != nil {
+			*f = nil
 		}
 	}
 	setNumber(s, key, v)

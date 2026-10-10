@@ -1,6 +1,8 @@
 package docs
 
 import (
+	"math/big"
+
 	"github.com/getkin/kin-openapi/openapi3"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -71,34 +73,41 @@ func nullableRef(refName string) *openapi3.SchemaRef {
 }
 
 // propertyNamesForMapKey returns the `propertyNames` schema of a map key: an
-// enum's wire values or a string scalar's constraints; nil for any other key.
+// enum's wire values, a string scalar's constraints, or for an integer key,
+// a scalar's too, the decimal digits it decodes from, signed unless the
+// integer is unsigned; nil for a string key.
 func propertyNamesForMapKey(t *ast.TypeRef, pkg *semantic.Package) *openapi3.Schema {
 	if t == nil || t.Named == nil || t.Named.Name == nil {
 		return nil
 	}
-	name := t.Named.Name.String()
-	if name == "string" {
-		return nil
-	}
-	if pkg == nil {
-		return nil
-	}
-	if ed, ok := pkg.Enums[name]; ok && ed != nil {
-		values := enumWireStrings(ed)
-		out := make([]any, len(values))
-		for i, v := range values {
-			out[i] = v
+	prim := t.Named.Name.String()
+	if pkg != nil {
+		if ed := pkg.Enums[prim]; ed != nil {
+			values := enumWireStrings(ed)
+			out := make([]any, len(values))
+			for i, v := range values {
+				out[i] = v
+			}
+			return &openapi3.Schema{
+				Type: &openapi3.Types{"string"},
+				Enum: out,
+			}
 		}
-		return &openapi3.Schema{
-			Type: &openapi3.Types{"string"},
-			Enum: out,
+		if sc := pkg.Scalars[prim]; sc != nil {
+			if sc.Primitive == "string" {
+				base := &openapi3.Schema{Type: &openapi3.Types{"string"}}
+				applyConstraintFamilies(sc.Decorators, base, semantic.ConstraintLength|semantic.ConstraintText, sc.Primitive)
+				return base
+			}
+			// A numeric scalar's bounds have no form that holds for a string key.
+			prim = sc.Primitive
 		}
 	}
-	if sc, ok := pkg.Scalars[name]; ok && sc != nil && sc.Primitive == "string" {
-		// A numeric scalar's bounds have no form that holds for a string key.
-		base := &openapi3.Schema{Type: &openapi3.Types{"string"}}
-		applyConstraintFamilies(sc.Decorators, base, semantic.ConstraintLength|semantic.ConstraintText, sc.Primitive)
-		return base
+	switch sp, _ := prims.Lookup(prim); sp.Kind {
+	case prims.Int:
+		return &openapi3.Schema{Type: &openapi3.Types{"string"}, Pattern: `^[+-]?[0-9]+$`}
+	case prims.Uint:
+		return &openapi3.Schema{Type: &openapi3.Types{"string"}, Pattern: `^[0-9]+$`}
 	}
 	return nil
 }
@@ -122,7 +131,8 @@ func instantiateGeneric(decl *ast.TypeDecl, args []*ast.TypeRef, pkg *semantic.P
 }
 
 // primitiveSchema returns the schema of a built-in type, or nil for any other
-// name. An unsigned type gets `minimum: 0`.
+// name. An integer type narrower than 64 bits or unsigned carries its range,
+// and a float32 the values that parse into one: the decoder refuses the rest.
 func primitiveSchema(name string) *openapi3.Schema {
 	sp, ok := prims.Lookup(name)
 	if !ok {
@@ -132,9 +142,20 @@ func primitiveSchema(name string) *openapi3.Schema {
 		return &openapi3.Schema{}
 	}
 	s := &openapi3.Schema{Type: &openapi3.Types{sp.OASType}, Format: sp.OASFormat}
-	if sp.Kind == prims.Uint {
-		zero := 0.0
-		s.Min = &zero
+	switch {
+	case sp.Kind == prims.Uint || sp.Kind == prims.Int && sp.Bits > 0 && sp.Bits < 64:
+		lo, hi, _ := prims.Capacity(name)
+		setNumber(s, "minimum", new(big.Rat).SetInt(lo))
+		setNumber(s, "maximum", new(big.Rat).SetInt(hi))
+	case sp.Kind == prims.Float && sp.Bits == 32:
+		setNumber(s, "exclusiveMinimum", new(big.Rat).Neg(float32Overflow))
+		setNumber(s, "exclusiveMaximum", float32Overflow)
 	}
 	return s
 }
+
+// float32Overflow is the least magnitude that parses past a float32's range,
+// 2^128 - 2^103: halfway between the greatest float32 and 2^128, it rounds to
+// 2^128, the even of the two.
+var float32Overflow = new(big.Rat).SetInt(new(big.Int).Sub(
+	new(big.Int).Lsh(big.NewInt(1), 128), new(big.Int).Lsh(big.NewInt(1), 103)))

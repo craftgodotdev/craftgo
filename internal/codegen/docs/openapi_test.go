@@ -2617,6 +2617,123 @@ service S { post M /m { request Limits  response Limits } }`)
 	mustContainNone(t, body, "e+18", "e+19", "9223372036854776000", "maxLength: 9223372036854775808")
 }
 
+// boundKeywords returns the numeric bounds of ref, each as the JSON number
+// the document writes.
+func boundKeywords(t *testing.T, ref *openapi3.SchemaRef) map[string]string {
+	t.Helper()
+	raw, err := json.Marshal(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var all map[string]any
+	if err := dec.Decode(&all); err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]string{}
+	for _, kw := range []string{"minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"} {
+		if n, ok := all[kw].(json.Number); ok {
+			out[kw] = string(n)
+		}
+	}
+	return out
+}
+
+// An integer type narrower than 64 bits or unsigned carries the range of its
+// Go type, and a float32 the values that parse into one; a bound the design
+// puts on a side replaces the type's there. int, int64 and float64 carry none.
+func TestSizedNumbersCarryTheirRange(t *testing.T) {
+	const f32 = "340282356779733661637539395458142568448"
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+scalar Level int8 @gte(0)
+type R {
+	i8  int8
+	i16 int16
+	i32 int32
+	u8  uint8
+	u16 uint16
+	u32 uint32
+	u64 uint64
+	u   uint
+	g   uint8 @gt(0)
+	r   int16 @range(-10, 10)
+	f   float32
+	fl  float32 @lte(1.5)
+	q   int8[]
+	i   int
+	i64 int64
+	f64 float64
+}
+type Req { id uint16  lv Level @query }
+service S { get M /m/{id} { request Req  response R } }`}, &config.Config{})
+	props := doc.Components.Schemas["R"].Value.Properties
+	op := doc.Paths.Find("/m/{id}").Get
+	for name, c := range map[string]struct {
+		schema *openapi3.SchemaRef
+		want   map[string]string
+	}{
+		"i8":    {props["i8"], map[string]string{"minimum": "-128", "maximum": "127"}},
+		"i16":   {props["i16"], map[string]string{"minimum": "-32768", "maximum": "32767"}},
+		"i32":   {props["i32"], map[string]string{"minimum": "-2147483648", "maximum": "2147483647"}},
+		"u8":    {props["u8"], map[string]string{"minimum": "0", "maximum": "255"}},
+		"u16":   {props["u16"], map[string]string{"minimum": "0", "maximum": "65535"}},
+		"u32":   {props["u32"], map[string]string{"minimum": "0", "maximum": "4294967295"}},
+		"u64":   {props["u64"], map[string]string{"minimum": "0", "maximum": "18446744073709551615"}},
+		"u":     {props["u"], map[string]string{"minimum": "0", "maximum": "18446744073709551615"}},
+		"g":     {props["g"], map[string]string{"exclusiveMinimum": "0", "maximum": "255"}},
+		"r":     {props["r"], map[string]string{"minimum": "-10", "maximum": "10"}},
+		"f":     {props["f"], map[string]string{"exclusiveMinimum": "-" + f32, "exclusiveMaximum": f32}},
+		"fl":    {props["fl"], map[string]string{"exclusiveMinimum": "-" + f32, "maximum": "1.5"}},
+		"q":     {props["q"].Value.Items, map[string]string{"minimum": "-128", "maximum": "127"}},
+		"i":     {props["i"], map[string]string{}},
+		"i64":   {props["i64"], map[string]string{}},
+		"f64":   {props["f64"], map[string]string{}},
+		"Level": {doc.Components.Schemas["Level"], map[string]string{"minimum": "0", "maximum": "127"}},
+		"id":    {op.Parameters.GetByInAndName("path", "id").Schema, map[string]string{"minimum": "0", "maximum": "65535"}},
+	} {
+		if got := boundKeywords(t, c.schema); !maps.Equal(got, c.want) {
+			t.Errorf("%s bounds = %v, want %v", name, got, c.want)
+		}
+	}
+}
+
+// A map keyed by an integer, or by a scalar over one, names its keys by the
+// decimal digits the decoder parses, unsigned ones without a sign; an enum
+// key keeps its values and a string key is unconstrained.
+func TestIntegerMapKeysAreDecimal(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+scalar Slot int8 @gte(0)
+scalar Port uint16
+enum Tier { Bronze = 1  Silver = 2 }
+type R {
+	a map<int, string>
+	b map<uint8, string>
+	c map<Slot, string>
+	d map<Port, string>
+	e map<Tier, string>
+	f map<string, string>
+}
+service S { post M /m { request R  response R } }`}, &config.Config{})
+	props := doc.Components.Schemas["R"].Value.Properties
+	for field, want := range map[string]string{
+		"a": `{"pattern":"^[+-]?[0-9]+$","type":"string"}`,
+		"b": `{"pattern":"^[0-9]+$","type":"string"}`,
+		"c": `{"pattern":"^[+-]?[0-9]+$","type":"string"}`,
+		"d": `{"pattern":"^[0-9]+$","type":"string"}`,
+		"e": `{"enum":["1","2"],"type":"string"}`,
+		"f": `null`,
+	} {
+		raw, err := json.Marshal(props[field].Value.Extensions["propertyNames"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(raw) != want {
+			t.Errorf("%s propertyNames = %s, want %s", field, raw, want)
+		}
+	}
+}
+
 // A float bound judges the literal and the float the validator compares
 // against as the validator does; an integer field keeps the literal.
 func TestFloatBoundsAgreeWithTheValidator(t *testing.T) {
