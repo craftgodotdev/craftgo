@@ -162,11 +162,10 @@ func (p *Parser) each(closer lexer.Kind, member func()) {
 }
 
 // braced parses `{`, [Parser.each] member up to `}`, and `}`, and returns the
-// two braces; a missing `{` is reported and comes back empty. A `{` nothing
-// closes is reported there, and its body ends at EOF, at a line that opens a
-// declaration, or where stop, unless nil, holds; the `}` then comes back as
-// an empty token there.
-func (p *Parser) braced(stop func() bool, member func()) (lbrace, rbrace lexer.Token) {
+// `}`; a missing `{` is reported. A `{` nothing closes is reported there, and
+// its body ends at EOF, at a line that opens a declaration, or where stop,
+// unless nil, holds; the `}` then comes back as an empty token there.
+func (p *Parser) braced(stop func() bool, member func()) lexer.Token {
 	open := p.pos
 	lbrace, opened := p.expect(lexer.LBrace)
 	for !p.peekIs(lexer.RBrace) {
@@ -174,7 +173,7 @@ func (p *Parser) braced(stop func() bool, member func()) (lbrace, rbrace lexer.T
 			if opened {
 				p.unclosed(lbrace)
 			}
-			return lbrace, lexer.Token{Pos: p.peek().Pos}
+			return lexer.Token{Pos: p.peek().Pos}
 		}
 		start := p.pos
 		member()
@@ -182,7 +181,7 @@ func (p *Parser) braced(stop func() bool, member func()) (lbrace, rbrace lexer.T
 			p.advance()
 		}
 	}
-	return lbrace, p.advance()
+	return p.advance()
 }
 
 // skipParens consumes from the current `(` through its matching `)`, and

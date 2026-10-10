@@ -94,7 +94,7 @@ func (p *Parser) parseEnumDecl(decs []*ast.Decorator, doc []string) *ast.EnumDec
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
 	ed := &ast.EnumDecl{Pos: pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Name: name.Text}
-	_, rbrace := p.braced(nil, func() {
+	rbrace := p.braced(nil, func() {
 		if v := p.parseEnumValue(); v != nil {
 			ed.Members = append(ed.Members, v)
 		}

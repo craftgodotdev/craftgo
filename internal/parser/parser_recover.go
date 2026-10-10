@@ -201,7 +201,7 @@ func (p *Parser) skipBalanced() {
 // the body the parser is in when inBody, or EOF.
 func (p *Parser) skipUntil(inBody bool, stop func() bool) {
 	p.skipBalanced()
-	for !p.peekIs(lexer.EOF) && !(inBody && p.peekIs(lexer.RBrace)) && !stop() {
+	for !p.peekIs(lexer.EOF) && (!inBody || !p.peekIs(lexer.RBrace)) && !stop() {
 		p.skipBalanced()
 	}
 }

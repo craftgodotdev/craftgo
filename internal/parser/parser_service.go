@@ -11,7 +11,7 @@ func (p *Parser) parseServiceDecl(decs []*ast.Decorator, doc []string, header in
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
 	sd := &ast.ServiceDecl{Pos: pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Name: name.Text, Extend: extend}
-	_, rbrace := p.braced(nil, func() {
+	rbrace := p.braced(nil, func() {
 		if m := p.parseServiceMember(); m != nil {
 			sd.Members = append(sd.Members, m)
 		}
@@ -127,7 +127,7 @@ type memberBody struct {
 // A comment block below header, the keyword's line, and above the `{` is the
 // body's first comment.
 func (p *Parser) parseMemberBody(header int, stop func() bool, fn func(lexer.Token) bool, expected string) memberBody {
-	_, rbrace := p.braced(stop, func() {
+	rbrace := p.braced(stop, func() {
 		if !fn(p.peek()) {
 			p.errorf(p.peek().Pos, "expected %s, got %s", expected, p.peek().Kind)
 			p.skipUntil(true, p.startsLine)

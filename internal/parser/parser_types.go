@@ -61,7 +61,7 @@ func (p *Parser) parseTypeParams() []string {
 // body's first free comment.
 func (p *Parser) parseTypeBody(header int) ([]ast.TypeMember, lexer.Token) {
 	var members []ast.TypeMember
-	_, rbrace := p.braced(nil, func() {
+	rbrace := p.braced(nil, func() {
 		if m := p.parseTypeMember(); m != nil {
 			members = append(members, m)
 		}
