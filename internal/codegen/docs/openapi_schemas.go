@@ -77,6 +77,73 @@ func addTypeSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericReg
 	}
 }
 
+// dropBodylessRequests deletes from doc the component of each request type
+// no documented operation takes a body from, as requestBody says, of each
+// mixin such a type embeds that has no field on the body, and of each generic
+// instance, when nothing else in doc refs it: it would describe a body that
+// never travels.
+func dropBodylessRequests(doc *openapi3.T, pkg *semantic.Package, registry *genericRegistry, requestBody map[string]bool) error {
+	dropped := map[string]bool{}
+	var mixins func(td *ast.TypeDecl)
+	mixins = func(td *ast.TypeDecl) {
+		for _, m := range td.Body {
+			mx, ok := m.(*ast.Mixin)
+			if !ok || mx.Ref == nil || mx.Ref.Name == nil || len(mx.Ref.Args) > 0 {
+				continue
+			}
+			name := mx.Ref.Name.String()
+			if inner := pkg.Types[name]; inner != nil && !dropped[name] && !hasBodyField(inner, registry) {
+				dropped[name] = true
+				mixins(inner)
+			}
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(requestBody)) {
+		if td := pkg.Types[name]; td != nil && len(td.TypeParams) == 0 && !requestBody[name] {
+			dropped[name] = true
+			mixins(td)
+		}
+	}
+	if len(dropped) == 0 {
+		return nil
+	}
+	for name := range registry.instances {
+		dropped[name] = true
+	}
+	schemas := doc.Components.Schemas
+	refs, err := componentRefs(schemas)
+	if err != nil {
+		return err
+	}
+	roots, err := schemaRefs(doc.Paths)
+	if err != nil {
+		return err
+	}
+	for name, r := range refs {
+		if !dropped[name] {
+			roots = append(roots, r...)
+		}
+	}
+	kept := reachable(roots, refs)
+	for name := range dropped {
+		if !kept[name] {
+			delete(schemas, name)
+		}
+	}
+	return nil
+}
+
+// hasBodyField reports whether a field of td, a mixin's included, rides the
+// JSON body by its own binding.
+func hasBodyField(td *ast.TypeDecl, registry *genericRegistry) bool {
+	for _, ff := range semantic.FlattenFields(td, "", registry.resolver, nil) {
+		if _, offBody := wire.NonBodyBindingKind(ff.Field); !offBody && !wire.HasSensitive(ff.Field.Decorators) {
+			return true
+		}
+	}
+	return false
+}
+
 // addEnumSchemas emits one schema per enum listing its wire values: an
 // `integer` for an int enum, else a `string`. When a value has a doc or is
 // deprecated, `x-enum-descriptions` describes each value in turn.

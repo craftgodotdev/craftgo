@@ -1243,6 +1243,48 @@ service S { post P /p { request Wrap<Item> } }`,
 	}
 }
 
+// A request type no documented operation takes a body from - each field
+// bound to the path, the query, a header or a cookie, by decorator or by
+// default - has no component, nor has a mixin of it without a body field or a
+// generic instance it alone refs; one anything else refs stays.
+func TestBodylessRequestTypesHaveNoComponent(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+type Paging {
+	cursor string? @query
+	limit  int?    @query
+}
+type Trace { trace string? @header("X-Trace") }
+type Filter<T> { by T? @query }
+type ListReq {
+	Paging
+	Filter<string>
+	owner string @path
+}
+type GetReq { id string }
+type DelReq {
+	Trace
+	id string @path
+}
+type MakeReq {
+	Trace
+	name string
+}
+type Holder { req GetReq }
+type Item { id string }
+service S {
+	get List /o/{owner}/items { request ListReq  response Item }
+	get Get /items/{id} { request GetReq  response Holder }
+	delete Del /items/{id} { request DelReq }
+	post Make /items { request MakeReq  response Item }
+	get Tokens /tokens { request Paging  response Item }
+}`}, &config.Config{})
+	got := slices.Sorted(maps.Keys(doc.Components.Schemas))
+	want := []string{"GetReq", "GetRespBody", "Holder", "Item", "ListRespBody", "MakeReq", "MakeReqBody", "MakeRespBody", "TokensRespBody", "Trace"}
+	if !slices.Equal(got, want) {
+		t.Errorf("components = %v, want %v", got, want)
+	}
+}
+
 // A generic instance keeps its declaration's field constraints and
 // description.
 func TestGenerateOpenAPIGenericInstanceCarriesFieldMetadata(t *testing.T) {
@@ -2155,11 +2197,11 @@ func TestGenerateOpenAPI(t *testing.T) {
 		"delete:",
 		"operationId: GetUser",
 		"#/components/schemas/User",
-		// A type binding only parameters still gets a component.
-		"GetUserReq:",
 		"components:",
 		"schemas:",
 	)
+	// A request type binding only parameters gets no component.
+	mustContainNone(t, src, "GetUserReq:")
 	// No path key starts with the basePath.
 	if strings.Contains(src, "/v1/api/v1/users/{id}") {
 		t.Errorf("path key still has duplicated basePath:\n%s", src)

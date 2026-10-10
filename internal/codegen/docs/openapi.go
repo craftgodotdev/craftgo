@@ -113,6 +113,9 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	if err := dropHiddenOnly(doc, pkg, uses); err != nil {
 		return doc, fmt.Errorf("marshal openapi: %w", err)
 	}
+	if err := dropBodylessRequests(doc, pkg, registry, uses.requestBody); err != nil {
+		return doc, fmt.Errorf("marshal openapi: %w", err)
+	}
 	if len(shared) > 0 {
 		return doc, fmt.Errorf("%s - a path of the document holds one operation per method, and a route ending in {$} is documented by the slash it matches; give one of them another route", strings.Join(shared, "; "))
 	}

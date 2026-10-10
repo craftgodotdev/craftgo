@@ -3,13 +3,6 @@ components:
   schemas:
     AuditRespBody:
       $ref: '#/components/schemas/Order'
-    GetOrderReq:
-      properties:
-        id:
-          type: string
-      required:
-      - id
-      type: object
     GetOrderRespBody:
       $ref: '#/components/schemas/Order'
     HelloRespBody:
