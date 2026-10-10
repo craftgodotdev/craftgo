@@ -108,7 +108,7 @@ func CreateUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 
 This is exactly what you would write by hand: one `http.HandlerFunc`, stdlib status codes, stdlib responses. Two details to note:
 
-- **`server.JSON()`** is the swappable codec accessor - it defaults to `encoding/json` but lets you drop in `sonic`/`jsoniter` process-wide (see [Runtime API](/reference/runtime-api#json-codec)). The decode/encode shape is otherwise standard.
+- **`server.JSON()`** is the swappable codec accessor - it defaults to `encoding/json` but lets you drop in another, such as `sonic` or `goccy/go-json` from v0.11.1, process-wide. The codec must honour `omitzero`, or a nil optional list, map or `bytes` member goes out as `null` (see [Runtime API](/reference/runtime-api#json-codec)). The decode/encode shape is otherwise standard.
 - **The logic call is `l.CreateUser(&req)`** - the request context is captured when the per-method service is constructed (`service.NewCreateUserService(r.Context(), svcCtx)`), so it isn't threaded through the method call.
 
 ### Raw sides

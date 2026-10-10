@@ -104,7 +104,7 @@ srv.Handle("GET /ping", base.ThenFunc(pingFn)) // ThenFunc for bare functions
 
 ## JSON codec
 
-Swap the JSON implementation process-wide (e.g. for `sonic` or `jsoniter`):
+Swap the JSON implementation process-wide (e.g. for `sonic` or `goccy/go-json`):
 
 ```go
 type JSONCodec interface {
@@ -124,6 +124,8 @@ server.JSON().Encode(w, payload) // every generated handler reads through this a
 `server.SetStrictJSON(strict bool) error` switches strict decoding: while on, `JSON()` decodes through the codec's `DecodeStrict`, which rejects a JSON body with an unknown field (400 `{"message":"<field>: unknown field"}`) or data after the JSON value (400 `{"message":"body: unexpected data after the JSON value"}`). It is off by default; `server.strictJSON` in `config.yaml` drives it, and the generated `config.yaml` sets it `true`.
 
 The codec and the strict switch are the process's, not a `Server`'s: generated handlers, error rendering and the health probes all go through `server.JSON()`, which has no server to ask, so every server in the process shares them. The `Server` methods `SetJSONCodec`, `SetStrictJSON` and `Codec` are deprecated wrappers of these functions.
+
+A codec must honour the `omitzero` option of a `json` tag: generated types put it on each optional list, map and `bytes` member, which stays out of the body while nil. A codec that ignores the option writes such a member `null`, a value the OpenAPI document does not allow it. `encoding/json`, sonic from v1.15.0 (the first release that builds with Go 1.26) and goccy/go-json from v0.11.1 honour it; goccy/go-json v0.10.x and v0.11.0, jsoniter v1.1.12 (its last release) and segmentio/encoding v0.5.4 do not. A codec must also pass a `null` to a type's `json.Unmarshaler`, as each of these does, for the [required-member check](#required-members).
 
 `SetGlobalJSONCodec` fails, keeping the previous codec, when strict JSON is on and `c` has no `DecodeStrict`; `SetStrictJSON(true)` fails the same way when the installed codec has none, so `config.yaml` can never claim a strictness the server does not enforce. The swap is atomic, so it is safe while requests are served.
 
@@ -148,7 +150,7 @@ func (Sonic) DecodeStrict(r io.Reader, v any) error {
 }
 ```
 
-jsoniter (`Config{DisallowUnknownFields: true}.Froze()`) and goccy/go-json (`NewDecoder(r).DisallowUnknownFields()`, the stdlib API) wrap the same way.
+goccy/go-json (`NewDecoder(r).DisallowUnknownFields()`, the stdlib API) wraps the same way.
 
 ### Cookies
 

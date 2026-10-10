@@ -796,7 +796,9 @@ decorator would parse but produce no runtime or spec effect - which
 hides the JSON-only constraint from authors. The decorator surface
 stays small and honest: the transport pipeline is JSON in, JSON out,
 and the codec is swappable wholesale via `server.SetGlobalJSONCodec`
-when a project wants sonic / jsoniter in place of `encoding/json`.
+when a project wants sonic or goccy/go-json in place of `encoding/json`,
+given a codec that honours `omitzero` (see
+[Runtime API](/reference/runtime-api#json-codec)).
 When one side needs another wire format, hand that side to logic with
 `@rawRequest` / `@rawResponse` below - logic then owns the bytes, and
 the block on that side stays the documented contract.

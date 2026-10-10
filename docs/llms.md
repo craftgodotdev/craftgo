@@ -826,7 +826,7 @@ func <Method>(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 }
 ```
 
-Plain Go. JSON goes through `server.JSON()` - the swappable codec (defaults to `encoding/json`, which reflects over the generated structs). Handlers register on `*http.ServeMux` via `srv.Handle("VERB /path", <Method>(svc), mws...)`.
+Plain Go. JSON goes through `server.JSON()` - the swappable codec (defaults to `encoding/json`, which reflects over the generated structs). A codec installed with `server.SetGlobalJSONCodec` must honour `omitzero`, which generated types put on optional list, map and `bytes` members, or a nil one goes out as `null` (`encoding/json`, sonic v1.15.0+ and goccy/go-json v0.11.1+ do; goccy/go-json v0.10.x/v0.11.0, jsoniter v1.1.12 and segmentio/encoding v0.5.4 do not), and must pass `null` to a `json.Unmarshaler`. Handlers register on `*http.ServeMux` via `srv.Handle("VERB /path", <Method>(svc), mws...)`.
 
 ## Generated logic shape
 
