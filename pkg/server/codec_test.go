@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"runtime"
 	"strings"
 	"testing"
+	"testing/iotest"
 )
 
 func TestDecodeStrictRejectsUnknownFieldsAndTrailingData(t *testing.T) {
@@ -33,6 +36,43 @@ func TestDecodeStrictRejectsUnknownFieldsAndTrailingData(t *testing.T) {
 	}
 	if err := c.Decode(strings.NewReader(`{"name":"a","nmae":"b"} junk`), &v); err != nil || v.Name != "a" {
 		t.Errorf("lenient Decode must ignore unknown fields and trailing data: err = %v, name = %q", err, v.Name)
+	}
+}
+
+// TrailingData returns the error of a failed read rather than taking it for the end of the body.
+func TestTrailingDataReturnsAFailedRead(t *testing.T) {
+	broken := errors.New("connection reset")
+	if err := TrailingData(strings.NewReader(" \n"), iotest.ErrReader(broken)); !errors.Is(err, broken) {
+		t.Errorf("TrailingData = %v, want the read error", err)
+	}
+	if err := TrailingData(strings.NewReader(" \n"), strings.NewReader("\t\r")); err != nil {
+		t.Errorf("whitespace to the end must pass: %v", err)
+	}
+}
+
+// A strict body read past its cap answers 413, even when what the cap lets through is a whole
+// value and whitespace, and the body has no Content-Length.
+func TestStrictDecodeAnswersABodyPastItsCap(t *testing.T) {
+	resetCodec(t)
+	if err := SetStrictJSON(true); err != nil {
+		t.Fatal(err)
+	}
+	s := New(nil)
+	s.Handle("POST /items", WithLimits(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var v struct {
+			Name string `json:"name"`
+		}
+		if err := JSON().Decode(r.Body, &v); err != nil {
+			WriteValidationError(w, r, err)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+	}), Limits{MaxBodySize: 64}))
+	body := `{"name":"n"}` + strings.Repeat(" ", 60) + "trailing data"
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/items", io.MultiReader(strings.NewReader(body))))
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("a %d-byte body past a 64-byte cap: %d %s, want 413", len(body), rec.Code, rec.Body)
 	}
 }
 

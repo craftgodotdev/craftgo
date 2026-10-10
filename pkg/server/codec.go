@@ -313,17 +313,23 @@ func unknownFieldOf(err error) (string, bool) {
 }
 
 // TrailingData fails when anything but JSON whitespace remains in buffered (a decoder's
-// read-ahead) or rest; a [StrictDecoder] calls it after decoding a value.
+// read-ahead) or rest, and returns the error of a failed read, such as the
+// *http.MaxBytesError of a body past its cap; a [StrictDecoder] calls it after decoding a value.
 func TrailingData(buffered, rest io.Reader) error {
-	var b [1]byte
+	var b [512]byte
 	for _, src := range [...]io.Reader{buffered, rest} {
 		for {
 			n, err := src.Read(b[:])
-			if n == 1 && !isJSONSpace(b[0]) {
-				return errors.New("body: unexpected data after the JSON value")
+			for _, c := range b[:n] {
+				if !isJSONSpace(c) {
+					return errors.New("body: unexpected data after the JSON value")
+				}
+			}
+			if err == io.EOF {
+				break
 			}
 			if err != nil {
-				break
+				return err
 			}
 		}
 	}

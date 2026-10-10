@@ -125,7 +125,7 @@ server.JSON().Encode(w, payload) // every generated handler reads through this a
 
 The built-in codec names a body value of the wrong JSON type by its JSON path: `name: expected string, got number`, `home.name: expected string, got number`, `age: expected integer, got number 1.5`, `age: 300 is out of range`, `m: "x" is not an integer` (a map key), and `body: expected object, got array` at the root. Each answers 400 `{"message": …}` through the validation hook. A codec installed with `SetGlobalJSONCodec` reports its own errors.
 
-A wrapper for another JSON library adds `DecodeStrict` with that library's own unknown-field switch and finishes with `server.TrailingData`, the shared check every codec uses to report leftover data the same way. With sonic:
+A wrapper for another JSON library adds `DecodeStrict` with that library's own unknown-field switch and finishes with `server.TrailingData`, the shared check every codec uses to report leftover data the same way. It reads the rest of the body, so it also returns a failed read, such as the `*http.MaxBytesError` of a body past its cap, which answers 413. With sonic:
 
 ```go
 type Sonic struct{}
