@@ -67,6 +67,11 @@ func TestGenerateTransportAllVerbs(t *testing.T) {
 	if !strings.Contains(string(postSrc), "server.JSON().Decode(r.Body") {
 		t.Errorf("POST handler must decode body via server.JSON:\n%s", postSrc)
 	}
+	// Only a handler decoding a JSON body weighs its media type, before it reads anything.
+	if before, _, ok := strings.Cut(string(postSrc), "var req"); !ok || !strings.Contains(before, "if !server.RequireJSONBody(w, r) {") {
+		t.Errorf("POST handler must refuse a body of another media type first:\n%s", postSrc)
+	}
+	mustContainNone(t, string(getSrc), "RequireJSONBody")
 	pingSrc, _ := os.ReadFile(filepath.Join(dir, "ping.go"))
 	if !strings.Contains(string(pingSrc), "l.Ping()") {
 		t.Errorf("Ping handler should call l.Ping() with no arg:\n%s", pingSrc)
@@ -879,7 +884,7 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 		`r.FormFile("avatar")`,
 		"req.Avatar = header",
 	)
-	if strings.Contains(string(handler), "server.JSON().Decode(r.Body") {
+	if strings.Contains(string(handler), "server.JSON().Decode(r.Body") || strings.Contains(string(handler), "RequireJSONBody") {
 		t.Errorf("multipart handler must not JSON-decode body:\n%s", handler)
 	}
 }

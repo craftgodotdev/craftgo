@@ -776,6 +776,11 @@ Every method gets a handler that does:
 ```go
 func <Method>(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
+        // 0. a JSON-body route answers 415 to a Content-Type other than application/json or
+        // application/*+json (none decodes as JSON); @rawRequest / @passthrough check nothing
+        if !server.RequireJSONBody(w, r) {
+            return
+        }
         var req types.<Req>
         // 1. pre-fill @default values
         req.Field = defaultValue

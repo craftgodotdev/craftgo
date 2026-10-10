@@ -104,10 +104,16 @@ func SetDefaultValidationFailed(h ValidationFailedHandler) {
 
 // WriteValidationError renders err with the [SetDefaultValidationFailed] handler, but answers
 // 413 {"message":"request entity too large"} to an *http.MaxBytesError or
-// multipart.ErrMessageTooLarge in err, or any err once r.Body is read past its [BodyLimit].
+// multipart.ErrMessageTooLarge in err, or any err once r.Body is read past its [BodyLimit], and
+// 415 {"message":"unsupported media type"} to http.ErrNotMultipart, a form route's body that is
+// no multipart/form-data.
 func WriteValidationError(w http.ResponseWriter, r *http.Request, err error) {
 	if bodyTooLarge(r, err) && !responseCommitted(w) {
 		writeStatusError(w, http.StatusRequestEntityTooLarge)
+		return
+	}
+	if errors.Is(err, http.ErrNotMultipart) && !responseCommitted(w) {
+		writeStatusError(w, http.StatusUnsupportedMediaType)
 		return
 	}
 	(*validationFailed.Load())(w, r, err)

@@ -174,7 +174,9 @@ server.SetDefaultValidationFailed(func(w http.ResponseWriter, r *http.Request, e
 })
 ```
 
-The handler calls `server.WriteValidationError(w, r, err)` on a decode, binding or validation failure; it dispatches to your installed hook, or to the default: 400 `{"message":"<err text>"}`. A body read past its cap is answered 413 `{"message":"request entity too large"}` without the hook. The default is post-commit safe - if the response already started, it logs the dropped validation rather than smearing a 400 into a half-sent body; a hook you install is called even after the response started.
+The handler calls `server.WriteValidationError(w, r, err)` on a decode, binding or validation failure; it dispatches to your installed hook, or to the default: 400 `{"message":"<err text>"}`. A body read past its cap is answered 413 `{"message":"request entity too large"}`, and `http.ErrNotMultipart`, a form route's body of another media type, 415 `{"message":"unsupported media type"}`, without the hook.
+
+Before it reads a JSON body, the handler calls `server.RequireJSONBody(w, r)`: a `Content-Type` other than `application/json` or an `application/*+json` type, parameters and letter case aside, is answered 415 `{"message":"unsupported media type"}`, so the bodies a cross-site HTML form or a `text/plain` fetch can send without a CORS preflight never reach logic. A request without a `Content-Type` decodes as JSON, as RFC 9110 lets a recipient examine content it was not told the type of. A `@rawRequest` or `@passthrough` handler reads its own body and checks nothing. The default is post-commit safe - if the response already started, it logs the dropped validation rather than smearing a 400 into a half-sent body; a hook you install is called even after the response started.
 
 ## Raw responses
 

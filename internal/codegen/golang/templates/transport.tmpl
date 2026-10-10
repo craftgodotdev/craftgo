@@ -7,6 +7,11 @@ package {{.Package}}
 // {{.Method}} returns the {{.Verb}} {{.Method}} handler.
 func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+{{- if .BodyDecode}}
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
+{{- end}}
 {{- if .IsMultipart}}
 		if err := r.ParseMultipartForm({{.MultipartMaxMemory}}); err != nil {
 			server.WriteValidationError(w, r, err)
