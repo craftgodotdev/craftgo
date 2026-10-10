@@ -657,8 +657,9 @@ func installCodec(base JSONCodec, strict bool) error {
 	return nil
 }
 
-// SetGlobalJSONCodec installs c as the codec [JSON] returns; nil restores the built-in one.
-// While strict JSON is on, c must implement [StrictDecoder], or the call fails and changes nothing.
+// SetGlobalJSONCodec installs c, for the whole process, as the codec [JSON] returns; nil restores
+// the built-in one. While strict JSON is on, c must implement [StrictDecoder], or the call fails
+// and changes nothing.
 func SetGlobalJSONCodec(c JSONCodec) error {
 	if c == nil {
 		c = defaultCodec{}
@@ -666,12 +667,14 @@ func SetGlobalJSONCodec(c JSONCodec) error {
 	return installCodec(c, currentCodec().strict)
 }
 
-// SetStrictJSON switches strict decoding, off by default: while on, [JSON] decodes through
-// the codec's [StrictDecoder]. Turning it on fails, changing nothing, when the codec has none.
+// SetStrictJSON switches strict decoding for the whole process, off by default: while on, [JSON]
+// decodes through the codec's [StrictDecoder], for every server. Turning it on fails, changing
+// nothing, when the codec has none.
 func SetStrictJSON(strict bool) error {
 	return installCodec(currentCodec().base, strict)
 }
 
-// JSON returns the codec in effect: the one [SetGlobalJSONCodec] installed, encoding/json by
-// default, decoding strictly while [SetStrictJSON] is on.
+// JSON returns the codec in effect in the process, which generated handlers decode and encode
+// with: the one [SetGlobalJSONCodec] installed, encoding/json by default, decoding strictly while
+// [SetStrictJSON] is on.
 func JSON() JSONCodec { return currentCodec().active }

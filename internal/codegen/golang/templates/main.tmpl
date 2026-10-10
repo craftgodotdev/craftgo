@@ -88,7 +88,7 @@ func main() {
 	// when wiring.Register registers them.
 	srv.SetDefaultHandlerTimeout(cfg.Server.HandlerTimeout)
 	srv.SetDefaultMaxBodySize(cfg.Server.MaxBodySize)
-	if err := srv.SetStrictJSON(cfg.Server.StrictJSON); err != nil {
+	if err := server.SetStrictJSON(cfg.Server.StrictJSON); err != nil {
 		log.Default().Error("strict json", log.Err(err))
 		os.Exit(1)
 	}

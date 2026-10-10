@@ -35,13 +35,13 @@ srv := server.New(svcCtx, opts...)
 
 ### Configuration setters
 
-Each setter returns `*Server` for chaining, except `SetJSONCodec` and `SetStrictJSON`, which return an `error`.
+Each setter returns `*Server` for chaining, except the deprecated `SetJSONCodec` and `SetStrictJSON`, which return an `error`.
 
 | Method | Description |
 |---|---|
 | `SetLogger(l log.Logger)` / `Logger() log.Logger` | `SetLogger` installs `l` as `log.Default()` (nil is ignored), the logger the server's `Recovery` and the generated logic write to; the server keeps none of its own. `Logger` returns `log.Default()` as it is at the call; `AccessLog(log.Follow())` follows a later `SetLogger`. |
-| `SetJSONCodec(c JSONCodec) error` / `Codec() JSONCodec` | Swap or read the process-wide codec handlers and health endpoints use: `SetJSONCodec` delegates to `SetGlobalJSONCodec`, `Codec` returns what `JSON()` returns. `SetJSONCodec` fails, keeping the previous codec, when strict JSON is on and `c` has no `DecodeStrict`. |
-| `SetStrictJSON(strict bool) error` | Reject a JSON body with an unknown field (400 `{"message":"<field>: unknown field"}`) or data after the JSON value (400 `{"message":"body: unexpected data after the JSON value"}`); off by default. `server.strictJSON` in `config.yaml` drives it, and the generated `config.yaml` sets it `true`. Fails, keeping the previous setting, when the installed codec has no `DecodeStrict`. |
+| `SetJSONCodec(c JSONCodec) error` / `Codec() JSONCodec` | Deprecated: call `server.SetGlobalJSONCodec(c)` / `server.JSON()`, which they call. The codec is the process's, not one server's: setting it on one `Server` sets it for every server in the process. See [JSON codec](#json-codec). |
+| `SetStrictJSON(strict bool) error` | Deprecated: call `server.SetStrictJSON(strict)`, which it calls. Strict decoding is the process's, not one server's: a second server switching it off switches it off for the first. See [JSON codec](#json-codec). |
 | `SetCORS(opts CORSOptions)` | Install CORS. Calling twice replaces the previous config. |
 | `SetHandleNotFound(h http.Handler)` | Answer the requests the mux would answer 404, which otherwise get 404 `{"message":"not found"}`; nil restores that default. A method mismatch keeps its 405 `{"message":"method not allowed"}` with `Allow`. |
 | `SetDefaultReadTimeout(d)` / `SetDefaultWriteTimeout(d)` | The `*http.Server`'s deadlines for reading a whole request, 30s by default, and for writing a whole response, none (0) by default so streaming and long downloads are not cut. |
@@ -121,7 +121,11 @@ if err := server.SetGlobalJSONCodec(myCodec{}); err != nil { /* strict JSON is o
 server.JSON().Encode(w, payload) // every generated handler reads through this accessor
 ```
 
-`Server.SetJSONCodec(c)` delegates to `SetGlobalJSONCodec`. Both fail, keeping the previous codec, when strict JSON is on and `c` has no `DecodeStrict`; `SetStrictJSON(true)` fails the same way when the installed codec has none, so `config.yaml` can never claim a strictness the server does not enforce. The swap is atomic, so it is safe while requests are served.
+`server.SetStrictJSON(strict bool) error` switches strict decoding: while on, `JSON()` decodes through the codec's `DecodeStrict`, which rejects a JSON body with an unknown field (400 `{"message":"<field>: unknown field"}`) or data after the JSON value (400 `{"message":"body: unexpected data after the JSON value"}`). It is off by default; `server.strictJSON` in `config.yaml` drives it, and the generated `config.yaml` sets it `true`.
+
+The codec and the strict switch are the process's, not a `Server`'s: generated handlers, error rendering and the health probes all go through `server.JSON()`, which has no server to ask, so every server in the process shares them. The `Server` methods `SetJSONCodec`, `SetStrictJSON` and `Codec` are deprecated wrappers of these functions.
+
+`SetGlobalJSONCodec` fails, keeping the previous codec, when strict JSON is on and `c` has no `DecodeStrict`; `SetStrictJSON(true)` fails the same way when the installed codec has none, so `config.yaml` can never claim a strictness the server does not enforce. The swap is atomic, so it is safe while requests are served.
 
 The built-in codec names a body value of the wrong JSON type by its JSON path, with no array index or map key: `name: expected string, got number`, `home.name: expected string, got number`, `age: expected integer, got number 1.5`, `age: 300 is out of range`, `m: "x" is not an integer` (a map key), and `body: expected object, got array` at the root. A value a type decodes itself is named the same way: `at: not a valid RFC 3339 datetime` for a `time.Time`, `data: not a valid base64` for a `[]byte`, and another type's own error text after its path. An empty body is `body: required`. Each answers 400 `{"message": …}` through the validation hook, and reads the same whichever encoding/json engine the Go toolchain builds; the decoder's error stays in the chain for `errors.As`. A codec installed with `SetGlobalJSONCodec` reports its own errors.
 
