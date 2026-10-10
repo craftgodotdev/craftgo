@@ -1,7 +1,9 @@
 package protodesign
 
 import (
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -159,6 +161,21 @@ func TestResolvePluginNamesBothRoutesWhenUnpinned(t *testing.T) {
 	argv, err := resolvePlugin(project, pluginCmd{Name: "protoc-gen-go", Command: filepath.Join("bin", "protoc-gen-go")})
 	if err != nil || len(argv) != 1 || argv[0] != filepath.Join("bin", "protoc-gen-go") {
 		t.Errorf("a path is run as given: %v %v", argv, err)
+	}
+}
+
+// A go command that cannot run is reported with the reason, not as a plugin go.mod lacks.
+func TestResolvePluginReportsAGoThatCannotRun(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	_, err := resolvePlugin(t.TempDir(), pluginCmd{Name: "protoc-gen-go"})
+	if err == nil {
+		t.Fatal("resolved without a go command")
+	}
+	if !errors.Is(err, exec.ErrNotFound) || !strings.Contains(err.Error(), "cannot run `go tool -n protoc-gen-go`") {
+		t.Errorf("err = %v", err)
+	}
+	if strings.Contains(err.Error(), "is not a tool") {
+		t.Errorf("a missing go command reads as an unpinned plugin:\n%s", err)
 	}
 }
 
