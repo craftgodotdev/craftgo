@@ -32,8 +32,8 @@ func UploadDocument(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if _v := r.PostFormValue("notes"); _v != "" {
 			req.Notes = &_v
 		}
-		if _, header, err := r.FormFile("pdf"); err == nil {
-			req.PDF = header
+		if _fh := r.MultipartForm.File["pdf"]; len(_fh) > 0 {
+			req.PDF = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

@@ -31,8 +31,8 @@ func UploadAttachment(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if _v := r.PostFormValue("caption"); _v != "" {
 			req.Caption = &_v
 		}
-		if _, header, err := r.FormFile("file"); err == nil {
-			req.File = header
+		if _fh := r.MultipartForm.File["file"]; len(_fh) > 0 {
+			req.File = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

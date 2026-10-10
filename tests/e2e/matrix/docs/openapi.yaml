@@ -71,6 +71,8 @@ components:
       - id
       - email
       type: object
+    AccountServiceLoginRespBody:
+      $ref: '#/components/schemas/AccountLoginResp'
     AccountServiceResetRespBody:
       $ref: '#/components/schemas/ID'
     AccountUserServiceCreateUserReqBody:
@@ -289,7 +291,7 @@ components:
       - price
       type: object
     AddItemRespBody:
-      $ref: '#/components/schemas/Item'
+      $ref: '#/components/schemas/BindingsItem'
     AddMixedReqBody:
       description: MixedReq wraps NumberMixed (mixed strict/inclusive).
       properties:
@@ -679,7 +681,7 @@ components:
       - queued
       type: object
     AttachDocRespBody:
-      $ref: '#/components/schemas/Item'
+      $ref: '#/components/schemas/BindingsItem'
     AttachReq:
       allOf:
       - $ref: '#/components/schemas/FilePartOfFile'
@@ -877,7 +879,7 @@ components:
       - album
       type: object
     BatchUploadRespBody:
-      $ref: '#/components/schemas/Item'
+      $ref: '#/components/schemas/BindingsItem'
     BindingsColor:
       description: |-
         Color is a string-backed enum (bare-ident form, default string
@@ -889,8 +891,27 @@ components:
       - Green
       - Blue
       type: string
+    BindingsItem:
+      description: |-
+        Item is the canonical entity returned by every read / write that
+        resolves to a single item.
+      properties:
+        id:
+          $ref: '#/components/schemas/BindingsUUID'
+        name:
+          maxLength: 200
+          minLength: 1
+          type: string
+        price:
+          minimum: 0
+          type: integer
+      required:
+      - id
+      - name
+      - price
+      type: object
     BindingsServiceGetItemRespBody:
-      $ref: '#/components/schemas/Item'
+      $ref: '#/components/schemas/BindingsItem'
     BindingsUUID:
       description: |-
         UUID is a string-backed scalar that adds @format(uuid) inheritance
@@ -956,18 +977,13 @@ components:
       required:
       - box
       type: object
-    BoxOfLeaf:
-      description: Box holds a value and a list of its type parameter.
+    BrokenRespBody:
       properties:
-        v:
-          $ref: '#/components/schemas/Leaf'
-        vs:
-          items:
-            $ref: '#/components/schemas/Leaf'
-          type: array
+        level:
+          format: double
+          type: number
       required:
-      - v
-      - vs
+      - level
       type: object
     Catalog:
       description: |-
@@ -1171,6 +1187,12 @@ components:
       type: object
     CombineConstraintsRespBody:
       $ref: '#/components/schemas/Str_Combos'
+    CombineGrade:
+      description: Grade is an int enum whose wire values differ from its member names.
+      enum:
+      - 1
+      - 9
+      type: integer
     CompositeArg:
       description: |-
         CompositeArg instantiates a generic over the composite argument
@@ -1312,24 +1334,12 @@ components:
         CookieReq drives the cookie binder with an explicit wire name - the
         runtime fetches the cookie named `session_id`.
       type: object
-    Coords:
-      description: |-
-        Coords is a geographic point. Both axes are bounded so a Profile can't
-        claim a location outside the WGS84 envelope.
+    CookiesLoginRespBody:
       properties:
-        lat:
-          format: double
-          maximum: 90
-          minimum: -90
-          type: number
-        lng:
-          format: double
-          maximum: 180
-          minimum: -180
-          type: number
+        name:
+          type: string
       required:
-      - lat
-      - lng
+      - name
       type: object
     Count:
       minimum: 0
@@ -1676,7 +1686,34 @@ components:
     DeleteAccountRespBody:
       $ref: '#/components/schemas/ID'
     DeleteItemRespBody:
-      $ref: '#/components/schemas/Item'
+      $ref: '#/components/schemas/BindingsItem'
+    DeliverReqBody:
+      description: Hook is a small webhook payload.
+      properties:
+        event:
+          type: string
+      required:
+      - event
+      type: object
+    DesignCoords:
+      description: |-
+        Coords is a geographic point. Both axes are bounded so a Profile can't
+        claim a location outside the WGS84 envelope.
+      properties:
+        lat:
+          format: double
+          maximum: 90
+          minimum: -90
+          type: number
+        lng:
+          format: double
+          maximum: 180
+          minimum: -180
+          type: number
+      required:
+      - lat
+      - lng
+      type: object
     DiscKind:
       description: DiscKind is an enum whose first value reuses the `type` keyword.
       enum:
@@ -2440,43 +2477,6 @@ components:
       type: object
     EchoRefMetaRespBody:
       $ref: '#/components/schemas/RefMeta'
-    EchoReqBody:
-      description: |-
-        Str_EchoReq is the request body for the service's echo endpoint -
-        it bundles a sample of each interesting validator shape so logic
-        code receives a single struct with the full menu of constraints
-        already enforced at the handler boundary.
-      properties:
-        bio:
-          maxLength: 500
-          type:
-          - string
-          - "null"
-        code:
-          pattern: ^[A-Z]{2,4}$
-          type: string
-        email:
-          format: email
-          maxLength: 254
-          type: string
-        greeting:
-          default: hello
-          maxLength: 100
-          minLength: 1
-          type:
-          - string
-          - "null"
-        name:
-          maxLength: 80
-          minLength: 1
-          type: string
-      required:
-      - name
-      - email
-      - code
-      type: object
-    EchoRespBody:
-      $ref: '#/components/schemas/Str_EchoResp'
     EchoScalarKeyMapReqBody:
       description: |-
         Map_ScalarKey validates each key as a MemberID and each value as a
@@ -2631,14 +2631,14 @@ components:
           default: RED
         l:
           anyOf:
-          - $ref: '#/components/schemas/Grade'
+          - $ref: '#/components/schemas/CombineGrade'
           - type: "null"
           default: 9
       type: object
     EchoWireDefaultsRespBody:
       $ref: '#/components/schemas/WireDefaults'
     EchoWireRespBody:
-      $ref: '#/components/schemas/Item'
+      $ref: '#/components/schemas/BindingsItem'
     EchoWrappedReq:
       description: EchoWrappedReq carries the nested generic for round-tripping.
       properties:
@@ -2679,6 +2679,19 @@ components:
           type: string
       required:
       - email
+      type: object
+    EmptylistsBoxOfLeaf:
+      description: Box holds a value and a list of its type parameter.
+      properties:
+        v:
+          $ref: '#/components/schemas/Leaf'
+        vs:
+          items:
+            $ref: '#/components/schemas/Leaf'
+          type: array
+      required:
+      - v
+      - vs
       type: object
     EmptylistsNode:
       description: Node reaches itself by value through a list and by pointer.
@@ -2877,6 +2890,15 @@ components:
       - name
       - weight
       type: object
+    Gauge:
+      description: Gauge sets a cookie beside a reading the encoder may refuse.
+      properties:
+        level:
+          format: double
+          type: number
+      required:
+      - level
+      type: object
     GenericMixinHost:
       allOf:
       - $ref: '#/components/schemas/MixinPageOfMixinItem'
@@ -2933,10 +2955,10 @@ components:
           contentEncoding: base64
           type: string
         boxed:
-          $ref: '#/components/schemas/BoxOfLeaf'
+          $ref: '#/components/schemas/EmptylistsBoxOfLeaf'
         boxedOpt:
           anyOf:
-          - $ref: '#/components/schemas/BoxOfLeaf'
+          - $ref: '#/components/schemas/EmptylistsBoxOfLeaf'
           - type: "null"
         byName:
           additionalProperties:
@@ -3034,10 +3056,10 @@ components:
           contentEncoding: base64
           type: string
         boxed:
-          $ref: '#/components/schemas/BoxOfLeaf'
+          $ref: '#/components/schemas/EmptylistsBoxOfLeaf'
         boxedOpt:
           anyOf:
-          - $ref: '#/components/schemas/BoxOfLeaf'
+          - $ref: '#/components/schemas/EmptylistsBoxOfLeaf'
           - type: "null"
         byName:
           additionalProperties:
@@ -3104,10 +3126,10 @@ components:
           contentEncoding: base64
           type: string
         boxed:
-          $ref: '#/components/schemas/BoxOfLeaf'
+          $ref: '#/components/schemas/EmptylistsBoxOfLeaf'
         boxedOpt:
           anyOf:
-          - $ref: '#/components/schemas/BoxOfLeaf'
+          - $ref: '#/components/schemas/EmptylistsBoxOfLeaf'
           - type: "null"
         byName:
           additionalProperties:
@@ -3175,12 +3197,6 @@ components:
       required:
       - id
       type: object
-    Grade:
-      description: Grade is an int enum whose wire values differ from its member names.
-      enum:
-      - 1
-      - 9
-      type: integer
     HeaderEchoServiceListItemsRespBody:
       properties:
         items:
@@ -3261,6 +3277,14 @@ components:
           type: array
       required:
       - rooms
+      type: object
+    Hook:
+      description: Hook is a small webhook payload.
+      properties:
+        event:
+          type: string
+      required:
+      - event
       type: object
     Hue:
       description: Hue is a string enum whose wire values differ from its member names.
@@ -3345,25 +3369,6 @@ components:
       type: object
     InventoryServiceHealthRespBody:
       $ref: '#/components/schemas/ItemStocked'
-    Item:
-      description: |-
-        Item is the canonical entity returned by every read / write that
-        resolves to a single item.
-      properties:
-        id:
-          $ref: '#/components/schemas/BindingsUUID'
-        name:
-          maxLength: 200
-          minLength: 1
-          type: string
-        price:
-          minimum: 0
-          type: integer
-      required:
-      - id
-      - name
-      - price
-      type: object
     ItemList:
       description: |-
         ItemList wraps the items a list method returns, since a response
@@ -3375,7 +3380,7 @@ components:
           - "null"
         items:
           items:
-            $ref: '#/components/schemas/Item'
+            $ref: '#/components/schemas/BindingsItem'
           type: array
         total:
           type:
@@ -3565,8 +3570,24 @@ components:
       - items
       - total
       type: object
-    LoginRespBody:
-      $ref: '#/components/schemas/AccountLoginResp'
+    LockRespBody:
+      properties:
+        name:
+          type: string
+      required:
+      - name
+      type: object
+    LockedErr:
+      description: Conflict error response (HTTP 409).
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - message
+      type: object
     LogoutRespBody:
       $ref: '#/components/schemas/ID'
     LookupLostRespBody:
@@ -4273,7 +4294,7 @@ components:
       - meta
       type: object
     NullableFormRespBody:
-      $ref: '#/components/schemas/Item'
+      $ref: '#/components/schemas/BindingsItem'
     NullableScalars:
       description: |-
         NullableScalars puts @nullable beside a field-level constraint: the
@@ -5036,7 +5057,7 @@ components:
       - term
       type: object
     PagedSearchRespBody:
-      $ref: '#/components/schemas/Item'
+      $ref: '#/components/schemas/BindingsItem'
     PaginatedResp:
       description: |-
         PaginatedResp carries a JSON list plus response-only fields:
@@ -5573,7 +5594,7 @@ components:
           type: string
         coords:
           anyOf:
-          - $ref: '#/components/schemas/Coords'
+          - $ref: '#/components/schemas/DesignCoords'
           - type: "null"
         country:
           maxLength: 2
@@ -5685,6 +5706,131 @@ components:
       type: object
     PostSharedStatusRespBody:
       $ref: '#/components/schemas/CountsPayload'
+    PresenceBoxOfPresenceItem:
+      description: Box holds a value of its type parameter, once required and once
+        optional.
+      properties:
+        opt:
+          anyOf:
+          - $ref: '#/components/schemas/PresenceItem'
+          - type: "null"
+        v:
+          $ref: '#/components/schemas/PresenceItem'
+      required:
+      - v
+      type: object
+    PresenceBoxOfPresenceItemArray:
+      description: Box holds a value of its type parameter, once required and once
+        optional.
+      properties:
+        opt:
+          items:
+            $ref: '#/components/schemas/PresenceItem'
+          type:
+          - array
+          - "null"
+        v:
+          items:
+            $ref: '#/components/schemas/PresenceItem'
+          type: array
+      required:
+      - v
+      type: object
+    PresenceCoords:
+      description: Coords sits below Spot and takes zoom from its default.
+      properties:
+        lat:
+          format: double
+          type: number
+        zoom:
+          default: 3
+          type:
+          - integer
+          - "null"
+      required:
+      - lat
+      type: object
+    PresenceEchoReqBody:
+      allOf:
+      - $ref: '#/components/schemas/Stamp'
+      - properties:
+          active:
+            type: boolean
+          alias:
+            type:
+            - string
+            - "null"
+          at:
+            format: date-time
+            type: string
+          boxed:
+            $ref: '#/components/schemas/PresenceBoxOfPresenceItem'
+          byName:
+            additionalProperties:
+              $ref: '#/components/schemas/PresenceItem'
+            type: object
+          count:
+            type: integer
+          doc:
+            description: raw encoded value
+          extra: {}
+          grade:
+            $ref: '#/components/schemas/PresenceGrade'
+          items:
+            items:
+              $ref: '#/components/schemas/PresenceItem'
+            type: array
+          listed:
+            $ref: '#/components/schemas/PresenceBoxOfPresenceItemArray'
+          meta:
+            anyOf:
+            - $ref: '#/components/schemas/Spot'
+            - type: "null"
+          name:
+            type: string
+          note:
+            type:
+            - string
+            - "null"
+          spot:
+            $ref: '#/components/schemas/Spot'
+        required:
+        - name
+        - count
+        - active
+        - grade
+        - at
+        - alias
+        - spot
+        - meta
+        - items
+        - byName
+        - boxed
+        - listed
+        - doc
+        type: object
+      description: Order carries every shape a body member takes.
+      type: object
+    PresenceEchoRespBody:
+      $ref: '#/components/schemas/PresenceOrder'
+    PresenceGrade:
+      description: Grade is a required enum member.
+      enum:
+      - low
+      - high
+      type: string
+    PresenceItem:
+      description: Item is an element whose own member is required.
+      properties:
+        qty:
+          type:
+          - integer
+          - "null"
+        sku:
+          $ref: '#/components/schemas/Sku'
+      required:
+      - sku
+      type: object
     PresenceMatrix:
       description: |-
         PresenceMatrix is the canonical presence-state matrix.
@@ -5739,6 +5885,67 @@ components:
       required:
       - plain
       - nullable
+      type: object
+    PresenceOrder:
+      allOf:
+      - $ref: '#/components/schemas/Stamp'
+      - properties:
+          active:
+            type: boolean
+          alias:
+            type:
+            - string
+            - "null"
+          at:
+            format: date-time
+            type: string
+          boxed:
+            $ref: '#/components/schemas/PresenceBoxOfPresenceItem'
+          byName:
+            additionalProperties:
+              $ref: '#/components/schemas/PresenceItem'
+            type: object
+          count:
+            type: integer
+          doc:
+            description: raw encoded value
+          extra: {}
+          grade:
+            $ref: '#/components/schemas/PresenceGrade'
+          items:
+            items:
+              $ref: '#/components/schemas/PresenceItem'
+            type: array
+          listed:
+            $ref: '#/components/schemas/PresenceBoxOfPresenceItemArray'
+          meta:
+            anyOf:
+            - $ref: '#/components/schemas/Spot'
+            - type: "null"
+          name:
+            type: string
+          note:
+            type:
+            - string
+            - "null"
+          spot:
+            $ref: '#/components/schemas/Spot'
+        required:
+        - name
+        - count
+        - active
+        - grade
+        - at
+        - alias
+        - spot
+        - meta
+        - items
+        - byName
+        - boxed
+        - listed
+        - doc
+        type: object
+      description: Order carries every shape a body member takes.
       type: object
     PriceReq:
       description: PriceReq wraps NumberPrice (float surface).
@@ -6145,6 +6352,26 @@ components:
       - nulColor
       - depColor
       type: object
+    Rename:
+      description: Rename is a body beside the id its route fills.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+      required:
+      - id
+      - name
+      type: object
+    RenameReqBody:
+      properties:
+        name:
+          type: string
+      required:
+      - name
+      type: object
+    RenameRespBody:
+      $ref: '#/components/schemas/Rename'
     ReportCardCardListRespBody:
       $ref: '#/components/schemas/ReportCards'
     ReportCardList2RespBody:
@@ -6848,6 +7075,14 @@ components:
         createdBy bookkeeping lands at the wire root without a nested
         envelope.
       type: object
+    Session:
+      description: Session sets its token in a cookie beside its body.
+      properties:
+        name:
+          type: string
+      required:
+      - name
+      type: object
     SessionID:
       minLength: 1
       type: string
@@ -6898,10 +7133,10 @@ components:
           contentEncoding: base64
           type: string
         boxed:
-          $ref: '#/components/schemas/BoxOfLeaf'
+          $ref: '#/components/schemas/EmptylistsBoxOfLeaf'
         boxedOpt:
           anyOf:
-          - $ref: '#/components/schemas/BoxOfLeaf'
+          - $ref: '#/components/schemas/EmptylistsBoxOfLeaf'
           - type: "null"
         byName:
           additionalProperties:
@@ -7002,6 +7237,10 @@ components:
       $ref: '#/components/schemas/Entry'
     SignupRespBody:
       $ref: '#/components/schemas/ID'
+    Sku:
+      description: Sku is a scalar member.
+      minLength: 1
+      type: string
     SkuItem:
       properties:
         sku:
@@ -7031,6 +7270,18 @@ components:
       type: object
     SnapshotRespBody:
       $ref: '#/components/schemas/ListProfilesResp'
+    Spot:
+      description: Spot holds a required nested struct.
+      properties:
+        coords:
+          $ref: '#/components/schemas/PresenceCoords'
+        label:
+          type:
+          - string
+          - "null"
+      required:
+      - coords
+      type: object
     StaleVersionErr:
       description: PreconditionFailed error response (HTTP 412).
       properties:
@@ -7046,6 +7297,14 @@ components:
       required:
       - expected_version
       - actual_version
+      type: object
+    Stamp:
+      description: Stamp is a mixin whose member the host carries as its own.
+      properties:
+        by:
+          type: string
+      required:
+      - by
       type: object
     StampsRespBody:
       $ref: '#/components/schemas/XBagOfDatetime'
@@ -7343,6 +7602,43 @@ components:
       - vnName
       - jaName
       type: object
+    StringsServiceEchoReqBody:
+      description: |-
+        Str_EchoReq is the request body for the service's echo endpoint -
+        it bundles a sample of each interesting validator shape so logic
+        code receives a single struct with the full menu of constraints
+        already enforced at the handler boundary.
+      properties:
+        bio:
+          maxLength: 500
+          type:
+          - string
+          - "null"
+        code:
+          pattern: ^[A-Z]{2,4}$
+          type: string
+        email:
+          format: email
+          maxLength: 254
+          type: string
+        greeting:
+          default: hello
+          maxLength: 100
+          minLength: 1
+          type:
+          - string
+          - "null"
+        name:
+          maxLength: 80
+          minLength: 1
+          type: string
+      required:
+      - name
+      - email
+      - code
+      type: object
+    StringsServiceEchoRespBody:
+      $ref: '#/components/schemas/Str_EchoResp'
     TagPairsReqBody:
       allOf:
       - properties:
@@ -7602,6 +7898,18 @@ components:
       type: object
     UpdateUserRespBody:
       $ref: '#/components/schemas/AcctUser'
+    Upload:
+      description: Upload is a multipart form with a required text part.
+      properties:
+        file:
+          format: binary
+          type: string
+        title:
+          type: string
+      required:
+      - title
+      - file
+      type: object
     UploadAvatarRespBody:
       $ref: '#/components/schemas/UserAvatar'
     UploadNotifyRespBody:
@@ -8207,7 +8515,7 @@ components:
       - warehouse
       type: object
     WellKnownRespBody:
-      $ref: '#/components/schemas/Item'
+      $ref: '#/components/schemas/BindingsItem'
     WipeRespBody:
       $ref: '#/components/schemas/HealthResp'
     WireDefaults:
@@ -8222,7 +8530,7 @@ components:
           default: RED
         l:
           anyOf:
-          - $ref: '#/components/schemas/Grade'
+          - $ref: '#/components/schemas/CombineGrade'
           - type: "null"
           default: 9
       type: object
@@ -9201,13 +9509,13 @@ paths:
   /account/login:
     post:
       description: Log in - public, only inherits rate limiting.
-      operationId: Login
+      operationId: AccountServiceLogin
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoginRespBody'
+                $ref: '#/components/schemas/AccountServiceLoginRespBody'
           description: Created
       tags:
       - account
@@ -11073,6 +11381,75 @@ paths:
           description: Created
       tags:
       - combine
+  /cookies/a/broken:
+    get:
+      description: Answers a Gauge whose level has no JSON form.
+      operationId: Broken
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrokenRespBody'
+          description: OK
+          headers:
+            Set-Cookie:
+              description: 'Sets cookies: gauge'
+              required: true
+              schema:
+                type: string
+      tags:
+      - Cookies
+  /cookies/a/lock:
+    get:
+      description: Answers the Locked error.
+      operationId: Lock
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LockRespBody'
+          description: OK
+          headers:
+            Set-Cookie:
+              description: 'Sets cookies: sid'
+              required: true
+              schema:
+                type: string
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LockedErr'
+          description: Conflict
+          headers:
+            Set-Cookie:
+              description: 'Sets cookies: lock'
+              required: true
+              schema:
+                type: string
+      tags:
+      - Cookies
+  /cookies/a/login:
+    get:
+      description: Answers a Session.
+      operationId: CookiesLogin
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CookiesLoginRespBody'
+          description: OK
+          headers:
+            Set-Cookie:
+              description: 'Sets cookies: sid'
+              required: true
+              schema:
+                type: string
+      tags:
+      - Cookies
   /empty-lists/clash:
     get:
       description: Answers the Clash error with one list empty and the others nil.
@@ -11343,6 +11720,21 @@ paths:
           description: OK
       tags:
       - Ledger
+  /limits/hooks:
+    post:
+      description: Takes a hook its Signature middleware has read.
+      operationId: Deliver
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeliverReqBody'
+        required: true
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - Limits
   /nested/a:
     post:
       description: Mutual recursion entry - request A traverses A → B → A → ...
@@ -11816,6 +12208,75 @@ paths:
           description: OK
       tags:
       - OrdersService
+  /presence/orders:
+    post:
+      description: Echoes an Order as the handler hands it over.
+      operationId: PresenceEcho
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresenceEchoReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresenceEchoRespBody'
+          description: Created
+      tags:
+      - Presence
+  /presence/things/{id}:
+    put:
+      description: Renames the thing its route names; the body need not carry the
+        id.
+      operationId: Rename
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameReqBody'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RenameRespBody'
+          description: OK
+      tags:
+      - Presence
+  /presence/uploads:
+    post:
+      description: Takes a file beside a required text part.
+      operationId: Upload
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                file:
+                  format: binary
+                  type: string
+                title:
+                  type: string
+              required:
+              - title
+              - file
+              type: object
+        required: true
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - Presence
   /raw/ext/raw:
     get:
       description: Inherits @rawResponse from the extend header; no contract.
@@ -12740,19 +13201,19 @@ paths:
         shape (length, pattern, format, optional, default). Logic just returns the
         payload after Validate() so smoke tests can assert the round-trip preserves
         wire fidelity.
-      operationId: Echo
+      operationId: StringsServiceEcho
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EchoReqBody'
+              $ref: '#/components/schemas/StringsServiceEchoReqBody'
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EchoRespBody'
+                $ref: '#/components/schemas/StringsServiceEchoRespBody'
           description: Created
       tags:
       - strings
@@ -13816,6 +14277,7 @@ tags:
     handlers: each method gives the codegen and transport stack a body to
     decode and validate.
   name: combine
+- name: Cookies
 - name: EmptyLists
 - name: InventoryService
 - description: |-
@@ -13838,6 +14300,7 @@ tags:
     Ledger.EntryList, named listLedgerEntries, answers LedgerEntryList3RespBody,
     since the declared LedgerEntryList2RespBody holds 2.
   name: Ledger
+- name: Limits
 - description: |-
     NestedService carries nested and mixin shapes in its requests and
     responses, so the generated validators, transports and OpenAPI cover them.
@@ -13848,6 +14311,7 @@ tags:
     against every numeric validator chain.
   name: NumbersService
 - name: OrdersService
+- name: Presence
 - name: raw/v1
 - name: RawModesService
 - description: ReportCard is the service Report's names run into.

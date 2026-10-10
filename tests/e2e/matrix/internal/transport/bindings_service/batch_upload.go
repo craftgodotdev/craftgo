@@ -32,8 +32,8 @@ func BatchUpload(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		req.Album = r.PostFormValue("album")
 		req.Files = r.MultipartForm.File["files"]
-		if _, header, err := r.FormFile("cover"); err == nil {
-			req.Cover = header
+		if _fh := r.MultipartForm.File["cover"]; len(_fh) > 0 {
+			req.Cover = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

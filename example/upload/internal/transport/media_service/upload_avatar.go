@@ -26,8 +26,8 @@ func UploadAvatar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.UploadAvatarReq
 		req.UserID = r.PathValue("userId")
-		if _, header, err := r.FormFile("image"); err == nil {
-			req.Image = header
+		if _fh := r.MultipartForm.File["image"]; len(_fh) > 0 {
+			req.Image = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

@@ -29,11 +29,11 @@ func UploadAvatar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if _v := r.PostFormValue("note"); _v != "" {
 			req.Caption = &_v
 		}
-		if _, header, err := r.FormFile("avatar_file"); err == nil {
-			req.File = header
+		if _fh := r.MultipartForm.File["avatar_file"]; len(_fh) > 0 {
+			req.File = _fh[0]
 		}
-		if _, header, err := r.FormFile("thumb"); err == nil {
-			req.Thumb = header
+		if _fh := r.MultipartForm.File["thumb"]; len(_fh) > 0 {
+			req.Thumb = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

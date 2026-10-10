@@ -37,8 +37,8 @@ func NullableForm(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			_w := types.UUID(_v)
 			req.Ref = &_w
 		}
-		if _, header, err := r.FormFile("doc"); err == nil {
-			req.Doc = header
+		if _fh := r.MultipartForm.File["doc"]; len(_fh) > 0 {
+			req.Doc = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

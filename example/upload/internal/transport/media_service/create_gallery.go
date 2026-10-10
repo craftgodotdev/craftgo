@@ -54,8 +54,8 @@ func CreateGallery(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		req.Photos = r.MultipartForm.File["photos"]
-		if _, header, err := r.FormFile("cover"); err == nil {
-			req.Cover = header
+		if _fh := r.MultipartForm.File["cover"]; len(_fh) > 0 {
+			req.Cover = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

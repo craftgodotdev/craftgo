@@ -26,8 +26,8 @@ func UploadAttachment(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.UploadAttachmentReq
 		req.NoteID = r.PathValue("noteId")
-		if _, header, err := r.FormFile("blob"); err == nil {
-			req.Blob = header
+		if _fh := r.MultipartForm.File["blob"]; len(_fh) > 0 {
+			req.Blob = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

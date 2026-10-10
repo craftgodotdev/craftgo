@@ -27,8 +27,8 @@ func Upload(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		req.Title = r.PostFormValue("title")
-		if _, header, err := r.FormFile("file"); err == nil {
-			req.File = header
+		if _fh := r.MultipartForm.File["file"]; len(_fh) > 0 {
+			req.File = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

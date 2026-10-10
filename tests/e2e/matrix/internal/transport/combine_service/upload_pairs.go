@@ -29,8 +29,8 @@ func UploadPairs(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if _v := r.PostFormValue("b"); _v != "" {
 			req.B = &_v
 		}
-		if _, header, err := r.FormFile("doc"); err == nil {
-			req.Doc = header
+		if _fh := r.MultipartForm.File["doc"]; len(_fh) > 0 {
+			req.Doc = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

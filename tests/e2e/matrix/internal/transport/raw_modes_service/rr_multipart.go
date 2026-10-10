@@ -27,8 +27,8 @@ func RrMultipart(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		req.Note = r.PostFormValue("note")
-		if _, header, err := r.FormFile("doc"); err == nil {
-			req.Doc = header
+		if _fh := r.MultipartForm.File["doc"]; len(_fh) > 0 {
+			req.Doc = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)
