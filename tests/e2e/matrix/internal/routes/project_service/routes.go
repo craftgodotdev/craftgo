@@ -11,5 +11,5 @@ import (
 
 // RegisterRoutes registers the ProjectService routes on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
-	srv.Handle("GET /api", transport.ListProjects(svcCtx))
+	srv.Handle("GET /api/{$}", transport.ListProjects(svcCtx))
 }

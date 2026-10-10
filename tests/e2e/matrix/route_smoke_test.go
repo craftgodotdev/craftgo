@@ -73,8 +73,8 @@ func specOperations(t *testing.T) [][2]string {
 	return ops
 }
 
-// smokeURL turns a spec path into a request path: the /api basePath first,
-// every {param} filled with "x".
+// smokeURL turns a spec path into the request path a client of the document
+// sends: the /api basePath first, every {param} filled with "x".
 func smokeURL(specPath string) string {
 	p := specPath
 	for {
@@ -88,11 +88,7 @@ func smokeURL(specPath string) string {
 		}
 		p = p[:i] + "x" + p[i+j+1:]
 	}
-	full := "/api" + p
-	if len(full) > 1 {
-		full = strings.TrimRight(full, "/")
-	}
-	return full
+	return "/api" + p
 }
 
 // Every operation in docs/openapi.yaml is mounted under its own verb.
