@@ -115,6 +115,27 @@ service Beta { get Ping /beta/ping { response R } }`,
 	}
 }
 
+// The collision names the file both methods would claim as it is spelled on
+// disk under output.fileCase.
+func TestGroupMethodCollisionNamesTheFileOnDisk(t *testing.T) {
+	src := map[string]string{
+		"demo.craftgo": `package demo
+type R { ok bool }
+@group("shared/v1")
+service Alpha { get GetUser /alpha/u { response R } }
+@group("shared/v1")
+service Beta { get GetUser /beta/u { response R } }`,
+	}
+	for fileCase, file := range map[string]string{idents.FileCaseSnake: "get_user.go", idents.FileCaseKebab: "get-user.go", idents.FileCaseCamel: "getUser.go"} {
+		root, files := projectFixture(t, src)
+		_, diags := AnalyzeProject(files, Options{DesignRoot: root, FileCase: fileCase})
+		d := findCode(diags, CodeGroupMethodCollision)
+		if d == nil || !strings.Contains(d.Msg, "both would claim "+file+" ") {
+			t.Errorf("%s: diagnostic = %v, want it to name %s", fileCase, d, file)
+		}
+	}
+}
+
 // One method name in two services in separate directories does not collide.
 func TestGroupMethodNameReuseAcrossDirectoriesClean(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
