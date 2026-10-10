@@ -550,20 +550,6 @@ type User { email shared.Email  seen string? @format(datetime) }`,
 // fails Validate wherever it sits, a type argument included; a datetime that passes encodes
 // again.
 func TestValidateRejectsADatetimeWithNoRFC3339Form(t *testing.T) {
-	pkg := analyze(t, `package design
-type Box<T> { v T }
-type Stamp {
-    at    datetime?
-    list  datetime[]?
-    byDay map<string, datetime>?
-    box   Box<datetime>?
-}`)
-	dir := t.TempDir()
-	for _, gen := range []func(*semantic.Package, string, *projectResolver) error{generateTypes, generateValidators} {
-		if err := gen(pkg, dir, nil); err != nil {
-			t.Fatal(err)
-		}
-	}
 	cases := []struct{ body, want string }{
 		{`{"at":"2024-01-02T03:04:05+24:00"}`, "at: not a valid RFC 3339 datetime"},
 		{`{"at":"2024-01-02T03:04:05+23:60"}`, "at: not a valid RFC 3339 datetime"},
@@ -574,11 +560,86 @@ type Stamp {
 		{`{"box":{"v":"2024-01-02T03:04:05+24:00"}}`, "box: v: not a valid RFC 3339 datetime"},
 		{`{"box":{"v":"2024-01-02T03:04:05Z"}}`, "<nil>"},
 	}
-	var bodies strings.Builder
-	for _, c := range cases {
-		bodies.WriteString("\t\t" + strconv.Quote(c.body) + ",\n")
+	bodies := make([]string, len(cases))
+	for i, c := range cases {
+		bodies[i] = c.body
 	}
-	program := `package main
+	got := judgeGenerated(t, `package design
+type Box<T> { v T }
+type Stamp {
+    at    datetime?
+    list  datetime[]?
+    byDay map<string, datetime>?
+    box   Box<datetime>?
+}`, "Stamp", bodies)
+	for i, c := range cases {
+		if got[i].err != c.want {
+			t.Errorf("%s: Validate() = %s, want %s", c.body, got[i].err, c.want)
+		}
+		if got[i].err == "<nil>" && !got[i].encodes {
+			t.Errorf("%s: passes Validate() but does not encode", c.body)
+		}
+	}
+}
+
+// A raw member of a cross-field group is set when present and not JSON null, as the group's
+// OpenAPI reads it; the string "null" is a value.
+func TestValidateCrossFieldRawNullIsAbsent(t *testing.T) {
+	cases := []struct{ body, want string }{
+		{`{"doc":null}`, "requiresOneOf [doc url] - at least one must be set"},
+		{`{"doc":null,"url":"u","ref":"r"}`, "<nil>"},
+		{`{"doc":{"a":1},"ref":"r"}`, "mutuallyExclusive [doc ref] - at most one may be set"},
+		{`{"doc":{"a":1}}`, "<nil>"},
+		{`{"doc":"null"}`, "<nil>"},
+	}
+	bodies := make([]string, len(cases))
+	for i, c := range cases {
+		bodies[i] = c.body
+	}
+	got := judgeGenerated(t, `package design
+@requiresOneOf(doc, url)
+@mutuallyExclusive(doc, ref)
+type ImportReq {
+    doc bytes? @format(raw)
+    url string?
+    ref string?
+}`, "ImportReq", bodies)
+	for i, c := range cases {
+		if got[i].err != c.want {
+			t.Errorf("%s: Validate() = %s, want %s", c.body, got[i].err, c.want)
+		}
+	}
+}
+
+// verdict is what a generated Validate says of a decoded body, and whether the value encodes.
+type verdict struct {
+	err     string
+	encodes bool
+}
+
+// judgeGenerated generates the types and validators of design, package design, into a module
+// and returns, for each JSON body, the verdict of typ's Validate on it.
+func judgeGenerated(t *testing.T, design, typ string, bodies []string) []verdict {
+	t.Helper()
+	pkg := analyze(t, design)
+	dir := t.TempDir()
+	for _, gen := range []func(*semantic.Package, string, *projectResolver) error{generateTypes, generateValidators} {
+		if err := gen(pkg, dir, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wire, err := filepath.Abs(filepath.Join("..", "..", "..", "pkg", "wire"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	quoted := make([]string, len(bodies))
+	for i, b := range bodies {
+		quoted[i] = strconv.Quote(b)
+	}
+	files := map[string]string{
+		"go.mod": "module probe\n\ngo 1.26.6\n\nrequire github.com/craftgodotdev/craftgo/pkg/wire v0.0.0\n\n" +
+			"replace github.com/craftgodotdev/craftgo/pkg/wire => " + wire + "\n",
+		"main.go": `package main
 
 import (
 	"encoding/json"
@@ -588,9 +649,8 @@ import (
 )
 
 func main() {
-	for _, body := range []string{
-` + bodies.String() + `	} {
-		var v design.Stamp
+	for _, body := range []string{` + strings.Join(quoted, ", ") + `} {
+		var v design.` + typ + `
 		if err := json.Unmarshal([]byte(body), &v); err != nil {
 			panic(err)
 		}
@@ -598,8 +658,9 @@ func main() {
 		fmt.Printf("%v|%v\n", v.Validate(), encodeErr == nil)
 	}
 }
-`
-	for name, body := range map[string]string{"go.mod": "module probe\n\ngo 1.26.6\n", "main.go": program} {
+`,
+	}
+	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -612,18 +673,15 @@ func main() {
 		t.Fatalf("go run: %v\n%s", err, out)
 	}
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(lines) != len(cases) {
-		t.Fatalf("the program judged %d bodies, want %d:\n%s", len(lines), len(cases), out)
+	if len(lines) != len(bodies) {
+		t.Fatalf("the program judged %d bodies, want %d:\n%s", len(lines), len(bodies), out)
 	}
-	for i, c := range cases {
-		valid, encodes, _ := strings.Cut(lines[i], "|")
-		if valid != c.want {
-			t.Errorf("%s: Validate() = %s, want %s", c.body, valid, c.want)
-		}
-		if valid == "<nil>" && encodes != "true" {
-			t.Errorf("%s: passes Validate() but does not encode", c.body)
-		}
+	verdicts := make([]verdict, len(lines))
+	for i, line := range lines {
+		err, encodes, _ := strings.Cut(line, "|")
+		verdicts[i] = verdict{err: err, encodes: encodes == "true"}
 	}
+	return verdicts
 }
 
 // ---------- cross-package validators ----------
@@ -790,19 +848,6 @@ type Contact { email string?  phone string? }`)
 	}
 	if strings.Contains(src, "!(v.Email") {
 		t.Errorf("non-De-Morgan'd form leaked:\n%s", src)
-	}
-}
-
-// A raw cross-field member is absent only when nil: an explicit null is the four bytes null.
-func TestValidateCrossFieldOnRawBytes(t *testing.T) {
-	src := runValidateGen(t, `package design
-@requiresOneOf(left, right)
-type Choice {
-    left  bytes? @format(raw)
-    right bytes? @format(raw)
-}`)
-	if !strings.Contains(src, "v.Left == nil && v.Right == nil") {
-		t.Errorf("a raw cross-field absence should be a nil check, got:\n%s", src)
 	}
 }
 

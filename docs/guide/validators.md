@@ -167,7 +167,9 @@ These attach to the type, not a field. The validator surfaces a single message.
 Every referenced field must be optional (`?`) or `@nullable` - a plain field, a
 wire parameter (`@query` / `@header` / …), a `@default` or `@sensitive` field,
 and a collection are rejected, since their runtime presence can't match the
-spec's present-and-non-null check.
+spec's present-and-non-null check. A member is set when present and not `null`,
+as the OpenAPI document reads the group, so a `bytes @format(raw)` member
+holding an explicit `null` is unset, though its value is the four bytes `null`.
 
 ## Optional fields
 

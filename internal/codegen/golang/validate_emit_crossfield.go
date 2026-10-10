@@ -33,16 +33,16 @@ func crossFieldChecks(td *ast.TypeDecl, ctx emitCtx) []string {
 	return out
 }
 
-// requiresOneOfCheck fails when every member is nil.
+// requiresOneOfCheck fails when every member is absent.
 func requiresOneOfCheck(members []semantic.FlatField, ctx emitCtx) string {
-	cond := strings.Join(memberNilExprs(members, "=="), " && ")
+	cond := strings.Join(memberPresence(members, false, ctx), " && ")
 	return failIf(cond, "", fmt.Sprintf("requiresOneOf %v - at least one must be set", memberSubjects(members, ctx)), ctx)
 }
 
 // mutuallyExclusiveCheck counts the members set and fails above one, inside
 // its own block so each check's `n` stays local.
 func mutuallyExclusiveCheck(members []semantic.FlatField, ctx emitCtx) string {
-	set := memberNilExprs(members, "!=")
+	set := memberPresence(members, true, ctx)
 	counters := make([]string, len(set))
 	for i, p := range set {
 		counters[i] = fmt.Sprintf("if %s {\nn++\n}", p)
@@ -65,13 +65,26 @@ func groupMembers(td *ast.TypeDecl, names []string, ctx emitCtx) []semantic.Flat
 	return out
 }
 
-// memberNilExprs renders `v.<Member> <op> nil` for each member; semantic
-// makes every member of a cross-field group a Go value that is nil exactly
-// when absent.
-func memberNilExprs(members []semantic.FlatField, op string) []string {
+// memberPresence renders, for each member, the condition that it is set, or
+// absent when !set, as the group's OpenAPI reads it: present and not null.
+// semantic makes every member a Go value that is nil when absent; a raw one
+// also holds an explicit null, as the four bytes `null`.
+func memberPresence(members []semantic.FlatField, set bool, ctx emitCtx) []string {
+	proj := ctx.resolver.Project()
 	out := make([]string, len(members))
 	for i, ff := range members {
-		out[i] = "v." + ff.Name + " " + op + " nil"
+		v := "v." + ff.Name
+		raw := semantic.ResolveField(ff.Field, proj.Packages[ff.Home], proj).Category == semantic.CatRawBytes
+		switch {
+		case raw && set:
+			out[i] = v + ` != nil && string(` + v + `) != "null"`
+		case raw:
+			out[i] = "(" + v + ` == nil || string(` + v + `) == "null")`
+		case set:
+			out[i] = v + " != nil"
+		default:
+			out[i] = v + " == nil"
+		}
 	}
 	return out
 }
