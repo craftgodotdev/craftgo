@@ -488,7 +488,7 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 | `@length(n)` / `@length(min, max)` | string, bytes | `(int)` or `(int, int)` | Exact length (1 arg) or inclusive [min, max] (2 args); bytes count bytes |
 | `@minLength(n)`     | string, bytes | `(int)`        | Length `>= n`                 |
 | `@maxLength(n)`     | string, bytes | `(int)`        | Length `<= n`                 |
-| `@pattern("regex")` | string    | `(string)`         | RE2 regex match               |
+| `@pattern("regex")` | string    | `(string)`         | RE2 regex match; RE2 syntax ECMA-262 (the OpenAPI `pattern` dialect) lacks or reads otherwise, such as `(?i)`, `\z`, `(?P<n>`, `[[:alpha:]]`, `\pL`, `{,3}`, warns `pattern/not-ecma` |
 | `@format(name)`     | string    | ident or string    | Named format (see list below) |
 | `@gte(n)`           | number    | `(number)`         | Value `>= n` (inclusive)      |
 | `@lte(n)`           | number    | `(number)`         | Value `<= n` (inclusive)      |

@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -110,6 +111,37 @@ func TestPatternRejectsInvalidRegex(t *testing.T) {
 
 func TestPatternAcceptsValidRegex(t *testing.T) {
 	mustClean(t, `type X { ok string @pattern("^[a-z]+$") }`)
+}
+
+// A @pattern using RE2 syntax that ECMA-262, the dialect of the OpenAPI `pattern`, lacks or
+// reads otherwise warns, naming the construct; one both read alike is clean.
+func TestPatternWarnsAboutSyntaxECMA262ReadsOtherwise(t *testing.T) {
+	for pattern, construct := range map[string]string{
+		`(?i)^[a-z]+$`:  "`(?i)`",
+		`(?s:a.b)`:      "`(?s:`",
+		`(?m)^a$`:       "`(?m)`",
+		`(?U)a+`:        "`(?U)`",
+		`^a\z`:          "`\\z`",
+		`\Aa$`:          "`\\A`",
+		`(?P<word>\w+)`: "`(?P<name>`",
+		`^[[:alpha:]]$`: "`[:alpha:]`",
+		`^\pL+$`:        "`\\pL`",
+		`^[\pN]+$`:      "`\\pN`",
+		`\Qa.b\E`:       "`\\Q...\\E`",
+		`^\x{263a}$`:    "`\\x{...}`",
+		`^a{,3}$`:       "`{,3}`",
+		`^{abc}$`:       "a bare `{`",
+		`^[]a]$`:        "a `]` first in a class",
+	} {
+		d := expectWarning(t, `type X { v string @pattern(`+strconv.Quote(pattern)+`) }`, CodePatternNotECMA)
+		expectMessage(t, d, "@pattern uses "+construct+", which ECMA-262")
+	}
+	expectMessage(t, expectWarning(t, `type X { v string @pattern("(?i)ab") }`, CodePatternNotECMA), "has no inline flags")
+	expectMessage(t, expectWarning(t, `type X { v string @pattern("(?i:ab)") }`, CodePatternNotECMA), "editions newer than the one JSON Schema cites")
+	for _, pattern := range []string{`^[a-z]+$`, `^\d{3}-\d{4}$`, `^[\w.-]+@[\w-]+$`, `(?:ab)+`, `(?<word>\w+)`,
+		`^\p{L}+$`, `a{2}b{1,}c{0,3}`, `^\{x\}$`, `[{}]`, `\x41`} {
+		expectNoCode(t, `type X { v string @pattern(`+strconv.Quote(pattern)+`) }`, CodePatternNotECMA)
+	}
 }
 
 func TestPatternRejectsEmpty(t *testing.T) {

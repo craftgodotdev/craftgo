@@ -76,6 +76,8 @@ The tables below cover validators with the examples that matter for *validation*
 
 `@length`, `@minLength` and `@maxLength` also apply to `bytes`, counted in bytes.
 
+`@pattern` is Go's RE2 syntax, and the OpenAPI document publishes it as written in `pattern`, which OpenAPI tools read as ECMA-262 regex. So the analyzer warns (`pattern/not-ecma`) when a pattern uses RE2 syntax that ECMA-262 lacks or reads otherwise, naming it and how to write it for both: inline flags such as `(?i)`, `\A`, `\z`, `(?P<name>`, a POSIX class such as `[[:alpha:]]`, `\pL` without braces, `\Q…\E`, `\x{…}`, `{,n}`, a bare `{` or `}`, and a `]` first in a class. The server matches RE2 either way.
+
 Built-in formats, each published as the OpenAPI `format` of the same name (`datetime` as `date-time`), and each following its RFC as that `format` does:
 
 | Format       | Accepts |

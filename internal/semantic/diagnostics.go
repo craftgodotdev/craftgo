@@ -47,6 +47,9 @@ const (
 	CodeDuplicateGroupField = "decorator/duplicate-group-field"
 	// CodeCrossFieldNotOptional fires when a cross-field decorator names a field unfit for the group.
 	CodeCrossFieldNotOptional = "decorator/cross-field-not-optional"
+	// CodePatternNotECMA warns when a `@pattern` uses RE2 syntax that ECMA-262, the dialect of the
+	// OpenAPI `pattern` keyword, lacks or reads otherwise (`(?i)`, `\z`, `[[:alpha:]]`).
+	CodePatternNotECMA = "pattern/not-ecma"
 	// CodeMapKeyType fires when a map key is not a string or integer, or a scalar or enum over one.
 	CodeMapKeyType = "type/map-key"
 	// CodeMapValueType fires when a map value is an optional array or map (`map<string, int[]?>`).
