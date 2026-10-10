@@ -8,10 +8,10 @@ import (
 	"strings"
 )
 
-// wirePath spells te.Field, the JSON pointer of the value as encoding/json's v2 engine reports
-// it, its tokens joined by ".", by the JSON names of the struct fields on the way alone, as the
-// v1 engine does: array indexes and map keys drop out, and a member whose key differs from its
-// field's name in case alone reads as the field's name.
+// wirePath spells te.Field, which encoding/json fills under the jsonv2 experiment with the JSON
+// pointer of the value, its tokens joined by ".", by the JSON names of the struct fields on the
+// way alone, as without the experiment: array indexes and map keys drop out, and a member whose
+// key differs from its field's name in case alone reads as the field's name.
 func wirePath(t reflect.Type, te *json.UnmarshalTypeError) string {
 	if te.Field == "" {
 		return ""
