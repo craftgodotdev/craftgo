@@ -132,16 +132,19 @@ func PrimFromName(name string) Prims {
 		return PrimFile
 	case prims.DateTime:
 		return PrimDateTime
+	case prims.Cookie:
+		return PrimCookie
 	}
 	return 0
 }
 
 // ScalarWraps reports whether a scalar may wrap built-in name: any
-// classified primitive but `file`, an upload rather than a value, and
-// `datetime`, whose defined type would have none of time.Time's methods.
+// classified primitive but `file`, an upload rather than a value, `cookie`,
+// a cookie rather than a value, and `datetime`, whose defined type would have
+// none of time.Time's methods.
 func ScalarWraps(name string) bool {
 	p := PrimFromName(name)
-	return p != 0 && p != PrimFile && p != PrimDateTime
+	return p != 0 && p != PrimFile && p != PrimCookie && p != PrimDateTime
 }
 
 // ScalarPrimitives returns the built-ins a scalar may wrap, in catalogue

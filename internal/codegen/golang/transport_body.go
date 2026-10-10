@@ -261,7 +261,7 @@ func (p *bodyPlan) member(s *wireStruct, f *ast.Field, goName string) *wireMembe
 		json:     jsonName,
 		presence: presence,
 		value:    &value,
-		pubPtr:   rf.GoPointer() && rf.Category != semantic.CatFile,
+		pubPtr:   rf.GoPointer() && !rf.SpellsPointer(),
 		raw:      rf.Category == semantic.CatRawBytes,
 		skipped:  s.skip[f.Name] && !explicit,
 	}

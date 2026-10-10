@@ -7,6 +7,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/strfmt"
+	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
 // Level is a bitmask of the declaration sites a decorator may appear at.
@@ -151,6 +152,9 @@ type ArgsRule struct {
 	// AllowArrayShortcut accepts one array literal in place of the argument
 	// list, checking its elements against Min, Max and Variadic.
 	AllowArrayShortcut bool
+	// Named is the kind of each `name: value` argument the decorator takes
+	// after its positional ones; a decorator without it takes none.
+	Named map[string]ArgKind
 }
 
 // Prims is a bitmask of the primitive type categories a decorator applies to.
@@ -182,6 +186,8 @@ const (
 	PrimStruct
 	// PrimDynamic covers an `any` field, which no validator targets.
 	PrimDynamic
+	// PrimCookie covers the `cookie` primitive, which no validator targets.
+	PrimCookie
 	// PrimAny matches any field type.
 	PrimAny Prims = 0
 	// PrimNumber covers integers and floats.
@@ -207,6 +213,7 @@ var primNames = []struct {
 	{PrimRawBytes, "bytes @format(raw)"},
 	{PrimStruct, "struct"},
 	{PrimDynamic, "any"},
+	{PrimCookie, "cookie"},
 }
 
 // String joins the category names with ", ", or returns "any" for zero.
@@ -494,9 +501,12 @@ var registry = map[string]Spec{
 	"path":   {Name: "path", Levels: LvlField, Doc: "Bind from URL path parameter.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
 	"query":  {Name: "query", Levels: LvlField, Doc: "Bind from URL query string.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
 	"header": {Name: "header", Levels: LvlField | LvlErrorField, Doc: "Bind from HTTP request header (request fields) or write to response header (error fields).", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
-	"cookie": {Name: "cookie", Levels: LvlField | LvlErrorField, Doc: "Bind from HTTP cookie (request fields) or set a response cookie (error fields).", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
-	"body":   {Name: "body", Levels: LvlField, Doc: "Bind from request body.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
-	"form":   {Name: "form", Levels: LvlField, Doc: "Bind from multipart form field; the request needs a `file`.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
+	"cookie": {Name: "cookie", Levels: LvlField | LvlErrorField, Doc: "Bind from an HTTP cookie (request fields), or set one (response and error fields), named by the string argument or the field. A cookie the server sets takes `path` (\"/\"), `domain` (none), `maxAge` (none: the session), `httpOnly` (true), `secure` (true) and `sameSite` (`lax`, `strict` or `none`; `lax`), as in `@cookie(\"sid\", maxAge: 24h, sameSite: strict)`. A `cookie` field lets the logic change them per response.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}, Named: map[string]ArgKind{
+		wire.CookiePath: ArgString, wire.CookieDomain: ArgString, wire.CookieMaxAge: ArgDuration,
+		wire.CookieHTTPOnly: ArgBool, wire.CookieSecure: ArgBool, wire.CookieSameSite: ArgIdent,
+	}}},
+	"body": {Name: "body", Levels: LvlField, Doc: "Bind from request body.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
+	"form": {Name: "form", Levels: LvlField, Doc: "Bind from multipart form field; the request needs a `file`.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
 
 	// ---- Service ----
 	"prefix": {

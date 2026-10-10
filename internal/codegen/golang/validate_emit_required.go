@@ -20,7 +20,7 @@ func requiredCheck(rf semantic.ResolvedField, t checkTarget, ctx emitCtx) string
 			}
 			cond = t.access + " == " + zero
 		}
-	case semantic.CatFile, semantic.CatAny:
+	case semantic.CatFile, semantic.CatCookie, semantic.CatAny:
 		cond = t.access + " == nil"
 	case semantic.CatRawBytes:
 		// An explicit `null` decodes to the bytes `null`, so only a missing key is empty.

@@ -33,7 +33,11 @@ func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
 	imports.use("encoding/json")
 	var decls []string
 	for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
-		decls = append(decls, renderError(pkg, pkg.Errors[name], r, imports))
+		ed := pkg.Errors[name]
+		decls = append(decls, renderError(pkg, ed, r, imports))
+		if ctors := renderCookieConstructors(idents.ErrorTypeName(ed.Name), ed.Body, imports); ctors != "" {
+			decls = append(decls, ctors)
+		}
 	}
 	parts := []string{"package " + pkg.Name + "\n", imports.decl()}
 	return strings.Join(append(parts, decls...), "\n")

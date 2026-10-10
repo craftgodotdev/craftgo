@@ -761,7 +761,7 @@ error TooManyRequests RateLimited {
 		"func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter)",
 		`w.Header().Set("retryAfter", e.RetryAfter)`,
 		"func (e *RateLimitedErr) ResponseCookies() []*http.Cookie {",
-		`cs = append(cs, &http.Cookie{Name: "sessionToken", Value: e.SessionToken})`,
+		`cs = append(cs, &http.Cookie{Name: "sessionToken", Value: e.SessionToken, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})`,
 		`"net/http"`,
 	)
 	mustContainNone(t, src, "http.SetCookie", "pkg/server")
@@ -813,7 +813,7 @@ error TooManyRequests RateLimited {
 		`w.Header().Set("Retry-After", strconv.Itoa(e.RetryAfter))`,
 		// A local int scalar converts to int64 for strconv.FormatInt.
 		`w.Header().Set("X-Cost", strconv.FormatInt(int64(e.Cost), 10))`,
-		`cs = append(cs, &http.Cookie{Name: "throttled", Value: strconv.FormatBool(e.Throttled)})`,
+		`cs = append(cs, &http.Cookie{Name: "throttled", Value: strconv.FormatBool(e.Throttled), Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})`,
 	)
 }
 

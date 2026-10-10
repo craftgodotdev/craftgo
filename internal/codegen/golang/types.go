@@ -44,7 +44,11 @@ func buildTypesGo(pkg *semantic.Package, r *projectResolver) string {
 		decls = append(decls, scs)
 	}
 	for _, name := range slices.Sorted(maps.Keys(pkg.Types)) {
-		decls = append(decls, renderType(pkg.Types[name], pkg, r, imports))
+		td := pkg.Types[name]
+		decls = append(decls, renderType(td, pkg, r, imports))
+		if ctors := renderCookieConstructors(td.Name, td.Body, imports); ctors != "" {
+			decls = append(decls, ctors)
+		}
 	}
 	parts := []string{"package " + pkg.Name + "\n"}
 	if decl := imports.decl(); decl != "" {
@@ -184,8 +188,8 @@ func goFieldType(f *ast.Field, pkg *semantic.Package, r *projectResolver, import
 		clone.Optional = false
 		s = imports.goType(&clone)
 	}
-	// A file's Go type spells its pointer already.
-	if rf.GoPointer() && rf.Category != semantic.CatFile {
+	// A file's and a cookie's Go type spells its pointer already.
+	if rf.GoPointer() && !rf.SpellsPointer() {
 		s = "*" + s
 	}
 	return s

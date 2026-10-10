@@ -15,6 +15,7 @@ import (
 var noDefault = map[prims.Kind]string{
 	prims.Bytes:    "a bytes value has no unambiguous literal form (Go []byte vs OpenAPI base64 text)",
 	prims.File:     "a file upload has no literal default form",
+	prims.Cookie:   "a cookie has no literal default form; the logic sets it",
 	prims.DateTime: `a fixed timestamp is rarely the default meant, and "now" is the handler's to decide`,
 }
 
@@ -102,7 +103,7 @@ func (a *analyzer) literalTargetProblem(decName string, f *ast.Field) string {
 		if isQualifiedTypeRef(elem) {
 			return "" // a qualified name that names no type is left to the reference check
 		}
-	case CatPrimitive, CatScalar, CatBytes, CatRawBytes, CatFile:
+	case CatPrimitive, CatScalar, CatBytes, CatRawBytes, CatFile, CatCookie:
 		if PrimFromName(rf.ResolvedPrim) == 0 {
 			break
 		}

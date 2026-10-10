@@ -610,7 +610,7 @@ service FilesService {
 	body := string(out)
 	checks := []string{
 		`w.Header().Set("etag", resp.Etag)`,
-		`server.SetCookie(w, "sessionID", resp.SessionID)`,
+		`http.SetCookie(w, &http.Cookie{Name: "sessionID", Value: resp.SessionID, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})`,
 		"server.WriteResponse(w, r, http.StatusOK, resp, func(w http.ResponseWriter) {",
 	}
 	for _, want := range checks {
@@ -620,7 +620,7 @@ service FilesService {
 	}
 	// Headers and cookies are set once the body has encoded, by the function WriteResponse runs.
 	_, after, ok := strings.Cut(body, "server.WriteResponse")
-	if !ok || !strings.Contains(after, `w.Header().Set("etag"`) || !strings.Contains(after, "server.SetCookie") {
+	if !ok || !strings.Contains(after, `w.Header().Set("etag"`) || !strings.Contains(after, "http.SetCookie") {
 		t.Errorf("the etag header and the cookie must be set by WriteResponse, after the encode:\n%s", body)
 	}
 }
@@ -653,7 +653,7 @@ service Catalog {
 	mustParseGo(t, body)
 	mustContainAll(t, body,
 		`w.Header().Set("X-Total-Count", resp.Total)`,
-		`server.SetCookie(w, "session_id", resp.SessionID)`,
+		`http.SetCookie(w, &http.Cookie{Name: "session_id", Value: resp.SessionID, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})`,
 	)
 	for _, banned := range []string{
 		`w.Header().Set("total"`,
@@ -710,8 +710,8 @@ service S {
 		`w.Header().Set("X-Next-Page", *resp.NextPage)`,
 		`for _, _v := range resp.Labels {`,
 		`w.Header().Add("X-Label", _v)`,
-		`server.SetCookie(w, "flag", strconv.FormatBool(resp.Active))`,
-		`server.SetCookie(w, "plain", resp.Plain)`,
+		`http.SetCookie(w, &http.Cookie{Name: "flag", Value: strconv.FormatBool(resp.Active), Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})`,
+		`http.SetCookie(w, &http.Cookie{Name: "plain", Value: resp.Plain, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})`,
 	)
 }
 

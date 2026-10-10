@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -415,18 +416,11 @@ func positionalArgs(d *ast.Decorator) []*ast.DecoratorArg {
 	return out
 }
 
-// checkPositionalArgs checks d's arguments against [Spec.Args]: no named
+// checkPositionalArgs checks d's arguments against [Spec.Args]: its named
 // arguments, then the count, then each kind and the first argument's enum;
 // it reports whether they hold.
 func (a *analyzer) checkPositionalArgs(d *ast.Decorator, spec Spec) bool {
-	ok := true
-	for _, ag := range d.Args {
-		if ag.Named {
-			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
-				"@%s: named argument %q is not supported (use positional args)", d.Name, ag.Name)
-			ok = false
-		}
-	}
+	ok := a.checkNamedArgs(d, spec.Args.Named)
 	pos := positionalArgs(d)
 	rule := spec.Args
 
@@ -464,6 +458,49 @@ func (a *analyzer) checkPositionalArgs(d *ast.Decorator, spec Spec) bool {
 	}
 
 	return a.checkEnumOnFirst(d, spec, pos) && ok
+}
+
+// checkNamedArgs checks each `name: value` argument of d against named, the
+// kind of each name d takes: one d does not take, one given twice and a
+// value of another kind are refused. It reports whether they hold.
+func (a *analyzer) checkNamedArgs(d *ast.Decorator, named map[string]ArgKind) bool {
+	ok := true
+	seen := map[string]bool{}
+	for _, ag := range d.Args {
+		if ag == nil || !ag.Named {
+			continue
+		}
+		want, takes := named[ag.Name]
+		switch {
+		case len(named) == 0:
+			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
+				"@%s: named argument %q is not supported (use positional args)", d.Name, ag.Name)
+		case !takes:
+			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
+				"@%s takes no argument %q (it takes %s)", d.Name, ag.Name, strings.Join(slices.Sorted(maps.Keys(named)), ", "))
+		case seen[ag.Name]:
+			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
+				"@%s: argument %q is given twice", d.Name, ag.Name)
+		case ag.Value == nil || !exprMatchesKind(ag.Value, want):
+			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
+				"@%s %s: expected %s, got %s", d.Name, ag.Name, want, namedArgKind(ag))
+		default:
+			seen[ag.Name] = true
+			continue
+		}
+		seen[ag.Name] = true
+		ok = false
+	}
+	return ok
+}
+
+// namedArgKind names the kind of named argument ag's value, an object
+// literal included.
+func namedArgKind(ag *ast.DecoratorArg) string {
+	if ag.Value == nil {
+		return "object"
+	}
+	return exprKind(ag.Value)
 }
 
 // checkArrayShortcut checks the array literal standing for d's arguments

@@ -72,7 +72,8 @@ func (a *analyzer) reportGoNameCollisions(names []goName) {
 func typesGoNames(d ast.Decl) []goName {
 	switch dd := d.(type) {
 	case *ast.TypeDecl:
-		return []goName{{name: dd.Name, source: `type "` + dd.Name + `"`, role: "its type", pos: dd.Pos}}
+		out := []goName{{name: dd.Name, source: `type "` + dd.Name + `"`, role: "its type", pos: dd.Pos}}
+		return append(out, cookieConstructorGoNames(dd.Name, dd.Name, dd.Body)...)
 	case *ast.ScalarDecl:
 		return []goName{{name: dd.Name, source: `scalar "` + dd.Name + `"`, role: "its type", pos: dd.Pos}}
 	case *ast.EnumDecl:
@@ -98,9 +99,28 @@ func typesGoNames(d ast.Decl) []goName {
 		if len(ast.Members(dd.Body)) > 0 {
 			out = append(out, goName{name: idents.ErrorBodyName(dd.Name), source: source, role: "its body struct", pos: dd.Pos})
 		}
-		return out
+		return append(out, cookieConstructorGoNames(dd.Name, idents.ErrorTypeName(dd.Name), dd.Body)...)
 	}
 	return nil
+}
+
+// cookieConstructorGoNames returns the constructor names of the `cookie`
+// fields of body, which declaration name declares under Go name owner.
+func cookieConstructorGoNames(name, owner string, body []ast.TypeMember) []goName {
+	var out []goName
+	fields := ast.Fields(body)
+	names := make([]string, len(fields))
+	for i, f := range fields {
+		names[i] = f.Name
+	}
+	goNames, _ := idents.DedupGoFieldNames(names)
+	for i, f := range fields {
+		if isCookieTypeRef(f.Type) && !f.Type.Array {
+			out = append(out, goName{name: idents.CookieConstructorName(owner, goNames[i]),
+				source: `field "` + name + "." + f.Name + `"`, role: "its cookie constructor", pos: f.Pos})
+		}
+	}
+	return out
 }
 
 // eventGoNames returns the Go identifiers ev emits into its package's events
