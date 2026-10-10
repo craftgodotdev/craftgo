@@ -44,8 +44,8 @@ Each setter returns `*Server` for chaining, except the deprecated `SetJSONCodec`
 | `SetStrictJSON(strict bool) error` | Deprecated: call `server.SetStrictJSON(strict)`, which it calls. Strict decoding is the process's, not one server's: a second server switching it off switches it off for the first. See [JSON codec](#json-codec). |
 | `SetCORS(opts CORSOptions)` | Install CORS. Calling twice replaces the previous config. |
 | `SetHandleNotFound(h http.Handler)` | Answer the requests the mux would answer 404, which otherwise get 404 `{"message":"not found"}`; nil restores that default. A method mismatch keeps its 405 `{"message":"method not allowed"}` with `Allow`. |
-| `SetDefaultReadTimeout(d)` / `SetDefaultWriteTimeout(d)` | The `*http.Server`'s deadlines for reading a whole request, 30s by default, and for writing a whole response, none (0) by default so streaming and long downloads are not cut. |
-| `SetDefaultMaxBodySize(bytes)` | Body cap for each route `Handle` registers afterwards, unless its `WithLimits` sets one (a method's `@maxBodySize`). 0, the default, sets none. |
+| `SetDefaultReadTimeout(d)` / `SetDefaultWriteTimeout(d)` | The `*http.Server`'s deadlines for reading a whole request, 30s by default (`server.readTimeout` in `config.yaml`), and for writing a whole response, none (0) by default so streaming and long downloads are not cut. 0 sets none. |
+| `SetDefaultMaxBodySize(bytes)` | Body cap for each route `Handle` registers afterwards, unless its `WithLimits` sets one (a method's `@maxBodySize`). `DefaultMaxBodySize`, 10 MiB, by default (`server.maxBodySize` in `config.yaml`); 0 sets none. |
 | `SetDefaultHandlerTimeout(d)` | Request-context deadline for each route `Handle` registers afterwards, unless its `WithLimits` sets one (a method's `@timeout`). 0, the default, sets none. |
 | `SetDefaultMaxHeaderSize(kb)` | The `*http.Server`'s cap on request headers, in kilobytes; 32 by default. |
 

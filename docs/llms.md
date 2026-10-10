@@ -693,9 +693,11 @@ Read by generated `main.go` via `config.Load()`. Default content (the generated 
 ```yaml
 server:
   addr: ":8080"
+  readTimeout: 30s # reading a whole request, body included; 0s = none
   handlerTimeout: 0s
-  maxBodySize: 0
+  maxBodySize: 10485760 # 10 MiB when left out; 0 = no cap
   strictJSON: true
+  requirePresence: true # 400 for a JSON body missing a required member
   compression:
     enabled: false
     minSize: 0
@@ -883,7 +885,7 @@ The default `server.WriteError`:
 - Plain (non-`StatusError`) errors: `{"message":"internal server error"}` - the raw `err.Error()` text is logged with trace context but **never** written to the response (it routinely carries DSNs / file paths). Status 500.
 - Context errors are the exception: an error wrapping `context.DeadlineExceeded`, or any context error after the request's own deadline passed, answers 504 `{"message":"gateway timeout"}`, unlogged (a dependency's deadline on a live request is logged at Warn, `dependency deadline exceeded`); once the client has gone, a context error writes nothing and logs nothing; a `context.Canceled` on a live request is an ordinary logged 500.
 
-Every error the framework writes - `WriteError`, `WriteValidationError` (400, or 413 `{"message":"request entity too large"}` past the body cap), the mux's 404 `{"message":"not found"}` and 405 `{"message":"method not allowed"}`, and a panic `Recovery` catches (500 `{"message":"internal server error"}`) - is `application/json; charset=utf-8` with `X-Content-Type-Options: nosniff`. The deprecated `server.Timeout` middleware alone answers a plain-text 503. None of these framework-written errors is in the OpenAPI document, which lists each operation's success response and its `@errors` only.
+Every error the framework writes - `WriteError`, `WriteValidationError` (400, or 413 `{"message":"request entity too large"}` past the body cap), `RequireJSONBody` and a form route's parser (415 `{"message":"unsupported media type"}`), the mux's 404 `{"message":"not found"}` and 405 `{"message":"method not allowed"}`, and a panic `Recovery` catches (500 `{"message":"internal server error"}`) - is `application/json; charset=utf-8` with `X-Content-Type-Options: nosniff`. The deprecated `server.Timeout` middleware alone answers a plain-text 503. None of these framework-written errors is in the OpenAPI document, which lists each operation's success response and its `@errors` only.
 
 To customise the envelope: `server.SetHandleUnknownError(fn)` overrides the 500 for untyped errors (it never sees a deadline or a gone client's context error), and `server.SetDefaultValidationFailed(fn)` overrides the 400 (default `{"message": <err text>}`); a body read past its cap answers 413 without calling it. `server.WriteError(w, r, err)` / `server.WriteValidationError(w, r, err)` are the entry points the generated handlers call.
 

@@ -14,13 +14,14 @@
 # @maxBodySize replaces the matching one, longer or shorter, and a route
 # without one takes it. Zero sets none; the decorators still apply.
 #
-# The read and write deadlines and the header cap are not here: set them
-# in main.go with srv.SetDefaultReadTimeout, SetDefaultWriteTimeout and
-# SetDefaultMaxHeaderSize when the defaults do not fit.
+# The write deadline and the header cap are not here: set them in main.go
+# with srv.SetDefaultWriteTimeout and SetDefaultMaxHeaderSize when the
+# defaults do not fit.
 server:
   addr: ":8080"               # bind address; "127.0.0.1:8080" for localhost-only
+  readTimeout: 30s            # deadline for reading a whole request, body included; 0 = none
   handlerTimeout: 0s          # global default handler deadline; 0 = no cap
-  maxBodySize: 0              # global default body cap (bytes); 0 = no cap
+  maxBodySize: 10485760       # global default body cap (bytes), 10 MiB when left out; 0 = no cap
   strictJSON: true            # reject unknown fields and trailing data in JSON bodies; false ignores both
   requirePresence: true       # 400 for a JSON body missing a member declared without `?`, or sending it
                               # null without @nullable; false decodes the body as it comes

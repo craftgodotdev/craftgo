@@ -53,8 +53,11 @@ type Middleware func(http.Handler) http.Handler
 // Option configures a Server at construction time.
 type Option func(*Server)
 
-// New returns a Server with the health probes, a 30s read timeout and a 32 KB header cap,
-// then applies opts. The first argument is ignored.
+// DefaultMaxBodySize is the body cap [New] gives the routes [Server.Handle] registers.
+const DefaultMaxBodySize = 10 << 20
+
+// New returns a Server with the health probes, a 30s read timeout, a [DefaultMaxBodySize] body
+// cap and a 32 KB header cap, then applies opts. The first argument is ignored.
 func New(_ any, opts ...Option) *Server {
 	s := &Server{
 		mux:                http.NewServeMux(),
@@ -62,7 +65,7 @@ func New(_ any, opts ...Option) *Server {
 		healthPaths:        HealthPaths{Liveness: DefaultLivenessPath, Readiness: DefaultReadinessPath},
 		registeredMW:       map[string]Middleware{},
 		defaultReadTimeout: 30 * time.Second,
-		defaultMaxBodySize: 0,
+		defaultMaxBodySize: DefaultMaxBodySize,
 		defaultMaxHeaderKB: 32,
 	}
 	for _, o := range opts {
@@ -136,7 +139,8 @@ func (s *Server) With(names []string, h http.HandlerFunc) http.HandlerFunc {
 	return chain.Then(h).ServeHTTP
 }
 
-// SetDefaultReadTimeout sets the http.Server ReadTimeout [Server.Start] uses; the default is 30s.
+// SetDefaultReadTimeout sets the http.Server ReadTimeout [Server.Start] uses, a deadline on
+// reading a whole request, its body included; the default is 30s, and 0 sets none.
 func (s *Server) SetDefaultReadTimeout(d time.Duration) *Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -163,7 +167,7 @@ func (s *Server) SetDefaultWriteTimeout(d time.Duration) *Server {
 }
 
 // SetDefaultMaxBodySize sets the body cap in bytes ([BodyLimit]) that [Server.Handle] gives
-// routes registered afterwards; 0, the default, sets none.
+// routes registered afterwards; the default is [DefaultMaxBodySize], and 0 sets none.
 func (s *Server) SetDefaultMaxBodySize(bytes int64) *Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -244,10 +245,47 @@ func TestGeneratedConfigRoundTrips(t *testing.T) {
 }
 `
 
-// assertConfigRoundTrips runs configRoundTripTest in the generated project.
+// configDefaultsTest checks the server settings a config.yaml leaving them out keeps, and that
+// one setting them to zero wins.
+const configDefaultsTest = `package config
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestGeneratedConfigDefaults(t *testing.T) {
+	c, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := c.Server; s.ReadTimeout != 30*time.Second || s.MaxBodySize != 10<<20 || !s.RequirePresence {
+		t.Errorf("left out: %+v, want a 30s read timeout, a 10 MiB body cap and the presence check", s)
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	zero := "server:\n  readTimeout: 0s\n  maxBodySize: 0\n  requirePresence: false\n"
+	if err := os.WriteFile(path, []byte(zero), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if c, err = Load(path); err != nil {
+		t.Fatal(err)
+	}
+	if s := c.Server; s.ReadTimeout != 0 || s.MaxBodySize != 0 || s.RequirePresence {
+		t.Errorf("set to zero: %+v, want each zero", s)
+	}
+}
+`
+
+// assertConfigRoundTrips runs configRoundTripTest in the generated project, and
+// configDefaultsTest where the project has an HTTP listener.
 func assertConfigRoundTrips(t *testing.T, dir string) {
 	t.Helper()
 	mustWrite(t, filepath.Join(dir, "config"), "roundtrip_test.go", configRoundTripTest)
+	if src, err := os.ReadFile(filepath.Join(dir, "config", "config.go")); err == nil && strings.Contains(string(src), "type ServerConfig struct") {
+		mustWrite(t, filepath.Join(dir, "config"), "defaults_test.go", configDefaultsTest)
+	}
 	if out, err := goIn(dir, "test", "./config/"); err != nil {
 		t.Errorf("config.yaml.tmpl and config.go.tmpl disagree: %v\n%s", err, out)
 	}

@@ -4,8 +4,9 @@
 
 server:
   addr: ":8080"
+  readTimeout: 30s
   handlerTimeout: 0s
-  maxBodySize: 0
+  maxBodySize: 10485760
   strictJSON: true
   requirePresence: true
   compression:

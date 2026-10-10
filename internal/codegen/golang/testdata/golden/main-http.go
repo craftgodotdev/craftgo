@@ -68,6 +68,7 @@ func main() {
 	srv.Use(server.AccessLog(log.Follow()))
 	// A method's @timeout or @maxBodySize overrides these defaults; routes resolve them
 	// when wiring.Register registers them.
+	srv.SetDefaultReadTimeout(cfg.Server.ReadTimeout)
 	srv.SetDefaultHandlerTimeout(cfg.Server.HandlerTimeout)
 	srv.SetDefaultMaxBodySize(cfg.Server.MaxBodySize)
 	if err := server.SetStrictJSON(cfg.Server.StrictJSON); err != nil {

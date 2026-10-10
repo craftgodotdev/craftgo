@@ -44,16 +44,21 @@ type DocsConfig struct {
 	SpecPath string `yaml:"specPath"`
 }
 
-// ServerConfig configures the HTTP listener and the defaults its routes take. Its read and write
-// deadlines and header cap are the server's SetDefault* setters, for main.go to call when needed.
+// ServerConfig configures the HTTP listener and the defaults its routes take. Its write deadline
+// and header cap are the server's SetDefault* setters, for main.go to call when needed.
 type ServerConfig struct {
 	// Addr is the HTTP bind address, e.g. ":8080" or "127.0.0.1:8080".
 	Addr string `yaml:"addr"`
 
+	// ReadTimeout bounds reading a whole request, its body included; 30s unless config.yaml
+	// sets one, 0 setting none.
+	ReadTimeout time.Duration `yaml:"readTimeout"`
+
 	// HandlerTimeout is the request-context deadline of a route without @timeout; 0 sets none.
 	HandlerTimeout time.Duration `yaml:"handlerTimeout"`
 
-	// MaxBodySize is the body cap in bytes of a route without @maxBodySize; 0 sets none.
+	// MaxBodySize is the body cap in bytes of a route without @maxBodySize; 10 MiB unless
+	// config.yaml sets one, 0 setting none.
 	MaxBodySize int64 `yaml:"maxBodySize"`
 
 	// StrictJSON rejects a JSON body with an unknown field or data after the value.
@@ -126,6 +131,8 @@ func Load(cfgPath string) (*Config, error) {
 func defaults() *Config {
 	return &Config{
 		Server: ServerConfig{
+			ReadTimeout:     30 * time.Second,
+			MaxBodySize:     10 << 20,
 			RequirePresence: true,
 		},
 	}
