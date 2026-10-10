@@ -261,7 +261,7 @@ func TestStringEscapes(t *testing.T) {
 }
 
 func TestStringUnicodeEscape(t *testing.T) {
-	for _, c := range []string{`"\u{1F600}"`, `"\u{a}"`, `"\u{D7FF}"`, `"\u{E000}"`, `"\u{10FFFF}"`} {
+	for _, c := range []string{`"\u{1F600}"`, `"\u{a}"`, `"\u{D7FF}"`, `"\u{E000}"`, `"\u{10FFFD}"`} {
 		if first(t, c).Kind != String {
 			t.Errorf("%q", c)
 		}
@@ -364,9 +364,10 @@ func TestUnquote(t *testing.T) {
 		{`"abc"`, "abc", ""},
 		{`"a\nb\tc\rd"`, "a\nb\tc\rd", ""},
 		{`"a\"b\\c"`, "a\"b\\c", ""},
-		{`"\u{61}\u{7}\u{0}"`, "a\a\x00", ""},
+		{`"\u{61}\u{9}\u{a}\u{D}"`, "a\t\n\r", ""},
 		{`"\u{1F600}"`, "\U0001F600", ""},
-		{`"\u{D7FF}\u{E000}\u{10FFFF}"`, "\ud7ff\ue000\U0010FFFF", ""},
+		{`"\u{D7FF}\u{E000}\u{10FFFD}"`, "\ud7ff\ue000\U0010FFFD", ""},
+		{`"\u{85}\u{2028}"`, "", `unicode escape \u{85} is the control character U+0085, which no string may hold`},
 		{"\"zero\u200bwidth\"", "zero\u200bwidth", ""},
 		{"`^\\d+$`", `^\d+$`, ""},
 		{"`a\nb`", "a\nb", ""},
@@ -380,6 +381,12 @@ func TestUnquote(t *testing.T) {
 		{`"\u{D800}"`, "", `unicode escape \u{D800} is outside the valid code points (0-D7FF, E000-10FFFF)`},
 		{`"a\u{dfff}"`, "", `unicode escape \u{dfff} is outside the valid code points (0-D7FF, E000-10FFFF)`},
 		{`"\u{110000}"`, "", `unicode escape \u{110000} is outside the valid code points (0-D7FF, E000-10FFFF)`},
+		{`"\u{0}"`, "", `unicode escape \u{0} is the control character U+0000, which no string may hold`},
+		{`"\u{7F}"`, "", `unicode escape \u{7F} is the control character U+007F, which no string may hold`},
+		{`"\u{FEFF}"`, "", `unicode escape \u{FEFF} is the byte order mark U+FEFF, which no string may hold`},
+		{`"\u{FFFE}"`, "", `unicode escape \u{FFFE} is the noncharacter U+FFFE, which no string may hold`},
+		{`"\u{FDD0}"`, "", `unicode escape \u{FDD0} is the noncharacter U+FDD0, which no string may hold`},
+		{`"\u{10FFFF}"`, "", `unicode escape \u{10FFFF} is the noncharacter U+10FFFF, which no string may hold`},
 		{`"a\"`, "", "unterminated escape sequence"},
 		{`"`, "", `"\"" is not a string literal`},
 		{`abc`, "", `"abc" is not a string literal`},
@@ -399,7 +406,7 @@ func TestUnquote(t *testing.T) {
 
 // A String token's text is what Unquote accepts, escapes as written.
 func TestStringTextIsTheSource(t *testing.T) {
-	src := `"a\u{7}\"b"`
+	src := `"a\u{2028}\"b"`
 	if tok := first(t, src); tok.Kind != String || tok.Text != src {
 		t.Errorf("got %+v", tok)
 	}
@@ -567,6 +574,42 @@ func TestByteOrderMarkIsSkipped(t *testing.T) {
 	l.Tokenize()
 	if len(l.Diagnostics()) != 1 {
 		t.Errorf("a mark after the start: diagnostics %v", l.Diagnostics())
+	}
+}
+
+// NUL, a byte that is no UTF-8, a byte order mark past the start, a control
+// character but tab and the line ends, and a noncharacter are reported once,
+// where they stand, in code, comments and strings alike; lexing goes on.
+func TestIllegalCharactersAreReportedWhereTheyStand(t *testing.T) {
+	for src, want := range map[string]string{
+		"a // x \x00 y\nb":    "1:8: illegal character NUL",
+		"a // x \xff y\nb":    "1:8: invalid UTF-8 encoding",
+		"a\n// x \ufeff y\nb": "2:6: illegal byte order mark - one may only open the file",
+		"a \"x\ufeffy\" b":    "1:5: illegal byte order mark - one may only open the file",
+		"a \"x\x7fy\" b":      "1:5: illegal character: the control character U+007F",
+		"a `x\u0085y` b":      "1:5: illegal character: the control character U+0085",
+		"a // \x01\nb":        "1:6: illegal character: the control character U+0001",
+		"a \x00 b":            "1:3: illegal character NUL",
+		"a \x0c b":            "1:3: illegal character: the control character U+000C",
+		"a \"\uffff\" b":      "1:4: illegal character: the noncharacter U+FFFF",
+	} {
+		l := New("", src)
+		toks := l.Tokenize()
+		var got []string
+		for _, d := range l.Diagnostics() {
+			got = append(got, d.Error())
+		}
+		if len(got) != 1 || got[0] != want {
+			t.Errorf("%q: diagnostics %q, want [%s]", src, got, want)
+		}
+		if last := toks[len(toks)-2]; last.Kind != Ident || last.Text != "b" {
+			t.Errorf("%q: lexing stopped early: %v", src, toks)
+		}
+	}
+	l := New("", "a\tb\r\nc\rd\n")
+	l.Tokenize()
+	if d := l.Diagnostics(); len(d) != 0 {
+		t.Errorf("tab and line ends: diagnostics %v", d)
 	}
 }
 

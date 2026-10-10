@@ -11,8 +11,8 @@ func TestFormatKeepsLiteralsAsWritten(t *testing.T) {
 	for _, c := range []struct {
 		name, field string
 	}{
-		{"bell escape", `a string @doc("bell \u{7} here")`},
-		{"nul escape", `a string @doc("nul \u{0} x")`},
+		{"tab escape", `a string @doc("tab \u{9} here")`},
+		{"line separator escape", `a string @doc("ls \u{2028} x")`},
 		{"zero-width space", "a string @doc(\"zero\u200bwidth\")"},
 		{"raw pattern", "a string @pattern(`^\\d+$`)"},
 		{"large float", `a float64 @lte(1234567.5)`},
@@ -29,9 +29,9 @@ func TestFormatKeepsLiteralsAsWritten(t *testing.T) {
 
 // Format prints enum string values as they are written.
 func TestFormatKeepsEnumValuesAsWritten(t *testing.T) {
-	src := "package app\n\nenum Bell {\n\tRing = \"\\u{7}\"\n\tQuiet = \"zero\u200bwidth\"\n}\n"
+	src := "package app\n\nenum Bell {\n\tRing = \"\\u{2028}\"\n\tQuiet = \"zero\u200bwidth\"\n}\n"
 	out := formatStable(t, src)
-	for _, want := range []string{`Ring  = "\u{7}"`, "Quiet = \"zero\u200bwidth\""} {
+	for _, want := range []string{`Ring  = "\u{2028}"`, "Quiet = \"zero\u200bwidth\""} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %s:\n%s", want, out)
 		}

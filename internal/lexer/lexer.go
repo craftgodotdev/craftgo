@@ -90,6 +90,10 @@ type Lexer struct {
 	// word, a `{param}` right after a `/`, or a `/` right after either. A `//`
 	// there continues the route instead of starting a comment.
 	routeEnd int
+
+	// checked is the offset below which [Lexer.advance] has checked every
+	// rune for [illegalRune].
+	checked int
 }
 
 // New returns a Lexer over src. filename goes into every Position and may be
@@ -110,6 +114,9 @@ func New(filename, src string) *Lexer {
 
 // byteOrderMark is U+FEFF in UTF-8, which some editors write first in a file.
 const byteOrderMark = "\ufeff"
+
+// byteOrderMarkRune is the rune [byteOrderMark] encodes.
+const byteOrderMarkRune = '\ufeff'
 
 // Diagnostics returns the diagnostics recorded so far.
 func (l *Lexer) Diagnostics() []Diagnostic { return l.diags }
@@ -223,7 +230,9 @@ func (l *Lexer) lineComment(kind CommentKind) string {
 
 // lexPunct lexes a one-rune punctuation token; any other rune is an Error.
 func (l *Lexer) lexPunct(pos Position, r rune) Token {
-	l.advance()
+	if l.advance() {
+		return Token{Kind: Error, Text: l.diags[len(l.diags)-1].Msg, Pos: pos}
+	}
 	text := string(r)
 	k, ok := punctuation[text]
 	if !ok {
@@ -356,7 +365,8 @@ var simpleEscapes = map[byte]byte{'n': '\n', 't': '\t', 'r': '\r', '"': '"', '\\
 // Unquote returns the value of a String or RawString token's text: a raw
 // literal's content, or a quoted literal's with its escapes decoded. The
 // escapes are \n \t \r \" \\ and \u{HEX}: 1 to 6 hex digits naming a code
-// point up to 10FFFF outside the surrogates D800-DFFF.
+// point up to 10FFFF outside the surrogates D800-DFFF and the runes
+// [illegalRune] rejects.
 func Unquote(text string) (string, error) {
 	n := len(text)
 	if n >= 2 && text[0] == '`' && text[n-1] == '`' {
@@ -397,6 +407,9 @@ func Unquote(text string) (string, error) {
 		}
 		if !utf8.ValidRune(rune(v)) {
 			return "", fmt.Errorf("unicode escape \\u{%s} is outside the valid code points (0-D7FF, E000-10FFFF)", s[2:end])
+		}
+		if what := illegalRune(rune(v)); what != "" {
+			return "", fmt.Errorf("unicode escape \\u{%s} is %s, which no string may hold", s[2:end], what)
 		}
 		sb.WriteRune(rune(v))
 		s = s[end+1:]
@@ -458,10 +471,12 @@ func (l *Lexer) peek() rune {
 }
 
 // advance consumes one rune and updates line and column; the caller ensures a
-// rune remains.
-func (l *Lexer) advance() {
+// rune remains. A rune [illegalRune] rejects, or a byte that is no UTF-8, is
+// reported where it stands, once, and advance then returns true.
+func (l *Lexer) advance() bool {
+	pos := l.pos()
 	end := l.atLineEnd()
-	_, size := utf8.DecodeRuneInString(l.src[l.offset:])
+	r, size := utf8.DecodeRuneInString(l.src[l.offset:])
 	l.offset += size
 	if end {
 		l.line++
@@ -469,6 +484,41 @@ func (l *Lexer) advance() {
 	} else {
 		l.column++
 	}
+	if pos.Offset < l.checked {
+		return false
+	}
+	l.checked = l.offset
+	switch {
+	case r == utf8.RuneError && size == 1:
+		l.errorf(pos, "invalid UTF-8 encoding")
+	case r == 0:
+		l.errorf(pos, "illegal character NUL")
+	case r == byteOrderMarkRune:
+		l.errorf(pos, "illegal byte order mark - one may only open the file")
+	case illegalRune(r) != "":
+		l.errorf(pos, "illegal character: %s", illegalRune(r))
+	default:
+		return false
+	}
+	return true
+}
+
+// illegalRune names r when no design may hold it, in source or in a string's
+// value, or returns "": a control character but tab, line feed and carriage
+// return, the byte order mark, which may only open a file, or a noncharacter.
+// The generated Go source and the YAML document take none of them.
+func illegalRune(r rune) string {
+	switch {
+	case r == '\t' || r == '\n' || r == '\r':
+		return ""
+	case r < 0x20 || r >= 0x7f && r <= 0x9f:
+		return fmt.Sprintf("the control character U+%04X", r)
+	case r == byteOrderMarkRune:
+		return "the byte order mark U+FEFF"
+	case r >= 0xfdd0 && r <= 0xfdef || r&0xfffe == 0xfffe:
+		return fmt.Sprintf("the noncharacter U+%04X", r)
+	}
+	return ""
 }
 
 // atLineEnd reports whether the rune at the cursor ends a line: '\n', or a
