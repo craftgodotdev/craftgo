@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -93,18 +94,35 @@ func protoWarnings(protos *protodesign.Set) []string {
 }
 
 // orphanedStubNotes names the output.service directories whose HTTP or gRPC service the design no
-// longer declares; the stubs are never swept, but the generated code they import is.
+// longer declares, or names under another output.fileCase; the stubs are never swept, but the
+// generated code they import is.
 func orphanedStubNotes(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string {
 	if cfg.Output.ContractsOnly() {
 		return nil
 	}
 	owned := map[string]bool{}
+	// recased maps a directory a declared service's stubs take under another file case to the
+	// service and the directory they take now.
+	type place struct{ svc, dir string }
+	recased := map[string]place{}
+	own := func(svc, dir string) {
+		owned[dir] = true
+		for _, fileCase := range []string{idents.FileCaseSnake, idents.FileCaseKebab, idents.FileCaseCamel} {
+			if old := idents.FileName(svc, fileCase); old != dir {
+				recased[old] = place{svc, dir}
+			}
+		}
+	}
 	for s := range projectSegments(proj, cfg.Output.FileCase) {
-		owned[s.dir] = true
+		if s.group != "" {
+			owned[s.dir] = true
+			continue
+		}
+		own(s.name, s.dir)
 	}
 	if protos != nil {
 		for _, svc := range protos.Services {
-			owned[svc.Dir] = true
+			own(svc.Name, svc.Dir)
 		}
 	}
 	root := outputsOf(cfg).service.at(projectRoot)
@@ -124,6 +142,11 @@ func orphanedStubNotes(proj *semantic.Project, protos *protodesign.Set, cfg *con
 	})
 	var out []string
 	for _, dir := range slices.Sorted(maps.Keys(orphaned)) {
+		if now, ok := recased[dir]; ok {
+			out = append(out, cfg.Output.Service+"/"+dir+" holds the logic stubs of "+now.svc+", which output.fileCase now places in "+
+				cfg.Output.Service+"/"+now.dir+" - gen scaffolded fresh stubs there, so move your logic over and delete the old directory")
+			continue
+		}
 		out = append(out, cfg.Output.Service+"/"+dir+" holds logic stubs of a service the design no longer declares - the generated code they import is gone, so move or delete them")
 	}
 	return out

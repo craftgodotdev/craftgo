@@ -146,7 +146,10 @@ output:
 It affects **on-disk names only**. URL routes are unaffected (they come from
 `@prefix` and the method path), Go package names and identifiers are unchanged,
 and the `types/<package>/` layout - named after the DSL package - is untouched.
-A `@group` directory keeps the exact group string you wrote.
+A `@group` directory keeps the exact group string you wrote. Changing it in a
+project that has generated before scaffolds the gen-once stubs anew under the
+new names; gen names each `output.service` directory still holding the old
+ones, with the service it belongs to, for you to move your logic from.
 
 ### Customizing paths
 

@@ -8,6 +8,7 @@ import (
 	"text/template"
 
 	"github.com/craftgodotdev/craftgo/internal/designopts"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -214,6 +215,27 @@ func TestProtoWarningsAreNoted(t *testing.T) {
 	notes := OutputNotes(empty, set, cfg, t.TempDir())
 	if !containsNote(notes, "warning: x/x.proto has go_package github.com/elsewhere/x, a package of another module") {
 		t.Errorf("notes = %v", notes)
+	}
+}
+
+// After an output.fileCase change, the stubs left under the old directory name
+// are named as the declared service's, not as a dropped service's.
+func TestRecasedStubsNameTheirService(t *testing.T) {
+	cfg := scaffoldConfig(t)
+	proj := analyzeProject(t, httpScaffoldSrc)
+	dir := t.TempDir()
+	if err := generateService(proj.Packages["todos"], cfg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	kebab := *cfg
+	kebab.Output.FileCase = idents.FileCaseKebab
+	if err := generateService(proj.Packages["todos"], &kebab, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	notes := orphanedStubNotes(proj, nil, &kebab, dir)
+	want := "./internal/service/todo_service holds the logic stubs of TodoService, which output.fileCase now places in ./internal/service/todo-service"
+	if len(notes) != 1 || !strings.HasPrefix(notes[0], want) {
+		t.Errorf("notes = %v, want one starting %q", notes, want)
 	}
 }
 
