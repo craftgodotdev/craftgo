@@ -17,6 +17,9 @@ import (
 // EchoCatalog returns the POST EchoCatalog handler.
 func EchoCatalog(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.Catalog
 		if server.RequirePresence() {
 			var _b catalogWire

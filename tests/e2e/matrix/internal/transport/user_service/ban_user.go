@@ -16,6 +16,9 @@ import (
 // BanUser returns the POST BanUser handler.
 func BanUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.UserRef
 		if server.RequirePresence() {
 			var _b userRefWire

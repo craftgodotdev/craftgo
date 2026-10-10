@@ -17,6 +17,9 @@ import (
 // ValidateChoice returns the POST ValidateChoice handler.
 func ValidateChoice(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.PairsChoice
 		if err := server.JSON().Decode(r.Body, &req); err != nil {
 			server.WriteValidationError(w, r, err)

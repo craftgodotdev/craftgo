@@ -17,6 +17,9 @@ import (
 // EchoCollection returns the POST EchoCollection handler.
 func EchoCollection(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.DefaultsCollection
 		req.Arr = []int{1, 2, 3}
 		if err := server.JSON().Decode(r.Body, &req); err != nil {

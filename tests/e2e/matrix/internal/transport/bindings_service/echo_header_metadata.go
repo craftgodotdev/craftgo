@@ -15,6 +15,9 @@ import (
 // EchoHeaderMetadata returns the POST EchoHeaderMetadata handler.
 func EchoHeaderMetadata(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.CountsPayload
 		if server.RequirePresence() {
 			var _b countsPayloadWire

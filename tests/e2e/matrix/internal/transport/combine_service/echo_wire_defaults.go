@@ -15,6 +15,9 @@ import (
 // EchoWireDefaults returns the POST EchoWireDefaults handler.
 func EchoWireDefaults(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.WireDefaults
 		{
 			__d := types.HueRed

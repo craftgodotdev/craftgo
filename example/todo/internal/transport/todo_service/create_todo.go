@@ -17,6 +17,9 @@ import (
 // CreateTodo returns the POST CreateTodo handler.
 func CreateTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.CreateTodoReq
 		{
 			__d := types.TodoPriorityMedium

@@ -15,6 +15,9 @@ import (
 // EchoCompositeArg returns the POST EchoCompositeArg handler.
 func EchoCompositeArg(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.CompositeArg
 		if server.RequirePresence() {
 			var _b compositeArgWire

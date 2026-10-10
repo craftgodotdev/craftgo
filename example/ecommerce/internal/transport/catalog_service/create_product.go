@@ -18,6 +18,9 @@ import (
 // CreateProduct returns the POST CreateProduct handler.
 func CreateProduct(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.CreateProductReq
 		{
 			__d := shared.CurrencyCode("USD")

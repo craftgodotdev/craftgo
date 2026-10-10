@@ -15,6 +15,9 @@ import (
 // PostMixinBody returns the POST PostMixinBody handler.
 func PostMixinBody(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.MixinBodyReq
 		if server.RequirePresence() {
 			var _b mixinBodyReqWire

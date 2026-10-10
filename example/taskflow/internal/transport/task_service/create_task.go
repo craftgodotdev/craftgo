@@ -18,6 +18,9 @@ import (
 // CreateTask returns the POST CreateTask handler.
 func CreateTask(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.CreateTaskReq
 		{
 			__d := types.PriorityMedium

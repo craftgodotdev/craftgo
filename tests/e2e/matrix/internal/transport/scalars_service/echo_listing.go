@@ -15,6 +15,9 @@ import (
 // EchoListing returns the POST EchoListing handler.
 func EchoListing(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.Listing[types.EmailAddress]
 		if server.RequirePresence() {
 			var _b listingEmailAddressWire

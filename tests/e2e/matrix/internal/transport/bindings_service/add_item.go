@@ -17,6 +17,9 @@ import (
 // AddItem returns the POST AddItem handler.
 func AddItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.AddItemReq
 		if server.RequirePresence() {
 			var _b addItemReqWire

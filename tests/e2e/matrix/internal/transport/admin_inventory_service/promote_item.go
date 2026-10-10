@@ -17,6 +17,9 @@ import (
 // PromoteItem returns the POST PromoteItem handler.
 func PromoteItem(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.PromoteItemReq
 		if server.RequirePresence() {
 			var _b promoteItemReqWire

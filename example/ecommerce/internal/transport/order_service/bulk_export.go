@@ -17,6 +17,9 @@ import (
 // BulkExport returns the POST BulkExport handler.
 func BulkExport(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.ListOrdersReq
 		if server.RequirePresence() {
 			var _b listOrdersReqWire

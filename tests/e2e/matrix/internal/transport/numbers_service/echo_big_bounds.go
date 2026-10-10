@@ -15,6 +15,9 @@ import (
 // EchoBigBounds returns the POST EchoBigBounds handler.
 func EchoBigBounds(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.NumberBigBounds
 		if server.RequirePresence() {
 			var _b numberBigBoundsWire

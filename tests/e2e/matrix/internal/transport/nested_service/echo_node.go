@@ -17,6 +17,9 @@ import (
 // EchoNode returns the POST EchoNode handler.
 func EchoNode(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.Node
 		if server.RequirePresence() {
 			var _b nodeWire

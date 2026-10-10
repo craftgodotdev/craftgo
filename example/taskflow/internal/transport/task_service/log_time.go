@@ -18,6 +18,9 @@ import (
 // LogTime returns the POST LogTime handler.
 func LogTime(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.LogTimeReq
 		if server.RequirePresence() {
 			var _b logTimeReqWire

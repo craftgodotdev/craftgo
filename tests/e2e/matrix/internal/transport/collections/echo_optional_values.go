@@ -15,6 +15,9 @@ import (
 // EchoOptionalValues returns the POST EchoOptionalValues handler.
 func EchoOptionalValues(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.Map_OptionalValue
 		if server.RequirePresence() {
 			var _b mapOptionalValueWire

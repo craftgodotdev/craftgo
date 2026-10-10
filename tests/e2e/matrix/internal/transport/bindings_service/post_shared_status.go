@@ -15,6 +15,9 @@ import (
 // PostSharedStatus returns the POST PostSharedStatus handler.
 func PostSharedStatus(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.CountsPayload
 		if server.RequirePresence() {
 			var _b countsPayloadWire

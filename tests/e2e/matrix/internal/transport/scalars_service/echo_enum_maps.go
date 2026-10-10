@@ -15,6 +15,9 @@ import (
 // EchoEnumMaps returns the POST EchoEnumMaps handler.
 func EchoEnumMaps(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.EnumKeyedMaps
 		if server.RequirePresence() {
 			var _b enumKeyedMapsWire

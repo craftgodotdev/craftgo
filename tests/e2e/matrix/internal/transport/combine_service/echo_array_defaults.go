@@ -15,6 +15,9 @@ import (
 // EchoArrayDefaults returns the POST EchoArrayDefaults handler.
 func EchoArrayDefaults(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.ArrayDefaults
 		req.Methods = []types.PayMethod{types.PayMethodCard, types.PayMethodBank}
 		{

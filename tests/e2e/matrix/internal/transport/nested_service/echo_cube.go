@@ -17,6 +17,9 @@ import (
 // EchoCube returns the POST EchoCube handler.
 func EchoCube(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.Cube
 		if server.RequirePresence() {
 			var _b cubeWire

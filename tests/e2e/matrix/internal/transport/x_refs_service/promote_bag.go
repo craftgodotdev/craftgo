@@ -17,6 +17,9 @@ import (
 // PromoteBag returns the POST PromoteBag handler.
 func PromoteBag(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.XBagPromoteReq
 		if server.RequirePresence() {
 			var _b xBagPromoteReqWire

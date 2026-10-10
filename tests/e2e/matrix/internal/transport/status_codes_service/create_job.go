@@ -17,6 +17,9 @@ import (
 // CreateJob returns the POST CreateJob handler.
 func CreateJob(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.CreateJobReq
 		if server.RequirePresence() {
 			var _b createJobReqWire

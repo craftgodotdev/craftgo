@@ -15,6 +15,9 @@ import (
 // AddUnsigned returns the POST AddUnsigned handler.
 func AddUnsigned(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.UnsignedReq
 		if server.RequirePresence() {
 			var _b unsignedReqWire

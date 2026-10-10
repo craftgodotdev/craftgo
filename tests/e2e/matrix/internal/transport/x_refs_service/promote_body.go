@@ -18,6 +18,9 @@ import (
 // PromoteBody returns the POST PromoteBody handler.
 func PromoteBody(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.XBodyPromoteReq
 		{
 			__d := xshared.XSize(20)

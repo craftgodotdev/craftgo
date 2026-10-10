@@ -17,6 +17,9 @@ import (
 // SignIn returns the POST SignIn handler.
 func SignIn(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req server2.Credentials
 		{
 			__d := server2.ChannelWeb

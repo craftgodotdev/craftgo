@@ -17,6 +17,9 @@ import (
 // EchoMatrix returns the POST EchoMatrix handler.
 func EchoMatrix(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.Matrix
 		if server.RequirePresence() {
 			var _b matrixWire

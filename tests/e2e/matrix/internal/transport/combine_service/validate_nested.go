@@ -17,6 +17,9 @@ import (
 // ValidateNested returns the POST ValidateNested handler.
 func ValidateNested(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.PairsNested
 		if server.RequirePresence() {
 			var _b pairsNestedWire

@@ -18,6 +18,9 @@ import (
 // ArrayBounds returns the POST ArrayBounds handler.
 func ArrayBounds(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.Arr_BoundsBasic
 		if server.RequirePresence() {
 			var _b arrBoundsBasicWire

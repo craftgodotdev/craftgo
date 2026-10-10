@@ -17,6 +17,9 @@ import (
 // MapKeyValue returns the POST MapKeyValue handler.
 func MapKeyValue(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.Map_KeyAndValue
 		if server.RequirePresence() {
 			var _b mapKeyAndValueWire

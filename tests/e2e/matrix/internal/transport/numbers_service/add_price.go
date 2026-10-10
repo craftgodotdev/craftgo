@@ -15,6 +15,9 @@ import (
 // AddPrice returns the POST AddPrice handler.
 func AddPrice(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.PriceReq
 		if server.RequirePresence() {
 			var _b priceReqWire

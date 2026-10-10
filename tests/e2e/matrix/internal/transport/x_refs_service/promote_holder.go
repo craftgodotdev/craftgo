@@ -17,6 +17,9 @@ import (
 // PromoteHolder returns the POST PromoteHolder handler.
 func PromoteHolder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req xshared.XHolder
 		{
 			__d := int32(50)

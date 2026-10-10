@@ -17,6 +17,9 @@ import (
 // EchoTeam returns the POST EchoTeam handler.
 func EchoTeam(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.Team
 		if server.RequirePresence() {
 			var _b teamWire

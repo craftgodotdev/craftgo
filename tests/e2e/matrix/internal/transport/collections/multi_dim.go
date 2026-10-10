@@ -18,6 +18,9 @@ import (
 // MultiDim returns the POST MultiDim handler.
 func MultiDim(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.Arr_Tag2D
 		if server.RequirePresence() {
 			var _b arrTag2dWire

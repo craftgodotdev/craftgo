@@ -18,6 +18,9 @@ import (
 // CreateProjectV2 returns the POST CreateProjectV2 handler.
 func CreateProjectV2(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.CreateProjectV2Req
 		{
 			__d := shared.HexColor("#3b82f6")

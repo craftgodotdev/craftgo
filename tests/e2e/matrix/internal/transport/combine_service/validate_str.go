@@ -17,6 +17,9 @@ import (
 // ValidateStr returns the POST ValidateStr handler.
 func ValidateStr(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.PairsStr
 		if server.RequirePresence() {
 			var _b pairsStrWire

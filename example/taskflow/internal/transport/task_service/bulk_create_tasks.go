@@ -18,6 +18,9 @@ import (
 // BulkCreateTasks returns the POST BulkCreateTasks handler.
 func BulkCreateTasks(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.BulkCreateReq
 		if server.RequirePresence() {
 			var _b bulkCreateReqWire

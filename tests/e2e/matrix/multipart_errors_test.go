@@ -12,9 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// A multipart handler answers a body it cannot parse as a failed validation,
-// 400 with the parser's reason, and a body read past its cap 413, both as JSON
-// {"message": ...}.
+// A multipart handler answers a body of another media type 415, a body it cannot
+// parse as a failed validation, 400 with the parser's reason, and a body read past
+// its cap 413, each as JSON {"message": ...}.
 func TestMultipartParseFailures(t *testing.T) {
 	ts := bootAll(t)
 	capped := bootAll(t, func(srv *server.Server) { srv.SetDefaultMaxBodySize(64) })
@@ -41,8 +41,8 @@ func TestMultipartParseFailures(t *testing.T) {
 	}{
 		{
 			name: "not multipart", url: ts.URL + avatar, contentType: "application/json",
-			body: strings.NewReader(`{}`), status: http.StatusBadRequest,
-			want: "request Content-Type isn't multipart/form-data",
+			body: strings.NewReader(`{}`), status: http.StatusUnsupportedMediaType,
+			want: "unsupported media type",
 		},
 		{
 			name: "no boundary", url: ts.URL + avatar, contentType: "multipart/form-data",

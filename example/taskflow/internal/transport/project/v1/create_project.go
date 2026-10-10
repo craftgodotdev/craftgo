@@ -18,6 +18,9 @@ import (
 // CreateProject returns the POST CreateProject handler.
 func CreateProject(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.CreateProjectReq
 		{
 			__d := shared.HexColor("#3b82f6")

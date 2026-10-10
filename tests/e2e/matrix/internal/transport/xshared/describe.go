@@ -17,6 +17,9 @@ import (
 // Describe returns the POST Describe handler.
 func Describe(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.XOwner
 		if server.RequirePresence() {
 			var _b xOwnerWire

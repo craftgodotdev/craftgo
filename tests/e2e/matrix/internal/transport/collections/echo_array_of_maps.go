@@ -15,6 +15,9 @@ import (
 // EchoArrayOfMaps returns the POST EchoArrayOfMaps handler.
 func EchoArrayOfMaps(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.Map_ArrayOfMaps
 		if server.RequirePresence() {
 			var _b mapArrayOfMapsWire

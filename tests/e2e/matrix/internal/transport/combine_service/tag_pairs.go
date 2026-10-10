@@ -17,6 +17,9 @@ import (
 // TagPairs returns the POST TagPairs handler.
 func TagPairs(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.PairsDoc
 		if err := server.JSON().Decode(r.Body, &req); err != nil {
 			server.WriteValidationError(w, r, err)

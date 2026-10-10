@@ -17,6 +17,9 @@ import (
 // EchoB returns the POST EchoB handler.
 func EchoB(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.B
 		if server.RequirePresence() {
 			var _b bWire

@@ -18,6 +18,9 @@ import (
 // AddComment returns the POST AddComment handler.
 func AddComment(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.AddCommentReq
 		if server.RequirePresence() {
 			var _b addCommentReqWire

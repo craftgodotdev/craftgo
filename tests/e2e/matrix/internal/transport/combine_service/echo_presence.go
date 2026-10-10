@@ -17,6 +17,9 @@ import (
 // EchoPresence returns the POST EchoPresence handler.
 func EchoPresence(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.PresenceMatrix
 		{
 			__d := "d"

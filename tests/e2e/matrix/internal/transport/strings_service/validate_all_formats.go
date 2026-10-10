@@ -17,6 +17,9 @@ import (
 // ValidateAllFormats returns the POST ValidateAllFormats handler.
 func ValidateAllFormats(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.AllFormats
 		if server.RequirePresence() {
 			var _b allFormatsWire
