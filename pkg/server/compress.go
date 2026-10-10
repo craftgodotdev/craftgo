@@ -1,11 +1,13 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
 	"io"
 	"iter"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -196,6 +198,35 @@ func (cw *compressWriter) WriteHeader(code int) {
 }
 
 func (cw *compressWriter) Unwrap() http.ResponseWriter { return cw.ResponseWriter }
+
+// Hijack hands the connection over when the wrapped writer can, after which cw writes nothing;
+// otherwise it fails with http.ErrNotSupported.
+func (cw *compressWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := cw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	c, rw, err := h.Hijack()
+	if err == nil {
+		cw.headerSet, cw.decided, cw.compress = true, true, false
+	}
+	return c, rw, err
+}
+
+// ReadFrom sends src as Write would: compressed through the encoder, or, once the headers rule
+// compression out, plain through the wrapped writer's ReadFrom, sendfile included.
+func (cw *compressWriter) ReadFrom(src io.Reader) (int64, error) {
+	if !cw.headerSet {
+		cw.WriteHeader(http.StatusOK)
+	}
+	if !cw.decided && cw.shouldSkipImmediately() {
+		cw.commitPassthrough()
+	}
+	if rf, ok := cw.ResponseWriter.(io.ReaderFrom); ok && cw.decided && !cw.compress {
+		return rf.ReadFrom(src)
+	}
+	return io.Copy(writerOnly{cw}, src)
+}
 
 // Committed reports whether the status is fixed, even while the body is still buffered.
 func (cw *compressWriter) Committed() bool { return cw.headerSet }

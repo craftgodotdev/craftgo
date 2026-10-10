@@ -52,6 +52,8 @@ Out of the box:
 - `CORSPermissive()` / `CORSStrict(origin)` - build a `CORSOptions` preset, then attach with `srv.SetCORS(opts)` - preflight + headers
 - `Compress(opts)` - gzip / deflate response compression; a partial (206) response, whose `Content-Range` counts the plain bytes, a status without a body, a HEAD response and an already encoded one go out as they are, and a body without a `Content-Type` keeps the one `net/http` would sniff from its plain bytes
 
+The writers `Recovery`, `AccessLog` and `Compress` hand a handler keep what `net/http`'s offers: `http.Hijacker`, so a websocket upgrade takes the connection, `http.Flusher`, and `io.ReaderFrom`, so `http.ServeFile` still sends with `sendfile`. Each unwraps for `http.ResponseController` too.
+
 You wire them in `main.go`:
 
 ```go

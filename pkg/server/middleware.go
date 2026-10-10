@@ -1,8 +1,11 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"io"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"time"
@@ -49,6 +52,33 @@ func (w *trackingWriter) Flush() {
 		f.Flush()
 	}
 }
+
+// Hijack hands the connection over when the wrapped writer can, the response then committed as
+// switched protocols; otherwise it fails with http.ErrNotSupported.
+func (w *trackingWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	c, rw, err := h.Hijack()
+	if err == nil {
+		w.commit(http.StatusSwitchingProtocols)
+	}
+	return c, rw, err
+}
+
+// ReadFrom copies src to the response through the wrapped writer's ReadFrom when it has one, as
+// net/http's response does to send a file with sendfile.
+func (w *trackingWriter) ReadFrom(src io.Reader) (int64, error) {
+	w.commit(http.StatusOK)
+	if rf, ok := w.ResponseWriter.(io.ReaderFrom); ok {
+		return rf.ReadFrom(src)
+	}
+	return io.Copy(writerOnly{w.ResponseWriter}, src)
+}
+
+// writerOnly hides every method of a writer but Write, so io.Copy writes through it.
+type writerOnly struct{ io.Writer }
 
 func (w *trackingWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
