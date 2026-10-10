@@ -738,7 +738,6 @@ project/
 │   ├── types/<pkg>/                              GEN every run
 │   │   ├── types.go
 │   │   ├── validate.go
-│   │   ├── fill.go
 │   │   ├── enums.go
 │   │   └── errors.go
 │   ├── events/<pkg>/                             GEN every run (when the package declares an event)

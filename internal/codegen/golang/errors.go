@@ -18,31 +18,22 @@ import (
 // generateErrors writes outDir/<pkg>/errors.go, an error type with its code
 // const and methods per error; a package without errors writes nothing.
 func generateErrors(pkg *semantic.Package, outDir string, r *projectResolver) error {
-	return generateErrorsFilling(pkg, outDir, r, nil)
-}
-
-// generateErrorsFilling is [generateErrors] given the project's fill set; nil
-// weighs the project anew.
-func generateErrorsFilling(pkg *semantic.Package, outDir string, r *projectResolver, fills *fillSet) error {
 	if len(pkg.Errors) == 0 {
 		return nil
 	}
 	r = resolverFor(pkg, r)
-	if fills == nil {
-		fills = fillSetOf(r.Project())
-	}
-	return writeGoSource(filepath.Join(outDir, pkg.Name, "errors.go"), buildErrorsGo(pkg, r, fills))
+	return writeGoSource(filepath.Join(outDir, pkg.Name, "errors.go"), buildErrorsGo(pkg, r))
 }
 
 // buildErrorsGo returns the unformatted source of pkg's errors.go, errors in
 // name order.
-func buildErrorsGo(pkg *semantic.Package, r *projectResolver, fills *fillSet) string {
+func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
 	imports := newImportSet(r.Module, r, goImport{}, errorsNames)
 	// Every error type's MarshalJSON encodes through encoding/json.
 	imports.use("encoding/json")
 	var decls []string
 	for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
-		decls = append(decls, renderError(pkg, pkg.Errors[name], r, imports, fills))
+		decls = append(decls, renderError(pkg, pkg.Errors[name], r, imports))
 	}
 	parts := []string{"package " + pkg.Name + "\n", imports.decl()}
 	return strings.Join(append(parts, decls...), "\n")
@@ -51,20 +42,18 @@ func buildErrorsGo(pkg *semantic.Package, r *projectResolver, fills *fillSet) st
 // errorTemplateData is the errors.tmpl input for one error.
 type errorTemplateData struct {
 	// Doc heads the error type's doc comment ([docHead]).
-	Doc           []string
-	TypeName      string
-	BodyName      string
-	ConstName     string
-	CtorName      string
-	QuotedCode    string
-	QuotedMessage string
-	Category      string
-	DSLName       string
-	Status        int
-	HasBody       bool
-	HasJSONMember bool
-	// FillsBody says the body's FillEmpty has work, which MarshalJSON runs first.
-	FillsBody          bool
+	Doc                []string
+	TypeName           string
+	BodyName           string
+	ConstName          string
+	CtorName           string
+	QuotedCode         string
+	QuotedMessage      string
+	Category           string
+	DSLName            string
+	Status             int
+	HasBody            bool
+	HasJSONMember      bool
 	BodyInterior       string
 	HasResponseHeaders bool
 	Headers            []paramBinding
@@ -72,7 +61,7 @@ type errorTemplateData struct {
 }
 
 // renderError renders errors.tmpl for ed, adding the packages it names to imports.
-func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver, imports *importSet, fills *fillSet) string {
+func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver, imports *importSet) string {
 	headers, cookies, needsStrconv := errorResponseBindings(ed, pkg, r)
 	if len(headers)+len(cookies) > 0 {
 		imports.use("net/http")
@@ -97,7 +86,6 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver, i
 		Cookies:            cookies,
 		HasBody:            len(ast.Members(ed.Body)) > 0,
 		HasJSONMember:      semantic.ErrorHasJSONMember(ed, r.Resolver),
-		FillsBody:          fills.errs[ed],
 	}
 	var buf bytes.Buffer
 	if err := errorsTemplate.Execute(&buf, data); err != nil {

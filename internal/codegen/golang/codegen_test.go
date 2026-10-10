@@ -587,8 +587,8 @@ error BadRequest Validation {
 	if !strings.Contains(src, "func NewValidationErr(body ValidationBody) *ValidationErr") {
 		t.Errorf("constructor must take a body struct:\n%s", src)
 	}
-	if !strings.Contains(norm, "func (e *ValidationErr) MarshalJSON() ([]byte, error) { body := e.ValidationBody body.FillEmpty(0) return json.Marshal(body) }") {
-		t.Errorf("an error with a body must marshal the body alone, from a filled copy:\n%s", src)
+	if !strings.Contains(norm, "func (e *ValidationErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.ValidationBody) }") {
+		t.Errorf("an error with a body must marshal the body alone, as it is:\n%s", src)
 	}
 }
 

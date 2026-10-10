@@ -22,7 +22,6 @@ internal/
 ├── types/<pkg>/                 REGEN - one folder per DSL package
 │   ├── types.go                 structs for every type
 │   ├── validate.go              Validate() method per type
-│   ├── fill.go                  FillEmpty() per type that can hold a required list or map
 │   ├── enums.go                 enum types and const values
 │   └── errors.go                typed error values
 ├── transport/<svc>/             REGEN - one folder per service
@@ -76,10 +75,6 @@ A Go struct per `type`, with field names mapped to Go conventions (`user_id` →
 
 A `Validate() error` method per type. Every validator decorator becomes a plain `if` statement, with no runtime struct-tag parsing. Reflection enters only through the generated `validateValue`, which a generic type's `Validate` calls for a type-parameter value whose type has no `Validate` of its own; it walks that value's elements with `reflect`. Regexes (`@pattern`, regex-backed `@format`) compile once into package-level vars. `Validate()` is fail-fast - it returns the first violation. Nested struct fields, generic instances, map values/keys, and embedded mixins all dispatch recursively. Each dispatch wraps the inner error as `<field>: %w`, so the message names the path (`home: rooms: furniture: name: length less than 1`) and `errors.Is` / `errors.As` still reach the inner error; a mixin's fields keep their bare names.
 
-### `types/<pkg>/fill.go` (regen)
-
-A `FillEmpty(depth int) (changed, stopped bool)` method per struct - a type or an error's body - that holds a required list, map or `bytes`, directly or in a value below it: each one left nil is set empty, so it encodes as `[]`, `{}` or `""` as the document says. An optional one stays nil, left out; a `@nullable` one stays nil, `null`. It goes through elements, map values, nested and optional structs and mixins; a type-parameter value is reached when its type has the method. It writes to no map: where a map value changes, a copy holding it takes the map's place, so a value already filled is only read. `server.WriteResponse` calls it on the response, in the value itself, and an error type's `MarshalJSON` on a copy of its body's top level, whose lists and values below are the error's own, filled in place. Past 10000 values deep, as deep as `encoding/json` decodes, it stops at once: only a cycle, which the encoder then refuses, or data no Go client could decode goes there. A package with no such struct gets no `fill.go`.
-
 ### `types/<pkg>/enums.go` + `errors.go` (regen)
 
 Enum types and their constants (`TodoStatusOpen`, …) — membership validation lives in `validate.go`, not here; typed error values with their HTTP category, code, and any custom body fields.
@@ -92,7 +87,7 @@ One `func <Method>(svcCtx) http.HandlerFunc` per method. The handler:
 2. Decodes the request (JSON body, or binds `@path` / `@query` / `@header` / `@cookie` / `@form` fields with the right casts),
 3. Calls `req.Validate()`,
 4. Dispatches to your `service` logic,
-5. Encodes the response (and writes any `@status`, response headers, or cookies).
+5. Encodes the response as the logic returns it (and writes any `@status`, response headers, or cookies). Nothing fills a nil list or map: it goes out as `null`, so logic returns `[]` or `{}` for a required one that is empty.
 
 Raw sides change who runs which steps. A `request` / `response` block on a raw side still drives the OpenAPI document and the generated types; the handler just never touches it:
 

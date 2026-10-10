@@ -17,15 +17,13 @@ func Generate(proj *semantic.Project, protos *protodesign.Set, cfg *config.Confi
 		resolvers[name] = buildProjectResolver(proj, cfg, name)
 	}
 	typesDir := outputsOf(cfg).types.at(projectRoot)
-	fills := fillSetOf(proj)
 	for _, name := range names {
 		p, r := proj.Packages[name], resolvers[name]
 		if err := runSteps(name, []genStep{
 			{"types", func() error { return generateTypes(p, typesDir, r) }},
 			{"enums", func() error { return generateEnums(p, typesDir) }},
-			{"errors", func() error { return generateErrorsFilling(p, typesDir, r, fills) }},
+			{"errors", func() error { return generateErrors(p, typesDir, r) }},
 			{"validators", func() error { return generateValidators(p, typesDir, r) }},
-			{"fill", func() error { return generateFill(p, typesDir, fills) }},
 		}); err != nil {
 			return err
 		}

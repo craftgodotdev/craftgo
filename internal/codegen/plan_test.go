@@ -112,6 +112,27 @@ func TestScaffoldsSurviveTheSweep(t *testing.T) {
 	}
 }
 
+// A fill.go an earlier craftgo wrote beside a package's types carries the
+// generated header and no run writes it any more, so the sweep deletes it.
+func TestTheSweepTakesAStaleFillFile(t *testing.T) {
+	dir := t.TempDir()
+	cfg := planConfig()
+	proj := analyzeProject(t, planSrc...)
+	stale := filepath.Join(dir, "internal", "types", "shop", "fill.go")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte(golang.GeneratedHeader+"\n\npackage shop\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Generate(Inputs{Design: proj}, cfg, dir); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("the stale fill.go must be swept: %v", err)
+	}
+}
+
 // The sweep never walks the project root, even when an output key resolves
 // to it.
 func TestTheProjectRootIsNeverSwept(t *testing.T) {
