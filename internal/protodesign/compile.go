@@ -35,9 +35,13 @@ func Load(ctx context.Context, designRoot string, opts Options) (*Set, error) {
 		return nil, err
 	}
 	req := buildRequest(files, names, parameter(names, opts))
+	problems := thirdPartyProblems(req, names, opts)
 	plugin, err := protogen.Options{}.New(req)
 	if err != nil {
-		return nil, fmt.Errorf("proto errors:\n  %s", goPackageProblem(req, names, opts, err))
+		problems = append(problems, goPackageProblem(req, names, opts, err))
+	}
+	if len(problems) > 0 {
+		return nil, fmt.Errorf("proto errors:\n  %s", strings.Join(problems, "\n  "))
 	}
 	set := &Set{opts: opts, names: names, plugin: plugin, request: req}
 	for _, f := range plugin.Files {

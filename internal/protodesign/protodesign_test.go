@@ -347,17 +347,67 @@ func TestGoPackageProblemsNameTheirFiles(t *testing.T) {
 	}
 }
 
+// With the plugins on, a go_package inside the module names the package and its path is ignored.
 func TestPBEnabledKeepsGoPackageName(t *testing.T) {
-	root := write(t, map[string]string{"a/a.proto": `syntax = "proto3";
+	for _, goPackage := range []string{module + "/gen/a;apb", ";apb", "apb;apb", "./a;apb"} {
+		root := write(t, map[string]string{"a/a.proto": `syntax = "proto3";
 package a;
-option go_package = "github.com/elsewhere/a;apb";
+option go_package = "` + goPackage + `";
 service A { rpc Do(R) returns (R); }
 message R {}
 `})
-	set := load(t, root, opts())
-	a := service(t, set, "a.A")
-	if a.PBImport != module+"/internal/pb/a" || a.Package != "apb" {
-		t.Errorf("service = %+v", *a)
+		set := load(t, root, opts())
+		a := service(t, set, "a.A")
+		if a.PBImport != module+"/internal/pb/a" || a.Package != "apb" {
+			t.Errorf("go_package %q: service = %+v", goPackage, *a)
+		}
+	}
+}
+
+// A third-party proto in the design folder is refused while the plugins run: its generated copy
+// would register the file a second time and panic at startup. With output.pb "-" a go_package
+// elsewhere is the design's own pipeline's.
+func TestThirdPartyProtosInTheDesignAreRefused(t *testing.T) {
+	root := write(t, map[string]string{
+		"google/rpc/status.proto": `syntax = "proto3";
+package google.rpc;
+option go_package = "google.golang.org/genproto/googleapis/rpc/status;status";
+message Status { int32 code = 1; }
+`,
+		"google/protobuf/empty.proto": "syntax = \"proto3\";\npackage google.protobuf;\noption go_package = \"google.golang.org/protobuf/types/known/emptypb\";\nmessage Empty {}\n",
+		"vendor/v.proto":              "syntax = \"proto3\";\npackage v;\noption go_package = \"github.com/elsewhere/v;v\";\nmessage V {}\n",
+		"api/api.proto": `syntax = "proto3";
+package api;
+import "google/rpc/status.proto";
+import "google/protobuf/empty.proto";
+import "vendor/v.proto";
+message Job { google.rpc.Status error = 1; v.V v = 2; }
+service Jobs { rpc Get(Job) returns (google.protobuf.Empty); }
+`,
+	})
+	_, err := Load(context.Background(), root, opts())
+	if err == nil {
+		t.Fatal("third-party protos were accepted")
+	}
+	for _, want := range []string{
+		"google/rpc/status.proto is a proto whose Go code the craftgo runtime links in already",
+		"google/protobuf/empty.proto copies a well-known type",
+		"vendor/v.proto has go_package github.com/elsewhere/v, outside module example.com/app",
+		"move it under a proto.includes root",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("missing %q in:\n%s", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "api/api.proto") {
+		t.Errorf("the design's own proto is refused:\n%s", err)
+	}
+
+	o := opts()
+	o.PBDir = ""
+	foreign := write(t, map[string]string{"vendor/v.proto": "syntax = \"proto3\";\npackage v;\noption go_package = \"github.com/elsewhere/v;v\";\nmessage V {}\n"})
+	if _, err := Load(context.Background(), foreign, o); err != nil {
+		t.Errorf("with output.pb \"-\" a go_package elsewhere is refused: %v", err)
 	}
 }
 
