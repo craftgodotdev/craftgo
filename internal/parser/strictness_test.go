@@ -85,6 +85,18 @@ func TestPathSlashes(t *testing.T) {
 	if !strings.Contains(firstMsg(msgs), "empty path segment") {
 		t.Errorf("double slash: diagnostics = %v", msgs)
 	}
+	// A `//` right after a segment is one, reported where it starts, and the
+	// route goes on after it: no comment swallows the rest of the line.
+	for _, body := range []string{"/users//{id}\n\t{\n\t\tresponse A\n\t}", "/users//{id} { response A }"} {
+		p := New("t.craftgo", "package p\nservice S {\n\tget X "+body+"\n}\n")
+		f := p.Parse()
+		if d := p.Diagnostics(); len(d) != 1 || d[0].Msg != "empty path segment ('//')" || d[0].Pos.Line != 3 || d[0].Pos.Column != 14 {
+			t.Errorf("%q: diagnostics = %v, want one at 3:14", body, d)
+		}
+		if got := route.PathString(f.Decls[0].(*ast.ServiceDecl).Methods()[0].Path); got != "/users/{id}" {
+			t.Errorf("%q: path = %q, want /users/{id}", body, got)
+		}
+	}
 	f, msgs = parseWithErrors(t, "package p\nservice S {\n\tget Root / { response A }\n}\n")
 	if len(msgs) != 0 {
 		t.Fatalf("root path: unexpected diagnostics %v", msgs)

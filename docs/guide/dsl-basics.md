@@ -165,7 +165,7 @@ service UserService {
 }
 ```
 
-Method form: `<verb> <Name> [<path>] { request <Type>  response <Type> }`; both clauses are optional, and without a path the route is the method name in kebab case (`get NoPath { ... }` serves `/no-path`).
+Method form: `<verb> <Name> [<path>] { request <Type>  response <Type> }`; both clauses are optional, and without a path the route is the method name in kebab case (`get NoPath { ... }` serves `/no-path`). A `//` in a path is a parse error (`empty path segment ('//')`), even where a comment was meant, as in `/users// list`: set the comment off by a space. A path ending in `/` is one too, the root path `/` aside.
 
 Each method writes `<name>.go` holding `<Name>Service` and its constructor `New<Name>Service` into its service's directory, so the methods of one directory may not write one file (`GetURL` beside `GetUrl`) or one Go name (`Order` beside `NewOrder`), and no method is named `Logger`, the `log.Logger` every logic type embeds: `service/method-name-clash`. Nor may the file be one the go command sets apart: under the default `snake` file case `RunTest` writes `run_test.go`, built only for tests, and `ListWindows` writes `list_windows.go`, built only on Windows (`service/method-file-name`).
 

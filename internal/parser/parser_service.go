@@ -187,7 +187,7 @@ func (p *Parser) parsePath() *ast.Path {
 	pos := p.peek().Pos
 	path := &ast.Path{Pos: pos}
 	for p.peek().Kind == lexer.Slash {
-		p.advance()
+		slash := p.advance()
 		segPos := p.peek().Pos
 		// Only `{ word }` is a parameter; no valid method body has that shape.
 		if p.peek().Kind == lexer.LBrace &&
@@ -206,7 +206,7 @@ func (p *Parser) parsePath() *ast.Path {
 		// `//` and a trailing `/` are errors, since a mux pattern ending in `/`
 		// matches a whole subtree; a lone `/` is the root path.
 		if p.peek().Kind == lexer.Slash {
-			p.errorf(segPos, "empty path segment ('//')")
+			p.errorf(slash.Pos, "empty path segment ('//')")
 			continue
 		}
 		if len(path.Segments) > 0 {

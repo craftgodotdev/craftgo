@@ -85,6 +85,11 @@ type Lexer struct {
 	// allComments records every comment, including those a blank line
 	// detached from any token.
 	allComments []*Comment
+
+	// routeEnd is the offset right after the last route text lexed: a path
+	// word, a `{param}` right after a `/`, or a `/` right after either. A `//`
+	// there continues the route instead of starting a comment.
+	routeEnd int
 }
 
 // New returns a Lexer over src. filename goes into every Position and may be
@@ -95,6 +100,7 @@ func New(filename, src string) *Lexer {
 		filename: filename,
 		line:     1,
 		column:   1,
+		routeEnd: -1,
 	}
 	if strings.HasPrefix(src, byteOrderMark) {
 		l.offset = len(byteOrderMark)
@@ -151,8 +157,30 @@ func (l *Lexer) Next() Token {
 		tok.Doc = l.pendingDoc
 		l.pendingDoc = nil
 	}
+	if l.endsRoute(tok, pos) {
+		l.routeEnd = l.offset
+	}
 	l.consumeTrailingComment()
 	return tok
+}
+
+// endsRoute reports whether tok, lexed at pos and ending at the cursor, is
+// route text: a path word, the `}` of a `{param}` right after a `/`, or a `/`
+// right after route text.
+func (l *Lexer) endsRoute(tok Token, pos Position) bool {
+	switch tok.Kind {
+	case PathWord:
+		return true
+	case Slash:
+		return pos.Offset == l.routeEnd
+	case RBrace:
+		i := pos.Offset
+		for i > 0 && (isIdentStart(rune(l.src[i-1])) || isDigit(rune(l.src[i-1]))) {
+			i--
+		}
+		return i < pos.Offset && i >= 2 && l.src[i-1] == '{' && l.src[i-2] == '/'
+	}
+	return false
 }
 
 // consumeTrailingComment consumes and records a `//` comment later on the
@@ -173,9 +201,10 @@ func (l *Lexer) consumeTrailingComment() {
 	l.lineComment(CommentTrailing)
 }
 
-// atLineComment reports whether a `//` comment starts at the cursor.
+// atLineComment reports whether a `//` comment starts at the cursor: a `//`
+// right after route text is an empty path segment instead.
 func (l *Lexer) atLineComment() bool {
-	return strings.HasPrefix(l.src[l.offset:], "//")
+	return strings.HasPrefix(l.src[l.offset:], "//") && l.offset != l.routeEnd
 }
 
 // lineComment consumes the `//` comment at the cursor up to the end of its

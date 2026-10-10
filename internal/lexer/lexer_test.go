@@ -600,3 +600,25 @@ func TestPathWord(t *testing.T) {
 		t.Errorf("tokens = %v, want %v", got, want)
 	}
 }
+
+// A `//` right after route text is two slashes, an empty segment the parser
+// reports; set off by a space it starts a comment.
+func TestDoubleSlashInARouteIsNoComment(t *testing.T) {
+	for src, want := range map[string]string{
+		"/users//{id}":   "/ PathWord / / { Ident } EOF",
+		"/a/{b}//c":      "/ PathWord / { Ident } / / PathWord EOF",
+		"/users///x":     "/ PathWord / / / PathWord EOF",
+		"/users // c\nx": "/ PathWord Ident EOF",
+		"x// c\ny":       "Ident Ident EOF",
+		"//{id}":         "EOF",
+	} {
+		l := New("", src)
+		var got []string
+		for _, tok := range l.Tokenize() {
+			got = append(got, tok.Kind.String())
+		}
+		if strings.Join(got, " ") != want {
+			t.Errorf("%q: tokens = %v, want %s", src, got, want)
+		}
+	}
+}
