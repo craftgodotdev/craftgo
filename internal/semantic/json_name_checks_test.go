@@ -38,7 +38,9 @@ func TestAMixinFieldMayNotShareAJSONKey(t *testing.T) {
 }
 
 // A `@json` key is accepted exactly when encoding/json writes the field under
-// it, rather than ignoring the tag and writing the Go field name.
+// it, rather than ignoring the tag and writing the Go field name. The rule is
+// the v1 engine's, which Go 1.26 builds: the engine Go 1.27 runs encoding/json
+// on takes more keys, and a design must mean the same on every toolchain.
 func TestJSONKeyIsOneEncodingJSONTakes(t *testing.T) {
 	emits := func(key string) bool {
 		typ := reflect.StructOf([]reflect.StructField{{Name: "F", Type: reflect.TypeFor[string](), Tag: reflect.StructTag("json:" + strconv.Quote(key))}})
@@ -46,15 +48,23 @@ func TestJSONKeyIsOneEncodingJSONTakes(t *testing.T) {
 		want, _ := json.Marshal(map[string]string{key: ""})
 		return err == nil && string(out) == string(want)
 	}
-	for _, key := range []string{
-		"store_id", "it's", "has space", "a,b", `a"b`, `a\b`, "a`b", "€", "°", "😀", "日本", "é",
-		"x-y.z", "a\tb", "", "#hash", "!#$%&()*+-./:;<=>?@[]^_{|}~", "a\u2028b",
+	for _, c := range []struct {
+		key    string
+		writes bool
+	}{
+		{"store_id", true}, {"it's", false}, {"has space", true}, {"a,b", false}, {`a"b`, false},
+		{`a\b`, false}, {"a`b", false}, {"€", false}, {"°", false}, {"😀", false}, {"日本", true},
+		{"é", true}, {"x-y.z", true}, {"a\tb", false}, {"", false}, {"#hash", true},
+		{"!#$%&()*+-./:;<=>?@[]^_{|}~", true}, {"a\u2028b", false},
 	} {
-		lit := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\t", `\t`).Replace(key)
+		if jsonV1Engine && emits(c.key) != c.writes {
+			t.Errorf("@json(%q): encoding/json writes the key: %v, want %v", c.key, emits(c.key), c.writes)
+		}
+		lit := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\t", `\t`).Replace(c.key)
 		src := "type Order { a string @json(\"" + lit + "\") }"
 		_, diags := Analyze(parseFiles(t, src))
-		if refused := findCode(diags, CodeDecoratorArgValue) != nil; refused == emits(key) {
-			t.Errorf("@json(%q): refused %v, but encoding/json writes the key: %v", key, refused, emits(key))
+		if refused := findCode(diags, CodeDecoratorArgValue) != nil; refused == c.writes {
+			t.Errorf("@json(%q): refused %v, but encoding/json writes the key: %v", c.key, refused, c.writes)
 		}
 	}
 }
