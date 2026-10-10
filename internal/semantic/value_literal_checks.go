@@ -13,7 +13,7 @@ import (
 // noDefault gives, by primitive kind, why `@default` cannot target a value
 // of it.
 var noDefault = map[prims.Kind]string{
-	prims.Bytes:    "a bytes value has no unambiguous literal form (Go []byte vs OpenAPI base64 `format: byte`)",
+	prims.Bytes:    "a bytes value has no unambiguous literal form (Go []byte vs OpenAPI base64 text)",
 	prims.File:     "a file upload has no literal default form",
 	prims.DateTime: `a fixed timestamp is rarely the default meant, and "now" is the handler's to decide`,
 }
