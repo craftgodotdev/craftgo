@@ -299,12 +299,16 @@ func (j *JetStream) CanDisposition(d events.Disposition) bool {
 // Publish sends one message and waits for the stream to store it. A ctx
 // already done sends nothing; ending it later does not end the wait, which
 // [WithPublishAckTimeout] bounds and [JetStream.Close] ends with [ErrClosed].
+// A message NATS cannot carry as written fails with [ErrNotCarried].
 func (j *JetStream) Publish(ctx context.Context, msg *events.Message) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("nats: publish %s: %w", msg.Event, err)
 	}
 	if j.closeCtx.Err() != nil {
 		return fmt.Errorf("nats: publish %s: %w", msg.Event, ErrClosed)
+	}
+	if err := carried(msg); err != nil {
+		return fmt.Errorf("nats: publish %s: %w", msg.Event, err)
 	}
 	waitCtx, cancel := j.ackContext(ctx)
 	defer cancel()
@@ -332,13 +336,18 @@ func (j *JetStream) ackContext(ctx context.Context) (context.Context, context.Ca
 
 // PublishBatch publishes the whole batch, then waits for every
 // acknowledgement; the error names each message the stream did not confirm.
-// ctx and Close act as on [JetStream.Publish].
+// ctx and Close act as on [JetStream.Publish]. A message NATS cannot carry as
+// written refuses the batch before anything is sent, with an
+// [*events.EnvelopeError] wrapping [ErrNotCarried].
 func (j *JetStream) PublishBatch(ctx context.Context, msgs []*events.Message) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("nats: publish batch of %d: %w", len(msgs), err)
 	}
 	if j.closeCtx.Err() != nil {
 		return fmt.Errorf("nats: publish batch of %d: %w", len(msgs), ErrClosed)
+	}
+	if err := carriedAll(msgs); err != nil {
+		return err
 	}
 
 	futures := make([]jetstream.PubAckFuture, 0, len(msgs))

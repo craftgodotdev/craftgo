@@ -14,6 +14,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -80,20 +83,29 @@ func New(conn *nats.Conn, opts ...Option) *Transport {
 }
 
 // Publish sends one message. A nil error means it reached the connection's
-// buffer, not that a subscriber received it. After [Transport.Close] it
-// returns [ErrClosed].
+// buffer, not that a subscriber received it. A message NATS cannot carry as
+// written fails with [ErrNotCarried]; after [Transport.Close] it returns
+// [ErrClosed].
 func (t *Transport) Publish(_ context.Context, msg *events.Message) error {
 	if t.isClosed() {
 		return fmt.Errorf("nats: publish %s: %w", msg.Event, ErrClosed)
 	}
+	if err := carried(msg); err != nil {
+		return fmt.Errorf("nats: publish %s: %w", msg.Event, err)
+	}
 	return t.conn.PublishMsg(t.encode(msg))
 }
 
-// PublishBatch sends the whole batch, then flushes once. After
-// [Transport.Close] it returns [ErrClosed].
+// PublishBatch sends the whole batch, then flushes once. A message NATS cannot
+// carry as written refuses the batch before anything is sent, with an
+// [*events.EnvelopeError] wrapping [ErrNotCarried]. After [Transport.Close] it
+// returns [ErrClosed].
 func (t *Transport) PublishBatch(ctx context.Context, msgs []*events.Message) error {
 	if t.isClosed() {
 		return fmt.Errorf("nats: publish batch of %d: %w", len(msgs), ErrClosed)
+	}
+	if err := carriedAll(msgs); err != nil {
+		return err
 	}
 	for i, msg := range msgs {
 		if err := t.conn.PublishMsg(t.encode(msg)); err != nil {
@@ -137,6 +149,74 @@ func encodeTo(subject string, msg *events.Message) *nats.Msg {
 		out.Header.Set(HeaderDedupID, msg.DedupID)
 	}
 	return out
+}
+
+// ErrNotCarried is what a publish fails with, before anything is sent, when NATS cannot
+// carry the message as written: a metadata key that is no NATS header name, or a key,
+// dedup ID or metadata value that NATS would change on the way. Memory and Kafka carry
+// each of these as it is.
+var ErrNotCarried = errors.New("nats: cannot carry the message as written")
+
+// headerNameRejected is the printable ASCII a header name may not hold; nats.go refuses
+// to send a header name holding one, or anything outside printable ASCII.
+const headerNameRejected = `"(),/:;<=>?@[\]{}`
+
+// carried returns why NATS cannot carry msg as written, wrapping [ErrNotCarried], or nil.
+func carried(msg *events.Message) error {
+	if changed(msg.Key) {
+		return valueNotCarried("the key", msg.Key)
+	}
+	if changed(msg.DedupID) {
+		return valueNotCarried("the dedup ID", msg.DedupID)
+	}
+	for _, k := range slices.Sorted(maps.Keys(msg.Metadata)) {
+		if k == HeaderKey || k == HeaderDedupID {
+			continue
+		}
+		if !headerName(k) {
+			return fmt.Errorf("%w: metadata key %q is no NATS header name, which is printable ASCII without spaces or any of %s", ErrNotCarried, k, headerNameRejected)
+		}
+		if v := msg.Metadata[k]; changed(v) {
+			return valueNotCarried(fmt.Sprintf("metadata %q", k), v)
+		}
+	}
+	return nil
+}
+
+// carriedAll refuses msgs, a batch, for its first message NATS cannot carry as written.
+func carriedAll(msgs []*events.Message) error {
+	for i, msg := range msgs {
+		if err := carried(msg); err != nil {
+			return &events.EnvelopeError{Index: i, Event: msg.Event, Err: err}
+		}
+	}
+	return nil
+}
+
+func valueNotCarried(what, v string) error {
+	return fmt.Errorf("%w: %s %q would not arrive as written - NATS trims the spaces and tabs around a header value and turns a line break into a space", ErrNotCarried, what, v)
+}
+
+// changed reports whether nats.go changes v, a header value, on the wire.
+func changed(v string) bool {
+	if strings.ContainsAny(v, "\r\n") {
+		return true
+	}
+	blank := func(c byte) bool { return c == ' ' || c == '\t' }
+	return v != "" && (blank(v[0]) || blank(v[len(v)-1]))
+}
+
+// headerName reports whether nats.go sends k as a header name.
+func headerName(k string) bool {
+	if k == "" {
+		return false
+	}
+	for i := 0; i < len(k); i++ {
+		if c := k[i]; c < '!' || c > '~' || strings.IndexByte(headerNameRejected, c) >= 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // HeaderKey carries [events.Message.Key] across the wire.
