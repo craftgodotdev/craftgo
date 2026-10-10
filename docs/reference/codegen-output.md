@@ -138,7 +138,7 @@ An RPC gets the same stub from the same template, with the pb types in the signa
 
 ### `pb/<dir>/` (plugin)
 
-The code `protoc-gen-go` and `protoc-gen-go-grpc` write for every `.proto` under the design folder, run by `craftgo gen` through `go tool`. The directory mirrors the proto's; the headers are the plugins' own. The sweep deletes a file here only in a directory a design proto writes into, when its header names as its source a proto no `proto.includes` root holds; a design with no proto sweeps nothing here. `output.pb: "-"` runs no plugin.
+The code `protoc-gen-go` and `protoc-gen-go-grpc` write for every `.proto` under the design folder, run by `craftgo gen` through `go tool`. The directory mirrors the proto's; the headers are the plugins' own, naming craftgo as the compiler (`protoc v0.0.0-craftgo`). The sweep deletes a file here only where the plugins write the code of the proto its header names as the source, when no `proto.includes` root holds that proto - and, in a directory no design proto writes into any more, only a file that header marks as craftgo's. A design with no proto sweeps nothing here. `output.pb: "-"` runs no plugin.
 
 ### `grpc/<svc>/` (regen)
 

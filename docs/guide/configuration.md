@@ -231,7 +231,7 @@ The OpenAPI document, `wiring.go` and `grpc.go`, and `middlewares.go` are swept 
 
 The sweep follows a link to a directory as long as it stays inside the project root - an output directory may be one - and never one that leads out of it. A file the run wrote is never taken for a stale one under another spelling: on a file system that folds case, as macOS and Windows do by default, a `@group` renamed in case only keeps its old spelling on disk, and the files the run wrote there stay.
 
-Under `output.pb` a plugin's header is not enough, since your own protoc output may sit there too: the sweep takes a file only from a directory a design proto writes into, and only when its header names as its source a proto no `proto.includes` root holds. A design with no proto sweeps nothing there, so the pb code of a project's last proto stays until you delete it.
+Under `output.pb` a plugin's header is not enough, since your own protoc output may sit there too: the sweep takes a file only where the plugins write the code of the proto its header names as the source, and only when no `proto.includes` root holds that proto. In a directory a design proto writes into, that is all. In one no design proto writes into any more - its protos moved or deleted - the header must also name craftgo as the compiler, `protoc v0.0.0-craftgo`, which is what craftgo has the plugins print: protoc's and buf's output there stays. A design with no proto sweeps nothing there, so the pb code of a project's last proto stays until you delete it.
 
 Three rules follow, and all three are load-bearing:
 

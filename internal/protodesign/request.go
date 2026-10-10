@@ -12,11 +12,18 @@ import (
 	"google.golang.org/protobuf/types/pluginpb"
 )
 
+// compiler is the compiler version the plugins print in every pb header,
+// `protoc v0.0.0-craftgo`: the same on every machine, and what tells the code
+// craftgo had the plugins write from protoc's or buf's.
+const compiler = "v0.0.0-craftgo"
+
 // buildRequest returns the request protoc would hand a plugin for names, with
-// every imported file once, deps first. compiler_version stays unset, so the pb
-// headers read `protoc (unknown)` on every machine.
+// every imported file once, deps first, naming craftgo as the [compiler].
 func buildRequest(files linker.Files, names []string, parameter string) *pluginpb.CodeGeneratorRequest {
-	req := &pluginpb.CodeGeneratorRequest{FileToGenerate: names}
+	req := &pluginpb.CodeGeneratorRequest{
+		FileToGenerate:  names,
+		CompilerVersion: &pluginpb.Version{Major: proto.Int32(0), Minor: proto.Int32(0), Patch: proto.Int32(0), Suffix: proto.String("craftgo")},
+	}
 	if parameter != "" {
 		req.Parameter = proto.String(parameter)
 	}

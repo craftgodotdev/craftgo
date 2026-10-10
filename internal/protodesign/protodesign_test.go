@@ -182,8 +182,8 @@ func TestRequestIsTopologicalAndMapped(t *testing.T) {
 	if !reflect.DeepEqual(req.FileToGenerate, set.names) {
 		t.Errorf("file_to_generate = %v", req.FileToGenerate)
 	}
-	if req.CompilerVersion != nil {
-		t.Error("compiler_version must stay unset")
+	if v := req.GetCompilerVersion(); v.GetMajor() != 0 || v.GetMinor() != 0 || v.GetPatch() != 0 || "v0.0.0-"+v.GetSuffix() != compiler {
+		t.Errorf("compiler_version = %v, want %s", v, compiler)
 	}
 	wantParam := "paths=source_relative" +
 		",Mcommon/money.proto=" + module + "/internal/pb/common" +
@@ -258,10 +258,15 @@ func TestOwnedPBFiles(t *testing.T) {
 	}
 	goHeader := PluginHeaders[0] + "\n// versions:\n// \tprotoc-gen-go v1\n// \tprotoc        (unknown)\n"
 	grpcHeader := PluginHeaders[1] + "\n// versions:\n// - protoc-gen-go-grpc v1\n// - protoc             (unknown)\n"
+	ownGo := PluginHeaders[0] + "\n// versions:\n// \tprotoc-gen-go v1\n// \tprotoc        " + compiler + "\n"
+	ownGRPC := PluginHeaders[1] + "\n// versions:\n// - protoc-gen-go-grpc v1\n// - protoc             " + compiler + "\n"
 	want := []string{
 		pb("a/a.pb.go", goHeader+"// source: a/a.proto"),
 		pb("a/gone_grpc.pb.go", grpcHeader+"// source: a/gone.proto"),
 		pb("a/old.pb.go", goHeader+"// a/old.proto is a deprecated file."),
+		// The code craftgo had written for a proto directory since moved or deleted.
+		pb("moved/greet.pb.go", ownGo+"// source: moved/greet.proto"),
+		pb("moved/greet_grpc.pb.go", ownGRPC+"// source: moved/greet.proto"),
 		pb("root.pb.go", goHeader+"// source: root.proto"),
 	}
 	pb("a/shared.pb.go", goHeader+"// source: a/shared.proto")
@@ -270,6 +275,10 @@ func TestOwnedPBFiles(t *testing.T) {
 	pb("a/nosource.pb.go", goHeader)
 	pb("a/v1/a.pb.go", goHeader+"// source: a/v1/a.proto")
 	pb("b/b.pb.go", goHeader+"// source: b/b.proto")
+	// protoc output, an include root's proto and code away from its source stay, craftgo's or not.
+	pb("theirs/x.pb.go", PluginHeaders[0]+"\n// versions:\n// \tprotoc-gen-go v1\n// \tprotoc        v5.29.3\n// source: theirs/x.proto")
+	pb("c/shared.pb.go", ownGo+"// source: a/shared.proto")
+	pb("c/elsewhere.pb.go", ownGo+"// source: d/elsewhere.proto")
 
 	got := set.OwnedPBFiles(project)
 	slices.Sort(got)
@@ -665,19 +674,20 @@ message R {}
 func TestPluginSourceReadsPastALeadingComment(t *testing.T) {
 	dir := t.TempDir()
 	for name, c := range map[string]struct {
-		body, want string
-		ok         bool
+		body, want    string
+		byCraftgo, ok bool
 	}{
-		"plain":   {PluginHeaders[0] + "\n// versions:\n// source: greet/greet.proto\n\npackage greet\n", "greet/greet.proto", true},
-		"license": {"// Copyright 2026 Example.\n// SPDX-License-Identifier: MIT\n\n" + PluginHeaders[1] + "\n// source: greet/greet.proto\n\npackage greet\n", "greet/greet.proto", true},
-		"code":    {"package greet\n\n" + PluginHeaders[0] + "\n// source: greet/greet.proto\n", "", false},
+		"plain":   {PluginHeaders[0] + "\n// versions:\n// source: greet/greet.proto\n\npackage greet\n", "greet/greet.proto", false, true},
+		"license": {"// Copyright 2026 Example.\n// SPDX-License-Identifier: MIT\n\n" + PluginHeaders[1] + "\n// source: greet/greet.proto\n\npackage greet\n", "greet/greet.proto", false, true},
+		"code":    {"package greet\n\n" + PluginHeaders[0] + "\n// source: greet/greet.proto\n", "", false, false},
+		"craftgo": {PluginHeaders[1] + "\n// versions:\n// - protoc-gen-go-grpc v1.6.2\n// - protoc             " + compiler + "\n// source: greet/greet.proto\n\npackage greet\n", "greet/greet.proto", true, true},
 	} {
 		path := filepath.Join(dir, name+".pb.go")
 		if err := os.WriteFile(path, []byte(c.body), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if got, ok := pluginSource(path); got != c.want || ok != c.ok {
-			t.Errorf("%s: pluginSource = %q, %v; want %q, %v", name, got, ok, c.want, c.ok)
+		if got, byCraftgo, ok := pluginSource(path); got != c.want || byCraftgo != c.byCraftgo || ok != c.ok {
+			t.Errorf("%s: pluginSource = %q, %v, %v; want %q, %v, %v", name, got, byCraftgo, ok, c.want, c.byCraftgo, c.ok)
 		}
 	}
 }

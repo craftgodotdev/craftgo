@@ -101,8 +101,15 @@ func TestPlanMatchesWhatTheRunWritesWithProtos(t *testing.T) {
 	}
 }
 
-// pbCode writes plugin output for the proto at slash path source to rel under dir.
+// pbCode writes plugin output for the proto at slash path source to rel under dir, as a
+// compiler that names no version, protoc's own or buf, leaves it.
 func pbCode(t *testing.T, dir, rel, source string) string {
+	t.Helper()
+	return pbCodeBy(t, dir, rel, source, "(unknown)")
+}
+
+// pbCodeBy is [pbCode] with the compiler version the header names.
+func pbCodeBy(t *testing.T, dir, rel, source, compiler string) string {
 	t.Helper()
 	p := filepath.Join(dir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -112,7 +119,7 @@ func pbCode(t *testing.T, dir, rel, source string) string {
 	if strings.HasSuffix(rel, "_grpc.pb.go") {
 		header = protodesign.PluginHeaders[1]
 	}
-	body := header + "\n// versions:\n// \tprotoc        (unknown)\n// source: " + source + "\n\npackage x\n"
+	body := header + "\n// versions:\n// \tprotoc        " + compiler + "\n// source: " + source + "\n\npackage x\n"
 	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -137,9 +144,10 @@ func TestPBSweepLeavesADesignWithoutProtosAlone(t *testing.T) {
 	}
 }
 
-// Under output.pb the sweep deletes only plugin output of the design's own protos, in the
-// directories they write into: the code of a proto an include root holds, and whatever sits in
-// another directory, survives.
+// Under output.pb the sweep deletes only plugin output of the design's own protos: in the
+// directories they write into, and the code craftgo had written for a proto directory since moved
+// or deleted. The code of a proto an include root holds, and protoc or buf output in another
+// directory, survives.
 func TestPBSweepTakesOnlyTheDesignsProtoCode(t *testing.T) {
 	dir := workspaceProject(t)
 	for name, src := range map[string]string{
@@ -184,6 +192,8 @@ message Note { string text = 1; }
 	gone := []string{
 		pbCode(t, dir, "internal/pb/greet/old.pb.go", "greet/old.proto"),
 		pbCode(t, dir, "internal/pb/greet/types_grpc.pb.go", "greet/types.proto"),
+		pbCodeBy(t, dir, "internal/pb/moved/moved.pb.go", "moved/moved.proto", "v0.0.0-craftgo"),
+		pbCodeBy(t, dir, "internal/pb/moved/deep/deep_grpc.pb.go", "moved/deep/deep.proto", "v0.0.0-craftgo"),
 	}
 	if err := Generate(Inputs{Design: analyzeProject(t, planSrc...), Protos: protos}, cfg, dir); err != nil {
 		t.Fatalf("generate: %v", err)
@@ -200,6 +210,9 @@ message Note { string text = 1; }
 		if _, err := os.Stat(p); !os.IsNotExist(err) {
 			t.Errorf("%s is stale pb code of a design proto and must be swept: %v", rel(dir, p), err)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "internal", "pb", "moved")); !os.IsNotExist(err) {
+		t.Errorf("the directory the stale pb code leaves empty must go: %v", err)
 	}
 }
 
