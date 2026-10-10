@@ -98,7 +98,7 @@ Built-in formats, each published as the OpenAPI `format` of the same name (`date
 | `hexcolor`   | 3 or 6 hex digits after an optional `#`. |
 | `json`       | An RFC 8259 JSON text. |
 
-`uuid`, `creditcard` and `hexcolor` match a regex. Every other format is checked by a small function, built on the Go standard library, that craftgo writes into the `validate.go` of a package using it (`_isEmail`, `_isDateTime`, …). The analyzer holds a field's `@default` to the same check.
+`uuid`, `creditcard` and `hexcolor` match a regex. Every other format is checked by a small function, built on the Go standard library, that craftgo writes into the `validate.go` of a package using it (`_isEmail`, `_isDateTime`, …). The analyzer holds a field's `@default` to the same check. A `datetime` field, a `time.Time`, is read by Go's own RFC 3339 parser instead; [Primitive types](/guide/types-and-scalars#primitive-types) says how it differs.
 
 ```craftgo
 type Profile {

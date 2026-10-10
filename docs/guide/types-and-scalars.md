@@ -46,6 +46,8 @@ Every type's struct gets a `Validate()` method, so a field whose Go name is `Val
 | `file`     | `*multipart.FileHeader` | a multipart part: a request's top-level field only, never in a response, an error body or an event payload |
 | `any`      | `any`      | an opaque JSON value; see the table below |
 
+A `datetime` is decoded by Go's `time.Time`, which reads RFC 3339 more loosely than `@format(datetime)` checks a string: it also takes a one-digit hour, a `,` before the fraction and an offset minute of 60 (`+01:60` reads as `+02:00`), and it refuses a lower-case `t` or `z` and a leap second (`23:59:60`). An offset of a day or more (`+24:00`), which no RFC 3339 string spells and the response could not encode, fails `Validate()` as `<field>: not a valid RFC 3339 datetime`, the message a value the decoder refuses gets too. A `string @format(datetime)` field holds exactly what RFC 3339 allows.
+
 #### raw encoded values: `bytes @format(raw)`
 
 Sometimes a field carries a value your design does not own - a `jsonb` column, a nested document another system defines, a webhook body you forward on. `bytes` alone is not it: a `bytes` field is a byte STRING, base64 on the wire, and a document put through it comes back as a blob nobody downstream can read without decoding it first.

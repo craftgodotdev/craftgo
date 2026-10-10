@@ -2,6 +2,7 @@ package golang
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -543,6 +544,86 @@ type User { email shared.Email  seen string? @format(datetime) }`,
 	mustParseGo(t, src)
 	mustContainAll(t, src, "v.Email.Validate()", "!_isDateTime(*v.Seen)", "\nfunc _isDateTime(", "\nfunc _isTime(")
 	mustContainNone(t, src, "_isEmail", "net/mail")
+}
+
+// A datetime the decoder takes with an offset of a day or more, which no RFC 3339 string spells,
+// fails Validate wherever it sits, a type argument included; a datetime that passes encodes
+// again.
+func TestValidateRejectsADatetimeWithNoRFC3339Form(t *testing.T) {
+	pkg := analyze(t, `package design
+type Box<T> { v T }
+type Stamp {
+    at    datetime?
+    list  datetime[]?
+    byDay map<string, datetime>?
+    box   Box<datetime>?
+}`)
+	dir := t.TempDir()
+	for _, gen := range []func(*semantic.Package, string, *projectResolver) error{generateTypes, generateValidators} {
+		if err := gen(pkg, dir, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cases := []struct{ body, want string }{
+		{`{"at":"2024-01-02T03:04:05+24:00"}`, "at: not a valid RFC 3339 datetime"},
+		{`{"at":"2024-01-02T03:04:05+23:60"}`, "at: not a valid RFC 3339 datetime"},
+		{`{"at":"2024-01-02T03:04:05-24:00"}`, "at: not a valid RFC 3339 datetime"},
+		{`{"at":"2024-01-02T03:04:05+23:59"}`, "<nil>"},
+		{`{"list":["2024-01-02T03:04:05Z","2024-01-02T03:04:05+24:00"]}`, "list: not a valid RFC 3339 datetime"},
+		{`{"byDay":{"mon":"2024-01-02T03:04:05+24:00"}}`, "byDay: not a valid RFC 3339 datetime"},
+		{`{"box":{"v":"2024-01-02T03:04:05+24:00"}}`, "box: v: not a valid RFC 3339 datetime"},
+		{`{"box":{"v":"2024-01-02T03:04:05Z"}}`, "<nil>"},
+	}
+	var bodies strings.Builder
+	for _, c := range cases {
+		bodies.WriteString("\t\t" + strconv.Quote(c.body) + ",\n")
+	}
+	program := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+
+	"probe/design"
+)
+
+func main() {
+	for _, body := range []string{
+` + bodies.String() + `	} {
+		var v design.Stamp
+		if err := json.Unmarshal([]byte(body), &v); err != nil {
+			panic(err)
+		}
+		_, encodeErr := json.Marshal(v)
+		fmt.Printf("%v|%v\n", v.Validate(), encodeErr == nil)
+	}
+}
+`
+	for name, body := range map[string]string{"go.mod": "module probe\n\ngo 1.26.6\n", "main.go": program} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run := exec.Command("go", "run", ".")
+	run.Dir = dir
+	run.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
+	out, err := run.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go run: %v\n%s", err, out)
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) != len(cases) {
+		t.Fatalf("the program judged %d bodies, want %d:\n%s", len(lines), len(cases), out)
+	}
+	for i, c := range cases {
+		valid, encodes, _ := strings.Cut(lines[i], "|")
+		if valid != c.want {
+			t.Errorf("%s: Validate() = %s, want %s", c.body, valid, c.want)
+		}
+		if valid == "<nil>" && encodes != "true" {
+			t.Errorf("%s: passes Validate() but does not encode", c.body)
+		}
+	}
 }
 
 // ---------- cross-package validators ----------

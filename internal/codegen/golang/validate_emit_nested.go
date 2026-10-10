@@ -5,11 +5,13 @@ import (
 	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
+	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
 // validateCalls renders the Validate() calls field t's value needs: on each
-// value of a type with a generated Validate(), and a run-time probe on each
-// value of one of params, the enclosing type's type parameters.
+// value of a type with a generated Validate(), a run-time probe on each value
+// of one of params, the enclosing type's type parameters, and the offset check
+// of each datetime.
 func validateCalls(t checkTarget, params []string, ctx emitCtx) string {
 	typ := *t.typ
 	// A @nullable value is nil when absent, as an optional one is.
@@ -55,7 +57,8 @@ func (w validateWalk) walk(t *ast.TypeRef, access string, depth int) string {
 }
 
 // needs reports whether a value of type t gets a call: it, or a key or value
-// of a map t, names a type parameter or a type with a generated Validate().
+// of a map t, names a type parameter, a type with a generated Validate() or
+// datetime.
 func (w validateWalk) needs(t *ast.TypeRef) bool {
 	if t.Map != nil {
 		return w.needs(t.Map.Key) || w.needs(t.Map.Value)
@@ -63,17 +66,36 @@ func (w validateWalk) needs(t *ast.TypeRef) bool {
 	if t.Named == nil {
 		return false
 	}
-	return slices.Contains(w.params, t.Named.Name.String()) || typeRefNamedHasValidator(t.Named, w.ctx)
+	return slices.Contains(w.params, t.Named.Name.String()) || w.isDateTime(t.Named) || typeRefNamedHasValidator(t.Named, w.ctx)
+}
+
+// isDateTime reports whether n names the built-in datetime rather than a type
+// parameter.
+func (w validateWalk) isDateTime(n *ast.NamedTypeRef) bool {
+	name := n.Name.String()
+	sp, ok := prims.Lookup(name)
+	return ok && sp.Kind == prims.DateTime && !slices.Contains(w.params, name)
 }
 
 // leaf renders the call on one value of named type n held in access, a pointer
-// to the value when ptr: the value's Validate(), or the run-time probe of a
-// type parameter's.
+// to the value when ptr: the value's Validate(), the run-time probe of a type
+// parameter's, or a datetime's offset check.
 func (w validateWalk) leaf(n *ast.NamedTypeRef, access string, ptr bool) string {
-	if slices.Contains(w.params, n.Name.String()) {
+	switch {
+	case slices.Contains(w.params, n.Name.String()):
 		return w.probe(access, ptr)
+	case w.isDateTime(n):
+		return dateTimeOffsetCheck(access, w.subject, w.ctx)
 	}
 	return fmt.Sprintf("if err := %s.Validate(); err != nil {\n%s\n}", access, w.returnErr())
+}
+
+// dateTimeOffsetCheck fails a datetime held in access whose offset, a day or
+// more, has no RFC 3339 form: the decoder takes `+24:00`, but the value cannot
+// be encoded again.
+func dateTimeOffsetCheck(access, subject string, ctx emitCtx) string {
+	cond := fmt.Sprintf("_, _off := %s.Zone(); _off <= -86400 || _off >= 86400", access)
+	return failIf(cond, subject, "not a valid RFC 3339 datetime", ctx)
 }
 
 // probe renders the run-time check of a type parameter's value held in
@@ -81,6 +103,8 @@ func (w validateWalk) leaf(n *ast.NamedTypeRef, access string, ptr bool) string 
 // struct's has a pointer receiver), else a validateValue walk.
 func (w validateWalk) probe(access string, ptr bool) string {
 	w.ctx.imports.use("reflect")
+	// validateValue checks a datetime's offset as dateTimeOffsetCheck does.
+	w.ctx.imports.use("time")
 	addr := "&" + access
 	if ptr {
 		addr = access
