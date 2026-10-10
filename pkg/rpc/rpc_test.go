@@ -312,6 +312,14 @@ func TestErrorMapsServiceErrorsLikeWriteError(t *testing.T) {
 	}
 }
 
+// The error a new HTTP logic stub returns maps to the status a new gRPC stub returns.
+func TestErrorMapsNotImplementedToUnimplemented(t *testing.T) {
+	st := status.Convert(Error(context.Background(), fmt.Errorf("x: %w", server.ErrNotImplemented)))
+	if st.Code() != codes.Unimplemented || st.Message() != "not implemented" || len(st.Details()) != 0 {
+		t.Errorf("ErrNotImplemented → %v %q %v", st.Code(), st.Message(), st.Details())
+	}
+}
+
 func TestErrorDomainIsTheCalledService(t *testing.T) {
 	srv := New(nil).SetLogger(newCapture())
 	conn := serve(t, srv, &echo{ping: func(ctx context.Context, _ *wrapperspb.StringValue) (*wrapperspb.StringValue, error) {

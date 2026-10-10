@@ -121,6 +121,22 @@ type StatusError interface {
 	HTTPStatus() int
 }
 
+// ErrNotImplemented is what a newly generated logic stub returns until it is written:
+// [WriteError] answers it 501 {"message":"not implemented"}, and the gRPC runtime maps it to
+// Unimplemented.
+var ErrNotImplemented StatusError = notImplemented{}
+
+// notImplemented is the type of [ErrNotImplemented].
+type notImplemented struct{}
+
+func (notImplemented) Error() string   { return "not implemented" }
+func (notImplemented) HTTPStatus() int { return http.StatusNotImplemented }
+
+// MarshalJSON encodes the {"message"} envelope of a framework error.
+func (notImplemented) MarshalJSON() ([]byte, error) {
+	return []byte(`{"message":"not implemented"}`), nil
+}
+
 // ResponseHeaderWriter is implemented by an error that sets response headers; [WriteError]
 // calls it before writing a [StatusError]'s status.
 type ResponseHeaderWriter interface {
