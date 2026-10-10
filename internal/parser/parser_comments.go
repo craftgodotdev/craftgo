@@ -39,7 +39,8 @@ func decoratorLines(decs []*ast.Decorator) []int {
 }
 
 // claimInside claims the comments on the lines between open and close, the
-// lines of a decorator's `@` and `)`: they belong to its arguments.
+// lines of a decorator's `@` and `)` or of a type's `<` and `>`: they belong
+// to its arguments.
 func (p *Parser) claimInside(open, close int) {
 	for _, c := range p.allComments {
 		if c.Kind == lexer.CommentLeading && c.Pos.Line > open && c.Pos.Line < close {

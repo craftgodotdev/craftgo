@@ -51,7 +51,7 @@ func (p *Parser) parseTypeParams() []string {
 			break
 		}
 	}
-	p.closeList(l)
+	p.claimInside(p.tokens[l.open].Pos.Line, p.closeList(l).Pos.Line)
 	return params
 }
 
@@ -165,7 +165,7 @@ func (p *Parser) parseMapType() *ast.MapType {
 	key := p.parseTypeRef()
 	p.expect(lexer.Comma)
 	val := p.parseTypeRef()
-	p.closeList(l)
+	p.claimInside(p.tokens[l.open].Pos.Line, p.closeList(l).Pos.Line)
 	return &ast.MapType{Pos: pos, Key: key, Value: val}
 }
 
@@ -190,7 +190,7 @@ func (p *Parser) parseNamedTypeRef() *ast.NamedTypeRef {
 				break
 			}
 		}
-		p.closeList(l)
+		p.claimInside(p.tokens[l.open].Pos.Line, p.closeList(l).Pos.Line)
 	}
 	return nt
 }

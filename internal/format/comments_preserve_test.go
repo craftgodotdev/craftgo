@@ -191,19 +191,99 @@ func TestFormatKeepsOwnLineDecoratorsAboveTheirMember(t *testing.T) {
 	}
 }
 
-// The trailing comment of a member's line stays with the member when the
-// member joins its lines.
-func TestFormatKeepsATrailingCommentWithItsMember(t *testing.T) {
+// A comment among a type's arguments stays there: the argument list keeps its
+// lines, one level deeper, as a decorator's does, and the members around set
+// their columns without it.
+func TestFormatKeepsACommentInATypesArguments(t *testing.T) {
 	for _, c := range []struct{ name, src, want string }{
 		{
-			"trailing comment inside a field's type",
-			"package x\n\ntype T {\n\ta map<string, // t\n\t\tint>\n\tb string\n}\n",
-			"package x\n\ntype T {\n\ta map<string, int> // t\n\tb string\n}\n",
+			"trailing comments in a field's type",
+			"package x\n\ntype A {\n\tp Page< // one page of\n\t\tUser // users\n\t>\n\tname string @minLength(1)\n}\n",
+			"package x\n\ntype A {\n\tp    Page< // one page of\n\t\tUser, // users\n\t>\n\tname string @minLength(1)\n}\n",
 		},
 		{
-			"trailing comment inside a mixin",
+			"map keeps no trailing comma",
+			"package x\n\ntype T {\n\ta map<string, // t\n\t\tint>\n\tb string\n}\n",
+			"package x\n\ntype T {\n\ta map<\n\t\tstring, // t\n\t\tint\n\t>\n\tb string\n}\n",
+		},
+		{
+			"comment on a line of its own in a map",
+			"package x\n\ntype T {\n\ta map<string,\n\t\t// c\n\t\tint> // t\n\tb string\n}\n",
+			"package x\n\ntype T {\n\ta map<\n\t\tstring,\n\t\t// c\n\t\tint\n\t> // t\n\tb string\n}\n",
+		},
+		{
+			"decorators after the type",
+			"package x\n\ntype T {\n\ta Page<\n\t\tstring // t\n\t> @doc(\"d\")\n}\n",
+			"package x\n\ntype T {\n\ta Page<\n\t\tstring, // t\n\t> @doc(\"d\")\n}\n",
+		},
+		{
+			"arguments on the opener's line join it",
+			"package x\n\ntype T {\n\ta Page<string // t\n\t> @doc(\"d\")\n}\n",
+			"package x\n\ntype T {\n\ta Page<string> @doc(\"d\") // t\n}\n",
+		},
+		{
+			"mixin",
 			"package x\n\ntype U {\n\tPage< // t\n\t\tstring>\n\tb string\n}\n",
-			"package x\n\ntype U {\n\tPage<string> // t\n\tb string\n}\n",
+			"package x\n\ntype U {\n\tPage< // t\n\t\tstring,\n\t>\n\tb string\n}\n",
+		},
+		{
+			"comment on a line of its own in a mixin",
+			"package x\n\ntype U {\n\tPage<\n\t\t// c\n\t\tstring>\n\tb string\n}\n",
+			"package x\n\ntype U {\n\tPage<\n\t\t// c\n\t\tstring,\n\t>\n\tb string\n}\n",
+		},
+		{
+			"response",
+			"package x\n\ntype Box<V> { v V }\n\nservice S {\n\tget A /a {\n\t\tresponse Box<\n\t\t// c\n\t\tint>\n\t}\n}\n",
+			"package x\n\ntype Box<V> {\n\tv V\n}\n\nservice S {\n\tget A /a {\n\t\tresponse Box<\n\t\t\t// c\n\t\t\tint,\n\t\t>\n\t}\n}\n",
+		},
+		{
+			"type parameters",
+			"package x\n\ntype Pair<A, // a\n\tB // b\n\t> {\n\tx A\n\ty B\n}\n",
+			"package x\n\ntype Pair<\n\tA, // a\n\tB, // b\n> {\n\tx A\n\ty B\n}\n",
+		},
+		{
+			"comment on a line of its own in the type parameters",
+			"package x\n\ntype Page<\n\t// c\n\tT> {\n\titems T[]\n}\n",
+			"package x\n\ntype Page<\n\t// c\n\tT,\n> {\n\titems T[]\n}\n",
+		},
+		{
+			"nested arguments",
+			"package x\n\ntype T {\n\ta Page<map<string, // k\n\t\tint>>\n}\n",
+			"package x\n\ntype T {\n\ta Page<map<\n\t\tstring, // k\n\t\tint\n\t>>\n}\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
+	}
+}
+
+// A comment trailing a header's last word and one trailing its body's `{`
+// below keep their lines: the `{` stays on its own.
+func TestFormatKeepsTheCommentsOfAHeaderAndItsBrace(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{
+			"type",
+			"package x\n\ntype // c1\nA // c2\n{ // c3\n\ta string // c4\n} // c5\n",
+			"package x\n\ntype // c1\n\tA // c2\n{ // c3\n\ta string // c4\n} // c5\n",
+		},
+		{
+			"method",
+			"package x\n\nservice S { // c1\n\tget // c2\n\tA // c3\n\t/a // c4\n\t{ // c5\n\t} // c6\n}\n",
+			"package x\n\nservice S { // c1\n\tget // c2\n\t\tA // c3\n\t\t/a // c4\n\t{ // c5\n\t} // c6\n}\n",
+		},
+		{
+			"enum",
+			"package x\n\nenum E // c1\n{ // c2\n\tA\n}\n",
+			"package x\n\nenum E // c1\n{ // c2\n\tA\n}\n",
+		},
+		{
+			"event",
+			"package x\n\ntype R { a string }\n\nevent E // c1\n{ // c2\n\tpayload R\n}\n",
+			"package x\n\ntype R {\n\ta string\n}\n\nevent E // c1\n{ // c2\n\tpayload R\n}\n",
+		},
+		{
+			"one comment joins the brace's line",
+			"package x\n\ntype A // c\n{\n\ta string\n}\n",
+			"package x\n\ntype A { // c\n\ta string\n}\n",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })

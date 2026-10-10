@@ -350,7 +350,7 @@ Below the decorators of a declaration, a field or an enum value, the comment rig
 type Order {}
 ```
 
-A blank line between that comment and the keyword leaves it out of the doc. `//` only - no `/* */`. A line ends at `\n`, `\r\n` or a lone `\r`, and a UTF-8 byte-order mark opening a file is skipped. Anywhere else in a file, comments and strings included, a byte-order mark, a NUL or another control character but tab, a noncharacter (`U+FFFE`, `U+FFFF`, ...) and bytes that are no UTF-8 are a parse error where they stand.
+A blank line between that comment and the keyword leaves it out of the doc. A comment may also sit among the arguments of a decorator or a generic type, or between the words of a declaration's header; `craftgo fmt` keeps it there, an argument list it sits in one argument per line. `//` only - no `/* */`. A line ends at `\n`, `\r\n` or a lone `\r`, and a UTF-8 byte-order mark opening a file is skipped. Anywhere else in a file, comments and strings included, a byte-order mark, a NUL or another control character but tab, a noncharacter (`U+FFFE`, `U+FFFF`, ...) and bytes that are no UTF-8 are a parse error where they stand.
 
 ## Next
 

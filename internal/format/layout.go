@@ -278,11 +278,11 @@ func heads(f *ast.File, src *source) []head {
 }
 
 // commentInHead returns the first comment of f, parsed from src, on a line of
-// its own inside a head, and what the head is.
+// its own inside a head, outside a type's arguments, and what the head is.
 func commentInHead(f *ast.File, src *source) (*ast.Comment, string) {
 	hs := heads(f, src)
 	for _, c := range f.Comments {
-		if c.Kind != lexer.CommentLeading {
+		if c.Kind != lexer.CommentLeading || src.inArguments(c.Pos.Line) {
 			continue
 		}
 		for _, h := range hs {

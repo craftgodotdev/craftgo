@@ -152,7 +152,8 @@ func (p *Printer) inPlace(src int, lines []string) {
 
 // header writes words, word i starting i+1 tokens after the keyword at kw, on
 // its line; a comment between two stays there, the words below it one deeper.
-func (p *Printer) header(kw lexer.Position, words ...string) {
+// It returns the source line of the last word.
+func (p *Printer) header(kw lexer.Position, words ...string) int {
 	deeper := false
 	prev := kw.Line
 	for i, w := range words {
@@ -181,6 +182,23 @@ func (p *Printer) header(kw lexer.Position, words ...string) {
 	if deeper {
 		p.depth--
 	}
+	return prev
+}
+
+// openBrace writes the `{` of the body that closes at end, below a header
+// whose last word is on source line last: on the header's line, or on a line
+// of its own when a comment trails both one above it and its own, where
+// nothing follows it, which one line could not hold.
+func (p *Printer) openBrace(last int, end lexer.Position) {
+	brace := p.src.opening(end)
+	line := brace.Pos.Line
+	if !p.trailingBefore(last, line) || !p.trailingBefore(line, line+1) || p.src.after(brace.Pos, 1).Pos.Line == line {
+		p.write(" {")
+		return
+	}
+	p.endCode()
+	p.line(line)
+	p.write("{")
 }
 
 // argComment returns the text of the comment on source line line when it
