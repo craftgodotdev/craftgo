@@ -206,8 +206,8 @@ service S {
 	mustContainAll(t, body, `"429":`, "headers:", "Retry-After:")
 	// The header keeps the field's type (int → integer).
 	if i := strings.Index(body, "Retry-After:"); i >= 0 {
-		if !strings.Contains(body[i:min(i+80, len(body))], "type: integer") {
-			t.Errorf("Retry-After header should carry an integer schema:\n%s", body[i:min(i+120, len(body))])
+		if !strings.Contains(body[i:min(i+160, len(body))], "type: integer") {
+			t.Errorf("Retry-After header should carry an integer schema:\n%s", body[i:min(i+160, len(body))])
 		}
 	}
 }
@@ -1433,6 +1433,84 @@ service S { get List /things { response Resp } }`)
 					t.Errorf("header/cookie field leaked into RespBody:\n%s", snippet)
 				}
 			}
+		}
+	}
+}
+
+// A @header("Set-Cookie") field and @cookie fields make one Set-Cookie
+// header: the field's description, then the cookies it sets.
+func TestSetCookieHeaderFieldJoinsTheCookies(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+type Resp {
+	// Pre-built cookie line from the session store.
+	raw string? @header("set-cookie")
+	sid string? @cookie("sid")
+	tz  string? @cookie("tz")
+	ok  bool
+}
+service S { get G /g { response Resp } }`}, &config.Config{})
+	headers := doc.Paths.Find("/g").Get.Responses.Status(200).Value.Headers
+	if len(headers) != 1 || headers["set-cookie"] == nil {
+		t.Fatalf("want one set-cookie header, got %v", slices.Sorted(maps.Keys(headers)))
+	}
+	h := headers["set-cookie"].Value
+	if want := "Pre-built cookie line from the session store.\n\nSets cookies: sid, tz"; h.Description != want {
+		t.Errorf("description %q, want %q", h.Description, want)
+	}
+	if h.Schema.Value == nil || !h.Schema.Value.Type.Is("string") || h.Required {
+		t.Errorf("want an optional string header, got required=%v schema=%+v", h.Required, h.Schema.Value)
+	}
+}
+
+// A response header is required when every body its status may send sends
+// it whatever the body holds: from a field neither optional nor an array.
+func TestResponseHeadersSentAlwaysAreRequired(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+error TooManyRequests Slow {
+	retryAfter int     @header("Retry-After")
+	limit      int     @header("X-Limit")
+}
+error TooManyRequests Busy {
+	retryAfter int     @header("retry-after")
+	limit      int?    @header("X-Limit")
+}
+error Conflict Taken {
+	owner string @header("X-Owner")
+}
+type Resp {
+	total int      @header("X-Total")
+	etag  string?  @header("ETag")
+	tags  string[] @header("X-Tag")
+	sid   string   @cookie("sid")
+	ok    bool
+}
+type Moved { at string @header("X-At") }
+service S {
+	@errors(Slow, Busy)
+	get G /g { response Resp }
+	@status(409)
+	@errors(Taken)
+	post P /p { response Moved }
+}`}, &config.Config{})
+	required := func(headers openapi3.Headers) map[string]bool {
+		out := map[string]bool{}
+		for name, h := range headers {
+			out[name] = h.Value.Required
+		}
+		return out
+	}
+	g := doc.Paths.Find("/g").Get.Responses
+	p := doc.Paths.Find("/p").Post.Responses
+	for status, c := range map[string]struct {
+		headers openapi3.Headers
+		want    map[string]bool
+	}{
+		"G 200": {g.Status(200).Value.Headers, map[string]bool{"X-Total": true, "ETag": false, "X-Tag": false, "Set-Cookie": true}},
+		"G 429": {g.Status(429).Value.Headers, map[string]bool{"Retry-After": true, "X-Limit": false}},
+		"P 409": {p.Status(409).Value.Headers, map[string]bool{"X-At": false, "X-Owner": false}},
+	} {
+		if got := required(c.headers); !maps.Equal(got, c.want) {
+			t.Errorf("%s required headers = %v, want %v", status, got, c.want)
 		}
 	}
 }

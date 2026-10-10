@@ -117,7 +117,7 @@ func successResponse(doc *openapi3.T, op *openapi3.Operation, s opShape, pkg *se
 				Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.stem + "RespBody"},
 			},
 		}
-		resp.Headers = buildResponseHeaders(s.resp.header, s.resp.cookie, pkg, registry)
+		resp.Headers = buildResponseHeaders([]headerSet{{s.resp.header, s.resp.cookie}}, pkg, registry)
 	case rawResp:
 		resp.Content = openapi3.Content{"*/*": &openapi3.MediaType{}}
 	}
@@ -158,8 +158,7 @@ func addErrorResponses(op *openapi3.Operation, s opShape, pkg *semantic.Package,
 	type byStatus struct {
 		refs       []string
 		categories []string
-		headers    []semantic.ResolvedField
-		cookies    []semantic.ResolvedField
+		sets       []headerSet
 	}
 	grouped := map[string]*byStatus{}
 	var statusOrder []string
@@ -179,8 +178,7 @@ func addErrorResponses(op *openapi3.Operation, s opShape, pkg *semantic.Package,
 		entry.refs = append(entry.refs, "#/components/schemas/"+typeName)
 		entry.categories = append(entry.categories, ed.Category)
 		bins := binFields(semantic.ResolveFields(&ast.TypeDecl{Body: ed.Body}, "", pkg, registry.resolver, nil))
-		entry.headers = append(entry.headers, bins.header...)
-		entry.cookies = append(entry.cookies, bins.cookie...)
+		entry.sets = append(entry.sets, headerSet{bins.header, bins.cookie})
 	}
 	for _, status := range statusOrder {
 		entry := grouped[status]
@@ -195,20 +193,19 @@ func addErrorResponses(op *openapi3.Operation, s opShape, pkg *semantic.Package,
 			}
 			schema = &openapi3.SchemaRef{Value: &openapi3.Schema{AnyOf: anyOf}}
 		}
-		headers, cookies := entry.headers, entry.cookies
+		sets := entry.sets
 		// A success `@status` may hold this code already (`@status(409)`);
 		// its headers come first.
 		existing := op.Responses.Value(status)
 		if existing != nil && existing.Value != nil {
-			headers = slices.Concat(s.resp.header, headers)
-			cookies = slices.Concat(s.resp.cookie, cookies)
+			sets = append([]headerSet{{s.resp.header, s.resp.cookie}}, sets...)
 		}
 		resp := &openapi3.Response{
 			Description: &desc,
 			Content: openapi3.Content{
 				mimeApplicationJSON: &openapi3.MediaType{Schema: schema},
 			},
-			Headers: buildResponseHeaders(headers, cookies, pkg, registry),
+			Headers: buildResponseHeaders(sets, pkg, registry),
 		}
 		if existing != nil && existing.Value != nil {
 			resp = mergeStatusResponses(existing.Value, resp, schema)

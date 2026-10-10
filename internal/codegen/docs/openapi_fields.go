@@ -1,8 +1,10 @@
 package docs
 
 import (
+	"cmp"
 	"encoding/json"
 	"math/big"
+	"slices"
 
 	"github.com/getkin/kin-openapi/openapi3"
 
@@ -135,6 +137,62 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 		ref.Value.Default = def
 	}
 	applyFieldConstraints(f.Decorators, ref.Value, prim)
+}
+
+// paramSchema returns the schema of f's value as a parameter or a header
+// carries it: never null, with f's constraints and default. The parameter
+// holds f's description, deprecation and example: see [docOf].
+func paramSchema(f *ast.Field, pkg *semantic.Package, registry *genericRegistry) *openapi3.SchemaRef {
+	ref := schemaForTypeRef(nonNullType(f), pkg, registry)
+	bare := *f
+	bare.Doc = nil
+	bare.Decorators = slices.DeleteFunc(slices.Clone(f.Decorators), func(d *ast.Decorator) bool {
+		return d != nil && (d.Name == "doc" || d.Name == "deprecated" || d.Name == "example")
+	})
+	applyFieldMetadata(&bare, ref, pkg, false)
+	return ref
+}
+
+// paramDoc is what documents a parameter or a header beside its schema.
+type paramDoc struct {
+	desc, reason string
+	deprecated   bool
+	example      any
+	hasExample   bool
+}
+
+// docOf returns the description, deprecation and example of field f.
+func docOf(f *ast.Field, pkg *semantic.Package) paramDoc {
+	d := paramDoc{
+		desc:       semantic.Description(f.Decorators, f.Doc),
+		reason:     semantic.DeprecatedReason(f.Decorators),
+		deprecated: semantic.IsDeprecated(f.Decorators),
+	}
+	d.example, d.hasExample = semantic.ExampleValue(f, pkg)
+	return d
+}
+
+// merge folds in d, a later field's of one header: the first description,
+// reason and example given stay, and it is deprecated when both are.
+func (m *paramDoc) merge(d paramDoc) {
+	m.desc = cmp.Or(m.desc, d.desc)
+	m.reason = cmp.Or(m.reason, d.reason)
+	m.deprecated = m.deprecated && d.deprecated
+	if !m.hasExample {
+		m.example, m.hasExample = d.example, d.hasExample
+	}
+}
+
+// apply sets d on p, the deprecation's reason after the description.
+func (d paramDoc) apply(p *openapi3.Parameter) {
+	p.Description = d.desc
+	p.Deprecated = d.deprecated
+	if d.deprecated && d.reason != "" {
+		p.Description = appendDescription(p.Description, "Deprecated: "+d.reason)
+	}
+	if d.hasExample {
+		p.Example = d.example
+	}
 }
 
 // fieldConstraintSchema returns a schema of the constraints f, a value of DSL
