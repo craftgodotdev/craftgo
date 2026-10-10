@@ -62,6 +62,16 @@ type boundOperation struct {
 	fields []semantic.ResolvedField
 }
 
+// serverPath returns basePath as every route starts with it: one leading `/`,
+// no empty segment and no trailing `/`; "" when it has no segment, as `/`.
+func serverPath(basePath string) string {
+	segs := route.Segments(basePath)
+	if len(segs) == 0 {
+		return ""
+	}
+	return "/" + strings.Join(segs, "/")
+}
+
 // basePathServer returns the server at basePath, each variable as every
 // operation describes it, bare for one binding it to no field; an operation
 // describing it otherwise gets a server of its own.

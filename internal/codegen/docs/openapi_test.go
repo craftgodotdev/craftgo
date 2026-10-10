@@ -12,6 +12,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/route"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 	"github.com/getkin/kin-openapi/openapi3"
 )
@@ -1763,6 +1764,35 @@ service S {
 	}
 	if strings.Contains(src, "/api/v1/things/{id}:") {
 		t.Errorf("basePath leaked into path key (regression):\n%s", src)
+	}
+}
+
+// The server URL is the basePath as the routes take it, however the manifest
+// spells it: it and an operation's path join to the route served.
+func TestServerURLIsTheRoutesBasePath(t *testing.T) {
+	for basePath, want := range map[string]string{
+		"/api": "/api", "/api/": "/api", "api": "/api", "//api": "/api", "/api//v2/": "/api/v2", "/": "",
+	} {
+		root, files := projectFiles(t, map[string]string{"a/a.craftgo": `package a
+type Ok { ok bool }
+@prefix("/v1")
+service S { get Ping /ping { response Ok } }`})
+		proj, _ := semantic.AnalyzeProject(files, semantic.Options{DesignRoot: root, BasePath: basePath})
+		doc, err := buildProjectDocument(proj, &config.Config{OpenAPI: config.OpenAPI{BasePath: basePath}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := ""
+		if len(doc.Servers) > 0 {
+			got = doc.Servers[0].URL
+		}
+		if got != want {
+			t.Errorf("basePath %q: server URL %q, want %q", basePath, got, want)
+		}
+		svc := proj.Packages["a"].Services["S"]
+		if served := route.Resolve(basePath, svc.Primary, svc.Methods[0]); got+"/v1/ping" != served {
+			t.Errorf("basePath %q: server URL %q and path /v1/ping do not join to the route %s", basePath, got, served)
+		}
 	}
 }
 

@@ -103,8 +103,8 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	names := &schemaNames{}
 	addSchemas(doc, pkg, registry, names)
 	ops, uses, shared := addPaths(doc, pkg, registry, names)
-	if cfg.OpenAPI.BasePath != "" {
-		doc.Servers = openapi3.Servers{basePathServer(cfg.OpenAPI.BasePath, ops, pkg)}
+	if base := serverPath(cfg.OpenAPI.BasePath); base != "" {
+		doc.Servers = openapi3.Servers{basePathServer(base, ops, pkg)}
 	}
 	// Instances go last: schema and path emission register them.
 	emitGenericInstanceComponents(doc, pkg, registry, names)
