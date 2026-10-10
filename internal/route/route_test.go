@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
 func TestVars(t *testing.T) {
@@ -45,6 +47,42 @@ func TestOpenAPIPath(t *testing.T) {
 			t.Errorf("OpenAPIPath(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
+}
+
+// The root route serves its one path, the documented `/` under the base path, with `{$}`; every
+// other route serves its Resolve route.
+func TestServePath(t *testing.T) {
+	root := &ast.Method{Path: &ast.Path{Segments: []*ast.PathSegment{{}}}}
+	users := &ast.Method{Path: &ast.Path{Segments: []*ast.PathSegment{{Literal: "users"}}}}
+	prefixed := &ast.ServiceDecl{Decorators: []*ast.Decorator{{Name: "prefix", Args: []*ast.DecoratorArg{{Value: &ast.StringLit{Value: "/v1"}}}}}}
+	for _, c := range []struct {
+		base string
+		svc  *ast.ServiceDecl
+		m    *ast.Method
+		want string
+	}{
+		{"", nil, root, "/{$}"},
+		{"/api", nil, root, "/api/{$}"},
+		{"/api/", nil, root, "/api/{$}"},
+		{"/api", prefixed, root, "/api/v1"},
+		{"/api", nil, users, "/api/users"},
+	} {
+		got := ServePath(c.base, c.svc, c.m)
+		if got != c.want {
+			t.Errorf("ServePath(%q, prefix %q, %q) = %q, want %q", c.base, ServicePrefix(c.svc), PathString(c.m.Path), got, c.want)
+		}
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET "+got, func(http.ResponseWriter, *http.Request) {})
+		if _, pattern := mux.Handler(getRequest(got + "/nope")); pattern != "" {
+			t.Errorf("%s also takes a path below it", got)
+		}
+	}
+}
+
+// getRequest is a GET of path, its `{$}` dropped.
+func getRequest(path string) *http.Request {
+	r, _ := http.NewRequest(http.MethodGet, "http://x"+strings.Replace(path, "{$}", "", 1), nil)
+	return r
 }
 
 func TestShape(t *testing.T) {

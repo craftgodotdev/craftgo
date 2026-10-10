@@ -14,7 +14,7 @@ srv.Start(":8080")                     // ListenAndServe
 Three things matter:
 
 1. `Server` wraps the standard library mux and accepts the standard middleware shape
-2. Generated routes register through `srv.Handle("VERB /path", handlerFn, mws...)` using Go 1.22+ pattern syntax
+2. Generated routes register through `srv.Handle("VERB /path", handlerFn, mws...)` using Go 1.22+ pattern syntax; a root route, `get Home /` with no `@prefix`, registers `GET /{$}` (`GET /api/{$}` under the base path `/api`), so it answers its one path, the documented `/`, and not every path below it
 3. Binding and validation are generated Go, JSON is `encoding/json` behind a swappable codec, and the logic is yours - no reflection-driven dispatch in the hot path
 
 If you can name a `net/http` concept, the craftgo equivalent uses it directly.
