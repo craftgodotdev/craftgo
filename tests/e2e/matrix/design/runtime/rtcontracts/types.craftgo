@@ -1,5 +1,5 @@
-// Shared contracts pulled in via `import "runtime/rtcontracts"` - the import
-// spreads one logical `runtime` package across folders.
+// Shared contracts in a folder of their own: files declaring
+// `package runtime` join one package wherever they sit.
 package runtime
 
 type RtPong {

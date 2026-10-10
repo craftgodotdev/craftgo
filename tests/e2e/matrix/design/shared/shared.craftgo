@@ -1,11 +1,11 @@
 // Package `shared` exercises the cross-package contract surface: it
 // owns DTOs (Pagination, Audit, Money), named scalars (ID, Email),
 // a plain enum (Severity), and the two canonical error envelopes
-// (NotFoundErr, ConflictErr) that downstream packages import via
-// `import "shared"` and reference through `shared.<Name>`.
+// (NotFoundErr, ConflictErr) that downstream packages reference
+// as `shared.<Name>`.
 //
 // Every consumer in `services/` pulls these declarations through a
-// single import edge, so adding a new validator here propagates to
+// single package edge, so adding a new validator here propagates to
 // every service that touches the relevant type - the
 // "shared validators drift between services" smell is structurally
 // impossible.

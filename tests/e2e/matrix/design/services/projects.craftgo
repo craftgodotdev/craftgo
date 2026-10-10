@@ -1,6 +1,6 @@
 // projects.craftgo lives in the SAME `services` package as
 // users.craftgo, so the `UserRef` reference in `Project.owner` is
-// resolved without an `import` - the package's type table is
+// resolved without a qualifier - the package's type table is
 // shared across every file in the folder. Contrast with
 // users.craftgo, where `shared.ID` carries the package qualifier
 // because the source declaration lives in another folder.
