@@ -1,13 +1,24 @@
 package lsp
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 )
+
+// Params that do not decode are answered with JSON-RPC's InvalidParams error.
+func TestUndecodableParamsAreInvalidParams(t *testing.T) {
+	_, err := callHandler(t, newTestServer(), protocol.MethodTextDocumentHover, []int{1, 2})
+	var rpcErr *jsonrpc2.Error
+	if !errors.As(err, &rpcErr) || rpcErr.Code != jsonrpc2.InvalidParams || !strings.Contains(rpcErr.Message, "HoverParams") {
+		t.Errorf("error = %#v, want InvalidParams naming the params", err)
+	}
+}
 
 // An open buffer holding no text is open: completion answers in it.
 func TestAnEmptyBufferIsOpen(t *testing.T) {

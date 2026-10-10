@@ -147,11 +147,11 @@ func (s *server) handler(ctx context.Context, reply jsonrpc2.Replier, req jsonrp
 }
 
 // handle decodes the params of req into P, runs fn on them and replies with
-// its result; params that do not decode are the reply's error.
+// its result; params that do not decode are an InvalidParams error.
 func handle[P any](ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request, fn func(context.Context, P) (any, error)) error {
 	var params P
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		return reply(ctx, nil, err)
+		return reply(ctx, nil, jsonrpc2.NewError(jsonrpc2.InvalidParams, err.Error()))
 	}
 	result, err := fn(ctx, params)
 	return reply(ctx, result, err)
