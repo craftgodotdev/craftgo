@@ -343,7 +343,7 @@ type ListReq {
 
 ### `@json("key")`
 
-The JSON key of a body field when it is not the field name - a contract another system owns, or a key the parser would read as a mixin. The Go struct tag, the OpenAPI property and validation messages all carry it. A field bound off the body (`@path`, `@query`, `@header`, `@cookie`, `@form`) names its wire location in that decorator instead.
+The JSON key of a body field when it is not the field name - a contract another system owns, or a key the parser would read as a mixin. The Go struct tag, the OpenAPI property and validation messages all carry it. A field bound off the body (`@path`, `@query`, `@header`, `@cookie`, `@form`) names its wire location in that decorator instead. The key is what encoding/json takes as a tag name: letters, digits, spaces and the punctuation `!#$%&()*+-./:;<=>?@[]^_{|}~`. Any other character, such as a quote, a comma, a backslash, a backtick, `'` or `€`, would make encoding/json ignore the key and use the Go field name, so it is `decorator/argvalue`, as is the key `-`.
 
 | Sites | field, errorField |
 | -------- | -------- |

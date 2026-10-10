@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -188,8 +189,25 @@ func (a *analyzer) checkSensitiveConflicts(f *ast.Field) {
 	}
 }
 
+// jsonTagPunctuation is the punctuation encoding/json takes in a tag's name.
+const jsonTagPunctuation = "!#$%&()*+-./:;<=>?@[]^_{|}~"
+
+// jsonTagName reports whether encoding/json takes s as the name of a json tag:
+// non-empty, of letters, digits, spaces and [jsonTagPunctuation].
+func jsonTagName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !strings.ContainsRune(jsonTagPunctuation+" ", r) && !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
+}
+
 // checkJSONDecorator rejects `@json` off the body, and a `@json` key that is
-// empty, `-` or holds whitespace, a quote, a comma or a backslash.
+// `-` or one encoding/json ignores.
 func (a *analyzer) checkJSONDecorator(f *ast.Field) {
 	for _, d := range f.Decorators {
 		if d.Name != wire.DecoratorJSON {
@@ -207,9 +225,9 @@ func (a *analyzer) checkJSONDecorator(f *ast.Field) {
 			continue
 		}
 		switch {
-		case s.Value == "" || strings.ContainsAny(s.Value, " \t\n\",\\"):
+		case !jsonTagName(s.Value):
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgValue,
-				"@json on field %q must be a non-empty key without whitespace, quotes, commas or backslashes", f.Name)
+				"@json on field %q must be a non-empty key of letters, digits, spaces and the punctuation %s - encoding/json ignores any other key and writes the field's Go name instead", f.Name, jsonTagPunctuation)
 		case s.Value == "-":
 			a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgValue,
 				"@json(\"-\") on field %q names no key: the Go tag `json:\"-\"` keeps the field off the JSON body, while the OpenAPI document would list a key \"-\" - mark a server-only field @sensitive instead", f.Name)

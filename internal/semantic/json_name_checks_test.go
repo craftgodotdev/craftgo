@@ -1,6 +1,9 @@
 package semantic
 
 import (
+	"encoding/json"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -34,9 +37,26 @@ func TestAMixinFieldMayNotShareAJSONKey(t *testing.T) {
 	}
 }
 
-func TestJSONKeyMustBeAPlainKey(t *testing.T) {
-	expectError(t, `type Order { a string @json("") }`, CodeDecoratorArgValue)
-	expectError(t, `type Order { a string @json("has space") }`, CodeDecoratorArgValue)
+// A `@json` key is accepted exactly when encoding/json writes the field under
+// it, rather than ignoring the tag and writing the Go field name.
+func TestJSONKeyIsOneEncodingJSONTakes(t *testing.T) {
+	emits := func(key string) bool {
+		typ := reflect.StructOf([]reflect.StructField{{Name: "F", Type: reflect.TypeFor[string](), Tag: reflect.StructTag("json:" + strconv.Quote(key))}})
+		out, err := json.Marshal(reflect.New(typ).Elem().Interface())
+		want, _ := json.Marshal(map[string]string{key: ""})
+		return err == nil && string(out) == string(want)
+	}
+	for _, key := range []string{
+		"store_id", "it's", "has space", "a,b", `a"b`, `a\b`, "a`b", "€", "°", "😀", "日本", "é",
+		"x-y.z", "a\tb", "", "#hash", "!#$%&()*+-./:;<=>?@[]^_{|}~", "a\u2028b",
+	} {
+		lit := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\t", `\t`).Replace(key)
+		src := "type Order { a string @json(\"" + lit + "\") }"
+		_, diags := Analyze(parseFiles(t, src))
+		if refused := findCode(diags, CodeDecoratorArgValue) != nil; refused == emits(key) {
+			t.Errorf("@json(%q): refused %v, but encoding/json writes the key: %v", key, refused, emits(key))
+		}
+	}
 }
 
 // `@json("-")` would tag the field `json:"-"`, which encoding/json skips,
