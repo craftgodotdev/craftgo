@@ -118,6 +118,9 @@ const (
 	CodeBindingVerb = "binding/verb"
 	// CodeBindingFormWithoutFile fires when `@form` sits on a field of a request that carries no `file`.
 	CodeBindingFormWithoutFile = "binding/form-without-file"
+	// CodeBindingNested fires when a field bound to `@path`, `@query`, `@header`, `@cookie` or `@form`
+	// sits in a type a request, a response or an error body holds as a nested value.
+	CodeBindingNested = "binding/nested"
 	// CodeFilePosition fires when a `file` sits below a request's top level, or in a response, an
 	// error body or an event payload.
 	CodeFilePosition = "binding/file-position"

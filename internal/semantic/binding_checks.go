@@ -558,27 +558,84 @@ func (a *analyzer) visitFileHolders(view string, t *ast.TypeRef, path string, se
 // an argument is reached, and named, through the fields its type
 // parameters type. t is spelled as package view spells it.
 func (a *analyzer) visitFieldsWhere(view string, t *ast.TypeRef, path string, seen map[string]bool, hit func(*ast.Field) bool, visit func(owner string, f *ast.Field, path string)) {
+	a.proj.visitFieldsWhere(view, t, path, seen, hit, visit)
+}
+
+// visitFieldsWhere is [analyzer.visitFieldsWhere] over p.
+func (p *Project) visitFieldsWhere(view string, t *ast.TypeRef, path string, seen map[string]bool, hit func(*ast.Field) bool, visit func(owner string, f *ast.Field, path string)) {
 	for _, n := range outerNamedRefs(t) {
-		pkg, sym := a.proj.resolve(view, n.Name)
+		pkg, sym := p.resolve(view, n.Name)
 		if pkg == nil || pkg.Types[sym] == nil {
 			continue
 		}
 		td := pkg.Types[sym]
-		args, key := a.proj.walkedInstance(pkg, td, n)
+		args, key := p.walkedInstance(pkg, td, n)
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
-		fields, _ := a.proj.flattenFields(view, pkg.Name, td.Body, td.TypeParams, args, nil)
+		fields, _ := p.flattenFields(view, pkg.Name, td.Body, td.TypeParams, args, nil)
 		for _, ff := range fields {
 			f := ff.Field
 			if hit(f) {
 				visit(td.Name, f, path)
 				continue
 			}
-			a.visitFieldsWhere(view, f.Type, path+"."+f.Name, seen, hit, visit)
+			p.visitFieldsWhere(view, f.Type, path+"."+f.Name, seen, hit, visit)
 		}
 	}
+}
+
+// checkNestedBindings rejects, once each, a field bound to a path segment, the
+// query, a header, a cookie or a form part that a request, a response or an
+// error body reaches only as a nested value: only their own fields, a mixin's
+// included, bind, so the field is left out of the wire.
+func (c *projectChecks) checkNestedBindings() {
+	reported := map[*ast.Field]bool{}
+	report := func(owner string, f *ast.Field, path string) {
+		if reported[f] {
+			return
+		}
+		reported[f] = true
+		kind, _ := wire.BindingKind(f.Decorators)
+		c.diag(f.Pos, lexer.SeverityError, CodeBindingNested,
+			"field %s.%s binds @%s, but %s holds it as a nested value, which nothing binds - only the fields of a request, a response or an error body, a mixin's included, bind; move the field there or drop @%s",
+			owner, f.Name, kind, path, kind)
+	}
+	paramBound := func(f *ast.Field) bool {
+		kind, _ := wire.BindingKind(f.Decorators)
+		return kind.IsParam()
+	}
+	walk := func(view string, fields []FlatField, root string) {
+		seen := map[string]bool{}
+		for _, ff := range fields {
+			c.proj.visitFieldsWhere(view, ff.Field.Type, root+"."+ff.Field.Name, seen, paramBound, report)
+		}
+	}
+	for _, pkgName := range c.proj.PackageNames() {
+		pkg := c.proj.Packages[pkgName]
+		for _, svcName := range pkg.ServiceNames() {
+			for _, m := range pkg.Services[svcName].Methods {
+				for _, ref := range []*ast.NamedTypeRef{m.Request, responseRef(m)} {
+					if view, fields, ok := c.proj.instanceFields(pkgName, ref); ok {
+						walk(view, fields, ref.String())
+					}
+				}
+			}
+		}
+		for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
+			fields, _ := c.proj.flattenFields(pkgName, pkgName, pkg.Errors[name].Body, nil, nil, nil)
+			walk(pkgName, fields, name)
+		}
+	}
+}
+
+// responseRef returns the type m's response clause names, or nil.
+func responseRef(m *ast.Method) *ast.NamedTypeRef {
+	if m.Response == nil {
+		return nil
+	}
+	return m.Response.Type
 }
 
 // outerNamedRefs returns the named types t is built of outside generic

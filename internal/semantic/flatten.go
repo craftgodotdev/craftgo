@@ -376,18 +376,24 @@ func (p *Project) requalify(t *ast.TypeRef, home, view string, typeParams []stri
 // and its generic arguments substituted, spelled as view, the package
 // declaring the type, spells them; ok is false when ref names no type.
 func (a *analyzer) instanceFields(ref *ast.NamedTypeRef) (view string, fields []FlatField, ok bool) {
+	return a.proj.instanceFields(a.pkg.Name, ref)
+}
+
+// instanceFields is [analyzer.instanceFields] for ref as package home spells
+// it.
+func (p *Project) instanceFields(home string, ref *ast.NamedTypeRef) (view string, fields []FlatField, ok bool) {
 	if ref == nil {
 		return "", nil, false
 	}
-	pkg, sym := a.proj.resolve(a.pkg.Name, ref.Name)
+	pkg, sym := p.resolve(home, ref.Name)
 	if pkg == nil || pkg.Types[sym] == nil {
 		return "", nil, false
 	}
 	td := pkg.Types[sym]
 	args := make([]*ast.TypeRef, len(ref.Args))
 	for i, arg := range ref.Args {
-		args[i] = a.proj.requalify(arg, a.pkg.Name, pkg.Name, nil)
+		args[i] = p.requalify(arg, home, pkg.Name, nil)
 	}
-	fields, _ = a.proj.flattenFields(pkg.Name, pkg.Name, td.Body, td.TypeParams, args, nil)
+	fields, _ = p.flattenFields(pkg.Name, pkg.Name, td.Body, td.TypeParams, args, nil)
 	return pkg.Name, fields, true
 }

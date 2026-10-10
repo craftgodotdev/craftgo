@@ -61,6 +61,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	c.checkProjectGroupChecks()
 	c.checkProjectMiddlewareUniqueness()
 	c.checkProjectPathCollision()
+	c.checkNestedBindings()
 	c.checkProjectOperationIDUniqueness()
 	c.checkProjectEvents()
 	c.checkPackageCycles()

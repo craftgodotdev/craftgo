@@ -943,7 +943,7 @@ service UserService {
 }
 ```
 
-Beside a `file`, every body or `@form` field rides a form part: a string, bool, number, a scalar or enum over one, or a single-level array of those. A struct, map, generic instance or nested array there is `binding/type`. `@form` on a request with no `file` is `binding/form-without-file`: drop it and the field rides the JSON body.
+Beside a `file`, every body or `@form` field rides a form part: a string, bool, number, a scalar or enum over one, or a single-level array of those. A struct, map, generic instance or nested array there is `binding/type`. `@form` on a request with no `file` is `binding/form-without-file`: drop it and the field rides the JSON body. A binding decorator binds only on a field of the request, response or error type itself (a mixin's included); on a field of a type held as a nested value it is `binding/nested`.
 
 ### Custom error with body and headers
 
