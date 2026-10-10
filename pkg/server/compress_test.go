@@ -293,6 +293,41 @@ func TestCompressSendsAnInformationalStatusAtOnce(t *testing.T) {
 }
 
 // A HEAD response is never compressed, whatever its handler writes.
+// A level gzip refuses fails Validate and Compress at once, not each compressed response; every
+// level gzip takes passes.
+func TestCompressRefusesALevelOutOfRange(t *testing.T) {
+	for _, level := range []int{-3, 10, 100} {
+		if err := (CompressOptions{Level: level}).Validate(); err == nil || !strings.Contains(err.Error(), "-2 to 9") {
+			t.Errorf("level %d: Validate = %v, want the range", level, err)
+		}
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("level %d: Compress did not panic", level)
+				}
+			}()
+			Compress(CompressOptions{Level: level})
+		}()
+	}
+	for level := -2; level <= 9; level++ {
+		if err := (CompressOptions{Level: level}).Validate(); err != nil {
+			t.Errorf("level %d: %v", level, err)
+		}
+		h := Compress(CompressOptions{Level: level, MinSize: 1})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(strings.Repeat("a", 64)))
+		}))
+		for _, enc := range []string{"gzip", "deflate"} {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", enc)
+			h.ServeHTTP(rec, req)
+			if rec.Header().Get("Content-Encoding") != enc {
+				t.Errorf("level %d %s: Content-Encoding %q", level, enc, rec.Header().Get("Content-Encoding"))
+			}
+		}
+	}
+}
+
 func TestCompressHEADBypasses(t *testing.T) {
 	h := Compress()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

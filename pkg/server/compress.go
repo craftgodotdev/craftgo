@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"iter"
 	"net"
@@ -18,10 +19,19 @@ import (
 type CompressOptions struct {
 	// MinSize is the smallest body, in bytes, that is compressed; 0 means 1024.
 	MinSize int
-	// Level is the gzip or flate level; 0 means gzip.DefaultCompression.
+	// Level is the gzip or flate level, from gzip.HuffmanOnly (-2) to gzip.BestCompression (9);
+	// 0 means gzip.DefaultCompression.
 	Level int
 	// SkipTypes are Content-Type prefixes never compressed; nil keeps the defaults, empty skips none.
 	SkipTypes []string
+}
+
+// Validate reports a Level that gzip and flate refuse.
+func (o CompressOptions) Validate() error {
+	if o.Level < gzip.HuffmanOnly || o.Level > gzip.BestCompression {
+		return fmt.Errorf("server: compression level %d is outside %d to %d", o.Level, gzip.HuffmanOnly, gzip.BestCompression)
+	}
+	return nil
 }
 
 // defaultSkipTypes are the Content-Type prefixes skipped by default: media, archives and fonts.
@@ -37,11 +47,14 @@ var defaultSkipTypes = []string{
 // responses, partial ones (206 or a Content-Range), statuses without a body, already-encoded
 // ones, bodies below MinSize and skipped types. A body without a Content-Type gets the one
 // net/http sniffs from its plain bytes. Every response gets Vary: Accept-Encoding. Only the
-// first opts value is read.
+// first opts value is read; Compress panics on one [CompressOptions.Validate] refuses.
 func Compress(opts ...CompressOptions) Middleware {
 	o := CompressOptions{}
 	if len(opts) > 0 {
 		o = opts[0]
+	}
+	if err := o.Validate(); err != nil {
+		panic(err)
 	}
 	if o.MinSize == 0 {
 		o.MinSize = 1024
