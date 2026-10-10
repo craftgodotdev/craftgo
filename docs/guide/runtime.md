@@ -50,7 +50,7 @@ Out of the box:
 - `BodyLimit(maxBytes)` - caps request bodies; a body over the cap answers 413 `{"message":"request entity too large"}`
 - `Timeout(d)` - deprecated; use `srv.SetDefaultHandlerTimeout(d)` or `@timeout`, which put the deadline on the request context
 - `CORSPermissive()` / `CORSStrict(origin)` - build a `CORSOptions` preset, then attach with `srv.SetCORS(opts)` - preflight + headers
-- `Compress(opts)` - gzip / deflate response compression
+- `Compress(opts)` - gzip / deflate response compression; a partial (206) response, whose `Content-Range` counts the plain bytes, a status without a body, a HEAD response and an already encoded one go out as they are, and a body without a `Content-Type` keeps the one `net/http` would sniff from its plain bytes
 
 You wire them in `main.go`:
 
