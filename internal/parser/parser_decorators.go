@@ -201,8 +201,7 @@ func (p *Parser) parseValue(dec string, closer lexer.Kind) ast.Expr {
 		return &ast.IntLit{Pos: t.Pos, Value: p.signedInt(t.Pos, t, false)}
 	case lexer.Float:
 		p.advance()
-		f, _ := strconv.ParseFloat(t.Text, 64)
-		return &ast.FloatLit{Pos: t.Pos, Value: f, Text: t.Text}
+		return &ast.FloatLit{Pos: t.Pos, Value: p.float(t.Pos, t.Text), Text: t.Text}
 	case lexer.KwTrue:
 		p.advance()
 		return &ast.BoolLit{Pos: t.Pos, Value: true}
@@ -228,8 +227,7 @@ func (p *Parser) parseValue(dec string, closer lexer.Kind) ast.Expr {
 		}
 		if next.Kind == lexer.Float {
 			p.advance()
-			f, _ := strconv.ParseFloat("-"+next.Text, 64)
-			return &ast.FloatLit{Pos: t.Pos, Value: f, Text: "-" + next.Text}
+			return &ast.FloatLit{Pos: t.Pos, Value: p.float(t.Pos, "-"+next.Text), Text: "-" + next.Text}
 		}
 		p.errorf(t.Pos, "expected number after '-'")
 		return &ast.BadExpr{Pos: t.Pos}
@@ -276,6 +274,16 @@ func (p *Parser) signedInt(pos lexer.Position, tok lexer.Token, neg bool) int64 
 		p.errorf(pos, "integer literal %s is outside the signed 64-bit range (%s)", text, bound)
 	}
 	return n
+}
+
+// float returns the value of the float literal text and reports at pos one
+// past the float64 range.
+func (p *Parser) float(pos lexer.Position, text string) float64 {
+	f, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		p.errorf(pos, "float literal out of range: a float64 holds at most about 1.8e308")
+	}
+	return f
 }
 
 // unquote returns the value of a String or RawString token; the lexer emits
