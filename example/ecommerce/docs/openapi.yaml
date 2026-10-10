@@ -533,8 +533,6 @@ components:
       format: email
       maxLength: 254
       type: string
-    FilterOrdersReq:
-      type: object
     FilterOrdersRespBody:
       $ref: '#/components/schemas/PageOfOrder'
     ForceShipRespBody:
@@ -560,16 +558,10 @@ components:
       - lng
       - capturedAt
       type: object
-    GetCustomerReq:
-      type: object
     GetCustomerRespBody:
       $ref: '#/components/schemas/Customer'
-    GetOrderReq:
-      type: object
     GetOrderRespBody:
       $ref: '#/components/schemas/Order'
-    GetProductReq:
-      type: object
     GetProductRespBody:
       $ref: '#/components/schemas/Product'
     InternalErr:
@@ -637,19 +629,6 @@ components:
       type: object
     ListOrdersRespBody:
       $ref: '#/components/schemas/PageOfOrder'
-    ListProductsReq:
-      properties:
-        cursor:
-          type:
-          - string
-          - "null"
-        limit:
-          maximum: 100
-          minimum: 0
-          type: integer
-      required:
-      - limit
-      type: object
     ListProductsRespBody:
       $ref: '#/components/schemas/PageOfProduct'
     Longitude:
@@ -848,19 +827,6 @@ components:
           - "null"
       required:
       - items
-      type: object
-    Pagination:
-      properties:
-        cursor:
-          type:
-          - string
-          - "null"
-        limit:
-          maximum: 100
-          minimum: 0
-          type: integer
-      required:
-      - limit
       type: object
     Payment:
       properties:
@@ -1695,3 +1661,7 @@ paths:
       - orders
 servers:
 - url: /api
+tags:
+- name: catalog
+- name: customers
+- name: orders

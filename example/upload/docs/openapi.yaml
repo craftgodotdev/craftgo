@@ -141,8 +141,6 @@ components:
       - sha256
       - mimeType
       type: object
-    GetMediaReq:
-      type: object
     GetMediaRespBody:
       $ref: '#/components/schemas/UploadResult'
     MediaNotFoundErr:
@@ -476,3 +474,5 @@ paths:
       - media
 servers:
 - url: /api
+tags:
+- name: media

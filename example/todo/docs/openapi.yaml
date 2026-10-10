@@ -65,12 +65,8 @@ components:
       $ref: '#/components/schemas/Todo'
     DeleteTodoRespBody:
       $ref: '#/components/schemas/OkResp'
-    GetTodoReq:
-      type: object
     GetTodoRespBody:
       $ref: '#/components/schemas/Todo'
-    ListTodosReq:
-      type: object
     ListTodosRespBody:
       properties:
         cursor:
@@ -242,15 +238,14 @@ paths:
         name: status
         schema:
           $ref: '#/components/schemas/TodoStatus'
-      - in: query
+      - description: |-
+          tag is a scalar (Tag) filter bound from the query string. The
+          scalar's inherited @length / @pattern run during req.Validate(),
+          so `?tag=NOT_A_SLUG` returns 400 and never reaches the handler.
+        in: query
         name: tag
         schema:
-          allOf:
-          - $ref: '#/components/schemas/Tag'
-          description: |-
-            tag is a scalar (Tag) filter bound from the query string. The
-            scalar's inherited @length / @pattern run during req.Validate(),
-            so `?tag=NOT_A_SLUG` returns 400 and never reaches the handler.
+          $ref: '#/components/schemas/Tag'
       responses:
         "200":
           content:
@@ -263,22 +258,16 @@ paths:
               description: |-
                 tookMs is a scalar-typed (Millis = int) header: it resolves to its
                 underlying primitive and formats the same as a plain int.
+              required: true
               schema:
-                allOf:
-                - $ref: '#/components/schemas/Millis'
-                description: |-
-                  tookMs is a scalar-typed (Millis = int) header: it resolves to its
-                  underlying primitive and formats the same as a plain int.
+                $ref: '#/components/schemas/Millis'
             X-Total-Count:
               description: |-
                 total rides the X-Total-Count response header instead of the JSON
                 body - a non-string @header value the generated handler formats
                 with strconv.Itoa.
+              required: true
               schema:
-                description: |-
-                  total rides the X-Total-Count response header instead of the JSON
-                  body - a non-string @header value the generated handler formats
-                  with strconv.Itoa.
                 type: integer
       tags:
       - todos
@@ -369,3 +358,5 @@ paths:
       - todos
 servers:
 - url: /api
+tags:
+- name: todos
