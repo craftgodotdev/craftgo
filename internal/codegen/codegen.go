@@ -84,7 +84,8 @@ func Generate(in Inputs, cfg *config.Config, projectRoot string, targets ...stri
 	if err := genfile.Commit(files); err != nil {
 		return err
 	}
-	return prune(plan(in, cfg, projectRoot, sel))
+	paths, written := plan(in, cfg, projectRoot, sel)
+	return prune(projectRoot, paths, written)
 }
 
 // Generated reports how many DSL packages [Generate] with targets writes output

@@ -223,6 +223,8 @@ It covers every output the run regenerates, not just the event contracts: the tr
 
 The OpenAPI document, `wiring.go` and `grpc.go`, and `middlewares.go` are swept as those files alone, never another file beside or below them: a frozen copy of the document or a docs site under `docs/` stays, even in a directory a Go output shares, while a document the run no longer writes, for a design left with no DSL package, goes.
 
+The sweep follows a link to a directory as long as it stays inside the project root - an output directory may be one - and never one that leads out of it. A file the run wrote is never taken for a stale one under another spelling: on a file system that folds case, as macOS and Windows do by default, a `@group` renamed in case only keeps its old spelling on disk, and the files the run wrote there stay.
+
 Under `output.pb` a plugin's header is not enough, since your own protoc output may sit there too: the sweep takes a file only from a directory a design proto writes into, and only when its header names as its source a proto no `proto.includes` root holds. A design with no proto sweeps nothing there, so the pb code of a project's last proto stays until you delete it.
 
 Three rules follow, and all three are load-bearing:
