@@ -214,6 +214,7 @@ func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMembe
 	for _, f := range ast.Fields(members) {
 		a.checkSingleBinding(parent, f)
 		a.checkBindingFieldType(parent, f, typeParams)
+		a.checkWireNameTag(parent, f)
 		a.checkBoundOverlap(parent, f)
 	}
 }

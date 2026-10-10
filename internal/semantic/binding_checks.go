@@ -46,6 +46,22 @@ func (a *analyzer) checkBindingFieldType(parent string, f *ast.Field, typeParams
 	}
 }
 
+// checkWireNameTag rejects a backtick in the wire name of a path, query,
+// header or cookie field: the name goes into the generated struct tag, a Go
+// raw string, which a backtick would end.
+func (a *analyzer) checkWireNameTag(parent string, f *ast.Field) {
+	kind, ok := wire.NonBodyBindingKind(f)
+	if !ok {
+		return
+	}
+	if name := wire.WireName(f, kind); strings.Contains(name, "`") {
+		d := ast.FindDecorator(f.Decorators, kind.String())
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgValue,
+			"field %s.%s: @%s(%q) holds a backtick, which the generated struct tag, a Go raw string, cannot hold - rename the %s",
+			parent, f.Name, kind, name, kind)
+	}
+}
+
 // wireTypeFault says why field f of parent, whose type package home spells,
 // cannot ride binding kind, or returns "".
 func (p *Project) wireTypeFault(parent, home string, f *ast.Field, kind wire.Binding) string {

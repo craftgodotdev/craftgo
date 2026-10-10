@@ -387,7 +387,7 @@ Tell the handler where to read each field from. Mutually exclusive (a field has 
 
 An array `@header` reads a list header: every line of it, split at commas (`X-Ids: 1, 2` and two `X-Ids` lines bind the same). A `@form` text part is read from the multipart body only; a query parameter of the same name is not a stand-in for it.
 
-`@path`, `@query`, `@header`, `@cookie` and `@form` take an optional string for an explicit wire name; `@body("name")` is accepted but names nothing - a body field's JSON key is set with `@json("key")`:
+`@path`, `@query`, `@header`, `@cookie` and `@form` take an optional string for an explicit wire name; `@body("name")` is accepted but names nothing - a body field's JSON key is set with `@json("key")`. A path, query, header or cookie name rides the generated struct tag, a Go raw string, so one holding a backtick is `decorator/argvalue`:
 
 ```craftgo
 type GetUserReq {
