@@ -156,14 +156,27 @@ func RequirePresent(w http.ResponseWriter, r *http.Request, present bool, field,
 }
 
 // HeaderList returns the elements of list header name as RFC 9110 writes them: every line of it,
-// split at commas, each element trimmed and empty ones dropped; nil when r carries none.
+// split at the commas outside a quoted string, each element trimmed and empty ones dropped; nil
+// when r carries none. A quoted element keeps its quotes.
 func HeaderList(r *http.Request, name string) []string {
 	var out []string
 	for _, line := range r.Header.Values(name) {
-		for part := range strings.SplitSeq(line, ",") {
-			if part = strings.TrimSpace(part); part != "" {
+		start, quoted := 0, false
+		for i := 0; i <= len(line); i++ {
+			switch {
+			case i < len(line) && line[i] == '\\' && quoted:
+				i++
+				continue
+			case i < len(line) && line[i] == '"':
+				quoted = !quoted
+				continue
+			case i < len(line) && (line[i] != ',' || quoted):
+				continue
+			}
+			if part := strings.TrimSpace(line[start:min(i, len(line))]); part != "" {
 				out = append(out, part)
 			}
+			start = i + 1
 		}
 	}
 	return out

@@ -157,4 +157,8 @@ func TestHeaderList(t *testing.T) {
 	if got := HeaderList(r, "X-None"); got != nil {
 		t.Errorf("HeaderList of an absent header = %q, want nil", got)
 	}
+	r.Header.Set("If-Match", `"a,b", c , "d\"e,f" ,`)
+	if got := HeaderList(r, "If-Match"); !slices.Equal(got, []string{`"a,b"`, "c", `"d\"e,f"`}) {
+		t.Errorf("HeaderList kept a comma inside quotes apart: %q", got)
+	}
 }

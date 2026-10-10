@@ -42,7 +42,7 @@ Each setter returns `*Server` for chaining, except the deprecated `SetJSONCodec`
 | `SetLogger(l log.Logger)` / `Logger() log.Logger` | `SetLogger` installs `l` as `log.Default()` (nil is ignored), the logger the server's `Recovery` and the generated logic write to; the server keeps none of its own. `Logger` returns `log.Default()` as it is at the call; `AccessLog(log.Follow())` follows a later `SetLogger`. |
 | `SetJSONCodec(c JSONCodec) error` / `Codec() JSONCodec` | Deprecated: call `server.SetGlobalJSONCodec(c)` / `server.JSON()`, which they call. The codec is the process's, not one server's: setting it on one `Server` sets it for every server in the process. See [JSON codec](#json-codec). |
 | `SetStrictJSON(strict bool) error` | Deprecated: call `server.SetStrictJSON(strict)`, which it calls. Strict decoding is the process's, not one server's: a second server switching it off switches it off for the first. See [JSON codec](#json-codec). |
-| `SetCORS(opts CORSOptions)` | Install CORS. Calling twice replaces the previous config. |
+| `SetCORS(opts CORSOptions)` | Install CORS. Calling twice replaces the previous config. Panics on credentials allowed to the `*` origin. |
 | `SetHandleNotFound(h http.Handler)` | Answer the requests the mux would answer 404, which otherwise get 404 `{"message":"not found"}`; nil restores that default. A method mismatch keeps its 405 `{"message":"method not allowed"}` with `Allow`. |
 | `SetDefaultReadTimeout(d)` / `SetDefaultWriteTimeout(d)` | The `*http.Server`'s deadlines for reading a whole request, 30s by default (`server.readTimeout` in `config.yaml`), and for writing a whole response, none (0) by default so streaming and long downloads are not cut. 0 sets none. |
 | `SetDefaultMaxBodySize(bytes)` | Body cap for each route `Handle` registers afterwards, unless its `WithLimits` sets one (a method's `@maxBodySize`). `DefaultMaxBodySize`, 10 MiB, by default (`server.maxBodySize` in `config.yaml`); 0 sets none. |
@@ -189,9 +189,9 @@ server.SetDefaultValidationFailed(func(w http.ResponseWriter, r *http.Request, e
 })
 ```
 
-The handler calls `server.WriteValidationError(w, r, err)` on a decode, binding or validation failure; it dispatches to your installed hook, or to the default: 400 `{"message":"<err text>"}`. A body read past its cap is answered 413 `{"message":"request entity too large"}`, `http.ErrNotMultipart`, a form route's body of another media type, 415 `{"message":"unsupported media type"}`, and a body the connection failed to deliver 408 `{"message":"request timeout"}` for the read timeout or 400 `{"message":"bad request"}` otherwise, the failure's detail logged at Warn, all without the hook. `WriteError` answers the same when a raw request's logic returns such a read's error.
+The handler calls `server.WriteValidationError(w, r, err)` on a decode, binding or validation failure; it dispatches to your installed hook, or to the default: 400 `{"message":"<err text>"}`. A body read past its cap is answered 413 `{"message":"request entity too large"}`, `http.ErrNotMultipart`, a form route's body of another media type, 415 `{"message":"unsupported media type"}`, and a body the connection failed to deliver 408 `{"message":"request timeout"}` for the read timeout or 400 `{"message":"bad request"}` otherwise, the failure's detail logged at Warn, all without the hook. `WriteError` answers the same when a raw request's logic returns such a read's error. The default is post-commit safe - if the response already started, it logs the dropped validation rather than smearing a 400 into a half-sent body; a hook you install is called even after the response started.
 
-Before it reads a JSON body, the handler calls `server.RequireJSONBody(w, r)`: a `Content-Type` other than `application/json` or an `application/*+json` type, parameters and letter case aside, is answered 415 `{"message":"unsupported media type"}`, so the bodies a cross-site HTML form or a `text/plain` fetch can send without a CORS preflight never reach logic. A request without a `Content-Type` decodes as JSON, as RFC 9110 lets a recipient examine content it was not told the type of. A `@rawRequest` or `@passthrough` handler reads its own body and checks nothing. The default is post-commit safe - if the response already started, it logs the dropped validation rather than smearing a 400 into a half-sent body; a hook you install is called even after the response started.
+Before it reads a JSON body, the handler calls `server.RequireJSONBody(w, r)`: a `Content-Type` other than `application/json` or an `application/*+json` type, parameters and letter case aside, is answered 415 `{"message":"unsupported media type"}`, so the bodies a cross-site HTML form or a `text/plain` fetch can send without a CORS preflight never reach logic. A request without a `Content-Type` decodes as JSON, as RFC 9110 lets a recipient examine content it was not told the type of. A `@rawRequest` or `@passthrough` handler reads its own body and checks nothing.
 
 ## Raw responses
 
@@ -230,7 +230,7 @@ srv.SetCORS(server.CORSPermissive())          // dev: any origin (Access-Control
 srv.SetCORS(server.CORSStrict("https://app")) // prod: one allowed origin
 ```
 
-Or build a `CORSOptions` value directly for fine control over methods, headers, credentials, and max-age.
+Or build a `CORSOptions` value directly for fine control over methods, headers, credentials, and max-age. Every response carries `Vary: Origin`, since whether the CORS headers are there depends on the request's `Origin`. `SetCORS` panics on `AllowCredentials` with the `*` origin, a pair browsers refuse: list the origins, or use a pattern such as `https://*.example.com`, which echoes the request's origin.
 
 ## Event runtime
 

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -185,8 +186,12 @@ func (s *Server) SetDefaultMaxHeaderSize(kb int) *Server {
 	return s
 }
 
-// SetCORS adds CORS handling with opts to the chain; a second call replaces the first.
+// SetCORS adds CORS handling with opts to the chain; a second call replaces the first. It panics
+// on opts allowing credentials to any origin, `*`, a pair browsers refuse: list the origins.
 func (s *Server) SetCORS(opts CORSOptions) *Server {
+	if opts.AllowCredentials && slices.Contains(opts.AllowedOrigins, "*") {
+		panic("server: CORS cannot allow credentials to any origin (*); list the origins instead")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cors = &opts
