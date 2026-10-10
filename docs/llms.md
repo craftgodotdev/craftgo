@@ -457,7 +457,7 @@ Guide: [model](/guide/events#the-model) - [declaring](/guide/events#declaring-ev
 
 ## Decorator registry
 
-Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `duration` (`5s` / `100ms`, or a bare int in seconds), `size` (`1MB` / `8KB`, or a bare int in bytes), `array literal`. A string is `"..."` (escapes `\n \t \r \" \\ \u{HEX}`) or a raw `` `...` ``; a control character other than tab, LF and CR, a byte-order mark or a noncharacter is a parse error in a string, or anywhere in a file. All arguments are positional - named args are not accepted. A decorator is never an argument: `@doc(@minLength(1))` is a parse error (`a decorator cannot be an argument of @doc`).
+Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `duration` (`5s` / `100ms`, or a bare int in seconds), `size` (`1MB` / `8KB`, or a bare int in bytes), `array literal`. A string is `"..."` (escapes `\n \t \r \" \\ \u{HEX}`) or a raw `` `...` `` whose line ends read as `\n`; a control character other than tab, LF and CR, a byte-order mark or a noncharacter is a parse error in a string, or anywhere in a file. All arguments are positional - named args are not accepted. A decorator is never an argument: `@doc(@minLength(1))` is a parse error (`a decorator cannot be an argument of @doc`).
 
 ### File-level
 

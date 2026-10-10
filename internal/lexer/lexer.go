@@ -363,14 +363,14 @@ func (l *Lexer) lexString(pos Position) Token {
 var simpleEscapes = map[byte]byte{'n': '\n', 't': '\t', 'r': '\r', '"': '"', '\\': '\\'}
 
 // Unquote returns the value of a String or RawString token's text: a raw
-// literal's content, or a quoted literal's with its escapes decoded. The
-// escapes are \n \t \r \" \\ and \u{HEX}: 1 to 6 hex digits naming a code
-// point up to 10FFFF outside the surrogates D800-DFFF and the runes
-// [illegalRune] rejects.
+// literal's content with each line end made `\n`, or a quoted literal's with
+// its escapes decoded. The escapes are \n \t \r \" \\ and \u{HEX}: 1 to 6
+// hex digits naming a code point up to 10FFFF outside the surrogates
+// D800-DFFF and the runes [illegalRune] rejects.
 func Unquote(text string) (string, error) {
 	n := len(text)
 	if n >= 2 && text[0] == '`' && text[n-1] == '`' {
-		return text[1 : n-1], nil
+		return strings.ReplaceAll(strings.ReplaceAll(text[1:n-1], "\r\n", "\n"), "\r", "\n"), nil
 	}
 	if n < 2 || text[0] != '"' || text[n-1] != '"' {
 		return "", fmt.Errorf("%q is not a string literal", text)

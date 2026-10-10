@@ -371,6 +371,7 @@ func TestUnquote(t *testing.T) {
 		{"\"zero\u200bwidth\"", "zero\u200bwidth", ""},
 		{"`^\\d+$`", `^\d+$`, ""},
 		{"`a\nb`", "a\nb", ""},
+		{"`a\r\nb\rc`", "a\nb\nc", ""},
 		{`"\zbad"`, "", `invalid escape sequence \z`},
 		{`"\é"`, "", `invalid escape sequence \é`},
 		{`"\u nobrace"`, "", "invalid unicode escape"},
