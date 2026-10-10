@@ -16,19 +16,21 @@ import (
 const mergedKinds = semantic.TypeRefDecls | semantic.ErrorDecls
 
 // mergedNames returns the name the merged document gives each declaration of
-// mergedKinds: its own, or `<PascalPkg><Name>` when two packages declare it.
+// mergedKinds: its own, or `<PascalPkg><Name>` when two packages declare its
+// name or its component's, as error `a.Missing` and type `b.MissingErr` do.
 func mergedNames(proj *semantic.Project) map[ast.Decl]string {
-	declared := map[string]int{}
+	declared, components := map[string]int{}, map[string]int{}
 	for _, pkgName := range proj.PackageNames() {
 		for _, d := range proj.Packages[pkgName].Decls(mergedKinds) {
 			declared[d.DeclName()]++
+			components[componentName(d, d.DeclName())]++
 		}
 	}
 	names := map[ast.Decl]string{}
 	for _, pkgName := range proj.PackageNames() {
 		for _, d := range proj.Packages[pkgName].Decls(mergedKinds) {
 			name := d.DeclName()
-			if declared[name] >= 2 {
+			if declared[name] >= 2 || components[componentName(d, name)] >= 2 {
 				name = idents.PascalCase(pkgName) + name
 			}
 			names[d] = name
@@ -37,12 +39,22 @@ func mergedNames(proj *semantic.Project) map[ast.Decl]string {
 	return names
 }
 
-// projectMergeCollisions returns the merged names two declarations share,
-// such as `shared.User` renamed to the `SharedUser` that package api declares.
+// componentName returns the component schema d, named name, is documented
+// under: an error's Go type name (`MissingErr`), else name.
+func componentName(d ast.Decl, name string) string {
+	if _, ok := d.(*ast.ErrorDecl); ok {
+		return idents.ErrorTypeName(name)
+	}
+	return name
+}
+
+// projectMergeCollisions returns the component names two declarations share
+// once merged, such as `shared.User` renamed to the `SharedUser` that package
+// api declares.
 func projectMergeCollisions(proj *semantic.Project) []string {
 	owners := map[string]int{}
-	for _, name := range mergedNames(proj) {
-		owners[name]++
+	for d, name := range mergedNames(proj) {
+		owners[componentName(d, name)]++
 	}
 	var dups []string
 	for name, n := range owners {
