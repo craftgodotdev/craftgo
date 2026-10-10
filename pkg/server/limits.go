@@ -86,16 +86,24 @@ func maxBodySizeHandler(h http.Handler, n int64) http.Handler {
 }
 
 // cappedBody is a request body behind http.MaxBytesReader that remembers a read past its cap,
-// which a multipart parser can report as a malformed part instead.
+// which a multipart parser can report as a malformed part instead, and a read the connection
+// failed, which a parser or logic may hand back wrapped.
 type cappedBody struct {
 	io.ReadCloser
-	over bool
+	over    bool
+	readErr error
 }
 
 func (b *cappedBody) Read(p []byte) (int, error) {
 	n, err := b.ReadCloser.Read(p)
-	if _, tooLarge := err.(*http.MaxBytesError); tooLarge {
+	switch err.(type) {
+	case nil:
+	case *http.MaxBytesError:
 		b.over = true
+	default:
+		if err != io.EOF {
+			b.readErr = err
+		}
 	}
 	return n, err
 }

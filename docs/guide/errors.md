@@ -252,6 +252,7 @@ The errors the framework writes itself are JSON `{"message": "..."}`, with `Cont
 | Status | When | Body |
 |---|---|---|
 | 400 | the body does not decode, a required member or parameter is missing, a parameter does not bind, or the request fails `Validate()` | `{"message":"<error text>"}`, e.g. `{"message":"name: length out of range [1, 80]"}`, `{"message":"items.sku: required"}` |
+| 400, 408 | the connection fails while the body is read, 408 for the read timeout (`server.readTimeout`), 400 for a reset or a body cut short; the detail, with the socket's addresses, goes to the log at Warn | `{"message":"bad request"}`, `{"message":"request timeout"}` |
 | 404 | no route matches the path | `{"message":"not found"}` |
 | 405 | a route matches the path under another method; `Allow` lists its methods | `{"message":"method not allowed"}` |
 | 413 | the body is over its cap (`@maxBodySize`, `server.maxBodySize`, `BodyLimit`), a raw request's logic returning the error of a read past it included | `{"message":"request entity too large"}` |

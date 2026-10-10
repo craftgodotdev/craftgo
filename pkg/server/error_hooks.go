@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -71,15 +72,47 @@ func bodyTooLarge(r *http.Request, err error) bool {
 	if errors.As(err, &tooLarge) || errors.Is(err, multipart.ErrMessageTooLarge) {
 		return true
 	}
+	capped := cappedBodyOf(r)
+	return capped != nil && capped.over
+}
+
+// cappedBodyOf returns r's body behind its cap, or nil for a request without one.
+func cappedBodyOf(r *http.Request) *cappedBody {
 	if r == nil {
-		return false
+		return nil
 	}
 	body := r.Body
 	if l, ok := body.(*partLimiter); ok {
 		body = l.ReadCloser
 	}
-	capped, ok := body.(*cappedBody)
-	return ok && capped.over
+	capped, _ := body.(*cappedBody)
+	return capped
+}
+
+// bodyReadFailed reports whether err carries a failure of the connection reading r's body, and
+// whether that failure is a timeout: the error a read of r's capped body returned, or, while
+// binding a request, which reads nothing else, any net.Error.
+func bodyReadFailed(r *http.Request, err error, binding bool) (failed, timeout bool) {
+	ne, isNet := errors.AsType[net.Error](err)
+	if capped := cappedBodyOf(r); capped != nil && capped.readErr != nil && errors.Is(err, capped.readErr) {
+		return true, isNet && ne.Timeout()
+	}
+	return binding && isNet, binding && isNet && ne.Timeout()
+}
+
+// writeBodyReadFailure answers a request whose body the connection failed to deliver: 408 for a
+// timeout, else 400, err's detail, which names the socket's addresses, logged at Warn only.
+func writeBodyReadFailure(w http.ResponseWriter, r *http.Request, err error, timeout bool) {
+	ctx := context.Background()
+	if r != nil {
+		ctx = r.Context()
+	}
+	log.Default().WithContext(ctx).Warn("request body read failed", log.Err(err))
+	status := http.StatusBadRequest
+	if timeout {
+		status = http.StatusRequestTimeout
+	}
+	writeStatusError(w, status)
 }
 
 // responseCommitted asks the first writer on w's Unwrap chain that has a Committed method.
@@ -119,6 +152,10 @@ func WriteValidationError(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	if errors.Is(err, http.ErrNotMultipart) && !responseCommitted(w) {
 		writeStatusError(w, http.StatusUnsupportedMediaType)
+		return
+	}
+	if failed, timeout := bodyReadFailed(r, err, true); failed && !responseCommitted(w) {
+		writeBodyReadFailure(w, r, err, timeout)
 		return
 	}
 	// The multipart parser prefixes a read error; a part past its limit reads as its own message.
@@ -199,6 +236,10 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	if !isStatus {
 		if bodyTooLarge(r, err) {
 			writeStatusError(w, http.StatusRequestEntityTooLarge)
+			return
+		}
+		if failed, timeout := bodyReadFailed(r, err, false); failed {
+			writeBodyReadFailure(w, r, err, timeout)
 			return
 		}
 		(*unknownError.Load())(w, r, err)
