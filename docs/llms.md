@@ -676,7 +676,7 @@ server:
 logging:
   level: info # debug | info | warn | error
 
-serviceName: my-app # go.mod module path's last element
+serviceName: my-app # go.mod module path's last element, the one before a /vN suffix
 
 otel:
   enabled: true

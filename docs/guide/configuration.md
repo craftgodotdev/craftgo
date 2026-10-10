@@ -409,8 +409,9 @@ The top-level `serviceName` is the `service.name` both signals report under -
 what a backend keys on to tell one service's telemetry from another's. Each
 block can override it, but only do that to report under a different name on
 purpose. The generated `config.go` fills a blank `serviceName` with the last
-segment of the project's import path, so a generated project always reports a
-name; a `telemetry.Config` built without it, and with none of the three set,
+segment of the project's import path - the one before it when that is a
+major-version suffix, so `example.com/billing/v2` reports as `billing` - so a
+generated project always reports a name; a `telemetry.Config` built without it, and with none of the three set,
 falls back to the SDK's `unknown_service:<binary>`: survivable for a Prometheus
 scrape, where the target labels already identify the process, but under OTLP
 push every service in the fleet arrives at the collector under that one name.

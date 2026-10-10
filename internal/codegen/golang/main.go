@@ -4,6 +4,7 @@ import (
 	"maps"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/genfile"
@@ -109,15 +110,16 @@ func DocsEmbed(cfg *config.Config) (string, bool) {
 }
 
 // operationNameFor is the config's default serviceName: the module path's last segment
-// (`github.com/foo/myapp` → `myapp`), or "api" for an empty path.
+// (`github.com/foo/myapp` → `myapp`), the one before a major-version suffix
+// (`example.com/billing/v2` → `billing`), or "api" for an empty path.
 func operationNameFor(modulePath string) string {
-	for i := len(modulePath) - 1; i >= 0; i-- {
-		if modulePath[i] == '/' {
-			return modulePath[i+1:]
-		}
-	}
 	if modulePath == "" {
 		return "api"
 	}
-	return modulePath
+	elems := strings.Split(modulePath, "/")
+	last := elems[len(elems)-1]
+	if digits, ok := strings.CutPrefix(last, "v"); ok && len(elems) > 1 && digits != "" && strings.Trim(digits, "0123456789") == "" {
+		return elems[len(elems)-2]
+	}
+	return last
 }
