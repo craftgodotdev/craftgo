@@ -23,8 +23,8 @@ error UnprocessableEntity ProfileValidationFailed {
 
 // PfRateLimited tells the caller how many seconds to wait before retrying.
 // Maps to 429. `code` and `message` are user-declared wire fields; the
-// `@default` decorator records the canonical value for OpenAPI but logic
-// code still has to set them explicitly when constructing the body.
+// constructor gives each one the body leaves nil its `@default`, the value
+// OpenAPI documents.
 error TooManyRequests PfRateLimited {
 	code        string? @default("RATE_LIMITED")
 	message     string? @default("Slow down, please")

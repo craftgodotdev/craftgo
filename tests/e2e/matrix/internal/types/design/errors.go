@@ -25,8 +25,13 @@ type DuplicateEmailErr struct {
 	DuplicateEmailBody
 }
 
-// NewDuplicateEmailErr constructs DuplicateEmailErr.
+// NewDuplicateEmailErr constructs DuplicateEmailErr. An optional field body leaves nil takes its
+// @default.
 func NewDuplicateEmailErr(body DuplicateEmailBody) *DuplicateEmailErr {
+	if body.Code == nil {
+		_d := "DUPLICATE_EMAIL"
+		body.Code = &_d
+	}
 	return &DuplicateEmailErr{DuplicateEmailBody: body}
 }
 
@@ -59,8 +64,13 @@ type InsufficientPermissionsErr struct {
 	InsufficientPermissionsBody
 }
 
-// NewInsufficientPermissionsErr constructs InsufficientPermissionsErr.
+// NewInsufficientPermissionsErr constructs InsufficientPermissionsErr. An optional field body leaves nil takes its
+// @default.
 func NewInsufficientPermissionsErr(body InsufficientPermissionsBody) *InsufficientPermissionsErr {
+	if body.Code == nil {
+		_d := "INSUFFICIENT_PERMISSIONS"
+		body.Code = &_d
+	}
 	return &InsufficientPermissionsErr{InsufficientPermissionsBody: body}
 }
 
@@ -90,16 +100,25 @@ type PfRateLimitedBody struct {
 
 // PfRateLimited tells the caller how many seconds to wait before retrying.
 // Maps to 429. `code` and `message` are user-declared wire fields; the
-// `@default` decorator records the canonical value for OpenAPI but logic
-// code still has to set them explicitly when constructing the body.
+// constructor gives each one the body leaves nil its `@default`, the value
+// OpenAPI documents.
 //
 // PfRateLimitedErr is the TooManyRequests error PfRateLimited.
 type PfRateLimitedErr struct {
 	PfRateLimitedBody
 }
 
-// NewPfRateLimitedErr constructs PfRateLimitedErr.
+// NewPfRateLimitedErr constructs PfRateLimitedErr. An optional field body leaves nil takes its
+// @default.
 func NewPfRateLimitedErr(body PfRateLimitedBody) *PfRateLimitedErr {
+	if body.Code == nil {
+		_d := "RATE_LIMITED"
+		body.Code = &_d
+	}
+	if body.Message == nil {
+		_d := "Slow down, please"
+		body.Message = &_d
+	}
 	return &PfRateLimitedErr{PfRateLimitedBody: body}
 }
 
@@ -161,8 +180,13 @@ type ProfileValidationFailedErr struct {
 	ProfileValidationFailedBody
 }
 
-// NewProfileValidationFailedErr constructs ProfileValidationFailedErr.
+// NewProfileValidationFailedErr constructs ProfileValidationFailedErr. An optional field body leaves nil takes its
+// @default.
 func NewProfileValidationFailedErr(body ProfileValidationFailedBody) *ProfileValidationFailedErr {
+	if body.Code == nil {
+		_d := "PROFILE_VALIDATION_FAILED"
+		body.Code = &_d
+	}
 	return &ProfileValidationFailedErr{ProfileValidationFailedBody: body}
 }
 
@@ -198,8 +222,13 @@ type StaleVersionErr struct {
 	StaleVersionBody
 }
 
-// NewStaleVersionErr constructs StaleVersionErr.
+// NewStaleVersionErr constructs StaleVersionErr. An optional field body leaves nil takes its
+// @default.
 func NewStaleVersionErr(body StaleVersionBody) *StaleVersionErr {
+	if body.Code == nil {
+		_d := "STALE_VERSION"
+		body.Code = &_d
+	}
 	return &StaleVersionErr{StaleVersionBody: body}
 }
 
