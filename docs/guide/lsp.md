@@ -77,6 +77,8 @@ Hover over an identifier to see its declaration and doc comment. Works on:
 
 Errors appear inline as you type:
 
+- `syntax/token` - a character or token no design holds: an unterminated string, a bad escape, a NUL byte
+- `syntax/parse` - tokens the grammar does not take where they stand: a misspelt keyword, a bracket left open (reported at its opener)
 - `decorator/unknown` - `@nope` is not registered
 - `decorator/placement` - decorator appears at the wrong site (`@prefix` on a field)
 - `decorator/conflict` - incompatible decorator pair (`@sensitive` with `@length`)

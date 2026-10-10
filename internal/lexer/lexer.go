@@ -49,6 +49,8 @@ type Related struct {
 // Diagnostic is one problem at a source range. End is exclusive, or zero when
 // only Pos is known. Code is a stable identifier such as `decorator/placement`;
 // Msg is the human text.
+//
+// The lexer's own diagnostics carry [CodeSyntaxToken].
 type Diagnostic struct {
 	Pos      Position
 	End      Position
@@ -549,10 +551,14 @@ func (l *Lexer) pos() Position {
 	}
 }
 
+// CodeSyntaxToken is the code of a lexer diagnostic: a character or token no
+// design may hold.
+const CodeSyntaxToken = "syntax/token"
+
 // errorf records a diagnostic at pos and returns it as an Error token.
 func (l *Lexer) errorf(pos Position, format string, args ...any) Token {
 	msg := fmt.Sprintf(format, args...)
-	l.diags = append(l.diags, Diagnostic{Pos: pos, Msg: msg})
+	l.diags = append(l.diags, Diagnostic{Pos: pos, Code: CodeSyntaxToken, Msg: msg})
 	return Token{Kind: Error, Text: msg, Pos: pos}
 }
 

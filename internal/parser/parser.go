@@ -132,6 +132,10 @@ func (p *Parser) expect(k lexer.Kind) (lexer.Token, bool) {
 	return lexer.Token{Pos: p.peek().Pos}, false
 }
 
+// CodeSyntaxParse is the code of a parser diagnostic: tokens the grammar does
+// not take where they stand.
+const CodeSyntaxParse = "syntax/parse"
+
 // errorf records an error diagnostic at pos unless the lexer or the parser
 // already reported one there, which a second one would only follow from.
 func (p *Parser) errorf(pos lexer.Position, format string, args ...any) {
@@ -139,7 +143,7 @@ func (p *Parser) errorf(pos lexer.Position, format string, args ...any) {
 		return
 	}
 	p.reported[pos] = true
-	p.diags = append(p.diags, lexer.Diagnostic{Pos: pos, Msg: fmt.Sprintf(format, args...)})
+	p.diags = append(p.diags, lexer.Diagnostic{Pos: pos, Code: CodeSyntaxParse, Msg: fmt.Sprintf(format, args...)})
 }
 
 // peekIs reports whether the current token has kind k.
