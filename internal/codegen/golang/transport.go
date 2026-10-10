@@ -33,14 +33,15 @@ type transportData struct {
 	WriteResponse bool
 	Sig           methodSignature
 	IsMultipart   bool
-	// MultipartMaxMemory spells the ParseMultipartForm memory budget: 32 MiB, or @maxBodySize when larger.
-	MultipartMaxMemory string
-	PathParams         []paramBinding
-	QueryParams        []paramBinding
-	HeaderParams       []paramBinding
-	CookieParams       []paramBinding
-	FormStrings        []paramBinding
-	FormFiles          []paramBinding
+	// PartLimits are the @maxSize limits of the file parts, which the handler holds each part to
+	// while the multipart parser reads it.
+	PartLimits   []partLimit
+	PathParams   []paramBinding
+	QueryParams  []paramBinding
+	HeaderParams []paramBinding
+	CookieParams []paramBinding
+	FormStrings  []paramBinding
+	FormFiles    []paramBinding
 	// RespHeaders and RespCookies write the response's @header and @cookie fields before the body.
 	RespHeaders []paramBinding
 	RespCookies []paramBinding
@@ -59,6 +60,11 @@ type defaultBinding struct {
 	Ptr     bool
 }
 
+// partLimit is the @maxSize of the file parts named Name, a quoted Go string, as a Go literal.
+type partLimit struct {
+	Name, Limit string
+}
+
 // paramBinding is one field binding in a handler; Bind is its rendered Go statement.
 type paramBinding struct {
 	DSLName string
@@ -66,6 +72,8 @@ type paramBinding struct {
 	Bind    string
 	// IsArray marks a `file[]` field, bound from every part of its name.
 	IsArray bool
+	// MaxSize is a file field's @maxSize in bytes, 0 for none.
+	MaxSize int64
 }
 
 // generateTransport writes each method's handler to output.transport/<segment>/<method>.go,
@@ -156,12 +164,11 @@ func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, 
 			d.FormFiles = files
 			// The multipart parser owns the body.
 			d.BodyDecode = false
-			const stdlibDefault int64 = 32 << 20
-			budget := stdlibDefault
-			if n, _ := semantic.SizeArg(firstArg(decs, "maxBodySize")); n > stdlibDefault {
-				budget = n
+			for _, f := range files {
+				if f.MaxSize > 0 {
+					d.PartLimits = append(d.PartLimits, partLimit{Name: strconv.Quote(f.DSLName), Limit: formatSizeGo(f.MaxSize)})
+				}
 			}
-			d.MultipartMaxMemory = formatSizeGo(budget)
 		}
 		d.Defaults = collectDefaults(fields, r, imports)
 	}

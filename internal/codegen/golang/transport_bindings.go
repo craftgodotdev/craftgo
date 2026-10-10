@@ -127,7 +127,8 @@ func collectFormBindings(fields []resolvedField, pkg *semantic.Package, r *proje
 	}
 	textParts, fileParts := semantic.FormParts(resolved)
 	for _, ff := range fileParts {
-		files = append(files, paramBinding{DSLName: ff.WireName, GoName: ff.Name, IsArray: ff.IsArray})
+		maxSize, _ := semantic.SizeArg(firstArg(ff.Field.Decorators, "maxSize"))
+		files = append(files, paramBinding{DSLName: ff.WireName, GoName: ff.Name, IsArray: ff.IsArray, MaxSize: maxSize})
 	}
 	for _, ff := range textParts {
 		line := renderWireBindLine(byField[ff.Field], wire.BindForm, ff.WireName, pkg, r, imports)

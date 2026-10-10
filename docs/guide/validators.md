@@ -210,6 +210,8 @@ type AvatarReq {
 }
 ```
 
+`@maxSize` holds the part while the handler reads the form: the read stops once the part passes it, answering 400 `{"message":"file: file size exceeds 2097152 bytes"}`, so an oversized upload is not spooled whole first; `Validate()` checks the size again. The parser keeps up to 32 MiB of the form's files in memory, whatever the route's `@maxBodySize`, and spills the rest to temporary files it removes when the handler returns. A required text part (`@form` without `?`) the form leaves out answers 400 `<name>: missing required form parameter`.
+
 ## Default values
 
 `@default` provides a fallback when the client omits a field: an absent member takes the default, in the request type or in any type below it, and a value the client sends wins. An optional member sent as `null` stays nil. The handler pre-fills the request's own fields before it decodes, so with `requirePresence` off, when the body decodes straight into the request, only they take theirs.

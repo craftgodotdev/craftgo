@@ -74,7 +74,11 @@ func bodyTooLarge(r *http.Request, err error) bool {
 	if r == nil {
 		return false
 	}
-	capped, ok := r.Body.(*cappedBody)
+	body := r.Body
+	if l, ok := body.(*partLimiter); ok {
+		body = l.ReadCloser
+	}
+	capped, ok := body.(*cappedBody)
 	return ok && capped.over
 }
 
@@ -106,7 +110,8 @@ func SetDefaultValidationFailed(h ValidationFailedHandler) {
 // 413 {"message":"request entity too large"} to an *http.MaxBytesError or
 // multipart.ErrMessageTooLarge in err, or any err once r.Body is read past its [BodyLimit], and
 // 415 {"message":"unsupported media type"} to http.ErrNotMultipart, a form route's body that is
-// no multipart/form-data.
+// no multipart/form-data. A part read past its [LimitParts] limit reaches the handler as that
+// limit's own error, without the parser's prefix.
 func WriteValidationError(w http.ResponseWriter, r *http.Request, err error) {
 	if bodyTooLarge(r, err) && !responseCommitted(w) {
 		writeStatusError(w, http.StatusRequestEntityTooLarge)
@@ -115,6 +120,10 @@ func WriteValidationError(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, http.ErrNotMultipart) && !responseCommitted(w) {
 		writeStatusError(w, http.StatusUnsupportedMediaType)
 		return
+	}
+	// The multipart parser prefixes a read error; a part past its limit reads as its own message.
+	if tooLarge, ok := errors.AsType[*partTooLarge](err); ok {
+		err = tooLarge
 	}
 	(*validationFailed.Load())(w, r, err)
 }

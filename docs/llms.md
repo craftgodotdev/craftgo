@@ -501,7 +501,7 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 | `@minItems(n)`      | array, map | `(int)`           | At least `n` elements         |
 | `@maxItems(n)`      | array, map | `(int)`           | At most `n` elements          |
 | `@uniqueItems`      | array     | `()`               | All elements distinct         |
-| `@maxSize(N)`       | file      | `(size)`           | Multipart upload size cap     |
+| `@maxSize(N)`       | file      | `(size)`           | Multipart upload size cap, held while the part is read (400 `<name>: file size exceeds N bytes`) |
 | `@mimeTypes([...])` | file      | strings or string array | Multipart media types or `type/*` ranges; parameters and case of the part's Content-Type are ignored |
 
 **`@format` values**: `email`, `url`, `uri`, `uuid`, `datetime`, `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json` - all on string-shaped fields - plus `raw`, which is not a check and is valid ONLY on `bytes` (see the type table). Each follows its RFC, as the OpenAPI `format` of the same name does (`datetime` publishes as `date-time`): `email` is a bare addr-spec (no display name, comment or angle brackets); `url` an `http`/`https` URI with a host; `uri` an RFC 3986 URI, RFC 3986 characters only; `datetime` an RFC 3339 date-time (`t`/`z` in either case, offset within ±23:59, a leap second at 23:59:60 UTC); `time` an RFC 3339 full-time, offset required (`15:04:05Z`); `ipv4` excludes IPv4-mapped IPv6 addresses, which `ipv6` takes, zones refused; `base64url` takes padding or none; `phone` needs a digit. A `@default` must pass the same check.

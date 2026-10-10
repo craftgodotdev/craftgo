@@ -877,7 +877,7 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 	handler, _ := os.ReadFile(filepath.Join(root, "internal/transport/upload-service/upload.go"))
 	mustParseGo(t, string(handler))
 	mustContainAll(t, string(handler),
-		"r.ParseMultipartForm(32 << 20)",
+		"r.ParseMultipartForm(server.MultipartMemory)",
 		// Handler-scoped cleanup frees temp files before the flush and on panic paths.
 		"defer func() { _ = r.MultipartForm.RemoveAll() }()",
 		`r.PostFormValue("note")`,
@@ -911,14 +911,12 @@ func TestGenerateTransportMultipartParseFailureIsValidationError(t *testing.T) {
 	mustContainNone(t, src, "http.Error(")
 }
 
-// The multipart memory budget is 32 MiB, or @maxBodySize when larger, written
-// in the largest size unit that divides it.
+// The multipart memory budget is the server's fixed one, whatever the route's @maxBodySize.
 func TestGenerateTransportMultipartBudget(t *testing.T) {
 	for _, tc := range []struct{ decorator, want string }{
-		{"", "r.ParseMultipartForm(32 << 20)"},
-		{"@maxBodySize(1MB)", "r.ParseMultipartForm(32 << 20)"},
-		{"@maxBodySize(64MB)", "r.ParseMultipartForm(64 << 20)"},
-		{"@maxBodySize(1.5GB)", "r.ParseMultipartForm(1536 << 20)"},
+		{"", "r.ParseMultipartForm(server.MultipartMemory)"},
+		{"@maxBodySize(1MB)", "r.ParseMultipartForm(server.MultipartMemory)"},
+		{"@maxBodySize(1.5GB)", "r.ParseMultipartForm(server.MultipartMemory)"},
 	} {
 		pkg := analyze(t, `package design
 type UploadReq { avatar file }
@@ -939,6 +937,31 @@ service S {
 			t.Errorf("%q: want %s:\n%s", tc.decorator, tc.want, handler)
 		}
 	}
+}
+
+// A file part's @maxSize holds the part while the parser reads it: the handler builds the limits
+// once and hands them to server.LimitParts before it parses the form.
+func TestGenerateTransportMultipartPartLimits(t *testing.T) {
+	pkg := analyze(t, `package design
+type UploadReq {
+	avatar file  @form("pic") @maxSize(1MB)
+	doc    file? @maxSize(512KB)
+	free   file?
+}
+service S { post Upload /upload { request UploadReq } }`)
+	root := t.TempDir()
+	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
+		t.Fatal(err)
+	}
+	src := readGen(t, root, "internal/transport/s/upload.go")
+	mustParseGo(t, src)
+	mustContainAll(t, src, `_limits := map[string]int64{"pic": 1 << 20, "doc": 512 << 10}`)
+	built, handler := strings.Index(src, "_limits :="), strings.Index(src, "return func(")
+	limit, parse := strings.Index(src, "server.LimitParts(r, _limits)"), strings.Index(src, "r.ParseMultipartForm(")
+	if built > handler || limit < 0 || parse < limit {
+		t.Errorf("the limits must be built once and applied before the form is parsed:\n%s", src)
+	}
+	mustContainNone(t, src, `"free"`+": ")
 }
 
 // An explicit @form name is the key r.PostFormValue and r.MultipartForm.File read.

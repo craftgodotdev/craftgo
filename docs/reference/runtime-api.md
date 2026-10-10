@@ -161,6 +161,10 @@ A response's `@cookie` field is set by the handler through `server.SetCookie(w, 
 | `SetCookie(w, name, value)` | Add a `Set-Cookie` with the installed attributes. |
 | `ResponseCookieSetter` | `ResponseCookies() []*http.Cookie`: what a generated error with a `@cookie` field implements; `WriteError` sets each cookie with the installed attributes, after `WriteResponseHeaders`. |
 
+### Multipart forms
+
+A generated multipart handler parses the form with `r.ParseMultipartForm(server.MultipartMemory)`: up to 32 MiB of its files in memory, whatever the route's `@maxBodySize`, the rest in temporary files removed when the handler returns. Before that it calls `server.LimitParts(r, limits)` with each file part's `@maxSize` by form name: a part read past its limit fails the read there, and `WriteValidationError` answers 400 `{"message":"<name>: file size exceeds <n> bytes"}`. A body of another media type is answered 415.
+
 ### Required members
 
 A generated handler checks that a JSON body carries every member declared without `?`. It decodes the body with the installed codec into an unexported struct beside the handler, a pointer per member, and copies it into the request type; a member left out, or sent as `null` without `@nullable`, answers 400 `{"message":"<json path>: required"}` through the validation hook, and an absent member's `@default` is filled at any depth. A `@nullable` or defaulted member decodes through `server.Nullable[T]`, whose `UnmarshalJSON` tells an absent member from a `null` one, so a codec installed with `SetGlobalJSONCodec` must call a type's `json.Unmarshaler`, as sonic, jsoniter, goccy/go-json and segmentio/encoding do. It must also decode `[]`, `{}` and `""` to a non-nil list, map and `bytes`, since nil stands for an absent one.

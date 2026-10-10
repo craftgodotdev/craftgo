@@ -6,6 +6,9 @@ package {{.Package}}
 {{- end}}
 // {{.Method}} returns the {{.Verb}} {{.Method}} handler.
 func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
+{{- if .PartLimits}}
+	_limits := map[string]int64{ {{- range $i, $l := .PartLimits}}{{if $i}}, {{end}}{{$l.Name}}: {{$l.Limit}}{{end -}} }
+{{- end}}
 	return func(w http.ResponseWriter, r *http.Request) {
 {{- if .BodyDecode}}
 		if !server.RequireJSONBody(w, r) {
@@ -13,7 +16,10 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 {{- end}}
 {{- if .IsMultipart}}
-		if err := r.ParseMultipartForm({{.MultipartMaxMemory}}); err != nil {
+{{- if .PartLimits}}
+		server.LimitParts(r, _limits)
+{{- end}}
+		if err := r.ParseMultipartForm(server.MultipartMemory); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
