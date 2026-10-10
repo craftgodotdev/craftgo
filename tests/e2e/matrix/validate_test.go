@@ -198,6 +198,27 @@ func TestDecodeErrorsNameTheWireField(t *testing.T) {
 	}
 }
 
+// A float query parameter takes a plain decimal number: Go's other literal forms are refused
+// with a message naming the value and the field's type, not the parser.
+func TestFloatQueryTakesDecimalsOnly(t *testing.T) {
+	ts := bootAll(t)
+	for query, want := range map[string]string{
+		"ratio=0x1p-2":            `{"message":"ratio: \"0x1p-2\" is not a valid float64"}`,
+		"ratio=0.5&scale=1_000.5": `{"message":"scale: \"1_000.5\" is not a valid float32"}`,
+		"ratio=0.5&scale=1e39":    `{"message":"scale: 1e39 is out of range for float32"}`,
+	} {
+		resp, err := ts.Client().Get(ts.URL + "/api/bindings/query-float?" + query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest || strings.TrimSpace(string(body)) != want {
+			t.Errorf("?%s: got %d %s, want 400 %s", query, resp.StatusCode, body, want)
+		}
+	}
+}
+
 // A float query parameter refuses NaN, which passes every bound, and the infinities, which an
 // unbounded field would take; a finite value binds.
 func TestFloatQueryRejectsNonFinite(t *testing.T) {

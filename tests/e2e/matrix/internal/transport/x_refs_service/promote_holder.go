@@ -45,7 +45,7 @@ func PromoteHolder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		req.Q = _q.Get("q")
-		if !server.BindValuePtr(w, r, "limit", "int", _q.Get("limit"), &req.Limit, server.ParseSigned[int32]) {
+		if !server.BindValuePtr(w, r, "limit", "int32", _q.Get("limit"), &req.Limit, server.ParseSigned[int32]) {
 			return
 		}
 		if err := req.Validate(); err != nil {
