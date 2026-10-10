@@ -2,8 +2,25 @@
 
 package cookies
 
+import (
+	"fmt"
+)
+
 // Validate returns the first constraint v violates, or nil.
 func (v *Gauge) Validate() error {
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *LoginReq) Validate() error {
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
+func (v *Out) Validate() error {
+	if v.Session == nil {
+		return fmt.Errorf("sid: required")
+	}
 	return nil
 }
 

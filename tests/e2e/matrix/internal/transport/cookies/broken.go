@@ -23,7 +23,7 @@ func Broken(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		server.WriteResponse(w, r, http.StatusOK, resp, func(w http.ResponseWriter) {
-			server.SetCookie(w, "gauge", resp.Sid)
+			http.SetCookie(w, &http.Cookie{Name: "gauge", Value: resp.Sid, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 		})
 	}
 }

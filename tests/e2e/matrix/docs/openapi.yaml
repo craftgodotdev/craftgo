@@ -73,6 +73,8 @@ components:
       type: object
     AccountServiceLoginRespBody:
       $ref: '#/components/schemas/AccountLoginResp'
+    AccountServiceLogoutRespBody:
+      $ref: '#/components/schemas/ID'
     AccountServiceResetRespBody:
       $ref: '#/components/schemas/ID'
     AccountUserServiceCreateUserReqBody:
@@ -1340,6 +1342,8 @@ components:
           type: string
       required:
       - name
+      type: object
+    CookiesLogoutRespBody:
       type: object
     Count:
       minimum: 0
@@ -3588,8 +3592,6 @@ components:
       - code
       - message
       type: object
-    LogoutRespBody:
-      $ref: '#/components/schemas/ID'
     LookupLostRespBody:
       $ref: '#/components/schemas/XDelegatedEnum'
     LookupOrderRespBody:
@@ -4967,6 +4969,9 @@ components:
           type:
           - array
           - "null"
+      type: object
+    Out:
+      description: Out deletes the session cookie.
       type: object
     OverloadedErr:
       description: ServiceUnavailable error response (HTTP 503).
@@ -7076,7 +7081,8 @@ components:
         envelope.
       type: object
     Session:
-      description: Session sets its token in a cookie beside its body.
+      description: Session sets its token in a cookie beside its body, and a cookie
+        the logic picks per request.
       properties:
         name:
           type: string
@@ -9523,13 +9529,13 @@ paths:
     post:
       description: Logout - inherits RateLimit + AuthRequired. Also appends Audit
         at method level.
-      operationId: Logout
+      operationId: AccountServiceLogout
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LogoutRespBody'
+                $ref: '#/components/schemas/AccountServiceLogoutRespBody'
           description: Created
       tags:
       - account
@@ -11394,7 +11400,7 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'Sets cookies: gauge'
+              description: 'Sets cookies: gauge (Path=/; HttpOnly; Secure; SameSite=Lax)'
               required: true
               schema:
                 type: string
@@ -11413,7 +11419,9 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'Sets cookies: sid'
+              description: 'Sets cookies: sid (Path=/; HttpOnly; Secure; SameSite=Lax),
+                remember (Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Strict;
+                the server may change them per response)'
               required: true
               schema:
                 type: string
@@ -11425,7 +11433,7 @@ paths:
           description: Conflict
           headers:
             Set-Cookie:
-              description: 'Sets cookies: lock'
+              description: 'Sets cookies: lock (Path=/api; Max-Age=3600; Secure; SameSite=Lax)'
               required: true
               schema:
                 type: string
@@ -11433,8 +11441,13 @@ paths:
       - Cookies
   /cookies/a/login:
     get:
-      description: Answers a Session.
+      description: Answers a Session, remembered for the days the query asks.
       operationId: CookiesLogin
+      parameters:
+      - in: query
+        name: days
+        schema:
+          type: integer
       responses:
         "200":
           content:
@@ -11444,8 +11457,29 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'Sets cookies: sid'
+              description: 'Sets cookies: sid (Path=/; HttpOnly; Secure; SameSite=Lax),
+                remember (Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Strict;
+                the server may change them per response)'
               required: true
+              schema:
+                type: string
+      tags:
+      - Cookies
+  /cookies/a/logout:
+    get:
+      description: Answers an Out that deletes the session cookie.
+      operationId: CookiesLogout
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CookiesLogoutRespBody'
+          description: OK
+          headers:
+            Set-Cookie:
+              description: 'Sets cookies: sid (Path=/; HttpOnly; Secure; SameSite=Lax;
+                the server may change them per response)'
               schema:
                 type: string
       tags:
@@ -11575,7 +11609,8 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'Sets cookies: has_more, session_id'
+              description: 'Sets cookies: has_more (Path=/; HttpOnly; Secure; SameSite=Lax),
+                session_id (Path=/; HttpOnly; Secure; SameSite=Lax)'
               required: true
               schema:
                 type: string
@@ -14126,7 +14161,7 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'Sets cookies: xs-session'
+              description: 'Sets cookies: xs-session (Path=/; HttpOnly; Secure; SameSite=Lax)'
               required: true
               schema:
                 type: string

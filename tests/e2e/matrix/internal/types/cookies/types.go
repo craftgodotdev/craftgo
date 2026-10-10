@@ -2,14 +2,39 @@
 
 package cookies
 
+import (
+	"net/http"
+)
+
 // Gauge sets a cookie beside a reading the encoder may refuse.
 type Gauge struct {
 	Sid   string  `json:"-" cookie:"gauge"`
 	Level float64 `json:"level"`
 }
 
-// Session sets its token in a cookie beside its body.
+// LoginReq asks for a remembered session of a number of days.
+type LoginReq struct {
+	Days *int `json:"-" query:"days"`
+}
+
+// Out deletes the session cookie.
+type Out struct {
+	Session *http.Cookie `json:"-" cookie:"sid"`
+}
+
+// NewOutSessionCookie returns the cookie "sid" holding value, with the attributes Out.Session declares.
+func NewOutSessionCookie(value string) *http.Cookie {
+	return &http.Cookie{Name: "sid", Value: value, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode}
+}
+
+// Session sets its token in a cookie beside its body, and a cookie the logic picks per request.
 type Session struct {
-	Token string `json:"-" cookie:"sid"`
-	Name  string `json:"name"`
+	Token    string       `json:"-" cookie:"sid"`
+	Remember *http.Cookie `json:"-" cookie:"remember"`
+	Name     string       `json:"name"`
+}
+
+// NewSessionRememberCookie returns the cookie "remember" holding value, with the attributes Session.Remember declares.
+func NewSessionRememberCookie(value string) *http.Cookie {
+	return &http.Cookie{Name: "remember", Value: value, Path: "/", MaxAge: 2592000, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode}
 }
