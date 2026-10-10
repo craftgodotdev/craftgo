@@ -105,10 +105,12 @@ func ParseLevel(s string) (Level, bool) {
 }
 
 // New returns a Logger writing JSON lines to stderr (zap's production config) at the
-// [SetLevel] level.
+// [SetLevel] level. It writes every line: zap's sampling, which drops most repeats of a message
+// within a second, is off, so no access, error or panic line is lost under load.
 func New() Logger {
 	cfg := zap.NewProductionConfig()
 	cfg.Level = level
+	cfg.Sampling = nil
 	z, _ := cfg.Build(zap.AddCallerSkip(1))
 	return NewZap(z)
 }

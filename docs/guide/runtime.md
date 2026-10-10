@@ -250,6 +250,8 @@ current := log.GetLevel()
 
 The default is `LevelInfo`. The swap is atomic and takes effect on the next log call - no logger replacement needed, so it is safe to wire to a `/debug/loglevel` endpoint or a config reload. Loggers you build yourself and pass to `log.NewZap` keep their own level and ignore `SetLevel`.
 
+`log.New`, the default, writes JSON lines to stderr and writes every one: zap's sampling, which keeps few repeats of one message within a second, is off, so no access, error or panic line is lost under load. To sample, build a zap logger with `Sampling` set and install it with `log.SetDefault(log.NewZap(z))`.
+
 ## Tracing and metrics
 
 Both signals are set up by one call, and the middleware that emits them is a method on what it returns:
