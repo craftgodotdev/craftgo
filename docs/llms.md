@@ -564,7 +564,7 @@ Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decora
 | `craftgo version`                | Print CLI version.                                                                  |
 | `craftgo help`                   | Show top-level help.                                                                |
 
-Exit codes: 0 (success), 1 (any error during gen/fmt/init, including semantic errors, a file `fmt -l` lists, and a bad flag or argument, printed with the command's usage), 2 (a missing or unknown command). The Go module path is read from `go.mod` walking up from the project root - run `go mod init <module>` before `craftgo gen` if `go.mod` is missing.
+Exit codes: 0 (success), 1 (any error during gen/fmt/init, including semantic errors, a file `fmt -l` lists, and a bad flag or argument, printed with the command's usage), 2 (a missing or unknown command). A semantic warning is printed on stderr as `<file>:<line>:<col>: warning: <message>` and does not fail `gen`. The Go module path is read from `go.mod` walking up from the project root - run `go mod init <module>` before `craftgo gen` if `go.mod` is missing.
 
 `craftgo-lsp` is a separate binary. Install with `go install github.com/craftgodotdev/craftgo/cmd/craftgo-lsp@latest`. Officially supported editor integration: VS Code only.
 

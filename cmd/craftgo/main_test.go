@@ -38,7 +38,7 @@ func TestRunInitWritesScaffold(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runGen on scaffold: %v", err)
 	}
-	if strings.Contains(stderr, "craftgo: warning:") {
+	if strings.Contains(stderr, "warning:") {
 		t.Errorf("the init manifest raised warnings:\n%s", stderr)
 	}
 	for _, rel := range []string{
@@ -344,6 +344,31 @@ openapi:
 	}
 	if _, err := os.Stat(filepath.Join(dir, "internal", "types", "api", "types.go")); err != nil {
 		t.Errorf("gen stopped at the warning: %v", err)
+	}
+}
+
+// gen prints each semantic warning on stderr, with its position, and still
+// generates.
+func TestRunGenPrintsSemanticWarnings(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "go.mod", "module github.com/test/app\n\ngo 1.24\n")
+	mustWrite(t, dir, "design/craftgo.design.yaml", "openapi:\n  basePath: api\n")
+	mustWrite(t, dir, "design/api.craftgo", "package api\n\ntype Page {\n\tlimit int @default(10)\n}\n\nservice S {\n\tget List /items { request Page  response Page }\n}\n")
+	var err error
+	_, stderr := captureOutput(t, func() { err = runGen([]string{"-f", filepath.Join(dir, "design")}) })
+	if err != nil {
+		t.Fatalf("runGen: %v", err)
+	}
+	for _, want := range []string{
+		filepath.Join(dir, "design", "api.craftgo") + ":4:12: warning: @default on non-optional field \"limit\"",
+		": warning: openapi.basePath \"api\" is malformed",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr lacks %q:\n%s", want, stderr)
+		}
+	}
+	if !exists(t, dir, "internal", "types", "api", "types.go") {
+		t.Error("a warning stopped the run")
 	}
 }
 

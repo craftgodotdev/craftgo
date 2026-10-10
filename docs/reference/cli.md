@@ -49,6 +49,12 @@ A key the manifest does not declare - a misspelling, say - is ignored, and `craf
 craftgo: warning: output.typs is not a manifest key and is ignored
 ```
 
+A warning of the design's analysis - the ones the editor underlines without blocking - is printed on stderr with its position, and the run goes on:
+
+```
+/path/to/app/design/api.craftgo:4:12: warning: @default on non-optional field "limit": ...
+```
+
 ## `craftgo fmt [-l] [-w] [path]`
 
 Canonical-format design files (`.craftgo`, `.cg`): every one under a directory, or the one file the path names. Default action: write back in place.

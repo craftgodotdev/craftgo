@@ -14,6 +14,7 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/codegen/golang"
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/designopts"
+	"github.com/craftgodotdev/craftgo/internal/lexer"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -165,8 +166,8 @@ func grpcSummary(protos *protodesign.Set, wrote bool) string {
 }
 
 // analyzeDesign parses and analyses the design files under designDir, folding
-// the errors into one. A design with no DSL package is an error unless
-// allowEmpty is set.
+// the errors into one and printing each warning to stderr. A design with no
+// DSL package is an error unless allowEmpty is set.
 func analyzeDesign(designDir string, cfg *config.Config, allowEmpty bool) (*semantic.Project, error) {
 	files, err := parseDesign(designDir, allowEmpty)
 	if err != nil {
@@ -183,6 +184,11 @@ func analyzeDesign(designDir string, cfg *config.Config, allowEmpty bool) (*sema
 		}
 	}
 	proj, diags := semantic.AnalyzeProject(files, designopts.For(designDir, cfg))
+	for _, d := range diags {
+		if d.Severity == lexer.SeverityWarning {
+			fmt.Fprintf(os.Stderr, "%s: warning: %s\n", d.Pos, d.Msg)
+		}
+	}
 	if errs := formatSemanticErrors(diags); errs != "" {
 		return nil, fmt.Errorf("%s", errs)
 	}
