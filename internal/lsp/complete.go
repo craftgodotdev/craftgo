@@ -81,6 +81,10 @@ func (r *request) completionsAt(c cursor) []protocol.CompletionItem {
 	}
 	view := r.view()
 	prev, mid := view.token(c.prev), view.token(c.at)
+	// A route's words are the author's.
+	if routeAtCursor(view, c) {
+		return nil
+	}
 	// Right after `{` with nothing typed (mid may be the closing `}`).
 	if prev != nil && prev.Kind == lexer.LBrace && (mid == nil || mid.Kind != lexer.Ident) {
 		block := blockAt(view, c)
@@ -102,13 +106,13 @@ func (r *request) completionsAt(c cursor) []protocol.CompletionItem {
 		return r.clauseTypeCompletions()
 	}
 	if isTypeArgPosition(prev, mid) {
-		return r.typeCompletionsProjectWide()
+		return r.typeCompletionsProjectWide(c)
 	}
 	if isScalarPrimitivePosition(view, c) {
 		return scalarPrimitiveCompletions()
 	}
 	if isFieldTypePosition(view, c) {
-		return r.typeCompletionsProjectWide()
+		return r.typeCompletionsProjectWide(c)
 	}
 	return r.blockKeyCompletions(blockAt(view, c))
 }
@@ -225,6 +229,31 @@ func pathParamContext(view snapshotView, c cursor) (int, bool) {
 		return i, true
 	}
 	return 0, false
+}
+
+// routeAtCursor reports whether the cursor is in a method's route: on one of
+// its words, or right after one of its `/`.
+func routeAtCursor(view snapshotView, c cursor) bool {
+	i := c.at
+	if i < 0 {
+		i = c.prev
+	}
+	if k := view.kind(i); k != lexer.Slash && k != lexer.PathWord {
+		return false
+	}
+	for line := view.tokens[i].Pos.Line; i >= 0 && view.tokens[i].Pos.Line == line; i-- {
+		switch k := view.kind(i); {
+		case k == lexer.Slash || k == lexer.PathWord || k == lexer.LBrace || k == lexer.RBrace:
+		case k == lexer.Ident || k.IsKeyword():
+			// A method's name, after its verb, or a route parameter's.
+			if view.kind(i - 1).IsVerb() {
+				return true
+			}
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 // isTypeArgPosition reports whether the cursor is in a generic or map argument

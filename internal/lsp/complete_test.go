@@ -777,6 +777,46 @@ func TestCompletionErrorsDecoratorArgs(t *testing.T) {
 	expectLabels(t, items, "UserNotFoundErr", "EmailTakenErr")
 }
 
+// `@errors` and `@middlewares` offer only the names their list does not hold
+// yet, the one being typed aside.
+func TestCompletionNamesListedAreNotOfferedAgain(t *testing.T) {
+	const decls = "package x\n\nerror NotFound Missing\nerror Conflict Taken\nmiddleware Auth\nmiddleware Trace\n\nservice S {\n"
+	for _, c := range []struct {
+		src          string
+		want, banned []string
+	}{
+		{decls + "\t@errors(Missing, |)\n\tget A /a {}\n}\n", []string{"Taken"}, []string{"Missing"}},
+		{decls + "\t@errors(|, Taken)\n\tget A /a {}\n}\n", []string{"Missing"}, []string{"Taken"}},
+		{decls + "\t@errors(Miss|)\n\tget A /a {}\n}\n", []string{"Missing", "Taken"}, nil},
+		{decls + "\t@middlewares(Auth, |)\n\tget A /a {}\n}\n", []string{"Trace"}, []string{"Auth"}},
+	} {
+		items := mustCompletionsAtCursor(t, c.src)
+		expectLabels(t, items, c.want...)
+		expectNoLabels(t, items, c.banned...)
+	}
+}
+
+// A route's words are the author's: `/` in a route offers nothing.
+func TestCompletionInARouteOffersNothing(t *testing.T) {
+	const head = "package x\n\ntype R { id string @path }\n\nservice S {\n"
+	for _, route := range []string{"/|", "/users/|", "/us|", "/users/{id}/|"} {
+		if items := mustCompletionsAtCursor(t, head+"\tget A "+route+" { request R }\n}\n"); len(items) != 0 {
+			t.Errorf("%s: completions = %v, want none", route, labelSet(items))
+		}
+	}
+	expectLabels(t, mustCompletionsAtCursor(t, head+"\tget A /a { request R }\n\t|\n}\n"), "get", "post")
+}
+
+// Inside a generic type's body its type parameters are types too.
+func TestCompletionOffersTheTypeParametersOfTheTypeAround(t *testing.T) {
+	const decls = "package x\n\ntype Page<Item, Cursor> {\n"
+	for _, body := range []string{"\titems |\n}\n", "\tm map<string, |>\n}\n", "\tp Page<|>\n}\n"} {
+		items := mustCompletionsAtCursor(t, decls+body)
+		expectLabels(t, items, "Item", "Cursor", "string")
+	}
+	expectNoLabels(t, mustCompletionsAtCursor(t, decls+"\tx int\n}\n\ntype Other {\n\ty |\n}\n"), "Item", "Cursor")
+}
+
 // `@` on a string scalar offers the string validators only.
 func TestCompletionDecoratorOnScalarFiltersByPrimitive(t *testing.T) {
 	src := "package x\n\n" +
