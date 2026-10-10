@@ -65,14 +65,14 @@ type boundOperation struct {
 	fields []semantic.ResolvedField
 }
 
-// serverPath returns basePath as every route starts with it: one leading `/`,
-// no empty segment and no trailing `/`; "" when it has no segment, as `/`.
+// serverPath returns basePath as every route starts with it: one leading `/`
+// and no empty segment, nor a trailing `/` but the root's, `/`; "" for no
+// basePath.
 func serverPath(basePath string) string {
-	segs := route.Segments(basePath)
-	if len(segs) == 0 {
+	if basePath == "" {
 		return ""
 	}
-	return "/" + strings.Join(segs, "/")
+	return "/" + strings.Join(route.Segments(basePath), "/")
 }
 
 // basePathServer returns the server at basePath, each variable as every

@@ -2033,7 +2033,7 @@ service S {
 // spells it: it and an operation's path join to the route served.
 func TestServerURLIsTheRoutesBasePath(t *testing.T) {
 	for basePath, want := range map[string]string{
-		"/api": "/api", "/api/": "/api", "api": "/api", "//api": "/api", "/api//v2/": "/api/v2", "/": "",
+		"/api": "/api", "/api/": "/api", "api": "/api", "//api": "/api", "/api//v2/": "/api/v2", "/": "/", "//": "/",
 	} {
 		root, files := projectFiles(t, map[string]string{"a/a.craftgo": `package a
 type Ok { ok bool }
@@ -2044,15 +2044,15 @@ service S { get Ping /ping { response Ok } }`})
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := ""
-		if len(doc.Servers) > 0 {
-			got = doc.Servers[0].URL
+		if len(doc.Servers) != 1 {
+			t.Fatalf("basePath %q: servers %v", basePath, doc.Servers)
 		}
+		got := doc.Servers[0].URL
 		if got != want {
 			t.Errorf("basePath %q: server URL %q, want %q", basePath, got, want)
 		}
 		svc := proj.Packages["a"].Services["S"]
-		if served := route.Resolve(basePath, svc.Primary, svc.Methods[0]); got+"/v1/ping" != served {
+		if served := route.Resolve(basePath, svc.Primary, svc.Methods[0]); strings.TrimSuffix(got, "/")+"/v1/ping" != served {
 			t.Errorf("basePath %q: server URL %q and path /v1/ping do not join to the route %s", basePath, got, served)
 		}
 	}
