@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/codegen/golang"
+	"github.com/craftgodotdev/craftgo/internal/config"
 )
 
 // writeGenerated writes a file carrying the generated header at rel under dir and returns
@@ -70,6 +71,52 @@ func TestTheSweepFollowsLinksWithinTheProject(t *testing.T) {
 	}
 	if info, err := os.Lstat(filepath.Join(dir, "internal", "types")); err != nil || info.Mode()&os.ModeSymlink == 0 {
 		t.Errorf("the linked output directory itself went: %v", err)
+	}
+}
+
+// The event library a Go target left in its default directory goes once the target is turned
+// off, emptied or moved; another design's library there, which imports other types, stays.
+func TestAnEventTargetTurnedOffOrMovedLeavesNoLibrary(t *testing.T) {
+	for name, targets := range map[string][]config.EventTarget{
+		"off":   {{Lang: config.LangGo, Out: "-"}},
+		"empty": {},
+		"moved": {{Lang: config.LangGo, Out: "./pkg/events"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			proj := analyzeProject(t, ordersSrc)
+			cfg := eventsConfig()
+			if err := Generate(Inputs{Design: proj}, cfg, dir); err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+			library := filepath.Join(dir, "internal", "events", "orders", "events.go")
+			if _, err := os.Stat(library); err != nil {
+				t.Fatalf("the first run wrote no event library: %v", err)
+			}
+			other := filepath.Join(dir, "internal", "events", "billing", "events.go")
+			body := golang.GeneratedHeader + "\n\npackage billing\n\nimport types \"example.com/other/internal/types/billing\"\n"
+			if err := os.MkdirAll(filepath.Dir(other), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(other, []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			cfg.Events.Targets = targets
+			if err := Generate(Inputs{Design: proj}, cfg, dir); err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+			if _, err := os.Stat(filepath.Dir(library)); !os.IsNotExist(err) {
+				t.Errorf("the stale event library survived: %v", err)
+			}
+			if _, err := os.Stat(other); err != nil {
+				t.Errorf("another design's event library went: %v", err)
+			}
+			if name == "moved" {
+				if _, err := os.Stat(filepath.Join(dir, "pkg", "events", "orders", "events.go")); err != nil {
+					t.Errorf("the moved target wrote nothing: %v", err)
+				}
+			}
+		})
 	}
 }
 

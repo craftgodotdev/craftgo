@@ -113,6 +113,12 @@ output is imported from other modules; a design that declares none generates
 nothing either way. `targets: []` names no target, so nothing is generated. Set
 a target's `out` to `"-"` to skip it.
 
+Turning the Go target off, or moving it, sweeps the event library it left in a
+default directory, `./internal/events` or `./gen/events`: each
+`<package>/events.go` there carrying the generated header and importing this
+design's `output.types`, so another design's library stays. A library left in a
+directory of your own choosing is not tracked - delete it by hand.
+
 Transport and codec are deliberately absent: they are runtime wiring chosen in
 `main.go`, not design-time facts. See [Events](/guide/events).
 

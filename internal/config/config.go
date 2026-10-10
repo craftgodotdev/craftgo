@@ -179,6 +179,12 @@ func defaultEventTargets(kind string) []EventTarget {
 	return []EventTarget{{Lang: LangGo, Out: "./internal/events"}}
 }
 
+// DefaultEventDirs lists the directories the Go event target takes by default,
+// for one project kind or the other.
+func DefaultEventDirs() []string {
+	return []string{defaultEventTargets(KindApplication)[0].Out, defaultEventTargets(KindContracts)[0].Out}
+}
+
 // Enabled reports whether the target is generated; "-" skips it.
 func (t EventTarget) Enabled() bool { return t.Out != Disabled && t.Out != "" }
 

@@ -124,6 +124,7 @@ func plan(in Inputs, cfg *config.Config, projectRoot string, sel map[string]bool
 		paths, files := target.plan(in.Design, projectRoot, outDir)
 		take(sel[target.lang], paths, files)
 	}
+	take(sel[config.LangGo], golang.StaleEventPlan(cfg, projectRoot), nil)
 	paths, files = docs.Plan(in.Design, cfg, projectRoot)
 	take(sel[targetDocs], paths, files)
 	return owned(headers, projectRoot), written
