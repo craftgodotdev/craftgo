@@ -27,6 +27,7 @@ import (
 	inventoryserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/inventory_service"
 	ledgerroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/ledger"
 	ledgerentryroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/ledger_entry"
+	limitsroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/limits"
 	nestedserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/nested_service"
 	numbersserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/numbers_service"
 	ordersserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/orders_service"
@@ -73,6 +74,7 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	inventoryserviceroutes.RegisterRoutes(srv, svcCtx)
 	ledgerroutes.RegisterRoutes(srv, svcCtx)
 	ledgerentryroutes.RegisterRoutes(srv, svcCtx)
+	limitsroutes.RegisterRoutes(srv, svcCtx)
 	nestedserviceroutes.RegisterRoutes(srv, svcCtx)
 	numbersserviceroutes.RegisterRoutes(srv, svcCtx)
 	ordersserviceroutes.RegisterRoutes(srv, svcCtx)

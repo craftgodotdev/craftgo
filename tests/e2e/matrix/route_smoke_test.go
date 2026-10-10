@@ -29,6 +29,7 @@ func bootAll(t *testing.T, configure ...func(*server.Server)) *httptest.Server {
 	svc.ProfileAuth = middleware.NewProfileAuthMiddleware(authToken)
 	svc.RateLimit = middleware.NewRateLimitMiddleware()
 	svc.RequestStamp = middleware.NewRequestStampMiddleware()
+	svc.Signature = middleware.NewSignatureMiddleware()
 	svc.Timing = middleware.NewTimingMiddleware()
 	srv := server.New(svc, server.WithoutDefaultHealth())
 	for _, c := range configure {
