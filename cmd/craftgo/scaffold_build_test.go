@@ -261,19 +261,20 @@ func TestGeneratedConfigDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s := c.Server; s.ReadTimeout != 30*time.Second || s.MaxBodySize != 10<<20 || !s.RequirePresence {
-		t.Errorf("left out: %+v, want a 30s read timeout, a 10 MiB body cap and the presence check", s)
+	if s := c.Server; s.ReadTimeout != 30*time.Second || s.MaxBodySize != 10<<20 || !s.RequirePresence ||
+		s.Cookies != (CookieConfig{Path: "/", HTTPOnly: true, Secure: true, SameSite: "lax"}) {
+		t.Errorf("left out: %+v, want a 30s read timeout, a 10 MiB body cap, the presence check and safe cookies", s)
 	}
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	zero := "server:\n  readTimeout: 0s\n  maxBodySize: 0\n  requirePresence: false\n"
+	zero := "server:\n  readTimeout: 0s\n  maxBodySize: 0\n  requirePresence: false\n  cookies:\n    httpOnly: false\n"
 	if err := os.WriteFile(path, []byte(zero), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if c, err = Load(path); err != nil {
 		t.Fatal(err)
 	}
-	if s := c.Server; s.ReadTimeout != 0 || s.MaxBodySize != 0 || s.RequirePresence {
-		t.Errorf("set to zero: %+v, want each zero", s)
+	if s := c.Server; s.ReadTimeout != 0 || s.MaxBodySize != 0 || s.RequirePresence || s.Cookies.HTTPOnly || !s.Cookies.Secure {
+		t.Errorf("set to zero: %+v, want each zero and the cookie keys left out kept", s)
 	}
 }
 `

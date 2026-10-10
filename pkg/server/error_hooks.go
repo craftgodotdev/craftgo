@@ -194,6 +194,11 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.As(err, &hw) {
 		hw.WriteResponseHeaders(w)
 	}
+	if cs, ok := se.(ResponseCookieSetter); ok {
+		for _, c := range cs.ResponseCookies() {
+			http.SetCookie(w, withCookieOptions(c))
+		}
+	}
 	writeErrorHead(w, se.HTTPStatus())
 	codec := JSON()
 	var buf bytes.Buffer

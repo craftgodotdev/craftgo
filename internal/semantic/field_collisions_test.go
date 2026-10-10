@@ -100,6 +100,8 @@ func TestGeneratedMemberFieldNameRejected(t *testing.T) {
 		"type":         {"type T { validate string  x int }", `type T field "validate" maps to the Go name "Validate"`},
 		"generic type": {"type Box<T> { validate T  x int }", `type Box field "validate" maps to the Go name "Validate"`},
 		"error body":   {"error Internal E { validate string  x int }", `error E field "validate" maps to the Go name "Validate"`},
+		"error cookie method": {"error Conflict E { responseCookies string  x int }",
+			`error E field "responseCookies" maps to the Go name "ResponseCookies", the name of the generated error method ResponseCookies()`},
 		"error body struct": {"error Internal Gone { goneBody string  why string }",
 			`error Gone field "goneBody" maps to the Go name "GoneBody"`},
 		"error body struct through a mixin": {"type Mx { goneBody string }\nerror Internal Gone { Mx  why string }",

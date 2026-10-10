@@ -17,7 +17,8 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package, r *projectRes
 }
 
 // responseBindingsFor renders the @header and @cookie writers of a body's fields, reading the
-// values from accessVar (`resp`, or `e` for an error body).
+// values from accessVar: `resp`, whose cookies a handler sets through server.SetCookie, or `e`
+// for an error body, whose cookies its ResponseCookies appends to `cs`.
 func responseBindingsFor(fields []semantic.ResolvedField, accessVar string, pkg *semantic.Package, r *projectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
 	for _, rf := range fields {
 		kind, _ := wire.BindingKind(rf.Field.Decorators)
@@ -52,8 +53,11 @@ func renderResponseWrite(rf semantic.ResolvedField, pkg *semantic.Package, r *pr
 	field := accessVar + "." + rf.Name
 
 	set := func(valueExpr string) string {
-		if kind == wire.BindCookie {
-			return fmt.Sprintf("http.SetCookie(w, &http.Cookie{Name: %q, Value: %s})", wireName, valueExpr)
+		switch {
+		case kind == wire.BindCookie && accessVar == errorAccess:
+			return fmt.Sprintf("cs = append(cs, &http.Cookie{Name: %q, Value: %s})", wireName, valueExpr)
+		case kind == wire.BindCookie:
+			return fmt.Sprintf("server.SetCookie(w, %q, %s)", wireName, valueExpr)
 		}
 		return fmt.Sprintf("w.Header().Set(%q, %s)", wireName, valueExpr)
 	}

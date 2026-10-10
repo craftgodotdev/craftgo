@@ -420,15 +420,15 @@ When the request carries a `file`, its body becomes `multipart/form-data` and ev
 
 A binding decorator binds only on a field of the request, response or error type itself, a mixin's fields included. A field of a type that one of them holds as a nested value rides inside the JSON body, where no binding reaches it, so `@path`, `@query`, `@header`, `@cookie` or `@form` on it is `binding/nested`: move the field up, or let a mixin bring it there.
 
-**Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / `http.SetCookie(...)` instead of the JSON body - the JSON tag is automatically `json:"-"` (with a `header:` / `cookie:` binding key alongside) so the same field doesn't double up. Non-string values (`int`, `bool`, `float`, scalars and enums of those) are formatted to their wire string via `strconv`, just like the request-side binder parses them; an optional (`T?`) header is written only when non-nil, and a `string[]` header emits one value per element. The explicit-name argument applies here too:
+**Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / a `Set-Cookie` instead of the JSON body, the cookie with the server's attributes (`Path=/`, `HttpOnly`, `Secure`, `SameSite=Lax` unless `server.cookies` sets others) - the JSON tag is automatically `json:"-"` (with a `header:` / `cookie:` binding key alongside) so the same field doesn't double up. Non-string values (`int`, `bool`, `float`, scalars and enums of those) are formatted to their wire string via `strconv`, just like the request-side binder parses them; an optional (`T?`) header is written only when non-nil, and a `string[]` header emits one value per element. The explicit-name argument applies here too:
 
 ```craftgo
 type PaginatedResp {
     items   shared.ID[]
     count   int      @header("X-Total-Count")   // strconv.Itoa → X-Total-Count: 42
     nextURL string?  @header("X-Next")           // only written when present
-    active  bool     @cookie("active")           // Set-Cookie: active=true
-    session string   @cookie("session_id")       // Set-Cookie: session_id=...
+    active  bool     @cookie("active")           // Set-Cookie: active=true; Path=/; HttpOnly; Secure; SameSite=Lax
+    session string   @cookie("session_id")       // Set-Cookie: session_id=...; Path=/; HttpOnly; Secure; SameSite=Lax
 }
 
 error TooManyRequests RateLimitedErr {

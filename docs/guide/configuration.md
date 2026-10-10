@@ -313,6 +313,12 @@ server:                # absent when the design's only services are gRPC ones
   maxBodySize: 10485760
   strictJSON: true
   requirePresence: true
+  cookies:
+    path: /
+    domain: ""
+    httpOnly: true
+    secure: true
+    sameSite: lax
   compression:
     enabled: false
     minSize: 0
@@ -347,7 +353,7 @@ docs:                  # absent when the design's only services are gRPC ones
   specPath: /openapi.yaml
 ```
 
-A key left out of `config.yaml` takes a default. `config.go`'s `defaults` sets `server.readTimeout` (`30s`), `server.maxBodySize` (10 MiB) and `server.requirePresence` (`true`) before the file is read, so a value in the file wins, a zero included; its `applyDefaults` fills `server.addr` (`":8080"`), `grpc.addr` (`":9000"`) and `serviceName` (the last segment of the project's import path). Every other key falls to the runtime: the switches (`otel.enabled`, `metrics.enabled`, `docs.enabled`, `strictJSON`, `compression.enabled`, `grpc.reflection`) are off; an empty `otel.exporter` keeps spans in process; an empty `metrics.exporter` serves the Prometheus scrape, with no listener unless `adminAddr` is set; the scrape path is `/metrics`; the docs use `redoc` at `/docs` and `/openapi.yaml`; logging is `info`.
+A key left out of `config.yaml` takes a default. `config.go`'s `defaults` sets `server.readTimeout` (`30s`), `server.maxBodySize` (10 MiB), `server.requirePresence` (`true`) and `server.cookies` (`path: /`, `httpOnly`, `secure`, `sameSite: lax`) before the file is read, so a value in the file wins, a zero included; its `applyDefaults` fills `server.addr` (`":8080"`), `grpc.addr` (`":9000"`) and `serviceName` (the last segment of the project's import path). Every other key falls to the runtime: the switches (`otel.enabled`, `metrics.enabled`, `docs.enabled`, `strictJSON`, `compression.enabled`, `grpc.reflection`) are off; an empty `otel.exporter` keeps spans in process; an empty `metrics.exporter` serves the Prometheus scrape, with no listener unless `adminAddr` is set; the scrape path is `/metrics`; the docs use `redoc` at `/docs` and `/openapi.yaml`; logging is `info`.
 
 ### `server`
 
@@ -361,6 +367,11 @@ Absent only from a project whose design declares gRPC services and no HTTP route
 | `maxBodySize`                | int       | Global request body cap in bytes; per-method `@maxBodySize` overrides. 10 MiB (`10485760`) when left out; `0` = no cap. |
 | `strictJSON`                 | bool      | Reject a JSON body with an unknown field (400 `{"message":"<field>: unknown field"}`) or data after the JSON value (400 `{"message":"body: unexpected data after the JSON value"}`). `false` ignores both, as `encoding/json` does. |
 | `requirePresence`            | bool      | Answer 400 `{"message":"<json path>: required"}` to a JSON body that leaves out a member declared without `?`, or sends it as `null` without `@nullable`; a nested `@default` fills an absent member. `false` decodes the body straight into the request type. Defaults to `true`. See [Required by default](/guide/validators#built-in-validators). |
+| `cookies.path`               | string    | `Path` of the cookies a response's or an error's `@cookie` fields set. `/` when left out; `""` lets the browser scope a cookie to the request's directory. |
+| `cookies.domain`             | string    | `Domain` of those cookies, sharing them with its subdomains; `""`, the default, keeps them to the host. |
+| `cookies.httpOnly`           | bool      | `HttpOnly`: scripts cannot read the cookies. `true` when left out. |
+| `cookies.secure`             | bool      | `Secure`: the cookies go over HTTPS only (browsers count `http://localhost` as secure). `true` when left out. |
+| `cookies.sameSite`           | string    | `lax` (when left out), `strict` or `none`, which needs `secure`; `""` sends no `SameSite`. Another value stops the server at boot. |
 | `compression.enabled`        | bool      | Toggle gzip / deflate response compression.                             |
 | `compression.minSize`        | int       | Skip compression when body is smaller. `0` falls back to 1024.          |
 | `compression.level`          | int       | Compression level (1-9). `0` falls back to default.                     |

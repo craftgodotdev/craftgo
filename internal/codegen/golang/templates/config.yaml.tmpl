@@ -10,6 +10,12 @@ server:
   maxBodySize: 10485760
   strictJSON: true
   requirePresence: true
+  cookies:
+    path: /
+    domain: ""
+    httpOnly: true
+    secure: true
+    sameSite: lax
   compression:
     enabled: false
     minSize: 0

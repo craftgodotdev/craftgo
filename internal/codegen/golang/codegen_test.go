@@ -703,7 +703,8 @@ error BadRequest ValidationErr`)
 	}
 }
 
-// Error @header/@cookie fields leave the body and are written by WriteResponseHeaders.
+// Error @header/@cookie fields leave the body: WriteResponseHeaders writes the headers, and
+// ResponseCookies returns the cookies, which the server sets with its cookie attributes.
 func TestGenerateErrorsResponseBindings(t *testing.T) {
 	pkg := analyze(t, `package design
 error TooManyRequests RateLimited {
@@ -732,9 +733,11 @@ error TooManyRequests RateLimited {
 	mustContainAll(t, src,
 		"func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter)",
 		`w.Header().Set("retryAfter", e.RetryAfter)`,
-		`http.SetCookie(w, &http.Cookie{Name: "sessionToken", Value: e.SessionToken})`,
+		"func (e *RateLimitedErr) ResponseCookies() []*http.Cookie {",
+		`cs = append(cs, &http.Cookie{Name: "sessionToken", Value: e.SessionToken})`,
 		`"net/http"`,
 	)
+	mustContainNone(t, src, "http.SetCookie", "pkg/server")
 }
 
 // A @sensitive error-body field is tagged json:"-".
@@ -783,7 +786,7 @@ error TooManyRequests RateLimited {
 		`w.Header().Set("Retry-After", strconv.Itoa(e.RetryAfter))`,
 		// A local int scalar converts to int64 for strconv.FormatInt.
 		`w.Header().Set("X-Cost", strconv.FormatInt(int64(e.Cost), 10))`,
-		`http.SetCookie(w, &http.Cookie{Name: "throttled", Value: strconv.FormatBool(e.Throttled)})`,
+		`cs = append(cs, &http.Cookie{Name: "throttled", Value: strconv.FormatBool(e.Throttled)})`,
 	)
 }
 

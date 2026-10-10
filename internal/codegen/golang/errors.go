@@ -102,8 +102,11 @@ var errorsTemplate = tmpl("errors.tmpl")
 func errorResponseBindings(ed *ast.ErrorDecl, pkg *semantic.Package, r *projectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
 	// A field promoted from a mixin is reachable as `e.X`.
 	fields := semantic.ResolveFields(&ast.TypeDecl{Body: ed.Body}, "", pkg, r.Resolver, resolvedGoFieldNames)
-	return responseBindingsFor(fields, "e", pkg, r)
+	return responseBindingsFor(fields, errorAccess, pkg, r)
 }
+
+// errorAccess is the receiver errors.tmpl reads an error's fields through.
+const errorAccess = "e"
 
 // screamingSnake converts an identifier to SCREAMING_SNAKE_CASE, keeping
 // initialisms whole (`DBLockedErr` is `DB_LOCKED_ERR`).

@@ -184,7 +184,7 @@ Categories (drives HTTP status):
 | `LengthRequired`     | 411    | `UnsupportedMediaType` | 415    |
 | `PreconditionFailed` | 412    |                       |        |
 
-Constructed via `New<TypeName>()` (no body) or `New<TypeName>(<Name>Body{...})`, where `<TypeName>` is the DSL name with `Err` appended unless it already ends in `Err`/`Error` (DSL `EmailTaken` -> `NewEmailTakenErr()`; DSL `RateLimitedErr` -> `NewRateLimitedErr()`) and `<Name>Body` is the DSL name with `Body` appended. Implements `Error() string` (the category's default message), `HTTPStatus() int`, `ErrCode() string` (the machine-readable code) and `MarshalJSON` (the body's fields, or `{"code","message"}` for an error with no field on its JSON body: none, or only `@header`, `@cookie` and `@sensitive` ones). Each error type also exports a package-level `const ErrCode<Name>` holding that code string (e.g. `const ErrCodeEmailTaken = "EMAIL_TAKEN"`). No other type, scalar, enum or error of the package may take one of these names or an enum value's `<Enum><Value>` constant, and no event may take another event's `<Event>Contract` name: `decl/go-name-collision`. A body field, a mixin's included, whose Go name is one of these methods, `WriteResponseHeaders` or `<Name>Body` is `field/invalid-go-name`, as is a field of any type or error body whose Go name is `Validate`, or a mixin of a type named `Validate`.
+Constructed via `New<TypeName>()` (no body) or `New<TypeName>(<Name>Body{...})`, where `<TypeName>` is the DSL name with `Err` appended unless it already ends in `Err`/`Error` (DSL `EmailTaken` -> `NewEmailTakenErr()`; DSL `RateLimitedErr` -> `NewRateLimitedErr()`) and `<Name>Body` is the DSL name with `Body` appended. Implements `Error() string` (the category's default message), `HTTPStatus() int`, `ErrCode() string` (the machine-readable code) and `MarshalJSON` (the body's fields, or `{"code","message"}` for an error with no field on its JSON body: none, or only `@header`, `@cookie` and `@sensitive` ones). Each error type also exports a package-level `const ErrCode<Name>` holding that code string (e.g. `const ErrCodeEmailTaken = "EMAIL_TAKEN"`). No other type, scalar, enum or error of the package may take one of these names or an enum value's `<Enum><Value>` constant, and no event may take another event's `<Event>Contract` name: `decl/go-name-collision`. An error with a `@header` field also has `WriteResponseHeaders(w)`, and one with a `@cookie` field `ResponseCookies() []*http.Cookie`, whose cookies `server.WriteError` sets with the `server.cookies` attributes (`Path=/`, `HttpOnly`, `Secure`, `SameSite=Lax` by default). A body field, a mixin's included, whose Go name is one of these methods, `WriteResponseHeaders`, `ResponseCookies` or `<Name>Body` is `field/invalid-go-name`, as is a field of any type or error body whose Go name is `Validate`, or a mixin of a type named `Validate`.
 
 ## Services and methods
 
@@ -698,6 +698,12 @@ server:
   maxBodySize: 10485760 # 10 MiB when left out; 0 = no cap
   strictJSON: true
   requirePresence: true # 400 for a JSON body missing a required member
+  cookies: # attributes of the cookies @cookie fields set, on a response or an error
+    path: /
+    domain: ""
+    httpOnly: true
+    secure: true
+    sameSite: lax # lax | strict | none (needs secure) | "" for none
   compression:
     enabled: false
     minSize: 0

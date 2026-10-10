@@ -607,7 +607,7 @@ service FilesService {
 	body := string(out)
 	checks := []string{
 		`w.Header().Set("etag", resp.Etag)`,
-		`http.SetCookie(w, &http.Cookie{Name: "sessionID", Value: resp.SessionID})`,
+		`server.SetCookie(w, "sessionID", resp.SessionID)`,
 		"server.WriteResponse(w, r, http.StatusOK, resp)",
 	}
 	for _, want := range checks {
@@ -650,7 +650,7 @@ service Catalog {
 	mustParseGo(t, body)
 	mustContainAll(t, body,
 		`w.Header().Set("X-Total-Count", resp.Total)`,
-		`http.SetCookie(w, &http.Cookie{Name: "session_id", Value: resp.SessionID})`,
+		`server.SetCookie(w, "session_id", resp.SessionID)`,
 	)
 	for _, banned := range []string{
 		`w.Header().Set("total"`,
@@ -707,8 +707,8 @@ service S {
 		`w.Header().Set("X-Next-Page", *resp.NextPage)`,
 		`for _, _v := range resp.Labels {`,
 		`w.Header().Add("X-Label", _v)`,
-		`http.SetCookie(w, &http.Cookie{Name: "flag", Value: strconv.FormatBool(resp.Active)})`,
-		`http.SetCookie(w, &http.Cookie{Name: "plain", Value: resp.Plain})`,
+		`server.SetCookie(w, "flag", strconv.FormatBool(resp.Active))`,
+		`server.SetCookie(w, "plain", resp.Plain)`,
 	)
 }
 

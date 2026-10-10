@@ -150,6 +150,17 @@ func (Sonic) DecodeStrict(r io.Reader, v any) error {
 
 jsoniter (`Config{DisallowUnknownFields: true}.Froze()`) and goccy/go-json (`NewDecoder(r).DisallowUnknownFields()`, the stdlib API) wrap the same way.
 
+### Cookies
+
+A response's `@cookie` field is set by the handler through `server.SetCookie(w, name, value)`, an error's by `WriteError` from its `ResponseCookies()`; both take the attributes `SetCookieOptions` installed.
+
+| Function | Description |
+|---|---|
+| `SetCookieOptions(o CookieOptions) error` | Install, process-wide and safe while serving, the `Path`, `Domain`, `HTTPOnly`, `Secure` and `SameSite` (`"lax"`, `"strict"`, `"none"`, or `""` for none) the cookies carry. `server.cookies` in `config.yaml` drives it. Fails, changing nothing, on another `SameSite`, or on `none` without `Secure`. |
+| `DefaultCookieOptions() CookieOptions` | The options in effect until `SetCookieOptions`: `Path: "/"`, `HTTPOnly`, `Secure`, `SameSite: "lax"`. |
+| `SetCookie(w, name, value)` | Add a `Set-Cookie` with the installed attributes. |
+| `ResponseCookieSetter` | `ResponseCookies() []*http.Cookie`: what a generated error with a `@cookie` field implements; `WriteError` sets each cookie with the installed attributes, after `WriteResponseHeaders`. |
+
 ### Required members
 
 A generated handler checks that a JSON body carries every member declared without `?`. It decodes the body with the installed codec into an unexported struct beside the handler, a pointer per member, and copies it into the request type; a member left out, or sent as `null` without `@nullable`, answers 400 `{"message":"<json path>: required"}` through the validation hook, and an absent member's `@default` is filled at any depth. A `@nullable` or defaulted member decodes through `server.Nullable[T]`, whose `UnmarshalJSON` tells an absent member from a `null` one, so a codec installed with `SetGlobalJSONCodec` must call a type's `json.Unmarshaler`, as sonic, jsoniter, goccy/go-json and segmentio/encoding do. It must also decode `[]`, `{}` and `""` to a non-nil list, map and `bytes`, since nil stands for an absent one.

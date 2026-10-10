@@ -227,7 +227,7 @@ var bodyStructMethods = []string{"Validate"}
 
 // errorTypeMethods are the methods the generator declares on an error type,
 // which embeds the error's body struct.
-var errorTypeMethods = []string{"Error", "ErrCode", "HTTPStatus", "MarshalJSON", "WriteResponseHeaders"}
+var errorTypeMethods = []string{"Error", "ErrCode", "HTTPStatus", "MarshalJSON", "WriteResponseHeaders", "ResponseCookies"}
 
 // generatedMemberClash names the generated member a body field Go-named
 // goName clashes with, and how, or returns "". errName is the error whose

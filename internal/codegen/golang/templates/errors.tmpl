@@ -39,14 +39,22 @@ func (e *{{.TypeName}}) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]string{"code": {{.ConstName}}, "message": e.Error()})
 }
 {{end -}}
-{{if .HasResponseHeaders}}
-// WriteResponseHeaders sets the @header and @cookie fields on w.
+{{if .Headers}}
+// WriteResponseHeaders sets the @header fields on w.
 func (e *{{.TypeName}}) WriteResponseHeaders(w http.ResponseWriter) {
 {{- range .Headers}}
 	{{.Bind}}
 {{- end}}
+}
+{{end -}}
+{{if .Cookies}}
+// ResponseCookies returns the cookies of the @cookie fields, which the server sets with its cookie
+// attributes.
+func (e *{{.TypeName}}) ResponseCookies() []*http.Cookie {
+	var cs []*http.Cookie
 {{- range .Cookies}}
 	{{.Bind}}
 {{- end}}
+	return cs
 }
 {{end -}}
