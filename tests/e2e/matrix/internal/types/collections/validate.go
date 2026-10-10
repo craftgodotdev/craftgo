@@ -315,7 +315,7 @@ func (v DeepTag) Validate() error {
 
 // Validate returns the first constraint v violates, or nil.
 func (v Email) Validate() error {
-	if _, _err := mail.ParseAddress(string(v)); _err != nil {
+	if !_isEmail(string(v)) {
 		return fmt.Errorf("not a valid email")
 	}
 	if utf8.RuneCountInString(string(v)) > 254 {
@@ -366,4 +366,11 @@ func (v Tag) Validate() error {
 		return fmt.Errorf("does not match pattern")
 	}
 	return nil
+}
+
+// _isEmail reports whether v is a bare RFC 5322 addr-spec, as JSON Schema `email` is: no
+// display name, comment, angle brackets or surrounding space.
+func _isEmail(v string) bool {
+	a, err := mail.ParseAddress(v)
+	return err == nil && a.Name == "" && a.String() == "<"+v+">"
 }

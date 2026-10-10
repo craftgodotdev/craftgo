@@ -2,7 +2,14 @@
 
 package time
 
+import (
+	"fmt"
+)
+
 // Validate returns the first constraint v violates, or nil.
 func (v *Slot) Validate() error {
+	if _, _off := v.Start.Zone(); _off <= -86400 || _off >= 86400 {
+		return fmt.Errorf("start: not a valid RFC 3339 datetime")
+	}
 	return nil
 }

@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"net"
 	"net/mail"
+	"net/netip"
 	"net/url"
 	"regexp"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -17,32 +19,31 @@ import (
 // The regexes of the @pattern and @format checks, compiled once.
 var (
 	_pattern0 = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
-	_pattern1 = regexp.MustCompile("^\\+?[0-9 ()-]{6,20}$")
-	_pattern2 = regexp.MustCompile("^[0-9]{12,19}$")
-	_pattern3 = regexp.MustCompile("^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$")
-	_pattern4 = regexp.MustCompile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
-	_pattern5 = regexp.MustCompile("^[A-Z0-9_]+$")
-	_pattern6 = regexp.MustCompile("^[A-Z]{2,4}$")
-	_pattern7 = regexp.MustCompile("^\\+?[0-9]+$")
-	_pattern8 = regexp.MustCompile("\\d{3}-\\d{3}-\\d{4}")
-	_pattern9 = regexp.MustCompile("^`[^`]+`$")
+	_pattern1 = regexp.MustCompile("^[0-9]{12,19}$")
+	_pattern2 = regexp.MustCompile("^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$")
+	_pattern3 = regexp.MustCompile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
+	_pattern4 = regexp.MustCompile("^[A-Z0-9_]+$")
+	_pattern5 = regexp.MustCompile("^[A-Z]{2,4}$")
+	_pattern6 = regexp.MustCompile("^\\+?[0-9]+$")
+	_pattern7 = regexp.MustCompile("\\d{3}-\\d{3}-\\d{4}")
+	_pattern8 = regexp.MustCompile("^`[^`]+`$")
 )
 
 // Validate returns the first constraint v violates, or nil.
 func (v *AllFormats) Validate() error {
-	if _, _err := mail.ParseAddress(v.Email); _err != nil {
+	if !_isEmail(v.Email) {
 		return fmt.Errorf("email: not a valid email")
 	}
 	if utf8.RuneCountInString(v.Email) > 254 {
 		return fmt.Errorf("email: length greater than 254")
 	}
-	if _u, _err := url.Parse(v.URL); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
+	if !_isURL(v.URL) {
 		return fmt.Errorf("url: not a valid URL")
 	}
 	if utf8.RuneCountInString(v.URL) > 2048 {
 		return fmt.Errorf("url: length greater than 2048")
 	}
-	if _u, _err := url.Parse(v.URI); _err != nil || _u.Scheme == "" {
+	if !_isURI(v.URI) {
 		return fmt.Errorf("uri: not a valid URI")
 	}
 	if utf8.RuneCountInString(v.URI) > 2048 {
@@ -54,79 +55,79 @@ func (v *AllFormats) Validate() error {
 	if utf8.RuneCountInString(v.Uuid) != 36 {
 		return fmt.Errorf("uuid: length must be 36")
 	}
-	if _, _err := time.Parse(time.RFC3339, v.Datetime); _err != nil {
+	if !_isDateTime(v.Datetime) {
 		return fmt.Errorf("datetime: not a valid RFC 3339 datetime")
 	}
 	if utf8.RuneCountInString(v.Datetime) > 40 {
 		return fmt.Errorf("datetime: length greater than 40")
 	}
-	if _, _err := time.Parse(time.DateOnly, v.Date); _err != nil {
+	if !_isDate(v.Date) {
 		return fmt.Errorf("date: not a valid date")
 	}
 	if utf8.RuneCountInString(v.Date) != 10 {
 		return fmt.Errorf("date: length must be 10")
 	}
-	if _, _err := time.Parse(time.TimeOnly, v.TimeField); _err != nil {
+	if !_isTime(v.TimeField) {
 		return fmt.Errorf("timeField: not a valid time")
 	}
-	if utf8.RuneCountInString(v.TimeField) != 8 {
-		return fmt.Errorf("timeField: length must be 8")
+	if utf8.RuneCountInString(v.TimeField) > 32 {
+		return fmt.Errorf("timeField: length greater than 32")
 	}
-	if !_pattern1.MatchString(v.Phone) {
+	if !_isPhone(v.Phone) {
 		return fmt.Errorf("phone: not a valid phone")
 	}
 	if utf8.RuneCountInString(v.Phone) > 20 {
 		return fmt.Errorf("phone: length greater than 20")
 	}
-	if _ip := net.ParseIP(v.Ipv4); _ip == nil || _ip.To4() == nil {
+	if !_isIPv4(v.Ipv4) {
 		return fmt.Errorf("ipv4: not a valid IPv4")
 	}
 	if utf8.RuneCountInString(v.Ipv4) > 15 {
 		return fmt.Errorf("ipv4: length greater than 15")
 	}
-	if _ip := net.ParseIP(v.Ipv6); _ip == nil || _ip.To4() != nil {
+	if !_isIPv6(v.Ipv6) {
 		return fmt.Errorf("ipv6: not a valid IPv6")
 	}
 	if utf8.RuneCountInString(v.Ipv6) > 45 {
 		return fmt.Errorf("ipv6: length greater than 45")
 	}
-	if _, _, _err := net.ParseCIDR(v.Cidr); _err != nil {
+	if !_isCIDR(v.Cidr) {
 		return fmt.Errorf("cidr: not a valid CIDR")
 	}
 	if utf8.RuneCountInString(v.Cidr) > 43 {
 		return fmt.Errorf("cidr: length greater than 43")
 	}
-	if _, _err := net.ParseMAC(v.MAC); _err != nil {
+	if !_isMAC(v.MAC) {
 		return fmt.Errorf("mac: not a valid MAC address")
 	}
 	if utf8.RuneCountInString(v.MAC) > 17 {
 		return fmt.Errorf("mac: length greater than 17")
 	}
-	if !_pattern2.MatchString(v.Creditcard) {
+	if !_pattern1.MatchString(v.Creditcard) {
 		return fmt.Errorf("creditcard: not a valid credit card number")
 	}
 	if l := utf8.RuneCountInString(v.Creditcard); l < 12 || l > 19 {
 		return fmt.Errorf("creditcard: length out of range [12, 19]")
 	}
-	if _, _err := base64.StdEncoding.DecodeString(v.Base64); _err != nil {
+	if !_isBase64(v.Base64) {
 		return fmt.Errorf("base64: not a valid base64")
 	}
 	if utf8.RuneCountInString(v.Base64) > 8192 {
 		return fmt.Errorf("base64: length greater than 8192")
 	}
-	if _, _err := base64.URLEncoding.DecodeString(v.Base64url); _err != nil {
+	if !_isBase64URL(v.Base64url) {
 		return fmt.Errorf("base64url: not a valid base64url")
 	}
 	if utf8.RuneCountInString(v.Base64url) > 8192 {
 		return fmt.Errorf("base64url: length greater than 8192")
 	}
-	if !_pattern3.MatchString(v.Hexcolor) {
+	if !_pattern2.MatchString(v.Hexcolor) {
 		return fmt.Errorf("hexcolor: not a valid hex color")
 	}
 	if utf8.RuneCountInString(v.Hexcolor) > 7 {
 		return fmt.Errorf("hexcolor: length greater than 7")
 	}
-	if !json.Valid([]byte(v.JSONField)) {
+	if !_isJSON(v.JSONField) {
 		return fmt.Errorf("jsonField: not a valid JSON")
 	}
 	if utf8.RuneCountInString(v.JSONField) > 65536 {
@@ -140,10 +141,10 @@ func (v *Str_Combos) Validate() error {
 	if l := utf8.RuneCountInString(v.Email1); l < 1 || l > 80 {
 		return fmt.Errorf("email1: length out of range [1, 80]")
 	}
-	if !_pattern4.MatchString(v.Email1) {
+	if !_pattern3.MatchString(v.Email1) {
 		return fmt.Errorf("email1: does not match pattern")
 	}
-	if _, _err := mail.ParseAddress(v.Email1); _err != nil {
+	if !_isEmail(v.Email1) {
 		return fmt.Errorf("email1: not a valid email")
 	}
 	if utf8.RuneCountInString(v.Email2) < 3 {
@@ -152,13 +153,13 @@ func (v *Str_Combos) Validate() error {
 	if utf8.RuneCountInString(v.Email2) > 254 {
 		return fmt.Errorf("email2: length greater than 254")
 	}
-	if _, _err := mail.ParseAddress(v.Email2); _err != nil {
+	if !_isEmail(v.Email2) {
 		return fmt.Errorf("email2: not a valid email")
 	}
 	if l := utf8.RuneCountInString(v.CodeID); l < 3 || l > 16 {
 		return fmt.Errorf("codeID: length out of range [3, 16]")
 	}
-	if !_pattern5.MatchString(v.CodeID) {
+	if !_pattern4.MatchString(v.CodeID) {
 		return fmt.Errorf("codeID: does not match pattern")
 	}
 	return nil
@@ -179,13 +180,13 @@ func (v *Str_EchoReq) Validate() error {
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 80 {
 		return fmt.Errorf("name: length out of range [1, 80]")
 	}
-	if _, _err := mail.ParseAddress(v.Email); _err != nil {
+	if !_isEmail(v.Email) {
 		return fmt.Errorf("email: not a valid email")
 	}
 	if utf8.RuneCountInString(v.Email) > 254 {
 		return fmt.Errorf("email: length greater than 254")
 	}
-	if !_pattern6.MatchString(v.Code) {
+	if !_pattern5.MatchString(v.Code) {
 		return fmt.Errorf("code: does not match pattern")
 	}
 	if v.Bio != nil && utf8.RuneCountInString(*v.Bio) > 500 {
@@ -204,13 +205,13 @@ func (v *Str_EchoResp) Validate() error {
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 80 {
 		return fmt.Errorf("name: length out of range [1, 80]")
 	}
-	if _, _err := mail.ParseAddress(v.Email); _err != nil {
+	if !_isEmail(v.Email) {
 		return fmt.Errorf("email: not a valid email")
 	}
 	if utf8.RuneCountInString(v.Email) > 254 {
 		return fmt.Errorf("email: length greater than 254")
 	}
-	if !_pattern6.MatchString(v.Code) {
+	if !_pattern5.MatchString(v.Code) {
 		return fmt.Errorf("code: does not match pattern")
 	}
 	if v.Bio != nil && utf8.RuneCountInString(*v.Bio) > 500 {
@@ -252,10 +253,8 @@ func (v *Str_Nullable) Validate() error {
 
 // Validate returns the first constraint v violates, or nil.
 func (v *Str_NullableFormat) Validate() error {
-	if v.Email != nil {
-		if _, _err := mail.ParseAddress(*v.Email); _err != nil {
-			return fmt.Errorf("email: not a valid email")
-		}
+	if v.Email != nil && !_isEmail(*v.Email) {
+		return fmt.Errorf("email: not a valid email")
 	}
 	return nil
 }
@@ -267,12 +266,10 @@ func (v *Str_Optionals) Validate() error {
 			return fmt.Errorf("lenOpt: length out of range [1, 100]")
 		}
 	}
-	if v.MailOpt != nil {
-		if _, _err := mail.ParseAddress(*v.MailOpt); _err != nil {
-			return fmt.Errorf("mailOpt: not a valid email")
-		}
+	if v.MailOpt != nil && !_isEmail(*v.MailOpt) {
+		return fmt.Errorf("mailOpt: not a valid email")
 	}
-	if v.PattOpt != nil && !_pattern6.MatchString(*v.PattOpt) {
+	if v.PattOpt != nil && !_pattern5.MatchString(*v.PattOpt) {
 		return fmt.Errorf("pattOpt: does not match pattern")
 	}
 	if v.BothOpt != nil {
@@ -280,26 +277,24 @@ func (v *Str_Optionals) Validate() error {
 			return fmt.Errorf("bothOpt: length out of range [1, 80]")
 		}
 	}
-	if v.BothOpt != nil {
-		if _, _err := mail.ParseAddress(*v.BothOpt); _err != nil {
-			return fmt.Errorf("bothOpt: not a valid email")
-		}
+	if v.BothOpt != nil && !_isEmail(*v.BothOpt) {
+		return fmt.Errorf("bothOpt: not a valid email")
 	}
 	return nil
 }
 
 // Validate returns the first constraint v violates, or nil.
 func (v *Str_Patterns) Validate() error {
-	if !_pattern6.MatchString(v.Upper) {
+	if !_pattern5.MatchString(v.Upper) {
 		return fmt.Errorf("upper: does not match pattern")
 	}
-	if !_pattern7.MatchString(v.IntlNum) {
+	if !_pattern6.MatchString(v.IntlNum) {
 		return fmt.Errorf("intlNum: does not match pattern")
 	}
-	if !_pattern8.MatchString(v.PhoneUs) {
+	if !_pattern7.MatchString(v.PhoneUs) {
 		return fmt.Errorf("phoneUS: does not match pattern")
 	}
-	if !_pattern9.MatchString(v.CodeSpan) {
+	if !_pattern8.MatchString(v.CodeSpan) {
 		return fmt.Errorf("codeSpan: does not match pattern")
 	}
 	return nil
@@ -314,4 +309,162 @@ func (v *Str_UTF8) Validate() error {
 		return fmt.Errorf("jaName: length out of range [1, 80]")
 	}
 	return nil
+}
+
+// _isEmail reports whether v is a bare RFC 5322 addr-spec, as JSON Schema `email` is: no
+// display name, comment, angle brackets or surrounding space.
+func _isEmail(v string) bool {
+	a, err := mail.ParseAddress(v)
+	return err == nil && a.Name == "" && a.String() == "<"+v+">"
+}
+
+// _isURL reports whether v is an http or https URI with a host.
+func _isURL(v string) bool {
+	u, err := url.Parse(v)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Hostname() != "" && _isURIText(v)
+}
+
+// _isURI reports whether v is an RFC 3986 URI, which has a scheme.
+func _isURI(v string) bool {
+	u, err := url.Parse(v)
+	return err == nil && u.Scheme != "" && _isURIText(v)
+}
+
+// _isURIText reports whether v holds only the characters RFC 3986 allows in a URI, a `%` only
+// before two hex digits, and one `#` at most.
+func _isURIText(v string) bool {
+	for i := 0; i < len(v); i++ {
+		switch c := v[i]; {
+		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9':
+		case strings.IndexByte("-._~:/?#[]@!$&'()*+,;=", c) >= 0:
+		case c == '%' && i+2 < len(v) && strings.IndexByte("0123456789abcdefABCDEF", v[i+1]) >= 0 &&
+			strings.IndexByte("0123456789abcdefABCDEF", v[i+2]) >= 0:
+			i += 2
+		default:
+			return false
+		}
+	}
+	return strings.Count(v, "#") <= 1
+}
+
+// _isDateTime reports whether v is an RFC 3339 date-time, its `T` and `Z` in either case.
+func _isDateTime(v string) bool {
+	return len(v) > 10 && (v[10] == 'T' || v[10] == 't') && _isDate(v[:10]) && _isTime(v[11:])
+}
+
+// _isDate reports whether v is an RFC 3339 full-date.
+func _isDate(v string) bool {
+	_, err := time.Parse(time.DateOnly, v)
+	return err == nil
+}
+
+// _isTime reports whether v is an RFC 3339 full-time: hh:mm:ss, a `.` and fraction digits, then
+// `Z` or an offset ±hh:mm, with second 60, a leap second, only at 23:59 UTC.
+func _isTime(v string) bool {
+	if len(v) < 9 || v[2] != ':' || v[5] != ':' {
+		return false
+	}
+	h, m, s := _twoDigits(v[0:2]), _twoDigits(v[3:5]), _twoDigits(v[6:8])
+	if h > 23 || m > 59 || s > 60 {
+		return false
+	}
+	rest := v[8:]
+	if rest[0] == '.' {
+		n := 1
+		for n < len(rest) && '0' <= rest[n] && rest[n] <= '9' {
+			n++
+		}
+		if n == 1 {
+			return false
+		}
+		rest = rest[n:]
+	}
+	offset := 0
+	switch {
+	case rest == "Z" || rest == "z":
+	case len(rest) == 6 && (rest[0] == '+' || rest[0] == '-') && rest[3] == ':':
+		oh, om := _twoDigits(rest[1:3]), _twoDigits(rest[4:6])
+		if oh > 23 || om > 59 {
+			return false
+		}
+		if offset = oh*60 + om; rest[0] == '-' {
+			offset = -offset
+		}
+	default:
+		return false
+	}
+	return s < 60 || (h*60+m-offset+24*60)%(24*60) == 23*60+59
+}
+
+// _twoDigits returns the number two decimal digits spell, or 100 for anything else.
+func _twoDigits(v string) int {
+	if len(v) != 2 || v[0] < '0' || v[0] > '9' || v[1] < '0' || v[1] > '9' {
+		return 100
+	}
+	return int(v[0]-'0')*10 + int(v[1]-'0')
+}
+
+// _isPhone reports whether v, after an optional `+`, is 6 to 20 digits, spaces, parentheses
+// and hyphens, at least one of them a digit.
+func _isPhone(v string) bool {
+	v = strings.TrimPrefix(v, "+")
+	digit := false
+	for i := 0; i < len(v); i++ {
+		switch c := v[i]; {
+		case '0' <= c && c <= '9':
+			digit = true
+		case c != ' ' && c != '(' && c != ')' && c != '-':
+			return false
+		}
+	}
+	return digit && len(v) >= 6 && len(v) <= 20
+}
+
+// _isIPv4 reports whether v is an IPv4 address in dotted-quad form, an IPv4-mapped IPv6
+// address not included.
+func _isIPv4(v string) bool {
+	a, err := netip.ParseAddr(v)
+	return err == nil && a.Is4()
+}
+
+// _isIPv6 reports whether v is an RFC 4291 IPv6 address without a zone, an IPv4-mapped one
+// included.
+func _isIPv6(v string) bool {
+	a, err := netip.ParseAddr(v)
+	return err == nil && a.Is6() && a.Zone() == ""
+}
+
+// _isCIDR reports whether v is an IPv4 or IPv6 address with a prefix length, as RFC 4632 and
+// RFC 4291 write them.
+func _isCIDR(v string) bool {
+	_, _, err := net.ParseCIDR(v)
+	return err == nil
+}
+
+// _isMAC reports whether v is a MAC-48, EUI-64 or 20-octet InfiniBand address.
+func _isMAC(v string) bool {
+	_, err := net.ParseMAC(v)
+	return err == nil
+}
+
+// _isBase64 reports whether v is RFC 4648 §4 standard base64 (`+/`), padded.
+func _isBase64(v string) bool {
+	_, err := base64.StdEncoding.DecodeString(v)
+	return err == nil
+}
+
+// _isBase64URL reports whether v is RFC 4648 §5 URL-safe base64 (`-_`), padded or, as §3.2
+// allows, not.
+func _isBase64URL(v string) bool {
+	enc := base64.RawURLEncoding
+	if len(v)%4 == 0 {
+		enc = base64.URLEncoding
+	}
+	_, err := enc.DecodeString(v)
+	return err == nil
+}
+
+// _isJSON reports whether v is an RFC 8259 JSON text.
+func _isJSON(v string) bool {
+	return json.Valid([]byte(v))
 }

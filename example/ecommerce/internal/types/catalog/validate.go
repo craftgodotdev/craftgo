@@ -174,11 +174,68 @@ func (v *ProductRef) Validate() error {
 
 // Validate returns the first constraint v violates, or nil.
 func (v *Timestamps) Validate() error {
-	if _, _err := time.Parse(time.RFC3339, v.CreatedAt); _err != nil {
+	if !_isDateTime(v.CreatedAt) {
 		return fmt.Errorf("createdAt: not a valid RFC 3339 datetime")
 	}
-	if _, _err := time.Parse(time.RFC3339, v.UpdatedAt); _err != nil {
+	if !_isDateTime(v.UpdatedAt) {
 		return fmt.Errorf("updatedAt: not a valid RFC 3339 datetime")
 	}
 	return nil
+}
+
+// _isDateTime reports whether v is an RFC 3339 date-time, its `T` and `Z` in either case.
+func _isDateTime(v string) bool {
+	return len(v) > 10 && (v[10] == 'T' || v[10] == 't') && _isDate(v[:10]) && _isTime(v[11:])
+}
+
+// _isDate reports whether v is an RFC 3339 full-date.
+func _isDate(v string) bool {
+	_, err := time.Parse(time.DateOnly, v)
+	return err == nil
+}
+
+// _isTime reports whether v is an RFC 3339 full-time: hh:mm:ss, a `.` and fraction digits, then
+// `Z` or an offset ±hh:mm, with second 60, a leap second, only at 23:59 UTC.
+func _isTime(v string) bool {
+	if len(v) < 9 || v[2] != ':' || v[5] != ':' {
+		return false
+	}
+	h, m, s := _twoDigits(v[0:2]), _twoDigits(v[3:5]), _twoDigits(v[6:8])
+	if h > 23 || m > 59 || s > 60 {
+		return false
+	}
+	rest := v[8:]
+	if rest[0] == '.' {
+		n := 1
+		for n < len(rest) && '0' <= rest[n] && rest[n] <= '9' {
+			n++
+		}
+		if n == 1 {
+			return false
+		}
+		rest = rest[n:]
+	}
+	offset := 0
+	switch {
+	case rest == "Z" || rest == "z":
+	case len(rest) == 6 && (rest[0] == '+' || rest[0] == '-') && rest[3] == ':':
+		oh, om := _twoDigits(rest[1:3]), _twoDigits(rest[4:6])
+		if oh > 23 || om > 59 {
+			return false
+		}
+		if offset = oh*60 + om; rest[0] == '-' {
+			offset = -offset
+		}
+	default:
+		return false
+	}
+	return s < 60 || (h*60+m-offset+24*60)%(24*60) == 23*60+59
+}
+
+// _twoDigits returns the number two decimal digits spell, or 100 for anything else.
+func _twoDigits(v string) int {
+	if len(v) != 2 || v[0] < '0' || v[0] > '9' || v[1] < '0' || v[1] > '9' {
+		return 100
+	}
+	return int(v[0]-'0')*10 + int(v[1]-'0')
 }
