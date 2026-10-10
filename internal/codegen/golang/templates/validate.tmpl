@@ -19,6 +19,9 @@ func (v {{if .PtrReceiver}}*{{end}}{{.Name}}{{if .TypeParams}}[{{range $i, $p :=
 	return nil
 }
 {{end}}
+{{- range .FormatFuncs}}
+{{.}}
+{{end}}
 {{- if .NeedsAbsentValue}}
 // absentValue reports whether the type-parameter value p points to is a
 // missing `file` or `any`: a nil header or interface.

@@ -227,7 +227,7 @@ binary length - and are not advertised in the OpenAPI schema (an OpenAPI
 `maxLength` on a `bytes` field would count base64 characters, a different
 number).
 
-**Available formats** (`@format(...)`): `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. Most delegate to the Go standard library (`net`, `net/mail`, `net/url`, `time`, `encoding/*`): email, url, uri, ipv4/ipv6, cidr, mac, datetime/date/time, base64, base64url and json; uuid, phone, creditcard and hexcolor use a regex.
+**Available formats** (`@format(...)`): `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. Each follows its RFC, as the OpenAPI `format` of the same name does; uuid, creditcard and hexcolor use a regex, and the others a check function built on the Go standard library. [Validators](/guide/validators#strings) lists what each accepts.
 
 One more value is not a check at all: [`@format(raw)`](/guide/types-and-scalars#raw-encoded-values-bytes-format-raw), valid only on a `bytes` field, says the bytes already ARE the value in the message's own encoding and the codec must embed them untouched.
 

@@ -41,12 +41,12 @@ func scalarDeclHasValidators(sd *ast.ScalarDecl) bool {
 
 // scalarChecksCanFail reports whether sd's Validate() holds a check some
 // value fails, one its primitive does not already enforce; the checks render
-// into a scratch import set.
+// into scratch imports, regexes and helpers.
 func scalarChecksCanFail(sd *ast.ScalarDecl, ctx emitCtx) bool {
 	if !scalarDeclHasValidators(sd) {
 		return false
 	}
-	ctx.imports, ctx.regexes = ctx.imports.scratch(), newRegexRegistry()
+	ctx.imports, ctx.regexes, ctx.helpers = ctx.imports.scratch(), newRegexRegistry(), &validateHelpers{}
 	return len(scalarValidateChecks(sd, ctx)) > 0
 }
 

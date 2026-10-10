@@ -499,6 +499,52 @@ func TestValidateFormatExpandedPatterns(t *testing.T) {
 	}
 }
 
+// A @format check calls its format's function, which the file declares once, with the functions
+// it calls; a pattern format matches its regex.
+func TestValidateFormatCallsItsCheckFunction(t *testing.T) {
+	src := runValidateGen(t, `package design
+scalar Mail string @format(email)
+type X {
+    email string  @format(email)
+    when  string? @format(datetime)
+    at    string  @format(time)
+    key   string  @format(uuid)
+    mail  Mail
+}`)
+	mustContainAll(t, src,
+		"if !_isEmail(v.Email) {",
+		"if v.When != nil && !_isDateTime(*v.When) {",
+		"if !_isTime(v.At) {",
+		"if !_isEmail(string(v)) {",
+		"_pattern0.MatchString(v.Key)",
+	)
+	for _, fn := range []string{"_isEmail", "_isDateTime", "_isDate", "_isTime", "_twoDigits"} {
+		if n := strings.Count(src, "\nfunc "+fn+"("); n != 1 {
+			t.Errorf("%s declared %d times, want once:\n%s", fn, n, src)
+		}
+	}
+	mustContainNone(t, src, "_isURI", "net/url")
+}
+
+// A package declares the format functions its own checks call, and none another package's
+// scalar calls.
+func TestValidateDeclaresOnlyTheFormatFunctionsItCalls(t *testing.T) {
+	proj := analyzeFiles(t, map[string]string{
+		"shared/t.craftgo": `package shared
+scalar Email string @format(email)`,
+		"app/t.craftgo": `package app
+type User { email shared.Email  seen string? @format(datetime) }`,
+	})
+	dir := t.TempDir()
+	if err := generateValidators(proj.Packages["app"], dir, &projectResolver{Resolver: semantic.NewResolver(proj, "app")}); err != nil {
+		t.Fatal(err)
+	}
+	src := readGen(t, dir, "app/validate.go")
+	mustParseGo(t, src)
+	mustContainAll(t, src, "v.Email.Validate()", "!_isDateTime(*v.Seen)", "\nfunc _isDateTime(", "\nfunc _isTime(")
+	mustContainNone(t, src, "_isEmail", "net/mail")
+}
+
 // ---------- cross-package validators ----------
 
 // A field of a cross-package generic instance calls the instance's Validate.

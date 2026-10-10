@@ -3,13 +3,15 @@
 package strfmt
 
 import (
-	"encoding/base64"
-	"encoding/json"
-	"net"
-	"net/mail"
-	"net/url"
+	_ "embed"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"path"
 	"regexp"
-	"time"
+	"slices"
+	"strconv"
+	"sync"
 )
 
 // Spec is one named string format.
@@ -17,93 +19,175 @@ type Spec struct {
 	Name  string // the `@format` argument
 	Label string // fills the validation message "not a valid <Label>"
 	OAS   string // the OpenAPI `format` keyword when it differs from Name
+	// Func is the function of checks.go the generated check calls, true for a
+	// valid value; the generated file declares it as checks.go does.
+	Func string
+	// Pattern is the regular expression the value must match when Func is empty.
+	Pattern string
 	// Imports are the Go packages the generated check needs.
 	Imports []string
-	// Cond is a Go condition, true when the value is invalid, with one %s for
-	// the value; it may open with an `if` init statement.
-	Cond string
-	// Pattern is the regular expression the value must match when Cond is empty.
-	Pattern string
-	// valid is Cond as a function: it accepts what Cond does not reject.
-	valid func(string) bool
 }
 
 // Valid reports whether v passes the check generated for s: its Pattern, or
-// its Cond.
+// its Func.
 func (s Spec) Valid(v string) bool {
 	if s.Pattern != "" {
 		return regexp.MustCompile(s.Pattern).MatchString(v)
 	}
-	return s.valid(v)
+	return checks[s.Func](v)
 }
 
 // All lists every format.
 var All = []Spec{
-	// RFC 5322 address, parsed by net/mail.
-	{Name: "email", Label: "email", Imports: []string{"net/mail"},
-		Cond:  `_, _err := mail.ParseAddress(%s); _err != nil`,
-		valid: func(v string) bool { _, err := mail.ParseAddress(v); return err == nil }},
-	// HTTP or HTTPS URL: url.Parse also accepts other schemes, so the scheme is checked.
-	{Name: "url", Label: "URL", Imports: []string{"net/url"},
-		Cond: `_u, _err := url.Parse(%s); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https")`,
-		valid: func(v string) bool {
-			u, err := url.Parse(v)
-			return err == nil && (u.Scheme == "http" || u.Scheme == "https")
-		}},
-	// RFC 3986 URI with any non-empty scheme.
-	{Name: "uri", Label: "URI", Imports: []string{"net/url"},
-		Cond:  `_u, _err := url.Parse(%s); _err != nil || _u.Scheme == ""`,
-		valid: func(v string) bool { u, err := url.Parse(v); return err == nil && u.Scheme != "" }},
+	{Name: "email", Label: "email", Func: "_isEmail"},
+	{Name: "url", Label: "URL", Func: "_isURL"},
+	{Name: "uri", Label: "URI", Func: "_isURI"},
 	// RFC 4122 UUID layout; the version digit is not checked.
 	{Name: "uuid", Label: "UUID",
 		Pattern: `^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`},
-	// RFC 3339 date-time, spelled `date-time` in OpenAPI.
-	{Name: "datetime", Label: "RFC 3339 datetime", OAS: "date-time", Imports: []string{"time"},
-		Cond:  `_, _err := time.Parse(time.RFC3339, %s); _err != nil`,
-		valid: func(v string) bool { _, err := time.Parse(time.RFC3339, v); return err == nil }},
-	// RFC 3339 full-date.
-	{Name: "date", Label: "date", Imports: []string{"time"},
-		Cond:  `_, _err := time.Parse(time.DateOnly, %s); _err != nil`,
-		valid: func(v string) bool { _, err := time.Parse(time.DateOnly, v); return err == nil }},
-	// RFC 3339 partial-time: `15:04:05`, no offset.
-	{Name: "time", Label: "time", Imports: []string{"time"},
-		Cond:  `_, _err := time.Parse(time.TimeOnly, %s); _err != nil`,
-		valid: func(v string) bool { _, err := time.Parse(time.TimeOnly, v); return err == nil }},
-	// E.164-like phone number with separators allowed.
-	{Name: "phone", Label: "phone", Pattern: `^\+?[0-9 ()-]{6,20}$`},
-	// RFC 791 IPv4; To4 rejects the IPv6 forms ParseIP also accepts.
-	{Name: "ipv4", Label: "IPv4", Imports: []string{"net"},
-		Cond:  `_ip := net.ParseIP(%s); _ip == nil || _ip.To4() == nil`,
-		valid: func(v string) bool { ip := net.ParseIP(v); return ip != nil && ip.To4() != nil }},
-	// RFC 4291 IPv6: any address ParseIP accepts that is not IPv4.
-	{Name: "ipv6", Label: "IPv6", Imports: []string{"net"},
-		Cond:  `_ip := net.ParseIP(%s); _ip == nil || _ip.To4() != nil`,
-		valid: func(v string) bool { ip := net.ParseIP(v); return ip != nil && ip.To4() == nil }},
-	// RFC 4632 / RFC 4291 CIDR, IPv4 or IPv6.
-	{Name: "cidr", Label: "CIDR", Imports: []string{"net"},
-		Cond:  `_, _, _err := net.ParseCIDR(%s); _err != nil`,
-		valid: func(v string) bool { _, _, err := net.ParseCIDR(v); return err == nil }},
-	// MAC-48, EUI-64 or 20-octet InfiniBand address.
-	{Name: "mac", Label: "MAC address", Imports: []string{"net"},
-		Cond:  `_, _err := net.ParseMAC(%s); _err != nil`,
-		valid: func(v string) bool { _, err := net.ParseMAC(v); return err == nil }},
+	{Name: "datetime", Label: "RFC 3339 datetime", OAS: "date-time", Func: "_isDateTime"},
+	{Name: "date", Label: "date", Func: "_isDate"},
+	{Name: "time", Label: "time", Func: "_isTime"},
+	{Name: "phone", Label: "phone", Func: "_isPhone"},
+	{Name: "ipv4", Label: "IPv4", Func: "_isIPv4"},
+	{Name: "ipv6", Label: "IPv6", Func: "_isIPv6"},
+	{Name: "cidr", Label: "CIDR", Func: "_isCIDR"},
+	{Name: "mac", Label: "MAC address", Func: "_isMAC"},
 	// Card number length only; no Luhn checksum.
 	{Name: "creditcard", Label: "credit card number", Pattern: `^[0-9]{12,19}$`},
-	// RFC 4648 §4 standard base64 (`+/=`).
-	{Name: "base64", Label: "base64", Imports: []string{"encoding/base64"},
-		Cond:  `_, _err := base64.StdEncoding.DecodeString(%s); _err != nil`,
-		valid: func(v string) bool { _, err := base64.StdEncoding.DecodeString(v); return err == nil }},
-	// RFC 4648 §5 URL-safe base64 (`-_=`).
-	{Name: "base64url", Label: "base64url", Imports: []string{"encoding/base64"},
-		Cond:  `_, _err := base64.URLEncoding.DecodeString(%s); _err != nil`,
-		valid: func(v string) bool { _, err := base64.URLEncoding.DecodeString(v); return err == nil }},
+	{Name: "base64", Label: "base64", Func: "_isBase64"},
+	{Name: "base64url", Label: "base64url", Func: "_isBase64URL"},
 	// CSS hex color: 3 or 6 hex digits, optional `#`.
 	{Name: "hexcolor", Label: "hex color", Pattern: `^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$`},
-	// RFC 8259 JSON text.
-	{Name: "json", Label: "JSON", Imports: []string{"encoding/json"},
-		Cond:  `!json.Valid([]byte(%s))`,
-		valid: func(v string) bool { return json.Valid([]byte(v)) }},
+	{Name: "json", Label: "JSON", Func: "_isJSON"},
 }
+
+// checks are the functions of checks.go [Spec.Valid] calls, by name.
+var checks = map[string]func(string) bool{
+	"_isEmail":     _isEmail,
+	"_isURL":       _isURL,
+	"_isURI":       _isURI,
+	"_isDateTime":  _isDateTime,
+	"_isDate":      _isDate,
+	"_isTime":      _isTime,
+	"_isPhone":     _isPhone,
+	"_isIPv4":      _isIPv4,
+	"_isIPv6":      _isIPv6,
+	"_isCIDR":      _isCIDR,
+	"_isMAC":       _isMAC,
+	"_isBase64":    _isBase64,
+	"_isBase64URL": _isBase64URL,
+	"_isJSON":      _isJSON,
+}
+
+func init() {
+	for i, s := range All {
+		for _, h := range s.Helpers() {
+			All[i].Imports = append(All[i].Imports, h.Imports...)
+		}
+		slices.Sort(All[i].Imports)
+		All[i].Imports = slices.Compact(All[i].Imports)
+	}
+}
+
+// Helper is a function of checks.go a generated check calls.
+type Helper struct {
+	Name    string
+	Code    string   // its declaration, doc comment included
+	Imports []string // the paths of the packages it uses
+	order   int      // its place in checks.go
+}
+
+// Helpers returns the functions the generated check of s calls, directly or
+// through another, in the order checks.go declares them; a Pattern calls none.
+func (s Spec) Helpers() []Helper {
+	if s.Func == "" {
+		return nil
+	}
+	all := helpers()
+	seen := map[string]bool{}
+	var out []Helper
+	var visit func(name string)
+	visit = func(name string) {
+		if seen[name] {
+			return
+		}
+		seen[name] = true
+		h := all[name]
+		out = append(out, h.Helper)
+		for _, callee := range h.calls {
+			visit(callee)
+		}
+	}
+	visit(s.Func)
+	SortHelpers(out)
+	return out
+}
+
+// SortHelpers sorts hs in the order checks.go declares them.
+func SortHelpers(hs []Helper) {
+	slices.SortFunc(hs, func(a, b Helper) int { return a.order - b.order })
+}
+
+//go:embed checks.go
+var checksSource string
+
+// helper is a function of checks.go and the functions of checks.go it calls.
+type helper struct {
+	Helper
+	calls []string
+}
+
+// helpers reads the functions of checks.go, by name.
+var helpers = sync.OnceValue(func() map[string]helper {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "checks.go", checksSource, parser.ParseComments)
+	if err != nil {
+		panic("strfmt: checks.go: " + err.Error())
+	}
+	pkgs := map[string]string{}
+	for _, imp := range f.Imports {
+		p, _ := strconv.Unquote(imp.Path.Value)
+		pkgs[path.Base(p)] = p
+	}
+	funcs := map[string]*ast.FuncDecl{}
+	for _, decl := range f.Decls {
+		if fd, ok := decl.(*ast.FuncDecl); ok {
+			funcs[fd.Name.Name] = fd
+		}
+	}
+	out := map[string]helper{}
+	for i, decl := range f.Decls {
+		fd, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		start := fd.Pos()
+		if fd.Doc != nil {
+			start = fd.Doc.Pos()
+		}
+		h := helper{Helper: Helper{
+			Name:  fd.Name.Name,
+			Code:  checksSource[fset.Position(start).Offset:fset.Position(fd.End()).Offset],
+			order: i,
+		}}
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.CallExpr:
+				if id, ok := n.Fun.(*ast.Ident); ok && funcs[id.Name] != nil && !slices.Contains(h.calls, id.Name) {
+					h.calls = append(h.calls, id.Name)
+				}
+			case *ast.SelectorExpr:
+				if id, ok := n.X.(*ast.Ident); ok && pkgs[id.Name] != "" && !slices.Contains(h.Imports, pkgs[id.Name]) {
+					h.Imports = append(h.Imports, pkgs[id.Name])
+				}
+			}
+			return true
+		})
+		out[h.Name] = h
+	}
+	return out
+})
 
 // Names returns every format name, in [All] order.
 func Names() []string {

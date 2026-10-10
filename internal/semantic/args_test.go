@@ -528,6 +528,28 @@ func TestDefaultBreakingItsConstraintsRejected(t *testing.T) {
 }`)
 }
 
+// A @default meets its @format as the generated check reads it: a time takes an offset, an
+// email is a bare address, an IPv4 address no IPv6 form, and base64url needs no padding.
+func TestDefaultMeetsItsFormatAsTheCheckReadsIt(t *testing.T) {
+	for _, c := range []struct{ field, msg string }{
+		{`at string? @format(time) @default("10:00:00")`, `@default("10:00:00") violates @format(time)`},
+		{`to string? @format(email) @default("Ops <ops@example.com>")`, `@default("Ops <ops@example.com>") violates @format(email)`},
+		{`ip string? @format(ipv4) @default("::ffff:10.0.0.1")`, `@default("::ffff:10.0.0.1") violates @format(ipv4)`},
+	} {
+		t.Run(c.field, func(t *testing.T) {
+			d := expectError(t, "package app\ntype R { "+c.field+" }", CodeDecoratorConflict)
+			expectMessage(t, d, c.msg)
+		})
+	}
+	mustClean(t, `package app
+type R {
+	at  string? @format(time) @default("10:00:00+07:00")
+	to  string? @format(email) @default("ops@example.com")
+	ip  string? @format(ipv6) @default("::ffff:10.0.0.1")
+	key string? @format(base64url) @default("aGk")
+}`)
+}
+
 // A @default of the wrong kind gets the type error alone.
 func TestDefaultOfWrongKindSkipsConstraints(t *testing.T) {
 	expectCodeCount(t, `package app

@@ -38,7 +38,7 @@ func (v *CreateUserReq) Validate() error {
 	if l := utf8.RuneCountInString(v.Name); l < 1 || l > 80 {
 		return fmt.Errorf("name: length out of range [1, 80]")
 	}
-	if _, _err := mail.ParseAddress(v.Email); _err != nil {
+	if !_isEmail(v.Email) {
 		return fmt.Errorf("email: not a valid email")
 	}
 	if v.Age != nil && *v.Age < 0 {
@@ -54,7 +54,7 @@ func (v *CreateUserReq) Validate() error {
 Plain Go, with no struct tag parsing. The handler calls `req.Validate()` after JSON decode and before your business logic.
 
 ::: tip Required-by-default
-A non-optional field (no `?`) is required in the OpenAPI schema, but craftgo only emits an explicit presence check when the field has a meaningful empty value the JSON decoder accepts (e.g. `any`, an enum). For a plain `string`, a missing key and a literal `null` both leave `""`, a legal value unless you add `@length` / `@minLength`. That's why `name` above shows only its `@length` check, not a separate "required" line. String lengths count **characters** (`utf8.RuneCountInString`), matching `minLength`/`maxLength` in the OpenAPI spec. `@format(email)` delegates to `net/mail.ParseAddress`; the regex-backed formats (uuid, phone, …) compile their pattern once into a package-level var, not per call.
+A non-optional field (no `?`) is required in the OpenAPI schema, but craftgo only emits an explicit presence check when the field has a meaningful empty value the JSON decoder accepts (e.g. `any`, an enum). For a plain `string`, a missing key and a literal `null` both leave `""`, a legal value unless you add `@length` / `@minLength`. That's why `name` above shows only its `@length` check, not a separate "required" line. String lengths count **characters** (`utf8.RuneCountInString`), matching `minLength`/`maxLength` in the OpenAPI spec. `@format(email)` calls `_isEmail`, a check function written into the same `validate.go`; the regex-backed formats (uuid, creditcard, hexcolor) compile their pattern once into a package-level var, not per call.
 :::
 
 ## Built-in validators
@@ -76,7 +76,29 @@ The tables below cover validators with the examples that matter for *validation*
 
 `@length`, `@minLength` and `@maxLength` also apply to `bytes`, counted in bytes.
 
-Built-in formats: `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. Most delegate to the Go standard library - `email` (`net/mail`), `url`/`uri` (`net/url`), `ipv4`/`ipv6`/`cidr`/`mac` (`net`), `datetime`/`date`/`time` (`time`), `base64`/`base64url` (`encoding/base64`), `json` (`encoding/json`); the remainder (`uuid`, `phone`, `creditcard`, `hexcolor`) use a compiled regex.
+Built-in formats, each published as the OpenAPI `format` of the same name (`datetime` as `date-time`), and each following its RFC as that `format` does:
+
+| Format       | Accepts |
+| ------------ | ------- |
+| `email`      | A bare RFC 5322 address (`addr-spec`), as JSON Schema `email`: `a@b.co`, `"john doe"@example.com`. No display name (`Ann <a@b.co>`), comment, angle brackets or surrounding space. |
+| `url`        | A `uri`, as below, with the `http` or `https` scheme and a host: `http://`, `http:foo` and `https://:443` fail. |
+| `uri`        | An RFC 3986 URI: a scheme, then only RFC 3986 characters - no space, `<`, `>`, `{`, `}`, `\|`, `^`, `"`, backtick or `\` - with `%` only before two hex digits. |
+| `uuid`       | 8-4-4-4-12 hex digits; the version digit is not checked. |
+| `datetime`   | An RFC 3339 `date-time`: `2024-01-02T03:04:05Z`, `T` and `Z` in either case, a `.` fraction, an offset from `-23:59` to `+23:59`, and second 60 only for a leap second at 23:59 UTC. |
+| `date`       | An RFC 3339 `full-date`: `2024-01-02`. |
+| `time`       | An RFC 3339 `full-time`, whose offset is required: `15:04:05Z`, `15:04:05.5+07:00`. |
+| `phone`      | After an optional `+`, 6 to 20 digits, spaces, `(`, `)` and `-`, at least one of them a digit. |
+| `ipv4`       | A dotted-quad IPv4 address; an IPv4-mapped IPv6 address such as `::ffff:1.2.3.4` is not one. |
+| `ipv6`       | An RFC 4291 IPv6 address without a zone, IPv4-mapped ones included. |
+| `cidr`       | An IPv4 or IPv6 address with a prefix length: `10.0.0.0/8`. |
+| `mac`        | A MAC-48, EUI-64 or 20-octet InfiniBand address. |
+| `creditcard` | 12 to 19 digits; no Luhn checksum. |
+| `base64`     | RFC 4648 §4 standard base64, padded. |
+| `base64url`  | RFC 4648 §5 URL-safe base64, padded or not. |
+| `hexcolor`   | 3 or 6 hex digits after an optional `#`. |
+| `json`       | An RFC 8259 JSON text. |
+
+`uuid`, `creditcard` and `hexcolor` match a regex. Every other format is checked by a small function, built on the Go standard library, that craftgo writes into the `validate.go` of a package using it (`_isEmail`, `_isDateTime`, …). The analyzer holds a field's `@default` to the same check.
 
 ```craftgo
 type Profile {
