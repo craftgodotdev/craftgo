@@ -614,6 +614,32 @@ service S { post Create /c { request T  response T } }`
 	}
 }
 
+// `@example(null)` documents a null example, whatever field carries it.
+func TestExampleNullIsDocumented(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+type Inner { x int }
+type T {
+	attrs map<string, int>  @example(null)
+	opt   map<string, int>? @example(null)
+	inner Inner             @example(null)
+	maybe Inner?            @example(null)
+	raw   any               @example(null)
+}
+service S { post M /m { request T  response T } }`}, &config.Config{})
+	props := doc.Components.Schemas["T"].Value.Properties
+	for _, name := range []string{"attrs", "opt", "inner", "maybe", "raw"} {
+		raw, err := json.Marshal(props[name])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), `"example":null`) {
+			t.Errorf("%s does not document the null example: %s", name, raw)
+		}
+	}
+	body := generateOpenAPIToString(t, "package design\ntype T { raw any @example(null) }\nservice S { post M /m { request T } }")
+	mustContainAll(t, body, "example: null\n")
+}
+
 // Each validator decorator on a field stamps its OpenAPI keyword.
 func TestGenerateOpenAPIValidatorConstraints(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design

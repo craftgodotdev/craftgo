@@ -95,7 +95,7 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 		}
 		stampDeprecated(w, f.Decorators)
 		if hasEx {
-			w.Example = ex
+			setExample(w, ex)
 		}
 		ref.Value = w
 		return
@@ -109,7 +109,7 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 			ref.Value.Description = desc
 		}
 		if ex, ok := semantic.ExampleValue(f, pkg); ok {
-			ref.Value.Example = ex
+			setExample(ref.Value, ex)
 		}
 		if def, ok := semantic.ResolveDefaultValue(f, pkg); ok {
 			ref.Value.Default = def
@@ -131,12 +131,25 @@ func applyFieldMetadata(f *ast.Field, ref *openapi3.SchemaRef, pkg *semantic.Pac
 		applyNullable(ref.Value)
 	}
 	if ex, ok := semantic.ExampleValue(f, pkg); ok {
-		ref.Value.Example = ex
+		setExample(ref.Value, ex)
 	}
 	if def, ok := semantic.ResolveDefaultValue(f, pkg); ok {
 		ref.Value.Default = def
 	}
 	applyFieldConstraints(f.Decorators, ref.Value, prim)
+}
+
+// setExample sets v as s's example, null too, which the Example field would
+// leave out.
+func setExample(s *openapi3.Schema, v any) {
+	if v != nil {
+		s.Example = v
+		return
+	}
+	if s.Extensions == nil {
+		s.Extensions = map[string]any{}
+	}
+	s.Extensions["example"] = nil
 }
 
 // paramSchema returns the schema of f's value as a parameter or a header
