@@ -547,6 +547,80 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+// note is a stream message whose Validate refuses an empty text.
+type note struct{ text string }
+
+func (n *note) Validate() error {
+	if n.text == "" {
+		return errors.New("text: must not be empty")
+	}
+	return nil
+}
+
+// noteStream is a server stream that receives its queued texts, then io.EOF, and records what
+// is sent on it.
+type noteStream struct {
+	grpc.ServerStream
+	in   []string
+	sent []string
+}
+
+func (s *noteStream) Context() context.Context { return context.Background() }
+
+func (s *noteStream) RecvMsg(m any) error {
+	if len(s.in) == 0 {
+		return io.EOF
+	}
+	m.(*note).text, s.in = s.in[0], s.in[1:]
+	return nil
+}
+
+func (s *noteStream) SendMsg(m any) error {
+	s.sent = append(s.sent, m.(*note).text)
+	return nil
+}
+
+// A client-streaming or bidi stream runs Validate on every message it receives: a message that
+// fails reads as InvalidArgument, and the stream goes on with the next.
+func TestValidateStreamsCheckEveryMessage(t *testing.T) {
+	recvAll := func(recv func() (*note, error)) []string {
+		var got []string
+		for {
+			n, err := recv()
+			switch {
+			case errors.Is(err, io.EOF):
+				return got
+			case err != nil:
+				got = append(got, status.Code(err).String()+": "+status.Convert(err).Message())
+			default:
+				got = append(got, n.text)
+			}
+		}
+	}
+	want := "[a InvalidArgument: text: must not be empty b]"
+
+	client := &noteStream{in: []string{"a", "", "b"}}
+	cs := ValidateClientStream[note, note](&grpc.GenericServerStream[note, note]{ServerStream: client})
+	if got := fmt.Sprint(recvAll(cs.Recv)); got != want {
+		t.Errorf("client stream received %s, want %s", got, want)
+	}
+	if err := cs.SendAndClose(&note{text: "done"}); err != nil || fmt.Sprint(client.sent) != "[done]" {
+		t.Errorf("SendAndClose: %v, sent %v", err, client.sent)
+	}
+
+	bidi := &noteStream{in: []string{"a", "", "b"}}
+	bs := ValidateBidiStream[note, note](&grpc.GenericServerStream[note, note]{ServerStream: bidi})
+	if got := fmt.Sprint(recvAll(bs.Recv)); got != want {
+		t.Errorf("bidi stream received %s, want %s", got, want)
+	}
+	if err := bs.Send(&note{text: "echo"}); err != nil || fmt.Sprint(bidi.sent) != "[echo]" {
+		t.Errorf("Send: %v, sent %v", err, bidi.sent)
+	}
+	if bs.Context() == nil {
+		t.Error("the stream lost its context")
+	}
+}
+
 func TestStopCutsOffAfterTheDeadline(t *testing.T) {
 	if err := New(nil).Stop(context.Background()); err != nil {
 		t.Errorf("stop before serve: %v", err)

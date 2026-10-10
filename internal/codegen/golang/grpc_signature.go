@@ -18,7 +18,8 @@ type grpcSignature struct {
 	// HasResponse reports that logic returns a response value (unary).
 	HasResponse  bool
 	ServerParams string
-	// Logic is the logic scaffold's signature; the server calls it with Logic.CallArgs.
+	// Logic is the logic scaffold's signature; the server calls it with Logic.CallArgs, which hand a
+	// client-streaming or bidi RPC's logic a stream that validates each request it receives.
 	Logic methodSignature
 }
 
@@ -43,12 +44,12 @@ func buildGRPCSignature(m *protodesign.Method, in, out string) grpcSignature {
 		stream := "stream grpc.ClientStreamingServer[" + in + ", " + out + "]"
 		serverParams = []string{stream}
 		params = []string{stream}
-		args = []string{"stream"}
+		args = []string{"rpc.ValidateClientStream(stream)"}
 	case protodesign.Bidi:
 		stream := "stream grpc.BidiStreamingServer[" + in + ", " + out + "]"
 		serverParams = []string{stream}
 		params = []string{stream}
-		args = []string{"stream"}
+		args = []string{"rpc.ValidateBidiStream(stream)"}
 	}
 	sig.ServerParams = strings.Join(serverParams, ", ")
 	sig.Logic = methodSignature{

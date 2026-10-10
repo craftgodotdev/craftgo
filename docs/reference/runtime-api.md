@@ -758,6 +758,7 @@ grpcSrv := rpc.New(svcCtx, opts...)
 | `Error(ctx, err) error` | What the generated server layer returns on failure: status errors pass through, a craftgo typed error (`HTTPStatus() int`) becomes the matching code with an `ErrorInfo{Reason: ErrCode()}` detail, a context error becomes `Canceled` / `DeadlineExceeded`, anything else goes to the unknown-error handler. |
 | `SetHandleUnknownError(h)` | Swap the process-wide handler for errors that carry neither a status nor an HTTP status; the default logs and answers `Internal`. |
 | `Validate(msg any) error` | Run the message's own `Validate() error` (protoc-gen-validate) and answer `InvalidArgument`. |
+| `ValidateClientStream(stream)` / `ValidateBidiStream(stream)` | Wrap a client-streaming or bidi server stream so that `Recv` runs `Validate` on every message it receives; a message that fails is consumed and `Recv` returns the `InvalidArgument` error. |
 | `IsInfrastructureMethod(fullMethod string) bool` | Whether a full method belongs to the health or reflection services. |
 
 `tel.GRPCServerHandler()`, a method of the `*telemetry.Telemetry` that `telemetry.Init` returns, is the stats handler the generated `main.go` installs: one `otelgrpc` handler emitting the span and the `rpc.server.call.duration` histogram against the stack's providers, adopting the caller's W3C trace context from the request metadata, and leaving the health and reflection calls out.

@@ -138,7 +138,7 @@ The code `protoc-gen-go` and `protoc-gen-go-grpc` write for every `.proto` under
 
 ### `grpc/<svc>/` (regen)
 
-`server.go` declares `Server`, embedding `pb.Unimplemented<Svc>Server`, and `NewServer(svcCtx)`; each `<rpc>.go` implements one method of the generated interface: `rpc.Validate` on the request (a no-op until a validating plugin such as protoc-gen-validate gives the message a `Validate() error`; a client-streaming or bidi RPC has no request to validate and passes the stream on), `service.New<Rpc>Service(ctx, svcCtx)`, the call, `rpc.Error` on failure.
+`server.go` declares `Server`, embedding `pb.Unimplemented<Svc>Server`, and `NewServer(svcCtx)`; each `<rpc>.go` implements one method of the generated interface: `rpc.Validate` on the request (a no-op until a validating plugin such as protoc-gen-validate gives the message a `Validate() error`; a client-streaming or bidi RPC passes the stream on through `rpc.ValidateClientStream` or `rpc.ValidateBidiStream`, whose `Recv` runs the same check on each message), `service.New<Rpc>Service(ctx, svcCtx)`, the call, `rpc.Error` on failure.
 
 ### `routes/` (regen)
 

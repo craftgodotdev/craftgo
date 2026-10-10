@@ -14,7 +14,7 @@ import (
 func (s *Server) RecordHellos(stream grpc.ClientStreamingServer[pb.HelloRequest, pb.HelloReply]) error {
 	ctx := stream.Context()
 	l := service.NewRecordHellosService(ctx, s.svcCtx)
-	if err := l.RecordHellos(stream); err != nil {
+	if err := l.RecordHellos(rpc.ValidateClientStream(stream)); err != nil {
 		return rpc.Error(ctx, err)
 	}
 	return nil

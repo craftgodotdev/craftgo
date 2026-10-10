@@ -128,7 +128,7 @@ func (s *Server) SayHello(ctx context.Context, req *pb.HelloRequest) (*pb.HelloR
 }
 ```
 
-`rpc.Validate` runs the request's own `Validate() error` when it has one - the method `protoc-gen-validate` generates - and answers `InvalidArgument`. A message without that method passes, so the call is inert until you add such a plugin; a validator with no method of its own, protovalidate among them, goes on the server as an interceptor instead.
+`rpc.Validate` runs the request's own `Validate() error` when it has one - the method `protoc-gen-validate` generates - and answers `InvalidArgument`. A message without that method passes, so the call is inert until you add such a plugin; a validator with no method of its own, protovalidate among them, goes on the server as an interceptor instead. A client-streaming or bidi RPC has no request up front: its logic gets the stream through `rpc.ValidateClientStream` or `rpc.ValidateBidiStream`, whose `Recv` runs the same check on every message it receives and returns a failure as the `InvalidArgument` error, so returning that error answers the call with it.
 
 The logic stub lands under `output.service`, from the same template the HTTP stubs use, and is yours once written:
 
