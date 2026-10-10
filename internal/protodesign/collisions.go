@@ -27,20 +27,30 @@ func (s *Set) checkCollisions() error {
 		}
 		pkgByDir[dir], fileByDir[dir] = pkg, name
 	}
+	// Names are compared case-folded: a case-insensitive file system, macOS's and Windows'
+	// default, holds two names that differ only in case as one.
 	svcByDir := map[string]*Service{}
 	for _, svc := range s.Services {
-		if prev, ok := svcByDir[svc.Dir]; ok {
-			errs = append(errs, fmt.Sprintf("services %s and %s both generate into directory %q - rename one", prev.FullName, svc.FullName, svc.Dir))
+		if prev, ok := svcByDir[strings.ToLower(svc.Dir)]; ok {
+			if prev.Dir == svc.Dir {
+				errs = append(errs, fmt.Sprintf("services %s and %s both generate into directory %q - rename one", prev.FullName, svc.FullName, svc.Dir))
+			} else {
+				errs = append(errs, fmt.Sprintf("services %s and %s generate into directories %q and %q, one directory on a case-insensitive file system - rename one", prev.FullName, svc.FullName, prev.Dir, svc.Dir))
+			}
 			continue
 		}
-		svcByDir[svc.Dir] = svc
+		svcByDir[strings.ToLower(svc.Dir)] = svc
 		byFile := map[string]*Method{}
 		for _, m := range svc.Methods {
-			if prev, ok := byFile[m.File]; ok {
-				errs = append(errs, fmt.Sprintf("%s: rpcs %s and %s both generate file %q - rename one", svc.FullName, prev.Name, m.Name, m.File+".go"))
+			if prev, ok := byFile[strings.ToLower(m.File)]; ok {
+				if prev.File == m.File {
+					errs = append(errs, fmt.Sprintf("%s: rpcs %s and %s both generate file %q - rename one", svc.FullName, prev.Name, m.Name, m.File+".go"))
+				} else {
+					errs = append(errs, fmt.Sprintf("%s: rpcs %s and %s generate files %q and %q, one file on a case-insensitive file system - rename one", svc.FullName, prev.Name, m.Name, prev.File+".go", m.File+".go"))
+				}
 				continue
 			}
-			byFile[m.File] = m
+			byFile[strings.ToLower(m.File)] = m
 		}
 	}
 	errs = append(errs, s.importCycles()...)

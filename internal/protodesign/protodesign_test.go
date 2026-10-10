@@ -591,6 +591,32 @@ func TestDirectoriesImportingInARingAreRefused(t *testing.T) {
 	load(t, write(t, files), opts())
 }
 
+// Under fileCase camel, RPC files and service directories that differ only in case are refused:
+// a case-insensitive file system holds them as one, so one RPC would answer Unimplemented.
+func TestNamesDifferingOnlyInCaseCollide(t *testing.T) {
+	o := opts()
+	o.FileCase = "camel"
+	root := write(t, map[string]string{"x/a.proto": `syntax = "proto3";
+package a;
+service S { rpc GetA(R) returns (R); rpc Geta(R) returns (R); }
+service UserApi { rpc Do(R) returns (R); }
+service Userapi { rpc Do(R) returns (R); }
+message R {}
+`})
+	_, err := Load(context.Background(), root, o)
+	if err == nil {
+		t.Fatal("names differing only in case were accepted")
+	}
+	for _, want := range []string{
+		`a.S: rpcs GetA and Geta generate files "getA.go" and "geta.go", one file on a case-insensitive file system`,
+		`services a.UserApi and a.Userapi generate into directories "userApi" and "userapi", one directory on a case-insensitive file system`,
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("missing %q in:\n%s", want, err)
+		}
+	}
+}
+
 // A plugin file's source is read past the comment block protoc-gen-go copies from above the
 // proto's `syntax` line, such as a license header; a file whose first code comes before the
 // plugin header is not a plugin file.
