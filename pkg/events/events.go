@@ -73,7 +73,8 @@ type Publisher interface {
 // BatchPublisher is the optional upgrade for a transport that takes a whole batch in one
 // call; [Bus.PublishAll] uses it when present. PublishBatch need not be atomic. It returns:
 //   - nil when every message was handed over;
-//   - a plain error only when nothing went out;
+//   - a plain error only when nothing went out, an [*EnvelopeError] when one message it
+//     cannot carry is why;
 //   - after a partial send, a [*PartialPublishError] built with [UnsentFrom] or [UnsentAt].
 //
 // A message counts as sent once the adapter has confirmed it. Wait for the outcome of

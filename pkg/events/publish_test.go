@@ -205,11 +205,70 @@ func TestABadOptionFailsTheBatchBeforeAnythingIsSent(t *testing.T) {
 		{Event: "orders.OrderPlaced", Payload: payload{ID: "o-2"},
 			AdapterOptions: map[string]map[string]any{"probe": {"partition": 3}}},
 	}
-	if err := bus.PublishAll(context.Background(), envs); err == nil {
-		t.Fatal("a bad option must fail the batch")
+	err := bus.PublishAll(context.Background(), envs)
+	var refused *events.EnvelopeError
+	if !errors.As(err, &refused) || refused.Index != 1 {
+		t.Fatalf("err = %v, want an *EnvelopeError naming envelope 1", err)
+	}
+	var unknown *events.UnknownOptionError
+	if !errors.As(err, &unknown) || unknown.Key != "partition" {
+		t.Errorf("err = %v, want the *UnknownOptionError within reach", err)
 	}
 	if len(tr.sent) != 0 {
 		t.Errorf("%d messages went out before the batch failed", len(tr.sent))
+	}
+}
+
+// unencodable fails to encode, as a corrupt outbox row does.
+type unencodable struct{}
+
+var errCorrupt = errors.New("corrupt row")
+
+func (unencodable) MarshalJSON() ([]byte, error) { return nil, errCorrupt }
+
+// An envelope that will not encode refuses the batch, sending nothing, with an error naming
+// its index and contract, as does one with no contract.
+func TestPublishAllNamesTheEnvelopeItCannotEncode(t *testing.T) {
+	cases := []struct {
+		name  string
+		bad   events.Envelope
+		event string
+		cause error
+	}{
+		{"unencodable payload", events.Envelope{Event: "orders.Shipped", Payload: unencodable{}}, "orders.Shipped", errCorrupt},
+		{"no contract", events.Envelope{Payload: payload{ID: "o-2"}}, "", nil},
+		{"no codec", events.Envelope{Event: "orders.Shipped", Payload: payload{ID: "o-2"}}, "orders.Shipped", events.ErrNoCodec},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tr := &recordingTransport{}
+			codec := events.WithCodec(codecjson.Codec{})
+			if errors.Is(c.cause, events.ErrNoCodec) {
+				codec = events.WithCodecFor("orders.OrderPlaced", codecjson.Codec{})
+			}
+			bus := events.New(events.WithTransport(tr), codec)
+			err := bus.PublishAll(context.Background(), []events.Envelope{
+				{Event: "orders.OrderPlaced", Payload: payload{ID: "o-1"}},
+				c.bad,
+				{Event: "orders.OrderPlaced", Payload: payload{ID: "o-3"}},
+			})
+			var refused *events.EnvelopeError
+			if !errors.As(err, &refused) {
+				t.Fatalf("err = %v (%T), want an *EnvelopeError", err, err)
+			}
+			if refused.Index != 1 || refused.Event != c.event {
+				t.Errorf("refused envelope %d (%q), want 1 (%q)", refused.Index, refused.Event, c.event)
+			}
+			if c.cause != nil && !errors.Is(err, c.cause) {
+				t.Errorf("err = %v, want its cause %v within reach", err, c.cause)
+			}
+			if !strings.Contains(err.Error(), "envelope 1") {
+				t.Errorf("err = %q, want it to name envelope 1", err)
+			}
+			if len(tr.sent) != 0 {
+				t.Errorf("%d messages went out before the batch failed", len(tr.sent))
+			}
+		})
 	}
 }
 
