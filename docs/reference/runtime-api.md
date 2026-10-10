@@ -27,7 +27,7 @@ srv := server.New(svcCtx, opts...)
 | `HandleFunc(pattern, fn http.HandlerFunc) *Server` | Register a route from a bare function. |
 | `Handler() http.Handler` | Build the fully-wrapped handler (the `WithTelemetry` middleware → Recovery → CORS → global chain → mux, so a preflight never reaches a `Use` middleware; the health probes are answered ahead of it, wrapped in Recovery only). Use it with `httptest.NewServer(srv.Handler())` to exercise the full stack without binding a port. |
 | `Start(addr string) error` | Bind and serve until `Stop`; returns nil after a graceful `Stop`. Request headers must arrive within 10s, and idle connections close after 120s. |
-| `Stop(ctx context.Context) error` | Graceful shutdown; no-op if `Start` never ran. |
+| `Stop(ctx context.Context) error` | Graceful shutdown. A `Stop` that comes before `Start` makes it return nil at once, as `http.Server.Shutdown` does. |
 | `Mux() *http.ServeMux` | The underlying mux, if you need raw access. Routes registered on it directly skip the default body cap and handler timeout that `Handle` applies. |
 
 `pattern` is Go 1.22+ syntax: `"GET /users/{id}"`.

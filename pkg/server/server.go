@@ -21,6 +21,7 @@ type Server struct {
 	mux     *http.ServeMux
 	chain   []Middleware
 	httpSrv *http.Server
+	stopped bool
 
 	cors *CORSOptions
 
@@ -292,11 +293,28 @@ func (p *statusProbe) Write(b []byte) (int, error) {
 }
 
 // Start serves [Server.Handler] on addr until [Server.Stop] and returns nil after a graceful
-// stop. Request headers must arrive within 10s, and idle connections close after 120s.
+// stop, or at once when Stop came first. Request headers must arrive within 10s, and idle
+// connections close after 120s.
 func (s *Server) Start(addr string) error {
+	srv := s.httpServer(addr)
+	if srv == nil {
+		return nil
+	}
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+// httpServer returns the http.Server that Start runs, or nil once [Server.Stop] ran.
+func (s *Server) httpServer(addr string) *http.Server {
 	// Handler locks s.mu, so it runs before the lock is taken.
 	handler := s.Handler()
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopped {
+		return nil
+	}
 	s.httpSrv = &http.Server{
 		Addr:              addr,
 		Handler:           handler,
@@ -306,18 +324,14 @@ func (s *Server) Start(addr string) error {
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    s.defaultMaxHeaderKB * 1024,
 	}
-	srv := s.httpSrv
-	s.mu.Unlock()
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
-	}
-	return nil
+	return s.httpSrv
 }
 
-// Stop shuts the server down gracefully with [http.Server.Shutdown]; before [Server.Start]
-// it does nothing.
+// Stop shuts the server down gracefully with [http.Server.Shutdown]. A Stop that comes before
+// [Server.Start] makes it return nil at once.
 func (s *Server) Stop(ctx context.Context) error {
 	s.mu.Lock()
+	s.stopped = true
 	srv := s.httpSrv
 	s.mu.Unlock()
 	if srv == nil {

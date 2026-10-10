@@ -847,9 +847,21 @@ func TestServerCodecIsTheCodecInUse(t *testing.T) {
 	}
 }
 
+// A Stop that comes before Start makes it return nil at once, as http.Server's Shutdown does.
 func TestServerStopBeforeStart(t *testing.T) {
-	if err := New(nil).Stop(context.Background()); err != nil {
-		t.Errorf("Stop before Start should be no-op, got %v", err)
+	s := New(nil)
+	if err := s.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop before Start: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- s.Start(freeAddr(t)) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("Start after Stop = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start after Stop is still serving")
 	}
 }
 
