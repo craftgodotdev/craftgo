@@ -752,7 +752,7 @@ grpcSrv := rpc.New(svcCtx, opts...)
 | Function | Description |
 |---|---|
 | `Recovery(logger)` | Panic → `Internal` with an opaque message, logged with the stack and the call's trace ids. Installed outermost by the server itself. |
-| `AccessLog(logger, opts...)` | One `grpc access` line per call with `method`, `code`, `latency` and the trace ids; a stream logs once when it ends. `AccessLogSkipMethods(...)` and `AccessLogFields(fn)` shape it. |
+| `AccessLog(logger, opts...)` | One `grpc access` line per call with `method`, `code`, `latency` and the trace ids; a stream logs once when it ends, and a call that panics logs the `Internal` that Recovery answers. `AccessLogSkipMethods(...)` and `AccessLogFields(fn)` shape it. |
 | `Timeout(d)` | Bound unary calls to `d`; a late response is dropped for `DeadlineExceeded`. Streams are not bounded; `d <= 0` installs nothing. |
 | `Error(ctx, err) error` | What the generated server layer returns on failure: status errors pass through, a craftgo typed error (`HTTPStatus() int`) becomes the matching code with an `ErrorInfo{Reason: ErrCode()}` detail, a context error becomes `Canceled` / `DeadlineExceeded`, anything else goes to the unknown-error handler. |
 | `SetHandleUnknownError(h)` | Swap the process-wide handler for errors that carry neither a status nor an HTTP status; the default logs and answers `Internal`. |

@@ -192,7 +192,7 @@ shutdownGRPC, err := wiring.RegisterGRPC(ctx, grpcSrv, svc)
 
 - **Telemetry.** `tel.GRPCServerHandler()` is the gRPC twin of `tel.HTTPMiddleware()`: one `otelgrpc` stats handler emits the span and the `rpc.server.call.duration` histogram (`rpc_server_call_duration_seconds` on the Prometheus scrape), against the same providers and the same `serviceName`. It runs in the transport, ahead of every interceptor, so the access log and the logic's `log.Logger` carry `trace_id` / `span_id`. A traced stack adopts the caller's W3C trace context from the request metadata.
 - **Recovery** is always outermost: a panic answers `Internal` with an opaque message and is logged with its stack and the call's trace ids.
-- **Access log**: one `grpc access` line per call with `method`, `code` and `latency`; a stream logs once when it ends.
+- **Access log**: one `grpc access` line per call with `method`, `code` and `latency`; a stream logs once when it ends, and a call that panics logs the `Internal` that Recovery answers.
 - **Timeout** bounds unary calls to `grpc.handlerTimeout`; a handler that returns after the deadline has its late response dropped for `DeadlineExceeded`. Streams are not bounded.
 - **Health and reflection.** `grpc.health.v1` is registered and reports `SERVING` for the server and each registered service, then `NOT_SERVING` once `Stop` begins. Reflection follows `grpc.reflection` in `config.yaml`. Neither reaches the interceptors or the traces, as the HTTP probes never reach the middleware chain.
 - **Shutdown.** `grpcSrv.Stop(ctx)` drains in-flight RPCs within the budget and cuts off the rest when it runs out, beside the HTTP drain and the telemetry flush.

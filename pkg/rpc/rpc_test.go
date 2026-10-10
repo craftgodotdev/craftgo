@@ -213,8 +213,8 @@ func TestUnaryChainLogsRecoversAndOrders(t *testing.T) {
 	if got := logs.lines("panic recovered"); len(got) != 1 || got[0].fields["panic"] != "kaboom" || got[0].fields["stack"] == "" {
 		t.Errorf("recovery log = %+v", got)
 	}
-	// A panic leaves no access line; the recovery line is the record.
-	if access := logs.lines("grpc access"); len(access) != 1 {
+	// A panicking call is logged with the code Recovery answers.
+	if access := logs.lines("grpc access"); len(access) != 2 || access[1].fields["method"] != pingMethod || access[1].fields["code"] != "Internal" {
 		t.Errorf("access after panic = %+v", access)
 	}
 }
@@ -425,8 +425,14 @@ func TestStreamRecoveryAndAccessLog(t *testing.T) {
 	if status.Code(err) != codes.Aborted || fmt.Sprint(got) != "[n-0 n-1]" {
 		t.Errorf("aborted stream: %v %v", got, err)
 	}
-	if access := logs.lines("grpc access"); len(access) != 1 || access[0].fields["method"] != countMethod || access[0].fields["code"] != "Aborted" {
-		t.Errorf("access = %+v", access)
+	access := logs.lines("grpc access")
+	if len(access) != 2 {
+		t.Fatalf("access = %+v", access)
+	}
+	for i, code := range []string{"Internal", "Aborted"} {
+		if access[i].fields["method"] != countMethod || access[i].fields["code"] != code {
+			t.Errorf("access line %d = %+v, want code %s", i, access[i].fields, code)
+		}
 	}
 }
 
