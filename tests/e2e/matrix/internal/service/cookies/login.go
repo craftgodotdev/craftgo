@@ -30,6 +30,11 @@ func NewLoginService(ctx context.Context, svcCtx *svccontext.ServiceContext) *Lo
 // Answers a Session.
 //
 // Login implements Cookies.Login.
-func (l *LoginService) Login() (*types.Session, error) {
-	return &types.Session{Token: "t1", Name: "ana"}, nil
+func (l *LoginService) Login(req *types.LoginReq) (*types.Session, error) {
+	s := &types.Session{Token: "t1", Name: "ana"}
+	if req.Days != nil {
+		s.Remember = types.NewSessionRememberCookie("r1")
+		s.Remember.MaxAge = *req.Days * 24 * 60 * 60
+	}
+	return s, nil
 }

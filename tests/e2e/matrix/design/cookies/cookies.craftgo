@@ -1,12 +1,23 @@
-// Package `cookies` pins the attributes of the cookies @cookie fields set, on a
-// response and on an error: the server's cookie options, path / and HttpOnly,
-// Secure and SameSite=Lax unless config sets others.
+// Package `cookies` pins the cookies @cookie fields set, on a response and on an error: the
+// attributes a @cookie declares, path / and HttpOnly, Secure and SameSite=Lax for those it leaves
+// out, and a `cookie` field the logic sets per response.
 package cookies
 
-// Session sets its token in a cookie beside its body.
+// LoginReq asks for a remembered session of a number of days.
+type LoginReq {
+	days int? @query
+}
+
+// Session sets its token in a cookie beside its body, and a cookie the logic picks per request.
 type Session {
-	token string @cookie("sid")
-	name  string
+	token    string  @cookie("sid")
+	remember cookie? @cookie("remember", maxAge: 720h, sameSite: strict)
+	name     string
+}
+
+// Out deletes the session cookie.
+type Out {
+	session cookie @cookie("sid")
 }
 
 // Gauge sets a cookie beside a reading the encoder may refuse.
@@ -15,16 +26,22 @@ type Gauge {
 	level float64
 }
 
-// Locked sets the time it lifts in a cookie.
+// Locked sets the time it lifts in a cookie scoped to the API that scripts may read.
 error Conflict Locked {
-	until string @cookie("lock")
+	until string @cookie("lock", path: "/api", maxAge: 1h, httpOnly: false)
 }
 
 @prefix("/cookies/a")
 service Cookies {
-	@doc("Answers a Session.")
+	@doc("Answers a Session, remembered for the days the query asks.")
 	get Login /login {
+		request  LoginReq
 		response Session
+	}
+
+	@doc("Answers an Out that deletes the session cookie.")
+	get Logout /logout {
+		response Out
 	}
 
 	@doc("Answers a Gauge whose level has no JSON form.")
