@@ -245,6 +245,58 @@ func TestATypedBatchNamesEachFailure(t *testing.T) {
 	}
 }
 
+// ItemErrors that fn returns, keyed by index into the items it was handed, fail those items
+// alone, named by their index into the whole batch.
+func TestItemErrorsFromATypedBatchFailOnlyTheItemsTheyName(t *testing.T) {
+	bus, tr := subscriberBus()
+	rejected := errors.New("row b rejected by the store")
+	if err := orderPlaced.SubscribeBatch(bus, "bulk", events.BatchSize{Max: 10, Wait: time.Second},
+		func(_ context.Context, batch []events.Item[order]) error {
+			for i, it := range batch {
+				if it.Payload.ID == "b" {
+					return events.ItemErrors{i: rejected}
+				}
+			}
+			return nil
+		}); err != nil {
+		t.Fatal(err)
+	}
+	start(t, context.Background(), bus)
+	msg := func(body string) *events.Message {
+		return &events.Message{Event: "orders.Placed", Payload: []byte(body)}
+	}
+	got := tr.deliver(t, msg(`not json`), msg(`{"id":"a"}`), msg(`{"id":"b"}`), msg(`{"id":"c"}`))
+	var itemErrs events.ItemErrors
+	if !errors.As(got, &itemErrs) || len(itemErrs) != 2 {
+		t.Fatalf("err = %v, want ItemErrors naming the undecodable message and b", got)
+	}
+	var pe *events.PayloadError
+	if !errors.As(itemErrs[0], &pe) {
+		t.Errorf("[0] = %v, want a *PayloadError", itemErrs[0])
+	}
+	if itemErrs[2] != rejected {
+		t.Errorf("[2] = %v, want b's own error", itemErrs[2])
+	}
+}
+
+// ItemErrors naming an index fn was not handed fail every item, as a plain error would.
+func TestItemErrorsOutsideTheTypedBatchFailItWhole(t *testing.T) {
+	bus, tr := subscriberBus()
+	stray := events.ItemErrors{5: errors.New("no such row")}
+	if err := orderPlaced.SubscribeBatch(bus, "bulk", events.BatchSize{Max: 10, Wait: time.Second},
+		func(context.Context, []events.Item[order]) error { return stray }); err != nil {
+		t.Fatal(err)
+	}
+	start(t, context.Background(), bus)
+	got := tr.deliver(t,
+		&events.Message{Event: "orders.Placed", Payload: []byte(`{"id":"a"}`)},
+		&events.Message{Event: "orders.Placed", Payload: []byte(`{"id":"b"}`)})
+	var itemErrs events.ItemErrors
+	if !errors.As(got, &itemErrs) || len(itemErrs) != 2 {
+		t.Fatalf("err = %v, want both items failed", got)
+	}
+}
+
 // fn does not run when no message of the batch decodes, and a clean batch returns nil.
 func TestATypedBatchRunsOnlyWithValidItems(t *testing.T) {
 	bus, tr := subscriberBus()
