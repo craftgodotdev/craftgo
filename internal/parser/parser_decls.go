@@ -60,6 +60,8 @@ func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 		p.errorf(t.Pos, "`import` was removed - reference another package's declaration as `pkg.Type`; delete this line")
 		p.skipLine()
 		return nil
+	case t.Kind == lexer.Ident && t.Text == "consume":
+		p.errorf(t.Pos, "there is no `consume` declaration - which events a deployable listens to is Go code, written where its bus is built")
 	case t.Kind == lexer.Ident:
 		p.errorf(t.Pos, "%s", unknownKeyword(t.Text))
 	default:

@@ -67,6 +67,12 @@ func TestOneMistakeOneDiagnostic(t *testing.T) {
 			[]string{"A{a,b,c}"},
 		},
 		{
+			"top-level consume",
+			"consume middleware X\n\ntype B { b string }\n",
+			"3:1: there is no `consume` declaration - which events a deployable listens to is Go code, written where its bus is built",
+			[]string{"X{}", "B{b}"},
+		},
+		{
 			"consume in a service",
 			"service S {\n\tconsume SendReceipt {\n\t\tpayload X\n\t}\n\tget A /a {}\n}\n",
 			"4:2: a service has no `consume` member - which events a deployable listens to is Go code, written where its bus is built",
