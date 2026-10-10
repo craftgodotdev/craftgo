@@ -229,7 +229,6 @@ func TestLeafNameEmbedCollisionRejected(t *testing.T) {
 		"shared/s.craftgo": `package shared
 type Leaf { x int }`,
 		"api.craftgo": `package design
-import "shared"
 type Leaf { y int }
 type Req { Leaf  shared.Leaf  r string }`,
 	})

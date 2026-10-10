@@ -166,8 +166,8 @@ func TestFormatRefusesACommentItWouldMoveOutOfALine(t *testing.T) {
 		},
 		{
 			"inside a qualified name",
-			"package x\n\nimport \"shared\"\n\ntype T {\n\ta shared.\n\t// c\n\tX\n}\n",
-			`t.craftgo:7:2: formatting would move the comment "c" out of field a`,
+			"package x\n\ntype T {\n\ta shared.\n\t// c\n\tX\n}\n",
+			`t.craftgo:5:2: formatting would move the comment "c" out of field a`,
 		},
 		{
 			"enum value",

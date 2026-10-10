@@ -692,7 +692,6 @@ func TestValidateEmitsQualifiedGenericCall(t *testing.T) {
 		"shared/types.craftgo": `package shared
 type Page<T> { items T[]  cursor string? }`,
 		"app/types.craftgo": `package app
-import "shared"
 type ProductRef { id string }
 type Product {
     id   string
@@ -724,7 +723,6 @@ func TestValidateEmitsCrossPkgEnumAllShapes(t *testing.T) {
 		"shared/e.craftgo": `package shared
 enum Color { Red  Green  Blue }`,
 		"app/t.craftgo": `package app
-import "shared"
 type Pick {
     one     shared.Color
     many    shared.Color[]
@@ -771,7 +769,6 @@ func TestValidateWalksMapKeyUserType(t *testing.T) {
 		"shared/t.craftgo": `package shared
 scalar Email string @format(email) @length(1, 64)`,
 		"app/t.craftgo": `package app
-import "shared"
 type Bag { byEmail map<shared.Email, string> }`,
 	})
 	appPkg := proj.Packages["app"]
@@ -795,7 +792,6 @@ func TestValidateCallsACrossPackageTypeOnlyThroughTheResolver(t *testing.T) {
 		"shared/types.craftgo": `package shared
 type Owner { name string @minLength(1) }`,
 		"app/types.craftgo": `package app
-import "shared"
 type Product { id string  owner shared.Owner }`,
 	})
 	for _, c := range []struct {
@@ -1240,7 +1236,6 @@ func TestUniqueItemsCrossPkgElementImport(t *testing.T) {
 		"shared/s.craftgo": `package shared
 scalar Name string @minLength(1)`,
 		"app/t.craftgo": `package app
-import "shared"
 type U { names shared.Name[] @uniqueItems }`,
 	})
 	cross := crossPkg{"shared": "github.com/test/m/internal/types/shared"}

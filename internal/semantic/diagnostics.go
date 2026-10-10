@@ -169,16 +169,6 @@ const (
 	// CodePackageName fires when a package name is one no generated Go package can take: a Go
 	// keyword or predeclared identifier, `main`, `init` or `_`.
 	CodePackageName = "package/name"
-	// CodeImportUnresolved fires when `import "path"` names no design folder.
-	CodeImportUnresolved = "import/unresolved"
-	// CodeImportEscape fires when an import path is absolute or its first segment is `.` or `..`.
-	CodeImportEscape = "import/escape"
-	// CodeImportDuplicate fires when one file imports a path twice.
-	CodeImportDuplicate = "import/duplicate"
-	// CodeImportAliasConflict fires when two imports of one file share an alias, explicit or implicit.
-	CodeImportAliasConflict = "import/alias-conflict"
-	// CodeImportSelf warns when a file imports a folder named after its own package.
-	CodeImportSelf = "import/self"
 	// CodeRefUnknownPackage fires when a qualified reference names an undeclared package.
 	CodeRefUnknownPackage = "ref/unknown-package"
 	// CodeRefUnknownSymbol fires when a type reference names nothing usable as a type.

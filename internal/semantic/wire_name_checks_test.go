@@ -8,7 +8,6 @@ func TestProjectDuplicateWireNameCrossPkgMixin(t *testing.T) {
 		"shared/sort.craftgo": `package shared
 type SortOpt { order string @query("sort") }`,
 		"api.craftgo": `package design
-import "shared"
 type ListReq {
 	sort string @query("sort")
 	shared.SortOpt
@@ -30,7 +29,6 @@ func TestProjectDuplicateWireNameTwoCrossPkgMixins(t *testing.T) {
 type A { x string @query("q") }
 type B { y string @query("q") }`,
 		"api.craftgo": `package design
-import "shared"
 type ListReq {
 	shared.A
 	shared.B
@@ -51,7 +49,6 @@ func TestProjectDuplicateWireNameCrossPkgHeaderCaseFold(t *testing.T) {
 		"shared/meta.craftgo": `package shared
 type Meta { trace string @header("x-trace") }`,
 		"api.craftgo": `package design
-import "shared"
 type ListReq {
 	traceId string @header("X-Trace")
 	shared.Meta
@@ -72,7 +69,6 @@ func TestProjectDuplicateWireNameCrossPkgClean(t *testing.T) {
 		"shared/sort.craftgo": `package shared
 type SortOpt { order string @query("order") }`,
 		"api.craftgo": `package design
-import "shared"
 type ListReq {
 	sort string @query("sort")
 	shared.SortOpt

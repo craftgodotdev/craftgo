@@ -135,8 +135,7 @@ func TestLineCommentToEOF(t *testing.T) {
 
 func TestKeywords(t *testing.T) {
 	cases := map[string]Kind{
-		"package": KwPackage, "import": KwImport,
-		"type": KwType, "enum": KwEnum, "error": KwError,
+		"package": KwPackage, "type": KwType, "enum": KwEnum, "error": KwError,
 		"scalar": KwScalar, "service": KwService, "extend": KwExtend,
 		"middleware": KwMiddleware, "request": KwRequest, "response": KwResponse,
 		"map":  KwMap,
@@ -148,6 +147,16 @@ func TestKeywords(t *testing.T) {
 		if got := first(t, src).Kind; got != want {
 			t.Errorf("%q: got %s want %s", src, got, want)
 		}
+	}
+}
+
+// `import` is no reserved word, so it names a field like any identifier.
+func TestImportIsAnIdentifier(t *testing.T) {
+	if tok := first(t, "import"); tok.Kind != Ident || tok.Text != "import" {
+		t.Errorf("got %+v, want an Ident", tok)
+	}
+	if !IsIdent("import") {
+		t.Error(`IsIdent("import") = false`)
 	}
 }
 

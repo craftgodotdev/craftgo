@@ -27,7 +27,7 @@ func TestAMixinFieldMayNotShareAJSONKey(t *testing.T) {
 	expectCodeCount(t, "type A { id string }\ntype B { key string @json(\"id\") }\ntype R { A  B }", CodeFieldNameCollision, 1)
 	root, files := projectFixture(t, map[string]string{
 		"shared/s.craftgo": "package shared\ntype Base { id string }",
-		"api.craftgo":      "package api\nimport \"shared\"\ntype R { shared.Base  identifier string @json(\"id\") }",
+		"api.craftgo":      "package api\ntype R { shared.Base  identifier string @json(\"id\") }",
 	})
 	if _, diags := AnalyzeProject(files, Options{DesignRoot: root}); findCode(diags, CodeFieldNameCollision) == nil {
 		t.Errorf("a cross-package mixin field sharing a JSON key passed: %v", diags)

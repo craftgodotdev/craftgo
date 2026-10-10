@@ -25,7 +25,6 @@ func TestNullableCrossPkgAutoQueryRejected(t *testing.T) {
 scalar Email string @format(email)
 enum Color { Red  Green  Blue }`,
 		"api.craftgo": `package design
-import "lib"
 type XReq { nul lib.Email @nullable }
 type XResp { ok bool }
 service XSvc { get X /x { request XReq  response XResp } }`,
@@ -42,7 +41,6 @@ func TestCrossPkgBindingDiagnosticNotDuplicated(t *testing.T) {
 		"shared/s.craftgo": `package shared
 scalar Blob bytes`,
 		"api.craftgo": `package design
-import "shared"
 type SearchReq { q shared.Blob @query }
 service S { post Do /do { request SearchReq } }`,
 	})

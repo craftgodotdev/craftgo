@@ -10,8 +10,8 @@ import (
 )
 
 // anchor is a construct that starts a line of its own in the canonical text:
-// the package clause, an import, a declaration, a member, a method or event
-// clause, or a closing brace. line is its first source line.
+// the package clause, a declaration, a member, a method or event clause, or a
+// closing brace. line is its first source line.
 type anchor struct {
 	line int
 	name string
@@ -27,7 +27,7 @@ type placedComment struct {
 type layout struct {
 	// anchors are in source order, each construct before the ones inside it.
 	anchors []anchor
-	// tops are the first lines of the package clause, imports and declarations.
+	// tops are the first lines of the package clause and the declarations.
 	tops []int
 	// frees are the first lines of the free comment blocks.
 	frees    []int
@@ -44,11 +44,6 @@ func fileLayout(f *ast.File, src *source) *layout {
 	if f.Package != nil {
 		l.top(f.Package.Pos.Line, "package")
 		l.doc("package", f.Package.Doc)
-	}
-	for i, imp := range f.Imports {
-		name := fmt.Sprintf("import %d", i)
-		l.top(imp.Pos.Line, name)
-		l.doc(name, imp.Doc)
 	}
 	for i, d := range f.Decls {
 		l.decl(fmt.Sprintf("declaration %d", i), d, src.firstLine(d))

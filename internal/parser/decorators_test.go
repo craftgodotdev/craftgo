@@ -15,8 +15,6 @@ func TestParseEveryDocumentedDecorator(t *testing.T) {
 @deprecated
 package design
 
-import "shared"
-
 @doc("type-level doc")
 @deprecated
 @requiresOneOf("a", "b")

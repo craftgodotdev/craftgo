@@ -24,13 +24,6 @@ func (s *server) onCompletion(_ context.Context, params protocol.CompletionParam
 func (r *request) namedSlotCompletions(c cursor) ([]protocol.CompletionItem, bool) {
 	view := r.view()
 	prev, mid := view.token(c.prev), view.token(c.at)
-	if prefix, ok := importPathPrefix(view, c); ok {
-		return importPathCompletions(r.path, prefix), true
-	}
-	// `import |`: the paths come with their quotes.
-	if prev != nil && prev.Kind == lexer.KwImport {
-		return quotedImportPathCompletions(r.path), true
-	}
 	if isExtendServiceContext(view, c) {
 		return r.serviceNameCompletions(), true
 	}
@@ -180,7 +173,7 @@ func blockAt(view snapshotView, c cursor) completionBlock {
 
 // The keywords each block accepts as the first word of a member.
 var (
-	fileKeywords    = []string{"package", "import", "type", "enum", "error", "scalar", "service", "extend", "middleware", "event"}
+	fileKeywords    = []string{"package", "type", "enum", "error", "scalar", "service", "extend", "middleware", "event"}
 	serviceKeywords = []string{"get", "post", "put", "patch", "delete", "head", "options"}
 	methodKeywords  = []string{"request", "response"}
 	eventKeywords   = []string{"payload"}

@@ -79,10 +79,6 @@ func (p *Parser) Parse() *ast.File {
 		f.Package = p.parsePackage()
 		p.rejectDecoratorsAfter("declaration", startsDecl)
 	}
-	for p.peek().Kind == lexer.KwImport {
-		f.Imports = append(f.Imports, p.parseImport())
-		p.rejectDecoratorsAfter("declaration", startsDecl)
-	}
 	p.each(lexer.EOF, func() {
 		d := p.parseTopLevelWith(leading)
 		leading = nil

@@ -27,7 +27,6 @@ type File struct {
 	LeadingDoc []string
 	Decorators []*Decorator
 	Package    *PackageDecl
-	Imports    []*Import
 	Decls      []Decl
 	// FreeComments are the file-scope comment blocks no node claimed.
 	FreeComments []*FreeComment
@@ -44,16 +43,6 @@ type PackageDecl struct {
 	Pos  Pos
 	Doc  []string
 	Name string
-}
-
-// Import is `import "path"` or `import alias "path"`. PathText is Path as
-// written, quotes included; Doc is the comment above it.
-type Import struct {
-	Pos      Pos
-	Alias    string
-	Path     string
-	PathText string
-	Doc      []string
 }
 
 // Decl is a top-level declaration; [AllDeclKinds] has one of each kind.

@@ -1,0 +1,71 @@
+package lsp
+
+import (
+	"fmt"
+	"maps"
+	"path/filepath"
+	"slices"
+	"strings"
+
+	"go.lsp.dev/protocol"
+
+	"github.com/craftgodotdev/craftgo/internal/semantic"
+)
+
+// packageNameCompletions answers `package |` with the packages the other files
+// in the folder declare or, in a folder with none, every package in the project.
+func (r *request) packageNameCompletions() []protocol.CompletionItem {
+	dir := filepath.Dir(r.path)
+	siblings, project := map[string]int{}, map[string]bool{}
+	for _, lf := range r.project().files {
+		if lf.path == r.path || lf.file == nil || lf.file.Package == nil || lf.file.Package.Name == "" {
+			continue
+		}
+		project[lf.file.Package.Name] = true
+		if filepath.Dir(lf.path) == dir {
+			siblings[lf.file.Package.Name]++
+		}
+	}
+	if len(siblings) > 0 {
+		return packageItems(siblings, "declared by %d sibling file(s) in this folder")
+	}
+	counts := make(map[string]int, len(project))
+	for name := range project {
+		counts[name] = 0
+	}
+	return packageItems(counts, "package declared elsewhere in this project")
+}
+
+// packageItems renders one item per name, sorted; detail may take the count
+// as %d.
+func packageItems(names map[string]int, detail string) []protocol.CompletionItem {
+	out := make([]protocol.CompletionItem, 0, len(names))
+	for _, name := range slices.Sorted(maps.Keys(names)) {
+		d := detail
+		if strings.Contains(detail, "%d") {
+			d = fmt.Sprintf(detail, names[name])
+		}
+		out = append(out, protocol.CompletionItem{
+			Label:      name,
+			Kind:       protocol.CompletionItemKindModule,
+			Detail:     d,
+			InsertText: name,
+		})
+	}
+	return out
+}
+
+// packageDeclCompletions offers the declarations of package pkg a type
+// reference can name, for `pkg.|`.
+func (r *request) packageDeclCompletions(pkg string) []protocol.CompletionItem {
+	v := r.project()
+	p := v.proj.Packages[pkg]
+	if p == nil {
+		return nil
+	}
+	var out []protocol.CompletionItem
+	for _, d := range p.Decls(semantic.TypeRefDecls) {
+		out = append(out, declItem(d, pkg, v.currentPackage()))
+	}
+	return out
+}

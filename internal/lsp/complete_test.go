@@ -218,7 +218,7 @@ func TestCompletionItemIsOnePerDeclaration(t *testing.T) {
 		}
 		return byLabel
 	}
-	head := "package app\n\nimport \"shared\"\n\n"
+	head := "package app\n\n"
 	member := complete(head + "type T {\n\tm shared.|\n}\n")
 	typeSlot := complete(head + "type T {\n\tm |\n}\n")
 	mixin := complete(head + "type T {\n\ta int\n\t|\n}\n")
@@ -460,7 +460,7 @@ func TestCompletionBlockFallbackMatchesTheBlock(t *testing.T) {
 		{
 			label:  "file scope",
 			src:    typeSlotFixtures + "|\n",
-			want:   []string{"package", "import", "type", "enum", "error", "scalar", "service", "extend", "middleware", "event"},
+			want:   []string{"package", "type", "enum", "error", "scalar", "service", "extend", "middleware", "event"},
 			banned: []string{"get", "request", "response", "payload", "map", "true", "Address"},
 		},
 		{
@@ -616,7 +616,7 @@ func TestCompletionPackageMembersInATypePosition(t *testing.T) {
 		"shared/shared.craftgo": "package shared\n\ntype Addr { city string }\nenum Kind { A }\nscalar Email string\n" +
 			"middleware Auth\nerror NotFound Gone\nservice Svc { get G /g {} }\nevent Moved { payload Addr }\n",
 	})
-	src, pos := markCursor(t, "package app\n\nimport \"shared\"\n\ntype User {\n\thome shared.|\n}\n")
+	src, pos := markCursor(t, "package app\n\ntype User {\n\thome shared.|\n}\n")
 	path := filepath.Join(design, "app", "app.craftgo")
 	mustWrite(t, path, src)
 	u := uri.File(path)
@@ -728,7 +728,7 @@ func TestCompletionExtendServiceTargetAtEndOfBuffer(t *testing.T) {
 	}
 }
 
-// `package |` offers the folder's package, and `import |` quoted import paths.
+// `package |` offers the folder's package.
 func TestCompletionHeaderLines(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "craftgo.design.yaml"), "package: example.com/m\noutput:\n  types: ./types\n")
@@ -750,15 +750,6 @@ func TestCompletionHeaderLines(t *testing.T) {
 		expectLabels(t, items, "shop")
 		// The sibling folder declares `shared`; this file is not in it.
 		expectNoLabels(t, items, "shared", "type", "Ping")
-	})
-	t.Run("import path arrives quoted", func(t *testing.T) {
-		items := run("package shop\n\nimport |\n")
-		expectLabels(t, items, "design/shared")
-		for _, it := range items {
-			if it.Label == "design/shared" && it.InsertText != `"design/shared"` {
-				t.Errorf("import path must insert with quotes, got %q", it.InsertText)
-			}
-		}
 	})
 }
 

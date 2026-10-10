@@ -16,22 +16,6 @@ func (p *Parser) parsePackage() *ast.PackageDecl {
 	return &ast.PackageDecl{Pos: name.Pos, Doc: pkgTok.Doc, Name: name.Text}
 }
 
-// parseImport parses `import "path"` or `import alias "path"`, taking the
-// comment above as Doc.
-func (p *Parser) parseImport() *ast.Import {
-	importTok := p.advance()
-	p.claimDoc(importTok)
-	imp := &ast.Import{Pos: importTok.Pos, Doc: importTok.Doc}
-	if p.peek().Kind == lexer.Ident {
-		imp.Alias = p.advance().Text
-	}
-	if str, ok := p.expect(lexer.String); ok {
-		imp.Path = unquote(str)
-		imp.PathText = str.Text
-	}
-	return imp
-}
-
 // parseTopLevelWith parses one declaration, prefixing its decorators with
 // extra, whose doc is the file's LeadingDoc. The declaration's doc is the
 // comment above its own decorators, then the one right above its keyword,
@@ -71,8 +55,21 @@ func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 		}
 		return nil
 	}
+	if t.Kind == lexer.Ident && t.Text == "import" {
+		p.errorf(t.Pos, "`import` was removed - reference another package's declaration as `pkg.Type`; delete this line")
+		p.skipLine()
+		return nil
+	}
 	p.errorf(t.Pos, "expected declaration, got %s", t.Kind)
 	return nil
+}
+
+// skipLine consumes the current token and the rest of its line.
+func (p *Parser) skipLine() {
+	line := p.peek().Pos.Line
+	for !p.peekIs(lexer.EOF) && p.peek().Pos.Line == line {
+		p.advance()
+	}
 }
 
 // startsDecl reports whether k is a keyword [Parser.parseTopLevelWith] parses

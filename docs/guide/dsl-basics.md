@@ -6,7 +6,7 @@ The craftgo DSL is a small file format that describes your API. From it, craftgo
 
 A `.craftgo` file has two parts:
 
-1. A `package` line, first in the file - only comments and the file-level decorators `@doc`, `@deprecated` and `@version` may come before it. A file that imports or declares anything without one is rejected as `package/missing` at its first import or declaration; a file holding only comments needs none. The name is also the generated Go package's, so a Go keyword, a predeclared Go identifier such as `int` or `len`, `main`, `init` and `_` are rejected as `package/name`
+1. A `package` line, first in the file - only comments and the file-level decorators `@doc`, `@deprecated` and `@version` may come before it. A file that declares anything without one is rejected as `package/missing` at its first declaration; a file holding only comments needs none. The name is also the generated Go package's, so a Go keyword, a predeclared Go identifier such as `int` or `len`, `main`, `init` and `_` are rejected as `package/name`
 2. Declarations: `type`, `enum`, `scalar`, `error`, `service` (and `extend service`), `middleware`, `event`
 
 Declaration names start with an upper-case letter: a lower-case `type`, `enum`, `scalar`, `error`, `middleware`, `event` or method name is rejected as `decl/name-case` (the Go identifier generated from it would be unexported); a lower-case service name only warns. Type parameter names follow the same rule (`type Page<T>`, not `<t>`).

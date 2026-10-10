@@ -27,11 +27,11 @@ func TestFormatKeepsLiteralsAsWritten(t *testing.T) {
 	}
 }
 
-// Format prints enum string values and import paths as they are written.
-func TestFormatKeepsEnumValuesAndImportPathsAsWritten(t *testing.T) {
-	src := "package app\n\nimport \"sh\\u{61}red\"\n\nenum Bell {\n\tRing = \"\\u{7}\"\n\tQuiet = \"zero\u200bwidth\"\n}\n"
+// Format prints enum string values as they are written.
+func TestFormatKeepsEnumValuesAsWritten(t *testing.T) {
+	src := "package app\n\nenum Bell {\n\tRing = \"\\u{7}\"\n\tQuiet = \"zero\u200bwidth\"\n}\n"
 	out := formatStable(t, src)
-	for _, want := range []string{`import "sh\u{61}red"`, `Ring  = "\u{7}"`, "Quiet = \"zero\u200bwidth\""} {
+	for _, want := range []string{`Ring  = "\u{7}"`, "Quiet = \"zero\u200bwidth\""} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %s:\n%s", want, out)
 		}

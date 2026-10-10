@@ -34,7 +34,6 @@ func TestQualifiedGenericRefMissingArgs(t *testing.T) {
 		"shared/types.craftgo": `package shared
 type Page<T> { items T[]  cursor string? }`,
 		"app/types.craftgo": `package app
-import "shared"
 type Product { id string  page shared.Page }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -52,7 +51,6 @@ func TestQualifiedGenericRefWrongArgCount(t *testing.T) {
 		"shared/types.craftgo": `package shared
 type Pair<A, B> { left A  right B }`,
 		"app/types.craftgo": `package app
-import "shared"
 type User {}
 type Holder { p shared.Pair<User> }`,
 	})
@@ -67,7 +65,6 @@ func TestQualifiedNonGenericWithArgs(t *testing.T) {
 		"shared/types.craftgo": `package shared
 type Plain { id string }`,
 		"app/types.craftgo": `package app
-import "shared"
 type User {}
 type Holder { p shared.Plain<User> }`,
 	})
@@ -82,7 +79,6 @@ func TestQualifiedGenericRefCorrectArgsClean(t *testing.T) {
 		"shared/types.craftgo": `package shared
 type Page<T> { items T[]  cursor string? }`,
 		"app/types.craftgo": `package app
-import "shared"
 type Product { id string }
 type Catalog { page shared.Page<Product> }`,
 	})
@@ -269,37 +265,6 @@ extend service Ghost { get Y /y { response R } }`,
 	}
 }
 
-func TestImportDuplicate(t *testing.T) {
-	pkg, diags := Analyze(parseFiles(t, `package x
-import "shared"
-import "shared"
-type T { id string }`))
-	_ = pkg
-	if findCode(diags, CodeImportDuplicate) == nil {
-		t.Fatalf("expected %s, got %v", CodeImportDuplicate, diags)
-	}
-}
-
-func TestImportAliasConflictImplicit(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package x
-import "shared/ok"
-import "xyz/ok"
-type T { id string }`))
-	if findCode(diags, CodeImportAliasConflict) == nil {
-		t.Fatalf("expected %s, got %v", CodeImportAliasConflict, diags)
-	}
-}
-
-func TestImportAliasConflictExplicit(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package x
-import s "shared"
-import s "users"
-type T { id string }`))
-	if findCode(diags, CodeImportAliasConflict) == nil {
-		t.Fatalf("expected %s, got %v", CodeImportAliasConflict, diags)
-	}
-}
-
 // A @passthrough method may declare request and response blocks.
 func TestPassthroughAcceptsBlocks(t *testing.T) {
 	mustClean(t, `package x
@@ -331,19 +296,6 @@ type T { name strg }`))
 	}
 	if !strings.Contains(d.Msg, "strg") {
 		t.Errorf("expected message to name the typo, got %q", d.Msg)
-	}
-}
-
-func TestLocalTypeRefImportedAliasAsType(t *testing.T) {
-	_, diags := Analyze(parseFiles(t, `package x
-import "shared"
-type T { user shared }`))
-	d := findCode(diags, CodeRefUnknownSymbol)
-	if d == nil {
-		t.Fatalf("expected %s when bare import alias used as type, got %v", CodeRefUnknownSymbol, diags)
-	}
-	if !strings.Contains(d.Msg, "imported package") {
-		t.Errorf("expected package-as-type hint, got %q", d.Msg)
 	}
 }
 
@@ -392,21 +344,12 @@ service U { get A /a { response R } }`,
 	}
 }
 
-// A file may mix aliased and unaliased imports.
-func TestImportsWithAliasAndImplicit(t *testing.T) {
-	mustClean(t, `package x
-import alias "shared"
-import "users"
-type T { id string }`)
-}
-
 // A qualified reference to another package's type is not reported as unknown.
 func TestLocalNamedRefMultiPartSkipped(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/u.craftgo": `package shared
 type User { id string }`,
 		"users/svc.craftgo": `package users
-import "shared"
 type T { user shared.User }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})

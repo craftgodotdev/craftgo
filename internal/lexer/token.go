@@ -33,7 +33,6 @@ const (
 	// Keywords.
 
 	KwPackage
-	KwImport
 	KwType
 	KwEnum
 	KwError
@@ -86,7 +85,7 @@ var kindNames = map[Kind]string{
 	String: "String", RawString: "RawString",
 	Duration: "Duration", Size: "Size", PathWord: "PathWord",
 
-	KwPackage: "package", KwImport: "import", KwType: "type",
+	KwPackage: "package", KwType: "type",
 	KwEnum: "enum", KwError: "error", KwScalar: "scalar",
 	KwService: "service", KwExtend: "extend", KwMiddleware: "middleware",
 	KwRequest: "request", KwResponse: "response",

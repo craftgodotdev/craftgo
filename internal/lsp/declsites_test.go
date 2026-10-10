@@ -97,7 +97,7 @@ func TestDecoratorsFollowAScalarDeclaredElsewhere(t *testing.T) {
 		want, banned []string
 	}{
 		{"package app\n\ntype U {\n\te Email @|\n}\n", []string{"minLength", "pattern"}, []string{"gt", "multipleOf"}},
-		{"package app\n\nimport \"shared\"\n\ntype U {\n\tc shared.Code @|\n}\n", []string{"gt", "multipleOf"}, []string{"minLength", "pattern"}},
+		{"package app\n\ntype U {\n\tc shared.Code @|\n}\n", []string{"gt", "multipleOf"}, []string{"minLength", "pattern"}},
 	} {
 		src, pos := markCursor(t, c.src)
 		path := filepath.Join(root, "design", "app", "u.craftgo")

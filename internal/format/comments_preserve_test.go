@@ -105,10 +105,8 @@ func TestFormatKeepsEveryCommentInPlace(t *testing.T) {
 		"doc above a scalar's keyword":     "package x\n\n@minLength(1)\n// Code is a code.\nscalar Code string\n",
 		"chain comment apart from keyword": "package x\n\n@deprecated\n// apart\n\ntype T {\n\ty string\n}\n",
 		"between file decorators":          "@version(\"1\")\n// c\n@doc(\"d\")\npackage x\n",
-		"between imports":                  "package x\n\nimport \"a\"\n\n// free\n\nimport \"b\"\n",
 		"above file decorators":            "// prologue\n\n// doc\n@version(\"1\") // v\npackage x\n",
 		"above forwarded decorators":       "// prologue\n\n// doc\n@doc(\"t\")\ntype T {\n\ty string\n}\n",
-		"after an import":                  "package x\n\nimport \"a\" // c\n",
 		"after enum values":                "package x\n\nenum E {\n\tA = 1 // c\n\tB = 2 @x // d\n}\n",
 		"after clauses":                    "package x\n\nservice S {\n\tget A /a {\n\t\trequest  R // c\n\t\tresponse T // d\n\t}\n}\n",
 	} {
@@ -312,11 +310,6 @@ func TestFormatKeepsAHeaderCommentOfABodilessDeclaration(t *testing.T) {
 			"error name",
 			"package x\n\nerror NotFound\n// c\nGone\n",
 			"package x\n\nerror NotFound\n\t// c\n\tGone\n",
-		},
-		{
-			"import",
-			"package x\n\nimport\n// c\n\"a\"\n\ntype T {\n\ta string\n}\n",
-			"package x\n\nimport\n\t// c\n\t\"a\"\n\ntype T {\n\ta string\n}\n",
 		},
 		{
 			"package",

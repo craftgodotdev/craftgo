@@ -137,9 +137,8 @@ func (a *analyzer) runShapePhase(files []*ast.File) {
 	a.checkEvents()
 }
 
-// runRefPhase checks each file's imports and every type reference.
+// runRefPhase checks every type reference.
 func (a *analyzer) runRefPhase(files []*ast.File) {
-	a.checkImports(files)
 	a.checkTypeRefs(files)
 }
 

@@ -55,18 +55,9 @@ middleware Auth`)
 // A reference without a name, as half-typed source leaves one, is skipped.
 func TestCheckTypeRefNameless(t *testing.T) {
 	a := newTestAnalyzer(&Package{})
-	a.checkTypeRef(&ast.NamedTypeRef{}, nil, nil, false)
-	a.checkTypeRef(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{}}, nil, nil, false)
+	a.checkTypeRef(&ast.NamedTypeRef{}, nil, false)
+	a.checkTypeRef(&ast.NamedTypeRef{Name: &ast.QualifiedIdent{}}, nil, false)
 	if len(a.diags) != 0 {
 		t.Errorf("nameless ref should not diag, got %v", a.diags)
-	}
-}
-
-// An import with an empty path gets no path diagnostic.
-func TestCheckImportPathEmpty(t *testing.T) {
-	a := newTestAnalyzer(&Package{Name: "app"})
-	a.checkImportPath(&ast.Import{Path: ""})
-	if len(a.diags) != 0 {
-		t.Errorf("empty import path should not diag, got %v", a.diags)
 	}
 }

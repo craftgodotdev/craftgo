@@ -65,26 +65,25 @@ func TestParsePackage(t *testing.T) {
 	}
 }
 
-func TestParseImport(t *testing.T) {
-	f := mustParse(t, `package design
-import "shared"
-import v1 "v1/api"`)
-	if len(f.Imports) != 2 {
-		t.Fatalf("imports: %d", len(f.Imports))
-	}
-	if f.Imports[0].Path != "shared" || f.Imports[0].Alias != "" {
-		t.Error("import 0")
-	}
-	if f.Imports[1].Alias != "v1" || f.Imports[1].Path != "v1/api" {
-		t.Error("import 1")
-	}
-}
-
-func TestImportMissingPath(t *testing.T) {
-	_, errs := parseWithErrors(t, `package x
-import`)
-	if len(errs) == 0 {
-		t.Error("expected error")
+// An `import` line is reported once, whatever follows it on its line, and
+// the declarations below it still parse.
+func TestRemovedImportIsReported(t *testing.T) {
+	for name, line := range map[string]string{
+		"path":    `import "shared"`,
+		"alias":   `import v1 "v1/api"`,
+		"bare":    `import`,
+		"garbage": `import "a" @doc("x") { }`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, msgs := parseWithErrors(t, "package design\n\n"+line+"\n\ntype X {\n\tid string\n}\n")
+			want := "`import` was removed - reference another package's declaration as `pkg.Type`; delete this line"
+			if len(msgs) != 1 || msgs[0] != want {
+				t.Fatalf("diagnostics = %q, want only %q", msgs, want)
+			}
+			if len(f.Decls) != 1 || f.Decls[0].DeclName() != "X" {
+				t.Errorf("declarations = %v, want type X", f.Decls)
+			}
+		})
 	}
 }
 
@@ -1089,9 +1088,6 @@ func TestGoldenSample(t *testing.T) {
 	f := mustParse(t, string(src))
 	if f.Package == nil {
 		t.Error("package missing")
-	}
-	if len(f.Imports) != 2 {
-		t.Errorf("imports: %d", len(f.Imports))
 	}
 	if len(f.Decls) < 8 {
 		t.Errorf("decls: %d", len(f.Decls))
