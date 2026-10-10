@@ -200,7 +200,7 @@ The doc surfaces in:
 - The OpenAPI schema's `description` field
 - The Go doc comment of the type in `enums.go`
 
-Per-value docs (`@doc`, or a comment above the value) become the Go doc comment of the value's constant in `enums.go`; the LSP hover and the OpenAPI schema do not carry them:
+Per-value docs (`@doc`, or a comment above the value) become the Go doc comment of the value's constant in `enums.go`, and, with `@deprecated`, the value's entry of the OpenAPI schema's `x-enum-descriptions`; the LSP hover does not carry them:
 
 ```craftgo
 enum Status {
