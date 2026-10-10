@@ -421,12 +421,12 @@ option go_package = "google.golang.org/genproto/googleapis/rpc/status;status";
 message Status { int32 code = 1; }
 `,
 		"google/protobuf/empty.proto": "syntax = \"proto3\";\npackage google.protobuf;\noption go_package = \"google.golang.org/protobuf/types/known/emptypb\";\nmessage Empty {}\n",
-		"vendor/v.proto":              "syntax = \"proto3\";\npackage v;\noption go_package = \"github.com/elsewhere/v;v\";\nmessage V {}\n",
+		"ext/v.proto":                 "syntax = \"proto3\";\npackage v;\noption go_package = \"github.com/elsewhere/v;v\";\nmessage V {}\n",
 		"api/api.proto": `syntax = "proto3";
 package api;
 import "google/rpc/status.proto";
 import "google/protobuf/empty.proto";
-import "vendor/v.proto";
+import "ext/v.proto";
 message Job { google.rpc.Status error = 1; v.V v = 2; }
 service Jobs { rpc Get(Job) returns (google.protobuf.Empty); }
 `,
@@ -444,7 +444,7 @@ service Jobs { rpc Get(Job) returns (google.protobuf.Empty); }
 			t.Errorf("missing %q in:\n%s", want, err)
 		}
 	}
-	for _, unwanted := range []string{"api/api.proto", "vendor/v.proto"} {
+	for _, unwanted := range []string{"api/api.proto", "ext/v.proto"} {
 		if strings.Contains(err.Error(), unwanted) {
 			t.Errorf("%s is refused:\n%s", unwanted, err)
 		}
@@ -452,7 +452,7 @@ service Jobs { rpc Get(Job) returns (google.protobuf.Empty); }
 
 	o := opts()
 	o.PBDir = ""
-	foreign := write(t, map[string]string{"vendor/v.proto": "syntax = \"proto3\";\npackage v;\noption go_package = \"github.com/elsewhere/v;v\";\nmessage V {}\n"})
+	foreign := write(t, map[string]string{"ext/v.proto": "syntax = \"proto3\";\npackage v;\noption go_package = \"github.com/elsewhere/v;v\";\nmessage V {}\n"})
 	set, err := Load(context.Background(), foreign, o)
 	if err != nil {
 		t.Fatalf("with output.pb \"-\" a go_package elsewhere is refused: %v", err)
