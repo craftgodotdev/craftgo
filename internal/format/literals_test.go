@@ -19,6 +19,8 @@ func TestFormatKeepsLiteralsAsWritten(t *testing.T) {
 		{"small float", `a float64 @gte(0.00001)`},
 		{"negative float", `a float64 @gte(-0.5)`},
 		{"float with a zero fraction", `a float64 @lte(1000000.0)`},
+		{"empty object", `a string @example({})`},
+		{"empty object beside an argument", `a string @example({}, 1)`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			src := "package app\n\ntype D {\n\t" + c.field + "\n}\n"

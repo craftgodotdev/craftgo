@@ -139,7 +139,7 @@ func (p *Parser) parseDecoratorArg(dec string) *ast.DecoratorArg {
 // decorator named dec.
 func (p *Parser) parseObjectLiteral(dec string) []*ast.ObjectField {
 	l := p.openList()
-	var fields []*ast.ObjectField
+	fields := []*ast.ObjectField{}
 	for p.more(l) {
 		fpos := p.peek().Pos
 		name := p.expectFieldKey()

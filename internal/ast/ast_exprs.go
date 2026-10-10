@@ -9,8 +9,9 @@ type Decorator struct {
 	HasParens bool
 }
 
-// DecoratorArg is one decorator argument, held in Value or Object; Named marks
-// the `name: value` form.
+// DecoratorArg is one decorator argument, held in Value or, for an object
+// literal, `{}` included, in a non-nil Object; Named marks the `name: value`
+// form.
 type DecoratorArg struct {
 	Pos    Pos
 	Name   string

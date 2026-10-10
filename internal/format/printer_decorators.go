@@ -155,7 +155,7 @@ func (p *Printer) list(open, end int, opener string, items []listItem, closer st
 // argLastLine returns the source line a decorator argument ends on.
 func (p *Printer) argLastLine(a *ast.DecoratorArg) int {
 	switch {
-	case len(a.Object) > 0:
+	case a.Object != nil:
 		return p.src.closeLine(a.Pos)
 	case a.Value != nil:
 		return p.exprLastLine(a.Value)
