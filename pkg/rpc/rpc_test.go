@@ -606,14 +606,33 @@ func TestRegisterServiceAfterBuild(t *testing.T) {
 	}
 }
 
-// Serve after Stop returns nil.
+// A Stop that comes before serving makes a later Serve or Start return nil at once, as
+// http.Server's Shutdown does, and Serve closes the listener it was handed.
 func TestServeAfterStopReturnsNil(t *testing.T) {
 	srv := New(nil).SetLogger(newCapture())
 	if err := srv.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	srv.GRPCServer().Stop()
-	if err := srv.Serve(bufconn.Listen(1 << 20)); err != nil {
-		t.Errorf("serve after stop = %v", err)
+	lis := bufconn.Listen(1 << 20)
+	for name, serve := range map[string]func() error{
+		"Serve": func() error { return srv.Serve(lis) },
+		"Start": func() error { return srv.Start("127.0.0.1:0") },
+	} {
+		done := make(chan error, 1)
+		go func() { done <- serve() }()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Errorf("%s after Stop = %v", name, err)
+			}
+		case <-time.After(2 * time.Second):
+			srv.GRPCServer().Stop()
+			t.Fatalf("%s after Stop is still serving", name)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if _, err := lis.DialContext(ctx); err == nil || errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Serve after Stop left its listener open: dial = %v", err)
 	}
 }

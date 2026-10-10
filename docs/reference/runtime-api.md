@@ -745,7 +745,7 @@ grpcSrv := rpc.New(svcCtx, opts...)
 | `GRPCServer() *grpc.Server` | Build the underlying server once and return it. |
 | `Start(addr string) error` | Listen and serve until `Stop`; returns nil once stopped. |
 | `Serve(lis net.Listener) error` | Serve on a listener you own - a `bufconn` in tests. |
-| `Stop(ctx context.Context) error` | Health flips to `NOT_SERVING`, in-flight RPCs finish, and when `ctx` expires first the rest are cut off and `ctx.Err()` is returned. No-op on a server never built (by `GRPCServer`, `Serve` or `Start`). |
+| `Stop(ctx context.Context) error` | Health flips to `NOT_SERVING`, in-flight RPCs finish, and when `ctx` expires first the rest are cut off and `ctx.Err()` is returned. A `Stop` that comes before `Start` or `Serve` makes them return nil at once, as `http.Server.Shutdown` does. |
 
 `Interceptor` pairs the two shapes gRPC needs, `Unary grpc.UnaryServerInterceptor` and `Stream grpc.StreamServerInterceptor`; `rpc.Unary(f)` and `rpc.Stream(f)` wrap one side.
 
