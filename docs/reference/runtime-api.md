@@ -23,7 +23,7 @@ srv := server.New(svcCtx, opts...)
 | Method | Description |
 |---|---|
 | `Use(mw Middleware) *Server` | Append a global middleware. Outermost-added wraps first. |
-| `Handle(pattern, h http.Handler, mws ...Middleware) *Server` | Register a route. Optional per-route middlewares wrap the handler **outermost-first** (first arg = outermost frame). |
+| `Handle(pattern, h http.Handler, mws ...Middleware) *Server` | Register a route. Optional per-route middlewares wrap the handler **outermost-first** (first arg = outermost frame); the route's limits - a `WithLimits` h's own, else the server's defaults - wrap them all. |
 | `HandleFunc(pattern, fn http.HandlerFunc) *Server` | Register a route from a bare function. |
 | `Handler() http.Handler` | Build the fully-wrapped handler (the `WithTelemetry` middleware → Recovery → CORS → global chain → mux, so a preflight never reaches a `Use` middleware; the health probes are answered ahead of it, wrapped in Recovery only). Use it with `httptest.NewServer(srv.Handler())` to exercise the full stack without binding a port. |
 | `Start(addr string) error` | Bind and serve until `Stop`; returns nil after a graceful `Stop`. Request headers must arrive within 10s, and idle connections close after 120s. |
@@ -78,7 +78,7 @@ type Middleware func(http.Handler) http.Handler
 | `BodyLimit(maxBytes)` | Caps request bodies at `maxBytes`: a declared `Content-Length` above it is answered 413 `{"message":"request entity too large"}` before the handler runs, and a read past it fails with an `*http.MaxBytesError`, which `WriteValidationError` answers 413 the same way without calling the validation hook. |
 | `Timeout(d)` | Deprecated: use `srv.SetDefaultHandlerTimeout(d)`, or `WithLimits` for one route. Runs the handler under `http.TimeoutHandler`: 503 on deadline, and a buffered response that cannot flush. |
 
-`WithLimits(h, Limits{...})` applies timeout + body limits to a single handler - this is what `@timeout` / `@maxBodySize` compile to.
+`WithLimits(h, Limits{...})` applies timeout + body limits to a single handler - this is what `@timeout` / `@maxBodySize` compile to. `Handle` moves them, and the defaults standing in for those a route leaves unset, outside the route's own middlewares, so those are held to them too; `srv.Use` middlewares stay outside.
 
 ### Chain
 

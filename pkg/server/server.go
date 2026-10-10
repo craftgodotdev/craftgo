@@ -113,10 +113,12 @@ func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) *Server {
 }
 
 // Handle registers h under a ServeMux pattern, wrapped in mws with the first outermost. The
-// default body cap and handler timeout set at this point also wrap h, each unless h is a
-// [WithLimits] handler that sets its own.
+// limits of a [WithLimits] h, and the default body cap and handler timeout set at this point for
+// those it leaves unset, wrap mws too, so a route middleware that reads the body or waits on a
+// dependency is held to them.
 func (s *Server) Handle(pattern string, h http.Handler, mws ...Middleware) *Server {
-	s.mux.Handle(pattern, NewChain(mws...).Then(s.applyDefaults(h)))
+	h, l := s.limitsOf(h)
+	s.mux.Handle(pattern, l.guard(NewChain(mws...).Then(h)))
 	return s
 }
 

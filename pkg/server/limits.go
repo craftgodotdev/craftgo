@@ -17,41 +17,49 @@ type Limits struct {
 }
 
 // WithLimits wraps h in the guards l sets, the timeout outermost so it covers reading the
-// body; [Server.Handle] then skips the matching defaults.
+// body. [Server.Handle] moves them outside the route's middlewares and skips the matching
+// defaults.
 func WithLimits(h http.Handler, l Limits) http.Handler {
+	if l.MaxBodySize <= 0 && l.Timeout <= 0 {
+		return h
+	}
+	return limitedHandler{Handler: l.guard(h), inner: h, limits: l}
+}
+
+// limitedHandler is a [WithLimits] handler: h in its guards, and h with the limits apart.
+type limitedHandler struct {
+	http.Handler
+	inner  http.Handler
+	limits Limits
+}
+
+// guard wraps h in the body cap (inner) and the timeout (outer) l sets.
+func (l Limits) guard(h http.Handler) http.Handler {
 	if l.MaxBodySize > 0 {
 		h = maxBodySizeHandler(h, l.MaxBodySize)
 	}
 	if l.Timeout > 0 {
 		h = timeoutHandler(h, l.Timeout)
 	}
-	if l.MaxBodySize > 0 || l.Timeout > 0 {
-		h = limitedHandler{Handler: h, bodyLimited: l.MaxBodySize > 0, timeoutSet: l.Timeout > 0}
-	}
 	return h
 }
 
-// limitedHandler marks a WithLimits handler with the guards it sets.
-type limitedHandler struct {
-	http.Handler
-	bodyLimited bool
-	timeoutSet  bool
-}
-
-// applyDefaults wraps h in the default body cap (inner) and handler timeout (outer), each
-// unless h is a [WithLimits] handler that sets its own.
-func (s *Server) applyDefaults(h http.Handler) http.Handler {
+// limitsOf splits h into the handler and the limits it is guarded by: a [WithLimits] handler's
+// own, and the server's defaults for those it leaves unset.
+func (s *Server) limitsOf(h http.Handler) (http.Handler, Limits) {
+	var l Limits
+	if own, ok := h.(limitedHandler); ok {
+		h, l = own.inner, own.limits
+	}
 	s.mu.Lock()
-	maxBody, timeout := s.defaultMaxBodySize, s.defaultHandlerTimeout
-	s.mu.Unlock()
-	own, _ := h.(limitedHandler)
-	if maxBody > 0 && !own.bodyLimited {
-		h = maxBodySizeHandler(h, maxBody)
+	defer s.mu.Unlock()
+	if l.MaxBodySize <= 0 {
+		l.MaxBodySize = s.defaultMaxBodySize
 	}
-	if timeout > 0 && !own.timeoutSet {
-		h = timeoutHandler(h, timeout)
+	if l.Timeout <= 0 {
+		l.Timeout = s.defaultHandlerTimeout
 	}
-	return h
+	return h, l
 }
 
 // timeoutHandler runs h on the calling goroutine with a deadline of d on its context.
