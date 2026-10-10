@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/nats-io/nats.go"
 
@@ -192,8 +193,14 @@ func (t *Transport) subscribeOne(ctx context.Context, sub events.Subscription) e
 // SubscribesBatches implements [events.BatchSubscriber].
 func (t *Transport) SubscribesBatches() bool { return true }
 
+// handOverTimeout bounds the handling of a batch handed over after its subscription's
+// context ended.
+const handOverTimeout = 30 * time.Second
+
 // gather hands the messages of s, a batch subscription's, to its handler one batch at a
 // time, until s is unsubscribed or ctx ends. A batch's Wait runs from its first message.
+// A batch still filling when ctx ends is handed over at once, on a context the end of ctx
+// does not end: core NATS will not deliver its messages again.
 func (t *Transport) gather(ctx context.Context, sub events.Subscription, s *nats.Subscription) {
 	next := func(ctx context.Context) (*nats.Msg, error) {
 		for {
@@ -221,9 +228,20 @@ func (t *Transport) gather(ctx context.Context, sub events.Subscription, s *nats
 			batch = append(batch, decode(sub.Event, m))
 		}
 		cancel()
-		if err := sub.Batch.Handle(ctx, batch); err != nil && t.onError != nil {
-			t.onError(sub, nil, err)
-		}
+		t.handleBatch(ctx, sub, batch)
+	}
+}
+
+// handleBatch runs sub's batch handler on ctx, or, once ctx has ended, on a context that
+// keeps its values and ends [handOverTimeout] later.
+func (t *Transport) handleBatch(ctx context.Context, sub events.Subscription, batch []*events.Message) {
+	if ctx.Err() != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), handOverTimeout)
+		defer cancel()
+	}
+	if err := sub.Batch.Handle(ctx, batch); err != nil && t.onError != nil {
+		t.onError(sub, nil, err)
 	}
 }
 

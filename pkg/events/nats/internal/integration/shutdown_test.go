@@ -10,6 +10,56 @@ import (
 	craftnats "github.com/craftgodotdev/craftgo/pkg/events/nats"
 )
 
+type ctxKey struct{}
+
+// A core NATS batch still filling when its subscription's context ends is handed over on a
+// context that has not ended, keeps the subscription's values, and is bounded: core NATS
+// will not deliver those messages again.
+func TestACancelledCoreBatchIsHandedOverOnALiveContext(t *testing.T) {
+	conn := runServer(t)
+	tr := craftnats.New(conn)
+	t.Cleanup(func() { _ = tr.Close() })
+	type handover struct {
+		size    int
+		value   any
+		err     error
+		bounded bool
+	}
+	got := make(chan handover, 4)
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), ctxKey{}, "deployable"))
+	defer cancel()
+	if err := tr.Subscribe(ctx, []events.Subscription{{
+		Event: "orders.Placed", Consumer: "C", Group: "bulk",
+		Batch: &events.Batch{BatchSize: events.BatchSize{Max: 100, Wait: 5 * time.Second},
+			Handle: func(ctx context.Context, batch []*events.Message) error {
+				_, bounded := ctx.Deadline()
+				got <- handover{len(batch), ctx.Value(ctxKey{}), ctx.Err(), bounded}
+				return ctx.Err()
+			}},
+	}}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	if err := conn.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	publishCore(t, tr, "1", "2", "3")
+	if err := conn.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(500 * time.Millisecond) // the batch is filling, well inside its Wait
+	cancel()
+
+	select {
+	case h := <-got:
+		if h.size != 3 || h.err != nil || h.value != "deployable" || !h.bounded {
+			t.Errorf("handed over %d message(s) on a context with err %v, value %v, deadline %v - want 3 on a live one carrying the subscription's value, with a deadline",
+				h.size, h.err, h.value, h.bounded)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the filling batch was not handed over once the context ended")
+	}
+}
+
 // subscribeAgain subscribes subs on ctx once the group has stopped consuming under the
 // subscription before it.
 func subscribeAgain(t *testing.T, ctx context.Context, tr *craftnats.JetStream, subs ...events.Subscription) {
