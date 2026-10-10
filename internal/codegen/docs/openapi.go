@@ -46,7 +46,8 @@ func ValidateOpenAPI(proj *semantic.Project, cfg *config.Config) error {
 }
 
 // GenerateOpenAPI writes the project as one OpenAPI 3.1 document to
-// `output.openapi`, naming a declaration two packages share `<PascalPkg><Name>`.
+// `output.openapi`, naming a declaration whose name or component name two
+// packages share `<PascalPkg><Name>`.
 func GenerateOpenAPI(proj *semantic.Project, cfg *config.Config, projectRoot string) error {
 	dest := documentPath(cfg, projectRoot)
 	if dest == "" || !describable(proj) {
