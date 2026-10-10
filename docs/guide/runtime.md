@@ -159,7 +159,7 @@ srv.RegisterHealthCheck("db", 2*time.Second, func(ctx context.Context) error {
 })
 ```
 
-The second argument is a per-check timeout: each run gets a context that expires after it, so a check that honours its context fails with `context deadline exceeded`, while one that ignores its context runs to completion and is judged by what it returns.
+The second argument is a per-check timeout: each run gets a context that expires after it, so a check that honours its context fails with `context deadline exceeded`, while one that ignores its context runs to completion and is judged by what it returns. A zero or negative timeout sets no deadline, leaving the probe request's own context.
 
 The probes are answered before the middleware chain: they are not access-logged, traced or counted in the HTTP metrics, and no `srv.Use` middleware (CORS, auth, rate limits) runs for them. Disable them with `server.WithoutDefaultHealth()` and register your own route when you want observed probes.
 
