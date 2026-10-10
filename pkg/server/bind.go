@@ -41,9 +41,17 @@ func ParseUnsigned[T wireUnsigned](s string) (T, error) {
 // errNotFinite is the reason [ParseFloat] refuses NaN and the infinities.
 var errNotFinite = errors.New("not a finite number")
 
-// ParseFloat parses s as a finite float of T's width, failing with strconv's error, or with a
-// *strconv.NumError for NaN and the infinities.
+// ParseFloat parses s, a plain decimal number such as -1.5 or 2e-3, as a finite float of T's
+// width, failing with strconv's error. A form strconv takes beyond that, a hexadecimal float,
+// an underscore, NaN or an infinity, fails with a *strconv.NumError too.
 func ParseFloat[T wireFloat](s string) (T, error) {
+	if !isDecimal(s) {
+		reason := strconv.ErrSyntax
+		if n, err := strconv.ParseFloat(s, 64); err == nil && (math.IsNaN(n) || math.IsInf(n, 0)) {
+			reason = errNotFinite
+		}
+		return 0, &strconv.NumError{Func: "ParseFloat", Num: s, Err: reason}
+	}
 	n, err := strconv.ParseFloat(s, bitSize[T]())
 	if err == nil && (math.IsNaN(n) || math.IsInf(n, 0)) {
 		return 0, &strconv.NumError{Func: "ParseFloat", Num: s, Err: errNotFinite}
@@ -51,15 +59,61 @@ func ParseFloat[T wireFloat](s string) (T, error) {
 	return T(n), err
 }
 
+// isDecimal reports whether s is a decimal number: a sign, digits with an optional fraction, and
+// an optional exponent, as in -12, 1.5, .5 or 6.02e23.
+func isDecimal(s string) bool {
+	i := 0
+	if i < len(s) && (s[i] == '+' || s[i] == '-') {
+		i++
+	}
+	digits := 0
+	for ; i < len(s) && isDigit(s[i]); i++ {
+		digits++
+	}
+	if i < len(s) && s[i] == '.' {
+		for i++; i < len(s) && isDigit(s[i]); i++ {
+			digits++
+		}
+	}
+	if digits == 0 {
+		return false
+	}
+	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
+		i++
+		if i < len(s) && (s[i] == '+' || s[i] == '-') {
+			i++
+		}
+		start := i
+		for ; i < len(s) && isDigit(s[i]); i++ {
+		}
+		if i == start {
+			return false
+		}
+	}
+	return i == len(s)
+}
+
+func isDigit(c byte) bool { return '0' <= c && c <= '9' }
+
 // ParseBool parses s as a bool ("1"/"t"/"true"/... per strconv).
 func ParseBool[T ~bool](s string) (T, error) {
 	b, err := strconv.ParseBool(s)
 	return T(b), err
 }
 
-// writeInvalidValue writes the validation error "<field>: invalid <kind> value: <err>".
-func writeInvalidValue(w http.ResponseWriter, r *http.Request, field, kind string, err error) {
-	WriteValidationError(w, r, fmt.Errorf("%s: invalid %s value: %v", field, kind, err))
+// writeInvalidValue writes the validation error of raw, which failed to parse as kind: "<field>:
+// <raw> is out of range for <kind>" for a number past its type's range, "<field>: <raw, quoted>
+// is not a finite number" for NaN or an infinity, else "<field>: <raw, quoted> is not a valid
+// <kind>". It names neither the parser nor its error.
+func writeInvalidValue(w http.ResponseWriter, r *http.Request, field, kind, raw string, err error) {
+	switch {
+	case errors.Is(err, strconv.ErrRange):
+		WriteValidationError(w, r, fmt.Errorf("%s: %s is out of range for %s", field, raw, kind))
+	case errors.Is(err, errNotFinite):
+		WriteValidationError(w, r, fmt.Errorf("%s: %s is not a finite number", field, strconv.Quote(raw)))
+	default:
+		WriteValidationError(w, r, fmt.Errorf("%s: %s is not a valid %s", field, strconv.Quote(raw), kind))
+	}
 }
 
 // BindValue parses a non-empty raw into *dst; an empty raw leaves *dst unchanged. A parse
@@ -70,7 +124,7 @@ func BindValue[T any](w http.ResponseWriter, r *http.Request, field, kind, raw s
 	}
 	v, err := parse(raw)
 	if err != nil {
-		writeInvalidValue(w, r, field, kind, err)
+		writeInvalidValue(w, r, field, kind, raw, err)
 		return false
 	}
 	*dst = v
@@ -84,7 +138,7 @@ func BindValuePtr[T any](w http.ResponseWriter, r *http.Request, field, kind, ra
 	}
 	v, err := parse(raw)
 	if err != nil {
-		writeInvalidValue(w, r, field, kind, err)
+		writeInvalidValue(w, r, field, kind, raw, err)
 		return false
 	}
 	*dst = &v
@@ -131,7 +185,7 @@ func BindValues[T any](w http.ResponseWriter, r *http.Request, field, kind strin
 	for _, s := range raw {
 		v, err := parse(s)
 		if err != nil {
-			writeInvalidValue(w, r, field, kind, err)
+			writeInvalidValue(w, r, field, kind, s, err)
 			return false
 		}
 		*dst = append(*dst, v)

@@ -54,19 +54,59 @@ func TestParseFloatRejectsNonFinite(t *testing.T) {
 	}
 }
 
-// BindValue with ParseUnsigned answers 400 naming the field for a value out of range.
-func TestBindValueUnsignedOutOfRange(t *testing.T) {
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	var dst uint16
-	if BindValue(w, r, "port", "uint16", "70000", &dst, ParseUnsigned[uint16]) {
-		t.Fatal("BindValue accepted 70000 for a uint16")
+// BindValue answers 400 naming the field, the value and its type, not strconv or its error: a
+// number past the type's range is out of range, anything else not a valid value of the type.
+func TestBindValueMessages(t *testing.T) {
+	for _, c := range []struct {
+		raw, want string
+		bind      func(w http.ResponseWriter, r *http.Request, raw string) bool
+	}{
+		{"70000", "port: 70000 is out of range for uint16", func(w http.ResponseWriter, r *http.Request, raw string) bool {
+			var dst uint16
+			return BindValue(w, r, "port", "uint16", raw, &dst, ParseUnsigned[uint16])
+		}},
+		{"128", "level: 128 is out of range for int8", func(w http.ResponseWriter, r *http.Request, raw string) bool {
+			var dst int8
+			return BindValue(w, r, "level", "int8", raw, &dst, ParseSigned[int8])
+		}},
+		{"abc", `level: "abc" is not a valid int8`, func(w http.ResponseWriter, r *http.Request, raw string) bool {
+			var dst int8
+			return BindValue(w, r, "level", "int8", raw, &dst, ParseSigned[int8])
+		}},
+		{"0x1p-2", `ratio: "0x1p-2" is not a valid float64`, func(w http.ResponseWriter, r *http.Request, raw string) bool {
+			var dst *float64
+			return BindValuePtr(w, r, "ratio", "float64", raw, &dst, ParseFloat[float64])
+		}},
+		{"NaN", `ratio: "NaN" is not a finite number`, func(w http.ResponseWriter, r *http.Request, raw string) bool {
+			var dst float64
+			return BindValue(w, r, "ratio", "float64", raw, &dst, ParseFloat[float64])
+		}},
+		{"1e39", "ratio: 1e39 is out of range for float32", func(w http.ResponseWriter, r *http.Request, raw string) bool {
+			var dst []float32
+			return BindValues(w, r, "ratio", "float32", []string{"1", raw}, &dst, ParseFloat[float32])
+		}},
+	} {
+		w := httptest.NewRecorder()
+		if c.bind(w, httptest.NewRequest(http.MethodGet, "/", nil), c.raw) {
+			t.Fatalf("%s: bound", c.raw)
+		}
+		if w.Code != http.StatusBadRequest || w.Body.String() != `{"message":`+strconv.Quote(c.want)+"}\n" {
+			t.Errorf("%s: got %d %s, want %q", c.raw, w.Code, w.Body.String(), c.want)
+		}
 	}
-	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "port: invalid uint16 value") {
-		t.Errorf("status %d, body %q", w.Code, w.Body.String())
+}
+
+// ParseFloat takes a plain decimal number only, none of the other forms strconv reads.
+func TestParseFloatTakesDecimalsOnly(t *testing.T) {
+	for _, s := range []string{"1", "-1.5", "+2", ".5", "5.", "6.02e23", "1E-3", "007"} {
+		if _, err := ParseFloat[float64](s); err != nil {
+			t.Errorf("ParseFloat(%q): %v", s, err)
+		}
 	}
-	if dst != 0 {
-		t.Errorf("dst = %d, want it unchanged", dst)
+	for _, s := range []string{"0x1p-2", "0X1P2", "1_000.5", "1e", "e5", ".", "-", "1.5x", " 1", "Infinity", ""} {
+		if v, err := ParseFloat[float64](s); !errors.Is(err, strconv.ErrSyntax) && !errors.Is(err, errNotFinite) {
+			t.Errorf("ParseFloat(%q) = %v, %v; want a syntax error", s, v, err)
+		}
 	}
 }
 

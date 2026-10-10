@@ -387,7 +387,8 @@ service S {
 	mustContainNone(t, got, `r.URL.Query().Get(`, `_q.Get("sortBy")`)
 }
 
-// Numeric and bool @query/@header/@cookie/@form fields all bind through server.BindValue.
+// Numeric and bool @query/@header/@cookie/@form fields all bind through server.BindValue, which
+// names the field's primitive, its width included, in a parse error.
 func TestGenerateTransportWireNumericAcrossSources(t *testing.T) {
 	src := `package design
 
@@ -396,6 +397,7 @@ enum Priority { Low = 1  High = 2 }
 
 type Req {
     qLimit  int      @query
+    qSmall  int8     @query
     qFlag   bool     @query
     hCount  int      @header
     hRatio  float64  @header
@@ -426,7 +428,8 @@ service S {
 		`server.BindValue(w, r, "qLimit", "int", _q.Get("qLimit"), &req.QLimit, server.ParseSigned[int])`,
 		`server.BindValue(w, r, "qFlag", "bool", _q.Get("qFlag"), &req.QFlag, server.ParseBool[bool])`,
 		`server.BindValue(w, r, "hCount", "int", r.Header.Get("hCount"), &req.HCount, server.ParseSigned[int])`,
-		`server.BindValue(w, r, "hRatio", "float", r.Header.Get("hRatio"), &req.HRatio, server.ParseFloat[float64])`,
+		`server.BindValue(w, r, "qSmall", "int8", _q.Get("qSmall"), &req.QSmall, server.ParseSigned[int8])`,
+		`server.BindValue(w, r, "hRatio", "float64", r.Header.Get("hRatio"), &req.HRatio, server.ParseFloat[float64])`,
 		`if c, err := r.Cookie("cTier"); err == nil {`,
 		`server.BindValue(w, r, "cTier", "int", c.Value, &req.CTier, server.ParseSigned[types.Priority])`,
 		`if c, err := r.Cookie("cAge"); err == nil {`,
