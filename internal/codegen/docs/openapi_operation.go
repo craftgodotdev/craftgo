@@ -3,6 +3,7 @@ package docs
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -463,6 +464,49 @@ func operationTags(svc *semantic.ServiceInfo, m *ast.Method) []string {
 	add(tagsFromDecorators(member)...)
 	if len(out) == 0 {
 		out = []string{svc.Primary.Name}
+	}
+	return out
+}
+
+// addTags lists each tag doc's operations carry in doc.Tags, in the order
+// they first appear in the document, which tools order their groups by,
+// each described by the service it is the tag of.
+func addTags(doc *openapi3.T, pkg *semantic.Package) {
+	described := serviceTagDescriptions(pkg)
+	seen := map[string]bool{}
+	paths := doc.Paths.Map()
+	for _, path := range slices.Sorted(maps.Keys(paths)) {
+		ops := paths[path].Operations()
+		for _, method := range slices.Sorted(maps.Keys(ops)) {
+			for _, tag := range ops[method].Tags {
+				if !seen[tag] {
+					seen[tag] = true
+					doc.Tags = append(doc.Tags, &openapi3.Tag{Name: tag, Description: described[tag]})
+				}
+			}
+		}
+	}
+}
+
+// serviceTagDescriptions maps the tag of each service of pkg with a doc to
+// that doc: the first of its @tags, else its @group, else its name, as its
+// methods are tagged. Of services sharing a tag, the first by package and
+// name describes it.
+func serviceTagDescriptions(pkg *semantic.Package) map[string]string {
+	out := map[string]string{}
+	for _, key := range pkg.ServiceNames() {
+		primary := pkg.Services[key].Primary
+		desc := semantic.Description(primary.Decorators, primary.Doc)
+		if desc == "" {
+			continue
+		}
+		tag := cmp.Or(route.ServiceGroup(primary), primary.Name)
+		if tags := tagsFromDecorators(primary.Decorators); len(tags) > 0 {
+			tag = tags[0]
+		}
+		if _, taken := out[tag]; !taken {
+			out[tag] = desc
+		}
 	}
 	return out
 }

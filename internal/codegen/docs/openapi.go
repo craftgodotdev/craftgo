@@ -109,6 +109,7 @@ func buildOpenAPIDoc(pkg *semantic.Package, cfg *config.Config) (*openapi3.T, er
 	// Instances go last: schema and path emission register them.
 	emitGenericInstanceComponents(doc, pkg, registry, names)
 	addSecuritySchemes(doc, pkg, cfg)
+	addTags(doc, pkg)
 	if err := dropHiddenOnly(doc, pkg, uses); err != nil {
 		return doc, fmt.Errorf("marshal openapi: %w", err)
 	}

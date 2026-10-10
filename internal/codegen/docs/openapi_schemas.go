@@ -78,7 +78,8 @@ func addTypeSchemas(doc *openapi3.T, pkg *semantic.Package, registry *genericReg
 }
 
 // addEnumSchemas emits one schema per enum listing its wire values: an
-// `integer` for an int enum, else a `string`.
+// `integer` for an int enum, else a `string`. When a value has a doc or is
+// deprecated, `x-enum-descriptions` describes each value in turn.
 func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames) {
 	for _, name := range slices.Sorted(maps.Keys(pkg.Enums)) {
 		ed := pkg.Enums[name]
@@ -88,12 +89,30 @@ func addEnumSchemas(doc *openapi3.T, pkg *semantic.Package, names *schemaNames) 
 		}
 		enumVals := ed.EnumValues()
 		s.Enum = make([]any, 0, len(enumVals))
+		descs := make([]string, 0, len(enumVals))
 		for _, v := range enumVals {
 			s.Enum = append(s.Enum, semantic.EnumMemberWire(v))
+			descs = append(descs, enumValueDescription(v))
+		}
+		if slices.ContainsFunc(descs, func(d string) bool { return d != "" }) {
+			s.Extensions = map[string]any{"x-enum-descriptions": descs}
 		}
 		s.Description = semantic.Description(ed.Decorators, ed.Doc)
 		names.put(doc, name, &openapi3.SchemaRef{Value: s})
 	}
+}
+
+// enumValueDescription returns v's doc, then, when it is deprecated, a note
+// saying so: a schema has no per-value `deprecated`.
+func enumValueDescription(v *ast.EnumValue) string {
+	desc := semantic.Description(v.Decorators, v.Doc)
+	if !semantic.IsDeprecated(v.Decorators) {
+		return desc
+	}
+	if reason := semantic.DeprecatedReason(v.Decorators); reason != "" {
+		return appendDescription(desc, "Deprecated: "+reason)
+	}
+	return appendDescription(desc, "Deprecated.")
 }
 
 // addScalarSchemas emits one schema per scalar: its primitive with its

@@ -67,6 +67,44 @@ service S {
 	expectGolden(t, "openapi-enum-schemas.yaml", body)
 }
 
+// The document lists each tag its operations carry in the order they first
+// appear, a service's doc describing its tag - the first of its @tags, else
+// its @group, else its name - and an enum whose values have docs or are
+// deprecated describes each value in `x-enum-descriptions`.
+func TestServiceAndEnumValueDocsAreDocumented(t *testing.T) {
+	body := generateOpenAPIToString(t, `package design
+enum Status {
+    // Waiting for payment.
+    Pending
+    Paid   @doc("Paid in full.")
+    Legacy @deprecated("use Paid")
+    Gone   @deprecated
+    Shipped
+}
+enum Plain { A  B }
+type GetOrderReq { id string }
+type Order { id string  status Status  plain Plain }
+
+// Orders placed by customers.
+@tags(orders, sales)
+service OrderService {
+    get GetOrder /orders/{id} { request GetOrderReq  response Order }
+}
+
+// Internal tooling.
+@group("admin/ops")
+service AdminService {
+    @tags(audit)
+    get Audit /audit { response Order }
+}
+
+// Liveness.
+service Health { get Ping /ping { response Order } }
+
+service Untold { get Hello /hello { response Order } }`)
+	expectGolden(t, "openapi-tags-and-enum-docs.yaml", body)
+}
+
 // A scalar becomes a component schema its fields $ref.
 func TestGenerateOpenAPIScalarSchemasEmitted(t *testing.T) {
 	body := generateOpenAPIToString(t, `package design
