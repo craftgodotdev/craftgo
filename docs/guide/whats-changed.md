@@ -1,12 +1,111 @@
 ---
 title: What changed
-description: What upgrading to craftgo 1.10 asks of an existing project and what it will see, then what changed from 1.7.1 to 1.9.
+description: What upgrading from craftgo 1.10 asks of an existing project and what it will see, then the same for upgrading to 1.10, then what changed from 1.7.1 to 1.9.
 ---
 
 # What changed
 
 Grouped by where it lands, from the
 [changelog](https://github.com/craftgodotdev/craftgo/blob/main/CHANGELOG.md).
+
+## Upgrading from 1.10
+
+This release removes the DSL `import` statement and `FillEmpty`, and changes what some designs mean and what the server answers. A regenerated project picks up everything below. The files craftgo writes once - `main.go`, `config/`, `svccontext.go`, the logic stubs and the middleware scaffolds - keep what they were written with, so the edits they need are listed here.
+
+### Decorators on their own line
+
+A decorator on its own line now decorates the member below it, as it reads, a field or an enum value included; under 1.10 one between two fields or enum values decorated the member above it. Same-line decorators keep their member.
+
+```craftgo
+type User {
+	id string
+	@format(email)
+	email string   // 1.10 checked id as an email; now email is checked
+}
+```
+
+`craftgo fmt` of 1.10 moved each own-line decorator onto the line of the member it decorated, so a design it formatted keeps its meaning. In a design it did not format, each such decorator moves to the member below: before upgrading, `craftgo fmt -l` of 1.10 lists the files that hold one, and running it on a copy shows which member each decorated until now.
+
+### Designs `craftgo gen` refuses
+
+Fix the design and run `craftgo gen` again.
+
+- An `import "<folder>"` line: delete it. A declaration of another package is referenced as `pkg.Type`, which has needed no import since 1.3.0.
+- A decorator on its own line with no member below it, at the end of a body.
+- `//` right after a route segment, which started a comment that cut the route short: write one `/`.
+- NUL, invalid UTF-8, a byte order mark past the start of a file, a control character other than tab, line feed and carriage return, or a noncharacter, anywhere in a file, comments and strings included, and a `\u{…}` escape naming one.
+- A float literal past float64, a duration past 2562047h, a duration with two units (`1h30m`: write `90m`).
+- A binding decorator on a field of a nested type, which bound nothing: `binding/nested`. Bind a field of the request type itself.
+- An `@json` key encoding/json would ignore, and a path, query, header or cookie name holding a backtick.
+- A copy of a well-known type (`google/protobuf/*`) in the design folder: delete it. A copy of a proto the runtime links in (`google/rpc/*`, `google/api/httpbody.proto`, `grpc/health/*`, `grpc/reflection/*`, `grpc/binlog/*`, `opentelemetry/proto/*`, `io/prometheus/client/*`), which panicked at startup: move it under `proto.includes`.
+- Proto directories whose Go packages import one another, which did not compile: the error names the packages and the imports that close the ring.
+- RPC files or service directories whose names differ only in case.
+- A dangling manifest link.
+
+A design proto whose `go_package` names another module's package is a warning: its path is still ignored, and the binary panics at startup if that module is linked in too.
+
+### What the server answers
+
+- A JSON body that leaves out a member declared without `?`, or sends it as `null` without `@nullable`, answers 400 `<json path>: required`. A client that relied on a missing member reading as `""`, `0` or `false` now sends it, or the member takes `?` or a `@default`. `server.requirePresence: false` in `config.yaml` switches the check off while clients catch up.
+- A JSON route answers 415 to a body whose `Content-Type` is not `application/json` or an `application/*+json` type, or that has none: a client posting JSON as `text/plain`, or untyped, sets `Content-Type: application/json`.
+- A nil list, map or `bytes` the logic returns goes out as `null`, where 1.10 wrote `[]`, `{}` or `""`: return empty ones where the document requires the member. An optional one the logic sets empty goes out as `[]` or `{}`, where 1.10 left it out.
+- `@format` checks follow their RFCs. `email` refuses a display name, a comment or angle brackets (`Ann <ann@example.com>`), `time` needs its offset (`15:04:05Z`, not `15:04:05`), `ipv4` refuses `::ffff:1.2.3.4`, and `url` needs `http` or `https` and a host. A client sending the forms that passed before gets 400, and a bound that only fits the old form, as `@length(8, 8)` on a `time`, needs widening.
+- A body past 10 MiB answers 413 on a route without `@maxBodySize` (a new `config.yaml`; see below).
+- Cookies a `@cookie` field sets carry `Path=/`, `HttpOnly`, `Secure` and `SameSite=Lax`. Set `server.cookies` in `config.yaml` for others, as `secure: false` behind plain HTTP on a host other than `localhost`.
+- The root route answers `/` only, where it answered every path no other route took.
+- A new logic stub answers 501, or `Unimplemented` over gRPC, until it is written.
+- A float parameter of `0x1p4`, `1_000`, `Inf` or `NaN` answers 400, and a parameter's parse error names its type: `limit: "abc" is not a valid int8`.
+- A body value its type decodes itself fails under its JSON path: `at: not a valid RFC 3339 datetime`, `data: not a valid base64`. An empty body is `body: required`. Decode messages read the same on every Go toolchain, Go 1.27 included.
+- A `datetime` with an offset of a day or more answers 400 `<field>: not a valid RFC 3339 datetime`, where its response answered 500.
+- A read timeout answers 408 and another failed body read 400 `bad request`, the cause logged rather than sent.
+- A response whose body fails to encode carries none of its headers or cookies.
+
+### `main.go`, `config.go` and the stubs
+
+- A new `config.yaml` sets `readTimeout: 30s`, `maxBodySize: 10485760`, `requirePresence: true` and a `cookies` block, and a new `main.go` applies them, registers the docs with `srv.RegisterDocs` and stops at boot naming a value it cannot use. An existing project keeps its files: its `maxBodySize: 0` still sets no cap, so set `10485760` to take the new default; the required-member check and the cookie attributes apply through their defaults.
+- A new `main.go` binds each listener before it logs the address, stops HTTP and gRPC side by side, and calls `server.SetStrictJSON`. An existing one keeps working; switch its deprecated `srv.SetStrictJSON` to `server.SetStrictJSON` when you next edit it.
+- A new logic stub returns `server.ErrNotImplemented` or `status.Error(codes.Unimplemented, …)`. Stubs already written keep what they hold.
+
+### Generated code
+
+- `fill.go` and the `FillEmpty` method are gone, and code calling `FillEmpty` stops compiling.
+- A transport package gains `bodies.gen.go`, the structs a JSON body decodes into before its required members are checked.
+- Optional list, map and `bytes` members are tagged `omitzero` instead of `omitempty`. A codec installed with `server.SetGlobalJSONCodec` must honour it: `encoding/json`, sonic and goccy/go-json from v0.11.1 do; jsoniter and segmentio/encoding do not, and write a nil member as `null`.
+- `validate.go` carries each format check it calls as a function of its own (`_isEmail`, `_isDateTime`, …).
+- The constant of an `@contract` holding `\` or `"` holds the contract as written. One holding `\` had a Go escape read into it, so its wire identity changes when you regenerate: drain the old subject, or keep consumers on both, before switching.
+- Generated pb code reads `protoc v0.0.0-craftgo` in its header. Delete by hand, once, a pb directory an older craftgo wrote for a proto you have since moved; the sweep takes only what carries the new mark.
+
+### OpenAPI document
+
+- `bytes` is `type: string, contentEncoding: base64`, its length in bytes in the description; `format: byte`, and the `minLength`/`maxLength` that counted base64 characters, are gone.
+- `int8`, `int16`, `int32`, the unsigned types and `float32` carry their range, and integer map keys a `propertyNames` pattern.
+- A request type no operation takes a body from gets no component, nor do the mixins and generic instances only it used: a client generated from the document loses those types.
+- An error whose component name another package also declares takes the package prefix, as `AMissingErr`.
+- The top-level `tags` lists every tag in the order of first use, a service's doc describes its tag, and documented enum values reach `x-enum-descriptions`.
+- A parameter's description, deprecation and example sit on the parameter, a response header's on the header, and a header every response of its status sends is `required`.
+- A string a YAML 1.1 reader would take for another type is quoted, and `servers[0].url` is the basePath as the routes normalise it.
+
+### Manifest, CLI and editor
+
+- `craftgo gen` prints `craftgo: design <dir>, project root <dir>` first and the design's warnings on stderr: a script reading its output matches lines rather than the first one.
+- The search for the design stops at the first directory holding `go.mod`, `.git`, `.hg` or `.svn`, and skips hidden directories, `vendor`, `node_modules` and files starting with `.` or `_`. Name a design kept in such a place with `-f`.
+- `events.targets: []` generates no event library; leave the key out for the default.
+- `craftgo fmt -w=false` prints the formatted text instead of writing it, and `craftgo fmt` refuses a named Go, `.proto` or YAML file.
+
+### Runtime API
+
+- New: `server.Serve`, `ErrNotImplemented`, `SetRequirePresence`, `RequirePresence`, `MissingMember`, `Nullable`, `RequireJSONBody`, `SetCookieOptions`, `DefaultCookieOptions`, `SetCookie`, `ResponseCookieSetter`, `LimitParts`, `MultipartMemory`, `DefaultMaxBodySize`, `CompressOptions.Validate`, `Server.RegisterDocs`; `rpc.ValidateClientStream`, `rpc.ValidateBidiStream`; `events.EnvelopeError`, `nats.ErrNotCarried`.
+- Deprecated, still working: `Server.SetJSONCodec`, `Server.SetStrictJSON` and `Server.Codec`. The codec and the strict switch were always the process's; call `server.SetGlobalJSONCodec`, `server.SetStrictJSON` and `server.JSON`.
+- `server.New` caps bodies at 10 MiB until `SetDefaultMaxBodySize` says otherwise. `SetCORS` panics on credentials allowed to `*`, and `Compress` on a level outside -2..9. `Stop` before `Start` makes a later `Start` or `Serve` return nil at once, on both servers. The default logger no longer samples.
+
+### Events
+
+- A shutdown hands back what it did not handle. Cancel the context given to `Start`, then close the transport: JetStream naks a message whose handler the shutdown cut short, a Kafka share group releases it, a classic group commits only what was handled. A record handled and not yet committed when Kafka's `Close` runs comes back, so keep handlers idempotent, as at-least-once delivery always asked.
+- Kafka classic subscriptions no longer autocommit: drop `kgo.GreedyAutoCommit` or `kgo.AutoCommitMarks` from `WithClientOptions`, which now fail the subscription.
+- The NATS adapters refuse with `nats.ErrNotCarried` a message their headers would alter, where it arrived trimmed or rewritten.
+- `PublishAll` refuses a batch with an `*events.EnvelopeError` naming the envelope; code matching the old error text reaches the cause with `errors.As` or `errors.Is`.
+- An `ItemErrors` a typed batch `fn` returns fails only the items it names.
+- The memory transport runs a handler on its subscription's context and gives each group its own copy of a message.
 
 ## Upgrading to 1.10
 
