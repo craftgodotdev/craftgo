@@ -6874,7 +6874,7 @@ components:
       - level
       type: object
     Shapes:
-      description: Shapes holds a nil list or map in every position a response can.
+      description: Shapes holds a list or map in every position a response can.
       properties:
         blob:
           contentEncoding: base64
@@ -11051,7 +11051,7 @@ paths:
       - combine
   /empty-lists/clash:
     get:
-      description: Answers the Clash error with a body the logic leaves empty.
+      description: Answers the Clash error with one list empty and the others nil.
       operationId: GetClash
       responses:
         "200":
@@ -11110,7 +11110,7 @@ paths:
       - EmptyLists
   /empty-lists/shapes:
     get:
-      description: Answers a Shapes whose lists and maps the logic leaves nil.
+      description: Answers a Shapes holding nil and empty lists and maps.
       operationId: GetShapes
       responses:
         "200":

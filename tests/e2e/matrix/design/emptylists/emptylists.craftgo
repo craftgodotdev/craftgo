@@ -1,6 +1,6 @@
-// Package `emptylists` pins what a response holding nil lists and maps puts
-// on the wire: a required one goes out as [] or {}, however deep it sits, an
-// optional one is left out and a @nullable one stays null.
+// Package `emptylists` pins that a response goes out as the logic returns it:
+// a nil list or map is null wherever it sits, an empty one is [] or {}, and an
+// optional nil one is left out.
 package emptylists
 
 // Leaf holds a required list and a required map.
@@ -22,7 +22,7 @@ type Box<T> {
 	vs T[]
 }
 
-// Shapes holds a nil list or map in every position a response can.
+// Shapes holds a list or map in every position a response can.
 type Shapes {
 	leaf     Leaf
 	leafOpt  Leaf?
@@ -54,12 +54,12 @@ error Conflict Clash {
 
 @prefix("/empty-lists")
 service EmptyLists {
-	@doc("Answers a Shapes whose lists and maps the logic leaves nil.")
+	@doc("Answers a Shapes holding nil and empty lists and maps.")
 	get GetShapes /shapes {
 		response Shapes
 	}
 
-	@doc("Answers the Clash error with a body the logic leaves empty.")
+	@doc("Answers the Clash error with one list empty and the others nil.")
 	get GetClash /clash {
 		response Shapes
 	}

@@ -11,7 +11,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Answers a Shapes whose lists and maps the logic leaves nil.
+// Answers a Shapes holding nil and empty lists and maps.
 //
 // GetShapes returns the GET GetShapes handler.
 func GetShapes(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

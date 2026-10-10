@@ -27,9 +27,9 @@ func NewGetClashService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 	}
 }
 
-// Answers the Clash error with a body the logic leaves empty.
+// Answers the Clash error with one list empty and the others nil.
 //
 // GetClash implements EmptyLists.GetClash.
 func (l *GetClashService) GetClash() (*types.Shapes, error) {
-	return nil, types.NewClashErr(types.ClashBody{})
+	return nil, types.NewClashErr(types.ClashBody{Items: []string{}})
 }

@@ -11,7 +11,7 @@ import (
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
-// Answers the Clash error with a body the logic leaves empty.
+// Answers the Clash error with one list empty and the others nil.
 //
 // GetClash returns the GET GetClash handler.
 func GetClash(svcCtx *svccontext.ServiceContext) http.HandlerFunc {

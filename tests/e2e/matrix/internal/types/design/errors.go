@@ -175,11 +175,9 @@ func (e *ProfileValidationFailedErr) ErrCode() string { return ErrCodeProfileVal
 // HTTPStatus returns the UnprocessableEntity status.
 func (e *ProfileValidationFailedErr) HTTPStatus() int { return 422 }
 
-// MarshalJSON encodes the body alone, from a copy whose nil lists and maps are set empty.
+// MarshalJSON encodes the body alone.
 func (e *ProfileValidationFailedErr) MarshalJSON() ([]byte, error) {
-	body := e.ProfileValidationFailedBody
-	body.FillEmpty(0)
-	return json.Marshal(body)
+	return json.Marshal(e.ProfileValidationFailedBody)
 }
 
 // ErrCodeStaleVersion is the canonical machine-readable code for StaleVersionErr.

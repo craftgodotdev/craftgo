@@ -28,7 +28,7 @@ type Node struct {
 	Next *Node  `json:"next,omitempty"`
 }
 
-// Shapes holds a nil list or map in every position a response can.
+// Shapes holds a list or map in every position a response can.
 type Shapes struct {
 	Leaf     Leaf              `json:"leaf"`
 	LeafOpt  *Leaf             `json:"leafOpt,omitempty"`

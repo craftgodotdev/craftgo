@@ -27,17 +27,19 @@ func NewGetShapesService(ctx context.Context, svcCtx *svccontext.ServiceContext)
 	}
 }
 
-// Answers a Shapes whose lists and maps the logic leaves nil.
+// Answers a Shapes holding nil and empty lists and maps.
 //
 // GetShapes implements EmptyLists.GetShapes.
 func (l *GetShapesService) GetShapes() (*types.Shapes, error) {
 	return &types.Shapes{
+		Leaf:     types.Leaf{Tags: []string{}, Meta: map[string]string{}},
 		LeafOpt:  &types.Leaf{},
-		Leaves:   []types.Leaf{{}},
+		Leaves:   []types.Leaf{{Tags: []string{}}},
 		ByName:   map[string]types.Leaf{"a": {}},
-		Groups:   map[string][]types.Leaf{"g": nil, "h": {{}}},
-		Grid:     [][]string{nil},
+		Groups:   map[string][]types.Leaf{"g": nil, "h": {}},
+		Grid:     [][]string{nil, {}},
+		Boxed:    types.Box[types.Leaf]{Vs: []types.Leaf{}},
 		BoxedOpt: &types.Box[types.Leaf]{Vs: []types.Leaf{{}}},
-		Tree:     types.Node{Kids: []types.Node{{}}, Next: &types.Node{}},
+		Tree:     types.Node{Kids: []types.Node{{}}, Next: &types.Node{Kids: []types.Node{}}},
 	}, nil
 }
