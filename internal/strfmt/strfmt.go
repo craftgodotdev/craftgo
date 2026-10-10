@@ -24,7 +24,8 @@ type Spec struct {
 	Func string
 	// Pattern is the regular expression the value must match when Func is empty.
 	Pattern string
-	// Imports are the Go packages the generated check needs.
+	// Imports are the Go packages the generated check needs: those the
+	// functions it calls use.
 	Imports []string
 }
 
@@ -150,10 +151,10 @@ var helpers = sync.OnceValue(func() map[string]helper {
 		p, _ := strconv.Unquote(imp.Path.Value)
 		pkgs[path.Base(p)] = p
 	}
-	funcs := map[string]*ast.FuncDecl{}
+	funcs := map[string]bool{}
 	for _, decl := range f.Decls {
 		if fd, ok := decl.(*ast.FuncDecl); ok {
-			funcs[fd.Name.Name] = fd
+			funcs[fd.Name.Name] = true
 		}
 	}
 	out := map[string]helper{}
@@ -174,7 +175,7 @@ var helpers = sync.OnceValue(func() map[string]helper {
 		ast.Inspect(fd.Body, func(n ast.Node) bool {
 			switch n := n.(type) {
 			case *ast.CallExpr:
-				if id, ok := n.Fun.(*ast.Ident); ok && funcs[id.Name] != nil && !slices.Contains(h.calls, id.Name) {
+				if id, ok := n.Fun.(*ast.Ident); ok && funcs[id.Name] && !slices.Contains(h.calls, id.Name) {
 					h.calls = append(h.calls, id.Name)
 				}
 			case *ast.SelectorExpr:
