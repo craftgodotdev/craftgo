@@ -58,6 +58,7 @@ craftgo fmt                # format every design file under cwd
 craftgo fmt design         # format files under design/
 craftgo fmt -l             # list files that would change (no write)
 craftgo fmt -w design      # explicit write mode
+craftgo fmt -w=false x.cg  # print the formatted file instead
 ```
 
 Flags go before the path; a flag after it, or a second path, is an error. A design folder without design files, one of protos alone, has nothing to format.
@@ -65,10 +66,14 @@ Flags go before the path; a flag after it, or a second path, is an error. A desi
 | Flag           | Effect                                                              |
 | -------------- | ------------------------------------------------------------------- |
 | `-l`           | List files that need formatting; do not modify. Exits 1 if any do.  |
-| `-w`           | Write the formatted result back (default; with `-l`, list and write). |
+| `-w`           | Write the formatted result back (default; with `-l`, list and write). An explicit `-w=false` prints the formatted text to stdout instead, as gofmt does. |
 | `-h`, `--help` | Show help.                                                          |
 
 Use `-l` in CI to fail when files are not formatted. Use the default in local pre-commit hooks.
+
+A directory is walked as `craftgo gen` reads a design folder: links to directories are followed, and hidden directories, `vendor`, `node_modules` and files whose name starts with `.` or `_` are passed over. A directory fmt cannot read is named in a warning on stderr and skipped. A file named on its own is formatted whatever its extension, except one that is plainly something else - Go source, a `.proto`, YAML such as the manifest, `go.mod`, `go.sum` or `go.work` - which is refused.
+
+Each file is written through a temporary file renamed into place, keeping its mode, so an interrupted run never leaves half a file. A file fmt cannot read or write is reported on stderr and passed over; the other files are still formatted, and the command exits 1 at the end. Every path fmt prints - a listed file, a diagnostic's position - is spelled as the walk reached it.
 
 A file is formatted only when it has no errors, parse or semantic: a mistake the parser tolerates (a stray word read as a mixin, for example) must never be rearranged into something else. Such a file is reported on stderr with its diagnostics and left untouched, and the command exits 1. A file inside a design folder is checked with its whole project, so cross-package references resolve; any other file is checked on its own. A file whose formatted text would not parse, or would drop, duplicate, add or move a comment, is reported and left untouched the same way.
 
@@ -90,7 +95,7 @@ Top-level help. Same content as running `craftgo` with no arguments.
 | Code | Meaning                                      |
 | ---- | -------------------------------------------- |
 | 0    | Success                                      |
-| 1    | Any failure: parse or semantic errors, a generation error, `fmt` left a file with errors unformatted, `fmt -l` listed a file, or a bad flag or argument to a command (printed with the command's usage) |
+| 1    | Any failure: parse or semantic errors, a generation error, `fmt` left a file with errors unformatted or could not read or write one, `fmt -l` listed a file, or a bad flag or argument to a command (printed with the command's usage) |
 | 2    | Usage error: no command, or an unknown one   |
 
 CI scripts can rely on these to fail builds.

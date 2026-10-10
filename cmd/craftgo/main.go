@@ -101,11 +101,14 @@ var commandUsage = map[string]string{
                           yet.`,
 	"fmt": `  craftgo fmt [-l] [-w] [path]
                           Canonical-format the design files (.craftgo, .cg)
-                          under <path> (default: cwd), or the file it names.
-                          A file with an error is reported and left untouched.
+                          under <path> (default: cwd) - not in hidden
+                          directories, vendor or node_modules - or the file
+                          it names. A file with an error is reported and
+                          left untouched.
                           Flags:
                             -l   list the files that differ, write nothing,
                                  and exit 1 if any differ
                             -w   write the result back (the default; with
-                                 -l, list and write)`,
+                                 -l, list and write); -w=false prints it
+                                 to stdout instead`,
 }

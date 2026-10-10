@@ -12,23 +12,30 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/designopts"
 	"github.com/craftgodotdev/craftgo/internal/format"
+	"github.com/craftgodotdev/craftgo/internal/genfile"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/walk"
 )
 
 // runFmt formats in place the design files under a path (default ".") or the
 // file it names, failing on files with errors, which stay untouched. `-l` lists
 // the files that differ instead and returns errFilesDiffer if any do; `-l -w`
-// does both.
+// does both, and an explicit `-w=false` prints the formatted text instead, as
+// gofmt does. A file it cannot read or write is reported, and the run goes on
+// and fails at the end.
 func runFmt(args []string) error {
-	fs := flag.NewFlagSet("fmt", flag.ContinueOnError)
-	list := fs.Bool("l", false, "list files whose formatting differs from craftgo fmt")
-	write := fs.Bool("w", false, "write result to source file (default true when no other flags set)")
-	path, err := parseArgs(fs, args, ".")
+	flags := flag.NewFlagSet("fmt", flag.ContinueOnError)
+	list := flags.Bool("l", false, "list files whose formatting differs from craftgo fmt")
+	write := flags.Bool("w", false, "write result to source file (default true when no other flags set)")
+	path, err := parseArgs(flags, args, ".")
 	if err != nil {
 		return err
 	}
-	if !*list && !*write {
-		*write = true
+	writeSet := false
+	flags.Visit(func(f *flag.Flag) { writeSet = writeSet || f.Name == "w" })
+	show := writeSet && !*write && !*list
+	if !writeSet {
+		*write = !*list
 	}
 	files, err := collectCraftgoFiles(path)
 	if err != nil {
@@ -43,11 +50,13 @@ func runFmt(args []string) error {
 	}
 	projects := map[string]*project{}
 	var changed []string
-	skipped := 0
+	skipped, failed := 0, 0
 	for _, f := range files {
 		raw, err := os.ReadFile(f)
 		if err != nil {
-			return err
+			failed++
+			fmt.Fprintln(os.Stderr, fileError(f, err))
+			continue
 		}
 		formatted, diags := format.Format(f, string(raw))
 		if len(diags) == 0 {
@@ -63,6 +72,10 @@ func runFmt(args []string) error {
 			}
 			continue
 		}
+		if show {
+			fmt.Print(formatted)
+			continue
+		}
 		if formatted == string(raw) {
 			continue
 		}
@@ -71,18 +84,35 @@ func runFmt(args []string) error {
 			fmt.Println(f)
 		}
 		if *write {
-			if err := os.WriteFile(f, []byte(formatted), 0o644); err != nil {
-				return err
+			if err := genfile.Commit([]genfile.File{{Path: f, Body: []byte(formatted)}}); err != nil {
+				failed++
+				fmt.Fprintln(os.Stderr, err)
 			}
 		}
 	}
+	var problems []string
 	if skipped > 0 {
-		return fmt.Errorf("%d file(s) left unformatted because of errors", skipped)
+		problems = append(problems, fmt.Sprintf("%d file(s) left unformatted because of errors", skipped))
+	}
+	if failed > 0 {
+		problems = append(problems, fmt.Sprintf("%d file(s) could not be read or written", failed))
+	}
+	if len(problems) > 0 {
+		return errors.New(strings.Join(problems, "; "))
 	}
 	if *list && len(changed) > 0 {
 		return errFilesDiffer
 	}
 	return nil
+}
+
+// fileError reports a file fmt could not read, naming it as the run does.
+func fileError(path string, err error) string {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		err = pe.Err
+	}
+	return fmt.Sprintf("%s: %v", path, err)
 }
 
 // project is a design project's sources and the diagnostics of their
@@ -94,7 +124,8 @@ type project struct {
 
 // analysisErrors returns the [designopts.FileErrors] of file, holding src, in
 // the analysis of the project that loads it, or of the file alone when none
-// does. projects caches each project by design root.
+// does, each placed in file as spelled. projects caches each project by design
+// root.
 func analysisErrors(file, src string, projects map[string]*project) ([]lexer.Diagnostic, error) {
 	abs, err := filepath.Abs(file)
 	if err != nil {
@@ -112,11 +143,21 @@ func analysisErrors(file, src string, projects map[string]*project) ([]lexer.Dia
 			projects[root] = p
 		}
 		if path, ok := designopts.SourcePath(p.srcs, abs); ok {
-			return designopts.FileErrors(p.diags, path), nil
+			return spelledAs(designopts.FileErrors(p.diags, path), path, file), nil
 		}
 	}
 	_, _, diags := designopts.Analyze([]designopts.Source{{Path: abs, Text: src}}, "", nil)
-	return designopts.FileErrors(diags, abs), nil
+	return spelledAs(designopts.FileErrors(diags, abs), abs, file), nil
+}
+
+// spelledAs places each of diags in path at file, the spelling the run prints.
+func spelledAs(diags []lexer.Diagnostic, path, file string) []lexer.Diagnostic {
+	for i := range diags {
+		if diags[i].Pos.Filename == path {
+			diags[i].Pos.Filename = file
+		}
+	}
+	return diags
 }
 
 // holdsDesign reports whether the directory path is a design folder, lies in
@@ -134,31 +175,44 @@ func holdsDesign(path string) bool {
 	return abs == design || strings.HasPrefix(abs, design+sep) || strings.HasPrefix(design, abs+sep)
 }
 
-// collectCraftgoFiles returns every design file under target, or target itself
-// when it is a file, whatever its extension.
+// collectCraftgoFiles returns every design file a [walk.Design] walk of target
+// finds, warning on stderr of a directory it cannot read, or target itself
+// when it is a file, whatever its extension - unless it is plainly not a
+// design file.
 func collectCraftgoFiles(target string) ([]string, error) {
 	info, err := os.Stat(target)
 	if err != nil {
 		return nil, err
 	}
 	if !info.IsDir() {
+		if foreignFile(target) {
+			return nil, fmt.Errorf("%s is not a design file - fmt formats .craftgo and .cg files", target)
+		}
 		return []string{target}, nil
 	}
 	var out []string
-	err = filepath.WalkDir(target, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if config.IsDesignFile(p) {
-			out = append(out, p)
+	err = walk.Files(target, walk.Design(func(path string, err error) error {
+		fmt.Fprintln(os.Stderr, "craftgo: warning: skipping "+fileError(path, err))
+		return nil
+	}), func(path string) error {
+		if config.IsDesignFile(path) {
+			out = append(out, path)
 		}
 		return nil
 	})
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return nil, err
+	return out, err
+}
+
+// foreignFile reports a file fmt refuses even when named on its own: Go
+// source, a proto, YAML such as the manifest, and the go command's own files.
+func foreignFile(path string) bool {
+	switch filepath.Base(path) {
+	case "go.mod", "go.sum", "go.work", "go.work.sum":
+		return true
 	}
-	return out, nil
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".go", ".proto", ".yaml", ".yml":
+		return true
+	}
+	return false
 }

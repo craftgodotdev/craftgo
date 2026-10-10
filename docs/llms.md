@@ -558,9 +558,9 @@ Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decora
 | `craftgo gen -f <design-folder>` | Skip walk-up; use the manifest at that folder.                                      |
 | `craftgo gen -c <project-root>`  | Resolve `output.*` paths against this root.                                         |
 | `craftgo gen --target <go\|docs>` | Generate only the named target (repeatable; default all); the other targets' output is left untouched. An unknown name exits 1. |
-| `craftgo fmt [path]`             | Canonical-format `.craftgo` files. Defaults to writing in place.                    |
+| `craftgo fmt [path]`             | Canonical-format `.craftgo` files, walking a directory as gen reads a design folder (links followed; hidden directories, `vendor`, `node_modules` and `.`/`_` files skipped; an unreadable directory warned of and skipped). Defaults to writing in place, through a rename that keeps the file's mode; a file it cannot write is reported and the rest still formatted, exit 1. |
 | `craftgo fmt -l`                 | List files that would change (no write); exit 1 when any differs.                   |
-| `craftgo fmt -w`                 | Write the formatted result back (default).                                          |
+| `craftgo fmt -w`                 | Write the formatted result back (default); `-w=false` prints it to stdout instead.  |
 | `craftgo version`                | Print CLI version.                                                                  |
 | `craftgo help`                   | Show top-level help.                                                                |
 
