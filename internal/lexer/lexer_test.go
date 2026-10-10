@@ -227,6 +227,30 @@ func TestDurationFloat(t *testing.T) {
 	}
 }
 
+// Microseconds take the micro sign or the Greek mu; a duration past the
+// range of time.Duration, or written with two units, is one Error token.
+func TestDurationRangeAndUnits(t *testing.T) {
+	for _, c := range []string{"10µs", "10μs", "2562047h"} {
+		if tok := first(t, c); tok.Kind != Duration || tok.Text != c {
+			t.Errorf("%q: got %+v, want a Duration", c, tok)
+		}
+		if _, ok := ParseDuration(c); !ok {
+			t.Errorf("ParseDuration(%q) failed", c)
+		}
+	}
+	for src, want := range map[string]string{
+		"99999999999h": "duration 99999999999h is out of range - the longest is 2562047h (about 292 years)",
+		"2562048h":     "duration 2562048h is out of range - the longest is 2562047h (about 292 years)",
+		"1h30m)":       "duration 1h30m has more than one unit - write it with one, such as 90m for 1h30m",
+	} {
+		l := New("", src)
+		toks := l.Tokenize()
+		if toks[0].Kind != Error || toks[0].Text != want || len(l.Diagnostics()) != 1 {
+			t.Errorf("%q: tokens %v, diagnostics %v, want one Error %q", src, toks, l.Diagnostics(), want)
+		}
+	}
+}
+
 func TestSize(t *testing.T) {
 	for _, c := range []string{"1B", "1KB", "5MB", "10GB"} {
 		if first(t, c).Kind != Size {

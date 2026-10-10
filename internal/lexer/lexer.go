@@ -295,11 +295,7 @@ func (l *Lexer) lexNumber(pos Position) Token {
 	numText := l.src[start:l.offset]
 
 	suffStart := l.offset
-	for {
-		r := l.peek()
-		if !isLetter(r) && r != 'µ' {
-			break
-		}
+	for isUnitRune(l.peek()) {
 		l.advance()
 	}
 	suffix := l.src[suffStart:l.offset]
@@ -312,12 +308,27 @@ func (l *Lexer) lexNumber(pos Position) Token {
 		return Token{Kind: Int, Text: numText, Pos: pos}
 	}
 	if IsDurationSuffix(suffix) {
+		if isDigit(l.peek()) {
+			for r := l.peek(); isDigit(r) || r == '.' || isUnitRune(r); r = l.peek() {
+				l.advance()
+			}
+			return l.errorf(pos, "duration %s has more than one unit - write it with one, such as 90m for 1h30m", l.src[start:l.offset])
+		}
+		if _, ok := ParseDuration(text); !ok {
+			return l.errorf(pos, "duration %s is out of range - the longest is 2562047h (about 292 years)", text)
+		}
 		return Token{Kind: Duration, Text: text, Pos: pos}
 	}
 	if _, ok := SizeMultiplier(suffix); ok {
 		return Token{Kind: Size, Text: text, Pos: pos}
 	}
 	return l.errorf(pos, "invalid number suffix %q", suffix)
+}
+
+// isUnitRune reports whether r may stand in a unit suffix: an ASCII letter,
+// or the micro sign or the Greek mu of `µs`.
+func isUnitRune(r rune) bool {
+	return isLetter(r) || r == 'µ' || r == 'μ'
 }
 
 // digitFollowsDot tells `3.14` (a Float) from `3.foo` (Int, Dot, Ident).

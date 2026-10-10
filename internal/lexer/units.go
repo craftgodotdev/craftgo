@@ -35,9 +35,10 @@ func SizeSuffixes() []string {
 	return out
 }
 
-// IsDurationSuffix reports whether s is a duration suffix.
+// IsDurationSuffix reports whether s is a duration suffix, or `μs` spelt
+// with the Greek mu, which [time.ParseDuration] accepts too.
 func IsDurationSuffix(s string) bool {
-	return slices.Contains(DurationUnits, s)
+	return slices.Contains(DurationUnits, s) || s == "μs"
 }
 
 // SizeMultiplier returns the byte multiplier for size suffix s.
