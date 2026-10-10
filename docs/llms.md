@@ -554,7 +554,7 @@ Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decora
 | Command                          | Description                                                                         |
 | -------------------------------- | ----------------------------------------------------------------------------------- |
 | `craftgo init [path]`            | Scaffold a design folder with starter `craftgo.design.yaml`. Default path `design`. |
-| `craftgo gen [path]`             | Walk up from `path` (or cwd) looking for `craftgo.design.yaml`, checking the direct subdirectories at each level (not hidden ones, `vendor` or `node_modules`; two matches at one level ask for `-f`), then generate. |
+| `craftgo gen [path]`             | Walk up from `path` (or cwd) looking for `craftgo.design.yaml`, checking the direct subdirectories at each level (links to directories included; not hidden ones, `vendor` or `node_modules`; two matches at one level ask for `-f`) and stopping at the directory that holds `go.mod` or is a repository root, then generate. Each run first prints `craftgo: design <dir>, project root <dir>`. |
 | `craftgo gen -f <design-folder>` | Skip walk-up; use the manifest at that folder.                                      |
 | `craftgo gen -c <project-root>`  | Resolve `output.*` paths against this root.                                         |
 | `craftgo gen --target <go\|docs>` | Generate only the named target (repeatable; default all); the other targets' output is left untouched. An unknown name exits 1. |

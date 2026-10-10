@@ -90,11 +90,15 @@ var commandUsage = map[string]string{
                                            resolve against (default: the
                                            parent of the design folder)
                           Without -f, walks upward from <path> (or cwd) for
-                          craftgo.design.yaml, probing direct subdirs (any
-                          name) at each level. The Go module path is read
-                          from go.mod, walking up from the project root -
-                          run "go mod init <module>" first if it does not
-                          exist yet.`,
+                          craftgo.design.yaml, probing the direct subdirs at
+                          each level but hidden ones, vendor and
+                          node_modules, and stopping at the directory that
+                          holds go.mod or is a repository root. gen first
+                          prints the design folder and project root it
+                          uses. The Go module path is read from go.mod,
+                          walking up from the project root - run
+                          "go mod init <module>" first if it does not exist
+                          yet.`,
 	"fmt": `  craftgo fmt [-l] [-w] [path]
                           Canonical-format the design files (.craftgo, .cg)
                           under <path> (default: cwd), or the file it names.

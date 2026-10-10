@@ -147,6 +147,29 @@ func TestRunGenContextOverridesTheWalkUpRoot(t *testing.T) {
 	}
 }
 
+// gen names the design folder it read and the project root it writes under
+// before anything else.
+func TestRunGenNamesTheDesignAndTheProjectRoot(t *testing.T) {
+	dir := t.TempDir()
+	codeRoot := filepath.Join(dir, "services", "api")
+	mustWrite(t, dir, "go.mod", "module github.com/test/monorepo\n\ngo 1.24\n")
+	mustWrite(t, dir, "design/craftgo.design.yaml", "")
+	mustWrite(t, dir, "design/api.craftgo", minimalDesignDSL)
+	if err := os.MkdirAll(codeRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(filepath.Join(dir, "design"))
+	var err error
+	stdout, _ := captureOutput(t, func() { err = runGen([]string{"-c", codeRoot}) })
+	if err != nil {
+		t.Fatalf("runGen: %v", err)
+	}
+	want := "craftgo: design " + filepath.Join(dir, "design") + ", project root " + codeRoot + "\n"
+	if !strings.HasPrefix(stdout, want) {
+		t.Errorf("stdout = %q, want it to start %q", stdout, want)
+	}
+}
+
 // TestRunGenWithoutContextIgnoresWorkingDir checks that -f without -c
 // generates under the design folder's parent, never the working directory.
 func TestRunGenWithoutContextIgnoresWorkingDir(t *testing.T) {

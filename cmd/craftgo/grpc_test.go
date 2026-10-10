@@ -148,8 +148,8 @@ func TestGenSummaryCountsWhatTheRunWrites(t *testing.T) {
 		if err != nil {
 			t.Fatalf("runGen: %v", err)
 		}
-		if !strings.HasPrefix(stdout, c.want) {
-			t.Errorf("manifest %q: summary = %q, want it to start %q", c.manifest, stdout, c.want)
+		if !strings.Contains("\n"+stdout, "\n"+c.want) {
+			t.Errorf("manifest %q: output = %q, want a line starting %q", c.manifest, stdout, c.want)
 		}
 	}
 }

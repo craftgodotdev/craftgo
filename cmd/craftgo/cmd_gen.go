@@ -94,6 +94,7 @@ func runGen(args []string) error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("craftgo: design %s, project root %s\n", designDir, projectRoot)
 	for _, w := range cfg.Warnings {
 		fmt.Fprintln(os.Stderr, "craftgo: warning: "+w)
 	}

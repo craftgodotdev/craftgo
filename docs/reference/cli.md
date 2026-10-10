@@ -35,7 +35,13 @@ Flags:
 | `--target <name>`         | Generate only the named target (`go`, `docs`); repeatable, default all. A narrowed run leaves the other targets' output untouched. |
 | `-h`, `--help`            | Show help.                                                                            |
 
-Without `-f`, `craftgo gen` walks upward from `<path>` (or cwd) probing direct subdirs at each level for a `craftgo.design.yaml`; with `-f`, a path is an error. The Go module path comes from `go.mod`, walking up from the project root - run `go mod init <module>` first if `go.mod` does not exist yet.
+Without `-f`, `craftgo gen` walks upward from `<path>` (or cwd) for a `craftgo.design.yaml`, probing the direct subdirectories at each level - links to directories included, hidden ones, `vendor` and `node_modules` not. Two matches at one level ask for `-f`. The walk stops at the first directory that holds `go.mod` or is a repository root (`.git`, `.hg`, `.svn`), so it never picks up the design of an enclosing module; a manifest that is a symbolic link to nothing is an error, not a missing manifest. With `-f`, a path is an error. The Go module path comes from `go.mod`, walking up from the project root - run `go mod init <module>` first if `go.mod` does not exist yet.
+
+Every run first names the design folder it reads and the project root it writes under:
+
+```
+craftgo: design /path/to/app/design, project root /path/to/app
+```
 
 A key the manifest does not declare - a misspelling, say - is ignored, and `craftgo gen` names it on stderr before generating:
 

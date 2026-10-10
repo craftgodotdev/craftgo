@@ -6,6 +6,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/craftgodotdev/craftgo/internal/idents"
+	"github.com/craftgodotdev/craftgo/internal/walk"
 )
 
 // Config is the decoded `craftgo.design.yaml`.
@@ -270,7 +272,11 @@ func IsDesignFile(path string) bool {
 
 // Find walks up from start until a directory, or one of its direct
 // subdirectories, holds a [Filename]; several such subdirectories are an error.
-// It returns the loaded config and the absolute project root and design folder.
+// It probes the subdirectories a design walk enters, links to directories
+// included, and stops at the first directory that holds go.mod or is a
+// version-control root, so a design of an enclosing module or repository is
+// never picked up. It returns the loaded config and the absolute project root
+// and design folder.
 func Find(start string) (*Config, string, string, error) {
 	abs, err := filepath.Abs(start)
 	if err != nil {
@@ -278,27 +284,40 @@ func Find(start string) (*Config, string, string, error) {
 	}
 	dir := abs
 	for {
-		if path := filepath.Join(dir, Filename); fileExists(path) {
+		path := filepath.Join(dir, Filename)
+		found, err := manifestAt(path)
+		if err != nil {
+			return nil, "", "", err
+		}
+		if found {
 			cfg, err := Load(path)
 			if err != nil {
 				return nil, "", "", err
 			}
 			return cfg, filepath.Dir(dir), dir, nil
 		}
-		if matches, err := probeDesignSubdirs(dir); err == nil {
-			switch len(matches) {
-			case 1:
-				designDir := matches[0]
-				cfg, err := Load(filepath.Join(designDir, Filename))
-				if err != nil {
-					return nil, "", "", err
-				}
-				return cfg, dir, designDir, nil
-			case 0:
-				// keep walking up
-			default:
-				return nil, "", "", fmt.Errorf("multiple craftgo.design.yaml found under %s (%d matches); pass -f to disambiguate", dir, len(matches))
+		matches, err := probeDesignSubdirs(dir)
+		if err != nil {
+			return nil, "", "", err
+		}
+		switch len(matches) {
+		case 0:
+		case 1:
+			designDir := matches[0]
+			cfg, err := Load(filepath.Join(designDir, Filename))
+			if err != nil {
+				return nil, "", "", err
 			}
+			return cfg, dir, designDir, nil
+		default:
+			return nil, "", "", fmt.Errorf("multiple craftgo.design.yaml found under %s (%d matches); pass -f to disambiguate", dir, len(matches))
+		}
+		if bound := walkUpBound(dir); bound != "" {
+			where := abs + " or a directory above it up to " + dir
+			if dir == abs {
+				where = abs
+			}
+			return nil, "", "", fmt.Errorf("craftgo.design.yaml not found in %s, which %s, nor in a direct subdirectory - pass -f to name the design folder", where, bound)
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
@@ -306,6 +325,20 @@ func Find(start string) (*Config, string, string, error) {
 		}
 		dir = parent
 	}
+}
+
+// walkUpBound says why [Find] stops at dir - it holds go.mod, or is the root
+// of a repository - or is "" when the walk goes on.
+func walkUpBound(dir string) string {
+	if info, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil && !info.IsDir() {
+		return "holds go.mod"
+	}
+	for _, vcs := range []string{".git", ".hg", ".svn"} {
+		if _, err := os.Stat(filepath.Join(dir, vcs)); err == nil {
+			return "is the root of a repository (" + vcs + ")"
+		}
+	}
+	return ""
 }
 
 // FindAt loads the manifest in designFolder and returns it with the absolute
@@ -316,7 +349,11 @@ func FindAt(designFolder string) (*Config, string, string, error) {
 		return nil, "", "", err
 	}
 	manifest := filepath.Join(absDesign, Filename)
-	if !fileExists(manifest) {
+	found, err := manifestAt(manifest)
+	if err != nil {
+		return nil, "", "", err
+	}
+	if !found {
 		return nil, "", "", fmt.Errorf("craftgo.design.yaml not found in %s", absDesign)
 	}
 	cfg, err := Load(manifest)
@@ -326,34 +363,49 @@ func FindAt(designFolder string) (*Config, string, string, error) {
 	return cfg, filepath.Dir(absDesign), absDesign, nil
 }
 
-// probeDesignSubdirs returns the direct subdirectories of dir that hold a
-// [Filename], skipping hidden ones, `vendor` and `node_modules`.
+// probeDesignSubdirs returns the direct subdirectories of dir, or links to
+// directories, that hold a [Filename], skipping those [walk.SkipDesignDir]
+// names. A dir it cannot read holds none.
 func probeDesignSubdirs(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, nil
 	}
 	var out []string
 	for _, e := range entries {
-		if !e.IsDir() {
+		sub := filepath.Join(dir, e.Name())
+		if walk.SkipDesignDir(e.Name()) || !isDir(sub) {
 			continue
 		}
-		name := e.Name()
-		if name == "" || name[0] == '.' || name == "node_modules" || name == "vendor" {
-			continue
+		found, err := manifestAt(filepath.Join(sub, Filename))
+		if err != nil {
+			return nil, err
 		}
-		path := filepath.Join(dir, name, Filename)
-		if fileExists(path) {
-			out = append(out, filepath.Join(dir, name))
+		if found {
+			out = append(out, sub)
 		}
 	}
 	return out, nil
 }
 
-// fileExists reports whether path exists and is not a directory.
-func fileExists(path string) bool {
+// isDir reports whether path is a directory or a link to one.
+func isDir(path string) bool {
 	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
+	return err == nil && info.IsDir()
+}
+
+// manifestAt reports whether a manifest file is at path; a symbolic link
+// there that leads nowhere is an error, not an absent manifest.
+func manifestAt(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err == nil {
+		return !info.IsDir(), nil
+	}
+	if link, lerr := os.Lstat(path); lerr == nil && link.Mode()&os.ModeSymlink != 0 && errors.Is(err, fs.ErrNotExist) {
+		target, _ := os.Readlink(path)
+		return false, fmt.Errorf("%s is a symbolic link to %s, which does not exist", path, target)
+	}
+	return false, nil
 }
 
 // Load reads, validates and defaults the manifest at path. A removed key is an
