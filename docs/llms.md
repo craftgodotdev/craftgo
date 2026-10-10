@@ -590,7 +590,7 @@ output:
   fileCase: snake # snake (default) | kebab | camel - generated file/dir names only; URL routes and Go identifiers unaffected
 
 events: # optional; a design with no event generates nothing either way
-  targets: # one row per language; omitted, a design with events gets this Go row
+  targets: # one row per language; omitted, a design with events gets this Go row; [] generates none
     - lang: go
       out: ./internal/events # "-" skips the target
 

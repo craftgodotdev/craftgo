@@ -633,7 +633,8 @@ func (c *Config) applyDefaults() {
 	if c.Output.FileCase == "" {
 		c.Output.FileCase = idents.DefaultFileCase
 	}
-	if len(c.Events.Targets) == 0 {
+	// `targets: []` asks for no target; only an absent list takes the default.
+	if c.Events.Targets == nil {
 		c.Events.Targets = defaultEventTargets(c.Output.Kind)
 	}
 }

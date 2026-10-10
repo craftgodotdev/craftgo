@@ -110,7 +110,8 @@ events:
 Omit the block entirely and a design that declares events gets one Go target at
 `./internal/events` - `./gen/events` under `output.kind: contracts`, whose
 output is imported from other modules; a design that declares none generates
-nothing either way. Set a target's `out` to `"-"` to skip it.
+nothing either way. `targets: []` names no target, so nothing is generated. Set
+a target's `out` to `"-"` to skip it.
 
 Transport and codec are deliberately absent: they are runtime wiring chosen in
 `main.go`, not design-time facts. See [Events](/guide/events).
