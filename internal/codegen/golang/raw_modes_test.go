@@ -204,7 +204,7 @@ func TestGenerateRawResponseOverMultipart(t *testing.T) {
 		"r.ParseMultipartForm(",
 		"defer func() { _ = r.MultipartForm.RemoveAll() }()",
 		`r.PostFormValue("note")`,
-		`r.FormFile("avatar")`,
+		`r.MultipartForm.File["avatar"]`,
 		"if err := req.Validate(); err != nil {",
 		"if err := l.Upload(w, r, &req); err != nil {",
 	)

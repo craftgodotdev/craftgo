@@ -74,8 +74,8 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 {{- if .IsArray}}
 		req.{{.GoName}} = r.MultipartForm.File[{{printf "%q" .DSLName}}]
 {{- else}}
-		if _, header, err := r.FormFile({{printf "%q" .DSLName}}); err == nil {
-			req.{{.GoName}} = header
+		if _fh := r.MultipartForm.File[{{printf "%q" .DSLName}}]; len(_fh) > 0 {
+			req.{{.GoName}} = _fh[0]
 		}
 {{- end}}
 {{- end}}

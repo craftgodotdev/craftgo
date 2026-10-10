@@ -45,7 +45,7 @@ const (
 
 // The names each template binds where it writes an imported package's name.
 var (
-	transportNames  = []string{"http", "strconv", "server", "service", "svccontext", "svcCtx", "w", "r", "req", "c", "err", "_q", "_v", "_vs", "_w", "_b", "_m"}
+	transportNames  = []string{"http", "strconv", "server", "service", "svccontext", "svcCtx", "w", "r", "req", "c", "err", "_q", "_v", "_vs", "_w", "_b", "_m", "_fh"}
 	serviceNames    = []string{"context", "http", "log", "grpc", "svccontext", "server", "codes", "status"}
 	eventsNames     = []string{"craftevents", "fmt"}
 	grpcMethodNames = []string{"context", "rpc", "grpc", "service"}

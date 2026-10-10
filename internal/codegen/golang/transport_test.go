@@ -433,7 +433,7 @@ service S {
 		`server.BindValue(w, r, "cAge", "int", c.Value, &req.CAge, server.ParseSigned[types.Cents])`,
 		`server.BindValue(w, r, "fQty", "int", r.PostFormValue("fQty"), &req.FQty, server.ParseSigned[int])`,
 		`server.BindValue(w, r, "fFlag", "bool", r.PostFormValue("fFlag"), &req.FFlag, server.ParseBool[bool])`,
-		`r.FormFile("upload")`,
+		`r.MultipartForm.File["upload"]`,
 	)
 	// Parsing lives in the server helpers, so the handler imports no strconv.
 	mustContainNone(t, got, `"strconv"`)
@@ -881,8 +881,8 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 		// Handler-scoped cleanup frees temp files before the flush and on panic paths.
 		"defer func() { _ = r.MultipartForm.RemoveAll() }()",
 		`r.PostFormValue("note")`,
-		`r.FormFile("avatar")`,
-		"req.Avatar = header",
+		`r.MultipartForm.File["avatar"]`,
+		"req.Avatar = _fh[0]",
 	)
 	if strings.Contains(string(handler), "server.JSON().Decode(r.Body") || strings.Contains(string(handler), "RequireJSONBody") {
 		t.Errorf("multipart handler must not JSON-decode body:\n%s", handler)
@@ -941,7 +941,7 @@ service S {
 	}
 }
 
-// An explicit @form name is the key r.FormValue and r.FormFile read.
+// An explicit @form name is the key r.PostFormValue and r.MultipartForm.File read.
 func TestGenerateTransportFormExplicitWireName(t *testing.T) {
 	pkg := analyze(t, `package design
 type UploadReq {
@@ -960,9 +960,9 @@ service UploadService {
 	mustParseGo(t, string(handler))
 	mustContainAll(t, string(handler),
 		`r.PostFormValue("note_text")`,
-		`r.FormFile("avatar_file")`,
+		`r.MultipartForm.File["avatar_file"]`,
 	)
-	if strings.Contains(string(handler), `r.PostFormValue("caption")`) || strings.Contains(string(handler), `r.FormFile("pic")`) {
+	if strings.Contains(string(handler), `r.PostFormValue("caption")`) || strings.Contains(string(handler), `r.MultipartForm.File["pic"]`) {
 		t.Errorf("explicit @form name ignored - form key fell back to the field name:\n%s", handler)
 	}
 }
@@ -1033,7 +1033,8 @@ service S { post DoIt /h/{id} { request shared.Holder  response Resp } }`,
 	}
 }
 
-// A file[] field binds from MultipartForm.File and a file? field from r.FormFile.
+// A file[] field binds every part of its name and a file? field the first, both from
+// MultipartForm.File, which opens no file the handler would have to close.
 func TestGenerateTransportMultipartFileArray(t *testing.T) {
 	pkg := analyze(t, `package design
 type BatchReq {
@@ -1060,8 +1061,6 @@ service MediaService {
 	src := string(out)
 	mustParseGo(t, src)
 	mustContainAll(t, src, `req.Files = r.MultipartForm.File["files"]`)
-	mustContainAll(t, src, `r.FormFile("cover")`, `req.Cover = header`)
-	if strings.Contains(src, `r.FormFile("files")`) {
-		t.Errorf("file[] must bind from MultipartForm.File, not r.FormFile:\n%s", src)
-	}
+	mustContainAll(t, src, `r.MultipartForm.File["cover"]`, `req.Cover = _fh[0]`)
+	mustContainNone(t, src, "r.FormFile(")
 }
