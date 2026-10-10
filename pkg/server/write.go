@@ -31,12 +31,17 @@ func WriteBytes(w http.ResponseWriter, status int, contentType string, body []by
 // map goes out as null. v is only read, so a value shared between requests is safe to return. It
 // is encoded before anything is written, so a value the codec cannot encode, such as a NaN float,
 // goes to [WriteError] as an unhandled error rather than out as a success with an empty body.
-func WriteResponse(w http.ResponseWriter, r *http.Request, status int, v any) {
+// Each setHeaders runs once v has encoded, before the status is written, to set the success's
+// headers and cookies, which a failed encode never carries.
+func WriteResponse(w http.ResponseWriter, r *http.Request, status int, v any, setHeaders ...func(http.ResponseWriter)) {
 	buf := responseBufs.Get().(*bytes.Buffer)
 	defer putResponseBuf(buf)
 	if err := JSON().Encode(buf, v); err != nil {
 		WriteError(w, r, fmt.Errorf("encode response: %w", err))
 		return
+	}
+	for _, set := range setHeaders {
+		set(w)
 	}
 	w.Header().Set("Content-Type", contentTypeJSON)
 	w.WriteHeader(status)

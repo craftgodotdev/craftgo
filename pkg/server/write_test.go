@@ -347,3 +347,23 @@ func TestWriteResponseEncodesTheValueAsItIs(t *testing.T) {
 		}
 	}
 }
+
+// The headers and cookies of a success are set once its body has encoded, and a body that fails
+// to encode goes out as the 500 without them.
+func TestWriteResponseSetsHeadersAfterTheEncode(t *testing.T) {
+	setHeaders := func(w http.ResponseWriter) {
+		w.Header().Set("Location", "/x")
+		SetCookie(w, "sid", "s")
+	}
+	rec := httptest.NewRecorder()
+	WriteResponse(rec, httptest.NewRequest("GET", "/", nil), http.StatusCreated, map[string]int{"n": 1}, setHeaders)
+	if rec.Code != http.StatusCreated || rec.Header().Get("Location") != "/x" || rec.Header().Get("Set-Cookie") == "" {
+		t.Errorf("success: got %d %v", rec.Code, rec.Header())
+	}
+	observeLogs(t)
+	rec = httptest.NewRecorder()
+	WriteResponse(rec, httptest.NewRequest("GET", "/", nil), http.StatusCreated, map[string]float64{"x": math.NaN()}, setHeaders)
+	if rec.Code != http.StatusInternalServerError || rec.Header().Get("Location") != "" || rec.Header().Get("Set-Cookie") != "" {
+		t.Errorf("encode failure: got %d %v, want the 500 without the success's headers", rec.Code, rec.Header())
+	}
+}

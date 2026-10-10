@@ -97,13 +97,18 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
+{{- if or .RespHeaders .RespCookies}}
+		server.WriteResponse(w, r, {{.SuccessStatusExpr}}, resp, func(w http.ResponseWriter) {
 {{- range .RespHeaders}}
-		{{.Bind}}
+			{{.Bind}}
 {{- end}}
 {{- range .RespCookies}}
-		{{.Bind}}
+			{{.Bind}}
 {{- end}}
+		})
+{{- else}}
 		server.WriteResponse(w, r, {{.SuccessStatusExpr}}, resp)
+{{- end}}
 {{- else if .WriteResponse}}
 		err := l.{{.Method}}({{.Sig.CallArgs}})
 		if err != nil {

@@ -608,17 +608,17 @@ service FilesService {
 	checks := []string{
 		`w.Header().Set("etag", resp.Etag)`,
 		`server.SetCookie(w, "sessionID", resp.SessionID)`,
-		"server.WriteResponse(w, r, http.StatusOK, resp)",
+		"server.WriteResponse(w, r, http.StatusOK, resp, func(w http.ResponseWriter) {",
 	}
 	for _, want := range checks {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q in handler:\n%s", want, body)
 		}
 	}
-	// Headers are set before the response is written.
-	before, _, ok := strings.Cut(body, "server.WriteResponse")
-	if !ok || !strings.Contains(before, `w.Header().Set("etag"`) {
-		t.Errorf("the etag header must be set before the body is encoded:\n%s", body)
+	// Headers and cookies are set once the body has encoded, by the function WriteResponse runs.
+	_, after, ok := strings.Cut(body, "server.WriteResponse")
+	if !ok || !strings.Contains(after, `w.Header().Set("etag"`) || !strings.Contains(after, "server.SetCookie") {
+		t.Errorf("the etag header and the cookie must be set by WriteResponse, after the encode:\n%s", body)
 	}
 }
 

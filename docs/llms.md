@@ -817,7 +817,10 @@ func <Method>(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
         l := service.New<Method>Service(r.Context(), svcCtx)
         resp, err := l.<Method>(&req)   // ctx is captured in the service, not passed
         if err != nil { server.WriteError(w, r, err); return }
-        server.WriteResponse(w, r, http.StatusOK, resp) // encodes first; an encode error answers 500
+        server.WriteResponse(w, r, http.StatusOK, resp, func(w http.ResponseWriter) {
+            w.Header().Set("X-Total", strconv.Itoa(resp.Total)) // @header / @cookie fields, set
+            server.SetCookie(w, "sid", resp.Session)          // only once the body has encoded
+        }) // encodes first; an encode error answers 500
     }
 }
 ```
