@@ -7,14 +7,13 @@ import (
 	"cmp"
 	"fmt"
 	"maps"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/genfile"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
 
@@ -61,10 +60,7 @@ func GenerateOpenAPI(proj *semantic.Project, cfg *config.Config, projectRoot str
 	if err != nil {
 		return fmt.Errorf("marshal openapi: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(dest, append([]byte(GeneratedHeader+"\n"), out...), 0o644)
+	return genfile.Write(dest, append([]byte(GeneratedHeader+"\n"), out...))
 }
 
 // buildProjectDocument merges proj's packages into one and builds its document.

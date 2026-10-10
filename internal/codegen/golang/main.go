@@ -2,11 +2,11 @@ package golang
 
 import (
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
+	"github.com/craftgodotdev/craftgo/internal/genfile"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -43,7 +43,7 @@ func generateProjectMain(proj *semantic.Project, protos *protodesign.Set, cfg *c
 		return nil
 	}
 	data := buildProjectMainData(proj, protos, cfg)
-	if _, err := os.Stat(filepath.Join(projectRoot, cfg.Output.OpenAPI)); err != nil {
+	if !genfile.Exists(filepath.Join(projectRoot, cfg.Output.OpenAPI)) {
 		data.HasDocs = false
 	}
 	return writeGoOnce(filepath.Join(projectRoot, cfg.Output.Main), tmpl("main.tmpl"), data)

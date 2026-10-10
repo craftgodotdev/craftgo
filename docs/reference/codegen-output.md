@@ -11,6 +11,8 @@ What `craftgo gen` writes to disk, file by file. Output is **deterministic** - t
 
 The split is the core of the workflow: regenerated files are the mechanical translation of your DSL; gen-once files are where *you* live. The CLI checks for existence before writing a gen-once file, so it never clobbers your business logic.
 
+A run renders every file before it writes any. Each one is then written to a temporary file beside it and renamed into place, keeping the mode of the file it replaces, and the sweep runs last. So a run that fails - a protoc plugin that cannot run, a file it cannot write - names the cause and leaves the tree as it was, and a run cut short never leaves a half-written file behind.
+
 ## Directory layout
 
 For a project whose design declares `package design` with a `UserService`:

@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/pluginpb"
+
+	"github.com/craftgodotdev/craftgo/internal/genfile"
 )
 
 // PluginInstall is the command that pins both plugins as tools of a go.mod.
@@ -134,11 +135,7 @@ func writeResponse(out string, resp *pluginpb.CodeGeneratorResponse) error {
 		if f.GetInsertionPoint() != "" {
 			return fmt.Errorf("%s: insertion points are not supported", name)
 		}
-		path := filepath.Join(out, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(path, []byte(f.GetContent()), 0o644); err != nil {
+		if err := genfile.Write(filepath.Join(out, filepath.FromSlash(name)), []byte(f.GetContent())); err != nil {
 			return err
 		}
 	}
