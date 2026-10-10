@@ -638,7 +638,7 @@ func judgeGenerated(t *testing.T, design, typ string, bodies []string) []verdict
 	}
 	files := map[string]string{
 		"go.mod": "module probe\n\ngo 1.26.6\n\nrequire github.com/craftgodotdev/craftgo/pkg/wire v0.0.0\n\n" +
-			"replace github.com/craftgodotdev/craftgo/pkg/wire => " + wire + "\n",
+			"replace github.com/craftgodotdev/craftgo/pkg/wire => " + filepath.ToSlash(wire) + "\n",
 		"main.go": `package main
 
 import (
