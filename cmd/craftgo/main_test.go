@@ -170,6 +170,58 @@ func TestRunGenNamesTheDesignAndTheProjectRoot(t *testing.T) {
 	}
 }
 
+// -c names an existing directory: a misspelt one, or a file, is refused
+// before anything is written.
+func TestRunGenRefusesAContextThatIsNoDirectory(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "go.mod", "module github.com/test/app\n\ngo 1.24\n")
+	mustWrite(t, dir, "design/craftgo.design.yaml", "")
+	mustWrite(t, dir, "design/api.craftgo", minimalDesignDSL)
+	t.Chdir(dir)
+	for arg, want := range map[string]string{
+		"./typo": "-c ./typo: no such directory",
+		"go.mod": "-c go.mod is a file",
+	} {
+		var err error
+		captureOutput(t, func() { err = runGen([]string{"-f", "design", "-c", arg}) })
+		if err == nil || !strings.HasPrefix(err.Error(), want) {
+			t.Errorf("-c %s: err = %v, want %q", arg, err, want)
+		}
+	}
+	for _, rel := range []string{"typo", "internal", "main.go"} {
+		if exists(t, dir, rel) {
+			t.Errorf("a refused -c still wrote %s", rel)
+		}
+	}
+}
+
+// --target with no name, as an unset variable gives, is refused rather than
+// read as every target.
+func TestRunGenRefusesAnEmptyTarget(t *testing.T) {
+	for _, arg := range []string{"", "go,"} {
+		err := runGen([]string{"--target", arg, "-f", "design"})
+		var ue usageError
+		if !errors.As(err, &ue) || !strings.Contains(err.Error(), "names no target - use go, docs") {
+			t.Errorf("--target %q: err = %v, want a usage error naming the targets", arg, err)
+		}
+	}
+}
+
+// `craftgo help <command>` prints the command's usage, as `<command> -h`
+// does; an unknown command is an error.
+func TestHelpPrintsTheCommandsUsage(t *testing.T) {
+	for name, text := range commandUsage {
+		var err error
+		stdout, _ := captureOutput(t, func() { err = runHelp([]string{name}) })
+		if err != nil || stdout != "Usage:\n"+text+"\n" {
+			t.Errorf("help %s: err = %v, stdout = %q", name, err, stdout)
+		}
+	}
+	if err := runHelp([]string{"deploy"}); err == nil || !strings.Contains(err.Error(), `unknown command "deploy"`) {
+		t.Errorf("help deploy: err = %v", err)
+	}
+}
+
 // TestRunGenWithoutContextIgnoresWorkingDir checks that -f without -c
 // generates under the design folder's parent, never the working directory.
 func TestRunGenWithoutContextIgnoresWorkingDir(t *testing.T) {

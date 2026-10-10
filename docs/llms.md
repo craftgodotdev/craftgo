@@ -556,13 +556,13 @@ Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decora
 | `craftgo init [path]`            | Scaffold a design folder with starter `craftgo.design.yaml`. Default path `design`. |
 | `craftgo gen [path]`             | Walk up from `path` (or cwd) looking for `craftgo.design.yaml`, checking the direct subdirectories at each level (links to directories included; not hidden ones, `vendor` or `node_modules`; two matches at one level ask for `-f`) and stopping at the directory that holds `go.mod` or is a repository root, then generate. Each run first prints `craftgo: design <dir>, project root <dir>`. |
 | `craftgo gen -f <design-folder>` | Skip walk-up; use the manifest at that folder.                                      |
-| `craftgo gen -c <project-root>`  | Resolve `output.*` paths against this root.                                         |
-| `craftgo gen --target <go\|docs>` | Generate only the named target (repeatable; default all); the other targets' output is left untouched. An unknown name exits 1. |
+| `craftgo gen -c <project-root>`  | Resolve `output.*` paths against this root, which must be an existing directory.     |
+| `craftgo gen --target <go\|docs>` | Generate only the named target (repeatable; default all); the other targets' output is left untouched. An unknown or empty name exits 1. |
 | `craftgo fmt [path]`             | Canonical-format `.craftgo` files, walking a directory as gen reads a design folder (links followed; hidden directories, `vendor`, `node_modules` and `.`/`_` files skipped; an unreadable directory warned of and skipped). Defaults to writing in place, through a rename that keeps the file's mode; a file it cannot write is reported and the rest still formatted, exit 1. |
 | `craftgo fmt -l`                 | List files that would change (no write); exit 1 when any differs.                   |
 | `craftgo fmt -w`                 | Write the formatted result back (default); `-w=false` prints it to stdout instead.  |
 | `craftgo version`                | Print CLI version.                                                                  |
-| `craftgo help`                   | Show top-level help.                                                                |
+| `craftgo help [command]`         | Show top-level help, or one command's usage.                                        |
 
 Exit codes: 0 (success), 1 (any error during gen/fmt/init, including semantic errors, a file `fmt -l` lists, and a bad flag or argument, printed with the command's usage), 2 (a missing or unknown command). A semantic warning is printed on stderr as `<file>:<line>:<col>: warning: <message>` and does not fail `gen`. The Go module path is read from `go.mod` walking up from the project root - run `go mod init <module>` before `craftgo gen` if `go.mod` is missing.
 

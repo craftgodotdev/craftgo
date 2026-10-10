@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,9 +28,11 @@ func (t *targetList) String() string { return strings.Join(*t, ",") }
 
 func (t *targetList) Set(v string) error {
 	for name := range strings.SplitSeq(v, ",") {
-		if name = strings.TrimSpace(name); name != "" {
-			*t = append(*t, name)
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return fmt.Errorf("names no target - use %s", strings.Join(codegen.SelectableTargets(), ", "))
 		}
+		*t = append(*t, name)
 	}
 	return nil
 }
@@ -77,11 +81,30 @@ func findManifest(a genArgs) (*config.Config, string, string, error) {
 		return nil, "", "", err
 	}
 	if a.context != "" {
-		if projectRoot, err = filepath.Abs(a.context); err != nil {
+		if projectRoot, err = contextRoot(a.context); err != nil {
 			return nil, "", "", err
 		}
 	}
 	return cfg, projectRoot, designDir, nil
+}
+
+// contextRoot returns the absolute project root -c names, which must be an
+// existing directory: a misspelt one would take a tree of its own.
+func contextRoot(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(abs)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "", fmt.Errorf("-c %s: no such directory - -c names the project root the output paths resolve against", path)
+	case err != nil:
+		return "", fmt.Errorf("-c %s: %w", path, err)
+	case !info.IsDir():
+		return "", fmt.Errorf("-c %s is a file - -c names the project root directory the output paths resolve against", path)
+	}
+	return abs, nil
 }
 
 // runGen loads the manifest, analyses the design's `.craftgo` and `.proto`

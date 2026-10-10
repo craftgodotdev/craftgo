@@ -31,8 +31,8 @@ Flags:
 | Flag                      | Effect                                                                                |
 | ------------------------- | ------------------------------------------------------------------------------------- |
 | `-f`, `--folder <path>`   | Path to the folder holding `craftgo.design.yaml`. Skips the walk-up.                  |
-| `-c`, `--context <path>`  | Project root the `output.*` paths resolve against. Defaults to the parent of the design folder. |
-| `--target <name>`         | Generate only the named target (`go`, `docs`); repeatable, default all. A narrowed run leaves the other targets' output untouched. |
+| `-c`, `--context <path>`  | Project root the `output.*` paths resolve against, an existing directory. Defaults to the parent of the design folder. |
+| `--target <name>`         | Generate only the named target (`go`, `docs`); repeatable, default all. A narrowed run leaves the other targets' output untouched. An empty name is an error. |
 | `-h`, `--help`            | Show help.                                                                            |
 
 Without `-f`, `craftgo gen` walks upward from `<path>` (or cwd) for a `craftgo.design.yaml`, probing the direct subdirectories at each level - links to directories included, hidden ones, `vendor` and `node_modules` not. Two matches at one level ask for `-f`. The walk stops at the first directory that holds `go.mod` or is a repository root (`.git`, `.hg`, `.svn`), so it never picks up the design of an enclosing module; a manifest that is a symbolic link to nothing is an error, not a missing manifest. With `-f`, a path is an error. The Go module path comes from `go.mod`, walking up from the project root - run `go mod init <module>` first if `go.mod` does not exist yet.
@@ -92,9 +92,9 @@ craftgo version
 1.9.0
 ```
 
-## `craftgo help`
+## `craftgo help [command]`
 
-Top-level help. Same content as running `craftgo` with no arguments.
+Top-level help. Same content as running `craftgo` with no arguments. `craftgo help <command>` prints that command's usage, as `craftgo <command> -h` does.
 
 ## Exit codes
 

@@ -29,8 +29,11 @@ func main() {
 		fmt.Println(version)
 		return
 	case "help", "--help", "-h":
-		usage()
-		return
+		if len(os.Args) == 2 {
+			usage()
+			return
+		}
+		err = runHelp(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "craftgo: unknown command %q\n\n", os.Args[1])
 		usage()
@@ -60,7 +63,20 @@ Usage:
 ` + commandUsage["init"] + "\n\n" + commandUsage["gen"] + "\n\n" + commandUsage["fmt"] + `
 
   craftgo version         Print the CLI version
-  craftgo help            Show this message`)
+  craftgo help [command]  Show this message, or the command's usage`)
+}
+
+// runHelp prints the usage of the command args names, as `<command> -h` does.
+func runHelp(args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("help: too many arguments (got %d, want at most 1)", len(args))
+	}
+	text, ok := commandUsage[args[0]]
+	if !ok {
+		return fmt.Errorf("help: unknown command %q - use init, gen or fmt", args[0])
+	}
+	fmt.Println("Usage:\n" + text)
+	return nil
 }
 
 // commandUsage holds each command's part of the usage text; `help` prints
