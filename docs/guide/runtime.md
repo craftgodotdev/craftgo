@@ -191,7 +191,10 @@ srv.ServeDocs(server.DocsOptions{Spec: openapiSpec, UI: "redoc"})
 ```
 
 This registers `GET /openapi.yaml` (the spec) and `GET /docs` (the UI page). It
-is a no-op when `Spec` is empty.
+is a no-op when `Spec` is empty. The page loads its UI from the jsDelivr CDN at
+a pinned version (Redoc 2.5.4, Swagger UI 5.33.0, Scalar 1.71.0), each script
+and stylesheet carrying its Subresource Integrity hash, so a browser refuses a
+file the CDN serves changed.
 
 ## Graceful shutdown
 

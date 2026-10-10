@@ -37,7 +37,8 @@ type DocsOptions struct {
 }
 
 // ServeDocs registers GET SpecPath, serving Spec, and GET Path, a page that loads the chosen
-// UI from a CDN; it registers nothing when Spec is empty.
+// UI from a CDN at a pinned version the browser checks against its integrity hash; it registers
+// nothing when Spec is empty.
 func (s *Server) ServeDocs(opts DocsOptions) *Server {
 	if len(opts.Spec) == 0 {
 		return s
@@ -70,6 +71,15 @@ func (s *Server) ServeDocs(opts DocsOptions) *Server {
 	return s
 }
 
+// The UI assets, each at a pinned version with its Subresource Integrity hash: a browser refuses a
+// file whose bytes differ from the ones hashed.
+const (
+	redocScript   = `<script src="https://cdn.jsdelivr.net/npm/redoc@2.5.4/bundles/redoc.standalone.js" integrity="sha384-w447zOpYfw/1Tv/5AK9NfHTlQIqE3RVR6KY62jCyy9zNDgO64cMwGGP1Fj0zJVf5" crossorigin="anonymous"></script>`
+	swaggerStyle  = `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.33.0/swagger-ui.css" integrity="sha384-Ov4/wv3j2bmct8cDc5X4ngJZohVPzEmc6uDPH8WeljUxO5vtoykvMEfbu9Vh6RaW" crossorigin="anonymous"/>`
+	swaggerScript = `<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.33.0/swagger-ui-bundle.js" integrity="sha384-YDALVcy8kj8yltLBVi1vBiBAUqdxvus673gM8XKwiy6aDUJFXivF/KCufekjYbVf" crossorigin="anonymous"></script>`
+	scalarScript  = `<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.71.0/dist/browser/standalone.js" integrity="sha384-I7aSmSxf06vl5HT10vzNOAryO+PFCAVHIGwhZerHn6yM/O0642381S3kw9o7fFQd" crossorigin="anonymous"></script>`
+)
+
 // docsHTML renders the page for ui, with title and specPath escaped for where they land.
 func docsHTML(ui DocsUI, specPath, title string) string {
 	t := template.HTMLEscapeString(title)
@@ -81,9 +91,9 @@ func docsHTML(ui DocsUI, specPath, title string) string {
 		return `<!doctype html><html><head><meta charset="utf-8"/>` +
 			`<meta name="viewport" content="width=device-width,initial-scale=1"/>` +
 			`<title>` + t + `</title>` +
-			`<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"/>` +
+			swaggerStyle +
 			`</head><body><div id="swagger-ui"></div>` +
-			`<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js" crossorigin></script>` +
+			swaggerScript +
 			`<script>window.onload=function(){SwaggerUIBundle({url:` + string(js) + `,dom_id:"#swagger-ui"});};</script>` +
 			`</body></html>`
 	case DocsScalar:
@@ -91,14 +101,14 @@ func docsHTML(ui DocsUI, specPath, title string) string {
 			`<meta name="viewport" content="width=device-width,initial-scale=1"/>` +
 			`<title>` + t + `</title></head><body>` +
 			`<script id="api-reference" data-url="` + attr + `"></script>` +
-			`<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>` +
+			scalarScript +
 			`</body></html>`
 	default: // Redoc
 		return `<!doctype html><html><head><meta charset="utf-8"/>` +
 			`<meta name="viewport" content="width=device-width,initial-scale=1"/>` +
 			`<title>` + t + `</title></head><body>` +
 			`<redoc spec-url="` + attr + `"></redoc>` +
-			`<script src="https://cdn.jsdelivr.net/npm/redoc@2/bundles/redoc.standalone.js"></script>` +
+			redocScript +
 			`</body></html>`
 	}
 }

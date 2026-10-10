@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -48,6 +49,25 @@ func TestServeDocs(t *testing.T) {
 		}
 		if !strings.Contains(body, "/openapi.yaml") {
 			t.Errorf("ui=%q docs page does not point at the spec path", c.ui)
+		}
+	}
+}
+
+// The docs page loads each UI asset at an exact version, with the integrity hash a browser checks
+// it against.
+func TestServeDocsPinsItsAssets(t *testing.T) {
+	asset := regexp.MustCompile(`<(?:script|link)\b[^>]*\b(?:src|href)="https?://[^>]*>`)
+	pinned := regexp.MustCompile(`(?:src|href)="https://cdn\.jsdelivr\.net/npm/(?:@[a-z-]+/)?[a-z-]+@\d+\.\d+\.\d+/[^"]+"`)
+	hash := regexp.MustCompile(`\bintegrity="sha384-[A-Za-z0-9+/]{64}"`)
+	for _, ui := range []DocsUI{DocsRedoc, DocsSwagger, DocsScalar} {
+		tags := asset.FindAllString(docsHTML(ui, "/openapi.yaml", "API"), -1)
+		if len(tags) == 0 {
+			t.Errorf("%s: no asset found", ui)
+		}
+		for _, tag := range tags {
+			if !pinned.MatchString(tag) || !hash.MatchString(tag) || !strings.Contains(tag, `crossorigin="anonymous"`) {
+				t.Errorf("%s: %s is not pinned with its integrity hash", ui, tag)
+			}
 		}
 	}
 }

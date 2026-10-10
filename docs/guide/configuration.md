@@ -451,7 +451,7 @@ Absent only from a project whose design declares gRPC services and no HTTP route
 | Key        | Effect                                                                 |
 | ---------- | ---------------------------------------------------------------------- |
 | `enabled`  | Serve the OpenAPI document + a rendered docs page (off unless set; the generated `config.yaml` sets `true`). |
-| `ui`       | `redoc` / `swagger` / `scalar` - the renderer (assets load from a CDN). |
+| `ui`       | `redoc` / `swagger` / `scalar` - the renderer (assets load from a CDN at a pinned version, checked against their integrity hashes). |
 | `path`     | HTML docs page route (default `/docs`).                                |
 | `specPath` | Raw OpenAPI document route (default `/openapi.yaml`).                   |
 
