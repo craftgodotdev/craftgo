@@ -69,6 +69,9 @@ func regeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 		for m := range s.methods() {
 			files = append(files, out.transport.sub(s.dir).at(projectRoot, methodFile(m, cfg.Output.FileCase)))
 		}
+		if len(segmentBodies(s, buildProjectResolver(proj, cfg, s.pkg.Name), out).names()) > 0 {
+			files = append(files, out.transport.sub(s.dir).at(projectRoot, bodyFile))
+		}
 		routes[out.routes.sub(s.dir).at(projectRoot, "routes.go")] = true
 	}
 	// The umbrella routes.go exists while some route does.

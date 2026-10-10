@@ -59,6 +59,10 @@ type ServerConfig struct {
 	// StrictJSON rejects a JSON body with an unknown field or data after the value.
 	StrictJSON bool `yaml:"strictJSON"`
 
+	// RequirePresence answers 400 to a JSON body that leaves out a member declared without `?`,
+	// or sends one null without @nullable; true unless config.yaml sets false.
+	RequirePresence bool `yaml:"requirePresence"`
+
 	// Compression is off by default, for a deployment behind a compressing proxy.
 	Compression CompressionConfig `yaml:"compression"`
 }
@@ -98,10 +102,10 @@ func Path() string {
 	return "config/config.yaml"
 }
 
-// Load reads cfgPath, unless it is empty or missing, then fills the defaults the runtime
-// lacks.
+// Load reads cfgPath over [defaults], unless it is empty or missing, then fills the defaults the
+// runtime lacks.
 func Load(cfgPath string) (*Config, error) {
-	cfg := &Config{}
+	cfg := defaults()
 	if cfgPath != "" {
 		data, err := os.ReadFile(cfgPath)
 		if err != nil && !os.IsNotExist(err) {
@@ -115,6 +119,16 @@ func Load(cfgPath string) (*Config, error) {
 	}
 	cfg.applyDefaults()
 	return cfg, nil
+}
+
+// defaults returns the settings whose zero value is a choice of its own, which a key config.yaml
+// leaves out keeps.
+func defaults() *Config {
+	return &Config{
+		Server: ServerConfig{
+			RequirePresence: true,
+		},
+	}
 }
 
 // applyDefaults fills the fields the runtime has no default of its own for.

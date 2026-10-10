@@ -315,7 +315,7 @@ On a `?` field `@nullable` is redundant (`decorator/redundant`): `?` already all
 
 ### `@default(value)`
 
-Pre-fill the field before JSON decode. If the client omits the field, the default survives; if present, decode overwrites.
+Fill the field when the client leaves it out, in a request type or a type nested in its body; a value the client sends wins.
 
 | Sites | field, errorField |
 | -------- | -------- |

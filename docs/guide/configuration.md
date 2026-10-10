@@ -311,6 +311,7 @@ server:                # absent when the design's only services are gRPC ones
   handlerTimeout: 0s
   maxBodySize: 0
   strictJSON: true
+  requirePresence: true
   compression:
     enabled: false
     minSize: 0
@@ -345,7 +346,7 @@ docs:                  # absent when the design's only services are gRPC ones
   specPath: /openapi.yaml
 ```
 
-A key left out of `config.yaml` takes a default. `config.go`'s `applyDefaults` fills `server.addr` (`":8080"`), `grpc.addr` (`":9000"`) and `serviceName` (the last segment of the project's import path). Every other key falls to the runtime: the switches (`otel.enabled`, `metrics.enabled`, `docs.enabled`, `strictJSON`, `compression.enabled`, `grpc.reflection`) are off; an empty `otel.exporter` keeps spans in process; an empty `metrics.exporter` serves the Prometheus scrape, with no listener unless `adminAddr` is set; the scrape path is `/metrics`; the docs use `redoc` at `/docs` and `/openapi.yaml`; logging is `info`.
+A key left out of `config.yaml` takes a default. `config.go`'s `defaults` sets `server.requirePresence` (`true`) before the file is read, so a value in the file wins, `false` included; its `applyDefaults` fills `server.addr` (`":8080"`), `grpc.addr` (`":9000"`) and `serviceName` (the last segment of the project's import path). Every other key falls to the runtime: the switches (`otel.enabled`, `metrics.enabled`, `docs.enabled`, `strictJSON`, `compression.enabled`, `grpc.reflection`) are off; an empty `otel.exporter` keeps spans in process; an empty `metrics.exporter` serves the Prometheus scrape, with no listener unless `adminAddr` is set; the scrape path is `/metrics`; the docs use `redoc` at `/docs` and `/openapi.yaml`; logging is `info`.
 
 ### `server`
 
@@ -357,6 +358,7 @@ Absent only from a project whose design declares gRPC services and no HTTP route
 | `handlerTimeout`             | duration  | Global per-handler deadline. `0s` = no global cap; per-method `@timeout` overrides. |
 | `maxBodySize`                | int       | Global request body cap in bytes. `0` = no cap.                         |
 | `strictJSON`                 | bool      | Reject a JSON body with an unknown field (400 `{"message":"<field>: unknown field"}`) or data after the JSON value (400 `{"message":"body: unexpected data after the JSON value"}`). `false` ignores both, as `encoding/json` does. |
+| `requirePresence`            | bool      | Answer 400 `{"message":"<json path>: required"}` to a JSON body that leaves out a member declared without `?`, or sends it as `null` without `@nullable`; a nested `@default` fills an absent member. `false` decodes the body straight into the request type. Defaults to `true`. See [Required by default](/guide/validators#built-in-validators). |
 | `compression.enabled`        | bool      | Toggle gzip / deflate response compression.                             |
 | `compression.minSize`        | int       | Skip compression when body is smaller. `0` falls back to 1024.          |
 | `compression.level`          | int       | Compression level (1-9). `0` falls back to default.                     |

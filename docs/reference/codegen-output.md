@@ -25,7 +25,8 @@ internal/
 │   ├── enums.go                 enum types and const values
 │   └── errors.go                typed error values
 ├── transport/<svc>/             REGEN - one folder per service
-│   └── <method>.go              http.HandlerFunc per method
+│   ├── <method>.go              http.HandlerFunc per method
+│   └── bodies.gen.go            wire structs a JSON body with a required member decodes into
 ├── service/<svc>/               GEN-ONCE - your business logic
 │   └── <method>.go              the stub you fill in (HTTP methods and RPCs alike)
 ├── pb/<dir>/                    PLUGIN - protoc-gen-go + protoc-gen-go-grpc, per .proto directory
@@ -84,7 +85,7 @@ Enum types and their constants (`TodoStatusOpen`, …) — membership validation
 One `func <Method>(svcCtx) http.HandlerFunc` per method. The handler:
 
 1. Applies any `@default` pre-fill (before decode, so a client-provided value overrides the default rather than the reverse),
-2. Decodes the request (JSON body, or binds `@path` / `@query` / `@header` / `@cookie` / `@form` fields with the right casts),
+2. Decodes the request (JSON body, or binds `@path` / `@query` / `@header` / `@cookie` / `@form` fields with the right casts). A JSON body with a required member decodes first into its wire struct, one per type it reaches, in `bodies.gen.go` beside the handlers: a pointer per member, so a member left out or sent as `null` answers 400 `<json path>: required`; the struct's `to` copies it into the request and fills each absent nested `@default`. `server.SetRequirePresence(false)` decodes straight into the request instead,
 3. Calls `req.Validate()`,
 4. Dispatches to your `service` logic,
 5. Encodes the response as the logic returns it (and writes any `@status`, response headers, or cookies). Nothing fills a nil list or map: it goes out as `null`, so logic returns `[]` or `{}` for a required one that is empty.

@@ -52,10 +52,10 @@ func Path() string {
 	return "config/config.yaml"
 }
 
-// Load reads cfgPath, unless it is empty or missing, then fills the defaults the runtime
-// lacks.
+// Load reads cfgPath over [defaults], unless it is empty or missing, then fills the defaults the
+// runtime lacks.
 func Load(cfgPath string) (*Config, error) {
-	cfg := &Config{}
+	cfg := defaults()
 	if cfgPath != "" {
 		data, err := os.ReadFile(cfgPath)
 		if err != nil && !os.IsNotExist(err) {
@@ -69,6 +69,12 @@ func Load(cfgPath string) (*Config, error) {
 	}
 	cfg.applyDefaults()
 	return cfg, nil
+}
+
+// defaults returns the settings whose zero value is a choice of its own, which a key config.yaml
+// leaves out keeps.
+func defaults() *Config {
+	return &Config{}
 }
 
 // applyDefaults fills the fields the runtime has no default of its own for.

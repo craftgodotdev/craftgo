@@ -2,6 +2,7 @@ package golang
 
 import (
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -24,6 +25,9 @@ type transportData struct {
 	// Doc heads the handler's doc comment ([docHead]).
 	Doc        []string
 	BodyDecode bool
+	// BodyWire is the wire struct the body decodes into while presence is checked, "" when the
+	// body decodes straight into the request.
+	BodyWire string
 	// BindRequest and WriteResponse report the sides the handler owns ([wire.RawSides]).
 	BindRequest   bool
 	WriteResponse bool
@@ -69,16 +73,63 @@ type paramBinding struct {
 func generateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
 	r = resolverFor(pkg, r)
 	out := outputsOf(cfg)
-	return eachSegmentMethod(pkg, cfg.Output.FileCase, func(s segment, m *ast.Method) error {
-		data := buildTransportData(m, s.svc.Decorators(m), out.segmentImports(pkg.Name, s.dir), pkg, r)
-		return writeGo(out.transport.sub(s.dir).at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("transport.tmpl"), data)
-	})
+	for s := range segments(pkg, cfg.Output.FileCase) {
+		bodies := segmentBodies(s, r, out)
+		dir := out.transport.sub(s.dir)
+		for m := range s.methods() {
+			data := buildTransportData(m, s.svc.Decorators(m), out.segmentImports(pkg.Name, s.dir), pkg, r, bodies.names()...)
+			data.BodyWire = bodies.wireFor(m)
+			if err := writeGo(dir.at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("transport.tmpl"), data); err != nil {
+				return err
+			}
+		}
+		if src := bodies.source(pkg.Name); src != "" {
+			if err := writeGoSource(dir.at(projectRoot, bodyFile), src); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
-// buildTransportData renders m's handler, decs being the decorators that apply to m.
-func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, pkg *semantic.Package, r *projectResolver) transportData {
+// segmentBodies weighs the JSON request bodies s's handlers decode.
+func segmentBodies(s segment, r *projectResolver, out outputs) *bodyPlan {
+	p := newBodyPlan(r, s.pkg.Name, out.types.sub(s.pkg.Name).pkg)
+	for m := range s.methods() {
+		if fields, ok := bodyFields(m, s.svc.Decorators(m), s.pkg, r); ok {
+			p.add(m, fields)
+		}
+	}
+	p.finish()
+	return p
+}
+
+// bodyFields returns m's request fields when its handler decodes a JSON body: it binds the
+// request on a body verb and a member rides the body, and no part is a file, which leaves the
+// body to the multipart parser.
+func bodyFields(m *ast.Method, decs []*ast.Decorator, pkg *semantic.Package, r *projectResolver) ([]resolvedField, bool) {
+	if !modeOf(m, decs).BindRequest() || !wire.IsBodyVerb(m.Verb) {
+		return nil, false
+	}
+	fields := resolveRequestFields(m, pkg, r)
+	if !hasBodyField(fields) {
+		return nil, false
+	}
+	resolved := make([]semantic.ResolvedField, len(fields))
+	for i, rf := range fields {
+		resolved[i] = rf.ResolvedField
+	}
+	if _, files := semantic.FormParts(resolved); len(files) > 0 {
+		return nil, false
+	}
+	return fields, true
+}
+
+// buildTransportData renders m's handler, decs being the decorators that apply to m; reserved
+// are the package-level names its segment declares beside the handlers.
+func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, pkg *semantic.Package, r *projectResolver, reserved ...string) transportData {
 	mode := modeOf(m, decs)
-	imports := newImportSet(r.Module, r, goImport{Alias: localAlias, Path: imps.Types}, transportNames)
+	imports := newImportSet(r.Module, r, goImport{Alias: localAlias, Path: imps.Types}, slices.Concat(transportNames, reserved))
 	imports.use("net/http")
 	imports.use(serverImport)
 	imports.fixed("service", imps.Service)

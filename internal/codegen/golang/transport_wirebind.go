@@ -57,9 +57,11 @@ var wireSources = map[wire.Binding]wireSource{
 		present: func(n string) string { return fmt.Sprintf("server.CookiePresent(r, %q)", n) },
 		cookie:  true,
 	},
+	// The multipart parser fills r.PostForm with every text part.
 	wire.BindForm: {
-		single: func(n string) string { return fmt.Sprintf("r.PostFormValue(%q)", n) },
-		array:  func(n string) string { return fmt.Sprintf("r.MultipartForm.Value[%q]", n) },
+		single:  func(n string) string { return fmt.Sprintf("r.PostFormValue(%q)", n) },
+		array:   func(n string) string { return fmt.Sprintf("r.MultipartForm.Value[%q]", n) },
+		present: func(n string) string { return fmt.Sprintf("r.PostForm.Has(%q)", n) },
 	},
 }
 
