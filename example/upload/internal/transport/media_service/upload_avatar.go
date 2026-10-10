@@ -16,8 +16,10 @@ import (
 //
 // UploadAvatar returns the POST UploadAvatar handler.
 func UploadAvatar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
+	_limits := map[string]int64{"image": 5 << 20}
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(32 << 20); err != nil {
+		server.LimitParts(r, _limits)
+		if err := r.ParseMultipartForm(server.MultipartMemory); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}

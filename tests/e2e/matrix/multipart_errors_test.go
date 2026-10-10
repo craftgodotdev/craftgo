@@ -33,12 +33,31 @@ func TestMultipartParseFailures(t *testing.T) {
 	}
 
 	const avatar = "/api/bindings/users/u1/avatar"
+	var oversized bytes.Buffer
+	big := multipart.NewWriter(&oversized)
+	bigPart, err := big.CreateFormFile("avatar_file", "a.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bigPart.Write(bytes.Repeat([]byte("x"), 6<<20)); err != nil {
+		t.Fatal(err)
+	}
+	if err := big.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	for _, tc := range []struct {
 		name, url, contentType string
 		body                   io.Reader
 		status                 int
 		want                   string
 	}{
+		{
+			// avatar_file takes @maxSize(5MB): the read stops there, under the body cap.
+			name: "a part past its @maxSize", url: ts.URL + avatar, contentType: big.FormDataContentType(),
+			body: bytes.NewReader(oversized.Bytes()), status: http.StatusBadRequest,
+			want: "avatar_file: file size exceeds 5242880 bytes",
+		},
 		{
 			name: "not multipart", url: ts.URL + avatar, contentType: "application/json",
 			body: strings.NewReader(`{}`), status: http.StatusUnsupportedMediaType,

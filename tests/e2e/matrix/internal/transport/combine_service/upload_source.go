@@ -17,7 +17,7 @@ import (
 // UploadSource returns the POST UploadSource handler.
 func UploadSource(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(32 << 20); err != nil {
+		if err := r.ParseMultipartForm(server.MultipartMemory); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
