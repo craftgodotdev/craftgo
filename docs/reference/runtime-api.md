@@ -258,6 +258,13 @@ does not decide what becomes of the message: the chain does, through the
 transport answers the delivery with that disposition, and settles it when
 nothing was asked or the transport cannot honour what was.
 
+The exception is the shutdown. Once `ctx` has ended, a transport hands no
+message to a handler, and a delivery whose handler failed after `ctx` ended,
+with the chain asking for nothing or for redelivery, was most likely cut short
+by it: a transport that can hand that message back to its broker does so rather
+than settle it. What each shipped transport does is in
+[Shutting down](/guide/events#shutting-down).
+
 `Group` is a named type so an application declares its groups once and passes
 them around as values rather than as loose strings. It has no fallback: a
 subscription without one is refused at registration, because the name is where a
@@ -420,9 +427,12 @@ message. It reports an error `Handle` returns once, with no message.
 
 `BatchHandler` decodes and validates each message as `Handler` does. A message
 that fails is left out of `fn`'s batch, and `fn` does not run when none is left.
-`fn`'s error goes to every item not failed with `Item.Fail`, and the failures
-come back as `ItemErrors`, keyed by index into the whole batch; its `Unwrap`
-lists them in index order, so `errors.Is` and `errors.As` reach each.
+`fn`'s error goes to every item not failed with `Item.Fail`, unless it is an
+`ItemErrors` keyed by index into the items `fn` was handed: that fails only the
+items it names, and is taken for the whole batch's error when it names an index
+outside them. The failures come back as `ItemErrors`, keyed by index into the
+whole batch; its `Unwrap` lists them in index order, so `errors.Is` and
+`errors.As` reach each.
 
 ### The plan
 
@@ -478,6 +488,12 @@ type Envelope struct {
 
 func (b *Bus) Publish(ctx context.Context, event string, payload any, opts ...PublishOption) error
 func (b *Bus) PublishAll(ctx context.Context, envs []Envelope) error
+
+type EnvelopeError struct {
+	Index int    // the envelope's position in the batch
+	Event string // its contract, empty when it has none
+	Err   error  // why: the codec's error, ErrNoCodec, an *UnknownOptionError, ...
+}
 ```
 
 Options apply in order, so the last one setting a given value wins - which is
@@ -488,7 +504,12 @@ either. An empty value clears a default only as a per-call option: `WithKey("")`
 on `Publish` clears a default key, while an `Envelope` whose `Key` is empty keeps
 it.
 
-`PublishAll` encodes every envelope up front, then hands the batch to the
+`PublishAll` encodes every envelope up front, so one it cannot encode - no
+contract, no codec, an option its adapter does not read, a payload the codec
+refuses - refuses the whole batch, before any of it is sent, with an
+`*EnvelopeError` whose `Index` names it: an outbox drainer sets that row aside
+and sends the rest. A transport that cannot carry an envelope refuses the batch
+the same way. Then `PublishAll` hands the batch to the
 transport in one call when it implements `BatchPublisher` and one message at a
 time otherwise; a failure partway through returns a `*PartialPublishError` whose
 `Unsent` holds the indices, ascending, of the envelopes that did not go out, so
@@ -592,7 +613,13 @@ Kafka's `craftgo-event`, `craftgo-key` and `craftgo-dedup-id`, NATS's
 `Craftgo-Key`. An `Envelope.Metadata` entry under one of those is dropped
 silently and the runtime's or the adapter's own value takes its place. Every
 other key is carried untouched, except that the NATS adapters never let one
-override `Nats-Msg-Id`, the header that carries the dedup ID. A generated
+override `Nats-Msg-Id`, the header that carries the dedup ID. NATS headers
+cannot hold everything, so the NATS adapters refuse, with `nats.ErrNotCarried`
+and before anything is sent, a metadata key that is no NATS header name
+(printable ASCII without spaces or any of `"(),/:;<=>?@[\]{}`) and a key, dedup
+ID or metadata value that NATS would change on the way - one padded with spaces
+or tabs, or holding a line break - rather than deliver it altered; in a batch
+the refusal is an `*EnvelopeError` naming that message. A generated
 consumer is handed the decoded payload, so metadata is read in a
 [middleware](#consumer-middleware) or a hand-written `Subscription`, both of
 which are handed the `Message`.
@@ -698,7 +725,10 @@ its innermost end for the same visibility. A bus chain needs it nowhere. See
 
 - `pkg/events/memory` - an in-process transport for tests, local development and
   single-binary deployments. Subscriptions sharing a group for one contract form
-  one competing-consumer group. `Drain()` waits for in-flight deliveries, and
+  one competing-consumer group, and each group gets its own copy of a message,
+  payload included. A handler runs on the context its subscription was given,
+  as on a broker, so it carries that context's values and sees it end.
+  `Drain()` waits for in-flight deliveries, and
   is safe to call while another goroutine publishes - which is what a shutdown
   racing a request still in flight looks like.
 - `pkg/events/nats` - core NATS, where a contract is a subject and a group is a

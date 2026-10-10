@@ -91,6 +91,10 @@ type BatchPublisher interface {
 //   - answers each delivery per [Message.Disposition] once the handler has returned,
 //     settling an unset one.
 //
+// A transport that can hand a message back to its broker hands none to a handler once ctx
+// has ended, and hands back, rather than settle, a delivery the shutdown cut short: one
+// whose handler failed after ctx ended, the chain asking for nothing or for redelivery.
+//
 // A subscription with [Subscription.Batch] set reaches only a [BatchSubscriber].
 type Subscriber interface {
 	Subscribe(ctx context.Context, subs []Subscription) error

@@ -368,9 +368,16 @@ func TestUseBatchAfterStartPanics(t *testing.T) {
 func redeliverFailures(_ events.Subscription, next events.BatchHandler) events.BatchHandler {
 	return func(ctx context.Context, batch []*events.Message) error {
 		err := next(ctx, batch)
+		if err == nil {
+			return nil
+		}
 		var failed events.ItemErrors
 		if !errors.As(err, &failed) {
-			return err
+			// An error naming no message, a *PanicError among them, fails every one.
+			failed = events.ItemErrors{}
+			for i := range batch {
+				failed[i] = err
+			}
 		}
 		for i, itemErr := range failed {
 			var bad *events.PayloadError
@@ -412,6 +419,29 @@ func TestTheGuidesBatchMiddleware(t *testing.T) {
 	for i, m := range msgs {
 		if m.Disposition() != want[i] {
 			t.Errorf("message %d disposition = %v, want %v", i, m.Disposition(), want[i])
+		}
+	}
+}
+
+// The guide's batch middleware redelivers every message of a batch whose handler panicked.
+func TestTheGuidesBatchMiddlewareRedeliversAPanickedBatch(t *testing.T) {
+	bus, tr := subscriberBus(events.WithBatchMiddleware(redeliverFailures))
+	if err := orderPlaced.SubscribeBatch(bus, "bulk", events.BatchSize{Max: 10, Wait: time.Second},
+		func(context.Context, []events.Item[order]) error { panic("store client is nil") }); err != nil {
+		t.Fatal(err)
+	}
+	start(t, context.Background(), bus)
+	msgs := []*events.Message{
+		{Event: "orders.Placed", Payload: []byte(`{"id":"a"}`)},
+		{Event: "orders.Placed", Payload: []byte(`{"id":"b"}`)},
+	}
+	var panicked *events.PanicError
+	if err := tr.deliver(t, msgs...); !errors.As(err, &panicked) {
+		t.Fatalf("err = %v, want a *PanicError", err)
+	}
+	for i, m := range msgs {
+		if m.Disposition() != events.DispositionRedeliver {
+			t.Errorf("message %d disposition = %v, want redeliver", i, m.Disposition())
 		}
 	}
 }
