@@ -345,6 +345,32 @@ message R {}
 	}
 }
 
+// An error in a proto read from an include root is reported at that file, not under the design.
+func TestCompileErrorsInAnIncludeNameItsFile(t *testing.T) {
+	shared := write(t, map[string]string{"acme/common.proto": `syntax = "proto3";
+package acme;
+option go_package = "example.com/acme;acme";
+message Thing { strin id = 1; }
+`})
+	root := write(t, map[string]string{"greet/greet.proto": `syntax = "proto3";
+package greet;
+import "acme/common.proto";
+service Greeter { rpc Do(acme.Thing) returns (acme.Thing); }
+`})
+	o := opts()
+	o.Includes = []string{shared}
+	_, err := Load(context.Background(), root, o)
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if want := filepath.Join(shared, "acme", "common.proto") + ":4:17:"; !strings.Contains(err.Error(), want) {
+		t.Errorf("missing %q in:\n%s", want, err)
+	}
+	if strings.Contains(err.Error(), filepath.Join(root, "acme")) {
+		t.Errorf("the error names a file under the design root, which holds none:\n%s", err)
+	}
+}
+
 func TestIncludesResolveImports(t *testing.T) {
 	shared := write(t, map[string]string{"shared/id.proto": `syntax = "proto3";
 package shared;

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -58,14 +59,15 @@ func Load(ctx context.Context, designRoot string, opts Options) (*Set, error) {
 // compile runs protocompile over names with designRoot as the first import
 // root, reporting every error with its file path.
 func compile(ctx context.Context, designRoot string, names, includes []string) (linker.Files, error) {
+	roots := append([]string{designRoot}, includes...)
 	var errs []string
 	rep := reporter.NewReporter(func(e reporter.ErrorWithPos) error {
 		pos := e.GetPosition()
-		errs = append(errs, fmt.Sprintf("  %s:%d:%d: %v", filepath.Join(designRoot, filepath.FromSlash(pos.Filename)), pos.Line, pos.Col, e.Unwrap()))
+		errs = append(errs, fmt.Sprintf("  %s:%d:%d: %v", sourcePath(roots, pos.Filename), pos.Line, pos.Col, e.Unwrap()))
 		return nil
 	}, nil)
 	c := protocompile.Compiler{
-		Resolver:       protocompile.WithStandardImports(&protocompile.SourceResolver{ImportPaths: append([]string{designRoot}, includes...)}),
+		Resolver:       protocompile.WithStandardImports(&protocompile.SourceResolver{ImportPaths: roots}),
 		SourceInfoMode: protocompile.SourceInfoStandard,
 		Reporter:       rep,
 	}
@@ -81,6 +83,24 @@ func compile(ctx context.Context, designRoot string, names, includes []string) (
 		return nil, err
 	}
 	return files, nil
+}
+
+// sourcePath returns the file the resolver reads for the proto at slash path name: under the
+// first of roots that holds it, as the resolver searches them, or under the first root.
+func sourcePath(roots []string, name string) string {
+	rel := filepath.FromSlash(name)
+	for _, root := range roots {
+		if p := filepath.Join(root, rel); fileExists(p) {
+			return p
+		}
+	}
+	return filepath.Join(roots[0], rel)
+}
+
+// fileExists reports whether path names something other than a directory.
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // newService reads one service off the protogen graph.
