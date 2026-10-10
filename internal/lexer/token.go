@@ -130,6 +130,12 @@ func spellings(first, last Kind) map[string]Kind {
 	return m
 }
 
+// LookupKeyword returns the Kind of the reserved word s.
+func LookupKeyword(s string) (Kind, bool) {
+	k, ok := keywords[s]
+	return k, ok
+}
+
 // IsIdent reports whether s lexes as a single [Ident]: a letter or `_`, then
 // letters, digits and `_`, and not a reserved word.
 func IsIdent(s string) bool {

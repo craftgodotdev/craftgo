@@ -11,7 +11,7 @@ func (p *Parser) parseServiceDecl(decs []*ast.Decorator, doc []string, header in
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
 	sd := &ast.ServiceDecl{Pos: pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Name: name.Text, Extend: extend}
-	_, rbrace := p.braced(func() {
+	_, rbrace := p.braced(nil, func() {
 		if m := p.parseServiceMember(); m != nil {
 			sd.Members = append(sd.Members, m)
 		}
@@ -30,6 +30,9 @@ func (p *Parser) parseExtendService(decs []*ast.Decorator, doc []string) ast.Dec
 	extend := p.advance()
 	if p.peek().Kind != lexer.KwService {
 		p.errorf(p.peek().Pos, "expected 'service' after 'extend'")
+		if !p.peekIs(lexer.EOF) && !p.startsDeclaration() {
+			p.skipUntil(false, p.startsDeclaration)
+		}
 		return nil
 	}
 	return p.parseServiceDecl(decs, doc, extend.Pos.Line, true)
@@ -75,17 +78,27 @@ func (p *Parser) parseEventPayloadSuffix(pl *ast.EventPayload) {
 	p.rejectOptionalSuffix("payload")
 }
 
-// parseServiceMember parses one method with its doc and decorators.
+// parseServiceMember parses one method with its doc and decorators. A verb in
+// upper case is reported and read as the verb.
 func (p *Parser) parseServiceMember() ast.ServiceMember {
 	doc := p.docAbove()
 	decs := p.parseDecorators()
 	t := p.peek()
-	if !t.Kind.IsVerb() {
+	verb, upper := upperVerb(t)
+	switch {
+	case t.Kind.IsVerb():
+		verb = t.Text
+	case upper:
+		p.errorf(t.Pos, "HTTP verbs are lower case - write `%s`", verb)
+	default:
 		p.errorf(t.Pos, "%s", serviceMemberError(t))
+		if t.Kind != lexer.RBrace && t.Kind != lexer.EOF {
+			p.skipUntil(true, func() bool { return p.startsMethod() || p.opensDeclaration() })
+		}
 		return nil
 	}
 	p.claimChain(decs, t.Pos.Line)
-	m := p.parseMethod(decs, doc)
+	m := p.parseMethod(decs, doc, verb)
 	p.rejectDecoratorsAfter("method", lexer.Kind.IsVerb)
 	return m
 }
@@ -109,14 +122,15 @@ type memberBody struct {
 }
 
 // parseMemberBody parses a `{ ... }` body. fn parses a clause starting at the
-// given token and reports whether it knew it; others are reported and skipped.
+// given token and reports whether it knew it; others are reported and skipped
+// to the next line. A body nothing closes ends where stop, unless nil, holds.
 // A comment block below header, the keyword's line, and above the `{` is the
 // body's first comment.
-func (p *Parser) parseMemberBody(header int, fn func(lexer.Token) bool, expected string) memberBody {
-	_, rbrace := p.braced(func() {
+func (p *Parser) parseMemberBody(header int, stop func() bool, fn func(lexer.Token) bool, expected string) memberBody {
+	_, rbrace := p.braced(stop, func() {
 		if !fn(p.peek()) {
 			p.errorf(p.peek().Pos, "expected %s, got %s", expected, p.peek().Kind)
-			p.advance()
+			p.skipUntil(true, p.startsLine)
 		}
 	})
 	return memberBody{
@@ -125,15 +139,17 @@ func (p *Parser) parseMemberBody(header int, fn func(lexer.Token) bool, expected
 	}
 }
 
-// parseMethod parses `verb Name /path { ... }`, where the path is optional.
-func (p *Parser) parseMethod(decs []*ast.Decorator, doc []string) *ast.Method {
-	verb := p.advance()
+// parseMethod parses `verb Name /path { ... }`, where the path is optional;
+// verb is the verb the first token spells. A verb starting a line ends a body
+// nothing closes.
+func (p *Parser) parseMethod(decs []*ast.Decorator, doc []string, verb string) *ast.Method {
+	verbTok := p.advance()
 	name, _ := p.expect(lexer.Ident)
-	m := &ast.Method{Pos: verb.Pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Verb: verb.Text, Name: name.Text}
+	m := &ast.Method{Pos: verbTok.Pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Verb: verb, Name: name.Text}
 	if p.peek().Kind == lexer.Slash {
 		m.Path = p.parsePath()
 	}
-	body := p.parseMemberBody(verb.Pos.Line, func(tok lexer.Token) bool {
+	body := p.parseMemberBody(verbTok.Pos.Line, p.startsMethod, func(tok lexer.Token) bool {
 		switch tok.Kind {
 		case lexer.KwRequest:
 			kw := p.advance()
@@ -165,7 +181,7 @@ func (p *Parser) parseEventDecl(decs []*ast.Decorator, doc []string) *ast.EventD
 	t := p.advance()
 	name, _ := p.expect(lexer.Ident)
 	e := &ast.EventDecl{Pos: t.Pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Name: name.Text}
-	body := p.parseMemberBody(t.Pos.Line, func(tok lexer.Token) bool {
+	body := p.parseMemberBody(t.Pos.Line, nil, func(tok lexer.Token) bool {
 		if tok.Kind != lexer.KwPayload {
 			return false
 		}

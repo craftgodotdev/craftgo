@@ -55,12 +55,17 @@ func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 		}
 		return nil
 	}
-	if t.Kind == lexer.Ident && t.Text == "import" {
+	switch {
+	case t.Kind == lexer.Ident && t.Text == "import":
 		p.errorf(t.Pos, "`import` was removed - reference another package's declaration as `pkg.Type`; delete this line")
 		p.skipLine()
 		return nil
+	case t.Kind == lexer.Ident:
+		p.errorf(t.Pos, "%s", unknownKeyword(t.Text))
+	default:
+		p.errorf(t.Pos, "expected declaration, got %s", t.Kind)
 	}
-	p.errorf(t.Pos, "expected declaration, got %s", t.Kind)
+	p.skipUntil(false, p.startsDeclaration)
 	return nil
 }
 
@@ -87,7 +92,7 @@ func (p *Parser) parseEnumDecl(decs []*ast.Decorator, doc []string) *ast.EnumDec
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
 	ed := &ast.EnumDecl{Pos: pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Name: name.Text}
-	_, rbrace := p.braced(func() {
+	_, rbrace := p.braced(nil, func() {
 		if v := p.parseEnumValue(); v != nil {
 			ed.Members = append(ed.Members, v)
 		}
@@ -118,6 +123,9 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 	// A reserved word is a value name here.
 	if t.Kind != lexer.Ident && !t.Kind.IsKeyword() {
 		p.errorf(t.Pos, "expected enum value name, got %s", t.Kind)
+		if t.Kind != lexer.EOF {
+			p.skipUntil(true, p.startsLine)
+		}
 		return nil
 	}
 	p.advance()

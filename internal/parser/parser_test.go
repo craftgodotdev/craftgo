@@ -728,9 +728,11 @@ func argKind(e ast.Expr) string {
 	return fmt.Sprintf("%T", e)
 }
 
-// An argument list left open ends at an inner decorator's `)` that ends its
-// line, or at the body's `}`, so the declarations below still parse.
-func TestUnclosedArgumentsCloseAtAnInnerDecorator(t *testing.T) {
+// An argument list nothing closes is reported at its `(` and ends with that
+// line, or at an inner decorator's `)` that ends it, so the members and the
+// declarations below still parse.
+func TestUnclosedArgumentsEndWithTheirLine(t *testing.T) {
+	const unclosed = "unclosed `(` - add the `)` that closes it"
 	for _, c := range []struct {
 		src   string
 		want  []string
@@ -738,38 +740,48 @@ func TestUnclosedArgumentsCloseAtAnInnerDecorator(t *testing.T) {
 	}{
 		{
 			"type User {\n\t@doc(\n\temail string @format(email)\n\tname  string\n}\n\ntype Other {\n\tid string\n}\n",
-			[]string{"5:8: expected ',' or ')' after decorator argument, got Ident", "5:15: expected ',' or ')' after decorator argument, got @"},
-			[]string{"User", "Other"},
+			[]string{"4:6: " + unclosed},
+			[]string{"User:email,name", "Other:id"},
 		},
 		{
 			"scalar Email string @format(email) @maxLength(@x(254)\n\nscalar Other string\n\ntype T {\n\te Email\n}\n",
 			[]string{"3:47: a decorator cannot be an argument of @maxLength"},
-			[]string{"Email", "Other", "T"},
+			[]string{"Email", "Other", "T:e"},
 		},
 		{
 			"type User {\n\tname string\n\t@doc(\n\temail string\n}\n\ntype Other {\n\tid string\n}\n",
-			[]string{"6:8: expected ',' or ')' after decorator argument, got Ident", "7:1: expected ',' or ')' after decorator argument, got }"},
-			[]string{"User", "Other"},
+			[]string{"5:6: " + unclosed},
+			[]string{"User:name,email", "Other:id"},
 		},
 		{
 			"type User {\n\t@doc(@example(\n\temail string @format(email)\n\tname  string\n}\n\ntype Other {\n\tid string\n}\n",
-			[]string{"4:7: a decorator cannot be an argument of @doc", "7:1: expected ',' or ')' after decorator argument, got }"},
-			[]string{"User", "Other"},
+			[]string{"4:7: a decorator cannot be an argument of @doc", "4:6: " + unclosed},
+			[]string{"User:email,name", "Other:id"},
 		},
 		{
 			"enum Status {\n\t@doc(\n\tActive\n\tInactive\n}\n\ntype Other {\n\tid string\n}\n",
-			[]string{"6:2: expected ',' or ')' after decorator argument, got Ident", "7:1: expected ',' or ')' after decorator argument, got }"},
-			[]string{"Status", "Other"},
+			[]string{"4:6: " + unclosed},
+			[]string{"Status:Active,Inactive", "Other:id"},
 		},
 		{
 			"type T {\n\ta string @length(@x(1) 5)\n}\n",
 			[]string{"4:19: a decorator cannot be an argument of @length", "4:25: expected ',' or ')' after decorator argument, got Int"},
-			[]string{"T"},
+			[]string{"T:a"},
 		},
 		{
 			"@errors([@x(1) Nf])\ntype X {}\n",
 			[]string{"3:10: a decorator cannot be an argument of @errors", "3:16: expected ',' or ']' after array element, got Ident"},
-			[]string{"X"},
+			[]string{"X:"},
+		},
+		{
+			"type T {\n\ta string @oneOf([\"x\", \"y\")\n\tb string\n}\n",
+			[]string{"4:18: unclosed `[` - add the `]` that closes it"},
+			[]string{"T:a,b"},
+		},
+		{
+			"type T {\n\ta Page<string\n\tb string\n}\n",
+			[]string{"4:8: unclosed `<` - add the `>` that closes it"},
+			[]string{"T:a,b"},
 		},
 	} {
 		p := New("t.craftgo", "package p\n\n"+c.src)
@@ -779,7 +791,21 @@ func TestUnclosedArgumentsCloseAtAnInnerDecorator(t *testing.T) {
 			got = append(got, fmt.Sprintf("%d:%d: %s", d.Pos.Line, d.Pos.Column, d.Msg))
 		}
 		for _, d := range f.Decls {
-			decls = append(decls, d.DeclName())
+			var members []string
+			switch v := d.(type) {
+			case *ast.TypeDecl:
+				for _, fl := range ast.Fields(v.Body) {
+					members = append(members, fl.Name)
+				}
+			case *ast.EnumDecl:
+				for _, ev := range v.EnumValues() {
+					members = append(members, ev.Name)
+				}
+			default:
+				decls = append(decls, d.DeclName())
+				continue
+			}
+			decls = append(decls, d.DeclName()+":"+strings.Join(members, ","))
 		}
 		if !slices.Equal(got, c.want) {
 			t.Errorf("%q: diagnostics = %q, want %q", c.src, got, c.want)

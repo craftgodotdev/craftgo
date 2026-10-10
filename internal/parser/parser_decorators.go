@@ -94,15 +94,18 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 	p.advance()
 	d := &ast.Decorator{Pos: at.Pos, Name: nameTok.Text}
 	if p.peek().Kind == lexer.LParen {
-		p.advance()
+		l := p.openList()
 		d.HasParens = true
 		errs := len(p.diags)
 		// A `}` ends the arguments too: it closes the body they were left open in.
-		for !p.peekIs(lexer.RParen) && !p.peekIs(lexer.RBrace) && !p.peekIs(lexer.EOF) {
+		for p.more(l) && !p.peekIs(lexer.RBrace) {
 			d.Args = append(d.Args, p.parseDecoratorArg(d.Name))
-			p.listSep(lexer.RParen, "decorator argument")
+			if !p.listSep(l, "decorator argument") {
+				break
+			}
 		}
-		rparen, closed := p.expect(lexer.RParen)
+		rparen := p.closeList(l)
+		closed := rparen.Kind == lexer.RParen
 		if (!closed || len(p.diags) > errs) && !d.HoldsBadExpr() {
 			d.Args = append(d.Args, &ast.DecoratorArg{Pos: rparen.Pos, Value: &ast.BadExpr{Pos: rparen.Pos}})
 		}
@@ -135,17 +138,19 @@ func (p *Parser) parseDecoratorArg(dec string) *ast.DecoratorArg {
 // parseObjectLiteral parses `{ key: value, ... }` in the arguments of the
 // decorator named dec.
 func (p *Parser) parseObjectLiteral(dec string) []*ast.ObjectField {
-	p.expect(lexer.LBrace)
+	l := p.openList()
 	var fields []*ast.ObjectField
-	for p.peek().Kind != lexer.RBrace && p.peek().Kind != lexer.EOF {
+	for p.more(l) {
 		fpos := p.peek().Pos
 		name := p.expectFieldKey()
 		p.expect(lexer.Colon)
 		val := p.parseValueOrArray(dec, lexer.RBrace)
 		fields = append(fields, &ast.ObjectField{Pos: fpos, Name: name, Value: val})
-		p.listSep(lexer.RBrace, "object field")
+		if !p.listSep(l, "object field") {
+			break
+		}
 	}
-	p.expect(lexer.RBrace)
+	p.closeList(l)
 	return fields
 }
 
@@ -173,13 +178,16 @@ func (p *Parser) parseValueOrArray(dec string, closer lexer.Kind) ast.Expr {
 // parseArray parses `[a, b, ...]`, whose elements may be arrays, in the
 // arguments of the decorator named dec.
 func (p *Parser) parseArray(dec string) ast.Expr {
-	pos := p.advance().Pos
+	pos := p.peek().Pos
+	l := p.openList()
 	arr := &ast.ArrayLit{Pos: pos}
-	for p.peek().Kind != lexer.RBracket && p.peek().Kind != lexer.EOF {
+	for p.more(l) {
 		arr.Elements = append(arr.Elements, p.parseValueOrArray(dec, lexer.RBracket))
-		p.listSep(lexer.RBracket, "array element")
+		if !p.listSep(l, "array element") {
+			break
+		}
 	}
-	p.expect(lexer.RBracket)
+	p.closeList(l)
 	return arr
 }
 
