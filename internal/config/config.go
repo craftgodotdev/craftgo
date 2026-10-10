@@ -4,8 +4,10 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -415,8 +417,9 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	dec := yaml.NewDecoder(bytes.NewReader(data))
 	var doc yaml.Node
-	if err := yaml.Unmarshal(data, &doc); err != nil {
+	if err := dec.Decode(&doc); err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	var cfg Config
@@ -428,6 +431,9 @@ func Load(path string) (*Config, error) {
 			return nil, fmt.Errorf("%s is no longer a manifest key - %s; drop it", key, note)
 		}
 		cfg.Warnings = append(cfg.Warnings, key+" is not a manifest key and is ignored")
+	}
+	if laterDocument(dec) {
+		cfg.Warnings = append(cfg.Warnings, "the YAML document after `---` is ignored - the manifest is its first document")
 	}
 	cfg.normalizePaths()
 	if err := cfg.validate(); err != nil {
@@ -442,6 +448,25 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// laterDocument reports whether dec, past the manifest's first document, holds
+// another with content, or one it cannot parse; a bare `---` or `...` at the
+// end holds none.
+func laterDocument(dec *yaml.Decoder) bool {
+	for {
+		var doc yaml.Node
+		err := dec.Decode(&doc)
+		if errors.Is(err, io.EOF) {
+			return false
+		}
+		if err != nil {
+			return true
+		}
+		if len(doc.Content) > 0 && doc.Content[0].Tag != "!!null" {
+			return true
+		}
+	}
 }
 
 // normalizePaths spells every path the manifest names with forward slashes,

@@ -64,7 +64,7 @@ openapi:
       bearerFormat: JWT
 ```
 
-A key the manifest does not declare - a misspelling, say - is ignored, and `craftgo gen` names it in a warning on stderr (`craftgo: warning: output.typs is not a manifest key and is ignored`); the editor shows the same warning on `craftgo.design.yaml`. A removed key - `design`, `output.services`, `output.consumeMiddleware`, `events.asyncapi` or `events.targets[].layout` - is an error that names what replaced it.
+A key the manifest does not declare - a misspelling, say - is ignored, and `craftgo gen` names it in a warning on stderr (`craftgo: warning: output.typs is not a manifest key and is ignored`); the editor shows the same warning on `craftgo.design.yaml`. A removed key - `design`, `output.services`, `output.consumeMiddleware`, `events.asyncapi` or `events.targets[].layout` - is an error that names what replaced it. The manifest is the file's first YAML document: a second one, after a `---` line, is ignored with a warning.
 
 ### `output.*` paths
 

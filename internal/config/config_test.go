@@ -91,6 +91,30 @@ proto:
 	}
 }
 
+// The manifest is its first YAML document: a later one with content is named
+// in a warning, a bare `---` or `...` closing the file is not.
+func TestLoadWarnsOfALaterDocument(t *testing.T) {
+	const warning = "the YAML document after `---` is ignored - the manifest is its first document"
+	for body, warns := range map[string]bool{
+		"output:\n  types: ./a\n---\noutput:\n  types: ./b\n": true,
+		"output:\n  types: ./a\n---\n: [\n":                   true,
+		"output:\n  types: ./a\n---\n":                        false,
+		"output:\n  types: ./a\n...\n":                        false,
+		"---\noutput:\n  types: ./a\n":                        false,
+	} {
+		cfg, err := loadManifest(t, body)
+		if err != nil {
+			t.Fatalf("%q: %v", body, err)
+		}
+		if got := slices.Contains(cfg.Warnings, warning); got != warns {
+			t.Errorf("%q: warned = %v, want %v (%v)", body, got, warns, cfg.Warnings)
+		}
+		if cfg.Output.Types != "./a" {
+			t.Errorf("%q: output.types = %q, want the first document's", body, cfg.Output.Types)
+		}
+	}
+}
+
 // TestLoadEveryDeclaredKeyRaisesNoWarning checks that a manifest setting every
 // key, through anchors, aliases and merge keys too, loads without a warning.
 func TestLoadEveryDeclaredKeyRaisesNoWarning(t *testing.T) {
