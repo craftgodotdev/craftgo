@@ -160,11 +160,18 @@ func (v snapshotView) lastBefore(c cursor) int {
 	return c.prev
 }
 
-// fieldAtCursor returns the type or error field on the cursor's line: the last
-// one starting before the cursor, else the line's first; nil off a field row.
+// fieldAtCursor returns the type or error field the cursor is on: the one
+// whose decorator holds the cursor, wherever that decorator is written, else
+// the field on the cursor's line, the last one starting before the cursor or
+// the line's first; nil off a field row.
 func fieldAtCursor(view snapshotView, c cursor) *ast.Field {
 	if view.file == nil {
 		return nil
+	}
+	if i, ok := decoratorAtCursor(view, c); ok {
+		if f := fieldDecoratedAt(view.file, view.tokens[i].Pos); f != nil {
+			return f
+		}
 	}
 	var at *ast.Field
 	for _, d := range view.file.Decls {
@@ -179,6 +186,42 @@ func fieldAtCursor(view snapshotView, c cursor) *ast.Field {
 		}
 	}
 	return at
+}
+
+// decoratorAtCursor returns the index of the `@` of the decorator whose name
+// or arguments hold the cursor.
+func decoratorAtCursor(view snapshotView, c cursor) (int, bool) {
+	if _, paren, ok := decoratorArgContext(view, c); ok {
+		return paren - 2, true
+	}
+	switch {
+	case view.kind(c.at) == lexer.At:
+		return c.at, true
+	case c.at > 0 && view.kind(c.at-1) == lexer.At:
+		return c.at - 1, true
+	case c.at < 0 && view.kind(c.prev) == lexer.At:
+		return c.prev, true
+	}
+	return 0, false
+}
+
+// fieldDecoratedAt returns the type or error field of f holding the decorator
+// whose `@` is at pos, or nil.
+func fieldDecoratedAt(f *ast.File, pos lexer.Position) *ast.Field {
+	for _, d := range f.Decls {
+		body, ok := declBody(d)
+		if !ok {
+			continue
+		}
+		for _, fl := range ast.Fields(body) {
+			for _, dec := range fl.Decorators {
+				if dec != nil && dec.Pos == pos {
+					return fl
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // typedByTypeParam reports whether f, a field of view's file, is typed by a

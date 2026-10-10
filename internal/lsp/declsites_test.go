@@ -169,6 +169,36 @@ func TestDecoratorsOnAOneLineBodyFollowTheFieldBeforeTheCursor(t *testing.T) {
 	expectNoLabels(t, items, "minLength", "pattern", "mutuallyExclusive")
 }
 
+// A decorator on a line of its own decorates the field below it, so `@` there
+// offers that field's decorators, and `@default(|)` the values of its enum.
+func TestDecoratorsOnTheirOwnLineFollowTheFieldBelow(t *testing.T) {
+	const head = "package r\n\nenum Color { Red  Green }\n\ntype T {\n\tn int\n"
+	for _, c := range []struct {
+		src          string
+		want, banned []string
+	}{
+		{head + "\t@|\n\ts string\n}\n", []string{"minLength", "pattern"}, []string{"gt", "range"}},
+		{head + "\t@min|\n\ts string\n}\n", []string{"minLength"}, []string{"minItems", "pattern"}},
+		{head + "\t@doc(\"d\")\n\t@|\n\n\ts string @maxLength(5)\n}\n", []string{"minLength", "pattern"}, []string{"gt", "range"}},
+	} {
+		items := mustCompletionsAtCursor(t, c.src)
+		expectLabels(t, items, c.want...)
+		expectNoLabels(t, items, c.banned...)
+	}
+	items := mustCompletionsAtCursor(t, head+"\t@default(|)\n\tc Color?\n}\n")
+	expectLabels(t, items, "Red", "Green")
+	if locs := definitionAt(t, "", head+"\t@default(Gre|en)\n\tc Color?\n}\n"); len(locs) != 1 || locs[0].Range.Start.Line != 2 {
+		t.Errorf("definition = %+v, want the enum value Green", locs)
+	}
+	h := hoverAt(t, "", head+"\t@format(email)\n\t|s string\n}\n")
+	if !strings.Contains(h, "field `T.s`") || !strings.Contains(h, "`@format`") {
+		t.Errorf("hover on s = %q, want it to list @format", h)
+	}
+	if h := hoverAt(t, "", strings.Replace(head, "\tn int", "\t|n int", 1)+"\t@format(email)\n\ts string\n}\n"); strings.Contains(h, "`@format`") {
+		t.Errorf("hover on n = %q, want no @format", h)
+	}
+}
+
 // design is a parsed and analysed fixture.
 type design struct {
 	file      *ast.File

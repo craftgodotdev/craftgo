@@ -189,26 +189,6 @@ func TestFormatRefusesACommentItWouldMoveOutOfALine(t *testing.T) {
 			"package x\n\ntype R { a string }\n\nevent E {\n\tpayload R\n\t// c\n\t[]\n}\n",
 			`t.craftgo:7:2: formatting would move the comment "c" out of the payload of event E`,
 		},
-		{
-			"decorator of a field",
-			"package x\n\ntype T {\n\ta string @\n\t// c\n\tdeprecated\n\tb string\n}\n",
-			`t.craftgo:5:2: formatting would move the comment "c" out of @deprecated`,
-		},
-		{
-			"decorator in a chain",
-			"package x\n\ntype T {\n\ta string @\n\t// c\n\tdeprecated @minLength(1)\n}\n",
-			`t.craftgo:5:2: formatting would move the comment "c" out of @deprecated`,
-		},
-		{
-			"decorator with arguments",
-			"package x\n\ntype T {\n\ta string @\n\t// c\n\tminLength(1)\n}\n",
-			`t.craftgo:5:2: formatting would move the comment "c" out of @minLength`,
-		},
-		{
-			"decorator of a declaration",
-			"package x\n\n@\n// c\ndeprecated\ntype T {\n\tb string\n}\n",
-			`t.craftgo:4:1: formatting would move the comment "c" out of @deprecated`,
-		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			out, diags := Format("t.craftgo", c.src)

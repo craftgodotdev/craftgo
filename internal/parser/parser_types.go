@@ -69,14 +69,15 @@ func (p *Parser) parseTypeBody(header int) ([]ast.TypeMember, lexer.Token) {
 	return members, rbrace
 }
 
-// parseTypeMember parses a field or a mixin. A mixin is a name followed by `.`
-// or `<`, or an upper-case name not followed on its line by a primitive or `map`.
+// parseTypeMember parses a field or a mixin with the decorators above it. A
+// mixin is a name followed by `.` or `<`, or an upper-case name not followed
+// on its line by a primitive or `map`.
 func (p *Parser) parseTypeMember() ast.TypeMember {
-	doc := p.docAbove()
-	decs := p.parseDecorators()
-	t := p.peek()
-	p.claimChain(decs, t.Pos.Line)
+	doc, decs, t := p.memberHead()
 	switch {
+	case len(decs) > 0 && (t.Kind == lexer.RBrace || t.Kind == lexer.EOF):
+		p.danglingDecorators(decs, "field")
+		return nil
 	case t.Kind.IsKeyword():
 		// A reserved word never names a type, so here it is a field name.
 		return p.parseField(doc, decs)
@@ -94,12 +95,12 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 	return &ast.Mixin{Pos: t.Pos, Doc: doc, Ref: ref}
 }
 
-// parseField parses `name Type` and the decorators after it; decs are the
-// ones before it.
+// parseField parses `name Type` and the decorators on the line its type ends
+// on; decs are the ones before it.
 func (p *Parser) parseField(doc []string, decs []*ast.Decorator) *ast.Field {
 	name := p.advance()
 	tref := p.parseTypeRef()
-	trailing := p.parseDecorators()
+	trailing := p.decoratorsOnLine(p.tokens[p.pos-1].Pos.Line)
 	p.claimTrailing(name.Pos.Line, trailing)
 	return &ast.Field{Pos: name.Pos, Doc: doc, Name: name.Text, Type: tref, Decorators: append(decs, trailing...)}
 }

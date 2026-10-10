@@ -52,28 +52,28 @@ The decorator set is closed - an unknown decorator fires `decorator/unknown`. If
 | -------------- | ---------------------------------------------------------- |
 | `file`         | Above the `package` line at the top of a `.craftgo` file   |
 | `type`         | Above a `type` declaration                                 |
-| `field`        | After a field in a `type` body                             |
+| `field`        | Above a field in a `type` body, or after it on its line    |
 | `enum`         | Above an `enum` declaration                                |
-| `enumValue`    | After an enum value (`Active @doc("...")`)                 |
+| `enumValue`    | Above an enum value, or after it on its line (`Active @doc("...")`) |
 | `error`        | Above an `error` declaration                               |
-| `errorField`   | After a field in an `error` body                           |
-| `scalar`       | After a `scalar` declaration                               |
+| `errorField`   | Above a field in an `error` body, or after it on its line  |
+| `scalar`       | Above a `scalar` declaration, or after it on its line      |
 | `service`      | Above a `service` declaration                              |
 | `method`       | Above an HTTP method inside a service body                 |
 | `middleware`   | Above a `middleware` declaration                           |
 | `event`        | Above an `event` declaration                               |
 
-The decorators of a field or an enum value follow it: on its line, or on lines of their own below it, up to the next member. A decorator on a line of its own between two fields therefore decorates the upper one, even across a blank line or a comment:
+A decorator on a line of its own decorates what is below it, across blank lines and comments; one on a field's or an enum value's line after its type or value decorates that member:
 
 ```craftgo
 type T {
-    x string
-    @minLength(1)
+    x string @minLength(1)
+    @maxLength(5)
     y string
 }
 ```
 
-Here `@minLength(1)` is `x`'s. A field takes decorators written above it only as the first member of its body or right below a mixin. An enum value takes none from above: above the first value they are an error.
+Here `@minLength(1)` is `x`'s and `@maxLength(5)` is `y`'s. Decorators on lines of their own with no member below them in a body are a parse error, and a mixin takes none, above it or on its line.
 
 ## Documentation and lifecycle
 

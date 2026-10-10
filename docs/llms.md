@@ -47,7 +47,7 @@ A reserved word is still legal where the grammar leaves no ambiguity: as a field
 
 Field syntax: `name TypeRef [@decorator(...) ...]`.
 
-A field's decorators may continue on lines of their own below it, up to the next member: a decorator on a line of its own between two fields, or two enum values, belongs to the upper one, even across a blank line or a comment. A field takes decorators written above it only as the first member of its body or right below a mixin.
+A decorator on a line of its own decorates the member or declaration below it, across blank lines and comments (`@format(email)` on the line above `email string` validates `email`); one on a field's, enum value's or scalar's line after its type or value decorates that member. Decorators on lines of their own with no member below them in a body are a parse error. A mixin takes no decorators, above it or on its line.
 
 | DSL form         | Go output               | Notes                                      |
 | ---------------- | ----------------------- | ------------------------------------------ |

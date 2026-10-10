@@ -58,7 +58,7 @@ func (p *Printer) printTypeBody(body []ast.TypeMember) {
 	for _, m := range body {
 		switch v := m.(type) {
 		case *ast.Field:
-			p.blankBetween(prevEnd, memberStartLine(v.Pos.Line, v.Decorators, len(v.Doc)))
+			p.blankBetween(prevEnd, p.docStartLine(v.Pos.Line, v.Decorators, v.Doc))
 			p.alignedField(v, maxName, maxType, typeStr[v])
 			prevEnd = p.src.memberEndLine(p.src.typeEnd(v.Type), v.Decorators)
 		case *ast.Mixin:
@@ -93,22 +93,31 @@ func memberStartLine(pos int, decs []*ast.Decorator, docLen int) int {
 	return pos - docLen
 }
 
-// alignedField prints f's doc, then f on one line padded to the maxName and
-// maxType columns. Decorators above or after f join its line unless a comment
-// pins them to their own lines.
+// docStartLine returns the first source line of a member whose name or
+// keyword is on line pos, its doc above its decorators included.
+func (p *Printer) docStartLine(pos int, decs []*ast.Decorator, doc []string) int {
+	return memberStartLine(pos, decs, len(p.docAboveDecorators(doc, decs, pos)))
+}
+
+// leadingDecorators prints the doc of a member whose name or keyword is on
+// source line pos and the decorators of decs above that line, one per line,
+// and returns the others, which go on its line.
+func (p *Printer) leadingDecorators(pos int, decs []*ast.Decorator, doc []string) []*ast.Decorator {
+	lead := leadingChain(decs, pos)
+	p.comments(memberStartLine(pos, decs, 0), p.docAboveDecorators(doc, lead, pos))
+	p.declDecorators(lead, pos)
+	return decs[len(lead):]
+}
+
+// alignedField prints f's doc and the decorators above it, then f on one line
+// padded to the maxName and maxType columns with the decorators on its line.
 func (p *Printer) alignedField(f *ast.Field, maxName, maxType int, ts string) {
-	start := memberStartLine(f.Pos.Line, f.Decorators, 0)
-	p.comments(start, f.Doc)
-	decs := f.Decorators
-	if lead := leadingChain(decs, f.Pos.Line); len(lead) > 0 && p.chainCommented(lead[0].Pos.Line, f.Pos.Line) {
-		p.declDecorators(lead, f.Pos.Line)
-		decs, start = decs[len(lead):], f.Pos.Line
-	}
-	p.line(start)
+	decs := p.leadingDecorators(f.Pos.Line, f.Decorators, f.Doc)
+	p.line(f.Pos.Line)
 	p.write(f.Name)
 	p.write(strings.Repeat(" ", maxName-len(f.Name)+1))
 	p.write(ts)
-	p.trailingDecorators(decs, f.Pos.Line, strings.Repeat(" ", maxType-len(ts)+1))
+	p.trailingDecorators(decs, strings.Repeat(" ", maxType-len(ts)+1))
 	p.endCode()
 }
 
@@ -143,7 +152,7 @@ func (p *Printer) EnumDecl(d *ast.EnumDecl) {
 	for _, m := range d.Members {
 		switch v := m.(type) {
 		case *ast.EnumValue:
-			p.blankBetween(prevEnd, v.Pos.Line-len(v.Doc))
+			p.blankBetween(prevEnd, p.docStartLine(v.Pos.Line, v.Decorators, v.Doc))
 			p.EnumValue(v, maxName)
 			prevEnd = p.src.memberEndLine(p.src.valueEnd(v), v.Decorators)
 		case *ast.FreeComment:
@@ -157,7 +166,7 @@ func (p *Printer) EnumDecl(d *ast.EnumDecl) {
 }
 
 func (p *Printer) EnumValue(v *ast.EnumValue, maxName int) {
-	p.comments(v.Pos.Line, v.Doc)
+	decs := p.leadingDecorators(v.Pos.Line, v.Decorators, v.Doc)
 	p.line(v.Pos.Line)
 	p.write(v.Name)
 	switch v.Kind {
@@ -170,7 +179,7 @@ func (p *Printer) EnumValue(v *ast.EnumValue, maxName int) {
 		p.write("= ")
 		p.write(v.StrText)
 	}
-	p.trailingDecorators(v.Decorators, v.Pos.Line, " ")
+	p.trailingDecorators(decs, " ")
 	p.endCode()
 }
 
@@ -192,23 +201,14 @@ func (p *Printer) ErrorDecl(d *ast.ErrorDecl) {
 	p.closeBrace(d.EndPos.Line)
 }
 
-// ScalarDecl prints `scalar Name primitive` with its decorators on the line;
-// a chain above the keyword keeps its lines when a comment pins it.
+// ScalarDecl prints the decorators above `scalar Name primitive`, then the
+// declaration with the decorators on its line.
 func (p *Printer) ScalarDecl(d *ast.ScalarDecl) {
-	start := memberStartLine(d.Pos.Line, d.Decorators, 0)
-	p.comments(start, p.docAboveDecorators(d.Doc, d.Decorators, d.Pos.Line))
-	decs := d.Decorators
-	if lead := leadingChain(decs, d.Pos.Line); len(lead) > 0 && p.chainCommented(lead[0].Pos.Line, d.Pos.Line) {
-		p.declDecorators(lead, d.Pos.Line)
-		decs, start = decs[len(lead):], d.Pos.Line
-	}
-	p.line(start)
+	decs := p.leadingDecorators(d.Pos.Line, d.Decorators, d.Doc)
+	p.line(d.Pos.Line)
 	p.write("scalar")
 	p.header(d.Pos, d.Name, d.Primitive)
-	if len(decs) > 0 {
-		p.write(" ")
-		p.inlineDecorators(decs)
-	}
+	p.trailingDecorators(decs, " ")
 	p.endCode()
 }
 

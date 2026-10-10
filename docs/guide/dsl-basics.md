@@ -128,7 +128,19 @@ type CreateUserReq {
 
 53 decorators, grouped by purpose: validators, bindings, metadata, service-level. Full reference at [Decorators](/guide/decorators).
 
-A field's decorators follow its type and may continue on the lines below: every decorator up to the next field name belongs to the field above it, blank lines included - `@doc(...)` written on its own line between fields `a` and `b` decorates `a` (`craftgo fmt` moves it onto `a`'s line). Only the first field of a body takes decorators from the lines above it. Enum values work the same way, except that a decorator above the first value is an error. A declaration's or method's decorators go before its keyword; one after a declaration or method on the same line is a parse error (`decorator @doc follows a declaration on its line; a decorator goes before what it decorates`) unless the next declaration starts on that line. A decorator cannot be another decorator's argument: `@doc(@deprecated)` is a parse error (`a decorator cannot be an argument of @doc`).
+A decorator on a line of its own decorates what is below it: the next field, enum value, method or declaration, across blank lines and comments, as in Java, TypeScript or Python. A field, an enum value or a scalar also takes the decorators after it on its line, and those that follow them on the line where a multi-line argument list closes:
+
+```craftgo
+type Signup {
+    id string
+
+    @format(email)
+    @maxLength(254)
+    email string @minLength(3)
+}
+```
+
+Here `email` carries `@format`, `@maxLength` and `@minLength`, and `id` carries none. Decorators on lines of their own with nothing below them in the body are a parse error (`decorator @doc has no field below it`), and so is an `@` whose name is not on its line. `craftgo fmt` prints the decorators written above a member one per line above it, and those written on its line after its type. A declaration's or method's decorators go before its keyword; one after a declaration or method on the same line is a parse error (`decorator @doc follows a declaration on its line; a decorator goes before what it decorates`) unless the next declaration starts on that line. A decorator cannot be another decorator's argument: `@doc(@deprecated)` is a parse error (`a decorator cannot be an argument of @doc`).
 
 ## Services
 
@@ -329,7 +341,7 @@ Each package's types are one Go package, so two packages cannot reference each o
 type User {}
 ```
 
-Below a declaration's decorators, the comment right above its keyword joins the doc too, after the one above the decorators:
+Below the decorators of a declaration, a field or an enum value, the comment right above its keyword or name joins the doc too, after the one above the decorators:
 
 ```craftgo
 // Order is a placed order.

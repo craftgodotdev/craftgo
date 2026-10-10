@@ -43,7 +43,7 @@ type User {
 }
 ```
 
-The list is filtered by the field's type: `@length` appears on string and bytes fields, `@minItems` on arrays and maps.
+The list is filtered by the field's type: `@length` appears on string and bytes fields, `@minItems` on arrays and maps. On a line of its own, `@` offers the decorators of the field below it, the one it will decorate.
 
 ### Smart argument completion
 

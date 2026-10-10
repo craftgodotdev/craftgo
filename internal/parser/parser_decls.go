@@ -99,20 +99,19 @@ func (p *Parser) parseEnumDecl(decs []*ast.Decorator, doc []string) *ast.EnumDec
 	return ed
 }
 
-// parseEnumValue parses `Name` or `Name = literal`, then its decorators.
-// Decorators before the name are reported and dropped.
+// parseEnumValue parses `Name` or `Name = literal` with the decorators above
+// it and those on the line it ends on.
 func (p *Parser) parseEnumValue() *ast.EnumValue {
-	doc := p.docAbove()
 	// An `@` before `Name =` is a stray one, and the value after it still counts.
 	if p.peekIs(lexer.At) && p.peekAt(2).Kind == lexer.Equal {
 		p.errorf(p.peek().Pos, "expected enum value name, got %s", lexer.At)
 		p.advance()
 	}
-	for _, d := range p.parseDecorators() {
-		p.errorf(d.Pos, "decorator @%s has no enum value before it; an enum value's decorators follow it", d.Name)
+	doc, decs, t := p.memberHead()
+	if len(decs) > 0 && (t.Kind == lexer.RBrace || t.Kind == lexer.EOF) {
+		p.danglingDecorators(decs, "enum value")
+		return nil
 	}
-	t := p.peek()
-	// Decorators that close the body leave no value to parse.
 	if t.Kind == lexer.RBrace {
 		return nil
 	}
@@ -122,7 +121,7 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 		return nil
 	}
 	p.advance()
-	v := &ast.EnumValue{Pos: t.Pos, Doc: doc, Name: t.Text, Kind: ast.EnumBare}
+	v := &ast.EnumValue{Pos: t.Pos, Doc: doc, Name: t.Text, Kind: ast.EnumBare, Decorators: decs}
 	if p.peek().Kind == lexer.Equal {
 		p.advance()
 		switch p.peek().Kind {
@@ -148,8 +147,9 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 			p.errorf(p.peek().Pos, "expected int or string for enum value")
 		}
 	}
-	v.Decorators = p.parseDecorators()
-	p.claimTrailing(t.Pos.Line, v.Decorators)
+	trailing := p.decoratorsOnLine(p.tokens[p.pos-1].Pos.Line)
+	p.claimTrailing(t.Pos.Line, trailing)
+	v.Decorators = append(v.Decorators, trailing...)
 	return v
 }
 

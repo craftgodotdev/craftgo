@@ -224,8 +224,8 @@ func (l *layout) at(line int) string {
 	return best.name
 }
 
-// head is the source lines from and to of a member's name and type, a clause's
-// keyword and type, or a decorator's `@` and name, which print on one line.
+// head is the source lines from and to of a member's name and type, or a
+// clause's keyword and type, which print on one line.
 type head struct {
 	from, to int
 	what     string
@@ -237,11 +237,6 @@ func heads(f *ast.File, src *source) []head {
 	add := func(from lexer.Position, to lexer.Token, what string) {
 		if to.Pos.Line > from.Line {
 			out = append(out, head{from.Line, to.Pos.Line, what})
-		}
-	}
-	for i, t := range src.toks {
-		if t.Kind == lexer.At && i+1 < len(src.toks) {
-			add(t.Pos, src.toks[i+1], "@"+src.toks[i+1].Text)
 		}
 	}
 	body := func(members []ast.TypeMember) {

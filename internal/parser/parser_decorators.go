@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"slices"
 	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -15,6 +16,31 @@ func (p *Parser) rejectMixinDecorators(mixinPos lexer.Position, decs []*ast.Deco
 		}
 		p.errorf(d.Pos, "decorators are not supported on mixin references (@%s near %s); attach the decorator to the target type or to a field that uses it", d.Name, mixinPos)
 	}
+}
+
+// memberHead parses the doc and the decorators above a member and returns
+// them with the member's first token. The doc is the comment above the
+// decorators, then the one right above that token, which also stays in the
+// chain.
+func (p *Parser) memberHead() (doc []string, decs []*ast.Decorator, t lexer.Token) {
+	doc = p.docAbove()
+	decs = p.parseDecorators()
+	t = p.peek()
+	p.claimChain(decs, t.Pos.Line)
+	if len(decs) > 0 {
+		doc = slices.Concat(doc, t.Doc)
+	}
+	return doc, decs, t
+}
+
+// danglingDecorators reports decs, the decorators that close a body with no
+// member of the kind what below them, unless an argument list among them
+// already failed to parse.
+func (p *Parser) danglingDecorators(decs []*ast.Decorator, what string) {
+	if slices.ContainsFunc(decs, (*ast.Decorator).HoldsBadExpr) {
+		return
+	}
+	p.errorf(decs[0].Pos, "decorator @%s has no %s below it: a decorator on a line of its own decorates the %s below it - move it onto the line of the %s it belongs to", decs[0].Name, what, what, what)
 }
 
 // parseDecorators parses zero or more decorators.
@@ -57,6 +83,10 @@ func (p *Parser) rejectDecoratorsAfter(what string, starts func(lexer.Kind) bool
 func (p *Parser) parseDecorator() *ast.Decorator {
 	at := p.advance()
 	nameTok := p.peek()
+	if nameTok.Pos.Line != at.Pos.Line {
+		p.errorf(at.Pos, "expected decorator name after @ on its line")
+		return &ast.Decorator{Pos: at.Pos}
+	}
 	if nameTok.Kind != lexer.Ident && !nameTok.Kind.IsKeyword() {
 		p.errorf(nameTok.Pos, "expected decorator name, got %s", nameTok.Kind)
 		return &ast.Decorator{Pos: at.Pos}

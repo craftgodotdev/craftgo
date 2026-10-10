@@ -205,9 +205,10 @@ func TestFormatPreservesComments(t *testing.T) {
 type T {
   x string @minLength(1) // note
            @maxLength(5)
+  y string
 }
 `,
-			want: []string{"\tx string @minLength(1) // note\n\t\t@maxLength(5)\n"},
+			want: []string{"\tx string @minLength(1) // note\n\t@maxLength(5)\n\ty string\n"},
 		},
 		{
 			name: "end-of-file comment block",

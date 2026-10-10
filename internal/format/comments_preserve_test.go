@@ -131,42 +131,60 @@ func TestFormatMovesACommentWithItsCode(t *testing.T) {
 // Decorators continued on the lines after a field or an enum value join its
 // line without a blank line after it; a comment among them keeps them on
 // their lines, one level deeper, and stays where it was.
-func TestFormatContinuedDecorators(t *testing.T) {
+// A decorator on a line of its own prints above the member it decorates, the
+// one below it, one per line under the member's doc; the decorators on a
+// member's line stay there.
+func TestFormatKeepsOwnLineDecoratorsAboveTheirMember(t *testing.T) {
 	for _, c := range []struct{ name, src, want string }{
 		{
-			"field chain",
+			"field",
 			"package x\n\ntype T {\n\tx string @minLength(1)\n\t\t@maxLength(5)\n\ty string\n}\n",
-			"package x\n\ntype T {\n\tx string @minLength(1) @maxLength(5)\n\ty string\n}\n",
+			"package x\n\ntype T {\n\tx string @minLength(1)\n\t@maxLength(5)\n\ty string\n}\n",
 		},
 		{
-			"field chain before a blank line",
+			"one per line",
+			"package x\n\ntype T {\n\tid string\n\n\t@format(email) @maxLength(254)\n\temail string @minLength(3)\n}\n",
+			"package x\n\ntype T {\n\tid    string\n\n\t@format(email)\n\t@maxLength(254)\n\temail string @minLength(3)\n}\n",
+		},
+		{
+			"blank line under the decorator",
 			"package x\n\ntype T {\n\tx string @minLength(1)\n\t\t@maxLength(5)\n\n\ty string\n}\n",
-			"package x\n\ntype T {\n\tx string @minLength(1) @maxLength(5)\n\n\ty string\n}\n",
+			"package x\n\ntype T {\n\tx string @minLength(1)\n\t@maxLength(5)\n\ty string\n}\n",
 		},
 		{
-			"comment in a field chain",
+			"doc above the decorators",
 			"package x\n\ntype T {\n\tid   string\n\tname string @minLength(1)\n\t// c\n\t@maxLength(5)\n\ty    string\n}\n",
-			"package x\n\ntype T {\n\tid   string\n\tname string @minLength(1)\n\t\t// c\n\t\t@maxLength(5)\n\ty    string\n}\n",
+			"package x\n\ntype T {\n\tid   string\n\tname string @minLength(1)\n\t// c\n\t@maxLength(5)\n\ty    string\n}\n",
 		},
 		{
-			"comment above a field's first decorator",
-			"package x\n\ntype T {\n\tx string\n\t\t// c\n\t\t@maxLength(5)\n\ty string\n}\n",
-			"package x\n\ntype T {\n\tx string\n\t\t// c\n\t\t@maxLength(5)\n\ty string\n}\n",
+			"doc above and under the decorators",
+			"package x\n\ntype T {\n\tx string\n\t\t// c\n\t\t@maxLength(5)\n\t// d\n\ty string\n}\n",
+			"package x\n\ntype T {\n\tx string\n\t// c\n\t@maxLength(5)\n\t// d\n\ty string\n}\n",
 		},
 		{
-			"trailing comment in a field chain",
+			"trailing comments",
 			"package x\n\ntype T {\n\tx string @minLength(1) // c\n\t\t@maxLength(5) // d\n\ty string\n}\n",
-			"package x\n\ntype T {\n\tx string @minLength(1) // c\n\t\t@maxLength(5) // d\n\ty string\n}\n",
+			"package x\n\ntype T {\n\tx string @minLength(1) // c\n\t@maxLength(5) // d\n\ty string\n}\n",
 		},
 		{
-			"enum value chain",
+			"a decorator before the name",
+			"package x\n\ntype T {\n\t@maxLength(5) y string @minLength(1)\n}\n",
+			"package x\n\ntype T {\n\ty string @maxLength(5) @minLength(1)\n}\n",
+		},
+		{
+			"enum value",
 			"package x\n\nenum E {\n\tA = 1 @doc(\"a\")\n\t\t@deprecated\n\tB = 2\n}\n",
-			"package x\n\nenum E {\n\tA = 1 @doc(\"a\") @deprecated\n\tB = 2\n}\n",
+			"package x\n\nenum E {\n\tA = 1 @doc(\"a\")\n\t@deprecated\n\tB = 2\n}\n",
 		},
 		{
-			"comment in an enum value chain",
-			"package x\n\nenum E {\n\tA = 1 @doc(\"a\")\n\t// c\n\t@deprecated\n\tB = 2\n}\n",
-			"package x\n\nenum E {\n\tA = 1 @doc(\"a\")\n\t\t// c\n\t\t@deprecated\n\tB = 2\n}\n",
+			"comment between an enum value's decorators",
+			"package x\n\nenum E {\n\tA = 1 @doc(\"a\")\n\t@doc(\"b\")\n\t// c\n\t@deprecated\n\tB = 2\n}\n",
+			"package x\n\nenum E {\n\tA = 1 @doc(\"a\")\n\t@doc(\"b\")\n\t// c\n\t@deprecated\n\tB = 2\n}\n",
+		},
+		{
+			"scalar",
+			"package x\n\n@minLength(1)\nscalar S string @maxLength(5)\n",
+			"package x\n\n@minLength(1)\nscalar S string @maxLength(5)\n",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
@@ -225,7 +243,7 @@ func TestFormatKeepsACommentInDecoratorArguments(t *testing.T) {
 		{
 			"decorator above a field",
 			"package x\n\ntype T {\n\t@minLength(\n\t\t// c\n\t\t1)\n\ta string\n}\n",
-			"package x\n\ntype T {\n\ta string @minLength(\n\t\t// c\n\t\t1,\n\t)\n}\n",
+			"package x\n\ntype T {\n\t@minLength(\n\t\t// c\n\t\t1,\n\t)\n\ta string\n}\n",
 		},
 		{
 			"array",

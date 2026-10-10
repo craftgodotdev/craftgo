@@ -338,19 +338,20 @@ func TestEnumValueBadAfterEqual(t *testing.T) {
 	}
 }
 
-// A decorator with no enum value before it is one error at its `@`, and the
-// value below it still parses; so is a stray `@` before `Name =`.
-func TestEnumDecoratorBeforeAnyValue(t *testing.T) {
-	const rule = "has no enum value before it; an enum value's decorators follow it"
+// An enum value takes the decorators above it; ones with no value below them
+// are one error at the first `@`, and so is a stray `@` before `Name =`.
+func TestEnumValueTakesTheDecoratorsAboveIt(t *testing.T) {
+	const rule = "has no enum value below it: a decorator on a line of its own decorates the enum value below it - move it onto the line of the enum value it belongs to"
 	for _, c := range []struct {
 		src    string
 		want   []string
 		values []string
 	}{
-		{"enum E {\n\t@doc(\"a\")\n\tA\n\tB\n}", []string{"4:2: decorator @doc " + rule}, []string{"A", "B"}},
-		{"enum E { @doc(\"a\") @deprecated A }", []string{"3:10: decorator @doc " + rule, "3:20: decorator @deprecated " + rule}, []string{"A"}},
+		{"enum E {\n\t@doc(\"a\")\n\tA\n\tB\n}", nil, []string{"A:doc", "B:"}},
+		{"enum E { @doc(\"a\") @deprecated A }", nil, []string{"A:doc deprecated"}},
+		{"enum E {\n\tA @doc(\"a\")\n\t@deprecated\n\tB = 2\n}", nil, []string{"A:doc", "B:deprecated"}},
 		{"enum E {\n\t@doc(\"a\")\n}", []string{"4:2: decorator @doc " + rule}, nil},
-		{"enum M {\n\t@Card = \"card\"\n\tCash  = \"cash\"\n}", []string{"4:2: expected enum value name, got @"}, []string{"Card", "Cash"}},
+		{"enum M {\n\t@Card = \"card\"\n\tCash  = \"cash\"\n}", []string{"4:2: expected enum value name, got @"}, []string{"Card:", "Cash:"}},
 	} {
 		p := New("t.craftgo", "package p\n\n"+c.src+"\n")
 		f := p.Parse()
@@ -363,7 +364,7 @@ func TestEnumDecoratorBeforeAnyValue(t *testing.T) {
 		}
 		var values []string
 		for _, v := range f.Decls[0].(*ast.EnumDecl).EnumValues() {
-			values = append(values, v.Name)
+			values = append(values, v.Name+":"+decoratorNames(v.Decorators))
 		}
 		if !slices.Equal(values, c.values) {
 			t.Errorf("%q: values = %q, want %q", c.src, values, c.values)
@@ -757,7 +758,7 @@ func TestUnclosedArgumentsCloseAtAnInnerDecorator(t *testing.T) {
 		},
 		{
 			"enum Status {\n\t@doc(\n\tActive\n\tInactive\n}\n\ntype Other {\n\tid string\n}\n",
-			[]string{"6:2: expected ',' or ')' after decorator argument, got Ident", "7:1: expected ',' or ')' after decorator argument, got }", "4:2: decorator @doc has no enum value before it; an enum value's decorators follow it"},
+			[]string{"6:2: expected ',' or ')' after decorator argument, got Ident", "7:1: expected ',' or ')' after decorator argument, got }"},
 			[]string{"Status", "Other"},
 		},
 		{
