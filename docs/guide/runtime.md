@@ -194,18 +194,28 @@ is a no-op when `Spec` is empty.
 ## Graceful shutdown
 
 ```go
-go srv.Start(":8080")
-
 stop := make(chan os.Signal, 1)
 signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+lis, err := net.Listen("tcp", ":8080")
+if err != nil {
+    log.Default().Error("server start", log.Err(err))
+    os.Exit(1)
+}
+log.Default().Info("listening", log.String("addr", lis.Addr().String()))
+go srv.Serve(lis)
 <-stop
 
 ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 defer cancel()
-srv.Stop(ctx)
+if err := srv.Stop(ctx); err != nil {
+    log.Default().Warn("http drain cut off requests", log.Err(err))
+}
 ```
 
-`Stop` closes the listener, waits for in-flight requests, then returns.
+`Stop` closes the listener, waits for in-flight requests, then returns; when `ctx` ends first it returns `ctx`'s error, and the requests still running end with the process. A `Stop` that comes before `Start` or `Serve` makes them return nil at once, as `http.Server.Shutdown` does, so a signal that arrives while the listener starts cannot leave it running. `Serve` takes a listener you bound, so the log names the address it holds - the real port of a `:0`.
+
+The generated `main.go` does the same in a goroutine per listener: a listener that cannot bind, or stops serving, shuts the rest down as a signal does, and the process then exits 1. With routes and RPCs, a signal stops both listeners at once - the gRPC health service turns `NOT_SERVING` as HTTP stops accepting - and they drain side by side within one 5s budget, each followed by its wiring shutdown; the telemetry flush comes last.
 
 ## Logging
 

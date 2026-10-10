@@ -135,8 +135,8 @@ go run .
 ```
 
 ```
-{"level":"info","ts":…,"caller":"hello/main.go:48","msg":"metrics scrape listening","url":"[::]:9090/metrics"}
-{"level":"info","ts":…,"caller":"hello/main.go:98","msg":"listening","addr":":8080"}
+{"level":"info","ts":…,"caller":"hello/main.go:49","msg":"metrics scrape listening","url":"[::]:9090/metrics"}
+{"level":"info","ts":…,"caller":"hello/main.go:107","msg":"listening","addr":"[::]:8080"}
 ```
 
 In another terminal:

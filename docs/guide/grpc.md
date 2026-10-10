@@ -197,7 +197,28 @@ shutdownGRPC, err := wiring.RegisterGRPC(ctx, grpcSrv, svc)
 - **Access log**: one `grpc access` line per call with `method`, `code` and `latency`; a stream logs once when it ends, and a call that panics logs the `Internal` that Recovery answers.
 - **Timeout** bounds unary calls to `grpc.handlerTimeout`; a handler that returns after the deadline has its late response dropped for `DeadlineExceeded`. Streams are not bounded.
 - **Health and reflection.** `grpc.health.v1` is registered and reports `SERVING` for the server and each registered service, then `NOT_SERVING` once `Stop` begins. Reflection follows `grpc.reflection` in `config.yaml`. Neither reaches the interceptors or the traces, as the HTTP probes never reach the middleware chain.
-- **Shutdown.** `grpcSrv.Stop(ctx)` drains in-flight RPCs within the budget and cuts off the rest when it runs out, beside the HTTP drain and the telemetry flush.
+- **Listening and shutdown.** The listener binds before it logs `grpc listening`, so the line names the real port of a `:0`, and one that cannot bind shuts the process down as a signal does, with exit status 1. On SIGINT or SIGTERM `main.go` stops the gRPC and HTTP listeners at once: `grpcSrv.Stop(ctx)` turns the health service `NOT_SERVING` and drains in-flight RPCs within the 5s budget, side by side with the HTTP drain, then cuts off the rest and logs `grpc drain cut off calls` if the budget runs out; the telemetry flush comes last. A `Stop` that comes before `Start` or `Serve` makes them return at once.
+
+The listener runs in a goroutine of its own, and the shutdown stops it beside the HTTP one:
+
+```go
+go func() {
+	lis, err := net.Listen("tcp", cfg.GRPC.Addr)
+	if err == nil {
+		log.Default().Info("grpc listening", log.String("addr", lis.Addr().String()))
+		err = grpcSrv.Serve(lis)
+	}
+	if err != nil {
+		log.Default().Error("grpc server start", log.Err(err))
+		failed <- struct{}{} // main waits on a signal or on failed, then shuts down
+	}
+}()
+
+// ...after the signal or the failure, beside the HTTP drain:
+if err := grpcSrv.Stop(shutdownCtx); err != nil {
+	log.Default().Warn("grpc drain cut off calls", log.Err(err))
+}
+```
 
 ### Errors
 

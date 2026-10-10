@@ -182,7 +182,7 @@ The OpenAPI 3.1 document - paths, component schemas, parameters, request bodies,
 
 ### `main.go` (gen-once)
 
-Wires the `ServiceContext`, the `server.Server`, route registration, middleware, logging/metrics/otel, and `Start`. With a proto service it also builds the `rpc.Server`, its interceptors and `wiring.RegisterGRPC`; a design of protos alone boots the gRPC listener only. Yours to customize - add a flag, change the listen address, register an extra middleware.
+Wires the `ServiceContext`, the `server.Server`, route registration, middleware, logging/metrics/otel, and the listener. With a proto service it also builds the `rpc.Server`, its interceptors and `wiring.RegisterGRPC`; a design of protos alone boots the gRPC listener only. Each listener binds before it logs the address it holds, the real port of a `:0` included; one that cannot bind, or stops serving, shuts the rest down as a signal does, and the process exits 1. On SIGINT or SIGTERM every listener stops at once and drains within one 5s budget, a drain the budget cuts short is logged, and the telemetry flush comes last. Yours to customize - add a flag, change the listen address, register an extra middleware.
 
 ### `events/<pkg>/events.go` (regen)
 
