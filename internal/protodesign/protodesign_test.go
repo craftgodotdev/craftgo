@@ -556,6 +556,41 @@ message R {}
 	}
 }
 
+// Protos that import one way but whose directories import each other are refused, naming the
+// packages and the imports that close the ring; directories that import one way pass.
+func TestDirectoriesImportingInARingAreRefused(t *testing.T) {
+	files := map[string]string{
+		"a/a1.proto": "syntax = \"proto3\";\npackage a;\nmessage A1 { string x = 1; }\n",
+		"b/b1.proto": "syntax = \"proto3\";\npackage b;\nimport \"a/a1.proto\";\nmessage B1 { a.A1 a = 1; }\n",
+		"a/a2.proto": "syntax = \"proto3\";\npackage a;\nimport \"a/a1.proto\";\nimport \"b/b1.proto\";\nmessage A2 { b.B1 b = 1; }\nservice S { rpc Do(A2) returns (A1); }\n",
+	}
+	_, err := Load(context.Background(), write(t, files), opts())
+	if err == nil {
+		t.Fatal("an import ring between directories was accepted")
+	}
+	want := "Go packages example.com/app/internal/pb/a and example.com/app/internal/pb/b import one another, which Go refuses: " +
+		"a/a2.proto imports b/b1.proto and b/b1.proto imports a/a1.proto - each proto directory is one Go package"
+	if !strings.Contains(err.Error(), want) {
+		t.Errorf("missing %q in:\n%s", want, err)
+	}
+
+	// Three directories in a ring are named in order.
+	ring := map[string]string{
+		"a/a.proto": "syntax = \"proto3\";\npackage a;\nimport \"b/b.proto\";\nmessage A { b.B b = 1; }\n",
+		"b/b.proto": "syntax = \"proto3\";\npackage b;\nimport \"c/c.proto\";\nmessage B { c.C c = 1; }\n",
+		"c/c.proto": "syntax = \"proto3\";\npackage c;\nimport \"a/x.proto\";\nmessage C { a.X x = 1; }\n",
+		"a/x.proto": "syntax = \"proto3\";\npackage a;\nmessage X {}\n",
+	}
+	_, err = Load(context.Background(), write(t, ring), opts())
+	if err == nil || !strings.Contains(err.Error(), "a/a.proto imports b/b.proto, b/b.proto imports c/c.proto and c/c.proto imports a/x.proto") {
+		t.Errorf("err = %v", err)
+	}
+
+	delete(files, "a/a2.proto")
+	files["c/c2.proto"] = "syntax = \"proto3\";\npackage c;\nimport \"b/b1.proto\";\nmessage C2 { b.B1 b = 1; }\nservice S { rpc Do(C2) returns (C2); }\n"
+	load(t, write(t, files), opts())
+}
+
 // A plugin file's source is read past the comment block protoc-gen-go copies from above the
 // proto's `syntax` line, such as a license header; a file whose first code comes before the
 // plugin header is not a plugin file.

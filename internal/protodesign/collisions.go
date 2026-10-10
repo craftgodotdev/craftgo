@@ -8,8 +8,9 @@ import (
 )
 
 // checkCollisions rejects two design files in one directory with different
-// proto packages, two services with one output directory, and two RPCs of a
-// service with one file name.
+// proto packages, two services with one output directory, two RPCs of a
+// service with one file name, and Go packages the design protos import in a
+// ring.
 func (s *Set) checkCollisions() error {
 	var errs []string
 	pkgByDir := map[string]string{}
@@ -42,6 +43,7 @@ func (s *Set) checkCollisions() error {
 			byFile[m.File] = m
 		}
 	}
+	errs = append(errs, s.importCycles()...)
 	if len(errs) == 0 {
 		return nil
 	}

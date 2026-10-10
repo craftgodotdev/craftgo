@@ -66,6 +66,8 @@ message HelloReply {
 
 A third-party proto belongs under `proto.includes`, never in the design folder, where its generated Go code would be a second copy of a package the binary may link too - two copies register the same file and panic at startup. While the plugins run, gen refuses a design proto whose `go_package` path lies in another module, a copy of a well-known type (`google/protobuf/*`), and a proto whose Go code the craftgo runtime itself links in (`google/rpc/*`, `google/api/httpbody.proto`, `grpc/health/*`, `grpc/reflection/*`, `grpc/binlog/*`, `opentelemetry/proto/*`, `io/prometheus/client/*`).
 
+Each directory is one Go package, so protos that import one way can still make two directories import each other: `a/a2.proto` → `b/b1.proto` → `a/a1.proto` makes packages `a` and `b` import one another, which Go refuses. Gen refuses that ring before anything is written and names the imports that close it; move protos between directories until the packages import one way.
+
 A design with protos alone - no `.craftgo` at all - is a plain gRPC service; a design with both boots both listeners from one `main.go`. A gRPC-only project needs no manifest key of its own: its config carries no `server:` or `docs:` block, and no OpenAPI document is written, because the document describes the `.craftgo` half and there is none.
 
 ### The plugins
