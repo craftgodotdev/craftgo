@@ -153,7 +153,7 @@ func orphanedStubNotes(proj *semantic.Project, protos *protodesign.Set, cfg *con
 }
 
 // scaffoldGapNotes reports a gen-once main.go or config.go that predates the design's transports,
-// and a pb import with no .pb.go under `output.pb: "-"`.
+// gRPC or HTTP, and a pb import with no .pb.go under `output.pb: "-"`.
 func scaffoldGapNotes(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string {
 	if cfg.Output.RuntimeDisabled() || cfg.Output.ContractsOnly() {
 		return nil
@@ -174,6 +174,10 @@ func scaffoldGapNotes(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 	}
 	if _, err := os.Stat(configPath); err == nil && protos.HasServices() && !fileMentions(configPath, "GRPCConfig") {
 		out = append(out, cfg.Output.Config+"/config.go predates the gRPC services and has no GRPCConfig - it is generated once, so add the `grpc:` block by hand (docs/guide/grpc.md shows it)")
+	}
+	if _, err := os.Stat(configPath); err == nil && projectHasRoutes(proj) && !fileMentions(configPath, "ServerConfig") {
+		out = append(out, cfg.Output.Config+"/config.go predates the HTTP routes and has no Server or Docs config, which the HTTP listener in "+cfg.Output.Main+
+			" reads - it is generated once, so add the `server:` and `docs:` blocks by hand (docs/guide/configuration.md shows them)")
 	}
 	if protos != nil && cfg.Output.PBDisabled() {
 		for _, svc := range protos.Services {

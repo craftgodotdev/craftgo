@@ -218,6 +218,31 @@ func TestProtoWarningsAreNoted(t *testing.T) {
 	}
 }
 
+// A gRPC-only project that gains its first route hears of both scaffolds that
+// predate it: main.go, with no HTTP listener, and config.go, with no Server or
+// Docs config for one to read.
+func TestFirstRouteNamesMainAndConfig(t *testing.T) {
+	cfg := scaffoldConfig(t)
+	set := loadProtos(t, cfg)
+	empty, _ := semantic.AnalyzeProject(nil, semantic.Options{})
+	dir := t.TempDir()
+	if err := generateProjectMain(empty, set, cfg, dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := generateRuntimeConfig(empty, set, cfg, dir); err != nil {
+		t.Fatal(err)
+	}
+	notes := scaffoldGapNotes(analyzeProject(t, httpScaffoldSrc), set, cfg, dir)
+	for _, want := range []string{"./main.go predates the HTTP routes", "./config/config.go predates the HTTP routes and has no Server or Docs config"} {
+		if !containsNote(notes, want) {
+			t.Errorf("missing note %q in %v", want, notes)
+		}
+	}
+	if notes := scaffoldGapNotes(empty, set, cfg, dir); containsNote(notes, "Server or Docs") {
+		t.Errorf("a design without routes is told of the HTTP config: %v", notes)
+	}
+}
+
 // After an output.fileCase change, the stubs left under the old directory name
 // are named as the declared service's, not as a dropped service's.
 func TestRecasedStubsNameTheirService(t *testing.T) {

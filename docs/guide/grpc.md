@@ -306,7 +306,7 @@ craftgo: ./main.go predates the gRPC services and never calls wiring.RegisterGRP
 craftgo: ./config/config.go predates the gRPC services and has no GRPCConfig - it is generated once, so add the `grpc:` block by hand (docs/guide/grpc.md shows it)
 ```
 
-Add the `GRPCConfig` struct and its default to `config.go`, the `grpc:` block to `config.yaml`, and the listener block above to `main.go`; the wiring, the server layer and the stubs are already there. The reverse holds for a gRPC project that gains its first route, and for one that drops its last proto: `wiring/grpc.go` is swept, and `craftgo gen` names the `main.go` that still calls `RegisterGRPC`. The pb code of that last proto stays under `internal/pb/`, which a design with no proto leaves alone; delete it by hand.
+Add the `GRPCConfig` struct and its default to `config.go`, the `grpc:` block to `config.yaml`, and the listener block above to `main.go`; the wiring, the server layer and the stubs are already there. The reverse holds for a gRPC project that gains its first route - `craftgo gen` names the `main.go` with no HTTP listener and the `config.go` with no `Server` or `Docs` config for it to read - and for one that drops its last proto: `wiring/grpc.go` is swept, and `craftgo gen` names the `main.go` that still calls `RegisterGRPC`. The pb code of that last proto stays under `internal/pb/`, which a design with no proto leaves alone; delete it by hand.
 
 The protos are compiled on every run, `--target docs` included: a proto that does not compile fails the run before anything is written, the way a design error does. Only the plugins are skipped when the Go target is not selected.
 
