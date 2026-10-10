@@ -140,9 +140,11 @@ func WithMaxDeliveries(n int) Option {
 	return func(t *Transport) { t.maxDeliveries = n }
 }
 
-// WithLockRenewInterval sets how often a share-group record's lock is renewed
-// while its handler runs. Default 10s, under the broker's 30s lock; zero stops
-// renewing. Renewal needs Kafka 4.2, which [Transport.Subscribe] checks.
+// WithLockRenewInterval sets how often the acquisition locks of a share group's
+// fetched records are renewed, each until it is answered: the record being
+// handled and those waiting behind it. Default 10s, under the broker's 30s
+// lock; zero stops renewing. Renewal needs Kafka 4.2, which
+// [Transport.Subscribe] checks.
 func WithLockRenewInterval(d time.Duration) Option {
 	return func(t *Transport) { t.lockRenew = d }
 }
@@ -593,10 +595,14 @@ func (t *Transport) consume(ctx context.Context, cl *kgo.Client, sub events.Subs
 			t.report(sub, nil, fmt.Errorf("kafka: fetch %s: %w", topic, err))
 		})
 
+		// Every record of the fetch is acquired until answered, so each keeps its
+		// lock while the ones ahead of it are handled.
+		stop := t.holdOpen(ctx, cl, recs...)
 		handled := 0
-		for handled < len(recs) && !t.stopping(ctx) && t.deliver(ctx, cl, sub, recs[handled]) {
+		for handled < len(recs) && !t.stopping(ctx) && t.deliver(ctx, sub, recs[handled]) {
 			handled++
 		}
+		stop()
 		t.handBack(recs[handled:]...)
 		// The records handled are a prefix in partition order, so committing them leaves
 		// every record after them uncommitted.
@@ -606,7 +612,7 @@ func (t *Transport) consume(ctx context.Context, cl *kgo.Client, sub events.Subs
 
 // deliver hands one record to the subscription and answers for it. It reports false,
 // leaving the record unanswered, when the shutdown cut its handling short.
-func (t *Transport) deliver(ctx context.Context, cl *kgo.Client, sub events.Subscription, rec *kgo.Record) bool {
+func (t *Transport) deliver(ctx context.Context, sub events.Subscription, rec *kgo.Record) bool {
 	msg := decode(sub.Event, rec)
 	msg.SetDeliveries(int(rec.DeliveryCount()))
 
@@ -619,10 +625,7 @@ func (t *Transport) deliver(ctx context.Context, cl *kgo.Client, sub events.Subs
 		return true
 	}
 
-	stop := t.holdOpen(ctx, cl, rec)
 	err := sub.Handle(withRecord(ctx, rec), msg)
-	stop()
-
 	if err != nil {
 		t.report(sub, msg, err)
 	}
@@ -690,10 +693,11 @@ func (t *Transport) report(sub events.Subscription, msg *events.Message, err err
 	}
 }
 
-// holdOpen renews the acquisition lock of recs until the returned func is
-// called, flushing each renewal at once so it arrives before the lock lapses.
+// holdOpen renews the acquisition lock of each of recs not yet answered until the
+// returned func is called, flushing each renewal at once so it arrives before the lock
+// lapses. franz-go drops the renewal of a record already answered.
 func (t *Transport) holdOpen(ctx context.Context, cl *kgo.Client, recs ...*kgo.Record) func() {
-	if !t.share || t.lockRenew <= 0 {
+	if !t.share || t.lockRenew <= 0 || len(recs) == 0 {
 		return func() {}
 	}
 	done := make(chan struct{})
