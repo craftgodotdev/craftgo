@@ -532,7 +532,6 @@ func TestProtoKeysAreValidated(t *testing.T) {
 		`output:` + "\n  pb: ../elsewhere\n":         "output.pb",
 		`output:` + "\n  grpc: ./internal/types\n":   "output.types and output.grpc both write",
 		`output:` + "\n  pb: ./internal/transport\n": "output.transport and output.pb both write",
-		`proto:` + "\n  includes: [../shared]\n":     "proto.includes[0]",
 		`proto:` + "\n  includes: [\"\"]\n":          "proto.includes[0]: an include names a directory",
 	}
 	for body, want := range cases {
@@ -540,5 +539,17 @@ func TestProtoKeysAreValidated(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: err = %v, want %q", body, err, want)
 		}
+	}
+}
+
+// An include root is only read, so it may lie outside the project, beside it
+// or anywhere on disk.
+func TestIncludesMayLeaveTheProject(t *testing.T) {
+	cfg, err := loadManifest(t, "proto:\n  includes: [../shared-protos, /opt/protos, '..\\common']\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := cfg.Proto.Includes, []string{"../shared-protos", "/opt/protos", "../common"}; !slices.Equal(got, want) {
+		t.Errorf("includes = %v, want %v", got, want)
 	}
 }

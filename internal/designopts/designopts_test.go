@@ -1,6 +1,7 @@
 package designopts
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
+	"github.com/craftgodotdev/craftgo/internal/protodesign"
 )
 
 // tree writes files, keyed by relative path, under a fresh root and returns it.
@@ -350,5 +352,41 @@ func TestProtoOptionsFollowTheManifest(t *testing.T) {
 	cfg.Output.PB = "-"
 	if got := ProtoOptions(cfg, "/proj"); got.PBDir != "" {
 		t.Errorf(`pb "-" must leave PBDir empty, got %q`, got.PBDir)
+	}
+}
+
+// A design proto compiles against an include root beside the project, as
+// `proto.includes: [../shared-protos]` names it.
+func TestIncludesBesideTheProjectCompile(t *testing.T) {
+	work := tree(t, map[string]string{
+		"shared-protos/shared/money.proto":  "syntax = \"proto3\";\npackage shared;\noption go_package = \"example.com/shared/gen/shared\";\nmessage Money { int64 cents = 1; }\n",
+		"billing/design/" + config.Filename: "proto:\n  includes: [../shared-protos]\n",
+		"billing/design/billing/billing.proto": "syntax = \"proto3\";\npackage billing;\nimport \"shared/money.proto\";\n" +
+			"message Invoice { shared.Money total = 1; }\nservice Billing { rpc Get(Invoice) returns (Invoice); }\n",
+	})
+	cfg, projectRoot, designDir, err := config.FindAt(filepath.Join(work, "billing", "design"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Package = "example.com/billing"
+	set, err := protodesign.Load(context.Background(), designDir, ProtoOptions(cfg, projectRoot))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !set.HasServices() {
+		t.Error("the design's service was not compiled")
+	}
+}
+
+// An include root outside the project resolves beside it, or stays where an
+// absolute path puts it.
+func TestProtoOptionsReachIncludesOutsideTheProject(t *testing.T) {
+	work := t.TempDir()
+	shared := filepath.Join(work, "shared-protos")
+	cfg := &config.Config{Package: "example.com/billing"}
+	cfg.Proto.Includes = []string{"../shared-protos", filepath.ToSlash(shared)}
+	got := ProtoOptions(cfg, filepath.Join(work, "billing"))
+	if want := []string{shared, shared}; !reflect.DeepEqual(got.Includes, want) {
+		t.Errorf("includes = %v, want %v", got.Includes, want)
 	}
 }

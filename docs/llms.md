@@ -595,7 +595,7 @@ events: # optional; a design with no event generates nothing either way
       out: ./internal/events # "-" skips the target
 
 proto: # read only when the design folder holds .proto files
-  includes: [] # extra import roots for protos you import but do not own
+  includes: [] # extra import roots for protos you import but do not own; only read, so they may lie outside the project
   plugins:
     go: "" # empty: `go tool protoc-gen-go`
     goGrpc: "" # empty: `go tool protoc-gen-go-grpc`

@@ -577,13 +577,10 @@ func (c *Config) validate() error {
 			return err
 		}
 	}
+	// An include root is only read, so it may sit outside the project.
 	for i, inc := range c.Proto.Includes {
-		key := fmt.Sprintf("proto.includes[%d]", i)
 		if inc == "" || inc == Disabled {
-			return fmt.Errorf("%s: an include names a directory", key)
-		}
-		if err := checkWithinProject(key, inc); err != nil {
-			return err
+			return fmt.Errorf("proto.includes[%d]: an include names a directory", i)
 		}
 	}
 	for _, t := range c.Events.Targets {

@@ -122,7 +122,7 @@ Read only when the design folder holds `.proto` files - see [gRPC](/guide/grpc).
 
 | Key                | Default | Meaning                                                                                          |
 | ------------------ | ------- | ------------------------------------------------------------------------------------------------ |
-| `includes`         | `[]`    | Extra import roots, relative to the project root, for protos the design imports but does not own. Each file found there must carry `option go_package`. The design folder is always the first import root. |
+| `includes`         | `[]`    | Extra import roots for protos the design imports but does not own, relative to the project root or absolute. craftgo only reads them, so they may lie outside the project - `../shared-protos` beside it, say. Each file found there must carry `option go_package`. The design folder is always the first import root. |
 | `plugins.go`       | `""`    | The `protoc-gen-go` command. Empty runs `go tool protoc-gen-go`, pinned by the `tool` directive in `go.mod`. A bare name is looked up on `PATH`, a path is run as given. |
 | `plugins.goGrpc`   | `""`    | The `protoc-gen-go-grpc` command, same rules.                                                     |
 

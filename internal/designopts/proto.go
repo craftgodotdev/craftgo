@@ -7,8 +7,9 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 )
 
-// ProtoOptions returns the proto compiler options cfg sets, with include roots
-// made absolute against projectRoot; PBDir is empty when `output.pb` is "-".
+// ProtoOptions returns the proto compiler options cfg sets, with relative
+// include roots made absolute against projectRoot; PBDir is empty when
+// `output.pb` is "-".
 func ProtoOptions(cfg *config.Config, projectRoot string) protodesign.Options {
 	opts := protodesign.Options{
 		Module:       cfg.Package,
@@ -20,7 +21,11 @@ func ProtoOptions(cfg *config.Config, projectRoot string) protodesign.Options {
 		opts.PBDir = cfg.Output.PB
 	}
 	for _, inc := range cfg.Proto.Includes {
-		opts.Includes = append(opts.Includes, filepath.Join(projectRoot, filepath.FromSlash(inc)))
+		inc = filepath.FromSlash(inc)
+		if !filepath.IsAbs(inc) {
+			inc = filepath.Join(projectRoot, inc)
+		}
+		opts.Includes = append(opts.Includes, inc)
 	}
 	return opts
 }
