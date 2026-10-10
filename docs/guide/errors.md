@@ -256,6 +256,7 @@ The errors the framework writes itself are JSON `{"message": "..."}`, with `Cont
 | 405 | a route matches the path under another method; `Allow` lists its methods | `{"message":"method not allowed"}` |
 | 413 | the body is over its cap (`@maxBodySize`, `server.maxBodySize`, `BodyLimit`) | `{"message":"request entity too large"}` |
 | 500 | a panic, or an error that carries no status | `{"message":"internal server error"}` |
+| 501 | a logic stub craftgo wrote that is not filled in yet (`server.ErrNotImplemented`) | `{"message":"not implemented"}` |
 | 504 | a deadline, as above | `{"message":"gateway timeout"}` |
 
 ## Custom error responses

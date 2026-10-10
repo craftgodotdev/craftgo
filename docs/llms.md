@@ -793,9 +793,11 @@ func New<Method>Service(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 
 func (l *<Method>Service) <Method>(req *types.<Req>) (*types.<Resp>, error) {
     // TODO: implement
-    return nil, nil
+    return nil, server.ErrNotImplemented
 }
 ```
+
+A new stub answers 501 `{"message":"not implemented"}` (`server.ErrNotImplemented`) until it is written; an RPC's stub returns `status.Error(codes.Unimplemented, "not implemented")`.
 
 The struct embeds `log.Logger` so logic can call `l.Info(...)` directly. Trace IDs flow into log lines automatically when OTel is enabled.
 

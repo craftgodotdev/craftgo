@@ -119,19 +119,25 @@ func generateGRPCServices(protos *protodesign.Set, cfg *config.Config, projectRo
 	return nil
 }
 
-// buildGRPCServiceData leaves every HTTP-only field zero, so service.tmpl renders the plain entry point.
+// grpcNotImplemented is what a new gRPC stub returns: the Unimplemented status.
+const grpcNotImplemented = `status.Error(codes.Unimplemented, "not implemented")`
+
+// buildGRPCServiceData renders the logic stub of an RPC from the template the HTTP stubs use.
 func buildGRPCServiceData(svc *protodesign.Service, m *protodesign.Method, imps grpcImports) serviceData {
 	set := grpcImportSet(imps.Module, svc, serviceNames)
 	sig := buildGRPCSignature(m, set.protoType(m.In), set.protoType(m.Out))
+	set.use(grpcCodesImport)
+	set.use(grpcStatusImport)
 	return serviceData{
-		Package:     svc.Package,
-		Service:     svc.Name,
-		Method:      m.Name,
-		ServiceName: idents.LogicTypeName(m.Name),
-		Doc:         docHead(m.Doc),
-		Entry:       []string{grpcEntry(svc.Name, m)},
-		Sig:         sig.Logic,
-		ImportDecl:  stubImportDecl(set, sig.Logic, imps.Svccontext),
+		Package:        svc.Package,
+		Service:        svc.Name,
+		Method:         m.Name,
+		ServiceName:    idents.LogicTypeName(m.Name),
+		Doc:            docHead(m.Doc),
+		Entry:          []string{grpcEntry(svc.Name, m)},
+		Sig:            sig.Logic,
+		NotImplemented: grpcNotImplemented,
+		ImportDecl:     stubImportDecl(set, sig.Logic, imps.Svccontext),
 	}
 }
 

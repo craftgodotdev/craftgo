@@ -180,8 +180,10 @@ func TestGenerateRawResponseBindsThenHandsWriter(t *testing.T) {
 		`"net/http"`,
 		"func (l *ListUsersService) ListUsers(w http.ResponseWriter, r *http.Request, req *types.ListReq) error {",
 		"// Its response is documented as types.UserList.",
-		`http.Error(w, "not implemented", http.StatusNotImplemented)`,
+		"return server.ErrNotImplemented",
 	)
+	// The stub leaves the response to WriteError, which renders the error as JSON.
+	mustContainNone(t, s, "http.Error(")
 }
 
 func TestGenerateRawResponseNoRequestSkipsBind(t *testing.T) {
@@ -222,7 +224,7 @@ func TestGenerateRawRequestHandsRequestThenEncodes(t *testing.T) {
 	mustContainAll(t, s,
 		"func (l *IngestService) Ingest(r *http.Request) (*types.IngestResult, error) {",
 		"// Its request is documented as types.IngestResult, whose Validate checks it.",
-		"return nil, nil",
+		"return nil, server.ErrNotImplemented",
 	)
 }
 

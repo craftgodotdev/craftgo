@@ -148,9 +148,11 @@ func NewSayHelloService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 // SayHello implements Greeter.SayHello.
 func (l *SayHelloService) SayHello(req *pb.HelloRequest) (*pb.HelloReply, error) {
 	// TODO: implement
-	return nil, nil
+	return nil, status.Error(codes.Unimplemented, "not implemented")
 }
 ```
+
+Until you write it, a stub answers `Unimplemented` with the message `not implemented`, whatever its streaming shape, and the access log records that code.
 
 The four streaming shapes give the logic these signatures - the generic stream types `protoc-gen-go-grpc` declares:
 

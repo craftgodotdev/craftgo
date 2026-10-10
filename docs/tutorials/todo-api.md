@@ -241,7 +241,7 @@ func (l *GetTodoService) GetTodo(req *types.GetTodoReq) (*types.Todo, error) {
 }
 ```
 
-By the time your function runs, the request is decoded, the path/query params are bound, and `req.Validate()` has passed. You only write the domain logic. The other three stubs still return `nil, nil`, which answers 200 `null` until you fill them.
+By the time your function runs, the request is decoded, the path/query params are bound, and `req.Validate()` has passed. You only write the domain logic. The other three stubs still return `server.ErrNotImplemented`, which answers 501 `{"message":"not implemented"}` until you fill them.
 
 ## 7. Run
 

@@ -124,9 +124,11 @@ func NewGetUserService(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 // GetUser implements UserService.GetUser.
 func (l *GetUserService) GetUser(req *types.GetUserReq) (*types.User, error) {
 	// TODO: implement
-	return nil, nil
+	return nil, server.ErrNotImplemented
 }
 ```
+
+Until you write it, the stub returns `server.ErrNotImplemented`, which `server.WriteError` answers 501 `{"message":"not implemented"}`. A stub for an RPC returns the gRPC twin, `status.Error(codes.Unimplemented, "not implemented")`.
 
 A method's `@doc` comes first in its comment, then an empty `//` line (`// Fetch one user.` / `//` / `// GetUser implements UserService.GetUser.`). The stubs, the middleware scaffolds, `svccontext.go`, `config/` and `main.go` are where you write code; everything else is regenerated.
 
