@@ -22,9 +22,10 @@ func GetClash(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		for _, _v := range resp.Hdr {
-			w.Header().Add("X-Hdr", _v)
-		}
-		server.WriteResponse(w, r, http.StatusOK, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp, func(w http.ResponseWriter) {
+			for _, _v := range resp.Hdr {
+				w.Header().Add("X-Hdr", _v)
+			}
+		})
 	}
 }

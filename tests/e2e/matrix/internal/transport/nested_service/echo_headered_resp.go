@@ -43,7 +43,8 @@ func EchoHeaderedResp(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("ETag", resp.Etag)
-		server.WriteResponse(w, r, http.StatusCreated, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp, func(w http.ResponseWriter) {
+			w.Header().Set("ETag", resp.Etag)
+		})
 	}
 }

@@ -22,7 +22,8 @@ func Login(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		server.SetCookie(w, "sid", resp.Token)
-		server.WriteResponse(w, r, http.StatusOK, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp, func(w http.ResponseWriter) {
+			server.SetCookie(w, "sid", resp.Token)
+		})
 	}
 }

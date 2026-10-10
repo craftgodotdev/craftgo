@@ -3,6 +3,11 @@
 package cookies
 
 // Validate returns the first constraint v violates, or nil.
+func (v *Gauge) Validate() error {
+	return nil
+}
+
+// Validate returns the first constraint v violates, or nil.
 func (v *Session) Validate() error {
 	return nil
 }

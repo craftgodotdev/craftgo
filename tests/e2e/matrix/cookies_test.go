@@ -28,6 +28,10 @@ func TestCookieAttributes(t *testing.T) {
 	if code, c := cookiesGet(t, ts.URL, "/lock"); code != http.StatusConflict || c != "lock=noon; Path=/; HttpOnly; Secure; SameSite=Lax" {
 		t.Errorf("error cookie: got %d %q", code, c)
 	}
+	// A success whose body fails to encode goes out as the 500, without its cookie.
+	if code, c := cookiesGet(t, ts.URL, "/broken"); code != http.StatusInternalServerError || c != "" {
+		t.Errorf("encode failure: got %d %q, want 500 without the cookie", code, c)
+	}
 	t.Cleanup(func() { _ = server.SetCookieOptions(server.DefaultCookieOptions()) })
 	if err := server.SetCookieOptions(server.CookieOptions{Path: "/api", SameSite: "strict"}); err != nil {
 		t.Fatal(err)

@@ -2,6 +2,12 @@
 
 package cookies
 
+// Gauge sets a cookie beside a reading the encoder may refuse.
+type Gauge struct {
+	Sid   string  `json:"-" cookie:"gauge"`
+	Level float64 `json:"level"`
+}
+
 // Session sets its token in a cookie beside its body.
 type Session struct {
 	Token string `json:"-" cookie:"sid"`
