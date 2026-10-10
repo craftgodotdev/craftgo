@@ -98,9 +98,10 @@ type listItem struct {
 
 // list writes items between opener, on source line open, and closer, on line
 // end: on one line or, when the items continue below line open and a trailing
-// comment sits on their lines, or a comment sits on a line of its own among
-// them, each source line of items on its own line one level deeper under the
-// comments above it, and the closer on a line of its own.
+// comment sits on a line of theirs above line end, or a comment sits on a line
+// of its own among them, each source line of items on its own line one level
+// deeper under the comments above it, and the closer on a line of its own. A
+// comment trailing line end follows the closer and what comes after it there.
 func (p *Printer) list(open, end int, opener string, items []listItem, closer string) {
 	p.write(opener)
 	var lines [][]listItem
@@ -112,7 +113,7 @@ func (p *Printer) list(open, end int, opener string, items []listItem, closer st
 		lines, rest = append(lines, rest[:k]), rest[k:]
 	}
 	n := len(items)
-	keep := n > 0 && items[n-1].first > open && p.trailingBefore(open, items[n-1].last+1)
+	keep := n > 0 && items[n-1].first > open && p.trailingBefore(open, end)
 	prev := open
 	for _, l := range lines {
 		keep = keep || p.argCommentBetween(prev, l[0].first)
@@ -146,7 +147,7 @@ func (p *Printer) list(open, end int, opener string, items []listItem, closer st
 	}
 	p.argComments(prev, end)
 	p.depth--
-	p.endLine(prev + 1)
+	p.endLine(min(prev+1, end))
 	p.indent()
 	p.write(closer)
 }

@@ -223,7 +223,7 @@ func TestFormatKeepsACommentInDecoratorArguments(t *testing.T) {
 		{
 			"closing parenthesis on the argument's line",
 			"package x\n\ntype T {\n\ta string @header(\n\t//TODO\n\t\"X\") // n\n\tb string\n}\n",
-			"package x\n\ntype T {\n\ta string @header(\n\t\t// TODO\n\t\t\"X\", // n\n\t)\n\tb string\n}\n",
+			"package x\n\ntype T {\n\ta string @header(\n\t\t// TODO\n\t\t\"X\",\n\t) // n\n\tb string\n}\n",
 		},
 		{
 			"arguments on the decorator's line",
@@ -470,7 +470,7 @@ func TestFormatKeepsAnArgumentListWithComments(t *testing.T) {
 		{
 			"arguments below the name",
 			"package x\n\ntype T {\n\tid string @doc // c1\n\t\t(\"x\") // c2\n}\n",
-			"package x\n\ntype T {\n\tid string @doc( // c1\n\t\t\"x\", // c2\n\t)\n}\n",
+			"package x\n\ntype T {\n\tid string @doc( // c1\n\t\t\"x\",\n\t) // c2\n}\n",
 		},
 		{
 			"arguments sharing a line",
@@ -491,6 +491,35 @@ func TestFormatKeepsAnArgumentListWithComments(t *testing.T) {
 			"declaration decorator",
 			"package x\n\n@doc(\n\t\"a\", // a\n\t\"b\" // b\n)\nmiddleware M\n",
 			"package x\n\n@doc(\n\t\"a\", // a\n\t\"b\", // b\n)\nmiddleware M\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
+	}
+}
+
+// A comment on the line where an argument list closes follows what comes after
+// the closer there, another decorator included, and never joins the list.
+func TestFormatKeepsTheCommentOfAListsClosingLineAfterIt(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{
+			"decorator after the list",
+			"package x\n\ntype T {\n\tname string @length(3,\n\t\t20) @pattern(\"^[a-z]+$\") // c\n}\n",
+			"package x\n\ntype T {\n\tname string @length(3, 20) @pattern(\"^[a-z]+$\") // c\n}\n",
+		},
+		{
+			"list kept over lines",
+			"package x\n\ntype T {\n\tname string @length(3, // min\n\t\t20) @pattern(\"^[a-z]+$\") // c\n}\n",
+			"package x\n\ntype T {\n\tname string @length(\n\t\t3, // min\n\t\t20,\n\t) @pattern(\"^[a-z]+$\") // c\n}\n",
+		},
+		{
+			"array argument",
+			"package x\n\ntype T {\n\tid string @oneOf([\"a\",\n\t\t\"b\"]) @doc(\"d\") // c\n}\n",
+			"package x\n\ntype T {\n\tid string @oneOf([\"a\", \"b\"]) @doc(\"d\") // c\n}\n",
+		},
+		{
+			"declaration decorator",
+			"package x\n\n@tags(\"a\",\n\t\"b\") // c\nservice S {\n\tget A /a {}\n}\n",
+			"package x\n\n@tags(\"a\", \"b\") // c\nservice S {\n\tget A /a {}\n}\n",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
