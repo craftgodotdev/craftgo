@@ -2942,6 +2942,12 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/Leaf'
           type: object
+        gone:
+          additionalProperties:
+            type: string
+          type:
+          - object
+          - "null"
         grid:
           items:
             items:
@@ -3037,6 +3043,12 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/Leaf'
           type: object
+        gone:
+          additionalProperties:
+            type: string
+          type:
+          - object
+          - "null"
         grid:
           items:
             items:
@@ -3101,6 +3113,12 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/Leaf'
           type: object
+        gone:
+          additionalProperties:
+            type: string
+          type:
+          - object
+          - "null"
         grid:
           items:
             items:
@@ -6889,6 +6907,12 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/Leaf'
           type: object
+        gone:
+          additionalProperties:
+            type: string
+          type:
+          - object
+          - "null"
         grid:
           items:
             items:

@@ -37,8 +37,8 @@ type CreateTaskReq struct {
 	Description *string        `json:"description,omitempty"`
 	Priority    *Priority      `json:"priority,omitempty"`
 	Points      *shared.Points `json:"points,omitempty"`
-	AssigneeIds []shared.ID    `json:"assigneeIds,omitempty"`
-	Labels      []string       `json:"labels,omitempty"`
+	AssigneeIds []shared.ID    `json:"assigneeIds,omitzero"`
+	Labels      []string       `json:"labels,omitzero"`
 	DueAt       *string        `json:"dueAt,omitempty"`
 }
 

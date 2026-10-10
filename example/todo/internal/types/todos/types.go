@@ -18,7 +18,7 @@ type CreateTodoReq struct {
 	Notes    *string       `json:"notes,omitempty"`
 	Status   TodoStatus    `json:"status"`
 	Priority *TodoPriority `json:"priority,omitempty"`
-	Tags     []string      `json:"tags,omitempty"`
+	Tags     []string      `json:"tags,omitzero"`
 }
 
 type GetTodoReq struct {

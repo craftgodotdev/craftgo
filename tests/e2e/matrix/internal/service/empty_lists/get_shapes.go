@@ -38,6 +38,7 @@ func (l *GetShapesService) GetShapes() (*types.Shapes, error) {
 		ByName:   map[string]types.Leaf{"a": {}},
 		Groups:   map[string][]types.Leaf{"g": nil, "h": {}},
 		Grid:     [][]string{nil, {}},
+		Maybe:    []string{},
 		Boxed:    types.Box[types.Leaf]{Vs: []types.Leaf{}},
 		BoxedOpt: &types.Box[types.Leaf]{Vs: []types.Leaf{{}}},
 		Tree:     types.Node{Kids: []types.Node{{}}, Next: &types.Node{Kids: []types.Node{}}},

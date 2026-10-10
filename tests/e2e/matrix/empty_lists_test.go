@@ -22,7 +22,7 @@ func emptyListsGet(t *testing.T, url, path string) (int, string) {
 }
 
 // A response goes out as the logic returns it, wherever a list or map sits: a nil one is null,
-// an empty one [] or {}, and an optional nil one is left out; an error body likewise.
+// an empty one [] or {}, and an optional one is left out only while nil; an error body likewise.
 func TestListsGoOutAsTheLogicReturnsThem(t *testing.T) {
 	ts := bootAll(t)
 	code, body := emptyListsGet(t, ts.URL, "/shapes")
@@ -36,6 +36,7 @@ func TestListsGoOutAsTheLogicReturnsThem(t *testing.T) {
 		`"byName":{"a":{"tags":null,"meta":null}}`,
 		`"groups":{"g":null,"h":[]}`,
 		`"grid":[null,[]]`,
+		`"maybe":[]`,
 		`"nulls":null`,
 		`"blob":null`,
 		`"boxed":{"v":{"tags":null,"meta":null},"vs":[]}`,
@@ -46,8 +47,8 @@ func TestListsGoOutAsTheLogicReturnsThem(t *testing.T) {
 			t.Errorf("shapes body lacks %s:\n%s", want, body)
 		}
 	}
-	if strings.Contains(body, `"maybe"`) {
-		t.Errorf("an optional nil list must be left out:\n%s", body)
+	if strings.Contains(body, `"gone"`) {
+		t.Errorf("an optional nil map must be left out:\n%s", body)
 	}
 	code, body = emptyListsGet(t, ts.URL, "/clash")
 	if want := `{"items":[],"tags":null,"meta":null}`; code != http.StatusConflict || strings.TrimSpace(body) != want {

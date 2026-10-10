@@ -110,7 +110,7 @@ type Order struct {
 // emits the per-element loop without a nil-guard because Go's
 // `range` on a nil slice is a no-op.
 type Org struct {
-	Teams []Team `json:"teams,omitempty"`
+	Teams []Team `json:"teams,omitzero"`
 }
 
 // Person → Home → Room → Furniture chain. Each level adds one

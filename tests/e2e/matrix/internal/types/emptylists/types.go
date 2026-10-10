@@ -36,7 +36,8 @@ type Shapes struct {
 	ByName   map[string]Leaf   `json:"byName"`
 	Groups   map[string][]Leaf `json:"groups"`
 	Grid     [][]string        `json:"grid"`
-	Maybe    []string          `json:"maybe,omitempty"`
+	Maybe    []string          `json:"maybe,omitzero"`
+	Gone     map[string]string `json:"gone,omitzero"`
 	Nulls    []string          `json:"nulls"`
 	Blob     []byte            `json:"blob"`
 	Boxed    Box[Leaf]         `json:"boxed"`

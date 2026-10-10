@@ -19,7 +19,7 @@ type PageSize int
 // ([card, bank]) and a @default query parameter as optional; the transport
 // pre-fills both before decoding.
 type ArrayDefaults struct {
-	Methods []PayMethod `json:"methods,omitempty"`
+	Methods []PayMethod `json:"methods,omitzero"`
 	SortBy  *string     `json:"-" query:"sortBy"`
 }
 
@@ -83,7 +83,7 @@ type DefaultsBoundary struct {
 //	    obj map<string, string>? @default({key: "v"})
 //	}
 type DefaultsCollection struct {
-	Arr []int `json:"arr,omitempty"`
+	Arr []int `json:"arr,omitzero"`
 }
 
 // DefaultsEnum uses an enum default (bare ident → Go const). The enum

@@ -31,12 +31,13 @@ type Shapes {
 	groups   map<string, Leaf[]>
 	grid     string[][]
 	maybe    string[]?
-	nulls    string[]            @nullable
+	gone     map<string, string>?
+	nulls    string[]             @nullable
 	blob     bytes
 	boxed    Box<Leaf>
 	boxedOpt Box<Leaf>?
 	tree     Node
-	hdr      string[]            @header("X-Hdr")
+	hdr      string[]             @header("X-Hdr")
 }
 
 // Chain reaches deep through its first node ahead of its own required lists.
