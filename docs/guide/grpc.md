@@ -27,6 +27,8 @@ Nothing here parses protobuf by hand: the `.proto` files are compiled in-process
 
 Put the `.proto` files under the design folder, beside any `.craftgo` files. The design folder is the **import root**: a proto imports a sibling by its path relative to that folder, and the well-known types (`google/protobuf/*.proto`) are always available.
 
+A proto you import but do not own - vendored googleapis, a shared contracts repository - goes under a `proto.includes` root instead: it is read, never generated, so it carries `option go_package` naming the Go package its code lives in. A root may sit inside the design folder too; the protos below it are then includes, imported by their path below that root, and not part of the design.
+
 ```
 design/
 ├── craftgo.design.yaml

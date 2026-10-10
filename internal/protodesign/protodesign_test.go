@@ -371,6 +371,40 @@ service Greeter { rpc Do(acme.Thing) returns (acme.Thing); }
 	}
 }
 
+// A proto under an include root inside the design folder is an include, read once by its path
+// below that root, and not a design proto.
+func TestIncludeRootInsideTheDesignIsNotTheDesign(t *testing.T) {
+	root := write(t, map[string]string{
+		"third_party/acme/common.proto": `syntax = "proto3";
+package acme;
+option go_package = "example.com/acme;acme";
+message Thing { string id = 1; }
+`,
+		"greet/greet.proto": `syntax = "proto3";
+package greet;
+import "acme/common.proto";
+service Greeter { rpc Do(acme.Thing) returns (acme.Thing); }
+`,
+	})
+	o := opts()
+	o.Includes = []string{filepath.Join(root, "third_party")}
+	set := load(t, root, o)
+	if !reflect.DeepEqual(set.names, []string{"greet/greet.proto"}) {
+		t.Errorf("design protos = %v", set.names)
+	}
+	do := method(t, service(t, set, "greet.Greeter"), "Do")
+	if want := (TypeRef{Name: "Thing", ImportPath: "example.com/acme", Package: "acme"}); do.In != want {
+		t.Errorf("in = %+v", do.In)
+	}
+	// The design root itself as an include root, or one beside it, keeps every design proto.
+	names := []string{"greet/greet.proto", "third_party/acme/common.proto"}
+	for _, inc := range []string{root, filepath.Join(root, "..", "third_party")} {
+		if got := withoutIncluded(root, names, []string{inc}); !reflect.DeepEqual(got, names) {
+			t.Errorf("include root %s: design protos = %v", inc, got)
+		}
+	}
+}
+
 func TestIncludesResolveImports(t *testing.T) {
 	shared := write(t, map[string]string{"shared/id.proto": `syntax = "proto3";
 package shared;

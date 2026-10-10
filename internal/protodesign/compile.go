@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -25,6 +26,7 @@ func Load(ctx context.Context, designRoot string, opts Options) (*Set, error) {
 	if err != nil {
 		return nil, err
 	}
+	names = withoutIncluded(designRoot, names, opts.Includes)
 	if len(names) == 0 {
 		return nil, nil
 	}
@@ -54,6 +56,41 @@ func Load(ctx context.Context, designRoot string, opts Options) (*Set, error) {
 		return nil, err
 	}
 	return set, nil
+}
+
+// withoutIncluded drops the names under an include root inside designRoot: a proto
+// there is imported by its path below that root, as every include is, and is not
+// generated.
+func withoutIncluded(designRoot string, names, includes []string) []string {
+	var nested []string
+	for _, inc := range includes {
+		if rel, ok := below(designRoot, inc); ok {
+			nested = append(nested, rel+"/")
+		}
+	}
+	if len(nested) == 0 {
+		return names
+	}
+	return slices.DeleteFunc(slices.Clone(names), func(name string) bool {
+		return slices.ContainsFunc(nested, func(dir string) bool { return strings.HasPrefix(name, dir) })
+	})
+}
+
+// below returns dir as a slash path relative to root when dir lies under root.
+func below(root, dir string) (string, bool) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", false
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", false
+	}
+	rel, err := filepath.Rel(absRoot, absDir)
+	if err != nil || rel == "." || !filepath.IsLocal(rel) {
+		return "", false
+	}
+	return filepath.ToSlash(rel), true
 }
 
 // compile runs protocompile over names with designRoot as the first import
