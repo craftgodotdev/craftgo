@@ -95,6 +95,10 @@ A key of `craftgo.design.yaml` that craftgo does not read shows as a warning at 
 
 `Cmd+click` (or `gd` in vim-mode) on a type reference jumps to its declaration. Works across files in the same package and across packages (a `shared.Type` reference jumps to the `shared` package's declaration). On a value inside `@default(...)` or `@example(...)` of an enum-typed field it jumps to that enum value; on a name inside `@middlewares(...)` or `@errors(...)`, to that middleware or error.
 
+### Rename
+
+Rename a type, enum, scalar, error, middleware, event or service from its name or any reference to it; every reference in the project follows. A new name the declaration cannot hold is refused: a reserved word, a built-in type such as `string`, a name another declaration already has, or one starting in lower case for anything but a service.
+
 ### Format
 
 The `craftgo fmt` CLI rewrites a file in canonical form: aligned field columns, consistent decorator spacing, tab indentation. The VS Code extension wires this to the editor's "Format Document" command. A buffer with an error, parse or semantic, is left untouched: fix the diagnostic first, then format. So is a buffer whose formatted text would not parse, or would lose or move a comment.
