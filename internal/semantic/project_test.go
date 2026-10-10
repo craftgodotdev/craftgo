@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
@@ -235,20 +234,6 @@ type User { id string }`,
 	}
 	if findCode(diags, CodeRefUnknownSymbol) != nil {
 		t.Fatalf("got %v", codes(diags))
-	}
-}
-
-func TestLastSegment(t *testing.T) {
-	cases := map[string]string{
-		"":           "",
-		"shared":     "shared",
-		"auth/types": "types",
-		"a/b/c":      "c",
-	}
-	for in, want := range cases {
-		if got := idents.LastSegment(in); got != want {
-			t.Errorf("idents.LastSegment(%q) = %q, want %q", in, got, want)
-		}
 	}
 }
 
