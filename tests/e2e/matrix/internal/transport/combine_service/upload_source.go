@@ -26,6 +26,9 @@ func UploadSource(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if _v := r.PostFormValue("url"); _v != "" {
 			req.URL = &_v
 		}
+		if !server.RequirePresent(w, r, r.PostForm.Has("title"), "title", "form") {
+			return
+		}
 		req.Title = r.PostFormValue("title")
 		if _, header, err := r.FormFile("doc"); err == nil {
 			req.Doc = header

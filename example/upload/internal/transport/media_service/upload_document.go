@@ -23,6 +23,9 @@ func UploadDocument(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.UploadDocumentReq
+		if !server.RequirePresent(w, r, r.PostForm.Has("title"), "title", "form") {
+			return
+		}
 		req.Title = r.PostFormValue("title")
 		if _v := r.PostFormValue("notes"); _v != "" {
 			req.Notes = &_v

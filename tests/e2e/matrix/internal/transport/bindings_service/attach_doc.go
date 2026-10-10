@@ -23,6 +23,9 @@ func AttachDoc(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.AttachReq
+		if !server.RequirePresent(w, r, r.PostForm.Has("title"), "title", "form") {
+			return
+		}
 		req.Title = r.PostFormValue("title")
 		if _, header, err := r.FormFile("doc"); err == nil {
 			req.Doc = header

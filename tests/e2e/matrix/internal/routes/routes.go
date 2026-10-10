@@ -29,6 +29,7 @@ import (
 	nestedserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/nested_service"
 	numbersserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/numbers_service"
 	ordersserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/orders_service"
+	presenceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/presence"
 	profileserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/profile_service"
 	projectserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/project_service"
 	rawmodesserviceRawV1routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/raw/v1"
@@ -73,6 +74,7 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	nestedserviceroutes.RegisterRoutes(srv, svcCtx)
 	numbersserviceroutes.RegisterRoutes(srv, svcCtx)
 	ordersserviceroutes.RegisterRoutes(srv, svcCtx)
+	presenceroutes.RegisterRoutes(srv, svcCtx)
 	profileserviceroutes.RegisterRoutes(srv, svcCtx)
 	projectserviceroutes.RegisterRoutes(srv, svcCtx)
 	rawmodesserviceroutes.RegisterRoutes(srv, svcCtx)

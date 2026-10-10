@@ -18,7 +18,17 @@ import (
 func EchoUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req types.User
-		if err := server.JSON().Decode(r.Body, &req); err != nil {
+		if server.RequirePresence() {
+			var _b userWire
+			if err := server.JSON().Decode(r.Body, &_b); err != nil {
+				server.WriteValidationError(w, r, err)
+				return
+			}
+			if _m := _b.to(&req); _m != "" {
+				server.WriteValidationError(w, r, server.MissingMember(_m))
+				return
+			}
+		} else if err := server.JSON().Decode(r.Body, &req); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}

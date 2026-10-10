@@ -23,6 +23,9 @@ func NullableForm(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.NullableFormReq
+		if !server.RequirePresent(w, r, r.PostForm.Has("meta"), "meta", "form") {
+			return
+		}
 		if _v := r.PostFormValue("meta"); _v != "" {
 			req.Meta = &_v
 		}

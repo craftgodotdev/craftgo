@@ -1,0 +1,94 @@
+// Package `presence` pins how the members of a JSON request body arrive: one
+// without `?` must come and not be null, `@nullable` lets it be null, an
+// optional one may stay out, and a @default fills an absent one at any depth.
+package presence
+
+// Grade is a required enum member.
+enum Grade {
+	low
+	high
+}
+
+// Sku is a scalar member.
+scalar Sku string @minLength(1)
+
+// Item is an element whose own member is required.
+type Item {
+	sku Sku
+	qty int?
+}
+
+// Coords sits below Spot and takes zoom from its default.
+type Coords {
+	lat  float64
+	zoom int?    @default(3)
+}
+
+// Spot holds a required nested struct.
+type Spot {
+	coords Coords
+	label  string?
+}
+
+// Stamp is a mixin whose member the host carries as its own.
+type Stamp {
+	by string
+}
+
+// Box holds a value of its type parameter, once required and once optional.
+type Box<T> {
+	v   T
+	opt T?
+}
+
+// Order carries every shape a body member takes.
+type Order {
+	Stamp
+	name   string
+	count  int
+	active bool
+	grade  Grade
+	at     datetime
+	note   string?
+	alias  string            @nullable
+	spot   Spot
+	meta   Spot              @nullable
+	items  Item[]
+	byName map<string, Item>
+	boxed  Box<Item>
+	listed Box<Item[]>
+	doc    bytes             @format(raw)
+	extra  any?
+}
+
+// Rename is a body beside the id its route fills.
+type Rename {
+	id   string
+	name string
+}
+
+// Upload is a multipart form with a required text part.
+type Upload {
+	title string @form
+	file  file   @form
+}
+
+@prefix("/presence")
+service Presence {
+	@doc("Echoes an Order as the handler hands it over.")
+	post Echo /orders {
+		request  Order
+		response Order
+	}
+
+	@doc("Renames the thing its route names; the body need not carry the id.")
+	put Rename /things/{id} {
+		request  Rename
+		response Rename
+	}
+
+	@doc("Takes a file beside a required text part.")
+	post Upload /uploads {
+		request  Upload
+	}
+}

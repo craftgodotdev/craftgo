@@ -23,7 +23,13 @@ func BatchUpload(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.BatchUploadReq
+		if !server.RequirePresent(w, r, r.PostForm.Has("tags"), "tags", "form") {
+			return
+		}
 		req.Tags = r.MultipartForm.Value["tags"]
+		if !server.RequirePresent(w, r, r.PostForm.Has("album"), "album", "form") {
+			return
+		}
 		req.Album = r.PostFormValue("album")
 		req.Files = r.MultipartForm.File["files"]
 		if _, header, err := r.FormFile("cover"); err == nil {

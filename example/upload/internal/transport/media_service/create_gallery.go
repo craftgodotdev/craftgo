@@ -24,13 +24,28 @@ func CreateGallery(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.CreateGalleryReq
 		req.AlbumID = r.PathValue("albumId")
+		if !server.RequirePresent(w, r, r.PostForm.Has("title"), "title", "form") {
+			return
+		}
 		req.Title = r.PostFormValue("title")
 		if _v := r.PostFormValue("description"); _v != "" {
 			req.Description = &_v
 		}
+		if !server.RequirePresent(w, r, r.PostForm.Has("tags"), "tags", "form") {
+			return
+		}
 		req.Tags = r.MultipartForm.Value["tags"]
+		if !server.RequirePresent(w, r, r.PostForm.Has("visibility"), "visibility", "form") {
+			return
+		}
 		req.Visibility = types.Visibility(r.PostFormValue("visibility"))
+		if !server.RequirePresent(w, r, r.PostForm.Has("featured"), "featured", "form") {
+			return
+		}
 		if !server.BindValue(w, r, "featured", "bool", r.PostFormValue("featured"), &req.Featured, server.ParseBool[bool]) {
+			return
+		}
+		if !server.RequirePresent(w, r, r.PostForm.Has("priority"), "priority", "form") {
 			return
 		}
 		if !server.BindValue(w, r, "priority", "int", r.PostFormValue("priority"), &req.Priority, server.ParseSigned[int]) {
