@@ -58,6 +58,8 @@ type errorTemplateData struct {
 	HasResponseHeaders bool
 	Headers            []paramBinding
 	Cookies            []paramBinding
+	// Defaults fill the body fields the constructor's caller leaves nil.
+	Defaults []defaultBinding
 }
 
 // renderError renders errors.tmpl for ed, adding the packages it names to imports.
@@ -86,6 +88,7 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver, i
 		Cookies:            cookies,
 		HasBody:            len(ast.Members(ed.Body)) > 0,
 		HasJSONMember:      semantic.ErrorHasJSONMember(ed, r.Resolver),
+		Defaults:           errorDefaults(ed, pkg, r, imports),
 	}
 	var buf bytes.Buffer
 	if err := errorsTemplate.Execute(&buf, data); err != nil {
@@ -107,6 +110,23 @@ func errorResponseBindings(ed *ast.ErrorDecl, pkg *semantic.Package, r *projectR
 
 // errorAccess is the receiver errors.tmpl reads an error's fields through.
 const errorAccess = "e"
+
+// errorDefaults returns the @default of each optional field of ed's body, a mixin's included,
+// which the constructor gives the field its caller leaves nil; a field without `?` keeps what the
+// caller passes, its zero value included.
+func errorDefaults(ed *ast.ErrorDecl, pkg *semantic.Package, r *projectResolver, imports *importSet) []defaultBinding {
+	var out []defaultBinding
+	for _, rf := range semantic.ResolveFields(&ast.TypeDecl{Body: ed.Body}, "", pkg, r.Resolver, resolvedGoFieldNames) {
+		f, arg := rf.Field, firstArg(rf.Field.Decorators, "default")
+		if !rf.HasDefValue || arg == nil || f.Type == nil || f.Type.Map != nil || !f.Type.Optional {
+			continue
+		}
+		if lit := renderDefault(f.Type, arg.Value, r, imports); lit != "" {
+			out = append(out, defaultBinding{GoName: rf.Name, Literal: lit, Ptr: rf.GoPointer()})
+		}
+	}
+	return out
+}
 
 // screamingSnake converts an identifier to SCREAMING_SNAKE_CASE, keeping
 // initialisms whole (`DBLockedErr` is `DB_LOCKED_ERR`).

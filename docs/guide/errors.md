@@ -143,7 +143,7 @@ return nil, types.NewEmailTakenErr(types.EmailTakenBody{
 })
 ```
 
-The constructor fills in nothing: a `@default` on an error field reaches only the OpenAPI schema.
+The constructor gives an optional field (`?`) the body leaves nil its `@default`, the value the OpenAPI schema documents, so `code string? @default("EMAIL_TAKEN")` needs no assignment; it does so once, when the error is built, and the value it returns is what goes out. A field without `?` keeps what you pass, its zero value included.
 
 A body field cannot take the Go name of a member of the error type, which would hide it: the methods `error`, `errCode`, `httpStatus`, `marshalJSON` and `writeResponseHeaders`, or `<name>Body`, the struct the type embeds (`emailTakenBody` here). Like every body, an error's cannot hold `validate` either; each is `field/invalid-go-name`.
 

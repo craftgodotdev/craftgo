@@ -315,7 +315,7 @@ On a `?` field `@nullable` is redundant (`decorator/redundant`): `?` already all
 
 ### `@default(value)`
 
-Fill the field when the client leaves it out, in a request type or a type nested in its body; a value the client sends wins.
+Fill the field when the client leaves it out, in a request type or a type nested in its body; a value the client sends wins. On an error field, `New<Name>Err` gives an optional field the body leaves nil its default.
 
 | Sites | field, errorField |
 | -------- | -------- |

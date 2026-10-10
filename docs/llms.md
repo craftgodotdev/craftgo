@@ -528,7 +528,7 @@ A field with no binding decorator whose name matches a `{name}` in the route (or
 | Decorator         | Sites             | Effect                                                                                           |
 | ----------------- | ----------------- | ------------------------------------------------------------------------------------------------ |
 | `@nullable`       | field, errorField | Accept JSON `null` as a legal value (Go: pointer wrap if base is not already nilable)            |
-| `@default(value)` | field, errorField | Pre-fill before JSON decode (on an error field: the OpenAPI `default:` only; `New<Name>Err` fills nothing). Works on string, bool and number primitives, scalars over them, enums, and single-level arrays of those; `bytes`, `datetime`, `file`, `any` and nested arrays are `decorator/conflict`. |
+| `@default(value)` | field, errorField | Fill an absent request member, at any depth (on an error field: `New<Name>Err` gives an optional field the body leaves nil its default). Works on string, bool and number primitives, scalars over them, enums, and single-level arrays of those; `bytes`, `datetime`, `file`, `any` and nested arrays are `decorator/conflict`. |
 | `@sensitive`      | field, errorField | Server-only. `json:"-"`, omitted from OpenAPI. No validators, bindings, `@json`, `@nullable`, `@default`. |
 | `@json("key")`    | field, errorField | JSON key when it is not the field name (a foreign contract, or a PascalCase key the parser reads as a mixin). Not with an off-body binding. |
 
@@ -988,7 +988,7 @@ In service code:
 return nil, types.NewRateLimitedErr(types.RateLimitedBody{RetryAfter: 30})
 ```
 
-The client gets 429, `Retry-After: 30` and `{"code":"RATE_LIMITED","message":"Too many requests"}`: every field rides a header, so the body is the envelope. A body field is the caller's to fill - `New<Name>Err` applies no `@default`, which reaches only the OpenAPI schema.
+The client gets 429, `Retry-After: 30` and `{"code":"RATE_LIMITED","message":"Too many requests"}`: every field rides a header, so the body is the envelope. A body field is the caller's to fill, except an optional one left nil with a `@default`, which `New<Name>Err` fills.
 
 ### Server-only field
 

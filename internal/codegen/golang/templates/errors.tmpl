@@ -17,8 +17,19 @@ type {{.TypeName}} struct{{if .HasBody}} {
 	{{.BodyName}}
 }{{else}}{}{{end}}
 
-// {{.CtorName}} constructs {{.TypeName}}.
+// {{.CtorName}} constructs {{.TypeName}}.{{if .Defaults}} An optional field body leaves nil takes its
+// @default.{{end}}
 func {{.CtorName}}({{if .HasBody}}body {{.BodyName}}{{end}}) *{{.TypeName}} {
+{{- range .Defaults}}
+	if body.{{.GoName}} == nil {
+{{- if .Ptr}}
+		_d := {{.Literal}}
+		body.{{.GoName}} = &_d
+{{- else}}
+		body.{{.GoName}} = {{.Literal}}
+{{- end}}
+	}
+{{- end}}
 	return &{{.TypeName}}{ {{- if .HasBody}}{{.BodyName}}: body{{end -}} }
 }
 

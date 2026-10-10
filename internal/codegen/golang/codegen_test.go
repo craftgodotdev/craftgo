@@ -624,6 +624,33 @@ error BadRequest Validation {
 	}
 }
 
+// The constructor gives each optional field the caller leaves nil its @default, a mixin's
+// included; a field without `?` keeps what the caller passes.
+func TestGenerateErrorsConstructorFillsDefaults(t *testing.T) {
+	pkg := analyze(t, `package design
+type Hint { hint string? @default("retry") }
+error TooManyRequests Limited {
+    Hint
+    code  string?   @default("LIMITED")
+    tags  string[]? @default(["a"])
+    wait  int       @default(5)
+    plain string?
+}`)
+	dir := t.TempDir()
+	if err := generateErrors(pkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	mustContainAll(t, collapseSpace(src),
+		`if body.Hint.Hint == nil { _d := "retry" body.Hint.Hint = &_d }`,
+		`if body.Code == nil { _d := "LIMITED" body.Code = &_d }`,
+		`if body.Tags == nil { body.Tags = []string{"a"} }`,
+	)
+	mustContainNone(t, src, "body.Wait", "body.Plain")
+}
+
 // An error whose fields, a mixin's included, all ride a header, a cookie or
 // nowhere keeps its body struct and marshals the {code, message} envelope.
 func TestGenerateErrorsWithoutJSONMemberMarshalTheEnvelope(t *testing.T) {
