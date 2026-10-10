@@ -190,7 +190,7 @@ func (notImplemented) MarshalJSON() ([]byte, error) {
 }
 
 // ResponseHeaderWriter is implemented by an error that sets response headers; [WriteError]
-// calls it before writing a [StatusError]'s status.
+// calls the one of the [StatusError] that sets the status, before it writes that status.
 type ResponseHeaderWriter interface {
 	WriteResponseHeaders(http.ResponseWriter)
 }
@@ -245,8 +245,8 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 		(*unknownError.Load())(w, r, err)
 		return
 	}
-	var hw ResponseHeaderWriter
-	if errors.As(err, &hw) {
+	// The headers, cookies and code are the error's that sets the status, in a join of several too.
+	if hw, ok := se.(ResponseHeaderWriter); ok {
 		hw.WriteResponseHeaders(w)
 	}
 	if cs, ok := se.(ResponseCookieSetter); ok {
@@ -262,8 +262,7 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	// Code generated before v1.10 leaves a body-less error's JSON to this {} fallback.
 	if mErr != nil || (!selfMarshaled && strings.TrimSpace(buf.String()) == "{}") {
 		env := map[string]string{"message": se.Error()}
-		var coded interface{ ErrCode() string }
-		if errors.As(err, &coded) {
+		if coded, ok := se.(interface{ ErrCode() string }); ok {
 			env["code"] = coded.ErrCode()
 		}
 		_ = codec.Encode(w, env)

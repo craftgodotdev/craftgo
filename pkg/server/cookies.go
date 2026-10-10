@@ -75,8 +75,8 @@ func withCookieOptions(c *http.Cookie) *http.Cookie {
 }
 
 // ResponseCookieSetter is implemented by an error whose @cookie fields set response cookies;
-// [WriteError] sets each one, with the [SetCookieOptions] attributes, before a [StatusError]'s
-// status.
+// [WriteError] sets those of the [StatusError] that sets the status, with the [SetCookieOptions]
+// attributes, before it writes that status.
 type ResponseCookieSetter interface {
 	ResponseCookies() []*http.Cookie
 }

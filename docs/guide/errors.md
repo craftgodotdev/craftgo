@@ -245,7 +245,7 @@ For an unexpected error (a raw `errors.New(...)` or `fmt.Errorf(...)` that carri
 - An error wrapping `context.DeadlineExceeded`, or any context error once the request's own deadline (`@timeout`, `server.handlerTimeout`) has passed, answers 504 `{"message":"gateway timeout"}` unlogged; a dependency's deadline on a live request is logged at Warn, `dependency deadline exceeded`.
 - A context error once the request context is canceled - by a client that went away, or by a middleware's own cancel - writes and logs nothing, so a client still connected sees an empty 200.
 
-A typed error stays typed when wrapped: `WriteError` finds it with `errors.As`, so `fmt.Errorf("charge card: %w", err)` still renders the declared status and body, and is not logged.
+A typed error stays typed when wrapped: `WriteError` finds it with `errors.As`, so `fmt.Errorf("charge card: %w", err)` still renders the declared status and body, and is not logged. Of an `errors.Join` of typed errors, the first `errors.As` finds sets the status, and its headers, cookies and code alone go out.
 
 The errors the framework writes itself are JSON `{"message": "..."}`, with `Content-Type: application/json; charset=utf-8` and `X-Content-Type-Options: nosniff`, at these statuses. None of them is in the OpenAPI document, which lists each operation's success response and its `@errors` only:
 
