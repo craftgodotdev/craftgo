@@ -212,6 +212,39 @@ func TestDecodeTypeErrorsNameTheWirePath(t *testing.T) {
 	}
 }
 
+// wireKeys holds members whose path an engine may spell with indexes, keys or escapes: a map
+// keyed by hosts, arrays of arrays, a map of arrays, keys holding "/", "~" and ".".
+type wireKeys struct {
+	ByHost map[string]wireInner   `json:"byHost"`
+	Grid   [][]wireInner          `json:"grid"`
+	Lists  map[string][]wireInner `json:"lists"`
+	Slash  wireInner              `json:"a/b"`
+	Tilde  wireInner              `json:"a~b"`
+	Dotted wireInner              `json:"c.d"`
+	Sku    string                 `json:"sku"`
+}
+
+// A path reads the same whichever encoding/json engine decodes: no array index or map key in it,
+// a key holding "/", "~" or "." as written, and a member keyed in another case under its field's
+// key.
+func TestDecodePathsLeaveOutIndexesAndMapKeys(t *testing.T) {
+	for body, want := range map[string]string{
+		`{"byHost": {"example.com": {"n": "x"}}}`: "byHost.n: expected integer, got string",
+		`{"byHost": {"a/b~c": {"sku": 1}}}`:       "byHost.sku: expected string, got number",
+		`{"grid": [[], [{"n": 1.5}]]}`:            "grid.n: expected integer, got number 1.5",
+		`{"lists": {"k.1": [{"sku": 1}]}}`:        "lists.sku: expected string, got number",
+		`{"a/b": {"n": "x"}}`:                     "a/b.n: expected integer, got string",
+		`{"a~b": {"n": "x"}}`:                     "a~b.n: expected integer, got string",
+		`{"c.d": {"n": "x"}}`:                     "c.d.n: expected integer, got string",
+		`{"SKU": 5}`:                              "sku: expected string, got number",
+	} {
+		var v wireKeys
+		if err := (defaultCodec{}).Decode(strings.NewReader(body), &v); err == nil || err.Error() != want {
+			t.Errorf("Decode(%s) = %v, want %q", body, err, want)
+		}
+	}
+}
+
 // wireStamped holds values encoding/json hands to their own code: datetimes, base64 bytes and a
 // type that unmarshals itself, beside a raw value.
 type wireStamped struct {
@@ -283,6 +316,7 @@ func TestDecodeKeepsTheBodyOnlyForSelfDecodedValues(t *testing.T) {
 		reflect.TypeFor[wireStamped]():                   true,
 		reflect.TypeFor[*wireShape]():                    true,
 		reflect.TypeFor[wireNode]():                      false,
+		reflect.TypeFor[wireKeys]():                      false,
 		reflect.TypeFor[struct{ R json.RawMessage }]():   false,
 		reflect.TypeFor[map[string][]*wireStampedNode](): true,
 	} {
