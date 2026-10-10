@@ -7,6 +7,9 @@
 # env, mounted by the deployer). craftgo reads no environment variable,
 # but the OpenTelemetry SDK reads its own OTEL_* variables, such as
 # OTEL_EXPORTER_OTLP_HEADERS and OTEL_TRACES_SAMPLER.
+#
+# config.Load logs a warning for a key it does not know, which it skips,
+# and for a missing file, which leaves every default.
 
 # Public HTTP listener.
 #
@@ -36,7 +39,8 @@ server:
                               # leave false when running behind a compressing
                               # reverse proxy (nginx/envoy/cloudfront)
     minSize: 0                # skip bodies under N bytes; 0 → framework default (1024)
-    level: 0                  # gzip level 1..9; 0 → DefaultCompression
+    level: 0                  # gzip level 1..9; 0 → DefaultCompression;
+                              # outside -2..9 stops the boot
 # gRPC listener, beside the HTTP one: one process, one ServiceContext,
 # one telemetry stack (the stats handler emits rpc.server.call.duration
 # and the spans). handlerTimeout bounds unary calls only; streams are
@@ -63,7 +67,7 @@ serviceName: app
 # not the request metrics - those follow metrics.enabled.
 otel:
   enabled: true               # false → no spans, no traceparent header
-  exporter: none              # none | stdout | otlp_grpc | otlp_http
+  exporter: none              # none | stdout | otlp_grpc | otlp_http; another stops the boot
   endpoint: ""                # OTLP collector address; ignored for none/stdout
                               # gRPC example: "otel-collector.observability:4317"
                               # HTTP example: "http://collector:4318"
@@ -72,13 +76,13 @@ otel:
 # Metrics: OpenTelemetry meter + admin scrape listener.
 metrics:
   enabled: true               # false → meter stays no-op; no admin listener
-  exporter: prometheus        # prometheus | otlp_grpc | otlp_http | none
+  exporter: prometheus        # prometheus | otlp_grpc | otlp_http | none; another stops the boot
   endpoint: ""                # OTLP collector address; ignored for prometheus/none
                               # gRPC example: "otel-collector.observability:4317"
                               # HTTP example: "http://collector:4318"
   serviceName: ""             # overrides the top-level serviceName for metrics
   adminAddr: ":9090"          # scrape listener address (prometheus only); empty → no listener
-  path: /metrics              # route the scrape is exposed on (prometheus only)
+  path: /metrics              # route the scrape is exposed on (prometheus only); starts with /
 
 # In-process API reference docs, served on the public API listener.
 docs:
@@ -86,3 +90,5 @@ docs:
   ui: redoc                   # redoc | swagger | scalar (assets loaded from a CDN)
   path: /docs                 # HTML docs page route
   specPath: /openapi.yaml     # route serving the raw OpenAPI document
+                              # each starts with /; a path the other, a health
+                              # probe or a design route serves stops the boot

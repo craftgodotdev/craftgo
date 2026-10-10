@@ -355,6 +355,8 @@ docs:                  # absent when the design's only services are gRPC ones
 
 A key left out of `config.yaml` takes a default. `config.go`'s `defaults` sets `server.readTimeout` (`30s`), `server.maxBodySize` (10 MiB), `server.requirePresence` (`true`) and `server.cookies` (`path: /`, `httpOnly`, `secure`, `sameSite: lax`) before the file is read, so a value in the file wins, a zero included; its `applyDefaults` fills `server.addr` (`":8080"`), `grpc.addr` (`":9000"`) and `serviceName` (the last segment of the project's import path). Every other key falls to the runtime: the switches (`otel.enabled`, `metrics.enabled`, `docs.enabled`, `strictJSON`, `compression.enabled`, `grpc.reflection`) are off; an empty `otel.exporter` keeps spans in process; an empty `metrics.exporter` serves the Prometheus scrape, with no listener unless `adminAddr` is set; the scrape path is `/metrics`; the docs use `redoc` at `/docs` and `/openapi.yaml`; logging is `info`.
 
+`config.Load` skips a key `Config` has no field for, logging a warning with yaml's `line N: field K not found in type T`, so a misspelt key leaves its setting at the default and says so. A value the runtime cannot use stops `main.go` at boot with an error naming it: an enabled signal's `otel.exporter` or `metrics.exporter` other than those below, a `metrics.path` that does not start with `/`, a `server.compression.level` outside -2 to 9, and a `docs.path` or `docs.specPath` that does not start with `/` or that the other, a health probe or a design route already serves.
+
 ### `server`
 
 Absent only from a project whose design declares gRPC services and no HTTP route.
@@ -374,7 +376,7 @@ Absent only from a project whose design declares gRPC services and no HTTP route
 | `cookies.sameSite`           | string    | `lax` (when left out), `strict` or `none`, which needs `secure`; `""` sends no `SameSite`. Another value stops the server at boot. |
 | `compression.enabled`        | bool      | Toggle gzip / deflate response compression.                             |
 | `compression.minSize`        | int       | Skip compression when body is smaller. `0` falls back to 1024.          |
-| `compression.level`          | int       | Compression level (1-9). `0` falls back to default.                     |
+| `compression.level`          | int       | Compression level (1-9). `0` falls back to default. A level outside -2 to 9 stops the server at boot. |
 
 Compression is off by default. Turn it on only when not behind a compressing reverse proxy (Nginx, Envoy, CloudFront).
 
@@ -400,7 +402,7 @@ Present when a proto declares a service; see [gRPC](/guide/grpc).
 | ------------- | ---------------------------------------------------------------------- |
 | `enabled`     | Toggle span emission. The HTTP wrapper emits both signals, so this does not stop metrics. |
 | `serviceName` | Overrides the top-level `serviceName` for spans.                       |
-| `exporter`    | `none` / `stdout` / `otlp_grpc` / `otlp_http`.                          |
+| `exporter`    | `none` / `stdout` / `otlp_grpc` / `otlp_http`; another value stops the server at boot. |
 | `endpoint`    | OTLP collector address. Ignored for `none` / `stdout`.                 |
 
 Setting `enabled: true` with `exporter: none` produces in-process spans whose IDs flow into log lines but are not exported.
@@ -410,11 +412,11 @@ Setting `enabled: true` with `exporter: none` produces in-process spans whose ID
 | Key          | Effect                                                                 |
 | ------------ | ---------------------------------------------------------------------- |
 | `enabled`    | Toggle the meter provider; with the Prometheus exporter and an `adminAddr` it also starts the scrape listener. |
-| `exporter`   | `prometheus` / `otlp_grpc` / `otlp_http` / `none`.                      |
+| `exporter`   | `prometheus` / `otlp_grpc` / `otlp_http` / `none`; another value stops the server at boot. |
 | `endpoint`   | OTLP collector address (ignored for prometheus / none).                |
 | `serviceName`| Overrides the top-level `serviceName` for metrics.                      |
 | `adminAddr`  | Listen address of the Prometheus scrape (prometheus only). Empty starts no listener: mount `Telemetry.ScrapeHandler()` on a server of your own. The generated `config.yaml` sets `":9090"`. |
-| `path`       | URL path for the scrape (default `/metrics`).                          |
+| `path`       | URL path for the scrape (default `/metrics`); one that does not start with `/` stops the server at boot. |
 
 For `otlp_grpc`, `endpoint` may be a bare `host:port` (plaintext) or a full URL
 whose scheme selects transport security - `http://…` (plaintext) or `https://…`
@@ -454,6 +456,8 @@ Absent only from a project whose design declares gRPC services and no HTTP route
 | `ui`       | `redoc` / `swagger` / `scalar` - the renderer (assets load from a CDN at a pinned version, checked against their integrity hashes). |
 | `path`     | HTML docs page route (default `/docs`).                                |
 | `specPath` | Raw OpenAPI document route (default `/openapi.yaml`).                   |
+
+A docs path that does not start with `/`, or that the other, a health probe or a design route already serves, stops the server at boot.
 
 The admin listener runs separately from the public API listener.
 
@@ -502,4 +506,4 @@ deploy/
 └── config.production.yaml
 ```
 
-CI / your deployer copies the right file to `config/config.yaml` before the binary starts. `config.Load` treats a missing file as empty, so a binary started without one runs on the defaults above with no error.
+CI / your deployer copies the right file to `config/config.yaml` before the binary starts. `config.Load` treats a missing file as empty, logging a warning that names the path, so a binary started without one runs on the defaults above.

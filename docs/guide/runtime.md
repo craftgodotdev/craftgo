@@ -50,7 +50,7 @@ Out of the box:
 - `BodyLimit(maxBytes)` - caps request bodies; a body over the cap answers 413 `{"message":"request entity too large"}`
 - `Timeout(d)` - deprecated; use `srv.SetDefaultHandlerTimeout(d)` or `@timeout`, which put the deadline on the request context
 - `CORSPermissive()` / `CORSStrict(origin)` - build a `CORSOptions` preset, then attach with `srv.SetCORS(opts)` - preflight + headers
-- `Compress(opts)` - gzip / deflate response compression; a partial (206) response, whose `Content-Range` counts the plain bytes, a status without a body, a HEAD response and an already encoded one go out as they are, and a body without a `Content-Type` keeps the one `net/http` would sniff from its plain bytes
+- `Compress(opts)` - gzip / deflate response compression; a partial (206) response, whose `Content-Range` counts the plain bytes, a status without a body, a HEAD response and an already encoded one go out as they are, and a body without a `Content-Type` keeps the one `net/http` would sniff from its plain bytes. `Compress` panics on a `Level` outside -2 to 9, which `CompressOptions.Validate` reports first
 
 The writers `Recovery`, `AccessLog` and `Compress` hand a handler keep what `net/http`'s offers: `http.Hijacker`, so a websocket upgrade takes the connection, `http.Flusher`, and `io.ReaderFrom`, so `http.ServeFile` still sends with `sendfile`. Each unwraps for `http.ResponseController` too.
 
@@ -177,7 +177,7 @@ docs:
 ```
 
 `main.go` embeds the generated `openapi.yaml` and wires it with
-`srv.ServeDocs(...)` when the design has HTTP routes and, as `main.go` is first
+`srv.RegisterDocs(...)` when the design has HTTP routes and, as `main.go` is first
 written, the document is on disk in or below `main.go`'s directory. To add it to
 a hand-written server, or to a gen-once `main.go` that does not serve it:
 
@@ -191,7 +191,11 @@ srv.ServeDocs(server.DocsOptions{Spec: openapiSpec, UI: "redoc"})
 ```
 
 This registers `GET /openapi.yaml` (the spec) and `GET /docs` (the UI page). It
-is a no-op when `Spec` is empty. The page loads its UI from the jsDelivr CDN at
+is a no-op when `Spec` is empty. `srv.RegisterDocs(opts)` registers the same
+and returns an error, registering neither, for a `Path` or `SpecPath` that does
+not start with `/` or that `http.ServeMux` refuses, for the two being equal, and
+for one a health probe or a registered route already serves; `ServeDocs` panics
+with that error, and the generated `main.go` logs it and exits. The page loads its UI from the jsDelivr CDN at
 a pinned version (Redoc 2.5.4, Swagger UI 5.33.0, Scalar 1.71.0), each script
 and stylesheet carrying its Subresource Integrity hash, so a browser refuses a
 file the CDN serves changed.

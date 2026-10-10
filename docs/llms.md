@@ -733,7 +733,7 @@ docs:
   specPath: /openapi.yaml
 ```
 
-With protos, `grpc: {addr: ":9000", handlerTimeout: 0s, reflection: true}` is added; a design whose only services are gRPC ones has no `server:` or `docs:`. craftgo reads no environment variable, but the OpenTelemetry SDK behind `telemetry.Init` reads its own `OTEL_*` variables: `OTEL_EXPORTER_OTLP_*ENDPOINT` when `endpoint` is empty, and `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_COMPRESSION`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_TRACES_SAMPLER` even when it is set. Everything else comes from the YAML file. Edit `config/config.go` (gen-once) to add custom fields.
+With protos, `grpc: {addr: ":9000", handlerTimeout: 0s, reflection: true}` is added; a design whose only services are gRPC ones has no `server:` or `docs:`. craftgo reads no environment variable, but the OpenTelemetry SDK behind `telemetry.Init` reads its own `OTEL_*` variables: `OTEL_EXPORTER_OTLP_*ENDPOINT` when `endpoint` is empty, and `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_COMPRESSION`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_TRACES_SAMPLER` even when it is set. Everything else comes from the YAML file. Edit `config/config.go` (gen-once) to add custom fields. `config.Load` logs a warning for a missing file (the defaults apply) and for each unknown key, which it skips. `main.go` stops at boot, naming the value, on an enabled signal's unknown `otel.exporter` / `metrics.exporter`, a `metrics.path` or docs path without a leading `/`, a `compression.level` outside -2..9, and a `docs.path` / `docs.specPath` the other, a health probe or a design route already serves (`srv.RegisterDocs` returns the error; `ServeDocs` panics with it).
 
 ## Generated layout
 
@@ -884,7 +884,7 @@ srv.Start(":8080")
 | `server.BodyLimit(maxBytes)` | Cap request body size; over it, 413 `{"message":"request entity too large"}` |
 | `server.Timeout(d)`          | Deprecated: use `srv.SetDefaultHandlerTimeout(d)` / `@timeout` |
 | `srv.SetCORS(opts)`          | CORS headers + genuine-preflight short-circuit (opts via `server.CORSPermissive()` / `server.CORSStrict(origin)`; a Server method, not a `srv.Use` middleware) |
-| `server.Compress(opts...)`   | gzip / deflate response compression (`opts` optional)    |
+| `server.Compress(opts...)`   | gzip / deflate response compression (`opts` optional; panics on a `Level` outside -2..9, which `CompressOptions.Validate` reports) |
 
 ## Error response format
 

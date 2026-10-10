@@ -89,10 +89,15 @@ func main() {
 		os.Exit(1)
 	}
 	if cfg.Server.Compression.Enabled {
-		srv.Use(server.Compress(server.CompressOptions{
+		compress := server.CompressOptions{
 			MinSize: cfg.Server.Compression.MinSize,
 			Level:   cfg.Server.Compression.Level,
-		}))
+		}
+		if err := compress.Validate(); err != nil {
+			log.Default().Error("server.compression", log.Err(err))
+			os.Exit(1)
+		}
+		srv.Use(server.Compress(compress))
 	}
 
 	// wiring is regenerated on each craftgo gen and registers every HTTP route the design
@@ -103,14 +108,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	// The docs page loads its UI assets from a CDN.
+	// The docs page loads its UI assets from a CDN. Its routes come after the design's, so a
+	// docs path one of them has stops the boot.
 	if cfg.Docs.Enabled {
-		srv.ServeDocs(server.DocsOptions{
+		if err := srv.RegisterDocs(server.DocsOptions{
 			Spec:     openapiSpec,
 			UI:       cfg.Docs.UI,
 			Path:     cfg.Docs.Path,
 			SpecPath: cfg.Docs.SpecPath,
-		})
+		}); err != nil {
+			log.Default().Error("docs", log.Err(err))
+			os.Exit(1)
+		}
 	}
 
 	// The stats handler opens each call's span ahead of Recovery and every interceptor, so the

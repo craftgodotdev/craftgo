@@ -7,6 +7,9 @@
 # env, mounted by the deployer). craftgo reads no environment variable,
 # but the OpenTelemetry SDK reads its own OTEL_* variables, such as
 # OTEL_EXPORTER_OTLP_HEADERS and OTEL_TRACES_SAMPLER.
+#
+# config.Load logs a warning for a key it does not know, which it skips,
+# and for a missing file, which leaves every default.
 # gRPC listener. The stats handler emits the spans and
 # rpc.server.call.duration against the telemetry stack configured below.
 # handlerTimeout bounds unary calls only; streams are not bounded.
@@ -32,7 +35,7 @@ serviceName: app
 # not the request metrics - those follow metrics.enabled.
 otel:
   enabled: true               # false → no spans, no traceparent header
-  exporter: none              # none | stdout | otlp_grpc | otlp_http
+  exporter: none              # none | stdout | otlp_grpc | otlp_http; another stops the boot
   endpoint: ""                # OTLP collector address; ignored for none/stdout
                               # gRPC example: "otel-collector.observability:4317"
                               # HTTP example: "http://collector:4318"
@@ -41,10 +44,10 @@ otel:
 # Metrics: OpenTelemetry meter + admin scrape listener.
 metrics:
   enabled: true               # false → meter stays no-op; no admin listener
-  exporter: prometheus        # prometheus | otlp_grpc | otlp_http | none
+  exporter: prometheus        # prometheus | otlp_grpc | otlp_http | none; another stops the boot
   endpoint: ""                # OTLP collector address; ignored for prometheus/none
                               # gRPC example: "otel-collector.observability:4317"
                               # HTTP example: "http://collector:4318"
   serviceName: ""             # overrides the top-level serviceName for metrics
   adminAddr: ":9090"          # scrape listener address (prometheus only); empty → no listener
-  path: /metrics              # route the scrape is exposed on (prometheus only)
+  path: /metrics              # route the scrape is exposed on (prometheus only); starts with /

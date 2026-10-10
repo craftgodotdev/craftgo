@@ -4,10 +4,13 @@
 package config
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/pkg/telemetry"
 	"gopkg.in/yaml.v3"
 )
@@ -95,7 +98,8 @@ type CompressionConfig struct {
 	Enabled bool `yaml:"enabled"`
 	// MinSize is the smallest body compressed, in bytes; 0 means 1024.
 	MinSize int `yaml:"minSize"`
-	// Level is the compression level, 1 to 9; 0 means the default.
+	// Level is the compression level, 1 to 9; 0 means the default. main.go stops on one outside
+	// -2 to 9.
 	Level int `yaml:"level"`
 }
 
@@ -111,23 +115,41 @@ func Path() string {
 	return "config/config.yaml"
 }
 
-// Load reads cfgPath over [defaults], unless it is empty or missing, then fills the defaults the
-// runtime lacks.
+// Load reads cfgPath, unless it is empty, over [defaults], then fills the defaults the runtime
+// lacks. A missing file keeps the defaults, and a key Config has no field for is skipped; each
+// is logged as a warning.
 func Load(cfgPath string) (*Config, error) {
 	cfg := defaults()
 	if cfgPath != "" {
 		data, err := os.ReadFile(cfgPath)
-		if err != nil && !os.IsNotExist(err) {
+		switch {
+		case os.IsNotExist(err):
+			log.Default().Warn("config file not found, using the defaults", log.String("path", cfgPath))
+		case err != nil:
 			return nil, fmt.Errorf("read %s: %w", cfgPath, err)
-		}
-		if err == nil {
+		default:
 			if err := yaml.Unmarshal(data, cfg); err != nil {
 				return nil, fmt.Errorf("parse %s: %w", cfgPath, err)
+			}
+			for _, detail := range unknownKeys(data) {
+				log.Default().Warn("unknown config key ignored", log.String("path", cfgPath), log.String("detail", detail))
 			}
 		}
 	}
 	cfg.applyDefaults()
 	return cfg, nil
+}
+
+// unknownKeys returns yaml's "line N: field K not found in type T" for each key in data that
+// Config has no field for.
+func unknownKeys(data []byte) []string {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	var te *yaml.TypeError
+	if errors.As(dec.Decode(defaults()), &te) {
+		return te.Errors
+	}
+	return nil
 }
 
 // defaults returns the settings whose zero value is a choice of its own, which a key config.yaml
