@@ -227,6 +227,36 @@ func TestPathlessMethodsNoFalseCollision(t *testing.T) {
 }`)
 }
 
+// Pairs net/http's ServeMux registers together are no collision: a rest
+// wildcard is more general than a one-segment one, and `{$}` matches only the
+// end of a path, which no wildcard does.
+func TestPathPairsServeMuxRanksAreNoCollision(t *testing.T) {
+	for name, src := range map[string]string{
+		"rest prefix across services": `type F { path string @path }
+type G { id string @path }
+@prefix("/files/{path...}")
+service F { get A / { request F } }
+service G { get B /files/{id} { request G } }`,
+		"rest beside one segment": `type R { x string @path  y string @path  p string @path  q string @path }
+@prefix("/a/{x}/{y...}")
+service A { get A / { request R } }
+service B { get B /a/{p}/{q} { request R } }`,
+		"end beside a wildcard": `type R { id string @path }
+@prefix("/x/{$}")
+service A { get A / {} }
+service B { get B /x/{id} { request R } }`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, diags := Analyze(parseFiles(t, src))
+			for _, code := range []string{CodePathCollision, CodeServiceDuplicateRoute} {
+				if d := findCode(diags, code); d != nil {
+					t.Errorf("%s: %s", code, d.Msg)
+				}
+			}
+		})
+	}
+}
+
 func TestPathSameServiceDuplicateHandledByOtherCheck(t *testing.T) {
 	// A same-service duplicate is reported as a duplicate route only.
 	_, diags := Analyze(parseFiles(t, `service S {

@@ -1,6 +1,7 @@
 package route
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -50,6 +51,8 @@ func TestShape(t *testing.T) {
 	for _, c := range []struct{ in, want string }{
 		{"/users/{id}", "/users/{}"},
 		{"/a/{x}/b/{y}", "/a/{}/b/{}"},
+		{"/files/{path...}", "/files/{...}"},
+		{"/x/{$}", "/x/{$}"},
 		{"/plain", "/plain"},
 		{"/", "/"},
 	} {
@@ -81,6 +84,14 @@ func TestPatternsConflict(t *testing.T) {
 		{"/a/{x}/b", "/a/{y}/c", false},
 		// Two cross-overs deeper in the path → conflict.
 		{"/a/{x}/c", "/a/b/{y}", true},
+		// A rest wildcard is more general than a one-segment one.
+		{"/files/{path...}", "/files/{id}", false},
+		{"/a/{x}/{y...}", "/a/{p}/{q}", false},
+		{"/a/{x...}", "/{y}/b", true},
+		// `{$}` matches only the end after a `/`, which no wildcard matches.
+		{"/x/{$}", "/x/{id}", false},
+		{"/{a}/{$}", "/x/{b}", false},
+		{"/x/{$}", "/x/{rest...}", false},
 	}
 	for _, c := range cases {
 		if got := PatternsConflict(c.a, c.b); got != c.want {
@@ -88,6 +99,58 @@ func TestPatternsConflict(t *testing.T) {
 		}
 		if got := PatternsConflict(c.b, c.a); got != c.want {
 			t.Errorf("PatternsConflict(%q,%q) [swapped] = %v, want %v", c.b, c.a, got, c.want)
+		}
+	}
+}
+
+// Two routes of one length with one verb conflict exactly when a real
+// ServeMux refuses to register them together: they share a shape, or
+// PatternsConflict holds.
+func TestConflictsMatchServeMux(t *testing.T) {
+	segment := func(kind byte, i int) string {
+		switch kind {
+		case 'x':
+			return "x"
+		case 'y':
+			return "y"
+		case 'w':
+			return fmt.Sprintf("{w%d}", i)
+		case 'r':
+			return fmt.Sprintf("{r%d...}", i)
+		}
+		return "{$}"
+	}
+	var routes []string
+	var build func(prefix string, n int)
+	build = func(prefix string, n int) {
+		if n == 3 {
+			return
+		}
+		for _, k := range []byte("xywr$") {
+			route := prefix + "/" + segment(k, n)
+			routes = append(routes, route)
+			if k != 'r' && k != '$' {
+				build(route, n+1)
+			}
+		}
+	}
+	build("", 0)
+	refuses := func(a, b string) (refused bool) {
+		defer func() { refused = recover() != nil }()
+		mux := http.NewServeMux()
+		mux.Handle("GET "+a, http.NotFoundHandler())
+		mux.Handle("GET "+b, http.NotFoundHandler())
+		return false
+	}
+	for _, a := range routes {
+		for _, b := range routes {
+			if len(Segments(a)) != len(Segments(b)) {
+				continue
+			}
+			want := refuses(a, b)
+			if got := Shape(a) == Shape(b) || PatternsConflict(a, b); got != want {
+				t.Errorf("%s and %s: ServeMux refuses the pair: %v, the check says %v", a, b, want, got)
+			}
 		}
 	}
 }

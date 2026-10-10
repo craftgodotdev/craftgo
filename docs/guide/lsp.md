@@ -86,7 +86,7 @@ Errors appear inline as you type:
 - `decorator/typemismatch` - validator on the wrong primitive (`@length` on `int`)
 - `field/duplicate` - same field name twice
 - `service/duplicate-route` - two methods of one service on the same verb + route
-- `path/collision` - two methods, in any services, whose routes net/http's ServeMux cannot both register
+- `path/collision` - two methods, in any services, whose routes net/http's ServeMux cannot both register: the same route up to its variable names, or two that match a common path with neither more specific (`{name...}` is less specific than any other segment, a literal more specific than `{name}`, and `{name}` shares no path with `{$}`)
 - `enum/value-collision` - two values produce the same Go constant (warning)
 
 A key of `craftgo.design.yaml` that craftgo does not read shows as a warning at the top of the manifest, naming the key, and an edit that stops the manifest from loading shows the error there.
