@@ -100,7 +100,7 @@ func (e *OverloadedErr) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]string{"code": ErrCodeOverloaded, "message": e.Error()})
 }
 
-// WriteResponseHeaders sets the @header and @cookie fields on w.
+// WriteResponseHeaders sets the @header fields on w.
 func (e *OverloadedErr) WriteResponseHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Retry-In", strconv.Itoa(e.RetryIn))
 }
@@ -142,7 +142,7 @@ func (e *RateLimitedErr) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]string{"code": ErrCodeRateLimited, "message": e.Error()})
 }
 
-// WriteResponseHeaders sets the @header and @cookie fields on w.
+// WriteResponseHeaders sets the @header fields on w.
 func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter) {
 	w.Header().Set("Retry-After", strconv.Itoa(e.RetryAfter))
 }

@@ -28,8 +28,8 @@ func ListItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if resp.NextPage != nil {
 			w.Header().Set("X-Next-Page", *resp.NextPage)
 		}
-		http.SetCookie(w, &http.Cookie{Name: "has_more", Value: strconv.FormatBool(resp.HasMore)})
-		http.SetCookie(w, &http.Cookie{Name: "session_id", Value: resp.Session})
+		server.SetCookie(w, "has_more", strconv.FormatBool(resp.HasMore))
+		server.SetCookie(w, "session_id", resp.Session)
 		server.WriteResponse(w, r, http.StatusOK, resp)
 	}
 }
