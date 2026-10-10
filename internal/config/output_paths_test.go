@@ -36,6 +36,29 @@ func TestEveryOutputPathStaysInsideTheProject(t *testing.T) {
 	}
 }
 
+// A path written with Windows separators reads with forward slashes on every
+// OS, so gen writes where the import paths and go:embed point; a drive path is
+// outside the project like any absolute one.
+func TestManifestPathsReadWithForwardSlashes(t *testing.T) {
+	cfg, err := loadManifest(t, `output:
+  types: .\internal\gentypes
+  openapi: .\api\openapi.yaml
+events:
+  targets:
+    - lang: go
+      out: .\gen\events
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Output.Types != "./internal/gentypes" || cfg.Output.OpenAPI != "./api/openapi.yaml" || cfg.Events.Targets[0].Out != "./gen/events" {
+		t.Errorf("paths = %q, %q, %q", cfg.Output.Types, cfg.Output.OpenAPI, cfg.Events.Targets[0].Out)
+	}
+	if _, err := loadManifest(t, "output:\n  types: C:\\gen\\types\n"); err == nil || !strings.Contains(err.Error(), "must stay inside the project") {
+		t.Errorf("a drive path: err = %v", err)
+	}
+}
+
 func TestOutputDefaultsPerKind(t *testing.T) {
 	app, err := loadManifest(t, "")
 	if err != nil {

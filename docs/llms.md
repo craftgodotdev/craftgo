@@ -612,7 +612,7 @@ openapi:
       bearerFormat: JWT
 ```
 
-All `output.*` paths resolve against the **project root** (the design folder's parent, or `-c`; the module path comes from the nearest `go.mod` at or above it). Override any of them to relocate the corresponding artifact. `"-"` turns off `output.main`, `output.openapi` and `output.pb` (and an event target's `out`); on any other key it is an error: `craftgo: output.types cannot be "-" - other generated code imports this package, so there is nothing to disable; "-" is for output.main, output.openapi, output.pb and the event targets`. Quote it, as a bare `-` is YAML's list marker. Setting `main: "-"` also skips `config/` and `svccontext/svccontext.go`, which gen notes is yours to write; the middleware scaffolds and `svccontext/middlewares.go` are still generated.
+All `output.*` paths resolve against the **project root** (the design folder's parent, or `-c`; the module path comes from the nearest `go.mod` at or above it) and must stay inside it; a backslash reads as a slash on every OS. Override any of them to relocate the corresponding artifact. `"-"` turns off `output.main`, `output.openapi` and `output.pb` (and an event target's `out`); on any other key it is an error: `craftgo: output.types cannot be "-" - other generated code imports this package, so there is nothing to disable; "-" is for output.main, output.openapi, output.pb and the event targets`. Quote it, as a bare `-` is YAML's list marker. Setting `main: "-"` also skips `config/` and `svccontext/svccontext.go`, which gen notes is yours to write; the middleware scaffolds and `svccontext/middlewares.go` are still generated.
 
 The Go module path is **not** in this file. craftgo reads it from `go.mod` at gen time.
 

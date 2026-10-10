@@ -429,6 +429,7 @@ func Load(path string) (*Config, error) {
 		}
 		cfg.Warnings = append(cfg.Warnings, key+" is not a manifest key and is ignored")
 	}
+	cfg.normalizePaths()
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
@@ -441,6 +442,22 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// normalizePaths spells every path the manifest names with forward slashes,
+// whatever the OS, so the files gen writes, the import paths it derives and
+// main.go's go:embed agree on a manifest written on Windows.
+func (c *Config) normalizePaths() {
+	for _, k := range outputKeys {
+		p := k.field(&c.Output)
+		*p = toSlash(*p)
+	}
+	for i := range c.Events.Targets {
+		c.Events.Targets[i].Out = toSlash(c.Events.Targets[i].Out)
+	}
+	for i := range c.Proto.Includes {
+		c.Proto.Includes[i] = toSlash(c.Proto.Includes[i])
+	}
 }
 
 // removedKeys are the keys the manifest no longer reads, each with what took
@@ -756,13 +773,15 @@ func (k outputKey) dir(val string) string {
 // toSlash replaces every backslash with a slash, whatever the OS.
 func toSlash(val string) string { return strings.ReplaceAll(val, "\\", "/") }
 
-// checkWithinProject rejects a path outside the project root; "" and "-" pass.
+// checkWithinProject rejects an output path outside the project root, a
+// Windows drive path included; "" and "-" pass.
 func checkWithinProject(key, val string) error {
 	if val == "" || val == Disabled {
 		return nil
 	}
 	clean := path.Clean(toSlash(val))
-	if clean == ".." || strings.HasPrefix(clean, "../") || path.IsAbs(clean) {
+	drive := len(clean) >= 2 && clean[1] == ':' && ('a' <= clean[0] && clean[0] <= 'z' || 'A' <= clean[0] && clean[0] <= 'Z')
+	if clean == ".." || strings.HasPrefix(clean, "../") || path.IsAbs(clean) || drive {
 		return fmt.Errorf("%s %q must stay inside the project - generated code is imported as `<module>/<path>`, which cannot name a directory outside the module", key, val)
 	}
 	return nil

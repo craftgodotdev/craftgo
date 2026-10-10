@@ -68,7 +68,7 @@ A key the manifest does not declare - a misspelling, say - is ignored, and `craf
 
 ### `output.*` paths
 
-All paths are relative to the **project root** (the parent of the design folder, or `-c`). Override any of them to relocate the corresponding artifact.
+All paths are relative to the **project root** (the parent of the design folder, or `-c`), and must stay inside it. Override any of them to relocate the corresponding artifact. A backslash reads as a slash on every OS, so a manifest written on Windows (`.\internal\types`) generates the same project anywhere.
 
 | Key          | Default                              | Kind                | Holds                                                     |
 | ------------ | ------------------------------------ | ------------------- | --------------------------------------------------------- |
