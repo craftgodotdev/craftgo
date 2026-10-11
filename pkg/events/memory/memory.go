@@ -1,13 +1,19 @@
 // Package memory is an in-process [events.Publisher] and [events.Subscriber] for tests,
 // local development and single-binary deployments.
 //
-// Subscriptions sharing a group on one contract compete: each message reaches one member.
-// Every delivery runs on its own goroutine with a fresh context, so nothing is ordered and
-// the publisher's trace does not continue into the handler; a batch subscription gets a
-// goroutine per batch. Key and DedupID reach the consumer, and nothing acts on either.
+// Subscriptions sharing a group on one contract compete: each message reaches one member,
+// and each group gets a copy of its own, payload included. Every delivery runs on its own
+// goroutine, so nothing is ordered; a batch subscription gets a goroutine per batch. Key
+// and DedupID reach the consumer, and nothing acts on either.
+//
+// A handler runs on the context its subscription was given, as on a broker: it carries
+// that context's values and ends with it, and nothing of the publisher's context reaches
+// it. A delivery handed over after its subscription stopped, such as the batch that was
+// filling then, runs on a context that keeps those values and ends 30s later.
 package memory
 
 import (
+	"bytes"
 	"context"
 	"maps"
 	"sync"
@@ -50,9 +56,11 @@ type group struct {
 	next    atomic.Uint64
 }
 
-// member is one subscription of a group; batch gathers a batch subscription's messages.
+// member is one subscription of a group, delivered to on ctx; batch gathers a batch
+// subscription's messages.
 type member struct {
 	sub   events.Subscription
+	ctx   context.Context
 	batch *batcher
 	done  bool
 }
@@ -100,6 +108,9 @@ func (t *Transport) Subscribe(ctx context.Context, subs []events.Subscription) e
 // register adds sub to its competing-consumer group and stops delivering to it once ctx
 // is cancelled, handing a batch subscription's filling batch over then.
 func (t *Transport) register(ctx context.Context, sub events.Subscription) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	key := groupKey{sub.Event, sub.Group}
 	t.mu.Lock()
 	g := t.groups[key]
@@ -107,14 +118,14 @@ func (t *Transport) register(ctx context.Context, sub events.Subscription) {
 		g = &group{}
 		t.groups[key] = g
 	}
-	m := &member{sub: sub}
+	m := &member{sub: sub, ctx: ctx}
 	if sub.Batch != nil {
-		m.batch = &batcher{t: t, sub: sub}
+		m.batch = &batcher{t: t, sub: sub, ctx: ctx}
 	}
 	g.members = append(g.members, m)
 	t.mu.Unlock()
 
-	if ctx != nil && ctx.Done() != nil {
+	if ctx.Done() != nil {
 		go func() {
 			<-ctx.Done()
 			t.mu.Lock()
@@ -144,21 +155,36 @@ func (t *Transport) Publish(_ context.Context, msg *events.Message) error {
 
 	for _, m := range targets {
 		t.begin()
-		// Each delivery gets its own copy, Metadata included.
+		// Each delivery gets its own copy, Payload and Metadata included.
 		delivered := *msg
+		delivered.Payload = bytes.Clone(msg.Payload)
 		delivered.Metadata = maps.Clone(msg.Metadata)
 		if m.batch != nil {
 			m.batch.add(&delivered)
 			continue
 		}
-		go func(sub events.Subscription) {
+		go func(m *member) {
 			defer t.finish()
-			if err := sub.Handle(context.Background(), &delivered); err != nil && t.onError != nil {
-				t.onError(sub, &delivered, err)
+			ctx, cancel := deliveryContext(m.ctx)
+			defer cancel()
+			if err := m.sub.Handle(ctx, &delivered); err != nil && t.onError != nil {
+				t.onError(m.sub, &delivered, err)
 			}
-		}(m.sub)
+		}(m)
 	}
 	return nil
+}
+
+// handOverTimeout bounds a delivery handed over after its subscription's context ended.
+const handOverTimeout = 30 * time.Second
+
+// deliveryContext is the context a delivery to the subscription given ctx runs on: ctx,
+// or once ctx has ended, one that keeps its values and ends [handOverTimeout] later.
+func deliveryContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx.Err() == nil {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(context.WithoutCancel(ctx), handOverTimeout)
 }
 
 // Drain blocks until every delivery started so far has finished. It is
@@ -210,6 +236,7 @@ func (g *group) pick() (*member, bool) {
 type batcher struct {
 	t   *Transport
 	sub events.Subscription
+	ctx context.Context
 
 	mu      sync.Mutex
 	pending []*events.Message
@@ -274,7 +301,9 @@ func (b *batcher) handle(batch []*events.Message) {
 			b.t.finish()
 		}
 	}()
-	if err := b.sub.Batch.Handle(context.Background(), batch); err != nil && b.t.onError != nil {
+	ctx, cancel := deliveryContext(b.ctx)
+	defer cancel()
+	if err := b.sub.Batch.Handle(ctx, batch); err != nil && b.t.onError != nil {
 		b.t.onError(b.sub, nil, err)
 	}
 }

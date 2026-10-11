@@ -1,10 +1,12 @@
 package golang
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -254,6 +256,67 @@ func TestEventLibraryIsValidGoAndFullyPlanned(t *testing.T) {
 	for f := range planned {
 		if !written[f] {
 			t.Errorf("%s is planned but nothing wrote it", f)
+		}
+	}
+}
+
+// A contract is written as a Go string literal: its constant holds the design's name exactly,
+// quotes and backslashes included, and the file still parses.
+func TestAContractIsWrittenAsAGoStringLiteral(t *testing.T) {
+	proj := analyzeProject(t, `package orders
+type P { id string }
+@contract("orders.\"quoted\"")
+event Quoted { payload P }
+@contract("orders.placed\\n")
+event Escaped { payload P }
+@contract(`+"`orders.raw\\t`"+`)
+event Raw { payload P }`)
+	src := readGen(t, genEvents(t, proj, eventsConfig()), "internal/events/orders/events.go")
+	f, err := parser.ParseFile(token.NewFileSet(), "events.go", src, 0)
+	if err != nil {
+		t.Fatalf("events.go does not parse: %v\n%s", err, src)
+	}
+	got := map[string]string{}
+	for _, decl := range f.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			vs := spec.(*ast.ValueSpec)
+			value, err := strconv.Unquote(vs.Values[0].(*ast.BasicLit).Value)
+			if err != nil {
+				t.Fatalf("%s: %v", vs.Names[0].Name, err)
+			}
+			got[vs.Names[0].Name] = value
+		}
+	}
+	want := map[string]string{
+		"QuotedContract":  `orders."quoted"`,
+		"EscapedContract": `orders.placed\n`,
+		"RawContract":     `orders.raw\t`,
+	}
+	for name, contract := range want {
+		if got[name] != contract {
+			t.Errorf("%s = %q, want the design's %q", name, got[name], contract)
+		}
+	}
+	if !strings.Contains(src, `// Quoted is the orders."quoted" event contract.`) {
+		t.Errorf("the descriptor's comment does not name the contract as written:\n%s", src)
+	}
+}
+
+// A contract holding a rune that does not print is quoted where a comment names it.
+func TestAContractThatDoesNotPrintIsQuotedInTheComment(t *testing.T) {
+	for contract, want := range map[string]string{
+		"orders.Placed":   "orders.Placed",
+		`orders."quoted"`: `orders."quoted"`,
+		"orders.ü":        "orders.ü",
+		"orders\rplaced":  `"orders\rplaced"`,
+		"orders\x7f":      `"orders\x7f"`,
+	} {
+		if got := contractDoc(contract); got != want {
+			t.Errorf("contractDoc(%q) = %s, want %s", contract, got, want)
 		}
 	}
 }

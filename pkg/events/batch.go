@@ -174,6 +174,16 @@ func (e ItemErrors) Unwrap() []error {
 	return out
 }
 
+// within reports whether every index e names is one of a batch of n.
+func (e ItemErrors) within(n int) bool {
+	for i := range e {
+		if i < 0 || i >= n {
+			return false
+		}
+	}
+	return true
+}
+
 // indices returns the failed indices, ascending.
 func (e ItemErrors) indices() []int {
 	out := make([]int, 0, len(e))

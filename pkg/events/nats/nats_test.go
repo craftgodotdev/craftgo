@@ -3,6 +3,7 @@ package nats
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/nats-io/nats.go"
@@ -128,6 +129,66 @@ func TestNoDeduplicationIDMeansNoHeader(t *testing.T) {
 	out := New(nil).encode(&events.Message{Event: "orders.OrderPlaced", Payload: []byte("body")})
 	if got := out.Header.Get(HeaderDedupID); got != "" {
 		t.Errorf("%s = %q, want none", HeaderDedupID, got)
+	}
+}
+
+// A message NATS would change on the way is refused, naming what and why; one it carries
+// byte for byte is not.
+func TestAMessageNATSWouldChangeIsRefused(t *testing.T) {
+	refused := map[string]*events.Message{
+		"key with a leading space":    {Key: " k"},
+		"key with a trailing tab":     {Key: "k\t"},
+		"key with a line break":       {Key: "k\n1"},
+		"dedup ID padded":             {DedupID: " d-1 "},
+		"dedup ID with a CR":          {DedupID: "d\r1"},
+		"metadata key with a space":   {Metadata: map[string]string{"x trace": "v"}},
+		"metadata key with a colon":   {Metadata: map[string]string{"x:trace": "v"}},
+		"metadata key with a slash":   {Metadata: map[string]string{"x/trace": "v"}},
+		"metadata key outside ASCII":  {Metadata: map[string]string{"x-ürl": "v"}},
+		"empty metadata key":          {Metadata: map[string]string{"": "v"}},
+		"metadata value padded":       {Metadata: map[string]string{"x-pad": "  v  "}},
+		"metadata value with a break": {Metadata: map[string]string{"x-lines": "a\nb"}},
+	}
+	for name, msg := range refused {
+		err := carried(msg)
+		if !errors.Is(err, ErrNotCarried) {
+			t.Errorf("%s: err = %v, want ErrNotCarried", name, err)
+		}
+	}
+	carriedAsIs := map[string]*events.Message{
+		"inner spaces and tabs": {Key: "k 1", DedupID: "d 1", Metadata: map[string]string{"x-inner": "a  b\tc"}},
+		"empty value":           {Metadata: map[string]string{"x-empty": ""}},
+		"non-ASCII value":       {Key: "ü", Metadata: map[string]string{"x-uni": "ü→✓"}},
+		"punctuation":           {Metadata: map[string]string{"X-Mixed_Case.1~": `"a"=1;b,c:d`}},
+		"a dedup header in metadata, which is dropped": {Metadata: map[string]string{HeaderDedupID: " dropped "}},
+	}
+	for name, msg := range carriedAsIs {
+		if err := carried(msg); err != nil {
+			t.Errorf("%s: refused with %v", name, err)
+		}
+	}
+}
+
+// Publish refuses before touching the connection, naming the contract.
+func TestPublishRefusesWhatNATSWouldChange(t *testing.T) {
+	err := New(nil).Publish(context.Background(), &events.Message{Event: "orders.Placed", Key: " k"})
+	if !errors.Is(err, ErrNotCarried) || !strings.Contains(err.Error(), "orders.Placed") {
+		t.Errorf("err = %v, want ErrNotCarried naming the contract", err)
+	}
+}
+
+// A batch holding a message NATS would change is refused whole, naming that message.
+func TestPublishBatchRefusesWhatNATSWouldChangeByIndex(t *testing.T) {
+	err := New(nil).PublishBatch(context.Background(), []*events.Message{
+		{Event: "orders.Placed"},
+		{Event: "orders.Shipped", Metadata: map[string]string{"x trace": "v"}},
+	})
+	var refused *events.EnvelopeError
+	if !errors.As(err, &refused) || refused.Index != 1 || refused.Event != "orders.Shipped" {
+		t.Fatalf("err = %v, want an *events.EnvelopeError naming message 1", err)
+	}
+	if !errors.Is(err, ErrNotCarried) {
+		t.Errorf("err = %v, want ErrNotCarried within reach", err)
 	}
 }
 

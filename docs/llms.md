@@ -375,6 +375,13 @@ The ordering key is a publish option, not a design decision; without one a publi
 `WithPublishDefaults(opts...)` sets bus-wide defaults a call's own options win over. `pkg/events`
 knows no broker and no encoding: `pkg/events/memory` is an in-process transport, `codecjson` a JSON
 codec, `logging` the shipped consumer middleware, `kafka` and `nats` broker adapters (own modules).
+`PublishAll` refuses a batch holding an envelope it cannot encode - no contract, no codec, an unread
+adapter option, a payload the codec refuses - before sending any of it, with an `*events.EnvelopeError`
+whose `Index` names that envelope; a partial send is a `*PartialPublishError`. The key, dedup ID and
+metadata arrive as written on every transport; the NATS adapters refuse with `nats.ErrNotCarried`
+(an `*EnvelopeError` in a batch) what their headers would alter: a metadata key that is no NATS
+header name (printable ASCII without spaces or any of `"(),/:;<=>?@[\]{}`), or a value padded with
+spaces or tabs or holding a line break.
 
 Metadata is the publisher's to set: `WithHeader(k, v)` on any publish, or `Envelope.Metadata` with
 `Bus.PublishAll`. `events.IsReservedMeta` names the keys
@@ -403,7 +410,8 @@ A subscription consumes in batches with `Placed.SubscribeBatch(bus, group, craft
 Wait: time.Second}, fn)`, `fn` taking `(ctx, []craftevents.Item[T]) error`: at most `Max` messages, none
 waiting longer than `Wait`, each decoded and validated first and left out when it fails. Each item answers
 alone through `it.Msg.Redeliver()` / `Reject()`, `it.Fail(err)` gives it its own error, and `fn`'s error goes
-to the rest; the failures come back as `craftevents.ItemErrors` (index into the batch -> error), reported
+to the rest - an `ItemErrors` from `fn`, keyed by index into the items it was handed, fails only those it
+names; the failures come back as `craftevents.ItemErrors` (index into the batch -> error), reported
 once by the transport. A batch subscription holds its group alone (`ErrBatchGroupShared`). Its chain is the
 batch chain - `WithBatchMiddleware`, `bus.UseBatch`, `Batch.Chain`, `logging.BatchAccessLog` - and the
 per-message chain does not run for it. JetStream waits for a batch's first message, then fills it in pulls of
@@ -420,12 +428,32 @@ FetchSize(n), AckWait(d), DeliverPolicy(p), ConsumerConfig(fn), AllowNarrow())`.
 `ConsumerConfig` apply only when the durable is created; `MaxInFlight` is the prefetch, default 1 -
 raise it only where n x the slowest handler stays under `AckWait`.
 
+A group with no position starts: on JetStream at the stream's first message (`DeliverAll`; change it
+with `nats.WithGroupConfig(group, nats.DeliverPolicy(...))` or a durable created beforehand); on a
+classic Kafka group at the earliest record, replaying the topic (`kafka.WithClientOptions(
+kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd()))` for new records only); on a Kafka share group at
+the end of the topic (broker group config `share.auto.offset.reset`); on core NATS and memory at the
+next message published.
+
+Shutdown is cancelling the context given to `Start`, then closing the transport. Once it has ended
+no message reaches a handler, and a handler that fails after it ended, with the chain asking for
+nothing or for redelivery, was cut short: JetStream naks that message, a share group releases it, a
+classic group leaves it and everything after it in its partition uncommitted, so it is delivered
+again; what was fetched and not handed over goes back the same way. Core NATS and memory deliver at
+most once: a batch still filling is handed over on a context that keeps the subscription's values
+and ends 30s later. While a subscription runs, an error redelivers nothing by itself. JetStream's
+`Close` waits for running handlers (`WithDrainTimeout`); Kafka's closes its clients at once, so a
+record still in a handler, or handled but not yet committed, comes back. The memory transport runs a
+handler on its subscription's context, as a broker does, and copies the message, payload included,
+for each group.
+
 Guide: [model](/guide/events#the-model) - [declaring](/guide/events#declaring-events) -
 [generated](/guide/events#what-is-generated) - [publishing](/guide/events#publishing) -
 [consuming](/guide/events#consuming) - [groups](/guide/events#groups) -
 [middleware](/guide/events#middleware) - [dispositions](/guide/events#dispositions) -
 [plan](/guide/events#the-plan) - [batches](/guide/events#consuming-in-batches) -
-[JetStream](/guide/events#nats-jetstream) - [transports](/guide/events#kafka-core-nats-and-memory)
+[JetStream](/guide/events#nats-jetstream) - [transports](/guide/events#kafka-core-nats-and-memory) -
+[shutdown](/guide/events#shutting-down)
 
 ## Decorator registry
 

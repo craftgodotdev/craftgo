@@ -95,7 +95,8 @@ func (l pullLimits) expiry(d time.Duration) time.Duration {
 
 // consumeBatches starts fetching g's durable for sub, a batch subscription; each handler
 // gets ctx. A failed fetch is reported and retried after a growing pause; the loop ends
-// once the durable or its stream is gone.
+// once the durable or its stream is gone, or ctx ends, which hands the messages fetched
+// for the next batch back.
 func (j *JetStream) consumeBatches(ctx context.Context, g *groupPlan, sub events.Subscription, consumer jetstream.Consumer, ackWait time.Duration) *batchConsumer {
 	fetchCtx, cancel := context.WithCancel(context.Background())
 	b := &batchConsumer{cancel: cancel, closed: make(chan struct{})}
@@ -105,10 +106,10 @@ func (j *JetStream) consumeBatches(ctx context.Context, g *groupPlan, sub events
 		defer close(b.closed)
 		defer cancel()
 		pause := time.Duration(0)
-		for b.current() == batchRunning {
+		for b.current() == batchRunning && ctx.Err() == nil {
 			hold := holdBatch(ackWait)
 			ms, err := j.gather(fetchCtx, g, sub, consumer, limits, ackWait, hold)
-			if b.current() == batchStopped {
+			if b.current() == batchStopped || ctx.Err() != nil {
 				hold.release()
 				for _, m := range ms {
 					_ = m.Nak()
@@ -214,7 +215,8 @@ func (j *JetStream) gather(ctx context.Context, g *groupPlan, sub events.Subscri
 }
 
 // deliverBatch hands ms to sub's batch handler, then answers each message as the chain
-// decided, as [JetStream.deliver] does for one.
+// decided, as [JetStream.deliver] does for one: a message whose handling the shutdown cut
+// short goes back to the stream.
 func (j *JetStream) deliverBatch(ctx context.Context, sub events.Subscription, ms []jetstream.Msg, hold *batchHold) {
 	batch := make([]*events.Message, len(ms))
 	for i, m := range ms {
@@ -229,6 +231,10 @@ func (j *JetStream) deliverBatch(ctx context.Context, sub events.Subscription, m
 	}
 	for i, m := range ms {
 		msg := batch[i]
+		if interrupted(ctx, msg, itemErr(err, i)) {
+			j.handBack(sub, msg, m)
+			continue
+		}
 		if j.capped(msg) {
 			j.report(sub, msg, fmt.Errorf("nats: giving up on %s after %d deliveries - the chain asked for another and WithMaxDeliveries is %d", sub.Event, msg.Deliveries(), j.maxDeliveries))
 		}
@@ -236,6 +242,16 @@ func (j *JetStream) deliverBatch(ctx context.Context, sub events.Subscription, m
 			j.report(sub, msg, fmt.Errorf("nats: answering for %s: %w", sub.Event, ackErr))
 		}
 	}
+}
+
+// itemErr is the error err, a batch handler's, holds for message i of the batch: the
+// entry an [events.ItemErrors] has for it, or err itself when it is no ItemErrors.
+func itemErr(err error, i int) error {
+	var failed events.ItemErrors
+	if errors.As(err, &failed) {
+		return failed[i]
+	}
+	return err
 }
 
 // batchHold resets the redelivery timer of each message it holds, every half AckWait,

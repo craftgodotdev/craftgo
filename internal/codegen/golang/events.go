@@ -4,6 +4,8 @@ import (
 	"maps"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"unicode"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/idents"
@@ -21,7 +23,11 @@ type eventsData struct {
 type eventDescriptor struct {
 	Name      string
 	ConstName string
-	Contract  string
+	// ContractLit is the contract as a Go string literal.
+	ContractLit string
+	// ContractDoc is the contract as the descriptor's comment names it: as written, or
+	// quoted when it holds a rune a reader would not see.
+	ContractDoc string
 	// PayloadType is the payload's Go type, a slice for a `payload T[]` contract.
 	PayloadType string
 	// Validate is the validator NewEvent receives (see validateFunc).
@@ -56,7 +62,8 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 		data.Events = append(data.Events, eventDescriptor{
 			Name:          ev.Name,
 			ConstName:     idents.EventContractName(ev.Name),
-			Contract:      ev.Contract,
+			ContractLit:   strconv.Quote(ev.Contract),
+			ContractDoc:   contractDoc(ev.Contract),
 			PayloadType:   payload,
 			Validate:      validate,
 			ValidateElems: elems,
@@ -68,6 +75,17 @@ func generatePackageEvents(pkg *semantic.Package, cfg *config.Config, projectRoo
 	}
 	data.ImportDecl = imports.decl()
 	return writeGo(filepath.Join(projectRoot, outDir, pkg.Name, "events.go"), tmpl("events.tmpl"), data)
+}
+
+// contractDoc renders contract for a comment: as written when every rune of it prints, else
+// quoted, so a control character neither ends the comment nor hides in it.
+func contractDoc(contract string) string {
+	for _, r := range contract {
+		if !unicode.IsPrint(r) {
+			return strconv.Quote(contract)
+		}
+	}
+	return contract
 }
 
 // validateFunc renders NewEvent's validator: the payload's Validate method value, the file's
