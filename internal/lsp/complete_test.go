@@ -936,3 +936,37 @@ func TestCompletionErrorCategoryNotInOtherPositions(t *testing.T) {
 		}
 	}
 }
+
+// Inside @cookie(...), a `,` offers the attributes not given yet and a `:` the values of its
+// attribute.
+func TestCompletionCookieAttributes(t *testing.T) {
+	src := `package x
+type R {
+	a string @cookie("sid", )
+	b string @cookie("sid", maxAge: 1h, )
+	c string @cookie("sid", sameSite: )
+	d string @cookie("sid", secure: )
+}
+`
+	labels := func(items []protocol.CompletionItem) []string {
+		var out []string
+		for _, it := range items {
+			out = append(out, it.Label)
+		}
+		slices.Sort(out)
+		return out
+	}
+	for _, c := range []struct {
+		line, col uint32
+		want      []string
+	}{
+		{2, 25, []string{"domain", "httpOnly", "maxAge", "path", "sameSite", "secure"}},
+		{3, 37, []string{"domain", "httpOnly", "path", "sameSite", "secure"}},
+		{4, 35, []string{"lax", "none", "strict"}},
+		{5, 33, []string{"false", "true"}},
+	} {
+		if got := labels(mustCompletionsAt(t, src, c.line, c.col)); !slices.Equal(got, c.want) {
+			t.Errorf("line %d col %d: got %v, want %v", c.line, c.col, got, c.want)
+		}
+	}
+}

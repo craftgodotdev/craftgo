@@ -155,6 +155,8 @@ type ArgsRule struct {
 	// Named is the kind of each `name: value` argument the decorator takes
 	// after its positional ones; a decorator without it takes none.
 	Named map[string]ArgKind
+	// NamedValues is the set a named identifier argument's value belongs to.
+	NamedValues map[string][]string
 }
 
 // Prims is a bitmask of the primitive type categories a decorator applies to.
@@ -504,6 +506,8 @@ var registry = map[string]Spec{
 	"cookie": {Name: "cookie", Levels: LvlField | LvlErrorField, Doc: "Bind from an HTTP cookie (request fields), or set one (response and error fields), named by the string argument or the field. A cookie the server sets takes `path` (\"/\"), `domain` (none), `maxAge` (none: the session), `httpOnly` (true), `secure` (true) and `sameSite` (`lax`, `strict` or `none`; `lax`), as in `@cookie(\"sid\", maxAge: 24h, sameSite: strict)`. A `cookie` field lets the logic change them per response.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}, Named: map[string]ArgKind{
 		wire.CookiePath: ArgString, wire.CookieDomain: ArgString, wire.CookieMaxAge: ArgDuration,
 		wire.CookieHTTPOnly: ArgBool, wire.CookieSecure: ArgBool, wire.CookieSameSite: ArgIdent,
+	}, NamedValues: map[string][]string{
+		wire.CookieSameSite: {wire.SameSiteLax, wire.SameSiteStrict, wire.SameSiteNone},
 	}}},
 	"body": {Name: "body", Levels: LvlField, Doc: "Bind from request body.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},
 	"form": {Name: "form", Levels: LvlField, Doc: "Bind from multipart form field; the request needs a `file`.", Args: ArgsRule{Min: 0, Max: 1, Kinds: []ArgKind{ArgString}}},

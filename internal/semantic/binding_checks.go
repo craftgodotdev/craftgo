@@ -701,7 +701,7 @@ func (a *analyzer) checkCookieAttrs(parent string, f *ast.Field) {
 				why = fmt.Sprintf("maxAge %s is no whole number of seconds above zero - a cookie the logic deletes is a `cookie` field set with MaxAge -1", age)
 			}
 		case wire.CookieSameSite:
-			if _, ok := ag.Value.(*ast.IdentExpr); ok && !slices.Contains([]string{wire.SameSiteLax, wire.SameSiteStrict, wire.SameSiteNone}, attrs.SameSite) {
+			if _, ok := ag.Value.(*ast.IdentExpr); ok && !slices.Contains(cookieSameSites(), attrs.SameSite) {
 				why = fmt.Sprintf("sameSite %s is not lax, strict or none", attrs.SameSite)
 			}
 		}
@@ -824,4 +824,10 @@ func fieldHoldsFile(f *ast.Field) bool { return holdsFile(f.Type) }
 // isFileTypeRef reports whether t names `file`, optional or in an array.
 func isFileTypeRef(t *ast.TypeRef) bool {
 	return t != nil && t.Named != nil && t.Named.Name != nil && t.Named.Name.String() == "file"
+}
+
+// cookieSameSites returns the values @cookie's sameSite takes.
+func cookieSameSites() []string {
+	spec, _ := DecoratorSpec(wire.BindingCookie)
+	return spec.Args.NamedValues[wire.CookieSameSite]
 }
