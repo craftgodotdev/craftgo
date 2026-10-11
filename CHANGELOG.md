@@ -42,8 +42,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@nullable`, answers 400 `<json path>: required` before `Validate` runs;
   `""`, `0` and `false` are values. The body decodes through the installed
   codec into an unexported struct beside the handler (`bodies.gen.go`), which
-  is copied into the request type, a nested `@default` filling an absent
-  member. The check has no switch.
+  is copied into the request type, a `@default` filling a member left out or
+  sent as `null` at any depth. The check has no switch, and `@nullable`
+  beside `@default` is refused.
 
 - **A JSON route answers 415** `{"message":"unsupported media type"}` to a
   body whose `Content-Type` is not `application/json` or an

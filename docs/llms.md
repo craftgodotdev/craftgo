@@ -533,7 +533,7 @@ A field with no binding decorator whose name matches a `{name}` in the route (or
 | `@sensitive`      | field, errorField | Server-only. `json:"-"`, omitted from OpenAPI. No validators, bindings, `@json`, `@nullable`, `@default`. |
 | `@json("key")`    | field, errorField | JSON key when it is not the field name (a foreign contract, or a PascalCase key the parser reads as a mixin). Not with an off-body binding. |
 
-`@default` belongs on an optional field (`?`): on a non-optional one it still pre-fills - the handler assigns the default before decoding - and `decorator/default-needs-optional` warns until you add `?` (the formatter adds it on save), so `types.go`, `validate.go` and the OpenAPI agree the field is optional. `craftgo gen` prints only errors; the editor shows the warning. For enum fields, the value is the bare ident (`@default(Active)`), checked as its wire value. The default must pass the field's validators and its scalar's (an array default: `@minItems` / `@maxItems` / `@uniqueItems`, and each element its scalar's); one that breaks them is `decorator/conflict`.
+`@default` belongs on an optional field (`?`): on a non-optional one it still fills a member left out or sent as `null`, and `decorator/default-needs-optional` warns until you add `?` (the formatter adds it on save), so `types.go`, `validate.go` and the OpenAPI agree the field is optional. `craftgo gen` prints only errors; the editor shows the warning. For enum fields, the value is the bare ident (`@default(Active)`), checked as its wire value. The default must pass the field's validators and its scalar's (an array default: `@minItems` / `@maxItems` / `@uniqueItems`, and each element its scalar's); one that breaks them is `decorator/conflict`.
 
 ### Service / method
 
@@ -567,6 +567,7 @@ Raw sides: `@rawResponse` keeps request bind + validate and hands `w` to logic (
 ### Conflicts
 
 - `@sensitive` + any of: validators, bindings (`@body`/`@path`/`@query`/`@header`/`@cookie`/`@form`), `@nullable`, `@default`
+- `@nullable` + `@default`: a member sent as `null` takes the default, so it never reads as null
 - `@passthrough` + `@rawRequest` / `@rawResponse`, or both flags together: `decorator/redundant` (warning, identical output)
 
 Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decorator/placement` or `decorator/typemismatch`. `@default` on a non-optional field fires `decorator/default-needs-optional` (warning; formatter auto-fixes on save).
@@ -785,10 +786,10 @@ func <Method>(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
             return
         }
         var req types.<Req>
-        // 1. pre-fill @default values
+        // 1. pre-fill the @default values of @query / @header / @cookie / @form fields
         req.Field = defaultValue
         // 2. decode JSON body (body verbs only): through a struct of pointers that tells an
-        // absent member from a zero one, then into req
+        // absent member from a zero one, then into req, filling a @default where a member is absent or null
         var _b <req>Wire
         if err := server.JSON().Decode(r.Body, &_b); err != nil {
             server.WriteValidationError(w, r, err)

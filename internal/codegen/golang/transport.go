@@ -95,8 +95,7 @@ func generateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot st
 		dir := out.transport.sub(d)
 		for _, s := range segs {
 			for m := range s.methods() {
-				data := buildTransportData(m, s.svc.Decorators(m), out.segmentImports(pkg.Name, s.dir), pkg, r, bodies.names()...)
-				data.BodyWire = bodies.wireFor(m)
+				data := buildTransportData(m, s.svc.Decorators(m), out.segmentImports(pkg.Name, s.dir), pkg, r, bodies.wireFor(m), bodies.names()...)
 				if err := writeGo(dir.at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("transport.tmpl"), data); err != nil {
 					return err
 				}
@@ -150,7 +149,7 @@ func bodyFields(m *ast.Method, decs []*ast.Decorator, pkg *semantic.Package, r *
 
 // buildTransportData renders m's handler, decs being the decorators that apply to m; reserved
 // are the package-level names its segment declares beside the handlers.
-func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, pkg *semantic.Package, r *projectResolver, reserved ...string) transportData {
+func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, pkg *semantic.Package, r *projectResolver, bodyWire string, reserved ...string) transportData {
 	mode := modeOf(m, decs)
 	imports := newImportSet(r.Module, r, goImport{Alias: localAlias, Path: imps.Types}, slices.Concat(transportNames, reserved))
 	imports.use("net/http")
@@ -185,7 +184,8 @@ func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, 
 				}
 			}
 		}
-		d.Defaults = collectDefaults(fields, r, imports)
+		d.BodyWire = bodyWire
+		d.Defaults = collectDefaults(fields, r, imports, bodyWire != "")
 	}
 	// On a raw response side logic writes its own headers.
 	if d.WriteResponse && mode.HasResponse {

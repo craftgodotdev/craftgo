@@ -554,7 +554,7 @@ func (a *analyzer) checkNullableRedundant(f *ast.Field) {
 			nullableDec = d
 		}
 	}
-	if nullableDec != nil && f.Type != nil && f.Type.Optional {
+	if nullableDec != nil && f.Type != nil && f.Type.Optional && !ast.HasDecorator(f.Decorators, "default") {
 		a.diag(nullableDec.Pos, decoratorEnd(nullableDec),
 			lexer.SeverityWarning, CodeDecoratorRedundant,
 			"@nullable is redundant on optional field %q (the `?` already allows null)",

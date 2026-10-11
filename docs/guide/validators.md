@@ -214,7 +214,7 @@ type AvatarReq {
 
 ## Default values
 
-`@default` provides a fallback when the client omits a field: an absent member takes the default, in the request type or in any type below it, and a value the client sends wins. An optional member sent as `null` stays nil.
+`@default` provides a fallback when the client omits a field: a member left out or sent as `null` takes the default, in the request type or in any type below it, and a value the client sends wins. A type below takes its defaults only when the body holds it: an optional `b` left out stays nil, and `"b":{}` fills each default of `b`. `@nullable` beside `@default` is `decorator/conflict`, since such a member never reads as null.
 
 ```craftgo
 type ListUsersReq {
@@ -224,7 +224,7 @@ type ListUsersReq {
 }
 ```
 
-`@default` works on primitives (not `bytes`, `datetime`, `file` or `any`), scalars over them, enums, and single-level arrays of those. The handler pre-fills the field whether or not it carries `?`, but a field with a default is optional in meaning, so the analyzer warns (`decorator/default-needs-optional`) until it carries `?` - the formatter adds it on save - so types.go, validate.go and the OpenAPI agree it is optional. The default must pass the field's validators, its scalar's included - the handler validates the pre-filled value - so a default that breaks one is `decorator/conflict`.
+`@default` works on primitives (not `bytes`, `datetime`, `file` or `any`), scalars over them, enums, and single-level arrays of those. The default fills the field whether or not it carries `?`, but a field with a default is optional in meaning, so the analyzer warns (`decorator/default-needs-optional`) until it carries `?` - the formatter adds it on save - so types.go, validate.go and the OpenAPI agree it is optional. The default must pass the field's validators, its scalar's included - the handler validates the filled value - so a default that breaks one is `decorator/conflict`.
 
 ## Error messages
 

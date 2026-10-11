@@ -14,10 +14,12 @@ type Item { sku string  qty int? }
 type Box<T> { v T  opt T? }
 type Make { name string  items Item[]  boxed Box<Item[]> }
 type Loose { note string?  size int? @default(3) }
+type Plain { note string? }
 type Rename { id string  name string }
 service S {
 	post Make /make { request Make }
 	post Loose /loose { request Loose }
+	post Plain /plain { request Plain }
 	put Rename /things/{id} { request Rename }
 }`
 
@@ -32,8 +34,8 @@ func generateBodies(t *testing.T) string {
 	return filepath.Join(root, "internal/transport/s")
 }
 
-// A body with a required member decodes into its wire struct; one with optional members only
-// decodes straight into the request, its defaults pre-filled.
+// A body with a required or defaulted member decodes into its wire struct; one with optional
+// members only, none defaulted, decodes straight into the request.
 func TestBodyDecodesThroughItsWireStruct(t *testing.T) {
 	dir := generateBodies(t)
 	mk := readGen(t, dir, "make.go")
@@ -45,8 +47,11 @@ func TestBodyDecodesThroughItsWireStruct(t *testing.T) {
 	)
 	mustContainNone(t, mk, "Decode(r.Body, &req)")
 	loose := readGen(t, dir, "loose.go")
-	mustContainNone(t, loose, "Wire")
-	mustContainAll(t, loose, "server.JSON().Decode(r.Body, &req)")
+	mustContainAll(t, loose, "var _b looseWire")
+	mustContainNone(t, loose, "__d")
+	plain := readGen(t, dir, "plain.go")
+	mustContainNone(t, plain, "Wire")
+	mustContainAll(t, plain, "server.JSON().Decode(r.Body, &req)")
 }
 
 // The wire struct checks each required member at its JSON path, decodes a type-parameter `T?`

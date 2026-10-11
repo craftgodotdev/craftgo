@@ -84,8 +84,8 @@ Enum types and their constants (`TodoStatusOpen`, …) — membership validation
 
 One `func <Method>(svcCtx) http.HandlerFunc` per method. The handler:
 
-1. Applies any `@default` pre-fill (before decode, so a client-provided value overrides the default rather than the reverse),
-2. Decodes the request (JSON body, or binds `@path` / `@query` / `@header` / `@cookie` / `@form` fields with the right casts). A JSON body with a required member decodes first into its wire struct, one per type it reaches, in `bodies.gen.go` beside the handlers: a pointer per member, so a member left out or sent as `null` answers 400 `<json path>: required`; the struct's `to` copies it into the request and fills each absent nested `@default`,
+1. Pre-fills the `@default` of each `@query`, `@header`, `@cookie` and `@form` field (before binding, so a value the request carries overrides the default),
+2. Decodes the request (JSON body, or binds `@path` / `@query` / `@header` / `@cookie` / `@form` fields with the right casts). A JSON body with a required member decodes first into its wire struct, one per type it reaches, in `bodies.gen.go` beside the handlers: a pointer per member, so a member left out or sent as `null` answers 400 `<json path>: required`; the struct's `to` copies it into the request and fills the `@default` of each member left out or sent as `null`, at any depth,
 3. Calls `req.Validate()`,
 4. Dispatches to your `service` logic,
 5. Encodes the response as the logic returns it (and writes any `@status`, response headers, or cookies). Nothing fills a nil list or map: it goes out as `null`, so logic returns `[]` or `{}` for a required one that is empty.

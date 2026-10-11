@@ -91,7 +91,7 @@ Field level (a few also apply at error-field level for response writing).
 
 | Decorator | Args | Effect |
 |---|---|---|
-| `@default(v)` | `(literal \| enum value \| array)` | Value the handler pre-fills before binding, kept when the field is absent on the wire. On a field without `?` it still pre-fills, with a `decorator/default-needs-optional` warning (`craftgo fmt` adds the `?`). Refused beside `@path`. |
+| `@default(v)` | `(literal \| enum value \| array)` | Value a field takes when the request leaves it out, or a JSON body sends it as `null`. On a field without `?` it still fills, with a `decorator/default-needs-optional` warning (`craftgo fmt` adds the `?`). Refused beside `@path` and `@nullable`. |
 | `@nullable` | - | The field accepts an explicit JSON `null` (flag form). |
 | `@json("key")` | `(string)` | The JSON key of a body field when it is not the field name - a contract another system owns, or a key such as `OrderItem` that the parser would read as a mixin. Used by the Go tag, the documents and validation messages. Not combinable with an off-body binding. |
 | `@sensitive` | - | Server-only field - tagged `json:"-"`, skipped from OpenAPI. Cannot combine with any validator, binding, `@json`, `@default`, or `@nullable`. |

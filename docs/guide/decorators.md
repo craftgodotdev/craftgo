@@ -197,7 +197,7 @@ can't match the `present-and-non-null` the OpenAPI fragment advertises.
 
 ## Field validators
 
-> **Required-by-default**: every field is required unless its type carries the `?` suffix. There is no `@required` decorator - to mark a field optional, write `name string?`. To allow `null` while keeping the field mandatory, add `@nullable`. To pre-fill an absent value, add `@default(...)` (which also auto-marks the field optional on save).
+> **Required-by-default**: every field is required unless its type carries the `?` suffix. There is no `@required` decorator - to mark a field optional, write `name string?`. To allow `null` while keeping the field mandatory, add `@nullable`. To fill a value left out or sent as `null`, add `@default(...)` (which also auto-marks the field optional on save).
 
 > **Error-body validators are spec-only.** Validators (`@minLength`, `@pattern`, `@range`, ...) on `error` body fields surface in the generated OpenAPI schema constraints but produce **no runtime check** - errors are emitted server-side from your handler, so the framework cannot validate something it just constructed. `validate.go` does generate a `Validate()` on the error's `<Name>Body`, which your handler may call before `New<Name>Err(...)`; nothing else calls it. Treat the constraints on error fields as documentation contracts that consumer SDKs read.
 
@@ -969,6 +969,7 @@ Some decorator combinations are rejected (or flagged) by the semantic analyzer:
 | Decorator      | Conflicts with                                                                              | Why                                                       |
 | -------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | `@sensitive`   | All validators, all bindings, `@nullable`, `@default`                                       | Field never crosses the wire - constraints meaningless    |
+| `@nullable`    | `@default`                                                                                  | A member sent as `null` takes the default, so it never reads as null |
 | `@passthrough` | `@rawRequest`, `@rawResponse` (and the two flags together)                                  | Redundant, not rejected: `decorator/redundant` warning, identical output - write one spelling |
 
 Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decorator/placement` or `decorator/typemismatch`.

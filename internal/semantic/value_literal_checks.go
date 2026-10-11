@@ -39,6 +39,10 @@ func (a *analyzer) checkFieldDefault(f *ast.Field) {
 		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityError, CodeDecoratorConflict, "%s", problem)
 		return
 	}
+	if nd := ast.FindDecorator(f.Decorators, "nullable"); nd != nil {
+		a.diag(nd.Pos, decoratorEnd(nd), lexer.SeverityError, CodeDecoratorConflict,
+			"field %q: @nullable with @default - a member sent as null takes the default, as an absent one does, so it never reads as null; drop one", f.Name)
+	}
 	if DefaultNeedsOptional(f) {
 		a.diag(dec.Pos, decoratorEnd(dec), lexer.SeverityWarning, CodeDefaultNeedsOptional,
 			"@default on non-optional field %q: the default fires when the value is absent, so the field is optional - add `?` (or run `craftgo fmt`) so types.go, validate.go, and the OpenAPI agree it is optional",

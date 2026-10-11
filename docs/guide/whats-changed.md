@@ -48,6 +48,7 @@ A design proto whose `go_package` names another module's package is a warning: i
 ### What the server answers
 
 - A JSON body that leaves out a member declared without `?`, or sends it as `null` without `@nullable`, answers 400 `<json path>: required`. A client that relied on a missing member reading as `""`, `0` or `false` now sends it, or the member takes `?` or a `@default`.
+- A member with a `@default` takes it when the body sends it as `null`, as when it leaves it out, at any depth; `@nullable` beside `@default` is now `decorator/conflict`, so drop one of the two.
 - A JSON route answers 415 to a body whose `Content-Type` is not `application/json` or an `application/*+json` type, or that has none: a client posting JSON as `text/plain`, or untyped, sets `Content-Type: application/json`.
 - A nil list, map or `bytes` the logic returns goes out as `null`, where 1.10 wrote `[]`, `{}` or `""`: return empty ones where the document requires the member. An optional one the logic sets empty goes out as `[]` or `{}`, where 1.10 left it out.
 - `@format` checks follow their RFCs. `email` refuses a display name, a comment or angle brackets (`Ann <ann@example.com>`), `time` needs its offset (`15:04:05Z`, not `15:04:05`), `ipv4` refuses `::ffff:1.2.3.4`, and `url` needs `http` or `https` and a host. A client sending the forms that passed before gets 400, and a bound that only fits the old form, as `@length(8, 8)` on a `time`, needs widening.
