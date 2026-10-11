@@ -17,6 +17,9 @@ import (
 // EchoScalar returns the POST EchoScalar handler.
 func EchoScalar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.DefaultsScalar
 		{
 			__d := types.PageSize(20)

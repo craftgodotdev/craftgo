@@ -18,8 +18,21 @@ import (
 // WrapForeign returns the POST WrapForeign handler.
 func WrapForeign(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req xshared.XWrapInBag[paytypes.XPayItem]
-		if err := server.JSON().Decode(r.Body, &req); err != nil {
+		if server.RequirePresence() {
+			var _b xWrapInBagXPayItemWire
+			if err := server.JSON().Decode(r.Body, &_b); err != nil {
+				server.WriteValidationError(w, r, err)
+				return
+			}
+			if _m := _b.to(&req); _m != "" {
+				server.WriteValidationError(w, r, server.MissingMember(_m))
+				return
+			}
+		} else if err := server.JSON().Decode(r.Body, &req); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}

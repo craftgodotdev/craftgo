@@ -225,7 +225,7 @@ func (e *ForbiddenDetailsErr) MarshalJSON() ([]byte, error) {
 	return json.Marshal(e.ForbiddenDetailsBody)
 }
 
-// WriteResponseHeaders sets the @header and @cookie fields on w.
+// WriteResponseHeaders sets the @header fields on w.
 func (e *ForbiddenDetailsErr) WriteResponseHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Error-Code", e.Code)
 }
@@ -261,7 +261,7 @@ func (e *HeaderMixinError) HTTPStatus() int { return 409 }
 // MarshalJSON encodes the body alone.
 func (e *HeaderMixinError) MarshalJSON() ([]byte, error) { return json.Marshal(e.HeaderMixinErrorBody) }
 
-// WriteResponseHeaders sets the @header and @cookie fields on w.
+// WriteResponseHeaders sets the @header fields on w.
 func (e *HeaderMixinError) WriteResponseHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Request-Id", e.Rid)
 }
@@ -299,12 +299,8 @@ func (e *InvalidInputErr) ErrCode() string { return ErrCodeInvalidInput }
 // HTTPStatus returns the BadRequest status.
 func (e *InvalidInputErr) HTTPStatus() int { return 400 }
 
-// MarshalJSON encodes the body alone, from a copy whose nil lists and maps are set empty.
-func (e *InvalidInputErr) MarshalJSON() ([]byte, error) {
-	body := e.InvalidInputBody
-	body.FillEmpty(0)
-	return json.Marshal(body)
-}
+// MarshalJSON encodes the body alone.
+func (e *InvalidInputErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.InvalidInputBody) }
 
 // ErrCodeMaintenance is the canonical machine-readable code for MaintenanceErr.
 const ErrCodeMaintenance = "MAINTENANCE"
@@ -344,7 +340,7 @@ func (e *MaintenanceErr) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]string{"code": ErrCodeMaintenance, "message": e.Error()})
 }
 
-// WriteResponseHeaders sets the @header and @cookie fields on w.
+// WriteResponseHeaders sets the @header fields on w.
 func (e *MaintenanceErr) WriteResponseHeaders(w http.ResponseWriter) {
 	w.Header().Set("retry-after", e.Until)
 }
@@ -486,7 +482,7 @@ func (e *RetryLaterErr) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]string{"code": ErrCodeRetryLater, "message": e.Error()})
 }
 
-// WriteResponseHeaders sets the @header and @cookie fields on w.
+// WriteResponseHeaders sets the @header fields on w.
 func (e *RetryLaterErr) WriteResponseHeaders(w http.ResponseWriter) {
 	if e.Wait != nil {
 		w.Header().Set("Retry-After", strconv.Itoa(*e.Wait))

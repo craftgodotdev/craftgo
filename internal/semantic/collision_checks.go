@@ -223,11 +223,11 @@ func (a *analyzer) checkFieldUniqueness() {
 // bodyStructMethods are the methods the generator declares on every struct
 // holding a body's fields: a type's struct, a mixin's included, and an
 // error's body struct.
-var bodyStructMethods = []string{"Validate", "FillEmpty"}
+var bodyStructMethods = []string{"Validate"}
 
 // errorTypeMethods are the methods the generator declares on an error type,
 // which embeds the error's body struct.
-var errorTypeMethods = []string{"Error", "ErrCode", "HTTPStatus", "MarshalJSON", "WriteResponseHeaders"}
+var errorTypeMethods = []string{"Error", "ErrCode", "HTTPStatus", "MarshalJSON", "WriteResponseHeaders", "ResponseCookies"}
 
 // generatedMemberClash names the generated member a body field Go-named
 // goName clashes with, and how, or returns "". errName is the error whose

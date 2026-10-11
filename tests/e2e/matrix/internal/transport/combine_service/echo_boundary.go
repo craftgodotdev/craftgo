@@ -17,6 +17,9 @@ import (
 // EchoBoundary returns the POST EchoBoundary handler.
 func EchoBoundary(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.DefaultsBoundary
 		{
 			__d := 0

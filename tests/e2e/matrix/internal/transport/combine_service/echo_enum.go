@@ -17,6 +17,9 @@ import (
 // EchoEnum returns the POST EchoEnum handler.
 func EchoEnum(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.DefaultsEnum
 		{
 			__d := types.ColorRed

@@ -185,6 +185,37 @@ func TestWriteErrorUnwrapsTypedErrors(t *testing.T) {
 	}
 }
 
+// headedError is a StatusError with a header and a cookie of its own, as a generated error with
+// @header and @cookie fields.
+type headedError struct {
+	status int
+	name   string
+}
+
+func (e headedError) Error() string   { return e.name }
+func (e headedError) HTTPStatus() int { return e.status }
+func (e headedError) ErrCode() string { return e.name }
+func (e headedError) WriteResponseHeaders(w http.ResponseWriter) {
+	w.Header().Set("X-Error", e.name)
+}
+func (e headedError) ResponseCookies() []*http.Cookie {
+	return []*http.Cookie{{Name: "err", Value: e.name}}
+}
+
+// Of a join of typed errors, the one that sets the status sets the headers, the cookies and the
+// code too: none of another's reaches the response.
+func TestWriteErrorJoinTakesOneErrorsHeaders(t *testing.T) {
+	rec := httptest.NewRecorder()
+	err := errors.Join(fmt.Errorf("lookup: %w", headedError{http.StatusNotFound, "missing"}), headedError{http.StatusConflict, "dup"})
+	WriteError(rec, httptest.NewRequest(http.MethodGet, "/x", nil), err)
+	h := rec.Header()
+	if rec.Code != http.StatusNotFound || h.Values("X-Error")[0] != "missing" || len(h.Values("X-Error")) != 1 ||
+		len(h.Values("Set-Cookie")) != 1 || !strings.HasPrefix(h.Get("Set-Cookie"), "err=missing;") ||
+		!strings.Contains(rec.Body.String(), `"code":"missing"`) {
+		t.Errorf("got %d %v %q, want the 404's header, cookie and code alone", rec.Code, h, rec.Body.String())
+	}
+}
+
 // pastDeadline returns a traced request whose own deadline has passed.
 func pastDeadline(t *testing.T) *http.Request {
 	t.Helper()

@@ -36,14 +36,29 @@ func TestPerMethodMaxBodySizeOverridesDefault(t *testing.T) {
 	}
 }
 
-// Without a default cap a large body is accepted.
-func TestDefaultMaxBodySizeUnsetHasNoCap(t *testing.T) {
+// A new Server caps a body at DefaultMaxBodySize, and a default cap of 0 lifts it.
+func TestDefaultMaxBodySize(t *testing.T) {
 	var got string
-	s := New(nil)
-	s.Handle("POST /echo", readBody(t, &got))
+	capped := New(nil)
+	capped.Handle("POST /echo", readBody(t, &got))
+	under := strings.Repeat("x", DefaultMaxBodySize)
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/echo", strings.NewReader(strings.Repeat("x", 1<<20))))
-	if rec.Code != http.StatusOK || len(got) != 1<<20 {
-		t.Errorf("no default cap: status %d, the handler read %d bytes; want 200 and all %d", rec.Code, len(got), 1<<20)
+	capped.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/echo", strings.NewReader(under)))
+	if rec.Code != http.StatusOK || len(got) != DefaultMaxBodySize {
+		t.Errorf("a body at the cap: status %d, read %d bytes; want 200 and all of it", rec.Code, len(got))
+	}
+	rec = httptest.NewRecorder()
+	capped.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/echo", strings.NewReader(under+"x")))
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("a body past the cap: status %d, want 413", rec.Code)
+	}
+
+	uncapped := New(nil)
+	uncapped.SetDefaultMaxBodySize(0)
+	uncapped.Handle("POST /echo", readBody(t, &got))
+	rec = httptest.NewRecorder()
+	uncapped.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/echo", strings.NewReader(under+"x")))
+	if rec.Code != http.StatusOK || len(got) != DefaultMaxBodySize+1 {
+		t.Errorf("no cap: status %d, read %d bytes; want 200 and all of it", rec.Code, len(got))
 	}
 }

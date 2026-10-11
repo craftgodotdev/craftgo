@@ -23,13 +23,15 @@ srv := server.New(svcCtx, opts...)
 | Method | Description |
 |---|---|
 | `Use(mw Middleware) *Server` | Append a global middleware. Outermost-added wraps first. |
-| `Handle(pattern, h http.Handler, mws ...Middleware) *Server` | Register a route. Optional per-route middlewares wrap the handler **outermost-first** (first arg = outermost frame). |
+| `Handle(pattern, h http.Handler, mws ...Middleware) *Server` | Register a route. Optional per-route middlewares wrap the handler **outermost-first** (first arg = outermost frame); the route's limits - a `WithLimits` h's own, else the server's defaults - wrap them all. |
 | `HandleFunc(pattern, fn http.HandlerFunc) *Server` | Register a route from a bare function. |
 | `Handler() http.Handler` | Build the fully-wrapped handler (the `WithTelemetry` middleware → Recovery → CORS → global chain → mux, so a preflight never reaches a `Use` middleware; the health probes are answered ahead of it, wrapped in Recovery only). Use it with `httptest.NewServer(srv.Handler())` to exercise the full stack without binding a port. |
 | `Start(addr string) error` | Bind and serve until `Stop`; returns nil after a graceful `Stop`. Request headers must arrive within 10s, and idle connections close after 120s. |
 | `Serve(lis net.Listener) error` | `Start` on a listener you bound, which it closes when it returns; binding first lets the caller log the address it holds, the real port of a `:0` included. |
 | `Stop(ctx context.Context) error` | Graceful shutdown. A `Stop` that comes before `Start` or `Serve` makes them return nil at once, as `http.Server.Shutdown` does. |
 | `Mux() *http.ServeMux` | The underlying mux, if you need raw access. Routes registered on it directly skip the default body cap and handler timeout that `Handle` applies. |
+| `RegisterDocs(opts DocsOptions) error` | Serve `opts.Spec` at `GET SpecPath` (`/openapi.yaml`) and a docs page loading the `UI` (`redoc`, `swagger` or `scalar`) at `GET Path` (`/docs`); nothing when `Spec` is empty. Fails, registering neither, on a path that does not start with `/` or that `http.ServeMux` refuses, on the two being equal, and on one a health probe or a registered route already serves. |
+| `ServeDocs(opts DocsOptions) *Server` | `RegisterDocs` for a chain: panics with its error. |
 
 `pattern` is Go 1.22+ syntax: `"GET /users/{id}"`.
 
@@ -42,10 +44,10 @@ Each setter returns `*Server` for chaining, except the deprecated `SetJSONCodec`
 | `SetLogger(l log.Logger)` / `Logger() log.Logger` | `SetLogger` installs `l` as `log.Default()` (nil is ignored), the logger the server's `Recovery` and the generated logic write to; the server keeps none of its own. `Logger` returns `log.Default()` as it is at the call; `AccessLog(log.Follow())` follows a later `SetLogger`. |
 | `SetJSONCodec(c JSONCodec) error` / `Codec() JSONCodec` | Deprecated: call `server.SetGlobalJSONCodec(c)` / `server.JSON()`, which they call. The codec is the process's, not one server's: setting it on one `Server` sets it for every server in the process. See [JSON codec](#json-codec). |
 | `SetStrictJSON(strict bool) error` | Deprecated: call `server.SetStrictJSON(strict)`, which it calls. Strict decoding is the process's, not one server's: a second server switching it off switches it off for the first. See [JSON codec](#json-codec). |
-| `SetCORS(opts CORSOptions)` | Install CORS. Calling twice replaces the previous config. |
+| `SetCORS(opts CORSOptions)` | Install CORS. Calling twice replaces the previous config. Panics on credentials allowed to the `*` origin. |
 | `SetHandleNotFound(h http.Handler)` | Answer the requests the mux would answer 404, which otherwise get 404 `{"message":"not found"}`; nil restores that default. A method mismatch keeps its 405 `{"message":"method not allowed"}` with `Allow`. |
-| `SetDefaultReadTimeout(d)` / `SetDefaultWriteTimeout(d)` | The `*http.Server`'s deadlines for reading a whole request, 30s by default, and for writing a whole response, none (0) by default so streaming and long downloads are not cut. |
-| `SetDefaultMaxBodySize(bytes)` | Body cap for each route `Handle` registers afterwards, unless its `WithLimits` sets one (a method's `@maxBodySize`). 0, the default, sets none. |
+| `SetDefaultReadTimeout(d)` / `SetDefaultWriteTimeout(d)` | The `*http.Server`'s deadlines for reading a whole request, 30s by default (`server.readTimeout` in `config.yaml`), and for writing a whole response, none (0) by default so streaming and long downloads are not cut. 0 sets none. |
+| `SetDefaultMaxBodySize(bytes)` | Body cap for each route `Handle` registers afterwards, unless its `WithLimits` sets one (a method's `@maxBodySize`). `DefaultMaxBodySize`, 10 MiB, by default (`server.maxBodySize` in `config.yaml`); 0 sets none. |
 | `SetDefaultHandlerTimeout(d)` | Request-context deadline for each route `Handle` registers afterwards, unless its `WithLimits` sets one (a method's `@timeout`). 0, the default, sets none. |
 | `SetDefaultMaxHeaderSize(kb)` | The `*http.Server`'s cap on request headers, in kilobytes; 32 by default. |
 
@@ -57,7 +59,7 @@ srv.RegisterHealthCheck("db", 2*time.Second, func(ctx context.Context) error {
 })
 ```
 
-`RegisterHealthCheck(name, timeout, fn)` adds, or replaces, the probe `name` on `/readyz`. Each run calls `fn` under `context.WithTimeout`: a check that returns the context's error on expiry fails (`context deadline exceeded` under `checks`), while one that ignores its context is waited for and judged by what it returns. A check that panics fails too, reported as `panic: <value>` under `checks`, and the panic is logged with its stack. A failure answers 503 `{"checks":{…},"status":"not_ready"}`. `/healthz` (liveness) always returns 200 once the process is up.
+`RegisterHealthCheck(name, timeout, fn)` adds, or replaces, the probe `name` on `/readyz`. Each run calls `fn` under `context.WithTimeout`: a check that returns the context's error on expiry fails (`context deadline exceeded` under `checks`), while one that ignores its context is waited for and judged by what it returns. A zero or negative `timeout` sets no deadline: `fn` runs under the probe request's context alone. A check that panics fails too, reported as `panic: <value>` under `checks`, and the panic is logged with its stack. A failure answers 503 `{"checks":{…},"status":"not_ready"}`. `/healthz` (liveness) always returns 200 once the process is up.
 
 Both probes are answered ahead of the middleware chain (only `Recovery` wraps them): they are never access-logged, traced, counted in the HTTP metrics or CORS-processed, and no `srv.Use` middleware runs for them. `WithoutDefaultHealth()` removes them; register your own route for observed probes.
 
@@ -78,7 +80,7 @@ type Middleware func(http.Handler) http.Handler
 | `BodyLimit(maxBytes)` | Caps request bodies at `maxBytes`: a declared `Content-Length` above it is answered 413 `{"message":"request entity too large"}` before the handler runs, and a read past it fails with an `*http.MaxBytesError`, which `WriteValidationError` answers 413 the same way without calling the validation hook. |
 | `Timeout(d)` | Deprecated: use `srv.SetDefaultHandlerTimeout(d)`, or `WithLimits` for one route. Runs the handler under `http.TimeoutHandler`: 503 on deadline, and a buffered response that cannot flush. |
 
-`WithLimits(h, Limits{...})` applies timeout + body limits to a single handler - this is what `@timeout` / `@maxBodySize` compile to.
+`WithLimits(h, Limits{...})` applies timeout + body limits to a single handler - this is what `@timeout` / `@maxBodySize` compile to. `Handle` moves them, and the defaults standing in for those a route leaves unset, outside the route's own middlewares, so those are held to them too; `srv.Use` middlewares stay outside.
 
 ### Chain
 
@@ -104,7 +106,7 @@ srv.Handle("GET /ping", base.ThenFunc(pingFn)) // ThenFunc for bare functions
 
 ## JSON codec
 
-Swap the JSON implementation process-wide (e.g. for `sonic` or `jsoniter`):
+Swap the JSON implementation process-wide (e.g. for `sonic` or `goccy/go-json`):
 
 ```go
 type JSONCodec interface {
@@ -124,6 +126,8 @@ server.JSON().Encode(w, payload) // every generated handler reads through this a
 `server.SetStrictJSON(strict bool) error` switches strict decoding: while on, `JSON()` decodes through the codec's `DecodeStrict`, which rejects a JSON body with an unknown field (400 `{"message":"<field>: unknown field"}`) or data after the JSON value (400 `{"message":"body: unexpected data after the JSON value"}`). It is off by default; `server.strictJSON` in `config.yaml` drives it, and the generated `config.yaml` sets it `true`.
 
 The codec and the strict switch are the process's, not a `Server`'s: generated handlers, error rendering and the health probes all go through `server.JSON()`, which has no server to ask, so every server in the process shares them. The `Server` methods `SetJSONCodec`, `SetStrictJSON` and `Codec` are deprecated wrappers of these functions.
+
+A codec must honour the `omitzero` option of a `json` tag: generated types put it on each optional list, map and `bytes` member, which stays out of the body while nil. A codec that ignores the option writes such a member `null`, a value the OpenAPI document does not allow it. `encoding/json`, sonic from v1.15.0 (the first release that builds with Go 1.26) and goccy/go-json from v0.11.1 honour it; goccy/go-json v0.10.x and v0.11.0, jsoniter v1.1.12 (its last release) and segmentio/encoding v0.5.4 do not. A codec must also pass a `null` to a type's `json.Unmarshaler`, as each of these does, for the [required-member check](#required-members).
 
 `SetGlobalJSONCodec` fails, keeping the previous codec, when strict JSON is on and `c` has no `DecodeStrict`; `SetStrictJSON(true)` fails the same way when the installed codec has none, so `config.yaml` can never claim a strictness the server does not enforce. The swap is atomic, so it is safe while requests are served.
 
@@ -148,7 +152,32 @@ func (Sonic) DecodeStrict(r io.Reader, v any) error {
 }
 ```
 
-jsoniter (`Config{DisallowUnknownFields: true}.Froze()`) and goccy/go-json (`NewDecoder(r).DisallowUnknownFields()`, the stdlib API) wrap the same way.
+goccy/go-json (`NewDecoder(r).DisallowUnknownFields()`, the stdlib API) wraps the same way.
+
+### Cookies
+
+A response's `@cookie` field is set by the handler through `server.SetCookie(w, name, value)`, an error's by `WriteError` from its `ResponseCookies()`; both take the attributes `SetCookieOptions` installed.
+
+| Function | Description |
+|---|---|
+| `SetCookieOptions(o CookieOptions) error` | Install, process-wide and safe while serving, the `Path`, `Domain`, `HTTPOnly`, `Secure` and `SameSite` (`"lax"`, `"strict"`, `"none"`, or `""` for none) the cookies carry. `server.cookies` in `config.yaml` drives it. Fails, changing nothing, on another `SameSite`, or on `none` without `Secure`. |
+| `DefaultCookieOptions() CookieOptions` | The options in effect until `SetCookieOptions`: `Path: "/"`, `HTTPOnly`, `Secure`, `SameSite: "lax"`. |
+| `SetCookie(w, name, value)` | Add a `Set-Cookie` with the installed attributes. |
+| `ResponseCookieSetter` | `ResponseCookies() []*http.Cookie`: what a generated error with a `@cookie` field implements; `WriteError` sets each cookie with the installed attributes, after `WriteResponseHeaders`. |
+
+### Multipart forms
+
+A generated multipart handler parses the form with `r.ParseMultipartForm(server.MultipartMemory)`: up to 32 MiB of its files in memory, whatever the route's `@maxBodySize`, the rest in temporary files removed when the handler returns. Before that it calls `server.LimitParts(r, limits)` with each file part's `@maxSize` by form name: a part read past its limit fails the read there, and `WriteValidationError` answers 400 `{"message":"<name>: file size exceeds <n> bytes"}`. A body of another media type is answered 415.
+
+### Required members
+
+A generated handler checks that a JSON body carries every member declared without `?`. It decodes the body with the installed codec into an unexported struct beside the handler, a pointer per member, and copies it into the request type; a member left out, or sent as `null` without `@nullable`, answers 400 `{"message":"<json path>: required"}` through the validation hook, and an absent member's `@default` is filled at any depth. A `@nullable` or defaulted member decodes through `server.Nullable[T]`, whose `UnmarshalJSON` tells an absent member from a `null` one, so a codec installed with `SetGlobalJSONCodec` must call a type's `json.Unmarshaler`, as sonic, jsoniter, goccy/go-json and segmentio/encoding do. It must also decode `[]`, `{}` and `""` to a non-nil list, map and `bytes`, since nil stands for an absent one.
+
+| Function | Description |
+|---|---|
+| `SetRequirePresence(on bool)` / `RequirePresence() bool` | Switch the check, process-wide and safe while serving; on by default. Off, the body decodes straight into the request type, a missing member left at its zero value. `server.requirePresence` in `config.yaml` drives it. |
+| `MissingMember(path) error` | The error `"<path>: required"` a handler reports for a member the body lacks. |
+| `Nullable[T]` | A member that may be null: `Present()` reports that it came, `Value()` returns it, nil when absent or `null`. |
 
 ## Validation error hook
 
@@ -164,7 +193,9 @@ server.SetDefaultValidationFailed(func(w http.ResponseWriter, r *http.Request, e
 })
 ```
 
-The handler calls `server.WriteValidationError(w, r, err)` on a decode, binding or validation failure; it dispatches to your installed hook, or to the default: 400 `{"message":"<err text>"}`. A body read past its cap is answered 413 `{"message":"request entity too large"}` without the hook. The default is post-commit safe - if the response already started, it logs the dropped validation rather than smearing a 400 into a half-sent body; a hook you install is called even after the response started.
+The handler calls `server.WriteValidationError(w, r, err)` on a decode, binding or validation failure; it dispatches to your installed hook, or to the default: 400 `{"message":"<err text>"}`. A body read past its cap is answered 413 `{"message":"request entity too large"}`, `http.ErrNotMultipart`, a form route's body of another media type, 415 `{"message":"unsupported media type"}`, and a body the connection failed to deliver 408 `{"message":"request timeout"}` for the read timeout or 400 `{"message":"bad request"}` otherwise, the failure's detail logged at Warn, all without the hook. `WriteError` answers the same when a raw request's logic returns such a read's error. The default is post-commit safe - if the response already started, it logs the dropped validation rather than smearing a 400 into a half-sent body; a hook you install is called even after the response started.
+
+Before it reads a JSON body, the handler calls `server.RequireJSONBody(w, r)`: a `Content-Type` other than `application/json` or an `application/*+json` type, parameters and letter case aside, is answered 415 `{"message":"unsupported media type"}`, and so is a body without a `Content-Type`, so the bodies a cross-site HTML form, a `text/plain` fetch or a `fetch`/`sendBeacon` of an untyped `Blob` or an `ArrayBuffer` can send without a CORS preflight never reach logic. A request without a `Content-Type` passes only when it has no body, which the decoder then reports missing. A `@rawRequest` or `@passthrough` handler reads its own body and checks nothing.
 
 ## Raw responses
 
@@ -172,7 +203,7 @@ Helpers for `@rawResponse` / `@passthrough` handlers that already hold the bytes
 
 | Function | Description |
 |---|---|
-| `WriteResponse(w, r, status, v)` | Sets the required lists and maps a generated `v` left nil to empty ones, in `v` itself, through its `FillEmpty`. Encodes `v` with the installed codec before writing, then sets `Content-Type: application/json; charset=utf-8`, writes the status and the body; a value the codec cannot encode (a `NaN` float) goes to `WriteError` as an unhandled error, a 500. Generated handlers answer through it. |
+| `WriteResponse(w, r, status, v, setHeaders...)` | Encodes `v` as it is with the installed codec before writing - a nil list or map is `null`, and `v` is only read, so a value shared between requests is safe - then sets `Content-Type: application/json; charset=utf-8`, writes the status and the body; a value the codec cannot encode (a `NaN` float) goes to `WriteError` as an unhandled error, a 500. Each `setHeaders` runs once `v` has encoded, before the status, to set the response's `@header` and `@cookie` values, so a failed encode never carries them. Generated handlers answer through it. |
 | `WriteBytes(w, status, contentType, body) error` | Sets `Content-Type` (when non-empty) and `Content-Length`, writes the status, writes `body`. |
 | `WritePrecompressed(w, r, status, contentType, coding, body, decode) error` | Serves a body stored already compressed (`"gzip"`, `"zstd"`, `"br"`, ...). When the client accepts `coding` the bytes go out verbatim with `Content-Encoding`; otherwise `decode` produces the identity form first. Always adds `Vary: Accept-Encoding`. A nil `decode` with a client that does not accept the coding returns `ErrNoDecoder` before anything is written. |
 | `AcceptsEncoding(r, coding) bool` | Whether the request's `Accept-Encoding` lists `coding` with a non-zero quality (`gzip;q=0` is a refusal). Shares its parser with the `Compress` middleware. |
@@ -203,7 +234,7 @@ srv.SetCORS(server.CORSPermissive())          // dev: any origin (Access-Control
 srv.SetCORS(server.CORSStrict("https://app")) // prod: one allowed origin
 ```
 
-Or build a `CORSOptions` value directly for fine control over methods, headers, credentials, and max-age.
+Or build a `CORSOptions` value directly for fine control over methods, headers, credentials, and max-age. Every response carries `Vary: Origin`, since whether the CORS headers are there depends on the request's `Origin`. `SetCORS` panics on `AllowCredentials` with the `*` origin, a pair browsers refuse: list the origins, or use a pattern such as `https://*.example.com`, which echoes the request's origin.
 
 ## Event runtime
 
@@ -818,4 +849,4 @@ conn, err := rpc.Dial(addr, rpc.WithClientStatsHandler(tel.GRPCClientHandler()))
 ## Related packages
 
 - `pkg/log` - the structured `Logger` interface and default zap-backed implementation. `log.SetLevel(level)` / `log.GetLevel()` retune the process-wide level (shared by the server and generated logic); `log.SetDefault` / `log.Default` swap or read the package-level logger. `log.Follow()` returns a logger that writes each line - and each line of the loggers its `With` and `WithContext` return - through the `log.Default()` of that moment. `log.SetDefault` given a `Follow` logger installs the logger it writes through at that call, its `With` fields and context included; a logger that writes through one, as a wrapper around it does, cannot be the default, since its lines would come back to it.
-- `pkg/telemetry` - traces and metrics as one stack. `telemetry.Init(ctx, cfg)` builds the providers the `otel:` / `metrics:` blocks of `config.yaml` select (spans: `none` / `stdout` / `otlp_grpc` / `otlp_http`; metrics: `prometheus` / `otlp_grpc` / `otlp_http` / `none`) and returns a `*Telemetry`, whose `HTTPMiddleware()` instruments every HTTP request, `GRPCServerHandler()` every RPC served and `GRPCClientHandler()` every RPC made, `ScrapeURL()` names the Prometheus listener and `ScrapeHandler()` serves the same scrape on a route of your own, and `Shutdown` flushes both signals. Generated `main.go` wires `Init`, `HTTPMiddleware` through `server.WithTelemetry` (or `GRPCServerHandler` through `rpc.WithStatsHandler`), `ScrapeURL` and `Shutdown`; `GRPCClientHandler` goes to the `rpc.Dial` calls you write, and `ScrapeHandler` to a route of yours.
+- `pkg/telemetry` - traces and metrics as one stack. `telemetry.Init(ctx, cfg)` builds the providers the `otel:` / `metrics:` blocks of `config.yaml` select (spans: `none` / `stdout` / `otlp_grpc` / `otlp_http`; metrics: `prometheus` / `otlp_grpc` / `otlp_http` / `none`; `Init` fails, naming the key, on an enabled signal's other exporter and on a `metrics.path` that does not start with `/`) and returns a `*Telemetry`, whose `HTTPMiddleware()` instruments every HTTP request, `GRPCServerHandler()` every RPC served and `GRPCClientHandler()` every RPC made, `ScrapeURL()` names the Prometheus listener and `ScrapeHandler()` serves the same scrape on a route of your own, and `Shutdown` flushes both signals. Generated `main.go` wires `Init`, `HTTPMiddleware` through `server.WithTelemetry` (or `GRPCServerHandler` through `rpc.WithStatsHandler`), `ScrapeURL` and `Shutdown`; `GRPCClientHandler` goes to the `rpc.Dial` calls you write, and `ScrapeHandler` to a route of yours.

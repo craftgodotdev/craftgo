@@ -36,9 +36,5 @@ func (e *ClashErr) ErrCode() string { return ErrCodeClash }
 // HTTPStatus returns the Conflict status.
 func (e *ClashErr) HTTPStatus() int { return 409 }
 
-// MarshalJSON encodes the body alone, from a copy whose nil lists and maps are set empty.
-func (e *ClashErr) MarshalJSON() ([]byte, error) {
-	body := e.ClashBody
-	body.FillEmpty(0)
-	return json.Marshal(body)
-}
+// MarshalJSON encodes the body alone.
+func (e *ClashErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.ClashBody) }

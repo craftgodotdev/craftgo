@@ -40,7 +40,6 @@ func Plan(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, p
 // regeneratedFiles names every file [Generate] rewrites.
 func regeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string {
 	out := outputsOf(cfg)
-	fills := fillSetOf(proj)
 	var files []string
 	for _, name := range proj.PackageNames() {
 		pkg := proj.Packages[name]
@@ -60,9 +59,6 @@ func regeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 		if len(pkg.Errors) > 0 {
 			files = append(files, dir.at(projectRoot, "errors.go"))
 		}
-		if fills.pkgFills(pkg) {
-			files = append(files, dir.at(projectRoot, "fill.go"))
-		}
 	}
 	files = append(files, protos.PBFiles(projectRoot)...)
 	if cfg.Output.ContractsOnly() {
@@ -72,6 +68,9 @@ func regeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 	for s := range projectSegments(proj, cfg.Output.FileCase) {
 		for m := range s.methods() {
 			files = append(files, out.transport.sub(s.dir).at(projectRoot, methodFile(m, cfg.Output.FileCase)))
+		}
+		if len(segmentBodies(s, buildProjectResolver(proj, cfg, s.pkg.Name), out).names()) > 0 {
+			files = append(files, out.transport.sub(s.dir).at(projectRoot, bodyFile))
 		}
 		routes[out.routes.sub(s.dir).at(projectRoot, "routes.go")] = true
 	}

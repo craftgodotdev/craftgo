@@ -17,6 +17,9 @@ import (
 // EchoWidth returns the POST EchoWidth handler.
 func EchoWidth(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.DefaultsWidth
 		{
 			__d := int32(7)

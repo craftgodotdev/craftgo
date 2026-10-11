@@ -17,7 +17,7 @@ import (
 // UploadPairs returns the POST UploadPairs handler.
 func UploadPairs(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(32 << 20); err != nil {
+		if err := r.ParseMultipartForm(server.MultipartMemory); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
@@ -29,8 +29,8 @@ func UploadPairs(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if _v := r.PostFormValue("b"); _v != "" {
 			req.B = &_v
 		}
-		if _, header, err := r.FormFile("doc"); err == nil {
-			req.Doc = header
+		if _fh := r.MultipartForm.File["doc"]; len(_fh) > 0 {
+			req.Doc = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

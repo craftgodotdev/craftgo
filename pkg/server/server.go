@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -53,8 +54,11 @@ type Middleware func(http.Handler) http.Handler
 // Option configures a Server at construction time.
 type Option func(*Server)
 
-// New returns a Server with the health probes, a 30s read timeout and a 32 KB header cap,
-// then applies opts. The first argument is ignored.
+// DefaultMaxBodySize is the body cap [New] gives the routes [Server.Handle] registers.
+const DefaultMaxBodySize = 10 << 20
+
+// New returns a Server with the health probes, a 30s read timeout, a [DefaultMaxBodySize] body
+// cap and a 32 KB header cap, then applies opts. The first argument is ignored.
 func New(_ any, opts ...Option) *Server {
 	s := &Server{
 		mux:                http.NewServeMux(),
@@ -62,7 +66,7 @@ func New(_ any, opts ...Option) *Server {
 		healthPaths:        HealthPaths{Liveness: DefaultLivenessPath, Readiness: DefaultReadinessPath},
 		registeredMW:       map[string]Middleware{},
 		defaultReadTimeout: 30 * time.Second,
-		defaultMaxBodySize: 0,
+		defaultMaxBodySize: DefaultMaxBodySize,
 		defaultMaxHeaderKB: 32,
 	}
 	for _, o := range opts {
@@ -110,10 +114,12 @@ func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) *Server {
 }
 
 // Handle registers h under a ServeMux pattern, wrapped in mws with the first outermost. The
-// default body cap and handler timeout set at this point also wrap h, each unless h is a
-// [WithLimits] handler that sets its own.
+// limits of a [WithLimits] h, and the default body cap and handler timeout set at this point for
+// those it leaves unset, wrap mws too, so a route middleware that reads the body or waits on a
+// dependency is held to them.
 func (s *Server) Handle(pattern string, h http.Handler, mws ...Middleware) *Server {
-	s.mux.Handle(pattern, NewChain(mws...).Then(s.applyDefaults(h)))
+	h, l := s.limitsOf(h)
+	s.mux.Handle(pattern, l.guard(NewChain(mws...).Then(h)))
 	return s
 }
 
@@ -136,7 +142,8 @@ func (s *Server) With(names []string, h http.HandlerFunc) http.HandlerFunc {
 	return chain.Then(h).ServeHTTP
 }
 
-// SetDefaultReadTimeout sets the http.Server ReadTimeout [Server.Start] uses; the default is 30s.
+// SetDefaultReadTimeout sets the http.Server ReadTimeout [Server.Start] uses, a deadline on
+// reading a whole request, its body included; the default is 30s, and 0 sets none.
 func (s *Server) SetDefaultReadTimeout(d time.Duration) *Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -163,7 +170,7 @@ func (s *Server) SetDefaultWriteTimeout(d time.Duration) *Server {
 }
 
 // SetDefaultMaxBodySize sets the body cap in bytes ([BodyLimit]) that [Server.Handle] gives
-// routes registered afterwards; 0, the default, sets none.
+// routes registered afterwards; the default is [DefaultMaxBodySize], and 0 sets none.
 func (s *Server) SetDefaultMaxBodySize(bytes int64) *Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -179,8 +186,12 @@ func (s *Server) SetDefaultMaxHeaderSize(kb int) *Server {
 	return s
 }
 
-// SetCORS adds CORS handling with opts to the chain; a second call replaces the first.
+// SetCORS adds CORS handling with opts to the chain; a second call replaces the first. It panics
+// on opts allowing credentials to any origin, `*`, a pair browsers refuse: list the origins.
 func (s *Server) SetCORS(opts CORSOptions) *Server {
+	if opts.AllowCredentials && slices.Contains(opts.AllowedOrigins, "*") {
+		panic("server: CORS cannot allow credentials to any origin (*); list the origins instead")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cors = &opts

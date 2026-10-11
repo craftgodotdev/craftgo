@@ -1,0 +1,40 @@
+// Package `cookies` pins the attributes of the cookies @cookie fields set, on a
+// response and on an error: the server's cookie options, path / and HttpOnly,
+// Secure and SameSite=Lax unless config sets others.
+package cookies
+
+// Session sets its token in a cookie beside its body.
+type Session {
+	token string @cookie("sid")
+	name  string
+}
+
+// Gauge sets a cookie beside a reading the encoder may refuse.
+type Gauge {
+	sid   string  @cookie("gauge")
+	level float64
+}
+
+// Locked sets the time it lifts in a cookie.
+error Conflict Locked {
+	until string @cookie("lock")
+}
+
+@prefix("/cookies/a")
+service Cookies {
+	@doc("Answers a Session.")
+	get Login /login {
+		response Session
+	}
+
+	@doc("Answers a Gauge whose level has no JSON form.")
+	get Broken /broken {
+		response Gauge
+	}
+
+	@doc("Answers the Locked error.")
+	@errors(Locked)
+	get Lock /lock {
+		response Session
+	}
+}

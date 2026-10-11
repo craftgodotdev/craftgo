@@ -45,6 +45,9 @@ func CORSStrict(origin string) CORSOptions {
 func corsMiddleware(opts CORSOptions) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// The CORS headers depend on the request's Origin, an absent one included, so a cache
+			// must key on it whatever this response carries.
+			w.Header().Add("Vary", "Origin")
 			allowed := matchOrigin(r.Header.Get("Origin"), opts.AllowedOrigins)
 			if allowed == "" {
 				next.ServeHTTP(w, r)
@@ -64,10 +67,6 @@ func corsMiddleware(opts CORSOptions) Middleware {
 // setOriginHeaders sets the headers every response to an allowed origin carries.
 func setOriginHeaders(h http.Header, opts CORSOptions, allowed string) {
 	h.Set("Access-Control-Allow-Origin", allowed)
-	if allowed != "*" {
-		// The value echoes the request's Origin, so caches must key on it.
-		h.Add("Vary", "Origin")
-	}
 	if opts.AllowCredentials {
 		h.Set("Access-Control-Allow-Credentials", "true")
 	}

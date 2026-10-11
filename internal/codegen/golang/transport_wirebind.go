@@ -12,19 +12,13 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
-// wireParse is how a handler parses a wire string of one primitive kind: the pkg/server parser,
-// "" for a string, which binds as it is, and the kind a parse error names.
-type wireParse struct {
-	parser, label string
-}
-
-// wireParses are the kinds a wire string binds as.
-var wireParses = map[prims.Kind]wireParse{
-	prims.String: {"", "string"},
-	prims.Bool:   {"server.ParseBool", "bool"},
-	prims.Int:    {"server.ParseSigned", "int"},
-	prims.Uint:   {"server.ParseUnsigned", "uint"},
-	prims.Float:  {"server.ParseFloat", "float"},
+// wireParsers are the pkg/server parsers of the kinds a wire string binds as; a string binds as it
+// is.
+var wireParsers = map[prims.Kind]string{
+	prims.Bool:  "server.ParseBool",
+	prims.Int:   "server.ParseSigned",
+	prims.Uint:  "server.ParseUnsigned",
+	prims.Float: "server.ParseFloat",
 }
 
 // wireSource is how a handler reads the raw strings of one binding.
@@ -57,9 +51,11 @@ var wireSources = map[wire.Binding]wireSource{
 		present: func(n string) string { return fmt.Sprintf("server.CookiePresent(r, %q)", n) },
 		cookie:  true,
 	},
+	// The multipart parser fills r.PostForm with every text part.
 	wire.BindForm: {
-		single: func(n string) string { return fmt.Sprintf("r.PostFormValue(%q)", n) },
-		array:  func(n string) string { return fmt.Sprintf("r.MultipartForm.Value[%q]", n) },
+		single:  func(n string) string { return fmt.Sprintf("r.PostFormValue(%q)", n) },
+		array:   func(n string) string { return fmt.Sprintf("r.MultipartForm.Value[%q]", n) },
+		present: func(n string) string { return fmt.Sprintf("r.PostForm.Has(%q)", n) },
 	},
 }
 
@@ -69,7 +65,7 @@ func renderWireBindLine(rf resolvedField, binding wire.Binding, wireName string,
 	src := wireSources[binding]
 	primName, declared, _ := wireTarget(rf.ResolvedField, pkg, r)
 	sp, _ := prims.Lookup(primName)
-	parse := wireParses[sp.Kind]
+	parser := wireParsers[sp.Kind]
 	cast := ""
 	if declared != "" {
 		cast = imports.qualify(declared)
@@ -77,16 +73,16 @@ func renderWireBindLine(rf resolvedField, binding wire.Binding, wireName string,
 	data := wireBindData{
 		DSLNameQuoted: strconv.Quote(wireName),
 		GoName:        rf.GoName,
-		Label:         parse.label,
+		Label:         primName,
 		SingleSource:  src.single(wireName),
 	}
 	if src.array != nil {
 		data.ArraySource = src.array(wireName)
 	}
-	if parse.parser != "" {
-		data.ParseFn = parse.parser + "[" + cmp.Or(cast, primName) + "]"
+	if parser != "" {
+		data.ParseFn = parser + "[" + cmp.Or(cast, primName) + "]"
 	}
-	shape := bindShape(rf, parse.parser != "", cast != "")
+	shape := bindShape(rf, parser != "", cast != "")
 	// directSingle converts the source expression; every other shape the `_v` it read.
 	data.Wrap = castTo(cast, "_v")
 	if shape == "directSingle" {
@@ -183,7 +179,8 @@ type wireBindData struct {
 	GoName        string
 	Wrap          string
 	// ParseFn is the generic parser the bind helper calls, e.g. `server.ParseSigned[types.Cents]`.
-	ParseFn      string
+	ParseFn string
+	// Label is the primitive a parse error names, int8 for an int8 field.
 	Label        string
 	SingleSource string
 	ArraySource  string

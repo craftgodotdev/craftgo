@@ -441,6 +441,41 @@ func TestOTLPGRPCEndpointMustNameAHost(t *testing.T) {
 	}
 }
 
+// Init refuses, by its config.yaml key, an enabled signal's exporter it does not know, such as
+// OpenTelemetry's own "otlp", and a scrape path no listener can serve; a disabled signal's values
+// are not read.
+func TestInitRefusesAnUnknownExporterOrScrapePath(t *testing.T) {
+	for _, c := range []struct {
+		cfg  telemetry.Config
+		want string
+	}{
+		{telemetry.Config{OTel: telemetry.OTelConfig{Enabled: true, Exporter: "otlp"}}, `telemetry: otel.exporter "otlp" is not "none", "stdout", "otlp_grpc" or "otlp_http"`},
+		{telemetry.Config{OTel: telemetry.OTelConfig{Enabled: true, Exporter: "prometheus"}}, `otel.exporter "prometheus"`},
+		{telemetry.Config{Metrics: telemetry.MetricsConfig{Enabled: true, Exporter: "OTLP_GRPC"}}, `telemetry: metrics.exporter "OTLP_GRPC" is not "prometheus", "none", "otlp_grpc" or "otlp_http"`},
+		{telemetry.Config{Metrics: telemetry.MetricsConfig{Enabled: true, Exporter: "stdout"}}, `metrics.exporter "stdout"`},
+		{telemetry.Config{Metrics: telemetry.MetricsConfig{Enabled: true, AdminAddr: "127.0.0.1:0", Path: "metrics"}}, `telemetry: metrics.path "metrics" does not start with "/"`},
+		{telemetry.Config{Metrics: telemetry.MetricsConfig{Enabled: true, AdminAddr: "127.0.0.1:0", Path: "/m/{"}}, `telemetry: metrics.path "/m/{": `},
+	} {
+		tel, err := telemetry.Init(context.Background(), c.cfg)
+		if err == nil {
+			shortShutdown(t, tel)
+			t.Errorf("%+v accepted", c.cfg)
+			continue
+		}
+		if !strings.Contains(err.Error(), c.want) {
+			t.Errorf("got %q, want %s", err, c.want)
+		}
+	}
+	tel, err := telemetry.Init(context.Background(), telemetry.Config{
+		OTel:    telemetry.OTelConfig{Exporter: "otlp"},
+		Metrics: telemetry.MetricsConfig{Exporter: "otlp", Path: "metrics"},
+	})
+	if err != nil {
+		t.Errorf("disabled signals: %v", err)
+	}
+	shortShutdown(t, tel)
+}
+
 // Metrics exporter "none" starts no scrape listener and exposes no registry.
 func TestNoneExporterDoesNotScrape(t *testing.T) {
 	tel, err := telemetry.Init(context.Background(), telemetry.Config{

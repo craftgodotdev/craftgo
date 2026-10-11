@@ -344,6 +344,24 @@ func TestServerHealthEndpoints(t *testing.T) {
 	}
 }
 
+// A check registered with a zero or negative timeout runs without a deadline.
+func TestServerHealthCheckWithoutTimeout(t *testing.T) {
+	for _, timeout := range []time.Duration{0, -time.Second} {
+		s := New(nil)
+		s.RegisterHealthCheck("db", timeout, func(ctx context.Context) error {
+			if d, ok := ctx.Deadline(); ok {
+				return fmt.Errorf("deadline %v", d)
+			}
+			return ctx.Err()
+		})
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+		if rec.Code != http.StatusOK {
+			t.Errorf("timeout %v: status %d, body %s; want 200", timeout, rec.Code, rec.Body.String())
+		}
+	}
+}
+
 // A check that returns an error fails readiness whatever the error's text.
 func TestServerHealthCheckErrorTextIsNeverHealthy(t *testing.T) {
 	s := New(nil)

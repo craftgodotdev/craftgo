@@ -34,9 +34,14 @@ type Telemetry struct {
 }
 
 // Init builds the stack c describes and makes each enabled signal the
-// process-wide otel default. It fails, leaving nothing running, when a signal
-// cannot be set up; a scrape listener bind failure arrives on [Telemetry.AdminErr].
+// process-wide otel default. It fails, leaving nothing running, on an enabled
+// signal's unknown exporter or invalid scrape path, naming its config.yaml key,
+// and when a signal cannot be set up; a scrape listener bind failure arrives on
+// [Telemetry.AdminErr].
 func Init(ctx context.Context, c Config) (*Telemetry, error) {
+	if err := c.validate(); err != nil {
+		return nil, fmt.Errorf("telemetry: %w", err)
+	}
 	t := &Telemetry{}
 	c.OTel.ServiceName = orDefault(c.OTel.ServiceName, c.ServiceName)
 	c.Metrics.ServiceName = orDefault(c.Metrics.ServiceName, c.ServiceName)

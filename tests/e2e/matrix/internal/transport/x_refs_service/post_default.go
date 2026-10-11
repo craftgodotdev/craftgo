@@ -18,6 +18,9 @@ import (
 // PostDefault returns the POST PostDefault handler.
 func PostDefault(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.XEnumDefault
 		{
 			__d := xshared.XColorRed

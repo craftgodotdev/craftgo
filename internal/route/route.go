@@ -40,6 +40,17 @@ func Resolve(basePath string, svc *ast.ServiceDecl, m *ast.Method) string {
 	return joined
 }
 
+// ServePath is the path of m's ServeMux pattern: its [Resolve] route, or for the root route, a
+// whole route of "/" under basePath, the basePath with `/{$}`, which matches that one path where a
+// pattern ending in "/" would match every path below it, and which the documented `/` reaches.
+func ServePath(basePath string, svc *ast.ServiceDecl, m *ast.Method) string {
+	full := Resolve(basePath, svc, m)
+	if Resolve("", svc, m) != "/" {
+		return full
+	}
+	return strings.TrimSuffix(full, "/") + "/{$}"
+}
+
 // PathString renders a DSL path in route form, e.g. `/users/{id}`; "" for nil.
 func PathString(p *ast.Path) string {
 	if p == nil {

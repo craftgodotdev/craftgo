@@ -86,17 +86,34 @@ func main() {
 	srv.Use(server.AccessLog(log.Follow()))
 	// A method's @timeout or @maxBodySize overrides these defaults; routes resolve them
 	// when wiring.Register registers them.
+	srv.SetDefaultReadTimeout(cfg.Server.ReadTimeout)
 	srv.SetDefaultHandlerTimeout(cfg.Server.HandlerTimeout)
 	srv.SetDefaultMaxBodySize(cfg.Server.MaxBodySize)
 	if err := server.SetStrictJSON(cfg.Server.StrictJSON); err != nil {
 		log.Default().Error("strict json", log.Err(err))
 		os.Exit(1)
 	}
+	server.SetRequirePresence(cfg.Server.RequirePresence)
+	if err := server.SetCookieOptions(server.CookieOptions{
+		Path:     cfg.Server.Cookies.Path,
+		Domain:   cfg.Server.Cookies.Domain,
+		HTTPOnly: cfg.Server.Cookies.HTTPOnly,
+		Secure:   cfg.Server.Cookies.Secure,
+		SameSite: cfg.Server.Cookies.SameSite,
+	}); err != nil {
+		log.Default().Error("server.cookies", log.Err(err))
+		os.Exit(1)
+	}
 	if cfg.Server.Compression.Enabled {
-		srv.Use(server.Compress(server.CompressOptions{
+		compress := server.CompressOptions{
 			MinSize: cfg.Server.Compression.MinSize,
 			Level:   cfg.Server.Compression.Level,
-		}))
+		}
+		if err := compress.Validate(); err != nil {
+			log.Default().Error("server.compression", log.Err(err))
+			os.Exit(1)
+		}
+		srv.Use(server.Compress(compress))
 	}
 
 	// wiring is regenerated on each craftgo gen and registers every HTTP route the design
@@ -108,14 +125,18 @@ func main() {
 	}
 {{- if .HasDocs}}
 
-	// The docs page loads its UI assets from a CDN.
+	// The docs page loads its UI assets from a CDN. Its routes come after the design's, so a
+	// docs path one of them has stops the boot.
 	if cfg.Docs.Enabled {
-		srv.ServeDocs(server.DocsOptions{
+		if err := srv.RegisterDocs(server.DocsOptions{
 			Spec:     openapiSpec,
 			UI:       cfg.Docs.UI,
 			Path:     cfg.Docs.Path,
 			SpecPath: cfg.Docs.SpecPath,
-		})
+		}); err != nil {
+			log.Default().Error("docs", log.Err(err))
+			os.Exit(1)
+		}
 	}
 {{- end}}
 {{- end}}

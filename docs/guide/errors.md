@@ -143,7 +143,7 @@ return nil, types.NewEmailTakenErr(types.EmailTakenBody{
 })
 ```
 
-The constructor fills in nothing: a `@default` on an error field reaches only the OpenAPI schema.
+The constructor gives an optional field (`?`) the body leaves nil its `@default`, the value the OpenAPI schema documents, so `code string? @default("EMAIL_TAKEN")` needs no assignment; it does so once, when the error is built, and the value it returns is what goes out. A field without `?` keeps what you pass, its zero value included.
 
 A body field cannot take the Go name of a member of the error type, which would hide it: the methods `error`, `errCode`, `httpStatus`, `marshalJSON` and `writeResponseHeaders`, or `<name>Body`, the struct the type embeds (`emailTakenBody` here). Like every body, an error's cannot hold `validate` either; each is `field/invalid-go-name`.
 
@@ -212,7 +212,7 @@ error TooManyRequests RateLimited {
 }
 ```
 
-The `@header` and `@cookie` decorators on error fields write to the response writer instead of the JSON body. Body fields ride normally. An error whose every field, a mixin's included, rides a header or a cookie, or is `@sensitive`, has nothing for the JSON body, so its body is the `{"code","message"}` envelope.
+The `@header` and `@cookie` decorators on error fields write to the response writer instead of the JSON body: the error's `WriteResponseHeaders` sets the headers, and `WriteError` sets the cookies its `ResponseCookies` returns, each with the server's cookie attributes - `Path=/`, `HttpOnly`, `Secure` and `SameSite=Lax` unless `server.cookies` in `config.yaml` sets others. Body fields ride normally. An error whose every field, a mixin's included, rides a header or a cookie, or is `@sensitive`, has nothing for the JSON body, so its body is the `{"code","message"}` envelope.
 
 ## Declaring per-method
 
@@ -245,16 +245,18 @@ For an unexpected error (a raw `errors.New(...)` or `fmt.Errorf(...)` that carri
 - An error wrapping `context.DeadlineExceeded`, or any context error once the request's own deadline (`@timeout`, `server.handlerTimeout`) has passed, answers 504 `{"message":"gateway timeout"}` unlogged; a dependency's deadline on a live request is logged at Warn, `dependency deadline exceeded`.
 - A context error once the request context is canceled - by a client that went away, or by a middleware's own cancel - writes and logs nothing, so a client still connected sees an empty 200.
 
-A typed error stays typed when wrapped: `WriteError` finds it with `errors.As`, so `fmt.Errorf("charge card: %w", err)` still renders the declared status and body, and is not logged.
+A typed error stays typed when wrapped: `WriteError` finds it with `errors.As`, so `fmt.Errorf("charge card: %w", err)` still renders the declared status and body, and is not logged. Of an `errors.Join` of typed errors, the first `errors.As` finds sets the status, and its headers, cookies and code alone go out.
 
 The errors the framework writes itself are JSON `{"message": "..."}`, with `Content-Type: application/json; charset=utf-8` and `X-Content-Type-Options: nosniff`, at these statuses. None of them is in the OpenAPI document, which lists each operation's success response and its `@errors` only:
 
 | Status | When | Body |
 |---|---|---|
-| 400 | the body does not decode, a parameter does not bind, or the request fails `Validate()` | `{"message":"<error text>"}`, e.g. `{"message":"name: length out of range [1, 80]"}` |
+| 400 | the body does not decode, a required member or parameter is missing, a parameter does not bind, or the request fails `Validate()` | `{"message":"<error text>"}`, e.g. `{"message":"name: length out of range [1, 80]"}`, `{"message":"items.sku: required"}` |
+| 400, 408 | the connection fails while the body is read, 408 for the read timeout (`server.readTimeout`), 400 for a reset or a body cut short; the detail, with the socket's addresses, goes to the log at Warn | `{"message":"bad request"}`, `{"message":"request timeout"}` |
 | 404 | no route matches the path | `{"message":"not found"}` |
 | 405 | a route matches the path under another method; `Allow` lists its methods | `{"message":"method not allowed"}` |
-| 413 | the body is over its cap (`@maxBodySize`, `server.maxBodySize`, `BodyLimit`) | `{"message":"request entity too large"}` |
+| 413 | the body is over its cap (`@maxBodySize`, `server.maxBodySize`, `BodyLimit`), a raw request's logic returning the error of a read past it included | `{"message":"request entity too large"}` |
+| 415 | a JSON-body route gets a `Content-Type` other than `application/json` or an `application/*+json` type (parameters and case aside) or a body without one, or a form route a body that is no `multipart/form-data`; a `@rawRequest` or `@passthrough` route reads its own body | `{"message":"unsupported media type"}` |
 | 500 | a panic, or an error that carries no status | `{"message":"internal server error"}` |
 | 501 | a logic stub craftgo wrote that is not filled in yet (`server.ErrNotImplemented`) | `{"message":"not implemented"}` |
 | 504 | a deadline, as above | `{"message":"gateway timeout"}` |
@@ -263,8 +265,8 @@ The errors the framework writes itself are JSON `{"message": "..."}`, with `Cont
 
 Three swappable hooks shape the error responses the framework writes for you:
 
-- `server.SetDefaultValidationFailed` - input that fails JSON decoding, parameter binding or `Validate()` (default 400 `{"message":"<error text>"}`); a body read past its cap answers 413 `{"message":"request entity too large"}` without calling it.
-- `server.SetHandleUnknownError` - a service error that is neither a craftgo typed error (no `HTTPStatus()`) nor a context error the framework answers itself (504 for a deadline, nothing for a canceled request); the default logs it with trace context and responds 500 `{"message":"internal server error"}`. A `context.Canceled` on a request that is still live does reach it. Use it to map a domain error to a status, redact, or return a uniform envelope.
+- `server.SetDefaultValidationFailed` - input that fails JSON decoding, the required-member check, parameter binding or `Validate()` (default 400 `{"message":"<error text>"}`); a body read past its cap answers 413 `{"message":"request entity too large"}`, and a form body that is no `multipart/form-data` 415, without calling it.
+- `server.SetHandleUnknownError` - a service error that is neither a craftgo typed error (no `HTTPStatus()`) nor one the framework answers itself (504 for a deadline, nothing for a canceled request, 413 for a body read past its cap); the default logs it with trace context and responds 500 `{"message":"internal server error"}`. A `context.Canceled` on a request that is still live does reach it. Use it to map a domain error to a status, redact, or return a uniform envelope.
 - `(*server.Server).SetHandleNotFound` - the requests the mux would answer 404 (default 404 `{"message":"not found"}`, which `SetHandleNotFound(nil)` restores); a method mismatch keeps its 405 `{"message":"method not allowed"}` with `Allow`.
 
 A recognised typed error (one that implements `server.StatusError` - every `error` declaration does) is rendered directly from its interface and is **not** logged: a declared 4xx/5xx is an expected outcome. For full control over a business error's wire shape, give the error a body struct.

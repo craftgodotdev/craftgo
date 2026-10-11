@@ -15,6 +15,9 @@ import (
 // EchoCollidingNames returns the POST EchoCollidingNames handler.
 func EchoCollidingNames(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.CollidingNames
 		if err := server.JSON().Decode(r.Body, &req); err != nil {
 			server.WriteValidationError(w, r, err)

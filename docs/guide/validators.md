@@ -54,12 +54,14 @@ func (v *CreateUserReq) Validate() error {
 Plain Go, with no struct tag parsing. The handler calls `req.Validate()` after JSON decode and before your business logic.
 
 ::: tip Required-by-default
-A non-optional field (no `?`) is required in the OpenAPI schema, but craftgo only emits an explicit presence check when the field has a meaningful empty value the JSON decoder accepts (e.g. `any`, an enum). For a plain `string`, a missing key and a literal `null` both leave `""`, a legal value unless you add `@length` / `@minLength`. That's why `name` above shows only its `@length` check, not a separate "required" line. String lengths count **characters** (`utf8.RuneCountInString`), matching `minLength`/`maxLength` in the OpenAPI spec. `@format(email)` calls `_isEmail`, a check function written into the same `validate.go`; the regex-backed formats (uuid, creditcard, hexcolor) compile their pattern once into a package-level var, not per call.
+A non-optional field (no `?`) is required: the handler answers 400 `<field>: required` to a JSON body that leaves it out or sends it as `null`, before `Validate()` runs. That's why `name` above shows only its `@length` check, not a separate "required" line; an empty string is a value, which `@length` / `@minLength` then weigh. String lengths count **characters** (`utf8.RuneCountInString`), matching `minLength`/`maxLength` in the OpenAPI spec. `@format(email)` calls `_isEmail`, a check function written into the same `validate.go`; the regex-backed formats (uuid, creditcard, hexcolor) compile their pattern once into a package-level var, not per call.
 :::
 
 ## Built-in validators
 
-> **Required-by-default**: a field without `?` is required in the OpenAPI schema. At runtime a missing key decodes to its zero value, so only an enum (whose zero value is not a member), a `file`, an `any` and a `bytes @format(raw)` field get a presence check (`<field>: required`). No `@required` decorator - use `?` to opt out, `@nullable` to allow JSON `null` (the schema keeps it required; nothing checks the key at runtime), `@default(...)` to pre-fill when absent (auto-marks optional on save).
+> **Required-by-default**: a field without `?` is required. A JSON body that leaves it out, or sends it as `null`, is answered 400 `<json path>: required`, at any depth: `items.sku: required` names a member of a list element, with no index or map key, and a mixin's member keeps its bare name. `""`, `0`, `false`, `[]` and `{}` are values and pass; a `null` body has none of the members. No `@required` decorator - use `?` to opt out, `@nullable` to keep the key required but let it be `null`, `@default(...)` to fill it when absent (auto-marks optional on save). A required `@query`, `@header`, `@cookie` or `@form` text part reads `<name>: missing required <kind> parameter`.
+>
+> The body check decodes into a struct of pointers the handler declares beside it, with the installed codec, then copies the body into the request type. `server.requirePresence: false` in `config.yaml` (or `server.SetRequirePresence(false)`) turns it off: the body then decodes straight into the request type, a missing member left at its zero value, and only an enum (whose zero value is not a member), a `file`, an `any` and a `bytes @format(raw)` field keep a presence check of their own in `Validate()`.
 
 The tables below cover validators with the examples that matter for *validation*. For the one-grid lookup of every decorator (including non-validator ones) and its legal levels, see the [Decorator Registry](/reference/decorator-registry).
 
@@ -175,7 +177,7 @@ holding an explicit `null` is unset, though its value is the four bytes `null`.
 
 ## Optional fields
 
-A `T?` field becomes `*T` in Go for a primitive, scalar, enum, struct or `datetime`; an optional array, map, `bytes`, `any` or raw field keeps its Go type, nil when absent, and gains `omitempty`. Validators only fire when the value is present:
+A `T?` field becomes `*T` in Go for a primitive, scalar, enum, struct or `datetime`; an optional array, map, `bytes`, `any` or raw field keeps its Go type, nil when absent, and stays out of the JSON only while nil (`omitzero`; `omitempty` for `any` and raw). Validators only fire when the value is present:
 
 ```craftgo
 type UpdateUser {
@@ -208,9 +210,11 @@ type AvatarReq {
 }
 ```
 
+`@maxSize` holds the part while the handler reads the form: the read stops once the part passes it, answering 400 `{"message":"file: file size exceeds 2097152 bytes"}`, so an oversized upload is not spooled whole first; `Validate()` checks the size again. The parser keeps up to 32 MiB of the form's files in memory, whatever the route's `@maxBodySize`, and spills the rest to temporary files it removes when the handler returns. A required text part (`@form` without `?`) the form leaves out answers 400 `<name>: missing required form parameter`.
+
 ## Default values
 
-`@default` provides a fallback when the client omits a field. The handler pre-fills the request struct before JSON decode, so omitted fields keep the default; explicit values overwrite.
+`@default` provides a fallback when the client omits a field: an absent member takes the default, in the request type or in any type below it, and a value the client sends wins. An optional member sent as `null` stays nil. The handler pre-fills the request's own fields before it decodes, so with `requirePresence` off, when the body decodes straight into the request, only they take theirs.
 
 ```craftgo
 type ListUsersReq {
@@ -251,7 +255,9 @@ name: length out of range [1, 80]
 
 Reason strings are fixed per validator: `length out of range [lo, hi]`, `length must be N`, `length less than N`, `length greater than N`, `does not match pattern`, `not a valid <format>` (`not a valid email`), `below minimum N`, `above maximum N`, `must be greater than N`, `must be less than N`, `out of range [lo, hi]` (for `@range`), `must be positive`, `must be negative`, `must be a multiple of N`, `minItems N`, `maxItems N`, `items must be unique`, `file size exceeds N bytes`, `disallowed content type`, `required`, and `must be one of [v1 v2 ...]` (an enum value outside its set: the wire values, integers in decimal).
 
-A body value of the wrong JSON type fails before `Validate()` runs, at its JSON path (wire names joined by `.`, with no array index or map key, `body` for the root): `age: expected integer, got string`, `age: expected integer, got number 1.5`, `home.rooms.furniture.name: expected string, got number`, `body: expected object, got array`. A number too large for its field reads `age: 99999999999999999999 is out of range`, and a map key that is not an integer reads `counts: "x" is not an integer`. A `datetime` that is not an RFC 3339 string reads `at: not a valid RFC 3339 datetime` (`at: expected string, got number` for a number), and `bytes` that are not base64 read `files.data: not a valid base64`. An empty body reads `body: required`, since the OpenAPI document marks a JSON request body required. Malformed JSON answers the decoder's own text (`unexpected EOF`). These messages read the same whichever encoding/json engine the Go toolchain builds. A codec installed with `server.SetGlobalJSONCodec` reports its own errors.
+A required member the body leaves out fails before `Validate()` runs, at its JSON path (wire names joined by `.`, with no array index or map key): `home.rooms.furniture.name: required`. A body value of the wrong JSON type fails there too, at its JSON path (`body` for the root): `age: expected integer, got string`, `age: expected integer, got number 1.5`, `home.rooms.furniture.name: expected string, got number`, `body: expected object, got array`. A number too large for its field reads `age: 99999999999999999999 is out of range`, and a map key that is not an integer reads `counts: "x" is not an integer`. A `datetime` that is not an RFC 3339 string reads `at: not a valid RFC 3339 datetime` (`at: expected string, got number` for a number), and `bytes` that are not base64 read `files.data: not a valid base64`. An empty body reads `body: required`, since the OpenAPI document marks a JSON request body required. Malformed JSON answers the decoder's own text (`unexpected EOF`). These messages read the same whichever encoding/json engine the Go toolchain builds. A codec installed with `server.SetGlobalJSONCodec` reports its own errors.
+
+A `@path`, `@query`, `@header`, `@cookie` or `@form` value that does not parse as its field's type reads `limit: "abc" is not a valid int8`, or `limit: 300 is out of range for int8` past the type's range, naming the field's primitive, its width included. A number is a plain decimal (`-1.5`, `.5`, `6.02e23`): the other forms Go reads, `0x1p-2` or `1_000.5`, are refused, and `NaN` or `Inf` reads `ratio: "NaN" is not a finite number`.
 
 Customize the response by overriding `server.SetDefaultValidationFailed`; it also receives the JSON decode and parameter-binding errors, while a body read past its cap answers 413 without calling it:
 

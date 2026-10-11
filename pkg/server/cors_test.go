@@ -25,19 +25,40 @@ func TestCORSVaryOriginOnSpecificOrigin(t *testing.T) {
 	}
 }
 
-// A wildcard Allow-Origin comes without Vary.
-func TestCORSWildcardNoVary(t *testing.T) {
-	h := corsMiddleware(CORSPermissive())(corsOK())
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req.Header.Set("Origin", "https://anything.example.com")
-	h.ServeHTTP(rec, req)
-	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
-		t.Fatalf("Allow-Origin = %q, want *", got)
+// Every response carries Vary: Origin, whether its origin is allowed, matched by `*`, refused or
+// absent: whether the CORS headers are there at all depends on the Origin.
+func TestCORSAlwaysVariesOnOrigin(t *testing.T) {
+	for name, c := range map[string]struct {
+		opts   CORSOptions
+		origin string
+	}{
+		"wildcard":            {CORSPermissive(), "https://anything.example.com"},
+		"refused":             {CORSStrict("https://app.example.com"), "https://evil.example.com"},
+		"no origin":           {CORSStrict("https://app.example.com"), ""},
+		"wildcard, no origin": {CORSPermissive(), ""},
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/x", nil)
+		if c.origin != "" {
+			req.Header.Set("Origin", c.origin)
+		}
+		corsMiddleware(c.opts)(corsOK()).ServeHTTP(rec, req)
+		if got := rec.Header().Values("Vary"); len(got) != 1 || got[0] != "Origin" {
+			t.Errorf("%s: Vary = %q, want Origin once", name, got)
+		}
 	}
-	if got := rec.Header().Get("Vary"); got != "" {
-		t.Errorf("wildcard * must not set Vary, got %q", got)
-	}
+}
+
+// Credentials for any origin, a pair browsers refuse, are refused when CORS is set.
+func TestSetCORSRefusesCredentialsForAnyOrigin(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("SetCORS took credentials for *")
+		}
+	}()
+	opts := CORSPermissive()
+	opts.AllowCredentials = true
+	New(nil).SetCORS(opts)
 }
 
 // A preflight from an allowed origin is answered 204 with Allow-Methods.

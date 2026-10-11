@@ -184,7 +184,7 @@ Categories (drives HTTP status):
 | `LengthRequired`     | 411    | `UnsupportedMediaType` | 415    |
 | `PreconditionFailed` | 412    |                       |        |
 
-Constructed via `New<TypeName>()` (no body) or `New<TypeName>(<Name>Body{...})`, where `<TypeName>` is the DSL name with `Err` appended unless it already ends in `Err`/`Error` (DSL `EmailTaken` -> `NewEmailTakenErr()`; DSL `RateLimitedErr` -> `NewRateLimitedErr()`) and `<Name>Body` is the DSL name with `Body` appended. Implements `Error() string` (the category's default message), `HTTPStatus() int`, `ErrCode() string` (the machine-readable code) and `MarshalJSON` (the body's fields, or `{"code","message"}` for an error with no field on its JSON body: none, or only `@header`, `@cookie` and `@sensitive` ones). Each error type also exports a package-level `const ErrCode<Name>` holding that code string (e.g. `const ErrCodeEmailTaken = "EMAIL_TAKEN"`). No other type, scalar, enum or error of the package may take one of these names or an enum value's `<Enum><Value>` constant, and no event may take another event's `<Event>Contract` name: `decl/go-name-collision`. A body field, a mixin's included, whose Go name is one of these methods, `WriteResponseHeaders` or `<Name>Body` is `field/invalid-go-name`, as is a field of any type or error body whose Go name is `Validate`, or a mixin of a type named `Validate`.
+Constructed via `New<TypeName>()` (no body) or `New<TypeName>(<Name>Body{...})`, where `<TypeName>` is the DSL name with `Err` appended unless it already ends in `Err`/`Error` (DSL `EmailTaken` -> `NewEmailTakenErr()`; DSL `RateLimitedErr` -> `NewRateLimitedErr()`) and `<Name>Body` is the DSL name with `Body` appended. Implements `Error() string` (the category's default message), `HTTPStatus() int`, `ErrCode() string` (the machine-readable code) and `MarshalJSON` (the body's fields, or `{"code","message"}` for an error with no field on its JSON body: none, or only `@header`, `@cookie` and `@sensitive` ones). Each error type also exports a package-level `const ErrCode<Name>` holding that code string (e.g. `const ErrCodeEmailTaken = "EMAIL_TAKEN"`). No other type, scalar, enum or error of the package may take one of these names or an enum value's `<Enum><Value>` constant, and no event may take another event's `<Event>Contract` name: `decl/go-name-collision`. An error with a `@header` field also has `WriteResponseHeaders(w)`, and one with a `@cookie` field `ResponseCookies() []*http.Cookie`, whose cookies `server.WriteError` sets with the `server.cookies` attributes (`Path=/`, `HttpOnly`, `Secure`, `SameSite=Lax` by default). A body field, a mixin's included, whose Go name is one of these methods, `WriteResponseHeaders`, `ResponseCookies` or `<Name>Body` is `field/invalid-go-name`, as is a field of any type or error body whose Go name is `Validate`, or a mixin of a type named `Validate`.
 
 ## Services and methods
 
@@ -481,7 +481,7 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 
 `AppliesTo` column means the field's primitive (after resolving scalars) must be in that category, or the validator is rejected.
 
-> **Required-by-default**: every field is required unless the type carries `?`. There is no `@required` decorator - append `?` to the type to opt out (`name string?`).
+> **Required-by-default**: every field is required unless the type carries `?`. There is no `@required` decorator - append `?` to the type to opt out (`name string?`). A JSON body that leaves a required member out, or sends it `null` without `@nullable`, is answered 400 `<json path>: required` (`items.sku: required`: no index or map key) before `Validate()`; `""`, `0`, `false`, `[]` and `{}` pass. A `@default` fills an absent member at any depth. `server.requirePresence: false` (`server.SetRequirePresence(false)`) turns the body check off: the body then decodes straight into the request type and a missing member keeps its zero value. A codec installed with `SetGlobalJSONCodec` must call a type's `json.Unmarshaler` (`server.Nullable[T]` tells an absent `@nullable` or defaulted member from a `null` one).
 
 | Decorator           | AppliesTo | Args               | Effect                        |
 | ------------------- | --------- | ------------------ | ----------------------------- |
@@ -501,7 +501,7 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 | `@minItems(n)`      | array, map | `(int)`           | At least `n` elements         |
 | `@maxItems(n)`      | array, map | `(int)`           | At most `n` elements          |
 | `@uniqueItems`      | array     | `()`               | All elements distinct         |
-| `@maxSize(N)`       | file      | `(size)`           | Multipart upload size cap     |
+| `@maxSize(N)`       | file      | `(size)`           | Multipart upload size cap, held while the part is read (400 `<name>: file size exceeds N bytes`) |
 | `@mimeTypes([...])` | file      | strings or string array | Multipart media types or `type/*` ranges; parameters and case of the part's Content-Type are ignored |
 
 **`@format` values**: `email`, `url`, `uri`, `uuid`, `datetime`, `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json` - all on string-shaped fields - plus `raw`, which is not a check and is valid ONLY on `bytes` (see the type table). Each follows its RFC, as the OpenAPI `format` of the same name does (`datetime` publishes as `date-time`): `email` is a bare addr-spec (no display name, comment or angle brackets); `url` an `http`/`https` URI with a host; `uri` an RFC 3986 URI, RFC 3986 characters only; `datetime` an RFC 3339 date-time (`t`/`z` in either case, offset within ±23:59, a leap second at 23:59:60 UTC); `time` an RFC 3339 full-time, offset required (`15:04:05Z`); `ipv4` excludes IPv4-mapped IPv6 addresses, which `ipv6` takes, zones refused; `base64url` takes padding or none; `phone` needs a digit. A `@default` must pass the same check.
@@ -528,7 +528,7 @@ A field with no binding decorator whose name matches a `{name}` in the route (or
 | Decorator         | Sites             | Effect                                                                                           |
 | ----------------- | ----------------- | ------------------------------------------------------------------------------------------------ |
 | `@nullable`       | field, errorField | Accept JSON `null` as a legal value (Go: pointer wrap if base is not already nilable)            |
-| `@default(value)` | field, errorField | Pre-fill before JSON decode (on an error field: the OpenAPI `default:` only; `New<Name>Err` fills nothing). Works on string, bool and number primitives, scalars over them, enums, and single-level arrays of those; `bytes`, `datetime`, `file`, `any` and nested arrays are `decorator/conflict`. |
+| `@default(value)` | field, errorField | Fill an absent request member, at any depth (on an error field: `New<Name>Err` gives an optional field the body leaves nil its default). Works on string, bool and number primitives, scalars over them, enums, and single-level arrays of those; `bytes`, `datetime`, `file`, `any` and nested arrays are `decorator/conflict`. |
 | `@sensitive`      | field, errorField | Server-only. `json:"-"`, omitted from OpenAPI. No validators, bindings, `@json`, `@nullable`, `@default`. |
 | `@json("key")`    | field, errorField | JSON key when it is not the field name (a foreign contract, or a PascalCase key the parser reads as a mixin). Not with an off-body binding. |
 
@@ -561,7 +561,7 @@ A field with no binding decorator whose name matches a `{name}` in the route (or
 
 Raw sides: `@rawResponse` keeps request bind + validate and hands `w` to logic (stub `(w, r, req) error`); `@rawRequest` hands `r` over unread and JSON-encodes the returned response (stub `(r) (*Resp, error)`); `@passthrough` is both (stub `(w, r) error`). A `request` / `response` block on a raw side is a docs-only contract: OpenAPI and the generated types describe it, the transport never touches it. `@status` and response `@header` / `@cookie` fields on a raw response side are docs-only too. `@timeout` applies to raw routes (context cancel only). Runtime helpers: `server.WriteBytes`, `server.WritePrecompressed` (negotiates `Accept-Encoding` for a body stored compressed), `server.AcceptsEncoding`.
 
-`@timeout(d)` and `@maxBodySize(n)` **override** (not stack on) the server-wide `handlerTimeout` / `maxBodySize` from `config.yaml` for that route - the decorator value is used as-is (it may be larger or smaller than the global default). The global applies only to routes without the decorator.
+`@timeout(d)` and `@maxBodySize(n)` **override** (not stack on) the server-wide `handlerTimeout` / `maxBodySize` from `config.yaml` for that route - the decorator value is used as-is (it may be larger or smaller than the global default). The global applies only to routes without the decorator. Either way the route's limits wrap its own `@middlewares` too, so a middleware reading the body meets the cap and sees the deadline.
 
 ### Conflicts
 
@@ -693,9 +693,17 @@ Read by generated `main.go` via `config.Load()`. Default content (the generated 
 ```yaml
 server:
   addr: ":8080"
+  readTimeout: 30s # reading a whole request, body included; 0s = none
   handlerTimeout: 0s
-  maxBodySize: 0
+  maxBodySize: 10485760 # 10 MiB when left out; 0 = no cap
   strictJSON: true
+  requirePresence: true # 400 for a JSON body missing a required member
+  cookies: # attributes of the cookies @cookie fields set, on a response or an error
+    path: /
+    domain: ""
+    httpOnly: true
+    secure: true
+    sameSite: lax # lax | strict | none (needs secure) | "" for none
   compression:
     enabled: false
     minSize: 0
@@ -725,7 +733,7 @@ docs:
   specPath: /openapi.yaml
 ```
 
-With protos, `grpc: {addr: ":9000", handlerTimeout: 0s, reflection: true}` is added; a design whose only services are gRPC ones has no `server:` or `docs:`. craftgo reads no environment variable, but the OpenTelemetry SDK behind `telemetry.Init` reads its own `OTEL_*` variables: `OTEL_EXPORTER_OTLP_*ENDPOINT` when `endpoint` is empty, and `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_COMPRESSION`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_TRACES_SAMPLER` even when it is set. Everything else comes from the YAML file. Edit `config/config.go` (gen-once) to add custom fields.
+With protos, `grpc: {addr: ":9000", handlerTimeout: 0s, reflection: true}` is added; a design whose only services are gRPC ones has no `server:` or `docs:`. craftgo reads no environment variable, but the OpenTelemetry SDK behind `telemetry.Init` reads its own `OTEL_*` variables: `OTEL_EXPORTER_OTLP_*ENDPOINT` when `endpoint` is empty, and `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_COMPRESSION`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_TRACES_SAMPLER` even when it is set. Everything else comes from the YAML file. Edit `config/config.go` (gen-once) to add custom fields. `config.Load` logs a warning for a missing file (the defaults apply) and for each unknown key, which it skips. `main.go` stops at boot, naming the value, on an enabled signal's unknown `otel.exporter` / `metrics.exporter`, a `metrics.path` or docs path without a leading `/`, a `compression.level` outside -2..9, and a `docs.path` / `docs.specPath` the other, a health probe or a design route already serves (`srv.RegisterDocs` returns the error; `ServeDocs` panics with it).
 
 ## Generated layout
 
@@ -738,13 +746,13 @@ project/
 │   ├── types/<pkg>/                              GEN every run
 │   │   ├── types.go
 │   │   ├── validate.go
-│   │   ├── fill.go
 │   │   ├── enums.go
 │   │   └── errors.go
 │   ├── events/<pkg>/                             GEN every run (when the package declares an event)
 │   │   └── events.go
 │   ├── transport/<svc>/                          GEN every run
-│   │   └── <method>.go
+│   │   ├── <method>.go
+│   │   └── bodies.gen.go                         (when a JSON body has a required member)
 │   ├── service/<svc>/<method>.go           GEN ONCE
 │   ├── routes/routes.go                          GEN every run (umbrella)
 │   ├── routes/<svc>/routes.go                    GEN every run
@@ -776,11 +784,28 @@ Every method gets a handler that does:
 ```go
 func <Method>(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
+        // 0. a JSON-body route answers 415 to a Content-Type other than application/json or
+        // application/*+json, or to a body without one (no body and no Content-Type reaches the
+        // decoder, which reports it missing); @rawRequest / @passthrough check nothing
+        if !server.RequireJSONBody(w, r) {
+            return
+        }
         var req types.<Req>
         // 1. pre-fill @default values
         req.Field = defaultValue
-        // 2. decode JSON body (body verbs only)
-        if err := server.JSON().Decode(r.Body, &req); err != nil {
+        // 2. decode JSON body (body verbs only): through a struct of pointers that tells an
+        // absent member from a zero one, then into req, while presence is checked
+        if server.RequirePresence() {
+            var _b <req>Wire
+            if err := server.JSON().Decode(r.Body, &_b); err != nil {
+                server.WriteValidationError(w, r, err)
+                return
+            }
+            if _m := _b.to(&req); _m != "" { // fills nested @default values too
+                server.WriteValidationError(w, r, server.MissingMember(_m))
+                return
+            }
+        } else if err := server.JSON().Decode(r.Body, &req); err != nil {
             server.WriteValidationError(w, r, err)
             return
         }
@@ -793,12 +818,15 @@ func <Method>(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
         l := service.New<Method>Service(r.Context(), svcCtx)
         resp, err := l.<Method>(&req)   // ctx is captured in the service, not passed
         if err != nil { server.WriteError(w, r, err); return }
-        server.WriteResponse(w, r, http.StatusOK, resp) // encodes first; an encode error answers 500
+        server.WriteResponse(w, r, http.StatusOK, resp, func(w http.ResponseWriter) {
+            w.Header().Set("X-Total", strconv.Itoa(resp.Total)) // @header / @cookie fields, set
+            server.SetCookie(w, "sid", resp.Session)          // only once the body has encoded
+        }) // encodes first; an encode error answers 500
     }
 }
 ```
 
-Plain Go. JSON goes through `server.JSON()` - the swappable codec (defaults to `encoding/json`, which reflects over the generated structs). Handlers register on `*http.ServeMux` via `srv.Handle("VERB /path", <Method>(svc), mws...)`.
+Plain Go. JSON goes through `server.JSON()` - the swappable codec (defaults to `encoding/json`, which reflects over the generated structs). A codec installed with `server.SetGlobalJSONCodec` must honour `omitzero`, which generated types put on optional list, map and `bytes` members, or a nil one goes out as `null` (`encoding/json`, sonic v1.15.0+ and goccy/go-json v0.11.1+ do; goccy/go-json v0.10.x/v0.11.0, jsoniter v1.1.12 and segmentio/encoding v0.5.4 do not), and must pass `null` to a `json.Unmarshaler`. Handlers register on `*http.ServeMux` via `srv.Handle("VERB /path", <Method>(svc), mws...)`.
 
 ## Generated logic shape
 
@@ -856,7 +884,7 @@ srv.Start(":8080")
 | `server.BodyLimit(maxBytes)` | Cap request body size; over it, 413 `{"message":"request entity too large"}` |
 | `server.Timeout(d)`          | Deprecated: use `srv.SetDefaultHandlerTimeout(d)` / `@timeout` |
 | `srv.SetCORS(opts)`          | CORS headers + genuine-preflight short-circuit (opts via `server.CORSPermissive()` / `server.CORSStrict(origin)`; a Server method, not a `srv.Use` middleware) |
-| `server.Compress(opts...)`   | gzip / deflate response compression (`opts` optional)    |
+| `server.Compress(opts...)`   | gzip / deflate response compression (`opts` optional; panics on a `Level` outside -2..9, which `CompressOptions.Validate` reports) |
 
 ## Error response format
 
@@ -867,7 +895,7 @@ The default `server.WriteError`:
 - Plain (non-`StatusError`) errors: `{"message":"internal server error"}` - the raw `err.Error()` text is logged with trace context but **never** written to the response (it routinely carries DSNs / file paths). Status 500.
 - Context errors are the exception: an error wrapping `context.DeadlineExceeded`, or any context error after the request's own deadline passed, answers 504 `{"message":"gateway timeout"}`, unlogged (a dependency's deadline on a live request is logged at Warn, `dependency deadline exceeded`); once the client has gone, a context error writes nothing and logs nothing; a `context.Canceled` on a live request is an ordinary logged 500.
 
-Every error the framework writes - `WriteError`, `WriteValidationError` (400, or 413 `{"message":"request entity too large"}` past the body cap), the mux's 404 `{"message":"not found"}` and 405 `{"message":"method not allowed"}`, and a panic `Recovery` catches (500 `{"message":"internal server error"}`) - is `application/json; charset=utf-8` with `X-Content-Type-Options: nosniff`. The deprecated `server.Timeout` middleware alone answers a plain-text 503. None of these framework-written errors is in the OpenAPI document, which lists each operation's success response and its `@errors` only.
+Every error the framework writes - `WriteError`, `WriteValidationError` (400, or 413 `{"message":"request entity too large"}` past the body cap), `RequireJSONBody` and a form route's parser (415 `{"message":"unsupported media type"}`), a body the connection fails to deliver (408 `{"message":"request timeout"}` past the read timeout, else 400 `{"message":"bad request"}`, the detail logged at Warn), the mux's 404 `{"message":"not found"}` and 405 `{"message":"method not allowed"}`, and a panic `Recovery` catches (500 `{"message":"internal server error"}`) - is `application/json; charset=utf-8` with `X-Content-Type-Options: nosniff`. The deprecated `server.Timeout` middleware alone answers a plain-text 503. None of these framework-written errors is in the OpenAPI document, which lists each operation's success response and its `@errors` only.
 
 To customise the envelope: `server.SetHandleUnknownError(fn)` overrides the 500 for untyped errors (it never sees a deadline or a gone client's context error), and `server.SetDefaultValidationFailed(fn)` overrides the 400 (default `{"message": <err text>}`); a body read past its cap answers 413 without calling it. `server.WriteError(w, r, err)` / `server.WriteValidationError(w, r, err)` are the entry points the generated handlers call.
 
@@ -964,7 +992,7 @@ In service code:
 return nil, types.NewRateLimitedErr(types.RateLimitedBody{RetryAfter: 30})
 ```
 
-The client gets 429, `Retry-After: 30` and `{"code":"RATE_LIMITED","message":"Too many requests"}`: every field rides a header, so the body is the envelope. A body field is the caller's to fill - `New<Name>Err` applies no `@default`, which reaches only the OpenAPI schema.
+The client gets 429, `Retry-After: 30` and `{"code":"RATE_LIMITED","message":"Too many requests"}`: every field rides a header, so the body is the envelope. A body field is the caller's to fill, except an optional one left nil with a `@default`, which `New<Name>Err` fills.
 
 ### Server-only field
 

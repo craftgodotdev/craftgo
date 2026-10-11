@@ -284,7 +284,7 @@ Run on `file` fields (a request that holds one is `multipart/form-data`, with or
 
 | Decorator           | Args                | Effect                                |
 | ------------------- | ------------------- | ------------------------------------- |
-| `@maxSize(bytes)`   | `(size)`            | Cap upload size. Accepts `2MB`, `8KB`, etc. |
+| `@maxSize(bytes)`   | `(size)`            | Cap upload size, enforced while the part is read. Accepts `2MB`, `8KB`, etc. |
 | `@mimeTypes([...])` | string array        | Allowed media types or `type/*` ranges |
 
 ```craftgo
@@ -315,7 +315,7 @@ On a `?` field `@nullable` is redundant (`decorator/redundant`): `?` already all
 
 ### `@default(value)`
 
-Pre-fill the field before JSON decode. If the client omits the field, the default survives; if present, decode overwrites.
+Fill the field when the client leaves it out, in a request type or a type nested in its body; a value the client sends wins. On an error field, `New<Name>Err` gives an optional field the body leaves nil its default.
 
 | Sites | field, errorField |
 | -------- | -------- |
@@ -385,7 +385,7 @@ Tell the handler where to read each field from. Mutually exclusive (a field has 
 | `@cookie`     | field, errorField | Request cookie (input) / response cookie (error fields) |
 | `@form`       | field          | Multipart form field                                       |
 
-An array `@header` reads a list header: every line of it, split at commas (`X-Ids: 1, 2` and two `X-Ids` lines bind the same). A `@form` text part is read from the multipart body only; a query parameter of the same name is not a stand-in for it.
+An array `@header` reads a list header: every line of it, split at the commas outside a quoted string (`X-Ids: 1, 2` and two `X-Ids` lines bind the same; `"a,b", c` is two elements, the first with its quotes). A `@form` text part is read from the multipart body only; a query parameter of the same name is not a stand-in for it.
 
 `@path`, `@query`, `@header`, `@cookie` and `@form` take an optional string for an explicit wire name; `@body("name")` is accepted but names nothing - a body field's JSON key is set with `@json("key")`. A path, query, header or cookie name rides the generated struct tag, a Go raw string, so one holding a backtick is `decorator/argvalue`:
 
@@ -420,15 +420,15 @@ When the request carries a `file`, its body becomes `multipart/form-data` and ev
 
 A binding decorator binds only on a field of the request, response or error type itself, a mixin's fields included. A field of a type that one of them holds as a nested value rides inside the JSON body, where no binding reaches it, so `@path`, `@query`, `@header`, `@cookie` or `@form` on it is `binding/nested`: move the field up, or let a mixin bring it there.
 
-**Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / `http.SetCookie(...)` instead of the JSON body - the JSON tag is automatically `json:"-"` (with a `header:` / `cookie:` binding key alongside) so the same field doesn't double up. Non-string values (`int`, `bool`, `float`, scalars and enums of those) are formatted to their wire string via `strconv`, just like the request-side binder parses them; an optional (`T?`) header is written only when non-nil, and a `string[]` header emits one value per element. The explicit-name argument applies here too:
+**Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / a `Set-Cookie` instead of the JSON body, the cookie with the server's attributes (`Path=/`, `HttpOnly`, `Secure`, `SameSite=Lax` unless `server.cookies` sets others) - the JSON tag is automatically `json:"-"` (with a `header:` / `cookie:` binding key alongside) so the same field doesn't double up. Non-string values (`int`, `bool`, `float`, scalars and enums of those) are formatted to their wire string via `strconv`, just like the request-side binder parses them; an optional (`T?`) header is written only when non-nil, and a `string[]` header emits one value per element. The explicit-name argument applies here too:
 
 ```craftgo
 type PaginatedResp {
     items   shared.ID[]
     count   int      @header("X-Total-Count")   // strconv.Itoa → X-Total-Count: 42
     nextURL string?  @header("X-Next")           // only written when present
-    active  bool     @cookie("active")           // Set-Cookie: active=true
-    session string   @cookie("session_id")       // Set-Cookie: session_id=...
+    active  bool     @cookie("active")           // Set-Cookie: active=true; Path=/; HttpOnly; Secure; SameSite=Lax
+    session string   @cookie("session_id")       // Set-Cookie: session_id=...; Path=/; HttpOnly; Secure; SameSite=Lax
 }
 
 error TooManyRequests RateLimitedErr {
@@ -796,7 +796,9 @@ decorator would parse but produce no runtime or spec effect - which
 hides the JSON-only constraint from authors. The decorator surface
 stays small and honest: the transport pipeline is JSON in, JSON out,
 and the codec is swappable wholesale via `server.SetGlobalJSONCodec`
-when a project wants sonic / jsoniter in place of `encoding/json`.
+when a project wants sonic or goccy/go-json in place of `encoding/json`,
+given a codec that honours `omitzero` (see
+[Runtime API](/reference/runtime-api#json-codec)).
 When one side needs another wire format, hand that side to logic with
 `@rawRequest` / `@rawResponse` below - logic then owns the bytes, and
 the block on that side stays the documented contract.

@@ -1,0 +1,22 @@
+// Package `limits` pins that a route's @maxBodySize and @timeout hold its own
+// @middlewares too, not only its handler.
+package limits
+
+// Signature reads the whole body, as a webhook signature check does.
+middleware Signature
+
+// Hook is a small webhook payload.
+type Hook {
+	event string
+}
+
+@prefix("/limits")
+service Limits {
+	@doc("Takes a hook its Signature middleware has read.")
+	@middlewares(Signature)
+	@maxBodySize(64)
+	@timeout(1m)
+	post Deliver /hooks {
+		request  Hook
+	}
+}

@@ -94,14 +94,14 @@ func TestErrorReservedFieldNameThroughMixinRejected(t *testing.T) {
 }
 
 // A field whose Go name a generated member takes is rejected: the Validate
-// and FillEmpty methods of every struct holding a body, and an error type's
-// body struct.
+// method of every struct holding a body, and an error type's body struct.
 func TestGeneratedMemberFieldNameRejected(t *testing.T) {
 	for label, c := range map[string]struct{ src, msg string }{
 		"type":         {"type T { validate string  x int }", `type T field "validate" maps to the Go name "Validate"`},
 		"generic type": {"type Box<T> { validate T  x int }", `type Box field "validate" maps to the Go name "Validate"`},
 		"error body":   {"error Internal E { validate string  x int }", `error E field "validate" maps to the Go name "Validate"`},
-		"fill method":  {"type T { fillEmpty string  x int }", `type T field "fillEmpty" maps to the Go name "FillEmpty"`},
+		"error cookie method": {"error Conflict E { responseCookies string  x int }",
+			`error E field "responseCookies" maps to the Go name "ResponseCookies", the name of the generated error method ResponseCookies()`},
 		"error body struct": {"error Internal Gone { goneBody string  why string }",
 			`error Gone field "goneBody" maps to the Go name "GoneBody"`},
 		"error body struct through a mixin": {"type Mx { goneBody string }\nerror Internal Gone { Mx  why string }",
@@ -138,6 +138,11 @@ func TestGeneratedMemberFieldNameReportedOnce(t *testing.T) {
 // type reads the fields it brings, never the mixin by name.
 func TestErrorMixinNamedLikeAnErrorMethodClean(t *testing.T) {
 	mustClean(t, "type Error { code string  message string }\nerror BadRequest Invalid { Error  field string }")
+}
+
+// A field named fillEmpty takes no generated member's name.
+func TestFillEmptyFieldNameClean(t *testing.T) {
+	mustClean(t, "type T { fillEmpty string  x int }\nerror Internal E { fillEmpty string }")
 }
 
 // An ordinary error header field is accepted.

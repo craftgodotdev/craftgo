@@ -49,9 +49,8 @@ func (l *CreateProfileService) CreateProfile(req *types.CreateProfileReq) (*type
 	for _, row := range l.svcCtx.Profiles {
 		other := row.(*types.Profile)
 		if strings.EqualFold(other.Contacts.Email, req.Contacts.Email) {
-			dupCode := "DUPLICATE_EMAIL"
+			// The constructor gives code its @default.
 			return nil, types.NewDuplicateEmailErr(types.DuplicateEmailBody{
-				Code:  &dupCode,
 				Email: req.Contacts.Email,
 			})
 		}
@@ -62,11 +61,8 @@ func (l *CreateProfileService) CreateProfile(req *types.CreateProfileReq) (*type
 	l.svcCtx.NextID++
 	if l.svcCtx.NextID%5 == 0 {
 		l.svcCtx.NextID-- // don't burn the id when we reject
-		rateCode := "RATE_LIMITED"
-		rateMsg := "Slow down, please"
+		// The constructor gives code and message their @default.
 		return nil, types.NewPfRateLimitedErr(types.PfRateLimitedBody{
-			Code:       &rateCode,
-			Message:    &rateMsg,
 			RetryAfter: 30,
 		})
 	}

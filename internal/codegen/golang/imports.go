@@ -45,14 +45,14 @@ const (
 
 // The names each template binds where it writes an imported package's name.
 var (
-	transportNames  = []string{"http", "strconv", "server", "service", "svccontext", "svcCtx", "w", "r", "req", "c", "err", "_q", "_v", "_vs", "_w"}
+	transportNames  = []string{"http", "strconv", "server", "service", "svccontext", "svcCtx", "w", "r", "req", "c", "err", "_q", "_v", "_vs", "_w", "_b", "_m", "_fh", "_limits"}
 	serviceNames    = []string{"context", "http", "log", "grpc", "svccontext", "server", "codes", "status"}
 	eventsNames     = []string{"craftevents", "fmt"}
 	grpcMethodNames = []string{"context", "rpc", "grpc", "service"}
 	wiringGRPCNames = []string{"context", "rpc", "svccontext", "ctx", "srv", "svcCtx"}
 	routesNames     = []string{"time", "server", "svccontext", "srv", "svcCtx"}
 	typesNames      = []string{"wire"}
-	errorsNames     = []string{"json", "http", "strconv", "wire", "e", "w", "body"}
+	errorsNames     = []string{"json", "http", "strconv", "wire", "e", "w", "body", "cs", "_d"}
 	validateNames   = append([]string{"fmt", "regexp", "utf8", "reflect", "mime", "strings", "v", "item", "seen", "_mt", "multipart"}, formatPackages()...)
 )
 

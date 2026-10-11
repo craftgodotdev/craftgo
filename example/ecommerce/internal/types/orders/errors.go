@@ -22,8 +22,13 @@ type ActionDeniedErr struct {
 	ActionDeniedBody
 }
 
-// NewActionDeniedErr constructs ActionDeniedErr.
+// NewActionDeniedErr constructs ActionDeniedErr. An optional field body leaves nil takes its
+// @default.
 func NewActionDeniedErr(body ActionDeniedBody) *ActionDeniedErr {
+	if body.Code == nil {
+		_d := "ACTION_DENIED"
+		body.Code = &_d
+	}
 	return &ActionDeniedErr{ActionDeniedBody: body}
 }
 
@@ -79,8 +84,13 @@ type PaymentFailedErr struct {
 	PaymentFailedBody
 }
 
-// NewPaymentFailedErr constructs PaymentFailedErr.
+// NewPaymentFailedErr constructs PaymentFailedErr. An optional field body leaves nil takes its
+// @default.
 func NewPaymentFailedErr(body PaymentFailedBody) *PaymentFailedErr {
+	if body.Code == nil {
+		_d := "PAYMENT_FAILED"
+		body.Code = &_d
+	}
 	return &PaymentFailedErr{PaymentFailedBody: body}
 }
 

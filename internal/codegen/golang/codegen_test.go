@@ -120,6 +120,38 @@ type X { tags string[]  meta map<string, string> }`)
 	}
 }
 
+// An optional list, map or bytes field stays out of the body only while nil, so an empty one the
+// logic sets goes out; a pointer, an `any` and a raw field keep omitempty.
+func TestGenerateTypesOptionalOmit(t *testing.T) {
+	pkg := analyze(t, `package design
+scalar Blob bytes
+type X {
+  tags string[]?
+  meta map<string, int>?
+  data bytes?
+  blob Blob?
+  n    int?
+  v    any?
+  r    bytes? @format(raw)
+}`)
+	dir := t.TempDir()
+	if err := generateTypes(pkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "types.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	mustContainAll(t, collapseSpace(src),
+		"Tags []string `json:\"tags,omitzero\"`",
+		"Meta map[string]int `json:\"meta,omitzero\"`",
+		"Data []byte `json:\"data,omitzero\"`",
+		"Blob Blob `json:\"blob,omitzero\"`",
+		"N *int `json:\"n,omitempty\"`",
+		"V any `json:\"v,omitempty\"`",
+		"R wire.Raw `json:\"r,omitempty\"`",
+	)
+}
+
 func TestGenerateTypesJSONKeyOverride(t *testing.T) {
 	pkg := analyze(t, `package design
 type Item { id string }
@@ -587,9 +619,36 @@ error BadRequest Validation {
 	if !strings.Contains(src, "func NewValidationErr(body ValidationBody) *ValidationErr") {
 		t.Errorf("constructor must take a body struct:\n%s", src)
 	}
-	if !strings.Contains(norm, "func (e *ValidationErr) MarshalJSON() ([]byte, error) { body := e.ValidationBody body.FillEmpty(0) return json.Marshal(body) }") {
-		t.Errorf("an error with a body must marshal the body alone, from a filled copy:\n%s", src)
+	if !strings.Contains(norm, "func (e *ValidationErr) MarshalJSON() ([]byte, error) { return json.Marshal(e.ValidationBody) }") {
+		t.Errorf("an error with a body must marshal the body alone, as it is:\n%s", src)
 	}
+}
+
+// The constructor gives each optional field the caller leaves nil its @default, a mixin's
+// included; a field without `?` keeps what the caller passes.
+func TestGenerateErrorsConstructorFillsDefaults(t *testing.T) {
+	pkg := analyze(t, `package design
+type Hint { hint string? @default("retry") }
+error TooManyRequests Limited {
+    Hint
+    code  string?   @default("LIMITED")
+    tags  string[]? @default(["a"])
+    wait  int       @default(5)
+    plain string?
+}`)
+	dir := t.TempDir()
+	if err := generateErrors(pkg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(dir, "design", "errors.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	mustContainAll(t, collapseSpace(src),
+		`if body.Hint.Hint == nil { _d := "retry" body.Hint.Hint = &_d }`,
+		`if body.Code == nil { _d := "LIMITED" body.Code = &_d }`,
+		`if body.Tags == nil { body.Tags = []string{"a"} }`,
+	)
+	mustContainNone(t, src, "body.Wait", "body.Plain")
 }
 
 // An error whose fields, a mixin's included, all ride a header, a cookie or
@@ -671,7 +730,8 @@ error BadRequest ValidationErr`)
 	}
 }
 
-// Error @header/@cookie fields leave the body and are written by WriteResponseHeaders.
+// Error @header/@cookie fields leave the body: WriteResponseHeaders writes the headers, and
+// ResponseCookies returns the cookies, which the server sets with its cookie attributes.
 func TestGenerateErrorsResponseBindings(t *testing.T) {
 	pkg := analyze(t, `package design
 error TooManyRequests RateLimited {
@@ -700,9 +760,11 @@ error TooManyRequests RateLimited {
 	mustContainAll(t, src,
 		"func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter)",
 		`w.Header().Set("retryAfter", e.RetryAfter)`,
-		`http.SetCookie(w, &http.Cookie{Name: "sessionToken", Value: e.SessionToken})`,
+		"func (e *RateLimitedErr) ResponseCookies() []*http.Cookie {",
+		`cs = append(cs, &http.Cookie{Name: "sessionToken", Value: e.SessionToken})`,
 		`"net/http"`,
 	)
+	mustContainNone(t, src, "http.SetCookie", "pkg/server")
 }
 
 // A @sensitive error-body field is tagged json:"-".
@@ -751,7 +813,7 @@ error TooManyRequests RateLimited {
 		`w.Header().Set("Retry-After", strconv.Itoa(e.RetryAfter))`,
 		// A local int scalar converts to int64 for strconv.FormatInt.
 		`w.Header().Set("X-Cost", strconv.FormatInt(int64(e.Cost), 10))`,
-		`http.SetCookie(w, &http.Cookie{Name: "throttled", Value: strconv.FormatBool(e.Throttled)})`,
+		`cs = append(cs, &http.Cookie{Name: "throttled", Value: strconv.FormatBool(e.Throttled)})`,
 	)
 }
 
@@ -976,7 +1038,7 @@ type Doc {
 	}
 	mustContainAll(t, ts,
 		"NulBlob Blob `json:\"nulBlob\"`",
-		"OptBlob Blob `json:\"optBlob,omitempty\"`",
+		"OptBlob Blob `json:\"optBlob,omitzero\"`",
 	)
 	mustContainAll(t, string(val),
 		"if v.NulBlob != nil {",

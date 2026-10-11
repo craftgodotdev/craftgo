@@ -108,8 +108,13 @@ type UnauthorizedErr struct {
 	UnauthorizedErrBody
 }
 
-// NewUnauthorizedErr constructs UnauthorizedErr.
+// NewUnauthorizedErr constructs UnauthorizedErr. An optional field body leaves nil takes its
+// @default.
 func NewUnauthorizedErr(body UnauthorizedErrBody) *UnauthorizedErr {
+	if body.Code == nil {
+		_d := "AUTH_REQUIRED"
+		body.Code = &_d
+	}
 	return &UnauthorizedErr{UnauthorizedErrBody: body}
 }
 

@@ -207,13 +207,13 @@ For a request to a method like `DeleteUser` above, the chain executes outermost-
 [runtime] Recovery (installed by the server)
 [runtime] CORS, when srv.SetCORS is set - it answers a preflight here
 [runtime] srv.Use middleware in declaration order
+[runtime] @timeout / @maxBodySize (server.WithLimits), else the server's default handler timeout and body cap
 [DSL]     service-level @middlewares in declaration order  } the per-route mws routes.go
 [DSL]     method-level @middlewares appended                } passes to srv.Handle
-[runtime] @timeout / @maxBodySize (server.WithLimits), else the server's default handler timeout and body cap
 [handler] decode body, validate, call logic, encode response
 ```
 
-The health probes are answered ahead of all of it, inside Recovery only.
+The health probes are answered ahead of all of it, inside Recovery only. A route's limits wrap its own `@middlewares`, so a middleware that reads the body, as a webhook signature check does, meets the body cap, and one that calls a dependency sees the deadline.
 
 An HTTP middleware does its work on the way IN, so the first one listed is the first to run and that reads the way it sounds. A consumer [`events.Chain`](/guide/events#middleware) folds the same way - first listed is outermost - so the intuition carries over unchanged.
 

@@ -9,77 +9,67 @@ import (
 	"time"
 )
 
-// A required list or map the logic leaves nil goes out as [] or {} wherever
-// it sits, an optional one is left out and a @nullable one stays null; an
-// error body is filled the same way.
-func TestNilListsGoOutEmpty(t *testing.T) {
-	ts := bootAll(t)
-	get := func(path string) (int, string) {
-		t.Helper()
-		resp, err := http.Get(ts.URL + "/api/empty-lists" + path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer resp.Body.Close()
-		raw, _ := io.ReadAll(resp.Body)
-		return resp.StatusCode, string(raw)
-	}
-	code, body := get("/shapes")
-	if code != http.StatusOK {
-		t.Fatalf("shapes: %d %s", code, body)
-	}
-	for _, want := range []string{
-		`"leaf":{"tags":[],"meta":{}}`,
-		`"leafOpt":{"tags":[],"meta":{}}`,
-		`"leaves":[{"tags":[],"meta":{}}]`,
-		`"byName":{"a":{"tags":[],"meta":{}}}`,
-		`"grid":[[]]`,
-		`"nulls":null`,
-		`"blob":""`,
-		`"boxed":{"v":{"tags":[],"meta":{}},"vs":[]}`,
-		`"boxedOpt":{"v":{"tags":[],"meta":{}},"vs":[{"tags":[],"meta":{}}]}`,
-		`"tree":{"name":"","kids":[{"name":"","kids":[]}],"next":{"name":"","kids":[]}}`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("shapes body lacks %s:\n%s", want, body)
-		}
-	}
-	for _, group := range []string{`"g":[]`, `"h":[{"tags":[],"meta":{}}]`} {
-		if !strings.Contains(body, group) {
-			t.Errorf("shapes groups lack %s:\n%s", group, body)
-		}
-	}
-	if strings.Contains(body, `"maybe"`) {
-		t.Errorf("an optional nil list must be left out:\n%s", body)
-	}
-	code, body = get("/clash")
-	if code != http.StatusConflict || !strings.Contains(body, `"items":[]`) || !strings.Contains(body, `"tags":[]`) || !strings.Contains(body, `"meta":{}`) {
-		t.Errorf("clash: got %d %s, want 409 with empty lists", code, body)
-	}
-	if code, body = get("/nothing"); code != http.StatusOK || strings.TrimSpace(body) != "null" {
-		t.Errorf("nothing: got %d %s, want 200 null", code, body)
-	}
-}
-
-// A value nested 1500 deep with no cycle is filled throughout, the lists
-// visited after its deepest branch included.
-func TestNilListsDeepValue(t *testing.T) {
-	ts := bootAll(t)
-	resp, err := http.Get(ts.URL + "/api/empty-lists/deep")
+// emptyListsGet answers GET /api/empty-lists<path> with its status and body.
+func emptyListsGet(t *testing.T, url, path string) (int, string) {
+	t.Helper()
+	resp, err := http.Get(url + "/api/empty-lists" + path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
-	body := string(raw)
-	if resp.StatusCode != http.StatusOK || !strings.HasSuffix(strings.TrimSpace(body), `"labels":[],"votes":{}}`) || strings.Contains(body, "null") {
-		t.Errorf("deep: got %d ...%s", resp.StatusCode, body[max(len(body)-80, 0):])
+	return resp.StatusCode, string(raw)
+}
+
+// A response goes out as the logic returns it, wherever a list or map sits: a nil one is null,
+// an empty one [] or {}, and an optional one is left out only while nil; an error body likewise.
+func TestListsGoOutAsTheLogicReturnsThem(t *testing.T) {
+	ts := bootAll(t)
+	code, body := emptyListsGet(t, ts.URL, "/shapes")
+	if code != http.StatusOK {
+		t.Fatalf("shapes: %d %s", code, body)
+	}
+	for _, want := range []string{
+		`"leaf":{"tags":[],"meta":{}}`,
+		`"leafOpt":{"tags":null,"meta":null}`,
+		`"leaves":[{"tags":[],"meta":null}]`,
+		`"byName":{"a":{"tags":null,"meta":null}}`,
+		`"groups":{"g":null,"h":[]}`,
+		`"grid":[null,[]]`,
+		`"maybe":[]`,
+		`"nulls":null`,
+		`"blob":null`,
+		`"boxed":{"v":{"tags":null,"meta":null},"vs":[]}`,
+		`"boxedOpt":{"v":{"tags":null,"meta":null},"vs":[{"tags":null,"meta":null}]}`,
+		`"tree":{"name":"","kids":[{"name":"","kids":null}],"next":{"name":"","kids":[]}}`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("shapes body lacks %s:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `"gone"`) {
+		t.Errorf("an optional nil map must be left out:\n%s", body)
+	}
+	code, body = emptyListsGet(t, ts.URL, "/clash")
+	if want := `{"items":[],"tags":null,"meta":null}`; code != http.StatusConflict || strings.TrimSpace(body) != want {
+		t.Errorf("clash: got %d %s, want 409 %s", code, body, want)
+	}
+	if code, body = emptyListsGet(t, ts.URL, "/nothing"); code != http.StatusOK || strings.TrimSpace(body) != "null" {
+		t.Errorf("nothing: got %d %s, want 200 null", code, body)
 	}
 }
 
-// A value holding itself, through its kids twice over and its next, stops
-// the fill at once and answers 500, as the encoder refuses it.
-func TestNilListsCycleAnswers500(t *testing.T) {
+// A value nested 1500 deep with no cycle goes out whole.
+func TestListsDeepValueGoesOutWhole(t *testing.T) {
+	ts := bootAll(t)
+	code, body := emptyListsGet(t, ts.URL, "/deep")
+	if code != http.StatusOK || strings.Count(body, `"next":`) != 1500 || !strings.HasSuffix(strings.TrimSpace(body), `"labels":null,"votes":null}`) {
+		t.Errorf("deep: got %d ...%s", code, body[max(len(body)-80, 0):])
+	}
+}
+
+// A value holding itself has no JSON form, so the encoder refuses it and the client gets 500.
+func TestListsCycleAnswers500(t *testing.T) {
 	ts := bootAll(t)
 	done := make(chan int, 1)
 	go func() {
@@ -101,27 +91,23 @@ func TestNilListsCycleAnswers500(t *testing.T) {
 	}
 }
 
-// A value every request shares, filled by the first, is only read by the
-// next ones, however many run at once.
-func TestNilListsSharedValue(t *testing.T) {
+// A value every request shares is only read: requests running at once from the first one on
+// all get it as the logic holds it, its nil lists null.
+func TestListsSharedValueIsOnlyRead(t *testing.T) {
 	ts := bootAll(t)
-	get := func() (int, string) {
-		resp, err := http.Get(ts.URL + "/api/empty-lists/shared")
-		if err != nil {
-			return 0, err.Error()
-		}
-		defer resp.Body.Close()
-		raw, _ := io.ReadAll(resp.Body)
-		return resp.StatusCode, string(raw)
-	}
-	if code, body := get(); code != http.StatusOK || !strings.Contains(body, `"g":[]`) {
-		t.Fatalf("first: got %d %s", code, body)
-	}
+	const want = `"groups":{"g":null}`
 	var wg sync.WaitGroup
 	for range 32 {
 		wg.Go(func() {
-			if code, body := get(); code != http.StatusOK || !strings.Contains(body, `"g":[]`) {
-				t.Errorf("shared: got %d %s", code, body)
+			resp, err := http.Get(ts.URL + "/api/empty-lists/shared")
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			defer resp.Body.Close()
+			raw, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode != http.StatusOK || !strings.Contains(string(raw), want) || !strings.Contains(string(raw), `"leaves":null`) {
+				t.Errorf("shared: got %d %s", resp.StatusCode, raw)
 			}
 		})
 	}

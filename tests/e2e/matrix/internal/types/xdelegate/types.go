@@ -33,7 +33,7 @@ type XDelegatedScalars struct {
 // bodies still fails here.
 type XDelegatedShapes struct {
 	Many    []xshared.XNodeID                `json:"many"`
-	Maybe   []xshared.XNodeID                `json:"maybe,omitempty"`
+	Maybe   []xshared.XNodeID                `json:"maybe,omitzero"`
 	ByEmail map[xshared.XEmail]xshared.XSize `json:"byEmail"`
 	ByLabel map[string]xshared.XEmail        `json:"byLabel"`
 }

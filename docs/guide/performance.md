@@ -29,7 +29,7 @@ Side benefits:
 
 Things craftgo touches but does not optimize:
 
-- **JSON parsing** uses stdlib `encoding/json`. Swap to `goccy/go-json` or `bytedance/sonic` via `server.SetGlobalJSONCodec(...)` if you need faster JSON: the codec implements `server.JSONCodec`, and `server.StrictDecoder` too while `server.strictJSON` is on, as the generated `config.yaml` sets it - see [Runtime API](/reference/runtime-api#json-codec).
+- **JSON parsing** uses stdlib `encoding/json`. Swap to `bytedance/sonic` or `goccy/go-json` (v0.11.1 or later, the first to honour `omitzero`) via `server.SetGlobalJSONCodec(...)` if you need faster JSON: the codec implements `server.JSONCodec`, and `server.StrictDecoder` too while `server.strictJSON` is on, as the generated `config.yaml` sets it - see [Runtime API](/reference/runtime-api#json-codec).
 - **Database calls, external HTTP, business logic** are your code.
 - **OTel tracing** when enabled adds the cost of `otelhttp.NewHandler`. This cost is not specific to craftgo.
 

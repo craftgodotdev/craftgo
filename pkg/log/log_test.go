@@ -3,6 +3,8 @@ package log
 import (
 	"context"
 	"errors"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -118,6 +120,33 @@ func TestNewZapDefault(t *testing.T) {
 	l.Info("smoke")
 	if l == nil {
 		t.Fatal("New() returned nil")
+	}
+}
+
+// The default logger writes every line: a message repeated far past what zap's sampling keeps in
+// a second is written each time.
+func TestNewWritesEveryLine(t *testing.T) {
+	out, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr := os.Stderr
+	os.Stderr = out
+	l := New()
+	os.Stderr = stderr
+	const n = 1000
+	for range n {
+		l.Error("unhandled service error")
+	}
+	if err := out.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(out.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(raw), `"unhandled service error"`); got != n {
+		t.Errorf("wrote %d of %d lines", got, n)
 	}
 }
 

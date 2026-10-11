@@ -321,25 +321,49 @@ func TestWriteResponse(t *testing.T) {
 	}
 }
 
-// filled is a response whose FillEmpty sets its nil list empty, as a
-// generated type's does.
-type filled struct {
+// listed is a response with a list, as a generated type holds one.
+type listed struct {
 	Tags []string `json:"tags"`
 }
 
-func (v *filled) FillEmpty(int) (changed, stopped bool) {
-	if v.Tags != nil {
-		return false, false
+// A response goes out as the logic left it, a nil list as null and an empty one as [], and the
+// value itself is not written to.
+func TestWriteResponseEncodesTheValueAsItIs(t *testing.T) {
+	for _, c := range []struct {
+		v    *listed
+		want string
+	}{
+		{&listed{}, "{\"tags\":null}\n"},
+		{&listed{Tags: []string{}}, "{\"tags\":[]}\n"},
+	} {
+		wasNil := c.v.Tags == nil
+		rec := httptest.NewRecorder()
+		WriteResponse(rec, httptest.NewRequest("GET", "/", nil), http.StatusOK, c.v)
+		if got := rec.Body.String(); got != c.want {
+			t.Errorf("body = %q, want %q", got, c.want)
+		}
+		if (c.v.Tags == nil) != wasNil {
+			t.Errorf("the response value changed: tags %v", c.v.Tags)
+		}
 	}
-	v.Tags = []string{}
-	return true, false
 }
 
-// A value with FillEmpty is filled before it is encoded.
-func TestWriteResponseFillsEmpty(t *testing.T) {
+// The headers and cookies of a success are set once its body has encoded, and a body that fails
+// to encode goes out as the 500 without them.
+func TestWriteResponseSetsHeadersAfterTheEncode(t *testing.T) {
+	setHeaders := func(w http.ResponseWriter) {
+		w.Header().Set("Location", "/x")
+		SetCookie(w, "sid", "s")
+	}
 	rec := httptest.NewRecorder()
-	WriteResponse(rec, httptest.NewRequest("GET", "/", nil), http.StatusOK, &filled{})
-	if got := rec.Body.String(); got != "{\"tags\":[]}\n" {
-		t.Errorf("body = %q, want the list empty", got)
+	WriteResponse(rec, httptest.NewRequest("GET", "/", nil), http.StatusCreated, map[string]int{"n": 1}, setHeaders)
+	if rec.Code != http.StatusCreated || rec.Header().Get("Location") != "/x" || rec.Header().Get("Set-Cookie") == "" {
+		t.Errorf("success: got %d %v", rec.Code, rec.Header())
+	}
+	observeLogs(t)
+	rec = httptest.NewRecorder()
+	WriteResponse(rec, httptest.NewRequest("GET", "/", nil), http.StatusCreated, map[string]float64{"x": math.NaN()}, setHeaders)
+	if rec.Code != http.StatusInternalServerError || rec.Header().Get("Location") != "" || rec.Header().Get("Set-Cookie") != "" {
+		t.Errorf("encode failure: got %d %v, want the 500 without the success's headers", rec.Code, rec.Header())
 	}
 }

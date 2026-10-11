@@ -12,6 +12,7 @@ import (
 	"net/textproto"
 	"strings"
 	"testing"
+	"time"
 )
 
 // largeBody returns a payload above the default MinSize.
@@ -292,6 +293,41 @@ func TestCompressSendsAnInformationalStatusAtOnce(t *testing.T) {
 }
 
 // A HEAD response is never compressed, whatever its handler writes.
+// A level gzip refuses fails Validate and Compress at once, not each compressed response; every
+// level gzip takes passes.
+func TestCompressRefusesALevelOutOfRange(t *testing.T) {
+	for _, level := range []int{-3, 10, 100} {
+		if err := (CompressOptions{Level: level}).Validate(); err == nil || !strings.Contains(err.Error(), "-2 to 9") {
+			t.Errorf("level %d: Validate = %v, want the range", level, err)
+		}
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("level %d: Compress did not panic", level)
+				}
+			}()
+			Compress(CompressOptions{Level: level})
+		}()
+	}
+	for level := -2; level <= 9; level++ {
+		if err := (CompressOptions{Level: level}).Validate(); err != nil {
+			t.Errorf("level %d: %v", level, err)
+		}
+		h := Compress(CompressOptions{Level: level, MinSize: 1})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(strings.Repeat("a", 64)))
+		}))
+		for _, enc := range []string{"gzip", "deflate"} {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", enc)
+			h.ServeHTTP(rec, req)
+			if rec.Header().Get("Content-Encoding") != enc {
+				t.Errorf("level %d %s: Content-Encoding %q", level, enc, rec.Header().Get("Content-Encoding"))
+			}
+		}
+	}
+}
+
 func TestCompressHEADBypasses(t *testing.T) {
 	h := Compress()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -308,6 +344,61 @@ func TestCompressHEADBypasses(t *testing.T) {
 	}
 	if got := rec.Header().Get("Vary"); !strings.Contains(got, "Accept-Encoding") {
 		t.Errorf("Vary should still be set on HEAD")
+	}
+}
+
+// A partial response, whose Content-Range counts the plain bytes, goes out as it is, as does a
+// status without a body.
+func TestCompressSkipsPartialAndBodilessResponses(t *testing.T) {
+	data := strings.Repeat("0123456789", 300)
+	for name, h := range map[string]http.Handler{
+		"range": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.ServeContent(w, r, "f.txt", time.Unix(0, 0), strings.NewReader(data))
+		}),
+		"206 alone": http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = io.WriteString(w, data[1000:3000])
+		}),
+		"204": http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNoContent)
+			_, _ = io.WriteString(w, data)
+		}),
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/f.txt", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		req.Header.Set("Range", "bytes=1000-2999")
+		Compress()(h).ServeHTTP(rec, req)
+		if got := rec.Header().Get("Content-Encoding"); got != "" {
+			t.Errorf("%s: Content-Encoding %q, want none", name, got)
+		}
+		if name != "204" && rec.Body.String() != data[1000:3000] {
+			t.Errorf("%s: body is not the plain range", name)
+		}
+	}
+}
+
+// A body the handler gives no Content-Type keeps the one net/http sniffs from the plain bytes,
+// and a sniffed type compression skips is sent plain.
+func TestCompressKeepsTheSniffedContentType(t *testing.T) {
+	page := "<!doctype html><html><body>" + strings.Repeat("hello ", 400) + "</body></html>"
+	png := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{0}, 2000)...)
+	for _, c := range []struct {
+		body       []byte
+		ct, coding string
+	}{
+		{[]byte(page), "text/html; charset=utf-8", "gzip"},
+		{png, "image/png", ""},
+	} {
+		h := Compress()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(c.body) }))
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		h.ServeHTTP(rec, req)
+		if got := rec.Header().Get("Content-Type"); got != c.ct || rec.Header().Get("Content-Encoding") != c.coding {
+			t.Errorf("Content-Type %q, Content-Encoding %q; want %q, %q", got, rec.Header().Get("Content-Encoding"), c.ct, c.coding)
+		}
 	}
 }
 

@@ -47,8 +47,9 @@ func ListTodos(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("X-Total-Count", strconv.Itoa(resp.Total))
-		w.Header().Set("X-Response-Time", strconv.FormatInt(int64(resp.TookMs), 10))
-		server.WriteResponse(w, r, http.StatusOK, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp, func(w http.ResponseWriter) {
+			w.Header().Set("X-Total-Count", strconv.Itoa(resp.Total))
+			w.Header().Set("X-Response-Time", strconv.FormatInt(int64(resp.TookMs), 10))
+		})
 	}
 }

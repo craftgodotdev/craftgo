@@ -156,7 +156,8 @@ func runGen(args []string) error {
 // docsEmbedNote names a gen-once main.go that serves HTTP routes but neither
 // embeds nor serves the OpenAPI document on disk, which go:embed reaches from
 // its directory: a main.go written by a `--target go` run before the document
-// existed. It is "" otherwise.
+// existed. A main.go calling ServeDocs or RegisterDocs serves it. It is ""
+// otherwise.
 func docsEmbedNote(proj *semantic.Project, cfg *config.Config, projectRoot string) string {
 	_, document := docs.Plan(proj, cfg, projectRoot)
 	if len(document) == 0 || cfg.Output.RuntimeDisabled() || cfg.Output.ContractsOnly() {
@@ -172,7 +173,8 @@ func docsEmbedNote(proj *semantic.Project, cfg *config.Config, projectRoot strin
 	embed := "//go:embed " + rel
 	src, err := os.ReadFile(filepath.Join(projectRoot, cfg.Output.Main))
 	if err != nil || !strings.Contains(string(src), "wiring.Register(") ||
-		strings.Contains(string(src), embed) || strings.Contains(string(src), "ServeDocs(") {
+		strings.Contains(string(src), embed) || strings.Contains(string(src), "ServeDocs(") ||
+		strings.Contains(string(src), "RegisterDocs(") {
 		return ""
 	}
 	return cfg.Output.Main + " does not embed " + cfg.Output.OpenAPI + " - it is generated once, so add the `" + embed +
