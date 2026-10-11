@@ -26,18 +26,13 @@ func CreateProduct(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			__d := shared.CurrencyCode("USD")
 			req.Currency = &__d
 		}
-		if server.RequirePresence() {
-			var _b createProductReqWire
-			if err := server.JSON().Decode(r.Body, &_b); err != nil {
-				server.WriteValidationError(w, r, err)
-				return
-			}
-			if _m := _b.to(&req); _m != "" {
-				server.WriteValidationError(w, r, server.MissingMember(_m))
-				return
-			}
-		} else if err := server.JSON().Decode(r.Body, &req); err != nil {
+		var _b createProductReqWire
+		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)
+			return
+		}
+		if _m := _b.to(&req); _m != "" {
+			server.WriteValidationError(w, r, server.MissingMember(_m))
 			return
 		}
 		if err := req.Validate(); err != nil {

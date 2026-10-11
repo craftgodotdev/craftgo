@@ -21,18 +21,13 @@ func BulkExport(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		var req types.ListOrdersReq
-		if server.RequirePresence() {
-			var _b listOrdersReqWire
-			if err := server.JSON().Decode(r.Body, &_b); err != nil {
-				server.WriteValidationError(w, r, err)
-				return
-			}
-			if _m := _b.to(&req); _m != "" {
-				server.WriteValidationError(w, r, server.MissingMember(_m))
-				return
-			}
-		} else if err := server.JSON().Decode(r.Body, &req); err != nil {
+		var _b listOrdersReqWire
+		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)
+			return
+		}
+		if _m := _b.to(&req); _m != "" {
+			server.WriteValidationError(w, r, server.MissingMember(_m))
 			return
 		}
 		_q := r.URL.Query()
