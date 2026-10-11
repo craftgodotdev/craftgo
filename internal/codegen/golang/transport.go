@@ -81,14 +81,25 @@ type paramBinding struct {
 func generateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
 	r = resolverFor(pkg, r)
 	out := outputsOf(cfg)
+	var dirs []string
+	byDir := map[string][]segment{}
 	for s := range segments(pkg, cfg.Output.FileCase) {
-		bodies := segmentBodies(s, r, out)
-		dir := out.transport.sub(s.dir)
-		for m := range s.methods() {
-			data := buildTransportData(m, s.svc.Decorators(m), out.segmentImports(pkg.Name, s.dir), pkg, r, bodies.names()...)
-			data.BodyWire = bodies.wireFor(m)
-			if err := writeGo(dir.at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("transport.tmpl"), data); err != nil {
-				return err
+		if _, ok := byDir[s.dir]; !ok {
+			dirs = append(dirs, s.dir)
+		}
+		byDir[s.dir] = append(byDir[s.dir], s)
+	}
+	for _, d := range dirs {
+		segs := byDir[d]
+		bodies := dirBodies(segs, r, out)
+		dir := out.transport.sub(d)
+		for _, s := range segs {
+			for m := range s.methods() {
+				data := buildTransportData(m, s.svc.Decorators(m), out.segmentImports(pkg.Name, s.dir), pkg, r, bodies.names()...)
+				data.BodyWire = bodies.wireFor(m)
+				if err := writeGo(dir.at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("transport.tmpl"), data); err != nil {
+					return err
+				}
 			}
 		}
 		if src := bodies.source(pkg.Name); src != "" {
@@ -100,12 +111,16 @@ func generateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot st
 	return nil
 }
 
-// segmentBodies weighs the JSON request bodies s's handlers decode.
-func segmentBodies(s segment, r *projectResolver, out outputs) *bodyPlan {
-	p := newBodyPlan(r, s.pkg.Name, out.types.sub(s.pkg.Name).pkg)
-	for m := range s.methods() {
-		if fields, ok := bodyFields(m, s.svc.Decorators(m), s.pkg, r); ok {
-			p.add(m, fields)
+// dirBodies weighs the JSON request bodies the handlers of segs decode: the services whose
+// handlers share one directory, and so one bodyFile, which a @group may make several.
+func dirBodies(segs []segment, r *projectResolver, out outputs) *bodyPlan {
+	pkg := segs[0].pkg
+	p := newBodyPlan(r, pkg.Name, out.types.sub(pkg.Name).pkg)
+	for _, s := range segs {
+		for m := range s.methods() {
+			if fields, ok := bodyFields(m, s.svc.Decorators(m), s.pkg, r); ok {
+				p.add(m, fields)
+			}
 		}
 	}
 	p.finish()

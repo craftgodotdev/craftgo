@@ -88,3 +88,26 @@ service S { post Loose /loose { request Loose } }`)
 		t.Errorf("want no %s: %v", bodyFile, err)
 	}
 }
+
+// Services a @group puts in one directory share one bodyFile, holding the wire structs of every
+// one of their handlers, a type they share declared once.
+func TestBodyFileOfServicesSharingADirectory(t *testing.T) {
+	pkg := analyze(t, `package design
+type Item { sku string }
+type Order { items Item[] }
+type Session { items Item[]  token string }
+@group("checkout")
+service Orders { post Create /orders { request Order } }
+@group("checkout")
+service Sessions { post Open /sessions { request Session } }`)
+	root := t.TempDir()
+	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
+		t.Fatal(err)
+	}
+	src := readGen(t, filepath.Join(root, "internal/transport/checkout"), bodyFile)
+	mustParseGo(t, src)
+	mustContainAll(t, src, "type orderWire struct {", "type sessionWire struct {")
+	if n := strings.Count(src, "type itemWire struct {"); n != 1 {
+		t.Errorf("itemWire declared %d times:\n%s", n, src)
+	}
+}
