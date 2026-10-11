@@ -397,6 +397,35 @@ func TestDecodePathsTellAJSONKeyFromAnEmbeddedName(t *testing.T) {
 	}
 }
 
+type wireDottedBase struct {
+	N []int `json:"n"`
+}
+
+type wireDottedInner struct {
+	wireDottedBase
+	K int `json:"k"`
+}
+
+type wireDotted struct {
+	Inner wireDottedInner `json:"a.b"`
+	Deep  struct {
+		Inner wireDottedInner `json:"c.d.e"`
+	} `json:"x"`
+}
+
+// A JSON key holding a dot reads as one key, an embedded struct's name below it dropped.
+func TestDecodePathsReadADottedKeyWhole(t *testing.T) {
+	for body, want := range map[string]string{
+		`{"a.b": {"n": "w", "k": 1}}`:     "a.b.n: expected array, got string",
+		`{"a.b": {"k": "x"}}`:             "a.b.k: expected integer, got string",
+		`{"x": {"c.d.e": {"n": [true]}}}`: "x.c.d.e.n: expected integer, got boolean",
+	} {
+		if err := (defaultCodec{}).Decode(strings.NewReader(body), &wireDotted{}); err == nil || err.Error() != want {
+			t.Errorf("Decode(%s) = %v, want %q", body, err, want)
+		}
+	}
+}
+
 type wireNode struct {
 	Child *wireNode `json:"c"`
 	V     int       `json:"v"`
