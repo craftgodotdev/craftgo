@@ -59,9 +59,9 @@ A field's decorators may continue on lines of their own below it, up to the next
 | `uint8/16/32/64` | matching Go             |                                            |
 | `float32/64`     | matching Go             |                                            |
 | `bool`           | `bool`                  |                                            |
-| `datetime`       | `time.Time`             | RFC 3339 in JSON; body fields only, no validators |
+| `datetime`       | `time.Time`             | RFC 3339 in JSON, decoded by `time.Time` (which also takes a one-digit hour, `,5` and `+01:60`, and refuses `t`/`z` and leap seconds); an offset of a day or more fails `Validate()`; body fields only, no validators |
 | `any`            | `any`                   | arbitrary JSON value, decoded and re-encoded (`object` is rejected as a field type) |
-| `bytes @format(raw)` | `wire.Raw`          | the bytes ARE the value in the message's own encoding; the codec embeds them untouched, so an explicit `null`, an integer past 2^53 and `1.50` all survive (`any` loses all three). Body fields only, no other validator, no `@default`; `?` / `@nullable` stay `wire.Raw` (nil is absence, an explicit `null` is the four bytes `null`), from `github.com/craftgodotdev/craftgo/pkg/wire` (its own stdlib-only module) |
+| `bytes @format(raw)` | `wire.Raw`          | the bytes ARE the value in the message's own encoding; the codec embeds them untouched, so an explicit `null`, an integer past 2^53 and `1.50` all survive (`any` loses all three). Body fields only, no other validator, no `@default`; `?` / `@nullable` stay `wire.Raw` (nil is absence, an explicit `null` is the four bytes `null`, which a `@requiresOneOf` / `@mutuallyExclusive` group counts as unset), from `github.com/craftgodotdev/craftgo/pkg/wire` (its own stdlib-only module) |
 | `file`           | `*multipart.FileHeader` | a multipart part: a request's top-level field only, never in a response, error body or event payload (`binding/file-position`) |
 | `T?`             | `*T` or nilable as-is   | optional                                   |
 | `T[]`            | `[]T`                   | array                                      |
@@ -488,7 +488,7 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 | `@length(n)` / `@length(min, max)` | string, bytes | `(int)` or `(int, int)` | Exact length (1 arg) or inclusive [min, max] (2 args); bytes count bytes |
 | `@minLength(n)`     | string, bytes | `(int)`        | Length `>= n`                 |
 | `@maxLength(n)`     | string, bytes | `(int)`        | Length `<= n`                 |
-| `@pattern("regex")` | string    | `(string)`         | RE2 regex match               |
+| `@pattern("regex")` | string    | `(string)`         | RE2 regex match; RE2 syntax ECMA-262 (the OpenAPI `pattern` dialect) lacks or reads otherwise, such as `(?i)`, `\z`, `(?P<n>`, `[[:alpha:]]`, `\pL`, `{,3}`, warns `pattern/not-ecma` |
 | `@format(name)`     | string    | ident or string    | Named format (see list below) |
 | `@gte(n)`           | number    | `(number)`         | Value `>= n` (inclusive)      |
 | `@lte(n)`           | number    | `(number)`         | Value `<= n` (inclusive)      |
@@ -504,7 +504,7 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 | `@maxSize(N)`       | file      | `(size)`           | Multipart upload size cap     |
 | `@mimeTypes([...])` | file      | strings or string array | Multipart media types or `type/*` ranges; parameters and case of the part's Content-Type are ignored |
 
-**`@format` values**: `email`, `url`, `uri`, `uuid`, `datetime`, `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json` - all on string-shaped fields - plus `raw`, which is not a check and is valid ONLY on `bytes` (see the type table).
+**`@format` values**: `email`, `url`, `uri`, `uuid`, `datetime`, `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json` - all on string-shaped fields - plus `raw`, which is not a check and is valid ONLY on `bytes` (see the type table). Each follows its RFC, as the OpenAPI `format` of the same name does (`datetime` publishes as `date-time`): `email` is a bare addr-spec (no display name, comment or angle brackets); `url` an `http`/`https` URI with a host; `uri` an RFC 3986 URI, RFC 3986 characters only; `datetime` an RFC 3339 date-time (`t`/`z` in either case, offset within ±23:59, a leap second at 23:59:60 UTC); `time` an RFC 3339 full-time, offset required (`15:04:05Z`); `ipv4` excludes IPv4-mapped IPv6 addresses, which `ipv6` takes, zones refused; `base64url` takes padding or none; `phone` needs a digit. A `@default` must pass the same check.
 
 Validators on `errorField` are emitted as OpenAPI schema constraints and a `<Name>Body.Validate()` that nothing calls (no runtime check on server-emitted error bodies). Every string/number validator above may also sit directly on a `scalar` declaration to bake the constraint into the scalar type (`scalar Email string @format(email) @maxLength(254)`).
 

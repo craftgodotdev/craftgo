@@ -98,7 +98,7 @@ type AllFormats {
 	uuid       string @format(uuid) @length(36, 36)
 	datetime   string @format(datetime) @maxLength(40)
 	date       string @format(date) @length(10, 10)
-	timeField  string @format(time) @length(8, 8)
+	timeField  string @format(time) @maxLength(32)
 	phone      string @format(phone) @maxLength(20)
 	ipv4       string @format(ipv4) @maxLength(15)
 	ipv6       string @format(ipv6) @maxLength(45)

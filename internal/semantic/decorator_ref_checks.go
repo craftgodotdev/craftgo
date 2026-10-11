@@ -121,7 +121,9 @@ func reportCrossFieldMemberIssues(decName, typeName, memberName string, rf Resol
 
 // presenceUnclean reports whether a member's presence cannot be a nil
 // check: a slice or map is tested by emptiness and bytes or any counts as
-// always present. A file or raw field is nil exactly when absent.
+// always present. A file is nil exactly when absent, and a raw field when
+// absent unless it holds an explicit null, which the check also counts as
+// absent.
 func presenceUnclean(rf ResolvedField) bool {
 	return rf.IsNilable && rf.Category != CatFile && rf.Category != CatRawBytes
 }

@@ -187,10 +187,16 @@ func (s *Server) SetCORS(opts CORSOptions) *Server {
 	return s
 }
 
-// SetJSONCodec calls the process-wide [SetGlobalJSONCodec].
+// SetJSONCodec calls [SetGlobalJSONCodec]. The codec is the process's, not s's: every server in
+// the process, and every handler calling [JSON], gets c.
+//
+// Deprecated: call [SetGlobalJSONCodec], which says what it changes.
 func (s *Server) SetJSONCodec(c JSONCodec) error { return SetGlobalJSONCodec(c) }
 
-// SetStrictJSON calls the process-wide [SetStrictJSON].
+// SetStrictJSON calls the package-level [SetStrictJSON]. The switch is the process's, not s's:
+// it turns strict decoding on or off for every server in the process.
+//
+// Deprecated: call the package-level [SetStrictJSON], which says what it changes.
 func (s *Server) SetStrictJSON(strict bool) error { return SetStrictJSON(strict) }
 
 // SetLogger installs l as [log.Default], the logger the server's [Recovery] writes to; nil is
@@ -204,7 +210,9 @@ func (s *Server) SetLogger(l log.Logger) *Server {
 // follows a later [Server.SetLogger].
 func (s *Server) Logger() log.Logger { return log.Default() }
 
-// Codec returns the codec in effect, the one [JSON] returns.
+// Codec returns the codec in effect, the process's, which [JSON] returns.
+//
+// Deprecated: call [JSON].
 func (s *Server) Codec() JSONCodec { return JSON() }
 
 // Handler returns what [Server.Start] serves: the [WithTelemetry] middleware, [Recovery] logging

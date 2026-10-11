@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -110,6 +111,37 @@ func TestPatternRejectsInvalidRegex(t *testing.T) {
 
 func TestPatternAcceptsValidRegex(t *testing.T) {
 	mustClean(t, `type X { ok string @pattern("^[a-z]+$") }`)
+}
+
+// A @pattern using RE2 syntax that ECMA-262, the dialect of the OpenAPI `pattern`, lacks or
+// reads otherwise warns, naming the construct; one both read alike is clean.
+func TestPatternWarnsAboutSyntaxECMA262ReadsOtherwise(t *testing.T) {
+	for pattern, construct := range map[string]string{
+		`(?i)^[a-z]+$`:  "`(?i)`",
+		`(?s:a.b)`:      "`(?s:`",
+		`(?m)^a$`:       "`(?m)`",
+		`(?U)a+`:        "`(?U)`",
+		`^a\z`:          "`\\z`",
+		`\Aa$`:          "`\\A`",
+		`(?P<word>\w+)`: "`(?P<name>`",
+		`^[[:alpha:]]$`: "`[:alpha:]`",
+		`^\pL+$`:        "`\\pL`",
+		`^[\pN]+$`:      "`\\pN`",
+		`\Qa.b\E`:       "`\\Q...\\E`",
+		`^\x{263a}$`:    "`\\x{...}`",
+		`^a{,3}$`:       "`{,3}`",
+		`^{abc}$`:       "a bare `{`",
+		`^[]a]$`:        "a `]` first in a class",
+	} {
+		d := expectWarning(t, `type X { v string @pattern(`+strconv.Quote(pattern)+`) }`, CodePatternNotECMA)
+		expectMessage(t, d, "@pattern uses "+construct+", which ECMA-262")
+	}
+	expectMessage(t, expectWarning(t, `type X { v string @pattern("(?i)ab") }`, CodePatternNotECMA), "has no inline flags")
+	expectMessage(t, expectWarning(t, `type X { v string @pattern("(?i:ab)") }`, CodePatternNotECMA), "editions newer than the one JSON Schema cites")
+	for _, pattern := range []string{`^[a-z]+$`, `^\d{3}-\d{4}$`, `^[\w.-]+@[\w-]+$`, `(?:ab)+`, `(?<word>\w+)`,
+		`^\p{L}+$`, `a{2}b{1,}c{0,3}`, `^\{x\}$`, `[{}]`, `\x41`} {
+		expectNoCode(t, `type X { v string @pattern(`+strconv.Quote(pattern)+`) }`, CodePatternNotECMA)
+	}
 }
 
 func TestPatternRejectsEmpty(t *testing.T) {
@@ -525,6 +557,28 @@ func TestDefaultBreakingItsConstraintsRejected(t *testing.T) {
 	h int? @multipleOf(5) @default(-10)
 	i Port[]? @uniqueItems @default([80, 443])
 	j Mail? @default("ops@example.com")
+}`)
+}
+
+// A @default meets its @format as the generated check reads it: a time takes an offset, an
+// email is a bare address, an IPv4 address no IPv6 form, and base64url needs no padding.
+func TestDefaultMeetsItsFormatAsTheCheckReadsIt(t *testing.T) {
+	for _, c := range []struct{ field, msg string }{
+		{`at string? @format(time) @default("10:00:00")`, `@default("10:00:00") violates @format(time)`},
+		{`to string? @format(email) @default("Ops <ops@example.com>")`, `@default("Ops <ops@example.com>") violates @format(email)`},
+		{`ip string? @format(ipv4) @default("::ffff:10.0.0.1")`, `@default("::ffff:10.0.0.1") violates @format(ipv4)`},
+	} {
+		t.Run(c.field, func(t *testing.T) {
+			d := expectError(t, "package app\ntype R { "+c.field+" }", CodeDecoratorConflict)
+			expectMessage(t, d, c.msg)
+		})
+	}
+	mustClean(t, `package app
+type R {
+	at  string? @format(time) @default("10:00:00+07:00")
+	to  string? @format(email) @default("ops@example.com")
+	ip  string? @format(ipv6) @default("::ffff:10.0.0.1")
+	key string? @format(base64url) @default("aGk")
 }`)
 }
 
