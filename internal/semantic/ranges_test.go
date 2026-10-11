@@ -467,7 +467,6 @@ func TestCrossPkgUnsignedLtZeroFloatRejected(t *testing.T) {
 		"shared/s.craftgo": `package shared
 scalar Count uint32`,
 		"api.craftgo": `package design
-import "shared"
 type T1 { n shared.Count @lt(0.0) }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -482,7 +481,6 @@ func TestCrossPkgUnsignedBoundRejected(t *testing.T) {
 		"shared/s.craftgo": `package shared
 scalar Count uint32`,
 		"api.craftgo": `package design
-import "shared"
 type T1 { n shared.Count @lt(0) }
 type T2 { m shared.Count @lte(-1) }`,
 	})

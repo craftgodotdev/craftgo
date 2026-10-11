@@ -526,7 +526,6 @@ func TestRunGenMultiPackage(t *testing.T) {
 	mustWrite(t, dir, "design/craftgo.design.yaml", "")
 
 	mustWrite(t, dir, "design/api.craftgo", `package design
-import "shared"
 
 type Login {
     user shared.User
@@ -646,7 +645,6 @@ func TestRunGenCrossPackageRequestResponse(t *testing.T) {
 	mustWrite(t, dir, "go.mod", "module github.com/test/cross\n\ngo 1.24\n")
 	mustWrite(t, dir, "design/craftgo.design.yaml", "")
 	mustWrite(t, dir, "design/api.craftgo", `package design
-import "shared"
 
 service Auth {
     post Login /login {

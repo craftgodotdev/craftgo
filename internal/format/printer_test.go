@@ -24,11 +24,8 @@ type User {
 `,
 		},
 		{
-			name: "imports and aliases",
+			name: "qualified type",
 			src: `package api
-
-import "shared"
-import v1 "v1/api"
 
 type Foo {
 	bar shared.Bar
@@ -208,9 +205,10 @@ func TestFormatPreservesComments(t *testing.T) {
 type T {
   x string @minLength(1) // note
            @maxLength(5)
+  y string
 }
 `,
-			want: []string{"\tx string @minLength(1) // note\n\t\t@maxLength(5)\n"},
+			want: []string{"\tx string @minLength(1) // note\n\t@maxLength(5)\n\ty string\n"},
 		},
 		{
 			name: "end-of-file comment block",
@@ -485,18 +483,15 @@ type Other {
 	}
 }
 
-// TestImportAndDecoratorComments pins that import docs and the trailing
-// comments of imports and decorators format to themselves.
-func TestImportAndDecoratorComments(t *testing.T) {
+// TestFreeAndDecoratorComments pins that a file-scope comment block and the
+// trailing comments of decorators format to themselves.
+func TestFreeAndDecoratorComments(t *testing.T) {
 	src := `package users
 
 // shared types for cross-package nesting
-import "shared"
 // internal-only utils
-import "util"
-import "auth" // for AuthRequired middleware
 
-@deprecated // remove in v2 release
+@deprecated // remove in the next release
 @doc("legacy")
 service AdminAPI {
 	get Health {

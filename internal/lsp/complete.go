@@ -24,13 +24,6 @@ func (s *server) onCompletion(_ context.Context, params protocol.CompletionParam
 func (r *request) namedSlotCompletions(c cursor) ([]protocol.CompletionItem, bool) {
 	view := r.view()
 	prev, mid := view.token(c.prev), view.token(c.at)
-	if prefix, ok := importPathPrefix(view, c); ok {
-		return importPathCompletions(r.path, prefix), true
-	}
-	// `import |`: the paths come with their quotes.
-	if prev != nil && prev.Kind == lexer.KwImport {
-		return quotedImportPathCompletions(r.path), true
-	}
 	if isExtendServiceContext(view, c) {
 		return r.serviceNameCompletions(), true
 	}
@@ -88,6 +81,10 @@ func (r *request) completionsAt(c cursor) []protocol.CompletionItem {
 	}
 	view := r.view()
 	prev, mid := view.token(c.prev), view.token(c.at)
+	// A route's words are the author's.
+	if routeAtCursor(view, c) {
+		return nil
+	}
 	// Right after `{` with nothing typed (mid may be the closing `}`).
 	if prev != nil && prev.Kind == lexer.LBrace && (mid == nil || mid.Kind != lexer.Ident) {
 		block := blockAt(view, c)
@@ -109,13 +106,13 @@ func (r *request) completionsAt(c cursor) []protocol.CompletionItem {
 		return r.clauseTypeCompletions()
 	}
 	if isTypeArgPosition(prev, mid) {
-		return r.typeCompletionsProjectWide()
+		return r.typeCompletionsProjectWide(c)
 	}
 	if isScalarPrimitivePosition(view, c) {
 		return scalarPrimitiveCompletions()
 	}
 	if isFieldTypePosition(view, c) {
-		return r.typeCompletionsProjectWide()
+		return r.typeCompletionsProjectWide(c)
 	}
 	return r.blockKeyCompletions(blockAt(view, c))
 }
@@ -180,7 +177,7 @@ func blockAt(view snapshotView, c cursor) completionBlock {
 
 // The keywords each block accepts as the first word of a member.
 var (
-	fileKeywords    = []string{"package", "import", "type", "enum", "error", "scalar", "service", "extend", "middleware", "event"}
+	fileKeywords    = []string{"package", "type", "enum", "error", "scalar", "service", "extend", "middleware", "event"}
 	serviceKeywords = []string{"get", "post", "put", "patch", "delete", "head", "options"}
 	methodKeywords  = []string{"request", "response"}
 	eventKeywords   = []string{"payload"}
@@ -232,6 +229,31 @@ func pathParamContext(view snapshotView, c cursor) (int, bool) {
 		return i, true
 	}
 	return 0, false
+}
+
+// routeAtCursor reports whether the cursor is in a method's route: on one of
+// its words, or right after one of its `/`.
+func routeAtCursor(view snapshotView, c cursor) bool {
+	i := c.at
+	if i < 0 {
+		i = c.prev
+	}
+	if k := view.kind(i); k != lexer.Slash && k != lexer.PathWord {
+		return false
+	}
+	for line := view.tokens[i].Pos.Line; i >= 0 && view.tokens[i].Pos.Line == line; i-- {
+		switch k := view.kind(i); {
+		case k == lexer.Slash || k == lexer.PathWord || k == lexer.LBrace || k == lexer.RBrace:
+		case k == lexer.Ident || k.IsKeyword():
+			// A method's name, after its verb, or a route parameter's.
+			if view.kind(i - 1).IsVerb() {
+				return true
+			}
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 // isTypeArgPosition reports whether the cursor is in a generic or map argument

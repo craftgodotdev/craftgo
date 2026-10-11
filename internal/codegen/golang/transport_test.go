@@ -969,7 +969,6 @@ func TestFlattenFieldsNestedCrossPkgMixin(t *testing.T) {
 type Inner { deep int32? @default(7) }
 type Outer { Inner  mid int64? @default(9) }`,
 		"app/types.craftgo": `package app
-import "shared"
 type Req { shared.Outer  own string }`,
 	})
 	appPkg := proj.Packages["app"]
@@ -999,7 +998,6 @@ func TestResolveRequestFieldsQualifiedRequestNestedMixin(t *testing.T) {
 type Sub { q string @query @length(2, 5)  bod string @length(1, 10) }
 type Holder { Sub  id string @path }`,
 		"app/types.craftgo": `package app
-import "shared"
 type Resp { ok bool }
 service S { post DoIt /h/{id} { request shared.Holder  response Resp } }`,
 	})

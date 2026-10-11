@@ -14,15 +14,16 @@ type source struct {
 	// index maps a token's byte offset to its index in toks.
 	index map[int]int
 	// closer maps the index of a `(`, `[`, `{` or `<` to the index of the
-	// bracket that closes it.
-	closer map[int]int
+	// bracket that closes it, and opener the other way.
+	closer, opener map[int]int
 	// argLines holds the lines strictly between the `@` and the `)` of a
-	// decorator with arguments.
+	// decorator with arguments, and between the `<` and `>` of a type's
+	// arguments.
 	argLines map[int]bool
 }
 
 func newSource(toks []lexer.Token) *source {
-	s := &source{toks: toks, index: make(map[int]int, len(toks)), closer: map[int]int{}, argLines: map[int]bool{}}
+	s := &source{toks: toks, index: make(map[int]int, len(toks)), closer: map[int]int{}, opener: map[int]int{}, argLines: map[int]bool{}}
 	var open []int
 	for i, t := range toks {
 		s.index[t.Pos.Offset] = i
@@ -32,15 +33,20 @@ func newSource(toks []lexer.Token) *source {
 		case lexer.RParen, lexer.RBracket, lexer.RBrace, lexer.RAngle:
 			if n := len(open); n > 0 {
 				s.closer[open[n-1]] = i
+				s.opener[i] = open[n-1]
 				open = open[:n-1]
 			}
 		}
 	}
 	for i, t := range toks {
-		if t.Kind != lexer.At || i+2 >= len(toks) || toks[i+2].Kind != lexer.LParen {
+		from := i
+		switch {
+		case t.Kind == lexer.At && i+2 < len(toks) && toks[i+2].Kind == lexer.LParen:
+			from = i + 2
+		case t.Kind != lexer.LAngle:
 			continue
 		}
-		if c, ok := s.closer[i+2]; ok {
+		if c, ok := s.closer[from]; ok {
 			for l := t.Pos.Line + 1; l < toks[c].Pos.Line; l++ {
 				s.argLines[l] = true
 			}
@@ -60,6 +66,18 @@ func (s *source) after(pos lexer.Position, n int) lexer.Token {
 		return lexer.Token{Pos: pos}
 	}
 	return s.toks[i+n]
+}
+
+// opening returns the bracket that the one at pos closes, or a token at pos
+// when there is none.
+func (s *source) opening(pos lexer.Position) lexer.Token {
+	if s == nil {
+		return lexer.Token{Pos: pos}
+	}
+	if o, ok := s.opener[s.index[pos.Offset]]; ok {
+		return s.toks[o]
+	}
+	return lexer.Token{Pos: pos}
 }
 
 // closeLine returns the line of the bracket that closes the one at pos.
@@ -147,7 +165,8 @@ func (s *source) argsCloseLine(d *ast.Decorator) int {
 }
 
 // inArguments reports whether line lies strictly between the `@` and the `)`
-// of a decorator, where a comment belongs to its arguments.
+// of a decorator, or the `<` and the `>` of a type, where a comment belongs to
+// its arguments.
 func (s *source) inArguments(line int) bool {
 	return s != nil && s.argLines[line]
 }

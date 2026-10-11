@@ -2,13 +2,10 @@ package semantic
 
 import (
 	"maps"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
 )
 
@@ -114,7 +111,6 @@ func TestEmptyFileNeedsNoPackage(t *testing.T) {
 func TestAnalyzeProjectCrossPackageRef(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"api.craftgo": `package design
-import "shared"
 type Login { user shared.User }`,
 		"shared/user.craftgo": `package shared
 type User { id string }`,
@@ -155,61 +151,6 @@ type Pong { name string }`,
 	}
 }
 
-func TestAnalyzeProjectImportUnresolved(t *testing.T) {
-	root, files := projectFixture(t, map[string]string{
-		"api.craftgo": `package design
-import "missing"
-type X { id string }`,
-	})
-	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if findCode(diags, CodeImportUnresolved) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-}
-
-func TestAnalyzeProjectImportEscapeAbsolute(t *testing.T) {
-	root, files := projectFixture(t, map[string]string{
-		"api.craftgo": `package design
-import "/etc/passwd"
-type X { id string }`,
-	})
-	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if findCode(diags, CodeImportEscape) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-}
-
-func TestAnalyzeProjectImportEscapeDotDot(t *testing.T) {
-	root, files := projectFixture(t, map[string]string{
-		"api.craftgo": `package design
-import "../outside"
-type X { id string }`,
-	})
-	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	if findCode(diags, CodeImportEscape) == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-}
-
-// Importing the folder of the file's own package is a no-op that warns.
-func TestAnalyzeProjectImportSelfWarning(t *testing.T) {
-	root, files := projectFixture(t, map[string]string{
-		"shared/a.craftgo": `package shared
-import "shared"
-type A { id string }`,
-		"shared/b.craftgo": `package shared
-type B { id string }`,
-	})
-	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
-	d := findCode(diags, CodeImportSelf)
-	if d == nil {
-		t.Fatalf("got %v", codes(diags))
-	}
-	if d.Severity != lexer.SeverityWarning {
-		t.Errorf("expected warning, got %v", d.Severity)
-	}
-}
-
 func TestAnalyzeProjectUnknownPackage(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"api.craftgo": `package design
@@ -236,7 +177,6 @@ type X { user mystery.Thing }`,
 func TestAnalyzeProjectUnknownSymbol(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"api.craftgo": `package design
-import "shared"
 type X { user shared.Mystery }`,
 		"shared/user.craftgo": `package shared
 type User { id string }`,
@@ -267,7 +207,6 @@ type User { id string }`,
 func TestAnalyzeProjectCrossPackageMixin(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"api.craftgo": `package design
-import "shared"
 type User { shared.Auditable  name string }`,
 		"shared/auditable.craftgo": `package shared
 type Auditable { createdAt string }`,
@@ -284,7 +223,6 @@ type Auditable { createdAt string }`,
 func TestAnalyzeProjectCrossPackageGenericArg(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"api.craftgo": `package design
-import "shared"
 type Page<T> { items T[] }
 type Listing { p Page<shared.User> }`,
 		"shared/user.craftgo": `package shared
@@ -299,83 +237,12 @@ type User { id string }`,
 	}
 }
 
-func TestLastSegment(t *testing.T) {
-	cases := map[string]string{
-		"":           "",
-		"shared":     "shared",
-		"auth/types": "types",
-		"a/b/c":      "c",
-	}
-	for in, want := range cases {
-		if got := idents.LastSegment(in); got != want {
-			t.Errorf("idents.LastSegment(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
-func TestIsEscapingPath(t *testing.T) {
-	cases := map[string]bool{
-		"":           false,
-		"shared":     false,
-		"auth/types": false,
-		"/etc":       true,
-		"./shared":   true,
-		"../up":      true,
-		"..":         true,
-		".":          true,
-	}
-	for in, want := range cases {
-		if got := isEscapingPath(in); got != want {
-			t.Errorf("isEscapingPath(%q) = %v, want %v", in, got, want)
-		}
-	}
-}
-
-func TestFolderExists(t *testing.T) {
-	root := t.TempDir()
-	if folderExists(root, "missing") {
-		t.Error("missing folder should report false")
-	}
-	if folderExists("", "shared") {
-		t.Error("empty root should report false")
-	}
-	if folderExists(root, "") {
-		t.Error("empty path should report false")
-	}
-	if err := os.MkdirAll(filepath.Join(root, "empty"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if folderExists(root, "empty") {
-		t.Error("folder without .craftgo files should report false")
-	}
-	target := filepath.Join(root, "shared", "user.craftgo")
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(target, []byte("package x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if !folderExists(root, "shared") {
-		t.Error("populated folder should report true")
-	}
-
-	noPerm := filepath.Join(root, "noperm")
-	if err := os.MkdirAll(noPerm, 0o000); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(noPerm, 0o755) })
-	if folderExists(root, "noperm") {
-		t.Error("unreadable folder should report false")
-	}
-}
-
 // A valid @default on a cross-package scalar is accepted.
 func TestAnalyzeProjectDefaultCrossPkgScalarOK(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/scalars.craftgo": `package shared
 scalar CurrencyCode string @length(3, 3) @pattern("^[A-Z]{3}$")`,
 		"orders/types.craftgo": `package orders
-import "shared"
 type Order { currency shared.CurrencyCode? @default("USD") }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -390,7 +257,6 @@ func TestAnalyzeProjectDefaultCrossPkgScalarKindMismatch(t *testing.T) {
 		"shared/scalars.craftgo": `package shared
 scalar CurrencyCode string @length(3, 3)`,
 		"orders/types.craftgo": `package orders
-import "shared"
 type Order { currency shared.CurrencyCode? @default(42) }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -405,7 +271,6 @@ func TestAnalyzeProjectDefaultCrossPkgEnumOK(t *testing.T) {
 		"shared/enums.craftgo": `package shared
 enum Tier { Free Pro Enterprise }`,
 		"customers/types.craftgo": `package customers
-import "shared"
 type Customer { tier shared.Tier? @default(Pro) }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -420,7 +285,6 @@ func TestAnalyzeProjectDefaultCrossPkgEnumUnknownValue(t *testing.T) {
 		"shared/enums.craftgo": `package shared
 enum Tier { Free Pro Enterprise }`,
 		"customers/types.craftgo": `package customers
-import "shared"
 type Customer { tier shared.Tier? @default(Ultimate) }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -435,7 +299,6 @@ func TestAnalyzeProjectDefaultCrossPkgUnsupportedTarget(t *testing.T) {
 		"shared/types.craftgo": `package shared
 type Bag { id string }`,
 		"orders/types.craftgo": `package orders
-import "shared"
 type Order { bag shared.Bag? @default("nope") }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -450,7 +313,6 @@ func TestAnalyzeProjectDefaultCrossPkgArrayElement(t *testing.T) {
 		"shared/scalars.craftgo": `package shared
 scalar CurrencyCode string @length(3, 3)`,
 		"orders/types.craftgo": `package orders
-import "shared"
 type Order { allowed shared.CurrencyCode[]? @default(["USD", "EUR"]) }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -468,7 +330,6 @@ type Timestamps {
 	updatedAt string @format(datetime)
 }`,
 		"orders/types.craftgo": `package orders
-import "shared"
 type Order {
 	shared.Timestamps
 	id    string
@@ -489,7 +350,6 @@ type Timestamps {
 	createdAt string @format(datetime)
 }`,
 		"orders/types.craftgo": `package orders
-import "shared"
 type Order {
 	shared.Timestamps
 	createdAt string
@@ -507,7 +367,6 @@ func TestAnalyzeProjectMixinCrossPkgNonType(t *testing.T) {
 		"shared/enums.craftgo": `package shared
 enum Color { Red Blue }`,
 		"orders/types.craftgo": `package orders
-import "shared"
 type Order { shared.Color }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -520,10 +379,8 @@ type Order { shared.Color }`,
 func TestAnalyzeProjectMixinCrossPkgCycle(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/mixins.craftgo": `package shared
-import "orders"
 type B { orders.A }`,
 		"orders/types.craftgo": `package orders
-import "shared"
 type A { shared.B }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -538,7 +395,6 @@ func TestAnalyzeProjectMixinCrossPkgUnresolved(t *testing.T) {
 		"shared/scalars.craftgo": `package shared
 scalar X string`,
 		"orders/types.craftgo": `package orders
-import "shared"
 type Order { shared.MissingType }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})

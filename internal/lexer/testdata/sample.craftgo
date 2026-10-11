@@ -1,7 +1,5 @@
 package design
 
-import "shared"
-
 type User {
 	id   string @required
 	name string @length(1, 100)

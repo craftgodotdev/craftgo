@@ -8,34 +8,17 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/route"
 )
 
-func TestParseImportSingleAndAliased(t *testing.T) {
-	f := mustParse(t, `package design
-
-import "shared/types"
-import v1 "v1/api"
-import _ "side-effect"
-
-type X { id string }
-`)
-	if len(f.Imports) != 3 {
-		t.Fatalf("want 3 imports, got %d", len(f.Imports))
-	}
-	if f.Imports[0].Path != "shared/types" || f.Imports[0].Alias != "" {
-		t.Errorf("unexpected first import: %+v", f.Imports[0])
-	}
-	if f.Imports[1].Alias != "v1" || f.Imports[1].Path != "v1/api" {
-		t.Errorf("aliased import wrong: %+v", f.Imports[1])
-	}
-	if f.Imports[2].Alias != "_" {
-		t.Errorf("blank-import alias wrong: %+v", f.Imports[2])
+// `import` is an identifier, so a field may take it as its name.
+func TestImportNamesAField(t *testing.T) {
+	td := firstDecl[*ast.TypeDecl](t, "package design\n\ntype X {\n\timport string\n}\n")
+	if f, ok := td.Body[0].(*ast.Field); !ok || f.Name != "import" || f.Type.String() != "string" {
+		t.Errorf("body = %s, want the field `import string`", renderMembers(td.Body))
 	}
 }
 
 func TestParseAllKeywordsRoundTrip(t *testing.T) {
 	src := `@version("1")
 package design
-
-import "shared"
 
 type Page<T> {
     items  T[]

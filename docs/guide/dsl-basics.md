@@ -6,7 +6,7 @@ The craftgo DSL is a small file format that describes your API. From it, craftgo
 
 A `.craftgo` file has two parts:
 
-1. A `package` line, first in the file - only comments and the file-level decorators `@doc`, `@deprecated` and `@version` may come before it. A file that imports or declares anything without one is rejected as `package/missing` at its first import or declaration; a file holding only comments needs none. The name is also the generated Go package's, so a Go keyword, a predeclared Go identifier such as `int` or `len`, `main`, `init` and `_` are rejected as `package/name`
+1. A `package` line, first in the file - only comments and the file-level decorators `@doc`, `@deprecated` and `@version` may come before it. A file that declares anything without one is rejected as `package/missing` at its first declaration; a file holding only comments needs none. The name is also the generated Go package's, so a Go keyword, a predeclared Go identifier such as `int` or `len`, `main`, `init` and `_` are rejected as `package/name`
 2. Declarations: `type`, `enum`, `scalar`, `error`, `service` (and `extend service`), `middleware`, `event`
 
 Declaration names start with an upper-case letter: a lower-case `type`, `enum`, `scalar`, `error`, `middleware`, `event` or method name is rejected as `decl/name-case` (the Go identifier generated from it would be unexported); a lower-case service name only warns. Type parameter names follow the same rule (`type Page<T>`, not `<t>`).
@@ -128,7 +128,19 @@ type CreateUserReq {
 
 53 decorators, grouped by purpose: validators, bindings, metadata, service-level. Full reference at [Decorators](/guide/decorators).
 
-A field's decorators follow its type and may continue on the lines below: every decorator up to the next field name belongs to the field above it, blank lines included - `@doc(...)` written on its own line between fields `a` and `b` decorates `a` (`craftgo fmt` moves it onto `a`'s line). Only the first field of a body takes decorators from the lines above it. Enum values work the same way, except that a decorator above the first value is an error. A declaration's or method's decorators go before its keyword; one after a declaration or method on the same line is a parse error (`decorator @doc follows a declaration on its line; a decorator goes before what it decorates`) unless the next declaration starts on that line. A decorator cannot be another decorator's argument: `@doc(@deprecated)` is a parse error (`a decorator cannot be an argument of @doc`).
+A decorator on a line of its own decorates what is below it: the next field, enum value, method or declaration, across blank lines and comments, as in Java, TypeScript or Python. A field, an enum value or a scalar also takes the decorators after it on its line, and those that follow them on the line where a multi-line argument list closes:
+
+```craftgo
+type Signup {
+    id string
+
+    @format(email)
+    @maxLength(254)
+    email string @minLength(3)
+}
+```
+
+Here `email` carries `@format`, `@maxLength` and `@minLength`, and `id` carries none. Decorators on lines of their own with nothing below them in the body are a parse error (`decorator @doc has no field below it`), and so is an `@` whose name is not on its line. `craftgo fmt` prints the decorators written above a member one per line above it, and those written on its line after its type. A declaration's or method's decorators go before its keyword; one after a declaration or method on the same line is a parse error (`decorator @doc follows a declaration on its line; a decorator goes before what it decorates`) unless the next declaration starts on that line. A decorator cannot be another decorator's argument: `@doc(@deprecated)` is a parse error (`a decorator cannot be an argument of @doc`).
 
 ## Services
 
@@ -153,7 +165,7 @@ service UserService {
 }
 ```
 
-Method form: `<verb> <Name> [<path>] { request <Type>  response <Type> }`; both clauses are optional, and without a path the route is the method name in kebab case (`get NoPath { ... }` serves `/no-path`).
+Method form: `<verb> <Name> [<path>] { request <Type>  response <Type> }`; both clauses are optional, and without a path the route is the method name in kebab case (`get NoPath { ... }` serves `/no-path`). A `//` in a path is a parse error (`empty path segment ('//')`), even where a comment was meant, as in `/users// list`: set the comment off by a space. A path ending in `/` is one too, the root path `/` aside.
 
 Each method writes `<name>.go` holding `<Name>Service` and its constructor `New<Name>Service` into its service's directory, so the methods of one directory may not write one file (`GetURL` beside `GetUrl`) or one Go name (`Order` beside `NewOrder`), and no method is named `Logger`, the `log.Logger` every logic type embeds: `service/method-name-clash`. Nor may the file be one the go command sets apart: under the default `snake` file case `RunTest` writes `run_test.go`, built only for tests, and `ListWindows` writes `list_windows.go`, built only on Windows (`service/method-file-name`).
 
@@ -329,7 +341,7 @@ Each package's types are one Go package, so two packages cannot reference each o
 type User {}
 ```
 
-Below a declaration's decorators, the comment right above its keyword joins the doc too, after the one above the decorators:
+Below the decorators of a declaration, a field or an enum value, the comment right above its keyword or name joins the doc too, after the one above the decorators:
 
 ```craftgo
 // Order is a placed order.
@@ -338,7 +350,7 @@ Below a declaration's decorators, the comment right above its keyword joins the 
 type Order {}
 ```
 
-A blank line between that comment and the keyword leaves it out of the doc. `//` only - no `/* */`. A line ends at `\n`, `\r\n` or a lone `\r`, and a UTF-8 byte-order mark opening a file is skipped.
+A blank line between that comment and the keyword leaves it out of the doc. A comment may also sit among the arguments of a decorator or a generic type, or between the words of a declaration's header; `craftgo fmt` keeps it there, an argument list it sits in one argument per line. `//` only - no `/* */`. A line ends at `\n`, `\r\n` or a lone `\r`, and a UTF-8 byte-order mark opening a file is skipped. Anywhere else in a file, comments and strings included, a byte-order mark, a NUL or another control character but tab, a noncharacter (`U+FFFE`, `U+FFFF`, ...) and bytes that are no UTF-8 are a parse error where they stand.
 
 ## Next
 

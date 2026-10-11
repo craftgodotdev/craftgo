@@ -53,7 +53,6 @@ func TestOneDiagnosticPerPosition(t *testing.T) {
 		"package p\n\ntype T {\n\ta string @doc(\"\\q\")\n}\n":             `invalid escape sequence \q`,
 		"package p\n\ntype T {\n\ta string @minLength(5x)\n}\n":            `invalid number suffix "x"`,
 		"package p\n\nenum E { A = \"\\q\" }\n":                            `invalid escape sequence \q`,
-		"package p\n\nimport \"\\q\"\n\ntype T {\n\ta string\n}\n":         `invalid escape sequence \q`,
 		"package p\n\ntype A { a string } @doc(1 2) type B { b string }\n": "expected ',' or ')' after decorator argument, got Int",
 	} {
 		p := New("t.craftgo", src)
@@ -85,6 +84,18 @@ func TestPathSlashes(t *testing.T) {
 	_, msgs = parseWithErrors(t, "package p\nservice S {\n\tget X /a/ /b { response A }\n}\n")
 	if !strings.Contains(firstMsg(msgs), "empty path segment") {
 		t.Errorf("double slash: diagnostics = %v", msgs)
+	}
+	// A `//` right after a segment is one, reported where it starts, and the
+	// route goes on after it: no comment swallows the rest of the line.
+	for _, body := range []string{"/users//{id}\n\t{\n\t\tresponse A\n\t}", "/users//{id} { response A }"} {
+		p := New("t.craftgo", "package p\nservice S {\n\tget X "+body+"\n}\n")
+		f := p.Parse()
+		if d := p.Diagnostics(); len(d) != 1 || d[0].Msg != "empty path segment ('//')" || d[0].Pos.Line != 3 || d[0].Pos.Column != 14 {
+			t.Errorf("%q: diagnostics = %v, want one at 3:14", body, d)
+		}
+		if got := route.PathString(f.Decls[0].(*ast.ServiceDecl).Methods()[0].Path); got != "/users/{id}" {
+			t.Errorf("%q: path = %q, want /users/{id}", body, got)
+		}
 	}
 	f, msgs = parseWithErrors(t, "package p\nservice S {\n\tget Root / { response A }\n}\n")
 	if len(msgs) != 0 {
@@ -145,7 +156,6 @@ func TestDecoratorAfterADeclarationOnItsLine(t *testing.T) {
 		"closing brace":   "package p\n\ntype A {\n\tid string\n} @doc(\"x\")\n\ntype T {\n\tid string\n}\n",
 		"next middleware": "package p\n\nmiddleware M1 @doc(\"x\")\nmiddleware T\n",
 		"package clause":  "package p @doc(\"x\")\n\ntype T {\n\tid string\n}\n",
-		"import":          "package p\n\nimport \"a\" @doc(\"x\")\nimport \"b\"\n\ntype T {\n\tid string\n}\n",
 		"method":          "package p\n\nservice S {\n\tget A /a {\n\t\tresponse R\n\t} @doc(\"x\")\n\n\tget T /t {\n\t\tresponse R\n\t}\n}\n",
 		"last method":     "package p\n\nservice S {\n\tget A /a {} @doc(\"x\")\n}\n\ntype T {\n\tid string\n}\n",
 	} {
@@ -181,8 +191,7 @@ func TestDecoratorAfterADeclarationOnItsLine(t *testing.T) {
 		}
 	}
 	for name, src := range map[string]string{
-		"import before import": "package p\n\nimport \"a\" @doc(\"x\") import \"b\"\n\ntype T {\n\tid string\n}\n",
-		"method before brace":  "package p\n\nservice S {\n\tget A /a {} @doc(\"x\") }\n\ntype T {\n\tid string\n}\n",
+		"method before brace": "package p\n\nservice S {\n\tget A /a {} @doc(\"x\") }\n\ntype T {\n\tid string\n}\n",
 	} {
 		if _, msgs := parseWithErrors(t, src); len(msgs) != 1 || !strings.Contains(msgs[0], "goes before what it decorates") {
 			t.Errorf("%s: diagnostics = %v, want one saying the decorator goes before what it decorates", name, msgs)
@@ -198,7 +207,6 @@ func TestDecoratorBeforeTheNextDeclarationOnItsLine(t *testing.T) {
 		"middleware":     "package p\n\nmiddleware A @doc(\"b\") middleware B\n",
 		"bodiless error": "package p\n\nerror NotFound A @doc(\"b\") type B { b string }\n",
 		"package clause": "package p @doc(\"b\") type B { b string }\n",
-		"import":         "package p\n\nimport \"a\" @doc(\"b\") type B { b string }\n",
 		"extend":         "package p\n\nservice A {} @doc(\"b\") extend service B {}\n",
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -240,7 +248,6 @@ func TestDecoratorArgumentsOverLinesBeforeTheNextDeclaration(t *testing.T) {
 		"chain":          {pkg + "type A { a string } @doc(\n\t\"b\") @deprecated type B { b string }\n", 0, []string{"", "doc deprecated"}},
 		"chain end":      {pkg + "type A { a string } @deprecated @doc(\n\t\"b\") type B { b string }\n", 0, []string{"", "deprecated doc"}},
 		"package clause": {"package p @doc(\n\t\"p\") @deprecated type B { b string }\n", 0, []string{"doc deprecated"}},
-		"import":         {pkg + "import \"a\" @doc(\n\t\"b\") type B { b string }\n", 0, []string{"doc"}},
 		"method":         {pkg + "service S {\n\tget A /a {} @doc(\n\t\t\"b\") get B /b {}\n}\n", 0, []string{"", "doc"}},
 		"scalar":         {pkg + "scalar A string @minLength(\n\t1) @maxLength(5)\ntype B { b A }\n", 0, []string{"minLength maxLength", ""}},
 		"below":          {pkg + "type A { a string } @doc(\n\t\"b\")\ntype B { b string }\n", 1, []string{"", ""}},

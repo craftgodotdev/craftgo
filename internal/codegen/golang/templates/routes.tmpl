@@ -4,6 +4,6 @@ package {{.Package}}
 // RegisterRoutes registers the {{.Service}} routes{{if .Group}} of group {{.Group}}{{end}} on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 {{- range .Routes}}
-	srv.Handle("{{.Pattern}}", {{.HandlerCall}}{{if .Middlewares}}, {{.Middlewares}}{{end}})
+	srv.Handle({{printf "%q" .Pattern}}, {{.HandlerCall}}{{if .Middlewares}}, {{.Middlewares}}{{end}})
 {{- end}}
 }

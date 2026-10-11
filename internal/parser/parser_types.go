@@ -27,7 +27,7 @@ func (p *Parser) parseTypeDecl(decs []*ast.Decorator, doc []string) *ast.TypeDec
 
 // parseTypeParams parses `<T, U>`, reporting an empty list and repeated names.
 func (p *Parser) parseTypeParams() []string {
-	p.advance()
+	l := p.openList()
 	if p.peek().Kind == lexer.RAngle {
 		p.errorf(p.peek().Pos, "type params list cannot be empty")
 		p.advance()
@@ -35,7 +35,7 @@ func (p *Parser) parseTypeParams() []string {
 	}
 	var params []string
 	seen := map[string]bool{}
-	for p.peek().Kind != lexer.RAngle && p.peek().Kind != lexer.EOF {
+	for p.more(l) {
 		t, ok := p.expect(lexer.Ident)
 		if !ok {
 			break
@@ -47,9 +47,11 @@ func (p *Parser) parseTypeParams() []string {
 			seen[t.Text] = true
 			params = append(params, t.Text)
 		}
-		p.listSep(lexer.RAngle, "type parameter")
+		if !p.listSep(l, "type parameter") {
+			break
+		}
 	}
-	p.expect(lexer.RAngle)
+	p.claimInside(p.tokens[l.open].Pos.Line, p.closeList(l).Pos.Line)
 	return params
 }
 
@@ -59,7 +61,7 @@ func (p *Parser) parseTypeParams() []string {
 // body's first free comment.
 func (p *Parser) parseTypeBody(header int) ([]ast.TypeMember, lexer.Token) {
 	var members []ast.TypeMember
-	_, rbrace := p.braced(func() {
+	rbrace := p.braced(nil, func() {
 		if m := p.parseTypeMember(); m != nil {
 			members = append(members, m)
 		}
@@ -69,19 +71,21 @@ func (p *Parser) parseTypeBody(header int) ([]ast.TypeMember, lexer.Token) {
 	return members, rbrace
 }
 
-// parseTypeMember parses a field or a mixin. A mixin is a name followed by `.`
-// or `<`, or an upper-case name not followed on its line by a primitive or `map`.
+// parseTypeMember parses a field or a mixin with the decorators above it. A
+// mixin is a name followed by `.` or `<`, or an upper-case name not followed
+// on its line by a primitive or `map`.
 func (p *Parser) parseTypeMember() ast.TypeMember {
-	doc := p.docAbove()
-	decs := p.parseDecorators()
-	t := p.peek()
-	p.claimChain(decs, t.Pos.Line)
+	doc, decs, t := p.memberHead()
 	switch {
+	case len(decs) > 0 && (t.Kind == lexer.RBrace || t.Kind == lexer.EOF):
+		p.danglingDecorators(decs, "field")
+		return nil
 	case t.Kind.IsKeyword():
 		// A reserved word never names a type, so here it is a field name.
 		return p.parseField(doc, decs)
 	case t.Kind != lexer.Ident:
 		p.errorf(t.Pos, "expected field or mixin, got %s", t.Kind)
+		p.skipUntil(true, p.startsLine)
 		return nil
 	}
 	next := p.peekAt(1)
@@ -94,13 +98,12 @@ func (p *Parser) parseTypeMember() ast.TypeMember {
 	return &ast.Mixin{Pos: t.Pos, Doc: doc, Ref: ref}
 }
 
-// parseField parses `name Type` and the decorators after it; decs are the
-// ones before it.
+// parseField parses `name Type` and the decorators on the line its type ends
+// on; decs are the ones before it.
 func (p *Parser) parseField(doc []string, decs []*ast.Decorator) *ast.Field {
 	name := p.advance()
 	tref := p.parseTypeRef()
-	trailing := p.parseDecorators()
-	p.claimTrailing(name.Pos.Line, trailing)
+	trailing := p.decoratorsOnLine(p.tokens[p.pos-1].Pos.Line)
 	return &ast.Field{Pos: name.Pos, Doc: doc, Name: name.Text, Type: tref, Decorators: append(decs, trailing...)}
 }
 
@@ -151,11 +154,17 @@ func (p *Parser) parseTypeRef() *ast.TypeRef {
 // parseMapType parses `map<K, V>`.
 func (p *Parser) parseMapType() *ast.MapType {
 	pos := p.advance().Pos
-	p.expect(lexer.LAngle)
+	if !p.peekIs(lexer.LAngle) {
+		p.expect(lexer.LAngle)
+		key := p.parseTypeRef()
+		p.expect(lexer.Comma)
+		return &ast.MapType{Pos: pos, Key: key, Value: p.parseTypeRef()}
+	}
+	l := p.openList()
 	key := p.parseTypeRef()
 	p.expect(lexer.Comma)
 	val := p.parseTypeRef()
-	p.expect(lexer.RAngle)
+	p.claimInside(p.tokens[l.open].Pos.Line, p.closeList(l).Pos.Line)
 	return &ast.MapType{Pos: pos, Key: key, Value: val}
 }
 
@@ -165,20 +174,22 @@ func (p *Parser) parseNamedTypeRef() *ast.NamedTypeRef {
 	qi := p.parseQualifiedIdent()
 	nt := &ast.NamedTypeRef{Pos: qi.Pos, Name: qi}
 	if p.peek().Kind == lexer.LAngle {
-		langle := p.advance()
+		l := p.openList()
 		if p.peek().Kind == lexer.RAngle {
-			p.errorf(langle.Pos, "type argument list cannot be empty")
+			p.errorf(p.tokens[l.open].Pos, "type argument list cannot be empty")
 		}
-		for p.peek().Kind != lexer.RAngle && p.peek().Kind != lexer.EOF {
+		for p.more(l) {
 			start := p.pos
 			nt.Args = append(nt.Args, p.parseTypeRef())
-			p.listSep(lexer.RAngle, "type argument")
+			if !p.listSep(l, "type argument") {
+				break
+			}
 			if p.pos == start {
 				// No progress: parseTypeRef already reported this token.
 				break
 			}
 		}
-		p.expect(lexer.RAngle)
+		p.claimInside(p.tokens[l.open].Pos.Line, p.closeList(l).Pos.Line)
 	}
 	return nt
 }

@@ -3206,7 +3206,6 @@ func TestCrossPkgMergeNameCollisionRejected(t *testing.T) {
 		"shared/s.craftgo": `package shared
 type User { a string }`,
 		"api/a.craftgo": `package api
-import "shared"
 type User { b int }
 type SharedUser { c bool }
 type Resp { y shared.User  z SharedUser }

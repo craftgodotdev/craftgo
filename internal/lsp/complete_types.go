@@ -227,11 +227,22 @@ func (r *request) errorNameCompletions() []protocol.CompletionItem {
 	return r.projectDeclItems(semantic.ErrorDecls)
 }
 
-// typeCompletionsProjectWide offers what a field type can name: the built-ins,
-// `map`, and every type, enum and scalar in the project.
-func (r *request) typeCompletionsProjectWide() []protocol.CompletionItem {
+// typeCompletionsProjectWide offers what a type at the cursor can name: the
+// built-ins, `map`, the type parameters of the generic type around it, and
+// every type, enum and scalar in the project.
+func (r *request) typeCompletionsProjectWide(c cursor) []protocol.CompletionItem {
 	items := primitiveCompletions()
 	items = append(items, keywordCompletions("map")...)
+	view := r.view()
+	if kw, depth := enclosingDecl(view, c.lead()); depth > 0 && view.kind(kw) == lexer.KwType {
+		for _, param := range typeParamsAt(view, kw) {
+			items = append(items, protocol.CompletionItem{
+				Label:  param,
+				Kind:   protocol.CompletionItemKindTypeParameter,
+				Detail: "type parameter of " + view.tokens[kw+1].Text,
+			})
+		}
+	}
 	items = append(items, r.declCompletions(semantic.TypeRefDecls)...)
 	return items
 }

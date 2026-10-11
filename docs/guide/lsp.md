@@ -43,7 +43,7 @@ type User {
 }
 ```
 
-The list is filtered by the field's type: `@length` appears on string and bytes fields, `@minItems` on arrays and maps.
+The list is filtered by the field's type: `@length` appears on string and bytes fields, `@minItems` on arrays and maps. On a line of its own, `@` offers the decorators of the field below it, the one it will decorate.
 
 ### Smart argument completion
 
@@ -77,6 +77,8 @@ Hover over an identifier to see its declaration and doc comment. Works on:
 
 Errors appear inline as you type:
 
+- `syntax/token` - a character or token no design holds: an unterminated string, a bad escape, a NUL byte
+- `syntax/parse` - tokens the grammar does not take where they stand: a misspelt keyword, a bracket left open (reported at its opener)
 - `decorator/unknown` - `@nope` is not registered
 - `decorator/placement` - decorator appears at the wrong site (`@prefix` on a field)
 - `decorator/conflict` - incompatible decorator pair (`@sensitive` with `@length`)
@@ -84,7 +86,7 @@ Errors appear inline as you type:
 - `decorator/typemismatch` - validator on the wrong primitive (`@length` on `int`)
 - `field/duplicate` - same field name twice
 - `service/duplicate-route` - two methods of one service on the same verb + route
-- `path/collision` - two methods, in any services, whose routes net/http's ServeMux cannot both register
+- `path/collision` - two methods, in any services, whose routes net/http's ServeMux cannot both register: the same route up to its variable names, or two that match a common path with neither more specific (`{name...}` is less specific than any other segment, a literal more specific than `{name}`, and `{name}` shares no path with `{$}`)
 - `enum/value-collision` - two values produce the same Go constant (warning)
 
 A key of `craftgo.design.yaml` that craftgo does not read shows as a warning at the top of the manifest, naming the key, and an edit that stops the manifest from loading shows the error there.
@@ -92,6 +94,10 @@ A key of `craftgo.design.yaml` that craftgo does not read shows as a warning at 
 ### Go-to-definition
 
 `Cmd+click` (or `gd` in vim-mode) on a type reference jumps to its declaration. Works across files in the same package and across packages (a `shared.Type` reference jumps to the `shared` package's declaration). On a value inside `@default(...)` or `@example(...)` of an enum-typed field it jumps to that enum value; on a name inside `@middlewares(...)` or `@errors(...)`, to that middleware or error.
+
+### Rename
+
+Rename a type, enum, scalar, error, middleware, event or service from its name or any reference to it; every reference in the project follows. A new name the declaration cannot hold is refused: a reserved word, a built-in type such as `string`, a name another declaration already has, or one starting in lower case for anything but a service.
 
 ### Format
 

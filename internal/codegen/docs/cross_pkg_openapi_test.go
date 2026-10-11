@@ -23,7 +23,6 @@ service ASvc {
 
 type Mk { name string }`,
 		"b/b.craftgo": `package b
-import "a"
 error Conflict Dup { reason string }
 service BSvc {
   @errors(Dup)
@@ -201,7 +200,6 @@ type T { y string }`,
 func TestCrossPkgMergeNeverRenamesOntoTypeParameters(t *testing.T) {
 	doc := genDoc(t, map[string]string{
 		"a/a.craftgo": `package a
-import "b"
 type Dup { x int }
 type Box<ADup> {
 	w   Dup

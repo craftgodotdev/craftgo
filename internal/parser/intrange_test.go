@@ -2,6 +2,7 @@ package parser
 
 import (
 	"math"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -46,6 +47,24 @@ func TestEnumIntOutOfRangeRejected(t *testing.T) {
 		ed := firstDecl[*ast.EnumDecl](t, "enum E {\n\tA = "+value+"\n}\n")
 		if got := ed.EnumValues()[0].IntValue; got != want {
 			t.Errorf("A = %s parsed as %d", value, got)
+		}
+	}
+}
+
+// A float literal past the float64 range is one error, signed or not, while a
+// value too small for a float64 reads as zero.
+func TestFloatLiteralOutOfRangeRejected(t *testing.T) {
+	huge := "1" + strings.Repeat("0", 400) + ".0"
+	for _, arg := range []string{huge, "-" + huge} {
+		_, msgs := parseWithErrors(t, "type X { a float64 @lte("+arg+") }")
+		if len(msgs) != 1 || msgs[0] != "float literal out of range: a float64 holds at most about 1.8e308" {
+			t.Errorf("@lte(%.8s...): diagnostics %v, want one out-of-range error", arg, msgs)
+		}
+	}
+	largest := strconv.FormatFloat(math.MaxFloat64, 'f', 1, 64)
+	for _, arg := range []string{"0." + strings.Repeat("0", 400) + "1", largest, "-" + largest} {
+		if _, msgs := parseWithErrors(t, "type X { a float64 @example("+arg+") }"); len(msgs) != 0 {
+			t.Errorf("@example(%.8s...): unexpected diagnostics %v", arg, msgs)
 		}
 	}
 }

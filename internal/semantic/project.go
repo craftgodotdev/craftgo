@@ -6,7 +6,6 @@ import (
 	"go/token"
 	"go/types"
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 
@@ -62,6 +61,7 @@ func AnalyzeProject(files []*ast.File, opts Options) (*Project, []Diagnostic) {
 	c.checkProjectGroupChecks()
 	c.checkProjectMiddlewareUniqueness()
 	c.checkProjectPathCollision()
+	c.checkNestedBindings()
 	c.checkProjectOperationIDUniqueness()
 	c.checkProjectEvents()
 	c.checkPackageCycles()
@@ -189,37 +189,11 @@ func goPackageNameProblem(name string) string {
 	return ""
 }
 
-// firstDeclarationPos returns the position of f's first import or
-// declaration; ok is false when f declares nothing.
+// firstDeclarationPos returns the position of f's first declaration; ok is
+// false when f declares nothing.
 func firstDeclarationPos(f *ast.File) (lexer.Position, bool) {
-	switch {
-	case len(f.Imports) > 0:
-		return f.Imports[0].Pos, true
-	case len(f.Decls) > 0:
+	if len(f.Decls) > 0 {
 		return f.Decls[0].DeclPos(), true
 	}
 	return lexer.Position{}, false
-}
-
-// folderExists reports whether importPath, relative to designRoot, is a
-// directory holding at least one design file.
-func folderExists(designRoot, importPath string) bool {
-	if designRoot == "" || importPath == "" {
-		return false
-	}
-	full := filepath.Join(designRoot, filepath.FromSlash(importPath))
-	info, err := os.Stat(full)
-	if err != nil || !info.IsDir() {
-		return false
-	}
-	entries, err := os.ReadDir(full)
-	if err != nil {
-		return false
-	}
-	for _, e := range entries {
-		if !e.IsDir() && config.IsDesignFile(e.Name()) {
-			return true
-		}
-	}
-	return false
 }

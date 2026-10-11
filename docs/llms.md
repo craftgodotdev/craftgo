@@ -35,11 +35,11 @@ package <ident>
   [@decorator]* <verb> Name [path] { [request Type] [response Type] }
 ```
 
-Every file that imports or declares anything starts with its `package` line; a file without one is rejected (`package/missing`), and a comment-only file needs none. File-level decorators (`@version`, `@doc`, `@deprecated`) go above the `package` line; below it they attach to the first declaration (`decorator/placement`). The name is also the generated Go package's: a Go keyword, a predeclared Go identifier (`int`, `len`, `nil`, ...), `main`, `init` or `_` is rejected (`package/name`). Files that declare the same `package` form one package wherever they sit under the design root (a folder per package is the convention) and see each other's declarations; another package's declaration is referenced as `pkg.Type`, with no import statement needed. An `import "<dir>"` line is accepted and changes nothing: a missing folder is `import/unresolved`, importing your own folder an `import/self` warning. Type, enum, scalar, error, middleware, event and method names start with an uppercase letter (`decl/name-case`: the generated Go identifiers must be exported); a lower-case service name is a warning. Packages whose type or error declarations reference each other in a cycle are rejected (`ref/package-cycle`); event payloads do not count.
+Every file that declares anything starts with its `package` line; a file without one is rejected (`package/missing`), and a comment-only file needs none. File-level decorators (`@version`, `@doc`, `@deprecated`) go above the `package` line; below it they attach to the first declaration (`decorator/placement`). The name is also the generated Go package's: a Go keyword, a predeclared Go identifier (`int`, `len`, `nil`, ...), `main`, `init` or `_` is rejected (`package/name`). Files that declare the same `package` form one package wherever they sit under the design root (a folder per package is the convention) and see each other's declarations; another package's declaration is referenced as `pkg.Type`. There is no import statement: a file-level line starting with `import` is a parse error telling you to delete it. Type, enum, scalar, error, middleware, event and method names start with an uppercase letter (`decl/name-case`: the generated Go identifiers must be exported); a lower-case service name is a warning. Packages whose type or error declarations reference each other in a cycle are rejected (`ref/package-cycle`); event payloads do not count.
 
-## Keywords (17)
+## Keywords (16)
 
-`package`, `import`, `type`, `enum`, `error`, `scalar`, `service`, `extend`, `middleware`, `request`, `response`, `event`, `payload`, `map`, `true`, `false`, `null`. Plus HTTP verbs (`get`, `post`, `put`, `patch`, `delete`, `head`, `options`).
+`package`, `type`, `enum`, `error`, `scalar`, `service`, `extend`, `middleware`, `request`, `response`, `event`, `payload`, `map`, `true`, `false`, `null`. Plus HTTP verbs (`get`, `post`, `put`, `patch`, `delete`, `head`, `options`).
 
 A reserved word is still legal where the grammar leaves no ambiguity: as a field name in a type body, as an enum value name, as a decorator argument naming a field, and as a path segment or path-parameter name.
 
@@ -47,7 +47,7 @@ A reserved word is still legal where the grammar leaves no ambiguity: as a field
 
 Field syntax: `name TypeRef [@decorator(...) ...]`.
 
-A field's decorators may continue on lines of their own below it, up to the next member: a decorator on a line of its own between two fields, or two enum values, belongs to the upper one, even across a blank line or a comment. A field takes decorators written above it only as the first member of its body or right below a mixin.
+A decorator on a line of its own decorates the member or declaration below it, across blank lines and comments (`@format(email)` on the line above `email string` validates `email`); one on a field's, enum value's or scalar's line after its type or value decorates that member. Decorators on lines of their own with no member below them in a body are a parse error. A mixin takes no decorators, above it or on its line.
 
 | DSL form         | Go output               | Notes                                      |
 | ---------------- | ----------------------- | ------------------------------------------ |
@@ -457,7 +457,7 @@ Guide: [model](/guide/events#the-model) - [declaring](/guide/events#declaring-ev
 
 ## Decorator registry
 
-Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `duration` (`5s` / `100ms`, or a bare int in seconds), `size` (`1MB` / `8KB`, or a bare int in bytes), `array literal`. All arguments are positional - named args are not accepted. A decorator is never an argument: `@doc(@minLength(1))` is a parse error (`a decorator cannot be an argument of @doc`).
+Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `duration` (`5s` / `100ms`: one number with one unit, at most `2562047h`; or a bare int in seconds), `size` (`1MB` / `8KB`, or a bare int in bytes), `array literal`. A string is `"..."` (escapes `\n \t \r \" \\ \u{HEX}`) or a raw `` `...` `` whose line ends read as `\n`; a control character other than tab, LF and CR, a byte-order mark or a noncharacter is a parse error in a string, or anywhere in a file. All arguments are positional - named args are not accepted. A decorator is never an argument: `@doc(@minLength(1))` is a parse error (`a decorator cannot be an argument of @doc`).
 
 ### File-level
 
@@ -943,7 +943,7 @@ service UserService {
 }
 ```
 
-Beside a `file`, every body or `@form` field rides a form part: a string, bool, number, a scalar or enum over one, or a single-level array of those. A struct, map, generic instance or nested array there is `binding/type`. `@form` on a request with no `file` is `binding/form-without-file`: drop it and the field rides the JSON body.
+Beside a `file`, every body or `@form` field rides a form part: a string, bool, number, a scalar or enum over one, or a single-level array of those. A struct, map, generic instance or nested array there is `binding/type`. `@form` on a request with no `file` is `binding/form-without-file`: drop it and the field rides the JSON body. A binding decorator binds only on a field of the request, response or error type itself (a mixin's included); on a field of a type held as a nested value it is `binding/nested`.
 
 ### Custom error with body and headers
 

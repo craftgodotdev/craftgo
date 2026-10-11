@@ -14,7 +14,6 @@ import (
 // project: a handler and stub naming another package's types, its routes and wiring, and the
 // types, errors and events of a package naming them too.
 var groupedSrc = []string{`package app
-import "shared"
 error NotFound Missing { id shared.ID @header("X-Id") }
 event Seen { payload shared.Item }
 service Items {
@@ -101,9 +100,6 @@ func TestImportsGroupStdOtherModulesProject(t *testing.T) {
 // `log` and `context` in the stub, `fmt` in the event file) and passes a builtin that lives in
 // another package as a type argument.
 var importClashSrc = []string{`package app
-import "server"
-import "log"
-import "context"
 type Page<T> { items T[] }
 event Ticked { payload Page<datetime> }
 service Auth {
@@ -122,21 +118,11 @@ type Out { ok bool }`, `package context
 type Q { n int @default(3) }
 type Out { ok bool }`, `package fmt
 type Item { name string @minLength(1) }`, `package orders
-import "fmt"
 event Batch { payload fmt.Item[] }`}
 
 // typeFilesClashSrc names packages after the packages types.go, errors.go and validate.go import
 // and after the receiver validate.go binds, and names each where its file needs that import.
 var typeFilesClashSrc = []string{`package app
-import "time"
-import "multipart"
-import "wire"
-import "json"
-import "http"
-import "strconv"
-import "fmt"
-import "utf8"
-import "v"
 type X {
 	at    datetime
 	t     time.Item

@@ -1,6 +1,9 @@
 package semantic
 
 import (
+	"encoding/json"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -27,16 +30,43 @@ func TestAMixinFieldMayNotShareAJSONKey(t *testing.T) {
 	expectCodeCount(t, "type A { id string }\ntype B { key string @json(\"id\") }\ntype R { A  B }", CodeFieldNameCollision, 1)
 	root, files := projectFixture(t, map[string]string{
 		"shared/s.craftgo": "package shared\ntype Base { id string }",
-		"api.craftgo":      "package api\nimport \"shared\"\ntype R { shared.Base  identifier string @json(\"id\") }",
+		"api.craftgo":      "package api\ntype R { shared.Base  identifier string @json(\"id\") }",
 	})
 	if _, diags := AnalyzeProject(files, Options{DesignRoot: root}); findCode(diags, CodeFieldNameCollision) == nil {
 		t.Errorf("a cross-package mixin field sharing a JSON key passed: %v", diags)
 	}
 }
 
-func TestJSONKeyMustBeAPlainKey(t *testing.T) {
-	expectError(t, `type Order { a string @json("") }`, CodeDecoratorArgValue)
-	expectError(t, `type Order { a string @json("has space") }`, CodeDecoratorArgValue)
+// A `@json` key is accepted exactly when encoding/json writes the field under
+// it, rather than ignoring the tag and writing the Go field name. The rule is
+// the v1 engine's, which Go 1.26 builds: the engine Go 1.27 runs encoding/json
+// on takes more keys, and a design must mean the same on every toolchain.
+func TestJSONKeyIsOneEncodingJSONTakes(t *testing.T) {
+	emits := func(key string) bool {
+		typ := reflect.StructOf([]reflect.StructField{{Name: "F", Type: reflect.TypeFor[string](), Tag: reflect.StructTag("json:" + strconv.Quote(key))}})
+		out, err := json.Marshal(reflect.New(typ).Elem().Interface())
+		want, _ := json.Marshal(map[string]string{key: ""})
+		return err == nil && string(out) == string(want)
+	}
+	for _, c := range []struct {
+		key    string
+		writes bool
+	}{
+		{"store_id", true}, {"it's", false}, {"has space", true}, {"a,b", false}, {`a"b`, false},
+		{`a\b`, false}, {"a`b", false}, {"€", false}, {"°", false}, {"😀", false}, {"日本", true},
+		{"é", true}, {"x-y.z", true}, {"a\tb", false}, {"", false}, {"#hash", true},
+		{"!#$%&()*+-./:;<=>?@[]^_{|}~", true}, {"a\u2028b", false},
+	} {
+		if jsonV1Engine && emits(c.key) != c.writes {
+			t.Errorf("@json(%q): encoding/json writes the key: %v, want %v", c.key, emits(c.key), c.writes)
+		}
+		lit := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\t", `\t`).Replace(c.key)
+		src := "type Order { a string @json(\"" + lit + "\") }"
+		_, diags := Analyze(parseFiles(t, src))
+		if refused := findCode(diags, CodeDecoratorArgValue) != nil; refused == c.writes {
+			t.Errorf("@json(%q): refused %v, but encoding/json writes the key: %v", c.key, refused, c.writes)
+		}
+	}
 }
 
 // `@json("-")` would tag the field `json:"-"`, which encoding/json skips,

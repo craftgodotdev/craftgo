@@ -2,7 +2,7 @@ package design
 
 // All middleware declarations live in `design/middlewares/`. Other
 // design files (api.craftgo, admin/admin-service.craftgo) reference
-// these names via `@middlewares(...)` decorators; the import resolver
+// these names via `@middlewares(...)` decorators; the analyzer
 // merges this file into the same logical package so the names are
 // visible everywhere.
 

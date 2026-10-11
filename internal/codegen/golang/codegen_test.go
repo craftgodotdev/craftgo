@@ -761,7 +761,6 @@ func TestGenerateErrorsCrossPkgScalarHeader(t *testing.T) {
 		"shared/types.craftgo": `package shared
 scalar Cents int @gte(0)`,
 		"app/errors.craftgo": `package app
-import "shared"
 error TooManyRequests RateLimited {
     cost shared.Cents @header("X-Cost")
 }`,

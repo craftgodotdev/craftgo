@@ -172,17 +172,6 @@ func DedupGoFieldNames(dslNames []string) (resolved []string, collisions []Colli
 	return resolved, collisions
 }
 
-// LastSegment returns what follows the last `/` of a DSL import path, the
-// name the package is referenced by: `auth/types` → `types`.
-func LastSegment(p string) string {
-	for i := len(p) - 1; i >= 0; i-- {
-		if p[i] == '/' {
-			return p[i+1:]
-		}
-	}
-	return p
-}
-
 // PascalCase upper-cases the first letter of each `-`, `_` or `/`
 // separated word and drops the separators: `user_profile` → `UserProfile`.
 func PascalCase(s string) string {

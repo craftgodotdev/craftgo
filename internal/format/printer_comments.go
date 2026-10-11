@@ -152,7 +152,8 @@ func (p *Printer) inPlace(src int, lines []string) {
 
 // header writes words, word i starting i+1 tokens after the keyword at kw, on
 // its line; a comment between two stays there, the words below it one deeper.
-func (p *Printer) header(kw lexer.Position, words ...string) {
+// It returns the source line of the last word.
+func (p *Printer) header(kw lexer.Position, words ...string) int {
 	deeper := false
 	prev := kw.Line
 	for i, w := range words {
@@ -181,6 +182,23 @@ func (p *Printer) header(kw lexer.Position, words ...string) {
 	if deeper {
 		p.depth--
 	}
+	return prev
+}
+
+// openBrace writes the `{` of the body that closes at end, below a header
+// whose last word is on source line last: on the header's line, or on a line
+// of its own when a comment trails both one above it and its own, where
+// nothing follows it, which one line could not hold.
+func (p *Printer) openBrace(last int, end lexer.Position) {
+	brace := p.src.opening(end)
+	line := brace.Pos.Line
+	if !p.trailingBefore(last, line) || !p.trailingBefore(line, line+1) || p.src.after(brace.Pos, 1).Pos.Line == line {
+		p.write(" {")
+		return
+	}
+	p.endCode()
+	p.line(line)
+	p.write("{")
 }
 
 // argComment returns the text of the comment on source line line when it
@@ -211,38 +229,14 @@ func (p *Printer) argComments(lo, hi int) {
 	}
 }
 
-// trailingDecorators writes decs, the decorators after the code of a member
-// that starts on source line first, set off from it by pad: all on the
-// member's line or, when a comment sits among them, each later source line's
-// on its own line one level deeper, under its comments.
-func (p *Printer) trailingDecorators(decs []*ast.Decorator, first int, pad string) {
+// trailingDecorators writes decs, the decorators on a member's line after its
+// code, set off from it by pad.
+func (p *Printer) trailingDecorators(decs []*ast.Decorator, pad string) {
 	if len(decs) == 0 {
 		return
 	}
-	onLine := len(decs)
-	if p.chainCommented(first, decs[len(decs)-1].Pos.Line) {
-		onLine = 0
-		for onLine < len(decs) && decs[onLine].Pos.Line <= first {
-			onLine++
-		}
-	}
-	if onLine > 0 {
-		p.write(pad)
-		p.inlineDecorators(decs[:onLine])
-	}
-	p.depth++
-	for rest := decs[onLine:]; len(rest) > 0; {
-		line, n := rest[0].Pos.Line, 1
-		for n < len(rest) && rest[n].Pos.Line == line {
-			n++
-		}
-		p.endCode()
-		p.comments(line, p.chain[line])
-		p.line(line)
-		p.inlineDecorators(rest[:n])
-		rest = rest[n:]
-	}
-	p.depth--
+	p.write(pad)
+	p.inlineDecorators(decs)
 }
 
 // leadingChain returns the decorators of decs written on lines above line,
@@ -253,18 +247,6 @@ func leadingChain(decs []*ast.Decorator, line int) []*ast.Decorator {
 		n++
 	}
 	return decs[:n]
-}
-
-// chainCommented reports whether a comment sits inside the decorator chain
-// that runs from source line first to line last: above one of its later
-// lines, or after one of its lines but the last. Such a chain keeps its lines.
-func (p *Printer) chainCommented(first, last int) bool {
-	for line := range p.chain {
-		if line > first && line <= last {
-			return true
-		}
-	}
-	return p.trailingBefore(first, last)
 }
 
 // trailingBefore reports whether a trailing comment still to print sits on a

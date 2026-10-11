@@ -49,6 +49,8 @@ type Related struct {
 // Diagnostic is one problem at a source range. End is exclusive, or zero when
 // only Pos is known. Code is a stable identifier such as `decorator/placement`;
 // Msg is the human text.
+//
+// The lexer's own diagnostics carry [CodeSyntaxToken].
 type Diagnostic struct {
 	Pos      Position
 	End      Position
@@ -85,6 +87,15 @@ type Lexer struct {
 	// allComments records every comment, including those a blank line
 	// detached from any token.
 	allComments []*Comment
+
+	// routeEnd is the offset right after the last route text lexed: a path
+	// word, a `{param}` right after a `/`, or a `/` right after either. A `//`
+	// there continues the route instead of starting a comment.
+	routeEnd int
+
+	// checked is the offset below which [Lexer.advance] has checked every
+	// rune for [illegalRune].
+	checked int
 }
 
 // New returns a Lexer over src. filename goes into every Position and may be
@@ -95,6 +106,7 @@ func New(filename, src string) *Lexer {
 		filename: filename,
 		line:     1,
 		column:   1,
+		routeEnd: -1,
 	}
 	if strings.HasPrefix(src, byteOrderMark) {
 		l.offset = len(byteOrderMark)
@@ -104,6 +116,9 @@ func New(filename, src string) *Lexer {
 
 // byteOrderMark is U+FEFF in UTF-8, which some editors write first in a file.
 const byteOrderMark = "\ufeff"
+
+// byteOrderMarkRune is the rune [byteOrderMark] encodes.
+const byteOrderMarkRune = '\ufeff'
 
 // Diagnostics returns the diagnostics recorded so far.
 func (l *Lexer) Diagnostics() []Diagnostic { return l.diags }
@@ -151,8 +166,30 @@ func (l *Lexer) Next() Token {
 		tok.Doc = l.pendingDoc
 		l.pendingDoc = nil
 	}
+	if l.endsRoute(tok, pos) {
+		l.routeEnd = l.offset
+	}
 	l.consumeTrailingComment()
 	return tok
+}
+
+// endsRoute reports whether tok, lexed at pos and ending at the cursor, is
+// route text: a path word, the `}` of a `{param}` right after a `/`, or a `/`
+// right after route text.
+func (l *Lexer) endsRoute(tok Token, pos Position) bool {
+	switch tok.Kind {
+	case PathWord:
+		return true
+	case Slash:
+		return pos.Offset == l.routeEnd
+	case RBrace:
+		i := pos.Offset
+		for i > 0 && (isIdentStart(rune(l.src[i-1])) || isDigit(rune(l.src[i-1]))) {
+			i--
+		}
+		return i < pos.Offset && i >= 2 && l.src[i-1] == '{' && l.src[i-2] == '/'
+	}
+	return false
 }
 
 // consumeTrailingComment consumes and records a `//` comment later on the
@@ -173,9 +210,10 @@ func (l *Lexer) consumeTrailingComment() {
 	l.lineComment(CommentTrailing)
 }
 
-// atLineComment reports whether a `//` comment starts at the cursor.
+// atLineComment reports whether a `//` comment starts at the cursor: a `//`
+// right after route text is an empty path segment instead.
 func (l *Lexer) atLineComment() bool {
-	return strings.HasPrefix(l.src[l.offset:], "//")
+	return strings.HasPrefix(l.src[l.offset:], "//") && l.offset != l.routeEnd
 }
 
 // lineComment consumes the `//` comment at the cursor up to the end of its
@@ -194,7 +232,9 @@ func (l *Lexer) lineComment(kind CommentKind) string {
 
 // lexPunct lexes a one-rune punctuation token; any other rune is an Error.
 func (l *Lexer) lexPunct(pos Position, r rune) Token {
-	l.advance()
+	if l.advance() {
+		return Token{Kind: Error, Text: l.diags[len(l.diags)-1].Msg, Pos: pos}
+	}
 	text := string(r)
 	k, ok := punctuation[text]
 	if !ok {
@@ -257,11 +297,7 @@ func (l *Lexer) lexNumber(pos Position) Token {
 	numText := l.src[start:l.offset]
 
 	suffStart := l.offset
-	for {
-		r := l.peek()
-		if !isLetter(r) && r != 'µ' {
-			break
-		}
+	for isUnitRune(l.peek()) {
 		l.advance()
 	}
 	suffix := l.src[suffStart:l.offset]
@@ -274,12 +310,27 @@ func (l *Lexer) lexNumber(pos Position) Token {
 		return Token{Kind: Int, Text: numText, Pos: pos}
 	}
 	if IsDurationSuffix(suffix) {
+		if isDigit(l.peek()) {
+			for r := l.peek(); isDigit(r) || r == '.' || isUnitRune(r); r = l.peek() {
+				l.advance()
+			}
+			return l.errorf(pos, "duration %s has more than one unit - write it with one, such as 90m for 1h30m", l.src[start:l.offset])
+		}
+		if _, ok := ParseDuration(text); !ok {
+			return l.errorf(pos, "duration %s is out of range - the longest is 2562047h (about 292 years)", text)
+		}
 		return Token{Kind: Duration, Text: text, Pos: pos}
 	}
 	if _, ok := SizeMultiplier(suffix); ok {
 		return Token{Kind: Size, Text: text, Pos: pos}
 	}
 	return l.errorf(pos, "invalid number suffix %q", suffix)
+}
+
+// isUnitRune reports whether r may stand in a unit suffix: an ASCII letter,
+// or the micro sign or the Greek mu of `µs`.
+func isUnitRune(r rune) bool {
+	return isLetter(r) || r == 'µ' || r == 'μ'
 }
 
 // digitFollowsDot tells `3.14` (a Float) from `3.foo` (Int, Dot, Ident).
@@ -325,13 +376,14 @@ func (l *Lexer) lexString(pos Position) Token {
 var simpleEscapes = map[byte]byte{'n': '\n', 't': '\t', 'r': '\r', '"': '"', '\\': '\\'}
 
 // Unquote returns the value of a String or RawString token's text: a raw
-// literal's content, or a quoted literal's with its escapes decoded. The
-// escapes are \n \t \r \" \\ and \u{HEX}: 1 to 6 hex digits naming a code
-// point up to 10FFFF outside the surrogates D800-DFFF.
+// literal's content with each line end made `\n`, or a quoted literal's with
+// its escapes decoded. The escapes are \n \t \r \" \\ and \u{HEX}: 1 to 6
+// hex digits naming a code point up to 10FFFF outside the surrogates
+// D800-DFFF and the runes [illegalRune] rejects.
 func Unquote(text string) (string, error) {
 	n := len(text)
 	if n >= 2 && text[0] == '`' && text[n-1] == '`' {
-		return text[1 : n-1], nil
+		return strings.ReplaceAll(strings.ReplaceAll(text[1:n-1], "\r\n", "\n"), "\r", "\n"), nil
 	}
 	if n < 2 || text[0] != '"' || text[n-1] != '"' {
 		return "", fmt.Errorf("%q is not a string literal", text)
@@ -368,6 +420,9 @@ func Unquote(text string) (string, error) {
 		}
 		if !utf8.ValidRune(rune(v)) {
 			return "", fmt.Errorf("unicode escape \\u{%s} is outside the valid code points (0-D7FF, E000-10FFFF)", s[2:end])
+		}
+		if what := illegalRune(rune(v)); what != "" {
+			return "", fmt.Errorf("unicode escape \\u{%s} is %s, which no string may hold", s[2:end], what)
 		}
 		sb.WriteRune(rune(v))
 		s = s[end+1:]
@@ -429,10 +484,12 @@ func (l *Lexer) peek() rune {
 }
 
 // advance consumes one rune and updates line and column; the caller ensures a
-// rune remains.
-func (l *Lexer) advance() {
+// rune remains. A rune [illegalRune] rejects, or a byte that is no UTF-8, is
+// reported where it stands, once, and advance then returns true.
+func (l *Lexer) advance() bool {
+	pos := l.pos()
 	end := l.atLineEnd()
-	_, size := utf8.DecodeRuneInString(l.src[l.offset:])
+	r, size := utf8.DecodeRuneInString(l.src[l.offset:])
 	l.offset += size
 	if end {
 		l.line++
@@ -440,6 +497,41 @@ func (l *Lexer) advance() {
 	} else {
 		l.column++
 	}
+	if pos.Offset < l.checked {
+		return false
+	}
+	l.checked = l.offset
+	switch {
+	case r == utf8.RuneError && size == 1:
+		l.errorf(pos, "invalid UTF-8 encoding")
+	case r == 0:
+		l.errorf(pos, "illegal character NUL")
+	case r == byteOrderMarkRune:
+		l.errorf(pos, "illegal byte order mark - one may only open the file")
+	case illegalRune(r) != "":
+		l.errorf(pos, "illegal character: %s", illegalRune(r))
+	default:
+		return false
+	}
+	return true
+}
+
+// illegalRune names r when no design may hold it, in source or in a string's
+// value, or returns "": a control character but tab, line feed and carriage
+// return, the byte order mark, which may only open a file, or a noncharacter.
+// The generated Go source and the YAML document take none of them.
+func illegalRune(r rune) string {
+	switch {
+	case r == '\t' || r == '\n' || r == '\r':
+		return ""
+	case r < 0x20 || r >= 0x7f && r <= 0x9f:
+		return fmt.Sprintf("the control character U+%04X", r)
+	case r == byteOrderMarkRune:
+		return "the byte order mark U+FEFF"
+	case r >= 0xfdd0 && r <= 0xfdef || r&0xfffe == 0xfffe:
+		return fmt.Sprintf("the noncharacter U+%04X", r)
+	}
+	return ""
 }
 
 // atLineEnd reports whether the rune at the cursor ends a line: '\n', or a
@@ -459,10 +551,14 @@ func (l *Lexer) pos() Position {
 	}
 }
 
+// CodeSyntaxToken is the code of a lexer diagnostic: a character or token no
+// design may hold.
+const CodeSyntaxToken = "syntax/token"
+
 // errorf records a diagnostic at pos and returns it as an Error token.
 func (l *Lexer) errorf(pos Position, format string, args ...any) Token {
 	msg := fmt.Sprintf(format, args...)
-	l.diags = append(l.diags, Diagnostic{Pos: pos, Msg: msg})
+	l.diags = append(l.diags, Diagnostic{Pos: pos, Code: CodeSyntaxToken, Msg: msg})
 	return Token{Kind: Error, Text: msg, Pos: pos}
 }
 

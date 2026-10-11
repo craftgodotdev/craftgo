@@ -16,22 +16,6 @@ func (p *Parser) parsePackage() *ast.PackageDecl {
 	return &ast.PackageDecl{Pos: name.Pos, Doc: pkgTok.Doc, Name: name.Text}
 }
 
-// parseImport parses `import "path"` or `import alias "path"`, taking the
-// comment above as Doc.
-func (p *Parser) parseImport() *ast.Import {
-	importTok := p.advance()
-	p.claimDoc(importTok)
-	imp := &ast.Import{Pos: importTok.Pos, Doc: importTok.Doc}
-	if p.peek().Kind == lexer.Ident {
-		imp.Alias = p.advance().Text
-	}
-	if str, ok := p.expect(lexer.String); ok {
-		imp.Path = unquote(str)
-		imp.PathText = str.Text
-	}
-	return imp
-}
-
 // parseTopLevelWith parses one declaration, prefixing its decorators with
 // extra, whose doc is the file's LeadingDoc. The declaration's doc is the
 // comment above its own decorators, then the one right above its keyword,
@@ -71,8 +55,28 @@ func (p *Parser) parseTopLevelWith(extra []*ast.Decorator) ast.Decl {
 		}
 		return nil
 	}
-	p.errorf(t.Pos, "expected declaration, got %s", t.Kind)
+	switch {
+	case t.Kind == lexer.Ident && t.Text == "import":
+		p.errorf(t.Pos, "`import` was removed - reference another package's declaration as `pkg.Type`; delete this line")
+		p.skipLine()
+		return nil
+	case t.Kind == lexer.Ident && t.Text == "consume":
+		p.errorf(t.Pos, "there is no `consume` declaration - which events a deployable listens to is Go code, written where its bus is built")
+	case t.Kind == lexer.Ident:
+		p.errorf(t.Pos, "%s", unknownKeyword(t.Text))
+	default:
+		p.errorf(t.Pos, "expected declaration, got %s", t.Kind)
+	}
+	p.skipUntil(false, p.startsDeclaration)
 	return nil
+}
+
+// skipLine consumes the current token and the rest of its line.
+func (p *Parser) skipLine() {
+	line := p.peek().Pos.Line
+	for !p.peekIs(lexer.EOF) && p.peek().Pos.Line == line {
+		p.advance()
+	}
 }
 
 // startsDecl reports whether k is a keyword [Parser.parseTopLevelWith] parses
@@ -90,7 +94,7 @@ func (p *Parser) parseEnumDecl(decs []*ast.Decorator, doc []string) *ast.EnumDec
 	pos := p.advance().Pos
 	name, _ := p.expect(lexer.Ident)
 	ed := &ast.EnumDecl{Pos: pos, NamePos: name.Pos, Decorators: decs, Doc: doc, Name: name.Text}
-	_, rbrace := p.braced(func() {
+	rbrace := p.braced(nil, func() {
 		if v := p.parseEnumValue(); v != nil {
 			ed.Members = append(ed.Members, v)
 		}
@@ -102,30 +106,32 @@ func (p *Parser) parseEnumDecl(decs []*ast.Decorator, doc []string) *ast.EnumDec
 	return ed
 }
 
-// parseEnumValue parses `Name` or `Name = literal`, then its decorators.
-// Decorators before the name are reported and dropped.
+// parseEnumValue parses `Name` or `Name = literal` with the decorators above
+// it and those on the line it ends on.
 func (p *Parser) parseEnumValue() *ast.EnumValue {
-	doc := p.docAbove()
 	// An `@` before `Name =` is a stray one, and the value after it still counts.
 	if p.peekIs(lexer.At) && p.peekAt(2).Kind == lexer.Equal {
 		p.errorf(p.peek().Pos, "expected enum value name, got %s", lexer.At)
 		p.advance()
 	}
-	for _, d := range p.parseDecorators() {
-		p.errorf(d.Pos, "decorator @%s has no enum value before it; an enum value's decorators follow it", d.Name)
+	doc, decs, t := p.memberHead()
+	if len(decs) > 0 && (t.Kind == lexer.RBrace || t.Kind == lexer.EOF) {
+		p.danglingDecorators(decs, "enum value")
+		return nil
 	}
-	t := p.peek()
-	// Decorators that close the body leave no value to parse.
 	if t.Kind == lexer.RBrace {
 		return nil
 	}
 	// A reserved word is a value name here.
 	if t.Kind != lexer.Ident && !t.Kind.IsKeyword() {
 		p.errorf(t.Pos, "expected enum value name, got %s", t.Kind)
+		if t.Kind != lexer.EOF {
+			p.skipUntil(true, p.startsLine)
+		}
 		return nil
 	}
 	p.advance()
-	v := &ast.EnumValue{Pos: t.Pos, Doc: doc, Name: t.Text, Kind: ast.EnumBare}
+	v := &ast.EnumValue{Pos: t.Pos, Doc: doc, Name: t.Text, Kind: ast.EnumBare, Decorators: decs}
 	if p.peek().Kind == lexer.Equal {
 		p.advance()
 		switch p.peek().Kind {
@@ -151,8 +157,7 @@ func (p *Parser) parseEnumValue() *ast.EnumValue {
 			p.errorf(p.peek().Pos, "expected int or string for enum value")
 		}
 	}
-	v.Decorators = p.parseDecorators()
-	p.claimTrailing(t.Pos.Line, v.Decorators)
+	v.Decorators = append(v.Decorators, p.decoratorsOnLine(p.tokens[p.pos-1].Pos.Line)...)
 	return v
 }
 

@@ -264,38 +264,47 @@ service S {
 	}
 }
 
-// The comments among the decorators after a field or an enum value are
-// recorded under the line of the decorator below them, and none is a free
-// comment.
-func TestTrailingChainCommentsRecorded(t *testing.T) {
+// The comments among the decorators above a field or an enum value, and the
+// one right above its name, are recorded under the line below them; the one
+// above the first decorator and the one right above the name are its doc.
+func TestLeadingChainCommentsRecorded(t *testing.T) {
 	f := mustParse(t, `package p
 
 type T {
 	x string @minLength(1)
+	// y doc
+	@maxLength(5)
 	// field chain
-		@maxLength(5)
+	@minLength(2)
+	// y name
 	y string
-		// before the first
-		@minLength(2)
 }
 
 enum E {
 	A = 1 @doc("a")
+	@doc("b")
 	// value chain
-		@deprecated
+	@deprecated
 	B = 2
 }
 `)
 	want := map[int][]string{
-		6:  {"field chain"},
-		9:  {"before the first"},
-		15: {"value chain"},
+		8:  {"field chain"},
+		10: {"y name"},
+		17: {"value chain"},
 	}
 	if !reflect.DeepEqual(f.ChainComments, want) {
 		t.Errorf("ChainComments = %v, want %v", f.ChainComments, want)
 	}
-	if body, members := f.Decls[0].(*ast.TypeDecl).Body, f.Decls[1].(*ast.EnumDecl).Members; len(body) != 2 || len(members) != 2 {
-		t.Errorf("a chain comment became free: type body %#v, enum members %#v", body, members)
+	body, members := f.Decls[0].(*ast.TypeDecl).Body, f.Decls[1].(*ast.EnumDecl).Members
+	if len(body) != 2 || len(members) != 2 {
+		t.Fatalf("a chain comment became free: type body %#v, enum members %#v", body, members)
+	}
+	if y := body[1].(*ast.Field); !reflect.DeepEqual(y.Doc, []string{"y doc", "y name"}) || decoratorNames(y.Decorators) != "maxLength minLength" {
+		t.Errorf("y: doc %q, decorators %q", y.Doc, decoratorNames(y.Decorators))
+	}
+	if b := members[1].(*ast.EnumValue); len(b.Doc) != 0 || decoratorNames(b.Decorators) != "doc deprecated" {
+		t.Errorf("B: doc %q, decorators %q", b.Doc, decoratorNames(b.Decorators))
 	}
 }
 

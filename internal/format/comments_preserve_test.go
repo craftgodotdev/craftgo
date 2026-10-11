@@ -105,10 +105,8 @@ func TestFormatKeepsEveryCommentInPlace(t *testing.T) {
 		"doc above a scalar's keyword":     "package x\n\n@minLength(1)\n// Code is a code.\nscalar Code string\n",
 		"chain comment apart from keyword": "package x\n\n@deprecated\n// apart\n\ntype T {\n\ty string\n}\n",
 		"between file decorators":          "@version(\"1\")\n// c\n@doc(\"d\")\npackage x\n",
-		"between imports":                  "package x\n\nimport \"a\"\n\n// free\n\nimport \"b\"\n",
 		"above file decorators":            "// prologue\n\n// doc\n@version(\"1\") // v\npackage x\n",
 		"above forwarded decorators":       "// prologue\n\n// doc\n@doc(\"t\")\ntype T {\n\ty string\n}\n",
-		"after an import":                  "package x\n\nimport \"a\" // c\n",
 		"after enum values":                "package x\n\nenum E {\n\tA = 1 // c\n\tB = 2 @x // d\n}\n",
 		"after clauses":                    "package x\n\nservice S {\n\tget A /a {\n\t\trequest  R // c\n\t\tresponse T // d\n\t}\n}\n",
 	} {
@@ -133,61 +131,159 @@ func TestFormatMovesACommentWithItsCode(t *testing.T) {
 // Decorators continued on the lines after a field or an enum value join its
 // line without a blank line after it; a comment among them keeps them on
 // their lines, one level deeper, and stays where it was.
-func TestFormatContinuedDecorators(t *testing.T) {
+// A decorator on a line of its own prints above the member it decorates, the
+// one below it, one per line under the member's doc; the decorators on a
+// member's line stay there.
+func TestFormatKeepsOwnLineDecoratorsAboveTheirMember(t *testing.T) {
 	for _, c := range []struct{ name, src, want string }{
 		{
-			"field chain",
+			"field",
 			"package x\n\ntype T {\n\tx string @minLength(1)\n\t\t@maxLength(5)\n\ty string\n}\n",
-			"package x\n\ntype T {\n\tx string @minLength(1) @maxLength(5)\n\ty string\n}\n",
+			"package x\n\ntype T {\n\tx string @minLength(1)\n\t@maxLength(5)\n\ty string\n}\n",
 		},
 		{
-			"field chain before a blank line",
+			"one per line",
+			"package x\n\ntype T {\n\tid string\n\n\t@format(email) @maxLength(254)\n\temail string @minLength(3)\n}\n",
+			"package x\n\ntype T {\n\tid    string\n\n\t@format(email)\n\t@maxLength(254)\n\temail string @minLength(3)\n}\n",
+		},
+		{
+			"blank line under the decorator",
 			"package x\n\ntype T {\n\tx string @minLength(1)\n\t\t@maxLength(5)\n\n\ty string\n}\n",
-			"package x\n\ntype T {\n\tx string @minLength(1) @maxLength(5)\n\n\ty string\n}\n",
+			"package x\n\ntype T {\n\tx string @minLength(1)\n\t@maxLength(5)\n\ty string\n}\n",
 		},
 		{
-			"comment in a field chain",
+			"doc above the decorators",
 			"package x\n\ntype T {\n\tid   string\n\tname string @minLength(1)\n\t// c\n\t@maxLength(5)\n\ty    string\n}\n",
-			"package x\n\ntype T {\n\tid   string\n\tname string @minLength(1)\n\t\t// c\n\t\t@maxLength(5)\n\ty    string\n}\n",
+			"package x\n\ntype T {\n\tid   string\n\tname string @minLength(1)\n\t// c\n\t@maxLength(5)\n\ty    string\n}\n",
 		},
 		{
-			"comment above a field's first decorator",
-			"package x\n\ntype T {\n\tx string\n\t\t// c\n\t\t@maxLength(5)\n\ty string\n}\n",
-			"package x\n\ntype T {\n\tx string\n\t\t// c\n\t\t@maxLength(5)\n\ty string\n}\n",
+			"doc above and under the decorators",
+			"package x\n\ntype T {\n\tx string\n\t\t// c\n\t\t@maxLength(5)\n\t// d\n\ty string\n}\n",
+			"package x\n\ntype T {\n\tx string\n\t// c\n\t@maxLength(5)\n\t// d\n\ty string\n}\n",
 		},
 		{
-			"trailing comment in a field chain",
+			"trailing comments",
 			"package x\n\ntype T {\n\tx string @minLength(1) // c\n\t\t@maxLength(5) // d\n\ty string\n}\n",
-			"package x\n\ntype T {\n\tx string @minLength(1) // c\n\t\t@maxLength(5) // d\n\ty string\n}\n",
+			"package x\n\ntype T {\n\tx string @minLength(1) // c\n\t@maxLength(5) // d\n\ty string\n}\n",
 		},
 		{
-			"enum value chain",
+			"a decorator before the name",
+			"package x\n\ntype T {\n\t@maxLength(5) y string @minLength(1)\n}\n",
+			"package x\n\ntype T {\n\ty string @maxLength(5) @minLength(1)\n}\n",
+		},
+		{
+			"enum value",
 			"package x\n\nenum E {\n\tA = 1 @doc(\"a\")\n\t\t@deprecated\n\tB = 2\n}\n",
-			"package x\n\nenum E {\n\tA = 1 @doc(\"a\") @deprecated\n\tB = 2\n}\n",
+			"package x\n\nenum E {\n\tA = 1 @doc(\"a\")\n\t@deprecated\n\tB = 2\n}\n",
 		},
 		{
-			"comment in an enum value chain",
-			"package x\n\nenum E {\n\tA = 1 @doc(\"a\")\n\t// c\n\t@deprecated\n\tB = 2\n}\n",
-			"package x\n\nenum E {\n\tA = 1 @doc(\"a\")\n\t\t// c\n\t\t@deprecated\n\tB = 2\n}\n",
+			"comment between an enum value's decorators",
+			"package x\n\nenum E {\n\tA = 1 @doc(\"a\")\n\t@doc(\"b\")\n\t// c\n\t@deprecated\n\tB = 2\n}\n",
+			"package x\n\nenum E {\n\tA = 1 @doc(\"a\")\n\t@doc(\"b\")\n\t// c\n\t@deprecated\n\tB = 2\n}\n",
+		},
+		{
+			"scalar",
+			"package x\n\n@minLength(1)\nscalar S string @maxLength(5)\n",
+			"package x\n\n@minLength(1)\nscalar S string @maxLength(5)\n",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
 	}
 }
 
-// The trailing comment of a member's line stays with the member when the
-// member joins its lines.
-func TestFormatKeepsATrailingCommentWithItsMember(t *testing.T) {
+// A comment among a type's arguments stays there: the argument list keeps its
+// lines, one level deeper, as a decorator's does, and the members around set
+// their columns without it.
+func TestFormatKeepsACommentInATypesArguments(t *testing.T) {
 	for _, c := range []struct{ name, src, want string }{
 		{
-			"trailing comment inside a field's type",
-			"package x\n\ntype T {\n\ta map<string, // t\n\t\tint>\n\tb string\n}\n",
-			"package x\n\ntype T {\n\ta map<string, int> // t\n\tb string\n}\n",
+			"trailing comments in a field's type",
+			"package x\n\ntype A {\n\tp Page< // one page of\n\t\tUser // users\n\t>\n\tname string @minLength(1)\n}\n",
+			"package x\n\ntype A {\n\tp    Page< // one page of\n\t\tUser, // users\n\t>\n\tname string @minLength(1)\n}\n",
 		},
 		{
-			"trailing comment inside a mixin",
+			"map keeps no trailing comma",
+			"package x\n\ntype T {\n\ta map<string, // t\n\t\tint>\n\tb string\n}\n",
+			"package x\n\ntype T {\n\ta map<\n\t\tstring, // t\n\t\tint\n\t>\n\tb string\n}\n",
+		},
+		{
+			"comment on a line of its own in a map",
+			"package x\n\ntype T {\n\ta map<string,\n\t\t// c\n\t\tint> // t\n\tb string\n}\n",
+			"package x\n\ntype T {\n\ta map<\n\t\tstring,\n\t\t// c\n\t\tint\n\t> // t\n\tb string\n}\n",
+		},
+		{
+			"decorators after the type",
+			"package x\n\ntype T {\n\ta Page<\n\t\tstring // t\n\t> @doc(\"d\")\n}\n",
+			"package x\n\ntype T {\n\ta Page<\n\t\tstring, // t\n\t> @doc(\"d\")\n}\n",
+		},
+		{
+			"arguments on the opener's line join it",
+			"package x\n\ntype T {\n\ta Page<string // t\n\t> @doc(\"d\")\n}\n",
+			"package x\n\ntype T {\n\ta Page<string> @doc(\"d\") // t\n}\n",
+		},
+		{
+			"mixin",
 			"package x\n\ntype U {\n\tPage< // t\n\t\tstring>\n\tb string\n}\n",
-			"package x\n\ntype U {\n\tPage<string> // t\n\tb string\n}\n",
+			"package x\n\ntype U {\n\tPage< // t\n\t\tstring,\n\t>\n\tb string\n}\n",
+		},
+		{
+			"comment on a line of its own in a mixin",
+			"package x\n\ntype U {\n\tPage<\n\t\t// c\n\t\tstring>\n\tb string\n}\n",
+			"package x\n\ntype U {\n\tPage<\n\t\t// c\n\t\tstring,\n\t>\n\tb string\n}\n",
+		},
+		{
+			"response",
+			"package x\n\ntype Box<V> { v V }\n\nservice S {\n\tget A /a {\n\t\tresponse Box<\n\t\t// c\n\t\tint>\n\t}\n}\n",
+			"package x\n\ntype Box<V> {\n\tv V\n}\n\nservice S {\n\tget A /a {\n\t\tresponse Box<\n\t\t\t// c\n\t\t\tint,\n\t\t>\n\t}\n}\n",
+		},
+		{
+			"type parameters",
+			"package x\n\ntype Pair<A, // a\n\tB // b\n\t> {\n\tx A\n\ty B\n}\n",
+			"package x\n\ntype Pair<\n\tA, // a\n\tB, // b\n> {\n\tx A\n\ty B\n}\n",
+		},
+		{
+			"comment on a line of its own in the type parameters",
+			"package x\n\ntype Page<\n\t// c\n\tT> {\n\titems T[]\n}\n",
+			"package x\n\ntype Page<\n\t// c\n\tT,\n> {\n\titems T[]\n}\n",
+		},
+		{
+			"nested arguments",
+			"package x\n\ntype T {\n\ta Page<map<string, // k\n\t\tint>>\n}\n",
+			"package x\n\ntype T {\n\ta Page<map<\n\t\tstring, // k\n\t\tint\n\t>>\n}\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
+	}
+}
+
+// A comment trailing a header's last word and one trailing its body's `{`
+// below keep their lines: the `{` stays on its own.
+func TestFormatKeepsTheCommentsOfAHeaderAndItsBrace(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{
+			"type",
+			"package x\n\ntype // c1\nA // c2\n{ // c3\n\ta string // c4\n} // c5\n",
+			"package x\n\ntype // c1\n\tA // c2\n{ // c3\n\ta string // c4\n} // c5\n",
+		},
+		{
+			"method",
+			"package x\n\nservice S { // c1\n\tget // c2\n\tA // c3\n\t/a // c4\n\t{ // c5\n\t} // c6\n}\n",
+			"package x\n\nservice S { // c1\n\tget // c2\n\t\tA // c3\n\t\t/a // c4\n\t{ // c5\n\t} // c6\n}\n",
+		},
+		{
+			"enum",
+			"package x\n\nenum E // c1\n{ // c2\n\tA\n}\n",
+			"package x\n\nenum E // c1\n{ // c2\n\tA\n}\n",
+		},
+		{
+			"event",
+			"package x\n\ntype R { a string }\n\nevent E // c1\n{ // c2\n\tpayload R\n}\n",
+			"package x\n\ntype R {\n\ta string\n}\n\nevent E // c1\n{ // c2\n\tpayload R\n}\n",
+		},
+		{
+			"one comment joins the brace's line",
+			"package x\n\ntype A // c\n{\n\ta string\n}\n",
+			"package x\n\ntype A { // c\n\ta string\n}\n",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
@@ -207,7 +303,7 @@ func TestFormatKeepsACommentInDecoratorArguments(t *testing.T) {
 		{
 			"closing parenthesis on the argument's line",
 			"package x\n\ntype T {\n\ta string @header(\n\t//TODO\n\t\"X\") // n\n\tb string\n}\n",
-			"package x\n\ntype T {\n\ta string @header(\n\t\t// TODO\n\t\t\"X\", // n\n\t)\n\tb string\n}\n",
+			"package x\n\ntype T {\n\ta string @header(\n\t\t// TODO\n\t\t\"X\",\n\t) // n\n\tb string\n}\n",
 		},
 		{
 			"arguments on the decorator's line",
@@ -227,7 +323,7 @@ func TestFormatKeepsACommentInDecoratorArguments(t *testing.T) {
 		{
 			"decorator above a field",
 			"package x\n\ntype T {\n\t@minLength(\n\t\t// c\n\t\t1)\n\ta string\n}\n",
-			"package x\n\ntype T {\n\ta string @minLength(\n\t\t// c\n\t\t1,\n\t)\n}\n",
+			"package x\n\ntype T {\n\t@minLength(\n\t\t// c\n\t\t1,\n\t)\n\ta string\n}\n",
 		},
 		{
 			"array",
@@ -312,11 +408,6 @@ func TestFormatKeepsAHeaderCommentOfABodilessDeclaration(t *testing.T) {
 			"error name",
 			"package x\n\nerror NotFound\n// c\nGone\n",
 			"package x\n\nerror NotFound\n\t// c\n\tGone\n",
-		},
-		{
-			"import",
-			"package x\n\nimport\n// c\n\"a\"\n\ntype T {\n\ta string\n}\n",
-			"package x\n\nimport\n\t// c\n\t\"a\"\n\ntype T {\n\ta string\n}\n",
 		},
 		{
 			"package",
@@ -459,7 +550,7 @@ func TestFormatKeepsAnArgumentListWithComments(t *testing.T) {
 		{
 			"arguments below the name",
 			"package x\n\ntype T {\n\tid string @doc // c1\n\t\t(\"x\") // c2\n}\n",
-			"package x\n\ntype T {\n\tid string @doc( // c1\n\t\t\"x\", // c2\n\t)\n}\n",
+			"package x\n\ntype T {\n\tid string @doc( // c1\n\t\t\"x\",\n\t) // c2\n}\n",
 		},
 		{
 			"arguments sharing a line",
@@ -480,6 +571,35 @@ func TestFormatKeepsAnArgumentListWithComments(t *testing.T) {
 			"declaration decorator",
 			"package x\n\n@doc(\n\t\"a\", // a\n\t\"b\" // b\n)\nmiddleware M\n",
 			"package x\n\n@doc(\n\t\"a\", // a\n\t\"b\", // b\n)\nmiddleware M\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })
+	}
+}
+
+// A comment on the line where an argument list closes follows what comes after
+// the closer there, another decorator included, and never joins the list.
+func TestFormatKeepsTheCommentOfAListsClosingLineAfterIt(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{
+			"decorator after the list",
+			"package x\n\ntype T {\n\tname string @length(3,\n\t\t20) @pattern(\"^[a-z]+$\") // c\n}\n",
+			"package x\n\ntype T {\n\tname string @length(3, 20) @pattern(\"^[a-z]+$\") // c\n}\n",
+		},
+		{
+			"list kept over lines",
+			"package x\n\ntype T {\n\tname string @length(3, // min\n\t\t20) @pattern(\"^[a-z]+$\") // c\n}\n",
+			"package x\n\ntype T {\n\tname string @length(\n\t\t3, // min\n\t\t20,\n\t) @pattern(\"^[a-z]+$\") // c\n}\n",
+		},
+		{
+			"array argument",
+			"package x\n\ntype T {\n\tid string @oneOf([\"a\",\n\t\t\"b\"]) @doc(\"d\") // c\n}\n",
+			"package x\n\ntype T {\n\tid string @oneOf([\"a\", \"b\"]) @doc(\"d\") // c\n}\n",
+		},
+		{
+			"declaration decorator",
+			"package x\n\n@tags(\"a\",\n\t\"b\") // c\nservice S {\n\tget A /a {}\n}\n",
+			"package x\n\n@tags(\"a\", \"b\") // c\nservice S {\n\tget A /a {}\n}\n",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) { formatExact(t, c.src, c.want) })

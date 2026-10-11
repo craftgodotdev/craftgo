@@ -52,28 +52,28 @@ The decorator set is closed - an unknown decorator fires `decorator/unknown`. If
 | -------------- | ---------------------------------------------------------- |
 | `file`         | Above the `package` line at the top of a `.craftgo` file   |
 | `type`         | Above a `type` declaration                                 |
-| `field`        | After a field in a `type` body                             |
+| `field`        | Above a field in a `type` body, or after it on its line    |
 | `enum`         | Above an `enum` declaration                                |
-| `enumValue`    | After an enum value (`Active @doc("...")`)                 |
+| `enumValue`    | Above an enum value, or after it on its line (`Active @doc("...")`) |
 | `error`        | Above an `error` declaration                               |
-| `errorField`   | After a field in an `error` body                           |
-| `scalar`       | After a `scalar` declaration                               |
+| `errorField`   | Above a field in an `error` body, or after it on its line  |
+| `scalar`       | Above a `scalar` declaration, or after it on its line      |
 | `service`      | Above a `service` declaration                              |
 | `method`       | Above an HTTP method inside a service body                 |
 | `middleware`   | Above a `middleware` declaration                           |
 | `event`        | Above an `event` declaration                               |
 
-The decorators of a field or an enum value follow it: on its line, or on lines of their own below it, up to the next member. A decorator on a line of its own between two fields therefore decorates the upper one, even across a blank line or a comment:
+A decorator on a line of its own decorates what is below it, across blank lines and comments; one on a field's or an enum value's line after its type or value decorates that member:
 
 ```craftgo
 type T {
-    x string
-    @minLength(1)
+    x string @minLength(1)
+    @maxLength(5)
     y string
 }
 ```
 
-Here `@minLength(1)` is `x`'s. A field takes decorators written above it only as the first member of its body or right below a mixin. An enum value takes none from above: above the first value they are an error.
+Here `@minLength(1)` is `x`'s and `@maxLength(5)` is `y`'s. Decorators on lines of their own with no member below them in a body are a parse error, and a mixin takes none, above it or on its line.
 
 ## Documentation and lifecycle
 
@@ -343,7 +343,7 @@ type ListReq {
 
 ### `@json("key")`
 
-The JSON key of a body field when it is not the field name - a contract another system owns, or a key the parser would read as a mixin. The Go struct tag, the OpenAPI property and validation messages all carry it. A field bound off the body (`@path`, `@query`, `@header`, `@cookie`, `@form`) names its wire location in that decorator instead.
+The JSON key of a body field when it is not the field name - a contract another system owns, or a key the parser would read as a mixin. The Go struct tag, the OpenAPI property and validation messages all carry it. A field bound off the body (`@path`, `@query`, `@header`, `@cookie`, `@form`) names its wire location in that decorator instead. The key is what encoding/json takes as a tag name: letters, digits, spaces and the punctuation `!#$%&()*+-./:;<=>?@[]^_{|}~`. Any other character, such as a quote, a comma, a backslash, a backtick, `'` or `€`, would make encoding/json ignore the key and use the Go field name, so it is `decorator/argvalue`, as is the key `-`.
 
 | Sites | field, errorField |
 | -------- | -------- |
@@ -387,7 +387,7 @@ Tell the handler where to read each field from. Mutually exclusive (a field has 
 
 An array `@header` reads a list header: every line of it, split at commas (`X-Ids: 1, 2` and two `X-Ids` lines bind the same). A `@form` text part is read from the multipart body only; a query parameter of the same name is not a stand-in for it.
 
-`@path`, `@query`, `@header`, `@cookie` and `@form` take an optional string for an explicit wire name; `@body("name")` is accepted but names nothing - a body field's JSON key is set with `@json("key")`:
+`@path`, `@query`, `@header`, `@cookie` and `@form` take an optional string for an explicit wire name; `@body("name")` is accepted but names nothing - a body field's JSON key is set with `@json("key")`. A path, query, header or cookie name rides the generated struct tag, a Go raw string, so one holding a backtick is `decorator/argvalue`:
 
 ```craftgo
 type GetUserReq {
@@ -417,6 +417,8 @@ A field with no binding decorator whose name matches a `{name}` variable of the 
 - `query` for non-body verbs (GET / DELETE / HEAD / OPTIONS)
 
 When the request carries a `file`, its body becomes `multipart/form-data` and every body or `@form` field rides a form part, which holds a string, a bool, a number, a scalar or enum over one, or a single-level array of those; a struct, a map, a generic instance or a nested array there is `binding/type`. A request with no `file` has no form parts, so `@form` there is `binding/form-without-file`: drop it and the field rides the JSON body.
+
+A binding decorator binds only on a field of the request, response or error type itself, a mixin's fields included. A field of a type that one of them holds as a nested value rides inside the JSON body, where no binding reaches it, so `@path`, `@query`, `@header`, `@cookie` or `@form` on it is `binding/nested`: move the field up, or let a mixin bring it there.
 
 **Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / `http.SetCookie(...)` instead of the JSON body - the JSON tag is automatically `json:"-"` (with a `header:` / `cookie:` binding key alongside) so the same field doesn't double up. Non-string values (`int`, `bool`, `float`, scalars and enums of those) are formatted to their wire string via `strconv`, just like the request-side binder parses them; an optional (`T?`) header is written only when non-nil, and a `string[]` header emits one value per element. The explicit-name argument applies here too:
 

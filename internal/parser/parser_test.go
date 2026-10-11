@@ -65,26 +65,25 @@ func TestParsePackage(t *testing.T) {
 	}
 }
 
-func TestParseImport(t *testing.T) {
-	f := mustParse(t, `package design
-import "shared"
-import v1 "v1/api"`)
-	if len(f.Imports) != 2 {
-		t.Fatalf("imports: %d", len(f.Imports))
-	}
-	if f.Imports[0].Path != "shared" || f.Imports[0].Alias != "" {
-		t.Error("import 0")
-	}
-	if f.Imports[1].Alias != "v1" || f.Imports[1].Path != "v1/api" {
-		t.Error("import 1")
-	}
-}
-
-func TestImportMissingPath(t *testing.T) {
-	_, errs := parseWithErrors(t, `package x
-import`)
-	if len(errs) == 0 {
-		t.Error("expected error")
+// An `import` line is reported once, whatever follows it on its line, and
+// the declarations below it still parse.
+func TestRemovedImportIsReported(t *testing.T) {
+	for name, line := range map[string]string{
+		"path":    `import "shared"`,
+		"alias":   `import v1 "v1/api"`,
+		"bare":    `import`,
+		"garbage": `import "a" @doc("x") { }`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, msgs := parseWithErrors(t, "package design\n\n"+line+"\n\ntype X {\n\tid string\n}\n")
+			want := "`import` was removed - reference another package's declaration as `pkg.Type`; delete this line"
+			if len(msgs) != 1 || msgs[0] != want {
+				t.Fatalf("diagnostics = %q, want only %q", msgs, want)
+			}
+			if len(f.Decls) != 1 || f.Decls[0].DeclName() != "X" {
+				t.Errorf("declarations = %v, want type X", f.Decls)
+			}
+		})
 	}
 }
 
@@ -339,19 +338,20 @@ func TestEnumValueBadAfterEqual(t *testing.T) {
 	}
 }
 
-// A decorator with no enum value before it is one error at its `@`, and the
-// value below it still parses; so is a stray `@` before `Name =`.
-func TestEnumDecoratorBeforeAnyValue(t *testing.T) {
-	const rule = "has no enum value before it; an enum value's decorators follow it"
+// An enum value takes the decorators above it; ones with no value below them
+// are one error at the first `@`, and so is a stray `@` before `Name =`.
+func TestEnumValueTakesTheDecoratorsAboveIt(t *testing.T) {
+	const rule = "has no enum value below it: a decorator on a line of its own decorates the enum value below it - move it onto the line of the enum value it belongs to"
 	for _, c := range []struct {
 		src    string
 		want   []string
 		values []string
 	}{
-		{"enum E {\n\t@doc(\"a\")\n\tA\n\tB\n}", []string{"4:2: decorator @doc " + rule}, []string{"A", "B"}},
-		{"enum E { @doc(\"a\") @deprecated A }", []string{"3:10: decorator @doc " + rule, "3:20: decorator @deprecated " + rule}, []string{"A"}},
+		{"enum E {\n\t@doc(\"a\")\n\tA\n\tB\n}", nil, []string{"A:doc", "B:"}},
+		{"enum E { @doc(\"a\") @deprecated A }", nil, []string{"A:doc deprecated"}},
+		{"enum E {\n\tA @doc(\"a\")\n\t@deprecated\n\tB = 2\n}", nil, []string{"A:doc", "B:deprecated"}},
 		{"enum E {\n\t@doc(\"a\")\n}", []string{"4:2: decorator @doc " + rule}, nil},
-		{"enum M {\n\t@Card = \"card\"\n\tCash  = \"cash\"\n}", []string{"4:2: expected enum value name, got @"}, []string{"Card", "Cash"}},
+		{"enum M {\n\t@Card = \"card\"\n\tCash  = \"cash\"\n}", []string{"4:2: expected enum value name, got @"}, []string{"Card:", "Cash:"}},
 	} {
 		p := New("t.craftgo", "package p\n\n"+c.src+"\n")
 		f := p.Parse()
@@ -364,7 +364,7 @@ func TestEnumDecoratorBeforeAnyValue(t *testing.T) {
 		}
 		var values []string
 		for _, v := range f.Decls[0].(*ast.EnumDecl).EnumValues() {
-			values = append(values, v.Name)
+			values = append(values, v.Name+":"+decoratorNames(v.Decorators))
 		}
 		if !slices.Equal(values, c.values) {
 			t.Errorf("%q: values = %q, want %q", c.src, values, c.values)
@@ -728,9 +728,11 @@ func argKind(e ast.Expr) string {
 	return fmt.Sprintf("%T", e)
 }
 
-// An argument list left open ends at an inner decorator's `)` that ends its
-// line, or at the body's `}`, so the declarations below still parse.
-func TestUnclosedArgumentsCloseAtAnInnerDecorator(t *testing.T) {
+// An argument list nothing closes is reported at its `(` and ends with that
+// line, or at an inner decorator's `)` that ends it, so the members and the
+// declarations below still parse.
+func TestUnclosedArgumentsEndWithTheirLine(t *testing.T) {
+	const unclosed = "unclosed `(` - add the `)` that closes it"
 	for _, c := range []struct {
 		src   string
 		want  []string
@@ -738,38 +740,48 @@ func TestUnclosedArgumentsCloseAtAnInnerDecorator(t *testing.T) {
 	}{
 		{
 			"type User {\n\t@doc(\n\temail string @format(email)\n\tname  string\n}\n\ntype Other {\n\tid string\n}\n",
-			[]string{"5:8: expected ',' or ')' after decorator argument, got Ident", "5:15: expected ',' or ')' after decorator argument, got @"},
-			[]string{"User", "Other"},
+			[]string{"4:6: " + unclosed},
+			[]string{"User:email,name", "Other:id"},
 		},
 		{
 			"scalar Email string @format(email) @maxLength(@x(254)\n\nscalar Other string\n\ntype T {\n\te Email\n}\n",
 			[]string{"3:47: a decorator cannot be an argument of @maxLength"},
-			[]string{"Email", "Other", "T"},
+			[]string{"Email", "Other", "T:e"},
 		},
 		{
 			"type User {\n\tname string\n\t@doc(\n\temail string\n}\n\ntype Other {\n\tid string\n}\n",
-			[]string{"6:8: expected ',' or ')' after decorator argument, got Ident", "7:1: expected ',' or ')' after decorator argument, got }"},
-			[]string{"User", "Other"},
+			[]string{"5:6: " + unclosed},
+			[]string{"User:name,email", "Other:id"},
 		},
 		{
 			"type User {\n\t@doc(@example(\n\temail string @format(email)\n\tname  string\n}\n\ntype Other {\n\tid string\n}\n",
-			[]string{"4:7: a decorator cannot be an argument of @doc", "7:1: expected ',' or ')' after decorator argument, got }"},
-			[]string{"User", "Other"},
+			[]string{"4:7: a decorator cannot be an argument of @doc", "4:6: " + unclosed},
+			[]string{"User:email,name", "Other:id"},
 		},
 		{
 			"enum Status {\n\t@doc(\n\tActive\n\tInactive\n}\n\ntype Other {\n\tid string\n}\n",
-			[]string{"6:2: expected ',' or ')' after decorator argument, got Ident", "7:1: expected ',' or ')' after decorator argument, got }", "4:2: decorator @doc has no enum value before it; an enum value's decorators follow it"},
-			[]string{"Status", "Other"},
+			[]string{"4:6: " + unclosed},
+			[]string{"Status:Active,Inactive", "Other:id"},
 		},
 		{
 			"type T {\n\ta string @length(@x(1) 5)\n}\n",
 			[]string{"4:19: a decorator cannot be an argument of @length", "4:25: expected ',' or ')' after decorator argument, got Int"},
-			[]string{"T"},
+			[]string{"T:a"},
 		},
 		{
 			"@errors([@x(1) Nf])\ntype X {}\n",
 			[]string{"3:10: a decorator cannot be an argument of @errors", "3:16: expected ',' or ']' after array element, got Ident"},
-			[]string{"X"},
+			[]string{"X:"},
+		},
+		{
+			"type T {\n\ta string @oneOf([\"x\", \"y\")\n\tb string\n}\n",
+			[]string{"4:18: unclosed `[` - add the `]` that closes it"},
+			[]string{"T:a,b"},
+		},
+		{
+			"type T {\n\ta Page<string\n\tb string\n}\n",
+			[]string{"4:8: unclosed `<` - add the `>` that closes it"},
+			[]string{"T:a,b"},
 		},
 	} {
 		p := New("t.craftgo", "package p\n\n"+c.src)
@@ -779,7 +791,21 @@ func TestUnclosedArgumentsCloseAtAnInnerDecorator(t *testing.T) {
 			got = append(got, fmt.Sprintf("%d:%d: %s", d.Pos.Line, d.Pos.Column, d.Msg))
 		}
 		for _, d := range f.Decls {
-			decls = append(decls, d.DeclName())
+			var members []string
+			switch v := d.(type) {
+			case *ast.TypeDecl:
+				for _, fl := range ast.Fields(v.Body) {
+					members = append(members, fl.Name)
+				}
+			case *ast.EnumDecl:
+				for _, ev := range v.EnumValues() {
+					members = append(members, ev.Name)
+				}
+			default:
+				decls = append(decls, d.DeclName())
+				continue
+			}
+			decls = append(decls, d.DeclName()+":"+strings.Join(members, ","))
 		}
 		if !slices.Equal(got, c.want) {
 			t.Errorf("%q: diagnostics = %q, want %q", c.src, got, c.want)
@@ -1089,9 +1115,6 @@ func TestGoldenSample(t *testing.T) {
 	f := mustParse(t, string(src))
 	if f.Package == nil {
 		t.Error("package missing")
-	}
-	if len(f.Imports) != 2 {
-		t.Errorf("imports: %d", len(f.Imports))
 	}
 	if len(f.Decls) < 8 {
 		t.Errorf("decls: %d", len(f.Decls))

@@ -17,7 +17,6 @@ scalar Cents int
 enum Tone { Warm Cool }
 enum Tier { Bronze = 1  Gold = 2 }`,
 		"m/m.craftgo": `package m
-import "shared"
 scalar Blob bytes
 scalar Email string
 enum Color { Red Green }

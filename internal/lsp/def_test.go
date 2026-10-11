@@ -60,7 +60,7 @@ func TestHoverOnAQualifiedName(t *testing.T) {
 		"b/b.craftgo": "package b\n\n// remote one\ntype Name { y int }\n",
 	})
 	h := hoverAt(t, filepath.Join(design, "a", "a.craftgo"),
-		"package a\n\nimport \"b\"\n\n// local one\ntype Name { x string }\n\ntype Holder { n b.Na|me }\n")
+		"package a\n\n// local one\ntype Name { x string }\n\ntype Holder { n b.Na|me }\n")
 	if !strings.Contains(h, "remote one") {
 		t.Errorf("hover = %q, want package b's Name", h)
 	}
@@ -211,7 +211,7 @@ func TestRenameRefusesAPackageQualifier(t *testing.T) {
 	design := designProject(t, map[string]string{
 		"b/b.craftgo": "package b\n\ntype Name { y int }\n",
 	})
-	s, u, pos := openMarked(t, filepath.Join(design, "a", "a.craftgo"), "package a\n\nimport \"b\"\n\ntype Holder { n |b.Name }\n")
+	s, u, pos := openMarked(t, filepath.Join(design, "a", "a.craftgo"), "package a\n\ntype Holder { n |b.Name }\n")
 	res, err := callHandler(t, s, protocol.MethodTextDocumentPrepareRename, protocol.PrepareRenameParams{TextDocumentPositionParams: docAt(u, pos)})
 	if err != nil {
 		t.Fatal(err)
@@ -274,8 +274,6 @@ func TestDeclarationRangesCoverTheName(t *testing.T) {
 func TestLookupKindAtEveryPosition(t *testing.T) {
 	view := parseSnapshot("t.craftgo", `package shop
 
-import lib "lib"
-
 @doc("d")
 type Page<T> {
 	items T[]
@@ -304,9 +302,9 @@ extend service Shop {
 		nth  int
 		want semantic.DeclKind
 	}{
-		{"shop", 1, 0}, {"lib", 1, 0}, {"doc", 1, 0},
+		{"shop", 1, 0}, {"doc", 1, 0},
 		{"Page", 1, semantic.TypeDecls}, {"T", 1, 0}, {"items", 1, 0}, {"T", 2, 0}, {"next", 1, 0},
-		{"Cursor", 1, semantic.TypeRefDecls}, {"lib", 2, semantic.TypeRefDecls}, {"Base", 1, semantic.TypeRefDecls},
+		{"Cursor", 1, semantic.TypeRefDecls}, {"lib", 1, semantic.TypeRefDecls}, {"Base", 1, semantic.TypeRefDecls},
 		{"Kind", 1, semantic.EnumDecls}, {"Active", 1, 0},
 		{"NotFound", 1, 0}, {"Gone", 1, semantic.ErrorDecls}, {"at", 1, 0}, {"Kind", 2, semantic.TypeRefDecls},
 		{"Cursor", 2, semantic.ScalarDecls}, {"string", 1, 0},
@@ -452,7 +450,6 @@ middleware AuthRequired
 error Forbidden AuthRequired { reason string }
 `
 	useFile := `package services
-import "shared"
 service S {
 	@middlewares(AuthRequired)
 	get GetX /x {}

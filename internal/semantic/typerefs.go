@@ -13,10 +13,9 @@ import (
 // declarations.
 func (a *analyzer) checkTypeRefs(files []*ast.File) {
 	for _, f := range files {
-		imports := importAliasSet(f.Imports)
 		for _, d := range f.Decls {
 			walkTypeRefs(d, func(n *ast.NamedTypeRef, typeParams []string, mixin bool) {
-				a.checkTypeRef(n, typeParams, imports, mixin)
+				a.checkTypeRef(n, typeParams, mixin)
 			})
 		}
 	}
@@ -90,7 +89,7 @@ func walkMaps(t *ast.TypeRef, visit func(*ast.MapType)) {
 // optional, it names a built-in, a type parameter in scope or a type, enum
 // or scalar, and its arguments fit what it names. What a mixin embeds and
 // its arity are checked by [analyzer.processMixin].
-func (a *analyzer) checkTypeRef(n *ast.NamedTypeRef, typeParams []string, imports map[string]bool, mixin bool) {
+func (a *analyzer) checkTypeRef(n *ast.NamedTypeRef, typeParams []string, mixin bool) {
 	if n.Name == nil || len(n.Name.Parts) == 0 {
 		return
 	}
@@ -148,10 +147,6 @@ func (a *analyzer) checkTypeRef(n *ast.NamedTypeRef, typeParams []string, import
 	case len(parts) == 2:
 		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
 			"package %q has no symbol %q", parts[0], sym)
-	case imports[sym]:
-		// The parser also leaves a bare alias for a half-typed `alias.`.
-		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
-			"%q is an imported package, not a type - qualify it as %q.<TypeName>", sym, sym)
 	default:
 		a.diag(n.Pos, n.Pos, lexer.SeverityError, CodeRefUnknownSymbol,
 			"unknown type %q (no built-in primitive, no declaration in package %q)", sym, a.pkg.Name)

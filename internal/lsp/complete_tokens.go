@@ -95,7 +95,6 @@ func keywordCompletions(want ...string) []protocol.CompletionItem {
 	}
 	entries := []entry{
 		{"package", "package $1"},
-		{"import", "import \"$1\""},
 		{"type", "type ${1:Name} {\n\t$0\n}"},
 		{"enum", "enum ${1:Name} {\n\t$0\n}"},
 		{"error", "error ${1|" + strings.Join(categories, ",") + "|} ${2:Name}"},

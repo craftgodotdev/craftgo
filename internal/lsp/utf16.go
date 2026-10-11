@@ -75,9 +75,13 @@ func offsetFromLSP(src string, line, character uint32) int {
 
 // utf16Position converts a lexer position (1-based line, rune column) into an
 // LSP one over src; a line src lacks keeps the rune column as the character.
+// The byte-order mark opening src takes no column but one character.
 func utf16Position(src string, p lexer.Position) protocol.Position {
 	line := max(p.Line-1, 0)
 	col := max(p.Column-1, 0)
+	if line == 0 && strings.HasPrefix(src, "\ufeff") {
+		col++
+	}
 	lineText, ok := nthLine(src, line)
 	if !ok {
 		return protocol.Position{Line: uint32(line), Character: uint32(col)}

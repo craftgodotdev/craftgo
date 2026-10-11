@@ -1,9 +1,9 @@
 // Package `services` exercises the CROSS-PACKAGE consumption side
-// of the import / mixin / scalar / extend matrix. Every interesting
+// of the reference / mixin / scalar / extend matrix. Every interesting
 // edge sits here:
 //
-//   - `import "shared"` - bare-package import; the implicit alias
-//     `shared` is what `shared.<Name>` references resolve through.
+//   - `shared.<Name>` - a declaration of another package, reached
+//     by qualifying it with that package's name.
 //   - `shared.ID` / `shared.Email` - cross-package scalar refs.
 //     The generated Go field type lands as `string` (the underlying
 //     primitive) but the validator inherits the scalar's @length /
@@ -26,7 +26,7 @@ package services
 // UserRef is the lightweight handle: id + email. Used as a BODY
 // request (POST CreateUser, POST BanUser) and as the owner field
 // of services.Project. Both fields are cross-package scalars
-// (`shared.ID`, `shared.Email`) resolved across the import edge.
+// (`shared.ID`, `shared.Email`) resolved across the package edge.
 type UserRef {
 	id    shared.ID
 	email shared.Email

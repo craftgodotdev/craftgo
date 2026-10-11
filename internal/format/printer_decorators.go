@@ -2,6 +2,7 @@ package format
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -21,7 +22,7 @@ func (p *Printer) Decorator(d *ast.Decorator) {
 	for i, a := range d.Args {
 		items[i] = listItem{first: a.Pos.Line, last: p.argLastLine(a), print: func() { p.decoratorArgInContext(d.Name, i, a) }}
 	}
-	p.list(d.Pos.Line, end, "(", items, ")")
+	p.list(d.Pos.Line, end, "(", items, ")", true)
 }
 
 // decoratorArgInContext prints argument idx of decoratorName; a string that is
@@ -52,7 +53,7 @@ func (p *Printer) DecoratorArg(a *ast.DecoratorArg) {
 				p.Expr(f.Value)
 			}}
 		}
-		p.list(a.Pos.Line, p.src.closeLine(a.Pos), "{", items, "}")
+		p.list(a.Pos.Line, p.src.closeLine(a.Pos), "{", items, "}", true)
 	default:
 		p.Expr(a.Value)
 	}
@@ -85,7 +86,7 @@ func (p *Printer) Expr(e ast.Expr) {
 		for i, el := range v.Elements {
 			items[i] = listItem{first: el.ExprPos().Line, last: p.exprLastLine(el), print: func() { p.Expr(el) }}
 		}
-		p.list(v.Pos.Line, p.src.closeLine(v.Pos), "[", items, "]")
+		p.list(v.Pos.Line, p.src.closeLine(v.Pos), "[", items, "]", true)
 	}
 }
 
@@ -98,10 +99,12 @@ type listItem struct {
 
 // list writes items between opener, on source line open, and closer, on line
 // end: on one line or, when the items continue below line open and a trailing
-// comment sits on their lines, or a comment sits on a line of its own among
-// them, each source line of items on its own line one level deeper under the
-// comments above it, and the closer on a line of its own.
-func (p *Printer) list(open, end int, opener string, items []listItem, closer string) {
+// comment sits on a line of theirs above line end, or a comment sits on a line
+// of its own among them, each source line of items on its own line one level
+// deeper under the comments above it, each but the last, unless trail, ending
+// in a comma, and the closer on a line of its own. A comment trailing line end
+// follows the closer and what comes after it there.
+func (p *Printer) list(open, end int, opener string, items []listItem, closer string, trail bool) {
 	p.write(opener)
 	var lines [][]listItem
 	for rest := items; len(rest) > 0; {
@@ -112,7 +115,7 @@ func (p *Printer) list(open, end int, opener string, items []listItem, closer st
 		lines, rest = append(lines, rest[:k]), rest[k:]
 	}
 	n := len(items)
-	keep := n > 0 && items[n-1].first > open && p.trailingBefore(open, items[n-1].last+1)
+	keep := n > 0 && items[n-1].first > open && p.trailingBefore(open, end)
 	prev := open
 	for _, l := range lines {
 		keep = keep || p.argCommentBetween(prev, l[0].first)
@@ -131,7 +134,7 @@ func (p *Printer) list(open, end int, opener string, items []listItem, closer st
 	p.endCode()
 	p.depth++
 	prev = open
-	for _, l := range lines {
+	for k, l := range lines {
 		p.argComments(prev, l[0].first)
 		p.line(l[0].first)
 		for i, it := range l {
@@ -140,21 +143,67 @@ func (p *Printer) list(open, end int, opener string, items []listItem, closer st
 			}
 			it.print()
 		}
-		p.write(",")
+		if trail || k < len(lines)-1 {
+			p.write(",")
+		}
 		p.endCode()
 		prev = l[len(l)-1].last
 	}
 	p.argComments(prev, end)
 	p.depth--
-	p.endLine(prev + 1)
+	p.endLine(min(prev+1, end))
 	p.indent()
 	p.write(closer)
+}
+
+// TypeRef writes t as [ast.TypeRef.String] spells it, an argument list over
+// several lines when a comment sits among its arguments.
+func (p *Printer) TypeRef(t *ast.TypeRef) {
+	if t.Map != nil {
+		p.write("map")
+		lt := p.src.after(t.Map.Pos, 1)
+		items := []listItem{p.typeItem(t.Map.Key), p.typeItem(t.Map.Value)}
+		p.list(lt.Pos.Line, p.src.closeLine(lt.Pos), "<", items, ">", false)
+	} else {
+		p.NamedTypeRef(t.Named)
+	}
+	depth := t.ArrayDepth
+	if depth == 0 && t.Array {
+		depth = 1
+	}
+	p.write(strings.Repeat("[]", depth))
+	if t.Optional {
+		p.write("?")
+	}
+}
+
+// NamedTypeRef is [Printer.TypeRef] for a named type.
+func (p *Printer) NamedTypeRef(n *ast.NamedTypeRef) {
+	if n == nil || n.Name == nil {
+		p.write("?")
+		return
+	}
+	p.write(n.Name.String())
+	if len(n.Args) == 0 {
+		return
+	}
+	lt := p.src.after(n.Pos, 2*len(n.Name.Parts)-1)
+	items := make([]listItem, len(n.Args))
+	for i, a := range n.Args {
+		items[i] = p.typeItem(a)
+	}
+	p.list(lt.Pos.Line, p.src.closeLine(lt.Pos), "<", items, ">", true)
+}
+
+// typeItem is t as an element of a type argument list.
+func (p *Printer) typeItem(t *ast.TypeRef) listItem {
+	return listItem{first: t.Pos.Line, last: p.src.typeEnd(t).Pos.Line, print: func() { p.TypeRef(t) }}
 }
 
 // argLastLine returns the source line a decorator argument ends on.
 func (p *Printer) argLastLine(a *ast.DecoratorArg) int {
 	switch {
-	case len(a.Object) > 0:
+	case a.Object != nil:
 		return p.src.closeLine(a.Pos)
 	case a.Value != nil:
 		return p.exprLastLine(a.Value)

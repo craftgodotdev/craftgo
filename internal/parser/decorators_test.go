@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -14,8 +16,6 @@ func TestParseEveryDocumentedDecorator(t *testing.T) {
 @doc("file-level doc")
 @deprecated
 package design
-
-import "shared"
 
 @doc("type-level doc")
 @deprecated
@@ -186,26 +186,67 @@ func collectAllDecoratorNames(f *ast.File) map[string]bool {
 	return out
 }
 
-// TestParseMultiLineDecoratorChain pins that a field's trailing decorators may
-// span several lines.
-func TestParseMultiLineDecoratorChain(t *testing.T) {
+// A decorator on a line of its own decorates the field below it, one on a
+// field's line after its type that field, and a chain whose arguments run
+// onto a later line still ends on the field's line.
+func TestDecoratorsOnTheirOwnLineDecorateTheFieldBelow(t *testing.T) {
 	f := mustParse(t, `package design
 type T {
-    name string
-        @doc("the name")
-        @length(3, 20)
-        @pattern("^[a-z]+$")
+    id string
+
+    @format(email)
+    @maxLength(254)
+    email string @minLength(3)
+    name string @length(3,
+        20) @pattern("^[a-z]+$")
+        @doc("the nick")
+    nick string
+    @deprecated old string @doc("o")
 }`)
-	td := f.Decls[0].(*ast.TypeDecl)
-	field := td.Body[0].(*ast.Field)
-	want := []string{"doc", "length", "pattern"}
-	if len(field.Decorators) != len(want) {
-		t.Fatalf("expected %d trailing decorators, got %d", len(want), len(field.Decorators))
+	want := map[string]string{
+		"id":    "",
+		"email": "format maxLength minLength",
+		"name":  "length pattern",
+		"nick":  "doc",
+		"old":   "deprecated doc",
 	}
-	for i, w := range want {
-		if got := field.Decorators[i].Name; got != w {
-			t.Errorf("decorator[%d] = %q, want %q", i, got, w)
+	for _, fl := range ast.Fields(f.Decls[0].(*ast.TypeDecl).Body) {
+		if got := decoratorNames(fl.Decorators); got != want[fl.Name] {
+			t.Errorf("field %s decorators = %q, want %q", fl.Name, got, want[fl.Name])
 		}
+	}
+}
+
+// Decorators on lines of their own that close a body decorate nothing.
+func TestDecoratorsWithNoMemberBelowAreReported(t *testing.T) {
+	for src, want := range map[string]string{
+		"type T {\n\tid string\n\t@doc(\"x\")\n}\n":             "3:2: decorator @doc has no field below it",
+		"type T {\n\tid string\n\t@doc(\"x\") @deprecated\n}\n": "3:2: decorator @doc has no field below it",
+		"enum E {\n\tA\n\t@doc(\"x\")\n}\n":                     "3:2: decorator @doc has no enum value below it",
+		"error NotFound Gone {\n\tid string\n\t@header\n}\n":    "3:2: decorator @header has no field below it",
+	} {
+		p := New("t.craftgo", "package p\n\n"+src)
+		p.Parse()
+		var got []string
+		for _, d := range p.Diagnostics() {
+			got = append(got, fmt.Sprintf("%d:%d: %s", d.Pos.Line-2, d.Pos.Column, d.Msg))
+		}
+		if len(got) != 1 || !strings.HasPrefix(got[0], want) {
+			t.Errorf("%q: diagnostics = %q, want one starting %q", src, got, want)
+		}
+	}
+}
+
+// An `@` whose name is not on its line is reported, and the member below it
+// still parses.
+func TestDecoratorNameOnTheLineOfItsAt(t *testing.T) {
+	p := New("t.craftgo", "package p\n\ntype T {\n\tid string\n\t@\n\temail string\n}\n")
+	f := p.Parse()
+	if d := p.Diagnostics(); len(d) != 1 || d[0].Msg != "expected decorator name after @ on its line" {
+		t.Fatalf("diagnostics = %v", d)
+	}
+	if body := ast.Fields(f.Decls[0].(*ast.TypeDecl).Body); len(body) != 2 || body[1].Name != "email" {
+		t.Errorf("fields = %v, want id and email", body)
 	}
 }
 

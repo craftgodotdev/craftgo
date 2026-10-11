@@ -104,6 +104,15 @@ func TestMixinSelfCycle(t *testing.T) {
 	expectDiag(t, `type A { A  name string }`, CodeMixinCycle)
 }
 
+// A mixin that cycles back to its own body is one diagnostic: the body's
+// fields brought back by it collide with nothing.
+func TestMixinCycleIsReportedAlone(t *testing.T) {
+	_, diags := Analyze(parseFiles(t, "type R { R  x string }\nservice S { post Do /do { request R } }"))
+	if len(diags) != 1 || diags[0].Code != CodeMixinCycle {
+		t.Errorf("diagnostics = %v, want one %s", diags, CodeMixinCycle)
+	}
+}
+
 func TestMixinIndirectCycle(t *testing.T) {
 	expectDiag(t, `type A { B  a string }
 type B { A  b string }`, CodeMixinCycle)
@@ -229,7 +238,6 @@ func TestLeafNameEmbedCollisionRejected(t *testing.T) {
 		"shared/s.craftgo": `package shared
 type Leaf { x int }`,
 		"api.craftgo": `package design
-import "shared"
 type Leaf { y int }
 type Req { Leaf  shared.Leaf  r string }`,
 	})

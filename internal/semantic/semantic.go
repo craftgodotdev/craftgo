@@ -137,9 +137,8 @@ func (a *analyzer) runShapePhase(files []*ast.File) {
 	a.checkEvents()
 }
 
-// runRefPhase checks each file's imports and every type reference.
+// runRefPhase checks every type reference.
 func (a *analyzer) runRefPhase(files []*ast.File) {
-	a.checkImports(files)
 	a.checkTypeRefs(files)
 }
 
@@ -215,6 +214,7 @@ func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMembe
 	for _, f := range ast.Fields(members) {
 		a.checkSingleBinding(parent, f)
 		a.checkBindingFieldType(parent, f, typeParams)
+		a.checkWireNameTag(parent, f)
 		a.checkBoundOverlap(parent, f)
 	}
 }

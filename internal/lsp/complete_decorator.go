@@ -18,10 +18,10 @@ import (
 // when the slot has no closed set.
 func (r *request) decoratorArgItems(c cursor, name string) []protocol.CompletionItem {
 	if name == "middlewares" {
-		return r.middlewareNameCompletions()
+		return withoutListed(r.view(), c, r.middlewareNameCompletions())
 	}
 	if name == "errors" {
-		return r.errorNameCompletions()
+		return withoutListed(r.view(), c, r.errorNameCompletions())
 	}
 	if name == "status" {
 		return httpStatusCompletions()
@@ -45,6 +45,28 @@ func (r *request) decoratorArgItems(c cursor, name string) []protocol.Completion
 		}
 	}
 	return decoratorArgCompletions(name)
+}
+
+// withoutListed returns the items whose names the argument list holding the
+// cursor does not name yet, the word under the cursor aside.
+func withoutListed(view snapshotView, c cursor, items []protocol.CompletionItem) []protocol.CompletionItem {
+	_, paren, ok := decoratorArgContext(view, c)
+	if !ok {
+		return items
+	}
+	listed := map[string]bool{}
+	for i := paren + 1; i < view.argEnd(paren); i++ {
+		if t := view.tokens[i]; t.Kind == lexer.Ident && i != c.at {
+			listed[t.Text] = true
+		}
+	}
+	out := items[:0]
+	for _, it := range items {
+		if !listed[it.Label] {
+			out = append(out, it)
+		}
+	}
+	return out
 }
 
 // successStatuses are the success and redirect codes `@status(...)` offers

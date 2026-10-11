@@ -109,7 +109,7 @@
       "patterns": [
         {
           "name": "keyword.control.import.craftgo",
-          "match": "\\b(package|import|extend)\\b"
+          "match": "\\b(package|extend)\\b"
         },
         {
           "name": "keyword.declaration.craftgo",

@@ -135,8 +135,7 @@ func TestLineCommentToEOF(t *testing.T) {
 
 func TestKeywords(t *testing.T) {
 	cases := map[string]Kind{
-		"package": KwPackage, "import": KwImport,
-		"type": KwType, "enum": KwEnum, "error": KwError,
+		"package": KwPackage, "type": KwType, "enum": KwEnum, "error": KwError,
 		"scalar": KwScalar, "service": KwService, "extend": KwExtend,
 		"middleware": KwMiddleware, "request": KwRequest, "response": KwResponse,
 		"map":  KwMap,
@@ -148,6 +147,16 @@ func TestKeywords(t *testing.T) {
 		if got := first(t, src).Kind; got != want {
 			t.Errorf("%q: got %s want %s", src, got, want)
 		}
+	}
+}
+
+// `import` is no reserved word, so it names a field like any identifier.
+func TestImportIsAnIdentifier(t *testing.T) {
+	if tok := first(t, "import"); tok.Kind != Ident || tok.Text != "import" {
+		t.Errorf("got %+v, want an Ident", tok)
+	}
+	if !IsIdent("import") {
+		t.Error(`IsIdent("import") = false`)
 	}
 }
 
@@ -218,6 +227,30 @@ func TestDurationFloat(t *testing.T) {
 	}
 }
 
+// Microseconds take the micro sign or the Greek mu; a duration past the
+// range of time.Duration, or written with two units, is one Error token.
+func TestDurationRangeAndUnits(t *testing.T) {
+	for _, c := range []string{"10µs", "10μs", "2562047h"} {
+		if tok := first(t, c); tok.Kind != Duration || tok.Text != c {
+			t.Errorf("%q: got %+v, want a Duration", c, tok)
+		}
+		if _, ok := ParseDuration(c); !ok {
+			t.Errorf("ParseDuration(%q) failed", c)
+		}
+	}
+	for src, want := range map[string]string{
+		"99999999999h": "duration 99999999999h is out of range - the longest is 2562047h (about 292 years)",
+		"2562048h":     "duration 2562048h is out of range - the longest is 2562047h (about 292 years)",
+		"1h30m)":       "duration 1h30m has more than one unit - write it with one, such as 90m for 1h30m",
+	} {
+		l := New("", src)
+		toks := l.Tokenize()
+		if toks[0].Kind != Error || toks[0].Text != want || len(l.Diagnostics()) != 1 {
+			t.Errorf("%q: tokens %v, diagnostics %v, want one Error %q", src, toks, l.Diagnostics(), want)
+		}
+	}
+}
+
 func TestSize(t *testing.T) {
 	for _, c := range []string{"1B", "1KB", "5MB", "10GB"} {
 		if first(t, c).Kind != Size {
@@ -252,7 +285,7 @@ func TestStringEscapes(t *testing.T) {
 }
 
 func TestStringUnicodeEscape(t *testing.T) {
-	for _, c := range []string{`"\u{1F600}"`, `"\u{a}"`, `"\u{D7FF}"`, `"\u{E000}"`, `"\u{10FFFF}"`} {
+	for _, c := range []string{`"\u{1F600}"`, `"\u{a}"`, `"\u{D7FF}"`, `"\u{E000}"`, `"\u{10FFFD}"`} {
 		if first(t, c).Kind != String {
 			t.Errorf("%q", c)
 		}
@@ -355,12 +388,14 @@ func TestUnquote(t *testing.T) {
 		{`"abc"`, "abc", ""},
 		{`"a\nb\tc\rd"`, "a\nb\tc\rd", ""},
 		{`"a\"b\\c"`, "a\"b\\c", ""},
-		{`"\u{61}\u{7}\u{0}"`, "a\a\x00", ""},
+		{`"\u{61}\u{9}\u{a}\u{D}"`, "a\t\n\r", ""},
 		{`"\u{1F600}"`, "\U0001F600", ""},
-		{`"\u{D7FF}\u{E000}\u{10FFFF}"`, "\ud7ff\ue000\U0010FFFF", ""},
+		{`"\u{D7FF}\u{E000}\u{10FFFD}"`, "\ud7ff\ue000\U0010FFFD", ""},
+		{`"\u{85}\u{2028}"`, "", `unicode escape \u{85} is the control character U+0085, which no string may hold`},
 		{"\"zero\u200bwidth\"", "zero\u200bwidth", ""},
 		{"`^\\d+$`", `^\d+$`, ""},
 		{"`a\nb`", "a\nb", ""},
+		{"`a\r\nb\rc`", "a\nb\nc", ""},
 		{`"\zbad"`, "", `invalid escape sequence \z`},
 		{`"\é"`, "", `invalid escape sequence \é`},
 		{`"\u nobrace"`, "", "invalid unicode escape"},
@@ -371,6 +406,12 @@ func TestUnquote(t *testing.T) {
 		{`"\u{D800}"`, "", `unicode escape \u{D800} is outside the valid code points (0-D7FF, E000-10FFFF)`},
 		{`"a\u{dfff}"`, "", `unicode escape \u{dfff} is outside the valid code points (0-D7FF, E000-10FFFF)`},
 		{`"\u{110000}"`, "", `unicode escape \u{110000} is outside the valid code points (0-D7FF, E000-10FFFF)`},
+		{`"\u{0}"`, "", `unicode escape \u{0} is the control character U+0000, which no string may hold`},
+		{`"\u{7F}"`, "", `unicode escape \u{7F} is the control character U+007F, which no string may hold`},
+		{`"\u{FEFF}"`, "", `unicode escape \u{FEFF} is the byte order mark U+FEFF, which no string may hold`},
+		{`"\u{FFFE}"`, "", `unicode escape \u{FFFE} is the noncharacter U+FFFE, which no string may hold`},
+		{`"\u{FDD0}"`, "", `unicode escape \u{FDD0} is the noncharacter U+FDD0, which no string may hold`},
+		{`"\u{10FFFF}"`, "", `unicode escape \u{10FFFF} is the noncharacter U+10FFFF, which no string may hold`},
 		{`"a\"`, "", "unterminated escape sequence"},
 		{`"`, "", `"\"" is not a string literal`},
 		{`abc`, "", `"abc" is not a string literal`},
@@ -390,7 +431,7 @@ func TestUnquote(t *testing.T) {
 
 // A String token's text is what Unquote accepts, escapes as written.
 func TestStringTextIsTheSource(t *testing.T) {
-	src := `"a\u{7}\"b"`
+	src := `"a\u{2028}\"b"`
 	if tok := first(t, src); tok.Kind != String || tok.Text != src {
 		t.Errorf("got %+v", tok)
 	}
@@ -561,6 +602,42 @@ func TestByteOrderMarkIsSkipped(t *testing.T) {
 	}
 }
 
+// NUL, a byte that is no UTF-8, a byte order mark past the start, a control
+// character but tab and the line ends, and a noncharacter are reported once,
+// where they stand, in code, comments and strings alike; lexing goes on.
+func TestIllegalCharactersAreReportedWhereTheyStand(t *testing.T) {
+	for src, want := range map[string]string{
+		"a // x \x00 y\nb":    "1:8: illegal character NUL",
+		"a // x \xff y\nb":    "1:8: invalid UTF-8 encoding",
+		"a\n// x \ufeff y\nb": "2:6: illegal byte order mark - one may only open the file",
+		"a \"x\ufeffy\" b":    "1:5: illegal byte order mark - one may only open the file",
+		"a \"x\x7fy\" b":      "1:5: illegal character: the control character U+007F",
+		"a `x\u0085y` b":      "1:5: illegal character: the control character U+0085",
+		"a // \x01\nb":        "1:6: illegal character: the control character U+0001",
+		"a \x00 b":            "1:3: illegal character NUL",
+		"a \x0c b":            "1:3: illegal character: the control character U+000C",
+		"a \"\uffff\" b":      "1:4: illegal character: the noncharacter U+FFFF",
+	} {
+		l := New("", src)
+		toks := l.Tokenize()
+		var got []string
+		for _, d := range l.Diagnostics() {
+			got = append(got, d.Error())
+		}
+		if len(got) != 1 || got[0] != want {
+			t.Errorf("%q: diagnostics %q, want [%s]", src, got, want)
+		}
+		if last := toks[len(toks)-2]; last.Kind != Ident || last.Text != "b" {
+			t.Errorf("%q: lexing stopped early: %v", src, toks)
+		}
+	}
+	l := New("", "a\tb\r\nc\rd\n")
+	l.Tokenize()
+	if d := l.Diagnostics(); len(d) != 0 {
+		t.Errorf("tab and line ends: diagnostics %v", d)
+	}
+}
+
 // lexed renders the tokens of src with their lines, columns and docs, then its
 // comments; a line end inside a token reads as "\n".
 func lexed(src string) string {
@@ -589,5 +666,27 @@ func TestPathWord(t *testing.T) {
 	want := []string{"/:/", "PathWord:v1.0", "/:/", "PathWord:2fa", "/:/", "{:{", "Ident:id", "}:}", "/:/", "PathWord:raw.bin", "/:/", "type:type", "EOF:"}
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("tokens = %v, want %v", got, want)
+	}
+}
+
+// A `//` right after route text is two slashes, an empty segment the parser
+// reports; set off by a space it starts a comment.
+func TestDoubleSlashInARouteIsNoComment(t *testing.T) {
+	for src, want := range map[string]string{
+		"/users//{id}":   "/ PathWord / / { Ident } EOF",
+		"/a/{b}//c":      "/ PathWord / { Ident } / / PathWord EOF",
+		"/users///x":     "/ PathWord / / / PathWord EOF",
+		"/users // c\nx": "/ PathWord Ident EOF",
+		"x// c\ny":       "Ident Ident EOF",
+		"//{id}":         "EOF",
+	} {
+		l := New("", src)
+		var got []string
+		for _, tok := range l.Tokenize() {
+			got = append(got, tok.Kind.String())
+		}
+		if strings.Join(got, " ") != want {
+			t.Errorf("%q: tokens = %v, want %s", src, got, want)
+		}
 	}
 }

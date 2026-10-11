@@ -59,12 +59,17 @@ func PathString(p *ast.Path) string {
 	return sb.String()
 }
 
-// Shape replaces every variable segment of a route with `{}`, so routes that
-// differ only in variable names compare equal.
+// Shape replaces the name of every variable segment of a route, `{}` for
+// `{name}` and `{...}` for `{name...}`, so routes that differ only in variable
+// names compare equal; `{$}` stays.
 func Shape(route string) string {
 	segs := Segments(route)
 	for i, seg := range segs {
-		if isVarSegment(seg) {
+		switch {
+		case seg == "{$}":
+		case isVarSegment(seg) && strings.HasSuffix(seg, "...}"):
+			segs[i] = "{...}"
+		case isVarSegment(seg):
 			segs[i] = "{}"
 		}
 	}
@@ -156,31 +161,80 @@ func OutputSegment(svcName, group, fileCase string) string {
 	return idents.FileName(svcName, fileCase)
 }
 
-// PatternsConflict reports whether two same-verb mux patterns overlap with
-// neither more specific, which net/http rejects. A `{name}` wildcard spans one
-// segment and a literal is more specific than a wildcard.
+// relation is how two routes, or two of their segments, compare as
+// net/http's ServeMux ranks them.
+type relation uint8
+
+const (
+	equivalent   relation = iota // both match the same paths
+	moreGeneral                  // the first matches every path the second does, and more
+	moreSpecific                 // the second matches every path the first does, and more
+	disjoint                     // no path matches both
+	overlaps                     // some path matches both, and neither is more specific
+)
+
+// combine returns the relation of two routes whose parts relate as r and s.
+func combine(r, s relation) relation {
+	switch {
+	case r == equivalent:
+		return s
+	case r == disjoint || s == disjoint:
+		return disjoint
+	case r == overlaps || s == overlaps:
+		return overlaps
+	case s == equivalent || s == r:
+		return r
+	}
+	return overlaps // one side more general, the other more specific
+}
+
+// compareSegments relates two segments of routes as ServeMux does: a
+// `{name...}` matches the rest of a path and is more general than any other
+// segment, `{name}` one segment, a literal only itself, and `{$}` only the
+// end of a path after its `/`.
+func compareSegments(a, b string) relation {
+	aMulti, bMulti := EndsRoute(a) && a != "{$}", EndsRoute(b) && b != "{$}"
+	aWild, bWild := isVarSegment(a) && !EndsRoute(a), isVarSegment(b) && !EndsRoute(b)
+	switch {
+	case aMulti && bMulti:
+		return equivalent
+	case aMulti:
+		return moreGeneral
+	case bMulti:
+		return moreSpecific
+	case aWild && bWild:
+		return equivalent
+	case aWild:
+		if b == "{$}" {
+			return disjoint
+		}
+		return moreGeneral
+	case bWild:
+		if a == "{$}" {
+			return disjoint
+		}
+		return moreSpecific
+	case a == b:
+		return equivalent
+	}
+	return disjoint
+}
+
+// PatternsConflict reports whether two same-verb mux patterns with as many
+// segments match a common path with neither more specific, which net/http
+// rejects. Routes of different lengths are never reported.
 func PatternsConflict(a, b string) bool {
 	as, bs := Segments(a), Segments(b)
 	if len(as) != len(bs) {
 		return false
 	}
-	aMoreSpecific, bMoreSpecific := false, false
+	rel := equivalent
 	for i := range as {
-		aWild, bWild := isVarSegment(as[i]), isVarSegment(bs[i])
-		switch {
-		case !aWild && !bWild:
-			if as[i] != bs[i] {
-				return false // disjoint at this literal segment
-			}
-		case !aWild && bWild:
-			aMoreSpecific = true
-		case aWild && !bWild:
-			bMoreSpecific = true
-			// both wildcard → tie, no winner at this segment
+		if rel = combine(rel, compareSegments(as[i], bs[i])); rel == disjoint {
+			return false
 		}
 	}
-	// No disjoint segment: a conflict unless exactly one side is more specific.
-	return aMoreSpecific == bMoreSpecific
+	return rel == equivalent || rel == overlaps
 }
 
 // Segments returns the non-empty segments of a route, prefix or path.
