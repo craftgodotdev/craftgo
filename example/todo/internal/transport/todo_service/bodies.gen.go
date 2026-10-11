@@ -3,22 +3,20 @@
 package todos
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
-
 	types "github.com/craftgodotdev/craftgo/example/todo/internal/types/todos"
 )
 
 // createTodoReqWire is the wire form of types.CreateTodoReq: each member is nil while absent or null.
 type createTodoReqWire struct {
-	Title    *string                             `json:"title"`
-	Notes    *string                             `json:"notes"`
-	Status   *types.TodoStatus                   `json:"status"`
-	Priority server.Nullable[types.TodoPriority] `json:"priority"`
-	Tags     []string                            `json:"tags"`
+	Title    *string             `json:"title"`
+	Notes    *string             `json:"notes"`
+	Status   *types.TodoStatus   `json:"status"`
+	Priority *types.TodoPriority `json:"priority"`
+	Tags     []string            `json:"tags"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *createTodoReqWire) to(dst *types.CreateTodoReq) string {
 	if w.Title == nil {
 		return "title"
@@ -29,9 +27,9 @@ func (w *createTodoReqWire) to(dst *types.CreateTodoReq) string {
 		return "status"
 	}
 	dst.Status = *w.Status
-	if _v := w.Priority.Value(); _v != nil {
-		dst.Priority = _v
-	} else if !w.Priority.Present() {
+	if w.Priority != nil {
+		dst.Priority = w.Priority
+	} else {
 		_d := types.TodoPriorityMedium
 		dst.Priority = &_d
 	}

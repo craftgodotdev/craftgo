@@ -12,8 +12,8 @@ type xOwnerWire struct {
 	Email *types.XEmail `json:"email"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *xOwnerWire) to(dst *types.XOwner) string {
 	if w.ID == nil {
 		return "id"

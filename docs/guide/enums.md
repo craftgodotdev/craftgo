@@ -131,16 +131,16 @@ type Task {
 }
 ```
 
-The handler pre-fills the field with the matching Go constant:
+A body that leaves `status` out or sends it as `null` gets the matching Go constant:
 
 ```go
-{
-	__d := types.StatusPending
-	req.Status = &__d
+} else {
+	_d := types.StatusPending
+	dst.Status = &_d
 }
 ```
 
-Without the `?` the handler assigns `req.Status = types.StatusPending` directly, and the analyzer warns (`decorator/default-needs-optional`) until the field carries it. You cannot use the wire form (`@default("Pending")`) - the canonical form is the identifier so the binding stays stable even if you change the wire payload later.
+Without the `?` the field takes `types.StatusPending` directly, and the analyzer warns (`decorator/default-needs-optional`) until the field carries it. You cannot use the wire form (`@default("Pending")`) - the canonical form is the identifier so the binding stays stable even if you change the wire payload later.
 
 ## Enums in arrays
 

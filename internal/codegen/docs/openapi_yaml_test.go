@@ -115,3 +115,31 @@ func TestControlCharactersAreEscaped(t *testing.T) {
 		t.Errorf("description reads back as %q, want %q", back.Info.Description, text)
 	}
 }
+
+// A document's keys come out in byte order on every run, names whose digits a numeric order would
+// rank otherwise included.
+func TestKeysKeepByteOrder(t *testing.T) {
+	src := `package design
+type A { a int }
+type Ok { ok bool }
+service One {
+    post Op7 /a { request A response Ok }
+    post Op12 /b { request A response Ok }
+    post Op71 /c { request A response Ok }
+}`
+	first := generateOpenAPIToString(t, src)
+	want := []string{"Op12ReqBody:", "Op12RespBody:", "Op71ReqBody:", "Op71RespBody:", "Op7ReqBody:", "Op7RespBody:"}
+	at := -1
+	for _, k := range want {
+		i := strings.Index(first, "    "+k)
+		if i < at {
+			t.Fatalf("%s out of byte order:\n%s", k, first)
+		}
+		at = i
+	}
+	for range 20 {
+		if got := generateOpenAPIToString(t, src); got != first {
+			t.Fatalf("a second run differs:\n%s\nfirst:\n%s", got, first)
+		}
+	}
+}

@@ -210,7 +210,7 @@ func TestWriteErrorJoinTakesOneErrorsHeaders(t *testing.T) {
 	WriteError(rec, httptest.NewRequest(http.MethodGet, "/x", nil), err)
 	h := rec.Header()
 	if rec.Code != http.StatusNotFound || h.Values("X-Error")[0] != "missing" || len(h.Values("X-Error")) != 1 ||
-		len(h.Values("Set-Cookie")) != 1 || !strings.HasPrefix(h.Get("Set-Cookie"), "err=missing;") ||
+		len(h.Values("Set-Cookie")) != 1 || h.Get("Set-Cookie") != "err=missing" ||
 		!strings.Contains(rec.Body.String(), `"code":"missing"`) {
 		t.Errorf("got %d %v %q, want the 404's header, cookie and code alone", rec.Code, h, rec.Body.String())
 	}

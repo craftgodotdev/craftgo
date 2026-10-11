@@ -3,34 +3,32 @@
 package tasks
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
-
 	"github.com/craftgodotdev/craftgo/example/taskflow/internal/types/shared"
 	types "github.com/craftgodotdev/craftgo/example/taskflow/internal/types/tasks"
 )
 
 // createTaskReqWire is the wire form of types.CreateTaskReq: each member is nil while absent or null.
 type createTaskReqWire struct {
-	Title       *string                         `json:"title"`
-	Description *string                         `json:"description"`
-	Priority    server.Nullable[types.Priority] `json:"priority"`
-	Points      *shared.Points                  `json:"points"`
-	AssigneeIds []shared.ID                     `json:"assigneeIds"`
-	Labels      []string                        `json:"labels"`
-	DueAt       *string                         `json:"dueAt"`
+	Title       *string         `json:"title"`
+	Description *string         `json:"description"`
+	Priority    *types.Priority `json:"priority"`
+	Points      *shared.Points  `json:"points"`
+	AssigneeIds []shared.ID     `json:"assigneeIds"`
+	Labels      []string        `json:"labels"`
+	DueAt       *string         `json:"dueAt"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *createTaskReqWire) to(dst *types.CreateTaskReq) string {
 	if w.Title == nil {
 		return "title"
 	}
 	dst.Title = *w.Title
 	dst.Description = w.Description
-	if _v := w.Priority.Value(); _v != nil {
-		dst.Priority = _v
-	} else if !w.Priority.Present() {
+	if w.Priority != nil {
+		dst.Priority = w.Priority
+	} else {
 		_d := types.PriorityMedium
 		dst.Priority = &_d
 	}
@@ -46,8 +44,8 @@ type bulkCreateReqWire struct {
 	Tasks []createTaskItemWire `json:"tasks"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *bulkCreateReqWire) to(dst *types.BulkCreateReq) string {
 	if w.Tasks == nil {
 		return "tasks"
@@ -63,20 +61,20 @@ func (w *bulkCreateReqWire) to(dst *types.BulkCreateReq) string {
 
 // createTaskItemWire is the wire form of types.CreateTaskItem: each member is nil while absent or null.
 type createTaskItemWire struct {
-	Title    *string                         `json:"title"`
-	Priority server.Nullable[types.Priority] `json:"priority"`
+	Title    *string         `json:"title"`
+	Priority *types.Priority `json:"priority"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *createTaskItemWire) to(dst *types.CreateTaskItem) string {
 	if w.Title == nil {
 		return "title"
 	}
 	dst.Title = *w.Title
-	if _v := w.Priority.Value(); _v != nil {
-		dst.Priority = _v
-	} else if !w.Priority.Present() {
+	if w.Priority != nil {
+		dst.Priority = w.Priority
+	} else {
 		_d := types.PriorityMedium
 		dst.Priority = &_d
 	}
@@ -88,8 +86,8 @@ type setTaskStatusReqWire struct {
 	Status *types.TaskStatus `json:"status"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *setTaskStatusReqWire) to(dst *types.SetTaskStatusReq) string {
 	if w.Status == nil {
 		return "status"
@@ -103,8 +101,8 @@ type logTimeReqWire struct {
 	Minutes *int `json:"minutes"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *logTimeReqWire) to(dst *types.LogTimeReq) string {
 	if w.Minutes == nil {
 		return "minutes"
@@ -118,8 +116,8 @@ type addCommentReqWire struct {
 	Body *string `json:"body"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *addCommentReqWire) to(dst *types.AddCommentReq) string {
 	if w.Body == nil {
 		return "body"

@@ -42,9 +42,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@nullable`, answers 400 `<json path>: required` before `Validate` runs;
   `""`, `0` and `false` are values. The body decodes through the installed
   codec into an unexported struct beside the handler (`bodies.gen.go`), which
-  is copied into the request type, a nested `@default` filling an absent
-  member. `server.SetRequirePresence(false)`, or `server.requirePresence:
-  false` in `config.yaml`, switches the check off.
+  is copied into the request type, a `@default` filling a member left out or
+  sent as `null` at any depth. The check has no switch, and `@nullable`
+  beside `@default` is refused.
 
 - **A JSON route answers 415** `{"message":"unsupported media type"}` to a
   body whose `Content-Type` is not `application/json` or an
@@ -76,9 +76,13 @@ breaking change to the DSL or the generated layout bumps the major version.
   stub `codes.Unimplemented`; a client-streaming stub no longer ends in a
   cardinality violation. Stubs already written keep what they hold.
 
-- **Cookies a `@cookie` field sets carry safe attributes**: `Path=/`,
-  `HttpOnly`, `Secure` and `SameSite=Lax`, on responses and errors alike.
-  `server.cookies` in `config.yaml` sets others.
+- **A cookie a `@cookie` field sets carries the attributes its `@cookie`
+  declares**, on responses and errors alike: `path`, `domain`, `maxAge`,
+  `httpOnly`, `secure` and `sameSite` name them after the cookie's name, as
+  in `@cookie("sid", maxAge: 24h, sameSite: strict)`, and each one left out
+  is safe: `Path=/`, `HttpOnly`, `Secure` and `SameSite=Lax`. A cookie with
+  none of them, which a browser kept for the login's directory alone, gets
+  them too. The OpenAPI document names each cookie with its attributes.
 
 - **A route's limits wrap its own middlewares**: `@maxBodySize` and
   `@timeout`, or the defaults standing in for them, hold a middleware that
@@ -133,7 +137,8 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 - **Decode errors read the same on every Go toolchain**, the engine
   `encoding/json` runs on from Go 1.27 included, with no array index or map
-  key in a path. A value its type decodes itself fails under its JSON path:
+  key in a path, inside a `@nullable` member too, where a mixin's member keeps
+  its bare name. A value its type decodes itself fails under its JSON path:
   `at: not a valid RFC 3339 datetime`, `data: not a valid base64`, or the
   type's own text. An empty body is `body: required`.
 
@@ -254,12 +259,19 @@ breaking change to the DSL or the generated layout bumps the major version.
   `InvalidArgument`. The generated server layer hands the logic the wrapped
   stream.
 
-- **Required members:** `server.SetRequirePresence`, `RequirePresence`,
-  `MissingMember` and `Nullable[T]`, which tells an absent member from a
+- **Required members:** `server.MissingMember` and `Nullable[T]`, which tells an absent member from a
   `null` one.
 
-- **Cookies:** `server.SetCookieOptions`, `DefaultCookieOptions`,
-  `SetCookie` and `ResponseCookieSetter`.
+- **`cookie`**, a built-in for a `@cookie` field of a response or an error
+  body, is an `*http.Cookie` the logic sets per response: a lifetime the
+  request picks, or `MaxAge: -1` to delete the cookie at logout.
+  `New<Type><Field>Cookie(value)` returns it with the attributes the design
+  declares, and it goes out under the declared name; a nil one sets none. A
+  `cookie` without `@cookie`, in a request, an array, a map or a generic
+  argument is `binding/cookie-position`.
+
+- **`server.ResponseCookieSetter`**, which a generated error with a `@cookie`
+  field implements; `WriteError` sets its cookies as it returns them.
 
 - **`Server.RegisterDocs`** returns the error `ServeDocs` panics with: a path
   without a leading `/` or one ServeMux refuses, the spec path itself, a
@@ -337,7 +349,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@middlewares`, refuses a rename the declaration cannot hold, counts a byte
   order mark in positions, and answers undecodable params `InvalidParams`.
 - **The OpenAPI document** quotes a string a YAML 1.1 reader would take for
-  another type and escapes control characters.
+  another type and escapes control characters, and is the same on every run:
+  its keys come out in byte order, where names such as `Op7`, `Op12` and
+  `Op71` changed places from one run to the next.
 - **The sweep** follows linked output directories that stay inside the
   project, keeps on a case-insensitive file system what it wrote under
   another case, and removes the library of an event target turned off or

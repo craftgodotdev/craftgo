@@ -15,8 +15,8 @@ type userWire struct {
 	Name  *string       `json:"name"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *userWire) to(dst *types.User) string {
 	if _p := w.auditWire.to(&dst.Audit); _p != "" {
 		return _p
@@ -43,8 +43,8 @@ type auditWire struct {
 	CreatedBy *string `json:"createdBy"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *auditWire) to(dst *shared.Audit) string {
 	if w.CreatedAt == nil {
 		return "createdAt"
@@ -67,8 +67,8 @@ type userRefWire struct {
 	Email *shared.Email `json:"email"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *userRefWire) to(dst *types.UserRef) string {
 	if w.Email == nil {
 		return "email"

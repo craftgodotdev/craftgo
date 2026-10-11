@@ -24,17 +24,18 @@ func wirePath(t reflect.Type, te *json.UnmarshalTypeError) string {
 	for st := (pathState{obj: root, cur: root}); ; {
 		r := p.reads[st]
 		if r.key {
-			names = append(names, p.segs[st.pos])
-		}
-		if st.pos == len(p.segs)-1 {
-			return strings.Join(names, ".")
+			names = append(names, strings.Join(p.segs[st.pos:r.end], "."))
+			if r.end == len(p.segs) {
+				return strings.Join(names, ".")
+			}
 		}
 		st = r.next
 	}
 }
 
 // pathReader reads encoding/json's error path: at each object, the Go names of the embedded
-// structs it went through, then the field's JSON key.
+// structs it went through, then the field's JSON key, which may span segments, as a key may hold
+// a dot.
 type pathReader struct {
 	segs  []string
 	last  string // the Name of the struct type of the innermost object, UnmarshalTypeError.Struct
@@ -49,9 +50,10 @@ type pathState struct {
 }
 
 // pathRead is how the segments from a pathState on read: ok when they all do, last when the
-// innermost object's type is the error's struct, key when the segment is a JSON key.
+// innermost object's type is the error's struct, key when the segments up to end are a JSON key.
 type pathRead struct {
 	ok, last, key bool
+	end           int
 	next          pathState
 }
 
@@ -69,12 +71,20 @@ func (p *pathReader) read(st pathState) pathRead {
 			best = pathRead{ok: true, last: r.last, next: next}
 		}
 	}
-	if f, ok := jsonField(st.cur, seg); ok && !best.last {
-		r := pathRead{key: true}
-		if final {
+	for end := st.pos + 1; end <= len(p.segs) && !best.last; end++ {
+		key := strings.Join(p.segs[st.pos:end], ".")
+		f, ok := jsonField(st.cur, key)
+		if !ok {
+			if !keyContinues(st.cur, key) {
+				break
+			}
+			continue
+		}
+		r := pathRead{key: true, end: end}
+		if end == len(p.segs) {
 			r.ok, r.last = true, st.obj.Name() == p.last
 		} else if s := structOf(f); s != nil {
-			r.next = pathState{obj: s, cur: s, pos: st.pos + 1}
+			r.next = pathState{obj: s, cur: s, pos: end}
 			nr := p.read(r.next)
 			r.ok, r.last = nr.ok, nr.last
 		}
@@ -135,6 +145,24 @@ func jsonField(t reflect.Type, name string) (reflect.Type, bool) {
 		}
 	}
 	return nil, false
+}
+
+// keyContinues reports whether a JSON key of a field of t that encoding/json decodes into goes on
+// past head and a dot.
+func keyContinues(t reflect.Type, head string) bool {
+	for sf := range t.Fields() {
+		if isFlattened(sf) || !decodesInto(sf) {
+			continue
+		}
+		name := jsonTagName(sf)
+		if name == "" {
+			name = sf.Name
+		}
+		if strings.HasPrefix(name, head+".") {
+			return true
+		}
+	}
+	return false
 }
 
 // embeddedStruct returns the type of t's flattened embedded struct called name.

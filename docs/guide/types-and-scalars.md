@@ -44,6 +44,7 @@ Every type's struct gets a `Validate()` method, so a field whose Go name is `Val
 | `bool`     | `bool`     |                                      |
 | `datetime` | `time.Time` | RFC 3339 string in JSON; body fields only |
 | `file`     | `*multipart.FileHeader` | a multipart part: a request's top-level field only, never in a response, an error body or an event payload |
+| `cookie`   | `*http.Cookie` | a cookie the logic sets in full: a `@cookie` field of a response or an error body only (see [Cookie attributes](/guide/decorators#field-bindings)) |
 | `any`      | `any`      | an opaque JSON value; see the table below |
 
 A `datetime` is decoded by Go's `time.Time`, which reads RFC 3339 more loosely than `@format(datetime)` checks a string: it also takes a one-digit hour, a `,` before the fraction and an offset minute of 60 (`+01:60` reads as `+02:00`), and it refuses a lower-case `t` or `z` and a leap second (`23:59:60`). An offset of a day or more (`+24:00`), which no RFC 3339 string spells and the response could not encode, fails `Validate()` as `<field>: not a valid RFC 3339 datetime`, the message a value the decoder refuses gets too. A `string @format(datetime)` field holds exactly what RFC 3339 allows.

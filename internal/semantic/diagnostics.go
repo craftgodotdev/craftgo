@@ -124,6 +124,10 @@ const (
 	// CodeFilePosition fires when a `file` sits below a request's top level, or in a response, an
 	// error body or an event payload.
 	CodeFilePosition = "binding/file-position"
+	// CodeCookiePosition fires when a `cookie` is not the type of a `@cookie` field a response or
+	// an error body sets: in a request, without `@cookie`, or in an array, a map or a generic
+	// argument.
+	CodeCookiePosition = "binding/cookie-position"
 	// CodeGroupPackageStraddle fires when services of different DSL packages share an output directory.
 	CodeGroupPackageStraddle = "group/package-straddle"
 	// CodeGroupMethodCollision fires when services sharing an output directory declare one method name.

@@ -22,18 +22,13 @@ func ArrayBounds(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		var req types.Arr_BoundsBasic
-		if server.RequirePresence() {
-			var _b arrBoundsBasicWire
-			if err := server.JSON().Decode(r.Body, &_b); err != nil {
-				server.WriteValidationError(w, r, err)
-				return
-			}
-			if _m := _b.to(&req); _m != "" {
-				server.WriteValidationError(w, r, server.MissingMember(_m))
-				return
-			}
-		} else if err := server.JSON().Decode(r.Body, &req); err != nil {
+		var _b arrBoundsBasicWire
+		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)
+			return
+		}
+		if _m := _b.to(&req); _m != "" {
+			server.WriteValidationError(w, r, server.MissingMember(_m))
 			return
 		}
 		if err := req.Validate(); err != nil {

@@ -26,14 +26,6 @@ server:
   handlerTimeout: 0s          # global default handler deadline; 0 = no cap
   maxBodySize: 10485760       # global default body cap (bytes), 10 MiB when left out; 0 = no cap
   strictJSON: true            # reject unknown fields and trailing data in JSON bodies; false ignores both
-  requirePresence: true       # 400 for a JSON body missing a member declared without `?`, or sending it
-                              # null without @nullable; false decodes the body as it comes
-  cookies:                    # attributes of the cookies @cookie fields set, on a response or an error
-    path: /                   # "" lets the browser scope a cookie to the request's directory
-    domain: ""                # "example.com" shares cookies with its subdomains
-    httpOnly: true            # hidden from scripts
-    secure: true              # sent over HTTPS only; browsers treat http://localhost as secure
-    sameSite: lax             # lax | strict | none (needs secure) | "" to send none
   compression:
     enabled: false            # gzip/deflate negotiated via Accept-Encoding;
                               # leave false when running behind a compressing

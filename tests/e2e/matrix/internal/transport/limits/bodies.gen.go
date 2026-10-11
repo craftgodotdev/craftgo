@@ -11,8 +11,8 @@ type hookWire struct {
 	Event *string `json:"event"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *hookWire) to(dst *types.Hook) string {
 	if w.Event == nil {
 		return "event"

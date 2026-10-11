@@ -28,6 +28,7 @@ const (
 	CatStruct                  // a `type Name { ... }` struct
 	CatArray                   // an array of any of the above
 	CatMap                     // a map
+	CatCookie                  // the `cookie` builtin (Go *http.Cookie)
 )
 
 // ResolvedField is what one field means in the DSL, independent of any
@@ -67,10 +68,16 @@ type ResolvedField struct {
 	RuntimeEnforced bool
 }
 
-// GoPointer reports whether the field's Go value is a pointer: a `file`, or
-// an optional or @nullable value whose type holds no nil itself.
+// GoPointer reports whether the field's Go value is a pointer: a `file`, a
+// `cookie`, or an optional or @nullable value whose type holds no nil itself.
 func (rf ResolvedField) GoPointer() bool {
-	return rf.Category == CatFile || (rf.NeedsNilGuard && !rf.IsNilable)
+	return rf.SpellsPointer() || (rf.NeedsNilGuard && !rf.IsNilable)
+}
+
+// SpellsPointer reports whether the field's Go type spells its pointer
+// itself: a `file`, a *multipart.FileHeader, or a `cookie`, an *http.Cookie.
+func (rf ResolvedField) SpellsPointer() bool {
+	return rf.Category == CatFile || rf.Category == CatCookie
 }
 
 // Prims returns the category the field offers type-bound decorators: that
@@ -86,6 +93,8 @@ func (rf ResolvedField) Prims() Prims {
 		return PrimRawBytes
 	case CatFile:
 		return PrimFile
+	case CatCookie:
+		return PrimCookie
 	case CatStruct:
 		return PrimStruct
 	case CatAny:
@@ -179,6 +188,9 @@ func resolveTypeRef(t *ast.TypeRef, raw bool, pkg *Package, proj *Project) Resol
 			return rf
 		case prims.File:
 			rf.Category, rf.ResolvedPrim, rf.IsNilable = CatFile, name, true
+			return rf
+		case prims.Cookie:
+			rf.Category, rf.ResolvedPrim, rf.IsNilable = CatCookie, name, true
 			return rf
 		case prims.String, prims.Bool, prims.Int, prims.Uint, prims.Float, prims.DateTime:
 			rf.Category, rf.ResolvedPrim = CatPrimitive, name

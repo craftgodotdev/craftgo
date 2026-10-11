@@ -3,8 +3,6 @@
 package xrefs
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
-
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/paytypes"
 	server2 "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/server"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
@@ -16,8 +14,8 @@ type xBodyPromoteReqWire struct {
 	xPromoteBodyWire
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *xBodyPromoteReqWire) to(dst *types.XBodyPromoteReq) string {
 	if _p := w.xPromoteBodyWire.to(&dst.XPromoteBody); _p != "" {
 		return _p
@@ -27,27 +25,27 @@ func (w *xBodyPromoteReqWire) to(dst *types.XBodyPromoteReq) string {
 
 // xPromoteBodyWire is the wire form of xshared.XPromoteBody: each member is nil while absent or null.
 type xPromoteBodyWire struct {
-	Label *string                         `json:"label"`
-	Size  server.Nullable[xshared.XSize]  `json:"size"`
-	Tone  server.Nullable[xshared.XColor] `json:"tone"`
+	Label *string         `json:"label"`
+	Size  *xshared.XSize  `json:"size"`
+	Tone  *xshared.XColor `json:"tone"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *xPromoteBodyWire) to(dst *xshared.XPromoteBody) string {
 	if w.Label == nil {
 		return "label"
 	}
 	dst.Label = *w.Label
-	if _v := w.Size.Value(); _v != nil {
-		dst.Size = _v
-	} else if !w.Size.Present() {
+	if w.Size != nil {
+		dst.Size = w.Size
+	} else {
 		_d := xshared.XSize(20)
 		dst.Size = &_d
 	}
-	if _v := w.Tone.Value(); _v != nil {
-		dst.Tone = _v
-	} else if !w.Tone.Present() {
+	if w.Tone != nil {
+		dst.Tone = w.Tone
+	} else {
 		_d := xshared.XColorGreen
 		dst.Tone = &_d
 	}
@@ -59,8 +57,8 @@ type xBagPromoteReqWire struct {
 	xWrapInBagXOwnerWire
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *xBagPromoteReqWire) to(dst *types.XBagPromoteReq) string {
 	if _p := w.xWrapInBagXOwnerWire.to(&dst.XWrapInBag); _p != "" {
 		return _p
@@ -74,8 +72,8 @@ type xWrapInBagXOwnerWire struct {
 	WrapNote *string `json:"wrapNote"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *xWrapInBagXOwnerWire) to(dst *xshared.XWrapInBag[xshared.XOwner]) string {
 	if _p := w.xBagXOwnerWire.to(&dst.XBag); _p != "" {
 		return _p
@@ -90,8 +88,8 @@ type xBagXOwnerWire struct {
 	Cap   *int         `json:"cap"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *xBagXOwnerWire) to(dst *xshared.XBag[xshared.XOwner]) string {
 	if w.Items == nil {
 		return "items"
@@ -115,8 +113,8 @@ type xOwnerWire struct {
 	Email *xshared.XEmail `json:"email"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *xOwnerWire) to(dst *xshared.XOwner) string {
 	if w.ID == nil {
 		return "id"
@@ -129,13 +127,30 @@ func (w *xOwnerWire) to(dst *xshared.XOwner) string {
 	return ""
 }
 
+// xEnumDefaultWire is the wire form of types.XEnumDefault: each member is nil while absent or null.
+type xEnumDefaultWire struct {
+	Color *xshared.XColor `json:"color"`
+}
+
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
+func (w *xEnumDefaultWire) to(dst *types.XEnumDefault) string {
+	if w.Color != nil {
+		dst.Color = w.Color
+	} else {
+		_d := xshared.XColorRed
+		dst.Color = &_d
+	}
+	return ""
+}
+
 // xHolderWire is the wire form of xshared.XHolder: each member is nil while absent or null.
 type xHolderWire struct {
 	xHolderSubWire
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *xHolderWire) to(dst *xshared.XHolder) string {
 	if _p := w.xHolderSubWire.to(&dst.XHolderSub); _p != "" {
 		return _p
@@ -148,8 +163,8 @@ type xHolderSubWire struct {
 	Bod *string `json:"bod"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *xHolderSubWire) to(dst *xshared.XHolderSub) string {
 	if w.Bod == nil {
 		return "bod"
@@ -164,8 +179,8 @@ type xWrapInBagXLocalItemWire struct {
 	WrapNote *string `json:"wrapNote"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *xWrapInBagXLocalItemWire) to(dst *xshared.XWrapInBag[types.XLocalItem]) string {
 	if _p := w.xBagXLocalItemWire.to(&dst.XBag); _p != "" {
 		return _p
@@ -180,8 +195,8 @@ type xBagXLocalItemWire struct {
 	Cap   *int             `json:"cap"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *xBagXLocalItemWire) to(dst *xshared.XBag[types.XLocalItem]) string {
 	if w.Items == nil {
 		return "items"
@@ -204,8 +219,8 @@ type xLocalItemWire struct {
 	ID *string `json:"id"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *xLocalItemWire) to(dst *types.XLocalItem) string {
 	if w.ID == nil {
 		return "id"
@@ -220,8 +235,8 @@ type xWrapInBagXPayItemWire struct {
 	WrapNote *string `json:"wrapNote"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *xWrapInBagXPayItemWire) to(dst *xshared.XWrapInBag[paytypes.XPayItem]) string {
 	if _p := w.xBagXPayItemWire.to(&dst.XBag); _p != "" {
 		return _p
@@ -236,8 +251,8 @@ type xBagXPayItemWire struct {
 	Cap   *int           `json:"cap"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *xBagXPayItemWire) to(dst *xshared.XBag[paytypes.XPayItem]) string {
 	if w.Items == nil {
 		return "items"
@@ -261,8 +276,8 @@ type xPayItemWire struct {
 	Amount *int64  `json:"amount"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *xPayItemWire) to(dst *paytypes.XPayItem) string {
 	if w.PayID == nil {
 		return "payId"
@@ -281,8 +296,8 @@ type credentialsWire struct {
 	User    *string            `json:"user"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *credentialsWire) to(dst *server2.Credentials) string {
 	if w.User == nil {
 		return "user"

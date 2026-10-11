@@ -134,6 +134,7 @@ func (a *analyzer) runShapePhase(files []*ast.File) {
 	a.checkCombinationRules(files)
 	a.checkTypeParamWireBindings()
 	a.checkFilePosition()
+	a.checkCookiePosition()
 	a.checkEvents()
 }
 
@@ -215,6 +216,7 @@ func (a *analyzer) checkFieldCombinations(parent string, members []ast.TypeMembe
 		a.checkSingleBinding(parent, f)
 		a.checkBindingFieldType(parent, f, typeParams)
 		a.checkWireNameTag(parent, f)
+		a.checkCookieAttrs(parent, f)
 		a.checkBoundOverlap(parent, f)
 	}
 }

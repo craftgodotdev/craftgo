@@ -3,8 +3,6 @@
 package orders
 
 import (
-	"github.com/craftgodotdev/craftgo/pkg/server"
-
 	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/catalog"
 	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
 	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
@@ -12,15 +10,15 @@ import (
 
 // createOrderReqWire is the wire form of types.CreateOrderReq: each member is nil while absent or null.
 type createOrderReqWire struct {
-	CustomerID *shared.NonEmptyID                   `json:"customerId"`
-	Items      []lineItemWire                       `json:"items"`
-	Notes      *string                              `json:"notes"`
-	Currency   server.Nullable[shared.CurrencyCode] `json:"currency"`
-	Tags       []string                             `json:"tags"`
+	CustomerID *shared.NonEmptyID   `json:"customerId"`
+	Items      []lineItemWire       `json:"items"`
+	Notes      *string              `json:"notes"`
+	Currency   *shared.CurrencyCode `json:"currency"`
+	Tags       []string             `json:"tags"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *createOrderReqWire) to(dst *types.CreateOrderReq) string {
 	if w.CustomerID == nil {
 		return "customerId"
@@ -36,9 +34,9 @@ func (w *createOrderReqWire) to(dst *types.CreateOrderReq) string {
 		}
 	}
 	dst.Notes = w.Notes
-	if _v := w.Currency.Value(); _v != nil {
-		dst.Currency = _v
-	} else if !w.Currency.Present() {
+	if w.Currency != nil {
+		dst.Currency = w.Currency
+	} else {
 		_d := shared.CurrencyCode("USD")
 		dst.Currency = &_d
 	}
@@ -48,16 +46,16 @@ func (w *createOrderReqWire) to(dst *types.CreateOrderReq) string {
 
 // lineItemWire is the wire form of types.LineItem: each member is nil while absent or null.
 type lineItemWire struct {
-	Product   *productRefWire         `json:"product"`
-	Sku       *shared.SKU             `json:"sku"`
-	Quantity  *int                    `json:"quantity"`
-	UnitCents *shared.Cents           `json:"unitCents"`
-	BonusBp   *shared.PercentBP       `json:"bonusBP"`
-	Note      server.Nullable[string] `json:"note"`
+	Product   *productRefWire   `json:"product"`
+	Sku       *shared.SKU       `json:"sku"`
+	Quantity  *int              `json:"quantity"`
+	UnitCents *shared.Cents     `json:"unitCents"`
+	BonusBp   *shared.PercentBP `json:"bonusBP"`
+	Note      *string           `json:"note"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *lineItemWire) to(dst *types.LineItem) string {
 	if w.Product == nil {
 		return "product"
@@ -78,9 +76,9 @@ func (w *lineItemWire) to(dst *types.LineItem) string {
 	}
 	dst.UnitCents = *w.UnitCents
 	dst.BonusBp = w.BonusBp
-	if _v := w.Note.Value(); _v != nil {
-		dst.Note = _v
-	} else if !w.Note.Present() {
+	if w.Note != nil {
+		dst.Note = w.Note
+	} else {
 		_d := ""
 		dst.Note = &_d
 	}
@@ -93,8 +91,8 @@ type productRefWire struct {
 	Name *string            `json:"name"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *productRefWire) to(dst *catalog.ProductRef) string {
 	if w.ID == nil {
 		return "id"
@@ -107,14 +105,77 @@ func (w *productRefWire) to(dst *catalog.ProductRef) string {
 	return ""
 }
 
+// defaultsShowcaseReqWire is the wire form of types.DefaultsShowcaseReq: each member is nil while absent or null.
+type defaultsShowcaseReqWire struct {
+	Str            *string               `json:"str"`
+	Num            *int                  `json:"num"`
+	Flag           *bool                 `json:"flag"`
+	Currency       *shared.CurrencyCode  `json:"currency"`
+	Status         *types.OrderStatus    `json:"status"`
+	Tags           []string              `json:"tags"`
+	Preset         []string              `json:"preset"`
+	AllowedMethods []types.PaymentMethod `json:"allowedMethods"`
+}
+
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
+func (w *defaultsShowcaseReqWire) to(dst *types.DefaultsShowcaseReq) string {
+	if w.Str != nil {
+		dst.Str = w.Str
+	} else {
+		_d := "anon"
+		dst.Str = &_d
+	}
+	if w.Num != nil {
+		dst.Num = w.Num
+	} else {
+		_d := 20
+		dst.Num = &_d
+	}
+	if w.Flag != nil {
+		dst.Flag = w.Flag
+	} else {
+		_d := true
+		dst.Flag = &_d
+	}
+	if w.Currency != nil {
+		dst.Currency = w.Currency
+	} else {
+		_d := shared.CurrencyCode("USD")
+		dst.Currency = &_d
+	}
+	if w.Status != nil {
+		dst.Status = w.Status
+	} else {
+		_d := types.OrderStatusPending
+		dst.Status = &_d
+	}
+	if w.Tags != nil {
+		dst.Tags = w.Tags
+	} else {
+		dst.Tags = []string{}
+	}
+	if w.Preset != nil {
+		dst.Preset = w.Preset
+	} else {
+		dst.Preset = []string{"standard", "expedited"}
+	}
+	if w.AllowedMethods != nil {
+		dst.AllowedMethods = w.AllowedMethods
+	} else {
+		dst.AllowedMethods = []types.PaymentMethod{types.PaymentMethodCard, types.PaymentMethodBank}
+	}
+	return ""
+}
+
 // listOrdersReqWire is the wire form of types.ListOrdersReq: each member is nil while absent or null.
 type listOrdersReqWire struct {
 	Cursor *string `json:"cursor"`
 	Limit  *int    `json:"limit"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *listOrdersReqWire) to(dst *types.ListOrdersReq) string {
 	dst.Cursor = w.Cursor
 	if w.Limit == nil {

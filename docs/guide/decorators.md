@@ -197,7 +197,7 @@ can't match the `present-and-non-null` the OpenAPI fragment advertises.
 
 ## Field validators
 
-> **Required-by-default**: every field is required unless its type carries the `?` suffix. There is no `@required` decorator - to mark a field optional, write `name string?`. To allow `null` while keeping the field mandatory, add `@nullable`. To pre-fill an absent value, add `@default(...)` (which also auto-marks the field optional on save).
+> **Required-by-default**: every field is required unless its type carries the `?` suffix. There is no `@required` decorator - to mark a field optional, write `name string?`. To allow `null` while keeping the field mandatory, add `@nullable`. To fill a value left out or sent as `null`, add `@default(...)` (which also auto-marks the field optional on save).
 
 > **Error-body validators are spec-only.** Validators (`@minLength`, `@pattern`, `@range`, ...) on `error` body fields surface in the generated OpenAPI schema constraints but produce **no runtime check** - errors are emitted server-side from your handler, so the framework cannot validate something it just constructed. `validate.go` does generate a `Validate()` on the error's `<Name>Body`, which your handler may call before `New<Name>Err(...)`; nothing else calls it. Treat the constraints on error fields as documentation contracts that consumer SDKs read.
 
@@ -420,7 +420,7 @@ When the request carries a `file`, its body becomes `multipart/form-data` and ev
 
 A binding decorator binds only on a field of the request, response or error type itself, a mixin's fields included. A field of a type that one of them holds as a nested value rides inside the JSON body, where no binding reaches it, so `@path`, `@query`, `@header`, `@cookie` or `@form` on it is `binding/nested`: move the field up, or let a mixin bring it there.
 
-**Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / a `Set-Cookie` instead of the JSON body, the cookie with the server's attributes (`Path=/`, `HttpOnly`, `Secure`, `SameSite=Lax` unless `server.cookies` sets others) - the JSON tag is automatically `json:"-"` (with a `header:` / `cookie:` binding key alongside) so the same field doesn't double up. Non-string values (`int`, `bool`, `float`, scalars and enums of those) are formatted to their wire string via `strconv`, just like the request-side binder parses them; an optional (`T?`) header is written only when non-nil, and a `string[]` header emits one value per element. The explicit-name argument applies here too:
+**Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / a `Set-Cookie` instead of the JSON body, the cookie with the attributes its `@cookie` declares (below) - the JSON tag is automatically `json:"-"` (with a `header:` / `cookie:` binding key alongside) so the same field doesn't double up. Non-string values (`int`, `bool`, `float`, scalars and enums of those) are formatted to their wire string via `strconv`, just like the request-side binder parses them; an optional (`T?`) header is written only when non-nil, and a `string[]` header emits one value per element. The explicit-name argument applies here too:
 
 ```craftgo
 type PaginatedResp {
@@ -435,6 +435,40 @@ error TooManyRequests RateLimitedErr {
     retryAfter int  @header("Retry-After")       // error responses can ship custom headers
 }
 ```
+
+**Cookie attributes.** A cookie the server sets, from a response's or an error's `@cookie` field, carries the attributes its `@cookie` names after the cookie's name; each one left out takes a safe default.
+
+| Attribute | Value | Left out |
+|---|---|---|
+| `path` | a path starting with `/` | `"/"`, every path of the site |
+| `domain` | a host name, a leading `.` allowed | none: the host that set it alone |
+| `maxAge` | a duration of whole seconds (`24h`), or an int of seconds | none: the cookie lasts the browser session |
+| `httpOnly` | `true` or `false` | `true`: scripts cannot read it |
+| `secure` | `true` or `false` | `true`: sent over HTTPS only; browsers treat `http://localhost` as secure |
+| `sameSite` | `lax`, `strict` or `none` (which needs `secure`) | `lax` |
+
+```craftgo
+type Session {
+    token    string  @cookie("sid", maxAge: 24h, sameSite: strict)
+    theme    string  @cookie("theme", httpOnly: false)    // scripts may read it
+    remember cookie? @cookie("remember", maxAge: 720h)    // the logic decides, per request
+}
+```
+
+A field of a value type, as `string`, gives the cookie its value, and its attributes are the design's. A field typed `cookie` is an `*http.Cookie` the logic sets per response. craftgo generates `New<Type><Field>Cookie(value)`, which returns the cookie with the declared attributes; the logic changes what the request decides, as a lifetime the user picked or `MaxAge: -1` to delete the cookie at logout, and returns it:
+
+```go
+func (l *LoginService) Login(req *types.LoginReq) (*types.Session, error) {
+	s := &types.Session{Token: token}
+	if req.RememberDays > 0 {
+		s.Remember = types.NewSessionRememberCookie(token)
+		s.Remember.MaxAge = req.RememberDays * 24 * 60 * 60
+	}
+	return s, nil
+}
+```
+
+The cookie goes out under the name the design gives it, whatever the logic set, and a nil `cookie` sets none. A `cookie` field must carry `@cookie` and sit on a response type or an error body, as a single value: not in a request, which reads a cookie's value alone, nor in an array, a map or a generic argument (`binding/cookie-position`). A request's `@cookie` field reads the value; attributes on it apply only where its type is a response.
 
 ## Service decorators
 
@@ -935,6 +969,7 @@ Some decorator combinations are rejected (or flagged) by the semantic analyzer:
 | Decorator      | Conflicts with                                                                              | Why                                                       |
 | -------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | `@sensitive`   | All validators, all bindings, `@nullable`, `@default`                                       | Field never crosses the wire - constraints meaningless    |
+| `@nullable`    | `@default`                                                                                  | A member sent as `null` takes the default, so it never reads as null |
 | `@passthrough` | `@rawRequest`, `@rawResponse` (and the two flags together)                                  | Redundant, not rejected: `decorator/redundant` warning, identical output - write one spelling |
 
 Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decorator/placement` or `decorator/typemismatch`.

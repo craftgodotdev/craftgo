@@ -63,6 +63,7 @@ A decorator on a line of its own decorates the member or declaration below it, a
 | `any`            | `any`                   | arbitrary JSON value, decoded and re-encoded (`object` is rejected as a field type) |
 | `bytes @format(raw)` | `wire.Raw`          | the bytes ARE the value in the message's own encoding; the codec embeds them untouched, so an explicit `null`, an integer past 2^53 and `1.50` all survive (`any` loses all three). Body fields only, no other validator, no `@default`; `?` / `@nullable` stay `wire.Raw` (nil is absence, an explicit `null` is the four bytes `null`, which a `@requiresOneOf` / `@mutuallyExclusive` group counts as unset), from `github.com/craftgodotdev/craftgo/pkg/wire` (its own stdlib-only module) |
 | `file`           | `*multipart.FileHeader` | a multipart part: a request's top-level field only, never in a response, error body or event payload (`binding/file-position`) |
+| `cookie`         | `*http.Cookie`          | a cookie the logic sets in full: a `@cookie` field of a response or an error body only, never in a request, an array, a map or a generic argument (`binding/cookie-position`); `New<Type><Field>Cookie(value)` builds it with the declared attributes |
 | `T?`             | `*T` or nilable as-is   | optional                                   |
 | `T[]`            | `[]T`                   | array                                      |
 | `map<K, V>`      | `map[K]V`               | K must be string / int* / uint* (or a scalar/enum over one); no `?`, bool, float, struct, slice, map, bytes or type-parameter keys. V takes no `?` when it is an array or a map (`type/map-value`) |
@@ -155,7 +156,7 @@ scalar OrderID   string  @length(8, 64) @pattern("^ord_[A-Z0-9]+$")
 scalar Cents     int     @gte(0) @multipleOf(2)
 ```
 
-Wraps a primitive: `string`, `bytes`, an integer, a float or `bool` - never `datetime`, `file` or `any` (`scalar/bad-primitive`). Validators inherit to every field of the scalar's type. Generated as a Go **defined type** (`type Email string`, not an alias) so it can carry a `Validate()` method; callers convert raw primitives (`Email("a@b.com")`). A `bytes @format(raw)` scalar is the exception: it generates the alias `type Raw = wire.Raw`.
+Wraps a primitive: `string`, `bytes`, an integer, a float or `bool` - never `datetime`, `file`, `cookie` or `any` (`scalar/bad-primitive`). Validators inherit to every field of the scalar's type. Generated as a Go **defined type** (`type Email string`, not an alias) so it can carry a `Validate()` method; callers convert raw primitives (`Email("a@b.com")`). A `bytes @format(raw)` scalar is the exception: it generates the alias `type Raw = wire.Raw`.
 
 ## Errors
 
@@ -184,7 +185,7 @@ Categories (drives HTTP status):
 | `LengthRequired`     | 411    | `UnsupportedMediaType` | 415    |
 | `PreconditionFailed` | 412    |                       |        |
 
-Constructed via `New<TypeName>()` (no body) or `New<TypeName>(<Name>Body{...})`, where `<TypeName>` is the DSL name with `Err` appended unless it already ends in `Err`/`Error` (DSL `EmailTaken` -> `NewEmailTakenErr()`; DSL `RateLimitedErr` -> `NewRateLimitedErr()`) and `<Name>Body` is the DSL name with `Body` appended. Implements `Error() string` (the category's default message), `HTTPStatus() int`, `ErrCode() string` (the machine-readable code) and `MarshalJSON` (the body's fields, or `{"code","message"}` for an error with no field on its JSON body: none, or only `@header`, `@cookie` and `@sensitive` ones). Each error type also exports a package-level `const ErrCode<Name>` holding that code string (e.g. `const ErrCodeEmailTaken = "EMAIL_TAKEN"`). No other type, scalar, enum or error of the package may take one of these names or an enum value's `<Enum><Value>` constant, and no event may take another event's `<Event>Contract` name: `decl/go-name-collision`. An error with a `@header` field also has `WriteResponseHeaders(w)`, and one with a `@cookie` field `ResponseCookies() []*http.Cookie`, whose cookies `server.WriteError` sets with the `server.cookies` attributes (`Path=/`, `HttpOnly`, `Secure`, `SameSite=Lax` by default). A body field, a mixin's included, whose Go name is one of these methods, `WriteResponseHeaders`, `ResponseCookies` or `<Name>Body` is `field/invalid-go-name`, as is a field of any type or error body whose Go name is `Validate`, or a mixin of a type named `Validate`.
+Constructed via `New<TypeName>()` (no body) or `New<TypeName>(<Name>Body{...})`, where `<TypeName>` is the DSL name with `Err` appended unless it already ends in `Err`/`Error` (DSL `EmailTaken` -> `NewEmailTakenErr()`; DSL `RateLimitedErr` -> `NewRateLimitedErr()`) and `<Name>Body` is the DSL name with `Body` appended. Implements `Error() string` (the category's default message), `HTTPStatus() int`, `ErrCode() string` (the machine-readable code) and `MarshalJSON` (the body's fields, or `{"code","message"}` for an error with no field on its JSON body: none, or only `@header`, `@cookie` and `@sensitive` ones). Each error type also exports a package-level `const ErrCode<Name>` holding that code string (e.g. `const ErrCodeEmailTaken = "EMAIL_TAKEN"`). No other type, scalar, enum or error of the package may take one of these names or an enum value's `<Enum><Value>` constant, and no event may take another event's `<Event>Contract` name: `decl/go-name-collision`. An error with a `@header` field also has `WriteResponseHeaders(w)`, and one with a `@cookie` field `ResponseCookies() []*http.Cookie`, whose cookies `server.WriteError` sets with the attributes each `@cookie` declares (`Path=/`, `HttpOnly`, `Secure`, `SameSite=Lax` for those left out); a `cookie` field also gains `New<Name>Err<Field>Cookie(value)`, and a `cookie` field of a type `New<Type><Field>Cookie(value)`, the names `decl/go-name-collision` weighs too. A body field, a mixin's included, whose Go name is one of these methods, `WriteResponseHeaders`, `ResponseCookies` or `<Name>Body` is `field/invalid-go-name`, as is a field of any type or error body whose Go name is `Validate`, or a mixin of a type named `Validate`.
 
 ## Services and methods
 
@@ -457,7 +458,7 @@ Guide: [model](/guide/events#the-model) - [declaring](/guide/events#declaring-ev
 
 ## Decorator registry
 
-Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `duration` (`5s` / `100ms`: one number with one unit, at most `2562047h`; or a bare int in seconds), `size` (`1MB` / `8KB`, or a bare int in bytes), `array literal`. A string is `"..."` (escapes `\n \t \r \" \\ \u{HEX}`) or a raw `` `...` `` whose line ends read as `\n`; a control character other than tab, LF and CR, a byte-order mark or a noncharacter is a parse error in a string, or anywhere in a file. All arguments are positional - named args are not accepted. A decorator is never an argument: `@doc(@minLength(1))` is a parse error (`a decorator cannot be an argument of @doc`).
+Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `duration` (`5s` / `100ms`: one number with one unit, at most `2562047h`; or a bare int in seconds), `size` (`1MB` / `8KB`, or a bare int in bytes), `array literal`. A string is `"..."` (escapes `\n \t \r \" \\ \u{HEX}`) or a raw `` `...` `` whose line ends read as `\n`; a control character other than tab, LF and CR, a byte-order mark or a noncharacter is a parse error in a string, or anywhere in a file. Arguments are positional; only `@cookie` takes named ones after its name (`@cookie("sid", maxAge: 24h)`), and a named argument on any other decorator is refused. A decorator is never an argument: `@doc(@minLength(1))` is a parse error (`a decorator cannot be an argument of @doc`).
 
 ### File-level
 
@@ -481,7 +482,7 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 
 `AppliesTo` column means the field's primitive (after resolving scalars) must be in that category, or the validator is rejected.
 
-> **Required-by-default**: every field is required unless the type carries `?`. There is no `@required` decorator - append `?` to the type to opt out (`name string?`). A JSON body that leaves a required member out, or sends it `null` without `@nullable`, is answered 400 `<json path>: required` (`items.sku: required`: no index or map key) before `Validate()`; `""`, `0`, `false`, `[]` and `{}` pass. A `@default` fills an absent member at any depth. `server.requirePresence: false` (`server.SetRequirePresence(false)`) turns the body check off: the body then decodes straight into the request type and a missing member keeps its zero value. A codec installed with `SetGlobalJSONCodec` must call a type's `json.Unmarshaler` (`server.Nullable[T]` tells an absent `@nullable` or defaulted member from a `null` one).
+> **Required-by-default**: every field is required unless the type carries `?`. There is no `@required` decorator - append `?` to the type to opt out (`name string?`). A JSON body that leaves a required member out, or sends it `null` without `@nullable`, is answered 400 `<json path>: required` (`items.sku: required`: no index or map key) before `Validate()`; `""`, `0`, `false`, `[]` and `{}` pass. A `@default` fills a member left out or sent as `null`, at any depth. A codec installed with `SetGlobalJSONCodec` must call a type's `json.Unmarshaler` (`server.Nullable[T]` tells an absent `@nullable` member from a `null` one).
 
 | Decorator           | AppliesTo | Args               | Effect                        |
 | ------------------- | --------- | ------------------ | ----------------------------- |
@@ -516,7 +517,7 @@ Validators on `errorField` are emitted as OpenAPI schema constraints and a `<Nam
 | `@path`   | field             | `()` or `(string)` | URL path parameter `{name}`                |
 | `@query`  | field             | `()` or `(string)` | URL query string                           |
 | `@header` | field, errorField | `()` or `(string)` | Request header / response header on responses and errors |
-| `@cookie` | field, errorField | `()` or `(string)` | Request cookie / response cookie on responses and errors |
+| `@cookie` | field, errorField | `()` or `(string)`, then `path: "/"`, `domain: "..."`, `maxAge: 24h`, `httpOnly: bool`, `secure: bool`, `sameSite: lax`/`strict`/`none` | Request cookie / response cookie on responses and errors; a cookie the server sets takes the named attributes, `Path=/`, `HttpOnly`, `Secure` and `SameSite=Lax` for those left out; `sameSite: none` needs `secure` |
 | `@form`   | field             | `()` or `(string)` | Multipart form field                       |
 
 The optional string is the explicit wire name. Without it, the wire name is the DSL field name verbatim.
@@ -532,7 +533,7 @@ A field with no binding decorator whose name matches a `{name}` in the route (or
 | `@sensitive`      | field, errorField | Server-only. `json:"-"`, omitted from OpenAPI. No validators, bindings, `@json`, `@nullable`, `@default`. |
 | `@json("key")`    | field, errorField | JSON key when it is not the field name (a foreign contract, or a PascalCase key the parser reads as a mixin). Not with an off-body binding. |
 
-`@default` belongs on an optional field (`?`): on a non-optional one it still pre-fills - the handler assigns the default before decoding - and `decorator/default-needs-optional` warns until you add `?` (the formatter adds it on save), so `types.go`, `validate.go` and the OpenAPI agree the field is optional. `craftgo gen` prints only errors; the editor shows the warning. For enum fields, the value is the bare ident (`@default(Active)`), checked as its wire value. The default must pass the field's validators and its scalar's (an array default: `@minItems` / `@maxItems` / `@uniqueItems`, and each element its scalar's); one that breaks them is `decorator/conflict`.
+`@default` belongs on an optional field (`?`): on a non-optional one it still fills a member left out or sent as `null`, and `decorator/default-needs-optional` warns until you add `?` (the formatter adds it on save), so `types.go`, `validate.go` and the OpenAPI agree the field is optional. `craftgo gen` prints only errors; the editor shows the warning. For enum fields, the value is the bare ident (`@default(Active)`), checked as its wire value. The default must pass the field's validators and its scalar's (an array default: `@minItems` / `@maxItems` / `@uniqueItems`, and each element its scalar's); one that breaks them is `decorator/conflict`.
 
 ### Service / method
 
@@ -566,6 +567,7 @@ Raw sides: `@rawResponse` keeps request bind + validate and hands `w` to logic (
 ### Conflicts
 
 - `@sensitive` + any of: validators, bindings (`@body`/`@path`/`@query`/`@header`/`@cookie`/`@form`), `@nullable`, `@default`
+- `@nullable` + `@default`: a member sent as `null` takes the default, so it never reads as null
 - `@passthrough` + `@rawRequest` / `@rawResponse`, or both flags together: `decorator/redundant` (warning, identical output)
 
 Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decorator/placement` or `decorator/typemismatch`. `@default` on a non-optional field fires `decorator/default-needs-optional` (warning; formatter auto-fixes on save).
@@ -697,13 +699,6 @@ server:
   handlerTimeout: 0s
   maxBodySize: 10485760 # 10 MiB when left out; 0 = no cap
   strictJSON: true
-  requirePresence: true # 400 for a JSON body missing a required member
-  cookies: # attributes of the cookies @cookie fields set, on a response or an error
-    path: /
-    domain: ""
-    httpOnly: true
-    secure: true
-    sameSite: lax # lax | strict | none (needs secure) | "" for none
   compression:
     enabled: false
     minSize: 0
@@ -791,22 +786,17 @@ func <Method>(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
             return
         }
         var req types.<Req>
-        // 1. pre-fill @default values
+        // 1. pre-fill the @default values of @query / @header / @cookie / @form fields
         req.Field = defaultValue
         // 2. decode JSON body (body verbs only): through a struct of pointers that tells an
-        // absent member from a zero one, then into req, while presence is checked
-        if server.RequirePresence() {
-            var _b <req>Wire
-            if err := server.JSON().Decode(r.Body, &_b); err != nil {
-                server.WriteValidationError(w, r, err)
-                return
-            }
-            if _m := _b.to(&req); _m != "" { // fills nested @default values too
-                server.WriteValidationError(w, r, server.MissingMember(_m))
-                return
-            }
-        } else if err := server.JSON().Decode(r.Body, &req); err != nil {
+        // absent member from a zero one, then into req, filling a @default where a member is absent or null
+        var _b <req>Wire
+        if err := server.JSON().Decode(r.Body, &_b); err != nil {
             server.WriteValidationError(w, r, err)
+            return
+        }
+        if _m := _b.to(&req); _m != "" { // fills nested @default values too
+            server.WriteValidationError(w, r, server.MissingMember(_m))
             return
         }
         // 3. bind @path / @query / @header / @cookie / @form fields
@@ -820,7 +810,7 @@ func <Method>(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
         if err != nil { server.WriteError(w, r, err); return }
         server.WriteResponse(w, r, http.StatusOK, resp, func(w http.ResponseWriter) {
             w.Header().Set("X-Total", strconv.Itoa(resp.Total)) // @header / @cookie fields, set
-            server.SetCookie(w, "sid", resp.Session)          // only once the body has encoded
+            http.SetCookie(w, &http.Cookie{Name: "sid", Value: resp.Session, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode}) // once the body has encoded
         }) // encodes first; an encode error answers 500
     }
 }

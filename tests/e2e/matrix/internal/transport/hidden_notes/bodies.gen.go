@@ -11,8 +11,8 @@ type secretWire struct {
 	Key *string `json:"key"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *secretWire) to(dst *types.Secret) string {
 	if w.Key == nil {
 		return "key"

@@ -64,13 +64,15 @@ func regeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 	if cfg.Output.ContractsOnly() {
 		return files
 	}
-	routes := map[string]bool{}
+	routes, bodies := map[string]bool{}, map[string]bool{}
 	for s := range projectSegments(proj, cfg.Output.FileCase) {
 		for m := range s.methods() {
 			files = append(files, out.transport.sub(s.dir).at(projectRoot, methodFile(m, cfg.Output.FileCase)))
 		}
-		if len(segmentBodies(s, buildProjectResolver(proj, cfg, s.pkg.Name), out).names()) > 0 {
-			files = append(files, out.transport.sub(s.dir).at(projectRoot, bodyFile))
+		if f := out.transport.sub(s.dir).at(projectRoot, bodyFile); !bodies[f] &&
+			len(dirBodies([]segment{s}, buildProjectResolver(proj, cfg, s.pkg.Name), out).names()) > 0 {
+			bodies[f] = true
+			files = append(files, f)
 		}
 		routes[out.routes.sub(s.dir).at(projectRoot, "routes.go")] = true
 	}

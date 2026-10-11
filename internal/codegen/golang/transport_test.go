@@ -144,7 +144,8 @@ service S {
 	}
 }
 
-// Each @default is assigned before the JSON decode, so only a field absent from the body keeps it.
+// Each @default fills, in the wire struct's to, a member the body leaves out or sends as null; the
+// handler pre-fills none of them.
 func TestGenerateTransportDefaults(t *testing.T) {
 	src := `package design
 type Req {
@@ -168,49 +169,40 @@ service S {
 	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
-	out, err := os.ReadFile(filepath.Join(root, "internal/transport/s/make.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := string(out)
+	dir := filepath.Join(root, "internal/transport/s")
+	handler, body := readGen(t, dir, "make.go"), readGen(t, dir, bodyFile)
+	mustParseGo(t, handler)
 	mustParseGo(t, body)
-	// An optional field's default is pre-filled through a pointer.
-	mustContainAll(t, body,
-		`__d := "anon"`,
-		`req.Name = &__d`,
-		`__d := 20`,
-		`req.Limit = &__d`,
-		`__d := 0.5`,
-		`req.Ratio = &__d`,
-		`__d := true`,
-		`req.Active = &__d`,
+	mustContainNone(t, handler, "__d", "req.Name =")
+	// An optional field's default is filled through a pointer.
+	mustContainAll(t, collapseSpace(body),
+		`if w.Name != nil { dst.Name = w.Name } else { _d := "anon" dst.Name = &_d }`,
+		`_d := 20`,
+		`dst.Limit = &_d`,
+		`_d := 0.5`,
+		`dst.Ratio = &_d`,
+		`_d := true`,
+		`dst.Active = &_d`,
 	)
-	// A narrow numeric default is cast so `&__d` has the field's pointer type.
+	// A narrow numeric default is cast so `&_d` has the field's pointer type.
 	mustContainAll(t, body,
-		`__d := int32(7)`,
-		`req.Width = &__d`,
-		`__d := int64(9)`,
-		`req.Wide = &__d`,
-		`__d := uint16(3)`,
-		`req.Ucount = &__d`,
-		`__d := float32(1.5)`,
-		`req.Pct = &__d`,
+		`_d := int32(7)`,
+		`dst.Width = &_d`,
+		`_d := int64(9)`,
+		`dst.Wide = &_d`,
+		`_d := uint16(3)`,
+		`dst.Ucount = &_d`,
+		`_d := float32(1.5)`,
+		`dst.Pct = &_d`,
 	)
 	if strings.Contains(body, "int(20)") || strings.Contains(body, "float64(0.5)") {
 		t.Errorf("int / float64 defaults must not be cast:\n%s", body)
 	}
-	if strings.Contains(body, "req.Plain =") {
-		t.Errorf("plain field shouldn't be pre-filled:\n%s", body)
-	}
-	if pre, _, ok := strings.Cut(body, "server.JSON().Decode"); ok {
-		if !strings.Contains(pre, `__d := "anon"`) {
-			t.Error("expected default assignments before body decode")
-		}
-	}
+	mustContainNone(t, body, "Nullable")
 }
 
 // A non-optional field's @default is assigned to the value itself, cast to
-// its scalar, before the JSON decode.
+// its scalar, by the wire struct's to.
 func TestGenerateTransportNonOptionalDefault(t *testing.T) {
 	src := `package design
 scalar Cents int @gte(0)
@@ -226,20 +218,12 @@ service S {
 	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
-	out, err := os.ReadFile(filepath.Join(root, "internal/transport/s/make.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := string(out)
+	dir := filepath.Join(root, "internal/transport/s")
+	handler, body := readGen(t, dir, "make.go"), readGen(t, dir, bodyFile)
 	mustParseGo(t, body)
-	const prefill = "req.Limit = types.Cents(20)"
-	dec := strings.Index(body, "server.JSON().Decode")
-	if pre := strings.Index(body, prefill); pre < 0 || dec < 0 || pre > dec {
-		t.Errorf("want %q before the body decode:\n%s", prefill, body)
-	}
-	if strings.Contains(body, "&__d") {
-		t.Errorf("a non-optional default is pre-filled through a pointer:\n%s", body)
-	}
+	mustContainNone(t, handler, "req.Limit =")
+	mustContainAll(t, collapseSpace(body), "if w.Limit != nil { dst.Limit = *w.Limit } else { dst.Limit = types.Cents(20) }")
+	mustContainNone(t, body, "&_d")
 }
 
 // A bound enum or scalar field is converted from the wire string to its own type.
@@ -322,7 +306,7 @@ service S {
 	)
 }
 
-// A whole-number float @default renders as 1.0, so its pre-fill pointer stays *float64.
+// A whole-number float @default renders as 1.0, so its fill pointer stays *float64.
 func TestGenerateTransportWholeNumberFloatDefault(t *testing.T) {
 	src := `package design
 
@@ -339,14 +323,10 @@ service S {
 	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
-	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/do.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := string(body)
+	got := readGen(t, filepath.Join(root, "internal/transport/s"), bodyFile)
 	mustParseGo(t, got)
-	mustContainAll(t, got, `__d := 1.0`, `__d := 2.5`)
-	if strings.Contains(got, "__d := 1\n") || strings.Contains(got, "float64(1)") {
+	mustContainAll(t, got, `_d := 1.0`, `_d := 2.5`)
+	if strings.Contains(got, "_d := 1\n") || strings.Contains(got, "float64(1)") {
 		t.Errorf("whole-number float default must render as float literal `1.0`, not `1` / `float64(1)`:\n%s", got)
 	}
 }
@@ -555,7 +535,7 @@ service S {
 	)
 }
 
-// An enum @default pre-fills the member's Go constant.
+// An enum @default fills the member's Go constant.
 func TestGenerateTransportDefaultEnum(t *testing.T) {
 	src := `package design
 enum Status { Active  Inactive  Pending }
@@ -571,15 +551,11 @@ service S {
 	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
-	out, err := os.ReadFile(filepath.Join(root, "internal/transport/s/make.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := string(out)
+	body := readGen(t, filepath.Join(root, "internal/transport/s"), bodyFile)
 	mustParseGo(t, body)
 	mustContainAll(t, body,
-		"__d := types.StatusPending",
-		"req.St = &__d",
+		"_d := types.StatusPending",
+		"dst.St = &_d",
 	)
 }
 
@@ -610,7 +586,7 @@ service FilesService {
 	body := string(out)
 	checks := []string{
 		`w.Header().Set("etag", resp.Etag)`,
-		`server.SetCookie(w, "sessionID", resp.SessionID)`,
+		`http.SetCookie(w, &http.Cookie{Name: "sessionID", Value: resp.SessionID, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})`,
 		"server.WriteResponse(w, r, http.StatusOK, resp, func(w http.ResponseWriter) {",
 	}
 	for _, want := range checks {
@@ -620,7 +596,7 @@ service FilesService {
 	}
 	// Headers and cookies are set once the body has encoded, by the function WriteResponse runs.
 	_, after, ok := strings.Cut(body, "server.WriteResponse")
-	if !ok || !strings.Contains(after, `w.Header().Set("etag"`) || !strings.Contains(after, "server.SetCookie") {
+	if !ok || !strings.Contains(after, `w.Header().Set("etag"`) || !strings.Contains(after, "http.SetCookie") {
 		t.Errorf("the etag header and the cookie must be set by WriteResponse, after the encode:\n%s", body)
 	}
 }
@@ -653,7 +629,7 @@ service Catalog {
 	mustParseGo(t, body)
 	mustContainAll(t, body,
 		`w.Header().Set("X-Total-Count", resp.Total)`,
-		`server.SetCookie(w, "session_id", resp.SessionID)`,
+		`http.SetCookie(w, &http.Cookie{Name: "session_id", Value: resp.SessionID, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})`,
 	)
 	for _, banned := range []string{
 		`w.Header().Set("total"`,
@@ -710,8 +686,8 @@ service S {
 		`w.Header().Set("X-Next-Page", *resp.NextPage)`,
 		`for _, _v := range resp.Labels {`,
 		`w.Header().Add("X-Label", _v)`,
-		`server.SetCookie(w, "flag", strconv.FormatBool(resp.Active))`,
-		`server.SetCookie(w, "plain", resp.Plain)`,
+		`http.SetCookie(w, &http.Cookie{Name: "flag", Value: strconv.FormatBool(resp.Active), Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})`,
+		`http.SetCookie(w, &http.Cookie{Name: "plain", Value: resp.Plain, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})`,
 	)
 }
 

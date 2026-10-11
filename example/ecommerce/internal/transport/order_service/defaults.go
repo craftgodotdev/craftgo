@@ -9,7 +9,6 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/example/ecommerce/internal/service/order_service"
 	types "github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/orders"
-	"github.com/craftgodotdev/craftgo/example/ecommerce/internal/types/shared"
 	"github.com/craftgodotdev/craftgo/example/ecommerce/svccontext"
 )
 
@@ -22,31 +21,13 @@ func Defaults(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		var req types.DefaultsShowcaseReq
-		{
-			__d := "anon"
-			req.Str = &__d
-		}
-		{
-			__d := 20
-			req.Num = &__d
-		}
-		{
-			__d := true
-			req.Flag = &__d
-		}
-		{
-			__d := shared.CurrencyCode("USD")
-			req.Currency = &__d
-		}
-		{
-			__d := types.OrderStatusPending
-			req.Status = &__d
-		}
-		req.Tags = []string{}
-		req.Preset = []string{"standard", "expedited"}
-		req.AllowedMethods = []types.PaymentMethod{types.PaymentMethodCard, types.PaymentMethodBank}
-		if err := server.JSON().Decode(r.Body, &req); err != nil {
+		var _b defaultsShowcaseReqWire
+		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)
+			return
+		}
+		if _m := _b.to(&req); _m != "" {
+			server.WriteValidationError(w, r, server.MissingMember(_m))
 			return
 		}
 		if err := req.Validate(); err != nil {

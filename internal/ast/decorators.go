@@ -55,14 +55,17 @@ func DecoratorArgValues(a *DecoratorArg) []Expr {
 	return []Expr{a.Value}
 }
 
-// Arg returns the first argument of type T among the decorators in decs named
-// name, array elements included, and whether there is one.
+// Arg returns the first positional argument of type T among the decorators in
+// decs named name, array elements included, and whether there is one.
 func Arg[T Expr](decs []*Decorator, name string) (T, bool) {
 	for _, d := range decs {
 		if d == nil || d.Name != name {
 			continue
 		}
 		for _, a := range d.Args {
+			if a == nil || a.Named {
+				continue
+			}
 			for _, v := range DecoratorArgValues(a) {
 				if t, ok := v.(T); ok {
 					return t, true

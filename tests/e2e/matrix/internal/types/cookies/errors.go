@@ -15,7 +15,7 @@ type LockedBody struct {
 	Until string `json:"-" cookie:"lock"`
 }
 
-// Locked sets the time it lifts in a cookie.
+// Locked sets the time it lifts in a cookie scoped to the API that scripts may read.
 //
 // LockedErr is the Conflict error Locked.
 type LockedErr struct {
@@ -41,10 +41,9 @@ func (e *LockedErr) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]string{"code": ErrCodeLocked, "message": e.Error()})
 }
 
-// ResponseCookies returns the cookies of the @cookie fields, which the server sets with its cookie
-// attributes.
+// ResponseCookies returns the cookies of the @cookie fields, with the attributes they declare.
 func (e *LockedErr) ResponseCookies() []*http.Cookie {
 	var cs []*http.Cookie
-	cs = append(cs, &http.Cookie{Name: "lock", Value: e.Until})
+	cs = append(cs, &http.Cookie{Name: "lock", Value: e.Until, Path: "/api", MaxAge: 3600, Secure: true, SameSite: http.SameSiteLaxMode})
 	return cs
 }

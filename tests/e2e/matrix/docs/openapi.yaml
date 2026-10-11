@@ -73,6 +73,8 @@ components:
       type: object
     AccountServiceLoginRespBody:
       $ref: '#/components/schemas/AccountLoginResp'
+    AccountServiceLogoutRespBody:
+      $ref: '#/components/schemas/ID'
     AccountServiceResetRespBody:
       $ref: '#/components/schemas/ID'
     AccountUserServiceCreateUserReqBody:
@@ -1121,12 +1123,12 @@ components:
     CollidingNames:
       allOf:
       - properties:
-          user_id:
+          userId:
+            minLength: 2
             type:
             - string
             - "null"
-          userId:
-            minLength: 2
+          user_id:
             type:
             - string
             - "null"
@@ -1340,6 +1342,8 @@ components:
           type: string
       required:
       - name
+      type: object
+    CookiesLogoutRespBody:
       type: object
     Count:
       minimum: 0
@@ -1972,12 +1976,12 @@ components:
     EchoCollidingNamesReqBody:
       allOf:
       - properties:
-          user_id:
+          userId:
+            minLength: 2
             type:
             - string
             - "null"
-          userId:
-            minLength: 2
+          user_id:
             type:
             - string
             - "null"
@@ -2400,8 +2404,7 @@ components:
           optional     string?                         → *string  optional, may be omitted OR null
           nullable     string @nullable                → *string  required, value may be JSON null
           bothNullable string? @nullable               → *string  4-state (same as optional, redundant @nullable)
-          defValue     string? @default("d")           → *string  optional + pre-fill (the `?` is mandatory under @default)
-          defNullable  string? @nullable @default("d") → *string  optional + nullable + pre-fill
+          defValue     string? @default("d")           → *string  optional; absent or null takes the default (the `?` is mandatory under @default)
 
         Wire contract diffs row-by-row (OpenAPI 3.1: null rides the `type`
         list, so a nullable string is `type: [string, "null"]`):
@@ -2411,18 +2414,12 @@ components:
           nullable:     required[] yes, type: [string, "null"]
           bothNullable: required[] no,  type: [string, "null"]
           defValue:     required[] no,  type: [string, "null"], default: "d"
-          defNullable:  required[] no,  type: [string, "null"], default: "d"
 
-        The `bothNullable` and `defNullable` rows trip the "redundant
+        The `bothNullable` row trips the "redundant
         @nullable on `T?`" warning (the optionality already permits null);
         the linter should surface that without rejecting the file.
       properties:
         bothNullable:
-          type:
-          - string
-          - "null"
-        defNullable:
-          default: d
           type:
           - string
           - "null"
@@ -3588,8 +3585,6 @@ components:
       - code
       - message
       type: object
-    LogoutRespBody:
-      $ref: '#/components/schemas/ID'
     LookupLostRespBody:
       $ref: '#/components/schemas/XDelegatedEnum'
     LookupOrderRespBody:
@@ -3606,6 +3601,77 @@ components:
       required:
       - code
       - message
+      type: object
+    MapKeyValueReqBody:
+      description: |-
+        Map_KeyAndValue puts scalars on both sides: each key runs NonEmptyID's
+        validators and each value Email's, and a bad key and a bad value are
+        reported under the field name alike.
+      properties:
+        index:
+          additionalProperties:
+            $ref: '#/components/schemas/CollectionsEmail'
+          propertyNames:
+            maxLength: 64
+            minLength: 1
+            type: string
+          type: object
+      required:
+      - index
+      type: object
+    MapKeyValueRespBody:
+      $ref: '#/components/schemas/Map_KeyAndValue'
+    MapPages:
+      description: |-
+        MapPages instantiates Page over a map, an array of those maps, a map of
+        arrays and a map of optional values: four components. `[]` on the map leads
+        its name as `ArrayOf`; on the map's value, a leaf, it ends it as `Array`.
+      properties:
+        byBatch:
+          $ref: '#/components/schemas/ScalarsPageOfArrayOfMapOfStringAndScalarsOrder'
+        byKey:
+          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrder'
+        byList:
+          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrderArray'
+        byMaybe:
+          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrderOrNull'
+      required:
+      - byKey
+      - byBatch
+      - byList
+      - byMaybe
+      type: object
+    MapStructReqBody:
+      description: |-
+        Map_StructValue is the struct-valued map: each User value is validated,
+        its email scalar's @format(email) included.
+      properties:
+        users:
+          additionalProperties:
+            $ref: '#/components/schemas/CollectionsUser'
+          type: object
+      required:
+      - users
+      type: object
+    MapStructRespBody:
+      $ref: '#/components/schemas/Map_StructValue'
+    MapTag:
+      maxLength: 20
+      minLength: 1
+      type: string
+    MapValueGeneric:
+      description: |-
+        MapValueGeneric verifies that generic instances ride the `map<K, V>`
+        builtin without losing their synthetic name: the value branch goes
+        through schemaForTypeRef recursively, so `Page<Order>` is registered
+        the same way it would be at top level.
+      properties:
+        bucket:
+          additionalProperties:
+            $ref: '#/components/schemas/ScalarsPageOfScalarsOrder'
+          type: object
+      required:
+      - bucket
       type: object
     Map_ArrayOfMaps:
       description: |-
@@ -3804,77 +3870,6 @@ components:
           type: object
       required:
       - users
-      type: object
-    MapKeyValueReqBody:
-      description: |-
-        Map_KeyAndValue puts scalars on both sides: each key runs NonEmptyID's
-        validators and each value Email's, and a bad key and a bad value are
-        reported under the field name alike.
-      properties:
-        index:
-          additionalProperties:
-            $ref: '#/components/schemas/CollectionsEmail'
-          propertyNames:
-            maxLength: 64
-            minLength: 1
-            type: string
-          type: object
-      required:
-      - index
-      type: object
-    MapKeyValueRespBody:
-      $ref: '#/components/schemas/Map_KeyAndValue'
-    MapPages:
-      description: |-
-        MapPages instantiates Page over a map, an array of those maps, a map of
-        arrays and a map of optional values: four components. `[]` on the map leads
-        its name as `ArrayOf`; on the map's value, a leaf, it ends it as `Array`.
-      properties:
-        byBatch:
-          $ref: '#/components/schemas/ScalarsPageOfArrayOfMapOfStringAndScalarsOrder'
-        byKey:
-          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrder'
-        byList:
-          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrderArray'
-        byMaybe:
-          $ref: '#/components/schemas/ScalarsPageOfMapOfStringAndScalarsOrderOrNull'
-      required:
-      - byKey
-      - byBatch
-      - byList
-      - byMaybe
-      type: object
-    MapStructReqBody:
-      description: |-
-        Map_StructValue is the struct-valued map: each User value is validated,
-        its email scalar's @format(email) included.
-      properties:
-        users:
-          additionalProperties:
-            $ref: '#/components/schemas/CollectionsUser'
-          type: object
-      required:
-      - users
-      type: object
-    MapStructRespBody:
-      $ref: '#/components/schemas/Map_StructValue'
-    MapTag:
-      maxLength: 20
-      minLength: 1
-      type: string
-    MapValueGeneric:
-      description: |-
-        MapValueGeneric verifies that generic instances ride the `map<K, V>`
-        builtin without losing their synthetic name: the value branch goes
-        through schemaForTypeRef recursively, so `Page<Order>` is registered
-        the same way it would be at top level.
-      properties:
-        bucket:
-          additionalProperties:
-            $ref: '#/components/schemas/ScalarsPageOfScalarsOrder'
-          type: object
-      required:
-      - bucket
       type: object
     Matrix:
       description: |-
@@ -4364,15 +4359,6 @@ components:
         semantic phase rejects bounds beyond a type's representable range;
         these must all sit AT the boundary and pass clean.
       properties:
-        int8Full:
-          description: int8 full range
-          maximum: 127
-          minimum: -128
-          type: integer
-        int8Range:
-          maximum: 127
-          minimum: -128
-          type: integer
         int16Full:
           description: int16 full range
           maximum: 32767
@@ -4384,14 +4370,14 @@ components:
           maximum: 2147483647
           minimum: -2147483648
           type: integer
-        uint8Full:
-          maximum: 255
-          minimum: 0
+        int8Full:
+          description: int8 full range
+          maximum: 127
+          minimum: -128
           type: integer
-        uint8Range:
-          description: uint8 full range
-          maximum: 255
-          minimum: 0
+        int8Range:
+          maximum: 127
+          minimum: -128
           type: integer
         uint16Full:
           description: uint16 full range
@@ -4401,6 +4387,15 @@ components:
         uint32Full:
           description: uint32 full range
           maximum: 4294967295
+          minimum: 0
+          type: integer
+        uint8Full:
+          maximum: 255
+          minimum: 0
+          type: integer
+        uint8Range:
+          description: uint8 full range
+          maximum: 255
           minimum: 0
           type: integer
       required:
@@ -4433,10 +4428,6 @@ components:
           exclusiveMaximum: 1000
           exclusiveMinimum: 0
           type: integer
-        gtLtInt8:
-          exclusiveMaximum: 100
-          exclusiveMinimum: -100
-          type: integer
         gtLtInt16:
           exclusiveMaximum: 32000
           exclusiveMinimum: -32000
@@ -4451,13 +4442,13 @@ components:
           exclusiveMinimum: 0
           format: int64
           type: integer
+        gtLtInt8:
+          exclusiveMaximum: 100
+          exclusiveMinimum: -100
+          type: integer
         gteLteInt:
           maximum: 1000
           minimum: 0
-          type: integer
-        gteLteInt8:
-          maximum: 100
-          minimum: -100
           type: integer
         gteLteInt16:
           maximum: 32000
@@ -4472,6 +4463,10 @@ components:
           format: int64
           maximum: 9000000000000000000
           minimum: -9000000000000000000
+          type: integer
+        gteLteInt8:
+          maximum: 100
+          minimum: -100
           type: integer
         negInt:
           exclusiveMaximum: 0
@@ -4491,11 +4486,6 @@ components:
           maximum: 1000
           minimum: 0
           type: integer
-        rangeInt8:
-          description: int8 - bound capacity edge (the validator should narrow safely).
-          maximum: 50
-          minimum: -50
-          type: integer
         rangeInt16:
           description: int16
           maximum: 1000
@@ -4512,6 +4502,11 @@ components:
           format: int64
           maximum: 1000000000
           minimum: -1000000000
+          type: integer
+        rangeInt8:
+          description: int8 - bound capacity edge (the validator should narrow safely).
+          maximum: 50
+          minimum: -50
           type: integer
         stepInt:
           description: '@multipleOf on int.'
@@ -4809,10 +4804,6 @@ components:
           exclusiveMaximum: 1000
           exclusiveMinimum: 0
           type: integer
-        gtLtUint8:
-          exclusiveMaximum: 255
-          exclusiveMinimum: 0
-          type: integer
         gtLtUint16:
           exclusiveMaximum: 65535
           exclusiveMinimum: 0
@@ -4825,12 +4816,12 @@ components:
           exclusiveMaximum: 1000000000000
           exclusiveMinimum: 0
           type: integer
+        gtLtUint8:
+          exclusiveMaximum: 255
+          exclusiveMinimum: 0
+          type: integer
         gteLteUint:
           maximum: 1000
-          minimum: 0
-          type: integer
-        gteLteUint8:
-          maximum: 255
           minimum: 0
           type: integer
         gteLteUint16:
@@ -4843,6 +4834,10 @@ components:
           type: integer
         gteLteUint64:
           maximum: 1000000000000
+          minimum: 0
+          type: integer
+        gteLteUint8:
+          maximum: 255
           minimum: 0
           type: integer
         maxUint64:
@@ -4863,11 +4858,6 @@ components:
           maximum: 1000
           minimum: 0
           type: integer
-        rangeUint8:
-          description: uint8 - full capacity test.
-          maximum: 255
-          minimum: 0
-          type: integer
         rangeUint16:
           description: uint16
           maximum: 65535
@@ -4881,6 +4871,11 @@ components:
         rangeUint64:
           description: uint64 - even bigger.
           maximum: 1000000000000
+          minimum: 0
+          type: integer
+        rangeUint8:
+          description: uint8 - full capacity test.
+          maximum: 255
           minimum: 0
           type: integer
         stepUint64:
@@ -4967,6 +4962,9 @@ components:
           type:
           - array
           - "null"
+      type: object
+    Out:
+      description: Out deletes the session cookie.
       type: object
     OverloadedErr:
       description: ServiceUnavailable error response (HTTP 503).
@@ -5780,6 +5778,11 @@ components:
             items:
               $ref: '#/components/schemas/PresenceItem'
             type: array
+          limit:
+            default: 10
+            type:
+            - integer
+            - "null"
           listed:
             $ref: '#/components/schemas/PresenceBoxOfPresenceItemArray'
           meta:
@@ -5841,8 +5844,7 @@ components:
           optional     string?                         → *string  optional, may be omitted OR null
           nullable     string @nullable                → *string  required, value may be JSON null
           bothNullable string? @nullable               → *string  4-state (same as optional, redundant @nullable)
-          defValue     string? @default("d")           → *string  optional + pre-fill (the `?` is mandatory under @default)
-          defNullable  string? @nullable @default("d") → *string  optional + nullable + pre-fill
+          defValue     string? @default("d")           → *string  optional; absent or null takes the default (the `?` is mandatory under @default)
 
         Wire contract diffs row-by-row (OpenAPI 3.1: null rides the `type`
         list, so a nullable string is `type: [string, "null"]`):
@@ -5852,18 +5854,12 @@ components:
           nullable:     required[] yes, type: [string, "null"]
           bothNullable: required[] no,  type: [string, "null"]
           defValue:     required[] no,  type: [string, "null"], default: "d"
-          defNullable:  required[] no,  type: [string, "null"], default: "d"
 
-        The `bothNullable` and `defNullable` rows trip the "redundant
+        The `bothNullable` row trips the "redundant
         @nullable on `T?`" warning (the optionality already permits null);
         the linter should surface that without rejecting the file.
       properties:
         bothNullable:
-          type:
-          - string
-          - "null"
-        defNullable:
-          default: d
           type:
           - string
           - "null"
@@ -5916,6 +5912,11 @@ components:
             items:
               $ref: '#/components/schemas/PresenceItem'
             type: array
+          limit:
+            default: 10
+            type:
+            - integer
+            - "null"
           listed:
             $ref: '#/components/schemas/PresenceBoxOfPresenceItemArray'
           meta:
@@ -7076,7 +7077,8 @@ components:
         envelope.
       type: object
     Session:
-      description: Session sets its token in a cookie beside its body.
+      description: Session sets its token in a cookie beside its body, and a cookie
+        the logic picks per request.
       properties:
         name:
           type: string
@@ -7299,10 +7301,15 @@ components:
       - actual_version
       type: object
     Stamp:
-      description: Stamp is a mixin whose member the host carries as its own.
+      description: Stamp is a mixin whose members the host carries as its own.
       properties:
         by:
           type: string
+        origin:
+          default: web
+          type:
+          - string
+          - "null"
       required:
       - by
       type: object
@@ -9471,6 +9478,20 @@ paths:
           description: OK
       tags:
       - AccountUserService
+  /account/admin/reset:
+    post:
+      description: Hard reset - bypasses BasicAuth, uses its own minimal chain.
+      operationId: AccountServiceReset
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountServiceResetRespBody'
+          description: Created
+      tags:
+      - account
+      - admin
   /account/admin/{id}:
     delete:
       description: 'Delete an account - admin-only. Chain: [RateLimit, BasicAuth,
@@ -9492,20 +9513,6 @@ paths:
       tags:
       - account
       - admin
-  /account/admin/reset:
-    post:
-      description: Hard reset - bypasses BasicAuth, uses its own minimal chain.
-      operationId: AccountServiceReset
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccountServiceResetRespBody'
-          description: Created
-      tags:
-      - account
-      - admin
   /account/login:
     post:
       description: Log in - public, only inherits rate limiting.
@@ -9523,13 +9530,13 @@ paths:
     post:
       description: Logout - inherits RateLimit + AuthRequired. Also appends Audit
         at method level.
-      operationId: Logout
+      operationId: AccountServiceLogout
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LogoutRespBody'
+                $ref: '#/components/schemas/AccountServiceLogoutRespBody'
           description: Created
       tags:
       - account
@@ -9577,6 +9584,20 @@ paths:
       - AdminBearer: []
       tags:
       - admin
+  /admin/inventory/health:
+    get:
+      description: Liveness probe. Public on purpose - operators hit this before secrets
+        are loaded.
+      operationId: AdminInventoryServiceHealth
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminInventoryServiceHealthRespBody'
+          description: OK
+      tags:
+      - AdminInventoryService
   /admin/inventory/{itemId}/promote:
     post:
       description: Promote an item to the featured slot. Inherits the same auth chain
@@ -9607,20 +9628,6 @@ paths:
       - AdminWriteScope: []
       tags:
       - admin
-  /admin/inventory/health:
-    get:
-      description: Liveness probe. Public on purpose - operators hit this before secrets
-        are loaded.
-      operationId: AdminInventoryServiceHealth
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AdminInventoryServiceHealthRespBody'
-          description: OK
-      tags:
-      - AdminInventoryService
   /adminapi/inherit/ping:
     get:
       operationId: PingInherit
@@ -11394,7 +11401,7 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'Sets cookies: gauge'
+              description: 'Sets cookies: gauge (Path=/; HttpOnly; Secure; SameSite=Lax)'
               required: true
               schema:
                 type: string
@@ -11413,7 +11420,9 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'Sets cookies: sid'
+              description: 'Sets cookies: sid (Path=/; HttpOnly; Secure; SameSite=Lax),
+                remember (Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Strict;
+                the server may change them per response)'
               required: true
               schema:
                 type: string
@@ -11425,7 +11434,7 @@ paths:
           description: Conflict
           headers:
             Set-Cookie:
-              description: 'Sets cookies: lock'
+              description: 'Sets cookies: lock (Path=/api; Max-Age=3600; Secure; SameSite=Lax)'
               required: true
               schema:
                 type: string
@@ -11433,8 +11442,13 @@ paths:
       - Cookies
   /cookies/a/login:
     get:
-      description: Answers a Session.
+      description: Answers a Session, remembered for the days the query asks.
       operationId: CookiesLogin
+      parameters:
+      - in: query
+        name: days
+        schema:
+          type: integer
       responses:
         "200":
           content:
@@ -11444,8 +11458,29 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'Sets cookies: sid'
+              description: 'Sets cookies: sid (Path=/; HttpOnly; Secure; SameSite=Lax),
+                remember (Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Strict;
+                the server may change them per response)'
               required: true
+              schema:
+                type: string
+      tags:
+      - Cookies
+  /cookies/a/logout:
+    get:
+      description: Answers an Out that deletes the session cookie.
+      operationId: CookiesLogout
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CookiesLogoutRespBody'
+          description: OK
+          headers:
+            Set-Cookie:
+              description: 'Sets cookies: sid (Path=/; HttpOnly; Secure; SameSite=Lax;
+                the server may change them per response)'
               schema:
                 type: string
       tags:
@@ -11575,7 +11610,8 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'Sets cookies: has_more, session_id'
+              description: 'Sets cookies: has_more (Path=/; HttpOnly; Secure; SameSite=Lax),
+                session_id (Path=/; HttpOnly; Secure; SameSite=Lax)'
               required: true
               schema:
                 type: string
@@ -11646,21 +11682,6 @@ paths:
           description: Created
       tags:
       - StatusCodesService
-  /jobs/{jobId}:
-    delete:
-      description: Cancel a queued job. No body on success - 204 keeps the wire silent.
-      operationId: CancelJob
-      parameters:
-      - in: path
-        name: jobId
-        required: true
-        schema:
-          $ref: '#/components/schemas/ID'
-      responses:
-        "204":
-          description: No Content
-      tags:
-      - StatusCodesService
   /jobs/enqueue:
     post:
       description: Enqueue a job for async processing; returns once accepted by the
@@ -11679,6 +11700,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnqueueJobRespBody'
           description: Accepted
+      tags:
+      - StatusCodesService
+  /jobs/{jobId}:
+    delete:
+      description: Cancel a queued job. No body on success - 204 keeps the wire silent.
+      operationId: CancelJob
+      parameters:
+      - in: path
+        name: jobId
+        required: true
+        schema:
+          $ref: '#/components/schemas/ID'
+      responses:
+        "204":
+          description: No Content
       tags:
       - StatusCodesService
   /ledger-entry/all:
@@ -14126,7 +14162,7 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'Sets cookies: xs-session'
+              description: 'Sets cookies: xs-session (Path=/; HttpOnly; Secure; SameSite=Lax)'
               required: true
               schema:
                 type: string

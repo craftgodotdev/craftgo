@@ -10,15 +10,15 @@ import (
 
 // strEchoReqWire is the wire form of types.Str_EchoReq: each member is nil while absent or null.
 type strEchoReqWire struct {
-	Name     *string                 `json:"name"`
-	Email    *string                 `json:"email"`
-	Code     *string                 `json:"code"`
-	Bio      *string                 `json:"bio"`
-	Greeting server.Nullable[string] `json:"greeting"`
+	Name     *string `json:"name"`
+	Email    *string `json:"email"`
+	Code     *string `json:"code"`
+	Bio      *string `json:"bio"`
+	Greeting *string `json:"greeting"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *strEchoReqWire) to(dst *types.Str_EchoReq) string {
 	if w.Name == nil {
 		return "name"
@@ -33,9 +33,9 @@ func (w *strEchoReqWire) to(dst *types.Str_EchoReq) string {
 	}
 	dst.Code = *w.Code
 	dst.Bio = w.Bio
-	if _v := w.Greeting.Value(); _v != nil {
-		dst.Greeting = _v
-	} else if !w.Greeting.Present() {
+	if w.Greeting != nil {
+		dst.Greeting = w.Greeting
+	} else {
 		_d := "hello"
 		dst.Greeting = &_d
 	}
@@ -63,8 +63,8 @@ type allFormatsWire struct {
 	JSONField  *string `json:"jsonField"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *allFormatsWire) to(dst *types.AllFormats) string {
 	if w.Email == nil {
 		return "email"
@@ -144,8 +144,8 @@ type strCombosWire struct {
 	CodeID *string `json:"codeID"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *strCombosWire) to(dst *types.Str_Combos) string {
 	if w.Email1 == nil {
 		return "email1"
@@ -167,8 +167,8 @@ type strNullableFormatWire struct {
 	Email server.Nullable[string] `json:"email"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *strNullableFormatWire) to(dst *types.Str_NullableFormat) string {
 	if !w.Email.Present() {
 		return "email"

@@ -3,6 +3,7 @@ package server
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // nullableBody is a body with a member that may be null, as a generated wire struct holds one.
@@ -44,13 +45,56 @@ func TestNullableTellsAbsentFromNull(t *testing.T) {
 	}
 }
 
-// A value of the wrong type in a Nullable is reported at the member's path, inside it too.
-func TestNullableTypeErrorNamesTheMember(t *testing.T) {
-	for body, want := range map[string]string{
-		`{"n":"x"}`:       `n: expected integer, got string`,
-		`{"s":{"a":"x"}}`: `s.a: expected integer, got string`,
-	} {
+// A member the body repeats reads as its last, null or not.
+func TestNullableRepeatedMemberReadsAsItsLast(t *testing.T) {
+	for body, want := range map[string]*int{`{"n":null,"n":3}`: new(3), `{"n":3,"n":null}`: nil} {
 		var b nullableBody
+		if err := JSON().Decode(strings.NewReader(body), &b); err != nil {
+			t.Fatalf("%s: %v", body, err)
+		}
+		if got := b.N.Value(); (got == nil) != (want == nil) || got != nil && *got != *want {
+			t.Errorf("%s: got %v, want %v", body, got, want)
+		}
+	}
+}
+
+// nullableBase is a mixin a wire struct embeds.
+type nullableBase struct {
+	N int `json:"n"`
+}
+
+// nullableMixed holds a mixin's member as its own.
+type nullableMixed struct {
+	nullableBase
+	K int `json:"k"`
+}
+
+// nullableShapes holds a Nullable around each shape a member takes.
+type nullableShapes struct {
+	nullableBody
+	E  Nullable[nullableMixed]                `json:"e"`
+	L  Nullable[[]nullableInner]              `json:"l"`
+	M  Nullable[map[string]nullableInner]     `json:"m"`
+	NN Nullable[nullableBody]                 `json:"nn"`
+	T  Nullable[time.Time]                    `json:"t"`
+	LL []Nullable[map[string][]nullableInner] `json:"ll"`
+}
+
+// A value that fails to decode in a Nullable is reported at its JSON path, by JSON names alone,
+// whatever it is held in.
+func TestNullableFailureNamesItsPath(t *testing.T) {
+	for body, want := range map[string]string{
+		`{"n":"x"}`:                  `n: expected integer, got string`,
+		`{"s":{"a":"x"}}`:            `s.a: expected integer, got string`,
+		`{"e":{"n":true,"k":1}}`:     `e.n: expected integer, got boolean`,
+		`{"l":[{"a":1},{"a":[]}]}`:   `l.a: expected integer, got array`,
+		`{"m":{"secret":{"a":"x"}}}`: `m.a: expected integer, got string`,
+		`{"nn":{"s":{"a":"x"}}}`:     `nn.s.a: expected integer, got string`,
+		`{"nn":{"n":{}}}`:            `nn.n: expected integer, got object`,
+		`{"t":"soon"}`:               `t: not a valid RFC 3339 datetime`,
+		`{"ll":[{"k":[{"a":"x"}]}]}`: `ll.a: expected integer, got string`,
+	} {
+		var b nullableShapes
 		err := JSON().Decode(strings.NewReader(body), &b)
 		if err == nil || err.Error() != want {
 			t.Errorf("%s: got %v, want %q", body, err, want)
@@ -58,16 +102,16 @@ func TestNullableTypeErrorNamesTheMember(t *testing.T) {
 	}
 }
 
-// The presence check is on by default and switches off and back on.
-func TestRequirePresenceSwitch(t *testing.T) {
-	if !RequirePresence() {
-		t.Fatal("the presence check must be on by default")
+// An unknown member inside a Nullable is named as at any other depth.
+func TestNullableUnknownMember(t *testing.T) {
+	if err := SetStrictJSON(true); err != nil {
+		t.Fatal(err)
 	}
-	SetRequirePresence(false)
-	off := RequirePresence()
-	SetRequirePresence(true)
-	if off || !RequirePresence() {
-		t.Errorf("switching off then on read %v then %v", off, RequirePresence())
+	t.Cleanup(func() { _ = SetStrictJSON(false) })
+	var b nullableBody
+	err := JSON().Decode(strings.NewReader(`{"s":{"a":1,"zzz":1}}`), &b)
+	if err == nil || err.Error() != "zzz: unknown field" {
+		t.Errorf("got %v, want zzz: unknown field", err)
 	}
 }
 

@@ -8,12 +8,14 @@ import (
 	"github.com/craftgodotdev/craftgo/internal/prims"
 )
 
-// collectDefaults pre-fills the request fields that carry a @default, before the request is bound.
-func collectDefaults(fields []resolvedField, r *projectResolver, imports *importSet) []defaultBinding {
+// collectDefaults pre-fills the request fields that carry a @default, before the request is bound;
+// when the body decodes through a wire struct, whose to fills its members' defaults, only those off
+// the body.
+func collectDefaults(fields []resolvedField, r *projectResolver, imports *importSet, bodyWired bool) []defaultBinding {
 	var out []defaultBinding
 	for _, rf := range fields {
 		f, arg := rf.Field, firstArg(rf.Field.Decorators, "default")
-		if !rf.HasDefValue || arg == nil || f.Type == nil || f.Type.Map != nil {
+		if !rf.HasDefValue || arg == nil || f.Type == nil || f.Type.Map != nil || bodyWired && rf.OnWireBody {
 			continue
 		}
 		lit := renderDefault(f.Type, arg.Value, r, imports)

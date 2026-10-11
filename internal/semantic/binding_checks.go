@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/lexer"
@@ -74,6 +75,8 @@ func (p *Project) wireTypeFault(parent, home string, f *ast.Field, kind wire.Bin
 		return fmt.Sprintf(msgBindPath, parent, f.Name, t)
 	case kind == wire.BindCookie && t.Array:
 		return fmt.Sprintf(msgBindCookieArray, parent, f.Name)
+	case kind == wire.BindCookie && isCookieTypeRef(t):
+		return ""
 	case (kind == wire.BindQuery || kind == wire.BindHeader || kind == wire.BindCookie) && !p.wireBindable(home, t):
 		return fmt.Sprintf(msgBindWire, parent, f.Name, kind, t)
 	case kind == wire.BindForm && !p.formBindable(home, t):
@@ -668,6 +671,143 @@ func outerNamedRefs(t *ast.TypeRef) []*ast.NamedTypeRef {
 	return nil
 }
 
+// checkCookieAttrs rejects an attribute f's `@cookie` declares that no
+// browser would keep: a path not starting with "/" or holding a ";" or a
+// control character, a domain that is no host name, a lifetime of no whole
+// second, a sameSite other than lax, strict and none, and sameSite none
+// without secure.
+func (a *analyzer) checkCookieAttrs(parent string, f *ast.Field) {
+	d := ast.FindDecorator(f.Decorators, wire.BindingCookie)
+	if d == nil {
+		return
+	}
+	attrs := wire.CookieAttrsOf(f)
+	for _, ag := range d.Args {
+		if ag == nil || !ag.Named {
+			continue
+		}
+		var why string
+		switch ag.Name {
+		case wire.CookiePath:
+			if _, ok := ag.Value.(*ast.StringLit); ok && !cookiePathOK(attrs.Path) {
+				why = fmt.Sprintf("path %q must start with \"/\" and hold no \";\" or control character", attrs.Path)
+			}
+		case wire.CookieDomain:
+			if _, ok := ag.Value.(*ast.StringLit); ok && !cookieDomainOK(attrs.Domain) {
+				why = fmt.Sprintf("domain %q is no host name", attrs.Domain)
+			}
+		case wire.CookieMaxAge:
+			if age, ok := DurationArg(ag); ok && (age <= 0 || age%time.Second != 0) {
+				why = fmt.Sprintf("maxAge %s is no whole number of seconds above zero - a cookie the logic deletes is a `cookie` field set with MaxAge -1", age)
+			}
+		case wire.CookieSameSite:
+			if _, ok := ag.Value.(*ast.IdentExpr); ok && !slices.Contains(cookieSameSites(), attrs.SameSite) {
+				why = fmt.Sprintf("sameSite %s is not lax, strict or none", attrs.SameSite)
+			}
+		}
+		if why != "" {
+			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgValue, "field %s.%s: @cookie %s", parent, f.Name, why)
+		}
+	}
+	if attrs.SameSite == wire.SameSiteNone && !attrs.Secure {
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorConflict,
+			"field %s.%s: @cookie sameSite none needs secure, or browsers refuse the cookie - drop `secure: false`", parent, f.Name)
+	}
+}
+
+// cookiePathOK reports whether p is a cookie path a browser keeps.
+func cookiePathOK(p string) bool {
+	if !strings.HasPrefix(p, "/") {
+		return false
+	}
+	for _, r := range p {
+		if r == ';' || r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+// cookieDomainOK reports whether d is a host name, a leading dot allowed.
+func cookieDomainOK(d string) bool {
+	labels := strings.Split(strings.TrimPrefix(d, "."), ".")
+	for _, l := range labels {
+		if l == "" || len(l) > 63 || l[0] == '-' || l[len(l)-1] == '-' {
+			return false
+		}
+		for _, r := range l {
+			if !isHostRune(r) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// isHostRune reports whether r may stand in a label of a host name.
+func isHostRune(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-'
+}
+
+// checkCookiePosition rejects a `cookie` that no generated code sets: one
+// without `@cookie`, in an array, a map or a generic argument, and one a
+// request holds, which reads a cookie's value alone. A `cookie` field nested
+// below a response or an error body binds nothing, which
+// [projectChecks.checkNestedBindings] reports.
+func (a *analyzer) checkCookiePosition() {
+	check := func(owner string, body []ast.TypeMember) {
+		for _, f := range ast.Fields(body) {
+			switch {
+			case isCookieTypeRef(f.Type):
+				// A `cookie[]` under @cookie is the binding check's to report.
+				if kind, _ := wire.BindingKind(f.Decorators); kind != wire.BindCookie {
+					a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeCookiePosition,
+						"field %s.%s is a `cookie`, which only sets a response cookie - add @cookie(\"<name>\"), or type the field `string`", owner, f.Name)
+				}
+			case holdsCookie(f.Type):
+				a.diag(f.Pos, f.Pos, lexer.SeverityError, CodeCookiePosition,
+					"field %s.%s holds `cookie` in `%s`, but a cookie is set one per @cookie field - type the field `cookie`", owner, f.Name, f.Type)
+			}
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(a.pkg.Types)) {
+		check(name, a.pkg.Types[name].Body)
+	}
+	for _, name := range slices.Sorted(maps.Keys(a.pkg.Errors)) {
+		check(name, a.pkg.Errors[name].Body)
+	}
+	for _, svcName := range a.pkg.ServiceNames() {
+		for _, m := range a.pkg.Services[svcName].Methods {
+			if m.Request == nil {
+				continue
+			}
+			if _, at := a.firstFieldWhere(&ast.TypeRef{Pos: m.Request.Pos, Named: m.Request}, m.Request.String(), fieldHoldsCookie); at != "" {
+				a.diag(m.Request.Pos, m.Request.Pos, lexer.SeverityError, CodeCookiePosition,
+					"request %s of %s.%s holds a `cookie` at %s, but a request reads a cookie's value alone - type the field `string`",
+					m.Request, svcName, m.Name, at)
+			}
+		}
+	}
+}
+
+// holdsCookie reports whether t names `cookie` itself, optional or in an
+// array, or as a map key or value or a generic argument, at any depth.
+func holdsCookie(t *ast.TypeRef) bool {
+	found := false
+	t.WalkNamedRefs(func(n *ast.NamedTypeRef) {
+		found = found || (n.Name != nil && n.Name.String() == "cookie")
+	})
+	return found
+}
+
+// fieldHoldsCookie reports whether f's type [holdsCookie].
+func fieldHoldsCookie(f *ast.Field) bool { return holdsCookie(f.Type) }
+
+// isCookieTypeRef reports whether t names `cookie`, optional or in an array.
+func isCookieTypeRef(t *ast.TypeRef) bool {
+	return t != nil && t.Named != nil && t.Named.Name != nil && t.Named.Name.String() == "cookie"
+}
+
 // holdsFile reports whether t names `file` itself, optional or in an array,
 // or as a map key or value or a generic argument, at any depth.
 func holdsFile(t *ast.TypeRef) bool {
@@ -684,4 +824,10 @@ func fieldHoldsFile(f *ast.Field) bool { return holdsFile(f.Type) }
 // isFileTypeRef reports whether t names `file`, optional or in an array.
 func isFileTypeRef(t *ast.TypeRef) bool {
 	return t != nil && t.Named != nil && t.Named.Name != nil && t.Named.Name.String() == "file"
+}
+
+// cookieSameSites returns the values @cookie's sameSite takes.
+func cookieSameSites() []string {
+	spec, _ := DecoratorSpec(wire.BindingCookie)
+	return spec.Args.NamedValues[wire.CookieSameSite]
 }

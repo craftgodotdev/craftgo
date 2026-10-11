@@ -16,8 +16,8 @@ type createProfileReqWire struct {
 	Age         *int              `json:"age"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *createProfileReqWire) to(dst *types.CreateProfileReq) string {
 	if w.DisplayName == nil {
 		return "displayName"
@@ -56,8 +56,8 @@ type contactInfoWire struct {
 	Phone *string `json:"phone"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *contactInfoWire) to(dst *types.ContactInfo) string {
 	if w.Email == nil {
 		return "email"
@@ -76,8 +76,8 @@ type pfAddressWire struct {
 	Coords  *coordsWire `json:"coords"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *pfAddressWire) to(dst *types.PfAddress) string {
 	if w.Street == nil {
 		return "street"
@@ -107,8 +107,8 @@ type coordsWire struct {
 	Lng *float64 `json:"lng"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *coordsWire) to(dst *types.Coords) string {
 	if w.Lat == nil {
 		return "lat"
@@ -126,8 +126,8 @@ type patchProfileReqWire struct {
 	DisplayName *string `json:"displayName"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *patchProfileReqWire) to(dst *types.PatchProfileReq) string {
 	if w.DisplayName == nil {
 		return "displayName"

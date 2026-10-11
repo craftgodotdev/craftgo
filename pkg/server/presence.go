@@ -2,24 +2,7 @@ package server
 
 import (
 	"bytes"
-	"encoding/json"
-	"errors"
-	"sync/atomic"
 )
-
-// lenientBodies is the opposite of the [SetRequirePresence] switch, so the zero value checks.
-var lenientBodies atomic.Bool
-
-// SetRequirePresence switches, process-wide and safe while serving, the check generated handlers
-// make that a JSON request body carries its required members. On, the default, a member declared
-// without `?` that is absent, or null without @nullable, answers 400 "<json path>: required", and
-// a nested @default fills an absent member. Off, the body decodes straight into the request type,
-// a missing member left at its zero value.
-func SetRequirePresence(on bool) { lenientBodies.Store(!on) }
-
-// RequirePresence reports whether generated handlers check a JSON body for its required members;
-// see [SetRequirePresence].
-func RequirePresence() bool { return !lenientBodies.Load() }
 
 // MissingMember returns the validation error "<path>: required" for a required member a JSON body
 // left out or sent as null, path being the member's JSON path.
@@ -31,7 +14,7 @@ type missingMemberError struct{ path string }
 func (e *missingMemberError) Error() string { return e.path + ": required" }
 
 // Nullable holds a JSON member that may be null, telling an absent member from a null one: a
-// generated handler decodes a @nullable or defaulted member into it. The value decodes with the
+// generated handler decodes a @nullable member into it. The value decodes with the
 // codec [JSON] returns, so a codec installed with [SetGlobalJSONCodec] must call a member's
 // json.Unmarshaler.
 type Nullable[T any] struct {
@@ -43,21 +26,27 @@ type Nullable[T any] struct {
 // nullLiteral is JSON's null.
 var nullLiteral = []byte("null")
 
-// UnmarshalJSON records that the member came and decodes it unless it is null. A value of the
-// wrong JSON type fails with the codec's *json.UnmarshalTypeError, which an enclosing
-// encoding/json decoder prefixes with the member's path.
+// UnmarshalJSON records that the member came and decodes it unless it is null. A value that fails
+// to decode fails with a *memberError, which the default codec words at the value's JSON path. A
+// member the body repeats reads as its last.
 func (n *Nullable[T]) UnmarshalJSON(b []byte) error {
-	n.present = true
+	*n = Nullable[T]{present: true}
 	if bytes.Equal(bytes.TrimSpace(b), nullLiteral) {
 		n.null = true
 		return nil
 	}
-	err := JSON().Decode(bytes.NewReader(b), &n.value)
-	if te, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
-		return te
+	if err := JSON().Decode(bytes.NewReader(b), &n.value); err != nil {
+		return &memberError{err: err}
 	}
-	return err
+	return nil
 }
+
+// memberError is the failure of a [Nullable]'s value to decode, the codec's error, which names
+// its path from the value.
+type memberError struct{ err error }
+
+func (e *memberError) Error() string { return e.err.Error() }
+func (e *memberError) Unwrap() error { return e.err }
 
 // Present reports whether the member came, null or not.
 func (n *Nullable[T]) Present() bool { return n.present }

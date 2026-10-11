@@ -23,7 +23,12 @@ func Lock(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		server.WriteResponse(w, r, http.StatusOK, resp, func(w http.ResponseWriter) {
-			server.SetCookie(w, "sid", resp.Token)
+			http.SetCookie(w, &http.Cookie{Name: "sid", Value: resp.Token, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+			if resp.Remember != nil {
+				_c := *resp.Remember
+				_c.Name = "remember"
+				http.SetCookie(w, &_c)
+			}
 		})
 	}
 }

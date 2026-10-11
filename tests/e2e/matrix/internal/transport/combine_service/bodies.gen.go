@@ -14,12 +14,11 @@ type presenceMatrixWire struct {
 	Optional     *string                 `json:"optional"`
 	Nullable     server.Nullable[string] `json:"nullable"`
 	BothNullable *string                 `json:"bothNullable"`
-	DefValue     server.Nullable[string] `json:"defValue"`
-	DefNullable  server.Nullable[string] `json:"defNullable"`
+	DefValue     *string                 `json:"defValue"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *presenceMatrixWire) to(dst *types.PresenceMatrix) string {
 	if w.Plain == nil {
 		return "plain"
@@ -33,17 +32,11 @@ func (w *presenceMatrixWire) to(dst *types.PresenceMatrix) string {
 		dst.Nullable = _v
 	}
 	dst.BothNullable = w.BothNullable
-	if _v := w.DefValue.Value(); _v != nil {
-		dst.DefValue = _v
-	} else if !w.DefValue.Present() {
+	if w.DefValue != nil {
+		dst.DefValue = w.DefValue
+	} else {
 		_d := "d"
 		dst.DefValue = &_d
-	}
-	if _v := w.DefNullable.Value(); _v != nil {
-		dst.DefNullable = _v
-	} else if !w.DefNullable.Present() {
-		_d := "d"
-		dst.DefNullable = &_d
 	}
 	return ""
 }
@@ -53,8 +46,8 @@ type pairsStrWire struct {
 	Email *string `json:"email"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *pairsStrWire) to(dst *types.PairsStr) string {
 	if w.Email == nil {
 		return "email"
@@ -68,8 +61,8 @@ type pairsNumWire struct {
 	Score *int `json:"score"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *pairsNumWire) to(dst *types.PairsNum) string {
 	if w.Score == nil {
 		return "score"
@@ -83,13 +76,132 @@ type pairsArrWire struct {
 	Tags []string `json:"tags"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *pairsArrWire) to(dst *types.PairsArr) string {
 	if w.Tags == nil {
 		return "tags"
 	}
 	dst.Tags = w.Tags
+	return ""
+}
+
+// defaultsBoundaryWire is the wire form of types.DefaultsBoundary: each member is nil while absent or null.
+type defaultsBoundaryWire struct {
+	Zero   *int  `json:"zero"`
+	Flag   *bool `json:"flag"`
+	NegOne *int  `json:"negOne"`
+}
+
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
+func (w *defaultsBoundaryWire) to(dst *types.DefaultsBoundary) string {
+	if w.Zero != nil {
+		dst.Zero = w.Zero
+	} else {
+		_d := 0
+		dst.Zero = &_d
+	}
+	if w.Flag != nil {
+		dst.Flag = w.Flag
+	} else {
+		_d := true
+		dst.Flag = &_d
+	}
+	if w.NegOne != nil {
+		dst.NegOne = w.NegOne
+	} else {
+		_d := -1
+		dst.NegOne = &_d
+	}
+	return ""
+}
+
+// defaultsCollectionWire is the wire form of types.DefaultsCollection: each member is nil while absent or null.
+type defaultsCollectionWire struct {
+	Arr []int `json:"arr"`
+}
+
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
+func (w *defaultsCollectionWire) to(dst *types.DefaultsCollection) string {
+	if w.Arr != nil {
+		dst.Arr = w.Arr
+	} else {
+		dst.Arr = []int{1, 2, 3}
+	}
+	return ""
+}
+
+// defaultsEnumWire is the wire form of types.DefaultsEnum: each member is nil while absent or null.
+type defaultsEnumWire struct {
+	C *types.Color `json:"c"`
+}
+
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
+func (w *defaultsEnumWire) to(dst *types.DefaultsEnum) string {
+	if w.C != nil {
+		dst.C = w.C
+	} else {
+		_d := types.ColorRed
+		dst.C = &_d
+	}
+	return ""
+}
+
+// defaultsScalarWire is the wire form of types.DefaultsScalar: each member is nil while absent or null.
+type defaultsScalarWire struct {
+	Size *types.PageSize `json:"size"`
+}
+
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
+func (w *defaultsScalarWire) to(dst *types.DefaultsScalar) string {
+	if w.Size != nil {
+		dst.Size = w.Size
+	} else {
+		_d := types.PageSize(20)
+		dst.Size = &_d
+	}
+	return ""
+}
+
+// defaultsWidthWire is the wire form of types.DefaultsWidth: each member is nil while absent or null.
+type defaultsWidthWire struct {
+	W32  *int32   `json:"w32"`
+	W64  *int64   `json:"w64"`
+	Wu16 *uint16  `json:"wu16"`
+	Wf32 *float32 `json:"wf32"`
+}
+
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
+func (w *defaultsWidthWire) to(dst *types.DefaultsWidth) string {
+	if w.W32 != nil {
+		dst.W32 = w.W32
+	} else {
+		_d := int32(7)
+		dst.W32 = &_d
+	}
+	if w.W64 != nil {
+		dst.W64 = w.W64
+	} else {
+		_d := int64(9)
+		dst.W64 = &_d
+	}
+	if w.Wu16 != nil {
+		dst.Wu16 = w.Wu16
+	} else {
+		_d := uint16(3)
+		dst.Wu16 = &_d
+	}
+	if w.Wf32 != nil {
+		dst.Wf32 = w.Wf32
+	} else {
+		_d := float32(1.5)
+		dst.Wf32 = &_d
+	}
 	return ""
 }
 
@@ -99,8 +211,8 @@ type pairsNestedWire struct {
 	Note *string `json:"note"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *pairsNestedWire) to(dst *types.PairsNested) string {
 	if _p := w.pairsReachWire.to(&dst.PairsReach); _p != "" {
 		return _p
@@ -117,8 +229,8 @@ type pairsReachWire struct {
 	pairsDocWire
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *pairsReachWire) to(dst *types.PairsReach) string {
 	if _p := w.pairsDocWire.to(&dst.PairsDoc); _p != "" {
 		return _p
@@ -132,8 +244,8 @@ type pairsDocWire struct {
 	B *string `json:"b"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *pairsDocWire) to(dst *types.PairsDoc) string {
 	dst.A = w.A
 	dst.B = w.B
@@ -145,13 +257,37 @@ type zeroMemberWire struct {
 	Status *types.MemberStatus `json:"status"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *zeroMemberWire) to(dst *types.ZeroMember) string {
 	if w.Status == nil {
 		return "status"
 	}
 	dst.Status = *w.Status
+	return ""
+}
+
+// wireDefaultsWire is the wire form of types.WireDefaults: each member is nil while absent or null.
+type wireDefaultsWire struct {
+	C *types.Hue   `json:"c"`
+	L *types.Grade `json:"l"`
+}
+
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
+func (w *wireDefaultsWire) to(dst *types.WireDefaults) string {
+	if w.C != nil {
+		dst.C = w.C
+	} else {
+		_d := types.HueRed
+		dst.C = &_d
+	}
+	if w.L != nil {
+		dst.L = w.L
+	} else {
+		_d := types.GradeHigh
+		dst.L = &_d
+	}
 	return ""
 }
 
@@ -161,8 +297,8 @@ type promotedContactWire struct {
 	Note *string `json:"note"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *promotedContactWire) to(dst *types.PromotedContact) string {
 	if _p := w.contactPairWire.to(&dst.ContactPair); _p != "" {
 		return _p
@@ -180,11 +316,27 @@ type contactPairWire struct {
 	Phone *string `json:"phone"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *contactPairWire) to(dst *types.ContactPair) string {
 	dst.Email = w.Email
 	dst.Phone = w.Phone
+	return ""
+}
+
+// arrayDefaultsWire is the wire form of types.ArrayDefaults: each member is nil while absent or null.
+type arrayDefaultsWire struct {
+	Methods []types.PayMethod `json:"methods"`
+}
+
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
+func (w *arrayDefaultsWire) to(dst *types.ArrayDefaults) string {
+	if w.Methods != nil {
+		dst.Methods = w.Methods
+	} else {
+		dst.Methods = []types.PayMethod{types.PayMethodCard, types.PayMethodBank}
+	}
 	return ""
 }
 
@@ -195,8 +347,8 @@ type nilableNullableWire struct {
 	Tags server.Nullable[map[string]int] `json:"tags"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *nilableNullableWire) to(dst *types.NilableNullable) string {
 	if !w.Blob.Present() {
 		return "blob"
@@ -225,8 +377,8 @@ type pairsStackedWire struct {
 	A *string `json:"a"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *pairsStackedWire) to(dst *types.PairsStacked) string {
 	if w.B == nil {
 		return "b"

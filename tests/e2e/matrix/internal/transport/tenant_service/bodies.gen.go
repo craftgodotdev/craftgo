@@ -12,8 +12,8 @@ type tenantCreateReqWire struct {
 	Name     *string `json:"name"`
 }
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *tenantCreateReqWire) to(dst *types.TenantCreateReq) string {
 	if w.Name == nil {
 		return "name"

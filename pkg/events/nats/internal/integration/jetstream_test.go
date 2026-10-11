@@ -962,16 +962,32 @@ func TestAZeroPublishAckTimeoutWaitsUntilCloseOnBothPaths(t *testing.T) {
 	}
 }
 
+// endsAfterCheck is an ended ctx that reads as live the first time its Err is asked: one that ends
+// just after Publish checks it.
+type endsAfterCheck struct {
+	context.Context
+	checked bool
+}
+
+func (c *endsAfterCheck) Err() error {
+	if !c.checked {
+		c.checked = true
+		return nil
+	}
+	return c.Context.Err()
+}
+
 // A ctx that ends during the ack wait does not fail a stored message.
 func TestPublishDoesNotFailAMessageTheStreamStored(t *testing.T) {
 	conn := runJetStreamServer(t)
 	provision(t, conn, "ORDERS", "orders.>")
 	tr := jsTransport(t, conn)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Microsecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancel()
+	<-ctx.Done()
 
-	if err := tr.Publish(ctx, &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)}); err != nil {
+	if err := tr.Publish(&endsAfterCheck{Context: ctx}, &events.Message{Event: "orders.Placed", Payload: []byte(`{}`)}); err != nil {
 		t.Fatalf("publish: %v - the stream stored this, so reporting it failed has the caller publish it twice", err)
 	}
 	if n := storedInOrders(t, conn); n != 1 {

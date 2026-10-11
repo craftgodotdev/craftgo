@@ -46,7 +46,7 @@ func (env *typeEnv) param(n *ast.NamedTypeRef) (typeArg, bool) {
 // into. A wire struct mirrors one instance of a struct type a body reaches, its mixins embedded as
 // theirs: a member is a pointer, nil while absent or null, so a required one is told apart from a
 // zero value; the struct's `to` method checks the required members and copies the body into the
-// request type, filling each absent @default on the way.
+// request type, filling the @default of each member absent or null on the way.
 type bodyPlan struct {
 	proj *semantic.Project
 	view string
@@ -261,11 +261,15 @@ func (p *bodyPlan) member(s *wireStruct, f *ast.Field, goName string) *wireMembe
 		json:     jsonName,
 		presence: presence,
 		value:    &value,
-		pubPtr:   rf.GoPointer() && rf.Category != semantic.CatFile,
+		pubPtr:   rf.GoPointer() && !rf.SpellsPointer(),
 		raw:      rf.Category == semantic.CatRawBytes,
 		skipped:  s.skip[f.Name] && !explicit,
 	}
-	_, paramTyped := s.inner.param(f.Type.Named)
+	arg, paramTyped := s.inner.param(f.Type.Named)
+	if paramTyped && f.Type.ArrayDepth == 0 && f.Type.Map == nil {
+		// A raw argument is told apart where it is written: T itself resolves to no category.
+		m.raw = semantic.NewResolver(p.proj, arg.env.home).ResolveTypeRef(arg.ref).Category == semantic.CatRawBytes
+	}
 	if arg := firstArg(f.Decorators, "default"); arg != nil && rf.HasDefValue && f.Type.Map == nil && !paramTyped &&
 		renderDefault(p.viewRef(&value, s.inner), arg.Value, p.r, p.keys.scratch()) != "" {
 		m.def = arg
@@ -317,7 +321,7 @@ func (p *bodyPlan) finish() {
 		}
 	}
 	for m, top := range p.tops {
-		if topNeedsWire(top) {
+		if top.nonTrivial {
 			top.emit()
 		} else {
 			delete(p.tops, m)
@@ -348,24 +352,6 @@ func (s *wireStruct) children() []*wireStruct {
 		}
 	}
 	return out
-}
-
-// topNeedsWire reports whether a request of instance s decodes through its wire struct: a member
-// it or a mixin carries is checked, or a value below it decodes through one. Its own defaults and
-// its mixins' are pre-filled before the body decodes.
-func topNeedsWire(s *wireStruct) bool {
-	if s.checks {
-		return true
-	}
-	for _, it := range s.items {
-		if it.field != nil && slices.ContainsFunc(it.field.children, func(c *wireStruct) bool { return c.nonTrivial }) {
-			return true
-		}
-		if it.mixin != nil && topNeedsWire(it.mixin.s) {
-			return true
-		}
-	}
-	return false
 }
 
 // emit marks s and what its wire struct names: each mixin carrying a member, and each value
@@ -578,8 +564,8 @@ func (p *bodyPlan) renderStruct(s *wireStruct) string {
 type %[1]s struct {
 %[3]s}
 
-// to copies w into dst, filling each absent default, and returns the JSON path of the first
-// required member w lacks, or "".
+// to copies w into dst, filling the default of each member absent or null, and returns the JSON
+// path of the first required member w lacks, or "".
 func (w *%[1]s) to(dst *%[2]s) string {
 %[4]sreturn ""
 }
@@ -617,15 +603,23 @@ func (p *bodyPlan) renderMember(s *wireStruct, m *wireMember) (typ, stmts string
 		}
 		return valWire, ""
 	case m.def != nil:
+		// Absent and null both read as nil, and both take the default.
 		lit := renderDefault(p.viewRef(m.value, env), m.def.Value, p.r, p.imports)
-		if !m.pubPtr && !nilable {
-			return "*" + valWire, fmt.Sprintf("if %[1]s != nil {\n%[2]s = *%[1]s\n} else {\n%[2]s = %[3]s\n}\n", src, dst, lit)
+		typ, val := valWire, src
+		if !nilable {
+			typ, val = "*"+valWire, deref(src)
 		}
-		take, fill := dst+" = *_v", dst+" = "+lit
+		take, fill := p.copyValue(m.value, env, val, dst, m.json, 0, true), dst+" = "+lit+"\n"
+		switch {
+		case m.pubPtr && !nilable && valWire == valPub:
+			take = dst + " = " + src + "\n"
+		case m.pubPtr:
+			take = dst + " = new(" + valPub + ")\n" + p.copyValue(m.value, env, val, deref(dst), m.json, 0, true)
+		}
 		if m.pubPtr {
-			take, fill = dst+" = _v", "_d := "+lit+"\n"+dst+" = &_d"
+			fill = "_d := " + lit + "\n" + dst + " = &_d\n"
 		}
-		return nullable(), fmt.Sprintf("if _v := %s.Value(); _v != nil {\n%s\n} else if !%s.Present() {\n%s\n}\n", src, take, src, fill)
+		return typ, fmt.Sprintf("if %s != nil {\n%s} else {\n%s}\n", src, take, fill)
 	case m.presence == wire.JSONRequired && m.raw:
 		return valWire, fmt.Sprintf("if len(%[1]s) == 0 || string(%[1]s) == \"null\" {\nreturn %[2]s\n}\n%[3]s = %[1]s\n", src, key, dst)
 	case m.presence == wire.JSONRequired && nilable:

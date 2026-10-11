@@ -17,6 +17,7 @@ const (
 	Any      // opaque JSON value
 	File     // multipart upload
 	DateTime // RFC 3339 timestamp
+	Cookie   // response cookie
 )
 
 // Spec describes one built-in type.
@@ -55,6 +56,7 @@ var specs = []Spec{
 	{Name: "any", Kind: Any, Go: "any", Doc: "**`any`** - opaque JSON value.\n\nGenerates `any` in Go."},
 	{Name: "datetime", Kind: DateTime, Go: "time.Time", GoImport: "time", OASType: "string", OASFormat: "date-time", Doc: "**`datetime`** - an RFC 3339 timestamp.\n\nGenerates `time.Time` in Go and travels as an RFC 3339 string in JSON. A body field only: it cannot be bound from a query, header, cookie or form value."},
 	{Name: "file", Kind: File, Go: "*multipart.FileHeader", GoImport: "mime/multipart", OASType: "string", OASFormat: "binary", Doc: "**`file`** - multipart file upload (request only, must be paired with `@form`).\n\nGenerates `*multipart.FileHeader`."},
+	{Name: "cookie", Kind: Cookie, Go: "*http.Cookie", GoImport: "net/http", OASType: "string", Doc: "**`cookie`** - a cookie the logic sets in full (a response or error field only, paired with `@cookie`).\n\nGenerates `*http.Cookie`: the logic picks its value and may change any attribute the design declares, as its lifetime, or delete it with `MaxAge: -1`. nil sets no cookie."},
 }
 
 var byName = func() map[string]Spec {

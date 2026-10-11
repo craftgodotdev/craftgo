@@ -12,6 +12,7 @@ import (
 // RegisterRoutes registers the Cookies routes on srv.
 func RegisterRoutes(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	srv.Handle("GET /api/cookies/a/login", transport.Login(svcCtx))
+	srv.Handle("GET /api/cookies/a/logout", transport.Logout(svcCtx))
 	srv.Handle("GET /api/cookies/a/broken", transport.Broken(svcCtx))
 	srv.Handle("GET /api/cookies/a/lock", transport.Lock(svcCtx))
 }

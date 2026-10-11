@@ -125,7 +125,7 @@ func reportCrossFieldMemberIssues(decName, typeName, memberName string, rf Resol
 // absent unless it holds an explicit null, which the check also counts as
 // absent.
 func presenceUnclean(rf ResolvedField) bool {
-	return rf.IsNilable && rf.Category != CatFile && rf.Category != CatRawBytes
+	return rf.IsNilable && !rf.SpellsPointer() && rf.Category != CatRawBytes
 }
 
 // checkErrorsRef resolves every @errors name: a qualified `pkg.Name` in

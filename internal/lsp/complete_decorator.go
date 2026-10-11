@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -17,6 +18,11 @@ import (
 // decoratorArgItems offers the argument candidates of `@name(...)`, or nil
 // when the slot has no closed set.
 func (r *request) decoratorArgItems(c cursor, name string) []protocol.CompletionItem {
+	if spec, ok := semantic.DecoratorSpec(name); ok && len(spec.Args.Named) > 0 {
+		if items, ok := r.namedArgItems(c, spec.Args); ok {
+			return items
+		}
+	}
 	if name == "middlewares" {
 		return withoutListed(r.view(), c, r.middlewareNameCompletions())
 	}
@@ -46,6 +52,65 @@ func (r *request) decoratorArgItems(c cursor, name string) []protocol.Completion
 	}
 	return decoratorArgCompletions(name)
 }
+
+// namedArgItems offers, in an argument list whose decorator takes named
+// arguments, the names it does not give yet right after `(` or `,`, and a
+// name's values right after its `:`; the bool reports either slot.
+func (r *request) namedArgItems(c cursor, rule semantic.ArgsRule) ([]protocol.CompletionItem, bool) {
+	view := r.view()
+	before := c.prev
+	if view.kind(c.at) == lexer.Colon || view.kind(c.at) == lexer.Comma || view.kind(c.at) == lexer.LParen {
+		before = c.at
+	}
+	switch view.kind(before) {
+	case lexer.Colon:
+		name := view.token(before - 1)
+		if name == nil || name.Kind != lexer.Ident {
+			return nil, false
+		}
+		switch rule.Named[name.Text] {
+		case semantic.ArgBool:
+			return boolLiteralCompletions(), true
+		case semantic.ArgDuration:
+			return unitCompletions(view, c, "duration", lexer.DurationUnits, maxAgePresets), true
+		case semantic.ArgIdent:
+			var out []protocol.CompletionItem
+			for _, v := range rule.NamedValues[name.Text] {
+				out = append(out, protocol.CompletionItem{Label: v, Kind: protocol.CompletionItemKindEnumMember, Detail: name.Text, InsertText: v})
+			}
+			return out, true
+		}
+		return nil, true
+	case lexer.LParen, lexer.Comma:
+		_, paren, ok := decoratorArgContext(view, c)
+		if !ok {
+			return nil, false
+		}
+		given := map[string]bool{}
+		for i := paren + 1; i+1 < view.argEnd(paren); i++ {
+			if view.kind(i) == lexer.Ident && view.kind(i+1) == lexer.Colon {
+				given[view.tokens[i].Text] = true
+			}
+		}
+		var out []protocol.CompletionItem
+		for _, name := range slices.Sorted(maps.Keys(rule.Named)) {
+			if given[name] {
+				continue
+			}
+			out = append(out, protocol.CompletionItem{
+				Label:      name,
+				Kind:       protocol.CompletionItemKindProperty,
+				Detail:     rule.Named[name].String(),
+				InsertText: name + ": ",
+			})
+		}
+		return out, true
+	}
+	return nil, false
+}
+
+// maxAgePresets fill an empty cookie lifetime.
+var maxAgePresets = []string{"1h", "24h", "168h", "720h", "8760h"}
 
 // withoutListed returns the items whose names the argument list holding the
 // cursor does not name yet, the word under the cursor aside.

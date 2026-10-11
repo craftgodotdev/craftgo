@@ -74,10 +74,21 @@ func decodeBody(r io.Reader, v any, strict bool) error {
 // holds what the decoder read, or is nil.
 func decodeFailure(err error, v any, strict bool, rec *bodyRecorder) error {
 	if errors.Is(err, io.EOF) {
-		return &decodeError{msg: "body: required", err: err}
+		return &decodeError{path: "body", reason: "required", err: err}
 	}
 	if field, ok := unknownFieldOf(err); ok && strict {
-		return fmt.Errorf("%s: unknown field", field)
+		return &unknownFieldError{name: field}
+	}
+	if _, ok := errors.AsType[*memberError](err); ok {
+		if u, ok := errors.AsType[*unknownFieldError](err); ok {
+			return u
+		}
+		if rec != nil {
+			if path, why, ok := refusedValue(rec.buf.Bytes(), reflect.TypeOf(v), err); ok {
+				return &decodeError{path: path, reason: why, err: err}
+			}
+		}
+		return err
 	}
 	var te *json.UnmarshalTypeError
 	if errors.As(err, &te) {
@@ -88,19 +99,27 @@ func decodeFailure(err error, v any, strict bool, rec *bodyRecorder) error {
 		return err
 	}
 	if path, why, ok := refusedValue(rec.buf.Bytes(), reflect.TypeOf(v), err); ok {
-		return &decodeError{msg: path + ": " + why, err: err}
+		return &decodeError{path: path, reason: why, err: err}
 	}
 	return err
 }
 
-// decodeError is a decode failure worded for the client; it wraps the decoder's error.
+// decodeError is a decode failure worded for the client, "<path>: <reason>"; it wraps the
+// decoder's error.
 type decodeError struct {
-	msg string
-	err error
+	path   string // the JSON path of the value that fails, "body" at the root
+	reason string
+	err    error
 }
 
-func (e *decodeError) Error() string { return e.msg }
+func (e *decodeError) Error() string { return e.path + ": " + e.reason }
 func (e *decodeError) Unwrap() error { return e.err }
+
+// unknownFieldError is a strict decode's failure on a member no field takes; it names the member
+// by its key alone, as encoding/json does.
+type unknownFieldError struct{ name string }
+
+func (e *unknownFieldError) Error() string { return e.name + ": unknown field" }
 
 // wireDecodeError words te, the *json.UnmarshalTypeError in err, which names Go structs and
 // types, as "<json path>: <reason>", the path into v and "body" at its root.
@@ -113,7 +132,7 @@ func wireDecodeError(err error, te *json.UnmarshalTypeError, v any) error {
 	if errors.As(err, new(base64.CorruptInputError)) {
 		reason = "not a valid base64"
 	}
-	return &decodeError{msg: path + ": " + reason, err: err}
+	return &decodeError{path: path, reason: reason, err: err}
 }
 
 // bodyRecorder keeps a copy of what is read from r, and the error of the first failed read.
@@ -219,7 +238,7 @@ func holdsSelfDecodingIn(t reflect.Type, seen map[reflect.Type]bool) bool {
 // [selfDecoding] value whose decoding fails as want did, and returns its JSON path, "body" at the
 // root, and why it fails.
 func refusedValue(data []byte, t reflect.Type, want error) (path, why string, ok bool) {
-	f := valueFinder{dec: json.NewDecoder(bytes.NewReader(data)), want: want.Error(), fields: fieldCache{}}
+	f := valueFinder{dec: json.NewDecoder(bytes.NewReader(data)), want: failureText(want), fields: fieldCache{}}
 	if f.value(t); f.why == "" {
 		return "", "", false
 	}
@@ -274,11 +293,29 @@ func (f *valueFinder) selfDecoded(t reflect.Type) bool {
 		return true
 	}
 	err := json.Unmarshal(raw, reflect.New(t).Interface())
-	if err == nil || err.Error() != f.want {
+	if err == nil || failureText(err) != f.want {
 		return false
 	}
 	f.why = refusal(t, raw, err)
+	if me, ok := errors.AsType[*memberError](err); ok {
+		f.why = me.err.Error()
+		if de, ok := errors.AsType[*decodeError](me.err); ok {
+			if de.path != "body" {
+				f.path = append(f.path, de.path)
+			}
+			f.why = de.reason
+		}
+	}
 	return true
+}
+
+// failureText is the text a decoding failure is told by: that of the failure of a [Nullable]'s
+// value, which a decoder may wrap in words of its own, else the failure's.
+func failureText(err error) string {
+	if me, ok := errors.AsType[*memberError](err); ok {
+		return me.err.Error()
+	}
+	return err.Error()
 }
 
 // object reads an object, calling each at each member's value with its key until each stops the

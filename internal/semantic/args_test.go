@@ -433,6 +433,16 @@ func TestDefaultNeedsOptional(t *testing.T) {
 	}
 }
 
+// @nullable with @default is rejected: a null member takes the default, so it never reads as null.
+func TestNullableDefaultRejected(t *testing.T) {
+	for _, field := range []string{`n int? @nullable @default(1)`, `n int @nullable @default(1)`} {
+		src := "type R { " + field + " }"
+		expectMessage(t, expectError(t, src, CodeDecoratorConflict), "@nullable with @default")
+		expectCodeCount(t, src, CodeDecoratorConflict, 1)
+		expectCodeCount(t, src, CodeDecoratorRedundant, 0)
+	}
+}
+
 // @default on a `bytes` field is rejected.
 func TestBytesDefaultRejected(t *testing.T) {
 	expectError(t, `type Req { p bytes? @default("Ynl0ZXM=") }`, CodeDecoratorConflict)

@@ -215,6 +215,11 @@ func ErrorCodeName(name string) string { return "ErrCode" + name }
 // plus its [ErrorTypeName].
 func ErrorConstructorName(name string) string { return "New" + ErrorTypeName(name) }
 
+// CookieConstructorName returns the Go name of the function that builds the
+// cookie a `cookie` field declares: `New`, the Go name of the field's type or
+// error, the field's and `Cookie`.
+func CookieConstructorName(owner, field string) string { return "New" + owner + field + "Cookie" }
+
 // LogicTypeName returns the Go name of a method's or an RPC's logic struct:
 // the name plus `Service`.
 func LogicTypeName(method string) string { return method + "Service" }

@@ -1,6 +1,6 @@
 // Package `presence` pins how the members of a JSON request body arrive: one
 // without `?` must come and not be null, `@nullable` lets it be null, an
-// optional one may stay out, and a @default fills an absent one at any depth.
+// optional one may stay out, and a @default fills one left out or null at any depth.
 package presence
 
 // Grade is a required enum member.
@@ -30,9 +30,10 @@ type Spot {
 	label  string?
 }
 
-// Stamp is a mixin whose member the host carries as its own.
+// Stamp is a mixin whose members the host carries as its own.
 type Stamp {
-	by string
+	by     string
+	origin string? @default("web")
 }
 
 // Box holds a value of its type parameter, once required and once optional.
@@ -59,6 +60,7 @@ type Order {
 	listed Box<Item[]>
 	doc    bytes             @format(raw)
 	extra  any?
+	limit  int?              @default(10)
 }
 
 // Rename is a body beside the id its route fills.

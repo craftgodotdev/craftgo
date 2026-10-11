@@ -138,21 +138,28 @@ func TestBodyMissingMemberPath(t *testing.T) {
 	}
 }
 
-// A nested @default fills its member when the member is absent and not when it is null; a value
-// overrides it.
-func TestBodyNestedDefault(t *testing.T) {
+// A @default fills its member when the member is absent or null, in the request, in a mixin and
+// below; a value overrides it.
+func TestBodyDefaultOnAbsentOrNull(t *testing.T) {
 	ts := bootAll(t)
 	for _, c := range []struct {
-		coords map[string]any
-		want   string
+		key  string
+		v    any
+		want string
 	}{
-		{map[string]any{"lat": 1}, `"coords":{"lat":1,"zoom":3}`},
-		{map[string]any{"lat": 1, "zoom": nil}, `"coords":{"lat":1}`},
-		{map[string]any{"lat": 1, "zoom": 7}, `"coords":{"lat":1,"zoom":7}`},
+		{"limit", absent, `"limit":10`},
+		{"limit", nil, `"limit":10`},
+		{"limit", 4, `"limit":4`},
+		{"origin", absent, `"origin":"web"`},
+		{"origin", nil, `"origin":"web"`},
+		{"origin", "app", `"origin":"app"`},
+		{"spot", map[string]any{"coords": map[string]any{"lat": 1}}, `"coords":{"lat":1,"zoom":3}`},
+		{"spot", map[string]any{"coords": map[string]any{"lat": 1, "zoom": nil}}, `"coords":{"lat":1,"zoom":3}`},
+		{"spot", map[string]any{"coords": map[string]any{"lat": 1, "zoom": 7}}, `"coords":{"lat":1,"zoom":7}`},
 	} {
-		code, body := postPresence(t, ts.URL, with(presenceOrder(), "spot", map[string]any{"coords": c.coords}))
+		code, body := postPresence(t, ts.URL, with(presenceOrder(), c.key, c.v))
 		if code != http.StatusCreated || !strings.Contains(body, c.want) {
-			t.Errorf("coords %v: got %d %s, want 201 with %s", c.coords, code, body, c.want)
+			t.Errorf("%s = %v: got %d %s, want 201 with %s", c.key, c.v, code, body, c.want)
 		}
 	}
 }
@@ -251,17 +258,5 @@ func TestBodyPresenceUnderStrictJSON(t *testing.T) {
 		if code, body := postPresence(t, ts.URL, with(presenceOrder(), c.key, c.v)); code != http.StatusBadRequest || !strings.Contains(body, "bogus: unknown field") {
 			t.Errorf("%s: got %d %s, want 400 naming bogus", c.key, code, body)
 		}
-	}
-}
-
-// With the check off, a body decodes straight into the request type and a missing member keeps
-// its zero value.
-func TestBodyPresenceSwitchedOff(t *testing.T) {
-	ts := bootAll(t)
-	server.SetRequirePresence(false)
-	t.Cleanup(func() { server.SetRequirePresence(true) })
-	code, body := postPresence(t, ts.URL, with(with(presenceOrder(), "name", absent), "spot", map[string]any{"coords": map[string]any{"lat": 1}}))
-	if code != http.StatusCreated || !strings.Contains(body, `"name":""`) || !strings.Contains(body, `"coords":{"lat":1}`) {
-		t.Errorf("off: got %d %s, want 201 with name empty and no default below", code, body)
 	}
 }

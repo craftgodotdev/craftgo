@@ -59,8 +59,7 @@ func (e *{{.TypeName}}) WriteResponseHeaders(w http.ResponseWriter) {
 }
 {{end -}}
 {{if .Cookies}}
-// ResponseCookies returns the cookies of the @cookie fields, which the server sets with its cookie
-// attributes.
+// ResponseCookies returns the cookies of the @cookie fields, with the attributes they declare.
 func (e *{{.TypeName}}) ResponseCookies() []*http.Cookie {
 	var cs []*http.Cookie
 {{- range .Cookies}}
