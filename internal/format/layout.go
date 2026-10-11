@@ -10,8 +10,8 @@ import (
 )
 
 // anchor is a construct that starts a line of its own in the canonical text:
-// the package clause, an import, a declaration, a member, a method or event
-// clause, or a closing brace. line is its first source line.
+// the package clause, a declaration, a member, a method or event clause, or a
+// closing brace. line is its first source line.
 type anchor struct {
 	line int
 	name string
@@ -27,7 +27,7 @@ type placedComment struct {
 type layout struct {
 	// anchors are in source order, each construct before the ones inside it.
 	anchors []anchor
-	// tops are the first lines of the package clause, imports and declarations.
+	// tops are the first lines of the package clause and the declarations.
 	tops []int
 	// frees are the first lines of the free comment blocks.
 	frees    []int
@@ -44,11 +44,6 @@ func fileLayout(f *ast.File, src *source) *layout {
 	if f.Package != nil {
 		l.top(f.Package.Pos.Line, "package")
 		l.doc("package", f.Package.Doc)
-	}
-	for i, imp := range f.Imports {
-		name := fmt.Sprintf("import %d", i)
-		l.top(imp.Pos.Line, name)
-		l.doc(name, imp.Doc)
 	}
 	for i, d := range f.Decls {
 		l.decl(fmt.Sprintf("declaration %d", i), d, src.firstLine(d))
@@ -229,8 +224,8 @@ func (l *layout) at(line int) string {
 	return best.name
 }
 
-// head is the source lines from and to of a member's name and type, a clause's
-// keyword and type, or a decorator's `@` and name, which print on one line.
+// head is the source lines from and to of a member's name and type, or a
+// clause's keyword and type, which print on one line.
 type head struct {
 	from, to int
 	what     string
@@ -242,11 +237,6 @@ func heads(f *ast.File, src *source) []head {
 	add := func(from lexer.Position, to lexer.Token, what string) {
 		if to.Pos.Line > from.Line {
 			out = append(out, head{from.Line, to.Pos.Line, what})
-		}
-	}
-	for i, t := range src.toks {
-		if t.Kind == lexer.At && i+1 < len(src.toks) {
-			add(t.Pos, src.toks[i+1], "@"+src.toks[i+1].Text)
 		}
 	}
 	body := func(members []ast.TypeMember) {
@@ -288,11 +278,11 @@ func heads(f *ast.File, src *source) []head {
 }
 
 // commentInHead returns the first comment of f, parsed from src, on a line of
-// its own inside a head, and what the head is.
+// its own inside a head, outside a type's arguments, and what the head is.
 func commentInHead(f *ast.File, src *source) (*ast.Comment, string) {
 	hs := heads(f, src)
 	for _, c := range f.Comments {
-		if c.Kind != lexer.CommentLeading {
+		if c.Kind != lexer.CommentLeading || src.inArguments(c.Pos.Line) {
 			continue
 		}
 		for _, h := range hs {

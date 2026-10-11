@@ -13,7 +13,7 @@ type CreateOrderReq struct {
 	Items      []LineItem           `json:"items"`
 	Notes      *string              `json:"notes,omitempty"`
 	Currency   *shared.CurrencyCode `json:"currency,omitempty"`
-	Tags       []string             `json:"tags,omitempty"`
+	Tags       []string             `json:"tags,omitzero"`
 }
 
 type DefaultsShowcaseReq struct {
@@ -22,9 +22,9 @@ type DefaultsShowcaseReq struct {
 	Flag           *bool                `json:"flag,omitempty"`
 	Currency       *shared.CurrencyCode `json:"currency,omitempty"`
 	Status         *OrderStatus         `json:"status,omitempty"`
-	Tags           []string             `json:"tags,omitempty"`
-	Preset         []string             `json:"preset,omitempty"`
-	AllowedMethods []PaymentMethod      `json:"allowedMethods,omitempty"`
+	Tags           []string             `json:"tags,omitzero"`
+	Preset         []string             `json:"preset,omitzero"`
+	AllowedMethods []PaymentMethod      `json:"allowedMethods,omitzero"`
 }
 
 type FilterOrdersReq struct {
@@ -69,7 +69,7 @@ type Order struct {
 	Currency   *shared.CurrencyCode `json:"currency,omitempty"`
 	Tags       []string             `json:"tags"`
 	Grid       [][]string           `json:"grid"`
-	Metadata   map[string]string    `json:"metadata,omitempty"`
+	Metadata   map[string]string    `json:"metadata,omitzero"`
 	// Free-form provider payload, e.g. { trackingNumber, carrier }.
 	Extras    any                   `json:"extras,omitempty"`
 	CreatedBy customers.CustomerRef `json:"createdBy"`

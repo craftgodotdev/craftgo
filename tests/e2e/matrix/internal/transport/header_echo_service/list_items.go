@@ -23,13 +23,14 @@ func ListItems(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("X-Total-Count", strconv.Itoa(resp.Count))
-		w.Header().Set("X-Trace-Id", string(resp.TraceID))
-		if resp.NextPage != nil {
-			w.Header().Set("X-Next-Page", *resp.NextPage)
-		}
-		http.SetCookie(w, &http.Cookie{Name: "has_more", Value: strconv.FormatBool(resp.HasMore)})
-		http.SetCookie(w, &http.Cookie{Name: "session_id", Value: resp.Session})
-		server.WriteResponse(w, r, http.StatusOK, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp, func(w http.ResponseWriter) {
+			w.Header().Set("X-Total-Count", strconv.Itoa(resp.Count))
+			w.Header().Set("X-Trace-Id", string(resp.TraceID))
+			if resp.NextPage != nil {
+				w.Header().Set("X-Next-Page", *resp.NextPage)
+			}
+			http.SetCookie(w, &http.Cookie{Name: "has_more", Value: strconv.FormatBool(resp.HasMore), Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+			http.SetCookie(w, &http.Cookie{Name: "session_id", Value: resp.Session, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+		})
 	}
 }

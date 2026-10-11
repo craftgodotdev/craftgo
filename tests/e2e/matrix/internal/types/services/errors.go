@@ -60,11 +60,9 @@ func (e *AcctValidationFailedErr) ErrCode() string { return ErrCodeAcctValidatio
 // HTTPStatus returns the BadRequest status.
 func (e *AcctValidationFailedErr) HTTPStatus() int { return 400 }
 
-// MarshalJSON encodes the body alone, from a copy whose nil lists and maps are set empty.
+// MarshalJSON encodes the body alone.
 func (e *AcctValidationFailedErr) MarshalJSON() ([]byte, error) {
-	body := e.AcctValidationFailedBody
-	body.FillEmpty(0)
-	return json.Marshal(body)
+	return json.Marshal(e.AcctValidationFailedBody)
 }
 
 // ErrCodeOverloaded is the canonical machine-readable code for OverloadedErr.
@@ -102,7 +100,7 @@ func (e *OverloadedErr) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]string{"code": ErrCodeOverloaded, "message": e.Error()})
 }
 
-// WriteResponseHeaders sets the @header and @cookie fields on w.
+// WriteResponseHeaders sets the @header fields on w.
 func (e *OverloadedErr) WriteResponseHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Retry-In", strconv.Itoa(e.RetryIn))
 }
@@ -144,7 +142,7 @@ func (e *RateLimitedErr) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]string{"code": ErrCodeRateLimited, "message": e.Error()})
 }
 
-// WriteResponseHeaders sets the @header and @cookie fields on w.
+// WriteResponseHeaders sets the @header fields on w.
 func (e *RateLimitedErr) WriteResponseHeaders(w http.ResponseWriter) {
 	w.Header().Set("Retry-After", strconv.Itoa(e.RetryAfter))
 }

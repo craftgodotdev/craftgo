@@ -1,9 +1,12 @@
 package route
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/craftgodotdev/craftgo/internal/ast"
 )
 
 func TestVars(t *testing.T) {
@@ -46,10 +49,48 @@ func TestOpenAPIPath(t *testing.T) {
 	}
 }
 
+// The root route serves its one path, the documented `/` under the base path, with `{$}`; every
+// other route serves its Resolve route.
+func TestServePath(t *testing.T) {
+	root := &ast.Method{Path: &ast.Path{Segments: []*ast.PathSegment{{}}}}
+	users := &ast.Method{Path: &ast.Path{Segments: []*ast.PathSegment{{Literal: "users"}}}}
+	prefixed := &ast.ServiceDecl{Decorators: []*ast.Decorator{{Name: "prefix", Args: []*ast.DecoratorArg{{Value: &ast.StringLit{Value: "/v1"}}}}}}
+	for _, c := range []struct {
+		base string
+		svc  *ast.ServiceDecl
+		m    *ast.Method
+		want string
+	}{
+		{"", nil, root, "/{$}"},
+		{"/api", nil, root, "/api/{$}"},
+		{"/api/", nil, root, "/api/{$}"},
+		{"/api", prefixed, root, "/api/v1"},
+		{"/api", nil, users, "/api/users"},
+	} {
+		got := ServePath(c.base, c.svc, c.m)
+		if got != c.want {
+			t.Errorf("ServePath(%q, prefix %q, %q) = %q, want %q", c.base, ServicePrefix(c.svc), PathString(c.m.Path), got, c.want)
+		}
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET "+got, func(http.ResponseWriter, *http.Request) {})
+		if _, pattern := mux.Handler(getRequest(got + "/nope")); pattern != "" {
+			t.Errorf("%s also takes a path below it", got)
+		}
+	}
+}
+
+// getRequest is a GET of path, its `{$}` dropped.
+func getRequest(path string) *http.Request {
+	r, _ := http.NewRequest(http.MethodGet, "http://x"+strings.Replace(path, "{$}", "", 1), nil)
+	return r
+}
+
 func TestShape(t *testing.T) {
 	for _, c := range []struct{ in, want string }{
 		{"/users/{id}", "/users/{}"},
 		{"/a/{x}/b/{y}", "/a/{}/b/{}"},
+		{"/files/{path...}", "/files/{...}"},
+		{"/x/{$}", "/x/{$}"},
 		{"/plain", "/plain"},
 		{"/", "/"},
 	} {
@@ -81,6 +122,14 @@ func TestPatternsConflict(t *testing.T) {
 		{"/a/{x}/b", "/a/{y}/c", false},
 		// Two cross-overs deeper in the path → conflict.
 		{"/a/{x}/c", "/a/b/{y}", true},
+		// A rest wildcard is more general than a one-segment one.
+		{"/files/{path...}", "/files/{id}", false},
+		{"/a/{x}/{y...}", "/a/{p}/{q}", false},
+		{"/a/{x...}", "/{y}/b", true},
+		// `{$}` matches only the end after a `/`, which no wildcard matches.
+		{"/x/{$}", "/x/{id}", false},
+		{"/{a}/{$}", "/x/{b}", false},
+		{"/x/{$}", "/x/{rest...}", false},
 	}
 	for _, c := range cases {
 		if got := PatternsConflict(c.a, c.b); got != c.want {
@@ -88,6 +137,58 @@ func TestPatternsConflict(t *testing.T) {
 		}
 		if got := PatternsConflict(c.b, c.a); got != c.want {
 			t.Errorf("PatternsConflict(%q,%q) [swapped] = %v, want %v", c.b, c.a, got, c.want)
+		}
+	}
+}
+
+// Two routes of one length with one verb conflict exactly when a real
+// ServeMux refuses to register them together: they share a shape, or
+// PatternsConflict holds.
+func TestConflictsMatchServeMux(t *testing.T) {
+	segment := func(kind byte, i int) string {
+		switch kind {
+		case 'x':
+			return "x"
+		case 'y':
+			return "y"
+		case 'w':
+			return fmt.Sprintf("{w%d}", i)
+		case 'r':
+			return fmt.Sprintf("{r%d...}", i)
+		}
+		return "{$}"
+	}
+	var routes []string
+	var build func(prefix string, n int)
+	build = func(prefix string, n int) {
+		if n == 3 {
+			return
+		}
+		for _, k := range []byte("xywr$") {
+			route := prefix + "/" + segment(k, n)
+			routes = append(routes, route)
+			if k != 'r' && k != '$' {
+				build(route, n+1)
+			}
+		}
+	}
+	build("", 0)
+	refuses := func(a, b string) (refused bool) {
+		defer func() { refused = recover() != nil }()
+		mux := http.NewServeMux()
+		mux.Handle("GET "+a, http.NotFoundHandler())
+		mux.Handle("GET "+b, http.NotFoundHandler())
+		return false
+	}
+	for _, a := range routes {
+		for _, b := range routes {
+			if len(Segments(a)) != len(Segments(b)) {
+				continue
+			}
+			want := refuses(a, b)
+			if got := Shape(a) == Shape(b) || PatternsConflict(a, b); got != want {
+				t.Errorf("%s and %s: ServeMux refuses the pair: %v, the check says %v", a, b, want, got)
+			}
 		}
 	}
 }

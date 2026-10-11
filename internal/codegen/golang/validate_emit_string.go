@@ -2,6 +2,8 @@ package golang
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/prims"
@@ -86,8 +88,9 @@ func patternCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 	return failIf(t.guarded(cond), t.subject, "does not match pattern", ctx)
 }
 
-// formatCheck renders @format on a string value from its [strfmt] entry, a regex
-// or a stdlib condition; an unknown format renders nothing.
+// formatCheck renders @format on a string value from its [strfmt] entry: a
+// regex, or a call of its check function, which the file then declares; an
+// unknown format renders nothing.
 func formatCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 	if !t.primIs(prims.String) || len(d.Args) != 1 {
 		return ""
@@ -100,16 +103,38 @@ func formatCheck(t checkTarget, d *ast.Decorator, ctx emitCtx) string {
 	if !ok {
 		return ""
 	}
-	for _, imp := range sp.Imports {
-		ctx.imports.use(imp)
-	}
 	var cond string
 	if sp.Pattern != "" {
 		ctx.imports.use("regexp")
 		cond = "!" + ctx.regexes.intern(sp.Pattern) + ".MatchString(" + t.val() + ")"
 	} else {
-		cond = fmt.Sprintf(sp.Cond, t.val())
+		ctx.helpers.useFormat(sp, ctx.imports)
+		cond = "!" + sp.Func + "(" + t.val() + ")"
 	}
-	// A format condition may carry an init statement, which only a block can guard.
-	return t.guardBlock(failIf(cond, t.subject, "not a valid "+sp.Label, ctx))
+	return failIf(t.guarded(cond), t.subject, "not a valid "+sp.Label, ctx)
+}
+
+// useFormat records the check functions of format sp, with their imports.
+func (h *validateHelpers) useFormat(sp strfmt.Spec, imports *importSet) {
+	if h.formats == nil {
+		h.formats = map[string]strfmt.Helper{}
+	}
+	for _, f := range sp.Helpers() {
+		h.formats[f.Name] = f
+	}
+	for _, imp := range sp.Imports {
+		imports.use(imp)
+	}
+}
+
+// formatCode returns the declarations of the recorded check functions, in
+// the order [strfmt] declares them.
+func (h *validateHelpers) formatCode() []string {
+	fs := slices.Collect(maps.Values(h.formats))
+	strfmt.SortHelpers(fs)
+	out := make([]string, len(fs))
+	for i, f := range fs {
+		out[i] = f.Code
+	}
+	return out
 }

@@ -57,6 +57,31 @@ service S {
 	}
 }
 
+// A quote or a backslash in a @prefix or the basePath reaches the generated
+// route as a Go string literal that holds it.
+func TestGenerateRoutesQuotesThePattern(t *testing.T) {
+	pkg := analyze(t, `package design
+
+type Thing { id string }
+
+@prefix("/v\"1\\x")
+service S {
+    get GetThing /things { response Thing }
+}`)
+	root := t.TempDir()
+	cfg := sampleConfig()
+	cfg.OpenAPI.BasePath = `/a"b`
+	if err := genRoutes(t, pkg, cfg, root); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(filepath.Join(root, "internal/routes/s/routes.go"))
+	src := string(out)
+	mustParseGo(t, src)
+	if want := `srv.Handle("GET /a\"b/v\"1\\x/things", `; !strings.Contains(src, want) {
+		t.Errorf("expected %s in:\n%s", want, src)
+	}
+}
+
 // Services sharing a @group share one routes.go and one umbrella call.
 func TestGenerateRoutesMergesServicesSharingGroup(t *testing.T) {
 	pkg := analyze(t, `package design

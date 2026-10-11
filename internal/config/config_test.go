@@ -91,6 +91,30 @@ proto:
 	}
 }
 
+// The manifest is its first YAML document: a later one with content is named
+// in a warning, a bare `---` or `...` closing the file is not.
+func TestLoadWarnsOfALaterDocument(t *testing.T) {
+	const warning = "the YAML document after `---` is ignored - the manifest is its first document"
+	for body, warns := range map[string]bool{
+		"output:\n  types: ./a\n---\noutput:\n  types: ./b\n": true,
+		"output:\n  types: ./a\n---\n: [\n":                   true,
+		"output:\n  types: ./a\n---\n":                        false,
+		"output:\n  types: ./a\n...\n":                        false,
+		"---\noutput:\n  types: ./a\n":                        false,
+	} {
+		cfg, err := loadManifest(t, body)
+		if err != nil {
+			t.Fatalf("%q: %v", body, err)
+		}
+		if got := slices.Contains(cfg.Warnings, warning); got != warns {
+			t.Errorf("%q: warned = %v, want %v (%v)", body, got, warns, cfg.Warnings)
+		}
+		if cfg.Output.Types != "./a" {
+			t.Errorf("%q: output.types = %q, want the first document's", body, cfg.Output.Types)
+		}
+	}
+}
+
 // TestLoadEveryDeclaredKeyRaisesNoWarning checks that a manifest setting every
 // key, through anchors, aliases and merge keys too, loads without a warning.
 func TestLoadEveryDeclaredKeyRaisesNoWarning(t *testing.T) {
@@ -508,7 +532,6 @@ func TestProtoKeysAreValidated(t *testing.T) {
 		`output:` + "\n  pb: ../elsewhere\n":         "output.pb",
 		`output:` + "\n  grpc: ./internal/types\n":   "output.types and output.grpc both write",
 		`output:` + "\n  pb: ./internal/transport\n": "output.transport and output.pb both write",
-		`proto:` + "\n  includes: [../shared]\n":     "proto.includes[0]",
 		`proto:` + "\n  includes: [\"\"]\n":          "proto.includes[0]: an include names a directory",
 	}
 	for body, want := range cases {
@@ -516,5 +539,17 @@ func TestProtoKeysAreValidated(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: err = %v, want %q", body, err, want)
 		}
+	}
+}
+
+// An include root is only read, so it may lie outside the project, beside it
+// or anywhere on disk.
+func TestIncludesMayLeaveTheProject(t *testing.T) {
+	cfg, err := loadManifest(t, "proto:\n  includes: [../shared-protos, /opt/protos, '..\\common']\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := cfg.Proto.Includes, []string{"../shared-protos", "/opt/protos", "../common"}; !slices.Equal(got, want) {
+		t.Errorf("includes = %v, want %v", got, want)
 	}
 }

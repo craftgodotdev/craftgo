@@ -8,6 +8,7 @@ import (
 	"text/template"
 
 	"github.com/craftgodotdev/craftgo/internal/designopts"
+	"github.com/craftgodotdev/craftgo/internal/idents"
 	"github.com/craftgodotdev/craftgo/internal/protodesign"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
 )
@@ -203,6 +204,87 @@ func TestOrphanedStubsAreNamed(t *testing.T) {
 	empty, _ := semantic.AnalyzeProject(nil, semantic.Options{})
 	if notes := orphanedStubNotes(empty, set, cfg, dir); len(notes) != 1 || !strings.Contains(notes[0], "./internal/service/todo_service holds") {
 		t.Errorf("dropped HTTP service: %v", notes)
+	}
+}
+
+// A warning the proto compile raises reaches the run's notes; the run itself goes on.
+func TestProtoWarningsAreNoted(t *testing.T) {
+	cfg := scaffoldConfig(t)
+	set := protoSet(t, cfg, "syntax = \"proto3\";\npackage x;\noption go_package = \"github.com/elsewhere/x;x\";\nmessage R {}\n")
+	empty, _ := semantic.AnalyzeProject(nil, semantic.Options{})
+	notes := OutputNotes(empty, set, cfg, t.TempDir())
+	if !containsNote(notes, "warning: x/x.proto has go_package github.com/elsewhere/x, a package of another module") {
+		t.Errorf("notes = %v", notes)
+	}
+}
+
+// A gRPC-only project that gains its first route hears of both scaffolds that
+// predate it: main.go, with no HTTP listener, and config.go, with no Server or
+// Docs config for one to read.
+func TestFirstRouteNamesMainAndConfig(t *testing.T) {
+	cfg := scaffoldConfig(t)
+	set := loadProtos(t, cfg)
+	empty, _ := semantic.AnalyzeProject(nil, semantic.Options{})
+	dir := t.TempDir()
+	if err := generateProjectMain(empty, set, cfg, dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := generateRuntimeConfig(empty, set, cfg, dir); err != nil {
+		t.Fatal(err)
+	}
+	notes := scaffoldGapNotes(analyzeProject(t, httpScaffoldSrc), set, cfg, dir)
+	for _, want := range []string{"./main.go predates the HTTP routes", "./config/config.go predates the HTTP routes and has no Server or Docs config"} {
+		if !containsNote(notes, want) {
+			t.Errorf("missing note %q in %v", want, notes)
+		}
+	}
+	if notes := scaffoldGapNotes(empty, set, cfg, dir); containsNote(notes, "Server or Docs") {
+		t.Errorf("a design without routes is told of the HTTP config: %v", notes)
+	}
+}
+
+// After an output.fileCase change, the stubs left under the old directory name
+// are named as the declared service's, not as a dropped service's.
+func TestRecasedStubsNameTheirService(t *testing.T) {
+	cfg := scaffoldConfig(t)
+	proj := analyzeProject(t, httpScaffoldSrc)
+	dir := t.TempDir()
+	if err := generateService(proj.Packages["todos"], cfg, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	kebab := *cfg
+	kebab.Output.FileCase = idents.FileCaseKebab
+	if err := generateService(proj.Packages["todos"], &kebab, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	notes := orphanedStubNotes(proj, nil, &kebab, dir)
+	want := "./internal/service/todo_service holds the logic stubs of TodoService, which output.fileCase now places in ./internal/service/todo-service"
+	if len(notes) != 1 || !strings.HasPrefix(notes[0], want) {
+		t.Errorf("notes = %v, want one starting %q", notes, want)
+	}
+}
+
+// After an output.fileCase change, the middleware scaffold left under its old file name is named,
+// since the package then declares its constructor twice.
+func TestRecasedMiddlewareScaffoldIsNamed(t *testing.T) {
+	cfg := scaffoldConfig(t)
+	proj := analyzeProject(t, httpScaffoldSrc)
+	dir := t.TempDir()
+	if err := generateProjectMiddlewares(proj, cfg, dir); err != nil {
+		t.Fatal(err)
+	}
+	if notes := recasedMiddlewareNotes(proj, cfg, dir); len(notes) != 0 {
+		t.Errorf("a scaffold under its own name noted: %v", notes)
+	}
+	kebab := *cfg
+	kebab.Output.FileCase = idents.FileCaseKebab
+	if err := generateProjectMiddlewares(proj, &kebab, dir); err != nil {
+		t.Fatal(err)
+	}
+	notes := recasedMiddlewareNotes(proj, &kebab, dir)
+	want := "./internal/middleware/auth_required_middleware.go holds the AuthRequired middleware scaffold under the name output.fileCase used to give it, beside auth-required-middleware.go"
+	if len(notes) != 1 || !strings.HasPrefix(notes[0], want) {
+		t.Errorf("notes = %v, want one starting %q", notes, want)
 	}
 }
 

@@ -299,12 +299,16 @@ func (j *JetStream) CanDisposition(d events.Disposition) bool {
 // Publish sends one message and waits for the stream to store it. A ctx
 // already done sends nothing; ending it later does not end the wait, which
 // [WithPublishAckTimeout] bounds and [JetStream.Close] ends with [ErrClosed].
+// A message NATS cannot carry as written fails with [ErrNotCarried].
 func (j *JetStream) Publish(ctx context.Context, msg *events.Message) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("nats: publish %s: %w", msg.Event, err)
 	}
 	if j.closeCtx.Err() != nil {
 		return fmt.Errorf("nats: publish %s: %w", msg.Event, ErrClosed)
+	}
+	if err := carried(msg); err != nil {
+		return fmt.Errorf("nats: publish %s: %w", msg.Event, err)
 	}
 	waitCtx, cancel := j.ackContext(ctx)
 	defer cancel()
@@ -332,13 +336,18 @@ func (j *JetStream) ackContext(ctx context.Context) (context.Context, context.Ca
 
 // PublishBatch publishes the whole batch, then waits for every
 // acknowledgement; the error names each message the stream did not confirm.
-// ctx and Close act as on [JetStream.Publish].
+// ctx and Close act as on [JetStream.Publish]. A message NATS cannot carry as
+// written refuses the batch before anything is sent, with an
+// [*events.EnvelopeError] wrapping [ErrNotCarried].
 func (j *JetStream) PublishBatch(ctx context.Context, msgs []*events.Message) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("nats: publish batch of %d: %w", len(msgs), err)
 	}
 	if j.closeCtx.Err() != nil {
 		return fmt.Errorf("nats: publish batch of %d: %w", len(msgs), ErrClosed)
+	}
+	if err := carriedAll(msgs); err != nil {
+		return err
 	}
 
 	futures := make([]jetstream.PubAckFuture, 0, len(msgs))
@@ -382,6 +391,12 @@ func (j *JetStream) PublishBatch(ctx context.Context, msgs []*events.Message) er
 // started before a refusal stay live. A group subscribes again once its
 // context has ended and its running handler has returned. Once
 // [JetStream.Close] has begun it returns [ErrClosed].
+//
+// Once ctx ends, no message reaches a handler: one arriving after it, and those
+// fetched for a batch group's next batch, are NAK'd for another delivery at
+// once, as is a message whose handler failed after ctx ended with the chain
+// asking for nothing or for redelivery. A message still in the pull's buffer
+// comes back once AckWait has passed.
 func (j *JetStream) Subscribe(ctx context.Context, subs []events.Subscription) error {
 	if j.isClosing() {
 		return fmt.Errorf("nats: subscribe: %w", ErrClosed)
@@ -812,9 +827,16 @@ func (j *JetStream) dispatch(ctx context.Context, g *groupPlan, ackWait time.Dur
 	j.deliver(ctx, sub, ackWait, m)
 }
 
+// deliver hands m to sub's handler and answers it as the chain decided. Once ctx has ended,
+// m goes back to the stream without reaching the handler, as does a message whose
+// handling the shutdown cut short.
 func (j *JetStream) deliver(ctx context.Context, sub events.Subscription, ackWait time.Duration, m jetstream.Msg) {
 	msg := decodeFrom(sub.Event, m.Headers(), m.Data())
 	msg.SetDeliveries(deliveryCount(m))
+	if ctx.Err() != nil {
+		j.handBack(sub, msg, m)
+		return
+	}
 
 	stop := holdOpen(m, ackWait)
 	err := sub.Handle(withJetStreamMsg(ctx, m), msg)
@@ -822,6 +844,10 @@ func (j *JetStream) deliver(ctx context.Context, sub events.Subscription, ackWai
 
 	if err != nil {
 		j.report(sub, msg, err)
+	}
+	if interrupted(ctx, msg, err) {
+		j.handBack(sub, msg, m)
+		return
 	}
 	if j.capped(msg) {
 		j.report(sub, msg, fmt.Errorf("nats: giving up on %s after %d deliveries - the chain asked for another and WithMaxDeliveries is %d", sub.Event, msg.Deliveries(), j.maxDeliveries))
@@ -878,6 +904,25 @@ func (j *JetStream) answer(m jetstream.Msg, msg *events.Message) error {
 func (j *JetStream) capped(msg *events.Message) bool {
 	return msg.Disposition() == events.DispositionRedeliver &&
 		j.maxDeliveries > 0 && msg.Deliveries() >= j.maxDeliveries
+}
+
+// interrupted reports whether the shutdown cut the handling of msg short: it failed with
+// err after ctx, the subscription's context, ended, and the chain asked for nothing or for
+// another delivery.
+func interrupted(ctx context.Context, msg *events.Message, err error) bool {
+	if err == nil || ctx.Err() == nil {
+		return false
+	}
+	d := msg.Disposition()
+	return d == events.DispositionUnset || d == events.DispositionRedeliver
+}
+
+// handBack naks m, which the shutdown kept from its handler or cut short, for another
+// delivery at once: neither [WithRedeliverBackoff] nor [WithMaxDeliveries] applies.
+func (j *JetStream) handBack(sub events.Subscription, msg *events.Message, m jetstream.Msg) {
+	if err := m.Nak(); err != nil {
+		j.report(sub, msg, fmt.Errorf("nats: handing %s back: %w", sub.Event, err))
+	}
 }
 
 // deliveryCount is m's attempt number, 1 on the first; 0 if unknown.

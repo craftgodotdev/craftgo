@@ -15,9 +15,17 @@ import (
 // EchoHeaderedResp returns the POST EchoHeaderedResp handler.
 func EchoHeaderedResp(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.ResponseAudit
-		if err := server.JSON().Decode(r.Body, &req); err != nil {
+		var _b responseAuditWire
+		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)
+			return
+		}
+		if _m := _b.to(&req); _m != "" {
+			server.WriteValidationError(w, r, server.MissingMember(_m))
 			return
 		}
 		if err := req.Validate(); err != nil {
@@ -30,7 +38,8 @@ func EchoHeaderedResp(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("ETag", resp.Etag)
-		server.WriteResponse(w, r, http.StatusCreated, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp, func(w http.ResponseWriter) {
+			w.Header().Set("ETag", resp.Etag)
+		})
 	}
 }

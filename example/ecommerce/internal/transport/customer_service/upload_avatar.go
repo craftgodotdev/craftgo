@@ -16,16 +16,18 @@ import (
 //
 // UploadAvatar returns the POST UploadAvatar handler.
 func UploadAvatar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
+	_limits := map[string]int64{"image": 5 << 20}
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(32 << 20); err != nil {
+		server.LimitParts(r, _limits)
+		if err := r.ParseMultipartForm(server.MultipartMemory); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.UploadAvatarReq
 		req.ID = r.PathValue("id")
-		if _, header, err := r.FormFile("image"); err == nil {
-			req.Image = header
+		if _fh := r.MultipartForm.File["image"]; len(_fh) > 0 {
+			req.Image = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

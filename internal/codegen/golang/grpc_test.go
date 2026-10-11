@@ -126,4 +126,15 @@ func TestValidateProtoOutputsRejectsASharedServiceDirectory(t *testing.T) {
 	if err := ValidateProtoOutputs(other, nil, cfg); err != nil {
 		t.Fatalf("no protos rejected: %v", err)
 	}
+
+	// Under fileCase camel, directories that differ only in case are one on a case-insensitive
+	// file system.
+	camel := scaffoldConfig(t)
+	camel.Output.FileCase = "camel"
+	protos := protoSet(t, camel, "syntax = \"proto3\";\npackage x;\nservice Userapi { rpc Do(R) returns (R); }\nmessage R {}\n")
+	dsl := analyzeProject(t, "package hello\ntype Hi { id string }\nservice UserApi {\n\tget Hi /hi { response Hi }\n}")
+	err = ValidateProtoOutputs(dsl, protos, camel)
+	if err == nil || !strings.Contains(err.Error(), "x.Userapi and service UserApi generate into ./internal/service/userapi and ./internal/service/userApi, one directory on a case-insensitive file system") {
+		t.Fatalf("err = %v", err)
+	}
 }

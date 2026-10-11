@@ -29,8 +29,9 @@ func GetTraced(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("X-Trace-Id", resp.Trace)
-		http.SetCookie(w, &http.Cookie{Name: "xs-session", Value: resp.Sess})
-		server.WriteResponse(w, r, http.StatusOK, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp, func(w http.ResponseWriter) {
+			w.Header().Set("X-Trace-Id", resp.Trace)
+			http.SetCookie(w, &http.Cookie{Name: "xs-session", Value: resp.Sess, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+		})
 	}
 }

@@ -67,6 +67,11 @@ func TestGenerateTransportAllVerbs(t *testing.T) {
 	if !strings.Contains(string(postSrc), "server.JSON().Decode(r.Body") {
 		t.Errorf("POST handler must decode body via server.JSON:\n%s", postSrc)
 	}
+	// Only a handler decoding a JSON body weighs its media type, before it reads anything.
+	if before, _, ok := strings.Cut(string(postSrc), "var req"); !ok || !strings.Contains(before, "if !server.RequireJSONBody(w, r) {") {
+		t.Errorf("POST handler must refuse a body of another media type first:\n%s", postSrc)
+	}
+	mustContainNone(t, string(getSrc), "RequireJSONBody")
 	pingSrc, _ := os.ReadFile(filepath.Join(dir, "ping.go"))
 	if !strings.Contains(string(pingSrc), "l.Ping()") {
 		t.Errorf("Ping handler should call l.Ping() with no arg:\n%s", pingSrc)
@@ -139,7 +144,8 @@ service S {
 	}
 }
 
-// Each @default is assigned before the JSON decode, so only a field absent from the body keeps it.
+// Each @default fills, in the wire struct's to, a member the body leaves out or sends as null; the
+// handler pre-fills none of them.
 func TestGenerateTransportDefaults(t *testing.T) {
 	src := `package design
 type Req {
@@ -163,49 +169,40 @@ service S {
 	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
-	out, err := os.ReadFile(filepath.Join(root, "internal/transport/s/make.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := string(out)
+	dir := filepath.Join(root, "internal/transport/s")
+	handler, body := readGen(t, dir, "make.go"), readGen(t, dir, bodyFile)
+	mustParseGo(t, handler)
 	mustParseGo(t, body)
-	// An optional field's default is pre-filled through a pointer.
-	mustContainAll(t, body,
-		`__d := "anon"`,
-		`req.Name = &__d`,
-		`__d := 20`,
-		`req.Limit = &__d`,
-		`__d := 0.5`,
-		`req.Ratio = &__d`,
-		`__d := true`,
-		`req.Active = &__d`,
+	mustContainNone(t, handler, "__d", "req.Name =")
+	// An optional field's default is filled through a pointer.
+	mustContainAll(t, collapseSpace(body),
+		`if w.Name != nil { dst.Name = w.Name } else { _d := "anon" dst.Name = &_d }`,
+		`_d := 20`,
+		`dst.Limit = &_d`,
+		`_d := 0.5`,
+		`dst.Ratio = &_d`,
+		`_d := true`,
+		`dst.Active = &_d`,
 	)
-	// A narrow numeric default is cast so `&__d` has the field's pointer type.
+	// A narrow numeric default is cast so `&_d` has the field's pointer type.
 	mustContainAll(t, body,
-		`__d := int32(7)`,
-		`req.Width = &__d`,
-		`__d := int64(9)`,
-		`req.Wide = &__d`,
-		`__d := uint16(3)`,
-		`req.Ucount = &__d`,
-		`__d := float32(1.5)`,
-		`req.Pct = &__d`,
+		`_d := int32(7)`,
+		`dst.Width = &_d`,
+		`_d := int64(9)`,
+		`dst.Wide = &_d`,
+		`_d := uint16(3)`,
+		`dst.Ucount = &_d`,
+		`_d := float32(1.5)`,
+		`dst.Pct = &_d`,
 	)
 	if strings.Contains(body, "int(20)") || strings.Contains(body, "float64(0.5)") {
 		t.Errorf("int / float64 defaults must not be cast:\n%s", body)
 	}
-	if strings.Contains(body, "req.Plain =") {
-		t.Errorf("plain field shouldn't be pre-filled:\n%s", body)
-	}
-	if pre, _, ok := strings.Cut(body, "server.JSON().Decode"); ok {
-		if !strings.Contains(pre, `__d := "anon"`) {
-			t.Error("expected default assignments before body decode")
-		}
-	}
+	mustContainNone(t, body, "Nullable")
 }
 
 // A non-optional field's @default is assigned to the value itself, cast to
-// its scalar, before the JSON decode.
+// its scalar, by the wire struct's to.
 func TestGenerateTransportNonOptionalDefault(t *testing.T) {
 	src := `package design
 scalar Cents int @gte(0)
@@ -221,20 +218,12 @@ service S {
 	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
-	out, err := os.ReadFile(filepath.Join(root, "internal/transport/s/make.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := string(out)
+	dir := filepath.Join(root, "internal/transport/s")
+	handler, body := readGen(t, dir, "make.go"), readGen(t, dir, bodyFile)
 	mustParseGo(t, body)
-	const prefill = "req.Limit = types.Cents(20)"
-	dec := strings.Index(body, "server.JSON().Decode")
-	if pre := strings.Index(body, prefill); pre < 0 || dec < 0 || pre > dec {
-		t.Errorf("want %q before the body decode:\n%s", prefill, body)
-	}
-	if strings.Contains(body, "&__d") {
-		t.Errorf("a non-optional default is pre-filled through a pointer:\n%s", body)
-	}
+	mustContainNone(t, handler, "req.Limit =")
+	mustContainAll(t, collapseSpace(body), "if w.Limit != nil { dst.Limit = *w.Limit } else { dst.Limit = types.Cents(20) }")
+	mustContainNone(t, body, "&_d")
 }
 
 // A bound enum or scalar field is converted from the wire string to its own type.
@@ -317,7 +306,7 @@ service S {
 	)
 }
 
-// A whole-number float @default renders as 1.0, so its pre-fill pointer stays *float64.
+// A whole-number float @default renders as 1.0, so its fill pointer stays *float64.
 func TestGenerateTransportWholeNumberFloatDefault(t *testing.T) {
 	src := `package design
 
@@ -334,14 +323,10 @@ service S {
 	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
-	body, err := os.ReadFile(filepath.Join(root, "internal/transport/s/do.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := string(body)
+	got := readGen(t, filepath.Join(root, "internal/transport/s"), bodyFile)
 	mustParseGo(t, got)
-	mustContainAll(t, got, `__d := 1.0`, `__d := 2.5`)
-	if strings.Contains(got, "__d := 1\n") || strings.Contains(got, "float64(1)") {
+	mustContainAll(t, got, `_d := 1.0`, `_d := 2.5`)
+	if strings.Contains(got, "_d := 1\n") || strings.Contains(got, "float64(1)") {
 		t.Errorf("whole-number float default must render as float literal `1.0`, not `1` / `float64(1)`:\n%s", got)
 	}
 }
@@ -382,7 +367,8 @@ service S {
 	mustContainNone(t, got, `r.URL.Query().Get(`, `_q.Get("sortBy")`)
 }
 
-// Numeric and bool @query/@header/@cookie/@form fields all bind through server.BindValue.
+// Numeric and bool @query/@header/@cookie/@form fields all bind through server.BindValue, which
+// names the field's primitive, its width included, in a parse error.
 func TestGenerateTransportWireNumericAcrossSources(t *testing.T) {
 	src := `package design
 
@@ -391,6 +377,7 @@ enum Priority { Low = 1  High = 2 }
 
 type Req {
     qLimit  int      @query
+    qSmall  int8     @query
     qFlag   bool     @query
     hCount  int      @header
     hRatio  float64  @header
@@ -421,14 +408,15 @@ service S {
 		`server.BindValue(w, r, "qLimit", "int", _q.Get("qLimit"), &req.QLimit, server.ParseSigned[int])`,
 		`server.BindValue(w, r, "qFlag", "bool", _q.Get("qFlag"), &req.QFlag, server.ParseBool[bool])`,
 		`server.BindValue(w, r, "hCount", "int", r.Header.Get("hCount"), &req.HCount, server.ParseSigned[int])`,
-		`server.BindValue(w, r, "hRatio", "float", r.Header.Get("hRatio"), &req.HRatio, server.ParseFloat[float64])`,
+		`server.BindValue(w, r, "qSmall", "int8", _q.Get("qSmall"), &req.QSmall, server.ParseSigned[int8])`,
+		`server.BindValue(w, r, "hRatio", "float64", r.Header.Get("hRatio"), &req.HRatio, server.ParseFloat[float64])`,
 		`if c, err := r.Cookie("cTier"); err == nil {`,
 		`server.BindValue(w, r, "cTier", "int", c.Value, &req.CTier, server.ParseSigned[types.Priority])`,
 		`if c, err := r.Cookie("cAge"); err == nil {`,
 		`server.BindValue(w, r, "cAge", "int", c.Value, &req.CAge, server.ParseSigned[types.Cents])`,
 		`server.BindValue(w, r, "fQty", "int", r.PostFormValue("fQty"), &req.FQty, server.ParseSigned[int])`,
 		`server.BindValue(w, r, "fFlag", "bool", r.PostFormValue("fFlag"), &req.FFlag, server.ParseBool[bool])`,
-		`r.FormFile("upload")`,
+		`r.MultipartForm.File["upload"]`,
 	)
 	// Parsing lives in the server helpers, so the handler imports no strconv.
 	mustContainNone(t, got, `"strconv"`)
@@ -547,7 +535,7 @@ service S {
 	)
 }
 
-// An enum @default pre-fills the member's Go constant.
+// An enum @default fills the member's Go constant.
 func TestGenerateTransportDefaultEnum(t *testing.T) {
 	src := `package design
 enum Status { Active  Inactive  Pending }
@@ -563,15 +551,11 @@ service S {
 	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
 		t.Fatal(err)
 	}
-	out, err := os.ReadFile(filepath.Join(root, "internal/transport/s/make.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := string(out)
+	body := readGen(t, filepath.Join(root, "internal/transport/s"), bodyFile)
 	mustParseGo(t, body)
 	mustContainAll(t, body,
-		"__d := types.StatusPending",
-		"req.St = &__d",
+		"_d := types.StatusPending",
+		"dst.St = &_d",
 	)
 }
 
@@ -602,18 +586,18 @@ service FilesService {
 	body := string(out)
 	checks := []string{
 		`w.Header().Set("etag", resp.Etag)`,
-		`http.SetCookie(w, &http.Cookie{Name: "sessionID", Value: resp.SessionID})`,
-		"server.WriteResponse(w, r, http.StatusOK, resp)",
+		`http.SetCookie(w, &http.Cookie{Name: "sessionID", Value: resp.SessionID, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})`,
+		"server.WriteResponse(w, r, http.StatusOK, resp, func(w http.ResponseWriter) {",
 	}
 	for _, want := range checks {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q in handler:\n%s", want, body)
 		}
 	}
-	// Headers are set before the response is written.
-	before, _, ok := strings.Cut(body, "server.WriteResponse")
-	if !ok || !strings.Contains(before, `w.Header().Set("etag"`) {
-		t.Errorf("the etag header must be set before the body is encoded:\n%s", body)
+	// Headers and cookies are set once the body has encoded, by the function WriteResponse runs.
+	_, after, ok := strings.Cut(body, "server.WriteResponse")
+	if !ok || !strings.Contains(after, `w.Header().Set("etag"`) || !strings.Contains(after, "http.SetCookie") {
+		t.Errorf("the etag header and the cookie must be set by WriteResponse, after the encode:\n%s", body)
 	}
 }
 
@@ -645,7 +629,7 @@ service Catalog {
 	mustParseGo(t, body)
 	mustContainAll(t, body,
 		`w.Header().Set("X-Total-Count", resp.Total)`,
-		`http.SetCookie(w, &http.Cookie{Name: "session_id", Value: resp.SessionID})`,
+		`http.SetCookie(w, &http.Cookie{Name: "session_id", Value: resp.SessionID, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})`,
 	)
 	for _, banned := range []string{
 		`w.Header().Set("total"`,
@@ -702,8 +686,8 @@ service S {
 		`w.Header().Set("X-Next-Page", *resp.NextPage)`,
 		`for _, _v := range resp.Labels {`,
 		`w.Header().Add("X-Label", _v)`,
-		`http.SetCookie(w, &http.Cookie{Name: "flag", Value: strconv.FormatBool(resp.Active)})`,
-		`http.SetCookie(w, &http.Cookie{Name: "plain", Value: resp.Plain})`,
+		`http.SetCookie(w, &http.Cookie{Name: "flag", Value: strconv.FormatBool(resp.Active), Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})`,
+		`http.SetCookie(w, &http.Cookie{Name: "plain", Value: resp.Plain, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})`,
 	)
 }
 
@@ -872,14 +856,14 @@ func TestGenerateTransportMultipartFromFileField(t *testing.T) {
 	handler, _ := os.ReadFile(filepath.Join(root, "internal/transport/upload-service/upload.go"))
 	mustParseGo(t, string(handler))
 	mustContainAll(t, string(handler),
-		"r.ParseMultipartForm(32 << 20)",
+		"r.ParseMultipartForm(server.MultipartMemory)",
 		// Handler-scoped cleanup frees temp files before the flush and on panic paths.
 		"defer func() { _ = r.MultipartForm.RemoveAll() }()",
 		`r.PostFormValue("note")`,
-		`r.FormFile("avatar")`,
-		"req.Avatar = header",
+		`r.MultipartForm.File["avatar"]`,
+		"req.Avatar = _fh[0]",
 	)
-	if strings.Contains(string(handler), "server.JSON().Decode(r.Body") {
+	if strings.Contains(string(handler), "server.JSON().Decode(r.Body") || strings.Contains(string(handler), "RequireJSONBody") {
 		t.Errorf("multipart handler must not JSON-decode body:\n%s", handler)
 	}
 }
@@ -906,14 +890,12 @@ func TestGenerateTransportMultipartParseFailureIsValidationError(t *testing.T) {
 	mustContainNone(t, src, "http.Error(")
 }
 
-// The multipart memory budget is 32 MiB, or @maxBodySize when larger, written
-// in the largest size unit that divides it.
+// The multipart memory budget is the server's fixed one, whatever the route's @maxBodySize.
 func TestGenerateTransportMultipartBudget(t *testing.T) {
 	for _, tc := range []struct{ decorator, want string }{
-		{"", "r.ParseMultipartForm(32 << 20)"},
-		{"@maxBodySize(1MB)", "r.ParseMultipartForm(32 << 20)"},
-		{"@maxBodySize(64MB)", "r.ParseMultipartForm(64 << 20)"},
-		{"@maxBodySize(1.5GB)", "r.ParseMultipartForm(1536 << 20)"},
+		{"", "r.ParseMultipartForm(server.MultipartMemory)"},
+		{"@maxBodySize(1MB)", "r.ParseMultipartForm(server.MultipartMemory)"},
+		{"@maxBodySize(1.5GB)", "r.ParseMultipartForm(server.MultipartMemory)"},
 	} {
 		pkg := analyze(t, `package design
 type UploadReq { avatar file }
@@ -936,7 +918,32 @@ service S {
 	}
 }
 
-// An explicit @form name is the key r.FormValue and r.FormFile read.
+// A file part's @maxSize holds the part while the parser reads it: the handler builds the limits
+// once and hands them to server.LimitParts before it parses the form.
+func TestGenerateTransportMultipartPartLimits(t *testing.T) {
+	pkg := analyze(t, `package design
+type UploadReq {
+	avatar file  @form("pic") @maxSize(1MB)
+	doc    file? @maxSize(512KB)
+	free   file?
+}
+service S { post Upload /upload { request UploadReq } }`)
+	root := t.TempDir()
+	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
+		t.Fatal(err)
+	}
+	src := readGen(t, root, "internal/transport/s/upload.go")
+	mustParseGo(t, src)
+	mustContainAll(t, src, `_limits := map[string]int64{"pic": 1 << 20, "doc": 512 << 10}`)
+	built, handler := strings.Index(src, "_limits :="), strings.Index(src, "return func(")
+	limit, parse := strings.Index(src, "server.LimitParts(r, _limits)"), strings.Index(src, "r.ParseMultipartForm(")
+	if built > handler || limit < 0 || parse < limit {
+		t.Errorf("the limits must be built once and applied before the form is parsed:\n%s", src)
+	}
+	mustContainNone(t, src, `"free"`+": ")
+}
+
+// An explicit @form name is the key r.PostFormValue and r.MultipartForm.File read.
 func TestGenerateTransportFormExplicitWireName(t *testing.T) {
 	pkg := analyze(t, `package design
 type UploadReq {
@@ -955,9 +962,9 @@ service UploadService {
 	mustParseGo(t, string(handler))
 	mustContainAll(t, string(handler),
 		`r.PostFormValue("note_text")`,
-		`r.FormFile("avatar_file")`,
+		`r.MultipartForm.File["avatar_file"]`,
 	)
-	if strings.Contains(string(handler), `r.PostFormValue("caption")`) || strings.Contains(string(handler), `r.FormFile("pic")`) {
+	if strings.Contains(string(handler), `r.PostFormValue("caption")`) || strings.Contains(string(handler), `r.MultipartForm.File["pic"]`) {
 		t.Errorf("explicit @form name ignored - form key fell back to the field name:\n%s", handler)
 	}
 }
@@ -969,7 +976,6 @@ func TestFlattenFieldsNestedCrossPkgMixin(t *testing.T) {
 type Inner { deep int32? @default(7) }
 type Outer { Inner  mid int64? @default(9) }`,
 		"app/types.craftgo": `package app
-import "shared"
 type Req { shared.Outer  own string }`,
 	})
 	appPkg := proj.Packages["app"]
@@ -999,7 +1005,6 @@ func TestResolveRequestFieldsQualifiedRequestNestedMixin(t *testing.T) {
 type Sub { q string @query @length(2, 5)  bod string @length(1, 10) }
 type Holder { Sub  id string @path }`,
 		"app/types.craftgo": `package app
-import "shared"
 type Resp { ok bool }
 service S { post DoIt /h/{id} { request shared.Holder  response Resp } }`,
 	})
@@ -1030,7 +1035,8 @@ service S { post DoIt /h/{id} { request shared.Holder  response Resp } }`,
 	}
 }
 
-// A file[] field binds from MultipartForm.File and a file? field from r.FormFile.
+// A file[] field binds every part of its name and a file? field the first, both from
+// MultipartForm.File, which opens no file the handler would have to close.
 func TestGenerateTransportMultipartFileArray(t *testing.T) {
 	pkg := analyze(t, `package design
 type BatchReq {
@@ -1057,8 +1063,6 @@ service MediaService {
 	src := string(out)
 	mustParseGo(t, src)
 	mustContainAll(t, src, `req.Files = r.MultipartForm.File["files"]`)
-	mustContainAll(t, src, `r.FormFile("cover")`, `req.Cover = header`)
-	if strings.Contains(src, `r.FormFile("files")`) {
-		t.Errorf("file[] must bind from MultipartForm.File, not r.FormFile:\n%s", src)
-	}
+	mustContainAll(t, src, `r.MultipartForm.File["cover"]`, `req.Cover = _fh[0]`)
+	mustContainNone(t, src, "r.FormFile(")
 }

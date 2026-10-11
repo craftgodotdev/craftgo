@@ -16,29 +16,46 @@ import (
 //
 // CreateGallery returns the POST CreateGallery handler.
 func CreateGallery(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
+	_limits := map[string]int64{"cover": 5 << 20}
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(32 << 20); err != nil {
+		server.LimitParts(r, _limits)
+		if err := r.ParseMultipartForm(server.MultipartMemory); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.CreateGalleryReq
 		req.AlbumID = r.PathValue("albumId")
+		if !server.RequirePresent(w, r, r.PostForm.Has("title"), "title", "form") {
+			return
+		}
 		req.Title = r.PostFormValue("title")
 		if _v := r.PostFormValue("description"); _v != "" {
 			req.Description = &_v
 		}
+		if !server.RequirePresent(w, r, r.PostForm.Has("tags"), "tags", "form") {
+			return
+		}
 		req.Tags = r.MultipartForm.Value["tags"]
+		if !server.RequirePresent(w, r, r.PostForm.Has("visibility"), "visibility", "form") {
+			return
+		}
 		req.Visibility = types.Visibility(r.PostFormValue("visibility"))
+		if !server.RequirePresent(w, r, r.PostForm.Has("featured"), "featured", "form") {
+			return
+		}
 		if !server.BindValue(w, r, "featured", "bool", r.PostFormValue("featured"), &req.Featured, server.ParseBool[bool]) {
+			return
+		}
+		if !server.RequirePresent(w, r, r.PostForm.Has("priority"), "priority", "form") {
 			return
 		}
 		if !server.BindValue(w, r, "priority", "int", r.PostFormValue("priority"), &req.Priority, server.ParseSigned[int]) {
 			return
 		}
 		req.Photos = r.MultipartForm.File["photos"]
-		if _, header, err := r.FormFile("cover"); err == nil {
-			req.Cover = header
+		if _fh := r.MultipartForm.File["cover"]; len(_fh) > 0 {
+			req.Cover = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

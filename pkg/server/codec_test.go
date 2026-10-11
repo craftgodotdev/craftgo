@@ -1,12 +1,18 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
+	"testing/iotest"
+	"time"
 )
 
 func TestDecodeStrictRejectsUnknownFieldsAndTrailingData(t *testing.T) {
@@ -33,6 +39,43 @@ func TestDecodeStrictRejectsUnknownFieldsAndTrailingData(t *testing.T) {
 	}
 	if err := c.Decode(strings.NewReader(`{"name":"a","nmae":"b"} junk`), &v); err != nil || v.Name != "a" {
 		t.Errorf("lenient Decode must ignore unknown fields and trailing data: err = %v, name = %q", err, v.Name)
+	}
+}
+
+// TrailingData returns the error of a failed read rather than taking it for the end of the body.
+func TestTrailingDataReturnsAFailedRead(t *testing.T) {
+	broken := errors.New("connection reset")
+	if err := TrailingData(strings.NewReader(" \n"), iotest.ErrReader(broken)); !errors.Is(err, broken) {
+		t.Errorf("TrailingData = %v, want the read error", err)
+	}
+	if err := TrailingData(strings.NewReader(" \n"), strings.NewReader("\t\r")); err != nil {
+		t.Errorf("whitespace to the end must pass: %v", err)
+	}
+}
+
+// A strict body read past its cap answers 413, even when what the cap lets through is a whole
+// value and whitespace, and the body has no Content-Length.
+func TestStrictDecodeAnswersABodyPastItsCap(t *testing.T) {
+	resetCodec(t)
+	if err := SetStrictJSON(true); err != nil {
+		t.Fatal(err)
+	}
+	s := New(nil)
+	s.Handle("POST /items", WithLimits(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var v struct {
+			Name string `json:"name"`
+		}
+		if err := JSON().Decode(r.Body, &v); err != nil {
+			WriteValidationError(w, r, err)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+	}), Limits{MaxBodySize: 64}))
+	body := `{"name":"n"}` + strings.Repeat(" ", 60) + "trailing data"
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/items", io.MultiReader(strings.NewReader(body))))
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("a %d-byte body past a 64-byte cap: %d %s, want 413", len(body), rec.Code, rec.Body)
 	}
 }
 
@@ -169,6 +212,136 @@ func TestDecodeTypeErrorsNameTheWirePath(t *testing.T) {
 	}
 }
 
+// wireKeys holds members whose path an engine may spell with indexes, keys or escapes: a map
+// keyed by hosts, arrays of arrays, a map of arrays, keys holding "/", "~" and ".".
+type wireKeys struct {
+	ByHost map[string]wireInner   `json:"byHost"`
+	Grid   [][]wireInner          `json:"grid"`
+	Lists  map[string][]wireInner `json:"lists"`
+	Slash  wireInner              `json:"a/b"`
+	Tilde  wireInner              `json:"a~b"`
+	Dotted wireInner              `json:"c.d"`
+	Sku    string                 `json:"sku"`
+}
+
+// A path reads the same whichever encoding/json engine decodes: no array index or map key in it,
+// a key holding "/", "~" or "." as written, and a member keyed in another case under its field's
+// key.
+func TestDecodePathsLeaveOutIndexesAndMapKeys(t *testing.T) {
+	for body, want := range map[string]string{
+		`{"byHost": {"example.com": {"n": "x"}}}`: "byHost.n: expected integer, got string",
+		`{"byHost": {"a/b~c": {"sku": 1}}}`:       "byHost.sku: expected string, got number",
+		`{"grid": [[], [{"n": 1.5}]]}`:            "grid.n: expected integer, got number 1.5",
+		`{"lists": {"k.1": [{"sku": 1}]}}`:        "lists.sku: expected string, got number",
+		`{"a/b": {"n": "x"}}`:                     "a/b.n: expected integer, got string",
+		`{"a~b": {"n": "x"}}`:                     "a~b.n: expected integer, got string",
+		`{"c.d": {"n": "x"}}`:                     "c.d.n: expected integer, got string",
+		`{"SKU": 5}`:                              "sku: expected string, got number",
+	} {
+		var v wireKeys
+		if err := (defaultCodec{}).Decode(strings.NewReader(body), &v); err == nil || err.Error() != want {
+			t.Errorf("Decode(%s) = %v, want %q", body, err, want)
+		}
+	}
+}
+
+// wireStamped holds values encoding/json hands to their own code: datetimes, base64 bytes and a
+// type that unmarshals itself, beside a raw value.
+type wireStamped struct {
+	At    time.Time            `json:"at"`
+	AtP   *time.Time           `json:"atp"`
+	Files []wireFile           `json:"files"`
+	ByDay map[string]time.Time `json:"byDay"`
+	Level wireLevel            `json:"level"`
+	Raw   json.RawMessage      `json:"raw"`
+}
+
+type wireFile struct {
+	Data []byte `json:"data"`
+}
+
+// wireLevel unmarshals itself from a JSON string.
+type wireLevel int
+
+func (l *wireLevel) UnmarshalText(b []byte) error {
+	if string(b) != "high" {
+		return errors.New("unknown level")
+	}
+	*l = 1
+	return nil
+}
+
+// A value encoding/json hands to its own code fails under its JSON path whichever engine
+// decodes, a datetime and base64 bytes in the words of their format checks, another type in its
+// own; the decoder's error stays in the chain.
+func TestDecodeFailuresOfSelfDecodedValuesNameTheWirePath(t *testing.T) {
+	for _, c := range []struct {
+		body, want string
+		cause      any
+	}{
+		{`{"at": 1}`, "at: expected string, got number", nil},
+		{`{"at": "tomorrow"}`, "at: not a valid RFC 3339 datetime", new(*time.ParseError)},
+		{`{"AT": "tomorrow"}`, "at: not a valid RFC 3339 datetime", new(*time.ParseError)},
+		{`{"at": "2024-01-02T03:04:05Z", "at": "x"}`, "at: not a valid RFC 3339 datetime", new(*time.ParseError)},
+		{`{"atp": true}`, "atp: expected string, got boolean", nil},
+		{`{"raw": {"at": [1]}, "files": [{"data": "aGk="}, {"data": "QUI"}]}`, "files.data: not a valid base64", new(base64.CorruptInputError)},
+		{`{"byDay": {"mon": "x"}}`, "byDay: not a valid RFC 3339 datetime", new(*time.ParseError)},
+		{`{"level": "low"}`, "level: unknown level", nil},
+	} {
+		for name, decode := range map[string]func(io.Reader, any) error{
+			"Decode":       defaultCodec{}.Decode,
+			"DecodeStrict": defaultCodec{}.DecodeStrict,
+		} {
+			var v wireStamped
+			err := decode(strings.NewReader(c.body), &v)
+			if err == nil || err.Error() != c.want {
+				t.Errorf("%s(%s) = %v, want %q", name, c.body, err, c.want)
+				continue
+			}
+			if c.cause != nil && !errors.As(err, c.cause) {
+				t.Errorf("%s(%s): the decoder's %T left the chain", name, c.body, c.cause)
+			}
+		}
+	}
+	var at time.Time
+	if err := (defaultCodec{}).Decode(strings.NewReader(`"x"`), &at); err == nil || err.Error() != "body: not a valid RFC 3339 datetime" {
+		t.Errorf(`Decode("x") into a time.Time = %v, want the body named`, err)
+	}
+}
+
+// A body is kept to find a failed value in only when its type can hold one encoding/json hands
+// to the value's own code; a raw value takes any JSON.
+func TestDecodeKeepsTheBodyOnlyForSelfDecodedValues(t *testing.T) {
+	for typ, want := range map[reflect.Type]bool{
+		reflect.TypeFor[wireStamped]():                   true,
+		reflect.TypeFor[*wireShape]():                    true,
+		reflect.TypeFor[wireNode]():                      false,
+		reflect.TypeFor[wireKeys]():                      false,
+		reflect.TypeFor[struct{ R json.RawMessage }]():   false,
+		reflect.TypeFor[map[string][]*wireStampedNode](): true,
+	} {
+		if got := holdsSelfDecoding(typ); got != want {
+			t.Errorf("holdsSelfDecoding(%v) = %v, want %v", typ, got, want)
+		}
+	}
+}
+
+// An empty body is required, io.EOF left in the chain.
+func TestDecodeOfAnEmptyBodyIsRequired(t *testing.T) {
+	for _, body := range []string{"", " \n\t"} {
+		for name, decode := range map[string]func(io.Reader, any) error{
+			"Decode":       defaultCodec{}.Decode,
+			"DecodeStrict": defaultCodec{}.DecodeStrict,
+		} {
+			var v wireStamped
+			err := decode(strings.NewReader(body), &v)
+			if err == nil || err.Error() != "body: required" || !errors.Is(err, io.EOF) {
+				t.Errorf("%s(%q) = %v, want body: required wrapping io.EOF", name, body, err)
+			}
+		}
+	}
+}
+
 // WireMeta is a struct embedded beside a JSON key spelled as its Go name.
 type WireMeta struct {
 	N int `json:"n"`
@@ -224,26 +397,68 @@ func TestDecodePathsTellAJSONKeyFromAnEmbeddedName(t *testing.T) {
 	}
 }
 
+type wireDottedBase struct {
+	N []int `json:"n"`
+}
+
+type wireDottedInner struct {
+	wireDottedBase
+	K int `json:"k"`
+}
+
+type wireDotted struct {
+	Inner wireDottedInner `json:"a.b"`
+	Deep  struct {
+		Inner wireDottedInner `json:"c.d.e"`
+	} `json:"x"`
+}
+
+// A JSON key holding a dot reads as one key, an embedded struct's name below it dropped.
+func TestDecodePathsReadADottedKeyWhole(t *testing.T) {
+	for body, want := range map[string]string{
+		`{"a.b": {"n": "w", "k": 1}}`:     "a.b.n: expected array, got string",
+		`{"a.b": {"k": "x"}}`:             "a.b.k: expected integer, got string",
+		`{"x": {"c.d.e": {"n": [true]}}}`: "x.c.d.e.n: expected integer, got boolean",
+	} {
+		if err := (defaultCodec{}).Decode(strings.NewReader(body), &wireDotted{}); err == nil || err.Error() != want {
+			t.Errorf("Decode(%s) = %v, want %q", body, err, want)
+		}
+	}
+}
+
 type wireNode struct {
 	Child *wireNode `json:"c"`
 	V     int       `json:"v"`
 }
 
-// The path of a decode error deep in a recursive body costs memory in proportion to its depth.
+type wireStampedNode struct {
+	Child *wireStampedNode `json:"c"`
+	At    time.Time        `json:"at"`
+}
+
+// The path of a decode error deep in a recursive body, a datetime's included, costs memory in
+// proportion to its depth.
 func TestDecodePathOfADeepBodyCostsLinearMemory(t *testing.T) {
 	const depth = 4000
-	body := strings.Repeat(`{"c":`, depth) + `{"v":"x"}` + strings.Repeat("}", depth)
-	var before, after runtime.MemStats
-	runtime.GC()
-	runtime.ReadMemStats(&before)
-	err := defaultCodec{}.Decode(strings.NewReader(body), &wireNode{})
-	runtime.ReadMemStats(&after)
-	want := strings.Repeat("c.", depth) + "v: expected integer, got string"
-	if err == nil || err.Error() != want {
-		t.Fatalf("Decode = %.40v..., want the path of %d keys", err, depth+1)
-	}
-	if grew := after.TotalAlloc - before.TotalAlloc; grew > 32<<20 {
-		t.Errorf("decoding a body %d deep allocated %d MB", depth, grew>>20)
+	for _, c := range []struct {
+		leaf, why string
+		v         any
+	}{
+		{`{"v":"x"}`, "v: expected integer, got string", &wireNode{}},
+		{`{"at":"x"}`, "at: not a valid RFC 3339 datetime", &wireStampedNode{}},
+	} {
+		body := strings.Repeat(`{"c":`, depth) + c.leaf + strings.Repeat("}", depth)
+		var before, after runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		err := defaultCodec{}.Decode(strings.NewReader(body), c.v)
+		runtime.ReadMemStats(&after)
+		if want := strings.Repeat("c.", depth) + c.why; err == nil || err.Error() != want {
+			t.Fatalf("Decode into %T = %.40v..., want the path of %d keys", c.v, err, depth+1)
+		}
+		if grew := after.TotalAlloc - before.TotalAlloc; grew > 32<<20 {
+			t.Errorf("decoding a body %d deep into %T allocated %d MB", depth, c.v, grew>>20)
+		}
 	}
 }
 

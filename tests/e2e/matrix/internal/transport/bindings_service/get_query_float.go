@@ -20,10 +20,10 @@ func GetQueryFloat(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if !server.RequirePresent(w, r, _q.Has("ratio"), "ratio", "query") {
 			return
 		}
-		if !server.BindValue(w, r, "ratio", "float", _q.Get("ratio"), &req.Ratio, server.ParseFloat[float64]) {
+		if !server.BindValue(w, r, "ratio", "float64", _q.Get("ratio"), &req.Ratio, server.ParseFloat[float64]) {
 			return
 		}
-		if !server.BindValuePtr(w, r, "scale", "float", _q.Get("scale"), &req.Scale, server.ParseFloat[float32]) {
+		if !server.BindValuePtr(w, r, "scale", "float32", _q.Get("scale"), &req.Scale, server.ParseFloat[float32]) {
 			return
 		}
 		if err := req.Validate(); err != nil {

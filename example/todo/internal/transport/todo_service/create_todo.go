@@ -17,13 +17,17 @@ import (
 // CreateTodo returns the POST CreateTodo handler.
 func CreateTodo(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req types.CreateTodoReq
-		{
-			__d := types.TodoPriorityMedium
-			req.Priority = &__d
+		if !server.RequireJSONBody(w, r) {
+			return
 		}
-		if err := server.JSON().Decode(r.Body, &req); err != nil {
+		var req types.CreateTodoReq
+		var _b createTodoReqWire
+		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)
+			return
+		}
+		if _m := _b.to(&req); _m != "" {
+			server.WriteValidationError(w, r, server.MissingMember(_m))
 			return
 		}
 		if err := req.Validate(); err != nil {

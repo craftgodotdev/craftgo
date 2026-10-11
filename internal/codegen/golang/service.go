@@ -16,11 +16,14 @@ type serviceData struct {
 	// Doc heads the entry point's doc comment ([docHead]); Entry is the rest.
 	Doc   []string
 	Entry []string
-	// RawResponse reports that logic writes the response ([wire.RawSides]).
-	RawResponse bool
-	Sig         methodSignature
-	ImportDecl  string
+	Sig   methodSignature
+	// NotImplemented is the error the stub returns until it is written.
+	NotImplemented string
+	ImportDecl     string
 }
+
+// httpNotImplemented is what a new HTTP stub returns: 501 {"message":"not implemented"}.
+const httpNotImplemented = "server.ErrNotImplemented"
 
 // generateService writes each method's gen-once logic scaffold to
 // output.service/<segment>/<method>.go. A nil r resolves local names only.
@@ -53,16 +56,17 @@ func buildServiceData(pkgName, svcName string, m *ast.Method, decs []*ast.Decora
 	if mode.HasResponse {
 		respContract = doc.named(m.Response.Type)
 	}
+	imports.use(serverImport)
 	return serviceData{
-		Package:     pkgName,
-		Service:     svcName,
-		Method:      m.Name,
-		ServiceName: idents.LogicTypeName(m.Name),
-		Doc:         docHead(semantic.DescriptionLines(decs, m.Doc)),
-		Entry:       stubEntry(svcName, m.Name, mode, sig, reqContract, respContract),
-		RawResponse: mode.RawResponse,
-		Sig:         sig,
-		ImportDecl:  stubImportDecl(imports, sig, imps.Svccontext),
+		Package:        pkgName,
+		Service:        svcName,
+		Method:         m.Name,
+		ServiceName:    idents.LogicTypeName(m.Name),
+		Doc:            docHead(semantic.DescriptionLines(decs, m.Doc)),
+		Entry:          stubEntry(svcName, m.Name, mode, sig, reqContract, respContract),
+		Sig:            sig,
+		NotImplemented: httpNotImplemented,
+		ImportDecl:     stubImportDecl(imports, sig, imps.Svccontext),
 	}
 }
 

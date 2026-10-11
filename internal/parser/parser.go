@@ -25,6 +25,9 @@ type Parser struct {
 	claimed map[int]bool
 	// chainComments becomes the file's [ast.File.ChainComments].
 	chainComments map[int][]string
+	// closed holds, by token index, whether each opening bracket is closed;
+	// [Parser.closes] fills it on first use.
+	closed []bool
 }
 
 // docAbove claims the comment lines directly above the current token and
@@ -79,10 +82,6 @@ func (p *Parser) Parse() *ast.File {
 		f.Package = p.parsePackage()
 		p.rejectDecoratorsAfter("declaration", startsDecl)
 	}
-	for p.peek().Kind == lexer.KwImport {
-		f.Imports = append(f.Imports, p.parseImport())
-		p.rejectDecoratorsAfter("declaration", startsDecl)
-	}
 	p.each(lexer.EOF, func() {
 		d := p.parseTopLevelWith(leading)
 		leading = nil
@@ -133,6 +132,10 @@ func (p *Parser) expect(k lexer.Kind) (lexer.Token, bool) {
 	return lexer.Token{Pos: p.peek().Pos}, false
 }
 
+// CodeSyntaxParse is the code of a parser diagnostic: tokens the grammar does
+// not take where they stand.
+const CodeSyntaxParse = "syntax/parse"
+
 // errorf records an error diagnostic at pos unless the lexer or the parser
 // already reported one there, which a second one would only follow from.
 func (p *Parser) errorf(pos lexer.Position, format string, args ...any) {
@@ -140,7 +143,7 @@ func (p *Parser) errorf(pos lexer.Position, format string, args ...any) {
 		return
 	}
 	p.reported[pos] = true
-	p.diags = append(p.diags, lexer.Diagnostic{Pos: pos, Msg: fmt.Sprintf(format, args...)})
+	p.diags = append(p.diags, lexer.Diagnostic{Pos: pos, Code: CodeSyntaxParse, Msg: fmt.Sprintf(format, args...)})
 }
 
 // peekIs reports whether the current token has kind k.
@@ -159,17 +162,36 @@ func (p *Parser) each(closer lexer.Kind, member func()) {
 }
 
 // braced parses `{`, [Parser.each] member up to `}`, and `}`, and returns the
-// two braces; a missing one is reported and comes back empty.
-func (p *Parser) braced(member func()) (lbrace, rbrace lexer.Token) {
-	lbrace, _ = p.expect(lexer.LBrace)
-	p.each(lexer.RBrace, member)
-	rbrace, _ = p.expect(lexer.RBrace)
-	return lbrace, rbrace
+// `}`; a missing `{` is reported. A `{` nothing closes is reported there, and
+// its body ends at EOF, at a line that opens a declaration, or where stop,
+// unless nil, holds; the `}` then comes back as an empty token there.
+func (p *Parser) braced(stop func() bool, member func()) lexer.Token {
+	open := p.pos
+	lbrace, opened := p.expect(lexer.LBrace)
+	for !p.peekIs(lexer.RBrace) {
+		if p.peekIs(lexer.EOF) || stop != nil && stop() || p.opensDeclaration() && (!opened || !p.closes(open)) {
+			if opened {
+				p.unclosed(lbrace)
+			}
+			return lexer.Token{Pos: p.peek().Pos}
+		}
+		start := p.pos
+		member()
+		if p.pos == start {
+			p.advance()
+		}
+	}
+	return p.advance()
 }
 
 // skipParens consumes from the current `(` through its matching `)`, and
-// reports whether it got there; EOF or a `}` it did not open stops it first.
+// reports whether it got there; one nothing closes is consumed to the end of
+// its line.
 func (p *Parser) skipParens() bool {
+	if !p.closes(p.pos) {
+		p.skipLine()
+		return false
+	}
 	parens, braces := 0, 0
 	for !p.peekIs(lexer.EOF) {
 		switch p.peek().Kind {
@@ -192,18 +214,6 @@ func (p *Parser) skipParens() bool {
 		p.advance()
 	}
 	return false
-}
-
-// listSep consumes the `,` after a list element. Before closer or EOF it
-// consumes nothing; any other token is reported.
-func (p *Parser) listSep(closer lexer.Kind, element string) {
-	switch p.peek().Kind {
-	case lexer.Comma:
-		p.advance()
-	case closer, lexer.EOF:
-	default:
-		p.errorf(p.peek().Pos, "expected ',' or '%s' after %s, got %s", closer, element, p.peek().Kind)
-	}
 }
 
 // isUpperFirst reports whether s starts with an upper-case letter.

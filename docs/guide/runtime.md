@@ -14,7 +14,7 @@ srv.Start(":8080")                     // ListenAndServe
 Three things matter:
 
 1. `Server` wraps the standard library mux and accepts the standard middleware shape
-2. Generated routes register through `srv.Handle("VERB /path", handlerFn, mws...)` using Go 1.22+ pattern syntax
+2. Generated routes register through `srv.Handle("VERB /path", handlerFn, mws...)` using Go 1.22+ pattern syntax; a root route, `get Home /` with no `@prefix`, registers `GET /{$}` (`GET /api/{$}` under the base path `/api`), so it answers its one path, the documented `/`, and not every path below it
 3. Binding and validation are generated Go, JSON is `encoding/json` behind a swappable codec, and the logic is yours - no reflection-driven dispatch in the hot path
 
 If you can name a `net/http` concept, the craftgo equivalent uses it directly.
@@ -50,7 +50,9 @@ Out of the box:
 - `BodyLimit(maxBytes)` - caps request bodies; a body over the cap answers 413 `{"message":"request entity too large"}`
 - `Timeout(d)` - deprecated; use `srv.SetDefaultHandlerTimeout(d)` or `@timeout`, which put the deadline on the request context
 - `CORSPermissive()` / `CORSStrict(origin)` - build a `CORSOptions` preset, then attach with `srv.SetCORS(opts)` - preflight + headers
-- `Compress(opts)` - gzip / deflate response compression
+- `Compress(opts)` - gzip / deflate response compression; a partial (206) response, whose `Content-Range` counts the plain bytes, a status without a body, a HEAD response and an already encoded one go out as they are, and a body without a `Content-Type` keeps the one `net/http` would sniff from its plain bytes. `Compress` panics on a `Level` outside -2 to 9, which `CompressOptions.Validate` reports first
+
+The writers `Recovery`, `AccessLog` and `Compress` hand a handler keep what `net/http`'s offers: `http.Hijacker`, so a websocket upgrade takes the connection, `http.Flusher`, and `io.ReaderFrom`, so `http.ServeFile` still sends with `sendfile`. Each unwraps for `http.ResponseController` too.
 
 You wire them in `main.go`:
 
@@ -106,7 +108,7 @@ func CreateUser(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 
 This is exactly what you would write by hand: one `http.HandlerFunc`, stdlib status codes, stdlib responses. Two details to note:
 
-- **`server.JSON()`** is the swappable codec accessor - it defaults to `encoding/json` but lets you drop in `sonic`/`jsoniter` process-wide (see [Runtime API](/reference/runtime-api#json-codec)). The decode/encode shape is otherwise standard.
+- **`server.JSON()`** is the swappable codec accessor - it defaults to `encoding/json` but lets you drop in another, such as `sonic` or `goccy/go-json` from v0.11.1, process-wide. The codec must honour `omitzero`, or a nil optional list, map or `bytes` member goes out as `null` (see [Runtime API](/reference/runtime-api#json-codec)). The decode/encode shape is otherwise standard.
 - **The logic call is `l.CreateUser(&req)`** - the request context is captured when the per-method service is constructed (`service.NewCreateUserService(r.Context(), svcCtx)`), so it isn't threaded through the method call.
 
 ### Raw sides
@@ -157,7 +159,7 @@ srv.RegisterHealthCheck("db", 2*time.Second, func(ctx context.Context) error {
 })
 ```
 
-The second argument is a per-check timeout: each run gets a context that expires after it, so a check that honours its context fails with `context deadline exceeded`, while one that ignores its context runs to completion and is judged by what it returns.
+The second argument is a per-check timeout: each run gets a context that expires after it, so a check that honours its context fails with `context deadline exceeded`, while one that ignores its context runs to completion and is judged by what it returns. A zero or negative timeout sets no deadline, leaving the probe request's own context.
 
 The probes are answered before the middleware chain: they are not access-logged, traced or counted in the HTTP metrics, and no `srv.Use` middleware (CORS, auth, rate limits) runs for them. Disable them with `server.WithoutDefaultHealth()` and register your own route when you want observed probes.
 
@@ -175,7 +177,7 @@ docs:
 ```
 
 `main.go` embeds the generated `openapi.yaml` and wires it with
-`srv.ServeDocs(...)` when the design has HTTP routes and, as `main.go` is first
+`srv.RegisterDocs(...)` when the design has HTTP routes and, as `main.go` is first
 written, the document is on disk in or below `main.go`'s directory. To add it to
 a hand-written server, or to a gen-once `main.go` that does not serve it:
 
@@ -189,23 +191,40 @@ srv.ServeDocs(server.DocsOptions{Spec: openapiSpec, UI: "redoc"})
 ```
 
 This registers `GET /openapi.yaml` (the spec) and `GET /docs` (the UI page). It
-is a no-op when `Spec` is empty.
+is a no-op when `Spec` is empty. `srv.RegisterDocs(opts)` registers the same
+and returns an error, registering neither, for a `Path` or `SpecPath` that does
+not start with `/` or that `http.ServeMux` refuses, for the two being equal, and
+for one a health probe or a registered route already serves; `ServeDocs` panics
+with that error, and the generated `main.go` logs it and exits. The page loads its UI from the jsDelivr CDN at
+a pinned version (Redoc 2.5.4, Swagger UI 5.33.0, Scalar 1.71.0), each script
+and stylesheet carrying its Subresource Integrity hash, so a browser refuses a
+file the CDN serves changed.
 
 ## Graceful shutdown
 
 ```go
-go srv.Start(":8080")
-
 stop := make(chan os.Signal, 1)
 signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+lis, err := net.Listen("tcp", ":8080")
+if err != nil {
+    log.Default().Error("server start", log.Err(err))
+    os.Exit(1)
+}
+log.Default().Info("listening", log.String("addr", lis.Addr().String()))
+go srv.Serve(lis)
 <-stop
 
 ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 defer cancel()
-srv.Stop(ctx)
+if err := srv.Stop(ctx); err != nil {
+    log.Default().Warn("http drain cut off requests", log.Err(err))
+}
 ```
 
-`Stop` closes the listener, waits for in-flight requests, then returns.
+`Stop` closes the listener, waits for in-flight requests, then returns; when `ctx` ends first it returns `ctx`'s error, and the requests still running end with the process. A `Stop` that comes before `Start` or `Serve` makes them return nil at once, as `http.Server.Shutdown` does, so a signal that arrives while the listener starts cannot leave it running. `Serve` takes a listener you bound, so the log names the address it holds - the real port of a `:0`.
+
+The generated `main.go` does the same in a goroutine per listener: a listener that cannot bind, or stops serving, shuts the rest down as a signal does, and the process then exits 1. With routes and RPCs, a signal stops both listeners at once - the gRPC health service turns `NOT_SERVING` as HTTP stops accepting - and they drain side by side within one 5s budget, each followed by its wiring shutdown; the telemetry flush comes last.
 
 ## Logging
 
@@ -239,6 +258,8 @@ current := log.GetLevel()
 ```
 
 The default is `LevelInfo`. The swap is atomic and takes effect on the next log call - no logger replacement needed, so it is safe to wire to a `/debug/loglevel` endpoint or a config reload. Loggers you build yourself and pass to `log.NewZap` keep their own level and ignore `SetLevel`.
+
+`log.New`, the default, writes JSON lines to stderr and writes every one: zap's sampling, which keeps few repeats of one message within a second, is off, so no access, error or panic line is lost under load. To sample, build a zap logger with `Sampling` set and install it with `log.SetDefault(log.NewZap(z))`.
 
 ## Tracing and metrics
 

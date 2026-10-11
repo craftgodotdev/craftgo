@@ -172,17 +172,6 @@ func DedupGoFieldNames(dslNames []string) (resolved []string, collisions []Colli
 	return resolved, collisions
 }
 
-// LastSegment returns what follows the last `/` of a DSL import path, the
-// name the package is referenced by: `auth/types` → `types`.
-func LastSegment(p string) string {
-	for i := len(p) - 1; i >= 0; i-- {
-		if p[i] == '/' {
-			return p[i+1:]
-		}
-	}
-	return p
-}
-
 // PascalCase upper-cases the first letter of each `-`, `_` or `/`
 // separated word and drops the separators: `user_profile` → `UserProfile`.
 func PascalCase(s string) string {
@@ -225,6 +214,11 @@ func ErrorCodeName(name string) string { return "ErrCode" + name }
 // ErrorConstructorName returns the Go name of an error's constructor: `New`
 // plus its [ErrorTypeName].
 func ErrorConstructorName(name string) string { return "New" + ErrorTypeName(name) }
+
+// CookieConstructorName returns the Go name of the function that builds the
+// cookie a `cookie` field declares: `New`, the Go name of the field's type or
+// error, the field's and `Cookie`.
+func CookieConstructorName(owner, field string) string { return "New" + owner + field + "Cookie" }
 
 // LogicTypeName returns the Go name of a method's or an RPC's logic struct:
 // the name plus `Service`.

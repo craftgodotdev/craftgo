@@ -218,7 +218,7 @@ func TestCompletionItemIsOnePerDeclaration(t *testing.T) {
 		}
 		return byLabel
 	}
-	head := "package app\n\nimport \"shared\"\n\n"
+	head := "package app\n\n"
 	member := complete(head + "type T {\n\tm shared.|\n}\n")
 	typeSlot := complete(head + "type T {\n\tm |\n}\n")
 	mixin := complete(head + "type T {\n\ta int\n\t|\n}\n")
@@ -460,7 +460,7 @@ func TestCompletionBlockFallbackMatchesTheBlock(t *testing.T) {
 		{
 			label:  "file scope",
 			src:    typeSlotFixtures + "|\n",
-			want:   []string{"package", "import", "type", "enum", "error", "scalar", "service", "extend", "middleware", "event"},
+			want:   []string{"package", "type", "enum", "error", "scalar", "service", "extend", "middleware", "event"},
 			banned: []string{"get", "request", "response", "payload", "map", "true", "Address"},
 		},
 		{
@@ -616,7 +616,7 @@ func TestCompletionPackageMembersInATypePosition(t *testing.T) {
 		"shared/shared.craftgo": "package shared\n\ntype Addr { city string }\nenum Kind { A }\nscalar Email string\n" +
 			"middleware Auth\nerror NotFound Gone\nservice Svc { get G /g {} }\nevent Moved { payload Addr }\n",
 	})
-	src, pos := markCursor(t, "package app\n\nimport \"shared\"\n\ntype User {\n\thome shared.|\n}\n")
+	src, pos := markCursor(t, "package app\n\ntype User {\n\thome shared.|\n}\n")
 	path := filepath.Join(design, "app", "app.craftgo")
 	mustWrite(t, path, src)
 	u := uri.File(path)
@@ -728,7 +728,7 @@ func TestCompletionExtendServiceTargetAtEndOfBuffer(t *testing.T) {
 	}
 }
 
-// `package |` offers the folder's package, and `import |` quoted import paths.
+// `package |` offers the folder's package.
 func TestCompletionHeaderLines(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "craftgo.design.yaml"), "package: example.com/m\noutput:\n  types: ./types\n")
@@ -750,15 +750,6 @@ func TestCompletionHeaderLines(t *testing.T) {
 		expectLabels(t, items, "shop")
 		// The sibling folder declares `shared`; this file is not in it.
 		expectNoLabels(t, items, "shared", "type", "Ping")
-	})
-	t.Run("import path arrives quoted", func(t *testing.T) {
-		items := run("package shop\n\nimport |\n")
-		expectLabels(t, items, "design/shared")
-		for _, it := range items {
-			if it.Label == "design/shared" && it.InsertText != `"design/shared"` {
-				t.Errorf("import path must insert with quotes, got %q", it.InsertText)
-			}
-		}
 	})
 }
 
@@ -784,6 +775,46 @@ func TestCompletionErrorsDecoratorArgs(t *testing.T) {
 	// Cursor right after `@errors(`.
 	items := mustCompletionsAt(t, src, 7, 12)
 	expectLabels(t, items, "UserNotFoundErr", "EmailTakenErr")
+}
+
+// `@errors` and `@middlewares` offer only the names their list does not hold
+// yet, the one being typed aside.
+func TestCompletionNamesListedAreNotOfferedAgain(t *testing.T) {
+	const decls = "package x\n\nerror NotFound Missing\nerror Conflict Taken\nmiddleware Auth\nmiddleware Trace\n\nservice S {\n"
+	for _, c := range []struct {
+		src          string
+		want, banned []string
+	}{
+		{decls + "\t@errors(Missing, |)\n\tget A /a {}\n}\n", []string{"Taken"}, []string{"Missing"}},
+		{decls + "\t@errors(|, Taken)\n\tget A /a {}\n}\n", []string{"Missing"}, []string{"Taken"}},
+		{decls + "\t@errors(Miss|)\n\tget A /a {}\n}\n", []string{"Missing", "Taken"}, nil},
+		{decls + "\t@middlewares(Auth, |)\n\tget A /a {}\n}\n", []string{"Trace"}, []string{"Auth"}},
+	} {
+		items := mustCompletionsAtCursor(t, c.src)
+		expectLabels(t, items, c.want...)
+		expectNoLabels(t, items, c.banned...)
+	}
+}
+
+// A route's words are the author's: `/` in a route offers nothing.
+func TestCompletionInARouteOffersNothing(t *testing.T) {
+	const head = "package x\n\ntype R { id string @path }\n\nservice S {\n"
+	for _, route := range []string{"/|", "/users/|", "/us|", "/users/{id}/|"} {
+		if items := mustCompletionsAtCursor(t, head+"\tget A "+route+" { request R }\n}\n"); len(items) != 0 {
+			t.Errorf("%s: completions = %v, want none", route, labelSet(items))
+		}
+	}
+	expectLabels(t, mustCompletionsAtCursor(t, head+"\tget A /a { request R }\n\t|\n}\n"), "get", "post")
+}
+
+// Inside a generic type's body its type parameters are types too.
+func TestCompletionOffersTheTypeParametersOfTheTypeAround(t *testing.T) {
+	const decls = "package x\n\ntype Page<Item, Cursor> {\n"
+	for _, body := range []string{"\titems |\n}\n", "\tm map<string, |>\n}\n", "\tp Page<|>\n}\n"} {
+		items := mustCompletionsAtCursor(t, decls+body)
+		expectLabels(t, items, "Item", "Cursor", "string")
+	}
+	expectNoLabels(t, mustCompletionsAtCursor(t, decls+"\tx int\n}\n\ntype Other {\n\ty |\n}\n"), "Item", "Cursor")
 }
 
 // `@` on a string scalar offers the string validators only.
@@ -902,6 +933,40 @@ func TestCompletionErrorCategoryNotInOtherPositions(t *testing.T) {
 	for _, it := range items {
 		if it.Detail != "" && strings.HasPrefix(it.Detail, "HTTP ") {
 			t.Errorf("category completions leaked into name position: got %q (%s)", it.Label, it.Detail)
+		}
+	}
+}
+
+// Inside @cookie(...), a `,` offers the attributes not given yet and a `:` the values of its
+// attribute.
+func TestCompletionCookieAttributes(t *testing.T) {
+	src := `package x
+type R {
+	a string @cookie("sid", )
+	b string @cookie("sid", maxAge: 1h, )
+	c string @cookie("sid", sameSite: )
+	d string @cookie("sid", secure: )
+}
+`
+	labels := func(items []protocol.CompletionItem) []string {
+		var out []string
+		for _, it := range items {
+			out = append(out, it.Label)
+		}
+		slices.Sort(out)
+		return out
+	}
+	for _, c := range []struct {
+		line, col uint32
+		want      []string
+	}{
+		{2, 25, []string{"domain", "httpOnly", "maxAge", "path", "sameSite", "secure"}},
+		{3, 37, []string{"domain", "httpOnly", "path", "sameSite", "secure"}},
+		{4, 35, []string{"lax", "none", "strict"}},
+		{5, 33, []string{"false", "true"}},
+	} {
+		if got := labels(mustCompletionsAt(t, src, c.line, c.col)); !slices.Equal(got, c.want) {
+			t.Errorf("line %d col %d: got %v, want %v", c.line, c.col, got, c.want)
 		}
 	}
 }

@@ -19,6 +19,7 @@ import (
 	catalogserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/catalog_service"
 	collectionsroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/collections"
 	combineserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/combine_service"
+	cookiesroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/cookies"
 	emptylistsroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/empty_lists"
 	headerechoserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/header_echo_service"
 	hiddennotesroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/hidden_notes"
@@ -26,9 +27,11 @@ import (
 	inventoryserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/inventory_service"
 	ledgerroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/ledger"
 	ledgerentryroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/ledger_entry"
+	limitsroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/limits"
 	nestedserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/nested_service"
 	numbersserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/numbers_service"
 	ordersserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/orders_service"
+	presenceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/presence"
 	profileserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/profile_service"
 	projectserviceroutes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/project_service"
 	rawmodesserviceRawV1routes "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/routes/raw/v1"
@@ -63,6 +66,7 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	catalogserviceroutes.RegisterRoutes(srv, svcCtx)
 	collectionsroutes.RegisterRoutes(srv, svcCtx)
 	combineserviceroutes.RegisterRoutes(srv, svcCtx)
+	cookiesroutes.RegisterRoutes(srv, svcCtx)
 	emptylistsroutes.RegisterRoutes(srv, svcCtx)
 	headerechoserviceroutes.RegisterRoutes(srv, svcCtx)
 	hiddennotesroutes.RegisterRoutes(srv, svcCtx)
@@ -70,9 +74,11 @@ func RegisterAll(srv *server.Server, svcCtx *svccontext.ServiceContext) {
 	inventoryserviceroutes.RegisterRoutes(srv, svcCtx)
 	ledgerroutes.RegisterRoutes(srv, svcCtx)
 	ledgerentryroutes.RegisterRoutes(srv, svcCtx)
+	limitsroutes.RegisterRoutes(srv, svcCtx)
 	nestedserviceroutes.RegisterRoutes(srv, svcCtx)
 	numbersserviceroutes.RegisterRoutes(srv, svcCtx)
 	ordersserviceroutes.RegisterRoutes(srv, svcCtx)
+	presenceroutes.RegisterRoutes(srv, svcCtx)
 	profileserviceroutes.RegisterRoutes(srv, svcCtx)
 	projectserviceroutes.RegisterRoutes(srv, svcCtx)
 	rawmodesserviceroutes.RegisterRoutes(srv, svcCtx)

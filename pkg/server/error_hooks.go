@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -71,11 +72,47 @@ func bodyTooLarge(r *http.Request, err error) bool {
 	if errors.As(err, &tooLarge) || errors.Is(err, multipart.ErrMessageTooLarge) {
 		return true
 	}
+	capped := cappedBodyOf(r)
+	return capped != nil && capped.over
+}
+
+// cappedBodyOf returns r's body behind its cap, or nil for a request without one.
+func cappedBodyOf(r *http.Request) *cappedBody {
 	if r == nil {
-		return false
+		return nil
 	}
-	capped, ok := r.Body.(*cappedBody)
-	return ok && capped.over
+	body := r.Body
+	if l, ok := body.(*partLimiter); ok {
+		body = l.ReadCloser
+	}
+	capped, _ := body.(*cappedBody)
+	return capped
+}
+
+// bodyReadFailed reports whether err carries a failure of the connection reading r's body, and
+// whether that failure is a timeout: the error a read of r's capped body returned, or, while
+// binding a request, which reads nothing else, any net.Error.
+func bodyReadFailed(r *http.Request, err error, binding bool) (failed, timeout bool) {
+	ne, isNet := errors.AsType[net.Error](err)
+	if capped := cappedBodyOf(r); capped != nil && capped.readErr != nil && errors.Is(err, capped.readErr) {
+		return true, isNet && ne.Timeout()
+	}
+	return binding && isNet, binding && isNet && ne.Timeout()
+}
+
+// writeBodyReadFailure answers a request whose body the connection failed to deliver: 408 for a
+// timeout, else 400, err's detail, which names the socket's addresses, logged at Warn only.
+func writeBodyReadFailure(w http.ResponseWriter, r *http.Request, err error, timeout bool) {
+	ctx := context.Background()
+	if r != nil {
+		ctx = r.Context()
+	}
+	log.Default().WithContext(ctx).Warn("request body read failed", log.Err(err))
+	status := http.StatusBadRequest
+	if timeout {
+		status = http.StatusRequestTimeout
+	}
+	writeStatusError(w, status)
 }
 
 // responseCommitted asks the first writer on w's Unwrap chain that has a Committed method.
@@ -104,11 +141,26 @@ func SetDefaultValidationFailed(h ValidationFailedHandler) {
 
 // WriteValidationError renders err with the [SetDefaultValidationFailed] handler, but answers
 // 413 {"message":"request entity too large"} to an *http.MaxBytesError or
-// multipart.ErrMessageTooLarge in err, or any err once r.Body is read past its [BodyLimit].
+// multipart.ErrMessageTooLarge in err, or any err once r.Body is read past its [BodyLimit], and
+// 415 {"message":"unsupported media type"} to http.ErrNotMultipart, a form route's body that is
+// no multipart/form-data. A part read past its [LimitParts] limit reaches the handler as that
+// limit's own error, without the parser's prefix.
 func WriteValidationError(w http.ResponseWriter, r *http.Request, err error) {
 	if bodyTooLarge(r, err) && !responseCommitted(w) {
 		writeStatusError(w, http.StatusRequestEntityTooLarge)
 		return
+	}
+	if errors.Is(err, http.ErrNotMultipart) && !responseCommitted(w) {
+		writeStatusError(w, http.StatusUnsupportedMediaType)
+		return
+	}
+	if failed, timeout := bodyReadFailed(r, err, true); failed && !responseCommitted(w) {
+		writeBodyReadFailure(w, r, err, timeout)
+		return
+	}
+	// The multipart parser prefixes a read error; a part past its limit reads as its own message.
+	if tooLarge, ok := errors.AsType[*partTooLarge](err); ok {
+		err = tooLarge
 	}
 	(*validationFailed.Load())(w, r, err)
 }
@@ -121,8 +173,24 @@ type StatusError interface {
 	HTTPStatus() int
 }
 
+// ErrNotImplemented is what a newly generated logic stub returns until it is written:
+// [WriteError] answers it 501 {"message":"not implemented"}, and the gRPC runtime maps it to
+// Unimplemented.
+var ErrNotImplemented StatusError = notImplemented{}
+
+// notImplemented is the type of [ErrNotImplemented].
+type notImplemented struct{}
+
+func (notImplemented) Error() string   { return "not implemented" }
+func (notImplemented) HTTPStatus() int { return http.StatusNotImplemented }
+
+// MarshalJSON encodes the {"message"} envelope of a framework error.
+func (notImplemented) MarshalJSON() ([]byte, error) {
+	return []byte(`{"message":"not implemented"}`), nil
+}
+
 // ResponseHeaderWriter is implemented by an error that sets response headers; [WriteError]
-// calls it before writing a [StatusError]'s status.
+// calls the one of the [StatusError] that sets the status, before it writes that status.
 type ResponseHeaderWriter interface {
 	WriteResponseHeaders(http.ResponseWriter)
 }
@@ -149,8 +217,9 @@ func SetHandleUnknownError(h UnknownErrorHandler) {
 }
 
 // WriteError renders err: a [StatusError] in its chain, unlogged, as its status, headers and
-// JSON body; a context error as nothing once the request is canceled, else a deadline as 504;
-// anything else through the [SetHandleUnknownError] handler, or the log once committed.
+// JSON body; a context error as nothing once the request is canceled, else a deadline as 504; a
+// body read past its [BodyLimit], as a raw request's logic may return, unlogged as 413; anything
+// else through the [SetHandleUnknownError] handler, or the log once committed.
 func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	var se StatusError
 	isStatus := errors.As(err, &se)
@@ -165,12 +234,25 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 	if !isStatus {
+		if bodyTooLarge(r, err) {
+			writeStatusError(w, http.StatusRequestEntityTooLarge)
+			return
+		}
+		if failed, timeout := bodyReadFailed(r, err, false); failed {
+			writeBodyReadFailure(w, r, err, timeout)
+			return
+		}
 		(*unknownError.Load())(w, r, err)
 		return
 	}
-	var hw ResponseHeaderWriter
-	if errors.As(err, &hw) {
+	// The headers, cookies and code are the error's that sets the status, in a join of several too.
+	if hw, ok := se.(ResponseHeaderWriter); ok {
 		hw.WriteResponseHeaders(w)
+	}
+	if cs, ok := se.(ResponseCookieSetter); ok {
+		for _, c := range cs.ResponseCookies() {
+			http.SetCookie(w, c)
+		}
 	}
 	writeErrorHead(w, se.HTTPStatus())
 	codec := JSON()
@@ -180,8 +262,7 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	// Code generated before v1.10 leaves a body-less error's JSON to this {} fallback.
 	if mErr != nil || (!selfMarshaled && strings.TrimSpace(buf.String()) == "{}") {
 		env := map[string]string{"message": se.Error()}
-		var coded interface{ ErrCode() string }
-		if errors.As(err, &coded) {
+		if coded, ok := se.(interface{ ErrCode() string }); ok {
 			env["code"] = coded.ErrCode()
 		}
 		_ = codec.Encode(w, env)

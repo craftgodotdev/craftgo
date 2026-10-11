@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -244,10 +245,108 @@ func TestGeneratedConfigRoundTrips(t *testing.T) {
 }
 `
 
-// assertConfigRoundTrips runs configRoundTripTest in the generated project.
+// configDefaultsTest checks the server settings a config.yaml leaving them out keeps, and that
+// one setting them to zero wins.
+const configDefaultsTest = `package config
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestGeneratedConfigDefaults(t *testing.T) {
+	c, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := c.Server; s.ReadTimeout != 30*time.Second || s.MaxBodySize != 10<<20 {
+		t.Errorf("left out: %+v, want a 30s read timeout and a 10 MiB body cap", s)
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	zero := "server:\n  readTimeout: 0s\n  maxBodySize: 0\n"
+	if err := os.WriteFile(path, []byte(zero), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if c, err = Load(path); err != nil {
+		t.Fatal(err)
+	}
+	if s := c.Server; s.ReadTimeout != 0 || s.MaxBodySize != 0 {
+		t.Errorf("set to zero: %+v, want each zero", s)
+	}
+}
+`
+
+// configWarningsTest checks that Load warns of a missing file and of each key Config lacks, and
+// loads the rest.
+const configWarningsTest = `package config
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/craftgodotdev/craftgo/pkg/log"
+)
+
+type warnings struct{ lines *[]string }
+
+func (w warnings) Warn(msg string, fs ...log.Field) {
+	for _, f := range fs {
+		msg += fmt.Sprintf(" %s=%v", f.Key, f.Value)
+	}
+	*w.lines = append(*w.lines, msg)
+}
+func (warnings) Debug(string, ...log.Field)               {}
+func (warnings) Info(string, ...log.Field)                {}
+func (warnings) Error(string, ...log.Field)               {}
+func (w warnings) With(...log.Field) log.Logger           { return w }
+func (w warnings) WithContext(context.Context) log.Logger { return w }
+func (warnings) Enabled(log.Level) bool                   { return true }
+
+func TestGeneratedConfigWarnings(t *testing.T) {
+	var lines []string
+	prev := log.Default()
+	log.SetDefault(warnings{&lines})
+	defer log.SetDefault(prev)
+
+	dir := t.TempDir()
+	if _, err := Load(filepath.Join(dir, "missing.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("sever:\n  addr: x\nlogging:\n  level: warn\n  levle: debug\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Logging.Level != "warn" {
+		t.Errorf("logging.level = %q, want the known key loaded", c.Logging.Level)
+	}
+	got := strings.Join(lines, "\n")
+	for _, want := range []string{"config file not found", "missing.yaml", "field sever not found", "field levle not found"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("warnings %q lack %q", got, want)
+		}
+	}
+}
+`
+
+// assertConfigRoundTrips runs configRoundTripTest and configWarningsTest in the generated project,
+// and configDefaultsTest where the project has an HTTP listener.
 func assertConfigRoundTrips(t *testing.T, dir string) {
 	t.Helper()
 	mustWrite(t, filepath.Join(dir, "config"), "roundtrip_test.go", configRoundTripTest)
+	mustWrite(t, filepath.Join(dir, "config"), "warnings_test.go", configWarningsTest)
+	if src, err := os.ReadFile(filepath.Join(dir, "config", "config.go")); err == nil && strings.Contains(string(src), "type ServerConfig struct") {
+		mustWrite(t, filepath.Join(dir, "config"), "defaults_test.go", configDefaultsTest)
+	}
 	if out, err := goIn(dir, "test", "./config/"); err != nil {
 		t.Errorf("config.yaml.tmpl and config.go.tmpl disagree: %v\n%s", err, out)
 	}

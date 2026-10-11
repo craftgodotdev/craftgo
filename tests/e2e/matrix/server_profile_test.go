@@ -92,8 +92,8 @@ func TestServer_ProfileRateLimit429(t *testing.T) {
 	for i := 1; i <= 5; i++ {
 		st, body = reqJSON(t, ts, http.MethodPost, "/api/v1/profiles", validProfile(fmt.Sprintf("user%d", i)))
 	}
-	if st != http.StatusTooManyRequests || !strings.Contains(string(body), "RATE_LIMITED") {
-		t.Errorf("5th create: status %d body %s", st, body)
+	if st != http.StatusTooManyRequests || !strings.Contains(string(body), `"code":"RATE_LIMITED"`) || !strings.Contains(string(body), `"message":"Slow down, please"`) {
+		t.Errorf("5th create: status %d body %s, want the code and message defaults", st, body)
 	}
 }
 

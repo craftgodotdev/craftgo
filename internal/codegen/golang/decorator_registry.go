@@ -5,6 +5,7 @@ import (
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
 	"github.com/craftgodotdev/craftgo/internal/semantic"
+	"github.com/craftgodotdev/craftgo/internal/strfmt"
 	"github.com/craftgodotdev/craftgo/internal/wire"
 )
 
@@ -23,6 +24,7 @@ type emitCtx struct {
 // validateHelpers records the package-level helpers the rendered checks call.
 type validateHelpers struct {
 	absentValue bool
+	formats     map[string]strfmt.Helper // the @format check functions, by name
 }
 
 // regexRegistry interns regex patterns as package-level vars (`_pattern0`,

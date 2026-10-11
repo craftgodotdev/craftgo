@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/pluginpb"
+
+	"github.com/craftgodotdev/craftgo/internal/genfile"
 )
 
 // PluginInstall is the command that pins both plugins as tools of a go.mod.
@@ -78,6 +79,11 @@ func resolvePlugin(projectRoot string, p pluginCmd) ([]string, error) {
 	var stdout, stderr bytes.Buffer
 	probe.Stdout, probe.Stderr = &stdout, &stderr
 	if err := probe.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			return nil, fmt.Errorf("cannot run `go tool -n %s` to find the %s that go.mod pins: %w\n"+
+				"  put the go command on PATH, or name the command under proto.plugins in craftgo.design.yaml", p.Name, p.Name, err)
+		}
 		return nil, fmt.Errorf("%s is not a tool of the go.mod at %s (%s)\n"+
 			"  pin both plugins once, at the versions the project builds with:\n"+
 			"    %s\n"+
@@ -129,11 +135,7 @@ func writeResponse(out string, resp *pluginpb.CodeGeneratorResponse) error {
 		if f.GetInsertionPoint() != "" {
 			return fmt.Errorf("%s: insertion points are not supported", name)
 		}
-		path := filepath.Join(out, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(path, []byte(f.GetContent()), 0o644); err != nil {
+		if err := genfile.Write(filepath.Join(out, filepath.FromSlash(name)), []byte(f.GetContent())); err != nil {
 			return err
 		}
 	}

@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -77,7 +78,8 @@ func (a *analyzer) checkMediaTypes(d *ast.Decorator) {
 }
 
 // checkPatternArg rejects a `@pattern` that is empty or not a valid RE2
-// expression.
+// expression, and warns about RE2 syntax the published OpenAPI `pattern`,
+// read as ECMA-262, cannot carry.
 func (a *analyzer) checkPatternArg(d *ast.Decorator) {
 	s, ok := d.Args[0].Value.(*ast.StringLit)
 	if !ok {
@@ -91,7 +93,142 @@ func (a *analyzer) checkPatternArg(d *ast.Decorator) {
 	if _, err := regexp.Compile(s.Value); err != nil {
 		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityError, CodeDecoratorArgType,
 			"@pattern is not a valid regular expression: %v - the generated validator compiles it with regexp.MustCompile, which would panic at startup", err)
+		return
 	}
+	if gap := ecmaPatternGap(s.Value); gap != nil {
+		a.diag(d.Pos, decoratorEnd(d), lexer.SeverityWarning, CodePatternNotECMA,
+			"@pattern uses %s, which ECMA-262 %s: OpenAPI tools, which read the published pattern as ECMA-262, refuse or misread it - %s",
+			gap.construct, gap.reading, gap.fix)
+	}
+}
+
+// ecmaGap is a construct of an RE2 pattern that ECMA-262 lacks or reads
+// otherwise.
+type ecmaGap struct {
+	construct string // as the pattern writes it
+	reading   string // what ECMA-262 makes of it
+	fix       string // how to write it for both
+}
+
+// ecmaPatternGap returns the first construct of p, a valid RE2 pattern, that
+// ECMA-262 lacks or reads otherwise, or nil.
+func ecmaPatternGap(p string) *ecmaGap {
+	for i := 0; i < len(p); {
+		var gap *ecmaGap
+		n := 1 // the bytes of p the construct at i spans
+		switch p[i] {
+		case '\\':
+			gap, n = escapeGap(p[i:])
+		case '[':
+			gap, n = classGap(p[i:])
+		case '(':
+			gap = groupGap(p[i:])
+		case '{', '}':
+			gap, n = braceGap(p[i:])
+		}
+		if gap != nil {
+			return gap
+		}
+		i += n
+	}
+	return nil
+}
+
+// escapeGap reads the escape s starts and the bytes it spans.
+func escapeGap(s string) (*ecmaGap, int) {
+	if len(s) < 2 {
+		return nil, len(s)
+	}
+	switch s[1] {
+	case 'A':
+		return &ecmaGap{"`\\A`", "does not support", "use `^`, which RE2 reads the same outside `(?m)`"}, 2
+	case 'z':
+		return &ecmaGap{"`\\z`", "does not support", "use `$`, which RE2 reads the same outside `(?m)`"}, 2
+	case 'Q':
+		return &ecmaGap{"`\\Q...\\E`", "does not support", "escape each special character instead"}, 2
+	case 'p', 'P':
+		if len(s) > 2 && s[2] != '{' {
+			return &ecmaGap{"`" + s[:3] + "`", "does not support", "write `" + s[:2] + "{" + s[2:3] + "}`"}, 3
+		}
+		if end := strings.IndexByte(s, '}'); end > 0 {
+			return nil, end + 1
+		}
+	case 'x':
+		if len(s) > 2 && s[2] == '{' {
+			return &ecmaGap{"`\\x{...}`", "does not support", "write the character itself, or `\\xHH` below `\\x{100}`"}, 3
+		}
+	}
+	return nil, 2
+}
+
+// classGap reads the character class s starts and the bytes it spans.
+func classGap(s string) (*ecmaGap, int) {
+	i := 1
+	if i < len(s) && s[i] == '^' {
+		i++
+	}
+	if i < len(s) && s[i] == ']' {
+		return &ecmaGap{"a `]` first in a class", "reads as the end of an empty class", "escape it as `\\]`"}, i + 1
+	}
+	for i < len(s) {
+		switch {
+		case s[i] == '\\':
+			gap, n := escapeGap(s[i:])
+			if gap != nil {
+				return gap, i + n
+			}
+			i += n
+			continue
+		case strings.HasPrefix(s[i:], "[:"):
+			if end := strings.Index(s[i:], ":]"); end > 1 {
+				return &ecmaGap{"`" + s[i:i+end+2] + "`", "reads as a set of characters",
+					"list the characters it stands for, as `[a-zA-Z]` does for `[:alpha:]`"}, i + end + 2
+			}
+		case s[i] == ']':
+			return nil, i + 1
+		}
+		i++
+	}
+	return nil, len(s)
+}
+
+// groupGap reads the group s starts.
+func groupGap(s string) *ecmaGap {
+	switch {
+	case strings.HasPrefix(s, "(?P<"):
+		return &ecmaGap{"`(?P<name>`", "does not support", "write `(?<name>`, which RE2 reads the same"}
+	case len(s) > 2 && s[1] == '?' && strings.IndexByte("imsU-", s[2]) >= 0:
+		end := strings.IndexAny(s, ":)")
+		reading := "has no inline flags for"
+		if s[end] == ':' && !strings.Contains(s[:end], "U") {
+			reading = "supports only in editions newer than the one JSON Schema cites"
+		}
+		return &ecmaGap{"`" + s[:end+1] + "`", reading,
+			"write what the flags do into the pattern, as `[Aa]` does for `(?i)a`"}
+	}
+	return nil
+}
+
+// braceGap reads the brace s starts, a repetition or a brace RE2 takes as
+// text, and the bytes it spans.
+func braceGap(s string) (*ecmaGap, int) {
+	end := strings.IndexByte(s, '}')
+	if s[0] == '{' && end > 1 {
+		lo, hi, comma := strings.Cut(s[1:end], ",")
+		switch {
+		case isDigits(lo) && (!comma || hi == "" || isDigits(hi)):
+			return nil, end + 1
+		case lo == "" && comma && isDigits(hi):
+			return &ecmaGap{"`" + s[:end+1] + "`", "rejects, and RE2 reads as plain text",
+				"write `{0," + hi + "}` for a repetition"}, end + 1
+		}
+	}
+	return &ecmaGap{"a bare `" + s[:1] + "`", "rejects", "escape it as `\\" + s[:1] + "`"}, 1
+}
+
+// isDigits reports whether s is a non-empty run of decimal digits.
+func isDigits(s string) bool {
+	return s != "" && strings.Trim(s, "0123456789") == ""
 }
 
 // checkGroupArg requires a `@group` path to have at least one segment and
@@ -279,18 +416,11 @@ func positionalArgs(d *ast.Decorator) []*ast.DecoratorArg {
 	return out
 }
 
-// checkPositionalArgs checks d's arguments against [Spec.Args]: no named
+// checkPositionalArgs checks d's arguments against [Spec.Args]: its named
 // arguments, then the count, then each kind and the first argument's enum;
 // it reports whether they hold.
 func (a *analyzer) checkPositionalArgs(d *ast.Decorator, spec Spec) bool {
-	ok := true
-	for _, ag := range d.Args {
-		if ag.Named {
-			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
-				"@%s: named argument %q is not supported (use positional args)", d.Name, ag.Name)
-			ok = false
-		}
-	}
+	ok := a.checkNamedArgs(d, spec.Args.Named)
 	pos := positionalArgs(d)
 	rule := spec.Args
 
@@ -328,6 +458,49 @@ func (a *analyzer) checkPositionalArgs(d *ast.Decorator, spec Spec) bool {
 	}
 
 	return a.checkEnumOnFirst(d, spec, pos) && ok
+}
+
+// checkNamedArgs checks each `name: value` argument of d against named, the
+// kind of each name d takes: one d does not take, one given twice and a
+// value of another kind are refused. It reports whether they hold.
+func (a *analyzer) checkNamedArgs(d *ast.Decorator, named map[string]ArgKind) bool {
+	ok := true
+	seen := map[string]bool{}
+	for _, ag := range d.Args {
+		if ag == nil || !ag.Named {
+			continue
+		}
+		want, takes := named[ag.Name]
+		switch {
+		case len(named) == 0:
+			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
+				"@%s: named argument %q is not supported (use positional args)", d.Name, ag.Name)
+		case !takes:
+			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
+				"@%s takes no argument %q (it takes %s)", d.Name, ag.Name, strings.Join(slices.Sorted(maps.Keys(named)), ", "))
+		case seen[ag.Name]:
+			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
+				"@%s: argument %q is given twice", d.Name, ag.Name)
+		case ag.Value == nil || !exprMatchesKind(ag.Value, want):
+			a.diag(ag.Pos, ag.Pos, lexer.SeverityError, CodeDecoratorArgType,
+				"@%s %s: expected %s, got %s", d.Name, ag.Name, want, namedArgKind(ag))
+		default:
+			seen[ag.Name] = true
+			continue
+		}
+		seen[ag.Name] = true
+		ok = false
+	}
+	return ok
+}
+
+// namedArgKind names the kind of named argument ag's value, an object
+// literal included.
+func namedArgKind(ag *ast.DecoratorArg) string {
+	if ag.Value == nil {
+		return "object"
+	}
+	return exprKind(ag.Value)
 }
 
 // checkArrayShortcut checks the array literal standing for d's arguments

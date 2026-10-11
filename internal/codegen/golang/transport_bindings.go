@@ -17,7 +17,8 @@ func collectResponseBindings(m *ast.Method, pkg *semantic.Package, r *projectRes
 }
 
 // responseBindingsFor renders the @header and @cookie writers of a body's fields, reading the
-// values from accessVar (`resp`, or `e` for an error body).
+// values from accessVar: `resp`, whose cookies a handler sets through http.SetCookie, or `e`
+// for an error body, whose cookies its ResponseCookies appends to `cs`.
 func responseBindingsFor(fields []semantic.ResolvedField, accessVar string, pkg *semantic.Package, r *projectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
 	for _, rf := range fields {
 		kind, _ := wire.BindingKind(rf.Field.Decorators)
@@ -43,17 +44,26 @@ func responseBindingsFor(fields []semantic.ResolvedField, accessVar string, pkg 
 // optional field is nil-guarded and an array header adds one value per element.
 func renderResponseWrite(rf semantic.ResolvedField, pkg *semantic.Package, r *projectResolver, kind wire.Binding, accessVar string) (stmt string, needsStrconv bool) {
 	f := rf.Field
+	field := accessVar + "." + rf.Name
+	setCookie := func(cookie string) string {
+		if accessVar == errorAccess {
+			return "cs = append(cs, " + cookie + ")"
+		}
+		return "http.SetCookie(w, " + cookie + ")"
+	}
+	if kind == wire.BindCookie && rf.Category == semantic.CatCookie {
+		return renderCookieWrite(rf, field, "", setCookie), false
+	}
 	prim, declared, ok := wireTarget(rf, pkg, r)
 	if !ok {
 		prim = "string"
 	}
 	named := declared != "" || !ok
 	wireName := wire.WireName(f, kind)
-	field := accessVar + "." + rf.Name
 
 	set := func(valueExpr string) string {
 		if kind == wire.BindCookie {
-			return fmt.Sprintf("http.SetCookie(w, &http.Cookie{Name: %q, Value: %s})", wireName, valueExpr)
+			return renderCookieWrite(rf, field, valueExpr, setCookie)
 		}
 		return fmt.Sprintf("w.Header().Set(%q, %s)", wireName, valueExpr)
 	}
@@ -123,7 +133,8 @@ func collectFormBindings(fields []resolvedField, pkg *semantic.Package, r *proje
 	}
 	textParts, fileParts := semantic.FormParts(resolved)
 	for _, ff := range fileParts {
-		files = append(files, paramBinding{DSLName: ff.WireName, GoName: ff.Name, IsArray: ff.IsArray})
+		maxSize, _ := semantic.SizeArg(firstArg(ff.Field.Decorators, "maxSize"))
+		files = append(files, paramBinding{DSLName: ff.WireName, GoName: ff.Name, IsArray: ff.IsArray, MaxSize: maxSize})
 	}
 	for _, ff := range textParts {
 		line := renderWireBindLine(byField[ff.Field], wire.BindForm, ff.WireName, pkg, r, imports)

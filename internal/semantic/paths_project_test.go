@@ -11,7 +11,6 @@ func TestProjectPathParamCrossPkgMixinBinds(t *testing.T) {
 		"shared/holder.craftgo": `package shared
 type IdHolder { id string @path }`,
 		"api.craftgo": `package design
-import "shared"
 type Req { shared.IdHolder }
 service S {
 	get G /users/{id} { request Req }
@@ -29,7 +28,6 @@ func TestProjectPathParamCrossPkgMixinMissing(t *testing.T) {
 		"shared/holder.craftgo": `package shared
 type Other { other string @path }`,
 		"api.craftgo": `package design
-import "shared"
 type Req { shared.Other }
 service S {
 	get G /users/{id} { request Req }
@@ -47,7 +45,6 @@ func TestProjectPathParamCrossPkgMixinOrphan(t *testing.T) {
 		"shared/holder.craftgo": `package shared
 type IdHolder { id string @path }`,
 		"api.craftgo": `package design
-import "shared"
 type Req { shared.IdHolder }
 service S {
 	get G /users { request Req }
@@ -66,7 +63,6 @@ func TestProjectPathParamNestedCrossPkgMixin(t *testing.T) {
 type Inner { pk string @path }
 type Outer { Inner }`,
 		"api.craftgo": `package design
-import "shared"
 type Req { shared.Outer }
 service S {
 	get G /by/{pk} { request Req }
@@ -84,7 +80,6 @@ func TestProjectAutoPathFieldCrossPkgNullableRejected(t *testing.T) {
 		"shared/shared.craftgo": `package shared
 type R { id string @nullable  name string }`,
 		"api/api.craftgo": `package api
-import "shared"
 type Resp { ok bool }
 service S { get G /u/{id} { request shared.R  response Resp } }`,
 	})
@@ -100,7 +95,6 @@ func TestProjectAutoPathFieldCrossPkgClean(t *testing.T) {
 		"shared/shared.craftgo": `package shared
 type R { id string  name string }`,
 		"api/api.craftgo": `package api
-import "shared"
 type Resp { ok bool }
 service S { get G /u/{id} { request shared.R  response Resp } }`,
 	})
@@ -116,7 +110,6 @@ func TestProjectBodyBindingVerbCrossPkgNullableRejected(t *testing.T) {
 		"shared/shared.craftgo": `package shared
 type R { q string @nullable }`,
 		"api/api.craftgo": `package api
-import "shared"
 type Resp { ok bool }
 service S { get G /g { request shared.R  response Resp } }`,
 	})
@@ -132,7 +125,6 @@ func TestProjectBareCrossPkgScalarRequestRejected(t *testing.T) {
 		"shared/shared.craftgo": `package shared
 scalar Email string`,
 		"api/api.craftgo": `package api
-import "shared"
 type Resp { ok bool }
 service S { post Do /do { request shared.Email  response Resp } }`,
 	})
@@ -149,7 +141,6 @@ func TestProjectAutoPathFieldCrossPkgStructRejected(t *testing.T) {
 type Nested { a string }
 type R { id Nested  name string }`,
 		"app/app.craftgo": `package app
-import "base"
 type Resp { ok bool }
 service S { get G /u/{id} { request base.R  response Resp } }`,
 	})
@@ -166,7 +157,6 @@ func TestProjectAutoPathFieldCrossPkgScalarClean(t *testing.T) {
 scalar Id string
 type R { id Id  name string }`,
 		"app/app.craftgo": `package app
-import "base"
 type Resp { ok bool }
 service S { get G /u/{id} { request base.R  response Resp } }`,
 	})
@@ -183,7 +173,6 @@ func TestProjectAutoQueryFieldCrossPkgStructRejected(t *testing.T) {
 type Nested { a string }
 type R { filter Nested  name string }`,
 		"app/app.craftgo": `package app
-import "base"
 type Resp { ok bool }
 service S { get G /g { request base.R  response Resp } }`,
 	})
@@ -200,7 +189,6 @@ func TestProjectAutoQueryFieldCrossPkgBindableClean(t *testing.T) {
 scalar Tag string
 type R { t Tag  tags string[]  name string }`,
 		"app/app.craftgo": `package app
-import "base"
 type Resp { ok bool }
 service S { get G /g { request base.R  response Resp } }`,
 	})
@@ -216,7 +204,6 @@ func TestProjectCrossPkgExampleKindMismatchRejected(t *testing.T) {
 		"shared/shared.craftgo": `package shared
 scalar Count int`,
 		"app/app.craftgo": `package app
-import "shared"
 type R { n shared.Count? @example("not-an-int") }
 type Resp { ok bool }
 service S { post C /c { request R  response Resp } }`,
@@ -233,7 +220,6 @@ func TestProjectCrossPkgExampleValidClean(t *testing.T) {
 		"shared/shared.craftgo": `package shared
 scalar Count int`,
 		"app/app.craftgo": `package app
-import "shared"
 type R { n shared.Count? @example(5) }
 type Resp { ok bool }
 service S { post C /c { request R  response Resp } }`,
@@ -250,7 +236,6 @@ func TestProjectCrossPkgDefaultOverflowRejected(t *testing.T) {
 		"shared/shared.craftgo": `package shared
 scalar Tiny int8`,
 		"app/app.craftgo": `package app
-import "shared"
 type R { n shared.Tiny? @default(200) }
 type Resp { ok bool }
 service S { post C /c { request R  response Resp } }`,
@@ -267,7 +252,6 @@ func TestProjectCrossPkgDefaultInRangeClean(t *testing.T) {
 		"shared/shared.craftgo": `package shared
 scalar Tiny int8`,
 		"app/app.craftgo": `package app
-import "shared"
 type R { n shared.Tiny? @default(100) }
 type Resp { ok bool }
 service S { post C /c { request R  response Resp } }`,
@@ -284,7 +268,6 @@ func TestProjectCrossFieldDirectCrossPkgScalarBytesRejected(t *testing.T) {
 		"shared/shared.craftgo": `package shared
 scalar Blob bytes`,
 		"app/app.craftgo": `package app
-import "shared"
 @requiresOneOf(rawData, other)
 type Pick { rawData shared.Blob?  other string? }
 type Resp { ok bool }
@@ -302,7 +285,6 @@ func TestProjectCrossFieldDirectCrossPkgScalarStringClean(t *testing.T) {
 		"shared/shared.craftgo": `package shared
 scalar Code string`,
 		"app/app.craftgo": `package app
-import "shared"
 @requiresOneOf(code, other)
 type Pick { code shared.Code?  other string? }
 type Resp { ok bool }
@@ -320,7 +302,6 @@ func TestProjectErrorFieldCrossPkgStructHeaderRejected(t *testing.T) {
 		"shared/shared.craftgo": `package shared
 type Point { x int  y int }`,
 		"app/app.craftgo": `package app
-import "shared"
 error NotFound NF { detail shared.Point @header("X-Detail")  note string }
 type Resp { ok bool }
 service S { @errors(NF) post C /c { request Resp  response Resp } }`,
@@ -337,7 +318,6 @@ func TestProjectErrorFieldCrossPkgScalarHeaderClean(t *testing.T) {
 		"shared/shared.craftgo": `package shared
 scalar Reason string`,
 		"app/app.craftgo": `package app
-import "shared"
 error NotFound NF { reason shared.Reason @header("X-Reason")  note string }
 type Resp { ok bool }
 service S { @errors(NF) post C /c { request Resp  response Resp } }`,
@@ -356,8 +336,6 @@ type A { userId string? }`,
 		"m2/m2.craftgo": `package m2
 type B { user_id string? }`,
 		"app/app.craftgo": `package app
-import "m1"
-import "m2"
 type C { m1.A  m2.B }
 type Resp { ok bool }
 service S { post C /c { request C  response Resp } }`,
@@ -375,7 +353,6 @@ func TestProjectCrossFieldCrossPkgScalarOverBytesRejected(t *testing.T) {
 scalar Blob bytes
 type Carrier { blob Blob?  name string? }`,
 		"app/app.craftgo": `package app
-import "base"
 @requiresOneOf(blob, name)
 type Req { base.Carrier }
 service S { post C /c { request Req  response Req } }`,
@@ -393,7 +370,6 @@ func TestProjectCrossFieldCrossPkgScalarOverStringClean(t *testing.T) {
 scalar Code string
 type Carrier { code Code?  name string? }`,
 		"app/app.craftgo": `package app
-import "base"
 @requiresOneOf(code, name)
 type Req { base.Carrier }
 service S { post C /c { request Req  response Req } }`,

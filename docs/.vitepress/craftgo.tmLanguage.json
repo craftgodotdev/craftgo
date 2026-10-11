@@ -109,7 +109,7 @@
       "patterns": [
         {
           "name": "keyword.control.import.craftgo",
-          "match": "\\b(package|import|extend)\\b"
+          "match": "\\b(package|extend)\\b"
         },
         {
           "name": "keyword.declaration.craftgo",
@@ -141,7 +141,7 @@
       "patterns": [
         {
           "name": "support.type.builtin.craftgo",
-          "match": "\\b(string|bool|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|float32|float64|bytes|any|datetime|file)\\b"
+          "match": "\\b(string|bool|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|float32|float64|bytes|any|datetime|file|cookie)\\b"
         }
       ]
     },

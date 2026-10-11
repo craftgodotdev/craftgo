@@ -166,7 +166,7 @@ func TestFileThroughGenericArgumentNamesItsPath(t *testing.T) {
 func TestFileInCrossPackageResponseRejected(t *testing.T) {
 	root, files := projectFixture(t, map[string]string{
 		"shared/s.craftgo": "package shared\ntype Att { data file }\ntype Resp { att Att }",
-		"api.craftgo":      "package api\nimport \"shared\"\nservice S { get A /a { response shared.Resp } }",
+		"api.craftgo":      "package api\nservice S { get A /a { response shared.Resp } }",
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
 	d := findCode(diags, CodeFilePosition)
@@ -184,7 +184,7 @@ func TestNestedRequestFileAcrossPackagesRejected(t *testing.T) {
 	} {
 		root, files := projectFixture(t, map[string]string{
 			"shared/s.craftgo": "package shared\ntype Attachment { data file }\ntype UploadReq { att Attachment }",
-			"api.craftgo":      "package api\nimport \"shared\"\ntype Resp { ok bool }\n" + api,
+			"api.craftgo":      "package api\ntype Resp { ok bool }\n" + api,
 		})
 		_, diags := AnalyzeProject(files, Options{DesignRoot: root})
 		if d := findCode(diags, CodeFilePosition); d == nil || !strings.Contains(d.Msg, "UploadReq.att") {

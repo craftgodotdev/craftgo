@@ -2,6 +2,7 @@ package golang
 
 import (
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -24,19 +25,23 @@ type transportData struct {
 	// Doc heads the handler's doc comment ([docHead]).
 	Doc        []string
 	BodyDecode bool
+	// BodyWire is the wire struct the body decodes into, "" when the body decodes straight into
+	// the request.
+	BodyWire string
 	// BindRequest and WriteResponse report the sides the handler owns ([wire.RawSides]).
 	BindRequest   bool
 	WriteResponse bool
 	Sig           methodSignature
 	IsMultipart   bool
-	// MultipartMaxMemory spells the ParseMultipartForm memory budget: 32 MiB, or @maxBodySize when larger.
-	MultipartMaxMemory string
-	PathParams         []paramBinding
-	QueryParams        []paramBinding
-	HeaderParams       []paramBinding
-	CookieParams       []paramBinding
-	FormStrings        []paramBinding
-	FormFiles          []paramBinding
+	// PartLimits are the @maxSize limits of the file parts, which the handler holds each part to
+	// while the multipart parser reads it.
+	PartLimits   []partLimit
+	PathParams   []paramBinding
+	QueryParams  []paramBinding
+	HeaderParams []paramBinding
+	CookieParams []paramBinding
+	FormStrings  []paramBinding
+	FormFiles    []paramBinding
 	// RespHeaders and RespCookies write the response's @header and @cookie fields before the body.
 	RespHeaders []paramBinding
 	RespCookies []paramBinding
@@ -55,6 +60,11 @@ type defaultBinding struct {
 	Ptr     bool
 }
 
+// partLimit is the @maxSize of the file parts named Name, a quoted Go string, as a Go literal.
+type partLimit struct {
+	Name, Limit string
+}
+
 // paramBinding is one field binding in a handler; Bind is its rendered Go statement.
 type paramBinding struct {
 	DSLName string
@@ -62,6 +72,8 @@ type paramBinding struct {
 	Bind    string
 	// IsArray marks a `file[]` field, bound from every part of its name.
 	IsArray bool
+	// MaxSize is a file field's @maxSize in bytes, 0 for none.
+	MaxSize int64
 }
 
 // generateTransport writes each method's handler to output.transport/<segment>/<method>.go,
@@ -69,16 +81,77 @@ type paramBinding struct {
 func generateTransport(pkg *semantic.Package, cfg *config.Config, projectRoot string, r *projectResolver) error {
 	r = resolverFor(pkg, r)
 	out := outputsOf(cfg)
-	return eachSegmentMethod(pkg, cfg.Output.FileCase, func(s segment, m *ast.Method) error {
-		data := buildTransportData(m, s.svc.Decorators(m), out.segmentImports(pkg.Name, s.dir), pkg, r)
-		return writeGo(out.transport.sub(s.dir).at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("transport.tmpl"), data)
-	})
+	var dirs []string
+	byDir := map[string][]segment{}
+	for s := range segments(pkg, cfg.Output.FileCase) {
+		if _, ok := byDir[s.dir]; !ok {
+			dirs = append(dirs, s.dir)
+		}
+		byDir[s.dir] = append(byDir[s.dir], s)
+	}
+	for _, d := range dirs {
+		segs := byDir[d]
+		bodies := dirBodies(segs, r, out)
+		dir := out.transport.sub(d)
+		for _, s := range segs {
+			for m := range s.methods() {
+				data := buildTransportData(m, s.svc.Decorators(m), out.segmentImports(pkg.Name, s.dir), pkg, r, bodies.wireFor(m), bodies.names()...)
+				if err := writeGo(dir.at(projectRoot, methodFile(m, cfg.Output.FileCase)), tmpl("transport.tmpl"), data); err != nil {
+					return err
+				}
+			}
+		}
+		if src := bodies.source(pkg.Name); src != "" {
+			if err := writeGoSource(dir.at(projectRoot, bodyFile), src); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
-// buildTransportData renders m's handler, decs being the decorators that apply to m.
-func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, pkg *semantic.Package, r *projectResolver) transportData {
+// dirBodies weighs the JSON request bodies the handlers of segs decode: the services whose
+// handlers share one directory, and so one bodyFile, which a @group may make several.
+func dirBodies(segs []segment, r *projectResolver, out outputs) *bodyPlan {
+	pkg := segs[0].pkg
+	p := newBodyPlan(r, pkg.Name, out.types.sub(pkg.Name).pkg)
+	for _, s := range segs {
+		for m := range s.methods() {
+			if fields, ok := bodyFields(m, s.svc.Decorators(m), s.pkg, r); ok {
+				p.add(m, fields)
+			}
+		}
+	}
+	p.finish()
+	return p
+}
+
+// bodyFields returns m's request fields when its handler decodes a JSON body: it binds the
+// request on a body verb and a member rides the body, and no part is a file, which leaves the
+// body to the multipart parser.
+func bodyFields(m *ast.Method, decs []*ast.Decorator, pkg *semantic.Package, r *projectResolver) ([]resolvedField, bool) {
+	if !modeOf(m, decs).BindRequest() || !wire.IsBodyVerb(m.Verb) {
+		return nil, false
+	}
+	fields := resolveRequestFields(m, pkg, r)
+	if !hasBodyField(fields) {
+		return nil, false
+	}
+	resolved := make([]semantic.ResolvedField, len(fields))
+	for i, rf := range fields {
+		resolved[i] = rf.ResolvedField
+	}
+	if _, files := semantic.FormParts(resolved); len(files) > 0 {
+		return nil, false
+	}
+	return fields, true
+}
+
+// buildTransportData renders m's handler, decs being the decorators that apply to m; reserved
+// are the package-level names its segment declares beside the handlers.
+func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, pkg *semantic.Package, r *projectResolver, bodyWire string, reserved ...string) transportData {
 	mode := modeOf(m, decs)
-	imports := newImportSet(r.Module, r, goImport{Alias: localAlias, Path: imps.Types}, transportNames)
+	imports := newImportSet(r.Module, r, goImport{Alias: localAlias, Path: imps.Types}, slices.Concat(transportNames, reserved))
 	imports.use("net/http")
 	imports.use(serverImport)
 	imports.fixed("service", imps.Service)
@@ -105,14 +178,14 @@ func buildTransportData(m *ast.Method, decs []*ast.Decorator, imps importPaths, 
 			d.FormFiles = files
 			// The multipart parser owns the body.
 			d.BodyDecode = false
-			const stdlibDefault int64 = 32 << 20
-			budget := stdlibDefault
-			if n, _ := semantic.SizeArg(firstArg(decs, "maxBodySize")); n > stdlibDefault {
-				budget = n
+			for _, f := range files {
+				if f.MaxSize > 0 {
+					d.PartLimits = append(d.PartLimits, partLimit{Name: strconv.Quote(f.DSLName), Limit: formatSizeGo(f.MaxSize)})
+				}
 			}
-			d.MultipartMaxMemory = formatSizeGo(budget)
 		}
-		d.Defaults = collectDefaults(fields, r, imports)
+		d.BodyWire = bodyWire
+		d.Defaults = collectDefaults(fields, r, imports, bodyWire != "")
 	}
 	// On a raw response side logic writes its own headers.
 	if d.WriteResponse && mode.HasResponse {

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -27,7 +28,7 @@ func (v *AuditFields) Validate() error {
 	if err := v.AuditedBy.Validate(); err != nil {
 		return fmt.Errorf("auditedBy: %w", err)
 	}
-	if _, _err := time.Parse(time.RFC3339, v.AuditedAt); _err != nil {
+	if !_isDateTime(v.AuditedAt) {
 		return fmt.Errorf("auditedAt: not a valid RFC 3339 datetime")
 	}
 	return nil
@@ -133,7 +134,7 @@ func (v CurrencyCode) Validate() error {
 
 // Validate returns the first constraint v violates, or nil.
 func (v Email) Validate() error {
-	if _, _err := mail.ParseAddress(string(v)); _err != nil {
+	if !_isEmail(string(v)) {
 		return fmt.Errorf("not a valid email")
 	}
 	if utf8.RuneCountInString(string(v)) > 254 {
@@ -199,7 +200,7 @@ func (v SKU) Validate() error {
 
 // Validate returns the first constraint v violates, or nil.
 func (v SafeURL) Validate() error {
-	if _u, _err := url.Parse(string(v)); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
+	if !_isURL(string(v)) {
 		return fmt.Errorf("not a valid URL")
 	}
 	if utf8.RuneCountInString(string(v)) > 2048 {
@@ -240,7 +241,7 @@ func (v *MaintenanceWindowBody) Validate() error {
 	if err := v.Reason.Validate(); err != nil {
 		return fmt.Errorf("reason: %w", err)
 	}
-	if _, _err := time.Parse(time.RFC3339, v.EstimatedEndAt); _err != nil {
+	if !_isDateTime(v.EstimatedEndAt) {
 		return fmt.Errorf("estimatedEndAt: not a valid RFC 3339 datetime")
 	}
 	return nil
@@ -260,6 +261,93 @@ func (v *RateLimitedErrBody) Validate() error {
 // Validate returns the first constraint v violates, or nil.
 func (v *UnauthorizedErrBody) Validate() error {
 	return nil
+}
+
+// _isEmail reports whether v is a bare RFC 5322 addr-spec, as JSON Schema `email` is: no
+// display name, comment, angle brackets or surrounding space.
+func _isEmail(v string) bool {
+	a, err := mail.ParseAddress(v)
+	return err == nil && a.Name == "" && a.String() == "<"+v+">"
+}
+
+// _isURL reports whether v is an http or https URI with a host.
+func _isURL(v string) bool {
+	u, err := url.Parse(v)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Hostname() != "" && _isURIText(v)
+}
+
+// _isURIText reports whether v holds only the characters RFC 3986 allows in a URI, a `%` only
+// before two hex digits, and one `#` at most.
+func _isURIText(v string) bool {
+	for i := 0; i < len(v); i++ {
+		switch c := v[i]; {
+		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9':
+		case strings.IndexByte("-._~:/?#[]@!$&'()*+,;=", c) >= 0:
+		case c == '%' && i+2 < len(v) && strings.IndexByte("0123456789abcdefABCDEF", v[i+1]) >= 0 &&
+			strings.IndexByte("0123456789abcdefABCDEF", v[i+2]) >= 0:
+			i += 2
+		default:
+			return false
+		}
+	}
+	return strings.Count(v, "#") <= 1
+}
+
+// _isDateTime reports whether v is an RFC 3339 date-time, its `T` and `Z` in either case.
+func _isDateTime(v string) bool {
+	return len(v) > 10 && (v[10] == 'T' || v[10] == 't') && _isDate(v[:10]) && _isTime(v[11:])
+}
+
+// _isDate reports whether v is an RFC 3339 full-date.
+func _isDate(v string) bool {
+	_, err := time.Parse(time.DateOnly, v)
+	return err == nil
+}
+
+// _isTime reports whether v is an RFC 3339 full-time: hh:mm:ss, a `.` and fraction digits, then
+// `Z` or an offset ±hh:mm, with second 60, a leap second, only at 23:59 UTC.
+func _isTime(v string) bool {
+	if len(v) < 9 || v[2] != ':' || v[5] != ':' {
+		return false
+	}
+	h, m, s := _twoDigits(v[0:2]), _twoDigits(v[3:5]), _twoDigits(v[6:8])
+	if h > 23 || m > 59 || s > 60 {
+		return false
+	}
+	rest := v[8:]
+	if rest[0] == '.' {
+		n := 1
+		for n < len(rest) && '0' <= rest[n] && rest[n] <= '9' {
+			n++
+		}
+		if n == 1 {
+			return false
+		}
+		rest = rest[n:]
+	}
+	offset := 0
+	switch {
+	case rest == "Z" || rest == "z":
+	case len(rest) == 6 && (rest[0] == '+' || rest[0] == '-') && rest[3] == ':':
+		oh, om := _twoDigits(rest[1:3]), _twoDigits(rest[4:6])
+		if oh > 23 || om > 59 {
+			return false
+		}
+		if offset = oh*60 + om; rest[0] == '-' {
+			offset = -offset
+		}
+	default:
+		return false
+	}
+	return s < 60 || (h*60+m-offset+24*60)%(24*60) == 23*60+59
+}
+
+// _twoDigits returns the number two decimal digits spell, or 100 for anything else.
+func _twoDigits(v string) int {
+	if len(v) != 2 || v[0] < '0' || v[0] > '9' || v[1] < '0' || v[1] > '9' {
+		return 100
+	}
+	return int(v[0]-'0')*10 + int(v[1]-'0')
 }
 
 // absentValue reports whether the type-parameter value p points to is a
@@ -292,6 +380,13 @@ func validateReflect(rv reflect.Value) error {
 			return vv.Validate()
 		}
 		return validateReflect(rv.Elem())
+	}
+	// An offset of a day or more has no RFC 3339 form to encode the datetime in.
+	if t, ok := rv.Interface().(time.Time); ok {
+		if _, off := t.Zone(); off <= -86400 || off >= 86400 {
+			return fmt.Errorf("not a valid RFC 3339 datetime")
+		}
+		return nil
 	}
 	// A pointer-receiver Validate needs an addressable value, so a map value is copied.
 	if vv, ok := rv.Interface().(interface{ Validate() error }); ok {

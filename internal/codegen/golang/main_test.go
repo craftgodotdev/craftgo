@@ -80,3 +80,21 @@ func TestGenerateMainOrdersTheWiring(t *testing.T) {
 		}
 	}
 }
+
+// The default serviceName is the module path's last segment, or the one before
+// a major-version suffix.
+func TestServiceNameSkipsAMajorVersionSuffix(t *testing.T) {
+	for module, want := range map[string]string{
+		"github.com/foo/myapp":          "myapp",
+		"example.com/billing/v2":        "billing",
+		"example.com/mono/contracts/v1": "contracts",
+		"example.com/billing/v2beta":    "v2beta",
+		"myapp":                         "myapp",
+		"v2":                            "v2",
+		"":                              "api",
+	} {
+		if got := operationNameFor(module); got != want {
+			t.Errorf("operationNameFor(%q) = %q, want %q", module, got, want)
+		}
+	}
+}

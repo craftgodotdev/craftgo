@@ -11,6 +11,8 @@ What `craftgo gen` writes to disk, file by file. Output is **deterministic** - t
 
 The split is the core of the workflow: regenerated files are the mechanical translation of your DSL; gen-once files are where *you* live. The CLI checks for existence before writing a gen-once file, so it never clobbers your business logic.
 
+A run renders every file before it writes any. Each one is then written to a temporary file beside it and renamed into place, keeping the mode of the file it replaces, and the sweep runs last. So a run that fails - a protoc plugin that cannot run, a file it cannot write - names the cause and leaves the tree as it was, and a run cut short never leaves a half-written file behind.
+
 ## Directory layout
 
 For a project whose design declares `package design` with a `UserService`:
@@ -20,11 +22,11 @@ internal/
 ├── types/<pkg>/                 REGEN - one folder per DSL package
 │   ├── types.go                 structs for every type
 │   ├── validate.go              Validate() method per type
-│   ├── fill.go                  FillEmpty() per type that can hold a required list or map
 │   ├── enums.go                 enum types and const values
 │   └── errors.go                typed error values
 ├── transport/<svc>/             REGEN - one folder per service
-│   └── <method>.go              http.HandlerFunc per method
+│   ├── <method>.go              http.HandlerFunc per method
+│   └── bodies.gen.go            wire structs a JSON body with a required member decodes into
 ├── service/<svc>/               GEN-ONCE - your business logic
 │   └── <method>.go              the stub you fill in (HTTP methods and RPCs alike)
 ├── pb/<dir>/                    PLUGIN - protoc-gen-go + protoc-gen-go-grpc, per .proto directory
@@ -74,10 +76,6 @@ A Go struct per `type`, with field names mapped to Go conventions (`user_id` →
 
 A `Validate() error` method per type. Every validator decorator becomes a plain `if` statement, with no runtime struct-tag parsing. Reflection enters only through the generated `validateValue`, which a generic type's `Validate` calls for a type-parameter value whose type has no `Validate` of its own; it walks that value's elements with `reflect`. Regexes (`@pattern`, regex-backed `@format`) compile once into package-level vars. `Validate()` is fail-fast - it returns the first violation. Nested struct fields, generic instances, map values/keys, and embedded mixins all dispatch recursively. Each dispatch wraps the inner error as `<field>: %w`, so the message names the path (`home: rooms: furniture: name: length less than 1`) and `errors.Is` / `errors.As` still reach the inner error; a mixin's fields keep their bare names.
 
-### `types/<pkg>/fill.go` (regen)
-
-A `FillEmpty(depth int) (changed, stopped bool)` method per struct - a type or an error's body - that holds a required list, map or `bytes`, directly or in a value below it: each one left nil is set empty, so it encodes as `[]`, `{}` or `""` as the document says. An optional one stays nil, left out; a `@nullable` one stays nil, `null`. It goes through elements, map values, nested and optional structs and mixins; a type-parameter value is reached when its type has the method. It writes to no map: where a map value changes, a copy holding it takes the map's place, so a value already filled is only read. `server.WriteResponse` calls it on the response, in the value itself, and an error type's `MarshalJSON` on a copy of its body's top level, whose lists and values below are the error's own, filled in place. Past 10000 values deep, as deep as `encoding/json` decodes, it stops at once: only a cycle, which the encoder then refuses, or data no Go client could decode goes there. A package with no such struct gets no `fill.go`.
-
 ### `types/<pkg>/enums.go` + `errors.go` (regen)
 
 Enum types and their constants (`TodoStatusOpen`, …) — membership validation lives in `validate.go`, not here; typed error values with their HTTP category, code, and any custom body fields.
@@ -86,11 +84,11 @@ Enum types and their constants (`TodoStatusOpen`, …) — membership validation
 
 One `func <Method>(svcCtx) http.HandlerFunc` per method. The handler:
 
-1. Applies any `@default` pre-fill (before decode, so a client-provided value overrides the default rather than the reverse),
-2. Decodes the request (JSON body, or binds `@path` / `@query` / `@header` / `@cookie` / `@form` fields with the right casts),
+1. Pre-fills the `@default` of each `@query`, `@header`, `@cookie` and `@form` field (before binding, so a value the request carries overrides the default),
+2. Decodes the request (JSON body, or binds `@path` / `@query` / `@header` / `@cookie` / `@form` fields with the right casts). A JSON body with a required member decodes first into its wire struct, one per type it reaches, in `bodies.gen.go` beside the handlers: a pointer per member, so a member left out or sent as `null` answers 400 `<json path>: required`; the struct's `to` copies it into the request and fills the `@default` of each member left out or sent as `null`, at any depth,
 3. Calls `req.Validate()`,
 4. Dispatches to your `service` logic,
-5. Encodes the response (and writes any `@status`, response headers, or cookies).
+5. Encodes the response as the logic returns it (and writes any `@status`, response headers, or cookies). Nothing fills a nil list or map: it goes out as `null`, so logic returns `[]` or `{}` for a required one that is empty.
 
 Raw sides change who runs which steps. A `request` / `response` block on a raw side still drives the OpenAPI document and the generated types; the handler just never touches it:
 
@@ -124,9 +122,11 @@ func NewGetUserService(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 // GetUser implements UserService.GetUser.
 func (l *GetUserService) GetUser(req *types.GetUserReq) (*types.User, error) {
 	// TODO: implement
-	return nil, nil
+	return nil, server.ErrNotImplemented
 }
 ```
+
+Until you write it, the stub returns `server.ErrNotImplemented`, which `server.WriteError` answers 501 `{"message":"not implemented"}`. A stub for an RPC returns the gRPC twin, `status.Error(codes.Unimplemented, "not implemented")`.
 
 A method's `@doc` comes first in its comment, then an empty `//` line (`// Fetch one user.` / `//` / `// GetUser implements UserService.GetUser.`). The stubs, the middleware scaffolds, `svccontext.go`, `config/` and `main.go` are where you write code; everything else is regenerated.
 
@@ -134,11 +134,11 @@ An RPC gets the same stub from the same template, with the pb types in the signa
 
 ### `pb/<dir>/` (plugin)
 
-The code `protoc-gen-go` and `protoc-gen-go-grpc` write for every `.proto` under the design folder, run by `craftgo gen` through `go tool`. The directory mirrors the proto's; the headers are the plugins' own. The sweep deletes a file here only in a directory a design proto writes into, when its header names as its source a proto no `proto.includes` root holds; a design with no proto sweeps nothing here. `output.pb: "-"` runs no plugin.
+The code `protoc-gen-go` and `protoc-gen-go-grpc` write for every `.proto` under the design folder, run by `craftgo gen` through `go tool`. The directory mirrors the proto's; the headers are the plugins' own, naming craftgo as the compiler (`protoc v0.0.0-craftgo`). The sweep deletes a file here only where the plugins write the code of the proto its header names as the source, when no `proto.includes` root holds that proto - and, in a directory no design proto writes into any more, only a file that header marks as craftgo's. A design with no proto sweeps nothing here. `output.pb: "-"` runs no plugin.
 
 ### `grpc/<svc>/` (regen)
 
-`server.go` declares `Server`, embedding `pb.Unimplemented<Svc>Server`, and `NewServer(svcCtx)`; each `<rpc>.go` implements one method of the generated interface: `rpc.Validate` on the request (a no-op until a validating plugin such as protoc-gen-validate gives the message a `Validate() error`; a client-streaming or bidi RPC has no request to validate and passes the stream on), `service.New<Rpc>Service(ctx, svcCtx)`, the call, `rpc.Error` on failure.
+`server.go` declares `Server`, embedding `pb.Unimplemented<Svc>Server`, and `NewServer(svcCtx)`; each `<rpc>.go` implements one method of the generated interface: `rpc.Validate` on the request (a no-op until a validating plugin such as protoc-gen-validate gives the message a `Validate() error`; a client-streaming or bidi RPC passes the stream on through `rpc.ValidateClientStream` or `rpc.ValidateBidiStream`, whose `Recv` runs the same check on each message), `service.New<Rpc>Service(ctx, svcCtx)`, the call, `rpc.Error` on failure.
 
 ### `routes/` (regen)
 
@@ -180,7 +180,7 @@ The OpenAPI 3.1 document - paths, component schemas, parameters, request bodies,
 
 ### `main.go` (gen-once)
 
-Wires the `ServiceContext`, the `server.Server`, route registration, middleware, logging/metrics/otel, and `Start`. With a proto service it also builds the `rpc.Server`, its interceptors and `wiring.RegisterGRPC`; a design of protos alone boots the gRPC listener only. Yours to customize - add a flag, change the listen address, register an extra middleware.
+Wires the `ServiceContext`, the `server.Server`, route registration, middleware, logging/metrics/otel, and the listener. With a proto service it also builds the `rpc.Server`, its interceptors and `wiring.RegisterGRPC`; a design of protos alone boots the gRPC listener only. Each listener binds before it logs the address it holds, the real port of a `:0` included; one that cannot bind, or stops serving, shuts the rest down as a signal does, and the process exits 1. On SIGINT or SIGTERM every listener stops at once and drains within one 5s budget, a drain the budget cuts short is logged, and the telemetry flush comes last. Yours to customize - add a flag, change the listen address, register an extra middleware.
 
 ### `events/<pkg>/events.go` (regen)
 

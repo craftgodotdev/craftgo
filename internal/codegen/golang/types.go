@@ -44,7 +44,11 @@ func buildTypesGo(pkg *semantic.Package, r *projectResolver) string {
 		decls = append(decls, scs)
 	}
 	for _, name := range slices.Sorted(maps.Keys(pkg.Types)) {
-		decls = append(decls, renderType(pkg.Types[name], pkg, r, imports))
+		td := pkg.Types[name]
+		decls = append(decls, renderType(td, pkg, r, imports))
+		if ctors := renderCookieConstructors(td.Name, td.Body, imports); ctors != "" {
+			decls = append(decls, ctors)
+		}
 	}
 	parts := []string{"package " + pkg.Name + "\n"}
 	if decl := imports.decl(); decl != "" {
@@ -150,7 +154,20 @@ func resolvedGoFieldNames(members []ast.TypeMember) []string {
 func renderField(f *ast.Field, goName string, pkg *semantic.Package, r *projectResolver, imports *importSet) string {
 	return renderDoc(semantic.DescriptionLines(f.Decorators, f.Doc), "\t") +
 		renderDeprecatedDoc(f.Decorators, "\t") +
-		fmt.Sprintf("\t%s %s `%s`\n", goName, goFieldType(f, pkg, r, imports), structTag(f))
+		fmt.Sprintf("\t%s %s `%s`\n", goName, goFieldType(f, pkg, r, imports), structTag(f, omitOption(f, pkg, r)))
+}
+
+// omitOption is the json option that keeps an optional f out of the body while it is nil:
+// omitzero for a list, map or bytes value, which goes out empty when set empty, and omitempty for
+// a pointer, an `any` or a raw value, whose nil is the one empty value.
+func omitOption(f *ast.Field, pkg *semantic.Package, r *projectResolver) string {
+	rf := semantic.ResolveField(f, pkg, r.Project())
+	switch {
+	case rf.Category == semantic.CatArray, rf.Category == semantic.CatMap, rf.Category == semantic.CatBytes,
+		rf.Category == semantic.CatScalar && rf.ResolvedPrim == "bytes":
+		return "omitzero"
+	}
+	return "omitempty"
 }
 
 // goFieldType returns f's Go type as imports spells it: wire.Raw for a raw
@@ -171,8 +188,8 @@ func goFieldType(f *ast.Field, pkg *semantic.Package, r *projectResolver, import
 		clone.Optional = false
 		s = imports.goType(&clone)
 	}
-	// A file's Go type spells its pointer already.
-	if rf.GoPointer() && rf.Category != semantic.CatFile {
+	// A file's and a cookie's Go type spells its pointer already.
+	if rf.GoPointer() && !rf.SpellsPointer() {
 		s = "*" + s
 	}
 	return s
@@ -221,10 +238,10 @@ func goNamedType(n *ast.NamedTypeRef, res *semantic.Resolver, declared func(name
 	return name + "[" + strings.Join(args, ", ") + "]"
 }
 
-// structTag returns f's struct tag: the json key, plus for a path, query,
-// header or cookie field a documentation-only key naming its wire location.
-func structTag(f *ast.Field) string {
-	tag := "json:" + strconv.Quote(jsonTag(f))
+// structTag returns f's struct tag: the json key with omit, the option of an optional field, plus
+// for a path, query, header or cookie field a documentation-only key naming its wire location.
+func structTag(f *ast.Field, omit string) string {
+	tag := "json:" + strconv.Quote(jsonTag(f, omit))
 	if kind, ok := wire.NonBodyBindingKind(f); ok {
 		tag += " " + kind.String() + ":" + strconv.Quote(wire.WireName(f, kind))
 	}
@@ -232,14 +249,14 @@ func structTag(f *ast.Field) string {
 }
 
 // jsonTag returns f's json tag from [wire.JSONShape]: "-" for a field off the
-// JSON body, `,omitempty` added for an optional `?` field.
-func jsonTag(f *ast.Field) string {
+// JSON body, omit added for an optional `?` field.
+func jsonTag(f *ast.Field, omit string) string {
 	name, presence := wire.JSONShape(f)
 	switch presence {
 	case wire.JSONAbsent:
 		return "-"
 	case wire.JSONOptional:
-		return name + ",omitempty"
+		return name + "," + omit
 	}
 	return name
 }

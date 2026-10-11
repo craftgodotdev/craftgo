@@ -52,7 +52,7 @@ type UUID string
 // it does those of the required one.
 type ArrayBox[T any] struct {
 	Req []T `json:"req"`
-	Opt []T `json:"opt,omitempty"`
+	Opt []T `json:"opt,omitzero"`
 }
 
 // ArrayOfGenericInstance probes the array wrapper around a generic
@@ -67,7 +67,7 @@ type ArrayOfGenericInstance struct {
 // Attachments holds an optional Blob as a field and as a map value; both
 // render as Blob, whose nil is the absent value.
 type Attachments struct {
-	Cover Blob            `json:"cover,omitempty"`
+	Cover Blob            `json:"cover,omitzero"`
 	Files map[string]Blob `json:"files"`
 }
 
@@ -472,7 +472,7 @@ type ScalarLengths struct {
 	Inline   string  `json:"inline"`
 	Rng      string  `json:"rng"`
 	Token    Token   `json:"token"`
-	NulToken Token   `json:"nulToken,omitempty"`
+	NulToken Token   `json:"nulToken,omitzero"`
 	Raw      []byte  `json:"raw"`
 }
 
@@ -482,7 +482,7 @@ type ScalarLengths struct {
 // uses a numeric scalar with @default - the default literal is parsed
 // as the underlying primitive (int) and cast up to Cents.
 type Search struct {
-	Keywords []Tag  `json:"keywords,omitempty"`
+	Keywords []Tag  `json:"keywords,omitzero"`
 	Limit    *Cents `json:"limit,omitempty"`
 }
 

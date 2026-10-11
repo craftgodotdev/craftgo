@@ -91,14 +91,14 @@ Field level (a few also apply at error-field level for response writing).
 
 | Decorator | Args | Effect |
 |---|---|---|
-| `@default(v)` | `(literal \| enum value \| array)` | Value the handler pre-fills before binding, kept when the field is absent on the wire. On a field without `?` it still pre-fills, with a `decorator/default-needs-optional` warning (`craftgo fmt` adds the `?`). Refused beside `@path`. |
+| `@default(v)` | `(literal \| enum value \| array)` | Value a field takes when the request leaves it out, or a JSON body sends it as `null`. On a field without `?` it still fills, with a `decorator/default-needs-optional` warning (`craftgo fmt` adds the `?`). Refused beside `@path` and `@nullable`. |
 | `@nullable` | - | The field accepts an explicit JSON `null` (flag form). |
 | `@json("key")` | `(string)` | The JSON key of a body field when it is not the field name - a contract another system owns, or a key such as `OrderItem` that the parser would read as a mixin. Used by the Go tag, the documents and validation messages. Not combinable with an off-body binding. |
 | `@sensitive` | - | Server-only field - tagged `json:"-"`, skipped from OpenAPI. Cannot combine with any validator, binding, `@json`, `@default`, or `@nullable`. |
 | `@path` / `@path("name")` | `(string?)` | Bind from a URL path parameter. |
 | `@query` / `@query("name")` | `(string?)` | Bind from the URL query string. |
 | `@header` / `@header("Name")` | `(string?)` | Bind from a request header (request fields) or write a response header (response and error fields). |
-| `@cookie` / `@cookie("name")` | `(string?)` | Bind from a cookie (request) or set one (response and error fields). |
+| `@cookie` / `@cookie("name")` | `(string?)`, then named `path`, `domain`, `maxAge`, `httpOnly`, `secure`, `sameSite` | Bind from a cookie (request) or set one (response and error fields), with the named attributes: `Path=/`, `HttpOnly`, `Secure` and `SameSite=Lax` for those left out. |
 | `@body` | - | Bind from the request body (the default for body verbs). A name argument is accepted and has no effect; `@json` sets the key. |
 | `@form` / `@form("name")` | `(string?)` | Bind from a multipart form field; the request needs a `file`. |
 
@@ -154,5 +154,6 @@ See the [Events guide](/guide/events) for the full picture.
 
 - **Flag** (`@positive`, `@uniqueItems`, `@nullable`, `@sensitive`, `@passthrough`, `@rawRequest`, `@rawResponse`, `@ignore*`) take no parentheses. Writing empty `()` raises `decorator/flag-empty-parens`.
 - **Variadic** decorators (`@middlewares`, `@tags`, `@security`, `@errors`, `@mimeTypes`, `@requiresOneOf`, `@mutuallyExclusive`) accept either a comma list `(A, B, C)` or a single array literal. The array's elements follow each decorator's kind: `@middlewares`, `@security` and `@errors` take identifiers (`([A, B, C])`), `@tags`, `@requiresOneOf` and `@mutuallyExclusive` identifiers or strings, and `@mimeTypes` strings.
-- **Durations** (`@timeout`) take one number with one unit - `ns`, `us`/`µs`, `ms`, `s`, `m` or `h`, a fraction allowed (`1.5h`) - or a bare integer read as seconds. `1h30m` is a parse error; write `90m`.
+- **Durations** (`@timeout`) take one number with one unit - `ns`, `us`/`µs` (the micro sign or the Greek mu), `ms`, `s`, `m` or `h`, a fraction allowed (`1.5h`), up to `2562047h` - or a bare integer read as seconds. `1h30m` is a parse error; write `90m`. So is a duration past `2562047h` (`duration ... is out of range`).
+- **Strings** are `"..."`, with the escapes `\n`, `\t`, `\r`, `\"`, `\\` and `\u{HEX}`, or raw `` `...` `` literals, whose line ends, `\r\n` or a lone `\r` included, read as `\n`. No string holds a control character other than tab, line feed and carriage return, a byte order mark or a noncharacter (`U+FFFE`, `U+FFFF`, ...), escaped or written as is: either is a parse error at the string.
 - **Sizes** (`@maxSize`, `@maxBodySize`) take `B` / `KB` / `MB` / `GB` suffixes, a fraction allowed (`1.5MB`), or bare bytes.

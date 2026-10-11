@@ -17,17 +17,23 @@ import (
 // BatchUpload returns the POST BatchUpload handler.
 func BatchUpload(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(32 << 20); err != nil {
+		if err := r.ParseMultipartForm(server.MultipartMemory); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.BatchUploadReq
+		if !server.RequirePresent(w, r, r.PostForm.Has("tags"), "tags", "form") {
+			return
+		}
 		req.Tags = r.MultipartForm.Value["tags"]
+		if !server.RequirePresent(w, r, r.PostForm.Has("album"), "album", "form") {
+			return
+		}
 		req.Album = r.PostFormValue("album")
 		req.Files = r.MultipartForm.File["files"]
-		if _, header, err := r.FormFile("cover"); err == nil {
-			req.Cover = header
+		if _fh := r.MultipartForm.File["cover"]; len(_fh) > 0 {
+			req.Cover = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

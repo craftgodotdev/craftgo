@@ -5,10 +5,11 @@ import (
 	"embed"
 	"fmt"
 	"go/format"
-	"os"
 	"path/filepath"
 	"sync"
 	"text/template"
+
+	"github.com/craftgodotdev/craftgo/internal/genfile"
 )
 
 // GeneratedHeader opens every Go file craftgo rewrites on each run.
@@ -91,33 +92,31 @@ func writeGoSource(path, src string) error {
 
 // writeGoOnce writes t's gen-once Go file to path unless a file is already there.
 func writeGoOnce(path string, t *template.Template, data any) error {
-	if fileExists(path) {
-		return nil
-	}
-	return writeRendered(path, func() ([]byte, error) { return renderScaffold(t, data) })
+	return genfile.WriteOnce(path, renderedAs(path, func() ([]byte, error) { return renderScaffold(t, data) }))
 }
 
 // writeTextOnce writes t's output to path unless a file is already there.
 func writeTextOnce(path string, t *template.Template, data any) error {
-	if fileExists(path) {
-		return nil
-	}
-	return writeRendered(path, func() ([]byte, error) { return execute(t, data) })
+	return genfile.WriteOnce(path, renderedAs(path, func() ([]byte, error) { return execute(t, data) }))
 }
 
-// writeRendered writes what render returns to path, creating its directory.
+// writeRendered writes what render returns to path through [genfile.Write]: held while a pass
+// collects its files, else written at once.
 func writeRendered(path string, render func() ([]byte, error)) error {
-	body, err := render()
+	body, err := renderedAs(path, render)()
 	if err != nil {
-		return fmt.Errorf("render %s: %w", filepath.Base(path), err)
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, body, 0o644)
+	return genfile.Write(path, body)
 }
 
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
+// renderedAs is render with its error naming the file it renders for path.
+func renderedAs(path string, render func() ([]byte, error)) func() ([]byte, error) {
+	return func() ([]byte, error) {
+		body, err := render()
+		if err != nil {
+			return nil, fmt.Errorf("render %s: %w", filepath.Base(path), err)
+		}
+		return body, nil
+	}
 }

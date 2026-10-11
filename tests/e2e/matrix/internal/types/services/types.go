@@ -209,7 +209,7 @@ type User struct {
 // UserRef is the lightweight handle: id + email. Used as a BODY
 // request (POST CreateUser, POST BanUser) and as the owner field
 // of services.Project. Both fields are cross-package scalars
-// (`shared.ID`, `shared.Email`) resolved across the import edge.
+// (`shared.ID`, `shared.Email`) resolved across the package edge.
 type UserRef struct {
 	ID    shared.ID    `json:"id"`
 	Email shared.Email `json:"email"`

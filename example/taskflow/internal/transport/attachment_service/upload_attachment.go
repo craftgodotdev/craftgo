@@ -17,8 +17,10 @@ import (
 //
 // UploadAttachment returns the POST UploadAttachment handler.
 func UploadAttachment(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
+	_limits := map[string]int64{"file": 10 << 20}
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(32 << 20); err != nil {
+		server.LimitParts(r, _limits)
+		if err := r.ParseMultipartForm(server.MultipartMemory); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
@@ -29,8 +31,8 @@ func UploadAttachment(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		if _v := r.PostFormValue("caption"); _v != "" {
 			req.Caption = &_v
 		}
-		if _, header, err := r.FormFile("file"); err == nil {
-			req.File = header
+		if _fh := r.MultipartForm.File["file"]; len(_fh) > 0 {
+			req.File = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

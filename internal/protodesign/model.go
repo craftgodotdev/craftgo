@@ -13,6 +13,8 @@ import (
 
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/types/pluginpb"
+
+	"github.com/craftgodotdev/craftgo/internal/walk"
 )
 
 // Options is what a compilation needs to know about the project.
@@ -58,6 +60,8 @@ type Set struct {
 	request *pluginpb.CodeGeneratorRequest
 	// Services lists every service the design files declare, sorted by full name.
 	Services []*Service
+	// Warnings describe design protos that compile and generate but may fail at run time.
+	Warnings []string
 }
 
 // Service is one proto service and what the scaffolds need to spell it.
@@ -146,34 +150,46 @@ func (s *Set) PBFiles(projectRoot string) []string {
 	return out
 }
 
-// OwnedPBFiles returns the plugin code on disk of design files, present or removed: each file directly
-// in a design file's pb directory, the project root aside, whose plugin header names a proto there no
-// include root holds.
+// OwnedPBFiles returns the plugin code under the pb directory, the project root's own files aside,
+// that design files own, present or removed: each file whose plugin header names as its source a
+// proto no include root holds, at the path the plugins write that proto's code to. In a directory
+// no design file writes into any more - its protos moved or deleted - a file must also name
+// craftgo as its [compiler] and a proto the design no longer has, so protoc or buf output of your
+// own there stays.
 func (s *Set) OwnedPBFiles(projectRoot string) []string {
 	if s == nil || !s.opts.pbEnabled() {
 		return nil
 	}
-	var out []string
+	root := s.pbRoot(projectRoot)
+	designDirs := map[string]bool{}
 	for _, dir := range s.designDirs() {
-		abs := filepath.Join(s.pbRoot(projectRoot), filepath.FromSlash(dir))
-		if abs == filepath.Clean(projectRoot) {
-			continue
-		}
-		entries, err := os.ReadDir(abs)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			file := filepath.Join(abs, e.Name())
-			if src, ok := pluginSource(file); ok && path.Dir(src) == dir && !s.included(src) {
-				out = append(out, file)
-			}
-		}
+		designDirs[dir] = true
 	}
+	var out []string
+	// Discovery reads no proto in a directory a design walk skips, so no pb code lands in one.
+	opts := walk.Options{SkipDir: walk.SkipDesignDir, Within: projectRoot, OnError: func(string, error) error { return nil }}
+	_ = walk.Files(root, opts, func(file string) error {
+		rel, err := filepath.Rel(root, file)
+		if err != nil || !strings.HasSuffix(file, ".pb.go") || filepath.Dir(file) == filepath.Clean(projectRoot) {
+			return nil
+		}
+		src, byCraftgo, ok := pluginSource(file)
+		if !ok || s.included(src) || !writtenFor(src, filepath.ToSlash(rel)) {
+			return nil
+		}
+		if designDirs[path.Dir(src)] || byCraftgo && !slices.Contains(s.names, src) {
+			out = append(out, file)
+		}
+		return nil
+	})
 	return out
+}
+
+// writtenFor reports whether rel, a slash path under the pb directory, is where the plugins write
+// the code of the proto at slash path src.
+func writtenFor(src, rel string) bool {
+	stem := strings.TrimSuffix(src, ".proto")
+	return rel == stem+".pb.go" || rel == stem+"_grpc.pb.go"
 }
 
 // designDirs lists the directories of the design files, as sorted slash paths relative to the
@@ -198,25 +214,26 @@ func (s *Set) included(src string) bool {
 }
 
 // pluginSource returns the proto the plugin code in file was generated from, as its header
-// comment names it; false when no plugin header naming one comes before the file's code.
-func pluginSource(file string) (string, bool) {
+// comment names it, and whether the header names craftgo as the [compiler]; ok is false when no
+// plugin header naming a source comes before the file's code.
+func pluginSource(file string) (src string, byCraftgo, ok bool) {
 	f, err := os.Open(file)
 	if err != nil {
-		return "", false
+		return "", false, false
 	}
 	defer f.Close()
 	lines := bufio.NewScanner(f)
 	// The header may follow a comment block protoc-gen-go copies from above the proto's syntax line.
 	for {
 		if !lines.Scan() {
-			return "", false
+			return "", false, false
 		}
 		t := lines.Text()
 		if slices.Contains(PluginHeaders, t) {
 			break
 		}
 		if t != "" && !strings.HasPrefix(t, "//") {
-			return "", false
+			return "", false, false
 		}
 	}
 	for lines.Scan() {
@@ -224,12 +241,16 @@ func pluginSource(file string) (string, bool) {
 		if !ok {
 			break
 		}
+		// protoc-gen-go writes "\tprotoc <version>", protoc-gen-go-grpc "- protoc <version>".
+		if f := strings.Fields(strings.TrimPrefix(line, "- ")); len(f) == 2 && f[0] == "protoc" {
+			byCraftgo = f[1] == compiler
+		}
 		if src, ok := strings.CutPrefix(line, "source: "); ok {
-			return src, true
+			return src, byCraftgo, true
 		}
 		if src, ok := strings.CutSuffix(line, " is a deprecated file."); ok {
-			return src, true
+			return src, byCraftgo, true
 		}
 	}
-	return "", false
+	return "", false, false
 }

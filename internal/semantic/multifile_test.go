@@ -16,7 +16,6 @@ type Page { total int }
 `,
 		"api.craftgo": `package design
 
-import "shared"
 
 @prefix("/v1")
 service S {
@@ -120,8 +119,6 @@ enum Mixed {
 func TestSemanticImportsParsedNotResolved(t *testing.T) {
 	files := parseFileMap(t, map[string]string{
 		"a.craftgo": `package design
-import "shared/types"
-import alias "other"
 type X { id string }
 `,
 	})

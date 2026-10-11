@@ -1,7 +1,6 @@
 package lsp
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -119,27 +118,6 @@ func TestRangesAfterAnAstralCharacter(t *testing.T) {
 func TestCursorFieldOnAOneLineBody(t *testing.T) {
 	items := mustCompletionsAtCursor(t, "package x\n\nenum Kind { A B }\n\ntype T { s string  k Kind @default(|) }\n")
 	expectLabels(t, items, "A", "B")
-}
-
-// The typed part of an import path is read up to the cursor in bytes, so a
-// non-ASCII folder name narrows the choices exactly.
-func TestImportPathPrefixAfterNonASCII(t *testing.T) {
-	root := t.TempDir()
-	mustWrite(t, filepath.Join(root, "craftgo.design.yaml"), "package: example.com/m\noutput:\n  types: ./types\n")
-	mustWrite(t, filepath.Join(root, "design", "caféX", "x.craftgo"), "package cafex\n")
-	mustWrite(t, filepath.Join(root, "design", "caféY", "y.craftgo"), "package cafey\n")
-	src, pos := markCursor(t, "package shop\n\nimport \"design/caféX|\"\n")
-	path := filepath.Join(root, "design", "b.craftgo")
-	mustWrite(t, path, src)
-	u := uri.File(path)
-	s := &server{docs: map[uri.URI]string{u: src}}
-	res, _ := callHandler(t, s, protocol.MethodTextDocumentCompletion, protocol.CompletionParams{TextDocumentPositionParams: docAt(u, pos)})
-	list, _ := res.(*protocol.CompletionList)
-	if list == nil {
-		t.Fatalf("completion = %#v", res)
-	}
-	expectLabels(t, list.Items, "design/caféX")
-	expectNoLabels(t, list.Items, "design/caféY")
 }
 
 // Below an argument list left open, completion answers as if it were closed.

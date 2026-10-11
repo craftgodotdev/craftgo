@@ -73,6 +73,45 @@ func TestASlowHandlerKeepsItsRecord(t *testing.T) {
 	}
 }
 
+// The records of a fetch waiting behind a slow handler keep their locks: each is handled
+// once, though handling them all takes several lock durations.
+func TestRecordsQueuedBehindASlowHandlerKeepTheirLocks(t *testing.T) {
+	const (
+		contract = "orders.Placed"
+		group    = "queued"
+		n        = 5
+	)
+	addrs := lockCluster(t, contract)
+	shareFromEarliest(t, addrs, group)
+	tr := New(addrs, WithShareGroup(), WithLockRenewInterval(300*time.Millisecond), WithMaxDeliveries(0))
+	defer func() { _ = tr.Close() }()
+	for i := range n {
+		publish(t, tr, contract, "o-1", []byte{byte('0' + i)})
+	}
+
+	got := newDeliveries()
+	if err := tr.Subscribe(t.Context(), []events.Subscription{{
+		Event: contract, Consumer: "C", Group: group,
+		Handle: func(_ context.Context, msg *events.Message) error {
+			got.add(msg)
+			time.Sleep(600 * time.Millisecond) // under the 1s lock, but not five of them
+			return nil
+		},
+	}}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	got.waitFor(t, n)
+	got.quiet(t, 2*time.Second, n)
+
+	got.mu.Lock()
+	defer got.mu.Unlock()
+	for _, msg := range got.got {
+		if msg.Deliveries() != 1 {
+			t.Errorf("record %s was delivered %d times - its lock lapsed while it waited", msg.Payload, msg.Deliveries())
+		}
+	}
+}
+
 // The delivery cap does not bound the redeliveries of a lapsed lock.
 func TestTheDeliveryCapDoesNotBoundALockThatLapses(t *testing.T) {
 	got := deliveriesOfOneSlowMessage(t, "capped", 4*time.Second,

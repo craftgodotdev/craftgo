@@ -60,6 +60,12 @@ type User {
 	if d.Message == "" {
 		t.Error("Message is empty")
 	}
+	if d.Code != "syntax/parse" {
+		t.Errorf("Code = %v, want syntax/parse", d.Code)
+	}
+	if got := bufferDiagnostics("package design\n\ntype A { a string @doc(\"\\q\") }\n"); len(got) == 0 || got[0].Code != "syntax/token" {
+		t.Errorf("a malformed string: diagnostics %+v, want one coded syntax/token", got)
+	}
 }
 
 // A change in one file changes the diagnostics reported for its sibling.

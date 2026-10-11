@@ -4,10 +4,13 @@
 package config
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/craftgodotdev/craftgo/pkg/log"
 	"github.com/craftgodotdev/craftgo/pkg/telemetry"
 	"gopkg.in/yaml.v3"
 )
@@ -43,16 +46,21 @@ type DocsConfig struct {
 	SpecPath string `yaml:"specPath"`
 }
 
-// ServerConfig configures the HTTP listener and the defaults its routes take. Its read and write
-// deadlines and header cap are the server's SetDefault* setters, for main.go to call when needed.
+// ServerConfig configures the HTTP listener and the defaults its routes take. Its write deadline
+// and header cap are the server's SetDefault* setters, for main.go to call when needed.
 type ServerConfig struct {
 	// Addr is the HTTP bind address, e.g. ":8080" or "127.0.0.1:8080".
 	Addr string `yaml:"addr"`
 
+	// ReadTimeout bounds reading a whole request, its body included; 30s unless config.yaml
+	// sets one, 0 setting none.
+	ReadTimeout time.Duration `yaml:"readTimeout"`
+
 	// HandlerTimeout is the request-context deadline of a route without @timeout; 0 sets none.
 	HandlerTimeout time.Duration `yaml:"handlerTimeout"`
 
-	// MaxBodySize is the body cap in bytes of a route without @maxBodySize; 0 sets none.
+	// MaxBodySize is the body cap in bytes of a route without @maxBodySize; 10 MiB unless
+	// config.yaml sets one, 0 setting none.
 	MaxBodySize int64 `yaml:"maxBodySize"`
 
 	// StrictJSON rejects a JSON body with an unknown field or data after the value.
@@ -68,7 +76,8 @@ type CompressionConfig struct {
 	Enabled bool `yaml:"enabled"`
 	// MinSize is the smallest body compressed, in bytes; 0 means 1024.
 	MinSize int `yaml:"minSize"`
-	// Level is the compression level, 1 to 9; 0 means the default.
+	// Level is the compression level, 1 to 9; 0 means the default. main.go stops on one outside
+	// -2 to 9.
 	Level int `yaml:"level"`
 }
 
@@ -84,23 +93,52 @@ func Path() string {
 	return "config/config.yaml"
 }
 
-// Load reads cfgPath, unless it is empty or missing, then fills the defaults the runtime
-// lacks.
+// Load reads cfgPath, unless it is empty, over [defaults], then fills the defaults the runtime
+// lacks. A missing file keeps the defaults, and a key Config has no field for is skipped; each
+// is logged as a warning.
 func Load(cfgPath string) (*Config, error) {
-	cfg := &Config{}
+	cfg := defaults()
 	if cfgPath != "" {
 		data, err := os.ReadFile(cfgPath)
-		if err != nil && !os.IsNotExist(err) {
+		switch {
+		case os.IsNotExist(err):
+			log.Default().Warn("config file not found, using the defaults", log.String("path", cfgPath))
+		case err != nil:
 			return nil, fmt.Errorf("read %s: %w", cfgPath, err)
-		}
-		if err == nil {
+		default:
 			if err := yaml.Unmarshal(data, cfg); err != nil {
 				return nil, fmt.Errorf("parse %s: %w", cfgPath, err)
+			}
+			for _, detail := range unknownKeys(data) {
+				log.Default().Warn("unknown config key ignored", log.String("path", cfgPath), log.String("detail", detail))
 			}
 		}
 	}
 	cfg.applyDefaults()
 	return cfg, nil
+}
+
+// unknownKeys returns yaml's "line N: field K not found in type T" for each key in data that
+// Config has no field for.
+func unknownKeys(data []byte) []string {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	var te *yaml.TypeError
+	if errors.As(dec.Decode(defaults()), &te) {
+		return te.Errors
+	}
+	return nil
+}
+
+// defaults returns the settings whose zero value is a choice of its own, which a key config.yaml
+// leaves out keeps.
+func defaults() *Config {
+	return &Config{
+		Server: ServerConfig{
+			ReadTimeout: 30 * time.Second,
+			MaxBodySize: 10 << 20,
+		},
+	}
 }
 
 // applyDefaults fills the fields the runtime has no default of its own for.

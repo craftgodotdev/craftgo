@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"reflect"
+	"time"
 	"unicode/utf8"
 )
 
@@ -90,6 +91,11 @@ func (v *WarehouseClosed) Validate() error {
 	if err := v.Warehouse.Validate(); err != nil {
 		return fmt.Errorf("warehouse: %w", err)
 	}
+	if v.ClosedAt != nil {
+		if _, _off := v.ClosedAt.Zone(); _off <= -86400 || _off >= 86400 {
+			return fmt.Errorf("closedAt: not a valid RFC 3339 datetime")
+		}
+	}
 	return nil
 }
 
@@ -141,6 +147,13 @@ func validateReflect(rv reflect.Value) error {
 			return vv.Validate()
 		}
 		return validateReflect(rv.Elem())
+	}
+	// An offset of a day or more has no RFC 3339 form to encode the datetime in.
+	if t, ok := rv.Interface().(time.Time); ok {
+		if _, off := t.Zone(); off <= -86400 || off >= 86400 {
+			return fmt.Errorf("not a valid RFC 3339 datetime")
+		}
+		return nil
 	}
 	// A pointer-receiver Validate needs an addressable value, so a map value is copied.
 	if vv, ok := rv.Interface().(interface{ Validate() error }); ok {

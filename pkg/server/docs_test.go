@@ -1,8 +1,10 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -52,6 +54,25 @@ func TestServeDocs(t *testing.T) {
 	}
 }
 
+// The docs page loads each UI asset at an exact version, with the integrity hash a browser checks
+// it against.
+func TestServeDocsPinsItsAssets(t *testing.T) {
+	asset := regexp.MustCompile(`<(?:script|link)\b[^>]*\b(?:src|href)="https?://[^>]*>`)
+	pinned := regexp.MustCompile(`(?:src|href)="https://cdn\.jsdelivr\.net/npm/(?:@[a-z-]+/)?[a-z-]+@\d+\.\d+\.\d+/[^"]+"`)
+	hash := regexp.MustCompile(`\bintegrity="sha384-[A-Za-z0-9+/]{64}"`)
+	for _, ui := range []DocsUI{DocsRedoc, DocsSwagger, DocsScalar} {
+		tags := asset.FindAllString(docsHTML(ui, "/openapi.yaml", "API"), -1)
+		if len(tags) == 0 {
+			t.Errorf("%s: no asset found", ui)
+		}
+		for _, tag := range tags {
+			if !pinned.MatchString(tag) || !hash.MatchString(tag) || !strings.Contains(tag, `crossorigin="anonymous"`) {
+				t.Errorf("%s: %s is not pinned with its integrity hash", ui, tag)
+			}
+		}
+	}
+}
+
 func TestServeDocs_CustomPathsAndJSONSpec(t *testing.T) {
 	s := New(nil).ServeDocs(DocsOptions{
 		Spec:     []byte(`{"openapi":"3.1.0"}`),
@@ -86,6 +107,64 @@ func TestServeDocs_CustomPathsAndJSONSpec(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("default /docs should be 404 when custom path set, got %d", rec.Code)
 	}
+}
+
+// RegisterDocs refuses, registering neither route, a path that does not start with "/" or that
+// a ServeMux refuses, two equal paths, and a path a health probe or a registered route answers.
+func TestRegisterDocsRefusesAnUnusablePath(t *testing.T) {
+	for name, c := range map[string]struct {
+		opts DocsOptions
+		want string
+	}{
+		"relative path":      {DocsOptions{Path: "docs"}, `docs Path "docs" does not start with "/"`},
+		"relative spec path": {DocsOptions{SpecPath: "openapi.yaml"}, `docs SpecPath "openapi.yaml" does not start with "/"`},
+		"unclean path":       {DocsOptions{Path: "/a/../docs"}, `docs Path "/a/../docs": `},
+		"bad wildcard":       {DocsOptions{SpecPath: "/spec/{"}, `docs SpecPath "/spec/{": `},
+		"equal paths":        {DocsOptions{Path: "/x", SpecPath: "/x"}, `docs Path and SpecPath are both "/x"`},
+		"probe path":         {DocsOptions{Path: "/healthz"}, `docs Path "/healthz" is a health probe's path`},
+		"route path":         {DocsOptions{Path: "/api/users"}, `docs Path "/api/users" is the path of the route "GET /api/users"`},
+		"wildcard route":     {DocsOptions{SpecPath: "/api/users/{id}"}, `docs SpecPath "/api/users/{id}" is the path of the route "GET /api/users/{id}"`},
+	} {
+		s := New(nil)
+		s.HandleFunc("GET /api/users", func(http.ResponseWriter, *http.Request) {})
+		s.HandleFunc("GET /api/users/{id}", func(http.ResponseWriter, *http.Request) {})
+		c.opts.Spec = []byte("openapi: 3.1.0\n")
+		if err := s.RegisterDocs(c.opts); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: got %v, want %s", name, err, c.want)
+		}
+		for _, path := range []string{"/docs", "/openapi.yaml", "/x"} {
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+			if rec.Code != http.StatusNotFound {
+				t.Errorf("%s: GET %s answered %d, want nothing registered", name, path, rec.Code)
+			}
+		}
+	}
+}
+
+// A probe path is free once the probes are off, and a route matching more than the docs path
+// leaves it free.
+func TestRegisterDocsTakesAPathNothingElseAnswers(t *testing.T) {
+	s := New(nil, WithoutDefaultHealth())
+	s.HandleFunc("GET /{path...}", func(http.ResponseWriter, *http.Request) {})
+	if err := s.RegisterDocs(DocsOptions{Spec: []byte("openapi: 3.1.0\n"), Path: "/healthz"}); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<redoc") {
+		t.Errorf("got %d %q, want the docs page", rec.Code, rec.Body.String())
+	}
+}
+
+// ServeDocs panics with the error RegisterDocs returns.
+func TestServeDocsPanicsWhereRegisterDocsFails(t *testing.T) {
+	defer func() {
+		if r := recover(); !strings.Contains(fmt.Sprint(r), `docs Path "docs" does not start with "/"`) {
+			t.Errorf("recovered %v, want the path error", r)
+		}
+	}()
+	New(nil).ServeDocs(DocsOptions{Spec: []byte("openapi: 3.1.0\n"), Path: "docs"})
 }
 
 func TestServeDocs_EmptySpecIsNoop(t *testing.T) {

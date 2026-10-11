@@ -292,7 +292,6 @@ func TestMultiDimArrayCrossPkgQueryRejected(t *testing.T) {
 		"shared/s.craftgo": `package shared
 scalar Tag string @minLength(1)`,
 		"api.craftgo": `package design
-import "shared"
 type Req { grid shared.Tag[][] @query }
 service S { get List /list { request Req } }`,
 	})

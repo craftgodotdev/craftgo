@@ -27,26 +27,21 @@ func WriteBytes(w http.ResponseWriter, status int, contentType string, body []by
 	return err
 }
 
-// emptyFiller is a generated type whose FillEmpty sets its required lists and maps left nil, and
-// those of the values below it, to empty ones.
-type emptyFiller interface {
-	FillEmpty(depth int) (changed, stopped bool)
-}
-
-// WriteResponse writes v as the JSON body of a status response. A generated type's required lists
-// and maps left nil are set empty first, in v itself, so they go out as [] and {}, as the
-// document says. v is encoded before anything is written, so a value the codec cannot encode,
-// such as a NaN float, goes to [WriteError] as an unhandled error rather than out as a success
-// with an empty body.
-func WriteResponse(w http.ResponseWriter, r *http.Request, status int, v any) {
-	if f, ok := v.(emptyFiller); ok {
-		f.FillEmpty(0)
-	}
+// WriteResponse writes v as the JSON body of a status response, encoded as it is: a nil list or
+// map goes out as null. v is only read, so a value shared between requests is safe to return. It
+// is encoded before anything is written, so a value the codec cannot encode, such as a NaN float,
+// goes to [WriteError] as an unhandled error rather than out as a success with an empty body.
+// Each setHeaders runs once v has encoded, before the status is written, to set the success's
+// headers and cookies, which a failed encode never carries.
+func WriteResponse(w http.ResponseWriter, r *http.Request, status int, v any, setHeaders ...func(http.ResponseWriter)) {
 	buf := responseBufs.Get().(*bytes.Buffer)
 	defer putResponseBuf(buf)
 	if err := JSON().Encode(buf, v); err != nil {
 		WriteError(w, r, fmt.Errorf("encode response: %w", err))
 		return
+	}
+	for _, set := range setHeaders {
+		set(w)
 	}
 	w.Header().Set("Content-Type", contentTypeJSON)
 	w.WriteHeader(status)

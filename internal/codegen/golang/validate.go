@@ -19,6 +19,8 @@ type validateData struct {
 	// RegexVars are the package-level compiled regexes, one per distinct pattern.
 	RegexVars []regexVar
 	Types     []validatorType
+	// FormatFuncs are the declarations of the functions the @format checks call.
+	FormatFuncs []string
 	// NeedsValidateValue emits the reflective validateValue helper that a
 	// type-parameter probe falls back to for a composite argument.
 	NeedsValidateValue bool
@@ -126,6 +128,7 @@ func buildValidateData(pkg *semantic.Package, r *projectResolver) validateData {
 		ImportDecl:         imports.decl(),
 		RegexVars:          regexes.entries,
 		Types:              types,
+		FormatFuncs:        ctx.helpers.formatCode(),
 		NeedsValidateValue: imports.has("reflect"),
 		NeedsAbsentValue:   ctx.helpers.absentValue,
 	}

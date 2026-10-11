@@ -17,7 +17,6 @@ func TestUniqueItemsCrossPkgTransitiveNonComparableRejected(t *testing.T) {
 type XInner { tags string[] }
 type XOuter { id string  inner XInner }`,
 		"api.craftgo": `package design
-import "dep"
 type NReq { items dep.XOuter[] @uniqueItems }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -33,7 +32,6 @@ func TestUniqueItemsCrossPkgTransitiveComparableClean(t *testing.T) {
 type XInner { tags string }
 type XOuter { id string  inner XInner }`,
 		"api.craftgo": `package design
-import "dep"
 type NReq { items dep.XOuter[] @uniqueItems }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -107,7 +105,6 @@ func TestUniqueItemsCrossPkgGenericLocalArgument(t *testing.T) {
 		"lib/l.craftgo": `package lib
 type Box<T> { value T }`,
 		"api.craftgo": `package design
-import "lib"
 type Item { tags string[] }
 type R { xs lib.Box<Item>[] @uniqueItems }`,
 	})
@@ -170,7 +167,6 @@ func TestUniqueItemsCrossPkgGenericNonComparableRejected(t *testing.T) {
 type User { id string  roles string[] }
 type Box<T> { value T }`,
 		"api.craftgo": `package design
-import "shared"
 type UniqueHost { rows shared.Box<shared.User>[] @uniqueItems }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -185,7 +181,6 @@ func TestUniqueItemsCrossPkgGenericComparableClean(t *testing.T) {
 		"shared/s.craftgo": `package shared
 type Box<T> { value T }`,
 		"api.craftgo": `package design
-import "shared"
 type UniqueHost { rows shared.Box<string>[] @uniqueItems }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -205,7 +200,6 @@ type Uses { b Box<map<WithSlice, string>> }`, CodeMapKeyType)
 scalar FloatKey float64
 type Box<T> { val T }`,
 		"api.craftgo": `package design
-import "lib"
 type UsesF { b lib.Box<map<lib.FloatKey, string>> }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -247,7 +241,6 @@ type Inner<T> { val T }
 type Box<T> { Inner<T> }
 type User { id string  roles string[] }`,
 		"api.craftgo": `package design
-import "shared"
 type Uses { rows shared.Box<shared.User>[] @uniqueItems }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -278,7 +271,6 @@ type R { items Holder[] @uniqueItems }`, CodeDecoratorTypeMismatch)
 type Wrap<T> { v T }
 type Holder { s Wrap<string>  b Wrap<bytes> }`,
 		"api.craftgo": `package design
-import "lib"
 type R { items lib.Holder[] @uniqueItems }`,
 	})
 	_, diags := AnalyzeProject(files, Options{DesignRoot: root})
@@ -300,7 +292,6 @@ func TestUniqueItemsLocalElementCrossPkgFieldRejected(t *testing.T) {
 		"lib/l.craftgo": `package lib
 type Wrap<T> { v T }`,
 		"api.craftgo": `package design
-import "lib"
 type Holder { s lib.Wrap<string>  b lib.Wrap<bytes> }
 type R { items Holder[] @uniqueItems }`,
 	})
@@ -322,7 +313,6 @@ func TestUniqueItemsLocalElementCrossPkgFieldComparableClean(t *testing.T) {
 		"lib/l.craftgo": `package lib
 type Wrap<T> { v T }`,
 		"api.craftgo": `package design
-import "lib"
 type Holder { s lib.Wrap<string>  b lib.Wrap<int> }
 type R { items Holder[] @uniqueItems }`,
 	})

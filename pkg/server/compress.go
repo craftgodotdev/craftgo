@@ -1,11 +1,14 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"iter"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,10 +19,19 @@ import (
 type CompressOptions struct {
 	// MinSize is the smallest body, in bytes, that is compressed; 0 means 1024.
 	MinSize int
-	// Level is the gzip or flate level; 0 means gzip.DefaultCompression.
+	// Level is the gzip or flate level, from gzip.HuffmanOnly (-2) to gzip.BestCompression (9);
+	// 0 means gzip.DefaultCompression.
 	Level int
 	// SkipTypes are Content-Type prefixes never compressed; nil keeps the defaults, empty skips none.
 	SkipTypes []string
+}
+
+// Validate reports a Level that gzip and flate refuse.
+func (o CompressOptions) Validate() error {
+	if o.Level < gzip.HuffmanOnly || o.Level > gzip.BestCompression {
+		return fmt.Errorf("server: compression level %d is outside %d to %d", o.Level, gzip.HuffmanOnly, gzip.BestCompression)
+	}
+	return nil
 }
 
 // defaultSkipTypes are the Content-Type prefixes skipped by default: media, archives and fonts.
@@ -32,12 +44,17 @@ var defaultSkipTypes = []string{
 }
 
 // Compress gzip- or deflate-encodes responses for clients that accept it, except HEAD
-// responses, already-encoded ones, bodies below MinSize and skipped types. Every response
-// gets Vary: Accept-Encoding. Only the first opts value is read.
+// responses, partial ones (206 or a Content-Range), statuses without a body, already-encoded
+// ones, bodies below MinSize and skipped types. A body without a Content-Type gets the one
+// net/http sniffs from its plain bytes. Every response gets Vary: Accept-Encoding. Only the
+// first opts value is read; Compress panics on one [CompressOptions.Validate] refuses.
 func Compress(opts ...CompressOptions) Middleware {
 	o := CompressOptions{}
 	if len(opts) > 0 {
 		o = opts[0]
+	}
+	if err := o.Validate(); err != nil {
+		panic(err)
 	}
 	if o.MinSize == 0 {
 		o.MinSize = 1024
@@ -195,6 +212,35 @@ func (cw *compressWriter) WriteHeader(code int) {
 
 func (cw *compressWriter) Unwrap() http.ResponseWriter { return cw.ResponseWriter }
 
+// Hijack hands the connection over when the wrapped writer can, after which cw writes nothing;
+// otherwise it fails with http.ErrNotSupported.
+func (cw *compressWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := cw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	c, rw, err := h.Hijack()
+	if err == nil {
+		cw.headerSet, cw.decided, cw.compress = true, true, false
+	}
+	return c, rw, err
+}
+
+// ReadFrom sends src as Write would: compressed through the encoder, or, once the headers rule
+// compression out, plain through the wrapped writer's ReadFrom, sendfile included.
+func (cw *compressWriter) ReadFrom(src io.Reader) (int64, error) {
+	if !cw.headerSet {
+		cw.WriteHeader(http.StatusOK)
+	}
+	if !cw.decided && cw.shouldSkipImmediately() {
+		cw.commitPassthrough()
+	}
+	if rf, ok := cw.ResponseWriter.(io.ReaderFrom); ok && cw.decided && !cw.compress {
+		return rf.ReadFrom(src)
+	}
+	return io.Copy(writerOnly{cw}, src)
+}
+
 // Committed reports whether the status is fixed, even while the body is still buffered.
 func (cw *compressWriter) Committed() bool { return cw.headerSet }
 
@@ -216,9 +262,23 @@ func (cw *compressWriter) Write(b []byte) (int, error) {
 	}
 	cw.buf.Write(b)
 	if cw.buf.Len() >= cw.minSize {
-		cw.commitCompressed()
+		cw.sniffContentType()
+		if cw.skippedType() {
+			cw.commitPassthrough()
+		} else {
+			cw.commitCompressed()
+		}
 	}
 	return len(b), nil
+}
+
+// sniffContentType sets the Content-Type net/http would sniff from the plain body when the handler
+// sets none, which net/http cannot once the body it sees is encoded.
+func (cw *compressWriter) sniffContentType() {
+	h := cw.Header()
+	if _, set := h["Content-Type"]; !set {
+		h.Set("Content-Type", http.DetectContentType(cw.buf.Bytes()))
+	}
 }
 
 // Flush sends the head, 200 unless a status was written, and a still-buffered body
@@ -237,11 +297,16 @@ func (cw *compressWriter) Flush() {
 	}
 }
 
-// shouldSkipImmediately reports whether the headers rule compression out: a Content-Encoding,
-// a Content-Length below minSize or a skipped Content-Type.
+// shouldSkipImmediately reports whether the status or the headers rule compression out: a status
+// without a body, a partial response, whose Content-Range counts the plain bytes, a
+// Content-Encoding, a Content-Length below minSize or a skipped Content-Type.
 func (cw *compressWriter) shouldSkipImmediately() bool {
+	switch cw.statusCode {
+	case http.StatusNoContent, http.StatusNotModified, http.StatusPartialContent:
+		return true
+	}
 	h := cw.Header()
-	if h.Get("Content-Encoding") != "" {
+	if h.Get("Content-Encoding") != "" || h.Get("Content-Range") != "" {
 		return true
 	}
 	if cl := h.Get("Content-Length"); cl != "" {
@@ -249,7 +314,12 @@ func (cw *compressWriter) shouldSkipImmediately() bool {
 			return true
 		}
 	}
-	ct := h.Get("Content-Type")
+	return cw.skippedType()
+}
+
+// skippedType reports whether the Content-Type is one compression skips.
+func (cw *compressWriter) skippedType() bool {
+	ct := cw.Header().Get("Content-Type")
 	if ct == "" {
 		return false
 	}

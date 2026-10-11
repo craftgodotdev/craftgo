@@ -6,9 +6,20 @@ package {{.Package}}
 {{- end}}
 // {{.Method}} returns the {{.Verb}} {{.Method}} handler.
 func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
+{{- if .PartLimits}}
+	_limits := map[string]int64{ {{- range $i, $l := .PartLimits}}{{if $i}}, {{end}}{{$l.Name}}: {{$l.Limit}}{{end -}} }
+{{- end}}
 	return func(w http.ResponseWriter, r *http.Request) {
+{{- if .BodyDecode}}
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
+{{- end}}
 {{- if .IsMultipart}}
-		if err := r.ParseMultipartForm({{.MultipartMaxMemory}}); err != nil {
+{{- if .PartLimits}}
+		server.LimitParts(r, _limits)
+{{- end}}
+		if err := r.ParseMultipartForm(server.MultipartMemory); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
@@ -26,7 +37,17 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		req.{{.GoName}} = {{.Literal}}
 {{- end}}
 {{- end}}
-{{- if .BodyDecode}}
+{{- if .BodyWire}}
+		var _b {{.BodyWire}}
+		if err := server.JSON().Decode(r.Body, &_b); err != nil {
+			server.WriteValidationError(w, r, err)
+			return
+		}
+		if _m := _b.to(&req); _m != "" {
+			server.WriteValidationError(w, r, server.MissingMember(_m))
+			return
+		}
+{{- else if .BodyDecode}}
 		if err := server.JSON().Decode(r.Body, &req); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
@@ -54,8 +75,8 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 {{- if .IsArray}}
 		req.{{.GoName}} = r.MultipartForm.File[{{printf "%q" .DSLName}}]
 {{- else}}
-		if _, header, err := r.FormFile({{printf "%q" .DSLName}}); err == nil {
-			req.{{.GoName}} = header
+		if _fh := r.MultipartForm.File[{{printf "%q" .DSLName}}]; len(_fh) > 0 {
+			req.{{.GoName}} = _fh[0]
 		}
 {{- end}}
 {{- end}}
@@ -71,13 +92,18 @@ func {{.Method}}(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
+{{- if or .RespHeaders .RespCookies}}
+		server.WriteResponse(w, r, {{.SuccessStatusExpr}}, resp, func(w http.ResponseWriter) {
 {{- range .RespHeaders}}
-		{{.Bind}}
+			{{.Bind}}
 {{- end}}
 {{- range .RespCookies}}
-		{{.Bind}}
+			{{.Bind}}
 {{- end}}
+		})
+{{- else}}
 		server.WriteResponse(w, r, {{.SuccessStatusExpr}}, resp)
+{{- end}}
 {{- else if .WriteResponse}}
 		err := l.{{.Method}}({{.Sig.CallArgs}})
 		if err != nil {

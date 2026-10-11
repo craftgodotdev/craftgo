@@ -213,8 +213,8 @@ func TestUnaryChainLogsRecoversAndOrders(t *testing.T) {
 	if got := logs.lines("panic recovered"); len(got) != 1 || got[0].fields["panic"] != "kaboom" || got[0].fields["stack"] == "" {
 		t.Errorf("recovery log = %+v", got)
 	}
-	// A panic leaves no access line; the recovery line is the record.
-	if access := logs.lines("grpc access"); len(access) != 1 {
+	// A panicking call is logged with the code Recovery answers.
+	if access := logs.lines("grpc access"); len(access) != 2 || access[1].fields["method"] != pingMethod || access[1].fields["code"] != "Internal" {
 		t.Errorf("access after panic = %+v", access)
 	}
 }
@@ -309,6 +309,14 @@ func TestErrorMapsServiceErrorsLikeWriteError(t *testing.T) {
 	t.Cleanup(func() { SetHandleUnknownError(nil) })
 	if got := status.Code(Error(ctx, errors.New("x"))); got != codes.Aborted {
 		t.Errorf("hook → %v", got)
+	}
+}
+
+// The error a new HTTP logic stub returns maps to the status a new gRPC stub returns.
+func TestErrorMapsNotImplementedToUnimplemented(t *testing.T) {
+	st := status.Convert(Error(context.Background(), fmt.Errorf("x: %w", server.ErrNotImplemented)))
+	if st.Code() != codes.Unimplemented || st.Message() != "not implemented" || len(st.Details()) != 0 {
+		t.Errorf("ErrNotImplemented → %v %q %v", st.Code(), st.Message(), st.Details())
 	}
 }
 
@@ -425,8 +433,14 @@ func TestStreamRecoveryAndAccessLog(t *testing.T) {
 	if status.Code(err) != codes.Aborted || fmt.Sprint(got) != "[n-0 n-1]" {
 		t.Errorf("aborted stream: %v %v", got, err)
 	}
-	if access := logs.lines("grpc access"); len(access) != 1 || access[0].fields["method"] != countMethod || access[0].fields["code"] != "Aborted" {
-		t.Errorf("access = %+v", access)
+	access := logs.lines("grpc access")
+	if len(access) != 2 {
+		t.Fatalf("access = %+v", access)
+	}
+	for i, code := range []string{"Internal", "Aborted"} {
+		if access[i].fields["method"] != countMethod || access[i].fields["code"] != code {
+			t.Errorf("access line %d = %+v, want code %s", i, access[i].fields, code)
+		}
 	}
 }
 
@@ -541,6 +555,80 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+// note is a stream message whose Validate refuses an empty text.
+type note struct{ text string }
+
+func (n *note) Validate() error {
+	if n.text == "" {
+		return errors.New("text: must not be empty")
+	}
+	return nil
+}
+
+// noteStream is a server stream that receives its queued texts, then io.EOF, and records what
+// is sent on it.
+type noteStream struct {
+	grpc.ServerStream
+	in   []string
+	sent []string
+}
+
+func (s *noteStream) Context() context.Context { return context.Background() }
+
+func (s *noteStream) RecvMsg(m any) error {
+	if len(s.in) == 0 {
+		return io.EOF
+	}
+	m.(*note).text, s.in = s.in[0], s.in[1:]
+	return nil
+}
+
+func (s *noteStream) SendMsg(m any) error {
+	s.sent = append(s.sent, m.(*note).text)
+	return nil
+}
+
+// A client-streaming or bidi stream runs Validate on every message it receives: a message that
+// fails reads as InvalidArgument, and the stream goes on with the next.
+func TestValidateStreamsCheckEveryMessage(t *testing.T) {
+	recvAll := func(recv func() (*note, error)) []string {
+		var got []string
+		for {
+			n, err := recv()
+			switch {
+			case errors.Is(err, io.EOF):
+				return got
+			case err != nil:
+				got = append(got, status.Code(err).String()+": "+status.Convert(err).Message())
+			default:
+				got = append(got, n.text)
+			}
+		}
+	}
+	want := "[a InvalidArgument: text: must not be empty b]"
+
+	client := &noteStream{in: []string{"a", "", "b"}}
+	cs := ValidateClientStream[note, note](&grpc.GenericServerStream[note, note]{ServerStream: client})
+	if got := fmt.Sprint(recvAll(cs.Recv)); got != want {
+		t.Errorf("client stream received %s, want %s", got, want)
+	}
+	if err := cs.SendAndClose(&note{text: "done"}); err != nil || fmt.Sprint(client.sent) != "[done]" {
+		t.Errorf("SendAndClose: %v, sent %v", err, client.sent)
+	}
+
+	bidi := &noteStream{in: []string{"a", "", "b"}}
+	bs := ValidateBidiStream[note, note](&grpc.GenericServerStream[note, note]{ServerStream: bidi})
+	if got := fmt.Sprint(recvAll(bs.Recv)); got != want {
+		t.Errorf("bidi stream received %s, want %s", got, want)
+	}
+	if err := bs.Send(&note{text: "echo"}); err != nil || fmt.Sprint(bidi.sent) != "[echo]" {
+		t.Errorf("Send: %v, sent %v", err, bidi.sent)
+	}
+	if bs.Context() == nil {
+		t.Error("the stream lost its context")
+	}
+}
+
 func TestStopCutsOffAfterTheDeadline(t *testing.T) {
 	if err := New(nil).Stop(context.Background()); err != nil {
 		t.Errorf("stop before serve: %v", err)
@@ -600,14 +688,33 @@ func TestRegisterServiceAfterBuild(t *testing.T) {
 	}
 }
 
-// Serve after Stop returns nil.
+// A Stop that comes before serving makes a later Serve or Start return nil at once, as
+// http.Server's Shutdown does, and Serve closes the listener it was handed.
 func TestServeAfterStopReturnsNil(t *testing.T) {
 	srv := New(nil).SetLogger(newCapture())
 	if err := srv.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	srv.GRPCServer().Stop()
-	if err := srv.Serve(bufconn.Listen(1 << 20)); err != nil {
-		t.Errorf("serve after stop = %v", err)
+	lis := bufconn.Listen(1 << 20)
+	for name, serve := range map[string]func() error{
+		"Serve": func() error { return srv.Serve(lis) },
+		"Start": func() error { return srv.Start("127.0.0.1:0") },
+	} {
+		done := make(chan error, 1)
+		go func() { done <- serve() }()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Errorf("%s after Stop = %v", name, err)
+			}
+		case <-time.After(2 * time.Second):
+			srv.GRPCServer().Stop()
+			t.Fatalf("%s after Stop is still serving", name)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if _, err := lis.DialContext(ctx); err == nil || errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Serve after Stop left its listener open: dial = %v", err)
 	}
 }

@@ -87,8 +87,10 @@ func (it Item[T]) Fail(err error) {
 
 // BatchHandler adapts fn to a [BatchHandler] that decodes and validates each message as
 // [Event.Handler] does. A message that fails is left out of fn's batch, and fn does not
-// run for a batch with none left; fn's error goes to each item not failed with
-// [Item.Fail]. The failures come back as [ItemErrors], by index into the whole batch.
+// run for a batch with none left. fn's error goes to each item not failed with
+// [Item.Fail]; an [ItemErrors] from fn, keyed by index into the items fn was handed, fails
+// only the items it names, and is taken for a whole-batch error when it names an index
+// outside them. The failures come back as [ItemErrors], by index into the whole batch.
 func (e Event[T]) BatchHandler(bus *Bus, fn func(ctx context.Context, batch []Item[T]) error) BatchHandler {
 	return func(ctx context.Context, msgs []*Message) error {
 		errs := make([]error, len(msgs))
@@ -106,15 +108,31 @@ func (e Event[T]) BatchHandler(bus *Bus, fn func(ctx context.Context, batch []It
 			items = append(items, Item[T]{Payload: &payload, Msg: msg, err: &errs[i]})
 		}
 		if len(items) > 0 {
-			if err := fn(ctx, items); err != nil {
-				for _, it := range items {
-					if *it.err == nil {
-						*it.err = err
-					}
-				}
-			}
+			failItems(items, fn(ctx, items))
 		}
 		return itemErrors(errs)
+	}
+}
+
+// failItems gives err, fn's error over items, to the items it fails that have no error of
+// their own: those an [ItemErrors] names, or every one.
+func failItems[T any](items []Item[T], err error) {
+	if err == nil {
+		return
+	}
+	var failed ItemErrors
+	if errors.As(err, &failed) && failed.within(len(items)) {
+		for i, itemErr := range failed {
+			if itemErr != nil && *items[i].err == nil {
+				*items[i].err = itemErr
+			}
+		}
+		return
+	}
+	for _, it := range items {
+		if *it.err == nil {
+			*it.err = err
+		}
 	}
 }
 

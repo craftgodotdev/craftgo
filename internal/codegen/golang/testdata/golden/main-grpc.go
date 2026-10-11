@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -69,25 +70,46 @@ func main() {
 		os.Exit(1)
 	}
 
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	// Each listener logs the address it bound, with the real port of a ":0". One that cannot bind,
+	// or stops serving, shuts the rest down as a signal does, and the process then exits 1.
+	failed := make(chan struct{}, 1)
+
 	go func() {
-		log.Default().Info("grpc listening", log.String("addr", cfg.GRPC.Addr))
-		if err := grpcSrv.Start(cfg.GRPC.Addr); err != nil {
+		lis, err := net.Listen("tcp", cfg.GRPC.Addr)
+		if err == nil {
+			log.Default().Info("grpc listening", log.String("addr", lis.Addr().String()))
+			err = grpcSrv.Serve(lis)
+		}
+		if err != nil {
 			log.Default().Error("grpc server start", log.Err(err))
-			os.Exit(1)
+			failed <- struct{}{}
 		}
 	}()
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-	<-stop
+	exitCode := 0
+	select {
+	case <-stop:
+	case <-failed:
+		exitCode = 1
+	}
 
-	// Every listener drains, and every wiring shutdown runs, within one budget.
+	// The health service turns NOT_SERVING as the listener stops taking calls; it drains within
+	// the budget, then the wiring shuts down.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_ = grpcSrv.Stop(shutdownCtx)
-	_ = shutdownGRPC(shutdownCtx)
+	if err := grpcSrv.Stop(shutdownCtx); err != nil {
+		log.Default().Warn("grpc drain cut off calls", log.Err(err))
+	}
+	if err := shutdownGRPC(shutdownCtx); err != nil {
+		log.Default().Error("shutdown grpc wiring", log.Err(err))
+	}
 	// Shutdown closes the scrape listener and flushes any pending OTLP batch.
 	if err := tel.Shutdown(shutdownCtx); err != nil {
 		log.Default().Error("shutdown telemetry", log.Err(err))
+	}
+	cancel()
+	if exitCode != 0 {
+		os.Exit(exitCode)
 	}
 }

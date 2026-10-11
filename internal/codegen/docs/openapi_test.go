@@ -629,7 +629,7 @@ service S {
 			t.Errorf("%s %s header %s = %s, want %s", c.path, c.status, c.header, raw, c.want)
 		}
 	}
-	for path, want := range map[string]string{"/g": "Sets cookies: sid", "/p": "Sets cookies: sess, sid"} {
+	for path, want := range map[string]string{"/g": "Sets cookies: sid (Path=/; HttpOnly; Secure; SameSite=Lax)", "/p": "Sets cookies: sess (Path=/; HttpOnly; Secure; SameSite=Lax), sid (Path=/; HttpOnly; Secure; SameSite=Lax)"} {
 		item := doc.Paths.Find(path)
 		op := item.Get
 		if op == nil {
@@ -1601,7 +1601,7 @@ service S { get G /g { response Resp } }`}, &config.Config{})
 		t.Fatalf("want one set-cookie header, got %v", slices.Sorted(maps.Keys(headers)))
 	}
 	h := headers["set-cookie"].Value
-	if want := "Pre-built cookie line from the session store.\n\nSets cookies: sid, tz"; h.Description != want {
+	if want := "Pre-built cookie line from the session store.\n\nSets cookies: sid (Path=/; HttpOnly; Secure; SameSite=Lax), tz (Path=/; HttpOnly; Secure; SameSite=Lax)"; h.Description != want {
 		t.Errorf("description %q, want %q", h.Description, want)
 	}
 	if h.Schema.Value == nil || !h.Schema.Value.Type.Is("string") || h.Required {
@@ -3206,7 +3206,6 @@ func TestCrossPkgMergeNameCollisionRejected(t *testing.T) {
 		"shared/s.craftgo": `package shared
 type User { a string }`,
 		"api/a.craftgo": `package api
-import "shared"
 type User { b int }
 type SharedUser { c bool }
 type Resp { y shared.User  z SharedUser }
@@ -3377,5 +3376,28 @@ func schemaRefNames(body string) []string {
 			end = len(rest)
 		}
 		out = append(out, rest[:end])
+	}
+}
+
+// Set-Cookie names each cookie with the attributes its @cookie declares; a `cookie` field's logic
+// may change them, and may set no cookie, so the header it alone sets is not required.
+func TestSetCookieDescribesEachCookiesAttributes(t *testing.T) {
+	doc := genDoc(t, map[string]string{"a/a.craftgo": `package a
+type Resp {
+	sid      string @cookie("sid", maxAge: 24h, sameSite: strict, domain: "example.com")
+	ok       bool
+}
+type Gone { bye cookie @cookie("sid", httpOnly: false) }
+service S {
+	get G /g { response Resp }
+	get D /d { response Gone }
+}`}, &config.Config{})
+	sid := doc.Paths.Find("/g").Get.Responses.Status(200).Value.Headers["Set-Cookie"].Value
+	if want := "Sets cookies: sid (Path=/; Domain=example.com; Max-Age=86400; HttpOnly; Secure; SameSite=Strict)"; sid.Description != want || !sid.Required {
+		t.Errorf("/g: %q required=%v, want %q, required", sid.Description, sid.Required, want)
+	}
+	bye := doc.Paths.Find("/d").Get.Responses.Status(200).Value.Headers["Set-Cookie"].Value
+	if want := "Sets cookies: sid (Path=/; Secure; SameSite=Lax; the server may change them per response)"; bye.Description != want || bye.Required {
+		t.Errorf("/d: %q required=%v, want %q, not required", bye.Description, bye.Required, want)
 	}
 }

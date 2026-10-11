@@ -18,31 +18,26 @@ import (
 // generateErrors writes outDir/<pkg>/errors.go, an error type with its code
 // const and methods per error; a package without errors writes nothing.
 func generateErrors(pkg *semantic.Package, outDir string, r *projectResolver) error {
-	return generateErrorsFilling(pkg, outDir, r, nil)
-}
-
-// generateErrorsFilling is [generateErrors] given the project's fill set; nil
-// weighs the project anew.
-func generateErrorsFilling(pkg *semantic.Package, outDir string, r *projectResolver, fills *fillSet) error {
 	if len(pkg.Errors) == 0 {
 		return nil
 	}
 	r = resolverFor(pkg, r)
-	if fills == nil {
-		fills = fillSetOf(r.Project())
-	}
-	return writeGoSource(filepath.Join(outDir, pkg.Name, "errors.go"), buildErrorsGo(pkg, r, fills))
+	return writeGoSource(filepath.Join(outDir, pkg.Name, "errors.go"), buildErrorsGo(pkg, r))
 }
 
 // buildErrorsGo returns the unformatted source of pkg's errors.go, errors in
 // name order.
-func buildErrorsGo(pkg *semantic.Package, r *projectResolver, fills *fillSet) string {
+func buildErrorsGo(pkg *semantic.Package, r *projectResolver) string {
 	imports := newImportSet(r.Module, r, goImport{}, errorsNames)
 	// Every error type's MarshalJSON encodes through encoding/json.
 	imports.use("encoding/json")
 	var decls []string
 	for _, name := range slices.Sorted(maps.Keys(pkg.Errors)) {
-		decls = append(decls, renderError(pkg, pkg.Errors[name], r, imports, fills))
+		ed := pkg.Errors[name]
+		decls = append(decls, renderError(pkg, ed, r, imports))
+		if ctors := renderCookieConstructors(idents.ErrorTypeName(ed.Name), ed.Body, imports); ctors != "" {
+			decls = append(decls, ctors)
+		}
 	}
 	parts := []string{"package " + pkg.Name + "\n", imports.decl()}
 	return strings.Join(append(parts, decls...), "\n")
@@ -51,28 +46,28 @@ func buildErrorsGo(pkg *semantic.Package, r *projectResolver, fills *fillSet) st
 // errorTemplateData is the errors.tmpl input for one error.
 type errorTemplateData struct {
 	// Doc heads the error type's doc comment ([docHead]).
-	Doc           []string
-	TypeName      string
-	BodyName      string
-	ConstName     string
-	CtorName      string
-	QuotedCode    string
-	QuotedMessage string
-	Category      string
-	DSLName       string
-	Status        int
-	HasBody       bool
-	HasJSONMember bool
-	// FillsBody says the body's FillEmpty has work, which MarshalJSON runs first.
-	FillsBody          bool
+	Doc                []string
+	TypeName           string
+	BodyName           string
+	ConstName          string
+	CtorName           string
+	QuotedCode         string
+	QuotedMessage      string
+	Category           string
+	DSLName            string
+	Status             int
+	HasBody            bool
+	HasJSONMember      bool
 	BodyInterior       string
 	HasResponseHeaders bool
 	Headers            []paramBinding
 	Cookies            []paramBinding
+	// Defaults fill the body fields the constructor's caller leaves nil.
+	Defaults []defaultBinding
 }
 
 // renderError renders errors.tmpl for ed, adding the packages it names to imports.
-func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver, imports *importSet, fills *fillSet) string {
+func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver, imports *importSet) string {
 	headers, cookies, needsStrconv := errorResponseBindings(ed, pkg, r)
 	if len(headers)+len(cookies) > 0 {
 		imports.use("net/http")
@@ -97,7 +92,7 @@ func renderError(pkg *semantic.Package, ed *ast.ErrorDecl, r *projectResolver, i
 		Cookies:            cookies,
 		HasBody:            len(ast.Members(ed.Body)) > 0,
 		HasJSONMember:      semantic.ErrorHasJSONMember(ed, r.Resolver),
-		FillsBody:          fills.errs[ed],
+		Defaults:           errorDefaults(ed, pkg, r, imports),
 	}
 	var buf bytes.Buffer
 	if err := errorsTemplate.Execute(&buf, data); err != nil {
@@ -114,7 +109,27 @@ var errorsTemplate = tmpl("errors.tmpl")
 func errorResponseBindings(ed *ast.ErrorDecl, pkg *semantic.Package, r *projectResolver) (headers, cookies []paramBinding, needsStrconv bool) {
 	// A field promoted from a mixin is reachable as `e.X`.
 	fields := semantic.ResolveFields(&ast.TypeDecl{Body: ed.Body}, "", pkg, r.Resolver, resolvedGoFieldNames)
-	return responseBindingsFor(fields, "e", pkg, r)
+	return responseBindingsFor(fields, errorAccess, pkg, r)
+}
+
+// errorAccess is the receiver errors.tmpl reads an error's fields through.
+const errorAccess = "e"
+
+// errorDefaults returns the @default of each optional field of ed's body, a mixin's included,
+// which the constructor gives the field its caller leaves nil; a field without `?` keeps what the
+// caller passes, its zero value included.
+func errorDefaults(ed *ast.ErrorDecl, pkg *semantic.Package, r *projectResolver, imports *importSet) []defaultBinding {
+	var out []defaultBinding
+	for _, rf := range semantic.ResolveFields(&ast.TypeDecl{Body: ed.Body}, "", pkg, r.Resolver, resolvedGoFieldNames) {
+		f, arg := rf.Field, firstArg(rf.Field.Decorators, "default")
+		if !rf.HasDefValue || arg == nil || f.Type == nil || f.Type.Map != nil || !f.Type.Optional {
+			continue
+		}
+		if lit := renderDefault(f.Type, arg.Value, r, imports); lit != "" {
+			out = append(out, defaultBinding{GoName: rf.Name, Literal: lit, Ptr: rf.GoPointer()})
+		}
+	}
+	return out
 }
 
 // screamingSnake converts an identifier to SCREAMING_SNAKE_CASE, keeping

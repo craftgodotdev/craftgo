@@ -32,11 +32,14 @@ type healthCheck struct {
 	fn      func(context.Context) error
 }
 
-// run calls the check under its timeout. A panic fails the check with "panic: <value>" and
-// is logged with its stack to [log.Default].
+// run calls the check under its timeout, none when the timeout is not positive. A panic fails
+// the check with "panic: <value>" and is logged with its stack to [log.Default].
 func (hc healthCheck) run(ctx context.Context, name string) (err error) {
-	ctx, cancel := context.WithTimeout(ctx, hc.timeout)
-	defer cancel()
+	if hc.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, hc.timeout)
+		defer cancel()
+	}
 	defer func() {
 		if rec := recover(); rec != nil {
 			log.Default().WithContext(ctx).Error("panic recovered in readiness check",
@@ -59,7 +62,8 @@ func WithHealthPaths(p HealthPaths) Option {
 func WithoutDefaultHealth() Option { return func(s *Server) { s.noHealth = true } }
 
 // RegisterHealthCheck adds, or replaces, the readiness check name. Each readiness probe runs
-// fn under a context with timeout, and a non-nil error or a panic answers 503.
+// fn under a context with timeout, under the probe request's context alone when timeout is zero
+// or negative, and a non-nil error or a panic answers 503.
 func (s *Server) RegisterHealthCheck(name string, timeout time.Duration, fn func(context.Context) error) *Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()

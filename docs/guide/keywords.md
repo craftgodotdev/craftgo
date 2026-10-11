@@ -1,13 +1,12 @@
 # Keywords
 
-The DSL has 17 keywords plus the seven HTTP verbs. They are reserved - identifiers cannot use these names, with the contextual carve-outs noted below.
+The DSL has 16 keywords plus the seven HTTP verbs. They are reserved - identifiers cannot use these names, with the contextual carve-outs noted below.
 
 ## Declaration keywords
 
 | Keyword      | Position    | Purpose                                                       |
 | ------------ | ----------- | ------------------------------------------------------------- |
 | `package`    | first line  | The package every declaration in this file belongs to         |
-| `import`     | after `package` | Optional - a qualified reference resolves without it      |
 | `type`       | top level   | Declare a request / response struct                           |
 | `enum`       | top level   | Declare a closed value set                                    |
 | `error`      | top level   | Declare a typed error with HTTP status mapping                |
@@ -67,7 +66,7 @@ These behave like keywords inside a service body. They are also legal as identif
 
 ## `package`
 
-The first statement of every `.craftgo` file that declares anything - only comments and the file-level decorators `@doc`, `@deprecated` and `@version` may come before it. A file without one is rejected as `package/missing` at its first import or declaration:
+The first statement of every `.craftgo` file that declares anything - only comments and the file-level decorators `@doc`, `@deprecated` and `@version` may come before it. A file without one is rejected as `package/missing` at its first declaration:
 
 ```craftgo
 package design
@@ -91,7 +90,7 @@ type User {
 
 craftgo resolves `<pkg>.<Type>` against every package in the project (the `package X` declaration is the name) and wires the matching Go import in the generated code automatically. Middleware names are global across the project; type / enum / error / scalar names live in their declaring package and must be qualified at the call site (`shared.Audit`, `users.User`).
 
-> **Note:** an `import "<subfolder>"` line is optional and changes no reference: `<pkg>.<Type>` always names a package, never an import alias. When present, its path must name a folder under the design root that holds design files (`import/unresolved` otherwise).
+> **Note:** there is no import statement. A line starting with `import` at file level is a parse error that says to reference the declaration as `pkg.Type` and delete the line. `import` is not reserved, so a field may take it as its name.
 
 ## `type`
 
@@ -271,8 +270,6 @@ A reserved word cannot name a declaration: `type event { ... }` is a parse error
 ```
 [@doc|@deprecated|@version]*
 package <ident>
-
-[import [<alias>] "<path>"]*
 
 [<decl>]*
 

@@ -34,6 +34,9 @@ func Register(ctx context.Context, srv *server.Server, svcCtx *svccontext.Servic
 	if svcCtx.RequestStamp == nil {
 		return nil, errors.New("wiring: the design declares `middleware RequestStamp` and AdminService.Snapshot runs it, but svcCtx.RequestStamp is nil - assign `svc.RequestStamp = middleware.NewRequestStampMiddleware(/* args */)` where you build the ServiceContext")
 	}
+	if svcCtx.Signature == nil {
+		return nil, errors.New("wiring: the design declares `middleware Signature` and Limits.Deliver runs it, but svcCtx.Signature is nil - assign `svc.Signature = middleware.NewSignatureMiddleware(/* args */)` where you build the ServiceContext")
+	}
 	if svcCtx.Timing == nil {
 		return nil, errors.New("wiring: the design declares `middleware Timing` and RawModesService.PtPlain runs it, but svcCtx.Timing is nil - assign `svc.Timing = middleware.NewTimingMiddleware(/* args */)` where you build the ServiceContext")
 	}

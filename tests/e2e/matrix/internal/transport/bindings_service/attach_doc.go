@@ -17,15 +17,18 @@ import (
 // AttachDoc returns the POST AttachDoc handler.
 func AttachDoc(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(32 << 20); err != nil {
+		if err := r.ParseMultipartForm(server.MultipartMemory); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.AttachReq
+		if !server.RequirePresent(w, r, r.PostForm.Has("title"), "title", "form") {
+			return
+		}
 		req.Title = r.PostFormValue("title")
-		if _, header, err := r.FormFile("doc"); err == nil {
-			req.Doc = header
+		if _fh := r.MultipartForm.File["doc"]; len(_fh) > 0 {
+			req.Doc = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

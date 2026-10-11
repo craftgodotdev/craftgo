@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"slices"
 	"strconv"
 
 	"github.com/craftgodotdev/craftgo/internal/ast"
@@ -15,6 +16,31 @@ func (p *Parser) rejectMixinDecorators(mixinPos lexer.Position, decs []*ast.Deco
 		}
 		p.errorf(d.Pos, "decorators are not supported on mixin references (@%s near %s); attach the decorator to the target type or to a field that uses it", d.Name, mixinPos)
 	}
+}
+
+// memberHead parses the doc and the decorators above a member and returns
+// them with the member's first token. The doc is the comment above the
+// decorators, then the one right above that token, which also stays in the
+// chain.
+func (p *Parser) memberHead() (doc []string, decs []*ast.Decorator, t lexer.Token) {
+	doc = p.docAbove()
+	decs = p.parseDecorators()
+	t = p.peek()
+	p.claimChain(decs, t.Pos.Line)
+	if len(decs) > 0 {
+		doc = slices.Concat(doc, t.Doc)
+	}
+	return doc, decs, t
+}
+
+// danglingDecorators reports decs, the decorators that close a body with no
+// member of the kind what below them, unless an argument list among them
+// already failed to parse.
+func (p *Parser) danglingDecorators(decs []*ast.Decorator, what string) {
+	if slices.ContainsFunc(decs, (*ast.Decorator).HoldsBadExpr) {
+		return
+	}
+	p.errorf(decs[0].Pos, "decorator @%s has no %s below it: a decorator on a line of its own decorates the %s below it - move it onto the line of the %s it belongs to", decs[0].Name, what, what, what)
 }
 
 // parseDecorators parses zero or more decorators.
@@ -57,6 +83,10 @@ func (p *Parser) rejectDecoratorsAfter(what string, starts func(lexer.Kind) bool
 func (p *Parser) parseDecorator() *ast.Decorator {
 	at := p.advance()
 	nameTok := p.peek()
+	if nameTok.Pos.Line != at.Pos.Line {
+		p.errorf(at.Pos, "expected decorator name after @ on its line")
+		return &ast.Decorator{Pos: at.Pos}
+	}
 	if nameTok.Kind != lexer.Ident && !nameTok.Kind.IsKeyword() {
 		p.errorf(nameTok.Pos, "expected decorator name, got %s", nameTok.Kind)
 		return &ast.Decorator{Pos: at.Pos}
@@ -64,15 +94,18 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 	p.advance()
 	d := &ast.Decorator{Pos: at.Pos, Name: nameTok.Text}
 	if p.peek().Kind == lexer.LParen {
-		p.advance()
+		l := p.openList()
 		d.HasParens = true
 		errs := len(p.diags)
 		// A `}` ends the arguments too: it closes the body they were left open in.
-		for !p.peekIs(lexer.RParen) && !p.peekIs(lexer.RBrace) && !p.peekIs(lexer.EOF) {
+		for p.more(l) && !p.peekIs(lexer.RBrace) {
 			d.Args = append(d.Args, p.parseDecoratorArg(d.Name))
-			p.listSep(lexer.RParen, "decorator argument")
+			if !p.listSep(l, "decorator argument") {
+				break
+			}
 		}
-		rparen, closed := p.expect(lexer.RParen)
+		rparen := p.closeList(l)
+		closed := rparen.Kind == lexer.RParen
 		if (!closed || len(p.diags) > errs) && !d.HoldsBadExpr() {
 			d.Args = append(d.Args, &ast.DecoratorArg{Pos: rparen.Pos, Value: &ast.BadExpr{Pos: rparen.Pos}})
 		}
@@ -105,17 +138,19 @@ func (p *Parser) parseDecoratorArg(dec string) *ast.DecoratorArg {
 // parseObjectLiteral parses `{ key: value, ... }` in the arguments of the
 // decorator named dec.
 func (p *Parser) parseObjectLiteral(dec string) []*ast.ObjectField {
-	p.expect(lexer.LBrace)
-	var fields []*ast.ObjectField
-	for p.peek().Kind != lexer.RBrace && p.peek().Kind != lexer.EOF {
+	l := p.openList()
+	fields := []*ast.ObjectField{}
+	for p.more(l) {
 		fpos := p.peek().Pos
 		name := p.expectFieldKey()
 		p.expect(lexer.Colon)
 		val := p.parseValueOrArray(dec, lexer.RBrace)
 		fields = append(fields, &ast.ObjectField{Pos: fpos, Name: name, Value: val})
-		p.listSep(lexer.RBrace, "object field")
+		if !p.listSep(l, "object field") {
+			break
+		}
 	}
-	p.expect(lexer.RBrace)
+	p.closeList(l)
 	return fields
 }
 
@@ -143,13 +178,16 @@ func (p *Parser) parseValueOrArray(dec string, closer lexer.Kind) ast.Expr {
 // parseArray parses `[a, b, ...]`, whose elements may be arrays, in the
 // arguments of the decorator named dec.
 func (p *Parser) parseArray(dec string) ast.Expr {
-	pos := p.advance().Pos
+	pos := p.peek().Pos
+	l := p.openList()
 	arr := &ast.ArrayLit{Pos: pos}
-	for p.peek().Kind != lexer.RBracket && p.peek().Kind != lexer.EOF {
+	for p.more(l) {
 		arr.Elements = append(arr.Elements, p.parseValueOrArray(dec, lexer.RBracket))
-		p.listSep(lexer.RBracket, "array element")
+		if !p.listSep(l, "array element") {
+			break
+		}
 	}
-	p.expect(lexer.RBracket)
+	p.closeList(l)
 	return arr
 }
 
@@ -171,8 +209,7 @@ func (p *Parser) parseValue(dec string, closer lexer.Kind) ast.Expr {
 		return &ast.IntLit{Pos: t.Pos, Value: p.signedInt(t.Pos, t, false)}
 	case lexer.Float:
 		p.advance()
-		f, _ := strconv.ParseFloat(t.Text, 64)
-		return &ast.FloatLit{Pos: t.Pos, Value: f, Text: t.Text}
+		return &ast.FloatLit{Pos: t.Pos, Value: p.float(t.Pos, t.Text), Text: t.Text}
 	case lexer.KwTrue:
 		p.advance()
 		return &ast.BoolLit{Pos: t.Pos, Value: true}
@@ -198,8 +235,7 @@ func (p *Parser) parseValue(dec string, closer lexer.Kind) ast.Expr {
 		}
 		if next.Kind == lexer.Float {
 			p.advance()
-			f, _ := strconv.ParseFloat("-"+next.Text, 64)
-			return &ast.FloatLit{Pos: t.Pos, Value: f, Text: "-" + next.Text}
+			return &ast.FloatLit{Pos: t.Pos, Value: p.float(t.Pos, "-"+next.Text), Text: "-" + next.Text}
 		}
 		p.errorf(t.Pos, "expected number after '-'")
 		return &ast.BadExpr{Pos: t.Pos}
@@ -246,6 +282,16 @@ func (p *Parser) signedInt(pos lexer.Position, tok lexer.Token, neg bool) int64 
 		p.errorf(pos, "integer literal %s is outside the signed 64-bit range (%s)", text, bound)
 	}
 	return n
+}
+
+// float returns the value of the float literal text and reports at pos one
+// past the float64 range.
+func (p *Parser) float(pos lexer.Position, text string) float64 {
+	f, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		p.errorf(pos, "float literal out of range: a float64 holds at most about 1.8e308")
+	}
+	return f
 }
 
 // unquote returns the value of a String or RawString token; the lexer emits

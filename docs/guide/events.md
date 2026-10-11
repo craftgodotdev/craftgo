@@ -91,7 +91,9 @@ err := orders.Placed.Publish(ctx, bus, &types.OrderPlaced{OrderID: order.ID, Tot
 	craftevents.WithKey(string(order.ID)))
 ```
 
-`Publish` validates first: a payload that does not validate is a `*PayloadError` and nothing goes on the wire. The options fill in everything beside the payload - `WithKey` (the entity the message is about, used by a transport that orders per entity), `WithDedupID` (JetStream drops a repeat within its stream's duplicate window; Kafka, core NATS and memory carry the ID to the consumer and act on nothing), `WithHeader`, `WithAdapterOption`. `bus.PublishAll(ctx, envs)` publishes a batch and reports a partial failure as a `*PartialPublishError` naming the indices that did not go out.
+`Publish` validates first: a payload that does not validate is a `*PayloadError` and nothing goes on the wire. The options fill in everything beside the payload - `WithKey` (the entity the message is about, used by a transport that orders per entity), `WithDedupID` (JetStream drops a repeat within its stream's duplicate window; Kafka, core NATS and memory carry the ID to the consumer and act on nothing), `WithHeader`, `WithAdapterOption`. `bus.PublishAll(ctx, envs)` publishes a batch and reports a partial failure as a `*PartialPublishError` naming the indices that did not go out; an envelope it cannot encode refuses the whole batch, before any of it is sent, with an `*EnvelopeError` naming its index.
+
+Every shipped transport delivers the key, the dedup ID and the metadata as written. NATS carries them in headers, which cannot hold everything, so on core NATS and JetStream a value NATS would change - padded with spaces or tabs, or holding a line break - or a metadata key that is no NATS header name (printable ASCII without spaces or any of `"(),/:;<=>?@[\]{}`) fails the publish with `nats.ErrNotCarried` before anything is sent.
 
 A transport adapter is anything implementing one method:
 
@@ -147,6 +149,17 @@ There is no default codec, and `WithPublisher` or `WithSubscriber` alone is enou
 ### Groups
 
 A group is the broker identity a subscription joins: the Kafka consumer group, the NATS queue group, the JetStream durable. Subscriptions sharing one divide the stream between them, so a group is the unit of scaling and of failure isolation - not of ordering. `events.Group` is a named type so an application declares its groups once, as **values beside the registrations that use them**, rather than as loose strings. `Register` refuses an empty group. On a transport that remembers a position per group - Kafka, JetStream - the name is where those consumers resume: if it has an offset, write the name down.
+
+A group with no position yet starts where its transport puts it:
+
+| transport | a new group starts | to start it elsewhere |
+| --- | --- | --- |
+| JetStream | at the first message the stream holds (`DeliverAll`) | `nats.WithGroupConfig(group, nats.DeliverPolicy(jetstream.DeliverNewPolicy))`, or create the durable beforehand with the policy you want, which `Start` adopts |
+| Kafka, classic group | at the earliest record, replaying the whole topic - franz-go's default | `kafka.WithClientOptions(kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd()))` reads only what is published after the group first joins |
+| Kafka, share group | at the end of the topic | the broker's group config `share.auto.offset.reset`, `earliest` to read the topic from its start |
+| core NATS, memory | at the next message published | nothing to set: neither keeps a position |
+
+Each setting counts only while the group has no position: `DeliverPolicy` when the durable is created, the reset offset for a partition the classic group has committed nothing on.
 
 ### Middleware
 
@@ -214,7 +227,7 @@ What each message becomes is decided per message:
 - asking for nothing settles it, as for one message;
 - `it.Msg.Redeliver()` or `it.Msg.Reject()` answers for that message alone;
 - `it.Fail(err)` gives that item an error of its own;
-- the function's error goes to every item without one.
+- the function's error goes to every item without one - unless it is `craftevents.ItemErrors`, keyed by index into the `batch` the function was handed, which fails only the items it names.
 
 The handler returns the failures as `craftevents.ItemErrors`, keyed by index into the whole batch: a payload that did not decode or validate as its `*PayloadError`, a message stamped with another codec as `ErrCodecMismatch`, the others as their own error or the function's. The transport reports that error once, with no message. An error redelivers nothing by itself, here as for one message: the chain decides.
 
@@ -228,7 +241,7 @@ The chain installed with `Use` wraps one message and does not run for a batch. B
 type BatchMiddleware func(sub craftevents.Subscription, next craftevents.BatchHandler) craftevents.BatchHandler
 ```
 
-`WithBatchMiddleware` installs it at construction and `bus.UseBatch` appends afterwards; a subscription built with the descriptor's `BatchSubscription(bus, group, size, fn)` takes its own in `Batch.Chain`. The wrap order and the panic rules are those of one message: a panic in a batch middleware asks for every message of the batch to be redelivered, on a transport that can. `logging.BatchAccessLog` writes one line per batch. A retry policy reads the `ItemErrors`:
+`WithBatchMiddleware` installs it at construction and `bus.UseBatch` appends afterwards; a subscription built with the descriptor's `BatchSubscription(bus, group, size, fn)` takes its own in `Batch.Chain`. The wrap order and the panic rules are those of one message: a panic in a batch middleware asks for every message of the batch to be redelivered, on a transport that can. `logging.BatchAccessLog` writes one line per batch. A retry policy reads the `ItemErrors`, and takes an error naming no message - the `*PanicError` of a handler that panicked, say - as every message failing:
 
 ```go
 // redeliverFailures asks for each message the batch failed to come back, but one whose
@@ -236,9 +249,16 @@ type BatchMiddleware func(sub craftevents.Subscription, next craftevents.BatchHa
 func redeliverFailures(_ craftevents.Subscription, next craftevents.BatchHandler) craftevents.BatchHandler {
 	return func(ctx context.Context, batch []*craftevents.Message) error {
 		err := next(ctx, batch)
+		if err == nil {
+			return nil
+		}
 		var failed craftevents.ItemErrors
 		if !errors.As(err, &failed) {
-			return err
+			// An error naming no message, a *PanicError among them, fails every one.
+			failed = craftevents.ItemErrors{}
+			for i := range batch {
+				failed[i] = err
+			}
 		}
 		for i, itemErr := range failed {
 			var bad *craftevents.PayloadError
@@ -293,11 +313,29 @@ During a rolling deploy two versions of a deployable share a durable. A subject 
 
 ## Kafka, core NATS and memory
 
-- `pkg/events/kafka` - one contract per topic, ordering key as the record key; `WithShareGroup` asks for a KIP-932 share group instead of a classic consumer group. A classic group gathers a batch over several fetches and commits it once the handler has returned. A share group hands over one fetch's records, at most `Max`, and does not wait to fill the batch: the client accepts what one fetch left unanswered at the next.
+- `pkg/events/kafka` - one contract per topic, ordering key as the record key; `WithShareGroup` asks for a KIP-932 share group instead of a classic consumer group. A classic group commits a fetch's records once each has been handled, and gathers a batch over several fetches, committing it once the handler has returned. A share group keeps every record of a fetch locked until it is answered, those waiting behind the one being handled included. For a batch subscription it hands over one fetch's records, at most `Max`, and does not wait to fill the batch: the client accepts what one fetch left unanswered at the next.
 - `pkg/events/nats` (core) - contract to subject, group to queue group; at most once and no nack, so install `nats.WithErrorHandler` or a failed message is observed by nothing. A batch is gathered from the queue subscription, and is at most once too.
-- `pkg/events/memory` - in-process, for tests, single-binary deployments and the plan golden test; `Drain()` waits for in-flight deliveries, a batch still filling among them. Each batch runs on its own goroutine.
+- `pkg/events/memory` - in-process, for tests, single-binary deployments and the plan golden test; `Drain()` waits for in-flight deliveries, a batch still filling among them. Each batch runs on its own goroutine. Each group gets its own copy of a message, payload included, and a handler runs on its subscription's context, as on a broker: the publisher's context does not reach it.
 
 Every option and error type is listed in [Runtime API](/reference/runtime-api#event-runtime).
+
+## Shutting down
+
+A deployable stops consuming by cancelling the context it gave `Start`, then closing the transport - `example/brokers` defers both, in that order. Once that context has ended, a transport hands no message to a handler, and a handler still running sees its context end.
+
+A handler that fails after the context ended, with the chain asking for nothing or for redelivery, was most likely cut short by the shutdown, so a transport that can hand its message back does so instead of settling it, retry middleware or not. While the subscription runs, an error still redelivers nothing by itself.
+
+| transport | a message whose handler the shutdown cut short | a message fetched and not yet handed over |
+| --- | --- | --- |
+| JetStream | NAK'd, and delivered again at once | NAK'd; one still in the pull's buffer comes back once `AckWait` has passed |
+| Kafka, share group | released for another delivery | released |
+| Kafka, classic group | left uncommitted, with every record after it in its partition, so the group reads them again | left uncommitted |
+| core NATS | gone - core NATS delivers at most once | gone, but a batch still filling is handed over at once, on a context that keeps the subscription's values and ends 30s later |
+| memory | gone | the batch still filling, and a delivery that raced the shutdown, run on such a context |
+
+A message handled to the end is answered as the chain asked, and a classic group commits it as its read loop stops.
+
+What `Close` does differs. JetStream's waits up to `WithDrainTimeout` (30s) for the handlers still running, on their live context, so closing first lets them finish rather than cutting them short. Kafka's closes its clients at once: a record still in a handler, and in a classic group each one handled since the last commit, is delivered again. Cancelling first lets each read loop answer and commit what it handled, unless `Close` overtakes it - nothing is lost either way. Core NATS's unsubscribes.
 
 ## Who owns what
 

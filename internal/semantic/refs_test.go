@@ -211,7 +211,6 @@ func TestCrossFieldOverCrossPkgMixinClean(t *testing.T) {
 		"shared/s.craftgo": `package shared
 type Contactable { email string?  phone string? }`,
 		"api.craftgo": `package design
-import "shared"
 @requiresOneOf(email, phone)
 type Contact { shared.Contactable  note string? }`,
 	})
@@ -227,7 +226,6 @@ func TestCrossFieldTypoOverCrossPkgMixinRejected(t *testing.T) {
 		"shared/s.craftgo": `package shared
 type Contactable { email string?  phone string? }`,
 		"api.craftgo": `package design
-import "shared"
 @requiresOneOf(email, zzz)
 type Contact { shared.Contactable  note string? }`,
 	})
@@ -244,7 +242,6 @@ func TestCrossFieldTypoOverNestedCrossPkgMixinRejected(t *testing.T) {
 type Inner { email string?  phone string? }
 type Outer { Inner  label string? }`,
 		"api.craftgo": `package design
-import "shared"
 @requiresOneOf(email, nope)
 type Contact { shared.Outer }`,
 	})
@@ -261,7 +258,6 @@ func TestCrossFieldOverNestedCrossPkgMixinClean(t *testing.T) {
 type Inner { email string?  phone string? }
 type Outer { Inner  label string? }`,
 		"api.craftgo": `package design
-import "shared"
 @requiresOneOf(email, phone)
 type Contact { shared.Outer }`,
 	})
@@ -277,7 +273,6 @@ func TestCrossFieldPlainMemberOverCrossPkgMixinRejected(t *testing.T) {
 		"base/b.craftgo": `package base
 type BaseMix { gamma string }`,
 		"api.craftgo": `package design
-import "base"
 @requiresOneOf(alpha, gamma)
 type Host { base.BaseMix  alpha string? }`,
 	})
@@ -293,7 +288,6 @@ func TestCrossFieldDefaultMemberOverCrossPkgMixinRejected(t *testing.T) {
 		"base/b.craftgo": `package base
 type BaseMix { gamma string? @default("x") }`,
 		"api.craftgo": `package design
-import "base"
 @requiresOneOf(alpha, gamma)
 type Host { base.BaseMix  alpha string? }`,
 	})
@@ -309,7 +303,6 @@ func TestCrossFieldCleanMembersOverCrossPkgMixinClean(t *testing.T) {
 		"base/b.craftgo": `package base
 type BaseMix { gamma string? }`,
 		"api.craftgo": `package design
-import "base"
 @requiresOneOf(alpha, gamma)
 type Host { base.BaseMix  alpha string? }`,
 	})

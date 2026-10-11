@@ -17,13 +17,17 @@ import (
 // SearchProducts returns the POST SearchProducts handler.
 func SearchProducts(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req types.Search
-		{
-			__d := types.Cents(20)
-			req.Limit = &__d
+		if !server.RequireJSONBody(w, r) {
+			return
 		}
-		if err := server.JSON().Decode(r.Body, &req); err != nil {
+		var req types.Search
+		var _b searchWire
+		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)
+			return
+		}
+		if _m := _b.to(&req); _m != "" {
+			server.WriteValidationError(w, r, server.MissingMember(_m))
 			return
 		}
 		if err := req.Validate(); err != nil {

@@ -2,6 +2,7 @@ package golang
 
 import (
 	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 
@@ -39,7 +40,6 @@ func Plan(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, p
 // regeneratedFiles names every file [Generate] rewrites.
 func regeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *config.Config, projectRoot string) []string {
 	out := outputsOf(cfg)
-	fills := fillSetOf(proj)
 	var files []string
 	for _, name := range proj.PackageNames() {
 		pkg := proj.Packages[name]
@@ -59,18 +59,20 @@ func regeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 		if len(pkg.Errors) > 0 {
 			files = append(files, dir.at(projectRoot, "errors.go"))
 		}
-		if fills.pkgFills(pkg) {
-			files = append(files, dir.at(projectRoot, "fill.go"))
-		}
 	}
 	files = append(files, protos.PBFiles(projectRoot)...)
 	if cfg.Output.ContractsOnly() {
 		return files
 	}
-	routes := map[string]bool{}
+	routes, bodies := map[string]bool{}, map[string]bool{}
 	for s := range projectSegments(proj, cfg.Output.FileCase) {
 		for m := range s.methods() {
 			files = append(files, out.transport.sub(s.dir).at(projectRoot, methodFile(m, cfg.Output.FileCase)))
+		}
+		if f := out.transport.sub(s.dir).at(projectRoot, bodyFile); !bodies[f] &&
+			len(dirBodies([]segment{s}, buildProjectResolver(proj, cfg, s.pkg.Name), out).names()) > 0 {
+			bodies[f] = true
+			files = append(files, f)
 		}
 		routes[out.routes.sub(s.dir).at(projectRoot, "routes.go")] = true
 	}
@@ -100,4 +102,34 @@ func regeneratedFiles(proj *semantic.Project, protos *protodesign.Set, cfg *conf
 func EventPlan(proj *semantic.Project, projectRoot, outDir string) (paths map[string][]string, files []string) {
 	root := filepath.Join(projectRoot, outDir)
 	return map[string][]string{root: {GeneratedHeader}}, slices.Collect(maps.Keys(expectedEventFiles(proj, root)))
+}
+
+// StaleEventPlan lists, for the sweep, the event libraries a Go event target left in a directory
+// it took by default and writes into no more - turned off, moved, or a kind's default given up:
+// each <dir>/<package>/events.go there that carries [GeneratedHeader] and imports this design's
+// output.types, so another design's library is never one of them.
+func StaleEventPlan(cfg *config.Config, projectRoot string) map[string][]string {
+	current := ""
+	if t, ok := cfg.Events.TargetFor(config.LangGo); ok && t.Enabled() {
+		current = relDir(t.Out)
+	}
+	typesImport := `"` + outputsOf(cfg).types.pkg + "/"
+	paths := map[string][]string{}
+	for _, dir := range config.DefaultEventDirs() {
+		if relDir(dir) == current {
+			continue
+		}
+		root := filepath.Join(projectRoot, filepath.FromSlash(relDir(dir)))
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			file := filepath.Join(root, e.Name(), "events.go")
+			if fileHasPrefix(file, GeneratedHeader) && fileMentions(file, typesImport) {
+				paths[file] = []string{GeneratedHeader}
+			}
+		}
+	}
+	return paths
 }

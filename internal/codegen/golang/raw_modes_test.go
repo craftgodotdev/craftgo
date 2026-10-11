@@ -180,8 +180,10 @@ func TestGenerateRawResponseBindsThenHandsWriter(t *testing.T) {
 		`"net/http"`,
 		"func (l *ListUsersService) ListUsers(w http.ResponseWriter, r *http.Request, req *types.ListReq) error {",
 		"// Its response is documented as types.UserList.",
-		`http.Error(w, "not implemented", http.StatusNotImplemented)`,
+		"return server.ErrNotImplemented",
 	)
+	// The stub leaves the response to WriteError, which renders the error as JSON.
+	mustContainNone(t, s, "http.Error(")
 }
 
 func TestGenerateRawResponseNoRequestSkipsBind(t *testing.T) {
@@ -202,7 +204,7 @@ func TestGenerateRawResponseOverMultipart(t *testing.T) {
 		"r.ParseMultipartForm(",
 		"defer func() { _ = r.MultipartForm.RemoveAll() }()",
 		`r.PostFormValue("note")`,
-		`r.FormFile("avatar")`,
+		`r.MultipartForm.File["avatar"]`,
 		"if err := req.Validate(); err != nil {",
 		"if err := l.Upload(w, r, &req); err != nil {",
 	)
@@ -222,7 +224,7 @@ func TestGenerateRawRequestHandsRequestThenEncodes(t *testing.T) {
 	mustContainAll(t, s,
 		"func (l *IngestService) Ingest(r *http.Request) (*types.IngestResult, error) {",
 		"// Its request is documented as types.IngestResult, whose Validate checks it.",
-		"return nil, nil",
+		"return nil, server.ErrNotImplemented",
 	)
 }
 
@@ -292,7 +294,7 @@ func TestParityTransportCallMatchesStubSignature(t *testing.T) {
 	cfg := sampleConfig()
 	for _, m := range svc.Methods {
 		imps := outputsOf(cfg).segmentImports(pkg.Name, route.OutputSegment("DemoService", "", cfg.Output.FileCase))
-		td := buildTransportData(m, svc.Decorators(m), imps, pkg, resolverFor(pkg, nil))
+		td := buildTransportData(m, svc.Decorators(m), imps, pkg, resolverFor(pkg, nil), "")
 		sd := buildServiceData(pkg.Name, "DemoService", m, svc.Decorators(m), imps, resolverFor(pkg, nil))
 		if td.Sig != sd.Sig {
 			t.Errorf("%s: transport signature %+v != service signature %+v", m.Name, td.Sig, sd.Sig)

@@ -17,13 +17,21 @@ import (
 // PromoteHolder returns the POST PromoteHolder handler.
 func PromoteHolder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req xshared.XHolder
 		{
 			__d := int32(50)
 			req.Limit = &__d
 		}
-		if err := server.JSON().Decode(r.Body, &req); err != nil {
+		var _b xHolderWire
+		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)
+			return
+		}
+		if _m := _b.to(&req); _m != "" {
+			server.WriteValidationError(w, r, server.MissingMember(_m))
 			return
 		}
 		req.ID = r.PathValue("id")
@@ -32,7 +40,7 @@ func PromoteHolder(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			return
 		}
 		req.Q = _q.Get("q")
-		if !server.BindValuePtr(w, r, "limit", "int", _q.Get("limit"), &req.Limit, server.ParseSigned[int32]) {
+		if !server.BindValuePtr(w, r, "limit", "int32", _q.Get("limit"), &req.Limit, server.ParseSigned[int32]) {
 			return
 		}
 		if err := req.Validate(); err != nil {

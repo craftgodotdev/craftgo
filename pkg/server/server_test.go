@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -340,6 +341,24 @@ func TestServerHealthEndpoints(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusOK || atomic.LoadInt32(&called) != 1 {
 		t.Errorf("readyz: code=%d called=%d body=%s", rec.Code, called, rec.Body.String())
+	}
+}
+
+// A check registered with a zero or negative timeout runs without a deadline.
+func TestServerHealthCheckWithoutTimeout(t *testing.T) {
+	for _, timeout := range []time.Duration{0, -time.Second} {
+		s := New(nil)
+		s.RegisterHealthCheck("db", timeout, func(ctx context.Context) error {
+			if d, ok := ctx.Deadline(); ok {
+				return fmt.Errorf("deadline %v", d)
+			}
+			return ctx.Err()
+		})
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+		if rec.Code != http.StatusOK {
+			t.Errorf("timeout %v: status %d, body %s; want 200", timeout, rec.Code, rec.Body.String())
+		}
 	}
 }
 
@@ -847,9 +866,61 @@ func TestServerCodecIsTheCodecInUse(t *testing.T) {
 	}
 }
 
+// A Stop that comes before serving makes a later Start or Serve return nil at once, as
+// http.Server's Shutdown does, and Serve closes the listener it was handed.
 func TestServerStopBeforeStart(t *testing.T) {
-	if err := New(nil).Stop(context.Background()); err != nil {
-		t.Errorf("Stop before Start should be no-op, got %v", err)
+	s := New(nil)
+	if err := s.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop before Start: %v", err)
+	}
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, serve := range map[string]func() error{
+		"Start": func() error { return s.Start(freeAddr(t)) },
+		"Serve": func() error { return s.Serve(lis) },
+	} {
+		done := make(chan error, 1)
+		go func() { done <- serve() }()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Errorf("%s after Stop = %v", name, err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s after Stop is still serving", name)
+		}
+	}
+	if conn, err := net.Dial("tcp", lis.Addr().String()); err == nil {
+		conn.Close()
+		t.Error("Serve after Stop left its listener open")
+	}
+}
+
+// Serve serves Handler on a listener the caller bound until Stop, and then returns nil.
+func TestServerServeUsesTheCallersListener(t *testing.T) {
+	s := New(nil)
+	s.HandleFunc("GET /smoke", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(lis) }()
+	waitForStatus(t, "http://"+lis.Addr().String()+"/smoke", http.StatusTeapot)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.Stop(ctx); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("Serve returned %v after Stop, want nil", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Serve did not return after Stop")
 	}
 }
 

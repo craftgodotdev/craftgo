@@ -27,7 +27,7 @@ type CreateProductReq struct {
 	PriceCents  shared.Cents         `json:"priceCents"`
 	Currency    *shared.CurrencyCode `json:"currency,omitempty"`
 	CategoryID  shared.NonEmptyID    `json:"categoryId"`
-	Tags        []string             `json:"tags,omitempty"`
+	Tags        []string             `json:"tags,omitzero"`
 }
 
 type GetProductReq struct {

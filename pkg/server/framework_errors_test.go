@@ -154,6 +154,32 @@ func TestWriteValidationErrorAnswersBodyTooLarge413(t *testing.T) {
 	}
 }
 
+// A raw request's logic that returns the error of a body read past its cap is answered 413,
+// unlogged, whatever wraps the error; one that returns another error after reading past the cap
+// is answered 413 too.
+func TestWriteErrorAnswersBodyTooLarge413(t *testing.T) {
+	logs := observeLogs(t)
+	read := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.ReadAll(r.Body)
+		if r.URL.Path == "/other" {
+			err = errors.New("ingest failed")
+		}
+		WriteError(w, r, fmt.Errorf("read upload: %w", err))
+	})
+	for _, path := range []string{"/wrapped", "/other"} {
+		req := httptest.NewRequest(http.MethodPost, path, io.NopCloser(strings.NewReader("more than eight bytes")))
+		req.ContentLength = -1
+		rec := httptest.NewRecorder()
+		WithLimits(read, Limits{MaxBodySize: 8}).ServeHTTP(rec, req)
+		if rec.Code != http.StatusRequestEntityTooLarge || rec.Body.String() != `{"message":"request entity too large"}`+"\n" {
+			t.Errorf("%s: got %d %q, want the JSON 413", path, rec.Code, rec.Body.String())
+		}
+	}
+	if n := logs.Len(); n != 0 {
+		t.Errorf("a body over its cap logged %d lines", n)
+	}
+}
+
 // A multipart body cut by its cap answers 413 without the validation hook wherever the cap
 // falls, a part header included, where the parser reports a malformed header.
 func TestMultipartBodyCutByItsCapAnswers413(t *testing.T) {

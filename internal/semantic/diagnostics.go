@@ -47,6 +47,9 @@ const (
 	CodeDuplicateGroupField = "decorator/duplicate-group-field"
 	// CodeCrossFieldNotOptional fires when a cross-field decorator names a field unfit for the group.
 	CodeCrossFieldNotOptional = "decorator/cross-field-not-optional"
+	// CodePatternNotECMA warns when a `@pattern` uses RE2 syntax that ECMA-262, the dialect of the
+	// OpenAPI `pattern` keyword, lacks or reads otherwise (`(?i)`, `\z`, `[[:alpha:]]`).
+	CodePatternNotECMA = "pattern/not-ecma"
 	// CodeMapKeyType fires when a map key is not a string or integer, or a scalar or enum over one.
 	CodeMapKeyType = "type/map-key"
 	// CodeMapValueType fires when a map value is an optional array or map (`map<string, int[]?>`).
@@ -115,9 +118,16 @@ const (
 	CodeBindingVerb = "binding/verb"
 	// CodeBindingFormWithoutFile fires when `@form` sits on a field of a request that carries no `file`.
 	CodeBindingFormWithoutFile = "binding/form-without-file"
+	// CodeBindingNested fires when a field bound to `@path`, `@query`, `@header`, `@cookie` or `@form`
+	// sits in a type a request, a response or an error body holds as a nested value.
+	CodeBindingNested = "binding/nested"
 	// CodeFilePosition fires when a `file` sits below a request's top level, or in a response, an
 	// error body or an event payload.
 	CodeFilePosition = "binding/file-position"
+	// CodeCookiePosition fires when a `cookie` is not the type of a `@cookie` field a response or
+	// an error body sets: in a request, without `@cookie`, or in an array, a map or a generic
+	// argument.
+	CodeCookiePosition = "binding/cookie-position"
 	// CodeGroupPackageStraddle fires when services of different DSL packages share an output directory.
 	CodeGroupPackageStraddle = "group/package-straddle"
 	// CodeGroupMethodCollision fires when services sharing an output directory declare one method name.
@@ -166,16 +176,6 @@ const (
 	// CodePackageName fires when a package name is one no generated Go package can take: a Go
 	// keyword or predeclared identifier, `main`, `init` or `_`.
 	CodePackageName = "package/name"
-	// CodeImportUnresolved fires when `import "path"` names no design folder.
-	CodeImportUnresolved = "import/unresolved"
-	// CodeImportEscape fires when an import path is absolute or its first segment is `.` or `..`.
-	CodeImportEscape = "import/escape"
-	// CodeImportDuplicate fires when one file imports a path twice.
-	CodeImportDuplicate = "import/duplicate"
-	// CodeImportAliasConflict fires when two imports of one file share an alias, explicit or implicit.
-	CodeImportAliasConflict = "import/alias-conflict"
-	// CodeImportSelf warns when a file imports a folder named after its own package.
-	CodeImportSelf = "import/self"
 	// CodeRefUnknownPackage fires when a qualified reference names an undeclared package.
 	CodeRefUnknownPackage = "ref/unknown-package"
 	// CodeRefUnknownSymbol fires when a type reference names nothing usable as a type.

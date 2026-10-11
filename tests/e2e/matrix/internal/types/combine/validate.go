@@ -208,10 +208,8 @@ func (v *PairsChoice) Validate() error {
 
 // Validate returns the first constraint v violates, or nil.
 func (v *PairsContact) Validate() error {
-	if v.Email != nil {
-		if _, _err := mail.ParseAddress(*v.Email); _err != nil {
-			return fmt.Errorf("email: not a valid email")
-		}
+	if v.Email != nil && !_isEmail(*v.Email) {
+		return fmt.Errorf("email: not a valid email")
 	}
 	if v.Phone != nil && !_pattern1.MatchString(*v.Phone) {
 		return fmt.Errorf("phone: does not match pattern")
@@ -340,7 +338,7 @@ func (v *PairsStr) Validate() error {
 	if l := utf8.RuneCountInString(v.Email); l < 3 || l > 254 {
 		return fmt.Errorf("email: length out of range [3, 254]")
 	}
-	if _, _err := mail.ParseAddress(v.Email); _err != nil {
+	if !_isEmail(v.Email) {
 		return fmt.Errorf("email: not a valid email")
 	}
 	if !_pattern2.MatchString(v.Email) {
@@ -544,4 +542,11 @@ func (v *FieldRulesFailedBody) Validate() error {
 		return fmt.Errorf("field: length greater than 40")
 	}
 	return nil
+}
+
+// _isEmail reports whether v is a bare RFC 5322 addr-spec, as JSON Schema `email` is: no
+// display name, comment, angle brackets or surrounding space.
+func _isEmail(v string) bool {
+	a, err := mail.ParseAddress(v)
+	return err == nil && a.Name == "" && a.String() == "<"+v+">"
 }

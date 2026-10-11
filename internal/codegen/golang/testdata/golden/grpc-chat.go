@@ -14,7 +14,7 @@ import (
 func (s *Server) Chat(stream grpc.BidiStreamingServer[pb.HelloRequest, pb.HelloReply]) error {
 	ctx := stream.Context()
 	l := service.NewChatService(ctx, s.svcCtx)
-	if err := l.Chat(stream); err != nil {
+	if err := l.Chat(rpc.ValidateBidiStream(stream)); err != nil {
 		return rpc.Error(ctx, err)
 	}
 	return nil

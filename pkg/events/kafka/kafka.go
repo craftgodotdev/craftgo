@@ -140,9 +140,11 @@ func WithMaxDeliveries(n int) Option {
 	return func(t *Transport) { t.maxDeliveries = n }
 }
 
-// WithLockRenewInterval sets how often a share-group record's lock is renewed
-// while its handler runs. Default 10s, under the broker's 30s lock; zero stops
-// renewing. Renewal needs Kafka 4.2, which [Transport.Subscribe] checks.
+// WithLockRenewInterval sets how often the acquisition locks of a share group's
+// fetched records are renewed, each until it is answered: the record being
+// handled and those waiting behind it. Default 10s, under the broker's 30s
+// lock; zero stops renewing. Renewal needs Kafka 4.2, which
+// [Transport.Subscribe] checks.
 func WithLockRenewInterval(d time.Duration) Option {
 	return func(t *Transport) { t.lockRenew = d }
 }
@@ -401,6 +403,12 @@ func (t *Transport) producerClient() (*kgo.Client, error) {
 // Subscribe starts a read loop per subscription, each running until ctx is
 // cancelled. The first failure stops registration and is returned; loops
 // already started stay live.
+//
+// Once ctx ends or [Transport.Close] runs, a loop hands no record over and
+// polls no more. A record whose handler failed after ctx ended, the chain
+// asking for nothing or for redelivery, goes back to the broker with the
+// records never handed over: a share group releases them, and a classic group
+// commits only the records handled before them.
 func (t *Transport) Subscribe(ctx context.Context, subs []events.Subscription) error {
 	for _, sub := range subs {
 		if err := t.subscribeOne(ctx, sub); err != nil {
@@ -433,9 +441,9 @@ func (t *Transport) subscribeOne(ctx context.Context, sub events.Subscription) e
 }
 
 // openConsumer opens one subscription's client, probing share support first;
-// after [Transport.Close] it opens nothing. A batch subscription's classic
-// client commits only what [Transport.consumeBatches] does, and its share
-// client acquires at most a batch per fetch.
+// after [Transport.Close] it opens nothing. A classic client commits only what
+// the read loop does, and a batch subscription's share client acquires at most
+// a batch per fetch.
 func (t *Transport) openConsumer(ctx context.Context, group, topic string, batch *events.Batch) (*kgo.Client, error) {
 	if t.isClosed() {
 		return nil, fmt.Errorf("kafka: open consumer for %q: %w", topic, ErrClosed)
@@ -446,13 +454,13 @@ func (t *Transport) openConsumer(ctx context.Context, group, topic string, batch
 			return nil, err
 		}
 		opts[0] = kgo.ShareGroup(group)
+	} else {
+		// franz-go would commit what a poll returned, handled or not, on its
+		// interval, at the next poll and when the client leaves the group.
+		opts = append(opts, kgo.DisableAutoCommit())
 	}
-	if batch != nil {
-		if t.share {
-			opts = append(opts, kgo.ShareMaxRecords(int32(min(batch.Max, math.MaxInt32))), kgo.ShareMaxRecordsStrict())
-		} else {
-			opts = append(opts, kgo.DisableAutoCommit())
-		}
+	if batch != nil && t.share {
+		opts = append(opts, kgo.ShareMaxRecords(int32(min(batch.Max, math.MaxInt32))), kgo.ShareMaxRecordsStrict())
 	}
 	cl, err := t.newClient(group, opts...)
 	if err != nil {
@@ -569,36 +577,42 @@ func (t *Transport) release(group, topic string) {
 	}
 }
 
-// consume is one subscription's read loop. A classic group commits every
-// polled record, failed or not: its offset is a per-partition high-water mark.
+// consume is one subscription's read loop, handing the records of a fetch over one at a
+// time. A classic group commits each record whose handling ended, failed or not: its
+// offset is a per-partition high-water mark. Once ctx ends or the transport closes, no
+// record reaches the handler and nothing is polled again: the records left, and one whose
+// handling the shutdown cut short, go back to the broker.
 func (t *Transport) consume(ctx context.Context, cl *kgo.Client, sub events.Subscription) {
 	defer t.releaseClient(cl)
-	for {
+	for !t.stopping(ctx) {
 		fetches := cl.PollFetches(ctx)
-		if fetches.IsClientClosed() || ctx.Err() != nil {
+		recs := fetches.Records()
+		if fetches.IsClientClosed() || t.stopping(ctx) {
+			t.handBack(recs...)
 			return
 		}
 		fetches.EachError(func(topic string, _ int32, err error) {
-			if ctx.Err() == nil {
-				t.report(sub, nil, fmt.Errorf("kafka: fetch %s: %w", topic, err))
-			}
+			t.report(sub, nil, fmt.Errorf("kafka: fetch %s: %w", topic, err))
 		})
 
-		var polled []*kgo.Record
-		fetches.EachRecord(func(rec *kgo.Record) {
-			polled = append(polled, rec)
-			t.deliver(ctx, cl, sub, rec)
-		})
-		if !t.share && len(polled) > 0 {
-			if err := cl.CommitRecords(ctx, polled...); err != nil && ctx.Err() == nil {
-				t.report(sub, nil, fmt.Errorf("kafka: commit: %w", err))
-			}
+		// Every record of the fetch is acquired until answered, so each keeps its
+		// lock while the ones ahead of it are handled.
+		stop := t.holdOpen(ctx, cl, recs...)
+		handled := 0
+		for handled < len(recs) && !t.stopping(ctx) && t.deliver(ctx, sub, recs[handled]) {
+			handled++
 		}
+		stop()
+		t.handBack(recs[handled:]...)
+		// The records handled are a prefix in partition order, so committing them leaves
+		// every record after them uncommitted.
+		t.commit(ctx, cl, sub, recs[:handled])
 	}
 }
 
-// deliver hands one record to the subscription and answers for it.
-func (t *Transport) deliver(ctx context.Context, cl *kgo.Client, sub events.Subscription, rec *kgo.Record) {
+// deliver hands one record to the subscription and answers for it. It reports false,
+// leaving the record unanswered, when the shutdown cut its handling short.
+func (t *Transport) deliver(ctx context.Context, sub events.Subscription, rec *kgo.Record) bool {
 	msg := decode(sub.Event, rec)
 	msg.SetDeliveries(int(rec.DeliveryCount()))
 
@@ -608,15 +622,15 @@ func (t *Transport) deliver(ctx context.Context, cl *kgo.Client, sub events.Subs
 		if t.share {
 			rec.Ack(kgo.AckAccept)
 		}
-		return
+		return true
 	}
 
-	stop := t.holdOpen(ctx, cl, rec)
 	err := sub.Handle(withRecord(ctx, rec), msg)
-	stop()
-
 	if err != nil {
 		t.report(sub, msg, err)
+	}
+	if interrupted(ctx, msg, err) {
+		return false
 	}
 	if t.share {
 		// The chain never sees the cap turn its Redeliver into a reject.
@@ -624,6 +638,52 @@ func (t *Transport) deliver(ctx context.Context, cl *kgo.Client, sub events.Subs
 			t.report(sub, msg, fmt.Errorf("kafka: giving up on %s after %d deliveries - the chain asked for another and WithMaxDeliveries is %d", sub.Event, msg.Deliveries(), t.maxDeliveries))
 		}
 		rec.Ack(t.ackFor(msg))
+	}
+	return true
+}
+
+// stopping reports whether sub's read loop must stop handing records over: ctx, the
+// subscription's, has ended, or [Transport.Close] has run.
+func (t *Transport) stopping(ctx context.Context) bool {
+	return ctx.Err() != nil || t.isClosed()
+}
+
+// interrupted reports whether the shutdown cut the handling of msg short: it failed with
+// err after ctx, the subscription's context, ended, and the chain asked for nothing or for
+// another delivery. Such a record goes back to the broker; [WithMaxDeliveries] does not
+// turn it into a reject.
+func interrupted(ctx context.Context, msg *events.Message, err error) bool {
+	if err == nil || ctx.Err() == nil {
+		return false
+	}
+	d := msg.Disposition()
+	return d == events.DispositionUnset || d == events.DispositionRedeliver
+}
+
+// handBack returns recs, never answered, to the broker: a share group releases them for
+// another delivery, and a classic group leaves them uncommitted.
+func (t *Transport) handBack(recs ...*kgo.Record) {
+	if !t.share {
+		return
+	}
+	for _, rec := range recs {
+		rec.Ack(kgo.AckRelease)
+	}
+}
+
+// commitTimeout bounds a classic group's commit, which the shutdown does not cut short.
+const commitTimeout = 10 * time.Second
+
+// commit commits recs, records whose handling ended, in a classic group. It outlives ctx so
+// a subscription that stops keeps the work it finished.
+func (t *Transport) commit(ctx context.Context, cl *kgo.Client, sub events.Subscription, recs []*kgo.Record) {
+	if t.share || len(recs) == 0 {
+		return
+	}
+	commitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), commitTimeout)
+	defer cancel()
+	if err := cl.CommitRecords(commitCtx, recs...); err != nil && !t.isClosed() {
+		t.report(sub, nil, fmt.Errorf("kafka: commit: %w", err))
 	}
 }
 
@@ -633,10 +693,11 @@ func (t *Transport) report(sub events.Subscription, msg *events.Message, err err
 	}
 }
 
-// holdOpen renews the acquisition lock of recs until the returned func is
-// called, flushing each renewal at once so it arrives before the lock lapses.
+// holdOpen renews the acquisition lock of each of recs not yet answered until the
+// returned func is called, flushing each renewal at once so it arrives before the lock
+// lapses. franz-go drops the renewal of a record already answered.
 func (t *Transport) holdOpen(ctx context.Context, cl *kgo.Client, recs ...*kgo.Record) func() {
-	if !t.share || t.lockRenew <= 0 {
+	if !t.share || t.lockRenew <= 0 || len(recs) == 0 {
 		return func() {}
 	}
 	done := make(chan struct{})
@@ -699,8 +760,11 @@ func decode(contract string, rec *kgo.Record) *events.Message {
 	return out
 }
 
-// Close shuts every client this transport opened and drops its group claims;
-// a publish it cuts off, and a publish or subscribe after it, returns [ErrClosed].
+// Close shuts every client this transport opened, at once, and drops its group
+// claims; a publish it cuts off, and a publish or subscribe after it, returns
+// [ErrClosed]. A record still in a handler then, and in a classic group each
+// one handled since the last commit, is delivered again: cancelling the
+// subscriptions' context first lets each loop answer and commit what it handled.
 func (t *Transport) Close() error {
 	t.mu.Lock()
 	t.closed = true

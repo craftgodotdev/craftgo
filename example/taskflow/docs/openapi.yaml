@@ -1302,6 +1302,56 @@ paths:
       - bearer: []
       tags:
       - tasks
+  /projects/v1/{projectId}/tasks/bulk:
+    post:
+      description: Bulk-create up to 100 tasks in one request. Larger body budget
+        than the default.
+      operationId: BulkCreateTasks
+      parameters:
+      - in: path
+        name: projectId
+        required: true
+        schema:
+          $ref: '#/components/schemas/ID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkCreateTasksReqBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkCreateTasksRespBody'
+          description: Created
+      security:
+      - bearer: []
+      tags:
+      - tasks
+  /projects/v1/{projectId}/tasks/reindex:
+    post:
+      description: Rebuild the project's task search index. Long-running; capped at
+        30s.
+      operationId: reindexProjectTasks
+      parameters:
+      - in: path
+        name: projectId
+        required: true
+        schema:
+          $ref: '#/components/schemas/ID'
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReindexRespBody'
+          description: Created
+      security:
+      - bearer: []
+      tags:
+      - tasks
   /projects/v1/{projectId}/tasks/{id}:
     get:
       description: Fetch one task.
@@ -1577,56 +1627,6 @@ paths:
       - bearer: []
       tags:
       - attachments
-  /projects/v1/{projectId}/tasks/bulk:
-    post:
-      description: Bulk-create up to 100 tasks in one request. Larger body budget
-        than the default.
-      operationId: BulkCreateTasks
-      parameters:
-      - in: path
-        name: projectId
-        required: true
-        schema:
-          $ref: '#/components/schemas/ID'
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/BulkCreateTasksReqBody'
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BulkCreateTasksRespBody'
-          description: Created
-      security:
-      - bearer: []
-      tags:
-      - tasks
-  /projects/v1/{projectId}/tasks/reindex:
-    post:
-      description: Rebuild the project's task search index. Long-running; capped at
-        30s.
-      operationId: reindexProjectTasks
-      parameters:
-      - in: path
-        name: projectId
-        required: true
-        schema:
-          $ref: '#/components/schemas/ID'
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ReindexRespBody'
-          description: Created
-      security:
-      - bearer: []
-      tags:
-      - tasks
   /projects/v2:
     get:
       description: 'List projects (v2: owner + status filters, richer resource).'

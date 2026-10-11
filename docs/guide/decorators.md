@@ -52,28 +52,28 @@ The decorator set is closed - an unknown decorator fires `decorator/unknown`. If
 | -------------- | ---------------------------------------------------------- |
 | `file`         | Above the `package` line at the top of a `.craftgo` file   |
 | `type`         | Above a `type` declaration                                 |
-| `field`        | After a field in a `type` body                             |
+| `field`        | Above a field in a `type` body, or after it on its line    |
 | `enum`         | Above an `enum` declaration                                |
-| `enumValue`    | After an enum value (`Active @doc("...")`)                 |
+| `enumValue`    | Above an enum value, or after it on its line (`Active @doc("...")`) |
 | `error`        | Above an `error` declaration                               |
-| `errorField`   | After a field in an `error` body                           |
-| `scalar`       | After a `scalar` declaration                               |
+| `errorField`   | Above a field in an `error` body, or after it on its line  |
+| `scalar`       | Above a `scalar` declaration, or after it on its line      |
 | `service`      | Above a `service` declaration                              |
 | `method`       | Above an HTTP method inside a service body                 |
 | `middleware`   | Above a `middleware` declaration                           |
 | `event`        | Above an `event` declaration                               |
 
-The decorators of a field or an enum value follow it: on its line, or on lines of their own below it, up to the next member. A decorator on a line of its own between two fields therefore decorates the upper one, even across a blank line or a comment:
+A decorator on a line of its own decorates what is below it, across blank lines and comments; one on a field's or an enum value's line after its type or value decorates that member:
 
 ```craftgo
 type T {
-    x string
-    @minLength(1)
+    x string @minLength(1)
+    @maxLength(5)
     y string
 }
 ```
 
-Here `@minLength(1)` is `x`'s. A field takes decorators written above it only as the first member of its body or right below a mixin. An enum value takes none from above: above the first value they are an error.
+Here `@minLength(1)` is `x`'s and `@maxLength(5)` is `y`'s. Decorators on lines of their own with no member below them in a body are a parse error, and a mixin takes none, above it or on its line.
 
 ## Documentation and lifecycle
 
@@ -197,7 +197,7 @@ can't match the `present-and-non-null` the OpenAPI fragment advertises.
 
 ## Field validators
 
-> **Required-by-default**: every field is required unless its type carries the `?` suffix. There is no `@required` decorator - to mark a field optional, write `name string?`. To allow `null` while keeping the field mandatory, add `@nullable`. To pre-fill an absent value, add `@default(...)` (which also auto-marks the field optional on save).
+> **Required-by-default**: every field is required unless its type carries the `?` suffix. There is no `@required` decorator - to mark a field optional, write `name string?`. To allow `null` while keeping the field mandatory, add `@nullable`. To fill a value left out or sent as `null`, add `@default(...)` (which also auto-marks the field optional on save).
 
 > **Error-body validators are spec-only.** Validators (`@minLength`, `@pattern`, `@range`, ...) on `error` body fields surface in the generated OpenAPI schema constraints but produce **no runtime check** - errors are emitted server-side from your handler, so the framework cannot validate something it just constructed. `validate.go` does generate a `Validate()` on the error's `<Name>Body`, which your handler may call before `New<Name>Err(...)`; nothing else calls it. Treat the constraints on error fields as documentation contracts that consumer SDKs read.
 
@@ -227,7 +227,7 @@ binary length - and are not advertised in the OpenAPI schema (an OpenAPI
 `maxLength` on a `bytes` field would count base64 characters, a different
 number).
 
-**Available formats** (`@format(...)`): `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. Most delegate to the Go standard library (`net`, `net/mail`, `net/url`, `time`, `encoding/*`): email, url, uri, ipv4/ipv6, cidr, mac, datetime/date/time, base64, base64url and json; uuid, phone, creditcard and hexcolor use a regex.
+**Available formats** (`@format(...)`): `email`, `url`, `uri`, `uuid`, `datetime` (RFC 3339), `date`, `time`, `phone`, `ipv4`, `ipv6`, `cidr`, `mac`, `creditcard`, `base64`, `base64url`, `hexcolor`, `json`. Each follows its RFC, as the OpenAPI `format` of the same name does; uuid, creditcard and hexcolor use a regex, and the others a check function built on the Go standard library. [Validators](/guide/validators#strings) lists what each accepts.
 
 One more value is not a check at all: [`@format(raw)`](/guide/types-and-scalars#raw-encoded-values-bytes-format-raw), valid only on a `bytes` field, says the bytes already ARE the value in the message's own encoding and the codec must embed them untouched.
 
@@ -284,7 +284,7 @@ Run on `file` fields (a request that holds one is `multipart/form-data`, with or
 
 | Decorator           | Args                | Effect                                |
 | ------------------- | ------------------- | ------------------------------------- |
-| `@maxSize(bytes)`   | `(size)`            | Cap upload size. Accepts `2MB`, `8KB`, etc. |
+| `@maxSize(bytes)`   | `(size)`            | Cap upload size, enforced while the part is read. Accepts `2MB`, `8KB`, etc. |
 | `@mimeTypes([...])` | string array        | Allowed media types or `type/*` ranges |
 
 ```craftgo
@@ -315,7 +315,7 @@ On a `?` field `@nullable` is redundant (`decorator/redundant`): `?` already all
 
 ### `@default(value)`
 
-Pre-fill the field before JSON decode. If the client omits the field, the default survives; if present, decode overwrites.
+Fill the field when the client leaves it out, in a request type or a type nested in its body; a value the client sends wins. On an error field, `New<Name>Err` gives an optional field the body leaves nil its default.
 
 | Sites | field, errorField |
 | -------- | -------- |
@@ -343,7 +343,7 @@ type ListReq {
 
 ### `@json("key")`
 
-The JSON key of a body field when it is not the field name - a contract another system owns, or a key the parser would read as a mixin. The Go struct tag, the OpenAPI property and validation messages all carry it. A field bound off the body (`@path`, `@query`, `@header`, `@cookie`, `@form`) names its wire location in that decorator instead.
+The JSON key of a body field when it is not the field name - a contract another system owns, or a key the parser would read as a mixin. The Go struct tag, the OpenAPI property and validation messages all carry it. A field bound off the body (`@path`, `@query`, `@header`, `@cookie`, `@form`) names its wire location in that decorator instead. The key is what encoding/json takes as a tag name: letters, digits, spaces and the punctuation `!#$%&()*+-./:;<=>?@[]^_{|}~`. Any other character, such as a quote, a comma, a backslash, a backtick, `'` or `€`, would make encoding/json ignore the key and use the Go field name, so it is `decorator/argvalue`, as is the key `-`.
 
 | Sites | field, errorField |
 | -------- | -------- |
@@ -385,9 +385,9 @@ Tell the handler where to read each field from. Mutually exclusive (a field has 
 | `@cookie`     | field, errorField | Request cookie (input) / response cookie (error fields) |
 | `@form`       | field          | Multipart form field                                       |
 
-An array `@header` reads a list header: every line of it, split at commas (`X-Ids: 1, 2` and two `X-Ids` lines bind the same). A `@form` text part is read from the multipart body only; a query parameter of the same name is not a stand-in for it.
+An array `@header` reads a list header: every line of it, split at the commas outside a quoted string (`X-Ids: 1, 2` and two `X-Ids` lines bind the same; `"a,b", c` is two elements, the first with its quotes). A `@form` text part is read from the multipart body only; a query parameter of the same name is not a stand-in for it.
 
-`@path`, `@query`, `@header`, `@cookie` and `@form` take an optional string for an explicit wire name; `@body("name")` is accepted but names nothing - a body field's JSON key is set with `@json("key")`:
+`@path`, `@query`, `@header`, `@cookie` and `@form` take an optional string for an explicit wire name; `@body("name")` is accepted but names nothing - a body field's JSON key is set with `@json("key")`. A path, query, header or cookie name rides the generated struct tag, a Go raw string, so one holding a backtick is `decorator/argvalue`:
 
 ```craftgo
 type GetUserReq {
@@ -418,21 +418,57 @@ A field with no binding decorator whose name matches a `{name}` variable of the 
 
 When the request carries a `file`, its body becomes `multipart/form-data` and every body or `@form` field rides a form part, which holds a string, a bool, a number, a scalar or enum over one, or a single-level array of those; a struct, a map, a generic instance or a nested array there is `binding/type`. A request with no `file` has no form parts, so `@form` there is `binding/form-without-file`: drop it and the field rides the JSON body.
 
-**Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / `http.SetCookie(...)` instead of the JSON body - the JSON tag is automatically `json:"-"` (with a `header:` / `cookie:` binding key alongside) so the same field doesn't double up. Non-string values (`int`, `bool`, `float`, scalars and enums of those) are formatted to their wire string via `strconv`, just like the request-side binder parses them; an optional (`T?`) header is written only when non-nil, and a `string[]` header emits one value per element. The explicit-name argument applies here too:
+A binding decorator binds only on a field of the request, response or error type itself, a mixin's fields included. A field of a type that one of them holds as a nested value rides inside the JSON body, where no binding reaches it, so `@path`, `@query`, `@header`, `@cookie` or `@form` on it is `binding/nested`: move the field up, or let a mixin bring it there.
+
+**Response-side bindings on response and error types.** `@header` / `@cookie` on a response struct or error body field write the value onto `w.Header()` / a `Set-Cookie` instead of the JSON body, the cookie with the attributes its `@cookie` declares (below) - the JSON tag is automatically `json:"-"` (with a `header:` / `cookie:` binding key alongside) so the same field doesn't double up. Non-string values (`int`, `bool`, `float`, scalars and enums of those) are formatted to their wire string via `strconv`, just like the request-side binder parses them; an optional (`T?`) header is written only when non-nil, and a `string[]` header emits one value per element. The explicit-name argument applies here too:
 
 ```craftgo
 type PaginatedResp {
     items   shared.ID[]
     count   int      @header("X-Total-Count")   // strconv.Itoa → X-Total-Count: 42
     nextURL string?  @header("X-Next")           // only written when present
-    active  bool     @cookie("active")           // Set-Cookie: active=true
-    session string   @cookie("session_id")       // Set-Cookie: session_id=...
+    active  bool     @cookie("active")           // Set-Cookie: active=true; Path=/; HttpOnly; Secure; SameSite=Lax
+    session string   @cookie("session_id")       // Set-Cookie: session_id=...; Path=/; HttpOnly; Secure; SameSite=Lax
 }
 
 error TooManyRequests RateLimitedErr {
     retryAfter int  @header("Retry-After")       // error responses can ship custom headers
 }
 ```
+
+**Cookie attributes.** A cookie the server sets, from a response's or an error's `@cookie` field, carries the attributes its `@cookie` names after the cookie's name; each one left out takes a safe default.
+
+| Attribute | Value | Left out |
+|---|---|---|
+| `path` | a path starting with `/` | `"/"`, every path of the site |
+| `domain` | a host name, a leading `.` allowed | none: the host that set it alone |
+| `maxAge` | a duration of whole seconds (`24h`), or an int of seconds | none: the cookie lasts the browser session |
+| `httpOnly` | `true` or `false` | `true`: scripts cannot read it |
+| `secure` | `true` or `false` | `true`: sent over HTTPS only; browsers treat `http://localhost` as secure |
+| `sameSite` | `lax`, `strict` or `none` (which needs `secure`) | `lax` |
+
+```craftgo
+type Session {
+    token    string  @cookie("sid", maxAge: 24h, sameSite: strict)
+    theme    string  @cookie("theme", httpOnly: false)    // scripts may read it
+    remember cookie? @cookie("remember", maxAge: 720h)    // the logic decides, per request
+}
+```
+
+A field of a value type, as `string`, gives the cookie its value, and its attributes are the design's. A field typed `cookie` is an `*http.Cookie` the logic sets per response. craftgo generates `New<Type><Field>Cookie(value)`, which returns the cookie with the declared attributes; the logic changes what the request decides, as a lifetime the user picked or `MaxAge: -1` to delete the cookie at logout, and returns it:
+
+```go
+func (l *LoginService) Login(req *types.LoginReq) (*types.Session, error) {
+	s := &types.Session{Token: token}
+	if req.RememberDays > 0 {
+		s.Remember = types.NewSessionRememberCookie(token)
+		s.Remember.MaxAge = req.RememberDays * 24 * 60 * 60
+	}
+	return s, nil
+}
+```
+
+The cookie goes out under the name the design gives it, whatever the logic set, and a nil `cookie` sets none. A `cookie` field must carry `@cookie` and sit on a response type or an error body, as a single value: not in a request, which reads a cookie's value alone, nor in an array, a map or a generic argument (`binding/cookie-position`). A request's `@cookie` field reads the value; attributes on it apply only where its type is a response.
 
 ## Service decorators
 
@@ -794,7 +830,9 @@ decorator would parse but produce no runtime or spec effect - which
 hides the JSON-only constraint from authors. The decorator surface
 stays small and honest: the transport pipeline is JSON in, JSON out,
 and the codec is swappable wholesale via `server.SetGlobalJSONCodec`
-when a project wants sonic / jsoniter in place of `encoding/json`.
+when a project wants sonic or goccy/go-json in place of `encoding/json`,
+given a codec that honours `omitzero` (see
+[Runtime API](/reference/runtime-api#json-codec)).
 When one side needs another wire format, hand that side to logic with
 `@rawRequest` / `@rawResponse` below - logic then owns the bytes, and
 the block on that side stays the documented contract.
@@ -931,6 +969,7 @@ Some decorator combinations are rejected (or flagged) by the semantic analyzer:
 | Decorator      | Conflicts with                                                                              | Why                                                       |
 | -------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | `@sensitive`   | All validators, all bindings, `@nullable`, `@default`                                       | Field never crosses the wire - constraints meaningless    |
+| `@nullable`    | `@default`                                                                                  | A member sent as `null` takes the default, so it never reads as null |
 | `@passthrough` | `@rawRequest`, `@rawResponse` (and the two flags together)                                  | Redundant, not rejected: `decorator/redundant` warning, identical output - write one spelling |
 
 Wrong-site placement (`@prefix` on a field, `@length` on a number) fires `decorator/placement` or `decorator/typemismatch`.

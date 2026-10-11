@@ -182,7 +182,7 @@ func generateRoutesForSegment(contribs []segment, cfg *config.Config, projectRoo
 	}
 	for _, c := range contribs {
 		for m := range c.methods() {
-			full := route.Resolve(cfg.OpenAPI.BasePath, c.svc.Primary, m)
+			full := route.ServePath(cfg.OpenAPI.BasePath, c.svc.Primary, m)
 			mws := middlewareNames(c.svc, m)
 			call, needsTime := buildHandlerCall(m, c.svc.Decorators(m), alias)
 			if needsTime {

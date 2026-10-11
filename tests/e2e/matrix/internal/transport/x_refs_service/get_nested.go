@@ -28,10 +28,10 @@ func GetNested(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 		}
 		req.GKey = r.PathValue("gKey")
 		_q := r.URL.Query()
-		if !server.BindValuePtr(w, r, "g32", "int", _q.Get("g32"), &req.G32, server.ParseSigned[int32]) {
+		if !server.BindValuePtr(w, r, "g32", "int32", _q.Get("g32"), &req.G32, server.ParseSigned[int32]) {
 			return
 		}
-		if !server.BindValuePtr(w, r, "p64", "int", _q.Get("p64"), &req.P64, server.ParseSigned[int64]) {
+		if !server.BindValuePtr(w, r, "p64", "int64", _q.Get("p64"), &req.P64, server.ParseSigned[int64]) {
 			return
 		}
 		if err := req.Validate(); err != nil {

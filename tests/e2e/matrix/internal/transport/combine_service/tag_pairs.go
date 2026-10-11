@@ -17,6 +17,9 @@ import (
 // TagPairs returns the POST TagPairs handler.
 func TagPairs(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.PairsDoc
 		if err := server.JSON().Decode(r.Body, &req); err != nil {
 			server.WriteValidationError(w, r, err)
@@ -32,7 +35,8 @@ func TagPairs(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("ETag", resp.Etag)
-		server.WriteResponse(w, r, http.StatusCreated, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp, func(w http.ResponseWriter) {
+			w.Header().Set("ETag", resp.Etag)
+		})
 	}
 }

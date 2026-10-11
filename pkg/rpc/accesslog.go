@@ -36,7 +36,9 @@ func AccessLogSkipMethods(methods ...string) AccessLogOption {
 
 // AccessLog logs a `grpc access` line to logger when each call or stream ends,
 // with `method`, `code`, `latency` and the trace ids that a stats handler
-// installed with [WithStatsHandler] puts on the context.
+// installed with [WithStatsHandler] puts on the context. A call that panics is
+// logged with the Internal code [Recovery] answers it with, and the panic goes
+// on to Recovery.
 func AccessLog(logger log.Logger, opts ...AccessLogOption) Interceptor {
 	cfg := &accessLogConfig{skip: map[string]bool{}}
 	for _, o := range opts {
@@ -50,23 +52,24 @@ func AccessLog(logger log.Logger, opts ...AccessLogOption) Interceptor {
 		logger.WithContext(ctx).Info("grpc access", fields...)
 	}
 	return Interceptor{
-		Unary: func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		Unary: func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 			if cfg.skip[info.FullMethod] {
 				return handler(ctx, req)
 			}
 			start := time.Now()
-			resp, err := handler(ctx, req)
-			logLine(ctx, info.FullMethod, start, err)
-			return resp, err
+			// err keeps the panic's code unless the handler returns.
+			err = errPanicked
+			defer func() { logLine(ctx, info.FullMethod, start, err) }()
+			return handler(ctx, req)
 		},
-		Stream: func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		Stream: func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) (err error) {
 			if cfg.skip[info.FullMethod] {
 				return handler(srv, ss)
 			}
 			start := time.Now()
-			err := handler(srv, ss)
-			logLine(ss.Context(), info.FullMethod, start, err)
-			return err
+			err = errPanicked
+			defer func() { logLine(ss.Context(), info.FullMethod, start, err) }()
+			return handler(srv, ss)
 		},
 	}
 }

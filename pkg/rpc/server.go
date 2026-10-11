@@ -19,8 +19,8 @@ import (
 )
 
 // Server collects interceptors, options and service registrations, and builds
-// the *grpc.Server on the first call to [Server.GRPCServer], [Server.Serve] or
-// [Server.Start].
+// the *grpc.Server on the first call to [Server.GRPCServer], [Server.Serve],
+// [Server.Start] or [Server.Stop].
 type Server struct {
 	mu         sync.Mutex
 	chain      []Interceptor
@@ -31,6 +31,7 @@ type Server struct {
 	services   []registration
 	inner      *grpc.Server
 	health     *health.Server
+	stopped    bool
 }
 
 // registration is a RegisterService call recorded until the server is built.
@@ -154,8 +155,14 @@ func (s *Server) GRPCServer() *grpc.Server {
 }
 
 // Start listens on addr and serves until [Server.Stop]; it returns nil once
-// stopped, or the listen or serve error.
+// stopped, at once when Stop came first, or the listen or serve error.
 func (s *Server) Start(addr string) error {
+	s.mu.Lock()
+	stopped := s.stopped
+	s.mu.Unlock()
+	if stopped {
+		return nil
+	}
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -164,7 +171,7 @@ func (s *Server) Start(addr string) error {
 }
 
 // Serve serves on lis until [Server.Stop]; it returns nil once stopped, or the
-// serve error.
+// serve error. After a Stop it closes lis and returns nil at once.
 func (s *Server) Serve(lis net.Listener) error {
 	if err := s.GRPCServer().Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 		return err
@@ -173,15 +180,15 @@ func (s *Server) Serve(lis net.Listener) error {
 }
 
 // Stop sets the health service NOT_SERVING and stops gracefully; if ctx ends
-// first it cuts off the calls still running and returns ctx's error. Stop on a
-// server never built does nothing.
+// first it cuts off the calls still running and returns ctx's error. A Stop
+// that comes before [Server.Start] or [Server.Serve] builds the server stopped,
+// so they return at once.
 func (s *Server) Stop(ctx context.Context) error {
+	srv := s.GRPCServer()
 	s.mu.Lock()
-	srv, h := s.inner, s.health
+	s.stopped = true
+	h := s.health
 	s.mu.Unlock()
-	if srv == nil {
-		return nil
-	}
 	if h != nil {
 		h.Shutdown()
 	}

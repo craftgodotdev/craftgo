@@ -29,8 +29,11 @@ func main() {
 		fmt.Println(version)
 		return
 	case "help", "--help", "-h":
-		usage()
-		return
+		if len(os.Args) == 2 {
+			usage()
+			return
+		}
+		err = runHelp(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "craftgo: unknown command %q\n\n", os.Args[1])
 		usage()
@@ -60,7 +63,20 @@ Usage:
 ` + commandUsage["init"] + "\n\n" + commandUsage["gen"] + "\n\n" + commandUsage["fmt"] + `
 
   craftgo version         Print the CLI version
-  craftgo help            Show this message`)
+  craftgo help [command]  Show this message, or the command's usage`)
+}
+
+// runHelp prints the usage of the command args names, as `<command> -h` does.
+func runHelp(args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("help: too many arguments (got %d, want at most 1)", len(args))
+	}
+	text, ok := commandUsage[args[0]]
+	if !ok {
+		return fmt.Errorf("help: unknown command %q - use init, gen or fmt", args[0])
+	}
+	fmt.Println("Usage:\n" + text)
+	return nil
 }
 
 // commandUsage holds each command's part of the usage text; `help` prints
@@ -90,18 +106,25 @@ var commandUsage = map[string]string{
                                            resolve against (default: the
                                            parent of the design folder)
                           Without -f, walks upward from <path> (or cwd) for
-                          craftgo.design.yaml, probing direct subdirs (any
-                          name) at each level. The Go module path is read
-                          from go.mod, walking up from the project root -
-                          run "go mod init <module>" first if it does not
-                          exist yet.`,
+                          craftgo.design.yaml, probing the direct subdirs at
+                          each level but hidden ones, vendor and
+                          node_modules, and stopping at the directory that
+                          holds go.mod or is a repository root. gen first
+                          prints the design folder and project root it
+                          uses. The Go module path is read from go.mod,
+                          walking up from the project root - run
+                          "go mod init <module>" first if it does not exist
+                          yet.`,
 	"fmt": `  craftgo fmt [-l] [-w] [path]
                           Canonical-format the design files (.craftgo, .cg)
-                          under <path> (default: cwd), or the file it names.
-                          A file with an error is reported and left untouched.
+                          under <path> (default: cwd) - not in hidden
+                          directories, vendor or node_modules - or the file
+                          it names. A file with an error is reported and
+                          left untouched.
                           Flags:
                             -l   list the files that differ, write nothing,
                                  and exit 1 if any differ
                             -w   write the result back (the default; with
-                                 -l, list and write)`,
+                                 -l, list and write); -w=false prints it
+                                 to stdout instead`,
 }

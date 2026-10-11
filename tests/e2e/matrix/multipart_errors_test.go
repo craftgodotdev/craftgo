@@ -12,9 +12,9 @@ import (
 	"github.com/craftgodotdev/craftgo/pkg/server"
 )
 
-// A multipart handler answers a body it cannot parse as a failed validation,
-// 400 with the parser's reason, and a body read past its cap 413, both as JSON
-// {"message": ...}.
+// A multipart handler answers a body of another media type 415, a body it cannot
+// parse as a failed validation, 400 with the parser's reason, and a body read past
+// its cap 413, each as JSON {"message": ...}.
 func TestMultipartParseFailures(t *testing.T) {
 	ts := bootAll(t)
 	capped := bootAll(t, func(srv *server.Server) { srv.SetDefaultMaxBodySize(64) })
@@ -33,6 +33,19 @@ func TestMultipartParseFailures(t *testing.T) {
 	}
 
 	const avatar = "/api/bindings/users/u1/avatar"
+	var oversized bytes.Buffer
+	big := multipart.NewWriter(&oversized)
+	bigPart, err := big.CreateFormFile("avatar_file", "a.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bigPart.Write(bytes.Repeat([]byte("x"), 6<<20)); err != nil {
+		t.Fatal(err)
+	}
+	if err := big.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	for _, tc := range []struct {
 		name, url, contentType string
 		body                   io.Reader
@@ -40,9 +53,15 @@ func TestMultipartParseFailures(t *testing.T) {
 		want                   string
 	}{
 		{
+			// avatar_file takes @maxSize(5MB): the read stops there, under the body cap.
+			name: "a part past its @maxSize", url: ts.URL + avatar, contentType: big.FormDataContentType(),
+			body: bytes.NewReader(oversized.Bytes()), status: http.StatusBadRequest,
+			want: "avatar_file: file size exceeds 5242880 bytes",
+		},
+		{
 			name: "not multipart", url: ts.URL + avatar, contentType: "application/json",
-			body: strings.NewReader(`{}`), status: http.StatusBadRequest,
-			want: "request Content-Type isn't multipart/form-data",
+			body: strings.NewReader(`{}`), status: http.StatusUnsupportedMediaType,
+			want: "unsupported media type",
 		},
 		{
 			name: "no boundary", url: ts.URL + avatar, contentType: "multipart/form-data",

@@ -6,7 +6,9 @@ package server
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -21,6 +23,7 @@ type Server struct {
 	mux     *http.ServeMux
 	chain   []Middleware
 	httpSrv *http.Server
+	stopped bool
 
 	cors *CORSOptions
 
@@ -51,8 +54,11 @@ type Middleware func(http.Handler) http.Handler
 // Option configures a Server at construction time.
 type Option func(*Server)
 
-// New returns a Server with the health probes, a 30s read timeout and a 32 KB header cap,
-// then applies opts. The first argument is ignored.
+// DefaultMaxBodySize is the body cap [New] gives the routes [Server.Handle] registers.
+const DefaultMaxBodySize = 10 << 20
+
+// New returns a Server with the health probes, a 30s read timeout, a [DefaultMaxBodySize] body
+// cap and a 32 KB header cap, then applies opts. The first argument is ignored.
 func New(_ any, opts ...Option) *Server {
 	s := &Server{
 		mux:                http.NewServeMux(),
@@ -60,7 +66,7 @@ func New(_ any, opts ...Option) *Server {
 		healthPaths:        HealthPaths{Liveness: DefaultLivenessPath, Readiness: DefaultReadinessPath},
 		registeredMW:       map[string]Middleware{},
 		defaultReadTimeout: 30 * time.Second,
-		defaultMaxBodySize: 0,
+		defaultMaxBodySize: DefaultMaxBodySize,
 		defaultMaxHeaderKB: 32,
 	}
 	for _, o := range opts {
@@ -108,10 +114,12 @@ func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) *Server {
 }
 
 // Handle registers h under a ServeMux pattern, wrapped in mws with the first outermost. The
-// default body cap and handler timeout set at this point also wrap h, each unless h is a
-// [WithLimits] handler that sets its own.
+// limits of a [WithLimits] h, and the default body cap and handler timeout set at this point for
+// those it leaves unset, wrap mws too, so a route middleware that reads the body or waits on a
+// dependency is held to them.
 func (s *Server) Handle(pattern string, h http.Handler, mws ...Middleware) *Server {
-	s.mux.Handle(pattern, NewChain(mws...).Then(s.applyDefaults(h)))
+	h, l := s.limitsOf(h)
+	s.mux.Handle(pattern, l.guard(NewChain(mws...).Then(h)))
 	return s
 }
 
@@ -134,7 +142,8 @@ func (s *Server) With(names []string, h http.HandlerFunc) http.HandlerFunc {
 	return chain.Then(h).ServeHTTP
 }
 
-// SetDefaultReadTimeout sets the http.Server ReadTimeout [Server.Start] uses; the default is 30s.
+// SetDefaultReadTimeout sets the http.Server ReadTimeout [Server.Start] uses, a deadline on
+// reading a whole request, its body included; the default is 30s, and 0 sets none.
 func (s *Server) SetDefaultReadTimeout(d time.Duration) *Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -161,7 +170,7 @@ func (s *Server) SetDefaultWriteTimeout(d time.Duration) *Server {
 }
 
 // SetDefaultMaxBodySize sets the body cap in bytes ([BodyLimit]) that [Server.Handle] gives
-// routes registered afterwards; 0, the default, sets none.
+// routes registered afterwards; the default is [DefaultMaxBodySize], and 0 sets none.
 func (s *Server) SetDefaultMaxBodySize(bytes int64) *Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -177,18 +186,28 @@ func (s *Server) SetDefaultMaxHeaderSize(kb int) *Server {
 	return s
 }
 
-// SetCORS adds CORS handling with opts to the chain; a second call replaces the first.
+// SetCORS adds CORS handling with opts to the chain; a second call replaces the first. It panics
+// on opts allowing credentials to any origin, `*`, a pair browsers refuse: list the origins.
 func (s *Server) SetCORS(opts CORSOptions) *Server {
+	if opts.AllowCredentials && slices.Contains(opts.AllowedOrigins, "*") {
+		panic("server: CORS cannot allow credentials to any origin (*); list the origins instead")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cors = &opts
 	return s
 }
 
-// SetJSONCodec calls the process-wide [SetGlobalJSONCodec].
+// SetJSONCodec calls [SetGlobalJSONCodec]. The codec is the process's, not s's: every server in
+// the process, and every handler calling [JSON], gets c.
+//
+// Deprecated: call [SetGlobalJSONCodec], which says what it changes.
 func (s *Server) SetJSONCodec(c JSONCodec) error { return SetGlobalJSONCodec(c) }
 
-// SetStrictJSON calls the process-wide [SetStrictJSON].
+// SetStrictJSON calls the package-level [SetStrictJSON]. The switch is the process's, not s's:
+// it turns strict decoding on or off for every server in the process.
+//
+// Deprecated: call the package-level [SetStrictJSON], which says what it changes.
 func (s *Server) SetStrictJSON(strict bool) error { return SetStrictJSON(strict) }
 
 // SetLogger installs l as [log.Default], the logger the server's [Recovery] writes to; nil is
@@ -202,7 +221,9 @@ func (s *Server) SetLogger(l log.Logger) *Server {
 // follows a later [Server.SetLogger].
 func (s *Server) Logger() log.Logger { return log.Default() }
 
-// Codec returns the codec in effect, the one [JSON] returns.
+// Codec returns the codec in effect, the process's, which [JSON] returns.
+//
+// Deprecated: call [JSON].
 func (s *Server) Codec() JSONCodec { return JSON() }
 
 // Handler returns what [Server.Start] serves: the [WithTelemetry] middleware, [Recovery] logging
@@ -292,11 +313,41 @@ func (p *statusProbe) Write(b []byte) (int, error) {
 }
 
 // Start serves [Server.Handler] on addr until [Server.Stop] and returns nil after a graceful
-// stop. Request headers must arrive within 10s, and idle connections close after 120s.
+// stop, or at once when Stop came first. Request headers must arrive within 10s, and idle
+// connections close after 120s.
 func (s *Server) Start(addr string) error {
+	srv := s.httpServer(addr)
+	if srv == nil {
+		return nil
+	}
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+// Serve is [Server.Start] on lis, a listener the caller bound; it closes lis when it returns.
+func (s *Server) Serve(lis net.Listener) error {
+	srv := s.httpServer(lis.Addr().String())
+	if srv == nil {
+		_ = lis.Close()
+		return nil
+	}
+	if err := srv.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+// httpServer returns the http.Server that Start and Serve run, or nil once [Server.Stop] ran.
+func (s *Server) httpServer(addr string) *http.Server {
 	// Handler locks s.mu, so it runs before the lock is taken.
 	handler := s.Handler()
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopped {
+		return nil
+	}
 	s.httpSrv = &http.Server{
 		Addr:              addr,
 		Handler:           handler,
@@ -306,18 +357,14 @@ func (s *Server) Start(addr string) error {
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    s.defaultMaxHeaderKB * 1024,
 	}
-	srv := s.httpSrv
-	s.mu.Unlock()
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
-	}
-	return nil
+	return s.httpSrv
 }
 
-// Stop shuts the server down gracefully with [http.Server.Shutdown]; before [Server.Start]
-// it does nothing.
+// Stop shuts the server down gracefully with [http.Server.Shutdown]. A Stop that comes before
+// [Server.Start] or [Server.Serve] makes them return nil at once.
 func (s *Server) Stop(ctx context.Context) error {
 	s.mu.Lock()
+	s.stopped = true
 	srv := s.httpSrv
 	s.mu.Unlock()
 	if srv == nil {

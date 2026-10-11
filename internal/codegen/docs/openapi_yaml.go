@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"go.yaml.in/yaml/v2"
 	yamlv3 "gopkg.in/yaml.v3"
-	"sigs.k8s.io/yaml"
 )
 
 // marshalDocument renders doc as YAML that YAML 1.1 and YAML 1.2 readers both
@@ -22,7 +22,14 @@ func marshalDocument(doc *openapi3.T) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	out, err := yaml.JSONToYAML(escapeUnreadable(j))
+	// A MapSlice keeps each object's keys in the JSON's order, which encoding/json sorts; yaml.v2
+	// sorting a map's keys itself compares their digits as numbers, an order that is not total
+	// (Op7RespBody, Op12ReqBody, Op71ReqBody), so the output varied with map iteration.
+	var obj yaml.MapSlice
+	if err := yaml.Unmarshal(escapeUnreadable(j), &obj); err != nil {
+		return nil, err
+	}
+	out, err := yaml.Marshal(obj)
 	if err != nil {
 		return nil, err
 	}

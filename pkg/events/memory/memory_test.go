@@ -374,3 +374,121 @@ func TestCancellingABatchSubscriptionHandsItsBatchOver(t *testing.T) {
 		t.Errorf("batch sizes = %v, want one batch of 2", sizes)
 	}
 }
+
+// Each group gets its own copy of the payload: a handler writing into its bytes changes
+// neither another group's nor the publisher's.
+func TestEachGroupGetsItsOwnPayload(t *testing.T) {
+	tr := memory.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	written := make(chan struct{})
+	var seenByB string
+	if err := tr.Subscribe(ctx, []events.Subscription{{
+		Event: "orders.Placed", Consumer: "A", Group: "a",
+		Handle: func(_ context.Context, m *events.Message) error {
+			m.Payload[0] = 'X'
+			close(written)
+			return nil
+		},
+	}, {
+		Event: "orders.Placed", Consumer: "B", Group: "b",
+		Handle: func(_ context.Context, m *events.Message) error {
+			<-written
+			seenByB = string(m.Payload)
+			return nil
+		},
+	}}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	body := []byte(`{"id":1}`)
+	if err := tr.Publish(context.Background(), &events.Message{Event: "orders.Placed", Payload: body}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	tr.Drain()
+
+	if seenByB != `{"id":1}` {
+		t.Errorf("group b was handed %s - group a's write reached it", seenByB)
+	}
+	if string(body) != `{"id":1}` {
+		t.Errorf("the publisher's payload is now %s", body)
+	}
+}
+
+type ctxKey struct{}
+
+// A handler runs on its subscription's context: it carries that context's values and sees
+// it end.
+func TestAHandlerRunsOnItsSubscriptionsContext(t *testing.T) {
+	tr := memory.New()
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), ctxKey{}, "deployable"))
+	defer cancel()
+
+	running := make(chan struct{})
+	var value any
+	var ended error
+	if err := tr.Subscribe(ctx, []events.Subscription{{
+		Event: "orders.Placed", Consumer: "C",
+		Handle: func(ctx context.Context, _ *events.Message) error {
+			value = ctx.Value(ctxKey{})
+			close(running)
+			select {
+			case <-ctx.Done():
+				ended = ctx.Err()
+			case <-time.After(5 * time.Second):
+			}
+			return ended
+		},
+	}}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	if err := tr.Publish(context.Background(), &events.Message{Event: "orders.Placed"}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	<-running
+	cancel()
+	tr.Drain()
+
+	if value != "deployable" {
+		t.Errorf("the handler's context carries %v, want the subscription's value", value)
+	}
+	if !errors.Is(ended, context.Canceled) {
+		t.Errorf("the handler saw %v, want the subscription's context to end", ended)
+	}
+}
+
+// The batch a cancelled subscription hands over runs on a context that has not ended, keeps
+// the subscription's values, and is bounded.
+func TestABatchHandedOverOnCancelRunsOnALiveContext(t *testing.T) {
+	tr := memory.New()
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), ctxKey{}, "deployable"))
+	type handover struct {
+		value   any
+		err     error
+		bounded bool
+	}
+	got := make(chan handover, 1)
+	if err := tr.Subscribe(ctx, []events.Subscription{{
+		Event: "a.B", Consumer: "C", Group: "g",
+		Batch: &events.Batch{BatchSize: events.BatchSize{Max: 10, Wait: time.Hour},
+			Handle: func(ctx context.Context, _ []*events.Message) error {
+				_, bounded := ctx.Deadline()
+				got <- handover{ctx.Value(ctxKey{}), ctx.Err(), bounded}
+				return nil
+			}},
+	}}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	publishN(t, tr, 2)
+	cancel()
+	tr.Drain()
+
+	select {
+	case h := <-got:
+		if h.err != nil || h.value != "deployable" || !h.bounded {
+			t.Errorf("handed over on a context with err %v, value %v, deadline %v - want a live one carrying the subscription's value, with a deadline", h.err, h.value, h.bounded)
+		}
+	default:
+		t.Fatal("the filling batch was not handed over")
+	}
+}

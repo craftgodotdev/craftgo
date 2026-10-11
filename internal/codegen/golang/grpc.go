@@ -2,6 +2,7 @@ package golang
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/craftgodotdev/craftgo/internal/config"
 	"github.com/craftgodotdev/craftgo/internal/idents"
@@ -119,19 +120,25 @@ func generateGRPCServices(protos *protodesign.Set, cfg *config.Config, projectRo
 	return nil
 }
 
-// buildGRPCServiceData leaves every HTTP-only field zero, so service.tmpl renders the plain entry point.
+// grpcNotImplemented is what a new gRPC stub returns: the Unimplemented status.
+const grpcNotImplemented = `status.Error(codes.Unimplemented, "not implemented")`
+
+// buildGRPCServiceData renders the logic stub of an RPC from the template the HTTP stubs use.
 func buildGRPCServiceData(svc *protodesign.Service, m *protodesign.Method, imps grpcImports) serviceData {
 	set := grpcImportSet(imps.Module, svc, serviceNames)
 	sig := buildGRPCSignature(m, set.protoType(m.In), set.protoType(m.Out))
+	set.use(grpcCodesImport)
+	set.use(grpcStatusImport)
 	return serviceData{
-		Package:     svc.Package,
-		Service:     svc.Name,
-		Method:      m.Name,
-		ServiceName: idents.LogicTypeName(m.Name),
-		Doc:         docHead(m.Doc),
-		Entry:       []string{grpcEntry(svc.Name, m)},
-		Sig:         sig.Logic,
-		ImportDecl:  stubImportDecl(set, sig.Logic, imps.Svccontext),
+		Package:        svc.Package,
+		Service:        svc.Name,
+		Method:         m.Name,
+		ServiceName:    idents.LogicTypeName(m.Name),
+		Doc:            docHead(m.Doc),
+		Entry:          []string{grpcEntry(svc.Name, m)},
+		Sig:            sig.Logic,
+		NotImplemented: grpcNotImplemented,
+		ImportDecl:     stubImportDecl(set, sig.Logic, imps.Svccontext),
 	}
 }
 
@@ -179,13 +186,17 @@ func ValidateProtoOutputs(proj *semantic.Project, protos *protodesign.Set, cfg *
 			}
 		}
 	}
-	owners := map[string]string{}
+	// A case-insensitive file system holds two directories that differ only in case as one.
+	owners := map[string]segment{}
 	for s := range projectSegments(proj, cfg.Output.FileCase) {
-		owners[s.dir] = s.name
+		owners[strings.ToLower(s.dir)] = s
 	}
 	for _, svc := range protos.Services {
-		if owner, ok := owners[svc.Dir]; ok {
-			return fmt.Errorf("proto service %s and service %s both generate into %s/%s - rename one", svc.FullName, owner, cfg.Output.Service, svc.Dir)
+		if owner, ok := owners[strings.ToLower(svc.Dir)]; ok {
+			if owner.dir != svc.Dir {
+				return fmt.Errorf("proto service %s and service %s generate into %s/%s and %s/%s, one directory on a case-insensitive file system - rename one", svc.FullName, owner.name, cfg.Output.Service, svc.Dir, cfg.Output.Service, owner.dir)
+			}
+			return fmt.Errorf("proto service %s and service %s both generate into %s/%s - rename one", svc.FullName, owner.name, cfg.Output.Service, svc.Dir)
 		}
 	}
 	return nil

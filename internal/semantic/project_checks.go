@@ -113,7 +113,9 @@ type segClaim struct {
 }
 
 // checkProjectGroupChecks rejects an output directory shared by services of
-// different DSL packages, or by two services declaring one method name.
+// different DSL packages, or by two services declaring one method name. An
+// `extend service` with no primary in its package claims none: it is
+// reported as an orphan.
 func (c *projectChecks) checkProjectGroupChecks() {
 	claims := map[string][]segClaim{}
 	for pkgName, pkg := range c.proj.Packages {
@@ -121,6 +123,9 @@ func (c *projectChecks) checkProjectGroupChecks() {
 			continue
 		}
 		for svcName, si := range pkg.Services {
+			if si == nil || si.Primary == nil {
+				continue
+			}
 			for seg, claim := range serviceSegmentClaims(pkgName, svcName, si, c.fileCase) {
 				claims[seg] = append(claims[seg], claim)
 			}
@@ -196,7 +201,7 @@ func (c *projectChecks) reportGroupMemberCollisions(seg string, occs []segClaim)
 				pos: o.member.pos,
 				msg: fmt.Sprintf(
 					"%s %q of service %q collides with another service's %s of the same name in shared output directory %q - stubs are one file per member and the generated function is named after it, so both would claim %s.go and declare the same function; rename one or split the group",
-					o.member.kind, name, o.claim.svc, o.member.kind, seg, name),
+					o.member.kind, name, o.claim.svc, o.member.kind, seg, idents.FileName(name, c.fileCase)),
 				note: fmt.Sprintf("also declared by service %q, which emits here (%s)", o.claim.svc, claimSource(o.claim.group)),
 			}
 		}

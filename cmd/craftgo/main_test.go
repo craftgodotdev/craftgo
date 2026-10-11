@@ -38,7 +38,7 @@ func TestRunInitWritesScaffold(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runGen on scaffold: %v", err)
 	}
-	if strings.Contains(stderr, "craftgo: warning:") {
+	if strings.Contains(stderr, "warning:") {
 		t.Errorf("the init manifest raised warnings:\n%s", stderr)
 	}
 	for _, rel := range []string{
@@ -144,6 +144,81 @@ func TestRunGenContextOverridesTheWalkUpRoot(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "internal")); err == nil {
 		t.Error("gen wrote under the design folder's parent despite -c")
+	}
+}
+
+// gen names the design folder it read and the project root it writes under
+// before anything else.
+func TestRunGenNamesTheDesignAndTheProjectRoot(t *testing.T) {
+	dir := t.TempDir()
+	codeRoot := filepath.Join(dir, "services", "api")
+	mustWrite(t, dir, "go.mod", "module github.com/test/monorepo\n\ngo 1.24\n")
+	mustWrite(t, dir, "design/craftgo.design.yaml", "")
+	mustWrite(t, dir, "design/api.craftgo", minimalDesignDSL)
+	if err := os.MkdirAll(codeRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(filepath.Join(dir, "design"))
+	var err error
+	stdout, _ := captureOutput(t, func() { err = runGen([]string{"-c", codeRoot}) })
+	if err != nil {
+		t.Fatalf("runGen: %v", err)
+	}
+	want := "craftgo: design " + filepath.Join(dir, "design") + ", project root " + codeRoot + "\n"
+	if !strings.HasPrefix(stdout, want) {
+		t.Errorf("stdout = %q, want it to start %q", stdout, want)
+	}
+}
+
+// -c names an existing directory: a misspelt one, or a file, is refused
+// before anything is written.
+func TestRunGenRefusesAContextThatIsNoDirectory(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "go.mod", "module github.com/test/app\n\ngo 1.24\n")
+	mustWrite(t, dir, "design/craftgo.design.yaml", "")
+	mustWrite(t, dir, "design/api.craftgo", minimalDesignDSL)
+	t.Chdir(dir)
+	for arg, want := range map[string]string{
+		"./typo": "-c ./typo: no such directory",
+		"go.mod": "-c go.mod is a file",
+	} {
+		var err error
+		captureOutput(t, func() { err = runGen([]string{"-f", "design", "-c", arg}) })
+		if err == nil || !strings.HasPrefix(err.Error(), want) {
+			t.Errorf("-c %s: err = %v, want %q", arg, err, want)
+		}
+	}
+	for _, rel := range []string{"typo", "internal", "main.go"} {
+		if exists(t, dir, rel) {
+			t.Errorf("a refused -c still wrote %s", rel)
+		}
+	}
+}
+
+// --target with no name, as an unset variable gives, is refused rather than
+// read as every target.
+func TestRunGenRefusesAnEmptyTarget(t *testing.T) {
+	for _, arg := range []string{"", "go,"} {
+		err := runGen([]string{"--target", arg, "-f", "design"})
+		var ue usageError
+		if !errors.As(err, &ue) || !strings.Contains(err.Error(), "names no target - use go, docs") {
+			t.Errorf("--target %q: err = %v, want a usage error naming the targets", arg, err)
+		}
+	}
+}
+
+// `craftgo help <command>` prints the command's usage, as `<command> -h`
+// does; an unknown command is an error.
+func TestHelpPrintsTheCommandsUsage(t *testing.T) {
+	for name, text := range commandUsage {
+		var err error
+		stdout, _ := captureOutput(t, func() { err = runHelp([]string{name}) })
+		if err != nil || stdout != "Usage:\n"+text+"\n" {
+			t.Errorf("help %s: err = %v, stdout = %q", name, err, stdout)
+		}
+	}
+	if err := runHelp([]string{"deploy"}); err == nil || !strings.Contains(err.Error(), `unknown command "deploy"`) {
+		t.Errorf("help deploy: err = %v", err)
 	}
 }
 
@@ -324,6 +399,31 @@ openapi:
 	}
 }
 
+// gen prints each semantic warning on stderr, with its position, and still
+// generates.
+func TestRunGenPrintsSemanticWarnings(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "go.mod", "module github.com/test/app\n\ngo 1.24\n")
+	mustWrite(t, dir, "design/craftgo.design.yaml", "openapi:\n  basePath: api\n")
+	mustWrite(t, dir, "design/api.craftgo", "package api\n\ntype Page {\n\tlimit int @default(10)\n}\n\nservice S {\n\tget List /items { request Page  response Page }\n}\n")
+	var err error
+	_, stderr := captureOutput(t, func() { err = runGen([]string{"-f", filepath.Join(dir, "design")}) })
+	if err != nil {
+		t.Fatalf("runGen: %v", err)
+	}
+	for _, want := range []string{
+		filepath.Join(dir, "design", "api.craftgo") + ":4:12: warning: @default on non-optional field \"limit\"",
+		": warning: openapi.basePath \"api\" is malformed",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr lacks %q:\n%s", want, stderr)
+		}
+	}
+	if !exists(t, dir, "internal", "types", "api", "types.go") {
+		t.Error("a warning stopped the run")
+	}
+}
+
 // TestGenNotesAMainWithoutTheDocsEmbed checks that a run after `--target go`
 // names the gen-once main.go that does not embed the OpenAPI document now on
 // disk, and that a main.go written beside the document, or serving one another
@@ -426,7 +526,6 @@ func TestRunGenMultiPackage(t *testing.T) {
 	mustWrite(t, dir, "design/craftgo.design.yaml", "")
 
 	mustWrite(t, dir, "design/api.craftgo", `package design
-import "shared"
 
 type Login {
     user shared.User
@@ -546,7 +645,6 @@ func TestRunGenCrossPackageRequestResponse(t *testing.T) {
 	mustWrite(t, dir, "go.mod", "module github.com/test/cross\n\ngo 1.24\n")
 	mustWrite(t, dir, "design/craftgo.design.yaml", "")
 	mustWrite(t, dir, "design/api.craftgo", `package design
-import "shared"
 
 service Auth {
     post Login /login {

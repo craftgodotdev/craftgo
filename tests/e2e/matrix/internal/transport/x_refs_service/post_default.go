@@ -9,7 +9,6 @@ import (
 
 	service "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/service/x_refs_service"
 	types "github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xrefs"
-	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/internal/types/xshared"
 	"github.com/craftgodotdev/craftgo/tests/e2e/matrix/svccontext"
 )
 
@@ -18,13 +17,17 @@ import (
 // PostDefault returns the POST PostDefault handler.
 func PostDefault(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req types.XEnumDefault
-		{
-			__d := xshared.XColorRed
-			req.Color = &__d
+		if !server.RequireJSONBody(w, r) {
+			return
 		}
-		if err := server.JSON().Decode(r.Body, &req); err != nil {
+		var req types.XEnumDefault
+		var _b xEnumDefaultWire
+		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)
+			return
+		}
+		if _m := _b.to(&req); _m != "" {
+			server.WriteValidationError(w, r, server.MissingMember(_m))
 			return
 		}
 		if err := req.Validate(); err != nil {

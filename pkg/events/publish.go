@@ -231,10 +231,31 @@ func UnsentAt(indices []int, msgs []*Message, err error) *PartialPublishError {
 	return out
 }
 
+// EnvelopeError is a batch refused before any of it was sent, because of the envelope at
+// Index: [Bus.PublishAll] could not encode it, or the transport cannot carry it. Err says
+// why - [ErrNoCodec], an [*UnknownOptionError], the codec's error, and so on.
+type EnvelopeError struct {
+	// Index is the envelope's position in the batch.
+	Index int
+	// Event is its contract, empty when it has none.
+	Event string
+	Err   error
+}
+
+func (e *EnvelopeError) Error() string {
+	return fmt.Sprintf("events: envelope %d of the batch: %v", e.Index, e.Err)
+}
+
+func (e *EnvelopeError) Unwrap() error { return e.Err }
+
+// errNoContract is the cause of the [*EnvelopeError] an envelope without a contract gets.
+var errNoContract = errors.New("it has no contract name")
+
 // PublishAll encodes every envelope, then publishes them in one [BatchPublisher] call or
-// one at a time in order. It is not atomic: a partial failure is a [*PartialPublishError],
-// and a batch report that cannot be true becomes one naming every envelope unsent. A
-// cancelled ctx is refused as on [Bus.Publish].
+// one at a time in order. An envelope that will not encode refuses the whole batch, before
+// anything is sent, with an [*EnvelopeError] naming it. It is not atomic: a partial failure
+// is a [*PartialPublishError], and a batch report that cannot be true becomes one naming
+// every envelope unsent. A cancelled ctx is refused as on [Bus.Publish].
 func (b *Bus) PublishAll(ctx context.Context, envs []Envelope) error {
 	if len(envs) == 0 {
 		return nil
@@ -248,11 +269,11 @@ func (b *Bus) PublishAll(ctx context.Context, envs []Envelope) error {
 	msgs := make([]*Message, 0, len(envs))
 	for i, env := range envs {
 		if env.Event == "" {
-			return fmt.Errorf("events: envelope %d has no contract name", i)
+			return &EnvelopeError{Index: i, Err: errNoContract}
 		}
 		msg, err := b.encode(b.withDefaults(env))
 		if err != nil {
-			return err
+			return &EnvelopeError{Index: i, Event: env.Event, Err: err}
 		}
 		msgs = append(msgs, msg)
 	}

@@ -65,7 +65,7 @@ type Arr_MinZero struct {
 // Without the nil-guard, `len(nil) == 0` would fail the bound even
 // though the field is legitimately absent.
 type Arr_OptionalBound struct {
-	Tags []string `json:"tags,omitempty"`
+	Tags []string `json:"tags,omitzero"`
 }
 
 // Arr_PlainInts is a bare int slice with no per-element validators.
@@ -96,7 +96,7 @@ type Arr_Tag2D struct {
 // Outer nil-guard wraps the doubly-nested for-loops; the inner pair
 // runs only when the slice is non-nil.
 type Arr_Tag2DOptional struct {
-	Grid [][]Tag `json:"grid,omitempty"`
+	Grid [][]Tag `json:"grid,omitzero"`
 }
 
 // Arr_Tag3D - `Tag[][][]` exercises THREE-deep iteration. Three
@@ -159,7 +159,7 @@ type Map_Nested struct {
 // so its validator reduces to an outer nil-guard around any inner
 // iteration.
 type Map_Optional struct {
-	Counts map[string]int `json:"counts,omitempty"`
+	Counts map[string]int `json:"counts,omitzero"`
 }
 
 // Map_OptionalValue holds optional primitive map values: map[string]*int in

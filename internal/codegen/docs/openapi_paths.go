@@ -324,9 +324,11 @@ type headerSet struct {
 // fields in one `Set-Cookie` header, as OpenAPI has no response cookies.
 // Fields sharing a header name in any letter case make one header, spelled as
 // the first, whose schema admits each field's type; it takes the first
-// description and example given, Set-Cookie naming the cookies after them,
+// description and example given, Set-Cookie naming the cookies, each with the
+// attributes its field declares, after them,
 // is deprecated when every field is, and is required when every set sends it
-// whatever the body holds: from a field neither optional nor an array.
+// whatever the body holds: from a field neither optional nor an array, nor a
+// `cookie`, which the logic may leave nil.
 func buildResponseHeaders(sets []headerSet, pkg *semantic.Package, registry *genericRegistry) openapi3.Headers {
 	var names []string
 	spelled := map[string]string{}
@@ -349,7 +351,7 @@ func buildResponseHeaders(sets []headerSet, pkg *semantic.Package, registry *gen
 		return key
 	}
 	sent := make([]map[string]bool, len(sets))
-	var cookies []string
+	var cookies, cookieDocs []string
 	for i, set := range sets {
 		sent[i] = map[string]bool{}
 		for _, rf := range set.headers {
@@ -362,8 +364,9 @@ func buildResponseHeaders(sets []headerSet, pkg *semantic.Package, registry *gen
 		for _, rf := range set.cookies {
 			if name := wire.WireName(rf.Field, wire.BindCookie); !slices.Contains(cookies, name) {
 				cookies = append(cookies, name)
+				cookieDocs = append(cookieDocs, cookieDoc(rf, name))
 			}
-			if !rf.Field.Type.Optional {
+			if !rf.Field.Type.Optional && rf.Category != semantic.CatCookie {
 				sent[i][setCookie] = true
 			}
 		}
@@ -380,7 +383,7 @@ func buildResponseHeaders(sets []headerSet, pkg *semantic.Package, registry *gen
 		h := &openapi3.Header{}
 		docs[name].apply(&h.Parameter)
 		if key == setCookie && len(cookies) > 0 {
-			h.Description = appendDescription(h.Description, "Sets cookies: "+strings.Join(cookies, ", "))
+			h.Description = appendDescription(h.Description, "Sets cookies: "+strings.Join(cookieDocs, ", "))
 		}
 		h.Schema = schemas[name][0]
 		if len(schemas[name]) > 1 {
@@ -394,6 +397,37 @@ func buildResponseHeaders(sets []headerSet, pkg *semantic.Package, registry *gen
 
 // setCookie is the response header the @cookie fields ride.
 const setCookie = "Set-Cookie"
+
+// cookieDoc names the cookie rf sets with the attributes its @cookie
+// declares, as Set-Cookie spells them; a `cookie` field's logic may change
+// them.
+func cookieDoc(rf semantic.ResolvedField, name string) string {
+	attrs := wire.CookieAttrsOf(rf.Field)
+	var parts []string
+	if attrs.Path != "" {
+		parts = append(parts, "Path="+attrs.Path)
+	}
+	if attrs.Domain != "" {
+		parts = append(parts, "Domain="+attrs.Domain)
+	}
+	if attrs.MaxAge != 0 {
+		parts = append(parts, "Max-Age="+strconv.FormatInt(attrs.MaxAge, 10))
+	}
+	if attrs.HTTPOnly {
+		parts = append(parts, "HttpOnly")
+	}
+	if attrs.Secure {
+		parts = append(parts, "Secure")
+	}
+	if attrs.SameSite != "" {
+		parts = append(parts, "SameSite="+strings.ToUpper(attrs.SameSite[:1])+attrs.SameSite[1:])
+	}
+	doc := name + " (" + strings.Join(parts, "; ")
+	if rf.Category == semantic.CatCookie {
+		doc += "; the server may change them per response"
+	}
+	return doc + ")"
+}
 
 // schemaFromFields builds an inline object schema of the fields that ride
 // the body.

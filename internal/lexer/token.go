@@ -33,7 +33,6 @@ const (
 	// Keywords.
 
 	KwPackage
-	KwImport
 	KwType
 	KwEnum
 	KwError
@@ -86,7 +85,7 @@ var kindNames = map[Kind]string{
 	String: "String", RawString: "RawString",
 	Duration: "Duration", Size: "Size", PathWord: "PathWord",
 
-	KwPackage: "package", KwImport: "import", KwType: "type",
+	KwPackage: "package", KwType: "type",
 	KwEnum: "enum", KwError: "error", KwScalar: "scalar",
 	KwService: "service", KwExtend: "extend", KwMiddleware: "middleware",
 	KwRequest: "request", KwResponse: "response",
@@ -129,6 +128,12 @@ func spellings(first, last Kind) map[string]Kind {
 		m[kindNames[k]] = k
 	}
 	return m
+}
+
+// LookupKeyword returns the Kind of the reserved word s.
+func LookupKeyword(s string) (Kind, bool) {
+	k, ok := keywords[s]
+	return k, ok
 }
 
 // IsIdent reports whether s lexes as a single [Ident]: a letter or `_`, then

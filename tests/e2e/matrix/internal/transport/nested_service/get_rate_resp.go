@@ -21,7 +21,8 @@ func GetRateResp(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("X-Rate-Limit", strconv.Itoa(resp.Limit))
-		server.WriteResponse(w, r, http.StatusOK, resp)
+		server.WriteResponse(w, r, http.StatusOK, resp, func(w http.ResponseWriter) {
+			w.Header().Set("X-Rate-Limit", strconv.Itoa(resp.Limit))
+		})
 	}
 }

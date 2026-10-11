@@ -29,6 +29,5 @@ func NewListProjectsService(ctx context.Context, svcCtx *svccontext.ServiceConte
 
 // ListProjects implements ProjectService.ListProjects.
 func (l *ListProjectsService) ListProjects() (*types.ProjectsResp, error) {
-	// TODO: implement
-	return nil, nil
+	return &types.ProjectsResp{Items: []types.Project{}}, nil
 }

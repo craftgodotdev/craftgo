@@ -17,6 +17,9 @@ import (
 // ValidateRenamed returns the POST ValidateRenamed handler.
 func ValidateRenamed(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !server.RequireJSONBody(w, r) {
+			return
+		}
 		var req types.PairsRenamed
 		if err := server.JSON().Decode(r.Body, &req); err != nil {
 			server.WriteValidationError(w, r, err)
@@ -33,7 +36,8 @@ func ValidateRenamed(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 			server.WriteError(w, r, err)
 			return
 		}
-		w.Header().Set("ETag", resp.Etag)
-		server.WriteResponse(w, r, http.StatusCreated, resp)
+		server.WriteResponse(w, r, http.StatusCreated, resp, func(w http.ResponseWriter) {
+			w.Header().Set("ETag", resp.Etag)
+		})
 	}
 }

@@ -16,7 +16,7 @@ type Req { id string @header("a\"b") @minLength(1) }`)
 	}
 }
 
-// A quote in a @form name is escaped in the multipart FormFile key.
+// A quote in a @form name is escaped in the multipart file key.
 func TestGenerateTransportMultipartEscapesFormName(t *testing.T) {
 	src := `package design
 type UploadReq { avatar file @form("a\"b") }
@@ -32,7 +32,7 @@ service S { post Up /up { request UploadReq } }`
 	}
 	got := string(body)
 	mustParseGo(t, got)
-	if !strings.Contains(got, `r.FormFile("a\"b")`) {
+	if !strings.Contains(got, `r.MultipartForm.File["a\"b"]`) {
 		t.Errorf("multipart form name with a quote must be emitted as a quoted literal:\n%s", got)
 	}
 }

@@ -68,6 +68,24 @@ func TestUTF16Position(t *testing.T) {
 	}
 }
 
+// The byte-order mark opening a buffer is a character of its first line to the
+// client, which the lexer's columns leave out: each token there converts to
+// the client's position and back to its own offset.
+func TestPositionsAfterAByteOrderMark(t *testing.T) {
+	for _, src := range []string{"\ufeffpackage design\ntype A { a string }\n", "package design\n"} {
+		view := parseSnapshot("/t.craftgo", src)
+		for _, tok := range view.tokens {
+			if tok.Kind == lexer.EOF {
+				continue
+			}
+			pos := utf16Position(src, tok.Pos)
+			if off := offsetFromLSP(src, pos.Line, pos.Character); off != tok.Pos.Offset {
+				t.Errorf("%q: token %q at byte %d -> %v -> byte %d", src, tok.Text, tok.Pos.Offset, pos, off)
+			}
+		}
+	}
+}
+
 func TestIsUnderDesignRoot(t *testing.T) {
 	root := filepath.Join("/proj", "design")
 	cases := []struct {

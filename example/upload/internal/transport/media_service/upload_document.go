@@ -16,19 +16,24 @@ import (
 //
 // UploadDocument returns the POST UploadDocument handler.
 func UploadDocument(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
+	_limits := map[string]int64{"pdf": 50 << 20}
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(32 << 20); err != nil {
+		server.LimitParts(r, _limits)
+		if err := r.ParseMultipartForm(server.MultipartMemory); err != nil {
 			server.WriteValidationError(w, r, err)
 			return
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		var req types.UploadDocumentReq
+		if !server.RequirePresent(w, r, r.PostForm.Has("title"), "title", "form") {
+			return
+		}
 		req.Title = r.PostFormValue("title")
 		if _v := r.PostFormValue("notes"); _v != "" {
 			req.Notes = &_v
 		}
-		if _, header, err := r.FormFile("pdf"); err == nil {
-			req.PDF = header
+		if _fh := r.MultipartForm.File["pdf"]; len(_fh) > 0 {
+			req.PDF = _fh[0]
 		}
 		if err := req.Validate(); err != nil {
 			server.WriteValidationError(w, r, err)

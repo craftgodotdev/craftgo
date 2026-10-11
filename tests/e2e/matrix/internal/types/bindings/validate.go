@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -512,7 +513,7 @@ func (v *UploadReq) Validate() error {
 
 // Validate returns the first constraint v violates, or nil.
 func (v *UserAvatar) Validate() error {
-	if _u, _err := url.Parse(v.URL); _err != nil || (_u.Scheme != "http" && _u.Scheme != "https") {
+	if !_isURL(v.URL) {
 		return fmt.Errorf("url: not a valid URL")
 	}
 	if utf8.RuneCountInString(v.URL) > 2048 {
@@ -602,7 +603,7 @@ func (v *DuplicateKeyBody) Validate() error {
 
 // Validate returns the first constraint v violates, or nil.
 func (v *EmailTakenBody) Validate() error {
-	if _, _err := mail.ParseAddress(v.Email); _err != nil {
+	if !_isEmail(v.Email) {
 		return fmt.Errorf("email: not a valid email")
 	}
 	return nil
@@ -659,6 +660,36 @@ func (v *SharedStatusConflictBody) Validate() error {
 	return nil
 }
 
+// _isEmail reports whether v is a bare RFC 5322 addr-spec, as JSON Schema `email` is: no
+// display name, comment, angle brackets or surrounding space.
+func _isEmail(v string) bool {
+	a, err := mail.ParseAddress(v)
+	return err == nil && a.Name == "" && a.String() == "<"+v+">"
+}
+
+// _isURL reports whether v is an http or https URI with a host.
+func _isURL(v string) bool {
+	u, err := url.Parse(v)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Hostname() != "" && _isURIText(v)
+}
+
+// _isURIText reports whether v holds only the characters RFC 3986 allows in a URI, a `%` only
+// before two hex digits, and one `#` at most.
+func _isURIText(v string) bool {
+	for i := 0; i < len(v); i++ {
+		switch c := v[i]; {
+		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9':
+		case strings.IndexByte("-._~:/?#[]@!$&'()*+,;=", c) >= 0:
+		case c == '%' && i+2 < len(v) && strings.IndexByte("0123456789abcdefABCDEF", v[i+1]) >= 0 &&
+			strings.IndexByte("0123456789abcdefABCDEF", v[i+2]) >= 0:
+			i += 2
+		default:
+			return false
+		}
+	}
+	return strings.Count(v, "#") <= 1
+}
+
 // absentValue reports whether the type-parameter value p points to is a
 // missing `file` or `any`: a nil header or interface.
 func absentValue(p any) bool {
@@ -689,6 +720,13 @@ func validateReflect(rv reflect.Value) error {
 			return vv.Validate()
 		}
 		return validateReflect(rv.Elem())
+	}
+	// An offset of a day or more has no RFC 3339 form to encode the datetime in.
+	if t, ok := rv.Interface().(time.Time); ok {
+		if _, off := t.Zone(); off <= -86400 || off >= 86400 {
+			return fmt.Errorf("not a valid RFC 3339 datetime")
+		}
+		return nil
 	}
 	// A pointer-receiver Validate needs an addressable value, so a map value is copied.
 	if vv, ok := rv.Interface().(interface{ Validate() error }); ok {

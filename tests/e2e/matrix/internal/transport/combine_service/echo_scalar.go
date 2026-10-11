@@ -17,13 +17,17 @@ import (
 // EchoScalar returns the POST EchoScalar handler.
 func EchoScalar(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req types.DefaultsScalar
-		{
-			__d := types.PageSize(20)
-			req.Size = &__d
+		if !server.RequireJSONBody(w, r) {
+			return
 		}
-		if err := server.JSON().Decode(r.Body, &req); err != nil {
+		var req types.DefaultsScalar
+		var _b defaultsScalarWire
+		if err := server.JSON().Decode(r.Body, &_b); err != nil {
 			server.WriteValidationError(w, r, err)
+			return
+		}
+		if _m := _b.to(&req); _m != "" {
+			server.WriteValidationError(w, r, server.MissingMember(_m))
 			return
 		}
 		if err := req.Validate(); err != nil {

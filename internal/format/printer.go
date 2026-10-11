@@ -205,14 +205,6 @@ func (p *Printer) File(f *ast.File) {
 		p.endCode()
 		wroteAny = true
 	}
-	for i, imp := range f.Imports {
-		// A comment block between imports keeps the blank lines around it.
-		if flushBefore(imp.Pos.Line-len(imp.Doc)) || i == 0 {
-			p.blank(imp.Pos.Line)
-		}
-		p.Import(imp)
-		wroteAny = true
-	}
 	for i, d := range f.Decls {
 		// Without a package, the file's leading decorators and the comment
 		// above them go to the first declaration.
@@ -243,18 +235,6 @@ func (p *Printer) freeBefore(line int) []*ast.FreeComment {
 	blocks := p.free[:n]
 	p.free = p.free[n:]
 	return blocks
-}
-
-func (p *Printer) Import(imp *ast.Import) {
-	p.comments(imp.Pos.Line, imp.Doc)
-	p.line(imp.Pos.Line)
-	p.write("import")
-	words := []string{imp.PathText}
-	if imp.Alias != "" {
-		words = []string{imp.Alias, imp.PathText}
-	}
-	p.header(imp.Pos, words...)
-	p.endCode()
 }
 
 // Decl dispatches to the concrete printer for each top-level declaration.

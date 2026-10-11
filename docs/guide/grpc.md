@@ -27,6 +27,8 @@ Nothing here parses protobuf by hand: the `.proto` files are compiled in-process
 
 Put the `.proto` files under the design folder, beside any `.craftgo` files. The design folder is the **import root**: a proto imports a sibling by its path relative to that folder, and the well-known types (`google/protobuf/*.proto`) are always available.
 
+A proto you import but do not own - vendored googleapis, a shared contracts repository - goes under a `proto.includes` root instead: it is read, never generated, so it carries `option go_package` naming the Go package its code lives in. A root may sit inside the design folder too; the protos below it are then includes, imported by their path below that root, and not part of the design.
+
 ```
 design/
 ├── craftgo.design.yaml
@@ -60,7 +62,11 @@ message HelloReply {
 }
 ```
 
-`option go_package` is not needed. craftgo places every design proto's Go package under `output.pb` (default `./internal/pb`), mirroring the proto's directory: `design/greet/greet.proto` becomes `internal/pb/greet`, import path `<module>/internal/pb/greet`, Go package `greet`. A `go_package` you do write keeps its `;name` suffix for the package name; its path is ignored. Two protos in one directory must declare one package, as Go would demand of the directory, and a proto directly in the design root lands in `output.pb` itself as package `pb` - give it a directory. An RPC may not be named `Server` (the server struct's file), `Logger` (the `log.Logger` its logic type embeds) or so that its file is one the go command builds only for tests or one system (`RunTest` → `run_test.go`), and two RPCs may not be named `X` and `NewX` (the logic type and its constructor); each is refused before anything is written.
+`option go_package` is not needed. craftgo places every design proto's Go package under `output.pb` (default `./internal/pb`), mirroring the proto's directory: `design/greet/greet.proto` becomes `internal/pb/greet`, import path `<module>/internal/pb/greet`, Go package `greet`. A `go_package` you do write keeps its `;name` suffix for the package name; its path is ignored. Two protos in one directory must declare one package and one Go package name, as Go would demand of the directory, and a proto directly in the design root lands in `output.pb` itself as package `pb` - give it a directory. An RPC may not be named `Server` (the server struct's file), `Logger` (the `log.Logger` its logic type embeds) or so that its file is one the go command builds only for tests or one system (`RunTest` → `run_test.go`), and two RPCs may not be named `X` and `NewX` (the logic type and its constructor), nor two RPCs or services so that their files or directories differ only in case (`GetA` and `Geta` under `fileCase: camel`), which a case-insensitive file system holds as one; each is refused before anything is written, on every OS.
+
+A third-party proto belongs under `proto.includes`, not in the design folder, where its generated Go code would be a second copy of a package the binary may link too - two copies register the same proto and the binary panics at init. While the plugins run, gen refuses the copies the binary is certain to register twice: a well-known type (`google/protobuf/*`), which needs no copy at all, and a proto whose Go code the craftgo runtime itself links in (`google/rpc/*`, `google/api/httpbody.proto`, `grpc/health/*`, `grpc/reflection/*`, `grpc/binlog/*`, `opentelemetry/proto/*`, `io/prometheus/client/*`). A design proto whose `go_package` names a package of another module is generated as any other, its path ignored, with a warning in the run's notes: if that module is linked into the binary too, init panics with a duplicate registration, and moving the proto under `proto.includes` imports that package instead.
+
+Each directory is one Go package, so protos that import one way can still make two directories import each other: `a/a2.proto` → `b/b1.proto` → `a/a1.proto` makes packages `a` and `b` import one another, which Go refuses. Gen refuses that ring before anything is written and names the imports that close it; move protos between directories until the packages import one way.
 
 A design with protos alone - no `.craftgo` at all - is a plain gRPC service; a design with both boots both listeners from one `main.go`. A gRPC-only project needs no manifest key of its own: its config carries no `server:` or `docs:` block, and no OpenAPI document is written, because the document describes the `.craftgo` half and there is none.
 
@@ -128,7 +134,7 @@ func (s *Server) SayHello(ctx context.Context, req *pb.HelloRequest) (*pb.HelloR
 }
 ```
 
-`rpc.Validate` runs the request's own `Validate() error` when it has one - the method `protoc-gen-validate` generates - and answers `InvalidArgument`. A message without that method passes, so the call is inert until you add such a plugin; a validator with no method of its own, protovalidate among them, goes on the server as an interceptor instead.
+`rpc.Validate` runs the request's own `Validate() error` when it has one - the method `protoc-gen-validate` generates - and answers `InvalidArgument`. A message without that method passes, so the call is inert until you add such a plugin; a validator with no method of its own, protovalidate among them, goes on the server as an interceptor instead. A client-streaming or bidi RPC has no request up front: its logic gets the stream through `rpc.ValidateClientStream` or `rpc.ValidateBidiStream`, whose `Recv` runs the same check on every message it receives and returns a failure as the `InvalidArgument` error, so returning that error answers the call with it.
 
 The logic stub lands under `output.service`, from the same template the HTTP stubs use, and is yours once written:
 
@@ -148,9 +154,11 @@ func NewSayHelloService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 // SayHello implements Greeter.SayHello.
 func (l *SayHelloService) SayHello(req *pb.HelloRequest) (*pb.HelloReply, error) {
 	// TODO: implement
-	return nil, nil
+	return nil, status.Error(codes.Unimplemented, "not implemented")
 }
 ```
+
+Until you write it, a stub answers `Unimplemented` with the message `not implemented`, whatever its streaming shape, and the access log records that code.
 
 The four streaming shapes give the logic these signatures - the generic stream types `protoc-gen-go-grpc` declares:
 
@@ -192,10 +200,31 @@ shutdownGRPC, err := wiring.RegisterGRPC(ctx, grpcSrv, svc)
 
 - **Telemetry.** `tel.GRPCServerHandler()` is the gRPC twin of `tel.HTTPMiddleware()`: one `otelgrpc` stats handler emits the span and the `rpc.server.call.duration` histogram (`rpc_server_call_duration_seconds` on the Prometheus scrape), against the same providers and the same `serviceName`. It runs in the transport, ahead of every interceptor, so the access log and the logic's `log.Logger` carry `trace_id` / `span_id`. A traced stack adopts the caller's W3C trace context from the request metadata.
 - **Recovery** is always outermost: a panic answers `Internal` with an opaque message and is logged with its stack and the call's trace ids.
-- **Access log**: one `grpc access` line per call with `method`, `code` and `latency`; a stream logs once when it ends.
+- **Access log**: one `grpc access` line per call with `method`, `code` and `latency`; a stream logs once when it ends, and a call that panics logs the `Internal` that Recovery answers.
 - **Timeout** bounds unary calls to `grpc.handlerTimeout`; a handler that returns after the deadline has its late response dropped for `DeadlineExceeded`. Streams are not bounded.
 - **Health and reflection.** `grpc.health.v1` is registered and reports `SERVING` for the server and each registered service, then `NOT_SERVING` once `Stop` begins. Reflection follows `grpc.reflection` in `config.yaml`. Neither reaches the interceptors or the traces, as the HTTP probes never reach the middleware chain.
-- **Shutdown.** `grpcSrv.Stop(ctx)` drains in-flight RPCs within the budget and cuts off the rest when it runs out, beside the HTTP drain and the telemetry flush.
+- **Listening and shutdown.** The listener binds before it logs `grpc listening`, so the line names the real port of a `:0`, and one that cannot bind shuts the process down as a signal does, with exit status 1. On SIGINT or SIGTERM `main.go` stops the gRPC and HTTP listeners at once: `grpcSrv.Stop(ctx)` turns the health service `NOT_SERVING` and drains in-flight RPCs within the 5s budget, side by side with the HTTP drain, then cuts off the rest and logs `grpc drain cut off calls` if the budget runs out; the telemetry flush comes last. A `Stop` that comes before `Start` or `Serve` makes them return at once.
+
+The listener runs in a goroutine of its own, and the shutdown stops it beside the HTTP one:
+
+```go
+go func() {
+	lis, err := net.Listen("tcp", cfg.GRPC.Addr)
+	if err == nil {
+		log.Default().Info("grpc listening", log.String("addr", lis.Addr().String()))
+		err = grpcSrv.Serve(lis)
+	}
+	if err != nil {
+		log.Default().Error("grpc server start", log.Err(err))
+		failed <- struct{}{} // main waits on a signal or on failed, then shuts down
+	}
+}()
+
+// ...after the signal or the failure, beside the HTTP drain:
+if err := grpcSrv.Stop(shutdownCtx); err != nil {
+	log.Default().Warn("grpc drain cut off calls", log.Err(err))
+}
+```
 
 ### Errors
 
@@ -277,7 +306,7 @@ craftgo: ./main.go predates the gRPC services and never calls wiring.RegisterGRP
 craftgo: ./config/config.go predates the gRPC services and has no GRPCConfig - it is generated once, so add the `grpc:` block by hand (docs/guide/grpc.md shows it)
 ```
 
-Add the `GRPCConfig` struct and its default to `config.go`, the `grpc:` block to `config.yaml`, and the listener block above to `main.go`; the wiring, the server layer and the stubs are already there. The reverse holds for a gRPC project that gains its first route, and for one that drops its last proto: `wiring/grpc.go` is swept, and `craftgo gen` names the `main.go` that still calls `RegisterGRPC`. The pb code of that last proto stays under `internal/pb/`, which a design with no proto leaves alone; delete it by hand.
+Add the `GRPCConfig` struct and its default to `config.go`, the `grpc:` block to `config.yaml`, and the listener block above to `main.go`; the wiring, the server layer and the stubs are already there. The reverse holds for a gRPC project that gains its first route - `craftgo gen` names the `main.go` with no HTTP listener and the `config.go` with no `Server` or `Docs` config for it to read - and for one that drops its last proto: `wiring/grpc.go` is swept, and `craftgo gen` names the `main.go` that still calls `RegisterGRPC`. The pb code of that last proto stays under `internal/pb/`, which a design with no proto leaves alone; delete it by hand.
 
 The protos are compiled on every run, `--target docs` included: a proto that does not compile fails the run before anything is written, the way a design error does. Only the plugins are skipped when the Go target is not selected.
 

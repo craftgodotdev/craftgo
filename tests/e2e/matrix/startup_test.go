@@ -27,6 +27,7 @@ func wiredContext() *svccontext.ServiceContext {
 	svc.ProfileAuth = middleware.NewProfileAuthMiddleware("")
 	svc.RateLimit = middleware.NewRateLimitMiddleware()
 	svc.RequestStamp = middleware.NewRequestStampMiddleware()
+	svc.Signature = middleware.NewSignatureMiddleware()
 	svc.Timing = middleware.NewTimingMiddleware()
 	return svc
 }

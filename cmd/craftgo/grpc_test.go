@@ -96,7 +96,7 @@ func TestRunGenProtoOnlyProjectCompiles(t *testing.T) {
 	if exists(t, dir, "docs") || exists(t, dir, "internal", "routes") {
 		t.Error("a proto-only design has no HTTP output")
 	}
-	main := mustContain(t, dir, "main.go", "wiring.RegisterGRPC(", "rpc.WithStatsHandler(tel.GRPCServerHandler())", "grpcSrv.Start(cfg.GRPC.Addr)")
+	main := mustContain(t, dir, "main.go", "wiring.RegisterGRPC(", "rpc.WithStatsHandler(tel.GRPCServerHandler())", `net.Listen("tcp", cfg.GRPC.Addr)`, "grpcSrv.Serve(lis)")
 	if strings.Contains(main, "server.New(") || strings.Contains(main, "wiring.Register(") {
 		t.Error("a proto-only main.go must not boot an HTTP listener")
 	}
@@ -120,7 +120,7 @@ func TestRunGenMixedProjectCompiles(t *testing.T) {
 	mustWrite(t, dir, "design/api.craftgo", routesOnlyDesign)
 	mustWrite(t, dir, "design/greet/greet.proto", greetProto)
 	genProject(t, dir)
-	mustContain(t, dir, "main.go", "wiring.Register(ctx, srv, svc)", "wiring.RegisterGRPC(ctx, grpcSrv, svc)", "srv.Start(cfg.Server.Addr)", "grpcSrv.Start(cfg.GRPC.Addr)")
+	mustContain(t, dir, "main.go", "wiring.Register(ctx, srv, svc)", "wiring.RegisterGRPC(ctx, grpcSrv, svc)", "srv.Serve(lis)", "grpcSrv.Serve(lis)")
 	if !exists(t, dir, "internal", "routes", "thing_service", "routes.go") || !exists(t, dir, "internal", "grpc", "greeter", "server.go") {
 		t.Error("both halves must be generated")
 	}
@@ -148,8 +148,8 @@ func TestGenSummaryCountsWhatTheRunWrites(t *testing.T) {
 		if err != nil {
 			t.Fatalf("runGen: %v", err)
 		}
-		if !strings.HasPrefix(stdout, c.want) {
-			t.Errorf("manifest %q: summary = %q, want it to start %q", c.manifest, stdout, c.want)
+		if !strings.Contains("\n"+stdout, "\n"+c.want) {
+			t.Errorf("manifest %q: output = %q, want a line starting %q", c.manifest, stdout, c.want)
 		}
 	}
 }
@@ -166,10 +166,10 @@ func TestRunGenRejectsAnEmptyDesign(t *testing.T) {
 	}
 }
 
-// TestRenamedProtoServiceLeavesItsPBCodeAndStubs checks that renaming a proto service into
-// another directory sweeps its old server package; its logic stubs stay, and so does its pb
-// code, in a directory no design proto writes into any more.
-func TestRenamedProtoServiceLeavesItsPBCodeAndStubs(t *testing.T) {
+// TestRenamedProtoServiceLeavesItsStubs checks that moving a proto service into another
+// directory sweeps its old server package and the pb code craftgo wrote in the directory no
+// design proto writes into any more; its logic stubs stay.
+func TestRenamedProtoServiceLeavesItsStubs(t *testing.T) {
 	dir := grpcProject(t)
 	mustWrite(t, dir, "design/craftgo.design.yaml", protoOnlyManifest)
 	mustWrite(t, dir, "design/greet/greet.proto", greetProto)
@@ -181,10 +181,12 @@ func TestRenamedProtoServiceLeavesItsPBCodeAndStubs(t *testing.T) {
 	mustWrite(t, dir, "design/hello/hello.proto", strings.NewReplacer("package greet;", "package hello;", "service Greeter", "service Hello").Replace(greetProto))
 	genProject(t, dir)
 
-	if exists(t, dir, filepath.FromSlash("internal/grpc/greeter")) {
-		t.Error("internal/grpc/greeter of the renamed service survived")
+	for _, rel := range []string{"internal/grpc/greeter", "internal/pb/greet"} {
+		if exists(t, dir, filepath.FromSlash(rel)) {
+			t.Errorf("%s of the moved service survived", rel)
+		}
 	}
-	for _, rel := range []string{"internal/grpc/hello/server.go", "internal/pb/hello/hello_grpc.pb.go", "internal/pb/greet/greet_grpc.pb.go", "internal/service/greeter/say_hello.go", "internal/service/hello/say_hello.go"} {
+	for _, rel := range []string{"internal/grpc/hello/server.go", "internal/pb/hello/hello_grpc.pb.go", "internal/service/greeter/say_hello.go", "internal/service/hello/say_hello.go"} {
 		if !exists(t, dir, filepath.FromSlash(rel)) {
 			t.Errorf("missing %s", rel)
 		}

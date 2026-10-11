@@ -7,8 +7,10 @@ package main
 import (
 	"context"
 	_ "embed"
+	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -68,17 +70,23 @@ func main() {
 	srv.Use(server.AccessLog(log.Follow()))
 	// A method's @timeout or @maxBodySize overrides these defaults; routes resolve them
 	// when wiring.Register registers them.
+	srv.SetDefaultReadTimeout(cfg.Server.ReadTimeout)
 	srv.SetDefaultHandlerTimeout(cfg.Server.HandlerTimeout)
 	srv.SetDefaultMaxBodySize(cfg.Server.MaxBodySize)
-	if err := srv.SetStrictJSON(cfg.Server.StrictJSON); err != nil {
+	if err := server.SetStrictJSON(cfg.Server.StrictJSON); err != nil {
 		log.Default().Error("strict json", log.Err(err))
 		os.Exit(1)
 	}
 	if cfg.Server.Compression.Enabled {
-		srv.Use(server.Compress(server.CompressOptions{
+		compress := server.CompressOptions{
 			MinSize: cfg.Server.Compression.MinSize,
 			Level:   cfg.Server.Compression.Level,
-		}))
+		}
+		if err := compress.Validate(); err != nil {
+			log.Default().Error("server.compression", log.Err(err))
+			os.Exit(1)
+		}
+		srv.Use(server.Compress(compress))
 	}
 
 	// wiring is regenerated on each craftgo gen and registers every HTTP route the design
@@ -89,14 +97,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	// The docs page loads its UI assets from a CDN.
+	// The docs page loads its UI assets from a CDN. Its routes come after the design's, so a
+	// docs path one of them has stops the boot.
 	if cfg.Docs.Enabled {
-		srv.ServeDocs(server.DocsOptions{
+		if err := srv.RegisterDocs(server.DocsOptions{
 			Spec:     openapiSpec,
 			UI:       cfg.Docs.UI,
 			Path:     cfg.Docs.Path,
 			SpecPath: cfg.Docs.SpecPath,
-		})
+		}); err != nil {
+			log.Default().Error("docs", log.Err(err))
+			os.Exit(1)
+		}
 	}
 
 	// The stats handler opens each call's span ahead of Recovery and every interceptor, so the
@@ -117,35 +129,70 @@ func main() {
 		os.Exit(1)
 	}
 
-	go func() {
-		log.Default().Info("listening", log.String("addr", cfg.Server.Addr))
-		if err := srv.Start(cfg.Server.Addr); err != nil {
-			log.Default().Error("server start", log.Err(err))
-			os.Exit(1)
-		}
-	}()
-
-	go func() {
-		log.Default().Info("grpc listening", log.String("addr", cfg.GRPC.Addr))
-		if err := grpcSrv.Start(cfg.GRPC.Addr); err != nil {
-			log.Default().Error("grpc server start", log.Err(err))
-			os.Exit(1)
-		}
-	}()
-
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-	<-stop
+	// Each listener logs the address it bound, with the real port of a ":0". One that cannot bind,
+	// or stops serving, shuts the rest down as a signal does, and the process then exits 1.
+	failed := make(chan struct{}, 2)
 
-	// Every listener drains, and every wiring shutdown runs, within one budget.
+	go func() {
+		lis, err := net.Listen("tcp", cfg.Server.Addr)
+		if err == nil {
+			log.Default().Info("listening", log.String("addr", lis.Addr().String()))
+			err = srv.Serve(lis)
+		}
+		if err != nil {
+			log.Default().Error("server start", log.Err(err))
+			failed <- struct{}{}
+		}
+	}()
+
+	go func() {
+		lis, err := net.Listen("tcp", cfg.GRPC.Addr)
+		if err == nil {
+			log.Default().Info("grpc listening", log.String("addr", lis.Addr().String()))
+			err = grpcSrv.Serve(lis)
+		}
+		if err != nil {
+			log.Default().Error("grpc server start", log.Err(err))
+			failed <- struct{}{}
+		}
+	}()
+
+	exitCode := 0
+	select {
+	case <-stop:
+	case <-failed:
+		exitCode = 1
+	}
+
+	// Both listeners stop at once, the gRPC health service turning NOT_SERVING as HTTP stops
+	// accepting, and drain side by side within one budget, each followed by its wiring shutdown.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_ = srv.Stop(shutdownCtx)
-	_ = shutdownWiring(shutdownCtx)
-	_ = grpcSrv.Stop(shutdownCtx)
-	_ = shutdownGRPC(shutdownCtx)
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		if err := srv.Stop(shutdownCtx); err != nil {
+			log.Default().Warn("http drain cut off requests", log.Err(err))
+		}
+		if err := shutdownWiring(shutdownCtx); err != nil {
+			log.Default().Error("shutdown wiring", log.Err(err))
+		}
+	})
+	wg.Go(func() {
+		if err := grpcSrv.Stop(shutdownCtx); err != nil {
+			log.Default().Warn("grpc drain cut off calls", log.Err(err))
+		}
+		if err := shutdownGRPC(shutdownCtx); err != nil {
+			log.Default().Error("shutdown grpc wiring", log.Err(err))
+		}
+	})
+	wg.Wait()
 	// Shutdown closes the scrape listener and flushes any pending OTLP batch.
 	if err := tel.Shutdown(shutdownCtx); err != nil {
 		log.Default().Error("shutdown telemetry", log.Err(err))
+	}
+	cancel()
+	if exitCode != 0 {
+		os.Exit(exitCode)
 	}
 }

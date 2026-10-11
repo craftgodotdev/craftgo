@@ -14,18 +14,18 @@ type CreateUserReq {
 
 Each field is `name type [decorators]`. Types compose from primitives, arrays, maps, and other types.
 
-A field's decorators follow it: on its line, or on lines of their own below it, up to the next member. So a decorator on a line of its own between two fields is the upper field's, even across a blank line or a comment:
+A field's decorators sit on its line after its type, or on lines of their own above it: a decorator on a line of its own decorates the field below it, across a blank line or a comment:
 
 ```craftgo
 type Signup {
     email    string @format(email)
+    @minLength(12)
     password string
-        @minLength(12)
     nickname string?
 }
 ```
 
-`@minLength(12)` belongs to `password`, and `craftgo fmt` moves it onto that line. A field takes decorators written above it only as the first member of its body or right below a mixin.
+`@minLength(12)` belongs to `password`.
 
 Every type's struct gets a `Validate()` method, so a field whose Go name is `Validate` - `validate`, say - is rejected (`field/invalid-go-name`), as is a mixin of a type named `Validate`.
 
@@ -44,7 +44,10 @@ Every type's struct gets a `Validate()` method, so a field whose Go name is `Val
 | `bool`     | `bool`     |                                      |
 | `datetime` | `time.Time` | RFC 3339 string in JSON; body fields only |
 | `file`     | `*multipart.FileHeader` | a multipart part: a request's top-level field only, never in a response, an error body or an event payload |
+| `cookie`   | `*http.Cookie` | a cookie the logic sets in full: a `@cookie` field of a response or an error body only (see [Cookie attributes](/guide/decorators#field-bindings)) |
 | `any`      | `any`      | an opaque JSON value; see the table below |
+
+A `datetime` is decoded by Go's `time.Time`, which reads RFC 3339 more loosely than `@format(datetime)` checks a string: it also takes a one-digit hour, a `,` before the fraction and an offset minute of 60 (`+01:60` reads as `+02:00`), and it refuses a lower-case `t` or `z` and a leap second (`23:59:60`). An offset of a day or more (`+24:00`), which no RFC 3339 string spells and the response could not encode, fails `Validate()` as `<field>: not a valid RFC 3339 datetime`, the message a value the decoder refuses gets too. A `string @format(datetime)` field holds exactly what RFC 3339 allows.
 
 #### raw encoded values: `bytes @format(raw)`
 
@@ -110,7 +113,7 @@ type UpdateUser struct {
 }
 ```
 
-That holds for a primitive, scalar, enum, struct or `datetime`. An optional array, map, `bytes`, `any` or raw field keeps its Go type, which is nil when absent, and gains `omitempty`.
+That holds for a primitive, scalar, enum, struct or `datetime`. An optional array, map, `bytes`, `any` or raw field keeps its Go type, which is nil when absent. An array, map or `bytes` field gains `omitzero`, so it stays out of the JSON only while nil: an empty one the logic sets goes out as `[]`, `{}` or `""`. An `any` or raw field gains `omitempty`.
 
 ### Arrays
 
@@ -247,7 +250,7 @@ The recommended style is to keep field names lowercase (`createdAt string`) and 
 
 #### Restrictions
 
-A mixin must reference a `type` declaration. Referencing an `enum`, `error`, `scalar`, or `middleware` raises `mixin/non-type`. An unknown name raises `ref/unknown-symbol`, like any other type reference (`ref/unknown-package` when a `pkg.Type` names a package that does not exist). A mixin takes no decorators: one after it on its line is an error. A decorator on a line of its own above a mixin belongs to the field above, when there is one; at the top of the body or below another mixin it is an error. One on a line of its own below a mixin goes to the field below it.
+A mixin must reference a `type` declaration. Referencing an `enum`, `error`, `scalar`, or `middleware` raises `mixin/non-type`. An unknown name raises `ref/unknown-symbol`, like any other type reference (`ref/unknown-package` when a `pkg.Type` names a package that does not exist). A mixin takes no decorators: one after it on its line, or on a line of its own above it, is an error.
 
 The Go output uses struct embedding:
 

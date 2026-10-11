@@ -3,10 +3,10 @@ package {{.Package}}
 {{.ImportDecl}}
 {{- range .Events}}
 // {{.ConstName}} is the wire identity of {{.Name}}.
-const {{.ConstName}} = "{{.Contract}}"
+const {{.ConstName}} = {{.ContractLit}}
 
 {{range .Doc}}// {{.}}
-{{end}}// {{.Name}} is the {{.Contract}} event contract.
+{{end}}// {{.Name}} is the {{.ContractDoc}} event contract.
 var {{.Name}} = craftevents.NewEvent[{{.PayloadType}}]({{.ConstName}}, {{.Validate}})
 {{if .ValidateElems}}
 // {{.Validate}} validates each element of a {{.Name}} payload.

@@ -49,6 +49,11 @@ type RateLimitMiddleware = server.Middleware
 // RequestStampMiddleware is the RequestStamp middleware.
 type RequestStampMiddleware = server.Middleware
 
+// Signature reads the whole body, as a webhook signature check does.
+//
+// SignatureMiddleware is the Signature middleware.
+type SignatureMiddleware = server.Middleware
+
 // Timing emits a structured warn-log entry whenever a handler exceeds
 // the user-configured threshold. Threshold value, log level, and
 // reporter are wired up in the impl file.
@@ -64,5 +69,6 @@ type Middlewares struct {
 	ProfileAuth  ProfileAuthMiddleware
 	RateLimit    RateLimitMiddleware
 	RequestStamp RequestStampMiddleware
+	Signature    SignatureMiddleware
 	Timing       TimingMiddleware
 }
