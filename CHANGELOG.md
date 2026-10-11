@@ -349,7 +349,9 @@ breaking change to the DSL or the generated layout bumps the major version.
   `@middlewares`, refuses a rename the declaration cannot hold, counts a byte
   order mark in positions, and answers undecodable params `InvalidParams`.
 - **The OpenAPI document** quotes a string a YAML 1.1 reader would take for
-  another type and escapes control characters.
+  another type and escapes control characters, and is the same on every run:
+  its keys come out in byte order, where names such as `Op7`, `Op12` and
+  `Op71` changed places from one run to the next.
 - **The sweep** follows linked output directories that stay inside the
   project, keeps on a case-insensitive file system what it wrote under
   another case, and removes the library of an event target turned off or
