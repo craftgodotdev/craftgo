@@ -1067,10 +1067,10 @@ Calling one: the pb client is generated (`pb.NewGreeterClient(cc)`), and the con
 
 ## Things craftgo guarantees
 
-- Generated code compiles
+- Generated code compiles, and the server starts, for a design Go and `net/http` can carry out. A few designs `craftgo gen` accepts are the design's to fix: a type holding itself by value, directly or through another type, a mixin or a generic argument (make one link optional, a list or a map); a name Go keeps for itself, as a package, service or `@group` named `internal`, a proto directory named `error` or `nil`, or a `.proto` file whose name ends in a GOOS or GOARCH suffix (`push_ios.proto`); and a `HEAD` route overlapping a `GET` one, which ServeMux refuses at startup
 - `craftgo gen` is deterministic (same input -> same output)
 - Logic stubs (`internal/service/...`) are never touched after first creation
-- The generated OpenAPI is structurally valid OAS 3.1 and renders cleanly in Swagger UI, ReDoc, and openapi-generator (Spectral / Redocly may flag nullable-union representations under their default 3.1 rulesets), given security schemes that carry the fields their type requires: only an oauth2 scheme's flows are checked, and the other types are copied as written
+- The generated OpenAPI is structurally valid OAS 3.1 and renders cleanly in Swagger UI, ReDoc, and openapi-generator (Spectral / Redocly may flag nullable-union representations under their default 3.1 rulesets), given security schemes that carry the fields their type requires: only an oauth2 scheme's flows are checked, and the other types are copied as written. Two paths that differ only in a variable's name, as `/items/{id}` beside `/items/{itemId}`, are written as designed, though OAS 3.1 forbids them: give the variable one name
 - The runtime is `net/http` only - no fork, no patch, no parallel runtime
 - The DSL is a closed set: unknown decorators fire `decorator/unknown` at gen time, never silently ignored
 - The event model carries no broker or codec concept: transports, codecs, groups and consumer middleware are the application's runtime wiring, never the design's

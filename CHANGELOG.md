@@ -7,6 +7,350 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+### Removed
+
+- **The DSL `import` statement.** Cross-package references have needed none
+  since 1.3.0: a declaration of another package is referenced as `pkg.Type`.
+  `import` is now an identifier like any other, so a field may take it as its
+  name, and a file-level line starting with it is a parse error: "`import`
+  was removed - reference another package's declaration as `pkg.Type`;
+  delete this line". The `import/*` diagnostic codes went with it. A
+  `.proto` import, `proto.includes` and the imports of generated Go code are
+  untouched.
+
+- **`FillEmpty`.** A response is encoded as the logic returns it: a nil list
+  or map goes out as `null`, and the value is only read, so one shared
+  between requests is safe to return. Logic that wants `[]` or `{}` returns
+  them. The generated `fill.go` goes with the next `craftgo gen`, and
+  `fillEmpty` is a field name again.
+
+### Changed
+
+- **A decorator on its own line decorates the member below it**, as in Java,
+  TypeScript or Python: a field, an enum value, a scalar, a method or a
+  declaration, across blank lines and comments. On a field or an enum value
+  it decorated the member above, and on a scalar the scalar below, so a
+  validator could land on a member it was not written for. Decorators after a
+  member on its line still belong to it, and one with no member below it is a
+  parse error. `craftgo fmt` writes own-line decorators one per line above
+  their member. An earlier `craftgo fmt` moved each own-line decorator onto
+  the line of the member it decorated, so a design it formatted keeps its
+  meaning.
+
+- **Required members of a JSON body are enforced.** A member declared
+  without `?` that the body leaves out, or sends as `null` without
+  `@nullable`, answers 400 `<json path>: required` before `Validate` runs;
+  `""`, `0` and `false` are values. The body decodes through the installed
+  codec into an unexported struct beside the handler (`bodies.gen.go`), which
+  is copied into the request type, a nested `@default` filling an absent
+  member. `server.SetRequirePresence(false)`, or `server.requirePresence:
+  false` in `config.yaml`, switches the check off.
+
+- **A JSON route answers 415** `{"message":"unsupported media type"}` to a
+  body whose `Content-Type` is not `application/json` or an
+  `application/*+json` type, or that has none, so a cross-site form, a
+  `text/plain` fetch or an untyped `Blob` never reaches the handler. A request
+  with neither a body nor a `Content-Type` goes on to the decoder, which
+  answers `body: required`. `@rawRequest` and `@passthrough` routes take any
+  body. A form route's body that is no multipart answers 415 too.
+
+- **`@format` checks follow their RFCs.** `email` is a bare addr-spec - no
+  display name, comment, angle brackets or surrounding space; quoted local
+  parts, IP domain literals and UTF-8 stay valid. `time` is an RFC 3339
+  full-time with its offset (`15:04:05Z`, `15:04:05.5+07:00`); a time
+  without one fails. `datetime` reads `t` and `z` in either case, an offset
+  within ±23:59 and a leap second at 23:59:60 UTC, and checks the calendar.
+  `ipv4` refuses an IPv4-mapped IPv6 address, which `ipv6` takes, and both
+  refuse a zone. `url` is an `http` or `https` URI with a host, `uri` an
+  RFC 3986 URI of RFC 3986 characters only, `base64url` takes padding or
+  none, and `phone` needs a digit. A `@default` meets the same check. The
+  generated `validate.go` carries each check it calls as a function of its
+  own, so generated code stays standard-library only.
+
+- **Request bodies are capped at 10 MiB by default**, a route's
+  `@maxBodySize` aside; `server.maxBodySize: 0` sets no cap. The read
+  timeout is `server.readTimeout`, 30s by default.
+
+- **A new logic stub answers "not implemented"**: an HTTP stub, a raw one
+  included, returns `server.ErrNotImplemented`, which answers 501, and a gRPC
+  stub `codes.Unimplemented`; a client-streaming stub no longer ends in a
+  cardinality violation. Stubs already written keep what they hold.
+
+- **Cookies a `@cookie` field sets carry safe attributes**: `Path=/`,
+  `HttpOnly`, `Secure` and `SameSite=Lax`, on responses and errors alike.
+  `server.cookies` in `config.yaml` sets others.
+
+- **A route's limits wrap its own middlewares**: `@maxBodySize` and
+  `@timeout`, or the defaults standing in for them, hold a middleware that
+  reads the body, as a signature check does.
+
+- **An optional list, map or `bytes` member is left out only while nil**
+  (`omitzero`, where it was `omitempty`): an empty one the logic sets goes
+  out. A codec installed with `server.SetGlobalJSONCodec` must honour
+  `omitzero`: `encoding/json`, sonic and goccy/go-json from v0.11.1 do;
+  jsoniter and segmentio/encoding write a nil member as `null`.
+
+- **Shutdown hands back what it did not handle.** Shutdown is cancelling the
+  context given to `Start`, then closing the transport. Once it has ended no
+  message reaches a handler, and a handler that fails after it, with the
+  chain asking for nothing or for redelivery, was cut short: JetStream naks
+  that message at once, a Kafka share group releases it, and a classic group
+  leaves it and everything after it in its partition uncommitted. What was
+  fetched and not handed over goes back the same way. Kafka classic
+  subscriptions no longer autocommit, so `kgo.GreedyAutoCommit` or
+  `kgo.AutoCommitMarks` in `WithClientOptions` fails the subscription.
+  Kafka's `Close` still closes its clients at once: a record handled and not
+  yet committed comes back, and none is lost.
+
+- **The NATS adapters refuse what NATS would alter** with
+  `nats.ErrNotCarried`, before sending anything: a metadata key that is no
+  NATS header name (printable ASCII without spaces or any of
+  `"(),/:;<=>?@[\]{}`), or a key, dedup ID or metadata value padded with
+  spaces or tabs or holding a line break. Such a message arrived trimmed or
+  rewritten.
+
+- **`PublishAll` names the envelope it cannot encode**, with an
+  `*events.EnvelopeError` whose `Index` is that envelope's: no contract, no
+  codec, an option its adapter does not read, a payload the codec refuses.
+  Its text reads `events: envelope <n> of the batch: …`.
+
+- **The memory transport behaves like a broker:** each group gets its own
+  copy of a message, payload included, and a handler runs on its
+  subscription's context, values and cancellation included, where it ran on
+  `context.Background()`.
+
+- **An `ItemErrors` a typed batch `fn` returns fails only the items it
+  names**, keyed by index into the items `fn` was handed; one naming an index
+  outside them fails the whole batch.
+
+- **`@contract` is written as a Go string literal.** A contract holding `\`
+  or `"` generated a constant Go read as an escape, or one that did not
+  compile; the constant now holds the contract as the design spells it, so a
+  contract holding `\` changes its wire identity when regenerated.
+
+- **The root route is an exact match** (`/{$}`), where it answered every path
+  no other route took.
+
+- **Decode errors read the same on every Go toolchain**, the engine
+  `encoding/json` runs on from Go 1.27 included, with no array index or map
+  key in a path. A value its type decodes itself fails under its JSON path:
+  `at: not a valid RFC 3339 datetime`, `data: not a valid base64`, or the
+  type's own text. An empty body is `body: required`.
+
+- **A `datetime` with an offset of a day or more fails `Validate`**, as
+  `<field>: not a valid RFC 3339 datetime`, where its response answered 500.
+
+- **A raw member holding `null` counts as unset** in `@requiresOneOf` and
+  `@mutuallyExclusive`.
+
+- **A float parameter takes a plain decimal** - no `0x`, `_`, `Inf` or
+  `NaN` - and a parse error names the field's type: `limit: "abc" is not a
+  valid int8`.
+
+- **Body read failures:** a body read past its cap answers 413 wherever the
+  logic reads it, a read timeout 408, and another read failure 400 `bad
+  request`, the cause logged rather than sent.
+
+- **Headers and cookies are set only once the body has encoded**, so a
+  response that fails to encode carries none, and an error joined with others
+  takes its headers, cookies and code from the one that sets the status.
+
+- **An error's constructor fills an optional field's `@default`.**
+
+- **The default logger writes every line**: zap's sampling dropped access and
+  error lines under load.
+
+- **CORS answers with `Vary: Origin` on every response**, and `SetCORS`
+  panics on credentials allowed to `*`, which browsers refuse.
+
+- **A new `main.go`** binds each listener before it logs the address it
+  holds, stops HTTP and gRPC side by side on a signal, logs a drain cut
+  short, exits 1 after a graceful shutdown when a listener fails, applies the
+  new `config.yaml` keys, and stops at boot naming a value it cannot use: an
+  unknown exporter of an enabled signal, a scrape or docs path without a
+  leading `/`, a compression level outside -2..9, a docs path the spec, a
+  health probe or a route already serves. A new `config.Load` warns of a
+  missing file and of each key it does not know.
+
+- **`craftgo gen` refuses** a copy of a well-known type (`google/protobuf/*`)
+  in the design folder, a copy of a proto the runtime links in
+  (`google/rpc/*`, `google/api/httpbody.proto`, `grpc/health/*`,
+  `grpc/reflection/*`, `grpc/binlog/*`, `opentelemetry/proto/*`,
+  `io/prometheus/client/*`), which panicked at startup, proto directories
+  whose Go packages import one another, and RPC files or service directories
+  whose names differ only in case. A design proto whose `go_package` names
+  another module's package is a warning; its path is still ignored.
+
+- **New design errors:** a decorator with no member below it; `//` right
+  after a route segment, an empty segment where it started a comment that
+  cut the route short; NUL, invalid UTF-8, a byte order mark past the start
+  of a file, a control character other than tab, line feed and carriage
+  return, or a noncharacter anywhere, comments and strings included, and a
+  `\u{…}` escape naming one; a float past float64, a duration past 2562047h
+  or with two units (`1h30m`: write `90m`); a binding decorator on a field
+  of a nested type, which bound nothing (`binding/nested`); an `@json` key
+  encoding/json would ignore - it takes what encoding/json takes, a space
+  included - and a path, query, header or cookie name holding a backtick.
+
+- **`craftgo gen` prints the design's warnings** on stderr, as
+  `<file>:<line>:<col>: warning: <message>`, and starts with
+  `craftgo: design <dir>, project root <dir>`. It renders every file before
+  it writes one, each through a rename, so a failed run leaves the tree as it
+  was.
+
+- **Design discovery** stops walking up at the first directory holding
+  `go.mod`, `.git`, `.hg` or `.svn`, skips hidden directories, `vendor`,
+  `node_modules` and files starting with `.` or `_`, follows a linked folder
+  once, and refuses a dangling manifest link.
+
+- **`craftgo fmt`** walks the files gen reads, prints the result with
+  `-w=false`, goes on past a file it cannot read or write and then exits 1
+  naming how many, keeps the file mode, and refuses a named Go, `.proto` or
+  YAML file and the go command's files.
+
+- **Generated pb code reads `protoc v0.0.0-craftgo`** in its header on every
+  machine: the mark that lets the sweep take the pb code of a proto
+  directory since moved. A pb directory an older craftgo wrote is not swept.
+
+- **Manifest:** paths read with forward slashes on every OS, a later YAML
+  document is a warning, `events.targets: []` generates no event library,
+  `proto.includes` may name a directory outside the project, and the default
+  `serviceName` skips a major-version suffix (`example.com/billing/v2` gives
+  `billing`).
+
+- **The OpenAPI document:**
+  - `bytes` is `type: string, contentEncoding: base64`, its length in bytes
+    in the description; `format: byte`, and the `minLength`/`maxLength` that
+    counted base64 characters, are gone.
+  - `int8`, `int16`, `int32`, the unsigned types and `float32` carry their
+    range, and integer map keys a `propertyNames` pattern of their digits.
+  - A request type no operation takes a body from gets no component, nor do
+    the mixins and generic instances only it used.
+  - An error whose component name another package also declares takes the
+    package prefix, as `AMissingErr`.
+  - The top-level `tags` lists every tag in the order of first use, a
+    service's doc describes its tag, and documented or deprecated enum values
+    reach `x-enum-descriptions`.
+  - A parameter's description, deprecation and example sit on the parameter,
+    a response header's on the header, and a header every response of its
+    status sends is `required`.
+  - A `Set-Cookie` header field and the `@cookie` fields share one header.
+  - `@example(null)` documents a null example, and a HEAD operation's
+    responses carry no content.
+  - `servers[0].url` is the basePath as the routes normalise it (`api`,
+    `/api/` and `//api` give `/api`).
+
+### Added
+
+- **`server.Serve(lis)`** runs the server on a listener the caller bound,
+  which it closes when it returns.
+
+- **`server.ErrNotImplemented`**, answered 501 `{"message":"not
+  implemented"}`, which `rpc.Error` maps to `Unimplemented`.
+
+- **`rpc.ValidateClientStream` and `rpc.ValidateBidiStream`** wrap a client-
+  or bidi-streaming server stream so that `Recv` runs `Validate` on every
+  message; a message that fails is consumed and `Recv` returns its
+  `InvalidArgument`. The generated server layer hands the logic the wrapped
+  stream.
+
+- **Required members:** `server.SetRequirePresence`, `RequirePresence`,
+  `MissingMember` and `Nullable[T]`, which tells an absent member from a
+  `null` one.
+
+- **Cookies:** `server.SetCookieOptions`, `DefaultCookieOptions`,
+  `SetCookie` and `ResponseCookieSetter`.
+
+- **`Server.RegisterDocs`** returns the error `ServeDocs` panics with: a path
+  without a leading `/` or one ServeMux refuses, the spec path itself, a
+  health probe's path or a route's.
+
+- **`server.LimitParts`** holds a file part to its `@maxSize` while it is
+  read, answering 400 `<name>: file size exceeds N bytes`; generated
+  handlers keep at most `server.MultipartMemory`, 32 MiB, of a form in
+  memory, whatever `@maxBodySize` allows.
+
+- `server.DefaultMaxBodySize`, `server.RequireJSONBody`,
+  `CompressOptions.Validate`, `events.EnvelopeError` and
+  `nats.ErrNotCarried`. `WriteResponse` takes optional functions that set
+  headers and cookies once the body has encoded.
+
+- **`pattern/not-ecma`**, a warning on a `@pattern` written in RE2 syntax
+  that ECMA-262 reads otherwise or refuses: inline flag groups, `\A`, `\z`,
+  `(?P<name>`, POSIX classes, `\pL` without braces, `\Q…\E`, `\x{…}`,
+  `{,n}`, a bare `{` or `}`, and `]` first in a class. The message suggests
+  a form both dialects read alike.
+
+- **Diagnostic codes** `syntax/token` and `syntax/parse` on lexer and parser
+  errors.
+
+### Deprecated
+
+- **`Server.SetJSONCodec`, `Server.SetStrictJSON` and `Server.Codec`.** The
+  codec and the strict switch are the process's, not one server's: call
+  `server.SetGlobalJSONCodec`, `server.SetStrictJSON` and `server.JSON`. A
+  new `main.go` calls `server.SetStrictJSON`.
+
+### Fixed
+
+- **A gRPC call that panics gets its access line**, with code `Internal`.
+- **`Stop` before `Start` latches** on both servers: a later `Start` or
+  `Serve` returns nil at once, as `http.Server.Shutdown` does.
+- **Proto diagnostics name the file that holds the problem:** a Go package
+  name clash both protos, an error inside an include file its own path, a
+  `go` command that cannot run its error. An include root inside the design
+  folder is no longer compiled as part of the design.
+- **A Kafka share subscription keeps every record of a fetch locked** until
+  it is answered, as a batch subscription did.
+- **A core NATS batch still filling at shutdown** is handed over on a context
+  that keeps the subscription's values and ends 30s later.
+- **The response writers keep `Hijacker`, `Flusher` and `ReaderFrom`**, so a
+  websocket upgrade and `sendfile` work behind `Recovery`, `AccessLog` and
+  `Compress`.
+- **`Compress`** leaves partial (206, `Content-Range`) and bodiless (204, 304,
+  HEAD) responses alone, keeps the sniffed `Content-Type`, and refuses a level
+  gzip cannot use when it is built rather than on every response.
+- **`server.TrailingData` returns a failed read**, so a strict decode of a
+  body past its cap answers 413.
+- **A single file part binds without opening the file.**
+- **A health check registered with no timeout runs without a deadline.**
+- **The docs page loads its UI at pinned versions** with integrity hashes.
+- **`server.HeaderList` keeps a comma inside a quoted string.**
+- **Route conflicts follow `net/http`'s ServeMux precedence:** pairs ServeMux
+  registers together, as `/files/{path...}` beside `/files/{id}` or
+  `/x/{$}` beside `/x/{id}`, are no longer refused.
+- **The generated routes quote their pattern**, so a basePath or prefix
+  holding `"` or `\` compiles.
+- **One mistake, one diagnostic:** the parser resyncs at the next
+  declaration, member or line, reports an unclosed bracket at its opener, and
+  names the likely fix of an upper-case HTTP verb or a misspelled keyword; a
+  file-level `consume` gets its own message; a mixin cycle or an orphan
+  `extend service` reports only itself.
+- **A raw string reads CRLF and a lone CR as a line feed**, so a checkout with
+  Windows line ends generates the same output. `µs` takes the Greek mu as
+  well as the micro sign.
+- **`craftgo fmt`** prints an empty object argument as `{}`, keeps a comment
+  on a list's closing line after the closer, and keeps comments among a
+  type's arguments and between header words, where it refused the file.
+- **The editor** offers no completion inside a route, offers a generic body
+  its type parameters and no name already listed in `@errors` or
+  `@middlewares`, refuses a rename the declaration cannot hold, counts a byte
+  order mark in positions, and answers undecodable params `InvalidParams`.
+- **The OpenAPI document** quotes a string a YAML 1.1 reader would take for
+  another type and escapes control characters.
+- **The sweep** follows linked output directories that stay inside the
+  project, keeps on a case-insensitive file system what it wrote under
+  another case, and removes the library of an event target turned off or
+  moved from its default directory.
+- **CLI:** `-c` must name an existing directory, `--target ""` is a usage
+  error, `craftgo help <command>` prints its usage, the note after an
+  `output.fileCase` change names the service its old stubs belong to and the
+  middleware scaffold left under its old name, a method collision names the
+  file as `output.fileCase` spells it, and a gRPC project's first route names
+  the `config.go` it needs.
+- **`telemetry.Init`** refuses an enabled signal's unknown exporter and a
+  scrape path without a leading `/`.
+
 ## [1.10.1] - 2026-09-30 [UTC+7]
 
 ### Added
