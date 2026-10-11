@@ -206,6 +206,17 @@ func TestOrphanedStubsAreNamed(t *testing.T) {
 	}
 }
 
+// A warning the proto compile raises reaches the run's notes; the run itself goes on.
+func TestProtoWarningsAreNoted(t *testing.T) {
+	cfg := scaffoldConfig(t)
+	set := protoSet(t, cfg, "syntax = \"proto3\";\npackage x;\noption go_package = \"github.com/elsewhere/x;x\";\nmessage R {}\n")
+	empty, _ := semantic.AnalyzeProject(nil, semantic.Options{})
+	notes := OutputNotes(empty, set, cfg, t.TempDir())
+	if !containsNote(notes, "warning: x/x.proto has go_package github.com/elsewhere/x, a package of another module") {
+		t.Errorf("notes = %v", notes)
+	}
+}
+
 func containsNote(notes []string, needle string) bool {
 	for _, n := range notes {
 		if strings.Contains(n, needle) {

@@ -124,9 +124,11 @@ func NewGetUserService(ctx context.Context, svcCtx *svccontext.ServiceContext) *
 // GetUser implements UserService.GetUser.
 func (l *GetUserService) GetUser(req *types.GetUserReq) (*types.User, error) {
 	// TODO: implement
-	return nil, nil
+	return nil, server.ErrNotImplemented
 }
 ```
+
+Until you write it, the stub returns `server.ErrNotImplemented`, which `server.WriteError` answers 501 `{"message":"not implemented"}`. A stub for an RPC returns the gRPC twin, `status.Error(codes.Unimplemented, "not implemented")`.
 
 A method's `@doc` comes first in its comment, then an empty `//` line (`// Fetch one user.` / `//` / `// GetUser implements UserService.GetUser.`). The stubs, the middleware scaffolds, `svccontext.go`, `config/` and `main.go` are where you write code; everything else is regenerated.
 
@@ -138,7 +140,7 @@ The code `protoc-gen-go` and `protoc-gen-go-grpc` write for every `.proto` under
 
 ### `grpc/<svc>/` (regen)
 
-`server.go` declares `Server`, embedding `pb.Unimplemented<Svc>Server`, and `NewServer(svcCtx)`; each `<rpc>.go` implements one method of the generated interface: `rpc.Validate` on the request (a no-op until a validating plugin such as protoc-gen-validate gives the message a `Validate() error`; a client-streaming or bidi RPC has no request to validate and passes the stream on), `service.New<Rpc>Service(ctx, svcCtx)`, the call, `rpc.Error` on failure.
+`server.go` declares `Server`, embedding `pb.Unimplemented<Svc>Server`, and `NewServer(svcCtx)`; each `<rpc>.go` implements one method of the generated interface: `rpc.Validate` on the request (a no-op until a validating plugin such as protoc-gen-validate gives the message a `Validate() error`; a client-streaming or bidi RPC passes the stream on through `rpc.ValidateClientStream` or `rpc.ValidateBidiStream`, whose `Recv` runs the same check on each message), `service.New<Rpc>Service(ctx, svcCtx)`, the call, `rpc.Error` on failure.
 
 ### `routes/` (regen)
 
@@ -180,7 +182,7 @@ The OpenAPI 3.1 document - paths, component schemas, parameters, request bodies,
 
 ### `main.go` (gen-once)
 
-Wires the `ServiceContext`, the `server.Server`, route registration, middleware, logging/metrics/otel, and `Start`. With a proto service it also builds the `rpc.Server`, its interceptors and `wiring.RegisterGRPC`; a design of protos alone boots the gRPC listener only. Yours to customize - add a flag, change the listen address, register an extra middleware.
+Wires the `ServiceContext`, the `server.Server`, route registration, middleware, logging/metrics/otel, and the listener. With a proto service it also builds the `rpc.Server`, its interceptors and `wiring.RegisterGRPC`; a design of protos alone boots the gRPC listener only. Each listener binds before it logs the address it holds, the real port of a `:0` included; one that cannot bind, or stops serving, shuts the rest down as a signal does, and the process exits 1. On SIGINT or SIGTERM every listener stops at once and drains within one 5s budget, a drain the budget cuts short is logged, and the telemetry flush comes last. Yours to customize - add a flag, change the listen address, register an extra middleware.
 
 ### `events/<pkg>/events.go` (regen)
 

@@ -6,6 +6,8 @@ import (
 	"context"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"example.com/app/internal/pb/common"
 	pb "example.com/app/internal/pb/greet"
@@ -31,5 +33,5 @@ func NewQuoteService(ctx context.Context, svcCtx *svccontext.ServiceContext) *Qu
 // Quote implements Greeter.Quote.
 func (l *QuoteService) Quote(req *common.Money) (*pb.HelloReply, error) {
 	// TODO: implement
-	return nil, nil
+	return nil, status.Error(codes.Unimplemented, "not implemented")
 }

@@ -45,7 +45,7 @@ func traceExporter(ctx context.Context, c OTelConfig) (sdktrace.SpanExporter, er
 		}
 		return exp, nil
 	case ExporterOTLPHTTP:
-		endpoint, err := otlpHTTPEndpoint(c.Endpoint, otlptracehttp.WithEndpointURL)
+		endpoint, err := otlpHTTPEndpoint(c.Endpoint, "/v1/traces", otlptracehttp.WithEndpointURL)
 		if err != nil {
 			return nil, err
 		}

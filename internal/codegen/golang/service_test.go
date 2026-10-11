@@ -110,3 +110,21 @@ func TestGenerateServiceSkipsExisting(t *testing.T) {
 	// The other stubs land beside it, so dir is where gen writes.
 	readGen(t, dir, "update-user.go")
 }
+
+// A new stub returns server.ErrNotImplemented, which answers 501, until its logic is written.
+func TestNewServiceStubsAnswerNotImplemented(t *testing.T) {
+	pkg := analyze(t, handlerSampleDSL)
+	root := t.TempDir()
+	if err := generateService(pkg, sampleConfig(), root, nil); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "internal/service/user-service")
+	for file, ret := range map[string]string{
+		"get-user.go": "return nil, server.ErrNotImplemented",
+		"ping.go":     "return server.ErrNotImplemented",
+	} {
+		body := readGen(t, dir, file)
+		mustParseGo(t, body)
+		mustContainAll(t, body, `"github.com/craftgodotdev/craftgo/pkg/server"`, "// TODO: implement\n\t"+ret+"\n}")
+	}
+}

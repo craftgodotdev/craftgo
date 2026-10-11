@@ -7,6 +7,8 @@ import (
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	pb "example.com/app/internal/pb/greet"
 	"example.com/app/svccontext"
@@ -31,5 +33,5 @@ func NewChatService(ctx context.Context, svcCtx *svccontext.ServiceContext) *Cha
 // Chat reads requests with stream.Recv and answers with stream.Send; returning ends the stream.
 func (l *ChatService) Chat(stream grpc.BidiStreamingServer[pb.HelloRequest, pb.HelloReply]) error {
 	// TODO: implement
-	return nil
+	return status.Error(codes.Unimplemented, "not implemented")
 }

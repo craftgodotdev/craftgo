@@ -18,6 +18,9 @@ func Recovery(logger log.Logger) Interceptor {
 	return recovery(func() log.Logger { return logger })
 }
 
+// errPanicked is what a recovered panic answers.
+var errPanicked = status.Error(codes.Internal, "internal server error")
+
 // recovery is [Recovery] with the logger looked up when a panic is recovered.
 func recovery(logger func() log.Logger) Interceptor {
 	recovered := func(ctx context.Context, rec any) error {
@@ -25,7 +28,7 @@ func recovery(logger func() log.Logger) Interceptor {
 			log.Any("panic", rec),
 			log.String("stack", string(debug.Stack())),
 		)
-		return status.Error(codes.Internal, "internal server error")
+		return errPanicked
 	}
 	return Interceptor{
 		Unary: func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {

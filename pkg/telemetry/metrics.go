@@ -46,7 +46,7 @@ func metricReader(ctx context.Context, c MetricsConfig, reg prom.Registerer) (sd
 		}
 		return sdkmetric.NewPeriodicReader(exp), false, nil
 	case ExporterOTLPHTTP:
-		endpoint, err := otlpHTTPEndpoint(c.Endpoint, otlpmetrichttp.WithEndpointURL)
+		endpoint, err := otlpHTTPEndpoint(c.Endpoint, "/v1/metrics", otlpmetrichttp.WithEndpointURL)
 		if err != nil {
 			return nil, false, err
 		}

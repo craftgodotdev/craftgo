@@ -27,7 +27,8 @@ srv := server.New(svcCtx, opts...)
 | `HandleFunc(pattern, fn http.HandlerFunc) *Server` | Register a route from a bare function. |
 | `Handler() http.Handler` | Build the fully-wrapped handler (the `WithTelemetry` middleware → Recovery → CORS → global chain → mux, so a preflight never reaches a `Use` middleware; the health probes are answered ahead of it, wrapped in Recovery only). Use it with `httptest.NewServer(srv.Handler())` to exercise the full stack without binding a port. |
 | `Start(addr string) error` | Bind and serve until `Stop`; returns nil after a graceful `Stop`. Request headers must arrive within 10s, and idle connections close after 120s. |
-| `Stop(ctx context.Context) error` | Graceful shutdown; no-op if `Start` never ran. |
+| `Serve(lis net.Listener) error` | `Start` on a listener you bound, which it closes when it returns; binding first lets the caller log the address it holds, the real port of a `:0` included. |
+| `Stop(ctx context.Context) error` | Graceful shutdown. A `Stop` that comes before `Start` or `Serve` makes them return nil at once, as `http.Server.Shutdown` does. |
 | `Mux() *http.ServeMux` | The underlying mux, if you need raw access. Routes registered on it directly skip the default body cap and handler timeout that `Handle` applies. |
 
 `pattern` is Go 1.22+ syntax: `"GET /users/{id}"`.
@@ -745,18 +746,19 @@ grpcSrv := rpc.New(svcCtx, opts...)
 | `GRPCServer() *grpc.Server` | Build the underlying server once and return it. |
 | `Start(addr string) error` | Listen and serve until `Stop`; returns nil once stopped. |
 | `Serve(lis net.Listener) error` | Serve on a listener you own - a `bufconn` in tests. |
-| `Stop(ctx context.Context) error` | Health flips to `NOT_SERVING`, in-flight RPCs finish, and when `ctx` expires first the rest are cut off and `ctx.Err()` is returned. No-op on a server never built (by `GRPCServer`, `Serve` or `Start`). |
+| `Stop(ctx context.Context) error` | Health flips to `NOT_SERVING`, in-flight RPCs finish, and when `ctx` expires first the rest are cut off and `ctx.Err()` is returned. A `Stop` that comes before `Start` or `Serve` makes them return nil at once, as `http.Server.Shutdown` does. |
 
 `Interceptor` pairs the two shapes gRPC needs, `Unary grpc.UnaryServerInterceptor` and `Stream grpc.StreamServerInterceptor`; `rpc.Unary(f)` and `rpc.Stream(f)` wrap one side.
 
 | Function | Description |
 |---|---|
 | `Recovery(logger)` | Panic → `Internal` with an opaque message, logged with the stack and the call's trace ids. Installed outermost by the server itself. |
-| `AccessLog(logger, opts...)` | One `grpc access` line per call with `method`, `code`, `latency` and the trace ids; a stream logs once when it ends. `AccessLogSkipMethods(...)` and `AccessLogFields(fn)` shape it. |
+| `AccessLog(logger, opts...)` | One `grpc access` line per call with `method`, `code`, `latency` and the trace ids; a stream logs once when it ends, and a call that panics logs the `Internal` that Recovery answers. `AccessLogSkipMethods(...)` and `AccessLogFields(fn)` shape it. |
 | `Timeout(d)` | Bound unary calls to `d`; a late response is dropped for `DeadlineExceeded`. Streams are not bounded; `d <= 0` installs nothing. |
 | `Error(ctx, err) error` | What the generated server layer returns on failure: status errors pass through, a craftgo typed error (`HTTPStatus() int`) becomes the matching code with an `ErrorInfo{Reason: ErrCode()}` detail, a context error becomes `Canceled` / `DeadlineExceeded`, anything else goes to the unknown-error handler. |
 | `SetHandleUnknownError(h)` | Swap the process-wide handler for errors that carry neither a status nor an HTTP status; the default logs and answers `Internal`. |
 | `Validate(msg any) error` | Run the message's own `Validate() error` (protoc-gen-validate) and answer `InvalidArgument`. |
+| `ValidateClientStream(stream)` / `ValidateBidiStream(stream)` | Wrap a client-streaming or bidi server stream so that `Recv` runs `Validate` on every message it receives; a message that fails is consumed and `Recv` returns the `InvalidArgument` error. |
 | `IsInfrastructureMethod(fullMethod string) bool` | Whether a full method belongs to the health or reflection services. |
 
 `tel.GRPCServerHandler()`, a method of the `*telemetry.Telemetry` that `telemetry.Init` returns, is the stats handler the generated `main.go` installs: one `otelgrpc` handler emitting the span and the `rpc.server.call.duration` histogram against the stack's providers, adopting the caller's W3C trace context from the request metadata, and leaving the health and reflection calls out.

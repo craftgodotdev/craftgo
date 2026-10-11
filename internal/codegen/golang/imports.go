@@ -39,12 +39,14 @@ const (
 	logImport           = "github.com/craftgodotdev/craftgo/pkg/log"
 	eventsRuntimeImport = "github.com/craftgodotdev/craftgo/pkg/events"
 	grpcImport          = "google.golang.org/grpc"
+	grpcCodesImport     = "google.golang.org/grpc/codes"
+	grpcStatusImport    = "google.golang.org/grpc/status"
 )
 
 // The names each template binds where it writes an imported package's name.
 var (
 	transportNames  = []string{"http", "strconv", "server", "service", "svccontext", "svcCtx", "w", "r", "req", "c", "err", "_q", "_v", "_vs", "_w"}
-	serviceNames    = []string{"context", "http", "log", "grpc", "svccontext"}
+	serviceNames    = []string{"context", "http", "log", "grpc", "svccontext", "server", "codes", "status"}
 	eventsNames     = []string{"craftevents", "fmt"}
 	grpcMethodNames = []string{"context", "rpc", "grpc", "service"}
 	wiringGRPCNames = []string{"context", "rpc", "svccontext", "ctx", "srv", "svcCtx"}

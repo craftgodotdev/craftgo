@@ -6,6 +6,8 @@ import (
 	"context"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	pb "example.com/app/internal/pb/greet"
 	"example.com/app/svccontext"
@@ -32,5 +34,5 @@ func NewSayHelloService(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 // SayHello implements Greeter.SayHello.
 func (l *SayHelloService) SayHello(req *pb.HelloRequest) (*pb.HelloReply, error) {
 	// TODO: implement
-	return nil, nil
+	return nil, status.Error(codes.Unimplemented, "not implemented")
 }

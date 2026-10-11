@@ -309,6 +309,44 @@ message R {}
 	}
 }
 
+// A Go package name clash is reported between the files that make it, the same on every run, and
+// a missing go_package is pinned on the proto that lacks it.
+func TestGoPackageProblemsNameTheirFiles(t *testing.T) {
+	clash := write(t, map[string]string{
+		"x/a.proto": "syntax = \"proto3\";\npackage x;\noption go_package = \";alpha\";\nmessage A {}\nservice S { rpc Do(A) returns (A); }\n",
+		"x/b.proto": "syntax = \"proto3\";\npackage x;\nmessage B {}\n",
+	})
+	first := ""
+	for range 5 {
+		_, err := Load(context.Background(), clash, opts())
+		if err == nil {
+			t.Fatal("a clash was accepted")
+		}
+		if first == "" {
+			first = err.Error()
+		} else if err.Error() != first {
+			t.Fatalf("the report changes between runs:\n%s\n%s", first, err)
+		}
+	}
+	for _, want := range []string{`x/a.proto names its Go package example.com/app/internal/pb/x "alpha" but x/b.proto names it "x"`, "the protos of one directory are one Go package"} {
+		if !strings.Contains(first, want) {
+			t.Errorf("missing %q in:\n%s", want, first)
+		}
+	}
+	if strings.Contains(first, "proto.includes") {
+		t.Errorf("a design without includes is pointed at them:\n%s", first)
+	}
+
+	shared := write(t, map[string]string{"shared/id.proto": "syntax = \"proto3\";\npackage shared;\nmessage ID {}\n"})
+	root := write(t, map[string]string{"a/a.proto": "syntax = \"proto3\";\npackage a;\nimport \"shared/id.proto\";\nservice A { rpc Get(shared.ID) returns (shared.ID); }\n"})
+	o := opts()
+	o.Includes = []string{shared}
+	_, err := Load(context.Background(), root, o)
+	if err == nil || !strings.Contains(err.Error(), "shared/id.proto, read from proto.includes, has no `option go_package`") {
+		t.Errorf("err = %v", err)
+	}
+}
+
 func TestPBEnabledKeepsGoPackageName(t *testing.T) {
 	root := write(t, map[string]string{"a/a.proto": `syntax = "proto3";
 package a;
@@ -320,6 +358,70 @@ message R {}
 	a := service(t, set, "a.A")
 	if a.PBImport != module+"/internal/pb/a" || a.Package != "apb" {
 		t.Errorf("service = %+v", *a)
+	}
+	// The path names another module's package, whose code may be linked in beside this copy.
+	if len(set.Warnings) != 1 || !strings.Contains(set.Warnings[0], "a/a.proto has go_package github.com/elsewhere/a, a package of another module") ||
+		!strings.Contains(set.Warnings[0], "proto.includes") {
+		t.Errorf("warnings = %q", set.Warnings)
+	}
+	// A go_package in the module, relative or without a module path warns of nothing.
+	for _, goPackage := range []string{module + "/gen/a;apb", ";apb", "apb;apb", "./a;apb"} {
+		root := write(t, map[string]string{"a/a.proto": "syntax = \"proto3\";\npackage a;\noption go_package = \"" + goPackage + "\";\nmessage R {}\n"})
+		if set := load(t, root, opts()); len(set.Warnings) != 0 {
+			t.Errorf("go_package %q: warnings = %q", goPackage, set.Warnings)
+		}
+	}
+}
+
+// A design copy of a proto whose Go code the runtime links in is refused while the plugins run:
+// the binary would register it twice and panic at startup. A go_package of another module is
+// only a warning, and with output.pb "-" not even that, being the design's own pipeline's.
+func TestThirdPartyProtosInTheDesignAreRefused(t *testing.T) {
+	root := write(t, map[string]string{
+		"google/rpc/status.proto": `syntax = "proto3";
+package google.rpc;
+option go_package = "google.golang.org/genproto/googleapis/rpc/status;status";
+message Status { int32 code = 1; }
+`,
+		"google/protobuf/empty.proto": "syntax = \"proto3\";\npackage google.protobuf;\noption go_package = \"google.golang.org/protobuf/types/known/emptypb\";\nmessage Empty {}\n",
+		"vendor/v.proto":              "syntax = \"proto3\";\npackage v;\noption go_package = \"github.com/elsewhere/v;v\";\nmessage V {}\n",
+		"api/api.proto": `syntax = "proto3";
+package api;
+import "google/rpc/status.proto";
+import "google/protobuf/empty.proto";
+import "vendor/v.proto";
+message Job { google.rpc.Status error = 1; v.V v = 2; }
+service Jobs { rpc Get(Job) returns (google.protobuf.Empty); }
+`,
+	})
+	_, err := Load(context.Background(), root, opts())
+	if err == nil {
+		t.Fatal("third-party protos were accepted")
+	}
+	for _, want := range []string{
+		"google/rpc/status.proto is a proto whose Go code the craftgo runtime links in already",
+		"google/protobuf/empty.proto copies a well-known type",
+		"move it under a proto.includes root",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("missing %q in:\n%s", want, err)
+		}
+	}
+	for _, unwanted := range []string{"api/api.proto", "vendor/v.proto"} {
+		if strings.Contains(err.Error(), unwanted) {
+			t.Errorf("%s is refused:\n%s", unwanted, err)
+		}
+	}
+
+	o := opts()
+	o.PBDir = ""
+	foreign := write(t, map[string]string{"vendor/v.proto": "syntax = \"proto3\";\npackage v;\noption go_package = \"github.com/elsewhere/v;v\";\nmessage V {}\n"})
+	set, err := Load(context.Background(), foreign, o)
+	if err != nil {
+		t.Fatalf("with output.pb \"-\" a go_package elsewhere is refused: %v", err)
+	}
+	if len(set.Warnings) != 0 {
+		t.Errorf("with output.pb \"-\" a go_package elsewhere draws warnings %q", set.Warnings)
 	}
 }
 
@@ -341,6 +443,66 @@ message R {}
 	for _, want := range []string{prefix + ":4:9:", prefix + ":5:21:"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("missing %q in:\n%s", want, msg)
+		}
+	}
+}
+
+// An error in a proto read from an include root is reported at that file, not under the design.
+func TestCompileErrorsInAnIncludeNameItsFile(t *testing.T) {
+	shared := write(t, map[string]string{"acme/common.proto": `syntax = "proto3";
+package acme;
+option go_package = "example.com/acme;acme";
+message Thing { strin id = 1; }
+`})
+	root := write(t, map[string]string{"greet/greet.proto": `syntax = "proto3";
+package greet;
+import "acme/common.proto";
+service Greeter { rpc Do(acme.Thing) returns (acme.Thing); }
+`})
+	o := opts()
+	o.Includes = []string{shared}
+	_, err := Load(context.Background(), root, o)
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if want := filepath.Join(shared, "acme", "common.proto") + ":4:17:"; !strings.Contains(err.Error(), want) {
+		t.Errorf("missing %q in:\n%s", want, err)
+	}
+	if strings.Contains(err.Error(), filepath.Join(root, "acme")) {
+		t.Errorf("the error names a file under the design root, which holds none:\n%s", err)
+	}
+}
+
+// A proto under an include root inside the design folder is an include, read once by its path
+// below that root, and not a design proto.
+func TestIncludeRootInsideTheDesignIsNotTheDesign(t *testing.T) {
+	root := write(t, map[string]string{
+		"third_party/acme/common.proto": `syntax = "proto3";
+package acme;
+option go_package = "example.com/acme;acme";
+message Thing { string id = 1; }
+`,
+		"greet/greet.proto": `syntax = "proto3";
+package greet;
+import "acme/common.proto";
+service Greeter { rpc Do(acme.Thing) returns (acme.Thing); }
+`,
+	})
+	o := opts()
+	o.Includes = []string{filepath.Join(root, "third_party")}
+	set := load(t, root, o)
+	if !reflect.DeepEqual(set.names, []string{"greet/greet.proto"}) {
+		t.Errorf("design protos = %v", set.names)
+	}
+	do := method(t, service(t, set, "greet.Greeter"), "Do")
+	if want := (TypeRef{Name: "Thing", ImportPath: "example.com/acme", Package: "acme"}); do.In != want {
+		t.Errorf("in = %+v", do.In)
+	}
+	// The design root itself as an include root, or one beside it, keeps every design proto.
+	names := []string{"greet/greet.proto", "third_party/acme/common.proto"}
+	for _, inc := range []string{root, filepath.Join(root, "..", "third_party")} {
+		if got := withoutIncluded(root, names, []string{inc}); !reflect.DeepEqual(got, names) {
+			t.Errorf("include root %s: design protos = %v", inc, got)
 		}
 	}
 }
@@ -405,6 +567,67 @@ message R {}
 				t.Fatalf("err = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// Protos that import one way but whose directories import each other are refused, naming the
+// packages and the imports that close the ring; directories that import one way pass.
+func TestDirectoriesImportingInARingAreRefused(t *testing.T) {
+	files := map[string]string{
+		"a/a1.proto": "syntax = \"proto3\";\npackage a;\nmessage A1 { string x = 1; }\n",
+		"b/b1.proto": "syntax = \"proto3\";\npackage b;\nimport \"a/a1.proto\";\nmessage B1 { a.A1 a = 1; }\n",
+		"a/a2.proto": "syntax = \"proto3\";\npackage a;\nimport \"a/a1.proto\";\nimport \"b/b1.proto\";\nmessage A2 { b.B1 b = 1; }\nservice S { rpc Do(A2) returns (A1); }\n",
+	}
+	_, err := Load(context.Background(), write(t, files), opts())
+	if err == nil {
+		t.Fatal("an import ring between directories was accepted")
+	}
+	want := "Go packages example.com/app/internal/pb/a and example.com/app/internal/pb/b import one another, which Go refuses: " +
+		"a/a2.proto imports b/b1.proto and b/b1.proto imports a/a1.proto - each proto directory is one Go package"
+	if !strings.Contains(err.Error(), want) {
+		t.Errorf("missing %q in:\n%s", want, err)
+	}
+
+	// Three directories in a ring are named in order.
+	ring := map[string]string{
+		"a/a.proto": "syntax = \"proto3\";\npackage a;\nimport \"b/b.proto\";\nmessage A { b.B b = 1; }\n",
+		"b/b.proto": "syntax = \"proto3\";\npackage b;\nimport \"c/c.proto\";\nmessage B { c.C c = 1; }\n",
+		"c/c.proto": "syntax = \"proto3\";\npackage c;\nimport \"a/x.proto\";\nmessage C { a.X x = 1; }\n",
+		"a/x.proto": "syntax = \"proto3\";\npackage a;\nmessage X {}\n",
+	}
+	_, err = Load(context.Background(), write(t, ring), opts())
+	if err == nil || !strings.Contains(err.Error(), "a/a.proto imports b/b.proto, b/b.proto imports c/c.proto and c/c.proto imports a/x.proto") {
+		t.Errorf("err = %v", err)
+	}
+
+	delete(files, "a/a2.proto")
+	files["c/c2.proto"] = "syntax = \"proto3\";\npackage c;\nimport \"b/b1.proto\";\nmessage C2 { b.B1 b = 1; }\nservice S { rpc Do(C2) returns (C2); }\n"
+	load(t, write(t, files), opts())
+}
+
+// Under fileCase camel, RPC files and service directories that differ only in case are refused:
+// a case-insensitive file system holds them as one, so one RPC would answer Unimplemented.
+func TestNamesDifferingOnlyInCaseCollide(t *testing.T) {
+	o := opts()
+	o.FileCase = "camel"
+	root := write(t, map[string]string{"x/a.proto": `syntax = "proto3";
+package a;
+service S { rpc GetA(R) returns (R); rpc Geta(R) returns (R); }
+service UserApi { rpc Do(R) returns (R); }
+service Userapi { rpc Do(R) returns (R); }
+message R {}
+`})
+	_, err := Load(context.Background(), root, o)
+	if err == nil {
+		t.Fatal("names differing only in case were accepted")
+	}
+	for _, want := range []string{
+		`a.S: rpcs GetA and Geta generate files "getA.go" and "geta.go", one file on a case-insensitive file system`,
+		`services a.UserApi and a.Userapi generate into directories "userApi" and "userapi", one directory on a case-insensitive file system`,
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("missing %q in:\n%s", want, err)
+		}
 	}
 }
 

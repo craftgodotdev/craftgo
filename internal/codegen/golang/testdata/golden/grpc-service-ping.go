@@ -6,6 +6,8 @@ import (
 	"context"
 
 	"github.com/craftgodotdev/craftgo/pkg/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"example.com/app/svccontext"
@@ -32,5 +34,5 @@ func NewPingService(ctx context.Context, svcCtx *svccontext.ServiceContext) *Pin
 // Ping implements Greeter.Ping.
 func (l *PingService) Ping(req *emptypb.Empty) (*emptypb.Empty, error) {
 	// TODO: implement
-	return nil, nil
+	return nil, status.Error(codes.Unimplemented, "not implemented")
 }

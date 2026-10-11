@@ -58,6 +58,8 @@ type Set struct {
 	request *pluginpb.CodeGeneratorRequest
 	// Services lists every service the design files declare, sorted by full name.
 	Services []*Service
+	// Warnings describe design protos that compile and generate but may fail at run time.
+	Warnings []string
 }
 
 // Service is one proto service and what the scaffolds need to spell it.

@@ -793,9 +793,11 @@ func New<Method>Service(ctx context.Context, svcCtx *svccontext.ServiceContext) 
 
 func (l *<Method>Service) <Method>(req *types.<Req>) (*types.<Resp>, error) {
     // TODO: implement
-    return nil, nil
+    return nil, server.ErrNotImplemented
 }
 ```
+
+A new stub answers 501 `{"message":"not implemented"}` (`server.ErrNotImplemented`) until it is written; an RPC's stub returns `status.Error(codes.Unimplemented, "not implemented")`.
 
 The struct embeds `log.Logger` so logic can call `l.Info(...)` directly. Trace IDs flow into log lines automatically when OTel is enabled.
 
@@ -989,9 +991,11 @@ internal/wiring/grpc.go                              REGEN: RegisterGRPC(ctx, sr
 config/ (grpc: addr/handlerTimeout/reflection), main.go (rpc.New + interceptors + RegisterGRPC)   GEN-ONCE
 ```
 
-Logic signatures: unary `X(req *pb.Req) (*pb.Resp, error)`; server stream `X(req *pb.Req, stream grpc.ServerStreamingServer[pb.Resp]) error`; client stream `X(stream grpc.ClientStreamingServer[pb.Req, pb.Resp]) error`; bidi `X(stream grpc.BidiStreamingServer[pb.Req, pb.Resp]) error`. The server layer calls `rpc.Validate(req)` (a `Validate() error` on the message → `InvalidArgument`) and `rpc.Error(ctx, err)` (status errors pass through; craftgo typed errors map HTTP status → code with an `ErrorInfo{Reason: ErrCode()}` detail; a context error becomes `Canceled` or `DeadlineExceeded`, unlogged; unknown errors log and answer `Internal`).
+Logic signatures: unary `X(req *pb.Req) (*pb.Resp, error)`; server stream `X(req *pb.Req, stream grpc.ServerStreamingServer[pb.Resp]) error`; client stream `X(stream grpc.ClientStreamingServer[pb.Req, pb.Resp]) error`; bidi `X(stream grpc.BidiStreamingServer[pb.Req, pb.Resp]) error`. The server layer calls `rpc.Validate(req)` (a `Validate() error` on the message → `InvalidArgument`; a client-streaming or bidi RPC's logic gets its stream through `rpc.ValidateClientStream` / `rpc.ValidateBidiStream`, whose `Recv` runs the same check on every message) and `rpc.Error(ctx, err)` (status errors pass through; craftgo typed errors map HTTP status → code with an `ErrorInfo{Reason: ErrCode()}` detail; a context error becomes `Canceled` or `DeadlineExceeded`, unlogged; unknown errors log and answer `Internal`).
 
-Runtime `pkg/rpc`: `rpc.New(svc, rpc.WithStatsHandler(tel.GRPCServerHandler()), rpc.WithReflection(bool))`, `Use(rpc.AccessLog(l))`, `Use(rpc.Timeout(d))` (unary only), Recovery always outermost, `grpc.health.v1` registered, `Start(addr)` / `Stop(ctx)`. `tel.GRPCServerHandler()` emits spans + `rpc.server.call.duration`. A design of protos alone boots gRPC only; routes + protos boot both listeners.
+A proto you import but do not own goes under `proto.includes` (read, not generated, so it needs `option go_package`); a root inside the design folder makes its protos includes too. A design proto's `go_package` path is ignored. While the plugins run, gen refuses a copy of a well-known type or of a proto whose Go code the runtime links in (`google/rpc/*`, `google/api/httpbody.proto`, `grpc/health|reflection|binlog/*`, `opentelemetry/proto/*`, `io/prometheus/client/*`): its generated copy would register the file twice and panic at init. A `go_package` naming another module's package only draws a warning: init panics the same way if that module is linked in too, and `proto.includes` is the remedy. Gen also refuses protos whose directories, one Go package each, import one another in a ring (`a/a2.proto` → `b/b1.proto` → `a/a1.proto`), naming the imports that close it.
+
+Runtime `pkg/rpc`: `rpc.New(svc, rpc.WithStatsHandler(tel.GRPCServerHandler()), rpc.WithReflection(bool))`, `Use(rpc.AccessLog(l))`, `Use(rpc.Timeout(d))` (unary only), Recovery always outermost, `grpc.health.v1` registered, `Start(addr)` / `Serve(lis)` / `Stop(ctx)` (a `Stop` first makes a later `Start` or `Serve` return at once). `tel.GRPCServerHandler()` emits spans + `rpc.server.call.duration`. A design of protos alone boots gRPC only; routes + protos boot both listeners. The generated `main.go` binds each listener before it logs the address (the real port of `:0`), shuts down with exit status 1 when one cannot bind, and on SIGINT/SIGTERM stops both at once - gRPC health `NOT_SERVING` as HTTP stops accepting - draining them side by side within a 5s budget.
 
 Calling one: the pb client is generated (`pb.NewGreeterClient(cc)`), and the connection comes from `rpc.Dial(addr, rpc.WithClientStatsHandler(tel.GRPCClientHandler()), rpc.WithClientTimeout(d), rpc.WithClientAccessLog(l), rpc.WithClientTransportCredentials(c), rpc.WithDialOptions(...))`. **A gRPC client sends no `traceparent` without a stats handler**, so an uninstrumented caller breaks the trace at the wire. Dial once, keep the conn on the ServiceContext. Another module can import the client only when the pb code is outside `internal/` - `output.kind: contracts` puts it in `./gen/pb`.
 

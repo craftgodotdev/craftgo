@@ -22,12 +22,9 @@ func New{{.ServiceName}}(ctx context.Context, svcCtx *svccontext.ServiceContext)
 {{end}}{{range .Entry}}// {{.}}
 {{end}}func (l *{{.ServiceName}}) {{.Method}}({{.Sig.Params}}) {{.Sig.Results}} {
 	// TODO: implement
-{{- if .RawResponse}}
-	http.Error(w, "not implemented", http.StatusNotImplemented)
-	return nil
-{{- else if .Sig.HasResult}}
-	return nil, nil
+{{- if .Sig.HasResult}}
+	return nil, {{.NotImplemented}}
 {{- else}}
-	return nil
+	return {{.NotImplemented}}
 {{- end}}
 }

@@ -76,7 +76,20 @@ func OutputNotes(proj *semantic.Project, protos *protodesign.Set, cfg *config.Co
 	out = append(out, missingContainerNote(cfg, projectRoot)...)
 	out = append(out, staleWiringImport(cfg, projectRoot)...)
 	out = append(out, scaffoldGapNotes(proj, protos, cfg, projectRoot)...)
-	return append(out, orphanedStubNotes(proj, protos, cfg, projectRoot)...)
+	out = append(out, orphanedStubNotes(proj, protos, cfg, projectRoot)...)
+	return append(out, protoWarnings(protos)...)
+}
+
+// protoWarnings words the proto compile's warnings as notes.
+func protoWarnings(protos *protodesign.Set) []string {
+	if protos == nil {
+		return nil
+	}
+	out := make([]string, 0, len(protos.Warnings))
+	for _, w := range protos.Warnings {
+		out = append(out, "warning: "+w)
+	}
+	return out
 }
 
 // orphanedStubNotes names the output.service directories whose HTTP or gRPC service the design no

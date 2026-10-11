@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	_ "embed"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -98,25 +99,45 @@ func main() {
 		})
 	}
 
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	// Each listener logs the address it bound, with the real port of a ":0". One that cannot bind,
+	// or stops serving, shuts the rest down as a signal does, and the process then exits 1.
+	failed := make(chan struct{}, 1)
+
 	go func() {
-		log.Default().Info("listening", log.String("addr", cfg.Server.Addr))
-		if err := srv.Start(cfg.Server.Addr); err != nil {
+		lis, err := net.Listen("tcp", cfg.Server.Addr)
+		if err == nil {
+			log.Default().Info("listening", log.String("addr", lis.Addr().String()))
+			err = srv.Serve(lis)
+		}
+		if err != nil {
 			log.Default().Error("server start", log.Err(err))
-			os.Exit(1)
+			failed <- struct{}{}
 		}
 	}()
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-	<-stop
+	exitCode := 0
+	select {
+	case <-stop:
+	case <-failed:
+		exitCode = 1
+	}
 
-	// Every listener drains, and every wiring shutdown runs, within one budget.
+	// The listener stops accepting and drains within the budget, then the wiring shuts down.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_ = srv.Stop(shutdownCtx)
-	_ = shutdownWiring(shutdownCtx)
+	if err := srv.Stop(shutdownCtx); err != nil {
+		log.Default().Warn("http drain cut off requests", log.Err(err))
+	}
+	if err := shutdownWiring(shutdownCtx); err != nil {
+		log.Default().Error("shutdown wiring", log.Err(err))
+	}
 	// Shutdown closes the scrape listener and flushes any pending OTLP batch.
 	if err := tel.Shutdown(shutdownCtx); err != nil {
 		log.Default().Error("shutdown telemetry", log.Err(err))
+	}
+	cancel()
+	if exitCode != 0 {
+		os.Exit(exitCode)
 	}
 }

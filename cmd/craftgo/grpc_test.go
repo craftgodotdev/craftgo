@@ -96,7 +96,7 @@ func TestRunGenProtoOnlyProjectCompiles(t *testing.T) {
 	if exists(t, dir, "docs") || exists(t, dir, "internal", "routes") {
 		t.Error("a proto-only design has no HTTP output")
 	}
-	main := mustContain(t, dir, "main.go", "wiring.RegisterGRPC(", "rpc.WithStatsHandler(tel.GRPCServerHandler())", "grpcSrv.Start(cfg.GRPC.Addr)")
+	main := mustContain(t, dir, "main.go", "wiring.RegisterGRPC(", "rpc.WithStatsHandler(tel.GRPCServerHandler())", `net.Listen("tcp", cfg.GRPC.Addr)`, "grpcSrv.Serve(lis)")
 	if strings.Contains(main, "server.New(") || strings.Contains(main, "wiring.Register(") {
 		t.Error("a proto-only main.go must not boot an HTTP listener")
 	}
@@ -120,7 +120,7 @@ func TestRunGenMixedProjectCompiles(t *testing.T) {
 	mustWrite(t, dir, "design/api.craftgo", routesOnlyDesign)
 	mustWrite(t, dir, "design/greet/greet.proto", greetProto)
 	genProject(t, dir)
-	mustContain(t, dir, "main.go", "wiring.Register(ctx, srv, svc)", "wiring.RegisterGRPC(ctx, grpcSrv, svc)", "srv.Start(cfg.Server.Addr)", "grpcSrv.Start(cfg.GRPC.Addr)")
+	mustContain(t, dir, "main.go", "wiring.Register(ctx, srv, svc)", "wiring.RegisterGRPC(ctx, grpcSrv, svc)", "srv.Serve(lis)", "grpcSrv.Serve(lis)")
 	if !exists(t, dir, "internal", "routes", "thing_service", "routes.go") || !exists(t, dir, "internal", "grpc", "greeter", "server.go") {
 		t.Error("both halves must be generated")
 	}

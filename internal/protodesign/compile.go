@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -24,6 +26,7 @@ func Load(ctx context.Context, designRoot string, opts Options) (*Set, error) {
 	if err != nil {
 		return nil, err
 	}
+	names = withoutIncluded(designRoot, names, opts.Includes)
 	if len(names) == 0 {
 		return nil, nil
 	}
@@ -32,14 +35,15 @@ func Load(ctx context.Context, designRoot string, opts Options) (*Set, error) {
 		return nil, err
 	}
 	req := buildRequest(files, names, parameter(names, opts))
+	problems, warnings := thirdParty(req, names, opts)
 	plugin, err := protogen.Options{}.New(req)
 	if err != nil {
-		if !opts.pbEnabled() {
-			return nil, fmt.Errorf("output.pb is \"-\", so every design proto needs `option go_package`: %w", err)
-		}
-		return nil, fmt.Errorf("a proto under proto.includes needs `option go_package` (the design's own protos are placed under output.pb): %w", err)
+		problems = append(problems, goPackageProblem(req, names, opts, err))
 	}
-	set := &Set{opts: opts, names: names, plugin: plugin, request: req}
+	if len(problems) > 0 {
+		return nil, fmt.Errorf("proto errors:\n  %s", strings.Join(problems, "\n  "))
+	}
+	set := &Set{opts: opts, names: names, plugin: plugin, request: req, Warnings: warnings}
 	for _, f := range plugin.Files {
 		if !f.Generate {
 			continue
@@ -55,17 +59,53 @@ func Load(ctx context.Context, designRoot string, opts Options) (*Set, error) {
 	return set, nil
 }
 
+// withoutIncluded drops the names under an include root inside designRoot: a proto
+// there is imported by its path below that root, as every include is, and is not
+// generated.
+func withoutIncluded(designRoot string, names, includes []string) []string {
+	var nested []string
+	for _, inc := range includes {
+		if rel, ok := below(designRoot, inc); ok {
+			nested = append(nested, rel+"/")
+		}
+	}
+	if len(nested) == 0 {
+		return names
+	}
+	return slices.DeleteFunc(slices.Clone(names), func(name string) bool {
+		return slices.ContainsFunc(nested, func(dir string) bool { return strings.HasPrefix(name, dir) })
+	})
+}
+
+// below returns dir as a slash path relative to root when dir lies under root.
+func below(root, dir string) (string, bool) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", false
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", false
+	}
+	rel, err := filepath.Rel(absRoot, absDir)
+	if err != nil || rel == "." || !filepath.IsLocal(rel) {
+		return "", false
+	}
+	return filepath.ToSlash(rel), true
+}
+
 // compile runs protocompile over names with designRoot as the first import
 // root, reporting every error with its file path.
 func compile(ctx context.Context, designRoot string, names, includes []string) (linker.Files, error) {
+	roots := append([]string{designRoot}, includes...)
 	var errs []string
 	rep := reporter.NewReporter(func(e reporter.ErrorWithPos) error {
 		pos := e.GetPosition()
-		errs = append(errs, fmt.Sprintf("  %s:%d:%d: %v", filepath.Join(designRoot, filepath.FromSlash(pos.Filename)), pos.Line, pos.Col, e.Unwrap()))
+		errs = append(errs, fmt.Sprintf("  %s:%d:%d: %v", sourcePath(roots, pos.Filename), pos.Line, pos.Col, e.Unwrap()))
 		return nil
 	}, nil)
 	c := protocompile.Compiler{
-		Resolver:       protocompile.WithStandardImports(&protocompile.SourceResolver{ImportPaths: append([]string{designRoot}, includes...)}),
+		Resolver:       protocompile.WithStandardImports(&protocompile.SourceResolver{ImportPaths: roots}),
 		SourceInfoMode: protocompile.SourceInfoStandard,
 		Reporter:       rep,
 	}
@@ -81,6 +121,24 @@ func compile(ctx context.Context, designRoot string, names, includes []string) (
 		return nil, err
 	}
 	return files, nil
+}
+
+// sourcePath returns the file the resolver reads for the proto at slash path name: under the
+// first of roots that holds it, as the resolver searches them, or under the first root.
+func sourcePath(roots []string, name string) string {
+	rel := filepath.FromSlash(name)
+	for _, root := range roots {
+		if p := filepath.Join(root, rel); fileExists(p) {
+			return p
+		}
+	}
+	return filepath.Join(roots[0], rel)
+}
+
+// fileExists reports whether path names something other than a directory.
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // newService reads one service off the protogen graph.
