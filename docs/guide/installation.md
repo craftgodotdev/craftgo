@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Go 1.26.6 or later
+- Go 1.26.9 or later
 - macOS, Linux or Windows
 
 ## CLI
