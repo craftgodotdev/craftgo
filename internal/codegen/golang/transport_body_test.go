@@ -79,6 +79,28 @@ func TestBodyWireStructs(t *testing.T) {
 	mustContainAll(t, rename, `return "name"`)
 }
 
+// A required member typed by a parameter whose argument is a raw scalar is checked as a raw member
+// is: null is no value.
+func TestBodyRawTypeArgument(t *testing.T) {
+	pkg := analyze(t, `package design
+scalar RawBlob bytes @format(raw)
+type Box<T> { v T }
+type Req { b Box<RawBlob>  c Box<int> }
+service S { post Make /make { request Req } }`)
+	root := t.TempDir()
+	if err := generateTransport(pkg, sampleConfig(), root, nil); err != nil {
+		t.Fatal(err)
+	}
+	src := readGen(t, filepath.Join(root, "internal/transport/s"), bodyFile)
+	mustParseGo(t, src)
+	_, raw, ok := strings.Cut(src, "func (w *boxRawBlobWire) to")
+	if !ok {
+		t.Fatalf("no boxRawBlobWire:\n%s", src)
+	}
+	raw, _, _ = strings.Cut(raw, "\n}\n")
+	mustContainAll(t, collapseSpace(raw), `if len(w.V) == 0 || string(w.V) == "null" { return "v" }`)
+}
+
 // A segment whose bodies all decode straight writes no wire file.
 func TestBodyFileOnlyWhenAWireStructIs(t *testing.T) {
 	pkg := analyze(t, `package design

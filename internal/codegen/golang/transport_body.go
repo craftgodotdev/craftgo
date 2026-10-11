@@ -265,7 +265,11 @@ func (p *bodyPlan) member(s *wireStruct, f *ast.Field, goName string) *wireMembe
 		raw:      rf.Category == semantic.CatRawBytes,
 		skipped:  s.skip[f.Name] && !explicit,
 	}
-	_, paramTyped := s.inner.param(f.Type.Named)
+	arg, paramTyped := s.inner.param(f.Type.Named)
+	if paramTyped && f.Type.ArrayDepth == 0 && f.Type.Map == nil {
+		// A raw argument is told apart where it is written: T itself resolves to no category.
+		m.raw = semantic.NewResolver(p.proj, arg.env.home).ResolveTypeRef(arg.ref).Category == semantic.CatRawBytes
+	}
 	if arg := firstArg(f.Decorators, "default"); arg != nil && rf.HasDefValue && f.Type.Map == nil && !paramTyped &&
 		renderDefault(p.viewRef(&value, s.inner), arg.Value, p.r, p.keys.scratch()) != "" {
 		m.def = arg
