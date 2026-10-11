@@ -15,7 +15,7 @@ import (
 
 // version is the reported version; release builds set it with
 // `-ldflags -X main.version`, which only writes a var.
-var version = "1.10.1"
+var version = "1.11.0"
 
 func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")

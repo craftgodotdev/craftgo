@@ -7,6 +7,8 @@ breaking change to the DSL or the generated layout bumps the major version.
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-11 [UTC+7]
+
 ### Removed
 
 - **The DSL `import` statement.** Cross-package references have needed none
