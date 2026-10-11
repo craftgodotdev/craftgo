@@ -67,10 +67,6 @@ type ServerConfig struct {
 	// StrictJSON rejects a JSON body with an unknown field or data after the value.
 	StrictJSON bool `yaml:"strictJSON"`
 
-	// RequirePresence answers 400 to a JSON body that leaves out a member declared without `?`,
-	// or sends one null without @nullable; true unless config.yaml sets false.
-	RequirePresence bool `yaml:"requirePresence"`
-
 	// Compression is off by default, for a deployment behind a compressing proxy.
 	Compression CompressionConfig `yaml:"compression"`
 }
@@ -153,9 +149,8 @@ func unknownKeys(data []byte) []string {
 func defaults() *Config {
 	return &Config{
 		Server: ServerConfig{
-			ReadTimeout:     30 * time.Second,
-			MaxBodySize:     10 << 20,
-			RequirePresence: true,
+			ReadTimeout: 30 * time.Second,
+			MaxBodySize: 10 << 20,
 		},
 	}
 }

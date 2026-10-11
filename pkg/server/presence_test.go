@@ -58,19 +58,6 @@ func TestNullableTypeErrorNamesTheMember(t *testing.T) {
 	}
 }
 
-// The presence check is on by default and switches off and back on.
-func TestRequirePresenceSwitch(t *testing.T) {
-	if !RequirePresence() {
-		t.Fatal("the presence check must be on by default")
-	}
-	SetRequirePresence(false)
-	off := RequirePresence()
-	SetRequirePresence(true)
-	if off || !RequirePresence() {
-		t.Errorf("switching off then on read %v then %v", off, RequirePresence())
-	}
-}
-
 // A missing member's error names its JSON path.
 func TestMissingMember(t *testing.T) {
 	if got := MissingMember("items.sku").Error(); got != "items.sku: required" {

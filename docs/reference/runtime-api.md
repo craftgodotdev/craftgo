@@ -172,7 +172,6 @@ A generated handler checks that a JSON body carries every member declared withou
 
 | Function | Description |
 |---|---|
-| `SetRequirePresence(on bool)` / `RequirePresence() bool` | Switch the check, process-wide and safe while serving; on by default. Off, the body decodes straight into the request type, a missing member left at its zero value. `server.requirePresence` in `config.yaml` drives it. |
 | `MissingMember(path) error` | The error `"<path>: required"` a handler reports for a member the body lacks. |
 | `Nullable[T]` | A member that may be null: `Present()` reports that it came, `Value()` returns it, nil when absent or `null`. |
 

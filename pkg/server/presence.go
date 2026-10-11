@@ -4,22 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"sync/atomic"
 )
-
-// lenientBodies is the opposite of the [SetRequirePresence] switch, so the zero value checks.
-var lenientBodies atomic.Bool
-
-// SetRequirePresence switches, process-wide and safe while serving, the check generated handlers
-// make that a JSON request body carries its required members. On, the default, a member declared
-// without `?` that is absent, or null without @nullable, answers 400 "<json path>: required", and
-// a nested @default fills an absent member. Off, the body decodes straight into the request type,
-// a missing member left at its zero value.
-func SetRequirePresence(on bool) { lenientBodies.Store(!on) }
-
-// RequirePresence reports whether generated handlers check a JSON body for its required members;
-// see [SetRequirePresence].
-func RequirePresence() bool { return !lenientBodies.Load() }
 
 // MissingMember returns the validation error "<path>: required" for a required member a JSON body
 // left out or sent as null, path being the member's JSON path.

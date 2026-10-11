@@ -61,7 +61,7 @@ A non-optional field (no `?`) is required: the handler answers 400 `<field>: req
 
 > **Required-by-default**: a field without `?` is required. A JSON body that leaves it out, or sends it as `null`, is answered 400 `<json path>: required`, at any depth: `items.sku: required` names a member of a list element, with no index or map key, and a mixin's member keeps its bare name. `""`, `0`, `false`, `[]` and `{}` are values and pass; a `null` body has none of the members. No `@required` decorator - use `?` to opt out, `@nullable` to keep the key required but let it be `null`, `@default(...)` to fill it when absent (auto-marks optional on save). A required `@query`, `@header`, `@cookie` or `@form` text part reads `<name>: missing required <kind> parameter`.
 >
-> The body check decodes into a struct of pointers the handler declares beside it, with the installed codec, then copies the body into the request type. `server.requirePresence: false` in `config.yaml` (or `server.SetRequirePresence(false)`) turns it off: the body then decodes straight into the request type, a missing member left at its zero value, and only an enum (whose zero value is not a member), a `file`, an `any` and a `bytes @format(raw)` field keep a presence check of their own in `Validate()`.
+> The body check decodes into a struct of pointers the handler declares beside it, with the installed codec, then copies the body into the request type. It has no switch. `Validate()` keeps a presence check of its own only for an enum (whose zero value is not a member), a `file`, an `any` and a `bytes @format(raw)` field, as a value built in code or decoded off an event reaches it without the body check.
 
 The tables below cover validators with the examples that matter for *validation*. For the one-grid lookup of every decorator (including non-validator ones) and its legal levels, see the [Decorator Registry](/reference/decorator-registry).
 
@@ -214,7 +214,7 @@ type AvatarReq {
 
 ## Default values
 
-`@default` provides a fallback when the client omits a field: an absent member takes the default, in the request type or in any type below it, and a value the client sends wins. An optional member sent as `null` stays nil. The handler pre-fills the request's own fields before it decodes, so with `requirePresence` off, when the body decodes straight into the request, only they take theirs.
+`@default` provides a fallback when the client omits a field: an absent member takes the default, in the request type or in any type below it, and a value the client sends wins. An optional member sent as `null` stays nil.
 
 ```craftgo
 type ListUsersReq {

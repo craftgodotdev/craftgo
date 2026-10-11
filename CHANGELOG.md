@@ -43,8 +43,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   `""`, `0` and `false` are values. The body decodes through the installed
   codec into an unexported struct beside the handler (`bodies.gen.go`), which
   is copied into the request type, a nested `@default` filling an absent
-  member. `server.SetRequirePresence(false)`, or `server.requirePresence:
-  false` in `config.yaml`, switches the check off.
+  member. The check has no switch.
 
 - **A JSON route answers 415** `{"message":"unsupported media type"}` to a
   body whose `Content-Type` is not `application/json` or an
@@ -258,8 +257,7 @@ breaking change to the DSL or the generated layout bumps the major version.
   `InvalidArgument`. The generated server layer hands the logic the wrapped
   stream.
 
-- **Required members:** `server.SetRequirePresence`, `RequirePresence`,
-  `MissingMember` and `Nullable[T]`, which tells an absent member from a
+- **Required members:** `server.MissingMember` and `Nullable[T]`, which tells an absent member from a
   `null` one.
 
 - **`cookie`**, a built-in for a `@cookie` field of a response or an error

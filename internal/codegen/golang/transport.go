@@ -25,8 +25,8 @@ type transportData struct {
 	// Doc heads the handler's doc comment ([docHead]).
 	Doc        []string
 	BodyDecode bool
-	// BodyWire is the wire struct the body decodes into while presence is checked, "" when the
-	// body decodes straight into the request.
+	// BodyWire is the wire struct the body decodes into, "" when the body decodes straight into
+	// the request.
 	BodyWire string
 	// BindRequest and WriteResponse report the sides the handler owns ([wire.RawSides]).
 	BindRequest   bool

@@ -47,7 +47,7 @@ A design proto whose `go_package` names another module's package is a warning: i
 
 ### What the server answers
 
-- A JSON body that leaves out a member declared without `?`, or sends it as `null` without `@nullable`, answers 400 `<json path>: required`. A client that relied on a missing member reading as `""`, `0` or `false` now sends it, or the member takes `?` or a `@default`. `server.requirePresence: false` in `config.yaml` switches the check off while clients catch up.
+- A JSON body that leaves out a member declared without `?`, or sends it as `null` without `@nullable`, answers 400 `<json path>: required`. A client that relied on a missing member reading as `""`, `0` or `false` now sends it, or the member takes `?` or a `@default`.
 - A JSON route answers 415 to a body whose `Content-Type` is not `application/json` or an `application/*+json` type, or that has none: a client posting JSON as `text/plain`, or untyped, sets `Content-Type: application/json`.
 - A nil list, map or `bytes` the logic returns goes out as `null`, where 1.10 wrote `[]`, `{}` or `""`: return empty ones where the document requires the member. An optional one the logic sets empty goes out as `[]` or `{}`, where 1.10 left it out.
 - `@format` checks follow their RFCs. `email` refuses a display name, a comment or angle brackets (`Ann <ann@example.com>`), `time` needs its offset (`15:04:05Z`, not `15:04:05`), `ipv4` refuses `::ffff:1.2.3.4`, and `url` needs `http` or `https` and a host. A client sending the forms that passed before gets 400, and a bound that only fits the old form, as `@length(8, 8)` on a `time`, needs widening.
@@ -63,7 +63,7 @@ A design proto whose `go_package` names another module's package is a warning: i
 
 ### `main.go`, `config.go` and the stubs
 
-- A new `config.yaml` sets `readTimeout: 30s`, `maxBodySize: 10485760` and `requirePresence: true`, and a new `main.go` applies them, registers the docs with `srv.RegisterDocs` and stops at boot naming a value it cannot use. An existing project keeps its files: its `maxBodySize: 0` still sets no cap, so set `10485760` to take the new default; the required-member check applies through its default.
+- A new `config.yaml` sets `readTimeout: 30s`, and `maxBodySize: 10485760`, and a new `main.go` applies them, registers the docs with `srv.RegisterDocs` and stops at boot naming a value it cannot use. An existing project keeps its files: its `maxBodySize: 0` still sets no cap, so set `10485760` to take the new default.
 - A new `main.go` binds each listener before it logs the address, stops HTTP and gRPC side by side, and calls `server.SetStrictJSON`. An existing one keeps working; switch its deprecated `srv.SetStrictJSON` to `server.SetStrictJSON` when you next edit it.
 - A new logic stub returns `server.ErrNotImplemented` or `status.Error(codes.Unimplemented, …)`. Stubs already written keep what they hold.
 
@@ -95,7 +95,7 @@ A design proto whose `go_package` names another module's package is a warning: i
 
 ### Runtime API
 
-- New: `server.Serve`, `ErrNotImplemented`, `SetRequirePresence`, `RequirePresence`, `MissingMember`, `Nullable`, `RequireJSONBody`, `ResponseCookieSetter`, `LimitParts`, `MultipartMemory`, `DefaultMaxBodySize`, `CompressOptions.Validate`, `Server.RegisterDocs`; `rpc.ValidateClientStream`, `rpc.ValidateBidiStream`; `events.EnvelopeError`, `nats.ErrNotCarried`.
+- New: `server.Serve`, `ErrNotImplemented`, `MissingMember`, `Nullable`, `RequireJSONBody`, `ResponseCookieSetter`, `LimitParts`, `MultipartMemory`, `DefaultMaxBodySize`, `CompressOptions.Validate`, `Server.RegisterDocs`; `rpc.ValidateClientStream`, `rpc.ValidateBidiStream`; `events.EnvelopeError`, `nats.ErrNotCarried`.
 - Deprecated, still working: `Server.SetJSONCodec`, `Server.SetStrictJSON` and `Server.Codec`. The codec and the strict switch were always the process's; call `server.SetGlobalJSONCodec`, `server.SetStrictJSON` and `server.JSON`.
 - `server.New` caps bodies at 10 MiB until `SetDefaultMaxBodySize` says otherwise. `SetCORS` panics on credentials allowed to `*`, and `Compress` on a level outside -2..9. `Stop` before `Start` makes a later `Start` or `Serve` return nil at once, on both servers. The default logger no longer samples.
 

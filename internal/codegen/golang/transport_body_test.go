@@ -32,21 +32,20 @@ func generateBodies(t *testing.T) string {
 	return filepath.Join(root, "internal/transport/s")
 }
 
-// A body with a required member decodes into its wire struct while the check is on, else straight
-// into the request; one with optional members only decodes straight, its defaults pre-filled.
+// A body with a required member decodes into its wire struct; one with optional members only
+// decodes straight into the request, its defaults pre-filled.
 func TestBodyDecodesThroughItsWireStruct(t *testing.T) {
 	dir := generateBodies(t)
 	mk := readGen(t, dir, "make.go")
 	mustParseGo(t, mk)
 	mustContainAll(t, mk,
-		"if server.RequirePresence() {",
 		"var _b makeWire",
 		"if _m := _b.to(&req); _m != \"\" {",
 		"server.WriteValidationError(w, r, server.MissingMember(_m))",
-		"} else if err := server.JSON().Decode(r.Body, &req); err != nil {",
 	)
+	mustContainNone(t, mk, "Decode(r.Body, &req)")
 	loose := readGen(t, dir, "loose.go")
-	mustContainNone(t, loose, "RequirePresence", "Wire")
+	mustContainNone(t, loose, "Wire")
 	mustContainAll(t, loose, "server.JSON().Decode(r.Body, &req)")
 }
 

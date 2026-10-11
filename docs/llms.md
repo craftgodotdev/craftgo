@@ -482,7 +482,7 @@ Argument types: `string`, `int`, `number` (int or float), `bool`, `ident`, `dura
 
 `AppliesTo` column means the field's primitive (after resolving scalars) must be in that category, or the validator is rejected.
 
-> **Required-by-default**: every field is required unless the type carries `?`. There is no `@required` decorator - append `?` to the type to opt out (`name string?`). A JSON body that leaves a required member out, or sends it `null` without `@nullable`, is answered 400 `<json path>: required` (`items.sku: required`: no index or map key) before `Validate()`; `""`, `0`, `false`, `[]` and `{}` pass. A `@default` fills an absent member at any depth. `server.requirePresence: false` (`server.SetRequirePresence(false)`) turns the body check off: the body then decodes straight into the request type and a missing member keeps its zero value. A codec installed with `SetGlobalJSONCodec` must call a type's `json.Unmarshaler` (`server.Nullable[T]` tells an absent `@nullable` or defaulted member from a `null` one).
+> **Required-by-default**: every field is required unless the type carries `?`. There is no `@required` decorator - append `?` to the type to opt out (`name string?`). A JSON body that leaves a required member out, or sends it `null` without `@nullable`, is answered 400 `<json path>: required` (`items.sku: required`: no index or map key) before `Validate()`; `""`, `0`, `false`, `[]` and `{}` pass. A `@default` fills an absent member at any depth. A codec installed with `SetGlobalJSONCodec` must call a type's `json.Unmarshaler` (`server.Nullable[T]` tells an absent `@nullable` or defaulted member from a `null` one).
 
 | Decorator           | AppliesTo | Args               | Effect                        |
 | ------------------- | --------- | ------------------ | ----------------------------- |
@@ -698,7 +698,6 @@ server:
   handlerTimeout: 0s
   maxBodySize: 10485760 # 10 MiB when left out; 0 = no cap
   strictJSON: true
-  requirePresence: true # 400 for a JSON body missing a required member
   compression:
     enabled: false
     minSize: 0
@@ -789,19 +788,14 @@ func <Method>(svcCtx *svccontext.ServiceContext) http.HandlerFunc {
         // 1. pre-fill @default values
         req.Field = defaultValue
         // 2. decode JSON body (body verbs only): through a struct of pointers that tells an
-        // absent member from a zero one, then into req, while presence is checked
-        if server.RequirePresence() {
-            var _b <req>Wire
-            if err := server.JSON().Decode(r.Body, &_b); err != nil {
-                server.WriteValidationError(w, r, err)
-                return
-            }
-            if _m := _b.to(&req); _m != "" { // fills nested @default values too
-                server.WriteValidationError(w, r, server.MissingMember(_m))
-                return
-            }
-        } else if err := server.JSON().Decode(r.Body, &req); err != nil {
+        // absent member from a zero one, then into req
+        var _b <req>Wire
+        if err := server.JSON().Decode(r.Body, &_b); err != nil {
             server.WriteValidationError(w, r, err)
+            return
+        }
+        if _m := _b.to(&req); _m != "" { // fills nested @default values too
+            server.WriteValidationError(w, r, server.MissingMember(_m))
             return
         }
         // 3. bind @path / @query / @header / @cookie / @form fields

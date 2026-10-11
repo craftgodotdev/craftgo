@@ -253,15 +253,3 @@ func TestBodyPresenceUnderStrictJSON(t *testing.T) {
 		}
 	}
 }
-
-// With the check off, a body decodes straight into the request type and a missing member keeps
-// its zero value.
-func TestBodyPresenceSwitchedOff(t *testing.T) {
-	ts := bootAll(t)
-	server.SetRequirePresence(false)
-	t.Cleanup(func() { server.SetRequirePresence(true) })
-	code, body := postPresence(t, ts.URL, with(with(presenceOrder(), "name", absent), "spot", map[string]any{"coords": map[string]any{"lat": 1}}))
-	if code != http.StatusCreated || !strings.Contains(body, `"name":""`) || !strings.Contains(body, `"coords":{"lat":1}`) {
-		t.Errorf("off: got %d %s, want 201 with name empty and no default below", code, body)
-	}
-}

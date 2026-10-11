@@ -77,7 +77,6 @@ func main() {
 		log.Default().Error("strict json", log.Err(err))
 		os.Exit(1)
 	}
-	server.SetRequirePresence(cfg.Server.RequirePresence)
 	if cfg.Server.Compression.Enabled {
 		compress := server.CompressOptions{
 			MinSize: cfg.Server.Compression.MinSize,
